@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package metaxisdata.store;
+
+option go_package = "generated-go/store";
+
+enum MetaType {
+  UNSPECIFIED = 0;
+  INSTANCE = 1;
+  DATABASE = 2;
+  SCHEMA = 3;
+  TABLE = 4;
+  EXTERNAL_TABLE = 16;
+  VIEW = 5;
+  MATERIALIZED_VIEW = 6;
+  COLUMN = 7;
+  INDEX = 8;
+  FOREIGN_KEY = 9;
+  PROCEDURE = 10;
+  FUNCTION = 11;
+  SEQUENCE = 12;
+  PACKAGE = 13;
+  STREAM = 14;
+  TASK = 15;
+}

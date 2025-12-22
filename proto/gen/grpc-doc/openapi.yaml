@@ -1,0 +1,2986 @@
+# Generated with protoc-gen-openapi
+# https://github.com/google/gnostic/tree/master/cmd/protoc-gen-openapi
+
+openapi: 3.0.3
+info:
+    title: ""
+    version: 0.0.1
+paths:
+    /v1/auth/login:
+        post:
+            tags:
+                - AuthService
+            description: 'Permissions required: None'
+            operationId: AuthService_Login
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/LoginRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/LoginResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/auth/logout:
+        post:
+            tags:
+                - AuthService
+            description: 'Permissions required: None'
+            operationId: AuthService_Logout
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/LogoutRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/database:
+        get:
+            tags:
+                - DatabaseService
+            operationId: DatabaseService_ListDatabase
+            parameters:
+                - name: parent
+                  in: query
+                  description: |-
+                    - projects/{project}: list databases in a project.
+                     - workspaces/-: list databases in the workspace.
+                     - instances/{instances}: list databases in a instance.
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of databases to return. The service may return fewer
+                     than this value.
+                     If unspecified, at most 10 databases will be returned.
+                     The maximum value is 1000; values above 1000 will be coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous `ListDatabases` call.
+                     Provide this to retrieve the subsequent page.
+
+                     When paginating, all other parameters provided to `ListDatabases` must
+                     match the call that provided the page token.
+                  schema:
+                    type: string
+                - name: filter
+                  in: query
+                  description: |-
+                    Filter is used to filter databases returned in the list.
+                     The syntax and semantics of CEL are documented at https://github.com/google/cel-spec
+
+                     Supported filter:
+                     - environment: the environment full name in "environments/{id}" format, support "==" operator.
+                     - name: the database name, support ".matches()" operator.
+                     - project: the project full name in "projects/{id}" format, support "==" operator.
+                     - instance: the instance full name in "instances/{id}" format, support "==" operator.
+                     - engine: the database engine, check Engine enum for values. Support "==", "in [xx]", "!(in [xx])" operator.
+                     - exclude_unassigned: should be "true" or "false", will not show unassigned databases if it's true, support "==" operator.
+                     - drifted: should be "true" or "false", show drifted databases if it's true, support "==" operator.
+                     - table: filter by the database table, support "==" and ".matches()" operator.
+                     - labels.{key}: the database label, support "==" and "in" operators.
+
+                     For example:
+                     environment == "environments/{environment resource id}"
+                     environment == "" (find databases which environment is not set)
+                     project == "projects/{project resource id}"
+                     instance == "instances/{instance resource id}"
+                     name.matches("database name")
+                     engine == "MYSQL"
+                     engine in ["MYSQL", "POSTGRES"]
+                     !(engine in ["MYSQL", "POSTGRES"])
+                     exclude_unassigned == true
+                     drifted == true
+                     table == "sample"
+                     table.matches("sam")
+                     labels.environment == "production"
+                     labels.region == "asia"
+                     labels.region in ["asia", "europe"]
+
+                     You can combine filter conditions like:
+                     environment == "environments/prod" && name.matches("employee")
+                  schema:
+                    type: string
+                - name: showDeleted
+                  in: query
+                  description: Show deleted database if specified.
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListDatabasesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/instances:
+        get:
+            tags:
+                - InstanceService
+            operationId: InstanceService_ListInstances
+            parameters:
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of instances to return. The service may return fewer than
+                     this value.
+                     If unspecified, at most 10 instances will be returned.
+                     The maximum value is 1000; values above 1000 will be coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous `ListInstances` call.
+                     Provide this to retrieve the subsequent page.
+
+                     When paginating, all other parameters provided to `ListInstances` must match
+                     the call that provided the page token.
+                  schema:
+                    type: string
+                - name: showDeleted
+                  in: query
+                  description: Show deleted instances if specified.
+                  schema:
+                    type: boolean
+                - name: filter
+                  in: query
+                  description: |-
+                    Filter the instance.
+                     The syntax and semantics of CEL are documented at https://github.com/google/cel-spec
+
+                     Supported filters:
+                     - name: the instance name, support "==" and ".matches()" operator.
+                     - resource_id: the instance id, support "==" and ".matches()" operator.
+                     - environment: the environment full name in "environments/{id}" format, support "==" operator.
+                     - state: the instance state, check State enum for values, support "==" operator.
+                     - engine: the instance engine, check Engine enum for values. Support "==", "in [xx]", "!(in [xx])" operator.
+                     - host: the instance host, support "==" and ".matches()" operator.
+                     - port: the instance port, support "==" and ".matches()" operator.
+                     - project: the project full name in "projects/{id}" format, support "==" operator.
+
+                     For example:
+                     name == "sample instance"
+                     name.matches("sample")
+                     resource_id = "sample-instance"
+                     resource_id.matches("sample")
+                     state == "DELETED"
+                     environment == "environments/test"
+                     engine == "MYSQL"
+                     engine in ["MYSQL", "POSTGRES"]
+                     !(engine in ["MYSQL", "POSTGRES"])
+                     host == "127.0.0.1"
+                     host.matches("127.0")
+                     port == "54321"
+                     port.matches("543")
+                     project == "projects/sample-project"
+                     You can combine filter conditions like:
+                     name.matches("sample") && environment == "environments/test"
+                     host == "127.0.0.1" && port == "54321"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListInstancesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - InstanceService
+            operationId: InstanceService_CreateInstance
+            parameters:
+                - name: instanceId
+                  in: query
+                  description: |-
+                    The ID to use for the instance, which will become the final component of
+                     the instance's resource name.
+
+                     This value should be 4-63 characters, and valid characters
+                     are /[a-z][0-9]-/.
+                  schema:
+                    type: string
+                - name: validateOnly
+                  in: query
+                  description: Validate only also tests the data source connection.
+                  schema:
+                    type: boolean
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/Instance'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Instance'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/instances/{instance}:
+        get:
+            tags:
+                - InstanceService
+            operationId: InstanceService_GetInstance
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Instance'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        delete:
+            tags:
+                - InstanceService
+            operationId: InstanceService_DeleteInstance
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+                - name: force
+                  in: query
+                  description: If set to true, any databases and sheets from this project will also be moved to default project, and all open issues will be closed.
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - InstanceService
+            operationId: InstanceService_UpdateInstance
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  description: The list of fields to update.
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/Instance'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Instance'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/instances/{instance}/databases/{database}:
+        get:
+            tags:
+                - DatabaseService
+            operationId: DatabaseService_GetDatabase
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+                - name: database
+                  in: path
+                  description: The database id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Database'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/instances/{instance}:addDataSource:
+        post:
+            tags:
+                - InstanceService
+            operationId: InstanceService_AddDataSource
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AddDataSourceRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Instance'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/instances/{instance}:databases:
+        post:
+            tags:
+                - InstanceService
+            operationId: InstanceService_ListInstanceDatabase
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListInstanceDatabaseRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListInstanceDatabaseResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/instances/{instance}:removeDataSource:
+        post:
+            tags:
+                - InstanceService
+            operationId: InstanceService_RemoveDataSource
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RemoveDataSourceRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Instance'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/instances/{instance}:sync:
+        post:
+            tags:
+                - InstanceService
+            operationId: InstanceService_SyncInstance
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SyncInstanceRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SyncInstanceResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/instances/{instance}:undelete:
+        post:
+            tags:
+                - InstanceService
+            operationId: InstanceService_UndeleteInstance
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UndeleteInstanceRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Instance'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/instances/{instance}:updateDataSource:
+        patch:
+            tags:
+                - InstanceService
+            operationId: InstanceService_UpdateDataSource
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  description: The list of fields to update.
+                  schema:
+                    type: string
+                    format: field-mask
+                - name: validateOnly
+                  in: query
+                  description: Validate only also tests the data source connection.
+                  schema:
+                    type: boolean
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DataSource'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Instance'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/instances:batchSync:
+        post:
+            tags:
+                - InstanceService
+            operationId: InstanceService_BatchSyncInstances
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BatchSyncInstancesRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BatchSyncInstancesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/instances:batchUpdate:
+        post:
+            tags:
+                - InstanceService
+            operationId: InstanceService_BatchUpdateInstances
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BatchUpdateInstancesRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BatchUpdateInstancesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/metadata/list:
+        get:
+            tags:
+                - DatabaseService
+            operationId: DatabaseService_ListMetadata
+            parameters:
+                - name: parentGuid
+                  in: query
+                  description: |-
+                    The global unique id for all metadata
+                     database: "instance_100;database3"
+                     table: "instance_1;db2;schema3;table4"
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of databases to return. The service may return fewer
+                     than this value.
+                     If unspecified, at most 10 databases will be returned.
+                     The maximum value is 1000; values above 1000 will be coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous `ListDatabases` call.
+                     Provide this to retrieve the subsequent page.
+
+                     When paginating, all other parameters provided to `ListDatabases` must
+                     match the call that provided the page token.
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  description: |-
+                    the type of metadata
+                     If meta_type is not specified, the query will ignore page_size and return the first 20 records of each meta_type.
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - PACKAGE
+                        - STREAM
+                        - TASK
+                    type: string
+                    format: enum
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MetadataResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/users:
+        get:
+            tags:
+                - UserService
+            description: |-
+                List all users.
+                 Any authenticated user can list users.
+            operationId: UserService_ListUsers
+            parameters:
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of users to return. The service may return fewer than
+                     this value.
+                     If unspecified, at most 10 users will be returned.
+                     The maximum value is 1000; values above 1000 will be coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous `ListUsers` call.
+                     Provide this to retrieve the subsequent page.
+
+                     When paginating, all other parameters provided to `ListUsers` must match
+                     the call that provided the page token.
+                  schema:
+                    type: string
+                - name: showDeleted
+                  in: query
+                  description: Show deleted users if specified.
+                  schema:
+                    type: boolean
+                - name: filter
+                  in: query
+                  description: |-
+                    Filter is used to filter users returned in the list.
+                     The syntax and semantics of CEL are documented at https://github.com/google/cel-spec
+
+                     Supported filter:
+                     - name: the user name, support "==" and ".matches()" operator.
+                     - email: the user email, support "==" and ".matches()" operator.
+                     - user_type: the type, check UserType enum for values, support "==", "in [xx]", "!(in [xx])" operator.
+                     - state: check State enum for values, support "==" operator.
+                     - project: the project full name in "projects/{id}" format, support "==" operator.
+
+                     For example:
+                     name == "ed"
+                     name.matches("ed")
+                     email == "ed@example.com"
+                     email.matches("ed")
+                     user_type == "SERVICE_ACCOUNT"
+                     user_type in ["SERVICE_ACCOUNT", "USER"]
+                     !(user_type in ["SERVICE_ACCOUNT", "USER"])
+                     state == "DELETED"
+                     project == "projects/sample-project"
+                     You can combine filter conditions like:
+                     name.matches("ed") && project == "projects/sample-project"
+                     (name == "ed" || email == "ed@example.com") && project == "projects/sample-project"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListUsersResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - UserService
+            description: Create a user.
+            operationId: UserService_CreateUser
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/User'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/User'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/users/me:
+        get:
+            tags:
+                - UserService
+            description: |-
+                Get the current authenticated user.
+                 Permissions required: None
+            operationId: UserService_GetCurrentUser
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/User'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/users/{user}:
+        get:
+            tags:
+                - UserService
+            description: |-
+                Get the user.
+                 Any authenticated user can get the user.
+            operationId: UserService_GetUser
+            parameters:
+                - name: user
+                  in: path
+                  description: The user id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/User'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        delete:
+            tags:
+                - UserService
+            description: |-
+                Only the user with permission on the workspace can delete the user.
+                 The last remaining workspace admin cannot be deleted.
+            operationId: UserService_DeleteUser
+            parameters:
+                - name: user
+                  in: path
+                  description: The user id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - UserService
+            description: Only the user itself and the user with permission on the workspace can update the user.
+            operationId: UserService_UpdateUser
+            parameters:
+                - name: user
+                  in: path
+                  description: The user id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  description: The list of fields to update.
+                  schema:
+                    type: string
+                    format: field-mask
+                - name: allowMissing
+                  in: query
+                  description: |-
+                    If set to true, and the user is not found, a new user will be created.
+                     In this situation, `update_mask` is ignored.
+                  schema:
+                    type: boolean
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/User'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/User'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/users/{user}:undelete:
+        post:
+            tags:
+                - UserService
+            description: Only the user with permission on the workspace can undelete the user.
+            operationId: UserService_UndeleteUser
+            parameters:
+                - name: user
+                  in: path
+                  description: The user id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UndeleteUserRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/User'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/users:batchGet:
+        get:
+            tags:
+                - UserService
+            description: |-
+                Get the users in batch.
+                 Any authenticated user can batch get users.
+            operationId: UserService_BatchGetUsers
+            parameters:
+                - name: names
+                  in: query
+                  description: |-
+                    The user names to retrieve.
+                     Format: users/{user uid or user email}
+                  schema:
+                    type: array
+                    items:
+                        type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BatchGetUsersResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+components:
+    schemas:
+        AddDataSourceRequest:
+            required:
+                - name
+                - dataSource
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        The name of the instance to add a data source to.
+                         Format: instances/{instance}
+                dataSource:
+                    allOf:
+                        - $ref: '#/components/schemas/DataSource'
+                    description: |-
+                        Identified by data source ID.
+                         Only READ_ONLY data source can be added.
+                validateOnly:
+                    type: boolean
+                    description: Validate only also tests the data source connection.
+        BatchGetUsersResponse:
+            type: object
+            properties:
+                users:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/User'
+                    description: The users from the specified request.
+        BatchSyncInstancesRequest:
+            required:
+                - requests
+            type: object
+            properties:
+                requests:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SyncInstanceRequest'
+                    description: |-
+                        The request message specifying the instances to sync.
+                         A maximum of 1000 instances can be synced in a batch.
+        BatchSyncInstancesResponse:
+            type: object
+            properties: {}
+        BatchUpdateInstancesRequest:
+            required:
+                - requests
+            type: object
+            properties:
+                requests:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/UpdateInstanceRequest'
+                    description: The request message specifying the resources to update.
+        BatchUpdateInstancesResponse:
+            type: object
+            properties:
+                instances:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Instance'
+        BoundingBox:
+            type: object
+            properties:
+                xmin:
+                    type: number
+                    format: double
+                ymin:
+                    type: number
+                    format: double
+                xmax:
+                    type: number
+                    format: double
+                ymax:
+                    type: number
+                    format: double
+            description: BoundingBox defines the bounding box for spatial indexes.
+        CheckConstraintMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the check constraint.
+                expression:
+                    type: string
+                    description: The expression is the expression of a check constraint.
+        ColumnMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the column.
+                position:
+                    type: integer
+                    description: The position is the position in columns.
+                    format: int32
+                default:
+                    type: string
+                    description: The default value of the column.
+                defaultOnNull:
+                    type: boolean
+                    description: |-
+                        Oracle specific metadata.
+                         The default_on_null is the default on null of a column.
+                onUpdate:
+                    type: string
+                    description: |-
+                        The on_update is the on update action of a column.
+                         For MySQL like databases, it's only supported for TIMESTAMP columns with
+                         CURRENT_TIMESTAMP as on update value.
+                nullable:
+                    type: boolean
+                    description: The nullable is the nullable of a column.
+                type:
+                    type: string
+                    description: The type is the type of a column.
+                characterSet:
+                    type: string
+                    description: The character_set is the character_set of a column.
+                collation:
+                    type: string
+                    description: The collation is the collation of a column.
+                comment:
+                    type: string
+                    description: |-
+                        The comment is the comment of a column.
+                         classification and user_comment is parsed from the comment.
+                userComment:
+                    type: string
+                    description: The user_comment is the user comment of a table parsed from the comment.
+                generation:
+                    allOf:
+                        - $ref: '#/components/schemas/GenerationMetadata'
+                    description: The generation is for generated columns.
+                isIdentity:
+                    type: boolean
+                identityGeneration:
+                    enum:
+                        - IDENTITY_GENERATION_UNSPECIFIED
+                        - ALWAYS
+                        - BY_DEFAULT
+                    type: string
+                    description: The identity_generation is for identity columns, PG only.
+                    format: enum
+                identitySeed:
+                    type: string
+                    description: The identity_seed is for identity columns, MSSQL only.
+                identityIncrement:
+                    type: string
+                    description: The identity_increment is for identity columns, MSSQL only.
+                defaultConstraintName:
+                    type: string
+                    description: |-
+                        The default_constraint_name is the name of the default constraint, MSSQL only.
+                         In MSSQL, default values are implemented as named constraints. When modifying or
+                         dropping a column's default value, you must reference the constraint by name.
+                         This field stores the actual constraint name from the database.
+
+                         Example: A column definition like:
+                           CREATE TABLE employees (
+                             status NVARCHAR(20) DEFAULT 'active'
+                           )
+
+                         Will create a constraint with an auto-generated name like 'DF__employees__statu__3B75D760'
+                         or a user-defined name if specified:
+                           ALTER TABLE employees ADD CONSTRAINT DF_employees_status DEFAULT 'active' FOR status
+
+                         To modify the default, you must first drop the existing constraint by name:
+                           ALTER TABLE employees DROP CONSTRAINT DF__employees__statu__3B75D760
+                           ALTER TABLE employees ADD CONSTRAINT DF_employees_status DEFAULT 'inactive' FOR status
+
+                         This field is populated when syncing from the database. When empty (e.g., when parsing
+                         from SQL files), the system cannot automatically drop the constraint.
+            description: ColumnMetadata is the metadata for columns.
+        DataSource:
+            type: object
+            properties:
+                id:
+                    type: string
+                type:
+                    enum:
+                        - DATA_SOURCE_UNSPECIFIED
+                        - ADMIN
+                        - READ_ONLY
+                    type: string
+                    format: enum
+                username:
+                    type: string
+                password:
+                    type: string
+                obfuscatedPassword:
+                    type: string
+                useSsl:
+                    type: boolean
+                    description: Use SSL to connect to the data source. By default, we use the system's SSL configuration.
+                sslCa:
+                    type: string
+                obfuscatedSslCa:
+                    type: string
+                sslCert:
+                    type: string
+                obfuscatedSslCert:
+                    type: string
+                sslKey:
+                    type: string
+                obfuscatedSslKey:
+                    type: string
+                verifyTlsCertificate:
+                    type: boolean
+                    description: |-
+                        verify_tls_certificate enables TLS certificate verification for SSL connections.
+                         Default is false (no verification) for backward compatibility.
+                         Set to true for secure connections (recommended for production).
+                         Only set to false for development or when certificates cannot be properly
+                         validated (e.g., self-signed certs, VPN environments).
+                host:
+                    type: string
+                port:
+                    type: string
+                database:
+                    type: string
+                srv:
+                    type: boolean
+                    description: |-
+                        srv, authentication_database, and replica_set are used for MongoDB.
+                         srv is a boolean flag that indicates whether the host is a DNS SRV record.
+                authenticationDatabase:
+                    type: string
+                    description: authentication_database is the database name to authenticate against, which stores the user credentials.
+                replicaSet:
+                    type: string
+                    description: replica_set is used for MongoDB replica set.
+                sid:
+                    type: string
+                    description: sid and service_name are used for Oracle.
+                serviceName:
+                    type: string
+                sshHost:
+                    type: string
+                    description: |-
+                        SSH related
+                         The hostname of the SSH server agent.
+                sshPort:
+                    type: string
+                    description: The port of the SSH server agent. It's 22 typically.
+                sshUser:
+                    type: string
+                    description: The user to login the server.
+                sshPassword:
+                    type: string
+                    description: The password to login the server. If it's empty string, no password is required.
+                obfuscatedSshPassword:
+                    type: string
+                sshPrivateKey:
+                    type: string
+                    description: The private key to login the server. If it's empty string, we will use the system default private key from os.Getenv("SSH_AUTH_SOCK").
+                obfuscatedSshPrivateKey:
+                    type: string
+                authenticationPrivateKey:
+                    type: string
+                    description: |-
+                        PKCS#8 private key in PEM format. If it's empty string, no private key is required.
+                         Used for authentication when connecting to the data source.
+                obfuscatedAuthenticationPrivateKey:
+                    type: string
+                externalSecret:
+                    $ref: '#/components/schemas/DataSourceExternalSecret'
+                authenticationType:
+                    enum:
+                        - AUTHENTICATION_UNSPECIFIED
+                        - PASSWORD
+                        - GOOGLE_CLOUD_SQL_IAM
+                        - AWS_RDS_IAM
+                        - AZURE_IAM
+                    type: string
+                    format: enum
+                azureCredential:
+                    $ref: '#/components/schemas/DataSource_AzureCredential'
+                awsCredential:
+                    $ref: '#/components/schemas/DataSource_AWSCredential'
+                gcpCredential:
+                    $ref: '#/components/schemas/DataSource_GCPCredential'
+                saslConfig:
+                    $ref: '#/components/schemas/SASLConfig'
+                additionalAddresses:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DataSource_Address'
+                    description: additional_addresses is used for MongoDB replica set.
+                directConnection:
+                    type: boolean
+                    description: direct_connection is used for MongoDB to dispatch all the operations to the node specified in the connection string.
+                region:
+                    type: string
+                    description: Region is the location of the database, used for AWS RDS. For example, us-east-1.
+                warehouseId:
+                    type: string
+                    description: warehouse_id is used by Databricks.
+                masterName:
+                    type: string
+                    description: master_name is the master name used by connecting redis-master via redis sentinel.
+                masterUsername:
+                    type: string
+                    description: master_username and master_obfuscated_password are master credentials used by redis sentinel mode.
+                masterPassword:
+                    type: string
+                obfuscatedMasterPassword:
+                    type: string
+                redisType:
+                    enum:
+                        - REDIS_TYPE_UNSPECIFIED
+                        - STANDALONE
+                        - SENTINEL
+                        - CLUSTER
+                    type: string
+                    format: enum
+                cluster:
+                    type: string
+                    description: Cluster is the cluster name for the data source. Used by CockroachDB.
+                extraConnectionParameters:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: |-
+                        Extra connection parameters for the database connection.
+                         For PostgreSQL HA, this can be used to set target_session_attrs=read-write
+        DataSourceExternalSecret:
+            type: object
+            properties:
+                secretType:
+                    enum:
+                        - SECRET_TYPE_UNSPECIFIED
+                        - VAULT_KV_V2
+                        - AWS_SECRETS_MANAGER
+                        - GCP_SECRET_MANAGER
+                    type: string
+                    format: enum
+                url:
+                    type: string
+                authType:
+                    enum:
+                        - AUTH_TYPE_UNSPECIFIED
+                        - TOKEN
+                        - VAULT_APP_ROLE
+                    type: string
+                    format: enum
+                appRole:
+                    $ref: '#/components/schemas/DataSourceExternalSecret_AppRoleAuthOption'
+                token:
+                    type: string
+                engineName:
+                    type: string
+                    description: engine name is the name for secret engine.
+                secretName:
+                    type: string
+                    description: the secret name in the engine to store the password.
+                passwordKeyName:
+                    type: string
+                    description: the key name for the password.
+                skipVaultTlsVerification:
+                    type: boolean
+                    description: |-
+                        TLS configuration for connecting to Vault server.
+                         These fields are separate from the database TLS configuration in DataSource.
+                         skip_vault_tls_verification disables TLS certificate verification for Vault connections.
+                         Default is false (verification enabled) for security.
+                         Only set to true for development or when certificates cannot be properly validated.
+                vaultSslCa:
+                    type: string
+                    description: CA certificate for Vault server verification.
+                obfuscatedVaultSslCa:
+                    type: string
+                vaultSslCert:
+                    type: string
+                    description: Client certificate for mutual TLS authentication with Vault.
+                obfuscatedVaultSslCert:
+                    type: string
+                vaultSslKey:
+                    type: string
+                    description: Client private key for mutual TLS authentication with Vault.
+                obfuscatedVaultSslKey:
+                    type: string
+        DataSourceExternalSecret_AppRoleAuthOption:
+            type: object
+            properties:
+                roleId:
+                    writeOnly: true
+                    type: string
+                secretId:
+                    writeOnly: true
+                    type: string
+                    description: the secret id for the role without ttl.
+                type:
+                    enum:
+                        - SECRET_TYPE_UNSPECIFIED
+                        - PLAIN
+                        - ENVIRONMENT
+                    type: string
+                    format: enum
+                mountPath:
+                    type: string
+                    description: The path where the approle auth method is mounted.
+        DataSource_AWSCredential:
+            type: object
+            properties:
+                accessKeyId:
+                    writeOnly: true
+                    type: string
+                secretAccessKey:
+                    writeOnly: true
+                    type: string
+                sessionToken:
+                    writeOnly: true
+                    type: string
+        DataSource_Address:
+            type: object
+            properties:
+                host:
+                    type: string
+                port:
+                    type: string
+        DataSource_AzureCredential:
+            type: object
+            properties:
+                tenantId:
+                    type: string
+                clientId:
+                    type: string
+                clientSecret:
+                    writeOnly: true
+                    type: string
+        DataSource_GCPCredential:
+            type: object
+            properties:
+                content:
+                    writeOnly: true
+                    type: string
+        Database:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        The name of the database.
+                         Format: instances/{instance}/databases/{database}
+                         {database} is the database name in the instance.
+                state:
+                    readOnly: true
+                    enum:
+                        - STATE_UNSPECIFIED
+                        - ACTIVE
+                        - DELETED
+                    type: string
+                    description: The existence of a database.
+                    format: enum
+                successfulSyncTime:
+                    readOnly: true
+                    type: string
+                    description: The latest synchronization time.
+                    format: date-time
+                project:
+                    type: string
+                    description: |-
+                        The project for a database.
+                         Format: projects/{project}
+                schemaVersion:
+                    readOnly: true
+                    type: string
+                    description: The version of database schema.
+                environment:
+                    type: string
+                    description: |-
+                        The environment resource.
+                         Format: environments/prod where prod is the environment resource ID.
+                effectiveEnvironment:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        The effective environment based on environment tag above and environment
+                         tag on the instance. Inheritance follows
+                         https://cloud.google.com/resource-manager/docs/tags/tags-overview.
+                labels:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: Labels will be used for deployment and policy control.
+                instanceResource:
+                    readOnly: true
+                    allOf:
+                        - $ref: '#/components/schemas/InstanceResource'
+                    description: The instance resource.
+                drifted:
+                    readOnly: true
+                    type: boolean
+                    description: The schema is drifted from the source of truth.
+        DatabaseSchemaMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                schemas:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SchemaMetadata'
+                    description: The list of schemas in a database.
+                characterSet:
+                    type: string
+                    description: The character set of the database.
+                collation:
+                    type: string
+                    description: The collation of the database.
+                extensions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ExtensionMetadata'
+                    description: The list of extensions in a database.
+                datashare:
+                    type: boolean
+                    description: The database belongs to a datashare.
+                serviceName:
+                    type: string
+                    description: The service name of the database. It's an Oracle-specific concept.
+                linkedDatabases:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LinkedDatabaseMetadata'
+                owner:
+                    type: string
+                searchPath:
+                    type: string
+                    description: The search_path is the search path of a PostgreSQL database.
+                eventTriggers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EventTriggerMetadata'
+                    description: |-
+                        The list of event triggers in a database (PostgreSQL specific).
+                         Event triggers are database-level objects, not schema-scoped.
+            description: DatabaseSchemaMetadata is the schema metadata for databases.
+        DependencyColumn:
+            type: object
+            properties:
+                schema:
+                    type: string
+                    description: The schema is the schema of a reference column.
+                table:
+                    type: string
+                    description: The table is the table of a reference column.
+                column:
+                    type: string
+                    description: The column is the name of a reference column.
+            description: DependencyColumn is the metadata for dependency columns.
+        DependencyTable:
+            type: object
+            properties:
+                schema:
+                    type: string
+                    description: The schema is the schema of a reference table.
+                table:
+                    type: string
+                    description: The table is the name of a reference table.
+        DimensionalConfig:
+            type: object
+            properties:
+                dimensions:
+                    type: integer
+                    description: Number of dimensions (2-4, default 2)
+                    format: int32
+                dataType:
+                    type: string
+                    description: |-
+                        Spatial data type
+                         Examples: GEOMETRY, GEOGRAPHY, POINT, POLYGON, etc.
+                operatorClass:
+                    type: string
+                    description: |-
+                        PostgreSQL operator class
+                         Examples: gist_geometry_ops_2d, gist_geometry_ops_nd, etc.
+                layerGtype:
+                    type: string
+                    description: |-
+                        Oracle geometry type constraint
+                         Examples: POINT, LINE, POLYGON, COLLECTION
+                parallelBuild:
+                    type: boolean
+                    description: Parallel index creation
+            description: DimensionalConfig defines dimensional and constraint parameters for spatial indexes.
+        EnumTypeMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the enum type.
+                values:
+                    type: array
+                    items:
+                        type: string
+                    description: The enum values of the type.
+                comment:
+                    type: string
+                skipDump:
+                    type: boolean
+        EventMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the event.
+                definition:
+                    type: string
+                    description: The schedule of the event.
+                timeZone:
+                    type: string
+                    description: The time zone of the event.
+                sqlMode:
+                    type: string
+                characterSetClient:
+                    type: string
+                collationConnection:
+                    type: string
+                comment:
+                    type: string
+        EventTriggerMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the event trigger.
+                event:
+                    type: string
+                    description: 'The event type: DDL_COMMAND_START, DDL_COMMAND_END, SQL_DROP, TABLE_REWRITE.'
+                tags:
+                    type: array
+                    items:
+                        type: string
+                    description: The tags filter (e.g., ['CREATE TABLE', 'DROP TABLE']).
+                functionSchema:
+                    type: string
+                    description: The schema of the function to execute.
+                functionName:
+                    type: string
+                    description: The name of the function to execute.
+                enabled:
+                    type: boolean
+                    description: Whether the trigger is enabled.
+                definition:
+                    type: string
+                    description: |-
+                        The full CREATE EVENT TRIGGER definition from pg_get_event_trigger_def().
+                         SDL output should prefer using this field.
+                comment:
+                    type: string
+                    description: The comment on the event trigger.
+                skipDump:
+                    type: boolean
+                    description: Skip dump flag (for extension-owned triggers).
+            description: |-
+                EventTriggerMetadata is the metadata for PostgreSQL event triggers.
+                 Event triggers are database-level objects that fire on DDL events.
+        ExcludeConstraintMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the EXCLUDE constraint.
+                expression:
+                    type: string
+                    description: |-
+                        The expression is the full EXCLUDE constraint definition including "EXCLUDE" keyword.
+                         Example: "EXCLUDE USING gist (room_id WITH =, during WITH &&)"
+        ExtensionMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the extension.
+                schema:
+                    type: string
+                    description: |-
+                        The schema where the extension is installed. However, the extension usage
+                         is not limited to the schema.
+                version:
+                    type: string
+                    description: The version is the version of an extension.
+                description:
+                    type: string
+                    description: The description is the description of an extension.
+            description: ExtensionMetadata is the metadata for extensions.
+        ExternalTableMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the external table.
+                externalServerName:
+                    type: string
+                    description: The external_server_name is the name of the external server.
+                externalDatabaseName:
+                    type: string
+                    description: The external_database_name is the name of the external database.
+                columns:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ColumnMetadata'
+                    description: The columns is the ordered list of columns in a foreign table.
+        ForeignKeyMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the foreign key.
+                columns:
+                    type: array
+                    items:
+                        type: string
+                    description: The columns are the ordered referencing columns of a foreign key.
+                referencedSchema:
+                    type: string
+                    description: |-
+                        The referenced_schema is the referenced schema name of a foreign key.
+                         It is an empty string for databases without such concept such as MySQL.
+                referencedTable:
+                    type: string
+                    description: The referenced_table is the referenced table name of a foreign key.
+                referencedColumns:
+                    type: array
+                    items:
+                        type: string
+                    description: The referenced_columns are the ordered referenced columns of a foreign key.
+                onDelete:
+                    type: string
+                    description: The on_delete is the on delete action of a foreign key.
+                onUpdate:
+                    type: string
+                    description: The on_update is the on update action of a foreign key.
+                matchType:
+                    type: string
+                    description: |-
+                        The match_type is the match type of a foreign key.
+                         The match_type is the PostgreSQL specific field.
+                         It's empty string for other databases.
+            description: ForeignKeyMetadata is the metadata for foreign keys.
+        FunctionMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the function.
+                definition:
+                    type: string
+                    description: The definition is the definition of a function.
+                signature:
+                    type: string
+                    description: |-
+                        The signature is the name with the number and type of input arguments the
+                         function takes.
+                characterSetClient:
+                    type: string
+                    description: MySQL specific metadata.
+                collationConnection:
+                    type: string
+                databaseCollation:
+                    type: string
+                sqlMode:
+                    type: string
+                comment:
+                    type: string
+                dependencyTables:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DependencyTable'
+                    description: |-
+                        The dependency_tables is the list of dependency tables of a function.
+                         For PostgreSQL, it's the list of tables that the function depends on the return type definition.
+                skipDump:
+                    type: boolean
+            description: FunctionMetadata is the metadata for functions.
+        GenerationMetadata:
+            type: object
+            properties:
+                type:
+                    enum:
+                        - TYPE_UNSPECIFIED
+                        - TYPE_VIRTUAL
+                        - TYPE_STORED
+                    type: string
+                    format: enum
+                expression:
+                    type: string
+        GoogleProtobufAny:
+            type: object
+            properties:
+                '@type':
+                    type: string
+                    description: The type of the serialized message.
+            additionalProperties: true
+            description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message.
+        GridLevel:
+            type: object
+            properties:
+                level:
+                    type: integer
+                    format: int32
+                density:
+                    type: string
+            description: GridLevel defines a grid level for spatial tessellation.
+        IdentityProviderContext:
+            type: object
+            properties:
+                oauth2Context:
+                    $ref: '#/components/schemas/OAuth2IdentityProviderContext'
+        IndexMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the index.
+                expressions:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        The expressions are the ordered columns or expressions of an index.
+                         This could refer to a column or an expression.
+                keyLength:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        The ordered list of key lengths for the index.
+                         If the key length is not specified, it is -1.
+                descending:
+                    type: array
+                    items:
+                        type: boolean
+                    description: The ordered list of descending flags for the index columns.
+                type:
+                    type: string
+                    description: The type is the type of an index.
+                unique:
+                    type: boolean
+                    description: The unique is whether the index is unique.
+                primary:
+                    type: boolean
+                    description: The primary is whether the index is a primary key index.
+                visible:
+                    type: boolean
+                    description: The visible is whether the index is visible.
+                comment:
+                    type: string
+                    description: The comment is the comment of an index.
+                definition:
+                    type: string
+                    description: The definition of an index.
+                parentIndexSchema:
+                    type: string
+                    description: The schema name of the parent index.
+                parentIndexName:
+                    type: string
+                    description: The index name of the parent index.
+                granularity:
+                    type: string
+                    description: The number of granules in the block. It's a ClickHouse specific field.
+                isConstraint:
+                    type: boolean
+                    description: |-
+                        It's a PostgreSQL specific field.
+                         The unique constraint and unique index are not the same thing in PostgreSQL.
+                spatialConfig:
+                    allOf:
+                        - $ref: '#/components/schemas/SpatialIndexConfig'
+                    description: Spatial index specific configuration
+                opclassNames:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        https://www.postgresql.org/docs/current/catalog-pg-opclass.html
+                         Name of the operator class for each column. (PostgreSQL specific).
+                opclassDefaults:
+                    type: array
+                    items:
+                        type: boolean
+                    description: True if the operator class is the default. (PostgreSQL specific).
+            description: IndexMetadata is the metadata for indexes.
+        Instance:
+            type: object
+            properties:
+                title:
+                    type: string
+                engine:
+                    enum:
+                        - ENGINE_UNSPECIFIED
+                        - CLICKHOUSE
+                        - MYSQL
+                        - POSTGRES
+                        - SNOWFLAKE
+                        - SQLITE
+                        - TIDB
+                        - MONGODB
+                        - REDIS
+                        - ORACLE
+                        - SPANNER
+                        - MSSQL
+                        - REDSHIFT
+                        - MARIADB
+                        - OCEANBASE
+                        - STARROCKS
+                        - DORIS
+                        - HIVE
+                        - ELASTICSEARCH
+                        - BIGQUERY
+                        - DYNAMODB
+                        - DATABRICKS
+                        - COCKROACHDB
+                        - COSMOSDB
+                        - TRINO
+                        - CASSANDRA
+                    type: string
+                    format: enum
+                activation:
+                    type: boolean
+                version:
+                    type: string
+                externalLink:
+                    type: string
+                dataSources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DataSource'
+                syncInterval:
+                    pattern: ^-?(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,9})?s$
+                    type: string
+                    description: The interval between automatic instance synchronizations.
+                maximumConnections:
+                    type: integer
+                    description: |-
+                        The maximum number of connections.
+                         The default is 10 if the value is unset or zero.
+                    format: int32
+                syncDatabases:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        Enable sync for the following databases.
+                         Default empty, means sync all schemas & databases.
+                mysqlLowerCaseTableNames:
+                    type: integer
+                    description: |-
+                        The lower_case_table_names config for MySQL instances.
+                         It is used to determine whether the table names and database names are case sensitive.
+                    format: int32
+                lastSyncTime:
+                    type: string
+                    format: date-time
+                roles:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/InstanceRole'
+                labels:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: |-
+                        Labels are key-value pairs that can be attached to the instance.
+                         For example, { "org_group": "infrastructure", "environment": "production" }
+            description: Instance is the proto for instances.
+        InstanceResource:
+            type: object
+            properties:
+                title:
+                    type: string
+                engine:
+                    enum:
+                        - ENGINE_UNSPECIFIED
+                        - CLICKHOUSE
+                        - MYSQL
+                        - POSTGRES
+                        - SNOWFLAKE
+                        - SQLITE
+                        - TIDB
+                        - MONGODB
+                        - REDIS
+                        - ORACLE
+                        - SPANNER
+                        - MSSQL
+                        - REDSHIFT
+                        - MARIADB
+                        - OCEANBASE
+                        - STARROCKS
+                        - DORIS
+                        - HIVE
+                        - ELASTICSEARCH
+                        - BIGQUERY
+                        - DYNAMODB
+                        - DATABRICKS
+                        - COCKROACHDB
+                        - COSMOSDB
+                        - TRINO
+                        - CASSANDRA
+                    type: string
+                    format: enum
+                engineVersion:
+                    readOnly: true
+                    type: string
+                dataSources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DataSource'
+                activation:
+                    type: boolean
+                name:
+                    type: string
+                    description: |-
+                        The name of the instance.
+                         Format: instances/{instance}
+                environment:
+                    type: string
+                    description: |-
+                        The environment resource.
+                         Format: environments/prod where prod is the environment resource ID.
+        InstanceRole:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The role name.
+                connectionLimit:
+                    type: integer
+                    description: The connection count limit for this role.
+                    format: int32
+                validUntil:
+                    type: string
+                    description: The expiration for the role's password.
+                attribute:
+                    type: string
+                    description: |-
+                        The role attribute.
+                         For PostgreSQL, it contains super_user, no_inherit, create_role, create_db, can_login, replication and bypass_rls. Docs: https://www.postgresql.org/docs/current/role-attributes.html
+                         For MySQL, it is the global privileges as GRANT statements, which means it only contains "GRANT ... ON *.* TO ...". Docs: https://dev.mysql.com/doc/refman/8.0/en/grant.html
+            description: InstanceRole is the API message for instance role.
+        KerberosConfig:
+            type: object
+            properties:
+                primary:
+                    type: string
+                instance:
+                    type: string
+                realm:
+                    type: string
+                keytab:
+                    type: string
+                    format: bytes
+                kdcHost:
+                    type: string
+                kdcPort:
+                    type: string
+                kdcTransportProtocol:
+                    type: string
+        LinkedDatabaseMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                username:
+                    type: string
+                host:
+                    type: string
+        ListDatabasesResponse:
+            type: object
+            properties:
+                databases:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Database'
+                    description: All database name list.
+                nextPageToken:
+                    type: string
+                    description: |-
+                        A token, which can be sent as `page_token` to retrieve the next page.
+                         If this field is omitted, there are no subsequent pages.
+        ListInstanceDatabaseRequest:
+            required:
+                - name
+                - instance
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        The name of the instance.
+                         Format: instances/{instance}
+                instance:
+                    allOf:
+                        - $ref: '#/components/schemas/Instance'
+                    description: The target instance. We need to set this field if the target instance is not created yet.
+        ListInstanceDatabaseResponse:
+            type: object
+            properties:
+                databases:
+                    type: array
+                    items:
+                        type: string
+                    description: All database name list in the instance.
+        ListInstancesResponse:
+            type: object
+            properties:
+                instances:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Instance'
+                    description: The instances from the specified request.
+                nextPageToken:
+                    type: string
+                    description: |-
+                        A token, which can be sent as `page_token` to retrieve the next page.
+                         If this field is omitted, there are no subsequent pages.
+        ListUsersResponse:
+            type: object
+            properties:
+                users:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/User'
+                    description: The users from the specified request.
+                nextPageToken:
+                    type: string
+                    description: |-
+                        A token, which can be sent as `page_token` to retrieve the next page.
+                         If this field is omitted, there are no subsequent pages.
+        LoginRequest:
+            type: object
+            properties:
+                email:
+                    type: string
+                password:
+                    type: string
+                web:
+                    type: boolean
+                    description: If web is set, we will set access token, refresh token, and user to the cookie.
+                idpName:
+                    type: string
+                    description: |-
+                        The name of the identity provider.
+                         Format: idps/{idp}
+                idpContext:
+                    allOf:
+                        - $ref: '#/components/schemas/IdentityProviderContext'
+                    description: The idp_context is using to get the user information from identity provider.
+        LoginResponse:
+            type: object
+            properties:
+                token:
+                    type: string
+                requireResetPassword:
+                    type: boolean
+                user:
+                    allOf:
+                        - $ref: '#/components/schemas/User'
+                    description: The user of successful login.
+        LogoutRequest:
+            type: object
+            properties: {}
+        MaterializedViewMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the materialized view.
+                definition:
+                    type: string
+                    description: The definition is the definition of a view.
+                comment:
+                    type: string
+                    description: The comment is the comment of a view.
+                dependencyColumns:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DependencyColumn'
+                    description: The list of dependency columns of the view.
+                triggers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TriggerMetadata'
+                    description: The ordered list of columns in the materialized view.
+                indexes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/IndexMetadata'
+                    description: The list of indexes in the materialized view.
+                skipDump:
+                    type: boolean
+            description: MaterializedViewMetadata is the metadata for materialized views.
+        MetadataResponse:
+            type: object
+            properties:
+                typesStoredMetadata:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MetadataResponse_MetadataList'
+                    description: The list of stored metadata.
+                nextPageToken:
+                    type: string
+                    description: |-
+                        A token, which can be sent as `page_token` to retrieve the next page.
+                         If this field is omitted, there are no subsequent pages.
+        MetadataResponse_MetadataList:
+            type: object
+            properties:
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - PACKAGE
+                        - STREAM
+                        - TASK
+                    type: string
+                    format: enum
+                list:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StoredMetadata'
+        OAuth2IdentityProviderContext:
+            type: object
+            properties:
+                code:
+                    type: string
+        PackageMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the package.
+                definition:
+                    type: string
+                    description: The definition is the definition of a package.
+            description: PackageMetadata is the metadata for packages.
+        ProcedureMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the procedure.
+                definition:
+                    type: string
+                    description: The definition is the definition of a procedure.
+                signature:
+                    type: string
+                    description: |-
+                        The signature is the name with the number and type of input arguments the
+                         function takes.
+                characterSetClient:
+                    type: string
+                    description: MySQL specific metadata.
+                collationConnection:
+                    type: string
+                databaseCollation:
+                    type: string
+                sqlMode:
+                    type: string
+                comment:
+                    type: string
+                skipDump:
+                    type: boolean
+            description: ProcedureMetadata is the metadata for procedures.
+        RemoveDataSourceRequest:
+            required:
+                - name
+                - dataSource
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        The name of the instance to remove a data source from.
+                         Format: instances/{instance}
+                dataSource:
+                    allOf:
+                        - $ref: '#/components/schemas/DataSource'
+                    description: |-
+                        Identified by data source ID.
+                         Only READ_ONLY data source can be removed.
+        RuleMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the rule.
+                event:
+                    type: string
+                    description: 'The event type of the rule: SELECT, INSERT, UPDATE, or DELETE.'
+                condition:
+                    type: string
+                    description: The WHERE condition of the rule (optional).
+                action:
+                    type: string
+                    description: The command(s) to execute when the rule fires.
+                isInstead:
+                    type: boolean
+                    description: The is_instead indicates whether this is an INSTEAD rule.
+                isEnabled:
+                    type: boolean
+                    description: The is_enabled indicates whether the rule is enabled.
+                definition:
+                    type: string
+                    description: The full CREATE RULE statement.
+            description: RuleMetadata is the metadata for PostgreSQL rules.
+        SASLConfig:
+            type: object
+            properties:
+                krbConfig:
+                    $ref: '#/components/schemas/KerberosConfig'
+        SchemaMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        The schema name.
+                         It is an empty string for databases without such concept such as MySQL.
+                tables:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TableMetadata'
+                    description: The list of tables in a schema.
+                externalTables:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ExternalTableMetadata'
+                    description: The list of external tables in a schema.
+                views:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ViewMetadata'
+                    description: The list of views in a schema.
+                functions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FunctionMetadata'
+                    description: The list of functions in a schema.
+                procedures:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ProcedureMetadata'
+                    description: The list of procedures in a schema.
+                streams:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StreamMetadata'
+                    description: The list of streams in a schema, currently only used for Snowflake.
+                tasks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TaskMetadata'
+                    description: The list of tasks in a schema, currently only used for Snowflake.
+                materializedViews:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MaterializedViewMetadata'
+                    description: The list of materialized views in a schema.
+                sequences:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SequenceMetadata'
+                    description: The list of sequences in a schema.
+                packages:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PackageMetadata'
+                    description: The list of packages in a schema.
+                owner:
+                    type: string
+                comment:
+                    type: string
+                events:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EventMetadata'
+                enumTypes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EnumTypeMetadata'
+                skipDump:
+                    type: boolean
+            description: |-
+                SchemaMetadata is the metadata for schemas.
+                 This is the concept of schema in Postgres, but it's a no-op for MySQL.
+        SequenceMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of a sequence.
+                dataType:
+                    type: string
+                    description: The data type of a sequence.
+                start:
+                    type: string
+                    description: The start value of a sequence.
+                minValue:
+                    type: string
+                    description: The minimum value of a sequence.
+                maxValue:
+                    type: string
+                    description: The maximum value of a sequence.
+                increment:
+                    type: string
+                    description: The increment value of a sequence.
+                cycle:
+                    type: boolean
+                    description: Whether the sequence cycles.
+                cacheSize:
+                    type: string
+                    description: Cache size of a sequence.
+                lastValue:
+                    type: string
+                    description: The last value of a sequence.
+                ownerTable:
+                    type: string
+                    description: The table that owns the sequence.
+                ownerColumn:
+                    type: string
+                    description: The column that owns the sequence.
+                comment:
+                    type: string
+                skipDump:
+                    type: boolean
+        SpatialIndexConfig:
+            type: object
+            properties:
+                method:
+                    type: string
+                    description: |-
+                        Index method/type (database-specific)
+                         Examples: "SPATIAL" (MySQL/SQL Server), "GIST"/"SPGIST" (PostgreSQL), "MDSYS.SPATIAL_INDEX_V2" (Oracle)
+                tessellation:
+                    allOf:
+                        - $ref: '#/components/schemas/TessellationConfig'
+                    description: Tessellation configuration (primarily SQL Server)
+                storage:
+                    allOf:
+                        - $ref: '#/components/schemas/StorageConfig'
+                    description: Storage and performance parameters
+                dimensional:
+                    allOf:
+                        - $ref: '#/components/schemas/DimensionalConfig'
+                    description: Dimensional and constraint parameters
+                engineSpecific:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: Database-specific parameters (stored as key-value pairs for extensibility)
+            description: SpatialIndexConfig is the configuration for spatial indexes across different database engines.
+        Status:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    description: The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].
+                    format: int32
+                message:
+                    type: string
+                    description: A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.
+                details:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoogleProtobufAny'
+                    description: A list of messages that carry the error details.  There is a common set of message types for APIs to use.
+            description: 'The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).'
+        StorageConfig:
+            type: object
+            properties:
+                fillfactor:
+                    type: integer
+                    description: PostgreSQL parameters
+                    format: int32
+                buffering:
+                    type: string
+                tablespace:
+                    type: string
+                    description: Oracle parameters
+                workTablespace:
+                    type: string
+                sdoLevel:
+                    type: integer
+                    format: int32
+                commitInterval:
+                    type: integer
+                    format: int32
+                padIndex:
+                    type: boolean
+                    description: SQL Server parameters
+                sortInTempdb:
+                    type: string
+                dropExisting:
+                    type: boolean
+                online:
+                    type: boolean
+                allowRowLocks:
+                    type: boolean
+                allowPageLocks:
+                    type: boolean
+                maxdop:
+                    type: integer
+                    format: int32
+                dataCompression:
+                    type: string
+            description: StorageConfig defines storage and performance parameters for spatial indexes.
+        StoredMetadata:
+            type: object
+            properties:
+                databaseSchemaMetadata:
+                    $ref: '#/components/schemas/DatabaseSchemaMetadata'
+                schemaMetadata:
+                    $ref: '#/components/schemas/SchemaMetadata'
+                tableMetadata:
+                    $ref: '#/components/schemas/TableMetadata'
+                externalTableMetadata:
+                    $ref: '#/components/schemas/ExternalTableMetadata'
+                viewMetadata:
+                    $ref: '#/components/schemas/ViewMetadata'
+                materializedViewMetadata:
+                    $ref: '#/components/schemas/MaterializedViewMetadata'
+                functionMetadata:
+                    $ref: '#/components/schemas/FunctionMetadata'
+                procedureMetadata:
+                    $ref: '#/components/schemas/ProcedureMetadata'
+                packageMetadata:
+                    $ref: '#/components/schemas/PackageMetadata'
+                sequenceMetadata:
+                    $ref: '#/components/schemas/SequenceMetadata'
+                streamMetadata:
+                    $ref: '#/components/schemas/StreamMetadata'
+                taskMetadata:
+                    $ref: '#/components/schemas/TaskMetadata'
+        StreamMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the stream.
+                tableName:
+                    type: string
+                    description: The table_name is the name of the table/view that the stream is created on.
+                owner:
+                    type: string
+                    description: The owner of the stream.
+                comment:
+                    type: string
+                    description: The comment of the stream.
+                type:
+                    enum:
+                        - TYPE_UNSPECIFIED
+                        - TYPE_DELTA
+                    type: string
+                    description: The type of the stream.
+                    format: enum
+                stale:
+                    type: boolean
+                    description: Indicates whether the stream was last read before the `stale_after` time.
+                mode:
+                    enum:
+                        - MODE_UNSPECIFIED
+                        - MODE_DEFAULT
+                        - MODE_APPEND_ONLY
+                        - MODE_INSERT_ONLY
+                    type: string
+                    description: The mode of the stream.
+                    format: enum
+                definition:
+                    type: string
+                    description: The definition of the stream.
+        SyncInstanceRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        The name of instance.
+                         Format: instances/{instance}
+                enableFullSync:
+                    type: boolean
+                    description: |-
+                        When full sync is enabled, all databases in the instance will be synchronized. Otherwise, only
+                         the instance metadata (such as the database list) and any newly discovered instances will be synced.
+        SyncInstanceResponse:
+            type: object
+            properties:
+                databases:
+                    type: array
+                    items:
+                        type: string
+                    description: All database name list in the instance.
+        TableMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the table.
+                columns:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ColumnMetadata'
+                    description: The columns is the ordered list of columns in a table.
+                indexes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/IndexMetadata'
+                    description: The indexes is the list of indexes in a table.
+                engine:
+                    type: string
+                    description: The engine is the engine of a table.
+                collation:
+                    type: string
+                    description: The collation is the collation of a table.
+                charset:
+                    type: string
+                    description: The character set of the table.
+                rowCount:
+                    type: string
+                    description: The row_count is the estimated number of rows of a table.
+                dataSize:
+                    type: string
+                    description: The data_size is the estimated data size of a table.
+                indexSize:
+                    type: string
+                    description: The index_size is the estimated index size of a table.
+                dataFree:
+                    type: string
+                    description: The data_free is the estimated free data size of a table.
+                createOptions:
+                    type: string
+                    description: The create_options is the create option of a table.
+                comment:
+                    type: string
+                    description: |-
+                        The comment is the comment of a table.
+                         classification and user_comment is parsed from the comment.
+                userComment:
+                    type: string
+                    description: The user_comment is the user comment of a table parsed from the comment.
+                foreignKeys:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForeignKeyMetadata'
+                    description: The foreign_keys is the list of foreign keys in a table.
+                partitions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TablePartitionMetadata'
+                    description: The partitions is the list of partitions in a table.
+                checkConstraints:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CheckConstraintMetadata'
+                    description: The check_constraints is the list of check constraints in a table.
+                owner:
+                    type: string
+                sortingKeys:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        The sorting_keys is a tuple of column names or arbitrary expressions. ClickHouse specific field.
+                         Reference: https://clickhouse.com/docs/en/engines/table-engines/mergetree-family/mergetree#order_by
+                triggers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TriggerMetadata'
+                skipDump:
+                    type: boolean
+                rules:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RuleMetadata'
+                    description: The rules is the list of rules in a table (PostgreSQL specific).
+                shardingInfo:
+                    type: string
+                    description: https://docs.pingcap.com/tidb/stable/information-schema-tables/
+                primaryKeyType:
+                    type: string
+                    description: |-
+                        https://docs.pingcap.com/tidb/stable/clustered-indexes/#clustered-indexes
+                         CLUSTERED or NONCLUSTERED.
+                excludeConstraints:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ExcludeConstraintMetadata'
+                    description: The exclude_constraints is the list of EXCLUDE constraints in a table (PostgreSQL specific).
+            description: TableMetadata is the metadata for tables.
+        TablePartitionMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the table partition.
+                type:
+                    enum:
+                        - TYPE_UNSPECIFIED
+                        - RANGE
+                        - RANGE_COLUMNS
+                        - LIST
+                        - LIST_COLUMNS
+                        - HASH
+                        - LINEAR_HASH
+                        - KEY
+                        - LINEAR_KEY
+                    type: string
+                    description: The type of a table partition.
+                    format: enum
+                expression:
+                    type: string
+                    description: |-
+                        The expression is the expression of a table partition.
+                         For PostgreSQL, the expression is the text of {FOR VALUES
+                         partition_bound_spec}, see
+                         https://www.postgresql.org/docs/current/sql-createtable.html. For MySQL,
+                         the expression is the `expr` or `column_list` of the following syntax.
+                         PARTITION BY
+                            { [LINEAR] HASH(expr)
+                            | [LINEAR] KEY [ALGORITHM={1 | 2}] (column_list)
+                            | RANGE{(expr) | COLUMNS(column_list)}
+                            | LIST{(expr) | COLUMNS(column_list)} }.
+                value:
+                    type: string
+                    description: |-
+                        The value is the value of a table partition.
+                         For MySQL, the value is for RANGE and LIST partition types,
+                         - For a RANGE partition, it contains the value set in the partition's
+                         VALUES LESS THAN clause, which can be either an integer or MAXVALUE.
+                         - For a LIST partition, this column contains the values defined in the
+                         partition's VALUES IN clause, which is a list of comma-separated integer
+                         values.
+                         - For others, it's an empty string.
+                useDefault:
+                    type: string
+                    description: |-
+                        The use_default is whether the users use the default partition, it stores
+                         the different value for different database engines. For MySQL, it's [INT]
+                         type, 0 means not use default partition, otherwise, it's equals to number
+                         in syntax [SUB]PARTITION {number}.
+                subpartitions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TablePartitionMetadata'
+                    description: The subpartitions is the list of subpartitions in a table partition.
+                indexes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/IndexMetadata'
+                checkConstraints:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CheckConstraintMetadata'
+                excludeConstraints:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ExcludeConstraintMetadata'
+            description: TablePartitionMetadata is the metadata for table partitions.
+        TaskMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the task.
+                id:
+                    type: string
+                    description: |-
+                        The Snowflake-generated ID of the task.
+                         Example: 01ad32a0-1bb6-5e93-0000-000000000001.
+                owner:
+                    type: string
+                    description: The owner of the task.
+                comment:
+                    type: string
+                    description: The comment of the task.
+                warehouse:
+                    type: string
+                    description: The warehouse of the task.
+                schedule:
+                    type: string
+                    description: The schedule interval of the task.
+                predecessors:
+                    type: array
+                    items:
+                        type: string
+                    description: The predecessor tasks of the task.
+                state:
+                    enum:
+                        - STATE_UNSPECIFIED
+                        - STATE_STARTED
+                        - STATE_SUSPENDED
+                    type: string
+                    description: The state of the task.
+                    format: enum
+                condition:
+                    type: string
+                    description: The condition of the task.
+                definition:
+                    type: string
+                    description: The definition of the task.
+        TessellationConfig:
+            type: object
+            properties:
+                scheme:
+                    type: string
+                    description: |-
+                        Tessellation scheme
+                         Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
+                boundingBox:
+                    allOf:
+                        - $ref: '#/components/schemas/BoundingBox'
+                    description: Bounding box for GEOMETRY indexes (SQL Server)
+                gridLevels:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GridLevel'
+                    description: Grid level configuration (SQL Server)
+                cellsPerObject:
+                    type: integer
+                    description: Cells per object (SQL Server)
+                    format: int32
+            description: TessellationConfig defines tessellation parameters for spatial indexes.
+        TriggerMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the trigger.
+                event:
+                    type: string
+                    description: The event that triggers this action, such as INSERT, UPDATE, DELETE, or TRUNCATE.
+                timing:
+                    type: string
+                    description: The timing of when the trigger fires, such as BEFORE or AFTER.
+                body:
+                    type: string
+                    description: The body of the trigger.
+                sqlMode:
+                    type: string
+                characterSetClient:
+                    type: string
+                collationConnection:
+                    type: string
+                comment:
+                    type: string
+                skipDump:
+                    type: boolean
+        UndeleteInstanceRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        The name of the deleted instance.
+                         Format: instances/{instance}
+        UndeleteUserRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        The name of the deleted user.
+                         Format: users/{user}
+        UpdateInstanceRequest:
+            required:
+                - instance
+            type: object
+            properties:
+                instance:
+                    allOf:
+                        - $ref: '#/components/schemas/Instance'
+                    description: |-
+                        The instance to update.
+
+                         The instance's `name` field is used to identify the instance to update.
+                         Format: instances/{instance}
+                updateMask:
+                    type: string
+                    description: The list of fields to update.
+                    format: field-mask
+        User:
+            type: object
+            properties:
+                name:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        The name of the user.
+                         Format: users/{user}. {user} is a system-generated unique ID.
+                state:
+                    enum:
+                        - STATE_UNSPECIFIED
+                        - ACTIVE
+                        - DELETED
+                    type: string
+                    format: enum
+                email:
+                    type: string
+                title:
+                    type: string
+                userType:
+                    enum:
+                        - USER_TYPE_UNSPECIFIED
+                        - USER
+                        - SERVICE_ACCOUNT
+                        - SYSTEM_BOT
+                    type: string
+                    format: enum
+                password:
+                    writeOnly: true
+                    type: string
+                serviceKey:
+                    writeOnly: true
+                    type: string
+                recoveryCodes:
+                    type: array
+                    items:
+                        type: string
+                    description: The recovery_codes is the temporary recovery codes using in two phase verification.
+                phone:
+                    type: string
+                    description: |-
+                        Should be a valid E.164 compliant phone number.
+                         Could be empty.
+                profile:
+                    $ref: '#/components/schemas/UserProfile'
+                groups:
+                    readOnly: true
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        The groups for the user.
+                         Format: groups/{email}
+        UserProfile:
+            type: object
+            properties:
+                lastLoginTime:
+                    type: string
+                    format: date-time
+                lastChangePasswordTime:
+                    type: string
+                    format: date-time
+                source:
+                    type: string
+                    description: source means where the user comes from. For now we support Entra ID SCIM sync, so the source could be Entra ID.
+        ViewMetadata:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name of the view.
+                definition:
+                    type: string
+                    description: The definition is the definition of a view.
+                comment:
+                    type: string
+                    description: The comment is the comment of a view.
+                dependencyColumns:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DependencyColumn'
+                    description: The list of dependency columns of a view.
+                columns:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ColumnMetadata'
+                    description: The ordered list of columns in the view.
+                triggers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TriggerMetadata'
+                    description: The list of triggers in the view.
+                skipDump:
+                    type: boolean
+                rules:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RuleMetadata'
+                    description: The rules is the list of rules in a view (PostgreSQL specific).
+            description: ViewMetadata is the metadata for views.
+tags:
+    - name: AuthService
+    - name: DatabaseService
+    - name: InstanceService
+    - name: UserService

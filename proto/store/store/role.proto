@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package metaxisdata.store;
+
+option go_package = "generated-go/store";
+
+message RolePermissions {
+  repeated string permissions = 1;
+}

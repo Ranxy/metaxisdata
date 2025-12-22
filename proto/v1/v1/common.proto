@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package metaxisdata.v1;
+
+option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
+
+enum State {
+  STATE_UNSPECIFIED = 0;
+  ACTIVE = 1;
+  DELETED = 2;
+}
+
+enum Engine {
+  ENGINE_UNSPECIFIED = 0;
+  CLICKHOUSE = 1;
+  MYSQL = 2;
+  POSTGRES = 3;
+  SNOWFLAKE = 4;
+  SQLITE = 5;
+  TIDB = 6;
+  MONGODB = 7;
+  REDIS = 8;
+  ORACLE = 9;
+  SPANNER = 10;
+  MSSQL = 11;
+  REDSHIFT = 12;
+  MARIADB = 13;
+  OCEANBASE = 14;
+  STARROCKS = 18;
+  DORIS = 19;
+  HIVE = 20;
+  ELASTICSEARCH = 21;
+  BIGQUERY = 22;
+  DYNAMODB = 23;
+  DATABRICKS = 24;
+  COCKROACHDB = 25;
+  COSMOSDB = 26;
+  TRINO = 27;
+  CASSANDRA = 28;
+}
+
+// Position in a text expressed as zero-based line and zero-based column byte
+// offset.
+message Position {
+  // Line position in a text (zero-based).
+  int32 line = 1;
+  // Column position in a text (zero-based), equivalent to byte offset.
+  int32 column = 2;
+}
+
+message Range {
+  int32 start = 1;
+  int32 end = 2;
+}
+
+// RiskLevel is the risk level.
+enum RiskLevel {
+  RISK_LEVEL_UNSPECIFIED = 0;
+  LOW = 1;
+  MODERATE = 2;
+  HIGH = 3;
+}

@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package metaxisdata.store;
+
+option go_package = "generated-go/store";
+
+message Label {
+  string value = 1;
+  string color = 2;
+  string group = 3;
+}
+
+message Project {
+  reserved 1;
+
+  repeated Label issue_labels = 2;
+
+  // Whether to enable the database tenant mode for PostgreSQL.
+  // If enabled, the issue will be created with the prepend "set role <db_owner>" statement.
+  bool postgres_database_tenant_mode = 9;
+
+  // Labels are key-value pairs that can be attached to the project.
+  // For example, { "environment": "production", "team": "backend" }
+  map<string, string> labels = 14;
+}
