@@ -15,6 +15,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
@@ -112,29 +113,38 @@ func (s *DatabaseService) ListDatabase(ctx context.Context, req *connect.Request
 }
 
 func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request[v1pb.ListMetadataRequest]) (*connect.Response[v1pb.MetadataResponse], error) {
-	parentMeta, err := s.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{Guid: &req.Msg.ParentGuid})
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get parent meta registry %q: %v", req.Msg.ParentGuid, err))
-	}
-	if parentMeta == nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("meta registry %q not found", req.Msg.ParentGuid))
+	var parentType storepb.MetaType
+	if strings.Contains(req.Msg.GetParentGuid(), common.MetaGuidSplit) {
+		parentMeta, err := s.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{Guid: &req.Msg.ParentGuid})
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get parent meta registry %q: %v", req.Msg.ParentGuid, err))
+		}
+		if parentMeta == nil {
+			return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("meta registry %q not found", req.Msg.ParentGuid))
+		}
+		parentType = parentMeta.ObjectType
+	} else {
+		parentType = storepb.MetaType_INSTANCE
 	}
 
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:   req.Msg.PageToken,
+		limit:   int(req.Msg.PageSize),
+		maximum: 1000,
+	})
+	if err != nil {
+		return nil, err
+	}
+	limitPlusOne := offset.limit + 1
+
 	getSubLevelList := func() (list []*store.MetaRegistryResource, nextPageToken string, err error) {
-		if req.Msg.MetaType == nil {
-			offset, err := parseLimitAndOffset(&pageSize{
-				token:   req.Msg.PageToken,
-				limit:   int(req.Msg.PageSize),
-				maximum: 1000,
-			})
-			if err != nil {
-				return nil, "", err
-			}
-			limitPlusOne := offset.limit + 1
+		if req.Msg.MetaType != nil {
+
 			findMessage := &store.FindMetaRegistryResourceMessage{
 				GuidPrefix: &req.Msg.ParentGuid,
 				Limit:      &limitPlusOne,
 				Offset:     &offset.offset,
+				ObjectType: (*storepb.MetaType)(req.Msg.MetaType),
 			}
 			subLevelList, err := s.store.ListMetaRegistry(ctx, findMessage)
 			if err != nil {
@@ -151,7 +161,11 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 			return subLevelList, nextPageToken, nil
 
 		} else {
-			subLevelFindMessage := &store.FindSubLevelMetaRegistryResourceMessage{ParentGuid: req.Msg.ParentGuid, ObjectType: parentMeta.ObjectType}
+			subLevelFindMessage := &store.FindSubLevelMetaRegistryResourceMessage{
+				ParentGuid:         req.Msg.ParentGuid,
+				ObjectType:         parentType,
+				LimitPreObjectType: limitPlusOne,
+			}
 			subLevelList, err := s.store.ListSublevelMetaRegistryResource(ctx, subLevelFindMessage)
 			if err != nil {
 				return nil, "", connect.NewError(connect.CodeInternal, errors.Errorf("failed to list sublevel meta registry resources under %q: %v", req.Msg.ParentGuid, err))

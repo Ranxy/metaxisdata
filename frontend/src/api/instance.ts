@@ -5,6 +5,7 @@ import {
   DataSourceSchema,
   DataSourceType,
   DeleteInstanceRequestSchema,
+  GetInstanceRequestSchema,
   InstanceSchema,
   ListInstancesRequestSchema,
   UndeleteInstanceRequestSchema,
@@ -43,6 +44,11 @@ export async function listInstances(options?: {
     filter: options?.filter ?? "",
   });
   return await instanceClient.listInstances(request);
+}
+
+export async function getInstance(name: string) {
+  const request = create(GetInstanceRequestSchema, { name });
+  return await instanceClient.getInstance(request);
 }
 
 export async function createInstance(input: CreateInstanceInput) {

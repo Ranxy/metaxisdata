@@ -124,6 +124,12 @@ const menuItems = computed<MenuItem[]>(() => [
         path: "/databases",
         icon: Database,
       },
+      {
+        key: "metadata",
+        label: t("menu.metadata"),
+        path: "/metadata",
+        icon: Database,
+      },
     ],
   },
   {

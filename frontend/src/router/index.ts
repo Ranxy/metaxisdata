@@ -43,6 +43,18 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, layout: "default" },
   },
   {
+    path: "/metadata",
+    name: "MetadataBrowser",
+    component: () => import("@/pages/MetadataBrowserPage.vue"),
+    meta: { requiresAuth: true, layout: "default" },
+  },
+  {
+    path: "/metadata/:guid(.+)",
+    name: "MetadataDetail",
+    component: () => import("@/pages/MetadataBrowserPage.vue"),
+    meta: { requiresAuth: true, layout: "default" },
+  },
+  {
     path: "/:pathMatch(.*)*",
     name: "NotFound",
     component: () => import("@/pages/NotFoundPage.vue"),

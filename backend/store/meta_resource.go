@@ -259,7 +259,7 @@ func (s *Store) listSublevelMetaRegistryResource(ctx context.Context, txn *sql.T
 	// PG's query optimizer seems unable to select the correct index.
 	// Therefore, we directly use the UNION ALL method here.
 
-	nextPrefix := parentGuid + ".%"
+	nextPrefix := parentGuid + common.MetaGuidSplit + "%"
 	args := []any{}
 
 	qb := strings.Builder{}
@@ -271,6 +271,7 @@ func (s *Store) listSublevelMetaRegistryResource(ctx context.Context, txn *sql.T
 			unionStr = "UNION ALL "
 		}
 		nextQuery := fmt.Sprintf(`%s
+		SELECT * FROM(
 		SELECT
 			meta_registry_resource.id,
 			meta_registry_resource.guid,
@@ -279,12 +280,11 @@ func (s *Store) listSublevelMetaRegistryResource(ctx context.Context, txn *sql.T
 			meta_registry_resource.meta_hash
 		FROM meta_registry_resource
 		WHERE meta_registry_resource.guid LIKE $%d AND meta_registry_resource.object_type = $%d
-		ORDER BY guid limit %d
+		ORDER BY guid limit %d)
 		`, unionStr, len(args)+1, len(args)+2, limitPreObjectType)
 		args = append(args, nextPrefix, nextType)
 		qb.WriteString(nextQuery)
 	}
-
 	var metaRegistryMessages []*MetaRegistryResource
 	rows, err := txn.QueryContext(ctx, qb.String(), args...)
 	if err != nil {
