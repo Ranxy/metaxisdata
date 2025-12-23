@@ -1870,7 +1870,6 @@ MaterializedViewMetadata is the metadata for materialized views.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | types_stored_metadata | [MetadataResponse.MetadataList](#metaxisdata-v1-MetadataResponse-MetadataList) | repeated | The list of stored metadata. |
-| next_page_token | [string](#string) |  | A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages. |
 
 
 
@@ -1887,6 +1886,7 @@ MaterializedViewMetadata is the metadata for materialized views.
 | ----- | ---- | ----- | ----------- |
 | meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
 | list | [StoredMetadata](#metaxisdata-v1-StoredMetadata) | repeated |  |
+| next_page_token | [string](#string) |  | A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages. |
 
 
 

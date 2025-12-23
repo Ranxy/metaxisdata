@@ -874,11 +874,8 @@ type MetadataResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The list of stored metadata.
 	TypesStoredMetadata []*MetadataResponse_MetadataList `protobuf:"bytes,3,rep,name=types_stored_metadata,json=typesStoredMetadata,proto3" json:"types_stored_metadata,omitempty"`
-	// A token, which can be sent as `page_token` to retrieve the next page.
-	// If this field is omitted, there are no subsequent pages.
-	NextPageToken string `protobuf:"bytes,4,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *MetadataResponse) Reset() {
@@ -916,13 +913,6 @@ func (x *MetadataResponse) GetTypesStoredMetadata() []*MetadataResponse_Metadata
 		return x.TypesStoredMetadata
 	}
 	return nil
-}
-
-func (x *MetadataResponse) GetNextPageToken() string {
-	if x != nil {
-		return x.NextPageToken
-	}
-	return ""
 }
 
 type StoredMetadata struct {
@@ -4829,9 +4819,12 @@ func (x *InstanceRoleMetadata) GetGrant() string {
 }
 
 type MetadataResponse_MetadataList struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	MetaType      MetaType               `protobuf:"varint,1,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.v1.MetaType" json:"meta_type,omitempty"`
-	List          []*StoredMetadata      `protobuf:"bytes,2,rep,name=list,proto3" json:"list,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	MetaType MetaType               `protobuf:"varint,1,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.v1.MetaType" json:"meta_type,omitempty"`
+	List     []*StoredMetadata      `protobuf:"bytes,2,rep,name=list,proto3" json:"list,omitempty"`
+	// A token, which can be sent as `page_token` to retrieve the next page.
+	// If this field is omitted, there are no subsequent pages.
+	NextPageToken string `protobuf:"bytes,4,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4880,6 +4873,13 @@ func (x *MetadataResponse_MetadataList) GetList() []*StoredMetadata {
 	return nil
 }
 
+func (x *MetadataResponse_MetadataList) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
 var File_v1_database_service_proto protoreflect.FileDescriptor
 
 const file_v1_database_service_proto_rawDesc = "" +
@@ -4923,13 +4923,13 @@ const file_v1_database_service_proto_rawDesc = "" +
 	"page_token\x18\x03 \x01(\tR\tpageToken\x12:\n" +
 	"\tmeta_type\x18\x04 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeH\x00R\bmetaType\x88\x01\x01B\f\n" +
 	"\n" +
-	"_meta_type\"\x98\x02\n" +
+	"_meta_type\"\x99\x02\n" +
 	"\x10MetadataResponse\x12a\n" +
-	"\x15types_stored_metadata\x18\x03 \x03(\v2-.metaxisdata.v1.MetadataResponse.MetadataListR\x13typesStoredMetadata\x12&\n" +
-	"\x0fnext_page_token\x18\x04 \x01(\tR\rnextPageToken\x1ay\n" +
+	"\x15types_stored_metadata\x18\x03 \x03(\v2-.metaxisdata.v1.MetadataResponse.MetadataListR\x13typesStoredMetadata\x1a\xa1\x01\n" +
 	"\fMetadataList\x125\n" +
 	"\tmeta_type\x18\x01 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x122\n" +
-	"\x04list\x18\x02 \x03(\v2\x1e.metaxisdata.v1.StoredMetadataR\x04list\"\xf3\a\n" +
+	"\x04list\x18\x02 \x03(\v2\x1e.metaxisdata.v1.StoredMetadataR\x04list\x12&\n" +
+	"\x0fnext_page_token\x18\x04 \x01(\tR\rnextPageToken\"\xf3\a\n" +
 	"\x0eStoredMetadata\x12b\n" +
 	"\x18database_schema_metadata\x18\x01 \x01(\v2&.metaxisdata.v1.DatabaseSchemaMetadataH\x00R\x16databaseSchemaMetadata\x12I\n" +
 	"\x0fschema_metadata\x18\x02 \x01(\v2\x1e.metaxisdata.v1.SchemaMetadataH\x00R\x0eschemaMetadata\x12F\n" +

@@ -137,28 +137,43 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 	}
 	limitPlusOne := offset.limit + 1
 
-	getSubLevelList := func() (list []*store.MetaRegistryResource, nextPageToken string, err error) {
+	getTypedMetadataList := func() (list []*v1pb.MetadataResponse_MetadataList, err error) {
 		if req.Msg.MetaType != nil {
-
 			findMessage := &store.FindMetaRegistryResourceMessage{
 				GuidPrefix: &req.Msg.ParentGuid,
 				Limit:      &limitPlusOne,
 				Offset:     &offset.offset,
 				ObjectType: (*storepb.MetaType)(req.Msg.MetaType),
 			}
-			subLevelList, err := s.store.ListMetaRegistry(ctx, findMessage)
+			subLevelList, err := s.store.ListMetaRegistryResource(ctx, findMessage)
 			if err != nil {
-				return nil, "", connect.NewError(connect.CodeInternal, errors.Errorf("failed to list meta registry resources under %q: %v", req.Msg.ParentGuid, err))
+				return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list meta registry resources under %q: %v", req.Msg.ParentGuid, err))
 			}
 			nextPageToken := ""
 			if len(subLevelList) == limitPlusOne {
 				subLevelList = subLevelList[:offset.limit]
 				if nextPageToken, err = offset.getNextPageToken(); err != nil {
-					return nil, "", connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to marshal next page token"))
+					return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to marshal next page token"))
 				}
 			}
+			typesStoredMetadataMap := make(map[v1pb.MetaType][]*v1pb.StoredMetadata)
+			for _, meta := range subLevelList {
+				tp := v1pb.MetaType(meta.ObjectType)
+				metaMessage := convertStoredMetadataMessage(meta.Metadata)
+				typesStoredMetadataMap[tp] = append(typesStoredMetadataMap[tp], metaMessage)
+			}
 
-			return subLevelList, nextPageToken, nil
+			list = []*v1pb.MetadataResponse_MetadataList{}
+
+			for tp, storeLit := range typesStoredMetadataMap {
+				list = append(list, &v1pb.MetadataResponse_MetadataList{
+					MetaType:      tp,
+					List:          storeLit,
+					NextPageToken: nextPageToken,
+				})
+			}
+
+			return list, nil
 
 		} else {
 			subLevelFindMessage := &store.FindSubLevelMetaRegistryResourceMessage{
@@ -168,35 +183,43 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 			}
 			subLevelList, err := s.store.ListSublevelMetaRegistryResource(ctx, subLevelFindMessage)
 			if err != nil {
-				return nil, "", connect.NewError(connect.CodeInternal, errors.Errorf("failed to list sublevel meta registry resources under %q: %v", req.Msg.ParentGuid, err))
+				return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list sublevel meta registry resources under %q: %v", req.Msg.ParentGuid, err))
 			}
 
-			return subLevelList, "", nil
+			typesStoredMetadataMap := make(map[v1pb.MetaType][]*v1pb.StoredMetadata)
+			for _, meta := range subLevelList {
+				tp := v1pb.MetaType(meta.ObjectType)
+				metaMessage := convertStoredMetadataMessage(meta.Metadata)
+				typesStoredMetadataMap[tp] = append(typesStoredMetadataMap[tp], metaMessage)
+			}
+
+			list = []*v1pb.MetadataResponse_MetadataList{}
+
+			for tp, storeLit := range typesStoredMetadataMap {
+				nextPageToken := ""
+				if len(storeLit) == limitPlusOne {
+					storeLit = storeLit[:offset.limit]
+					if nextPageToken, err = offset.getNextPageToken(); err != nil {
+						return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to marshal next page token"))
+					}
+				}
+				list = append(list, &v1pb.MetadataResponse_MetadataList{
+					MetaType:      tp,
+					List:          storeLit,
+					NextPageToken: nextPageToken,
+				})
+			}
+
+			return list, nil
 		}
 	}
 
-	subLevelList, nextPageToken, err := getSubLevelList()
+	typeddMetadataList, err := getTypedMetadataList()
 	if err != nil {
 		return nil, err
 	}
 
-	typesStoredMetadataMap := make(map[v1pb.MetaType][]*v1pb.StoredMetadata)
-	for _, meta := range subLevelList {
-		tp := v1pb.MetaType(meta.ObjectType)
-		metaMessage := convertStoredMetadataMessage(meta.Metadata)
-		typesStoredMetadataMap[tp] = append(typesStoredMetadataMap[tp], metaMessage)
-	}
-
-	response := &v1pb.MetadataResponse{
-		NextPageToken: nextPageToken,
-	}
-
-	for tp, list := range typesStoredMetadataMap {
-		response.TypesStoredMetadata = append(response.TypesStoredMetadata, &v1pb.MetadataResponse_MetadataList{
-			MetaType: tp,
-			List:     list,
-		})
-	}
+	response := &v1pb.MetadataResponse{TypesStoredMetadata: typeddMetadataList}
 
 	return connect.NewResponse(response), nil
 }

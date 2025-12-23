@@ -291,14 +291,6 @@ export declare type MetadataResponse = Message<"metaxisdata.v1.MetadataResponse"
    * @generated from field: repeated metaxisdata.v1.MetadataResponse.MetadataList types_stored_metadata = 3;
    */
   typesStoredMetadata: MetadataResponse_MetadataList[];
-
-  /**
-   * A token, which can be sent as `page_token` to retrieve the next page.
-   * If this field is omitted, there are no subsequent pages.
-   *
-   * @generated from field: string next_page_token = 4;
-   */
-  nextPageToken: string;
 };
 
 /**
@@ -320,6 +312,14 @@ export declare type MetadataResponse_MetadataList = Message<"metaxisdata.v1.Meta
    * @generated from field: repeated metaxisdata.v1.StoredMetadata list = 2;
    */
   list: StoredMetadata[];
+
+  /**
+   * A token, which can be sent as `page_token` to retrieve the next page.
+   * If this field is omitted, there are no subsequent pages.
+   *
+   * @generated from field: string next_page_token = 4;
+   */
+  nextPageToken: string;
 };
 
 /**

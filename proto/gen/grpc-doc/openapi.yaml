@@ -2180,11 +2180,6 @@ components:
                     items:
                         $ref: '#/components/schemas/MetadataResponse_MetadataList'
                     description: The list of stored metadata.
-                nextPageToken:
-                    type: string
-                    description: |-
-                        A token, which can be sent as `page_token` to retrieve the next page.
-                         If this field is omitted, there are no subsequent pages.
         MetadataResponse_MetadataList:
             type: object
             properties:
@@ -2213,6 +2208,11 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/StoredMetadata'
+                nextPageToken:
+                    type: string
+                    description: |-
+                        A token, which can be sent as `page_token` to retrieve the next page.
+                         If this field is omitted, there are no subsequent pages.
         OAuth2IdentityProviderContext:
             type: object
             properties:
