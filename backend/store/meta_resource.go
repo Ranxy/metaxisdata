@@ -259,12 +259,16 @@ func (s *Store) listSublevelMetaRegistryResource(ctx context.Context, txn *sql.T
 	// PG's query optimizer seems unable to select the correct index.
 	// Therefore, we directly use the UNION ALL method here.
 
+	nextTypes := getNextLevelObjectType(objectType)
+	if len(nextTypes) == 0 {
+		return []*MetaRegistryResource{}, nil
+	}
+
 	nextPrefix := parentGuid + common.MetaGuidSplit + "%"
 	args := []any{}
 
 	qb := strings.Builder{}
 
-	nextTypes := getNextLevelObjectType(objectType)
 	for idx, nextType := range nextTypes {
 		unionStr := ""
 		if idx != 0 {
@@ -431,8 +435,15 @@ func getNextLevelObjectType(metaType storepb.MetaType) []storepb.MetaType {
 	case storepb.MetaType_DATABASE:
 		return []storepb.MetaType{storepb.MetaType_SCHEMA}
 	case storepb.MetaType_SCHEMA:
-		return []storepb.MetaType{storepb.MetaType_TABLE, storepb.MetaType_VIEW}
+		return []storepb.MetaType{
+			storepb.MetaType_TABLE,
+			storepb.MetaType_EXTERNAL_TABLE,
+			storepb.MetaType_VIEW,
+			storepb.MetaType_MATERIALIZED_VIEW,
+		}
 	case storepb.MetaType_TABLE:
+		return []storepb.MetaType{storepb.MetaType_COLUMN}
+	case storepb.MetaType_VIEW, storepb.MetaType_MATERIALIZED_VIEW, storepb.MetaType_EXTERNAL_TABLE:
 		return []storepb.MetaType{storepb.MetaType_COLUMN}
 	default:
 		return []storepb.MetaType{}
