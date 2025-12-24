@@ -1,0 +1,350 @@
+<template>
+  <div class="p-4 space-y-6">
+    <div class="space-y-1">
+      <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <div class="text-lg font-semibold wrap-break-word">
+          {{ table.name }}
+        </div>
+        <div
+          v-if="table.userComment || table.comment"
+          class="text-sm text-muted-foreground wrap-break-word"
+        >
+          {{ table.userComment || table.comment }}
+        </div>
+      </div>
+      <div class="text-sm text-muted-foreground">
+        {{ summaryLine }}
+      </div>
+    </div>
+
+    <div class="space-y-2">
+      <div class="text-sm font-medium">{{ t("metadataBrowser.tableInfo") }}</div>
+      <div class="flex flex-wrap gap-2">
+        <div class="rounded-md border px-3 py-2">
+          <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.engine") }}</div>
+          <div class="text-sm font-medium">{{ table.engine || "-" }}</div>
+        </div>
+
+        <div class="rounded-md border px-3 py-2">
+          <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.rowCount") }}</div>
+          <div class="text-sm font-medium">{{ formatNumber(table.rowCount) }}</div>
+        </div>
+
+        <div class="rounded-md border px-3 py-2">
+          <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.dataSize") }}</div>
+          <div class="text-sm font-medium">{{ formatBytes(table.dataSize) }}</div>
+        </div>
+
+        <div class="rounded-md border px-3 py-2">
+          <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.indexSize") }}</div>
+          <div class="text-sm font-medium">{{ formatBytes(table.indexSize) }}</div>
+        </div>
+
+        <div
+          v-if="table.charset"
+          class="rounded-md border px-3 py-2"
+        >
+          <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.characterSet") }}</div>
+          <div class="text-sm font-medium">{{ table.charset }}</div>
+        </div>
+
+        <div
+          v-if="table.collation"
+          class="rounded-md border px-3 py-2"
+        >
+          <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.collation") }}</div>
+          <div class="text-sm font-medium">{{ table.collation }}</div>
+        </div>
+
+        <div
+          v-if="table.createOptions"
+          class="rounded-md border px-3 py-2"
+        >
+          <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.createOptions") }}</div>
+          <div class="text-sm font-medium">{{ table.createOptions }}</div>
+        </div>
+
+        <div
+          v-if="table.primaryKeyType"
+          class="rounded-md border px-3 py-2"
+        >
+          <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.primaryKeyType") }}</div>
+          <div class="text-sm font-medium">{{ table.primaryKeyType }}</div>
+        </div>
+
+        <div
+          v-if="table.shardingInfo"
+          class="rounded-md border px-3 py-2"
+        >
+          <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.shardingInfo") }}</div>
+          <div class="text-sm font-medium">{{ table.shardingInfo }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="space-y-2">
+      <div class="flex items-center justify-between">
+        <div class="text-sm font-medium">{{ t("metadataBrowser.columns") }}</div>
+        <div class="flex items-center gap-2">
+          <Input
+            v-model="columnSearch"
+            class="h-9 w-64"
+            :placeholder="t('metadataBrowser.searchColumnsPlaceholder')"
+          />
+          <Badge variant="outline">
+            {{ filteredColumns.length }} / {{ table.columns.length }}
+            {{ t("metadataBrowser.columnsCount") }}
+          </Badge>
+        </div>
+      </div>
+
+      <Table v-if="filteredColumns.length > 0">
+        <TableHeader>
+          <TableRow>
+            <TableHead>{{ t("metadataBrowser.columnName") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.columnType") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.nullable") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.defaultValue") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.comment") }}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow
+            v-for="col in filteredColumns"
+            :key="`${col.position}:${col.name}`"
+          >
+            <TableCell class="font-medium">{{ col.name }}</TableCell>
+            <TableCell class="text-muted-foreground">{{ col.type || "-" }}</TableCell>
+            <TableCell>
+              <Badge
+                :variant="col.nullable ? 'secondary' : 'success'"
+                class="whitespace-nowrap"
+              >
+                {{ col.nullable ? t("metadataBrowser.yes") : t("metadataBrowser.no") }}
+              </Badge>
+            </TableCell>
+            <TableCell class="text-muted-foreground">{{ col.default || "-" }}</TableCell>
+            <TableCell class="text-muted-foreground max-w-md truncate">
+              {{ col.userComment || col.comment || "-" }}
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+
+      <div
+        v-else
+        class="text-sm text-muted-foreground"
+      >
+        {{ columnSearch ? t("metadataBrowser.noMatchedColumns") : t("metadataBrowser.noColumns") }}
+      </div>
+    </div>
+
+    <div class="space-y-2">
+      <div class="flex items-center justify-between">
+        <div class="text-sm font-medium">{{ t("metadataBrowser.indexes") }}</div>
+        <Badge variant="outline">
+          {{ table.indexes.length }} {{ t("metadataBrowser.indexesCount") }}
+        </Badge>
+      </div>
+
+      <Table v-if="table.indexes.length > 0">
+        <TableHeader>
+          <TableRow>
+            <TableHead>{{ t("metadataBrowser.indexName") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.indexType") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.expressions") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.unique") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.primary") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.visible") }}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow
+            v-for="idx in table.indexes"
+            :key="idx.name"
+          >
+            <TableCell class="font-medium">{{ idx.name }}</TableCell>
+            <TableCell class="text-muted-foreground">{{ idx.type || "-" }}</TableCell>
+            <TableCell class="text-muted-foreground max-w-md truncate">
+              {{ idx.expressions.join(", ") || "-" }}
+            </TableCell>
+            <TableCell>
+              <Badge :variant="idx.unique ? 'success' : 'secondary'">
+                {{ idx.unique ? t("metadataBrowser.yes") : t("metadataBrowser.no") }}
+              </Badge>
+            </TableCell>
+            <TableCell>
+              <Badge :variant="idx.primary ? 'success' : 'secondary'">
+                {{ idx.primary ? t("metadataBrowser.yes") : t("metadataBrowser.no") }}
+              </Badge>
+            </TableCell>
+            <TableCell>
+              <Badge :variant="idx.visible ? 'success' : 'secondary'">
+                {{ idx.visible ? t("metadataBrowser.yes") : t("metadataBrowser.no") }}
+              </Badge>
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+
+      <div
+        v-else
+        class="text-sm text-muted-foreground"
+      >
+        {{ t("metadataBrowser.noIndexes") }}
+      </div>
+    </div>
+
+    <div
+      v-if="table.foreignKeys.length > 0"
+      class="space-y-2"
+    >
+      <div class="text-sm font-medium">{{ t("metadataBrowser.foreignKeys") }}</div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{{ t("metadataBrowser.foreignKeyName") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.columns") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.references") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.onDelete") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.onUpdate") }}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow
+            v-for="fk in table.foreignKeys"
+            :key="fk.name"
+          >
+            <TableCell class="font-medium">{{ fk.name }}</TableCell>
+            <TableCell class="text-muted-foreground">{{ fk.columns.join(", ") }}</TableCell>
+            <TableCell class="text-muted-foreground">
+              {{ fk.referencedSchema ? `${fk.referencedSchema}.` : "" }}{{ fk.referencedTable }}
+              ({{ fk.referencedColumns.join(", ") }})
+            </TableCell>
+            <TableCell class="text-muted-foreground">{{ fk.onDelete || "-" }}</TableCell>
+            <TableCell class="text-muted-foreground">{{ fk.onUpdate || "-" }}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </div>
+
+    <div
+      v-if="table.checkConstraints.length > 0"
+      class="space-y-2"
+    >
+      <div class="text-sm font-medium">{{ t("metadataBrowser.checkConstraints") }}</div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{{ t("metadataBrowser.constraintName") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.expression") }}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow
+            v-for="cc in table.checkConstraints"
+            :key="cc.name"
+          >
+            <TableCell class="font-medium">{{ cc.name }}</TableCell>
+            <TableCell class="text-muted-foreground max-w-xl truncate">{{ cc.expression }}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </div>
+
+    <div
+      v-if="table.partitions.length > 0"
+      class="space-y-2"
+    >
+      <div class="text-sm font-medium">{{ t("metadataBrowser.partitions") }}</div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{{ t("metadataBrowser.partitionName") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.partitionType") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.expression") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.value") }}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow
+            v-for="p in table.partitions"
+            :key="p.name"
+          >
+            <TableCell class="font-medium">{{ p.name }}</TableCell>
+            <TableCell class="text-muted-foreground">{{ String(p.type) }}</TableCell>
+            <TableCell class="text-muted-foreground max-w-xl truncate">{{ p.expression || "-" }}</TableCell>
+            <TableCell class="text-muted-foreground">{{ p.value || "-" }}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import type {
+  ColumnMetadata,
+  TableMetadata,
+} from "@/types/proto-es/v1/database_service_pb";
+
+const props = defineProps<{ table: TableMetadata }>();
+
+const { t } = useI18n();
+
+const columnSearch = ref("");
+
+const filteredColumns = computed((): ColumnMetadata[] => {
+  const q = columnSearch.value.trim().toLowerCase();
+  if (!q) return props.table.columns;
+  return props.table.columns.filter((c) => c.name.toLowerCase().includes(q));
+});
+
+const summaryLine = computed(() => {
+  const parts: string[] = [];
+  if (props.table.columns.length > 0) {
+    parts.push(`${props.table.columns.length} ${t("metadataBrowser.columns")}`);
+  }
+  if (props.table.indexes.length > 0) {
+    parts.push(`${props.table.indexes.length} ${t("metadataBrowser.indexes")}`);
+  }
+  if (props.table.foreignKeys.length > 0) {
+    parts.push(
+      `${props.table.foreignKeys.length} ${t("metadataBrowser.foreignKeys")}`
+    );
+  }
+  if (props.table.partitions.length > 0) {
+    parts.push(
+      `${props.table.partitions.length} ${t("metadataBrowser.partitions")}`
+    );
+  }
+  return parts.join(" · ");
+});
+
+function formatNumber(value: bigint): string {
+  return new Intl.NumberFormat().format(Number(value));
+}
+
+function formatBytes(bytes: bigint): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = Number(bytes);
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  return `${size.toFixed(1)} ${units[unitIndex]}`;
+}
+</script>

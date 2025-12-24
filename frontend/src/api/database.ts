@@ -1,5 +1,6 @@
 import { create } from "@bufbuild/protobuf";
 import {
+  GetMetadataRequestSchema,
   ListDatabaseRequestSchema,
   ListMetadataRequestSchema,
   type MetaType,
@@ -43,4 +44,15 @@ export async function listMetadata(options: {
     metaType: options.metaType,
   });
   return await databaseClient.listMetadata(request);
+}
+
+export async function getMetadata(options: {
+  guid: string;
+  metaType: MetaType;
+}) {
+  const request = create(GetMetadataRequestSchema, {
+    guid: options.guid,
+    metaType: options.metaType,
+  });
+  return await databaseClient.getMetadata(request);
 }

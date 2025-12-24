@@ -45,51 +45,62 @@
       </div>
 
       <div v-else>
-        <CardHeader class="border-b">
-          <MetadataTabNav
-            :groups="metadataGroups"
-            :active="activeMetaType"
-            @select="handleSelectTab"
-          />
-        </CardHeader>
+        <template v-if="isTableDetailView && leafTable">
+          <CardHeader class="border-b">
+            <CardTitle>{{ t("metadataBrowser.tableDetail") }}</CardTitle>
+          </CardHeader>
+          <CardContent class="p-0">
+            <TableMetadataDetail :table="leafTable" />
+          </CardContent>
+        </template>
 
-        <CardContent class="p-0">
-          <MetadataList
-            v-if="activeGroup"
-            :meta-type="activeGroup.metaType"
-            :items="activeGroup.list"
-            :current-guid="currentGuid"
-            :is-mysql="isMySQLInstance"
-            @select="handleSelectMetadata"
-          />
+        <template v-else>
+          <CardHeader class="border-b">
+            <MetadataTabNav
+              :groups="metadataGroups"
+              :active="activeMetaType"
+              @select="handleSelectTab"
+            />
+          </CardHeader>
+
+          <CardContent class="p-0">
+            <MetadataList
+              v-if="activeGroup"
+              :meta-type="activeGroup.metaType"
+              :items="activeGroup.list"
+              :current-guid="currentGuid"
+              :is-mysql="isMySQLInstance"
+              @select="handleSelectMetadata"
+            />
+            <div
+              v-else
+              class="p-8 text-center text-muted-foreground"
+            >
+              {{ t("metadataBrowser.empty") }}
+            </div>
+          </CardContent>
+
           <div
-            v-else
-            class="p-8 text-center text-muted-foreground"
+            v-if="selectedMetaType && selectedNextPageToken"
+            class="p-4 border-t"
           >
-            {{ t("metadataBrowser.empty") }}
+            <MetadataPagination
+              :has-next="!!selectedNextPageToken"
+              :is-loading="isLoadingMore"
+              @load-more="loadMoreMetadata"
+            />
           </div>
-        </CardContent>
-
-        <div
-          v-if="selectedMetaType && selectedNextPageToken"
-          class="p-4 border-t"
-        >
-          <MetadataPagination
-            :has-next="!!selectedNextPageToken"
-            :is-loading="isLoadingMore"
-            @load-more="loadMoreMetadata"
-          />
-        </div>
+        </template>
       </div>
     </Card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
-import { listMetadata } from "@/api/database";
+import { getMetadata, listMetadata } from "@/api/database";
 import { getInstance, listInstances } from "@/api/instance";
 import AppLoading from "@/components/common/AppLoading.vue";
 import InstanceList from "@/components/metadata/InstanceList.vue";
@@ -97,12 +108,14 @@ import MetadataBreadcrumb from "@/components/metadata/MetadataBreadcrumb.vue";
 import MetadataList from "@/components/metadata/MetadataList.vue";
 import MetadataPagination from "@/components/metadata/MetadataPagination.vue";
 import MetadataTabNav from "@/components/metadata/MetadataTabNav.vue";
+import TableMetadataDetail from "@/components/metadata/TableMetadataDetail.vue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import {
   type MetadataResponse_MetadataList,
   MetaType,
   type StoredMetadata,
+  type TableMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import { extractErrorMessage } from "@/utils/error";
@@ -132,6 +145,23 @@ const selectedNextPageToken = computed(() => {
 });
 
 const currentInstanceEngine = ref<Engine | null>(null);
+
+const leafTable = ref<TableMetadata | null>(null);
+
+const requestedLeafMetaType = computed(() => {
+  const q = route.query.metaType;
+  if (!q) return null;
+  const raw = Array.isArray(q) ? q[0] : q;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return null;
+  return value as MetaType;
+});
+
+const isTableDetailView = computed(() => {
+  return (
+    requestedLeafMetaType.value === MetaType.TABLE || leafTable.value != null
+  );
+});
 
 const currentGuid = computed(() => {
   const guidParam = route.params.guid;
@@ -243,6 +273,7 @@ async function fetchCurrentInstanceEngineIfNeeded() {
 async function fetchMetadataGroups() {
   isLoading.value = true;
   error.value = null;
+  leafTable.value = null;
 
   try {
     await fetchCurrentInstanceEngineIfNeeded();
@@ -268,6 +299,52 @@ async function fetchMetadataGroups() {
     if (activeMetaType.value && !selectedMetaType.value) {
       selectedMetaType.value = activeMetaType.value;
     }
+
+    // If we are at a leaf object (table), ListMetadata returns empty.
+    // In that case, call GetMetadata to fetch the table details.
+    if (response.typesStoredMetadata.length === 0) {
+      try {
+        const detail = await getMetadata({
+          guid: currentGuid.value,
+          metaType: MetaType.TABLE,
+        });
+        if (detail.metadata?.type?.case === "tableMetadata") {
+          leafTable.value = detail.metadata.type.value;
+        }
+      } catch {
+        // Ignore; keep empty state for non-table leaf objects.
+      }
+    }
+  } catch (e) {
+    const msg = extractErrorMessage(e);
+    error.value = msg || t("metadataBrowser.fetchError");
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+async function fetchTableDetail() {
+  isLoading.value = true;
+  error.value = null;
+  leafTable.value = null;
+  metadataGroups.value = [];
+  nextPageTokenByMetaType.clear();
+  activeMetaType.value = null;
+  selectedMetaType.value = null;
+
+  try {
+    await fetchCurrentInstanceEngineIfNeeded();
+
+    const detail = await getMetadata({
+      guid: currentGuid.value,
+      metaType: MetaType.TABLE,
+    });
+
+    if (detail.metadata?.type?.case !== "tableMetadata") {
+      throw new Error("unexpected metadata type");
+    }
+
+    leafTable.value = detail.metadata.type.value;
   } catch (e) {
     const msg = extractErrorMessage(e);
     error.value = msg || t("metadataBrowser.fetchError");
@@ -428,9 +505,13 @@ function handleSelectMetadata(item: StoredMetadata, metaType: MetaType) {
     newSegments.push("");
   }
 
+  const query =
+    metaType === MetaType.TABLE ? { metaType: String(metaType) } : undefined;
+
   router.push({
     name: "MetadataDetail",
     params: { guid: toGuidPath(newSegments) },
+    query,
   });
 }
 
@@ -443,27 +524,24 @@ async function handleSelectTab(metaType: MetaType) {
 }
 
 watch(
-  () => route.params.guid,
+  () => [route.params.guid, route.query.metaType],
   async () => {
     activeMetaType.value = null;
     selectedMetaType.value = null;
     nextPageTokenByMetaType.clear();
     currentInstanceEngine.value = null;
+    leafTable.value = null;
 
     if (isRootPath.value) {
       await fetchInstances();
     } else {
-      await fetchMetadataGroups();
+      if (requestedLeafMetaType.value === MetaType.TABLE) {
+        await fetchTableDetail();
+      } else {
+        await fetchMetadataGroups();
+      }
     }
   },
   { immediate: true }
 );
-
-onMounted(async () => {
-  if (isRootPath.value) {
-    await fetchInstances();
-  } else {
-    await fetchMetadataGroups();
-  }
-});
 </script>

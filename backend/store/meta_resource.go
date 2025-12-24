@@ -94,7 +94,7 @@ func (s *Store) ListMetaRegistry(ctx context.Context, find *FindMetaRegistryReso
 		return nil, err
 	}
 	defer tx.Rollback()
-	list, err := s.listMetaRegistryResource(ctx, tx, find, false)
+	list, err := s.listMetaRegistryResource(ctx, tx, find, true)
 	if err != nil {
 		return nil, err
 	}
@@ -129,10 +129,11 @@ func (s *Store) ListMetaRegistryResource(ctx context.Context, find *FindMetaRegi
 				ID:         metaRegistry.ID,
 				Guid:       metaRegistry.Guid,
 				ObjectType: metaRegistry.ObjectType,
-				Metadata:   nil,
+				Metadata:   metaRegistry.Metadata,
 				MetaHash:   metaRegistry.MetaHash,
 			}
 			s.metaRegistryCache.Add(metaRegistry.ID, reg)
+			s.metaRegistryGuidCache.Add(metaRegistry.Guid, reg)
 		}
 	}
 	return list, nil
