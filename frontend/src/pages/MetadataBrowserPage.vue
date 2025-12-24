@@ -12,7 +12,7 @@
     <Card>
       <CardContent class="py-3 px-4">
         <MetadataBreadcrumb
-          :path-segments="breadcrumbSegments"
+          :items="breadcrumbItems"
           @navigate="handleNavigate"
         />
       </CardContent>
@@ -159,15 +159,26 @@ const instanceIdFromGuid = computed(() => {
   return first || "";
 });
 
-const breadcrumbSegments = computed(() => {
-  // Breadcrumb display should not show trailing empty segment.
+const breadcrumbItems = computed(() => {
+  // Hide MySQL empty schema segment from breadcrumb display, but keep
+  // navigation working by preserving original guid indices.
   const segments = guidSegments.value;
-  if (segments.length === 0) return [];
+  if (segments.length === 0)
+    return [] as Array<{ label: string; guidIndex: number }>;
+
+  // Do not show trailing empty segment.
   const trimmed = [...segments];
   while (trimmed.length > 0 && trimmed[trimmed.length - 1] === "") {
     trimmed.pop();
   }
-  return trimmed;
+
+  const items = trimmed.map((label, guidIndex) => ({ label, guidIndex }));
+
+  if (!isMySQLInstance.value) return items;
+
+  // MySQL-family has no real schemas; the implicit empty schema should not be shown.
+  // The schema position is index 2: instance;database;schema;...
+  return items.filter((it) => !(it.guidIndex === 2 && it.label === ""));
 });
 
 const isMySQLInstance = computed(() => {
@@ -338,13 +349,13 @@ function toGuidPath(segments: string[]): string {
     .join("/");
 }
 
-function handleNavigate(index: number) {
-  if (index < 0) {
+function handleNavigate(guidIndex: number) {
+  if (guidIndex < 0) {
     router.push({ name: "MetadataBrowser" });
     return;
   }
 
-  const segments = breadcrumbSegments.value.slice(0, index + 1);
+  const segments = guidSegments.value.slice(0, guidIndex + 1);
   router.push({
     name: "MetadataDetail",
     params: { guid: toGuidPath(segments) },
@@ -384,9 +395,19 @@ function handleSelectMetadata(item: StoredMetadata, metaType: MetaType) {
   const name = getMetadataName(item);
   const newSegments = [...guidSegments.value];
 
-  // guidSegments keeps empty schema if already there.
+  // Preserve MySQL implicit empty schema segment.
+  const hadMySQLEmptySchema =
+    isMySQLInstance.value &&
+    guidSegments.value.length >= 3 &&
+    guidSegments.value[2] === "";
+
+  // Normalize by trimming only trailing empties; for MySQL we re-add the implicit
+  // schema placeholder if it was part of the current guid.
   while (newSegments.length > 0 && newSegments[newSegments.length - 1] === "") {
     newSegments.pop();
+  }
+  if (hadMySQLEmptySchema && newSegments.length === 2) {
+    newSegments.push("");
   }
 
   // If we're at MySQL database-level (instance;database) but listing children of

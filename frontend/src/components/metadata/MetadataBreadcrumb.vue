@@ -10,18 +10,18 @@
     </Button>
 
     <template
-      v-for="(segment, index) in pathSegments"
-      :key="index"
+      v-for="item in items"
+      :key="item.guidIndex"
     >
       <ChevronRight class="h-4 w-4 text-muted-foreground" />
       <button
         class="hover:text-primary transition-colors"
         :class="{
-          'font-medium text-foreground': index === pathSegments.length - 1,
+          'font-medium text-foreground': item.guidIndex === lastGuidIndex,
         }"
-        @click="$emit('navigate', index)"
+        @click="$emit('navigate', item.guidIndex)"
       >
-        {{ segment || t("metadataBrowser.defaultSchema") }}
+        {{ item.label || t("metadataBrowser.defaultSchema") }}
       </button>
     </template>
   </nav>
@@ -29,16 +29,22 @@
 
 <script setup lang="ts">
 import { ChevronRight, Home } from "lucide-vue-next";
+import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
 
-defineProps<{
-  pathSegments: string[];
+const props = defineProps<{
+  items: Array<{ label: string; guidIndex: number }>;
 }>();
 
 defineEmits<{
-  navigate: [index: number];
+  navigate: [guidIndex: number];
 }>();
 
 const { t } = useI18n();
+
+const lastGuidIndex = computed(() => {
+  const last = props.items[props.items.length - 1];
+  return last?.guidIndex ?? -1;
+});
 </script>
