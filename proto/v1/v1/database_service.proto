@@ -25,6 +25,10 @@ service DatabaseService {
   rpc ListMetadata(ListMetadataRequest) returns (MetadataResponse) {
     option (google.api.http) = {get: "/v1/metadata/list"};
   }
+
+  rpc GetMetadata(GetMetadataRequest) returns (GetMetadataResponse) {
+    option (google.api.http) = {get: "/v1/metadata"};
+  }
 }
 
 message GetDatabaseRequest {
@@ -189,6 +193,21 @@ message MetadataResponse {
 
   // The list of stored metadata.
   repeated MetadataList types_stored_metadata = 3;
+}
+
+message GetMetadataRequest {
+  // The global unique id for metadata
+  // database: "instance_100;database3"
+  // table: "instance_1;db2;schema3;table4"
+  string guid = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/DatabaseMetadata"}
+  ];
+  MetaType meta_type = 2;
+}
+
+message GetMetadataResponse {
+  StoredMetadata metadata = 1;
 }
 
 message StoredMetadata {

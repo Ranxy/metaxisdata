@@ -17,6 +17,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	v1 "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
@@ -228,6 +229,24 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 
 	return connect.NewResponse(response), nil
 }
+
+func (s *DatabaseService) GetMetadata(ctx context.Context, req *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error) {
+
+	meta, err := s.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{Guid: &req.Msg.Guid, ObjectType: (*storepb.MetaType)(&req.Msg.MetaType)})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get meta registry %q: %v", req.Msg.Guid, err))
+	}
+	if meta == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("meta registry %q not found", req.Msg.Guid))
+	}
+
+	response := &v1.GetMetadataResponse{
+		Metadata: convertStoredMetadataMessage(meta.Metadata),
+	}
+
+	return connect.NewResponse(response), nil
+}
+
 func parseToEngineSQL(expr celast.Expr, relation string) (string, error) {
 	variable, value := getVariableAndValueFromExpr(expr)
 	if variable != "engine" {

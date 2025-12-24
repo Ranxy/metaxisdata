@@ -106,6 +106,8 @@
     - [FunctionMetadata](#metaxisdata-v1-FunctionMetadata)
     - [GenerationMetadata](#metaxisdata-v1-GenerationMetadata)
     - [GetDatabaseRequest](#metaxisdata-v1-GetDatabaseRequest)
+    - [GetMetadataRequest](#metaxisdata-v1-GetMetadataRequest)
+    - [GetMetadataResponse](#metaxisdata-v1-GetMetadataResponse)
     - [GridLevel](#metaxisdata-v1-GridLevel)
     - [IndexMetadata](#metaxisdata-v1-IndexMetadata)
     - [InstanceRoleMetadata](#metaxisdata-v1-InstanceRoleMetadata)
@@ -1697,6 +1699,37 @@ FunctionMetadata is the metadata for functions.
 
 
 
+<a name="metaxisdata-v1-GetMetadataRequest"></a>
+
+### GetMetadataRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  | The global unique id for metadata database: &#34;instance_100;database3&#34; table: &#34;instance_1;db2;schema3;table4&#34; |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetMetadataResponse"></a>
+
+### GetMetadataResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| metadata | [StoredMetadata](#metaxisdata-v1-StoredMetadata) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GridLevel"></a>
 
 ### GridLevel
@@ -2405,6 +2438,7 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | GetDatabase | [GetDatabaseRequest](#metaxisdata-v1-GetDatabaseRequest) | [Database](#metaxisdata-v1-Database) |  |
 | ListDatabase | [ListDatabaseRequest](#metaxisdata-v1-ListDatabaseRequest) | [ListDatabasesResponse](#metaxisdata-v1-ListDatabasesResponse) |  |
 | ListMetadata | [ListMetadataRequest](#metaxisdata-v1-ListMetadataRequest) | [MetadataResponse](#metaxisdata-v1-MetadataResponse) |  |
+| GetMetadata | [GetMetadataRequest](#metaxisdata-v1-GetMetadataRequest) | [GetMetadataResponse](#metaxisdata-v1-GetMetadataResponse) |  |
 
  
 

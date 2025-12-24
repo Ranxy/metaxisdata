@@ -625,6 +625,56 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/metadata:
+        get:
+            tags:
+                - DatabaseService
+            operationId: DatabaseService_GetMetadata
+            parameters:
+                - name: guid
+                  in: query
+                  description: |-
+                    The global unique id for metadata
+                     database: "instance_100;database3"
+                     table: "instance_1;db2;schema3;table4"
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - PACKAGE
+                        - STREAM
+                        - TASK
+                    type: string
+                    format: enum
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetMetadataResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/metadata/list:
         get:
             tags:
@@ -1767,6 +1817,11 @@ components:
                     format: enum
                 expression:
                     type: string
+        GetMetadataResponse:
+            type: object
+            properties:
+                metadata:
+                    $ref: '#/components/schemas/StoredMetadata'
         GoogleProtobufAny:
             type: object
             properties:

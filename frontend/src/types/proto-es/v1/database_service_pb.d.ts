@@ -329,6 +329,47 @@ export declare type MetadataResponse_MetadataList = Message<"metaxisdata.v1.Meta
 export declare const MetadataResponse_MetadataListSchema: GenMessage<MetadataResponse_MetadataList>;
 
 /**
+ * @generated from message metaxisdata.v1.GetMetadataRequest
+ */
+export declare type GetMetadataRequest = Message<"metaxisdata.v1.GetMetadataRequest"> & {
+  /**
+   * The global unique id for metadata
+   * database: "instance_100;database3"
+   * table: "instance_1;db2;schema3;table4"
+   *
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 2;
+   */
+  metaType: MetaType;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetMetadataRequest.
+ * Use `create(GetMetadataRequestSchema)` to create a new message.
+ */
+export declare const GetMetadataRequestSchema: GenMessage<GetMetadataRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetMetadataResponse
+ */
+export declare type GetMetadataResponse = Message<"metaxisdata.v1.GetMetadataResponse"> & {
+  /**
+   * @generated from field: metaxisdata.v1.StoredMetadata metadata = 1;
+   */
+  metadata?: StoredMetadata;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetMetadataResponse.
+ * Use `create(GetMetadataResponseSchema)` to create a new message.
+ */
+export declare const GetMetadataResponseSchema: GenMessage<GetMetadataResponse>;
+
+/**
  * @generated from message metaxisdata.v1.StoredMetadata
  */
 export declare type StoredMetadata = Message<"metaxisdata.v1.StoredMetadata"> & {
@@ -2955,6 +2996,14 @@ export declare const DatabaseService: GenService<{
     methodKind: "unary";
     input: typeof ListMetadataRequestSchema;
     output: typeof MetadataResponseSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.DatabaseService.GetMetadata
+   */
+  getMetadata: {
+    methodKind: "unary";
+    input: typeof GetMetadataRequestSchema;
+    output: typeof GetMetadataResponseSchema;
   },
 }>;
 

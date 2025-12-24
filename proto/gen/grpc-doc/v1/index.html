@@ -574,6 +574,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetMetadataRequest"><span class="badge">M</span>GetMetadataRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetMetadataResponse"><span class="badge">M</span>GetMetadataResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GridLevel"><span class="badge">M</span>GridLevel</a>
                 </li>
               
@@ -4995,6 +5003,63 @@ Format: instances/{instance}/databases/{database} </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetMetadataRequest">GetMetadataRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The global unique id for metadata
+database: &#34;instance_100;database3&#34;
+table: &#34;instance_1;db2;schema3;table4&#34; </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetMetadataResponse">GetMetadataResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>metadata</td>
+                  <td><a href="#metaxisdata.v1.StoredMetadata">StoredMetadata</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GridLevel">GridLevel</h3>
         <p>GridLevel defines a grid level for spatial tessellation.</p>
 
@@ -7268,6 +7333,13 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
                 <td><p></p></td>
               </tr>
             
+              <tr>
+                <td>GetMetadata</td>
+                <td><a href="#metaxisdata.v1.GetMetadataRequest">GetMetadataRequest</a></td>
+                <td><a href="#metaxisdata.v1.GetMetadataResponse">GetMetadataResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
           </tbody>
         </table>
 
@@ -7312,6 +7384,16 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
                 <td>ListMetadata</td>
                 <td>GET</td>
                 <td>/v1/metadata/list</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetMetadata</td>
+                <td>GET</td>
+                <td>/v1/metadata</td>
                 <td></td>
               </tr>
               

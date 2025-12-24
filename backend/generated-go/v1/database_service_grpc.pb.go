@@ -22,6 +22,7 @@ const (
 	DatabaseService_GetDatabase_FullMethodName  = "/metaxisdata.v1.DatabaseService/GetDatabase"
 	DatabaseService_ListDatabase_FullMethodName = "/metaxisdata.v1.DatabaseService/ListDatabase"
 	DatabaseService_ListMetadata_FullMethodName = "/metaxisdata.v1.DatabaseService/ListMetadata"
+	DatabaseService_GetMetadata_FullMethodName  = "/metaxisdata.v1.DatabaseService/GetMetadata"
 )
 
 // DatabaseServiceClient is the client API for DatabaseService service.
@@ -31,6 +32,7 @@ type DatabaseServiceClient interface {
 	GetDatabase(ctx context.Context, in *GetDatabaseRequest, opts ...grpc.CallOption) (*Database, error)
 	ListDatabase(ctx context.Context, in *ListDatabaseRequest, opts ...grpc.CallOption) (*ListDatabasesResponse, error)
 	ListMetadata(ctx context.Context, in *ListMetadataRequest, opts ...grpc.CallOption) (*MetadataResponse, error)
+	GetMetadata(ctx context.Context, in *GetMetadataRequest, opts ...grpc.CallOption) (*GetMetadataResponse, error)
 }
 
 type databaseServiceClient struct {
@@ -71,6 +73,16 @@ func (c *databaseServiceClient) ListMetadata(ctx context.Context, in *ListMetada
 	return out, nil
 }
 
+func (c *databaseServiceClient) GetMetadata(ctx context.Context, in *GetMetadataRequest, opts ...grpc.CallOption) (*GetMetadataResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetMetadataResponse)
+	err := c.cc.Invoke(ctx, DatabaseService_GetMetadata_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DatabaseServiceServer is the server API for DatabaseService service.
 // All implementations must embed UnimplementedDatabaseServiceServer
 // for forward compatibility.
@@ -78,6 +90,7 @@ type DatabaseServiceServer interface {
 	GetDatabase(context.Context, *GetDatabaseRequest) (*Database, error)
 	ListDatabase(context.Context, *ListDatabaseRequest) (*ListDatabasesResponse, error)
 	ListMetadata(context.Context, *ListMetadataRequest) (*MetadataResponse, error)
+	GetMetadata(context.Context, *GetMetadataRequest) (*GetMetadataResponse, error)
 	mustEmbedUnimplementedDatabaseServiceServer()
 }
 
@@ -96,6 +109,9 @@ func (UnimplementedDatabaseServiceServer) ListDatabase(context.Context, *ListDat
 }
 func (UnimplementedDatabaseServiceServer) ListMetadata(context.Context, *ListMetadataRequest) (*MetadataResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListMetadata not implemented")
+}
+func (UnimplementedDatabaseServiceServer) GetMetadata(context.Context, *GetMetadataRequest) (*GetMetadataResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetMetadata not implemented")
 }
 func (UnimplementedDatabaseServiceServer) mustEmbedUnimplementedDatabaseServiceServer() {}
 func (UnimplementedDatabaseServiceServer) testEmbeddedByValue()                         {}
@@ -172,6 +188,24 @@ func _DatabaseService_ListMetadata_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DatabaseService_GetMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMetadataRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServiceServer).GetMetadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabaseService_GetMetadata_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServiceServer).GetMetadata(ctx, req.(*GetMetadataRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DatabaseService_ServiceDesc is the grpc.ServiceDesc for DatabaseService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +224,10 @@ var DatabaseService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListMetadata",
 			Handler:    _DatabaseService_ListMetadata_Handler,
+		},
+		{
+			MethodName: "GetMetadata",
+			Handler:    _DatabaseService_GetMetadata_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
