@@ -71,11 +71,11 @@
         </CardContent>
 
         <div
-          v-if="selectedMetaType && nextPageToken"
+          v-if="selectedMetaType && selectedNextPageToken"
           class="p-4 border-t"
         >
           <MetadataPagination
-            :has-next="!!nextPageToken"
+            :has-next="!!selectedNextPageToken"
             :is-loading="isLoadingMore"
             @load-more="loadMoreMetadata"
           />
@@ -86,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { listMetadata } from "@/api/database";
@@ -122,8 +122,14 @@ const metadataGroups = ref<MetadataResponse_MetadataList[]>([]);
 const activeMetaType = ref<MetaType | null>(null);
 const selectedMetaType = ref<MetaType | null>(null);
 
-// Pagination is only valid when metaType is specified.
-const nextPageToken = ref("");
+// The backend returns a nextPageToken per metaType (on each MetadataList).
+// Track them separately to avoid token mix-ups when switching tabs.
+const nextPageTokenByMetaType = reactive(new Map<MetaType, string>());
+
+const selectedNextPageToken = computed(() => {
+  if (!selectedMetaType.value) return "";
+  return nextPageTokenByMetaType.get(selectedMetaType.value) ?? "";
+});
 
 const currentInstanceEngine = ref<Engine | null>(null);
 
@@ -237,12 +243,20 @@ async function fetchMetadataGroups() {
 
     metadataGroups.value = response.typesStoredMetadata;
 
+    nextPageTokenByMetaType.clear();
+    for (const group of response.typesStoredMetadata) {
+      nextPageTokenByMetaType.set(group.metaType, group.nextPageToken);
+    }
+
     if (!activeMetaType.value && response.typesStoredMetadata.length > 0) {
       activeMetaType.value = response.typesStoredMetadata[0].metaType;
     }
 
-    // When metaType is omitted, nextPageToken is not meaningful.
-    nextPageToken.value = "";
+    // Enable pagination for the currently active tab immediately.
+    // The backend returns a nextPageToken per metaType in the initial response.
+    if (activeMetaType.value && !selectedMetaType.value) {
+      selectedMetaType.value = activeMetaType.value;
+    }
   } catch (e) {
     const msg = extractErrorMessage(e);
     error.value = msg || t("metadataBrowser.fetchError");
@@ -274,7 +288,7 @@ async function fetchMetaTypeFirstPage(metaType: MetaType) {
       }
     }
 
-    nextPageToken.value = response.nextPageToken;
+    nextPageTokenByMetaType.set(metaType, returned?.nextPageToken ?? "");
     selectedMetaType.value = metaType;
   } catch (e) {
     const msg = extractErrorMessage(e);
@@ -286,7 +300,8 @@ async function fetchMetaTypeFirstPage(metaType: MetaType) {
 
 async function loadMoreMetadata() {
   if (!selectedMetaType.value) return;
-  if (!nextPageToken.value) return;
+  const pageToken = selectedNextPageToken.value;
+  if (!pageToken) return;
 
   isLoadingMore.value = true;
 
@@ -294,7 +309,7 @@ async function loadMoreMetadata() {
     const response = await listMetadata({
       parentGuid: getEffectiveParentGuidForListing(),
       pageSize: 20,
-      pageToken: nextPageToken.value,
+      pageToken,
       metaType: selectedMetaType.value,
     });
 
@@ -308,7 +323,10 @@ async function loadMoreMetadata() {
       }
     }
 
-    nextPageToken.value = response.nextPageToken;
+    nextPageTokenByMetaType.set(
+      selectedMetaType.value,
+      returned?.nextPageToken ?? ""
+    );
   } finally {
     isLoadingMore.value = false;
   }
@@ -408,7 +426,7 @@ watch(
   async () => {
     activeMetaType.value = null;
     selectedMetaType.value = null;
-    nextPageToken.value = "";
+    nextPageTokenByMetaType.clear();
     currentInstanceEngine.value = null;
 
     if (isRootPath.value) {

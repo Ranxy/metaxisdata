@@ -11,9 +11,6 @@
         @click="$emit('select', g.metaType)"
       >
         <span>{{ getMetaTypeLabel(g.metaType) }}</span>
-        <span class="ml-2">
-          <Badge variant="secondary">{{ g.list.length }}</Badge>
-        </span>
       </Button>
     </div>
 
@@ -32,7 +29,7 @@
             :key="g.metaType"
             :value="String(g.metaType)"
           >
-            {{ getMetaTypeLabel(g.metaType) }} ({{ g.list.length }})
+            {{ getMetaTypeLabel(g.metaType) }}
           </SelectItem>
         </SelectContent>
       </Select>
@@ -43,7 +40,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Select,

@@ -3,6 +3,7 @@ package v1
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -209,6 +210,10 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 					NextPageToken: nextPageToken,
 				})
 			}
+
+			slices.SortFunc(list, func(a, b *v1pb.MetadataResponse_MetadataList) int {
+				return int(a.MetaType.Number() - b.MetaType.Number())
+			})
 
 			return list, nil
 		}
