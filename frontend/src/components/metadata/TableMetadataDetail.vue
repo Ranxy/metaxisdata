@@ -20,9 +20,20 @@
     <div class="space-y-2">
       <div class="text-sm font-medium">{{ t("metadataBrowser.tableInfo") }}</div>
       <div class="flex flex-wrap gap-2">
-        <div class="rounded-md border px-3 py-2">
+        <div
+          v-if="isMySQLFamily"
+          class="rounded-md border px-3 py-2"
+        >
           <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.engine") }}</div>
           <div class="text-sm font-medium">{{ table.engine || "-" }}</div>
+        </div>
+
+        <div
+          v-if="isPostgres"
+          class="rounded-md border px-3 py-2"
+        >
+          <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.owner") }}</div>
+          <div class="text-sm font-medium">{{ table.owner || "-" }}</div>
         </div>
 
         <div class="rounded-md border px-3 py-2">
@@ -155,7 +166,6 @@
             <TableHead>{{ t("metadataBrowser.expressions") }}</TableHead>
             <TableHead>{{ t("metadataBrowser.unique") }}</TableHead>
             <TableHead>{{ t("metadataBrowser.primary") }}</TableHead>
-            <TableHead>{{ t("metadataBrowser.visible") }}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -176,11 +186,6 @@
             <TableCell>
               <Badge :variant="idx.primary ? 'success' : 'secondary'">
                 {{ idx.primary ? t("metadataBrowser.yes") : t("metadataBrowser.no") }}
-              </Badge>
-            </TableCell>
-            <TableCell>
-              <Badge :variant="idx.visible ? 'success' : 'secondary'">
-                {{ idx.visible ? t("metadataBrowser.yes") : t("metadataBrowser.no") }}
               </Badge>
             </TableCell>
           </TableRow>
@@ -295,12 +300,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Engine } from "@/types/proto-es/v1/common_pb";
 import type {
   ColumnMetadata,
   TableMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
 
-const props = defineProps<{ table: TableMetadata }>();
+const props = defineProps<{
+  table: TableMetadata;
+  instanceEngine?: Engine | null;
+}>();
 
 const { t } = useI18n();
 
@@ -311,6 +320,17 @@ const filteredColumns = computed((): ColumnMetadata[] => {
   if (!q) return props.table.columns;
   return props.table.columns.filter((c) => c.name.toLowerCase().includes(q));
 });
+
+const isMySQLFamily = computed(() => {
+  if (!props.instanceEngine) return false;
+  return (
+    props.instanceEngine === Engine.MYSQL ||
+    props.instanceEngine === Engine.MARIADB ||
+    props.instanceEngine === Engine.TIDB
+  );
+});
+
+const isPostgres = computed(() => props.instanceEngine === Engine.POSTGRES);
 
 const summaryLine = computed(() => {
   const parts: string[] = [];

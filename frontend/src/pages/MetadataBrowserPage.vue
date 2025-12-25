@@ -50,7 +50,10 @@
             <CardTitle>{{ t("metadataBrowser.tableDetail") }}</CardTitle>
           </CardHeader>
           <CardContent class="p-0">
-            <TableMetadataDetail :table="leafTable" />
+            <TableMetadataDetail
+              :table="leafTable"
+              :instance-engine="currentInstanceEngine"
+            />
           </CardContent>
         </template>
 
