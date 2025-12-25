@@ -54,6 +54,15 @@
           </CardContent>
         </template>
 
+        <template v-else-if="isViewDetailView && leafView">
+          <CardHeader class="border-b">
+            <CardTitle>{{ t("metadataBrowser.viewDetail") }}</CardTitle>
+          </CardHeader>
+          <CardContent class="p-0">
+            <ViewMetadataDetail :view="leafView" />
+          </CardContent>
+        </template>
+
         <template v-else>
           <CardHeader class="border-b">
             <MetadataTabNav
@@ -109,6 +118,7 @@ import MetadataList from "@/components/metadata/MetadataList.vue";
 import MetadataPagination from "@/components/metadata/MetadataPagination.vue";
 import MetadataTabNav from "@/components/metadata/MetadataTabNav.vue";
 import TableMetadataDetail from "@/components/metadata/TableMetadataDetail.vue";
+import ViewMetadataDetail from "@/components/metadata/ViewMetadataDetail.vue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import {
@@ -116,6 +126,7 @@ import {
   MetaType,
   type StoredMetadata,
   type TableMetadata,
+  type ViewMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import { extractErrorMessage } from "@/utils/error";
@@ -147,6 +158,7 @@ const selectedNextPageToken = computed(() => {
 const currentInstanceEngine = ref<Engine | null>(null);
 
 const leafTable = ref<TableMetadata | null>(null);
+const leafView = ref<ViewMetadata | null>(null);
 
 const requestedLeafMetaType = computed(() => {
   const q = route.query.metaType;
@@ -160,6 +172,12 @@ const requestedLeafMetaType = computed(() => {
 const isTableDetailView = computed(() => {
   return (
     requestedLeafMetaType.value === MetaType.TABLE || leafTable.value != null
+  );
+});
+
+const isViewDetailView = computed(() => {
+  return (
+    requestedLeafMetaType.value === MetaType.VIEW || leafView.value != null
   );
 });
 
@@ -274,6 +292,7 @@ async function fetchMetadataGroups() {
   isLoading.value = true;
   error.value = null;
   leafTable.value = null;
+  leafView.value = null;
 
   try {
     await fetchCurrentInstanceEngineIfNeeded();
@@ -300,19 +319,53 @@ async function fetchMetadataGroups() {
       selectedMetaType.value = activeMetaType.value;
     }
 
-    // If we are at a leaf object (table), ListMetadata returns empty.
-    // In that case, call GetMetadata to fetch the table details.
+    // If we are at a leaf object (e.g. table/view), ListMetadata returns empty.
+    // In that case, call GetMetadata to fetch the leaf details.
     if (response.typesStoredMetadata.length === 0) {
       try {
-        const detail = await getMetadata({
+        const preferred = requestedLeafMetaType.value;
+
+        if (preferred === MetaType.TABLE) {
+          const detail = await getMetadata({
+            guid: currentGuid.value,
+            metaType: MetaType.TABLE,
+          });
+          if (detail.metadata?.type?.case === "tableMetadata") {
+            leafTable.value = detail.metadata.type.value;
+          }
+          return;
+        }
+
+        if (preferred === MetaType.VIEW) {
+          const detail = await getMetadata({
+            guid: currentGuid.value,
+            metaType: MetaType.VIEW,
+          });
+          if (detail.metadata?.type?.case === "viewMetadata") {
+            leafView.value = detail.metadata.type.value;
+          }
+          return;
+        }
+
+        // No hint from route: try common leaf types.
+        const tableDetail = await getMetadata({
           guid: currentGuid.value,
           metaType: MetaType.TABLE,
         });
-        if (detail.metadata?.type?.case === "tableMetadata") {
-          leafTable.value = detail.metadata.type.value;
+        if (tableDetail.metadata?.type?.case === "tableMetadata") {
+          leafTable.value = tableDetail.metadata.type.value;
+          return;
+        }
+
+        const viewDetail = await getMetadata({
+          guid: currentGuid.value,
+          metaType: MetaType.VIEW,
+        });
+        if (viewDetail.metadata?.type?.case === "viewMetadata") {
+          leafView.value = viewDetail.metadata.type.value;
         }
       } catch {
-        // Ignore; keep empty state for non-table leaf objects.
+        // Ignore; keep empty state for unhandled leaf objects.
       }
     }
   } catch (e) {
@@ -327,6 +380,7 @@ async function fetchTableDetail() {
   isLoading.value = true;
   error.value = null;
   leafTable.value = null;
+  leafView.value = null;
   metadataGroups.value = [];
   nextPageTokenByMetaType.clear();
   activeMetaType.value = null;
@@ -345,6 +399,37 @@ async function fetchTableDetail() {
     }
 
     leafTable.value = detail.metadata.type.value;
+  } catch (e) {
+    const msg = extractErrorMessage(e);
+    error.value = msg || t("metadataBrowser.fetchError");
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+async function fetchViewDetail() {
+  isLoading.value = true;
+  error.value = null;
+  leafTable.value = null;
+  leafView.value = null;
+  metadataGroups.value = [];
+  nextPageTokenByMetaType.clear();
+  activeMetaType.value = null;
+  selectedMetaType.value = null;
+
+  try {
+    await fetchCurrentInstanceEngineIfNeeded();
+
+    const detail = await getMetadata({
+      guid: currentGuid.value,
+      metaType: MetaType.VIEW,
+    });
+
+    if (detail.metadata?.type?.case !== "viewMetadata") {
+      throw new Error("unexpected metadata type");
+    }
+
+    leafView.value = detail.metadata.type.value;
   } catch (e) {
     const msg = extractErrorMessage(e);
     error.value = msg || t("metadataBrowser.fetchError");
@@ -506,7 +591,9 @@ function handleSelectMetadata(item: StoredMetadata, metaType: MetaType) {
   }
 
   const query =
-    metaType === MetaType.TABLE ? { metaType: String(metaType) } : undefined;
+    metaType === MetaType.TABLE || metaType === MetaType.VIEW
+      ? { metaType: String(metaType) }
+      : undefined;
 
   router.push({
     name: "MetadataDetail",
@@ -531,12 +618,15 @@ watch(
     nextPageTokenByMetaType.clear();
     currentInstanceEngine.value = null;
     leafTable.value = null;
+    leafView.value = null;
 
     if (isRootPath.value) {
       await fetchInstances();
     } else {
       if (requestedLeafMetaType.value === MetaType.TABLE) {
         await fetchTableDetail();
+      } else if (requestedLeafMetaType.value === MetaType.VIEW) {
+        await fetchViewDetail();
       } else {
         await fetchMetadataGroups();
       }
