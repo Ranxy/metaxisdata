@@ -84,6 +84,15 @@
           </CardContent>
         </template>
 
+        <template v-else-if="isSequenceDetailView && leafSequence">
+          <CardHeader class="border-b">
+            <CardTitle>{{ t("metadataBrowser.sequenceDetail") }}</CardTitle>
+          </CardHeader>
+          <CardContent class="p-0">
+            <SequenceMetadataDetail :seq="leafSequence" />
+          </CardContent>
+        </template>
+
         <template v-else>
           <CardHeader class="border-b">
             <MetadataTabNav
@@ -140,6 +149,7 @@ import MetadataBreadcrumb from "@/components/metadata/MetadataBreadcrumb.vue";
 import MetadataList from "@/components/metadata/MetadataList.vue";
 import MetadataPagination from "@/components/metadata/MetadataPagination.vue";
 import MetadataTabNav from "@/components/metadata/MetadataTabNav.vue";
+import SequenceMetadataDetail from "@/components/metadata/SequenceMetadataDetail.vue";
 import TableMetadataDetail from "@/components/metadata/TableMetadataDetail.vue";
 import ViewMetadataDetail from "@/components/metadata/ViewMetadataDetail.vue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -149,6 +159,7 @@ import {
   type MaterializedViewMetadata,
   type MetadataResponse_MetadataList,
   MetaType,
+  type SequenceMetadata,
   type StoredMetadata,
   type TableMetadata,
   type ViewMetadata,
@@ -186,6 +197,7 @@ const leafTable = ref<TableMetadata | null>(null);
 const leafView = ref<ViewMetadata | null>(null);
 const leafMaterializedView = ref<MaterializedViewMetadata | null>(null);
 const leafFunction = ref<FunctionMetadata | null>(null);
+const leafSequence = ref<SequenceMetadata | null>(null);
 
 const requestedLeafMetaType = computed(() => {
   const q = route.query.metaType;
@@ -219,6 +231,13 @@ const isFunctionDetailView = computed(() => {
   return (
     requestedLeafMetaType.value === MetaType.FUNCTION ||
     leafFunction.value != null
+  );
+});
+
+const isSequenceDetailView = computed(() => {
+  return (
+    requestedLeafMetaType.value === MetaType.SEQUENCE ||
+    leafSequence.value != null
   );
 });
 
@@ -336,6 +355,7 @@ async function fetchMetadataGroups() {
   leafView.value = null;
   leafMaterializedView.value = null;
   leafFunction.value = null;
+  leafSequence.value = null;
 
   try {
     await fetchCurrentInstanceEngineIfNeeded();
@@ -412,6 +432,17 @@ async function fetchMetadataGroups() {
           return;
         }
 
+        if (preferred === MetaType.SEQUENCE) {
+          const detail = await getMetadata({
+            guid: currentGuid.value,
+            metaType: MetaType.SEQUENCE,
+          });
+          if (detail.metadata?.type?.case === "sequenceMetadata") {
+            leafSequence.value = detail.metadata.type.value;
+          }
+          return;
+        }
+
         // No hint from route: try common leaf types.
         const tableDetail = await getMetadata({
           guid: currentGuid.value,
@@ -446,11 +477,54 @@ async function fetchMetadataGroups() {
         });
         if (fnDetail.metadata?.type?.case === "functionMetadata") {
           leafFunction.value = fnDetail.metadata.type.value;
+          return;
+        }
+
+        const seqDetail = await getMetadata({
+          guid: currentGuid.value,
+          metaType: MetaType.SEQUENCE,
+        });
+        if (seqDetail.metadata?.type?.case === "sequenceMetadata") {
+          leafSequence.value = seqDetail.metadata.type.value;
         }
       } catch {
         // Ignore; keep empty state for unhandled leaf objects.
       }
     }
+  } catch (e) {
+    const msg = extractErrorMessage(e);
+    error.value = msg || t("metadataBrowser.fetchError");
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+async function fetchSequenceDetail() {
+  isLoading.value = true;
+  error.value = null;
+  leafTable.value = null;
+  leafView.value = null;
+  leafMaterializedView.value = null;
+  leafFunction.value = null;
+  leafSequence.value = null;
+  metadataGroups.value = [];
+  nextPageTokenByMetaType.clear();
+  activeMetaType.value = null;
+  selectedMetaType.value = null;
+
+  try {
+    await fetchCurrentInstanceEngineIfNeeded();
+
+    const detail = await getMetadata({
+      guid: currentGuid.value,
+      metaType: MetaType.SEQUENCE,
+    });
+
+    if (detail.metadata?.type?.case !== "sequenceMetadata") {
+      throw new Error("unexpected metadata type");
+    }
+
+    leafSequence.value = detail.metadata.type.value;
   } catch (e) {
     const msg = extractErrorMessage(e);
     error.value = msg || t("metadataBrowser.fetchError");
@@ -742,7 +816,8 @@ function handleSelectMetadata(item: StoredMetadata, metaType: MetaType) {
     metaType === MetaType.TABLE ||
     metaType === MetaType.VIEW ||
     metaType === MetaType.MATERIALIZED_VIEW ||
-    metaType === MetaType.FUNCTION
+    metaType === MetaType.FUNCTION ||
+    metaType === MetaType.SEQUENCE
       ? { metaType: String(metaType) }
       : undefined;
 
@@ -772,6 +847,7 @@ watch(
     leafView.value = null;
     leafMaterializedView.value = null;
     leafFunction.value = null;
+    leafSequence.value = null;
 
     if (isRootPath.value) {
       await fetchInstances();
@@ -784,6 +860,8 @@ watch(
         await fetchMaterializedViewDetail();
       } else if (requestedLeafMetaType.value === MetaType.FUNCTION) {
         await fetchFunctionDetail();
+      } else if (requestedLeafMetaType.value === MetaType.SEQUENCE) {
+        await fetchSequenceDetail();
       } else {
         await fetchMetadataGroups();
       }

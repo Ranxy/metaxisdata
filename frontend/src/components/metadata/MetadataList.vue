@@ -17,6 +17,7 @@ import DatabaseList from "./DatabaseList.vue";
 import FunctionList from "./FunctionList.vue";
 import MaterializedViewList from "./MaterializedViewList.vue";
 import SchemaList from "./SchemaList.vue";
+import SequenceList from "./SequenceList.vue";
 import TableList from "./TableList.vue";
 import ViewList from "./ViewList.vue";
 
@@ -45,6 +46,8 @@ const listComponent = computed(() => {
       return MaterializedViewList;
     case MetaType.FUNCTION:
       return FunctionList;
+    case MetaType.SEQUENCE:
+      return SequenceList;
     default:
       return DatabaseList;
   }
