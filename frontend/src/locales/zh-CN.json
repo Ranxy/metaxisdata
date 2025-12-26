@@ -131,6 +131,17 @@
     "definition": "定义",
     "noViews": "暂无视图",
 
+    "materializedViews": "物化视图",
+    "materializedViewName": "物化视图名称",
+    "materializedViewDetail": "物化视图详情",
+    "noMaterializedViews": "暂无物化视图",
+
+    "triggers": "触发器",
+    "triggersCount": "个触发器",
+    "triggerName": "名称",
+    "event": "事件",
+    "timing": "时机",
+
     "other": "其他",
     "loadMore": "加载更多",
     "fetchError": "加载数据失败"

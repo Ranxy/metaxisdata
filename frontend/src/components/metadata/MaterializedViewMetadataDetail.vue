@@ -1,0 +1,143 @@
+<template>
+  <div class="p-4 space-y-6">
+    <div class="space-y-1">
+      <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <div class="text-lg font-semibold wrap-break-word">
+          {{ view.name }}
+        </div>
+        <div
+          v-if="view.comment"
+          class="text-sm text-muted-foreground wrap-break-word"
+        >
+          {{ view.comment }}
+        </div>
+      </div>
+      <div class="text-sm text-muted-foreground">
+        {{ summaryLine }}
+      </div>
+    </div>
+
+    <div class="space-y-2">
+      <div class="text-sm font-medium">{{ t("metadataBrowser.definition") }}</div>
+      <pre class="text-xs bg-muted rounded p-3 overflow-auto whitespace-pre-wrap break-words">{{
+        view.definition || "-"
+      }}</pre>
+    </div>
+
+    <div class="space-y-2">
+      <div class="flex items-center justify-between">
+        <div class="text-sm font-medium">{{ t("metadataBrowser.indexes") }}</div>
+        <Badge variant="outline">
+          {{ view.indexes.length }} {{ t("metadataBrowser.indexesCount") }}
+        </Badge>
+      </div>
+
+      <Table v-if="view.indexes.length > 0">
+        <TableHeader>
+          <TableRow>
+            <TableHead>{{ t("metadataBrowser.indexName") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.indexType") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.expressions") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.unique") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.primary") }}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow
+            v-for="idx in view.indexes"
+            :key="idx.name"
+          >
+            <TableCell class="font-medium">{{ idx.name }}</TableCell>
+            <TableCell class="text-muted-foreground">{{ idx.type || "-" }}</TableCell>
+            <TableCell class="text-muted-foreground max-w-md truncate">
+              {{ idx.expressions.join(", ") || "-" }}
+            </TableCell>
+            <TableCell>
+              <Badge :variant="idx.unique ? 'success' : 'secondary'">
+                {{ idx.unique ? t("metadataBrowser.yes") : t("metadataBrowser.no") }}
+              </Badge>
+            </TableCell>
+            <TableCell>
+              <Badge :variant="idx.primary ? 'success' : 'secondary'">
+                {{ idx.primary ? t("metadataBrowser.yes") : t("metadataBrowser.no") }}
+              </Badge>
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+
+      <div
+        v-else
+        class="text-sm text-muted-foreground"
+      >
+        {{ t("metadataBrowser.noIndexes") }}
+      </div>
+    </div>
+
+    <div
+      v-if="view.triggers.length > 0"
+      class="space-y-2"
+    >
+      <div class="flex items-center justify-between">
+        <div class="text-sm font-medium">{{ t("metadataBrowser.triggers") }}</div>
+        <Badge variant="outline">
+          {{ view.triggers.length }} {{ t("metadataBrowser.triggersCount") }}
+        </Badge>
+      </div>
+
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{{ t("metadataBrowser.triggerName") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.event") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.timing") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.comment") }}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow
+            v-for="tr in view.triggers"
+            :key="tr.name"
+          >
+            <TableCell class="font-medium">{{ tr.name }}</TableCell>
+            <TableCell class="text-muted-foreground">{{ tr.event || "-" }}</TableCell>
+            <TableCell class="text-muted-foreground">{{ tr.timing || "-" }}</TableCell>
+            <TableCell class="text-muted-foreground max-w-md truncate">
+              {{ tr.comment || "-" }}
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import type { MaterializedViewMetadata } from "@/types/proto-es/v1/database_service_pb";
+
+const props = defineProps<{ view: MaterializedViewMetadata }>();
+
+const { t } = useI18n();
+
+const summaryLine = computed(() => {
+  const parts: string[] = [];
+  parts.push(`${props.view.indexes.length} ${t("metadataBrowser.indexes")}`);
+  if (props.view.triggers.length > 0) {
+    parts.push(
+      `${props.view.triggers.length} ${t("metadataBrowser.triggers")}`
+    );
+  }
+  return parts.join(" · ");
+});
+</script>

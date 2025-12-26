@@ -14,6 +14,7 @@ import {
   type StoredMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
 import DatabaseList from "./DatabaseList.vue";
+import MaterializedViewList from "./MaterializedViewList.vue";
 import SchemaList from "./SchemaList.vue";
 import TableList from "./TableList.vue";
 import ViewList from "./ViewList.vue";
@@ -39,6 +40,8 @@ const listComponent = computed(() => {
       return TableList;
     case MetaType.VIEW:
       return ViewList;
+    case MetaType.MATERIALIZED_VIEW:
+      return MaterializedViewList;
     default:
       return DatabaseList;
   }

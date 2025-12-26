@@ -131,6 +131,17 @@
     "definition": "Definition",
     "noViews": "No views",
 
+    "materializedViews": "Materialized Views",
+    "materializedViewName": "Materialized View Name",
+    "materializedViewDetail": "Materialized View Detail",
+    "noMaterializedViews": "No materialized views",
+
+    "triggers": "Triggers",
+    "triggersCount": "triggers",
+    "triggerName": "Name",
+    "event": "Event",
+    "timing": "Timing",
+
     "other": "Other",
     "loadMore": "Load More",
     "fetchError": "Failed to load data"
