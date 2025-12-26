@@ -8,7 +8,7 @@
         :variant="g.metaType === activeResolved ? 'secondary' : 'ghost'"
         size="sm"
         class="h-9"
-        @click="$emit('select', g.metaType)"
+        @click="handleSelect(g.metaType)"
       >
         <span>{{ getMetaTypeLabel(g.metaType) }}</span>
       </Button>
@@ -18,7 +18,7 @@
     <div class="md:hidden">
       <Select
         :model-value="String(activeResolved)"
-        @update:model-value="(v) => $emit('select', Number(v) as MetaType)"
+        @update:model-value="handleSelect(Number($event) as MetaType)"
       >
         <SelectTrigger>
           <SelectValue :placeholder="t('metadataBrowser.selectType')" />
@@ -60,7 +60,7 @@ const props = defineProps<{
   active: MetaType | null;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   select: [metaType: MetaType];
 }>();
 
@@ -68,6 +68,12 @@ const activeResolved = computed(() => {
   if (props.active != null) return props.active;
   return props.groups[0]?.metaType ?? MetaType.UNSPECIFIED;
 });
+
+function handleSelect(metaType: MetaType) {
+  // Clicking the current (last) level is a no-op.
+  if (metaType === activeResolved.value) return;
+  emit("select", metaType);
+}
 
 function getMetaTypeLabel(type: MetaType): string {
   const labels: Partial<Record<MetaType, string>> = {

@@ -19,7 +19,7 @@
         :class="{
           'font-medium text-foreground': item.guidIndex === lastGuidIndex,
         }"
-        @click="$emit('navigate', item.guidIndex)"
+        @click="handleClick(item.guidIndex)"
       >
         {{ item.label || t("metadataBrowser.defaultSchema") }}
       </button>
@@ -37,7 +37,7 @@ const props = defineProps<{
   items: Array<{ label: string; guidIndex: number }>;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   navigate: [guidIndex: number];
 }>();
 
@@ -47,4 +47,10 @@ const lastGuidIndex = computed(() => {
   const last = props.items[props.items.length - 1];
   return last?.guidIndex ?? -1;
 });
+
+function handleClick(guidIndex: number) {
+  // Clicking the current (last) breadcrumb item is a no-op.
+  if (guidIndex === lastGuidIndex.value) return;
+  emit("navigate", guidIndex);
+}
 </script>
