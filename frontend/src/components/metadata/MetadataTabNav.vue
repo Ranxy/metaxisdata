@@ -77,6 +77,7 @@ function getMetaTypeLabel(type: MetaType): string {
     [MetaType.TABLE]: t("metadataBrowser.tables"),
     [MetaType.VIEW]: t("metadataBrowser.views"),
     [MetaType.MATERIALIZED_VIEW]: t("metadataBrowser.materializedViews"),
+    [MetaType.FUNCTION]: t("metadataBrowser.functions"),
   };
   return labels[type] || t("metadataBrowser.other");
 }

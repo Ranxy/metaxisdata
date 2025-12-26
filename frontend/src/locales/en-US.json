@@ -136,6 +136,13 @@
     "materializedViewDetail": "Materialized View Detail",
     "noMaterializedViews": "No materialized views",
 
+    "functions": "Functions",
+    "functionName": "Function Name",
+    "functionDetail": "Function Detail",
+    "noFunctions": "No functions",
+    "signature": "Signature",
+    "dependencyTables": "Dependency Tables",
+
     "triggers": "Triggers",
     "triggersCount": "triggers",
     "triggerName": "Name",

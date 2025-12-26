@@ -75,6 +75,15 @@
           </CardContent>
         </template>
 
+        <template v-else-if="isFunctionDetailView && leafFunction">
+          <CardHeader class="border-b">
+            <CardTitle>{{ t("metadataBrowser.functionDetail") }}</CardTitle>
+          </CardHeader>
+          <CardContent class="p-0">
+            <FunctionMetadataDetail :fn="leafFunction" />
+          </CardContent>
+        </template>
+
         <template v-else>
           <CardHeader class="border-b">
             <MetadataTabNav
@@ -124,6 +133,7 @@ import { useRoute, useRouter } from "vue-router";
 import { getMetadata, listMetadata } from "@/api/database";
 import { getInstance, listInstances } from "@/api/instance";
 import AppLoading from "@/components/common/AppLoading.vue";
+import FunctionMetadataDetail from "@/components/metadata/FunctionMetadataDetail.vue";
 import InstanceList from "@/components/metadata/InstanceList.vue";
 import MaterializedViewMetadataDetail from "@/components/metadata/MaterializedViewMetadataDetail.vue";
 import MetadataBreadcrumb from "@/components/metadata/MetadataBreadcrumb.vue";
@@ -135,6 +145,7 @@ import ViewMetadataDetail from "@/components/metadata/ViewMetadataDetail.vue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import {
+  type FunctionMetadata,
   type MaterializedViewMetadata,
   type MetadataResponse_MetadataList,
   MetaType,
@@ -174,6 +185,7 @@ const currentInstanceEngine = ref<Engine | null>(null);
 const leafTable = ref<TableMetadata | null>(null);
 const leafView = ref<ViewMetadata | null>(null);
 const leafMaterializedView = ref<MaterializedViewMetadata | null>(null);
+const leafFunction = ref<FunctionMetadata | null>(null);
 
 const requestedLeafMetaType = computed(() => {
   const q = route.query.metaType;
@@ -200,6 +212,13 @@ const isMaterializedViewDetailView = computed(() => {
   return (
     requestedLeafMetaType.value === MetaType.MATERIALIZED_VIEW ||
     leafMaterializedView.value != null
+  );
+});
+
+const isFunctionDetailView = computed(() => {
+  return (
+    requestedLeafMetaType.value === MetaType.FUNCTION ||
+    leafFunction.value != null
   );
 });
 
@@ -316,6 +335,7 @@ async function fetchMetadataGroups() {
   leafTable.value = null;
   leafView.value = null;
   leafMaterializedView.value = null;
+  leafFunction.value = null;
 
   try {
     await fetchCurrentInstanceEngineIfNeeded();
@@ -381,6 +401,17 @@ async function fetchMetadataGroups() {
           return;
         }
 
+        if (preferred === MetaType.FUNCTION) {
+          const detail = await getMetadata({
+            guid: currentGuid.value,
+            metaType: MetaType.FUNCTION,
+          });
+          if (detail.metadata?.type?.case === "functionMetadata") {
+            leafFunction.value = detail.metadata.type.value;
+          }
+          return;
+        }
+
         // No hint from route: try common leaf types.
         const tableDetail = await getMetadata({
           guid: currentGuid.value,
@@ -406,11 +437,53 @@ async function fetchMetadataGroups() {
         });
         if (mvDetail.metadata?.type?.case === "materializedViewMetadata") {
           leafMaterializedView.value = mvDetail.metadata.type.value;
+          return;
+        }
+
+        const fnDetail = await getMetadata({
+          guid: currentGuid.value,
+          metaType: MetaType.FUNCTION,
+        });
+        if (fnDetail.metadata?.type?.case === "functionMetadata") {
+          leafFunction.value = fnDetail.metadata.type.value;
         }
       } catch {
         // Ignore; keep empty state for unhandled leaf objects.
       }
     }
+  } catch (e) {
+    const msg = extractErrorMessage(e);
+    error.value = msg || t("metadataBrowser.fetchError");
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+async function fetchFunctionDetail() {
+  isLoading.value = true;
+  error.value = null;
+  leafTable.value = null;
+  leafView.value = null;
+  leafMaterializedView.value = null;
+  leafFunction.value = null;
+  metadataGroups.value = [];
+  nextPageTokenByMetaType.clear();
+  activeMetaType.value = null;
+  selectedMetaType.value = null;
+
+  try {
+    await fetchCurrentInstanceEngineIfNeeded();
+
+    const detail = await getMetadata({
+      guid: currentGuid.value,
+      metaType: MetaType.FUNCTION,
+    });
+
+    if (detail.metadata?.type?.case !== "functionMetadata") {
+      throw new Error("unexpected metadata type");
+    }
+
+    leafFunction.value = detail.metadata.type.value;
   } catch (e) {
     const msg = extractErrorMessage(e);
     error.value = msg || t("metadataBrowser.fetchError");
@@ -668,7 +741,8 @@ function handleSelectMetadata(item: StoredMetadata, metaType: MetaType) {
   const query =
     metaType === MetaType.TABLE ||
     metaType === MetaType.VIEW ||
-    metaType === MetaType.MATERIALIZED_VIEW
+    metaType === MetaType.MATERIALIZED_VIEW ||
+    metaType === MetaType.FUNCTION
       ? { metaType: String(metaType) }
       : undefined;
 
@@ -697,6 +771,7 @@ watch(
     leafTable.value = null;
     leafView.value = null;
     leafMaterializedView.value = null;
+    leafFunction.value = null;
 
     if (isRootPath.value) {
       await fetchInstances();
@@ -707,6 +782,8 @@ watch(
         await fetchViewDetail();
       } else if (requestedLeafMetaType.value === MetaType.MATERIALIZED_VIEW) {
         await fetchMaterializedViewDetail();
+      } else if (requestedLeafMetaType.value === MetaType.FUNCTION) {
+        await fetchFunctionDetail();
       } else {
         await fetchMetadataGroups();
       }

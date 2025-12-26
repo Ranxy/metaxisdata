@@ -136,6 +136,13 @@
     "materializedViewDetail": "物化视图详情",
     "noMaterializedViews": "暂无物化视图",
 
+    "functions": "函数",
+    "functionName": "函数名称",
+    "functionDetail": "函数详情",
+    "noFunctions": "暂无函数",
+    "signature": "签名",
+    "dependencyTables": "依赖表",
+
     "triggers": "触发器",
     "triggersCount": "个触发器",
     "triggerName": "名称",
