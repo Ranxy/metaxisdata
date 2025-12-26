@@ -143,6 +143,11 @@
     "signature": "Signature",
     "dependencyTables": "Dependency Tables",
 
+    "procedures": "Procedures",
+    "procedureName": "Procedure Name",
+    "procedureDetail": "Procedure Detail",
+    "noProcedures": "No procedures",
+
     "sequences": "Sequences",
     "sequenceName": "Sequence Name",
     "sequenceDetail": "Sequence Detail",

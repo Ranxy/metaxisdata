@@ -84,6 +84,15 @@
           </CardContent>
         </template>
 
+        <template v-else-if="isProcedureDetailView && leafProcedure">
+          <CardHeader class="border-b">
+            <CardTitle>{{ t("metadataBrowser.procedureDetail") }}</CardTitle>
+          </CardHeader>
+          <CardContent class="p-0">
+            <ProcedureMetadataDetail :proc="leafProcedure" />
+          </CardContent>
+        </template>
+
         <template v-else-if="isSequenceDetailView && leafSequence">
           <CardHeader class="border-b">
             <CardTitle>{{ t("metadataBrowser.sequenceDetail") }}</CardTitle>
@@ -149,6 +158,7 @@ import MetadataBreadcrumb from "@/components/metadata/MetadataBreadcrumb.vue";
 import MetadataList from "@/components/metadata/MetadataList.vue";
 import MetadataPagination from "@/components/metadata/MetadataPagination.vue";
 import MetadataTabNav from "@/components/metadata/MetadataTabNav.vue";
+import ProcedureMetadataDetail from "@/components/metadata/ProcedureMetadataDetail.vue";
 import SequenceMetadataDetail from "@/components/metadata/SequenceMetadataDetail.vue";
 import TableMetadataDetail from "@/components/metadata/TableMetadataDetail.vue";
 import ViewMetadataDetail from "@/components/metadata/ViewMetadataDetail.vue";
@@ -159,6 +169,7 @@ import {
   type MaterializedViewMetadata,
   type MetadataResponse_MetadataList,
   MetaType,
+  type ProcedureMetadata,
   type SequenceMetadata,
   type StoredMetadata,
   type TableMetadata,
@@ -197,6 +208,7 @@ const leafTable = ref<TableMetadata | null>(null);
 const leafView = ref<ViewMetadata | null>(null);
 const leafMaterializedView = ref<MaterializedViewMetadata | null>(null);
 const leafFunction = ref<FunctionMetadata | null>(null);
+const leafProcedure = ref<ProcedureMetadata | null>(null);
 const leafSequence = ref<SequenceMetadata | null>(null);
 
 const requestedLeafMetaType = computed(() => {
@@ -231,6 +243,13 @@ const isFunctionDetailView = computed(() => {
   return (
     requestedLeafMetaType.value === MetaType.FUNCTION ||
     leafFunction.value != null
+  );
+});
+
+const isProcedureDetailView = computed(() => {
+  return (
+    requestedLeafMetaType.value === MetaType.PROCEDURE ||
+    leafProcedure.value != null
   );
 });
 
@@ -355,6 +374,7 @@ async function fetchMetadataGroups() {
   leafView.value = null;
   leafMaterializedView.value = null;
   leafFunction.value = null;
+  leafProcedure.value = null;
   leafSequence.value = null;
 
   try {
@@ -432,6 +452,17 @@ async function fetchMetadataGroups() {
           return;
         }
 
+        if (preferred === MetaType.PROCEDURE) {
+          const detail = await getMetadata({
+            guid: currentGuid.value,
+            metaType: MetaType.PROCEDURE,
+          });
+          if (detail.metadata?.type?.case === "procedureMetadata") {
+            leafProcedure.value = detail.metadata.type.value;
+          }
+          return;
+        }
+
         if (preferred === MetaType.SEQUENCE) {
           const detail = await getMetadata({
             guid: currentGuid.value,
@@ -480,6 +511,15 @@ async function fetchMetadataGroups() {
           return;
         }
 
+        const procDetail = await getMetadata({
+          guid: currentGuid.value,
+          metaType: MetaType.PROCEDURE,
+        });
+        if (procDetail.metadata?.type?.case === "procedureMetadata") {
+          leafProcedure.value = procDetail.metadata.type.value;
+          return;
+        }
+
         const seqDetail = await getMetadata({
           guid: currentGuid.value,
           metaType: MetaType.SEQUENCE,
@@ -506,6 +546,7 @@ async function fetchSequenceDetail() {
   leafView.value = null;
   leafMaterializedView.value = null;
   leafFunction.value = null;
+  leafProcedure.value = null;
   leafSequence.value = null;
   metadataGroups.value = [];
   nextPageTokenByMetaType.clear();
@@ -533,6 +574,41 @@ async function fetchSequenceDetail() {
   }
 }
 
+async function fetchProcedureDetail() {
+  isLoading.value = true;
+  error.value = null;
+  leafTable.value = null;
+  leafView.value = null;
+  leafMaterializedView.value = null;
+  leafFunction.value = null;
+  leafProcedure.value = null;
+  leafSequence.value = null;
+  metadataGroups.value = [];
+  nextPageTokenByMetaType.clear();
+  activeMetaType.value = null;
+  selectedMetaType.value = null;
+
+  try {
+    await fetchCurrentInstanceEngineIfNeeded();
+
+    const detail = await getMetadata({
+      guid: currentGuid.value,
+      metaType: MetaType.PROCEDURE,
+    });
+
+    if (detail.metadata?.type?.case !== "procedureMetadata") {
+      throw new Error("unexpected metadata type");
+    }
+
+    leafProcedure.value = detail.metadata.type.value;
+  } catch (e) {
+    const msg = extractErrorMessage(e);
+    error.value = msg || t("metadataBrowser.fetchError");
+  } finally {
+    isLoading.value = false;
+  }
+}
+
 async function fetchFunctionDetail() {
   isLoading.value = true;
   error.value = null;
@@ -540,6 +616,8 @@ async function fetchFunctionDetail() {
   leafView.value = null;
   leafMaterializedView.value = null;
   leafFunction.value = null;
+  leafProcedure.value = null;
+  leafSequence.value = null;
   metadataGroups.value = [];
   nextPageTokenByMetaType.clear();
   activeMetaType.value = null;
@@ -817,6 +895,7 @@ function handleSelectMetadata(item: StoredMetadata, metaType: MetaType) {
     metaType === MetaType.VIEW ||
     metaType === MetaType.MATERIALIZED_VIEW ||
     metaType === MetaType.FUNCTION ||
+    metaType === MetaType.PROCEDURE ||
     metaType === MetaType.SEQUENCE
       ? { metaType: String(metaType) }
       : undefined;
@@ -847,6 +926,7 @@ watch(
     leafView.value = null;
     leafMaterializedView.value = null;
     leafFunction.value = null;
+    leafProcedure.value = null;
     leafSequence.value = null;
 
     if (isRootPath.value) {
@@ -860,6 +940,8 @@ watch(
         await fetchMaterializedViewDetail();
       } else if (requestedLeafMetaType.value === MetaType.FUNCTION) {
         await fetchFunctionDetail();
+      } else if (requestedLeafMetaType.value === MetaType.PROCEDURE) {
+        await fetchProcedureDetail();
       } else if (requestedLeafMetaType.value === MetaType.SEQUENCE) {
         await fetchSequenceDetail();
       } else {

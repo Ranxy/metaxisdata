@@ -143,6 +143,11 @@
     "signature": "签名",
     "dependencyTables": "依赖表",
 
+    "procedures": "存储过程",
+    "procedureName": "存储过程名称",
+    "procedureDetail": "存储过程详情",
+    "noProcedures": "暂无存储过程",
+
     "sequences": "序列",
     "sequenceName": "序列名称",
     "sequenceDetail": "序列详情",
