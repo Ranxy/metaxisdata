@@ -430,6 +430,46 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		}
 		schema.Sequences = nil
 
+		for _, function := range schema.Functions {
+			err = bmc.StoreMetaResourceV2(ctx, schemaGuiPrefix, storepb.MetaType_FUNCTION, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_FunctionMetadata{FunctionMetadata: function}})
+			if err != nil {
+				return errors.Wrapf(err, "failed to store function metadata for function %q in database %q", function.Name, database.DatabaseName)
+			}
+		}
+		schema.Functions = nil
+
+		for _, procedure := range schema.Procedures {
+			err = bmc.StoreMetaResourceV2(ctx, schemaGuiPrefix, storepb.MetaType_PROCEDURE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ProcedureMetadata{ProcedureMetadata: procedure}})
+			if err != nil {
+				return errors.Wrapf(err, "failed to store procedure metadata for procedure %q in database %q", procedure.Name, database.DatabaseName)
+			}
+		}
+		schema.Procedures = nil
+
+		for _, externalTable := range schema.ExternalTables {
+			err = bmc.StoreMetaResourceV2(ctx, schemaGuiPrefix, storepb.MetaType_EXTERNAL_TABLE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ExternalTableMetadata{ExternalTableMetadata: externalTable}})
+			if err != nil {
+				return errors.Wrapf(err, "failed to store external table metadata for external table %q in database %q", externalTable.Name, database.DatabaseName)
+			}
+		}
+		schema.ExternalTables = nil
+
+		for _, pkg := range schema.Packages {
+			err = bmc.StoreMetaResourceV2(ctx, schemaGuiPrefix, storepb.MetaType_PACKAGE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_PackageMetadata{PackageMetadata: pkg}})
+			if err != nil {
+				return errors.Wrapf(err, "failed to store package metadata for package %q in database %q", pkg.Name, database.DatabaseName)
+			}
+		}
+		schema.Packages = nil
+
+		for _, stream := range schema.Streams {
+			err = bmc.StoreMetaResourceV2(ctx, schemaGuiPrefix, storepb.MetaType_STREAM, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_StreamMetadata{StreamMetadata: stream}})
+			if err != nil {
+				return errors.Wrapf(err, "failed to store stream metadata for stream %q in database %q", stream.Name, database.DatabaseName)
+			}
+		}
+		schema.Streams = nil
+
 		{
 			meta := &storepb.StoredMetadata{Type: &storepb.StoredMetadata_SchemaMetadata{SchemaMetadata: schema}}
 			err = bmc.StoreMetaResourceV2(ctx, databaseGuid, storepb.MetaType_SCHEMA, meta)

@@ -441,6 +441,11 @@ func getNextLevelObjectType(metaType storepb.MetaType) []storepb.MetaType {
 			storepb.MetaType_EXTERNAL_TABLE,
 			storepb.MetaType_VIEW,
 			storepb.MetaType_MATERIALIZED_VIEW,
+			storepb.MetaType_FUNCTION,
+			storepb.MetaType_PROCEDURE,
+			storepb.MetaType_SEQUENCE,
+			storepb.MetaType_PACKAGE,
+			storepb.MetaType_STREAM,
 		}
 	case storepb.MetaType_TABLE:
 		return []storepb.MetaType{storepb.MetaType_COLUMN}
