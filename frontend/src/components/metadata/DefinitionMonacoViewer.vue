@@ -68,8 +68,11 @@ const baseOptions: IStandaloneEditorConstructionOptions = {
   folding: false,
   scrollBeyondLastLine: false,
   wordWrap: "on",
-  lineNumbersMinChars: 2,
-  lineDecorationsWidth: 0,
+  // Give the line numbers ~1-char padding on both sides:
+  // - extra min chars creates left padding (numbers are right-aligned)
+  // - decorations width creates right padding before the code text
+  lineNumbersMinChars: 4,
+  lineDecorationsWidth: 10,
   glyphMargin: false,
   overviewRulerLanes: 0,
   renderLineHighlight: "none",
