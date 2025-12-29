@@ -36,15 +36,14 @@
 
     <div class="space-y-2">
       <div class="text-sm font-medium">{{ t("metadataBrowser.definition") }}</div>
-      <pre class="text-xs bg-muted rounded p-3 overflow-auto whitespace-pre-wrap break-words">{{
-        proc.definition || "-"
-      }}</pre>
+      <DefinitionMonacoViewer :content="proc.definition" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
+import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
 import type { ProcedureMetadata } from "@/types/proto-es/v1/database_service_pb";
 import ExpandableText from "./ExpandableText.vue";
 

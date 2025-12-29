@@ -33,9 +33,7 @@
 
     <div class="space-y-2">
       <div class="text-sm font-medium">{{ t("metadataBrowser.definition") }}</div>
-      <pre class="text-xs bg-muted rounded p-3 overflow-auto whitespace-pre-wrap break-words">{{
-        fn.definition || "-"
-      }}</pre>
+      <DefinitionMonacoViewer :content="fn.definition" />
     </div>
 
     <div
@@ -70,6 +68,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
 import {
   Table,
   TableBody,

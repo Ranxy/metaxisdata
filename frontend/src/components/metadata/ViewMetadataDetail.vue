@@ -23,9 +23,7 @@
 
     <div class="space-y-2">
       <div class="text-sm font-medium">{{ t("metadataBrowser.definition") }}</div>
-      <pre class="text-xs bg-muted rounded p-3 overflow-auto whitespace-pre-wrap break-words">{{
-        view.definition || "-"
-      }}</pre>
+      <DefinitionMonacoViewer :content="view.definition" />
     </div>
 
     <div class="space-y-2">
@@ -94,6 +92,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
