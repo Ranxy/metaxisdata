@@ -7,9 +7,13 @@
         </div>
         <div
           v-if="view.comment"
-          class="text-sm text-muted-foreground wrap-break-word"
+          class="text-sm text-muted-foreground wrap-break-word max-w-xl"
         >
-          {{ view.comment }}
+          <ExpandableText
+            :text="view.comment"
+            :item-name="view.name"
+            :dialog-title="t('metadataBrowser.comment')"
+          />
         </div>
       </div>
       <div class="text-sm text-muted-foreground">
@@ -102,8 +106,12 @@
             <TableCell class="font-medium">{{ tr.name }}</TableCell>
             <TableCell class="text-muted-foreground">{{ tr.event || "-" }}</TableCell>
             <TableCell class="text-muted-foreground">{{ tr.timing || "-" }}</TableCell>
-            <TableCell class="text-muted-foreground max-w-md truncate">
-              {{ tr.comment || "-" }}
+            <TableCell class="text-muted-foreground max-w-md">
+              <ExpandableText
+                :text="tr.comment"
+                :item-name="tr.name"
+                :dialog-title="t('metadataBrowser.comment')"
+              />
             </TableCell>
           </TableRow>
         </TableBody>
@@ -125,6 +133,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { MaterializedViewMetadata } from "@/types/proto-es/v1/database_service_pb";
+import ExpandableText from "./ExpandableText.vue";
 
 const props = defineProps<{ view: MaterializedViewMetadata }>();
 

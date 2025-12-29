@@ -7,9 +7,13 @@
         </div>
         <div
           v-if="seq.comment"
-          class="text-sm text-muted-foreground wrap-break-word"
+          class="text-sm text-muted-foreground wrap-break-word max-w-xl"
         >
-          {{ seq.comment }}
+          <ExpandableText
+            :text="seq.comment"
+            :item-name="seq.name"
+            :dialog-title="t('metadataBrowser.comment')"
+          />
         </div>
       </div>
     </div>
@@ -79,6 +83,7 @@
 import { useI18n } from "vue-i18n";
 import { Badge } from "@/components/ui/badge";
 import type { SequenceMetadata } from "@/types/proto-es/v1/database_service_pb";
+import ExpandableText from "./ExpandableText.vue";
 
 defineProps<{ seq: SequenceMetadata }>();
 

@@ -43,8 +43,12 @@
               {{ row.value.cycle ? t("metadataBrowser.yes") : t("metadataBrowser.no") }}
             </Badge>
           </TableCell>
-          <TableCell class="text-muted-foreground max-w-xs truncate">
-            {{ row.value.comment || "-" }}
+          <TableCell class="text-muted-foreground max-w-xs">
+            <ExpandableText
+              :text="row.value.comment"
+              :item-name="row.value.name"
+              :dialog-title="t('metadataBrowser.comment')"
+            />
           </TableCell>
         </TableRow>
       </TableBody>
@@ -69,6 +73,7 @@ import type {
   SequenceMetadata,
   StoredMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
+import ExpandableText from "./ExpandableText.vue";
 
 const props = defineProps<{ items: StoredMetadata[] }>();
 

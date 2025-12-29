@@ -7,9 +7,13 @@
         </div>
         <div
           v-if="proc.comment"
-          class="text-sm text-muted-foreground wrap-break-word"
+          class="text-sm text-muted-foreground wrap-break-word max-w-xl"
         >
-          {{ proc.comment }}
+          <ExpandableText
+            :text="proc.comment"
+            :item-name="proc.name"
+            :dialog-title="t('metadataBrowser.comment')"
+          />
         </div>
       </div>
       <div
@@ -42,6 +46,7 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
 import type { ProcedureMetadata } from "@/types/proto-es/v1/database_service_pb";
+import ExpandableText from "./ExpandableText.vue";
 
 defineProps<{ proc: ProcedureMetadata }>();
 

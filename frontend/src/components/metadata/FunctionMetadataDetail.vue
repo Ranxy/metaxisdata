@@ -7,9 +7,13 @@
         </div>
         <div
           v-if="fn.comment"
-          class="text-sm text-muted-foreground wrap-break-word"
+          class="text-sm text-muted-foreground wrap-break-word max-w-xl"
         >
-          {{ fn.comment }}
+          <ExpandableText
+            :text="fn.comment"
+            :item-name="fn.name"
+            :dialog-title="t('metadataBrowser.comment')"
+          />
         </div>
       </div>
       <div class="text-sm text-muted-foreground">
@@ -75,6 +79,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { FunctionMetadata } from "@/types/proto-es/v1/database_service_pb";
+import ExpandableText from "./ExpandableText.vue";
 
 const props = defineProps<{ fn: FunctionMetadata }>();
 

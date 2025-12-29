@@ -7,9 +7,13 @@
         </div>
         <div
           v-if="table.userComment || table.comment"
-          class="text-sm text-muted-foreground wrap-break-word"
+          class="text-sm text-muted-foreground wrap-break-word max-w-xl"
         >
-          {{ table.userComment || table.comment }}
+          <ExpandableText
+            :text="table.userComment || table.comment"
+            :item-name="table.name"
+            :dialog-title="t('metadataBrowser.comment')"
+          />
         </div>
       </div>
       <div class="text-sm text-muted-foreground">
@@ -135,8 +139,12 @@
               </Badge>
             </TableCell>
             <TableCell class="text-muted-foreground">{{ col.default || "-" }}</TableCell>
-            <TableCell class="text-muted-foreground max-w-md truncate">
-              {{ col.userComment || col.comment || "-" }}
+            <TableCell class="text-muted-foreground max-w-md">
+              <ExpandableText
+                :text="col.userComment || col.comment"
+                :item-name="col.name"
+                :dialog-title="t('metadataBrowser.comment')"
+              />
             </TableCell>
           </TableRow>
         </TableBody>
@@ -305,6 +313,7 @@ import type {
   ColumnMetadata,
   TableMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
+import ExpandableText from "./ExpandableText.vue";
 
 const props = defineProps<{
   table: TableMetadata;

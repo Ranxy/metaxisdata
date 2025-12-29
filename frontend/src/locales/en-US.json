@@ -6,7 +6,9 @@
     "delete": "Delete",
     "edit": "Edit",
     "previous": "Previous",
-    "next": "Next"
+    "next": "Next",
+    "viewFullContent": "View full content",
+    "details": "Details"
   },
   "error": {
     "unknown": "An unknown error occurred. Please try again later"

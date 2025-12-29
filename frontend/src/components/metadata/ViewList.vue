@@ -40,8 +40,12 @@
               {{ truncateDefinition(row.value.definition) }}
             </code>
           </TableCell>
-          <TableCell class="text-muted-foreground max-w-xs truncate">
-            {{ row.value.comment || "-" }}
+          <TableCell class="text-muted-foreground max-w-xs">
+            <ExpandableText
+              :text="row.value.comment"
+              :item-name="row.value.name"
+              :dialog-title="t('metadataBrowser.comment')"
+            />
           </TableCell>
         </TableRow>
       </TableBody>
@@ -66,6 +70,7 @@ import type {
   StoredMetadata,
   ViewMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
+import ExpandableText from "./ExpandableText.vue";
 
 const props = defineProps<{
   items: StoredMetadata[];
