@@ -46,7 +46,6 @@ interface Props {
 interface Emits {
   (event: "update:content", content: string): void;
   (event: "ready", monaco: MonacoModule, editor: IStandaloneCodeEditor): void;
-  sqlDialect: undefined;
 }
 
 const props = withDefaults(defineProps<Props>(), {

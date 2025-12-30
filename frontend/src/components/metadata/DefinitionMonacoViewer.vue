@@ -5,7 +5,7 @@
     :style="{ height: `${editorHeight}px` }"
   >
     <MonacoEditor
-      :content="normalizedContent"
+      :content="displayContent"
       :language="language"
       readonly
       :options="mergedOptions"
@@ -20,18 +20,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { formatSQL } from "@/components/monaco-editor";
 import MonacoEditor from "@/components/monaco-editor/MonacoEditor.vue";
 import type {
   IStandaloneCodeEditor,
   IStandaloneEditorConstructionOptions,
   Language,
   MonacoModule,
+  SQLDialect,
 } from "@/components/monaco-editor/types";
 
 interface Props {
   content?: string;
   language?: Language;
+  sqlDialect?: SQLDialect;
   emptyText?: string;
   minHeight?: number;
   maxHeight?: number;
@@ -55,6 +58,26 @@ const normalizedContent = computed(() => {
   const value = (props.content ?? "").trimEnd();
   return value ? value : "";
 });
+
+const displayContent = ref("");
+
+let formatRequestId = 0;
+watch(
+  () => [normalizedContent.value, props.language, props.sqlDialect] as const,
+  async ([content, language, sqlDialect]) => {
+    displayContent.value = content;
+
+    if (!content) return;
+    if (language !== "sql") return;
+
+    const requestId = ++formatRequestId;
+    const { data, error } = await formatSQL(content, sqlDialect);
+    if (requestId !== formatRequestId) return;
+    if (error) return;
+    displayContent.value = data;
+  },
+  { immediate: true }
+);
 
 const baseOptions: IStandaloneEditorConstructionOptions = {
   automaticLayout: true,
