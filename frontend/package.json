@@ -30,6 +30,7 @@
 		"monaco-editor": "^0.55.1",
 		"pinia": "3.0.4",
 		"radix-vue": "^1.9.17",
+		"sql-formatter": "^15.6.12",
 		"tailwind-merge": "^3.4.0",
 		"vue": "^3.5.25",
 		"vue-i18n": "^9.14.1",

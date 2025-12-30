@@ -10,6 +10,28 @@ export type ITextModel = monaco.editor.ITextModel;
 
 export type Language = "sql" | "javascript" | "json" | "plaintext";
 
+export type SQLDialect =
+  | "mysql"
+  | "postgresql"
+  | "postgres"
+  | "sqlite"
+  | "mariadb"
+  | "bigquery"
+  | "db2"
+  | "hive"
+  | "n1ql"
+  | "plsql"
+  | "oracle"
+  | "redshift"
+  | "spark"
+  | "trino"
+  | "transactsql"
+  | "tsql"
+  | "mssql"
+  | "singlestoredb"
+  | "snowflake"
+  | "tidb";
+
 export type Selection = monaco.Selection;
 
 export interface MonacoEditorProps {

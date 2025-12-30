@@ -20,13 +20,19 @@ import {
   toRef,
   watch,
 } from "vue";
-import { useContent, useOptions, useReadonly } from "./composables";
+import {
+  useContent,
+  useFormatContent,
+  useOptions,
+  useReadonly,
+} from "./composables";
 import { createMonacoEditor } from "./editor";
 import type {
   IStandaloneCodeEditor,
   IStandaloneEditorConstructionOptions,
   Language,
   MonacoModule,
+  SQLDialect,
 } from "./types";
 
 interface Props {
@@ -34,11 +40,13 @@ interface Props {
   language?: Language;
   readonly?: boolean;
   options?: IStandaloneEditorConstructionOptions;
+  sqlDialect?: SQLDialect;
 }
 
 interface Emits {
   (event: "update:content", content: string): void;
   (event: "ready", monaco: MonacoModule, editor: IStandaloneCodeEditor): void;
+  sqlDialect: undefined;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -88,6 +96,7 @@ onMounted(async () => {
 
     useReadonly(monaco, editor, toRef(props, "readonly"));
     useOptions(monaco, editor, toRef(props, "options"));
+    useFormatContent(monaco, editor, toRef(props, "sqlDialect"));
 
     const content = useContent(monaco, editor);
 
