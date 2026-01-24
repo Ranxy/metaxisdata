@@ -181,11 +181,3 @@ func (d *Driver) StopConnectionByID(id string) error {
 	_, err := d.db.Exec(fmt.Sprintf("KILL QUERY %s", id))
 	return err
 }
-
-func getConnectionID(ctx context.Context, conn *sql.Conn) (string, error) {
-	var id string
-	if err := conn.QueryRowContext(ctx, `SELECT CONNECTION_ID();`).Scan(&id); err != nil {
-		return "", err
-	}
-	return id, nil
-}

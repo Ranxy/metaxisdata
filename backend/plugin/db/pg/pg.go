@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -53,7 +52,7 @@ func newDriver() db.Driver {
 }
 
 // Open opens a Postgres driver.
-func (d *Driver) Open(ctx context.Context, _ storepb.Engine, config db.ConnectionConfig) (db.Driver, error) {
+func (d *Driver) Open(_ context.Context, _ storepb.Engine, config db.ConnectionConfig) (db.Driver, error) {
 	var pgxConnConfig *pgx.ConnConfig
 	var err error
 
@@ -243,10 +242,6 @@ func (e *LockTimeoutError) Error() string {
 	return e.Message
 }
 
-func isLockTimeoutError(message string) bool {
-	return strings.Contains(message, "canceling statement due to lock timeout")
-}
-
 var (
 	// DROP DATABASE cannot run inside a transaction block.
 	// DROP DATABASE [ IF EXISTS ] name [ [ WITH ] ( option [, ...] ) ]。
@@ -261,13 +256,7 @@ var (
 	// VACUUM [ ( option [, ...] ) ] [ table_and_columns [, ...] ]
 	// VACUUM [ FULL ] [ FREEZE ] [ VERBOSE ] [ ANALYZE ] [ table_and_columns [, ...] ].
 	vacuumReg = regexp.MustCompile(`(?i)^\s*VACUUM`)
-	// SET ROLE is a special statement that should be run before any other statements containing inside a transaction block or not.
-	setRoleReg = regexp.MustCompile(`(?i)SET\s+((SESSION|LOCAL)\s+)?ROLE`)
 )
-
-func isSetRoleStatement(stmt string) bool {
-	return len(setRoleReg.FindString(stmt)) > 0
-}
 
 func IsNonTransactionStatement(stmt string) bool {
 	if len(dropDatabaseReg.FindString(stmt)) > 0 {
@@ -280,26 +269,6 @@ func IsNonTransactionStatement(stmt string) bool {
 		return true
 	}
 	return len(vacuumReg.FindString(stmt)) > 0
-}
-
-func isSuperuserStatement(stmt string) bool {
-	upperCaseStmt := strings.ToUpper(strings.TrimLeftFunc(stmt, unicode.IsSpace))
-	if strings.HasPrefix(upperCaseStmt, "GRANT") || strings.HasPrefix(upperCaseStmt, "CREATE EXTENSION") || strings.HasPrefix(upperCaseStmt, "CREATE EVENT TRIGGER") || strings.HasPrefix(upperCaseStmt, "COMMENT ON EVENT TRIGGER") || strings.HasPrefix(upperCaseStmt, "COMMENT ON EXTENSION") {
-		return true
-	}
-	return false
-}
-
-func getDatabaseInCreateDatabaseStatement(createDatabaseStatement string) (string, error) {
-	raw := strings.TrimRight(createDatabaseStatement, ";")
-	raw = strings.TrimPrefix(raw, "CREATE DATABASE")
-	tokens := strings.Fields(raw)
-	if len(tokens) == 0 {
-		return "", errors.Errorf("database name not found")
-	}
-	databaseName := strings.TrimLeft(tokens[0], `"`)
-	databaseName = strings.TrimRight(databaseName, `"`)
-	return databaseName, nil
 }
 
 // GetCurrentDatabaseOwner gets the role of the current database.

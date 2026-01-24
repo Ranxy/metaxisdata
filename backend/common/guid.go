@@ -4,16 +4,16 @@ import (
 	"strings"
 )
 
-func GetInstaceFromGuid(guid string) (string, bool) {
-	index := strings.Index(guid, MetaGuidSplit)
+func GetInstaceFromGUID(guid string) (string, bool) {
+	index := strings.Index(guid, MetaGUIDSplit)
 	if index == -1 {
 		return "", false
 	}
 	return guid[:index], true
 }
 
-// GuidPrefix returns the prefix of a GUID up to the last dot.
-func GuidPrefix(guid string) string {
+// GUIDPrefix returns the prefix of a GUID up to the last dot.
+func GUIDPrefix(guid string) string {
 	lastDotIndex := strings.LastIndex(guid, ".")
 	if lastDotIndex == -1 {
 		return ""

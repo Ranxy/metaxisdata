@@ -338,7 +338,7 @@ func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v
 		}
 	}
 
-	if err := validateEmailWithDomains(ctx, s.store, request.Msg.User.Email, principalType == storepb.PrincipalType_SERVICE_ACCOUNT, false); err != nil {
+	if err := validateEmailWithDomains(ctx, s.store, request.Msg.User.Email, principalType == storepb.PrincipalType_SERVICE_ACCOUNT); err != nil {
 		return nil, err
 	}
 	existingUser, err := s.store.GetUserByEmail(ctx, request.Msg.User.Email)
@@ -484,7 +484,7 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 	for _, path := range request.Msg.UpdateMask.Paths {
 		switch path {
 		case "email":
-			if err := validateEmailWithDomains(ctx, s.store, request.Msg.User.Email, user.Type == storepb.PrincipalType_SERVICE_ACCOUNT, false); err != nil {
+			if err := validateEmailWithDomains(ctx, s.store, request.Msg.User.Email, user.Type == storepb.PrincipalType_SERVICE_ACCOUNT); err != nil {
 				return nil, err
 			}
 			existedUser, err := s.store.GetUserByEmail(ctx, request.Msg.User.Email)
@@ -723,22 +723,14 @@ func convertToPrincipalType(userType v1pb.UserType) (storepb.PrincipalType, erro
 	return t, nil
 }
 
-func validateEmailWithDomains(ctx context.Context, stores *store.Store, email string, isServiceAccount bool, checkDomainSetting bool) error {
-	// if licenseService.IsFeatureEnabled(v1pb.PlanFeature_FEATURE_USER_EMAIL_DOMAIN_RESTRICTION) != nil {
-	// nolint:nilerr
-	// feature not enabled, only validate email and skip domain restriction.
-	// if err := validateEmail(email); err != nil {
-	// 	return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid email: %v", err.Error()))
-	// }
-	// return nil
-	// }
+func validateEmailWithDomains(ctx context.Context, stores *store.Store, email string, isServiceAccount bool) error {
 	setting, err := stores.GetWorkspaceGeneralSetting(ctx)
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, errors.Errorf("failed to find workspace setting, error: %v", err))
 	}
 
 	var allowedDomains []string
-	if checkDomainSetting || setting.EnforceIdentityDomain {
+	if setting.EnforceIdentityDomain {
 		allowedDomains = setting.Domains
 	}
 

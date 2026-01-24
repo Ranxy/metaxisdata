@@ -37,7 +37,7 @@ func (d *DBFactory) GetAdminDatabaseDriver(ctx context.Context, instance *store.
 }
 
 // GetDataSourceDriver returns the database driver for a data source.
-func (d *DBFactory) GetDataSourceDriver(ctx context.Context, instance *store.InstanceMessage, dataSource *storepb.DataSource, connectionContext db.ConnectionContext) (db.Driver, error) {
+func (*DBFactory) GetDataSourceDriver(ctx context.Context, instance *store.InstanceMessage, dataSource *storepb.DataSource, connectionContext db.ConnectionContext) (db.Driver, error) {
 	password := dataSource.GetPassword()
 	connectionContext.InstanceID = instance.ResourceID
 	connectionContext.EngineVersion = instance.Metadata.GetVersion()

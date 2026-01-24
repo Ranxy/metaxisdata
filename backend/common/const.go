@@ -43,6 +43,6 @@ const (
 
 	DefaultMetaSubLevelLimit = 21
 
-	// MetaGuidSplit is the separator for GUID in meta queries.
-	MetaGuidSplit = ";"
+	// MetaGUIDSplit is the separator for GUID in meta queries.
+	MetaGUIDSplit = ";"
 )

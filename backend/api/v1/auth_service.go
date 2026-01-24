@@ -94,7 +94,7 @@ func (s *AuthService) Login(ctx context.Context, req *connect.Request[v1pb.Login
 		}
 
 		// Check domain restriction for end users.
-		if err := validateEmailWithDomains(ctx, s.store, loginUser.Email, false, false); err != nil {
+		if err := validateEmailWithDomains(ctx, s.store, loginUser.Email, false); err != nil {
 			return nil, err
 		}
 	}
@@ -289,7 +289,7 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 		}
 	}
 	// If the email is still invalid, we will return an error.
-	if err := validateEmailWithDomains(ctx, s.store, email, false /* isServiceAccount */, false); err != nil {
+	if err := validateEmailWithDomains(ctx, s.store, email, false); err != nil {
 		return nil, err
 	}
 

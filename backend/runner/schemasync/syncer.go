@@ -379,9 +379,9 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	}
 	defer tx.Rollback()
 
-	databaseGuid := buildGuid(database.InstanceID, database.DatabaseName)
+	databaseGUID := buildGUID(database.InstanceID, database.DatabaseName)
 
-	storedMetadatas, err := s.store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GuidPrefix: &databaseGuid})
+	storedMetadatas, err := s.store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUIDPrefix: &databaseGUID})
 	if err != nil {
 		return errors.Wrapf(err, "failed to list existing meta registry for database %q", database.DatabaseName)
 	}
@@ -392,11 +392,11 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	}
 
 	for _, schema := range databaseMetadata.Schemas {
-		schemaGuiPrefix := buildGuid(databaseGuid, schema.Name)
+		schemaGUIDPrefix := buildGUID(databaseGUID, schema.Name)
 		for _, table := range schema.Tables {
 			meta := &storepb.StoredMetadata{Type: &storepb.StoredMetadata_TableMetadata{TableMetadata: table}}
 
-			err = bmc.StoreMetaResourceV2(ctx, schemaGuiPrefix, storepb.MetaType_TABLE, meta)
+			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_TABLE, meta)
 			if err != nil {
 				return errors.Wrapf(err, "failed to store table metadata for table %q in database %q", table.Name, database.DatabaseName)
 			}
@@ -407,7 +407,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		for _, view := range schema.Views {
 			meta := &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ViewMetadata{ViewMetadata: view}}
 
-			err = bmc.StoreMetaResourceV2(ctx, schemaGuiPrefix, storepb.MetaType_VIEW, meta)
+			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_VIEW, meta)
 			if err != nil {
 				return errors.Wrapf(err, "failed to store view metadata for view %q in database %q", view.Name, database.DatabaseName)
 			}
@@ -415,7 +415,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		schema.Views = nil
 
 		for _, materializedView := range schema.MaterializedViews {
-			err = bmc.StoreMetaResourceV2(ctx, buildGuid(databaseGuid, schema.Name), storepb.MetaType_MATERIALIZED_VIEW, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_MaterializedViewMetadata{MaterializedViewMetadata: materializedView}})
+			err = bmc.StoreMetaResourceV2(ctx, buildGUID(databaseGUID, schema.Name), storepb.MetaType_MATERIALIZED_VIEW, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_MaterializedViewMetadata{MaterializedViewMetadata: materializedView}})
 			if err != nil {
 				return errors.Wrapf(err, "failed to store materialized view metadata for materialized view %q in database %q", materializedView.Name, database.DatabaseName)
 			}
@@ -423,7 +423,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		schema.MaterializedViews = nil
 
 		for _, sequence := range schema.Sequences {
-			err = bmc.StoreMetaResourceV2(ctx, schemaGuiPrefix, storepb.MetaType_SEQUENCE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_SequenceMetadata{SequenceMetadata: sequence}})
+			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_SEQUENCE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_SequenceMetadata{SequenceMetadata: sequence}})
 			if err != nil {
 				return errors.Wrapf(err, "failed to store sequence metadata for sequence %q in database %q", sequence.Name, database.DatabaseName)
 			}
@@ -431,7 +431,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		schema.Sequences = nil
 
 		for _, function := range schema.Functions {
-			err = bmc.StoreMetaResourceV2(ctx, schemaGuiPrefix, storepb.MetaType_FUNCTION, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_FunctionMetadata{FunctionMetadata: function}})
+			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_FUNCTION, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_FunctionMetadata{FunctionMetadata: function}})
 			if err != nil {
 				return errors.Wrapf(err, "failed to store function metadata for function %q in database %q", function.Name, database.DatabaseName)
 			}
@@ -439,7 +439,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		schema.Functions = nil
 
 		for _, procedure := range schema.Procedures {
-			err = bmc.StoreMetaResourceV2(ctx, schemaGuiPrefix, storepb.MetaType_PROCEDURE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ProcedureMetadata{ProcedureMetadata: procedure}})
+			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_PROCEDURE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ProcedureMetadata{ProcedureMetadata: procedure}})
 			if err != nil {
 				return errors.Wrapf(err, "failed to store procedure metadata for procedure %q in database %q", procedure.Name, database.DatabaseName)
 			}
@@ -447,7 +447,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		schema.Procedures = nil
 
 		for _, externalTable := range schema.ExternalTables {
-			err = bmc.StoreMetaResourceV2(ctx, schemaGuiPrefix, storepb.MetaType_EXTERNAL_TABLE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ExternalTableMetadata{ExternalTableMetadata: externalTable}})
+			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_EXTERNAL_TABLE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ExternalTableMetadata{ExternalTableMetadata: externalTable}})
 			if err != nil {
 				return errors.Wrapf(err, "failed to store external table metadata for external table %q in database %q", externalTable.Name, database.DatabaseName)
 			}
@@ -455,7 +455,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		schema.ExternalTables = nil
 
 		for _, pkg := range schema.Packages {
-			err = bmc.StoreMetaResourceV2(ctx, schemaGuiPrefix, storepb.MetaType_PACKAGE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_PackageMetadata{PackageMetadata: pkg}})
+			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_PACKAGE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_PackageMetadata{PackageMetadata: pkg}})
 			if err != nil {
 				return errors.Wrapf(err, "failed to store package metadata for package %q in database %q", pkg.Name, database.DatabaseName)
 			}
@@ -463,7 +463,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		schema.Packages = nil
 
 		for _, stream := range schema.Streams {
-			err = bmc.StoreMetaResourceV2(ctx, schemaGuiPrefix, storepb.MetaType_STREAM, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_StreamMetadata{StreamMetadata: stream}})
+			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_STREAM, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_StreamMetadata{StreamMetadata: stream}})
 			if err != nil {
 				return errors.Wrapf(err, "failed to store stream metadata for stream %q in database %q", stream.Name, database.DatabaseName)
 			}
@@ -472,12 +472,11 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 
 		{
 			meta := &storepb.StoredMetadata{Type: &storepb.StoredMetadata_SchemaMetadata{SchemaMetadata: schema}}
-			err = bmc.StoreMetaResourceV2(ctx, databaseGuid, storepb.MetaType_SCHEMA, meta)
+			err = bmc.StoreMetaResourceV2(ctx, databaseGUID, storepb.MetaType_SCHEMA, meta)
 			if err != nil {
 				return errors.Wrapf(err, "failed to store schema metadata for schema %q in database %q", schema.Name, database.DatabaseName)
 			}
 		}
-
 	}
 	databaseMetadata.Schemas = nil
 	{
@@ -509,7 +508,10 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to update database %q for instance %q", database.DatabaseName, database.InstanceID)
 	}
 
-	tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		return errors.Wrapf(err, "failed to commit transaction for database %q", database.DatabaseName)
+	}
 
 	return nil
 }
@@ -519,8 +521,8 @@ type batchMetaCreate struct {
 	guidList []*store.CreateMetaRegistryResourceMessage
 }
 
-func (b *batchMetaCreate) StoreMetaResourceV2(ctx context.Context, prefixName string, objectType storepb.MetaType, data *storepb.StoredMetadata) error {
-	guid, son, err := convertMetadataToGuid(prefixName, objectType, data)
+func (b *batchMetaCreate) StoreMetaResourceV2(_ context.Context, prefixName string, objectType storepb.MetaType, data *storepb.StoredMetadata) error {
+	guid, son, err := convertMetadataToGUID(prefixName, objectType, data)
 	if err != nil {
 		return err
 	}
@@ -536,7 +538,7 @@ func (b *batchMetaCreate) StoreMetaResourceV2(ctx context.Context, prefixName st
 func (b *batchMetaCreate) add(guid string, mt storepb.MetaType, data *storepb.StoredMetadata) {
 	registry := &store.CreateMetaRegistryResourceMessage{
 		MetaRegistryResource: store.MetaRegistryResource{
-			Guid:       guid,
+			GUID:       guid,
 			ObjectType: mt,
 			Metadata:   data,
 		},
@@ -551,13 +553,11 @@ func (b *batchMetaCreate) Run(ctx context.Context, s *store.Store, tx *sql.Tx) e
 	}
 
 	if len(deletes) > 0 {
-		fmt.Println("DELETE S ", len(deletes))
 		if err := s.BatchDeleteMetaRegistry(ctx, tx, deletes); err != nil {
 			return errors.Wrap(err, "BatchDeleteMetaRegistryResourceByID")
 		}
 	}
 	if len(updates) > 0 {
-		fmt.Println("LEN UPDATE ", len(updates))
 		_, err := s.BatchCreateMetaRegistryResource(ctx, tx, updates)
 		if err != nil {
 			return errors.Wrap(err, "BatchCreateMetaRegistryResource")
@@ -567,22 +567,21 @@ func (b *batchMetaCreate) Run(ctx context.Context, s *store.Store, tx *sql.Tx) e
 }
 
 func (b *batchMetaCreate) diff() (updates []*store.CreateMetaRegistryResourceMessage, deletes []*store.MetaRegistryResource, err error) {
-
-	existMap := make(map[store.MetaGuidKey]*store.MetaRegistryResource)
+	existMap := make(map[store.MetaGUIDKey]*store.MetaRegistryResource)
 	for _, item := range b.exist {
-		existMap[item.GuidKey()] = item
+		existMap[item.GUIDKey()] = item
 	}
 
 	for _, item := range b.guidList {
 		metadataBytes, hash, err := store.CalcStoreMetaHash(item.Metadata)
 		if err != nil {
-			return nil, nil, errors.Wrapf(err, "failed to calculate metadata hash for guid %q", item.Guid)
+			return nil, nil, errors.Wrapf(err, "failed to calculate metadata hash for guid %q", item.GUID)
 		}
 
 		item.MetaHash = hash
 		item.MetadataBytes = metadataBytes
 
-		existing, ok := existMap[item.GuidKey()]
+		existing, ok := existMap[item.GUIDKey()]
 		if !ok {
 			// new item
 			updates = append(updates, item)
@@ -590,10 +589,9 @@ func (b *batchMetaCreate) diff() (updates []*store.CreateMetaRegistryResourceMes
 		}
 
 		if existing.MetaHash == nil || item.MetaHash == nil || !bytes.Equal(existing.MetaHash, item.MetaHash) {
-			fmt.Println("UPDATE >>> ", item.Guid)
 			updates = append(updates, item)
 		}
-		delete(existMap, item.GuidKey())
+		delete(existMap, item.GUIDKey())
 	}
 	for _, item := range existMap {
 		deletes = append(deletes, item)
@@ -602,45 +600,44 @@ func (b *batchMetaCreate) diff() (updates []*store.CreateMetaRegistryResourceMes
 	return updates, deletes, nil
 }
 
-func convertMetadataToGuid(prefix string, objectType storepb.MetaType, data *storepb.StoredMetadata) (target string, son []string, err error) {
-
+func convertMetadataToGUID(prefix string, objectType storepb.MetaType, data *storepb.StoredMetadata) (target string, son []string, err error) {
 	switch objectType {
 	case storepb.MetaType_DATABASE:
-		return buildGuid(prefix, data.GetDatabaseSchemaMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetDatabaseSchemaMetadata().Name), nil, nil
 	case storepb.MetaType_SCHEMA:
-		return buildGuid(prefix, data.GetSchemaMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetSchemaMetadata().Name), nil, nil
 	case storepb.MetaType_TABLE:
-		tguid := buildGuid(prefix, data.GetTableMetadata().Name)
-		return tguid, getTableColumnsGuid(tguid, data.GetTableMetadata().Columns), nil
+		tguid := buildGUID(prefix, data.GetTableMetadata().Name)
+		return tguid, getTableColumnsGUID(tguid, data.GetTableMetadata().Columns), nil
 	case storepb.MetaType_VIEW:
-		return buildGuid(prefix, data.GetViewMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetViewMetadata().Name), nil, nil
 	case storepb.MetaType_EXTERNAL_TABLE:
-		return buildGuid(prefix, data.GetExternalTableMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetExternalTableMetadata().Name), nil, nil
 	case storepb.MetaType_FUNCTION:
-		return buildGuid(prefix, data.GetFunctionMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetFunctionMetadata().Name), nil, nil
 	case storepb.MetaType_PROCEDURE:
-		return buildGuid(prefix, data.GetProcedureMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetProcedureMetadata().Name), nil, nil
 	case storepb.MetaType_STREAM:
-		return buildGuid(prefix, data.GetStreamMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetStreamMetadata().Name), nil, nil
 	case storepb.MetaType_MATERIALIZED_VIEW:
-		return buildGuid(prefix, data.GetMaterializedViewMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetMaterializedViewMetadata().Name), nil, nil
 	case storepb.MetaType_SEQUENCE:
-		return buildGuid(prefix, data.GetSequenceMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetSequenceMetadata().Name), nil, nil
 	case storepb.MetaType_PACKAGE:
-		return buildGuid(prefix, data.GetPackageMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetPackageMetadata().Name), nil, nil
 	default:
-		return "", nil, fmt.Errorf("unsupported meta type %v", objectType)
+		return "", nil, errors.Errorf("unsupported meta type %v", objectType)
 	}
 }
 
-func buildGuid(list ...string) string {
-	return strings.Join(list, common.MetaGuidSplit)
+func buildGUID(list ...string) string {
+	return strings.Join(list, common.MetaGUIDSplit)
 }
 
-func getTableColumnsGuid(prefix string, cols []*storepb.ColumnMetadata) []string {
+func getTableColumnsGUID(prefix string, cols []*storepb.ColumnMetadata) []string {
 	var guids []string
 	for _, col := range cols {
-		guids = append(guids, buildGuid(prefix, col.Name))
+		guids = append(guids, buildGUID(prefix, col.Name))
 	}
 	return guids
 }

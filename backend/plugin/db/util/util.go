@@ -1,3 +1,4 @@
+//nolint:revive
 package util
 
 import "github.com/pkg/errors"

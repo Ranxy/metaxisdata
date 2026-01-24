@@ -17,7 +17,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
-	v1 "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/plugin/schema"
@@ -44,7 +43,7 @@ func NewDatabaseService(store *store.Store, stateCfg *state.State, dbFactory *db
 	}
 }
 
-func (s *DatabaseService) GetDatabase(ctx context.Context, req *connect.Request[v1pb.GetDatabaseRequest]) (*connect.Response[v1pb.Database], error) {
+func (*DatabaseService) GetDatabase(_ context.Context, _ *connect.Request[v1pb.GetDatabaseRequest]) (*connect.Response[v1pb.Database], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1pb.DatabaseService.GetDatabase is not implemented"))
 }
 
@@ -117,8 +116,8 @@ func (s *DatabaseService) ListDatabase(ctx context.Context, req *connect.Request
 
 func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request[v1pb.ListMetadataRequest]) (*connect.Response[v1pb.MetadataResponse], error) {
 	var parentType storepb.MetaType
-	if strings.Contains(req.Msg.GetParentGuid(), common.MetaGuidSplit) {
-		parentMeta, err := s.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{Guid: &req.Msg.ParentGuid})
+	if strings.Contains(req.Msg.GetParentGuid(), common.MetaGUIDSplit) {
+		parentMeta, err := s.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &req.Msg.ParentGuid})
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get parent meta registry %q: %v", req.Msg.ParentGuid, err))
 		}
@@ -143,7 +142,7 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 	getTypedMetadataList := func() (list []*v1pb.MetadataResponse_MetadataList, err error) {
 		if req.Msg.MetaType != nil {
 			findMessage := &store.FindMetaRegistryResourceMessage{
-				GuidPrefix: &req.Msg.ParentGuid,
+				GUIDPrefix: &req.Msg.ParentGuid,
 				Limit:      &limitPlusOne,
 				Offset:     &offset.offset,
 				ObjectType: (*storepb.MetaType)(req.Msg.MetaType),
@@ -177,48 +176,46 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 			}
 
 			return list, nil
-
-		} else {
-			subLevelFindMessage := &store.FindSubLevelMetaRegistryResourceMessage{
-				ParentGuid:         req.Msg.ParentGuid,
-				ObjectType:         parentType,
-				LimitPreObjectType: limitPlusOne,
-			}
-			subLevelList, err := s.store.ListSublevelMetaRegistryResource(ctx, subLevelFindMessage)
-			if err != nil {
-				return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list sublevel meta registry resources under %q: %v", req.Msg.ParentGuid, err))
-			}
-
-			typesStoredMetadataMap := make(map[v1pb.MetaType][]*v1pb.StoredMetadata)
-			for _, meta := range subLevelList {
-				tp := v1pb.MetaType(meta.ObjectType)
-				metaMessage := convertStoredMetadataMessage(meta.Metadata)
-				typesStoredMetadataMap[tp] = append(typesStoredMetadataMap[tp], metaMessage)
-			}
-
-			list = []*v1pb.MetadataResponse_MetadataList{}
-
-			for tp, storeLit := range typesStoredMetadataMap {
-				nextPageToken := ""
-				if len(storeLit) == limitPlusOne {
-					storeLit = storeLit[:offset.limit]
-					if nextPageToken, err = offset.getNextPageToken(); err != nil {
-						return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to marshal next page token"))
-					}
-				}
-				list = append(list, &v1pb.MetadataResponse_MetadataList{
-					MetaType:      tp,
-					List:          storeLit,
-					NextPageToken: nextPageToken,
-				})
-			}
-
-			slices.SortFunc(list, func(a, b *v1pb.MetadataResponse_MetadataList) int {
-				return int(a.MetaType.Number() - b.MetaType.Number())
-			})
-
-			return list, nil
 		}
+		subLevelFindMessage := &store.FindSubLevelMetaRegistryResourceMessage{
+			ParentGUID:         req.Msg.ParentGuid,
+			ObjectType:         parentType,
+			LimitPreObjectType: limitPlusOne,
+		}
+		subLevelList, err := s.store.ListSublevelMetaRegistryResource(ctx, subLevelFindMessage)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list sublevel meta registry resources under %q: %v", req.Msg.ParentGuid, err))
+		}
+
+		typesStoredMetadataMap := make(map[v1pb.MetaType][]*v1pb.StoredMetadata)
+		for _, meta := range subLevelList {
+			tp := v1pb.MetaType(meta.ObjectType)
+			metaMessage := convertStoredMetadataMessage(meta.Metadata)
+			typesStoredMetadataMap[tp] = append(typesStoredMetadataMap[tp], metaMessage)
+		}
+
+		list = []*v1pb.MetadataResponse_MetadataList{}
+
+		for tp, storeLit := range typesStoredMetadataMap {
+			nextPageToken := ""
+			if len(storeLit) == limitPlusOne {
+				storeLit = storeLit[:offset.limit]
+				if nextPageToken, err = offset.getNextPageToken(); err != nil {
+					return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to marshal next page token"))
+				}
+			}
+			list = append(list, &v1pb.MetadataResponse_MetadataList{
+				MetaType:      tp,
+				List:          storeLit,
+				NextPageToken: nextPageToken,
+			})
+		}
+
+		slices.SortFunc(list, func(a, b *v1pb.MetadataResponse_MetadataList) int {
+			return int(a.MetaType.Number() - b.MetaType.Number())
+		})
+
+		return list, nil
 	}
 
 	typeddMetadataList, err := getTypedMetadataList()
@@ -231,9 +228,8 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 	return connect.NewResponse(response), nil
 }
 
-func (s *DatabaseService) GetMetadata(ctx context.Context, req *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error) {
-
-	meta, err := s.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{Guid: &req.Msg.Guid, ObjectType: (*storepb.MetaType)(&req.Msg.MetaType)})
+func (s *DatabaseService) GetMetadata(ctx context.Context, req *connect.Request[v1pb.GetMetadataRequest]) (*connect.Response[v1pb.GetMetadataResponse], error) {
+	meta, err := s.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &req.Msg.Guid, ObjectType: (*storepb.MetaType)(&req.Msg.MetaType)})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get meta registry %q: %v", req.Msg.Guid, err))
 	}
@@ -241,15 +237,15 @@ func (s *DatabaseService) GetMetadata(ctx context.Context, req *connect.Request[
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("meta registry %q not found", req.Msg.Guid))
 	}
 
-	response := &v1.GetMetadataResponse{
+	response := &v1pb.GetMetadataResponse{
 		Metadata: convertStoredMetadataMessage(meta.Metadata),
 	}
 
 	return connect.NewResponse(response), nil
 }
 
-func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Request[v1.GetSchemaStringRequest]) (*connect.Response[v1.MetadataSchemaString], error) {
-	instanceGUID, ok := common.GetInstaceFromGuid(req.Msg.Guid)
+func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Request[v1pb.GetSchemaStringRequest]) (*connect.Response[v1pb.MetadataSchemaString], error) {
+	instanceGUID, ok := common.GetInstaceFromGUID(req.Msg.Guid)
 	if !ok {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid guid %q", req.Msg.Guid))
 	}
@@ -263,7 +259,7 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q not found", instanceGUID))
 	}
 
-	meta, err := s.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{Guid: &req.Msg.Guid, ObjectType: (*storepb.MetaType)(&req.Msg.MetaType)})
+	meta, err := s.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &req.Msg.Guid, ObjectType: (*storepb.MetaType)(&req.Msg.MetaType)})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get meta registry %q: %v", req.Msg.Guid, err))
 	}
@@ -281,7 +277,7 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 		}
 
 		// Get sequences that own this table from the same schema
-		schemaPrefix := common.GuidPrefix(req.Msg.Guid)
+		schemaPrefix := common.GUIDPrefix(req.Msg.Guid)
 		sequences, err := s.getTableSequences(ctx, schemaPrefix, tableMeta.Name)
 		if err != nil {
 			return nil, err
@@ -291,7 +287,7 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate table definition: %v", err))
 		}
-		return connect.NewResponse(&v1.MetadataSchemaString{Schema: schemaStr}), nil
+		return connect.NewResponse(&v1pb.MetadataSchemaString{Schema: schemaStr}), nil
 
 	case v1pb.MetaType_VIEW:
 		viewMeta := meta.Metadata.GetViewMetadata()
@@ -303,7 +299,7 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate view definition: %v", err))
 		}
-		return connect.NewResponse(&v1.MetadataSchemaString{Schema: schemaStr}), nil
+		return connect.NewResponse(&v1pb.MetadataSchemaString{Schema: schemaStr}), nil
 
 	case v1pb.MetaType_MATERIALIZED_VIEW:
 		mvMeta := meta.Metadata.GetMaterializedViewMetadata()
@@ -315,7 +311,7 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate materialized view definition: %v", err))
 		}
-		return connect.NewResponse(&v1.MetadataSchemaString{Schema: schemaStr}), nil
+		return connect.NewResponse(&v1pb.MetadataSchemaString{Schema: schemaStr}), nil
 
 	case v1pb.MetaType_FUNCTION:
 		funcMeta := meta.Metadata.GetFunctionMetadata()
@@ -327,7 +323,7 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate function definition: %v", err))
 		}
-		return connect.NewResponse(&v1.MetadataSchemaString{Schema: schemaStr}), nil
+		return connect.NewResponse(&v1pb.MetadataSchemaString{Schema: schemaStr}), nil
 
 	case v1pb.MetaType_PROCEDURE:
 		procMeta := meta.Metadata.GetProcedureMetadata()
@@ -339,7 +335,7 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate procedure definition: %v", err))
 		}
-		return connect.NewResponse(&v1.MetadataSchemaString{Schema: schemaStr}), nil
+		return connect.NewResponse(&v1pb.MetadataSchemaString{Schema: schemaStr}), nil
 
 	default:
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("GetMetadataSchema is not implemented for this meta type"))
@@ -350,7 +346,7 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 func (s *DatabaseService) getTableSequences(ctx context.Context, schemaPrefix, tableName string) ([]*storepb.SequenceMetadata, error) {
 	seqType := storepb.MetaType_SEQUENCE
 	seqList, err := s.store.ListMetaRegistryResource(ctx, &store.FindMetaRegistryResourceMessage{
-		GuidPrefix: &schemaPrefix,
+		GUIDPrefix: &schemaPrefix,
 		ObjectType: &seqType,
 		ExtraArgs: []store.ExtraArgs{
 			{
@@ -396,37 +392,6 @@ func parseToEngineSQL(expr celast.Expr, relation string) (string, error) {
 	}
 
 	return fmt.Sprintf("instance.metadata->>'engine' %s (%s)", relation, strings.Join(engineList, ",")), nil
-}
-
-// getDatabaseMessage retrieves a database by parsing the database resource name.
-// This is a common utility function to avoid code duplication across services.
-func getDatabaseMessage(ctx context.Context, s *store.Store, databaseResourceName string) (*store.DatabaseMessage, error) {
-	instanceID, databaseName, err := common.GetInstanceDatabaseID(databaseResourceName)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse %q", databaseResourceName)
-	}
-	instance, err := s.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get instance %s", instanceID)
-	}
-	if instance == nil {
-		return nil, errors.Errorf("instance not found")
-	}
-
-	find := &store.FindDatabaseMessage{
-		InstanceID:      &instanceID,
-		DatabaseName:    &databaseName,
-		IsCaseSensitive: store.IsObjectCaseSensitive(instance),
-		ShowDeleted:     true,
-	}
-	database, err := s.GetDatabaseV2(ctx, find)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get database")
-	}
-	if database == nil {
-		return nil, errors.Errorf("database %q not found", databaseResourceName)
-	}
-	return database, nil
 }
 
 func getListDatabaseFilter(filter string) (*store.ListResourceFilter, error) {

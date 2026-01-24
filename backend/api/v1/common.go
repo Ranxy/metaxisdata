@@ -10,7 +10,6 @@ import (
 	"connectrpc.com/connect"
 	celast "github.com/google/cel-go/common/ast"
 	"github.com/pkg/errors"
-	"golang.org/x/exp/ebnf"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -45,102 +44,6 @@ func convertDeletedToState(deleted bool) v1pb.State {
 
 func isValidResourceID(resourceID string) bool {
 	return resourceIDMatcher.MatchString(resourceID)
-}
-
-// validateLabels validates labels according to the requirements.
-// Labels must follow these rules:
-// - Maximum 64 labels allowed
-// - Keys must start with lowercase letter, then contain only lowercase letters, numbers, underscores, and dashes (max 63 chars)
-// - Values can contain letters, numbers, underscores, and dashes (max 63 chars, can be empty)
-func validateLabels(labels map[string]string) error {
-	if len(labels) > 64 {
-		return errors.Errorf("maximum 64 labels allowed, got %d", len(labels))
-	}
-	// Key pattern: must start with lowercase letter, then lowercase letters, numbers, underscores, dashes (max 63 chars)
-	keyPattern := `^[a-z][a-z0-9_-]{0,62}$`
-	// Value pattern: letters, numbers, underscores, dashes (max 63 chars, can be empty)
-	valuePattern := `^[a-zA-Z0-9_-]{0,63}$`
-	keyRegex := regexp.MustCompile(keyPattern)
-	valueRegex := regexp.MustCompile(valuePattern)
-	for key, value := range labels {
-		if !keyRegex.MatchString(key) {
-			return errors.Errorf("invalid label key %q: must start with lowercase letter and contain only lowercase letters, numbers, underscores, and dashes (max 63 chars)", key)
-		}
-		if !valueRegex.MatchString(value) {
-			return errors.Errorf("invalid label value %q for key %q: must contain only letters, numbers, underscores, and dashes (max 63 chars)", value, key)
-		}
-	}
-	return nil
-}
-
-// getEBNFTokens will parse the simple filter such as `project = "abc" | "def".` to {project: ["abc", "def"]} .
-func getEBNFTokens(filter, filterKey string) ([]string, error) {
-	grammar, err := ebnf.Parse("", strings.NewReader(filter))
-	if err != nil {
-		return nil, errors.Wrapf(err, "invalid filter %q", filter)
-	}
-	productions, ok := grammar[filterKey]
-	if !ok {
-		return nil, nil
-	}
-	switch expr := productions.Expr.(type) {
-	case *ebnf.Token:
-		// filterKey = "abc".
-		return []string{expr.String}, nil
-	case ebnf.Alternative:
-		// filterKey = "abc" | "def".
-		var tokens []string
-		for _, expr := range expr {
-			token, ok := expr.(*ebnf.Token)
-			if !ok {
-				return nil, errors.Errorf("invalid filter %q", filter)
-			}
-			tokens = append(tokens, token.String)
-		}
-		return tokens, nil
-	case *ebnf.Alternative:
-		// filterKey = "abc" | "def".
-		var tokens []string
-		for _, expr := range *expr {
-			token, ok := expr.(*ebnf.Token)
-			if !ok {
-				return nil, errors.Errorf("invalid filter %q", filter)
-			}
-			tokens = append(tokens, token.String)
-		}
-		return tokens, nil
-	default:
-		return nil, errors.Errorf("invalid filter %q", filter)
-	}
-}
-
-type orderByKey struct {
-	key      string
-	isAscend bool
-}
-
-func parseOrderBy(orderBy string) ([]orderByKey, error) {
-	if orderBy == "" {
-		return nil, nil
-	}
-
-	var result []orderByKey
-	re := regexp.MustCompile(`(\w+)\s*(asc|desc)?`)
-	matches := re.FindAllStringSubmatch(orderBy, -1)
-	for _, match := range matches {
-		if len(match) > 3 {
-			return nil, errors.Errorf("invalid order by %q", orderBy)
-		}
-		key := orderByKey{
-			key:      match[1],
-			isAscend: true,
-		}
-		if len(match) == 3 && match[2] == "desc" {
-			key.isAscend = false
-		}
-		result = append(result, key)
-	}
-	return result, nil
 }
 
 type Expression struct {

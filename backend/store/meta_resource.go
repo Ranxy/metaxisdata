@@ -9,7 +9,6 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -17,29 +16,29 @@ import (
 
 type MetaRegistryResource struct {
 	ID         int64
-	Guid       string
+	GUID       string
 	ObjectType storepb.MetaType
 	Metadata   *storepb.StoredMetadata
 	MetaHash   []byte
 }
 
-func (m *MetaRegistryResource) GuidKey() MetaGuidKey {
-	return MetaGuidKey{
-		Guid:       m.Guid,
+func (m *MetaRegistryResource) GUIDKey() MetaGUIDKey {
+	return MetaGUIDKey{
+		GUID:       m.GUID,
 		ObjectType: m.ObjectType,
 	}
 }
 
-type MetaGuidKey struct {
-	Guid       string
+type MetaGUIDKey struct {
+	GUID       string
 	ObjectType storepb.MetaType
 }
 
 type FindMetaRegistryResourceMessage struct {
 	ID                *int64
 	IDList            *[]int64
-	Guid              *string
-	GuidPrefix        *string
+	GUID              *string
+	GUIDPrefix        *string
 	ObjectType        *storepb.MetaType
 	ExcludeObjectType *[]storepb.MetaType
 	Limit             *int
@@ -48,7 +47,7 @@ type FindMetaRegistryResourceMessage struct {
 }
 
 type FindSubLevelMetaRegistryResourceMessage struct {
-	ParentGuid         string
+	ParentGUID         string
 	ObjectType         storepb.MetaType
 	LimitPreObjectType int
 }
@@ -64,8 +63,8 @@ func (s *Store) GetMetaRegistry(ctx context.Context, find *FindMetaRegistryResou
 			return v, nil
 		}
 	}
-	if find.Guid != nil {
-		if v, ok := s.metaRegistryGuidCache.Get(*find.Guid); ok && s.enableCache {
+	if find.GUID != nil {
+		if v, ok := s.metaRegistryGUIDCache.Get(*find.GUID); ok && s.enableCache {
 			return v, nil
 		}
 	}
@@ -78,13 +77,13 @@ func (s *Store) GetMetaRegistry(ctx context.Context, find *FindMetaRegistryResou
 		return nil, nil
 	}
 	if len(list) > 1 {
-		return nil, fmt.Errorf("found multiple meta registry with the same criteria")
+		return nil, errors.Errorf("found multiple meta registry with the same criteria")
 	}
 	metaRegistry := list[0]
 
 	if isMetaTypeCached(metaRegistry.ObjectType) {
 		s.metaRegistryCache.Add(metaRegistry.ID, metaRegistry)
-		s.metaRegistryGuidCache.Add(metaRegistry.Guid, metaRegistry)
+		s.metaRegistryGUIDCache.Add(metaRegistry.GUID, metaRegistry)
 	}
 	return metaRegistry, nil
 }
@@ -95,7 +94,7 @@ func (s *Store) ListMetaRegistry(ctx context.Context, find *FindMetaRegistryReso
 		return nil, err
 	}
 	defer tx.Rollback()
-	list, err := s.listMetaRegistryResource(ctx, tx, find, true)
+	list, err := s.listMetaRegistryResourceImpl(ctx, tx, find, true)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +104,7 @@ func (s *Store) ListMetaRegistry(ctx context.Context, find *FindMetaRegistryReso
 	for _, metaRegistry := range list {
 		if isMetaTypeCached(metaRegistry.ObjectType) {
 			s.metaRegistryCache.Add(metaRegistry.ID, metaRegistry)
-			s.metaRegistryGuidCache.Add(metaRegistry.Guid, metaRegistry)
+			s.metaRegistryGUIDCache.Add(metaRegistry.GUID, metaRegistry)
 		}
 	}
 	return list, nil
@@ -117,7 +116,7 @@ func (s *Store) ListMetaRegistryResource(ctx context.Context, find *FindMetaRegi
 		return nil, err
 	}
 	defer tx.Rollback()
-	list, err := s.listMetaRegistryResource(ctx, tx, find, true)
+	list, err := s.listMetaRegistryResourceImpl(ctx, tx, find, true)
 	if err != nil {
 		return nil, err
 	}
@@ -128,19 +127,19 @@ func (s *Store) ListMetaRegistryResource(ctx context.Context, find *FindMetaRegi
 		if isMetaTypeCached(metaRegistry.ObjectType) {
 			reg := &MetaRegistryResource{
 				ID:         metaRegistry.ID,
-				Guid:       metaRegistry.Guid,
+				GUID:       metaRegistry.GUID,
 				ObjectType: metaRegistry.ObjectType,
 				Metadata:   metaRegistry.Metadata,
 				MetaHash:   metaRegistry.MetaHash,
 			}
 			s.metaRegistryCache.Add(metaRegistry.ID, reg)
-			s.metaRegistryGuidCache.Add(metaRegistry.Guid, reg)
+			s.metaRegistryGUIDCache.Add(metaRegistry.GUID, reg)
 		}
 	}
 	return list, nil
 }
 
-func (s *Store) listMetaRegistryResource(ctx context.Context, txn *sql.Tx, find *FindMetaRegistryResourceMessage, withMetadata bool) ([]*MetaRegistryResource, error) {
+func (*Store) listMetaRegistryResourceImpl(ctx context.Context, txn *sql.Tx, find *FindMetaRegistryResourceMessage, withMetadata bool) ([]*MetaRegistryResource, error) {
 	where, args := []string{"TRUE"}, []any{}
 	if v := find.ID; v != nil {
 		where, args = append(where, fmt.Sprintf("meta_registry_resource.id = $%d", len(args)+1)), append(args, *v)
@@ -148,10 +147,10 @@ func (s *Store) listMetaRegistryResource(ctx context.Context, txn *sql.Tx, find 
 	if v := find.IDList; v != nil {
 		where, args = append(where, fmt.Sprintf("meta_registry_resource.id = ANY($%d)", len(args)+1)), append(args, *v)
 	}
-	if v := find.Guid; v != nil {
+	if v := find.GUID; v != nil {
 		where, args = append(where, fmt.Sprintf("meta_registry_resource.guid = $%d", len(args)+1)), append(args, *v)
 	}
-	if v := find.GuidPrefix; v != nil {
+	if v := find.GUIDPrefix; v != nil {
 		where, args = append(where, fmt.Sprintf("meta_registry_resource.guid LIKE $%d", len(args)+1)), append(args, *v+"%")
 	}
 	if v := find.ObjectType; v != nil {
@@ -211,7 +210,7 @@ func (s *Store) listMetaRegistryResource(ctx context.Context, txn *sql.Tx, find 
 		var metaRegistryMessage MetaRegistryResource
 		if err := rows.Scan(
 			&metaRegistryMessage.ID,
-			&metaRegistryMessage.Guid,
+			&metaRegistryMessage.GUID,
 			&metaRegistryMessage.ObjectType,
 			&metadata,
 			&metaRegistryMessage.MetaHash,
@@ -220,7 +219,7 @@ func (s *Store) listMetaRegistryResource(ctx context.Context, txn *sql.Tx, find 
 		}
 		if len(metadata) != 0 {
 			m := &storepb.StoredMetadata{}
-			if err := protojson.Unmarshal(metadata, m); err != nil {
+			if err := common.ProtojsonUnmarshaler.Unmarshal(metadata, m); err != nil {
 				return nil, errors.Wrap(err, " failed to unmarshal stored metadata")
 			}
 			metaRegistryMessage.Metadata = m
@@ -246,7 +245,7 @@ func (s *Store) ListSublevelMetaRegistryResource(ctx context.Context, find *Find
 		find.LimitPreObjectType = common.DefaultMetaSubLevelLimit
 	}
 
-	list, err := s.listSublevelMetaRegistryResource(ctx, tx, find.ParentGuid, find.ObjectType, find.LimitPreObjectType)
+	list, err := s.listSublevelMetaRegistryResourceImpl(ctx, tx, find.ParentGUID, find.ObjectType, find.LimitPreObjectType)
 	if err != nil {
 		return nil, err
 	}
@@ -256,13 +255,13 @@ func (s *Store) ListSublevelMetaRegistryResource(ctx context.Context, find *Find
 	for _, metaRegistry := range list {
 		if isMetaTypeCached(metaRegistry.ObjectType) {
 			s.metaRegistryCache.Add(metaRegistry.ID, metaRegistry)
-			s.metaRegistryGuidCache.Add(metaRegistry.Guid, metaRegistry)
+			s.metaRegistryGUIDCache.Add(metaRegistry.GUID, metaRegistry)
 		}
 	}
 	return list, nil
 }
 
-func (s *Store) listSublevelMetaRegistryResource(ctx context.Context, txn *sql.Tx, parentGuid string, objectType storepb.MetaType, limitPreObjectType int) ([]*MetaRegistryResource, error) {
+func (*Store) listSublevelMetaRegistryResourceImpl(ctx context.Context, txn *sql.Tx, parentGUID string, objectType storepb.MetaType, limitPreObjectType int) ([]*MetaRegistryResource, error) {
 	// Whether using Lateral Join or Windows, for large datasets,
 	// PG's query optimizer seems unable to select the correct index.
 	// Therefore, we directly use the UNION ALL method here.
@@ -272,7 +271,7 @@ func (s *Store) listSublevelMetaRegistryResource(ctx context.Context, txn *sql.T
 		return []*MetaRegistryResource{}, nil
 	}
 
-	nextPrefix := parentGuid + common.MetaGuidSplit + "%"
+	nextPrefix := parentGUID + common.MetaGUIDSplit + "%"
 	args := []any{}
 
 	qb := strings.Builder{}
@@ -295,6 +294,7 @@ func (s *Store) listSublevelMetaRegistryResource(ctx context.Context, txn *sql.T
 		ORDER BY guid limit %d)
 		`, unionStr, len(args)+1, len(args)+2, limitPreObjectType)
 		args = append(args, nextPrefix, nextType)
+		//nolint:revive
 		qb.WriteString(nextQuery)
 	}
 	var metaRegistryMessages []*MetaRegistryResource
@@ -308,7 +308,7 @@ func (s *Store) listSublevelMetaRegistryResource(ctx context.Context, txn *sql.T
 		var metaRegistryMessage MetaRegistryResource
 		if err := rows.Scan(
 			&metaRegistryMessage.ID,
-			&metaRegistryMessage.Guid,
+			&metaRegistryMessage.GUID,
 			&metaRegistryMessage.ObjectType,
 			&metadata,
 			&metaRegistryMessage.MetaHash,
@@ -317,7 +317,7 @@ func (s *Store) listSublevelMetaRegistryResource(ctx context.Context, txn *sql.T
 		}
 		if len(metadata) != 0 {
 			m := &storepb.StoredMetadata{}
-			if err := protojson.Unmarshal(metadata, m); err != nil {
+			if err := common.ProtojsonUnmarshaler.Unmarshal(metadata, m); err != nil {
 				return nil, errors.Wrap(err, " failed to unmarshal stored metadata")
 			}
 			metaRegistryMessage.Metadata = m
@@ -339,7 +339,7 @@ func (s *Store) BatchCreateMetaRegistryResource(ctx context.Context, tx *sql.Tx,
 	metadata := make([]string, 0, len(creates))
 	metaHashes := make([][]byte, 0, len(creates))
 	for _, create := range creates {
-		guids = append(guids, create.Guid)
+		guids = append(guids, create.GUID)
 		objectTypes = append(objectTypes, create.ObjectType)
 		metaHashes = append(metaHashes, create.MetaHash)
 		metadata = append(metadata, string(create.MetadataBytes))
@@ -373,23 +373,26 @@ func (s *Store) BatchCreateMetaRegistryResource(ctx context.Context, tx *sql.Tx,
 	i := 0
 	for rows.Next() {
 		if err := rows.Scan(&creates[i].ID); err != nil {
-			slog.Error("InsertReturningFailed", slog.String("guid", creates[i].Guid), "object_type", creates[i].ObjectType.String())
+			slog.Error("InsertReturningFailed", slog.String("guid", creates[i].GUID), "object_type", creates[i].ObjectType.String())
 			return nil, errors.Wrap(err, "InsertReturningFailed")
 		}
 		i++
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	for _, create := range creates {
 		metaRegistory := &MetaRegistryResource{
 			ID:         create.ID,
-			Guid:       create.Guid,
+			GUID:       create.GUID,
 			ObjectType: create.ObjectType,
 			Metadata:   create.Metadata,
 			MetaHash:   create.MetaHash,
 		}
 		if isMetaTypeCached(metaRegistory.ObjectType) {
 			s.metaRegistryCache.Add(metaRegistory.ID, metaRegistory)
-			s.metaRegistryGuidCache.Add(metaRegistory.Guid, metaRegistory)
+			s.metaRegistryGUIDCache.Add(metaRegistory.GUID, metaRegistory)
 		}
 	}
 
@@ -408,15 +411,13 @@ func (s *Store) BatchDeleteMetaRegistry(ctx context.Context, tx *sql.Tx, list []
 		ids = append(ids, registry.ID)
 	}
 
-	fmt.Println("DELETE !!! ", len(ids))
-
 	if _, err := tx.ExecContext(ctx, `DELETE FROM meta_registry_resource WHERE id = ANY($1)`, pq.Array(ids)); err != nil {
 		return err
 	}
 
 	for _, registry := range list {
 		s.metaRegistryCache.Remove(registry.ID)
-		s.metaRegistryGuidCache.Remove(registry.Guid)
+		s.metaRegistryGUIDCache.Remove(registry.GUID)
 	}
 	return nil
 }

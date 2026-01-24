@@ -230,7 +230,7 @@ func (s *InstanceService) ListInstances(ctx context.Context, req *connect.Reques
 }
 
 // ListInstanceDatabase list all databases in the instance.
-func (s *InstanceService) ListInstanceDatabase(ctx context.Context, req *connect.Request[v1pb.ListInstanceDatabaseRequest]) (*connect.Response[v1pb.ListInstanceDatabaseResponse], error) {
+func (*InstanceService) ListInstanceDatabase(context.Context, *connect.Request[v1pb.ListInstanceDatabaseRequest]) (*connect.Response[v1pb.ListInstanceDatabaseResponse], error) {
 	// var instanceMessage *store.InstanceMessage
 
 	// if req.Msg.Instance != nil {
@@ -272,10 +272,6 @@ func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Reque
 	}
 	if !isValidResourceID(req.Msg.InstanceId) {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid instance ID %v", req.Msg.InstanceId))
-	}
-
-	if err := s.instanceCountGuard(ctx); err != nil {
-		return nil, err
 	}
 
 	instanceMessage, err := convertInstanceToInstanceMessage(req.Msg.InstanceId, req.Msg.Instance)
@@ -354,7 +350,7 @@ func (s *InstanceService) checkInstanceDataSources(instance *store.InstanceMessa
 	return nil
 }
 
-func (s *InstanceService) checkDataSource(instance *store.InstanceMessage, dataSource *storepb.DataSource) error {
+func (*InstanceService) checkDataSource(_ *store.InstanceMessage, dataSource *storepb.DataSource) error {
 	if dataSource.GetId() == "" {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("data source id is required"))
 	}
@@ -493,9 +489,6 @@ func (s *InstanceService) UndeleteInstance(ctx context.Context, req *connect.Req
 	}
 	if !instance.Deleted {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("instance %q is active", req.Msg.Name))
-	}
-	if err := s.instanceCountGuard(ctx); err != nil {
-		return nil, err
 	}
 
 	ins, err := s.store.UpdateInstanceV2(ctx, &store.UpdateInstanceMessage{
@@ -951,17 +944,6 @@ func convertInstanceMessage(instance *store.InstanceMessage) *v1pb.Instance {
 	}
 }
 
-// buildRoleName builds the role name with the given instance ID and role name.
-func buildRoleName(b *strings.Builder, instanceID, roleName string) string {
-	b.Reset()
-	_, _ = b.WriteString(common.InstanceNamePrefix)
-	_, _ = b.WriteString(instanceID)
-	_, _ = b.WriteString("/")
-	_, _ = b.WriteString(common.RolePrefix)
-	_, _ = b.WriteString(roleName)
-	return b.String()
-}
-
 func convertInstanceToInstanceMessage(instanceID string, instance *v1pb.Instance) (*store.InstanceMessage, error) {
 	datasources, err := convertV1DataSources(instance.DataSources)
 	if err != nil {
@@ -1413,18 +1395,4 @@ func convertV1DataSourceType(tp v1pb.DataSourceType) (storepb.DataSourceType, er
 	default:
 		return storepb.DataSourceType_DATA_SOURCE_UNSPECIFIED, errors.Errorf("invalid data source type %v", tp)
 	}
-}
-
-func (s *InstanceService) instanceCountGuard(ctx context.Context) error {
-	// instanceLimit := s.licenseService.GetInstanceLimit(ctx)
-
-	// count, err := s.store.CountInstance(ctx, &store.CountInstanceMessage{})
-	// if err != nil {
-	// 	return connect.NewError(connect.CodeInternal, err)
-	// }
-	// if count >= instanceLimit {
-	// 	return connect.NewError(connect.CodeResourceExhausted, errors.Errorf("reached the maximum instance count %d", instanceLimit))
-	// }
-
-	return nil
 }

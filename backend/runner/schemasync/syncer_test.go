@@ -19,8 +19,8 @@ import (
 
 func getTestSyncer(t *testing.T) *Syncer {
 	ctx := context.TODO()
-	PgUrl := os.Getenv("PG_URL")
-	s, err := store.New(ctx, PgUrl, false)
+	pgURL := os.Getenv("PG_URL")
+	s, err := store.New(ctx, pgURL, false)
 	require.NoError(t, err)
 
 	dbFactory := dbfactory.New(s)
@@ -43,12 +43,11 @@ func TestSyncInstance(t *testing.T) {
 	instance, err := s.store.GetInstanceV2(ctx, find)
 	require.NoError(t, err)
 
-	im, schema, new, err := s.SyncInstance(context.Background(), instance)
+	im, schema, newSchema, err := s.SyncInstance(context.Background(), instance)
 	require.NoError(t, err)
 	require.NotNil(t, im)
 	require.NotNil(t, schema)
-	require.NotNil(t, new)
-
+	require.NotNil(t, newSchema)
 }
 
 func TestSyncDatabase(t *testing.T) {
@@ -71,7 +70,7 @@ func TestSyncDatabase(t *testing.T) {
 
 	guidPrefix := id + "." + dbName
 	excludeObjectType := []storepb.MetaType{storepb.MetaType_COLUMN}
-	list, err := s.store.ListMetaRegistryResource(ctx, &store.FindMetaRegistryResourceMessage{GuidPrefix: &guidPrefix, ExcludeObjectType: &excludeObjectType})
+	list, err := s.store.ListMetaRegistryResource(ctx, &store.FindMetaRegistryResourceMessage{GUIDPrefix: &guidPrefix, ExcludeObjectType: &excludeObjectType})
 	require.NoError(t, err)
 
 	got, err := json.Marshal(list)

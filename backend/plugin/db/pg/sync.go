@@ -1489,6 +1489,8 @@ func getEventTriggers(txn *sql.Tx, extensionDepend map[int]bool) ([]*storepb.Eve
 }
 
 // buildEventTriggerDefinition constructs the CREATE EVENT TRIGGER statement from metadata.
+//
+//nolint:revive
 func buildEventTriggerDefinition(et *storepb.EventTriggerMetadata) string {
 	var buf strings.Builder
 	buf.WriteString("CREATE EVENT TRIGGER ")
