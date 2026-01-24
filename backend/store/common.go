@@ -33,3 +33,9 @@ type ListResourceFilter struct {
 	Args  []any
 	Where string
 }
+
+type ExtraArgs struct {
+	Left  string
+	Op    string
+	Right any
+}

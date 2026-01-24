@@ -108,6 +108,7 @@
     - [GetDatabaseRequest](#metaxisdata-v1-GetDatabaseRequest)
     - [GetMetadataRequest](#metaxisdata-v1-GetMetadataRequest)
     - [GetMetadataResponse](#metaxisdata-v1-GetMetadataResponse)
+    - [GetSchemaStringRequest](#metaxisdata-v1-GetSchemaStringRequest)
     - [GridLevel](#metaxisdata-v1-GridLevel)
     - [IndexMetadata](#metaxisdata-v1-IndexMetadata)
     - [InstanceRoleMetadata](#metaxisdata-v1-InstanceRoleMetadata)
@@ -118,6 +119,7 @@
     - [MaterializedViewMetadata](#metaxisdata-v1-MaterializedViewMetadata)
     - [MetadataResponse](#metaxisdata-v1-MetadataResponse)
     - [MetadataResponse.MetadataList](#metaxisdata-v1-MetadataResponse-MetadataList)
+    - [MetadataSchemaString](#metaxisdata-v1-MetadataSchemaString)
     - [PackageMetadata](#metaxisdata-v1-PackageMetadata)
     - [ProcedureMetadata](#metaxisdata-v1-ProcedureMetadata)
     - [RuleMetadata](#metaxisdata-v1-RuleMetadata)
@@ -1730,6 +1732,22 @@ FunctionMetadata is the metadata for functions.
 
 
 
+<a name="metaxisdata-v1-GetSchemaStringRequest"></a>
+
+### GetSchemaStringRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  | The global unique id for metadata table: &#34;instance_1;db2;schema3;table4&#34; view: &#34;instance_1;db2;schema3;view2&#34; |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GridLevel"></a>
 
 ### GridLevel
@@ -1920,6 +1938,21 @@ MaterializedViewMetadata is the metadata for materialized views.
 | meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
 | list | [StoredMetadata](#metaxisdata-v1-StoredMetadata) | repeated |  |
 | next_page_token | [string](#string) |  | A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-MetadataSchemaString"></a>
+
+### MetadataSchemaString
+MetadataSchemaString is the schema define for metadata.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| schema | [string](#string) |  | The schema dump from metadata. |
 
 
 
@@ -2439,6 +2472,7 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | ListDatabase | [ListDatabaseRequest](#metaxisdata-v1-ListDatabaseRequest) | [ListDatabasesResponse](#metaxisdata-v1-ListDatabasesResponse) |  |
 | ListMetadata | [ListMetadataRequest](#metaxisdata-v1-ListMetadataRequest) | [MetadataResponse](#metaxisdata-v1-MetadataResponse) |  |
 | GetMetadata | [GetMetadataRequest](#metaxisdata-v1-GetMetadataRequest) | [GetMetadataResponse](#metaxisdata-v1-GetMetadataResponse) |  |
+| GetSchemaString | [GetSchemaStringRequest](#metaxisdata-v1-GetSchemaStringRequest) | [MetadataSchemaString](#metaxisdata-v1-MetadataSchemaString) | Generates schema DDL for a database object. |
 
  
 

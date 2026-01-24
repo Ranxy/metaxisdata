@@ -45,6 +45,9 @@ const (
 	// DatabaseServiceGetMetadataProcedure is the fully-qualified name of the DatabaseService's
 	// GetMetadata RPC.
 	DatabaseServiceGetMetadataProcedure = "/metaxisdata.v1.DatabaseService/GetMetadata"
+	// DatabaseServiceGetSchemaStringProcedure is the fully-qualified name of the DatabaseService's
+	// GetSchemaString RPC.
+	DatabaseServiceGetSchemaStringProcedure = "/metaxisdata.v1.DatabaseService/GetSchemaString"
 )
 
 // DatabaseServiceClient is a client for the metaxisdata.v1.DatabaseService service.
@@ -53,6 +56,8 @@ type DatabaseServiceClient interface {
 	ListDatabase(context.Context, *connect.Request[v1.ListDatabaseRequest]) (*connect.Response[v1.ListDatabasesResponse], error)
 	ListMetadata(context.Context, *connect.Request[v1.ListMetadataRequest]) (*connect.Response[v1.MetadataResponse], error)
 	GetMetadata(context.Context, *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error)
+	// Generates schema DDL for a database object.
+	GetSchemaString(context.Context, *connect.Request[v1.GetSchemaStringRequest]) (*connect.Response[v1.MetadataSchemaString], error)
 }
 
 // NewDatabaseServiceClient constructs a client for the metaxisdata.v1.DatabaseService service. By
@@ -90,15 +95,22 @@ func NewDatabaseServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(databaseServiceMethods.ByName("GetMetadata")),
 			connect.WithClientOptions(opts...),
 		),
+		getSchemaString: connect.NewClient[v1.GetSchemaStringRequest, v1.MetadataSchemaString](
+			httpClient,
+			baseURL+DatabaseServiceGetSchemaStringProcedure,
+			connect.WithSchema(databaseServiceMethods.ByName("GetSchemaString")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // databaseServiceClient implements DatabaseServiceClient.
 type databaseServiceClient struct {
-	getDatabase  *connect.Client[v1.GetDatabaseRequest, v1.Database]
-	listDatabase *connect.Client[v1.ListDatabaseRequest, v1.ListDatabasesResponse]
-	listMetadata *connect.Client[v1.ListMetadataRequest, v1.MetadataResponse]
-	getMetadata  *connect.Client[v1.GetMetadataRequest, v1.GetMetadataResponse]
+	getDatabase     *connect.Client[v1.GetDatabaseRequest, v1.Database]
+	listDatabase    *connect.Client[v1.ListDatabaseRequest, v1.ListDatabasesResponse]
+	listMetadata    *connect.Client[v1.ListMetadataRequest, v1.MetadataResponse]
+	getMetadata     *connect.Client[v1.GetMetadataRequest, v1.GetMetadataResponse]
+	getSchemaString *connect.Client[v1.GetSchemaStringRequest, v1.MetadataSchemaString]
 }
 
 // GetDatabase calls metaxisdata.v1.DatabaseService.GetDatabase.
@@ -121,12 +133,19 @@ func (c *databaseServiceClient) GetMetadata(ctx context.Context, req *connect.Re
 	return c.getMetadata.CallUnary(ctx, req)
 }
 
+// GetSchemaString calls metaxisdata.v1.DatabaseService.GetSchemaString.
+func (c *databaseServiceClient) GetSchemaString(ctx context.Context, req *connect.Request[v1.GetSchemaStringRequest]) (*connect.Response[v1.MetadataSchemaString], error) {
+	return c.getSchemaString.CallUnary(ctx, req)
+}
+
 // DatabaseServiceHandler is an implementation of the metaxisdata.v1.DatabaseService service.
 type DatabaseServiceHandler interface {
 	GetDatabase(context.Context, *connect.Request[v1.GetDatabaseRequest]) (*connect.Response[v1.Database], error)
 	ListDatabase(context.Context, *connect.Request[v1.ListDatabaseRequest]) (*connect.Response[v1.ListDatabasesResponse], error)
 	ListMetadata(context.Context, *connect.Request[v1.ListMetadataRequest]) (*connect.Response[v1.MetadataResponse], error)
 	GetMetadata(context.Context, *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error)
+	// Generates schema DDL for a database object.
+	GetSchemaString(context.Context, *connect.Request[v1.GetSchemaStringRequest]) (*connect.Response[v1.MetadataSchemaString], error)
 }
 
 // NewDatabaseServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -160,6 +179,12 @@ func NewDatabaseServiceHandler(svc DatabaseServiceHandler, opts ...connect.Handl
 		connect.WithSchema(databaseServiceMethods.ByName("GetMetadata")),
 		connect.WithHandlerOptions(opts...),
 	)
+	databaseServiceGetSchemaStringHandler := connect.NewUnaryHandler(
+		DatabaseServiceGetSchemaStringProcedure,
+		svc.GetSchemaString,
+		connect.WithSchema(databaseServiceMethods.ByName("GetSchemaString")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.DatabaseService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DatabaseServiceGetDatabaseProcedure:
@@ -170,6 +195,8 @@ func NewDatabaseServiceHandler(svc DatabaseServiceHandler, opts ...connect.Handl
 			databaseServiceListMetadataHandler.ServeHTTP(w, r)
 		case DatabaseServiceGetMetadataProcedure:
 			databaseServiceGetMetadataHandler.ServeHTTP(w, r)
+		case DatabaseServiceGetSchemaStringProcedure:
+			databaseServiceGetSchemaStringHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -193,4 +220,8 @@ func (UnimplementedDatabaseServiceHandler) ListMetadata(context.Context, *connec
 
 func (UnimplementedDatabaseServiceHandler) GetMetadata(context.Context, *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.GetMetadata is not implemented"))
+}
+
+func (UnimplementedDatabaseServiceHandler) GetSchemaString(context.Context, *connect.Request[v1.GetSchemaStringRequest]) (*connect.Response[v1.MetadataSchemaString], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.GetSchemaString is not implemented"))
 }

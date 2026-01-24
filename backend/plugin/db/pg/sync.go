@@ -9,13 +9,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/blang/semver/v4"
+	"github.com/lib/pq"
+	"github.com/pkg/errors"
+
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db/util"
-	"github.com/blang/semver/v4"
-	"github.com/lib/pq"
-	"github.com/pkg/errors"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )

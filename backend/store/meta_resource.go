@@ -44,6 +44,7 @@ type FindMetaRegistryResourceMessage struct {
 	ExcludeObjectType *[]storepb.MetaType
 	Limit             *int
 	Offset            *int
+	ExtraArgs         []ExtraArgs
 }
 
 type FindSubLevelMetaRegistryResourceMessage struct {
@@ -158,6 +159,12 @@ func (s *Store) listMetaRegistryResource(ctx context.Context, txn *sql.Tx, find 
 	}
 	if v := find.ExcludeObjectType; v != nil && len(*v) > 0 {
 		where, args = append(where, fmt.Sprintf("meta_registry_resource.object_type != ALL($%d)", len(args)+1)), append(args, *v)
+	}
+
+	if v := find.ExtraArgs; len(v) > 0 {
+		for _, extraArg := range v {
+			where, args = append(where, fmt.Sprintf("%s %s $%d", extraArg.Left, extraArg.Op, len(args)+1)), append(args, extraArg.Right)
+		}
 	}
 
 	var query string
@@ -327,7 +334,6 @@ func (s *Store) listSublevelMetaRegistryResource(ctx context.Context, txn *sql.T
 
 // BatchCreateMetaRegistryResource creates a meta registry.
 func (s *Store) BatchCreateMetaRegistryResource(ctx context.Context, tx *sql.Tx, creates []*CreateMetaRegistryResourceMessage) ([]*MetaRegistryResource, error) {
-
 	guids := make([]string, 0, len(creates))
 	objectTypes := make([]storepb.MetaType, 0, len(creates))
 	metadata := make([]string, 0, len(creates))
@@ -413,7 +419,6 @@ func (s *Store) BatchDeleteMetaRegistry(ctx context.Context, tx *sql.Tx, list []
 		s.metaRegistryGuidCache.Remove(registry.Guid)
 	}
 	return nil
-
 }
 
 func isMetaTypeCached(metaType storepb.MetaType) bool {

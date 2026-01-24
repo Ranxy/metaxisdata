@@ -370,6 +370,51 @@ export declare type GetMetadataResponse = Message<"metaxisdata.v1.GetMetadataRes
 export declare const GetMetadataResponseSchema: GenMessage<GetMetadataResponse>;
 
 /**
+ * @generated from message metaxisdata.v1.GetSchemaStringRequest
+ */
+export declare type GetSchemaStringRequest = Message<"metaxisdata.v1.GetSchemaStringRequest"> & {
+  /**
+   * The global unique id for metadata
+   * table: "instance_1;db2;schema3;table4"
+   * view: "instance_1;db2;schema3;view2"
+   *
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 2;
+   */
+  metaType: MetaType;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetSchemaStringRequest.
+ * Use `create(GetSchemaStringRequestSchema)` to create a new message.
+ */
+export declare const GetSchemaStringRequestSchema: GenMessage<GetSchemaStringRequest>;
+
+/**
+ * MetadataSchemaString is the schema define for metadata.
+ *
+ * @generated from message metaxisdata.v1.MetadataSchemaString
+ */
+export declare type MetadataSchemaString = Message<"metaxisdata.v1.MetadataSchemaString"> & {
+  /**
+   * The schema dump from metadata.
+   *
+   * @generated from field: string schema = 1;
+   */
+  schema: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.MetadataSchemaString.
+ * Use `create(MetadataSchemaStringSchema)` to create a new message.
+ */
+export declare const MetadataSchemaStringSchema: GenMessage<MetadataSchemaString>;
+
+/**
  * @generated from message metaxisdata.v1.StoredMetadata
  */
 export declare type StoredMetadata = Message<"metaxisdata.v1.StoredMetadata"> & {
@@ -3004,6 +3049,16 @@ export declare const DatabaseService: GenService<{
     methodKind: "unary";
     input: typeof GetMetadataRequestSchema;
     output: typeof GetMetadataResponseSchema;
+  },
+  /**
+   * Generates schema DDL for a database object.
+   *
+   * @generated from rpc metaxisdata.v1.DatabaseService.GetSchemaString
+   */
+  getSchemaString: {
+    methodKind: "unary";
+    input: typeof GetSchemaStringRequestSchema;
+    output: typeof MetadataSchemaStringSchema;
   },
 }>;
 

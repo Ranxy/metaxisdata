@@ -582,6 +582,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetSchemaStringRequest"><span class="badge">M</span>GetSchemaStringRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GridLevel"><span class="badge">M</span>GridLevel</a>
                 </li>
               
@@ -619,6 +623,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.MetadataResponse.MetadataList"><span class="badge">M</span>MetadataResponse.MetadataList</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.MetadataSchemaString"><span class="badge">M</span>MetadataSchemaString</a>
                 </li>
               
                 <li>
@@ -5060,6 +5068,39 @@ table: &#34;instance_1;db2;schema3;table4&#34; </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetSchemaStringRequest">GetSchemaStringRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The global unique id for metadata
+table: &#34;instance_1;db2;schema3;table4&#34;
+view: &#34;instance_1;db2;schema3;view2&#34; </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GridLevel">GridLevel</h3>
         <p>GridLevel defines a grid level for spatial tessellation.</p>
 
@@ -5601,6 +5642,30 @@ If meta_type is not specified, the query will ignore page_size and return the fi
                   <td></td>
                   <td><p>A token, which can be sent as `page_token` to retrieve the next page.
 If this field is omitted, there are no subsequent pages. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.MetadataSchemaString">MetadataSchemaString</h3>
+        <p>MetadataSchemaString is the schema define for metadata.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>schema</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The schema dump from metadata. </p></td>
                 </tr>
               
             </tbody>
@@ -7340,6 +7405,13 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
                 <td><p></p></td>
               </tr>
             
+              <tr>
+                <td>GetSchemaString</td>
+                <td><a href="#metaxisdata.v1.GetSchemaStringRequest">GetSchemaStringRequest</a></td>
+                <td><a href="#metaxisdata.v1.MetadataSchemaString">MetadataSchemaString</a></td>
+                <td><p>Generates schema DDL for a database object.</p></td>
+              </tr>
+            
           </tbody>
         </table>
 
@@ -7394,6 +7466,16 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
                 <td>GetMetadata</td>
                 <td>GET</td>
                 <td>/v1/metadata</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetSchemaString</td>
+                <td>GET</td>
+                <td>/v1/metadata/schemaString</td>
                 <td></td>
               </tr>
               

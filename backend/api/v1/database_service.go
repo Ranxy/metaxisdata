@@ -20,6 +20,7 @@ import (
 	v1 "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
+	"github.com/Ranxy/metaxisdata/backend/plugin/schema"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -245,6 +246,130 @@ func (s *DatabaseService) GetMetadata(ctx context.Context, req *connect.Request[
 	}
 
 	return connect.NewResponse(response), nil
+}
+
+func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Request[v1.GetSchemaStringRequest]) (*connect.Response[v1.MetadataSchemaString], error) {
+	instanceGUID, ok := common.GetInstaceFromGuid(req.Msg.Guid)
+	if !ok {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid guid %q", req.Msg.Guid))
+	}
+
+	instance, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceGUID})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get instance %q: %v", instanceGUID, err))
+	}
+
+	if instance == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q not found", instanceGUID))
+	}
+
+	meta, err := s.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{Guid: &req.Msg.Guid, ObjectType: (*storepb.MetaType)(&req.Msg.MetaType)})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get meta registry %q: %v", req.Msg.Guid, err))
+	}
+	if meta == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("meta registry %q not found", req.Msg.Guid))
+	}
+
+	engine := instance.Metadata.GetEngine()
+
+	switch req.Msg.MetaType {
+	case v1pb.MetaType_TABLE:
+		tableMeta := meta.Metadata.GetTableMetadata()
+		if tableMeta == nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.New("table metadata is nil"))
+		}
+
+		// Get sequences that own this table from the same schema
+		schemaPrefix := common.GuidPrefix(req.Msg.Guid)
+		sequences, err := s.getTableSequences(ctx, schemaPrefix, tableMeta.Name)
+		if err != nil {
+			return nil, err
+		}
+
+		schemaStr, err := schema.GetTableDefinition(engine, tableMeta.Name, tableMeta, sequences)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate table definition: %v", err))
+		}
+		return connect.NewResponse(&v1.MetadataSchemaString{Schema: schemaStr}), nil
+
+	case v1pb.MetaType_VIEW:
+		viewMeta := meta.Metadata.GetViewMetadata()
+		if viewMeta == nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.New("view metadata is nil"))
+		}
+
+		schemaStr, err := schema.GetViewDefinition(engine, viewMeta.Name, viewMeta)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate view definition: %v", err))
+		}
+		return connect.NewResponse(&v1.MetadataSchemaString{Schema: schemaStr}), nil
+
+	case v1pb.MetaType_MATERIALIZED_VIEW:
+		mvMeta := meta.Metadata.GetMaterializedViewMetadata()
+		if mvMeta == nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.New("materialized view metadata is nil"))
+		}
+
+		schemaStr, err := schema.GetMaterializedViewDefinition(engine, mvMeta.Name, mvMeta)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate materialized view definition: %v", err))
+		}
+		return connect.NewResponse(&v1.MetadataSchemaString{Schema: schemaStr}), nil
+
+	case v1pb.MetaType_FUNCTION:
+		funcMeta := meta.Metadata.GetFunctionMetadata()
+		if funcMeta == nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.New("function metadata is nil"))
+		}
+
+		schemaStr, err := schema.GetFunctionDefinition(engine, funcMeta.Name, funcMeta)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate function definition: %v", err))
+		}
+		return connect.NewResponse(&v1.MetadataSchemaString{Schema: schemaStr}), nil
+
+	case v1pb.MetaType_PROCEDURE:
+		procMeta := meta.Metadata.GetProcedureMetadata()
+		if procMeta == nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.New("procedure metadata is nil"))
+		}
+
+		schemaStr, err := schema.GetProcedureDefinition(engine, procMeta.Name, procMeta)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate procedure definition: %v", err))
+		}
+		return connect.NewResponse(&v1.MetadataSchemaString{Schema: schemaStr}), nil
+
+	default:
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("GetMetadataSchema is not implemented for this meta type"))
+	}
+}
+
+// getTableSequences retrieves sequences that belong to a specific table.
+func (s *DatabaseService) getTableSequences(ctx context.Context, schemaPrefix, tableName string) ([]*storepb.SequenceMetadata, error) {
+	seqType := storepb.MetaType_SEQUENCE
+	seqList, err := s.store.ListMetaRegistryResource(ctx, &store.FindMetaRegistryResourceMessage{
+		GuidPrefix: &schemaPrefix,
+		ObjectType: &seqType,
+		ExtraArgs: []store.ExtraArgs{
+			{
+				Left:  "metadata->'sequenceMetadata'->>'ownerTable'",
+				Op:    "=",
+				Right: tableName,
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var sequences []*storepb.SequenceMetadata
+	for _, seq := range seqList {
+		seqMeta := seq.Metadata.GetSequenceMetadata()
+		sequences = append(sequences, seqMeta)
+	}
+	return sequences, nil
 }
 
 func parseToEngineSQL(expr celast.Expr, relation string) (string, error) {

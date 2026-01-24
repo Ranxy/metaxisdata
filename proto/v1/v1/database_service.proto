@@ -29,6 +29,12 @@ service DatabaseService {
   rpc GetMetadata(GetMetadataRequest) returns (GetMetadataResponse) {
     option (google.api.http) = {get: "/v1/metadata"};
   }
+
+  // Generates schema DDL for a database object.
+  rpc GetSchemaString(GetSchemaStringRequest) returns (MetadataSchemaString) {
+    option (google.api.http) = {get: "/v1/metadata/schemaString"};
+  }
+
 }
 
 message GetDatabaseRequest {
@@ -209,6 +215,25 @@ message GetMetadataRequest {
 message GetMetadataResponse {
   StoredMetadata metadata = 1;
 }
+
+message GetSchemaStringRequest{
+  // The global unique id for metadata
+  // table: "instance_1;db2;schema3;table4"
+  // view: "instance_1;db2;schema3;view2"
+  string guid = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/DatabaseMetadata"}
+  ];
+  MetaType meta_type = 2;
+}
+
+
+// MetadataSchemaString is the schema define for metadata.
+message MetadataSchemaString {
+  // The schema dump from metadata.
+  string schema = 1;
+}
+
 
 message StoredMetadata {
   oneof type {

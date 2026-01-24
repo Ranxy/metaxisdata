@@ -748,6 +748,57 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/metadata/schemaString:
+        get:
+            tags:
+                - DatabaseService
+            description: Generates schema DDL for a database object.
+            operationId: DatabaseService_GetSchemaString
+            parameters:
+                - name: guid
+                  in: query
+                  description: |-
+                    The global unique id for metadata
+                     table: "instance_1;db2;schema3;table4"
+                     view: "instance_1;db2;schema3;view2"
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - PACKAGE
+                        - STREAM
+                        - TASK
+                    type: string
+                    format: enum
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MetadataSchemaString'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/users:
         get:
             tags:
@@ -2268,6 +2319,13 @@ components:
                     description: |-
                         A token, which can be sent as `page_token` to retrieve the next page.
                          If this field is omitted, there are no subsequent pages.
+        MetadataSchemaString:
+            type: object
+            properties:
+                schema:
+                    type: string
+                    description: The schema dump from metadata.
+            description: MetadataSchemaString is the schema define for metadata.
         OAuth2IdentityProviderContext:
             type: object
             properties:
