@@ -424,7 +424,7 @@ import {
   Trash2,
   Users,
 } from "lucide-vue-next";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   createUser,
@@ -809,6 +809,12 @@ async function restoreUser(user: User) {
 // Lifecycle
 onMounted(() => {
   fetchUsers();
+});
+
+watch(showRecycleBin, (isOpen) => {
+  if (isOpen && deletedUsers.value.length === 0) {
+    fetchDeletedUsers();
+  }
 });
 </script>
 
