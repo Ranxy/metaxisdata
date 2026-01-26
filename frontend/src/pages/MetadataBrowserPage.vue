@@ -49,7 +49,7 @@
           <CardHeader class="border-b">
             <CardTitle>{{ t("metadataBrowser.tableDetail") }}</CardTitle>
           </CardHeader>
-          <CardContent class="p-0">
+          <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
             <TableMetadataDetail
               :table="leafTable"
               :instance-engine="currentInstanceEngine"
@@ -62,7 +62,7 @@
           <CardHeader class="border-b">
             <CardTitle>{{ t("metadataBrowser.viewDetail") }}</CardTitle>
           </CardHeader>
-          <CardContent class="p-0">
+          <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
             <ViewMetadataDetail
               :view="leafView"
               :guid="currentGuid"
@@ -74,7 +74,7 @@
           <CardHeader class="border-b">
             <CardTitle>{{ t("metadataBrowser.materializedViewDetail") }}</CardTitle>
           </CardHeader>
-          <CardContent class="p-0">
+          <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
             <MaterializedViewMetadataDetail
               :view="leafMaterializedView"
               :guid="currentGuid"
@@ -86,7 +86,7 @@
           <CardHeader class="border-b">
             <CardTitle>{{ t("metadataBrowser.functionDetail") }}</CardTitle>
           </CardHeader>
-          <CardContent class="p-0">
+          <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
             <FunctionMetadataDetail :fn="leafFunction" />
           </CardContent>
         </template>
@@ -95,7 +95,7 @@
           <CardHeader class="border-b">
             <CardTitle>{{ t("metadataBrowser.procedureDetail") }}</CardTitle>
           </CardHeader>
-          <CardContent class="p-0">
+          <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
             <ProcedureMetadataDetail :proc="leafProcedure" />
           </CardContent>
         </template>
@@ -104,7 +104,7 @@
           <CardHeader class="border-b">
             <CardTitle>{{ t("metadataBrowser.sequenceDetail") }}</CardTitle>
           </CardHeader>
-          <CardContent class="p-0">
+          <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
             <SequenceMetadataDetail :seq="leafSequence" />
           </CardContent>
         </template>
