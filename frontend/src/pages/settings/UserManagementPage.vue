@@ -168,12 +168,6 @@
               <h2 class="text-lg font-semibold">
                 {{ t("userManagement.recycleBin") }}
               </h2>
-              <Badge
-                v-if="deletedUsers.length > 0"
-                variant="destructive"
-              >
-                {{ deletedUsers.length }}
-              </Badge>
             </div>
             <ChevronDown
               :class="[
