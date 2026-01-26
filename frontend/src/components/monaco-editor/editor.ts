@@ -12,9 +12,17 @@ export async function createMonacoEditor(config: {
 }): Promise<CreateMonacoEditorResult> {
   const monaco = await loadMonacoEditor();
 
+  const defaults = defaultEditorOptions();
   const editor = monaco.editor.create(config.container, {
-    ...defaultEditorOptions(),
+    ...defaults,
     ...config.options,
+    // Deep merge scrollbar options to ensure alwaysConsumeMouseWheel is preserved
+    scrollbar: {
+      ...defaults.scrollbar,
+      ...config.options?.scrollbar,
+      // Always allow scroll events to propagate when at boundaries
+      alwaysConsumeMouseWheel: false,
+    },
   });
 
   return { editor, monaco };

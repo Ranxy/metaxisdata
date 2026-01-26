@@ -103,6 +103,7 @@ const baseOptions: IStandaloneEditorConstructionOptions = {
   scrollbar: {
     verticalScrollbarSize: 10,
     horizontalScrollbarSize: 10,
+    alwaysConsumeMouseWheel: false,
   },
 };
 
