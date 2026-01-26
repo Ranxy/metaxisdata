@@ -58,12 +58,12 @@ func RegisterGetSequenceDefinition(engine storepb.Engine, f getSequenceDefinitio
 	getSequenceDefinitions[engine] = f
 }
 
-func GetSequenceDefinition(engine storepb.Engine, sequenceName string, sequence *storepb.SequenceMetadata) (string, error) {
+func GetSequenceDefinition(engine storepb.Engine, schemaName string, sequence *storepb.SequenceMetadata) (string, error) {
 	f, ok := getSequenceDefinitions[engine]
 	if !ok {
 		return "", errors.Errorf("engine %s is not supported", engine)
 	}
-	return f(sequenceName, sequence)
+	return f(schemaName, sequence)
 }
 
 func RegisterGetFunctionDefinition(engine storepb.Engine, f getFunctionDefinition) {
@@ -75,12 +75,12 @@ func RegisterGetFunctionDefinition(engine storepb.Engine, f getFunctionDefinitio
 	getFunctionDefinitions[engine] = f
 }
 
-func GetFunctionDefinition(engine storepb.Engine, functionName string, function *storepb.FunctionMetadata) (string, error) {
+func GetFunctionDefinition(engine storepb.Engine, schemaName string, function *storepb.FunctionMetadata) (string, error) {
 	f, ok := getFunctionDefinitions[engine]
 	if !ok {
 		return "", errors.Errorf("engine %s is not supported", engine)
 	}
-	return f(functionName, function)
+	return f(schemaName, function)
 }
 
 func RegisterGetProcedureDefinition(engine storepb.Engine, f getProcedureDefinition) {
@@ -92,12 +92,12 @@ func RegisterGetProcedureDefinition(engine storepb.Engine, f getProcedureDefinit
 	getProcedureDefinitions[engine] = f
 }
 
-func GetProcedureDefinition(engine storepb.Engine, procedureName string, procedure *storepb.ProcedureMetadata) (string, error) {
+func GetProcedureDefinition(engine storepb.Engine, schemaName string, procedure *storepb.ProcedureMetadata) (string, error) {
 	f, ok := getProcedureDefinitions[engine]
 	if !ok {
 		return "", errors.Errorf("engine %s is not supported", engine)
 	}
-	return f(procedureName, procedure)
+	return f(schemaName, procedure)
 }
 
 func RegisterGetMaterializedViewDefinition(engine storepb.Engine, f getMaterializedViewDefinition) {
@@ -109,12 +109,12 @@ func RegisterGetMaterializedViewDefinition(engine storepb.Engine, f getMateriali
 	getMaterializedViewDefinitions[engine] = f
 }
 
-func GetMaterializedViewDefinition(engine storepb.Engine, viewName string, view *storepb.MaterializedViewMetadata) (string, error) {
+func GetMaterializedViewDefinition(engine storepb.Engine, schemaName string, view *storepb.MaterializedViewMetadata) (string, error) {
 	f, ok := getMaterializedViewDefinitions[engine]
 	if !ok {
 		return "", errors.Errorf("engine %s is not supported", engine)
 	}
-	return f(viewName, view)
+	return f(schemaName, view)
 }
 
 func RegisterGetViewDefinition(engine storepb.Engine, f getViewDefinition) {
@@ -126,12 +126,12 @@ func RegisterGetViewDefinition(engine storepb.Engine, f getViewDefinition) {
 	getViewDefinitions[engine] = f
 }
 
-func GetViewDefinition(engine storepb.Engine, viewName string, view *storepb.ViewMetadata) (string, error) {
+func GetViewDefinition(engine storepb.Engine, schemaName string, view *storepb.ViewMetadata) (string, error) {
 	f, ok := getViewDefinitions[engine]
 	if !ok {
 		return "", errors.Errorf("engine %s is not supported", engine)
 	}
-	return f(viewName, view)
+	return f(schemaName, view)
 }
 
 func RegisterGetTableDefinition(engine storepb.Engine, f getTableDefinition) {
@@ -143,10 +143,10 @@ func RegisterGetTableDefinition(engine storepb.Engine, f getTableDefinition) {
 	getTableDefinitions[engine] = f
 }
 
-func GetTableDefinition(engine storepb.Engine, tableName string, table *storepb.TableMetadata, sequences []*storepb.SequenceMetadata) (string, error) {
+func GetTableDefinition(engine storepb.Engine, schemaName string, table *storepb.TableMetadata, sequences []*storepb.SequenceMetadata) (string, error) {
 	f, ok := getTableDefinitions[engine]
 	if !ok {
 		return "", errors.Errorf("engine %s is not supported", engine)
 	}
-	return f(tableName, table, sequences)
+	return f(schemaName, table, sequences)
 }

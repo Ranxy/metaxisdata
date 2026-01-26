@@ -250,6 +250,11 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid guid %q", req.Msg.Guid))
 	}
 
+	schemaName, ok := common.GetSchemaFromGUID(req.Msg.Guid)
+	if !ok {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid guid %q", req.Msg.Guid))
+	}
+
 	instance, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceGUID})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get instance %q: %v", instanceGUID, err))
@@ -283,7 +288,7 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 			return nil, err
 		}
 
-		schemaStr, err := schema.GetTableDefinition(engine, tableMeta.Name, tableMeta, sequences)
+		schemaStr, err := schema.GetTableDefinition(engine, schemaName, tableMeta, sequences)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate table definition: %v", err))
 		}
@@ -295,7 +300,7 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 			return nil, connect.NewError(connect.CodeInternal, errors.New("view metadata is nil"))
 		}
 
-		schemaStr, err := schema.GetViewDefinition(engine, viewMeta.Name, viewMeta)
+		schemaStr, err := schema.GetViewDefinition(engine, schemaName, viewMeta)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate view definition: %v", err))
 		}
@@ -307,7 +312,7 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 			return nil, connect.NewError(connect.CodeInternal, errors.New("materialized view metadata is nil"))
 		}
 
-		schemaStr, err := schema.GetMaterializedViewDefinition(engine, mvMeta.Name, mvMeta)
+		schemaStr, err := schema.GetMaterializedViewDefinition(engine, schemaName, mvMeta)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate materialized view definition: %v", err))
 		}
@@ -319,7 +324,7 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 			return nil, connect.NewError(connect.CodeInternal, errors.New("function metadata is nil"))
 		}
 
-		schemaStr, err := schema.GetFunctionDefinition(engine, funcMeta.Name, funcMeta)
+		schemaStr, err := schema.GetFunctionDefinition(engine, schemaName, funcMeta)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate function definition: %v", err))
 		}
@@ -331,7 +336,7 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 			return nil, connect.NewError(connect.CodeInternal, errors.New("procedure metadata is nil"))
 		}
 
-		schemaStr, err := schema.GetProcedureDefinition(engine, procMeta.Name, procMeta)
+		schemaStr, err := schema.GetProcedureDefinition(engine, schemaName, procMeta)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate procedure definition: %v", err))
 		}
