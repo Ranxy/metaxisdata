@@ -131,6 +131,8 @@
     "viewName": "视图名称",
     "viewDetail": "视图详情",
     "definition": "定义",
+    "viewSchema": "查看结构",
+    "schemaDefinition": "结构定义 (DDL)",
     "noViews": "暂无视图",
 
     "materializedViews": "物化视图",

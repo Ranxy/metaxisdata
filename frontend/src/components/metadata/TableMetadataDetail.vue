@@ -1,7 +1,7 @@
 <template>
   <div class="p-4 space-y-6">
     <div class="space-y-1">
-      <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
         <div class="text-lg font-semibold wrap-break-word">
           {{ table.name }}
         </div>
@@ -15,6 +15,12 @@
             :dialog-title="t('metadataBrowser.comment')"
           />
         </div>
+        <SchemaDefinitionDialog
+          v-if="guid"
+          :guid="guid"
+          :meta-type="MetaType.TABLE"
+          :object-name="table.name"
+        />
       </div>
       <div class="text-sm text-muted-foreground">
         {{ summaryLine }}
@@ -309,15 +315,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Engine } from "@/types/proto-es/v1/common_pb";
-import type {
-  ColumnMetadata,
-  TableMetadata,
+import {
+  type ColumnMetadata,
+  MetaType,
+  type TableMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
 import ExpandableText from "./ExpandableText.vue";
+import SchemaDefinitionDialog from "./SchemaDefinitionDialog.vue";
 
 const props = defineProps<{
   table: TableMetadata;
   instanceEngine?: Engine | null;
+  guid?: string;
 }>();
 
 const { t } = useI18n();

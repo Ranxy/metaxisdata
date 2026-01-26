@@ -131,6 +131,8 @@
     "viewName": "View Name",
     "viewDetail": "View Details",
     "definition": "Definition",
+    "viewSchema": "View Schema",
+    "schemaDefinition": "Schema Definition (DDL)",
     "noViews": "No views",
 
     "materializedViews": "Materialized Views",

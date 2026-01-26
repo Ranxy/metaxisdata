@@ -53,6 +53,7 @@
             <TableMetadataDetail
               :table="leafTable"
               :instance-engine="currentInstanceEngine"
+              :guid="currentGuid"
             />
           </CardContent>
         </template>
@@ -62,7 +63,10 @@
             <CardTitle>{{ t("metadataBrowser.viewDetail") }}</CardTitle>
           </CardHeader>
           <CardContent class="p-0">
-            <ViewMetadataDetail :view="leafView" />
+            <ViewMetadataDetail
+              :view="leafView"
+              :guid="currentGuid"
+            />
           </CardContent>
         </template>
 
@@ -71,7 +75,10 @@
             <CardTitle>{{ t("metadataBrowser.materializedViewDetail") }}</CardTitle>
           </CardHeader>
           <CardContent class="p-0">
-            <MaterializedViewMetadataDetail :view="leafMaterializedView" />
+            <MaterializedViewMetadataDetail
+              :view="leafMaterializedView"
+              :guid="currentGuid"
+            />
           </CardContent>
         </template>
 

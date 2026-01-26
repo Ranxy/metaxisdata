@@ -1,6 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import {
   GetMetadataRequestSchema,
+  GetSchemaStringRequestSchema,
   ListDatabaseRequestSchema,
   ListMetadataRequestSchema,
   type MetaType,
@@ -55,4 +56,18 @@ export async function getMetadata(options: {
     metaType: options.metaType,
   });
   return await databaseClient.getMetadata(request);
+}
+
+/**
+ * Get schema DDL string for a database object (table, view, materialized view).
+ */
+export async function getSchemaString(options: {
+  guid: string;
+  metaType: MetaType;
+}) {
+  const request = create(GetSchemaStringRequestSchema, {
+    guid: options.guid,
+    metaType: options.metaType,
+  });
+  return await databaseClient.getSchemaString(request);
 }

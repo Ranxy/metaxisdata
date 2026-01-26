@@ -1,7 +1,7 @@
 <template>
   <div class="p-4 space-y-6">
     <div class="space-y-1">
-      <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
         <div class="text-lg font-semibold wrap-break-word">
           {{ view.name }}
         </div>
@@ -15,6 +15,12 @@
             :dialog-title="t('metadataBrowser.comment')"
           />
         </div>
+        <SchemaDefinitionDialog
+          v-if="guid"
+          :guid="guid"
+          :meta-type="MetaType.VIEW"
+          :object-name="view.name"
+        />
       </div>
       <div class="text-sm text-muted-foreground">
         {{ summaryLine }}
@@ -103,13 +109,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type {
-  ColumnMetadata,
-  ViewMetadata,
+import {
+  type ColumnMetadata,
+  MetaType,
+  type ViewMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
 import ExpandableText from "./ExpandableText.vue";
+import SchemaDefinitionDialog from "./SchemaDefinitionDialog.vue";
 
-const props = defineProps<{ view: ViewMetadata }>();
+const props = defineProps<{
+  view: ViewMetadata;
+  guid?: string;
+}>();
 
 const { t } = useI18n();
 
