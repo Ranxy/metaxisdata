@@ -157,12 +157,6 @@
               <h2 class="text-lg font-semibold">
                 {{ t("instanceManagement.recycleBin") }}
               </h2>
-              <Badge
-                v-if="deletedInstances.length > 0"
-                variant="destructive"
-              >
-                {{ deletedInstances.length }}
-              </Badge>
             </div>
             <ChevronDown
               :class="[
@@ -862,7 +856,6 @@ async function fetchDeletedInstances() {
     const response = await listInstances({
       pageSize: 100,
       showDeleted: true,
-      filter: 'state == "DELETED"',
     });
     deletedInstances.value = response.instances.filter(
       (i) => i.state === State.DELETED
@@ -1108,6 +1101,7 @@ async function handleCreateInstance() {
 // Lifecycle
 onMounted(() => {
   fetchInstances();
+  fetchDeletedInstances();
 });
 </script>
 
