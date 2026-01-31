@@ -13,14 +13,14 @@ type MemoryCatalogProvide struct {
 	tables map[model.ObjectIdentifier]*TableMeta
 }
 
-func NewMemoryCatalogProvide() CatalogProvide {
+func NewMemoryCatalogProvide() *MemoryCatalogProvide {
 	return &MemoryCatalogProvide{
 		lock:   sync.Mutex{},
 		tables: make(map[model.ObjectIdentifier]*TableMeta),
 	}
 }
 
-func (p *MemoryCatalogProvide) GetTable(ctx context.Context, id model.ObjectIdentifier) (*TableMeta, error) {
+func (p *MemoryCatalogProvide) GetTable(_ context.Context, id model.ObjectIdentifier) (*TableMeta, error) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	table, ok := p.tables[id]

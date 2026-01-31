@@ -10,7 +10,7 @@ type ColumnRelation struct {
 	Target         Column
 	Transformation []any
 	RelationType   RelationType
-	IsTemp         bool //if the target table is not a real table
+	IsTemp         bool // if the target table is not a real table
 }
 
 type RelationType int

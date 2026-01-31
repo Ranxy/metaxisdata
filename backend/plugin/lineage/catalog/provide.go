@@ -8,7 +8,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-type CatalogProvide interface {
+type Provide interface {
 	GetTable(ctx context.Context, id model.ObjectIdentifier) (*TableMeta, error)
 }
 
@@ -22,7 +22,7 @@ type ColumnMeta struct {
 	Nullable bool
 }
 
-func NewCatalogProvide(store *store.Store) CatalogProvide {
+func NewCatalogProvide(store *store.Store) Provide {
 	return &provideImpl{
 		store: store,
 	}
@@ -67,7 +67,7 @@ func (p *provideImpl) GetTable(ctx context.Context, id model.ObjectIdentifier) (
 		return tableMeta, nil
 
 	case storepb.MetaType_MATERIALIZED_VIEW:
-		//todo: fill real type and nullable info
+		// todo: fill real type and nullable info
 		for _, col := range res.Metadata.GetMaterializedViewMetadata().DependencyColumns {
 			tableMeta.Columns = append(tableMeta.Columns, ColumnMeta{
 				Name:     col.Column,

@@ -13,6 +13,7 @@ type ObjectIdentifier struct {
 	Name       string
 }
 
+// nolint:revive
 func (o ObjectIdentifier) FullName() string {
 	sb := strings.Builder{}
 	if o.Database != "" {
