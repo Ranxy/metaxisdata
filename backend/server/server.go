@@ -14,6 +14,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/store"
 
 	"github.com/pkg/errors"
@@ -61,6 +62,8 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		return nil, errors.Wrapf(err, "failed to new store")
 	}
 	s.store = stores
+
+	lineage.InitCatalogProvide(stores)
 
 	stateCfg, err := state.New()
 	if err != nil {

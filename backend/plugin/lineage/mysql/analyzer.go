@@ -9,12 +9,19 @@ import (
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/pkg/errors"
 
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/scope"
 
 	"github.com/bytebase/parser/mysql"
 )
+
+func init() {
+	lineage.RegisterAnalyzeRelation(storepb.Engine_MYSQL, Analyze)
+	lineage.RegisterAnalyzeRelation(storepb.Engine_TIDB, Analyze)
+}
 
 // Constants for special table/column markers.
 const (
@@ -57,18 +64,13 @@ type Analyzer struct {
 	tempTables map[string]struct{}
 }
 
-// AnalyzerOption is a functional option for configuring the Analyzer.
-type AnalyzerOption func(*Analyzer)
-
-// WithCatalog sets the catalog provider for the analyzer.
-func WithCatalog(c catalog.Provide) AnalyzerOption {
-	return func(a *Analyzer) {
-		a.catalog = c
-	}
+func Analyze(ctx context.Context, sql string) ([]model.ColumnRelation, error) {
+	analyzer := NewAnalyzer(ctx, sql, lineage.CatelogProvide)
+	return analyzer.AnalyzeRelations()
 }
 
 // NewAnalyzer creates a new MySQL lineage analyzer.
-func NewAnalyzer(ctx context.Context, sql string, opts ...AnalyzerOption) *Analyzer {
+func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide) *Analyzer {
 	a := &Analyzer{
 		ctx:        ctx,
 		sql:        sql,
@@ -76,12 +78,8 @@ func NewAnalyzer(ctx context.Context, sql string, opts ...AnalyzerOption) *Analy
 		edges:      make([]model.ColumnRelation, 0),
 		edgeSet:    make(map[string]struct{}),
 		errors:     make([]string, 0),
+		catalog:    catalogProvide,
 		tempTables: make(map[string]struct{}),
-	}
-
-	// Apply options
-	for _, opt := range opts {
-		opt(a)
 	}
 
 	return a

@@ -26,11 +26,7 @@ var (
 // analyzeSQL is the MySQL-specific implementation of the analyze function.
 func analyzeSQL(sql string, cat catalog.Provide) ([]model.ColumnRelation, error) {
 	ctx := context.TODO()
-	var opts []AnalyzerOption
-	if cat != nil {
-		opts = append(opts, WithCatalog(cat))
-	}
-	analyzer := NewAnalyzer(ctx, sql, opts...)
+	analyzer := NewAnalyzer(ctx, sql, cat)
 	return analyzer.AnalyzeRelations()
 }
 
