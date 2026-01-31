@@ -41,12 +41,12 @@ type OutputColumn struct {
 	SourceColumns []ColumnRef
 	// Whether this is a derived/transformed column
 	IsDerived bool
-	Transform []any
+	Transform []model.Transformation
 }
 
 // NewLineageEdge creates a new LineageEdge (ColumnRelation) from field-edge parameters.
 // This helper is used during the migration from FieldEdge to ColumnRelation.
-func NewLineageEdge(fromSchema, fromTable, fromField, toSchema, toTable, toField string, transform []any, isTemp bool) model.ColumnRelation {
+func NewLineageEdge(fromSchema, fromTable, fromField, toSchema, toTable, toField string, transform []model.Transformation, isTemp bool) model.ColumnRelation {
 	// Determine relation type based on transformation
 	relType := determineRelationType(transform)
 
@@ -72,44 +72,23 @@ func NewLineageEdge(fromSchema, fromTable, fromField, toSchema, toTable, toField
 }
 
 // determineRelationType infers the relation type from transformation info.
-func determineRelationType(transform []any) model.RelationType {
+func determineRelationType(transform []model.Transformation) model.RelationType {
 	if len(transform) == 0 {
 		return model.RelationTypeDirect
 	}
 
 	// Check transformation content to determine type
 	for _, t := range transform {
-		if m, ok := t.(map[string]any); ok {
-			if op, exists := m["operation"]; exists {
-				switch op {
-				case "DELETE":
-					return model.RelationTypeIndirect
-				case "UNION":
-					return model.RelationTypeUnion
-				case "JOIN":
-					return model.RelationTypeJoin
-				case "GROUP":
-					return model.RelationTypeGroup
-				}
-			}
-		}
-		if m, ok := t.(map[string]string); ok {
-			if op, exists := m["operation"]; exists {
-				switch op {
-				case "DELETE":
-					return model.RelationTypeIndirect
-				case "UNION":
-					return model.RelationTypeUnion
-				case "JOIN":
-					return model.RelationTypeJoin
-				case "GROUP":
-					return model.RelationTypeGroup
-				}
-			}
-			// If there's an expression but no specific operation, it's indirect
-			if _, exists := m["expression"]; exists {
-				return model.RelationTypeIndirect
-			}
+		switch t.Operation {
+		case model.OperationDelete:
+			return model.RelationTypeIndirect
+		case model.OperationUnion:
+			return model.RelationTypeUnion
+		case model.OperationAggregate:
+			return model.RelationTypeGroup
+		default:
+			// For other operations, it's indirect
+			return model.RelationTypeIndirect
 		}
 	}
 

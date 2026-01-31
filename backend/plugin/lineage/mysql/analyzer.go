@@ -526,7 +526,7 @@ func (a *Analyzer) processUpdateList(ctx *mysql.UpdateListContext) {
 			// Get source columns from the expression
 			var sourceColumns []scope.ColumnRef
 			var isDerived bool
-			var transformInfo []any
+			var transformInfo []model.Transformation
 
 			if updateElem.Expr() != nil {
 				sourceColumns = a.extractColumnsFromExpression(updateElem.Expr())
@@ -612,7 +612,7 @@ func (a *Analyzer) processInsertUpdateList(ctx *mysql.InsertUpdateListContext, t
 
 			// Get source columns from the expression
 			var sourceColumns []scope.ColumnRef
-			var transformInfo []any
+			var transformInfo []model.Transformation
 
 			if updateElem.Expr() != nil {
 				sourceColumns = a.extractColumnsFromExpression(updateElem.Expr())
@@ -764,11 +764,8 @@ func (a *Analyzer) processDeleteStatement(ctx *mysql.DeleteStatementContext) {
 							resolved = &condCol
 						}
 
-						transform := []any{
-							map[string]string{
-								"operation": deleteOperation,
-								"condition": normalizeExpressionText(whereCtx.Expr().GetText()),
-							},
+						transform := []model.Transformation{
+							model.NewDeleteTransformation(normalizeExpressionText(whereCtx.Expr().GetText())),
 						}
 
 						// If condition column comes from temp table, trace through its lineage
@@ -914,7 +911,7 @@ func (a *Analyzer) processLoadDataSetClause(ctx *mysql.UpdateListContext, target
 
 			// Get source columns from the expression
 			var sourceColumns []scope.ColumnRef
-			var transformInfo []any
+			var transformInfo []model.Transformation
 
 			if updateElem.Expr() != nil {
 				sourceColumns = a.extractColumnsFromExpression(updateElem.Expr())
@@ -989,7 +986,7 @@ func (a *Analyzer) processQueryExpressionOrParens(ctx mysql.IQueryExpressionOrPa
 }
 
 // traceThroughTableLineageToTarget traces lineage through a table (CTE or subquery) to a specified target.
-func (a *Analyzer) traceThroughTableLineageToTarget(tableRef *scope.TableRef, columnName string, targetSchema string, targetTable string, targetColumn string, transform []any) {
+func (a *Analyzer) traceThroughTableLineageToTarget(tableRef *scope.TableRef, columnName string, targetSchema string, targetTable string, targetColumn string, transform []model.Transformation) {
 	// Find edges in table lineage that produce the requested column
 	for _, edge := range tableRef.Lineage {
 		if columnName != wildcardColumn && edge.Target.Name != columnName {
@@ -1024,7 +1021,7 @@ func (a *Analyzer) traceThroughTableLineageToTarget(tableRef *scope.TableRef, co
 }
 
 // appendFlattenedLineage traces through nested temporary tables to build lineage edges that originate from real tables.
-func (a *Analyzer) appendFlattenedLineage(lineage *[]model.ColumnRelation, sp *scope.Scope, tableRef *scope.TableRef, columnName string, targetTable string, targetColumn string, transform []any) {
+func (a *Analyzer) appendFlattenedLineage(lineage *[]model.ColumnRelation, sp *scope.Scope, tableRef *scope.TableRef, columnName string, targetTable string, targetColumn string, transform []model.Transformation) {
 	for _, edge := range tableRef.Lineage {
 		if columnName != wildcardColumn && edge.Target.Name != columnName {
 			continue
@@ -1059,7 +1056,7 @@ func (a *Analyzer) appendFlattenedLineage(lineage *[]model.ColumnRelation, sp *s
 
 // flattenTempSourceLineage resolves a column that originates from a temporary table (CTE or subquery)
 // into base table lineage and appends it to the provided lineage slice. Returns true if handled.
-func (a *Analyzer) flattenTempSourceLineage(sp *scope.Scope, resolved *scope.ColumnRef, targetTable string, targetColumn string, transform []any, lineage *[]model.ColumnRelation) bool {
+func (a *Analyzer) flattenTempSourceLineage(sp *scope.Scope, resolved *scope.ColumnRef, targetTable string, targetColumn string, transform []model.Transformation, lineage *[]model.ColumnRelation) bool {
 	if resolved == nil {
 		return false
 	}
@@ -1282,7 +1279,7 @@ func (*Analyzer) mergeUnionOutputColumns(baseScope *scope.Scope, allOutputColumn
 		// Update the first query's output column with merged sources
 		firstCol.SourceColumns = mergedSources
 		if hasDerivedTransform && firstCol.Transform == nil {
-			firstCol.Transform = []any{map[string]any{"operation": unionOperation}}
+			firstCol.Transform = []model.Transformation{model.NewUnionTransformation()}
 		}
 		baseScope.SetOutputColumn(colIdx, firstCol)
 	}
@@ -1685,7 +1682,7 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 }
 
 // traceThroughTableLineage traces lineage through a table (CTE or subquery) to the original source tables.
-func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName string, outputAlias string, transform []any) {
+func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName string, outputAlias string, transform []model.Transformation) {
 	// Skip generating edges to __result__ if we're in INSERT/REPLACE context
 	// The INSERT/REPLACE handler will create edges directly to the target table
 	if a.inInsertReplaceContext {
@@ -1727,7 +1724,7 @@ func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName
 // combineTransformations merges two transformation chains.
 // The base transform is applied first, followed by the additional transform.
 // This function creates a new slice to avoid modifying the original slices.
-func combineTransformations(base, additional []any) []any {
+func combineTransformations(base, additional []model.Transformation) []model.Transformation {
 	if len(base) == 0 {
 		return additional
 	}
@@ -1735,7 +1732,7 @@ func combineTransformations(base, additional []any) []any {
 		return base
 	}
 	// Create a new slice with exact capacity to avoid modifying base
-	combined := make([]any, len(base)+len(additional))
+	combined := make([]model.Transformation, len(base)+len(additional))
 	copy(combined, base)
 	copy(combined[len(base):], additional)
 	return combined
@@ -1744,59 +1741,28 @@ func combineTransformations(base, additional []any) []any {
 // Helper functions to create operator-specific transformation info
 
 // createFunctionOperatorInfo creates transformation info for function calls
-func createFunctionOperatorInfo(functionName string, exprText string, args []string) map[string]any {
-	return map[string]any{
-		"operator":      functionOperation,
-		"function_name": functionName,
-		"expression":    exprText,
-		"arguments":     args,
-	}
+func createFunctionOperatorInfo(functionName string, exprText string, args []string) model.Transformation {
+	return model.NewFunctionTransformation(functionName, exprText, args)
 }
 
 // createAggregateOperatorInfo creates transformation info for aggregate operations
-func createAggregateOperatorInfo(functionName string, exprText string, groupKeys []string) map[string]any {
-	info := map[string]any{
-		"operator":      aggregateOperation,
-		"function_name": functionName,
-		"expression":    exprText,
-	}
-	if len(groupKeys) > 0 {
-		info["group_keys"] = groupKeys
-	}
-	return info
+func createAggregateOperatorInfo(functionName string, exprText string, groupKeys []string) model.Transformation {
+	return model.NewAggregateTransformation(functionName, exprText, groupKeys)
 }
 
 // createOperatorExprInfo creates transformation info for operator expressions (arithmetic, comparison, etc.)
-func createOperatorExprInfo(operator string, exprText string) map[string]any {
-	return map[string]any{
-		"operator":   operatorOperation,
-		"expression": exprText,
-		"op_type":    operator,
-	}
+func createOperatorExprInfo(opType string, exprText string) model.Transformation {
+	return model.NewOperatorTransformation(opType, exprText)
 }
 
 // createCaseOperatorInfo creates transformation info for CASE expressions
-func createCaseOperatorInfo(exprText string) map[string]any {
-	return map[string]any{
-		"operator":   caseOperation,
-		"expression": exprText,
-	}
+func createCaseOperatorInfo(exprText string) model.Transformation {
+	return model.NewCaseTransformation(exprText)
 }
 
 // createWindowOperatorInfo creates transformation info for window functions
-func createWindowOperatorInfo(functionName string, exprText string, partitionBy []string, orderBy []string) map[string]any {
-	info := map[string]any{
-		"operator":      windowOperation,
-		"function_name": functionName,
-		"expression":    exprText,
-	}
-	if len(partitionBy) > 0 {
-		info["partition_by"] = partitionBy
-	}
-	if len(orderBy) > 0 {
-		info["order_by"] = orderBy
-	}
-	return info
+func createWindowOperatorInfo(functionName string, exprText string, partitionBy []string, orderBy []string) model.Transformation {
+	return model.NewWindowTransformation(functionName, exprText, partitionBy, orderBy)
 }
 
 // normalizeExpressionText removes whitespace from expression text for consistency.
@@ -1882,7 +1848,7 @@ func (*Analyzer) isExpressionDerived(expr mysql.IExprContext) bool {
 // analyzeExpressionOperator analyzes an expression and returns detailed operator information.
 // This function identifies the type of operation (function, aggregate, operator, case, window)
 // and extracts relevant metadata for operator-level lineage tracking.
-func (a *Analyzer) analyzeExpressionOperator(expr mysql.IExprContext) []any {
+func (a *Analyzer) analyzeExpressionOperator(expr mysql.IExprContext) []model.Transformation {
 	if expr == nil {
 		return nil
 	}
@@ -1891,39 +1857,36 @@ func (a *Analyzer) analyzeExpressionOperator(expr mysql.IExprContext) []any {
 
 	// Try to detect aggregate functions FIRST (before general functions)
 	// because aggregates are a special type of function
-	if aggInfo := a.detectAggregateFunction(expr); aggInfo != nil {
-		return []any{aggInfo}
+	if aggInfo, ok := a.detectAggregateFunction(expr); ok {
+		return []model.Transformation{aggInfo}
 	}
 
 	// Try to detect window functions
-	if windowInfo := a.detectWindowFunction(expr); windowInfo != nil {
-		return []any{windowInfo}
+	if windowInfo, ok := a.detectWindowFunction(expr); ok {
+		return []model.Transformation{windowInfo}
 	}
 
 	// Try to detect regular function calls
-	if funcInfo := a.detectFunctionCall(expr); funcInfo != nil {
-		return []any{funcInfo}
+	if funcInfo, ok := a.detectFunctionCall(expr); ok {
+		return []model.Transformation{funcInfo}
 	}
 
 	// Try to detect CASE expressions
-	if caseInfo := a.detectCaseExpression(expr); caseInfo != nil {
-		return []any{caseInfo}
+	if caseInfo, ok := a.detectCaseExpression(expr); ok {
+		return []model.Transformation{caseInfo}
 	}
 
 	// Try to detect arithmetic/comparison operators
-	if opInfo := a.detectOperatorExpression(expr); opInfo != nil {
-		return []any{opInfo}
+	if opInfo, ok := a.detectOperatorExpression(expr); ok {
+		return []model.Transformation{opInfo}
 	}
 
 	// Fallback to generic expression
-	return []any{map[string]any{
-		"operator":   projectOperation,
-		"expression": exprText,
-	}}
+	return []model.Transformation{model.NewProjectTransformation(exprText)}
 }
 
 // detectFunctionCall checks if expression is a function call and extracts function info
-func (a *Analyzer) detectFunctionCall(expr mysql.IExprContext) map[string]any {
+func (a *Analyzer) detectFunctionCall(expr mysql.IExprContext) (model.Transformation, bool) {
 	// Walk the expression tree to find function calls
 	var funcName string
 	var args []string
@@ -1931,11 +1894,12 @@ func (a *Analyzer) detectFunctionCall(expr mysql.IExprContext) map[string]any {
 	// Check if it's a SimpleExprFunction context (regular functions)
 	if a.containsFunctionContext(expr, &funcName, &args) {
 		if funcName != "" {
-			return createFunctionOperatorInfo(funcName, expr.GetText(), args)
+			t := createFunctionOperatorInfo(funcName, expr.GetText(), args)
+			return t, true
 		}
 	}
 
-	return nil
+	return model.Transformation{}, false
 }
 
 // Common aggregate functions
@@ -1946,18 +1910,18 @@ var aggregateFunctions = map[string]bool{
 }
 
 // detectAggregateFunction checks if expression is an aggregate function
-func (a *Analyzer) detectAggregateFunction(expr mysql.IExprContext) map[string]any {
+func (a *Analyzer) detectAggregateFunction(expr mysql.IExprContext) (model.Transformation, bool) {
 	var funcName string
 	var args []string
 
 	if a.containsFunctionContext(expr, &funcName, &args) {
 		upperFuncName := strings.ToUpper(funcName)
 		if aggregateFunctions[upperFuncName] {
-			return createAggregateOperatorInfo(upperFuncName, expr.GetText(), nil)
+			return createAggregateOperatorInfo(upperFuncName, expr.GetText(), nil), true
 		}
 	}
 
-	return nil
+	return model.Transformation{}, false
 }
 
 // Common window functions
@@ -1968,11 +1932,11 @@ var windowFunctions = map[string]bool{
 }
 
 // detectWindowFunction checks if expression contains a window function with OVER clause
-func (a *Analyzer) detectWindowFunction(expr mysql.IExprContext) map[string]any {
+func (a *Analyzer) detectWindowFunction(expr mysql.IExprContext) (model.Transformation, bool) {
 	// Check for window function pattern: function(...) OVER (...)
 	exprText := expr.GetText()
 	if !strings.Contains(strings.ToUpper(exprText), "OVER") {
-		return nil
+		return model.Transformation{}, false
 	}
 
 	var funcName string
@@ -1984,52 +1948,52 @@ func (a *Analyzer) detectWindowFunction(expr mysql.IExprContext) map[string]any 
 		if windowFunctions[upperFuncName] || aggregateFunctions[upperFuncName] {
 			// Try to extract PARTITION BY and ORDER BY info
 			partitionBy, orderBy := a.extractWindowClauses(expr)
-			return createWindowOperatorInfo(upperFuncName, exprText, partitionBy, orderBy)
+			return createWindowOperatorInfo(upperFuncName, exprText, partitionBy, orderBy), true
 		}
 	}
 
-	return nil
+	return model.Transformation{}, false
 }
 
 // detectCaseExpression checks if expression is a CASE expression
-func (*Analyzer) detectCaseExpression(expr mysql.IExprContext) map[string]any {
+func (*Analyzer) detectCaseExpression(expr mysql.IExprContext) (model.Transformation, bool) {
 	exprText := strings.ToUpper(expr.GetText())
 	if strings.Contains(exprText, "CASE") && strings.Contains(exprText, "WHEN") {
-		return createCaseOperatorInfo(expr.GetText())
+		return createCaseOperatorInfo(expr.GetText()), true
 	}
-	return nil
+	return model.Transformation{}, false
 }
 
 // detectOperatorExpression checks if expression uses arithmetic or comparison operators
-func (*Analyzer) detectOperatorExpression(expr mysql.IExprContext) map[string]any {
+func (*Analyzer) detectOperatorExpression(expr mysql.IExprContext) (model.Transformation, bool) {
 	exprText := expr.GetText()
 
 	// Check for arithmetic operators
 	if strings.Contains(exprText, "+") {
-		return createOperatorExprInfo("ADDITION", exprText)
+		return createOperatorExprInfo("ADDITION", exprText), true
 	}
 	if strings.Contains(exprText, "-") && !strings.HasPrefix(exprText, "-") {
-		return createOperatorExprInfo("SUBTRACTION", exprText)
+		return createOperatorExprInfo("SUBTRACTION", exprText), true
 	}
 	if strings.Contains(exprText, "*") && !strings.Contains(exprText, "COUNT(*)") {
-		return createOperatorExprInfo("MULTIPLICATION", exprText)
+		return createOperatorExprInfo("MULTIPLICATION", exprText), true
 	}
 	if strings.Contains(exprText, "/") {
-		return createOperatorExprInfo("DIVISION", exprText)
+		return createOperatorExprInfo("DIVISION", exprText), true
 	}
 
 	// Check for comparison operators
 	if strings.Contains(exprText, "=") && !strings.Contains(exprText, "!=") && !strings.Contains(exprText, ">=") && !strings.Contains(exprText, "<=") {
-		return createOperatorExprInfo("EQUALS", exprText)
+		return createOperatorExprInfo("EQUALS", exprText), true
 	}
 	if strings.Contains(exprText, ">") && !strings.Contains(exprText, ">=") {
-		return createOperatorExprInfo("GREATER_THAN", exprText)
+		return createOperatorExprInfo("GREATER_THAN", exprText), true
 	}
 	if strings.Contains(exprText, "<") && !strings.Contains(exprText, "<=") && !strings.Contains(exprText, "<>") {
-		return createOperatorExprInfo("LESS_THAN", exprText)
+		return createOperatorExprInfo("LESS_THAN", exprText), true
 	}
 
-	return nil
+	return model.Transformation{}, false
 }
 
 // containsFunctionContext walks the expression tree to find function call contexts

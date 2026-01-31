@@ -8,7 +8,7 @@ type Column struct {
 type ColumnRelation struct {
 	Source         Column
 	Target         Column
-	Transformation []any
+	Transformation []Transformation
 	RelationType   RelationType
 	IsTemp         bool // if the target table is not a real table
 }
