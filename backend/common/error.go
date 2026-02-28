@@ -85,10 +85,9 @@ func (e *Error) Error() string {
 // ErrorCode unwraps an application error and returns its code.
 // Non-application errors always return EINTERNAL.
 func ErrorCode(err error) Code {
-	var e *Error
 	if err == nil {
 		return Ok
-	} else if errors.As(err, &e) {
+	} else if e, ok := errors.AsType[*Error](err); ok {
 		return e.Code
 	}
 	return Internal

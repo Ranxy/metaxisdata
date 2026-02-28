@@ -105,8 +105,7 @@ func start() {
 
 	s, err = server.NewServer(ctx, profile)
 	if err != nil {
-		var pge *pgconn.PgError
-		if errors.As(err, &pge) {
+		if pge, ok := errors.AsType[*pgconn.PgError](err); ok {
 			slog.Error("Cannot new server", log.WithError(err), "detail", pge.Detail, "hint", pge.Hint)
 			return
 		}

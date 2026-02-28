@@ -1,6 +1,6 @@
 module github.com/Ranxy/metaxisdata
 
-go 1.25.1
+go 1.26
 
 require (
 	connectrpc.com/connect v1.18.1

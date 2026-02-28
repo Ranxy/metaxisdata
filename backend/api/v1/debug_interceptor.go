@@ -8,7 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/pkg/errors"
+	"errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
@@ -30,7 +30,7 @@ func (in *DebugInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc 
 		in.debugInterceptorDo(ctx, req.Spec().Procedure, err, startTime)
 
 		// Truncate error message to 10240 characters.
-		if connectErr := (&connect.Error{}); errors.As(err, &connectErr) {
+		if connectErr, ok := errors.AsType[*connect.Error](err); ok {
 			if msg, truncated := common.TruncateString(connectErr.Message(), 10240); truncated {
 				slog.Info("Truncated error message", slog.String("fullMethod", req.Spec().Procedure), slog.String("original error message", connectErr.Message()))
 				err = connect.NewError(connectErr.Code(), errors.New("[TRUNCATED] "+msg))
@@ -63,8 +63,8 @@ func (*DebugInterceptor) debugInterceptorDo(ctx context.Context, fullMethod stri
 		logLevel = slog.LevelDebug
 		logMsg = "ok"
 	} else {
-		connectErr := (&connect.Error{})
-		if !errors.As(err, &connectErr) {
+		connectErr, ok := errors.AsType[*connect.Error](err)
+		if !ok {
 			connectErr = connect.NewError(connect.CodeUnknown, err)
 		}
 		switch connectErr.Code() {
