@@ -38,7 +38,7 @@ This file provides guidance to Copilot (claude.ai/code) when working with code i
 go build -ldflags "-w -s" -p=16 -o ./build/metaxisdata ./backend/bin/server/main.go
 
 # Start backend
-PG_URL=postgresql://dev@localhost/devdb go run ./backend/bin/server/main.go --port 8080 --data . --debug
+go run ./backend/bin/server/main.go --port 8080 --debug
 
 # Run single test
 go test -v -count=1 github.com/Ranxy/metaxisdata/backend/path/to/tests -run ^TestFunctionName$
