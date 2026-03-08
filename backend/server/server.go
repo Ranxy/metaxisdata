@@ -25,6 +25,8 @@ const gracefulShutdownPeriod = 10 * time.Second
 
 type Server struct {
 	runnerWG        sync.WaitGroup
+	runnerCtx       context.Context
+	runnerCancel    context.CancelFunc
 	profile         *config.Profile
 	echoServer      *echo.Echo
 	store           *store.Store
@@ -64,6 +66,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		return nil, errors.Wrapf(err, "failed to new store")
 	}
 	s.store = stores
+	s.runnerCtx, s.runnerCancel = context.WithCancel(ctx)
 
 	lineage.InitCatalogProvide(stores)
 
@@ -86,7 +89,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	}
 
 	s.runnerWG.Add(1)
-	go s.lineageAnalyzer.Run(ctx, &s.runnerWG)
+	go s.lineageAnalyzer.Run(s.runnerCtx, &s.runnerWG)
 	configureEchoRouters(s.echoServer, profile)
 
 	s.echoServer.Debug = true
@@ -127,6 +130,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	defer cancel()
 
 	// Cancel the worker
+	if s.runnerCancel != nil {
+		s.runnerCancel()
+	}
 	if s.cancel != nil {
 		s.cancel()
 	}

@@ -64,6 +64,7 @@ func (a *Analyzer) Run(ctx context.Context, wg *sync.WaitGroup) {
 	// Goroutine 1: periodic full scan.
 	sp.Go(func() {
 		slog.Debug(fmt.Sprintf("Lineage analyzer started and will run every %v", lineageAnalysisInterval))
+		a.queueAll(ctx)
 		ticker := time.NewTicker(lineageAnalysisInterval)
 		defer ticker.Stop()
 		for {

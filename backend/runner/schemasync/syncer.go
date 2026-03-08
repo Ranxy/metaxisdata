@@ -495,6 +495,16 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to batch store metadata for database %q", database.DatabaseName)
 	}
 
+	// Clean lineage rows for deleted VIEW and MATERIALIZED_VIEW metadata in the same transaction.
+	for _, item := range bmc.deletes {
+		if item.ObjectType != storepb.MetaType_VIEW && item.ObjectType != storepb.MetaType_MATERIALIZED_VIEW {
+			continue
+		}
+		if err := deleteColumnLineageByMetaTx(ctx, tx, item.GUID, item.ObjectType); err != nil {
+			return errors.Wrapf(err, "failed to delete column lineage for guid %q", item.GUID)
+		}
+	}
+
 	// Build metadata updates
 	metadataUpdates := []func(*storepb.DatabaseMetadata){
 		func(md *storepb.DatabaseMetadata) {
@@ -532,6 +542,7 @@ type batchMetaCreate struct {
 	exist    []*store.MetaRegistryResource
 	guidList []*store.CreateMetaRegistryResourceMessage
 	updates  []*store.CreateMetaRegistryResourceMessage // populated after Run()
+	deletes  []*store.MetaRegistryResource              // populated after Run()
 }
 
 func (b *batchMetaCreate) StoreMetaResourceV2(_ context.Context, prefixName string, objectType storepb.MetaType, data *storepb.StoredMetadata) error {
@@ -577,6 +588,7 @@ func (b *batchMetaCreate) Run(ctx context.Context, s *store.Store, tx *sql.Tx) e
 		}
 	}
 	b.updates = updates
+	b.deletes = deletes
 	return nil
 }
 
@@ -674,4 +686,20 @@ func getOrDefaultLastSyncTime(t *timestamppb.Timestamp) time.Time {
 		return t.AsTime()
 	}
 	return time.Unix(0, 0)
+}
+
+func deleteColumnLineageByMetaTx(ctx context.Context, tx *sql.Tx, metaGUID string, metaType storepb.MetaType) error {
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM column_lineage WHERE meta_guid = $1 AND meta_type = $2`,
+		metaGUID, metaType,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM column_lineage_version WHERE meta_guid = $1 AND meta_type = $2`,
+		metaGUID, metaType,
+	); err != nil {
+		return err
+	}
+	return nil
 }
