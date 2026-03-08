@@ -2065,6 +2065,7 @@ func (a *Analyzer) containsFunctionContext(node antlr.ParseTree, funcName *strin
 			*funcName = "GROUP_CONCAT"
 			return true
 		}
+	default:
 	}
 
 	// Recursively check children

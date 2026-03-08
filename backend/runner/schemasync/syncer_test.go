@@ -28,7 +28,7 @@ func getTestSyncer(t *testing.T) *Syncer {
 	stateCfg, err := state.New()
 	require.NoError(t, err)
 
-	return NewSyncer(s, dbFactory, &config.Profile{}, stateCfg)
+	return NewSyncer(s, dbFactory, &config.Profile{}, stateCfg, nil)
 }
 
 func TestSyncInstance(t *testing.T) {

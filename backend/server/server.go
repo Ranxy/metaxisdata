@@ -15,6 +15,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
+	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
 	"github.com/Ranxy/metaxisdata/backend/store"
 
 	"github.com/pkg/errors"
@@ -23,11 +24,12 @@ import (
 const gracefulShutdownPeriod = 10 * time.Second
 
 type Server struct {
-	runnerWG   sync.WaitGroup
-	profile    *config.Profile
-	echoServer *echo.Echo
-	store      *store.Store
-	startedTS  int64
+	runnerWG        sync.WaitGroup
+	profile         *config.Profile
+	echoServer      *echo.Echo
+	store           *store.Store
+	startedTS       int64
+	lineageAnalyzer *lineageanalyzer.Analyzer
 	// PG server stoppers.
 	stopper []func()
 
@@ -65,6 +67,8 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 
 	lineage.InitCatalogProvide(stores)
 
+	s.lineageAnalyzer = lineageanalyzer.NewAnalyzer(stores, profile)
+
 	stateCfg, err := state.New()
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to initialize state")
@@ -77,9 +81,12 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// Configure echo server.
 	s.echoServer = echo.New()
 
-	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret); err != nil {
+	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, s.lineageAnalyzer); err != nil {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")
 	}
+
+	s.runnerWG.Add(1)
+	go s.lineageAnalyzer.Run(ctx, &s.runnerWG)
 	configureEchoRouters(s.echoServer, profile)
 
 	s.echoServer.Debug = true

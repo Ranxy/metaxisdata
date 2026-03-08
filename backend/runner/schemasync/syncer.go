@@ -23,6 +23,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
+	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
 	"github.com/Ranxy/metaxisdata/backend/store"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -38,12 +39,13 @@ const (
 )
 
 // NewSyncer creates a schema syncer.
-func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, profile *config.Profile, stateCfg *state.State) *Syncer {
+func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, profile *config.Profile, stateCfg *state.State, lineageAnalyzer *lineageanalyzer.Analyzer) *Syncer {
 	return &Syncer{
-		store:     stores,
-		dbFactory: dbFactory,
-		profile:   profile,
-		stateCfg:  stateCfg,
+		store:           stores,
+		dbFactory:       dbFactory,
+		profile:         profile,
+		stateCfg:        stateCfg,
+		lineageAnalyzer: lineageAnalyzer,
 	}
 }
 
@@ -55,6 +57,7 @@ type Syncer struct {
 	dbFactory       *dbfactory.DBFactory
 	profile         *config.Profile
 	stateCfg        *state.State
+	lineageAnalyzer *lineageanalyzer.Analyzer
 	databaseSyncMap sync.Map // map[string]*store.DatabaseMessage
 }
 
@@ -513,12 +516,22 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to commit transaction for database %q", database.DatabaseName)
 	}
 
+	// Queue changed VIEWs and MATERIALIZED_VIEWs for lineage analysis.
+	if s.lineageAnalyzer != nil {
+		for _, item := range bmc.updates {
+			if item.ObjectType == storepb.MetaType_VIEW || item.ObjectType == storepb.MetaType_MATERIALIZED_VIEW {
+				s.lineageAnalyzer.QueueAnalysis(item.GUID, item.ObjectType)
+			}
+		}
+	}
+
 	return nil
 }
 
 type batchMetaCreate struct {
 	exist    []*store.MetaRegistryResource
 	guidList []*store.CreateMetaRegistryResourceMessage
+	updates  []*store.CreateMetaRegistryResourceMessage // populated after Run()
 }
 
 func (b *batchMetaCreate) StoreMetaResourceV2(_ context.Context, prefixName string, objectType storepb.MetaType, data *storepb.StoredMetadata) error {
@@ -563,6 +576,7 @@ func (b *batchMetaCreate) Run(ctx context.Context, s *store.Store, tx *sql.Tx) e
 			return errors.Wrap(err, "BatchCreateMetaRegistryResource")
 		}
 	}
+	b.updates = updates
 	return nil
 }
 

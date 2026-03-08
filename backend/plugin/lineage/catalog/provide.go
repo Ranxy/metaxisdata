@@ -8,6 +8,29 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
+type analysisContextKey struct{}
+
+// AnalysisContext carries the default instance/database/schema for unqualified
+// object identifiers produced during SQL lineage analysis.
+type AnalysisContext struct {
+	InstanceID string
+	Database   string
+	Schema     string
+}
+
+// WithAnalysisContext attaches ac to ctx so that GetTable can resolve
+// unqualified table names against the correct instance/database/schema.
+func WithAnalysisContext(ctx context.Context, ac AnalysisContext) context.Context {
+	return context.WithValue(ctx, analysisContextKey{}, ac)
+}
+
+// GetAnalysisContext retrieves the AnalysisContext from ctx.
+// The second return value is false when no context has been attached.
+func GetAnalysisContext(ctx context.Context) (AnalysisContext, bool) {
+	v, ok := ctx.Value(analysisContextKey{}).(AnalysisContext)
+	return v, ok
+}
+
 type Provide interface {
 	GetTable(ctx context.Context, id model.ObjectIdentifier) (*TableMeta, error)
 }
@@ -33,6 +56,19 @@ type provideImpl struct {
 }
 
 func (p *provideImpl) GetTable(ctx context.Context, id model.ObjectIdentifier) (*TableMeta, error) {
+	// Fill missing parts from AnalysisContext so unqualified names resolve correctly.
+	if ac, ok := GetAnalysisContext(ctx); ok {
+		if id.InstanceID == "" {
+			id.InstanceID = ac.InstanceID
+		}
+		if id.Database == "" {
+			id.Database = ac.Database
+		}
+		if id.Schema == "" {
+			id.Schema = ac.Schema
+		}
+	}
+
 	guid := id.GUID()
 	res, err := p.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &guid})
 	if err != nil {

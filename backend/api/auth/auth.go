@@ -167,17 +167,17 @@ func (in *APIAuthInterceptor) authenticateConnect(ctx context.Context, accessTok
 
 	principalID, err := strconv.Atoi(claims.Subject)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("malformed ID %q in the access token", claims.Subject))
+		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("malformed ID %s in the access token", claims.Subject))
 	}
 	user, err := in.store.GetUserByID(ctx, principalID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("failed to find user ID %q in the access token", principalID))
+		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("failed to find user ID %d in the access token", principalID))
 	}
 	if user == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("user ID %q not exists in the access token", principalID))
+		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("user ID %d not exists in the access token", principalID))
 	}
 	if user.MemberDeleted {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("user ID %q has been deactivated by administrators", user.ID))
+		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("user ID %d has been deactivated by administrators", user.ID))
 	}
 
 	return user, nil

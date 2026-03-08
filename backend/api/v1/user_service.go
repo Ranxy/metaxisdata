@@ -472,7 +472,7 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("user %d not found", userID))
 	}
 	if user.MemberDeleted {
-		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("user %q has been deleted", userID))
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("user %d has been deleted", userID))
 	}
 
 	// if callerUser.ID != userID {
@@ -572,7 +572,7 @@ func (s *UserService) DeleteUser(ctx context.Context, request *connect.Request[v
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("user %d not found", userID))
 	}
 	if user.MemberDeleted {
-		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("user %q has been deleted", userID))
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("user %d has been deleted", userID))
 	}
 
 	// Check if there is still workspace admin if the current user is deleted.
@@ -663,7 +663,7 @@ func (s *UserService) UndeleteUser(ctx context.Context, request *connect.Request
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("user %d not found", userID))
 	}
 	if !user.MemberDeleted {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("user %q is already active", userID))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("user %d is already active", userID))
 	}
 
 	user, err = s.store.UpdateUser(ctx, user, &store.UpdateUserMessage{Delete: &undeletePatch})

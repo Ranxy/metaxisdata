@@ -62,6 +62,7 @@ func convertStoredMetadataMessage(meta *storepb.StoredMetadata) *v1pb.StoredMeta
 		result.Type = &v1pb.StoredMetadata_TaskMetadata{
 			TaskMetadata: convertTaskMetadata(v.TaskMetadata),
 		}
+	default:
 	}
 	return result
 }

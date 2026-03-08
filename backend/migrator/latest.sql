@@ -165,3 +165,32 @@ CREATE TABLE meta_registry_resource (
 CREATE INDEX idx_meta_registry_resource_guid_object_type ON meta_registry_resource(guid,object_type);
 
 ALTER SEQUENCE meta_registry_resource_id_seq RESTART WITH 101;
+
+
+-- column_lineage stores individual column-level lineage edges.
+CREATE TABLE column_lineage (
+    id BIGSERIAL PRIMARY KEY,
+    meta_guid TEXT COLLATE "C" NOT NULL,
+    meta_type INT2 NOT NULL,
+    source_guid TEXT COLLATE "C" NOT NULL,
+    source_column TEXT COLLATE "C" NOT NULL,
+    target_column TEXT COLLATE "C" NOT NULL,
+    relation_type INT2 NOT NULL DEFAULT 0,
+    transformation JSONB NOT NULL DEFAULT '[]',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_column_lineage_meta ON column_lineage(meta_guid, meta_type);
+CREATE INDEX idx_column_lineage_source ON column_lineage(source_guid, source_column);
+CREATE INDEX idx_column_lineage_target ON column_lineage(meta_guid, target_column);
+
+
+-- column_lineage_version tracks the analysis state per object for change detection.
+CREATE TABLE column_lineage_version (
+    meta_guid TEXT COLLATE "C" NOT NULL,
+    meta_type INT2 NOT NULL,
+    meta_hash BYTEA,
+    analyzed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    error_message TEXT,
+    PRIMARY KEY (meta_guid, meta_type)
+);

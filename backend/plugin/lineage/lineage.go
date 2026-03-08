@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/pkg/errors"
+
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/store"
-	"github.com/pkg/errors"
 )
 
 var (
