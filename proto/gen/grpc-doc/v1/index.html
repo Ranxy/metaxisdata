@@ -731,6 +731,49 @@
             </ul>
           </li>
         
+          
+          <li>
+            <a href="#v1%2flineage_service.proto">v1/lineage_service.proto</a>
+            <ul>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetLineageForContextRequest"><span class="badge">M</span>GetLineageForContextRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetLineageForContextResponse"><span class="badge">M</span>GetLineageForContextResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetLineageRequest"><span class="badge">M</span>GetLineageRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetLineageResponse"><span class="badge">M</span>GetLineageResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.LineageRelation"><span class="badge">M</span>LineageRelation</a>
+                </li>
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.LineageType"><span class="badge">E</span>LineageType</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.RelationType"><span class="badge">E</span>RelationType</a>
+                </li>
+              
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.LineageService"><span class="badge">S</span>LineageService</a>
+                </li>
+              
+            </ul>
+          </li>
+        
         <li><a href="#scalar-value-types">Scalar Value Types</a></li>
       </ul>
     </div>
@@ -7476,6 +7519,351 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
                 <td>GetSchemaString</td>
                 <td>GET</td>
                 <td>/v1/metadata/schemaString</td>
+                <td></td>
+              </tr>
+              
+            
+            </tbody>
+          </table>
+          
+        
+    
+      
+      <div class="file-heading">
+        <h2 id="v1/lineage_service.proto">v1/lineage_service.proto</h2><a href="#title">Top</a>
+      </div>
+      <p></p>
+
+      
+        <h3 id="metaxisdata.v1.GetLineageForContextRequest">GetLineageForContextRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The global unique id for metadata
+view: &#34;instance_1;db2;schema3;view1&#34; </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetLineageForContextResponse">GetLineageForContextResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>relations</td>
+                  <td><a href="#metaxisdata.v1.LineageRelation">LineageRelation</a></td>
+                  <td>repeated</td>
+                  <td><p>The list of lineage relations for the given metadata. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetLineageRequest">GetLineageRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The global unique id for metadata
+table: &#34;instance_1;db2;schema3;table4&#34; </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>lineage_type</td>
+                  <td><a href="#metaxisdata.v1.LineageType">LineageType</a></td>
+                  <td></td>
+                  <td><p>The lineage type to query, source or target. If not specified, both source and target lineage will be returned. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetLineageResponse">GetLineageResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>relations</td>
+                  <td><a href="#metaxisdata.v1.LineageRelation">LineageRelation</a></td>
+                  <td>repeated</td>
+                  <td><p>The list of lineage relations for the given metadata. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.LineageRelation">LineageRelation</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>source_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>source_column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>relation_type</td>
+                  <td><a href="#metaxisdata.v1.RelationType">RelationType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>transformation</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>updated_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+
+      
+        <h3 id="metaxisdata.v1.LineageType">LineageType</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>LINEAGE_TYPE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SOURCE</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>TARGET</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.RelationType">RelationType</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>RELATION_TYPE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DIRECT</td>
+                <td>1</td>
+                <td><p>DIRECT means the source column is directly used in the target column without transformation. For example: select source_column as target_column from table.</p></td>
+              </tr>
+            
+              <tr>
+                <td>INDIRECT</td>
+                <td>2</td>
+                <td><p>INDIRECT means the source column is used in the target column with transformation. For example: select concat(source_column, &#39;abc&#39;) as target_column</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+
+      
+
+      
+        <h3 id="metaxisdata.v1.LineageService">LineageService</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>GetLineage</td>
+                <td><a href="#metaxisdata.v1.GetLineageRequest">GetLineageRequest</a></td>
+                <td><a href="#metaxisdata.v1.GetLineageResponse">GetLineageResponse</a></td>
+                <td><p>GetLineage returns the lineage relations for the given metadata. 
+The lineage relations can be either source lineage or target lineage,
+depending on the lineage_type specified in the request.
+If lineage_type is not specified, both source and target lineage will be returned.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetLineageForContext</td>
+                <td><a href="#metaxisdata.v1.GetLineageForContextRequest">GetLineageForContextRequest</a></td>
+                <td><a href="#metaxisdata.v1.GetLineageForContextResponse">GetLineageForContextResponse</a></td>
+                <td><p>GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+
+        
+          
+          
+          <h4>Methods with HTTP bindings</h4>
+          <table>
+            <thead>
+              <tr>
+                <td>Method Name</td>
+                <td>Method</td>
+                <td>Pattern</td>
+                <td>Body</td>
+              </tr>
+            </thead>
+            <tbody>
+            
+              
+              
+              <tr>
+                <td>GetLineage</td>
+                <td>GET</td>
+                <td>/v1/{guid=lineages/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetLineageForContext</td>
+                <td>GET</td>
+                <td>/v1/context/{guid=lineages/*}</td>
                 <td></td>
               </tr>
               

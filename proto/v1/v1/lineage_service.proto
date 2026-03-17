@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package metaxisdata.v1;
+
+import "google/api/annotations.proto";
+import "google/api/client.proto";
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+import "v1/common.proto";
+import "v1/database_service.proto";
+
+option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
+
+service LineageService {
+  // GetLineage returns the lineage relations for the given metadata. 
+  // The lineage relations can be either source lineage or target lineage,
+  // depending on the lineage_type specified in the request.
+  // If lineage_type is not specified, both source and target lineage will be returned.
+  rpc GetLineage(GetLineageRequest) returns (GetLineageResponse) {
+    option (google.api.http) = {get: "/v1/{guid=lineages/*}"};
+  }
+
+  // GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).
+  rpc GetLineageForContext(GetLineageForContextRequest) returns (GetLineageForContextResponse) {
+     option (google.api.http) = {get: "/v1/context/{guid=lineages/*}"};
+  }
+}
+
+
+enum LineageType{
+    LINEAGE_TYPE_UNSPECIFIED = 0;
+    SOURCE = 1;
+    TARGET = 2;
+}
+
+enum RelationType{
+    RELATION_TYPE_UNSPECIFIED = 0;
+    // DIRECT means the source column is directly used in the target column without transformation. For example: select source_column as target_column from table.
+    DIRECT = 1;
+    // INDIRECT means the source column is used in the target column with transformation. For example: select concat(source_column, 'abc') as target_column
+    INDIRECT = 2;
+}
+
+message LineageRelation {
+  int64 id = 1;
+  string meta_guid = 2;
+  MetaType meta_type = 3;
+  string source_guid = 4;
+  string source_column = 5;
+  string target_guid = 6;
+  string target_column = 7;
+  RelationType relation_type = 8;
+  string transformation = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message GetLineageRequest {
+  // The global unique id for metadata
+  // table: "instance_1;db2;schema3;table4"
+  string guid = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/DatabaseMetadata"}
+  ];
+  MetaType meta_type = 2;
+  // The lineage type to query, source or target. If not specified, both source and target lineage will be returned.
+  LineageType lineage_type = 3;
+}
+
+
+message GetLineageResponse {
+  // The list of lineage relations for the given metadata.
+  repeated LineageRelation relations = 1;
+}
+
+message GetLineageForContextRequest {
+  // The global unique id for metadata
+  // view: "instance_1;db2;schema3;view1"
+  string guid = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/DatabaseMetadata"}
+  ];
+  MetaType meta_type = 2;
+}
+
+message GetLineageForContextResponse {
+  // The list of lineage relations for the given metadata.
+  repeated LineageRelation relations = 1;
+}

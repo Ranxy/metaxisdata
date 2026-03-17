@@ -53,6 +53,55 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/context/lineages/{lineage}:
+        get:
+            tags:
+                - LineageService
+            description: GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).
+            operationId: LineageService_GetLineageForContext
+            parameters:
+                - name: lineage
+                  in: path
+                  description: The lineage id.
+                  required: true
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - PACKAGE
+                        - STREAM
+                        - TASK
+                    type: string
+                    format: enum
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetLineageForContextResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/database:
         get:
             tags:
@@ -619,6 +668,65 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/BatchUpdateInstancesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/lineages/{lineage}:
+        get:
+            tags:
+                - LineageService
+            description: "GetLineage returns the lineage relations for the given metadata. \n The lineage relations can be either source lineage or target lineage,\n depending on the lineage_type specified in the request.\n If lineage_type is not specified, both source and target lineage will be returned."
+            operationId: LineageService_GetLineage
+            parameters:
+                - name: lineage
+                  in: path
+                  description: The lineage id.
+                  required: true
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - PACKAGE
+                        - STREAM
+                        - TASK
+                    type: string
+                    format: enum
+                - name: lineageType
+                  in: query
+                  description: The lineage type to query, source or target. If not specified, both source and target lineage will be returned.
+                  schema:
+                    enum:
+                        - LINEAGE_TYPE_UNSPECIFIED
+                        - SOURCE
+                        - TARGET
+                    type: string
+                    format: enum
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetLineageResponse'
                 default:
                     description: Default error response
                     content:
@@ -1868,6 +1976,22 @@ components:
                     format: enum
                 expression:
                     type: string
+        GetLineageForContextResponse:
+            type: object
+            properties:
+                relations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LineageRelation'
+                    description: The list of lineage relations for the given metadata.
+        GetLineageResponse:
+            type: object
+            properties:
+                relations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LineageRelation'
+                    description: The list of lineage relations for the given metadata.
         GetMetadataResponse:
             type: object
             properties:
@@ -2144,6 +2268,54 @@ components:
                     type: string
                 kdcTransportProtocol:
                     type: string
+        LineageRelation:
+            type: object
+            properties:
+                id:
+                    type: string
+                metaGuid:
+                    type: string
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - PACKAGE
+                        - STREAM
+                        - TASK
+                    type: string
+                    format: enum
+                sourceGuid:
+                    type: string
+                sourceColumn:
+                    type: string
+                targetGuid:
+                    type: string
+                targetColumn:
+                    type: string
+                relationType:
+                    enum:
+                        - RELATION_TYPE_UNSPECIFIED
+                        - DIRECT
+                        - INDIRECT
+                    type: string
+                    format: enum
+                transformation:
+                    type: string
+                updatedAt:
+                    type: string
+                    format: date-time
         LinkedDatabaseMetadata:
             type: object
             properties:
@@ -3096,4 +3268,5 @@ tags:
     - name: AuthService
     - name: DatabaseService
     - name: InstanceService
+    - name: LineageService
     - name: UserService

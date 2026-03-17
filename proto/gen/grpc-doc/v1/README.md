@@ -147,6 +147,18 @@
   
     - [DatabaseService](#metaxisdata-v1-DatabaseService)
   
+- [v1/lineage_service.proto](#v1_lineage_service-proto)
+    - [GetLineageForContextRequest](#metaxisdata-v1-GetLineageForContextRequest)
+    - [GetLineageForContextResponse](#metaxisdata-v1-GetLineageForContextResponse)
+    - [GetLineageRequest](#metaxisdata-v1-GetLineageRequest)
+    - [GetLineageResponse](#metaxisdata-v1-GetLineageResponse)
+    - [LineageRelation](#metaxisdata-v1-LineageRelation)
+  
+    - [LineageType](#metaxisdata-v1-LineageType)
+    - [RelationType](#metaxisdata-v1-RelationType)
+  
+    - [LineageService](#metaxisdata-v1-LineageService)
+  
 - [Scalar Value Types](#scalar-value-types)
 
 
@@ -2473,6 +2485,146 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | ListMetadata | [ListMetadataRequest](#metaxisdata-v1-ListMetadataRequest) | [MetadataResponse](#metaxisdata-v1-MetadataResponse) |  |
 | GetMetadata | [GetMetadataRequest](#metaxisdata-v1-GetMetadataRequest) | [GetMetadataResponse](#metaxisdata-v1-GetMetadataResponse) |  |
 | GetSchemaString | [GetSchemaStringRequest](#metaxisdata-v1-GetSchemaStringRequest) | [MetadataSchemaString](#metaxisdata-v1-MetadataSchemaString) | Generates schema DDL for a database object. |
+
+ 
+
+
+
+<a name="v1_lineage_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/lineage_service.proto
+
+
+
+<a name="metaxisdata-v1-GetLineageForContextRequest"></a>
+
+### GetLineageForContextRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  | The global unique id for metadata view: &#34;instance_1;db2;schema3;view1&#34; |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetLineageForContextResponse"></a>
+
+### GetLineageForContextResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| relations | [LineageRelation](#metaxisdata-v1-LineageRelation) | repeated | The list of lineage relations for the given metadata. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetLineageRequest"></a>
+
+### GetLineageRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  | The global unique id for metadata table: &#34;instance_1;db2;schema3;table4&#34; |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| lineage_type | [LineageType](#metaxisdata-v1-LineageType) |  | The lineage type to query, source or target. If not specified, both source and target lineage will be returned. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetLineageResponse"></a>
+
+### GetLineageResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| relations | [LineageRelation](#metaxisdata-v1-LineageRelation) | repeated | The list of lineage relations for the given metadata. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-LineageRelation"></a>
+
+### LineageRelation
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+| meta_guid | [string](#string) |  |  |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| source_guid | [string](#string) |  |  |
+| source_column | [string](#string) |  |  |
+| target_guid | [string](#string) |  |  |
+| target_column | [string](#string) |  |  |
+| relation_type | [RelationType](#metaxisdata-v1-RelationType) |  |  |
+| transformation | [string](#string) |  |  |
+| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+ 
+
+
+<a name="metaxisdata-v1-LineageType"></a>
+
+### LineageType
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| LINEAGE_TYPE_UNSPECIFIED | 0 |  |
+| SOURCE | 1 |  |
+| TARGET | 2 |  |
+
+
+
+<a name="metaxisdata-v1-RelationType"></a>
+
+### RelationType
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| RELATION_TYPE_UNSPECIFIED | 0 |  |
+| DIRECT | 1 | DIRECT means the source column is directly used in the target column without transformation. For example: select source_column as target_column from table. |
+| INDIRECT | 2 | INDIRECT means the source column is used in the target column with transformation. For example: select concat(source_column, &#39;abc&#39;) as target_column |
+
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-LineageService"></a>
+
+### LineageService
+
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| GetLineage | [GetLineageRequest](#metaxisdata-v1-GetLineageRequest) | [GetLineageResponse](#metaxisdata-v1-GetLineageResponse) | GetLineage returns the lineage relations for the given metadata. The lineage relations can be either source lineage or target lineage, depending on the lineage_type specified in the request. If lineage_type is not specified, both source and target lineage will be returned. |
+| GetLineageForContext | [GetLineageForContextRequest](#metaxisdata-v1-GetLineageForContextRequest) | [GetLineageForContextResponse](#metaxisdata-v1-GetLineageForContextResponse) | GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure). |
 
  
 

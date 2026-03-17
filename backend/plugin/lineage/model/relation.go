@@ -16,7 +16,7 @@ type ColumnRelation struct {
 type RelationType int
 
 const (
-	RelationTypeDirect RelationType = iota
+	RelationTypeDirect RelationType = iota + 1
 	RelationTypeIndirect
 	RelationTypeJoin
 	RelationTypeGroup
