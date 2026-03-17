@@ -1345,6 +1345,27 @@ func (a *Analyzer) processTableFactor(ctx *mysql.TableFactorContext) {
 		}
 	} else if ctx.DerivedTable() != nil {
 		a.processDerivedTable(ctx.DerivedTable())
+	} else if ctx.TableReferenceListParens() != nil {
+		a.processTableReferenceListParens(ctx.TableReferenceListParens())
+	}
+}
+
+// processTableReferenceListParens processes parenthesized table reference lists.
+// MySQL uses this form for join trees such as ((t1 JOIN t2) LEFT JOIN t3).
+func (a *Analyzer) processTableReferenceListParens(ctx mysql.ITableReferenceListParensContext) {
+	if ctx == nil {
+		return
+	}
+
+	if ctx.TableReferenceList() != nil {
+		if tableRefListCtx, ok := ctx.TableReferenceList().(*mysql.TableReferenceListContext); ok {
+			a.processTableReferenceList(tableRefListCtx)
+		}
+		return
+	}
+
+	if ctx.TableReferenceListParens() != nil {
+		a.processTableReferenceListParens(ctx.TableReferenceListParens())
 	}
 }
 

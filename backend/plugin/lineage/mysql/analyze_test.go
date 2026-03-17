@@ -290,6 +290,24 @@ func TestCreateViewLineage_Table(t *testing.T) {
 				{FromTable: "src_users", FromField: "name", ToTable: "ods_temp_view1", ToField: "name"},
 			},
 		},
+		{
+			Name: "CREATE VIEW with parenthesized join tree",
+			SQL:  "CREATE VIEW `popular_posts` AS select `p`.`id` AS `id`,`p`.`user_id` AS `user_id`,`p`.`title` AS `title`,`p`.`content` AS `content`,`p`.`status` AS `status`,`p`.`created_at` AS `created_at`,`p`.`published_at` AS `published_at`,`p`.`view_count` AS `view_count`,`p`.`likes` AS `likes`,`p`.`metadata` AS `metadata`,`u`.`username` AS `username`,count(`c`.`id`) AS `comment_count` from ((`posts` `p` join `users` `u` on((`p`.`user_id` = `u`.`id`))) left join `comments` `c` on((`p`.`id` = `c`.`post_id`))) where (`p`.`status` = 'published') group by `p`.`id` having (`comment_count` > 0) order by `p`.`likes` desc,`comment_count` desc",
+			ExpectedEdges: []ExpectedEdge{
+				{FromTable: "posts", FromField: "id", ToTable: "popular_posts", ToField: "id", IsTemp: Bool(false)},
+				{FromTable: "posts", FromField: "user_id", ToTable: "popular_posts", ToField: "user_id", IsTemp: Bool(false)},
+				{FromTable: "posts", FromField: "title", ToTable: "popular_posts", ToField: "title", IsTemp: Bool(false)},
+				{FromTable: "posts", FromField: "content", ToTable: "popular_posts", ToField: "content", IsTemp: Bool(false)},
+				{FromTable: "posts", FromField: "status", ToTable: "popular_posts", ToField: "status", IsTemp: Bool(false)},
+				{FromTable: "posts", FromField: "created_at", ToTable: "popular_posts", ToField: "created_at", IsTemp: Bool(false)},
+				{FromTable: "posts", FromField: "published_at", ToTable: "popular_posts", ToField: "published_at", IsTemp: Bool(false)},
+				{FromTable: "posts", FromField: "view_count", ToTable: "popular_posts", ToField: "view_count", IsTemp: Bool(false)},
+				{FromTable: "posts", FromField: "likes", ToTable: "popular_posts", ToField: "likes", IsTemp: Bool(false)},
+				{FromTable: "posts", FromField: "metadata", ToTable: "popular_posts", ToField: "metadata", IsTemp: Bool(false)},
+				{FromTable: "users", FromField: "username", ToTable: "popular_posts", ToField: "username", IsTemp: Bool(false)},
+				{FromTable: "comments", FromField: "id", ToTable: "popular_posts", ToField: "comment_count", HasTransform: Bool(true), IsTemp: Bool(false)},
+			},
+		},
 	}
 
 	RunLineageTests(t, testCases)
