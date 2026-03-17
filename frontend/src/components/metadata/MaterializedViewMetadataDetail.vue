@@ -32,6 +32,12 @@
       <DefinitionMonacoViewer :content="view.definition" />
     </div>
 
+    <ContextLineageSection
+      v-if="guid"
+      :guid="guid"
+      :meta-type="MetaType.MATERIALIZED_VIEW"
+    />
+
     <div class="space-y-2">
       <div class="flex items-center justify-between">
         <div class="text-sm font-medium">{{ t("metadataBrowser.indexes") }}</div>
@@ -127,6 +133,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import ContextLineageSection from "@/components/metadata/ContextLineageSection.vue";
 import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
 import { Badge } from "@/components/ui/badge";
 import {
