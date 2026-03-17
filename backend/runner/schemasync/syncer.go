@@ -67,6 +67,7 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 
 	sp := pool.New()
 	sp.Go(func() {
+		s.trySyncAll(ctx)
 		slog.Debug(fmt.Sprintf("Schema syncer started and will run every %v", instanceSyncInterval))
 		ticker := time.NewTicker(instanceSyncInterval)
 		defer ticker.Stop()
@@ -207,9 +208,6 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 		}
 		// The database inherits the sync interval from the instance.
 		interval := getOrDefaultSyncInterval(instance)
-		if interval == defaultSyncInterval {
-			continue
-		}
 		lastSyncTime := getOrDefaultLastSyncTime(database.Metadata.LastSyncTime)
 		// lastSyncTime + syncInterval > now
 		// Next round not started yet.

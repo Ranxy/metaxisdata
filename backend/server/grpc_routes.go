@@ -25,7 +25,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/config"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
-	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -37,7 +36,8 @@ func configureGrpcRouters(
 	profile *config.Profile,
 	stateCfg *state.State,
 	secret string,
-	lineageAnalyzer *lineageanalyzer.Analyzer,
+	dbFactory *dbfactory.DBFactory,
+	schemaSync *schemasync.Syncer,
 ) error {
 	// Note: the gateway response modifier takes the token duration on server startup. If the value is changed,
 	// the user has to restart the server to take the latest value.
@@ -57,8 +57,6 @@ func configureGrpcRouters(
 			grpcruntime.DefaultHTTPErrorHandler(ctx, sm, m, w, r, err)
 		}),
 	)
-	dbFactory := dbfactory.New(stores)
-	schemaSync := schemasync.NewSyncer(stores, dbFactory, profile, stateCfg, lineageAnalyzer)
 
 	userService := apiv1.NewUserService(stores, profile, stateCfg)
 	authService := apiv1.NewAuthService(stores, secret, profile, stateCfg)
