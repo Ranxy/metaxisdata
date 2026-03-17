@@ -42,18 +42,9 @@ func (s *LineageService) GetLineage(ctx context.Context, req *connect.Request[v1
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("guid is required"))
 	}
 
-	findMeta := &store.FindMetaRegistryResourceMessage{GUID: &req.Msg.Guid}
-	if req.Msg.GetMetaType() != v1pb.MetaType_UNSPECIFIED {
-		metaType := storepb.MetaType(req.Msg.GetMetaType())
-		findMeta.ObjectType = &metaType
-	}
-
-	meta, err := s.store.GetMetaRegistry(ctx, findMeta)
+	_, err := s.getLineageMeta(ctx, req.Msg.Guid, req.Msg.GetMetaType())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get meta registry %q: %v", req.Msg.Guid, err))
-	}
-	if meta == nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("meta registry %q not found", req.Msg.Guid))
+		return nil, err
 	}
 
 	findMessages, err := buildLineageFindMessages(req.Msg.Guid, req.Msg.GetLineageType())
@@ -84,9 +75,53 @@ func (s *LineageService) GetLineage(ctx context.Context, req *connect.Request[v1
 	return connect.NewResponse(response), nil
 }
 
-func (s *LineageService) GetLineageForContext(_ context.Context, _ *connect.Request[v1pb.GetLineageForContextRequest]) (*connect.Response[v1pb.GetLineageForContextResponse], error) {
-	_ = s
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.LineageService.GetLineageForContext is not implemented"))
+func (s *LineageService) GetLineageForContext(ctx context.Context, req *connect.Request[v1pb.GetLineageForContextRequest]) (*connect.Response[v1pb.GetLineageForContextResponse], error) {
+	if req.Msg.GetGuid() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("guid is required"))
+	}
+
+	meta, err := s.getLineageMeta(ctx, req.Msg.Guid, req.Msg.GetMetaType())
+	if err != nil {
+		return nil, err
+	}
+
+	find := &store.FindColumnLineageMessage{
+		MetaGUID: &req.Msg.Guid,
+		MetaType: &meta.ObjectType,
+	}
+	lineages, err := s.store.ListColumnLineage(ctx, find)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list context lineage for %q: %v", req.Msg.Guid, err))
+	}
+
+	response := &v1pb.GetLineageForContextResponse{}
+	for _, lineage := range lineages {
+		relation, err := convertColumnLineage(lineage)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to convert lineage relation %d: %v", lineage.ID, err))
+		}
+		response.Relations = append(response.Relations, relation)
+	}
+
+	return connect.NewResponse(response), nil
+}
+
+func (s *LineageService) getLineageMeta(ctx context.Context, guid string, metaType v1pb.MetaType) (*store.MetaRegistryResource, error) {
+	findMeta := &store.FindMetaRegistryResourceMessage{GUID: &guid}
+	if metaType != v1pb.MetaType_UNSPECIFIED {
+		storeMetaType := storepb.MetaType(metaType)
+		findMeta.ObjectType = &storeMetaType
+	}
+
+	meta, err := s.store.GetMetaRegistry(ctx, findMeta)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get meta registry %q: %v", guid, err))
+	}
+	if meta == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("meta registry %q not found", guid))
+	}
+
+	return meta, nil
 }
 
 func buildLineageFindMessages(guid string, lineageType v1pb.LineageType) ([]*store.FindColumnLineageMessage, error) {
