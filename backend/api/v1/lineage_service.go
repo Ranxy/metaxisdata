@@ -47,28 +47,38 @@ func (s *LineageService) GetLineage(ctx context.Context, req *connect.Request[v1
 		return nil, err
 	}
 
-	findMessages, err := buildLineageFindMessages(req.Msg.Guid, req.Msg.GetLineageType())
-	if err != nil {
-		return nil, err
+	response := &v1pb.GetLineageResponse{}
+	if !shouldIncludeSource(req.Msg.GetLineageType()) && !shouldIncludeTarget(req.Msg.GetLineageType()) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid lineage type %v", req.Msg.GetLineageType()))
 	}
 
-	response := &v1pb.GetLineageResponse{}
-	seen := make(map[int64]struct{})
-	for _, find := range findMessages {
+	if shouldIncludeSource(req.Msg.GetLineageType()) {
+		find := &store.FindColumnLineageMessage{TargetGUID: &req.Msg.Guid}
 		lineages, err := s.store.ListColumnLineage(ctx, find)
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list column lineage for %q: %v", req.Msg.Guid, err))
+			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list source lineage for %q: %v", req.Msg.Guid, err))
 		}
 		for _, lineage := range lineages {
-			if _, ok := seen[lineage.ID]; ok {
-				continue
-			}
 			relation, err := convertColumnLineage(lineage)
 			if err != nil {
-				return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to convert lineage relation %d: %v", lineage.ID, err))
+				return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to convert source lineage relation %d: %v", lineage.ID, err))
 			}
-			seen[lineage.ID] = struct{}{}
-			response.Relations = append(response.Relations, relation)
+			response.RelationsSource = append(response.RelationsSource, relation)
+		}
+	}
+
+	if shouldIncludeTarget(req.Msg.GetLineageType()) {
+		find := &store.FindColumnLineageMessage{SourceGUID: &req.Msg.Guid}
+		lineages, err := s.store.ListColumnLineage(ctx, find)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list target lineage for %q: %v", req.Msg.Guid, err))
+		}
+		for _, lineage := range lineages {
+			relation, err := convertColumnLineage(lineage)
+			if err != nil {
+				return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to convert target lineage relation %d: %v", lineage.ID, err))
+			}
+			response.RelationsTarget = append(response.RelationsTarget, relation)
 		}
 	}
 
@@ -124,19 +134,29 @@ func (s *LineageService) getLineageMeta(ctx context.Context, guid string, metaTy
 	return meta, nil
 }
 
-func buildLineageFindMessages(guid string, lineageType v1pb.LineageType) ([]*store.FindColumnLineageMessage, error) {
+func shouldIncludeSource(lineageType v1pb.LineageType) bool {
 	switch lineageType {
 	case v1pb.LineageType_LINEAGE_TYPE_UNSPECIFIED:
-		return []*store.FindColumnLineageMessage{
-			{TargetGUID: &guid},
-			{SourceGUID: &guid},
-		}, nil
+		return true
 	case v1pb.LineageType_SOURCE:
-		return []*store.FindColumnLineageMessage{{TargetGUID: &guid}}, nil
+		return true
 	case v1pb.LineageType_TARGET:
-		return []*store.FindColumnLineageMessage{{SourceGUID: &guid}}, nil
+		return false
 	default:
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid lineage type %v", lineageType))
+		return false
+	}
+}
+
+func shouldIncludeTarget(lineageType v1pb.LineageType) bool {
+	switch lineageType {
+	case v1pb.LineageType_LINEAGE_TYPE_UNSPECIFIED:
+		return true
+	case v1pb.LineageType_SOURCE:
+		return false
+	case v1pb.LineageType_TARGET:
+		return true
+	default:
+		return false
 	}
 }
 

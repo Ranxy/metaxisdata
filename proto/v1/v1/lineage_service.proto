@@ -73,7 +73,8 @@ message GetLineageRequest {
 
 message GetLineageResponse {
   // The list of lineage relations for the given metadata.
-  repeated LineageRelation relations = 1;
+  repeated LineageRelation relations_source = 1;
+  repeated LineageRelation relations_target = 2;
 }
 
 message GetLineageForContextRequest {

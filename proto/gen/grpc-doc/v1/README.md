@@ -2553,7 +2553,8 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| relations | [LineageRelation](#metaxisdata-v1-LineageRelation) | repeated | The list of lineage relations for the given metadata. |
+| relations_source | [LineageRelation](#metaxisdata-v1-LineageRelation) | repeated | The list of lineage relations for the given metadata. |
+| relations_target | [LineageRelation](#metaxisdata-v1-LineageRelation) | repeated |  |
 
 
 

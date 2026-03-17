@@ -1987,11 +1987,15 @@ components:
         GetLineageResponse:
             type: object
             properties:
-                relations:
+                relationsSource:
                     type: array
                     items:
                         $ref: '#/components/schemas/LineageRelation'
                     description: The list of lineage relations for the given metadata.
+                relationsTarget:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LineageRelation'
         GetMetadataResponse:
             type: object
             properties:

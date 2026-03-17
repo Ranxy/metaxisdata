@@ -308,9 +308,10 @@ func (x *GetLineageRequest) GetLineageType() LineageType {
 type GetLineageResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The list of lineage relations for the given metadata.
-	Relations     []*LineageRelation `protobuf:"bytes,1,rep,name=relations,proto3" json:"relations,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RelationsSource []*LineageRelation `protobuf:"bytes,1,rep,name=relations_source,json=relationsSource,proto3" json:"relations_source,omitempty"`
+	RelationsTarget []*LineageRelation `protobuf:"bytes,2,rep,name=relations_target,json=relationsTarget,proto3" json:"relations_target,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *GetLineageResponse) Reset() {
@@ -343,9 +344,16 @@ func (*GetLineageResponse) Descriptor() ([]byte, []int) {
 	return file_v1_lineage_service_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *GetLineageResponse) GetRelations() []*LineageRelation {
+func (x *GetLineageResponse) GetRelationsSource() []*LineageRelation {
 	if x != nil {
-		return x.Relations
+		return x.RelationsSource
+	}
+	return nil
+}
+
+func (x *GetLineageResponse) GetRelationsTarget() []*LineageRelation {
+	if x != nil {
+		return x.RelationsTarget
 	}
 	return nil
 }
@@ -473,9 +481,10 @@ const file_v1_lineage_service_proto_rawDesc = "" +
 	"\x04guid\x18\x01 \x01(\tB$\xe0A\x02\xfaA\x1e\n" +
 	"\x1cmetaxisdata/DatabaseMetadataR\x04guid\x125\n" +
 	"\tmeta_type\x18\x02 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12>\n" +
-	"\flineage_type\x18\x03 \x01(\x0e2\x1b.metaxisdata.v1.LineageTypeR\vlineageType\"S\n" +
-	"\x12GetLineageResponse\x12=\n" +
-	"\trelations\x18\x01 \x03(\v2\x1f.metaxisdata.v1.LineageRelationR\trelations\"\x8e\x01\n" +
+	"\flineage_type\x18\x03 \x01(\x0e2\x1b.metaxisdata.v1.LineageTypeR\vlineageType\"\xac\x01\n" +
+	"\x12GetLineageResponse\x12J\n" +
+	"\x10relations_source\x18\x01 \x03(\v2\x1f.metaxisdata.v1.LineageRelationR\x0frelationsSource\x12J\n" +
+	"\x10relations_target\x18\x02 \x03(\v2\x1f.metaxisdata.v1.LineageRelationR\x0frelationsTarget\"\x8e\x01\n" +
 	"\x1bGetLineageForContextRequest\x128\n" +
 	"\x04guid\x18\x01 \x01(\tB$\xe0A\x02\xfaA\x1e\n" +
 	"\x1cmetaxisdata/DatabaseMetadataR\x04guid\x125\n" +
@@ -529,18 +538,19 @@ var file_v1_lineage_service_proto_depIdxs = []int32{
 	8,  // 2: metaxisdata.v1.LineageRelation.updated_at:type_name -> google.protobuf.Timestamp
 	7,  // 3: metaxisdata.v1.GetLineageRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	0,  // 4: metaxisdata.v1.GetLineageRequest.lineage_type:type_name -> metaxisdata.v1.LineageType
-	2,  // 5: metaxisdata.v1.GetLineageResponse.relations:type_name -> metaxisdata.v1.LineageRelation
-	7,  // 6: metaxisdata.v1.GetLineageForContextRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	2,  // 7: metaxisdata.v1.GetLineageForContextResponse.relations:type_name -> metaxisdata.v1.LineageRelation
-	3,  // 8: metaxisdata.v1.LineageService.GetLineage:input_type -> metaxisdata.v1.GetLineageRequest
-	5,  // 9: metaxisdata.v1.LineageService.GetLineageForContext:input_type -> metaxisdata.v1.GetLineageForContextRequest
-	4,  // 10: metaxisdata.v1.LineageService.GetLineage:output_type -> metaxisdata.v1.GetLineageResponse
-	6,  // 11: metaxisdata.v1.LineageService.GetLineageForContext:output_type -> metaxisdata.v1.GetLineageForContextResponse
-	10, // [10:12] is the sub-list for method output_type
-	8,  // [8:10] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	2,  // 5: metaxisdata.v1.GetLineageResponse.relations_source:type_name -> metaxisdata.v1.LineageRelation
+	2,  // 6: metaxisdata.v1.GetLineageResponse.relations_target:type_name -> metaxisdata.v1.LineageRelation
+	7,  // 7: metaxisdata.v1.GetLineageForContextRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	2,  // 8: metaxisdata.v1.GetLineageForContextResponse.relations:type_name -> metaxisdata.v1.LineageRelation
+	3,  // 9: metaxisdata.v1.LineageService.GetLineage:input_type -> metaxisdata.v1.GetLineageRequest
+	5,  // 10: metaxisdata.v1.LineageService.GetLineageForContext:input_type -> metaxisdata.v1.GetLineageForContextRequest
+	4,  // 11: metaxisdata.v1.LineageService.GetLineage:output_type -> metaxisdata.v1.GetLineageResponse
+	6,  // 12: metaxisdata.v1.LineageService.GetLineageForContext:output_type -> metaxisdata.v1.GetLineageForContextResponse
+	11, // [11:13] is the sub-list for method output_type
+	9,  // [9:11] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_v1_lineage_service_proto_init() }

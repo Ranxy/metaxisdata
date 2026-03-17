@@ -111,9 +111,14 @@ export declare type GetLineageResponse = Message<"metaxisdata.v1.GetLineageRespo
   /**
    * The list of lineage relations for the given metadata.
    *
-   * @generated from field: repeated metaxisdata.v1.LineageRelation relations = 1;
+   * @generated from field: repeated metaxisdata.v1.LineageRelation relations_source = 1;
    */
-  relations: LineageRelation[];
+  relationsSource: LineageRelation[];
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.LineageRelation relations_target = 2;
+   */
+  relationsTarget: LineageRelation[];
 };
 
 /**
