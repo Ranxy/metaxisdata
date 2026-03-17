@@ -14,6 +14,10 @@ import (
 )
 
 var (
+	ErrorEngineNotSupported = errors.New("engine not supported")
+)
+
+var (
 	mux            sync.Mutex
 	CatelogProvide catalog.Provide
 )
@@ -38,7 +42,7 @@ func RegisterAnalyzeRelation(engine storepb.Engine, f analyze) {
 func GetAnalyzeRelation(ctx context.Context, engine storepb.Engine, sql string) ([]model.ColumnRelation, error) {
 	f, ok := getAnalyzes[engine]
 	if !ok {
-		return nil, errors.Errorf("engine %s is not supported", engine)
+		return nil, ErrorEngineNotSupported
 	}
 	return f(ctx, sql)
 }

@@ -19,6 +19,7 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -199,6 +200,9 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	analysisCtx := catalog.WithAnalysisContext(ctx, ac)
 	relations, err := lineage.GetAnalyzeRelation(analysisCtx, engine, wrappedSQL)
 	if err != nil {
+		if errors.Is(err, lineage.ErrorEngineNotSupported) {
+			return nil // Engine not supported, skip analysis without error.
+		}
 		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to analyze lineage")
 	}
 
@@ -219,11 +223,27 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		if sourceID.Schema == "" {
 			sourceID.Schema = schema
 		}
+
+		targetID := rel.Target.Table
+		if targetID.InstanceID == "" {
+			targetID.InstanceID = instanceID
+		}
+		if targetID.Database == "" {
+			targetID.Database = database
+		}
+		if targetID.Schema == "" {
+			targetID.Schema = schema
+		}
+
+		if rel.Transformation == nil {
+			rel.Transformation = make([]model.Transformation, 0)
+		}
 		lineages = append(lineages, &store.ColumnLineage{
 			MetaGUID:       metaGUID,
 			MetaType:       metaType,
 			SourceGUID:     sourceID.GUID(),
 			SourceColumn:   rel.Source.Name,
+			TargetGUID:     targetID.GUID(),
 			TargetColumn:   rel.Target.Name,
 			RelationType:   rel.RelationType,
 			Transformation: rel.Transformation,

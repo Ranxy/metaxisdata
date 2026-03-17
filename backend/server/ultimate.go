@@ -10,4 +10,7 @@ import (
 	// Schema.
 	_ "github.com/Ranxy/metaxisdata/backend/plugin/schema/mysql"
 	_ "github.com/Ranxy/metaxisdata/backend/plugin/schema/pg"
+
+	// Lineage.
+	_ "github.com/Ranxy/metaxisdata/backend/plugin/lineage/mysql"
 )

@@ -22,6 +22,7 @@ type ColumnLineage struct {
 	MetaType       storepb.MetaType
 	SourceGUID     string
 	SourceColumn   string
+	TargetGUID     string
 	TargetColumn   string
 	RelationType   model.RelationType
 	Transformation []model.Transformation
@@ -34,6 +35,7 @@ type FindColumnLineageMessage struct {
 	MetaType     *storepb.MetaType
 	SourceGUID   *string
 	SourceColumn *string
+	TargetGUID   *string
 	TargetColumn *string
 	Limit        *int
 	Offset       *int
@@ -78,6 +80,7 @@ func insertColumnLineage(ctx context.Context, tx *sql.Tx, metaGUID string, metaT
 	metaTypes := make([]storepb.MetaType, len(lineages))
 	sourceGUIDs := make([]string, len(lineages))
 	sourceColumns := make([]string, len(lineages))
+	targetGUIDs := make([]string, len(lineages))
 	targetColumns := make([]string, len(lineages))
 	relationTypes := make([]int32, len(lineages))
 	transformations := make([]string, len(lineages))
@@ -87,6 +90,7 @@ func insertColumnLineage(ctx context.Context, tx *sql.Tx, metaGUID string, metaT
 		metaTypes[i] = metaType
 		sourceGUIDs[i] = l.SourceGUID
 		sourceColumns[i] = l.SourceColumn
+		targetGUIDs[i] = l.TargetGUID
 		targetColumns[i] = l.TargetColumn
 		relationTypes[i] = int32(l.RelationType)
 		b, err := json.Marshal(l.Transformation)
@@ -97,13 +101,14 @@ func insertColumnLineage(ctx context.Context, tx *sql.Tx, metaGUID string, metaT
 	}
 
 	_, err := tx.ExecContext(ctx, `
-		INSERT INTO column_lineage (meta_guid, meta_type, source_guid, source_column, target_column, relation_type, transformation)
-		SELECT * FROM UNNEST($1::text[], $2::int[], $3::text[], $4::text[], $5::text[], $6::int[], $7::jsonb[])
+		INSERT INTO column_lineage (meta_guid, meta_type, source_guid, source_column, target_guid, target_column, relation_type, transformation)
+		SELECT * FROM UNNEST($1::text[], $2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::int[], $8::jsonb[])
 	`,
 		pq.Array(metaGUIDs),
 		pq.Array(metaTypes),
 		pq.Array(sourceGUIDs),
 		pq.Array(sourceColumns),
+		pq.Array(targetGUIDs),
 		pq.Array(targetColumns),
 		pq.Array(relationTypes),
 		pq.Array(transformations),
@@ -135,9 +140,13 @@ func (s *Store) ListColumnLineage(ctx context.Context, find *FindColumnLineageMe
 		where = append(where, fmt.Sprintf("target_column = $%d", len(args)+1))
 		args = append(args, *v)
 	}
+	if v := find.TargetGUID; v != nil {
+		where = append(where, fmt.Sprintf("target_guid = $%d", len(args)+1))
+		args = append(args, *v)
+	}
 
 	query := fmt.Sprintf(`
-		SELECT id, meta_guid, meta_type, source_guid, source_column, target_column, relation_type, transformation, updated_at
+		SELECT id, meta_guid, meta_type, source_guid, source_column, target_guid, target_column, relation_type, transformation, updated_at
 		FROM column_lineage
 		WHERE %s
 		ORDER BY id`, strings.Join(where, " AND "))
@@ -165,6 +174,7 @@ func (s *Store) ListColumnLineage(ctx context.Context, find *FindColumnLineageMe
 			&cl.MetaType,
 			&cl.SourceGUID,
 			&cl.SourceColumn,
+			&cl.TargetGUID,
 			&cl.TargetColumn,
 			&cl.RelationType,
 			&transformRaw,

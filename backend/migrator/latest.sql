@@ -174,6 +174,7 @@ CREATE TABLE column_lineage (
     meta_type INT2 NOT NULL,
     source_guid TEXT COLLATE "C" NOT NULL,
     source_column TEXT COLLATE "C" NOT NULL,
+    target_guid TEXT COLLATE "C" NOT NULL,
     target_column TEXT COLLATE "C" NOT NULL,
     relation_type INT2 NOT NULL DEFAULT 0,
     transformation JSONB NOT NULL DEFAULT '[]',
@@ -182,7 +183,7 @@ CREATE TABLE column_lineage (
 
 CREATE INDEX idx_column_lineage_meta ON column_lineage(meta_guid, meta_type);
 CREATE INDEX idx_column_lineage_source ON column_lineage(source_guid, source_column);
-CREATE INDEX idx_column_lineage_target ON column_lineage(meta_guid, target_column);
+CREATE INDEX idx_column_lineage_target ON column_lineage(target_guid, target_column);
 
 
 -- column_lineage_version tracks the analysis state per object for change detection.
