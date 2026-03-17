@@ -31,18 +31,6 @@ const (
 	fileSourceMarker  = "__file__" // Special marker for LOAD DATA source
 )
 
-// Constants for transformation operation types.
-const (
-	deleteOperation    = "DELETE"
-	unionOperation     = "UNION"
-	projectOperation   = "PROJECT"
-	aggregateOperation = "AGGREGATE"
-	functionOperation  = "FUNCTION"
-	operatorOperation  = "OPERATOR"
-	caseOperation      = "CASE"
-	windowOperation    = "WINDOW"
-)
-
 // Analyzer performs direct lineage analysis on MySQL queries.
 type Analyzer struct {
 	ctx context.Context
