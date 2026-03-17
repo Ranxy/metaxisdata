@@ -12,10 +12,12 @@ import (
 	"golang.org/x/net/http2"
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
+	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
 	"github.com/Ranxy/metaxisdata/backend/store"
 
 	"github.com/pkg/errors"
@@ -32,6 +34,7 @@ type Server struct {
 	store           *store.Store
 	startedTS       int64
 	lineageAnalyzer *lineageanalyzer.Analyzer
+	schemaSync      *schemasync.Syncer
 	// PG server stoppers.
 	stopper []func()
 
@@ -68,6 +71,8 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	s.store = stores
 	s.runnerCtx, s.runnerCancel = context.WithCancel(ctx)
 
+	dbFactory := dbfactory.New(stores)
+
 	lineage.InitCatalogProvide(stores)
 
 	s.lineageAnalyzer = lineageanalyzer.NewAnalyzer(stores, profile)
@@ -78,18 +83,22 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	}
 	s.stateCfg = stateCfg
 
+	s.schemaSync = schemasync.NewSyncer(stores, dbFactory, profile, stateCfg, s.lineageAnalyzer)
+
 	if err := s.initializeSetting(ctx); err != nil {
 		return nil, errors.Wrap(err, "failed to init config")
 	}
 	// Configure echo server.
 	s.echoServer = echo.New()
 
-	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, s.lineageAnalyzer); err != nil {
+	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync); err != nil {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")
 	}
 
-	s.runnerWG.Add(1)
+	s.runnerWG.Add(2)
 	go s.lineageAnalyzer.Run(s.runnerCtx, &s.runnerWG)
+	go s.schemaSync.Run(s.runnerCtx, &s.runnerWG)
+
 	configureEchoRouters(s.echoServer, profile)
 
 	s.echoServer.Debug = true
