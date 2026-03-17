@@ -64,6 +64,7 @@ func configureGrpcRouters(
 	authService := apiv1.NewAuthService(stores, secret, profile, stateCfg)
 	instanceService := apiv1.NewInstanceService(stores, stateCfg, dbFactory, schemaSync)
 	databaseService := apiv1.NewDatabaseService(stores, stateCfg, dbFactory, schemaSync)
+	lineageService := apiv1.NewLineageService(stores, stateCfg, dbFactory, schemaSync)
 
 	onPanic := func(_ context.Context, s connect.Spec, _ http.Header, p any) error {
 		stack := stacktrace.TakeStacktrace(20 /* n */, 5 /* skip */)
@@ -92,13 +93,15 @@ func configureGrpcRouters(
 	connectHandlers[instancePath] = instanceHandler
 	databasePath, databaseHandler := v1connect.NewDatabaseServiceHandler(databaseService, handlerOpts)
 	connectHandlers[databasePath] = databaseHandler
-
+	lineagePath, lineageHandler := v1connect.NewLineageServiceHandler(lineageService, handlerOpts)
+	connectHandlers[lineagePath] = lineageHandler
 	// grpc reflection handlers.
 	reflector := grpcreflect.NewStaticReflector(
 		v1connect.AuthServiceName,
 		v1connect.UserServiceName,
 		v1connect.InstanceServiceName,
 		v1connect.DatabaseServiceName,
+		v1connect.LineageServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
 	connectHandlers[reflectPath] = reflectHandler
@@ -131,13 +134,10 @@ func configureGrpcRouters(
 	if err := v1pb.RegisterDatabaseServiceHandler(ctx, mux, grpcConn); err != nil {
 		return err
 	}
-	// // Register echo routes for mux and connectHandlers
-	// e.GET("/v1:adminExecute", echo.WrapHandler(wsproxy.WebsocketProxy(
-	// 	mux,
-	// 	wsproxy.WithTokenCookieName("access-token"),
-	// 	// 100M.
-	// 	wsproxy.WithMaxRespBodyBufferSize(100*1024*1024),
-	// )))
+	if err := v1pb.RegisterLineageServiceHandler(ctx, mux, grpcConn); err != nil {
+		return err
+	}
+
 	e.Any("/v1/*", echo.WrapHandler(mux))
 
 	// Register Connect RPC handlers
