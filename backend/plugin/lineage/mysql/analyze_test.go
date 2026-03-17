@@ -58,6 +58,15 @@ func TestSelectLineage_Table(t *testing.T) {
 				{FromSchema: "mydb", FromTable: "users", FromField: "name", ToTable: "__result__", ToField: "name"},
 			},
 		},
+		{
+			Name: "select with parenthesized join tree",
+			SQL:  "SELECT `o`.`id` AS `order_id`,`c`.`name` AS `customer_name`,sum(`oi`.`amount`) AS `total_amount` FROM (((`orders` `o` JOIN `customers` `c` ON((`o`.`customer_id` = `c`.`id`)))) LEFT JOIN `order_items` `oi` ON((`o`.`id` = `oi`.`order_id`))) GROUP BY `o`.`id`,`c`.`name`",
+			ExpectedEdges: []ExpectedEdge{
+				{FromTable: "orders", FromField: "id", ToTable: "__result__", ToField: "order_id", IsTemp: Bool(true)},
+				{FromTable: "customers", FromField: "name", ToTable: "__result__", ToField: "customer_name", IsTemp: Bool(true)},
+				{FromTable: "order_items", FromField: "amount", ToTable: "__result__", ToField: "total_amount", HasTransform: Bool(true), IsTemp: Bool(true)},
+			},
+		},
 	}
 
 	RunLineageTests(t, testCases)
@@ -236,6 +245,15 @@ func TestInsertLineage_Table(t *testing.T) {
 				{ToTable: "summary", ToField: "order_count", HasTransform: Bool(true)},
 			},
 		},
+		{
+			Name: "INSERT SELECT with parenthesized join tree",
+			SQL:  "INSERT INTO order_summary (`order_id`, `customer_name`, `total_amount`) SELECT `o`.`id`,`c`.`name`,sum(`oi`.`amount`) AS `total_amount` FROM (((`orders` `o` JOIN `customers` `c` ON((`o`.`customer_id` = `c`.`id`)))) LEFT JOIN `order_items` `oi` ON((`o`.`id` = `oi`.`order_id`))) GROUP BY `o`.`id`,`c`.`name`",
+			ExpectedEdges: []ExpectedEdge{
+				{FromTable: "orders", FromField: "id", ToTable: "order_summary", ToField: "order_id", IsTemp: Bool(false)},
+				{FromTable: "customers", FromField: "name", ToTable: "order_summary", ToField: "customer_name", IsTemp: Bool(false)},
+				{FromTable: "order_items", FromField: "amount", ToTable: "order_summary", ToField: "total_amount", HasTransform: Bool(true), IsTemp: Bool(false)},
+			},
+		},
 	}
 
 	RunLineageTests(t, testCases)
@@ -274,6 +292,15 @@ func TestCreateTableLineage_Table(t *testing.T) {
 				{FromTable: "users", FromField: "name", ToTable: "tmp_active_users", ToField: "name"},
 			},
 		},
+		{
+			Name: "CREATE TABLE AS SELECT with parenthesized join tree",
+			SQL:  "CREATE TABLE order_rollup AS SELECT `o`.`id` AS `order_id`,`c`.`name` AS `customer_name`,sum(`oi`.`amount`) AS `total_amount` FROM (((`orders` `o` JOIN `customers` `c` ON((`o`.`customer_id` = `c`.`id`)))) LEFT JOIN `order_items` `oi` ON((`o`.`id` = `oi`.`order_id`))) GROUP BY `o`.`id`,`c`.`name`",
+			ExpectedEdges: []ExpectedEdge{
+				{FromTable: "orders", FromField: "id", ToTable: "order_rollup", ToField: "order_id", IsTemp: Bool(false)},
+				{FromTable: "customers", FromField: "name", ToTable: "order_rollup", ToField: "customer_name", IsTemp: Bool(false)},
+				{FromTable: "order_items", FromField: "amount", ToTable: "order_rollup", ToField: "total_amount", HasTransform: Bool(true), IsTemp: Bool(false)},
+			},
+		},
 	}
 
 	RunLineageTests(t, testCases)
@@ -306,6 +333,24 @@ func TestCreateViewLineage_Table(t *testing.T) {
 				{FromTable: "posts", FromField: "metadata", ToTable: "popular_posts", ToField: "metadata", IsTemp: Bool(false)},
 				{FromTable: "users", FromField: "username", ToTable: "popular_posts", ToField: "username", IsTemp: Bool(false)},
 				{FromTable: "comments", FromField: "id", ToTable: "popular_posts", ToField: "comment_count", HasTransform: Bool(true), IsTemp: Bool(false)},
+			},
+		},
+		{
+			Name: "CREATE VIEW with deeply nested parenthesized join tree",
+			SQL:  "CREATE VIEW `order_rollup` AS select `o`.`id` AS `order_id`,`c`.`name` AS `customer_name`,sum(`oi`.`amount`) AS `total_amount` from (((`orders` `o` join `customers` `c` on((`o`.`customer_id` = `c`.`id`)))) left join `order_items` `oi` on((`o`.`id` = `oi`.`order_id`))) group by `o`.`id`,`c`.`name`",
+			ExpectedEdges: []ExpectedEdge{
+				{FromTable: "orders", FromField: "id", ToTable: "order_rollup", ToField: "order_id", IsTemp: Bool(false)},
+				{FromTable: "customers", FromField: "name", ToTable: "order_rollup", ToField: "customer_name", IsTemp: Bool(false)},
+				{FromTable: "order_items", FromField: "amount", ToTable: "order_rollup", ToField: "total_amount", HasTransform: Bool(true), IsTemp: Bool(false)},
+			},
+		},
+		{
+			Name: "CREATE VIEW with parenthesized right join",
+			SQL:  "CREATE VIEW `shipment_status_view` AS select `o`.`id` AS `order_id`,`s`.`shipped_at` AS `shipped_at`,`s`.`status` AS `shipping_status` from ((`orders` `o` right join `shipments` `s` on((`o`.`id` = `s`.`order_id`)))) where (`s`.`status` <> 'cancelled')",
+			ExpectedEdges: []ExpectedEdge{
+				{FromTable: "orders", FromField: "id", ToTable: "shipment_status_view", ToField: "order_id", IsTemp: Bool(false)},
+				{FromTable: "shipments", FromField: "shipped_at", ToTable: "shipment_status_view", ToField: "shipped_at", IsTemp: Bool(false)},
+				{FromTable: "shipments", FromField: "status", ToTable: "shipment_status_view", ToField: "shipping_status", IsTemp: Bool(false)},
 			},
 		},
 	}
