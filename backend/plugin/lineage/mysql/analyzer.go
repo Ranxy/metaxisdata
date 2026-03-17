@@ -307,16 +307,16 @@ func (a *Analyzer) processCreateTable(ctx *mysql.CreateTableContext) {
 	targetSchema := ""
 	if ctx.TableName() != nil {
 		if ctx.TableName().QualifiedIdentifier() != nil {
-			fullText := ctx.TableName().QualifiedIdentifier().GetText()
-			// Parse schema.table format
-			if strings.Contains(fullText, ".") {
-				parts := strings.Split(fullText, ".")
-				if len(parts) >= 2 {
-					targetSchema = strings.Join(parts[:len(parts)-1], ".")
-					targetTable = parts[len(parts)-1]
-				}
-			} else {
-				targetTable = fullText
+			parts := splitQualifiedIdentifier(ctx.TableName().QualifiedIdentifier().GetText())
+			switch len(parts) {
+			case 1:
+				targetTable = parts[0]
+			case 2:
+				targetSchema = parts[0]
+				targetTable = parts[1]
+			default:
+				targetSchema = strings.Join(parts[:len(parts)-1], ".")
+				targetTable = parts[len(parts)-1]
 			}
 		}
 	}
@@ -373,16 +373,16 @@ func (a *Analyzer) processCreateView(ctx *mysql.CreateViewContext) {
 	targetSchema := ""
 	if ctx.ViewName() != nil {
 		if ctx.ViewName().QualifiedIdentifier() != nil {
-			fullText := ctx.ViewName().QualifiedIdentifier().GetText()
-			// Parse schema.view format
-			if strings.Contains(fullText, ".") {
-				parts := strings.Split(fullText, ".")
-				if len(parts) >= 2 {
-					targetSchema = strings.Join(parts[:len(parts)-1], ".")
-					targetView = parts[len(parts)-1]
-				}
-			} else {
-				targetView = fullText
+			parts := splitQualifiedIdentifier(ctx.ViewName().QualifiedIdentifier().GetText())
+			switch len(parts) {
+			case 1:
+				targetView = parts[0]
+			case 2:
+				targetSchema = parts[0]
+				targetView = parts[1]
+			default:
+				targetSchema = strings.Join(parts[:len(parts)-1], ".")
+				targetView = parts[len(parts)-1]
 			}
 		}
 	}
@@ -398,7 +398,7 @@ func (a *Analyzer) processCreateView(ctx *mysql.CreateViewContext) {
 					for _, colRef := range colRefs {
 						if colRefCtx, ok := colRef.(*mysql.ColumnInternalRefContext); ok {
 							if colRefCtx.Identifier() != nil {
-								explicitColumnNames = append(explicitColumnNames, colRefCtx.Identifier().GetText())
+								explicitColumnNames = append(explicitColumnNames, normalizeIdentifier(colRefCtx.Identifier().GetText()))
 							}
 						}
 					}
@@ -676,7 +676,7 @@ func (a *Analyzer) processDeleteStatement(ctx *mysql.DeleteStatementContext) {
 		if ctx.TableAlias() != nil {
 			// Extract just the identifier, not the AS keyword
 			if ctx.TableAlias().Identifier() != nil {
-				alias = ctx.TableAlias().Identifier().GetText()
+				alias = normalizeIdentifier(ctx.TableAlias().Identifier().GetText())
 			}
 		}
 		targetTables = append(targetTables, scope.TableRef{
@@ -694,7 +694,7 @@ func (a *Analyzer) processDeleteStatement(ctx *mysql.DeleteStatementContext) {
 				if tableRefCtx, ok := refCtx.(*mysql.TableRefWithWildcardContext); ok {
 					if tableRefCtx.Identifier() != nil {
 						// This is the alias or table name being deleted
-						tableName := tableRefCtx.Identifier().GetText()
+						tableName := normalizeIdentifier(tableRefCtx.Identifier().GetText())
 						targetTables = append(targetTables, scope.TableRef{
 							Table: tableName,
 							Alias: tableName, // For multi-table, this is typically an alias
@@ -1119,7 +1119,7 @@ func (a *Analyzer) processCTE(ctx mysql.ICommonTableExpressionContext) {
 	// Get CTE name
 	cteName := ""
 	if ctx.Identifier() != nil {
-		cteName = ctx.Identifier().GetText()
+		cteName = normalizeIdentifier(ctx.Identifier().GetText())
 	}
 
 	// Record CTE name as temporary to filter intermediate edges
@@ -1394,7 +1394,7 @@ func (a *Analyzer) processDerivedTable(ctx mysql.IDerivedTableContext) {
 	if ctx.TableAlias() != nil {
 		// Extract just the identifier, not the AS keyword
 		if ctx.TableAlias().Identifier() != nil {
-			alias = ctx.TableAlias().Identifier().GetText()
+			alias = normalizeIdentifier(ctx.TableAlias().Identifier().GetText())
 		}
 	}
 
@@ -1546,6 +1546,7 @@ func (a *Analyzer) processSelectItem(ctx mysql.ISelectItemContext, sp *scope.Sco
 	if selectItemCtx.TableWild() != nil {
 		tableName := selectItemCtx.TableWild().GetText()
 		tableName = strings.TrimSuffix(tableName, ".*")
+		tableName = normalizeIdentifier(tableName)
 
 		if tableRef, ok := sp.FindTable(tableName); ok {
 			// Try to expand wildcard using catalog if available
@@ -1758,14 +1759,38 @@ func normalizeExpressionText(text string) string {
 	return strings.ReplaceAll(text, " ", "")
 }
 
+func normalizeIdentifier(text string) string {
+	text = strings.TrimSpace(text)
+	if len(text) < 2 {
+		return text
+	}
+
+	quote := text[0]
+	if (quote != '`' && quote != '"') || text[len(text)-1] != quote {
+		return text
+	}
+
+	inner := text[1 : len(text)-1]
+	escapedQuote := strings.Repeat(string(quote), 2)
+	return strings.ReplaceAll(inner, escapedQuote, string(quote))
+}
+
+func splitQualifiedIdentifier(fullText string) []string {
+	parts := strings.Split(fullText, ".")
+	for i, part := range parts {
+		parts[i] = normalizeIdentifier(part)
+	}
+	return parts
+}
+
 // parseQualifiedIdentifier splits a qualified identifier into parts (e.g., "schema.table.column").
 // ignore schema because mysql does not have it.
 func parseQualifiedIdentifier(fullText string) (table, name string) {
 	if !strings.Contains(fullText, ".") {
-		return "", fullText
+		return "", normalizeIdentifier(fullText)
 	}
 
-	parts := strings.Split(fullText, ".")
+	parts := splitQualifiedIdentifier(fullText)
 	name = parts[len(parts)-1]
 
 	if len(parts) == 2 {
@@ -2101,13 +2126,10 @@ func (*Analyzer) getTableName(ctx mysql.ITableRefContext) string {
 // getSchemaName extracts the schema name from a TableRef context.
 func (*Analyzer) getSchemaName(ctx mysql.ITableRefContext) string {
 	if ctx.QualifiedIdentifier() != nil {
-		fullText := ctx.QualifiedIdentifier().GetText()
-		if strings.Contains(fullText, ".") {
-			parts := strings.Split(fullText, ".")
-			if len(parts) >= 2 {
-				// Return all parts except the last one (schema)
-				return strings.Join(parts[:len(parts)-1], ".")
-			}
+		parts := splitQualifiedIdentifier(ctx.QualifiedIdentifier().GetText())
+		if len(parts) >= 2 {
+			// Return all parts except the last one (schema)
+			return strings.Join(parts[:len(parts)-1], ".")
 		}
 	}
 	return ""
@@ -2118,7 +2140,7 @@ func (*Analyzer) getTableAlias(ctx mysql.ISingleTableContext) string {
 	if ctx.TableAlias() != nil {
 		alias := ctx.TableAlias()
 		if alias.Identifier() != nil {
-			return alias.Identifier().GetText()
+			return normalizeIdentifier(alias.Identifier().GetText())
 		}
 	}
 	return ""
@@ -2127,7 +2149,7 @@ func (*Analyzer) getTableAlias(ctx mysql.ISingleTableContext) string {
 // getSelectAlias extracts the alias from a SelectAlias context.
 func (*Analyzer) getSelectAlias(ctx mysql.ISelectAliasContext) string {
 	if ctx.Identifier() != nil {
-		return ctx.Identifier().GetText()
+		return normalizeIdentifier(ctx.Identifier().GetText())
 	}
 	if ctx.TextStringLiteral() != nil {
 		text := ctx.TextStringLiteral().GetText()
@@ -2142,7 +2164,7 @@ func (*Analyzer) extractColumnNames(ctx mysql.IColumnInternalRefListContext) []s
 	if ctx.AllColumnInternalRef() != nil {
 		for _, colRef := range ctx.AllColumnInternalRef() {
 			if colRef.Identifier() != nil {
-				columns = append(columns, colRef.Identifier().GetText())
+				columns = append(columns, normalizeIdentifier(colRef.Identifier().GetText()))
 			}
 		}
 	}
@@ -2155,8 +2177,11 @@ func (*Analyzer) extractColumnNames(ctx mysql.IColumnInternalRefListContext) []s
 func (*Analyzer) inferColumnAlias(exprText string) string {
 	// Check if this looks like a qualified column reference
 	if strings.Contains(exprText, ".") && !strings.Contains(exprText, "(") {
-		parts := strings.Split(exprText, ".")
+		parts := splitQualifiedIdentifier(exprText)
 		return parts[len(parts)-1]
+	}
+	if !strings.ContainsAny(exprText, "() +-*/%<>=,!?") {
+		return normalizeIdentifier(exprText)
 	}
 	return exprText
 }

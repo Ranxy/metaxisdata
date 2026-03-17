@@ -279,6 +279,22 @@ func TestCreateTableLineage_Table(t *testing.T) {
 	RunLineageTests(t, testCases)
 }
 
+// TestCreateViewLineage_Table contains table-driven tests for CREATE VIEW AS SELECT.
+func TestCreateViewLineage_Table(t *testing.T) {
+	testCases := []LineageTestCase{
+		{
+			Name: "CREATE VIEW with quoted identifiers",
+			SQL:  "CREATE VIEW `ods_temp_view1` AS SELECT `src_users`.`id` AS `user_id`, `src_users`.`name` FROM `src_users`",
+			ExpectedEdges: []ExpectedEdge{
+				{FromTable: "src_users", FromField: "id", ToTable: "ods_temp_view1", ToField: "user_id"},
+				{FromTable: "src_users", FromField: "name", ToTable: "ods_temp_view1", ToField: "name"},
+			},
+		},
+	}
+
+	RunLineageTests(t, testCases)
+}
+
 // TestUpdateLineage_Table contains table-driven tests for UPDATE statement lineage.
 func TestUpdateLineage_Table(t *testing.T) {
 	testCases := []LineageTestCase{
