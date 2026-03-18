@@ -250,6 +250,10 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		})
 	}
 
+	if len(lineages) == 0 {
+		slog.Debug("Lineage analyzer found no lineage relations (after filtering temp targets)", slog.String("guid", metaGUID))
+	}
+
 	// Persist results.
 	if err := a.store.BatchReplaceColumnLineage(ctx, metaGUID, metaType, lineages); err != nil {
 		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to replace column lineage")

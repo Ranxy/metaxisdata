@@ -13,4 +13,5 @@ import (
 
 	// Lineage.
 	_ "github.com/Ranxy/metaxisdata/backend/plugin/lineage/mysql"
+	_ "github.com/Ranxy/metaxisdata/backend/plugin/lineage/postgresql"
 )
