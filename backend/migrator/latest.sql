@@ -174,8 +174,10 @@ CREATE TABLE column_lineage (
     meta_type INT2 NOT NULL,
     source_guid TEXT COLLATE "C" NOT NULL,
     source_column TEXT COLLATE "C" NOT NULL,
+    source_type INT2 NOT NULL DEFAULT 0,
     target_guid TEXT COLLATE "C" NOT NULL,
     target_column TEXT COLLATE "C" NOT NULL,
+    target_type INT2 NOT NULL DEFAULT 0,
     relation_type INT2 NOT NULL DEFAULT 0,
     transformation JSONB NOT NULL DEFAULT '[]',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

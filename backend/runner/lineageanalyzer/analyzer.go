@@ -207,6 +207,8 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	}
 
 	// Convert relations to ColumnLineage rows, skipping temp targets.
+	// Collect unique source GUIDs to look up their meta types.
+	sourceGUIDSet := make(map[string]struct{})
 	var lineages []*store.ColumnLineage
 	for _, rel := range relations {
 		if rel.IsTemp {
@@ -238,16 +240,38 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		if rel.Transformation == nil {
 			rel.Transformation = make([]model.Transformation, 0)
 		}
+		srcGUID := sourceID.GUID()
+		sourceGUIDSet[srcGUID] = struct{}{}
 		lineages = append(lineages, &store.ColumnLineage{
 			MetaGUID:       metaGUID,
 			MetaType:       metaType,
-			SourceGUID:     sourceID.GUID(),
+			SourceGUID:     srcGUID,
 			SourceColumn:   rel.Source.Name,
 			TargetGUID:     targetID.GUID(),
 			TargetColumn:   rel.Target.Name,
+			TargetType:     metaType,
 			RelationType:   rel.RelationType,
 			Transformation: rel.Transformation,
 		})
+	}
+
+	// Look up source meta types from the registry.
+	sourceTypeMap := make(map[string]storepb.MetaType, len(sourceGUIDSet))
+	for guid := range sourceGUIDSet {
+		g := guid
+		srcMeta, err := a.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &g})
+		if err != nil {
+			slog.Warn("Lineage analyzer failed to look up source meta type", slog.String("guid", g), log.WithError(err))
+			continue
+		}
+		if srcMeta != nil {
+			sourceTypeMap[g] = srcMeta.ObjectType
+		}
+	}
+	for _, l := range lineages {
+		if t, ok := sourceTypeMap[l.SourceGUID]; ok {
+			l.SourceType = t
+		}
 	}
 
 	if len(lineages) == 0 {
