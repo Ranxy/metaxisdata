@@ -388,5 +388,13 @@
     "noEnvironmentsFound": "No environments found",
     "searchEngines": "Search engines...",
     "noEnginesFound": "No engines found"
+  },
+  "lineageGraph": {
+    "title": "Lineage Graph",
+    "description": "Visual lineage analysis",
+    "fitView": "Fit View",
+    "backToMetadata": "Back",
+    "viewGraph": "Graph View",
+    "expandNode": "Expand lineage"
   }
 }

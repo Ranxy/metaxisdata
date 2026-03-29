@@ -55,6 +55,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, layout: "default" },
   },
   {
+    path: "/lineage/:guid(.+)",
+    name: "LineageGraph",
+    component: () => import("@/pages/LineageGraphPage.vue"),
+    meta: { requiresAuth: true, layout: "default" },
+  },
+  {
     path: "/:pathMatch(.*)*",
     name: "NotFound",
     component: () => import("@/pages/NotFoundPage.vue"),

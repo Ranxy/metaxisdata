@@ -3,6 +3,14 @@
     <div class="flex items-center justify-between gap-3">
       <div class="text-sm font-medium">{{ title }}</div>
       <div class="flex items-center gap-2">
+        <RouterLink
+          v-if="guid"
+          :to="lineageGraphRoute"
+          class="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+        >
+          <Share2 class="size-4" />
+          {{ t("lineageGraph.viewGraph") }}
+        </RouterLink>
         <Input
           v-model="search"
           class="h-9 w-80 max-w-full"
@@ -116,8 +124,10 @@
 </template>
 
 <script setup lang="ts">
+import { Share2 } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { RouterLink } from "vue-router";
 import { getLineage } from "@/api/lineage";
 import AppLoading from "@/components/common/AppLoading.vue";
 import ExpandableText from "@/components/metadata/ExpandableText.vue";
@@ -164,6 +174,18 @@ const props = withDefaults(
 );
 
 const { t } = useI18n();
+
+const lineageGraphRoute = computed(() => {
+  const guidPath = props.guid
+    .split(";")
+    .map((s) => (s === "" ? "~" : encodeURIComponent(s)))
+    .join("/");
+  return {
+    name: "LineageGraph",
+    params: { guid: guidPath },
+    query: { metaType: String(props.metaType) },
+  };
+});
 
 const isLoading = ref(false);
 const error = ref<string | null>(null);

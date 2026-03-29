@@ -388,5 +388,13 @@
     "noEnvironmentsFound": "未找到环境",
     "searchEngines": "搜索引擎...",
     "noEnginesFound": "未找到引擎"
+  },
+  "lineageGraph": {
+    "title": "血缘图",
+    "description": "可视化的血缘分析",
+    "fitView": "适应视图",
+    "backToMetadata": "返回",
+    "viewGraph": "图形视图",
+    "expandNode": "展开血缘"
   }
 }
