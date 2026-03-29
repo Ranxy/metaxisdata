@@ -17,6 +17,13 @@
           {{ t("instanceDetail.description") }}
         </p>
       </div>
+      <Button
+        v-if="instance"
+        @click="openEditModal"
+      >
+        <Pencil class="h-4 w-4 mr-2" />
+        {{ t("instanceDetail.editInstance") }}
+      </Button>
     </div>
 
     <!-- Instance Info Card -->
@@ -68,6 +75,14 @@
             <Badge :variant="instance.activation ? 'success' : 'secondary'">
               {{ instance.activation ? t("instanceManagement.active") : t("instanceManagement.inactive") }}
             </Badge>
+          </div>
+          <div>
+            <p class="text-sm text-muted-foreground">
+              {{ t("instanceDetail.syncInterval") }}
+            </p>
+            <p class="font-medium">
+              {{ instance.syncInterval ? t("instanceDetail.syncIntervalDisplay", { value: Number(instance.syncInterval.seconds) / 60 }) : t("instanceDetail.noSyncInterval") }}
+            </p>
           </div>
         </div>
       </CardContent>
@@ -162,21 +177,314 @@
         </TableBody>
       </Table>
     </Card>
+
+    <!-- Edit Instance Modal -->
+    <AppModal
+      v-model="showEditModal"
+      :title="t('instanceDetail.editInstance')"
+      size="lg"
+    >
+      <form
+        class="space-y-6"
+        @submit.prevent="handleUpdateInstance"
+      >
+        <!-- Basic Info Section -->
+        <div class="space-y-4">
+          <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            {{ t("instanceManagement.basicInfo") }}
+          </h3>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <Label class="text-sm text-muted-foreground">
+                {{ t("instanceManagement.instanceId") }}
+              </Label>
+              <p class="font-medium text-sm py-2">
+                {{ getInstanceIdFromName(instance?.name ?? "") }}
+              </p>
+            </div>
+            <AppInput
+              v-model="editForm.title"
+              :label="t('instanceManagement.instanceTitle')"
+              :placeholder="t('instanceManagement.instanceTitlePlaceholder')"
+              required
+              :error="editFormErrors.title"
+            />
+          </div>
+
+          <AppInput
+            v-model="editForm.environment"
+            :label="t('instanceManagement.environment')"
+            :placeholder="t('instanceManagement.environmentPlaceholder')"
+            required
+            :error="editFormErrors.environment"
+          />
+
+          <div class="flex items-center gap-2">
+            <Checkbox
+              id="edit-activation"
+              :checked="editForm.activation"
+              @update:checked="editForm.activation = $event"
+            />
+            <Label
+              for="edit-activation"
+              class="text-sm cursor-pointer"
+            >
+              {{ t("instanceManagement.activateInstance") }}
+            </Label>
+          </div>
+
+          <!-- Sync Interval: toggle + minutes input -->
+          <div class="space-y-2">
+            <Label class="text-sm">{{ t("instanceManagement.syncInterval") }}</Label>
+            <div class="flex items-center gap-4">
+              <div class="flex items-center gap-2">
+                <Checkbox
+                  id="edit-enable-sync"
+                  :checked="editForm.enableSync"
+                  @update:checked="onEditSyncToggle"
+                />
+                <Label
+                  for="edit-enable-sync"
+                  class="text-sm cursor-pointer"
+                >
+                  {{ t("instanceManagement.enableSync") }}
+                </Label>
+              </div>
+              <div class="flex items-center gap-2">
+                <AppInput
+                  v-model="editForm.syncIntervalMinutes"
+                  type="number"
+                  :placeholder="t('instanceManagement.syncIntervalPlaceholder')"
+                  :disabled="!editForm.enableSync"
+                  class="w-32"
+                />
+                <span class="text-sm text-muted-foreground">{{ t("instanceManagement.syncIntervalMinutes") }}</span>
+              </div>
+            </div>
+            <p class="text-xs text-muted-foreground">
+              {{ t("instanceManagement.syncIntervalHint") }}
+            </p>
+          </div>
+        </div>
+
+        <!-- Data Sources Section -->
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              {{ t("instanceDetail.currentDataSources") }}
+            </h3>
+          </div>
+
+          <!-- Show current data source info read-only -->
+          <div
+            v-if="!editForm.editDataSources"
+            class="space-y-2"
+          >
+            <div
+              v-for="ds in instance?.dataSources ?? []"
+              :key="ds.id"
+              class="border rounded-lg p-3 text-sm space-y-1"
+            >
+              <div class="flex items-center gap-2">
+                <Badge variant="secondary">
+                  {{ ds.type === 1 ? "ADMIN" : "READ_ONLY" }}
+                </Badge>
+                <span class="font-medium">{{ ds.id }}</span>
+              </div>
+              <div class="text-muted-foreground">
+                {{ ds.host }}:{{ ds.port }} · {{ ds.username }} {{ ds.database ? `· ${ds.database}` : "" }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Toggle to enable data source editing -->
+          <div class="flex items-center gap-2">
+            <Checkbox
+              id="edit-ds-toggle"
+              :checked="editForm.editDataSources"
+              @update:checked="onEditDataSourcesToggle"
+            />
+            <Label
+              for="edit-ds-toggle"
+              class="text-sm cursor-pointer"
+            >
+              {{ t("instanceDetail.updateDataSources") }}
+            </Label>
+          </div>
+          <p
+            v-if="!editForm.editDataSources"
+            class="text-xs text-muted-foreground"
+          >
+            {{ t("instanceDetail.updateDataSourcesHint") }}
+          </p>
+
+          <!-- Editable data source fields (only shown when toggle is on) -->
+          <template v-if="editForm.editDataSources">
+            <!-- Admin Data Source -->
+            <div class="space-y-4 border rounded-lg p-4">
+              <h4 class="text-sm font-semibold text-muted-foreground">
+                {{ t("instanceManagement.adminDataSource") }}
+              </h4>
+
+              <div class="grid grid-cols-2 gap-4">
+                <AppInput
+                  v-model="editForm.adminDataSource.host"
+                  :label="t('instanceManagement.host')"
+                  :placeholder="t('instanceManagement.hostPlaceholder')"
+                  required
+                  :error="editFormErrors.adminHost"
+                />
+                <AppInput
+                  v-model="editForm.adminDataSource.port"
+                  :label="t('instanceManagement.port')"
+                  :placeholder="t('instanceManagement.portPlaceholder')"
+                  required
+                  :error="editFormErrors.adminPort"
+                />
+              </div>
+
+              <div class="grid grid-cols-2 gap-4">
+                <AppInput
+                  v-model="editForm.adminDataSource.username"
+                  :label="t('instanceManagement.username')"
+                  :placeholder="t('instanceManagement.usernamePlaceholder')"
+                  required
+                  :error="editFormErrors.adminUsername"
+                />
+                <AppInput
+                  v-model="editForm.adminDataSource.password"
+                  type="password"
+                  :label="t('instanceManagement.password')"
+                  :placeholder="t('instanceManagement.passwordPlaceholder')"
+                />
+              </div>
+
+              <AppInput
+                v-model="editForm.adminDataSource.database"
+                :label="t('instanceManagement.database')"
+                :placeholder="t('instanceManagement.databasePlaceholder')"
+              />
+            </div>
+
+            <!-- Read-Only Data Sources -->
+            <div class="flex items-center justify-between">
+              <h4 class="text-sm font-semibold text-muted-foreground">
+                {{ t("instanceManagement.readOnlyDataSources") }}
+              </h4>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                @click="addEditReadOnlyDataSource"
+              >
+                <Plus class="h-4 w-4 mr-1" />
+                {{ t("instanceManagement.addReadOnlyNode") }}
+              </Button>
+            </div>
+
+            <div
+              v-if="editForm.readOnlyDataSources.length === 0"
+              class="text-sm text-muted-foreground italic"
+            >
+              {{ t("instanceManagement.noReadOnlyNodes") }}
+            </div>
+
+            <div
+              v-for="(ds, index) in editForm.readOnlyDataSources"
+              :key="index"
+              class="border rounded-lg p-4 space-y-4 relative"
+            >
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-medium text-muted-foreground">
+                  {{ t("instanceManagement.readOnlyNode") }} #{{ index + 1 }}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  class="text-destructive hover:text-destructive"
+                  @click="removeEditReadOnlyDataSource(index)"
+                >
+                  <Trash2 class="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div class="grid grid-cols-2 gap-4">
+                <AppInput
+                  v-model="ds.host"
+                  :label="t('instanceManagement.host')"
+                  :placeholder="t('instanceManagement.hostPlaceholder')"
+                  required
+                />
+                <AppInput
+                  v-model="ds.port"
+                  :label="t('instanceManagement.port')"
+                  :placeholder="t('instanceManagement.portPlaceholder')"
+                  required
+                />
+              </div>
+
+              <div class="grid grid-cols-2 gap-4">
+                <AppInput
+                  v-model="ds.username"
+                  :label="t('instanceManagement.username')"
+                  :placeholder="t('instanceManagement.usernamePlaceholder')"
+                  required
+                />
+                <AppInput
+                  v-model="ds.password"
+                  type="password"
+                  :label="t('instanceManagement.password')"
+                  :placeholder="t('instanceManagement.passwordPlaceholder')"
+                />
+              </div>
+
+              <AppInput
+                v-model="ds.database"
+                :label="t('instanceManagement.database')"
+                :placeholder="t('instanceManagement.databasePlaceholder')"
+              />
+            </div>
+          </template>
+        </div>
+      </form>
+      <template #footer>
+        <Button
+          variant="outline"
+          @click="showEditModal = false"
+        >
+          {{ t("common.cancel") }}
+        </Button>
+        <Button
+          :disabled="isUpdating"
+          @click="handleUpdateInstance"
+        >
+          {{ t("common.confirm") }}
+        </Button>
+      </template>
+    </AppModal>
   </div>
 </template>
 
 <script setup lang="ts">
+import { create } from "@bufbuild/protobuf";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { ArrowLeft, Database } from "lucide-vue-next";
+import { DurationSchema } from "@bufbuild/protobuf/wkt";
+import { ArrowLeft, Database, Pencil, Plus, Trash2 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { listDatabases } from "@/api/database";
-import { listInstances } from "@/api/instance";
+import { listInstances, updateInstance } from "@/api/instance";
+import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
+import AppModal from "@/components/common/AppModal.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -189,11 +497,16 @@ import { useErrorHandler } from "@/composables/useErrorHandler";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
+import {
+  DataSourceSchema,
+  DataSourceType,
+  InstanceSchema,
+} from "@/types/proto-es/v1/instance_service_pb";
 
 const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
-const { handleError } = useErrorHandler();
+const { handleError, showSuccess } = useErrorHandler();
 
 // State
 const instanceId = computed(() => route.params.instanceId as string);
@@ -202,6 +515,238 @@ const databases = ref<DatabaseType[]>([]);
 const isLoadingInstance = ref(false);
 const isLoadingDatabases = ref(false);
 const databaseError = ref<string | null>(null);
+
+// Edit state
+const showEditModal = ref(false);
+const isUpdating = ref(false);
+
+interface EditDataSourceForm {
+  id: string;
+  host: string;
+  port: string;
+  username: string;
+  password: string;
+  database: string;
+}
+
+const editForm = ref({
+  title: "",
+  environment: "",
+  activation: true,
+  enableSync: false,
+  syncIntervalMinutes: "15",
+  editDataSources: false,
+  adminDataSource: {
+    id: "admin",
+    host: "",
+    port: "",
+    username: "",
+    password: "",
+    database: "",
+  } as EditDataSourceForm,
+  readOnlyDataSources: [] as EditDataSourceForm[],
+});
+
+const editFormErrors = ref({
+  title: "",
+  environment: "",
+  adminHost: "",
+  adminPort: "",
+  adminUsername: "",
+});
+
+function getInstanceIdFromName(name: string): string {
+  return name.replace("instances/", "");
+}
+
+function openEditModal() {
+  if (!instance.value) return;
+  const inst = instance.value;
+  const adminDs = inst.dataSources.find(
+    (ds) => ds.type === DataSourceType.ADMIN
+  );
+  const readOnlyDs = inst.dataSources.filter(
+    (ds) => ds.type === DataSourceType.READ_ONLY
+  );
+
+  const syncSeconds = inst.syncInterval ? Number(inst.syncInterval.seconds) : 0;
+
+  editForm.value = {
+    title: inst.title,
+    environment: inst.environment.replace("environments/", ""),
+    activation: inst.activation,
+    enableSync: syncSeconds > 0,
+    syncIntervalMinutes: syncSeconds > 0 ? String(syncSeconds / 60) : "15",
+    editDataSources: false,
+    adminDataSource: {
+      id: adminDs?.id ?? "admin",
+      host: adminDs?.host ?? "",
+      port: adminDs?.port ?? "",
+      username: adminDs?.username ?? "",
+      password: "",
+      database: adminDs?.database ?? "",
+    },
+    readOnlyDataSources: readOnlyDs.map((ds) => ({
+      id: ds.id,
+      host: ds.host,
+      port: ds.port,
+      username: ds.username,
+      password: "",
+      database: ds.database,
+    })),
+  };
+  editFormErrors.value = {
+    title: "",
+    environment: "",
+    adminHost: "",
+    adminPort: "",
+    adminUsername: "",
+  };
+  showEditModal.value = true;
+}
+
+function addEditReadOnlyDataSource() {
+  editForm.value.readOnlyDataSources.push({
+    id: `readonly-${editForm.value.readOnlyDataSources.length + 1}`,
+    host: "",
+    port: "",
+    username: "",
+    password: "",
+    database: "",
+  });
+}
+
+function removeEditReadOnlyDataSource(index: number) {
+  editForm.value.readOnlyDataSources.splice(index, 1);
+}
+
+function onEditSyncToggle(checked: boolean) {
+  editForm.value.enableSync = checked;
+  if (!checked) {
+    editForm.value.syncIntervalMinutes = "0";
+  } else if (
+    !editForm.value.syncIntervalMinutes ||
+    editForm.value.syncIntervalMinutes === "0"
+  ) {
+    editForm.value.syncIntervalMinutes = "15";
+  }
+}
+
+function onEditDataSourcesToggle(checked: boolean) {
+  editForm.value.editDataSources = checked;
+}
+
+function validateEditForm(): boolean {
+  let valid = true;
+  editFormErrors.value = {
+    title: "",
+    environment: "",
+    adminHost: "",
+    adminPort: "",
+    adminUsername: "",
+  };
+
+  if (!editForm.value.title.trim()) {
+    editFormErrors.value.title = t("instanceManagement.titleRequired");
+    valid = false;
+  }
+  if (!editForm.value.environment.trim()) {
+    editFormErrors.value.environment = t(
+      "instanceManagement.environmentRequired"
+    );
+    valid = false;
+  }
+  if (editForm.value.editDataSources) {
+    if (!editForm.value.adminDataSource.host.trim()) {
+      editFormErrors.value.adminHost = t("instanceManagement.hostRequired");
+      valid = false;
+    }
+    if (!editForm.value.adminDataSource.port.trim()) {
+      editFormErrors.value.adminPort = t("instanceManagement.portRequired");
+      valid = false;
+    }
+    if (!editForm.value.adminDataSource.username.trim()) {
+      editFormErrors.value.adminUsername = t(
+        "instanceManagement.usernameRequired"
+      );
+      valid = false;
+    }
+  }
+  return valid;
+}
+
+async function handleUpdateInstance() {
+  if (!instance.value || !validateEditForm()) return;
+
+  isUpdating.value = true;
+  try {
+    let environment = editForm.value.environment.trim();
+    if (!environment.startsWith("environments/")) {
+      environment = `environments/${environment}`;
+    }
+
+    const updateMask = ["title", "environment", "activation", "sync_interval"];
+
+    const instanceData: Record<string, unknown> = {
+      name: instance.value.name,
+      title: editForm.value.title.trim(),
+      environment,
+      activation: editForm.value.activation,
+    };
+
+    // Sync interval: convert minutes to seconds
+    const syncMinutes = editForm.value.enableSync
+      ? Number(editForm.value.syncIntervalMinutes) || 0
+      : 0;
+    if (syncMinutes > 0) {
+      instanceData.syncInterval = create(DurationSchema, {
+        seconds: BigInt(syncMinutes * 60),
+      });
+    }
+
+    // Only include data sources when user explicitly opts in
+    if (editForm.value.editDataSources) {
+      updateMask.push("data_sources");
+      instanceData.dataSources = [
+        create(DataSourceSchema, {
+          id: editForm.value.adminDataSource.id.trim(),
+          type: DataSourceType.ADMIN,
+          host: editForm.value.adminDataSource.host.trim(),
+          port: editForm.value.adminDataSource.port.trim(),
+          username: editForm.value.adminDataSource.username.trim(),
+          password: editForm.value.adminDataSource.password,
+          database: editForm.value.adminDataSource.database.trim(),
+        }),
+        ...editForm.value.readOnlyDataSources.map((ds) =>
+          create(DataSourceSchema, {
+            id: ds.id.trim(),
+            type: DataSourceType.READ_ONLY,
+            host: ds.host.trim(),
+            port: ds.port.trim(),
+            username: ds.username.trim(),
+            password: ds.password,
+            database: ds.database.trim(),
+          })
+        ),
+      ];
+    }
+
+    const updatedInstance = create(InstanceSchema, instanceData);
+
+    await updateInstance({
+      instance: updatedInstance,
+      updateMask,
+    });
+
+    showEditModal.value = false;
+    showSuccess(t("instanceDetail.updateSuccess"));
+    await fetchInstance();
+  } catch (e) {
+    handleError(e, t("instanceDetail.updateError"));
+  } finally {
+    isUpdating.value = false;
+  }
+}
 
 // Methods
 function goBack() {

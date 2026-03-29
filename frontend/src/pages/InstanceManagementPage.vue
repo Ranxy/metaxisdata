@@ -360,6 +360,39 @@
               {{ t("instanceManagement.activateInstance") }}
             </Label>
           </div>
+
+          <!-- Sync Interval: toggle + minutes input -->
+          <div class="space-y-2">
+            <Label class="text-sm">{{ t("instanceManagement.syncInterval") }}</Label>
+            <div class="flex items-center gap-4">
+              <div class="flex items-center gap-2">
+                <Checkbox
+                  id="create-enable-sync"
+                  :checked="createForm.enableSync"
+                  @update:checked="onCreateSyncToggle"
+                />
+                <Label
+                  for="create-enable-sync"
+                  class="text-sm cursor-pointer"
+                >
+                  {{ t("instanceManagement.enableSync") }}
+                </Label>
+              </div>
+              <div class="flex items-center gap-2">
+                <AppInput
+                  v-model="createForm.syncIntervalMinutes"
+                  type="number"
+                  :placeholder="t('instanceManagement.syncIntervalPlaceholder')"
+                  :disabled="!createForm.enableSync"
+                  class="w-32"
+                />
+                <span class="text-sm text-muted-foreground">{{ t("instanceManagement.syncIntervalMinutes") }}</span>
+              </div>
+            </div>
+            <p class="text-xs text-muted-foreground">
+              {{ t("instanceManagement.syncIntervalHint") }}
+            </p>
+          </div>
         </div>
 
         <!-- Admin Data Source Section (Required) -->
@@ -650,6 +683,8 @@ const createForm = ref({
   engine: "",
   environment: "",
   activation: true,
+  enableSync: false,
+  syncIntervalMinutes: "15",
   adminDataSource: {
     id: "admin",
     host: "",
@@ -917,6 +952,8 @@ function openCreateModal() {
     engine: "",
     environment: "",
     activation: true,
+    enableSync: false,
+    syncIntervalMinutes: "15",
     adminDataSource: {
       id: "admin",
       host: "",
@@ -936,6 +973,18 @@ function openCreateModal() {
     readOnlyDataSources: [],
   };
   showCreateModal.value = true;
+}
+
+function onCreateSyncToggle(checked: boolean) {
+  createForm.value.enableSync = checked;
+  if (!checked) {
+    createForm.value.syncIntervalMinutes = "0";
+  } else if (
+    !createForm.value.syncIntervalMinutes ||
+    createForm.value.syncIntervalMinutes === "0"
+  ) {
+    createForm.value.syncIntervalMinutes = "15";
+  }
 }
 
 function validateDataSource(
@@ -1086,6 +1135,9 @@ async function handleCreateInstance() {
       activation: createForm.value.activation,
       dataSources,
       instanceId: createForm.value.instanceId.trim(),
+      syncIntervalSeconds: createForm.value.enableSync
+        ? (Number(createForm.value.syncIntervalMinutes) || 0) * 60
+        : undefined,
     });
 
     showCreateModal.value = false;

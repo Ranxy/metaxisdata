@@ -317,7 +317,12 @@
     "usernameRequired": "Username is required",
     "passwordRequired": "Password is required",
     "createError": "Failed to create instance",
-    "createSuccess": "Instance created successfully"
+    "createSuccess": "Instance created successfully",
+    "syncInterval": "Sync Interval",
+    "syncIntervalPlaceholder": "Interval in minutes",
+    "syncIntervalHint": "How often the instance syncs automatically (in minutes).",
+    "enableSync": "Enable automatic sync",
+    "syncIntervalMinutes": "minutes"
   },
   "instanceDetail": {
     "description": "View instance details and manage databases",
@@ -335,7 +340,16 @@
     "stateActive": "Active",
     "stateDeleted": "Deleted",
     "fetchInstanceError": "Failed to load instance details",
-    "fetchDatabasesError": "Failed to load databases"
+    "fetchDatabasesError": "Failed to load databases",
+    "editInstance": "Edit Instance",
+    "updateSuccess": "Instance updated successfully",
+    "updateError": "Failed to update instance",
+    "syncInterval": "Sync Interval",
+    "syncIntervalDisplay": "{value} min",
+    "noSyncInterval": "Not configured",
+    "updateDataSources": "Update Data Sources",
+    "updateDataSourcesHint": "Check to modify data source configurations. Passwords are not shown for security.",
+    "currentDataSources": "Current Data Sources"
   },
   "databaseManagement": {
     "title": "Database Management",

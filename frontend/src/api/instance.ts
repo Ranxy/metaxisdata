@@ -1,5 +1,7 @@
 import { create } from "@bufbuild/protobuf";
+import { DurationSchema, FieldMaskSchema } from "@bufbuild/protobuf/wkt";
 import type { Engine } from "@/types/proto-es/v1/common_pb";
+import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import {
   CreateInstanceRequestSchema,
   DataSourceSchema,
@@ -9,6 +11,7 @@ import {
   InstanceSchema,
   ListInstancesRequestSchema,
   UndeleteInstanceRequestSchema,
+  UpdateInstanceRequestSchema,
 } from "@/types/proto-es/v1/instance_service_pb";
 import { instanceClient } from "./client";
 
@@ -29,6 +32,7 @@ export interface CreateInstanceInput {
   activation: boolean;
   dataSources: DataSourceInput[];
   instanceId?: string;
+  syncIntervalSeconds?: number;
 }
 
 export async function listInstances(options?: {
@@ -70,6 +74,13 @@ export async function createInstance(input: CreateInstanceInput) {
     environment: input.environment,
     activation: input.activation,
     dataSources,
+    ...(input.syncIntervalSeconds
+      ? {
+          syncInterval: create(DurationSchema, {
+            seconds: BigInt(input.syncIntervalSeconds),
+          }),
+        }
+      : {}),
   });
 
   const request = create(CreateInstanceRequestSchema, {
@@ -91,4 +102,17 @@ export async function deleteInstance(name: string, force?: boolean) {
 export async function undeleteInstance(name: string) {
   const request = create(UndeleteInstanceRequestSchema, { name });
   return await instanceClient.undeleteInstance(request);
+}
+
+export interface UpdateInstanceInput {
+  instance: Instance;
+  updateMask: string[];
+}
+
+export async function updateInstance(input: UpdateInstanceInput) {
+  const request = create(UpdateInstanceRequestSchema, {
+    instance: input.instance,
+    updateMask: create(FieldMaskSchema, { paths: input.updateMask }),
+  });
+  return await instanceClient.updateInstance(request);
 }

@@ -317,7 +317,12 @@
     "usernameRequired": "用户名不能为空",
     "passwordRequired": "密码不能为空",
     "createError": "创建实例失败",
-    "createSuccess": "实例创建成功"
+    "createSuccess": "实例创建成功",
+    "syncInterval": "同步间隔",
+    "syncIntervalPlaceholder": "间隔分钟数",
+    "syncIntervalHint": "实例自动同步的间隔时间（分钟）。",
+    "enableSync": "启用自动同步",
+    "syncIntervalMinutes": "分钟"
   },
   "instanceDetail": {
     "description": "查看实例详情和管理数据库",
@@ -335,7 +340,16 @@
     "stateActive": "活跃",
     "stateDeleted": "已删除",
     "fetchInstanceError": "加载实例详情失败",
-    "fetchDatabasesError": "加载数据库列表失败"
+    "fetchDatabasesError": "加载数据库列表失败",
+    "editInstance": "编辑实例",
+    "updateSuccess": "实例更新成功",
+    "updateError": "更新实例失败",
+    "syncInterval": "同步间隔",
+    "syncIntervalDisplay": "{value} 分钟",
+    "noSyncInterval": "未配置",
+    "updateDataSources": "更新数据源",
+    "updateDataSourcesHint": "勾选以修改数据源配置。出于安全考虑，密码不会显示。",
+    "currentDataSources": "当前数据源"
   },
   "databaseManagement": {
     "title": "数据库管理",
