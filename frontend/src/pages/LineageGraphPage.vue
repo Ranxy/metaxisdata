@@ -94,6 +94,9 @@ const nodeDataMap = ref<
   Map<string, { upstream: LineageRelation[]; downstream: LineageRelation[] }>
 >(new Map());
 
+// Track actual MetaType per guid, derived from lineage relation sourceType/targetType
+const guidMetaTypeMap = ref<Map<string, MetaType>>(new Map());
+
 // Snapshot of initial state for reset
 let initialExpandedGuids = new Set<string>();
 let initialNodeDataMap = new Map<
@@ -171,16 +174,37 @@ async function fetchLineageForGuid(
     return nodeDataMap.value.get(guid)!;
   }
 
+  const metaType = guidMetaTypeMap.value.get(guid) ?? currentMetaType.value;
+
   try {
     const response = await getLineage({
       guid,
-      metaType: currentMetaType.value,
+      metaType,
     });
     const data = {
       upstream: response.relationsSource,
       downstream: response.relationsTarget,
     };
     nodeDataMap.value.set(guid, data);
+
+    // Record metaType for all guids referenced in the relations
+    for (const rel of data.upstream) {
+      if (rel.sourceType && !guidMetaTypeMap.value.has(rel.sourceGuid)) {
+        guidMetaTypeMap.value.set(rel.sourceGuid, rel.sourceType);
+      }
+      if (rel.targetType && !guidMetaTypeMap.value.has(rel.targetGuid)) {
+        guidMetaTypeMap.value.set(rel.targetGuid, rel.targetType);
+      }
+    }
+    for (const rel of data.downstream) {
+      if (rel.sourceType && !guidMetaTypeMap.value.has(rel.sourceGuid)) {
+        guidMetaTypeMap.value.set(rel.sourceGuid, rel.sourceType);
+      }
+      if (rel.targetType && !guidMetaTypeMap.value.has(rel.targetGuid)) {
+        guidMetaTypeMap.value.set(rel.targetGuid, rel.targetType);
+      }
+    }
+
     return data;
   } catch (e) {
     console.error(
@@ -689,11 +713,13 @@ async function initializeGraph() {
   initialLoading.value = true;
   expandedGuids.value.clear();
   nodeDataMap.value.clear();
+  guidMetaTypeMap.value.clear();
   selectedColumnGuid.value = null;
   selectedColumnName.value = null;
   highlightedColumnsMap.value.clear();
 
   expandedGuids.value.add(currentGuid.value);
+  guidMetaTypeMap.value.set(currentGuid.value, currentMetaType.value);
   await fetchLineageForGuid(currentGuid.value);
   rebuildGraph();
   saveInitialSnapshot();
