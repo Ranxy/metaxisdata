@@ -133,11 +133,13 @@ type LineageRelation struct {
 	MetaType       MetaType               `protobuf:"varint,3,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.v1.MetaType" json:"meta_type,omitempty"`
 	SourceGuid     string                 `protobuf:"bytes,4,opt,name=source_guid,json=sourceGuid,proto3" json:"source_guid,omitempty"`
 	SourceColumn   string                 `protobuf:"bytes,5,opt,name=source_column,json=sourceColumn,proto3" json:"source_column,omitempty"`
-	TargetGuid     string                 `protobuf:"bytes,6,opt,name=target_guid,json=targetGuid,proto3" json:"target_guid,omitempty"`
-	TargetColumn   string                 `protobuf:"bytes,7,opt,name=target_column,json=targetColumn,proto3" json:"target_column,omitempty"`
-	RelationType   RelationType           `protobuf:"varint,8,opt,name=relation_type,json=relationType,proto3,enum=metaxisdata.v1.RelationType" json:"relation_type,omitempty"`
-	Transformation string                 `protobuf:"bytes,9,opt,name=transformation,proto3" json:"transformation,omitempty"`
-	UpdatedAt      *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	SourceType     MetaType               `protobuf:"varint,6,opt,name=source_type,json=sourceType,proto3,enum=metaxisdata.v1.MetaType" json:"source_type,omitempty"`
+	TargetGuid     string                 `protobuf:"bytes,7,opt,name=target_guid,json=targetGuid,proto3" json:"target_guid,omitempty"`
+	TargetColumn   string                 `protobuf:"bytes,8,opt,name=target_column,json=targetColumn,proto3" json:"target_column,omitempty"`
+	TargetType     MetaType               `protobuf:"varint,9,opt,name=target_type,json=targetType,proto3,enum=metaxisdata.v1.MetaType" json:"target_type,omitempty"`
+	RelationType   RelationType           `protobuf:"varint,10,opt,name=relation_type,json=relationType,proto3,enum=metaxisdata.v1.RelationType" json:"relation_type,omitempty"`
+	Transformation string                 `protobuf:"bytes,11,opt,name=transformation,proto3" json:"transformation,omitempty"`
+	UpdatedAt      *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -207,6 +209,13 @@ func (x *LineageRelation) GetSourceColumn() string {
 	return ""
 }
 
+func (x *LineageRelation) GetSourceType() MetaType {
+	if x != nil {
+		return x.SourceType
+	}
+	return MetaType_UNSPECIFIED
+}
+
 func (x *LineageRelation) GetTargetGuid() string {
 	if x != nil {
 		return x.TargetGuid
@@ -219,6 +228,13 @@ func (x *LineageRelation) GetTargetColumn() string {
 		return x.TargetColumn
 	}
 	return ""
+}
+
+func (x *LineageRelation) GetTargetType() MetaType {
+	if x != nil {
+		return x.TargetType
+	}
+	return MetaType_UNSPECIFIED
 }
 
 func (x *LineageRelation) GetRelationType() RelationType {
@@ -461,22 +477,26 @@ var File_v1_lineage_service_proto protoreflect.FileDescriptor
 
 const file_v1_lineage_service_proto_rawDesc = "" +
 	"\n" +
-	"\x18v1/lineage_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x0fv1/common.proto\x1a\x19v1/database_service.proto\"\xa7\x03\n" +
+	"\x18v1/lineage_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x0fv1/common.proto\x1a\x19v1/database_service.proto\"\x9d\x04\n" +
 	"\x0fLineageRelation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1b\n" +
 	"\tmeta_guid\x18\x02 \x01(\tR\bmetaGuid\x125\n" +
 	"\tmeta_type\x18\x03 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12\x1f\n" +
 	"\vsource_guid\x18\x04 \x01(\tR\n" +
 	"sourceGuid\x12#\n" +
-	"\rsource_column\x18\x05 \x01(\tR\fsourceColumn\x12\x1f\n" +
-	"\vtarget_guid\x18\x06 \x01(\tR\n" +
+	"\rsource_column\x18\x05 \x01(\tR\fsourceColumn\x129\n" +
+	"\vsource_type\x18\x06 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\n" +
+	"sourceType\x12\x1f\n" +
+	"\vtarget_guid\x18\a \x01(\tR\n" +
 	"targetGuid\x12#\n" +
-	"\rtarget_column\x18\a \x01(\tR\ftargetColumn\x12A\n" +
-	"\rrelation_type\x18\b \x01(\x0e2\x1c.metaxisdata.v1.RelationTypeR\frelationType\x12&\n" +
-	"\x0etransformation\x18\t \x01(\tR\x0etransformation\x129\n" +
+	"\rtarget_column\x18\b \x01(\tR\ftargetColumn\x129\n" +
+	"\vtarget_type\x18\t \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\n" +
+	"targetType\x12A\n" +
+	"\rrelation_type\x18\n" +
+	" \x01(\x0e2\x1c.metaxisdata.v1.RelationTypeR\frelationType\x12&\n" +
+	"\x0etransformation\x18\v \x01(\tR\x0etransformation\x129\n" +
 	"\n" +
-	"updated_at\x18\n" +
-	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xc4\x01\n" +
+	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xc4\x01\n" +
 	"\x11GetLineageRequest\x128\n" +
 	"\x04guid\x18\x01 \x01(\tB$\xe0A\x02\xfaA\x1e\n" +
 	"\x1cmetaxisdata/DatabaseMetadataR\x04guid\x125\n" +
@@ -534,23 +554,25 @@ var file_v1_lineage_service_proto_goTypes = []any{
 }
 var file_v1_lineage_service_proto_depIdxs = []int32{
 	7,  // 0: metaxisdata.v1.LineageRelation.meta_type:type_name -> metaxisdata.v1.MetaType
-	1,  // 1: metaxisdata.v1.LineageRelation.relation_type:type_name -> metaxisdata.v1.RelationType
-	8,  // 2: metaxisdata.v1.LineageRelation.updated_at:type_name -> google.protobuf.Timestamp
-	7,  // 3: metaxisdata.v1.GetLineageRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	0,  // 4: metaxisdata.v1.GetLineageRequest.lineage_type:type_name -> metaxisdata.v1.LineageType
-	2,  // 5: metaxisdata.v1.GetLineageResponse.relations_source:type_name -> metaxisdata.v1.LineageRelation
-	2,  // 6: metaxisdata.v1.GetLineageResponse.relations_target:type_name -> metaxisdata.v1.LineageRelation
-	7,  // 7: metaxisdata.v1.GetLineageForContextRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	2,  // 8: metaxisdata.v1.GetLineageForContextResponse.relations:type_name -> metaxisdata.v1.LineageRelation
-	3,  // 9: metaxisdata.v1.LineageService.GetLineage:input_type -> metaxisdata.v1.GetLineageRequest
-	5,  // 10: metaxisdata.v1.LineageService.GetLineageForContext:input_type -> metaxisdata.v1.GetLineageForContextRequest
-	4,  // 11: metaxisdata.v1.LineageService.GetLineage:output_type -> metaxisdata.v1.GetLineageResponse
-	6,  // 12: metaxisdata.v1.LineageService.GetLineageForContext:output_type -> metaxisdata.v1.GetLineageForContextResponse
-	11, // [11:13] is the sub-list for method output_type
-	9,  // [9:11] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	7,  // 1: metaxisdata.v1.LineageRelation.source_type:type_name -> metaxisdata.v1.MetaType
+	7,  // 2: metaxisdata.v1.LineageRelation.target_type:type_name -> metaxisdata.v1.MetaType
+	1,  // 3: metaxisdata.v1.LineageRelation.relation_type:type_name -> metaxisdata.v1.RelationType
+	8,  // 4: metaxisdata.v1.LineageRelation.updated_at:type_name -> google.protobuf.Timestamp
+	7,  // 5: metaxisdata.v1.GetLineageRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	0,  // 6: metaxisdata.v1.GetLineageRequest.lineage_type:type_name -> metaxisdata.v1.LineageType
+	2,  // 7: metaxisdata.v1.GetLineageResponse.relations_source:type_name -> metaxisdata.v1.LineageRelation
+	2,  // 8: metaxisdata.v1.GetLineageResponse.relations_target:type_name -> metaxisdata.v1.LineageRelation
+	7,  // 9: metaxisdata.v1.GetLineageForContextRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	2,  // 10: metaxisdata.v1.GetLineageForContextResponse.relations:type_name -> metaxisdata.v1.LineageRelation
+	3,  // 11: metaxisdata.v1.LineageService.GetLineage:input_type -> metaxisdata.v1.GetLineageRequest
+	5,  // 12: metaxisdata.v1.LineageService.GetLineageForContext:input_type -> metaxisdata.v1.GetLineageForContextRequest
+	4,  // 13: metaxisdata.v1.LineageService.GetLineage:output_type -> metaxisdata.v1.GetLineageResponse
+	6,  // 14: metaxisdata.v1.LineageService.GetLineageForContext:output_type -> metaxisdata.v1.GetLineageForContextResponse
+	13, // [13:15] is the sub-list for method output_type
+	11, // [11:13] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_v1_lineage_service_proto_init() }

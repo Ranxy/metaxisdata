@@ -51,11 +51,13 @@ message LineageRelation {
   MetaType meta_type = 3;
   string source_guid = 4;
   string source_column = 5;
-  string target_guid = 6;
-  string target_column = 7;
-  RelationType relation_type = 8;
-  string transformation = 9;
-  google.protobuf.Timestamp updated_at = 10;
+  MetaType source_type = 6;
+  string target_guid = 7;
+  string target_column = 8;
+  MetaType target_type = 9;
+  RelationType relation_type = 10;
+  string transformation = 11;
+  google.protobuf.Timestamp updated_at = 12;
 }
 
 message GetLineageRequest {

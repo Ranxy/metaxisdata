@@ -42,27 +42,37 @@ export declare type LineageRelation = Message<"metaxisdata.v1.LineageRelation"> 
   sourceColumn: string;
 
   /**
-   * @generated from field: string target_guid = 6;
+   * @generated from field: metaxisdata.v1.MetaType source_type = 6;
+   */
+  sourceType: MetaType;
+
+  /**
+   * @generated from field: string target_guid = 7;
    */
   targetGuid: string;
 
   /**
-   * @generated from field: string target_column = 7;
+   * @generated from field: string target_column = 8;
    */
   targetColumn: string;
 
   /**
-   * @generated from field: metaxisdata.v1.RelationType relation_type = 8;
+   * @generated from field: metaxisdata.v1.MetaType target_type = 9;
+   */
+  targetType: MetaType;
+
+  /**
+   * @generated from field: metaxisdata.v1.RelationType relation_type = 10;
    */
   relationType: RelationType;
 
   /**
-   * @generated from field: string transformation = 9;
+   * @generated from field: string transformation = 11;
    */
   transformation: string;
 
   /**
-   * @generated from field: google.protobuf.Timestamp updated_at = 10;
+   * @generated from field: google.protobuf.Timestamp updated_at = 12;
    */
   updatedAt?: Timestamp;
 };
