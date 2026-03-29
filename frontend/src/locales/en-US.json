@@ -395,6 +395,9 @@
     "fitView": "Fit View",
     "backToMetadata": "Back",
     "viewGraph": "Graph View",
-    "expandNode": "Expand lineage"
+    "expandNode": "Expand lineage",
+    "reset": "Reset",
+    "showFields": "Show fields",
+    "hideFields": "Hide fields"
   }
 }

@@ -10,6 +10,10 @@
         </p>
       </div>
       <div class="flex items-center gap-2">
+        <Button v-if="hasExpandedBeyondRoot" variant="outline" size="sm" @click="handleReset">
+          <RotateCcw class="size-4 mr-1" />
+          {{ t("lineageGraph.reset") }}
+        </Button>
         <Button variant="outline" size="sm" @click="handleFitView">
           <Maximize2 class="size-4 mr-1" />
           {{ t("lineageGraph.fitView") }}
@@ -39,7 +43,12 @@
         <MiniMap />
 
         <template #node-lineage="nodeProps">
-          <LineageNode :data="nodeProps.data" @expand="handleExpandNode" />
+          <LineageNode
+            :data="nodeProps.data"
+            @expand="handleExpandNode"
+            @select-column="handleSelectColumn"
+            @toggle-fields="handleToggleFields"
+          />
         </template>
       </VueFlow>
     </Card>
@@ -58,7 +67,7 @@ import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
 import "@vue-flow/controls/dist/style.css";
 import "@vue-flow/minimap/dist/style.css";
-import { ArrowLeft, Maximize2 } from "lucide-vue-next";
+import { ArrowLeft, Maximize2, RotateCcw } from "lucide-vue-next";
 import { getLineage } from "@/api/lineage";
 import AppLoading from "@/components/common/AppLoading.vue";
 import type { LineageNodeData } from "@/components/lineage/LineageNode.vue";
@@ -72,10 +81,9 @@ import { extractErrorMessage } from "@/utils/error";
 const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
-const { fitView } = useVueFlow();
+const { fitView, getNodes } = useVueFlow();
 
 const HORIZONTAL_GAP = 280;
-const VERTICAL_GAP = 140;
 
 const nodes = ref<Node[]>([]);
 const edges = ref<Edge[]>([]);
@@ -85,6 +93,26 @@ const expandedGuids = ref<Set<string>>(new Set());
 const nodeDataMap = ref<
   Map<string, { upstream: LineageRelation[]; downstream: LineageRelation[] }>
 >(new Map());
+
+// Snapshot of initial state for reset
+let initialExpandedGuids = new Set<string>();
+let initialNodeDataMap = new Map<
+  string,
+  { upstream: LineageRelation[]; downstream: LineageRelation[] }
+>();
+
+// Field-level column selection state
+const selectedColumnGuid = ref<string | null>(null);
+const selectedColumnName = ref<string | null>(null);
+// guid -> Set<column> for columns that should be highlighted on neighbour nodes
+const highlightedColumnsMap = ref<Map<string, Set<string>>>(new Map());
+
+// Track which nodes have their fields panel visible (for layout height calculation)
+const fieldsVisibleGuids = ref<Set<string>>(new Set());
+
+const hasExpandedBeyondRoot = computed(() => {
+  return expandedGuids.value.size > initialExpandedGuids.size;
+});
 
 const currentGuid = computed(() => {
   const guidParam = route.params.guid;
@@ -179,6 +207,26 @@ function collectRelatedGuids(guid: string): Set<string> {
   return related;
 }
 
+// Collect unique columns for a given guid from all lineage relations
+function collectColumnsForGuid(guid: string): string[] {
+  const columns = new Set<string>();
+  for (const [, data] of nodeDataMap.value) {
+    for (const rel of data.upstream) {
+      if (rel.sourceGuid === guid && rel.sourceColumn)
+        columns.add(rel.sourceColumn);
+      if (rel.targetGuid === guid && rel.targetColumn)
+        columns.add(rel.targetColumn);
+    }
+    for (const rel of data.downstream) {
+      if (rel.sourceGuid === guid && rel.sourceColumn)
+        columns.add(rel.sourceColumn);
+      if (rel.targetGuid === guid && rel.targetColumn)
+        columns.add(rel.targetColumn);
+    }
+  }
+  return Array.from(columns).sort();
+}
+
 function rebuildGraph() {
   const nodeMap = new Map<string, Node>();
   const edgeList: Edge[] = [];
@@ -258,8 +306,8 @@ function rebuildGraph() {
   // Layout nodes
   for (const [layer, guids] of layerGroups) {
     const x = (layer - minLayer) * HORIZONTAL_GAP;
-    guids.forEach((guid, index) => {
-      const y = index * VERTICAL_GAP;
+    let y = 0;
+    guids.forEach((guid) => {
       const data = nodeDataMap.value.get(guid);
       const isExpanded = expandedGuids.value.has(guid);
 
@@ -272,6 +320,10 @@ function rebuildGraph() {
         upstreamCount: data?.upstream.length ?? 0,
         downstreamCount: data?.downstream.length ?? 0,
         metaType: guidToMetaType(guid),
+        columns: collectColumnsForGuid(guid),
+        selectedColumn:
+          selectedColumnGuid.value === guid ? selectedColumnName.value : null,
+        highlightedColumns: highlightedColumnsMap.value.get(guid) ?? new Set(),
       };
 
       nodeMap.set(guid, {
@@ -280,7 +332,50 @@ function rebuildGraph() {
         position: { x, y },
         data: nodeData,
       });
+
+      // Advance y by estimated node height to avoid overlapping
+      const BASE_NODE_HEIGHT = 120;
+      const COLUMN_ROW_HEIGHT = 24;
+      const MAX_FIELDS_HEIGHT = 200;
+      const GAP = 20;
+      let nodeHeight = BASE_NODE_HEIGHT;
+      if (fieldsVisibleGuids.value.has(guid)) {
+        const cols = nodeData.columns.length;
+        nodeHeight += Math.min(cols * COLUMN_ROW_HEIGHT, MAX_FIELDS_HEIGHT);
+      }
+      y += nodeHeight + GAP;
     });
+  }
+
+  // Check if a column is selected for edge filtering
+  const hasColumnFilter =
+    selectedColumnGuid.value !== null && selectedColumnName.value !== null;
+
+  // Build a set of edge ids that match the selected column's lineage
+  const columnEdgeIds = new Set<string>();
+  if (hasColumnFilter) {
+    for (const [guid, data] of nodeDataMap.value) {
+      for (const rel of data.upstream) {
+        if (
+          (rel.targetGuid === selectedColumnGuid.value &&
+            rel.targetColumn === selectedColumnName.value) ||
+          (rel.sourceGuid === selectedColumnGuid.value &&
+            rel.sourceColumn === selectedColumnName.value)
+        ) {
+          columnEdgeIds.add(`${rel.sourceGuid}->${guid}`);
+        }
+      }
+      for (const rel of data.downstream) {
+        if (
+          (rel.sourceGuid === selectedColumnGuid.value &&
+            rel.sourceColumn === selectedColumnName.value) ||
+          (rel.targetGuid === selectedColumnGuid.value &&
+            rel.targetColumn === selectedColumnName.value)
+        ) {
+          columnEdgeIds.add(`${guid}->${rel.targetGuid}`);
+        }
+      }
+    }
   }
 
   // Build edges
@@ -293,12 +388,21 @@ function rebuildGraph() {
         nodeMap.has(guid)
       ) {
         edgeSet.add(edgeId);
+        const isHighlighted = hasColumnFilter && columnEdgeIds.has(edgeId);
+        const isDimmed = hasColumnFilter && !isHighlighted;
         edgeList.push({
           id: edgeId,
           source: rel.sourceGuid,
           target: guid,
-          animated: true,
-          style: { stroke: "hsl(var(--primary))", strokeWidth: 2 },
+          animated: !isDimmed,
+          style: {
+            stroke: isDimmed
+              ? "hsl(var(--muted-foreground) / 0.2)"
+              : isHighlighted
+                ? "hsl(var(--primary))"
+                : "hsl(var(--primary) / 0.6)",
+            strokeWidth: isHighlighted ? 3 : 2,
+          },
           label: rel.relationType === 1 ? "" : "T",
           labelStyle: {
             fontSize: "10px",
@@ -315,12 +419,21 @@ function rebuildGraph() {
         nodeMap.has(rel.targetGuid)
       ) {
         edgeSet.add(edgeId);
+        const isHighlighted = hasColumnFilter && columnEdgeIds.has(edgeId);
+        const isDimmed = hasColumnFilter && !isHighlighted;
         edgeList.push({
           id: edgeId,
           source: guid,
           target: rel.targetGuid,
-          animated: true,
-          style: { stroke: "hsl(var(--primary))", strokeWidth: 2 },
+          animated: !isDimmed,
+          style: {
+            stroke: isDimmed
+              ? "hsl(var(--muted-foreground) / 0.2)"
+              : isHighlighted
+                ? "hsl(var(--primary))"
+                : "hsl(var(--primary) / 0.6)",
+            strokeWidth: isHighlighted ? 3 : 2,
+          },
           label: rel.relationType === 1 ? "" : "T",
           labelStyle: {
             fontSize: "10px",
@@ -335,6 +448,194 @@ function rebuildGraph() {
   edges.value = edgeList;
 }
 
+// Update only node data and edges without recalculating positions.
+// This preserves manually-dragged node positions.
+function updateGraphState() {
+  // Build updated edges
+  const edgeList: Edge[] = [];
+  const edgeSet = new Set<string>();
+
+  const hasColumnFilter =
+    selectedColumnGuid.value !== null && selectedColumnName.value !== null;
+
+  const columnEdgeIds = new Set<string>();
+  if (hasColumnFilter) {
+    for (const [guid, data] of nodeDataMap.value) {
+      for (const rel of data.upstream) {
+        if (
+          (rel.targetGuid === selectedColumnGuid.value &&
+            rel.targetColumn === selectedColumnName.value) ||
+          (rel.sourceGuid === selectedColumnGuid.value &&
+            rel.sourceColumn === selectedColumnName.value)
+        ) {
+          columnEdgeIds.add(`${rel.sourceGuid}->${guid}`);
+        }
+      }
+      for (const rel of data.downstream) {
+        if (
+          (rel.sourceGuid === selectedColumnGuid.value &&
+            rel.sourceColumn === selectedColumnName.value) ||
+          (rel.targetGuid === selectedColumnGuid.value &&
+            rel.targetColumn === selectedColumnName.value)
+        ) {
+          columnEdgeIds.add(`${guid}->${rel.targetGuid}`);
+        }
+      }
+    }
+  }
+
+  for (const [guid, data] of nodeDataMap.value) {
+    for (const rel of data.upstream) {
+      const edgeId = `${rel.sourceGuid}->${guid}`;
+      if (!edgeSet.has(edgeId)) {
+        edgeSet.add(edgeId);
+        const isHighlighted = hasColumnFilter && columnEdgeIds.has(edgeId);
+        const isDimmed = hasColumnFilter && !isHighlighted;
+        edgeList.push({
+          id: edgeId,
+          source: rel.sourceGuid,
+          target: guid,
+          animated: !isDimmed,
+          style: {
+            stroke: isDimmed
+              ? "hsl(var(--muted-foreground) / 0.2)"
+              : isHighlighted
+                ? "hsl(var(--primary))"
+                : "hsl(var(--primary) / 0.6)",
+            strokeWidth: isHighlighted ? 3 : 2,
+          },
+          label: rel.relationType === 1 ? "" : "T",
+          labelStyle: {
+            fontSize: "10px",
+            fill: "hsl(var(--muted-foreground))",
+          },
+        });
+      }
+    }
+    for (const rel of data.downstream) {
+      const edgeId = `${guid}->${rel.targetGuid}`;
+      if (!edgeSet.has(edgeId)) {
+        edgeSet.add(edgeId);
+        const isHighlighted = hasColumnFilter && columnEdgeIds.has(edgeId);
+        const isDimmed = hasColumnFilter && !isHighlighted;
+        edgeList.push({
+          id: edgeId,
+          source: guid,
+          target: rel.targetGuid,
+          animated: !isDimmed,
+          style: {
+            stroke: isDimmed
+              ? "hsl(var(--muted-foreground) / 0.2)"
+              : isHighlighted
+                ? "hsl(var(--primary))"
+                : "hsl(var(--primary) / 0.6)",
+            strokeWidth: isHighlighted ? 3 : 2,
+          },
+          label: rel.relationType === 1 ? "" : "T",
+          labelStyle: {
+            fontSize: "10px",
+            fill: "hsl(var(--muted-foreground))",
+          },
+        });
+      }
+    }
+  }
+
+  edges.value = edgeList;
+
+  // Read current positions from VueFlow's internal store (reflects drag positions)
+  const currentPositions = new Map<string, { x: number; y: number }>();
+  for (const n of getNodes.value) {
+    currentPositions.set(n.id, { ...n.position });
+  }
+
+  // Update node data in-place, preserving positions
+  nodes.value = nodes.value.map((node) => {
+    const guid = node.id;
+    const lineageData = nodeDataMap.value.get(guid);
+    const isExpanded = expandedGuids.value.has(guid);
+
+    const nodeData: LineageNodeData = {
+      guid,
+      label: formatGuidLabel(guid),
+      shortPath: formatGuidShort(guid),
+      isRoot: guid === currentGuid.value,
+      expanded: isExpanded,
+      upstreamCount: lineageData?.upstream.length ?? 0,
+      downstreamCount: lineageData?.downstream.length ?? 0,
+      metaType: guidToMetaType(guid),
+      columns: collectColumnsForGuid(guid),
+      selectedColumn:
+        selectedColumnGuid.value === guid ? selectedColumnName.value : null,
+      highlightedColumns: highlightedColumnsMap.value.get(guid) ?? new Set(),
+    };
+
+    const position = currentPositions.get(guid) ?? node.position;
+    return { ...node, position, data: nodeData };
+  });
+}
+
+function clearColumnSelection() {
+  selectedColumnGuid.value = null;
+  selectedColumnName.value = null;
+  highlightedColumnsMap.value.clear();
+  updateGraphState();
+}
+
+function handleToggleFields(guid: string, visible: boolean) {
+  if (visible) {
+    fieldsVisibleGuids.value.add(guid);
+  } else {
+    fieldsVisibleGuids.value.delete(guid);
+    clearColumnSelection();
+  }
+}
+
+function handleSelectColumn(guid: string, column: string) {
+  // Toggle off if same column clicked again
+  if (
+    selectedColumnGuid.value === guid &&
+    selectedColumnName.value === column
+  ) {
+    clearColumnSelection();
+    return;
+  }
+
+  selectedColumnGuid.value = guid;
+  selectedColumnName.value = column;
+
+  // Find related columns on neighbouring nodes
+  const highlighted = new Map<string, Set<string>>();
+
+  for (const [nodeGuid, data] of nodeDataMap.value) {
+    for (const rel of data.upstream) {
+      if (rel.targetGuid === guid && rel.targetColumn === column) {
+        if (!highlighted.has(rel.sourceGuid))
+          highlighted.set(rel.sourceGuid, new Set());
+        highlighted.get(rel.sourceGuid)!.add(rel.sourceColumn);
+      }
+      if (rel.sourceGuid === guid && rel.sourceColumn === column) {
+        if (!highlighted.has(nodeGuid)) highlighted.set(nodeGuid, new Set());
+        highlighted.get(nodeGuid)!.add(rel.targetColumn);
+      }
+    }
+    for (const rel of data.downstream) {
+      if (rel.sourceGuid === guid && rel.sourceColumn === column) {
+        if (!highlighted.has(rel.targetGuid))
+          highlighted.set(rel.targetGuid, new Set());
+        highlighted.get(rel.targetGuid)!.add(rel.targetColumn);
+      }
+      if (rel.targetGuid === guid && rel.targetColumn === column) {
+        if (!highlighted.has(nodeGuid)) highlighted.set(nodeGuid, new Set());
+        highlighted.get(nodeGuid)!.add(rel.sourceColumn);
+      }
+    }
+  }
+
+  highlightedColumnsMap.value = highlighted;
+  updateGraphState();
+}
+
 async function handleExpandNode(guid: string) {
   if (expandedGuids.value.has(guid)) return;
   expandedGuids.value.add(guid);
@@ -342,6 +643,20 @@ async function handleExpandNode(guid: string) {
   await fetchLineageForGuid(guid);
   rebuildGraph();
 
+  setTimeout(() => fitView({ duration: 300 }), 50);
+}
+
+function handleReset() {
+  // Restore the initial snapshot
+  expandedGuids.value = new Set(initialExpandedGuids);
+  nodeDataMap.value = new Map(
+    Array.from(initialNodeDataMap.entries()).map(([k, v]) => [k, { ...v }])
+  );
+  selectedColumnGuid.value = null;
+  selectedColumnName.value = null;
+  highlightedColumnsMap.value.clear();
+  fieldsVisibleGuids.value.clear();
+  rebuildGraph();
   setTimeout(() => fitView({ duration: 300 }), 50);
 }
 
@@ -361,16 +676,27 @@ function handleBackToMetadata() {
   });
 }
 
+function saveInitialSnapshot() {
+  initialExpandedGuids = new Set(expandedGuids.value);
+  initialNodeDataMap = new Map(
+    Array.from(nodeDataMap.value.entries()).map(([k, v]) => [k, { ...v }])
+  );
+}
+
 async function initializeGraph() {
   if (!currentGuid.value) return;
 
   initialLoading.value = true;
   expandedGuids.value.clear();
   nodeDataMap.value.clear();
+  selectedColumnGuid.value = null;
+  selectedColumnName.value = null;
+  highlightedColumnsMap.value.clear();
 
   expandedGuids.value.add(currentGuid.value);
   await fetchLineageForGuid(currentGuid.value);
   rebuildGraph();
+  saveInitialSnapshot();
 
   initialLoading.value = false;
   setTimeout(() => fitView({ duration: 300 }), 100);

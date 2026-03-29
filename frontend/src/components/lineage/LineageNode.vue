@@ -1,7 +1,10 @@
 <template>
   <div
-    class="rounded-lg border bg-card text-card-foreground shadow-sm min-w-[180px] max-w-[260px]"
-    :class="{ 'ring-2 ring-primary': data.isRoot }"
+    class="rounded-lg border bg-card text-card-foreground shadow-sm min-w-[180px]"
+    :class="[
+      data.isRoot ? 'ring-2 ring-primary' : '',
+      showFields ? 'max-w-[300px]' : 'max-w-[260px]',
+    ]"
   >
     <div
       class="flex items-center gap-2 px-3 py-2 border-b"
@@ -31,12 +34,36 @@
       </div>
     </div>
 
-    <div v-if="!data.expanded" class="border-t px-3 py-1.5">
+    <div class="border-t px-3 py-1.5 flex items-center gap-2 flex-wrap">
       <button
+        v-if="!data.expanded"
         class="text-xs text-primary hover:underline cursor-pointer"
         @click.stop="$emit('expand', data.guid)"
       >
         {{ t("lineageGraph.expandNode") }}
+      </button>
+      <button
+        v-if="data.columns.length > 0"
+        class="text-xs text-primary hover:underline cursor-pointer"
+        @click.stop="handleToggleFields"
+      >
+        {{ showFields ? t("lineageGraph.hideFields") : t("lineageGraph.showFields") }}
+      </button>
+    </div>
+
+    <div v-if="showFields && data.columns.length > 0" class="border-t max-h-[200px] overflow-y-auto">
+      <button
+        v-for="col in data.columns"
+        :key="col"
+        class="flex items-center gap-1.5 w-full px-3 py-1 text-xs text-left hover:bg-muted/50 cursor-pointer transition-colors"
+        :class="{
+          'bg-primary/10 text-primary font-medium': data.selectedColumn === col,
+          'bg-accent/50 font-medium': data.selectedColumn !== col && data.highlightedColumns.has(col),
+        }"
+        @click.stop="$emit('select-column', data.guid, col)"
+      >
+        <Columns3 class="size-3 shrink-0 text-muted-foreground" />
+        <span class="truncate">{{ col }}</span>
       </button>
     </div>
 
@@ -47,8 +74,8 @@
 
 <script setup lang="ts">
 import { Handle, Position } from "@vue-flow/core";
-import { TableIcon, ViewIcon } from "lucide-vue-next";
-import { computed } from "vue";
+import { Columns3, TableIcon, ViewIcon } from "lucide-vue-next";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { Badge } from "@/components/ui/badge";
 
@@ -61,17 +88,29 @@ export interface LineageNodeData {
   upstreamCount: number;
   downstreamCount: number;
   metaType: string;
+  columns: string[];
+  selectedColumn: string | null;
+  highlightedColumns: Set<string>;
 }
 
 const props = defineProps<{
   data: LineageNodeData;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   expand: [guid: string];
+  "select-column": [guid: string, column: string];
+  "toggle-fields": [guid: string, visible: boolean];
 }>();
 
 const { t } = useI18n();
+
+const showFields = ref(false);
+
+function handleToggleFields() {
+  showFields.value = !showFields.value;
+  emit("toggle-fields", props.data.guid, showFields.value);
+}
 
 const nodeIcon = computed(() => {
   if (
