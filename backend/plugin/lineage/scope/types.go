@@ -50,18 +50,20 @@ func NewLineageEdge(fromSchema, fromTable, fromField, toSchema, toTable, toField
 	// Determine relation type based on transformation
 	relType := determineRelationType(transform)
 
+	// For MySQL, the schema qualifier in SQL is actually the database name,
+	// so map it to ObjectIdentifier.Database instead of Schema.
 	return model.ColumnRelation{
 		Source: model.Column{
 			Table: model.ObjectIdentifier{
-				Schema: fromSchema,
-				Name:   fromTable,
+				Database: fromSchema,
+				Name:     fromTable,
 			},
 			Name: fromField,
 		},
 		Target: model.Column{
 			Table: model.ObjectIdentifier{
-				Schema: toSchema,
-				Name:   toTable,
+				Database: toSchema,
+				Name:     toTable,
 			},
 			Name: toField,
 		},

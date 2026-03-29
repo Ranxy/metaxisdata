@@ -15,14 +15,16 @@ import (
 // This structure allows for flexible matching - nil fields are not validated.
 type ExpectedEdge struct {
 	// Source column information
-	FromSchema string
-	FromTable  string
-	FromField  string
+	FromDatabase string
+	FromSchema   string
+	FromTable    string
+	FromField    string
 
 	// Target column information
-	ToSchema string
-	ToTable  string
-	ToField  string
+	ToDatabase string
+	ToSchema   string
+	ToTable    string
+	ToField    string
 
 	// Optional: expected relation type (nil = not checked)
 	RelationType *model.RelationType
@@ -106,9 +108,9 @@ func RunLineageTest(t *testing.T, tc LineageTestCase, analyzeFn AnalyzeFunc) {
 	if tc.Debug {
 		fmt.Printf("\n%s edges (%d):\n", tc.Name, len(relations))
 		for _, r := range relations {
-			fmt.Printf("  %s.%s.%s -> %s.%s.%s (type: %v, isTemp: %v, transform: %v)\n",
-				r.Source.Table.Schema, r.Source.Table.Name, r.Source.Name,
-				r.Target.Table.Schema, r.Target.Table.Name, r.Target.Name,
+			fmt.Printf("  %s -> %s (type: %v, isTemp: %v, transform: %v)\n",
+				r.Source.Table.FullName()+"."+r.Source.Name,
+				r.Target.Table.FullName()+"."+r.Target.Name,
 				r.RelationType, r.IsTemp, r.Transformation != nil)
 		}
 	}
@@ -165,9 +167,9 @@ func ValidateExpectedEdges(t *testing.T, relations []model.ColumnRelation, expec
 		}
 
 		require.True(t, found,
-			"Expected edge not found: %s.%s.%s -> %s.%s.%s\nAvailable edges: %s",
-			exp.FromSchema, exp.FromTable, exp.FromField,
-			exp.ToSchema, exp.ToTable, exp.ToField,
+			"Expected edge not found: %s.%s.%s.%s -> %s.%s.%s.%s\nAvailable edges: %s",
+			exp.FromDatabase, exp.FromSchema, exp.FromTable, exp.FromField,
+			exp.ToDatabase, exp.ToSchema, exp.ToTable, exp.ToField,
 			FormatRelations(relations))
 	}
 }
@@ -176,6 +178,9 @@ func ValidateExpectedEdges(t *testing.T, relations []model.ColumnRelation, expec
 // Empty strings in the expected edge are treated as wildcards that match anything.
 func EdgeMatches(rel model.ColumnRelation, exp ExpectedEdge) bool {
 	// Match source
+	if exp.FromDatabase != "" && rel.Source.Table.Database != exp.FromDatabase {
+		return false
+	}
 	if exp.FromSchema != "" && rel.Source.Table.Schema != exp.FromSchema {
 		return false
 	}
@@ -187,6 +192,9 @@ func EdgeMatches(rel model.ColumnRelation, exp ExpectedEdge) bool {
 	}
 
 	// Match target
+	if exp.ToDatabase != "" && rel.Target.Table.Database != exp.ToDatabase {
+		return false
+	}
 	if exp.ToSchema != "" && rel.Target.Table.Schema != exp.ToSchema {
 		return false
 	}
@@ -204,9 +212,9 @@ func EdgeMatches(rel model.ColumnRelation, exp ExpectedEdge) bool {
 func FormatRelations(relations []model.ColumnRelation) string {
 	result := "\n"
 	for _, r := range relations {
-		result += fmt.Sprintf("  %s.%s.%s -> %s.%s.%s\n",
-			r.Source.Table.Schema, r.Source.Table.Name, r.Source.Name,
-			r.Target.Table.Schema, r.Target.Table.Name, r.Target.Name)
+		result += fmt.Sprintf("  %s -> %s\n",
+			r.Source.Table.FullName()+"."+r.Source.Name,
+			r.Target.Table.FullName()+"."+r.Target.Name)
 	}
 	return result
 }

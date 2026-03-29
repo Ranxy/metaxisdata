@@ -54,8 +54,8 @@ func TestSelectLineage_Table(t *testing.T) {
 			Name: "select with qualified table name (schema.table)",
 			SQL:  "SELECT mydb.users.id, mydb.users.name FROM mydb.users",
 			ExpectedEdges: []ExpectedEdge{
-				{FromSchema: "mydb", FromTable: "users", FromField: "id", ToTable: "__result__", ToField: "id"},
-				{FromSchema: "mydb", FromTable: "users", FromField: "name", ToTable: "__result__", ToField: "name"},
+				{FromDatabase: "mydb", FromTable: "users", FromField: "id", ToTable: "__result__", ToField: "id"},
+				{FromDatabase: "mydb", FromTable: "users", FromField: "name", ToTable: "__result__", ToField: "name"},
 			},
 		},
 		{
@@ -351,6 +351,18 @@ func TestCreateViewLineage_Table(t *testing.T) {
 				{FromTable: "orders", FromField: "id", ToTable: "shipment_status_view", ToField: "order_id", IsTemp: Bool(false)},
 				{FromTable: "shipments", FromField: "shipped_at", ToTable: "shipment_status_view", ToField: "shipped_at", IsTemp: Bool(false)},
 				{FromTable: "shipments", FromField: "status", ToTable: "shipment_status_view", ToField: "shipping_status", IsTemp: Bool(false)},
+			},
+		},
+		{
+			Name: "CREATE VIEW referencing cross-database tables",
+			SQL:  "CREATE OR REPLACE VIEW `v_customer_orders` AS select `c`.`customer_id` AS `customer_id`,`c`.`full_name` AS `customer_name`,`c`.`email` AS `customer_email`,`o`.`order_id` AS `order_id`,`o`.`order_date` AS `order_date`,`r`.`region_name` AS `region_name` from ((`raw_data`.`customers` `c` join `raw_data`.`orders` `o` on((`o`.`customer_id` = `c`.`customer_id`))) left join `raw_data`.`regions` `r` on((`r`.`region_id` = `c`.`region_id`)))",
+			ExpectedEdges: []ExpectedEdge{
+				{FromDatabase: "raw_data", FromTable: "customers", FromField: "customer_id", ToTable: "v_customer_orders", ToField: "customer_id"},
+				{FromDatabase: "raw_data", FromTable: "customers", FromField: "full_name", ToTable: "v_customer_orders", ToField: "customer_name"},
+				{FromDatabase: "raw_data", FromTable: "customers", FromField: "email", ToTable: "v_customer_orders", ToField: "customer_email"},
+				{FromDatabase: "raw_data", FromTable: "orders", FromField: "order_id", ToTable: "v_customer_orders", ToField: "order_id"},
+				{FromDatabase: "raw_data", FromTable: "orders", FromField: "order_date", ToTable: "v_customer_orders", ToField: "order_date"},
+				{FromDatabase: "raw_data", FromTable: "regions", FromField: "region_name", ToTable: "v_customer_orders", ToField: "region_name"},
 			},
 		},
 	}

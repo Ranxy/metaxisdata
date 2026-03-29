@@ -994,7 +994,7 @@ func (a *Analyzer) traceThroughTableLineageToTarget(tableRef *scope.TableRef, co
 
 		// Create relation from original source to target table
 		resultRelation := scope.NewLineageEdge(
-			edge.Source.Table.Schema,
+			edge.Source.Table.Database,
 			edge.Source.Table.Name,
 			edge.Source.Name,
 			targetSchema,
@@ -1030,7 +1030,7 @@ func (a *Analyzer) appendFlattenedLineage(lineage *[]model.ColumnRelation, sp *s
 		}
 
 		*lineage = append(*lineage, scope.NewLineageEdge(
-			edge.Source.Table.Schema,
+			edge.Source.Table.Database,
 			sourceTableName,
 			edge.Source.Name,
 			"",
@@ -1715,7 +1715,7 @@ func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName
 
 		// Create relation from original source to final output
 		resultRelation := scope.NewLineageEdge(
-			edge.Source.Table.Schema,
+			edge.Source.Table.Database,
 			edge.Source.Table.Name,
 			edge.Source.Name,
 			"",
@@ -2261,10 +2261,11 @@ func (a *Analyzer) addRelation(relation model.ColumnRelation) {
 // expandWildcardWithCatalog expands SELECT * using catalog metadata.
 // Returns true if expansion was successful, false to fallback.
 func (a *Analyzer) expandWildcardWithCatalog(tableRef *scope.TableRef, sp *scope.Scope) bool {
-	// Build table identifier for catalog lookup
+	// Build table identifier for catalog lookup.
+	// For MySQL, the schema qualifier is actually the database name.
 	tableID := model.ObjectIdentifier{
-		Schema: tableRef.Schema,
-		Name:   tableRef.Table,
+		Database: tableRef.Schema,
+		Name:     tableRef.Table,
 	}
 
 	// Query catalog
