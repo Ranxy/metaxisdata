@@ -66,7 +66,10 @@
             :key="relation.key"
           >
             <TableCell>
-              <Badge :variant="relation.directionVariant">
+              <Badge
+                :variant="relation.directionVariant"
+                class="whitespace-nowrap"
+              >
                 {{ relation.directionLabel }}
               </Badge>
             </TableCell>
