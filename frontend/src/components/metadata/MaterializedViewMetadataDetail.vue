@@ -32,10 +32,11 @@
       <DefinitionMonacoViewer :content="view.definition" />
     </div>
 
-    <ContextLineageSection
+    <TableLineageSection
       v-if="guid"
       :guid="guid"
       :meta-type="MetaType.MATERIALIZED_VIEW"
+      :title="t('metadataBrowser.relatedLineageAnalysis')"
     />
 
     <div class="space-y-2">
@@ -133,8 +134,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import ContextLineageSection from "@/components/metadata/ContextLineageSection.vue";
 import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
+import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,

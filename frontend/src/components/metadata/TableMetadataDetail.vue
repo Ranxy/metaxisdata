@@ -103,6 +103,13 @@
       </div>
     </div>
 
+    <TableLineageSection
+      v-if="guid"
+      :guid="guid"
+      :meta-type="MetaType.TABLE"
+      :title="t('metadataBrowser.relatedLineageAnalysis')"
+    />
+
     <div class="space-y-2">
       <div class="flex items-center justify-between">
         <div class="text-sm font-medium">{{ t("metadataBrowser.columns") }}</div>
@@ -304,6 +311,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
