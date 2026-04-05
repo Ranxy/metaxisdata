@@ -17,7 +17,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
-	v1 "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/plugin/schema"
@@ -245,8 +244,40 @@ func (s *DatabaseService) GetMetadata(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(response), nil
 }
 
-func (s *DatabaseService) SearchMetadata(ctx context.Context, req *connect.Request[v1.SearchMetadataRequest]) (*connect.Response[v1.SearchMetadataResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.SearchMetadata is not implemented"))
+func (s *DatabaseService) SearchMetadata(ctx context.Context, req *connect.Request[v1pb.SearchMetadataRequest]) (*connect.Response[v1pb.SearchMetadataResponse], error) {
+	searchStr := strings.TrimSpace(req.Msg.GetSearchStr())
+	if searchStr == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("search_str is required"))
+	}
+
+	const searchLimit = 50
+
+	find := &store.SearchMetaRegistryResourceMessage{
+		SearchStr: searchStr,
+		Limit:     searchLimit + 1,
+	}
+	if req.Msg.ParentGuidPrefix != nil {
+		find.GUIDPrefix = req.Msg.ParentGuidPrefix
+	}
+	if req.Msg.MetaType != nil {
+		metaType := storepb.MetaType(*req.Msg.MetaType)
+		find.ObjectType = &metaType
+	}
+
+	list, err := s.store.SearchMetaRegistryResource(ctx, find)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to search metadata: %v", err))
+	}
+
+	response := &v1pb.SearchMetadataResponse{}
+	if len(list) > searchLimit {
+		list = list[:searchLimit]
+	}
+	for _, meta := range list {
+		response.StoredMetadata = append(response.StoredMetadata, convertStoredMetadataMessage(meta.Metadata))
+	}
+
+	return connect.NewResponse(response), nil
 }
 
 func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Request[v1pb.GetSchemaStringRequest]) (*connect.Response[v1pb.MetadataSchemaString], error) {

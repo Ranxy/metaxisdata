@@ -139,6 +139,92 @@ func (s *Store) ListMetaRegistryResource(ctx context.Context, find *FindMetaRegi
 	return list, nil
 }
 
+// SearchMetaRegistryResourceMessage is the message to search meta registry resources
+// by matching name/comment fields inside the metadata JSONB.
+type SearchMetaRegistryResourceMessage struct {
+	SearchStr  string
+	GUIDPrefix *string
+	ObjectType *storepb.MetaType
+	Limit      int
+	Offset     int
+}
+
+// SearchMetaRegistryResource searches metadata by name and comment within the JSONB column.
+// It uses a LATERAL join to extract the single inner metadata object (e.g. tableMetadata, schemaMetadata)
+// and searches the name, comment, and userComment text fields.
+func (s *Store) SearchMetaRegistryResource(ctx context.Context, find *SearchMetaRegistryResourceMessage) ([]*MetaRegistryResource, error) {
+	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	where, args := []string{}, []any{}
+
+	if v := find.GUIDPrefix; v != nil {
+		where, args = append(where, fmt.Sprintf("r.guid LIKE $%d", len(args)+1)), append(args, *v+"%")
+	}
+	if v := find.ObjectType; v != nil {
+		where, args = append(where, fmt.Sprintf("r.object_type = $%d", len(args)+1)), append(args, *v)
+	}
+
+	// Escape LIKE metacharacters in user input.
+	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(find.SearchStr)
+	searchPattern := "%" + escaped + "%"
+	args = append(args, searchPattern)
+	searchIdx := len(args)
+	where = append(where, fmt.Sprintf(`(m.inner_meta->>'name' ILIKE $%d OR m.inner_meta->>'comment' ILIKE $%d OR m.inner_meta->>'userComment' ILIKE $%d)`, searchIdx, searchIdx, searchIdx))
+
+	query := fmt.Sprintf(`
+		SELECT
+			r.id,
+			r.guid,
+			r.object_type,
+			r.metadata,
+			r.meta_hash
+		FROM meta_registry_resource r,
+			LATERAL (SELECT value AS inner_meta FROM jsonb_each(r.metadata) LIMIT 1) AS m
+		WHERE %s
+		ORDER BY r.guid`, strings.Join(where, " AND "))
+
+	if find.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", find.Limit)
+	}
+	if find.Offset > 0 {
+		query += fmt.Sprintf(" OFFSET %d", find.Offset)
+	}
+
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []*MetaRegistryResource
+	for rows.Next() {
+		var metadata []byte
+		var msg MetaRegistryResource
+		if err := rows.Scan(&msg.ID, &msg.GUID, &msg.ObjectType, &metadata, &msg.MetaHash); err != nil {
+			return nil, err
+		}
+		if len(metadata) != 0 {
+			m := &storepb.StoredMetadata{}
+			if err := common.ProtojsonUnmarshaler.Unmarshal(metadata, m); err != nil {
+				return nil, errors.Wrap(err, "failed to unmarshal stored metadata")
+			}
+			msg.Metadata = m
+		}
+		list = append(list, &msg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
 func (*Store) listMetaRegistryResourceImpl(ctx context.Context, txn *sql.Tx, find *FindMetaRegistryResourceMessage, withMetadata bool) ([]*MetaRegistryResource, error) {
 	where, args := []string{"TRUE"}, []any{}
 	if v := find.ID; v != nil {
