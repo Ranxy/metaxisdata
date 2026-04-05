@@ -646,6 +646,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.SearchMetadataRequest"><span class="badge">M</span>SearchMetadataRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SearchMetadataResponse"><span class="badge">M</span>SearchMetadataResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.SequenceMetadata"><span class="badge">M</span>SequenceMetadata</a>
                 </li>
               
@@ -6026,6 +6034,78 @@ It is an empty string for databases without such concept such as MySQL. </p></td
 
         
       
+        <h3 id="metaxisdata.v1.SearchMetadataRequest">SearchMetadataRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent_guid_prefix</td>
+                  <td><a href="#string">string</a></td>
+                  <td>optional</td>
+                  <td><p>Optional metadata prefixes to search for.
+database: &#34;instance_100;database3&#34;
+table: &#34;instance_1;db2;schema3;table4&#34; </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td>optional</td>
+                  <td><p>the type of metadata </p></td>
+                </tr>
+              
+                <tr>
+                  <td>search_str</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>the search string </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.SearchMetadataResponse">SearchMetadataResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>stored_metadata</td>
+                  <td><a href="#metaxisdata.v1.StoredMetadata">StoredMetadata</a></td>
+                  <td>repeated</td>
+                  <td><p>The list of stored metadata. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A token, which can be sent as `page_token` to retrieve the next page.
+If this field is omitted, there are no subsequent pages. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.SequenceMetadata">SequenceMetadata</h3>
         <p></p>
 
@@ -7449,6 +7529,13 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
               </tr>
             
               <tr>
+                <td>SearchMetadata</td>
+                <td><a href="#metaxisdata.v1.SearchMetadataRequest">SearchMetadataRequest</a></td>
+                <td><a href="#metaxisdata.v1.SearchMetadataResponse">SearchMetadataResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
                 <td>GetSchemaString</td>
                 <td><a href="#metaxisdata.v1.GetSchemaStringRequest">GetSchemaStringRequest</a></td>
                 <td><a href="#metaxisdata.v1.MetadataSchemaString">MetadataSchemaString</a></td>
@@ -7509,6 +7596,16 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
                 <td>GetMetadata</td>
                 <td>GET</td>
                 <td>/v1/metadata</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>SearchMetadata</td>
+                <td>GET</td>
+                <td>/v1/metadata/search</td>
                 <td></td>
               </tr>
               

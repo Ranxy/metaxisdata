@@ -124,6 +124,8 @@
     - [ProcedureMetadata](#metaxisdata-v1-ProcedureMetadata)
     - [RuleMetadata](#metaxisdata-v1-RuleMetadata)
     - [SchemaMetadata](#metaxisdata-v1-SchemaMetadata)
+    - [SearchMetadataRequest](#metaxisdata-v1-SearchMetadataRequest)
+    - [SearchMetadataResponse](#metaxisdata-v1-SearchMetadataResponse)
     - [SequenceMetadata](#metaxisdata-v1-SequenceMetadata)
     - [SpatialIndexConfig](#metaxisdata-v1-SpatialIndexConfig)
     - [SpatialIndexConfig.EngineSpecificEntry](#metaxisdata-v1-SpatialIndexConfig-EngineSpecificEntry)
@@ -2062,6 +2064,39 @@ This is the concept of schema in Postgres, but it&#39;s a no-op for MySQL.
 
 
 
+<a name="metaxisdata-v1-SearchMetadataRequest"></a>
+
+### SearchMetadataRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent_guid_prefix | [string](#string) | optional | Optional metadata prefixes to search for. database: &#34;instance_100;database3&#34; table: &#34;instance_1;db2;schema3;table4&#34; |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) | optional | the type of metadata |
+| search_str | [string](#string) |  | the search string |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SearchMetadataResponse"></a>
+
+### SearchMetadataResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| stored_metadata | [StoredMetadata](#metaxisdata-v1-StoredMetadata) | repeated | The list of stored metadata. |
+| next_page_token | [string](#string) |  | A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-SequenceMetadata"></a>
 
 ### SequenceMetadata
@@ -2484,6 +2519,7 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | ListDatabase | [ListDatabaseRequest](#metaxisdata-v1-ListDatabaseRequest) | [ListDatabasesResponse](#metaxisdata-v1-ListDatabasesResponse) |  |
 | ListMetadata | [ListMetadataRequest](#metaxisdata-v1-ListMetadataRequest) | [MetadataResponse](#metaxisdata-v1-MetadataResponse) |  |
 | GetMetadata | [GetMetadataRequest](#metaxisdata-v1-GetMetadataRequest) | [GetMetadataResponse](#metaxisdata-v1-GetMetadataResponse) |  |
+| SearchMetadata | [SearchMetadataRequest](#metaxisdata-v1-SearchMetadataRequest) | [SearchMetadataResponse](#metaxisdata-v1-SearchMetadataResponse) |  |
 | GetSchemaString | [GetSchemaStringRequest](#metaxisdata-v1-GetSchemaStringRequest) | [MetadataSchemaString](#metaxisdata-v1-MetadataSchemaString) | Generates schema DDL for a database object. |
 
  

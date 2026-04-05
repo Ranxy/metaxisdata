@@ -415,6 +415,66 @@ export declare type MetadataSchemaString = Message<"metaxisdata.v1.MetadataSchem
 export declare const MetadataSchemaStringSchema: GenMessage<MetadataSchemaString>;
 
 /**
+ * @generated from message metaxisdata.v1.SearchMetadataRequest
+ */
+export declare type SearchMetadataRequest = Message<"metaxisdata.v1.SearchMetadataRequest"> & {
+  /**
+   * Optional metadata prefixes to search for.
+   * database: "instance_100;database3"
+   * table: "instance_1;db2;schema3;table4"
+   *
+   * @generated from field: optional string parent_guid_prefix = 1;
+   */
+  parentGuidPrefix?: string;
+
+  /**
+   * the type of metadata
+   *
+   * @generated from field: optional metaxisdata.v1.MetaType meta_type = 2;
+   */
+  metaType?: MetaType;
+
+  /**
+   * the search string
+   *
+   * @generated from field: string search_str = 3;
+   */
+  searchStr: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SearchMetadataRequest.
+ * Use `create(SearchMetadataRequestSchema)` to create a new message.
+ */
+export declare const SearchMetadataRequestSchema: GenMessage<SearchMetadataRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.SearchMetadataResponse
+ */
+export declare type SearchMetadataResponse = Message<"metaxisdata.v1.SearchMetadataResponse"> & {
+  /**
+   * The list of stored metadata.
+   *
+   * @generated from field: repeated metaxisdata.v1.StoredMetadata stored_metadata = 1;
+   */
+  storedMetadata: StoredMetadata[];
+
+  /**
+   * A token, which can be sent as `page_token` to retrieve the next page.
+   * If this field is omitted, there are no subsequent pages.
+   *
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SearchMetadataResponse.
+ * Use `create(SearchMetadataResponseSchema)` to create a new message.
+ */
+export declare const SearchMetadataResponseSchema: GenMessage<SearchMetadataResponse>;
+
+/**
  * @generated from message metaxisdata.v1.StoredMetadata
  */
 export declare type StoredMetadata = Message<"metaxisdata.v1.StoredMetadata"> & {
@@ -3049,6 +3109,14 @@ export declare const DatabaseService: GenService<{
     methodKind: "unary";
     input: typeof GetMetadataRequestSchema;
     output: typeof GetMetadataResponseSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.DatabaseService.SearchMetadata
+   */
+  searchMetadata: {
+    methodKind: "unary";
+    input: typeof SearchMetadataRequestSchema;
+    output: typeof SearchMetadataResponseSchema;
   },
   /**
    * Generates schema DDL for a database object.

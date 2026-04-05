@@ -30,6 +30,10 @@ service DatabaseService {
     option (google.api.http) = {get: "/v1/metadata"};
   }
 
+  rpc SearchMetadata(SearchMetadataRequest) returns (SearchMetadataResponse) {
+    option (google.api.http) = {get: "/v1/metadata/search"};
+  }
+
   // Generates schema DDL for a database object.
   rpc GetSchemaString(GetSchemaStringRequest) returns (MetadataSchemaString) {
     option (google.api.http) = {get: "/v1/metadata/schemaString"};
@@ -232,6 +236,28 @@ message GetSchemaStringRequest{
 message MetadataSchemaString {
   // The schema dump from metadata.
   string schema = 1;
+}
+
+message SearchMetadataRequest{
+  // Optional metadata prefixes to search for.
+  // database: "instance_100;database3"
+  // table: "instance_1;db2;schema3;table4"
+  optional string parent_guid_prefix = 1;
+
+  // the type of metadata
+  optional MetaType meta_type = 2;
+
+  // the search string
+  string search_str = 3;
+}
+
+message SearchMetadataResponse {
+  // The list of stored metadata.
+  repeated StoredMetadata stored_metadata = 1;
+
+  // A token, which can be sent as `page_token` to retrieve the next page.
+  // If this field is omitted, there are no subsequent pages.
+  string next_page_token = 2;
 }
 
 
