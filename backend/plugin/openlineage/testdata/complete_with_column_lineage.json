@@ -1,0 +1,150 @@
+{
+  "eventType": "COMPLETE",
+  "eventTime": "2026-04-05T10:30:00.000Z",
+  "run": {
+    "runId": "d46e465b-d358-4d32-83d4-df660ff614dd"
+  },
+  "job": {
+    "namespace": "scheduler",
+    "name": "etl_delivery_summary"
+  },
+  "inputs": [
+    {
+      "namespace": "postgres://warehouse:5432",
+      "name": "public.delivery_7_days",
+      "facets": {
+        "schema": {
+          "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.24.2/integration/spark",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json",
+          "fields": [
+            { "name": "order_id", "type": "INTEGER" },
+            { "name": "order_placed_on", "type": "TIMESTAMP" },
+            { "name": "order_delivered_on", "type": "TIMESTAMP" },
+            { "name": "customer_id", "type": "INTEGER" }
+          ]
+        }
+      }
+    },
+    {
+      "namespace": "postgres://warehouse:5432",
+      "name": "public.customers",
+      "facets": {
+        "schema": {
+          "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.24.2/integration/spark",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json",
+          "fields": [
+            { "name": "id", "type": "INTEGER" },
+            { "name": "name", "type": "VARCHAR" },
+            { "name": "email", "type": "VARCHAR" }
+          ]
+        }
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "namespace": "postgres://warehouse:5432",
+      "name": "public.top_delivery_times",
+      "facets": {
+        "schema": {
+          "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.24.2/integration/spark",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json",
+          "fields": [
+            { "name": "order_id", "type": "INTEGER" },
+            { "name": "customer_name", "type": "VARCHAR" },
+            { "name": "order_placed_on", "type": "TIMESTAMP" },
+            { "name": "order_delivery_time", "type": "INTEGER" }
+          ]
+        },
+        "columnLineage": {
+          "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.24.2/integration/spark",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-2-0/ColumnLineageDatasetFacet.json",
+          "fields": {
+            "order_id": {
+              "inputFields": [
+                {
+                  "namespace": "postgres://warehouse:5432",
+                  "name": "public.delivery_7_days",
+                  "field": "order_id",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "IDENTITY",
+                      "description": "",
+                      "masking": false
+                    }
+                  ]
+                }
+              ]
+            },
+            "customer_name": {
+              "inputFields": [
+                {
+                  "namespace": "postgres://warehouse:5432",
+                  "name": "public.customers",
+                  "field": "name",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "IDENTITY",
+                      "description": "",
+                      "masking": false
+                    }
+                  ]
+                }
+              ]
+            },
+            "order_placed_on": {
+              "inputFields": [
+                {
+                  "namespace": "postgres://warehouse:5432",
+                  "name": "public.delivery_7_days",
+                  "field": "order_placed_on",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "IDENTITY",
+                      "description": "",
+                      "masking": false
+                    }
+                  ]
+                }
+              ]
+            },
+            "order_delivery_time": {
+              "inputFields": [
+                {
+                  "namespace": "postgres://warehouse:5432",
+                  "name": "public.delivery_7_days",
+                  "field": "order_placed_on",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "TRANSFORMATION",
+                      "description": "DATEDIFF(minute, order_placed_on, order_delivered_on)",
+                      "masking": false
+                    }
+                  ]
+                },
+                {
+                  "namespace": "postgres://warehouse:5432",
+                  "name": "public.delivery_7_days",
+                  "field": "order_delivered_on",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "TRANSFORMATION",
+                      "description": "DATEDIFF(minute, order_placed_on, order_delivered_on)",
+                      "masking": false
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "producer": "https://github.com/OpenLineage/OpenLineage/tree/1.24.2/integration/spark"
+}

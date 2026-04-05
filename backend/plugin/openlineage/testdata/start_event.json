@@ -1,0 +1,33 @@
+{
+  "eventType": "START",
+  "eventTime": "2026-04-05T10:25:00.000Z",
+  "run": {
+    "runId": "d46e465b-d358-4d32-83d4-df660ff614dd",
+    "facets": {
+      "nominalTime": {
+        "_producer": "https://github.com/OpenLineage/OpenLineage/tree/0.10.0/integration/airflow",
+        "_schemaURL": "https://openlineage.io/spec/facets/1-0-1/NominalTimeRunFacet.json",
+        "nominalStartTime": "2026-04-05T10:00:00.000Z"
+      }
+    }
+  },
+  "job": {
+    "namespace": "workshop",
+    "name": "process_taxes",
+    "facets": {
+      "sql": {
+        "_producer": "https://github.com/OpenLineage/OpenLineage/tree/0.10.0/integration/airflow",
+        "_schemaURL": "https://openlineage.io/spec/facets/1-0-1/SQLJobFacet.json",
+        "query": "INSERT INTO unpaid_taxes SELECT * FROM taxes WHERE paid = false"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "namespace": "postgres://workshop-db:5432",
+      "name": "workshop.public.taxes"
+    }
+  ],
+  "outputs": [],
+  "producer": "https://github.com/OpenLineage/OpenLineage/tree/0.10.0/integration/airflow"
+}

@@ -1,0 +1,123 @@
+{
+  "eventType": "COMPLETE",
+  "eventTime": "2026-04-05T11:00:00.000Z",
+  "run": {
+    "runId": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+  },
+  "job": {
+    "namespace": "flink-cluster",
+    "name": "mysql_to_kafka_sync"
+  },
+  "inputs": [
+    {
+      "namespace": "mysql://prod-mysql:3306",
+      "name": "orders.order_items",
+      "facets": {
+        "schema": {
+          "fields": [
+            { "name": "item_id", "type": "BIGINT" },
+            { "name": "order_id", "type": "BIGINT" },
+            { "name": "product_name", "type": "VARCHAR(255)" },
+            { "name": "quantity", "type": "INT" },
+            { "name": "price", "type": "DECIMAL(10,2)" }
+          ]
+        }
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "namespace": "kafka://kafka-broker:9092",
+      "name": "order_events",
+      "facets": {
+        "schema": {
+          "fields": [
+            { "name": "event_id", "type": "STRING" },
+            { "name": "item_id", "type": "LONG" },
+            { "name": "product_name", "type": "STRING" },
+            { "name": "total_amount", "type": "DOUBLE" }
+          ]
+        },
+        "columnLineage": {
+          "fields": {
+            "event_id": {
+              "inputFields": [
+                {
+                  "namespace": "mysql://prod-mysql:3306",
+                  "name": "orders.order_items",
+                  "field": "item_id",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "TRANSFORMATION",
+                      "description": "CAST(item_id AS STRING)"
+                    }
+                  ]
+                }
+              ]
+            },
+            "item_id": {
+              "inputFields": [
+                {
+                  "namespace": "mysql://prod-mysql:3306",
+                  "name": "orders.order_items",
+                  "field": "item_id",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "IDENTITY"
+                    }
+                  ]
+                }
+              ]
+            },
+            "product_name": {
+              "inputFields": [
+                {
+                  "namespace": "mysql://prod-mysql:3306",
+                  "name": "orders.order_items",
+                  "field": "product_name",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "IDENTITY"
+                    }
+                  ]
+                }
+              ]
+            },
+            "total_amount": {
+              "inputFields": [
+                {
+                  "namespace": "mysql://prod-mysql:3306",
+                  "name": "orders.order_items",
+                  "field": "quantity",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "AGGREGATION",
+                      "description": "quantity * price"
+                    }
+                  ]
+                },
+                {
+                  "namespace": "mysql://prod-mysql:3306",
+                  "name": "orders.order_items",
+                  "field": "price",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "AGGREGATION",
+                      "description": "quantity * price"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "producer": "https://github.com/OpenLineage/OpenLineage/tree/1.24.2/integration/flink"
+}
