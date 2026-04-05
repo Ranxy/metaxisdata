@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package metaxisdata.store;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "generated-go/store";
+
+// ExternalDataset represents a dataset outside of the managed instances,
+// discovered through OpenLineage events (e.g., S3, Kafka, external databases).
+message ExternalDataset {
+  string guid = 1;
+  string namespace = 2;
+  string name = 3;
+  string dataset_type = 4;
+  repeated SchemaField schema_fields = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+// SchemaField describes a single field in a dataset schema.
+message SchemaField {
+  string name = 1;
+  string type = 2;
+  string description = 3;
+}
+
+// NamespaceMapping maps an OpenLineage namespace to an internal instance.
+message NamespaceMapping {
+  int64 id = 1;
+  // The OpenLineage namespace, e.g. "postgres://host:5432".
+  string namespace = 2;
+  // The resource ID of the matched instance.
+  string instance_resource_id = 3;
+  // Optional database name override. If empty, the database is inferred from the dataset name.
+  string database_name = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}

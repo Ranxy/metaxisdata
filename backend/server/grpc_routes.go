@@ -63,6 +63,7 @@ func configureGrpcRouters(
 	instanceService := apiv1.NewInstanceService(stores, stateCfg, dbFactory, schemaSync)
 	databaseService := apiv1.NewDatabaseService(stores, stateCfg, dbFactory, schemaSync)
 	lineageService := apiv1.NewLineageService(stores, stateCfg, dbFactory, schemaSync)
+	openLineageService := apiv1.NewOpenLineageService(stores)
 
 	onPanic := func(_ context.Context, s connect.Spec, _ http.Header, p any) error {
 		stack := stacktrace.TakeStacktrace(20 /* n */, 5 /* skip */)
@@ -93,6 +94,8 @@ func configureGrpcRouters(
 	connectHandlers[databasePath] = databaseHandler
 	lineagePath, lineageHandler := v1connect.NewLineageServiceHandler(lineageService, handlerOpts)
 	connectHandlers[lineagePath] = lineageHandler
+	openLineagePath, openLineageHandler := v1connect.NewOpenLineageServiceHandler(openLineageService, handlerOpts)
+	connectHandlers[openLineagePath] = openLineageHandler
 	// grpc reflection handlers.
 	reflector := grpcreflect.NewStaticReflector(
 		v1connect.AuthServiceName,
@@ -100,6 +103,7 @@ func configureGrpcRouters(
 		v1connect.InstanceServiceName,
 		v1connect.DatabaseServiceName,
 		v1connect.LineageServiceName,
+		v1connect.OpenLineageServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
 	connectHandlers[reflectPath] = reflectHandler
@@ -135,6 +139,14 @@ func configureGrpcRouters(
 	if err := v1pb.RegisterLineageServiceHandler(ctx, mux, grpcConn); err != nil {
 		return err
 	}
+	if err := v1pb.RegisterOpenLineageServiceHandler(ctx, mux, grpcConn); err != nil {
+		return err
+	}
+
+	// Register OpenLineage event ingestion HTTP handler (plain REST, not ConnectRPC).
+	olHandler := apiv1.NewOpenLineageHandler(stores)
+	olGroup := e.Group("/api/v1/openlineage")
+	olHandler.RegisterRoutes(olGroup)
 
 	e.Any("/v1/*", echo.WrapHandler(mux))
 

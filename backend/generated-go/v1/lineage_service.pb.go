@@ -326,8 +326,10 @@ type GetLineageResponse struct {
 	// The list of lineage relations for the given metadata.
 	RelationsSource []*LineageRelation `protobuf:"bytes,1,rep,name=relations_source,json=relationsSource,proto3" json:"relations_source,omitempty"`
 	RelationsTarget []*LineageRelation `protobuf:"bytes,2,rep,name=relations_target,json=relationsTarget,proto3" json:"relations_target,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Metadata for external datasets referenced in the lineage relations.
+	ExternalDatasets []*ExternalDatasetInfo `protobuf:"bytes,3,rep,name=external_datasets,json=externalDatasets,proto3" json:"external_datasets,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *GetLineageResponse) Reset() {
@@ -374,6 +376,85 @@ func (x *GetLineageResponse) GetRelationsTarget() []*LineageRelation {
 	return nil
 }
 
+func (x *GetLineageResponse) GetExternalDatasets() []*ExternalDatasetInfo {
+	if x != nil {
+		return x.ExternalDatasets
+	}
+	return nil
+}
+
+// ExternalDatasetInfo provides metadata for a dataset outside of managed instances.
+type ExternalDatasetInfo struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Guid  string                 `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
+	// The OpenLineage namespace, e.g. "postgres://host:5432".
+	Namespace string `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	// The dataset name, e.g. "db.schema.table" or "s3://bucket/path".
+	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	// The dataset type, e.g. "s3", "kafka", "database".
+	DatasetType   string `protobuf:"bytes,4,opt,name=dataset_type,json=datasetType,proto3" json:"dataset_type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExternalDatasetInfo) Reset() {
+	*x = ExternalDatasetInfo{}
+	mi := &file_v1_lineage_service_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExternalDatasetInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExternalDatasetInfo) ProtoMessage() {}
+
+func (x *ExternalDatasetInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_lineage_service_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExternalDatasetInfo.ProtoReflect.Descriptor instead.
+func (*ExternalDatasetInfo) Descriptor() ([]byte, []int) {
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ExternalDatasetInfo) GetGuid() string {
+	if x != nil {
+		return x.Guid
+	}
+	return ""
+}
+
+func (x *ExternalDatasetInfo) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *ExternalDatasetInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ExternalDatasetInfo) GetDatasetType() string {
+	if x != nil {
+		return x.DatasetType
+	}
+	return ""
+}
+
 type GetLineageForContextRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The global unique id for metadata
@@ -386,7 +467,7 @@ type GetLineageForContextRequest struct {
 
 func (x *GetLineageForContextRequest) Reset() {
 	*x = GetLineageForContextRequest{}
-	mi := &file_v1_lineage_service_proto_msgTypes[3]
+	mi := &file_v1_lineage_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -398,7 +479,7 @@ func (x *GetLineageForContextRequest) String() string {
 func (*GetLineageForContextRequest) ProtoMessage() {}
 
 func (x *GetLineageForContextRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_lineage_service_proto_msgTypes[3]
+	mi := &file_v1_lineage_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -411,7 +492,7 @@ func (x *GetLineageForContextRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLineageForContextRequest.ProtoReflect.Descriptor instead.
 func (*GetLineageForContextRequest) Descriptor() ([]byte, []int) {
-	return file_v1_lineage_service_proto_rawDescGZIP(), []int{3}
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GetLineageForContextRequest) GetGuid() string {
@@ -438,7 +519,7 @@ type GetLineageForContextResponse struct {
 
 func (x *GetLineageForContextResponse) Reset() {
 	*x = GetLineageForContextResponse{}
-	mi := &file_v1_lineage_service_proto_msgTypes[4]
+	mi := &file_v1_lineage_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -450,7 +531,7 @@ func (x *GetLineageForContextResponse) String() string {
 func (*GetLineageForContextResponse) ProtoMessage() {}
 
 func (x *GetLineageForContextResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_lineage_service_proto_msgTypes[4]
+	mi := &file_v1_lineage_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -463,7 +544,7 @@ func (x *GetLineageForContextResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLineageForContextResponse.ProtoReflect.Descriptor instead.
 func (*GetLineageForContextResponse) Descriptor() ([]byte, []int) {
-	return file_v1_lineage_service_proto_rawDescGZIP(), []int{4}
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetLineageForContextResponse) GetRelations() []*LineageRelation {
@@ -501,10 +582,16 @@ const file_v1_lineage_service_proto_rawDesc = "" +
 	"\x04guid\x18\x01 \x01(\tB$\xe0A\x02\xfaA\x1e\n" +
 	"\x1cmetaxisdata/DatabaseMetadataR\x04guid\x125\n" +
 	"\tmeta_type\x18\x02 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12>\n" +
-	"\flineage_type\x18\x03 \x01(\x0e2\x1b.metaxisdata.v1.LineageTypeR\vlineageType\"\xac\x01\n" +
+	"\flineage_type\x18\x03 \x01(\x0e2\x1b.metaxisdata.v1.LineageTypeR\vlineageType\"\xfe\x01\n" +
 	"\x12GetLineageResponse\x12J\n" +
 	"\x10relations_source\x18\x01 \x03(\v2\x1f.metaxisdata.v1.LineageRelationR\x0frelationsSource\x12J\n" +
-	"\x10relations_target\x18\x02 \x03(\v2\x1f.metaxisdata.v1.LineageRelationR\x0frelationsTarget\"\x8e\x01\n" +
+	"\x10relations_target\x18\x02 \x03(\v2\x1f.metaxisdata.v1.LineageRelationR\x0frelationsTarget\x12P\n" +
+	"\x11external_datasets\x18\x03 \x03(\v2#.metaxisdata.v1.ExternalDatasetInfoR\x10externalDatasets\"~\n" +
+	"\x13ExternalDatasetInfo\x12\x12\n" +
+	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12!\n" +
+	"\fdataset_type\x18\x04 \x01(\tR\vdatasetType\"\x8e\x01\n" +
 	"\x1bGetLineageForContextRequest\x128\n" +
 	"\x04guid\x18\x01 \x01(\tB$\xe0A\x02\xfaA\x1e\n" +
 	"\x1cmetaxisdata/DatabaseMetadataR\x04guid\x125\n" +
@@ -540,39 +627,41 @@ func file_v1_lineage_service_proto_rawDescGZIP() []byte {
 }
 
 var file_v1_lineage_service_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_v1_lineage_service_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_v1_lineage_service_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_v1_lineage_service_proto_goTypes = []any{
 	(LineageType)(0),                     // 0: metaxisdata.v1.LineageType
 	(RelationType)(0),                    // 1: metaxisdata.v1.RelationType
 	(*LineageRelation)(nil),              // 2: metaxisdata.v1.LineageRelation
 	(*GetLineageRequest)(nil),            // 3: metaxisdata.v1.GetLineageRequest
 	(*GetLineageResponse)(nil),           // 4: metaxisdata.v1.GetLineageResponse
-	(*GetLineageForContextRequest)(nil),  // 5: metaxisdata.v1.GetLineageForContextRequest
-	(*GetLineageForContextResponse)(nil), // 6: metaxisdata.v1.GetLineageForContextResponse
-	(MetaType)(0),                        // 7: metaxisdata.v1.MetaType
-	(*timestamppb.Timestamp)(nil),        // 8: google.protobuf.Timestamp
+	(*ExternalDatasetInfo)(nil),          // 5: metaxisdata.v1.ExternalDatasetInfo
+	(*GetLineageForContextRequest)(nil),  // 6: metaxisdata.v1.GetLineageForContextRequest
+	(*GetLineageForContextResponse)(nil), // 7: metaxisdata.v1.GetLineageForContextResponse
+	(MetaType)(0),                        // 8: metaxisdata.v1.MetaType
+	(*timestamppb.Timestamp)(nil),        // 9: google.protobuf.Timestamp
 }
 var file_v1_lineage_service_proto_depIdxs = []int32{
-	7,  // 0: metaxisdata.v1.LineageRelation.meta_type:type_name -> metaxisdata.v1.MetaType
-	7,  // 1: metaxisdata.v1.LineageRelation.source_type:type_name -> metaxisdata.v1.MetaType
-	7,  // 2: metaxisdata.v1.LineageRelation.target_type:type_name -> metaxisdata.v1.MetaType
+	8,  // 0: metaxisdata.v1.LineageRelation.meta_type:type_name -> metaxisdata.v1.MetaType
+	8,  // 1: metaxisdata.v1.LineageRelation.source_type:type_name -> metaxisdata.v1.MetaType
+	8,  // 2: metaxisdata.v1.LineageRelation.target_type:type_name -> metaxisdata.v1.MetaType
 	1,  // 3: metaxisdata.v1.LineageRelation.relation_type:type_name -> metaxisdata.v1.RelationType
-	8,  // 4: metaxisdata.v1.LineageRelation.updated_at:type_name -> google.protobuf.Timestamp
-	7,  // 5: metaxisdata.v1.GetLineageRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	9,  // 4: metaxisdata.v1.LineageRelation.updated_at:type_name -> google.protobuf.Timestamp
+	8,  // 5: metaxisdata.v1.GetLineageRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	0,  // 6: metaxisdata.v1.GetLineageRequest.lineage_type:type_name -> metaxisdata.v1.LineageType
 	2,  // 7: metaxisdata.v1.GetLineageResponse.relations_source:type_name -> metaxisdata.v1.LineageRelation
 	2,  // 8: metaxisdata.v1.GetLineageResponse.relations_target:type_name -> metaxisdata.v1.LineageRelation
-	7,  // 9: metaxisdata.v1.GetLineageForContextRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	2,  // 10: metaxisdata.v1.GetLineageForContextResponse.relations:type_name -> metaxisdata.v1.LineageRelation
-	3,  // 11: metaxisdata.v1.LineageService.GetLineage:input_type -> metaxisdata.v1.GetLineageRequest
-	5,  // 12: metaxisdata.v1.LineageService.GetLineageForContext:input_type -> metaxisdata.v1.GetLineageForContextRequest
-	4,  // 13: metaxisdata.v1.LineageService.GetLineage:output_type -> metaxisdata.v1.GetLineageResponse
-	6,  // 14: metaxisdata.v1.LineageService.GetLineageForContext:output_type -> metaxisdata.v1.GetLineageForContextResponse
-	13, // [13:15] is the sub-list for method output_type
-	11, // [11:13] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	5,  // 9: metaxisdata.v1.GetLineageResponse.external_datasets:type_name -> metaxisdata.v1.ExternalDatasetInfo
+	8,  // 10: metaxisdata.v1.GetLineageForContextRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	2,  // 11: metaxisdata.v1.GetLineageForContextResponse.relations:type_name -> metaxisdata.v1.LineageRelation
+	3,  // 12: metaxisdata.v1.LineageService.GetLineage:input_type -> metaxisdata.v1.GetLineageRequest
+	6,  // 13: metaxisdata.v1.LineageService.GetLineageForContext:input_type -> metaxisdata.v1.GetLineageForContextRequest
+	4,  // 14: metaxisdata.v1.LineageService.GetLineage:output_type -> metaxisdata.v1.GetLineageResponse
+	7,  // 15: metaxisdata.v1.LineageService.GetLineageForContext:output_type -> metaxisdata.v1.GetLineageForContextResponse
+	14, // [14:16] is the sub-list for method output_type
+	12, // [12:14] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_v1_lineage_service_proto_init() }
@@ -588,7 +677,7 @@ func file_v1_lineage_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_lineage_service_proto_rawDesc), len(file_v1_lineage_service_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   5,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

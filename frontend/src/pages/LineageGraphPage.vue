@@ -75,8 +75,17 @@ import LineageNode from "@/components/lineage/LineageNode.vue";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
-import type { LineageRelation } from "@/types/proto-es/v1/lineage_service_pb";
+import type {
+  ExternalDatasetInfo,
+  LineageRelation,
+} from "@/types/proto-es/v1/lineage_service_pb";
 import { extractErrorMessage } from "@/utils/error";
+
+const EXTERNAL_PREFIX = "external:";
+
+function isExternalGuid(guid: string): boolean {
+  return guid.startsWith(EXTERNAL_PREFIX);
+}
 
 const { t } = useI18n();
 const route = useRoute();
@@ -96,6 +105,9 @@ const nodeDataMap = ref<
 
 // Track actual MetaType per guid, derived from lineage relation sourceType/targetType
 const guidMetaTypeMap = ref<Map<string, MetaType>>(new Map());
+
+// External dataset info cache: guid -> ExternalDatasetInfo
+const externalDatasetMap = ref<Map<string, ExternalDatasetInfo>>(new Map());
 
 // Snapshot of initial state for reset
 let initialExpandedGuids = new Set<string>();
@@ -141,6 +153,11 @@ const rootLabel = computed(() => formatGuidShort(currentGuid.value));
 
 function formatGuidShort(guid: string): string {
   if (!guid) return "";
+  if (isExternalGuid(guid)) {
+    const ext = externalDatasetMap.value.get(guid);
+    if (ext) return `${ext.namespace} / ${ext.name}`;
+    return guid.substring(EXTERNAL_PREFIX.length);
+  }
   const segments = guid.split(";").filter(Boolean);
   if (segments.length === 0) return guid;
   return segments.slice(-3).join(".");
@@ -148,11 +165,21 @@ function formatGuidShort(guid: string): string {
 
 function formatGuidLabel(guid: string): string {
   if (!guid) return "";
+  if (isExternalGuid(guid)) {
+    const ext = externalDatasetMap.value.get(guid);
+    if (ext) {
+      const nameParts = ext.name.split(".");
+      return nameParts[nameParts.length - 1] || ext.name;
+    }
+    const parts = guid.substring(EXTERNAL_PREFIX.length).split(":");
+    return parts[parts.length - 1] || guid;
+  }
   const segments = guid.split(";").filter(Boolean);
   return segments[segments.length - 1] || guid;
 }
 
 function guidToMetaType(guid: string): string {
+  if (isExternalGuid(guid)) return "external";
   const segments = guid.split(";").filter(Boolean);
   if (segments.length <= 1) return "instance";
   if (segments.length === 2) return "database";
@@ -186,6 +213,13 @@ async function fetchLineageForGuid(
       downstream: response.relationsTarget,
     };
     nodeDataMap.value.set(guid, data);
+
+    // Store external dataset info from response
+    for (const ext of response.externalDatasets) {
+      if (ext.guid && !externalDatasetMap.value.has(ext.guid)) {
+        externalDatasetMap.value.set(ext.guid, ext);
+      }
+    }
 
     // Record metaType for all guids referenced in the relations
     for (const rel of data.upstream) {

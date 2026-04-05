@@ -129,6 +129,13 @@ export declare type GetLineageResponse = Message<"metaxisdata.v1.GetLineageRespo
    * @generated from field: repeated metaxisdata.v1.LineageRelation relations_target = 2;
    */
   relationsTarget: LineageRelation[];
+
+  /**
+   * Metadata for external datasets referenced in the lineage relations.
+   *
+   * @generated from field: repeated metaxisdata.v1.ExternalDatasetInfo external_datasets = 3;
+   */
+  externalDatasets: ExternalDatasetInfo[];
 };
 
 /**
@@ -136,6 +143,45 @@ export declare type GetLineageResponse = Message<"metaxisdata.v1.GetLineageRespo
  * Use `create(GetLineageResponseSchema)` to create a new message.
  */
 export declare const GetLineageResponseSchema: GenMessage<GetLineageResponse>;
+
+/**
+ * ExternalDatasetInfo provides metadata for a dataset outside of managed instances.
+ *
+ * @generated from message metaxisdata.v1.ExternalDatasetInfo
+ */
+export declare type ExternalDatasetInfo = Message<"metaxisdata.v1.ExternalDatasetInfo"> & {
+  /**
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+
+  /**
+   * The OpenLineage namespace, e.g. "postgres://host:5432".
+   *
+   * @generated from field: string namespace = 2;
+   */
+  namespace: string;
+
+  /**
+   * The dataset name, e.g. "db.schema.table" or "s3://bucket/path".
+   *
+   * @generated from field: string name = 3;
+   */
+  name: string;
+
+  /**
+   * The dataset type, e.g. "s3", "kafka", "database".
+   *
+   * @generated from field: string dataset_type = 4;
+   */
+  datasetType: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ExternalDatasetInfo.
+ * Use `create(ExternalDatasetInfoSchema)` to create a new message.
+ */
+export declare const ExternalDatasetInfoSchema: GenMessage<ExternalDatasetInfo>;
 
 /**
  * @generated from message metaxisdata.v1.GetLineageForContextRequest

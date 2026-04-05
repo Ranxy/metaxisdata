@@ -749,6 +749,10 @@
             <ul>
               
                 <li>
+                  <a href="#metaxisdata.v1.ExternalDatasetInfo"><span class="badge">M</span>ExternalDatasetInfo</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetLineageForContextRequest"><span class="badge">M</span>GetLineageForContextRequest</a>
                 </li>
               
@@ -781,6 +785,69 @@
               
                 <li>
                   <a href="#metaxisdata.v1.LineageService"><span class="badge">S</span>LineageService</a>
+                </li>
+              
+            </ul>
+          </li>
+        
+          
+          <li>
+            <a href="#v1%2fopenlineage_service.proto">v1/openlineage_service.proto</a>
+            <ul>
+              
+                <li>
+                  <a href="#metaxisdata.v1.APIKeyResource"><span class="badge">M</span>APIKeyResource</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateAPIKeyRequest"><span class="badge">M</span>CreateAPIKeyRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateAPIKeyResponse"><span class="badge">M</span>CreateAPIKeyResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateNamespaceMappingRequest"><span class="badge">M</span>CreateNamespaceMappingRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DeleteNamespaceMappingRequest"><span class="badge">M</span>DeleteNamespaceMappingRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListAPIKeyRequest"><span class="badge">M</span>ListAPIKeyRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListAPIKeyResponse"><span class="badge">M</span>ListAPIKeyResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListNamespaceMappingRequest"><span class="badge">M</span>ListNamespaceMappingRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListNamespaceMappingResponse"><span class="badge">M</span>ListNamespaceMappingResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.NamespaceMappingResource"><span class="badge">M</span>NamespaceMappingResource</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.RevokeAPIKeyRequest"><span class="badge">M</span>RevokeAPIKeyRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.UpdateNamespaceMappingRequest"><span class="badge">M</span>UpdateNamespaceMappingRequest</a>
+                </li>
+              
+              
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.OpenLineageService"><span class="badge">S</span>OpenLineageService</a>
                 </li>
               
             </ul>
@@ -7674,6 +7741,51 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
       <p></p>
 
       
+        <h3 id="metaxisdata.v1.ExternalDatasetInfo">ExternalDatasetInfo</h3>
+        <p>ExternalDatasetInfo provides metadata for a dataset outside of managed instances.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>namespace</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The OpenLineage namespace, e.g. &#34;postgres://host:5432&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The dataset name, e.g. &#34;db.schema.table&#34; or &#34;s3://bucket/path&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>dataset_type</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The dataset type, e.g. &#34;s3&#34;, &#34;kafka&#34;, &#34;database&#34;. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetLineageForContextRequest">GetLineageForContextRequest</h3>
         <p></p>
 
@@ -7791,6 +7903,13 @@ table: &#34;instance_1;db2;schema3;table4&#34; </p></td>
                   <td><a href="#metaxisdata.v1.LineageRelation">LineageRelation</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>external_datasets</td>
+                  <td><a href="#metaxisdata.v1.ExternalDatasetInfo">ExternalDatasetInfo</a></td>
+                  <td>repeated</td>
+                  <td><p>Metadata for external datasets referenced in the lineage relations. </p></td>
                 </tr>
               
             </tbody>
@@ -8024,6 +8143,500 @@ If lineage_type is not specified, both source and target lineage will be returne
                 <td>GetLineageForContext</td>
                 <td>GET</td>
                 <td>/v1/context/{guid=lineages/*}</td>
+                <td></td>
+              </tr>
+              
+            
+            </tbody>
+          </table>
+          
+        
+    
+      
+      <div class="file-heading">
+        <h2 id="v1/openlineage_service.proto">v1/openlineage_service.proto</h2><a href="#title">Top</a>
+      </div>
+      <p></p>
+
+      
+        <h3 id="metaxisdata.v1.APIKeyResource">APIKeyResource</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>description</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>revoked_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>Non-empty only when the key is revoked. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CreateAPIKeyRequest">CreateAPIKeyRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>description</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CreateAPIKeyResponse">CreateAPIKeyResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The plain-text API key. Only returned once at creation time. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>api_key</td>
+                  <td><a href="#metaxisdata.v1.APIKeyResource">APIKeyResource</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CreateNamespaceMappingRequest">CreateNamespaceMappingRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>mapping</td>
+                  <td><a href="#metaxisdata.v1.NamespaceMappingResource">NamespaceMappingResource</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DeleteNamespaceMappingRequest">DeleteNamespaceMappingRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListAPIKeyRequest">ListAPIKeyRequest</h3>
+        <p></p>
+
+        
+
+        
+      
+        <h3 id="metaxisdata.v1.ListAPIKeyResponse">ListAPIKeyResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>api_keys</td>
+                  <td><a href="#metaxisdata.v1.APIKeyResource">APIKeyResource</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListNamespaceMappingRequest">ListNamespaceMappingRequest</h3>
+        <p></p>
+
+        
+
+        
+      
+        <h3 id="metaxisdata.v1.ListNamespaceMappingResponse">ListNamespaceMappingResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>mappings</td>
+                  <td><a href="#metaxisdata.v1.NamespaceMappingResource">NamespaceMappingResource</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.NamespaceMappingResource">NamespaceMappingResource</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>namespace</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance_resource_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>updated_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.RevokeAPIKeyRequest">RevokeAPIKeyRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.UpdateNamespaceMappingRequest">UpdateNamespaceMappingRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>mapping</td>
+                  <td><a href="#metaxisdata.v1.NamespaceMappingResource">NamespaceMappingResource</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+
+      
+
+      
+
+      
+        <h3 id="metaxisdata.v1.OpenLineageService">OpenLineageService</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>CreateNamespaceMapping</td>
+                <td><a href="#metaxisdata.v1.CreateNamespaceMappingRequest">CreateNamespaceMappingRequest</a></td>
+                <td><a href="#metaxisdata.v1.NamespaceMappingResource">NamespaceMappingResource</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>ListNamespaceMapping</td>
+                <td><a href="#metaxisdata.v1.ListNamespaceMappingRequest">ListNamespaceMappingRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListNamespaceMappingResponse">ListNamespaceMappingResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>UpdateNamespaceMapping</td>
+                <td><a href="#metaxisdata.v1.UpdateNamespaceMappingRequest">UpdateNamespaceMappingRequest</a></td>
+                <td><a href="#metaxisdata.v1.NamespaceMappingResource">NamespaceMappingResource</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DeleteNamespaceMapping</td>
+                <td><a href="#metaxisdata.v1.DeleteNamespaceMappingRequest">DeleteNamespaceMappingRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>CreateAPIKey</td>
+                <td><a href="#metaxisdata.v1.CreateAPIKeyRequest">CreateAPIKeyRequest</a></td>
+                <td><a href="#metaxisdata.v1.CreateAPIKeyResponse">CreateAPIKeyResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>ListAPIKey</td>
+                <td><a href="#metaxisdata.v1.ListAPIKeyRequest">ListAPIKeyRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListAPIKeyResponse">ListAPIKeyResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>RevokeAPIKey</td>
+                <td><a href="#metaxisdata.v1.RevokeAPIKeyRequest">RevokeAPIKeyRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+
+        
+          
+          
+          <h4>Methods with HTTP bindings</h4>
+          <table>
+            <thead>
+              <tr>
+                <td>Method Name</td>
+                <td>Method</td>
+                <td>Pattern</td>
+                <td>Body</td>
+              </tr>
+            </thead>
+            <tbody>
+            
+              
+              
+              <tr>
+                <td>CreateNamespaceMapping</td>
+                <td>POST</td>
+                <td>/v1/openlineage/namespaceMappings</td>
+                <td>mapping</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListNamespaceMapping</td>
+                <td>GET</td>
+                <td>/v1/openlineage/namespaceMappings</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>UpdateNamespaceMapping</td>
+                <td>PATCH</td>
+                <td>/v1/openlineage/namespaceMappings/{id}</td>
+                <td>mapping</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DeleteNamespaceMapping</td>
+                <td>DELETE</td>
+                <td>/v1/openlineage/namespaceMappings/{id}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateAPIKey</td>
+                <td>POST</td>
+                <td>/v1/openlineage/apiKeys</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListAPIKey</td>
+                <td>GET</td>
+                <td>/v1/openlineage/apiKeys</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>RevokeAPIKey</td>
+                <td>DELETE</td>
+                <td>/v1/openlineage/apiKeys/{id}</td>
                 <td></td>
               </tr>
               

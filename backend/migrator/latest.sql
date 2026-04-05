@@ -197,3 +197,51 @@ CREATE TABLE column_lineage_version (
     error_message TEXT,
     PRIMARY KEY (meta_guid, meta_type)
 );
+
+
+-- external_dataset stores datasets discovered via OpenLineage that are not managed by any instance.
+CREATE TABLE external_dataset (
+    id BIGSERIAL PRIMARY KEY,
+    guid TEXT COLLATE "C" NOT NULL,
+    namespace TEXT NOT NULL,
+    name TEXT NOT NULL,
+    dataset_type TEXT NOT NULL DEFAULT 'unknown',
+    schema_fields JSONB NOT NULL DEFAULT '[]',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_external_dataset_guid ON external_dataset(guid);
+CREATE INDEX idx_external_dataset_ns_name ON external_dataset(namespace, name);
+
+ALTER SEQUENCE external_dataset_id_seq RESTART WITH 101;
+
+
+-- namespace_mapping maps OpenLineage namespaces to internal instances for auto-resolution.
+CREATE TABLE namespace_mapping (
+    id BIGSERIAL PRIMARY KEY,
+    namespace TEXT NOT NULL,
+    instance_resource_id TEXT NOT NULL,
+    database_name TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_namespace_mapping_namespace ON namespace_mapping(namespace);
+
+ALTER SEQUENCE namespace_mapping_id_seq RESTART WITH 101;
+
+
+-- openlineage_api_key stores hashed API keys for authenticating OpenLineage event submissions.
+CREATE TABLE openlineage_api_key (
+    id BIGSERIAL PRIMARY KEY,
+    key_hash TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    revoked_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX idx_openlineage_api_key_hash ON openlineage_api_key(key_hash);
+
+ALTER SEQUENCE openlineage_api_key_id_seq RESTART WITH 101;

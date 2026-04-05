@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package metaxisdata.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
+
+service OpenLineageService {
+  rpc CreateNamespaceMapping(CreateNamespaceMappingRequest) returns (NamespaceMappingResource) {
+    option (google.api.http) = {
+      post: "/v1/openlineage/namespaceMappings"
+      body: "mapping"
+    };
+  }
+
+  rpc ListNamespaceMapping(ListNamespaceMappingRequest) returns (ListNamespaceMappingResponse) {
+    option (google.api.http) = {get: "/v1/openlineage/namespaceMappings"};
+  }
+
+  rpc UpdateNamespaceMapping(UpdateNamespaceMappingRequest) returns (NamespaceMappingResource) {
+    option (google.api.http) = {
+      patch: "/v1/openlineage/namespaceMappings/{id}"
+      body: "mapping"
+    };
+  }
+
+  rpc DeleteNamespaceMapping(DeleteNamespaceMappingRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/openlineage/namespaceMappings/{id}"};
+  }
+
+  rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse) {
+    option (google.api.http) = {
+      post: "/v1/openlineage/apiKeys"
+      body: "*"
+    };
+  }
+
+  rpc ListAPIKey(ListAPIKeyRequest) returns (ListAPIKeyResponse) {
+    option (google.api.http) = {get: "/v1/openlineage/apiKeys"};
+  }
+
+  rpc RevokeAPIKey(RevokeAPIKeyRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/openlineage/apiKeys/{id}"};
+  }
+}
+
+message NamespaceMappingResource {
+  int64 id = 1;
+  string namespace = 2 [(google.api.field_behavior) = REQUIRED];
+  string instance_resource_id = 3 [(google.api.field_behavior) = REQUIRED];
+  string database_name = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message CreateNamespaceMappingRequest {
+  NamespaceMappingResource mapping = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListNamespaceMappingRequest {}
+
+message ListNamespaceMappingResponse {
+  repeated NamespaceMappingResource mappings = 1;
+}
+
+message UpdateNamespaceMappingRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  NamespaceMappingResource mapping = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DeleteNamespaceMappingRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message APIKeyResource {
+  int64 id = 1;
+  string description = 2;
+  string created_by = 3;
+  google.protobuf.Timestamp created_at = 4;
+  // Non-empty only when the key is revoked.
+  google.protobuf.Timestamp revoked_at = 5;
+}
+
+message CreateAPIKeyRequest {
+  string description = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CreateAPIKeyResponse {
+  // The plain-text API key. Only returned once at creation time.
+  string key = 1;
+  APIKeyResource api_key = 2;
+}
+
+message ListAPIKeyRequest {}
+
+message ListAPIKeyResponse {
+  repeated APIKeyResource api_keys = 1;
+}
+
+message RevokeAPIKeyRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}

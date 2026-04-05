@@ -11,6 +11,7 @@ enum MetaType {
   SCHEMA = 3;
   TABLE = 4;
   EXTERNAL_TABLE = 16;
+  EXTERNAL_DATASET = 17;
   VIEW = 5;
   MATERIALIZED_VIEW = 6;
   COLUMN = 7;

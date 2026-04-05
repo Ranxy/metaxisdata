@@ -75,6 +75,19 @@ message GetLineageResponse {
   // The list of lineage relations for the given metadata.
   repeated LineageRelation relations_source = 1;
   repeated LineageRelation relations_target = 2;
+  // Metadata for external datasets referenced in the lineage relations.
+  repeated ExternalDatasetInfo external_datasets = 3;
+}
+
+// ExternalDatasetInfo provides metadata for a dataset outside of managed instances.
+message ExternalDatasetInfo {
+  string guid = 1;
+  // The OpenLineage namespace, e.g. "postgres://host:5432".
+  string namespace = 2;
+  // The dataset name, e.g. "db.schema.table" or "s3://bucket/path".
+  string name = 3;
+  // The dataset type, e.g. "s3", "kafka", "database".
+  string dataset_type = 4;
 }
 
 message GetLineageForContextRequest {

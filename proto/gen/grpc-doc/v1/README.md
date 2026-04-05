@@ -151,6 +151,7 @@
     - [DatabaseService](#metaxisdata-v1-DatabaseService)
   
 - [v1/lineage_service.proto](#v1_lineage_service-proto)
+    - [ExternalDatasetInfo](#metaxisdata-v1-ExternalDatasetInfo)
     - [GetLineageForContextRequest](#metaxisdata-v1-GetLineageForContextRequest)
     - [GetLineageForContextResponse](#metaxisdata-v1-GetLineageForContextResponse)
     - [GetLineageRequest](#metaxisdata-v1-GetLineageRequest)
@@ -161,6 +162,22 @@
     - [RelationType](#metaxisdata-v1-RelationType)
   
     - [LineageService](#metaxisdata-v1-LineageService)
+  
+- [v1/openlineage_service.proto](#v1_openlineage_service-proto)
+    - [APIKeyResource](#metaxisdata-v1-APIKeyResource)
+    - [CreateAPIKeyRequest](#metaxisdata-v1-CreateAPIKeyRequest)
+    - [CreateAPIKeyResponse](#metaxisdata-v1-CreateAPIKeyResponse)
+    - [CreateNamespaceMappingRequest](#metaxisdata-v1-CreateNamespaceMappingRequest)
+    - [DeleteNamespaceMappingRequest](#metaxisdata-v1-DeleteNamespaceMappingRequest)
+    - [ListAPIKeyRequest](#metaxisdata-v1-ListAPIKeyRequest)
+    - [ListAPIKeyResponse](#metaxisdata-v1-ListAPIKeyResponse)
+    - [ListNamespaceMappingRequest](#metaxisdata-v1-ListNamespaceMappingRequest)
+    - [ListNamespaceMappingResponse](#metaxisdata-v1-ListNamespaceMappingResponse)
+    - [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource)
+    - [RevokeAPIKeyRequest](#metaxisdata-v1-RevokeAPIKeyRequest)
+    - [UpdateNamespaceMappingRequest](#metaxisdata-v1-UpdateNamespaceMappingRequest)
+  
+    - [OpenLineageService](#metaxisdata-v1-OpenLineageService)
   
 - [Scalar Value Types](#scalar-value-types)
 
@@ -2551,6 +2568,24 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 
 
 
+<a name="metaxisdata-v1-ExternalDatasetInfo"></a>
+
+### ExternalDatasetInfo
+ExternalDatasetInfo provides metadata for a dataset outside of managed instances.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  |  |
+| namespace | [string](#string) |  | The OpenLineage namespace, e.g. &#34;postgres://host:5432&#34;. |
+| name | [string](#string) |  | The dataset name, e.g. &#34;db.schema.table&#34; or &#34;s3://bucket/path&#34;. |
+| dataset_type | [string](#string) |  | The dataset type, e.g. &#34;s3&#34;, &#34;kafka&#34;, &#34;database&#34;. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetLineageForContextRequest"></a>
 
 ### GetLineageForContextRequest
@@ -2609,6 +2644,7 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | ----- | ---- | ----- | ----------- |
 | relations_source | [LineageRelation](#metaxisdata-v1-LineageRelation) | repeated | The list of lineage relations for the given metadata. |
 | relations_target | [LineageRelation](#metaxisdata-v1-LineageRelation) | repeated |  |
+| external_datasets | [ExternalDatasetInfo](#metaxisdata-v1-ExternalDatasetInfo) | repeated | Metadata for external datasets referenced in the lineage relations. |
 
 
 
@@ -2682,6 +2718,219 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | ----------- | ------------ | ------------- | ------------|
 | GetLineage | [GetLineageRequest](#metaxisdata-v1-GetLineageRequest) | [GetLineageResponse](#metaxisdata-v1-GetLineageResponse) | GetLineage returns the lineage relations for the given metadata. The lineage relations can be either source lineage or target lineage, depending on the lineage_type specified in the request. If lineage_type is not specified, both source and target lineage will be returned. |
 | GetLineageForContext | [GetLineageForContextRequest](#metaxisdata-v1-GetLineageForContextRequest) | [GetLineageForContextResponse](#metaxisdata-v1-GetLineageForContextResponse) | GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure). |
+
+ 
+
+
+
+<a name="v1_openlineage_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/openlineage_service.proto
+
+
+
+<a name="metaxisdata-v1-APIKeyResource"></a>
+
+### APIKeyResource
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+| description | [string](#string) |  |  |
+| created_by | [string](#string) |  |  |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| revoked_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Non-empty only when the key is revoked. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CreateAPIKeyRequest"></a>
+
+### CreateAPIKeyRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| description | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CreateAPIKeyResponse"></a>
+
+### CreateAPIKeyResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  | The plain-text API key. Only returned once at creation time. |
+| api_key | [APIKeyResource](#metaxisdata-v1-APIKeyResource) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CreateNamespaceMappingRequest"></a>
+
+### CreateNamespaceMappingRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| mapping | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteNamespaceMappingRequest"></a>
+
+### DeleteNamespaceMappingRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListAPIKeyRequest"></a>
+
+### ListAPIKeyRequest
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListAPIKeyResponse"></a>
+
+### ListAPIKeyResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| api_keys | [APIKeyResource](#metaxisdata-v1-APIKeyResource) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListNamespaceMappingRequest"></a>
+
+### ListNamespaceMappingRequest
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListNamespaceMappingResponse"></a>
+
+### ListNamespaceMappingResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| mappings | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-NamespaceMappingResource"></a>
+
+### NamespaceMappingResource
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+| namespace | [string](#string) |  |  |
+| instance_resource_id | [string](#string) |  |  |
+| database_name | [string](#string) |  |  |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-RevokeAPIKeyRequest"></a>
+
+### RevokeAPIKeyRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateNamespaceMappingRequest"></a>
+
+### UpdateNamespaceMappingRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+| mapping | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) |  |  |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-OpenLineageService"></a>
+
+### OpenLineageService
+
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| CreateNamespaceMapping | [CreateNamespaceMappingRequest](#metaxisdata-v1-CreateNamespaceMappingRequest) | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) |  |
+| ListNamespaceMapping | [ListNamespaceMappingRequest](#metaxisdata-v1-ListNamespaceMappingRequest) | [ListNamespaceMappingResponse](#metaxisdata-v1-ListNamespaceMappingResponse) |  |
+| UpdateNamespaceMapping | [UpdateNamespaceMappingRequest](#metaxisdata-v1-UpdateNamespaceMappingRequest) | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) |  |
+| DeleteNamespaceMapping | [DeleteNamespaceMappingRequest](#metaxisdata-v1-DeleteNamespaceMappingRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
+| CreateAPIKey | [CreateAPIKeyRequest](#metaxisdata-v1-CreateAPIKeyRequest) | [CreateAPIKeyResponse](#metaxisdata-v1-CreateAPIKeyResponse) |  |
+| ListAPIKey | [ListAPIKeyRequest](#metaxisdata-v1-ListAPIKeyRequest) | [ListAPIKeyResponse](#metaxisdata-v1-ListAPIKeyResponse) |  |
+| RevokeAPIKey | [RevokeAPIKeyRequest](#metaxisdata-v1-RevokeAPIKeyRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
 
  
 

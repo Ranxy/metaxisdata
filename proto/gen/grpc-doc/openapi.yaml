@@ -967,6 +967,159 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/openlineage/apiKeys:
+        get:
+            tags:
+                - OpenLineageService
+            operationId: OpenLineageService_ListAPIKey
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListAPIKeyResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - OpenLineageService
+            operationId: OpenLineageService_CreateAPIKey
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateAPIKeyRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CreateAPIKeyResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/openlineage/apiKeys/{id}:
+        delete:
+            tags:
+                - OpenLineageService
+            operationId: OpenLineageService_RevokeAPIKey
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/openlineage/namespaceMappings:
+        get:
+            tags:
+                - OpenLineageService
+            operationId: OpenLineageService_ListNamespaceMapping
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListNamespaceMappingResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - OpenLineageService
+            operationId: OpenLineageService_CreateNamespaceMapping
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/NamespaceMappingResource'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/NamespaceMappingResource'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/openlineage/namespaceMappings/{id}:
+        delete:
+            tags:
+                - OpenLineageService
+            operationId: OpenLineageService_DeleteNamespaceMapping
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - OpenLineageService
+            operationId: OpenLineageService_UpdateNamespaceMapping
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/NamespaceMappingResource'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/NamespaceMappingResource'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/users:
         get:
             tags:
@@ -1248,6 +1401,22 @@ paths:
                                 $ref: '#/components/schemas/Status'
 components:
     schemas:
+        APIKeyResource:
+            type: object
+            properties:
+                id:
+                    type: string
+                description:
+                    type: string
+                createdBy:
+                    type: string
+                createdAt:
+                    type: string
+                    format: date-time
+                revokedAt:
+                    type: string
+                    description: Non-empty only when the key is revoked.
+                    format: date-time
         AddDataSourceRequest:
             required:
                 - name
@@ -1421,6 +1590,21 @@ components:
                          This field is populated when syncing from the database. When empty (e.g., when parsing
                          from SQL files), the system cannot automatically drop the constraint.
             description: ColumnMetadata is the metadata for columns.
+        CreateAPIKeyRequest:
+            required:
+                - description
+            type: object
+            properties:
+                description:
+                    type: string
+        CreateAPIKeyResponse:
+            type: object
+            properties:
+                key:
+                    type: string
+                    description: The plain-text API key. Only returned once at creation time.
+                apiKey:
+                    $ref: '#/components/schemas/APIKeyResource'
         DataSource:
             type: object
             properties:
@@ -1935,6 +2119,21 @@ components:
                     type: string
                     description: The description is the description of an extension.
             description: ExtensionMetadata is the metadata for extensions.
+        ExternalDatasetInfo:
+            type: object
+            properties:
+                guid:
+                    type: string
+                namespace:
+                    type: string
+                    description: The OpenLineage namespace, e.g. "postgres://host:5432".
+                name:
+                    type: string
+                    description: The dataset name, e.g. "db.schema.table" or "s3://bucket/path".
+                datasetType:
+                    type: string
+                    description: The dataset type, e.g. "s3", "kafka", "database".
+            description: ExternalDatasetInfo provides metadata for a dataset outside of managed instances.
         ExternalTableMetadata:
             type: object
             properties:
@@ -2056,6 +2255,11 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/LineageRelation'
+                externalDatasets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ExternalDatasetInfo'
+                    description: Metadata for external datasets referenced in the lineage relations.
         GetMetadataResponse:
             type: object
             properties:
@@ -2431,6 +2635,13 @@ components:
                     type: string
                 host:
                     type: string
+        ListAPIKeyResponse:
+            type: object
+            properties:
+                apiKeys:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/APIKeyResource'
         ListDatabasesResponse:
             type: object
             properties:
@@ -2480,6 +2691,13 @@ components:
                     description: |-
                         A token, which can be sent as `page_token` to retrieve the next page.
                          If this field is omitted, there are no subsequent pages.
+        ListNamespaceMappingResponse:
+            type: object
+            properties:
+                mappings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/NamespaceMappingResource'
         ListUsersResponse:
             type: object
             properties:
@@ -2604,6 +2822,26 @@ components:
                     type: string
                     description: The schema dump from metadata.
             description: MetadataSchemaString is the schema define for metadata.
+        NamespaceMappingResource:
+            required:
+                - namespace
+                - instanceResourceId
+            type: object
+            properties:
+                id:
+                    type: string
+                namespace:
+                    type: string
+                instanceResourceId:
+                    type: string
+                databaseName:
+                    type: string
+                createdAt:
+                    type: string
+                    format: date-time
+                updatedAt:
+                    type: string
+                    format: date-time
         OAuth2IdentityProviderContext:
             type: object
             properties:
@@ -3420,4 +3658,5 @@ tags:
     - name: DatabaseService
     - name: InstanceService
     - name: LineageService
+    - name: OpenLineageService
     - name: UserService

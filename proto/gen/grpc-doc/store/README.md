@@ -101,6 +101,11 @@
 - [store/meta.proto](#store_meta-proto)
     - [MetaType](#metaxisdata-store-MetaType)
   
+- [store/openlineage.proto](#store_openlineage-proto)
+    - [ExternalDataset](#metaxisdata-store-ExternalDataset)
+    - [NamespaceMapping](#metaxisdata-store-NamespaceMapping)
+    - [SchemaField](#metaxisdata-store-SchemaField)
+  
 - [store/policy.proto](#store_policy-proto)
     - [Binding](#metaxisdata-store-Binding)
     - [EnvironmentTierPolicy](#metaxisdata-store-EnvironmentTierPolicy)
@@ -1844,6 +1849,7 @@ InstanceRole is the API message for instance role.
 | SCHEMA | 3 |  |
 | TABLE | 4 |  |
 | EXTERNAL_TABLE | 16 |  |
+| EXTERNAL_DATASET | 17 |  |
 | VIEW | 5 |  |
 | MATERIALIZED_VIEW | 6 |  |
 | COLUMN | 7 |  |
@@ -1856,6 +1862,81 @@ InstanceRole is the API message for instance role.
 | STREAM | 14 |  |
 | TASK | 15 |  |
 
+
+ 
+
+ 
+
+ 
+
+
+
+<a name="store_openlineage-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## store/openlineage.proto
+
+
+
+<a name="metaxisdata-store-ExternalDataset"></a>
+
+### ExternalDataset
+ExternalDataset represents a dataset outside of the managed instances,
+discovered through OpenLineage events (e.g., S3, Kafka, external databases).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  |  |
+| namespace | [string](#string) |  |  |
+| name | [string](#string) |  |  |
+| dataset_type | [string](#string) |  |  |
+| schema_fields | [SchemaField](#metaxisdata-store-SchemaField) | repeated |  |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-NamespaceMapping"></a>
+
+### NamespaceMapping
+NamespaceMapping maps an OpenLineage namespace to an internal instance.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+| namespace | [string](#string) |  | The OpenLineage namespace, e.g. &#34;postgres://host:5432&#34;. |
+| instance_resource_id | [string](#string) |  | The resource ID of the matched instance. |
+| database_name | [string](#string) |  | Optional database name override. If empty, the database is inferred from the dataset name. |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-SchemaField"></a>
+
+### SchemaField
+SchemaField describes a single field in a dataset schema.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| type | [string](#string) |  |  |
+| description | [string](#string) |  |  |
+
+
+
+
+
+ 
 
  
 

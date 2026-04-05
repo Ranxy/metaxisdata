@@ -14,6 +14,7 @@ import (
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
+	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -82,7 +83,56 @@ func (s *LineageService) GetLineage(ctx context.Context, req *connect.Request[v1
 		}
 	}
 
+	// Enrich response with external dataset metadata.
+	response.ExternalDatasets = s.collectExternalDatasets(ctx, response)
+
 	return connect.NewResponse(response), nil
+}
+
+// collectExternalDatasets finds all external GUIDs in the lineage response and fetches their metadata.
+func (s *LineageService) collectExternalDatasets(ctx context.Context, resp *v1pb.GetLineageResponse) []*v1pb.ExternalDatasetInfo {
+	guidSet := make(map[string]struct{})
+	for _, r := range resp.RelationsSource {
+		if openlineage.IsExternalGUID(r.SourceGuid) {
+			guidSet[r.SourceGuid] = struct{}{}
+		}
+		if openlineage.IsExternalGUID(r.TargetGuid) {
+			guidSet[r.TargetGuid] = struct{}{}
+		}
+	}
+	for _, r := range resp.RelationsTarget {
+		if openlineage.IsExternalGUID(r.SourceGuid) {
+			guidSet[r.SourceGuid] = struct{}{}
+		}
+		if openlineage.IsExternalGUID(r.TargetGuid) {
+			guidSet[r.TargetGuid] = struct{}{}
+		}
+	}
+
+	if len(guidSet) == 0 {
+		return nil
+	}
+
+	guids := make([]string, 0, len(guidSet))
+	for g := range guidSet {
+		guids = append(guids, g)
+	}
+
+	datasets, err := s.store.FindExternalDatasetByGUIDs(ctx, guids)
+	if err != nil {
+		return nil
+	}
+
+	result := make([]*v1pb.ExternalDatasetInfo, 0, len(datasets))
+	for _, d := range datasets {
+		result = append(result, &v1pb.ExternalDatasetInfo{
+			Guid:        d.GUID,
+			Namespace:   d.Namespace,
+			Name:        d.Name,
+			DatasetType: d.DatasetType,
+		})
+	}
+	return result
 }
 
 func (s *LineageService) GetLineageForContext(ctx context.Context, req *connect.Request[v1pb.GetLineageForContextRequest]) (*connect.Response[v1pb.GetLineageForContextResponse], error) {
@@ -117,6 +167,14 @@ func (s *LineageService) GetLineageForContext(ctx context.Context, req *connect.
 }
 
 func (s *LineageService) getLineageMeta(ctx context.Context, guid string, metaType v1pb.MetaType) (*store.MetaRegistryResource, error) {
+	// External datasets won't have a meta_registry entry.
+	if openlineage.IsExternalGUID(guid) {
+		return &store.MetaRegistryResource{
+			GUID:       guid,
+			ObjectType: storepb.MetaType_EXTERNAL_DATASET,
+		}, nil
+	}
+
 	findMeta := &store.FindMetaRegistryResourceMessage{GUID: &guid}
 	if metaType != v1pb.MetaType_UNSPECIFIED {
 		storeMetaType := storepb.MetaType(metaType)

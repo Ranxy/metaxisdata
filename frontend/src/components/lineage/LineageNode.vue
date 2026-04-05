@@ -3,21 +3,27 @@
     class="rounded-lg border bg-card text-card-foreground shadow-sm min-w-[180px]"
     :class="[
       data.isRoot ? 'ring-2 ring-primary' : '',
+      isExternal ? 'border-amber-300 dark:border-amber-700' : '',
       showFields ? 'max-w-[300px]' : 'max-w-[260px]',
     ]"
   >
     <div
       class="flex items-center gap-2 px-3 py-2 border-b"
-      :class="data.isRoot ? 'bg-primary/10' : 'bg-muted/50'"
+      :class="[
+        data.isRoot ? 'bg-primary/10' : isExternal ? 'bg-amber-50 dark:bg-amber-950/30' : 'bg-muted/50',
+      ]"
     >
       <component
         :is="nodeIcon"
         class="size-4 shrink-0"
-        :class="data.isRoot ? 'text-primary' : 'text-muted-foreground'"
+        :class="data.isRoot ? 'text-primary' : isExternal ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'"
       />
       <span class="text-sm font-medium truncate" :title="data.label">
         {{ data.label }}
       </span>
+      <Badge v-if="isExternal" variant="outline" class="text-[10px] px-1 py-0 ml-auto shrink-0 border-amber-400 text-amber-600">
+        External
+      </Badge>
     </div>
 
     <div class="px-3 py-2 space-y-1">
@@ -74,7 +80,7 @@
 
 <script setup lang="ts">
 import { Handle, Position } from "@vue-flow/core";
-import { Columns3, TableIcon, ViewIcon } from "lucide-vue-next";
+import { CloudIcon, Columns3, TableIcon, ViewIcon } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { Badge } from "@/components/ui/badge";
@@ -112,7 +118,12 @@ function handleToggleFields() {
   emit("toggle-fields", props.data.guid, showFields.value);
 }
 
+const isExternal = computed(() => props.data.metaType === "external");
+
 const nodeIcon = computed(() => {
+  if (isExternal.value) {
+    return CloudIcon;
+  }
   if (
     props.data.metaType === "view" ||
     props.data.metaType === "materialized_view"
