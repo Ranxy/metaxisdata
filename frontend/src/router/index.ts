@@ -43,6 +43,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, layout: "default" },
   },
   {
+    path: "/settings/openlineage",
+    name: "OpenLineageSettings",
+    component: () => import("@/pages/settings/OpenLineageSettingsPage.vue"),
+    meta: { requiresAuth: true, layout: "default" },
+  },
+  {
     path: "/metadata",
     name: "MetadataBrowser",
     component: () => import("@/pages/MetadataBrowserPage.vue"),
