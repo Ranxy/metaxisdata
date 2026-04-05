@@ -9,6 +9,305 @@
       </p>
     </div>
 
+    <!-- Search Bar -->
+    <div class="relative">
+      <div
+        class="flex items-center flex-wrap gap-2 min-h-[42px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors hover:border-ring focus-within:outline-hidden focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+      >
+        <!-- Active Filter Pills -->
+        <Badge
+          v-if="scopeFilterDisplay"
+          variant="secondary"
+          class="flex items-center gap-1 px-2 py-1"
+        >
+          <span class="text-xs font-medium">{{ t("metadataBrowser.scopeFilter") }}:</span>
+          <span class="text-xs">{{ scopeFilterDisplay }}</span>
+          <button
+            type="button"
+            class="ml-1 rounded-full hover:bg-secondary-foreground/20 transition-colors"
+            @click="removeScopeFilter"
+          >
+            <X class="h-3 w-3" />
+          </button>
+        </Badge>
+        <Badge
+          v-if="typeFilter != null"
+          variant="secondary"
+          class="flex items-center gap-1 px-2 py-1"
+        >
+          <span class="text-xs font-medium">{{ t("metadataBrowser.typeFilter") }}:</span>
+          <span class="text-xs">{{ getMetaTypeLabel(typeFilter) }}</span>
+          <button
+            type="button"
+            class="ml-1 rounded-full hover:bg-secondary-foreground/20 transition-colors"
+            @click="removeTypeFilter"
+          >
+            <X class="h-3 w-3" />
+          </button>
+        </Badge>
+
+        <Search class="h-4 w-4 mr-1 text-muted-foreground shrink-0" />
+        <input
+          ref="searchInputRef"
+          v-model="searchQuery"
+          type="text"
+          :placeholder="t('metadataBrowser.searchPlaceholder')"
+          class="flex-1 min-w-[120px] bg-transparent outline-hidden placeholder:text-muted-foreground"
+          @focus="showSearchResults = true"
+        >
+        <button
+          v-if="searchQuery"
+          type="button"
+          class="ml-2 rounded-full p-0.5 hover:bg-secondary transition-colors"
+          @click="clearSearch"
+        >
+          <X class="h-3.5 w-3.5 text-muted-foreground" />
+        </button>
+
+        <!-- Add Filter Button -->
+        <Popover v-model:open="showFilterMenu">
+          <PopoverTrigger as-child>
+            <Button
+              v-if="availableFilterTypes.length > 0"
+              variant="ghost"
+              size="sm"
+              class="h-6 px-2 text-xs shrink-0"
+            >
+              <Plus class="h-3 w-3 mr-1" />
+              {{ t("metadataBrowser.addFilter") }}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            class="w-[300px] p-0"
+            align="start"
+          >
+            <!-- Filter Type Selection -->
+            <Command
+              v-if="!selectedFilterType"
+            >
+              <CommandInput :placeholder="t('metadataBrowser.searchFilters')" />
+              <CommandList>
+                <CommandEmpty>{{ t("metadataBrowser.noFiltersFound") }}</CommandEmpty>
+                <CommandGroup>
+                  <CommandItem
+                    v-for="ft in availableFilterTypes"
+                    :key="ft.type"
+                    :value="ft.type"
+                    @select="selectFilterType(ft.type)"
+                  >
+                    <span class="mr-2">{{ ft.icon }}</span>
+                    <span>{{ ft.label }}</span>
+                    <ChevronDown class="ml-auto h-4 w-4 -rotate-90" />
+                  </CommandItem>
+                </CommandGroup>
+              </CommandList>
+            </Command>
+
+            <!-- Scope Filter: Cascading Instance → Database → Schema -->
+            <Command
+              v-else-if="selectedFilterType === 'scope'"
+            >
+              <div class="flex items-center border-b px-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="h-8 px-2"
+                  @click="handleScopeBack"
+                >
+                  <ChevronDown class="h-4 w-4 rotate-90" />
+                </Button>
+                <CommandInput
+                  v-model="filterSearchQuery"
+                  :placeholder="scopeStep === 'instance'
+                    ? t('metadataBrowser.selectInstance')
+                    : scopeStep === 'database'
+                      ? t('metadataBrowser.selectDatabase')
+                      : t('metadataBrowser.selectSchema')"
+                  class="border-0"
+                />
+              </div>
+              <!-- Step indicator -->
+              <div class="flex items-center gap-1 px-3 py-1.5 text-xs text-muted-foreground border-b">
+                <span :class="{ 'font-semibold text-foreground': scopeStep === 'instance' }">
+                  {{ t("metadataBrowser.scopeStepInstance") }}
+                </span>
+                <span>›</span>
+                <span :class="{ 'font-semibold text-foreground': scopeStep === 'database' }">
+                  {{ t("metadataBrowser.scopeStepDatabase") }}
+                </span>
+                <span>›</span>
+                <span :class="{ 'font-semibold text-foreground': scopeStep === 'schema' }">
+                  {{ t("metadataBrowser.scopeStepSchema") }}
+                </span>
+              </div>
+              <CommandList>
+                <!-- Instance step -->
+                <template v-if="scopeStep === 'instance'">
+                  <CommandEmpty>{{ t("metadataBrowser.noInstancesFound") }}</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem
+                      v-for="inst in filteredScopeInstances"
+                      :key="inst.name"
+                      :value="inst.name"
+                      @select="handleScopeSelectInstance(inst)"
+                    >
+                      {{ inst.title || inst.name.replace('instances/', '') }}
+                    </CommandItem>
+                  </CommandGroup>
+                </template>
+
+                <!-- Database step -->
+                <template v-else-if="scopeStep === 'database'">
+                  <div
+                    v-if="isLoadingScopeOptions"
+                    class="p-3 text-center text-sm text-muted-foreground"
+                  >
+                    {{ t("metadataBrowser.searching") }}
+                  </div>
+                  <template v-else>
+                    <CommandEmpty>{{ t("metadataBrowser.noDatabasesFound") }}</CommandEmpty>
+                    <CommandGroup>
+                      <!-- Apply scope at instance level without picking a database -->
+                      <CommandItem
+                        value="__done__"
+                        class="font-medium"
+                        @select="applyScopeFilter"
+                      >
+                        ✓ {{ t("metadataBrowser.done") }}
+                      </CommandItem>
+                      <CommandItem
+                        v-for="db in filteredScopeDatabases"
+                        :key="db"
+                        :value="db"
+                        @select="handleScopeSelectDatabase(db)"
+                      >
+                        {{ db }}
+                      </CommandItem>
+                    </CommandGroup>
+                  </template>
+                </template>
+
+                <!-- Schema step -->
+                <template v-else-if="scopeStep === 'schema'">
+                  <div
+                    v-if="isLoadingScopeOptions"
+                    class="p-3 text-center text-sm text-muted-foreground"
+                  >
+                    {{ t("metadataBrowser.searching") }}
+                  </div>
+                  <template v-else>
+                    <CommandEmpty>{{ t("metadataBrowser.noSchemasFound") }}</CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem
+                        value="__done__"
+                        class="font-medium"
+                        @select="applyScopeFilter"
+                      >
+                        ✓ {{ t("metadataBrowser.done") }}
+                      </CommandItem>
+                      <CommandItem
+                        v-for="schema in filteredScopeSchemas"
+                        :key="schema"
+                        :value="schema"
+                        @select="handleScopeSelectSchema(schema)"
+                      >
+                        {{ schema }}
+                      </CommandItem>
+                    </CommandGroup>
+                  </template>
+                </template>
+              </CommandList>
+            </Command>
+
+            <!-- Type Filter: MetaType selection -->
+            <Command
+              v-else-if="selectedFilterType === 'type'"
+            >
+              <div class="flex items-center border-b px-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="h-8 px-2"
+                  @click="backToFilterTypes"
+                >
+                  <ChevronDown class="h-4 w-4 rotate-90" />
+                </Button>
+                <CommandInput
+                  v-model="filterSearchQuery"
+                  :placeholder="t('metadataBrowser.selectType')"
+                  class="border-0"
+                />
+              </div>
+              <CommandList>
+                <CommandEmpty>{{ t("metadataBrowser.noFiltersFound") }}</CommandEmpty>
+                <CommandGroup>
+                  <CommandItem
+                    v-for="mt in filteredMetaTypes"
+                    :key="mt"
+                    :value="String(mt)"
+                    @select="handleSelectTypeFilter(mt)"
+                  >
+                    {{ getMetaTypeLabel(mt) }}
+                  </CommandItem>
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+      </div>
+      <!-- Search Results Dropdown -->
+      <div
+        v-if="showSearchResults && searchQuery.trim()"
+        class="absolute z-50 top-full mt-1 w-full rounded-md border bg-popover shadow-lg max-h-[400px] overflow-auto"
+      >
+        <div
+          v-if="isSearching"
+          class="p-4 text-center text-sm text-muted-foreground"
+        >
+          {{ t("metadataBrowser.searching") }}
+        </div>
+        <div
+          v-else-if="searchError"
+          class="p-4 text-center text-sm text-destructive"
+        >
+          {{ searchError }}
+        </div>
+        <div
+          v-else-if="searchResults.length === 0"
+          class="p-4 text-center text-sm text-muted-foreground"
+        >
+          {{ t("metadataBrowser.noSearchResults") }}
+        </div>
+        <div
+          v-else
+          class="py-1"
+        >
+          <button
+            v-for="result in searchResults"
+            :key="result.guid"
+            type="button"
+            class="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-3"
+            @click="handleSelectSearchResult(result)"
+          >
+            <Badge
+              variant="outline"
+              class="shrink-0 text-xs"
+            >
+              {{ getMetaTypeLabel(result.metaType) }}
+            </Badge>
+            <div class="min-w-0 flex-1">
+              <div class="font-medium truncate">
+                {{ getSearchResultName(result) }}
+              </div>
+              <div class="text-xs text-muted-foreground truncate">
+                {{ result.guid }}
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <Card>
       <CardContent class="py-3 px-4">
         <MetadataBreadcrumb
@@ -152,10 +451,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { ChevronDown, Plus, Search, X } from "lucide-vue-next";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
-import { getMetadata, listMetadata } from "@/api/database";
+import { getMetadata, listMetadata, searchMetadata } from "@/api/database";
 import { getInstance, listInstances } from "@/api/instance";
 import AppLoading from "@/components/common/AppLoading.vue";
 import FunctionMetadataDetail from "@/components/metadata/FunctionMetadataDetail.vue";
@@ -169,7 +476,22 @@ import ProcedureMetadataDetail from "@/components/metadata/ProcedureMetadataDeta
 import SequenceMetadataDetail from "@/components/metadata/SequenceMetadataDetail.vue";
 import TableMetadataDetail from "@/components/metadata/TableMetadataDetail.vue";
 import ViewMetadataDetail from "@/components/metadata/ViewMetadataDetail.vue";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import {
   type FunctionMetadata,
@@ -177,6 +499,7 @@ import {
   type MetadataResponse_MetadataList,
   MetaType,
   type ProcedureMetadata,
+  type SearchMetadataResult,
   type SequenceMetadata,
   type StoredMetadata,
   type TableMetadata,
@@ -193,6 +516,114 @@ const isLoading = ref(false);
 const isLoadingInstances = ref(false);
 const isLoadingMore = ref(false);
 const error = ref<string | null>(null);
+
+// Search state
+const searchQuery = ref("");
+const searchInputRef = ref<HTMLInputElement>();
+const isSearching = ref(false);
+const searchError = ref<string | null>(null);
+const searchResults = ref<SearchMetadataResult[]>([]);
+const showSearchResults = ref(false);
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Filter state
+const showFilterMenu = ref(false);
+const selectedFilterType = ref<"scope" | "type" | null>(null);
+const filterSearchQuery = ref("");
+
+// Scope filter: cascading instance → database → schema
+const scopeFilterInstance = ref<string | null>(null); // instance id (e.g. "my-pg")
+const scopeFilterDatabase = ref<string | null>(null);
+const scopeFilterSchema = ref<string | null>(null);
+const scopeStepDatabases = ref<string[]>([]);
+const scopeStepSchemas = ref<string[]>([]);
+const scopeStep = ref<"instance" | "database" | "schema">("instance");
+const isLoadingScopeOptions = ref(false);
+
+// Type filter
+const typeFilter = ref<MetaType | null>(null);
+
+// Computed: active filter pills to display
+const scopeFilterDisplay = computed(() => {
+  if (!scopeFilterInstance.value) return null;
+  const parts = [scopeFilterInstance.value];
+  if (scopeFilterDatabase.value) parts.push(scopeFilterDatabase.value);
+  if (scopeFilterSchema.value) parts.push(scopeFilterSchema.value);
+  return parts.join(" > ");
+});
+
+const scopeFilterGuidPrefix = computed(() => {
+  if (!scopeFilterInstance.value) return undefined;
+  const parts = [scopeFilterInstance.value];
+  if (scopeFilterDatabase.value) parts.push(scopeFilterDatabase.value);
+  if (scopeFilterSchema.value) parts.push(scopeFilterSchema.value);
+  return parts.join(";");
+});
+
+// Available filter types (hide ones already active)
+const availableFilterTypes = computed(() => {
+  const types: Array<{ type: "scope" | "type"; label: string; icon: string }> =
+    [];
+  if (!scopeFilterInstance.value) {
+    types.push({
+      type: "scope",
+      label: t("metadataBrowser.scopeFilter"),
+      icon: "📍",
+    });
+  }
+  if (typeFilter.value == null) {
+    types.push({
+      type: "type",
+      label: t("metadataBrowser.typeFilter"),
+      icon: "🏷️",
+    });
+  }
+  return types;
+});
+
+// Searchable meta types for type filter
+const searchableMetaTypes = [
+  MetaType.DATABASE,
+  MetaType.SCHEMA,
+  MetaType.TABLE,
+  MetaType.VIEW,
+  MetaType.MATERIALIZED_VIEW,
+  MetaType.FUNCTION,
+  MetaType.PROCEDURE,
+  MetaType.SEQUENCE,
+];
+
+const filteredMetaTypes = computed(() => {
+  if (!filterSearchQuery.value) return searchableMetaTypes;
+  const q = filterSearchQuery.value.toLowerCase();
+  return searchableMetaTypes.filter((mt) =>
+    getMetaTypeLabel(mt).toLowerCase().includes(q)
+  );
+});
+
+// Filtered scope options
+const filteredScopeInstances = computed(() => {
+  if (!filterSearchQuery.value) return instances.value;
+  const q = filterSearchQuery.value.toLowerCase();
+  return instances.value.filter((i) => {
+    const id = i.name.replace("instances/", "");
+    return (
+      id.toLowerCase().includes(q) || (i.title ?? "").toLowerCase().includes(q)
+    );
+  });
+});
+
+const filteredScopeDatabases = computed(() => {
+  if (!filterSearchQuery.value) return scopeStepDatabases.value;
+  const q = filterSearchQuery.value.toLowerCase();
+  return scopeStepDatabases.value.filter((d) => d.toLowerCase().includes(q));
+});
+
+const filteredScopeSchemas = computed(() => {
+  if (!filterSearchQuery.value) return scopeStepSchemas.value;
+  const q = filterSearchQuery.value.toLowerCase();
+  return scopeStepSchemas.value.filter((s) => s.toLowerCase().includes(q));
+});
 
 const instances = ref<Instance[]>([]);
 const metadataGroups = ref<MetadataResponse_MetadataList[]>([]);
@@ -958,4 +1389,242 @@ watch(
   },
   { immediate: true }
 );
+
+// Search logic
+function getMetaTypeLabel(type: MetaType): string {
+  const labels: Partial<Record<MetaType, string>> = {
+    [MetaType.DATABASE]: t("metadataBrowser.databases"),
+    [MetaType.SCHEMA]: t("metadataBrowser.schemas"),
+    [MetaType.TABLE]: t("metadataBrowser.tables"),
+    [MetaType.VIEW]: t("metadataBrowser.views"),
+    [MetaType.MATERIALIZED_VIEW]: t("metadataBrowser.materializedViews"),
+    [MetaType.FUNCTION]: t("metadataBrowser.functions"),
+    [MetaType.PROCEDURE]: t("metadataBrowser.procedures"),
+    [MetaType.SEQUENCE]: t("metadataBrowser.sequences"),
+  };
+  return labels[type] || t("metadataBrowser.other");
+}
+
+function getSearchResultName(result: SearchMetadataResult): string {
+  if (result.metadata) {
+    return getMetadataName(result.metadata);
+  }
+  const segments = result.guid.split(";");
+  return segments[segments.length - 1] || result.guid;
+}
+
+async function performSearch(query: string) {
+  if (!query.trim()) {
+    searchResults.value = [];
+    return;
+  }
+
+  isSearching.value = true;
+  searchError.value = null;
+
+  try {
+    const response = await searchMetadata({
+      searchStr: query.trim(),
+      parentGuidPrefix: scopeFilterGuidPrefix.value,
+      metaType: typeFilter.value ?? undefined,
+    });
+    searchResults.value = response.results;
+  } catch {
+    searchError.value = t("metadataBrowser.searchError");
+    searchResults.value = [];
+  } finally {
+    isSearching.value = false;
+  }
+}
+
+const leafMetaTypes = new Set<MetaType>([
+  MetaType.TABLE,
+  MetaType.VIEW,
+  MetaType.MATERIALIZED_VIEW,
+  MetaType.FUNCTION,
+  MetaType.PROCEDURE,
+  MetaType.SEQUENCE,
+]);
+
+function handleSelectSearchResult(result: SearchMetadataResult) {
+  showSearchResults.value = false;
+  searchQuery.value = "";
+  searchResults.value = [];
+
+  const segments = result.guid.split(";");
+  const query = leafMetaTypes.has(result.metaType)
+    ? { metaType: String(result.metaType) }
+    : undefined;
+
+  router.push({
+    name: "MetadataDetail",
+    params: { guid: toGuidPath(segments) },
+    query,
+  });
+}
+
+function clearSearch() {
+  searchQuery.value = "";
+  searchResults.value = [];
+  searchError.value = null;
+  showSearchResults.value = false;
+}
+
+// Filter management
+function selectFilterType(type: "scope" | "type") {
+  selectedFilterType.value = type;
+  filterSearchQuery.value = "";
+  if (type === "scope") {
+    scopeStep.value = "instance";
+    scopeStepDatabases.value = [];
+    scopeStepSchemas.value = [];
+    // Ensure instances are loaded for scope picker
+    if (instances.value.length === 0) {
+      fetchInstances();
+    }
+  }
+}
+
+function backToFilterTypes() {
+  selectedFilterType.value = null;
+  filterSearchQuery.value = "";
+}
+
+function handleScopeBack() {
+  filterSearchQuery.value = "";
+  if (scopeStep.value === "schema") {
+    scopeStep.value = "database";
+    scopeFilterSchema.value = null;
+    scopeStepSchemas.value = [];
+  } else if (scopeStep.value === "database") {
+    scopeStep.value = "instance";
+    scopeFilterDatabase.value = null;
+    scopeStepDatabases.value = [];
+  } else {
+    backToFilterTypes();
+  }
+}
+
+async function handleScopeSelectInstance(inst: Instance) {
+  const instId = inst.name.replace("instances/", "");
+  scopeFilterInstance.value = instId;
+  scopeFilterDatabase.value = null;
+  scopeFilterSchema.value = null;
+  scopeStep.value = "database";
+  filterSearchQuery.value = "";
+
+  // Load databases under this instance
+  isLoadingScopeOptions.value = true;
+  try {
+    const response = await listMetadata({
+      parentGuid: instId,
+      pageSize: 100,
+    });
+    const dbGroup = response.typesStoredMetadata.find(
+      (g) => g.metaType === MetaType.DATABASE
+    );
+    scopeStepDatabases.value = dbGroup
+      ? dbGroup.list.map((item) => getMetadataName(item)).filter(Boolean)
+      : [];
+  } catch {
+    scopeStepDatabases.value = [];
+  } finally {
+    isLoadingScopeOptions.value = false;
+  }
+}
+
+async function handleScopeSelectDatabase(db: string) {
+  scopeFilterDatabase.value = db;
+  scopeFilterSchema.value = null;
+  scopeStep.value = "schema";
+  filterSearchQuery.value = "";
+
+  // Load schemas under this database
+  isLoadingScopeOptions.value = true;
+  try {
+    const parentGuid = `${scopeFilterInstance.value};${db}`;
+    const response = await listMetadata({
+      parentGuid,
+      pageSize: 100,
+    });
+    const schemaGroup = response.typesStoredMetadata.find(
+      (g) => g.metaType === MetaType.SCHEMA
+    );
+    scopeStepSchemas.value = schemaGroup
+      ? schemaGroup.list.map((item) => getMetadataName(item)).filter(Boolean)
+      : [];
+  } catch {
+    scopeStepSchemas.value = [];
+  } finally {
+    isLoadingScopeOptions.value = false;
+  }
+}
+
+function handleScopeSelectSchema(schema: string) {
+  scopeFilterSchema.value = schema;
+  applyScopeFilter();
+}
+
+function applyScopeFilter() {
+  showFilterMenu.value = false;
+  selectedFilterType.value = null;
+  filterSearchQuery.value = "";
+  triggerSearchWithCurrentQuery();
+}
+
+function removeScopeFilter() {
+  scopeFilterInstance.value = null;
+  scopeFilterDatabase.value = null;
+  scopeFilterSchema.value = null;
+  scopeStep.value = "instance";
+  scopeStepDatabases.value = [];
+  scopeStepSchemas.value = [];
+  triggerSearchWithCurrentQuery();
+}
+
+function handleSelectTypeFilter(mt: MetaType) {
+  typeFilter.value = mt;
+  showFilterMenu.value = false;
+  selectedFilterType.value = null;
+  filterSearchQuery.value = "";
+  triggerSearchWithCurrentQuery();
+}
+
+function removeTypeFilter() {
+  typeFilter.value = null;
+  triggerSearchWithCurrentQuery();
+}
+
+function triggerSearchWithCurrentQuery() {
+  if (searchQuery.value.trim()) {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    performSearch(searchQuery.value);
+  }
+}
+
+function handleClickOutside(e: MouseEvent) {
+  const target = e.target as HTMLElement;
+  if (!target.closest(".relative")) {
+    showSearchResults.value = false;
+  }
+}
+
+watch(searchQuery, (val) => {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+  if (!val.trim()) {
+    searchResults.value = [];
+    searchError.value = null;
+    return;
+  }
+  searchDebounceTimer = setTimeout(() => performSearch(val), 300);
+});
+
+onMounted(() => {
+  document.addEventListener("click", handleClickOutside);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("click", handleClickOutside);
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+});
 </script>

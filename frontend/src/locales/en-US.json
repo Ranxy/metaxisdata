@@ -192,7 +192,26 @@
 
     "other": "Other",
     "loadMore": "Load More",
-    "fetchError": "Failed to load data"
+    "fetchError": "Failed to load data",
+    "searchPlaceholder": "Search metadata by name or comment...",
+    "searching": "Searching...",
+    "noSearchResults": "No results found",
+    "searchError": "Search failed",
+    "addFilter": "Add Filter",
+    "scopeFilter": "Scope",
+    "typeFilter": "Type",
+    "searchFilters": "Search filters...",
+    "noFiltersFound": "No filters found",
+    "selectInstance": "Select instance...",
+    "selectDatabase": "Select database...",
+    "selectSchema": "Select schema...",
+    "noInstancesFound": "No instances found",
+    "noDatabasesFound": "No databases found",
+    "noSchemasFound": "No schemas found",
+    "scopeStepInstance": "Instance",
+    "scopeStepDatabase": "Database (optional)",
+    "scopeStepSchema": "Schema (optional)",
+    "done": "Done"
   },
   "header": {
     "profile": "Profile",

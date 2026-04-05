@@ -192,7 +192,26 @@
 
     "other": "其他",
     "loadMore": "加载更多",
-    "fetchError": "加载数据失败"
+    "fetchError": "加载数据失败",
+    "searchPlaceholder": "按名称或备注搜索元数据...",
+    "searching": "搜索中...",
+    "noSearchResults": "未找到结果",
+    "searchError": "搜索失败",
+    "addFilter": "添加筛选",
+    "scopeFilter": "范围",
+    "typeFilter": "类型",
+    "searchFilters": "搜索筛选条件...",
+    "noFiltersFound": "未找到筛选条件",
+    "selectInstance": "选择实例...",
+    "selectDatabase": "选择数据库...",
+    "selectSchema": "选择模式...",
+    "noInstancesFound": "未找到实例",
+    "noDatabasesFound": "未找到数据库",
+    "noSchemasFound": "未找到模式",
+    "scopeStepInstance": "实例",
+    "scopeStepDatabase": "数据库（可选）",
+    "scopeStepSchema": "模式（可选）",
+    "done": "确定"
   },
   "header": {
     "profile": "个人设置",

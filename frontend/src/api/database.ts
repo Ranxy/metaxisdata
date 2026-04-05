@@ -5,6 +5,7 @@ import {
   ListDatabaseRequestSchema,
   ListMetadataRequestSchema,
   type MetaType,
+  SearchMetadataRequestSchema,
 } from "@/types/proto-es/v1/database_service_pb";
 import { databaseClient } from "./client";
 
@@ -70,4 +71,17 @@ export async function getSchemaString(options: {
     metaType: options.metaType,
   });
   return await databaseClient.getSchemaString(request);
+}
+
+export async function searchMetadata(options: {
+  searchStr: string;
+  parentGuidPrefix?: string;
+  metaType?: MetaType;
+}) {
+  const request = create(SearchMetadataRequestSchema, {
+    searchStr: options.searchStr,
+    parentGuidPrefix: options.parentGuidPrefix,
+    metaType: options.metaType,
+  });
+  return await databaseClient.searchMetadata(request);
 }
