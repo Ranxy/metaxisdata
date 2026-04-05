@@ -238,7 +238,7 @@ export declare const RelationTypeSchema: GenEnum<RelationType>;
  */
 export declare const LineageService: GenService<{
   /**
-   * GetLineage returns the lineage relations for the given metadata. 
+   * GetLineage returns the lineage relations for the given metadata.
    * The lineage relations can be either source lineage or target lineage,
    * depending on the lineage_type specified in the request.
    * If lineage_type is not specified, both source and target lineage will be returned.

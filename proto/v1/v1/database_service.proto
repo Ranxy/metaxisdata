@@ -38,7 +38,6 @@ service DatabaseService {
   rpc GetSchemaString(GetSchemaStringRequest) returns (MetadataSchemaString) {
     option (google.api.http) = {get: "/v1/metadata/schemaString"};
   }
-
 }
 
 message GetDatabaseRequest {
@@ -220,7 +219,7 @@ message GetMetadataResponse {
   StoredMetadata metadata = 1;
 }
 
-message GetSchemaStringRequest{
+message GetSchemaStringRequest {
   // The global unique id for metadata
   // table: "instance_1;db2;schema3;table4"
   // view: "instance_1;db2;schema3;view2"
@@ -231,14 +230,13 @@ message GetSchemaStringRequest{
   MetaType meta_type = 2;
 }
 
-
 // MetadataSchemaString is the schema define for metadata.
 message MetadataSchemaString {
   // The schema dump from metadata.
   string schema = 1;
 }
 
-message SearchMetadataRequest{
+message SearchMetadataRequest {
   // Optional metadata prefixes to search for.
   // database: "instance_100;database3"
   // table: "instance_1;db2;schema3;table4"
@@ -252,14 +250,24 @@ message SearchMetadataRequest{
 }
 
 message SearchMetadataResponse {
-  // The list of stored metadata.
-  repeated StoredMetadata stored_metadata = 1;
+  // The search results.
+  repeated SearchMetadataResult results = 1;
 
   // A token, which can be sent as `page_token` to retrieve the next page.
   // If this field is omitted, there are no subsequent pages.
   string next_page_token = 2;
 }
 
+message SearchMetadataResult {
+  // The GUID of found metadata, e.g. "instance_1;db2;schema3;table4".
+  string guid = 1;
+
+  // The type of the metadata.
+  MetaType meta_type = 2;
+
+  // The metadata content.
+  StoredMetadata metadata = 3;
+}
 
 message StoredMetadata {
   oneof type {

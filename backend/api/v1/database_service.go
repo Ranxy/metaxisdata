@@ -274,7 +274,11 @@ func (s *DatabaseService) SearchMetadata(ctx context.Context, req *connect.Reque
 		list = list[:searchLimit]
 	}
 	for _, meta := range list {
-		response.StoredMetadata = append(response.StoredMetadata, convertStoredMetadataMessage(meta.Metadata))
+		response.Results = append(response.Results, &v1pb.SearchMetadataResult{
+			Guid:     meta.GUID,
+			MetaType: v1pb.MetaType(meta.ObjectType),
+			Metadata: convertStoredMetadataMessage(meta.Metadata),
+		})
 	}
 
 	return connect.NewResponse(response), nil

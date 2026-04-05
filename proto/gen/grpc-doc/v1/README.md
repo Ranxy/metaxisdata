@@ -126,6 +126,7 @@
     - [SchemaMetadata](#metaxisdata-v1-SchemaMetadata)
     - [SearchMetadataRequest](#metaxisdata-v1-SearchMetadataRequest)
     - [SearchMetadataResponse](#metaxisdata-v1-SearchMetadataResponse)
+    - [SearchMetadataResult](#metaxisdata-v1-SearchMetadataResult)
     - [SequenceMetadata](#metaxisdata-v1-SequenceMetadata)
     - [SpatialIndexConfig](#metaxisdata-v1-SpatialIndexConfig)
     - [SpatialIndexConfig.EngineSpecificEntry](#metaxisdata-v1-SpatialIndexConfig-EngineSpecificEntry)
@@ -2089,8 +2090,25 @@ This is the concept of schema in Postgres, but it&#39;s a no-op for MySQL.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| stored_metadata | [StoredMetadata](#metaxisdata-v1-StoredMetadata) | repeated | The list of stored metadata. |
+| results | [SearchMetadataResult](#metaxisdata-v1-SearchMetadataResult) | repeated | The search results. |
 | next_page_token | [string](#string) |  | A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SearchMetadataResult"></a>
+
+### SearchMetadataResult
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  | The GUID of found metadata, e.g. &#34;instance_1;db2;schema3;table4&#34;. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  | The type of the metadata. |
+| metadata | [StoredMetadata](#metaxisdata-v1-StoredMetadata) |  | The metadata content. |
 
 
 

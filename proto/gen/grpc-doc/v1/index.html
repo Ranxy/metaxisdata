@@ -654,6 +654,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.SearchMetadataResult"><span class="badge">M</span>SearchMetadataResult</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.SequenceMetadata"><span class="badge">M</span>SequenceMetadata</a>
                 </li>
               
@@ -6085,10 +6089,10 @@ table: &#34;instance_1;db2;schema3;table4&#34; </p></td>
             <tbody>
               
                 <tr>
-                  <td>stored_metadata</td>
-                  <td><a href="#metaxisdata.v1.StoredMetadata">StoredMetadata</a></td>
+                  <td>results</td>
+                  <td><a href="#metaxisdata.v1.SearchMetadataResult">SearchMetadataResult</a></td>
                   <td>repeated</td>
-                  <td><p>The list of stored metadata. </p></td>
+                  <td><p>The search results. </p></td>
                 </tr>
               
                 <tr>
@@ -6097,6 +6101,44 @@ table: &#34;instance_1;db2;schema3;table4&#34; </p></td>
                   <td></td>
                   <td><p>A token, which can be sent as `page_token` to retrieve the next page.
 If this field is omitted, there are no subsequent pages. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.SearchMetadataResult">SearchMetadataResult</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The GUID of found metadata, e.g. &#34;instance_1;db2;schema3;table4&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p>The type of the metadata. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>metadata</td>
+                  <td><a href="#metaxisdata.v1.StoredMetadata">StoredMetadata</a></td>
+                  <td></td>
+                  <td><p>The metadata content. </p></td>
                 </tr>
               
             </tbody>
@@ -7935,7 +7977,7 @@ table: &#34;instance_1;db2;schema3;table4&#34; </p></td>
                 <td>GetLineage</td>
                 <td><a href="#metaxisdata.v1.GetLineageRequest">GetLineageRequest</a></td>
                 <td><a href="#metaxisdata.v1.GetLineageResponse">GetLineageResponse</a></td>
-                <td><p>GetLineage returns the lineage relations for the given metadata. 
+                <td><p>GetLineage returns the lineage relations for the given metadata.
 The lineage relations can be either source lineage or target lineage,
 depending on the lineage_type specified in the request.
 If lineage_type is not specified, both source and target lineage will be returned.</p></td>

@@ -453,11 +453,11 @@ export declare const SearchMetadataRequestSchema: GenMessage<SearchMetadataReque
  */
 export declare type SearchMetadataResponse = Message<"metaxisdata.v1.SearchMetadataResponse"> & {
   /**
-   * The list of stored metadata.
+   * The search results.
    *
-   * @generated from field: repeated metaxisdata.v1.StoredMetadata stored_metadata = 1;
+   * @generated from field: repeated metaxisdata.v1.SearchMetadataResult results = 1;
    */
-  storedMetadata: StoredMetadata[];
+  results: SearchMetadataResult[];
 
   /**
    * A token, which can be sent as `page_token` to retrieve the next page.
@@ -473,6 +473,38 @@ export declare type SearchMetadataResponse = Message<"metaxisdata.v1.SearchMetad
  * Use `create(SearchMetadataResponseSchema)` to create a new message.
  */
 export declare const SearchMetadataResponseSchema: GenMessage<SearchMetadataResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.SearchMetadataResult
+ */
+export declare type SearchMetadataResult = Message<"metaxisdata.v1.SearchMetadataResult"> & {
+  /**
+   * The GUID of found metadata, e.g. "instance_1;db2;schema3;table4".
+   *
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+
+  /**
+   * The type of the metadata.
+   *
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 2;
+   */
+  metaType: MetaType;
+
+  /**
+   * The metadata content.
+   *
+   * @generated from field: metaxisdata.v1.StoredMetadata metadata = 3;
+   */
+  metadata?: StoredMetadata;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SearchMetadataResult.
+ * Use `create(SearchMetadataResultSchema)` to create a new message.
+ */
+export declare const SearchMetadataResultSchema: GenMessage<SearchMetadataResult>;
 
 /**
  * @generated from message metaxisdata.v1.StoredMetadata

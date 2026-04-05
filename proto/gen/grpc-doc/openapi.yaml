@@ -678,7 +678,11 @@ paths:
         get:
             tags:
                 - LineageService
-            description: "GetLineage returns the lineage relations for the given metadata. \n The lineage relations can be either source lineage or target lineage,\n depending on the lineage_type specified in the request.\n If lineage_type is not specified, both source and target lineage will be returned."
+            description: |-
+                GetLineage returns the lineage relations for the given metadata.
+                 The lineage relations can be either source lineage or target lineage,
+                 depending on the lineage_type specified in the request.
+                 If lineage_type is not specified, both source and target lineage will be returned.
             operationId: LineageService_GetLineage
             parameters:
                 - name: lineage
@@ -2768,16 +2772,48 @@ components:
         SearchMetadataResponse:
             type: object
             properties:
-                storedMetadata:
+                results:
                     type: array
                     items:
-                        $ref: '#/components/schemas/StoredMetadata'
-                    description: The list of stored metadata.
+                        $ref: '#/components/schemas/SearchMetadataResult'
+                    description: The search results.
                 nextPageToken:
                     type: string
                     description: |-
                         A token, which can be sent as `page_token` to retrieve the next page.
                          If this field is omitted, there are no subsequent pages.
+        SearchMetadataResult:
+            type: object
+            properties:
+                guid:
+                    type: string
+                    description: The GUID of found metadata, e.g. "instance_1;db2;schema3;table4".
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - PACKAGE
+                        - STREAM
+                        - TASK
+                    type: string
+                    description: The type of the metadata.
+                    format: enum
+                metadata:
+                    allOf:
+                        - $ref: '#/components/schemas/StoredMetadata'
+                    description: The metadata content.
         SequenceMetadata:
             type: object
             properties:

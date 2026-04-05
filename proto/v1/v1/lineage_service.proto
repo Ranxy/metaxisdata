@@ -16,7 +16,7 @@ import "v1/database_service.proto";
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 
 service LineageService {
-  // GetLineage returns the lineage relations for the given metadata. 
+  // GetLineage returns the lineage relations for the given metadata.
   // The lineage relations can be either source lineage or target lineage,
   // depending on the lineage_type specified in the request.
   // If lineage_type is not specified, both source and target lineage will be returned.
@@ -26,23 +26,22 @@ service LineageService {
 
   // GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).
   rpc GetLineageForContext(GetLineageForContextRequest) returns (GetLineageForContextResponse) {
-     option (google.api.http) = {get: "/v1/context/{guid=lineages/*}"};
+    option (google.api.http) = {get: "/v1/context/{guid=lineages/*}"};
   }
 }
 
-
-enum LineageType{
-    LINEAGE_TYPE_UNSPECIFIED = 0;
-    SOURCE = 1;
-    TARGET = 2;
+enum LineageType {
+  LINEAGE_TYPE_UNSPECIFIED = 0;
+  SOURCE = 1;
+  TARGET = 2;
 }
 
-enum RelationType{
-    RELATION_TYPE_UNSPECIFIED = 0;
-    // DIRECT means the source column is directly used in the target column without transformation. For example: select source_column as target_column from table.
-    DIRECT = 1;
-    // INDIRECT means the source column is used in the target column with transformation. For example: select concat(source_column, 'abc') as target_column
-    INDIRECT = 2;
+enum RelationType {
+  RELATION_TYPE_UNSPECIFIED = 0;
+  // DIRECT means the source column is directly used in the target column without transformation. For example: select source_column as target_column from table.
+  DIRECT = 1;
+  // INDIRECT means the source column is used in the target column with transformation. For example: select concat(source_column, 'abc') as target_column
+  INDIRECT = 2;
 }
 
 message LineageRelation {
@@ -71,7 +70,6 @@ message GetLineageRequest {
   // The lineage type to query, source or target. If not specified, both source and target lineage will be returned.
   LineageType lineage_type = 3;
 }
-
 
 message GetLineageResponse {
   // The list of lineage relations for the given metadata.
