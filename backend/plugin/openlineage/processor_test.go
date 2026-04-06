@@ -249,3 +249,92 @@ func TestParseAndMapCrossInstance(t *testing.T) {
 	relType = mapRelationType(eventID.InputFields[0].Transformations)
 	assert.Equal(t, model.RelationTypeIndirect, relType)
 }
+
+func TestParseAndMapAirflowPostgres(t *testing.T) {
+	data := loadTestdata(t, "airflow_postgres_column_lineage.json")
+	event, err := ParseRunEvent(data)
+	require.NoError(t, err)
+
+	output := event.Outputs[0]
+	require.NotNil(t, output.Facets.ColumnLineage)
+
+	// customer_name: IDENTITY from customers
+	customerName := output.Facets.ColumnLineage.Fields["customer_name"]
+	require.Len(t, customerName.InputFields, 1)
+	relType := mapRelationType(customerName.InputFields[0].Transformations)
+	assert.Equal(t, model.RelationTypeDirect, relType)
+
+	// total_amount: AGGREGATION
+	totalAmount := output.Facets.ColumnLineage.Fields["total_amount"]
+	require.Len(t, totalAmount.InputFields, 1)
+	transforms := mapTransformations(totalAmount.InputFields[0].Transformations)
+	require.Len(t, transforms, 1)
+	assert.Equal(t, model.OperationAggregate, transforms[0].Operation)
+	assert.Equal(t, "SUM(amount)", transforms[0].Expression)
+
+	// item_count: AGGREGATION
+	itemCount := output.Facets.ColumnLineage.Fields["item_count"]
+	require.Len(t, itemCount.InputFields, 1)
+	transforms = mapTransformations(itemCount.InputFields[0].Transformations)
+	require.Len(t, transforms, 1)
+	assert.Equal(t, model.OperationAggregate, transforms[0].Operation)
+}
+
+func TestParseAndMapAirflowBigQuery(t *testing.T) {
+	data := loadTestdata(t, "airflow_bigquery.json")
+	event, err := ParseRunEvent(data)
+	require.NoError(t, err)
+
+	output := event.Outputs[0]
+	require.NotNil(t, output.Facets.ColumnLineage)
+
+	// sale_date: TRANSFORMATION from sale_time
+	saleDate := output.Facets.ColumnLineage.Fields["sale_date"]
+	require.Len(t, saleDate.InputFields, 1)
+	relType := mapRelationType(saleDate.InputFields[0].Transformations)
+	assert.Equal(t, model.RelationTypeIndirect, relType)
+
+	transforms := mapTransformations(saleDate.InputFields[0].Transformations)
+	require.Len(t, transforms, 1)
+	assert.Equal(t, model.OperationFunction, transforms[0].Operation)
+	assert.Equal(t, "DATE(sale_time)", transforms[0].Expression)
+}
+
+func TestTableLevelLineageDetection(t *testing.T) {
+	data := loadTestdata(t, "airflow_python_table_lineage.json")
+	event, err := ParseRunEvent(data)
+	require.NoError(t, err)
+
+	assert.Equal(t, "COMPLETE", event.EventType)
+	require.Len(t, event.Inputs, 2)
+	require.Len(t, event.Outputs, 1)
+
+	// Output has no column lineage.
+	assert.Nil(t, event.Outputs[0].Facets.ColumnLineage)
+
+	// This event should trigger table-level lineage processing
+	// (inputs present, output has no column lineage).
+	hasColumnLineage := event.Outputs[0].Facets.ColumnLineage != nil &&
+		len(event.Outputs[0].Facets.ColumnLineage.Fields) > 0
+	assert.False(t, hasColumnLineage, "should not have column lineage")
+	assert.True(t, len(event.Inputs) > 0, "should have inputs for table-level lineage")
+}
+
+func TestDatasetLevelLineageDetection(t *testing.T) {
+	data := loadTestdata(t, "airflow_dataset_level_lineage.json")
+	event, err := ParseRunEvent(data)
+	require.NoError(t, err)
+
+	require.Len(t, event.Outputs, 1)
+	output := event.Outputs[0]
+	require.NotNil(t, output.Facets.ColumnLineage)
+
+	// Fields should be empty, dataset references present.
+	assert.Empty(t, output.Facets.ColumnLineage.Fields)
+	require.Len(t, output.Facets.ColumnLineage.Dataset, 2)
+
+	// This should trigger dataset-level lineage processing
+	// (column lineage facet exists with dataset refs but no field-level refs).
+	hasDatasetLineage := len(output.Facets.ColumnLineage.Dataset) > 0
+	assert.True(t, hasDatasetLineage, "should have dataset-level lineage")
+}

@@ -34,17 +34,30 @@ func (p *Processor) ProcessRunEvent(ctx context.Context, event *RunEvent) error 
 	}
 
 	for _, output := range event.Outputs {
-		if output.Facets.ColumnLineage == nil || len(output.Facets.ColumnLineage.Fields) == 0 {
-			continue
-		}
+		hasColumnLineage := output.Facets.ColumnLineage != nil && len(output.Facets.ColumnLineage.Fields) > 0
+		hasDatasetLineage := output.Facets.ColumnLineage != nil && len(output.Facets.ColumnLineage.Dataset) > 0
+		hasInputs := len(event.Inputs) > 0
 
-		if err := p.processOutputDataset(ctx, &output); err != nil {
-			slog.Error("failed to process OpenLineage output dataset",
-				"namespace", output.Namespace,
-				"name", output.Name,
-				"error", err,
-			)
-			return errors.Wrapf(err, "failed to process output dataset %s/%s", output.Namespace, output.Name)
+		if hasColumnLineage || hasDatasetLineage {
+			if err := p.processOutputDataset(ctx, &output); err != nil {
+				slog.Error("failed to process OpenLineage output dataset",
+					"namespace", output.Namespace,
+					"name", output.Name,
+					"error", err,
+				)
+				return errors.Wrapf(err, "failed to process output dataset %s/%s", output.Namespace, output.Name)
+			}
+		} else if hasInputs {
+			// Table-level lineage: Airflow and other integrations may emit events
+			// with input/output datasets but without column-level detail.
+			if err := p.processTableLevelLineage(ctx, event.Inputs, &output); err != nil {
+				slog.Error("failed to process table-level lineage",
+					"namespace", output.Namespace,
+					"name", output.Name,
+					"error", err,
+				)
+				return errors.Wrapf(err, "failed to process table-level lineage for %s/%s", output.Namespace, output.Name)
+			}
 		}
 	}
 
@@ -59,9 +72,10 @@ func (p *Processor) processOutputDataset(ctx context.Context, output *Dataset) e
 	}
 
 	var lineages []*store.ColumnLineage
+
+	// Process column-level lineage fields.
 	for outputColumn, field := range output.Facets.ColumnLineage.Fields {
 		for _, input := range field.InputFields {
-			// Resolve each input dataset
 			sourceResolved, err := p.resolver.ResolveDataset(ctx, input.Namespace, input.Name)
 			if err != nil {
 				slog.Warn("failed to resolve input dataset, skipping",
@@ -90,11 +104,84 @@ func (p *Processor) processOutputDataset(ctx context.Context, output *Dataset) e
 		}
 	}
 
+	// Process dataset-level lineage references (table-level within column lineage facet).
+	for _, dsRef := range output.Facets.ColumnLineage.Dataset {
+		sourceResolved, err := p.resolver.ResolveDataset(ctx, dsRef.Namespace, dsRef.Name)
+		if err != nil {
+			slog.Warn("failed to resolve dataset-level reference, skipping",
+				"namespace", dsRef.Namespace,
+				"name", dsRef.Name,
+				"error", err,
+			)
+			continue
+		}
+
+		lineages = append(lineages, &store.ColumnLineage{
+			MetaGUID:       targetResolved.GUID,
+			MetaType:       targetResolved.MetaType,
+			SourceGUID:     sourceResolved.GUID,
+			SourceColumn:   "",
+			SourceType:     sourceResolved.MetaType,
+			TargetGUID:     targetResolved.GUID,
+			TargetColumn:   "",
+			TargetType:     targetResolved.MetaType,
+			RelationType:   model.RelationTypeDirect,
+			Transformation: nil,
+		})
+	}
+
 	if len(lineages) == 0 {
 		return nil
 	}
 
 	slog.Info("storing OpenLineage column lineage",
+		"target", targetResolved.GUID,
+		"metaType", targetResolved.MetaType,
+		"edges", len(lineages),
+	)
+
+	return p.store.BatchReplaceColumnLineage(ctx, targetResolved.GUID, targetResolved.MetaType, lineages)
+}
+
+// processTableLevelLineage handles the case where Airflow and similar integrations
+// emit COMPLETE events with input/output datasets but without column-level lineage.
+func (p *Processor) processTableLevelLineage(ctx context.Context, inputs []Dataset, output *Dataset) error {
+	targetResolved, err := p.resolver.ResolveDataset(ctx, output.Namespace, output.Name)
+	if err != nil {
+		return errors.Wrap(err, "failed to resolve output dataset")
+	}
+
+	var lineages []*store.ColumnLineage
+	for _, input := range inputs {
+		sourceResolved, err := p.resolver.ResolveDataset(ctx, input.Namespace, input.Name)
+		if err != nil {
+			slog.Warn("failed to resolve input dataset for table-level lineage, skipping",
+				"namespace", input.Namespace,
+				"name", input.Name,
+				"error", err,
+			)
+			continue
+		}
+
+		lineages = append(lineages, &store.ColumnLineage{
+			MetaGUID:       targetResolved.GUID,
+			MetaType:       targetResolved.MetaType,
+			SourceGUID:     sourceResolved.GUID,
+			SourceColumn:   "",
+			SourceType:     sourceResolved.MetaType,
+			TargetGUID:     targetResolved.GUID,
+			TargetColumn:   "",
+			TargetType:     targetResolved.MetaType,
+			RelationType:   model.RelationTypeDirect,
+			Transformation: nil,
+		})
+	}
+
+	if len(lineages) == 0 {
+		return nil
+	}
+
+	slog.Info("storing OpenLineage table-level lineage",
 		"target", targetResolved.GUID,
 		"metaType", targetResolved.MetaType,
 		"edges", len(lineages),

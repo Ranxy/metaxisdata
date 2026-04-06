@@ -132,6 +132,7 @@ func (r *Resolver) resolveAsExternal(ctx context.Context, namespace, datasetName
 //
 //	"postgres://myhost:5432/mydb" -> ("myhost", "5432", "mydb")
 //	"mysql://myhost:3306"        -> ("myhost", "3306", "")
+//	"bigquery"                   -> ("bigquery", "", "")
 //	"s3://bucket"                -> ("", "", "")
 func parseNamespace(namespace string) (host, port, database string) {
 	u, err := url.Parse(namespace)
@@ -141,8 +142,28 @@ func parseNamespace(namespace string) (host, port, database string) {
 
 	scheme := strings.ToLower(u.Scheme)
 	switch scheme {
-	case "postgres", "postgresql", "mysql", "mssql", "clickhouse", "snowflake", "oracle", "tidb", "mariadb", "redshift", "starrocks", "doris", "cockroachdb", "trino":
-		// Database connection namespace
+	case "postgres", "postgresql", "mysql", "mssql", "clickhouse", "snowflake",
+		"oracle", "tidb", "mariadb", "redshift", "starrocks", "doris",
+		"cockroachdb", "trino", "hive", "spark":
+		// Database connection namespace — fall through.
+	case "bigquery":
+		// BigQuery uses "bigquery" scheme. The host portion (if present) may be
+		// a project ID; the path may encode the dataset.
+		bqHost := u.Hostname()
+		if bqHost == "" {
+			bqHost = "bigquery"
+		}
+		bqDB := ""
+		if u.Path != "" {
+			bqDB = strings.TrimPrefix(u.Path, "/")
+		}
+		return bqHost, "", bqDB
+	case "":
+		// Bare namespace like "bigquery" or "default" (common in Airflow).
+		if strings.EqualFold(namespace, "bigquery") {
+			return "bigquery", "", ""
+		}
+		return "", "", ""
 	default:
 		return "", "", ""
 	}
@@ -221,11 +242,21 @@ func inferDatasetType(namespace string) string {
 		return "kafka"
 	case scheme == "file":
 		return "file"
+	case scheme == "bigquery":
+		return "bigquery"
+	case scheme == "hive":
+		return "hive"
+	case scheme == "spark":
+		return "spark"
 	case strings.Contains(scheme, "postgres") || strings.Contains(scheme, "mysql") ||
 		strings.Contains(scheme, "mssql") || strings.Contains(scheme, "oracle") ||
 		strings.Contains(scheme, "snowflake"):
 		return "database"
 	default:
+		// Bare namespace like "bigquery" (no scheme).
+		if strings.EqualFold(namespace, "bigquery") {
+			return "bigquery"
+		}
 		return "unknown"
 	}
 }

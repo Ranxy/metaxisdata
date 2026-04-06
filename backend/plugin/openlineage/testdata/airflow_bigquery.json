@@ -1,0 +1,173 @@
+{
+  "eventType": "COMPLETE",
+  "eventTime": "2026-04-10T10:45:00.000Z",
+  "run": {
+    "runId": "c3d4e5f6-a7b8-9012-cdef-345678901234",
+    "facets": {
+      "parentRun": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/facets/1-0-1/ParentRunFacet.json",
+        "run": {
+          "runId": "00000000-0000-0000-0000-000000000003"
+        },
+        "job": {
+          "namespace": "default",
+          "name": "bq_etl_dag"
+        }
+      },
+      "processing_engine": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/ProcessingEngineRunFacet.json",
+        "version": "2.9.0",
+        "name": "Airflow"
+      },
+      "airflow": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/1-0-5/OpenLineage.json#/$defs/RunFacet",
+        "dag": { "dag_id": "bq_etl_dag" },
+        "dagRun": {
+          "run_id": "scheduled__2026-04-10T10:00:00+00:00",
+          "run_type": "scheduled"
+        },
+        "task": {
+          "task_id": "aggregate_sales",
+          "operator_class": "BigQueryInsertJobOperator"
+        }
+      }
+    }
+  },
+  "job": {
+    "namespace": "default",
+    "name": "bq_etl_dag.aggregate_sales",
+    "facets": {
+      "jobType": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/facets/2-0-3/JobTypeJobFacet.json",
+        "processingType": "BATCH",
+        "integration": "AIRFLOW",
+        "jobType": "TASK"
+      },
+      "sql": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/facets/1-0-1/SQLJobFacet.json",
+        "query": "INSERT INTO myproject.analytics.daily_sales SELECT product_id, SUM(quantity) AS total_quantity, SUM(price * quantity) AS revenue, DATE(sale_time) AS sale_date FROM myproject.raw.sales GROUP BY product_id, DATE(sale_time)"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "namespace": "bigquery",
+      "name": "myproject.raw.sales",
+      "facets": {
+        "schema": {
+          "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json",
+          "fields": [
+            { "name": "sale_id", "type": "INT64" },
+            { "name": "product_id", "type": "INT64" },
+            { "name": "quantity", "type": "INT64" },
+            { "name": "price", "type": "FLOAT64" },
+            { "name": "sale_time", "type": "TIMESTAMP" }
+          ]
+        }
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "namespace": "bigquery",
+      "name": "myproject.analytics.daily_sales",
+      "facets": {
+        "schema": {
+          "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json",
+          "fields": [
+            { "name": "product_id", "type": "INT64" },
+            { "name": "total_quantity", "type": "INT64" },
+            { "name": "revenue", "type": "FLOAT64" },
+            { "name": "sale_date", "type": "DATE" }
+          ]
+        },
+        "columnLineage": {
+          "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-2-0/ColumnLineageDatasetFacet.json",
+          "fields": {
+            "product_id": {
+              "inputFields": [
+                {
+                  "namespace": "bigquery",
+                  "name": "myproject.raw.sales",
+                  "field": "product_id",
+                  "transformations": [
+                    { "type": "DIRECT", "subtype": "IDENTITY" }
+                  ]
+                }
+              ]
+            },
+            "total_quantity": {
+              "inputFields": [
+                {
+                  "namespace": "bigquery",
+                  "name": "myproject.raw.sales",
+                  "field": "quantity",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "AGGREGATION",
+                      "description": "SUM(quantity)"
+                    }
+                  ]
+                }
+              ]
+            },
+            "revenue": {
+              "inputFields": [
+                {
+                  "namespace": "bigquery",
+                  "name": "myproject.raw.sales",
+                  "field": "price",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "AGGREGATION",
+                      "description": "SUM(price * quantity)"
+                    }
+                  ]
+                },
+                {
+                  "namespace": "bigquery",
+                  "name": "myproject.raw.sales",
+                  "field": "quantity",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "AGGREGATION",
+                      "description": "SUM(price * quantity)"
+                    }
+                  ]
+                }
+              ]
+            },
+            "sale_date": {
+              "inputFields": [
+                {
+                  "namespace": "bigquery",
+                  "name": "myproject.raw.sales",
+                  "field": "sale_time",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "TRANSFORMATION",
+                      "description": "DATE(sale_time)"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0"
+}

@@ -1,0 +1,111 @@
+{
+  "eventType": "COMPLETE",
+  "eventTime": "2026-04-10T09:30:00.000Z",
+  "run": {
+    "runId": "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+    "facets": {
+      "parentRun": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/facets/1-0-1/ParentRunFacet.json",
+        "run": {
+          "runId": "00000000-0000-0000-0000-000000000002"
+        },
+        "job": {
+          "namespace": "default",
+          "name": "data_pipeline"
+        }
+      },
+      "processing_engine": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/ProcessingEngineRunFacet.json",
+        "version": "2.9.0",
+        "name": "Airflow"
+      },
+      "airflow": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/1-0-5/OpenLineage.json#/$defs/RunFacet",
+        "dag": { "dag_id": "data_pipeline" },
+        "dagRun": {
+          "run_id": "manual__2026-04-10T09:00:00+00:00",
+          "run_type": "manual"
+        },
+        "task": {
+          "task_id": "process_data",
+          "operator_class": "PythonOperator"
+        }
+      }
+    }
+  },
+  "job": {
+    "namespace": "default",
+    "name": "data_pipeline.process_data",
+    "facets": {
+      "jobType": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/facets/2-0-3/JobTypeJobFacet.json",
+        "processingType": "BATCH",
+        "integration": "AIRFLOW",
+        "jobType": "TASK"
+      },
+      "sourceCode": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/facets/1-0-1/SourceCodeJobFacet.json",
+        "language": "python",
+        "sourceCode": "def process_data(): ..."
+      }
+    }
+  },
+  "inputs": [
+    {
+      "namespace": "postgres://prod-db:5432/app",
+      "name": "public.raw_events",
+      "facets": {
+        "schema": {
+          "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json",
+          "fields": [
+            { "name": "event_id", "type": "UUID" },
+            { "name": "event_type", "type": "VARCHAR" },
+            { "name": "payload", "type": "JSONB" },
+            { "name": "created_at", "type": "TIMESTAMP" }
+          ]
+        }
+      }
+    },
+    {
+      "namespace": "postgres://prod-db:5432/app",
+      "name": "public.event_metadata",
+      "facets": {
+        "schema": {
+          "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json",
+          "fields": [
+            { "name": "event_id", "type": "UUID" },
+            { "name": "source", "type": "VARCHAR" },
+            { "name": "priority", "type": "INTEGER" }
+          ]
+        }
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "namespace": "postgres://prod-db:5432/app",
+      "name": "public.processed_events",
+      "facets": {
+        "schema": {
+          "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json",
+          "fields": [
+            { "name": "event_id", "type": "UUID" },
+            { "name": "event_type", "type": "VARCHAR" },
+            { "name": "processed_payload", "type": "JSONB" },
+            { "name": "source", "type": "VARCHAR" },
+            { "name": "processed_at", "type": "TIMESTAMP" }
+          ]
+        }
+      }
+    }
+  ],
+  "producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0"
+}

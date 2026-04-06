@@ -114,6 +114,42 @@ func TestParseNamespace(t *testing.T) {
 			wantPort:  "",
 			wantDB:    "",
 		},
+		// Airflow-specific namespace formats.
+		{
+			name:      "bigquery bare namespace",
+			namespace: "bigquery",
+			wantHost:  "bigquery",
+			wantPort:  "",
+			wantDB:    "",
+		},
+		{
+			name:      "bigquery with project",
+			namespace: "bigquery://myproject",
+			wantHost:  "myproject",
+			wantPort:  "",
+			wantDB:    "",
+		},
+		{
+			name:      "bigquery with project and dataset",
+			namespace: "bigquery://myproject/mydataset",
+			wantHost:  "myproject",
+			wantPort:  "",
+			wantDB:    "mydataset",
+		},
+		{
+			name:      "hive namespace",
+			namespace: "hive://hive-server:10000/mydb",
+			wantHost:  "hive-server",
+			wantPort:  "10000",
+			wantDB:    "mydb",
+		},
+		{
+			name:      "spark namespace",
+			namespace: "spark://spark-master:7077/default",
+			wantHost:  "spark-master",
+			wantPort:  "7077",
+			wantDB:    "default",
+		},
 	}
 
 	for _, tt := range tests {
@@ -307,6 +343,11 @@ func TestInferDatasetType(t *testing.T) {
 		{"unknown://host", "unknown"},
 		{"ftp://host/path", "unknown"},
 		{"", "unknown"},
+		// Airflow-specific dataset types.
+		{"bigquery://project/dataset", "bigquery"},
+		{"bigquery", "bigquery"},
+		{"hive://host:10000/mydb", "hive"},
+		{"spark://master:7077/db", "spark"},
 	}
 
 	for _, tt := range tests {

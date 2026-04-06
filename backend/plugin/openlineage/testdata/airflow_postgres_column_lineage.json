@@ -1,0 +1,185 @@
+{
+  "eventType": "COMPLETE",
+  "eventTime": "2026-04-10T08:15:30.000Z",
+  "run": {
+    "runId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "facets": {
+      "parentRun": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/facets/1-0-1/ParentRunFacet.json",
+        "run": {
+          "runId": "00000000-0000-0000-0000-000000000001"
+        },
+        "job": {
+          "namespace": "default",
+          "name": "etl_dag"
+        }
+      },
+      "processing_engine": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/ProcessingEngineRunFacet.json",
+        "version": "2.9.0",
+        "name": "Airflow",
+        "openlineageAdapterVersion": "2.0.0"
+      },
+      "airflow": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/1-0-5/OpenLineage.json#/$defs/RunFacet",
+        "dag": {
+          "dag_id": "etl_dag"
+        },
+        "dagRun": {
+          "run_id": "scheduled__2026-04-10T08:00:00+00:00",
+          "run_type": "scheduled",
+          "data_interval_start": "2026-04-10T08:00:00+00:00",
+          "data_interval_end": "2026-04-10T08:15:00+00:00"
+        },
+        "task": {
+          "task_id": "transform_orders",
+          "operator_class": "PostgresOperator"
+        },
+        "taskInstance": {
+          "try_number": 1
+        }
+      },
+      "airflowState": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/1-0-5/OpenLineage.json#/$defs/RunFacet",
+        "dagState": "running",
+        "taskState": "success"
+      }
+    }
+  },
+  "job": {
+    "namespace": "default",
+    "name": "etl_dag.transform_orders",
+    "facets": {
+      "jobType": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/facets/2-0-3/JobTypeJobFacet.json",
+        "processingType": "BATCH",
+        "integration": "AIRFLOW",
+        "jobType": "TASK"
+      },
+      "sql": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/facets/1-0-1/SQLJobFacet.json",
+        "query": "INSERT INTO analytics.order_summary SELECT o.order_id, c.customer_name, SUM(o.amount) AS total_amount, COUNT(*) AS item_count FROM staging.orders o JOIN staging.customers c ON o.customer_id = c.id GROUP BY o.order_id, c.customer_name"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "namespace": "postgres://analytics-db:5432/warehouse",
+      "name": "staging.orders",
+      "facets": {
+        "schema": {
+          "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json",
+          "fields": [
+            { "name": "order_id", "type": "INTEGER" },
+            { "name": "customer_id", "type": "INTEGER" },
+            { "name": "amount", "type": "NUMERIC(10,2)" },
+            { "name": "order_date", "type": "TIMESTAMP" }
+          ]
+        }
+      }
+    },
+    {
+      "namespace": "postgres://analytics-db:5432/warehouse",
+      "name": "staging.customers",
+      "facets": {
+        "schema": {
+          "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json",
+          "fields": [
+            { "name": "id", "type": "INTEGER" },
+            { "name": "customer_name", "type": "VARCHAR" },
+            { "name": "email", "type": "VARCHAR" }
+          ]
+        }
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "namespace": "postgres://analytics-db:5432/warehouse",
+      "name": "analytics.order_summary",
+      "facets": {
+        "schema": {
+          "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json",
+          "fields": [
+            { "name": "order_id", "type": "INTEGER" },
+            { "name": "customer_name", "type": "VARCHAR" },
+            { "name": "total_amount", "type": "NUMERIC(10,2)" },
+            { "name": "item_count", "type": "BIGINT" }
+          ]
+        },
+        "columnLineage": {
+          "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-2-0/ColumnLineageDatasetFacet.json",
+          "fields": {
+            "order_id": {
+              "inputFields": [
+                {
+                  "namespace": "postgres://analytics-db:5432/warehouse",
+                  "name": "staging.orders",
+                  "field": "order_id",
+                  "transformations": [
+                    { "type": "DIRECT", "subtype": "IDENTITY" }
+                  ]
+                }
+              ]
+            },
+            "customer_name": {
+              "inputFields": [
+                {
+                  "namespace": "postgres://analytics-db:5432/warehouse",
+                  "name": "staging.customers",
+                  "field": "customer_name",
+                  "transformations": [
+                    { "type": "DIRECT", "subtype": "IDENTITY" }
+                  ]
+                }
+              ]
+            },
+            "total_amount": {
+              "inputFields": [
+                {
+                  "namespace": "postgres://analytics-db:5432/warehouse",
+                  "name": "staging.orders",
+                  "field": "amount",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "AGGREGATION",
+                      "description": "SUM(amount)"
+                    }
+                  ]
+                }
+              ]
+            },
+            "item_count": {
+              "inputFields": [
+                {
+                  "namespace": "postgres://analytics-db:5432/warehouse",
+                  "name": "staging.orders",
+                  "field": "order_id",
+                  "transformations": [
+                    {
+                      "type": "DIRECT",
+                      "subtype": "AGGREGATION",
+                      "description": "COUNT(*)"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0"
+}

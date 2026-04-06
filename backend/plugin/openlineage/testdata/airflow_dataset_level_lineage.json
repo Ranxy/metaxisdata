@@ -1,0 +1,98 @@
+{
+  "eventType": "COMPLETE",
+  "eventTime": "2026-04-10T11:00:00.000Z",
+  "run": {
+    "runId": "d4e5f6a7-b8c9-0123-defa-456789012345",
+    "facets": {
+      "parentRun": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/facets/1-0-1/ParentRunFacet.json",
+        "run": { "runId": "00000000-0000-0000-0000-000000000004" },
+        "job": { "namespace": "default", "name": "spark_etl_dag" }
+      },
+      "processing_engine": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/ProcessingEngineRunFacet.json",
+        "version": "2.9.0",
+        "name": "Airflow"
+      }
+    }
+  },
+  "job": {
+    "namespace": "default",
+    "name": "spark_etl_dag.transform_data",
+    "facets": {
+      "jobType": {
+        "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+        "_schemaURL": "https://openlineage.io/spec/facets/2-0-3/JobTypeJobFacet.json",
+        "processingType": "BATCH",
+        "integration": "AIRFLOW",
+        "jobType": "TASK"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "namespace": "postgres://source-db:5432/main",
+      "name": "public.users",
+      "facets": {
+        "schema": {
+          "fields": [
+            { "name": "user_id", "type": "INTEGER" },
+            { "name": "username", "type": "VARCHAR" },
+            { "name": "email", "type": "VARCHAR" }
+          ]
+        }
+      }
+    },
+    {
+      "namespace": "postgres://source-db:5432/main",
+      "name": "public.orders",
+      "facets": {
+        "schema": {
+          "fields": [
+            { "name": "order_id", "type": "INTEGER" },
+            { "name": "user_id", "type": "INTEGER" },
+            { "name": "amount", "type": "NUMERIC" }
+          ]
+        }
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "namespace": "postgres://target-db:5432/analytics",
+      "name": "public.user_order_summary",
+      "facets": {
+        "schema": {
+          "fields": [
+            { "name": "user_id", "type": "INTEGER" },
+            { "name": "username", "type": "VARCHAR" },
+            { "name": "total_orders", "type": "BIGINT" },
+            { "name": "total_amount", "type": "NUMERIC" }
+          ]
+        },
+        "columnLineage": {
+          "_producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0",
+          "_schemaURL": "https://openlineage.io/spec/facets/1-2-0/ColumnLineageDatasetFacet.json",
+          "fields": {},
+          "dataset": [
+            {
+              "namespace": "postgres://source-db:5432/main",
+              "name": "public.users",
+              "field": "",
+              "transformations": []
+            },
+            {
+              "namespace": "postgres://source-db:5432/main",
+              "name": "public.orders",
+              "field": "",
+              "transformations": []
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "producer": "https://github.com/apache/airflow/tree/providers-openlineage/2.0.0"
+}
