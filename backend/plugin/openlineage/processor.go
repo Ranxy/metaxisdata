@@ -126,7 +126,7 @@ func (p *Processor) processOutputDataset(ctx context.Context, output *Dataset) e
 			TargetColumn:   "",
 			TargetType:     targetResolved.MetaType,
 			RelationType:   model.RelationTypeDirect,
-			Transformation: nil,
+			Transformation: []model.Transformation{},
 		})
 	}
 
@@ -173,7 +173,7 @@ func (p *Processor) processTableLevelLineage(ctx context.Context, inputs []Datas
 			TargetColumn:   "",
 			TargetType:     targetResolved.MetaType,
 			RelationType:   model.RelationTypeDirect,
-			Transformation: nil,
+			Transformation: []model.Transformation{},
 		})
 	}
 
@@ -218,7 +218,7 @@ func mapRelationType(transforms []OLTransform) model.RelationType {
 // mapTransformations converts OpenLineage transforms to our internal Transformation model.
 func mapTransformations(transforms []OLTransform) []model.Transformation {
 	if len(transforms) == 0 {
-		return nil
+		return []model.Transformation{}
 	}
 
 	result := make([]model.Transformation, 0, len(transforms))
