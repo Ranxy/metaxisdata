@@ -145,7 +145,7 @@ func configureGrpcRouters(
 
 	// Register OpenLineage event ingestion HTTP handler (plain REST, not ConnectRPC).
 	olHandler := apiv1.NewOpenLineageHandler(stores)
-	olGroup := e.Group("/api/v1/openlineage")
+	olGroup := e.Group("/api/v1/lineage")
 	olHandler.RegisterRoutes(olGroup)
 
 	e.Any("/v1/*", echo.WrapHandler(mux))
