@@ -31,7 +31,7 @@ func NewOpenLineageHandler(s *store.Store) *OpenLineageHandler {
 
 // RegisterRoutes registers the OpenLineage HTTP routes on the echo instance.
 func (h *OpenLineageHandler) RegisterRoutes(g *echo.Group) {
-	g.POST("/", h.receiveEvent)
+	g.POST("", h.receiveEvent)
 	g.POST("/batch", h.receiveEvent)
 }
 
