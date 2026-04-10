@@ -57,6 +57,20 @@ type CreateMetaRegistryResourceMessage struct {
 	MetadataBytes []byte
 }
 
+var likePatternEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+func appendGUIDSubtreeCondition(where []string, args []any, column string, guidPrefix string) ([]string, []any) {
+	exactArgIndex := len(args) + 1
+	args = append(args, guidPrefix)
+
+	descendantArgIndex := len(args) + 1
+	descendantPattern := likePatternEscaper.Replace(guidPrefix+common.MetaGUIDSplit) + "%"
+	args = append(args, descendantPattern)
+
+	where = append(where, fmt.Sprintf("(%s = $%d OR %s LIKE $%d ESCAPE '\\\\')", column, exactArgIndex, column, descendantArgIndex))
+	return where, args
+}
+
 func (s *Store) GetMetaRegistry(ctx context.Context, find *FindMetaRegistryResourceMessage) (*MetaRegistryResource, error) {
 	if find.ID != nil {
 		if v, ok := s.metaRegistryCache.Get(*find.ID); ok && s.enableCache {
@@ -162,14 +176,14 @@ func (s *Store) SearchMetaRegistryResource(ctx context.Context, find *SearchMeta
 	where, args := []string{}, []any{}
 
 	if v := find.GUIDPrefix; v != nil {
-		where, args = append(where, fmt.Sprintf("r.guid LIKE $%d", len(args)+1)), append(args, *v+"%")
+		where, args = appendGUIDSubtreeCondition(where, args, "r.guid", *v)
 	}
 	if v := find.ObjectType; v != nil {
 		where, args = append(where, fmt.Sprintf("r.object_type = $%d", len(args)+1)), append(args, *v)
 	}
 
 	// Escape LIKE metacharacters in user input.
-	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(find.SearchStr)
+	escaped := likePatternEscaper.Replace(find.SearchStr)
 	searchPattern := "%" + escaped + "%"
 	args = append(args, searchPattern)
 	searchIdx := len(args)
@@ -237,7 +251,7 @@ func (*Store) listMetaRegistryResourceImpl(ctx context.Context, txn *sql.Tx, fin
 		where, args = append(where, fmt.Sprintf("meta_registry_resource.guid = $%d", len(args)+1)), append(args, *v)
 	}
 	if v := find.GUIDPrefix; v != nil {
-		where, args = append(where, fmt.Sprintf("meta_registry_resource.guid LIKE $%d", len(args)+1)), append(args, *v+"%")
+		where, args = appendGUIDSubtreeCondition(where, args, "meta_registry_resource.guid", *v)
 	}
 	if v := find.ObjectType; v != nil {
 		where, args = append(where, fmt.Sprintf("meta_registry_resource.object_type = $%d", len(args)+1)), append(args, *v)
@@ -357,7 +371,6 @@ func (*Store) listSublevelMetaRegistryResourceImpl(ctx context.Context, txn *sql
 		return []*MetaRegistryResource{}, nil
 	}
 
-	nextPrefix := parentGUID + common.MetaGUIDSplit + "%"
 	args := []any{}
 
 	qb := strings.Builder{}
@@ -376,10 +389,15 @@ func (*Store) listSublevelMetaRegistryResourceImpl(ctx context.Context, txn *sql
 			meta_registry_resource.metadata,
 			meta_registry_resource.meta_hash
 		FROM meta_registry_resource
-		WHERE meta_registry_resource.guid LIKE $%d AND meta_registry_resource.object_type = $%d
+		WHERE (meta_registry_resource.guid = $%d OR meta_registry_resource.guid LIKE $%d ESCAPE '\\\\') AND meta_registry_resource.object_type = $%d
 		ORDER BY guid limit %d)
-		`, unionStr, len(args)+1, len(args)+2, limitPreObjectType)
-		args = append(args, nextPrefix, nextType)
+		`, unionStr, len(args)+1, len(args)+2, len(args)+3, limitPreObjectType)
+		args = append(
+			args,
+			parentGUID,
+			likePatternEscaper.Replace(parentGUID+common.MetaGUIDSplit)+"%",
+			nextType,
+		)
 		//nolint:revive
 		qb.WriteString(nextQuery)
 	}
