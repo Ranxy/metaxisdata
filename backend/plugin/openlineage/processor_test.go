@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 )
 
@@ -147,7 +148,7 @@ func TestMapTransformations(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := mapTransformations(tt.transforms)
 			if tt.wantLen == 0 {
-				assert.Nil(t, got)
+				require.Empty(t, got)
 				return
 			}
 			require.Len(t, got, tt.wantLen)
@@ -337,4 +338,51 @@ func TestDatasetLevelLineageDetection(t *testing.T) {
 	// (column lineage facet exists with dataset refs but no field-level refs).
 	hasDatasetLineage := len(output.Facets.ColumnLineage.Dataset) > 0
 	assert.True(t, hasDatasetLineage, "should have dataset-level lineage")
+}
+
+func TestBuildLineageMetaUsesOpenLineageTask(t *testing.T) {
+	event := &RunEvent{
+		Run: Run{RunID: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"},
+		Job: Job{
+			Namespace: "default",
+			Name:      "etl_dag.transform_orders",
+		},
+	}
+
+	meta := buildLineageMeta(event)
+
+	assert.Equal(t, storepb.MetaType_OPENLINEAGE, meta.Type)
+	assert.Equal(t, "openlineage:task:default:etl_dag.transform_orders", meta.GUID)
+}
+
+func TestBuildColumnLineageKeepsFlowOnSourceAndTarget(t *testing.T) {
+	meta := lineageMeta{
+		GUID: "openlineage:task:default:etl_dag.transform_orders",
+		Type: storepb.MetaType_OPENLINEAGE,
+	}
+	source := &ResolvedDataset{
+		GUID:     "prod;warehouse;staging;orders",
+		MetaType: storepb.MetaType_TABLE,
+	}
+	target := &ResolvedDataset{
+		GUID:     "prod;warehouse;analytics;order_summary",
+		MetaType: storepb.MetaType_TABLE,
+	}
+
+	lineage := buildColumnLineage(
+		meta,
+		source,
+		target,
+		"order_id",
+		"order_id",
+		model.RelationTypeDirect,
+		[]model.Transformation{},
+	)
+
+	assert.Equal(t, meta.GUID, lineage.MetaGUID)
+	assert.Equal(t, meta.Type, lineage.MetaType)
+	assert.Equal(t, source.GUID, lineage.SourceGUID)
+	assert.Equal(t, source.MetaType, lineage.SourceType)
+	assert.Equal(t, target.GUID, lineage.TargetGUID)
+	assert.Equal(t, target.MetaType, lineage.TargetType)
 }

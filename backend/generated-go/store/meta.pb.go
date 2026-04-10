@@ -42,29 +42,32 @@ const (
 	MetaType_PACKAGE           MetaType = 13
 	MetaType_STREAM            MetaType = 14
 	MetaType_TASK              MetaType = 15
+	// for Non-database internal structure
+	MetaType_OPENLINEAGE MetaType = 100
 )
 
 // Enum value maps for MetaType.
 var (
 	MetaType_name = map[int32]string{
-		0:  "UNSPECIFIED",
-		1:  "INSTANCE",
-		2:  "DATABASE",
-		3:  "SCHEMA",
-		4:  "TABLE",
-		16: "EXTERNAL_TABLE",
-		17: "EXTERNAL_DATASET",
-		5:  "VIEW",
-		6:  "MATERIALIZED_VIEW",
-		7:  "COLUMN",
-		8:  "INDEX",
-		9:  "FOREIGN_KEY",
-		10: "PROCEDURE",
-		11: "FUNCTION",
-		12: "SEQUENCE",
-		13: "PACKAGE",
-		14: "STREAM",
-		15: "TASK",
+		0:   "UNSPECIFIED",
+		1:   "INSTANCE",
+		2:   "DATABASE",
+		3:   "SCHEMA",
+		4:   "TABLE",
+		16:  "EXTERNAL_TABLE",
+		17:  "EXTERNAL_DATASET",
+		5:   "VIEW",
+		6:   "MATERIALIZED_VIEW",
+		7:   "COLUMN",
+		8:   "INDEX",
+		9:   "FOREIGN_KEY",
+		10:  "PROCEDURE",
+		11:  "FUNCTION",
+		12:  "SEQUENCE",
+		13:  "PACKAGE",
+		14:  "STREAM",
+		15:  "TASK",
+		100: "OPENLINEAGE",
 	}
 	MetaType_value = map[string]int32{
 		"UNSPECIFIED":       0,
@@ -85,6 +88,7 @@ var (
 		"PACKAGE":           13,
 		"STREAM":            14,
 		"TASK":              15,
+		"OPENLINEAGE":       100,
 	}
 )
 
@@ -119,7 +123,7 @@ var File_store_meta_proto protoreflect.FileDescriptor
 
 const file_store_meta_proto_rawDesc = "" +
 	"\n" +
-	"\x10store/meta.proto\x12\x11metaxisdata.store*\x8f\x02\n" +
+	"\x10store/meta.proto\x12\x11metaxisdata.store*\xa0\x02\n" +
 	"\bMetaType\x12\x0f\n" +
 	"\vUNSPECIFIED\x10\x00\x12\f\n" +
 	"\bINSTANCE\x10\x01\x12\f\n" +
@@ -142,7 +146,8 @@ const file_store_meta_proto_rawDesc = "" +
 	"\aPACKAGE\x10\r\x12\n" +
 	"\n" +
 	"\x06STREAM\x10\x0e\x12\b\n" +
-	"\x04TASK\x10\x0fB\x14Z\x12generated-go/storeb\x06proto3"
+	"\x04TASK\x10\x0f\x12\x0f\n" +
+	"\vOPENLINEAGE\x10dB\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
 	file_store_meta_proto_rawDescOnce sync.Once

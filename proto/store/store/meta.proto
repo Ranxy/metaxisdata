@@ -23,4 +23,7 @@ enum MetaType {
   PACKAGE = 13;
   STREAM = 14;
   TASK = 15;
+
+  // for Non-database internal structure
+  OPENLINEAGE = 100;
 }

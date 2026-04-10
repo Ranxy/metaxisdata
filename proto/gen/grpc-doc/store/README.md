@@ -1861,6 +1861,7 @@ InstanceRole is the API message for instance role.
 | PACKAGE | 13 |  |
 | STREAM | 14 |  |
 | TASK | 15 |  |
+| OPENLINEAGE | 100 | for Non-database internal structure |
 
 
  
