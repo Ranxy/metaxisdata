@@ -3,14 +3,9 @@ syntax = "proto3";
 package metaxisdata.v1;
 
 import "google/api/annotations.proto";
-import "google/api/client.proto";
 import "google/api/field_behavior.proto";
 import "google/api/resource.proto";
-import "google/protobuf/duration.proto";
-import "google/protobuf/empty.proto";
-import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
-import "v1/common.proto";
 import "v1/database_service.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";

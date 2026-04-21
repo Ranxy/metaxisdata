@@ -67,7 +67,7 @@ func appendGUIDSubtreeCondition(where []string, args []any, column string, guidP
 	descendantPattern := likePatternEscaper.Replace(guidPrefix+common.MetaGUIDSplit) + "%"
 	args = append(args, descendantPattern)
 
-	where = append(where, fmt.Sprintf("(%s = $%d OR %s LIKE $%d ESCAPE '\\\\')", column, exactArgIndex, column, descendantArgIndex))
+	where = append(where, fmt.Sprintf(`(%s = $%d OR %s LIKE $%d ESCAPE E'\\')`, column, exactArgIndex, column, descendantArgIndex))
 	return where, args
 }
 
@@ -389,7 +389,7 @@ func (*Store) listSublevelMetaRegistryResourceImpl(ctx context.Context, txn *sql
 			meta_registry_resource.metadata,
 			meta_registry_resource.meta_hash
 		FROM meta_registry_resource
-		WHERE (meta_registry_resource.guid = $%d OR meta_registry_resource.guid LIKE $%d ESCAPE '\\\\') AND meta_registry_resource.object_type = $%d
+		WHERE (meta_registry_resource.guid = $%d OR meta_registry_resource.guid LIKE $%d ESCAPE E'\\') AND meta_registry_resource.object_type = $%d
 		ORDER BY guid limit %d)
 		`, unionStr, len(args)+1, len(args)+2, len(args)+3, limitPreObjectType)
 		args = append(

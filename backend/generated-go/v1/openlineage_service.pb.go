@@ -108,6 +108,782 @@ func (x *NamespaceMappingResource) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type OpenLineageRunResource struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Guid               string                 `protobuf:"bytes,2,opt,name=guid,proto3" json:"guid,omitempty"`
+	TaskGuid           string                 `protobuf:"bytes,3,opt,name=task_guid,json=taskGuid,proto3" json:"task_guid,omitempty"`
+	RunId              string                 `protobuf:"bytes,4,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	JobNamespace       string                 `protobuf:"bytes,5,opt,name=job_namespace,json=jobNamespace,proto3" json:"job_namespace,omitempty"`
+	JobName            string                 `protobuf:"bytes,6,opt,name=job_name,json=jobName,proto3" json:"job_name,omitempty"`
+	JobType            string                 `protobuf:"bytes,7,opt,name=job_type,json=jobType,proto3" json:"job_type,omitempty"`
+	EventType          string                 `protobuf:"bytes,8,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	EventTime          *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=event_time,json=eventTime,proto3" json:"event_time,omitempty"`
+	Producer           string                 `protobuf:"bytes,10,opt,name=producer,proto3" json:"producer,omitempty"`
+	Source             string                 `protobuf:"bytes,11,opt,name=source,proto3" json:"source,omitempty"`
+	Integration        string                 `protobuf:"bytes,12,opt,name=integration,proto3" json:"integration,omitempty"`
+	ProcessingType     string                 `protobuf:"bytes,13,opt,name=processing_type,json=processingType,proto3" json:"processing_type,omitempty"`
+	ParentJobNamespace string                 `protobuf:"bytes,14,opt,name=parent_job_namespace,json=parentJobNamespace,proto3" json:"parent_job_namespace,omitempty"`
+	ParentJobName      string                 `protobuf:"bytes,15,opt,name=parent_job_name,json=parentJobName,proto3" json:"parent_job_name,omitempty"`
+	ParentRunId        string                 `protobuf:"bytes,16,opt,name=parent_run_id,json=parentRunId,proto3" json:"parent_run_id,omitempty"`
+	RootJobNamespace   string                 `protobuf:"bytes,17,opt,name=root_job_namespace,json=rootJobNamespace,proto3" json:"root_job_namespace,omitempty"`
+	RootJobName        string                 `protobuf:"bytes,18,opt,name=root_job_name,json=rootJobName,proto3" json:"root_job_name,omitempty"`
+	RootRunId          string                 `protobuf:"bytes,19,opt,name=root_run_id,json=rootRunId,proto3" json:"root_run_id,omitempty"`
+	InputCount         int32                  `protobuf:"varint,20,opt,name=input_count,json=inputCount,proto3" json:"input_count,omitempty"`
+	OutputCount        int32                  `protobuf:"varint,21,opt,name=output_count,json=outputCount,proto3" json:"output_count,omitempty"`
+	HasLineage         bool                   `protobuf:"varint,22,opt,name=has_lineage,json=hasLineage,proto3" json:"has_lineage,omitempty"`
+	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,23,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt          *timestamppb.Timestamp `protobuf:"bytes,24,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	RawPayload         string                 `protobuf:"bytes,25,opt,name=raw_payload,json=rawPayload,proto3" json:"raw_payload,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *OpenLineageRunResource) Reset() {
+	*x = OpenLineageRunResource{}
+	mi := &file_v1_openlineage_service_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenLineageRunResource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenLineageRunResource) ProtoMessage() {}
+
+func (x *OpenLineageRunResource) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_openlineage_service_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenLineageRunResource.ProtoReflect.Descriptor instead.
+func (*OpenLineageRunResource) Descriptor() ([]byte, []int) {
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *OpenLineageRunResource) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *OpenLineageRunResource) GetGuid() string {
+	if x != nil {
+		return x.Guid
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetTaskGuid() string {
+	if x != nil {
+		return x.TaskGuid
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetJobNamespace() string {
+	if x != nil {
+		return x.JobNamespace
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetJobName() string {
+	if x != nil {
+		return x.JobName
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetJobType() string {
+	if x != nil {
+		return x.JobType
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetEventType() string {
+	if x != nil {
+		return x.EventType
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetEventTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.EventTime
+	}
+	return nil
+}
+
+func (x *OpenLineageRunResource) GetProducer() string {
+	if x != nil {
+		return x.Producer
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetIntegration() string {
+	if x != nil {
+		return x.Integration
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetProcessingType() string {
+	if x != nil {
+		return x.ProcessingType
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetParentJobNamespace() string {
+	if x != nil {
+		return x.ParentJobNamespace
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetParentJobName() string {
+	if x != nil {
+		return x.ParentJobName
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetParentRunId() string {
+	if x != nil {
+		return x.ParentRunId
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetRootJobNamespace() string {
+	if x != nil {
+		return x.RootJobNamespace
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetRootJobName() string {
+	if x != nil {
+		return x.RootJobName
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetRootRunId() string {
+	if x != nil {
+		return x.RootRunId
+	}
+	return ""
+}
+
+func (x *OpenLineageRunResource) GetInputCount() int32 {
+	if x != nil {
+		return x.InputCount
+	}
+	return 0
+}
+
+func (x *OpenLineageRunResource) GetOutputCount() int32 {
+	if x != nil {
+		return x.OutputCount
+	}
+	return 0
+}
+
+func (x *OpenLineageRunResource) GetHasLineage() bool {
+	if x != nil {
+		return x.HasLineage
+	}
+	return false
+}
+
+func (x *OpenLineageRunResource) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *OpenLineageRunResource) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *OpenLineageRunResource) GetRawPayload() string {
+	if x != nil {
+		return x.RawPayload
+	}
+	return ""
+}
+
+type OpenLineageTaskResource struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Guid               string                 `protobuf:"bytes,2,opt,name=guid,proto3" json:"guid,omitempty"`
+	JobNamespace       string                 `protobuf:"bytes,3,opt,name=job_namespace,json=jobNamespace,proto3" json:"job_namespace,omitempty"`
+	JobName            string                 `protobuf:"bytes,4,opt,name=job_name,json=jobName,proto3" json:"job_name,omitempty"`
+	JobType            string                 `protobuf:"bytes,5,opt,name=job_type,json=jobType,proto3" json:"job_type,omitempty"`
+	Integration        string                 `protobuf:"bytes,6,opt,name=integration,proto3" json:"integration,omitempty"`
+	ProcessingType     string                 `protobuf:"bytes,7,opt,name=processing_type,json=processingType,proto3" json:"processing_type,omitempty"`
+	ParentJobNamespace string                 `protobuf:"bytes,8,opt,name=parent_job_namespace,json=parentJobNamespace,proto3" json:"parent_job_namespace,omitempty"`
+	ParentJobName      string                 `protobuf:"bytes,9,opt,name=parent_job_name,json=parentJobName,proto3" json:"parent_job_name,omitempty"`
+	RootJobNamespace   string                 `protobuf:"bytes,10,opt,name=root_job_namespace,json=rootJobNamespace,proto3" json:"root_job_namespace,omitempty"`
+	RootJobName        string                 `protobuf:"bytes,11,opt,name=root_job_name,json=rootJobName,proto3" json:"root_job_name,omitempty"`
+	LatestRunGuid      string                 `protobuf:"bytes,12,opt,name=latest_run_guid,json=latestRunGuid,proto3" json:"latest_run_guid,omitempty"`
+	LatestRunId        string                 `protobuf:"bytes,13,opt,name=latest_run_id,json=latestRunId,proto3" json:"latest_run_id,omitempty"`
+	LatestEventTime    *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=latest_event_time,json=latestEventTime,proto3" json:"latest_event_time,omitempty"`
+	LatestProducer     string                 `protobuf:"bytes,15,opt,name=latest_producer,json=latestProducer,proto3" json:"latest_producer,omitempty"`
+	LatestSource       string                 `protobuf:"bytes,16,opt,name=latest_source,json=latestSource,proto3" json:"latest_source,omitempty"`
+	RunCount           int32                  `protobuf:"varint,17,opt,name=run_count,json=runCount,proto3" json:"run_count,omitempty"`
+	LineageRunCount    int32                  `protobuf:"varint,18,opt,name=lineage_run_count,json=lineageRunCount,proto3" json:"lineage_run_count,omitempty"`
+	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,19,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt          *timestamppb.Timestamp `protobuf:"bytes,20,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *OpenLineageTaskResource) Reset() {
+	*x = OpenLineageTaskResource{}
+	mi := &file_v1_openlineage_service_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenLineageTaskResource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenLineageTaskResource) ProtoMessage() {}
+
+func (x *OpenLineageTaskResource) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_openlineage_service_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenLineageTaskResource.ProtoReflect.Descriptor instead.
+func (*OpenLineageTaskResource) Descriptor() ([]byte, []int) {
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *OpenLineageTaskResource) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *OpenLineageTaskResource) GetGuid() string {
+	if x != nil {
+		return x.Guid
+	}
+	return ""
+}
+
+func (x *OpenLineageTaskResource) GetJobNamespace() string {
+	if x != nil {
+		return x.JobNamespace
+	}
+	return ""
+}
+
+func (x *OpenLineageTaskResource) GetJobName() string {
+	if x != nil {
+		return x.JobName
+	}
+	return ""
+}
+
+func (x *OpenLineageTaskResource) GetJobType() string {
+	if x != nil {
+		return x.JobType
+	}
+	return ""
+}
+
+func (x *OpenLineageTaskResource) GetIntegration() string {
+	if x != nil {
+		return x.Integration
+	}
+	return ""
+}
+
+func (x *OpenLineageTaskResource) GetProcessingType() string {
+	if x != nil {
+		return x.ProcessingType
+	}
+	return ""
+}
+
+func (x *OpenLineageTaskResource) GetParentJobNamespace() string {
+	if x != nil {
+		return x.ParentJobNamespace
+	}
+	return ""
+}
+
+func (x *OpenLineageTaskResource) GetParentJobName() string {
+	if x != nil {
+		return x.ParentJobName
+	}
+	return ""
+}
+
+func (x *OpenLineageTaskResource) GetRootJobNamespace() string {
+	if x != nil {
+		return x.RootJobNamespace
+	}
+	return ""
+}
+
+func (x *OpenLineageTaskResource) GetRootJobName() string {
+	if x != nil {
+		return x.RootJobName
+	}
+	return ""
+}
+
+func (x *OpenLineageTaskResource) GetLatestRunGuid() string {
+	if x != nil {
+		return x.LatestRunGuid
+	}
+	return ""
+}
+
+func (x *OpenLineageTaskResource) GetLatestRunId() string {
+	if x != nil {
+		return x.LatestRunId
+	}
+	return ""
+}
+
+func (x *OpenLineageTaskResource) GetLatestEventTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LatestEventTime
+	}
+	return nil
+}
+
+func (x *OpenLineageTaskResource) GetLatestProducer() string {
+	if x != nil {
+		return x.LatestProducer
+	}
+	return ""
+}
+
+func (x *OpenLineageTaskResource) GetLatestSource() string {
+	if x != nil {
+		return x.LatestSource
+	}
+	return ""
+}
+
+func (x *OpenLineageTaskResource) GetRunCount() int32 {
+	if x != nil {
+		return x.RunCount
+	}
+	return 0
+}
+
+func (x *OpenLineageTaskResource) GetLineageRunCount() int32 {
+	if x != nil {
+		return x.LineageRunCount
+	}
+	return 0
+}
+
+func (x *OpenLineageTaskResource) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *OpenLineageTaskResource) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+type ListOpenLineageTasksRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PageSize      int32                  `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Offset        int32                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
+	JobNamespace  string                 `protobuf:"bytes,3,opt,name=job_namespace,json=jobNamespace,proto3" json:"job_namespace,omitempty"`
+	JobName       string                 `protobuf:"bytes,4,opt,name=job_name,json=jobName,proto3" json:"job_name,omitempty"`
+	JobType       string                 `protobuf:"bytes,5,opt,name=job_type,json=jobType,proto3" json:"job_type,omitempty"`
+	LineageOnly   bool                   `protobuf:"varint,6,opt,name=lineage_only,json=lineageOnly,proto3" json:"lineage_only,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOpenLineageTasksRequest) Reset() {
+	*x = ListOpenLineageTasksRequest{}
+	mi := &file_v1_openlineage_service_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOpenLineageTasksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOpenLineageTasksRequest) ProtoMessage() {}
+
+func (x *ListOpenLineageTasksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_openlineage_service_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOpenLineageTasksRequest.ProtoReflect.Descriptor instead.
+func (*ListOpenLineageTasksRequest) Descriptor() ([]byte, []int) {
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ListOpenLineageTasksRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListOpenLineageTasksRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+func (x *ListOpenLineageTasksRequest) GetJobNamespace() string {
+	if x != nil {
+		return x.JobNamespace
+	}
+	return ""
+}
+
+func (x *ListOpenLineageTasksRequest) GetJobName() string {
+	if x != nil {
+		return x.JobName
+	}
+	return ""
+}
+
+func (x *ListOpenLineageTasksRequest) GetJobType() string {
+	if x != nil {
+		return x.JobType
+	}
+	return ""
+}
+
+func (x *ListOpenLineageTasksRequest) GetLineageOnly() bool {
+	if x != nil {
+		return x.LineageOnly
+	}
+	return false
+}
+
+type ListOpenLineageTasksResponse struct {
+	state         protoimpl.MessageState     `protogen:"open.v1"`
+	Tasks         []*OpenLineageTaskResource `protobuf:"bytes,1,rep,name=tasks,proto3" json:"tasks,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOpenLineageTasksResponse) Reset() {
+	*x = ListOpenLineageTasksResponse{}
+	mi := &file_v1_openlineage_service_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOpenLineageTasksResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOpenLineageTasksResponse) ProtoMessage() {}
+
+func (x *ListOpenLineageTasksResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_openlineage_service_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOpenLineageTasksResponse.ProtoReflect.Descriptor instead.
+func (*ListOpenLineageTasksResponse) Descriptor() ([]byte, []int) {
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ListOpenLineageTasksResponse) GetTasks() []*OpenLineageTaskResource {
+	if x != nil {
+		return x.Tasks
+	}
+	return nil
+}
+
+type GetOpenLineageTaskRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Guid          string                 `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetOpenLineageTaskRequest) Reset() {
+	*x = GetOpenLineageTaskRequest{}
+	mi := &file_v1_openlineage_service_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetOpenLineageTaskRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetOpenLineageTaskRequest) ProtoMessage() {}
+
+func (x *GetOpenLineageTaskRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_openlineage_service_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetOpenLineageTaskRequest.ProtoReflect.Descriptor instead.
+func (*GetOpenLineageTaskRequest) Descriptor() ([]byte, []int) {
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GetOpenLineageTaskRequest) GetGuid() string {
+	if x != nil {
+		return x.Guid
+	}
+	return ""
+}
+
+type ListOpenLineageRunsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PageSize      int32                  `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Offset        int32                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
+	JobNamespace  string                 `protobuf:"bytes,3,opt,name=job_namespace,json=jobNamespace,proto3" json:"job_namespace,omitempty"`
+	JobName       string                 `protobuf:"bytes,4,opt,name=job_name,json=jobName,proto3" json:"job_name,omitempty"`
+	TaskGuid      string                 `protobuf:"bytes,5,opt,name=task_guid,json=taskGuid,proto3" json:"task_guid,omitempty"`
+	JobType       string                 `protobuf:"bytes,6,opt,name=job_type,json=jobType,proto3" json:"job_type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOpenLineageRunsRequest) Reset() {
+	*x = ListOpenLineageRunsRequest{}
+	mi := &file_v1_openlineage_service_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOpenLineageRunsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOpenLineageRunsRequest) ProtoMessage() {}
+
+func (x *ListOpenLineageRunsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_openlineage_service_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOpenLineageRunsRequest.ProtoReflect.Descriptor instead.
+func (*ListOpenLineageRunsRequest) Descriptor() ([]byte, []int) {
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ListOpenLineageRunsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListOpenLineageRunsRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+func (x *ListOpenLineageRunsRequest) GetJobNamespace() string {
+	if x != nil {
+		return x.JobNamespace
+	}
+	return ""
+}
+
+func (x *ListOpenLineageRunsRequest) GetJobName() string {
+	if x != nil {
+		return x.JobName
+	}
+	return ""
+}
+
+func (x *ListOpenLineageRunsRequest) GetTaskGuid() string {
+	if x != nil {
+		return x.TaskGuid
+	}
+	return ""
+}
+
+func (x *ListOpenLineageRunsRequest) GetJobType() string {
+	if x != nil {
+		return x.JobType
+	}
+	return ""
+}
+
+type ListOpenLineageRunsResponse struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Runs          []*OpenLineageRunResource `protobuf:"bytes,1,rep,name=runs,proto3" json:"runs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOpenLineageRunsResponse) Reset() {
+	*x = ListOpenLineageRunsResponse{}
+	mi := &file_v1_openlineage_service_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOpenLineageRunsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOpenLineageRunsResponse) ProtoMessage() {}
+
+func (x *ListOpenLineageRunsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_openlineage_service_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOpenLineageRunsResponse.ProtoReflect.Descriptor instead.
+func (*ListOpenLineageRunsResponse) Descriptor() ([]byte, []int) {
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ListOpenLineageRunsResponse) GetRuns() []*OpenLineageRunResource {
+	if x != nil {
+		return x.Runs
+	}
+	return nil
+}
+
+type GetOpenLineageRunRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Guid          string                 `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetOpenLineageRunRequest) Reset() {
+	*x = GetOpenLineageRunRequest{}
+	mi := &file_v1_openlineage_service_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetOpenLineageRunRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetOpenLineageRunRequest) ProtoMessage() {}
+
+func (x *GetOpenLineageRunRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_openlineage_service_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetOpenLineageRunRequest.ProtoReflect.Descriptor instead.
+func (*GetOpenLineageRunRequest) Descriptor() ([]byte, []int) {
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *GetOpenLineageRunRequest) GetGuid() string {
+	if x != nil {
+		return x.Guid
+	}
+	return ""
+}
+
 type CreateNamespaceMappingRequest struct {
 	state         protoimpl.MessageState    `protogen:"open.v1"`
 	Mapping       *NamespaceMappingResource `protobuf:"bytes,1,opt,name=mapping,proto3" json:"mapping,omitempty"`
@@ -117,7 +893,7 @@ type CreateNamespaceMappingRequest struct {
 
 func (x *CreateNamespaceMappingRequest) Reset() {
 	*x = CreateNamespaceMappingRequest{}
-	mi := &file_v1_openlineage_service_proto_msgTypes[1]
+	mi := &file_v1_openlineage_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -129,7 +905,7 @@ func (x *CreateNamespaceMappingRequest) String() string {
 func (*CreateNamespaceMappingRequest) ProtoMessage() {}
 
 func (x *CreateNamespaceMappingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_openlineage_service_proto_msgTypes[1]
+	mi := &file_v1_openlineage_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -142,7 +918,7 @@ func (x *CreateNamespaceMappingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateNamespaceMappingRequest.ProtoReflect.Descriptor instead.
 func (*CreateNamespaceMappingRequest) Descriptor() ([]byte, []int) {
-	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{1}
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *CreateNamespaceMappingRequest) GetMapping() *NamespaceMappingResource {
@@ -160,7 +936,7 @@ type ListNamespaceMappingRequest struct {
 
 func (x *ListNamespaceMappingRequest) Reset() {
 	*x = ListNamespaceMappingRequest{}
-	mi := &file_v1_openlineage_service_proto_msgTypes[2]
+	mi := &file_v1_openlineage_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -172,7 +948,7 @@ func (x *ListNamespaceMappingRequest) String() string {
 func (*ListNamespaceMappingRequest) ProtoMessage() {}
 
 func (x *ListNamespaceMappingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_openlineage_service_proto_msgTypes[2]
+	mi := &file_v1_openlineage_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -185,7 +961,7 @@ func (x *ListNamespaceMappingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNamespaceMappingRequest.ProtoReflect.Descriptor instead.
 func (*ListNamespaceMappingRequest) Descriptor() ([]byte, []int) {
-	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{2}
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{10}
 }
 
 type ListNamespaceMappingResponse struct {
@@ -197,7 +973,7 @@ type ListNamespaceMappingResponse struct {
 
 func (x *ListNamespaceMappingResponse) Reset() {
 	*x = ListNamespaceMappingResponse{}
-	mi := &file_v1_openlineage_service_proto_msgTypes[3]
+	mi := &file_v1_openlineage_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -209,7 +985,7 @@ func (x *ListNamespaceMappingResponse) String() string {
 func (*ListNamespaceMappingResponse) ProtoMessage() {}
 
 func (x *ListNamespaceMappingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_openlineage_service_proto_msgTypes[3]
+	mi := &file_v1_openlineage_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -222,7 +998,7 @@ func (x *ListNamespaceMappingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNamespaceMappingResponse.ProtoReflect.Descriptor instead.
 func (*ListNamespaceMappingResponse) Descriptor() ([]byte, []int) {
-	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{3}
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListNamespaceMappingResponse) GetMappings() []*NamespaceMappingResource {
@@ -242,7 +1018,7 @@ type UpdateNamespaceMappingRequest struct {
 
 func (x *UpdateNamespaceMappingRequest) Reset() {
 	*x = UpdateNamespaceMappingRequest{}
-	mi := &file_v1_openlineage_service_proto_msgTypes[4]
+	mi := &file_v1_openlineage_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -254,7 +1030,7 @@ func (x *UpdateNamespaceMappingRequest) String() string {
 func (*UpdateNamespaceMappingRequest) ProtoMessage() {}
 
 func (x *UpdateNamespaceMappingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_openlineage_service_proto_msgTypes[4]
+	mi := &file_v1_openlineage_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -267,7 +1043,7 @@ func (x *UpdateNamespaceMappingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateNamespaceMappingRequest.ProtoReflect.Descriptor instead.
 func (*UpdateNamespaceMappingRequest) Descriptor() ([]byte, []int) {
-	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{4}
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *UpdateNamespaceMappingRequest) GetId() int64 {
@@ -293,7 +1069,7 @@ type DeleteNamespaceMappingRequest struct {
 
 func (x *DeleteNamespaceMappingRequest) Reset() {
 	*x = DeleteNamespaceMappingRequest{}
-	mi := &file_v1_openlineage_service_proto_msgTypes[5]
+	mi := &file_v1_openlineage_service_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -305,7 +1081,7 @@ func (x *DeleteNamespaceMappingRequest) String() string {
 func (*DeleteNamespaceMappingRequest) ProtoMessage() {}
 
 func (x *DeleteNamespaceMappingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_openlineage_service_proto_msgTypes[5]
+	mi := &file_v1_openlineage_service_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -318,7 +1094,7 @@ func (x *DeleteNamespaceMappingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteNamespaceMappingRequest.ProtoReflect.Descriptor instead.
 func (*DeleteNamespaceMappingRequest) Descriptor() ([]byte, []int) {
-	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{5}
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DeleteNamespaceMappingRequest) GetId() int64 {
@@ -342,7 +1118,7 @@ type APIKeyResource struct {
 
 func (x *APIKeyResource) Reset() {
 	*x = APIKeyResource{}
-	mi := &file_v1_openlineage_service_proto_msgTypes[6]
+	mi := &file_v1_openlineage_service_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -354,7 +1130,7 @@ func (x *APIKeyResource) String() string {
 func (*APIKeyResource) ProtoMessage() {}
 
 func (x *APIKeyResource) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_openlineage_service_proto_msgTypes[6]
+	mi := &file_v1_openlineage_service_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -367,7 +1143,7 @@ func (x *APIKeyResource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use APIKeyResource.ProtoReflect.Descriptor instead.
 func (*APIKeyResource) Descriptor() ([]byte, []int) {
-	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{6}
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *APIKeyResource) GetId() int64 {
@@ -414,7 +1190,7 @@ type CreateAPIKeyRequest struct {
 
 func (x *CreateAPIKeyRequest) Reset() {
 	*x = CreateAPIKeyRequest{}
-	mi := &file_v1_openlineage_service_proto_msgTypes[7]
+	mi := &file_v1_openlineage_service_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -426,7 +1202,7 @@ func (x *CreateAPIKeyRequest) String() string {
 func (*CreateAPIKeyRequest) ProtoMessage() {}
 
 func (x *CreateAPIKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_openlineage_service_proto_msgTypes[7]
+	mi := &file_v1_openlineage_service_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -439,7 +1215,7 @@ func (x *CreateAPIKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAPIKeyRequest.ProtoReflect.Descriptor instead.
 func (*CreateAPIKeyRequest) Descriptor() ([]byte, []int) {
-	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{7}
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *CreateAPIKeyRequest) GetDescription() string {
@@ -460,7 +1236,7 @@ type CreateAPIKeyResponse struct {
 
 func (x *CreateAPIKeyResponse) Reset() {
 	*x = CreateAPIKeyResponse{}
-	mi := &file_v1_openlineage_service_proto_msgTypes[8]
+	mi := &file_v1_openlineage_service_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -472,7 +1248,7 @@ func (x *CreateAPIKeyResponse) String() string {
 func (*CreateAPIKeyResponse) ProtoMessage() {}
 
 func (x *CreateAPIKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_openlineage_service_proto_msgTypes[8]
+	mi := &file_v1_openlineage_service_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -485,7 +1261,7 @@ func (x *CreateAPIKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAPIKeyResponse.ProtoReflect.Descriptor instead.
 func (*CreateAPIKeyResponse) Descriptor() ([]byte, []int) {
-	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{8}
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CreateAPIKeyResponse) GetKey() string {
@@ -510,7 +1286,7 @@ type ListAPIKeyRequest struct {
 
 func (x *ListAPIKeyRequest) Reset() {
 	*x = ListAPIKeyRequest{}
-	mi := &file_v1_openlineage_service_proto_msgTypes[9]
+	mi := &file_v1_openlineage_service_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -522,7 +1298,7 @@ func (x *ListAPIKeyRequest) String() string {
 func (*ListAPIKeyRequest) ProtoMessage() {}
 
 func (x *ListAPIKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_openlineage_service_proto_msgTypes[9]
+	mi := &file_v1_openlineage_service_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -535,7 +1311,7 @@ func (x *ListAPIKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAPIKeyRequest.ProtoReflect.Descriptor instead.
 func (*ListAPIKeyRequest) Descriptor() ([]byte, []int) {
-	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{9}
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{17}
 }
 
 type ListAPIKeyResponse struct {
@@ -547,7 +1323,7 @@ type ListAPIKeyResponse struct {
 
 func (x *ListAPIKeyResponse) Reset() {
 	*x = ListAPIKeyResponse{}
-	mi := &file_v1_openlineage_service_proto_msgTypes[10]
+	mi := &file_v1_openlineage_service_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -559,7 +1335,7 @@ func (x *ListAPIKeyResponse) String() string {
 func (*ListAPIKeyResponse) ProtoMessage() {}
 
 func (x *ListAPIKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_openlineage_service_proto_msgTypes[10]
+	mi := &file_v1_openlineage_service_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -572,7 +1348,7 @@ func (x *ListAPIKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAPIKeyResponse.ProtoReflect.Descriptor instead.
 func (*ListAPIKeyResponse) Descriptor() ([]byte, []int) {
-	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{10}
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ListAPIKeyResponse) GetApiKeys() []*APIKeyResource {
@@ -591,7 +1367,7 @@ type RevokeAPIKeyRequest struct {
 
 func (x *RevokeAPIKeyRequest) Reset() {
 	*x = RevokeAPIKeyRequest{}
-	mi := &file_v1_openlineage_service_proto_msgTypes[11]
+	mi := &file_v1_openlineage_service_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -603,7 +1379,7 @@ func (x *RevokeAPIKeyRequest) String() string {
 func (*RevokeAPIKeyRequest) ProtoMessage() {}
 
 func (x *RevokeAPIKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_openlineage_service_proto_msgTypes[11]
+	mi := &file_v1_openlineage_service_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -616,7 +1392,7 @@ func (x *RevokeAPIKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeAPIKeyRequest.ProtoReflect.Descriptor instead.
 func (*RevokeAPIKeyRequest) Descriptor() ([]byte, []int) {
-	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{11}
+	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *RevokeAPIKeyRequest) GetId() int64 {
@@ -639,7 +1415,87 @@ const file_v1_openlineage_service_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"h\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x90\a\n" +
+	"\x16OpenLineageRunResource\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
+	"\x04guid\x18\x02 \x01(\tR\x04guid\x12\x1b\n" +
+	"\ttask_guid\x18\x03 \x01(\tR\btaskGuid\x12\x15\n" +
+	"\x06run_id\x18\x04 \x01(\tR\x05runId\x12#\n" +
+	"\rjob_namespace\x18\x05 \x01(\tR\fjobNamespace\x12\x19\n" +
+	"\bjob_name\x18\x06 \x01(\tR\ajobName\x12\x19\n" +
+	"\bjob_type\x18\a \x01(\tR\ajobType\x12\x1d\n" +
+	"\n" +
+	"event_type\x18\b \x01(\tR\teventType\x129\n" +
+	"\n" +
+	"event_time\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\teventTime\x12\x1a\n" +
+	"\bproducer\x18\n" +
+	" \x01(\tR\bproducer\x12\x16\n" +
+	"\x06source\x18\v \x01(\tR\x06source\x12 \n" +
+	"\vintegration\x18\f \x01(\tR\vintegration\x12'\n" +
+	"\x0fprocessing_type\x18\r \x01(\tR\x0eprocessingType\x120\n" +
+	"\x14parent_job_namespace\x18\x0e \x01(\tR\x12parentJobNamespace\x12&\n" +
+	"\x0fparent_job_name\x18\x0f \x01(\tR\rparentJobName\x12\"\n" +
+	"\rparent_run_id\x18\x10 \x01(\tR\vparentRunId\x12,\n" +
+	"\x12root_job_namespace\x18\x11 \x01(\tR\x10rootJobNamespace\x12\"\n" +
+	"\rroot_job_name\x18\x12 \x01(\tR\vrootJobName\x12\x1e\n" +
+	"\vroot_run_id\x18\x13 \x01(\tR\trootRunId\x12\x1f\n" +
+	"\vinput_count\x18\x14 \x01(\x05R\n" +
+	"inputCount\x12!\n" +
+	"\foutput_count\x18\x15 \x01(\x05R\voutputCount\x12\x1f\n" +
+	"\vhas_lineage\x18\x16 \x01(\bR\n" +
+	"hasLineage\x129\n" +
+	"\n" +
+	"created_at\x18\x17 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\x18 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1f\n" +
+	"\vraw_payload\x18\x19 \x01(\tR\n" +
+	"rawPayload\"\xb0\x06\n" +
+	"\x17OpenLineageTaskResource\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
+	"\x04guid\x18\x02 \x01(\tR\x04guid\x12#\n" +
+	"\rjob_namespace\x18\x03 \x01(\tR\fjobNamespace\x12\x19\n" +
+	"\bjob_name\x18\x04 \x01(\tR\ajobName\x12\x19\n" +
+	"\bjob_type\x18\x05 \x01(\tR\ajobType\x12 \n" +
+	"\vintegration\x18\x06 \x01(\tR\vintegration\x12'\n" +
+	"\x0fprocessing_type\x18\a \x01(\tR\x0eprocessingType\x120\n" +
+	"\x14parent_job_namespace\x18\b \x01(\tR\x12parentJobNamespace\x12&\n" +
+	"\x0fparent_job_name\x18\t \x01(\tR\rparentJobName\x12,\n" +
+	"\x12root_job_namespace\x18\n" +
+	" \x01(\tR\x10rootJobNamespace\x12\"\n" +
+	"\rroot_job_name\x18\v \x01(\tR\vrootJobName\x12&\n" +
+	"\x0flatest_run_guid\x18\f \x01(\tR\rlatestRunGuid\x12\"\n" +
+	"\rlatest_run_id\x18\r \x01(\tR\vlatestRunId\x12F\n" +
+	"\x11latest_event_time\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\x0flatestEventTime\x12'\n" +
+	"\x0flatest_producer\x18\x0f \x01(\tR\x0elatestProducer\x12#\n" +
+	"\rlatest_source\x18\x10 \x01(\tR\flatestSource\x12\x1b\n" +
+	"\trun_count\x18\x11 \x01(\x05R\brunCount\x12*\n" +
+	"\x11lineage_run_count\x18\x12 \x01(\x05R\x0flineageRunCount\x129\n" +
+	"\n" +
+	"created_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\x14 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xd0\x01\n" +
+	"\x1bListOpenLineageTasksRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x16\n" +
+	"\x06offset\x18\x02 \x01(\x05R\x06offset\x12#\n" +
+	"\rjob_namespace\x18\x03 \x01(\tR\fjobNamespace\x12\x19\n" +
+	"\bjob_name\x18\x04 \x01(\tR\ajobName\x12\x19\n" +
+	"\bjob_type\x18\x05 \x01(\tR\ajobType\x12!\n" +
+	"\flineage_only\x18\x06 \x01(\bR\vlineageOnly\"]\n" +
+	"\x1cListOpenLineageTasksResponse\x12=\n" +
+	"\x05tasks\x18\x01 \x03(\v2'.metaxisdata.v1.OpenLineageTaskResourceR\x05tasks\"4\n" +
+	"\x19GetOpenLineageTaskRequest\x12\x17\n" +
+	"\x04guid\x18\x01 \x01(\tB\x03\xe0A\x02R\x04guid\"\xc9\x01\n" +
+	"\x1aListOpenLineageRunsRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x16\n" +
+	"\x06offset\x18\x02 \x01(\x05R\x06offset\x12#\n" +
+	"\rjob_namespace\x18\x03 \x01(\tR\fjobNamespace\x12\x19\n" +
+	"\bjob_name\x18\x04 \x01(\tR\ajobName\x12\x1b\n" +
+	"\ttask_guid\x18\x05 \x01(\tR\btaskGuid\x12\x19\n" +
+	"\bjob_type\x18\x06 \x01(\tR\ajobType\"Y\n" +
+	"\x1bListOpenLineageRunsResponse\x12:\n" +
+	"\x04runs\x18\x01 \x03(\v2&.metaxisdata.v1.OpenLineageRunResourceR\x04runs\"3\n" +
+	"\x18GetOpenLineageRunRequest\x12\x17\n" +
+	"\x04guid\x18\x01 \x01(\tB\x03\xe0A\x02R\x04guid\"h\n" +
 	"\x1dCreateNamespaceMappingRequest\x12G\n" +
 	"\amapping\x18\x01 \x01(\v2(.metaxisdata.v1.NamespaceMappingResourceB\x03\xe0A\x02R\amapping\"\x1d\n" +
 	"\x1bListNamespaceMappingRequest\"d\n" +
@@ -668,8 +1524,12 @@ const file_v1_openlineage_service_proto_rawDesc = "" +
 	"\x12ListAPIKeyResponse\x129\n" +
 	"\bapi_keys\x18\x01 \x03(\v2\x1e.metaxisdata.v1.APIKeyResourceR\aapiKeys\"*\n" +
 	"\x13RevokeAPIKeyRequest\x12\x13\n" +
-	"\x02id\x18\x01 \x01(\x03B\x03\xe0A\x02R\x02id2\x82\b\n" +
-	"\x12OpenLineageService\x12\xa5\x01\n" +
+	"\x02id\x18\x01 \x01(\x03B\x03\xe0A\x02R\x02id2\xc2\f\n" +
+	"\x12OpenLineageService\x12\x90\x01\n" +
+	"\x14ListOpenLineageTasks\x12+.metaxisdata.v1.ListOpenLineageTasksRequest\x1a,.metaxisdata.v1.ListOpenLineageTasksResponse\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/openlineage/tasks\x12\x8e\x01\n" +
+	"\x12GetOpenLineageTask\x12).metaxisdata.v1.GetOpenLineageTaskRequest\x1a'.metaxisdata.v1.OpenLineageTaskResource\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/openlineage/tasks/{guid}\x12\x8c\x01\n" +
+	"\x13ListOpenLineageRuns\x12*.metaxisdata.v1.ListOpenLineageRunsRequest\x1a+.metaxisdata.v1.ListOpenLineageRunsResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/openlineage/runs\x12\x8a\x01\n" +
+	"\x11GetOpenLineageRun\x12(.metaxisdata.v1.GetOpenLineageRunRequest\x1a&.metaxisdata.v1.OpenLineageRunResource\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/openlineage/runs/{guid}\x12\xa5\x01\n" +
 	"\x16CreateNamespaceMapping\x12-.metaxisdata.v1.CreateNamespaceMappingRequest\x1a(.metaxisdata.v1.NamespaceMappingResource\"2\x82\xd3\xe4\x93\x02,:\amapping\"!/v1/openlineage/namespaceMappings\x12\x9c\x01\n" +
 	"\x14ListNamespaceMapping\x12+.metaxisdata.v1.ListNamespaceMappingRequest\x1a,.metaxisdata.v1.ListNamespaceMappingResponse\")\x82\xd3\xe4\x93\x02#\x12!/v1/openlineage/namespaceMappings\x12\xaa\x01\n" +
 	"\x16UpdateNamespaceMapping\x12-.metaxisdata.v1.UpdateNamespaceMappingRequest\x1a(.metaxisdata.v1.NamespaceMappingResource\"7\x82\xd3\xe4\x93\x021:\amapping2&/v1/openlineage/namespaceMappings/{id}\x12\x8f\x01\n" +
@@ -691,52 +1551,76 @@ func file_v1_openlineage_service_proto_rawDescGZIP() []byte {
 	return file_v1_openlineage_service_proto_rawDescData
 }
 
-var file_v1_openlineage_service_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_v1_openlineage_service_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_v1_openlineage_service_proto_goTypes = []any{
 	(*NamespaceMappingResource)(nil),      // 0: metaxisdata.v1.NamespaceMappingResource
-	(*CreateNamespaceMappingRequest)(nil), // 1: metaxisdata.v1.CreateNamespaceMappingRequest
-	(*ListNamespaceMappingRequest)(nil),   // 2: metaxisdata.v1.ListNamespaceMappingRequest
-	(*ListNamespaceMappingResponse)(nil),  // 3: metaxisdata.v1.ListNamespaceMappingResponse
-	(*UpdateNamespaceMappingRequest)(nil), // 4: metaxisdata.v1.UpdateNamespaceMappingRequest
-	(*DeleteNamespaceMappingRequest)(nil), // 5: metaxisdata.v1.DeleteNamespaceMappingRequest
-	(*APIKeyResource)(nil),                // 6: metaxisdata.v1.APIKeyResource
-	(*CreateAPIKeyRequest)(nil),           // 7: metaxisdata.v1.CreateAPIKeyRequest
-	(*CreateAPIKeyResponse)(nil),          // 8: metaxisdata.v1.CreateAPIKeyResponse
-	(*ListAPIKeyRequest)(nil),             // 9: metaxisdata.v1.ListAPIKeyRequest
-	(*ListAPIKeyResponse)(nil),            // 10: metaxisdata.v1.ListAPIKeyResponse
-	(*RevokeAPIKeyRequest)(nil),           // 11: metaxisdata.v1.RevokeAPIKeyRequest
-	(*timestamppb.Timestamp)(nil),         // 12: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),                 // 13: google.protobuf.Empty
+	(*OpenLineageRunResource)(nil),        // 1: metaxisdata.v1.OpenLineageRunResource
+	(*OpenLineageTaskResource)(nil),       // 2: metaxisdata.v1.OpenLineageTaskResource
+	(*ListOpenLineageTasksRequest)(nil),   // 3: metaxisdata.v1.ListOpenLineageTasksRequest
+	(*ListOpenLineageTasksResponse)(nil),  // 4: metaxisdata.v1.ListOpenLineageTasksResponse
+	(*GetOpenLineageTaskRequest)(nil),     // 5: metaxisdata.v1.GetOpenLineageTaskRequest
+	(*ListOpenLineageRunsRequest)(nil),    // 6: metaxisdata.v1.ListOpenLineageRunsRequest
+	(*ListOpenLineageRunsResponse)(nil),   // 7: metaxisdata.v1.ListOpenLineageRunsResponse
+	(*GetOpenLineageRunRequest)(nil),      // 8: metaxisdata.v1.GetOpenLineageRunRequest
+	(*CreateNamespaceMappingRequest)(nil), // 9: metaxisdata.v1.CreateNamespaceMappingRequest
+	(*ListNamespaceMappingRequest)(nil),   // 10: metaxisdata.v1.ListNamespaceMappingRequest
+	(*ListNamespaceMappingResponse)(nil),  // 11: metaxisdata.v1.ListNamespaceMappingResponse
+	(*UpdateNamespaceMappingRequest)(nil), // 12: metaxisdata.v1.UpdateNamespaceMappingRequest
+	(*DeleteNamespaceMappingRequest)(nil), // 13: metaxisdata.v1.DeleteNamespaceMappingRequest
+	(*APIKeyResource)(nil),                // 14: metaxisdata.v1.APIKeyResource
+	(*CreateAPIKeyRequest)(nil),           // 15: metaxisdata.v1.CreateAPIKeyRequest
+	(*CreateAPIKeyResponse)(nil),          // 16: metaxisdata.v1.CreateAPIKeyResponse
+	(*ListAPIKeyRequest)(nil),             // 17: metaxisdata.v1.ListAPIKeyRequest
+	(*ListAPIKeyResponse)(nil),            // 18: metaxisdata.v1.ListAPIKeyResponse
+	(*RevokeAPIKeyRequest)(nil),           // 19: metaxisdata.v1.RevokeAPIKeyRequest
+	(*timestamppb.Timestamp)(nil),         // 20: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),                 // 21: google.protobuf.Empty
 }
 var file_v1_openlineage_service_proto_depIdxs = []int32{
-	12, // 0: metaxisdata.v1.NamespaceMappingResource.created_at:type_name -> google.protobuf.Timestamp
-	12, // 1: metaxisdata.v1.NamespaceMappingResource.updated_at:type_name -> google.protobuf.Timestamp
-	0,  // 2: metaxisdata.v1.CreateNamespaceMappingRequest.mapping:type_name -> metaxisdata.v1.NamespaceMappingResource
-	0,  // 3: metaxisdata.v1.ListNamespaceMappingResponse.mappings:type_name -> metaxisdata.v1.NamespaceMappingResource
-	0,  // 4: metaxisdata.v1.UpdateNamespaceMappingRequest.mapping:type_name -> metaxisdata.v1.NamespaceMappingResource
-	12, // 5: metaxisdata.v1.APIKeyResource.created_at:type_name -> google.protobuf.Timestamp
-	12, // 6: metaxisdata.v1.APIKeyResource.revoked_at:type_name -> google.protobuf.Timestamp
-	6,  // 7: metaxisdata.v1.CreateAPIKeyResponse.api_key:type_name -> metaxisdata.v1.APIKeyResource
-	6,  // 8: metaxisdata.v1.ListAPIKeyResponse.api_keys:type_name -> metaxisdata.v1.APIKeyResource
-	1,  // 9: metaxisdata.v1.OpenLineageService.CreateNamespaceMapping:input_type -> metaxisdata.v1.CreateNamespaceMappingRequest
-	2,  // 10: metaxisdata.v1.OpenLineageService.ListNamespaceMapping:input_type -> metaxisdata.v1.ListNamespaceMappingRequest
-	4,  // 11: metaxisdata.v1.OpenLineageService.UpdateNamespaceMapping:input_type -> metaxisdata.v1.UpdateNamespaceMappingRequest
-	5,  // 12: metaxisdata.v1.OpenLineageService.DeleteNamespaceMapping:input_type -> metaxisdata.v1.DeleteNamespaceMappingRequest
-	7,  // 13: metaxisdata.v1.OpenLineageService.CreateAPIKey:input_type -> metaxisdata.v1.CreateAPIKeyRequest
-	9,  // 14: metaxisdata.v1.OpenLineageService.ListAPIKey:input_type -> metaxisdata.v1.ListAPIKeyRequest
-	11, // 15: metaxisdata.v1.OpenLineageService.RevokeAPIKey:input_type -> metaxisdata.v1.RevokeAPIKeyRequest
-	0,  // 16: metaxisdata.v1.OpenLineageService.CreateNamespaceMapping:output_type -> metaxisdata.v1.NamespaceMappingResource
-	3,  // 17: metaxisdata.v1.OpenLineageService.ListNamespaceMapping:output_type -> metaxisdata.v1.ListNamespaceMappingResponse
-	0,  // 18: metaxisdata.v1.OpenLineageService.UpdateNamespaceMapping:output_type -> metaxisdata.v1.NamespaceMappingResource
-	13, // 19: metaxisdata.v1.OpenLineageService.DeleteNamespaceMapping:output_type -> google.protobuf.Empty
-	8,  // 20: metaxisdata.v1.OpenLineageService.CreateAPIKey:output_type -> metaxisdata.v1.CreateAPIKeyResponse
-	10, // 21: metaxisdata.v1.OpenLineageService.ListAPIKey:output_type -> metaxisdata.v1.ListAPIKeyResponse
-	13, // 22: metaxisdata.v1.OpenLineageService.RevokeAPIKey:output_type -> google.protobuf.Empty
-	16, // [16:23] is the sub-list for method output_type
-	9,  // [9:16] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	20, // 0: metaxisdata.v1.NamespaceMappingResource.created_at:type_name -> google.protobuf.Timestamp
+	20, // 1: metaxisdata.v1.NamespaceMappingResource.updated_at:type_name -> google.protobuf.Timestamp
+	20, // 2: metaxisdata.v1.OpenLineageRunResource.event_time:type_name -> google.protobuf.Timestamp
+	20, // 3: metaxisdata.v1.OpenLineageRunResource.created_at:type_name -> google.protobuf.Timestamp
+	20, // 4: metaxisdata.v1.OpenLineageRunResource.updated_at:type_name -> google.protobuf.Timestamp
+	20, // 5: metaxisdata.v1.OpenLineageTaskResource.latest_event_time:type_name -> google.protobuf.Timestamp
+	20, // 6: metaxisdata.v1.OpenLineageTaskResource.created_at:type_name -> google.protobuf.Timestamp
+	20, // 7: metaxisdata.v1.OpenLineageTaskResource.updated_at:type_name -> google.protobuf.Timestamp
+	2,  // 8: metaxisdata.v1.ListOpenLineageTasksResponse.tasks:type_name -> metaxisdata.v1.OpenLineageTaskResource
+	1,  // 9: metaxisdata.v1.ListOpenLineageRunsResponse.runs:type_name -> metaxisdata.v1.OpenLineageRunResource
+	0,  // 10: metaxisdata.v1.CreateNamespaceMappingRequest.mapping:type_name -> metaxisdata.v1.NamespaceMappingResource
+	0,  // 11: metaxisdata.v1.ListNamespaceMappingResponse.mappings:type_name -> metaxisdata.v1.NamespaceMappingResource
+	0,  // 12: metaxisdata.v1.UpdateNamespaceMappingRequest.mapping:type_name -> metaxisdata.v1.NamespaceMappingResource
+	20, // 13: metaxisdata.v1.APIKeyResource.created_at:type_name -> google.protobuf.Timestamp
+	20, // 14: metaxisdata.v1.APIKeyResource.revoked_at:type_name -> google.protobuf.Timestamp
+	14, // 15: metaxisdata.v1.CreateAPIKeyResponse.api_key:type_name -> metaxisdata.v1.APIKeyResource
+	14, // 16: metaxisdata.v1.ListAPIKeyResponse.api_keys:type_name -> metaxisdata.v1.APIKeyResource
+	3,  // 17: metaxisdata.v1.OpenLineageService.ListOpenLineageTasks:input_type -> metaxisdata.v1.ListOpenLineageTasksRequest
+	5,  // 18: metaxisdata.v1.OpenLineageService.GetOpenLineageTask:input_type -> metaxisdata.v1.GetOpenLineageTaskRequest
+	6,  // 19: metaxisdata.v1.OpenLineageService.ListOpenLineageRuns:input_type -> metaxisdata.v1.ListOpenLineageRunsRequest
+	8,  // 20: metaxisdata.v1.OpenLineageService.GetOpenLineageRun:input_type -> metaxisdata.v1.GetOpenLineageRunRequest
+	9,  // 21: metaxisdata.v1.OpenLineageService.CreateNamespaceMapping:input_type -> metaxisdata.v1.CreateNamespaceMappingRequest
+	10, // 22: metaxisdata.v1.OpenLineageService.ListNamespaceMapping:input_type -> metaxisdata.v1.ListNamespaceMappingRequest
+	12, // 23: metaxisdata.v1.OpenLineageService.UpdateNamespaceMapping:input_type -> metaxisdata.v1.UpdateNamespaceMappingRequest
+	13, // 24: metaxisdata.v1.OpenLineageService.DeleteNamespaceMapping:input_type -> metaxisdata.v1.DeleteNamespaceMappingRequest
+	15, // 25: metaxisdata.v1.OpenLineageService.CreateAPIKey:input_type -> metaxisdata.v1.CreateAPIKeyRequest
+	17, // 26: metaxisdata.v1.OpenLineageService.ListAPIKey:input_type -> metaxisdata.v1.ListAPIKeyRequest
+	19, // 27: metaxisdata.v1.OpenLineageService.RevokeAPIKey:input_type -> metaxisdata.v1.RevokeAPIKeyRequest
+	4,  // 28: metaxisdata.v1.OpenLineageService.ListOpenLineageTasks:output_type -> metaxisdata.v1.ListOpenLineageTasksResponse
+	2,  // 29: metaxisdata.v1.OpenLineageService.GetOpenLineageTask:output_type -> metaxisdata.v1.OpenLineageTaskResource
+	7,  // 30: metaxisdata.v1.OpenLineageService.ListOpenLineageRuns:output_type -> metaxisdata.v1.ListOpenLineageRunsResponse
+	1,  // 31: metaxisdata.v1.OpenLineageService.GetOpenLineageRun:output_type -> metaxisdata.v1.OpenLineageRunResource
+	0,  // 32: metaxisdata.v1.OpenLineageService.CreateNamespaceMapping:output_type -> metaxisdata.v1.NamespaceMappingResource
+	11, // 33: metaxisdata.v1.OpenLineageService.ListNamespaceMapping:output_type -> metaxisdata.v1.ListNamespaceMappingResponse
+	0,  // 34: metaxisdata.v1.OpenLineageService.UpdateNamespaceMapping:output_type -> metaxisdata.v1.NamespaceMappingResource
+	21, // 35: metaxisdata.v1.OpenLineageService.DeleteNamespaceMapping:output_type -> google.protobuf.Empty
+	16, // 36: metaxisdata.v1.OpenLineageService.CreateAPIKey:output_type -> metaxisdata.v1.CreateAPIKeyResponse
+	18, // 37: metaxisdata.v1.OpenLineageService.ListAPIKey:output_type -> metaxisdata.v1.ListAPIKeyResponse
+	21, // 38: metaxisdata.v1.OpenLineageService.RevokeAPIKey:output_type -> google.protobuf.Empty
+	28, // [28:39] is the sub-list for method output_type
+	17, // [17:28] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_v1_openlineage_service_proto_init() }
@@ -750,7 +1634,7 @@ func file_v1_openlineage_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_openlineage_service_proto_rawDesc), len(file_v1_openlineage_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

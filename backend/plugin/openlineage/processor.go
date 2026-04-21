@@ -3,10 +3,7 @@ package openlineage
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
-	"net/url"
-	"strings"
 
 	"github.com/pkg/errors"
 
@@ -14,8 +11,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
-
-const openLineageTaskGUIDPrefix = "openlineage:task:"
 
 type lineageMeta struct {
 	GUID string
@@ -38,13 +33,13 @@ func NewProcessor(s *store.Store) *Processor {
 
 // ProcessRunEvent processes a single OpenLineage RunEvent.
 // Only COMPLETE events are processed since lineage is final at that point.
-func (p *Processor) ProcessRunEvent(ctx context.Context, event *RunEvent) error {
+func (p *Processor) ProcessRunEvent(ctx context.Context, event *RunEvent, persistedRun *store.OpenLineageRunMessage) error {
 	if event.EventType != "COMPLETE" {
 		slog.Debug("skipping non-COMPLETE OpenLineage event", "eventType", event.EventType, "runId", event.Run.RunID)
 		return nil
 	}
 
-	meta := buildLineageMeta(event)
+	meta := buildLineageMeta(persistedRun)
 	var lineages []*store.ColumnLineage
 
 	for _, output := range event.Outputs {
@@ -167,26 +162,11 @@ func (p *Processor) processTableLevelLineage(ctx context.Context, inputs []Datas
 	return lineages, nil
 }
 
-func buildLineageMeta(event *RunEvent) lineageMeta {
+func buildLineageMeta(persistedRun *store.OpenLineageRunMessage) lineageMeta {
 	return lineageMeta{
-		GUID: buildOpenLineageTaskGUID(event.Job.Namespace, event.Job.Name, event.Run.RunID),
+		GUID: persistedRun.GUID,
 		Type: storepb.MetaType_OPENLINEAGE,
 	}
-}
-
-func buildOpenLineageTaskGUID(namespace, name, runID string) string {
-	namespace = strings.TrimSpace(namespace)
-	name = strings.TrimSpace(name)
-	if namespace == "" && name == "" {
-		return fmt.Sprintf("%srun:%s", openLineageTaskGUIDPrefix, url.PathEscape(strings.TrimSpace(runID)))
-	}
-	if namespace == "" {
-		return openLineageTaskGUIDPrefix + url.PathEscape(name)
-	}
-	if name == "" {
-		return openLineageTaskGUIDPrefix + url.PathEscape(namespace)
-	}
-	return fmt.Sprintf("%s%s:%s", openLineageTaskGUIDPrefix, url.PathEscape(namespace), url.PathEscape(name))
 }
 
 func buildColumnLineage(

@@ -3,6 +3,7 @@ syntax = "proto3";
 package metaxisdata.store;
 
 import "google/protobuf/timestamp.proto";
+import "store/openlineage.proto";
 
 option go_package = "generated-go/store";
 
@@ -953,5 +954,7 @@ message StoredMetadata {
     SequenceMetadata sequence_metadata = 10;
     StreamMetadata stream_metadata = 11;
     TaskMetadata task_metadata = 12;
+    OpenLineageRunSummary openlineage_run_summary = 13;
+    OpenLineageTaskSummary openlineage_task_summary = 14;
   }
 }

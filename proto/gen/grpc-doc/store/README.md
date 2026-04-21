@@ -10,6 +10,15 @@
   
     - [Engine](#metaxisdata-store-Engine)
   
+- [store/openlineage.proto](#store_openlineage-proto)
+    - [ExternalDataset](#metaxisdata-store-ExternalDataset)
+    - [NamespaceMapping](#metaxisdata-store-NamespaceMapping)
+    - [OpenLineageRun](#metaxisdata-store-OpenLineageRun)
+    - [OpenLineageRunSummary](#metaxisdata-store-OpenLineageRunSummary)
+    - [OpenLineageTask](#metaxisdata-store-OpenLineageTask)
+    - [OpenLineageTaskSummary](#metaxisdata-store-OpenLineageTaskSummary)
+    - [SchemaField](#metaxisdata-store-SchemaField)
+  
 - [store/database.proto](#store_database-proto)
     - [BoundingBox](#metaxisdata-store-BoundingBox)
     - [CheckConstraintMetadata](#metaxisdata-store-CheckConstraintMetadata)
@@ -100,11 +109,6 @@
   
 - [store/meta.proto](#store_meta-proto)
     - [MetaType](#metaxisdata-store-MetaType)
-  
-- [store/openlineage.proto](#store_openlineage-proto)
-    - [ExternalDataset](#metaxisdata-store-ExternalDataset)
-    - [NamespaceMapping](#metaxisdata-store-NamespaceMapping)
-    - [SchemaField](#metaxisdata-store-SchemaField)
   
 - [store/policy.proto](#store_policy-proto)
     - [Binding](#metaxisdata-store-Binding)
@@ -236,6 +240,184 @@ offset.
 | TRINO | 27 |  |
 | CASSANDRA | 28 |  |
 
+
+ 
+
+ 
+
+ 
+
+
+
+<a name="store_openlineage-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## store/openlineage.proto
+
+
+
+<a name="metaxisdata-store-ExternalDataset"></a>
+
+### ExternalDataset
+ExternalDataset represents a dataset outside of the managed instances,
+discovered through OpenLineage events (e.g., S3, Kafka, external databases).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  |  |
+| namespace | [string](#string) |  |  |
+| name | [string](#string) |  |  |
+| dataset_type | [string](#string) |  |  |
+| schema_fields | [SchemaField](#metaxisdata-store-SchemaField) | repeated |  |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-NamespaceMapping"></a>
+
+### NamespaceMapping
+NamespaceMapping maps an OpenLineage namespace to an internal instance.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+| namespace | [string](#string) |  | The OpenLineage namespace, e.g. &#34;postgres://host:5432&#34;. |
+| instance_resource_id | [string](#string) |  | The resource ID of the matched instance. |
+| database_name | [string](#string) |  | Optional database name override. If empty, the database is inferred from the dataset name. |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-OpenLineageRun"></a>
+
+### OpenLineageRun
+OpenLineageRun stores the normalized metadata together with the raw payload.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+| summary | [OpenLineageRunSummary](#metaxisdata-store-OpenLineageRunSummary) |  |  |
+| raw_payload | [bytes](#bytes) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-OpenLineageRunSummary"></a>
+
+### OpenLineageRunSummary
+OpenLineageRunSummary stores the normalized metadata for a persisted COMPLETE run.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  |  |
+| task_guid | [string](#string) |  |  |
+| run_id | [string](#string) |  |  |
+| job_namespace | [string](#string) |  |  |
+| job_name | [string](#string) |  |  |
+| job_type | [string](#string) |  |  |
+| event_type | [string](#string) |  |  |
+| event_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| producer | [string](#string) |  |  |
+| source | [string](#string) |  |  |
+| integration | [string](#string) |  |  |
+| processing_type | [string](#string) |  |  |
+| parent_job_namespace | [string](#string) |  |  |
+| parent_job_name | [string](#string) |  |  |
+| parent_run_id | [string](#string) |  |  |
+| root_job_namespace | [string](#string) |  |  |
+| root_job_name | [string](#string) |  |  |
+| root_run_id | [string](#string) |  |  |
+| input_count | [int32](#int32) |  |  |
+| output_count | [int32](#int32) |  |  |
+| has_lineage | [bool](#bool) |  |  |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-OpenLineageTask"></a>
+
+### OpenLineageTask
+OpenLineageTask stores the aggregated task summary.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+| summary | [OpenLineageTaskSummary](#metaxisdata-store-OpenLineageTaskSummary) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-OpenLineageTaskSummary"></a>
+
+### OpenLineageTaskSummary
+OpenLineageTaskSummary stores the aggregated task/job-level view derived from persisted runs.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  |  |
+| job_namespace | [string](#string) |  |  |
+| job_name | [string](#string) |  |  |
+| job_type | [string](#string) |  |  |
+| integration | [string](#string) |  |  |
+| processing_type | [string](#string) |  |  |
+| parent_job_namespace | [string](#string) |  |  |
+| parent_job_name | [string](#string) |  |  |
+| root_job_namespace | [string](#string) |  |  |
+| root_job_name | [string](#string) |  |  |
+| latest_run_guid | [string](#string) |  |  |
+| latest_run_id | [string](#string) |  |  |
+| latest_event_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| latest_producer | [string](#string) |  |  |
+| latest_source | [string](#string) |  |  |
+| run_count | [int32](#int32) |  |  |
+| lineage_run_count | [int32](#int32) |  |  |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-SchemaField"></a>
+
+### SchemaField
+SchemaField describes a single field in a dataset schema.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| type | [string](#string) |  |  |
+| description | [string](#string) |  |  |
+
+
+
+
+
+ 
 
  
 
@@ -919,6 +1101,8 @@ StorageConfig defines storage and performance parameters for spatial indexes.
 | sequence_metadata | [SequenceMetadata](#metaxisdata-store-SequenceMetadata) |  |  |
 | stream_metadata | [StreamMetadata](#metaxisdata-store-StreamMetadata) |  |  |
 | task_metadata | [TaskMetadata](#metaxisdata-store-TaskMetadata) |  |  |
+| openlineage_run_summary | [OpenLineageRunSummary](#metaxisdata-store-OpenLineageRunSummary) |  |  |
+| openlineage_task_summary | [OpenLineageTaskSummary](#metaxisdata-store-OpenLineageTaskSummary) |  |  |
 
 
 
@@ -1863,81 +2047,6 @@ InstanceRole is the API message for instance role.
 | TASK | 15 |  |
 | OPENLINEAGE | 100 | for Non-database internal structure |
 
-
- 
-
- 
-
- 
-
-
-
-<a name="store_openlineage-proto"></a>
-<p align="right"><a href="#top">Top</a></p>
-
-## store/openlineage.proto
-
-
-
-<a name="metaxisdata-store-ExternalDataset"></a>
-
-### ExternalDataset
-ExternalDataset represents a dataset outside of the managed instances,
-discovered through OpenLineage events (e.g., S3, Kafka, external databases).
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| guid | [string](#string) |  |  |
-| namespace | [string](#string) |  |  |
-| name | [string](#string) |  |  |
-| dataset_type | [string](#string) |  |  |
-| schema_fields | [SchemaField](#metaxisdata-store-SchemaField) | repeated |  |
-| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-NamespaceMapping"></a>
-
-### NamespaceMapping
-NamespaceMapping maps an OpenLineage namespace to an internal instance.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [int64](#int64) |  |  |
-| namespace | [string](#string) |  | The OpenLineage namespace, e.g. &#34;postgres://host:5432&#34;. |
-| instance_resource_id | [string](#string) |  | The resource ID of the matched instance. |
-| database_name | [string](#string) |  | Optional database name override. If empty, the database is inferred from the dataset name. |
-| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-SchemaField"></a>
-
-### SchemaField
-SchemaField describes a single field in a dataset schema.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  |  |
-| type | [string](#string) |  |  |
-| description | [string](#string) |  |  |
-
-
-
-
-
- 
 
  
 

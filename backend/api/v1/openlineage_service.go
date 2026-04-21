@@ -24,6 +24,118 @@ func NewOpenLineageService(s *store.Store) *OpenLineageService {
 	return &OpenLineageService{store: s}
 }
 
+func (s *OpenLineageService) ListOpenLineageTasks(ctx context.Context, req *connect.Request[v1pb.ListOpenLineageTasksRequest]) (*connect.Response[v1pb.ListOpenLineageTasksResponse], error) {
+	find := &store.FindOpenLineageTaskMessage{}
+	if req.Msg.GetPageSize() > 0 {
+		limit := int(req.Msg.GetPageSize())
+		find.Limit = &limit
+	}
+	if req.Msg.GetOffset() > 0 {
+		offset := int(req.Msg.GetOffset())
+		find.Offset = &offset
+	}
+	if req.Msg.GetJobNamespace() != "" {
+		jobNamespace := req.Msg.GetJobNamespace()
+		find.JobNamespace = &jobNamespace
+	}
+	if req.Msg.GetJobName() != "" {
+		jobName := req.Msg.GetJobName()
+		find.JobName = &jobName
+	}
+	if req.Msg.GetJobType() != "" {
+		jobType := req.Msg.GetJobType()
+		find.JobType = &jobType
+	}
+	if req.Msg.GetLineageOnly() {
+		lineageOnly := true
+		find.LineageOnly = &lineageOnly
+	}
+
+	list, err := s.store.ListOpenLineageTask(ctx, find)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list openlineage tasks"))
+	}
+
+	resp := &v1pb.ListOpenLineageTasksResponse{}
+	for _, task := range list {
+		resp.Tasks = append(resp.Tasks, convertOpenLineageTask(task))
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *OpenLineageService) GetOpenLineageTask(ctx context.Context, req *connect.Request[v1pb.GetOpenLineageTaskRequest]) (*connect.Response[v1pb.OpenLineageTaskResource], error) {
+	if req.Msg.GetGuid() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("guid is required"))
+	}
+
+	guid := req.Msg.GetGuid()
+	task, err := s.store.GetOpenLineageTask(ctx, &store.FindOpenLineageTaskMessage{GUID: &guid})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get openlineage task"))
+	}
+	if task == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("openlineage task %q not found", req.Msg.GetGuid()))
+	}
+
+	return connect.NewResponse(convertOpenLineageTask(task)), nil
+}
+
+func (s *OpenLineageService) ListOpenLineageRuns(ctx context.Context, req *connect.Request[v1pb.ListOpenLineageRunsRequest]) (*connect.Response[v1pb.ListOpenLineageRunsResponse], error) {
+	find := &store.FindOpenLineageRunMessage{}
+	if req.Msg.GetPageSize() > 0 {
+		limit := int(req.Msg.GetPageSize())
+		find.Limit = &limit
+	}
+	if req.Msg.GetOffset() > 0 {
+		offset := int(req.Msg.GetOffset())
+		find.Offset = &offset
+	}
+	if req.Msg.GetJobNamespace() != "" {
+		jobNamespace := req.Msg.GetJobNamespace()
+		find.JobNamespace = &jobNamespace
+	}
+	if req.Msg.GetJobName() != "" {
+		jobName := req.Msg.GetJobName()
+		find.JobName = &jobName
+	}
+	if req.Msg.GetTaskGuid() != "" {
+		taskGUID := req.Msg.GetTaskGuid()
+		find.TaskGUID = &taskGUID
+	}
+	if req.Msg.GetJobType() != "" {
+		jobType := req.Msg.GetJobType()
+		find.JobType = &jobType
+	}
+
+	list, err := s.store.ListOpenLineageRun(ctx, find)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list openlineage runs"))
+	}
+
+	resp := &v1pb.ListOpenLineageRunsResponse{}
+	for _, run := range list {
+		resp.Runs = append(resp.Runs, convertOpenLineageRun(run, false))
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *OpenLineageService) GetOpenLineageRun(ctx context.Context, req *connect.Request[v1pb.GetOpenLineageRunRequest]) (*connect.Response[v1pb.OpenLineageRunResource], error) {
+	if req.Msg.GetGuid() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("guid is required"))
+	}
+
+	guid := req.Msg.GetGuid()
+	run, err := s.store.GetOpenLineageRun(ctx, &store.FindOpenLineageRunMessage{GUID: &guid})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get openlineage run"))
+	}
+	if run == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("openlineage run %q not found", req.Msg.GetGuid()))
+	}
+
+	return connect.NewResponse(convertOpenLineageRun(run, true)), nil
+}
+
 func (s *OpenLineageService) CreateNamespaceMapping(ctx context.Context, req *connect.Request[v1pb.CreateNamespaceMappingRequest]) (*connect.Response[v1pb.NamespaceMappingResource], error) {
 	mapping := req.Msg.GetMapping()
 	if mapping.GetNamespace() == "" {
@@ -140,6 +252,69 @@ func convertAPIKey(k *store.OpenLineageAPIKeyMessage) *v1pb.APIKeyResource {
 	}
 	if k.RevokedAt != nil {
 		res.RevokedAt = timestamppb.New(*k.RevokedAt)
+	}
+	return res
+}
+
+func convertOpenLineageRun(run *store.OpenLineageRunMessage, includePayload bool) *v1pb.OpenLineageRunResource {
+	res := &v1pb.OpenLineageRunResource{
+		Id:                 run.ID,
+		Guid:               run.GUID,
+		TaskGuid:           run.TaskGUID,
+		RunId:              run.RunID,
+		JobNamespace:       run.JobNamespace,
+		JobName:            run.JobName,
+		JobType:            run.JobType,
+		EventType:          run.EventType,
+		Producer:           run.Producer,
+		Source:             run.Source,
+		Integration:        run.Integration,
+		ProcessingType:     run.ProcessingType,
+		ParentJobNamespace: run.ParentJobNamespace,
+		ParentJobName:      run.ParentJobName,
+		ParentRunId:        run.ParentRunID,
+		RootJobNamespace:   run.RootJobNamespace,
+		RootJobName:        run.RootJobName,
+		RootRunId:          run.RootRunID,
+		InputCount:         run.InputCount,
+		OutputCount:        run.OutputCount,
+		HasLineage:         run.HasLineage,
+		CreatedAt:          timestamppb.New(run.CreatedAt),
+		UpdatedAt:          timestamppb.New(run.UpdatedAt),
+	}
+	if run.EventTime != nil {
+		res.EventTime = timestamppb.New(*run.EventTime)
+	}
+	if includePayload {
+		res.RawPayload = string(run.RawPayload)
+	}
+	return res
+}
+
+func convertOpenLineageTask(task *store.OpenLineageTaskMessage) *v1pb.OpenLineageTaskResource {
+	res := &v1pb.OpenLineageTaskResource{
+		Id:                 task.ID,
+		Guid:               task.GUID,
+		JobNamespace:       task.JobNamespace,
+		JobName:            task.JobName,
+		JobType:            task.JobType,
+		Integration:        task.Integration,
+		ProcessingType:     task.ProcessingType,
+		ParentJobNamespace: task.ParentJobNamespace,
+		ParentJobName:      task.ParentJobName,
+		RootJobNamespace:   task.RootJobNamespace,
+		RootJobName:        task.RootJobName,
+		LatestRunGuid:      task.LatestRunGUID,
+		LatestRunId:        task.LatestRunID,
+		LatestProducer:     task.LatestProducer,
+		LatestSource:       task.LatestSource,
+		RunCount:           task.RunCount,
+		LineageRunCount:    task.LineageRunCount,
+		CreatedAt:          timestamppb.New(task.CreatedAt),
+		UpdatedAt:          timestamppb.New(task.UpdatedAt),
+	}
+	if task.LatestEventTime != nil {
+		res.LatestEventTime = timestamppb.New(*task.LatestEventTime)
 	}
 	return res
 }

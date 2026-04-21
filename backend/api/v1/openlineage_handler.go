@@ -1,11 +1,13 @@
 package v1
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -64,7 +66,13 @@ func (h *OpenLineageHandler) receiveEvent(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	if err := h.processor.ProcessRunEvent(c.Request().Context(), event); err != nil {
+	persistedRun, err := h.persistEvent(c.Request().Context(), event)
+	if err != nil {
+		slog.Error("failed to persist OpenLineage event", "runId", event.Run.RunID, "error", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to persist event"})
+	}
+
+	if err := h.processor.ProcessRunEvent(c.Request().Context(), event, persistedRun); err != nil {
 		slog.Error("failed to process OpenLineage event", "runId", event.Run.RunID, "error", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to process event"})
 	}
@@ -86,7 +94,13 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte) err
 			slog.Warn("skipping invalid event in batch", "error", err)
 			continue
 		}
-		if err := h.processor.ProcessRunEvent(c.Request().Context(), event); err != nil {
+		persistedRun, err := h.persistEvent(c.Request().Context(), event)
+		if err != nil {
+			slog.Error("failed to persist batch event", "runId", event.Run.RunID, "error", err)
+			lastErr = err
+			continue
+		}
+		if err := h.processor.ProcessRunEvent(c.Request().Context(), event, persistedRun); err != nil {
 			slog.Error("failed to process batch event", "runId", event.Run.RunID, "error", err)
 			lastErr = err
 			continue
@@ -99,6 +113,48 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte) err
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{"status": "ok", "processed": processed})
+}
+
+func (h *OpenLineageHandler) persistEvent(ctx context.Context, event *openlineage.RunEvent) (*store.OpenLineageRunMessage, error) {
+	derived := openlineage.DeriveRunMetadata(event)
+	if event.EventType != "COMPLETE" {
+		return &store.OpenLineageRunMessage{
+			GUID:     openlineage.BuildOpenLineageRunGUID(event.Job.Namespace, event.Job.Name, derived.JobType, event.Run.RunID),
+			TaskGUID: derived.TaskGUID,
+		}, nil
+	}
+
+	var eventTime *time.Time
+	if parsedTime, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(event.EventTime)); err == nil {
+		eventTime = &parsedTime
+	} else if strings.TrimSpace(event.EventTime) != "" {
+		slog.Warn("failed to parse OpenLineage event time", "eventTime", event.EventTime, "runId", event.Run.RunID, "error", err)
+	}
+
+	return h.store.UpsertOpenLineageRun(ctx, &store.OpenLineageRunMessage{
+		GUID:               openlineage.BuildOpenLineageRunGUID(event.Job.Namespace, event.Job.Name, derived.JobType, event.Run.RunID),
+		TaskGUID:           derived.TaskGUID,
+		RunID:              event.Run.RunID,
+		JobNamespace:       event.Job.Namespace,
+		JobName:            event.Job.Name,
+		JobType:            derived.JobType,
+		EventType:          event.EventType,
+		EventTime:          eventTime,
+		Producer:           event.Producer,
+		Integration:        derived.Integration,
+		ProcessingType:     derived.ProcessingType,
+		ParentJobNamespace: derived.ParentJobNamespace,
+		ParentJobName:      derived.ParentJobName,
+		ParentRunID:        derived.ParentRunID,
+		RootJobNamespace:   derived.RootJobNamespace,
+		RootJobName:        derived.RootJobName,
+		RootRunID:          derived.RootRunID,
+		Source:             "openlineage",
+		InputCount:         int32(len(event.Inputs)),
+		OutputCount:        int32(len(event.Outputs)),
+		HasLineage:         derived.HasLineage,
+		RawPayload:         event.RawJSON,
+	})
 }
 
 func extractBearerToken(r *http.Request) string {

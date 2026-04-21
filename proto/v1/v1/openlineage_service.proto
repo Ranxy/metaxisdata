@@ -10,6 +10,22 @@ import "google/protobuf/timestamp.proto";
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 
 service OpenLineageService {
+  rpc ListOpenLineageTasks(ListOpenLineageTasksRequest) returns (ListOpenLineageTasksResponse) {
+    option (google.api.http) = {get: "/v1/openlineage/tasks"};
+  }
+
+  rpc GetOpenLineageTask(GetOpenLineageTaskRequest) returns (OpenLineageTaskResource) {
+    option (google.api.http) = {get: "/v1/openlineage/tasks/{guid}"};
+  }
+
+  rpc ListOpenLineageRuns(ListOpenLineageRunsRequest) returns (ListOpenLineageRunsResponse) {
+    option (google.api.http) = {get: "/v1/openlineage/runs"};
+  }
+
+  rpc GetOpenLineageRun(GetOpenLineageRunRequest) returns (OpenLineageRunResource) {
+    option (google.api.http) = {get: "/v1/openlineage/runs/{guid}"};
+  }
+
   rpc CreateNamespaceMapping(CreateNamespaceMappingRequest) returns (NamespaceMappingResource) {
     option (google.api.http) = {
       post: "/v1/openlineage/namespaceMappings"
@@ -55,6 +71,91 @@ message NamespaceMappingResource {
   string database_name = 4;
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp updated_at = 6;
+}
+
+message OpenLineageRunResource {
+  int64 id = 1;
+  string guid = 2;
+  string task_guid = 3;
+  string run_id = 4;
+  string job_namespace = 5;
+  string job_name = 6;
+  string job_type = 7;
+  string event_type = 8;
+  google.protobuf.Timestamp event_time = 9;
+  string producer = 10;
+  string source = 11;
+  string integration = 12;
+  string processing_type = 13;
+  string parent_job_namespace = 14;
+  string parent_job_name = 15;
+  string parent_run_id = 16;
+  string root_job_namespace = 17;
+  string root_job_name = 18;
+  string root_run_id = 19;
+  int32 input_count = 20;
+  int32 output_count = 21;
+  bool has_lineage = 22;
+  google.protobuf.Timestamp created_at = 23;
+  google.protobuf.Timestamp updated_at = 24;
+  string raw_payload = 25;
+}
+
+message OpenLineageTaskResource {
+  int64 id = 1;
+  string guid = 2;
+  string job_namespace = 3;
+  string job_name = 4;
+  string job_type = 5;
+  string integration = 6;
+  string processing_type = 7;
+  string parent_job_namespace = 8;
+  string parent_job_name = 9;
+  string root_job_namespace = 10;
+  string root_job_name = 11;
+  string latest_run_guid = 12;
+  string latest_run_id = 13;
+  google.protobuf.Timestamp latest_event_time = 14;
+  string latest_producer = 15;
+  string latest_source = 16;
+  int32 run_count = 17;
+  int32 lineage_run_count = 18;
+  google.protobuf.Timestamp created_at = 19;
+  google.protobuf.Timestamp updated_at = 20;
+}
+
+message ListOpenLineageTasksRequest {
+  int32 page_size = 1;
+  int32 offset = 2;
+  string job_namespace = 3;
+  string job_name = 4;
+  string job_type = 5;
+  bool lineage_only = 6;
+}
+
+message ListOpenLineageTasksResponse {
+  repeated OpenLineageTaskResource tasks = 1;
+}
+
+message GetOpenLineageTaskRequest {
+  string guid = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListOpenLineageRunsRequest {
+  int32 page_size = 1;
+  int32 offset = 2;
+  string job_namespace = 3;
+  string job_name = 4;
+  string task_guid = 5;
+  string job_type = 6;
+}
+
+message ListOpenLineageRunsResponse {
+  repeated OpenLineageRunResource runs = 1;
+}
+
+message GetOpenLineageRunRequest {
+  string guid = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 message CreateNamespaceMappingRequest {

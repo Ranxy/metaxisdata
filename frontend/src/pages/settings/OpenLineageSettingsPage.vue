@@ -10,6 +10,23 @@
       </p>
     </div>
 
+    <Card>
+      <CardHeader>
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <CardTitle>{{ t("openlineageSettings.tasks") }}</CardTitle>
+            <CardDescription>{{
+              t("openlineageSettings.tasksDescription")
+            }}</CardDescription>
+          </div>
+          <Button size="sm" @click="router.push({ name: 'OpenLineageTasks' })">
+            <ScrollText class="h-4 w-4 mr-2" />
+            {{ t("openlineageSettings.viewTasks") }}
+          </Button>
+        </div>
+      </CardHeader>
+    </Card>
+
     <!-- Namespace Mappings Section -->
     <Card>
       <CardHeader>
@@ -384,9 +401,18 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { Copy, KeyRound, Network, Pencil, Plus, Trash2 } from "lucide-vue-next";
+import {
+  Copy,
+  KeyRound,
+  Network,
+  Pencil,
+  Plus,
+  ScrollText,
+  Trash2,
+} from "lucide-vue-next";
 import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRouter } from "vue-router";
 import { listInstances } from "@/api/instance";
 import {
   createAPIKey,
@@ -400,7 +426,6 @@ import {
 import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -426,6 +451,7 @@ import type {
 
 const { t, locale } = useI18n();
 const { handleError, showSuccess } = useErrorHandler();
+const router = useRouter();
 
 // State
 const isLoadingMappings = ref(false);

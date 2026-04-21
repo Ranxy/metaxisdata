@@ -8,6 +8,7 @@ import (
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 func TestMapRelationType(t *testing.T) {
@@ -340,19 +341,16 @@ func TestDatasetLevelLineageDetection(t *testing.T) {
 	assert.True(t, hasDatasetLineage, "should have dataset-level lineage")
 }
 
-func TestBuildLineageMetaUsesOpenLineageTask(t *testing.T) {
-	event := &RunEvent{
-		Run: Run{RunID: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"},
-		Job: Job{
-			Namespace: "default",
-			Name:      "etl_dag.transform_orders",
-		},
+func TestBuildLineageMetaUsesPersistedOpenLineageRun(t *testing.T) {
+	persistedRun := &store.OpenLineageRunMessage{
+		GUID:  "openlineage:run:default:etl_dag.transform_orders:a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+		RunID: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
 	}
 
-	meta := buildLineageMeta(event)
+	meta := buildLineageMeta(persistedRun)
 
 	assert.Equal(t, storepb.MetaType_OPENLINEAGE, meta.Type)
-	assert.Equal(t, "openlineage:task:default:etl_dag.transform_orders", meta.GUID)
+	assert.Equal(t, persistedRun.GUID, meta.GUID)
 }
 
 func TestBuildColumnLineageKeepsFlowOnSourceAndTarget(t *testing.T) {

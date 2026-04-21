@@ -1120,6 +1120,144 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/openlineage/runs:
+        get:
+            tags:
+                - OpenLineageService
+            operationId: OpenLineageService_ListOpenLineageRuns
+            parameters:
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: offset
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: jobNamespace
+                  in: query
+                  schema:
+                    type: string
+                - name: jobName
+                  in: query
+                  schema:
+                    type: string
+                - name: taskGuid
+                  in: query
+                  schema:
+                    type: string
+                - name: jobType
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListOpenLineageRunsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/openlineage/runs/{guid}:
+        get:
+            tags:
+                - OpenLineageService
+            operationId: OpenLineageService_GetOpenLineageRun
+            parameters:
+                - name: guid
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OpenLineageRunResource'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/openlineage/tasks:
+        get:
+            tags:
+                - OpenLineageService
+            operationId: OpenLineageService_ListOpenLineageTasks
+            parameters:
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: offset
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: jobNamespace
+                  in: query
+                  schema:
+                    type: string
+                - name: jobName
+                  in: query
+                  schema:
+                    type: string
+                - name: jobType
+                  in: query
+                  schema:
+                    type: string
+                - name: lineageOnly
+                  in: query
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListOpenLineageTasksResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/openlineage/tasks/{guid}:
+        get:
+            tags:
+                - OpenLineageService
+            operationId: OpenLineageService_GetOpenLineageTask
+            parameters:
+                - name: guid
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OpenLineageTaskResource'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/users:
         get:
             tags:
@@ -2698,6 +2836,20 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/NamespaceMappingResource'
+        ListOpenLineageRunsResponse:
+            type: object
+            properties:
+                runs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OpenLineageRunResource'
+        ListOpenLineageTasksResponse:
+            type: object
+            properties:
+                tasks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OpenLineageTaskResource'
         ListUsersResponse:
             type: object
             properties:
@@ -2847,6 +2999,112 @@ components:
             properties:
                 code:
                     type: string
+        OpenLineageRunResource:
+            type: object
+            properties:
+                id:
+                    type: string
+                guid:
+                    type: string
+                taskGuid:
+                    type: string
+                runId:
+                    type: string
+                jobNamespace:
+                    type: string
+                jobName:
+                    type: string
+                jobType:
+                    type: string
+                eventType:
+                    type: string
+                eventTime:
+                    type: string
+                    format: date-time
+                producer:
+                    type: string
+                source:
+                    type: string
+                integration:
+                    type: string
+                processingType:
+                    type: string
+                parentJobNamespace:
+                    type: string
+                parentJobName:
+                    type: string
+                parentRunId:
+                    type: string
+                rootJobNamespace:
+                    type: string
+                rootJobName:
+                    type: string
+                rootRunId:
+                    type: string
+                inputCount:
+                    type: integer
+                    format: int32
+                outputCount:
+                    type: integer
+                    format: int32
+                hasLineage:
+                    type: boolean
+                createdAt:
+                    type: string
+                    format: date-time
+                updatedAt:
+                    type: string
+                    format: date-time
+                rawPayload:
+                    type: string
+        OpenLineageTaskResource:
+            type: object
+            properties:
+                id:
+                    type: string
+                guid:
+                    type: string
+                jobNamespace:
+                    type: string
+                jobName:
+                    type: string
+                jobType:
+                    type: string
+                integration:
+                    type: string
+                processingType:
+                    type: string
+                parentJobNamespace:
+                    type: string
+                parentJobName:
+                    type: string
+                rootJobNamespace:
+                    type: string
+                rootJobName:
+                    type: string
+                latestRunGuid:
+                    type: string
+                latestRunId:
+                    type: string
+                latestEventTime:
+                    type: string
+                    format: date-time
+                latestProducer:
+                    type: string
+                latestSource:
+                    type: string
+                runCount:
+                    type: integer
+                    format: int32
+                lineageRunCount:
+                    type: integer
+                    format: int32
+                createdAt:
+                    type: string
+                    format: date-time
+                updatedAt:
+                    type: string
+                    format: date-time
         PackageMetadata:
             type: object
             properties:

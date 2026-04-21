@@ -25,6 +25,34 @@
       </div>
     </div>
 
+    <Card v-if="openLineageSources.length > 0">
+      <CardContent class="pt-6 space-y-3">
+        <div>
+          <h2 class="text-sm font-semibold tracking-tight">
+            {{ t("lineageGraph.openlineageSources") }}
+          </h2>
+          <p class="text-sm text-muted-foreground">
+            {{
+              selectedColumnGuid && selectedColumnName
+                ? t("lineageGraph.openlineageSourcesFiltered")
+                : t("lineageGraph.openlineageSourcesDescription")
+            }}
+          </p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <Button
+            v-for="source in openLineageSources"
+            :key="source.guid"
+            variant="outline"
+            size="sm"
+            @click="openOpenLineageRun(source.guid)"
+          >
+            {{ source.label }}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+
     <Card class="relative overflow-hidden" style="height: calc(100vh - 12rem)">
       <div v-if="initialLoading" class="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
         <AppLoading />
@@ -93,6 +121,7 @@ const router = useRouter();
 const { fitView, getNodes } = useVueFlow();
 
 const HORIZONTAL_GAP = 280;
+const OPENLINEAGE_META_TYPE = 100;
 
 const nodes = ref<Node[]>([]);
 const edges = ref<Edge[]>([]);
@@ -151,6 +180,39 @@ const currentMetaType = computed(() => {
 
 const rootLabel = computed(() => formatGuidShort(currentGuid.value));
 
+const openLineageSources = computed(() => {
+  const sources = new Map<string, { guid: string; label: string }>();
+
+  for (const [guid, data] of nodeDataMap.value) {
+    for (const rel of [...data.upstream, ...data.downstream]) {
+      if (Number(rel.metaType) !== OPENLINEAGE_META_TYPE || !rel.metaGuid) {
+        continue;
+      }
+
+      if (
+        selectedColumnGuid.value &&
+        selectedColumnName.value &&
+        !relationMatchesSelectedColumn(rel)
+      ) {
+        continue;
+      }
+
+      if (!sources.has(rel.metaGuid)) {
+        sources.set(rel.metaGuid, {
+          guid: rel.metaGuid,
+          label: formatOpenLineageRunLabel(rel.metaGuid),
+        });
+      }
+    }
+
+    if (!nodeDataMap.value.has(guid)) {
+      continue;
+    }
+  }
+
+  return Array.from(sources.values());
+});
+
 function formatGuidShort(guid: string): string {
   if (!guid) return "";
   if (isExternalGuid(guid)) {
@@ -185,6 +247,42 @@ function guidToMetaType(guid: string): string {
   if (segments.length === 2) return "database";
   if (segments.length === 3) return "schema";
   return "table";
+}
+
+function relationMatchesSelectedColumn(rel: LineageRelation): boolean {
+  if (!selectedColumnGuid.value || !selectedColumnName.value) {
+    return true;
+  }
+  return (
+    (rel.sourceGuid === selectedColumnGuid.value &&
+      rel.sourceColumn === selectedColumnName.value) ||
+    (rel.targetGuid === selectedColumnGuid.value &&
+      rel.targetColumn === selectedColumnName.value)
+  );
+}
+
+function formatOpenLineageRunLabel(guid: string): string {
+  const prefix = "openlineage:run:";
+  if (!guid.startsWith(prefix)) {
+    return guid;
+  }
+
+  const segments = guid
+    .substring(prefix.length)
+    .split(":")
+    .map((segment) => decodeURIComponent(segment));
+
+  if (segments.length >= 3) {
+    const runID = segments[segments.length - 1];
+    const jobName = segments[segments.length - 2];
+    return `${jobName} · ${runID}`;
+  }
+
+  return segments.join(" · ") || guid;
+}
+
+function openOpenLineageRun(guid: string) {
+  router.push({ name: "OpenLineageRunDetail", params: { guid } });
 }
 
 function toGuidPath(guid: string): string {

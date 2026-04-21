@@ -4105,6 +4105,8 @@ type StoredMetadata struct {
 	//	*StoredMetadata_SequenceMetadata
 	//	*StoredMetadata_StreamMetadata
 	//	*StoredMetadata_TaskMetadata
+	//	*StoredMetadata_OpenlineageRunSummary
+	//	*StoredMetadata_OpenlineageTaskSummary
 	Type          isStoredMetadata_Type `protobuf_oneof:"type"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -4255,6 +4257,24 @@ func (x *StoredMetadata) GetTaskMetadata() *TaskMetadata {
 	return nil
 }
 
+func (x *StoredMetadata) GetOpenlineageRunSummary() *OpenLineageRunSummary {
+	if x != nil {
+		if x, ok := x.Type.(*StoredMetadata_OpenlineageRunSummary); ok {
+			return x.OpenlineageRunSummary
+		}
+	}
+	return nil
+}
+
+func (x *StoredMetadata) GetOpenlineageTaskSummary() *OpenLineageTaskSummary {
+	if x != nil {
+		if x, ok := x.Type.(*StoredMetadata_OpenlineageTaskSummary); ok {
+			return x.OpenlineageTaskSummary
+		}
+	}
+	return nil
+}
+
 type isStoredMetadata_Type interface {
 	isStoredMetadata_Type()
 }
@@ -4307,6 +4327,14 @@ type StoredMetadata_TaskMetadata struct {
 	TaskMetadata *TaskMetadata `protobuf:"bytes,12,opt,name=task_metadata,json=taskMetadata,proto3,oneof"`
 }
 
+type StoredMetadata_OpenlineageRunSummary struct {
+	OpenlineageRunSummary *OpenLineageRunSummary `protobuf:"bytes,13,opt,name=openlineage_run_summary,json=openlineageRunSummary,proto3,oneof"`
+}
+
+type StoredMetadata_OpenlineageTaskSummary struct {
+	OpenlineageTaskSummary *OpenLineageTaskSummary `protobuf:"bytes,14,opt,name=openlineage_task_summary,json=openlineageTaskSummary,proto3,oneof"`
+}
+
 func (*StoredMetadata_DatabaseSchemaMetadata) isStoredMetadata_Type() {}
 
 func (*StoredMetadata_SchemaMetadata) isStoredMetadata_Type() {}
@@ -4331,11 +4359,15 @@ func (*StoredMetadata_StreamMetadata) isStoredMetadata_Type() {}
 
 func (*StoredMetadata_TaskMetadata) isStoredMetadata_Type() {}
 
+func (*StoredMetadata_OpenlineageRunSummary) isStoredMetadata_Type() {}
+
+func (*StoredMetadata_OpenlineageTaskSummary) isStoredMetadata_Type() {}
+
 var File_store_database_proto protoreflect.FileDescriptor
 
 const file_store_database_proto_rawDesc = "" +
 	"\n" +
-	"\x14store/database.proto\x12\x11metaxisdata.store\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd5\x02\n" +
+	"\x14store/database.proto\x12\x11metaxisdata.store\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17store/openlineage.proto\"\xd5\x02\n" +
 	"\x10DatabaseMetadata\x12G\n" +
 	"\x06labels\x18\x01 \x03(\v2/.metaxisdata.store.DatabaseMetadata.LabelsEntryR\x06labels\x12@\n" +
 	"\x0elast_sync_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\flastSyncTime\x12)\n" +
@@ -4751,7 +4783,7 @@ const file_store_database_proto_rawDesc = "" +
 	"match_type\x18\b \x01(\tR\tmatchType\"@\n" +
 	"\x14InstanceRoleMetadata\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
-	"\x05grant\x18\a \x01(\tR\x05grant\"\x97\b\n" +
+	"\x05grant\x18\a \x01(\tR\x05grant\"\xe2\t\n" +
 	"\x0eStoredMetadata\x12e\n" +
 	"\x18database_schema_metadata\x18\x01 \x01(\v2).metaxisdata.store.DatabaseSchemaMetadataH\x00R\x16databaseSchemaMetadata\x12L\n" +
 	"\x0fschema_metadata\x18\x02 \x01(\v2!.metaxisdata.store.SchemaMetadataH\x00R\x0eschemaMetadata\x12I\n" +
@@ -4765,7 +4797,9 @@ const file_store_database_proto_rawDesc = "" +
 	"\x11sequence_metadata\x18\n" +
 	" \x01(\v2#.metaxisdata.store.SequenceMetadataH\x00R\x10sequenceMetadata\x12L\n" +
 	"\x0fstream_metadata\x18\v \x01(\v2!.metaxisdata.store.StreamMetadataH\x00R\x0estreamMetadata\x12F\n" +
-	"\rtask_metadata\x18\f \x01(\v2\x1f.metaxisdata.store.TaskMetadataH\x00R\ftaskMetadataB\x06\n" +
+	"\rtask_metadata\x18\f \x01(\v2\x1f.metaxisdata.store.TaskMetadataH\x00R\ftaskMetadata\x12b\n" +
+	"\x17openlineage_run_summary\x18\r \x01(\v2(.metaxisdata.store.OpenLineageRunSummaryH\x00R\x15openlineageRunSummary\x12e\n" +
+	"\x18openlineage_task_summary\x18\x0e \x01(\v2).metaxisdata.store.OpenLineageTaskSummaryH\x00R\x16openlineageTaskSummaryB\x06\n" +
 	"\x04typeB\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
@@ -4829,6 +4863,8 @@ var file_store_database_proto_goTypes = []any{
 	nil,                                    // 43: metaxisdata.store.DatabaseMetadata.LabelsEntry
 	nil,                                    // 44: metaxisdata.store.SpatialIndexConfig.EngineSpecificEntry
 	(*timestamppb.Timestamp)(nil),          // 45: google.protobuf.Timestamp
+	(*OpenLineageRunSummary)(nil),          // 46: metaxisdata.store.OpenLineageRunSummary
+	(*OpenLineageTaskSummary)(nil),         // 47: metaxisdata.store.OpenLineageTaskSummary
 }
 var file_store_database_proto_depIdxs = []int32{
 	43, // 0: metaxisdata.store.DatabaseMetadata.labels:type_name -> metaxisdata.store.DatabaseMetadata.LabelsEntry
@@ -4896,11 +4932,13 @@ var file_store_database_proto_depIdxs = []int32{
 	12, // 62: metaxisdata.store.StoredMetadata.sequence_metadata:type_name -> metaxisdata.store.SequenceMetadata
 	16, // 63: metaxisdata.store.StoredMetadata.stream_metadata:type_name -> metaxisdata.store.StreamMetadata
 	15, // 64: metaxisdata.store.StoredMetadata.task_metadata:type_name -> metaxisdata.store.TaskMetadata
-	65, // [65:65] is the sub-list for method output_type
-	65, // [65:65] is the sub-list for method input_type
-	65, // [65:65] is the sub-list for extension type_name
-	65, // [65:65] is the sub-list for extension extendee
-	0,  // [0:65] is the sub-list for field type_name
+	46, // 65: metaxisdata.store.StoredMetadata.openlineage_run_summary:type_name -> metaxisdata.store.OpenLineageRunSummary
+	47, // 66: metaxisdata.store.StoredMetadata.openlineage_task_summary:type_name -> metaxisdata.store.OpenLineageTaskSummary
+	67, // [67:67] is the sub-list for method output_type
+	67, // [67:67] is the sub-list for method input_type
+	67, // [67:67] is the sub-list for extension type_name
+	67, // [67:67] is the sub-list for extension extendee
+	0,  // [0:67] is the sub-list for field type_name
 }
 
 func init() { file_store_database_proto_init() }
@@ -4908,6 +4946,7 @@ func file_store_database_proto_init() {
 	if File_store_database_proto != nil {
 		return
 	}
+	file_store_openlineage_proto_init()
 	file_store_database_proto_msgTypes[36].OneofWrappers = []any{
 		(*StoredMetadata_DatabaseSchemaMetadata)(nil),
 		(*StoredMetadata_SchemaMetadata)(nil),
@@ -4921,6 +4960,8 @@ func file_store_database_proto_init() {
 		(*StoredMetadata_SequenceMetadata)(nil),
 		(*StoredMetadata_StreamMetadata)(nil),
 		(*StoredMetadata_TaskMetadata)(nil),
+		(*StoredMetadata_OpenlineageRunSummary)(nil),
+		(*StoredMetadata_OpenlineageTaskSummary)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

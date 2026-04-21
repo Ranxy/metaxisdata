@@ -20,6 +20,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	OpenLineageService_ListOpenLineageTasks_FullMethodName   = "/metaxisdata.v1.OpenLineageService/ListOpenLineageTasks"
+	OpenLineageService_GetOpenLineageTask_FullMethodName     = "/metaxisdata.v1.OpenLineageService/GetOpenLineageTask"
+	OpenLineageService_ListOpenLineageRuns_FullMethodName    = "/metaxisdata.v1.OpenLineageService/ListOpenLineageRuns"
+	OpenLineageService_GetOpenLineageRun_FullMethodName      = "/metaxisdata.v1.OpenLineageService/GetOpenLineageRun"
 	OpenLineageService_CreateNamespaceMapping_FullMethodName = "/metaxisdata.v1.OpenLineageService/CreateNamespaceMapping"
 	OpenLineageService_ListNamespaceMapping_FullMethodName   = "/metaxisdata.v1.OpenLineageService/ListNamespaceMapping"
 	OpenLineageService_UpdateNamespaceMapping_FullMethodName = "/metaxisdata.v1.OpenLineageService/UpdateNamespaceMapping"
@@ -33,6 +37,10 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type OpenLineageServiceClient interface {
+	ListOpenLineageTasks(ctx context.Context, in *ListOpenLineageTasksRequest, opts ...grpc.CallOption) (*ListOpenLineageTasksResponse, error)
+	GetOpenLineageTask(ctx context.Context, in *GetOpenLineageTaskRequest, opts ...grpc.CallOption) (*OpenLineageTaskResource, error)
+	ListOpenLineageRuns(ctx context.Context, in *ListOpenLineageRunsRequest, opts ...grpc.CallOption) (*ListOpenLineageRunsResponse, error)
+	GetOpenLineageRun(ctx context.Context, in *GetOpenLineageRunRequest, opts ...grpc.CallOption) (*OpenLineageRunResource, error)
 	CreateNamespaceMapping(ctx context.Context, in *CreateNamespaceMappingRequest, opts ...grpc.CallOption) (*NamespaceMappingResource, error)
 	ListNamespaceMapping(ctx context.Context, in *ListNamespaceMappingRequest, opts ...grpc.CallOption) (*ListNamespaceMappingResponse, error)
 	UpdateNamespaceMapping(ctx context.Context, in *UpdateNamespaceMappingRequest, opts ...grpc.CallOption) (*NamespaceMappingResource, error)
@@ -48,6 +56,46 @@ type openLineageServiceClient struct {
 
 func NewOpenLineageServiceClient(cc grpc.ClientConnInterface) OpenLineageServiceClient {
 	return &openLineageServiceClient{cc}
+}
+
+func (c *openLineageServiceClient) ListOpenLineageTasks(ctx context.Context, in *ListOpenLineageTasksRequest, opts ...grpc.CallOption) (*ListOpenLineageTasksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListOpenLineageTasksResponse)
+	err := c.cc.Invoke(ctx, OpenLineageService_ListOpenLineageTasks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *openLineageServiceClient) GetOpenLineageTask(ctx context.Context, in *GetOpenLineageTaskRequest, opts ...grpc.CallOption) (*OpenLineageTaskResource, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OpenLineageTaskResource)
+	err := c.cc.Invoke(ctx, OpenLineageService_GetOpenLineageTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *openLineageServiceClient) ListOpenLineageRuns(ctx context.Context, in *ListOpenLineageRunsRequest, opts ...grpc.CallOption) (*ListOpenLineageRunsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListOpenLineageRunsResponse)
+	err := c.cc.Invoke(ctx, OpenLineageService_ListOpenLineageRuns_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *openLineageServiceClient) GetOpenLineageRun(ctx context.Context, in *GetOpenLineageRunRequest, opts ...grpc.CallOption) (*OpenLineageRunResource, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OpenLineageRunResource)
+	err := c.cc.Invoke(ctx, OpenLineageService_GetOpenLineageRun_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *openLineageServiceClient) CreateNamespaceMapping(ctx context.Context, in *CreateNamespaceMappingRequest, opts ...grpc.CallOption) (*NamespaceMappingResource, error) {
@@ -124,6 +172,10 @@ func (c *openLineageServiceClient) RevokeAPIKey(ctx context.Context, in *RevokeA
 // All implementations must embed UnimplementedOpenLineageServiceServer
 // for forward compatibility.
 type OpenLineageServiceServer interface {
+	ListOpenLineageTasks(context.Context, *ListOpenLineageTasksRequest) (*ListOpenLineageTasksResponse, error)
+	GetOpenLineageTask(context.Context, *GetOpenLineageTaskRequest) (*OpenLineageTaskResource, error)
+	ListOpenLineageRuns(context.Context, *ListOpenLineageRunsRequest) (*ListOpenLineageRunsResponse, error)
+	GetOpenLineageRun(context.Context, *GetOpenLineageRunRequest) (*OpenLineageRunResource, error)
 	CreateNamespaceMapping(context.Context, *CreateNamespaceMappingRequest) (*NamespaceMappingResource, error)
 	ListNamespaceMapping(context.Context, *ListNamespaceMappingRequest) (*ListNamespaceMappingResponse, error)
 	UpdateNamespaceMapping(context.Context, *UpdateNamespaceMappingRequest) (*NamespaceMappingResource, error)
@@ -141,6 +193,18 @@ type OpenLineageServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedOpenLineageServiceServer struct{}
 
+func (UnimplementedOpenLineageServiceServer) ListOpenLineageTasks(context.Context, *ListOpenLineageTasksRequest) (*ListOpenLineageTasksResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListOpenLineageTasks not implemented")
+}
+func (UnimplementedOpenLineageServiceServer) GetOpenLineageTask(context.Context, *GetOpenLineageTaskRequest) (*OpenLineageTaskResource, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetOpenLineageTask not implemented")
+}
+func (UnimplementedOpenLineageServiceServer) ListOpenLineageRuns(context.Context, *ListOpenLineageRunsRequest) (*ListOpenLineageRunsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListOpenLineageRuns not implemented")
+}
+func (UnimplementedOpenLineageServiceServer) GetOpenLineageRun(context.Context, *GetOpenLineageRunRequest) (*OpenLineageRunResource, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetOpenLineageRun not implemented")
+}
 func (UnimplementedOpenLineageServiceServer) CreateNamespaceMapping(context.Context, *CreateNamespaceMappingRequest) (*NamespaceMappingResource, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateNamespaceMapping not implemented")
 }
@@ -181,6 +245,78 @@ func RegisterOpenLineageServiceServer(s grpc.ServiceRegistrar, srv OpenLineageSe
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&OpenLineageService_ServiceDesc, srv)
+}
+
+func _OpenLineageService_ListOpenLineageTasks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOpenLineageTasksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OpenLineageServiceServer).ListOpenLineageTasks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OpenLineageService_ListOpenLineageTasks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OpenLineageServiceServer).ListOpenLineageTasks(ctx, req.(*ListOpenLineageTasksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OpenLineageService_GetOpenLineageTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetOpenLineageTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OpenLineageServiceServer).GetOpenLineageTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OpenLineageService_GetOpenLineageTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OpenLineageServiceServer).GetOpenLineageTask(ctx, req.(*GetOpenLineageTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OpenLineageService_ListOpenLineageRuns_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOpenLineageRunsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OpenLineageServiceServer).ListOpenLineageRuns(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OpenLineageService_ListOpenLineageRuns_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OpenLineageServiceServer).ListOpenLineageRuns(ctx, req.(*ListOpenLineageRunsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OpenLineageService_GetOpenLineageRun_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetOpenLineageRunRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OpenLineageServiceServer).GetOpenLineageRun(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OpenLineageService_GetOpenLineageRun_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OpenLineageServiceServer).GetOpenLineageRun(ctx, req.(*GetOpenLineageRunRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _OpenLineageService_CreateNamespaceMapping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -316,6 +452,22 @@ var OpenLineageService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "metaxisdata.v1.OpenLineageService",
 	HandlerType: (*OpenLineageServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ListOpenLineageTasks",
+			Handler:    _OpenLineageService_ListOpenLineageTasks_Handler,
+		},
+		{
+			MethodName: "GetOpenLineageTask",
+			Handler:    _OpenLineageService_GetOpenLineageTask_Handler,
+		},
+		{
+			MethodName: "ListOpenLineageRuns",
+			Handler:    _OpenLineageService_ListOpenLineageRuns_Handler,
+		},
+		{
+			MethodName: "GetOpenLineageRun",
+			Handler:    _OpenLineageService_GetOpenLineageRun_Handler,
+		},
 		{
 			MethodName: "CreateNamespaceMapping",
 			Handler:    _OpenLineageService_CreateNamespaceMapping_Handler,

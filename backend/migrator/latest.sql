@@ -217,6 +217,76 @@ CREATE INDEX idx_external_dataset_ns_name ON external_dataset(namespace, name);
 ALTER SEQUENCE external_dataset_id_seq RESTART WITH 101;
 
 
+-- openlineage_run stores persisted COMPLETE OpenLineage runs and their raw payload.
+CREATE TABLE openlineage_run (
+    id BIGSERIAL PRIMARY KEY,
+    guid TEXT COLLATE "C" NOT NULL,
+    task_guid TEXT COLLATE "C" NOT NULL,
+    run_id TEXT NOT NULL,
+    job_namespace TEXT NOT NULL,
+    job_name TEXT NOT NULL,
+    job_type TEXT NOT NULL DEFAULT '',
+    event_type TEXT NOT NULL,
+    event_time TIMESTAMPTZ,
+    producer TEXT NOT NULL DEFAULT '',
+    integration TEXT NOT NULL DEFAULT '',
+    processing_type TEXT NOT NULL DEFAULT '',
+    parent_job_namespace TEXT NOT NULL DEFAULT '',
+    parent_job_name TEXT NOT NULL DEFAULT '',
+    parent_run_id TEXT NOT NULL DEFAULT '',
+    root_job_namespace TEXT NOT NULL DEFAULT '',
+    root_job_name TEXT NOT NULL DEFAULT '',
+    root_run_id TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT '',
+    input_count INT4 NOT NULL DEFAULT 0,
+    output_count INT4 NOT NULL DEFAULT 0,
+    has_lineage BOOLEAN NOT NULL DEFAULT FALSE,
+    raw_payload JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_openlineage_run_guid ON openlineage_run(guid);
+CREATE UNIQUE INDEX idx_openlineage_run_unique ON openlineage_run(job_namespace, job_name, job_type, run_id);
+CREATE INDEX idx_openlineage_run_event_time ON openlineage_run(event_time DESC NULLS LAST);
+CREATE INDEX idx_openlineage_run_job ON openlineage_run(job_namespace, job_name);
+CREATE INDEX idx_openlineage_run_task_guid ON openlineage_run(task_guid);
+
+ALTER SEQUENCE openlineage_run_id_seq RESTART WITH 101;
+
+
+-- openlineage_task stores aggregated task/job-level views derived from persisted runs.
+CREATE TABLE openlineage_task (
+    id BIGSERIAL PRIMARY KEY,
+    guid TEXT COLLATE "C" NOT NULL,
+    job_namespace TEXT NOT NULL,
+    job_name TEXT NOT NULL,
+    job_type TEXT NOT NULL DEFAULT '',
+    integration TEXT NOT NULL DEFAULT '',
+    processing_type TEXT NOT NULL DEFAULT '',
+    parent_job_namespace TEXT NOT NULL DEFAULT '',
+    parent_job_name TEXT NOT NULL DEFAULT '',
+    root_job_namespace TEXT NOT NULL DEFAULT '',
+    root_job_name TEXT NOT NULL DEFAULT '',
+    latest_run_guid TEXT COLLATE "C" NOT NULL DEFAULT '',
+    latest_run_id TEXT NOT NULL DEFAULT '',
+    latest_event_time TIMESTAMPTZ,
+    latest_producer TEXT NOT NULL DEFAULT '',
+    latest_source TEXT NOT NULL DEFAULT '',
+    run_count INT4 NOT NULL DEFAULT 0,
+    lineage_run_count INT4 NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_openlineage_task_guid ON openlineage_task(guid);
+CREATE UNIQUE INDEX idx_openlineage_task_unique ON openlineage_task(job_namespace, job_name, job_type);
+CREATE INDEX idx_openlineage_task_latest_event_time ON openlineage_task(latest_event_time DESC NULLS LAST);
+CREATE INDEX idx_openlineage_task_job ON openlineage_task(job_namespace, job_name, job_type);
+
+ALTER SEQUENCE openlineage_task_id_seq RESTART WITH 101;
+
+
 -- namespace_mapping maps OpenLineage namespaces to internal instances for auto-resolution.
 CREATE TABLE namespace_mapping (
     id BIGSERIAL PRIMARY KEY,

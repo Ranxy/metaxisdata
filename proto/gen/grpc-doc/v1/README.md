@@ -169,11 +169,19 @@
     - [CreateAPIKeyResponse](#metaxisdata-v1-CreateAPIKeyResponse)
     - [CreateNamespaceMappingRequest](#metaxisdata-v1-CreateNamespaceMappingRequest)
     - [DeleteNamespaceMappingRequest](#metaxisdata-v1-DeleteNamespaceMappingRequest)
+    - [GetOpenLineageRunRequest](#metaxisdata-v1-GetOpenLineageRunRequest)
+    - [GetOpenLineageTaskRequest](#metaxisdata-v1-GetOpenLineageTaskRequest)
     - [ListAPIKeyRequest](#metaxisdata-v1-ListAPIKeyRequest)
     - [ListAPIKeyResponse](#metaxisdata-v1-ListAPIKeyResponse)
     - [ListNamespaceMappingRequest](#metaxisdata-v1-ListNamespaceMappingRequest)
     - [ListNamespaceMappingResponse](#metaxisdata-v1-ListNamespaceMappingResponse)
+    - [ListOpenLineageRunsRequest](#metaxisdata-v1-ListOpenLineageRunsRequest)
+    - [ListOpenLineageRunsResponse](#metaxisdata-v1-ListOpenLineageRunsResponse)
+    - [ListOpenLineageTasksRequest](#metaxisdata-v1-ListOpenLineageTasksRequest)
+    - [ListOpenLineageTasksResponse](#metaxisdata-v1-ListOpenLineageTasksResponse)
     - [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource)
+    - [OpenLineageRunResource](#metaxisdata-v1-OpenLineageRunResource)
+    - [OpenLineageTaskResource](#metaxisdata-v1-OpenLineageTaskResource)
     - [RevokeAPIKeyRequest](#metaxisdata-v1-RevokeAPIKeyRequest)
     - [UpdateNamespaceMappingRequest](#metaxisdata-v1-UpdateNamespaceMappingRequest)
   
@@ -2810,6 +2818,36 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 
 
 
+<a name="metaxisdata-v1-GetOpenLineageRunRequest"></a>
+
+### GetOpenLineageRunRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetOpenLineageTaskRequest"></a>
+
+### GetOpenLineageTaskRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ListAPIKeyRequest"></a>
 
 ### ListAPIKeyRequest
@@ -2860,6 +2898,76 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 
 
 
+<a name="metaxisdata-v1-ListOpenLineageRunsRequest"></a>
+
+### ListOpenLineageRunsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| page_size | [int32](#int32) |  |  |
+| offset | [int32](#int32) |  |  |
+| job_namespace | [string](#string) |  |  |
+| job_name | [string](#string) |  |  |
+| task_guid | [string](#string) |  |  |
+| job_type | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListOpenLineageRunsResponse"></a>
+
+### ListOpenLineageRunsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| runs | [OpenLineageRunResource](#metaxisdata-v1-OpenLineageRunResource) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListOpenLineageTasksRequest"></a>
+
+### ListOpenLineageTasksRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| page_size | [int32](#int32) |  |  |
+| offset | [int32](#int32) |  |  |
+| job_namespace | [string](#string) |  |  |
+| job_name | [string](#string) |  |  |
+| job_type | [string](#string) |  |  |
+| lineage_only | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListOpenLineageTasksResponse"></a>
+
+### ListOpenLineageTasksResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| tasks | [OpenLineageTaskResource](#metaxisdata-v1-OpenLineageTaskResource) | repeated |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-NamespaceMappingResource"></a>
 
 ### NamespaceMappingResource
@@ -2872,6 +2980,79 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | namespace | [string](#string) |  |  |
 | instance_resource_id | [string](#string) |  |  |
 | database_name | [string](#string) |  |  |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-OpenLineageRunResource"></a>
+
+### OpenLineageRunResource
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+| guid | [string](#string) |  |  |
+| task_guid | [string](#string) |  |  |
+| run_id | [string](#string) |  |  |
+| job_namespace | [string](#string) |  |  |
+| job_name | [string](#string) |  |  |
+| job_type | [string](#string) |  |  |
+| event_type | [string](#string) |  |  |
+| event_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| producer | [string](#string) |  |  |
+| source | [string](#string) |  |  |
+| integration | [string](#string) |  |  |
+| processing_type | [string](#string) |  |  |
+| parent_job_namespace | [string](#string) |  |  |
+| parent_job_name | [string](#string) |  |  |
+| parent_run_id | [string](#string) |  |  |
+| root_job_namespace | [string](#string) |  |  |
+| root_job_name | [string](#string) |  |  |
+| root_run_id | [string](#string) |  |  |
+| input_count | [int32](#int32) |  |  |
+| output_count | [int32](#int32) |  |  |
+| has_lineage | [bool](#bool) |  |  |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| raw_payload | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-OpenLineageTaskResource"></a>
+
+### OpenLineageTaskResource
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+| guid | [string](#string) |  |  |
+| job_namespace | [string](#string) |  |  |
+| job_name | [string](#string) |  |  |
+| job_type | [string](#string) |  |  |
+| integration | [string](#string) |  |  |
+| processing_type | [string](#string) |  |  |
+| parent_job_namespace | [string](#string) |  |  |
+| parent_job_name | [string](#string) |  |  |
+| root_job_namespace | [string](#string) |  |  |
+| root_job_name | [string](#string) |  |  |
+| latest_run_guid | [string](#string) |  |  |
+| latest_run_id | [string](#string) |  |  |
+| latest_event_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| latest_producer | [string](#string) |  |  |
+| latest_source | [string](#string) |  |  |
+| run_count | [int32](#int32) |  |  |
+| lineage_run_count | [int32](#int32) |  |  |
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
@@ -2924,6 +3105,10 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
+| ListOpenLineageTasks | [ListOpenLineageTasksRequest](#metaxisdata-v1-ListOpenLineageTasksRequest) | [ListOpenLineageTasksResponse](#metaxisdata-v1-ListOpenLineageTasksResponse) |  |
+| GetOpenLineageTask | [GetOpenLineageTaskRequest](#metaxisdata-v1-GetOpenLineageTaskRequest) | [OpenLineageTaskResource](#metaxisdata-v1-OpenLineageTaskResource) |  |
+| ListOpenLineageRuns | [ListOpenLineageRunsRequest](#metaxisdata-v1-ListOpenLineageRunsRequest) | [ListOpenLineageRunsResponse](#metaxisdata-v1-ListOpenLineageRunsResponse) |  |
+| GetOpenLineageRun | [GetOpenLineageRunRequest](#metaxisdata-v1-GetOpenLineageRunRequest) | [OpenLineageRunResource](#metaxisdata-v1-OpenLineageRunResource) |  |
 | CreateNamespaceMapping | [CreateNamespaceMappingRequest](#metaxisdata-v1-CreateNamespaceMappingRequest) | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) |  |
 | ListNamespaceMapping | [ListNamespaceMappingRequest](#metaxisdata-v1-ListNamespaceMappingRequest) | [ListNamespaceMappingResponse](#metaxisdata-v1-ListNamespaceMappingResponse) |  |
 | UpdateNamespaceMapping | [UpdateNamespaceMappingRequest](#metaxisdata-v1-UpdateNamespaceMappingRequest) | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) |  |

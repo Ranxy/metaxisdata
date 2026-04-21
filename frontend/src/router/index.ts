@@ -49,6 +49,25 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, layout: "default" },
   },
   {
+    path: "/openlineage/tasks",
+    name: "OpenLineageTasks",
+    component: () => import("@/pages/openlineage/OpenLineageRunsPage.vue"),
+    meta: { requiresAuth: true, layout: "default" },
+  },
+  {
+    path: "/openlineage/tasks/:guid(.+)",
+    name: "OpenLineageTaskDetail",
+    component: () =>
+      import("@/pages/openlineage/OpenLineageTaskDetailPage.vue"),
+    meta: { requiresAuth: true, layout: "default" },
+  },
+  {
+    path: "/openlineage/runs/:guid(.+)",
+    name: "OpenLineageRunDetail",
+    component: () => import("@/pages/openlineage/OpenLineageRunDetailPage.vue"),
+    meta: { requiresAuth: true, layout: "default" },
+  },
+  {
     path: "/metadata",
     name: "MetadataBrowser",
     component: () => import("@/pages/MetadataBrowserPage.vue"),

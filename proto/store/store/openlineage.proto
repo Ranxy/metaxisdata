@@ -37,3 +37,66 @@ message NamespaceMapping {
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp updated_at = 6;
 }
+
+// OpenLineageRunSummary stores the normalized metadata for a persisted COMPLETE run.
+message OpenLineageRunSummary {
+  string guid = 1;
+  string task_guid = 2;
+  string run_id = 3;
+  string job_namespace = 4;
+  string job_name = 5;
+  string job_type = 6;
+  string event_type = 7;
+  google.protobuf.Timestamp event_time = 8;
+  string producer = 9;
+  string source = 10;
+  string integration = 11;
+  string processing_type = 12;
+  string parent_job_namespace = 13;
+  string parent_job_name = 14;
+  string parent_run_id = 15;
+  string root_job_namespace = 16;
+  string root_job_name = 17;
+  string root_run_id = 18;
+  int32 input_count = 19;
+  int32 output_count = 20;
+  bool has_lineage = 21;
+  google.protobuf.Timestamp created_at = 22;
+  google.protobuf.Timestamp updated_at = 23;
+}
+
+// OpenLineageRun stores the normalized metadata together with the raw payload.
+message OpenLineageRun {
+  int64 id = 1;
+  OpenLineageRunSummary summary = 2;
+  bytes raw_payload = 3;
+}
+
+// OpenLineageTaskSummary stores the aggregated task/job-level view derived from persisted runs.
+message OpenLineageTaskSummary {
+  string guid = 1;
+  string job_namespace = 2;
+  string job_name = 3;
+  string job_type = 4;
+  string integration = 5;
+  string processing_type = 6;
+  string parent_job_namespace = 7;
+  string parent_job_name = 8;
+  string root_job_namespace = 9;
+  string root_job_name = 10;
+  string latest_run_guid = 11;
+  string latest_run_id = 12;
+  google.protobuf.Timestamp latest_event_time = 13;
+  string latest_producer = 14;
+  string latest_source = 15;
+  int32 run_count = 16;
+  int32 lineage_run_count = 17;
+  google.protobuf.Timestamp created_at = 18;
+  google.protobuf.Timestamp updated_at = 19;
+}
+
+// OpenLineageTask stores the aggregated task summary.
+message OpenLineageTask {
+  int64 id = 1;
+  OpenLineageTaskSummary summary = 2;
+}

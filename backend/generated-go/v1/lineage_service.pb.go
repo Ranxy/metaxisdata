@@ -10,9 +10,6 @@ import (
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	_ "google.golang.org/protobuf/types/known/durationpb"
-	_ "google.golang.org/protobuf/types/known/emptypb"
-	_ "google.golang.org/protobuf/types/known/fieldmaskpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -558,7 +555,7 @@ var File_v1_lineage_service_proto protoreflect.FileDescriptor
 
 const file_v1_lineage_service_proto_rawDesc = "" +
 	"\n" +
-	"\x18v1/lineage_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x0fv1/common.proto\x1a\x19v1/database_service.proto\"\x9d\x04\n" +
+	"\x18v1/lineage_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19v1/database_service.proto\"\x9d\x04\n" +
 	"\x0fLineageRelation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1b\n" +
 	"\tmeta_guid\x18\x02 \x01(\tR\bmetaGuid\x125\n" +
@@ -669,7 +666,6 @@ func file_v1_lineage_service_proto_init() {
 	if File_v1_lineage_service_proto != nil {
 		return
 	}
-	file_v1_common_proto_init()
 	file_v1_database_service_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{

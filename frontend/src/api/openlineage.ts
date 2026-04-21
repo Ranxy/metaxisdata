@@ -4,8 +4,12 @@ import {
   CreateAPIKeyRequestSchema,
   CreateNamespaceMappingRequestSchema,
   DeleteNamespaceMappingRequestSchema,
+  GetOpenLineageRunRequestSchema,
+  GetOpenLineageTaskRequestSchema,
   ListAPIKeyRequestSchema,
   ListNamespaceMappingRequestSchema,
+  ListOpenLineageRunsRequestSchema,
+  ListOpenLineageTasksRequestSchema,
   NamespaceMappingResourceSchema,
   RevokeAPIKeyRequestSchema,
   UpdateNamespaceMappingRequestSchema,
@@ -15,6 +19,54 @@ import { openLineageClient } from "./client";
 export async function listNamespaceMapping() {
   const request = create(ListNamespaceMappingRequestSchema, {});
   return await openLineageClient.listNamespaceMapping(request);
+}
+
+export async function listOpenLineageTasks(params?: {
+  pageSize?: number;
+  offset?: number;
+  jobNamespace?: string;
+  jobName?: string;
+  jobType?: string;
+  lineageOnly?: boolean;
+}) {
+  const request = create(ListOpenLineageTasksRequestSchema, {
+    pageSize: params?.pageSize ?? 100,
+    offset: params?.offset ?? 0,
+    jobNamespace: params?.jobNamespace ?? "",
+    jobName: params?.jobName ?? "",
+    jobType: params?.jobType ?? "TASK",
+    lineageOnly: params?.lineageOnly ?? true,
+  });
+  return await openLineageClient.listOpenLineageTasks(request);
+}
+
+export async function getOpenLineageTask(guid: string) {
+  const request = create(GetOpenLineageTaskRequestSchema, { guid });
+  return await openLineageClient.getOpenLineageTask(request);
+}
+
+export async function listOpenLineageRuns(params?: {
+  pageSize?: number;
+  offset?: number;
+  jobNamespace?: string;
+  jobName?: string;
+  taskGuid?: string;
+  jobType?: string;
+}) {
+  const request = create(ListOpenLineageRunsRequestSchema, {
+    pageSize: params?.pageSize ?? 100,
+    offset: params?.offset ?? 0,
+    jobNamespace: params?.jobNamespace ?? "",
+    jobName: params?.jobName ?? "",
+    taskGuid: params?.taskGuid ?? "",
+    jobType: params?.jobType ?? "",
+  });
+  return await openLineageClient.listOpenLineageRuns(request);
+}
+
+export async function getOpenLineageRun(guid: string) {
+  const request = create(GetOpenLineageRunRequestSchema, { guid });
+  return await openLineageClient.getOpenLineageRun(request);
 }
 
 export async function createNamespaceMapping(mapping: {

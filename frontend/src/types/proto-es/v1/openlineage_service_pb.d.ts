@@ -53,6 +53,399 @@ export declare type NamespaceMappingResource = Message<"metaxisdata.v1.Namespace
 export declare const NamespaceMappingResourceSchema: GenMessage<NamespaceMappingResource>;
 
 /**
+ * @generated from message metaxisdata.v1.OpenLineageRunResource
+ */
+export declare type OpenLineageRunResource = Message<"metaxisdata.v1.OpenLineageRunResource"> & {
+  /**
+   * @generated from field: int64 id = 1;
+   */
+  id: bigint;
+
+  /**
+   * @generated from field: string guid = 2;
+   */
+  guid: string;
+
+  /**
+   * @generated from field: string task_guid = 3;
+   */
+  taskGuid: string;
+
+  /**
+   * @generated from field: string run_id = 4;
+   */
+  runId: string;
+
+  /**
+   * @generated from field: string job_namespace = 5;
+   */
+  jobNamespace: string;
+
+  /**
+   * @generated from field: string job_name = 6;
+   */
+  jobName: string;
+
+  /**
+   * @generated from field: string job_type = 7;
+   */
+  jobType: string;
+
+  /**
+   * @generated from field: string event_type = 8;
+   */
+  eventType: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp event_time = 9;
+   */
+  eventTime?: Timestamp;
+
+  /**
+   * @generated from field: string producer = 10;
+   */
+  producer: string;
+
+  /**
+   * @generated from field: string source = 11;
+   */
+  source: string;
+
+  /**
+   * @generated from field: string integration = 12;
+   */
+  integration: string;
+
+  /**
+   * @generated from field: string processing_type = 13;
+   */
+  processingType: string;
+
+  /**
+   * @generated from field: string parent_job_namespace = 14;
+   */
+  parentJobNamespace: string;
+
+  /**
+   * @generated from field: string parent_job_name = 15;
+   */
+  parentJobName: string;
+
+  /**
+   * @generated from field: string parent_run_id = 16;
+   */
+  parentRunId: string;
+
+  /**
+   * @generated from field: string root_job_namespace = 17;
+   */
+  rootJobNamespace: string;
+
+  /**
+   * @generated from field: string root_job_name = 18;
+   */
+  rootJobName: string;
+
+  /**
+   * @generated from field: string root_run_id = 19;
+   */
+  rootRunId: string;
+
+  /**
+   * @generated from field: int32 input_count = 20;
+   */
+  inputCount: number;
+
+  /**
+   * @generated from field: int32 output_count = 21;
+   */
+  outputCount: number;
+
+  /**
+   * @generated from field: bool has_lineage = 22;
+   */
+  hasLineage: boolean;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp created_at = 23;
+   */
+  createdAt?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp updated_at = 24;
+   */
+  updatedAt?: Timestamp;
+
+  /**
+   * @generated from field: string raw_payload = 25;
+   */
+  rawPayload: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.OpenLineageRunResource.
+ * Use `create(OpenLineageRunResourceSchema)` to create a new message.
+ */
+export declare const OpenLineageRunResourceSchema: GenMessage<OpenLineageRunResource>;
+
+/**
+ * @generated from message metaxisdata.v1.OpenLineageTaskResource
+ */
+export declare type OpenLineageTaskResource = Message<"metaxisdata.v1.OpenLineageTaskResource"> & {
+  /**
+   * @generated from field: int64 id = 1;
+   */
+  id: bigint;
+
+  /**
+   * @generated from field: string guid = 2;
+   */
+  guid: string;
+
+  /**
+   * @generated from field: string job_namespace = 3;
+   */
+  jobNamespace: string;
+
+  /**
+   * @generated from field: string job_name = 4;
+   */
+  jobName: string;
+
+  /**
+   * @generated from field: string job_type = 5;
+   */
+  jobType: string;
+
+  /**
+   * @generated from field: string integration = 6;
+   */
+  integration: string;
+
+  /**
+   * @generated from field: string processing_type = 7;
+   */
+  processingType: string;
+
+  /**
+   * @generated from field: string parent_job_namespace = 8;
+   */
+  parentJobNamespace: string;
+
+  /**
+   * @generated from field: string parent_job_name = 9;
+   */
+  parentJobName: string;
+
+  /**
+   * @generated from field: string root_job_namespace = 10;
+   */
+  rootJobNamespace: string;
+
+  /**
+   * @generated from field: string root_job_name = 11;
+   */
+  rootJobName: string;
+
+  /**
+   * @generated from field: string latest_run_guid = 12;
+   */
+  latestRunGuid: string;
+
+  /**
+   * @generated from field: string latest_run_id = 13;
+   */
+  latestRunId: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp latest_event_time = 14;
+   */
+  latestEventTime?: Timestamp;
+
+  /**
+   * @generated from field: string latest_producer = 15;
+   */
+  latestProducer: string;
+
+  /**
+   * @generated from field: string latest_source = 16;
+   */
+  latestSource: string;
+
+  /**
+   * @generated from field: int32 run_count = 17;
+   */
+  runCount: number;
+
+  /**
+   * @generated from field: int32 lineage_run_count = 18;
+   */
+  lineageRunCount: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp created_at = 19;
+   */
+  createdAt?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp updated_at = 20;
+   */
+  updatedAt?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.OpenLineageTaskResource.
+ * Use `create(OpenLineageTaskResourceSchema)` to create a new message.
+ */
+export declare const OpenLineageTaskResourceSchema: GenMessage<OpenLineageTaskResource>;
+
+/**
+ * @generated from message metaxisdata.v1.ListOpenLineageTasksRequest
+ */
+export declare type ListOpenLineageTasksRequest = Message<"metaxisdata.v1.ListOpenLineageTasksRequest"> & {
+  /**
+   * @generated from field: int32 page_size = 1;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: int32 offset = 2;
+   */
+  offset: number;
+
+  /**
+   * @generated from field: string job_namespace = 3;
+   */
+  jobNamespace: string;
+
+  /**
+   * @generated from field: string job_name = 4;
+   */
+  jobName: string;
+
+  /**
+   * @generated from field: string job_type = 5;
+   */
+  jobType: string;
+
+  /**
+   * @generated from field: bool lineage_only = 6;
+   */
+  lineageOnly: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListOpenLineageTasksRequest.
+ * Use `create(ListOpenLineageTasksRequestSchema)` to create a new message.
+ */
+export declare const ListOpenLineageTasksRequestSchema: GenMessage<ListOpenLineageTasksRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListOpenLineageTasksResponse
+ */
+export declare type ListOpenLineageTasksResponse = Message<"metaxisdata.v1.ListOpenLineageTasksResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.OpenLineageTaskResource tasks = 1;
+   */
+  tasks: OpenLineageTaskResource[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListOpenLineageTasksResponse.
+ * Use `create(ListOpenLineageTasksResponseSchema)` to create a new message.
+ */
+export declare const ListOpenLineageTasksResponseSchema: GenMessage<ListOpenLineageTasksResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetOpenLineageTaskRequest
+ */
+export declare type GetOpenLineageTaskRequest = Message<"metaxisdata.v1.GetOpenLineageTaskRequest"> & {
+  /**
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetOpenLineageTaskRequest.
+ * Use `create(GetOpenLineageTaskRequestSchema)` to create a new message.
+ */
+export declare const GetOpenLineageTaskRequestSchema: GenMessage<GetOpenLineageTaskRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListOpenLineageRunsRequest
+ */
+export declare type ListOpenLineageRunsRequest = Message<"metaxisdata.v1.ListOpenLineageRunsRequest"> & {
+  /**
+   * @generated from field: int32 page_size = 1;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: int32 offset = 2;
+   */
+  offset: number;
+
+  /**
+   * @generated from field: string job_namespace = 3;
+   */
+  jobNamespace: string;
+
+  /**
+   * @generated from field: string job_name = 4;
+   */
+  jobName: string;
+
+  /**
+   * @generated from field: string task_guid = 5;
+   */
+  taskGuid: string;
+
+  /**
+   * @generated from field: string job_type = 6;
+   */
+  jobType: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListOpenLineageRunsRequest.
+ * Use `create(ListOpenLineageRunsRequestSchema)` to create a new message.
+ */
+export declare const ListOpenLineageRunsRequestSchema: GenMessage<ListOpenLineageRunsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListOpenLineageRunsResponse
+ */
+export declare type ListOpenLineageRunsResponse = Message<"metaxisdata.v1.ListOpenLineageRunsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.OpenLineageRunResource runs = 1;
+   */
+  runs: OpenLineageRunResource[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListOpenLineageRunsResponse.
+ * Use `create(ListOpenLineageRunsResponseSchema)` to create a new message.
+ */
+export declare const ListOpenLineageRunsResponseSchema: GenMessage<ListOpenLineageRunsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetOpenLineageRunRequest
+ */
+export declare type GetOpenLineageRunRequest = Message<"metaxisdata.v1.GetOpenLineageRunRequest"> & {
+  /**
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetOpenLineageRunRequest.
+ * Use `create(GetOpenLineageRunRequestSchema)` to create a new message.
+ */
+export declare const GetOpenLineageRunRequestSchema: GenMessage<GetOpenLineageRunRequest>;
+
+/**
  * @generated from message metaxisdata.v1.CreateNamespaceMappingRequest
  */
 export declare type CreateNamespaceMappingRequest = Message<"metaxisdata.v1.CreateNamespaceMappingRequest"> & {
@@ -258,6 +651,38 @@ export declare const RevokeAPIKeyRequestSchema: GenMessage<RevokeAPIKeyRequest>;
  * @generated from service metaxisdata.v1.OpenLineageService
  */
 export declare const OpenLineageService: GenService<{
+  /**
+   * @generated from rpc metaxisdata.v1.OpenLineageService.ListOpenLineageTasks
+   */
+  listOpenLineageTasks: {
+    methodKind: "unary";
+    input: typeof ListOpenLineageTasksRequestSchema;
+    output: typeof ListOpenLineageTasksResponseSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.OpenLineageService.GetOpenLineageTask
+   */
+  getOpenLineageTask: {
+    methodKind: "unary";
+    input: typeof GetOpenLineageTaskRequestSchema;
+    output: typeof OpenLineageTaskResourceSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.OpenLineageService.ListOpenLineageRuns
+   */
+  listOpenLineageRuns: {
+    methodKind: "unary";
+    input: typeof ListOpenLineageRunsRequestSchema;
+    output: typeof ListOpenLineageRunsResponseSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.OpenLineageService.GetOpenLineageRun
+   */
+  getOpenLineageRun: {
+    methodKind: "unary";
+    input: typeof GetOpenLineageRunRequestSchema;
+    output: typeof OpenLineageRunResourceSchema;
+  },
   /**
    * @generated from rpc metaxisdata.v1.OpenLineageService.CreateNamespaceMapping
    */
