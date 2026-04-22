@@ -86,6 +86,7 @@
 
     "tables": "Tables",
     "tableName": "Table Name",
+    "externalTables": "External Tables",
     "tableDetail": "Table Details",
     "tableInfo": "Table Info",
     "rowCount": "Row Count",
@@ -188,6 +189,10 @@
     "sequenceDetail": "Sequence Detail",
     "sequenceInfo": "Sequence Info",
     "noSequences": "No sequences",
+    "externalDatasetDetail": "External Dataset Detail",
+    "externalDatasetInfo": "External Dataset Info",
+    "namespace": "Namespace",
+    "datasetType": "Dataset Type",
     "dataType": "Data Type",
     "start": "Start",
     "minValue": "Min",

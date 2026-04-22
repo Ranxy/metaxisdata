@@ -86,7 +86,14 @@
               class="max-w-md text-muted-foreground truncate"
               :title="relation.relatedGuid"
             >
-              {{ relation.relatedObject }}
+              <RouterLink
+                v-if="relation.relatedRoute"
+                :to="relation.relatedRoute"
+                class="text-primary hover:underline"
+              >
+                {{ relation.relatedObject }}
+              </RouterLink>
+              <span v-else>{{ relation.relatedObject }}</span>
             </TableCell>
             <TableCell class="text-muted-foreground">{{ relation.relatedColumn }}</TableCell>
             <TableCell>
@@ -126,7 +133,7 @@
 import { Share2 } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { RouterLink } from "vue-router";
+import { type RouteLocationRaw, RouterLink } from "vue-router";
 import { getLineage } from "@/api/lineage";
 import AppLoading from "@/components/common/AppLoading.vue";
 import LineageTransformationCell from "@/components/metadata/LineageTransformationCell.vue";
@@ -142,6 +149,7 @@ import {
 } from "@/components/ui/table";
 import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
+  type ExternalDatasetInfo,
   type LineageRelation,
   RelationType,
 } from "@/types/proto-es/v1/lineage_service_pb";
@@ -154,6 +162,7 @@ type DisplayRelation = {
   key: string;
   relatedColumn: string;
   relatedGuid: string;
+  relatedRoute: RouteLocationRaw | null;
   relatedObject: string;
   relationTypeLabel: string;
   relationTypeVariant: "secondary" | "success";
@@ -190,7 +199,16 @@ const isLoading = ref(false);
 const error = ref<string | null>(null);
 const upstreamRelations = ref<LineageRelation[]>([]);
 const downstreamRelations = ref<LineageRelation[]>([]);
+const externalDatasets = ref<ExternalDatasetInfo[]>([]);
 const search = ref("");
+
+const externalDatasetMap = computed(() => {
+  return new Map(
+    externalDatasets.value
+      .filter((dataset) => dataset.guid)
+      .map((dataset) => [dataset.guid, dataset])
+  );
+});
 
 const displayRelations = computed<DisplayRelation[]>(() => {
   const sourceRows = upstreamRelations.value.map((relation) =>
@@ -201,6 +219,7 @@ const displayRelations = computed<DisplayRelation[]>(() => {
       currentColumn: relation.targetColumn,
       relatedGuid: relation.sourceGuid,
       relatedColumn: relation.sourceColumn,
+      relatedMetaType: relation.sourceType,
     })
   );
   const targetRows = downstreamRelations.value.map((relation) =>
@@ -211,6 +230,7 @@ const displayRelations = computed<DisplayRelation[]>(() => {
       currentColumn: relation.sourceColumn,
       relatedGuid: relation.targetGuid,
       relatedColumn: relation.targetColumn,
+      relatedMetaType: relation.targetType,
     })
   );
 
@@ -255,6 +275,7 @@ watch(
     if (!guid) {
       upstreamRelations.value = [];
       downstreamRelations.value = [];
+      externalDatasets.value = [];
       error.value = null;
       return;
     }
@@ -269,9 +290,11 @@ watch(
       });
       upstreamRelations.value = response.relationsSource;
       downstreamRelations.value = response.relationsTarget;
+      externalDatasets.value = response.externalDatasets;
     } catch (e) {
       upstreamRelations.value = [];
       downstreamRelations.value = [];
+      externalDatasets.value = [];
       const message = extractErrorMessage(e);
       error.value = message || t("metadataBrowser.lineageFetchError");
     } finally {
@@ -288,6 +311,7 @@ function buildDisplayRelation(options: {
   currentColumn: string;
   relatedGuid: string;
   relatedColumn: string;
+  relatedMetaType: MetaType;
 }): DisplayRelation {
   const relationTypeLabel =
     options.relation.relationType === RelationType.DIRECT
@@ -296,7 +320,11 @@ function buildDisplayRelation(options: {
         ? t("metadataBrowser.relationIndirect")
         : String(options.relation.relationType);
 
-  const relatedObject = formatGuidForDisplay(options.relatedGuid);
+  const externalDataset = externalDatasetMap.value.get(options.relatedGuid);
+  const relatedObject = formatGuidForDisplay(
+    options.relatedGuid,
+    externalDataset
+  );
 
   return {
     currentColumn: options.currentColumn || "-",
@@ -307,6 +335,11 @@ function buildDisplayRelation(options: {
       : buildRelationKey(options.relation, options.directionLabel),
     relatedColumn: options.relatedColumn || "-",
     relatedGuid: options.relatedGuid,
+    relatedRoute: buildMetadataRoute(
+      options.relatedGuid,
+      options.relatedMetaType,
+      externalDataset
+    ),
     relatedObject,
     relationTypeLabel,
     relationTypeVariant:
@@ -342,8 +375,54 @@ function buildRelationKey(
   ].join(":");
 }
 
-function formatGuidForDisplay(guid: string): string {
+function buildMetadataRoute(
+  guid: string,
+  metaType: MetaType,
+  externalDataset?: ExternalDatasetInfo
+): RouteLocationRaw | null {
+  if (!guid) return null;
+
+  const query: Record<string, string> = {};
+  if (externalDataset) {
+    if (externalDataset.namespace) {
+      query.externalNamespace = externalDataset.namespace;
+    }
+    if (externalDataset.name) {
+      query.externalName = externalDataset.name;
+    }
+    if (externalDataset.datasetType) {
+      query.externalDatasetType = externalDataset.datasetType;
+    }
+  } else if (metaType) {
+    query.metaType = String(metaType);
+  }
+
+  return {
+    name: "MetadataDetail",
+    params: { guid: toGuidPath(guid) },
+    query,
+  };
+}
+
+function toGuidPath(guid: string): string {
+  return guid
+    .split(";")
+    .map((segment) => (segment === "" ? "~" : encodeURIComponent(segment)))
+    .join("/");
+}
+
+function formatGuidForDisplay(
+  guid: string,
+  externalDataset?: ExternalDatasetInfo
+): string {
   if (!guid) return "-";
+
+  if (externalDataset) {
+    if (externalDataset.namespace && externalDataset.name) {
+      return `${externalDataset.namespace} / ${externalDataset.name}`;
+    }
+    return externalDataset.name || externalDataset.namespace || guid;
+  }
 
   const segments = guid.split(";").filter(Boolean);
   if (segments.length === 0) return guid;

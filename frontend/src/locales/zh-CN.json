@@ -86,6 +86,7 @@
 
     "tables": "表",
     "tableName": "表名",
+    "externalTables": "外部表",
     "tableDetail": "表详情",
     "tableInfo": "表信息",
     "rowCount": "行数",
@@ -188,6 +189,10 @@
     "sequenceDetail": "序列详情",
     "sequenceInfo": "序列信息",
     "noSequences": "暂无序列",
+    "externalDatasetDetail": "外部数据集详情",
+    "externalDatasetInfo": "外部数据集信息",
+    "namespace": "命名空间",
+    "datasetType": "数据集类型",
     "dataType": "数据类型",
     "start": "起始值",
     "minValue": "最小值",

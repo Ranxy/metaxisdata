@@ -408,6 +408,20 @@
           </CardContent>
         </template>
 
+        <template v-else-if="isExternalDatasetDetailView && externalDatasetDetail">
+          <CardHeader class="border-b">
+            <CardTitle>{{ t("metadataBrowser.externalDatasetDetail") }}</CardTitle>
+          </CardHeader>
+          <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
+            <ExternalDatasetMetadataDetail
+              :guid="currentGuid"
+              :name="externalDatasetDetail.name"
+              :namespace="externalDatasetDetail.namespace"
+              :dataset-type="externalDatasetDetail.datasetType"
+            />
+          </CardContent>
+        </template>
+
         <template v-else>
           <CardHeader class="border-b">
             <MetadataTabNav
@@ -465,6 +479,7 @@ import { useRoute, useRouter } from "vue-router";
 import { getMetadata, listMetadata, searchMetadata } from "@/api/database";
 import { getInstance, listInstances } from "@/api/instance";
 import AppLoading from "@/components/common/AppLoading.vue";
+import ExternalDatasetMetadataDetail from "@/components/metadata/ExternalDatasetMetadataDetail.vue";
 import FunctionMetadataDetail from "@/components/metadata/FunctionMetadataDetail.vue";
 import InstanceList from "@/components/metadata/InstanceList.vue";
 import MaterializedViewMetadataDetail from "@/components/metadata/MaterializedViewMetadataDetail.vue";
@@ -649,6 +664,12 @@ const leafFunction = ref<FunctionMetadata | null>(null);
 const leafProcedure = ref<ProcedureMetadata | null>(null);
 const leafSequence = ref<SequenceMetadata | null>(null);
 
+type ExternalDatasetDetail = {
+  name: string;
+  namespace: string;
+  datasetType: string;
+};
+
 const requestedLeafMetaType = computed(() => {
   const q = route.query.metaType;
   if (!q) return null;
@@ -698,6 +719,22 @@ const isSequenceDetailView = computed(() => {
   );
 });
 
+const externalDatasetDetail = computed<ExternalDatasetDetail | null>(() => {
+  if (!currentGuid.value.startsWith("external:")) {
+    return null;
+  }
+
+  return {
+    name: getQueryString("externalName"),
+    namespace: getQueryString("externalNamespace"),
+    datasetType: getQueryString("externalDatasetType"),
+  };
+});
+
+const isExternalDatasetDetailView = computed(() => {
+  return externalDatasetDetail.value != null;
+});
+
 const currentGuid = computed(() => {
   const guidParam = route.params.guid;
   if (!guidParam) return "";
@@ -725,6 +762,18 @@ const instanceIdFromGuid = computed(() => {
 });
 
 const breadcrumbItems = computed(() => {
+  if (isExternalDatasetDetailView.value) {
+    return [
+      {
+        label:
+          externalDatasetDetail.value?.name ||
+          externalDatasetDetail.value?.namespace ||
+          currentGuid.value,
+        guidIndex: 0,
+      },
+    ];
+  }
+
   // Hide MySQL empty schema segment from breadcrumb display, but keep
   // navigation working by preserving original guid indices.
   const segments = guidSegments.value;
@@ -774,6 +823,12 @@ function getEffectiveParentGuidForListing(): string {
     return `${base};`;
   }
   return base;
+}
+
+function getQueryString(key: string): string {
+  const value = route.query[key];
+  if (!value) return "";
+  return Array.isArray(value) ? value[0] || "" : value;
 }
 
 async function fetchInstances() {
@@ -1354,7 +1409,13 @@ async function handleSelectTab(metaType: MetaType) {
 }
 
 watch(
-  () => [route.params.guid, route.query.metaType],
+  () => [
+    route.params.guid,
+    route.query.metaType,
+    route.query.externalNamespace,
+    route.query.externalName,
+    route.query.externalDatasetType,
+  ],
   async () => {
     activeMetaType.value = null;
     selectedMetaType.value = null;
@@ -1369,6 +1430,10 @@ watch(
 
     if (isRootPath.value) {
       await fetchInstances();
+    } else if (isExternalDatasetDetailView.value) {
+      error.value = null;
+      isLoading.value = false;
+      metadataGroups.value = [];
     } else {
       if (requestedLeafMetaType.value === MetaType.TABLE) {
         await fetchTableDetail();
@@ -1396,6 +1461,7 @@ function getMetaTypeLabel(type: MetaType): string {
     [MetaType.DATABASE]: t("metadataBrowser.databases"),
     [MetaType.SCHEMA]: t("metadataBrowser.schemas"),
     [MetaType.TABLE]: t("metadataBrowser.tables"),
+    [MetaType.EXTERNAL_TABLE]: t("metadataBrowser.externalTables"),
     [MetaType.VIEW]: t("metadataBrowser.views"),
     [MetaType.MATERIALIZED_VIEW]: t("metadataBrowser.materializedViews"),
     [MetaType.FUNCTION]: t("metadataBrowser.functions"),
