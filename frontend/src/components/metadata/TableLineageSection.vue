@@ -95,11 +95,10 @@
               </Badge>
             </TableCell>
             <TableCell class="max-w-xl text-muted-foreground">
-              <ExpandableText
+              <LineageTransformationCell
                 :text="relation.transformation"
                 :item-name="relation.currentColumn"
-                :dialog-title="t('metadataBrowser.expression')"
-                text-class="block max-w-xl truncate"
+                :dialog-title="t('metadataBrowser.transformationDetails')"
               />
             </TableCell>
           </TableRow>
@@ -130,7 +129,7 @@ import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
 import { getLineage } from "@/api/lineage";
 import AppLoading from "@/components/common/AppLoading.vue";
-import ExpandableText from "@/components/metadata/ExpandableText.vue";
+import LineageTransformationCell from "@/components/metadata/LineageTransformationCell.vue";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
