@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 
 	"github.com/pkg/errors"
 
@@ -59,9 +60,23 @@ func (p *Processor) ProcessRunEvent(ctx context.Context, event *RunEvent, persis
 			}
 			lineages = append(lineages, outputLineages...)
 		} else if hasInputs {
+			outputLineages, inferred, err := p.processSchemaInferredLineage(ctx, event.Inputs, &output, meta)
+			if err != nil {
+				slog.Error("failed to process schema-inferred lineage",
+					"namespace", output.Namespace,
+					"name", output.Name,
+					"error", err,
+				)
+				return errors.Wrapf(err, "failed to process schema-inferred lineage for %s/%s", output.Namespace, output.Name)
+			}
+			if inferred {
+				lineages = append(lineages, outputLineages...)
+				continue
+			}
+
 			// Table-level lineage: Airflow and other integrations may emit events
 			// with input/output datasets but without column-level detail.
-			outputLineages, err := p.processTableLevelLineage(ctx, event.Inputs, &output, meta)
+			outputLineages, err = p.processTableLevelLineage(ctx, event.Inputs, &output, meta)
 			if err != nil {
 				slog.Error("failed to process table-level lineage",
 					"namespace", output.Namespace,
@@ -134,6 +149,81 @@ func (p *Processor) processOutputDataset(ctx context.Context, output *Dataset, m
 	}
 
 	return lineages, nil
+}
+
+func (p *Processor) processSchemaInferredLineage(ctx context.Context, inputs []Dataset, output *Dataset, meta lineageMeta) ([]*store.ColumnLineage, bool, error) {
+	columnPairs, input, inferred := inferSchemaColumnPairs(inputs, output)
+	if !inferred {
+		return nil, false, nil
+	}
+
+	targetResolved, err := p.resolver.ResolveDataset(ctx, output.Namespace, output.Name)
+	if err != nil {
+		return nil, false, errors.Wrap(err, "failed to resolve output dataset")
+	}
+	sourceResolved, err := p.resolver.ResolveDataset(ctx, input.Namespace, input.Name)
+	if err != nil {
+		return nil, false, errors.Wrap(err, "failed to resolve input dataset")
+	}
+
+	lineages := make([]*store.ColumnLineage, 0, len(columnPairs))
+	for _, name := range columnPairs {
+		lineages = append(lineages, buildColumnLineage(
+			meta,
+			sourceResolved,
+			targetResolved,
+			name,
+			name,
+			model.RelationTypeDirect,
+			[]model.Transformation{},
+		))
+	}
+
+	if len(lineages) == 0 {
+		return nil, false, nil
+	}
+
+	return lineages, true, nil
+}
+
+func inferSchemaColumnPairs(inputs []Dataset, output *Dataset) ([]string, Dataset, bool) {
+	if len(inputs) != 1 {
+		return nil, Dataset{}, false
+	}
+	if output.Facets.Schema == nil || len(output.Facets.Schema.Fields) == 0 {
+		return nil, Dataset{}, false
+	}
+
+	input := inputs[0]
+	if input.Facets.Schema == nil || len(input.Facets.Schema.Fields) == 0 {
+		return nil, Dataset{}, false
+	}
+
+	targetColumns := make(map[string]struct{}, len(output.Facets.Schema.Fields))
+	for _, field := range output.Facets.Schema.Fields {
+		name := strings.TrimSpace(field.Name)
+		if name == "" {
+			continue
+		}
+		targetColumns[name] = struct{}{}
+	}
+
+	columnPairs := make([]string, 0, len(input.Facets.Schema.Fields))
+	for _, field := range input.Facets.Schema.Fields {
+		name := strings.TrimSpace(field.Name)
+		if name == "" {
+			continue
+		}
+		if _, ok := targetColumns[name]; !ok {
+			continue
+		}
+		columnPairs = append(columnPairs, name)
+	}
+	if len(columnPairs) == 0 {
+		return nil, Dataset{}, false
+	}
+
+	return columnPairs, input, true
 }
 
 // processTableLevelLineage handles the case where Airflow and similar integrations

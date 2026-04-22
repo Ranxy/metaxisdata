@@ -341,6 +341,30 @@ func TestDatasetLevelLineageDetection(t *testing.T) {
 	assert.True(t, hasDatasetLineage, "should have dataset-level lineage")
 }
 
+func TestSchemaInferredLineageDetection(t *testing.T) {
+	data := loadTestdata(t, "complete_schema_only.json")
+	event, err := ParseRunEvent(data)
+	require.NoError(t, err)
+
+	require.Len(t, event.Inputs, 1)
+	require.Len(t, event.Outputs, 1)
+	assert.Nil(t, event.Outputs[0].Facets.ColumnLineage)
+	require.NotNil(t, event.Inputs[0].Facets.Schema)
+	require.NotNil(t, event.Outputs[0].Facets.Schema)
+
+	columnPairs, input, inferred := inferSchemaColumnPairs(event.Inputs, &event.Outputs[0])
+	assert.True(t, inferred)
+	require.Len(t, columnPairs, 4)
+	assert.Equal(t, event.Inputs[0].Name, input.Name)
+	assert.Equal(t, []string{"id", "tax_dt", "tax_item_id", "amount"}, columnPairs)
+}
+
+func TestSchemaInferredLineageRequiresResolverAndSingleInput(t *testing.T) {
+	lineages, _, inferred := inferSchemaColumnPairs([]Dataset{}, &Dataset{})
+	assert.False(t, inferred)
+	assert.Empty(t, lineages)
+}
+
 func TestBuildLineageMetaUsesPersistedOpenLineageRun(t *testing.T) {
 	persistedRun := &store.OpenLineageRunMessage{
 		GUID:  "openlineage:run:default:etl_dag.transform_orders:a1b2c3d4-e5f6-7890-abcd-ef1234567890",
