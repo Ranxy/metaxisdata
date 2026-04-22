@@ -27,11 +27,6 @@
       </div>
     </div>
 
-    <div class="space-y-2">
-      <div class="text-sm font-medium">{{ t("metadataBrowser.definition") }}</div>
-      <DefinitionMonacoViewer :content="view.definition" />
-    </div>
-
     <TableLineageSection
       v-if="guid"
       :guid="guid"
@@ -105,7 +100,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";

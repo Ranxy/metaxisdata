@@ -2,7 +2,7 @@
   <div
     v-if="normalizedContent"
     class="rounded border overflow-hidden"
-    :style="{ height: `${editorHeight}px` }"
+    :style="viewerStyle"
   >
     <MonacoEditor
       :content="displayContent"
@@ -15,7 +15,7 @@
 
   <pre
     v-else
-    class="text-xs bg-muted rounded p-3 overflow-auto whitespace-pre-wrap break-words"
+    class="text-xs bg-muted rounded p-3 overflow-auto whitespace-pre-wrap wrap-break-word"
   >{{ emptyText }}</pre>
 </template>
 
@@ -38,6 +38,7 @@ interface Props {
   emptyText?: string;
   minHeight?: number;
   maxHeight?: number;
+  fillHeight?: boolean;
   options?: IStandaloneEditorConstructionOptions;
 }
 
@@ -47,6 +48,7 @@ const props = withDefaults(defineProps<Props>(), {
   emptyText: "-",
   minHeight: 120,
   maxHeight: 520,
+  fillHeight: false,
   options: undefined,
 });
 
@@ -60,6 +62,14 @@ const normalizedContent = computed(() => {
 });
 
 const displayContent = ref("");
+
+const viewerStyle = computed(() => {
+  if (props.fillHeight) {
+    return { height: "100%" };
+  }
+
+  return { height: `${editorHeight.value}px` };
+});
 
 let formatRequestId = 0;
 watch(
@@ -134,12 +144,16 @@ function handleEditorReady(
   _monaco: MonacoModule,
   editor: IStandaloneCodeEditor
 ) {
-  updateEditorHeight(editor);
+  if (!props.fillHeight) {
+    updateEditorHeight(editor);
+  }
 
   contentSizeDispose?.dispose();
-  contentSizeDispose = editor.onDidContentSizeChange(() => {
-    updateEditorHeight(editor);
-  });
+  if (!props.fillHeight) {
+    contentSizeDispose = editor.onDidContentSizeChange(() => {
+      updateEditorHeight(editor);
+    });
+  }
 }
 
 onBeforeUnmount(() => {

@@ -11,32 +11,30 @@
         </Button>
       </slot>
     </DialogTrigger>
-    <DialogContent class="max-w-4xl h-[80vh] flex flex-col">
+    <DialogContent class="max-w-4xl h-[80vh] flex flex-col overflow-hidden">
       <DialogHeader>
         <DialogTitle>{{ objectName }}</DialogTitle>
         <DialogDescription>
           {{ t("metadataBrowser.schemaDefinition") }}
         </DialogDescription>
       </DialogHeader>
-      <div class="flex-1 min-h-0 rounded border overflow-hidden">
+      <div class="flex-1 min-h-0 overflow-hidden">
         <div
           v-if="isLoading"
-          class="flex items-center justify-center h-full"
+          class="flex items-center justify-center h-full rounded border"
         >
           <AppLoading />
         </div>
         <div
           v-else-if="error"
-          class="p-4 text-destructive"
+          class="rounded border p-4 text-destructive"
         >
           {{ error }}
         </div>
-        <MonacoEditor
+        <DefinitionMonacoViewer
           v-else
           :content="schemaContent"
-          language="sql"
-          readonly
-          :options="editorOptions"
+          fill-height
         />
       </div>
     </DialogContent>
@@ -49,8 +47,7 @@ import { ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { getSchemaString } from "@/api/database";
 import AppLoading from "@/components/common/AppLoading.vue";
-import MonacoEditor from "@/components/monaco-editor/MonacoEditor.vue";
-import type { IStandaloneEditorConstructionOptions } from "@/components/monaco-editor/types";
+import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -77,17 +74,6 @@ const isOpen = ref(false);
 const isLoading = ref(false);
 const error = ref<string | null>(null);
 const schemaContent = ref("");
-
-const editorOptions: IStandaloneEditorConstructionOptions = {
-  automaticLayout: true,
-  fontSize: 13,
-  lineHeight: 20,
-  minimap: { enabled: false },
-  scrollBeyondLastLine: false,
-  wordWrap: "on",
-  lineNumbersMinChars: 4,
-  lineDecorationsWidth: 10,
-};
 
 async function fetchSchema() {
   isLoading.value = true;
