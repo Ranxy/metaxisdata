@@ -101,7 +101,7 @@ import AppLoading from "@/components/common/AppLoading.vue";
 import type { LineageNodeData } from "@/components/lineage/LineageNode.vue";
 import LineageNode from "@/components/lineage/LineageNode.vue";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type {
   ExternalDatasetInfo,
