@@ -474,6 +474,8 @@
     "producer": "生产者",
     "sourceLabel": "来源",
     "rawPayload": "原始负载",
+    "openInAirflow": "在 Airflow 中打开",
+    "openRunLogInAirflow": "在 Airflow 中打开运行日志",
     "actions": "操作"
   },
   "lineageGraph": {

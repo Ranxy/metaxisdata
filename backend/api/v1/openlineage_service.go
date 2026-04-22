@@ -10,6 +10,7 @@ import (
 
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
+	openlineageplugin "github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -257,6 +258,7 @@ func convertAPIKey(k *store.OpenLineageAPIKeyMessage) *v1pb.APIKeyResource {
 }
 
 func convertOpenLineageRun(run *store.OpenLineageRunMessage, includePayload bool) *v1pb.OpenLineageRunResource {
+	airflowLinks := openlineageplugin.DeriveAirflowLinks(run.RawPayload)
 	res := &v1pb.OpenLineageRunResource{
 		Id:                 run.ID,
 		Guid:               run.GUID,
@@ -279,6 +281,8 @@ func convertOpenLineageRun(run *store.OpenLineageRunMessage, includePayload bool
 		InputCount:         run.InputCount,
 		OutputCount:        run.OutputCount,
 		HasLineage:         run.HasLineage,
+		AirflowDagUrl:      airflowLinks.DagURL,
+		AirflowRunLogUrl:   airflowLinks.RunLogURL,
 		CreatedAt:          timestamppb.New(run.CreatedAt),
 		UpdatedAt:          timestamppb.New(run.UpdatedAt),
 	}
@@ -292,6 +296,7 @@ func convertOpenLineageRun(run *store.OpenLineageRunMessage, includePayload bool
 }
 
 func convertOpenLineageTask(task *store.OpenLineageTaskMessage) *v1pb.OpenLineageTaskResource {
+	airflowLinks := openlineageplugin.DeriveAirflowLinks(task.LatestRawPayload)
 	res := &v1pb.OpenLineageTaskResource{
 		Id:                 task.ID,
 		Guid:               task.GUID,
@@ -308,6 +313,7 @@ func convertOpenLineageTask(task *store.OpenLineageTaskMessage) *v1pb.OpenLineag
 		LatestRunId:        task.LatestRunID,
 		LatestProducer:     task.LatestProducer,
 		LatestSource:       task.LatestSource,
+		AirflowDagUrl:      airflowLinks.DagURL,
 		RunCount:           task.RunCount,
 		LineageRunCount:    task.LineageRunCount,
 		CreatedAt:          timestamppb.New(task.CreatedAt),

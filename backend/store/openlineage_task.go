@@ -28,6 +28,7 @@ type OpenLineageTaskMessage struct {
 	RootJobName        string
 	LatestRunGUID      string
 	LatestRunID        string
+	LatestRawPayload   []byte
 	LatestEventTime    *time.Time
 	LatestProducer     string
 	LatestSource       string
@@ -200,46 +201,48 @@ func (s *Store) GetOpenLineageTask(ctx context.Context, find *FindOpenLineageTas
 func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTaskMessage) ([]*OpenLineageTaskMessage, error) {
 	where, args := []string{"TRUE"}, []any{}
 	if v := find.GUID; v != nil {
-		where, args = append(where, fmt.Sprintf("guid = $%d", len(args)+1)), append(args, *v)
+		where, args = append(where, fmt.Sprintf("task.guid = $%d", len(args)+1)), append(args, *v)
 	}
 	if v := find.JobNamespace; v != nil {
-		where, args = append(where, fmt.Sprintf("job_namespace = $%d", len(args)+1)), append(args, *v)
+		where, args = append(where, fmt.Sprintf("task.job_namespace = $%d", len(args)+1)), append(args, *v)
 	}
 	if v := find.JobName; v != nil {
-		where, args = append(where, fmt.Sprintf("job_name = $%d", len(args)+1)), append(args, *v)
+		where, args = append(where, fmt.Sprintf("task.job_name = $%d", len(args)+1)), append(args, *v)
 	}
 	if v := find.JobType; v != nil {
-		where, args = append(where, fmt.Sprintf("job_type = $%d", len(args)+1)), append(args, *v)
+		where, args = append(where, fmt.Sprintf("task.job_type = $%d", len(args)+1)), append(args, *v)
 	}
 	if v := find.LineageOnly; v != nil && *v {
-		where = append(where, "lineage_run_count > 0")
+		where = append(where, "task.lineage_run_count > 0")
 	}
 
 	query := `
 		SELECT
-			id,
-			guid,
-			job_namespace,
-			job_name,
-			job_type,
-			integration,
-			processing_type,
-			parent_job_namespace,
-			parent_job_name,
-			root_job_namespace,
-			root_job_name,
-			latest_run_guid,
-			latest_run_id,
-			latest_event_time,
-			latest_producer,
-			latest_source,
-			run_count,
-			lineage_run_count,
-			created_at,
-			updated_at
-		FROM openlineage_task
+			task.id,
+			task.guid,
+			task.job_namespace,
+			task.job_name,
+			task.job_type,
+			task.integration,
+			task.processing_type,
+			task.parent_job_namespace,
+			task.parent_job_name,
+			task.root_job_namespace,
+			task.root_job_name,
+			task.latest_run_guid,
+			task.latest_run_id,
+			latest_run.raw_payload,
+			task.latest_event_time,
+			task.latest_producer,
+			task.latest_source,
+			task.run_count,
+			task.lineage_run_count,
+			task.created_at,
+			task.updated_at
+		FROM openlineage_task task
+		LEFT JOIN openlineage_run AS latest_run ON latest_run.guid = task.latest_run_guid
 		WHERE ` + strings.Join(where, " AND ") + `
-		ORDER BY latest_event_time DESC NULLS LAST, id DESC`
+		ORDER BY task.latest_event_time DESC NULLS LAST, task.id DESC`
 
 	if v := find.Limit; v != nil {
 		query += fmt.Sprintf(" LIMIT %d", *v)
@@ -258,6 +261,7 @@ func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTa
 	for rows.Next() {
 		var msg OpenLineageTaskMessage
 		var latestEventTime sql.NullTime
+		var latestRawPayload []byte
 		if err := rows.Scan(
 			&msg.ID,
 			&msg.GUID,
@@ -272,6 +276,7 @@ func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTa
 			&msg.RootJobName,
 			&msg.LatestRunGUID,
 			&msg.LatestRunID,
+			&latestRawPayload,
 			&latestEventTime,
 			&msg.LatestProducer,
 			&msg.LatestSource,
@@ -286,6 +291,7 @@ func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTa
 			t := latestEventTime.Time
 			msg.LatestEventTime = &t
 		}
+		msg.LatestRawPayload = latestRawPayload
 		result = append(result, &msg)
 	}
 	if err := rows.Err(); err != nil {

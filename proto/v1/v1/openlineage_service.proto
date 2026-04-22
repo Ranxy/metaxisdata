@@ -99,6 +99,8 @@ message OpenLineageRunResource {
   google.protobuf.Timestamp created_at = 23;
   google.protobuf.Timestamp updated_at = 24;
   string raw_payload = 25;
+  string airflow_dag_url = 26;
+  string airflow_run_log_url = 27;
 }
 
 message OpenLineageTaskResource {
@@ -122,6 +124,7 @@ message OpenLineageTaskResource {
   int32 lineage_run_count = 18;
   google.protobuf.Timestamp created_at = 19;
   google.protobuf.Timestamp updated_at = 20;
+  string airflow_dag_url = 21;
 }
 
 message ListOpenLineageTasksRequest {

@@ -180,6 +180,16 @@ export declare type OpenLineageRunResource = Message<"metaxisdata.v1.OpenLineage
    * @generated from field: string raw_payload = 25;
    */
   rawPayload: string;
+
+  /**
+   * @generated from field: string airflow_dag_url = 26;
+   */
+  airflowDagUrl: string;
+
+  /**
+   * @generated from field: string airflow_run_log_url = 27;
+   */
+  airflowRunLogUrl: string;
 };
 
 /**
@@ -291,6 +301,11 @@ export declare type OpenLineageTaskResource = Message<"metaxisdata.v1.OpenLineag
    * @generated from field: google.protobuf.Timestamp updated_at = 20;
    */
   updatedAt?: Timestamp;
+
+  /**
+   * @generated from field: string airflow_dag_url = 21;
+   */
+  airflowDagUrl: string;
 };
 
 /**

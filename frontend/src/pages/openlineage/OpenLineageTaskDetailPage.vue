@@ -9,9 +9,16 @@
           {{ task?.guid || currentGuid }}
         </p>
       </div>
-      <Button variant="outline" @click="router.push({ name: 'OpenLineageTasks' })">
-        {{ t("openlineageSettings.backToTasks") }}
-      </Button>
+      <div class="flex items-center gap-2">
+        <Button v-if="task?.airflowDagUrl" variant="secondary" asChild>
+          <a :href="task.airflowDagUrl" target="_blank" rel="noreferrer noopener">
+            {{ t("openlineageSettings.openInAirflow") }}
+          </a>
+        </Button>
+        <Button variant="outline" @click="router.push({ name: 'OpenLineageTasks' })">
+          {{ t("openlineageSettings.backToTasks") }}
+        </Button>
+      </div>
     </div>
 
     <div v-if="isLoading" class="p-8 flex justify-center">

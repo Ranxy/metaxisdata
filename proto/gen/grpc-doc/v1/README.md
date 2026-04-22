@@ -3021,6 +3021,8 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | raw_payload | [string](#string) |  |  |
+| airflow_dag_url | [string](#string) |  |  |
+| airflow_run_log_url | [string](#string) |  |  |
 
 
 
@@ -3055,6 +3057,7 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | lineage_run_count | [int32](#int32) |  |  |
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| airflow_dag_url | [string](#string) |  |  |
 
 
 

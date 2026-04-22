@@ -3057,6 +3057,10 @@ components:
                     format: date-time
                 rawPayload:
                     type: string
+                airflowDagUrl:
+                    type: string
+                airflowRunLogUrl:
+                    type: string
         OpenLineageTaskResource:
             type: object
             properties:
@@ -3105,6 +3109,8 @@ components:
                 updatedAt:
                     type: string
                     format: date-time
+                airflowDagUrl:
+                    type: string
         PackageMetadata:
             type: object
             properties:

@@ -474,6 +474,8 @@
     "producer": "Producer",
     "sourceLabel": "Source",
     "rawPayload": "Raw Payload",
+    "openInAirflow": "Open in Airflow",
+    "openRunLogInAirflow": "Open Run Log in Airflow",
     "actions": "Actions"
   },
   "lineageGraph": {
