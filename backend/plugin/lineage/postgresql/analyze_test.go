@@ -1057,3 +1057,17 @@ func TestDistinctLineage_Table(t *testing.T) {
 
 	RunLineageTests(t, testCases)
 }
+func TestSelectLineage_MaterializedView(t *testing.T) {
+	testCases := []LineageTestCase{
+		{
+			Name: "simple select with qualified columns",
+			SQL:  "CREATE MATERIALIZED VIEW muser AS SELECT users.id, users.name FROM users",
+			ExpectedEdges: []ExpectedEdge{
+				{FromTable: "users", FromField: "id", ToTable: "muser", ToField: "id", IsTemp: Bool(false)},
+				{FromTable: "users", FromField: "name", ToTable: "muser", ToField: "name", IsTemp: Bool(false)},
+			},
+		},
+	}
+
+	RunLineageTests(t, testCases)
+}

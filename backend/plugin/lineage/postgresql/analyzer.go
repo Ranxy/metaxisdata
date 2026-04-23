@@ -182,6 +182,14 @@ func (a *Analyzer) processStmt(ctx *pg.StmtContext) {
 		return
 	}
 
+	if ctx.Creatematviewstmt() != nil {
+		matViewCtx, ok := ctx.Creatematviewstmt().(*pg.CreatematviewstmtContext)
+		if ok {
+			a.processCreateMatViewStmt(matViewCtx)
+		}
+		return
+	}
+
 	if ctx.Createasstmt() != nil {
 		createAsCtx, ok := ctx.Createasstmt().(*pg.CreateasstmtContext)
 		if ok {
@@ -1162,6 +1170,58 @@ func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName
 		)
 
 		a.addRelation(resultRelation)
+	}
+}
+
+func (a *Analyzer) processCreateMatViewStmt(ctx *pg.CreatematviewstmtContext) {
+	targetTable := ""
+	targetSchema := ""
+	var explicitColumnNames []string
+
+	if ctx.Create_mv_target() != nil {
+		if createMVTarget, ok := ctx.Create_mv_target().(*pg.Create_mv_targetContext); ok {
+			if createMVTarget.Qualified_name() != nil {
+				targetTable, targetSchema = a.extractQualifiedName(createMVTarget.Qualified_name())
+			}
+			if createMVTarget.Opt_column_list() != nil {
+				explicitColumnNames = a.extractOptColumnList(createMVTarget.Opt_column_list())
+			}
+		}
+	}
+
+	if ctx.Selectstmt() != nil {
+		a.processSelectStmt(ctx.Selectstmt())
+	}
+
+	scope := a.currentScope()
+	outputColumns := scope.GetOutputColumns()
+
+	for i, outputCol := range outputColumns {
+		targetColName := outputCol.Alias
+		if i < len(explicitColumnNames) {
+			targetColName = explicitColumnNames[i]
+		}
+
+		for _, sourceCol := range outputCol.SourceColumns {
+			resolved, err := scope.ResolveColumn(sourceCol)
+			if err != nil {
+				continue
+			}
+
+			if tableRef, ok := scope.FindTable(resolved.Table); ok && (tableRef.IsCTE || tableRef.IsSubquery) {
+				a.traceThroughTableLineageToTarget(tableRef, resolved.Column, targetSchema, targetTable, targetColName, outputCol.Transform)
+				continue
+			}
+
+			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetTable)
+			relation := NewLineageEdge(
+				resolved.Schema, resolved.Table, resolved.Column,
+				targetSchema, targetTable, targetColName,
+				outputCol.Transform,
+				isTemp,
+			)
+			a.addRelation(relation)
+		}
 	}
 }
 
