@@ -499,7 +499,8 @@
     "openlineageSourcesDescription": "Open the persisted OpenLineage run that produced lineage in the current graph.",
     "openlineageSourcesFiltered": "Showing the persisted OpenLineage runs related to the currently selected field.",
     "viewGraph": "Graph View",
-    "expandNode": "Expand lineage",
+    "expandUpstream": "Expand upstream",
+    "expandDownstream": "Expand downstream",
     "reset": "Reset",
     "showFields": "Show fields",
     "hideFields": "Hide fields"

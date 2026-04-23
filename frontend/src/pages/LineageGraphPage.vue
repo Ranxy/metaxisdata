@@ -107,6 +107,7 @@ import type {
   ExternalDatasetInfo,
   LineageRelation,
 } from "@/types/proto-es/v1/lineage_service_pb";
+import { LineageType } from "@/types/proto-es/v1/lineage_service_pb";
 import { extractErrorMessage } from "@/utils/error";
 
 const EXTERNAL_PREFIX = "external:";
@@ -123,14 +124,21 @@ const { fitView, getNodes } = useVueFlow();
 const HORIZONTAL_GAP = 280;
 const OPENLINEAGE_META_TYPE = 100;
 
+type LineageDirection = "upstream" | "downstream";
+
+interface NodeLineageData {
+  upstream: LineageRelation[];
+  downstream: LineageRelation[];
+  upstreamLoaded: boolean;
+  downstreamLoaded: boolean;
+}
+
 const nodes = ref<Node[]>([]);
 const edges = ref<Edge[]>([]);
 const initialLoading = ref(true);
 
 const expandedGuids = ref<Set<string>>(new Set());
-const nodeDataMap = ref<
-  Map<string, { upstream: LineageRelation[]; downstream: LineageRelation[] }>
->(new Map());
+const nodeDataMap = ref<Map<string, NodeLineageData>>(new Map());
 
 // Track actual MetaType per guid, derived from lineage relation sourceType/targetType
 const guidMetaTypeMap = ref<Map<string, MetaType>>(new Map());
@@ -140,10 +148,7 @@ const externalDatasetMap = ref<Map<string, ExternalDatasetInfo>>(new Map());
 
 // Snapshot of initial state for reset
 let initialExpandedGuids = new Set<string>();
-let initialNodeDataMap = new Map<
-  string,
-  { upstream: LineageRelation[]; downstream: LineageRelation[] }
->();
+let initialNodeDataMap = new Map<string, NodeLineageData>();
 
 // Field-level column selection state
 const selectedColumnGuid = ref<string | null>(null);
@@ -292,11 +297,44 @@ function toGuidPath(guid: string): string {
     .join("/");
 }
 
+function createEmptyNodeLineageData(): NodeLineageData {
+  return {
+    upstream: [],
+    downstream: [],
+    upstreamLoaded: false,
+    downstreamLoaded: false,
+  };
+}
+
+function getNodeLineageData(guid: string): NodeLineageData {
+  return nodeDataMap.value.get(guid) ?? createEmptyNodeLineageData();
+}
+
+function isDirectionLoaded(
+  data: NodeLineageData,
+  lineageType: LineageType
+): boolean {
+  switch (lineageType) {
+    case LineageType.SOURCE:
+      return data.upstreamLoaded;
+    case LineageType.TARGET:
+      return data.downstreamLoaded;
+    default:
+      return data.upstreamLoaded && data.downstreamLoaded;
+  }
+}
+
+function directionToLineageType(direction: LineageDirection): LineageType {
+  return direction === "upstream" ? LineageType.SOURCE : LineageType.TARGET;
+}
+
 async function fetchLineageForGuid(
-  guid: string
-): Promise<{ upstream: LineageRelation[]; downstream: LineageRelation[] }> {
-  if (nodeDataMap.value.has(guid)) {
-    return nodeDataMap.value.get(guid)!;
+  guid: string,
+  lineageType: LineageType = LineageType.LINEAGE_TYPE_UNSPECIFIED
+): Promise<NodeLineageData> {
+  const existingData = getNodeLineageData(guid);
+  if (isDirectionLoaded(existingData, lineageType)) {
+    return existingData;
   }
 
   const metaType = guidMetaTypeMap.value.get(guid) ?? currentMetaType.value;
@@ -305,10 +343,23 @@ async function fetchLineageForGuid(
     const response = await getLineage({
       guid,
       metaType,
+      lineageType,
     });
-    const data = {
-      upstream: response.relationsSource,
-      downstream: response.relationsTarget,
+    const data: NodeLineageData = {
+      upstream:
+        lineageType === LineageType.TARGET
+          ? existingData.upstream
+          : response.relationsSource,
+      downstream:
+        lineageType === LineageType.SOURCE
+          ? existingData.downstream
+          : response.relationsTarget,
+      upstreamLoaded:
+        lineageType === LineageType.TARGET ? existingData.upstreamLoaded : true,
+      downstreamLoaded:
+        lineageType === LineageType.SOURCE
+          ? existingData.downstreamLoaded
+          : true,
     };
     nodeDataMap.value.set(guid, data);
 
@@ -343,7 +394,17 @@ async function fetchLineageForGuid(
       `Failed to fetch lineage for ${guid}:`,
       extractErrorMessage(e)
     );
-    const empty = { upstream: [], downstream: [] };
+    const empty: NodeLineageData = {
+      upstream: lineageType === LineageType.TARGET ? existingData.upstream : [],
+      downstream:
+        lineageType === LineageType.SOURCE ? existingData.downstream : [],
+      upstreamLoaded:
+        lineageType === LineageType.TARGET ? existingData.upstreamLoaded : true,
+      downstreamLoaded:
+        lineageType === LineageType.SOURCE
+          ? existingData.downstreamLoaded
+          : true,
+    };
     nodeDataMap.value.set(guid, empty);
     return empty;
   }
@@ -465,14 +526,13 @@ function rebuildGraph() {
     let y = 0;
     guids.forEach((guid) => {
       const data = nodeDataMap.value.get(guid);
-      const isExpanded = expandedGuids.value.has(guid);
-
       const nodeData: LineageNodeData = {
         guid,
         label: formatGuidLabel(guid),
         shortPath: formatGuidShort(guid),
         isRoot: guid === currentGuid.value,
-        expanded: isExpanded,
+        upstreamLoaded: data?.upstreamLoaded ?? false,
+        downstreamLoaded: data?.downstreamLoaded ?? false,
         upstreamCount: data?.upstream.length ?? 0,
         downstreamCount: data?.downstream.length ?? 0,
         metaType: guidToMetaType(guid),
@@ -709,14 +769,13 @@ function updateGraphState() {
   nodes.value = nodes.value.map((node) => {
     const guid = node.id;
     const lineageData = nodeDataMap.value.get(guid);
-    const isExpanded = expandedGuids.value.has(guid);
-
     const nodeData: LineageNodeData = {
       guid,
       label: formatGuidLabel(guid),
       shortPath: formatGuidShort(guid),
       isRoot: guid === currentGuid.value,
-      expanded: isExpanded,
+      upstreamLoaded: lineageData?.upstreamLoaded ?? false,
+      downstreamLoaded: lineageData?.downstreamLoaded ?? false,
       upstreamCount: lineageData?.upstream.length ?? 0,
       downstreamCount: lineageData?.downstream.length ?? 0,
       metaType: guidToMetaType(guid),
@@ -792,11 +851,13 @@ function handleSelectColumn(guid: string, column: string) {
   updateGraphState();
 }
 
-async function handleExpandNode(guid: string) {
-  if (expandedGuids.value.has(guid)) return;
+async function handleExpandNode(guid: string, direction: LineageDirection) {
+  const lineageType = directionToLineageType(direction);
+  if (isDirectionLoaded(getNodeLineageData(guid), lineageType)) return;
+
   expandedGuids.value.add(guid);
 
-  await fetchLineageForGuid(guid);
+  await fetchLineageForGuid(guid, lineageType);
   rebuildGraph();
 
   setTimeout(() => fitView({ duration: 300 }), 50);

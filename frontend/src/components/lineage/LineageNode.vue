@@ -42,11 +42,18 @@
 
     <div class="border-t px-3 py-1.5 flex items-center gap-2 flex-wrap">
       <button
-        v-if="!data.expanded"
+        v-if="!data.upstreamLoaded"
         class="text-xs text-primary hover:underline cursor-pointer"
-        @click.stop="$emit('expand', data.guid)"
+        @click.stop="$emit('expand', data.guid, 'upstream')"
       >
-        {{ t("lineageGraph.expandNode") }}
+        {{ t("lineageGraph.expandUpstream") }}
+      </button>
+      <button
+        v-if="!data.downstreamLoaded"
+        class="text-xs text-primary hover:underline cursor-pointer"
+        @click.stop="$emit('expand', data.guid, 'downstream')"
+      >
+        {{ t("lineageGraph.expandDownstream") }}
       </button>
       <button
         v-if="data.columns.length > 0"
@@ -90,7 +97,8 @@ export interface LineageNodeData {
   label: string;
   shortPath: string;
   isRoot: boolean;
-  expanded: boolean;
+  upstreamLoaded: boolean;
+  downstreamLoaded: boolean;
   upstreamCount: number;
   downstreamCount: number;
   metaType: string;
@@ -104,7 +112,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  expand: [guid: string];
+  expand: [guid: string, direction: "upstream" | "downstream"];
   "select-column": [guid: string, column: string];
   "toggle-fields": [guid: string, visible: boolean];
 }>();

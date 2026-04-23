@@ -499,7 +499,8 @@
     "openlineageSourcesDescription": "打开生成当前图中血缘的已持久化 OpenLineage 运行记录。",
     "openlineageSourcesFiltered": "当前仅显示与所选字段相关的已持久化 OpenLineage 运行记录。",
     "viewGraph": "图形视图",
-    "expandNode": "展开血缘",
+    "expandUpstream": "展开上游",
+    "expandDownstream": "展开下游",
     "reset": "重置",
     "showFields": "展示字段",
     "hideFields": "收起字段"
