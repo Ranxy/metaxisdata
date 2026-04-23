@@ -45,8 +45,9 @@ var arithmeticOperators = []string{"+", "-", "*", "/"}
 
 // Analyzer performs direct lineage analysis on PostgreSQL queries.
 type Analyzer struct {
-	ctx context.Context
-	sql string
+	ctx    context.Context
+	sql    string
+	tokens *antlr.CommonTokenStream
 	// Current scope stack
 	scopeStack []*scope.Scope
 	// Collected column relations
@@ -89,6 +90,7 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	input := antlr.NewInputStream(a.sql)
 	lexer := pg.NewPostgreSQLLexer(input)
 	stream := antlr.NewCommonTokenStream(lexer, 0)
+	a.tokens = stream
 	parser := pg.NewPostgreSQLParser(stream)
 
 	parser.RemoveErrorListeners()
@@ -671,7 +673,7 @@ func (a *Analyzer) processTargetEl(ctx pg.ITarget_elContext, sp *scope.Scope) {
 				alias := colRef.Column
 				outputCol := scope.OutputColumn{
 					Alias:         alias,
-					Expression:    target.GetText(),
+					Expression:    a.getParseTreeText(target),
 					SourceColumns: []scope.ColumnRef{colRef},
 					IsDerived:     false,
 				}
@@ -682,7 +684,7 @@ func (a *Analyzer) processTargetEl(ctx pg.ITarget_elContext, sp *scope.Scope) {
 	case *pg.Target_labelContext:
 		// Handle expression with optional alias
 		if target.A_expr() != nil {
-			exprText := target.A_expr().GetText()
+			exprText := a.getParseTreeText(target.A_expr())
 			alias := ""
 
 			if target.Target_alias() != nil {
@@ -941,7 +943,7 @@ func (a *Analyzer) processDeleteStmt(ctx *pg.DeletestmtContext) {
 					}
 
 					transform := []model.Transformation{
-						model.NewDeleteTransformation(normalizeExpressionText(whereClause.A_expr().GetText())),
+						model.NewDeleteTransformation(normalizeExpressionText(a.getParseTreeText(whereClause.A_expr()))),
 					}
 
 					if tableRef, ok := scope.FindTable(resolved.Table); ok && (tableRef.IsCTE || tableRef.IsSubquery) {
@@ -1441,6 +1443,19 @@ func (*Analyzer) getIdentifierText(ctx antlr.ParserRuleContext) string {
 	return text
 }
 
+func (a *Analyzer) getParseTreeText(node antlr.ParseTree) string {
+	if node == nil {
+		return ""
+	}
+	if a.tokens != nil {
+		text := strings.TrimSpace(a.tokens.GetTextFromInterval(node.GetSourceInterval()))
+		if text != "" {
+			return text
+		}
+	}
+	return node.GetText()
+}
+
 // inferColumnAlias infers a column alias from an expression text.
 // For qualified column references (e.g., table.column), returns just the column name.
 func (*Analyzer) inferColumnAlias(exprText string) string {
@@ -1452,8 +1467,8 @@ func (*Analyzer) inferColumnAlias(exprText string) string {
 }
 
 // isExpressionDerived checks if an expression involves transformation operations.
-func (*Analyzer) isExpressionDerived(expr pg.IA_exprContext) bool {
-	text := expr.GetText()
+func (a *Analyzer) isExpressionDerived(expr pg.IA_exprContext) bool {
+	text := a.getParseTreeText(expr)
 	upperText := strings.ToUpper(text)
 
 	// Check for function calls
@@ -1479,7 +1494,7 @@ func (a *Analyzer) analyzeExpressionOperator(expr pg.IA_exprContext) []model.Tra
 		return nil
 	}
 
-	exprText := expr.GetText()
+	exprText := a.getParseTreeText(expr)
 	upperText := strings.ToUpper(exprText)
 
 	// Check for aggregate functions
@@ -1705,5 +1720,5 @@ func combineTransformations(base, additional []model.Transformation) []model.Tra
 }
 
 func normalizeExpressionText(text string) string {
-	return strings.ReplaceAll(text, " ", "")
+	return strings.Join(strings.Fields(text), " ")
 }
