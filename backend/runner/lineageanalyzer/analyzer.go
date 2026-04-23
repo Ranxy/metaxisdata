@@ -186,7 +186,7 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	}
 
 	// Get SQL definition and build the full CREATE VIEW statement.
-	definition, wrappedSQL, err := buildSQL(name, metaType, res)
+	definition, wrappedSQL, err := buildSQL(name, engine, metaType, res)
 	if err != nil {
 		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to build SQL")
 	}
@@ -286,8 +286,8 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash, "")
 }
 
-// buildSQL extracts the view definition and wraps it as a CREATE VIEW statement.
-func buildSQL(name string, metaType storepb.MetaType, res *store.MetaRegistryResource) (definition string, wrapped string, err error) {
+// buildSQL extracts the object definition and wraps it as a dialect-aware CREATE statement.
+func buildSQL(name string, engine storepb.Engine, metaType storepb.MetaType, res *store.MetaRegistryResource) (definition string, wrapped string, err error) {
 	switch metaType {
 	case storepb.MetaType_VIEW:
 		definition = res.Metadata.GetViewMetadata().GetDefinition()
@@ -299,7 +299,23 @@ func buildSQL(name string, metaType storepb.MetaType, res *store.MetaRegistryRes
 	if definition == "" {
 		return "", "", nil
 	}
-	return definition, fmt.Sprintf("CREATE VIEW `%s` AS %s", name, definition), nil
+
+	keyword := "CREATE VIEW"
+	if metaType == storepb.MetaType_MATERIALIZED_VIEW {
+		keyword = "CREATE MATERIALIZED VIEW"
+	}
+
+	var identifier string
+	switch engine {
+	case storepb.Engine_MYSQL, storepb.Engine_TIDB:
+		identifier = "`" + strings.ReplaceAll(name, "`", "``") + "`"
+	case storepb.Engine_POSTGRES:
+		identifier = `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+	default:
+		identifier = name
+	}
+
+	return definition, fmt.Sprintf("%s %s AS %s", keyword, identifier, definition), nil
 }
 
 // storeError records the error in column_lineage_version and returns a wrapped error.
