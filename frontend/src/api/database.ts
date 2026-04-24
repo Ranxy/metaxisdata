@@ -6,6 +6,7 @@ import {
   ListMetadataRequestSchema,
   type MetaType,
   SearchMetadataRequestSchema,
+  SyncDatabaseRequestSchema,
 } from "@/types/proto-es/v1/database_service_pb";
 import { databaseClient } from "./client";
 
@@ -84,4 +85,9 @@ export async function searchMetadata(options: {
     metaType: options.metaType,
   });
   return await databaseClient.searchMetadata(request);
+}
+
+export async function syncDatabase(name: string) {
+  const request = create(SyncDatabaseRequestSchema, { name });
+  return await databaseClient.syncDatabase(request);
 }

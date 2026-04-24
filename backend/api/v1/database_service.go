@@ -47,6 +47,22 @@ func (*DatabaseService) GetDatabase(_ context.Context, _ *connect.Request[v1pb.G
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1pb.DatabaseService.GetDatabase is not implemented"))
 }
 
+func (s *DatabaseService) SyncDatabase(ctx context.Context, req *connect.Request[v1pb.SyncDatabaseRequest]) (*connect.Response[v1pb.SyncDatabaseResponse], error) {
+	database, err := getDatabaseMessage(ctx, s.store, req.Msg.Name)
+	if err != nil {
+		return nil, err
+	}
+	if database.Deleted {
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("database %q has been deleted", req.Msg.Name))
+	}
+
+	if err := s.schemaSyncer.SyncDatabaseSchema(ctx, database); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to sync database"))
+	}
+
+	return connect.NewResponse(&v1pb.SyncDatabaseResponse{}), nil
+}
+
 func (s *DatabaseService) ListDatabase(ctx context.Context, req *connect.Request[v1pb.ListDatabaseRequest]) (*connect.Response[v1pb.ListDatabasesResponse], error) {
 	offset, err := parseLimitAndOffset(&pageSize{
 		token:   req.Msg.PageToken,

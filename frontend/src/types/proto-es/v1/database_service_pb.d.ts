@@ -33,6 +33,37 @@ export declare type GetDatabaseRequest = Message<"metaxisdata.v1.GetDatabaseRequ
 export declare const GetDatabaseRequestSchema: GenMessage<GetDatabaseRequest>;
 
 /**
+ * @generated from message metaxisdata.v1.SyncDatabaseRequest
+ */
+export declare type SyncDatabaseRequest = Message<"metaxisdata.v1.SyncDatabaseRequest"> & {
+  /**
+   * The name of the database to sync.
+   * Format: instances/{instance}/databases/{database}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SyncDatabaseRequest.
+ * Use `create(SyncDatabaseRequestSchema)` to create a new message.
+ */
+export declare const SyncDatabaseRequestSchema: GenMessage<SyncDatabaseRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.SyncDatabaseResponse
+ */
+export declare type SyncDatabaseResponse = Message<"metaxisdata.v1.SyncDatabaseResponse"> & {
+};
+
+/**
+ * Describes the message metaxisdata.v1.SyncDatabaseResponse.
+ * Use `create(SyncDatabaseResponseSchema)` to create a new message.
+ */
+export declare const SyncDatabaseResponseSchema: GenMessage<SyncDatabaseResponse>;
+
+/**
  * @generated from message metaxisdata.v1.Database
  */
 export declare type Database = Message<"metaxisdata.v1.Database"> & {
@@ -3117,6 +3148,14 @@ export declare const DatabaseService: GenService<{
     methodKind: "unary";
     input: typeof GetDatabaseRequestSchema;
     output: typeof DatabaseSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.DatabaseService.SyncDatabase
+   */
+  syncDatabase: {
+    methodKind: "unary";
+    input: typeof SyncDatabaseRequestSchema;
+    output: typeof SyncDatabaseResponseSchema;
   },
   /**
    * @generated from rpc metaxisdata.v1.DatabaseService.ListDatabase

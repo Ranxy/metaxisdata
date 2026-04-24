@@ -133,6 +133,8 @@
     - [StorageConfig](#metaxisdata-v1-StorageConfig)
     - [StoredMetadata](#metaxisdata-v1-StoredMetadata)
     - [StreamMetadata](#metaxisdata-v1-StreamMetadata)
+    - [SyncDatabaseRequest](#metaxisdata-v1-SyncDatabaseRequest)
+    - [SyncDatabaseResponse](#metaxisdata-v1-SyncDatabaseResponse)
     - [TableMetadata](#metaxisdata-v1-TableMetadata)
     - [TablePartitionMetadata](#metaxisdata-v1-TablePartitionMetadata)
     - [TaskMetadata](#metaxisdata-v1-TaskMetadata)
@@ -2280,6 +2282,31 @@ StorageConfig defines storage and performance parameters for spatial indexes.
 
 
 
+<a name="metaxisdata-v1-SyncDatabaseRequest"></a>
+
+### SyncDatabaseRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The name of the database to sync. Format: instances/{instance}/databases/{database} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SyncDatabaseResponse"></a>
+
+### SyncDatabaseResponse
+
+
+
+
+
+
+
 <a name="metaxisdata-v1-TableMetadata"></a>
 
 ### TableMetadata
@@ -2559,6 +2586,7 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
 | GetDatabase | [GetDatabaseRequest](#metaxisdata-v1-GetDatabaseRequest) | [Database](#metaxisdata-v1-Database) |  |
+| SyncDatabase | [SyncDatabaseRequest](#metaxisdata-v1-SyncDatabaseRequest) | [SyncDatabaseResponse](#metaxisdata-v1-SyncDatabaseResponse) |  |
 | ListDatabase | [ListDatabaseRequest](#metaxisdata-v1-ListDatabaseRequest) | [ListDatabasesResponse](#metaxisdata-v1-ListDatabasesResponse) |  |
 | ListMetadata | [ListMetadataRequest](#metaxisdata-v1-ListMetadataRequest) | [MetadataResponse](#metaxisdata-v1-MetadataResponse) |  |
 | GetMetadata | [GetMetadataRequest](#metaxisdata-v1-GetMetadataRequest) | [GetMetadataResponse](#metaxisdata-v1-GetMetadataResponse) |  |

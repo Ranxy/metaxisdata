@@ -429,6 +429,43 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/instances/{instance}/databases/{database}:sync:
+        post:
+            tags:
+                - DatabaseService
+            operationId: DatabaseService_SyncDatabase
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+                - name: database
+                  in: path
+                  description: The database id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SyncDatabaseRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SyncDatabaseResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/instances/{instance}:addDataSource:
         post:
             tags:
@@ -3501,6 +3538,19 @@ components:
                 definition:
                     type: string
                     description: The definition of the stream.
+        SyncDatabaseRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        The name of the database to sync.
+                         Format: instances/{instance}/databases/{database}
+        SyncDatabaseResponse:
+            type: object
+            properties: {}
         SyncInstanceRequest:
             required:
                 - name

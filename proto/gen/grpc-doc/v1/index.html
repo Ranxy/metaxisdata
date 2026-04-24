@@ -682,6 +682,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.SyncDatabaseRequest"><span class="badge">M</span>SyncDatabaseRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SyncDatabaseResponse"><span class="badge">M</span>SyncDatabaseResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.TableMetadata"><span class="badge">M</span>TableMetadata</a>
                 </li>
               
@@ -6730,6 +6738,38 @@ Examples: &#34;SPATIAL&#34; (MySQL/SQL Server), &#34;GIST&#34;/&#34;SPGIST&#34; 
 
         
       
+        <h3 id="metaxisdata.v1.SyncDatabaseRequest">SyncDatabaseRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The name of the database to sync.
+Format: instances/{instance}/databases/{database} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.SyncDatabaseResponse">SyncDatabaseResponse</h3>
+        <p></p>
+
+        
+
+        
+      
         <h3 id="metaxisdata.v1.TableMetadata">TableMetadata</h3>
         <p>TableMetadata is the metadata for tables.</p>
 
@@ -7649,6 +7689,13 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
               </tr>
             
               <tr>
+                <td>SyncDatabase</td>
+                <td><a href="#metaxisdata.v1.SyncDatabaseRequest">SyncDatabaseRequest</a></td>
+                <td><a href="#metaxisdata.v1.SyncDatabaseResponse">SyncDatabaseResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
                 <td>ListDatabase</td>
                 <td><a href="#metaxisdata.v1.ListDatabaseRequest">ListDatabaseRequest</a></td>
                 <td><a href="#metaxisdata.v1.ListDatabasesResponse">ListDatabasesResponse</a></td>
@@ -7708,6 +7755,16 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
                 <td>GET</td>
                 <td>/v1/{name=instances/*/databases/*}</td>
                 <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>SyncDatabase</td>
+                <td>POST</td>
+                <td>/v1/{name=instances/*/databases/*}:sync</td>
+                <td>*</td>
               </tr>
               
             

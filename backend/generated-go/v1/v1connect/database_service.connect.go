@@ -36,6 +36,9 @@ const (
 	// DatabaseServiceGetDatabaseProcedure is the fully-qualified name of the DatabaseService's
 	// GetDatabase RPC.
 	DatabaseServiceGetDatabaseProcedure = "/metaxisdata.v1.DatabaseService/GetDatabase"
+	// DatabaseServiceSyncDatabaseProcedure is the fully-qualified name of the DatabaseService's
+	// SyncDatabase RPC.
+	DatabaseServiceSyncDatabaseProcedure = "/metaxisdata.v1.DatabaseService/SyncDatabase"
 	// DatabaseServiceListDatabaseProcedure is the fully-qualified name of the DatabaseService's
 	// ListDatabase RPC.
 	DatabaseServiceListDatabaseProcedure = "/metaxisdata.v1.DatabaseService/ListDatabase"
@@ -56,6 +59,7 @@ const (
 // DatabaseServiceClient is a client for the metaxisdata.v1.DatabaseService service.
 type DatabaseServiceClient interface {
 	GetDatabase(context.Context, *connect.Request[v1.GetDatabaseRequest]) (*connect.Response[v1.Database], error)
+	SyncDatabase(context.Context, *connect.Request[v1.SyncDatabaseRequest]) (*connect.Response[v1.SyncDatabaseResponse], error)
 	ListDatabase(context.Context, *connect.Request[v1.ListDatabaseRequest]) (*connect.Response[v1.ListDatabasesResponse], error)
 	ListMetadata(context.Context, *connect.Request[v1.ListMetadataRequest]) (*connect.Response[v1.MetadataResponse], error)
 	GetMetadata(context.Context, *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error)
@@ -79,6 +83,12 @@ func NewDatabaseServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			httpClient,
 			baseURL+DatabaseServiceGetDatabaseProcedure,
 			connect.WithSchema(databaseServiceMethods.ByName("GetDatabase")),
+			connect.WithClientOptions(opts...),
+		),
+		syncDatabase: connect.NewClient[v1.SyncDatabaseRequest, v1.SyncDatabaseResponse](
+			httpClient,
+			baseURL+DatabaseServiceSyncDatabaseProcedure,
+			connect.WithSchema(databaseServiceMethods.ByName("SyncDatabase")),
 			connect.WithClientOptions(opts...),
 		),
 		listDatabase: connect.NewClient[v1.ListDatabaseRequest, v1.ListDatabasesResponse](
@@ -117,6 +127,7 @@ func NewDatabaseServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 // databaseServiceClient implements DatabaseServiceClient.
 type databaseServiceClient struct {
 	getDatabase     *connect.Client[v1.GetDatabaseRequest, v1.Database]
+	syncDatabase    *connect.Client[v1.SyncDatabaseRequest, v1.SyncDatabaseResponse]
 	listDatabase    *connect.Client[v1.ListDatabaseRequest, v1.ListDatabasesResponse]
 	listMetadata    *connect.Client[v1.ListMetadataRequest, v1.MetadataResponse]
 	getMetadata     *connect.Client[v1.GetMetadataRequest, v1.GetMetadataResponse]
@@ -127,6 +138,11 @@ type databaseServiceClient struct {
 // GetDatabase calls metaxisdata.v1.DatabaseService.GetDatabase.
 func (c *databaseServiceClient) GetDatabase(ctx context.Context, req *connect.Request[v1.GetDatabaseRequest]) (*connect.Response[v1.Database], error) {
 	return c.getDatabase.CallUnary(ctx, req)
+}
+
+// SyncDatabase calls metaxisdata.v1.DatabaseService.SyncDatabase.
+func (c *databaseServiceClient) SyncDatabase(ctx context.Context, req *connect.Request[v1.SyncDatabaseRequest]) (*connect.Response[v1.SyncDatabaseResponse], error) {
+	return c.syncDatabase.CallUnary(ctx, req)
 }
 
 // ListDatabase calls metaxisdata.v1.DatabaseService.ListDatabase.
@@ -157,6 +173,7 @@ func (c *databaseServiceClient) GetSchemaString(ctx context.Context, req *connec
 // DatabaseServiceHandler is an implementation of the metaxisdata.v1.DatabaseService service.
 type DatabaseServiceHandler interface {
 	GetDatabase(context.Context, *connect.Request[v1.GetDatabaseRequest]) (*connect.Response[v1.Database], error)
+	SyncDatabase(context.Context, *connect.Request[v1.SyncDatabaseRequest]) (*connect.Response[v1.SyncDatabaseResponse], error)
 	ListDatabase(context.Context, *connect.Request[v1.ListDatabaseRequest]) (*connect.Response[v1.ListDatabasesResponse], error)
 	ListMetadata(context.Context, *connect.Request[v1.ListMetadataRequest]) (*connect.Response[v1.MetadataResponse], error)
 	GetMetadata(context.Context, *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error)
@@ -176,6 +193,12 @@ func NewDatabaseServiceHandler(svc DatabaseServiceHandler, opts ...connect.Handl
 		DatabaseServiceGetDatabaseProcedure,
 		svc.GetDatabase,
 		connect.WithSchema(databaseServiceMethods.ByName("GetDatabase")),
+		connect.WithHandlerOptions(opts...),
+	)
+	databaseServiceSyncDatabaseHandler := connect.NewUnaryHandler(
+		DatabaseServiceSyncDatabaseProcedure,
+		svc.SyncDatabase,
+		connect.WithSchema(databaseServiceMethods.ByName("SyncDatabase")),
 		connect.WithHandlerOptions(opts...),
 	)
 	databaseServiceListDatabaseHandler := connect.NewUnaryHandler(
@@ -212,6 +235,8 @@ func NewDatabaseServiceHandler(svc DatabaseServiceHandler, opts ...connect.Handl
 		switch r.URL.Path {
 		case DatabaseServiceGetDatabaseProcedure:
 			databaseServiceGetDatabaseHandler.ServeHTTP(w, r)
+		case DatabaseServiceSyncDatabaseProcedure:
+			databaseServiceSyncDatabaseHandler.ServeHTTP(w, r)
 		case DatabaseServiceListDatabaseProcedure:
 			databaseServiceListDatabaseHandler.ServeHTTP(w, r)
 		case DatabaseServiceListMetadataProcedure:
@@ -233,6 +258,10 @@ type UnimplementedDatabaseServiceHandler struct{}
 
 func (UnimplementedDatabaseServiceHandler) GetDatabase(context.Context, *connect.Request[v1.GetDatabaseRequest]) (*connect.Response[v1.Database], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.GetDatabase is not implemented"))
+}
+
+func (UnimplementedDatabaseServiceHandler) SyncDatabase(context.Context, *connect.Request[v1.SyncDatabaseRequest]) (*connect.Response[v1.SyncDatabaseResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.SyncDatabase is not implemented"))
 }
 
 func (UnimplementedDatabaseServiceHandler) ListDatabase(context.Context, *connect.Request[v1.ListDatabaseRequest]) (*connect.Response[v1.ListDatabasesResponse], error) {

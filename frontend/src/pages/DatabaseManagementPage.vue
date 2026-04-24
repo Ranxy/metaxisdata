@@ -58,6 +58,7 @@
               <TableHead>{{ t("databaseManagement.project") }}</TableHead>
               <TableHead>{{ t("databaseManagement.lastSync") }}</TableHead>
               <TableHead>{{ t("databaseManagement.status") }}</TableHead>
+              <TableHead class="w-36 text-right">{{ t("databaseManagement.actions") }}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -137,6 +138,23 @@
                   {{ getStateLabel(database.state) }}
                 </Badge>
               </TableCell>
+              <TableCell class="w-36 text-right">
+                <Button
+                  class="w-28 justify-center"
+                  variant="outline"
+                  size="sm"
+                  :disabled="isDatabaseSyncing(database.name)"
+                  @click.stop="handleSyncDatabase(database.name)"
+                >
+                  <Loader2
+                    v-if="isDatabaseSyncing(database.name)"
+                    class="h-4 w-4 mr-2 animate-spin"
+                  />
+                  <span>
+                    {{ isDatabaseSyncing(database.name) ? t("databaseManagement.syncing") : t("databaseManagement.sync") }}
+                  </span>
+                </Button>
+              </TableCell>
             </TableRow>
           </TableBody>
         </Table>
@@ -175,11 +193,10 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { Database } from "lucide-vue-next";
+import { Database, Loader2 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { toast } from "vue-sonner";
-import { listDatabases } from "@/api/database";
+import { listDatabases, syncDatabase } from "@/api/database";
 import { listInstances } from "@/api/instance";
 import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
 import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
@@ -193,18 +210,22 @@ import TableCell from "@/components/ui/table/TableCell.vue";
 import TableHead from "@/components/ui/table/TableHead.vue";
 import TableHeader from "@/components/ui/table/TableHeader.vue";
 import TableRow from "@/components/ui/table/TableRow.vue";
+import { useToastStore } from "@/store/modules/toast";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 
 const { t, locale } = useI18n();
+const toastStore = useToastStore();
 
 const isLoading = ref(false);
 const error = ref("");
 const databases = ref<DatabaseType[]>([]);
 const instances = ref<Instance[]>([]);
+const currentPageToken = ref("");
 const nextPageToken = ref("");
 const previousPageTokens = ref<string[]>([]);
+const syncingDatabases = ref<Record<string, boolean>>({});
 
 const currentFilters = ref<ActiveFilter[]>([]);
 
@@ -237,6 +258,7 @@ function handleFiltersUpdate(filters: ActiveFilter[]) {
 async function fetchDatabases(pageToken = "") {
   isLoading.value = true;
   error.value = "";
+  currentPageToken.value = pageToken;
 
   try {
     const filterParts: string[] = [];
@@ -268,7 +290,7 @@ async function fetchDatabases(pageToken = "") {
   } catch (e: unknown) {
     const errorMessage = e instanceof Error ? e.message : String(e);
     error.value = errorMessage || t("databaseManagement.fetchError");
-    toast.error(error.value);
+    toastStore.error(error.value);
   } finally {
     isLoading.value = false;
   }
@@ -285,7 +307,7 @@ async function fetchInstances() {
 
 function goToNextPage() {
   if (nextPageToken.value) {
-    previousPageTokens.value.push(nextPageToken.value);
+    previousPageTokens.value.push(currentPageToken.value);
     fetchDatabases(nextPageToken.value);
   }
 }
@@ -294,6 +316,30 @@ function goToPreviousPage() {
   if (previousPageTokens.value.length > 0) {
     const token = previousPageTokens.value.pop() || "";
     fetchDatabases(token);
+  }
+}
+
+function isDatabaseSyncing(name: string): boolean {
+  return !!syncingDatabases.value[name];
+}
+
+async function handleSyncDatabase(name: string) {
+  syncingDatabases.value = {
+    ...syncingDatabases.value,
+    [name]: true,
+  };
+
+  try {
+    await syncDatabase(name);
+    toastStore.success(t("databaseManagement.syncSuccess"));
+    await fetchDatabases(currentPageToken.value);
+  } catch (e: unknown) {
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    toastStore.error(errorMessage || t("databaseManagement.syncError"));
+  } finally {
+    const nextSyncingDatabases = { ...syncingDatabases.value };
+    delete nextSyncingDatabases[name];
+    syncingDatabases.value = nextSyncingDatabases;
   }
 }
 

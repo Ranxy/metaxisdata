@@ -10,6 +10,7 @@ import {
   GetInstanceRequestSchema,
   InstanceSchema,
   ListInstancesRequestSchema,
+  SyncInstanceRequestSchema,
   UndeleteInstanceRequestSchema,
   UpdateInstanceRequestSchema,
 } from "@/types/proto-es/v1/instance_service_pb";
@@ -102,6 +103,14 @@ export async function deleteInstance(name: string, force?: boolean) {
 export async function undeleteInstance(name: string) {
   const request = create(UndeleteInstanceRequestSchema, { name });
   return await instanceClient.undeleteInstance(request);
+}
+
+export async function syncInstance(name: string, enableFullSync = false) {
+  const request = create(SyncInstanceRequestSchema, {
+    name,
+    enableFullSync,
+  });
+  return await instanceClient.syncInstance(request);
 }
 
 export interface UpdateInstanceInput {

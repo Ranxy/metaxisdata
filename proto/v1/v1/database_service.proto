@@ -18,6 +18,14 @@ service DatabaseService {
     option (google.api.method_signature) = "name";
   }
 
+  rpc SyncDatabase(SyncDatabaseRequest) returns (SyncDatabaseResponse) {
+    option (google.api.http) = {
+      post: "/v1/{name=instances/*/databases/*}:sync"
+      body: "*"
+    };
+    option (google.api.method_signature) = "name";
+  }
+
   rpc ListDatabase(ListDatabaseRequest) returns (ListDatabasesResponse) {
     option (google.api.http) = {get: "/v1/database"};
   }
@@ -48,6 +56,17 @@ message GetDatabaseRequest {
     (google.api.resource_reference) = {type: "metaxisdata/Database"}
   ];
 }
+
+message SyncDatabaseRequest {
+  // The name of the database to sync.
+  // Format: instances/{instance}/databases/{database}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/Database"}
+  ];
+}
+
+message SyncDatabaseResponse {}
 
 message Database {
   option (google.api.resource) = {

@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	DatabaseService_GetDatabase_FullMethodName     = "/metaxisdata.v1.DatabaseService/GetDatabase"
+	DatabaseService_SyncDatabase_FullMethodName    = "/metaxisdata.v1.DatabaseService/SyncDatabase"
 	DatabaseService_ListDatabase_FullMethodName    = "/metaxisdata.v1.DatabaseService/ListDatabase"
 	DatabaseService_ListMetadata_FullMethodName    = "/metaxisdata.v1.DatabaseService/ListMetadata"
 	DatabaseService_GetMetadata_FullMethodName     = "/metaxisdata.v1.DatabaseService/GetMetadata"
@@ -32,6 +33,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DatabaseServiceClient interface {
 	GetDatabase(ctx context.Context, in *GetDatabaseRequest, opts ...grpc.CallOption) (*Database, error)
+	SyncDatabase(ctx context.Context, in *SyncDatabaseRequest, opts ...grpc.CallOption) (*SyncDatabaseResponse, error)
 	ListDatabase(ctx context.Context, in *ListDatabaseRequest, opts ...grpc.CallOption) (*ListDatabasesResponse, error)
 	ListMetadata(ctx context.Context, in *ListMetadataRequest, opts ...grpc.CallOption) (*MetadataResponse, error)
 	GetMetadata(ctx context.Context, in *GetMetadataRequest, opts ...grpc.CallOption) (*GetMetadataResponse, error)
@@ -52,6 +54,16 @@ func (c *databaseServiceClient) GetDatabase(ctx context.Context, in *GetDatabase
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Database)
 	err := c.cc.Invoke(ctx, DatabaseService_GetDatabase_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseServiceClient) SyncDatabase(ctx context.Context, in *SyncDatabaseRequest, opts ...grpc.CallOption) (*SyncDatabaseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SyncDatabaseResponse)
+	err := c.cc.Invoke(ctx, DatabaseService_SyncDatabase_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -113,6 +125,7 @@ func (c *databaseServiceClient) GetSchemaString(ctx context.Context, in *GetSche
 // for forward compatibility.
 type DatabaseServiceServer interface {
 	GetDatabase(context.Context, *GetDatabaseRequest) (*Database, error)
+	SyncDatabase(context.Context, *SyncDatabaseRequest) (*SyncDatabaseResponse, error)
 	ListDatabase(context.Context, *ListDatabaseRequest) (*ListDatabasesResponse, error)
 	ListMetadata(context.Context, *ListMetadataRequest) (*MetadataResponse, error)
 	GetMetadata(context.Context, *GetMetadataRequest) (*GetMetadataResponse, error)
@@ -131,6 +144,9 @@ type UnimplementedDatabaseServiceServer struct{}
 
 func (UnimplementedDatabaseServiceServer) GetDatabase(context.Context, *GetDatabaseRequest) (*Database, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetDatabase not implemented")
+}
+func (UnimplementedDatabaseServiceServer) SyncDatabase(context.Context, *SyncDatabaseRequest) (*SyncDatabaseResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SyncDatabase not implemented")
 }
 func (UnimplementedDatabaseServiceServer) ListDatabase(context.Context, *ListDatabaseRequest) (*ListDatabasesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListDatabase not implemented")
@@ -182,6 +198,24 @@ func _DatabaseService_GetDatabase_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DatabaseServiceServer).GetDatabase(ctx, req.(*GetDatabaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DatabaseService_SyncDatabase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SyncDatabaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServiceServer).SyncDatabase(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabaseService_SyncDatabase_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServiceServer).SyncDatabase(ctx, req.(*SyncDatabaseRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -286,6 +320,10 @@ var DatabaseService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetDatabase",
 			Handler:    _DatabaseService_GetDatabase_Handler,
+		},
+		{
+			MethodName: "SyncDatabase",
+			Handler:    _DatabaseService_SyncDatabase_Handler,
 		},
 		{
 			MethodName: "ListDatabase",

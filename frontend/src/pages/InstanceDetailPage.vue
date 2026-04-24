@@ -93,8 +93,25 @@
       <CardHeader>
         <div class="flex items-center justify-between">
           <CardTitle>{{ t("instanceDetail.databases") }}</CardTitle>
-          <div class="text-sm text-muted-foreground">
-            {{ t("instanceDetail.totalDatabases", { count: databases.length }) }}
+          <div class="flex items-center gap-2">
+            <div class="text-sm text-muted-foreground">
+              {{ t("instanceDetail.totalDatabases", { count: databases.length }) }}
+            </div>
+            <Button
+              class="w-32 justify-center"
+              variant="outline"
+              size="sm"
+              :disabled="isSyncingAllDatabases"
+              @click="handleSyncAllDatabases"
+            >
+              <Loader2
+                v-if="isSyncingAllDatabases"
+                class="h-4 w-4 mr-2 animate-spin"
+              />
+              <span>
+                {{ isSyncingAllDatabases ? t("instanceDetail.syncing") : t("instanceDetail.syncAllDatabases") }}
+              </span>
+            </Button>
           </div>
         </div>
       </CardHeader>
@@ -134,6 +151,7 @@
             <TableHead>{{ t("instanceDetail.schemaVersion") }}</TableHead>
             <TableHead>{{ t("instanceDetail.lastSync") }}</TableHead>
             <TableHead>{{ t("instanceDetail.status") }}</TableHead>
+            <TableHead class="w-36 text-right">{{ t("instanceDetail.actions") }}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -172,6 +190,23 @@
               >
                 {{ getStateLabel(database.state) }}
               </Badge>
+            </TableCell>
+            <TableCell class="w-36 text-right">
+              <Button
+                class="w-28 justify-center"
+                variant="outline"
+                size="sm"
+                :disabled="isSyncingAllDatabases || isDatabaseSyncing(database.name)"
+                @click="handleSyncSingleDatabase(database.name)"
+              >
+                <Loader2
+                  v-if="isDatabaseSyncing(database.name)"
+                  class="h-4 w-4 mr-2 animate-spin"
+                />
+                <span>
+                  {{ isDatabaseSyncing(database.name) ? t("instanceDetail.syncing") : t("instanceDetail.syncDatabase") }}
+                </span>
+              </Button>
             </TableCell>
           </TableRow>
         </TableBody>
@@ -471,12 +506,19 @@
 import { create } from "@bufbuild/protobuf";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { DurationSchema } from "@bufbuild/protobuf/wkt";
-import { ArrowLeft, Database, Pencil, Plus, Trash2 } from "lucide-vue-next";
+import {
+  ArrowLeft,
+  Database,
+  Loader2,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
-import { listDatabases } from "@/api/database";
-import { listInstances, updateInstance } from "@/api/instance";
+import { listDatabases, syncDatabase } from "@/api/database";
+import { listInstances, syncInstance, updateInstance } from "@/api/instance";
 import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
@@ -494,6 +536,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
+import { useToastStore } from "@/store/modules/toast";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
@@ -507,6 +550,7 @@ const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const { handleError, showSuccess } = useErrorHandler();
+const toastStore = useToastStore();
 
 // State
 const instanceId = computed(() => route.params.instanceId as string);
@@ -515,6 +559,8 @@ const databases = ref<DatabaseType[]>([]);
 const isLoadingInstance = ref(false);
 const isLoadingDatabases = ref(false);
 const databaseError = ref<string | null>(null);
+const isSyncingAllDatabases = ref(false);
+const syncingDatabases = ref<Record<string, boolean>>({});
 
 // Edit state
 const showEditModal = ref(false);
@@ -745,6 +791,44 @@ async function handleUpdateInstance() {
     handleError(e, t("instanceDetail.updateError"));
   } finally {
     isUpdating.value = false;
+  }
+}
+
+function isDatabaseSyncing(name: string): boolean {
+  return !!syncingDatabases.value[name];
+}
+
+async function handleSyncAllDatabases() {
+  if (!instance.value) return;
+
+  isSyncingAllDatabases.value = true;
+  try {
+    await syncInstance(instance.value.name, true);
+    toastStore.success(t("instanceDetail.syncAllSuccess"));
+    await Promise.all([fetchInstance(), fetchDatabases()]);
+  } catch (e) {
+    handleError(e, t("instanceDetail.syncAllError"));
+  } finally {
+    isSyncingAllDatabases.value = false;
+  }
+}
+
+async function handleSyncSingleDatabase(name: string) {
+  syncingDatabases.value = {
+    ...syncingDatabases.value,
+    [name]: true,
+  };
+
+  try {
+    await syncDatabase(name);
+    toastStore.success(t("instanceDetail.syncSingleSuccess"));
+    await fetchDatabases();
+  } catch (e) {
+    handleError(e, t("instanceDetail.syncSingleError"));
+  } finally {
+    const nextSyncingDatabases = { ...syncingDatabases.value };
+    delete nextSyncingDatabases[name];
+    syncingDatabases.value = nextSyncingDatabases;
   }
 }
 
