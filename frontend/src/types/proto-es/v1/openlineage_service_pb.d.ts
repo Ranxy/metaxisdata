@@ -551,24 +551,34 @@ export declare type APIKeyResource = Message<"metaxisdata.v1.APIKeyResource"> & 
   id: bigint;
 
   /**
-   * @generated from field: string description = 2;
+   * @generated from field: string masked_key = 2;
+   */
+  maskedKey: string;
+
+  /**
+   * @generated from field: string description = 3;
    */
   description: string;
 
   /**
-   * @generated from field: string created_by = 3;
+   * @generated from field: string created_by = 4;
    */
   createdBy: string;
 
   /**
-   * @generated from field: google.protobuf.Timestamp created_at = 4;
+   * @generated from field: google.protobuf.Timestamp created_at = 5;
    */
   createdAt?: Timestamp;
 
   /**
+   * @generated from field: google.protobuf.Timestamp last_used_at = 6;
+   */
+  lastUsedAt?: Timestamp;
+
+  /**
    * Non-empty only when the key is revoked.
    *
-   * @generated from field: google.protobuf.Timestamp revoked_at = 5;
+   * @generated from field: google.protobuf.Timestamp revoked_at = 7;
    */
   revokedAt?: Timestamp;
 };

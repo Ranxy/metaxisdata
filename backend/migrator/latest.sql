@@ -306,9 +306,11 @@ ALTER SEQUENCE namespace_mapping_id_seq RESTART WITH 101;
 CREATE TABLE openlineage_api_key (
     id BIGSERIAL PRIMARY KEY,
     key_hash TEXT NOT NULL,
+    masked_key TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     created_by TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_used_at TIMESTAMPTZ,
     revoked_at TIMESTAMPTZ
 );
 

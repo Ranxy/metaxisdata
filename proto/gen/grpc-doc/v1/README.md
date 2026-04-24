@@ -2775,9 +2775,11 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | id | [int64](#int64) |  |  |
+| masked_key | [string](#string) |  |  |
 | description | [string](#string) |  |  |
 | created_by | [string](#string) |  |  |
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| last_used_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | revoked_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Non-empty only when the key is revoked. |
 
 

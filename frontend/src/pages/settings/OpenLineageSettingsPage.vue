@@ -159,10 +159,16 @@
                 t("openlineageSettings.apiKeyDescription")
               }}</TableHead>
               <TableHead>{{
+                t("openlineageSettings.maskedAPIKey")
+              }}</TableHead>
+              <TableHead>{{
                 t("openlineageSettings.createdBy")
               }}</TableHead>
               <TableHead>{{
                 t("openlineageSettings.createdAt")
+              }}</TableHead>
+              <TableHead>{{
+                t("openlineageSettings.lastUsedAt")
               }}</TableHead>
               <TableHead class="text-right">
                 {{ t("openlineageSettings.actions") }}
@@ -178,11 +184,17 @@
               <TableCell class="font-medium">
                 {{ key.description }}
               </TableCell>
+              <TableCell class="font-mono text-sm">
+                {{ key.maskedKey || "-" }}
+              </TableCell>
               <TableCell class="text-muted-foreground">
                 {{ key.createdBy || "-" }}
               </TableCell>
               <TableCell class="text-muted-foreground">
                 {{ formatTimestamp(key.createdAt) }}
+              </TableCell>
+              <TableCell class="text-muted-foreground">
+                {{ formatTimestamp(key.lastUsedAt) }}
               </TableCell>
               <TableCell class="text-right">
                 <Button

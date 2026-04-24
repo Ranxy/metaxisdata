@@ -247,9 +247,13 @@ func convertNamespaceMapping(m *store.NamespaceMappingMessage) *v1pb.NamespaceMa
 func convertAPIKey(k *store.OpenLineageAPIKeyMessage) *v1pb.APIKeyResource {
 	res := &v1pb.APIKeyResource{
 		Id:          k.ID,
+		MaskedKey:   k.MaskedKey,
 		Description: k.Description,
 		CreatedBy:   k.CreatedBy,
 		CreatedAt:   timestamppb.New(k.CreatedAt),
+	}
+	if k.LastUsedAt != nil {
+		res.LastUsedAt = timestamppb.New(*k.LastUsedAt)
 	}
 	if k.RevokedAt != nil {
 		res.RevokedAt = timestamppb.New(*k.RevokedAt)

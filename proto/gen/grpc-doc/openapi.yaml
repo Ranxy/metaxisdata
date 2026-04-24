@@ -1581,11 +1581,16 @@ components:
             properties:
                 id:
                     type: string
+                maskedKey:
+                    type: string
                 description:
                     type: string
                 createdBy:
                     type: string
                 createdAt:
+                    type: string
+                    format: date-time
+                lastUsedAt:
                     type: string
                     format: date-time
                 revokedAt:
