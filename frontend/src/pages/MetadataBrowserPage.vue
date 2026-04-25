@@ -408,6 +408,82 @@
           </CardContent>
         </template>
 
+        <template v-else-if="isManualSQLDetailView && leafManualSQL">
+          <CardHeader class="border-b">
+            <CardTitle>{{ t("metadataBrowser.manualSqlDetail") }}</CardTitle>
+          </CardHeader>
+          <CardContent class="max-h-[calc(100vh-16rem)] overflow-auto p-6 space-y-6">
+            <div class="space-y-2">
+              <div class="text-sm text-muted-foreground">{{ t("metadataBrowser.manualSqlName") }}</div>
+              <div class="font-medium">{{ leafManualSQL.title || leafManualSQL.name }}</div>
+              <div class="text-sm text-muted-foreground">{{ leafManualSQL.name }}</div>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <div class="space-y-1">
+                <div class="text-sm text-muted-foreground">{{ t("metadataBrowser.databaseName") }}</div>
+                <div>{{ leafManualSQL.databaseName || "-" }}</div>
+              </div>
+              <div class="space-y-1">
+                <div class="text-sm text-muted-foreground">{{ t("metadataBrowser.schemaName") }}</div>
+                <div>{{ leafManualSQL.schemaName || t("metadataBrowser.defaultSchema") }}</div>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <div class="text-sm text-muted-foreground">{{ t("metadataBrowser.comment") }}</div>
+              <div>{{ leafManualSQL.comment || "-" }}</div>
+            </div>
+
+            <div class="space-y-2">
+              <div class="text-sm text-muted-foreground">{{ t("metadataBrowser.tags") }}</div>
+              <div class="flex flex-wrap gap-2">
+                <Badge
+                  v-for="tag in leafManualSQL.tags"
+                  :key="tag"
+                  variant="secondary"
+                >
+                  {{ tag }}
+                </Badge>
+                <span
+                  v-if="leafManualSQL.tags.length === 0"
+                  class="text-sm text-muted-foreground"
+                >
+                  -
+                </span>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <div class="text-sm text-muted-foreground">{{ t("metadataBrowser.attributes") }}</div>
+              <div
+                v-if="Object.keys(leafManualSQL.attributes ?? {}).length > 0"
+                class="grid gap-2 md:grid-cols-2"
+              >
+                <div
+                  v-for="(value, key) in leafManualSQL.attributes ?? {}"
+                  :key="key"
+                  class="rounded-md border p-3"
+                >
+                  <div class="text-xs text-muted-foreground">{{ key }}</div>
+                  <div class="font-medium break-all">{{ value }}</div>
+                </div>
+              </div>
+              <div
+                v-else
+                class="text-sm text-muted-foreground"
+              >
+                -
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <div class="text-sm text-muted-foreground">{{ t("metadataBrowser.sqlText") }}</div>
+              <pre class="overflow-auto rounded-md bg-muted p-4 text-sm whitespace-pre-wrap break-words">{{ leafManualSQL.sqlText }}</pre>
+            </div>
+          </CardContent>
+        </template>
+
         <template v-else-if="isExternalDatasetDetailView && externalDatasetDetail">
           <CardHeader class="border-b">
             <CardTitle>{{ t("metadataBrowser.externalDatasetDetail") }}</CardTitle>
@@ -510,6 +586,7 @@ import {
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import {
   type FunctionMetadata,
+  type ManualSQLMetadata,
   type MaterializedViewMetadata,
   type MetadataResponse_MetadataList,
   MetaType,
@@ -606,6 +683,7 @@ const searchableMetaTypes = [
   MetaType.FUNCTION,
   MetaType.PROCEDURE,
   MetaType.SEQUENCE,
+  MetaType.MANUAL_SQL,
 ];
 
 const filteredMetaTypes = computed(() => {
@@ -663,6 +741,7 @@ const leafMaterializedView = ref<MaterializedViewMetadata | null>(null);
 const leafFunction = ref<FunctionMetadata | null>(null);
 const leafProcedure = ref<ProcedureMetadata | null>(null);
 const leafSequence = ref<SequenceMetadata | null>(null);
+const leafManualSQL = ref<ManualSQLMetadata | null>(null);
 
 type ExternalDatasetDetail = {
   name: string;
@@ -716,6 +795,13 @@ const isSequenceDetailView = computed(() => {
   return (
     requestedLeafMetaType.value === MetaType.SEQUENCE ||
     leafSequence.value != null
+  );
+});
+
+const isManualSQLDetailView = computed(() => {
+  return (
+    requestedLeafMetaType.value === MetaType.MANUAL_SQL ||
+    leafManualSQL.value != null
   );
 });
 
@@ -1041,6 +1127,7 @@ async function fetchSequenceDetail() {
   leafFunction.value = null;
   leafProcedure.value = null;
   leafSequence.value = null;
+  leafManualSQL.value = null;
   metadataGroups.value = [];
   nextPageTokenByMetaType.clear();
   activeMetaType.value = null;
@@ -1059,6 +1146,42 @@ async function fetchSequenceDetail() {
     }
 
     leafSequence.value = detail.metadata.type.value;
+  } catch (e) {
+    const msg = extractErrorMessage(e);
+    error.value = msg || t("metadataBrowser.fetchError");
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+async function fetchManualSQLDetail() {
+  isLoading.value = true;
+  error.value = null;
+  leafTable.value = null;
+  leafView.value = null;
+  leafMaterializedView.value = null;
+  leafFunction.value = null;
+  leafProcedure.value = null;
+  leafSequence.value = null;
+  leafManualSQL.value = null;
+  metadataGroups.value = [];
+  nextPageTokenByMetaType.clear();
+  activeMetaType.value = null;
+  selectedMetaType.value = null;
+
+  try {
+    await fetchCurrentInstanceEngineIfNeeded();
+
+    const detail = await getMetadata({
+      guid: currentGuid.value,
+      metaType: MetaType.MANUAL_SQL,
+    });
+
+    if (detail.metadata?.type?.case !== "manualSqlMetadata") {
+      throw new Error("unexpected metadata type");
+    }
+
+    leafManualSQL.value = detail.metadata.type.value;
   } catch (e) {
     const msg = extractErrorMessage(e);
     error.value = msg || t("metadataBrowser.fetchError");
@@ -1341,12 +1464,31 @@ function getMetadataName(item: StoredMetadata): string {
     case "streamMetadata":
     case "taskMetadata":
       return item.type.value.name;
+    case "manualSqlMetadata":
+      return item.type.value.title || item.type.value.name;
     default:
       return "";
   }
 }
 
 function handleSelectMetadata(item: StoredMetadata, metaType: MetaType) {
+  if (item.type.case === "manualSqlMetadata") {
+    const manualSQL = item.type.value;
+    const segments = [
+      guidSegments.value[0] || "",
+      guidSegments.value[1] || "",
+      manualSQL.schemaName || "",
+      `__manual_sql__/${manualSQL.manualSqlId}`,
+    ];
+
+    router.push({
+      name: "MetadataDetail",
+      params: { guid: toGuidPath(segments) },
+      query: { metaType: String(MetaType.MANUAL_SQL) },
+    });
+    return;
+  }
+
   const name = getMetadataName(item);
   const newSegments = [...guidSegments.value];
 
@@ -1389,7 +1531,8 @@ function handleSelectMetadata(item: StoredMetadata, metaType: MetaType) {
     metaType === MetaType.MATERIALIZED_VIEW ||
     metaType === MetaType.FUNCTION ||
     metaType === MetaType.PROCEDURE ||
-    metaType === MetaType.SEQUENCE
+    metaType === MetaType.SEQUENCE ||
+    metaType === MetaType.MANUAL_SQL
       ? { metaType: String(metaType) }
       : undefined;
 
@@ -1427,6 +1570,7 @@ watch(
     leafFunction.value = null;
     leafProcedure.value = null;
     leafSequence.value = null;
+    leafManualSQL.value = null;
 
     if (isRootPath.value) {
       await fetchInstances();
@@ -1447,6 +1591,8 @@ watch(
         await fetchProcedureDetail();
       } else if (requestedLeafMetaType.value === MetaType.SEQUENCE) {
         await fetchSequenceDetail();
+      } else if (requestedLeafMetaType.value === MetaType.MANUAL_SQL) {
+        await fetchManualSQLDetail();
       } else {
         await fetchMetadataGroups();
       }
@@ -1467,6 +1613,7 @@ function getMetaTypeLabel(type: MetaType): string {
     [MetaType.FUNCTION]: t("metadataBrowser.functions"),
     [MetaType.PROCEDURE]: t("metadataBrowser.procedures"),
     [MetaType.SEQUENCE]: t("metadataBrowser.sequences"),
+    [MetaType.MANUAL_SQL]: t("metadataBrowser.manualSqls"),
   };
   return labels[type] || t("metadataBrowser.other");
 }
@@ -1510,6 +1657,7 @@ const leafMetaTypes = new Set<MetaType>([
   MetaType.FUNCTION,
   MetaType.PROCEDURE,
   MetaType.SEQUENCE,
+  MetaType.MANUAL_SQL,
 ]);
 
 function handleSelectSearchResult(result: SearchMetadataResult) {

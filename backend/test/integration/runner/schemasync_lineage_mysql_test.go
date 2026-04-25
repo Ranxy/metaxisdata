@@ -96,6 +96,46 @@ DROP VIEW IF EXISTS user_order_view;
 	}, 20*time.Second, time.Second)
 }
 
+func TestMySQLManualSQLLineageIntegration(t *testing.T) {
+	env, ctx, instanceID, database := setupMySQLSyncedDatabase(t)
+
+	require.NoError(t, env.ExecMySQL(ctx, `
+USE it_app;
+CREATE TABLE IF NOT EXISTS manual_sql_summary (
+  user_id INT PRIMARY KEY,
+  user_name VARCHAR(64) NOT NULL
+);
+`))
+	require.NoError(t, env.Syncer.SyncDatabaseSchema(ctx, database))
+
+	manual, err := env.Store.CreateManualSQL(ctx, &store.ManualSQLMessage{
+		ManualSQLID:        "sync_active_users",
+		InstanceResourceID: instanceID,
+		DatabaseName:       "it_app",
+		SchemaName:         "",
+		Name:               "sync_active_users",
+		Title:              "Sync Active Users",
+		SQLText:            "INSERT INTO manual_sql_summary (user_id, user_name) SELECT id, name FROM users",
+		Tags:               []string{"integration", "manual-sql"},
+		Attributes: map[string]string{
+			"owner": "integration-test",
+		},
+	})
+	require.NoError(t, err)
+
+	env.Analyzer.QueueAnalysis(manual.GUID, storepb.MetaType_MANUAL_SQL)
+
+	manualGUID := manual.GUID
+	summaryGUID := instanceID + ";it_app;;manual_sql_summary"
+	manualType := storepb.MetaType_MANUAL_SQL
+	assertLineageEventuallyForType(t, env, ctx, manualGUID, manualType, func(lineages []*store.ColumnLineage) bool {
+		return hasDetailedEdge(lineages, instanceID+";it_app;;users", "id", manualGUID, "user_id") &&
+			hasDetailedEdge(lineages, instanceID+";it_app;;users", "name", manualGUID, "user_name") &&
+			hasDetailedEdge(lineages, manualGUID, "user_id", summaryGUID, "user_id") &&
+			hasDetailedEdge(lineages, manualGUID, "user_name", summaryGUID, "user_name")
+	})
+}
+
 func TestMySQLSyncInstanceMarksDroppedDatabaseDeleted(t *testing.T) {
 	env := integrationenv.SetupMySQLEnv(t)
 	ctx := context.Background()
@@ -164,8 +204,13 @@ func startAnalyzer(t *testing.T, ctx context.Context, env *integrationenv.TestEn
 func assertLineageEventually(t *testing.T, env *integrationenv.TestEnv, ctx context.Context, viewGUID string, check func([]*store.ColumnLineage) bool) {
 	t.Helper()
 	viewType := storepb.MetaType_VIEW
+	assertLineageEventuallyForType(t, env, ctx, viewGUID, viewType, check)
+}
+
+func assertLineageEventuallyForType(t *testing.T, env *integrationenv.TestEnv, ctx context.Context, guid string, metaType storepb.MetaType, check func([]*store.ColumnLineage) bool) {
+	t.Helper()
 	require.Eventually(t, func() bool {
-		lineages, err := env.Store.ListColumnLineage(ctx, &store.FindColumnLineageMessage{MetaGUID: &viewGUID, MetaType: &viewType})
+		lineages, err := env.Store.ListColumnLineage(ctx, &store.FindColumnLineageMessage{MetaGUID: &guid, MetaType: &metaType})
 		if err != nil {
 			return false
 		}
@@ -189,6 +234,15 @@ func containsDatabase(databases []*store.DatabaseMessage, name string) bool {
 func hasEdge(lineages []*store.ColumnLineage, sourceGUID, sourceColumn, targetColumn string) bool {
 	for _, item := range lineages {
 		if item.SourceGUID == sourceGUID && item.SourceColumn == sourceColumn && item.TargetColumn == targetColumn {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDetailedEdge(lineages []*store.ColumnLineage, sourceGUID, sourceColumn, targetGUID, targetColumn string) bool {
+	for _, item := range lineages {
+		if item.SourceGUID == sourceGUID && item.SourceColumn == sourceColumn && item.TargetGUID == targetGUID && item.TargetColumn == targetColumn {
 			return true
 		}
 	}

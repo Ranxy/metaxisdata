@@ -510,6 +510,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.CreateManualSQLRequest"><span class="badge">M</span>CreateManualSQLRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.Database"><span class="badge">M</span>Database</a>
                 </li>
               
@@ -519,6 +523,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.DatabaseSchemaMetadata"><span class="badge">M</span>DatabaseSchemaMetadata</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DeleteManualSQLRequest"><span class="badge">M</span>DeleteManualSQLRequest</a>
                 </li>
               
                 <li>
@@ -574,6 +582,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetManualSQLRequest"><span class="badge">M</span>GetManualSQLRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetMetadataRequest"><span class="badge">M</span>GetMetadataRequest</a>
                 </li>
               
@@ -610,7 +622,31 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ListManualSQLRequest"><span class="badge">M</span>ListManualSQLRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListManualSQLResponse"><span class="badge">M</span>ListManualSQLResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ListMetadataRequest"><span class="badge">M</span>ListMetadataRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ManualSQL"><span class="badge">M</span>ManualSQL</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ManualSQL.AttributesEntry"><span class="badge">M</span>ManualSQL.AttributesEntry</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ManualSQLMetadata"><span class="badge">M</span>ManualSQLMetadata</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ManualSQLMetadata.AttributesEntry"><span class="badge">M</span>ManualSQLMetadata.AttributesEntry</a>
                 </li>
               
                 <li>
@@ -643,6 +679,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.SchemaMetadata"><span class="badge">M</span>SchemaMetadata</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SearchManualSQLRequest"><span class="badge">M</span>SearchManualSQLRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SearchManualSQLResponse"><span class="badge">M</span>SearchManualSQLResponse</a>
                 </li>
               
                 <li>
@@ -707,6 +751,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.TriggerMetadata"><span class="badge">M</span>TriggerMetadata</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.UpdateManualSQLRequest"><span class="badge">M</span>UpdateManualSQLRequest</a>
                 </li>
               
                 <li>
@@ -4294,6 +4342,44 @@ from SQL files), the system cannot automatically drop the constraint. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.CreateManualSQLRequest">CreateManualSQLRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: instances/{instance}/databases/{database} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>manual_sql</td>
+                  <td><a href="#metaxisdata.v1.ManualSQL">ManualSQL</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>manual_sql_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The stable ID used as the last component of the resource name. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.Database">Database</h3>
         <p></p>
 
@@ -4504,6 +4590,30 @@ https://cloud.google.com/resource-manager/docs/tags/tags-overview. </p></td>
                   <td>repeated</td>
                   <td><p>The list of event triggers in a database (PostgreSQL specific).
 Event triggers are database-level objects, not schema-scoped. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DeleteManualSQLRequest">DeleteManualSQLRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql} </p></td>
                 </tr>
               
             </tbody>
@@ -5173,6 +5283,30 @@ Format: instances/{instance}/databases/{database} </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetManualSQLRequest">GetManualSQLRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetMetadataRequest">GetMetadataRequest</h3>
         <p></p>
 
@@ -5629,6 +5763,96 @@ If this field is omitted, there are no subsequent pages. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.ListManualSQLRequest">ListManualSQLRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: instances/{instance}/databases/{database} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Optional schema context filter. Empty means all schemas. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tags</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Exact-match tags for filtering. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>show_deleted</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListManualSQLResponse">ListManualSQLResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>manual_sqls</td>
+                  <td><a href="#metaxisdata.v1.ManualSQL">ManualSQL</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.ListMetadataRequest">ListMetadataRequest</h3>
         <p></p>
 
@@ -5675,6 +5899,243 @@ match the call that provided the page token. </p></td>
                   <td>optional</td>
                   <td><p>the type of metadata
 If meta_type is not specified, the query will ignore page_size and return the first 20 records of each meta_type. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ManualSQL">ManualSQL</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The resource name.
+Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The globally unique metadata GUID. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>comment</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sql_text</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tags</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>attributes</td>
+                  <td><a href="#metaxisdata.v1.ManualSQL.AttributesEntry">ManualSQL.AttributesEntry</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>updated_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ManualSQL.AttributesEntry">ManualSQL.AttributesEntry</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>value</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ManualSQLMetadata">ManualSQLMetadata</h3>
+        <p>ManualSQLMetadata is the metadata for a user-maintained SQL definition.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>manual_sql_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>comment</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sql_text</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tags</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>attributes</td>
+                  <td><a href="#metaxisdata.v1.ManualSQLMetadata.AttributesEntry">ManualSQLMetadata.AttributesEntry</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance_resource</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: instances/{instance} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ManualSQLMetadata.AttributesEntry">ManualSQLMetadata.AttributesEntry</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>value</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>
@@ -6134,6 +6595,97 @@ It is an empty string for databases without such concept such as MySQL. </p></td
                 <tr>
                   <td>skip_dump</td>
                   <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.SearchManualSQLRequest">SearchManualSQLRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: instances/{instance}/databases/{database} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>query</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Keyword search against the indexed search document.
+First phase supports token-based full-text matching only. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tags</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Exact-match tags for filtering. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Optional schema context filter. Empty means all schemas. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.SearchManualSQLResponse">SearchManualSQLResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>manual_sqls</td>
+                  <td><a href="#metaxisdata.v1.ManualSQL">ManualSQL</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -6654,6 +7206,13 @@ Examples: &#34;SPATIAL&#34; (MySQL/SQL Server), &#34;GIST&#34;/&#34;SPGIST&#34; 
                 <tr>
                   <td>task_metadata</td>
                   <td><a href="#metaxisdata.v1.TaskMetadata">TaskMetadata</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>manual_sql_metadata</td>
+                  <td><a href="#metaxisdata.v1.ManualSQLMetadata">ManualSQLMetadata</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -7271,6 +7830,37 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
 
         
       
+        <h3 id="metaxisdata.v1.UpdateManualSQLRequest">UpdateManualSQLRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>manual_sql</td>
+                  <td><a href="#metaxisdata.v1.ManualSQL">ManualSQL</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_mask</td>
+                  <td><a href="#google.protobuf.FieldMask">google.protobuf.FieldMask</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.ViewMetadata">ViewMetadata</h3>
         <p>ViewMetadata is the metadata for views.</p>
 
@@ -7445,6 +8035,12 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
               <tr>
                 <td>EXTERNAL_TABLE</td>
                 <td>16</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>MANUAL_SQL</td>
+                <td>18</td>
                 <td><p></p></td>
               </tr>
             
@@ -7730,6 +8326,48 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
                 <td><p>Generates schema DDL for a database object.</p></td>
               </tr>
             
+              <tr>
+                <td>CreateManualSQL</td>
+                <td><a href="#metaxisdata.v1.CreateManualSQLRequest">CreateManualSQLRequest</a></td>
+                <td><a href="#metaxisdata.v1.ManualSQL">ManualSQL</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>GetManualSQL</td>
+                <td><a href="#metaxisdata.v1.GetManualSQLRequest">GetManualSQLRequest</a></td>
+                <td><a href="#metaxisdata.v1.ManualSQL">ManualSQL</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>ListManualSQL</td>
+                <td><a href="#metaxisdata.v1.ListManualSQLRequest">ListManualSQLRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListManualSQLResponse">ListManualSQLResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SearchManualSQL</td>
+                <td><a href="#metaxisdata.v1.SearchManualSQLRequest">SearchManualSQLRequest</a></td>
+                <td><a href="#metaxisdata.v1.SearchManualSQLResponse">SearchManualSQLResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>UpdateManualSQL</td>
+                <td><a href="#metaxisdata.v1.UpdateManualSQLRequest">UpdateManualSQLRequest</a></td>
+                <td><a href="#metaxisdata.v1.ManualSQL">ManualSQL</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DeleteManualSQL</td>
+                <td><a href="#metaxisdata.v1.DeleteManualSQLRequest">DeleteManualSQLRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p></p></td>
+              </tr>
+            
           </tbody>
         </table>
 
@@ -7814,6 +8452,66 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
                 <td>GetSchemaString</td>
                 <td>GET</td>
                 <td>/v1/metadata/schemaString</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateManualSQL</td>
+                <td>POST</td>
+                <td>/v1/{parent=instances/*/databases/*}/manualSqls</td>
+                <td>manual_sql</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetManualSQL</td>
+                <td>GET</td>
+                <td>/v1/{name=instances/*/databases/*/manualSqls/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListManualSQL</td>
+                <td>GET</td>
+                <td>/v1/{parent=instances/*/databases/*}/manualSqls</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>SearchManualSQL</td>
+                <td>GET</td>
+                <td>/v1/{parent=instances/*/databases/*}/manualSqls:search</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>UpdateManualSQL</td>
+                <td>PATCH</td>
+                <td>/v1/{manual_sql.name=instances/*/databases/*/manualSqls/*}</td>
+                <td>manual_sql</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DeleteManualSQL</td>
+                <td>DELETE</td>
+                <td>/v1/{name=instances/*/databases/*/manualSqls/*}</td>
                 <td></td>
               </tr>
               

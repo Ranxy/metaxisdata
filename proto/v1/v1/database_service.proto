@@ -6,6 +6,8 @@ import "google/api/annotations.proto";
 import "google/api/client.proto";
 import "google/api/field_behavior.proto";
 import "google/api/resource.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "v1/common.proto";
 import "v1/instance_service.proto";
@@ -45,6 +47,42 @@ service DatabaseService {
   // Generates schema DDL for a database object.
   rpc GetSchemaString(GetSchemaStringRequest) returns (MetadataSchemaString) {
     option (google.api.http) = {get: "/v1/metadata/schemaString"};
+  }
+
+  rpc CreateManualSQL(CreateManualSQLRequest) returns (ManualSQL) {
+    option (google.api.http) = {
+      post: "/v1/{parent=instances/*/databases/*}/manualSqls"
+      body: "manual_sql"
+    };
+    option (google.api.method_signature) = "parent,manual_sql,manual_sql_id";
+  }
+
+  rpc GetManualSQL(GetManualSQLRequest) returns (ManualSQL) {
+    option (google.api.http) = {get: "/v1/{name=instances/*/databases/*/manualSqls/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  rpc ListManualSQL(ListManualSQLRequest) returns (ListManualSQLResponse) {
+    option (google.api.http) = {get: "/v1/{parent=instances/*/databases/*}/manualSqls"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  rpc SearchManualSQL(SearchManualSQLRequest) returns (SearchManualSQLResponse) {
+    option (google.api.http) = {get: "/v1/{parent=instances/*/databases/*}/manualSqls:search"};
+    option (google.api.method_signature) = "parent,query";
+  }
+
+  rpc UpdateManualSQL(UpdateManualSQLRequest) returns (ManualSQL) {
+    option (google.api.http) = {
+      patch: "/v1/{manual_sql.name=instances/*/databases/*/manualSqls/*}"
+      body: "manual_sql"
+    };
+    option (google.api.method_signature) = "manual_sql,update_mask";
+  }
+
+  rpc DeleteManualSQL(DeleteManualSQLRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=instances/*/databases/*/manualSqls/*}"};
+    option (google.api.method_signature) = "name";
   }
 }
 
@@ -288,6 +326,149 @@ message SearchMetadataResult {
   StoredMetadata metadata = 3;
 }
 
+message ManualSQL {
+  option (google.api.resource) = {
+    type: "metaxisdata/ManualSQL"
+    pattern: "instances/{instance}/databases/{database}/manualSqls/{manual_sql}"
+  };
+
+  // The resource name.
+  // Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql}
+  string name = 1;
+
+  // The globally unique metadata GUID.
+  string guid = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string title = 3;
+
+  string schema_name = 4;
+
+  string comment = 5;
+
+  string sql_text = 6;
+
+  repeated string tags = 7;
+
+  map<string, string> attributes = 8;
+
+  google.protobuf.Timestamp created_at = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  google.protobuf.Timestamp updated_at = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message CreateManualSQLRequest {
+  // Format: instances/{instance}/databases/{database}
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {child_type: "metaxisdata/ManualSQL"}
+  ];
+
+  ManualSQL manual_sql = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // The stable ID used as the last component of the resource name.
+  string manual_sql_id = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetManualSQLRequest {
+  // Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/ManualSQL"}
+  ];
+}
+
+message ListManualSQLRequest {
+  // Format: instances/{instance}/databases/{database}
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {child_type: "metaxisdata/ManualSQL"}
+  ];
+
+  int32 page_size = 2;
+
+  string page_token = 3;
+
+  // Optional schema context filter. Empty means all schemas.
+  string schema_name = 4;
+
+  // Exact-match tags for filtering.
+  repeated string tags = 5;
+
+  bool show_deleted = 6;
+}
+
+message ListManualSQLResponse {
+  repeated ManualSQL manual_sqls = 1;
+
+  string next_page_token = 2;
+}
+
+message SearchManualSQLRequest {
+  // Format: instances/{instance}/databases/{database}
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {child_type: "metaxisdata/ManualSQL"}
+  ];
+
+  // Keyword search against the indexed search document.
+  // First phase supports token-based full-text matching only.
+  string query = 2 [(google.api.field_behavior) = REQUIRED];
+
+  int32 page_size = 3;
+
+  string page_token = 4;
+
+  // Exact-match tags for filtering.
+  repeated string tags = 5;
+
+  // Optional schema context filter. Empty means all schemas.
+  string schema_name = 6;
+}
+
+message SearchManualSQLResponse {
+  repeated ManualSQL manual_sqls = 1;
+
+  string next_page_token = 2;
+}
+
+message UpdateManualSQLRequest {
+  ManualSQL manual_sql = 1 [(google.api.field_behavior) = REQUIRED];
+
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+message DeleteManualSQLRequest {
+  // Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/ManualSQL"}
+  ];
+}
+
+// ManualSQLMetadata is the metadata for a user-maintained SQL definition.
+message ManualSQLMetadata {
+  string manual_sql_id = 1;
+
+  string name = 2;
+
+  string title = 3;
+
+  string comment = 4;
+
+  string sql_text = 5;
+
+  repeated string tags = 6;
+
+  map<string, string> attributes = 7;
+
+  string schema_name = 8;
+
+  // Format: instances/{instance}
+  string instance_resource = 9;
+
+  string database_name = 10;
+}
+
 message StoredMetadata {
   oneof type {
     DatabaseSchemaMetadata database_schema_metadata = 1;
@@ -302,6 +483,7 @@ message StoredMetadata {
     SequenceMetadata sequence_metadata = 10;
     StreamMetadata stream_metadata = 11;
     TaskMetadata task_metadata = 12;
+    ManualSQLMetadata manual_sql_metadata = 15;
   }
 }
 
@@ -1233,6 +1415,7 @@ enum MetaType {
   SCHEMA = 3;
   TABLE = 4;
   EXTERNAL_TABLE = 16;
+  MANUAL_SQL = 18;
   VIEW = 5;
   MATERIALIZED_VIEW = 6;
   COLUMN = 7;

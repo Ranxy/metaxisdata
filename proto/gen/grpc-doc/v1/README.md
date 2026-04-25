@@ -90,9 +90,11 @@
     - [BoundingBox](#metaxisdata-v1-BoundingBox)
     - [CheckConstraintMetadata](#metaxisdata-v1-CheckConstraintMetadata)
     - [ColumnMetadata](#metaxisdata-v1-ColumnMetadata)
+    - [CreateManualSQLRequest](#metaxisdata-v1-CreateManualSQLRequest)
     - [Database](#metaxisdata-v1-Database)
     - [Database.LabelsEntry](#metaxisdata-v1-Database-LabelsEntry)
     - [DatabaseSchemaMetadata](#metaxisdata-v1-DatabaseSchemaMetadata)
+    - [DeleteManualSQLRequest](#metaxisdata-v1-DeleteManualSQLRequest)
     - [DependencyColumn](#metaxisdata-v1-DependencyColumn)
     - [DependencyTable](#metaxisdata-v1-DependencyTable)
     - [DimensionalConfig](#metaxisdata-v1-DimensionalConfig)
@@ -106,6 +108,7 @@
     - [FunctionMetadata](#metaxisdata-v1-FunctionMetadata)
     - [GenerationMetadata](#metaxisdata-v1-GenerationMetadata)
     - [GetDatabaseRequest](#metaxisdata-v1-GetDatabaseRequest)
+    - [GetManualSQLRequest](#metaxisdata-v1-GetManualSQLRequest)
     - [GetMetadataRequest](#metaxisdata-v1-GetMetadataRequest)
     - [GetMetadataResponse](#metaxisdata-v1-GetMetadataResponse)
     - [GetSchemaStringRequest](#metaxisdata-v1-GetSchemaStringRequest)
@@ -115,7 +118,13 @@
     - [LinkedDatabaseMetadata](#metaxisdata-v1-LinkedDatabaseMetadata)
     - [ListDatabaseRequest](#metaxisdata-v1-ListDatabaseRequest)
     - [ListDatabasesResponse](#metaxisdata-v1-ListDatabasesResponse)
+    - [ListManualSQLRequest](#metaxisdata-v1-ListManualSQLRequest)
+    - [ListManualSQLResponse](#metaxisdata-v1-ListManualSQLResponse)
     - [ListMetadataRequest](#metaxisdata-v1-ListMetadataRequest)
+    - [ManualSQL](#metaxisdata-v1-ManualSQL)
+    - [ManualSQL.AttributesEntry](#metaxisdata-v1-ManualSQL-AttributesEntry)
+    - [ManualSQLMetadata](#metaxisdata-v1-ManualSQLMetadata)
+    - [ManualSQLMetadata.AttributesEntry](#metaxisdata-v1-ManualSQLMetadata-AttributesEntry)
     - [MaterializedViewMetadata](#metaxisdata-v1-MaterializedViewMetadata)
     - [MetadataResponse](#metaxisdata-v1-MetadataResponse)
     - [MetadataResponse.MetadataList](#metaxisdata-v1-MetadataResponse-MetadataList)
@@ -124,6 +133,8 @@
     - [ProcedureMetadata](#metaxisdata-v1-ProcedureMetadata)
     - [RuleMetadata](#metaxisdata-v1-RuleMetadata)
     - [SchemaMetadata](#metaxisdata-v1-SchemaMetadata)
+    - [SearchManualSQLRequest](#metaxisdata-v1-SearchManualSQLRequest)
+    - [SearchManualSQLResponse](#metaxisdata-v1-SearchManualSQLResponse)
     - [SearchMetadataRequest](#metaxisdata-v1-SearchMetadataRequest)
     - [SearchMetadataResponse](#metaxisdata-v1-SearchMetadataResponse)
     - [SearchMetadataResult](#metaxisdata-v1-SearchMetadataResult)
@@ -140,6 +151,7 @@
     - [TaskMetadata](#metaxisdata-v1-TaskMetadata)
     - [TessellationConfig](#metaxisdata-v1-TessellationConfig)
     - [TriggerMetadata](#metaxisdata-v1-TriggerMetadata)
+    - [UpdateManualSQLRequest](#metaxisdata-v1-UpdateManualSQLRequest)
     - [ViewMetadata](#metaxisdata-v1-ViewMetadata)
   
     - [ColumnMetadata.IdentityGeneration](#metaxisdata-v1-ColumnMetadata-IdentityGeneration)
@@ -1434,6 +1446,23 @@ This field is populated when syncing from the database. When empty (e.g., when p
 
 
 
+<a name="metaxisdata-v1-CreateManualSQLRequest"></a>
+
+### CreateManualSQLRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: instances/{instance}/databases/{database} |
+| manual_sql | [ManualSQL](#metaxisdata-v1-ManualSQL) |  |  |
+| manual_sql_id | [string](#string) |  | The stable ID used as the last component of the resource name. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-Database"></a>
 
 ### Database
@@ -1493,6 +1522,21 @@ DatabaseSchemaMetadata is the schema metadata for databases.
 | owner | [string](#string) |  |  |
 | search_path | [string](#string) |  | The search_path is the search path of a PostgreSQL database. |
 | event_triggers | [EventTriggerMetadata](#metaxisdata-v1-EventTriggerMetadata) | repeated | The list of event triggers in a database (PostgreSQL specific). Event triggers are database-level objects, not schema-scoped. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteManualSQLRequest"></a>
+
+### DeleteManualSQLRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql} |
 
 
 
@@ -1743,6 +1787,21 @@ FunctionMetadata is the metadata for functions.
 
 
 
+<a name="metaxisdata-v1-GetManualSQLRequest"></a>
+
+### GetManualSQLRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql} |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetMetadataRequest"></a>
 
 ### GetMetadataRequest
@@ -1913,6 +1972,42 @@ You can combine filter conditions like: environment == &#34;environments/prod&#3
 
 
 
+<a name="metaxisdata-v1-ListManualSQLRequest"></a>
+
+### ListManualSQLRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: instances/{instance}/databases/{database} |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+| schema_name | [string](#string) |  | Optional schema context filter. Empty means all schemas. |
+| tags | [string](#string) | repeated | Exact-match tags for filtering. |
+| show_deleted | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListManualSQLResponse"></a>
+
+### ListManualSQLResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| manual_sqls | [ManualSQL](#metaxisdata-v1-ManualSQL) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ListMetadataRequest"></a>
 
 ### ListMetadataRequest
@@ -1927,6 +2022,86 @@ You can combine filter conditions like: environment == &#34;environments/prod&#3
 
 When paginating, all other parameters provided to `ListDatabases` must match the call that provided the page token. |
 | meta_type | [MetaType](#metaxisdata-v1-MetaType) | optional | the type of metadata If meta_type is not specified, the query will ignore page_size and return the first 20 records of each meta_type. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ManualSQL"></a>
+
+### ManualSQL
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The resource name. Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql} |
+| guid | [string](#string) |  | The globally unique metadata GUID. |
+| title | [string](#string) |  |  |
+| schema_name | [string](#string) |  |  |
+| comment | [string](#string) |  |  |
+| sql_text | [string](#string) |  |  |
+| tags | [string](#string) | repeated |  |
+| attributes | [ManualSQL.AttributesEntry](#metaxisdata-v1-ManualSQL-AttributesEntry) | repeated |  |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ManualSQL-AttributesEntry"></a>
+
+### ManualSQL.AttributesEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ManualSQLMetadata"></a>
+
+### ManualSQLMetadata
+ManualSQLMetadata is the metadata for a user-maintained SQL definition.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| manual_sql_id | [string](#string) |  |  |
+| name | [string](#string) |  |  |
+| title | [string](#string) |  |  |
+| comment | [string](#string) |  |  |
+| sql_text | [string](#string) |  |  |
+| tags | [string](#string) | repeated |  |
+| attributes | [ManualSQLMetadata.AttributesEntry](#metaxisdata-v1-ManualSQLMetadata-AttributesEntry) | repeated |  |
+| schema_name | [string](#string) |  |  |
+| instance_resource | [string](#string) |  | Format: instances/{instance} |
+| database_name | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ManualSQLMetadata-AttributesEntry"></a>
+
+### ManualSQLMetadata.AttributesEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [string](#string) |  |  |
 
 
 
@@ -2086,6 +2261,42 @@ This is the concept of schema in Postgres, but it&#39;s a no-op for MySQL.
 | events | [EventMetadata](#metaxisdata-v1-EventMetadata) | repeated |  |
 | enum_types | [EnumTypeMetadata](#metaxisdata-v1-EnumTypeMetadata) | repeated |  |
 | skip_dump | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SearchManualSQLRequest"></a>
+
+### SearchManualSQLRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: instances/{instance}/databases/{database} |
+| query | [string](#string) |  | Keyword search against the indexed search document. First phase supports token-based full-text matching only. |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+| tags | [string](#string) | repeated | Exact-match tags for filtering. |
+| schema_name | [string](#string) |  | Optional schema context filter. Empty means all schemas. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SearchManualSQLResponse"></a>
+
+### SearchManualSQLResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| manual_sqls | [ManualSQL](#metaxisdata-v1-ManualSQL) | repeated |  |
+| next_page_token | [string](#string) |  |  |
 
 
 
@@ -2254,6 +2465,7 @@ StorageConfig defines storage and performance parameters for spatial indexes.
 | sequence_metadata | [SequenceMetadata](#metaxisdata-v1-SequenceMetadata) |  |  |
 | stream_metadata | [StreamMetadata](#metaxisdata-v1-StreamMetadata) |  |  |
 | task_metadata | [TaskMetadata](#metaxisdata-v1-TaskMetadata) |  |  |
+| manual_sql_metadata | [ManualSQLMetadata](#metaxisdata-v1-ManualSQLMetadata) |  |  |
 
 
 
@@ -2433,6 +2645,22 @@ TessellationConfig defines tessellation parameters for spatial indexes.
 
 
 
+<a name="metaxisdata-v1-UpdateManualSQLRequest"></a>
+
+### UpdateManualSQLRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| manual_sql | [ManualSQL](#metaxisdata-v1-ManualSQL) |  |  |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ViewMetadata"></a>
 
 ### ViewMetadata
@@ -2496,6 +2724,7 @@ ViewMetadata is the metadata for views.
 | SCHEMA | 3 |  |
 | TABLE | 4 |  |
 | EXTERNAL_TABLE | 16 |  |
+| MANUAL_SQL | 18 |  |
 | VIEW | 5 |  |
 | MATERIALIZED_VIEW | 6 |  |
 | COLUMN | 7 |  |
@@ -2592,6 +2821,12 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | GetMetadata | [GetMetadataRequest](#metaxisdata-v1-GetMetadataRequest) | [GetMetadataResponse](#metaxisdata-v1-GetMetadataResponse) |  |
 | SearchMetadata | [SearchMetadataRequest](#metaxisdata-v1-SearchMetadataRequest) | [SearchMetadataResponse](#metaxisdata-v1-SearchMetadataResponse) |  |
 | GetSchemaString | [GetSchemaStringRequest](#metaxisdata-v1-GetSchemaStringRequest) | [MetadataSchemaString](#metaxisdata-v1-MetadataSchemaString) | Generates schema DDL for a database object. |
+| CreateManualSQL | [CreateManualSQLRequest](#metaxisdata-v1-CreateManualSQLRequest) | [ManualSQL](#metaxisdata-v1-ManualSQL) |  |
+| GetManualSQL | [GetManualSQLRequest](#metaxisdata-v1-GetManualSQLRequest) | [ManualSQL](#metaxisdata-v1-ManualSQL) |  |
+| ListManualSQL | [ListManualSQLRequest](#metaxisdata-v1-ListManualSQLRequest) | [ListManualSQLResponse](#metaxisdata-v1-ListManualSQLResponse) |  |
+| SearchManualSQL | [SearchManualSQLRequest](#metaxisdata-v1-SearchManualSQLRequest) | [SearchManualSQLResponse](#metaxisdata-v1-SearchManualSQLResponse) |  |
+| UpdateManualSQL | [UpdateManualSQLRequest](#metaxisdata-v1-UpdateManualSQLRequest) | [ManualSQL](#metaxisdata-v1-ManualSQL) |  |
+| DeleteManualSQL | [DeleteManualSQLRequest](#metaxisdata-v1-DeleteManualSQLRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
 
  
 

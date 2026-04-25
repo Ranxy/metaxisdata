@@ -333,6 +333,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.ManualSQLMetadata"><span class="badge">M</span>ManualSQLMetadata</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.ManualSQLMetadata.AttributesEntry"><span class="badge">M</span>ManualSQLMetadata.AttributesEntry</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.MaterializedViewMetadata"><span class="badge">M</span>MaterializedViewMetadata</a>
                 </li>
               
@@ -2897,6 +2905,124 @@ engine. </p></td>
 
         
       
+        <h3 id="metaxisdata.store.ManualSQLMetadata">ManualSQLMetadata</h3>
+        <p>ManualSQLMetadata is the metadata for a user-maintained SQL definition.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>manual_sql_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The stable identifier of the manual SQL entry. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The display name of the manual SQL entry. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The title is optional display text for UI surfaces. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>comment</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The comment is a free-form description. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sql_text</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The SQL text provided by the user. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tags</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Tags support exact filtering in the dedicated manual SQL query path. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>attributes</td>
+                  <td><a href="#metaxisdata.store.ManualSQLMetadata.AttributesEntry">ManualSQLMetadata.AttributesEntry</a></td>
+                  <td>repeated</td>
+                  <td><p>Attributes provide custom key/value annotations. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The optional schema context used during analysis. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance_resource</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The instance resource. Format: instances/{instance} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The database name in the instance. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.ManualSQLMetadata.AttributesEntry">ManualSQLMetadata.AttributesEntry</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>value</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.MaterializedViewMetadata">MaterializedViewMetadata</h3>
         <p>MaterializedViewMetadata is the metadata for materialized views.</p>
 
@@ -3684,6 +3810,13 @@ Examples: &#34;SPATIAL&#34; (MySQL/SQL Server), &#34;GIST&#34;/&#34;SPGIST&#34; 
                 <tr>
                   <td>openlineage_task_summary</td>
                   <td><a href="#metaxisdata.store.OpenLineageTaskSummary">OpenLineageTaskSummary</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>manual_sql_metadata</td>
+                  <td><a href="#metaxisdata.store.ManualSQLMetadata">ManualSQLMetadata</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -6430,6 +6563,12 @@ For MySQL, it is the global privileges as GRANT statements, which means it only 
               <tr>
                 <td>EXTERNAL_DATASET</td>
                 <td>17</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>MANUAL_SQL</td>
+                <td>18</td>
                 <td><p></p></td>
               </tr>
             

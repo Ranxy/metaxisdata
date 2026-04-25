@@ -74,6 +74,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, layout: "default" },
   },
   {
+    path: "/manual-sql",
+    name: "ManualSQLManagement",
+    component: () => import("@/pages/ManualSQLManagementPage.vue"),
+    meta: { requiresAuth: true, layout: "default" },
+  },
+  {
     path: "/metadata/:guid(.+)",
     name: "MetadataDetail",
     component: () => import("@/pages/MetadataBrowserPage.vue"),

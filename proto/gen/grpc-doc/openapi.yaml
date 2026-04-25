@@ -76,6 +76,7 @@ paths:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -429,6 +430,279 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/instances/{instance}/databases/{database}/manualSqls:
+        get:
+            tags:
+                - DatabaseService
+            operationId: DatabaseService_ListManualSQL
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+                - name: database
+                  in: path
+                  description: The database id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+                - name: schemaName
+                  in: query
+                  description: Optional schema context filter. Empty means all schemas.
+                  schema:
+                    type: string
+                - name: tags
+                  in: query
+                  description: Exact-match tags for filtering.
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                - name: showDeleted
+                  in: query
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListManualSQLResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - DatabaseService
+            operationId: DatabaseService_CreateManualSQL
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+                - name: database
+                  in: path
+                  description: The database id.
+                  required: true
+                  schema:
+                    type: string
+                - name: manualSqlId
+                  in: query
+                  description: The stable ID used as the last component of the resource name.
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManualSQL'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManualSQL'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/instances/{instance}/databases/{database}/manualSqls/{manualSql}:
+        get:
+            tags:
+                - DatabaseService
+            operationId: DatabaseService_GetManualSQL
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+                - name: database
+                  in: path
+                  description: The database id.
+                  required: true
+                  schema:
+                    type: string
+                - name: manualSql
+                  in: path
+                  description: The manualSql id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManualSQL'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        delete:
+            tags:
+                - DatabaseService
+            operationId: DatabaseService_DeleteManualSQL
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+                - name: database
+                  in: path
+                  description: The database id.
+                  required: true
+                  schema:
+                    type: string
+                - name: manualSql
+                  in: path
+                  description: The manualSql id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - DatabaseService
+            operationId: DatabaseService_UpdateManualSQL
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+                - name: database
+                  in: path
+                  description: The database id.
+                  required: true
+                  schema:
+                    type: string
+                - name: manualSql
+                  in: path
+                  description: The manualSql id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManualSQL'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManualSQL'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/instances/{instance}/databases/{database}/manualSqls:search:
+        get:
+            tags:
+                - DatabaseService
+            operationId: DatabaseService_SearchManualSQL
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+                - name: database
+                  in: path
+                  description: The database id.
+                  required: true
+                  schema:
+                    type: string
+                - name: query
+                  in: query
+                  description: |-
+                    Keyword search against the indexed search document.
+                     First phase supports token-based full-text matching only.
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+                - name: tags
+                  in: query
+                  description: Exact-match tags for filtering.
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                - name: schemaName
+                  in: query
+                  description: Optional schema context filter. Empty means all schemas.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SearchManualSQLResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/instances/{instance}/databases/{database}:sync:
         post:
             tags:
@@ -738,6 +1012,7 @@ paths:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -798,6 +1073,7 @@ paths:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -871,6 +1147,7 @@ paths:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -922,6 +1199,7 @@ paths:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -973,6 +1251,7 @@ paths:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -2731,6 +3010,7 @@ components:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -2756,6 +3036,7 @@ components:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -2781,6 +3062,7 @@ components:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -2871,6 +3153,15 @@ components:
                     description: |-
                         A token, which can be sent as `page_token` to retrieve the next page.
                          If this field is omitted, there are no subsequent pages.
+        ListManualSQLResponse:
+            type: object
+            properties:
+                manualSqls:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ManualSQL'
+                nextPageToken:
+                    type: string
         ListNamespaceMappingResponse:
             type: object
             properties:
@@ -2938,6 +3229,80 @@ components:
         LogoutRequest:
             type: object
             properties: {}
+        ManualSQL:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        The resource name.
+                         Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql}
+                guid:
+                    readOnly: true
+                    type: string
+                    description: The globally unique metadata GUID.
+                title:
+                    type: string
+                schemaName:
+                    type: string
+                comment:
+                    type: string
+                sqlText:
+                    type: string
+                tags:
+                    type: array
+                    items:
+                        type: string
+                attributes:
+                    type: object
+                    additionalProperties:
+                        type: string
+                createdAt:
+                    readOnly: true
+                    type: string
+                    format: date-time
+                updatedAt:
+                    readOnly: true
+                    type: string
+                    format: date-time
+        ManualSQLMetadata:
+            type: object
+            properties:
+                manualSqlId:
+                    type: string
+                    description: The stable identifier of the manual SQL entry.
+                name:
+                    type: string
+                    description: The display name of the manual SQL entry.
+                title:
+                    type: string
+                    description: The title is optional display text for UI surfaces.
+                comment:
+                    type: string
+                    description: The comment is a free-form description.
+                sqlText:
+                    type: string
+                    description: The SQL text provided by the user.
+                tags:
+                    type: array
+                    items:
+                        type: string
+                    description: Tags support exact filtering in the dedicated manual SQL query path.
+                attributes:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: Attributes provide custom key/value annotations.
+                schemaName:
+                    type: string
+                    description: The optional schema context used during analysis.
+                instanceResource:
+                    type: string
+                    description: 'The instance resource. Format: instances/{instance}'
+                databaseName:
+                    type: string
+                    description: The database name in the instance.
+            description: ManualSQLMetadata is the metadata for a user-maintained SQL definition.
         MaterializedViewMetadata:
             type: object
             properties:
@@ -2987,6 +3352,7 @@ components:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -3313,6 +3679,15 @@ components:
             description: |-
                 SchemaMetadata is the metadata for schemas.
                  This is the concept of schema in Postgres, but it's a no-op for MySQL.
+        SearchManualSQLResponse:
+            type: object
+            properties:
+                manualSqls:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ManualSQL'
+                nextPageToken:
+                    type: string
         SearchMetadataResponse:
             type: object
             properties:
@@ -3340,6 +3715,7 @@ components:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -3506,6 +3882,8 @@ components:
                     $ref: '#/components/schemas/StreamMetadata'
                 taskMetadata:
                     $ref: '#/components/schemas/TaskMetadata'
+                manualSqlMetadata:
+                    $ref: '#/components/schemas/ManualSQLMetadata'
         StreamMetadata:
             type: object
             properties:

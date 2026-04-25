@@ -5,7 +5,7 @@
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { State } from "./common_pb";
-import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import type { EmptySchema, FieldMask, Timestamp } from "@bufbuild/protobuf/wkt";
 import type { InstanceResource } from "./instance_service_pb";
 
 /**
@@ -538,6 +538,363 @@ export declare type SearchMetadataResult = Message<"metaxisdata.v1.SearchMetadat
 export declare const SearchMetadataResultSchema: GenMessage<SearchMetadataResult>;
 
 /**
+ * @generated from message metaxisdata.v1.ManualSQL
+ */
+export declare type ManualSQL = Message<"metaxisdata.v1.ManualSQL"> & {
+  /**
+   * The resource name.
+   * Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The globally unique metadata GUID.
+   *
+   * @generated from field: string guid = 2;
+   */
+  guid: string;
+
+  /**
+   * @generated from field: string title = 3;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string schema_name = 4;
+   */
+  schemaName: string;
+
+  /**
+   * @generated from field: string comment = 5;
+   */
+  comment: string;
+
+  /**
+   * @generated from field: string sql_text = 6;
+   */
+  sqlText: string;
+
+  /**
+   * @generated from field: repeated string tags = 7;
+   */
+  tags: string[];
+
+  /**
+   * @generated from field: map<string, string> attributes = 8;
+   */
+  attributes: { [key: string]: string };
+
+  /**
+   * @generated from field: google.protobuf.Timestamp created_at = 9;
+   */
+  createdAt?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp updated_at = 10;
+   */
+  updatedAt?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ManualSQL.
+ * Use `create(ManualSQLSchema)` to create a new message.
+ */
+export declare const ManualSQLSchema: GenMessage<ManualSQL>;
+
+/**
+ * @generated from message metaxisdata.v1.CreateManualSQLRequest
+ */
+export declare type CreateManualSQLRequest = Message<"metaxisdata.v1.CreateManualSQLRequest"> & {
+  /**
+   * Format: instances/{instance}/databases/{database}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.ManualSQL manual_sql = 2;
+   */
+  manualSql?: ManualSQL;
+
+  /**
+   * The stable ID used as the last component of the resource name.
+   *
+   * @generated from field: string manual_sql_id = 3;
+   */
+  manualSqlId: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateManualSQLRequest.
+ * Use `create(CreateManualSQLRequestSchema)` to create a new message.
+ */
+export declare const CreateManualSQLRequestSchema: GenMessage<CreateManualSQLRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetManualSQLRequest
+ */
+export declare type GetManualSQLRequest = Message<"metaxisdata.v1.GetManualSQLRequest"> & {
+  /**
+   * Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetManualSQLRequest.
+ * Use `create(GetManualSQLRequestSchema)` to create a new message.
+ */
+export declare const GetManualSQLRequestSchema: GenMessage<GetManualSQLRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListManualSQLRequest
+ */
+export declare type ListManualSQLRequest = Message<"metaxisdata.v1.ListManualSQLRequest"> & {
+  /**
+   * Format: instances/{instance}/databases/{database}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+
+  /**
+   * Optional schema context filter. Empty means all schemas.
+   *
+   * @generated from field: string schema_name = 4;
+   */
+  schemaName: string;
+
+  /**
+   * Exact-match tags for filtering.
+   *
+   * @generated from field: repeated string tags = 5;
+   */
+  tags: string[];
+
+  /**
+   * @generated from field: bool show_deleted = 6;
+   */
+  showDeleted: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListManualSQLRequest.
+ * Use `create(ListManualSQLRequestSchema)` to create a new message.
+ */
+export declare const ListManualSQLRequestSchema: GenMessage<ListManualSQLRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListManualSQLResponse
+ */
+export declare type ListManualSQLResponse = Message<"metaxisdata.v1.ListManualSQLResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.ManualSQL manual_sqls = 1;
+   */
+  manualSqls: ManualSQL[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListManualSQLResponse.
+ * Use `create(ListManualSQLResponseSchema)` to create a new message.
+ */
+export declare const ListManualSQLResponseSchema: GenMessage<ListManualSQLResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.SearchManualSQLRequest
+ */
+export declare type SearchManualSQLRequest = Message<"metaxisdata.v1.SearchManualSQLRequest"> & {
+  /**
+   * Format: instances/{instance}/databases/{database}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * Keyword search against the indexed search document.
+   * First phase supports token-based full-text matching only.
+   *
+   * @generated from field: string query = 2;
+   */
+  query: string;
+
+  /**
+   * @generated from field: int32 page_size = 3;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 4;
+   */
+  pageToken: string;
+
+  /**
+   * Exact-match tags for filtering.
+   *
+   * @generated from field: repeated string tags = 5;
+   */
+  tags: string[];
+
+  /**
+   * Optional schema context filter. Empty means all schemas.
+   *
+   * @generated from field: string schema_name = 6;
+   */
+  schemaName: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SearchManualSQLRequest.
+ * Use `create(SearchManualSQLRequestSchema)` to create a new message.
+ */
+export declare const SearchManualSQLRequestSchema: GenMessage<SearchManualSQLRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.SearchManualSQLResponse
+ */
+export declare type SearchManualSQLResponse = Message<"metaxisdata.v1.SearchManualSQLResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.ManualSQL manual_sqls = 1;
+   */
+  manualSqls: ManualSQL[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SearchManualSQLResponse.
+ * Use `create(SearchManualSQLResponseSchema)` to create a new message.
+ */
+export declare const SearchManualSQLResponseSchema: GenMessage<SearchManualSQLResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateManualSQLRequest
+ */
+export declare type UpdateManualSQLRequest = Message<"metaxisdata.v1.UpdateManualSQLRequest"> & {
+  /**
+   * @generated from field: metaxisdata.v1.ManualSQL manual_sql = 1;
+   */
+  manualSql?: ManualSQL;
+
+  /**
+   * @generated from field: google.protobuf.FieldMask update_mask = 2;
+   */
+  updateMask?: FieldMask;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateManualSQLRequest.
+ * Use `create(UpdateManualSQLRequestSchema)` to create a new message.
+ */
+export declare const UpdateManualSQLRequestSchema: GenMessage<UpdateManualSQLRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.DeleteManualSQLRequest
+ */
+export declare type DeleteManualSQLRequest = Message<"metaxisdata.v1.DeleteManualSQLRequest"> & {
+  /**
+   * Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DeleteManualSQLRequest.
+ * Use `create(DeleteManualSQLRequestSchema)` to create a new message.
+ */
+export declare const DeleteManualSQLRequestSchema: GenMessage<DeleteManualSQLRequest>;
+
+/**
+ * ManualSQLMetadata is the metadata for a user-maintained SQL definition.
+ *
+ * @generated from message metaxisdata.v1.ManualSQLMetadata
+ */
+export declare type ManualSQLMetadata = Message<"metaxisdata.v1.ManualSQLMetadata"> & {
+  /**
+   * @generated from field: string manual_sql_id = 1;
+   */
+  manualSqlId: string;
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string title = 3;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string comment = 4;
+   */
+  comment: string;
+
+  /**
+   * @generated from field: string sql_text = 5;
+   */
+  sqlText: string;
+
+  /**
+   * @generated from field: repeated string tags = 6;
+   */
+  tags: string[];
+
+  /**
+   * @generated from field: map<string, string> attributes = 7;
+   */
+  attributes: { [key: string]: string };
+
+  /**
+   * @generated from field: string schema_name = 8;
+   */
+  schemaName: string;
+
+  /**
+   * Format: instances/{instance}
+   *
+   * @generated from field: string instance_resource = 9;
+   */
+  instanceResource: string;
+
+  /**
+   * @generated from field: string database_name = 10;
+   */
+  databaseName: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ManualSQLMetadata.
+ * Use `create(ManualSQLMetadataSchema)` to create a new message.
+ */
+export declare const ManualSQLMetadataSchema: GenMessage<ManualSQLMetadata>;
+
+/**
  * @generated from message metaxisdata.v1.StoredMetadata
  */
 export declare type StoredMetadata = Message<"metaxisdata.v1.StoredMetadata"> & {
@@ -616,6 +973,12 @@ export declare type StoredMetadata = Message<"metaxisdata.v1.StoredMetadata"> & 
      */
     value: TaskMetadata;
     case: "taskMetadata";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.ManualSQLMetadata manual_sql_metadata = 15;
+     */
+    value: ManualSQLMetadata;
+    case: "manualSqlMetadata";
   } | { case: undefined; value?: undefined };
 };
 
@@ -3077,6 +3440,11 @@ export enum MetaType {
   EXTERNAL_TABLE = 16,
 
   /**
+   * @generated from enum value: MANUAL_SQL = 18;
+   */
+  MANUAL_SQL = 18,
+
+  /**
    * @generated from enum value: VIEW = 5;
    */
   VIEW = 5,
@@ -3198,6 +3566,54 @@ export declare const DatabaseService: GenService<{
     methodKind: "unary";
     input: typeof GetSchemaStringRequestSchema;
     output: typeof MetadataSchemaStringSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.DatabaseService.CreateManualSQL
+   */
+  createManualSQL: {
+    methodKind: "unary";
+    input: typeof CreateManualSQLRequestSchema;
+    output: typeof ManualSQLSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.DatabaseService.GetManualSQL
+   */
+  getManualSQL: {
+    methodKind: "unary";
+    input: typeof GetManualSQLRequestSchema;
+    output: typeof ManualSQLSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.DatabaseService.ListManualSQL
+   */
+  listManualSQL: {
+    methodKind: "unary";
+    input: typeof ListManualSQLRequestSchema;
+    output: typeof ListManualSQLResponseSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.DatabaseService.SearchManualSQL
+   */
+  searchManualSQL: {
+    methodKind: "unary";
+    input: typeof SearchManualSQLRequestSchema;
+    output: typeof SearchManualSQLResponseSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.DatabaseService.UpdateManualSQL
+   */
+  updateManualSQL: {
+    methodKind: "unary";
+    input: typeof UpdateManualSQLRequestSchema;
+    output: typeof ManualSQLSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.DatabaseService.DeleteManualSQL
+   */
+  deleteManualSQL: {
+    methodKind: "unary";
+    input: typeof DeleteManualSQLRequestSchema;
+    output: typeof EmptySchema;
   },
 }>;
 

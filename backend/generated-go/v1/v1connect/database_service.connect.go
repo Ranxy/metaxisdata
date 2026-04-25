@@ -9,6 +9,7 @@ import (
 	context "context"
 	errors "errors"
 	v1 "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	http "net/http"
 	strings "strings"
 )
@@ -54,6 +55,24 @@ const (
 	// DatabaseServiceGetSchemaStringProcedure is the fully-qualified name of the DatabaseService's
 	// GetSchemaString RPC.
 	DatabaseServiceGetSchemaStringProcedure = "/metaxisdata.v1.DatabaseService/GetSchemaString"
+	// DatabaseServiceCreateManualSQLProcedure is the fully-qualified name of the DatabaseService's
+	// CreateManualSQL RPC.
+	DatabaseServiceCreateManualSQLProcedure = "/metaxisdata.v1.DatabaseService/CreateManualSQL"
+	// DatabaseServiceGetManualSQLProcedure is the fully-qualified name of the DatabaseService's
+	// GetManualSQL RPC.
+	DatabaseServiceGetManualSQLProcedure = "/metaxisdata.v1.DatabaseService/GetManualSQL"
+	// DatabaseServiceListManualSQLProcedure is the fully-qualified name of the DatabaseService's
+	// ListManualSQL RPC.
+	DatabaseServiceListManualSQLProcedure = "/metaxisdata.v1.DatabaseService/ListManualSQL"
+	// DatabaseServiceSearchManualSQLProcedure is the fully-qualified name of the DatabaseService's
+	// SearchManualSQL RPC.
+	DatabaseServiceSearchManualSQLProcedure = "/metaxisdata.v1.DatabaseService/SearchManualSQL"
+	// DatabaseServiceUpdateManualSQLProcedure is the fully-qualified name of the DatabaseService's
+	// UpdateManualSQL RPC.
+	DatabaseServiceUpdateManualSQLProcedure = "/metaxisdata.v1.DatabaseService/UpdateManualSQL"
+	// DatabaseServiceDeleteManualSQLProcedure is the fully-qualified name of the DatabaseService's
+	// DeleteManualSQL RPC.
+	DatabaseServiceDeleteManualSQLProcedure = "/metaxisdata.v1.DatabaseService/DeleteManualSQL"
 )
 
 // DatabaseServiceClient is a client for the metaxisdata.v1.DatabaseService service.
@@ -66,6 +85,12 @@ type DatabaseServiceClient interface {
 	SearchMetadata(context.Context, *connect.Request[v1.SearchMetadataRequest]) (*connect.Response[v1.SearchMetadataResponse], error)
 	// Generates schema DDL for a database object.
 	GetSchemaString(context.Context, *connect.Request[v1.GetSchemaStringRequest]) (*connect.Response[v1.MetadataSchemaString], error)
+	CreateManualSQL(context.Context, *connect.Request[v1.CreateManualSQLRequest]) (*connect.Response[v1.ManualSQL], error)
+	GetManualSQL(context.Context, *connect.Request[v1.GetManualSQLRequest]) (*connect.Response[v1.ManualSQL], error)
+	ListManualSQL(context.Context, *connect.Request[v1.ListManualSQLRequest]) (*connect.Response[v1.ListManualSQLResponse], error)
+	SearchManualSQL(context.Context, *connect.Request[v1.SearchManualSQLRequest]) (*connect.Response[v1.SearchManualSQLResponse], error)
+	UpdateManualSQL(context.Context, *connect.Request[v1.UpdateManualSQLRequest]) (*connect.Response[v1.ManualSQL], error)
+	DeleteManualSQL(context.Context, *connect.Request[v1.DeleteManualSQLRequest]) (*connect.Response[emptypb.Empty], error)
 }
 
 // NewDatabaseServiceClient constructs a client for the metaxisdata.v1.DatabaseService service. By
@@ -121,6 +146,42 @@ func NewDatabaseServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(databaseServiceMethods.ByName("GetSchemaString")),
 			connect.WithClientOptions(opts...),
 		),
+		createManualSQL: connect.NewClient[v1.CreateManualSQLRequest, v1.ManualSQL](
+			httpClient,
+			baseURL+DatabaseServiceCreateManualSQLProcedure,
+			connect.WithSchema(databaseServiceMethods.ByName("CreateManualSQL")),
+			connect.WithClientOptions(opts...),
+		),
+		getManualSQL: connect.NewClient[v1.GetManualSQLRequest, v1.ManualSQL](
+			httpClient,
+			baseURL+DatabaseServiceGetManualSQLProcedure,
+			connect.WithSchema(databaseServiceMethods.ByName("GetManualSQL")),
+			connect.WithClientOptions(opts...),
+		),
+		listManualSQL: connect.NewClient[v1.ListManualSQLRequest, v1.ListManualSQLResponse](
+			httpClient,
+			baseURL+DatabaseServiceListManualSQLProcedure,
+			connect.WithSchema(databaseServiceMethods.ByName("ListManualSQL")),
+			connect.WithClientOptions(opts...),
+		),
+		searchManualSQL: connect.NewClient[v1.SearchManualSQLRequest, v1.SearchManualSQLResponse](
+			httpClient,
+			baseURL+DatabaseServiceSearchManualSQLProcedure,
+			connect.WithSchema(databaseServiceMethods.ByName("SearchManualSQL")),
+			connect.WithClientOptions(opts...),
+		),
+		updateManualSQL: connect.NewClient[v1.UpdateManualSQLRequest, v1.ManualSQL](
+			httpClient,
+			baseURL+DatabaseServiceUpdateManualSQLProcedure,
+			connect.WithSchema(databaseServiceMethods.ByName("UpdateManualSQL")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteManualSQL: connect.NewClient[v1.DeleteManualSQLRequest, emptypb.Empty](
+			httpClient,
+			baseURL+DatabaseServiceDeleteManualSQLProcedure,
+			connect.WithSchema(databaseServiceMethods.ByName("DeleteManualSQL")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -133,6 +194,12 @@ type databaseServiceClient struct {
 	getMetadata     *connect.Client[v1.GetMetadataRequest, v1.GetMetadataResponse]
 	searchMetadata  *connect.Client[v1.SearchMetadataRequest, v1.SearchMetadataResponse]
 	getSchemaString *connect.Client[v1.GetSchemaStringRequest, v1.MetadataSchemaString]
+	createManualSQL *connect.Client[v1.CreateManualSQLRequest, v1.ManualSQL]
+	getManualSQL    *connect.Client[v1.GetManualSQLRequest, v1.ManualSQL]
+	listManualSQL   *connect.Client[v1.ListManualSQLRequest, v1.ListManualSQLResponse]
+	searchManualSQL *connect.Client[v1.SearchManualSQLRequest, v1.SearchManualSQLResponse]
+	updateManualSQL *connect.Client[v1.UpdateManualSQLRequest, v1.ManualSQL]
+	deleteManualSQL *connect.Client[v1.DeleteManualSQLRequest, emptypb.Empty]
 }
 
 // GetDatabase calls metaxisdata.v1.DatabaseService.GetDatabase.
@@ -170,6 +237,36 @@ func (c *databaseServiceClient) GetSchemaString(ctx context.Context, req *connec
 	return c.getSchemaString.CallUnary(ctx, req)
 }
 
+// CreateManualSQL calls metaxisdata.v1.DatabaseService.CreateManualSQL.
+func (c *databaseServiceClient) CreateManualSQL(ctx context.Context, req *connect.Request[v1.CreateManualSQLRequest]) (*connect.Response[v1.ManualSQL], error) {
+	return c.createManualSQL.CallUnary(ctx, req)
+}
+
+// GetManualSQL calls metaxisdata.v1.DatabaseService.GetManualSQL.
+func (c *databaseServiceClient) GetManualSQL(ctx context.Context, req *connect.Request[v1.GetManualSQLRequest]) (*connect.Response[v1.ManualSQL], error) {
+	return c.getManualSQL.CallUnary(ctx, req)
+}
+
+// ListManualSQL calls metaxisdata.v1.DatabaseService.ListManualSQL.
+func (c *databaseServiceClient) ListManualSQL(ctx context.Context, req *connect.Request[v1.ListManualSQLRequest]) (*connect.Response[v1.ListManualSQLResponse], error) {
+	return c.listManualSQL.CallUnary(ctx, req)
+}
+
+// SearchManualSQL calls metaxisdata.v1.DatabaseService.SearchManualSQL.
+func (c *databaseServiceClient) SearchManualSQL(ctx context.Context, req *connect.Request[v1.SearchManualSQLRequest]) (*connect.Response[v1.SearchManualSQLResponse], error) {
+	return c.searchManualSQL.CallUnary(ctx, req)
+}
+
+// UpdateManualSQL calls metaxisdata.v1.DatabaseService.UpdateManualSQL.
+func (c *databaseServiceClient) UpdateManualSQL(ctx context.Context, req *connect.Request[v1.UpdateManualSQLRequest]) (*connect.Response[v1.ManualSQL], error) {
+	return c.updateManualSQL.CallUnary(ctx, req)
+}
+
+// DeleteManualSQL calls metaxisdata.v1.DatabaseService.DeleteManualSQL.
+func (c *databaseServiceClient) DeleteManualSQL(ctx context.Context, req *connect.Request[v1.DeleteManualSQLRequest]) (*connect.Response[emptypb.Empty], error) {
+	return c.deleteManualSQL.CallUnary(ctx, req)
+}
+
 // DatabaseServiceHandler is an implementation of the metaxisdata.v1.DatabaseService service.
 type DatabaseServiceHandler interface {
 	GetDatabase(context.Context, *connect.Request[v1.GetDatabaseRequest]) (*connect.Response[v1.Database], error)
@@ -180,6 +277,12 @@ type DatabaseServiceHandler interface {
 	SearchMetadata(context.Context, *connect.Request[v1.SearchMetadataRequest]) (*connect.Response[v1.SearchMetadataResponse], error)
 	// Generates schema DDL for a database object.
 	GetSchemaString(context.Context, *connect.Request[v1.GetSchemaStringRequest]) (*connect.Response[v1.MetadataSchemaString], error)
+	CreateManualSQL(context.Context, *connect.Request[v1.CreateManualSQLRequest]) (*connect.Response[v1.ManualSQL], error)
+	GetManualSQL(context.Context, *connect.Request[v1.GetManualSQLRequest]) (*connect.Response[v1.ManualSQL], error)
+	ListManualSQL(context.Context, *connect.Request[v1.ListManualSQLRequest]) (*connect.Response[v1.ListManualSQLResponse], error)
+	SearchManualSQL(context.Context, *connect.Request[v1.SearchManualSQLRequest]) (*connect.Response[v1.SearchManualSQLResponse], error)
+	UpdateManualSQL(context.Context, *connect.Request[v1.UpdateManualSQLRequest]) (*connect.Response[v1.ManualSQL], error)
+	DeleteManualSQL(context.Context, *connect.Request[v1.DeleteManualSQLRequest]) (*connect.Response[emptypb.Empty], error)
 }
 
 // NewDatabaseServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -231,6 +334,42 @@ func NewDatabaseServiceHandler(svc DatabaseServiceHandler, opts ...connect.Handl
 		connect.WithSchema(databaseServiceMethods.ByName("GetSchemaString")),
 		connect.WithHandlerOptions(opts...),
 	)
+	databaseServiceCreateManualSQLHandler := connect.NewUnaryHandler(
+		DatabaseServiceCreateManualSQLProcedure,
+		svc.CreateManualSQL,
+		connect.WithSchema(databaseServiceMethods.ByName("CreateManualSQL")),
+		connect.WithHandlerOptions(opts...),
+	)
+	databaseServiceGetManualSQLHandler := connect.NewUnaryHandler(
+		DatabaseServiceGetManualSQLProcedure,
+		svc.GetManualSQL,
+		connect.WithSchema(databaseServiceMethods.ByName("GetManualSQL")),
+		connect.WithHandlerOptions(opts...),
+	)
+	databaseServiceListManualSQLHandler := connect.NewUnaryHandler(
+		DatabaseServiceListManualSQLProcedure,
+		svc.ListManualSQL,
+		connect.WithSchema(databaseServiceMethods.ByName("ListManualSQL")),
+		connect.WithHandlerOptions(opts...),
+	)
+	databaseServiceSearchManualSQLHandler := connect.NewUnaryHandler(
+		DatabaseServiceSearchManualSQLProcedure,
+		svc.SearchManualSQL,
+		connect.WithSchema(databaseServiceMethods.ByName("SearchManualSQL")),
+		connect.WithHandlerOptions(opts...),
+	)
+	databaseServiceUpdateManualSQLHandler := connect.NewUnaryHandler(
+		DatabaseServiceUpdateManualSQLProcedure,
+		svc.UpdateManualSQL,
+		connect.WithSchema(databaseServiceMethods.ByName("UpdateManualSQL")),
+		connect.WithHandlerOptions(opts...),
+	)
+	databaseServiceDeleteManualSQLHandler := connect.NewUnaryHandler(
+		DatabaseServiceDeleteManualSQLProcedure,
+		svc.DeleteManualSQL,
+		connect.WithSchema(databaseServiceMethods.ByName("DeleteManualSQL")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.DatabaseService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DatabaseServiceGetDatabaseProcedure:
@@ -247,6 +386,18 @@ func NewDatabaseServiceHandler(svc DatabaseServiceHandler, opts ...connect.Handl
 			databaseServiceSearchMetadataHandler.ServeHTTP(w, r)
 		case DatabaseServiceGetSchemaStringProcedure:
 			databaseServiceGetSchemaStringHandler.ServeHTTP(w, r)
+		case DatabaseServiceCreateManualSQLProcedure:
+			databaseServiceCreateManualSQLHandler.ServeHTTP(w, r)
+		case DatabaseServiceGetManualSQLProcedure:
+			databaseServiceGetManualSQLHandler.ServeHTTP(w, r)
+		case DatabaseServiceListManualSQLProcedure:
+			databaseServiceListManualSQLHandler.ServeHTTP(w, r)
+		case DatabaseServiceSearchManualSQLProcedure:
+			databaseServiceSearchManualSQLHandler.ServeHTTP(w, r)
+		case DatabaseServiceUpdateManualSQLProcedure:
+			databaseServiceUpdateManualSQLHandler.ServeHTTP(w, r)
+		case DatabaseServiceDeleteManualSQLProcedure:
+			databaseServiceDeleteManualSQLHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -282,4 +433,28 @@ func (UnimplementedDatabaseServiceHandler) SearchMetadata(context.Context, *conn
 
 func (UnimplementedDatabaseServiceHandler) GetSchemaString(context.Context, *connect.Request[v1.GetSchemaStringRequest]) (*connect.Response[v1.MetadataSchemaString], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.GetSchemaString is not implemented"))
+}
+
+func (UnimplementedDatabaseServiceHandler) CreateManualSQL(context.Context, *connect.Request[v1.CreateManualSQLRequest]) (*connect.Response[v1.ManualSQL], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.CreateManualSQL is not implemented"))
+}
+
+func (UnimplementedDatabaseServiceHandler) GetManualSQL(context.Context, *connect.Request[v1.GetManualSQLRequest]) (*connect.Response[v1.ManualSQL], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.GetManualSQL is not implemented"))
+}
+
+func (UnimplementedDatabaseServiceHandler) ListManualSQL(context.Context, *connect.Request[v1.ListManualSQLRequest]) (*connect.Response[v1.ListManualSQLResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.ListManualSQL is not implemented"))
+}
+
+func (UnimplementedDatabaseServiceHandler) SearchManualSQL(context.Context, *connect.Request[v1.SearchManualSQLRequest]) (*connect.Response[v1.SearchManualSQLResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.SearchManualSQL is not implemented"))
+}
+
+func (UnimplementedDatabaseServiceHandler) UpdateManualSQL(context.Context, *connect.Request[v1.UpdateManualSQLRequest]) (*connect.Response[v1.ManualSQL], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.UpdateManualSQL is not implemented"))
+}
+
+func (UnimplementedDatabaseServiceHandler) DeleteManualSQL(context.Context, *connect.Request[v1.DeleteManualSQLRequest]) (*connect.Response[emptypb.Empty], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.DeleteManualSQL is not implemented"))
 }

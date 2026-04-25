@@ -10,6 +10,8 @@ import (
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -32,6 +34,7 @@ const (
 	MetaType_SCHEMA            MetaType = 3
 	MetaType_TABLE             MetaType = 4
 	MetaType_EXTERNAL_TABLE    MetaType = 16
+	MetaType_MANUAL_SQL        MetaType = 18
 	MetaType_VIEW              MetaType = 5
 	MetaType_MATERIALIZED_VIEW MetaType = 6
 	MetaType_COLUMN            MetaType = 7
@@ -54,6 +57,7 @@ var (
 		3:  "SCHEMA",
 		4:  "TABLE",
 		16: "EXTERNAL_TABLE",
+		18: "MANUAL_SQL",
 		5:  "VIEW",
 		6:  "MATERIALIZED_VIEW",
 		7:  "COLUMN",
@@ -73,6 +77,7 @@ var (
 		"SCHEMA":            3,
 		"TABLE":             4,
 		"EXTERNAL_TABLE":    16,
+		"MANUAL_SQL":        18,
 		"VIEW":              5,
 		"MATERIALIZED_VIEW": 6,
 		"COLUMN":            7,
@@ -160,7 +165,7 @@ func (x TaskMetadata_State) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TaskMetadata_State.Descriptor instead.
 func (TaskMetadata_State) EnumDescriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{24, 0}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{34, 0}
 }
 
 type StreamMetadata_Type int32
@@ -206,7 +211,7 @@ func (x StreamMetadata_Type) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use StreamMetadata_Type.Descriptor instead.
 func (StreamMetadata_Type) EnumDescriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{25, 0}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{35, 0}
 }
 
 type StreamMetadata_Mode int32
@@ -258,7 +263,7 @@ func (x StreamMetadata_Mode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use StreamMetadata_Mode.Descriptor instead.
 func (StreamMetadata_Mode) EnumDescriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{25, 1}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{35, 1}
 }
 
 // The type is the type of a table partition. Some database engines may not
@@ -332,7 +337,7 @@ func (x TablePartitionMetadata_Type) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TablePartitionMetadata_Type.Descriptor instead.
 func (TablePartitionMetadata_Type) EnumDescriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{30, 0}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{40, 0}
 }
 
 type ColumnMetadata_IdentityGeneration int32
@@ -381,7 +386,7 @@ func (x ColumnMetadata_IdentityGeneration) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ColumnMetadata_IdentityGeneration.Descriptor instead.
 func (ColumnMetadata_IdentityGeneration) EnumDescriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{31, 0}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{41, 0}
 }
 
 type GenerationMetadata_Type int32
@@ -430,7 +435,7 @@ func (x GenerationMetadata_Type) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use GenerationMetadata_Type.Descriptor instead.
 func (GenerationMetadata_Type) EnumDescriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{32, 0}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{42, 0}
 }
 
 type GetDatabaseRequest struct {
@@ -1380,6 +1385,727 @@ func (x *SearchMetadataResult) GetMetadata() *StoredMetadata {
 	return nil
 }
 
+type ManualSQL struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The resource name.
+	// Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql}
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The globally unique metadata GUID.
+	Guid          string                 `protobuf:"bytes,2,opt,name=guid,proto3" json:"guid,omitempty"`
+	Title         string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
+	SchemaName    string                 `protobuf:"bytes,4,opt,name=schema_name,json=schemaName,proto3" json:"schema_name,omitempty"`
+	Comment       string                 `protobuf:"bytes,5,opt,name=comment,proto3" json:"comment,omitempty"`
+	SqlText       string                 `protobuf:"bytes,6,opt,name=sql_text,json=sqlText,proto3" json:"sql_text,omitempty"`
+	Tags          []string               `protobuf:"bytes,7,rep,name=tags,proto3" json:"tags,omitempty"`
+	Attributes    map[string]string      `protobuf:"bytes,8,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ManualSQL) Reset() {
+	*x = ManualSQL{}
+	mi := &file_v1_database_service_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ManualSQL) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ManualSQL) ProtoMessage() {}
+
+func (x *ManualSQL) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_database_service_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ManualSQL.ProtoReflect.Descriptor instead.
+func (*ManualSQL) Descriptor() ([]byte, []int) {
+	return file_v1_database_service_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ManualSQL) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ManualSQL) GetGuid() string {
+	if x != nil {
+		return x.Guid
+	}
+	return ""
+}
+
+func (x *ManualSQL) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *ManualSQL) GetSchemaName() string {
+	if x != nil {
+		return x.SchemaName
+	}
+	return ""
+}
+
+func (x *ManualSQL) GetComment() string {
+	if x != nil {
+		return x.Comment
+	}
+	return ""
+}
+
+func (x *ManualSQL) GetSqlText() string {
+	if x != nil {
+		return x.SqlText
+	}
+	return ""
+}
+
+func (x *ManualSQL) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
+func (x *ManualSQL) GetAttributes() map[string]string {
+	if x != nil {
+		return x.Attributes
+	}
+	return nil
+}
+
+func (x *ManualSQL) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *ManualSQL) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+type CreateManualSQLRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: instances/{instance}/databases/{database}
+	Parent    string     `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	ManualSql *ManualSQL `protobuf:"bytes,2,opt,name=manual_sql,json=manualSql,proto3" json:"manual_sql,omitempty"`
+	// The stable ID used as the last component of the resource name.
+	ManualSqlId   string `protobuf:"bytes,3,opt,name=manual_sql_id,json=manualSqlId,proto3" json:"manual_sql_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateManualSQLRequest) Reset() {
+	*x = CreateManualSQLRequest{}
+	mi := &file_v1_database_service_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateManualSQLRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateManualSQLRequest) ProtoMessage() {}
+
+func (x *CreateManualSQLRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_database_service_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateManualSQLRequest.ProtoReflect.Descriptor instead.
+func (*CreateManualSQLRequest) Descriptor() ([]byte, []int) {
+	return file_v1_database_service_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *CreateManualSQLRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
+func (x *CreateManualSQLRequest) GetManualSql() *ManualSQL {
+	if x != nil {
+		return x.ManualSql
+	}
+	return nil
+}
+
+func (x *CreateManualSQLRequest) GetManualSqlId() string {
+	if x != nil {
+		return x.ManualSqlId
+	}
+	return ""
+}
+
+type GetManualSQLRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql}
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetManualSQLRequest) Reset() {
+	*x = GetManualSQLRequest{}
+	mi := &file_v1_database_service_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetManualSQLRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetManualSQLRequest) ProtoMessage() {}
+
+func (x *GetManualSQLRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_database_service_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetManualSQLRequest.ProtoReflect.Descriptor instead.
+func (*GetManualSQLRequest) Descriptor() ([]byte, []int) {
+	return file_v1_database_service_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *GetManualSQLRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type ListManualSQLRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: instances/{instance}/databases/{database}
+	Parent    string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	PageSize  int32  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// Optional schema context filter. Empty means all schemas.
+	SchemaName string `protobuf:"bytes,4,opt,name=schema_name,json=schemaName,proto3" json:"schema_name,omitempty"`
+	// Exact-match tags for filtering.
+	Tags          []string `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty"`
+	ShowDeleted   bool     `protobuf:"varint,6,opt,name=show_deleted,json=showDeleted,proto3" json:"show_deleted,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListManualSQLRequest) Reset() {
+	*x = ListManualSQLRequest{}
+	mi := &file_v1_database_service_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListManualSQLRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListManualSQLRequest) ProtoMessage() {}
+
+func (x *ListManualSQLRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_database_service_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListManualSQLRequest.ProtoReflect.Descriptor instead.
+func (*ListManualSQLRequest) Descriptor() ([]byte, []int) {
+	return file_v1_database_service_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ListManualSQLRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
+func (x *ListManualSQLRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListManualSQLRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+func (x *ListManualSQLRequest) GetSchemaName() string {
+	if x != nil {
+		return x.SchemaName
+	}
+	return ""
+}
+
+func (x *ListManualSQLRequest) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
+func (x *ListManualSQLRequest) GetShowDeleted() bool {
+	if x != nil {
+		return x.ShowDeleted
+	}
+	return false
+}
+
+type ListManualSQLResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ManualSqls    []*ManualSQL           `protobuf:"bytes,1,rep,name=manual_sqls,json=manualSqls,proto3" json:"manual_sqls,omitempty"`
+	NextPageToken string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListManualSQLResponse) Reset() {
+	*x = ListManualSQLResponse{}
+	mi := &file_v1_database_service_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListManualSQLResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListManualSQLResponse) ProtoMessage() {}
+
+func (x *ListManualSQLResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_database_service_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListManualSQLResponse.ProtoReflect.Descriptor instead.
+func (*ListManualSQLResponse) Descriptor() ([]byte, []int) {
+	return file_v1_database_service_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *ListManualSQLResponse) GetManualSqls() []*ManualSQL {
+	if x != nil {
+		return x.ManualSqls
+	}
+	return nil
+}
+
+func (x *ListManualSQLResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+type SearchManualSQLRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: instances/{instance}/databases/{database}
+	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	// Keyword search against the indexed search document.
+	// First phase supports token-based full-text matching only.
+	Query     string `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
+	PageSize  int32  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// Exact-match tags for filtering.
+	Tags []string `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty"`
+	// Optional schema context filter. Empty means all schemas.
+	SchemaName    string `protobuf:"bytes,6,opt,name=schema_name,json=schemaName,proto3" json:"schema_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchManualSQLRequest) Reset() {
+	*x = SearchManualSQLRequest{}
+	mi := &file_v1_database_service_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchManualSQLRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchManualSQLRequest) ProtoMessage() {}
+
+func (x *SearchManualSQLRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_database_service_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchManualSQLRequest.ProtoReflect.Descriptor instead.
+func (*SearchManualSQLRequest) Descriptor() ([]byte, []int) {
+	return file_v1_database_service_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *SearchManualSQLRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
+func (x *SearchManualSQLRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *SearchManualSQLRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *SearchManualSQLRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+func (x *SearchManualSQLRequest) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
+func (x *SearchManualSQLRequest) GetSchemaName() string {
+	if x != nil {
+		return x.SchemaName
+	}
+	return ""
+}
+
+type SearchManualSQLResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ManualSqls    []*ManualSQL           `protobuf:"bytes,1,rep,name=manual_sqls,json=manualSqls,proto3" json:"manual_sqls,omitempty"`
+	NextPageToken string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchManualSQLResponse) Reset() {
+	*x = SearchManualSQLResponse{}
+	mi := &file_v1_database_service_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchManualSQLResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchManualSQLResponse) ProtoMessage() {}
+
+func (x *SearchManualSQLResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_database_service_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchManualSQLResponse.ProtoReflect.Descriptor instead.
+func (*SearchManualSQLResponse) Descriptor() ([]byte, []int) {
+	return file_v1_database_service_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *SearchManualSQLResponse) GetManualSqls() []*ManualSQL {
+	if x != nil {
+		return x.ManualSqls
+	}
+	return nil
+}
+
+func (x *SearchManualSQLResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+type UpdateManualSQLRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ManualSql     *ManualSQL             `protobuf:"bytes,1,opt,name=manual_sql,json=manualSql,proto3" json:"manual_sql,omitempty"`
+	UpdateMask    *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateManualSQLRequest) Reset() {
+	*x = UpdateManualSQLRequest{}
+	mi := &file_v1_database_service_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateManualSQLRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateManualSQLRequest) ProtoMessage() {}
+
+func (x *UpdateManualSQLRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_database_service_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateManualSQLRequest.ProtoReflect.Descriptor instead.
+func (*UpdateManualSQLRequest) Descriptor() ([]byte, []int) {
+	return file_v1_database_service_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *UpdateManualSQLRequest) GetManualSql() *ManualSQL {
+	if x != nil {
+		return x.ManualSql
+	}
+	return nil
+}
+
+func (x *UpdateManualSQLRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
+	if x != nil {
+		return x.UpdateMask
+	}
+	return nil
+}
+
+type DeleteManualSQLRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql}
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteManualSQLRequest) Reset() {
+	*x = DeleteManualSQLRequest{}
+	mi := &file_v1_database_service_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteManualSQLRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteManualSQLRequest) ProtoMessage() {}
+
+func (x *DeleteManualSQLRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_database_service_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteManualSQLRequest.ProtoReflect.Descriptor instead.
+func (*DeleteManualSQLRequest) Descriptor() ([]byte, []int) {
+	return file_v1_database_service_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *DeleteManualSQLRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+// ManualSQLMetadata is the metadata for a user-maintained SQL definition.
+type ManualSQLMetadata struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	ManualSqlId string                 `protobuf:"bytes,1,opt,name=manual_sql_id,json=manualSqlId,proto3" json:"manual_sql_id,omitempty"`
+	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Title       string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
+	Comment     string                 `protobuf:"bytes,4,opt,name=comment,proto3" json:"comment,omitempty"`
+	SqlText     string                 `protobuf:"bytes,5,opt,name=sql_text,json=sqlText,proto3" json:"sql_text,omitempty"`
+	Tags        []string               `protobuf:"bytes,6,rep,name=tags,proto3" json:"tags,omitempty"`
+	Attributes  map[string]string      `protobuf:"bytes,7,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	SchemaName  string                 `protobuf:"bytes,8,opt,name=schema_name,json=schemaName,proto3" json:"schema_name,omitempty"`
+	// Format: instances/{instance}
+	InstanceResource string `protobuf:"bytes,9,opt,name=instance_resource,json=instanceResource,proto3" json:"instance_resource,omitempty"`
+	DatabaseName     string `protobuf:"bytes,10,opt,name=database_name,json=databaseName,proto3" json:"database_name,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ManualSQLMetadata) Reset() {
+	*x = ManualSQLMetadata{}
+	mi := &file_v1_database_service_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ManualSQLMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ManualSQLMetadata) ProtoMessage() {}
+
+func (x *ManualSQLMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_database_service_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ManualSQLMetadata.ProtoReflect.Descriptor instead.
+func (*ManualSQLMetadata) Descriptor() ([]byte, []int) {
+	return file_v1_database_service_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *ManualSQLMetadata) GetManualSqlId() string {
+	if x != nil {
+		return x.ManualSqlId
+	}
+	return ""
+}
+
+func (x *ManualSQLMetadata) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ManualSQLMetadata) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *ManualSQLMetadata) GetComment() string {
+	if x != nil {
+		return x.Comment
+	}
+	return ""
+}
+
+func (x *ManualSQLMetadata) GetSqlText() string {
+	if x != nil {
+		return x.SqlText
+	}
+	return ""
+}
+
+func (x *ManualSQLMetadata) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
+func (x *ManualSQLMetadata) GetAttributes() map[string]string {
+	if x != nil {
+		return x.Attributes
+	}
+	return nil
+}
+
+func (x *ManualSQLMetadata) GetSchemaName() string {
+	if x != nil {
+		return x.SchemaName
+	}
+	return ""
+}
+
+func (x *ManualSQLMetadata) GetInstanceResource() string {
+	if x != nil {
+		return x.InstanceResource
+	}
+	return ""
+}
+
+func (x *ManualSQLMetadata) GetDatabaseName() string {
+	if x != nil {
+		return x.DatabaseName
+	}
+	return ""
+}
+
 type StoredMetadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Type:
@@ -1396,6 +2122,7 @@ type StoredMetadata struct {
 	//	*StoredMetadata_SequenceMetadata
 	//	*StoredMetadata_StreamMetadata
 	//	*StoredMetadata_TaskMetadata
+	//	*StoredMetadata_ManualSqlMetadata
 	Type          isStoredMetadata_Type `protobuf_oneof:"type"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1403,7 +2130,7 @@ type StoredMetadata struct {
 
 func (x *StoredMetadata) Reset() {
 	*x = StoredMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[15]
+	mi := &file_v1_database_service_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1415,7 +2142,7 @@ func (x *StoredMetadata) String() string {
 func (*StoredMetadata) ProtoMessage() {}
 
 func (x *StoredMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[15]
+	mi := &file_v1_database_service_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1428,7 +2155,7 @@ func (x *StoredMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoredMetadata.ProtoReflect.Descriptor instead.
 func (*StoredMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{15}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *StoredMetadata) GetType() isStoredMetadata_Type {
@@ -1546,6 +2273,15 @@ func (x *StoredMetadata) GetTaskMetadata() *TaskMetadata {
 	return nil
 }
 
+func (x *StoredMetadata) GetManualSqlMetadata() *ManualSQLMetadata {
+	if x != nil {
+		if x, ok := x.Type.(*StoredMetadata_ManualSqlMetadata); ok {
+			return x.ManualSqlMetadata
+		}
+	}
+	return nil
+}
+
 type isStoredMetadata_Type interface {
 	isStoredMetadata_Type()
 }
@@ -1598,6 +2334,10 @@ type StoredMetadata_TaskMetadata struct {
 	TaskMetadata *TaskMetadata `protobuf:"bytes,12,opt,name=task_metadata,json=taskMetadata,proto3,oneof"`
 }
 
+type StoredMetadata_ManualSqlMetadata struct {
+	ManualSqlMetadata *ManualSQLMetadata `protobuf:"bytes,15,opt,name=manual_sql_metadata,json=manualSqlMetadata,proto3,oneof"`
+}
+
 func (*StoredMetadata_DatabaseSchemaMetadata) isStoredMetadata_Type() {}
 
 func (*StoredMetadata_SchemaMetadata) isStoredMetadata_Type() {}
@@ -1621,6 +2361,8 @@ func (*StoredMetadata_SequenceMetadata) isStoredMetadata_Type() {}
 func (*StoredMetadata_StreamMetadata) isStoredMetadata_Type() {}
 
 func (*StoredMetadata_TaskMetadata) isStoredMetadata_Type() {}
+
+func (*StoredMetadata_ManualSqlMetadata) isStoredMetadata_Type() {}
 
 // DatabaseSchemaMetadata is the schema metadata for databases.
 type DatabaseSchemaMetadata struct {
@@ -1651,7 +2393,7 @@ type DatabaseSchemaMetadata struct {
 
 func (x *DatabaseSchemaMetadata) Reset() {
 	*x = DatabaseSchemaMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[16]
+	mi := &file_v1_database_service_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1663,7 +2405,7 @@ func (x *DatabaseSchemaMetadata) String() string {
 func (*DatabaseSchemaMetadata) ProtoMessage() {}
 
 func (x *DatabaseSchemaMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[16]
+	mi := &file_v1_database_service_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1676,7 +2418,7 @@ func (x *DatabaseSchemaMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DatabaseSchemaMetadata.ProtoReflect.Descriptor instead.
 func (*DatabaseSchemaMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{16}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *DatabaseSchemaMetadata) GetName() string {
@@ -1767,7 +2509,7 @@ type LinkedDatabaseMetadata struct {
 
 func (x *LinkedDatabaseMetadata) Reset() {
 	*x = LinkedDatabaseMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[17]
+	mi := &file_v1_database_service_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1779,7 +2521,7 @@ func (x *LinkedDatabaseMetadata) String() string {
 func (*LinkedDatabaseMetadata) ProtoMessage() {}
 
 func (x *LinkedDatabaseMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[17]
+	mi := &file_v1_database_service_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1792,7 +2534,7 @@ func (x *LinkedDatabaseMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LinkedDatabaseMetadata.ProtoReflect.Descriptor instead.
 func (*LinkedDatabaseMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{17}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *LinkedDatabaseMetadata) GetName() string {
@@ -1854,7 +2596,7 @@ type SchemaMetadata struct {
 
 func (x *SchemaMetadata) Reset() {
 	*x = SchemaMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[18]
+	mi := &file_v1_database_service_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1866,7 +2608,7 @@ func (x *SchemaMetadata) String() string {
 func (*SchemaMetadata) ProtoMessage() {}
 
 func (x *SchemaMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[18]
+	mi := &file_v1_database_service_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1879,7 +2621,7 @@ func (x *SchemaMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SchemaMetadata.ProtoReflect.Descriptor instead.
 func (*SchemaMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{18}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *SchemaMetadata) GetName() string {
@@ -2008,7 +2750,7 @@ type EnumTypeMetadata struct {
 
 func (x *EnumTypeMetadata) Reset() {
 	*x = EnumTypeMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[19]
+	mi := &file_v1_database_service_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2020,7 +2762,7 @@ func (x *EnumTypeMetadata) String() string {
 func (*EnumTypeMetadata) ProtoMessage() {}
 
 func (x *EnumTypeMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[19]
+	mi := &file_v1_database_service_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2033,7 +2775,7 @@ func (x *EnumTypeMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnumTypeMetadata.ProtoReflect.Descriptor instead.
 func (*EnumTypeMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{19}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *EnumTypeMetadata) GetName() string {
@@ -2082,7 +2824,7 @@ type EventMetadata struct {
 
 func (x *EventMetadata) Reset() {
 	*x = EventMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[20]
+	mi := &file_v1_database_service_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2094,7 +2836,7 @@ func (x *EventMetadata) String() string {
 func (*EventMetadata) ProtoMessage() {}
 
 func (x *EventMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[20]
+	mi := &file_v1_database_service_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2107,7 +2849,7 @@ func (x *EventMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventMetadata.ProtoReflect.Descriptor instead.
 func (*EventMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{20}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *EventMetadata) GetName() string {
@@ -2191,7 +2933,7 @@ type SequenceMetadata struct {
 
 func (x *SequenceMetadata) Reset() {
 	*x = SequenceMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[21]
+	mi := &file_v1_database_service_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2203,7 +2945,7 @@ func (x *SequenceMetadata) String() string {
 func (*SequenceMetadata) ProtoMessage() {}
 
 func (x *SequenceMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[21]
+	mi := &file_v1_database_service_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2216,7 +2958,7 @@ func (x *SequenceMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SequenceMetadata.ProtoReflect.Descriptor instead.
 func (*SequenceMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{21}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *SequenceMetadata) GetName() string {
@@ -2331,7 +3073,7 @@ type TriggerMetadata struct {
 
 func (x *TriggerMetadata) Reset() {
 	*x = TriggerMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[22]
+	mi := &file_v1_database_service_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2343,7 +3085,7 @@ func (x *TriggerMetadata) String() string {
 func (*TriggerMetadata) ProtoMessage() {}
 
 func (x *TriggerMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[22]
+	mi := &file_v1_database_service_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2356,7 +3098,7 @@ func (x *TriggerMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TriggerMetadata.ProtoReflect.Descriptor instead.
 func (*TriggerMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{22}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *TriggerMetadata) GetName() string {
@@ -2445,7 +3187,7 @@ type RuleMetadata struct {
 
 func (x *RuleMetadata) Reset() {
 	*x = RuleMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[23]
+	mi := &file_v1_database_service_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2457,7 +3199,7 @@ func (x *RuleMetadata) String() string {
 func (*RuleMetadata) ProtoMessage() {}
 
 func (x *RuleMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[23]
+	mi := &file_v1_database_service_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2470,7 +3212,7 @@ func (x *RuleMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuleMetadata.ProtoReflect.Descriptor instead.
 func (*RuleMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{23}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *RuleMetadata) GetName() string {
@@ -2551,7 +3293,7 @@ type TaskMetadata struct {
 
 func (x *TaskMetadata) Reset() {
 	*x = TaskMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[24]
+	mi := &file_v1_database_service_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2563,7 +3305,7 @@ func (x *TaskMetadata) String() string {
 func (*TaskMetadata) ProtoMessage() {}
 
 func (x *TaskMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[24]
+	mi := &file_v1_database_service_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2576,7 +3318,7 @@ func (x *TaskMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskMetadata.ProtoReflect.Descriptor instead.
 func (*TaskMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{24}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *TaskMetadata) GetName() string {
@@ -2673,7 +3415,7 @@ type StreamMetadata struct {
 
 func (x *StreamMetadata) Reset() {
 	*x = StreamMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[25]
+	mi := &file_v1_database_service_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2685,7 +3427,7 @@ func (x *StreamMetadata) String() string {
 func (*StreamMetadata) ProtoMessage() {}
 
 func (x *StreamMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[25]
+	mi := &file_v1_database_service_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2698,7 +3440,7 @@ func (x *StreamMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamMetadata.ProtoReflect.Descriptor instead.
 func (*StreamMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{25}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *StreamMetadata) GetName() string {
@@ -2814,7 +3556,7 @@ type TableMetadata struct {
 
 func (x *TableMetadata) Reset() {
 	*x = TableMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[26]
+	mi := &file_v1_database_service_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2826,7 +3568,7 @@ func (x *TableMetadata) String() string {
 func (*TableMetadata) ProtoMessage() {}
 
 func (x *TableMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[26]
+	mi := &file_v1_database_service_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2839,7 +3581,7 @@ func (x *TableMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TableMetadata.ProtoReflect.Descriptor instead.
 func (*TableMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{26}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *TableMetadata) GetName() string {
@@ -3022,7 +3764,7 @@ type CheckConstraintMetadata struct {
 
 func (x *CheckConstraintMetadata) Reset() {
 	*x = CheckConstraintMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[27]
+	mi := &file_v1_database_service_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3034,7 +3776,7 @@ func (x *CheckConstraintMetadata) String() string {
 func (*CheckConstraintMetadata) ProtoMessage() {}
 
 func (x *CheckConstraintMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[27]
+	mi := &file_v1_database_service_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3047,7 +3789,7 @@ func (x *CheckConstraintMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckConstraintMetadata.ProtoReflect.Descriptor instead.
 func (*CheckConstraintMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{27}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *CheckConstraintMetadata) GetName() string {
@@ -3077,7 +3819,7 @@ type ExcludeConstraintMetadata struct {
 
 func (x *ExcludeConstraintMetadata) Reset() {
 	*x = ExcludeConstraintMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[28]
+	mi := &file_v1_database_service_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3089,7 +3831,7 @@ func (x *ExcludeConstraintMetadata) String() string {
 func (*ExcludeConstraintMetadata) ProtoMessage() {}
 
 func (x *ExcludeConstraintMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[28]
+	mi := &file_v1_database_service_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3102,7 +3844,7 @@ func (x *ExcludeConstraintMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExcludeConstraintMetadata.ProtoReflect.Descriptor instead.
 func (*ExcludeConstraintMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{28}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ExcludeConstraintMetadata) GetName() string {
@@ -3135,7 +3877,7 @@ type ExternalTableMetadata struct {
 
 func (x *ExternalTableMetadata) Reset() {
 	*x = ExternalTableMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[29]
+	mi := &file_v1_database_service_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3147,7 +3889,7 @@ func (x *ExternalTableMetadata) String() string {
 func (*ExternalTableMetadata) ProtoMessage() {}
 
 func (x *ExternalTableMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[29]
+	mi := &file_v1_database_service_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3160,7 +3902,7 @@ func (x *ExternalTableMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExternalTableMetadata.ProtoReflect.Descriptor instead.
 func (*ExternalTableMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{29}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ExternalTableMetadata) GetName() string {
@@ -3235,7 +3977,7 @@ type TablePartitionMetadata struct {
 
 func (x *TablePartitionMetadata) Reset() {
 	*x = TablePartitionMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[30]
+	mi := &file_v1_database_service_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3247,7 +3989,7 @@ func (x *TablePartitionMetadata) String() string {
 func (*TablePartitionMetadata) ProtoMessage() {}
 
 func (x *TablePartitionMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[30]
+	mi := &file_v1_database_service_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3260,7 +4002,7 @@ func (x *TablePartitionMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TablePartitionMetadata.ProtoReflect.Descriptor instead.
 func (*TablePartitionMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{30}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *TablePartitionMetadata) GetName() string {
@@ -3394,7 +4136,7 @@ type ColumnMetadata struct {
 
 func (x *ColumnMetadata) Reset() {
 	*x = ColumnMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[31]
+	mi := &file_v1_database_service_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3406,7 +4148,7 @@ func (x *ColumnMetadata) String() string {
 func (*ColumnMetadata) ProtoMessage() {}
 
 func (x *ColumnMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[31]
+	mi := &file_v1_database_service_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3419,7 +4161,7 @@ func (x *ColumnMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ColumnMetadata.ProtoReflect.Descriptor instead.
 func (*ColumnMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{31}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *ColumnMetadata) GetName() string {
@@ -3551,7 +4293,7 @@ type GenerationMetadata struct {
 
 func (x *GenerationMetadata) Reset() {
 	*x = GenerationMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[32]
+	mi := &file_v1_database_service_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3563,7 +4305,7 @@ func (x *GenerationMetadata) String() string {
 func (*GenerationMetadata) ProtoMessage() {}
 
 func (x *GenerationMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[32]
+	mi := &file_v1_database_service_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3576,7 +4318,7 @@ func (x *GenerationMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerationMetadata.ProtoReflect.Descriptor instead.
 func (*GenerationMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{32}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *GenerationMetadata) GetType() GenerationMetadata_Type {
@@ -3617,7 +4359,7 @@ type ViewMetadata struct {
 
 func (x *ViewMetadata) Reset() {
 	*x = ViewMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[33]
+	mi := &file_v1_database_service_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3629,7 +4371,7 @@ func (x *ViewMetadata) String() string {
 func (*ViewMetadata) ProtoMessage() {}
 
 func (x *ViewMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[33]
+	mi := &file_v1_database_service_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3642,7 +4384,7 @@ func (x *ViewMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ViewMetadata.ProtoReflect.Descriptor instead.
 func (*ViewMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{33}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ViewMetadata) GetName() string {
@@ -3716,7 +4458,7 @@ type DependencyColumn struct {
 
 func (x *DependencyColumn) Reset() {
 	*x = DependencyColumn{}
-	mi := &file_v1_database_service_proto_msgTypes[34]
+	mi := &file_v1_database_service_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3728,7 +4470,7 @@ func (x *DependencyColumn) String() string {
 func (*DependencyColumn) ProtoMessage() {}
 
 func (x *DependencyColumn) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[34]
+	mi := &file_v1_database_service_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3741,7 +4483,7 @@ func (x *DependencyColumn) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DependencyColumn.ProtoReflect.Descriptor instead.
 func (*DependencyColumn) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{34}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *DependencyColumn) GetSchema() string {
@@ -3787,7 +4529,7 @@ type MaterializedViewMetadata struct {
 
 func (x *MaterializedViewMetadata) Reset() {
 	*x = MaterializedViewMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[35]
+	mi := &file_v1_database_service_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3799,7 +4541,7 @@ func (x *MaterializedViewMetadata) String() string {
 func (*MaterializedViewMetadata) ProtoMessage() {}
 
 func (x *MaterializedViewMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[35]
+	mi := &file_v1_database_service_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3812,7 +4554,7 @@ func (x *MaterializedViewMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MaterializedViewMetadata.ProtoReflect.Descriptor instead.
 func (*MaterializedViewMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{35}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *MaterializedViewMetadata) GetName() string {
@@ -3876,7 +4618,7 @@ type DependencyTable struct {
 
 func (x *DependencyTable) Reset() {
 	*x = DependencyTable{}
-	mi := &file_v1_database_service_proto_msgTypes[36]
+	mi := &file_v1_database_service_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3888,7 +4630,7 @@ func (x *DependencyTable) String() string {
 func (*DependencyTable) ProtoMessage() {}
 
 func (x *DependencyTable) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[36]
+	mi := &file_v1_database_service_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3901,7 +4643,7 @@ func (x *DependencyTable) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DependencyTable.ProtoReflect.Descriptor instead.
 func (*DependencyTable) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{36}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *DependencyTable) GetSchema() string {
@@ -3944,7 +4686,7 @@ type FunctionMetadata struct {
 
 func (x *FunctionMetadata) Reset() {
 	*x = FunctionMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[37]
+	mi := &file_v1_database_service_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3956,7 +4698,7 @@ func (x *FunctionMetadata) String() string {
 func (*FunctionMetadata) ProtoMessage() {}
 
 func (x *FunctionMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[37]
+	mi := &file_v1_database_service_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3969,7 +4711,7 @@ func (x *FunctionMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FunctionMetadata.ProtoReflect.Descriptor instead.
 func (*FunctionMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{37}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *FunctionMetadata) GetName() string {
@@ -4065,7 +4807,7 @@ type ProcedureMetadata struct {
 
 func (x *ProcedureMetadata) Reset() {
 	*x = ProcedureMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[38]
+	mi := &file_v1_database_service_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4077,7 +4819,7 @@ func (x *ProcedureMetadata) String() string {
 func (*ProcedureMetadata) ProtoMessage() {}
 
 func (x *ProcedureMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[38]
+	mi := &file_v1_database_service_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4090,7 +4832,7 @@ func (x *ProcedureMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcedureMetadata.ProtoReflect.Descriptor instead.
 func (*ProcedureMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{38}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ProcedureMetadata) GetName() string {
@@ -4169,7 +4911,7 @@ type PackageMetadata struct {
 
 func (x *PackageMetadata) Reset() {
 	*x = PackageMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[39]
+	mi := &file_v1_database_service_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4181,7 +4923,7 @@ func (x *PackageMetadata) String() string {
 func (*PackageMetadata) ProtoMessage() {}
 
 func (x *PackageMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[39]
+	mi := &file_v1_database_service_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4194,7 +4936,7 @@ func (x *PackageMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PackageMetadata.ProtoReflect.Descriptor instead.
 func (*PackageMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{39}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *PackageMetadata) GetName() string {
@@ -4258,7 +5000,7 @@ type IndexMetadata struct {
 
 func (x *IndexMetadata) Reset() {
 	*x = IndexMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[40]
+	mi := &file_v1_database_service_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4270,7 +5012,7 @@ func (x *IndexMetadata) String() string {
 func (*IndexMetadata) ProtoMessage() {}
 
 func (x *IndexMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[40]
+	mi := &file_v1_database_service_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4283,7 +5025,7 @@ func (x *IndexMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IndexMetadata.ProtoReflect.Descriptor instead.
 func (*IndexMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{40}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *IndexMetadata) GetName() string {
@@ -4425,7 +5167,7 @@ type SpatialIndexConfig struct {
 
 func (x *SpatialIndexConfig) Reset() {
 	*x = SpatialIndexConfig{}
-	mi := &file_v1_database_service_proto_msgTypes[41]
+	mi := &file_v1_database_service_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4437,7 +5179,7 @@ func (x *SpatialIndexConfig) String() string {
 func (*SpatialIndexConfig) ProtoMessage() {}
 
 func (x *SpatialIndexConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[41]
+	mi := &file_v1_database_service_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4450,7 +5192,7 @@ func (x *SpatialIndexConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpatialIndexConfig.ProtoReflect.Descriptor instead.
 func (*SpatialIndexConfig) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{41}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *SpatialIndexConfig) GetMethod() string {
@@ -4506,7 +5248,7 @@ type TessellationConfig struct {
 
 func (x *TessellationConfig) Reset() {
 	*x = TessellationConfig{}
-	mi := &file_v1_database_service_proto_msgTypes[42]
+	mi := &file_v1_database_service_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4518,7 +5260,7 @@ func (x *TessellationConfig) String() string {
 func (*TessellationConfig) ProtoMessage() {}
 
 func (x *TessellationConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[42]
+	mi := &file_v1_database_service_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4531,7 +5273,7 @@ func (x *TessellationConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TessellationConfig.ProtoReflect.Descriptor instead.
 func (*TessellationConfig) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{42}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *TessellationConfig) GetScheme() string {
@@ -4575,7 +5317,7 @@ type BoundingBox struct {
 
 func (x *BoundingBox) Reset() {
 	*x = BoundingBox{}
-	mi := &file_v1_database_service_proto_msgTypes[43]
+	mi := &file_v1_database_service_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4587,7 +5329,7 @@ func (x *BoundingBox) String() string {
 func (*BoundingBox) ProtoMessage() {}
 
 func (x *BoundingBox) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[43]
+	mi := &file_v1_database_service_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4600,7 +5342,7 @@ func (x *BoundingBox) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BoundingBox.ProtoReflect.Descriptor instead.
 func (*BoundingBox) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{43}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *BoundingBox) GetXmin() float64 {
@@ -4642,7 +5384,7 @@ type GridLevel struct {
 
 func (x *GridLevel) Reset() {
 	*x = GridLevel{}
-	mi := &file_v1_database_service_proto_msgTypes[44]
+	mi := &file_v1_database_service_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4654,7 +5396,7 @@ func (x *GridLevel) String() string {
 func (*GridLevel) ProtoMessage() {}
 
 func (x *GridLevel) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[44]
+	mi := &file_v1_database_service_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4667,7 +5409,7 @@ func (x *GridLevel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GridLevel.ProtoReflect.Descriptor instead.
 func (*GridLevel) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{44}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *GridLevel) GetLevel() int32 {
@@ -4710,7 +5452,7 @@ type StorageConfig struct {
 
 func (x *StorageConfig) Reset() {
 	*x = StorageConfig{}
-	mi := &file_v1_database_service_proto_msgTypes[45]
+	mi := &file_v1_database_service_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4722,7 +5464,7 @@ func (x *StorageConfig) String() string {
 func (*StorageConfig) ProtoMessage() {}
 
 func (x *StorageConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[45]
+	mi := &file_v1_database_service_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4735,7 +5477,7 @@ func (x *StorageConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StorageConfig.ProtoReflect.Descriptor instead.
 func (*StorageConfig) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{45}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *StorageConfig) GetFillfactor() int32 {
@@ -4858,7 +5600,7 @@ type DimensionalConfig struct {
 
 func (x *DimensionalConfig) Reset() {
 	*x = DimensionalConfig{}
-	mi := &file_v1_database_service_proto_msgTypes[46]
+	mi := &file_v1_database_service_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4870,7 +5612,7 @@ func (x *DimensionalConfig) String() string {
 func (*DimensionalConfig) ProtoMessage() {}
 
 func (x *DimensionalConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[46]
+	mi := &file_v1_database_service_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4883,7 +5625,7 @@ func (x *DimensionalConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DimensionalConfig.ProtoReflect.Descriptor instead.
 func (*DimensionalConfig) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{46}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *DimensionalConfig) GetDimensions() int32 {
@@ -4939,7 +5681,7 @@ type ExtensionMetadata struct {
 
 func (x *ExtensionMetadata) Reset() {
 	*x = ExtensionMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[47]
+	mi := &file_v1_database_service_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4951,7 +5693,7 @@ func (x *ExtensionMetadata) String() string {
 func (*ExtensionMetadata) ProtoMessage() {}
 
 func (x *ExtensionMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[47]
+	mi := &file_v1_database_service_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4964,7 +5706,7 @@ func (x *ExtensionMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExtensionMetadata.ProtoReflect.Descriptor instead.
 func (*ExtensionMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{47}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *ExtensionMetadata) GetName() string {
@@ -5024,7 +5766,7 @@ type EventTriggerMetadata struct {
 
 func (x *EventTriggerMetadata) Reset() {
 	*x = EventTriggerMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[48]
+	mi := &file_v1_database_service_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5036,7 +5778,7 @@ func (x *EventTriggerMetadata) String() string {
 func (*EventTriggerMetadata) ProtoMessage() {}
 
 func (x *EventTriggerMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[48]
+	mi := &file_v1_database_service_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5049,7 +5791,7 @@ func (x *EventTriggerMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventTriggerMetadata.ProtoReflect.Descriptor instead.
 func (*EventTriggerMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{48}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *EventTriggerMetadata) GetName() string {
@@ -5143,7 +5885,7 @@ type ForeignKeyMetadata struct {
 
 func (x *ForeignKeyMetadata) Reset() {
 	*x = ForeignKeyMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[49]
+	mi := &file_v1_database_service_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5155,7 +5897,7 @@ func (x *ForeignKeyMetadata) String() string {
 func (*ForeignKeyMetadata) ProtoMessage() {}
 
 func (x *ForeignKeyMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[49]
+	mi := &file_v1_database_service_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5168,7 +5910,7 @@ func (x *ForeignKeyMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ForeignKeyMetadata.ProtoReflect.Descriptor instead.
 func (*ForeignKeyMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{49}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *ForeignKeyMetadata) GetName() string {
@@ -5241,7 +5983,7 @@ type InstanceRoleMetadata struct {
 
 func (x *InstanceRoleMetadata) Reset() {
 	*x = InstanceRoleMetadata{}
-	mi := &file_v1_database_service_proto_msgTypes[50]
+	mi := &file_v1_database_service_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5253,7 +5995,7 @@ func (x *InstanceRoleMetadata) String() string {
 func (*InstanceRoleMetadata) ProtoMessage() {}
 
 func (x *InstanceRoleMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[50]
+	mi := &file_v1_database_service_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5266,7 +6008,7 @@ func (x *InstanceRoleMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstanceRoleMetadata.ProtoReflect.Descriptor instead.
 func (*InstanceRoleMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_database_service_proto_rawDescGZIP(), []int{50}
+	return file_v1_database_service_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *InstanceRoleMetadata) GetName() string {
@@ -5296,7 +6038,7 @@ type MetadataResponse_MetadataList struct {
 
 func (x *MetadataResponse_MetadataList) Reset() {
 	*x = MetadataResponse_MetadataList{}
-	mi := &file_v1_database_service_proto_msgTypes[52]
+	mi := &file_v1_database_service_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5308,7 +6050,7 @@ func (x *MetadataResponse_MetadataList) String() string {
 func (*MetadataResponse_MetadataList) ProtoMessage() {}
 
 func (x *MetadataResponse_MetadataList) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_database_service_proto_msgTypes[52]
+	mi := &file_v1_database_service_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5349,7 +6091,7 @@ var File_v1_database_service_proto protoreflect.FileDescriptor
 
 const file_v1_database_service_proto_rawDesc = "" +
 	"\n" +
-	"\x19v1/database_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x0fv1/common.proto\x1a\x19v1/instance_service.proto\"F\n" +
+	"\x19v1/database_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x0fv1/common.proto\x1a\x19v1/instance_service.proto\"F\n" +
 	"\x12GetDatabaseRequest\x120\n" +
 	"\x04name\x18\x01 \x01(\tB\x1c\xe0A\x02\xfaA\x16\n" +
 	"\x14metaxisdata/DatabaseR\x04name\"G\n" +
@@ -5425,7 +6167,88 @@ const file_v1_database_service_proto_rawDesc = "" +
 	"\x14SearchMetadataResult\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x125\n" +
 	"\tmeta_type\x18\x02 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12:\n" +
-	"\bmetadata\x18\x03 \x01(\v2\x1e.metaxisdata.v1.StoredMetadataR\bmetadata\"\xf3\a\n" +
+	"\bmetadata\x18\x03 \x01(\v2\x1e.metaxisdata.v1.StoredMetadataR\bmetadata\"\xa1\x04\n" +
+	"\tManualSQL\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x17\n" +
+	"\x04guid\x18\x02 \x01(\tB\x03\xe0A\x03R\x04guid\x12\x14\n" +
+	"\x05title\x18\x03 \x01(\tR\x05title\x12\x1f\n" +
+	"\vschema_name\x18\x04 \x01(\tR\n" +
+	"schemaName\x12\x18\n" +
+	"\acomment\x18\x05 \x01(\tR\acomment\x12\x19\n" +
+	"\bsql_text\x18\x06 \x01(\tR\asqlText\x12\x12\n" +
+	"\x04tags\x18\a \x03(\tR\x04tags\x12I\n" +
+	"\n" +
+	"attributes\x18\b \x03(\v2).metaxisdata.v1.ManualSQL.AttributesEntryR\n" +
+	"attributes\x12>\n" +
+	"\n" +
+	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\tcreatedAt\x12>\n" +
+	"\n" +
+	"updated_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\tupdatedAt\x1a=\n" +
+	"\x0fAttributesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01:]\xeaAZ\n" +
+	"\x15metaxisdata/ManualSQL\x12Ainstances/{instance}/databases/{database}/manualSqls/{manual_sql}\"\xb7\x01\n" +
+	"\x16CreateManualSQLRequest\x125\n" +
+	"\x06parent\x18\x01 \x01(\tB\x1d\xe0A\x02\xfaA\x17\x12\x15metaxisdata/ManualSQLR\x06parent\x12=\n" +
+	"\n" +
+	"manual_sql\x18\x02 \x01(\v2\x19.metaxisdata.v1.ManualSQLB\x03\xe0A\x02R\tmanualSql\x12'\n" +
+	"\rmanual_sql_id\x18\x03 \x01(\tB\x03\xe0A\x02R\vmanualSqlId\"H\n" +
+	"\x13GetManualSQLRequest\x121\n" +
+	"\x04name\x18\x01 \x01(\tB\x1d\xe0A\x02\xfaA\x17\n" +
+	"\x15metaxisdata/ManualSQLR\x04name\"\xe1\x01\n" +
+	"\x14ListManualSQLRequest\x125\n" +
+	"\x06parent\x18\x01 \x01(\tB\x1d\xe0A\x02\xfaA\x17\x12\x15metaxisdata/ManualSQLR\x06parent\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x1f\n" +
+	"\vschema_name\x18\x04 \x01(\tR\n" +
+	"schemaName\x12\x12\n" +
+	"\x04tags\x18\x05 \x03(\tR\x04tags\x12!\n" +
+	"\fshow_deleted\x18\x06 \x01(\bR\vshowDeleted\"{\n" +
+	"\x15ListManualSQLResponse\x12:\n" +
+	"\vmanual_sqls\x18\x01 \x03(\v2\x19.metaxisdata.v1.ManualSQLR\n" +
+	"manualSqls\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xdb\x01\n" +
+	"\x16SearchManualSQLRequest\x125\n" +
+	"\x06parent\x18\x01 \x01(\tB\x1d\xe0A\x02\xfaA\x17\x12\x15metaxisdata/ManualSQLR\x06parent\x12\x19\n" +
+	"\x05query\x18\x02 \x01(\tB\x03\xe0A\x02R\x05query\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\x12\x12\n" +
+	"\x04tags\x18\x05 \x03(\tR\x04tags\x12\x1f\n" +
+	"\vschema_name\x18\x06 \x01(\tR\n" +
+	"schemaName\"}\n" +
+	"\x17SearchManualSQLResponse\x12:\n" +
+	"\vmanual_sqls\x18\x01 \x03(\v2\x19.metaxisdata.v1.ManualSQLR\n" +
+	"manualSqls\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x94\x01\n" +
+	"\x16UpdateManualSQLRequest\x12=\n" +
+	"\n" +
+	"manual_sql\x18\x01 \x01(\v2\x19.metaxisdata.v1.ManualSQLB\x03\xe0A\x02R\tmanualSql\x12;\n" +
+	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
+	"updateMask\"K\n" +
+	"\x16DeleteManualSQLRequest\x121\n" +
+	"\x04name\x18\x01 \x01(\tB\x1d\xe0A\x02\xfaA\x17\n" +
+	"\x15metaxisdata/ManualSQLR\x04name\"\xaf\x03\n" +
+	"\x11ManualSQLMetadata\x12\"\n" +
+	"\rmanual_sql_id\x18\x01 \x01(\tR\vmanualSqlId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
+	"\x05title\x18\x03 \x01(\tR\x05title\x12\x18\n" +
+	"\acomment\x18\x04 \x01(\tR\acomment\x12\x19\n" +
+	"\bsql_text\x18\x05 \x01(\tR\asqlText\x12\x12\n" +
+	"\x04tags\x18\x06 \x03(\tR\x04tags\x12Q\n" +
+	"\n" +
+	"attributes\x18\a \x03(\v21.metaxisdata.v1.ManualSQLMetadata.AttributesEntryR\n" +
+	"attributes\x12\x1f\n" +
+	"\vschema_name\x18\b \x01(\tR\n" +
+	"schemaName\x12+\n" +
+	"\x11instance_resource\x18\t \x01(\tR\x10instanceResource\x12#\n" +
+	"\rdatabase_name\x18\n" +
+	" \x01(\tR\fdatabaseName\x1a=\n" +
+	"\x0fAttributesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc8\b\n" +
 	"\x0eStoredMetadata\x12b\n" +
 	"\x18database_schema_metadata\x18\x01 \x01(\v2&.metaxisdata.v1.DatabaseSchemaMetadataH\x00R\x16databaseSchemaMetadata\x12I\n" +
 	"\x0fschema_metadata\x18\x02 \x01(\v2\x1e.metaxisdata.v1.SchemaMetadataH\x00R\x0eschemaMetadata\x12F\n" +
@@ -5439,7 +6262,8 @@ const file_v1_database_service_proto_rawDesc = "" +
 	"\x11sequence_metadata\x18\n" +
 	" \x01(\v2 .metaxisdata.v1.SequenceMetadataH\x00R\x10sequenceMetadata\x12I\n" +
 	"\x0fstream_metadata\x18\v \x01(\v2\x1e.metaxisdata.v1.StreamMetadataH\x00R\x0estreamMetadata\x12C\n" +
-	"\rtask_metadata\x18\f \x01(\v2\x1c.metaxisdata.v1.TaskMetadataH\x00R\ftaskMetadataB\x06\n" +
+	"\rtask_metadata\x18\f \x01(\v2\x1c.metaxisdata.v1.TaskMetadataH\x00R\ftaskMetadata\x12S\n" +
+	"\x13manual_sql_metadata\x18\x0f \x01(\v2!.metaxisdata.v1.ManualSQLMetadataH\x00R\x11manualSqlMetadataB\x06\n" +
 	"\x04type\"\x84\x04\n" +
 	"\x16DatabaseSchemaMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x128\n" +
@@ -5846,7 +6670,7 @@ const file_v1_database_service_proto_rawDesc = "" +
 	"match_type\x18\b \x01(\tR\tmatchType\"@\n" +
 	"\x14InstanceRoleMetadata\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
-	"\x05grant\x18\a \x01(\tR\x05grant*\xf9\x01\n" +
+	"\x05grant\x18\a \x01(\tR\x05grant*\x89\x02\n" +
 	"\bMetaType\x12\x0f\n" +
 	"\vUNSPECIFIED\x10\x00\x12\f\n" +
 	"\bINSTANCE\x10\x01\x12\f\n" +
@@ -5854,7 +6678,9 @@ const file_v1_database_service_proto_rawDesc = "" +
 	"\n" +
 	"\x06SCHEMA\x10\x03\x12\t\n" +
 	"\x05TABLE\x10\x04\x12\x12\n" +
-	"\x0eEXTERNAL_TABLE\x10\x10\x12\b\n" +
+	"\x0eEXTERNAL_TABLE\x10\x10\x12\x0e\n" +
+	"\n" +
+	"MANUAL_SQL\x10\x12\x12\b\n" +
 	"\x04VIEW\x10\x05\x12\x15\n" +
 	"\x11MATERIALIZED_VIEW\x10\x06\x12\n" +
 	"\n" +
@@ -5868,7 +6694,7 @@ const file_v1_database_service_proto_rawDesc = "" +
 	"\aPACKAGE\x10\r\x12\n" +
 	"\n" +
 	"\x06STREAM\x10\x0e\x12\b\n" +
-	"\x04TASK\x10\x0f2\xfd\x06\n" +
+	"\x04TASK\x10\x0f2\xf5\x0e\n" +
 	"\x0fDatabaseService\x12~\n" +
 	"\vGetDatabase\x12\".metaxisdata.v1.GetDatabaseRequest\x1a\x18.metaxisdata.v1.Database\"1\xdaA\x04name\x82\xd3\xe4\x93\x02$\x12\"/v1/{name=instances/*/databases/*}\x12\x94\x01\n" +
 	"\fSyncDatabase\x12#.metaxisdata.v1.SyncDatabaseRequest\x1a$.metaxisdata.v1.SyncDatabaseResponse\"9\xdaA\x04name\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/{name=instances/*/databases/*}:sync\x12p\n" +
@@ -5876,7 +6702,15 @@ const file_v1_database_service_proto_rawDesc = "" +
 	"\fListMetadata\x12#.metaxisdata.v1.ListMetadataRequest\x1a .metaxisdata.v1.MetadataResponse\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/metadata/list\x12l\n" +
 	"\vGetMetadata\x12\".metaxisdata.v1.GetMetadataRequest\x1a#.metaxisdata.v1.GetMetadataResponse\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/metadata\x12|\n" +
 	"\x0eSearchMetadata\x12%.metaxisdata.v1.SearchMetadataRequest\x1a&.metaxisdata.v1.SearchMetadataResponse\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/metadata/search\x12\x82\x01\n" +
-	"\x0fGetSchemaString\x12&.metaxisdata.v1.GetSchemaStringRequest\x1a$.metaxisdata.v1.MetadataSchemaString\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/metadata/schemaStringB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\x0fGetSchemaString\x12&.metaxisdata.v1.GetSchemaStringRequest\x1a$.metaxisdata.v1.MetadataSchemaString\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/metadata/schemaString\x12\xbb\x01\n" +
+	"\x0fCreateManualSQL\x12&.metaxisdata.v1.CreateManualSQLRequest\x1a\x19.metaxisdata.v1.ManualSQL\"e\xdaA\x1fparent,manual_sql,manual_sql_id\x82\xd3\xe4\x93\x02=:\n" +
+	"manual_sql\"//v1/{parent=instances/*/databases/*}/manualSqls\x12\x8e\x01\n" +
+	"\fGetManualSQL\x12#.metaxisdata.v1.GetManualSQLRequest\x1a\x19.metaxisdata.v1.ManualSQL\">\xdaA\x04name\x82\xd3\xe4\x93\x021\x12//v1/{name=instances/*/databases/*/manualSqls/*}\x12\x9e\x01\n" +
+	"\rListManualSQL\x12$.metaxisdata.v1.ListManualSQLRequest\x1a%.metaxisdata.v1.ListManualSQLResponse\"@\xdaA\x06parent\x82\xd3\xe4\x93\x021\x12//v1/{parent=instances/*/databases/*}/manualSqls\x12\xb1\x01\n" +
+	"\x0fSearchManualSQL\x12&.metaxisdata.v1.SearchManualSQLRequest\x1a'.metaxisdata.v1.SearchManualSQLResponse\"M\xdaA\fparent,query\x82\xd3\xe4\x93\x028\x126/v1/{parent=instances/*/databases/*}/manualSqls:search\x12\xbd\x01\n" +
+	"\x0fUpdateManualSQL\x12&.metaxisdata.v1.UpdateManualSQLRequest\x1a\x19.metaxisdata.v1.ManualSQL\"g\xdaA\x16manual_sql,update_mask\x82\xd3\xe4\x93\x02H:\n" +
+	"manual_sql2:/v1/{manual_sql.name=instances/*/databases/*/manualSqls/*}\x12\x91\x01\n" +
+	"\x0fDeleteManualSQL\x12&.metaxisdata.v1.DeleteManualSQLRequest\x1a\x16.google.protobuf.Empty\">\xdaA\x04name\x82\xd3\xe4\x93\x021*//v1/{name=instances/*/databases/*/manualSqls/*}B6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_database_service_proto_rawDescOnce sync.Once
@@ -5891,7 +6725,7 @@ func file_v1_database_service_proto_rawDescGZIP() []byte {
 }
 
 var file_v1_database_service_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_v1_database_service_proto_msgTypes = make([]protoimpl.MessageInfo, 54)
+var file_v1_database_service_proto_msgTypes = make([]protoimpl.MessageInfo, 66)
 var file_v1_database_service_proto_goTypes = []any{
 	(MetaType)(0),                          // 0: metaxisdata.v1.MetaType
 	(TaskMetadata_State)(0),                // 1: metaxisdata.v1.TaskMetadata.State
@@ -5915,148 +6749,184 @@ var file_v1_database_service_proto_goTypes = []any{
 	(*SearchMetadataRequest)(nil),          // 19: metaxisdata.v1.SearchMetadataRequest
 	(*SearchMetadataResponse)(nil),         // 20: metaxisdata.v1.SearchMetadataResponse
 	(*SearchMetadataResult)(nil),           // 21: metaxisdata.v1.SearchMetadataResult
-	(*StoredMetadata)(nil),                 // 22: metaxisdata.v1.StoredMetadata
-	(*DatabaseSchemaMetadata)(nil),         // 23: metaxisdata.v1.DatabaseSchemaMetadata
-	(*LinkedDatabaseMetadata)(nil),         // 24: metaxisdata.v1.LinkedDatabaseMetadata
-	(*SchemaMetadata)(nil),                 // 25: metaxisdata.v1.SchemaMetadata
-	(*EnumTypeMetadata)(nil),               // 26: metaxisdata.v1.EnumTypeMetadata
-	(*EventMetadata)(nil),                  // 27: metaxisdata.v1.EventMetadata
-	(*SequenceMetadata)(nil),               // 28: metaxisdata.v1.SequenceMetadata
-	(*TriggerMetadata)(nil),                // 29: metaxisdata.v1.TriggerMetadata
-	(*RuleMetadata)(nil),                   // 30: metaxisdata.v1.RuleMetadata
-	(*TaskMetadata)(nil),                   // 31: metaxisdata.v1.TaskMetadata
-	(*StreamMetadata)(nil),                 // 32: metaxisdata.v1.StreamMetadata
-	(*TableMetadata)(nil),                  // 33: metaxisdata.v1.TableMetadata
-	(*CheckConstraintMetadata)(nil),        // 34: metaxisdata.v1.CheckConstraintMetadata
-	(*ExcludeConstraintMetadata)(nil),      // 35: metaxisdata.v1.ExcludeConstraintMetadata
-	(*ExternalTableMetadata)(nil),          // 36: metaxisdata.v1.ExternalTableMetadata
-	(*TablePartitionMetadata)(nil),         // 37: metaxisdata.v1.TablePartitionMetadata
-	(*ColumnMetadata)(nil),                 // 38: metaxisdata.v1.ColumnMetadata
-	(*GenerationMetadata)(nil),             // 39: metaxisdata.v1.GenerationMetadata
-	(*ViewMetadata)(nil),                   // 40: metaxisdata.v1.ViewMetadata
-	(*DependencyColumn)(nil),               // 41: metaxisdata.v1.DependencyColumn
-	(*MaterializedViewMetadata)(nil),       // 42: metaxisdata.v1.MaterializedViewMetadata
-	(*DependencyTable)(nil),                // 43: metaxisdata.v1.DependencyTable
-	(*FunctionMetadata)(nil),               // 44: metaxisdata.v1.FunctionMetadata
-	(*ProcedureMetadata)(nil),              // 45: metaxisdata.v1.ProcedureMetadata
-	(*PackageMetadata)(nil),                // 46: metaxisdata.v1.PackageMetadata
-	(*IndexMetadata)(nil),                  // 47: metaxisdata.v1.IndexMetadata
-	(*SpatialIndexConfig)(nil),             // 48: metaxisdata.v1.SpatialIndexConfig
-	(*TessellationConfig)(nil),             // 49: metaxisdata.v1.TessellationConfig
-	(*BoundingBox)(nil),                    // 50: metaxisdata.v1.BoundingBox
-	(*GridLevel)(nil),                      // 51: metaxisdata.v1.GridLevel
-	(*StorageConfig)(nil),                  // 52: metaxisdata.v1.StorageConfig
-	(*DimensionalConfig)(nil),              // 53: metaxisdata.v1.DimensionalConfig
-	(*ExtensionMetadata)(nil),              // 54: metaxisdata.v1.ExtensionMetadata
-	(*EventTriggerMetadata)(nil),           // 55: metaxisdata.v1.EventTriggerMetadata
-	(*ForeignKeyMetadata)(nil),             // 56: metaxisdata.v1.ForeignKeyMetadata
-	(*InstanceRoleMetadata)(nil),           // 57: metaxisdata.v1.InstanceRoleMetadata
-	nil,                                    // 58: metaxisdata.v1.Database.LabelsEntry
-	(*MetadataResponse_MetadataList)(nil),  // 59: metaxisdata.v1.MetadataResponse.MetadataList
-	nil,                                    // 60: metaxisdata.v1.SpatialIndexConfig.EngineSpecificEntry
-	(State)(0),                             // 61: metaxisdata.v1.State
-	(*timestamppb.Timestamp)(nil),          // 62: google.protobuf.Timestamp
-	(*InstanceResource)(nil),               // 63: metaxisdata.v1.InstanceResource
+	(*ManualSQL)(nil),                      // 22: metaxisdata.v1.ManualSQL
+	(*CreateManualSQLRequest)(nil),         // 23: metaxisdata.v1.CreateManualSQLRequest
+	(*GetManualSQLRequest)(nil),            // 24: metaxisdata.v1.GetManualSQLRequest
+	(*ListManualSQLRequest)(nil),           // 25: metaxisdata.v1.ListManualSQLRequest
+	(*ListManualSQLResponse)(nil),          // 26: metaxisdata.v1.ListManualSQLResponse
+	(*SearchManualSQLRequest)(nil),         // 27: metaxisdata.v1.SearchManualSQLRequest
+	(*SearchManualSQLResponse)(nil),        // 28: metaxisdata.v1.SearchManualSQLResponse
+	(*UpdateManualSQLRequest)(nil),         // 29: metaxisdata.v1.UpdateManualSQLRequest
+	(*DeleteManualSQLRequest)(nil),         // 30: metaxisdata.v1.DeleteManualSQLRequest
+	(*ManualSQLMetadata)(nil),              // 31: metaxisdata.v1.ManualSQLMetadata
+	(*StoredMetadata)(nil),                 // 32: metaxisdata.v1.StoredMetadata
+	(*DatabaseSchemaMetadata)(nil),         // 33: metaxisdata.v1.DatabaseSchemaMetadata
+	(*LinkedDatabaseMetadata)(nil),         // 34: metaxisdata.v1.LinkedDatabaseMetadata
+	(*SchemaMetadata)(nil),                 // 35: metaxisdata.v1.SchemaMetadata
+	(*EnumTypeMetadata)(nil),               // 36: metaxisdata.v1.EnumTypeMetadata
+	(*EventMetadata)(nil),                  // 37: metaxisdata.v1.EventMetadata
+	(*SequenceMetadata)(nil),               // 38: metaxisdata.v1.SequenceMetadata
+	(*TriggerMetadata)(nil),                // 39: metaxisdata.v1.TriggerMetadata
+	(*RuleMetadata)(nil),                   // 40: metaxisdata.v1.RuleMetadata
+	(*TaskMetadata)(nil),                   // 41: metaxisdata.v1.TaskMetadata
+	(*StreamMetadata)(nil),                 // 42: metaxisdata.v1.StreamMetadata
+	(*TableMetadata)(nil),                  // 43: metaxisdata.v1.TableMetadata
+	(*CheckConstraintMetadata)(nil),        // 44: metaxisdata.v1.CheckConstraintMetadata
+	(*ExcludeConstraintMetadata)(nil),      // 45: metaxisdata.v1.ExcludeConstraintMetadata
+	(*ExternalTableMetadata)(nil),          // 46: metaxisdata.v1.ExternalTableMetadata
+	(*TablePartitionMetadata)(nil),         // 47: metaxisdata.v1.TablePartitionMetadata
+	(*ColumnMetadata)(nil),                 // 48: metaxisdata.v1.ColumnMetadata
+	(*GenerationMetadata)(nil),             // 49: metaxisdata.v1.GenerationMetadata
+	(*ViewMetadata)(nil),                   // 50: metaxisdata.v1.ViewMetadata
+	(*DependencyColumn)(nil),               // 51: metaxisdata.v1.DependencyColumn
+	(*MaterializedViewMetadata)(nil),       // 52: metaxisdata.v1.MaterializedViewMetadata
+	(*DependencyTable)(nil),                // 53: metaxisdata.v1.DependencyTable
+	(*FunctionMetadata)(nil),               // 54: metaxisdata.v1.FunctionMetadata
+	(*ProcedureMetadata)(nil),              // 55: metaxisdata.v1.ProcedureMetadata
+	(*PackageMetadata)(nil),                // 56: metaxisdata.v1.PackageMetadata
+	(*IndexMetadata)(nil),                  // 57: metaxisdata.v1.IndexMetadata
+	(*SpatialIndexConfig)(nil),             // 58: metaxisdata.v1.SpatialIndexConfig
+	(*TessellationConfig)(nil),             // 59: metaxisdata.v1.TessellationConfig
+	(*BoundingBox)(nil),                    // 60: metaxisdata.v1.BoundingBox
+	(*GridLevel)(nil),                      // 61: metaxisdata.v1.GridLevel
+	(*StorageConfig)(nil),                  // 62: metaxisdata.v1.StorageConfig
+	(*DimensionalConfig)(nil),              // 63: metaxisdata.v1.DimensionalConfig
+	(*ExtensionMetadata)(nil),              // 64: metaxisdata.v1.ExtensionMetadata
+	(*EventTriggerMetadata)(nil),           // 65: metaxisdata.v1.EventTriggerMetadata
+	(*ForeignKeyMetadata)(nil),             // 66: metaxisdata.v1.ForeignKeyMetadata
+	(*InstanceRoleMetadata)(nil),           // 67: metaxisdata.v1.InstanceRoleMetadata
+	nil,                                    // 68: metaxisdata.v1.Database.LabelsEntry
+	(*MetadataResponse_MetadataList)(nil),  // 69: metaxisdata.v1.MetadataResponse.MetadataList
+	nil,                                    // 70: metaxisdata.v1.ManualSQL.AttributesEntry
+	nil,                                    // 71: metaxisdata.v1.ManualSQLMetadata.AttributesEntry
+	nil,                                    // 72: metaxisdata.v1.SpatialIndexConfig.EngineSpecificEntry
+	(State)(0),                             // 73: metaxisdata.v1.State
+	(*timestamppb.Timestamp)(nil),          // 74: google.protobuf.Timestamp
+	(*InstanceResource)(nil),               // 75: metaxisdata.v1.InstanceResource
+	(*fieldmaskpb.FieldMask)(nil),          // 76: google.protobuf.FieldMask
+	(*emptypb.Empty)(nil),                  // 77: google.protobuf.Empty
 }
 var file_v1_database_service_proto_depIdxs = []int32{
-	61, // 0: metaxisdata.v1.Database.state:type_name -> metaxisdata.v1.State
-	62, // 1: metaxisdata.v1.Database.successful_sync_time:type_name -> google.protobuf.Timestamp
-	58, // 2: metaxisdata.v1.Database.labels:type_name -> metaxisdata.v1.Database.LabelsEntry
-	63, // 3: metaxisdata.v1.Database.instance_resource:type_name -> metaxisdata.v1.InstanceResource
-	10, // 4: metaxisdata.v1.ListDatabasesResponse.databases:type_name -> metaxisdata.v1.Database
-	0,  // 5: metaxisdata.v1.ListMetadataRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	59, // 6: metaxisdata.v1.MetadataResponse.types_stored_metadata:type_name -> metaxisdata.v1.MetadataResponse.MetadataList
-	0,  // 7: metaxisdata.v1.GetMetadataRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	22, // 8: metaxisdata.v1.GetMetadataResponse.metadata:type_name -> metaxisdata.v1.StoredMetadata
-	0,  // 9: metaxisdata.v1.GetSchemaStringRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	0,  // 10: metaxisdata.v1.SearchMetadataRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	21, // 11: metaxisdata.v1.SearchMetadataResponse.results:type_name -> metaxisdata.v1.SearchMetadataResult
-	0,  // 12: metaxisdata.v1.SearchMetadataResult.meta_type:type_name -> metaxisdata.v1.MetaType
-	22, // 13: metaxisdata.v1.SearchMetadataResult.metadata:type_name -> metaxisdata.v1.StoredMetadata
-	23, // 14: metaxisdata.v1.StoredMetadata.database_schema_metadata:type_name -> metaxisdata.v1.DatabaseSchemaMetadata
-	25, // 15: metaxisdata.v1.StoredMetadata.schema_metadata:type_name -> metaxisdata.v1.SchemaMetadata
-	33, // 16: metaxisdata.v1.StoredMetadata.table_metadata:type_name -> metaxisdata.v1.TableMetadata
-	36, // 17: metaxisdata.v1.StoredMetadata.external_table_metadata:type_name -> metaxisdata.v1.ExternalTableMetadata
-	40, // 18: metaxisdata.v1.StoredMetadata.view_metadata:type_name -> metaxisdata.v1.ViewMetadata
-	42, // 19: metaxisdata.v1.StoredMetadata.materialized_view_metadata:type_name -> metaxisdata.v1.MaterializedViewMetadata
-	44, // 20: metaxisdata.v1.StoredMetadata.function_metadata:type_name -> metaxisdata.v1.FunctionMetadata
-	45, // 21: metaxisdata.v1.StoredMetadata.procedure_metadata:type_name -> metaxisdata.v1.ProcedureMetadata
-	46, // 22: metaxisdata.v1.StoredMetadata.package_metadata:type_name -> metaxisdata.v1.PackageMetadata
-	28, // 23: metaxisdata.v1.StoredMetadata.sequence_metadata:type_name -> metaxisdata.v1.SequenceMetadata
-	32, // 24: metaxisdata.v1.StoredMetadata.stream_metadata:type_name -> metaxisdata.v1.StreamMetadata
-	31, // 25: metaxisdata.v1.StoredMetadata.task_metadata:type_name -> metaxisdata.v1.TaskMetadata
-	25, // 26: metaxisdata.v1.DatabaseSchemaMetadata.schemas:type_name -> metaxisdata.v1.SchemaMetadata
-	54, // 27: metaxisdata.v1.DatabaseSchemaMetadata.extensions:type_name -> metaxisdata.v1.ExtensionMetadata
-	24, // 28: metaxisdata.v1.DatabaseSchemaMetadata.linked_databases:type_name -> metaxisdata.v1.LinkedDatabaseMetadata
-	55, // 29: metaxisdata.v1.DatabaseSchemaMetadata.event_triggers:type_name -> metaxisdata.v1.EventTriggerMetadata
-	33, // 30: metaxisdata.v1.SchemaMetadata.tables:type_name -> metaxisdata.v1.TableMetadata
-	36, // 31: metaxisdata.v1.SchemaMetadata.external_tables:type_name -> metaxisdata.v1.ExternalTableMetadata
-	40, // 32: metaxisdata.v1.SchemaMetadata.views:type_name -> metaxisdata.v1.ViewMetadata
-	44, // 33: metaxisdata.v1.SchemaMetadata.functions:type_name -> metaxisdata.v1.FunctionMetadata
-	45, // 34: metaxisdata.v1.SchemaMetadata.procedures:type_name -> metaxisdata.v1.ProcedureMetadata
-	32, // 35: metaxisdata.v1.SchemaMetadata.streams:type_name -> metaxisdata.v1.StreamMetadata
-	31, // 36: metaxisdata.v1.SchemaMetadata.tasks:type_name -> metaxisdata.v1.TaskMetadata
-	42, // 37: metaxisdata.v1.SchemaMetadata.materialized_views:type_name -> metaxisdata.v1.MaterializedViewMetadata
-	28, // 38: metaxisdata.v1.SchemaMetadata.sequences:type_name -> metaxisdata.v1.SequenceMetadata
-	46, // 39: metaxisdata.v1.SchemaMetadata.packages:type_name -> metaxisdata.v1.PackageMetadata
-	27, // 40: metaxisdata.v1.SchemaMetadata.events:type_name -> metaxisdata.v1.EventMetadata
-	26, // 41: metaxisdata.v1.SchemaMetadata.enum_types:type_name -> metaxisdata.v1.EnumTypeMetadata
-	1,  // 42: metaxisdata.v1.TaskMetadata.state:type_name -> metaxisdata.v1.TaskMetadata.State
-	2,  // 43: metaxisdata.v1.StreamMetadata.type:type_name -> metaxisdata.v1.StreamMetadata.Type
-	3,  // 44: metaxisdata.v1.StreamMetadata.mode:type_name -> metaxisdata.v1.StreamMetadata.Mode
-	38, // 45: metaxisdata.v1.TableMetadata.columns:type_name -> metaxisdata.v1.ColumnMetadata
-	47, // 46: metaxisdata.v1.TableMetadata.indexes:type_name -> metaxisdata.v1.IndexMetadata
-	56, // 47: metaxisdata.v1.TableMetadata.foreign_keys:type_name -> metaxisdata.v1.ForeignKeyMetadata
-	37, // 48: metaxisdata.v1.TableMetadata.partitions:type_name -> metaxisdata.v1.TablePartitionMetadata
-	34, // 49: metaxisdata.v1.TableMetadata.check_constraints:type_name -> metaxisdata.v1.CheckConstraintMetadata
-	29, // 50: metaxisdata.v1.TableMetadata.triggers:type_name -> metaxisdata.v1.TriggerMetadata
-	30, // 51: metaxisdata.v1.TableMetadata.rules:type_name -> metaxisdata.v1.RuleMetadata
-	35, // 52: metaxisdata.v1.TableMetadata.exclude_constraints:type_name -> metaxisdata.v1.ExcludeConstraintMetadata
-	38, // 53: metaxisdata.v1.ExternalTableMetadata.columns:type_name -> metaxisdata.v1.ColumnMetadata
-	4,  // 54: metaxisdata.v1.TablePartitionMetadata.type:type_name -> metaxisdata.v1.TablePartitionMetadata.Type
-	37, // 55: metaxisdata.v1.TablePartitionMetadata.subpartitions:type_name -> metaxisdata.v1.TablePartitionMetadata
-	47, // 56: metaxisdata.v1.TablePartitionMetadata.indexes:type_name -> metaxisdata.v1.IndexMetadata
-	34, // 57: metaxisdata.v1.TablePartitionMetadata.check_constraints:type_name -> metaxisdata.v1.CheckConstraintMetadata
-	35, // 58: metaxisdata.v1.TablePartitionMetadata.exclude_constraints:type_name -> metaxisdata.v1.ExcludeConstraintMetadata
-	39, // 59: metaxisdata.v1.ColumnMetadata.generation:type_name -> metaxisdata.v1.GenerationMetadata
-	5,  // 60: metaxisdata.v1.ColumnMetadata.identity_generation:type_name -> metaxisdata.v1.ColumnMetadata.IdentityGeneration
-	6,  // 61: metaxisdata.v1.GenerationMetadata.type:type_name -> metaxisdata.v1.GenerationMetadata.Type
-	41, // 62: metaxisdata.v1.ViewMetadata.dependency_columns:type_name -> metaxisdata.v1.DependencyColumn
-	38, // 63: metaxisdata.v1.ViewMetadata.columns:type_name -> metaxisdata.v1.ColumnMetadata
-	29, // 64: metaxisdata.v1.ViewMetadata.triggers:type_name -> metaxisdata.v1.TriggerMetadata
-	30, // 65: metaxisdata.v1.ViewMetadata.rules:type_name -> metaxisdata.v1.RuleMetadata
-	41, // 66: metaxisdata.v1.MaterializedViewMetadata.dependency_columns:type_name -> metaxisdata.v1.DependencyColumn
-	29, // 67: metaxisdata.v1.MaterializedViewMetadata.triggers:type_name -> metaxisdata.v1.TriggerMetadata
-	47, // 68: metaxisdata.v1.MaterializedViewMetadata.indexes:type_name -> metaxisdata.v1.IndexMetadata
-	43, // 69: metaxisdata.v1.FunctionMetadata.dependency_tables:type_name -> metaxisdata.v1.DependencyTable
-	48, // 70: metaxisdata.v1.IndexMetadata.spatial_config:type_name -> metaxisdata.v1.SpatialIndexConfig
-	49, // 71: metaxisdata.v1.SpatialIndexConfig.tessellation:type_name -> metaxisdata.v1.TessellationConfig
-	52, // 72: metaxisdata.v1.SpatialIndexConfig.storage:type_name -> metaxisdata.v1.StorageConfig
-	53, // 73: metaxisdata.v1.SpatialIndexConfig.dimensional:type_name -> metaxisdata.v1.DimensionalConfig
-	60, // 74: metaxisdata.v1.SpatialIndexConfig.engine_specific:type_name -> metaxisdata.v1.SpatialIndexConfig.EngineSpecificEntry
-	50, // 75: metaxisdata.v1.TessellationConfig.bounding_box:type_name -> metaxisdata.v1.BoundingBox
-	51, // 76: metaxisdata.v1.TessellationConfig.grid_levels:type_name -> metaxisdata.v1.GridLevel
-	0,  // 77: metaxisdata.v1.MetadataResponse.MetadataList.meta_type:type_name -> metaxisdata.v1.MetaType
-	22, // 78: metaxisdata.v1.MetadataResponse.MetadataList.list:type_name -> metaxisdata.v1.StoredMetadata
-	7,  // 79: metaxisdata.v1.DatabaseService.GetDatabase:input_type -> metaxisdata.v1.GetDatabaseRequest
-	8,  // 80: metaxisdata.v1.DatabaseService.SyncDatabase:input_type -> metaxisdata.v1.SyncDatabaseRequest
-	11, // 81: metaxisdata.v1.DatabaseService.ListDatabase:input_type -> metaxisdata.v1.ListDatabaseRequest
-	13, // 82: metaxisdata.v1.DatabaseService.ListMetadata:input_type -> metaxisdata.v1.ListMetadataRequest
-	15, // 83: metaxisdata.v1.DatabaseService.GetMetadata:input_type -> metaxisdata.v1.GetMetadataRequest
-	19, // 84: metaxisdata.v1.DatabaseService.SearchMetadata:input_type -> metaxisdata.v1.SearchMetadataRequest
-	17, // 85: metaxisdata.v1.DatabaseService.GetSchemaString:input_type -> metaxisdata.v1.GetSchemaStringRequest
-	10, // 86: metaxisdata.v1.DatabaseService.GetDatabase:output_type -> metaxisdata.v1.Database
-	9,  // 87: metaxisdata.v1.DatabaseService.SyncDatabase:output_type -> metaxisdata.v1.SyncDatabaseResponse
-	12, // 88: metaxisdata.v1.DatabaseService.ListDatabase:output_type -> metaxisdata.v1.ListDatabasesResponse
-	14, // 89: metaxisdata.v1.DatabaseService.ListMetadata:output_type -> metaxisdata.v1.MetadataResponse
-	16, // 90: metaxisdata.v1.DatabaseService.GetMetadata:output_type -> metaxisdata.v1.GetMetadataResponse
-	20, // 91: metaxisdata.v1.DatabaseService.SearchMetadata:output_type -> metaxisdata.v1.SearchMetadataResponse
-	18, // 92: metaxisdata.v1.DatabaseService.GetSchemaString:output_type -> metaxisdata.v1.MetadataSchemaString
-	86, // [86:93] is the sub-list for method output_type
-	79, // [79:86] is the sub-list for method input_type
-	79, // [79:79] is the sub-list for extension type_name
-	79, // [79:79] is the sub-list for extension extendee
-	0,  // [0:79] is the sub-list for field type_name
+	73,  // 0: metaxisdata.v1.Database.state:type_name -> metaxisdata.v1.State
+	74,  // 1: metaxisdata.v1.Database.successful_sync_time:type_name -> google.protobuf.Timestamp
+	68,  // 2: metaxisdata.v1.Database.labels:type_name -> metaxisdata.v1.Database.LabelsEntry
+	75,  // 3: metaxisdata.v1.Database.instance_resource:type_name -> metaxisdata.v1.InstanceResource
+	10,  // 4: metaxisdata.v1.ListDatabasesResponse.databases:type_name -> metaxisdata.v1.Database
+	0,   // 5: metaxisdata.v1.ListMetadataRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	69,  // 6: metaxisdata.v1.MetadataResponse.types_stored_metadata:type_name -> metaxisdata.v1.MetadataResponse.MetadataList
+	0,   // 7: metaxisdata.v1.GetMetadataRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	32,  // 8: metaxisdata.v1.GetMetadataResponse.metadata:type_name -> metaxisdata.v1.StoredMetadata
+	0,   // 9: metaxisdata.v1.GetSchemaStringRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	0,   // 10: metaxisdata.v1.SearchMetadataRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	21,  // 11: metaxisdata.v1.SearchMetadataResponse.results:type_name -> metaxisdata.v1.SearchMetadataResult
+	0,   // 12: metaxisdata.v1.SearchMetadataResult.meta_type:type_name -> metaxisdata.v1.MetaType
+	32,  // 13: metaxisdata.v1.SearchMetadataResult.metadata:type_name -> metaxisdata.v1.StoredMetadata
+	70,  // 14: metaxisdata.v1.ManualSQL.attributes:type_name -> metaxisdata.v1.ManualSQL.AttributesEntry
+	74,  // 15: metaxisdata.v1.ManualSQL.created_at:type_name -> google.protobuf.Timestamp
+	74,  // 16: metaxisdata.v1.ManualSQL.updated_at:type_name -> google.protobuf.Timestamp
+	22,  // 17: metaxisdata.v1.CreateManualSQLRequest.manual_sql:type_name -> metaxisdata.v1.ManualSQL
+	22,  // 18: metaxisdata.v1.ListManualSQLResponse.manual_sqls:type_name -> metaxisdata.v1.ManualSQL
+	22,  // 19: metaxisdata.v1.SearchManualSQLResponse.manual_sqls:type_name -> metaxisdata.v1.ManualSQL
+	22,  // 20: metaxisdata.v1.UpdateManualSQLRequest.manual_sql:type_name -> metaxisdata.v1.ManualSQL
+	76,  // 21: metaxisdata.v1.UpdateManualSQLRequest.update_mask:type_name -> google.protobuf.FieldMask
+	71,  // 22: metaxisdata.v1.ManualSQLMetadata.attributes:type_name -> metaxisdata.v1.ManualSQLMetadata.AttributesEntry
+	33,  // 23: metaxisdata.v1.StoredMetadata.database_schema_metadata:type_name -> metaxisdata.v1.DatabaseSchemaMetadata
+	35,  // 24: metaxisdata.v1.StoredMetadata.schema_metadata:type_name -> metaxisdata.v1.SchemaMetadata
+	43,  // 25: metaxisdata.v1.StoredMetadata.table_metadata:type_name -> metaxisdata.v1.TableMetadata
+	46,  // 26: metaxisdata.v1.StoredMetadata.external_table_metadata:type_name -> metaxisdata.v1.ExternalTableMetadata
+	50,  // 27: metaxisdata.v1.StoredMetadata.view_metadata:type_name -> metaxisdata.v1.ViewMetadata
+	52,  // 28: metaxisdata.v1.StoredMetadata.materialized_view_metadata:type_name -> metaxisdata.v1.MaterializedViewMetadata
+	54,  // 29: metaxisdata.v1.StoredMetadata.function_metadata:type_name -> metaxisdata.v1.FunctionMetadata
+	55,  // 30: metaxisdata.v1.StoredMetadata.procedure_metadata:type_name -> metaxisdata.v1.ProcedureMetadata
+	56,  // 31: metaxisdata.v1.StoredMetadata.package_metadata:type_name -> metaxisdata.v1.PackageMetadata
+	38,  // 32: metaxisdata.v1.StoredMetadata.sequence_metadata:type_name -> metaxisdata.v1.SequenceMetadata
+	42,  // 33: metaxisdata.v1.StoredMetadata.stream_metadata:type_name -> metaxisdata.v1.StreamMetadata
+	41,  // 34: metaxisdata.v1.StoredMetadata.task_metadata:type_name -> metaxisdata.v1.TaskMetadata
+	31,  // 35: metaxisdata.v1.StoredMetadata.manual_sql_metadata:type_name -> metaxisdata.v1.ManualSQLMetadata
+	35,  // 36: metaxisdata.v1.DatabaseSchemaMetadata.schemas:type_name -> metaxisdata.v1.SchemaMetadata
+	64,  // 37: metaxisdata.v1.DatabaseSchemaMetadata.extensions:type_name -> metaxisdata.v1.ExtensionMetadata
+	34,  // 38: metaxisdata.v1.DatabaseSchemaMetadata.linked_databases:type_name -> metaxisdata.v1.LinkedDatabaseMetadata
+	65,  // 39: metaxisdata.v1.DatabaseSchemaMetadata.event_triggers:type_name -> metaxisdata.v1.EventTriggerMetadata
+	43,  // 40: metaxisdata.v1.SchemaMetadata.tables:type_name -> metaxisdata.v1.TableMetadata
+	46,  // 41: metaxisdata.v1.SchemaMetadata.external_tables:type_name -> metaxisdata.v1.ExternalTableMetadata
+	50,  // 42: metaxisdata.v1.SchemaMetadata.views:type_name -> metaxisdata.v1.ViewMetadata
+	54,  // 43: metaxisdata.v1.SchemaMetadata.functions:type_name -> metaxisdata.v1.FunctionMetadata
+	55,  // 44: metaxisdata.v1.SchemaMetadata.procedures:type_name -> metaxisdata.v1.ProcedureMetadata
+	42,  // 45: metaxisdata.v1.SchemaMetadata.streams:type_name -> metaxisdata.v1.StreamMetadata
+	41,  // 46: metaxisdata.v1.SchemaMetadata.tasks:type_name -> metaxisdata.v1.TaskMetadata
+	52,  // 47: metaxisdata.v1.SchemaMetadata.materialized_views:type_name -> metaxisdata.v1.MaterializedViewMetadata
+	38,  // 48: metaxisdata.v1.SchemaMetadata.sequences:type_name -> metaxisdata.v1.SequenceMetadata
+	56,  // 49: metaxisdata.v1.SchemaMetadata.packages:type_name -> metaxisdata.v1.PackageMetadata
+	37,  // 50: metaxisdata.v1.SchemaMetadata.events:type_name -> metaxisdata.v1.EventMetadata
+	36,  // 51: metaxisdata.v1.SchemaMetadata.enum_types:type_name -> metaxisdata.v1.EnumTypeMetadata
+	1,   // 52: metaxisdata.v1.TaskMetadata.state:type_name -> metaxisdata.v1.TaskMetadata.State
+	2,   // 53: metaxisdata.v1.StreamMetadata.type:type_name -> metaxisdata.v1.StreamMetadata.Type
+	3,   // 54: metaxisdata.v1.StreamMetadata.mode:type_name -> metaxisdata.v1.StreamMetadata.Mode
+	48,  // 55: metaxisdata.v1.TableMetadata.columns:type_name -> metaxisdata.v1.ColumnMetadata
+	57,  // 56: metaxisdata.v1.TableMetadata.indexes:type_name -> metaxisdata.v1.IndexMetadata
+	66,  // 57: metaxisdata.v1.TableMetadata.foreign_keys:type_name -> metaxisdata.v1.ForeignKeyMetadata
+	47,  // 58: metaxisdata.v1.TableMetadata.partitions:type_name -> metaxisdata.v1.TablePartitionMetadata
+	44,  // 59: metaxisdata.v1.TableMetadata.check_constraints:type_name -> metaxisdata.v1.CheckConstraintMetadata
+	39,  // 60: metaxisdata.v1.TableMetadata.triggers:type_name -> metaxisdata.v1.TriggerMetadata
+	40,  // 61: metaxisdata.v1.TableMetadata.rules:type_name -> metaxisdata.v1.RuleMetadata
+	45,  // 62: metaxisdata.v1.TableMetadata.exclude_constraints:type_name -> metaxisdata.v1.ExcludeConstraintMetadata
+	48,  // 63: metaxisdata.v1.ExternalTableMetadata.columns:type_name -> metaxisdata.v1.ColumnMetadata
+	4,   // 64: metaxisdata.v1.TablePartitionMetadata.type:type_name -> metaxisdata.v1.TablePartitionMetadata.Type
+	47,  // 65: metaxisdata.v1.TablePartitionMetadata.subpartitions:type_name -> metaxisdata.v1.TablePartitionMetadata
+	57,  // 66: metaxisdata.v1.TablePartitionMetadata.indexes:type_name -> metaxisdata.v1.IndexMetadata
+	44,  // 67: metaxisdata.v1.TablePartitionMetadata.check_constraints:type_name -> metaxisdata.v1.CheckConstraintMetadata
+	45,  // 68: metaxisdata.v1.TablePartitionMetadata.exclude_constraints:type_name -> metaxisdata.v1.ExcludeConstraintMetadata
+	49,  // 69: metaxisdata.v1.ColumnMetadata.generation:type_name -> metaxisdata.v1.GenerationMetadata
+	5,   // 70: metaxisdata.v1.ColumnMetadata.identity_generation:type_name -> metaxisdata.v1.ColumnMetadata.IdentityGeneration
+	6,   // 71: metaxisdata.v1.GenerationMetadata.type:type_name -> metaxisdata.v1.GenerationMetadata.Type
+	51,  // 72: metaxisdata.v1.ViewMetadata.dependency_columns:type_name -> metaxisdata.v1.DependencyColumn
+	48,  // 73: metaxisdata.v1.ViewMetadata.columns:type_name -> metaxisdata.v1.ColumnMetadata
+	39,  // 74: metaxisdata.v1.ViewMetadata.triggers:type_name -> metaxisdata.v1.TriggerMetadata
+	40,  // 75: metaxisdata.v1.ViewMetadata.rules:type_name -> metaxisdata.v1.RuleMetadata
+	51,  // 76: metaxisdata.v1.MaterializedViewMetadata.dependency_columns:type_name -> metaxisdata.v1.DependencyColumn
+	39,  // 77: metaxisdata.v1.MaterializedViewMetadata.triggers:type_name -> metaxisdata.v1.TriggerMetadata
+	57,  // 78: metaxisdata.v1.MaterializedViewMetadata.indexes:type_name -> metaxisdata.v1.IndexMetadata
+	53,  // 79: metaxisdata.v1.FunctionMetadata.dependency_tables:type_name -> metaxisdata.v1.DependencyTable
+	58,  // 80: metaxisdata.v1.IndexMetadata.spatial_config:type_name -> metaxisdata.v1.SpatialIndexConfig
+	59,  // 81: metaxisdata.v1.SpatialIndexConfig.tessellation:type_name -> metaxisdata.v1.TessellationConfig
+	62,  // 82: metaxisdata.v1.SpatialIndexConfig.storage:type_name -> metaxisdata.v1.StorageConfig
+	63,  // 83: metaxisdata.v1.SpatialIndexConfig.dimensional:type_name -> metaxisdata.v1.DimensionalConfig
+	72,  // 84: metaxisdata.v1.SpatialIndexConfig.engine_specific:type_name -> metaxisdata.v1.SpatialIndexConfig.EngineSpecificEntry
+	60,  // 85: metaxisdata.v1.TessellationConfig.bounding_box:type_name -> metaxisdata.v1.BoundingBox
+	61,  // 86: metaxisdata.v1.TessellationConfig.grid_levels:type_name -> metaxisdata.v1.GridLevel
+	0,   // 87: metaxisdata.v1.MetadataResponse.MetadataList.meta_type:type_name -> metaxisdata.v1.MetaType
+	32,  // 88: metaxisdata.v1.MetadataResponse.MetadataList.list:type_name -> metaxisdata.v1.StoredMetadata
+	7,   // 89: metaxisdata.v1.DatabaseService.GetDatabase:input_type -> metaxisdata.v1.GetDatabaseRequest
+	8,   // 90: metaxisdata.v1.DatabaseService.SyncDatabase:input_type -> metaxisdata.v1.SyncDatabaseRequest
+	11,  // 91: metaxisdata.v1.DatabaseService.ListDatabase:input_type -> metaxisdata.v1.ListDatabaseRequest
+	13,  // 92: metaxisdata.v1.DatabaseService.ListMetadata:input_type -> metaxisdata.v1.ListMetadataRequest
+	15,  // 93: metaxisdata.v1.DatabaseService.GetMetadata:input_type -> metaxisdata.v1.GetMetadataRequest
+	19,  // 94: metaxisdata.v1.DatabaseService.SearchMetadata:input_type -> metaxisdata.v1.SearchMetadataRequest
+	17,  // 95: metaxisdata.v1.DatabaseService.GetSchemaString:input_type -> metaxisdata.v1.GetSchemaStringRequest
+	23,  // 96: metaxisdata.v1.DatabaseService.CreateManualSQL:input_type -> metaxisdata.v1.CreateManualSQLRequest
+	24,  // 97: metaxisdata.v1.DatabaseService.GetManualSQL:input_type -> metaxisdata.v1.GetManualSQLRequest
+	25,  // 98: metaxisdata.v1.DatabaseService.ListManualSQL:input_type -> metaxisdata.v1.ListManualSQLRequest
+	27,  // 99: metaxisdata.v1.DatabaseService.SearchManualSQL:input_type -> metaxisdata.v1.SearchManualSQLRequest
+	29,  // 100: metaxisdata.v1.DatabaseService.UpdateManualSQL:input_type -> metaxisdata.v1.UpdateManualSQLRequest
+	30,  // 101: metaxisdata.v1.DatabaseService.DeleteManualSQL:input_type -> metaxisdata.v1.DeleteManualSQLRequest
+	10,  // 102: metaxisdata.v1.DatabaseService.GetDatabase:output_type -> metaxisdata.v1.Database
+	9,   // 103: metaxisdata.v1.DatabaseService.SyncDatabase:output_type -> metaxisdata.v1.SyncDatabaseResponse
+	12,  // 104: metaxisdata.v1.DatabaseService.ListDatabase:output_type -> metaxisdata.v1.ListDatabasesResponse
+	14,  // 105: metaxisdata.v1.DatabaseService.ListMetadata:output_type -> metaxisdata.v1.MetadataResponse
+	16,  // 106: metaxisdata.v1.DatabaseService.GetMetadata:output_type -> metaxisdata.v1.GetMetadataResponse
+	20,  // 107: metaxisdata.v1.DatabaseService.SearchMetadata:output_type -> metaxisdata.v1.SearchMetadataResponse
+	18,  // 108: metaxisdata.v1.DatabaseService.GetSchemaString:output_type -> metaxisdata.v1.MetadataSchemaString
+	22,  // 109: metaxisdata.v1.DatabaseService.CreateManualSQL:output_type -> metaxisdata.v1.ManualSQL
+	22,  // 110: metaxisdata.v1.DatabaseService.GetManualSQL:output_type -> metaxisdata.v1.ManualSQL
+	26,  // 111: metaxisdata.v1.DatabaseService.ListManualSQL:output_type -> metaxisdata.v1.ListManualSQLResponse
+	28,  // 112: metaxisdata.v1.DatabaseService.SearchManualSQL:output_type -> metaxisdata.v1.SearchManualSQLResponse
+	22,  // 113: metaxisdata.v1.DatabaseService.UpdateManualSQL:output_type -> metaxisdata.v1.ManualSQL
+	77,  // 114: metaxisdata.v1.DatabaseService.DeleteManualSQL:output_type -> google.protobuf.Empty
+	102, // [102:115] is the sub-list for method output_type
+	89,  // [89:102] is the sub-list for method input_type
+	89,  // [89:89] is the sub-list for extension type_name
+	89,  // [89:89] is the sub-list for extension extendee
+	0,   // [0:89] is the sub-list for field type_name
 }
 
 func init() { file_v1_database_service_proto_init() }
@@ -6068,7 +6938,7 @@ func file_v1_database_service_proto_init() {
 	file_v1_instance_service_proto_init()
 	file_v1_database_service_proto_msgTypes[6].OneofWrappers = []any{}
 	file_v1_database_service_proto_msgTypes[12].OneofWrappers = []any{}
-	file_v1_database_service_proto_msgTypes[15].OneofWrappers = []any{
+	file_v1_database_service_proto_msgTypes[25].OneofWrappers = []any{
 		(*StoredMetadata_DatabaseSchemaMetadata)(nil),
 		(*StoredMetadata_SchemaMetadata)(nil),
 		(*StoredMetadata_TableMetadata)(nil),
@@ -6081,6 +6951,7 @@ func file_v1_database_service_proto_init() {
 		(*StoredMetadata_SequenceMetadata)(nil),
 		(*StoredMetadata_StreamMetadata)(nil),
 		(*StoredMetadata_TaskMetadata)(nil),
+		(*StoredMetadata_ManualSqlMetadata)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -6088,7 +6959,7 @@ func file_v1_database_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_database_service_proto_rawDesc), len(file_v1_database_service_proto_rawDesc)),
 			NumEnums:      7,
-			NumMessages:   54,
+			NumMessages:   66,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

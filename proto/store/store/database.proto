@@ -940,6 +940,39 @@ message InstanceRoleMetadata {
   string grant = 7;
 }
 
+// ManualSQLMetadata is the metadata for a user-maintained SQL definition.
+message ManualSQLMetadata {
+  // The stable identifier of the manual SQL entry.
+  string manual_sql_id = 1;
+
+  // The display name of the manual SQL entry.
+  string name = 2;
+
+  // The title is optional display text for UI surfaces.
+  string title = 3;
+
+  // The comment is a free-form description.
+  string comment = 4;
+
+  // The SQL text provided by the user.
+  string sql_text = 5;
+
+  // Tags support exact filtering in the dedicated manual SQL query path.
+  repeated string tags = 6;
+
+  // Attributes provide custom key/value annotations.
+  map<string, string> attributes = 7;
+
+  // The optional schema context used during analysis.
+  string schema_name = 8;
+
+  // The instance resource. Format: instances/{instance}
+  string instance_resource = 9;
+
+  // The database name in the instance.
+  string database_name = 10;
+}
+
 message StoredMetadata {
   oneof type {
     DatabaseSchemaMetadata database_schema_metadata = 1;
@@ -956,5 +989,6 @@ message StoredMetadata {
     TaskMetadata task_metadata = 12;
     OpenLineageRunSummary openlineage_run_summary = 13;
     OpenLineageTaskSummary openlineage_task_summary = 14;
+    ManualSQLMetadata manual_sql_metadata = 15;
   }
 }

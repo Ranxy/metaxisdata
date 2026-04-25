@@ -95,13 +95,14 @@ func (a *Analyzer) Run(ctx context.Context, wg *sync.WaitGroup) {
 	sp.Wait()
 }
 
-// queueAll scans all VIEW and MATERIALIZED_VIEW objects and queues those whose
-// metahash has changed since the last analysis.
+// queueAll scans all lineage-analyzable objects and queues those whose metahash
+// has changed since the last analysis.
 func (a *Analyzer) queueAll(ctx context.Context) {
 	viewType := storepb.MetaType_VIEW
 	mvType := storepb.MetaType_MATERIALIZED_VIEW
+	manualSQLType := storepb.MetaType_MANUAL_SQL
 
-	for _, objType := range []storepb.MetaType{viewType, mvType} {
+	for _, objType := range []storepb.MetaType{viewType, mvType, manualSQLType} {
 		t := objType
 		list, err := a.store.ListMetaRegistryResource(ctx, &store.FindMetaRegistryResourceMessage{
 			ObjectType: &t,
@@ -154,7 +155,7 @@ func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
 	wp.Wait()
 }
 
-// analyzeObject runs lineage analysis for a single VIEW or MATERIALIZED_VIEW.
+// analyzeObject runs lineage analysis for a single lineage-analyzable object.
 func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType storepb.MetaType) error {
 	// Extract context from GUID: instanceID;database;schema;name
 	parts := strings.SplitN(metaGUID, common.MetaGUIDSplit, 4)
@@ -206,14 +207,12 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to analyze lineage")
 	}
 
-	// Convert relations to ColumnLineage rows, skipping temp targets.
-	// Collect unique source GUIDs to look up their meta types.
-	sourceGUIDSet := make(map[string]struct{})
+	// Convert relations to ColumnLineage rows and collect GUIDs whose meta types
+	// should be resolved from the registry.
+	guidTypeMap := map[string]storepb.MetaType{metaGUID: metaType}
+	guidLookupSet := make(map[string]struct{})
 	var lineages []*store.ColumnLineage
 	for _, rel := range relations {
-		if rel.IsTemp {
-			continue
-		}
 		// Fill missing source GUID parts from analysis context.
 		sourceID := rel.Source.Table
 		if sourceID.InstanceID == "" {
@@ -241,13 +240,51 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 			rel.Transformation = make([]model.Transformation, 0)
 		}
 		srcGUID := sourceID.GUID()
-		sourceGUIDSet[srcGUID] = struct{}{}
+
+		if metaType == storepb.MetaType_MANUAL_SQL {
+			guidLookupSet[srcGUID] = struct{}{}
+			lineages = append(lineages, &store.ColumnLineage{
+				MetaGUID:       metaGUID,
+				MetaType:       metaType,
+				SourceGUID:     srcGUID,
+				SourceColumn:   rel.Source.Name,
+				TargetGUID:     metaGUID,
+				TargetColumn:   rel.Target.Name,
+				TargetType:     metaType,
+				RelationType:   rel.RelationType,
+				Transformation: rel.Transformation,
+			})
+
+			if !rel.IsTemp {
+				targetGUID := targetID.GUID()
+				guidLookupSet[targetGUID] = struct{}{}
+				lineages = append(lineages, &store.ColumnLineage{
+					MetaGUID:       metaGUID,
+					MetaType:       metaType,
+					SourceGUID:     metaGUID,
+					SourceColumn:   rel.Target.Name,
+					SourceType:     metaType,
+					TargetGUID:     targetGUID,
+					TargetColumn:   rel.Target.Name,
+					RelationType:   rel.RelationType,
+					Transformation: rel.Transformation,
+				})
+			}
+			continue
+		}
+
+		if rel.IsTemp {
+			continue
+		}
+
+		targetGUID := targetID.GUID()
+		guidLookupSet[srcGUID] = struct{}{}
 		lineages = append(lineages, &store.ColumnLineage{
 			MetaGUID:       metaGUID,
 			MetaType:       metaType,
 			SourceGUID:     srcGUID,
 			SourceColumn:   rel.Source.Name,
-			TargetGUID:     targetID.GUID(),
+			TargetGUID:     targetGUID,
 			TargetColumn:   rel.Target.Name,
 			TargetType:     metaType,
 			RelationType:   rel.RelationType,
@@ -255,9 +292,10 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		})
 	}
 
-	// Look up source meta types from the registry.
-	sourceTypeMap := make(map[string]storepb.MetaType, len(sourceGUIDSet))
-	for guid := range sourceGUIDSet {
+	for guid := range guidLookupSet {
+		if guid == metaGUID {
+			continue
+		}
 		g := guid
 		srcMeta, err := a.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &g})
 		if err != nil {
@@ -265,12 +303,15 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 			continue
 		}
 		if srcMeta != nil {
-			sourceTypeMap[g] = srcMeta.ObjectType
+			guidTypeMap[g] = srcMeta.ObjectType
 		}
 	}
 	for _, l := range lineages {
-		if t, ok := sourceTypeMap[l.SourceGUID]; ok {
+		if t, ok := guidTypeMap[l.SourceGUID]; ok {
 			l.SourceType = t
+		}
+		if t, ok := guidTypeMap[l.TargetGUID]; ok {
+			l.TargetType = t
 		}
 	}
 
@@ -286,18 +327,23 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash, "")
 }
 
-// buildSQL extracts the object definition and wraps it as a dialect-aware CREATE statement.
+// buildSQL extracts the object definition and wraps it as needed for lineage parsing.
 func buildSQL(name string, engine storepb.Engine, metaType storepb.MetaType, res *store.MetaRegistryResource) (definition string, wrapped string, err error) {
 	switch metaType {
 	case storepb.MetaType_VIEW:
 		definition = res.Metadata.GetViewMetadata().GetDefinition()
 	case storepb.MetaType_MATERIALIZED_VIEW:
 		definition = res.Metadata.GetMaterializedViewMetadata().GetDefinition()
+	case storepb.MetaType_MANUAL_SQL:
+		definition = res.Metadata.GetManualSqlMetadata().GetSqlText()
 	default:
 		return "", "", errors.Errorf("unsupported meta type %v", metaType)
 	}
 	if definition == "" {
 		return "", "", nil
+	}
+	if metaType == storepb.MetaType_MANUAL_SQL {
+		return definition, definition, nil
 	}
 
 	keyword := "CREATE VIEW"

@@ -31,6 +31,7 @@ const (
 	MetaType_TABLE             MetaType = 4
 	MetaType_EXTERNAL_TABLE    MetaType = 16
 	MetaType_EXTERNAL_DATASET  MetaType = 17
+	MetaType_MANUAL_SQL        MetaType = 18
 	MetaType_VIEW              MetaType = 5
 	MetaType_MATERIALIZED_VIEW MetaType = 6
 	MetaType_COLUMN            MetaType = 7
@@ -56,6 +57,7 @@ var (
 		4:   "TABLE",
 		16:  "EXTERNAL_TABLE",
 		17:  "EXTERNAL_DATASET",
+		18:  "MANUAL_SQL",
 		5:   "VIEW",
 		6:   "MATERIALIZED_VIEW",
 		7:   "COLUMN",
@@ -77,6 +79,7 @@ var (
 		"TABLE":             4,
 		"EXTERNAL_TABLE":    16,
 		"EXTERNAL_DATASET":  17,
+		"MANUAL_SQL":        18,
 		"VIEW":              5,
 		"MATERIALIZED_VIEW": 6,
 		"COLUMN":            7,
@@ -123,7 +126,7 @@ var File_store_meta_proto protoreflect.FileDescriptor
 
 const file_store_meta_proto_rawDesc = "" +
 	"\n" +
-	"\x10store/meta.proto\x12\x11metaxisdata.store*\xa0\x02\n" +
+	"\x10store/meta.proto\x12\x11metaxisdata.store*\xb0\x02\n" +
 	"\bMetaType\x12\x0f\n" +
 	"\vUNSPECIFIED\x10\x00\x12\f\n" +
 	"\bINSTANCE\x10\x01\x12\f\n" +
@@ -132,7 +135,9 @@ const file_store_meta_proto_rawDesc = "" +
 	"\x06SCHEMA\x10\x03\x12\t\n" +
 	"\x05TABLE\x10\x04\x12\x12\n" +
 	"\x0eEXTERNAL_TABLE\x10\x10\x12\x14\n" +
-	"\x10EXTERNAL_DATASET\x10\x11\x12\b\n" +
+	"\x10EXTERNAL_DATASET\x10\x11\x12\x0e\n" +
+	"\n" +
+	"MANUAL_SQL\x10\x12\x12\b\n" +
 	"\x04VIEW\x10\x05\x12\x15\n" +
 	"\x11MATERIALIZED_VIEW\x10\x06\x12\n" +
 	"\n" +

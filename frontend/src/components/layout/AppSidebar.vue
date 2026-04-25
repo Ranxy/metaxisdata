@@ -76,6 +76,7 @@
 <script setup lang="ts">
 import {
   Database,
+  FileCode2,
   Folder,
   Home,
   Network,
@@ -130,6 +131,12 @@ const menuItems = computed<MenuItem[]>(() => [
         label: t("menu.metadata"),
         path: "/metadata",
         icon: Database,
+      },
+      {
+        key: "manualSql",
+        label: t("menu.manualSql"),
+        path: "/manual-sql",
+        icon: FileCode2,
       },
     ],
   },

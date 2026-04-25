@@ -159,12 +159,65 @@ CREATE TABLE meta_registry_resource (
     guid text COLLATE "C" NOT NULL,
     object_type int2 NOT NULL,
     metadata jsonb NOT NULL DEFAULT '{}',
-    metahash bytea
+    meta_hash bytea
 );
 
-CREATE INDEX idx_meta_registry_resource_guid_object_type ON meta_registry_resource(guid,object_type);
+CREATE UNIQUE INDEX idx_meta_registry_resource_guid_object_type ON meta_registry_resource(guid,object_type);
 
 ALTER SEQUENCE meta_registry_resource_id_seq RESTART WITH 101;
+
+
+-- manual_sql stores user-maintained SQL definitions and their execution context.
+CREATE TABLE manual_sql (
+    id BIGSERIAL PRIMARY KEY,
+    guid TEXT COLLATE "C" NOT NULL,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    instance_resource_id TEXT NOT NULL REFERENCES instance(resource_id),
+    database_name TEXT NOT NULL,
+    schema_name TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    comment TEXT NOT NULL DEFAULT '',
+    sql_text TEXT NOT NULL,
+    content_search TEXT NOT NULL DEFAULT '',
+    search_vector TSVECTOR NOT NULL DEFAULT ''::tsvector,
+    created_by TEXT NOT NULL DEFAULT '',
+    updated_by TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_manual_sql_database FOREIGN KEY (instance_resource_id, database_name) REFERENCES db(instance, name)
+);
+
+CREATE UNIQUE INDEX idx_manual_sql_guid ON manual_sql(guid);
+CREATE UNIQUE INDEX idx_manual_sql_scope_name ON manual_sql(instance_resource_id, database_name, name);
+CREATE INDEX idx_manual_sql_scope ON manual_sql(instance_resource_id, database_name, schema_name);
+CREATE INDEX idx_manual_sql_search_vector ON manual_sql USING GIN(search_vector);
+
+ALTER SEQUENCE manual_sql_id_seq RESTART WITH 101;
+
+
+-- manual_sql_tag stores normalized tags for exact tag filtering.
+CREATE TABLE manual_sql_tag (
+    manual_sql_id BIGINT NOT NULL REFERENCES manual_sql(id) ON DELETE CASCADE,
+    tag TEXT NOT NULL,
+    tag_norm TEXT NOT NULL,
+    PRIMARY KEY (manual_sql_id, tag_norm)
+);
+
+CREATE INDEX idx_manual_sql_tag_norm_manual_sql_id ON manual_sql_tag(tag_norm, manual_sql_id);
+
+
+-- manual_sql_attribute stores normalized key/value attributes for exact filtering.
+CREATE TABLE manual_sql_attribute (
+    manual_sql_id BIGINT NOT NULL REFERENCES manual_sql(id) ON DELETE CASCADE,
+    attr_key TEXT NOT NULL,
+    attr_value TEXT NOT NULL DEFAULT '',
+    attr_key_norm TEXT NOT NULL,
+    attr_value_norm TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (manual_sql_id, attr_key_norm)
+);
+
+CREATE INDEX idx_manual_sql_attribute_norm ON manual_sql_attribute(attr_key_norm, attr_value_norm, manual_sql_id);
 
 
 -- column_lineage stores individual column-level lineage edges.

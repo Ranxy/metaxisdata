@@ -50,6 +50,14 @@ func TestBuildSQL(t *testing.T) {
 			wantDef:     "SELECT id FROM users",
 			wantWrapped: "CREATE VIEW active_users AS SELECT id FROM users",
 		},
+		{
+			name:        "manual sql uses raw statement",
+			engine:      storepb.Engine_POSTGRES,
+			metaType:    storepb.MetaType_MANUAL_SQL,
+			resource:    &store.MetaRegistryResource{Metadata: &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ManualSqlMetadata{ManualSqlMetadata: &storepb.ManualSQLMetadata{SqlText: "INSERT INTO summary SELECT id, name FROM users"}}}},
+			wantDef:     "INSERT INTO summary SELECT id, name FROM users",
+			wantWrapped: "INSERT INTO summary SELECT id, name FROM users",
+		},
 	}
 
 	for _, tt := range tests {

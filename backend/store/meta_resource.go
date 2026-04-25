@@ -187,7 +187,7 @@ func (s *Store) SearchMetaRegistryResource(ctx context.Context, find *SearchMeta
 	searchPattern := "%" + escaped + "%"
 	args = append(args, searchPattern)
 	searchIdx := len(args)
-	where = append(where, fmt.Sprintf(`(m.inner_meta->>'name' ILIKE $%d OR m.inner_meta->>'comment' ILIKE $%d OR m.inner_meta->>'userComment' ILIKE $%d)`, searchIdx, searchIdx, searchIdx))
+	where = append(where, fmt.Sprintf(`(m.inner_meta->>'name' ILIKE $%d OR m.inner_meta->>'title' ILIKE $%d OR m.inner_meta->>'comment' ILIKE $%d OR m.inner_meta->>'userComment' ILIKE $%d)`, searchIdx, searchIdx, searchIdx, searchIdx))
 
 	query := fmt.Sprintf(`
 		SELECT
@@ -544,7 +544,7 @@ func getNextLevelObjectType(metaType storepb.MetaType) []storepb.MetaType {
 	case storepb.MetaType_INSTANCE:
 		return []storepb.MetaType{storepb.MetaType_DATABASE}
 	case storepb.MetaType_DATABASE:
-		return []storepb.MetaType{storepb.MetaType_SCHEMA}
+		return []storepb.MetaType{storepb.MetaType_SCHEMA, storepb.MetaType_MANUAL_SQL}
 	case storepb.MetaType_SCHEMA:
 		return []storepb.MetaType{
 			storepb.MetaType_TABLE,

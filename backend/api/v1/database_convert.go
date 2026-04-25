@@ -62,6 +62,10 @@ func convertStoredMetadataMessage(meta *storepb.StoredMetadata) *v1pb.StoredMeta
 		result.Type = &v1pb.StoredMetadata_TaskMetadata{
 			TaskMetadata: convertTaskMetadata(v.TaskMetadata),
 		}
+	case *storepb.StoredMetadata_ManualSqlMetadata:
+		result.Type = &v1pb.StoredMetadata_ManualSqlMetadata{
+			ManualSqlMetadata: convertManualSQLMetadata(v.ManualSqlMetadata),
+		}
 	default:
 	}
 	return result
@@ -307,5 +311,24 @@ func convertEnumTypeMetadata(meta *storepb.EnumTypeMetadata) *v1pb.EnumTypeMetad
 	data, _ := proto.Marshal(meta)
 	result := &v1pb.EnumTypeMetadata{}
 	_ = proto.Unmarshal(data, result)
+	return result
+}
+
+func convertManualSQLMetadata(meta *storepb.ManualSQLMetadata) *v1pb.ManualSQLMetadata {
+	if meta == nil {
+		return nil
+	}
+	result := &v1pb.ManualSQLMetadata{
+		ManualSqlId:      meta.ManualSqlId,
+		Name:             meta.Name,
+		Title:            meta.Title,
+		Comment:          meta.Comment,
+		SqlText:          meta.SqlText,
+		Tags:             meta.Tags,
+		Attributes:       meta.Attributes,
+		SchemaName:       meta.SchemaName,
+		InstanceResource: meta.InstanceResource,
+		DatabaseName:     meta.DatabaseName,
+	}
 	return result
 }

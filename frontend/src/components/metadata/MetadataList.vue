@@ -15,6 +15,7 @@ import {
 } from "@/types/proto-es/v1/database_service_pb";
 import DatabaseList from "./DatabaseList.vue";
 import FunctionList from "./FunctionList.vue";
+import ManualSQLList from "./ManualSQLList.vue";
 import MaterializedViewList from "./MaterializedViewList.vue";
 import ProcedureList from "./ProcedureList.vue";
 import SchemaList from "./SchemaList.vue";
@@ -51,6 +52,8 @@ const listComponent = computed(() => {
       return ProcedureList;
     case MetaType.SEQUENCE:
       return SequenceList;
+    case MetaType.MANUAL_SQL:
+      return ManualSQLList;
     default:
       return DatabaseList;
   }

@@ -86,6 +86,7 @@ function getMetaTypeLabel(type: MetaType): string {
     [MetaType.FUNCTION]: t("metadataBrowser.functions"),
     [MetaType.PROCEDURE]: t("metadataBrowser.procedures"),
     [MetaType.SEQUENCE]: t("metadataBrowser.sequences"),
+    [MetaType.MANUAL_SQL]: t("metadataBrowser.manualSqls"),
   };
   return labels[type] || t("metadataBrowser.other");
 }

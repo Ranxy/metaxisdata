@@ -11,6 +11,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -26,6 +27,12 @@ const (
 	DatabaseService_GetMetadata_FullMethodName     = "/metaxisdata.v1.DatabaseService/GetMetadata"
 	DatabaseService_SearchMetadata_FullMethodName  = "/metaxisdata.v1.DatabaseService/SearchMetadata"
 	DatabaseService_GetSchemaString_FullMethodName = "/metaxisdata.v1.DatabaseService/GetSchemaString"
+	DatabaseService_CreateManualSQL_FullMethodName = "/metaxisdata.v1.DatabaseService/CreateManualSQL"
+	DatabaseService_GetManualSQL_FullMethodName    = "/metaxisdata.v1.DatabaseService/GetManualSQL"
+	DatabaseService_ListManualSQL_FullMethodName   = "/metaxisdata.v1.DatabaseService/ListManualSQL"
+	DatabaseService_SearchManualSQL_FullMethodName = "/metaxisdata.v1.DatabaseService/SearchManualSQL"
+	DatabaseService_UpdateManualSQL_FullMethodName = "/metaxisdata.v1.DatabaseService/UpdateManualSQL"
+	DatabaseService_DeleteManualSQL_FullMethodName = "/metaxisdata.v1.DatabaseService/DeleteManualSQL"
 )
 
 // DatabaseServiceClient is the client API for DatabaseService service.
@@ -40,6 +47,12 @@ type DatabaseServiceClient interface {
 	SearchMetadata(ctx context.Context, in *SearchMetadataRequest, opts ...grpc.CallOption) (*SearchMetadataResponse, error)
 	// Generates schema DDL for a database object.
 	GetSchemaString(ctx context.Context, in *GetSchemaStringRequest, opts ...grpc.CallOption) (*MetadataSchemaString, error)
+	CreateManualSQL(ctx context.Context, in *CreateManualSQLRequest, opts ...grpc.CallOption) (*ManualSQL, error)
+	GetManualSQL(ctx context.Context, in *GetManualSQLRequest, opts ...grpc.CallOption) (*ManualSQL, error)
+	ListManualSQL(ctx context.Context, in *ListManualSQLRequest, opts ...grpc.CallOption) (*ListManualSQLResponse, error)
+	SearchManualSQL(ctx context.Context, in *SearchManualSQLRequest, opts ...grpc.CallOption) (*SearchManualSQLResponse, error)
+	UpdateManualSQL(ctx context.Context, in *UpdateManualSQLRequest, opts ...grpc.CallOption) (*ManualSQL, error)
+	DeleteManualSQL(ctx context.Context, in *DeleteManualSQLRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type databaseServiceClient struct {
@@ -120,6 +133,66 @@ func (c *databaseServiceClient) GetSchemaString(ctx context.Context, in *GetSche
 	return out, nil
 }
 
+func (c *databaseServiceClient) CreateManualSQL(ctx context.Context, in *CreateManualSQLRequest, opts ...grpc.CallOption) (*ManualSQL, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ManualSQL)
+	err := c.cc.Invoke(ctx, DatabaseService_CreateManualSQL_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseServiceClient) GetManualSQL(ctx context.Context, in *GetManualSQLRequest, opts ...grpc.CallOption) (*ManualSQL, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ManualSQL)
+	err := c.cc.Invoke(ctx, DatabaseService_GetManualSQL_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseServiceClient) ListManualSQL(ctx context.Context, in *ListManualSQLRequest, opts ...grpc.CallOption) (*ListManualSQLResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListManualSQLResponse)
+	err := c.cc.Invoke(ctx, DatabaseService_ListManualSQL_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseServiceClient) SearchManualSQL(ctx context.Context, in *SearchManualSQLRequest, opts ...grpc.CallOption) (*SearchManualSQLResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SearchManualSQLResponse)
+	err := c.cc.Invoke(ctx, DatabaseService_SearchManualSQL_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseServiceClient) UpdateManualSQL(ctx context.Context, in *UpdateManualSQLRequest, opts ...grpc.CallOption) (*ManualSQL, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ManualSQL)
+	err := c.cc.Invoke(ctx, DatabaseService_UpdateManualSQL_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseServiceClient) DeleteManualSQL(ctx context.Context, in *DeleteManualSQLRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, DatabaseService_DeleteManualSQL_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DatabaseServiceServer is the server API for DatabaseService service.
 // All implementations must embed UnimplementedDatabaseServiceServer
 // for forward compatibility.
@@ -132,6 +205,12 @@ type DatabaseServiceServer interface {
 	SearchMetadata(context.Context, *SearchMetadataRequest) (*SearchMetadataResponse, error)
 	// Generates schema DDL for a database object.
 	GetSchemaString(context.Context, *GetSchemaStringRequest) (*MetadataSchemaString, error)
+	CreateManualSQL(context.Context, *CreateManualSQLRequest) (*ManualSQL, error)
+	GetManualSQL(context.Context, *GetManualSQLRequest) (*ManualSQL, error)
+	ListManualSQL(context.Context, *ListManualSQLRequest) (*ListManualSQLResponse, error)
+	SearchManualSQL(context.Context, *SearchManualSQLRequest) (*SearchManualSQLResponse, error)
+	UpdateManualSQL(context.Context, *UpdateManualSQLRequest) (*ManualSQL, error)
+	DeleteManualSQL(context.Context, *DeleteManualSQLRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedDatabaseServiceServer()
 }
 
@@ -162,6 +241,24 @@ func (UnimplementedDatabaseServiceServer) SearchMetadata(context.Context, *Searc
 }
 func (UnimplementedDatabaseServiceServer) GetSchemaString(context.Context, *GetSchemaStringRequest) (*MetadataSchemaString, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSchemaString not implemented")
+}
+func (UnimplementedDatabaseServiceServer) CreateManualSQL(context.Context, *CreateManualSQLRequest) (*ManualSQL, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateManualSQL not implemented")
+}
+func (UnimplementedDatabaseServiceServer) GetManualSQL(context.Context, *GetManualSQLRequest) (*ManualSQL, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetManualSQL not implemented")
+}
+func (UnimplementedDatabaseServiceServer) ListManualSQL(context.Context, *ListManualSQLRequest) (*ListManualSQLResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListManualSQL not implemented")
+}
+func (UnimplementedDatabaseServiceServer) SearchManualSQL(context.Context, *SearchManualSQLRequest) (*SearchManualSQLResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SearchManualSQL not implemented")
+}
+func (UnimplementedDatabaseServiceServer) UpdateManualSQL(context.Context, *UpdateManualSQLRequest) (*ManualSQL, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateManualSQL not implemented")
+}
+func (UnimplementedDatabaseServiceServer) DeleteManualSQL(context.Context, *DeleteManualSQLRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteManualSQL not implemented")
 }
 func (UnimplementedDatabaseServiceServer) mustEmbedUnimplementedDatabaseServiceServer() {}
 func (UnimplementedDatabaseServiceServer) testEmbeddedByValue()                         {}
@@ -310,6 +407,114 @@ func _DatabaseService_GetSchemaString_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DatabaseService_CreateManualSQL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateManualSQLRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServiceServer).CreateManualSQL(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabaseService_CreateManualSQL_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServiceServer).CreateManualSQL(ctx, req.(*CreateManualSQLRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DatabaseService_GetManualSQL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetManualSQLRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServiceServer).GetManualSQL(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabaseService_GetManualSQL_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServiceServer).GetManualSQL(ctx, req.(*GetManualSQLRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DatabaseService_ListManualSQL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListManualSQLRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServiceServer).ListManualSQL(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabaseService_ListManualSQL_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServiceServer).ListManualSQL(ctx, req.(*ListManualSQLRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DatabaseService_SearchManualSQL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SearchManualSQLRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServiceServer).SearchManualSQL(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabaseService_SearchManualSQL_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServiceServer).SearchManualSQL(ctx, req.(*SearchManualSQLRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DatabaseService_UpdateManualSQL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateManualSQLRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServiceServer).UpdateManualSQL(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabaseService_UpdateManualSQL_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServiceServer).UpdateManualSQL(ctx, req.(*UpdateManualSQLRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DatabaseService_DeleteManualSQL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteManualSQLRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServiceServer).DeleteManualSQL(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabaseService_DeleteManualSQL_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServiceServer).DeleteManualSQL(ctx, req.(*DeleteManualSQLRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DatabaseService_ServiceDesc is the grpc.ServiceDesc for DatabaseService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -344,6 +549,30 @@ var DatabaseService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSchemaString",
 			Handler:    _DatabaseService_GetSchemaString_Handler,
+		},
+		{
+			MethodName: "CreateManualSQL",
+			Handler:    _DatabaseService_CreateManualSQL_Handler,
+		},
+		{
+			MethodName: "GetManualSQL",
+			Handler:    _DatabaseService_GetManualSQL_Handler,
+		},
+		{
+			MethodName: "ListManualSQL",
+			Handler:    _DatabaseService_ListManualSQL_Handler,
+		},
+		{
+			MethodName: "SearchManualSQL",
+			Handler:    _DatabaseService_SearchManualSQL_Handler,
+		},
+		{
+			MethodName: "UpdateManualSQL",
+			Handler:    _DatabaseService_UpdateManualSQL_Handler,
+		},
+		{
+			MethodName: "DeleteManualSQL",
+			Handler:    _DatabaseService_DeleteManualSQL_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

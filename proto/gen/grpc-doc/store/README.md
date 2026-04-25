@@ -42,6 +42,8 @@
     - [IndexMetadata](#metaxisdata-store-IndexMetadata)
     - [InstanceRoleMetadata](#metaxisdata-store-InstanceRoleMetadata)
     - [LinkedDatabaseMetadata](#metaxisdata-store-LinkedDatabaseMetadata)
+    - [ManualSQLMetadata](#metaxisdata-store-ManualSQLMetadata)
+    - [ManualSQLMetadata.AttributesEntry](#metaxisdata-store-ManualSQLMetadata-AttributesEntry)
     - [MaterializedViewMetadata](#metaxisdata-store-MaterializedViewMetadata)
     - [PackageMetadata](#metaxisdata-store-PackageMetadata)
     - [ProcedureMetadata](#metaxisdata-store-ProcedureMetadata)
@@ -877,6 +879,46 @@ InstanceRoleMetadata is the message for instance role.
 
 
 
+<a name="metaxisdata-store-ManualSQLMetadata"></a>
+
+### ManualSQLMetadata
+ManualSQLMetadata is the metadata for a user-maintained SQL definition.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| manual_sql_id | [string](#string) |  | The stable identifier of the manual SQL entry. |
+| name | [string](#string) |  | The display name of the manual SQL entry. |
+| title | [string](#string) |  | The title is optional display text for UI surfaces. |
+| comment | [string](#string) |  | The comment is a free-form description. |
+| sql_text | [string](#string) |  | The SQL text provided by the user. |
+| tags | [string](#string) | repeated | Tags support exact filtering in the dedicated manual SQL query path. |
+| attributes | [ManualSQLMetadata.AttributesEntry](#metaxisdata-store-ManualSQLMetadata-AttributesEntry) | repeated | Attributes provide custom key/value annotations. |
+| schema_name | [string](#string) |  | The optional schema context used during analysis. |
+| instance_resource | [string](#string) |  | The instance resource. Format: instances/{instance} |
+| database_name | [string](#string) |  | The database name in the instance. |
+
+
+
+
+
+
+<a name="metaxisdata-store-ManualSQLMetadata-AttributesEntry"></a>
+
+### ManualSQLMetadata.AttributesEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-MaterializedViewMetadata"></a>
 
 ### MaterializedViewMetadata
@@ -1103,6 +1145,7 @@ StorageConfig defines storage and performance parameters for spatial indexes.
 | task_metadata | [TaskMetadata](#metaxisdata-store-TaskMetadata) |  |  |
 | openlineage_run_summary | [OpenLineageRunSummary](#metaxisdata-store-OpenLineageRunSummary) |  |  |
 | openlineage_task_summary | [OpenLineageTaskSummary](#metaxisdata-store-OpenLineageTaskSummary) |  |  |
+| manual_sql_metadata | [ManualSQLMetadata](#metaxisdata-store-ManualSQLMetadata) |  |  |
 
 
 
@@ -2034,6 +2077,7 @@ InstanceRole is the API message for instance role.
 | TABLE | 4 |  |
 | EXTERNAL_TABLE | 16 |  |
 | EXTERNAL_DATASET | 17 |  |
+| MANUAL_SQL | 18 |  |
 | VIEW | 5 |  |
 | MATERIALIZED_VIEW | 6 |  |
 | COLUMN | 7 |  |
