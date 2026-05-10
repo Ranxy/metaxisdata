@@ -18,64 +18,17 @@
       </Button>
     </div>
 
-    <Card>
-      <CardContent class="grid gap-4 p-6 md:grid-cols-4">
-        <div class="space-y-2 md:col-span-2">
-          <Label for="manual-sql-database">{{ t("manualSqlManagement.database") }}</Label>
-          <select
-            id="manual-sql-database"
-            v-model="selectedParent"
-            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-          >
-            <option value="">
-              {{ t("manualSqlManagement.selectDatabase") }}
-            </option>
-            <option
-              v-for="database in availableDatabases"
-              :key="database.name"
-              :value="database.name"
-            >
-              {{ formatDatabaseOption(database) }}
-            </option>
-          </select>
-        </div>
-
-        <AppInput
-          v-model="searchQuery"
-          :label="t('manualSqlManagement.search')"
-          :placeholder="t('manualSqlManagement.searchPlaceholder')"
-        />
-
-        <AppInput
-          v-model="schemaFilter"
-          :label="t('manualSqlManagement.schema')"
-          :placeholder="t('manualSqlManagement.schemaPlaceholder')"
-        />
-
-        <div class="space-y-2 md:col-span-3">
-          <Label for="manual-sql-tags">{{ t("manualSqlManagement.tags") }}</Label>
-          <Input
-            id="manual-sql-tags"
-            v-model="tagsFilterInput"
-            :placeholder="t('manualSqlManagement.tagsPlaceholder')"
-          />
-          <p class="text-xs text-muted-foreground">
-            {{ t("manualSqlManagement.tagsHint") }}
-          </p>
-        </div>
-
-        <div class="flex items-end gap-2">
-          <Button
-            class="w-full"
-            :disabled="!selectedParent || isLoading"
-            @click="handleSearch"
-          >
-            <Search class="mr-2 h-4 w-4" />
-            {{ t("manualSqlManagement.applyFilters") }}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+    <ManualSQLFilterBar
+      :database-options="databaseFilterOptions"
+      :selected-database="selectedParent"
+      :search-query="searchQuery"
+      :schema-filter="schemaFilter"
+      :tags-filter="tagsFilterInput"
+      @update:selected-database="selectedParent = $event"
+      @update:search-query="searchQuery = $event"
+      @update:schema-filter="schemaFilter = $event"
+      @update:tags-filter="tagsFilterInput = $event"
+    />
 
     <Card>
       <div
@@ -90,14 +43,6 @@
         class="p-8 text-center text-destructive"
       >
         {{ error }}
-      </div>
-
-      <div
-        v-else-if="!selectedParent"
-        class="p-8 text-center text-muted-foreground"
-      >
-        <FileCode2 class="mx-auto mb-4 h-12 w-12 text-muted-foreground/50" />
-        <p>{{ t("manualSqlManagement.selectDatabaseFirst") }}</p>
       </div>
 
       <div
@@ -406,8 +351,15 @@
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { FileCode2, Pencil, Plus, Search, Trash2 } from "lucide-vue-next";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { FileCode2, Pencil, Plus, Trash2 } from "lucide-vue-next";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import {
@@ -423,10 +375,11 @@ import {
 } from "@/api/database";
 import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
+import ManualSQLFilterBar from "@/components/common/ManualSQLFilterBar.vue";
 import AppModal from "@/components/common/AppModal.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -447,6 +400,7 @@ import type {
 const { t, locale } = useI18n();
 const router = useRouter();
 const toastStore = useToastStore();
+const GLOBAL_MANUAL_SQL_PARENT = "instances/-/databases/-";
 
 const databases = ref<Database[]>([]);
 const manualSqls = ref<ManualSQL[]>([]);
@@ -472,6 +426,7 @@ const manualSqlIdConflict = ref("");
 let schemaLoadSequence = 0;
 let manualSqlIdCheckSequence = 0;
 let manualSqlIdCheckTimer: ReturnType<typeof setTimeout> | null = null;
+let filterChangeTimer: ReturnType<typeof setTimeout> | null = null;
 
 const form = reactive({
   parent: "",
@@ -493,6 +448,12 @@ const formErrors = reactive({
 const isEditing = computed(() => editingItem.value != null);
 const availableDatabases = computed(() =>
   databases.value.filter((item) => !!item.name)
+);
+const databaseFilterOptions = computed(() =>
+  availableDatabases.value.map((database) => ({
+    value: database.name,
+    label: formatDatabaseOption(database),
+  }))
 );
 
 function parseTagList(value: string): string[] {
@@ -734,9 +695,6 @@ async function fetchDatabases() {
       showDeleted: false,
     });
     databases.value = response.databases;
-    if (!selectedParent.value && response.databases.length > 0) {
-      selectedParent.value = response.databases[0].name;
-    }
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
     toastStore.error(message || t("manualSqlManagement.fetchDatabasesError"));
@@ -744,25 +702,19 @@ async function fetchDatabases() {
 }
 
 async function fetchManualSQL(pageToken = "") {
-  if (!selectedParent.value) {
-    manualSqls.value = [];
-    nextPageToken.value = "";
-    currentPageToken.value = "";
-    return;
-  }
-
   isLoading.value = true;
   error.value = "";
   currentPageToken.value = pageToken;
 
   try {
+    const parent = selectedParent.value || GLOBAL_MANUAL_SQL_PARENT;
     const tags = parseTagList(tagsFilterInput.value);
     const schemaName = schemaFilter.value.trim();
     const query = searchQuery.value.trim();
 
     const response = query
       ? await searchManualSQL({
-          parent: selectedParent.value,
+          parent,
           query,
           pageSize: 50,
           pageToken,
@@ -770,7 +722,7 @@ async function fetchManualSQL(pageToken = "") {
           tags,
         })
       : await listManualSQL({
-          parent: selectedParent.value,
+          parent,
           pageSize: 50,
           pageToken,
           schemaName,
@@ -786,11 +738,6 @@ async function fetchManualSQL(pageToken = "") {
   } finally {
     isLoading.value = false;
   }
-}
-
-function handleSearch() {
-  previousPageTokens.value = [];
-  fetchManualSQL();
 }
 
 function goToNextPage() {
@@ -895,8 +842,25 @@ function openLineage(guid: string) {
 }
 
 watch(selectedParent, () => {
+  if (filterChangeTimer) {
+    clearTimeout(filterChangeTimer);
+    filterChangeTimer = null;
+  }
   previousPageTokens.value = [];
   fetchManualSQL();
+});
+
+watch([searchQuery, schemaFilter, tagsFilterInput], () => {
+  previousPageTokens.value = [];
+
+  if (filterChangeTimer) {
+    clearTimeout(filterChangeTimer);
+  }
+
+  filterChangeTimer = setTimeout(() => {
+    fetchManualSQL();
+    filterChangeTimer = null;
+  }, 250);
 });
 
 watch(
@@ -941,5 +905,15 @@ watch(
 onMounted(async () => {
   await fetchDatabases();
   await fetchManualSQL();
+});
+
+onBeforeUnmount(() => {
+  if (manualSqlIdCheckTimer) {
+    clearTimeout(manualSqlIdCheckTimer);
+  }
+
+  if (filterChangeTimer) {
+    clearTimeout(filterChangeTimer);
+  }
 });
 </script>

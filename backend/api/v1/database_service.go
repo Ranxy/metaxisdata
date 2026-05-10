@@ -463,11 +463,15 @@ func (s *DatabaseService) ListManualSQL(ctx context.Context, req *connect.Reques
 	limitPlusOne := offset.limit + 1
 
 	find := &store.FindManualSQLMessage{
-		InstanceResourceID: &instanceID,
-		DatabaseName:       &databaseName,
-		ShowDeleted:        req.Msg.GetShowDeleted(),
-		Limit:              &limitPlusOne,
-		Offset:             &offset.offset,
+		ShowDeleted: req.Msg.GetShowDeleted(),
+		Limit:       &limitPlusOne,
+		Offset:      &offset.offset,
+	}
+	if instanceID != "-" {
+		find.InstanceResourceID = &instanceID
+	}
+	if databaseName != "-" {
+		find.DatabaseName = &databaseName
 	}
 	if schemaName := strings.TrimSpace(req.Msg.GetSchemaName()); schemaName != "" {
 		find.SchemaName = &schemaName
@@ -516,11 +520,15 @@ func (s *DatabaseService) SearchManualSQL(ctx context.Context, req *connect.Requ
 	limitPlusOne := offset.limit + 1
 
 	find := &store.FindManualSQLMessage{
-		InstanceResourceID: &instanceID,
-		DatabaseName:       &databaseName,
-		Query:              &query,
-		Limit:              &limitPlusOne,
-		Offset:             &offset.offset,
+		Query:  &query,
+		Limit:  &limitPlusOne,
+		Offset: &offset.offset,
+	}
+	if instanceID != "-" {
+		find.InstanceResourceID = &instanceID
+	}
+	if databaseName != "-" {
+		find.DatabaseName = &databaseName
 	}
 	if schemaName := strings.TrimSpace(req.Msg.GetSchemaName()); schemaName != "" {
 		find.SchemaName = &schemaName
