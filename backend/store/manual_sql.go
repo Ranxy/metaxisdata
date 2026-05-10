@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -95,7 +95,7 @@ func normalizeManualSQLTags(tags []string) []string {
 	for key := range seen {
 		normalizedKeys = append(normalizedKeys, key)
 	}
-	sort.Strings(normalizedKeys)
+	slices.Sort(normalizedKeys)
 
 	result := make([]string, 0, len(normalizedKeys))
 	for _, key := range normalizedKeys {
@@ -114,7 +114,7 @@ func normalizeManualSQLAttributes(attributes map[string]string) map[string]strin
 	for key := range attributes {
 		keys = append(keys, key)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 
 	for _, key := range keys {
 		trimmedKey := strings.TrimSpace(key)
@@ -148,7 +148,7 @@ func buildManualSQLSearchDocument(msg *ManualSQLMessage) string {
 		for key := range attributes {
 			keys = append(keys, key)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, key := range keys {
 			parts = append(parts, key)
 			parts = append(parts, attributes[key])
@@ -346,7 +346,7 @@ func (s *Store) UpdateManualSQL(ctx context.Context, guid string, patch *UpdateM
 		if err := deleteManualSQLMetaRegistryTx(ctx, tx, oldGUID); err != nil {
 			return nil, err
 		}
-		if err := deleteColumnLineageByMetaTx(ctx, tx, oldGUID, storepb.MetaType_MANUAL_SQL); err != nil {
+		if err := deleteColumnLineageByMetaTx(ctx, tx, oldGUID); err != nil {
 			return nil, err
 		}
 	}
@@ -363,6 +363,31 @@ func (s *Store) UpdateManualSQL(ctx context.Context, guid string, patch *UpdateM
 	return s.GetManualSQL(ctx, &FindManualSQLMessage{GUID: &row.GUID, ShowDeleted: true})
 }
 
+func buildDeleteManualSQLStatement(guid string, updatedBy *string) (string, []any) {
+	sets := []string{"deleted = TRUE", "updated_at = NOW()"}
+	args := make([]any, 0, 2)
+	if updatedBy != nil {
+		sets = append(sets, fmt.Sprintf("updated_by = $%d", len(args)+1))
+		args = append(args, strings.TrimSpace(*updatedBy))
+	}
+	args = append(args, guid)
+
+	return `
+		UPDATE manual_sql
+		SET ` + strings.Join(sets, ", ") + `
+		WHERE guid = $` + fmt.Sprintf("%d", len(args)), args
+}
+
+func buildDeleteManualSQLMetaRegistryStatement(guid string) (string, []any) {
+	where, args := appendGUIDSubtreeCondition(nil, nil, "guid", guid)
+	return `DELETE FROM meta_registry_resource WHERE ` + where[0], args
+}
+
+func buildDeleteColumnLineageByGUIDStatement(tableName, guid string) (string, []any) {
+	where, args := appendGUIDSubtreeCondition(nil, nil, "meta_guid", guid)
+	return `DELETE FROM ` + tableName + ` WHERE ` + where[0], args
+}
+
 // DeleteManualSQL soft-deletes a manual SQL entry and removes its registry mirror and lineage.
 func (s *Store) DeleteManualSQL(ctx context.Context, guid string, updatedBy *string) error {
 	tx, err := s.GetDB().BeginTx(ctx, nil)
@@ -371,19 +396,8 @@ func (s *Store) DeleteManualSQL(ctx context.Context, guid string, updatedBy *str
 	}
 	defer tx.Rollback()
 
-	sets := []string{"deleted = TRUE", "updated_at = NOW()"}
-	args := []any{guid}
-	if updatedBy != nil {
-		sets = append(sets, fmt.Sprintf("updated_by = $%d", len(args)+1))
-		args = append(args, strings.TrimSpace(*updatedBy))
-	}
-	args = append(args, guid)
-
-	result, err := tx.ExecContext(ctx, `
-		UPDATE manual_sql
-		SET `+strings.Join(sets, ", ")+`
-		WHERE guid = $`+fmt.Sprintf("%d", len(args))+`
-	`, args...)
+	query, args := buildDeleteManualSQLStatement(guid, updatedBy)
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return errors.Wrap(err, "failed to delete manual SQL")
 	}
@@ -398,7 +412,7 @@ func (s *Store) DeleteManualSQL(ctx context.Context, guid string, updatedBy *str
 	if err := deleteManualSQLMetaRegistryTx(ctx, tx, guid); err != nil {
 		return err
 	}
-	if err := deleteColumnLineageByMetaTx(ctx, tx, guid, storepb.MetaType_MANUAL_SQL); err != nil {
+	if err := deleteColumnLineageByMetaTx(ctx, tx, guid); err != nil {
 		return err
 	}
 
@@ -733,23 +747,20 @@ func (s *Store) upsertManualSQLMetaRegistry(ctx context.Context, tx *sql.Tx, msg
 }
 
 func deleteManualSQLMetaRegistryTx(ctx context.Context, tx *sql.Tx, guid string) error {
-	if _, err := tx.ExecContext(ctx, `DELETE FROM meta_registry_resource WHERE guid = $1 AND object_type = $2`, guid, storepb.MetaType_MANUAL_SQL); err != nil {
+	query, args := buildDeleteManualSQLMetaRegistryStatement(guid)
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 		return errors.Wrap(err, "failed to delete manual SQL meta registry entry")
 	}
 	return nil
 }
 
-func deleteColumnLineageByMetaTx(ctx context.Context, tx *sql.Tx, metaGUID string, metaType storepb.MetaType) error {
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM column_lineage WHERE meta_guid = $1 AND meta_type = $2`,
-		metaGUID, metaType,
-	); err != nil {
+func deleteColumnLineageByMetaTx(ctx context.Context, tx *sql.Tx, metaGUID string) error {
+	lineageQuery, lineageArgs := buildDeleteColumnLineageByGUIDStatement("column_lineage", metaGUID)
+	if _, err := tx.ExecContext(ctx, lineageQuery, lineageArgs...); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM column_lineage_version WHERE meta_guid = $1 AND meta_type = $2`,
-		metaGUID, metaType,
-	); err != nil {
+	versionQuery, versionArgs := buildDeleteColumnLineageByGUIDStatement("column_lineage_version", metaGUID)
+	if _, err := tx.ExecContext(ctx, versionQuery, versionArgs...); err != nil {
 		return err
 	}
 	return nil
