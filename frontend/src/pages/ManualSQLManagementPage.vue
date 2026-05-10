@@ -10,7 +10,7 @@
         </p>
       </div>
       <Button
-        :disabled="!selectedParent || isSaving"
+        :disabled="availableDatabases.length === 0 || isSaving"
         @click="openCreateModal"
       >
         <Plus class="mr-2 h-4 w-4" />
@@ -230,6 +230,55 @@
     >
       <form @submit.prevent="handleSave">
         <div class="grid gap-4 md:grid-cols-2">
+          <div class="space-y-2">
+            <Label for="manual-sql-form-database">{{ t("manualSqlManagement.database") }}</Label>
+            <select
+              id="manual-sql-form-database"
+              v-model="form.parent"
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              :disabled="isEditing"
+            >
+              <option value="">
+                {{ t("manualSqlManagement.selectDatabase") }}
+              </option>
+              <option
+                v-for="database in availableDatabases"
+                :key="database.name"
+                :value="database.name"
+              >
+                {{ formatDatabaseOption(database) }}
+              </option>
+            </select>
+            <p
+              v-if="formErrors.parent"
+              class="text-sm text-destructive"
+            >
+              {{ formErrors.parent }}
+            </p>
+          </div>
+          <div class="space-y-2">
+            <Label for="manual-sql-form-schema">{{ t("manualSqlManagement.schema") }}</Label>
+            <select
+              id="manual-sql-form-schema"
+              v-model="form.schemaName"
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              :disabled="!form.parent || isLoadingSchemas"
+            >
+              <option value="">
+                {{ t("manualSqlManagement.optionalSchema") }}
+              </option>
+              <option
+                v-for="schemaName in schemaOptions"
+                :key="schemaName"
+                :value="schemaName"
+              >
+                {{ schemaName }}
+              </option>
+            </select>
+            <p class="text-xs text-muted-foreground">
+              {{ isLoadingSchemas ? t("manualSqlManagement.loadingSchemas") : t("manualSqlManagement.schemaSelectHint") }}
+            </p>
+          </div>
           <AppInput
             v-model="form.manualSqlId"
             :label="t('manualSqlManagement.id')"
@@ -238,15 +287,30 @@
             :error="formErrors.manualSqlId"
             required
           />
+          <div class="space-y-2">
+            <Label>{{ t("manualSqlManagement.idStatus") }}</Label>
+            <div class="flex min-h-10 items-center rounded-md border border-dashed px-3 text-sm">
+              <span v-if="isEditing" class="text-muted-foreground">
+                {{ t("manualSqlManagement.idFixedOnEdit") }}
+              </span>
+              <span v-else-if="!form.parent.trim() || !form.manualSqlId.trim()" class="text-muted-foreground">
+                {{ t("manualSqlManagement.idIdle") }}
+              </span>
+              <span v-else-if="isCheckingManualSqlId" class="text-muted-foreground">
+                {{ t("manualSqlManagement.idChecking") }}
+              </span>
+              <span v-else-if="manualSqlIdConflict" class="text-destructive">
+                {{ manualSqlIdConflict }}
+              </span>
+              <span v-else class="text-emerald-600">
+                {{ t("manualSqlManagement.idAvailable") }}
+              </span>
+            </div>
+          </div>
           <AppInput
             v-model="form.title"
             :label="t('manualSqlManagement.titleField')"
             :placeholder="t('manualSqlManagement.titlePlaceholder')"
-          />
-          <AppInput
-            v-model="form.schemaName"
-            :label="t('manualSqlManagement.schema')"
-            :placeholder="t('manualSqlManagement.schemaPlaceholder')"
           />
           <AppInput
             v-model="form.comment"
@@ -341,6 +405,7 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { FileCode2, Pencil, Plus, Search, Trash2 } from "lucide-vue-next";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -348,8 +413,10 @@ import { useRouter } from "vue-router";
 import {
   createManualSQL,
   deleteManualSQL,
+  getManualSQL,
   listDatabases,
   listManualSQL,
+  listMetadata,
   type ManualSQLInput,
   searchManualSQL,
   updateManualSQL,
@@ -374,6 +441,7 @@ import { useToastStore } from "@/store/modules/toast";
 import type {
   Database,
   ManualSQL,
+  MetaType,
 } from "@/types/proto-es/v1/database_service_pb";
 
 const { t, locale } = useI18n();
@@ -397,8 +465,16 @@ const showFormModal = ref(false);
 const showDeleteModal = ref(false);
 const editingItem = ref<ManualSQL | null>(null);
 const deletingItem = ref<ManualSQL | null>(null);
+const schemaOptions = ref<string[]>([]);
+const isLoadingSchemas = ref(false);
+const isCheckingManualSqlId = ref(false);
+const manualSqlIdConflict = ref("");
+let schemaLoadSequence = 0;
+let manualSqlIdCheckSequence = 0;
+let manualSqlIdCheckTimer: ReturnType<typeof setTimeout> | null = null;
 
 const form = reactive({
+  parent: "",
   manualSqlId: "",
   title: "",
   schemaName: "",
@@ -409,6 +485,7 @@ const form = reactive({
 });
 
 const formErrors = reactive({
+  parent: "",
   manualSqlId: "",
   sqlText: "",
 });
@@ -483,6 +560,14 @@ function extractManualSqlId(name: string): string {
   return name.split("/").pop() || name;
 }
 
+function extractManualSqlParent(name: string): string {
+  return name.split("/").slice(0, 4).join("/");
+}
+
+function buildDatabaseGuid(name: string): string {
+  return `${extractInstanceId(name)};${extractDatabaseName(name)}`;
+}
+
 function guidToRoutePath(guid: string): string {
   return guid
     .split(";")
@@ -491,6 +576,7 @@ function guidToRoutePath(guid: string): string {
 }
 
 function resetForm() {
+  form.parent = "";
   form.manualSqlId = "";
   form.title = "";
   form.schemaName = "";
@@ -498,18 +584,24 @@ function resetForm() {
   form.tagsInput = "";
   form.attributesInput = "";
   form.sqlText = "";
+  formErrors.parent = "";
   formErrors.manualSqlId = "";
   formErrors.sqlText = "";
+  schemaOptions.value = [];
+  manualSqlIdConflict.value = "";
+  isCheckingManualSqlId.value = false;
 }
 
 function openCreateModal() {
   editingItem.value = null;
   resetForm();
+  form.parent = selectedParent.value || availableDatabases.value[0]?.name || "";
   showFormModal.value = true;
 }
 
 function openEditModal(item: ManualSQL) {
   editingItem.value = item;
+  form.parent = extractManualSqlParent(item.name);
   form.manualSqlId = extractManualSqlId(item.name);
   form.title = item.title;
   form.schemaName = item.schemaName;
@@ -517,8 +609,10 @@ function openEditModal(item: ManualSQL) {
   form.tagsInput = item.tags.join(", ");
   form.attributesInput = formatAttributes(item.attributes ?? {});
   form.sqlText = item.sqlText;
+  formErrors.parent = "";
   formErrors.manualSqlId = "";
   formErrors.sqlText = "";
+  manualSqlIdConflict.value = "";
   showFormModal.value = true;
 }
 
@@ -528,13 +622,108 @@ function openDeleteModal(item: ManualSQL) {
 }
 
 function validateForm(): boolean {
+  formErrors.parent = form.parent.trim()
+    ? ""
+    : t("manualSqlManagement.databaseRequired");
   formErrors.manualSqlId = form.manualSqlId.trim()
     ? ""
     : t("manualSqlManagement.idRequired");
+  if (!formErrors.manualSqlId && manualSqlIdConflict.value) {
+    formErrors.manualSqlId = manualSqlIdConflict.value;
+  }
   formErrors.sqlText = form.sqlText.trim()
     ? ""
     : t("manualSqlManagement.sqlRequired");
-  return !formErrors.manualSqlId && !formErrors.sqlText;
+  return !formErrors.parent && !formErrors.manualSqlId && !formErrors.sqlText;
+}
+
+async function fetchSchemas(parent: string) {
+  const currentSequence = ++schemaLoadSequence;
+  if (!parent) {
+    schemaOptions.value = [];
+    return;
+  }
+
+  isLoadingSchemas.value = true;
+  try {
+    const response = await listMetadata({
+      parentGuid: buildDatabaseGuid(parent),
+      pageSize: 500,
+      metaType: 3 as MetaType,
+    });
+    if (currentSequence !== schemaLoadSequence) {
+      return;
+    }
+
+    const nextSchemaOptions = response.typesStoredMetadata
+      .flatMap((group) => group.list)
+      .flatMap((item) =>
+        item.type.case === "schemaMetadata" && item.type.value.name
+          ? [item.type.value.name]
+          : []
+      )
+      .sort((left, right) => left.localeCompare(right));
+
+    schemaOptions.value = [...new Set(nextSchemaOptions)];
+    if (form.schemaName && !schemaOptions.value.includes(form.schemaName)) {
+      form.schemaName = "";
+    }
+  } catch (e: unknown) {
+    if (currentSequence === schemaLoadSequence) {
+      schemaOptions.value = [];
+      const message = e instanceof Error ? e.message : String(e);
+      toastStore.error(message || t("manualSqlManagement.fetchSchemasError"));
+    }
+  } finally {
+    if (currentSequence === schemaLoadSequence) {
+      isLoadingSchemas.value = false;
+    }
+  }
+}
+
+async function checkManualSqlIdConflict() {
+  const currentSequence = ++manualSqlIdCheckSequence;
+  if (!showFormModal.value || isEditing.value) {
+    manualSqlIdConflict.value = "";
+    isCheckingManualSqlId.value = false;
+    return;
+  }
+
+  const parent = form.parent.trim();
+  const manualSqlId = form.manualSqlId.trim();
+  if (!parent || !manualSqlId) {
+    manualSqlIdConflict.value = "";
+    isCheckingManualSqlId.value = false;
+    return;
+  }
+
+  isCheckingManualSqlId.value = true;
+  try {
+    const existing = await getManualSQL(`${parent}/manualSqls/${manualSqlId}`);
+    if (currentSequence !== manualSqlIdCheckSequence) {
+      return;
+    }
+    const existingSchema =
+      existing.schemaName || t("metadataBrowser.defaultSchema");
+    manualSqlIdConflict.value = t("manualSqlManagement.idExists", {
+      schema: existingSchema,
+    });
+  } catch (e: unknown) {
+    if (currentSequence !== manualSqlIdCheckSequence) {
+      return;
+    }
+    if (e instanceof ConnectError && e.code === Code.NotFound) {
+      manualSqlIdConflict.value = "";
+      return;
+    }
+    const message = e instanceof Error ? e.message : String(e);
+    manualSqlIdConflict.value =
+      message || t("manualSqlManagement.idCheckError");
+  } finally {
+    if (currentSequence === manualSqlIdCheckSequence) {
+      isCheckingManualSqlId.value = false;
+    }
+  }
 }
 
 async function fetchDatabases() {
@@ -621,7 +810,7 @@ function goToPreviousPage() {
 }
 
 async function handleSave() {
-  if (!selectedParent.value || !validateForm()) {
+  if (!validateForm() || isCheckingManualSqlId.value) {
     return;
   }
 
@@ -647,15 +836,20 @@ async function handleSave() {
       toastStore.success(t("manualSqlManagement.updateSuccess"));
     } else {
       await createManualSQL({
-        parent: selectedParent.value,
+        parent: form.parent,
         manualSqlId: form.manualSqlId.trim(),
         manualSql: payload,
       });
       toastStore.success(t("manualSqlManagement.createSuccess"));
     }
 
+    const createdParent = form.parent;
     showFormModal.value = false;
     resetForm();
+    if (createdParent && selectedParent.value !== createdParent) {
+      previousPageTokens.value = [];
+      selectedParent.value = createdParent;
+    }
     await fetchManualSQL(currentPageToken.value);
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
@@ -704,6 +898,45 @@ watch(selectedParent, () => {
   previousPageTokens.value = [];
   fetchManualSQL();
 });
+
+watch(
+  () => form.parent,
+  async (parent, previousParent) => {
+    if (!showFormModal.value) {
+      return;
+    }
+    if (!isEditing.value && previousParent && previousParent !== parent) {
+      form.schemaName = "";
+    }
+    await fetchSchemas(parent);
+  }
+);
+
+watch(
+  () =>
+    [
+      showFormModal.value,
+      isEditing.value,
+      form.parent,
+      form.manualSqlId,
+    ] as const,
+  ([isVisible, editing, parent, manualSqlId]) => {
+    if (manualSqlIdCheckTimer) {
+      clearTimeout(manualSqlIdCheckTimer);
+      manualSqlIdCheckTimer = null;
+    }
+
+    if (!isVisible || editing || !parent.trim() || !manualSqlId.trim()) {
+      manualSqlIdConflict.value = "";
+      isCheckingManualSqlId.value = false;
+      return;
+    }
+
+    manualSqlIdCheckTimer = setTimeout(() => {
+      checkManualSqlIdConflict();
+    }, 300);
+  }
+);
 
 onMounted(async () => {
   await fetchDatabases();
