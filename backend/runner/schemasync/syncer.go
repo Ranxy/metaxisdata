@@ -593,6 +593,9 @@ func (b *batchMetaCreate) Run(ctx context.Context, s *store.Store, tx *sql.Tx) e
 func (b *batchMetaCreate) diff() (updates []*store.CreateMetaRegistryResourceMessage, deletes []*store.MetaRegistryResource, err error) {
 	existMap := make(map[store.MetaGUIDKey]*store.MetaRegistryResource)
 	for _, item := range b.exist {
+		if !isSchemaSyncManagedMetaType(item.ObjectType) {
+			continue
+		}
 		existMap[item.GUIDKey()] = item
 	}
 
@@ -622,6 +625,26 @@ func (b *batchMetaCreate) diff() (updates []*store.CreateMetaRegistryResourceMes
 	}
 
 	return updates, deletes, nil
+}
+
+func isSchemaSyncManagedMetaType(metaType storepb.MetaType) bool {
+	switch metaType {
+	case storepb.MetaType_DATABASE,
+		storepb.MetaType_SCHEMA,
+		storepb.MetaType_TABLE,
+		storepb.MetaType_COLUMN,
+		storepb.MetaType_VIEW,
+		storepb.MetaType_EXTERNAL_TABLE,
+		storepb.MetaType_FUNCTION,
+		storepb.MetaType_PROCEDURE,
+		storepb.MetaType_STREAM,
+		storepb.MetaType_MATERIALIZED_VIEW,
+		storepb.MetaType_SEQUENCE,
+		storepb.MetaType_PACKAGE:
+		return true
+	default:
+		return false
+	}
 }
 
 func convertMetadataToGUID(prefix string, objectType storepb.MetaType, data *storepb.StoredMetadata) (target string, son []string, err error) {
