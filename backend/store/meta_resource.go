@@ -554,6 +554,7 @@ func getNextLevelObjectType(metaType storepb.MetaType) []storepb.MetaType {
 			storepb.MetaType_FUNCTION,
 			storepb.MetaType_PROCEDURE,
 			storepb.MetaType_SEQUENCE,
+			storepb.MetaType_MANUAL_SQL,
 			storepb.MetaType_PACKAGE,
 			storepb.MetaType_STREAM,
 		}
