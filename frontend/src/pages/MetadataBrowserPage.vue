@@ -413,7 +413,10 @@
             <CardTitle>{{ t("metadataBrowser.manualSqlDetail") }}</CardTitle>
           </CardHeader>
           <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
-            <ManualSQLMetadataDetail :manual-sql="leafManualSQL" />
+            <ManualSQLMetadataDetail
+              :manual-sql="leafManualSQL"
+              :guid="currentGuid"
+            />
           </CardContent>
         </template>
 

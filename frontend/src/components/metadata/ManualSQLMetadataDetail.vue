@@ -89,19 +89,31 @@
         :max-height="640"
       />
     </div>
+
+    <TableLineageSection
+      v-if="guid"
+      :guid="guid"
+      :meta-type="MetaType.MANUAL_SQL"
+      :title="t('metadataBrowser.relatedLineageAnalysis')"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Badge } from "@/components/ui/badge";
-import type { ManualSQLMetadata } from "@/types/proto-es/v1/database_service_pb";
+import {
+  type ManualSQLMetadata,
+  MetaType,
+} from "@/types/proto-es/v1/database_service_pb";
 import DefinitionMonacoViewer from "./DefinitionMonacoViewer.vue";
 import ExpandableText from "./ExpandableText.vue";
 
 const props = defineProps<{
   manualSql: ManualSQLMetadata;
+  guid?: string;
 }>();
 
 const { t } = useI18n();
