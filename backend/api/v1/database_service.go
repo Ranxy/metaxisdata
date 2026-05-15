@@ -433,6 +433,7 @@ func (s *DatabaseService) CreateManualSQL(ctx context.Context, req *connect.Requ
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to create manual SQL"))
 	}
+	s.schemaSyncer.QueueLineageAnalysis(created.GUID, storepb.MetaType_MANUAL_SQL)
 	return connect.NewResponse(convertManualSQLResource(created)), nil
 }
 
@@ -619,6 +620,7 @@ func (s *DatabaseService) UpdateManualSQL(ctx context.Context, req *connect.Requ
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to update manual SQL"))
 	}
+	s.schemaSyncer.QueueLineageAnalysis(updated.GUID, storepb.MetaType_MANUAL_SQL)
 	updated.ManualSQLID = manualSQLID
 	return connect.NewResponse(convertManualSQLResource(updated)), nil
 }

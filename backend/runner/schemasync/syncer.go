@@ -254,6 +254,13 @@ func (s *Syncer) SyncDatabasesAsync(databases []*store.DatabaseMessage) {
 	}
 }
 
+func (s *Syncer) QueueLineageAnalysis(metaGUID string, metaType storepb.MetaType) {
+	if s == nil || s.lineageAnalyzer == nil || metaGUID == "" {
+		return
+	}
+	s.lineageAnalyzer.QueueAnalysis(metaGUID, metaType)
+}
+
 // GetInstanceMeta gets the instance metadata.
 func (s *Syncer) GetInstanceMeta(ctx context.Context, instance *store.InstanceMessage) (*db.InstanceMetadata, error) {
 	driver, err := s.dbFactory.GetAdminDatabaseDriver(ctx, instance, nil /* database */, db.ConnectionContext{})
