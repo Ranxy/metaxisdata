@@ -147,7 +147,6 @@
     "manualSqlTitle": "标题",
     "manualSqlDetail": "手动 SQL 详情",
     "noManualSqls": "暂无手动 SQL",
-    "sqlText": "SQL 文本",
     "tags": "标签",
     "attributes": "属性",
     "relatedLineageAnalysis": "上下游血缘",

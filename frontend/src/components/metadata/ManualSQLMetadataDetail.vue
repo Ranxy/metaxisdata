@@ -15,6 +15,12 @@
             :dialog-title="t('metadataBrowser.comment')"
           />
         </div>
+        <SchemaDefinitionDialog
+          v-if="guid"
+          :guid="guid"
+          :meta-type="MetaType.MANUAL_SQL"
+          :object-name="displayTitle"
+        />
       </div>
       <div
         v-if="showResourceName"
@@ -81,15 +87,6 @@
       </div>
     </div>
 
-    <div class="space-y-2">
-      <div class="text-sm font-medium">{{ t("metadataBrowser.sqlText") }}</div>
-      <DefinitionMonacoViewer
-        :content="manualSql.sqlText"
-        :min-height="180"
-        :max-height="640"
-      />
-    </div>
-
     <TableLineageSection
       v-if="guid"
       :guid="guid"
@@ -108,8 +105,8 @@ import {
   type ManualSQLMetadata,
   MetaType,
 } from "@/types/proto-es/v1/database_service_pb";
-import DefinitionMonacoViewer from "./DefinitionMonacoViewer.vue";
 import ExpandableText from "./ExpandableText.vue";
+import SchemaDefinitionDialog from "./SchemaDefinitionDialog.vue";
 
 const props = defineProps<{
   manualSql: ManualSQLMetadata;

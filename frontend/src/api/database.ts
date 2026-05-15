@@ -70,7 +70,7 @@ export async function getMetadata(options: {
 }
 
 /**
- * Get schema DDL string for a database object (table, view, materialized view).
+ * Get schema definition content for a metadata object.
  */
 export async function getSchemaString(options: {
   guid: string;

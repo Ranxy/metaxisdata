@@ -147,7 +147,6 @@
     "manualSqlTitle": "Title",
     "manualSqlDetail": "Manual SQL Detail",
     "noManualSqls": "No manual SQL",
-    "sqlText": "SQL Text",
     "tags": "Tags",
     "attributes": "Attributes",
     "relatedLineageAnalysis": "Upstream and Downstream Lineage",

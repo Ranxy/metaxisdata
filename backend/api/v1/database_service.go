@@ -400,6 +400,14 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 		}
 		return connect.NewResponse(&v1pb.MetadataSchemaString{Schema: schemaStr}), nil
 
+	case v1pb.MetaType_MANUAL_SQL:
+		manualSQLMeta := meta.Metadata.GetManualSqlMetadata()
+		if manualSQLMeta == nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.New("manual SQL metadata is nil"))
+		}
+
+		return connect.NewResponse(&v1pb.MetadataSchemaString{Schema: manualSQLMeta.SqlText}), nil
+
 	default:
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("GetMetadataSchema is not implemented for this meta type"))
 	}
