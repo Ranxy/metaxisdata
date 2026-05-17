@@ -484,6 +484,7 @@ message StoredMetadata {
     StreamMetadata stream_metadata = 11;
     TaskMetadata task_metadata = 12;
     ManualSQLMetadata manual_sql_metadata = 15;
+    ColumnMetadata column_metadata = 16;
   }
 }
 

@@ -66,6 +66,10 @@ func convertStoredMetadataMessage(meta *storepb.StoredMetadata) *v1pb.StoredMeta
 		result.Type = &v1pb.StoredMetadata_ManualSqlMetadata{
 			ManualSqlMetadata: convertManualSQLMetadata(v.ManualSqlMetadata),
 		}
+	case *storepb.StoredMetadata_ColumnMetadata:
+		result.Type = &v1pb.StoredMetadata_ColumnMetadata{
+			ColumnMetadata: convertColumnMetadata(v.ColumnMetadata),
+		}
 	default:
 	}
 	return result
@@ -330,5 +334,15 @@ func convertManualSQLMetadata(meta *storepb.ManualSQLMetadata) *v1pb.ManualSQLMe
 		InstanceResource: meta.InstanceResource,
 		DatabaseName:     meta.DatabaseName,
 	}
+	return result
+}
+
+func convertColumnMetadata(meta *storepb.ColumnMetadata) *v1pb.ColumnMetadata {
+	if meta == nil {
+		return nil
+	}
+	data, _ := proto.Marshal(meta)
+	result := &v1pb.ColumnMetadata{}
+	_ = proto.Unmarshal(data, result)
 	return result
 }

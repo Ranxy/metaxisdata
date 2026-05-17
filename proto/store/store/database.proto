@@ -990,5 +990,6 @@ message StoredMetadata {
     OpenLineageRunSummary openlineage_run_summary = 13;
     OpenLineageTaskSummary openlineage_task_summary = 14;
     ManualSQLMetadata manual_sql_metadata = 15;
+    ColumnMetadata column_metadata = 16;
   }
 }

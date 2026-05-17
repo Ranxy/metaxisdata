@@ -39,18 +39,22 @@ func TestConvertMetadataToGUID(t *testing.T) {
 	}
 	tableMeta := buildTableMeta("users", "id", "name")
 
-	guid, children, err := convertMetadataToGUID("inst1", storepb.MetaType_DATABASE, databaseMeta)
+	guid, err := convertMetadataToGUID("inst1", storepb.MetaType_DATABASE, databaseMeta)
 	require.NoError(t, err)
 	require.Equal(t, buildGUID("inst1", "db1"), guid)
-	require.Empty(t, children)
 
 	prefix := buildGUID("inst1", "db1", "public")
-	guid, children, err = convertMetadataToGUID(prefix, storepb.MetaType_TABLE, tableMeta)
+	guid, err = convertMetadataToGUID(prefix, storepb.MetaType_TABLE, tableMeta)
 	require.NoError(t, err)
 	require.Equal(t, buildGUID(prefix, "users"), guid)
-	require.Equal(t, []string{buildGUID(prefix, "users", "id"), buildGUID(prefix, "users", "name")}, children)
 
-	_, _, err = convertMetadataToGUID("inst1", storepb.MetaType_COLUMN, &storepb.StoredMetadata{})
+	children := getChildMetadataResources(guid, storepb.MetaType_TABLE, tableMeta)
+	require.Len(t, children, 2)
+	require.Equal(t, []string{buildGUID(prefix, "users", "id"), buildGUID(prefix, "users", "name")}, []string{children[0].GUID, children[1].GUID})
+	require.Equal(t, "id", children[0].Metadata.GetColumnMetadata().Name)
+	require.Equal(t, "name", children[1].Metadata.GetColumnMetadata().Name)
+
+	_, err = convertMetadataToGUID("inst1", storepb.MetaType_COLUMN, &storepb.StoredMetadata{})
 	require.Error(t, err)
 }
 
@@ -64,13 +68,17 @@ func TestBatchMetaCreateStoreMetaResourceV2Table(t *testing.T) {
 	require.Len(t, b.guidList, 3)
 
 	got := map[string]storepb.MetaType{}
+	gotMeta := map[string]*storepb.StoredMetadata{}
 	for _, item := range b.guidList {
 		got[item.GUID] = item.ObjectType
+		gotMeta[item.GUID] = item.Metadata
 	}
 
 	require.Equal(t, storepb.MetaType_TABLE, got[buildGUID(prefix, "users")])
 	require.Equal(t, storepb.MetaType_COLUMN, got[buildGUID(prefix, "users", "id")])
 	require.Equal(t, storepb.MetaType_COLUMN, got[buildGUID(prefix, "users", "name")])
+	require.Equal(t, "id", gotMeta[buildGUID(prefix, "users", "id")].GetColumnMetadata().Name)
+	require.Equal(t, "name", gotMeta[buildGUID(prefix, "users", "name")].GetColumnMetadata().Name)
 }
 
 func TestBatchMetaCreateDiff(t *testing.T) {

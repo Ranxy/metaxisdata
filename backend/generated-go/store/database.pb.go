@@ -4235,6 +4235,7 @@ type StoredMetadata struct {
 	//	*StoredMetadata_OpenlineageRunSummary
 	//	*StoredMetadata_OpenlineageTaskSummary
 	//	*StoredMetadata_ManualSqlMetadata
+	//	*StoredMetadata_ColumnMetadata
 	Type          isStoredMetadata_Type `protobuf_oneof:"type"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -4412,6 +4413,15 @@ func (x *StoredMetadata) GetManualSqlMetadata() *ManualSQLMetadata {
 	return nil
 }
 
+func (x *StoredMetadata) GetColumnMetadata() *ColumnMetadata {
+	if x != nil {
+		if x, ok := x.Type.(*StoredMetadata_ColumnMetadata); ok {
+			return x.ColumnMetadata
+		}
+	}
+	return nil
+}
+
 type isStoredMetadata_Type interface {
 	isStoredMetadata_Type()
 }
@@ -4476,6 +4486,10 @@ type StoredMetadata_ManualSqlMetadata struct {
 	ManualSqlMetadata *ManualSQLMetadata `protobuf:"bytes,15,opt,name=manual_sql_metadata,json=manualSqlMetadata,proto3,oneof"`
 }
 
+type StoredMetadata_ColumnMetadata struct {
+	ColumnMetadata *ColumnMetadata `protobuf:"bytes,16,opt,name=column_metadata,json=columnMetadata,proto3,oneof"`
+}
+
 func (*StoredMetadata_DatabaseSchemaMetadata) isStoredMetadata_Type() {}
 
 func (*StoredMetadata_SchemaMetadata) isStoredMetadata_Type() {}
@@ -4505,6 +4519,8 @@ func (*StoredMetadata_OpenlineageRunSummary) isStoredMetadata_Type() {}
 func (*StoredMetadata_OpenlineageTaskSummary) isStoredMetadata_Type() {}
 
 func (*StoredMetadata_ManualSqlMetadata) isStoredMetadata_Type() {}
+
+func (*StoredMetadata_ColumnMetadata) isStoredMetadata_Type() {}
 
 var File_store_database_proto protoreflect.FileDescriptor
 
@@ -4944,8 +4960,7 @@ const file_store_database_proto_rawDesc = "" +
 	" \x01(\tR\fdatabaseName\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xba\n" +
-	"\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x88\v\n" +
 	"\x0eStoredMetadata\x12e\n" +
 	"\x18database_schema_metadata\x18\x01 \x01(\v2).metaxisdata.store.DatabaseSchemaMetadataH\x00R\x16databaseSchemaMetadata\x12L\n" +
 	"\x0fschema_metadata\x18\x02 \x01(\v2!.metaxisdata.store.SchemaMetadataH\x00R\x0eschemaMetadata\x12I\n" +
@@ -4962,7 +4977,8 @@ const file_store_database_proto_rawDesc = "" +
 	"\rtask_metadata\x18\f \x01(\v2\x1f.metaxisdata.store.TaskMetadataH\x00R\ftaskMetadata\x12b\n" +
 	"\x17openlineage_run_summary\x18\r \x01(\v2(.metaxisdata.store.OpenLineageRunSummaryH\x00R\x15openlineageRunSummary\x12e\n" +
 	"\x18openlineage_task_summary\x18\x0e \x01(\v2).metaxisdata.store.OpenLineageTaskSummaryH\x00R\x16openlineageTaskSummary\x12V\n" +
-	"\x13manual_sql_metadata\x18\x0f \x01(\v2$.metaxisdata.store.ManualSQLMetadataH\x00R\x11manualSqlMetadataB\x06\n" +
+	"\x13manual_sql_metadata\x18\x0f \x01(\v2$.metaxisdata.store.ManualSQLMetadataH\x00R\x11manualSqlMetadata\x12L\n" +
+	"\x0fcolumn_metadata\x18\x10 \x01(\v2!.metaxisdata.store.ColumnMetadataH\x00R\x0ecolumnMetadataB\x06\n" +
 	"\x04typeB\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
@@ -5101,11 +5117,12 @@ var file_store_database_proto_depIdxs = []int32{
 	48, // 66: metaxisdata.store.StoredMetadata.openlineage_run_summary:type_name -> metaxisdata.store.OpenLineageRunSummary
 	49, // 67: metaxisdata.store.StoredMetadata.openlineage_task_summary:type_name -> metaxisdata.store.OpenLineageTaskSummary
 	42, // 68: metaxisdata.store.StoredMetadata.manual_sql_metadata:type_name -> metaxisdata.store.ManualSQLMetadata
-	69, // [69:69] is the sub-list for method output_type
-	69, // [69:69] is the sub-list for method input_type
-	69, // [69:69] is the sub-list for extension type_name
-	69, // [69:69] is the sub-list for extension extendee
-	0,  // [0:69] is the sub-list for field type_name
+	22, // 69: metaxisdata.store.StoredMetadata.column_metadata:type_name -> metaxisdata.store.ColumnMetadata
+	70, // [70:70] is the sub-list for method output_type
+	70, // [70:70] is the sub-list for method input_type
+	70, // [70:70] is the sub-list for extension type_name
+	70, // [70:70] is the sub-list for extension extendee
+	0,  // [0:70] is the sub-list for field type_name
 }
 
 func init() { file_store_database_proto_init() }
@@ -5130,6 +5147,7 @@ func file_store_database_proto_init() {
 		(*StoredMetadata_OpenlineageRunSummary)(nil),
 		(*StoredMetadata_OpenlineageTaskSummary)(nil),
 		(*StoredMetadata_ManualSqlMetadata)(nil),
+		(*StoredMetadata_ColumnMetadata)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

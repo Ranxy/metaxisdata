@@ -140,6 +140,8 @@
           <TableRow
             v-for="col in filteredColumns"
             :key="`${col.position}:${col.name}`"
+            :ref="(el) => setColumnRowRef(col.name, el)"
+            :class="{ 'bg-accent/50': selectedColumnName === col.name }"
           >
             <TableCell class="font-medium">{{ col.name }}</TableCell>
             <TableCell class="text-muted-foreground">{{ col.type || "-" }}</TableCell>
@@ -309,7 +311,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import {
+  computed,
+  nextTick,
+  ref,
+  watch,
+  type ComponentPublicInstance,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Badge } from "@/components/ui/badge";
@@ -335,17 +343,66 @@ const props = defineProps<{
   table: TableMetadata;
   instanceEngine?: Engine | null;
   guid?: string;
+  selectedColumnName?: string;
 }>();
 
 const { t } = useI18n();
 
 const columnSearch = ref("");
+const columnRowRefs = new Map<string, Element>();
+
+const selectedColumnName = computed(
+  () => props.selectedColumnName?.trim() || ""
+);
 
 const filteredColumns = computed((): ColumnMetadata[] => {
   const q = columnSearch.value.trim().toLowerCase();
   if (!q) return props.table.columns;
-  return props.table.columns.filter((c) => c.name.toLowerCase().includes(q));
+  return props.table.columns.filter((c) => {
+    const comment = (c.userComment || c.comment || "").toLowerCase();
+    return c.name.toLowerCase().includes(q) || comment.includes(q);
+  });
 });
+
+function setColumnRowRef(
+  columnName: string,
+  target: Element | ComponentPublicInstance | null
+) {
+  const element =
+    target instanceof Element
+      ? target
+      : target?.$el instanceof Element
+        ? target.$el
+        : null;
+  if (!element) {
+    columnRowRefs.delete(columnName);
+    return;
+  }
+  columnRowRefs.set(columnName, element);
+}
+
+async function focusSelectedColumn() {
+  if (!selectedColumnName.value) {
+    return;
+  }
+
+  await nextTick();
+  columnRowRefs.get(selectedColumnName.value)?.scrollIntoView({
+    behavior: "smooth",
+    block: "center",
+  });
+}
+
+watch(
+  selectedColumnName,
+  async (value) => {
+    if (!value) {
+      return;
+    }
+    await focusSelectedColumn();
+  },
+  { immediate: true }
+);
 
 const isMySQLFamily = computed(() => {
   if (!props.instanceEngine) return false;

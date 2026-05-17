@@ -2123,6 +2123,7 @@ type StoredMetadata struct {
 	//	*StoredMetadata_StreamMetadata
 	//	*StoredMetadata_TaskMetadata
 	//	*StoredMetadata_ManualSqlMetadata
+	//	*StoredMetadata_ColumnMetadata
 	Type          isStoredMetadata_Type `protobuf_oneof:"type"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2282,6 +2283,15 @@ func (x *StoredMetadata) GetManualSqlMetadata() *ManualSQLMetadata {
 	return nil
 }
 
+func (x *StoredMetadata) GetColumnMetadata() *ColumnMetadata {
+	if x != nil {
+		if x, ok := x.Type.(*StoredMetadata_ColumnMetadata); ok {
+			return x.ColumnMetadata
+		}
+	}
+	return nil
+}
+
 type isStoredMetadata_Type interface {
 	isStoredMetadata_Type()
 }
@@ -2338,6 +2348,10 @@ type StoredMetadata_ManualSqlMetadata struct {
 	ManualSqlMetadata *ManualSQLMetadata `protobuf:"bytes,15,opt,name=manual_sql_metadata,json=manualSqlMetadata,proto3,oneof"`
 }
 
+type StoredMetadata_ColumnMetadata struct {
+	ColumnMetadata *ColumnMetadata `protobuf:"bytes,16,opt,name=column_metadata,json=columnMetadata,proto3,oneof"`
+}
+
 func (*StoredMetadata_DatabaseSchemaMetadata) isStoredMetadata_Type() {}
 
 func (*StoredMetadata_SchemaMetadata) isStoredMetadata_Type() {}
@@ -2363,6 +2377,8 @@ func (*StoredMetadata_StreamMetadata) isStoredMetadata_Type() {}
 func (*StoredMetadata_TaskMetadata) isStoredMetadata_Type() {}
 
 func (*StoredMetadata_ManualSqlMetadata) isStoredMetadata_Type() {}
+
+func (*StoredMetadata_ColumnMetadata) isStoredMetadata_Type() {}
 
 // DatabaseSchemaMetadata is the schema metadata for databases.
 type DatabaseSchemaMetadata struct {
@@ -6248,7 +6264,7 @@ const file_v1_database_service_proto_rawDesc = "" +
 	" \x01(\tR\fdatabaseName\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc8\b\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x93\t\n" +
 	"\x0eStoredMetadata\x12b\n" +
 	"\x18database_schema_metadata\x18\x01 \x01(\v2&.metaxisdata.v1.DatabaseSchemaMetadataH\x00R\x16databaseSchemaMetadata\x12I\n" +
 	"\x0fschema_metadata\x18\x02 \x01(\v2\x1e.metaxisdata.v1.SchemaMetadataH\x00R\x0eschemaMetadata\x12F\n" +
@@ -6263,7 +6279,8 @@ const file_v1_database_service_proto_rawDesc = "" +
 	" \x01(\v2 .metaxisdata.v1.SequenceMetadataH\x00R\x10sequenceMetadata\x12I\n" +
 	"\x0fstream_metadata\x18\v \x01(\v2\x1e.metaxisdata.v1.StreamMetadataH\x00R\x0estreamMetadata\x12C\n" +
 	"\rtask_metadata\x18\f \x01(\v2\x1c.metaxisdata.v1.TaskMetadataH\x00R\ftaskMetadata\x12S\n" +
-	"\x13manual_sql_metadata\x18\x0f \x01(\v2!.metaxisdata.v1.ManualSQLMetadataH\x00R\x11manualSqlMetadataB\x06\n" +
+	"\x13manual_sql_metadata\x18\x0f \x01(\v2!.metaxisdata.v1.ManualSQLMetadataH\x00R\x11manualSqlMetadata\x12I\n" +
+	"\x0fcolumn_metadata\x18\x10 \x01(\v2\x1e.metaxisdata.v1.ColumnMetadataH\x00R\x0ecolumnMetadataB\x06\n" +
 	"\x04type\"\x84\x04\n" +
 	"\x16DatabaseSchemaMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x128\n" +
@@ -6843,90 +6860,91 @@ var file_v1_database_service_proto_depIdxs = []int32{
 	42,  // 33: metaxisdata.v1.StoredMetadata.stream_metadata:type_name -> metaxisdata.v1.StreamMetadata
 	41,  // 34: metaxisdata.v1.StoredMetadata.task_metadata:type_name -> metaxisdata.v1.TaskMetadata
 	31,  // 35: metaxisdata.v1.StoredMetadata.manual_sql_metadata:type_name -> metaxisdata.v1.ManualSQLMetadata
-	35,  // 36: metaxisdata.v1.DatabaseSchemaMetadata.schemas:type_name -> metaxisdata.v1.SchemaMetadata
-	64,  // 37: metaxisdata.v1.DatabaseSchemaMetadata.extensions:type_name -> metaxisdata.v1.ExtensionMetadata
-	34,  // 38: metaxisdata.v1.DatabaseSchemaMetadata.linked_databases:type_name -> metaxisdata.v1.LinkedDatabaseMetadata
-	65,  // 39: metaxisdata.v1.DatabaseSchemaMetadata.event_triggers:type_name -> metaxisdata.v1.EventTriggerMetadata
-	43,  // 40: metaxisdata.v1.SchemaMetadata.tables:type_name -> metaxisdata.v1.TableMetadata
-	46,  // 41: metaxisdata.v1.SchemaMetadata.external_tables:type_name -> metaxisdata.v1.ExternalTableMetadata
-	50,  // 42: metaxisdata.v1.SchemaMetadata.views:type_name -> metaxisdata.v1.ViewMetadata
-	54,  // 43: metaxisdata.v1.SchemaMetadata.functions:type_name -> metaxisdata.v1.FunctionMetadata
-	55,  // 44: metaxisdata.v1.SchemaMetadata.procedures:type_name -> metaxisdata.v1.ProcedureMetadata
-	42,  // 45: metaxisdata.v1.SchemaMetadata.streams:type_name -> metaxisdata.v1.StreamMetadata
-	41,  // 46: metaxisdata.v1.SchemaMetadata.tasks:type_name -> metaxisdata.v1.TaskMetadata
-	52,  // 47: metaxisdata.v1.SchemaMetadata.materialized_views:type_name -> metaxisdata.v1.MaterializedViewMetadata
-	38,  // 48: metaxisdata.v1.SchemaMetadata.sequences:type_name -> metaxisdata.v1.SequenceMetadata
-	56,  // 49: metaxisdata.v1.SchemaMetadata.packages:type_name -> metaxisdata.v1.PackageMetadata
-	37,  // 50: metaxisdata.v1.SchemaMetadata.events:type_name -> metaxisdata.v1.EventMetadata
-	36,  // 51: metaxisdata.v1.SchemaMetadata.enum_types:type_name -> metaxisdata.v1.EnumTypeMetadata
-	1,   // 52: metaxisdata.v1.TaskMetadata.state:type_name -> metaxisdata.v1.TaskMetadata.State
-	2,   // 53: metaxisdata.v1.StreamMetadata.type:type_name -> metaxisdata.v1.StreamMetadata.Type
-	3,   // 54: metaxisdata.v1.StreamMetadata.mode:type_name -> metaxisdata.v1.StreamMetadata.Mode
-	48,  // 55: metaxisdata.v1.TableMetadata.columns:type_name -> metaxisdata.v1.ColumnMetadata
-	57,  // 56: metaxisdata.v1.TableMetadata.indexes:type_name -> metaxisdata.v1.IndexMetadata
-	66,  // 57: metaxisdata.v1.TableMetadata.foreign_keys:type_name -> metaxisdata.v1.ForeignKeyMetadata
-	47,  // 58: metaxisdata.v1.TableMetadata.partitions:type_name -> metaxisdata.v1.TablePartitionMetadata
-	44,  // 59: metaxisdata.v1.TableMetadata.check_constraints:type_name -> metaxisdata.v1.CheckConstraintMetadata
-	39,  // 60: metaxisdata.v1.TableMetadata.triggers:type_name -> metaxisdata.v1.TriggerMetadata
-	40,  // 61: metaxisdata.v1.TableMetadata.rules:type_name -> metaxisdata.v1.RuleMetadata
-	45,  // 62: metaxisdata.v1.TableMetadata.exclude_constraints:type_name -> metaxisdata.v1.ExcludeConstraintMetadata
-	48,  // 63: metaxisdata.v1.ExternalTableMetadata.columns:type_name -> metaxisdata.v1.ColumnMetadata
-	4,   // 64: metaxisdata.v1.TablePartitionMetadata.type:type_name -> metaxisdata.v1.TablePartitionMetadata.Type
-	47,  // 65: metaxisdata.v1.TablePartitionMetadata.subpartitions:type_name -> metaxisdata.v1.TablePartitionMetadata
-	57,  // 66: metaxisdata.v1.TablePartitionMetadata.indexes:type_name -> metaxisdata.v1.IndexMetadata
-	44,  // 67: metaxisdata.v1.TablePartitionMetadata.check_constraints:type_name -> metaxisdata.v1.CheckConstraintMetadata
-	45,  // 68: metaxisdata.v1.TablePartitionMetadata.exclude_constraints:type_name -> metaxisdata.v1.ExcludeConstraintMetadata
-	49,  // 69: metaxisdata.v1.ColumnMetadata.generation:type_name -> metaxisdata.v1.GenerationMetadata
-	5,   // 70: metaxisdata.v1.ColumnMetadata.identity_generation:type_name -> metaxisdata.v1.ColumnMetadata.IdentityGeneration
-	6,   // 71: metaxisdata.v1.GenerationMetadata.type:type_name -> metaxisdata.v1.GenerationMetadata.Type
-	51,  // 72: metaxisdata.v1.ViewMetadata.dependency_columns:type_name -> metaxisdata.v1.DependencyColumn
-	48,  // 73: metaxisdata.v1.ViewMetadata.columns:type_name -> metaxisdata.v1.ColumnMetadata
-	39,  // 74: metaxisdata.v1.ViewMetadata.triggers:type_name -> metaxisdata.v1.TriggerMetadata
-	40,  // 75: metaxisdata.v1.ViewMetadata.rules:type_name -> metaxisdata.v1.RuleMetadata
-	51,  // 76: metaxisdata.v1.MaterializedViewMetadata.dependency_columns:type_name -> metaxisdata.v1.DependencyColumn
-	39,  // 77: metaxisdata.v1.MaterializedViewMetadata.triggers:type_name -> metaxisdata.v1.TriggerMetadata
-	57,  // 78: metaxisdata.v1.MaterializedViewMetadata.indexes:type_name -> metaxisdata.v1.IndexMetadata
-	53,  // 79: metaxisdata.v1.FunctionMetadata.dependency_tables:type_name -> metaxisdata.v1.DependencyTable
-	58,  // 80: metaxisdata.v1.IndexMetadata.spatial_config:type_name -> metaxisdata.v1.SpatialIndexConfig
-	59,  // 81: metaxisdata.v1.SpatialIndexConfig.tessellation:type_name -> metaxisdata.v1.TessellationConfig
-	62,  // 82: metaxisdata.v1.SpatialIndexConfig.storage:type_name -> metaxisdata.v1.StorageConfig
-	63,  // 83: metaxisdata.v1.SpatialIndexConfig.dimensional:type_name -> metaxisdata.v1.DimensionalConfig
-	72,  // 84: metaxisdata.v1.SpatialIndexConfig.engine_specific:type_name -> metaxisdata.v1.SpatialIndexConfig.EngineSpecificEntry
-	60,  // 85: metaxisdata.v1.TessellationConfig.bounding_box:type_name -> metaxisdata.v1.BoundingBox
-	61,  // 86: metaxisdata.v1.TessellationConfig.grid_levels:type_name -> metaxisdata.v1.GridLevel
-	0,   // 87: metaxisdata.v1.MetadataResponse.MetadataList.meta_type:type_name -> metaxisdata.v1.MetaType
-	32,  // 88: metaxisdata.v1.MetadataResponse.MetadataList.list:type_name -> metaxisdata.v1.StoredMetadata
-	7,   // 89: metaxisdata.v1.DatabaseService.GetDatabase:input_type -> metaxisdata.v1.GetDatabaseRequest
-	8,   // 90: metaxisdata.v1.DatabaseService.SyncDatabase:input_type -> metaxisdata.v1.SyncDatabaseRequest
-	11,  // 91: metaxisdata.v1.DatabaseService.ListDatabase:input_type -> metaxisdata.v1.ListDatabaseRequest
-	13,  // 92: metaxisdata.v1.DatabaseService.ListMetadata:input_type -> metaxisdata.v1.ListMetadataRequest
-	15,  // 93: metaxisdata.v1.DatabaseService.GetMetadata:input_type -> metaxisdata.v1.GetMetadataRequest
-	19,  // 94: metaxisdata.v1.DatabaseService.SearchMetadata:input_type -> metaxisdata.v1.SearchMetadataRequest
-	17,  // 95: metaxisdata.v1.DatabaseService.GetSchemaString:input_type -> metaxisdata.v1.GetSchemaStringRequest
-	23,  // 96: metaxisdata.v1.DatabaseService.CreateManualSQL:input_type -> metaxisdata.v1.CreateManualSQLRequest
-	24,  // 97: metaxisdata.v1.DatabaseService.GetManualSQL:input_type -> metaxisdata.v1.GetManualSQLRequest
-	25,  // 98: metaxisdata.v1.DatabaseService.ListManualSQL:input_type -> metaxisdata.v1.ListManualSQLRequest
-	27,  // 99: metaxisdata.v1.DatabaseService.SearchManualSQL:input_type -> metaxisdata.v1.SearchManualSQLRequest
-	29,  // 100: metaxisdata.v1.DatabaseService.UpdateManualSQL:input_type -> metaxisdata.v1.UpdateManualSQLRequest
-	30,  // 101: metaxisdata.v1.DatabaseService.DeleteManualSQL:input_type -> metaxisdata.v1.DeleteManualSQLRequest
-	10,  // 102: metaxisdata.v1.DatabaseService.GetDatabase:output_type -> metaxisdata.v1.Database
-	9,   // 103: metaxisdata.v1.DatabaseService.SyncDatabase:output_type -> metaxisdata.v1.SyncDatabaseResponse
-	12,  // 104: metaxisdata.v1.DatabaseService.ListDatabase:output_type -> metaxisdata.v1.ListDatabasesResponse
-	14,  // 105: metaxisdata.v1.DatabaseService.ListMetadata:output_type -> metaxisdata.v1.MetadataResponse
-	16,  // 106: metaxisdata.v1.DatabaseService.GetMetadata:output_type -> metaxisdata.v1.GetMetadataResponse
-	20,  // 107: metaxisdata.v1.DatabaseService.SearchMetadata:output_type -> metaxisdata.v1.SearchMetadataResponse
-	18,  // 108: metaxisdata.v1.DatabaseService.GetSchemaString:output_type -> metaxisdata.v1.MetadataSchemaString
-	22,  // 109: metaxisdata.v1.DatabaseService.CreateManualSQL:output_type -> metaxisdata.v1.ManualSQL
-	22,  // 110: metaxisdata.v1.DatabaseService.GetManualSQL:output_type -> metaxisdata.v1.ManualSQL
-	26,  // 111: metaxisdata.v1.DatabaseService.ListManualSQL:output_type -> metaxisdata.v1.ListManualSQLResponse
-	28,  // 112: metaxisdata.v1.DatabaseService.SearchManualSQL:output_type -> metaxisdata.v1.SearchManualSQLResponse
-	22,  // 113: metaxisdata.v1.DatabaseService.UpdateManualSQL:output_type -> metaxisdata.v1.ManualSQL
-	77,  // 114: metaxisdata.v1.DatabaseService.DeleteManualSQL:output_type -> google.protobuf.Empty
-	102, // [102:115] is the sub-list for method output_type
-	89,  // [89:102] is the sub-list for method input_type
-	89,  // [89:89] is the sub-list for extension type_name
-	89,  // [89:89] is the sub-list for extension extendee
-	0,   // [0:89] is the sub-list for field type_name
+	48,  // 36: metaxisdata.v1.StoredMetadata.column_metadata:type_name -> metaxisdata.v1.ColumnMetadata
+	35,  // 37: metaxisdata.v1.DatabaseSchemaMetadata.schemas:type_name -> metaxisdata.v1.SchemaMetadata
+	64,  // 38: metaxisdata.v1.DatabaseSchemaMetadata.extensions:type_name -> metaxisdata.v1.ExtensionMetadata
+	34,  // 39: metaxisdata.v1.DatabaseSchemaMetadata.linked_databases:type_name -> metaxisdata.v1.LinkedDatabaseMetadata
+	65,  // 40: metaxisdata.v1.DatabaseSchemaMetadata.event_triggers:type_name -> metaxisdata.v1.EventTriggerMetadata
+	43,  // 41: metaxisdata.v1.SchemaMetadata.tables:type_name -> metaxisdata.v1.TableMetadata
+	46,  // 42: metaxisdata.v1.SchemaMetadata.external_tables:type_name -> metaxisdata.v1.ExternalTableMetadata
+	50,  // 43: metaxisdata.v1.SchemaMetadata.views:type_name -> metaxisdata.v1.ViewMetadata
+	54,  // 44: metaxisdata.v1.SchemaMetadata.functions:type_name -> metaxisdata.v1.FunctionMetadata
+	55,  // 45: metaxisdata.v1.SchemaMetadata.procedures:type_name -> metaxisdata.v1.ProcedureMetadata
+	42,  // 46: metaxisdata.v1.SchemaMetadata.streams:type_name -> metaxisdata.v1.StreamMetadata
+	41,  // 47: metaxisdata.v1.SchemaMetadata.tasks:type_name -> metaxisdata.v1.TaskMetadata
+	52,  // 48: metaxisdata.v1.SchemaMetadata.materialized_views:type_name -> metaxisdata.v1.MaterializedViewMetadata
+	38,  // 49: metaxisdata.v1.SchemaMetadata.sequences:type_name -> metaxisdata.v1.SequenceMetadata
+	56,  // 50: metaxisdata.v1.SchemaMetadata.packages:type_name -> metaxisdata.v1.PackageMetadata
+	37,  // 51: metaxisdata.v1.SchemaMetadata.events:type_name -> metaxisdata.v1.EventMetadata
+	36,  // 52: metaxisdata.v1.SchemaMetadata.enum_types:type_name -> metaxisdata.v1.EnumTypeMetadata
+	1,   // 53: metaxisdata.v1.TaskMetadata.state:type_name -> metaxisdata.v1.TaskMetadata.State
+	2,   // 54: metaxisdata.v1.StreamMetadata.type:type_name -> metaxisdata.v1.StreamMetadata.Type
+	3,   // 55: metaxisdata.v1.StreamMetadata.mode:type_name -> metaxisdata.v1.StreamMetadata.Mode
+	48,  // 56: metaxisdata.v1.TableMetadata.columns:type_name -> metaxisdata.v1.ColumnMetadata
+	57,  // 57: metaxisdata.v1.TableMetadata.indexes:type_name -> metaxisdata.v1.IndexMetadata
+	66,  // 58: metaxisdata.v1.TableMetadata.foreign_keys:type_name -> metaxisdata.v1.ForeignKeyMetadata
+	47,  // 59: metaxisdata.v1.TableMetadata.partitions:type_name -> metaxisdata.v1.TablePartitionMetadata
+	44,  // 60: metaxisdata.v1.TableMetadata.check_constraints:type_name -> metaxisdata.v1.CheckConstraintMetadata
+	39,  // 61: metaxisdata.v1.TableMetadata.triggers:type_name -> metaxisdata.v1.TriggerMetadata
+	40,  // 62: metaxisdata.v1.TableMetadata.rules:type_name -> metaxisdata.v1.RuleMetadata
+	45,  // 63: metaxisdata.v1.TableMetadata.exclude_constraints:type_name -> metaxisdata.v1.ExcludeConstraintMetadata
+	48,  // 64: metaxisdata.v1.ExternalTableMetadata.columns:type_name -> metaxisdata.v1.ColumnMetadata
+	4,   // 65: metaxisdata.v1.TablePartitionMetadata.type:type_name -> metaxisdata.v1.TablePartitionMetadata.Type
+	47,  // 66: metaxisdata.v1.TablePartitionMetadata.subpartitions:type_name -> metaxisdata.v1.TablePartitionMetadata
+	57,  // 67: metaxisdata.v1.TablePartitionMetadata.indexes:type_name -> metaxisdata.v1.IndexMetadata
+	44,  // 68: metaxisdata.v1.TablePartitionMetadata.check_constraints:type_name -> metaxisdata.v1.CheckConstraintMetadata
+	45,  // 69: metaxisdata.v1.TablePartitionMetadata.exclude_constraints:type_name -> metaxisdata.v1.ExcludeConstraintMetadata
+	49,  // 70: metaxisdata.v1.ColumnMetadata.generation:type_name -> metaxisdata.v1.GenerationMetadata
+	5,   // 71: metaxisdata.v1.ColumnMetadata.identity_generation:type_name -> metaxisdata.v1.ColumnMetadata.IdentityGeneration
+	6,   // 72: metaxisdata.v1.GenerationMetadata.type:type_name -> metaxisdata.v1.GenerationMetadata.Type
+	51,  // 73: metaxisdata.v1.ViewMetadata.dependency_columns:type_name -> metaxisdata.v1.DependencyColumn
+	48,  // 74: metaxisdata.v1.ViewMetadata.columns:type_name -> metaxisdata.v1.ColumnMetadata
+	39,  // 75: metaxisdata.v1.ViewMetadata.triggers:type_name -> metaxisdata.v1.TriggerMetadata
+	40,  // 76: metaxisdata.v1.ViewMetadata.rules:type_name -> metaxisdata.v1.RuleMetadata
+	51,  // 77: metaxisdata.v1.MaterializedViewMetadata.dependency_columns:type_name -> metaxisdata.v1.DependencyColumn
+	39,  // 78: metaxisdata.v1.MaterializedViewMetadata.triggers:type_name -> metaxisdata.v1.TriggerMetadata
+	57,  // 79: metaxisdata.v1.MaterializedViewMetadata.indexes:type_name -> metaxisdata.v1.IndexMetadata
+	53,  // 80: metaxisdata.v1.FunctionMetadata.dependency_tables:type_name -> metaxisdata.v1.DependencyTable
+	58,  // 81: metaxisdata.v1.IndexMetadata.spatial_config:type_name -> metaxisdata.v1.SpatialIndexConfig
+	59,  // 82: metaxisdata.v1.SpatialIndexConfig.tessellation:type_name -> metaxisdata.v1.TessellationConfig
+	62,  // 83: metaxisdata.v1.SpatialIndexConfig.storage:type_name -> metaxisdata.v1.StorageConfig
+	63,  // 84: metaxisdata.v1.SpatialIndexConfig.dimensional:type_name -> metaxisdata.v1.DimensionalConfig
+	72,  // 85: metaxisdata.v1.SpatialIndexConfig.engine_specific:type_name -> metaxisdata.v1.SpatialIndexConfig.EngineSpecificEntry
+	60,  // 86: metaxisdata.v1.TessellationConfig.bounding_box:type_name -> metaxisdata.v1.BoundingBox
+	61,  // 87: metaxisdata.v1.TessellationConfig.grid_levels:type_name -> metaxisdata.v1.GridLevel
+	0,   // 88: metaxisdata.v1.MetadataResponse.MetadataList.meta_type:type_name -> metaxisdata.v1.MetaType
+	32,  // 89: metaxisdata.v1.MetadataResponse.MetadataList.list:type_name -> metaxisdata.v1.StoredMetadata
+	7,   // 90: metaxisdata.v1.DatabaseService.GetDatabase:input_type -> metaxisdata.v1.GetDatabaseRequest
+	8,   // 91: metaxisdata.v1.DatabaseService.SyncDatabase:input_type -> metaxisdata.v1.SyncDatabaseRequest
+	11,  // 92: metaxisdata.v1.DatabaseService.ListDatabase:input_type -> metaxisdata.v1.ListDatabaseRequest
+	13,  // 93: metaxisdata.v1.DatabaseService.ListMetadata:input_type -> metaxisdata.v1.ListMetadataRequest
+	15,  // 94: metaxisdata.v1.DatabaseService.GetMetadata:input_type -> metaxisdata.v1.GetMetadataRequest
+	19,  // 95: metaxisdata.v1.DatabaseService.SearchMetadata:input_type -> metaxisdata.v1.SearchMetadataRequest
+	17,  // 96: metaxisdata.v1.DatabaseService.GetSchemaString:input_type -> metaxisdata.v1.GetSchemaStringRequest
+	23,  // 97: metaxisdata.v1.DatabaseService.CreateManualSQL:input_type -> metaxisdata.v1.CreateManualSQLRequest
+	24,  // 98: metaxisdata.v1.DatabaseService.GetManualSQL:input_type -> metaxisdata.v1.GetManualSQLRequest
+	25,  // 99: metaxisdata.v1.DatabaseService.ListManualSQL:input_type -> metaxisdata.v1.ListManualSQLRequest
+	27,  // 100: metaxisdata.v1.DatabaseService.SearchManualSQL:input_type -> metaxisdata.v1.SearchManualSQLRequest
+	29,  // 101: metaxisdata.v1.DatabaseService.UpdateManualSQL:input_type -> metaxisdata.v1.UpdateManualSQLRequest
+	30,  // 102: metaxisdata.v1.DatabaseService.DeleteManualSQL:input_type -> metaxisdata.v1.DeleteManualSQLRequest
+	10,  // 103: metaxisdata.v1.DatabaseService.GetDatabase:output_type -> metaxisdata.v1.Database
+	9,   // 104: metaxisdata.v1.DatabaseService.SyncDatabase:output_type -> metaxisdata.v1.SyncDatabaseResponse
+	12,  // 105: metaxisdata.v1.DatabaseService.ListDatabase:output_type -> metaxisdata.v1.ListDatabasesResponse
+	14,  // 106: metaxisdata.v1.DatabaseService.ListMetadata:output_type -> metaxisdata.v1.MetadataResponse
+	16,  // 107: metaxisdata.v1.DatabaseService.GetMetadata:output_type -> metaxisdata.v1.GetMetadataResponse
+	20,  // 108: metaxisdata.v1.DatabaseService.SearchMetadata:output_type -> metaxisdata.v1.SearchMetadataResponse
+	18,  // 109: metaxisdata.v1.DatabaseService.GetSchemaString:output_type -> metaxisdata.v1.MetadataSchemaString
+	22,  // 110: metaxisdata.v1.DatabaseService.CreateManualSQL:output_type -> metaxisdata.v1.ManualSQL
+	22,  // 111: metaxisdata.v1.DatabaseService.GetManualSQL:output_type -> metaxisdata.v1.ManualSQL
+	26,  // 112: metaxisdata.v1.DatabaseService.ListManualSQL:output_type -> metaxisdata.v1.ListManualSQLResponse
+	28,  // 113: metaxisdata.v1.DatabaseService.SearchManualSQL:output_type -> metaxisdata.v1.SearchManualSQLResponse
+	22,  // 114: metaxisdata.v1.DatabaseService.UpdateManualSQL:output_type -> metaxisdata.v1.ManualSQL
+	77,  // 115: metaxisdata.v1.DatabaseService.DeleteManualSQL:output_type -> google.protobuf.Empty
+	103, // [103:116] is the sub-list for method output_type
+	90,  // [90:103] is the sub-list for method input_type
+	90,  // [90:90] is the sub-list for extension type_name
+	90,  // [90:90] is the sub-list for extension extendee
+	0,   // [0:90] is the sub-list for field type_name
 }
 
 func init() { file_v1_database_service_proto_init() }
@@ -6952,6 +6970,7 @@ func file_v1_database_service_proto_init() {
 		(*StoredMetadata_StreamMetadata)(nil),
 		(*StoredMetadata_TaskMetadata)(nil),
 		(*StoredMetadata_ManualSqlMetadata)(nil),
+		(*StoredMetadata_ColumnMetadata)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

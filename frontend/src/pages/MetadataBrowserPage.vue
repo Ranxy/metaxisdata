@@ -353,6 +353,7 @@
               :table="leafTable"
               :instance-engine="currentInstanceEngine"
               :guid="currentGuid"
+              :selected-column-name="selectedColumnName"
             />
           </CardContent>
         </template>
@@ -615,6 +616,7 @@ const searchableMetaTypes = [
   MetaType.DATABASE,
   MetaType.SCHEMA,
   MetaType.TABLE,
+  MetaType.COLUMN,
   MetaType.VIEW,
   MetaType.MATERIALIZED_VIEW,
   MetaType.FUNCTION,
@@ -694,6 +696,8 @@ const requestedLeafMetaType = computed(() => {
   if (!Number.isFinite(value)) return null;
   return value as MetaType;
 });
+
+const selectedColumnName = computed(() => getQueryString("column"));
 
 const isTableDetailView = computed(() => {
   return (
@@ -1401,6 +1405,8 @@ function getMetadataName(item: StoredMetadata): string {
     case "streamMetadata":
     case "taskMetadata":
       return item.type.value.name;
+    case "columnMetadata":
+      return item.type.value.name;
     case "manualSqlMetadata":
       return item.type.value.title || item.type.value.name;
     default:
@@ -1544,6 +1550,7 @@ function getMetaTypeLabel(type: MetaType): string {
     [MetaType.DATABASE]: t("metadataBrowser.databases"),
     [MetaType.SCHEMA]: t("metadataBrowser.schemas"),
     [MetaType.TABLE]: t("metadataBrowser.tables"),
+    [MetaType.COLUMN]: t("metadataBrowser.columns"),
     [MetaType.EXTERNAL_TABLE]: t("metadataBrowser.externalTables"),
     [MetaType.VIEW]: t("metadataBrowser.views"),
     [MetaType.MATERIALIZED_VIEW]: t("metadataBrowser.materializedViews"),
@@ -1601,6 +1608,24 @@ function handleSelectSearchResult(result: SearchMetadataResult) {
   showSearchResults.value = false;
   searchQuery.value = "";
   searchResults.value = [];
+
+  if (result.metaType === MetaType.COLUMN) {
+    const segments = result.guid.split(";");
+    const columnName =
+      result.metadata?.type.case === "columnMetadata"
+        ? result.metadata.type.value.name
+        : segments[segments.length - 1] || "";
+
+    router.push({
+      name: "MetadataDetail",
+      params: { guid: toGuidPath(segments.slice(0, -1)) },
+      query: {
+        metaType: String(MetaType.TABLE),
+        column: columnName,
+      },
+    });
+    return;
+  }
 
   const segments = result.guid.split(";");
   const query = leafMetaTypes.has(result.metaType)

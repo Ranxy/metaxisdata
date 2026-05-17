@@ -1146,6 +1146,7 @@ StorageConfig defines storage and performance parameters for spatial indexes.
 | openlineage_run_summary | [OpenLineageRunSummary](#metaxisdata-store-OpenLineageRunSummary) |  |  |
 | openlineage_task_summary | [OpenLineageTaskSummary](#metaxisdata-store-OpenLineageTaskSummary) |  |  |
 | manual_sql_metadata | [ManualSQLMetadata](#metaxisdata-store-ManualSQLMetadata) |  |  |
+| column_metadata | [ColumnMetadata](#metaxisdata-store-ColumnMetadata) |  |  |
 
 
 

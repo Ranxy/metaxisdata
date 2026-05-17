@@ -2466,6 +2466,7 @@ StorageConfig defines storage and performance parameters for spatial indexes.
 | stream_metadata | [StreamMetadata](#metaxisdata-v1-StreamMetadata) |  |  |
 | task_metadata | [TaskMetadata](#metaxisdata-v1-TaskMetadata) |  |  |
 | manual_sql_metadata | [ManualSQLMetadata](#metaxisdata-v1-ManualSQLMetadata) |  |  |
+| column_metadata | [ColumnMetadata](#metaxisdata-v1-ColumnMetadata) |  |  |
 
 
 

@@ -979,6 +979,12 @@ export declare type StoredMetadata = Message<"metaxisdata.v1.StoredMetadata"> & 
      */
     value: ManualSQLMetadata;
     case: "manualSqlMetadata";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.ColumnMetadata column_metadata = 16;
+     */
+    value: ColumnMetadata;
+    case: "columnMetadata";
   } | { case: undefined; value?: undefined };
 };
 

@@ -3884,6 +3884,8 @@ components:
                     $ref: '#/components/schemas/TaskMetadata'
                 manualSqlMetadata:
                     $ref: '#/components/schemas/ManualSQLMetadata'
+                columnMetadata:
+                    $ref: '#/components/schemas/ColumnMetadata'
         StreamMetadata:
             type: object
             properties:

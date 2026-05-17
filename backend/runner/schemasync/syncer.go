@@ -551,13 +551,13 @@ type batchMetaCreate struct {
 }
 
 func (b *batchMetaCreate) StoreMetaResourceV2(_ context.Context, prefixName string, objectType storepb.MetaType, data *storepb.StoredMetadata) error {
-	guid, son, err := convertMetadataToGUID(prefixName, objectType, data)
+	guid, err := convertMetadataToGUID(prefixName, objectType, data)
 	if err != nil {
 		return err
 	}
 
-	for _, sguid := range son {
-		b.add(sguid, storepb.MetaType_COLUMN, nil)
+	for _, child := range getChildMetadataResources(guid, objectType, data) {
+		b.add(child.GUID, child.ObjectType, child.Metadata)
 	}
 
 	b.add(guid, objectType, data)
@@ -654,33 +654,41 @@ func isSchemaSyncManagedMetaType(metaType storepb.MetaType) bool {
 	}
 }
 
-func convertMetadataToGUID(prefix string, objectType storepb.MetaType, data *storepb.StoredMetadata) (target string, son []string, err error) {
+func convertMetadataToGUID(prefix string, objectType storepb.MetaType, data *storepb.StoredMetadata) (string, error) {
 	switch objectType {
 	case storepb.MetaType_DATABASE:
-		return buildGUID(prefix, data.GetDatabaseSchemaMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetDatabaseSchemaMetadata().Name), nil
 	case storepb.MetaType_SCHEMA:
-		return buildGUID(prefix, data.GetSchemaMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetSchemaMetadata().Name), nil
 	case storepb.MetaType_TABLE:
-		tguid := buildGUID(prefix, data.GetTableMetadata().Name)
-		return tguid, getTableColumnsGUID(tguid, data.GetTableMetadata().Columns), nil
+		return buildGUID(prefix, data.GetTableMetadata().Name), nil
 	case storepb.MetaType_VIEW:
-		return buildGUID(prefix, data.GetViewMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetViewMetadata().Name), nil
 	case storepb.MetaType_EXTERNAL_TABLE:
-		return buildGUID(prefix, data.GetExternalTableMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetExternalTableMetadata().Name), nil
 	case storepb.MetaType_FUNCTION:
-		return buildGUID(prefix, data.GetFunctionMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetFunctionMetadata().Name), nil
 	case storepb.MetaType_PROCEDURE:
-		return buildGUID(prefix, data.GetProcedureMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetProcedureMetadata().Name), nil
 	case storepb.MetaType_STREAM:
-		return buildGUID(prefix, data.GetStreamMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetStreamMetadata().Name), nil
 	case storepb.MetaType_MATERIALIZED_VIEW:
-		return buildGUID(prefix, data.GetMaterializedViewMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetMaterializedViewMetadata().Name), nil
 	case storepb.MetaType_SEQUENCE:
-		return buildGUID(prefix, data.GetSequenceMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetSequenceMetadata().Name), nil
 	case storepb.MetaType_PACKAGE:
-		return buildGUID(prefix, data.GetPackageMetadata().Name), nil, nil
+		return buildGUID(prefix, data.GetPackageMetadata().Name), nil
 	default:
-		return "", nil, errors.Errorf("unsupported meta type %v", objectType)
+		return "", errors.Errorf("unsupported meta type %v", objectType)
+	}
+}
+
+func getChildMetadataResources(parentGUID string, objectType storepb.MetaType, data *storepb.StoredMetadata) []*store.CreateMetaRegistryResourceMessage {
+	switch objectType {
+	case storepb.MetaType_TABLE:
+		return buildColumnMetadataResources(parentGUID, data.GetTableMetadata().Columns)
+	default:
+		return nil
 	}
 }
 
@@ -688,12 +696,29 @@ func buildGUID(list ...string) string {
 	return strings.Join(list, common.MetaGUIDSplit)
 }
 
-func getTableColumnsGUID(prefix string, cols []*storepb.ColumnMetadata) []string {
-	var guids []string
+func buildColumnMetadataResources(prefix string, cols []*storepb.ColumnMetadata) []*store.CreateMetaRegistryResourceMessage {
+	resources := make([]*store.CreateMetaRegistryResourceMessage, 0, len(cols))
 	for _, col := range cols {
-		guids = append(guids, buildGUID(prefix, col.Name))
+		if col == nil {
+			continue
+		}
+		columnMetadata, ok := proto.Clone(col).(*storepb.ColumnMetadata)
+		if !ok {
+			continue
+		}
+		resources = append(resources, &store.CreateMetaRegistryResourceMessage{
+			MetaRegistryResource: store.MetaRegistryResource{
+				GUID:       buildGUID(prefix, columnMetadata.Name),
+				ObjectType: storepb.MetaType_COLUMN,
+				Metadata: &storepb.StoredMetadata{
+					Type: &storepb.StoredMetadata_ColumnMetadata{
+						ColumnMetadata: columnMetadata,
+					},
+				},
+			},
+		})
 	}
-	return guids
+	return resources
 }
 
 func getOrDefaultSyncInterval(instance *store.InstanceMessage) time.Duration {
