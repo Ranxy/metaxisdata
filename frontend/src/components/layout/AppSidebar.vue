@@ -77,11 +77,9 @@
 import {
   Database,
   FileCode2,
-  Folder,
   Home,
   Network,
   Settings,
-  Shield,
   Users,
 } from "lucide-vue-next";
 import { computed } from "vue";

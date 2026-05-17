@@ -53,11 +53,8 @@
     "databases": "Databases",
     "metadata": "Metadata Browser",
     "manualSql": "Manual SQL",
-    "projects": "Projects",
-    "projectList": "Project List",
     "settings": "Settings",
     "users": "User Management",
-    "roles": "Roles & Permissions",
     "openlineage": "OpenLineage"
   },
   "metadataBrowser": {

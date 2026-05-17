@@ -53,11 +53,8 @@
     "databases": "数据库",
     "metadata": "元数据",
     "manualSql": "手动 SQL",
-    "projects": "项目",
-    "projectList": "项目列表",
     "settings": "设置",
     "users": "用户管理",
-    "roles": "角色权限",
     "openlineage": "OpenLineage"
   },
   "metadataBrowser": {
