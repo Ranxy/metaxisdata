@@ -3,9 +3,14 @@ package testutil
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
@@ -64,6 +69,49 @@ type LineageTestCase struct {
 	Debug bool
 }
 
+// LineageTestSuite defines a named group of lineage test cases loaded from YAML.
+type LineageTestSuite struct {
+	Name  string
+	Cases []LineageTestCase
+}
+
+type yamlLineageTestSuite struct {
+	Name  string                `yaml:"name"`
+	Cases []yamlLineageTestCase `yaml:"cases"`
+}
+
+type yamlLineageTestCase struct {
+	Name               string              `yaml:"name"`
+	SQL                string              `yaml:"sql"`
+	Catalog            *yamlCatalog        `yaml:"catalog,omitempty"`
+	ExpectedEdges      *[]yamlExpectedEdge `yaml:"expected_edges,omitempty"`
+	ExpectError        bool                `yaml:"expect_error,omitempty"`
+	MinEdges           *int                `yaml:"min_edges,omitempty"`
+	SkipEdgeValidation bool                `yaml:"skip_edge_validation,omitempty"`
+	Debug              bool                `yaml:"debug,omitempty"`
+}
+
+type yamlCatalog struct {
+	Tables  map[string][]string            `yaml:"tables,omitempty"`
+	Schemas map[string]map[string][]string `yaml:"schemas,omitempty"`
+}
+
+type yamlExpectedEdge struct {
+	FromDatabase string `yaml:"from_database,omitempty"`
+	FromSchema   string `yaml:"from_schema,omitempty"`
+	FromTable    string `yaml:"from_table,omitempty"`
+	FromField    string `yaml:"from_field,omitempty"`
+
+	ToDatabase string `yaml:"to_database,omitempty"`
+	ToSchema   string `yaml:"to_schema,omitempty"`
+	ToTable    string `yaml:"to_table,omitempty"`
+	ToField    string `yaml:"to_field,omitempty"`
+
+	RelationType *string `yaml:"relation_type,omitempty"`
+	HasTransform *bool   `yaml:"has_transform,omitempty"`
+	IsTemp       *bool   `yaml:"is_temp,omitempty"`
+}
+
 // Bool returns a pointer to a bool value for use in ExpectedEdge.
 func Bool(v bool) *bool {
 	return &v
@@ -81,6 +129,75 @@ func RelType(v model.RelationType) *model.RelationType {
 
 // AnalyzeFunc is the function signature for analyzing SQL and returning relations.
 type AnalyzeFunc func(sql string, cat catalog.Provide) ([]model.ColumnRelation, error)
+
+// LoadLineageTestSuiteFromYAML loads a lineage test suite definition from a YAML file.
+func LoadLineageTestSuiteFromYAML(path string) (LineageTestSuite, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return LineageTestSuite{}, fmt.Errorf("failed to read lineage test suite %q: %w", path, err)
+	}
+
+	var raw yamlLineageTestSuite
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return LineageTestSuite{}, fmt.Errorf("failed to unmarshal lineage test suite %q: %w", path, err)
+	}
+
+	suiteName := raw.Name
+	if suiteName == "" {
+		suiteName = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	}
+
+	cases := make([]LineageTestCase, 0, len(raw.Cases))
+	for idx, rawCase := range raw.Cases {
+		tc, err := rawCase.toLineageTestCase()
+		if err != nil {
+			return LineageTestSuite{}, fmt.Errorf("failed to convert case %d from %q: %w", idx, path, err)
+		}
+		cases = append(cases, tc)
+	}
+
+	return LineageTestSuite{
+		Name:  suiteName,
+		Cases: cases,
+	}, nil
+}
+
+// RunLineageTestsFromYAML executes all cases defined in a YAML suite file.
+func RunLineageTestsFromYAML(t *testing.T, path string, analyzeFn AnalyzeFunc) {
+	t.Helper()
+
+	suite, err := LoadLineageTestSuiteFromYAML(path)
+	require.NoError(t, err)
+
+	RunLineageTests(t, suite.Cases, analyzeFn)
+}
+
+// RunLineageTestSuitesFromYAMLDir executes every YAML suite in a directory.
+func RunLineageTestSuitesFromYAMLDir(t *testing.T, dir string, analyzeFn AnalyzeFunc) {
+	t.Helper()
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+
+	suitePaths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yaml" {
+			continue
+		}
+		suitePaths = append(suitePaths, filepath.Join(dir, entry.Name()))
+	}
+	sort.Strings(suitePaths)
+	require.NotEmpty(t, suitePaths, "no YAML lineage test suites found in %s", dir)
+
+	for _, suitePath := range suitePaths {
+		suite, err := LoadLineageTestSuiteFromYAML(suitePath)
+		require.NoError(t, err)
+
+		t.Run(suite.Name, func(t *testing.T) {
+			RunLineageTests(t, suite.Cases, analyzeFn)
+		})
+	}
+}
 
 // RunLineageTests executes a slice of lineage test cases using the provided analyze function.
 func RunLineageTests(t *testing.T, testCases []LineageTestCase, analyzeFn AnalyzeFunc) {
@@ -130,6 +247,119 @@ func RunLineageTest(t *testing.T, tc LineageTestCase, analyzeFn AnalyzeFunc) {
 	if tc.ExpectedEdges != nil {
 		ValidateExpectedEdges(t, relations, tc.ExpectedEdges)
 	}
+}
+
+func (c *yamlLineageTestCase) toLineageTestCase() (LineageTestCase, error) {
+	tc := LineageTestCase{
+		Name:               c.Name,
+		SQL:                c.SQL,
+		ExpectError:        c.ExpectError,
+		MinEdges:           c.MinEdges,
+		SkipEdgeValidation: c.SkipEdgeValidation,
+		Debug:              c.Debug,
+	}
+
+	if c.Catalog != nil {
+		tc.Catalog = c.Catalog.toCatalog()
+	}
+
+	if c.ExpectedEdges != nil {
+		tc.ExpectedEdges = make([]ExpectedEdge, 0, len(*c.ExpectedEdges))
+		for _, rawEdge := range *c.ExpectedEdges {
+			edge, err := rawEdge.toExpectedEdge()
+			if err != nil {
+				return LineageTestCase{}, err
+			}
+			tc.ExpectedEdges = append(tc.ExpectedEdges, edge)
+		}
+	}
+
+	return tc, nil
+}
+
+func (c *yamlCatalog) toCatalog() catalog.Provide {
+	if c == nil {
+		return nil
+	}
+
+	cat := catalog.NewMemoryCatalogProvide()
+	for tableName, columns := range c.Tables {
+		addCatalogTable(cat, model.ObjectIdentifier{Name: tableName}, columns)
+	}
+	for schemaName, tables := range c.Schemas {
+		for tableName, columns := range tables {
+			addCatalogTable(cat, model.ObjectIdentifier{Schema: schemaName, Name: tableName}, columns)
+		}
+	}
+
+	return cat
+}
+
+func (e *yamlExpectedEdge) toExpectedEdge() (ExpectedEdge, error) {
+	edge := ExpectedEdge{
+		FromDatabase: e.FromDatabase,
+		FromSchema:   e.FromSchema,
+		FromTable:    e.FromTable,
+		FromField:    e.FromField,
+		ToDatabase:   e.ToDatabase,
+		ToSchema:     e.ToSchema,
+		ToTable:      e.ToTable,
+		ToField:      e.ToField,
+		HasTransform: e.HasTransform,
+		IsTemp:       e.IsTemp,
+	}
+
+	if e.RelationType != nil {
+		relationType, err := parseRelationType(*e.RelationType)
+		if err != nil {
+			return ExpectedEdge{}, err
+		}
+		edge.RelationType = &relationType
+	}
+
+	return edge, nil
+}
+
+func parseRelationType(name string) (model.RelationType, error) {
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	normalized = strings.TrimPrefix(normalized, "relationtype")
+	normalized = strings.TrimPrefix(normalized, "relation_type_")
+	normalized = strings.TrimPrefix(normalized, "relation_type")
+	normalized = strings.TrimPrefix(normalized, "type_")
+	normalized = strings.TrimPrefix(normalized, "_")
+
+	switch normalized {
+	case "direct":
+		return model.RelationTypeDirect, nil
+	case "indirect":
+		return model.RelationTypeIndirect, nil
+	case "join":
+		return model.RelationTypeJoin, nil
+	case "group":
+		return model.RelationTypeGroup, nil
+	case "union":
+		return model.RelationTypeUnion, nil
+	case "intersect":
+		return model.RelationTypeIntersect, nil
+	case "except":
+		return model.RelationTypeExcept, nil
+	case "unknown":
+		return model.RelationTypeUnknown, nil
+	default:
+		return 0, fmt.Errorf("unknown relation type %q", name)
+	}
+}
+
+func addCatalogTable(cat *catalog.MemoryCatalogProvide, id model.ObjectIdentifier, columns []string) {
+	metaColumns := make([]catalog.ColumnMeta, len(columns))
+	for idx, columnName := range columns {
+		metaColumns[idx] = catalog.ColumnMeta{Name: columnName}
+	}
+
+	cat.AddTable(&catalog.TableMeta{
+		ID:      id,
+		Columns: metaColumns,
+	})
 }
 
 // ValidateExpectedEdges checks that all expected edges are found in the results.
@@ -274,18 +504,7 @@ func CreateSimpleCatalog(tables map[string][]string) catalog.Provide {
 	cat := catalog.NewMemoryCatalogProvide()
 
 	for tableName, columns := range tables {
-		cols := make([]catalog.ColumnMeta, len(columns))
-		for i, col := range columns {
-			cols[i] = catalog.ColumnMeta{Name: col}
-		}
-
-		table := &catalog.TableMeta{
-			ID: model.ObjectIdentifier{
-				Name: tableName,
-			},
-			Columns: cols,
-		}
-		cat.AddTable(table)
+		addCatalogTable(cat, model.ObjectIdentifier{Name: tableName}, columns)
 	}
 
 	return cat
@@ -297,19 +516,7 @@ func CreateCatalogWithSchema(tables map[string]map[string][]string) catalog.Prov
 
 	for schema, schemaTables := range tables {
 		for tableName, columns := range schemaTables {
-			cols := make([]catalog.ColumnMeta, len(columns))
-			for i, col := range columns {
-				cols[i] = catalog.ColumnMeta{Name: col}
-			}
-
-			table := &catalog.TableMeta{
-				ID: model.ObjectIdentifier{
-					Schema: schema,
-					Name:   tableName,
-				},
-				Columns: cols,
-			}
-			cat.AddTable(table)
+			addCatalogTable(cat, model.ObjectIdentifier{Schema: schema, Name: tableName}, columns)
 		}
 	}
 

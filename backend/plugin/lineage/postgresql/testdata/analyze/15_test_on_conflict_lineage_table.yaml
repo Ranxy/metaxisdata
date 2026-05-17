@@ -1,0 +1,50 @@
+name: TestOnConflictLineage_Table
+cases:
+    - name: INSERT ON CONFLICT DO NOTHING
+      sql: |-
+        INSERT INTO users (id, name, email)
+        			      SELECT id, name, email FROM pending_users
+        			      ON CONFLICT (id) DO NOTHING
+      expected_edges:
+        - from_table: pending_users
+          from_field: id
+          to_table: users
+          to_field: id
+        - from_table: pending_users
+          from_field: name
+          to_table: users
+          to_field: name
+        - from_table: pending_users
+          from_field: email
+          to_table: users
+          to_field: email
+    - name: INSERT ON CONFLICT DO UPDATE
+      sql: "INSERT INTO users (id, name, email)\n\t\t\t      SELECT id, name, email FROM pending_users\n\t\t\t      ON CONFLICT (id) DO UPDATE SET \n\t\t\t          name = EXCLUDED.name,\n\t\t\t          email = EXCLUDED.email"
+      expected_edges:
+        - from_table: pending_users
+          from_field: id
+          to_table: users
+          to_field: id
+        - from_table: pending_users
+          from_field: name
+          to_table: users
+          to_field: name
+        - from_table: pending_users
+          from_field: email
+          to_table: users
+          to_field: email
+    - name: INSERT ON CONFLICT with expression update
+      sql: |-
+        INSERT INTO inventory (product_id, quantity)
+        			      SELECT product_id, quantity FROM shipment
+        			      ON CONFLICT (product_id) DO UPDATE SET
+        			          quantity = inventory.quantity + EXCLUDED.quantity
+      expected_edges:
+        - from_table: shipment
+          from_field: product_id
+          to_table: inventory
+          to_field: product_id
+        - from_table: shipment
+          from_field: quantity
+          to_table: inventory
+          to_field: quantity

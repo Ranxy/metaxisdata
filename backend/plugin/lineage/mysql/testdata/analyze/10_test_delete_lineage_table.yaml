@@ -1,0 +1,30 @@
+name: TestDeleteLineage_Table
+cases:
+    - name: simple DELETE
+      sql: DELETE FROM users WHERE status = 'inactive' AND last_login < DATE_SUB(NOW(), INTERVAL 1 YEAR)
+      expected_edges:
+        - from_field: status
+          to_table: users
+          to_field: __deletion__
+          has_transform: true
+        - from_field: last_login
+          to_table: users
+          to_field: __deletion__
+          has_transform: true
+    - name: DELETE with JOIN
+      sql: |-
+        DELETE o FROM orders o
+        			      JOIN users u ON o.user_id = u.id
+        			      WHERE u.status = 'deleted'
+      expected_edges:
+        - from_table: users
+          from_field: status
+          to_table: orders
+          to_field: __deletion__
+          has_transform: true
+    - name: DELETE with subquery
+      sql: "DELETE FROM users \n\t\t\t      WHERE id IN (SELECT user_id FROM orders WHERE status = 'cancelled' GROUP BY user_id HAVING COUNT(*) > 5)"
+      expected_edges:
+        - to_table: users
+          to_field: __deletion__
+          has_transform: true

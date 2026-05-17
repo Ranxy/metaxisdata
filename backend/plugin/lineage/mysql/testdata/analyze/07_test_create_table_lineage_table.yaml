@@ -1,0 +1,60 @@
+name: TestCreateTableLineage_Table
+cases:
+    - name: CREATE TABLE AS SELECT
+      sql: CREATE TABLE new_users AS SELECT id, name FROM users WHERE age > 30
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: new_users
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: new_users
+          to_field: name
+    - name: CREATE TABLE AS SELECT with JOIN
+      sql: "CREATE TABLE user_stats AS \n\t\t\t      SELECT u.id, u.name, COUNT(o.id) AS order_count, SUM(o.total) AS total_spent\n\t\t\t      FROM users u \n\t\t\t      LEFT JOIN orders o ON u.id = o.user_id \n\t\t\t      GROUP BY u.id, u.name"
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: user_stats
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: user_stats
+          to_field: name
+        - to_table: user_stats
+          to_field: order_count
+          has_transform: true
+        - to_table: user_stats
+          to_field: total_spent
+          has_transform: true
+    - name: CREATE TEMPORARY TABLE AS SELECT
+      sql: CREATE TEMPORARY TABLE tmp_active_users AS SELECT id, name FROM users WHERE status = 'active'
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: tmp_active_users
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: tmp_active_users
+          to_field: name
+    - name: CREATE TABLE AS SELECT with parenthesized join tree
+      sql: CREATE TABLE order_rollup AS SELECT `o`.`id` AS `order_id`,`c`.`name` AS `customer_name`,sum(`oi`.`amount`) AS `total_amount` FROM (((`orders` `o` JOIN `customers` `c` ON((`o`.`customer_id` = `c`.`id`)))) LEFT JOIN `order_items` `oi` ON((`o`.`id` = `oi`.`order_id`))) GROUP BY `o`.`id`,`c`.`name`
+      expected_edges:
+        - from_table: orders
+          from_field: id
+          to_table: order_rollup
+          to_field: order_id
+          is_temp: false
+        - from_table: customers
+          from_field: name
+          to_table: order_rollup
+          to_field: customer_name
+          is_temp: false
+        - from_table: order_items
+          from_field: amount
+          to_table: order_rollup
+          to_field: total_amount
+          has_transform: true
+          is_temp: false

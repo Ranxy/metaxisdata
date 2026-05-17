@@ -1,0 +1,17 @@
+name: TestLateralJoinLineage_Table
+cases:
+    - name: LATERAL subquery
+      sql: "SELECT u.id, u.name, recent.order_id\n\t\t\t      FROM users u\n\t\t\t      LEFT JOIN LATERAL (\n\t\t\t          SELECT order_id FROM orders \n\t\t\t          WHERE user_id = u.id \n\t\t\t          ORDER BY created_at DESC \n\t\t\t          LIMIT 1\n\t\t\t      ) recent ON true"
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+        - from_table: orders
+          from_field: order_id
+          to_table: __result__
+          to_field: order_id

@@ -1,0 +1,27 @@
+name: TestDistinctLineage_Table
+cases:
+    - name: SELECT DISTINCT
+      sql: SELECT DISTINCT category FROM products
+      expected_edges:
+        - from_table: products
+          from_field: category
+          to_table: __result__
+          to_field: category
+    - name: SELECT DISTINCT ON (PostgreSQL specific)
+      sql: |-
+        SELECT DISTINCT ON (user_id) user_id, order_id, total
+        			      FROM orders
+        			      ORDER BY user_id, created_at DESC
+      expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: user_id
+        - from_table: orders
+          from_field: order_id
+          to_table: __result__
+          to_field: order_id
+        - from_table: orders
+          from_field: total
+          to_table: __result__
+          to_field: total

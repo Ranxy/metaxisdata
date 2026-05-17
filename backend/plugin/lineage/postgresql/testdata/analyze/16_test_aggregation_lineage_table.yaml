@@ -1,0 +1,71 @@
+name: TestAggregationLineage_Table
+cases:
+    - name: simple GROUP BY with COUNT
+      sql: SELECT department, COUNT(*) AS emp_count FROM employees GROUP BY department
+      expected_edges:
+        - from_table: employees
+          from_field: department
+          to_table: __result__
+          to_field: department
+        - to_table: __result__
+          to_field: emp_count
+          has_transform: true
+    - name: GROUP BY with multiple aggregates
+      sql: "SELECT \n\t\t\t        category,\n\t\t\t        COUNT(*) AS product_count,\n\t\t\t        AVG(price) AS avg_price,\n\t\t\t        MAX(price) AS max_price,\n\t\t\t        MIN(price) AS min_price\n\t\t\t      FROM products\n\t\t\t      GROUP BY category"
+      expected_edges:
+        - from_table: products
+          from_field: category
+          to_table: __result__
+          to_field: category
+        - to_table: __result__
+          to_field: product_count
+          has_transform: true
+        - to_table: __result__
+          to_field: avg_price
+          has_transform: true
+        - to_table: __result__
+          to_field: max_price
+          has_transform: true
+        - to_table: __result__
+          to_field: min_price
+          has_transform: true
+    - name: GROUP BY with HAVING
+      sql: |-
+        SELECT user_id, SUM(amount) AS total
+        			      FROM orders
+        			      GROUP BY user_id
+        			      HAVING SUM(amount) > 1000
+      expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: user_id
+        - from_table: orders
+          from_field: amount
+          to_table: __result__
+          to_field: total
+          has_transform: true
+    - name: PostgreSQL STRING_AGG function
+      sql: SELECT department, STRING_AGG(name, ', ' ORDER BY name) AS employees FROM staff GROUP BY department
+      expected_edges:
+        - from_table: staff
+          from_field: department
+          to_table: __result__
+          to_field: department
+        - from_table: staff
+          from_field: name
+          to_table: __result__
+          to_field: employees
+          has_transform: true
+    - name: PostgreSQL ARRAY_AGG function
+      sql: SELECT user_id, ARRAY_AGG(order_id) AS order_ids FROM orders GROUP BY user_id
+      expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: user_id
+        - from_table: orders
+          from_field: order_id
+          to_table: __result__
+          to_field: order_ids
+          has_transform: true

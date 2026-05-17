@@ -1,0 +1,80 @@
+name: TestWindowFunctionLineage_Table
+cases:
+    - name: ROW_NUMBER window function
+      sql: "SELECT \n\t\t\t        id, \n\t\t\t        name, \n\t\t\t        salary,\n\t\t\t        ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary DESC) AS rank_in_dept\n\t\t\t      FROM employees"
+      expected_edges:
+        - from_table: employees
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+        - from_table: employees
+          from_field: salary
+          to_table: __result__
+          to_field: salary
+        - from_table: employees
+          to_table: __result__
+          to_field: rank_in_dept
+          has_transform: true
+    - name: multiple window functions
+      sql: "SELECT \n\t\t\t        product_id,\n\t\t\t        sale_date,\n\t\t\t        amount,\n\t\t\t        SUM(amount) OVER (PARTITION BY product_id ORDER BY sale_date) AS running_total,\n\t\t\t        AVG(amount) OVER (PARTITION BY product_id) AS avg_amount\n\t\t\t      FROM sales"
+      expected_edges:
+        - from_table: sales
+          from_field: product_id
+          to_table: __result__
+          to_field: product_id
+        - from_table: sales
+          from_field: sale_date
+          to_table: __result__
+          to_field: sale_date
+        - from_table: sales
+          from_field: amount
+          to_table: __result__
+          to_field: amount
+        - to_table: __result__
+          to_field: running_total
+          has_transform: true
+        - to_table: __result__
+          to_field: avg_amount
+          has_transform: true
+    - name: LEAD and LAG functions
+      sql: "SELECT \n\t\t\t        id,\n\t\t\t        sale_date,\n\t\t\t        amount,\n\t\t\t        LAG(amount) OVER (ORDER BY sale_date) AS prev_amount,\n\t\t\t        LEAD(amount) OVER (ORDER BY sale_date) AS next_amount\n\t\t\t      FROM sales"
+      expected_edges:
+        - from_table: sales
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: sales
+          from_field: sale_date
+          to_table: __result__
+          to_field: sale_date
+        - from_table: sales
+          from_field: amount
+          to_table: __result__
+          to_field: amount
+        - to_table: __result__
+          to_field: prev_amount
+          has_transform: true
+        - to_table: __result__
+          to_field: next_amount
+          has_transform: true
+    - name: RANK and DENSE_RANK functions
+      sql: "SELECT \n\t\t\t        name,\n\t\t\t        score,\n\t\t\t        RANK() OVER (ORDER BY score DESC) AS rank,\n\t\t\t        DENSE_RANK() OVER (ORDER BY score DESC) AS dense_rank\n\t\t\t      FROM students"
+      expected_edges:
+        - from_table: students
+          from_field: name
+          to_table: __result__
+          to_field: name
+        - from_table: students
+          from_field: score
+          to_table: __result__
+          to_field: score
+        - to_table: __result__
+          to_field: rank
+          has_transform: true
+        - to_table: __result__
+          to_field: dense_rank
+          has_transform: true

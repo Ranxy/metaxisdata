@@ -1,0 +1,93 @@
+name: TestSelectLineage_Table
+cases:
+    - name: simple select with qualified columns
+      sql: SELECT users.id, users.name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+          is_temp: true
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+          is_temp: true
+    - name: select with column aliases
+      sql: SELECT users.id AS user_id, users.name AS user_name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: user_id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: user_name
+    - name: select with expression (CONCAT)
+      sql: SELECT id, CONCAT(first_name, ' ', last_name) AS full_name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+          has_transform: false
+        - from_table: users
+          from_field: first_name
+          to_table: __result__
+          to_field: full_name
+          has_transform: true
+        - from_table: users
+          from_field: last_name
+          to_table: __result__
+          to_field: full_name
+          has_transform: true
+    - name: select with WHERE clause
+      sql: SELECT id, name FROM users WHERE age > 30
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+    - name: select star without catalog
+      sql: SELECT * FROM users
+      expected_edges:
+        - from_table: users
+          from_field: '*'
+          to_table: __result__
+    - name: select with qualified table name (schema.table)
+      sql: SELECT mydb.users.id, mydb.users.name FROM mydb.users
+      expected_edges:
+        - from_database: mydb
+          from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_database: mydb
+          from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+    - name: select with parenthesized join tree
+      sql: SELECT `o`.`id` AS `order_id`,`c`.`name` AS `customer_name`,sum(`oi`.`amount`) AS `total_amount` FROM (((`orders` `o` JOIN `customers` `c` ON((`o`.`customer_id` = `c`.`id`)))) LEFT JOIN `order_items` `oi` ON((`o`.`id` = `oi`.`order_id`))) GROUP BY `o`.`id`,`c`.`name`
+      expected_edges:
+        - from_table: orders
+          from_field: id
+          to_table: __result__
+          to_field: order_id
+          is_temp: true
+        - from_table: customers
+          from_field: name
+          to_table: __result__
+          to_field: customer_name
+          is_temp: true
+        - from_table: order_items
+          from_field: amount
+          to_table: __result__
+          to_field: total_amount
+          has_transform: true
+          is_temp: true

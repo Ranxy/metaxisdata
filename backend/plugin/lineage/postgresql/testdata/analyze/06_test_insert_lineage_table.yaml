@@ -1,0 +1,79 @@
+name: TestInsertLineage_Table
+cases:
+    - name: INSERT SELECT
+      sql: INSERT INTO tmp_users SELECT id, name FROM users WHERE age > 30
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: tmp_users
+          to_field: id
+          is_temp: false
+        - from_table: users
+          from_field: name
+          to_table: tmp_users
+          to_field: name
+          is_temp: false
+    - name: INSERT SELECT with explicit columns
+      sql: INSERT INTO tmp_users (user_id, user_name) SELECT id, name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: tmp_users
+          to_field: user_id
+        - from_table: users
+          from_field: name
+          to_table: tmp_users
+          to_field: user_name
+    - name: INSERT SELECT with JOIN
+      sql: "INSERT INTO summary \n\t\t\t      SELECT u.id, u.name, COUNT(o.id) AS order_count \n\t\t\t      FROM users u \n\t\t\t      JOIN orders o ON u.id = o.user_id \n\t\t\t      GROUP BY u.id, u.name"
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: summary
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: summary
+          to_field: name
+        - to_table: summary
+          to_field: order_count
+          has_transform: true
+    - name: INSERT with CTE
+      sql: |-
+        WITH active_users AS (
+        			          SELECT id, name FROM users WHERE status = 'active'
+        			      )
+        			      INSERT INTO user_backup SELECT * FROM active_users
+      expected_edges:
+        - from_table: users
+          to_table: user_backup
+    - name: INSERT with CTE explicit column names
+      sql: |-
+        WITH active_users (user_id, user_name) AS (
+        			          SELECT id, name FROM users WHERE status = 'active'
+        			      )
+        			      INSERT INTO user_backup (id, name)
+        			      SELECT user_id, user_name FROM active_users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: user_backup
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: user_backup
+          to_field: name
+    - name: INSERT with RETURNING clause
+      sql: |-
+        INSERT INTO users (name, email)
+        			      SELECT name, email FROM pending_users
+        			      RETURNING id, name
+      expected_edges:
+        - from_table: pending_users
+          from_field: name
+          to_table: users
+          to_field: name
+        - from_table: pending_users
+          from_field: email
+          to_table: users
+          to_field: email

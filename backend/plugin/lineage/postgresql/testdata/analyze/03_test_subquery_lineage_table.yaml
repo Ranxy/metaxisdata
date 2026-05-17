@@ -1,0 +1,66 @@
+name: TestSubqueryLineage_Table
+cases:
+    - name: subquery in FROM clause
+      sql: |-
+        SELECT sub.id, sub.total_orders
+        			      FROM (SELECT user_id AS id, COUNT(*) AS total_orders FROM orders GROUP BY user_id) AS sub
+      expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: id
+        - from_table: orders
+          to_table: __result__
+          to_field: total_orders
+          has_transform: true
+    - name: nested subquery filters intermediate lineage
+      sql: |-
+        SELECT foo.user_id, foo.total_amount
+        			      FROM (
+        			          SELECT user_id, total_amount
+        			          FROM (
+        			              SELECT user_id, SUM(amount) AS total_amount
+        			              FROM orders
+        			              GROUP BY user_id
+        			          ) sub
+        			      ) foo
+        			      JOIN (
+        			          SELECT user_id, COUNT(*) AS order_count
+        			          FROM user_orders
+        			          GROUP BY user_id
+        			      ) bar
+        			      ON foo.user_id = bar.user_id
+      expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: user_id
+        - from_table: orders
+          from_field: amount
+          to_table: __result__
+          to_field: total_amount
+    - name: correlated subquery in SELECT
+      sql: "SELECT u.id, u.name, \n\t\t\t          (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS order_count\n\t\t\t      FROM users u"
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+    - name: subquery in WHERE EXISTS
+      sql: |-
+        SELECT u.id, u.name
+        			      FROM users u
+        			      WHERE EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.id)
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name

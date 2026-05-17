@@ -1,0 +1,58 @@
+name: TestUpdateLineage_Table
+cases:
+    - name: UPDATE with literal values
+      sql: UPDATE users SET email = 'new@email.com', updated_at = NOW() WHERE id = 1
+      expected_edges:
+        - to_table: users
+          to_field: email
+          has_transform: true
+        - to_table: users
+          to_field: updated_at
+          has_transform: true
+    - name: UPDATE with column reference
+      sql: UPDATE users SET new_email = old_email, full_name = first_name || ' ' || last_name
+      expected_edges:
+        - from_table: users
+          from_field: old_email
+          to_table: users
+          to_field: new_email
+        - from_table: users
+          from_field: first_name
+          to_table: users
+          to_field: full_name
+          has_transform: true
+        - from_table: users
+          from_field: last_name
+          to_table: users
+          to_field: full_name
+          has_transform: true
+    - name: UPDATE with FROM clause
+      sql: "UPDATE orders \n\t\t\t      SET user_name = u.name, discount = orders.total * 0.1\n\t\t\t      FROM users u\n\t\t\t      WHERE orders.user_id = u.id"
+      expected_edges:
+        - from_table: users
+          from_field: name
+          to_table: orders
+          to_field: user_name
+        - from_table: orders
+          from_field: total
+          to_table: orders
+          to_field: discount
+          has_transform: true
+    - name: UPDATE with subquery
+      sql: "UPDATE users \n\t\t\t      SET total_orders = (SELECT COUNT(*) FROM orders WHERE orders.user_id = users.id)"
+      expected_edges:
+        - to_table: users
+          to_field: total_orders
+          has_transform: true
+    - name: UPDATE with CTE
+      sql: |-
+        WITH high_value_users AS (
+        			          SELECT user_id FROM orders GROUP BY user_id HAVING SUM(total) > 1000
+        			      )
+        			      UPDATE users SET status = 'premium'
+        			      FROM high_value_users hvu
+        			      WHERE users.id = hvu.user_id
+      expected_edges:
+        - to_table: users
+          to_field: status
+          has_transform: true

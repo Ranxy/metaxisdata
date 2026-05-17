@@ -1,0 +1,73 @@
+name: TestCTELineage_Table
+cases:
+    - name: simple CTE
+      sql: |-
+        WITH active_users AS (
+        			          SELECT id, name FROM users WHERE status = 'active'
+        			      )
+        			      SELECT au.id, au.name FROM active_users au
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+    - name: multiple CTEs
+      sql: "WITH \n\t\t\t          active_users AS (\n\t\t\t              SELECT id, name FROM users WHERE status = 'active'\n\t\t\t          ),\n\t\t\t          user_orders AS (\n\t\t\t              SELECT user_id, COUNT(*) AS order_count FROM orders GROUP BY user_id\n\t\t\t          )\n\t\t\t      SELECT au.id, au.name, uo.order_count\n\t\t\t      FROM active_users au\n\t\t\t      LEFT JOIN user_orders uo ON au.id = uo.user_id"
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+        - from_table: orders
+          to_table: __result__
+          to_field: order_count
+          has_transform: true
+    - name: CTE with explicit column names
+      sql: |-
+        WITH user_summary (user_id, user_name) AS (
+        			          SELECT id, name FROM users
+        			      )
+        			      SELECT user_id, user_name FROM user_summary
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: user_id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: user_name
+    - name: CTE with explicit column names referenced through alias
+      sql: |-
+        WITH user_summary (user_id, user_name) AS (
+        			          SELECT id, name FROM users
+        			      )
+        			      SELECT us.user_id, us.user_name FROM user_summary us
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: user_id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: user_name
+    - name: nested CTE references
+      sql: "WITH \n\t\t\t          first_cte AS (\n\t\t\t              SELECT id, name FROM users\n\t\t\t          ),\n\t\t\t          second_cte AS (\n\t\t\t              SELECT id, name FROM first_cte WHERE id > 10\n\t\t\t          )\n\t\t\t      SELECT id, name FROM second_cte"
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name

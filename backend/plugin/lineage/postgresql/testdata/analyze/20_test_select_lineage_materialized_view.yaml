@@ -1,0 +1,15 @@
+name: TestSelectLineage_MaterializedView
+cases:
+    - name: simple select with qualified columns
+      sql: CREATE MATERIALIZED VIEW muser AS SELECT users.id, users.name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: muser
+          to_field: id
+          is_temp: false
+        - from_table: users
+          from_field: name
+          to_table: muser
+          to_field: name
+          is_temp: false

@@ -1,0 +1,50 @@
+name: TestCaseExpressionLineage_Table
+cases:
+    - name: simple CASE expression
+      sql: |-
+        SELECT id,
+        			        CASE status
+        			            WHEN 'A' THEN 'Active'
+        			            WHEN 'I' THEN 'Inactive'
+        			            ELSE 'Unknown'
+        			        END AS status_text
+        			      FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: status
+          to_table: __result__
+          to_field: status_text
+          has_transform: true
+    - name: searched CASE expression
+      sql: "SELECT id,\n\t\t\t        CASE \n\t\t\t            WHEN age < 18 THEN 'minor'\n\t\t\t            WHEN age >= 18 AND age < 65 THEN 'adult'\n\t\t\t            ELSE 'senior'\n\t\t\t        END AS age_group\n\t\t\t      FROM users"
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: age
+          to_table: __result__
+          to_field: age_group
+          has_transform: true
+    - name: CASE with multiple column references
+      sql: "SELECT id,\n\t\t\t        CASE \n\t\t\t            WHEN status = 'active' AND balance > 0 THEN 'good'\n\t\t\t            WHEN status = 'active' AND balance <= 0 THEN 'warning'\n\t\t\t            ELSE 'inactive'\n\t\t\t        END AS account_status\n\t\t\t      FROM accounts"
+      expected_edges:
+        - from_table: accounts
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: accounts
+          from_field: status
+          to_table: __result__
+          to_field: account_status
+          has_transform: true
+        - from_table: accounts
+          from_field: balance
+          to_table: __result__
+          to_field: account_status
+          has_transform: true

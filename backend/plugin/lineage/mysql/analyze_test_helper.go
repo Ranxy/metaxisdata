@@ -2,6 +2,8 @@ package mysql
 
 import (
 	"context"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
@@ -38,4 +40,15 @@ func RunLineageTests(t *testing.T, testCases []LineageTestCase) {
 // RunLineageTest executes a single lineage test case using the MySQL analyzer.
 func RunLineageTest(t *testing.T, tc LineageTestCase) {
 	testutil.RunLineageTest(t, tc, analyzeSQL)
+}
+
+func testdataPath(elem ...string) string {
+	_, filename, _, _ := runtime.Caller(0)
+	parts := append([]string{filepath.Dir(filename), "testdata"}, elem...)
+	return filepath.Join(parts...)
+}
+
+// RunLineageYAMLTestSuites executes all YAML-backed lineage suites for MySQL.
+func RunLineageYAMLTestSuites(t *testing.T) {
+	testutil.RunLineageTestSuitesFromYAMLDir(t, testdataPath("analyze"), analyzeSQL)
 }

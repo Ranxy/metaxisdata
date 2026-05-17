@@ -1,0 +1,28 @@
+name: TestIsTemp_Table
+cases:
+    - name: SELECT produces temporary result
+      sql: SELECT id, name FROM users
+      expected_edges:
+        - from_table: users
+          to_table: __result__
+          is_temp: true
+    - name: INSERT targets real table
+      sql: INSERT INTO orders (order_id, user_id) SELECT id, user_id FROM temp_orders
+      expected_edges:
+        - to_table: orders
+          is_temp: false
+    - name: UPDATE targets real table
+      sql: UPDATE products SET price = price * 1.1 WHERE category = 'electronics'
+      expected_edges:
+        - to_table: products
+          is_temp: false
+    - name: DELETE targets real table
+      sql: DELETE FROM logs WHERE created_at < '2020-01-01'
+      expected_edges:
+        - to_table: logs
+          is_temp: false
+    - name: CREATE TABLE AS SELECT targets real table
+      sql: CREATE TABLE summary AS SELECT category, COUNT(*) as cnt FROM products GROUP BY category
+      expected_edges:
+        - to_table: summary
+          is_temp: false

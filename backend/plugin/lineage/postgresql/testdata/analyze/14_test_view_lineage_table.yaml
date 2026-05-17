@@ -1,0 +1,68 @@
+name: TestViewLineage_Table
+cases:
+    - name: simple CREATE VIEW
+      sql: CREATE VIEW active_users AS SELECT id, name FROM users WHERE status = 'active'
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: active_users
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: active_users
+          to_field: name
+    - name: CREATE VIEW with explicit columns
+      sql: CREATE VIEW user_summary (user_id, user_name) AS SELECT id, name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: user_summary
+          to_field: user_id
+        - from_table: users
+          from_field: name
+          to_table: user_summary
+          to_field: user_name
+    - name: CREATE OR REPLACE VIEW
+      sql: CREATE OR REPLACE VIEW user_details AS SELECT u.id, u.name, u.email FROM users u
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: user_details
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: user_details
+          to_field: name
+        - from_table: users
+          from_field: email
+          to_table: user_details
+          to_field: email
+    - name: CREATE VIEW with JOIN
+      sql: "CREATE VIEW user_orders_view AS \n\t\t\t      SELECT u.id, u.name, COUNT(o.id) AS order_count\n\t\t\t      FROM users u\n\t\t\t      LEFT JOIN orders o ON u.id = o.user_id\n\t\t\t      GROUP BY u.id, u.name"
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: user_orders_view
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: user_orders_view
+          to_field: name
+        - to_table: user_orders_view
+          to_field: order_count
+          has_transform: true
+    - name: CREATE VIEW with schema qualification
+      sql: CREATE VIEW myschema.active_users AS SELECT id, name FROM public.users WHERE active = true
+      expected_edges:
+        - from_schema: public
+          from_table: users
+          from_field: id
+          to_schema: myschema
+          to_table: active_users
+          to_field: id
+        - from_schema: public
+          from_table: users
+          from_field: name
+          to_schema: myschema
+          to_table: active_users
+          to_field: name

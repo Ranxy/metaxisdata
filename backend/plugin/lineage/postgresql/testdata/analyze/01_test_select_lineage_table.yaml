@@ -1,0 +1,140 @@
+name: TestSelectLineage_Table
+cases:
+    - name: simple select with qualified columns
+      sql: SELECT users.id, users.name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+          is_temp: true
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+          is_temp: true
+    - name: select with column aliases
+      sql: SELECT users.id AS user_id, users.name AS user_name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: user_id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: user_name
+    - name: select with expression (|| operator)
+      sql: SELECT id, first_name || ' ' || last_name AS full_name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: first_name
+          to_table: __result__
+          to_field: full_name
+        - from_table: users
+          from_field: last_name
+          to_table: __result__
+          to_field: full_name
+    - name: select with CONCAT function
+      sql: SELECT id, CONCAT(first_name, ' ', last_name) AS full_name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+          has_transform: false
+        - from_table: users
+          from_field: first_name
+          to_table: __result__
+          to_field: full_name
+          has_transform: true
+        - from_table: users
+          from_field: last_name
+          to_table: __result__
+          to_field: full_name
+          has_transform: true
+    - name: select with WHERE clause
+      sql: SELECT id, name FROM users WHERE age > 30
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+    - name: select star without catalog
+      sql: SELECT * FROM users
+      expected_edges:
+        - from_table: users
+          from_field: '*'
+          to_table: __result__
+    - name: select with qualified table name (schema.table)
+      sql: SELECT mydb.users.id, mydb.users.name FROM mydb.users
+      expected_edges:
+        - from_schema: mydb
+          from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_schema: mydb
+          from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+    - name: select with table alias
+      sql: SELECT u.id, u.name FROM users AS u
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+    - name: select with COALESCE function
+      sql: SELECT id, COALESCE(nickname, name) AS display_name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: nickname
+          to_table: __result__
+          to_field: display_name
+          has_transform: true
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: display_name
+          has_transform: true
+    - name: select with CAST expression
+      sql: SELECT id, CAST(created_at AS DATE) AS create_date FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: created_at
+          to_table: __result__
+          to_field: create_date
+          has_transform: true
+    - name: select with PostgreSQL type cast (::)
+      sql: SELECT id, created_at::date AS create_date FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: created_at
+          to_table: __result__
+          to_field: create_date

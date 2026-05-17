@@ -1,0 +1,87 @@
+name: TestJoinLineage_Table
+cases:
+    - name: inner join
+      sql: "SELECT u.id, u.name, o.order_id, o.total \n\t\t\t      FROM users u \n\t\t\t      JOIN orders o ON u.id = o.user_id"
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+        - from_table: orders
+          from_field: order_id
+          to_table: __result__
+          to_field: order_id
+        - from_table: orders
+          from_field: total
+          to_table: __result__
+          to_field: total
+    - name: left outer join
+      sql: |-
+        SELECT u.id, u.name, o.order_id
+        			      FROM users u
+        			      LEFT OUTER JOIN orders o ON u.id = o.user_id
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+        - from_table: orders
+          from_field: order_id
+          to_table: __result__
+          to_field: order_id
+    - name: multiple joins
+      sql: |-
+        SELECT u.name, o.order_id, p.product_name
+        			      FROM users u
+        			      JOIN orders o ON u.id = o.user_id
+        			      JOIN products p ON o.product_id = p.id
+      expected_edges:
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+        - from_table: orders
+          from_field: order_id
+          to_table: __result__
+          to_field: order_id
+        - from_table: products
+          from_field: product_name
+          to_table: __result__
+          to_field: product_name
+    - name: cross join
+      sql: |-
+        SELECT u.name, d.department_name
+        			      FROM users u
+        			      CROSS JOIN departments d
+      expected_edges:
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+        - from_table: departments
+          from_field: department_name
+          to_table: __result__
+          to_field: department_name
+    - name: natural join
+      sql: |-
+        SELECT id, name, department_id
+        			      FROM users
+        			      NATURAL JOIN user_departments
+      expected_edges:
+        - from_field: id
+          to_table: __result__
+          to_field: id
+        - from_field: name
+          to_table: __result__
+          to_field: name
+        - from_field: department_id
+          to_table: __result__
+          to_field: department_id

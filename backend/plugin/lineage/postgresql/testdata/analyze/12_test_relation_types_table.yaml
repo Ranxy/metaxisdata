@@ -1,0 +1,28 @@
+name: TestRelationTypes_Table
+cases:
+    - name: direct relation type
+      sql: SELECT id, name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+    - name: indirect relation type (expression)
+      sql: SELECT id, UPPER(name) AS name_upper FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name_upper
+          relation_type: indirect

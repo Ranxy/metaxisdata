@@ -1,0 +1,147 @@
+name: TestCreateViewLineage_Table
+cases:
+    - name: CREATE VIEW with quoted identifiers
+      sql: CREATE VIEW `ods_temp_view1` AS SELECT `src_users`.`id` AS `user_id`, `src_users`.`name` FROM `src_users`
+      expected_edges:
+        - from_table: src_users
+          from_field: id
+          to_table: ods_temp_view1
+          to_field: user_id
+        - from_table: src_users
+          from_field: name
+          to_table: ods_temp_view1
+          to_field: name
+    - name: CREATE VIEW with parenthesized join tree
+      sql: CREATE VIEW `popular_posts` AS select `p`.`id` AS `id`,`p`.`user_id` AS `user_id`,`p`.`title` AS `title`,`p`.`content` AS `content`,`p`.`status` AS `status`,`p`.`created_at` AS `created_at`,`p`.`published_at` AS `published_at`,`p`.`view_count` AS `view_count`,`p`.`likes` AS `likes`,`p`.`metadata` AS `metadata`,`u`.`username` AS `username`,count(`c`.`id`) AS `comment_count` from ((`posts` `p` join `users` `u` on((`p`.`user_id` = `u`.`id`))) left join `comments` `c` on((`p`.`id` = `c`.`post_id`))) where (`p`.`status` = 'published') group by `p`.`id` having (`comment_count` > 0) order by `p`.`likes` desc,`comment_count` desc
+      expected_edges:
+        - from_table: posts
+          from_field: id
+          to_table: popular_posts
+          to_field: id
+          is_temp: false
+        - from_table: posts
+          from_field: user_id
+          to_table: popular_posts
+          to_field: user_id
+          is_temp: false
+        - from_table: posts
+          from_field: title
+          to_table: popular_posts
+          to_field: title
+          is_temp: false
+        - from_table: posts
+          from_field: content
+          to_table: popular_posts
+          to_field: content
+          is_temp: false
+        - from_table: posts
+          from_field: status
+          to_table: popular_posts
+          to_field: status
+          is_temp: false
+        - from_table: posts
+          from_field: created_at
+          to_table: popular_posts
+          to_field: created_at
+          is_temp: false
+        - from_table: posts
+          from_field: published_at
+          to_table: popular_posts
+          to_field: published_at
+          is_temp: false
+        - from_table: posts
+          from_field: view_count
+          to_table: popular_posts
+          to_field: view_count
+          is_temp: false
+        - from_table: posts
+          from_field: likes
+          to_table: popular_posts
+          to_field: likes
+          is_temp: false
+        - from_table: posts
+          from_field: metadata
+          to_table: popular_posts
+          to_field: metadata
+          is_temp: false
+        - from_table: users
+          from_field: username
+          to_table: popular_posts
+          to_field: username
+          is_temp: false
+        - from_table: comments
+          from_field: id
+          to_table: popular_posts
+          to_field: comment_count
+          has_transform: true
+          is_temp: false
+    - name: CREATE VIEW with deeply nested parenthesized join tree
+      sql: CREATE VIEW `order_rollup` AS select `o`.`id` AS `order_id`,`c`.`name` AS `customer_name`,sum(`oi`.`amount`) AS `total_amount` from (((`orders` `o` join `customers` `c` on((`o`.`customer_id` = `c`.`id`)))) left join `order_items` `oi` on((`o`.`id` = `oi`.`order_id`))) group by `o`.`id`,`c`.`name`
+      expected_edges:
+        - from_table: orders
+          from_field: id
+          to_table: order_rollup
+          to_field: order_id
+          is_temp: false
+        - from_table: customers
+          from_field: name
+          to_table: order_rollup
+          to_field: customer_name
+          is_temp: false
+        - from_table: order_items
+          from_field: amount
+          to_table: order_rollup
+          to_field: total_amount
+          has_transform: true
+          is_temp: false
+    - name: CREATE VIEW with parenthesized right join
+      sql: CREATE VIEW `shipment_status_view` AS select `o`.`id` AS `order_id`,`s`.`shipped_at` AS `shipped_at`,`s`.`status` AS `shipping_status` from ((`orders` `o` right join `shipments` `s` on((`o`.`id` = `s`.`order_id`)))) where (`s`.`status` <> 'cancelled')
+      expected_edges:
+        - from_table: orders
+          from_field: id
+          to_table: shipment_status_view
+          to_field: order_id
+          is_temp: false
+        - from_table: shipments
+          from_field: shipped_at
+          to_table: shipment_status_view
+          to_field: shipped_at
+          is_temp: false
+        - from_table: shipments
+          from_field: status
+          to_table: shipment_status_view
+          to_field: shipping_status
+          is_temp: false
+    - name: CREATE VIEW referencing cross-database tables
+      sql: CREATE OR REPLACE VIEW `v_customer_orders` AS select `c`.`customer_id` AS `customer_id`,`c`.`full_name` AS `customer_name`,`c`.`email` AS `customer_email`,`o`.`order_id` AS `order_id`,`o`.`order_date` AS `order_date`,`r`.`region_name` AS `region_name` from ((`raw_data`.`customers` `c` join `raw_data`.`orders` `o` on((`o`.`customer_id` = `c`.`customer_id`))) left join `raw_data`.`regions` `r` on((`r`.`region_id` = `c`.`region_id`)))
+      expected_edges:
+        - from_database: raw_data
+          from_table: customers
+          from_field: customer_id
+          to_table: v_customer_orders
+          to_field: customer_id
+        - from_database: raw_data
+          from_table: customers
+          from_field: full_name
+          to_table: v_customer_orders
+          to_field: customer_name
+        - from_database: raw_data
+          from_table: customers
+          from_field: email
+          to_table: v_customer_orders
+          to_field: customer_email
+        - from_database: raw_data
+          from_table: orders
+          from_field: order_id
+          to_table: v_customer_orders
+          to_field: order_id
+        - from_database: raw_data
+          from_table: orders
+          from_field: order_date
+          to_table: v_customer_orders
+          to_field: order_date
+        - from_database: raw_data
+          from_table: regions
+          from_field: region_name
+          to_table: v_customer_orders
+          to_field: region_name

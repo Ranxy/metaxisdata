@@ -1,0 +1,67 @@
+name: TestUnionLineage_Table
+cases:
+    - name: simple UNION
+      sql: "SELECT id, name FROM employees \n\t\t\t      UNION \n\t\t\t      SELECT id, name FROM contractors"
+      expected_edges:
+        - from_table: employees
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+        - from_table: contractors
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: contractors
+          from_field: name
+          to_table: __result__
+          to_field: name
+    - name: UNION ALL
+      sql: "SELECT user_id, amount FROM sales \n\t\t\t      UNION ALL \n\t\t\t      SELECT user_id, amount FROM refunds"
+      expected_edges:
+        - from_table: sales
+          from_field: user_id
+          to_table: __result__
+          to_field: user_id
+        - from_table: sales
+          from_field: amount
+          to_table: __result__
+          to_field: amount
+        - from_table: refunds
+          from_field: user_id
+          to_table: __result__
+          to_field: user_id
+        - from_table: refunds
+          from_field: amount
+          to_table: __result__
+          to_field: amount
+    - name: multiple UNION
+      sql: "SELECT id, name FROM employees \n\t\t\t      UNION \n\t\t\t      SELECT id, name FROM contractors\n\t\t\t      UNION\n\t\t\t      SELECT id, name FROM vendors"
+      expected_edges:
+        - from_table: employees
+          to_table: __result__
+        - from_table: contractors
+          to_table: __result__
+        - from_table: vendors
+          to_table: __result__
+    - name: INTERSECT operation
+      sql: "SELECT id FROM users \n\t\t\t      INTERSECT \n\t\t\t      SELECT user_id AS id FROM orders"
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+    - name: EXCEPT operation
+      sql: "SELECT id FROM users \n\t\t\t      EXCEPT \n\t\t\t      SELECT user_id AS id FROM blocked_users"
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: blocked_users
+          from_field: user_id
+          to_table: __result__
+          to_field: id
