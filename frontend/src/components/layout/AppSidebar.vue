@@ -141,20 +141,6 @@ const menuItems = computed<MenuItem[]>(() => [
     ],
   },
   {
-    key: "projects",
-    label: t("menu.projects"),
-    path: "#",
-    icon: Folder,
-    children: [
-      {
-        key: "projectList",
-        label: t("menu.projectList"),
-        path: "/projects",
-        icon: Folder,
-      },
-    ],
-  },
-  {
     key: "settings",
     label: t("menu.settings"),
     path: "#",
@@ -165,12 +151,6 @@ const menuItems = computed<MenuItem[]>(() => [
         label: t("menu.users"),
         path: "/settings/users",
         icon: Users,
-      },
-      {
-        key: "roles",
-        label: t("menu.roles"),
-        path: "/settings/roles",
-        icon: Shield,
       },
       {
         key: "openlineage",
