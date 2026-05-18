@@ -126,7 +126,7 @@ func SetupPostgresServiceEnv(t *testing.T) *ServiceEnv {
 // The returned cleanup function is idempotent and should be called once the shared environment is no longer needed.
 func StartMySQLServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 	bootstrap := &TestEnv{}
-	pgHost, pgPort, pgDBName, err := startPostgresForEnv(ctx, bootstrap)
+	pgHost, pgPort, pgDBName, err := startPostgresForEnv(ctx, bootstrap, "mysql")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -211,7 +211,7 @@ func StartMySQLServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 // The returned cleanup function is idempotent and should be called once the shared environment is no longer needed.
 func StartPostgresServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 	bootstrap := &TestEnv{}
-	pgHost, pgPort, pgDBName, err := startPostgresForEnv(ctx, bootstrap)
+	pgHost, pgPort, pgDBName, err := startPostgresForEnv(ctx, bootstrap, "postgres")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -629,15 +629,24 @@ func splitDatabaseName(fullName string) (string, string, error) {
 	return strings.Join(parts[:2], "/"), parts[3], nil
 }
 
-func startPostgresForEnv(ctx context.Context, env *TestEnv) (string, string, string, error) {
+func startPostgresForEnv(ctx context.Context, env *TestEnv, metadataScope string) (string, string, string, error) {
 	const db = "metaxisdata"
 	if host, ok := os.LookupEnv(integrationPostgresHostEnv); ok && host != "" {
 		port := os.Getenv(integrationPostgresPortEnv)
 		if port == "" {
 			return "", "", "", errors.Errorf("environment variable %s must be set when using external integration services", integrationPostgresPortEnv)
 		}
-		dbName := getenvDefault(integrationPostgresDBEnv, db)
-		waitForPostgresReadyNoTest(ctx, host, port, dbName)
+		if err := waitForPostgresReadyNoTest(ctx, host, port, "postgres"); err != nil {
+			return "", "", "", err
+		}
+		baseDBName := getenvDefault(integrationPostgresDBEnv, db)
+		dbName := integrationMetadataDatabaseName(baseDBName, metadataScope)
+		if err := recreatePostgresDatabase(ctx, host, port, dbName); err != nil {
+			return "", "", "", err
+		}
+		if err := waitForPostgresReadyNoTest(ctx, host, port, dbName); err != nil {
+			return "", "", "", err
+		}
 		return host, port, dbName, nil
 	}
 
@@ -673,6 +682,41 @@ func startPostgresForEnv(ctx context.Context, env *TestEnv) (string, string, str
 		return "", "", "", err
 	}
 	return host, mappedPort.Port(), db, nil
+}
+
+func integrationMetadataDatabaseName(baseName, metadataScope string) string {
+	baseName = strings.TrimSpace(baseName)
+	if baseName == "" {
+		baseName = "metaxisdata"
+	}
+	metadataScope = strings.TrimSpace(metadataScope)
+	if metadataScope == "" {
+		return baseName
+	}
+	return fmt.Sprintf("%s_%s_integration", baseName, metadataScope)
+}
+
+func recreatePostgresDatabase(ctx context.Context, host, port, databaseName string) error {
+	adminDB, err := sql.Open("pgx", postgresDSN(host, port, "postgres"))
+	if err != nil {
+		return err
+	}
+	defer adminDB.Close()
+
+	if _, err := adminDB.ExecContext(ctx, `
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = $1 AND pid <> pg_backend_pid();
+`, databaseName); err != nil {
+		return err
+	}
+	if _, err := adminDB.ExecContext(ctx, fmt.Sprintf("DROP DATABASE IF EXISTS %s", quotePostgresIdentifier(databaseName))); err != nil {
+		return err
+	}
+	if _, err := adminDB.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s", quotePostgresIdentifier(databaseName))); err != nil {
+		return err
+	}
+	return nil
 }
 
 func startMySQLForEnv(ctx context.Context, env *TestEnv) (string, string, error) {
@@ -723,10 +767,15 @@ func waitForPostgresReadyNoTest(ctx context.Context, host, port, dbName string) 
 	dsn := fmt.Sprintf("postgres://postgres:postgres@%s:%s/%s?sslmode=disable", host, port, dbName)
 	deadline := time.Now().Add(45 * time.Second)
 	for time.Now().Before(deadline) {
-		stores, err := store.New(ctx, dsn, false)
+		db, err := sql.Open("pgx", dsn)
 		if err == nil {
-			_ = stores.Close()
-			return nil
+			pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			pingErr := db.PingContext(pingCtx)
+			cancel()
+			_ = db.Close()
+			if pingErr == nil {
+				return nil
+			}
 		}
 		select {
 		case <-ctx.Done():
