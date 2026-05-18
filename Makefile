@@ -5,5 +5,5 @@ run:
 test-integration-smoke:
 	go test -count=1 -tags=integration ./backend/test/integration/...
 
-test-integration-mysql:
-	go test -count=1 -tags=integration -run ^TestMySQLSchemaSyncAndLineageIntegration$$ ./backend/test/integration/runner
+test-integration:
+	go test -v -count=1 -tags=integration -run 'RealServerIntegration' ./backend/test/integration/runner

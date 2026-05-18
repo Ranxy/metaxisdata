@@ -1,0 +1,76 @@
+name: MySQL Integration
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/mysql-integration.yml
+      - backend/**
+      - go.mod
+      - go.sum
+      - Makefile
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/mysql-integration.yml
+      - backend/**
+      - go.mod
+      - go.sum
+      - Makefile
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mysql-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mysql-real-server:
+    name: MySQL Real Server Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: metaxisdata
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d metaxisdata"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      INTEGRATION_POSTGRES_HOST: 127.0.0.1
+      INTEGRATION_POSTGRES_PORT: "5432"
+      INTEGRATION_POSTGRES_DB: metaxisdata
+      INTEGRATION_MYSQL_HOST: 127.0.0.1
+      INTEGRATION_MYSQL_PORT: "3306"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run integration suite
+        run: make test-integration

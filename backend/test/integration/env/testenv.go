@@ -30,6 +30,12 @@ import (
 const (
 	postgresImage = "postgres:16-alpine"
 	mysqlImage    = "mysql:8.4"
+
+	integrationPostgresHostEnv = "INTEGRATION_POSTGRES_HOST"
+	integrationPostgresPortEnv = "INTEGRATION_POSTGRES_PORT"
+	integrationPostgresDBEnv   = "INTEGRATION_POSTGRES_DB"
+	integrationMySQLHostEnv    = "INTEGRATION_MYSQL_HOST"
+	integrationMySQLPortEnv    = "INTEGRATION_MYSQL_PORT"
 )
 
 // TestEnv owns real DB containers and pre-wired runner dependencies.
@@ -38,8 +44,10 @@ type TestEnv struct {
 	Analyzer *lineageanalyzer.Analyzer
 	Syncer   *schemasync.Syncer
 
-	MySQLHost string
-	MySQLPort string
+	PostgresHost string
+	PostgresPort string
+	MySQLHost    string
+	MySQLPort    string
 
 	containers []testcontainers.Container
 }
@@ -67,6 +75,8 @@ func SetupMySQLEnv(t *testing.T) *TestEnv {
 	env := &TestEnv{}
 
 	pgHost, pgPort, pgDBName := startPostgres(ctx, t, env)
+	env.PostgresHost = pgHost
+	env.PostgresPort = pgPort
 	pgURL := fmt.Sprintf("postgres://postgres:postgres@%s:%s/%s?sslmode=disable", pgHost, pgPort, pgDBName)
 
 	stores, err := store.New(ctx, pgURL, false)
@@ -108,6 +118,15 @@ func startPostgres(ctx context.Context, t *testing.T, env *TestEnv) (host, port,
 	t.Helper()
 
 	const db = "metaxisdata"
+	if cfg, ok := lookupIntegrationServiceEnv(t, integrationPostgresHostEnv, integrationPostgresPortEnv); ok {
+		host = cfg[integrationPostgresHostEnv]
+		port = cfg[integrationPostgresPortEnv]
+		dbName = getenvDefault(integrationPostgresDBEnv, db)
+
+		waitForPostgresReady(ctx, t, host, port, dbName)
+		return host, port, dbName
+	}
+
 	req := testcontainers.ContainerRequest{
 		Image: postgresImage,
 		Env: map[string]string{
@@ -134,11 +153,20 @@ func startPostgres(ctx context.Context, t *testing.T, env *TestEnv) (host, port,
 	mappedPort, err := container.MappedPort(ctx, "5432/tcp")
 	require.NoError(t, err)
 
+	waitForPostgresReady(ctx, t, host, mappedPort.Port(), db)
+
 	return host, mappedPort.Port(), db
 }
 
 func startMySQL(ctx context.Context, t *testing.T, env *TestEnv) (host, port string) {
 	t.Helper()
+	if cfg, ok := lookupIntegrationServiceEnv(t, integrationMySQLHostEnv, integrationMySQLPortEnv); ok {
+		host = cfg[integrationMySQLHostEnv]
+		port = cfg[integrationMySQLPortEnv]
+
+		waitForMySQLReady(ctx, t, host, port)
+		return host, port
+	}
 
 	req := testcontainers.ContainerRequest{
 		Image: mysqlImage,
@@ -164,20 +192,71 @@ func startMySQL(ctx context.Context, t *testing.T, env *TestEnv) (host, port str
 	mappedPort, err := container.MappedPort(ctx, "3306/tcp")
 	require.NoError(t, err)
 
-	// Wait until SQL is reachable, not just TCP.
-	dsn := fmt.Sprintf("root:root@tcp(%s:%s)/?multiStatements=true&parseTime=true", host, mappedPort.Port())
+	waitForMySQLReady(ctx, t, host, mappedPort.Port())
+
+	return host, mappedPort.Port()
+}
+
+func waitForPostgresReady(ctx context.Context, t *testing.T, host, port, dbName string) {
+	t.Helper()
+
+	dsn := fmt.Sprintf("postgres://postgres:postgres@%s:%s/%s?sslmode=disable", host, port, dbName)
+	require.Eventually(t, func() bool {
+		stores, openErr := store.New(ctx, dsn, false)
+		if openErr != nil {
+			return false
+		}
+		_ = stores.Close()
+		return true
+	}, 45*time.Second, 1*time.Second)
+}
+
+func waitForMySQLReady(ctx context.Context, t *testing.T, host, port string) {
+	t.Helper()
+
+	dsn := fmt.Sprintf("root:root@tcp(%s:%s)/?multiStatements=true&parseTime=true", host, port)
 	require.Eventually(t, func() bool {
 		db, openErr := sql.Open("mysql", dsn)
 		if openErr != nil {
 			return false
 		}
 		defer db.Close()
-		pingCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
 		return db.PingContext(pingCtx) == nil
 	}, 45*time.Second, 1*time.Second)
+}
 
-	return host, mappedPort.Port()
+func lookupIntegrationServiceEnv(t *testing.T, envNames ...string) (map[string]string, bool) {
+	t.Helper()
+
+	values := make(map[string]string, len(envNames))
+	hasAny := false
+	for _, envName := range envNames {
+		value, ok := os.LookupEnv(envName)
+		if ok && value != "" {
+			hasAny = true
+			values[envName] = value
+		}
+	}
+	if !hasAny {
+		return nil, false
+	}
+
+	for _, envName := range envNames {
+		value := os.Getenv(envName)
+		require.NotEmpty(t, value, "environment variable %s must be set when using external integration services", envName)
+		values[envName] = value
+	}
+	return values, true
+}
+
+func getenvDefault(envName, fallback string) string {
+	value, ok := os.LookupEnv(envName)
+	if !ok || value == "" {
+		return fallback
+	}
+	return value
 }
 
 func seedMySQLSchema(ctx context.Context, host, port string) error {
@@ -214,6 +293,157 @@ INSERT INTO orders (id, user_id, amount) VALUES (1, 1, 9.99)
 	}
 
 	return nil
+}
+
+func resetMySQLSchema(ctx context.Context, host, port string) error {
+	dsn := fmt.Sprintf("root:root@tcp(%s:%s)/?multiStatements=true&parseTime=true", host, port)
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	if _, err := db.ExecContext(ctx, `
+DROP DATABASE IF EXISTS it_drop_me;
+DROP DATABASE IF EXISTS it_app;
+CREATE DATABASE it_app;
+USE it_app;
+CREATE TABLE users (
+  id INT PRIMARY KEY,
+  name VARCHAR(64) NOT NULL,
+  age INT NOT NULL
+);
+CREATE TABLE orders (
+  id INT PRIMARY KEY,
+  user_id INT NOT NULL,
+  amount DECIMAL(10,2) NOT NULL
+);
+CREATE OR REPLACE VIEW user_order_view AS
+SELECT u.id AS user_id, u.name AS user_name, o.amount AS order_amount
+FROM users u
+JOIN orders o ON u.id = o.user_id;
+INSERT INTO users (id, name, age) VALUES (1, 'alice', 31);
+INSERT INTO orders (id, user_id, amount) VALUES (1, 1, 9.99);
+`); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func seedPostgresSchema(ctx context.Context, host, port string) error {
+	adminDB, err := sql.Open("pgx", postgresDSN(host, port, "postgres"))
+	if err != nil {
+		return err
+	}
+	defer adminDB.Close()
+
+	if err := ensurePostgresDatabase(ctx, adminDB, "it_app"); err != nil {
+		return err
+	}
+
+	appDB, err := sql.Open("pgx", postgresDSN(host, port, "it_app"))
+	if err != nil {
+		return err
+	}
+	defer appDB.Close()
+
+	if _, err := appDB.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS public.users (
+  id INT PRIMARY KEY,
+  name TEXT NOT NULL,
+  age INT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS public.orders (
+  id INT PRIMARY KEY,
+  user_id INT NOT NULL,
+  amount NUMERIC(10,2) NOT NULL
+);
+CREATE OR REPLACE VIEW public.user_order_view AS
+SELECT u.id AS user_id, u.name AS user_name
+FROM public.users u;
+INSERT INTO public.users (id, name, age) VALUES (1, 'alice', 31)
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, age = EXCLUDED.age;
+INSERT INTO public.orders (id, user_id, amount) VALUES (1, 1, 9.99)
+ON CONFLICT (id) DO UPDATE SET user_id = EXCLUDED.user_id, amount = EXCLUDED.amount;
+`); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func resetPostgresSchema(ctx context.Context, host, port string) error {
+	adminDB, err := sql.Open("pgx", postgresDSN(host, port, "postgres"))
+	if err != nil {
+		return err
+	}
+	defer adminDB.Close()
+
+	if _, err := adminDB.ExecContext(ctx, `
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname IN ('it_app', 'it_drop_me') AND pid <> pg_backend_pid();
+`); err != nil {
+		return err
+	}
+	if _, err := adminDB.ExecContext(ctx, `DROP DATABASE IF EXISTS it_drop_me`); err != nil {
+		return err
+	}
+	if _, err := adminDB.ExecContext(ctx, `DROP DATABASE IF EXISTS it_app`); err != nil {
+		return err
+	}
+	if err := ensurePostgresDatabase(ctx, adminDB, "it_app"); err != nil {
+		return err
+	}
+
+	appDB, err := sql.Open("pgx", postgresDSN(host, port, "it_app"))
+	if err != nil {
+		return err
+	}
+	defer appDB.Close()
+
+	if _, err := appDB.ExecContext(ctx, `
+CREATE TABLE public.users (
+  id INT PRIMARY KEY,
+  name TEXT NOT NULL,
+  age INT NOT NULL
+);
+CREATE TABLE public.orders (
+  id INT PRIMARY KEY,
+  user_id INT NOT NULL,
+  amount NUMERIC(10,2) NOT NULL
+);
+CREATE OR REPLACE VIEW public.user_order_view AS
+SELECT u.id AS user_id, u.name AS user_name
+FROM public.users u;
+INSERT INTO public.users (id, name, age) VALUES (1, 'alice', 31);
+INSERT INTO public.orders (id, user_id, amount) VALUES (1, 1, 9.99);
+`); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func ensurePostgresDatabase(ctx context.Context, db *sql.DB, databaseName string) error {
+	var exists bool
+	if err := db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", databaseName).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	_, err := db.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s", quotePostgresIdentifier(databaseName)))
+	return err
+}
+
+func postgresDSN(host, port, database string) string {
+	return fmt.Sprintf("postgres://postgres:postgres@%s:%s/%s?sslmode=disable", host, port, database)
+}
+
+func quotePostgresIdentifier(identifier string) string {
+	return `"` + strings.ReplaceAll(identifier, `"`, `""`) + `"`
 }
 
 func applyMigratorSQL(ctx context.Context, db *sql.DB) error {
@@ -254,6 +484,29 @@ func (e *TestEnv) CreateMySQLInstance(ctx context.Context, instanceID string) (*
 					Password: "root",
 					Host:     e.MySQLHost,
 					Port:     e.MySQLPort,
+				},
+			},
+		},
+	})
+}
+
+// CreatePostgresInstance stores an active PostgreSQL instance with one ADMIN datasource.
+func (e *TestEnv) CreatePostgresInstance(ctx context.Context, instanceID string) (*store.InstanceMessage, error) {
+	return e.Store.CreateInstanceV2(ctx, &store.InstanceMessage{
+		ResourceID: instanceID,
+		Metadata: &storepb.Instance{
+			Engine:       storepb.Engine_POSTGRES,
+			Activation:   true,
+			SyncInterval: durationpb.New(time.Minute),
+			DataSources: []*storepb.DataSource{
+				{
+					Id:       "admin",
+					Type:     storepb.DataSourceType_ADMIN,
+					Username: "postgres",
+					Password: "postgres",
+					Host:     e.PostgresHost,
+					Port:     e.PostgresPort,
+					Database: "postgres",
 				},
 			},
 		},
