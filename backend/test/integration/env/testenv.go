@@ -305,9 +305,12 @@ func resetMySQLSchema(ctx context.Context, host, port string) error {
 
 	if _, err := db.ExecContext(ctx, `
 DROP DATABASE IF EXISTS it_drop_me;
-DROP DATABASE IF EXISTS it_app;
-CREATE DATABASE it_app;
+CREATE DATABASE IF NOT EXISTS it_app;
 USE it_app;
+DROP VIEW IF EXISTS user_order_view;
+DROP TABLE IF EXISTS manual_sql_summary;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS users;
 CREATE TABLE users (
   id INT PRIMARY KEY,
   name VARCHAR(64) NOT NULL,
@@ -390,9 +393,6 @@ WHERE datname IN ('it_app', 'it_drop_me') AND pid <> pg_backend_pid();
 	if _, err := adminDB.ExecContext(ctx, `DROP DATABASE IF EXISTS it_drop_me`); err != nil {
 		return err
 	}
-	if _, err := adminDB.ExecContext(ctx, `DROP DATABASE IF EXISTS it_app`); err != nil {
-		return err
-	}
 	if err := ensurePostgresDatabase(ctx, adminDB, "it_app"); err != nil {
 		return err
 	}
@@ -404,6 +404,10 @@ WHERE datname IN ('it_app', 'it_drop_me') AND pid <> pg_backend_pid();
 	defer appDB.Close()
 
 	if _, err := appDB.ExecContext(ctx, `
+DROP VIEW IF EXISTS public.user_order_view;
+DROP TABLE IF EXISTS public.manual_sql_summary;
+DROP TABLE IF EXISTS public.orders;
+DROP TABLE IF EXISTS public.users;
 CREATE TABLE public.users (
   id INT PRIMARY KEY,
   name TEXT NOT NULL,

@@ -1,6 +1,7 @@
 package env
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
@@ -41,6 +42,8 @@ const (
 	lineageWaitTimeout       = 45 * time.Second
 )
 
+var sharedServerBinaryCache = newServerBinaryCache()
+
 // ServiceEnv owns the self-booted infrastructure and the real server process.
 type ServiceEnv struct {
 	Store *store.Store
@@ -73,6 +76,15 @@ type lockedBuffer struct {
 	b  strings.Builder
 }
 
+type serverBinaryCache struct {
+	mu       sync.Mutex
+	cond     *sync.Cond
+	building bool
+	path     string
+	dir      string
+	err      error
+}
+
 func (b *lockedBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -83,6 +95,64 @@ func (b *lockedBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.b.String()
+}
+
+func newServerBinaryCache() *serverBinaryCache {
+	cache := &serverBinaryCache{}
+	cache.cond = sync.NewCond(&cache.mu)
+	return cache
+}
+
+func (c *serverBinaryCache) getOrBuild(ctx context.Context) (string, error) {
+	c.mu.Lock()
+	for c.building {
+		c.cond.Wait()
+	}
+	if c.path != "" {
+		path := c.path
+		c.mu.Unlock()
+		return path, nil
+	}
+	c.building = true
+	c.err = nil
+	c.mu.Unlock()
+
+	path, dir, err := buildIntegrationServerBinary(ctx)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err == nil {
+		c.path = path
+		c.dir = dir
+	} else {
+		c.path = ""
+		c.dir = ""
+	}
+	c.err = err
+	c.building = false
+	c.cond.Broadcast()
+	return c.path, c.err
+}
+
+func (c *serverBinaryCache) cleanup() {
+	c.mu.Lock()
+	for c.building {
+		c.cond.Wait()
+	}
+	dir := c.dir
+	c.path = ""
+	c.dir = ""
+	c.err = nil
+	c.mu.Unlock()
+
+	if dir != "" {
+		_ = os.RemoveAll(dir)
+	}
+}
+
+// CleanupIntegrationServerBinaryCache removes the cached integration server binary.
+func CleanupIntegrationServerBinaryCache() {
+	sharedServerBinaryCache.cleanup()
 }
 
 // SetupMySQLServiceEnv starts metadata PostgreSQL, source MySQL, the real server process, and API clients.
@@ -530,23 +600,13 @@ func startServerProcess(ctx context.Context, pgURL string) (string, string, *exe
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	logs := &lockedBuffer{}
 
-	serverDir, err := os.MkdirTemp("", "metaxisdata-integration-server-*")
+	binaryPath, err := sharedServerBinaryCache.getOrBuild(ctx)
 	if err != nil {
 		return "", "", nil, nil, nil, err
 	}
-	binaryPath := filepath.Join(serverDir, "metaxisdata-integration-server")
-	buildCmd := exec.CommandContext(ctx, "go", "build", "-o", binaryPath, "./backend/bin/server/main.go")
+
 	root, err := repoRoot()
 	if err != nil {
-		_ = os.RemoveAll(serverDir)
-		return "", "", nil, nil, nil, err
-	}
-	buildCmd.Dir = root
-	buildCmd.Env = os.Environ()
-	buildCmd.Stdout = logs
-	buildCmd.Stderr = logs
-	if err := buildCmd.Run(); err != nil {
-		_ = os.RemoveAll(serverDir)
 		return "", "", nil, nil, nil, err
 	}
 
@@ -556,7 +616,6 @@ func startServerProcess(ctx context.Context, pgURL string) (string, string, *exe
 	cmd.Stdout = logs
 	cmd.Stderr = logs
 	if err := cmd.Start(); err != nil {
-		_ = os.RemoveAll(serverDir)
 		return "", "", nil, nil, nil, err
 	}
 
@@ -565,7 +624,34 @@ func startServerProcess(ctx context.Context, pgURL string) (string, string, *exe
 		done <- cmd.Wait()
 	}()
 
-	return baseURL, serverDir, cmd, done, logs, nil
+	return baseURL, "", cmd, done, logs, nil
+}
+
+func buildIntegrationServerBinary(ctx context.Context) (string, string, error) {
+	root, err := repoRoot()
+	if err != nil {
+		return "", "", err
+	}
+
+	binaryDir, err := os.MkdirTemp("", "metaxisdata-integration-server-bin-*")
+	if err != nil {
+		return "", "", err
+	}
+	binaryPath := filepath.Join(binaryDir, "metaxisdata-integration-server")
+
+	buildCmd := exec.CommandContext(ctx, "go", "build", "-o", binaryPath, "./backend/bin/server/main.go")
+	buildCmd.Dir = root
+	buildCmd.Env = os.Environ()
+
+	var output bytes.Buffer
+	buildCmd.Stdout = &output
+	buildCmd.Stderr = &output
+	if err := buildCmd.Run(); err != nil {
+		_ = os.RemoveAll(binaryDir)
+		return "", "", errors.Wrapf(err, "failed to build integration server binary: %s", strings.TrimSpace(output.String()))
+	}
+
+	return binaryPath, binaryDir, nil
 }
 
 func shutdownServerProcess(cmd *exec.Cmd, done chan error) {
