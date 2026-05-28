@@ -438,8 +438,8 @@
 </template>
 
 <script setup lang="ts">
-import { getLocalTimeZone, today } from "@internationalized/date";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import { getLocalTimeZone, today } from "@internationalized/date";
 import { onClickOutside } from "@vueuse/core";
 import {
   CalendarRange,

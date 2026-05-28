@@ -264,11 +264,35 @@
           />
           <div class="space-y-2 md:col-span-2">
             <Label for="manual-sql-form-tags">{{ t("manualSqlManagement.tags") }}</Label>
-            <Input
-              id="manual-sql-form-tags"
-              v-model="form.tagsInput"
-              :placeholder="t('manualSqlManagement.tagsPlaceholder')"
-            />
+            <div class="flex min-h-10 w-full flex-wrap items-center gap-2 rounded-md border border-input bg-background px-3 py-2">
+              <Badge
+                v-for="tag in form.tags"
+                :key="tag"
+                variant="secondary"
+                class="flex items-center gap-1"
+              >
+                <span>{{ tag }}</span>
+                <button
+                  type="button"
+                  class="rounded-full p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                  :aria-label="t('manualSqlManagement.removeTag', { tag })"
+                  @click="removeTag(tag)"
+                >
+                  <X class="h-3 w-3" />
+                </button>
+              </Badge>
+              <Input
+                id="manual-sql-form-tags"
+                v-model="form.tagsDraft"
+                :placeholder="t('manualSqlManagement.tagsPlaceholder')"
+                class="h-auto min-w-40 flex-1 border-0 bg-transparent px-0 py-0 shadow-none focus-visible:shadow-none"
+                @keydown="handleTagInputKeydown"
+                @blur="commitTagDraft"
+              />
+            </div>
+            <p class="text-xs text-muted-foreground">
+              {{ t("manualSqlManagement.tagsInputHint") }}
+            </p>
           </div>
           <div class="space-y-2 md:col-span-2">
             <Label for="manual-sql-form-attributes">{{ t("manualSqlManagement.attributes") }}</Label>
@@ -351,7 +375,7 @@
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { FileCode2, Pencil, Plus, Trash2 } from "lucide-vue-next";
+import { FileCode2, Pencil, Plus, Trash2, X } from "lucide-vue-next";
 import {
   computed,
   onBeforeUnmount,
@@ -407,7 +431,7 @@ const manualSqls = ref<ManualSQL[]>([]);
 const selectedParent = ref("");
 const searchQuery = ref("");
 const schemaFilter = ref("");
-const tagsFilterInput = ref("");
+const tagsFilterInput = ref<string[]>([]);
 const isLoading = ref(false);
 const isSaving = ref(false);
 const isDeleting = ref(false);
@@ -434,7 +458,8 @@ const form = reactive({
   title: "",
   schemaName: "",
   comment: "",
-  tagsInput: "",
+  tags: [] as string[],
+  tagsDraft: "",
   attributesInput: "",
   sqlText: "",
 });
@@ -461,6 +486,44 @@ function parseTagList(value: string): string[] {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function addTag(tag: string) {
+  const normalizedTag = tag.trim();
+  if (!normalizedTag || form.tags.includes(normalizedTag)) {
+    return;
+  }
+  form.tags.push(normalizedTag);
+}
+
+function commitTagDraft() {
+  const draft = form.tagsDraft.trim();
+  if (!draft) {
+    form.tagsDraft = "";
+    return;
+  }
+
+  for (const tag of parseTagList(draft)) {
+    addTag(tag);
+  }
+
+  form.tagsDraft = "";
+}
+
+function removeTag(tagToRemove: string) {
+  form.tags = form.tags.filter((tag) => tag !== tagToRemove);
+}
+
+function handleTagInputKeydown(event: KeyboardEvent) {
+  if (event.key === "Enter" || event.key === ",") {
+    event.preventDefault();
+    commitTagDraft();
+    return;
+  }
+
+  if (event.key === "Backspace" && !form.tagsDraft && form.tags.length > 0) {
+    form.tags.pop();
+  }
 }
 
 function parseAttributes(value: string): Record<string, string> {
@@ -542,7 +605,8 @@ function resetForm() {
   form.title = "";
   form.schemaName = "";
   form.comment = "";
-  form.tagsInput = "";
+  form.tags = [];
+  form.tagsDraft = "";
   form.attributesInput = "";
   form.sqlText = "";
   formErrors.parent = "";
@@ -567,7 +631,8 @@ function openEditModal(item: ManualSQL) {
   form.title = item.title;
   form.schemaName = item.schemaName;
   form.comment = item.comment;
-  form.tagsInput = item.tags.join(", ");
+  form.tags = [...item.tags];
+  form.tagsDraft = "";
   form.attributesInput = formatAttributes(item.attributes ?? {});
   form.sqlText = item.sqlText;
   formErrors.parent = "";
@@ -708,7 +773,7 @@ async function fetchManualSQL(pageToken = "") {
 
   try {
     const parent = selectedParent.value || GLOBAL_MANUAL_SQL_PARENT;
-    const tags = parseTagList(tagsFilterInput.value);
+    const tags = [...tagsFilterInput.value];
     const schemaName = schemaFilter.value.trim();
     const query = searchQuery.value.trim();
 
@@ -761,6 +826,8 @@ async function handleSave() {
     return;
   }
 
+  commitTagDraft();
+
   isSaving.value = true;
   try {
     const payload: ManualSQLInput = {
@@ -768,7 +835,7 @@ async function handleSave() {
       schemaName: form.schemaName.trim(),
       comment: form.comment.trim(),
       sqlText: form.sqlText,
-      tags: parseTagList(form.tagsInput),
+      tags: [...form.tags],
       attributes: parseAttributes(form.attributesInput),
     };
 

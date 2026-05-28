@@ -30,7 +30,7 @@ interface Props {
   selectedDatabase: string;
   searchQuery: string;
   schemaFilter: string;
-  tagsFilter: string;
+  tagsFilter: string[];
 }
 
 const props = defineProps<Props>();
@@ -39,7 +39,7 @@ const emit = defineEmits<{
   (e: "update:selectedDatabase", value: string): void;
   (e: "update:searchQuery", value: string): void;
   (e: "update:schemaFilter", value: string): void;
-  (e: "update:tagsFilter", value: string): void;
+  (e: "update:tagsFilter", value: string[]): void;
 }>();
 
 const { t } = useI18n();
@@ -49,6 +49,8 @@ const selectedFilterType = ref<FilterType | null>(null);
 const filterTypeSearchQuery = ref("");
 const filterSearchQuery = ref("");
 const customFilterValue = ref("");
+const customTagsFilter = ref<string[]>([]);
+const customTagsDraft = ref("");
 
 const searchValue = computed({
   get: () => props.searchQuery,
@@ -78,11 +80,11 @@ const activeFilters = computed(() => {
     });
   }
 
-  if (props.tagsFilter.trim()) {
+  if (props.tagsFilter.length > 0) {
     filters.push({
       type: "tags",
       label: t("manualSqlManagement.tagsFilter"),
-      displayValue: props.tagsFilter.trim(),
+      displayValue: props.tagsFilter.join(", "),
     });
   }
 
@@ -144,12 +146,9 @@ function selectFilterType(type: FilterType) {
   selectedFilterType.value = type;
   filterSearchQuery.value = "";
   filterTypeSearchQuery.value = "";
-  customFilterValue.value =
-    type === "schema"
-      ? props.schemaFilter
-      : type === "tags"
-        ? props.tagsFilter
-        : "";
+  customTagsDraft.value = "";
+  customTagsFilter.value = [...props.tagsFilter];
+  customFilterValue.value = type === "schema" ? props.schemaFilter : "";
 }
 
 function backToFilterTypes() {
@@ -157,6 +156,8 @@ function backToFilterTypes() {
   filterSearchQuery.value = "";
   filterTypeSearchQuery.value = "";
   customFilterValue.value = "";
+  customTagsFilter.value = [];
+  customTagsDraft.value = "";
 }
 
 function closeFilterMenu() {
@@ -170,19 +171,72 @@ function applyDatabaseFilter(value: string) {
 }
 
 function applyCustomFilter() {
-  const value = customFilterValue.value.trim();
-
-  if (!selectedFilterType.value || !value) {
+  if (!selectedFilterType.value) {
     return;
   }
 
   if (selectedFilterType.value === "schema") {
+    const value = customFilterValue.value.trim();
+    if (!value) {
+      return;
+    }
     emit("update:schemaFilter", value);
   } else if (selectedFilterType.value === "tags") {
-    emit("update:tagsFilter", value);
+    commitCustomTagsDraft();
+    if (customTagsFilter.value.length === 0) {
+      return;
+    }
+    emit("update:tagsFilter", [...customTagsFilter.value]);
   }
 
   closeFilterMenu();
+}
+
+function addCustomTag(tag: string) {
+  const normalizedTag = tag.trim();
+  if (!normalizedTag || customTagsFilter.value.includes(normalizedTag)) {
+    return;
+  }
+  customTagsFilter.value.push(normalizedTag);
+}
+
+function commitCustomTagsDraft() {
+  const draft = customTagsDraft.value.trim();
+  if (!draft) {
+    customTagsDraft.value = "";
+    return;
+  }
+
+  for (const tag of draft
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)) {
+    addCustomTag(tag);
+  }
+
+  customTagsDraft.value = "";
+}
+
+function removeCustomTag(tagToRemove: string) {
+  customTagsFilter.value = customTagsFilter.value.filter(
+    (tag) => tag !== tagToRemove
+  );
+}
+
+function handleCustomTagKeydown(event: KeyboardEvent) {
+  if (event.key === "Enter" || event.key === ",") {
+    event.preventDefault();
+    commitCustomTagsDraft();
+    return;
+  }
+
+  if (
+    event.key === "Backspace" &&
+    !customTagsDraft.value &&
+    customTagsFilter.value.length > 0
+  ) {
+    customTagsFilter.value.pop();
+  }
 }
 
 function removeFilter(type: FilterType) {
@@ -196,14 +250,14 @@ function removeFilter(type: FilterType) {
     return;
   }
 
-  emit("update:tagsFilter", "");
+  emit("update:tagsFilter", []);
 }
 
 function clearFilters() {
   emit("update:selectedDatabase", "");
   emit("update:searchQuery", "");
   emit("update:schemaFilter", "");
-  emit("update:tagsFilter", "");
+  emit("update:tagsFilter", []);
 }
 </script>
 
@@ -325,12 +379,49 @@ function clearFilters() {
             </div>
 
             <input
+              v-if="selectedFilterType === 'schema'"
               v-model="customFilterValue"
               type="text"
-              :placeholder="selectedFilterType === 'schema' ? t('manualSqlManagement.schemaPlaceholder') : t('manualSqlManagement.tagsPlaceholder')"
+              :placeholder="t('manualSqlManagement.schemaPlaceholder')"
               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-hidden transition-colors focus-visible:ring-2 focus-visible:ring-ring"
               @keydown.enter.prevent="applyCustomFilter"
             >
+
+            <div
+              v-else
+              class="space-y-2"
+            >
+              <div class="flex min-h-10 w-full flex-wrap items-center gap-2 rounded-md border border-input bg-background px-3 py-2">
+                <Badge
+                  v-for="tag in customTagsFilter"
+                  :key="tag"
+                  variant="secondary"
+                  class="flex items-center gap-1"
+                >
+                  <span>{{ tag }}</span>
+                  <button
+                    type="button"
+                    class="rounded-full p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                    :aria-label="t('manualSqlManagement.removeTag', { tag })"
+                    @click="removeCustomTag(tag)"
+                  >
+                    <X class="h-3 w-3" />
+                  </button>
+                </Badge>
+                <input
+                  v-model="customTagsDraft"
+                  type="text"
+                  :placeholder="t('manualSqlManagement.tagsPlaceholder')"
+                  class="min-w-40 flex-1 bg-transparent text-sm outline-hidden placeholder:text-muted-foreground"
+                  @keydown="handleCustomTagKeydown"
+                  @blur="commitCustomTagsDraft"
+                >
+              </div>
+
+              <p class="text-xs text-muted-foreground">
+                {{ t("manualSqlManagement.tagsInputHint") }}
+              </p>
+            </div>
 
             <p
               v-if="selectedFilterType === 'tags'"
@@ -342,7 +433,7 @@ function clearFilters() {
             <div class="mt-3 flex justify-end">
               <Button
                 size="sm"
-                :disabled="!customFilterValue.trim()"
+                :disabled="selectedFilterType === 'schema' ? !customFilterValue.trim() : (customTagsFilter.length === 0 && !customTagsDraft.trim())"
                 @click="applyCustomFilter"
               >
                 {{ t("manualSqlManagement.applyFilter") }}
