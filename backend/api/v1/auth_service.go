@@ -358,48 +358,46 @@ func (*AuthService) userCountGuard(_ context.Context) error {
 // The given groups are the groups that the user belongs to in the identity provider.
 // Supported groups format: ["group1", "group2", ...], ["dev.example.com", ...]
 func (s *AuthService) syncUserGroups(ctx context.Context, user *store.UserMessage, groups []string) error {
-	bbGroups, err := s.store.ListGroups(ctx, &store.FindGroupMessage{})
+	groupMessageList, err := s.store.ListGroups(ctx, &store.FindGroupMessage{})
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to list groups"))
 	}
 
-	for _, bbGroup := range bbGroups {
+	for _, groupMessage := range groupMessageList {
 		var isMember bool
 		for _, group := range groups {
-			if bbGroup.Email == group || bbGroup.Title == group {
+			if groupMessage.Email == group || groupMessage.Title == group {
 				isMember = true
 				break
 			}
 		}
-		var isBBGroupMember bool
-		for _, member := range bbGroup.Payload.Members {
+		var isGroupMember bool
+		for _, member := range groupMessage.Payload.Members {
 			if member.Member == common.FormatUserUID(user.ID) {
-				isBBGroupMember = true
+				isGroupMember = true
 				break
 			}
 		}
-		if isMember != isBBGroupMember {
+		if isMember != isGroupMember {
 			if isMember {
 				// Add the user to the group.
-				bbGroup.Payload.Members = append(bbGroup.Payload.Members, &storepb.GroupMember{
+				groupMessage.Payload.Members = append(groupMessage.Payload.Members, &storepb.GroupMember{
 					Role:   storepb.GroupMember_MEMBER,
 					Member: common.FormatUserUID(user.ID),
 				})
 			} else {
 				// Remove the user from the group.
-				bbGroup.Payload.Members = slices.DeleteFunc(bbGroup.Payload.Members, func(member *storepb.GroupMember) bool {
+				groupMessage.Payload.Members = slices.DeleteFunc(groupMessage.Payload.Members, func(member *storepb.GroupMember) bool {
 					return member.Member == common.FormatUserUID(user.ID)
 				})
 			}
-			if _, err := s.store.UpdateGroup(ctx, bbGroup.Email, &store.UpdateGroupMessage{
-				Payload: bbGroup.Payload,
+			if _, err := s.store.UpdateGroup(ctx, groupMessage.Email, &store.UpdateGroupMessage{
+				Payload: groupMessage.Payload,
 			}); err != nil {
-				return connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to update group %q", bbGroup.Email))
+				return connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to update group %q", groupMessage.Email))
 			}
 		}
 	}
-
-	// Reload IAM cache if group membership changed.
 
 	return nil
 }

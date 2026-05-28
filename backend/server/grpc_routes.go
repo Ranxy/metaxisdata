@@ -60,6 +60,7 @@ func configureGrpcRouters(
 
 	userService := apiv1.NewUserService(stores, profile, stateCfg)
 	authService := apiv1.NewAuthService(stores, secret, profile, stateCfg)
+	auditLogService := apiv1.NewAuditLogService(stores)
 	instanceService := apiv1.NewInstanceService(stores, stateCfg, dbFactory, schemaSync)
 	databaseService := apiv1.NewDatabaseService(stores, stateCfg, dbFactory, schemaSync)
 	lineageService := apiv1.NewLineageService(stores, stateCfg, dbFactory, schemaSync)
@@ -76,8 +77,8 @@ func configureGrpcRouters(
 		connect.WithInterceptors(
 			apiv1.NewDebugInterceptor(),
 			auth.New(stores, secret, stateCfg, profile),
+			apiv1.NewAuditInterceptor(stores),
 			// apiv1.NewACLInterceptor(stores, secret, iamManager, profile),
-			// apiv1.NewAuditInterceptor(stores),
 		),
 		connect.WithRecover(onPanic),
 	)
@@ -88,6 +89,8 @@ func configureGrpcRouters(
 	connectHandlers[userPath] = userHandler
 	authPath, authHandler := v1connect.NewAuthServiceHandler(authService, handlerOpts)
 	connectHandlers[authPath] = authHandler
+	auditLogPath, auditLogHandler := v1connect.NewAuditLogServiceHandler(auditLogService, handlerOpts)
+	connectHandlers[auditLogPath] = auditLogHandler
 	instancePath, instanceHandler := v1connect.NewInstanceServiceHandler(instanceService, handlerOpts)
 	connectHandlers[instancePath] = instanceHandler
 	databasePath, databaseHandler := v1connect.NewDatabaseServiceHandler(databaseService, handlerOpts)
@@ -99,6 +102,7 @@ func configureGrpcRouters(
 	// grpc reflection handlers.
 	reflector := grpcreflect.NewStaticReflector(
 		v1connect.AuthServiceName,
+		v1connect.AuditLogServiceName,
 		v1connect.UserServiceName,
 		v1connect.InstanceServiceName,
 		v1connect.DatabaseServiceName,
@@ -125,6 +129,9 @@ func configureGrpcRouters(
 	}
 
 	if err := v1pb.RegisterAuthServiceHandler(ctx, mux, grpcConn); err != nil {
+		return err
+	}
+	if err := v1pb.RegisterAuditLogServiceHandler(ctx, mux, grpcConn); err != nil {
 		return err
 	}
 	if err := v1pb.RegisterUserServiceHandler(ctx, mux, grpcConn); err != nil {

@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package metaxisdata.store;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "generated-go/store";
+
+enum AuditSeverity {
+  AUDIT_SEVERITY_UNSPECIFIED = 0;
+  INFO = 1;
+  WARNING = 2;
+  ERROR = 3;
+}
+
+message AuditStatus {
+  int32 code = 1;
+  string message = 2;
+}
+
+message RequestMetadata {
+  string ip = 1;
+  string user_agent = 2;
+}
+
+message AuditLog {
+  int64 id = 1;
+  google.protobuf.Timestamp create_time = 2;
+  string parent = 3;
+  string method = 4;
+  string resource = 5;
+  string user = 6;
+  AuditSeverity severity = 7;
+  google.protobuf.Struct request = 8;
+  google.protobuf.Struct response = 9;
+  AuditStatus status = 10;
+  int64 latency_ms = 11;
+  google.protobuf.Struct service_data = 12;
+  RequestMetadata request_metadata = 13;
+}

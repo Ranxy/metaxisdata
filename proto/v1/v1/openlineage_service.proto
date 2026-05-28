@@ -6,6 +6,7 @@ import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
+import "v1/annotation.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 
@@ -31,6 +32,7 @@ service OpenLineageService {
       post: "/v1/openlineage/namespaceMappings"
       body: "mapping"
     };
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc ListNamespaceMapping(ListNamespaceMappingRequest) returns (ListNamespaceMappingResponse) {
@@ -42,10 +44,12 @@ service OpenLineageService {
       patch: "/v1/openlineage/namespaceMappings/{id}"
       body: "mapping"
     };
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc DeleteNamespaceMapping(DeleteNamespaceMappingRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/openlineage/namespaceMappings/{id}"};
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse) {
@@ -53,6 +57,7 @@ service OpenLineageService {
       post: "/v1/openlineage/apiKeys"
       body: "*"
     };
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc ListAPIKey(ListAPIKeyRequest) returns (ListAPIKeyResponse) {
@@ -61,6 +66,7 @@ service OpenLineageService {
 
   rpc RevokeAPIKey(RevokeAPIKeyRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/openlineage/apiKeys/{id}"};
+    option (metaxisdata.v1.audit) = true;
   }
 }
 

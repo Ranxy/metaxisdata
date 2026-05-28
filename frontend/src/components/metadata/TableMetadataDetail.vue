@@ -312,11 +312,11 @@
 
 <script setup lang="ts">
 import {
+  type ComponentPublicInstance,
   computed,
   nextTick,
   ref,
   watch,
-  type ComponentPublicInstance,
 } from "vue";
 import { useI18n } from "vue-i18n";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";

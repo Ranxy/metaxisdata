@@ -2569,7 +2569,7 @@ var File_v1_instance_service_proto protoreflect.FileDescriptor
 
 const file_v1_instance_service_proto_rawDesc = "" +
 	"\n" +
-	"\x19v1/instance_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x0fv1/common.proto\"F\n" +
+	"\x19v1/instance_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\x1a\x0fv1/common.proto\"F\n" +
 	"\x12GetInstanceRequest\x120\n" +
 	"\x04name\x18\x01 \x01(\tB\x1c\xe0A\x02\xfaA\x16\n" +
 	"\x14metaxisdata/InstanceR\x04name\"\x8d\x01\n" +
@@ -2789,21 +2789,21 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	"\x0eDataSourceType\x12\x1b\n" +
 	"\x17DATA_SOURCE_UNSPECIFIED\x10\x00\x12\t\n" +
 	"\x05ADMIN\x10\x01\x12\r\n" +
-	"\tREAD_ONLY\x10\x022\xa6\x0e\n" +
+	"\tREAD_ONLY\x10\x022\xcf\x0e\n" +
 	"\x0fInstanceService\x12r\n" +
 	"\vGetInstance\x12\".metaxisdata.v1.GetInstanceRequest\x1a\x18.metaxisdata.v1.Instance\"%\xdaA\x04name\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/{name=instances/*}\x12v\n" +
-	"\rListInstances\x12$.metaxisdata.v1.ListInstancesRequest\x1a%.metaxisdata.v1.ListInstancesResponse\"\x18\xdaA\x00\x82\xd3\xe4\x93\x02\x0f\x12\r/v1/instances\x12}\n" +
-	"\x0eCreateInstance\x12%.metaxisdata.v1.CreateInstanceRequest\x1a\x18.metaxisdata.v1.Instance\"*\xdaA\binstance\x82\xd3\xe4\x93\x02\x19:\binstance\"\r/v1/instances\x12\x9b\x01\n" +
-	"\x0eUpdateInstance\x12%.metaxisdata.v1.UpdateInstanceRequest\x1a\x18.metaxisdata.v1.Instance\"H\xdaA\x14instance,update_mask\x82\xd3\xe4\x93\x02+:\binstance2\x1f/v1/{instance.name=instances/*}\x12v\n" +
-	"\x0eDeleteInstance\x12%.metaxisdata.v1.DeleteInstanceRequest\x1a\x16.google.protobuf.Empty\"%\xdaA\x04name\x82\xd3\xe4\x93\x02\x18*\x16/v1/{name=instances/*}\x12\x81\x01\n" +
-	"\x10UndeleteInstance\x12'.metaxisdata.v1.UndeleteInstanceRequest\x1a\x18.metaxisdata.v1.Instance\"*\x82\xd3\xe4\x93\x02$:\x01*\"\x1f/v1/{name=instances/*}:undelete\x12\x81\x01\n" +
-	"\fSyncInstance\x12#.metaxisdata.v1.SyncInstanceRequest\x1a$.metaxisdata.v1.SyncInstanceResponse\"&\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/{name=instances/*}:sync\x12\x9e\x01\n" +
-	"\x14ListInstanceDatabase\x12+.metaxisdata.v1.ListInstanceDatabaseRequest\x1a,.metaxisdata.v1.ListInstanceDatabaseResponse\"+\x82\xd3\xe4\x93\x02%:\x01*\" /v1/{name=instances/*}:databases\x12\x8f\x01\n" +
-	"\x12BatchSyncInstances\x12).metaxisdata.v1.BatchSyncInstancesRequest\x1a*.metaxisdata.v1.BatchSyncInstancesResponse\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/instances:batchSync\x12\x97\x01\n" +
-	"\x14BatchUpdateInstances\x12+.metaxisdata.v1.BatchUpdateInstancesRequest\x1a,.metaxisdata.v1.BatchUpdateInstancesResponse\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/instances:batchUpdate\x12\x80\x01\n" +
-	"\rAddDataSource\x12$.metaxisdata.v1.AddDataSourceRequest\x1a\x18.metaxisdata.v1.Instance\"/\x82\xd3\xe4\x93\x02):\x01*\"$/v1/{name=instances/*}:addDataSource\x12\x89\x01\n" +
-	"\x10RemoveDataSource\x12'.metaxisdata.v1.RemoveDataSourceRequest\x1a\x18.metaxisdata.v1.Instance\"2\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/{name=instances/*}:removeDataSource\x12\xad\x01\n" +
-	"\x10UpdateDataSource\x12'.metaxisdata.v1.UpdateDataSourceRequest\x1a\x18.metaxisdata.v1.Instance\"V\xdaA\x17data_source,update_mask\x82\xd3\xe4\x93\x026:\vdata_source2'/v1/{name=instances/*}:updateDataSourceB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\rListInstances\x12$.metaxisdata.v1.ListInstancesRequest\x1a%.metaxisdata.v1.ListInstancesResponse\"\x18\xdaA\x00\x82\xd3\xe4\x93\x02\x0f\x12\r/v1/instances\x12\x81\x01\n" +
+	"\x0eCreateInstance\x12%.metaxisdata.v1.CreateInstanceRequest\x1a\x18.metaxisdata.v1.Instance\".\xdaA\binstance\x98\xea0\x01\x82\xd3\xe4\x93\x02\x19:\binstance\"\r/v1/instances\x12\x9f\x01\n" +
+	"\x0eUpdateInstance\x12%.metaxisdata.v1.UpdateInstanceRequest\x1a\x18.metaxisdata.v1.Instance\"L\xdaA\x14instance,update_mask\x98\xea0\x01\x82\xd3\xe4\x93\x02+:\binstance2\x1f/v1/{instance.name=instances/*}\x12z\n" +
+	"\x0eDeleteInstance\x12%.metaxisdata.v1.DeleteInstanceRequest\x1a\x16.google.protobuf.Empty\")\xdaA\x04name\x98\xea0\x01\x82\xd3\xe4\x93\x02\x18*\x16/v1/{name=instances/*}\x12\x85\x01\n" +
+	"\x10UndeleteInstance\x12'.metaxisdata.v1.UndeleteInstanceRequest\x1a\x18.metaxisdata.v1.Instance\".\x98\xea0\x01\x82\xd3\xe4\x93\x02$:\x01*\"\x1f/v1/{name=instances/*}:undelete\x12\x85\x01\n" +
+	"\fSyncInstance\x12#.metaxisdata.v1.SyncInstanceRequest\x1a$.metaxisdata.v1.SyncInstanceResponse\"*\x98\xea0\x01\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/{name=instances/*}:sync\x12\x9e\x01\n" +
+	"\x14ListInstanceDatabase\x12+.metaxisdata.v1.ListInstanceDatabaseRequest\x1a,.metaxisdata.v1.ListInstanceDatabaseResponse\"+\x82\xd3\xe4\x93\x02%:\x01*\" /v1/{name=instances/*}:databases\x12\x93\x01\n" +
+	"\x12BatchSyncInstances\x12).metaxisdata.v1.BatchSyncInstancesRequest\x1a*.metaxisdata.v1.BatchSyncInstancesResponse\"&\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/instances:batchSync\x12\x9b\x01\n" +
+	"\x14BatchUpdateInstances\x12+.metaxisdata.v1.BatchUpdateInstancesRequest\x1a,.metaxisdata.v1.BatchUpdateInstancesResponse\"(\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/instances:batchUpdate\x12\x84\x01\n" +
+	"\rAddDataSource\x12$.metaxisdata.v1.AddDataSourceRequest\x1a\x18.metaxisdata.v1.Instance\"3\x98\xea0\x01\x82\xd3\xe4\x93\x02):\x01*\"$/v1/{name=instances/*}:addDataSource\x12\x8d\x01\n" +
+	"\x10RemoveDataSource\x12'.metaxisdata.v1.RemoveDataSourceRequest\x1a\x18.metaxisdata.v1.Instance\"6\x98\xea0\x01\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/{name=instances/*}:removeDataSource\x12\xb1\x01\n" +
+	"\x10UpdateDataSource\x12'.metaxisdata.v1.UpdateDataSourceRequest\x1a\x18.metaxisdata.v1.Instance\"Z\xdaA\x17data_source,update_mask\x98\xea0\x01\x82\xd3\xe4\x93\x026:\vdata_source2'/v1/{name=instances/*}:updateDataSourceB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_instance_service_proto_rawDescOnce sync.Once
@@ -2936,6 +2936,7 @@ func file_v1_instance_service_proto_init() {
 	if File_v1_instance_service_proto != nil {
 		return
 	}
+	file_v1_annotation_proto_init()
 	file_v1_common_proto_init()
 	file_v1_instance_service_proto_msgTypes[8].OneofWrappers = []any{}
 	file_v1_instance_service_proto_msgTypes[19].OneofWrappers = []any{

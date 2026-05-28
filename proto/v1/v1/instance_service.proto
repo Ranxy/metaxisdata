@@ -10,6 +10,7 @@ import "google/protobuf/duration.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
+import "v1/annotation.proto";
 import "v1/common.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
@@ -31,6 +32,7 @@ service InstanceService {
       body: "instance"
     };
     option (google.api.method_signature) = "instance";
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc UpdateInstance(UpdateInstanceRequest) returns (Instance) {
@@ -39,11 +41,13 @@ service InstanceService {
       body: "instance"
     };
     option (google.api.method_signature) = "instance,update_mask";
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc DeleteInstance(DeleteInstanceRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/{name=instances/*}"};
     option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc UndeleteInstance(UndeleteInstanceRequest) returns (Instance) {
@@ -51,6 +55,7 @@ service InstanceService {
       post: "/v1/{name=instances/*}:undelete"
       body: "*"
     };
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc SyncInstance(SyncInstanceRequest) returns (SyncInstanceResponse) {
@@ -58,6 +63,7 @@ service InstanceService {
       post: "/v1/{name=instances/*}:sync"
       body: "*"
     };
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc ListInstanceDatabase(ListInstanceDatabaseRequest) returns (ListInstanceDatabaseResponse) {
@@ -72,6 +78,7 @@ service InstanceService {
       post: "/v1/instances:batchSync"
       body: "*"
     };
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc BatchUpdateInstances(BatchUpdateInstancesRequest) returns (BatchUpdateInstancesResponse) {
@@ -79,6 +86,7 @@ service InstanceService {
       post: "/v1/instances:batchUpdate"
       body: "*"
     };
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc AddDataSource(AddDataSourceRequest) returns (Instance) {
@@ -86,6 +94,7 @@ service InstanceService {
       post: "/v1/{name=instances/*}:addDataSource"
       body: "*"
     };
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc RemoveDataSource(RemoveDataSourceRequest) returns (Instance) {
@@ -93,6 +102,7 @@ service InstanceService {
       post: "/v1/{name=instances/*}:removeDataSource"
       body: "*"
     };
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc UpdateDataSource(UpdateDataSourceRequest) returns (Instance) {
@@ -101,6 +111,7 @@ service InstanceService {
       body: "data_source"
     };
     option (google.api.method_signature) = "data_source,update_mask";
+    option (metaxisdata.v1.audit) = true;
   }
 }
 

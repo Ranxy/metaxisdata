@@ -3,6 +3,13 @@
 
 ## Table of Contents
 
+- [store/audit_log.proto](#store_audit_log-proto)
+    - [AuditLog](#metaxisdata-store-AuditLog)
+    - [AuditStatus](#metaxisdata-store-AuditStatus)
+    - [RequestMetadata](#metaxisdata-store-RequestMetadata)
+  
+    - [AuditSeverity](#metaxisdata-store-AuditSeverity)
+  
 - [store/common.proto](#store_common-proto)
     - [PageToken](#metaxisdata-store-PageToken)
     - [Position](#metaxisdata-store-Position)
@@ -147,6 +154,95 @@
     - [PrincipalType](#metaxisdata-store-PrincipalType)
   
 - [Scalar Value Types](#scalar-value-types)
+
+
+
+<a name="store_audit_log-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## store/audit_log.proto
+
+
+
+<a name="metaxisdata-store-AuditLog"></a>
+
+### AuditLog
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| parent | [string](#string) |  |  |
+| method | [string](#string) |  |  |
+| resource | [string](#string) |  |  |
+| user | [string](#string) |  |  |
+| severity | [AuditSeverity](#metaxisdata-store-AuditSeverity) |  |  |
+| request | [google.protobuf.Struct](#google-protobuf-Struct) |  |  |
+| response | [google.protobuf.Struct](#google-protobuf-Struct) |  |  |
+| status | [AuditStatus](#metaxisdata-store-AuditStatus) |  |  |
+| latency_ms | [int64](#int64) |  |  |
+| service_data | [google.protobuf.Struct](#google-protobuf-Struct) |  |  |
+| request_metadata | [RequestMetadata](#metaxisdata-store-RequestMetadata) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-AuditStatus"></a>
+
+### AuditStatus
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| code | [int32](#int32) |  |  |
+| message | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-RequestMetadata"></a>
+
+### RequestMetadata
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| ip | [string](#string) |  |  |
+| user_agent | [string](#string) |  |  |
+
+
+
+
+
+ 
+
+
+<a name="metaxisdata-store-AuditSeverity"></a>
+
+### AuditSeverity
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| AUDIT_SEVERITY_UNSPECIFIED | 0 |  |
+| INFO | 1 |  |
+| WARNING | 2 |  |
+| ERROR | 3 |  |
+
+
+ 
+
+ 
+
+ 
 
 
 

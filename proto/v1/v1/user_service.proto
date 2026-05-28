@@ -62,6 +62,7 @@ service UserService {
       body: "user"
     };
     option (google.api.method_signature) = "user,update_mask";
+    option (metaxisdata.v1.audit) = true;
   }
 
   // Only the user with permission on the workspace can delete the user.
@@ -69,6 +70,7 @@ service UserService {
   rpc DeleteUser(DeleteUserRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/{name=users/*}"};
     option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.audit) = true;
   }
 
   // Only the user with permission on the workspace can undelete the user.
@@ -77,6 +79,7 @@ service UserService {
       post: "/v1/{name=users/*}:undelete"
       body: "*"
     };
+    option (metaxisdata.v1.audit) = true;
   }
 }
 

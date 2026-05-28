@@ -49,6 +49,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, layout: "default" },
   },
   {
+    path: "/settings/audit-logs",
+    name: "AuditLogs",
+    component: () => import("@/pages/settings/AuditLogsPage.vue"),
+    meta: { requiresAuth: true, layout: "default" },
+  },
+  {
     path: "/openlineage/tasks",
     name: "OpenLineageTasks",
     component: () => import("@/pages/openlineage/OpenLineageRunsPage.vue"),

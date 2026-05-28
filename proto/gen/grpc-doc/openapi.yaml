@@ -6,6 +6,38 @@ info:
     title: ""
     version: 0.0.1
 paths:
+    /v1/**/auditLogs:
+        get:
+            tags:
+                - AuditLogService
+            operationId: AuditLogService_ListAuditLogs
+            parameters:
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+                - name: filter
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListAuditLogsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/auth/login:
         post:
             tags:
@@ -1896,6 +1928,50 @@ components:
                 validateOnly:
                     type: boolean
                     description: Validate only also tests the data source connection.
+        AuditLog:
+            type: object
+            properties:
+                id:
+                    type: string
+                createTime:
+                    type: string
+                    format: date-time
+                parent:
+                    type: string
+                method:
+                    type: string
+                resource:
+                    type: string
+                user:
+                    type: string
+                severity:
+                    enum:
+                        - AUDIT_SEVERITY_UNSPECIFIED
+                        - INFO
+                        - WARNING
+                        - ERROR
+                    type: string
+                    format: enum
+                request:
+                    type: object
+                response:
+                    type: object
+                status:
+                    $ref: '#/components/schemas/AuditStatus'
+                latencyMs:
+                    type: string
+                serviceData:
+                    type: object
+                requestMetadata:
+                    $ref: '#/components/schemas/RequestMetadata'
+        AuditStatus:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    format: int32
+                message:
+                    type: string
         BatchGetUsersResponse:
             type: object
             properties:
@@ -3104,6 +3180,15 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/APIKeyResource'
+        ListAuditLogsResponse:
+            type: object
+            properties:
+                auditLogs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AuditLog'
+                nextPageToken:
+                    type: string
         ListDatabasesResponse:
             type: object
             properties:
@@ -3574,6 +3659,13 @@ components:
                     description: |-
                         Identified by data source ID.
                          Only READ_ONLY data source can be removed.
+        RequestMetadata:
+            type: object
+            properties:
+                ip:
+                    type: string
+                userAgent:
+                    type: string
         RuleMetadata:
             type: object
             properties:
@@ -4353,6 +4445,7 @@ components:
                     description: The rules is the list of rules in a view (PostgreSQL specific).
             description: ViewMetadata is the metadata for views.
 tags:
+    - name: AuditLogService
     - name: AuthService
     - name: DatabaseService
     - name: InstanceService

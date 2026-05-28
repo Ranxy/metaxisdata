@@ -17,6 +17,9 @@ importers:
       '@connectrpc/connect-web':
         specifier: ^2.0.0
         version: 2.1.1(@bufbuild/protobuf@2.10.1)(@connectrpc/connect@2.1.1(@bufbuild/protobuf@2.10.1))
+      '@internationalized/date':
+        specifier: ^3.10.1
+        version: 3.10.1
       '@types/chai':
         specifier: ^5.2.3
         version: 5.2.3

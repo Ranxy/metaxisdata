@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package metaxisdata.v1;
+
+import "google/api/annotations.proto";
+import "google/api/client.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
+
+service AuditLogService {
+  rpc ListAuditLogs(ListAuditLogsRequest) returns (ListAuditLogsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=**}/auditLogs"};
+    option (google.api.method_signature) = "parent";
+  }
+}
+
+enum AuditLogSeverity {
+  AUDIT_LOG_SEVERITY_UNSPECIFIED = 0;
+  INFO = 1;
+  WARNING = 2;
+  ERROR = 3;
+}
+
+message AuditLogStatus {
+  int32 code = 1;
+  string message = 2;
+}
+
+message AuditRequestMetadata {
+  string ip = 1;
+  string user_agent = 2;
+}
+
+message AuditLog {
+  string name = 1;
+  google.protobuf.Timestamp create_time = 2;
+  string parent = 3;
+  string method = 4;
+  string resource = 5;
+  string user = 6;
+  AuditLogSeverity severity = 7;
+  google.protobuf.Struct request = 8;
+  google.protobuf.Struct response = 9;
+  AuditLogStatus status = 10;
+  int64 latency_ms = 11;
+  google.protobuf.Struct service_data = 12;
+  AuditRequestMetadata request_metadata = 13;
+}
+
+message ListAuditLogsRequest {
+  string parent = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+  string filter = 4;
+}
+
+message ListAuditLogsResponse {
+  repeated AuditLog audit_logs = 1;
+  string next_page_token = 2;
+}

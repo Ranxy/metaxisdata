@@ -1446,7 +1446,7 @@ var File_v1_openlineage_service_proto protoreflect.FileDescriptor
 
 const file_v1_openlineage_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1cv1/openlineage_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9f\x02\n" +
+	"\x1cv1/openlineage_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\"\x9f\x02\n" +
 	"\x18NamespaceMappingResource\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12!\n" +
 	"\tnamespace\x18\x02 \x01(\tB\x03\xe0A\x02R\tnamespace\x125\n" +
@@ -1571,20 +1571,20 @@ const file_v1_openlineage_service_proto_rawDesc = "" +
 	"\x12ListAPIKeyResponse\x129\n" +
 	"\bapi_keys\x18\x01 \x03(\v2\x1e.metaxisdata.v1.APIKeyResourceR\aapiKeys\"*\n" +
 	"\x13RevokeAPIKeyRequest\x12\x13\n" +
-	"\x02id\x18\x01 \x01(\x03B\x03\xe0A\x02R\x02id2\xc2\f\n" +
+	"\x02id\x18\x01 \x01(\x03B\x03\xe0A\x02R\x02id2\xd7\f\n" +
 	"\x12OpenLineageService\x12\x90\x01\n" +
 	"\x14ListOpenLineageTasks\x12+.metaxisdata.v1.ListOpenLineageTasksRequest\x1a,.metaxisdata.v1.ListOpenLineageTasksResponse\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/openlineage/tasks\x12\x8e\x01\n" +
 	"\x12GetOpenLineageTask\x12).metaxisdata.v1.GetOpenLineageTaskRequest\x1a'.metaxisdata.v1.OpenLineageTaskResource\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/openlineage/tasks/{guid}\x12\x8c\x01\n" +
 	"\x13ListOpenLineageRuns\x12*.metaxisdata.v1.ListOpenLineageRunsRequest\x1a+.metaxisdata.v1.ListOpenLineageRunsResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/openlineage/runs\x12\x8a\x01\n" +
-	"\x11GetOpenLineageRun\x12(.metaxisdata.v1.GetOpenLineageRunRequest\x1a&.metaxisdata.v1.OpenLineageRunResource\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/openlineage/runs/{guid}\x12\xa5\x01\n" +
-	"\x16CreateNamespaceMapping\x12-.metaxisdata.v1.CreateNamespaceMappingRequest\x1a(.metaxisdata.v1.NamespaceMappingResource\"2\x82\xd3\xe4\x93\x02,:\amapping\"!/v1/openlineage/namespaceMappings\x12\x9c\x01\n" +
-	"\x14ListNamespaceMapping\x12+.metaxisdata.v1.ListNamespaceMappingRequest\x1a,.metaxisdata.v1.ListNamespaceMappingResponse\")\x82\xd3\xe4\x93\x02#\x12!/v1/openlineage/namespaceMappings\x12\xaa\x01\n" +
-	"\x16UpdateNamespaceMapping\x12-.metaxisdata.v1.UpdateNamespaceMappingRequest\x1a(.metaxisdata.v1.NamespaceMappingResource\"7\x82\xd3\xe4\x93\x021:\amapping2&/v1/openlineage/namespaceMappings/{id}\x12\x8f\x01\n" +
-	"\x16DeleteNamespaceMapping\x12-.metaxisdata.v1.DeleteNamespaceMappingRequest\x1a\x16.google.protobuf.Empty\".\x82\xd3\xe4\x93\x02(*&/v1/openlineage/namespaceMappings/{id}\x12}\n" +
-	"\fCreateAPIKey\x12#.metaxisdata.v1.CreateAPIKeyRequest\x1a$.metaxisdata.v1.CreateAPIKeyResponse\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/openlineage/apiKeys\x12t\n" +
+	"\x11GetOpenLineageRun\x12(.metaxisdata.v1.GetOpenLineageRunRequest\x1a&.metaxisdata.v1.OpenLineageRunResource\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/openlineage/runs/{guid}\x12\xa9\x01\n" +
+	"\x16CreateNamespaceMapping\x12-.metaxisdata.v1.CreateNamespaceMappingRequest\x1a(.metaxisdata.v1.NamespaceMappingResource\"6\x98\xea0\x01\x82\xd3\xe4\x93\x02,:\amapping\"!/v1/openlineage/namespaceMappings\x12\x9c\x01\n" +
+	"\x14ListNamespaceMapping\x12+.metaxisdata.v1.ListNamespaceMappingRequest\x1a,.metaxisdata.v1.ListNamespaceMappingResponse\")\x82\xd3\xe4\x93\x02#\x12!/v1/openlineage/namespaceMappings\x12\xae\x01\n" +
+	"\x16UpdateNamespaceMapping\x12-.metaxisdata.v1.UpdateNamespaceMappingRequest\x1a(.metaxisdata.v1.NamespaceMappingResource\";\x98\xea0\x01\x82\xd3\xe4\x93\x021:\amapping2&/v1/openlineage/namespaceMappings/{id}\x12\x93\x01\n" +
+	"\x16DeleteNamespaceMapping\x12-.metaxisdata.v1.DeleteNamespaceMappingRequest\x1a\x16.google.protobuf.Empty\"2\x98\xea0\x01\x82\xd3\xe4\x93\x02(*&/v1/openlineage/namespaceMappings/{id}\x12\x81\x01\n" +
+	"\fCreateAPIKey\x12#.metaxisdata.v1.CreateAPIKeyRequest\x1a$.metaxisdata.v1.CreateAPIKeyResponse\"&\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/openlineage/apiKeys\x12t\n" +
 	"\n" +
-	"ListAPIKey\x12!.metaxisdata.v1.ListAPIKeyRequest\x1a\".metaxisdata.v1.ListAPIKeyResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/openlineage/apiKeys\x12q\n" +
-	"\fRevokeAPIKey\x12#.metaxisdata.v1.RevokeAPIKeyRequest\x1a\x16.google.protobuf.Empty\"$\x82\xd3\xe4\x93\x02\x1e*\x1c/v1/openlineage/apiKeys/{id}B6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"ListAPIKey\x12!.metaxisdata.v1.ListAPIKeyRequest\x1a\".metaxisdata.v1.ListAPIKeyResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/openlineage/apiKeys\x12u\n" +
+	"\fRevokeAPIKey\x12#.metaxisdata.v1.RevokeAPIKeyRequest\x1a\x16.google.protobuf.Empty\"(\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1e*\x1c/v1/openlineage/apiKeys/{id}B6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_openlineage_service_proto_rawDescOnce sync.Once
@@ -1676,6 +1676,7 @@ func file_v1_openlineage_service_proto_init() {
 	if File_v1_openlineage_service_proto != nil {
 		return
 	}
+	file_v1_annotation_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

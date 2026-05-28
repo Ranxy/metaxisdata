@@ -75,6 +75,7 @@
 
 <script setup lang="ts">
 import {
+  ClipboardList,
   Database,
   FileCode2,
   Home,
@@ -149,6 +150,12 @@ const menuItems = computed<MenuItem[]>(() => [
         label: t("menu.users"),
         path: "/settings/users",
         icon: Users,
+      },
+      {
+        key: "auditLogs",
+        label: t("menu.auditLogs"),
+        path: "/settings/audit-logs",
+        icon: ClipboardList,
       },
       {
         key: "openlineage",

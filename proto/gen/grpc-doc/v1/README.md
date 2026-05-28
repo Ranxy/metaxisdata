@@ -11,6 +11,17 @@
     - [File-level Extensions](#v1_annotation-proto-extensions)
     - [File-level Extensions](#v1_annotation-proto-extensions)
   
+- [v1/audit_log_service.proto](#v1_audit_log_service-proto)
+    - [AuditLog](#metaxisdata-v1-AuditLog)
+    - [AuditLogStatus](#metaxisdata-v1-AuditLogStatus)
+    - [AuditRequestMetadata](#metaxisdata-v1-AuditRequestMetadata)
+    - [ListAuditLogsRequest](#metaxisdata-v1-ListAuditLogsRequest)
+    - [ListAuditLogsResponse](#metaxisdata-v1-ListAuditLogsResponse)
+  
+    - [AuditLogSeverity](#metaxisdata-v1-AuditLogSeverity)
+  
+    - [AuditLogService](#metaxisdata-v1-AuditLogService)
+  
 - [v1/common.proto](#v1_common-proto)
     - [Position](#metaxisdata-v1-Position)
     - [Range](#metaxisdata-v1-Range)
@@ -240,6 +251,139 @@
 | permission | string | .google.protobuf.MethodOptions | 100001 |  |
 
  
+
+ 
+
+
+
+<a name="v1_audit_log_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/audit_log_service.proto
+
+
+
+<a name="metaxisdata-v1-AuditLog"></a>
+
+### AuditLog
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| parent | [string](#string) |  |  |
+| method | [string](#string) |  |  |
+| resource | [string](#string) |  |  |
+| user | [string](#string) |  |  |
+| severity | [AuditLogSeverity](#metaxisdata-v1-AuditLogSeverity) |  |  |
+| request | [google.protobuf.Struct](#google-protobuf-Struct) |  |  |
+| response | [google.protobuf.Struct](#google-protobuf-Struct) |  |  |
+| status | [AuditLogStatus](#metaxisdata-v1-AuditLogStatus) |  |  |
+| latency_ms | [int64](#int64) |  |  |
+| service_data | [google.protobuf.Struct](#google-protobuf-Struct) |  |  |
+| request_metadata | [AuditRequestMetadata](#metaxisdata-v1-AuditRequestMetadata) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-AuditLogStatus"></a>
+
+### AuditLogStatus
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| code | [int32](#int32) |  |  |
+| message | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-AuditRequestMetadata"></a>
+
+### AuditRequestMetadata
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| ip | [string](#string) |  |  |
+| user_agent | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListAuditLogsRequest"></a>
+
+### ListAuditLogsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  |  |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+| filter | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListAuditLogsResponse"></a>
+
+### ListAuditLogsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| audit_logs | [AuditLog](#metaxisdata-v1-AuditLog) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+ 
+
+
+<a name="metaxisdata-v1-AuditLogSeverity"></a>
+
+### AuditLogSeverity
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| AUDIT_LOG_SEVERITY_UNSPECIFIED | 0 |  |
+| INFO | 1 |  |
+| WARNING | 2 |  |
+| ERROR | 3 |  |
+
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-AuditLogService"></a>
+
+### AuditLogService
+
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| ListAuditLogs | [ListAuditLogsRequest](#metaxisdata-v1-ListAuditLogsRequest) | [ListAuditLogsResponse](#metaxisdata-v1-ListAuditLogsResponse) |  |
 
  
 

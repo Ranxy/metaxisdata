@@ -370,3 +370,18 @@ CREATE TABLE openlineage_api_key (
 CREATE UNIQUE INDEX idx_openlineage_api_key_hash ON openlineage_api_key(key_hash);
 
 ALTER SEQUENCE openlineage_api_key_id_seq RESTART WITH 101;
+
+
+-- audit_log stores append-only audit events for auditable API calls.
+CREATE TABLE audit_log (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    payload JSONB NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX idx_audit_log_created_at ON audit_log(created_at DESC);
+CREATE INDEX idx_audit_log_payload_parent ON audit_log((payload->>'parent'));
+CREATE INDEX idx_audit_log_payload_method ON audit_log((payload->>'method'));
+CREATE INDEX idx_audit_log_payload_resource ON audit_log((payload->>'resource'));
+CREATE INDEX idx_audit_log_payload_user ON audit_log((payload->>'user'));
+CREATE INDEX idx_audit_log_payload_severity ON audit_log((payload->>'severity'));

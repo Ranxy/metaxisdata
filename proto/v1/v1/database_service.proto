@@ -9,6 +9,7 @@ import "google/api/resource.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
+import "v1/annotation.proto";
 import "v1/common.proto";
 import "v1/instance_service.proto";
 
@@ -26,6 +27,7 @@ service DatabaseService {
       body: "*"
     };
     option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc ListDatabase(ListDatabaseRequest) returns (ListDatabasesResponse) {
@@ -55,6 +57,7 @@ service DatabaseService {
       body: "manual_sql"
     };
     option (google.api.method_signature) = "parent,manual_sql,manual_sql_id";
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc GetManualSQL(GetManualSQLRequest) returns (ManualSQL) {
@@ -78,11 +81,13 @@ service DatabaseService {
       body: "manual_sql"
     };
     option (google.api.method_signature) = "manual_sql,update_mask";
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc DeleteManualSQL(DeleteManualSQLRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/{name=instances/*/databases/*/manualSqls/*}"};
     option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.audit) = true;
   }
 }
 
