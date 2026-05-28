@@ -1,5 +1,6 @@
 import { create } from "@bufbuild/protobuf";
 import {
+  BatchGetUsersRequestSchema,
   CreateUserRequestSchema,
   DeleteUserRequestSchema,
   GetUserRequestSchema,
@@ -33,6 +34,11 @@ export async function listUsers(options?: {
 export async function getUser(name: string) {
   const request = create(GetUserRequestSchema, { name });
   return await userClient.getUser(request);
+}
+
+export async function batchGetUsers(names: string[]) {
+  const request = create(BatchGetUsersRequestSchema, { names });
+  return await userClient.batchGetUsers(request);
 }
 
 export async function createUser(

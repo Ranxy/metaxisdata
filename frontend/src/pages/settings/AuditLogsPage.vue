@@ -313,16 +313,16 @@
               </TableCell>
               <TableCell class="max-w-[18rem]">
                 <ExpandableText
-                  :text="log.resource || '-'"
+                  :text="getAuditIdentityDisplay(log.resource)"
                   :dialog-title="t('auditLogs.resource')"
-                  text-class="font-mono text-xs"
+                  text-class="text-xs"
                 />
               </TableCell>
               <TableCell class="max-w-[16rem]">
                 <ExpandableText
-                  :text="log.user || '-'"
+                  :text="getAuditIdentityDisplay(log.user)"
                   :dialog-title="t('auditLogs.user')"
-                  text-class="font-mono text-xs"
+                  text-class="text-xs"
                 />
               </TableCell>
               <TableCell>
@@ -383,11 +383,11 @@
           </div>
           <div>
             <div class="text-sm text-muted-foreground">{{ t("auditLogs.resource") }}</div>
-            <div class="font-mono text-xs break-all">{{ selectedLog.resource || '-' }}</div>
+            <div class="text-xs break-all">{{ getAuditIdentityDisplay(selectedLog.resource) }}</div>
           </div>
           <div>
             <div class="text-sm text-muted-foreground">{{ t("auditLogs.user") }}</div>
-            <div class="font-mono text-xs break-all">{{ selectedLog.user || '-' }}</div>
+            <div class="text-xs break-all">{{ getAuditIdentityDisplay(selectedLog.user) }}</div>
           </div>
           <div>
             <div class="text-sm text-muted-foreground">{{ t("auditLogs.status") }}</div>
@@ -461,6 +461,7 @@ import {
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { listAuditLogs } from "@/api/audit";
+import { batchGetUsers } from "@/api/user";
 import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
 import ExpandableText from "@/components/metadata/ExpandableText.vue";
@@ -491,6 +492,7 @@ import {
   type AuditLog,
   AuditLogSeverity,
 } from "@/types/proto-es/v1/audit_log_service_pb";
+import type { User } from "@/types/proto-es/v1/user_service_pb";
 
 type AuditFilterType = "resource" | "actor" | "method" | "level";
 type SeverityValue = "INFO" | "WARNING" | "ERROR";
@@ -534,6 +536,7 @@ const currentPageToken = ref("");
 const previousPageTokens = ref<string[]>([]);
 const showDetails = ref(false);
 const selectedLog = ref<AuditLog | null>(null);
+const auditUserDisplayMap = ref<Record<string, string>>({});
 
 const activeFilters = ref<AuditFilter[]>([]);
 const searchQuery = ref("");
@@ -542,6 +545,7 @@ const showSearchPanel = ref(false);
 const showDateRangePicker = ref(false);
 const dateRange = ref<CalendarRangeValue>(createDefaultDateRange());
 const draftDateRange = ref<any>(createDefaultDateRange());
+const pendingAuditUsers = new Set<string>();
 
 const searchBarRef = ref<HTMLElement | null>(null);
 const searchInputRef = ref<HTMLInputElement | null>(null);
@@ -985,6 +989,64 @@ function getStatusLabel(log: AuditLog): string {
   return `${log.status.code} ${message || t("auditLogs.statusFailed")}`;
 }
 
+function formatAuditUserDisplay(user: User): string {
+  if (user.title && user.email) {
+    return `${user.title} (${user.email})`;
+  }
+  if (user.title) {
+    return user.title;
+  }
+  if (user.email) {
+    return user.email;
+  }
+  return user.name;
+}
+
+function getAuditIdentityDisplay(name: string): string {
+  if (!name) {
+    return "-";
+  }
+  return auditUserDisplayMap.value[name] || name;
+}
+
+async function hydrateAuditUserDisplay(logEntries: AuditLog[]) {
+  const unresolvedNames = [
+    ...new Set(
+      logEntries
+        .flatMap((log) => [log.user, log.resource])
+        .filter(
+          (name): name is string =>
+            Boolean(name) &&
+            name.startsWith("users/") &&
+            !auditUserDisplayMap.value[name] &&
+            !pendingAuditUsers.has(name)
+        )
+    ),
+  ];
+  if (unresolvedNames.length === 0) {
+    return;
+  }
+
+  for (const name of unresolvedNames) {
+    pendingAuditUsers.add(name);
+  }
+
+  try {
+    const response = await batchGetUsers(unresolvedNames);
+    const nextDisplayMap = { ...auditUserDisplayMap.value };
+    for (const user of response.users) {
+      nextDisplayMap[user.name] = formatAuditUserDisplay(user);
+    }
+    auditUserDisplayMap.value = nextDisplayMap;
+  } catch {
+    // Keep the original resource name as fallback when user lookup fails.
+  } finally {
+    for (const name of unresolvedNames) {
+      pendingAuditUsers.delete(name);
+    }
+  }
+}
+
 async function fetchLogs(pageToken = "") {
   isLoading.value = true;
   error.value = "";
@@ -997,6 +1059,7 @@ async function fetchLogs(pageToken = "") {
       filter: filterExpression.value,
     });
     logs.value = response.auditLogs;
+    void hydrateAuditUserDisplay(response.auditLogs);
     nextPageToken.value = response.nextPageToken;
   } catch (err) {
     logs.value = [];
