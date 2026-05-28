@@ -9,10 +9,16 @@
           {{ t("auditLogs.description") }}
         </p>
       </div>
-      <Button :disabled="isLoading" @click="refreshLogs">
-        <RefreshCcw class="mr-2 h-4 w-4" :class="{ 'animate-spin': isLoading }" />
-        {{ t("auditLogs.refresh") }}
-      </Button>
+      <div class="flex items-center gap-2">
+        <Button :disabled="isLoading || isExporting" variant="outline" @click="exportCsv">
+          <Download class="mr-2 h-4 w-4" :class="{ 'animate-pulse': isExporting }" />
+          {{ isExporting ? t("auditLogs.exportingCsv") : t("auditLogs.exportCsv") }}
+        </Button>
+        <Button :disabled="isLoading || isExporting" @click="refreshLogs">
+          <RefreshCcw class="mr-2 h-4 w-4" :class="{ 'animate-spin': isLoading }" />
+          {{ t("auditLogs.refresh") }}
+        </Button>
+      </div>
     </div>
 
     <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
@@ -281,17 +287,17 @@
           <p class="mt-1 text-sm">{{ t("auditLogs.emptyDescription") }}</p>
         </div>
 
-        <Table v-else>
+        <Table v-else class="min-w-[88rem]">
           <TableHeader>
             <TableRow>
-              <TableHead>{{ t("auditLogs.time") }}</TableHead>
-              <TableHead>{{ t("auditLogs.severity") }}</TableHead>
-              <TableHead>{{ t("auditLogs.method") }}</TableHead>
-              <TableHead>{{ t("auditLogs.resource") }}</TableHead>
-              <TableHead>{{ t("auditLogs.user") }}</TableHead>
-              <TableHead>{{ t("auditLogs.status") }}</TableHead>
-              <TableHead>{{ t("auditLogs.requestMeta") }}</TableHead>
-              <TableHead class="text-right">{{ t("auditLogs.actions") }}</TableHead>
+              <TableHead class="w-[11rem] whitespace-nowrap">{{ t("auditLogs.time") }}</TableHead>
+              <TableHead class="w-[6rem] whitespace-nowrap">{{ t("auditLogs.severity") }}</TableHead>
+              <TableHead class="min-w-[20rem] whitespace-nowrap">{{ t("auditLogs.method") }}</TableHead>
+              <TableHead class="min-w-[15rem] whitespace-nowrap">{{ t("auditLogs.resource") }}</TableHead>
+              <TableHead class="min-w-[13rem] whitespace-nowrap">{{ t("auditLogs.user") }}</TableHead>
+              <TableHead class="w-[8rem] whitespace-nowrap">{{ t("auditLogs.status") }}</TableHead>
+              <TableHead class="min-w-[16rem] whitespace-nowrap">{{ t("auditLogs.requestMeta") }}</TableHead>
+              <TableHead class="w-[6rem] whitespace-nowrap text-right">{{ t("auditLogs.actions") }}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -299,8 +305,8 @@
               <TableCell class="whitespace-nowrap text-muted-foreground">
                 {{ formatTimestamp(log.createTime) }}
               </TableCell>
-              <TableCell>
-                <Badge :variant="getSeverityVariant(log.severity)">
+              <TableCell class="whitespace-nowrap">
+                <Badge :variant="getSeverityVariant(log.severity)" class="min-w-[3.5rem] justify-center whitespace-nowrap">
                   {{ getSeverityLabel(log.severity) }}
                 </Badge>
               </TableCell>
@@ -325,7 +331,7 @@
                   text-class="text-xs"
                 />
               </TableCell>
-              <TableCell>
+              <TableCell class="whitespace-nowrap">
                 <div class="space-y-1">
                   <div class="font-medium">{{ getStatusLabel(log) }}</div>
                   <div class="text-xs text-muted-foreground">
@@ -440,6 +446,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Download,
   Filter,
   RefreshCcw,
   X,
@@ -530,6 +537,7 @@ const { handleError } = useErrorHandler();
 
 const logs = ref<AuditLog[]>([]);
 const isLoading = ref(false);
+const isExporting = ref(false);
 const error = ref("");
 const nextPageToken = ref("");
 const currentPageToken = ref("");
@@ -980,11 +988,12 @@ function getSeverityVariant(
 
 function getStatusLabel(log: AuditLog): string {
   const message = log.status?.message?.trim();
+  const isSuccessMessage = !message || /^(ok|success)$/i.test(message);
   if (!log.status || (!log.status.code && !message)) {
     return t("auditLogs.statusUnknown");
   }
   if (!log.status.code) {
-    return message || t("auditLogs.statusSuccess");
+    return isSuccessMessage ? t("auditLogs.statusSuccess") : message;
   }
   return `${log.status.code} ${message || t("auditLogs.statusFailed")}`;
 }
@@ -1007,6 +1016,99 @@ function getAuditIdentityDisplay(name: string): string {
     return "-";
   }
   return auditUserDisplayMap.value[name] || name;
+}
+
+function formatTimestampForExport(ts: Timestamp | undefined): string {
+  if (!ts?.seconds) {
+    return "";
+  }
+  const milliseconds =
+    Number(ts.seconds) * 1000 + Number(ts.nanos ?? 0) / 1_000_000;
+  const date = new Date(milliseconds);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+function formatValueForCsv(value: unknown): string {
+  if (value == null) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  return JSON.stringify(value);
+}
+
+function escapeCsvValue(value: unknown): string {
+  const normalized = String(value ?? "").replace(/\r\n?/g, "\n");
+  return `"${normalized.replace(/"/g, '""')}"`;
+}
+
+function buildAuditCsv(logEntries: AuditLog[]): string {
+  const headers = [
+    "createTime",
+    "parent",
+    "severity",
+    "method",
+    "resource",
+    "resourceIdentifier",
+    "user",
+    "userIdentifier",
+    "statusCode",
+    "statusMessage",
+    "latencyMs",
+    "ip",
+    "userAgent",
+    "request",
+    "response",
+    "serviceData",
+  ];
+  const rows = logEntries.map((log) => [
+    formatTimestampForExport(log.createTime),
+    log.parent,
+    getSeverityLabel(log.severity),
+    log.method,
+    getAuditIdentityDisplay(log.resource),
+    log.resource,
+    getAuditIdentityDisplay(log.user),
+    log.user,
+    log.status?.code ?? "",
+    log.status?.message ?? "",
+    log.latencyMs,
+    log.requestMetadata?.ip ?? "",
+    log.requestMetadata?.userAgent ?? "",
+    formatValueForCsv(log.request),
+    formatValueForCsv(log.response),
+    formatValueForCsv(log.serviceData),
+  ]);
+  return [headers, ...rows]
+    .map((row) => row.map((value) => escapeCsvValue(value)).join(","))
+    .join("\n");
+}
+
+function getAuditCsvFilename(): string {
+  const now = new Date();
+  const timestamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+    "-",
+    String(now.getHours()).padStart(2, "0"),
+    String(now.getMinutes()).padStart(2, "0"),
+    String(now.getSeconds()).padStart(2, "0"),
+  ].join("");
+  return `audit-logs-${timestamp}.csv`;
+}
+
+function downloadCsv(content: string, fileName: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 async function hydrateAuditUserDisplay(logEntries: AuditLog[]) {
@@ -1044,6 +1146,37 @@ async function hydrateAuditUserDisplay(logEntries: AuditLog[]) {
     for (const name of unresolvedNames) {
       pendingAuditUsers.delete(name);
     }
+  }
+}
+
+async function fetchAuditLogsForExport(): Promise<AuditLog[]> {
+  const exportedLogs: AuditLog[] = [];
+  let pageToken = "";
+
+  do {
+    const response = await listAuditLogs({
+      parent: WORKSPACE_PARENT,
+      pageSize: 1000,
+      pageToken,
+      filter: filterExpression.value,
+    });
+    exportedLogs.push(...response.auditLogs);
+    pageToken = response.nextPageToken;
+  } while (pageToken);
+
+  return exportedLogs;
+}
+
+async function exportCsv() {
+  isExporting.value = true;
+  try {
+    const exportedLogs = await fetchAuditLogsForExport();
+    await hydrateAuditUserDisplay(exportedLogs);
+    downloadCsv(buildAuditCsv(exportedLogs), getAuditCsvFilename());
+  } catch (err) {
+    handleError(err, "auditLogs.exportError");
+  } finally {
+    isExporting.value = false;
   }
 }
 

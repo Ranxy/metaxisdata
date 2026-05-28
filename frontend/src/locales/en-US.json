@@ -63,6 +63,8 @@
     "description": "Inspect auditable API activity across the workspace, including request metadata and redacted payloads.",
     "filter": "Filter",
     "refresh": "Refresh",
+    "exportCsv": "Export CSV",
+    "exportingCsv": "Exporting...",
     "reset": "Reset Filters",
     "entries": "Entries",
     "entriesDescription": "Showing {count} audit log entries for the current page.",
@@ -117,7 +119,8 @@
     "emptyTitle": "No audit logs found",
     "emptyDescription": "Try broadening the filters or refreshing after an auditable action.",
     "pageStatus": "Current page contains {count} entries.",
-    "fetchError": "Failed to load audit logs"
+    "fetchError": "Failed to load audit logs",
+    "exportError": "Failed to export audit logs"
   },
   "metadataBrowser": {
     "title": "Metadata Browser",
