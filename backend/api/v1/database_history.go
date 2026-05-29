@@ -53,10 +53,7 @@ func (s *DatabaseService) ListMetadataHistory(ctx context.Context, req *connect.
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list metadata history"))
 	}
 
-	events, err := s.buildMetadataHistoryEvents(ctx, req.Msg.GetGuid(), req.Msg.GetMetaType(), history)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to build metadata history timeline"))
-	}
+	events := s.buildMetadataHistoryEvents(ctx, req.Msg.GetGuid(), req.Msg.GetMetaType(), history)
 
 	response := &v1pb.ListMetadataHistoryResponse{}
 	if offset.offset < len(events) {
@@ -110,28 +107,22 @@ func (s *DatabaseService) GetMetadataHistoryEvent(ctx context.Context, req *conn
 		if !event.eventTime.Equal(eventTime) {
 			continue
 		}
-		result, err := buildMetadataHistoryEventResult(req.Msg.GetGuid(), req.Msg.GetMetaType(), event)
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to build metadata history event"))
-		}
+		result := buildMetadataHistoryEventResult(req.Msg.GetGuid(), req.Msg.GetMetaType(), event)
 		return connect.NewResponse(result), nil
 	}
 
 	return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("metadata history event for %q not found", req.Msg.GetGuid()))
 }
 
-func (s *DatabaseService) buildMetadataHistoryEvents(_ context.Context, guid string, metaType v1pb.MetaType, history []*store.MetaRegistryHistory) ([]*v1pb.MetadataHistoryTimelineEntry, error) {
+func (*DatabaseService) buildMetadataHistoryEvents(_ context.Context, guid string, metaType v1pb.MetaType, history []*store.MetaRegistryHistory) []*v1pb.MetadataHistoryTimelineEntry {
 	contexts := buildMetadataHistoryEventContexts(history)
 	entries := make([]*v1pb.MetadataHistoryTimelineEntry, 0, len(contexts))
 	for _, event := range contexts {
-		result, err := buildMetadataHistoryEventResult(guid, metaType, event)
-		if err != nil {
-			return nil, err
-		}
+		result := buildMetadataHistoryEventResult(guid, metaType, event)
 		entries = append(entries, result.Entry)
 	}
 	slices.Reverse(entries)
-	return entries, nil
+	return entries
 }
 
 func buildMetadataHistoryEventContexts(history []*store.MetaRegistryHistory) []metadataHistoryEventContext {
@@ -202,7 +193,7 @@ func eventBeforeHistory(previous *store.MetaRegistryHistory, eventTime time.Time
 	return nil
 }
 
-func buildMetadataHistoryEventResult(guid string, metaType v1pb.MetaType, event metadataHistoryEventContext) (*v1pb.MetadataHistoryEvent, error) {
+func buildMetadataHistoryEventResult(guid string, metaType v1pb.MetaType, event metadataHistoryEventContext) *v1pb.MetadataHistoryEvent {
 	beforeMetadata := convertStoredMetadataMessage(historyMetadata(event.before))
 	afterMetadata := convertStoredMetadataMessage(historyMetadata(event.after))
 	groups := buildMetadataHistoryChangeGroups(metaType, event.before, event.after, event.operation)
@@ -223,7 +214,7 @@ func buildMetadataHistoryEventResult(guid string, metaType v1pb.MetaType, event 
 		BeforeMetadata: beforeMetadata,
 		AfterMetadata:  afterMetadata,
 		ChangeGroups:   groups,
-	}, nil
+	}
 }
 
 func historyMetadata(history *store.MetaRegistryHistory) *storepb.StoredMetadata {
@@ -462,6 +453,7 @@ func buildMetadataHistorySummary(operation v1pb.MetadataHistoryOperation, groups
 		parts = append(parts, "created")
 	case v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_DELETED:
 		parts = append(parts, "deleted")
+	default:
 	}
 	for _, count := range sectionChanges {
 		parts = append(parts, summarizeSectionCount(count))
@@ -488,6 +480,7 @@ func buildMetadataHistorySectionCounts(groups []*v1pb.MetadataHistoryChangeGroup
 				count.Updated++
 			case v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_DELETED:
 				count.Removed++
+			default:
 			}
 		}
 	}
@@ -718,6 +711,8 @@ func diffColumnGroupFromList(beforeCols, afterCols []*v1pb.ColumnMetadata) *v1pb
 				Before:       columnSnapshot(before),
 				After:        columnSnapshot(after),
 			})
+
+		default:
 		}
 	}
 	if len(items) == 0 {
@@ -766,6 +761,7 @@ func diffForeignKeyGroup(beforeTable, afterTable *v1pb.TableMetadata) *v1pb.Meta
 				continue
 			}
 			items = append(items, &v1pb.MetadataHistoryChangeItem{Section: v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_FOREIGN_KEY, Operation: v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_UPDATED, Key: key, DisplayName: key, Summary: summarizeFieldChanges(fieldChanges), FieldChanges: fieldChanges, Before: foreignKeySnapshot(before, nil), After: foreignKeySnapshot(nil, after)})
+		default:
 		}
 	}
 	if len(items) == 0 {
@@ -798,6 +794,7 @@ func diffCheckConstraintGroup(beforeTable, afterTable *v1pb.TableMetadata) *v1pb
 		case before != nil && after != nil && before.GetExpression() != after.GetExpression():
 			fieldChanges := []*v1pb.MetadataFieldChange{{Field: "expression", DisplayName: "expression", Before: before.GetExpression(), After: after.GetExpression()}}
 			items = append(items, &v1pb.MetadataHistoryChangeItem{Section: v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_CHECK_CONSTRAINT, Operation: v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_UPDATED, Key: key, DisplayName: key, Summary: summarizeFieldChanges(fieldChanges), FieldChanges: fieldChanges, Before: checkConstraintSnapshot(before, nil), After: checkConstraintSnapshot(nil, after)})
+		default:
 		}
 	}
 	if len(items) == 0 {
@@ -836,6 +833,7 @@ func diffPartitionGroup(beforeTable, afterTable *v1pb.TableMetadata) *v1pb.Metad
 				continue
 			}
 			items = append(items, &v1pb.MetadataHistoryChangeItem{Section: v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_PARTITION, Operation: v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_UPDATED, Key: key, DisplayName: key, Summary: summarizeFieldChanges(fieldChanges), FieldChanges: fieldChanges, Before: partitionSnapshot(before, nil), After: partitionSnapshot(nil, after)})
+		default:
 		}
 	}
 	if len(items) == 0 {
@@ -874,6 +872,7 @@ func diffTriggerGroup(beforeTriggers, afterTriggers []*v1pb.TriggerMetadata) *v1
 				continue
 			}
 			items = append(items, &v1pb.MetadataHistoryChangeItem{Section: v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_TRIGGER, Operation: v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_UPDATED, Key: key, DisplayName: key, Summary: summarizeFieldChanges(fieldChanges), FieldChanges: fieldChanges, Before: triggerSnapshot(before, nil), After: triggerSnapshot(nil, after)})
+		default:
 		}
 	}
 	if len(items) == 0 {
@@ -914,6 +913,7 @@ func diffRuleGroup(beforeRules, afterRules []*v1pb.RuleMetadata) *v1pb.MetadataH
 				continue
 			}
 			items = append(items, &v1pb.MetadataHistoryChangeItem{Section: v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_RULE, Operation: v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_UPDATED, Key: key, DisplayName: key, Summary: summarizeFieldChanges(fieldChanges), FieldChanges: fieldChanges, Before: ruleSnapshot(before, nil), After: ruleSnapshot(nil, after)})
+		default:
 		}
 	}
 	if len(items) == 0 {
@@ -947,6 +947,7 @@ func diffTagGroup(beforeTags, afterTags []string) *v1pb.MetadataHistoryChangeGro
 			items = append(items, &v1pb.MetadataHistoryChangeItem{Section: v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_TAG, Operation: v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_CREATED, Key: key, DisplayName: key, Summary: "created"})
 		case hadBefore && !hasAfter:
 			items = append(items, &v1pb.MetadataHistoryChangeItem{Section: v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_TAG, Operation: v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_DELETED, Key: key, DisplayName: key, Summary: "deleted"})
+		default:
 		}
 	}
 	if len(items) == 0 {
@@ -975,6 +976,7 @@ func diffAttributeGroup(beforeAttributes, afterAttributes map[string]string) *v1
 		case hadBefore && hasAfter && before != after:
 			fieldChanges := []*v1pb.MetadataFieldChange{{Field: "value", DisplayName: "value", Before: before, After: after}}
 			items = append(items, &v1pb.MetadataHistoryChangeItem{Section: v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_ATTRIBUTE, Operation: v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_UPDATED, Key: key, DisplayName: key, Summary: summarizeFieldChanges(fieldChanges), FieldChanges: fieldChanges})
+		default:
 		}
 	}
 	if len(items) == 0 {
@@ -1017,6 +1019,7 @@ func diffNamedIndexLikeGroup(section v1pb.MetadataHistorySection, beforeIndexes,
 				continue
 			}
 			items = append(items, &v1pb.MetadataHistoryChangeItem{Section: section, Operation: v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_UPDATED, Key: key, DisplayName: key, Summary: summarizeFieldChanges(fieldChanges), FieldChanges: fieldChanges, Before: indexSnapshot(before, nil), After: indexSnapshot(nil, after)})
+		default:
 		}
 	}
 	if len(items) == 0 {
@@ -1034,6 +1037,7 @@ func newChildLifecycleItem(section v1pb.MetadataHistorySection, operation v1pb.M
 	case v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_DELETED:
 		item.Summary = "deleted"
 		item.Before = snapshot
+	default:
 	}
 	return item
 }

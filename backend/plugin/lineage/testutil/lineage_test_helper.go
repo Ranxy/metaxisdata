@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
@@ -186,7 +187,7 @@ func RunLineageTestSuitesFromYAMLDir(t *testing.T, dir string, analyzeFn Analyze
 		}
 		suitePaths = append(suitePaths, filepath.Join(dir, entry.Name()))
 	}
-	sort.Strings(suitePaths)
+	slices.Sort(suitePaths)
 	require.NotEmpty(t, suitePaths, "no YAML lineage test suites found in %s", dir)
 
 	for _, suitePath := range suitePaths {
@@ -268,7 +269,7 @@ func (c *yamlLineageTestCase) toLineageTestCase() (LineageTestCase, error) {
 		for _, rawEdge := range *c.ExpectedEdges {
 			edge, err := rawEdge.toExpectedEdge()
 			if err != nil {
-				return LineageTestCase{}, err
+				return LineageTestCase{}, errors.Wrap(err, "failed to convert expected edge")
 			}
 			tc.ExpectedEdges = append(tc.ExpectedEdges, edge)
 		}

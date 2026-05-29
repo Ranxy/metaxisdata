@@ -19,8 +19,6 @@ linters:
       explicit-exhaustive-switch: true
     forbidigo:
       forbid:
-        - pattern: fmt\.Errorf
-          msg: Please use errors\.Wrap\|Wrapf\|Errorf instead
         - pattern: ioutil\.ReadDir
           msg: Please use os\.ReadDir instead
         - pattern: protojson\.Unmarshal?

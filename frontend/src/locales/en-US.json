@@ -65,7 +65,6 @@
     "refresh": "Refresh",
     "exportCsv": "Export CSV",
     "exportingCsv": "Exporting...",
-    "reset": "Reset Filters",
     "entries": "Entries",
     "entriesDescription": "Showing {count} audit log entries for the current page.",
     "parentScope": "Scope",
@@ -102,8 +101,6 @@
     "resourcePlaceholder": "Filter by resource name",
     "user": "User",
     "userPlaceholder": "Filter by actor",
-    "from": "From",
-    "to": "To",
     "status": "Status",
     "statusUnknown": "Unknown",
     "statusSuccess": "Success",
@@ -118,9 +115,7 @@
     "detailTitle": "Audit Log Details",
     "emptyTitle": "No audit logs found",
     "emptyDescription": "Try broadening the filters or refreshing after an auditable action.",
-    "pageStatus": "Current page contains {count} entries.",
-    "fetchError": "Failed to load audit logs",
-    "exportError": "Failed to export audit logs"
+    "pageStatus": "Current page contains {count} entries."
   },
   "metadataBrowser": {
     "title": "Metadata Browser",

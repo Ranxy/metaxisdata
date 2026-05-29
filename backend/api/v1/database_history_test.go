@@ -62,14 +62,13 @@ func TestBuildMetadataHistoryEventResultForTable(t *testing.T) {
 		}}},
 	}
 
-	result, err := buildMetadataHistoryEventResult("inst;db;public;users", v1pb.MetaType_TABLE, metadataHistoryEventContext{
+	result := buildMetadataHistoryEventResult("inst;db;public;users", v1pb.MetaType_TABLE, metadataHistoryEventContext{
 		eventTime: t1,
 		validFrom: t1,
 		operation: v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_UPDATED,
 		before:    before,
 		after:     after,
 	})
-	require.NoError(t, err)
 	require.NotNil(t, result.Entry)
 	require.Equal(t, "+1 column ~1 column -1 column, +1 index -1 index, ~1 property", result.Entry.GetSummary())
 	require.Len(t, result.ChangeGroups, 3)
@@ -96,7 +95,7 @@ func TestBuildMetadataHistoryEventResultForManualSQL(t *testing.T) {
 
 	t0 := time.Date(2026, time.May, 29, 12, 0, 0, 0, time.UTC)
 
-	result, err := buildMetadataHistoryEventResult("inst;db;public;__manual_sql__/active_users", v1pb.MetaType_MANUAL_SQL, metadataHistoryEventContext{
+	result := buildMetadataHistoryEventResult("inst;db;public;__manual_sql__/active_users", v1pb.MetaType_MANUAL_SQL, metadataHistoryEventContext{
 		eventTime: t0,
 		validFrom: t0,
 		operation: v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_CREATED,
@@ -114,7 +113,6 @@ func TestBuildMetadataHistoryEventResultForManualSQL(t *testing.T) {
 			}}},
 		},
 	})
-	require.NoError(t, err)
 	require.Equal(t, "created, +2 tags, +1 attribute", result.Entry.GetSummary())
 	require.Len(t, result.ChangeGroups, 2)
 	require.Equal(t, v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_TAG, result.ChangeGroups[0].Section)

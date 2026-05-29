@@ -65,7 +65,6 @@
     "refresh": "刷新",
     "exportCsv": "导出 CSV",
     "exportingCsv": "导出中...",
-    "reset": "重置筛选",
     "entries": "日志列表",
     "entriesDescription": "当前页共显示 {count} 条审计日志。",
     "parentScope": "范围",
@@ -102,8 +101,6 @@
     "resourcePlaceholder": "按资源名筛选",
     "user": "用户",
     "userPlaceholder": "按操作者筛选",
-    "from": "开始时间",
-    "to": "结束时间",
     "status": "状态",
     "statusUnknown": "未知",
     "statusSuccess": "成功",
@@ -118,9 +115,7 @@
     "detailTitle": "审计日志详情",
     "emptyTitle": "暂无审计日志",
     "emptyDescription": "可以尝试放宽筛选条件，或先执行一次可审计操作后再刷新。",
-    "pageStatus": "当前页包含 {count} 条记录。",
-    "fetchError": "加载审计日志失败",
-    "exportError": "导出审计日志失败"
+    "pageStatus": "当前页包含 {count} 条记录。"
   },
   "metadataBrowser": {
     "title": "元数据浏览器",

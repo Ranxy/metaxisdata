@@ -41,7 +41,10 @@ func (in *AuditInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc 
 			return next(ctx, req)
 		}
 
-		requestMessage, _ := req.Any().(proto.Message)
+		requestMessage, ok := req.Any().(proto.Message)
+		if !ok {
+			return next(ctx, req)
+		}
 		if shouldSkipAudit(requestMessage) {
 			return next(ctx, req)
 		}
@@ -95,7 +98,10 @@ func (in *AuditInterceptor) createAuditLog(ctx context.Context, req connect.AnyR
 		return pkgerrors.Wrap(workspaceErr, "failed to get workspace id for audit log")
 	}
 
-	requestMessage, _ := req.Any().(proto.Message)
+	requestMessage, ok := req.Any().(proto.Message)
+	if !ok {
+		return pkgerrors.New("failed to cast request to proto.Message")
+	}
 	requestStruct, requestMap, marshalErr := marshalAuditMessage(requestMessage)
 	if marshalErr != nil {
 		return marshalErr
@@ -103,7 +109,10 @@ func (in *AuditInterceptor) createAuditLog(ctx context.Context, req connect.AnyR
 
 	var responseMessage proto.Message
 	if !isNilConnectValue(resp) {
-		responseMessage, _ = resp.Any().(proto.Message)
+		responseMessage, ok = resp.Any().(proto.Message)
+		if !ok {
+			responseMessage = nil
+		}
 	}
 	responseStruct, responseMap, marshalErr := marshalAuditMessage(responseMessage)
 	if marshalErr != nil {
@@ -181,6 +190,7 @@ func sanitizeAuditValue(value any) {
 		for i := range typed {
 			sanitizeAuditValue(typed[i])
 		}
+	default:
 	}
 }
 
@@ -257,7 +267,10 @@ func getNestedString(raw map[string]any, keys ...string) string {
 			return ""
 		}
 	}
-	value, _ := current.(string)
+	value, ok := current.(string)
+	if !ok {
+		return ""
+	}
 	return value
 }
 

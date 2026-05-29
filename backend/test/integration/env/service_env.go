@@ -225,8 +225,8 @@ func StartMySQLServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 		cleanupServiceResources(nil, bootstrap.containers, "", nil, nil)
 		return nil, nil, err
 	}
-
-	baseURL, serverDir, serverCmd, serverDone, serverLogs, err := startServerProcess(ctx, pgURL)
+	serverDir := ""
+	baseURL, serverCmd, serverDone, serverLogs, err := startServerProcess(ctx, pgURL)
 	if err != nil {
 		cleanupServiceResources(nil, bootstrap.containers, "", nil, nil)
 		return nil, nil, err
@@ -304,8 +304,8 @@ func StartPostgresServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 		cleanupServiceResources(nil, bootstrap.containers, "", nil, nil)
 		return nil, nil, err
 	}
-
-	baseURL, serverDir, serverCmd, serverDone, serverLogs, err := startServerProcess(ctx, pgURL)
+	serverDir := ""
+	baseURL, serverCmd, serverDone, serverLogs, err := startServerProcess(ctx, pgURL)
 	if err != nil {
 		cleanupServiceResources(nil, bootstrap.containers, "", nil, nil)
 		return nil, nil, err
@@ -602,22 +602,22 @@ func (e *ServiceEnv) getDatabaseByFullName(ctx context.Context, t *testing.T, fu
 	return e.findDatabase(ctx, t, instanceName, databaseName)
 }
 
-func startServerProcess(ctx context.Context, pgURL string) (string, string, *exec.Cmd, chan error, *lockedBuffer, error) {
+func startServerProcess(ctx context.Context, pgURL string) (string, *exec.Cmd, chan error, *lockedBuffer, error) {
 	port, err := reservePort()
 	if err != nil {
-		return "", "", nil, nil, nil, err
+		return "", nil, nil, nil, err
 	}
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	logs := &lockedBuffer{}
 
 	binaryPath, err := sharedServerBinaryCache.getOrBuild(ctx)
 	if err != nil {
-		return "", "", nil, nil, nil, err
+		return "", nil, nil, nil, err
 	}
 
 	root, err := repoRoot()
 	if err != nil {
-		return "", "", nil, nil, nil, err
+		return "", nil, nil, nil, err
 	}
 
 	cmd := exec.CommandContext(ctx, binaryPath, "--port", strconv.Itoa(port))
@@ -626,7 +626,7 @@ func startServerProcess(ctx context.Context, pgURL string) (string, string, *exe
 	cmd.Stdout = logs
 	cmd.Stderr = logs
 	if err := cmd.Start(); err != nil {
-		return "", "", nil, nil, nil, err
+		return "", nil, nil, nil, err
 	}
 
 	done := make(chan error, 1)
@@ -634,7 +634,7 @@ func startServerProcess(ctx context.Context, pgURL string) (string, string, *exe
 		done <- cmd.Wait()
 	}()
 
-	return baseURL, "", cmd, done, logs, nil
+	return baseURL, cmd, done, logs, nil
 }
 
 func buildIntegrationServerBinary(ctx context.Context) (string, string, error) {
