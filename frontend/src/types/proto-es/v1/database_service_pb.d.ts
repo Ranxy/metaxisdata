@@ -3898,6 +3898,11 @@ export enum MetaType {
   EXTERNAL_TABLE = 16,
 
   /**
+   * @generated from enum value: EXTERNAL_DATASET = 17;
+   */
+  EXTERNAL_DATASET = 17,
+
+  /**
    * @generated from enum value: MANUAL_SQL = 18;
    */
   MANUAL_SQL = 18,

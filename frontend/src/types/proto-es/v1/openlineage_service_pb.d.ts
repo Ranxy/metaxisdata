@@ -2,9 +2,10 @@
 // @generated from file v1/openlineage_service.proto (package metaxisdata.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { EmptySchema, Timestamp } from "@bufbuild/protobuf/wkt";
+import type { MetaType } from "./database_service_pb";
 
 /**
  * Describes the file v1/openlineage_service.proto.
@@ -315,6 +316,266 @@ export declare type OpenLineageTaskResource = Message<"metaxisdata.v1.OpenLineag
 export declare const OpenLineageTaskResourceSchema: GenMessage<OpenLineageTaskResource>;
 
 /**
+ * @generated from message metaxisdata.v1.OpenLineageDatasetResource
+ */
+export declare type OpenLineageDatasetResource = Message<"metaxisdata.v1.OpenLineageDatasetResource"> & {
+  /**
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+
+  /**
+   * @generated from field: string namespace = 2;
+   */
+  namespace: string;
+
+  /**
+   * @generated from field: string name = 3;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string dataset_type = 4;
+   */
+  datasetType: string;
+
+  /**
+   * @generated from field: string resolved_target = 5;
+   */
+  resolvedTarget: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType resolved_meta_type = 6;
+   */
+  resolvedMetaType: MetaType;
+
+  /**
+   * @generated from field: bool internal = 7;
+   */
+  internal: boolean;
+
+  /**
+   * @generated from field: bool supports_column_lineage = 8;
+   */
+  supportsColumnLineage: boolean;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_seen = 9;
+   */
+  lastSeen?: Timestamp;
+
+  /**
+   * @generated from field: int32 source_job_count = 10;
+   */
+  sourceJobCount: number;
+
+  /**
+   * @generated from field: int32 target_job_count = 11;
+   */
+  targetJobCount: number;
+
+  /**
+   * @generated from field: repeated string integrations = 12;
+   */
+  integrations: string[];
+
+  /**
+   * @generated from field: repeated string sources = 13;
+   */
+  sources: string[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.OpenLineageDatasetResource.
+ * Use `create(OpenLineageDatasetResourceSchema)` to create a new message.
+ */
+export declare const OpenLineageDatasetResourceSchema: GenMessage<OpenLineageDatasetResource>;
+
+/**
+ * @generated from message metaxisdata.v1.OpenLineageDatasetField
+ */
+export declare type OpenLineageDatasetField = Message<"metaxisdata.v1.OpenLineageDatasetField"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string type = 2;
+   */
+  type: string;
+
+  /**
+   * @generated from field: string description = 3;
+   */
+  description: string;
+
+  /**
+   * @generated from field: bool column_lineage_ready = 4;
+   */
+  columnLineageReady: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.OpenLineageDatasetField.
+ * Use `create(OpenLineageDatasetFieldSchema)` to create a new message.
+ */
+export declare const OpenLineageDatasetFieldSchema: GenMessage<OpenLineageDatasetField>;
+
+/**
+ * @generated from message metaxisdata.v1.OpenLineageDatasetJobResource
+ */
+export declare type OpenLineageDatasetJobResource = Message<"metaxisdata.v1.OpenLineageDatasetJobResource"> & {
+  /**
+   * @generated from field: string task_guid = 1;
+   */
+  taskGuid: string;
+
+  /**
+   * @generated from field: string job_namespace = 2;
+   */
+  jobNamespace: string;
+
+  /**
+   * @generated from field: string job_name = 3;
+   */
+  jobName: string;
+
+  /**
+   * @generated from field: string job_type = 4;
+   */
+  jobType: string;
+
+  /**
+   * @generated from field: string integration = 5;
+   */
+  integration: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_seen = 6;
+   */
+  lastSeen?: Timestamp;
+
+  /**
+   * @generated from field: int32 run_count = 7;
+   */
+  runCount: number;
+
+  /**
+   * @generated from field: bool reads_dataset = 8;
+   */
+  readsDataset: boolean;
+
+  /**
+   * @generated from field: bool writes_dataset = 9;
+   */
+  writesDataset: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.OpenLineageDatasetJobResource.
+ * Use `create(OpenLineageDatasetJobResourceSchema)` to create a new message.
+ */
+export declare const OpenLineageDatasetJobResourceSchema: GenMessage<OpenLineageDatasetJobResource>;
+
+/**
+ * @generated from message metaxisdata.v1.OpenLineageDatasetRunResource
+ */
+export declare type OpenLineageDatasetRunResource = Message<"metaxisdata.v1.OpenLineageDatasetRunResource"> & {
+  /**
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+
+  /**
+   * @generated from field: string task_guid = 2;
+   */
+  taskGuid: string;
+
+  /**
+   * @generated from field: string run_id = 3;
+   */
+  runId: string;
+
+  /**
+   * @generated from field: string job_namespace = 4;
+   */
+  jobNamespace: string;
+
+  /**
+   * @generated from field: string job_name = 5;
+   */
+  jobName: string;
+
+  /**
+   * @generated from field: string job_type = 6;
+   */
+  jobType: string;
+
+  /**
+   * @generated from field: string event_type = 7;
+   */
+  eventType: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp event_time = 8;
+   */
+  eventTime?: Timestamp;
+
+  /**
+   * @generated from field: bool has_lineage = 9;
+   */
+  hasLineage: boolean;
+
+  /**
+   * @generated from field: bool reads_dataset = 10;
+   */
+  readsDataset: boolean;
+
+  /**
+   * @generated from field: bool writes_dataset = 11;
+   */
+  writesDataset: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.OpenLineageDatasetRunResource.
+ * Use `create(OpenLineageDatasetRunResourceSchema)` to create a new message.
+ */
+export declare const OpenLineageDatasetRunResourceSchema: GenMessage<OpenLineageDatasetRunResource>;
+
+/**
+ * @generated from message metaxisdata.v1.OpenLineageDatasetDetailResource
+ */
+export declare type OpenLineageDatasetDetailResource = Message<"metaxisdata.v1.OpenLineageDatasetDetailResource"> & {
+  /**
+   * @generated from field: metaxisdata.v1.OpenLineageDatasetResource dataset = 1;
+   */
+  dataset?: OpenLineageDatasetResource;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.OpenLineageDatasetField schema_fields = 2;
+   */
+  schemaFields: OpenLineageDatasetField[];
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.OpenLineageDatasetJobResource related_jobs = 3;
+   */
+  relatedJobs: OpenLineageDatasetJobResource[];
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.OpenLineageDatasetRunResource recent_runs = 4;
+   */
+  recentRuns: OpenLineageDatasetRunResource[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.OpenLineageDatasetDetailResource.
+ * Use `create(OpenLineageDatasetDetailResourceSchema)` to create a new message.
+ */
+export declare const OpenLineageDatasetDetailResourceSchema: GenMessage<OpenLineageDatasetDetailResource>;
+
+/**
  * @generated from message metaxisdata.v1.ListOpenLineageTasksRequest
  */
 export declare type ListOpenLineageTasksRequest = Message<"metaxisdata.v1.ListOpenLineageTasksRequest"> & {
@@ -356,6 +617,83 @@ export declare type ListOpenLineageTasksRequest = Message<"metaxisdata.v1.ListOp
 export declare const ListOpenLineageTasksRequestSchema: GenMessage<ListOpenLineageTasksRequest>;
 
 /**
+ * @generated from message metaxisdata.v1.ListOpenLineageDatasetsRequest
+ */
+export declare type ListOpenLineageDatasetsRequest = Message<"metaxisdata.v1.ListOpenLineageDatasetsRequest"> & {
+  /**
+   * @generated from field: int32 page_size = 1;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: int32 offset = 2;
+   */
+  offset: number;
+
+  /**
+   * @generated from field: string search = 3;
+   */
+  search: string;
+
+  /**
+   * @generated from field: string namespace = 4;
+   */
+  namespace: string;
+
+  /**
+   * @generated from field: string integration = 5;
+   */
+  integration: string;
+
+  /**
+   * @generated from field: string source = 6;
+   */
+  source: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.OpenLineageDatasetScope dataset_scope = 7;
+   */
+  datasetScope: OpenLineageDatasetScope;
+
+  /**
+   * @generated from field: bool column_lineage_only = 8;
+   */
+  columnLineageOnly: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListOpenLineageDatasetsRequest.
+ * Use `create(ListOpenLineageDatasetsRequestSchema)` to create a new message.
+ */
+export declare const ListOpenLineageDatasetsRequestSchema: GenMessage<ListOpenLineageDatasetsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetOpenLineageDatasetRequest
+ */
+export declare type GetOpenLineageDatasetRequest = Message<"metaxisdata.v1.GetOpenLineageDatasetRequest"> & {
+  /**
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+
+  /**
+   * @generated from field: string namespace = 2;
+   */
+  namespace: string;
+
+  /**
+   * @generated from field: string name = 3;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetOpenLineageDatasetRequest.
+ * Use `create(GetOpenLineageDatasetRequestSchema)` to create a new message.
+ */
+export declare const GetOpenLineageDatasetRequestSchema: GenMessage<GetOpenLineageDatasetRequest>;
+
+/**
  * @generated from message metaxisdata.v1.ListOpenLineageTasksResponse
  */
 export declare type ListOpenLineageTasksResponse = Message<"metaxisdata.v1.ListOpenLineageTasksResponse"> & {
@@ -370,6 +708,22 @@ export declare type ListOpenLineageTasksResponse = Message<"metaxisdata.v1.ListO
  * Use `create(ListOpenLineageTasksResponseSchema)` to create a new message.
  */
 export declare const ListOpenLineageTasksResponseSchema: GenMessage<ListOpenLineageTasksResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.ListOpenLineageDatasetsResponse
+ */
+export declare type ListOpenLineageDatasetsResponse = Message<"metaxisdata.v1.ListOpenLineageDatasetsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.OpenLineageDatasetResource datasets = 1;
+   */
+  datasets: OpenLineageDatasetResource[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListOpenLineageDatasetsResponse.
+ * Use `create(ListOpenLineageDatasetsResponseSchema)` to create a new message.
+ */
+export declare const ListOpenLineageDatasetsResponseSchema: GenMessage<ListOpenLineageDatasetsResponse>;
 
 /**
  * @generated from message metaxisdata.v1.GetOpenLineageTaskRequest
@@ -673,6 +1027,36 @@ export declare type RevokeAPIKeyRequest = Message<"metaxisdata.v1.RevokeAPIKeyRe
 export declare const RevokeAPIKeyRequestSchema: GenMessage<RevokeAPIKeyRequest>;
 
 /**
+ * @generated from enum metaxisdata.v1.OpenLineageDatasetScope
+ */
+export enum OpenLineageDatasetScope {
+  /**
+   * @generated from enum value: OPENLINEAGE_DATASET_SCOPE_UNSPECIFIED = 0;
+   */
+  OPENLINEAGE_DATASET_SCOPE_UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: OPENLINEAGE_DATASET_SCOPE_ALL = 1;
+   */
+  OPENLINEAGE_DATASET_SCOPE_ALL = 1,
+
+  /**
+   * @generated from enum value: OPENLINEAGE_DATASET_SCOPE_INTERNAL = 2;
+   */
+  OPENLINEAGE_DATASET_SCOPE_INTERNAL = 2,
+
+  /**
+   * @generated from enum value: OPENLINEAGE_DATASET_SCOPE_EXTERNAL = 3;
+   */
+  OPENLINEAGE_DATASET_SCOPE_EXTERNAL = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.OpenLineageDatasetScope.
+ */
+export declare const OpenLineageDatasetScopeSchema: GenEnum<OpenLineageDatasetScope>;
+
+/**
  * @generated from service metaxisdata.v1.OpenLineageService
  */
 export declare const OpenLineageService: GenService<{
@@ -683,6 +1067,22 @@ export declare const OpenLineageService: GenService<{
     methodKind: "unary";
     input: typeof ListOpenLineageTasksRequestSchema;
     output: typeof ListOpenLineageTasksResponseSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.OpenLineageService.ListOpenLineageDatasets
+   */
+  listOpenLineageDatasets: {
+    methodKind: "unary";
+    input: typeof ListOpenLineageDatasetsRequestSchema;
+    output: typeof ListOpenLineageDatasetsResponseSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.OpenLineageService.GetOpenLineageDataset
+   */
+  getOpenLineageDataset: {
+    methodKind: "unary";
+    input: typeof GetOpenLineageDatasetRequestSchema;
+    output: typeof OpenLineageDatasetDetailResourceSchema;
   },
   /**
    * @generated from rpc metaxisdata.v1.OpenLineageService.GetOpenLineageTask

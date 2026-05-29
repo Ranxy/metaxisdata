@@ -7,12 +7,21 @@ import "google/api/field_behavior.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 import "v1/annotation.proto";
+import "v1/database_service.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 
 service OpenLineageService {
   rpc ListOpenLineageTasks(ListOpenLineageTasksRequest) returns (ListOpenLineageTasksResponse) {
     option (google.api.http) = {get: "/v1/openlineage/tasks"};
+  }
+
+  rpc ListOpenLineageDatasets(ListOpenLineageDatasetsRequest) returns (ListOpenLineageDatasetsResponse) {
+    option (google.api.http) = {get: "/v1/openlineage/datasets"};
+  }
+
+  rpc GetOpenLineageDataset(GetOpenLineageDatasetRequest) returns (OpenLineageDatasetDetailResource) {
+    option (google.api.http) = {get: "/v1/openlineage/dataset"};
   }
 
   rpc GetOpenLineageTask(GetOpenLineageTaskRequest) returns (OpenLineageTaskResource) {
@@ -133,6 +142,69 @@ message OpenLineageTaskResource {
   string airflow_dag_url = 21;
 }
 
+enum OpenLineageDatasetScope {
+  OPENLINEAGE_DATASET_SCOPE_UNSPECIFIED = 0;
+  OPENLINEAGE_DATASET_SCOPE_ALL = 1;
+  OPENLINEAGE_DATASET_SCOPE_INTERNAL = 2;
+  OPENLINEAGE_DATASET_SCOPE_EXTERNAL = 3;
+}
+
+message OpenLineageDatasetResource {
+  string guid = 1;
+  string namespace = 2;
+  string name = 3;
+  string dataset_type = 4;
+  string resolved_target = 5;
+  MetaType resolved_meta_type = 6;
+  bool internal = 7;
+  bool supports_column_lineage = 8;
+  google.protobuf.Timestamp last_seen = 9;
+  int32 source_job_count = 10;
+  int32 target_job_count = 11;
+  repeated string integrations = 12;
+  repeated string sources = 13;
+}
+
+message OpenLineageDatasetField {
+  string name = 1;
+  string type = 2;
+  string description = 3;
+  bool column_lineage_ready = 4;
+}
+
+message OpenLineageDatasetJobResource {
+  string task_guid = 1;
+  string job_namespace = 2;
+  string job_name = 3;
+  string job_type = 4;
+  string integration = 5;
+  google.protobuf.Timestamp last_seen = 6;
+  int32 run_count = 7;
+  bool reads_dataset = 8;
+  bool writes_dataset = 9;
+}
+
+message OpenLineageDatasetRunResource {
+  string guid = 1;
+  string task_guid = 2;
+  string run_id = 3;
+  string job_namespace = 4;
+  string job_name = 5;
+  string job_type = 6;
+  string event_type = 7;
+  google.protobuf.Timestamp event_time = 8;
+  bool has_lineage = 9;
+  bool reads_dataset = 10;
+  bool writes_dataset = 11;
+}
+
+message OpenLineageDatasetDetailResource {
+  OpenLineageDatasetResource dataset = 1;
+  repeated OpenLineageDatasetField schema_fields = 2;
+  repeated OpenLineageDatasetJobResource related_jobs = 3;
+  repeated OpenLineageDatasetRunResource recent_runs = 4;
+}
+
 message ListOpenLineageTasksRequest {
   int32 page_size = 1;
   int32 offset = 2;
@@ -142,8 +214,29 @@ message ListOpenLineageTasksRequest {
   bool lineage_only = 6;
 }
 
+message ListOpenLineageDatasetsRequest {
+  int32 page_size = 1;
+  int32 offset = 2;
+  string search = 3;
+  string namespace = 4;
+  string integration = 5;
+  string source = 6;
+  OpenLineageDatasetScope dataset_scope = 7;
+  bool column_lineage_only = 8;
+}
+
+message GetOpenLineageDatasetRequest {
+  string guid = 1 [(google.api.field_behavior) = REQUIRED];
+  string namespace = 2;
+  string name = 3;
+}
+
 message ListOpenLineageTasksResponse {
   repeated OpenLineageTaskResource tasks = 1;
+}
+
+message ListOpenLineageDatasetsResponse {
+  repeated OpenLineageDatasetResource datasets = 1;
 }
 
 message GetOpenLineageTaskRequest {

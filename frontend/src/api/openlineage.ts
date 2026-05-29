@@ -4,10 +4,12 @@ import {
   CreateAPIKeyRequestSchema,
   CreateNamespaceMappingRequestSchema,
   DeleteNamespaceMappingRequestSchema,
+  GetOpenLineageDatasetRequestSchema,
   GetOpenLineageRunRequestSchema,
   GetOpenLineageTaskRequestSchema,
   ListAPIKeyRequestSchema,
   ListNamespaceMappingRequestSchema,
+  ListOpenLineageDatasetsRequestSchema,
   ListOpenLineageRunsRequestSchema,
   ListOpenLineageTasksRequestSchema,
   NamespaceMappingResourceSchema,
@@ -43,6 +45,42 @@ export async function listOpenLineageTasks(params?: {
 export async function getOpenLineageTask(guid: string) {
   const request = create(GetOpenLineageTaskRequestSchema, { guid });
   return await openLineageClient.getOpenLineageTask(request);
+}
+
+export async function listOpenLineageDatasets(params?: {
+  pageSize?: number;
+  offset?: number;
+  search?: string;
+  namespace?: string;
+  integration?: string;
+  source?: string;
+  datasetScope?: number;
+  columnLineageOnly?: boolean;
+}) {
+  const request = create(ListOpenLineageDatasetsRequestSchema, {
+    pageSize: params?.pageSize ?? 200,
+    offset: params?.offset ?? 0,
+    search: params?.search ?? "",
+    namespace: params?.namespace ?? "",
+    integration: params?.integration ?? "",
+    source: params?.source ?? "",
+    datasetScope: params?.datasetScope ?? 0,
+    columnLineageOnly: params?.columnLineageOnly ?? false,
+  });
+  return await openLineageClient.listOpenLineageDatasets(request);
+}
+
+export async function getOpenLineageDataset(params: {
+  guid: string;
+  namespace: string;
+  name: string;
+}) {
+  const request = create(GetOpenLineageDatasetRequestSchema, {
+    guid: params.guid,
+    namespace: params.namespace,
+    name: params.name,
+  });
+  return await openLineageClient.getOpenLineageDataset(request);
 }
 
 export async function listOpenLineageRuns(params?: {

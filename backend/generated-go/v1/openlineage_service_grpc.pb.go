@@ -20,17 +20,19 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	OpenLineageService_ListOpenLineageTasks_FullMethodName   = "/metaxisdata.v1.OpenLineageService/ListOpenLineageTasks"
-	OpenLineageService_GetOpenLineageTask_FullMethodName     = "/metaxisdata.v1.OpenLineageService/GetOpenLineageTask"
-	OpenLineageService_ListOpenLineageRuns_FullMethodName    = "/metaxisdata.v1.OpenLineageService/ListOpenLineageRuns"
-	OpenLineageService_GetOpenLineageRun_FullMethodName      = "/metaxisdata.v1.OpenLineageService/GetOpenLineageRun"
-	OpenLineageService_CreateNamespaceMapping_FullMethodName = "/metaxisdata.v1.OpenLineageService/CreateNamespaceMapping"
-	OpenLineageService_ListNamespaceMapping_FullMethodName   = "/metaxisdata.v1.OpenLineageService/ListNamespaceMapping"
-	OpenLineageService_UpdateNamespaceMapping_FullMethodName = "/metaxisdata.v1.OpenLineageService/UpdateNamespaceMapping"
-	OpenLineageService_DeleteNamespaceMapping_FullMethodName = "/metaxisdata.v1.OpenLineageService/DeleteNamespaceMapping"
-	OpenLineageService_CreateAPIKey_FullMethodName           = "/metaxisdata.v1.OpenLineageService/CreateAPIKey"
-	OpenLineageService_ListAPIKey_FullMethodName             = "/metaxisdata.v1.OpenLineageService/ListAPIKey"
-	OpenLineageService_RevokeAPIKey_FullMethodName           = "/metaxisdata.v1.OpenLineageService/RevokeAPIKey"
+	OpenLineageService_ListOpenLineageTasks_FullMethodName    = "/metaxisdata.v1.OpenLineageService/ListOpenLineageTasks"
+	OpenLineageService_ListOpenLineageDatasets_FullMethodName = "/metaxisdata.v1.OpenLineageService/ListOpenLineageDatasets"
+	OpenLineageService_GetOpenLineageDataset_FullMethodName   = "/metaxisdata.v1.OpenLineageService/GetOpenLineageDataset"
+	OpenLineageService_GetOpenLineageTask_FullMethodName      = "/metaxisdata.v1.OpenLineageService/GetOpenLineageTask"
+	OpenLineageService_ListOpenLineageRuns_FullMethodName     = "/metaxisdata.v1.OpenLineageService/ListOpenLineageRuns"
+	OpenLineageService_GetOpenLineageRun_FullMethodName       = "/metaxisdata.v1.OpenLineageService/GetOpenLineageRun"
+	OpenLineageService_CreateNamespaceMapping_FullMethodName  = "/metaxisdata.v1.OpenLineageService/CreateNamespaceMapping"
+	OpenLineageService_ListNamespaceMapping_FullMethodName    = "/metaxisdata.v1.OpenLineageService/ListNamespaceMapping"
+	OpenLineageService_UpdateNamespaceMapping_FullMethodName  = "/metaxisdata.v1.OpenLineageService/UpdateNamespaceMapping"
+	OpenLineageService_DeleteNamespaceMapping_FullMethodName  = "/metaxisdata.v1.OpenLineageService/DeleteNamespaceMapping"
+	OpenLineageService_CreateAPIKey_FullMethodName            = "/metaxisdata.v1.OpenLineageService/CreateAPIKey"
+	OpenLineageService_ListAPIKey_FullMethodName              = "/metaxisdata.v1.OpenLineageService/ListAPIKey"
+	OpenLineageService_RevokeAPIKey_FullMethodName            = "/metaxisdata.v1.OpenLineageService/RevokeAPIKey"
 )
 
 // OpenLineageServiceClient is the client API for OpenLineageService service.
@@ -38,6 +40,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type OpenLineageServiceClient interface {
 	ListOpenLineageTasks(ctx context.Context, in *ListOpenLineageTasksRequest, opts ...grpc.CallOption) (*ListOpenLineageTasksResponse, error)
+	ListOpenLineageDatasets(ctx context.Context, in *ListOpenLineageDatasetsRequest, opts ...grpc.CallOption) (*ListOpenLineageDatasetsResponse, error)
+	GetOpenLineageDataset(ctx context.Context, in *GetOpenLineageDatasetRequest, opts ...grpc.CallOption) (*OpenLineageDatasetDetailResource, error)
 	GetOpenLineageTask(ctx context.Context, in *GetOpenLineageTaskRequest, opts ...grpc.CallOption) (*OpenLineageTaskResource, error)
 	ListOpenLineageRuns(ctx context.Context, in *ListOpenLineageRunsRequest, opts ...grpc.CallOption) (*ListOpenLineageRunsResponse, error)
 	GetOpenLineageRun(ctx context.Context, in *GetOpenLineageRunRequest, opts ...grpc.CallOption) (*OpenLineageRunResource, error)
@@ -62,6 +66,26 @@ func (c *openLineageServiceClient) ListOpenLineageTasks(ctx context.Context, in 
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListOpenLineageTasksResponse)
 	err := c.cc.Invoke(ctx, OpenLineageService_ListOpenLineageTasks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *openLineageServiceClient) ListOpenLineageDatasets(ctx context.Context, in *ListOpenLineageDatasetsRequest, opts ...grpc.CallOption) (*ListOpenLineageDatasetsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListOpenLineageDatasetsResponse)
+	err := c.cc.Invoke(ctx, OpenLineageService_ListOpenLineageDatasets_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *openLineageServiceClient) GetOpenLineageDataset(ctx context.Context, in *GetOpenLineageDatasetRequest, opts ...grpc.CallOption) (*OpenLineageDatasetDetailResource, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OpenLineageDatasetDetailResource)
+	err := c.cc.Invoke(ctx, OpenLineageService_GetOpenLineageDataset_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -173,6 +197,8 @@ func (c *openLineageServiceClient) RevokeAPIKey(ctx context.Context, in *RevokeA
 // for forward compatibility.
 type OpenLineageServiceServer interface {
 	ListOpenLineageTasks(context.Context, *ListOpenLineageTasksRequest) (*ListOpenLineageTasksResponse, error)
+	ListOpenLineageDatasets(context.Context, *ListOpenLineageDatasetsRequest) (*ListOpenLineageDatasetsResponse, error)
+	GetOpenLineageDataset(context.Context, *GetOpenLineageDatasetRequest) (*OpenLineageDatasetDetailResource, error)
 	GetOpenLineageTask(context.Context, *GetOpenLineageTaskRequest) (*OpenLineageTaskResource, error)
 	ListOpenLineageRuns(context.Context, *ListOpenLineageRunsRequest) (*ListOpenLineageRunsResponse, error)
 	GetOpenLineageRun(context.Context, *GetOpenLineageRunRequest) (*OpenLineageRunResource, error)
@@ -195,6 +221,12 @@ type UnimplementedOpenLineageServiceServer struct{}
 
 func (UnimplementedOpenLineageServiceServer) ListOpenLineageTasks(context.Context, *ListOpenLineageTasksRequest) (*ListOpenLineageTasksResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListOpenLineageTasks not implemented")
+}
+func (UnimplementedOpenLineageServiceServer) ListOpenLineageDatasets(context.Context, *ListOpenLineageDatasetsRequest) (*ListOpenLineageDatasetsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListOpenLineageDatasets not implemented")
+}
+func (UnimplementedOpenLineageServiceServer) GetOpenLineageDataset(context.Context, *GetOpenLineageDatasetRequest) (*OpenLineageDatasetDetailResource, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetOpenLineageDataset not implemented")
 }
 func (UnimplementedOpenLineageServiceServer) GetOpenLineageTask(context.Context, *GetOpenLineageTaskRequest) (*OpenLineageTaskResource, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetOpenLineageTask not implemented")
@@ -261,6 +293,42 @@ func _OpenLineageService_ListOpenLineageTasks_Handler(srv interface{}, ctx conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(OpenLineageServiceServer).ListOpenLineageTasks(ctx, req.(*ListOpenLineageTasksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OpenLineageService_ListOpenLineageDatasets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOpenLineageDatasetsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OpenLineageServiceServer).ListOpenLineageDatasets(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OpenLineageService_ListOpenLineageDatasets_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OpenLineageServiceServer).ListOpenLineageDatasets(ctx, req.(*ListOpenLineageDatasetsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OpenLineageService_GetOpenLineageDataset_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetOpenLineageDatasetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OpenLineageServiceServer).GetOpenLineageDataset(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OpenLineageService_GetOpenLineageDataset_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OpenLineageServiceServer).GetOpenLineageDataset(ctx, req.(*GetOpenLineageDatasetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -455,6 +523,14 @@ var OpenLineageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListOpenLineageTasks",
 			Handler:    _OpenLineageService_ListOpenLineageTasks_Handler,
+		},
+		{
+			MethodName: "ListOpenLineageDatasets",
+			Handler:    _OpenLineageService_ListOpenLineageDatasets_Handler,
+		},
+		{
+			MethodName: "GetOpenLineageDataset",
+			Handler:    _OpenLineageService_GetOpenLineageDataset_Handler,
 		},
 		{
 			MethodName: "GetOpenLineageTask",

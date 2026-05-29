@@ -206,21 +206,31 @@
     - [CreateAPIKeyResponse](#metaxisdata-v1-CreateAPIKeyResponse)
     - [CreateNamespaceMappingRequest](#metaxisdata-v1-CreateNamespaceMappingRequest)
     - [DeleteNamespaceMappingRequest](#metaxisdata-v1-DeleteNamespaceMappingRequest)
+    - [GetOpenLineageDatasetRequest](#metaxisdata-v1-GetOpenLineageDatasetRequest)
     - [GetOpenLineageRunRequest](#metaxisdata-v1-GetOpenLineageRunRequest)
     - [GetOpenLineageTaskRequest](#metaxisdata-v1-GetOpenLineageTaskRequest)
     - [ListAPIKeyRequest](#metaxisdata-v1-ListAPIKeyRequest)
     - [ListAPIKeyResponse](#metaxisdata-v1-ListAPIKeyResponse)
     - [ListNamespaceMappingRequest](#metaxisdata-v1-ListNamespaceMappingRequest)
     - [ListNamespaceMappingResponse](#metaxisdata-v1-ListNamespaceMappingResponse)
+    - [ListOpenLineageDatasetsRequest](#metaxisdata-v1-ListOpenLineageDatasetsRequest)
+    - [ListOpenLineageDatasetsResponse](#metaxisdata-v1-ListOpenLineageDatasetsResponse)
     - [ListOpenLineageRunsRequest](#metaxisdata-v1-ListOpenLineageRunsRequest)
     - [ListOpenLineageRunsResponse](#metaxisdata-v1-ListOpenLineageRunsResponse)
     - [ListOpenLineageTasksRequest](#metaxisdata-v1-ListOpenLineageTasksRequest)
     - [ListOpenLineageTasksResponse](#metaxisdata-v1-ListOpenLineageTasksResponse)
     - [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource)
+    - [OpenLineageDatasetDetailResource](#metaxisdata-v1-OpenLineageDatasetDetailResource)
+    - [OpenLineageDatasetField](#metaxisdata-v1-OpenLineageDatasetField)
+    - [OpenLineageDatasetJobResource](#metaxisdata-v1-OpenLineageDatasetJobResource)
+    - [OpenLineageDatasetResource](#metaxisdata-v1-OpenLineageDatasetResource)
+    - [OpenLineageDatasetRunResource](#metaxisdata-v1-OpenLineageDatasetRunResource)
     - [OpenLineageRunResource](#metaxisdata-v1-OpenLineageRunResource)
     - [OpenLineageTaskResource](#metaxisdata-v1-OpenLineageTaskResource)
     - [RevokeAPIKeyRequest](#metaxisdata-v1-RevokeAPIKeyRequest)
     - [UpdateNamespaceMappingRequest](#metaxisdata-v1-UpdateNamespaceMappingRequest)
+  
+    - [OpenLineageDatasetScope](#metaxisdata-v1-OpenLineageDatasetScope)
   
     - [OpenLineageService](#metaxisdata-v1-OpenLineageService)
   
@@ -3068,6 +3078,7 @@ ViewMetadata is the metadata for views.
 | SCHEMA | 3 |  |
 | TABLE | 4 |  |
 | EXTERNAL_TABLE | 16 |  |
+| EXTERNAL_DATASET | 17 |  |
 | MANUAL_SQL | 18 |  |
 | VIEW | 5 |  |
 | MATERIALIZED_VIEW | 6 |  |
@@ -3464,6 +3475,23 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 
 
 
+<a name="metaxisdata-v1-GetOpenLineageDatasetRequest"></a>
+
+### GetOpenLineageDatasetRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  |  |
+| namespace | [string](#string) |  |  |
+| name | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetOpenLineageRunRequest"></a>
 
 ### GetOpenLineageRunRequest
@@ -3538,6 +3566,43 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | mappings | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListOpenLineageDatasetsRequest"></a>
+
+### ListOpenLineageDatasetsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| page_size | [int32](#int32) |  |  |
+| offset | [int32](#int32) |  |  |
+| search | [string](#string) |  |  |
+| namespace | [string](#string) |  |  |
+| integration | [string](#string) |  |  |
+| source | [string](#string) |  |  |
+| dataset_scope | [OpenLineageDatasetScope](#metaxisdata-v1-OpenLineageDatasetScope) |  |  |
+| column_lineage_only | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListOpenLineageDatasetsResponse"></a>
+
+### ListOpenLineageDatasetsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| datasets | [OpenLineageDatasetResource](#metaxisdata-v1-OpenLineageDatasetResource) | repeated |  |
 
 
 
@@ -3628,6 +3693,117 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | database_name | [string](#string) |  |  |
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-OpenLineageDatasetDetailResource"></a>
+
+### OpenLineageDatasetDetailResource
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| dataset | [OpenLineageDatasetResource](#metaxisdata-v1-OpenLineageDatasetResource) |  |  |
+| schema_fields | [OpenLineageDatasetField](#metaxisdata-v1-OpenLineageDatasetField) | repeated |  |
+| related_jobs | [OpenLineageDatasetJobResource](#metaxisdata-v1-OpenLineageDatasetJobResource) | repeated |  |
+| recent_runs | [OpenLineageDatasetRunResource](#metaxisdata-v1-OpenLineageDatasetRunResource) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-OpenLineageDatasetField"></a>
+
+### OpenLineageDatasetField
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| type | [string](#string) |  |  |
+| description | [string](#string) |  |  |
+| column_lineage_ready | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-OpenLineageDatasetJobResource"></a>
+
+### OpenLineageDatasetJobResource
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| task_guid | [string](#string) |  |  |
+| job_namespace | [string](#string) |  |  |
+| job_name | [string](#string) |  |  |
+| job_type | [string](#string) |  |  |
+| integration | [string](#string) |  |  |
+| last_seen | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| run_count | [int32](#int32) |  |  |
+| reads_dataset | [bool](#bool) |  |  |
+| writes_dataset | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-OpenLineageDatasetResource"></a>
+
+### OpenLineageDatasetResource
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  |  |
+| namespace | [string](#string) |  |  |
+| name | [string](#string) |  |  |
+| dataset_type | [string](#string) |  |  |
+| resolved_target | [string](#string) |  |  |
+| resolved_meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| internal | [bool](#bool) |  |  |
+| supports_column_lineage | [bool](#bool) |  |  |
+| last_seen | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| source_job_count | [int32](#int32) |  |  |
+| target_job_count | [int32](#int32) |  |  |
+| integrations | [string](#string) | repeated |  |
+| sources | [string](#string) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-OpenLineageDatasetRunResource"></a>
+
+### OpenLineageDatasetRunResource
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  |  |
+| task_guid | [string](#string) |  |  |
+| run_id | [string](#string) |  |  |
+| job_namespace | [string](#string) |  |  |
+| job_name | [string](#string) |  |  |
+| job_type | [string](#string) |  |  |
+| event_type | [string](#string) |  |  |
+| event_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| has_lineage | [bool](#bool) |  |  |
+| reads_dataset | [bool](#bool) |  |  |
+| writes_dataset | [bool](#bool) |  |  |
 
 
 
@@ -3742,6 +3918,20 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 
  
 
+
+<a name="metaxisdata-v1-OpenLineageDatasetScope"></a>
+
+### OpenLineageDatasetScope
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| OPENLINEAGE_DATASET_SCOPE_UNSPECIFIED | 0 |  |
+| OPENLINEAGE_DATASET_SCOPE_ALL | 1 |  |
+| OPENLINEAGE_DATASET_SCOPE_INTERNAL | 2 |  |
+| OPENLINEAGE_DATASET_SCOPE_EXTERNAL | 3 |  |
+
+
  
 
  
@@ -3755,6 +3945,8 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
 | ListOpenLineageTasks | [ListOpenLineageTasksRequest](#metaxisdata-v1-ListOpenLineageTasksRequest) | [ListOpenLineageTasksResponse](#metaxisdata-v1-ListOpenLineageTasksResponse) |  |
+| ListOpenLineageDatasets | [ListOpenLineageDatasetsRequest](#metaxisdata-v1-ListOpenLineageDatasetsRequest) | [ListOpenLineageDatasetsResponse](#metaxisdata-v1-ListOpenLineageDatasetsResponse) |  |
+| GetOpenLineageDataset | [GetOpenLineageDatasetRequest](#metaxisdata-v1-GetOpenLineageDatasetRequest) | [OpenLineageDatasetDetailResource](#metaxisdata-v1-OpenLineageDatasetDetailResource) |  |
 | GetOpenLineageTask | [GetOpenLineageTaskRequest](#metaxisdata-v1-GetOpenLineageTaskRequest) | [OpenLineageTaskResource](#metaxisdata-v1-OpenLineageTaskResource) |  |
 | ListOpenLineageRuns | [ListOpenLineageRunsRequest](#metaxisdata-v1-ListOpenLineageRunsRequest) | [ListOpenLineageRunsResponse](#metaxisdata-v1-ListOpenLineageRunsResponse) |  |
 | GetOpenLineageRun | [GetOpenLineageRunRequest](#metaxisdata-v1-GetOpenLineageRunRequest) | [OpenLineageRunResource](#metaxisdata-v1-OpenLineageRunResource) |  |

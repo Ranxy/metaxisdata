@@ -108,6 +108,7 @@ paths:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
                         - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
@@ -1044,6 +1045,7 @@ paths:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
                         - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
@@ -1105,6 +1107,7 @@ paths:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
                         - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
@@ -1152,6 +1155,7 @@ paths:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
                         - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
@@ -1208,6 +1212,7 @@ paths:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
                         - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
@@ -1297,6 +1302,7 @@ paths:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
                         - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
@@ -1349,6 +1355,7 @@ paths:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
                         - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
@@ -1401,6 +1408,7 @@ paths:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
                         - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
@@ -1489,6 +1497,96 @@ paths:
                 "200":
                     description: OK
                     content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/openlineage/dataset:
+        get:
+            tags:
+                - OpenLineageService
+            operationId: OpenLineageService_GetOpenLineageDataset
+            parameters:
+                - name: guid
+                  in: query
+                  schema:
+                    type: string
+                - name: namespace
+                  in: query
+                  schema:
+                    type: string
+                - name: name
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OpenLineageDatasetDetailResource'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/openlineage/datasets:
+        get:
+            tags:
+                - OpenLineageService
+            operationId: OpenLineageService_ListOpenLineageDatasets
+            parameters:
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: offset
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: search
+                  in: query
+                  schema:
+                    type: string
+                - name: namespace
+                  in: query
+                  schema:
+                    type: string
+                - name: integration
+                  in: query
+                  schema:
+                    type: string
+                - name: source
+                  in: query
+                  schema:
+                    type: string
+                - name: datasetScope
+                  in: query
+                  schema:
+                    enum:
+                        - OPENLINEAGE_DATASET_SCOPE_UNSPECIFIED
+                        - OPENLINEAGE_DATASET_SCOPE_ALL
+                        - OPENLINEAGE_DATASET_SCOPE_INTERNAL
+                        - OPENLINEAGE_DATASET_SCOPE_EXTERNAL
+                    type: string
+                    format: enum
+                - name: columnLineageOnly
+                  in: query
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListOpenLineageDatasetsResponse'
                 default:
                     description: Default error response
                     content:
@@ -3204,6 +3302,7 @@ components:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
                         - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
@@ -3230,6 +3329,7 @@ components:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
                         - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
@@ -3256,6 +3356,7 @@ components:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
                         - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
@@ -3381,6 +3482,13 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/NamespaceMappingResource'
+        ListOpenLineageDatasetsResponse:
+            type: object
+            properties:
+                datasets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OpenLineageDatasetResource'
         ListOpenLineageRunsResponse:
             type: object
             properties:
@@ -3688,6 +3796,7 @@ components:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
                         - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
@@ -3744,6 +3853,7 @@ components:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
                         - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
@@ -3799,6 +3909,140 @@ components:
             properties:
                 code:
                     type: string
+        OpenLineageDatasetDetailResource:
+            type: object
+            properties:
+                dataset:
+                    $ref: '#/components/schemas/OpenLineageDatasetResource'
+                schemaFields:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OpenLineageDatasetField'
+                relatedJobs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OpenLineageDatasetJobResource'
+                recentRuns:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OpenLineageDatasetRunResource'
+        OpenLineageDatasetField:
+            type: object
+            properties:
+                name:
+                    type: string
+                type:
+                    type: string
+                description:
+                    type: string
+                columnLineageReady:
+                    type: boolean
+        OpenLineageDatasetJobResource:
+            type: object
+            properties:
+                taskGuid:
+                    type: string
+                jobNamespace:
+                    type: string
+                jobName:
+                    type: string
+                jobType:
+                    type: string
+                integration:
+                    type: string
+                lastSeen:
+                    type: string
+                    format: date-time
+                runCount:
+                    type: integer
+                    format: int32
+                readsDataset:
+                    type: boolean
+                writesDataset:
+                    type: boolean
+        OpenLineageDatasetResource:
+            type: object
+            properties:
+                guid:
+                    type: string
+                namespace:
+                    type: string
+                name:
+                    type: string
+                datasetType:
+                    type: string
+                resolvedTarget:
+                    type: string
+                resolvedMetaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - PACKAGE
+                        - STREAM
+                        - TASK
+                    type: string
+                    format: enum
+                internal:
+                    type: boolean
+                supportsColumnLineage:
+                    type: boolean
+                lastSeen:
+                    type: string
+                    format: date-time
+                sourceJobCount:
+                    type: integer
+                    format: int32
+                targetJobCount:
+                    type: integer
+                    format: int32
+                integrations:
+                    type: array
+                    items:
+                        type: string
+                sources:
+                    type: array
+                    items:
+                        type: string
+        OpenLineageDatasetRunResource:
+            type: object
+            properties:
+                guid:
+                    type: string
+                taskGuid:
+                    type: string
+                runId:
+                    type: string
+                jobNamespace:
+                    type: string
+                jobName:
+                    type: string
+                jobType:
+                    type: string
+                eventType:
+                    type: string
+                eventTime:
+                    type: string
+                    format: date-time
+                hasLineage:
+                    type: boolean
+                readsDataset:
+                    type: boolean
+                writesDataset:
+                    type: boolean
         OpenLineageRunResource:
             type: object
             properties:
@@ -4114,6 +4358,7 @@ components:
                         - SCHEMA
                         - TABLE
                         - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
                         - MANUAL_SQL
                         - VIEW
                         - MATERIALIZED_VIEW

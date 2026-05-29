@@ -959,6 +959,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetOpenLineageDatasetRequest"><span class="badge">M</span>GetOpenLineageDatasetRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetOpenLineageRunRequest"><span class="badge">M</span>GetOpenLineageRunRequest</a>
                 </li>
               
@@ -983,6 +987,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ListOpenLineageDatasetsRequest"><span class="badge">M</span>ListOpenLineageDatasetsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListOpenLineageDatasetsResponse"><span class="badge">M</span>ListOpenLineageDatasetsResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ListOpenLineageRunsRequest"><span class="badge">M</span>ListOpenLineageRunsRequest</a>
                 </li>
               
@@ -1003,6 +1015,26 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.OpenLineageDatasetDetailResource"><span class="badge">M</span>OpenLineageDatasetDetailResource</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.OpenLineageDatasetField"><span class="badge">M</span>OpenLineageDatasetField</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.OpenLineageDatasetJobResource"><span class="badge">M</span>OpenLineageDatasetJobResource</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.OpenLineageDatasetResource"><span class="badge">M</span>OpenLineageDatasetResource</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.OpenLineageDatasetRunResource"><span class="badge">M</span>OpenLineageDatasetRunResource</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.OpenLineageRunResource"><span class="badge">M</span>OpenLineageRunResource</a>
                 </li>
               
@@ -1018,6 +1050,10 @@
                   <a href="#metaxisdata.v1.UpdateNamespaceMappingRequest"><span class="badge">M</span>UpdateNamespaceMappingRequest</a>
                 </li>
               
+              
+                <li>
+                  <a href="#metaxisdata.v1.OpenLineageDatasetScope"><span class="badge">E</span>OpenLineageDatasetScope</a>
+                </li>
               
               
               
@@ -8974,6 +9010,12 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
               </tr>
             
               <tr>
+                <td>EXTERNAL_DATASET</td>
+                <td>17</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
                 <td>MANUAL_SQL</td>
                 <td>18</td>
                 <td><p></p></td>
@@ -10196,6 +10238,44 @@ If lineage_type is not specified, both source and target lineage will be returne
 
         
       
+        <h3 id="metaxisdata.v1.GetOpenLineageDatasetRequest">GetOpenLineageDatasetRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>namespace</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetOpenLineageRunRequest">GetOpenLineageRunRequest</h3>
         <p></p>
 
@@ -10295,6 +10375,103 @@ If lineage_type is not specified, both source and target lineage will be returne
                 <tr>
                   <td>mappings</td>
                   <td><a href="#metaxisdata.v1.NamespaceMappingResource">NamespaceMappingResource</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListOpenLineageDatasetsRequest">ListOpenLineageDatasetsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>offset</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>search</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>namespace</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>integration</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>source</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>dataset_scope</td>
+                  <td><a href="#metaxisdata.v1.OpenLineageDatasetScope">OpenLineageDatasetScope</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>column_lineage_only</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListOpenLineageDatasetsResponse">ListOpenLineageDatasetsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>datasets</td>
+                  <td><a href="#metaxisdata.v1.OpenLineageDatasetResource">OpenLineageDatasetResource</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -10520,6 +10697,378 @@ If lineage_type is not specified, both source and target lineage will be returne
                 <tr>
                   <td>updated_at</td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.OpenLineageDatasetDetailResource">OpenLineageDatasetDetailResource</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>dataset</td>
+                  <td><a href="#metaxisdata.v1.OpenLineageDatasetResource">OpenLineageDatasetResource</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema_fields</td>
+                  <td><a href="#metaxisdata.v1.OpenLineageDatasetField">OpenLineageDatasetField</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>related_jobs</td>
+                  <td><a href="#metaxisdata.v1.OpenLineageDatasetJobResource">OpenLineageDatasetJobResource</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>recent_runs</td>
+                  <td><a href="#metaxisdata.v1.OpenLineageDatasetRunResource">OpenLineageDatasetRunResource</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.OpenLineageDatasetField">OpenLineageDatasetField</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>type</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>description</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>column_lineage_ready</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.OpenLineageDatasetJobResource">OpenLineageDatasetJobResource</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>task_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>job_namespace</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>job_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>job_type</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>integration</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>last_seen</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>run_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>reads_dataset</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>writes_dataset</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.OpenLineageDatasetResource">OpenLineageDatasetResource</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>namespace</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>dataset_type</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>resolved_target</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>resolved_meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>internal</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>supports_column_lineage</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>last_seen</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>source_job_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_job_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>integrations</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sources</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.OpenLineageDatasetRunResource">OpenLineageDatasetRunResource</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>task_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>run_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>job_namespace</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>job_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>job_type</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>event_type</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>event_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>has_lineage</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>reads_dataset</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>writes_dataset</td>
+                  <td><a href="#bool">bool</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -10958,6 +11507,41 @@ If lineage_type is not specified, both source and target lineage will be returne
       
 
       
+        <h3 id="metaxisdata.v1.OpenLineageDatasetScope">OpenLineageDatasetScope</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>OPENLINEAGE_DATASET_SCOPE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE_DATASET_SCOPE_ALL</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE_DATASET_SCOPE_INTERNAL</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE_DATASET_SCOPE_EXTERNAL</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
 
       
 
@@ -10974,6 +11558,20 @@ If lineage_type is not specified, both source and target lineage will be returne
                 <td>ListOpenLineageTasks</td>
                 <td><a href="#metaxisdata.v1.ListOpenLineageTasksRequest">ListOpenLineageTasksRequest</a></td>
                 <td><a href="#metaxisdata.v1.ListOpenLineageTasksResponse">ListOpenLineageTasksResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>ListOpenLineageDatasets</td>
+                <td><a href="#metaxisdata.v1.ListOpenLineageDatasetsRequest">ListOpenLineageDatasetsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListOpenLineageDatasetsResponse">ListOpenLineageDatasetsResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>GetOpenLineageDataset</td>
+                <td><a href="#metaxisdata.v1.GetOpenLineageDatasetRequest">GetOpenLineageDatasetRequest</a></td>
+                <td><a href="#metaxisdata.v1.OpenLineageDatasetDetailResource">OpenLineageDatasetDetailResource</a></td>
                 <td><p></p></td>
               </tr>
             
@@ -11071,6 +11669,26 @@ If lineage_type is not specified, both source and target lineage will be returne
                 <td>ListOpenLineageTasks</td>
                 <td>GET</td>
                 <td>/v1/openlineage/tasks</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListOpenLineageDatasets</td>
+                <td>GET</td>
+                <td>/v1/openlineage/datasets</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetOpenLineageDataset</td>
+                <td>GET</td>
+                <td>/v1/openlineage/dataset</td>
                 <td></td>
               </tr>
               

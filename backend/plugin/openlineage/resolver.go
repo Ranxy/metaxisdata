@@ -37,6 +37,23 @@ func NewResolver(s *store.Store) *Resolver {
 //  2. Auto-match by parsing namespace URL and matching instance DataSource host:port
 //  3. Create/return an external dataset
 func (r *Resolver) ResolveDataset(ctx context.Context, namespace, datasetName string) (*ResolvedDataset, error) {
+	resolved, err := r.ResolveDatasetPreview(ctx, namespace, datasetName)
+	if err != nil {
+		return nil, err
+	}
+	if resolved.Internal {
+		return resolved, nil
+	}
+
+	if _, err := r.store.GetOrCreateExternalDataset(ctx, namespace, datasetName, datasetTypeFromNamespace(namespace)); err != nil {
+		return nil, errors.Wrap(err, "failed to get or create external dataset")
+	}
+
+	return resolved, nil
+}
+
+// ResolveDatasetPreview resolves an OpenLineage dataset without creating external-dataset rows.
+func (r *Resolver) ResolveDatasetPreview(ctx context.Context, namespace, datasetName string) (*ResolvedDataset, error) {
 	// 1. Manual mapping
 	if resolved, err := r.resolveByManualMapping(ctx, namespace, datasetName); err != nil {
 		return nil, err
@@ -51,8 +68,12 @@ func (r *Resolver) ResolveDataset(ctx context.Context, namespace, datasetName st
 		return resolved, nil
 	}
 
-	// 3. External dataset
-	return r.resolveAsExternal(ctx, namespace, datasetName)
+	// 3. External dataset preview
+	return &ResolvedDataset{
+		GUID:     FormatExternalGUID(namespace, datasetName),
+		MetaType: storepb.MetaType_EXTERNAL_DATASET,
+		Internal: false,
+	}, nil
 }
 
 func (r *Resolver) resolveByManualMapping(ctx context.Context, namespace, datasetName string) (*ResolvedDataset, error) {
@@ -112,19 +133,6 @@ func (r *Resolver) resolveByAutoMatch(ctx context.Context, namespace, datasetNam
 	}
 
 	return nil, nil
-}
-
-func (r *Resolver) resolveAsExternal(ctx context.Context, namespace, datasetName string) (*ResolvedDataset, error) {
-	dsType := inferDatasetType(namespace)
-	ext, err := r.store.GetOrCreateExternalDataset(ctx, namespace, datasetName, dsType)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get or create external dataset")
-	}
-	return &ResolvedDataset{
-		GUID:     ext.GUID,
-		MetaType: storepb.MetaType_EXTERNAL_DATASET,
-		Internal: false,
-	}, nil
 }
 
 // parseNamespace extracts host, port, and optional database from an OpenLineage namespace URL.
@@ -225,7 +233,7 @@ func isMySQLLike(engine storepb.Engine) bool {
 }
 
 // inferDatasetType guesses the dataset type from the namespace scheme.
-func inferDatasetType(namespace string) string {
+func datasetTypeFromNamespace(namespace string) string {
 	u, err := url.Parse(namespace)
 	if err != nil {
 		return "unknown"
@@ -259,6 +267,11 @@ func inferDatasetType(namespace string) string {
 		}
 		return "unknown"
 	}
+}
+
+// InferDatasetType guesses the dataset type from the namespace scheme.
+func InferDatasetType(namespace string) string {
+	return datasetTypeFromNamespace(namespace)
 }
 
 // ExternalDatasetGUIDPrefix is the prefix for external dataset GUIDs.

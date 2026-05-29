@@ -352,7 +352,7 @@ func TestInferDatasetType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.namespace, func(t *testing.T) {
-			got := inferDatasetType(tt.namespace)
+			got := InferDatasetType(tt.namespace)
 			assert.Equal(t, tt.want, got)
 		})
 	}
