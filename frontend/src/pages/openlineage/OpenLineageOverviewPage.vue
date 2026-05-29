@@ -4,18 +4,7 @@
       :title="t('openlineage.overview')"
       :description="t('openlineage.overviewDescription')"
     >
-      <template #actions>
-        <Badge variant="outline">{{ t("openlineage.phaseOneStatus") }}</Badge>
-      </template>
     </OpenLineageSectionHeader>
-
-    <Card>
-      <CardContent class="p-6">
-        <p class="max-w-4xl text-sm text-muted-foreground">
-          {{ t("openlineage.overviewSummary") }}
-        </p>
-      </CardContent>
-    </Card>
 
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       <Card v-for="entry in entries" :key="entry.title" class="h-full">
