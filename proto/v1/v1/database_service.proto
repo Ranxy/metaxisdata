@@ -42,6 +42,14 @@ service DatabaseService {
     option (google.api.http) = {get: "/v1/metadata"};
   }
 
+  rpc ListMetadataHistory(ListMetadataHistoryRequest) returns (ListMetadataHistoryResponse) {
+    option (google.api.http) = {get: "/v1/metadata/history"};
+  }
+
+  rpc GetMetadataHistoryEvent(GetMetadataHistoryEventRequest) returns (MetadataHistoryEvent) {
+    option (google.api.http) = {get: "/v1/metadata/history/event"};
+  }
+
   rpc SearchMetadata(SearchMetadataRequest) returns (SearchMetadataResponse) {
     option (google.api.http) = {get: "/v1/metadata/search"};
   }
@@ -279,6 +287,143 @@ message GetMetadataRequest {
 
 message GetMetadataResponse {
   StoredMetadata metadata = 1;
+}
+
+message ListMetadataHistoryRequest {
+  string guid = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/DatabaseMetadata"}
+  ];
+
+  MetaType meta_type = 2 [(google.api.field_behavior) = REQUIRED];
+
+  int32 page_size = 3;
+
+  string page_token = 4;
+}
+
+message ListMetadataHistoryResponse {
+  repeated MetadataHistoryTimelineEntry entries = 1;
+
+  string next_page_token = 2;
+}
+
+message GetMetadataHistoryEventRequest {
+  string guid = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/DatabaseMetadata"}
+  ];
+
+  MetaType meta_type = 2 [(google.api.field_behavior) = REQUIRED];
+
+  google.protobuf.Timestamp event_time = 3 [(google.api.field_behavior) = REQUIRED];
+
+  MetadataHistoryOperation operation = 4 [(google.api.field_behavior) = REQUIRED];
+}
+
+enum MetadataHistoryOperation {
+  METADATA_HISTORY_OPERATION_UNSPECIFIED = 0;
+  METADATA_HISTORY_OPERATION_CREATED = 1;
+  METADATA_HISTORY_OPERATION_UPDATED = 2;
+  METADATA_HISTORY_OPERATION_DELETED = 3;
+}
+
+enum MetadataHistorySection {
+  METADATA_HISTORY_SECTION_UNSPECIFIED = 0;
+  METADATA_HISTORY_SECTION_SELF = 1;
+  METADATA_HISTORY_SECTION_COLUMN = 2;
+  METADATA_HISTORY_SECTION_INDEX = 3;
+  METADATA_HISTORY_SECTION_FOREIGN_KEY = 4;
+  METADATA_HISTORY_SECTION_CHECK_CONSTRAINT = 5;
+  METADATA_HISTORY_SECTION_PARTITION = 6;
+  METADATA_HISTORY_SECTION_TRIGGER = 7;
+  METADATA_HISTORY_SECTION_RULE = 8;
+  METADATA_HISTORY_SECTION_TAG = 9;
+  METADATA_HISTORY_SECTION_ATTRIBUTE = 10;
+}
+
+message MetadataHistorySectionChangeCount {
+  MetadataHistorySection section = 1;
+
+  int32 added = 2;
+
+  int32 updated = 3;
+
+  int32 removed = 4;
+}
+
+message MetadataHistoryTimelineEntry {
+  string guid = 1;
+
+  MetaType meta_type = 2;
+
+  google.protobuf.Timestamp event_time = 3;
+
+  google.protobuf.Timestamp valid_from = 4;
+
+  google.protobuf.Timestamp valid_to = 5;
+
+  MetadataHistoryOperation operation = 6;
+
+  string summary = 7;
+
+  repeated MetadataHistorySectionChangeCount section_changes = 8;
+}
+
+message MetadataFieldChange {
+  string field = 1;
+
+  string display_name = 2;
+
+  string before = 3;
+
+  string after = 4;
+}
+
+message MetadataHistoryChildSnapshot {
+  oneof metadata {
+    ColumnMetadata column_metadata = 1;
+    IndexMetadata index_metadata = 2;
+    ForeignKeyMetadata foreign_key_metadata = 3;
+    CheckConstraintMetadata check_constraint_metadata = 4;
+    TablePartitionMetadata partition_metadata = 5;
+    TriggerMetadata trigger_metadata = 6;
+    RuleMetadata rule_metadata = 7;
+  }
+}
+
+message MetadataHistoryChangeItem {
+  MetadataHistorySection section = 1;
+
+  MetadataHistoryOperation operation = 2;
+
+  string key = 3;
+
+  string display_name = 4;
+
+  string summary = 5;
+
+  repeated MetadataFieldChange field_changes = 6;
+
+  MetadataHistoryChildSnapshot before = 7;
+
+  MetadataHistoryChildSnapshot after = 8;
+}
+
+message MetadataHistoryChangeGroup {
+  MetadataHistorySection section = 1;
+
+  repeated MetadataHistoryChangeItem changes = 2;
+}
+
+message MetadataHistoryEvent {
+  MetadataHistoryTimelineEntry entry = 1;
+
+  StoredMetadata before_metadata = 2;
+
+  StoredMetadata after_metadata = 3;
+
+  repeated MetadataHistoryChangeGroup change_groups = 4;
 }
 
 message GetSchemaStringRequest {

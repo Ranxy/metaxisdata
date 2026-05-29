@@ -625,6 +625,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetMetadataHistoryEventRequest"><span class="badge">M</span>GetMetadataHistoryEventRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetMetadataRequest"><span class="badge">M</span>GetMetadataRequest</a>
                 </li>
               
@@ -669,6 +673,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ListMetadataHistoryRequest"><span class="badge">M</span>ListMetadataHistoryRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListMetadataHistoryResponse"><span class="badge">M</span>ListMetadataHistoryResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ListMetadataRequest"><span class="badge">M</span>ListMetadataRequest</a>
                 </li>
               
@@ -690,6 +702,34 @@
               
                 <li>
                   <a href="#metaxisdata.v1.MaterializedViewMetadata"><span class="badge">M</span>MaterializedViewMetadata</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.MetadataFieldChange"><span class="badge">M</span>MetadataFieldChange</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.MetadataHistoryChangeGroup"><span class="badge">M</span>MetadataHistoryChangeGroup</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.MetadataHistoryChangeItem"><span class="badge">M</span>MetadataHistoryChangeItem</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.MetadataHistoryChildSnapshot"><span class="badge">M</span>MetadataHistoryChildSnapshot</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.MetadataHistoryEvent"><span class="badge">M</span>MetadataHistoryEvent</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.MetadataHistorySectionChangeCount"><span class="badge">M</span>MetadataHistorySectionChangeCount</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.MetadataHistoryTimelineEntry"><span class="badge">M</span>MetadataHistoryTimelineEntry</a>
                 </li>
               
                 <li>
@@ -811,6 +851,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.MetaType"><span class="badge">E</span>MetaType</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.MetadataHistoryOperation"><span class="badge">E</span>MetadataHistoryOperation</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.MetadataHistorySection"><span class="badge">E</span>MetadataHistorySection</a>
                 </li>
               
                 <li>
@@ -5688,6 +5736,51 @@ Format: instances/{instance}/databases/{database} </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetMetadataHistoryEventRequest">GetMetadataHistoryEventRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>event_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>operation</td>
+                  <td><a href="#metaxisdata.v1.MetadataHistoryOperation">MetadataHistoryOperation</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetMetadataRequest">GetMetadataRequest</h3>
         <p></p>
 
@@ -6234,6 +6327,82 @@ If this field is omitted, there are no subsequent pages. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.ListMetadataHistoryRequest">ListMetadataHistoryRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListMetadataHistoryResponse">ListMetadataHistoryResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>entries</td>
+                  <td><a href="#metaxisdata.v1.MetadataHistoryTimelineEntry">MetadataHistoryTimelineEntry</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.ListMetadataRequest">ListMetadataRequest</h3>
         <p></p>
 
@@ -6582,6 +6751,384 @@ Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql} </p></
                   <td>skip_dump</td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.MetadataFieldChange">MetadataFieldChange</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>field</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>display_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>before</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>after</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.MetadataHistoryChangeGroup">MetadataHistoryChangeGroup</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>section</td>
+                  <td><a href="#metaxisdata.v1.MetadataHistorySection">MetadataHistorySection</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>changes</td>
+                  <td><a href="#metaxisdata.v1.MetadataHistoryChangeItem">MetadataHistoryChangeItem</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.MetadataHistoryChangeItem">MetadataHistoryChangeItem</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>section</td>
+                  <td><a href="#metaxisdata.v1.MetadataHistorySection">MetadataHistorySection</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>operation</td>
+                  <td><a href="#metaxisdata.v1.MetadataHistoryOperation">MetadataHistoryOperation</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>display_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>summary</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>field_changes</td>
+                  <td><a href="#metaxisdata.v1.MetadataFieldChange">MetadataFieldChange</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>before</td>
+                  <td><a href="#metaxisdata.v1.MetadataHistoryChildSnapshot">MetadataHistoryChildSnapshot</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>after</td>
+                  <td><a href="#metaxisdata.v1.MetadataHistoryChildSnapshot">MetadataHistoryChildSnapshot</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.MetadataHistoryChildSnapshot">MetadataHistoryChildSnapshot</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>column_metadata</td>
+                  <td><a href="#metaxisdata.v1.ColumnMetadata">ColumnMetadata</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>index_metadata</td>
+                  <td><a href="#metaxisdata.v1.IndexMetadata">IndexMetadata</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>foreign_key_metadata</td>
+                  <td><a href="#metaxisdata.v1.ForeignKeyMetadata">ForeignKeyMetadata</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>check_constraint_metadata</td>
+                  <td><a href="#metaxisdata.v1.CheckConstraintMetadata">CheckConstraintMetadata</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>partition_metadata</td>
+                  <td><a href="#metaxisdata.v1.TablePartitionMetadata">TablePartitionMetadata</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trigger_metadata</td>
+                  <td><a href="#metaxisdata.v1.TriggerMetadata">TriggerMetadata</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rule_metadata</td>
+                  <td><a href="#metaxisdata.v1.RuleMetadata">RuleMetadata</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.MetadataHistoryEvent">MetadataHistoryEvent</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>entry</td>
+                  <td><a href="#metaxisdata.v1.MetadataHistoryTimelineEntry">MetadataHistoryTimelineEntry</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>before_metadata</td>
+                  <td><a href="#metaxisdata.v1.StoredMetadata">StoredMetadata</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>after_metadata</td>
+                  <td><a href="#metaxisdata.v1.StoredMetadata">StoredMetadata</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>change_groups</td>
+                  <td><a href="#metaxisdata.v1.MetadataHistoryChangeGroup">MetadataHistoryChangeGroup</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.MetadataHistorySectionChangeCount">MetadataHistorySectionChangeCount</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>section</td>
+                  <td><a href="#metaxisdata.v1.MetadataHistorySection">MetadataHistorySection</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>added</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>updated</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>removed</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.MetadataHistoryTimelineEntry">MetadataHistoryTimelineEntry</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>event_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>valid_from</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>valid_to</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>operation</td>
+                  <td><a href="#metaxisdata.v1.MetadataHistoryOperation">MetadataHistoryOperation</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>summary</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>section_changes</td>
+                  <td><a href="#metaxisdata.v1.MetadataHistorySectionChangeCount">MetadataHistorySectionChangeCount</a></td>
+                  <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
               
@@ -8501,6 +9048,118 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
           </tbody>
         </table>
       
+        <h3 id="metaxisdata.v1.MetadataHistoryOperation">MetadataHistoryOperation</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>METADATA_HISTORY_OPERATION_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>METADATA_HISTORY_OPERATION_CREATED</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>METADATA_HISTORY_OPERATION_UPDATED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>METADATA_HISTORY_OPERATION_DELETED</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.MetadataHistorySection">MetadataHistorySection</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>METADATA_HISTORY_SECTION_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>METADATA_HISTORY_SECTION_SELF</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>METADATA_HISTORY_SECTION_COLUMN</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>METADATA_HISTORY_SECTION_INDEX</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>METADATA_HISTORY_SECTION_FOREIGN_KEY</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>METADATA_HISTORY_SECTION_CHECK_CONSTRAINT</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>METADATA_HISTORY_SECTION_PARTITION</td>
+                <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>METADATA_HISTORY_SECTION_TRIGGER</td>
+                <td>7</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>METADATA_HISTORY_SECTION_RULE</td>
+                <td>8</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>METADATA_HISTORY_SECTION_TAG</td>
+                <td>9</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>METADATA_HISTORY_SECTION_ATTRIBUTE</td>
+                <td>10</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.v1.StreamMetadata.Mode">StreamMetadata.Mode</h3>
         <p></p>
         <table class="enum-table">
@@ -8701,6 +9360,20 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
               </tr>
             
               <tr>
+                <td>ListMetadataHistory</td>
+                <td><a href="#metaxisdata.v1.ListMetadataHistoryRequest">ListMetadataHistoryRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListMetadataHistoryResponse">ListMetadataHistoryResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>GetMetadataHistoryEvent</td>
+                <td><a href="#metaxisdata.v1.GetMetadataHistoryEventRequest">GetMetadataHistoryEventRequest</a></td>
+                <td><a href="#metaxisdata.v1.MetadataHistoryEvent">MetadataHistoryEvent</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
                 <td>SearchMetadata</td>
                 <td><a href="#metaxisdata.v1.SearchMetadataRequest">SearchMetadataRequest</a></td>
                 <td><a href="#metaxisdata.v1.SearchMetadataResponse">SearchMetadataResponse</a></td>
@@ -8820,6 +9493,26 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
                 <td>GetMetadata</td>
                 <td>GET</td>
                 <td>/v1/metadata</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListMetadataHistory</td>
+                <td>GET</td>
+                <td>/v1/metadata/history</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetMetadataHistoryEvent</td>
+                <td>GET</td>
+                <td>/v1/metadata/history/event</td>
                 <td></td>
               </tr>
               

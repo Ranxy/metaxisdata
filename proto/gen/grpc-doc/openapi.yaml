@@ -1132,6 +1132,124 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/metadata/history:
+        get:
+            tags:
+                - DatabaseService
+            operationId: DatabaseService_ListMetadataHistory
+            parameters:
+                - name: guid
+                  in: query
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - MANUAL_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - PACKAGE
+                        - STREAM
+                        - TASK
+                    type: string
+                    format: enum
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListMetadataHistoryResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/metadata/history/event:
+        get:
+            tags:
+                - DatabaseService
+            operationId: DatabaseService_GetMetadataHistoryEvent
+            parameters:
+                - name: guid
+                  in: query
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - MANUAL_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - PACKAGE
+                        - STREAM
+                        - TASK
+                    type: string
+                    format: enum
+                - name: eventTime
+                  in: query
+                  schema:
+                    type: string
+                    format: date-time
+                - name: operation
+                  in: query
+                  schema:
+                    enum:
+                        - METADATA_HISTORY_OPERATION_UNSPECIFIED
+                        - METADATA_HISTORY_OPERATION_CREATED
+                        - METADATA_HISTORY_OPERATION_UPDATED
+                        - METADATA_HISTORY_OPERATION_DELETED
+                    type: string
+                    format: enum
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MetadataHistoryEvent'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/metadata/list:
         get:
             tags:
@@ -3247,6 +3365,15 @@ components:
                         $ref: '#/components/schemas/ManualSQL'
                 nextPageToken:
                     type: string
+        ListMetadataHistoryResponse:
+            type: object
+            properties:
+                entries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MetadataHistoryTimelineEntry'
+                nextPageToken:
+                    type: string
         ListNamespaceMappingResponse:
             type: object
             properties:
@@ -3418,6 +3545,186 @@ components:
                 skipDump:
                     type: boolean
             description: MaterializedViewMetadata is the metadata for materialized views.
+        MetadataFieldChange:
+            type: object
+            properties:
+                field:
+                    type: string
+                displayName:
+                    type: string
+                before:
+                    type: string
+                after:
+                    type: string
+        MetadataHistoryChangeGroup:
+            type: object
+            properties:
+                section:
+                    enum:
+                        - METADATA_HISTORY_SECTION_UNSPECIFIED
+                        - METADATA_HISTORY_SECTION_SELF
+                        - METADATA_HISTORY_SECTION_COLUMN
+                        - METADATA_HISTORY_SECTION_INDEX
+                        - METADATA_HISTORY_SECTION_FOREIGN_KEY
+                        - METADATA_HISTORY_SECTION_CHECK_CONSTRAINT
+                        - METADATA_HISTORY_SECTION_PARTITION
+                        - METADATA_HISTORY_SECTION_TRIGGER
+                        - METADATA_HISTORY_SECTION_RULE
+                        - METADATA_HISTORY_SECTION_TAG
+                        - METADATA_HISTORY_SECTION_ATTRIBUTE
+                    type: string
+                    format: enum
+                changes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MetadataHistoryChangeItem'
+        MetadataHistoryChangeItem:
+            type: object
+            properties:
+                section:
+                    enum:
+                        - METADATA_HISTORY_SECTION_UNSPECIFIED
+                        - METADATA_HISTORY_SECTION_SELF
+                        - METADATA_HISTORY_SECTION_COLUMN
+                        - METADATA_HISTORY_SECTION_INDEX
+                        - METADATA_HISTORY_SECTION_FOREIGN_KEY
+                        - METADATA_HISTORY_SECTION_CHECK_CONSTRAINT
+                        - METADATA_HISTORY_SECTION_PARTITION
+                        - METADATA_HISTORY_SECTION_TRIGGER
+                        - METADATA_HISTORY_SECTION_RULE
+                        - METADATA_HISTORY_SECTION_TAG
+                        - METADATA_HISTORY_SECTION_ATTRIBUTE
+                    type: string
+                    format: enum
+                operation:
+                    enum:
+                        - METADATA_HISTORY_OPERATION_UNSPECIFIED
+                        - METADATA_HISTORY_OPERATION_CREATED
+                        - METADATA_HISTORY_OPERATION_UPDATED
+                        - METADATA_HISTORY_OPERATION_DELETED
+                    type: string
+                    format: enum
+                key:
+                    type: string
+                displayName:
+                    type: string
+                summary:
+                    type: string
+                fieldChanges:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MetadataFieldChange'
+                before:
+                    $ref: '#/components/schemas/MetadataHistoryChildSnapshot'
+                after:
+                    $ref: '#/components/schemas/MetadataHistoryChildSnapshot'
+        MetadataHistoryChildSnapshot:
+            type: object
+            properties:
+                columnMetadata:
+                    $ref: '#/components/schemas/ColumnMetadata'
+                indexMetadata:
+                    $ref: '#/components/schemas/IndexMetadata'
+                foreignKeyMetadata:
+                    $ref: '#/components/schemas/ForeignKeyMetadata'
+                checkConstraintMetadata:
+                    $ref: '#/components/schemas/CheckConstraintMetadata'
+                partitionMetadata:
+                    $ref: '#/components/schemas/TablePartitionMetadata'
+                triggerMetadata:
+                    $ref: '#/components/schemas/TriggerMetadata'
+                ruleMetadata:
+                    $ref: '#/components/schemas/RuleMetadata'
+        MetadataHistoryEvent:
+            type: object
+            properties:
+                entry:
+                    $ref: '#/components/schemas/MetadataHistoryTimelineEntry'
+                beforeMetadata:
+                    $ref: '#/components/schemas/StoredMetadata'
+                afterMetadata:
+                    $ref: '#/components/schemas/StoredMetadata'
+                changeGroups:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MetadataHistoryChangeGroup'
+        MetadataHistorySectionChangeCount:
+            type: object
+            properties:
+                section:
+                    enum:
+                        - METADATA_HISTORY_SECTION_UNSPECIFIED
+                        - METADATA_HISTORY_SECTION_SELF
+                        - METADATA_HISTORY_SECTION_COLUMN
+                        - METADATA_HISTORY_SECTION_INDEX
+                        - METADATA_HISTORY_SECTION_FOREIGN_KEY
+                        - METADATA_HISTORY_SECTION_CHECK_CONSTRAINT
+                        - METADATA_HISTORY_SECTION_PARTITION
+                        - METADATA_HISTORY_SECTION_TRIGGER
+                        - METADATA_HISTORY_SECTION_RULE
+                        - METADATA_HISTORY_SECTION_TAG
+                        - METADATA_HISTORY_SECTION_ATTRIBUTE
+                    type: string
+                    format: enum
+                added:
+                    type: integer
+                    format: int32
+                updated:
+                    type: integer
+                    format: int32
+                removed:
+                    type: integer
+                    format: int32
+        MetadataHistoryTimelineEntry:
+            type: object
+            properties:
+                guid:
+                    type: string
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - MANUAL_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - PACKAGE
+                        - STREAM
+                        - TASK
+                    type: string
+                    format: enum
+                eventTime:
+                    type: string
+                    format: date-time
+                validFrom:
+                    type: string
+                    format: date-time
+                validTo:
+                    type: string
+                    format: date-time
+                operation:
+                    enum:
+                        - METADATA_HISTORY_OPERATION_UNSPECIFIED
+                        - METADATA_HISTORY_OPERATION_CREATED
+                        - METADATA_HISTORY_OPERATION_UPDATED
+                        - METADATA_HISTORY_OPERATION_DELETED
+                    type: string
+                    format: enum
+                summary:
+                    type: string
+                sectionChanges:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MetadataHistorySectionChangeCount'
         MetadataResponse:
             type: object
             properties:

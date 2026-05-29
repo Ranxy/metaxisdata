@@ -69,6 +69,17 @@ type MetaRegistryHistory struct {
 	ValidTo    *time.Time
 }
 
+type FindMetaRegistryHistoryMessage struct {
+	GUID           *string
+	GUIDPrefix     *string
+	ObjectType     *storepb.MetaType
+	Limit          *int
+	Offset         *int
+	ValidFrom      *time.Time
+	TransitionTime *time.Time
+	OrderDesc      bool
+}
+
 var likePatternEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
 func appendGUIDSubtreeCondition(where []string, args []any, column string, guidPrefix string) ([]string, []any) {
@@ -186,6 +197,23 @@ func (s *Store) ListMetaRegistryResourceAsOf(ctx context.Context, find *FindMeta
 	}
 	defer tx.Rollback()
 	list, err := s.listMetaRegistryResourceHistoryImpl(ctx, tx, find, asOf, true)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (s *Store) ListMetaRegistryHistory(ctx context.Context, find *FindMetaRegistryHistoryMessage) ([]*MetaRegistryHistory, error) {
+	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	list, err := s.listMetaRegistryHistoryImpl(ctx, tx, find)
 	if err != nil {
 		return nil, err
 	}
@@ -453,6 +481,92 @@ func (*Store) listMetaRegistryResourceHistoryImpl(ctx context.Context, txn *sql.
 	}
 
 	return metaRegistryMessages, nil
+}
+
+func (*Store) listMetaRegistryHistoryImpl(ctx context.Context, txn *sql.Tx, find *FindMetaRegistryHistoryMessage) ([]*MetaRegistryHistory, error) {
+	where, args := []string{"TRUE"}, []any{}
+	if v := find.GUID; v != nil {
+		where, args = append(where, fmt.Sprintf("meta_registry_resource_history.guid = $%d", len(args)+1)), append(args, *v)
+	}
+	if v := find.GUIDPrefix; v != nil {
+		where, args = appendGUIDSubtreeCondition(where, args, "meta_registry_resource_history.guid", *v)
+	}
+	if v := find.ObjectType; v != nil {
+		where, args = append(where, fmt.Sprintf("meta_registry_resource_history.object_type = $%d", len(args)+1)), append(args, *v)
+	}
+	if v := find.ValidFrom; v != nil {
+		where, args = append(where, fmt.Sprintf("meta_registry_resource_history.valid_from = $%d", len(args)+1)), append(args, *v)
+	}
+	if v := find.TransitionTime; v != nil {
+		args = append(args, *v)
+		argIndex := len(args)
+		where = append(where, fmt.Sprintf("(meta_registry_resource_history.valid_from = $%d OR meta_registry_resource_history.valid_to = $%d)", argIndex, argIndex))
+	}
+
+	query := `
+		SELECT
+			meta_registry_resource_history.id,
+			meta_registry_resource_history.guid,
+			meta_registry_resource_history.object_type,
+			meta_registry_resource_history.metadata,
+			meta_registry_resource_history.meta_hash,
+			meta_registry_resource_history.valid_from,
+			meta_registry_resource_history.valid_to
+		FROM meta_registry_resource_history
+		WHERE %s
+		ORDER BY meta_registry_resource_history.valid_from %s, meta_registry_resource_history.guid`
+	order := "ASC"
+	if find.OrderDesc {
+		order = "DESC"
+	}
+	query = fmt.Sprintf(query, strings.Join(where, " AND "), order)
+	if v := find.Limit; v != nil {
+		query += fmt.Sprintf(" LIMIT %d", *v)
+	}
+	if v := find.Offset; v != nil {
+		query += fmt.Sprintf(" OFFSET %d", *v)
+	}
+
+	rows, err := txn.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []*MetaRegistryHistory
+	for rows.Next() {
+		var metadata []byte
+		var history MetaRegistryHistory
+		var validTo sql.NullTime
+		if err := rows.Scan(
+			&history.ID,
+			&history.GUID,
+			&history.ObjectType,
+			&metadata,
+			&history.MetaHash,
+			&history.ValidFrom,
+			&validTo,
+		); err != nil {
+			return nil, err
+		}
+		if validTo.Valid {
+			value := validTo.Time
+			history.ValidTo = &value
+		}
+		if len(metadata) != 0 {
+			m := &storepb.StoredMetadata{}
+			if err := common.ProtojsonUnmarshaler.Unmarshal(metadata, m); err != nil {
+				return nil, errors.Wrap(err, "failed to unmarshal stored metadata history")
+			}
+			history.Metadata = m
+		}
+		list = append(list, &history)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return list, nil
 }
 
 func buildMetaRegistryHistoryMutations(existing map[MetaGUIDKey]*MetaRegistryHistory, creates []*CreateMetaRegistryResourceMessage) ([]*MetaRegistryHistory, []*CreateMetaRegistryResourceMessage) {

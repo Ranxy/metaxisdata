@@ -20,19 +20,21 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DatabaseService_GetDatabase_FullMethodName     = "/metaxisdata.v1.DatabaseService/GetDatabase"
-	DatabaseService_SyncDatabase_FullMethodName    = "/metaxisdata.v1.DatabaseService/SyncDatabase"
-	DatabaseService_ListDatabase_FullMethodName    = "/metaxisdata.v1.DatabaseService/ListDatabase"
-	DatabaseService_ListMetadata_FullMethodName    = "/metaxisdata.v1.DatabaseService/ListMetadata"
-	DatabaseService_GetMetadata_FullMethodName     = "/metaxisdata.v1.DatabaseService/GetMetadata"
-	DatabaseService_SearchMetadata_FullMethodName  = "/metaxisdata.v1.DatabaseService/SearchMetadata"
-	DatabaseService_GetSchemaString_FullMethodName = "/metaxisdata.v1.DatabaseService/GetSchemaString"
-	DatabaseService_CreateManualSQL_FullMethodName = "/metaxisdata.v1.DatabaseService/CreateManualSQL"
-	DatabaseService_GetManualSQL_FullMethodName    = "/metaxisdata.v1.DatabaseService/GetManualSQL"
-	DatabaseService_ListManualSQL_FullMethodName   = "/metaxisdata.v1.DatabaseService/ListManualSQL"
-	DatabaseService_SearchManualSQL_FullMethodName = "/metaxisdata.v1.DatabaseService/SearchManualSQL"
-	DatabaseService_UpdateManualSQL_FullMethodName = "/metaxisdata.v1.DatabaseService/UpdateManualSQL"
-	DatabaseService_DeleteManualSQL_FullMethodName = "/metaxisdata.v1.DatabaseService/DeleteManualSQL"
+	DatabaseService_GetDatabase_FullMethodName             = "/metaxisdata.v1.DatabaseService/GetDatabase"
+	DatabaseService_SyncDatabase_FullMethodName            = "/metaxisdata.v1.DatabaseService/SyncDatabase"
+	DatabaseService_ListDatabase_FullMethodName            = "/metaxisdata.v1.DatabaseService/ListDatabase"
+	DatabaseService_ListMetadata_FullMethodName            = "/metaxisdata.v1.DatabaseService/ListMetadata"
+	DatabaseService_GetMetadata_FullMethodName             = "/metaxisdata.v1.DatabaseService/GetMetadata"
+	DatabaseService_ListMetadataHistory_FullMethodName     = "/metaxisdata.v1.DatabaseService/ListMetadataHistory"
+	DatabaseService_GetMetadataHistoryEvent_FullMethodName = "/metaxisdata.v1.DatabaseService/GetMetadataHistoryEvent"
+	DatabaseService_SearchMetadata_FullMethodName          = "/metaxisdata.v1.DatabaseService/SearchMetadata"
+	DatabaseService_GetSchemaString_FullMethodName         = "/metaxisdata.v1.DatabaseService/GetSchemaString"
+	DatabaseService_CreateManualSQL_FullMethodName         = "/metaxisdata.v1.DatabaseService/CreateManualSQL"
+	DatabaseService_GetManualSQL_FullMethodName            = "/metaxisdata.v1.DatabaseService/GetManualSQL"
+	DatabaseService_ListManualSQL_FullMethodName           = "/metaxisdata.v1.DatabaseService/ListManualSQL"
+	DatabaseService_SearchManualSQL_FullMethodName         = "/metaxisdata.v1.DatabaseService/SearchManualSQL"
+	DatabaseService_UpdateManualSQL_FullMethodName         = "/metaxisdata.v1.DatabaseService/UpdateManualSQL"
+	DatabaseService_DeleteManualSQL_FullMethodName         = "/metaxisdata.v1.DatabaseService/DeleteManualSQL"
 )
 
 // DatabaseServiceClient is the client API for DatabaseService service.
@@ -44,6 +46,8 @@ type DatabaseServiceClient interface {
 	ListDatabase(ctx context.Context, in *ListDatabaseRequest, opts ...grpc.CallOption) (*ListDatabasesResponse, error)
 	ListMetadata(ctx context.Context, in *ListMetadataRequest, opts ...grpc.CallOption) (*MetadataResponse, error)
 	GetMetadata(ctx context.Context, in *GetMetadataRequest, opts ...grpc.CallOption) (*GetMetadataResponse, error)
+	ListMetadataHistory(ctx context.Context, in *ListMetadataHistoryRequest, opts ...grpc.CallOption) (*ListMetadataHistoryResponse, error)
+	GetMetadataHistoryEvent(ctx context.Context, in *GetMetadataHistoryEventRequest, opts ...grpc.CallOption) (*MetadataHistoryEvent, error)
 	SearchMetadata(ctx context.Context, in *SearchMetadataRequest, opts ...grpc.CallOption) (*SearchMetadataResponse, error)
 	// Generates schema DDL for a database object.
 	GetSchemaString(ctx context.Context, in *GetSchemaStringRequest, opts ...grpc.CallOption) (*MetadataSchemaString, error)
@@ -107,6 +111,26 @@ func (c *databaseServiceClient) GetMetadata(ctx context.Context, in *GetMetadata
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetMetadataResponse)
 	err := c.cc.Invoke(ctx, DatabaseService_GetMetadata_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseServiceClient) ListMetadataHistory(ctx context.Context, in *ListMetadataHistoryRequest, opts ...grpc.CallOption) (*ListMetadataHistoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMetadataHistoryResponse)
+	err := c.cc.Invoke(ctx, DatabaseService_ListMetadataHistory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseServiceClient) GetMetadataHistoryEvent(ctx context.Context, in *GetMetadataHistoryEventRequest, opts ...grpc.CallOption) (*MetadataHistoryEvent, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MetadataHistoryEvent)
+	err := c.cc.Invoke(ctx, DatabaseService_GetMetadataHistoryEvent_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -202,6 +226,8 @@ type DatabaseServiceServer interface {
 	ListDatabase(context.Context, *ListDatabaseRequest) (*ListDatabasesResponse, error)
 	ListMetadata(context.Context, *ListMetadataRequest) (*MetadataResponse, error)
 	GetMetadata(context.Context, *GetMetadataRequest) (*GetMetadataResponse, error)
+	ListMetadataHistory(context.Context, *ListMetadataHistoryRequest) (*ListMetadataHistoryResponse, error)
+	GetMetadataHistoryEvent(context.Context, *GetMetadataHistoryEventRequest) (*MetadataHistoryEvent, error)
 	SearchMetadata(context.Context, *SearchMetadataRequest) (*SearchMetadataResponse, error)
 	// Generates schema DDL for a database object.
 	GetSchemaString(context.Context, *GetSchemaStringRequest) (*MetadataSchemaString, error)
@@ -235,6 +261,12 @@ func (UnimplementedDatabaseServiceServer) ListMetadata(context.Context, *ListMet
 }
 func (UnimplementedDatabaseServiceServer) GetMetadata(context.Context, *GetMetadataRequest) (*GetMetadataResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetMetadata not implemented")
+}
+func (UnimplementedDatabaseServiceServer) ListMetadataHistory(context.Context, *ListMetadataHistoryRequest) (*ListMetadataHistoryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListMetadataHistory not implemented")
+}
+func (UnimplementedDatabaseServiceServer) GetMetadataHistoryEvent(context.Context, *GetMetadataHistoryEventRequest) (*MetadataHistoryEvent, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetMetadataHistoryEvent not implemented")
 }
 func (UnimplementedDatabaseServiceServer) SearchMetadata(context.Context, *SearchMetadataRequest) (*SearchMetadataResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SearchMetadata not implemented")
@@ -367,6 +399,42 @@ func _DatabaseService_GetMetadata_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DatabaseServiceServer).GetMetadata(ctx, req.(*GetMetadataRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DatabaseService_ListMetadataHistory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListMetadataHistoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServiceServer).ListMetadataHistory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabaseService_ListMetadataHistory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServiceServer).ListMetadataHistory(ctx, req.(*ListMetadataHistoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DatabaseService_GetMetadataHistoryEvent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMetadataHistoryEventRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServiceServer).GetMetadataHistoryEvent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabaseService_GetMetadataHistoryEvent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServiceServer).GetMetadataHistoryEvent(ctx, req.(*GetMetadataHistoryEventRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -541,6 +609,14 @@ var DatabaseService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetMetadata",
 			Handler:    _DatabaseService_GetMetadata_Handler,
+		},
+		{
+			MethodName: "ListMetadataHistory",
+			Handler:    _DatabaseService_ListMetadataHistory_Handler,
+		},
+		{
+			MethodName: "GetMetadataHistoryEvent",
+			Handler:    _DatabaseService_GetMetadataHistoryEvent_Handler,
 		},
 		{
 			MethodName: "SearchMetadata",

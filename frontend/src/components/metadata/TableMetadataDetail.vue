@@ -27,6 +27,29 @@
       </div>
     </div>
 
+    <div
+      v-if="guid"
+      class="inline-flex rounded-lg border bg-muted/30 p-1"
+    >
+      <button
+        type="button"
+        class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
+        :class="activeTab === 'details' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+        @click="activeTab = 'details'"
+      >
+        {{ t("metadataBrowser.tableDetail") }}
+      </button>
+      <button
+        type="button"
+        class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
+        :class="activeTab === 'history' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+        @click="activeTab = 'history'"
+      >
+        {{ t("metadataBrowser.historyTitle") }}
+      </button>
+    </div>
+
+    <template v-if="!guid || activeTab === 'details'">
     <div class="space-y-2">
       <div class="text-sm font-medium">{{ t("metadataBrowser.tableInfo") }}</div>
       <div class="flex flex-wrap gap-2">
@@ -307,6 +330,13 @@
         </TableBody>
       </Table>
     </div>
+    </template>
+
+    <MetadataHistorySection
+      v-else
+      :guid="guid"
+      :meta-type="MetaType.TABLE"
+    />
   </div>
 </template>
 
@@ -319,6 +349,7 @@ import {
   watch,
 } from "vue";
 import { useI18n } from "vue-i18n";
+import MetadataHistorySection from "@/components/metadata/MetadataHistorySection.vue";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -348,6 +379,7 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
+const activeTab = ref<"details" | "history">("details");
 const columnSearch = ref("");
 const columnRowRefs = new Map<string, Element>();
 

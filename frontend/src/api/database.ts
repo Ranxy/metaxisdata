@@ -3,20 +3,24 @@ import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
 import {
   CreateManualSQLRequestSchema,
   DeleteManualSQLRequestSchema,
+  GetMetadataHistoryEventRequestSchema,
   GetManualSQLRequestSchema,
   GetMetadataRequestSchema,
   GetSchemaStringRequestSchema,
   ListDatabaseRequestSchema,
+  ListMetadataHistoryRequestSchema,
   ListManualSQLRequestSchema,
   ListMetadataRequestSchema,
   type ManualSQL,
   ManualSQLSchema,
+  type MetadataHistoryOperation,
   type MetaType,
   SearchManualSQLRequestSchema,
   SearchMetadataRequestSchema,
   SyncDatabaseRequestSchema,
   UpdateManualSQLRequestSchema,
 } from "@/types/proto-es/v1/database_service_pb";
+import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { databaseClient } from "./client";
 
 export async function listDatabases(options: {
@@ -67,6 +71,36 @@ export async function getMetadata(options: {
     metaType: options.metaType,
   });
   return await databaseClient.getMetadata(request);
+}
+
+export async function listMetadataHistory(options: {
+  guid: string;
+  metaType: MetaType;
+  pageSize?: number;
+  pageToken?: string;
+}) {
+  const request = create(ListMetadataHistoryRequestSchema, {
+    guid: options.guid,
+    metaType: options.metaType,
+    pageSize: options.pageSize ?? 20,
+    pageToken: options.pageToken ?? "",
+  });
+  return await databaseClient.listMetadataHistory(request);
+}
+
+export async function getMetadataHistoryEvent(options: {
+  guid: string;
+  metaType: MetaType;
+  eventTime?: Timestamp;
+  operation: MetadataHistoryOperation;
+}) {
+  const request = create(GetMetadataHistoryEventRequestSchema, {
+    guid: options.guid,
+    metaType: options.metaType,
+    eventTime: options.eventTime,
+    operation: options.operation,
+  });
+  return await databaseClient.getMetadataHistoryEvent(request);
 }
 
 /**

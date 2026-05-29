@@ -49,6 +49,12 @@ const (
 	// DatabaseServiceGetMetadataProcedure is the fully-qualified name of the DatabaseService's
 	// GetMetadata RPC.
 	DatabaseServiceGetMetadataProcedure = "/metaxisdata.v1.DatabaseService/GetMetadata"
+	// DatabaseServiceListMetadataHistoryProcedure is the fully-qualified name of the DatabaseService's
+	// ListMetadataHistory RPC.
+	DatabaseServiceListMetadataHistoryProcedure = "/metaxisdata.v1.DatabaseService/ListMetadataHistory"
+	// DatabaseServiceGetMetadataHistoryEventProcedure is the fully-qualified name of the
+	// DatabaseService's GetMetadataHistoryEvent RPC.
+	DatabaseServiceGetMetadataHistoryEventProcedure = "/metaxisdata.v1.DatabaseService/GetMetadataHistoryEvent"
 	// DatabaseServiceSearchMetadataProcedure is the fully-qualified name of the DatabaseService's
 	// SearchMetadata RPC.
 	DatabaseServiceSearchMetadataProcedure = "/metaxisdata.v1.DatabaseService/SearchMetadata"
@@ -82,6 +88,8 @@ type DatabaseServiceClient interface {
 	ListDatabase(context.Context, *connect.Request[v1.ListDatabaseRequest]) (*connect.Response[v1.ListDatabasesResponse], error)
 	ListMetadata(context.Context, *connect.Request[v1.ListMetadataRequest]) (*connect.Response[v1.MetadataResponse], error)
 	GetMetadata(context.Context, *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error)
+	ListMetadataHistory(context.Context, *connect.Request[v1.ListMetadataHistoryRequest]) (*connect.Response[v1.ListMetadataHistoryResponse], error)
+	GetMetadataHistoryEvent(context.Context, *connect.Request[v1.GetMetadataHistoryEventRequest]) (*connect.Response[v1.MetadataHistoryEvent], error)
 	SearchMetadata(context.Context, *connect.Request[v1.SearchMetadataRequest]) (*connect.Response[v1.SearchMetadataResponse], error)
 	// Generates schema DDL for a database object.
 	GetSchemaString(context.Context, *connect.Request[v1.GetSchemaStringRequest]) (*connect.Response[v1.MetadataSchemaString], error)
@@ -132,6 +140,18 @@ func NewDatabaseServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			httpClient,
 			baseURL+DatabaseServiceGetMetadataProcedure,
 			connect.WithSchema(databaseServiceMethods.ByName("GetMetadata")),
+			connect.WithClientOptions(opts...),
+		),
+		listMetadataHistory: connect.NewClient[v1.ListMetadataHistoryRequest, v1.ListMetadataHistoryResponse](
+			httpClient,
+			baseURL+DatabaseServiceListMetadataHistoryProcedure,
+			connect.WithSchema(databaseServiceMethods.ByName("ListMetadataHistory")),
+			connect.WithClientOptions(opts...),
+		),
+		getMetadataHistoryEvent: connect.NewClient[v1.GetMetadataHistoryEventRequest, v1.MetadataHistoryEvent](
+			httpClient,
+			baseURL+DatabaseServiceGetMetadataHistoryEventProcedure,
+			connect.WithSchema(databaseServiceMethods.ByName("GetMetadataHistoryEvent")),
 			connect.WithClientOptions(opts...),
 		),
 		searchMetadata: connect.NewClient[v1.SearchMetadataRequest, v1.SearchMetadataResponse](
@@ -187,19 +207,21 @@ func NewDatabaseServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 
 // databaseServiceClient implements DatabaseServiceClient.
 type databaseServiceClient struct {
-	getDatabase     *connect.Client[v1.GetDatabaseRequest, v1.Database]
-	syncDatabase    *connect.Client[v1.SyncDatabaseRequest, v1.SyncDatabaseResponse]
-	listDatabase    *connect.Client[v1.ListDatabaseRequest, v1.ListDatabasesResponse]
-	listMetadata    *connect.Client[v1.ListMetadataRequest, v1.MetadataResponse]
-	getMetadata     *connect.Client[v1.GetMetadataRequest, v1.GetMetadataResponse]
-	searchMetadata  *connect.Client[v1.SearchMetadataRequest, v1.SearchMetadataResponse]
-	getSchemaString *connect.Client[v1.GetSchemaStringRequest, v1.MetadataSchemaString]
-	createManualSQL *connect.Client[v1.CreateManualSQLRequest, v1.ManualSQL]
-	getManualSQL    *connect.Client[v1.GetManualSQLRequest, v1.ManualSQL]
-	listManualSQL   *connect.Client[v1.ListManualSQLRequest, v1.ListManualSQLResponse]
-	searchManualSQL *connect.Client[v1.SearchManualSQLRequest, v1.SearchManualSQLResponse]
-	updateManualSQL *connect.Client[v1.UpdateManualSQLRequest, v1.ManualSQL]
-	deleteManualSQL *connect.Client[v1.DeleteManualSQLRequest, emptypb.Empty]
+	getDatabase             *connect.Client[v1.GetDatabaseRequest, v1.Database]
+	syncDatabase            *connect.Client[v1.SyncDatabaseRequest, v1.SyncDatabaseResponse]
+	listDatabase            *connect.Client[v1.ListDatabaseRequest, v1.ListDatabasesResponse]
+	listMetadata            *connect.Client[v1.ListMetadataRequest, v1.MetadataResponse]
+	getMetadata             *connect.Client[v1.GetMetadataRequest, v1.GetMetadataResponse]
+	listMetadataHistory     *connect.Client[v1.ListMetadataHistoryRequest, v1.ListMetadataHistoryResponse]
+	getMetadataHistoryEvent *connect.Client[v1.GetMetadataHistoryEventRequest, v1.MetadataHistoryEvent]
+	searchMetadata          *connect.Client[v1.SearchMetadataRequest, v1.SearchMetadataResponse]
+	getSchemaString         *connect.Client[v1.GetSchemaStringRequest, v1.MetadataSchemaString]
+	createManualSQL         *connect.Client[v1.CreateManualSQLRequest, v1.ManualSQL]
+	getManualSQL            *connect.Client[v1.GetManualSQLRequest, v1.ManualSQL]
+	listManualSQL           *connect.Client[v1.ListManualSQLRequest, v1.ListManualSQLResponse]
+	searchManualSQL         *connect.Client[v1.SearchManualSQLRequest, v1.SearchManualSQLResponse]
+	updateManualSQL         *connect.Client[v1.UpdateManualSQLRequest, v1.ManualSQL]
+	deleteManualSQL         *connect.Client[v1.DeleteManualSQLRequest, emptypb.Empty]
 }
 
 // GetDatabase calls metaxisdata.v1.DatabaseService.GetDatabase.
@@ -225,6 +247,16 @@ func (c *databaseServiceClient) ListMetadata(ctx context.Context, req *connect.R
 // GetMetadata calls metaxisdata.v1.DatabaseService.GetMetadata.
 func (c *databaseServiceClient) GetMetadata(ctx context.Context, req *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error) {
 	return c.getMetadata.CallUnary(ctx, req)
+}
+
+// ListMetadataHistory calls metaxisdata.v1.DatabaseService.ListMetadataHistory.
+func (c *databaseServiceClient) ListMetadataHistory(ctx context.Context, req *connect.Request[v1.ListMetadataHistoryRequest]) (*connect.Response[v1.ListMetadataHistoryResponse], error) {
+	return c.listMetadataHistory.CallUnary(ctx, req)
+}
+
+// GetMetadataHistoryEvent calls metaxisdata.v1.DatabaseService.GetMetadataHistoryEvent.
+func (c *databaseServiceClient) GetMetadataHistoryEvent(ctx context.Context, req *connect.Request[v1.GetMetadataHistoryEventRequest]) (*connect.Response[v1.MetadataHistoryEvent], error) {
+	return c.getMetadataHistoryEvent.CallUnary(ctx, req)
 }
 
 // SearchMetadata calls metaxisdata.v1.DatabaseService.SearchMetadata.
@@ -274,6 +306,8 @@ type DatabaseServiceHandler interface {
 	ListDatabase(context.Context, *connect.Request[v1.ListDatabaseRequest]) (*connect.Response[v1.ListDatabasesResponse], error)
 	ListMetadata(context.Context, *connect.Request[v1.ListMetadataRequest]) (*connect.Response[v1.MetadataResponse], error)
 	GetMetadata(context.Context, *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error)
+	ListMetadataHistory(context.Context, *connect.Request[v1.ListMetadataHistoryRequest]) (*connect.Response[v1.ListMetadataHistoryResponse], error)
+	GetMetadataHistoryEvent(context.Context, *connect.Request[v1.GetMetadataHistoryEventRequest]) (*connect.Response[v1.MetadataHistoryEvent], error)
 	SearchMetadata(context.Context, *connect.Request[v1.SearchMetadataRequest]) (*connect.Response[v1.SearchMetadataResponse], error)
 	// Generates schema DDL for a database object.
 	GetSchemaString(context.Context, *connect.Request[v1.GetSchemaStringRequest]) (*connect.Response[v1.MetadataSchemaString], error)
@@ -320,6 +354,18 @@ func NewDatabaseServiceHandler(svc DatabaseServiceHandler, opts ...connect.Handl
 		DatabaseServiceGetMetadataProcedure,
 		svc.GetMetadata,
 		connect.WithSchema(databaseServiceMethods.ByName("GetMetadata")),
+		connect.WithHandlerOptions(opts...),
+	)
+	databaseServiceListMetadataHistoryHandler := connect.NewUnaryHandler(
+		DatabaseServiceListMetadataHistoryProcedure,
+		svc.ListMetadataHistory,
+		connect.WithSchema(databaseServiceMethods.ByName("ListMetadataHistory")),
+		connect.WithHandlerOptions(opts...),
+	)
+	databaseServiceGetMetadataHistoryEventHandler := connect.NewUnaryHandler(
+		DatabaseServiceGetMetadataHistoryEventProcedure,
+		svc.GetMetadataHistoryEvent,
+		connect.WithSchema(databaseServiceMethods.ByName("GetMetadataHistoryEvent")),
 		connect.WithHandlerOptions(opts...),
 	)
 	databaseServiceSearchMetadataHandler := connect.NewUnaryHandler(
@@ -382,6 +428,10 @@ func NewDatabaseServiceHandler(svc DatabaseServiceHandler, opts ...connect.Handl
 			databaseServiceListMetadataHandler.ServeHTTP(w, r)
 		case DatabaseServiceGetMetadataProcedure:
 			databaseServiceGetMetadataHandler.ServeHTTP(w, r)
+		case DatabaseServiceListMetadataHistoryProcedure:
+			databaseServiceListMetadataHistoryHandler.ServeHTTP(w, r)
+		case DatabaseServiceGetMetadataHistoryEventProcedure:
+			databaseServiceGetMetadataHistoryEventHandler.ServeHTTP(w, r)
 		case DatabaseServiceSearchMetadataProcedure:
 			databaseServiceSearchMetadataHandler.ServeHTTP(w, r)
 		case DatabaseServiceGetSchemaStringProcedure:
@@ -425,6 +475,14 @@ func (UnimplementedDatabaseServiceHandler) ListMetadata(context.Context, *connec
 
 func (UnimplementedDatabaseServiceHandler) GetMetadata(context.Context, *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.GetMetadata is not implemented"))
+}
+
+func (UnimplementedDatabaseServiceHandler) ListMetadataHistory(context.Context, *connect.Request[v1.ListMetadataHistoryRequest]) (*connect.Response[v1.ListMetadataHistoryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.ListMetadataHistory is not implemented"))
+}
+
+func (UnimplementedDatabaseServiceHandler) GetMetadataHistoryEvent(context.Context, *connect.Request[v1.GetMetadataHistoryEventRequest]) (*connect.Response[v1.MetadataHistoryEvent], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.GetMetadataHistoryEvent is not implemented"))
 }
 
 func (UnimplementedDatabaseServiceHandler) SearchMetadata(context.Context, *connect.Request[v1.SearchMetadataRequest]) (*connect.Response[v1.SearchMetadataResponse], error) {

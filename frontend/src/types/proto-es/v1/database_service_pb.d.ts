@@ -401,6 +401,363 @@ export declare type GetMetadataResponse = Message<"metaxisdata.v1.GetMetadataRes
 export declare const GetMetadataResponseSchema: GenMessage<GetMetadataResponse>;
 
 /**
+ * @generated from message metaxisdata.v1.ListMetadataHistoryRequest
+ */
+export declare type ListMetadataHistoryRequest = Message<"metaxisdata.v1.ListMetadataHistoryRequest"> & {
+  /**
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 2;
+   */
+  metaType: MetaType;
+
+  /**
+   * @generated from field: int32 page_size = 3;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 4;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListMetadataHistoryRequest.
+ * Use `create(ListMetadataHistoryRequestSchema)` to create a new message.
+ */
+export declare const ListMetadataHistoryRequestSchema: GenMessage<ListMetadataHistoryRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListMetadataHistoryResponse
+ */
+export declare type ListMetadataHistoryResponse = Message<"metaxisdata.v1.ListMetadataHistoryResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.MetadataHistoryTimelineEntry entries = 1;
+   */
+  entries: MetadataHistoryTimelineEntry[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListMetadataHistoryResponse.
+ * Use `create(ListMetadataHistoryResponseSchema)` to create a new message.
+ */
+export declare const ListMetadataHistoryResponseSchema: GenMessage<ListMetadataHistoryResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetMetadataHistoryEventRequest
+ */
+export declare type GetMetadataHistoryEventRequest = Message<"metaxisdata.v1.GetMetadataHistoryEventRequest"> & {
+  /**
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 2;
+   */
+  metaType: MetaType;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp event_time = 3;
+   */
+  eventTime?: Timestamp;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetadataHistoryOperation operation = 4;
+   */
+  operation: MetadataHistoryOperation;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetMetadataHistoryEventRequest.
+ * Use `create(GetMetadataHistoryEventRequestSchema)` to create a new message.
+ */
+export declare const GetMetadataHistoryEventRequestSchema: GenMessage<GetMetadataHistoryEventRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.MetadataHistorySectionChangeCount
+ */
+export declare type MetadataHistorySectionChangeCount = Message<"metaxisdata.v1.MetadataHistorySectionChangeCount"> & {
+  /**
+   * @generated from field: metaxisdata.v1.MetadataHistorySection section = 1;
+   */
+  section: MetadataHistorySection;
+
+  /**
+   * @generated from field: int32 added = 2;
+   */
+  added: number;
+
+  /**
+   * @generated from field: int32 updated = 3;
+   */
+  updated: number;
+
+  /**
+   * @generated from field: int32 removed = 4;
+   */
+  removed: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.MetadataHistorySectionChangeCount.
+ * Use `create(MetadataHistorySectionChangeCountSchema)` to create a new message.
+ */
+export declare const MetadataHistorySectionChangeCountSchema: GenMessage<MetadataHistorySectionChangeCount>;
+
+/**
+ * @generated from message metaxisdata.v1.MetadataHistoryTimelineEntry
+ */
+export declare type MetadataHistoryTimelineEntry = Message<"metaxisdata.v1.MetadataHistoryTimelineEntry"> & {
+  /**
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 2;
+   */
+  metaType: MetaType;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp event_time = 3;
+   */
+  eventTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp valid_from = 4;
+   */
+  validFrom?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp valid_to = 5;
+   */
+  validTo?: Timestamp;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetadataHistoryOperation operation = 6;
+   */
+  operation: MetadataHistoryOperation;
+
+  /**
+   * @generated from field: string summary = 7;
+   */
+  summary: string;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.MetadataHistorySectionChangeCount section_changes = 8;
+   */
+  sectionChanges: MetadataHistorySectionChangeCount[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.MetadataHistoryTimelineEntry.
+ * Use `create(MetadataHistoryTimelineEntrySchema)` to create a new message.
+ */
+export declare const MetadataHistoryTimelineEntrySchema: GenMessage<MetadataHistoryTimelineEntry>;
+
+/**
+ * @generated from message metaxisdata.v1.MetadataFieldChange
+ */
+export declare type MetadataFieldChange = Message<"metaxisdata.v1.MetadataFieldChange"> & {
+  /**
+   * @generated from field: string field = 1;
+   */
+  field: string;
+
+  /**
+   * @generated from field: string display_name = 2;
+   */
+  displayName: string;
+
+  /**
+   * @generated from field: string before = 3;
+   */
+  before: string;
+
+  /**
+   * @generated from field: string after = 4;
+   */
+  after: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.MetadataFieldChange.
+ * Use `create(MetadataFieldChangeSchema)` to create a new message.
+ */
+export declare const MetadataFieldChangeSchema: GenMessage<MetadataFieldChange>;
+
+/**
+ * @generated from message metaxisdata.v1.MetadataHistoryChildSnapshot
+ */
+export declare type MetadataHistoryChildSnapshot = Message<"metaxisdata.v1.MetadataHistoryChildSnapshot"> & {
+  /**
+   * @generated from oneof metaxisdata.v1.MetadataHistoryChildSnapshot.metadata
+   */
+  metadata: {
+    /**
+     * @generated from field: metaxisdata.v1.ColumnMetadata column_metadata = 1;
+     */
+    value: ColumnMetadata;
+    case: "columnMetadata";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.IndexMetadata index_metadata = 2;
+     */
+    value: IndexMetadata;
+    case: "indexMetadata";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.ForeignKeyMetadata foreign_key_metadata = 3;
+     */
+    value: ForeignKeyMetadata;
+    case: "foreignKeyMetadata";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.CheckConstraintMetadata check_constraint_metadata = 4;
+     */
+    value: CheckConstraintMetadata;
+    case: "checkConstraintMetadata";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.TablePartitionMetadata partition_metadata = 5;
+     */
+    value: TablePartitionMetadata;
+    case: "partitionMetadata";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.TriggerMetadata trigger_metadata = 6;
+     */
+    value: TriggerMetadata;
+    case: "triggerMetadata";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.RuleMetadata rule_metadata = 7;
+     */
+    value: RuleMetadata;
+    case: "ruleMetadata";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message metaxisdata.v1.MetadataHistoryChildSnapshot.
+ * Use `create(MetadataHistoryChildSnapshotSchema)` to create a new message.
+ */
+export declare const MetadataHistoryChildSnapshotSchema: GenMessage<MetadataHistoryChildSnapshot>;
+
+/**
+ * @generated from message metaxisdata.v1.MetadataHistoryChangeItem
+ */
+export declare type MetadataHistoryChangeItem = Message<"metaxisdata.v1.MetadataHistoryChangeItem"> & {
+  /**
+   * @generated from field: metaxisdata.v1.MetadataHistorySection section = 1;
+   */
+  section: MetadataHistorySection;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetadataHistoryOperation operation = 2;
+   */
+  operation: MetadataHistoryOperation;
+
+  /**
+   * @generated from field: string key = 3;
+   */
+  key: string;
+
+  /**
+   * @generated from field: string display_name = 4;
+   */
+  displayName: string;
+
+  /**
+   * @generated from field: string summary = 5;
+   */
+  summary: string;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.MetadataFieldChange field_changes = 6;
+   */
+  fieldChanges: MetadataFieldChange[];
+
+  /**
+   * @generated from field: metaxisdata.v1.MetadataHistoryChildSnapshot before = 7;
+   */
+  before?: MetadataHistoryChildSnapshot;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetadataHistoryChildSnapshot after = 8;
+   */
+  after?: MetadataHistoryChildSnapshot;
+};
+
+/**
+ * Describes the message metaxisdata.v1.MetadataHistoryChangeItem.
+ * Use `create(MetadataHistoryChangeItemSchema)` to create a new message.
+ */
+export declare const MetadataHistoryChangeItemSchema: GenMessage<MetadataHistoryChangeItem>;
+
+/**
+ * @generated from message metaxisdata.v1.MetadataHistoryChangeGroup
+ */
+export declare type MetadataHistoryChangeGroup = Message<"metaxisdata.v1.MetadataHistoryChangeGroup"> & {
+  /**
+   * @generated from field: metaxisdata.v1.MetadataHistorySection section = 1;
+   */
+  section: MetadataHistorySection;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.MetadataHistoryChangeItem changes = 2;
+   */
+  changes: MetadataHistoryChangeItem[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.MetadataHistoryChangeGroup.
+ * Use `create(MetadataHistoryChangeGroupSchema)` to create a new message.
+ */
+export declare const MetadataHistoryChangeGroupSchema: GenMessage<MetadataHistoryChangeGroup>;
+
+/**
+ * @generated from message metaxisdata.v1.MetadataHistoryEvent
+ */
+export declare type MetadataHistoryEvent = Message<"metaxisdata.v1.MetadataHistoryEvent"> & {
+  /**
+   * @generated from field: metaxisdata.v1.MetadataHistoryTimelineEntry entry = 1;
+   */
+  entry?: MetadataHistoryTimelineEntry;
+
+  /**
+   * @generated from field: metaxisdata.v1.StoredMetadata before_metadata = 2;
+   */
+  beforeMetadata?: StoredMetadata;
+
+  /**
+   * @generated from field: metaxisdata.v1.StoredMetadata after_metadata = 3;
+   */
+  afterMetadata?: StoredMetadata;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.MetadataHistoryChangeGroup change_groups = 4;
+   */
+  changeGroups: MetadataHistoryChangeGroup[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.MetadataHistoryEvent.
+ * Use `create(MetadataHistoryEventSchema)` to create a new message.
+ */
+export declare const MetadataHistoryEventSchema: GenMessage<MetadataHistoryEvent>;
+
+/**
  * @generated from message metaxisdata.v1.GetSchemaStringRequest
  */
 export declare type GetSchemaStringRequest = Message<"metaxisdata.v1.GetSchemaStringRequest"> & {
@@ -3412,6 +3769,101 @@ export declare type InstanceRoleMetadata = Message<"metaxisdata.v1.InstanceRoleM
 export declare const InstanceRoleMetadataSchema: GenMessage<InstanceRoleMetadata>;
 
 /**
+ * @generated from enum metaxisdata.v1.MetadataHistoryOperation
+ */
+export enum MetadataHistoryOperation {
+  /**
+   * @generated from enum value: METADATA_HISTORY_OPERATION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: METADATA_HISTORY_OPERATION_CREATED = 1;
+   */
+  CREATED = 1,
+
+  /**
+   * @generated from enum value: METADATA_HISTORY_OPERATION_UPDATED = 2;
+   */
+  UPDATED = 2,
+
+  /**
+   * @generated from enum value: METADATA_HISTORY_OPERATION_DELETED = 3;
+   */
+  DELETED = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.MetadataHistoryOperation.
+ */
+export declare const MetadataHistoryOperationSchema: GenEnum<MetadataHistoryOperation>;
+
+/**
+ * @generated from enum metaxisdata.v1.MetadataHistorySection
+ */
+export enum MetadataHistorySection {
+  /**
+   * @generated from enum value: METADATA_HISTORY_SECTION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: METADATA_HISTORY_SECTION_SELF = 1;
+   */
+  SELF = 1,
+
+  /**
+   * @generated from enum value: METADATA_HISTORY_SECTION_COLUMN = 2;
+   */
+  COLUMN = 2,
+
+  /**
+   * @generated from enum value: METADATA_HISTORY_SECTION_INDEX = 3;
+   */
+  INDEX = 3,
+
+  /**
+   * @generated from enum value: METADATA_HISTORY_SECTION_FOREIGN_KEY = 4;
+   */
+  FOREIGN_KEY = 4,
+
+  /**
+   * @generated from enum value: METADATA_HISTORY_SECTION_CHECK_CONSTRAINT = 5;
+   */
+  CHECK_CONSTRAINT = 5,
+
+  /**
+   * @generated from enum value: METADATA_HISTORY_SECTION_PARTITION = 6;
+   */
+  PARTITION = 6,
+
+  /**
+   * @generated from enum value: METADATA_HISTORY_SECTION_TRIGGER = 7;
+   */
+  TRIGGER = 7,
+
+  /**
+   * @generated from enum value: METADATA_HISTORY_SECTION_RULE = 8;
+   */
+  RULE = 8,
+
+  /**
+   * @generated from enum value: METADATA_HISTORY_SECTION_TAG = 9;
+   */
+  TAG = 9,
+
+  /**
+   * @generated from enum value: METADATA_HISTORY_SECTION_ATTRIBUTE = 10;
+   */
+  ATTRIBUTE = 10,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.MetadataHistorySection.
+ */
+export declare const MetadataHistorySectionSchema: GenEnum<MetadataHistorySection>;
+
+/**
  * @generated from enum metaxisdata.v1.MetaType
  */
 export enum MetaType {
@@ -3554,6 +4006,22 @@ export declare const DatabaseService: GenService<{
     methodKind: "unary";
     input: typeof GetMetadataRequestSchema;
     output: typeof GetMetadataResponseSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.DatabaseService.ListMetadataHistory
+   */
+  listMetadataHistory: {
+    methodKind: "unary";
+    input: typeof ListMetadataHistoryRequestSchema;
+    output: typeof ListMetadataHistoryResponseSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.DatabaseService.GetMetadataHistoryEvent
+   */
+  getMetadataHistoryEvent: {
+    methodKind: "unary";
+    input: typeof GetMetadataHistoryEventRequestSchema;
+    output: typeof MetadataHistoryEventSchema;
   },
   /**
    * @generated from rpc metaxisdata.v1.DatabaseService.SearchMetadata

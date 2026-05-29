@@ -120,6 +120,7 @@
     - [GenerationMetadata](#metaxisdata-v1-GenerationMetadata)
     - [GetDatabaseRequest](#metaxisdata-v1-GetDatabaseRequest)
     - [GetManualSQLRequest](#metaxisdata-v1-GetManualSQLRequest)
+    - [GetMetadataHistoryEventRequest](#metaxisdata-v1-GetMetadataHistoryEventRequest)
     - [GetMetadataRequest](#metaxisdata-v1-GetMetadataRequest)
     - [GetMetadataResponse](#metaxisdata-v1-GetMetadataResponse)
     - [GetSchemaStringRequest](#metaxisdata-v1-GetSchemaStringRequest)
@@ -131,12 +132,21 @@
     - [ListDatabasesResponse](#metaxisdata-v1-ListDatabasesResponse)
     - [ListManualSQLRequest](#metaxisdata-v1-ListManualSQLRequest)
     - [ListManualSQLResponse](#metaxisdata-v1-ListManualSQLResponse)
+    - [ListMetadataHistoryRequest](#metaxisdata-v1-ListMetadataHistoryRequest)
+    - [ListMetadataHistoryResponse](#metaxisdata-v1-ListMetadataHistoryResponse)
     - [ListMetadataRequest](#metaxisdata-v1-ListMetadataRequest)
     - [ManualSQL](#metaxisdata-v1-ManualSQL)
     - [ManualSQL.AttributesEntry](#metaxisdata-v1-ManualSQL-AttributesEntry)
     - [ManualSQLMetadata](#metaxisdata-v1-ManualSQLMetadata)
     - [ManualSQLMetadata.AttributesEntry](#metaxisdata-v1-ManualSQLMetadata-AttributesEntry)
     - [MaterializedViewMetadata](#metaxisdata-v1-MaterializedViewMetadata)
+    - [MetadataFieldChange](#metaxisdata-v1-MetadataFieldChange)
+    - [MetadataHistoryChangeGroup](#metaxisdata-v1-MetadataHistoryChangeGroup)
+    - [MetadataHistoryChangeItem](#metaxisdata-v1-MetadataHistoryChangeItem)
+    - [MetadataHistoryChildSnapshot](#metaxisdata-v1-MetadataHistoryChildSnapshot)
+    - [MetadataHistoryEvent](#metaxisdata-v1-MetadataHistoryEvent)
+    - [MetadataHistorySectionChangeCount](#metaxisdata-v1-MetadataHistorySectionChangeCount)
+    - [MetadataHistoryTimelineEntry](#metaxisdata-v1-MetadataHistoryTimelineEntry)
     - [MetadataResponse](#metaxisdata-v1-MetadataResponse)
     - [MetadataResponse.MetadataList](#metaxisdata-v1-MetadataResponse-MetadataList)
     - [MetadataSchemaString](#metaxisdata-v1-MetadataSchemaString)
@@ -168,6 +178,8 @@
     - [ColumnMetadata.IdentityGeneration](#metaxisdata-v1-ColumnMetadata-IdentityGeneration)
     - [GenerationMetadata.Type](#metaxisdata-v1-GenerationMetadata-Type)
     - [MetaType](#metaxisdata-v1-MetaType)
+    - [MetadataHistoryOperation](#metaxisdata-v1-MetadataHistoryOperation)
+    - [MetadataHistorySection](#metaxisdata-v1-MetadataHistorySection)
     - [StreamMetadata.Mode](#metaxisdata-v1-StreamMetadata-Mode)
     - [StreamMetadata.Type](#metaxisdata-v1-StreamMetadata-Type)
     - [TablePartitionMetadata.Type](#metaxisdata-v1-TablePartitionMetadata-Type)
@@ -1946,6 +1958,24 @@ FunctionMetadata is the metadata for functions.
 
 
 
+<a name="metaxisdata-v1-GetMetadataHistoryEventRequest"></a>
+
+### GetMetadataHistoryEventRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  |  |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| event_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| operation | [MetadataHistoryOperation](#metaxisdata-v1-MetadataHistoryOperation) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetMetadataRequest"></a>
 
 ### GetMetadataRequest
@@ -2152,6 +2182,40 @@ You can combine filter conditions like: environment == &#34;environments/prod&#3
 
 
 
+<a name="metaxisdata-v1-ListMetadataHistoryRequest"></a>
+
+### ListMetadataHistoryRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  |  |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListMetadataHistoryResponse"></a>
+
+### ListMetadataHistoryResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| entries | [MetadataHistoryTimelineEntry](#metaxisdata-v1-MetadataHistoryTimelineEntry) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ListMetadataRequest"></a>
 
 ### ListMetadataRequest
@@ -2267,6 +2331,141 @@ MaterializedViewMetadata is the metadata for materialized views.
 | triggers | [TriggerMetadata](#metaxisdata-v1-TriggerMetadata) | repeated | The ordered list of columns in the materialized view. |
 | indexes | [IndexMetadata](#metaxisdata-v1-IndexMetadata) | repeated | The list of indexes in the materialized view. |
 | skip_dump | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-MetadataFieldChange"></a>
+
+### MetadataFieldChange
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| field | [string](#string) |  |  |
+| display_name | [string](#string) |  |  |
+| before | [string](#string) |  |  |
+| after | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-MetadataHistoryChangeGroup"></a>
+
+### MetadataHistoryChangeGroup
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| section | [MetadataHistorySection](#metaxisdata-v1-MetadataHistorySection) |  |  |
+| changes | [MetadataHistoryChangeItem](#metaxisdata-v1-MetadataHistoryChangeItem) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-MetadataHistoryChangeItem"></a>
+
+### MetadataHistoryChangeItem
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| section | [MetadataHistorySection](#metaxisdata-v1-MetadataHistorySection) |  |  |
+| operation | [MetadataHistoryOperation](#metaxisdata-v1-MetadataHistoryOperation) |  |  |
+| key | [string](#string) |  |  |
+| display_name | [string](#string) |  |  |
+| summary | [string](#string) |  |  |
+| field_changes | [MetadataFieldChange](#metaxisdata-v1-MetadataFieldChange) | repeated |  |
+| before | [MetadataHistoryChildSnapshot](#metaxisdata-v1-MetadataHistoryChildSnapshot) |  |  |
+| after | [MetadataHistoryChildSnapshot](#metaxisdata-v1-MetadataHistoryChildSnapshot) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-MetadataHistoryChildSnapshot"></a>
+
+### MetadataHistoryChildSnapshot
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column_metadata | [ColumnMetadata](#metaxisdata-v1-ColumnMetadata) |  |  |
+| index_metadata | [IndexMetadata](#metaxisdata-v1-IndexMetadata) |  |  |
+| foreign_key_metadata | [ForeignKeyMetadata](#metaxisdata-v1-ForeignKeyMetadata) |  |  |
+| check_constraint_metadata | [CheckConstraintMetadata](#metaxisdata-v1-CheckConstraintMetadata) |  |  |
+| partition_metadata | [TablePartitionMetadata](#metaxisdata-v1-TablePartitionMetadata) |  |  |
+| trigger_metadata | [TriggerMetadata](#metaxisdata-v1-TriggerMetadata) |  |  |
+| rule_metadata | [RuleMetadata](#metaxisdata-v1-RuleMetadata) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-MetadataHistoryEvent"></a>
+
+### MetadataHistoryEvent
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| entry | [MetadataHistoryTimelineEntry](#metaxisdata-v1-MetadataHistoryTimelineEntry) |  |  |
+| before_metadata | [StoredMetadata](#metaxisdata-v1-StoredMetadata) |  |  |
+| after_metadata | [StoredMetadata](#metaxisdata-v1-StoredMetadata) |  |  |
+| change_groups | [MetadataHistoryChangeGroup](#metaxisdata-v1-MetadataHistoryChangeGroup) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-MetadataHistorySectionChangeCount"></a>
+
+### MetadataHistorySectionChangeCount
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| section | [MetadataHistorySection](#metaxisdata-v1-MetadataHistorySection) |  |  |
+| added | [int32](#int32) |  |  |
+| updated | [int32](#int32) |  |  |
+| removed | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-MetadataHistoryTimelineEntry"></a>
+
+### MetadataHistoryTimelineEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  |  |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| event_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| valid_from | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| valid_to | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| operation | [MetadataHistoryOperation](#metaxisdata-v1-MetadataHistoryOperation) |  |  |
+| summary | [string](#string) |  |  |
+| section_changes | [MetadataHistorySectionChangeCount](#metaxisdata-v1-MetadataHistorySectionChangeCount) | repeated |  |
 
 
 
@@ -2884,6 +3083,41 @@ ViewMetadata is the metadata for views.
 
 
 
+<a name="metaxisdata-v1-MetadataHistoryOperation"></a>
+
+### MetadataHistoryOperation
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| METADATA_HISTORY_OPERATION_UNSPECIFIED | 0 |  |
+| METADATA_HISTORY_OPERATION_CREATED | 1 |  |
+| METADATA_HISTORY_OPERATION_UPDATED | 2 |  |
+| METADATA_HISTORY_OPERATION_DELETED | 3 |  |
+
+
+
+<a name="metaxisdata-v1-MetadataHistorySection"></a>
+
+### MetadataHistorySection
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| METADATA_HISTORY_SECTION_UNSPECIFIED | 0 |  |
+| METADATA_HISTORY_SECTION_SELF | 1 |  |
+| METADATA_HISTORY_SECTION_COLUMN | 2 |  |
+| METADATA_HISTORY_SECTION_INDEX | 3 |  |
+| METADATA_HISTORY_SECTION_FOREIGN_KEY | 4 |  |
+| METADATA_HISTORY_SECTION_CHECK_CONSTRAINT | 5 |  |
+| METADATA_HISTORY_SECTION_PARTITION | 6 |  |
+| METADATA_HISTORY_SECTION_TRIGGER | 7 |  |
+| METADATA_HISTORY_SECTION_RULE | 8 |  |
+| METADATA_HISTORY_SECTION_TAG | 9 |  |
+| METADATA_HISTORY_SECTION_ATTRIBUTE | 10 |  |
+
+
+
 <a name="metaxisdata-v1-StreamMetadata-Mode"></a>
 
 ### StreamMetadata.Mode
@@ -2964,6 +3198,8 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | ListDatabase | [ListDatabaseRequest](#metaxisdata-v1-ListDatabaseRequest) | [ListDatabasesResponse](#metaxisdata-v1-ListDatabasesResponse) |  |
 | ListMetadata | [ListMetadataRequest](#metaxisdata-v1-ListMetadataRequest) | [MetadataResponse](#metaxisdata-v1-MetadataResponse) |  |
 | GetMetadata | [GetMetadataRequest](#metaxisdata-v1-GetMetadataRequest) | [GetMetadataResponse](#metaxisdata-v1-GetMetadataResponse) |  |
+| ListMetadataHistory | [ListMetadataHistoryRequest](#metaxisdata-v1-ListMetadataHistoryRequest) | [ListMetadataHistoryResponse](#metaxisdata-v1-ListMetadataHistoryResponse) |  |
+| GetMetadataHistoryEvent | [GetMetadataHistoryEventRequest](#metaxisdata-v1-GetMetadataHistoryEventRequest) | [MetadataHistoryEvent](#metaxisdata-v1-MetadataHistoryEvent) |  |
 | SearchMetadata | [SearchMetadataRequest](#metaxisdata-v1-SearchMetadataRequest) | [SearchMetadataResponse](#metaxisdata-v1-SearchMetadataResponse) |  |
 | GetSchemaString | [GetSchemaStringRequest](#metaxisdata-v1-GetSchemaStringRequest) | [MetadataSchemaString](#metaxisdata-v1-MetadataSchemaString) | Generates schema DDL for a database object. |
 | CreateManualSQL | [CreateManualSQLRequest](#metaxisdata-v1-CreateManualSQLRequest) | [ManualSQL](#metaxisdata-v1-ManualSQL) |  |
