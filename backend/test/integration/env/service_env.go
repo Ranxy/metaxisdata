@@ -479,6 +479,16 @@ func (e *ServiceEnv) CreateManualSQL(ctx context.Context, t *testing.T, parent, 
 	return resp.Msg
 }
 
+// DeleteManualSQL deletes manual SQL through the public API.
+func (e *ServiceEnv) DeleteManualSQL(ctx context.Context, t *testing.T, name string) {
+	t.Helper()
+
+	_, err := e.databaseClient.DeleteManualSQL(ctx, authorizedRequest(e.token, &v1pb.DeleteManualSQLRequest{
+		Name: name,
+	}))
+	require.NoError(t, err)
+}
+
 // EnsureDatabaseVisible returns the named database, falling back to SyncInstance once when needed.
 func (e *ServiceEnv) EnsureDatabaseVisible(ctx context.Context, t *testing.T, instanceName, databaseName string) *v1pb.Database {
 	t.Helper()

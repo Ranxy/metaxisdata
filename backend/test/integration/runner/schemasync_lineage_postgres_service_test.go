@@ -78,6 +78,7 @@ func TestPostgresLineageDeletedWhenViewDroppedRealServerIntegration(t *testing.T
 	env.WaitForContextLineage(ctx, t, viewGUID, v1pb.MetaType_VIEW, func(relations []*v1pb.LineageRelation) bool {
 		return len(relations) > 0
 	})
+	asOfBeforeDrop := time.Now().UTC()
 
 	require.NoError(t, env.ExecPostgres(ctx, sourceDatabase, `DROP VIEW IF EXISTS public.user_order_view;`))
 	env.SyncDatabase(ctx, t, databaseName)
@@ -102,6 +103,15 @@ func TestPostgresLineageDeletedWhenViewDroppedRealServerIntegration(t *testing.T
 
 		return true
 	}, 20*time.Second, 500*time.Millisecond)
+
+	historical, err := env.Store.GetMetaRegistryAsOf(ctx, &store.FindMetaRegistryResourceMessage{GUID: &viewGUID, ObjectType: &viewType}, asOfBeforeDrop)
+	require.NoError(t, err)
+	require.NotNil(t, historical)
+	require.Equal(t, "user_order_view", historical.Metadata.GetViewMetadata().GetName())
+
+	history := queryMetaHistorySummary(ctx, t, env, viewGUID, viewType)
+	require.Equal(t, 1, history.Total)
+	require.Equal(t, 0, history.Open)
 }
 
 func TestPostgresManualSQLLineageRealServerIntegration(t *testing.T) {
@@ -136,6 +146,76 @@ CREATE TABLE IF NOT EXISTS public.manual_sql_summary (
 			hasAPILineageEdge(relations, manual.GetGuid(), "user_name", summaryGUID, "user_name")
 	})
 	require.NotEmpty(t, relations)
+}
+
+func TestPostgresColumnMetadataHistoryRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, sourceDatabase, databaseName := setupPostgresServiceDatabase(t)
+	env.SyncDatabase(ctx, t, databaseName)
+
+	guidPrefix := fmt.Sprintf("%s;%s", instanceID, sourceDatabase)
+	usersGUID := waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_TABLE, "users")
+	ageGUID := waitForMetaGUIDByName(ctx, t, env, usersGUID, storepb.MetaType_COLUMN, "age")
+	columnType := storepb.MetaType_COLUMN
+
+	original := waitForMetaRegistry(ctx, t, env, ageGUID, columnType)
+	require.Empty(t, original.Metadata.GetColumnMetadata().GetComment())
+	asOfBeforeCommentChange := time.Now().UTC()
+
+	require.NoError(t, env.ExecPostgres(ctx, sourceDatabase, `COMMENT ON COLUMN public.users.age IS 'age in years';`))
+	env.SyncDatabase(ctx, t, databaseName)
+
+	updated := waitForMetaRegistry(ctx, t, env, ageGUID, columnType)
+	require.Equal(t, "age in years", updated.Metadata.GetColumnMetadata().GetComment())
+
+	historical, err := env.Store.GetMetaRegistryAsOf(ctx, &store.FindMetaRegistryResourceMessage{GUID: &ageGUID, ObjectType: &columnType}, asOfBeforeCommentChange)
+	require.NoError(t, err)
+	require.NotNil(t, historical)
+	require.Empty(t, historical.Metadata.GetColumnMetadata().GetComment())
+
+	history := queryMetaHistorySummary(ctx, t, env, ageGUID, columnType)
+	require.Equal(t, 2, history.Total)
+	require.Equal(t, 1, history.Open)
+	require.Equal(t, 1, history.Closed)
+}
+
+func TestPostgresManualSQLMetadataHistoryRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, _, sourceDatabase, databaseName := setupPostgresServiceDatabase(t)
+	env.SyncDatabase(ctx, t, databaseName)
+	asOfBeforeCreate := time.Now().UTC()
+
+	manual := env.CreateManualSQL(ctx, t, databaseName, "history_active_users", &v1pb.ManualSQL{
+		Title:   "History Active Users",
+		SqlText: "SELECT id, name FROM public.users",
+		Tags:    []string{"integration", "history"},
+	})
+	manualType := storepb.MetaType_MANUAL_SQL
+	current := waitForMetaRegistry(ctx, t, env, manual.GetGuid(), manualType)
+	require.Equal(t, "History Active Users", current.Metadata.GetManualSqlMetadata().GetTitle())
+
+	manualGUID := manual.GetGuid()
+	beforeCreate, err := env.Store.GetMetaRegistryAsOf(ctx, &store.FindMetaRegistryResourceMessage{GUID: &manualGUID, ObjectType: &manualType}, asOfBeforeCreate)
+	require.NoError(t, err)
+	require.Nil(t, beforeCreate)
+
+	asOfBeforeDelete := time.Now().UTC()
+	env.DeleteManualSQL(ctx, t, manual.GetName())
+	waitForMetaRegistryDeleted(ctx, t, env, manual.GetGuid(), manualType)
+
+	historical, err := env.Store.GetMetaRegistryAsOf(ctx, &store.FindMetaRegistryResourceMessage{GUID: &manualGUID, ObjectType: &manualType}, asOfBeforeDelete)
+	require.NoError(t, err)
+	require.NotNil(t, historical)
+	require.Equal(t, manual.GetTitle(), historical.Metadata.GetManualSqlMetadata().GetTitle())
+
+	history := queryMetaHistorySummary(ctx, t, env, manualGUID, manualType)
+	require.Equal(t, 1, history.Total)
+	require.Equal(t, 0, history.Open)
+	require.Equal(t, 1, history.Closed)
+
+	require.NoError(t, env.ExecPostgres(ctx, sourceDatabase, `SELECT 1;`))
 }
 
 func TestPostgresSyncInstanceMarksDroppedDatabaseDeletedRealServerIntegration(t *testing.T) {
@@ -323,4 +403,53 @@ func waitForLineageVersion(ctx context.Context, t *testing.T, env *integrationen
 		return version != nil
 	}, 20*time.Second, 500*time.Millisecond, "lineage version not found for guid=%s metaType=%s", guid, metaType.String())
 	return version
+}
+
+func waitForMetaRegistry(ctx context.Context, t *testing.T, env *integrationenv.ServiceEnv, guid string, metaType storepb.MetaType) *store.MetaRegistryResource {
+	t.Helper()
+
+	var meta *store.MetaRegistryResource
+	require.Eventually(t, func() bool {
+		var err error
+		meta, err = env.Store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &guid, ObjectType: &metaType})
+		if err != nil {
+			return false
+		}
+		return meta != nil
+	}, 20*time.Second, 500*time.Millisecond, "meta registry not found for guid=%s metaType=%s", guid, metaType.String())
+	return meta
+}
+
+func waitForMetaRegistryDeleted(ctx context.Context, t *testing.T, env *integrationenv.ServiceEnv, guid string, metaType storepb.MetaType) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		meta, err := env.Store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &guid, ObjectType: &metaType})
+		if err != nil {
+			return false
+		}
+		return meta == nil
+	}, 20*time.Second, 500*time.Millisecond, "meta registry still exists for guid=%s metaType=%s", guid, metaType.String())
+}
+
+type metaHistorySummary struct {
+	Total  int
+	Open   int
+	Closed int
+}
+
+func queryMetaHistorySummary(ctx context.Context, t *testing.T, env *integrationenv.ServiceEnv, guid string, metaType storepb.MetaType) metaHistorySummary {
+	t.Helper()
+
+	var summary metaHistorySummary
+	err := env.Store.GetDB().QueryRowContext(ctx, `
+		SELECT
+			COUNT(*),
+			COUNT(*) FILTER (WHERE valid_to IS NULL),
+			COUNT(*) FILTER (WHERE valid_to IS NOT NULL)
+		FROM meta_registry_resource_history
+		WHERE guid = $1 AND object_type = $2
+	`, guid, metaType).Scan(&summary.Total, &summary.Open, &summary.Closed)
+	require.NoError(t, err)
+	return summary
 }
