@@ -345,9 +345,6 @@
 
       <div v-else>
         <template v-if="isTableDetailView && leafTable">
-          <CardHeader class="border-b">
-            <CardTitle>{{ t("metadataBrowser.tableDetail") }}</CardTitle>
-          </CardHeader>
           <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
             <TableMetadataDetail
               :table="leafTable"
@@ -359,9 +356,6 @@
         </template>
 
         <template v-else-if="isViewDetailView && leafView">
-          <CardHeader class="border-b">
-            <CardTitle>{{ t("metadataBrowser.viewDetail") }}</CardTitle>
-          </CardHeader>
           <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
             <ViewMetadataDetail
               :view="leafView"
@@ -371,9 +365,6 @@
         </template>
 
         <template v-else-if="isMaterializedViewDetailView && leafMaterializedView">
-          <CardHeader class="border-b">
-            <CardTitle>{{ t("metadataBrowser.materializedViewDetail") }}</CardTitle>
-          </CardHeader>
           <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
             <MaterializedViewMetadataDetail
               :view="leafMaterializedView"
@@ -383,36 +374,24 @@
         </template>
 
         <template v-else-if="isFunctionDetailView && leafFunction">
-          <CardHeader class="border-b">
-            <CardTitle>{{ t("metadataBrowser.functionDetail") }}</CardTitle>
-          </CardHeader>
           <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
             <FunctionMetadataDetail :fn="leafFunction" />
           </CardContent>
         </template>
 
         <template v-else-if="isProcedureDetailView && leafProcedure">
-          <CardHeader class="border-b">
-            <CardTitle>{{ t("metadataBrowser.procedureDetail") }}</CardTitle>
-          </CardHeader>
           <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
             <ProcedureMetadataDetail :proc="leafProcedure" />
           </CardContent>
         </template>
 
         <template v-else-if="isSequenceDetailView && leafSequence">
-          <CardHeader class="border-b">
-            <CardTitle>{{ t("metadataBrowser.sequenceDetail") }}</CardTitle>
-          </CardHeader>
           <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
             <SequenceMetadataDetail :seq="leafSequence" />
           </CardContent>
         </template>
 
         <template v-else-if="isManualSQLDetailView && leafManualSQL">
-          <CardHeader class="border-b">
-            <CardTitle>{{ t("metadataBrowser.manualSqlDetail") }}</CardTitle>
-          </CardHeader>
           <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
             <ManualSQLMetadataDetail
               :manual-sql="leafManualSQL"
@@ -422,9 +401,6 @@
         </template>
 
         <template v-else-if="isExternalDatasetDetailView && externalDatasetDetail">
-          <CardHeader class="border-b">
-            <CardTitle>{{ t("metadataBrowser.externalDatasetDetail") }}</CardTitle>
-          </CardHeader>
           <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
             <ExternalDatasetMetadataDetail
               :guid="currentGuid"
