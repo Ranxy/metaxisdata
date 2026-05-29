@@ -282,7 +282,11 @@ function formatOpenLineageRunLabel(guid: string): string {
 }
 
 function openOpenLineageRun(guid: string) {
-  router.push({ name: "OpenLineageRunDetail", params: { guid } });
+  router.push({
+    name: "OpenLineageRunDetail",
+    params: { guid },
+    query: { from: route.fullPath },
+  });
 }
 
 function toGuidPath(guid: string): string {
@@ -877,6 +881,12 @@ function handleFitView() {
 }
 
 function handleBackToMetadata() {
+  const from = route.query.from;
+  if (typeof from === "string" && from.length > 0) {
+    router.push(from);
+    return;
+  }
+
   if (!currentGuid.value) {
     router.push({ name: "MetadataBrowser" });
     return;

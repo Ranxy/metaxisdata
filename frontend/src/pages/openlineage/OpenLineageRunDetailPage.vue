@@ -25,6 +25,69 @@
     </div>
 
     <div v-else-if="run" class="space-y-6">
+      <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <Card>
+          <CardHeader>
+            <CardTitle>{{ t("openlineage.nextActions") }}</CardTitle>
+            <CardDescription>{{ t("openlineage.runNextActionsDescription") }}</CardDescription>
+          </CardHeader>
+          <CardContent class="flex flex-col gap-3">
+            <Button variant="outline" :disabled="!run.taskGuid" @click="openJobDetail">
+              {{ t("openlineage.openJobDetail") }}
+            </Button>
+            <Button variant="outline" :disabled="!run.taskGuid" @click="openGraph">
+              {{ t("openlineage.openGraph") }}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{{ t("openlineage.relatedDatasets") }}</CardTitle>
+            <CardDescription>{{ t("openlineage.relatedDatasetsDescription") }}</CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div>
+              <div class="mb-2 text-sm font-medium text-muted-foreground">
+                {{ t("openlineage.inputs") }}
+              </div>
+              <div v-if="inputDatasets.length > 0" class="space-y-2">
+                <div
+                  v-for="dataset in inputDatasets"
+                  :key="`input-${dataset.namespace}-${dataset.name}`"
+                  class="rounded-md border px-3 py-2"
+                >
+                  <div class="font-medium">{{ dataset.name }}</div>
+                  <div class="font-mono text-xs text-muted-foreground">{{ dataset.namespace }}</div>
+                </div>
+              </div>
+              <p v-else class="text-sm text-muted-foreground">
+                {{ t("openlineage.noInputs") }}
+              </p>
+            </div>
+
+            <div>
+              <div class="mb-2 text-sm font-medium text-muted-foreground">
+                {{ t("openlineage.outputs") }}
+              </div>
+              <div v-if="outputDatasets.length > 0" class="space-y-2">
+                <div
+                  v-for="dataset in outputDatasets"
+                  :key="`output-${dataset.namespace}-${dataset.name}`"
+                  class="rounded-md border px-3 py-2"
+                >
+                  <div class="font-medium">{{ dataset.name }}</div>
+                  <div class="font-mono text-xs text-muted-foreground">{{ dataset.namespace }}</div>
+                </div>
+              </div>
+              <p v-else class="text-sm text-muted-foreground">
+                {{ t("openlineage.noOutputs") }}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>{{ t("openlineageSettings.runSummary") }}</CardTitle>
@@ -117,6 +180,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useErrorHandler } from "@/composables/useErrorHandler";
+import { extractOpenLineageDatasets } from "@/lib/openlineage";
 import type { OpenLineageRunResource } from "@/types/proto-es/v1/openlineage_service_pb";
 
 const route = useRoute();
@@ -139,6 +203,18 @@ const formattedPayload = computed(() => {
   } catch {
     return run.value.rawPayload;
   }
+});
+
+const relatedDatasets = computed(() => {
+  return extractOpenLineageDatasets(run.value?.rawPayload ?? "");
+});
+
+const inputDatasets = computed(() => {
+  return relatedDatasets.value.inputs;
+});
+
+const outputDatasets = computed(() => {
+  return relatedDatasets.value.outputs;
 });
 
 function formatTimestamp(ts: Timestamp | undefined): string {
@@ -169,6 +245,33 @@ function goBack() {
   }
 
   router.push({ name: "OpenLineageEvents" });
+}
+
+function openJobDetail() {
+  if (!run.value?.taskGuid) {
+    return;
+  }
+
+  router.push({
+    name: "OpenLineageTaskDetail",
+    params: { guid: run.value.taskGuid },
+    query: { from: route.fullPath },
+  });
+}
+
+function openGraph() {
+  if (!run.value?.taskGuid) {
+    return;
+  }
+
+  router.push({
+    name: "LineageGraph",
+    params: { guid: run.value.taskGuid },
+    query: {
+      metaType: "100",
+      from: route.fullPath,
+    },
+  });
 }
 
 async function fetchRun() {
