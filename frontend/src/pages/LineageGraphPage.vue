@@ -50,37 +50,165 @@
       </CardContent>
     </Card>
 
-    <Card class="relative overflow-hidden" style="height: calc(100vh - 12rem)">
-      <div v-if="initialLoading" class="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
-        <AppLoading />
-      </div>
+    <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
+      <Card class="relative overflow-hidden" style="height: calc(100vh - 12rem)">
+        <div v-if="initialLoading" class="absolute inset-0 z-10 flex items-center justify-center bg-background/80">
+          <AppLoading />
+        </div>
 
-      <VueFlow
-        :nodes="nodes"
-        :edges="edges"
-        :default-viewport="{ x: 0, y: 0, zoom: 0.8 }"
-        :min-zoom="0.1"
-        :max-zoom="2"
-        fit-view-on-init
-      >
-        <Background />
-        <Controls />
-        <MiniMap />
+        <VueFlow
+          :nodes="nodes"
+          :edges="edges"
+          :default-viewport="{ x: 0, y: 0, zoom: 0.8 }"
+          :min-zoom="0.1"
+          :max-zoom="2"
+          fit-view-on-init
+        >
+          <Background />
+          <Controls />
+          <MiniMap />
 
-        <template #node-lineage="nodeProps">
-          <LineageNode
-            :data="nodeProps.data"
-            @expand="handleExpandNode"
-            @select-column="handleSelectColumn"
-            @toggle-fields="handleToggleFields"
-          />
-        </template>
-      </VueFlow>
-    </Card>
+          <template #node-lineage="nodeProps">
+            <LineageNode
+              :data="nodeProps.data"
+              @expand="handleExpandNode"
+              @select-node="handleSelectNode"
+              @select-column="handleSelectColumn"
+              @toggle-fields="handleToggleFields"
+            />
+          </template>
+        </VueFlow>
+      </Card>
+
+      <Card v-if="selectedNodeSummary" class="overflow-hidden xl:h-[calc(100vh-12rem)]">
+        <CardContent class="flex h-full flex-col p-0">
+          <div class="flex items-start justify-between gap-3 border-b px-5 py-4">
+            <div class="space-y-1">
+              <div class="text-xs uppercase tracking-wide text-muted-foreground">
+                {{ t("common.details") }}
+              </div>
+              <h2 class="text-lg font-semibold leading-tight">
+                {{ selectedNodeSummary.label }}
+              </h2>
+              <p class="break-all text-xs text-muted-foreground">
+                {{ selectedNodeSummary.guid }}
+              </p>
+            </div>
+            <Button variant="ghost" size="sm" @click="closeSelectedNode">
+              {{ t("lineageGraph.closeDetail") }}
+            </Button>
+          </div>
+
+          <div class="flex-1 space-y-6 overflow-y-auto px-5 py-4">
+            <section class="space-y-3">
+              <div class="flex flex-wrap gap-2">
+                <Badge :variant="selectedNodeSummary.isExternal ? 'outline' : 'default'">
+                  {{ selectedNodeSummary.isExternal ? t("openlineage.external") : t("openlineage.internal") }}
+                </Badge>
+                <Badge variant="outline">
+                  {{ selectedNodeSummary.metaTypeLabel }}
+                </Badge>
+                <Badge v-if="selectedNodeSummary.isRoot" variant="secondary">
+                  {{ t("lineageGraph.rootNode") }}
+                </Badge>
+              </div>
+
+              <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                <div class="rounded-md border p-3">
+                  <div class="text-xs text-muted-foreground">{{ t("lineageGraph.shortPath") }}</div>
+                  <div class="mt-1 break-all text-sm font-medium">{{ selectedNodeSummary.shortPath }}</div>
+                </div>
+                <div class="rounded-md border p-3">
+                  <div class="text-xs text-muted-foreground">{{ t("lineageGraph.fieldCount") }}</div>
+                  <div class="mt-1 text-sm font-medium">{{ selectedNodeSummary.columns.length }}</div>
+                </div>
+                <div class="rounded-md border p-3">
+                  <div class="text-xs text-muted-foreground">{{ t("lineageGraph.upstreamObjects") }}</div>
+                  <div class="mt-1 text-sm font-medium">{{ selectedNodeSummary.upstreamCount }}</div>
+                </div>
+                <div class="rounded-md border p-3">
+                  <div class="text-xs text-muted-foreground">{{ t("lineageGraph.downstreamObjects") }}</div>
+                  <div class="mt-1 text-sm font-medium">{{ selectedNodeSummary.downstreamCount }}</div>
+                </div>
+                <div v-if="selectedNodeSummary.isExternal" class="rounded-md border p-3 sm:col-span-2 xl:col-span-1">
+                  <div class="text-xs text-muted-foreground">{{ t("openlineageSettings.namespace") }}</div>
+                  <div class="mt-1 break-all text-sm font-medium">{{ selectedNodeSummary.externalNamespace || "-" }}</div>
+                </div>
+                <div v-if="selectedNodeSummary.isExternal" class="rounded-md border p-3 sm:col-span-2 xl:col-span-1">
+                  <div class="text-xs text-muted-foreground">{{ t("openlineage.datasetType") }}</div>
+                  <div class="mt-1 text-sm font-medium">{{ selectedNodeSummary.externalDatasetType || "-" }}</div>
+                </div>
+                <div v-if="selectedColumnContext" class="rounded-md border p-3 sm:col-span-2 xl:col-span-1">
+                  <div class="text-xs text-muted-foreground">{{ t("lineageGraph.selectedField") }}</div>
+                  <div class="mt-1 text-sm font-medium">{{ selectedColumnContext }}</div>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" @click="refocusOnSelectedNode">
+                  {{ t("lineageGraph.refocusGraph") }}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="!canOpenSelectedNodeColumnLineage"
+                  @click="openSelectedNodeColumnLineage"
+                >
+                  {{ t("lineageGraph.openColumnLineage") }}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="selectedNodeSummary.isExternal"
+                  @click="openSelectedNodeMetadata"
+                >
+                  {{ t("openlineage.openMetadata") }}
+                </Button>
+              </div>
+            </section>
+
+            <section class="space-y-3">
+              <div>
+                <h3 class="text-sm font-semibold">{{ t("lineageGraph.relatedRuns") }}</h3>
+                <p class="text-sm text-muted-foreground">
+                  {{
+                    selectedColumnContext
+                      ? t("lineageGraph.relatedRunsFiltered")
+                      : t("lineageGraph.relatedRunsDescription")
+                  }}
+                </p>
+              </div>
+
+              <div v-if="selectedNodeRelatedRuns.length === 0" class="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                {{ t("lineageGraph.noRelatedRuns") }}
+              </div>
+
+              <div v-else class="space-y-2">
+                <Button
+                  v-for="run in selectedNodeRelatedRuns"
+                  :key="run.guid"
+                  variant="outline"
+                  class="h-auto w-full justify-start px-3 py-3 text-left"
+                  @click="openOpenLineageRun(run.guid)"
+                >
+                  <div class="space-y-1">
+                    <div class="font-medium">{{ run.label }}</div>
+                    <div class="text-xs text-muted-foreground">
+                      {{ run.updatedAtLabel }}
+                    </div>
+                  </div>
+                </Button>
+              </div>
+            </section>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { Background } from "@vue-flow/background";
 import { Controls } from "@vue-flow/controls";
 import { type Edge, type Node, useVueFlow, VueFlow } from "@vue-flow/core";
@@ -97,6 +225,7 @@ import { getLineage } from "@/api/lineage";
 import AppLoading from "@/components/common/AppLoading.vue";
 import type { LineageNodeData } from "@/components/lineage/LineageNode.vue";
 import LineageNode from "@/components/lineage/LineageNode.vue";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -130,6 +259,13 @@ interface NodeLineageData {
   downstreamLoaded: boolean;
 }
 
+type NodeRunSummary = {
+  guid: string;
+  label: string;
+  updatedAt?: Timestamp;
+  updatedAtLabel: string;
+};
+
 const nodes = ref<Node[]>([]);
 const edges = ref<Edge[]>([]);
 const initialLoading = ref(true);
@@ -158,6 +294,11 @@ const fieldsVisibleGuids = ref<Set<string>>(new Set());
 
 const hasExpandedBeyondRoot = computed(() => {
   return expandedGuids.value.size > initialExpandedGuids.size;
+});
+
+const selectedNodeGuid = computed(() => {
+  const node = route.query.node;
+  return typeof node === "string" && node.length > 0 ? node : null;
 });
 
 const currentGuid = computed(() => {
@@ -211,6 +352,105 @@ const openLineageSources = computed(() => {
   }
 
   return Array.from(sources.values());
+});
+
+const selectedNodeSummary = computed(() => {
+  if (!selectedNodeGuid.value) {
+    return null;
+  }
+
+  const lineageData = nodeDataMap.value.get(selectedNodeGuid.value);
+  if (!lineageData && selectedNodeGuid.value !== currentGuid.value) {
+    return null;
+  }
+
+  const externalInfo = externalDatasetMap.value.get(selectedNodeGuid.value);
+
+  return {
+    guid: selectedNodeGuid.value,
+    label: formatGuidLabel(selectedNodeGuid.value),
+    shortPath: formatGuidShort(selectedNodeGuid.value),
+    isRoot: selectedNodeGuid.value === currentGuid.value,
+    isExternal: isExternalGuid(selectedNodeGuid.value),
+    metaTypeValue:
+      guidMetaTypeMap.value.get(selectedNodeGuid.value) ??
+      currentMetaType.value,
+    metaTypeLabel: formatMetaTypeLabel(selectedNodeGuid.value),
+    upstreamCount: lineageData?.upstream.length ?? 0,
+    downstreamCount: lineageData?.downstream.length ?? 0,
+    columns: collectColumnsForGuid(selectedNodeGuid.value),
+    externalNamespace: externalInfo?.namespace ?? "",
+    externalDatasetType: externalInfo?.datasetType ?? "",
+  };
+});
+
+const selectedColumnContext = computed(() => {
+  if (
+    selectedColumnGuid.value !== selectedNodeGuid.value ||
+    !selectedColumnName.value
+  ) {
+    return null;
+  }
+  return selectedColumnName.value;
+});
+
+const canOpenSelectedNodeColumnLineage = computed(() => {
+  if (!selectedNodeSummary.value) {
+    return false;
+  }
+
+  return (
+    !selectedNodeSummary.value.isExternal &&
+    selectedNodeSummary.value.columns.length > 0
+  );
+});
+
+const selectedNodeRelatedRuns = computed<NodeRunSummary[]>(() => {
+  if (!selectedNodeGuid.value) {
+    return [];
+  }
+
+  const lineageData = getNodeLineageData(selectedNodeGuid.value);
+  const runs = new Map<string, NodeRunSummary>();
+  const addRelation = (relation: LineageRelation) => {
+    if (
+      Number(relation.metaType) !== OPENLINEAGE_META_TYPE ||
+      !relation.metaGuid
+    ) {
+      return;
+    }
+
+    if (
+      selectedColumnContext.value &&
+      !relationMatchesSelectedColumn(relation)
+    ) {
+      return;
+    }
+
+    const existing = runs.get(relation.metaGuid);
+    if (
+      !existing ||
+      compareTimestamps(relation.updatedAt, existing.updatedAt) < 0
+    ) {
+      runs.set(relation.metaGuid, {
+        guid: relation.metaGuid,
+        label: formatOpenLineageRunLabel(relation.metaGuid),
+        updatedAt: relation.updatedAt,
+        updatedAtLabel: formatTimestamp(relation.updatedAt),
+      });
+    }
+  };
+
+  for (const relation of lineageData.upstream) {
+    addRelation(relation);
+  }
+  for (const relation of lineageData.downstream) {
+    addRelation(relation);
+  }
+
+  return Array.from(runs.values()).sort((left, right) =>
+    compareTimestamps(right.updatedAt, left.updatedAt)
+  );
 });
 
 function formatGuidShort(guid: string): string {
@@ -281,11 +521,122 @@ function formatOpenLineageRunLabel(guid: string): string {
   return segments.join(" · ") || guid;
 }
 
+function formatTimestamp(ts: Timestamp | undefined): string {
+  if (!ts?.seconds) return "-";
+  const date = new Date(Number(ts.seconds) * 1000);
+  return new Intl.DateTimeFormat("default", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function compareTimestamps(
+  left: Timestamp | undefined,
+  right: Timestamp | undefined
+): number {
+  const leftSeconds = Number(left?.seconds ?? 0);
+  const rightSeconds = Number(right?.seconds ?? 0);
+  if (leftSeconds === rightSeconds) {
+    return 0;
+  }
+  return leftSeconds > rightSeconds ? 1 : -1;
+}
+
+function formatMetaTypeLabel(guid: string): string {
+  const metaType = guidToMetaType(guid);
+  switch (metaType) {
+    case "materialized_view":
+      return "Materialized View";
+    case "view":
+      return "View";
+    case "table":
+      return "Table";
+    case "schema":
+      return "Schema";
+    case "database":
+      return "Database";
+    case "instance":
+      return "Instance";
+    case "external":
+      return "External Dataset";
+    default:
+      return metaType;
+  }
+}
+
+function setSelectedNode(guid: string | null) {
+  const nextQuery = { ...route.query };
+  if (guid) {
+    nextQuery.node = guid;
+  } else {
+    delete nextQuery.node;
+  }
+  router.replace({ query: nextQuery });
+}
+
 function openOpenLineageRun(guid: string) {
   router.push({
     name: "OpenLineageRunDetail",
     params: { guid },
     query: { from: route.fullPath },
+  });
+}
+
+function openSelectedNodeMetadata() {
+  if (!selectedNodeSummary.value || selectedNodeSummary.value.isExternal) {
+    return;
+  }
+
+  router.push({
+    name: "MetadataDetail",
+    params: { guid: toGuidPath(selectedNodeSummary.value.guid) },
+    query: {
+      metaType: String(selectedNodeSummary.value.metaTypeValue),
+      from: route.fullPath,
+    },
+  });
+}
+
+function refocusOnSelectedNode() {
+  if (!selectedNodeSummary.value) {
+    return;
+  }
+
+  const nextQuery: Record<string, string> = {
+    metaType: String(selectedNodeSummary.value.metaTypeValue),
+  };
+  if (typeof route.query.from === "string" && route.query.from.length > 0) {
+    nextQuery.from = route.query.from;
+  }
+
+  router.push({
+    name: "LineageGraph",
+    params: { guid: toGuidPath(selectedNodeSummary.value.guid) },
+    query: nextQuery,
+  });
+}
+
+function openSelectedNodeColumnLineage() {
+  if (!selectedNodeSummary.value || !canOpenSelectedNodeColumnLineage.value) {
+    return;
+  }
+
+  const query: Record<string, string> = {
+    metaType: String(selectedNodeSummary.value.metaTypeValue),
+    from: route.fullPath,
+  };
+  if (selectedColumnContext.value) {
+    query.column = selectedColumnContext.value;
+  }
+
+  router.push({
+    name: "OpenLineageColumnLineage",
+    params: { guid: toGuidPath(selectedNodeSummary.value.guid) },
+    query,
   });
 }
 
@@ -796,6 +1147,18 @@ function clearColumnSelection() {
   updateGraphState();
 }
 
+function handleSelectNode(guid: string) {
+  if (selectedNodeGuid.value === guid) {
+    closeSelectedNode();
+    return;
+  }
+  setSelectedNode(guid);
+}
+
+function closeSelectedNode() {
+  setSelectedNode(null);
+}
+
 function handleToggleFields(guid: string, visible: boolean) {
   if (visible) {
     fieldsVisibleGuids.value.add(guid);
@@ -806,6 +1169,10 @@ function handleToggleFields(guid: string, visible: boolean) {
 }
 
 function handleSelectColumn(guid: string, column: string) {
+  if (selectedNodeGuid.value !== guid) {
+    setSelectedNode(guid);
+  }
+
   // Toggle off if same column clicked again
   if (
     selectedColumnGuid.value === guid &&
@@ -873,6 +1240,9 @@ function handleReset() {
   highlightedColumnsMap.value.clear();
   fieldsVisibleGuids.value.clear();
   rebuildGraph();
+  if (selectedNodeGuid.value && selectedNodeGuid.value !== currentGuid.value) {
+    closeSelectedNode();
+  }
   setTimeout(() => fitView({ duration: 300 }), 50);
 }
 
@@ -905,6 +1275,15 @@ function saveInitialSnapshot() {
   );
 }
 
+function syncSelectedNodeVisibility() {
+  if (
+    selectedNodeGuid.value &&
+    !nodes.value.some((node) => node.id === selectedNodeGuid.value)
+  ) {
+    closeSelectedNode();
+  }
+}
+
 async function initializeGraph() {
   if (!currentGuid.value) return;
 
@@ -920,6 +1299,7 @@ async function initializeGraph() {
   guidMetaTypeMap.value.set(currentGuid.value, currentMetaType.value);
   await fetchLineageForGuid(currentGuid.value);
   rebuildGraph();
+  syncSelectedNodeVisibility();
   saveInitialSnapshot();
 
   initialLoading.value = false;
@@ -932,5 +1312,9 @@ onMounted(() => {
 
 watch(currentGuid, () => {
   initializeGraph();
+});
+
+watch(nodes, () => {
+  syncSelectedNodeVisibility();
 });
 </script>

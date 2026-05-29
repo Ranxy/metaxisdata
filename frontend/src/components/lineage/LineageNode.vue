@@ -6,6 +6,7 @@
       isExternal ? 'border-amber-300 dark:border-amber-700' : '',
       showFields ? 'max-w-[300px]' : 'max-w-[260px]',
     ]"
+    @click="$emit('select-node', data.guid)"
   >
     <div
       class="flex items-center gap-2 px-3 py-2 border-b"
@@ -113,6 +114,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   expand: [guid: string, direction: "upstream" | "downstream"];
+  "select-node": [guid: string];
   "select-column": [guid: string, column: string];
   "toggle-fields": [guid: string, visible: boolean];
 }>();

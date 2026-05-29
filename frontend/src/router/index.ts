@@ -100,6 +100,13 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, layout: "default" },
   },
   {
+    path: "/openlineage/column-lineage/:guid(.+)",
+    name: "OpenLineageColumnLineage",
+    component: () =>
+      import("@/pages/openlineage/OpenLineageColumnLineagePage.vue"),
+    meta: { requiresAuth: true, layout: "default" },
+  },
+  {
     path: "/metadata",
     name: "MetadataBrowser",
     component: () => import("@/pages/MetadataBrowserPage.vue"),

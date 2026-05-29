@@ -17,7 +17,7 @@
           :placeholder="t('metadataBrowser.searchLineagePlaceholder')"
         />
         <Badge variant="outline">
-          {{ filteredRelations.length }} / {{ displayRelations.length }}
+          {{ filteredRelations.length }} / {{ scopedRelations.length }}
           {{ t("metadataBrowser.lineageRelationsCount") }}
         </Badge>
       </div>
@@ -133,7 +133,11 @@
 import { Share2 } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { type RouteLocationRaw, RouterLink } from "vue-router";
+import {
+  type LocationQueryRaw,
+  type RouteLocationRaw,
+  RouterLink,
+} from "vue-router";
 import { getLineage } from "@/api/lineage";
 import AppLoading from "@/components/common/AppLoading.vue";
 import LineageTransformationCell from "@/components/metadata/LineageTransformationCell.vue";
@@ -174,9 +178,13 @@ const props = withDefaults(
   defineProps<{
     guid: string;
     metaType: MetaType;
+    focusColumn?: string;
+    graphQuery?: LocationQueryRaw;
     title?: string;
   }>(),
   {
+    focusColumn: "",
+    graphQuery: undefined,
     title: "",
   }
 );
@@ -184,6 +192,11 @@ const props = withDefaults(
 const { t } = useI18n();
 
 const lineageGraphRoute = computed(() => {
+  const query: LocationQueryRaw = {
+    ...(props.graphQuery ?? {}),
+    metaType: String(props.metaType),
+  };
+
   const guidPath = props.guid
     .split(";")
     .map((s) => (s === "" ? "~" : encodeURIComponent(s)))
@@ -191,7 +204,7 @@ const lineageGraphRoute = computed(() => {
   return {
     name: "LineageGraph",
     params: { guid: guidPath },
-    query: { metaType: String(props.metaType) },
+    query,
   };
 });
 
@@ -250,22 +263,49 @@ const displayRelations = computed<DisplayRelation[]>(() => {
   });
 });
 
+const scopedRelations = computed(() => {
+  const focusColumn = props.focusColumn.trim();
+  if (!focusColumn) {
+    return displayRelations.value;
+  }
+
+  return displayRelations.value.filter(
+    (relation) => relation.currentColumn === focusColumn
+  );
+});
+
 const filteredRelations = computed(() => {
   const query = search.value.trim().toLowerCase();
-  if (!query) return displayRelations.value;
-  return displayRelations.value.filter((relation) =>
+  if (!query) return scopedRelations.value;
+  return scopedRelations.value.filter((relation) =>
     relation.searchText.includes(query)
   );
 });
 
-const upstreamRelationCount = computed(() => upstreamRelations.value.length);
+const upstreamRelationCount = computed(() => {
+  const focusColumn = props.focusColumn.trim();
+  if (!focusColumn) {
+    return upstreamRelations.value.length;
+  }
 
-const downstreamRelationCount = computed(
-  () => downstreamRelations.value.length
-);
+  return upstreamRelations.value.filter(
+    (relation) => relation.targetColumn === focusColumn
+  ).length;
+});
+
+const downstreamRelationCount = computed(() => {
+  const focusColumn = props.focusColumn.trim();
+  if (!focusColumn) {
+    return downstreamRelations.value.length;
+  }
+
+  return downstreamRelations.value.filter(
+    (relation) => relation.sourceColumn === focusColumn
+  ).length;
+});
 
 const relatedObjectCount = computed(() => {
-  return new Set(displayRelations.value.map((relation) => relation.relatedGuid))
+  return new Set(scopedRelations.value.map((relation) => relation.relatedGuid))
     .size;
 });
 
