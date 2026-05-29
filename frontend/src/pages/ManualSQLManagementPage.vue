@@ -1,13 +1,10 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
       <div>
         <h1 class="text-2xl font-bold tracking-tight">
           {{ t("manualSqlManagement.title") }}
         </h1>
-        <p class="text-muted-foreground">
-          {{ t("manualSqlManagement.description") }}
-        </p>
       </div>
       <Button
         :disabled="availableDatabases.length === 0 || isSaving"

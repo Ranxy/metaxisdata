@@ -12,9 +12,6 @@
       <h1 class="text-2xl font-bold mb-2">
         {{ t("notFound.title") }}
       </h1>
-      <p class="text-muted-foreground mb-8">
-        {{ t("notFound.description") }}
-      </p>
 
       <!-- Back to Home Button -->
       <Button

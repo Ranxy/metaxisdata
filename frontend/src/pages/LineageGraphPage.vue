@@ -5,9 +5,6 @@
         <h1 class="text-2xl font-bold tracking-tight">
           {{ t("lineageGraph.title") }}
         </h1>
-        <p class="text-muted-foreground">
-          {{ rootLabel || t("lineageGraph.description") }}
-        </p>
       </div>
       <div class="flex items-center gap-2">
         <Button v-if="hasExpandedBeyondRoot" variant="outline" size="sm" @click="handleReset">
@@ -182,8 +179,6 @@ const currentMetaType = computed(() => {
   if (!Number.isFinite(value)) return MetaType.TABLE;
   return value as MetaType;
 });
-
-const rootLabel = computed(() => formatGuidShort(currentGuid.value));
 
 const openLineageSources = computed(() => {
   const sources = new Map<string, { guid: string; label: string }>();

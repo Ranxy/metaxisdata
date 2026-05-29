@@ -1,13 +1,10 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
       <div>
         <h1 class="text-2xl font-bold tracking-tight">
           {{ t("auditLogs.title") }}
         </h1>
-        <p class="text-muted-foreground">
-          {{ t("auditLogs.description") }}
-        </p>
       </div>
       <div class="flex items-center gap-2">
         <Button :disabled="isLoading || isExporting" variant="outline" @click="exportCsv">

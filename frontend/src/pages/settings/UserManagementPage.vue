@@ -1,14 +1,11 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <!-- Page Header -->
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-bold tracking-tight">
           {{ t("userManagement.title") }}
         </h1>
-        <p class="text-muted-foreground">
-          {{ t("userManagement.description") }}
-        </p>
       </div>
       <Button @click="openCreateModal">
         <Plus class="h-4 w-4 mr-2" />
@@ -17,23 +14,19 @@
     </div>
 
     <!-- Search Bar -->
-    <Card>
-      <CardContent class="p-4">
-        <div class="flex items-center gap-4">
-          <div class="flex-1">
-            <AppInput
-              v-model="searchQuery"
-              :placeholder="t('userManagement.searchPlaceholder')"
-              @update:model-value="debouncedSearch"
-            >
-              <template #suffix>
-                <Search class="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              </template>
-            </AppInput>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <div class="flex items-center gap-4">
+      <div class="flex-1">
+        <AppInput
+          v-model="searchQuery"
+          :placeholder="t('userManagement.searchPlaceholder')"
+          @update:model-value="debouncedSearch"
+        >
+          <template #suffix>
+            <Search class="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          </template>
+        </AppInput>
+      </div>
+    </div>
 
     <!-- Users Table -->
     <Card>
@@ -433,7 +426,7 @@ import AppModal from "@/components/common/AppModal.vue";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,

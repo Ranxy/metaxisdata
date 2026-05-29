@@ -60,7 +60,6 @@
   },
   "auditLogs": {
     "title": "Audit Logs",
-    "description": "Inspect auditable API activity across the workspace, including request metadata and redacted payloads.",
     "filter": "Filter",
     "refresh": "Refresh",
     "exportCsv": "Export CSV",
@@ -119,7 +118,6 @@
   },
   "metadataBrowser": {
     "title": "Metadata Browser",
-    "description": "Browse and manage database metadata",
     "instances": "Database Instances",
     "instance": "Instance",
     "engine": "Engine",
@@ -275,22 +273,18 @@
 
     "functions": "Functions",
     "functionName": "Function Name",
-    "functionDetail": "Function Detail",
     "noFunctions": "No functions",
     "signature": "Signature",
     "dependencyTables": "Dependency Tables",
 
     "procedures": "Procedures",
     "procedureName": "Procedure Name",
-    "procedureDetail": "Procedure Detail",
     "noProcedures": "No procedures",
 
     "sequences": "Sequences",
     "sequenceName": "Sequence Name",
-    "sequenceDetail": "Sequence Detail",
     "sequenceInfo": "Sequence Info",
     "noSequences": "No sequences",
-    "externalDatasetDetail": "External Dataset Detail",
     "externalDatasetInfo": "External Dataset Info",
     "namespace": "Namespace",
     "datasetType": "Dataset Type",
@@ -343,12 +337,10 @@
   },
   "notFound": {
     "title": "Page Not Found",
-    "description": "Sorry, the page you are looking for does not exist",
     "backHome": "Back to Home"
   },
   "manualSqlManagement": {
     "title": "Manual SQL",
-    "description": "Manage user-maintained SQL definitions and search them by content or exact tags.",
     "database": "Database",
     "selectDatabase": "Select a database",
     "databaseRequired": "Database is required",
@@ -417,7 +409,6 @@
   },
   "userManagement": {
     "title": "User Management",
-    "description": "Manage users, roles, and permissions",
     "addUser": "Add User",
     "editUser": "Edit User",
     "deleteUser": "Delete User",
@@ -469,7 +460,6 @@
   },
   "instanceManagement": {
     "title": "Instance Management",
-    "description": "Manage database instances and connections",
     "searchPlaceholder": "Search by name or title...",
     "noInstances": "No instances found",
     "noDeletedInstances": "No deleted instances in recycle bin",
@@ -535,7 +525,6 @@
     "syncIntervalMinutes": "minutes"
   },
   "instanceDetail": {
-    "description": "View instance details and manage databases",
     "instanceInfo": "Instance Information",
     "databases": "Databases",
     "totalDatabases": "Total: {count} database(s)",
@@ -571,7 +560,6 @@
   },
   "databaseManagement": {
     "title": "Database Management",
-    "description": "Manage databases across all instances",
     "searchPlaceholder": "Search databases...",
     "noDatabases": "No databases found",
     "database": "Database",
@@ -611,7 +599,6 @@
   },
   "openlineageSettings": {
     "title": "OpenLineage",
-    "description": "Manage namespace mappings and API keys for OpenLineage integration",
     "namespaceMappings": "Namespace Mappings",
     "namespaceMappingsDescription": "Map OpenLineage namespaces to internal instances and databases",
     "apiKeys": "API Keys",
@@ -677,7 +664,6 @@
   },
   "lineageGraph": {
     "title": "Lineage Graph",
-    "description": "Visual lineage analysis",
     "fitView": "Fit View",
     "backToMetadata": "Back",
     "openlineageSources": "OpenLineage Sources",

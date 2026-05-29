@@ -1,14 +1,11 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <!-- Page Header -->
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-bold tracking-tight">
           {{ t("databaseManagement.title") }}
         </h1>
-        <p class="text-muted-foreground">
-          {{ t("databaseManagement.description") }}
-        </p>
       </div>
     </div>
 

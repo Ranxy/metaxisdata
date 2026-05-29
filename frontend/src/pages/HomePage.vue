@@ -1,13 +1,10 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <!-- Page Header -->
     <div>
       <h1 class="text-2xl font-bold tracking-tight">
         {{ t("home.title") }}
       </h1>
-      <p class="text-muted-foreground">
-        {{ t("home.description") }}
-      </p>
     </div>
 
     <!-- Welcome Card -->

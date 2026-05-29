@@ -1,13 +1,10 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <div class="flex items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl font-bold tracking-tight">
           {{ t("openlineageSettings.tasks") }}
         </h1>
-        <p class="text-muted-foreground">
-          {{ t("openlineageSettings.tasksDescription") }}
-        </p>
       </div>
       <Button variant="outline" @click="router.push({ name: 'OpenLineageSettings' })">
         {{ t("lineageGraph.backToMetadata") }}

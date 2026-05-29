@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <!-- Page Header -->
     <div class="flex items-center gap-4">
       <Button
@@ -13,9 +13,6 @@
         <h1 class="text-2xl font-bold tracking-tight">
           {{ instance?.title || instanceId }}
         </h1>
-        <p class="text-muted-foreground">
-          {{ t("instanceDetail.description") }}
-        </p>
       </div>
       <Button
         v-if="instance"

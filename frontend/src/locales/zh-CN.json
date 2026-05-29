@@ -60,7 +60,6 @@
   },
   "auditLogs": {
     "title": "审计日志",
-    "description": "查看工作区内可审计 API 活动，包括请求元数据和脱敏后的请求响应内容。",
     "filter": "筛选",
     "refresh": "刷新",
     "exportCsv": "导出 CSV",
@@ -119,7 +118,6 @@
   },
   "metadataBrowser": {
     "title": "元数据浏览器",
-    "description": "浏览和管理数据库元数据",
     "instances": "数据库实例",
     "instance": "实例",
     "engine": "引擎",
@@ -275,22 +273,18 @@
 
     "functions": "函数",
     "functionName": "函数名称",
-    "functionDetail": "函数详情",
     "noFunctions": "暂无函数",
     "signature": "签名",
     "dependencyTables": "依赖表",
 
     "procedures": "存储过程",
     "procedureName": "存储过程名称",
-    "procedureDetail": "存储过程详情",
     "noProcedures": "暂无存储过程",
 
     "sequences": "序列",
     "sequenceName": "序列名称",
-    "sequenceDetail": "序列详情",
     "sequenceInfo": "序列信息",
     "noSequences": "暂无序列",
-    "externalDatasetDetail": "外部数据集详情",
     "externalDatasetInfo": "外部数据集信息",
     "namespace": "命名空间",
     "datasetType": "数据集类型",
@@ -343,12 +337,10 @@
   },
   "notFound": {
     "title": "页面未找到",
-    "description": "抱歉，您访问的页面不存在",
     "backHome": "返回首页"
   },
   "manualSqlManagement": {
     "title": "手动 SQL",
-    "description": "管理手工维护的 SQL 定义，并按内容或精确标签搜索。",
     "database": "数据库",
     "selectDatabase": "选择数据库",
     "databaseRequired": "请选择数据库",
@@ -417,7 +409,6 @@
   },
   "userManagement": {
     "title": "用户管理",
-    "description": "管理用户、角色和权限",
     "addUser": "添加用户",
     "editUser": "编辑用户",
     "deleteUser": "删除用户",
@@ -469,7 +460,6 @@
   },
   "instanceManagement": {
     "title": "实例管理",
-    "description": "管理数据库实例和连接",
     "searchPlaceholder": "按名称或标题搜索...",
     "noInstances": "暂无实例",
     "noDeletedInstances": "回收站中没有已删除的实例",
@@ -535,7 +525,6 @@
     "syncIntervalMinutes": "分钟"
   },
   "instanceDetail": {
-    "description": "查看实例详情和管理数据库",
     "instanceInfo": "实例信息",
     "databases": "数据库列表",
     "totalDatabases": "共 {count} 个数据库",
@@ -571,7 +560,6 @@
   },
   "databaseManagement": {
     "title": "数据库管理",
-    "description": "管理所有实例的数据库",
     "searchPlaceholder": "搜索数据库...",
     "noDatabases": "暂无数据库",
     "database": "数据库",
@@ -611,7 +599,6 @@
   },
   "openlineageSettings": {
     "title": "OpenLineage",
-    "description": "管理 OpenLineage 集成的命名空间映射和 API 密钥",
     "namespaceMappings": "命名空间映射",
     "namespaceMappingsDescription": "将 OpenLineage 命名空间映射到内部实例和数据库",
     "apiKeys": "API 密钥",
@@ -677,7 +664,6 @@
   },
   "lineageGraph": {
     "title": "血缘图",
-    "description": "可视化的血缘分析",
     "fitView": "适应视图",
     "backToMetadata": "返回",
     "openlineageSources": "OpenLineage 来源",
