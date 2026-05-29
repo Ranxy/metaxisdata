@@ -28,3 +28,21 @@ func TestGetNextLevelObjectTypeIncludesManualSQLUnderSchema(t *testing.T) {
 		storepb.MetaType_MANUAL_SQL,
 	)
 }
+
+func TestBuildMetaRegistryHistoryMutations(t *testing.T) {
+	t.Parallel()
+
+	newItem := &CreateMetaRegistryResourceMessage{MetaRegistryResource: MetaRegistryResource{GUID: "inst;db;public;orders", ObjectType: storepb.MetaType_TABLE, MetaHash: []byte("new")}}
+	unchangedItem := &CreateMetaRegistryResourceMessage{MetaRegistryResource: MetaRegistryResource{GUID: "inst;db;public;users", ObjectType: storepb.MetaType_TABLE, MetaHash: []byte("same")}}
+	changedItem := &CreateMetaRegistryResourceMessage{MetaRegistryResource: MetaRegistryResource{GUID: "inst;db;public;items", ObjectType: storepb.MetaType_TABLE, MetaHash: []byte("after")}}
+
+	toClose, toOpen := buildMetaRegistryHistoryMutations(map[MetaGUIDKey]*MetaRegistryHistory{
+		{GUID: unchangedItem.GUID, ObjectType: unchangedItem.ObjectType}: {GUID: unchangedItem.GUID, ObjectType: unchangedItem.ObjectType, MetaHash: []byte("same")},
+		{GUID: changedItem.GUID, ObjectType: changedItem.ObjectType}:     {GUID: changedItem.GUID, ObjectType: changedItem.ObjectType, MetaHash: []byte("before")},
+	}, []*CreateMetaRegistryResourceMessage{newItem, unchangedItem, changedItem})
+
+	require.Len(t, toClose, 1)
+	require.Equal(t, changedItem.GUID, toClose[0].GUID)
+	require.Len(t, toOpen, 2)
+	require.Equal(t, []string{newItem.GUID, changedItem.GUID}, []string{toOpen[0].GUID, toOpen[1].GUID})
+}

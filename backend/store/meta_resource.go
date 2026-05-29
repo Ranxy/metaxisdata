@@ -1,11 +1,13 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
@@ -55,6 +57,16 @@ type FindSubLevelMetaRegistryResourceMessage struct {
 type CreateMetaRegistryResourceMessage struct {
 	MetaRegistryResource
 	MetadataBytes []byte
+}
+
+type MetaRegistryHistory struct {
+	ID         int64
+	GUID       string
+	ObjectType storepb.MetaType
+	Metadata   *storepb.StoredMetadata
+	MetaHash   []byte
+	ValidFrom  time.Time
+	ValidTo    *time.Time
 }
 
 var likePatternEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
@@ -153,6 +165,36 @@ func (s *Store) ListMetaRegistryResource(ctx context.Context, find *FindMetaRegi
 	return list, nil
 }
 
+func (s *Store) GetMetaRegistryAsOf(ctx context.Context, find *FindMetaRegistryResourceMessage, asOf time.Time) (*MetaRegistryResource, error) {
+	list, err := s.ListMetaRegistryResourceAsOf(ctx, find, asOf)
+	if err != nil {
+		return nil, err
+	}
+	if len(list) == 0 {
+		return nil, nil
+	}
+	if len(list) > 1 {
+		return nil, errors.Errorf("found multiple meta registry history rows with the same criteria")
+	}
+	return list[0], nil
+}
+
+func (s *Store) ListMetaRegistryResourceAsOf(ctx context.Context, find *FindMetaRegistryResourceMessage, asOf time.Time) ([]*MetaRegistryResource, error) {
+	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	list, err := s.listMetaRegistryResourceHistoryImpl(ctx, tx, find, asOf, true)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
 // SearchMetaRegistryResourceMessage is the message to search meta registry resources
 // by matching name/comment fields inside the metadata JSONB.
 type SearchMetaRegistryResourceMessage struct {
@@ -239,32 +281,36 @@ func (s *Store) SearchMetaRegistryResource(ctx context.Context, find *SearchMeta
 	return list, nil
 }
 
-func (*Store) listMetaRegistryResourceImpl(ctx context.Context, txn *sql.Tx, find *FindMetaRegistryResourceMessage, withMetadata bool) ([]*MetaRegistryResource, error) {
+func buildMetaRegistryWhereClause(tableName string, find *FindMetaRegistryResourceMessage) ([]string, []any) {
 	where, args := []string{"TRUE"}, []any{}
 	if v := find.ID; v != nil {
-		where, args = append(where, fmt.Sprintf("meta_registry_resource.id = $%d", len(args)+1)), append(args, *v)
+		where, args = append(where, fmt.Sprintf("%s.id = $%d", tableName, len(args)+1)), append(args, *v)
 	}
 	if v := find.IDList; v != nil {
-		where, args = append(where, fmt.Sprintf("meta_registry_resource.id = ANY($%d)", len(args)+1)), append(args, *v)
+		where, args = append(where, fmt.Sprintf("%s.id = ANY($%d)", tableName, len(args)+1)), append(args, *v)
 	}
 	if v := find.GUID; v != nil {
-		where, args = append(where, fmt.Sprintf("meta_registry_resource.guid = $%d", len(args)+1)), append(args, *v)
+		where, args = append(where, fmt.Sprintf("%s.guid = $%d", tableName, len(args)+1)), append(args, *v)
 	}
 	if v := find.GUIDPrefix; v != nil {
-		where, args = appendGUIDSubtreeCondition(where, args, "meta_registry_resource.guid", *v)
+		where, args = appendGUIDSubtreeCondition(where, args, tableName+".guid", *v)
 	}
 	if v := find.ObjectType; v != nil {
-		where, args = append(where, fmt.Sprintf("meta_registry_resource.object_type = $%d", len(args)+1)), append(args, *v)
+		where, args = append(where, fmt.Sprintf("%s.object_type = $%d", tableName, len(args)+1)), append(args, *v)
 	}
 	if v := find.ExcludeObjectType; v != nil && len(*v) > 0 {
-		where, args = append(where, fmt.Sprintf("meta_registry_resource.object_type != ALL($%d)", len(args)+1)), append(args, *v)
+		where, args = append(where, fmt.Sprintf("%s.object_type != ALL($%d)", tableName, len(args)+1)), append(args, *v)
 	}
-
 	if v := find.ExtraArgs; len(v) > 0 {
 		for _, extraArg := range v {
 			where, args = append(where, fmt.Sprintf("%s %s $%d", extraArg.Left, extraArg.Op, len(args)+1)), append(args, extraArg.Right)
 		}
 	}
+	return where, args
+}
+
+func (*Store) listMetaRegistryResourceImpl(ctx context.Context, txn *sql.Tx, find *FindMetaRegistryResourceMessage, withMetadata bool) ([]*MetaRegistryResource, error) {
+	where, args := buildMetaRegistryWhereClause("meta_registry_resource", find)
 
 	var query string
 	if withMetadata {
@@ -334,6 +380,207 @@ func (*Store) listMetaRegistryResourceImpl(ctx context.Context, txn *sql.Tx, fin
 	return metaRegistryMessages, nil
 }
 
+func (*Store) listMetaRegistryResourceHistoryImpl(ctx context.Context, txn *sql.Tx, find *FindMetaRegistryResourceMessage, asOf time.Time, withMetadata bool) ([]*MetaRegistryResource, error) {
+	where, args := buildMetaRegistryWhereClause("meta_registry_resource_history", find)
+	args = append(args, asOf)
+	asOfArg := len(args)
+	where = append(where, fmt.Sprintf("meta_registry_resource_history.valid_from <= $%d", asOfArg))
+	where = append(where, fmt.Sprintf("(meta_registry_resource_history.valid_to IS NULL OR meta_registry_resource_history.valid_to > $%d)", asOfArg))
+
+	var query string
+	if withMetadata {
+		query = `
+		SELECT
+			meta_registry_resource_history.id,
+			meta_registry_resource_history.guid,
+			meta_registry_resource_history.object_type,
+			meta_registry_resource_history.metadata,
+			meta_registry_resource_history.meta_hash
+		FROM meta_registry_resource_history
+		WHERE %s
+		ORDER BY guid`
+	} else {
+		query = `
+		SELECT
+			meta_registry_resource_history.id,
+			meta_registry_resource_history.guid,
+			meta_registry_resource_history.object_type,
+			NULL AS metadata,
+			meta_registry_resource_history.meta_hash
+		FROM meta_registry_resource_history
+		WHERE %s
+		ORDER BY guid`
+	}
+
+	query = fmt.Sprintf(query, strings.Join(where, " AND "))
+	if v := find.Limit; v != nil {
+		query += fmt.Sprintf(" LIMIT %d", *v)
+	}
+	if v := find.Offset; v != nil {
+		query += fmt.Sprintf(" OFFSET %d", *v)
+	}
+
+	var metaRegistryMessages []*MetaRegistryResource
+	rows, err := txn.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var metadata []byte
+		var metaRegistryMessage MetaRegistryResource
+		if err := rows.Scan(
+			&metaRegistryMessage.ID,
+			&metaRegistryMessage.GUID,
+			&metaRegistryMessage.ObjectType,
+			&metadata,
+			&metaRegistryMessage.MetaHash,
+		); err != nil {
+			return nil, err
+		}
+		if len(metadata) != 0 {
+			m := &storepb.StoredMetadata{}
+			if err := common.ProtojsonUnmarshaler.Unmarshal(metadata, m); err != nil {
+				return nil, errors.Wrap(err, " failed to unmarshal stored metadata")
+			}
+			metaRegistryMessage.Metadata = m
+		}
+
+		metaRegistryMessages = append(metaRegistryMessages, &metaRegistryMessage)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return metaRegistryMessages, nil
+}
+
+func buildMetaRegistryHistoryMutations(existing map[MetaGUIDKey]*MetaRegistryHistory, creates []*CreateMetaRegistryResourceMessage) ([]*MetaRegistryHistory, []*CreateMetaRegistryResourceMessage) {
+	toClose := make([]*MetaRegistryHistory, 0, len(creates))
+	toOpen := make([]*CreateMetaRegistryResourceMessage, 0, len(creates))
+	for _, create := range creates {
+		existingHistory, ok := existing[create.GUIDKey()]
+		if !ok {
+			toOpen = append(toOpen, create)
+			continue
+		}
+		if bytes.Equal(existingHistory.MetaHash, create.MetaHash) {
+			continue
+		}
+		toClose = append(toClose, existingHistory)
+		toOpen = append(toOpen, create)
+	}
+	return toClose, toOpen
+}
+
+func (*Store) listOpenMetaRegistryHistoryByKey(ctx context.Context, tx *sql.Tx, keys []MetaGUIDKey) (map[MetaGUIDKey]*MetaRegistryHistory, error) {
+	result := make(map[MetaGUIDKey]*MetaRegistryHistory)
+	if len(keys) == 0 {
+		return result, nil
+	}
+
+	guids := make([]string, 0, len(keys))
+	objectTypes := make([]storepb.MetaType, 0, len(keys))
+	for _, key := range keys {
+		guids = append(guids, key.GUID)
+		objectTypes = append(objectTypes, key.ObjectType)
+	}
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, guid, object_type, meta_hash, valid_from, valid_to
+		FROM meta_registry_resource_history
+		WHERE valid_to IS NULL
+			AND guid = ANY($1)
+			AND object_type = ANY($2)
+	`, pq.Array(guids), pq.Array(objectTypes))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var history MetaRegistryHistory
+		var validTo sql.NullTime
+		if err := rows.Scan(&history.ID, &history.GUID, &history.ObjectType, &history.MetaHash, &history.ValidFrom, &validTo); err != nil {
+			return nil, err
+		}
+		if validTo.Valid {
+			t := validTo.Time
+			history.ValidTo = &t
+		}
+		result[MetaGUIDKey{GUID: history.GUID, ObjectType: history.ObjectType}] = &history
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (*Store) closeOpenMetaRegistryHistory(ctx context.Context, tx *sql.Tx, list []*MetaRegistryHistory, observedAt time.Time) error {
+	for _, history := range list {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE meta_registry_resource_history
+			SET valid_to = $3
+			WHERE guid = $1 AND object_type = $2 AND valid_to IS NULL
+		`, history.GUID, history.ObjectType, observedAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (*Store) insertMetaRegistryHistory(ctx context.Context, tx *sql.Tx, creates []*CreateMetaRegistryResourceMessage, observedAt time.Time) error {
+	if len(creates) == 0 {
+		return nil
+	}
+
+	guids := make([]string, 0, len(creates))
+	objectTypes := make([]storepb.MetaType, 0, len(creates))
+	metadata := make([]string, 0, len(creates))
+	metaHashes := make([][]byte, 0, len(creates))
+	validFrom := make([]time.Time, 0, len(creates))
+	for _, create := range creates {
+		guids = append(guids, create.GUID)
+		objectTypes = append(objectTypes, create.ObjectType)
+		metadata = append(metadata, string(create.MetadataBytes))
+		metaHashes = append(metaHashes, create.MetaHash)
+		validFrom = append(validFrom, observedAt)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO meta_registry_resource_history (
+			guid,
+			object_type,
+			metadata,
+			meta_hash,
+			valid_from
+		) SELECT * FROM UNNEST ($1::text[], $2::int[], $3::jsonb[], $4::bytea[], $5::timestamptz[])
+	`, pq.Array(guids), pq.Array(objectTypes), pq.Array(metadata), pq.Array(metaHashes), pq.Array(validFrom)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Store) upsertMetaRegistryHistory(ctx context.Context, tx *sql.Tx, creates []*CreateMetaRegistryResourceMessage, observedAt time.Time) error {
+	keys := make([]MetaGUIDKey, 0, len(creates))
+	for _, create := range creates {
+		keys = append(keys, create.GUIDKey())
+	}
+
+	existing, err := s.listOpenMetaRegistryHistoryByKey(ctx, tx, keys)
+	if err != nil {
+		return err
+	}
+
+	toClose, toOpen := buildMetaRegistryHistoryMutations(existing, creates)
+	if err := s.closeOpenMetaRegistryHistory(ctx, tx, toClose, observedAt); err != nil {
+		return err
+	}
+	return s.insertMetaRegistryHistory(ctx, tx, toOpen, observedAt)
+}
+
 func (s *Store) ListSublevelMetaRegistryResource(ctx context.Context, find *FindSubLevelMetaRegistryResourceMessage) ([]*MetaRegistryResource, error) {
 	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -357,6 +604,27 @@ func (s *Store) ListSublevelMetaRegistryResource(ctx context.Context, find *Find
 			s.metaRegistryCache.Add(metaRegistry.ID, metaRegistry)
 			s.metaRegistryGUIDCache.Add(metaRegistry.GUID, metaRegistry)
 		}
+	}
+	return list, nil
+}
+
+func (s *Store) ListSublevelMetaRegistryResourceAsOf(ctx context.Context, find *FindSubLevelMetaRegistryResourceMessage, asOf time.Time) ([]*MetaRegistryResource, error) {
+	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	if find.LimitPreObjectType == 0 {
+		find.LimitPreObjectType = common.DefaultMetaSubLevelLimit
+	}
+
+	list, err := s.listSublevelMetaRegistryResourceHistoryImpl(ctx, tx, find.ParentGUID, find.ObjectType, find.LimitPreObjectType, asOf)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 	return list, nil
 }
@@ -399,7 +667,9 @@ func (*Store) listSublevelMetaRegistryResourceImpl(ctx context.Context, txn *sql
 			nextType,
 		)
 		//nolint:revive
-		qb.WriteString(nextQuery)
+		if _, err := qb.WriteString(nextQuery); err != nil {
+			return nil, err
+		}
 	}
 	var metaRegistryMessages []*MetaRegistryResource
 	rows, err := txn.QueryContext(ctx, qb.String(), args...)
@@ -436,8 +706,93 @@ func (*Store) listSublevelMetaRegistryResourceImpl(ctx context.Context, txn *sql
 	return metaRegistryMessages, nil
 }
 
-// BatchCreateMetaRegistryResource creates a meta registry.
+func (*Store) listSublevelMetaRegistryResourceHistoryImpl(ctx context.Context, txn *sql.Tx, parentGUID string, objectType storepb.MetaType, limitPreObjectType int, asOf time.Time) ([]*MetaRegistryResource, error) {
+	nextTypes := getNextLevelObjectType(objectType)
+	if len(nextTypes) == 0 {
+		return []*MetaRegistryResource{}, nil
+	}
+
+	args := []any{}
+	qb := strings.Builder{}
+
+	for idx, nextType := range nextTypes {
+		unionStr := ""
+		if idx != 0 {
+			unionStr = "UNION ALL "
+		}
+		nextQuery := fmt.Sprintf(`%s
+		SELECT * FROM(
+		SELECT
+			meta_registry_resource_history.id,
+			meta_registry_resource_history.guid,
+			meta_registry_resource_history.object_type,
+			meta_registry_resource_history.metadata,
+			meta_registry_resource_history.meta_hash
+		FROM meta_registry_resource_history
+		WHERE (meta_registry_resource_history.guid = $%d OR meta_registry_resource_history.guid LIKE $%d ESCAPE E'\\')
+			AND meta_registry_resource_history.object_type = $%d
+			AND meta_registry_resource_history.valid_from <= $%d
+			AND (meta_registry_resource_history.valid_to IS NULL OR meta_registry_resource_history.valid_to > $%d)
+		ORDER BY guid limit %d)
+		`, unionStr, len(args)+1, len(args)+2, len(args)+3, len(args)+4, len(args)+4, limitPreObjectType)
+		args = append(
+			args,
+			parentGUID,
+			likePatternEscaper.Replace(parentGUID+common.MetaGUIDSplit)+"%",
+			nextType,
+			asOf,
+		)
+		if _, err := qb.WriteString(nextQuery); err != nil {
+			return nil, err
+		}
+	}
+
+	var metaRegistryMessages []*MetaRegistryResource
+	rows, err := txn.QueryContext(ctx, qb.String(), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var metadata []byte
+		var metaRegistryMessage MetaRegistryResource
+		if err := rows.Scan(
+			&metaRegistryMessage.ID,
+			&metaRegistryMessage.GUID,
+			&metaRegistryMessage.ObjectType,
+			&metadata,
+			&metaRegistryMessage.MetaHash,
+		); err != nil {
+			return nil, err
+		}
+		if len(metadata) != 0 {
+			m := &storepb.StoredMetadata{}
+			if err := common.ProtojsonUnmarshaler.Unmarshal(metadata, m); err != nil {
+				return nil, errors.Wrap(err, " failed to unmarshal stored metadata")
+			}
+			metaRegistryMessage.Metadata = m
+		}
+
+		metaRegistryMessages = append(metaRegistryMessages, &metaRegistryMessage)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return metaRegistryMessages, nil
+}
+
+// BatchCreateMetaRegistryResource creates or updates the current meta registry snapshot.
 func (s *Store) BatchCreateMetaRegistryResource(ctx context.Context, tx *sql.Tx, creates []*CreateMetaRegistryResourceMessage) ([]*MetaRegistryResource, error) {
+	return s.BatchCreateMetaRegistryResourceAt(ctx, tx, creates, time.Now().UTC())
+}
+
+// BatchCreateMetaRegistryResourceAt creates or updates the current meta registry snapshot at a specific observed time.
+func (s *Store) BatchCreateMetaRegistryResourceAt(ctx context.Context, tx *sql.Tx, creates []*CreateMetaRegistryResourceMessage, observedAt time.Time) ([]*MetaRegistryResource, error) {
+	if len(creates) == 0 {
+		return nil, nil
+	}
+
 	guids := make([]string, 0, len(creates))
 	objectTypes := make([]storepb.MetaType, 0, len(creates))
 	metadata := make([]string, 0, len(creates))
@@ -486,6 +841,10 @@ func (s *Store) BatchCreateMetaRegistryResource(ctx context.Context, tx *sql.Tx,
 		return nil, err
 	}
 
+	if err := s.upsertMetaRegistryHistory(ctx, tx, creates, observedAt); err != nil {
+		return nil, err
+	}
+
 	for _, create := range creates {
 		metaRegistory := &MetaRegistryResource{
 			ID:         create.ID,
@@ -508,11 +867,26 @@ func (s *Store) BatchCreateMetaRegistryResource(ctx context.Context, tx *sql.Tx,
 	return resp, nil
 }
 
-// DeleteMetaRegistry deletes a meta registry by ids.
+// BatchDeleteMetaRegistry deletes current meta registry rows and closes their open history records.
 func (s *Store) BatchDeleteMetaRegistry(ctx context.Context, tx *sql.Tx, list []*MetaRegistryResource) error {
+	return s.BatchDeleteMetaRegistryAt(ctx, tx, list, time.Now().UTC())
+}
+
+// BatchDeleteMetaRegistryAt deletes current meta registry rows and closes their open history records at a specific observed time.
+func (s *Store) BatchDeleteMetaRegistryAt(ctx context.Context, tx *sql.Tx, list []*MetaRegistryResource, observedAt time.Time) error {
+	if len(list) == 0 {
+		return nil
+	}
+
+	historyToClose := make([]*MetaRegistryHistory, 0, len(list))
 	ids := make([]int64, 0, len(list))
 	for _, registry := range list {
 		ids = append(ids, registry.ID)
+		historyToClose = append(historyToClose, &MetaRegistryHistory{GUID: registry.GUID, ObjectType: registry.ObjectType})
+	}
+
+	if err := s.closeOpenMetaRegistryHistory(ctx, tx, historyToClose, observedAt); err != nil {
+		return err
 	}
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM meta_registry_resource WHERE id = ANY($1)`, pq.Array(ids)); err != nil {

@@ -580,14 +580,15 @@ func (b *batchMetaCreate) Run(ctx context.Context, s *store.Store, tx *sql.Tx) e
 	if err != nil {
 		return errors.Wrap(err, "batchMetaCreateRunDiff")
 	}
+	observedAt := time.Now().UTC()
 
 	if len(deletes) > 0 {
-		if err := s.BatchDeleteMetaRegistry(ctx, tx, deletes); err != nil {
+		if err := s.BatchDeleteMetaRegistryAt(ctx, tx, deletes, observedAt); err != nil {
 			return errors.Wrap(err, "BatchDeleteMetaRegistryResourceByID")
 		}
 	}
 	if len(updates) > 0 {
-		_, err := s.BatchCreateMetaRegistryResource(ctx, tx, updates)
+		_, err := s.BatchCreateMetaRegistryResourceAt(ctx, tx, updates, observedAt)
 		if err != nil {
 			return errors.Wrap(err, "BatchCreateMetaRegistryResource")
 		}

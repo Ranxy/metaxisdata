@@ -220,6 +220,7 @@ func prepareManualSQLMessage(msg *ManualSQLMessage) *ManualSQLMessage {
 // CreateManualSQL creates or revives a manual SQL entry and mirrors it into meta_registry_resource.
 func (s *Store) CreateManualSQL(ctx context.Context, msg *ManualSQLMessage) (*ManualSQLMessage, error) {
 	prepared := prepareManualSQLMessage(msg)
+	observedAt := time.Now().UTC()
 
 	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
@@ -238,7 +239,7 @@ func (s *Store) CreateManualSQL(ctx context.Context, msg *ManualSQLMessage) (*Ma
 	if err := replaceManualSQLAttributes(ctx, tx, created.ID, created.Attributes); err != nil {
 		return nil, err
 	}
-	if err := s.upsertManualSQLMetaRegistry(ctx, tx, created); err != nil {
+	if err := s.upsertManualSQLMetaRegistryAt(ctx, tx, created, observedAt); err != nil {
 		return nil, err
 	}
 
@@ -284,6 +285,8 @@ func (s *Store) ListManualSQL(ctx context.Context, find *FindManualSQLMessage) (
 
 // UpdateManualSQL updates a manual SQL entry by GUID.
 func (s *Store) UpdateManualSQL(ctx context.Context, guid string, patch *UpdateManualSQLMessage) (*ManualSQLMessage, error) {
+	observedAt := time.Now().UTC()
+
 	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to begin transaction")
@@ -343,7 +346,7 @@ func (s *Store) UpdateManualSQL(ctx context.Context, guid string, patch *UpdateM
 	}
 
 	if oldGUID != row.GUID || row.Deleted {
-		if err := deleteManualSQLMetaRegistryTx(ctx, tx, oldGUID); err != nil {
+		if err := s.deleteManualSQLMetaRegistryTx(ctx, tx, oldGUID, observedAt); err != nil {
 			return nil, err
 		}
 		if err := deleteColumnLineageByMetaTx(ctx, tx, oldGUID); err != nil {
@@ -351,7 +354,7 @@ func (s *Store) UpdateManualSQL(ctx context.Context, guid string, patch *UpdateM
 		}
 	}
 	if !row.Deleted {
-		if err := s.upsertManualSQLMetaRegistry(ctx, tx, row); err != nil {
+		if err := s.upsertManualSQLMetaRegistryAt(ctx, tx, row, observedAt); err != nil {
 			return nil, err
 		}
 	}
@@ -390,6 +393,8 @@ func buildDeleteColumnLineageByGUIDStatement(tableName, guid string) (string, []
 
 // DeleteManualSQL soft-deletes a manual SQL entry and removes its registry mirror and lineage.
 func (s *Store) DeleteManualSQL(ctx context.Context, guid string, updatedBy *string) error {
+	observedAt := time.Now().UTC()
+
 	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
 		return errors.Wrap(err, "failed to begin transaction")
@@ -409,7 +414,7 @@ func (s *Store) DeleteManualSQL(ctx context.Context, guid string, updatedBy *str
 		return errors.Errorf("manual SQL %q not found", guid)
 	}
 
-	if err := deleteManualSQLMetaRegistryTx(ctx, tx, guid); err != nil {
+	if err := s.deleteManualSQLMetaRegistryTx(ctx, tx, guid, observedAt); err != nil {
 		return err
 	}
 	if err := deleteColumnLineageByMetaTx(ctx, tx, guid); err != nil {
@@ -725,13 +730,13 @@ func replaceManualSQLAttributes(ctx context.Context, tx *sql.Tx, manualSQLID int
 	return nil
 }
 
-func (s *Store) upsertManualSQLMetaRegistry(ctx context.Context, tx *sql.Tx, msg *ManualSQLMessage) error {
+func (s *Store) upsertManualSQLMetaRegistryAt(ctx context.Context, tx *sql.Tx, msg *ManualSQLMessage, observedAt time.Time) error {
 	storedMetadata := buildManualSQLStoredMetadata(msg)
 	metadataBytes, metaHash, err := CalcStoreMetaHash(storedMetadata)
 	if err != nil {
 		return errors.Wrap(err, "failed to calculate manual SQL metadata hash")
 	}
-	_, err = s.BatchCreateMetaRegistryResource(ctx, tx, []*CreateMetaRegistryResourceMessage{{
+	_, err = s.BatchCreateMetaRegistryResourceAt(ctx, tx, []*CreateMetaRegistryResourceMessage{{
 		MetaRegistryResource: MetaRegistryResource{
 			GUID:       msg.GUID,
 			ObjectType: storepb.MetaType_MANUAL_SQL,
@@ -739,16 +744,19 @@ func (s *Store) upsertManualSQLMetaRegistry(ctx context.Context, tx *sql.Tx, msg
 			MetaHash:   metaHash,
 		},
 		MetadataBytes: metadataBytes,
-	}})
+	}}, observedAt)
 	if err != nil {
 		return errors.Wrap(err, "failed to mirror manual SQL into meta registry")
 	}
 	return nil
 }
 
-func deleteManualSQLMetaRegistryTx(ctx context.Context, tx *sql.Tx, guid string) error {
-	query, args := buildDeleteManualSQLMetaRegistryStatement(guid)
-	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+func (s *Store) deleteManualSQLMetaRegistryTx(ctx context.Context, tx *sql.Tx, guid string, observedAt time.Time) error {
+	list, err := s.listMetaRegistryResourceImpl(ctx, tx, &FindMetaRegistryResourceMessage{GUIDPrefix: &guid}, false)
+	if err != nil {
+		return errors.Wrap(err, "failed to list manual SQL meta registry entries")
+	}
+	if err := s.BatchDeleteMetaRegistryAt(ctx, tx, list, observedAt); err != nil {
 		return errors.Wrap(err, "failed to delete manual SQL meta registry entry")
 	}
 	return nil

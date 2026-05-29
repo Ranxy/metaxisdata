@@ -164,7 +164,21 @@ CREATE TABLE meta_registry_resource (
 
 CREATE UNIQUE INDEX idx_meta_registry_resource_guid_object_type ON meta_registry_resource(guid,object_type);
 
+CREATE TABLE meta_registry_resource_history (
+    id BIGSERIAL PRIMARY KEY,
+    guid TEXT COLLATE "C" NOT NULL,
+    object_type INT2 NOT NULL,
+    metadata JSONB NOT NULL DEFAULT '{}',
+    meta_hash BYTEA,
+    valid_from TIMESTAMPTZ NOT NULL,
+    valid_to TIMESTAMPTZ
+);
+
+CREATE INDEX idx_meta_registry_resource_history_guid_object_type_from ON meta_registry_resource_history(guid, object_type, valid_from DESC);
+CREATE UNIQUE INDEX idx_meta_registry_resource_history_open ON meta_registry_resource_history(guid, object_type) WHERE valid_to IS NULL;
+
 ALTER SEQUENCE meta_registry_resource_id_seq RESTART WITH 101;
+ALTER SEQUENCE meta_registry_resource_history_id_seq RESTART WITH 101;
 
 
 -- manual_sql stores user-maintained SQL definitions and their execution context.
