@@ -78,7 +78,9 @@ import {
   ClipboardList,
   Database,
   FileCode2,
+  Files,
   Home,
+  LayoutDashboard,
   Network,
   Settings,
   Users,
@@ -140,6 +142,38 @@ const menuItems = computed<MenuItem[]>(() => [
     ],
   },
   {
+    key: "openlineage",
+    label: t("menu.openlineage"),
+    path: "#",
+    icon: Network,
+    children: [
+      {
+        key: "openlineageOverview",
+        label: t("menu.overview"),
+        path: "/openlineage/overview",
+        icon: LayoutDashboard,
+      },
+      {
+        key: "openlineageJobs",
+        label: t("menu.jobs"),
+        path: "/openlineage/jobs",
+        icon: Network,
+      },
+      {
+        key: "openlineageDatasets",
+        label: t("menu.datasets"),
+        path: "/openlineage/datasets",
+        icon: Database,
+      },
+      {
+        key: "openlineageEvents",
+        label: t("menu.events"),
+        path: "/openlineage/events",
+        icon: Files,
+      },
+    ],
+  },
+  {
     key: "settings",
     label: t("menu.settings"),
     path: "#",
@@ -159,7 +193,7 @@ const menuItems = computed<MenuItem[]>(() => [
       },
       {
         key: "openlineage",
-        label: t("menu.openlineage"),
+        label: t("openlineage.ingestionSettings"),
         path: "/settings/openlineage",
         icon: Network,
       },
@@ -168,6 +202,10 @@ const menuItems = computed<MenuItem[]>(() => [
 ]);
 
 function isActive(path: string): boolean {
-  return route.path === path;
+  if (path === "/") {
+    return route.path === path;
+  }
+
+  return route.path === path || route.path.startsWith(`${path}/`);
 }
 </script>

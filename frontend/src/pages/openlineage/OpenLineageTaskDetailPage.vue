@@ -1,25 +1,24 @@
 <template>
   <div class="space-y-6">
-    <div class="flex items-center justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight">
-          {{ task?.jobName || t("openlineageSettings.tasks") }}
-        </h1>
-        <p class="text-muted-foreground font-mono text-sm">
-          {{ task?.guid || currentGuid }}
-        </p>
-      </div>
-      <div class="flex items-center gap-2">
+    <OpenLineageSectionHeader
+      :title="task?.jobName || t('openlineage.jobs')"
+      :description="t('openlineage.jobsDescription')"
+    >
+      <template #actions>
         <Button v-if="task?.airflowDagUrl" variant="secondary" asChild>
           <a :href="task.airflowDagUrl" target="_blank" rel="noreferrer noopener">
             {{ t("openlineageSettings.openInAirflow") }}
           </a>
         </Button>
-        <Button variant="outline" @click="router.push({ name: 'OpenLineageTasks' })">
-          {{ t("openlineageSettings.backToTasks") }}
+        <Button variant="outline" @click="goBackToJobs">
+          {{ t("openlineage.backToJobs") }}
         </Button>
-      </div>
-    </div>
+      </template>
+    </OpenLineageSectionHeader>
+
+    <p class="-mt-2 break-all font-mono text-sm text-muted-foreground">
+      {{ task?.guid || currentGuid }}
+    </p>
 
     <div v-if="isLoading" class="p-8 flex justify-center">
       <AppLoading />
@@ -129,6 +128,7 @@ import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { getOpenLineageTask, listOpenLineageRuns } from "@/api/openlineage";
 import AppLoading from "@/components/common/AppLoading.vue";
+import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -187,7 +187,21 @@ function formatJobRef(namespace: string, name: string): string {
 }
 
 function openRun(guid: string) {
-  router.push({ name: "OpenLineageRunDetail", params: { guid } });
+  router.push({
+    name: "OpenLineageRunDetail",
+    params: { guid },
+    query: { from: route.fullPath },
+  });
+}
+
+function goBackToJobs() {
+  const from = route.query.from;
+  if (typeof from === "string" && from.length > 0) {
+    router.push(from);
+    return;
+  }
+
+  router.push({ name: "OpenLineageTasks" });
 }
 
 async function fetchRuns() {

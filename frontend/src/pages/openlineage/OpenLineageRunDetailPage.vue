@@ -1,25 +1,24 @@
 <template>
   <div class="space-y-6">
-    <div class="flex items-center justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight">
-          {{ run?.jobName || t("openlineageSettings.runs") }}
-        </h1>
-        <p class="text-muted-foreground font-mono text-sm">
-          {{ run?.guid || currentGuid }}
-        </p>
-      </div>
-      <div class="flex items-center gap-2">
+    <OpenLineageSectionHeader
+      :title="run?.jobName || t('openlineage.events')"
+      :description="t('openlineage.eventsDescription')"
+    >
+      <template #actions>
         <Button v-if="run?.airflowRunLogUrl" variant="secondary" asChild>
           <a :href="run.airflowRunLogUrl" target="_blank" rel="noreferrer noopener">
             {{ t("openlineageSettings.openRunLogInAirflow") }}
           </a>
         </Button>
-        <Button variant="outline" @click="router.push({ name: 'OpenLineageTasks' })">
-          {{ t("openlineageSettings.backToTasks") }}
+        <Button variant="outline" @click="goBack">
+          {{ t("openlineage.backToEvents") }}
         </Button>
-      </div>
-    </div>
+      </template>
+    </OpenLineageSectionHeader>
+
+    <p class="-mt-2 break-all font-mono text-sm text-muted-foreground">
+      {{ run?.guid || currentGuid }}
+    </p>
 
     <div v-if="isLoading" class="p-8 flex justify-center">
       <AppLoading />
@@ -108,6 +107,7 @@ import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { getOpenLineageRun } from "@/api/openlineage";
 import AppLoading from "@/components/common/AppLoading.vue";
+import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -159,6 +159,16 @@ function formatJobRef(namespace: string, name: string): string {
   if (!namespace) return name;
   if (!name) return namespace;
   return `${namespace} / ${name}`;
+}
+
+function goBack() {
+  const from = route.query.from;
+  if (typeof from === "string" && from.length > 0) {
+    router.push(from);
+    return;
+  }
+
+  router.push({ name: "OpenLineageEvents" });
 }
 
 async function fetchRun() {

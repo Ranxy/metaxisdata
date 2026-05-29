@@ -11,15 +11,20 @@
       <CardHeader>
         <div class="flex items-center justify-between gap-4">
           <div>
-            <CardTitle>{{ t("openlineageSettings.tasks") }}</CardTitle>
+            <CardTitle>{{ t("openlineage.title") }}</CardTitle>
             <CardDescription>{{
-              t("openlineageSettings.tasksDescription")
+              t("openlineage.browseFromSettings")
             }}</CardDescription>
           </div>
-          <Button size="sm" @click="router.push({ name: 'OpenLineageTasks' })">
+          <div class="flex items-center gap-2">
+            <Button size="sm" variant="outline" @click="router.push({ name: 'OpenLineageOverview' })">
+              {{ t("openlineage.openOverview") }}
+            </Button>
+            <Button size="sm" @click="router.push({ name: 'OpenLineageTasks' })">
             <ScrollText class="h-4 w-4 mr-2" />
-            {{ t("openlineageSettings.viewTasks") }}
-          </Button>
+              {{ t("openlineage.openJobs") }}
+            </Button>
+          </div>
         </div>
       </CardHeader>
     </Card>

@@ -1,15 +1,9 @@
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight">
-          {{ t("openlineageSettings.tasks") }}
-        </h1>
-      </div>
-      <Button variant="outline" @click="router.push({ name: 'OpenLineageSettings' })">
-        {{ t("lineageGraph.backToMetadata") }}
-      </Button>
-    </div>
+    <OpenLineageSectionHeader
+      :title="t('openlineage.jobs')"
+      :description="t('openlineage.jobsDescription')"
+    />
 
     <Card>
       <CardContent class="pt-6">
@@ -63,9 +57,10 @@ import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { ScrollText } from "lucide-vue-next";
 import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { listOpenLineageTasks } from "@/api/openlineage";
 import AppLoading from "@/components/common/AppLoading.vue";
+import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -80,6 +75,7 @@ import { useErrorHandler } from "@/composables/useErrorHandler";
 import type { OpenLineageTaskResource } from "@/types/proto-es/v1/openlineage_service_pb";
 
 const { t, locale } = useI18n();
+const route = useRoute();
 const router = useRouter();
 const { handleError } = useErrorHandler();
 
@@ -100,7 +96,11 @@ function formatTimestamp(ts: Timestamp | undefined): string {
 }
 
 function openDetail(guid: string) {
-  router.push({ name: "OpenLineageTaskDetail", params: { guid } });
+  router.push({
+    name: "OpenLineageTaskDetail",
+    params: { guid },
+    query: { from: route.fullPath },
+  });
 }
 
 async function fetchTasks() {
