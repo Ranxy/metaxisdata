@@ -4163,6 +4163,8 @@ components:
                     format: date-time
                 airflowDagUrl:
                     type: string
+                latestEventType:
+                    type: string
         PackageMetadata:
             type: object
             properties:

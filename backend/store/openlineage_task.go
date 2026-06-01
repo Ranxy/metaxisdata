@@ -30,6 +30,7 @@ type OpenLineageTaskMessage struct {
 	LatestRunID        string
 	LatestRawPayload   []byte
 	LatestEventTime    *time.Time
+	LatestEventType    string
 	LatestProducer     string
 	LatestSource       string
 	RunCount           int32
@@ -125,6 +126,7 @@ func buildOpenLineageTaskAggregate(ctx context.Context, tx *sql.Tx, taskGUID str
 			event_time,
 			producer,
 			source,
+			event_type,
 			COUNT(*) OVER () AS run_count,
 			COUNT(*) FILTER (WHERE has_lineage) OVER () AS lineage_run_count
 		FROM openlineage_run
@@ -147,6 +149,7 @@ func buildOpenLineageTaskAggregate(ctx context.Context, tx *sql.Tx, taskGUID str
 		&latestEventTime,
 		&agg.LatestProducer,
 		&agg.LatestSource,
+		&agg.LatestEventType,
 		&agg.RunCount,
 		&agg.LineageRunCount,
 	); err != nil {
@@ -238,7 +241,8 @@ func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTa
 			task.run_count,
 			task.lineage_run_count,
 			task.created_at,
-			task.updated_at
+			task.updated_at,
+			latest_run.event_type
 		FROM openlineage_task task
 		LEFT JOIN openlineage_run AS latest_run ON latest_run.guid = task.latest_run_guid
 		WHERE ` + strings.Join(where, " AND ") + `
@@ -284,6 +288,7 @@ func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTa
 			&msg.LineageRunCount,
 			&msg.CreatedAt,
 			&msg.UpdatedAt,
+			&msg.LatestEventType,
 		); err != nil {
 			return nil, errors.Wrap(err, "failed to scan openlineage task")
 		}

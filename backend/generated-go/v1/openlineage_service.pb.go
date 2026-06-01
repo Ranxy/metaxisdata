@@ -435,6 +435,7 @@ type OpenLineageTaskResource struct {
 	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,19,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt          *timestamppb.Timestamp `protobuf:"bytes,20,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	AirflowDagUrl      string                 `protobuf:"bytes,21,opt,name=airflow_dag_url,json=airflowDagUrl,proto3" json:"airflow_dag_url,omitempty"`
+	LatestEventType    string                 `protobuf:"bytes,22,opt,name=latest_event_type,json=latestEventType,proto3" json:"latest_event_type,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -612,6 +613,13 @@ func (x *OpenLineageTaskResource) GetUpdatedAt() *timestamppb.Timestamp {
 func (x *OpenLineageTaskResource) GetAirflowDagUrl() string {
 	if x != nil {
 		return x.AirflowDagUrl
+	}
+	return ""
+}
+
+func (x *OpenLineageTaskResource) GetLatestEventType() string {
+	if x != nil {
+		return x.LatestEventType
 	}
 	return ""
 }
@@ -2271,7 +2279,7 @@ const file_v1_openlineage_service_proto_rawDesc = "" +
 	"\vraw_payload\x18\x19 \x01(\tR\n" +
 	"rawPayload\x12&\n" +
 	"\x0fairflow_dag_url\x18\x1a \x01(\tR\rairflowDagUrl\x12-\n" +
-	"\x13airflow_run_log_url\x18\x1b \x01(\tR\x10airflowRunLogUrl\"\xd8\x06\n" +
+	"\x13airflow_run_log_url\x18\x1b \x01(\tR\x10airflowRunLogUrl\"\x84\a\n" +
 	"\x17OpenLineageTaskResource\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04guid\x18\x02 \x01(\tR\x04guid\x12#\n" +
@@ -2296,7 +2304,8 @@ const file_v1_openlineage_service_proto_rawDesc = "" +
 	"created_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\x14 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12&\n" +
-	"\x0fairflow_dag_url\x18\x15 \x01(\tR\rairflowDagUrl\"\x95\x04\n" +
+	"\x0fairflow_dag_url\x18\x15 \x01(\tR\rairflowDagUrl\x12*\n" +
+	"\x11latest_event_type\x18\x16 \x01(\tR\x0flatestEventType\"\x95\x04\n" +
 	"\x1aOpenLineageDatasetResource\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x12\n" +

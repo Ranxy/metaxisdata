@@ -307,6 +307,11 @@ export declare type OpenLineageTaskResource = Message<"metaxisdata.v1.OpenLineag
    * @generated from field: string airflow_dag_url = 21;
    */
   airflowDagUrl: string;
+
+  /**
+   * @generated from field: string latest_event_type = 22;
+   */
+  latestEventType: string;
 };
 
 /**

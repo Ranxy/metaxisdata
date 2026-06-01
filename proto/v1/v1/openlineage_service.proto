@@ -140,6 +140,7 @@ message OpenLineageTaskResource {
   google.protobuf.Timestamp created_at = 19;
   google.protobuf.Timestamp updated_at = 20;
   string airflow_dag_url = 21;
+  string latest_event_type = 22;
 }
 
 enum OpenLineageDatasetScope {

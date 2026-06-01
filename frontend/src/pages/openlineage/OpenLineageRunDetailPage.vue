@@ -52,14 +52,16 @@
                 {{ t("openlineage.inputs") }}
               </div>
               <div v-if="inputDatasets.length > 0" class="space-y-2">
-                <div
+                <button
                   v-for="dataset in inputDatasets"
                   :key="`input-${dataset.namespace}-${dataset.name}`"
-                  class="rounded-md border px-3 py-2"
+                  class="w-full rounded-md border px-3 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
+                  type="button"
+                  @click="openDatasetSearch(dataset.namespace, dataset.name)"
                 >
                   <div class="font-medium">{{ dataset.name }}</div>
                   <div class="font-mono text-xs text-muted-foreground">{{ dataset.namespace }}</div>
-                </div>
+                </button>
               </div>
               <p v-else class="text-sm text-muted-foreground">
                 {{ t("openlineage.noInputs") }}
@@ -71,14 +73,16 @@
                 {{ t("openlineage.outputs") }}
               </div>
               <div v-if="outputDatasets.length > 0" class="space-y-2">
-                <div
+                <button
                   v-for="dataset in outputDatasets"
                   :key="`output-${dataset.namespace}-${dataset.name}`"
-                  class="rounded-md border px-3 py-2"
+                  class="w-full rounded-md border px-3 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
+                  type="button"
+                  @click="openDatasetSearch(dataset.namespace, dataset.name)"
                 >
                   <div class="font-medium">{{ dataset.name }}</div>
                   <div class="font-mono text-xs text-muted-foreground">{{ dataset.namespace }}</div>
-                </div>
+                </button>
               </div>
               <p v-else class="text-sm text-muted-foreground">
                 {{ t("openlineage.noOutputs") }}
@@ -245,6 +249,16 @@ function goBack() {
   }
 
   router.push({ name: "OpenLineageEvents" });
+}
+
+function openDatasetSearch(namespace: string, name: string) {
+  router.push({
+    name: "OpenLineageDatasets",
+    query: {
+      search: `${namespace} ${name}`,
+      from: route.fullPath,
+    },
+  });
 }
 
 function openJobDetail() {

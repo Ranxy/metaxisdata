@@ -323,6 +323,7 @@ func convertOpenLineageTask(task *store.OpenLineageTaskMessage) *v1pb.OpenLineag
 		RootJobName:        task.RootJobName,
 		LatestRunGuid:      task.LatestRunGUID,
 		LatestRunId:        task.LatestRunID,
+		LatestEventType:    task.LatestEventType,
 		LatestProducer:     task.LatestProducer,
 		LatestSource:       task.LatestSource,
 		AirflowDagUrl:      airflowLinks.DagURL,

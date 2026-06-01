@@ -3882,6 +3882,7 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | airflow_dag_url | [string](#string) |  |  |
+| latest_event_type | [string](#string) |  |  |
 
 
 

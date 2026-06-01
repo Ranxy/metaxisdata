@@ -187,6 +187,14 @@
                   <Button
                     variant="ghost"
                     size="sm"
+                    :disabled="!dataset.supportsColumnLineage"
+                    @click="openColumnLineage(dataset)"
+                  >
+                    {{ t("openlineage.openColumnLineage") }}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     :disabled="!dataset.internal"
                     @click="openMetadata(dataset)"
                   >
@@ -392,6 +400,21 @@ function openMetadata(dataset: OpenLineageDatasetResource) {
 
   router.push({
     name: "MetadataDetail",
+    params: { guid: toGuidPath(dataset.guid) },
+    query: {
+      metaType: String(dataset.resolvedMetaType),
+      from: route.fullPath,
+    },
+  });
+}
+
+function openColumnLineage(dataset: OpenLineageDatasetResource) {
+  if (!dataset.supportsColumnLineage) {
+    return;
+  }
+
+  router.push({
+    name: "OpenLineageColumnLineage",
     params: { guid: toGuidPath(dataset.guid) },
     query: {
       metaType: String(dataset.resolvedMetaType),

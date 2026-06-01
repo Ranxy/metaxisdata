@@ -71,6 +71,52 @@
             </div>
           </div>
 
+            <div v-if="selectedColumn" class="space-y-3">
+              <div v-if="scopedUpstreamRelations.length > 0">
+                <h3 class="text-sm font-semibold">{{ t("lineageGraph.upstreamRelations") }}</h3>
+                <div class="mt-2 space-y-2">
+                  <div
+                    v-for="rel in scopedUpstreamRelations"
+                    :key="`up-${rel.sourceGuid}-${rel.sourceColumn}`"
+                    class="rounded-md border p-2 text-xs"
+                  >
+                    <div class="font-medium">{{ rel.sourceColumn || "-" }}</div>
+                    <div class="mt-1 break-all text-muted-foreground">{{ formatGuidLabel(rel.sourceGuid) }}</div>
+                    <div class="mt-1 flex flex-wrap gap-1">
+                      <span v-if="rel.relationType" class="rounded bg-muted px-1.5 py-0.5 text-[10px]">
+                        {{ formatRelationType(rel.relationType) }}
+                      </span>
+                      <span v-if="rel.transformation" class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono">
+                        {{ rel.transformation }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="scopedDownstreamRelations.length > 0">
+                <h3 class="text-sm font-semibold">{{ t("lineageGraph.downstreamRelations") }}</h3>
+                <div class="mt-2 space-y-2">
+                  <div
+                    v-for="rel in scopedDownstreamRelations"
+                    :key="`down-${rel.targetGuid}-${rel.targetColumn}`"
+                    class="rounded-md border p-2 text-xs"
+                  >
+                    <div class="font-medium">{{ rel.targetColumn || "-" }}</div>
+                    <div class="mt-1 break-all text-muted-foreground">{{ formatGuidLabel(rel.targetGuid) }}</div>
+                    <div class="mt-1 flex flex-wrap gap-1">
+                      <span v-if="rel.relationType" class="rounded bg-muted px-1.5 py-0.5 text-[10px]">
+                        {{ formatRelationType(rel.relationType) }}
+                      </span>
+                      <span v-if="rel.transformation" class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono">
+                        {{ rel.transformation }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div class="space-y-3">
               <div>
                 <h3 class="text-sm font-semibold">{{ t("lineageGraph.relatedRuns") }}</h3>
@@ -131,6 +177,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type { LineageRelation } from "@/types/proto-es/v1/lineage_service_pb";
+import { RelationType } from "@/types/proto-es/v1/lineage_service_pb";
 import { extractErrorMessage } from "@/utils/error";
 
 const OPENLINEAGE_META_TYPE = 100;
@@ -388,5 +435,21 @@ function toGuidPath(guid: string): string {
     .split(";")
     .map((segment) => (segment === "" ? "~" : encodeURIComponent(segment)))
     .join("/");
+}
+
+function formatGuidLabel(guid: string): string {
+  const segments = guid.split(";").filter(Boolean);
+  return segments[segments.length - 1] || guid;
+}
+
+function formatRelationType(relationType: number): string {
+  switch (relationType) {
+    case RelationType.DIRECT:
+      return "DIRECT";
+    case RelationType.INDIRECT:
+      return "INDIRECT";
+    default:
+      return "";
+  }
 }
 </script>

@@ -1,12 +1,25 @@
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <div>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex items-center gap-3">
         <h1 class="text-2xl font-bold tracking-tight">
           {{ t("lineageGraph.title") }}
         </h1>
+        <Badge variant="outline" class="max-w-64 truncate">
+          {{ focusAssetLabel }}
+        </Badge>
       </div>
       <div class="flex items-center gap-2">
+        <Select v-model="expandDepth">
+          <SelectTrigger class="w-28">
+            <SelectValue :placeholder="t('lineageGraph.expandDepth')" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="1">{{ t("lineageGraph.depth1") }}</SelectItem>
+            <SelectItem value="2">{{ t("lineageGraph.depth2") }}</SelectItem>
+            <SelectItem value="3">{{ t("lineageGraph.depth3") }}</SelectItem>
+          </SelectContent>
+        </Select>
         <Button v-if="hasExpandedBeyondRoot" variant="outline" size="sm" @click="handleReset">
           <RotateCcw class="size-4 mr-1" />
           {{ t("lineageGraph.reset") }}
@@ -228,6 +241,13 @@ import LineageNode from "@/components/lineage/LineageNode.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type {
   ExternalDatasetInfo,
@@ -272,6 +292,11 @@ const initialLoading = ref(true);
 
 const expandedGuids = ref<Set<string>>(new Set());
 const nodeDataMap = ref<Map<string, NodeLineageData>>(new Map());
+const expandDepth = ref("1");
+
+const focusAssetLabel = computed(() => {
+  return formatGuidLabel(currentGuid.value);
+});
 
 // Track actual MetaType per guid, derived from lineage relation sourceType/targetType
 const guidMetaTypeMap = ref<Map<string, MetaType>>(new Map());

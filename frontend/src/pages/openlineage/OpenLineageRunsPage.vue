@@ -104,6 +104,7 @@
               <TableHead>{{ t("openlineageSettings.jobType") }}</TableHead>
               <TableHead>{{ t("openlineageSettings.integration") }}</TableHead>
               <TableHead>{{ t("openlineageSettings.latestEventTime") }}</TableHead>
+              <TableHead>{{ t("openlineage.latestRunStatus") }}</TableHead>
               <TableHead>{{ t("openlineage.coverage") }}</TableHead>
               <TableHead>{{ t("openlineageSettings.runCount") }}</TableHead>
               <TableHead>{{ t("openlineageSettings.lineageRunCount") }}</TableHead>
@@ -117,6 +118,11 @@
               <TableCell>{{ task.jobType }}</TableCell>
               <TableCell>{{ task.integration || "-" }}</TableCell>
               <TableCell>{{ formatTimestamp(task.latestEventTime) }}</TableCell>
+              <TableCell>
+                <Badge :variant="statusVariant(task.latestEventType)">
+                  {{ task.latestEventType || "-" }}
+                </Badge>
+              </TableCell>
               <TableCell>
                 <Badge :variant="task.lineageRunCount > 0 ? 'success' : 'secondary'">
                   {{ task.lineageRunCount > 0 ? t("openlineage.lineageReady") : t("openlineage.lineageMissing") }}
@@ -270,6 +276,22 @@ function formatTimestamp(ts: Timestamp | undefined): string {
     minute: "2-digit",
     hour12: false,
   }).format(date);
+}
+
+function statusVariant(
+  eventType: string
+): "success" | "destructive" | "secondary" | "outline" {
+  const normalized = (eventType ?? "").toUpperCase();
+  if (normalized === "COMPLETE") {
+    return "success";
+  }
+  if (normalized === "FAIL" || normalized === "FAILED") {
+    return "destructive";
+  }
+  if (normalized === "START" || normalized === "RUNNING") {
+    return "outline";
+  }
+  return "secondary";
 }
 
 function openDetail(guid: string) {

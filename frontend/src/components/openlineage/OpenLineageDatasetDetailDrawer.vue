@@ -93,6 +93,7 @@
                     <TableHead>{{ t("openlineage.fieldType") }}</TableHead>
                     <TableHead>{{ t("openlineage.fieldDescription") }}</TableHead>
                     <TableHead>{{ t("openlineage.supportsColumnLineage") }}</TableHead>
+                    <TableHead class="text-right">{{ t("openlineageSettings.actions") }}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -104,6 +105,16 @@
                       <Badge :variant="field.columnLineageReady ? 'success' : 'secondary'">
                         {{ field.columnLineageReady ? t("openlineage.yes") : t("openlineage.no") }}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        :disabled="!field.columnLineageReady"
+                        @click="openColumnLineage(field.name)"
+                      >
+                        {{ t("openlineage.openColumnLineage") }}
+                      </Button>
                     </TableCell>
                   </TableRow>
                 </TableBody>
@@ -346,6 +357,22 @@ function openRunDetail(runGuid: string) {
     name: "OpenLineageRunDetail",
     params: { guid: runGuid },
     query: { from: route.fullPath },
+  });
+}
+
+function openColumnLineage(columnName: string) {
+  if (!detail.value?.dataset?.guid) {
+    return;
+  }
+
+  router.push({
+    name: "OpenLineageColumnLineage",
+    params: { guid: toGuidPath(detail.value.dataset.guid) },
+    query: {
+      metaType: String(detail.value.dataset.resolvedMetaType),
+      column: columnName,
+      from: route.fullPath,
+    },
   });
 }
 </script>

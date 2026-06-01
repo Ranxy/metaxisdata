@@ -90,6 +90,8 @@ export async function listOpenLineageRuns(params?: {
   jobName?: string;
   taskGuid?: string;
   jobType?: string;
+  eventType?: string;
+  hasLineage?: boolean;
 }) {
   const request = create(ListOpenLineageRunsRequestSchema, {
     pageSize: params?.pageSize ?? 100,
@@ -98,6 +100,8 @@ export async function listOpenLineageRuns(params?: {
     jobName: params?.jobName ?? "",
     taskGuid: params?.taskGuid ?? "",
     jobType: params?.jobType ?? "",
+    eventType: params?.eventType ?? "",
+    hasLineage: params?.hasLineage ?? false,
   });
   return await openLineageClient.listOpenLineageRuns(request);
 }

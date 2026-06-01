@@ -101,6 +101,8 @@
               <TableHead>{{ t("openlineageSettings.jobName") }}</TableHead>
               <TableHead>{{ t("openlineageSettings.namespace") }}</TableHead>
               <TableHead>{{ t("openlineageSettings.runId") }}</TableHead>
+              <TableHead>{{ t("openlineageSettings.producer") }}</TableHead>
+              <TableHead>{{ t("openlineageSettings.sourceLabel") }}</TableHead>
               <TableHead>{{ t("openlineage.hasLineage") }}</TableHead>
               <TableHead>{{ t("openlineageSettings.inputCount") }}</TableHead>
               <TableHead>{{ t("openlineageSettings.outputCount") }}</TableHead>
@@ -116,6 +118,8 @@
               <TableCell>{{ run.jobName }}</TableCell>
               <TableCell class="font-mono text-sm">{{ run.jobNamespace }}</TableCell>
               <TableCell class="font-mono text-sm">{{ run.runId }}</TableCell>
+              <TableCell class="max-w-48 truncate" :title="run.producer">{{ run.producer || "-" }}</TableCell>
+              <TableCell>{{ run.source || "-" }}</TableCell>
               <TableCell>
                 <Badge :variant="run.hasLineage ? 'success' : 'secondary'">
                   {{ run.hasLineage ? t("openlineage.yes") : t("openlineage.no") }}
@@ -298,12 +302,18 @@ watch([searchTerm, selectedNamespace, selectedEventType, lineageOnly], () => {
   }
 
   router.replace({ query: nextQuery });
+  fetchRuns();
 });
 
 async function fetchRuns() {
   isLoading.value = true;
   try {
-    const response = await listOpenLineageRuns({ pageSize: 200 });
+    const response = await listOpenLineageRuns({
+      pageSize: 200,
+      eventType:
+        selectedEventType.value !== "all" ? selectedEventType.value : "",
+      hasLineage: lineageOnly.value || undefined,
+    });
     runs.value = response.runs;
   } catch (error) {
     handleError(error);
