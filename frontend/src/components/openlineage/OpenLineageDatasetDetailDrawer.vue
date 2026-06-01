@@ -1,17 +1,17 @@
 <template>
   <Dialog :open="modelValue" @update:open="handleOpenChange">
     <DialogContent
-      class="left-auto right-0 top-0 h-screen max-h-screen w-full max-w-2xl translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-none border-l p-0 sm:max-w-2xl sm:rounded-none"
+      class="left-auto right-0 top-0 h-dvh max-h-dvh w-full max-w-2xl translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-none border-l p-0 sm:max-w-2xl sm:rounded-none"
     >
-      <div class="flex h-full flex-col">
-        <DialogHeader class="border-b px-6 py-5">
-          <DialogTitle class="text-xl">{{ dataset?.name || t("openlineageSettings.viewDetail") }}</DialogTitle>
-          <DialogDescription>
+      <div class="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+        <DialogHeader class="shrink-0 border-b px-6 py-5">
+          <DialogTitle class="truncate text-xl">{{ dataset?.name || t("openlineageSettings.viewDetail") }}</DialogTitle>
+          <DialogDescription class="truncate">
             {{ dataset?.namespace || t("openlineage.datasetDetailDescription") }}
           </DialogDescription>
         </DialogHeader>
 
-        <div class="flex-1 overflow-y-auto px-6 py-5">
+        <div class="min-h-0 flex-1 overflow-auto px-6 py-5">
           <div v-if="isLoading" class="flex min-h-56 items-center justify-center">
             <AppLoading />
           </div>
