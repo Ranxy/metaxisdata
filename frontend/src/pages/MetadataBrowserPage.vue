@@ -895,9 +895,11 @@ async function fetchMetadataGroups() {
       selectedMetaType.value = activeMetaType.value;
     }
 
-    // If we are at a leaf object (e.g. table/view), ListMetadata returns empty.
-    // In that case, call GetMetadata to fetch the leaf details.
-    if (response.typesStoredMetadata.length === 0) {
+    // If we are at a leaf object (e.g. table/view), ListMetadata may return
+    // non-empty children (columns).  When the caller explicitly requests a leaf
+    // type via ?metaType, still call GetMetadata so the detail view can render.
+    const explicitLeaf = requestedLeafMetaType.value != null;
+    if (response.typesStoredMetadata.length === 0 || explicitLeaf) {
       try {
         const preferred = requestedLeafMetaType.value;
 
@@ -908,8 +910,9 @@ async function fetchMetadataGroups() {
           });
           if (detail.metadata?.type?.case === "tableMetadata") {
             leafTable.value = detail.metadata.type.value;
+            return;
           }
-          return;
+          if (!explicitLeaf) return;
         }
 
         if (preferred === MetaType.VIEW) {
@@ -919,8 +922,9 @@ async function fetchMetadataGroups() {
           });
           if (detail.metadata?.type?.case === "viewMetadata") {
             leafView.value = detail.metadata.type.value;
+            return;
           }
-          return;
+          if (!explicitLeaf) return;
         }
 
         if (preferred === MetaType.MATERIALIZED_VIEW) {
@@ -930,8 +934,9 @@ async function fetchMetadataGroups() {
           });
           if (detail.metadata?.type?.case === "materializedViewMetadata") {
             leafMaterializedView.value = detail.metadata.type.value;
+            return;
           }
-          return;
+          if (!explicitLeaf) return;
         }
 
         if (preferred === MetaType.FUNCTION) {
@@ -941,8 +946,9 @@ async function fetchMetadataGroups() {
           });
           if (detail.metadata?.type?.case === "functionMetadata") {
             leafFunction.value = detail.metadata.type.value;
+            return;
           }
-          return;
+          if (!explicitLeaf) return;
         }
 
         if (preferred === MetaType.PROCEDURE) {
@@ -952,8 +958,9 @@ async function fetchMetadataGroups() {
           });
           if (detail.metadata?.type?.case === "procedureMetadata") {
             leafProcedure.value = detail.metadata.type.value;
+            return;
           }
-          return;
+          if (!explicitLeaf) return;
         }
 
         if (preferred === MetaType.SEQUENCE) {
@@ -963,8 +970,9 @@ async function fetchMetadataGroups() {
           });
           if (detail.metadata?.type?.case === "sequenceMetadata") {
             leafSequence.value = detail.metadata.type.value;
+            return;
           }
-          return;
+          if (!explicitLeaf) return;
         }
 
         // No hint from route: try common leaf types.

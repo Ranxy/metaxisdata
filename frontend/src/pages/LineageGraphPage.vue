@@ -1172,12 +1172,19 @@ function clearColumnSelection() {
   updateGraphState();
 }
 
-function handleSelectNode(guid: string) {
+async function handleSelectNode(guid: string) {
   if (selectedNodeGuid.value === guid) {
     closeSelectedNode();
     return;
   }
   setSelectedNode(guid);
+
+  // Pre-fetch lineage data for non-root nodes so the drawer shows
+  // accurate upstream/downstream counts and related runs immediately,
+  // without expanding the graph (the user can do that via "Expand").
+  if (guid !== currentGuid.value && !nodeDataMap.value.has(guid)) {
+    await fetchLineageForGuid(guid);
+  }
 }
 
 function closeSelectedNode() {
