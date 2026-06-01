@@ -5,23 +5,23 @@
       :description="t('openlineage.eventsDescription')"
     />
 
-    <div class="grid gap-4 md:grid-cols-3">
+    <div class="grid gap-3 md:grid-cols-3">
       <Card>
-        <CardContent class="p-5">
+        <CardContent class="px-3 py-2">
           <div class="text-sm text-muted-foreground">{{ t("openlineage.visibleEvents") }}</div>
-          <div class="mt-2 text-2xl font-semibold">{{ filteredRuns.length }}</div>
+          <div class="mt-1 text-xl font-semibold">{{ filteredRuns.length }}</div>
         </CardContent>
       </Card>
       <Card>
-        <CardContent class="p-5">
+        <CardContent class="px-3 py-2">
           <div class="text-sm text-muted-foreground">{{ t("openlineage.lineageEvents") }}</div>
-          <div class="mt-2 text-2xl font-semibold">{{ lineageEventCount }}</div>
+          <div class="mt-1 text-xl font-semibold">{{ lineageEventCount }}</div>
         </CardContent>
       </Card>
       <Card>
-        <CardContent class="p-5">
+        <CardContent class="px-3 py-2">
           <div class="text-sm text-muted-foreground">{{ t("openlineage.activeNamespaces") }}</div>
-          <div class="mt-2 text-2xl font-semibold">{{ namespaceCount }}</div>
+          <div class="mt-1 text-xl font-semibold">{{ namespaceCount }}</div>
         </CardContent>
       </Card>
     </div>
