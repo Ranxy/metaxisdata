@@ -73,7 +73,7 @@
               <TableHead>{{ t("openlineage.hasLineage") }}</TableHead>
               <TableHead>{{ t("openlineageSettings.inputCount") }}</TableHead>
               <TableHead>{{ t("openlineageSettings.outputCount") }}</TableHead>
-              <TableHead class="text-right">{{ t("openlineageSettings.actions") }}</TableHead>
+              <TableHead class="sticky right-0 z-10 bg-background text-right">{{ t("openlineageSettings.actions") }}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -84,8 +84,10 @@
               </TableCell>
               <TableCell>{{ run.jobName }}</TableCell>
               <TableCell class="font-mono text-sm">{{ run.jobNamespace }}</TableCell>
-              <TableCell class="font-mono text-sm">{{ run.runId }}</TableCell>
-              <TableCell class="max-w-48 truncate" :title="run.producer">{{ run.producer || "-" }}</TableCell>
+              <TableCell class="font-mono text-sm"><ExpandableText :text="run.runId" /></TableCell>
+              <TableCell class="max-w-48">
+                <ExpandableText :text="run.producer" />
+              </TableCell>
               <TableCell>{{ run.source || "-" }}</TableCell>
               <TableCell>
                 <Badge :variant="run.hasLineage ? 'success' : 'secondary'">
@@ -94,7 +96,7 @@
               </TableCell>
               <TableCell>{{ run.inputCount }}</TableCell>
               <TableCell>{{ run.outputCount }}</TableCell>
-              <TableCell class="text-right">
+              <TableCell class="sticky right-0 bg-background text-right">
                 <Button variant="ghost" size="sm" @click="openDetail(run.guid)">
                   {{ t("openlineageSettings.viewRun") }}
                 </Button>
@@ -117,6 +119,7 @@ import { listOpenLineageRuns } from "@/api/openlineage";
 import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
 import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
+import ExpandableText from "@/components/metadata/ExpandableText.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
