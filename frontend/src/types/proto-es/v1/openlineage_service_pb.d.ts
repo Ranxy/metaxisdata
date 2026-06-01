@@ -774,6 +774,16 @@ export declare type ListOpenLineageRunsRequest = Message<"metaxisdata.v1.ListOpe
    * @generated from field: string job_type = 6;
    */
   jobType: string;
+
+  /**
+   * @generated from field: string event_type = 7;
+   */
+  eventType: string;
+
+  /**
+   * @generated from field: bool has_lineage = 8;
+   */
+  hasLineage: boolean;
 };
 
 /**

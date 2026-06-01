@@ -107,6 +107,14 @@ func (s *OpenLineageService) ListOpenLineageRuns(ctx context.Context, req *conne
 		jobType := req.Msg.GetJobType()
 		find.JobType = &jobType
 	}
+	if req.Msg.GetEventType() != "" {
+		eventType := req.Msg.GetEventType()
+		find.EventType = &eventType
+	}
+	if req.Msg.GetHasLineage() {
+		hasLineage := true
+		find.HasLineage = &hasLineage
+	}
 
 	list, err := s.store.ListOpenLineageRun(ctx, find)
 	if err != nil {

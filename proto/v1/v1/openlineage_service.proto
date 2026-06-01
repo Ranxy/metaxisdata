@@ -250,6 +250,8 @@ message ListOpenLineageRunsRequest {
   string job_name = 4;
   string task_guid = 5;
   string job_type = 6;
+  string event_type = 7;
+  bool has_lineage = 8;
 }
 
 message ListOpenLineageRunsResponse {

@@ -51,6 +51,8 @@ type FindOpenLineageRunMessage struct {
 	JobNamespace *string
 	JobName      *string
 	JobType      *string
+	EventType    *string
+	HasLineage   *bool
 	Limit        *int
 	Offset       *int
 }
@@ -258,6 +260,16 @@ func (s *Store) ListOpenLineageRun(ctx context.Context, find *FindOpenLineageRun
 	}
 	if v := find.JobType; v != nil {
 		where, args = append(where, fmt.Sprintf("job_type = $%d", len(args)+1)), append(args, *v)
+	}
+	if v := find.EventType; v != nil {
+		where, args = append(where, fmt.Sprintf("event_type = $%d", len(args)+1)), append(args, *v)
+	}
+	if v := find.HasLineage; v != nil {
+		if *v {
+			where = append(where, "has_lineage = TRUE")
+		} else {
+			where = append(where, "has_lineage = FALSE")
+		}
 	}
 
 	query := `

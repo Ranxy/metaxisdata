@@ -1508,6 +1508,8 @@ type ListOpenLineageRunsRequest struct {
 	JobName       string                 `protobuf:"bytes,4,opt,name=job_name,json=jobName,proto3" json:"job_name,omitempty"`
 	TaskGuid      string                 `protobuf:"bytes,5,opt,name=task_guid,json=taskGuid,proto3" json:"task_guid,omitempty"`
 	JobType       string                 `protobuf:"bytes,6,opt,name=job_type,json=jobType,proto3" json:"job_type,omitempty"`
+	EventType     string                 `protobuf:"bytes,7,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	HasLineage    bool                   `protobuf:"varint,8,opt,name=has_lineage,json=hasLineage,proto3" json:"has_lineage,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1582,6 +1584,20 @@ func (x *ListOpenLineageRunsRequest) GetJobType() string {
 		return x.JobType
 	}
 	return ""
+}
+
+func (x *ListOpenLineageRunsRequest) GetEventType() string {
+	if x != nil {
+		return x.EventType
+	}
+	return ""
+}
+
+func (x *ListOpenLineageRunsRequest) GetHasLineage() bool {
+	if x != nil {
+		return x.HasLineage
+	}
+	return false
 }
 
 type ListOpenLineageRunsResponse struct {
@@ -2358,14 +2374,18 @@ const file_v1_openlineage_service_proto_rawDesc = "" +
 	"\x1fListOpenLineageDatasetsResponse\x12F\n" +
 	"\bdatasets\x18\x01 \x03(\v2*.metaxisdata.v1.OpenLineageDatasetResourceR\bdatasets\"4\n" +
 	"\x19GetOpenLineageTaskRequest\x12\x17\n" +
-	"\x04guid\x18\x01 \x01(\tB\x03\xe0A\x02R\x04guid\"\xc9\x01\n" +
+	"\x04guid\x18\x01 \x01(\tB\x03\xe0A\x02R\x04guid\"\x89\x02\n" +
 	"\x1aListOpenLineageRunsRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x16\n" +
 	"\x06offset\x18\x02 \x01(\x05R\x06offset\x12#\n" +
 	"\rjob_namespace\x18\x03 \x01(\tR\fjobNamespace\x12\x19\n" +
 	"\bjob_name\x18\x04 \x01(\tR\ajobName\x12\x1b\n" +
 	"\ttask_guid\x18\x05 \x01(\tR\btaskGuid\x12\x19\n" +
-	"\bjob_type\x18\x06 \x01(\tR\ajobType\"Y\n" +
+	"\bjob_type\x18\x06 \x01(\tR\ajobType\x12\x1d\n" +
+	"\n" +
+	"event_type\x18\a \x01(\tR\teventType\x12\x1f\n" +
+	"\vhas_lineage\x18\b \x01(\bR\n" +
+	"hasLineage\"Y\n" +
 	"\x1bListOpenLineageRunsResponse\x12:\n" +
 	"\x04runs\x18\x01 \x03(\v2&.metaxisdata.v1.OpenLineageRunResourceR\x04runs\"3\n" +
 	"\x18GetOpenLineageRunRequest\x12\x17\n" +
