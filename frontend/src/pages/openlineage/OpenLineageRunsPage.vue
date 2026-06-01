@@ -27,60 +27,27 @@
     </div>
 
     <Card>
-      <CardContent class="flex flex-col gap-4 pt-6 xl:flex-row xl:items-end">
-        <div class="flex-1 space-y-2">
-          <Label for="openlineage-job-search">{{ t("openlineage.search") }}</Label>
-          <Input
-            id="openlineage-job-search"
-            v-model="searchTerm"
-            :placeholder="t('openlineage.searchJobsPlaceholder')"
-          />
+      <CardContent class="space-y-3 pt-6">
+        <AdvancedSearchBar
+          :filter-categories="filterCategories"
+          :search-placeholder="t('openlineage.searchJobsPlaceholder')"
+          @update:filters="handleFiltersUpdate"
+        />
+        <div class="flex items-center gap-4">
+          <div class="flex items-center gap-2">
+            <Checkbox
+              id="jobs-lineage-only"
+              :checked="lineageOnly"
+              @update:checked="lineageOnly = $event === true"
+            />
+            <Label for="jobs-lineage-only" class="cursor-pointer text-sm">
+              {{ t("openlineage.onlyLineage") }}
+            </Label>
+          </div>
+          <Button variant="outline" size="sm" @click="resetFilters">
+            {{ t("openlineage.clearFilters") }}
+          </Button>
         </div>
-
-        <div class="space-y-2 xl:w-64">
-          <Label>{{ t("openlineageSettings.namespace") }}</Label>
-          <Select v-model="selectedNamespace">
-            <SelectTrigger>
-              <SelectValue :placeholder="t('openlineage.namespaceAll')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{{ t("openlineage.namespaceAll") }}</SelectItem>
-              <SelectItem v-for="namespace in namespaces" :key="namespace" :value="namespace">
-                {{ namespace }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div class="space-y-2 xl:w-56">
-          <Label>{{ t("openlineageSettings.jobType") }}</Label>
-          <Select v-model="selectedJobType">
-            <SelectTrigger>
-              <SelectValue :placeholder="t('openlineage.jobTypeAll')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{{ t("openlineage.jobTypeAll") }}</SelectItem>
-              <SelectItem v-for="jobType in jobTypes" :key="jobType" :value="jobType">
-                {{ jobType }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div class="flex items-center gap-2 xl:pb-2">
-          <Checkbox
-            id="jobs-lineage-only"
-            :checked="lineageOnly"
-            @update:checked="lineageOnly = $event === true"
-          />
-          <Label for="jobs-lineage-only" class="cursor-pointer text-sm">
-            {{ t("openlineage.onlyLineage") }}
-          </Label>
-        </div>
-
-        <Button variant="outline" @click="resetFilters">
-          {{ t("openlineage.clearFilters") }}
-        </Button>
       </CardContent>
     </Card>
 
@@ -158,21 +125,15 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { listOpenLineageTasks } from "@/api/openlineage";
+import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
+import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -191,15 +152,7 @@ const { handleError } = useErrorHandler();
 
 const isLoading = ref(false);
 const tasks = ref<OpenLineageTaskResource[]>([]);
-const searchTerm = ref(
-  typeof route.query.search === "string" ? route.query.search : ""
-);
-const selectedNamespace = ref(
-  typeof route.query.namespace === "string" ? route.query.namespace : "all"
-);
-const selectedJobType = ref(
-  typeof route.query.jobType === "string" ? route.query.jobType : "all"
-);
+const activeFilters = ref<ActiveFilter[]>([]);
 const lineageOnly = ref(route.query.lineageOnly !== "false");
 
 const namespaces = computed(() => {
@@ -214,32 +167,66 @@ const jobTypes = computed(() => {
   ).sort((left, right) => left.localeCompare(right));
 });
 
+const filterCategories = computed(() => {
+  return [
+    {
+      type: "namespace",
+      label: t("openlineageSettings.namespace"),
+      icon: "📦",
+      options: namespaces.value.map((ns) => ({ value: ns, label: ns })),
+    },
+    {
+      type: "jobType",
+      label: t("openlineageSettings.jobType"),
+      icon: "⚙️",
+      options: jobTypes.value.map((jt) => ({ value: jt, label: jt })),
+    },
+  ].filter((cat) => cat.options.length > 0);
+});
+
+function handleFiltersUpdate(filters: ActiveFilter[]) {
+  activeFilters.value = filters;
+  const nextQuery: Record<string, string> = {};
+
+  const nameFilter = filters.find((f) => f.type === "name");
+  if (nameFilter?.value) {
+    nextQuery.search = nameFilter.value;
+  }
+  const nsFilter = filters.find((f) => f.type === "namespace");
+  if (nsFilter?.value) {
+    nextQuery.namespace = nsFilter.value;
+  }
+  const jtFilter = filters.find((f) => f.type === "jobType");
+  if (jtFilter?.value) {
+    nextQuery.jobType = jtFilter.value;
+  }
+
+  router.replace({ query: nextQuery });
+}
+
 const filteredTasks = computed(() => {
-  const query = searchTerm.value.trim().toLowerCase();
+  const nameFilter =
+    activeFilters.value.find((f) => f.type === "name")?.value ?? "";
+  const nsFilter =
+    activeFilters.value.find((f) => f.type === "namespace")?.value ?? "";
+  const jtFilter =
+    activeFilters.value.find((f) => f.type === "jobType")?.value ?? "";
+
+  const query = nameFilter.toLowerCase();
 
   return tasks.value.filter((task) => {
-    if (
-      selectedNamespace.value !== "all" &&
-      task.jobNamespace !== selectedNamespace.value
-    ) {
+    if (nsFilter && task.jobNamespace !== nsFilter) {
       return false;
     }
-
-    if (
-      selectedJobType.value !== "all" &&
-      task.jobType !== selectedJobType.value
-    ) {
+    if (jtFilter && task.jobType !== jtFilter) {
       return false;
     }
-
     if (lineageOnly.value && task.lineageRunCount <= 0) {
       return false;
     }
-
     if (!query) {
       return true;
     }
-
     const haystack = [
       task.jobName,
       task.jobNamespace,
@@ -250,7 +237,6 @@ const filteredTasks = computed(() => {
     ]
       .join(" ")
       .toLowerCase();
-
     return haystack.includes(query);
   });
 });
@@ -325,28 +311,18 @@ function openEvents(task: OpenLineageTaskResource) {
 }
 
 function resetFilters() {
-  searchTerm.value = "";
-  selectedNamespace.value = "all";
-  selectedJobType.value = "all";
+  activeFilters.value = [];
   lineageOnly.value = true;
+  router.replace({ query: {} });
 }
 
-watch([searchTerm, selectedNamespace, selectedJobType, lineageOnly], () => {
-  const nextQuery: Record<string, string> = {};
-
-  if (searchTerm.value.trim()) {
-    nextQuery.search = searchTerm.value.trim();
-  }
-  if (selectedNamespace.value !== "all") {
-    nextQuery.namespace = selectedNamespace.value;
-  }
-  if (selectedJobType.value !== "all") {
-    nextQuery.jobType = selectedJobType.value;
-  }
+watch([lineageOnly], () => {
+  const nextQuery = { ...route.query };
   if (!lineageOnly.value) {
     nextQuery.lineageOnly = "false";
+  } else {
+    delete nextQuery.lineageOnly;
   }
-
   router.replace({ query: nextQuery });
 });
 

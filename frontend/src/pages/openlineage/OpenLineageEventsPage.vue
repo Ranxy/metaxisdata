@@ -27,60 +27,27 @@
     </div>
 
     <Card>
-      <CardContent class="flex flex-col gap-4 pt-6 xl:flex-row xl:items-end">
-        <div class="flex-1 space-y-2">
-          <Label for="openlineage-event-search">{{ t("openlineage.search") }}</Label>
-          <Input
-            id="openlineage-event-search"
-            v-model="searchTerm"
-            :placeholder="t('openlineage.searchEventsPlaceholder')"
-          />
+      <CardContent class="space-y-3 pt-6">
+        <AdvancedSearchBar
+          :filter-categories="filterCategories"
+          :search-placeholder="t('openlineage.searchEventsPlaceholder')"
+          @update:filters="handleFiltersUpdate"
+        />
+        <div class="flex items-center gap-4">
+          <div class="flex items-center gap-2">
+            <Checkbox
+              id="events-lineage-only"
+              :checked="lineageOnly"
+              @update:checked="lineageOnly = $event === true"
+            />
+            <Label for="events-lineage-only" class="cursor-pointer text-sm">
+              {{ t("openlineage.onlyLineage") }}
+            </Label>
+          </div>
+          <Button variant="outline" size="sm" @click="resetFilters">
+            {{ t("openlineage.clearFilters") }}
+          </Button>
         </div>
-
-        <div class="space-y-2 xl:w-64">
-          <Label>{{ t("openlineageSettings.namespace") }}</Label>
-          <Select v-model="selectedNamespace">
-            <SelectTrigger>
-              <SelectValue :placeholder="t('openlineage.namespaceAll')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{{ t("openlineage.namespaceAll") }}</SelectItem>
-              <SelectItem v-for="namespace in namespaces" :key="namespace" :value="namespace">
-                {{ namespace }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div class="space-y-2 xl:w-56">
-          <Label>{{ t("openlineage.eventType") }}</Label>
-          <Select v-model="selectedEventType">
-            <SelectTrigger>
-              <SelectValue :placeholder="t('openlineage.eventTypeAll')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{{ t("openlineage.eventTypeAll") }}</SelectItem>
-              <SelectItem v-for="eventType in eventTypes" :key="eventType" :value="eventType">
-                {{ eventType }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div class="flex items-center gap-2 xl:pb-2">
-          <Checkbox
-            id="events-lineage-only"
-            :checked="lineageOnly"
-            @update:checked="lineageOnly = $event === true"
-          />
-          <Label for="events-lineage-only" class="cursor-pointer text-sm">
-            {{ t("openlineage.onlyLineage") }}
-          </Label>
-        </div>
-
-        <Button variant="outline" @click="resetFilters">
-          {{ t("openlineage.clearFilters") }}
-        </Button>
       </CardContent>
     </Card>
 
@@ -147,21 +114,15 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { listOpenLineageRuns } from "@/api/openlineage";
+import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
+import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -180,15 +141,7 @@ const { handleError } = useErrorHandler();
 
 const isLoading = ref(false);
 const runs = ref<OpenLineageRunResource[]>([]);
-const searchTerm = ref(
-  typeof route.query.search === "string" ? route.query.search : ""
-);
-const selectedNamespace = ref(
-  typeof route.query.namespace === "string" ? route.query.namespace : "all"
-);
-const selectedEventType = ref(
-  typeof route.query.eventType === "string" ? route.query.eventType : "all"
-);
+const activeFilters = ref<ActiveFilter[]>([]);
 const lineageOnly = ref(route.query.lineageOnly !== "false");
 
 const namespaces = computed(() => {
@@ -203,32 +156,70 @@ const eventTypes = computed(() => {
   ).sort((left, right) => left.localeCompare(right));
 });
 
+const filterCategories = computed(() => {
+  return [
+    {
+      type: "namespace",
+      label: t("openlineageSettings.namespace"),
+      icon: "📦",
+      options: namespaces.value.map((ns) => ({ value: ns, label: ns })),
+    },
+    {
+      type: "eventType",
+      label: t("openlineage.eventType"),
+      icon: "🏷️",
+      options: eventTypes.value.map((et) => ({ value: et, label: et })),
+    },
+  ].filter((cat) => cat.options.length > 0);
+});
+
+function handleFiltersUpdate(filters: ActiveFilter[]) {
+  activeFilters.value = filters;
+  const nextQuery: Record<string, string> = {};
+
+  if (route.query.from && typeof route.query.from === "string") {
+    nextQuery.from = route.query.from;
+  }
+  const nameFilter = filters.find((f) => f.type === "name");
+  if (nameFilter?.value) {
+    nextQuery.search = nameFilter.value;
+  }
+  const nsFilter = filters.find((f) => f.type === "namespace");
+  if (nsFilter?.value) {
+    nextQuery.namespace = nsFilter.value;
+  }
+  const etFilter = filters.find((f) => f.type === "eventType");
+  if (etFilter?.value) {
+    nextQuery.eventType = etFilter.value;
+  }
+
+  router.replace({ query: nextQuery });
+  fetchRuns();
+}
+
 const filteredRuns = computed(() => {
-  const query = searchTerm.value.trim().toLowerCase();
+  const nameFilter =
+    activeFilters.value.find((f) => f.type === "name")?.value ?? "";
+  const nsFilter =
+    activeFilters.value.find((f) => f.type === "namespace")?.value ?? "";
+  const etFilter =
+    activeFilters.value.find((f) => f.type === "eventType")?.value ?? "";
+
+  const query = nameFilter.toLowerCase();
 
   return runs.value.filter((run) => {
-    if (
-      selectedNamespace.value !== "all" &&
-      run.jobNamespace !== selectedNamespace.value
-    ) {
+    if (nsFilter && run.jobNamespace !== nsFilter) {
       return false;
     }
-
-    if (
-      selectedEventType.value !== "all" &&
-      run.eventType !== selectedEventType.value
-    ) {
+    if (etFilter && run.eventType !== etFilter) {
       return false;
     }
-
     if (lineageOnly.value && !run.hasLineage) {
       return false;
     }
-
     if (!query) {
       return true;
     }
-
     const haystack = [
       run.jobName,
       run.jobNamespace,
@@ -239,7 +230,6 @@ const filteredRuns = computed(() => {
     ]
       .join(" ")
       .toLowerCase();
-
     return haystack.includes(query);
   });
 });
@@ -276,31 +266,19 @@ function openDetail(guid: string) {
 }
 
 function resetFilters() {
-  searchTerm.value = "";
-  selectedNamespace.value = "all";
-  selectedEventType.value = "all";
+  activeFilters.value = [];
   lineageOnly.value = true;
+  router.replace({ query: {} });
+  fetchRuns();
 }
 
-watch([searchTerm, selectedNamespace, selectedEventType, lineageOnly], () => {
-  const nextQuery: Record<string, string> = {};
-
-  if (route.query.from && typeof route.query.from === "string") {
-    nextQuery.from = route.query.from;
-  }
-  if (searchTerm.value.trim()) {
-    nextQuery.search = searchTerm.value.trim();
-  }
-  if (selectedNamespace.value !== "all") {
-    nextQuery.namespace = selectedNamespace.value;
-  }
-  if (selectedEventType.value !== "all") {
-    nextQuery.eventType = selectedEventType.value;
-  }
+watch([lineageOnly], () => {
+  const nextQuery = { ...route.query };
   if (!lineageOnly.value) {
     nextQuery.lineageOnly = "false";
+  } else {
+    delete nextQuery.lineageOnly;
   }
-
   router.replace({ query: nextQuery });
   fetchRuns();
 });
@@ -308,10 +286,11 @@ watch([searchTerm, selectedNamespace, selectedEventType, lineageOnly], () => {
 async function fetchRuns() {
   isLoading.value = true;
   try {
+    const etFilter =
+      activeFilters.value.find((f) => f.type === "eventType")?.value ?? "";
     const response = await listOpenLineageRuns({
       pageSize: 200,
-      eventType:
-        selectedEventType.value !== "all" ? selectedEventType.value : "",
+      eventType: etFilter,
       hasLineage: lineageOnly.value || undefined,
     });
     runs.value = response.runs;

@@ -18,15 +18,22 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
+export interface FilterCategory {
+  type: string;
+  label: string;
+  icon: string;
+  options: Array<{ value: string; label: string }>;
+}
+
 export interface FilterOption {
-  type: "instance" | "environment" | "engine";
+  type: string;
   label: string;
   value: string;
 }
 
 export interface ActiveFilter {
   id: string;
-  type: "name" | "instance" | "environment" | "engine";
+  type: string;
   label: string;
   value: string;
   displayValue: string;
@@ -35,6 +42,9 @@ export interface ActiveFilter {
 interface Props {
   instances?: Array<{ name: string; title: string }>;
   engineOptions?: Array<{ value: string; label: string }>;
+  /** Generic filter categories — when provided, replaces built-in instance/env/engine. */
+  filterCategories?: FilterCategory[];
+  searchPlaceholder?: string;
 }
 
 const props = defineProps<Props>();
@@ -68,6 +78,13 @@ const environmentOptions = [
 ];
 
 const availableFilterTypes = computed(() => {
+  if (props.filterCategories) {
+    const activeFilterTypes = new Set(activeFilters.value.map((f) => f.type));
+    return props.filterCategories.filter(
+      (cat) => !activeFilterTypes.has(cat.type)
+    );
+  }
+
   const allTypes = [
     {
       type: "instance" as const,
@@ -86,7 +103,6 @@ const availableFilterTypes = computed(() => {
     },
   ];
 
-  // Filter out types that already have an active filter
   const activeFilterTypes = new Set(activeFilters.value.map((f) => f.type));
   return allTypes.filter((type) => !activeFilterTypes.has(type.type));
 });
@@ -119,25 +135,43 @@ const filteredEngines = computed(() => {
   );
 });
 
-const selectedFilterType = ref<"instance" | "environment" | "engine" | null>(
-  null
-);
+const selectedFilterType = ref<string | null>(null);
+const selectedFilterCategory = computed(() => {
+  if (!selectedFilterType.value) return null;
+  if (props.filterCategories) {
+    return (
+      props.filterCategories.find((c) => c.type === selectedFilterType.value) ??
+      null
+    );
+  }
+  return null;
+});
 
-function addFilter(
-  type: "instance" | "environment" | "engine",
-  value: string,
-  displayValue: string
-) {
+const filteredCategoryOptions = computed(() => {
+  if (!selectedFilterCategory.value) return [];
+  if (!filterSearchQuery.value) return selectedFilterCategory.value.options;
+  const q = filterSearchQuery.value.toLowerCase();
+  return selectedFilterCategory.value.options.filter((o) =>
+    o.label.toLowerCase().includes(q)
+  );
+});
+
+function addFilter(type: string, value: string, displayValue: string) {
   // Remove any existing filter of the same type
   activeFilters.value = activeFilters.value.filter((f) => f.type !== type);
 
   const id = generateUniqueId();
-  const label =
-    type === "instance"
-      ? t("databaseManagement.instanceFilter")
-      : type === "environment"
-        ? t("databaseManagement.environmentFilter")
-        : t("databaseManagement.engineFilter");
+  let label: string;
+  if (props.filterCategories) {
+    label = props.filterCategories.find((c) => c.type === type)?.label ?? type;
+  } else {
+    label =
+      type === "instance"
+        ? t("databaseManagement.instanceFilter")
+        : type === "environment"
+          ? t("databaseManagement.environmentFilter")
+          : t("databaseManagement.engineFilter");
+  }
 
   activeFilters.value.push({
     id,
@@ -179,7 +213,7 @@ function handleSearchInput() {
   emitFilters();
 }
 
-function selectFilterType(type: "instance" | "environment" | "engine") {
+function selectFilterType(type: string) {
   selectedFilterType.value = type;
   filterSearchQuery.value = "";
   filterTypeSearchQuery.value = "";
@@ -225,7 +259,7 @@ watch(searchQuery, () => {
         ref="searchInputRef"
         v-model="searchQuery"
         type="text"
-        :placeholder="activeFilters.length === 0 ? t('databaseManagement.searchPlaceholder') : ''"
+        :placeholder="activeFilters.length === 0 ? (searchPlaceholder ?? t('databaseManagement.searchPlaceholder')) : ''"
         class="flex-1 min-w-[120px] bg-transparent outline-hidden placeholder:text-muted-foreground"
       >
 
@@ -365,6 +399,40 @@ watch(searchQuery, () => {
                   @select="addFilter('engine', engine.value, engine.label)"
                 >
                   {{ engine.label }}
+                </CommandItem>
+              </CommandGroup>
+            </CommandList>
+          </Command>
+
+          <!-- Generic filter category selection -->
+          <Command
+            v-else-if="selectedFilterCategory"
+            v-model="filterSearchQuery"
+          >
+            <div class="flex items-center border-b px-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-8 px-2"
+                @click="backToFilterTypes"
+              >
+                <ChevronDown class="h-4 w-4 rotate-90" />
+              </Button>
+              <CommandInput
+                :placeholder="selectedFilterCategory.label"
+                class="border-0"
+              />
+            </div>
+            <CommandList>
+              <CommandEmpty>{{ t("databaseManagement.noFiltersFound") }}</CommandEmpty>
+              <CommandGroup>
+                <CommandItem
+                  v-for="option in filteredCategoryOptions"
+                  :key="option.value"
+                  :value="option.value"
+                  @select="addFilter(selectedFilterCategory.type, option.value, option.label)"
+                >
+                  {{ option.label }}
                 </CommandItem>
               </CommandGroup>
             </CommandList>

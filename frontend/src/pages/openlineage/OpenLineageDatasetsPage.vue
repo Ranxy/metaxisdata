@@ -27,93 +27,27 @@
     </div>
 
     <Card>
-      <CardContent class="flex flex-col gap-4 pt-6 xl:flex-row xl:items-end">
-        <div class="flex-1 space-y-2">
-          <Label for="openlineage-dataset-search">{{ t("openlineage.search") }}</Label>
-          <Input
-            id="openlineage-dataset-search"
-            v-model="searchTerm"
-            :placeholder="t('openlineage.searchDatasetsPlaceholder')"
-          />
+      <CardContent class="space-y-3 pt-6">
+        <AdvancedSearchBar
+          :filter-categories="filterCategories"
+          :search-placeholder="t('openlineage.searchDatasetsPlaceholder')"
+          @update:filters="handleFiltersUpdate"
+        />
+        <div class="flex items-center gap-4">
+          <div class="flex items-center gap-2">
+            <Checkbox
+              id="datasets-column-lineage-only"
+              :checked="columnLineageOnly"
+              @update:checked="columnLineageOnly = $event === true"
+            />
+            <Label for="datasets-column-lineage-only" class="cursor-pointer text-sm">
+              {{ t("openlineage.onlyColumnLineage") }}
+            </Label>
+          </div>
+          <Button variant="outline" size="sm" @click="resetFilters">
+            {{ t("openlineage.clearFilters") }}
+          </Button>
         </div>
-
-        <div class="space-y-2 xl:w-64">
-          <Label>{{ t("openlineageSettings.namespace") }}</Label>
-          <Select v-model="selectedNamespace">
-            <SelectTrigger>
-              <SelectValue :placeholder="t('openlineage.namespaceAll')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{{ t("openlineage.namespaceAll") }}</SelectItem>
-              <SelectItem v-for="namespace in namespaces" :key="namespace" :value="namespace">
-                {{ namespace }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div class="space-y-2 xl:w-56">
-          <Label>{{ t("openlineageSettings.integration") }}</Label>
-          <Select v-model="selectedIntegration">
-            <SelectTrigger>
-              <SelectValue :placeholder="t('openlineage.integrationAll')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{{ t("openlineage.integrationAll") }}</SelectItem>
-              <SelectItem
-                v-for="integration in integrations"
-                :key="integration"
-                :value="integration"
-              >
-                {{ integration }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div class="space-y-2 xl:w-56">
-          <Label>{{ t("openlineageSettings.sourceLabel") }}</Label>
-          <Select v-model="selectedSource">
-            <SelectTrigger>
-              <SelectValue :placeholder="t('openlineage.sourceAll')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{{ t("openlineage.sourceAll") }}</SelectItem>
-              <SelectItem v-for="source in sources" :key="source" :value="source">
-                {{ source }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div class="space-y-2 xl:w-56">
-          <Label>{{ t("openlineage.datasetScope") }}</Label>
-          <Select v-model="datasetScope">
-            <SelectTrigger>
-              <SelectValue :placeholder="t('openlineage.datasetScopeAll')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{{ t("openlineage.datasetScopeAll") }}</SelectItem>
-              <SelectItem value="internal">{{ t("openlineage.internalOnly") }}</SelectItem>
-              <SelectItem value="external">{{ t("openlineage.externalOnly") }}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div class="flex items-center gap-2 xl:pb-2">
-          <Checkbox
-            id="datasets-column-lineage-only"
-            :checked="columnLineageOnly"
-            @update:checked="columnLineageOnly = $event === true"
-          />
-          <Label for="datasets-column-lineage-only" class="cursor-pointer text-sm">
-            {{ t("openlineage.onlyColumnLineage") }}
-          </Label>
-        </div>
-
-        <Button variant="outline" @click="resetFilters">
-          {{ t("openlineage.clearFilters") }}
-        </Button>
       </CardContent>
     </Card>
 
@@ -222,6 +156,8 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { listOpenLineageDatasets } from "@/api/openlineage";
+import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
+import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import OpenLineageDatasetDetailDrawer from "@/components/openlineage/OpenLineageDatasetDetailDrawer.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
@@ -229,15 +165,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -259,21 +187,7 @@ const isLoading = ref(false);
 const datasets = ref<OpenLineageDatasetResource[]>([]);
 const selectedDataset = ref<OpenLineageDatasetResource | null>(null);
 const isDetailDrawerOpen = ref(false);
-const searchTerm = ref(
-  typeof route.query.search === "string" ? route.query.search : ""
-);
-const selectedNamespace = ref(
-  typeof route.query.namespace === "string" ? route.query.namespace : "all"
-);
-const selectedIntegration = ref(
-  typeof route.query.integration === "string" ? route.query.integration : "all"
-);
-const selectedSource = ref(
-  typeof route.query.source === "string" ? route.query.source : "all"
-);
-const datasetScope = ref(
-  typeof route.query.scope === "string" ? route.query.scope : "all"
-);
+const activeFilters = ref<ActiveFilter[]>([]);
 const columnLineageOnly = ref(route.query.columnLineageOnly === "true");
 
 const namespaces = computed(() => {
@@ -298,47 +212,102 @@ const sources = computed(() => {
   ).sort((left, right) => left.localeCompare(right));
 });
 
+const filterCategories = computed(() => {
+  return [
+    {
+      type: "namespace",
+      label: t("openlineageSettings.namespace"),
+      icon: "📦",
+      options: namespaces.value.map((ns) => ({ value: ns, label: ns })),
+    },
+    {
+      type: "integration",
+      label: t("openlineageSettings.integration"),
+      icon: "🔌",
+      options: integrations.value.map((i) => ({ value: i, label: i })),
+    },
+    {
+      type: "source",
+      label: t("openlineageSettings.sourceLabel"),
+      icon: "📡",
+      options: sources.value.map((s) => ({ value: s, label: s })),
+    },
+    {
+      type: "scope",
+      label: t("openlineage.datasetScope"),
+      icon: "🏷️",
+      options: [
+        { value: "internal", label: t("openlineage.internalOnly") },
+        { value: "external", label: t("openlineage.externalOnly") },
+      ],
+    },
+  ].filter((cat) => cat.options.length > 0);
+});
+
+function handleFiltersUpdate(filters: ActiveFilter[]) {
+  activeFilters.value = filters;
+  const nextQuery: Record<string, string> = {};
+
+  const nameFilter = filters.find((f) => f.type === "name");
+  if (nameFilter?.value) {
+    nextQuery.search = nameFilter.value;
+  }
+  const nsFilter = filters.find((f) => f.type === "namespace");
+  if (nsFilter?.value) {
+    nextQuery.namespace = nsFilter.value;
+  }
+  const intFilter = filters.find((f) => f.type === "integration");
+  if (intFilter?.value) {
+    nextQuery.integration = intFilter.value;
+  }
+  const srcFilter = filters.find((f) => f.type === "source");
+  if (srcFilter?.value) {
+    nextQuery.source = srcFilter.value;
+  }
+  const scopeFilter = filters.find((f) => f.type === "scope");
+  if (scopeFilter?.value) {
+    nextQuery.scope = scopeFilter.value;
+  }
+
+  router.replace({ query: nextQuery });
+}
+
 const filteredDatasets = computed(() => {
-  const query = searchTerm.value.trim().toLowerCase();
+  const nameFilter =
+    activeFilters.value.find((f) => f.type === "name")?.value ?? "";
+  const nsFilter =
+    activeFilters.value.find((f) => f.type === "namespace")?.value ?? "";
+  const intFilter =
+    activeFilters.value.find((f) => f.type === "integration")?.value ?? "";
+  const srcFilter =
+    activeFilters.value.find((f) => f.type === "source")?.value ?? "";
+  const scopeFilter =
+    activeFilters.value.find((f) => f.type === "scope")?.value ?? "";
+
+  const query = nameFilter.toLowerCase();
 
   return datasets.value.filter((dataset) => {
-    if (
-      selectedNamespace.value !== "all" &&
-      dataset.namespace !== selectedNamespace.value
-    ) {
+    if (nsFilter && dataset.namespace !== nsFilter) {
       return false;
     }
-
-    if (
-      selectedIntegration.value !== "all" &&
-      !dataset.integrations.includes(selectedIntegration.value)
-    ) {
+    if (intFilter && !dataset.integrations.includes(intFilter)) {
       return false;
     }
-
-    if (
-      selectedSource.value !== "all" &&
-      !dataset.sources.includes(selectedSource.value)
-    ) {
+    if (srcFilter && !dataset.sources.includes(srcFilter)) {
       return false;
     }
-
-    if (datasetScope.value === "internal" && !dataset.internal) {
+    if (scopeFilter === "internal" && !dataset.internal) {
       return false;
     }
-
-    if (datasetScope.value === "external" && dataset.internal) {
+    if (scopeFilter === "external" && dataset.internal) {
       return false;
     }
-
     if (columnLineageOnly.value && !dataset.supportsColumnLineage) {
       return false;
     }
-
     if (!query) {
       return true;
     }
-
     const haystack = [
       dataset.name,
       dataset.namespace,
@@ -349,7 +318,6 @@ const filteredDatasets = computed(() => {
     ]
       .join(" ")
       .toLowerCase();
-
     return haystack.includes(query);
   });
 });
@@ -424,52 +392,24 @@ function openColumnLineage(dataset: OpenLineageDatasetResource) {
 }
 
 function resetFilters() {
-  searchTerm.value = "";
-  selectedNamespace.value = "all";
-  selectedIntegration.value = "all";
-  selectedSource.value = "all";
-  datasetScope.value = "all";
+  activeFilters.value = [];
   columnLineageOnly.value = false;
+  router.replace({ query: {} });
 }
 
 function datasetRowKey(dataset: OpenLineageDatasetResource): string {
   return `${dataset.namespace}\u0000${dataset.name}`;
 }
 
-watch(
-  [
-    searchTerm,
-    selectedNamespace,
-    selectedIntegration,
-    selectedSource,
-    datasetScope,
-    columnLineageOnly,
-  ],
-  () => {
-    const nextQuery: Record<string, string> = {};
-
-    if (searchTerm.value.trim()) {
-      nextQuery.search = searchTerm.value.trim();
-    }
-    if (selectedNamespace.value !== "all") {
-      nextQuery.namespace = selectedNamespace.value;
-    }
-    if (selectedIntegration.value !== "all") {
-      nextQuery.integration = selectedIntegration.value;
-    }
-    if (selectedSource.value !== "all") {
-      nextQuery.source = selectedSource.value;
-    }
-    if (datasetScope.value !== "all") {
-      nextQuery.scope = datasetScope.value;
-    }
-    if (columnLineageOnly.value) {
-      nextQuery.columnLineageOnly = "true";
-    }
-
-    router.replace({ query: nextQuery });
+watch([columnLineageOnly], () => {
+  const nextQuery = { ...route.query };
+  if (columnLineageOnly.value) {
+    nextQuery.columnLineageOnly = "true";
+  } else {
+    delete nextQuery.columnLineageOnly;
   }
-);
+  router.replace({ query: nextQuery });
+});
 
 async function fetchDatasets() {
   isLoading.value = true;
