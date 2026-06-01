@@ -40,7 +40,6 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,

@@ -30,6 +30,35 @@
 
       <Card>
         <CardContent class="space-y-4 pt-6">
+          <div v-if="isEvidenceLoading" class="flex min-h-24 items-center justify-center">
+            <AppLoading />
+          </div>
+
+          <div
+            v-else-if="evidenceError"
+            class="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
+          >
+            {{ evidenceError }}
+          </div>
+
+          <template v-else>
+            <div class="grid gap-3">
+              <div class="rounded-md border p-3">
+                <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.relatedObjects") }}</div>
+                <div class="mt-1 text-sm font-medium">{{ relatedObjectCount }}</div>
+              </div>
+
+              <div class="rounded-md border p-3">
+                <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.upstreamRelations") }}</div>
+                <div class="mt-1 text-sm font-medium">{{ upstreamRelationCount }}</div>
+              </div>
+
+              <div class="rounded-md border p-3">
+                <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.downstreamRelations") }}</div>
+                <div class="mt-1 text-sm font-medium">{{ downstreamRelationCount }}</div>
+              </div>
+            </div>
+
           <div class="rounded-md border p-3">
             <div class="text-xs text-muted-foreground">{{ t("openlineage.currentAsset") }}</div>
             <div class="mt-1 break-all text-sm font-medium">{{ currentGuid }}</div>
@@ -42,9 +71,47 @@
             </div>
           </div>
 
-          <Button variant="outline" class="w-full" @click="openTableLineage">
-            {{ t("lineageGraph.viewGraph") }}
-          </Button>
+            <div class="space-y-3">
+              <div>
+                <h3 class="text-sm font-semibold">{{ t("lineageGraph.relatedRuns") }}</h3>
+                <p class="text-sm text-muted-foreground">
+                  {{
+                    selectedColumn
+                      ? t("lineageGraph.relatedRunsFiltered")
+                      : t("lineageGraph.relatedRunsDescription")
+                  }}
+                </p>
+              </div>
+
+              <div
+                v-if="relatedRuns.length === 0"
+                class="rounded-md border border-dashed p-4 text-sm text-muted-foreground"
+              >
+                {{ t("lineageGraph.noRelatedRuns") }}
+              </div>
+
+              <div v-else class="space-y-2">
+                <Button
+                  v-for="run in relatedRuns"
+                  :key="run.guid"
+                  variant="outline"
+                  class="h-auto w-full justify-start px-3 py-3 text-left"
+                  @click="openRunDetail(run.guid)"
+                >
+                  <div class="space-y-1">
+                    <div class="font-medium">{{ run.label }}</div>
+                    <div class="text-xs text-muted-foreground">
+                      {{ run.updatedAtLabel }}
+                    </div>
+                  </div>
+                </Button>
+              </div>
+            </div>
+
+            <Button variant="outline" class="w-full" @click="openTableLineage">
+              {{ t("lineageGraph.viewGraph") }}
+            </Button>
+          </template>
         </CardContent>
       </Card>
     </div>
@@ -52,18 +119,37 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
+import { getLineage } from "@/api/lineage";
+import AppLoading from "@/components/common/AppLoading.vue";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import type { LineageRelation } from "@/types/proto-es/v1/lineage_service_pb";
+import { extractErrorMessage } from "@/utils/error";
+
+const OPENLINEAGE_META_TYPE = 100;
+
+type RunSummary = {
+  guid: string;
+  label: string;
+  updatedAt?: Timestamp;
+  updatedAtLabel: string;
+};
 
 const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
+
+const isEvidenceLoading = ref(false);
+const evidenceError = ref("");
+const upstreamRelations = ref<LineageRelation[]>([]);
+const downstreamRelations = ref<LineageRelation[]>([]);
 
 const currentGuid = computed(() => {
   const guidParam = route.params.guid;
@@ -118,6 +204,111 @@ const sectionTitle = computed(() => {
     : t("openlineage.columnLineageAllRelations");
 });
 
+const scopedUpstreamRelations = computed(() => {
+  if (!selectedColumn.value) {
+    return upstreamRelations.value;
+  }
+
+  return upstreamRelations.value.filter(
+    (relation) => relation.targetColumn === selectedColumn.value
+  );
+});
+
+const scopedDownstreamRelations = computed(() => {
+  if (!selectedColumn.value) {
+    return downstreamRelations.value;
+  }
+
+  return downstreamRelations.value.filter(
+    (relation) => relation.sourceColumn === selectedColumn.value
+  );
+});
+
+const upstreamRelationCount = computed(
+  () => scopedUpstreamRelations.value.length
+);
+
+const downstreamRelationCount = computed(
+  () => scopedDownstreamRelations.value.length
+);
+
+const relatedObjectCount = computed(() => {
+  return new Set(
+    [
+      ...scopedUpstreamRelations.value.map((relation) => relation.sourceGuid),
+      ...scopedDownstreamRelations.value.map((relation) => relation.targetGuid),
+    ].filter(Boolean)
+  ).size;
+});
+
+const relatedRuns = computed<RunSummary[]>(() => {
+  const runs = new Map<string, RunSummary>();
+
+  const addRelation = (relation: LineageRelation) => {
+    if (
+      Number(relation.metaType) !== OPENLINEAGE_META_TYPE ||
+      !relation.metaGuid
+    ) {
+      return;
+    }
+
+    const existing = runs.get(relation.metaGuid);
+    if (
+      !existing ||
+      compareTimestamps(relation.updatedAt, existing.updatedAt) < 0
+    ) {
+      runs.set(relation.metaGuid, {
+        guid: relation.metaGuid,
+        label: formatOpenLineageRunLabel(relation.metaGuid),
+        updatedAt: relation.updatedAt,
+        updatedAtLabel: formatTimestamp(relation.updatedAt),
+      });
+    }
+  };
+
+  for (const relation of scopedUpstreamRelations.value) {
+    addRelation(relation);
+  }
+  for (const relation of scopedDownstreamRelations.value) {
+    addRelation(relation);
+  }
+
+  return Array.from(runs.values()).sort((left, right) =>
+    compareTimestamps(right.updatedAt, left.updatedAt)
+  );
+});
+
+watch(
+  () => ({
+    guid: currentGuid.value,
+    metaType: currentMetaType.value,
+  }),
+  async ({ guid, metaType }) => {
+    if (!guid) {
+      upstreamRelations.value = [];
+      downstreamRelations.value = [];
+      evidenceError.value = "";
+      return;
+    }
+
+    isEvidenceLoading.value = true;
+    evidenceError.value = "";
+    try {
+      const response = await getLineage({ guid, metaType });
+      upstreamRelations.value = response.relationsSource;
+      downstreamRelations.value = response.relationsTarget;
+    } catch (error) {
+      upstreamRelations.value = [];
+      downstreamRelations.value = [];
+      evidenceError.value =
+        extractErrorMessage(error) || t("metadataBrowser.lineageFetchError");
+    } finally {
+      isEvidenceLoading.value = false;
+    }
+  },
+  { immediate: true }
+);
+
 function openTableLineage() {
   router.push({
     name: "LineageGraph",
@@ -137,6 +328,59 @@ function goBack() {
   }
 
   openTableLineage();
+}
+
+function openRunDetail(guid: string) {
+  router.push({
+    name: "OpenLineageRunDetail",
+    params: { guid },
+    query: { from: route.fullPath },
+  });
+}
+
+function formatOpenLineageRunLabel(guid: string): string {
+  const prefix = "openlineage:run:";
+  if (!guid.startsWith(prefix)) {
+    return guid;
+  }
+
+  const segments = guid
+    .substring(prefix.length)
+    .split(":")
+    .map((segment) => decodeURIComponent(segment));
+
+  if (segments.length >= 3) {
+    const runID = segments[segments.length - 1];
+    const jobName = segments[segments.length - 2];
+    return `${jobName} · ${runID}`;
+  }
+
+  return segments.join(" · ") || guid;
+}
+
+function formatTimestamp(ts: Timestamp | undefined): string {
+  if (!ts?.seconds) return "-";
+  const date = new Date(Number(ts.seconds) * 1000);
+  return new Intl.DateTimeFormat("default", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function compareTimestamps(
+  left: Timestamp | undefined,
+  right: Timestamp | undefined
+): number {
+  const leftSeconds = Number(left?.seconds ?? 0);
+  const rightSeconds = Number(right?.seconds ?? 0);
+  if (leftSeconds === rightSeconds) {
+    return 0;
+  }
+  return leftSeconds > rightSeconds ? 1 : -1;
 }
 
 function toGuidPath(guid: string): string {
