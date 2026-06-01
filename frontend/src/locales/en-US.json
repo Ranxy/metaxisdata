@@ -673,15 +673,9 @@
     "events": "Events",
     "eventsDescription": "Inspect persisted OpenLineage runs, event metadata, and raw evidence payloads.",
     "ingestionSettings": "Ingestion Settings",
-    "search": "Search",
     "searchJobsPlaceholder": "Search job name, namespace, integration, or latest run",
     "searchDatasetsPlaceholder": "Search dataset name, namespace, resolved target, integration, or source",
     "searchEventsPlaceholder": "Search job name, run ID, event type, producer, or source",
-    "namespaceAll": "All namespaces",
-    "integrationAll": "All integrations",
-    "sourceAll": "All sources",
-    "jobTypeAll": "All job types",
-    "eventTypeAll": "All event types",
     "onlyLineage": "Only show lineage-ready records",
     "onlyColumnLineage": "Only show datasets with column lineage",
     "clearFilters": "Clear filters",
@@ -695,7 +689,6 @@
     "lineageEvents": "Lineage events",
     "coverage": "Coverage",
     "datasetScope": "Dataset scope",
-    "datasetScopeAll": "All datasets",
     "internalOnly": "Internal only",
     "externalOnly": "External only",
     "datasetType": "Dataset Type",
@@ -765,7 +758,9 @@
     "internal": "Internal",
     "external": "External",
     "yes": "Yes",
-    "no": "No"
+    "no": "No",
+    "openColumnLineage": "Open column lineage",
+    "latestRunStatus": "Latest Run Status"
   },
   "lineageGraph": {
     "title": "Lineage Graph",
@@ -792,6 +787,12 @@
     "relatedRunsFiltered": "Showing only persisted OpenLineage runs connected to the selected node and currently selected field.",
     "noRelatedRuns": "No persisted OpenLineage runs are connected to the selected node.",
     "refocusGraph": "Refocus graph",
-    "openColumnLineage": "Open column lineage"
+    "openColumnLineage": "Open column lineage",
+    "expandDepth": "Depth",
+    "depth1": "1 level",
+    "depth2": "2 levels",
+    "depth3": "3 levels",
+    "upstreamRelations": "Upstream fields",
+    "downstreamRelations": "Downstream fields"
   }
 }

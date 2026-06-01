@@ -673,15 +673,9 @@
     "events": "Events",
     "eventsDescription": "查看已持久化的 OpenLineage 运行记录、事件元数据和原始证据负载。",
     "ingestionSettings": "接入设置",
-    "search": "搜索",
     "searchJobsPlaceholder": "搜索 job 名称、namespace、integration 或最新 run",
     "searchDatasetsPlaceholder": "搜索 dataset 名称、namespace、resolved target、integration 或 source",
     "searchEventsPlaceholder": "搜索 job 名称、run ID、事件类型、producer 或 source",
-    "namespaceAll": "全部 namespaces",
-    "integrationAll": "全部 integrations",
-    "sourceAll": "全部 sources",
-    "jobTypeAll": "全部 job types",
-    "eventTypeAll": "全部 event types",
     "onlyLineage": "仅显示具备 lineage 的记录",
     "onlyColumnLineage": "仅显示支持列级血缘的数据集",
     "clearFilters": "清空筛选",
@@ -695,7 +689,6 @@
     "lineageEvents": "Lineage Events 数",
     "coverage": "覆盖情况",
     "datasetScope": "数据集范围",
-    "datasetScopeAll": "全部数据集",
     "internalOnly": "仅 internal",
     "externalOnly": "仅 external",
     "datasetType": "数据集类型",
@@ -765,7 +758,9 @@
     "internal": "Internal",
     "external": "External",
     "yes": "是",
-    "no": "否"
+    "no": "否",
+    "openColumnLineage": "打开列级血缘",
+    "latestRunStatus": "最近运行状态"
   },
   "lineageGraph": {
     "title": "血缘图",
@@ -792,6 +787,12 @@
     "relatedRunsFiltered": "当前仅显示与所选节点和当前选中字​​段相关的已持久化 OpenLineage runs。",
     "noRelatedRuns": "当前所选节点没有关联的已持久化 OpenLineage runs。",
     "refocusGraph": "以该节点重建图谱",
-    "openColumnLineage": "打开列级血缘"
+    "openColumnLineage": "打开列级血缘",
+    "expandDepth": "深度",
+    "depth1": "1 层",
+    "depth2": "2 层",
+    "depth3": "3 层",
+    "upstreamRelations": "上游字段",
+    "downstreamRelations": "下游字段"
   }
 }
