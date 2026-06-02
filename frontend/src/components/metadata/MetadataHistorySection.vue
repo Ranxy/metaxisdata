@@ -8,6 +8,7 @@
 				</div>
 			</div>
 			<Button
+				v-if="activeTab === 'history'"
 				variant="outline"
 				size="sm"
 				:disabled="isLoadingList || isLoadingDetail"
@@ -17,7 +18,14 @@
 			</Button>
 		</div>
 
-		<div
+		<Tabs v-model="activeTab" class="w-full">
+			<TabsList class="mb-3">
+				<TabsTrigger value="history">{{ t("metadataBrowser.historyTab") }}</TabsTrigger>
+				<TabsTrigger value="diff">{{ t("metadataBrowser.versionDiffTab") }}</TabsTrigger>
+			</TabsList>
+
+			<TabsContent value="history">
+				<div
 			v-if="isLoadingList && entries.length === 0"
 			class="rounded-lg border p-8"
 		>
@@ -261,6 +269,15 @@
 				</div>
 			</div>
 		</div>
+			</TabsContent>
+
+			<TabsContent value="diff">
+				<MetadataVersionDiff
+					:guid="props.guid"
+					:entries="entries"
+				/>
+			</TabsContent>
+		</Tabs>
 	</div>
 </template>
 
@@ -270,6 +287,7 @@ import { computed, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { getMetadataHistoryEvent, listMetadataHistory } from "@/api/database";
 import AppLoading from "@/components/common/AppLoading.vue";
+import MetadataVersionDiff from "@/components/metadata/MetadataVersionDiff.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -277,6 +295,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -312,6 +331,7 @@ const props = withDefaults(
 
 const { t, locale } = useI18n();
 
+const activeTab = ref("history");
 const entries = ref<MetadataHistoryTimelineEntry[]>([]);
 const nextPageToken = ref("");
 const selectedEntryKey = ref("");

@@ -4,6 +4,7 @@ import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
 import {
   CreateManualSQLRequestSchema,
   DeleteManualSQLRequestSchema,
+  DiffMetadataRequestSchema,
   GetManualSQLRequestSchema,
   GetMetadataHistoryEventRequestSchema,
   GetMetadataRequestSchema,
@@ -238,4 +239,27 @@ export async function updateManualSQL(options: {
 export async function deleteManualSQL(name: string) {
   const request = create(DeleteManualSQLRequestSchema, { name });
   return await databaseClient.deleteManualSQL(request);
+}
+
+export async function diffMetadata(options: {
+  guid: string;
+  sourceTime?: Date;
+  targetTime?: Date;
+}) {
+  const request = create(DiffMetadataRequestSchema, {
+    guid: options.guid,
+    sourceTime: options.sourceTime
+      ? {
+          seconds: BigInt(Math.floor(options.sourceTime.getTime() / 1000)),
+          nanos: 0,
+        }
+      : undefined,
+    targetTime: options.targetTime
+      ? {
+          seconds: BigInt(Math.floor(options.targetTime.getTime() / 1000)),
+          nanos: 0,
+        }
+      : undefined,
+  });
+  return await databaseClient.diffMetadata(request);
 }

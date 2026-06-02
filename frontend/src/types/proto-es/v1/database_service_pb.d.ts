@@ -895,6 +895,67 @@ export declare type SearchMetadataResult = Message<"metaxisdata.v1.SearchMetadat
 export declare const SearchMetadataResultSchema: GenMessage<SearchMetadataResult>;
 
 /**
+ * @generated from message metaxisdata.v1.DiffMetadataRequest
+ */
+export declare type DiffMetadataRequest = Message<"metaxisdata.v1.DiffMetadataRequest"> & {
+  /**
+   * The GUID of the schema or database whose history versions to compare.
+   * For database-level diff: "instance_1;db1"
+   * For schema-level diff: "instance_1;db1;schema1"
+   *
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+
+  /**
+   * The timestamp of the source (older) version.
+   * If not set, uses the earliest available version.
+   *
+   * @generated from field: google.protobuf.Timestamp source_time = 2;
+   */
+  sourceTime?: Timestamp;
+
+  /**
+   * The timestamp of the target (newer) version.
+   * If not set, uses the current/latest version.
+   *
+   * @generated from field: google.protobuf.Timestamp target_time = 3;
+   */
+  targetTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DiffMetadataRequest.
+ * Use `create(DiffMetadataRequestSchema)` to create a new message.
+ */
+export declare const DiffMetadataRequestSchema: GenMessage<DiffMetadataRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.DiffMetadataResponse
+ */
+export declare type DiffMetadataResponse = Message<"metaxisdata.v1.DiffMetadataResponse"> & {
+  /**
+   * A human-readable summary of the schema changes.
+   *
+   * @generated from field: string diff_summary = 1;
+   */
+  diffSummary: string;
+
+  /**
+   * The full DDL migration SQL from source to target.
+   *
+   * @generated from field: string ddl = 2;
+   */
+  ddl: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DiffMetadataResponse.
+ * Use `create(DiffMetadataResponseSchema)` to create a new message.
+ */
+export declare const DiffMetadataResponseSchema: GenMessage<DiffMetadataResponse>;
+
+/**
  * @generated from message metaxisdata.v1.ManualSQL
  */
 export declare type ManualSQL = Message<"metaxisdata.v1.ManualSQL"> & {
@@ -4045,6 +4106,16 @@ export declare const DatabaseService: GenService<{
     methodKind: "unary";
     input: typeof GetSchemaStringRequestSchema;
     output: typeof MetadataSchemaStringSchema;
+  },
+  /**
+   * Computes the schema diff and migration DDL between two metadata versions.
+   *
+   * @generated from rpc metaxisdata.v1.DatabaseService.DiffMetadata
+   */
+  diffMetadata: {
+    methodKind: "unary";
+    input: typeof DiffMetadataRequestSchema;
+    output: typeof DiffMetadataResponseSchema;
   },
   /**
    * @generated from rpc metaxisdata.v1.DatabaseService.CreateManualSQL
