@@ -35,6 +35,30 @@ type GetDefinitionContext struct {
 	MultiFileFormat bool
 }
 
+// generateMigration is the function type for generating DDL migration from a diff.
+type generateMigration func(*MetadataDiff) (string, error)
+
+var generateMigrations = make(map[storepb.Engine]generateMigration)
+
+// RegisterGenerateMigration registers a generate migration function for an engine.
+func RegisterGenerateMigration(engine storepb.Engine, f generateMigration) {
+	mux.Lock()
+	defer mux.Unlock()
+	if _, dup := generateMigrations[engine]; dup {
+		panic(fmt.Sprintf("Register called twice %s", engine))
+	}
+	generateMigrations[engine] = f
+}
+
+// GenerateMigration generates DDL migration SQL from a MetadataDiff for the given engine.
+func GenerateMigration(engine storepb.Engine, diff *MetadataDiff) (string, error) {
+	f, ok := generateMigrations[engine]
+	if !ok {
+		return "", errors.Errorf("engine %s is not supported", engine)
+	}
+	return f(diff)
+}
+
 // File represents a single file in a multi-file schema output.
 type File struct {
 	// Name is the file path or name (e.g., "schemas/public/tables/users.sql")
