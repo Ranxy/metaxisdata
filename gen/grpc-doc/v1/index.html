@@ -577,6 +577,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.DiffMetadataRequest"><span class="badge">M</span>DiffMetadataRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DiffMetadataResponse"><span class="badge">M</span>DiffMetadataResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.DimensionalConfig"><span class="badge">M</span>DimensionalConfig</a>
                 </li>
               
@@ -5157,6 +5165,79 @@ Event triggers are database-level objects, not schema-scoped. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.DiffMetadataRequest">DiffMetadataRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The GUID of the schema or database whose history versions to compare.
+For database-level diff: &#34;instance_1;db1&#34;
+For schema-level diff: &#34;instance_1;db1;schema1&#34; </p></td>
+                </tr>
+              
+                <tr>
+                  <td>source_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>The timestamp of the source (older) version.
+If not set, uses the earliest available version. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>The timestamp of the target (newer) version.
+If not set, uses the current/latest version. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DiffMetadataResponse">DiffMetadataResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>diff_summary</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A human-readable summary of the schema changes. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>ddl</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The full DDL migration SQL from source to target. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.DimensionalConfig">DimensionalConfig</h3>
         <p>DimensionalConfig defines dimensional and constraint parameters for spatial indexes.</p>
 
@@ -9430,6 +9511,13 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
               </tr>
             
               <tr>
+                <td>DiffMetadata</td>
+                <td><a href="#metaxisdata.v1.DiffMetadataRequest">DiffMetadataRequest</a></td>
+                <td><a href="#metaxisdata.v1.DiffMetadataResponse">DiffMetadataResponse</a></td>
+                <td><p>Computes the schema diff and migration DDL between two metadata versions.</p></td>
+              </tr>
+            
+              <tr>
                 <td>CreateManualSQL</td>
                 <td><a href="#metaxisdata.v1.CreateManualSQLRequest">CreateManualSQLRequest</a></td>
                 <td><a href="#metaxisdata.v1.ManualSQL">ManualSQL</a></td>
@@ -9575,6 +9663,16 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
                 <td>GetSchemaString</td>
                 <td>GET</td>
                 <td>/v1/metadata/schemaString</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DiffMetadata</td>
+                <td>GET</td>
+                <td>/v1/metadata/diff</td>
                 <td></td>
               </tr>
               
@@ -11452,6 +11550,13 @@ If lineage_type is not specified, both source and target lineage will be returne
               
                 <tr>
                   <td>airflow_dag_url</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>latest_event_type</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>

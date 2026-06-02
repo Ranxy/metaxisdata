@@ -1135,6 +1135,50 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/metadata/diff:
+        get:
+            tags:
+                - DatabaseService
+            description: Computes the schema diff and migration DDL between two metadata versions.
+            operationId: DatabaseService_DiffMetadata
+            parameters:
+                - name: guid
+                  in: query
+                  description: |-
+                    The GUID of the schema or database whose history versions to compare.
+                     For database-level diff: "instance_1;db1"
+                     For schema-level diff: "instance_1;db1;schema1"
+                  schema:
+                    type: string
+                - name: sourceTime
+                  in: query
+                  description: |-
+                    The timestamp of the source (older) version.
+                     If not set, uses the earliest available version.
+                  schema:
+                    type: string
+                    format: date-time
+                - name: targetTime
+                  in: query
+                  description: |-
+                    The timestamp of the target (newer) version.
+                     If not set, uses the current/latest version.
+                  schema:
+                    type: string
+                    format: date-time
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DiffMetadataResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/metadata/history:
         get:
             tags:
@@ -2751,6 +2795,15 @@ components:
                 table:
                     type: string
                     description: The table is the name of a reference table.
+        DiffMetadataResponse:
+            type: object
+            properties:
+                diffSummary:
+                    type: string
+                    description: A human-readable summary of the schema changes.
+                ddl:
+                    type: string
+                    description: The full DDL migration SQL from source to target.
         DimensionalConfig:
             type: object
             properties:
@@ -4162,6 +4215,8 @@ components:
                     type: string
                     format: date-time
                 airflowDagUrl:
+                    type: string
+                latestEventType:
                     type: string
         PackageMetadata:
             type: object

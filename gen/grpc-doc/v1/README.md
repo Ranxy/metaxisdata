@@ -108,6 +108,8 @@
     - [DeleteManualSQLRequest](#metaxisdata-v1-DeleteManualSQLRequest)
     - [DependencyColumn](#metaxisdata-v1-DependencyColumn)
     - [DependencyTable](#metaxisdata-v1-DependencyTable)
+    - [DiffMetadataRequest](#metaxisdata-v1-DiffMetadataRequest)
+    - [DiffMetadataResponse](#metaxisdata-v1-DiffMetadataResponse)
     - [DimensionalConfig](#metaxisdata-v1-DimensionalConfig)
     - [EnumTypeMetadata](#metaxisdata-v1-EnumTypeMetadata)
     - [EventMetadata](#metaxisdata-v1-EventMetadata)
@@ -1742,6 +1744,39 @@ DependencyColumn is the metadata for dependency columns.
 
 
 
+<a name="metaxisdata-v1-DiffMetadataRequest"></a>
+
+### DiffMetadataRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  | The GUID of the schema or database whose history versions to compare. For database-level diff: &#34;instance_1;db1&#34; For schema-level diff: &#34;instance_1;db1;schema1&#34; |
+| source_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The timestamp of the source (older) version. If not set, uses the earliest available version. |
+| target_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The timestamp of the target (newer) version. If not set, uses the current/latest version. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DiffMetadataResponse"></a>
+
+### DiffMetadataResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| diff_summary | [string](#string) |  | A human-readable summary of the schema changes. |
+| ddl | [string](#string) |  | The full DDL migration SQL from source to target. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-DimensionalConfig"></a>
 
 ### DimensionalConfig
@@ -3213,6 +3248,7 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | GetMetadataHistoryEvent | [GetMetadataHistoryEventRequest](#metaxisdata-v1-GetMetadataHistoryEventRequest) | [MetadataHistoryEvent](#metaxisdata-v1-MetadataHistoryEvent) |  |
 | SearchMetadata | [SearchMetadataRequest](#metaxisdata-v1-SearchMetadataRequest) | [SearchMetadataResponse](#metaxisdata-v1-SearchMetadataResponse) |  |
 | GetSchemaString | [GetSchemaStringRequest](#metaxisdata-v1-GetSchemaStringRequest) | [MetadataSchemaString](#metaxisdata-v1-MetadataSchemaString) | Generates schema DDL for a database object. |
+| DiffMetadata | [DiffMetadataRequest](#metaxisdata-v1-DiffMetadataRequest) | [DiffMetadataResponse](#metaxisdata-v1-DiffMetadataResponse) | Computes the schema diff and migration DDL between two metadata versions. |
 | CreateManualSQL | [CreateManualSQLRequest](#metaxisdata-v1-CreateManualSQLRequest) | [ManualSQL](#metaxisdata-v1-ManualSQL) |  |
 | GetManualSQL | [GetManualSQLRequest](#metaxisdata-v1-GetManualSQLRequest) | [ManualSQL](#metaxisdata-v1-ManualSQL) |  |
 | ListManualSQL | [ListManualSQLRequest](#metaxisdata-v1-ListManualSQLRequest) | [ListManualSQLResponse](#metaxisdata-v1-ListManualSQLResponse) |  |
@@ -3882,6 +3918,7 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | airflow_dag_url | [string](#string) |  |  |
+| latest_event_type | [string](#string) |  |  |
 
 
 
