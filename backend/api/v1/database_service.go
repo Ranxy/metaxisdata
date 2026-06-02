@@ -3,8 +3,10 @@ package v1
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/google/cel-go/cel"
@@ -904,6 +906,273 @@ func getListDatabaseFilter(filter string) (*store.ListResourceFilter, error) {
 		Args:  positionalArgs,
 		Where: "(" + where + ")",
 	}, nil
+}
+
+// DiffMetadata computes the schema diff and migration DDL between two metadata versions.
+func (s *DatabaseService) DiffMetadata(ctx context.Context, req *connect.Request[v1pb.DiffMetadataRequest]) (*connect.Response[v1pb.DiffMetadataResponse], error) {
+	guid := req.Msg.GetGuid()
+	if strings.TrimSpace(guid) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("guid is required"))
+	}
+
+	// 1. Get instance engine from GUID
+	instanceGUID, ok := common.GetInstaceFromGUID(guid)
+	if !ok {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid guid %q", guid))
+	}
+	instance, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceGUID})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get instance %q", instanceGUID))
+	}
+	if instance == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q not found", instanceGUID))
+	}
+	engine := instance.Metadata.GetEngine()
+
+	// 2. Rebuild DatabaseSchemaMetadata at source and target times
+	sourceMeta, err := s.buildDatabaseSchemaAtTime(ctx, guid, req.Msg.GetSourceTime())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to build source schema"))
+	}
+	targetMeta, err := s.buildDatabaseSchemaAtTime(ctx, guid, req.Msg.GetTargetTime())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to build target schema"))
+	}
+
+	// 3. Compute diff
+	diff, err := schema.GetDatabaseSchemaDiff(engine, sourceMeta, targetMeta)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to compute schema diff"))
+	}
+	if diff == nil {
+		return connect.NewResponse(&v1pb.DiffMetadataResponse{
+			DiffSummary: "No changes detected.",
+			Ddl:         "",
+		}), nil
+	}
+
+	// 4. Generate DDL
+	ddl, err := schema.GenerateMigration(engine, diff)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to generate migration DDL"))
+	}
+
+	// 5. Build summary
+	summary := buildDiffSummary(diff)
+
+	return connect.NewResponse(&v1pb.DiffMetadataResponse{
+		DiffSummary: summary,
+		Ddl:         ddl,
+	}), nil
+}
+
+// buildDatabaseSchemaAtTime reconstructs a full DatabaseSchemaMetadata from history at a given time.
+func (s *DatabaseService) buildDatabaseSchemaAtTime(ctx context.Context, guid string, asOf *timestamppb.Timestamp) (*storepb.DatabaseSchemaMetadata, error) {
+	var asOfTime time.Time
+	if asOf != nil {
+		asOfTime = asOf.AsTime()
+	} else {
+		asOfTime = time.Now()
+	}
+
+	// Determine the scope: database-level or schema-level
+	parts := strings.Split(guid, common.MetaGUIDSplit)
+	if len(parts) < 2 {
+		return nil, errors.Errorf("guid %q is not deep enough (need at least instance;database)", guid)
+	}
+
+	result := &storepb.DatabaseSchemaMetadata{
+		Name: parts[1], // database name
+	}
+
+	// Fetch schemas valid at asOfTime
+	schemaObjects, err := s.store.ListMetaRegistryResourceAsOf(ctx, &store.FindMetaRegistryResourceMessage{
+		GUIDPrefix: &guid,
+		ObjectType: storepb.MetaType_SCHEMA.Enum(),
+	}, asOfTime)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, schemaObj := range schemaObjects {
+		schemaMeta := schemaObj.Metadata.GetSchemaMetadata()
+		if schemaMeta == nil {
+			continue
+		}
+
+		// Rebuild this schema's contents
+		schemaGUID := schemaObj.GUID
+		rebuilt := s.rebuildSchemaContents(ctx, schemaGUID, schemaMeta, asOfTime)
+		result.Schemas = append(result.Schemas, rebuilt)
+	}
+
+	// If no schemas found, try database-level reconstruction (for MySQL which has no schema)
+	if len(result.Schemas) == 0 {
+		// Use the guid directly to get tables at schema level
+		dbMeta, err := s.rebuildDatabaseObjects(ctx, guid, asOfTime)
+		if err != nil {
+			return nil, err
+		}
+		if dbMeta != nil {
+			result.Schemas = append(result.Schemas, dbMeta)
+		}
+	}
+
+	return result, nil
+}
+
+// rebuildDatabaseObjects fetches all objects under a database GUID and returns a SchemaMetadata.
+func (s *DatabaseService) rebuildDatabaseObjects(ctx context.Context, guid string, asOfTime time.Time) (*storepb.SchemaMetadata, error) {
+	result := &storepb.SchemaMetadata{Name: ""}
+
+	// Fetch tables
+	tableType := storepb.MetaType_TABLE
+	tables, err := s.store.ListMetaRegistryResourceAsOf(ctx, &store.FindMetaRegistryResourceMessage{
+		GUIDPrefix: &guid,
+		ObjectType: &tableType,
+	}, asOfTime)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, tbl := range tables {
+		tableMeta := tbl.Metadata.GetTableMetadata()
+		if tableMeta == nil {
+			continue
+		}
+		result.Tables = append(result.Tables, tableMeta)
+	}
+
+	// Fetch views
+	viewType := storepb.MetaType_VIEW
+	views, err := s.store.ListMetaRegistryResourceAsOf(ctx, &store.FindMetaRegistryResourceMessage{
+		GUIDPrefix: &guid,
+		ObjectType: &viewType,
+	}, asOfTime)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range views {
+		if vm := v.Metadata.GetViewMetadata(); vm != nil {
+			result.Views = append(result.Views, vm)
+		}
+	}
+
+	// Fetch functions
+	funcType := storepb.MetaType_FUNCTION
+	funcs, err := s.store.ListMetaRegistryResourceAsOf(ctx, &store.FindMetaRegistryResourceMessage{
+		GUIDPrefix: &guid,
+		ObjectType: &funcType,
+	}, asOfTime)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range funcs {
+		if fm := f.Metadata.GetFunctionMetadata(); fm != nil {
+			result.Functions = append(result.Functions, fm)
+		}
+	}
+
+	// Fetch procedures
+	procType := storepb.MetaType_PROCEDURE
+	procs, err := s.store.ListMetaRegistryResourceAsOf(ctx, &store.FindMetaRegistryResourceMessage{
+		GUIDPrefix: &guid,
+		ObjectType: &procType,
+	}, asOfTime)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range procs {
+		if pm := p.Metadata.GetProcedureMetadata(); pm != nil {
+			result.Procedures = append(result.Procedures, pm)
+		}
+	}
+
+	return result, nil
+}
+
+// rebuildSchemaContents fetches all objects under a schema GUID and returns the rebuilt SchemaMetadata.
+func (s *DatabaseService) rebuildSchemaContents(ctx context.Context, schemaGUID string, schemaMeta *storepb.SchemaMetadata, asOfTime time.Time) *storepb.SchemaMetadata {
+	result, err := s.rebuildDatabaseObjects(ctx, schemaGUID, asOfTime)
+	if err != nil {
+		slog.Warn("failed to rebuild schema contents", "schema", schemaGUID, "error", err)
+		return schemaMeta // fall back to the stored metadata
+	}
+	result.Name = schemaMeta.Name
+	return result
+}
+
+// buildDiffSummary creates a human-readable summary from a MetadataDiff.
+func buildDiffSummary(diff *schema.MetadataDiff) string {
+	parts := make([]string, 0)
+
+	countCreate := 0
+	countDrop := 0
+	countAlter := 0
+	for _, tc := range diff.TableChanges {
+		switch tc.Action {
+		case schema.MetadataDiffActionCreate:
+			countCreate++
+		case schema.MetadataDiffActionDrop:
+			countDrop++
+		case schema.MetadataDiffActionAlter:
+			countAlter++
+		default:
+		}
+	}
+	if countCreate+countDrop+countAlter > 0 {
+		parts = append(parts, fmt.Sprintf("Tables: +%d created, ~%d modified, -%d dropped", countCreate, countAlter, countDrop))
+	}
+
+	viewCreate := 0
+	viewDrop := 0
+	for _, vc := range diff.ViewChanges {
+		switch vc.Action {
+		case schema.MetadataDiffActionCreate:
+			viewCreate++
+		case schema.MetadataDiffActionDrop:
+			viewDrop++
+		default:
+		}
+	}
+	if viewCreate+viewDrop > 0 {
+		parts = append(parts, fmt.Sprintf("Views: +%d created, -%d dropped", viewCreate, viewDrop))
+	}
+
+	funcCreate := 0
+	funcDrop := 0
+	for _, fc := range diff.FunctionChanges {
+		switch fc.Action {
+		case schema.MetadataDiffActionCreate:
+			funcCreate++
+		case schema.MetadataDiffActionDrop:
+			funcDrop++
+		default:
+		}
+	}
+	if funcCreate+funcDrop > 0 {
+		parts = append(parts, fmt.Sprintf("Functions: +%d created, -%d dropped", funcCreate, funcDrop))
+	}
+
+	schemaCreate := 0
+	schemaDrop := 0
+	for _, sc := range diff.SchemaChanges {
+		switch sc.Action {
+		case schema.MetadataDiffActionCreate:
+			schemaCreate++
+		case schema.MetadataDiffActionDrop:
+			schemaDrop++
+		default:
+		}
+	}
+	if schemaCreate+schemaDrop > 0 {
+		parts = append(parts, fmt.Sprintf("Schemas: +%d created, -%d dropped", schemaCreate, schemaDrop))
+	}
+
+	if len(parts) == 0 {
+		return "No changes detected."
+	}
+	return strings.Join(parts, "\n")
 }
 
 func (s *DatabaseService) convertToDatabase(ctx context.Context, database *store.DatabaseMessage) (*v1pb.Database, error) {

@@ -61,6 +61,9 @@ const (
 	// DatabaseServiceGetSchemaStringProcedure is the fully-qualified name of the DatabaseService's
 	// GetSchemaString RPC.
 	DatabaseServiceGetSchemaStringProcedure = "/metaxisdata.v1.DatabaseService/GetSchemaString"
+	// DatabaseServiceDiffMetadataProcedure is the fully-qualified name of the DatabaseService's
+	// DiffMetadata RPC.
+	DatabaseServiceDiffMetadataProcedure = "/metaxisdata.v1.DatabaseService/DiffMetadata"
 	// DatabaseServiceCreateManualSQLProcedure is the fully-qualified name of the DatabaseService's
 	// CreateManualSQL RPC.
 	DatabaseServiceCreateManualSQLProcedure = "/metaxisdata.v1.DatabaseService/CreateManualSQL"
@@ -93,6 +96,8 @@ type DatabaseServiceClient interface {
 	SearchMetadata(context.Context, *connect.Request[v1.SearchMetadataRequest]) (*connect.Response[v1.SearchMetadataResponse], error)
 	// Generates schema DDL for a database object.
 	GetSchemaString(context.Context, *connect.Request[v1.GetSchemaStringRequest]) (*connect.Response[v1.MetadataSchemaString], error)
+	// Computes the schema diff and migration DDL between two metadata versions.
+	DiffMetadata(context.Context, *connect.Request[v1.DiffMetadataRequest]) (*connect.Response[v1.DiffMetadataResponse], error)
 	CreateManualSQL(context.Context, *connect.Request[v1.CreateManualSQLRequest]) (*connect.Response[v1.ManualSQL], error)
 	GetManualSQL(context.Context, *connect.Request[v1.GetManualSQLRequest]) (*connect.Response[v1.ManualSQL], error)
 	ListManualSQL(context.Context, *connect.Request[v1.ListManualSQLRequest]) (*connect.Response[v1.ListManualSQLResponse], error)
@@ -166,6 +171,12 @@ func NewDatabaseServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(databaseServiceMethods.ByName("GetSchemaString")),
 			connect.WithClientOptions(opts...),
 		),
+		diffMetadata: connect.NewClient[v1.DiffMetadataRequest, v1.DiffMetadataResponse](
+			httpClient,
+			baseURL+DatabaseServiceDiffMetadataProcedure,
+			connect.WithSchema(databaseServiceMethods.ByName("DiffMetadata")),
+			connect.WithClientOptions(opts...),
+		),
 		createManualSQL: connect.NewClient[v1.CreateManualSQLRequest, v1.ManualSQL](
 			httpClient,
 			baseURL+DatabaseServiceCreateManualSQLProcedure,
@@ -216,6 +227,7 @@ type databaseServiceClient struct {
 	getMetadataHistoryEvent *connect.Client[v1.GetMetadataHistoryEventRequest, v1.MetadataHistoryEvent]
 	searchMetadata          *connect.Client[v1.SearchMetadataRequest, v1.SearchMetadataResponse]
 	getSchemaString         *connect.Client[v1.GetSchemaStringRequest, v1.MetadataSchemaString]
+	diffMetadata            *connect.Client[v1.DiffMetadataRequest, v1.DiffMetadataResponse]
 	createManualSQL         *connect.Client[v1.CreateManualSQLRequest, v1.ManualSQL]
 	getManualSQL            *connect.Client[v1.GetManualSQLRequest, v1.ManualSQL]
 	listManualSQL           *connect.Client[v1.ListManualSQLRequest, v1.ListManualSQLResponse]
@@ -269,6 +281,11 @@ func (c *databaseServiceClient) GetSchemaString(ctx context.Context, req *connec
 	return c.getSchemaString.CallUnary(ctx, req)
 }
 
+// DiffMetadata calls metaxisdata.v1.DatabaseService.DiffMetadata.
+func (c *databaseServiceClient) DiffMetadata(ctx context.Context, req *connect.Request[v1.DiffMetadataRequest]) (*connect.Response[v1.DiffMetadataResponse], error) {
+	return c.diffMetadata.CallUnary(ctx, req)
+}
+
 // CreateManualSQL calls metaxisdata.v1.DatabaseService.CreateManualSQL.
 func (c *databaseServiceClient) CreateManualSQL(ctx context.Context, req *connect.Request[v1.CreateManualSQLRequest]) (*connect.Response[v1.ManualSQL], error) {
 	return c.createManualSQL.CallUnary(ctx, req)
@@ -311,6 +328,8 @@ type DatabaseServiceHandler interface {
 	SearchMetadata(context.Context, *connect.Request[v1.SearchMetadataRequest]) (*connect.Response[v1.SearchMetadataResponse], error)
 	// Generates schema DDL for a database object.
 	GetSchemaString(context.Context, *connect.Request[v1.GetSchemaStringRequest]) (*connect.Response[v1.MetadataSchemaString], error)
+	// Computes the schema diff and migration DDL between two metadata versions.
+	DiffMetadata(context.Context, *connect.Request[v1.DiffMetadataRequest]) (*connect.Response[v1.DiffMetadataResponse], error)
 	CreateManualSQL(context.Context, *connect.Request[v1.CreateManualSQLRequest]) (*connect.Response[v1.ManualSQL], error)
 	GetManualSQL(context.Context, *connect.Request[v1.GetManualSQLRequest]) (*connect.Response[v1.ManualSQL], error)
 	ListManualSQL(context.Context, *connect.Request[v1.ListManualSQLRequest]) (*connect.Response[v1.ListManualSQLResponse], error)
@@ -380,6 +399,12 @@ func NewDatabaseServiceHandler(svc DatabaseServiceHandler, opts ...connect.Handl
 		connect.WithSchema(databaseServiceMethods.ByName("GetSchemaString")),
 		connect.WithHandlerOptions(opts...),
 	)
+	databaseServiceDiffMetadataHandler := connect.NewUnaryHandler(
+		DatabaseServiceDiffMetadataProcedure,
+		svc.DiffMetadata,
+		connect.WithSchema(databaseServiceMethods.ByName("DiffMetadata")),
+		connect.WithHandlerOptions(opts...),
+	)
 	databaseServiceCreateManualSQLHandler := connect.NewUnaryHandler(
 		DatabaseServiceCreateManualSQLProcedure,
 		svc.CreateManualSQL,
@@ -436,6 +461,8 @@ func NewDatabaseServiceHandler(svc DatabaseServiceHandler, opts ...connect.Handl
 			databaseServiceSearchMetadataHandler.ServeHTTP(w, r)
 		case DatabaseServiceGetSchemaStringProcedure:
 			databaseServiceGetSchemaStringHandler.ServeHTTP(w, r)
+		case DatabaseServiceDiffMetadataProcedure:
+			databaseServiceDiffMetadataHandler.ServeHTTP(w, r)
 		case DatabaseServiceCreateManualSQLProcedure:
 			databaseServiceCreateManualSQLHandler.ServeHTTP(w, r)
 		case DatabaseServiceGetManualSQLProcedure:
@@ -491,6 +518,10 @@ func (UnimplementedDatabaseServiceHandler) SearchMetadata(context.Context, *conn
 
 func (UnimplementedDatabaseServiceHandler) GetSchemaString(context.Context, *connect.Request[v1.GetSchemaStringRequest]) (*connect.Response[v1.MetadataSchemaString], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.GetSchemaString is not implemented"))
+}
+
+func (UnimplementedDatabaseServiceHandler) DiffMetadata(context.Context, *connect.Request[v1.DiffMetadataRequest]) (*connect.Response[v1.DiffMetadataResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DatabaseService.DiffMetadata is not implemented"))
 }
 
 func (UnimplementedDatabaseServiceHandler) CreateManualSQL(context.Context, *connect.Request[v1.CreateManualSQLRequest]) (*connect.Response[v1.ManualSQL], error) {

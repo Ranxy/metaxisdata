@@ -29,6 +29,7 @@ const (
 	DatabaseService_GetMetadataHistoryEvent_FullMethodName = "/metaxisdata.v1.DatabaseService/GetMetadataHistoryEvent"
 	DatabaseService_SearchMetadata_FullMethodName          = "/metaxisdata.v1.DatabaseService/SearchMetadata"
 	DatabaseService_GetSchemaString_FullMethodName         = "/metaxisdata.v1.DatabaseService/GetSchemaString"
+	DatabaseService_DiffMetadata_FullMethodName            = "/metaxisdata.v1.DatabaseService/DiffMetadata"
 	DatabaseService_CreateManualSQL_FullMethodName         = "/metaxisdata.v1.DatabaseService/CreateManualSQL"
 	DatabaseService_GetManualSQL_FullMethodName            = "/metaxisdata.v1.DatabaseService/GetManualSQL"
 	DatabaseService_ListManualSQL_FullMethodName           = "/metaxisdata.v1.DatabaseService/ListManualSQL"
@@ -51,6 +52,8 @@ type DatabaseServiceClient interface {
 	SearchMetadata(ctx context.Context, in *SearchMetadataRequest, opts ...grpc.CallOption) (*SearchMetadataResponse, error)
 	// Generates schema DDL for a database object.
 	GetSchemaString(ctx context.Context, in *GetSchemaStringRequest, opts ...grpc.CallOption) (*MetadataSchemaString, error)
+	// Computes the schema diff and migration DDL between two metadata versions.
+	DiffMetadata(ctx context.Context, in *DiffMetadataRequest, opts ...grpc.CallOption) (*DiffMetadataResponse, error)
 	CreateManualSQL(ctx context.Context, in *CreateManualSQLRequest, opts ...grpc.CallOption) (*ManualSQL, error)
 	GetManualSQL(ctx context.Context, in *GetManualSQLRequest, opts ...grpc.CallOption) (*ManualSQL, error)
 	ListManualSQL(ctx context.Context, in *ListManualSQLRequest, opts ...grpc.CallOption) (*ListManualSQLResponse, error)
@@ -157,6 +160,16 @@ func (c *databaseServiceClient) GetSchemaString(ctx context.Context, in *GetSche
 	return out, nil
 }
 
+func (c *databaseServiceClient) DiffMetadata(ctx context.Context, in *DiffMetadataRequest, opts ...grpc.CallOption) (*DiffMetadataResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DiffMetadataResponse)
+	err := c.cc.Invoke(ctx, DatabaseService_DiffMetadata_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *databaseServiceClient) CreateManualSQL(ctx context.Context, in *CreateManualSQLRequest, opts ...grpc.CallOption) (*ManualSQL, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ManualSQL)
@@ -231,6 +244,8 @@ type DatabaseServiceServer interface {
 	SearchMetadata(context.Context, *SearchMetadataRequest) (*SearchMetadataResponse, error)
 	// Generates schema DDL for a database object.
 	GetSchemaString(context.Context, *GetSchemaStringRequest) (*MetadataSchemaString, error)
+	// Computes the schema diff and migration DDL between two metadata versions.
+	DiffMetadata(context.Context, *DiffMetadataRequest) (*DiffMetadataResponse, error)
 	CreateManualSQL(context.Context, *CreateManualSQLRequest) (*ManualSQL, error)
 	GetManualSQL(context.Context, *GetManualSQLRequest) (*ManualSQL, error)
 	ListManualSQL(context.Context, *ListManualSQLRequest) (*ListManualSQLResponse, error)
@@ -273,6 +288,9 @@ func (UnimplementedDatabaseServiceServer) SearchMetadata(context.Context, *Searc
 }
 func (UnimplementedDatabaseServiceServer) GetSchemaString(context.Context, *GetSchemaStringRequest) (*MetadataSchemaString, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSchemaString not implemented")
+}
+func (UnimplementedDatabaseServiceServer) DiffMetadata(context.Context, *DiffMetadataRequest) (*DiffMetadataResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DiffMetadata not implemented")
 }
 func (UnimplementedDatabaseServiceServer) CreateManualSQL(context.Context, *CreateManualSQLRequest) (*ManualSQL, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateManualSQL not implemented")
@@ -475,6 +493,24 @@ func _DatabaseService_GetSchemaString_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DatabaseService_DiffMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DiffMetadataRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServiceServer).DiffMetadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabaseService_DiffMetadata_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServiceServer).DiffMetadata(ctx, req.(*DiffMetadataRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DatabaseService_CreateManualSQL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateManualSQLRequest)
 	if err := dec(in); err != nil {
@@ -625,6 +661,10 @@ var DatabaseService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSchemaString",
 			Handler:    _DatabaseService_GetSchemaString_Handler,
+		},
+		{
+			MethodName: "DiffMetadata",
+			Handler:    _DatabaseService_DiffMetadata_Handler,
 		},
 		{
 			MethodName: "CreateManualSQL",

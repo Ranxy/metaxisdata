@@ -59,6 +59,11 @@ service DatabaseService {
     option (google.api.http) = {get: "/v1/metadata/schemaString"};
   }
 
+  // Computes the schema diff and migration DDL between two metadata versions.
+  rpc DiffMetadata(DiffMetadataRequest) returns (DiffMetadataResponse) {
+    option (google.api.http) = {get: "/v1/metadata/diff"};
+  }
+
   rpc CreateManualSQL(CreateManualSQLRequest) returns (ManualSQL) {
     option (google.api.http) = {
       post: "/v1/{parent=instances/*/databases/*}/manualSqls"
@@ -474,6 +479,32 @@ message SearchMetadataResult {
 
   // The metadata content.
   StoredMetadata metadata = 3;
+}
+
+message DiffMetadataRequest {
+  // The GUID of the schema or database whose history versions to compare.
+  // For database-level diff: "instance_1;db1"
+  // For schema-level diff: "instance_1;db1;schema1"
+  string guid = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/DatabaseMetadata"}
+  ];
+
+  // The timestamp of the source (older) version.
+  // If not set, uses the earliest available version.
+  google.protobuf.Timestamp source_time = 2;
+
+  // The timestamp of the target (newer) version.
+  // If not set, uses the current/latest version.
+  google.protobuf.Timestamp target_time = 3;
+}
+
+message DiffMetadataResponse {
+  // A human-readable summary of the schema changes.
+  string diff_summary = 1;
+
+  // The full DDL migration SQL from source to target.
+  string ddl = 2;
 }
 
 message ManualSQL {
