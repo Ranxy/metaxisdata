@@ -328,7 +328,26 @@
     "scopeStepInstance": "实例",
     "scopeStepDatabase": "数据库（可选）",
     "scopeStepSchema": "模式（可选）",
-    "done": "确定"
+    "done": "确定",
+
+    "historyTab": "历史",
+    "versionDiffTab": "版本对比",
+    "versionDiffTitle": "版本对比",
+    "versionDiffDescription": "对比两个版本并生成迁移 DDL。",
+    "sourceVersion": "源版本（旧）",
+    "selectSourceVersion": "选择源版本...",
+    "targetVersion": "目标版本（新）",
+    "selectTargetVersion": "选择目标版本...",
+    "compareVersions": "对比版本",
+    "comparing": "对比中...",
+    "diffSummary": "差异摘要",
+    "migrationDdl": "迁移 DDL",
+    "copyDdl": "复制 DDL",
+    "copied": "已复制！",
+    "created": "已创建",
+    "deleted": "已删除",
+    "updated": "已更新",
+    "diffError": "计算差异失败"
   },
   "header": {
     "profile": "个人设置",

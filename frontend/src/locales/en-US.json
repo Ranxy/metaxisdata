@@ -328,7 +328,26 @@
     "scopeStepInstance": "Instance",
     "scopeStepDatabase": "Database (optional)",
     "scopeStepSchema": "Schema (optional)",
-    "done": "Done"
+    "done": "Done",
+
+    "historyTab": "History",
+    "versionDiffTab": "Version Diff",
+    "versionDiffTitle": "Version Diff",
+    "versionDiffDescription": "Compare two versions and generate the migration DDL.",
+    "sourceVersion": "Source Version (older)",
+    "selectSourceVersion": "Select source version...",
+    "targetVersion": "Target Version (newer)",
+    "selectTargetVersion": "Select target version...",
+    "compareVersions": "Compare Versions",
+    "comparing": "Comparing...",
+    "diffSummary": "Diff Summary",
+    "migrationDdl": "Migration DDL",
+    "copyDdl": "Copy DDL",
+    "copied": "Copied!",
+    "created": "Created",
+    "deleted": "Deleted",
+    "updated": "Updated",
+    "diffError": "Failed to compute diff"
   },
   "header": {
     "profile": "Profile",
