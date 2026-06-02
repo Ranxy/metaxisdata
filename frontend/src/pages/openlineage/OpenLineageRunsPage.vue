@@ -7,49 +7,46 @@
 
     <div class="grid gap-3 md:grid-cols-3">
       <Card>
-        <CardContent class="px-3 py-2">
-          <div class="text-sm text-muted-foreground">{{ t("openlineage.visibleJobs") }}</div>
-          <div class="mt-1 text-xl font-semibold">{{ filteredTasks.length }}</div>
+        <CardContent class="flex items-center justify-between px-3 py-2">
+          <span class="text-sm text-muted-foreground">{{ t("openlineage.visibleJobs") }}</span>
+          <span class="text-xl font-semibold">{{ filteredTasks.length }}</span>
         </CardContent>
       </Card>
       <Card>
-        <CardContent class="px-3 py-2">
-          <div class="text-sm text-muted-foreground">{{ t("openlineage.lineageReadyJobs") }}</div>
-          <div class="mt-1 text-xl font-semibold">{{ lineageReadyCount }}</div>
+        <CardContent class="flex items-center justify-between px-3 py-2">
+          <span class="text-sm text-muted-foreground">{{ t("openlineage.lineageReadyJobs") }}</span>
+          <span class="text-xl font-semibold">{{ lineageReadyCount }}</span>
         </CardContent>
       </Card>
       <Card>
-        <CardContent class="px-3 py-2">
-          <div class="text-sm text-muted-foreground">{{ t("openlineage.activeNamespaces") }}</div>
-          <div class="mt-1 text-xl font-semibold">{{ namespaceCount }}</div>
+        <CardContent class="flex items-center justify-between px-3 py-2">
+          <span class="text-sm text-muted-foreground">{{ t("openlineage.activeNamespaces") }}</span>
+          <span class="text-xl font-semibold">{{ namespaceCount }}</span>
         </CardContent>
       </Card>
     </div>
 
-    <Card>
-      <CardContent class="space-y-3 pt-6">
-        <AdvancedSearchBar
-          :filter-categories="filterCategories"
-          :search-placeholder="t('openlineage.searchJobsPlaceholder')"
-          @update:filters="handleFiltersUpdate"
+    <div class="flex flex-wrap items-center gap-3">
+      <AdvancedSearchBar
+        class="min-w-0 flex-1"
+        :filter-categories="filterCategories"
+        :search-placeholder="t('openlineage.searchJobsPlaceholder')"
+        @update:filters="handleFiltersUpdate"
+      />
+      <div class="flex items-center gap-2">
+        <Checkbox
+          id="jobs-lineage-only"
+          :checked="lineageOnly"
+          @update:checked="lineageOnly = $event === true"
         />
-        <div class="flex items-center gap-4">
-          <div class="flex items-center gap-2">
-            <Checkbox
-              id="jobs-lineage-only"
-              :checked="lineageOnly"
-              @update:checked="lineageOnly = $event === true"
-            />
-            <Label for="jobs-lineage-only" class="cursor-pointer text-sm">
-              {{ t("openlineage.onlyLineage") }}
-            </Label>
-          </div>
-          <Button variant="outline" size="sm" @click="resetFilters">
-            {{ t("openlineage.clearFilters") }}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+        <Label for="jobs-lineage-only" class="cursor-pointer text-sm whitespace-nowrap">
+          {{ t("openlineage.onlyLineage") }}
+        </Label>
+      </div>
+      <Button variant="outline" size="sm" @click="resetFilters">
+        {{ t("openlineage.clearFilters") }}
+      </Button>
+    </div>
 
     <Card>
       <CardContent class="pt-6">

@@ -7,49 +7,46 @@
 
     <div class="grid gap-3 md:grid-cols-3">
       <Card>
-        <CardContent class="px-3 py-2">
-          <div class="text-sm text-muted-foreground">{{ t("openlineage.visibleEvents") }}</div>
-          <div class="mt-1 text-xl font-semibold">{{ filteredRuns.length }}</div>
+        <CardContent class="flex items-center justify-between px-3 py-2">
+          <span class="text-sm text-muted-foreground">{{ t("openlineage.visibleEvents") }}</span>
+          <span class="text-xl font-semibold">{{ filteredRuns.length }}</span>
         </CardContent>
       </Card>
       <Card>
-        <CardContent class="px-3 py-2">
-          <div class="text-sm text-muted-foreground">{{ t("openlineage.lineageEvents") }}</div>
-          <div class="mt-1 text-xl font-semibold">{{ lineageEventCount }}</div>
+        <CardContent class="flex items-center justify-between px-3 py-2">
+          <span class="text-sm text-muted-foreground">{{ t("openlineage.lineageEvents") }}</span>
+          <span class="text-xl font-semibold">{{ lineageEventCount }}</span>
         </CardContent>
       </Card>
       <Card>
-        <CardContent class="px-3 py-2">
-          <div class="text-sm text-muted-foreground">{{ t("openlineage.activeNamespaces") }}</div>
-          <div class="mt-1 text-xl font-semibold">{{ namespaceCount }}</div>
+        <CardContent class="flex items-center justify-between px-3 py-2">
+          <span class="text-sm text-muted-foreground">{{ t("openlineage.activeNamespaces") }}</span>
+          <span class="text-xl font-semibold">{{ namespaceCount }}</span>
         </CardContent>
       </Card>
     </div>
 
-    <Card>
-      <CardContent class="space-y-3 pt-6">
-        <AdvancedSearchBar
-          :filter-categories="filterCategories"
-          :search-placeholder="t('openlineage.searchEventsPlaceholder')"
-          @update:filters="handleFiltersUpdate"
+    <div class="flex flex-wrap items-center gap-3">
+      <AdvancedSearchBar
+        class="min-w-0 flex-1"
+        :filter-categories="filterCategories"
+        :search-placeholder="t('openlineage.searchEventsPlaceholder')"
+        @update:filters="handleFiltersUpdate"
+      />
+      <div class="flex items-center gap-2">
+        <Checkbox
+          id="events-lineage-only"
+          :checked="lineageOnly"
+          @update:checked="lineageOnly = $event === true"
         />
-        <div class="flex items-center gap-4">
-          <div class="flex items-center gap-2">
-            <Checkbox
-              id="events-lineage-only"
-              :checked="lineageOnly"
-              @update:checked="lineageOnly = $event === true"
-            />
-            <Label for="events-lineage-only" class="cursor-pointer text-sm">
-              {{ t("openlineage.onlyLineage") }}
-            </Label>
-          </div>
-          <Button variant="outline" size="sm" @click="resetFilters">
-            {{ t("openlineage.clearFilters") }}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+        <Label for="events-lineage-only" class="cursor-pointer text-sm whitespace-nowrap">
+          {{ t("openlineage.onlyLineage") }}
+        </Label>
+      </div>
+      <Button variant="outline" size="sm" @click="resetFilters">
+        {{ t("openlineage.clearFilters") }}
+      </Button>
+    </div>
 
     <Card>
       <CardContent class="pt-6">

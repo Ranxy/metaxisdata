@@ -7,49 +7,46 @@
 
     <div class="grid gap-3 md:grid-cols-3">
       <Card>
-        <CardContent class="px-3 py-2">
-          <div class="text-sm text-muted-foreground">{{ t("openlineage.visibleDatasets") }}</div>
-          <div class="mt-1 text-xl font-semibold">{{ filteredDatasets.length }}</div>
+        <CardContent class="flex items-center justify-between px-3 py-2">
+          <span class="text-sm text-muted-foreground">{{ t("openlineage.visibleDatasets") }}</span>
+          <span class="text-xl font-semibold">{{ filteredDatasets.length }}</span>
         </CardContent>
       </Card>
       <Card>
-        <CardContent class="px-3 py-2">
-          <div class="text-sm text-muted-foreground">{{ t("openlineage.internalDatasets") }}</div>
-          <div class="mt-1 text-xl font-semibold">{{ internalDatasetCount }}</div>
+        <CardContent class="flex items-center justify-between px-3 py-2">
+          <span class="text-sm text-muted-foreground">{{ t("openlineage.internalDatasets") }}</span>
+          <span class="text-xl font-semibold">{{ internalDatasetCount }}</span>
         </CardContent>
       </Card>
       <Card>
-        <CardContent class="px-3 py-2">
-          <div class="text-sm text-muted-foreground">{{ t("openlineage.columnLineageDatasets") }}</div>
-          <div class="mt-1 text-xl font-semibold">{{ columnLineageDatasetCount }}</div>
+        <CardContent class="flex items-center justify-between px-3 py-2">
+          <span class="text-sm text-muted-foreground">{{ t("openlineage.columnLineageDatasets") }}</span>
+          <span class="text-xl font-semibold">{{ columnLineageDatasetCount }}</span>
         </CardContent>
       </Card>
     </div>
 
-    <Card>
-      <CardContent class="space-y-3 pt-6">
-        <AdvancedSearchBar
-          :filter-categories="filterCategories"
-          :search-placeholder="t('openlineage.searchDatasetsPlaceholder')"
-          @update:filters="handleFiltersUpdate"
+    <div class="flex flex-wrap items-center gap-3">
+      <AdvancedSearchBar
+        class="min-w-0 flex-1"
+        :filter-categories="filterCategories"
+        :search-placeholder="t('openlineage.searchDatasetsPlaceholder')"
+        @update:filters="handleFiltersUpdate"
+      />
+      <div class="flex items-center gap-2">
+        <Checkbox
+          id="datasets-column-lineage-only"
+          :checked="columnLineageOnly"
+          @update:checked="columnLineageOnly = $event === true"
         />
-        <div class="flex items-center gap-4">
-          <div class="flex items-center gap-2">
-            <Checkbox
-              id="datasets-column-lineage-only"
-              :checked="columnLineageOnly"
-              @update:checked="columnLineageOnly = $event === true"
-            />
-            <Label for="datasets-column-lineage-only" class="cursor-pointer text-sm">
-              {{ t("openlineage.onlyColumnLineage") }}
-            </Label>
-          </div>
-          <Button variant="outline" size="sm" @click="resetFilters">
-            {{ t("openlineage.clearFilters") }}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+        <Label for="datasets-column-lineage-only" class="cursor-pointer text-sm whitespace-nowrap">
+          {{ t("openlineage.onlyColumnLineage") }}
+        </Label>
+      </div>
+      <Button variant="outline" size="sm" @click="resetFilters">
+        {{ t("openlineage.clearFilters") }}
+      </Button>
+    </div>
 
     <Card>
       <CardContent class="pt-6">
