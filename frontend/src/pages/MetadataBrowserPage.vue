@@ -454,6 +454,7 @@
 import { ChevronDown, Plus, Search, X } from "lucide-vue-next";
 import {
   computed,
+  defineAsyncComponent,
   onBeforeUnmount,
   onMounted,
   reactive,
@@ -465,19 +466,38 @@ import { useRoute, useRouter } from "vue-router";
 import { getMetadata, listMetadata, searchMetadata } from "@/api/database";
 import { getInstance, listInstances } from "@/api/instance";
 import AppLoading from "@/components/common/AppLoading.vue";
-import ExternalDatasetMetadataDetail from "@/components/metadata/ExternalDatasetMetadataDetail.vue";
-import FunctionMetadataDetail from "@/components/metadata/FunctionMetadataDetail.vue";
 import InstanceList from "@/components/metadata/InstanceList.vue";
-import ManualSQLMetadataDetail from "@/components/metadata/ManualSQLMetadataDetail.vue";
-import MaterializedViewMetadataDetail from "@/components/metadata/MaterializedViewMetadataDetail.vue";
 import MetadataBreadcrumb from "@/components/metadata/MetadataBreadcrumb.vue";
 import MetadataList from "@/components/metadata/MetadataList.vue";
 import MetadataPagination from "@/components/metadata/MetadataPagination.vue";
 import MetadataTabNav from "@/components/metadata/MetadataTabNav.vue";
-import ProcedureMetadataDetail from "@/components/metadata/ProcedureMetadataDetail.vue";
-import SequenceMetadataDetail from "@/components/metadata/SequenceMetadataDetail.vue";
-import TableMetadataDetail from "@/components/metadata/TableMetadataDetail.vue";
-import ViewMetadataDetail from "@/components/metadata/ViewMetadataDetail.vue";
+
+// Detail components lazy-loaded — only needed in leaf views, not on the root page.
+const ExternalDatasetMetadataDetail = defineAsyncComponent(
+  () => import("@/components/metadata/ExternalDatasetMetadataDetail.vue")
+);
+const FunctionMetadataDetail = defineAsyncComponent(
+  () => import("@/components/metadata/FunctionMetadataDetail.vue")
+);
+const ManualSQLMetadataDetail = defineAsyncComponent(
+  () => import("@/components/metadata/ManualSQLMetadataDetail.vue")
+);
+const MaterializedViewMetadataDetail = defineAsyncComponent(
+  () => import("@/components/metadata/MaterializedViewMetadataDetail.vue")
+);
+const ProcedureMetadataDetail = defineAsyncComponent(
+  () => import("@/components/metadata/ProcedureMetadataDetail.vue")
+);
+const SequenceMetadataDetail = defineAsyncComponent(
+  () => import("@/components/metadata/SequenceMetadataDetail.vue")
+);
+const TableMetadataDetail = defineAsyncComponent(
+  () => import("@/components/metadata/TableMetadataDetail.vue")
+);
+const ViewMetadataDetail = defineAsyncComponent(
+  () => import("@/components/metadata/ViewMetadataDetail.vue")
+);
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
