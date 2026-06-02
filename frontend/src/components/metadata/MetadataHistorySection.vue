@@ -18,14 +18,25 @@
 			</Button>
 		</div>
 
-		<Tabs v-model="activeTab" class="w-full">
-			<TabsList class="mb-3">
-				<TabsTrigger value="history">{{ t("metadataBrowser.historyTab") }}</TabsTrigger>
-				<TabsTrigger value="diff">{{ t("metadataBrowser.versionDiffTab") }}</TabsTrigger>
-			</TabsList>
+		<div class="flex gap-2 border-b pb-2">
+			<Button
+				:variant="activeTab === 'history' ? 'default' : 'outline'"
+				size="sm"
+				@click="activeTab = 'history'"
+			>
+				{{ t("metadataBrowser.historyTab") }}
+			</Button>
+			<Button
+				:variant="activeTab === 'diff' ? 'default' : 'outline'"
+				size="sm"
+				@click="activeTab = 'diff'"
+			>
+				{{ t("metadataBrowser.versionDiffTab") }}
+			</Button>
+		</div>
 
-			<TabsContent value="history">
-				<div
+		<div v-if="activeTab === 'history'">
+			<div
 			v-if="isLoadingList && entries.length === 0"
 			class="rounded-lg border p-8"
 		>
@@ -269,15 +280,14 @@
 				</div>
 			</div>
 		</div>
-			</TabsContent>
+		</div>
 
-			<TabsContent value="diff">
-				<MetadataVersionDiff
-					:guid="props.guid"
-					:entries="entries"
-				/>
-			</TabsContent>
-		</Tabs>
+		<div v-if="activeTab === 'diff'">
+			<MetadataVersionDiff
+				:guid="props.guid"
+				:entries="entries"
+			/>
+		</div>
 	</div>
 </template>
 
@@ -295,7 +305,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
