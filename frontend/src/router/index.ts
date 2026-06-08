@@ -43,6 +43,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, layout: "default" },
   },
   {
+    path: "/settings/llm-providers",
+    name: "LLMProviderManagement",
+    component: () => import("@/pages/settings/LLMProviderManagementPage.vue"),
+    meta: { requiresAuth: true, layout: "default" },
+  },
+  {
     path: "/settings/openlineage",
     name: "OpenLineageSettings",
     component: () => import("@/pages/settings/OpenLineageSettingsPage.vue"),

@@ -5,6 +5,7 @@ import { AuthService } from "@/types/proto-es/v1/auth_service_pb";
 import { DatabaseService } from "@/types/proto-es/v1/database_service_pb";
 import { InstanceService } from "@/types/proto-es/v1/instance_service_pb";
 import { LineageService } from "@/types/proto-es/v1/lineage_service_pb";
+import { LLMService } from "@/types/proto-es/v1/llm_service_pb";
 import { OpenLineageService } from "@/types/proto-es/v1/openlineage_service_pb";
 import { UserService } from "@/types/proto-es/v1/user_service_pb";
 
@@ -22,3 +23,4 @@ export const instanceClient = createClient(InstanceService, transport);
 export const databaseClient = createClient(DatabaseService, transport);
 export const lineageClient = createClient(LineageService, transport);
 export const openLineageClient = createClient(OpenLineageService, transport);
+export const llmClient = createClient(LLMService, transport);

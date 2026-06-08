@@ -116,6 +116,12 @@
     - [DataSourceExternalSecret.SecretType](#metaxisdata-store-DataSourceExternalSecret-SecretType)
     - [DataSourceType](#metaxisdata-store-DataSourceType)
   
+- [store/llm.proto](#store_llm-proto)
+    - [LlmProviderModel](#metaxisdata-store-LlmProviderModel)
+    - [LlmProviderProfile](#metaxisdata-store-LlmProviderProfile)
+  
+    - [LLMProviderType](#metaxisdata-store-LLMProviderType)
+  
 - [store/meta.proto](#store_meta-proto)
     - [MetaType](#metaxisdata-store-MetaType)
   
@@ -2141,6 +2147,75 @@ InstanceRole is the API message for instance role.
 | DATA_SOURCE_UNSPECIFIED | 0 |  |
 | ADMIN | 1 |  |
 | READ_ONLY | 2 |  |
+
+
+ 
+
+ 
+
+ 
+
+
+
+<a name="store_llm-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## store/llm.proto
+
+
+
+<a name="metaxisdata-store-LlmProviderModel"></a>
+
+### LlmProviderModel
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| enabled | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-LlmProviderProfile"></a>
+
+### LlmProviderProfile
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| title | [string](#string) |  |  |
+| type | [LLMProviderType](#metaxisdata-store-LLMProviderType) |  |  |
+| base_url | [string](#string) |  |  |
+| api_key_encrypted | [string](#string) |  |  |
+| models | [LlmProviderModel](#metaxisdata-store-LlmProviderModel) | repeated |  |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+ 
+
+
+<a name="metaxisdata-store-LLMProviderType"></a>
+
+### LLMProviderType
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| LLM_PROVIDER_TYPE_UNSPECIFIED | 0 |  |
+| LLM_PROVIDER_TYPE_OPENAI | 1 |  |
+| LLM_PROVIDER_TYPE_DEEPSEEK | 2 |  |
+| LLM_PROVIDER_TYPE_OPENROUTER | 3 |  |
+| LLM_PROVIDER_TYPE_CUSTOM | 4 |  |
 
 
  

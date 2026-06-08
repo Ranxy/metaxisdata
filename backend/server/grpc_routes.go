@@ -21,6 +21,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/stacktrace"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
+	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -38,6 +39,7 @@ func configureGrpcRouters(
 	secret string,
 	dbFactory *dbfactory.DBFactory,
 	schemaSync *schemasync.Syncer,
+	llmRegistry *llmcomp.Registry,
 ) error {
 	// Note: the gateway response modifier takes the token duration on server startup. If the value is changed,
 	// the user has to restart the server to take the latest value.
@@ -65,6 +67,7 @@ func configureGrpcRouters(
 	databaseService := apiv1.NewDatabaseService(stores, stateCfg, dbFactory, schemaSync)
 	lineageService := apiv1.NewLineageService(stores, stateCfg, dbFactory, schemaSync)
 	openLineageService := apiv1.NewOpenLineageService(stores)
+	llmService := apiv1.NewLLMService(stores, llmRegistry)
 
 	onPanic := func(_ context.Context, s connect.Spec, _ http.Header, p any) error {
 		stack := stacktrace.TakeStacktrace(20 /* n */, 5 /* skip */)
@@ -99,6 +102,8 @@ func configureGrpcRouters(
 	connectHandlers[lineagePath] = lineageHandler
 	openLineagePath, openLineageHandler := v1connect.NewOpenLineageServiceHandler(openLineageService, handlerOpts)
 	connectHandlers[openLineagePath] = openLineageHandler
+	llmPath, llmHandler := v1connect.NewLLMServiceHandler(llmService, handlerOpts)
+	connectHandlers[llmPath] = llmHandler
 	// grpc reflection handlers.
 	reflector := grpcreflect.NewStaticReflector(
 		v1connect.AuthServiceName,
@@ -108,6 +113,7 @@ func configureGrpcRouters(
 		v1connect.DatabaseServiceName,
 		v1connect.LineageServiceName,
 		v1connect.OpenLineageServiceName,
+		v1connect.LLMServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
 	connectHandlers[reflectPath] = reflectHandler
@@ -147,6 +153,9 @@ func configureGrpcRouters(
 		return err
 	}
 	if err := v1pb.RegisterOpenLineageServiceHandler(ctx, mux, grpcConn); err != nil {
+		return err
+	}
+	if err := v1pb.RegisterLLMServiceHandler(ctx, mux, grpcConn); err != nil {
 		return err
 	}
 

@@ -13,6 +13,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
+	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
@@ -35,6 +36,7 @@ type Server struct {
 	startedTS       int64
 	lineageAnalyzer *lineageanalyzer.Analyzer
 	schemaSync      *schemasync.Syncer
+	llmRegistry     *llmcomp.Registry
 	// PG server stoppers.
 	stopper []func()
 
@@ -85,13 +87,15 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 
 	s.schemaSync = schemasync.NewSyncer(stores, dbFactory, profile, stateCfg, s.lineageAnalyzer)
 
+	s.llmRegistry = llmcomp.NewRegistry(stores, profile)
+
 	if err := s.initializeSetting(ctx); err != nil {
 		return nil, errors.Wrap(err, "failed to init config")
 	}
 	// Configure echo server.
 	s.echoServer = echo.New()
 
-	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync); err != nil {
+	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.llmRegistry); err != nil {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")
 	}
 

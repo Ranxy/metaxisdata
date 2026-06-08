@@ -399,3 +399,15 @@ CREATE INDEX idx_audit_log_payload_method ON audit_log((payload->>'method'));
 CREATE INDEX idx_audit_log_payload_resource ON audit_log((payload->>'resource'));
 CREATE INDEX idx_audit_log_payload_user ON audit_log((payload->>'user'));
 CREATE INDEX idx_audit_log_payload_severity ON audit_log((payload->>'severity'));
+
+
+-- llm_provider_profile stores user-managed LLM provider profiles.
+CREATE TABLE llm_provider_profile (
+    id BIGSERIAL PRIMARY KEY,
+    resource_id TEXT UNIQUE NOT NULL,
+    metadata JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER SEQUENCE llm_provider_profile_id_seq RESTART WITH 101;

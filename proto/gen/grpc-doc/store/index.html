@@ -624,6 +624,29 @@
         
           
           <li>
+            <a href="#store%2fllm.proto">store/llm.proto</a>
+            <ul>
+              
+                <li>
+                  <a href="#metaxisdata.store.LlmProviderModel"><span class="badge">M</span>LlmProviderModel</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.LlmProviderProfile"><span class="badge">M</span>LlmProviderProfile</a>
+                </li>
+              
+              
+                <li>
+                  <a href="#metaxisdata.store.LLMProviderType"><span class="badge">E</span>LLMProviderType</a>
+                </li>
+              
+              
+              
+            </ul>
+          </li>
+        
+          
+          <li>
             <a href="#store%2fmeta.proto">store/meta.proto</a>
             <ul>
               
@@ -6749,6 +6772,165 @@ For MySQL, it is the global privileges as GRANT statements, which means it only 
               <tr>
                 <td>READ_ONLY</td>
                 <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+
+      
+
+      
+    
+      
+      <div class="file-heading">
+        <h2 id="store/llm.proto">store/llm.proto</h2><a href="#title">Top</a>
+      </div>
+      <p></p>
+
+      
+        <h3 id="metaxisdata.store.LlmProviderModel">LlmProviderModel</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.LlmProviderProfile">LlmProviderProfile</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>type</td>
+                  <td><a href="#metaxisdata.store.LLMProviderType">LLMProviderType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>base_url</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>api_key_encrypted</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>models</td>
+                  <td><a href="#metaxisdata.store.LlmProviderModel">LlmProviderModel</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+
+      
+        <h3 id="metaxisdata.store.LLMProviderType">LLMProviderType</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>LLM_PROVIDER_TYPE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>LLM_PROVIDER_TYPE_OPENAI</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>LLM_PROVIDER_TYPE_DEEPSEEK</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>LLM_PROVIDER_TYPE_OPENROUTER</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>LLM_PROVIDER_TYPE_CUSTOM</td>
+                <td>4</td>
                 <td><p></p></td>
               </tr>
             

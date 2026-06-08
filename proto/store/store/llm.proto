@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package metaxisdata.store;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "generated-go/store";
+
+enum LLMProviderType {
+  LLM_PROVIDER_TYPE_UNSPECIFIED = 0;
+  LLM_PROVIDER_TYPE_OPENAI = 1;
+  LLM_PROVIDER_TYPE_DEEPSEEK = 2;
+  LLM_PROVIDER_TYPE_OPENROUTER = 3;
+  LLM_PROVIDER_TYPE_CUSTOM = 4;
+}
+
+message LlmProviderModel {
+  string name = 1;
+  bool enabled = 2;
+}
+
+message LlmProviderProfile {
+  string name = 1;
+  string title = 2;
+  LLMProviderType type = 3;
+  string base_url = 4;
+  string api_key_encrypted = 5;
+  repeated LlmProviderModel models = 6;
+  google.protobuf.Timestamp create_time = 7;
+  google.protobuf.Timestamp update_time = 8;
+}

@@ -83,6 +83,7 @@ import {
   LayoutDashboard,
   Network,
   Settings,
+  Sparkles,
   Users,
 } from "lucide-vue-next";
 import { computed } from "vue";
@@ -190,6 +191,12 @@ const menuItems = computed<MenuItem[]>(() => [
         label: t("menu.auditLogs"),
         path: "/settings/audit-logs",
         icon: ClipboardList,
+      },
+      {
+        key: "llmProviders",
+        label: t("llmProvider.sidebar"),
+        path: "/settings/llm-providers",
+        icon: Sparkles,
       },
       {
         key: "openlineage",

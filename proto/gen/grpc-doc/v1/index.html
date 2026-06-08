@@ -943,6 +943,65 @@
         
           
           <li>
+            <a href="#v1%2fllm_service.proto">v1/llm_service.proto</a>
+            <ul>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateLLMProviderProfileRequest"><span class="badge">M</span>CreateLLMProviderProfileRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DeleteLLMProviderProfileRequest"><span class="badge">M</span>DeleteLLMProviderProfileRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.FetchLLMModelsRequest"><span class="badge">M</span>FetchLLMModelsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.FetchLLMModelsResponse"><span class="badge">M</span>FetchLLMModelsResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListLLMProviderProfilesRequest"><span class="badge">M</span>ListLLMProviderProfilesRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListLLMProviderProfilesResponse"><span class="badge">M</span>ListLLMProviderProfilesResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.LlmProviderDefinition"><span class="badge">M</span>LlmProviderDefinition</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.LlmProviderModel"><span class="badge">M</span>LlmProviderModel</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.LlmProviderProfile"><span class="badge">M</span>LlmProviderProfile</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.UpdateLLMProviderProfileRequest"><span class="badge">M</span>UpdateLLMProviderProfileRequest</a>
+                </li>
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.LLMProviderType"><span class="badge">E</span>LLMProviderType</a>
+                </li>
+              
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.LLMService"><span class="badge">S</span>LLMService</a>
+                </li>
+              
+            </ul>
+          </li>
+        
+          
+          <li>
             <a href="#v1%2fopenlineage_service.proto">v1/openlineage_service.proto</a>
             <ul>
               
@@ -10152,6 +10211,542 @@ If lineage_type is not specified, both source and target lineage will be returne
                 <td>GET</td>
                 <td>/v1/context/{guid=lineages/*}</td>
                 <td></td>
+              </tr>
+              
+            
+            </tbody>
+          </table>
+          
+        
+    
+      
+      <div class="file-heading">
+        <h2 id="v1/llm_service.proto">v1/llm_service.proto</h2><a href="#title">Top</a>
+      </div>
+      <p></p>
+
+      
+        <h3 id="metaxisdata.v1.CreateLLMProviderProfileRequest">CreateLLMProviderProfileRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>profile</td>
+                  <td><a href="#metaxisdata.v1.LlmProviderProfile">LlmProviderProfile</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DeleteLLMProviderProfileRequest">DeleteLLMProviderProfileRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.FetchLLMModelsRequest">FetchLLMModelsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>api_key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>provider_type</td>
+                  <td><a href="#metaxisdata.v1.LLMProviderType">LLMProviderType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.FetchLLMModelsResponse">FetchLLMModelsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>model_ids</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListLLMProviderProfilesRequest">ListLLMProviderProfilesRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListLLMProviderProfilesResponse">ListLLMProviderProfilesResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>profiles</td>
+                  <td><a href="#metaxisdata.v1.LlmProviderProfile">LlmProviderProfile</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>definitions</td>
+                  <td><a href="#metaxisdata.v1.LlmProviderDefinition">LlmProviderDefinition</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.LlmProviderDefinition">LlmProviderDefinition</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>label</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>description</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>default_base_url</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.LlmProviderModel">LlmProviderModel</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.LlmProviderProfile">LlmProviderProfile</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>type</td>
+                  <td><a href="#metaxisdata.v1.LLMProviderType">LLMProviderType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>base_url</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>api_key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>models</td>
+                  <td><a href="#metaxisdata.v1.LlmProviderModel">LlmProviderModel</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>masked_api_key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.UpdateLLMProviderProfileRequest">UpdateLLMProviderProfileRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>profile</td>
+                  <td><a href="#metaxisdata.v1.LlmProviderProfile">LlmProviderProfile</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_mask</td>
+                  <td><a href="#google.protobuf.FieldMask">google.protobuf.FieldMask</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+
+      
+        <h3 id="metaxisdata.v1.LLMProviderType">LLMProviderType</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>LLM_PROVIDER_TYPE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>LLM_PROVIDER_TYPE_OPENAI</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>LLM_PROVIDER_TYPE_DEEPSEEK</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>LLM_PROVIDER_TYPE_OPENROUTER</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>LLM_PROVIDER_TYPE_CUSTOM</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+
+      
+
+      
+        <h3 id="metaxisdata.v1.LLMService">LLMService</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>ListLLMProviderProfiles</td>
+                <td><a href="#metaxisdata.v1.ListLLMProviderProfilesRequest">ListLLMProviderProfilesRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListLLMProviderProfilesResponse">ListLLMProviderProfilesResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>CreateLLMProviderProfile</td>
+                <td><a href="#metaxisdata.v1.CreateLLMProviderProfileRequest">CreateLLMProviderProfileRequest</a></td>
+                <td><a href="#metaxisdata.v1.LlmProviderProfile">LlmProviderProfile</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>UpdateLLMProviderProfile</td>
+                <td><a href="#metaxisdata.v1.UpdateLLMProviderProfileRequest">UpdateLLMProviderProfileRequest</a></td>
+                <td><a href="#metaxisdata.v1.LlmProviderProfile">LlmProviderProfile</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DeleteLLMProviderProfile</td>
+                <td><a href="#metaxisdata.v1.DeleteLLMProviderProfileRequest">DeleteLLMProviderProfileRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>FetchLLMModels</td>
+                <td><a href="#metaxisdata.v1.FetchLLMModelsRequest">FetchLLMModelsRequest</a></td>
+                <td><a href="#metaxisdata.v1.FetchLLMModelsResponse">FetchLLMModelsResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+
+        
+          
+          
+          <h4>Methods with HTTP bindings</h4>
+          <table>
+            <thead>
+              <tr>
+                <td>Method Name</td>
+                <td>Method</td>
+                <td>Pattern</td>
+                <td>Body</td>
+              </tr>
+            </thead>
+            <tbody>
+            
+              
+              
+              <tr>
+                <td>ListLLMProviderProfiles</td>
+                <td>GET</td>
+                <td>/v1/llm-provider-profiles</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateLLMProviderProfile</td>
+                <td>POST</td>
+                <td>/v1/llm-provider-profiles</td>
+                <td>profile</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>UpdateLLMProviderProfile</td>
+                <td>PATCH</td>
+                <td>/v1/{profile.name=llm-provider-profiles/*}</td>
+                <td>profile</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DeleteLLMProviderProfile</td>
+                <td>DELETE</td>
+                <td>/v1/{name=llm-provider-profiles/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>FetchLLMModels</td>
+                <td>POST</td>
+                <td>/v1/llm-provider-profiles:fetchModels</td>
+                <td>*</td>
               </tr>
               
             

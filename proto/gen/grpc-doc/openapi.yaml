@@ -1083,6 +1083,138 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/llm-provider-profiles:
+        get:
+            tags:
+                - LLMService
+            operationId: LLMService_ListLLMProviderProfiles
+            parameters:
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListLLMProviderProfilesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - LLMService
+            operationId: LLMService_CreateLLMProviderProfile
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/LlmProviderProfile'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/LlmProviderProfile'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/llm-provider-profiles/{llm-provider-profile}:
+        delete:
+            tags:
+                - LLMService
+            operationId: LLMService_DeleteLLMProviderProfile
+            parameters:
+                - name: llm-provider-profile
+                  in: path
+                  description: The llm-provider-profile id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - LLMService
+            operationId: LLMService_UpdateLLMProviderProfile
+            parameters:
+                - name: llm-provider-profile
+                  in: path
+                  description: The llm-provider-profile id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/LlmProviderProfile'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/LlmProviderProfile'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/llm-provider-profiles:fetchModels:
+        post:
+            tags:
+                - LLMService
+            operationId: LLMService_FetchLLMModels
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/FetchLLMModelsRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/FetchLLMModelsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/metadata:
         get:
             tags:
@@ -2963,6 +3095,29 @@ components:
                     items:
                         $ref: '#/components/schemas/ColumnMetadata'
                     description: The columns is the ordered list of columns in a foreign table.
+        FetchLLMModelsRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                apiKey:
+                    type: string
+                providerType:
+                    enum:
+                        - LLM_PROVIDER_TYPE_UNSPECIFIED
+                        - LLM_PROVIDER_TYPE_OPENAI
+                        - LLM_PROVIDER_TYPE_DEEPSEEK
+                        - LLM_PROVIDER_TYPE_OPENROUTER
+                        - LLM_PROVIDER_TYPE_CUSTOM
+                    type: string
+                    format: enum
+        FetchLLMModelsResponse:
+            type: object
+            properties:
+                modelIds:
+                    type: array
+                    items:
+                        type: string
         ForeignKeyMetadata:
             type: object
             properties:
@@ -3518,6 +3673,19 @@ components:
                     description: |-
                         A token, which can be sent as `page_token` to retrieve the next page.
                          If this field is omitted, there are no subsequent pages.
+        ListLLMProviderProfilesResponse:
+            type: object
+            properties:
+                profiles:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LlmProviderProfile'
+                definitions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LlmProviderDefinition'
+                nextPageToken:
+                    type: string
         ListManualSQLResponse:
             type: object
             properties:
@@ -3577,6 +3745,54 @@ components:
                     description: |-
                         A token, which can be sent as `page_token` to retrieve the next page.
                          If this field is omitted, there are no subsequent pages.
+        LlmProviderDefinition:
+            type: object
+            properties:
+                id:
+                    type: string
+                label:
+                    type: string
+                description:
+                    type: string
+                defaultBaseUrl:
+                    type: string
+        LlmProviderModel:
+            type: object
+            properties:
+                name:
+                    type: string
+                enabled:
+                    type: boolean
+        LlmProviderProfile:
+            type: object
+            properties:
+                name:
+                    type: string
+                title:
+                    type: string
+                type:
+                    enum:
+                        - LLM_PROVIDER_TYPE_UNSPECIFIED
+                        - LLM_PROVIDER_TYPE_OPENAI
+                        - LLM_PROVIDER_TYPE_DEEPSEEK
+                        - LLM_PROVIDER_TYPE_OPENROUTER
+                        - LLM_PROVIDER_TYPE_CUSTOM
+                    type: string
+                    format: enum
+                baseUrl:
+                    type: string
+                apiKeyEncrypted:
+                    type: string
+                models:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LlmProviderModel'
+                createTime:
+                    type: string
+                    format: date-time
+                updateTime:
+                    type: string
+                    format: date-time
         LoginRequest:
             type: object
             properties:
@@ -5064,6 +5280,7 @@ tags:
     - name: AuthService
     - name: DatabaseService
     - name: InstanceService
+    - name: LLMService
     - name: LineageService
     - name: OpenLineageService
     - name: UserService

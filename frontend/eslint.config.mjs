@@ -33,7 +33,17 @@ export default [
         {
           src: "./src",
           extensions: [".js", ".vue", ".ts", ".tsx"],
-          ignores: [],
+          ignores: [
+            // Dynamically used via showSuccess / handleError composables.
+            "llmProvider.modelsFetched",
+            "llmProvider.fetchModelsError",
+            "llmProvider.fetchError",
+            "llmProvider.saveError",
+            "llmProvider.deleteError",
+            "llmProvider.created",
+            "llmProvider.updated",
+            "llmProvider.deleted",
+          ],
           enableFix: false,
         },
       ],

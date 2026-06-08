@@ -202,6 +202,22 @@
   
     - [LineageService](#metaxisdata-v1-LineageService)
   
+- [v1/llm_service.proto](#v1_llm_service-proto)
+    - [CreateLLMProviderProfileRequest](#metaxisdata-v1-CreateLLMProviderProfileRequest)
+    - [DeleteLLMProviderProfileRequest](#metaxisdata-v1-DeleteLLMProviderProfileRequest)
+    - [FetchLLMModelsRequest](#metaxisdata-v1-FetchLLMModelsRequest)
+    - [FetchLLMModelsResponse](#metaxisdata-v1-FetchLLMModelsResponse)
+    - [ListLLMProviderProfilesRequest](#metaxisdata-v1-ListLLMProviderProfilesRequest)
+    - [ListLLMProviderProfilesResponse](#metaxisdata-v1-ListLLMProviderProfilesResponse)
+    - [LlmProviderDefinition](#metaxisdata-v1-LlmProviderDefinition)
+    - [LlmProviderModel](#metaxisdata-v1-LlmProviderModel)
+    - [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile)
+    - [UpdateLLMProviderProfileRequest](#metaxisdata-v1-UpdateLLMProviderProfileRequest)
+  
+    - [LLMProviderType](#metaxisdata-v1-LLMProviderType)
+  
+    - [LLMService](#metaxisdata-v1-LLMService)
+  
 - [v1/openlineage_service.proto](#v1_openlineage_service-proto)
     - [APIKeyResource](#metaxisdata-v1-APIKeyResource)
     - [CreateAPIKeyRequest](#metaxisdata-v1-CreateAPIKeyRequest)
@@ -3417,6 +3433,219 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | ----------- | ------------ | ------------- | ------------|
 | GetLineage | [GetLineageRequest](#metaxisdata-v1-GetLineageRequest) | [GetLineageResponse](#metaxisdata-v1-GetLineageResponse) | GetLineage returns the lineage relations for the given metadata. The lineage relations can be either source lineage or target lineage, depending on the lineage_type specified in the request. If lineage_type is not specified, both source and target lineage will be returned. |
 | GetLineageForContext | [GetLineageForContextRequest](#metaxisdata-v1-GetLineageForContextRequest) | [GetLineageForContextResponse](#metaxisdata-v1-GetLineageForContextResponse) | GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure). |
+
+ 
+
+
+
+<a name="v1_llm_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/llm_service.proto
+
+
+
+<a name="metaxisdata-v1-CreateLLMProviderProfileRequest"></a>
+
+### CreateLLMProviderProfileRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| profile | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteLLMProviderProfileRequest"></a>
+
+### DeleteLLMProviderProfileRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-FetchLLMModelsRequest"></a>
+
+### FetchLLMModelsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| api_key | [string](#string) |  |  |
+| provider_type | [LLMProviderType](#metaxisdata-v1-LLMProviderType) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-FetchLLMModelsResponse"></a>
+
+### FetchLLMModelsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| model_ids | [string](#string) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListLLMProviderProfilesRequest"></a>
+
+### ListLLMProviderProfilesRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListLLMProviderProfilesResponse"></a>
+
+### ListLLMProviderProfilesResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| profiles | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) | repeated |  |
+| definitions | [LlmProviderDefinition](#metaxisdata-v1-LlmProviderDefinition) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-LlmProviderDefinition"></a>
+
+### LlmProviderDefinition
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [string](#string) |  |  |
+| label | [string](#string) |  |  |
+| description | [string](#string) |  |  |
+| default_base_url | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-LlmProviderModel"></a>
+
+### LlmProviderModel
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| enabled | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-LlmProviderProfile"></a>
+
+### LlmProviderProfile
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| title | [string](#string) |  |  |
+| type | [LLMProviderType](#metaxisdata-v1-LLMProviderType) |  |  |
+| base_url | [string](#string) |  |  |
+| api_key | [string](#string) |  |  |
+| models | [LlmProviderModel](#metaxisdata-v1-LlmProviderModel) | repeated |  |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| masked_api_key | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateLLMProviderProfileRequest"></a>
+
+### UpdateLLMProviderProfileRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| profile | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) |  |  |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  |  |
+
+
+
+
+
+ 
+
+
+<a name="metaxisdata-v1-LLMProviderType"></a>
+
+### LLMProviderType
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| LLM_PROVIDER_TYPE_UNSPECIFIED | 0 |  |
+| LLM_PROVIDER_TYPE_OPENAI | 1 |  |
+| LLM_PROVIDER_TYPE_DEEPSEEK | 2 |  |
+| LLM_PROVIDER_TYPE_OPENROUTER | 3 |  |
+| LLM_PROVIDER_TYPE_CUSTOM | 4 |  |
+
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-LLMService"></a>
+
+### LLMService
+
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| ListLLMProviderProfiles | [ListLLMProviderProfilesRequest](#metaxisdata-v1-ListLLMProviderProfilesRequest) | [ListLLMProviderProfilesResponse](#metaxisdata-v1-ListLLMProviderProfilesResponse) |  |
+| CreateLLMProviderProfile | [CreateLLMProviderProfileRequest](#metaxisdata-v1-CreateLLMProviderProfileRequest) | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) |  |
+| UpdateLLMProviderProfile | [UpdateLLMProviderProfileRequest](#metaxisdata-v1-UpdateLLMProviderProfileRequest) | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) |  |
+| DeleteLLMProviderProfile | [DeleteLLMProviderProfileRequest](#metaxisdata-v1-DeleteLLMProviderProfileRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
+| FetchLLMModels | [FetchLLMModelsRequest](#metaxisdata-v1-FetchLLMModelsRequest) | [FetchLLMModelsResponse](#metaxisdata-v1-FetchLLMModelsResponse) |  |
 
  
 

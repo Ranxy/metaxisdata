@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package metaxisdata.v1;
+
+import "google/api/annotations.proto";
+import "google/api/client.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
+
+service LLMService {
+  rpc ListLLMProviderProfiles(ListLLMProviderProfilesRequest) returns (ListLLMProviderProfilesResponse) {
+    option (google.api.http) = {get: "/v1/llm-provider-profiles"};
+    option (google.api.method_signature) = "";
+  }
+
+  rpc CreateLLMProviderProfile(CreateLLMProviderProfileRequest) returns (LlmProviderProfile) {
+    option (google.api.http) = {
+      post: "/v1/llm-provider-profiles"
+      body: "profile"
+    };
+    option (google.api.method_signature) = "profile";
+  }
+
+  rpc UpdateLLMProviderProfile(UpdateLLMProviderProfileRequest) returns (LlmProviderProfile) {
+    option (google.api.http) = {
+      patch: "/v1/{profile.name=llm-provider-profiles/*}"
+      body: "profile"
+    };
+    option (google.api.method_signature) = "profile,update_mask";
+  }
+
+  rpc DeleteLLMProviderProfile(DeleteLLMProviderProfileRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=llm-provider-profiles/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  rpc FetchLLMModels(FetchLLMModelsRequest) returns (FetchLLMModelsResponse) {
+    option (google.api.http) = {
+      post: "/v1/llm-provider-profiles:fetchModels"
+      body: "*"
+    };
+  }
+}
+
+enum LLMProviderType {
+  LLM_PROVIDER_TYPE_UNSPECIFIED = 0;
+  LLM_PROVIDER_TYPE_OPENAI = 1;
+  LLM_PROVIDER_TYPE_DEEPSEEK = 2;
+  LLM_PROVIDER_TYPE_OPENROUTER = 3;
+  LLM_PROVIDER_TYPE_CUSTOM = 4;
+}
+
+message LlmProviderDefinition {
+  string id = 1;
+  string label = 2;
+  string description = 3;
+  string default_base_url = 4;
+}
+
+message LlmProviderModel {
+  string name = 1;
+  bool enabled = 2;
+}
+
+message LlmProviderProfile {
+  string name = 1;
+  string title = 2;
+  LLMProviderType type = 3;
+  string base_url = 4;
+  string api_key = 5 [(google.api.field_behavior) = INPUT_ONLY];
+  repeated LlmProviderModel models = 6;
+  google.protobuf.Timestamp create_time = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Timestamp update_time = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string masked_api_key = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListLLMProviderProfilesRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListLLMProviderProfilesResponse {
+  repeated LlmProviderProfile profiles = 1;
+  repeated LlmProviderDefinition definitions = 2;
+  string next_page_token = 3;
+}
+
+message CreateLLMProviderProfileRequest {
+  LlmProviderProfile profile = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdateLLMProviderProfileRequest {
+  LlmProviderProfile profile = 1 [(google.api.field_behavior) = REQUIRED];
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+message DeleteLLMProviderProfileRequest {
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message FetchLLMModelsRequest {
+  string name = 1;
+  string api_key = 2;
+  LLMProviderType provider_type = 3;
+}
+
+message FetchLLMModelsResponse {
+  repeated string model_ids = 1;
+}
