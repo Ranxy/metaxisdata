@@ -135,3 +135,10 @@ func CalcStoreMetaHash(meta *storepb.StoredMetadata) (metadata []byte, metaHash 
 	h := sha256.Sum256(metadataBytes)
 	return metadataBytes, h[:], nil
 }
+
+// CalcMetaHash computes only the SHA-256 hash of the given StoredMetadata,
+// without returning the serialized JSON bytes.
+func CalcMetaHash(meta *storepb.StoredMetadata) ([]byte, error) {
+	_, hash, err := CalcStoreMetaHash(meta)
+	return hash, err
+}

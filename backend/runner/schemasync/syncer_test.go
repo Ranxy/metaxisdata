@@ -81,6 +81,89 @@ func TestBatchMetaCreateStoreMetaResourceV2Table(t *testing.T) {
 	require.Equal(t, "name", gotMeta[buildGUID(prefix, "users", "name")].GetColumnMetadata().Name)
 }
 
+func buildTableMetaWithStats(name string, rowCount, dataSize, indexSize, dataFree int64, columns ...string) *storepb.StoredMetadata {
+	metaCols := make([]*storepb.ColumnMetadata, 0, len(columns))
+	for _, col := range columns {
+		metaCols = append(metaCols, &storepb.ColumnMetadata{Name: col})
+	}
+	return &storepb.StoredMetadata{
+		Type: &storepb.StoredMetadata_TableMetadata{
+			TableMetadata: &storepb.TableMetadata{
+				Name:      name,
+				Columns:   metaCols,
+				RowCount:  rowCount,
+				DataSize:  dataSize,
+				IndexSize: indexSize,
+				DataFree:  dataFree,
+			},
+		},
+	}
+}
+
+func TestNormalizeMetadataForHash(t *testing.T) {
+	t.Parallel()
+
+	t.Run("table stats zeroed", func(t *testing.T) {
+		t.Parallel()
+		original := buildTableMetaWithStats("mytable", 1000, 65536, 32768, 1024, "id", "name")
+		normalized := normalizeMetadataForHash(original)
+
+		// Original unchanged
+		require.Equal(t, int64(1000), original.GetTableMetadata().RowCount)
+		require.Equal(t, int64(65536), original.GetTableMetadata().DataSize)
+
+		// Normalized has stats zeroed
+		require.Equal(t, int64(0), normalized.GetTableMetadata().RowCount)
+		require.Equal(t, int64(0), normalized.GetTableMetadata().DataSize)
+		require.Equal(t, int64(0), normalized.GetTableMetadata().IndexSize)
+		require.Equal(t, int64(0), normalized.GetTableMetadata().DataFree)
+
+		// Structural fields preserved
+		require.Equal(t, "mytable", normalized.GetTableMetadata().Name)
+		require.Len(t, normalized.GetTableMetadata().Columns, 2)
+	})
+
+	t.Run("two tables with different stats produce same normalized hash", func(t *testing.T) {
+		t.Parallel()
+		a := buildTableMetaWithStats("t", 100, 200, 300, 400, "id")
+		b := buildTableMetaWithStats("t", 999, 888, 777, 666, "id")
+
+		hashA, err := store.CalcMetaHash(normalizeMetadataForHash(a))
+		require.NoError(t, err)
+		hashB, err := store.CalcMetaHash(normalizeMetadataForHash(b))
+		require.NoError(t, err)
+		require.Equal(t, hashA, hashB)
+	})
+
+	t.Run("two tables with different columns produce different normalized hash", func(t *testing.T) {
+		t.Parallel()
+		a := buildTableMetaWithStats("t", 100, 200, 300, 400, "id")
+		b := buildTableMetaWithStats("t", 100, 200, 300, 400, "id", "name")
+
+		hashA, err := store.CalcMetaHash(normalizeMetadataForHash(a))
+		require.NoError(t, err)
+		hashB, err := store.CalcMetaHash(normalizeMetadataForHash(b))
+		require.NoError(t, err)
+		require.NotEqual(t, hashA, hashB)
+	})
+
+	t.Run("sequence last_value zeroed", func(t *testing.T) {
+		t.Parallel()
+		original := &storepb.StoredMetadata{
+			Type: &storepb.StoredMetadata_SequenceMetadata{
+				SequenceMetadata: &storepb.SequenceMetadata{
+					Name:      "seq1",
+					LastValue: "42",
+				},
+			},
+		}
+		normalized := normalizeMetadataForHash(original)
+		require.Equal(t, "42", original.GetSequenceMetadata().LastValue)
+		require.Equal(t, "", normalized.GetSequenceMetadata().LastValue)
+		require.Equal(t, "seq1", normalized.GetSequenceMetadata().Name)
+	})
+}
+
 func TestBatchMetaCreateDiff(t *testing.T) {
 	t.Parallel()
 
@@ -88,10 +171,14 @@ func TestBatchMetaCreateDiff(t *testing.T) {
 	changedBeforeMeta := buildTableMeta("users", "id")
 	changedAfterMeta := buildTableMeta("users", "id", "name")
 	newMeta := buildTableMeta("products", "id")
+	statsChangedMeta := buildTableMetaWithStats("stats_only", 100, 200, 300, 400, "col1")
 
 	_, unchangedHash, err := store.CalcStoreMetaHash(unchangedMeta)
 	require.NoError(t, err)
 	_, changedBeforeHash, err := store.CalcStoreMetaHash(changedBeforeMeta)
+	require.NoError(t, err)
+	// Stats-changed table: existing entry has the same schema but different stats.
+	statsExistingHash, err := store.CalcMetaHash(normalizeMetadataForHash(buildTableMetaWithStats("stats_only", 999, 888, 777, 666, "col1")))
 	require.NoError(t, err)
 
 	batch := &batchMetaCreate{
@@ -100,11 +187,13 @@ func TestBatchMetaCreateDiff(t *testing.T) {
 			{GUID: buildGUID("inst", "db", "public", "users"), ObjectType: storepb.MetaType_TABLE, MetaHash: changedBeforeHash},
 			{GUID: buildGUID("inst", "db", "public", "legacy"), ObjectType: storepb.MetaType_TABLE, MetaHash: []byte("legacy-hash")},
 			{GUID: buildGUID("inst", "db", "public", "__manual_sql__/summary"), ObjectType: storepb.MetaType_MANUAL_SQL, MetaHash: []byte("manual-hash")},
+			{GUID: buildGUID("inst", "db", "public", "stats_only"), ObjectType: storepb.MetaType_TABLE, MetaHash: statsExistingHash},
 		},
 		guidList: []*store.CreateMetaRegistryResourceMessage{
 			{MetaRegistryResource: store.MetaRegistryResource{GUID: buildGUID("inst", "db", "public", "orders"), ObjectType: storepb.MetaType_TABLE, Metadata: unchangedMeta}},
 			{MetaRegistryResource: store.MetaRegistryResource{GUID: buildGUID("inst", "db", "public", "users"), ObjectType: storepb.MetaType_TABLE, Metadata: changedAfterMeta}},
 			{MetaRegistryResource: store.MetaRegistryResource{GUID: buildGUID("inst", "db", "public", "products"), ObjectType: storepb.MetaType_TABLE, Metadata: newMeta}},
+			{MetaRegistryResource: store.MetaRegistryResource{GUID: buildGUID("inst", "db", "public", "stats_only"), ObjectType: storepb.MetaType_TABLE, Metadata: statsChangedMeta}},
 		},
 	}
 
@@ -121,10 +210,12 @@ func TestBatchMetaCreateDiff(t *testing.T) {
 	_, changedFound := updateKeys[store.MetaGUIDKey{GUID: buildGUID("inst", "db", "public", "users"), ObjectType: storepb.MetaType_TABLE}]
 	_, newFound := updateKeys[store.MetaGUIDKey{GUID: buildGUID("inst", "db", "public", "products"), ObjectType: storepb.MetaType_TABLE}]
 	_, unchangedFound := updateKeys[store.MetaGUIDKey{GUID: buildGUID("inst", "db", "public", "orders"), ObjectType: storepb.MetaType_TABLE}]
+	_, statsOnlyFound := updateKeys[store.MetaGUIDKey{GUID: buildGUID("inst", "db", "public", "stats_only"), ObjectType: storepb.MetaType_TABLE}]
 
-	require.True(t, changedFound)
-	require.True(t, newFound)
-	require.False(t, unchangedFound)
+	require.True(t, changedFound, "table with added column should be an update")
+	require.True(t, newFound, "new table should be an update")
+	require.False(t, unchangedFound, "identical table should not be an update")
+	require.False(t, statsOnlyFound, "table with only stats change should not be an update")
 	require.Len(t, deletes, 1)
 	require.Equal(t, buildGUID("inst", "db", "public", "legacy"), deletes[0].GUID)
 }

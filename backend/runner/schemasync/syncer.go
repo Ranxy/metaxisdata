@@ -608,9 +608,15 @@ func (b *batchMetaCreate) diff() (updates []*store.CreateMetaRegistryResourceMes
 	}
 
 	for _, item := range b.guidList {
-		metadataBytes, hash, err := store.CalcStoreMetaHash(item.Metadata)
+		metadataBytes, _, err := store.CalcStoreMetaHash(item.Metadata)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "failed to calculate metadata hash for guid %q", item.GUID)
+		}
+
+		normalized := normalizeMetadataForHash(item.Metadata)
+		hash, err := store.CalcMetaHash(normalized)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "failed to calculate normalized metadata hash for guid %q", item.GUID)
 		}
 
 		item.MetaHash = hash
@@ -653,6 +659,31 @@ func isSchemaSyncManagedMetaType(metaType storepb.MetaType) bool {
 	default:
 		return false
 	}
+}
+
+// normalizeMetadataForHash returns a clone of the given metadata with volatile
+// statistics fields zeroed out, so the hash is stable across syncs when only
+// statistics (row counts, data sizes, etc.) change rather than the actual schema.
+func normalizeMetadataForHash(meta *storepb.StoredMetadata) *storepb.StoredMetadata {
+	cloned, ok := proto.Clone(meta).(*storepb.StoredMetadata)
+	if !ok {
+		return meta
+	}
+
+	switch {
+	case cloned.GetTableMetadata() != nil:
+		tm := cloned.GetTableMetadata()
+		tm.RowCount = 0
+		tm.DataSize = 0
+		tm.IndexSize = 0
+		tm.DataFree = 0
+	case cloned.GetSequenceMetadata() != nil:
+		sm := cloned.GetSequenceMetadata()
+		sm.LastValue = ""
+	default:
+	}
+
+	return cloned
 }
 
 func convertMetadataToGUID(prefix string, objectType storepb.MetaType, data *storepb.StoredMetadata) (string, error) {
