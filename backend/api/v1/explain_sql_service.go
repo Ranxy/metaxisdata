@@ -111,7 +111,7 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 
 	var ch <-chan llm.StreamChunk
 	if s.registry.DebugEnabled() {
-		debugLogger := llm.NewDBDebugLogger(s.store, resolvedConfig.ProfileTitle, resolvedConfig.ModelName)
+		debugLogger := llm.NewDBDebugLogger(s.store, resolvedConfig.ProfileName, resolvedConfig.ModelName)
 		ch = llm.StreamChatWithDebug(ctx, *resolvedConfig, messages, tools, executor, debugLogger)
 	} else {
 		ch = llm.StreamChat(ctx, *resolvedConfig, messages, tools, executor)
@@ -150,7 +150,7 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 		}(),
 		MetaGUID:        metaGUID,
 		SQLText:         sqlText,
-		Provider:        resolvedConfig.ProfileTitle,
+		Provider:        resolvedConfig.ProfileName,
 		Model:           resolvedConfig.ModelName,
 		ExplanationJSON: toExplanationJSON(summary, sectionsJSON),
 		CreatedAt:       now,
