@@ -226,6 +226,30 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/explain-sql:
+        post:
+            tags:
+                - ExplainSQLService
+            operationId: ExplainSQLService_ExplainSQL
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExplainSQLRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExplainSQLResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/instances:
         get:
             tags:
@@ -3045,6 +3069,46 @@ components:
                     description: |-
                         The expression is the full EXCLUDE constraint definition including "EXCLUDE" keyword.
                          Example: "EXCLUDE USING gist (room_id WITH =, during WITH &&)"
+        ExplainSQLMetadata:
+            type: object
+            properties:
+                summary:
+                    type: string
+                sectionsJson:
+                    type: string
+                provider:
+                    type: string
+                model:
+                    type: string
+                cacheKey:
+                    type: string
+                expired:
+                    type: boolean
+                fromCache:
+                    type: boolean
+        ExplainSQLRequest:
+            type: object
+            properties:
+                metaGuid:
+                    type: string
+                metaType:
+                    type: integer
+                    format: int32
+                sqlText:
+                    type: string
+                forceRegenerate:
+                    type: boolean
+                providerName:
+                    type: string
+        ExplainSQLResponse:
+            type: object
+            properties:
+                content:
+                    type: string
+                metadata:
+                    $ref: '#/components/schemas/ExplainSQLMetadata'
+                error:
+                    type: string
         ExtensionMetadata:
             type: object
             properties:
@@ -5279,6 +5343,7 @@ tags:
     - name: AuditLogService
     - name: AuthService
     - name: DatabaseService
+    - name: ExplainSQLService
     - name: InstanceService
     - name: LLMService
     - name: LineageService

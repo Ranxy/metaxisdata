@@ -189,6 +189,13 @@
   
     - [DatabaseService](#metaxisdata-v1-DatabaseService)
   
+- [v1/explain_sql_service.proto](#v1_explain_sql_service-proto)
+    - [ExplainSQLMetadata](#metaxisdata-v1-ExplainSQLMetadata)
+    - [ExplainSQLRequest](#metaxisdata-v1-ExplainSQLRequest)
+    - [ExplainSQLResponse](#metaxisdata-v1-ExplainSQLResponse)
+  
+    - [ExplainSQLService](#metaxisdata-v1-ExplainSQLService)
+  
 - [v1/lineage_service.proto](#v1_lineage_service-proto)
     - [ExternalDatasetInfo](#metaxisdata-v1-ExternalDatasetInfo)
     - [GetLineageForContextRequest](#metaxisdata-v1-GetLineageForContextRequest)
@@ -3271,6 +3278,89 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | SearchManualSQL | [SearchManualSQLRequest](#metaxisdata-v1-SearchManualSQLRequest) | [SearchManualSQLResponse](#metaxisdata-v1-SearchManualSQLResponse) |  |
 | UpdateManualSQL | [UpdateManualSQLRequest](#metaxisdata-v1-UpdateManualSQLRequest) | [ManualSQL](#metaxisdata-v1-ManualSQL) |  |
 | DeleteManualSQL | [DeleteManualSQLRequest](#metaxisdata-v1-DeleteManualSQLRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
+
+ 
+
+
+
+<a name="v1_explain_sql_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/explain_sql_service.proto
+
+
+
+<a name="metaxisdata-v1-ExplainSQLMetadata"></a>
+
+### ExplainSQLMetadata
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| summary | [string](#string) |  |  |
+| sections_json | [string](#string) |  |  |
+| provider | [string](#string) |  |  |
+| model | [string](#string) |  |  |
+| cache_key | [string](#string) |  |  |
+| expired | [bool](#bool) |  |  |
+| from_cache | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ExplainSQLRequest"></a>
+
+### ExplainSQLRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| meta_guid | [string](#string) |  |  |
+| meta_type | [int32](#int32) |  | store.MetaType |
+| sql_text | [string](#string) |  |  |
+| force_regenerate | [bool](#bool) |  |  |
+| provider_name | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ExplainSQLResponse"></a>
+
+### ExplainSQLResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| content | [string](#string) |  |  |
+| metadata | [ExplainSQLMetadata](#metaxisdata-v1-ExplainSQLMetadata) |  |  |
+| error | [string](#string) |  |  |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-ExplainSQLService"></a>
+
+### ExplainSQLService
+
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| ExplainSQL | [ExplainSQLRequest](#metaxisdata-v1-ExplainSQLRequest) | [ExplainSQLResponse](#metaxisdata-v1-ExplainSQLResponse) stream |  |
 
  
 

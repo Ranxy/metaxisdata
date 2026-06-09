@@ -76,6 +76,9 @@
     - [TablePartitionMetadata.Type](#metaxisdata-store-TablePartitionMetadata-Type)
     - [TaskMetadata.State](#metaxisdata-store-TaskMetadata-State)
   
+- [store/explain_sql.proto](#store_explain_sql-proto)
+    - [ExplainSQLCache](#metaxisdata-store-ExplainSQLCache)
+  
 - [store/group.proto](#store_group-proto)
     - [GroupMember](#metaxisdata-store-GroupMember)
     - [GroupPayload](#metaxisdata-store-GroupPayload)
@@ -1515,6 +1518,44 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | STATE_STARTED | 1 |  |
 | STATE_SUSPENDED | 2 |  |
 
+
+ 
+
+ 
+
+ 
+
+
+
+<a name="store_explain_sql-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## store/explain_sql.proto
+
+
+
+<a name="metaxisdata-store-ExplainSQLCache"></a>
+
+### ExplainSQLCache
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| cache_key | [string](#string) |  |  |
+| cache_type | [int32](#int32) |  | 0=metadata, 1=custom_sql |
+| meta_guid | [string](#string) |  |  |
+| sql_text | [string](#string) |  |  |
+| provider | [string](#string) |  |  |
+| model | [string](#string) |  |  |
+| explanation_json | [string](#string) |  |  |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+ 
 
  
 
