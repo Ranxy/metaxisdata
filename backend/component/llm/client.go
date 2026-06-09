@@ -60,6 +60,9 @@ type StreamChunk struct {
 	Error   error
 }
 
+// DebugLogger receives full request/response bodies for debugging.
+type DebugLogger func(reqBody string, respBody string)
+
 // chatRequest is the JSON body sent to the chat completion API.
 type chatRequest struct {
 	Model    string    `json:"model"`
@@ -68,31 +71,47 @@ type chatRequest struct {
 	Tools    []ToolDef `json:"tools,omitempty"`
 }
 
-// chatStreamDelta is one SSE data event from the chat completion stream.
+// streamToolCall is a tool call fragment from the SSE stream.
+type streamToolCall struct {
+	Index    int    `json:"index"`
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+// chatStreamChunk is one SSE data event.
 type chatStreamChunk struct {
 	Choices []struct {
+		Index int `json:"index"`
 		Delta struct {
-			Content   string     `json:"content"`
-			ToolCalls []ToolCall `json:"tool_calls"`
+			Content   string           `json:"content"`
+			ToolCalls []streamToolCall `json:"tool_calls"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
 }
 
 // StreamChat sends messages to the LLM and returns a channel of stream chunks.
-// It handles tool calling internally — the caller only sees text content chunks.
 func StreamChat(ctx context.Context, config ResolvedConfig, messages []Message, tools []ToolDef, executor ToolExecutor) <-chan StreamChunk {
+	return StreamChatWithDebug(ctx, config, messages, tools, executor, nil)
+}
+
+// StreamChatWithDebug is like StreamChat but optionally logs request/response via debugLogger.
+func StreamChatWithDebug(ctx context.Context, config ResolvedConfig, messages []Message, tools []ToolDef, executor ToolExecutor, debugLogger DebugLogger) <-chan StreamChunk {
 	ch := make(chan StreamChunk, 16)
 
 	go func() {
 		defer close(ch)
-		streamChatLoop(ctx, config, messages, tools, executor, 0, ch)
+		streamChatLoop(ctx, config, messages, tools, executor, 0, ch, debugLogger)
 	}()
 
 	return ch
 }
 
-func streamChatLoop(ctx context.Context, config ResolvedConfig, messages []Message, tools []ToolDef, executor ToolExecutor, round int, ch chan<- StreamChunk) {
+func streamChatLoop(ctx context.Context, config ResolvedConfig, messages []Message, tools []ToolDef, executor ToolExecutor, round int, ch chan<- StreamChunk, debugLogger DebugLogger) {
 	const maxRounds = 6
 
 	if round >= maxRounds {
@@ -139,9 +158,9 @@ func streamChatLoop(ctx context.Context, config ResolvedConfig, messages []Messa
 		return
 	}
 
-	// Accumulate full assistant response for tool call tracking.
 	var fullContent strings.Builder
-	var toolCalls []ToolCall
+	var fullRespBody strings.Builder
+	var toolCallBufs map[int]*toolCallAccum
 
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -162,10 +181,11 @@ func streamChatLoop(ctx context.Context, config ResolvedConfig, messages []Messa
 		}
 
 		data := strings.TrimPrefix(line, "data: ")
+		_, _ = fullRespBody.WriteString(data + "\n")
 
 		var chunk chatStreamChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			continue // skip unparseable chunks
+			continue
 		}
 
 		for _, choice := range chunk.Choices {
@@ -174,32 +194,68 @@ func streamChatLoop(ctx context.Context, config ResolvedConfig, messages []Messa
 				ch <- StreamChunk{Content: choice.Delta.Content}
 			}
 			for _, tc := range choice.Delta.ToolCalls {
-				if tc.ID != "" {
-					toolCalls = append(toolCalls, tc)
+				if toolCallBufs == nil {
+					toolCallBufs = make(map[int]*toolCallAccum)
 				}
+				acc, ok := toolCallBufs[tc.Index]
+				if !ok {
+					acc = &toolCallAccum{}
+					toolCallBufs[tc.Index] = acc
+				}
+				if tc.ID != "" {
+					acc.ID = tc.ID
+					acc.Type = tc.Type
+				}
+				if tc.Function.Name != "" {
+					acc.Name = tc.Function.Name
+				}
+				_, _ = acc.ArgsBuf.WriteString(tc.Function.Arguments)
 			}
 
 			if choice.FinishReason != nil {
 				switch *choice.FinishReason {
 				case "stop":
+					if debugLogger != nil {
+						debugLogger(string(reqBytes), fullRespBody.String())
+					}
 					ch <- StreamChunk{Done: true}
 					return
 				case "tool_calls":
-					// Execute tools and continue the conversation.
+					if debugLogger != nil {
+						debugLogger(string(reqBytes), fullRespBody.String())
+					}
+
 					if executor == nil {
 						ch <- StreamChunk{Error: errors.New("LLM requested tool calls but no executor provided")}
 						return
 					}
-					if fullContent.Len() > 0 {
-						messages = append(messages, Message{
-							Role:    "assistant",
-							Content: fullContent.String(),
+
+					var toolCalls []ToolCall
+					// Build tool calls from accumulated chunks, sorted by index.
+					for i := 0; i < len(toolCallBufs); i++ {
+						acc := toolCallBufs[i]
+						if acc == nil {
+							continue
+						}
+						toolCalls = append(toolCalls, ToolCall{
+							ID:   acc.ID,
+							Type: acc.Type,
+							Function: struct {
+								Name      string `json:"name"`
+								Arguments string `json:"arguments"`
+							}{
+								Name:      acc.Name,
+								Arguments: acc.ArgsBuf.String(),
+							},
 						})
+					}
+
+					if fullContent.Len() > 0 {
+						messages = append(messages, Message{Role: "assistant", Content: fullContent.String()})
 						fullContent.Reset()
 					}
 					messages = append(messages, Message{Role: "assistant", ToolCalls: toolCalls})
 
-					// Execute all tool calls.
 					for _, tc := range toolCalls {
 						results, execErr := executor(tc)
 						if execErr != nil {
@@ -215,10 +271,12 @@ func streamChatLoop(ctx context.Context, config ResolvedConfig, messages []Messa
 						}
 					}
 
-					// Continue the loop with the extended messages.
-					streamChatLoop(ctx, config, messages, tools, executor, round+1, ch)
+					streamChatLoop(ctx, config, messages, tools, executor, round+1, ch, debugLogger)
 					return
 				default:
+					if debugLogger != nil {
+						debugLogger(string(reqBytes), fullRespBody.String())
+					}
 					ch <- StreamChunk{Done: true}
 					return
 				}
@@ -231,6 +289,15 @@ func streamChatLoop(ctx context.Context, config ResolvedConfig, messages []Messa
 		return
 	}
 
-	// Scanner ended without explicit finish — treat as done.
+	if debugLogger != nil {
+		debugLogger(string(reqBytes), fullRespBody.String())
+	}
 	ch <- StreamChunk{Done: true}
+}
+
+type toolCallAccum struct {
+	ID      string
+	Type    string
+	Name    string
+	ArgsBuf strings.Builder
 }

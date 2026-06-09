@@ -62,6 +62,15 @@ func (s *Store) QueryColumnLineageTargets(ctx context.Context, metaGUID string) 
 	return guids, rows.Err()
 }
 
+// InsertLLMDebugLog inserts a debug log entry.
+func (s *Store) InsertLLMDebugLog(ctx context.Context, provider, model, reqBody, respBody string) error {
+	_, err := s.GetDB().ExecContext(ctx, `
+		INSERT INTO llm_debug_log (provider, model, request_body, response_body, created_at)
+		VALUES ($1, $2, $3, $4, NOW())
+	`, provider, model, reqBody, respBody)
+	return err
+}
+
 // GetExplainSQLCache looks up a cached explanation by key.
 func (s *Store) GetExplainSQLCache(ctx context.Context, cacheKey string) (*ExplainSQLCacheRow, error) {
 	row := s.GetDB().QueryRowContext(ctx, `

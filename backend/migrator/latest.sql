@@ -427,3 +427,16 @@ CREATE TABLE explain_sql_cache (
 );
 
 ALTER SEQUENCE explain_sql_cache_id_seq RESTART WITH 101;
+
+
+-- llm_debug_log stores full LLM request/response bodies when RuntimeDebug is enabled.
+CREATE TABLE llm_debug_log (
+    id BIGSERIAL PRIMARY KEY,
+    provider TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    request_body TEXT NOT NULL DEFAULT '',
+    response_body TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER SEQUENCE llm_debug_log_id_seq RESTART WITH 101;

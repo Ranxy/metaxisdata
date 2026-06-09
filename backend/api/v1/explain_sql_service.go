@@ -108,7 +108,14 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 
 	// Stream from LLM and buffer for caching.
 	var fullResponse strings.Builder
-	ch := llm.StreamChat(ctx, *resolvedConfig, messages, tools, executor)
+
+	var ch <-chan llm.StreamChunk
+	if s.registry.DebugEnabled() {
+		debugLogger := llm.NewDBDebugLogger(s.store, resolvedConfig.ProfileTitle, resolvedConfig.ModelName)
+		ch = llm.StreamChatWithDebug(ctx, *resolvedConfig, messages, tools, executor, debugLogger)
+	} else {
+		ch = llm.StreamChat(ctx, *resolvedConfig, messages, tools, executor)
+	}
 	for chunk := range ch {
 		if chunk.Error != nil {
 			return connect.NewError(connect.CodeInternal, chunk.Error)
