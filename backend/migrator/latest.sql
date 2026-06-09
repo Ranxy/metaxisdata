@@ -411,3 +411,19 @@ CREATE TABLE llm_provider_profile (
 );
 
 ALTER SEQUENCE llm_provider_profile_id_seq RESTART WITH 101;
+
+
+-- explain_sql_cache stores cached LLM explanations for SQL objects.
+CREATE TABLE explain_sql_cache (
+    id BIGSERIAL PRIMARY KEY,
+    cache_key TEXT UNIQUE NOT NULL,
+    cache_type INT NOT NULL DEFAULT 0,
+    meta_guid TEXT NOT NULL DEFAULT '',
+    sql_text TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    explanation_json JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER SEQUENCE explain_sql_cache_id_seq RESTART WITH 101;

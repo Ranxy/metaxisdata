@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package metaxisdata.store;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "generated-go/store";
+
+message ExplainSQLCache {
+  string cache_key = 1;
+  int32 cache_type = 2; // 0=metadata, 1=custom_sql
+  string meta_guid = 3;
+  string sql_text = 4;
+  string provider = 5;
+  string model = 6;
+  string explanation_json = 7;
+  google.protobuf.Timestamp created_at = 8;
+}

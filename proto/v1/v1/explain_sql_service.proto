@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package metaxisdata.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
+
+service ExplainSQLService {
+  rpc ExplainSQL(ExplainSQLRequest) returns (stream ExplainSQLResponse) {
+    option (google.api.http) = {
+      post: "/v1/explain-sql"
+      body: "*"
+    };
+  }
+}
+
+message ExplainSQLRequest {
+  string meta_guid = 1;
+  int32 meta_type = 2; // store.MetaType
+  string sql_text = 3;
+  bool force_regenerate = 4;
+  string provider_name = 5;
+}
+
+message ExplainSQLResponse {
+  oneof payload {
+    string content = 1;
+    ExplainSQLMetadata metadata = 2;
+    string error = 3;
+  }
+}
+
+message ExplainSQLMetadata {
+  string summary = 1;
+  string sections_json = 2;
+  string provider = 3;
+  string model = 4;
+  string cache_key = 5;
+  bool expired = 6;
+  bool from_cache = 7;
+}
