@@ -847,5 +847,20 @@
     "deleted": "Profile deleted",
     "saveError": "Failed to save profile",
     "deleteError": "Failed to delete profile"
+  },
+  "explainSQL": {
+    "title": "Explain SQL",
+    "fromMetadata": "From Metadata",
+    "customSQL": "Custom SQL",
+    "sqlPlaceholder": "Enter SQL to explain...",
+    "explain": "Explain",
+    "explaining": "Explaining...",
+    "idleHint": "Select a metadata object or enter custom SQL, then click \"Explain\".",
+    "cached": "Cached",
+    "expired": "Expired",
+    "regenerate": "Regenerate",
+    "metaGuid": "Metadata GUID",
+    "metaGuidPlaceholder": "instances/xxx/databases/xxx/...",
+    "metaGuidHint": "Paste a metadata GUID from the metadata browser URL."
   }
 }
