@@ -15,6 +15,15 @@
             :dialog-title="t('metadataBrowser.comment')"
           />
         </div>
+        <Button
+          v-if="guid"
+          variant="outline"
+          size="sm"
+          @click="$router.push(`/explain-sql/${guid}`)"
+        >
+          <Sparkles class="h-3.5 w-3.5 mr-1" />
+          {{ t("explainSQL.explain") }}
+        </Button>
       </div>
       <div class="text-sm text-muted-foreground">
         {{ summaryLine }}
@@ -77,10 +86,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Sparkles } from "lucide-vue-next";
 import type { FunctionMetadata } from "@/types/proto-es/v1/database_service_pb";
 import ExpandableText from "./ExpandableText.vue";
 
-const props = defineProps<{ fn: FunctionMetadata }>();
+const props = defineProps<{ fn: FunctionMetadata; guid?: string }>();
 
 const { t } = useI18n();
 

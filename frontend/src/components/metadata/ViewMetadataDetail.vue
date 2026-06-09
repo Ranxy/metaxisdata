@@ -21,6 +21,15 @@
           :meta-type="MetaType.VIEW"
           :object-name="view.name"
         />
+        <Button
+          v-if="guid"
+          variant="outline"
+          size="sm"
+          @click="$router.push(`/explain-sql/${guid}`)"
+        >
+          <Sparkles class="h-3.5 w-3.5 mr-1" />
+          {{ t("explainSQL.explain") }}
+        </Button>
       </div>
       <div class="text-sm text-muted-foreground">
         {{ summaryLine }}
@@ -133,7 +142,9 @@ import { useI18n } from "vue-i18n";
 import MetadataHistorySection from "@/components/metadata/MetadataHistorySection.vue";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Sparkles } from "lucide-vue-next";
 import {
   Table,
   TableBody,
