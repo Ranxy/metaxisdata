@@ -122,9 +122,15 @@ import Label from "@/components/ui/label/Label.vue";
 const { t } = useI18n();
 const route = useRoute();
 
+function getGuidFromRoute(): string {
+  const g = route.params.guid;
+  if (Array.isArray(g)) return g.join("/");
+  return (g as string) ?? "";
+}
+
 // ---- state ----
 const sourceMode = ref<"metadata" | "custom">("metadata");
-const metaGuid = ref((route.params.guid as string) ?? "");
+const metaGuid = ref(getGuidFromRoute());
 const customSQL = ref("");
 const isExplaining = ref(false);
 const resultText = ref("");
