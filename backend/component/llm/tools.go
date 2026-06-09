@@ -21,7 +21,7 @@ type SchemaObject struct {
 	SchemaName string
 	DBName     string
 	MetaType   storepb.MetaType
-	SQLText    string   // DDL or definition
+	SQLText    string // DDL or definition
 	Columns    []ColumnInfo
 	Indexes    []string
 }

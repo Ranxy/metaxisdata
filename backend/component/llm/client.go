@@ -26,9 +26,9 @@ type Message struct {
 
 // ToolCall is a function call requested by the LLM.
 type ToolCall struct {
-	ID        string `json:"id"`
-	Type      string `json:"type"`
-	Function  struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"`
 	} `json:"function"`
@@ -170,7 +170,7 @@ func streamChatLoop(ctx context.Context, config ResolvedConfig, messages []Messa
 
 		for _, choice := range chunk.Choices {
 			if choice.Delta.Content != "" {
-				fullContent.WriteString(choice.Delta.Content)
+				_, _ = fullContent.WriteString(choice.Delta.Content)
 				ch <- StreamChunk{Content: choice.Delta.Content}
 			}
 			for _, tc := range choice.Delta.ToolCalls {
