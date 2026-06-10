@@ -25,7 +25,7 @@
           v-if="guid"
           variant="outline"
           size="sm"
-          @click="$router.push(`/explain-sql/${guid}`)"
+          @click="$router.push({ path: `/explain-sql/${guid}`, query: { metaType: MetaType.MANUAL_SQL } })"
         >
           <Sparkles class="h-3.5 w-3.5 mr-1" />
           {{ t("explainSQL.explain") }}
@@ -136,13 +136,13 @@
 </template>
 
 <script setup lang="ts">
+import { Sparkles } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import MetadataHistorySection from "@/components/metadata/MetadataHistorySection.vue";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Sparkles } from "lucide-vue-next";
 import {
   type ManualSQLMetadata,
   MetaType,

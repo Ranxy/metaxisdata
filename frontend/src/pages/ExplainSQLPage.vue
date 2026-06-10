@@ -257,7 +257,8 @@ const metadataBrowserUrl = computed(() => {
 onMounted(async () => {
   const guidFromRoute = getGuidFromRoute();
   if (guidFromRoute) {
-    await loadMetaByGuid(guidFromRoute);
+    const metaTypeFromQuery = Number(route.query.metaType) || 0;
+    await loadMetaByGuid(guidFromRoute, metaTypeFromQuery as MetaType);
   }
 });
 
@@ -268,7 +269,7 @@ function getGuidFromRoute(): string {
   return (g as string) ?? "";
 }
 
-async function loadMetaByGuid(guid: string) {
+async function loadMetaByGuid(guid: string, metaType: MetaType) {
   const parts = guid.split(";");
   const name = parts[parts.length - 1] ?? guid;
   const path = parts.join(" / ");
@@ -276,14 +277,14 @@ async function loadMetaByGuid(guid: string) {
   selectedMeta.value = {
     guid,
     name,
-    type: guessTypeFromGuid(guid),
+    type: metaTypeLabel(metaType),
     path,
     sqlPreview: "",
-    metaType: 0 as MetaType,
+    metaType,
   };
 
   // Fetch DDL asynchronously.
-  await fetchMetaSQL(guid, 0 as MetaType);
+  await fetchMetaSQL(guid, metaType);
 }
 
 async function fetchMetaSQL(guid: string, metaType: MetaType) {
@@ -299,13 +300,6 @@ async function fetchMetaSQL(guid: string, metaType: MetaType) {
   } finally {
     loadingSql.value = false;
   }
-}
-
-function guessTypeFromGuid(_guid: string): string {
-  // Heuristic: look at the prefix pattern for type clues.
-  // Most GUIDs follow: instance;database;schema;name
-  // The type is determined by the meta_registry_resource entry.
-  return "Object";
 }
 
 function clearSelection() {

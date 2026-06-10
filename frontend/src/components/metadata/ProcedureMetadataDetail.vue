@@ -19,7 +19,7 @@
           v-if="guid"
           variant="outline"
           size="sm"
-          @click="$router.push(`/explain-sql/${guid}`)"
+          @click="$router.push({ path: `/explain-sql/${guid}`, query: { metaType: MetaType.PROCEDURE } })"
         >
           <Sparkles class="h-3.5 w-3.5 mr-1" />
           {{ t("explainSQL.explain") }}
@@ -51,11 +51,11 @@
 </template>
 
 <script setup lang="ts">
-import { useI18n } from "vue-i18n";
-import { Button } from "@/components/ui/button";
 import { Sparkles } from "lucide-vue-next";
+import { useI18n } from "vue-i18n";
 import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
-import type { ProcedureMetadata } from "@/types/proto-es/v1/database_service_pb";
+import { Button } from "@/components/ui/button";
+import { MetaType, type ProcedureMetadata } from "@/types/proto-es/v1/database_service_pb";
 import ExpandableText from "./ExpandableText.vue";
 
 defineProps<{ proc: ProcedureMetadata; guid?: string }>();
