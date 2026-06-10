@@ -111,6 +111,12 @@ const menuItems = computed<MenuItem[]>(() => [
     icon: Home,
   },
   {
+    key: "explainSQL",
+    label: t("menu.explainSQL"),
+    path: "/explain-sql",
+    icon: Sparkles,
+  },
+  {
     key: "datasource",
     label: t("menu.datasource"),
     path: "#",

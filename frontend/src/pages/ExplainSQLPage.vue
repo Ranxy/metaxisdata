@@ -4,9 +4,10 @@
       <h1 class="text-2xl font-bold tracking-tight">{{ t("explainSQL.title") }}</h1>
     </div>
 
-    <div class="grid grid-cols-[360px_minmax(0,1fr)] min-h-0 flex-1 border border-border rounded-lg overflow-hidden">
+    <div class="grid grid-cols-[380px_minmax(0,1fr)] min-h-0 flex-1 border border-border rounded-lg overflow-hidden">
       <!-- Left panel -->
       <div class="border-r border-border p-4 overflow-y-auto flex flex-col gap-3 bg-muted/30">
+        <!-- Source tabs -->
         <div class="flex gap-1 border-b border-border pb-2">
           <button
             :class="[
@@ -32,19 +33,69 @@
           </button>
         </div>
 
+        <!-- Metadata mode -->
         <template v-if="sourceMode === 'metadata'">
-          <div class="space-y-2">
-            <Label>{{ t("explainSQL.metaGuid") }}</Label>
-            <AppInput
-              v-model="metaGuid"
-              :placeholder="t('explainSQL.metaGuidPlaceholder')"
-            />
-          </div>
-          <p class="text-xs text-muted-foreground">
-            {{ t("explainSQL.metaGuidHint") }}
-          </p>
+          <!-- Selected metadata display -->
+          <template v-if="selectedMeta">
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-medium">{{ t("explainSQL.selectedObject") }}</span>
+                <button class="text-xs text-muted-foreground hover:text-foreground" @click="clearSelection">
+                  {{ t("explainSQL.change") }}
+                </button>
+              </div>
+              <div class="border rounded-md p-3 space-y-1.5 bg-background">
+                <div class="font-medium text-sm">{{ selectedMeta.name }}</div>
+                <div class="text-xs text-muted-foreground font-mono break-all">{{ selectedMeta.path }}</div>
+                <Badge variant="secondary" class="text-[10px]">
+                  {{ selectedMeta.type }}
+                </Badge>
+              </div>
+              <div v-if="selectedMeta.sqlPreview" class="space-y-1">
+                <span class="text-xs text-muted-foreground">{{ t("explainSQL.sqlPreview") }}</span>
+                <pre class="text-xs font-mono bg-background border rounded-md p-2 max-h-32 overflow-y-auto whitespace-pre-wrap">{{ selectedMeta.sqlPreview }}</pre>
+              </div>
+            </div>
+          </template>
+
+          <!-- Search box -->
+          <template v-else>
+            <div class="space-y-2">
+              <Label>{{ t("explainSQL.searchMetadata") }}</Label>
+              <div class="relative">
+                <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  v-model="metaSearch"
+                  :placeholder="t('explainSQL.searchPlaceholder')"
+                  type="search"
+                  class="w-full bg-input-surface border border-border rounded-md py-[7px] pl-8 pr-3 text-sm outline-none focus:border-accent"
+                  @input="onSearchInput"
+                />
+              </div>
+            </div>
+
+            <!-- Search results -->
+            <div v-if="searchResults.length > 0" class="max-h-64 overflow-y-auto border rounded-md bg-background">
+              <button
+                v-for="item in searchResults"
+                :key="item.guid"
+                class="w-full text-left py-2 px-3 hover:bg-accent/30 text-sm border-b border-border last:border-0 transition-colors"
+                @click="selectSearchResult(item)"
+              >
+                <div class="font-medium truncate">{{ item.name }}</div>
+                <div class="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                  <Badge variant="secondary" class="text-[10px] px-1 py-0">{{ item.type }}</Badge>
+                  <span class="truncate font-mono text-[10px]">{{ item.path }}</span>
+                </div>
+              </button>
+            </div>
+            <div v-else-if="metaSearch.trim() && !metaSearching" class="text-xs text-muted-foreground text-center py-2">
+              {{ t("explainSQL.noResults") }}
+            </div>
+          </template>
         </template>
 
+        <!-- Custom SQL mode -->
         <template v-else>
           <textarea
             v-model="customSQL"
@@ -107,14 +158,15 @@
 </template>
 
 <script setup lang="ts">
-import { Sparkles } from "lucide-vue-next";
-import { computed, ref } from "vue";
+import { Search, Sparkles } from "lucide-vue-next";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 
 import { explainSQL } from "@/api/explain";
+import { getSchemaString, searchMetadata } from "@/api/database";
+import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
 
-import AppInput from "@/components/common/AppInput.vue";
 import Badge from "@/components/ui/badge/Badge.vue";
 import Button from "@/components/ui/button/Button.vue";
 import Label from "@/components/ui/label/Label.vue";
@@ -122,16 +174,40 @@ import Label from "@/components/ui/label/Label.vue";
 const { t } = useI18n();
 const route = useRoute();
 
-function getGuidFromRoute(): string {
-  const g = route.params.guid;
-  if (Array.isArray(g)) return g.join("/");
-  return (g as string) ?? "";
+// ---- types ----
+interface SearchItem {
+  guid: string;
+  name: string;
+  type: string;
+  path: string;
+  metaType: MetaType;
+}
+
+interface SelectedMeta {
+  guid: string;
+  name: string;
+  type: string;
+  path: string;
+  sqlPreview: string;
 }
 
 // ---- state ----
-const sourceMode = ref<"metadata" | "custom">("metadata");
-const metaGuid = ref(getGuidFromRoute());
+const sourceMode = ref<"metadata" | "custom">(
+  route.params.guid ? "metadata" : "metadata",
+);
 const customSQL = ref("");
+
+// Metadata search
+const metaSearch = ref("");
+const metaSearching = ref(false);
+const searchResults = ref<SearchItem[]>([]);
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Selected metadata
+const selectedMeta = ref<SelectedMeta | null>(null);
+const loadingMeta = ref(false);
+
+// Explanation
 const isExplaining = ref(false);
 const resultText = ref("");
 const explainError = ref<string | null>(null);
@@ -144,11 +220,137 @@ const explainMeta = ref<{
 
 // ---- computed ----
 const canExplain = computed(() => {
-  if (sourceMode.value === "metadata") return metaGuid.value.trim() !== "";
+  if (sourceMode.value === "metadata") return !!selectedMeta.value;
   return customSQL.value.trim() !== "";
 });
 
+// ---- lifecycle ----
+onMounted(async () => {
+  const guidFromRoute = getGuidFromRoute();
+  if (guidFromRoute) {
+    await loadMetaByGuid(guidFromRoute);
+  }
+});
+
 // ---- methods ----
+function getGuidFromRoute(): string {
+  const g = route.params.guid;
+  if (Array.isArray(g)) return g.join("/");
+  return (g as string) ?? "";
+}
+
+async function loadMetaByGuid(guid: string) {
+  loadingMeta.value = true;
+  try {
+    // Try to get schema string to show DDL preview.
+    const schemaResp = await getSchemaString({ guid, metaType: 0 as MetaType });
+    const sqlPreview = (schemaResp as any).schemaString ?? "";
+
+    // Parse GUID for path: instance;database;schema;name
+    const parts = guid.split(";");
+    const name = parts[parts.length - 1] ?? guid;
+    const path = parts.join(" / ");
+
+    selectedMeta.value = {
+      guid,
+      name,
+      type: guessTypeFromGuid(guid),
+      path,
+      sqlPreview,
+    };
+  } catch {
+    // Fallback: just show GUID info.
+    const parts = guid.split(";");
+    selectedMeta.value = {
+      guid,
+      name: parts[parts.length - 1] ?? guid,
+      type: guessTypeFromGuid(guid),
+      path: parts.join(" / "),
+      sqlPreview: "",
+    };
+  } finally {
+    loadingMeta.value = false;
+  }
+}
+
+function guessTypeFromGuid(_guid: string): string {
+  // Heuristic: look at the prefix pattern for type clues.
+  // Most GUIDs follow: instance;database;schema;name
+  // The type is determined by the meta_registry_resource entry.
+  return "Object";
+}
+
+function clearSelection() {
+  selectedMeta.value = null;
+  metaSearch.value = "";
+  searchResults.value = [];
+}
+
+function onSearchInput() {
+  if (searchTimer) clearTimeout(searchTimer);
+  const q = metaSearch.value.trim();
+  if (!q) {
+    searchResults.value = [];
+    return;
+  }
+  searchTimer = setTimeout(() => doSearch(q), 300);
+}
+
+async function doSearch(q: string) {
+  metaSearching.value = true;
+  try {
+    const resp = await searchMetadata({ searchStr: q });
+    const items: SearchItem[] = [];
+    for (const r of (resp as any).results ?? []) {
+      const guid = r.guid ?? "";
+      const parts = guid.split(";");
+      items.push({
+        guid,
+        name: r.name ?? parts[parts.length - 1] ?? guid,
+        type: metaTypeLabel(r.metaType as MetaType),
+        path: parts.join(" / "),
+        metaType: r.metaType as MetaType,
+      });
+    }
+    searchResults.value = items;
+  } catch {
+    searchResults.value = [];
+  } finally {
+    metaSearching.value = false;
+  }
+}
+
+function metaTypeLabel(t: MetaType): string {
+  const labels: Record<number, string> = {
+    0: "UNSPECIFIED", 1: "INSTANCE", 2: "DATABASE", 3: "SCHEMA",
+    4: "TABLE", 5: "VIEW", 6: "MATERIALIZED_VIEW",
+    7: "COLUMN", 10: "PROCEDURE", 11: "FUNCTION", 18: "MANUAL_SQL",
+  };
+  return labels[t as number] ?? `TYPE_${t}`;
+}
+
+async function selectSearchResult(item: SearchItem) {
+  metaSearch.value = "";
+  searchResults.value = [];
+
+  // Fetch DDL preview.
+  let sqlPreview = "";
+  try {
+    const schemaResp = await getSchemaString({ guid: item.guid, metaType: item.metaType });
+    sqlPreview = (schemaResp as any).schemaString ?? "";
+  } catch {
+    // ignore
+  }
+
+  selectedMeta.value = {
+    guid: item.guid,
+    name: item.name,
+    type: item.type,
+    path: item.path,
+    sqlPreview,
+  };
+}
+
 async function startExplain(forceRegen = false) {
   if (isExplaining.value) return;
   isExplaining.value = true;
@@ -156,8 +358,8 @@ async function startExplain(forceRegen = false) {
   explainError.value = null;
   explainMeta.value = null;
 
-  const input = sourceMode.value === "metadata"
-    ? { metaGuid: metaGuid.value.trim(), forceRegenerate: forceRegen }
+  const input = sourceMode.value === "metadata" && selectedMeta.value
+    ? { metaGuid: selectedMeta.value.guid, forceRegenerate: forceRegen }
     : { sqlText: customSQL.value.trim(), forceRegenerate: forceRegen };
 
   try {

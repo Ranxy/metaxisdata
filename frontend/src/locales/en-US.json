@@ -60,7 +60,8 @@
     "settings": "Settings",
     "users": "User Management",
     "auditLogs": "Audit Logs",
-    "openlineage": "OpenLineage"
+    "openlineage": "OpenLineage",
+    "explainSQL": "Explain SQL"
   },
   "auditLogs": {
     "title": "Audit Logs",
@@ -859,8 +860,11 @@
     "cached": "Cached",
     "expired": "Expired",
     "regenerate": "Regenerate",
-    "metaGuid": "Metadata GUID",
-    "metaGuidPlaceholder": "instances/xxx/databases/xxx/...",
-    "metaGuidHint": "Paste a metadata GUID from the metadata browser URL."
+    "searchMetadata": "Search Metadata",
+    "searchPlaceholder": "Search tables, views, functions...",
+    "noResults": "No matching objects found.",
+    "selectedObject": "Selected Object",
+    "change": "Change",
+    "sqlPreview": "SQL Preview"
   }
 }

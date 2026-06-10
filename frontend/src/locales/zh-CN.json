@@ -60,7 +60,8 @@
     "settings": "设置",
     "users": "用户管理",
     "auditLogs": "审计日志",
-    "openlineage": "OpenLineage"
+    "openlineage": "OpenLineage",
+    "explainSQL": "SQL 解释"
   },
   "auditLogs": {
     "title": "审计日志",
@@ -859,8 +860,11 @@
     "cached": "缓存",
     "expired": "已过期",
     "regenerate": "重新生成",
-    "metaGuid": "元数据 GUID",
-    "metaGuidPlaceholder": "instances/xxx/databases/xxx/...",
-    "metaGuidHint": "从元数据浏览器 URL 中复制 GUID 粘贴到这里。"
+    "searchMetadata": "搜索元数据",
+    "searchPlaceholder": "搜索表、视图、函数...",
+    "noResults": "没有匹配的对象。",
+    "selectedObject": "已选对象",
+    "change": "更换",
+    "sqlPreview": "SQL 预览"
   }
 }
