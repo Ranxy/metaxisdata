@@ -51,7 +51,7 @@
                 </div>
                 <div class="text-xs text-muted-foreground font-mono break-all">{{ selectedMeta.path }}</div>
                 <router-link
-                  :to="`/metadata/${selectedMeta.guid}`"
+                  :to="metadataBrowserUrl"
                   class="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 font-medium hover:underline mt-1"
                 >
                   <ExternalLink class="h-3 w-3" />
@@ -210,6 +210,7 @@ interface SelectedMeta {
   type: string;
   path: string;
   sqlPreview: string;
+  metaType: MetaType;
 }
 
 // ---- state ----
@@ -245,6 +246,13 @@ const canExplain = computed(() => {
   return customSQL.value.trim() !== "";
 });
 
+const metadataBrowserUrl = computed(() => {
+  const m = selectedMeta.value;
+  if (!m) return "";
+  const parts = m.guid.split(";").map((p) => p || "~");
+  return `/metadata/${parts.join("/")}?metaType=${m.metaType}`;
+});
+
 // ---- lifecycle ----
 onMounted(async () => {
   const guidFromRoute = getGuidFromRoute();
@@ -271,6 +279,7 @@ async function loadMetaByGuid(guid: string) {
     type: guessTypeFromGuid(guid),
     path,
     sqlPreview: "",
+    metaType: 0 as MetaType,
   };
 
   // Fetch DDL asynchronously.
@@ -366,6 +375,7 @@ async function selectSearchResult(item: SearchItem) {
     type: item.type,
     path: item.path,
     sqlPreview: "",
+    metaType: item.metaType,
   };
 
   await fetchMetaSQL(item.guid, item.metaType);
