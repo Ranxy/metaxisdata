@@ -865,6 +865,9 @@
     "noResults": "没有匹配的对象。",
     "selectedObject": "已选对象",
     "change": "更换",
-    "sqlPreview": "SQL 预览"
+    "sqlContent": "SQL 内容",
+    "loading": "加载中...",
+    "noSqlContent": "此对象没有可用的 SQL 内容。",
+    "viewInBrowser": "在元数据浏览器中查看"
   }
 }

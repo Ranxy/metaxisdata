@@ -865,6 +865,9 @@
     "noResults": "No matching objects found.",
     "selectedObject": "Selected Object",
     "change": "Change",
-    "sqlPreview": "SQL Preview"
+    "sqlContent": "SQL Content",
+    "loading": "Loading...",
+    "noSqlContent": "No SQL content available for this object.",
+    "viewInBrowser": "View in Metadata Browser"
   }
 }

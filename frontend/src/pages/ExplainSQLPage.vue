@@ -45,15 +45,31 @@
                 </button>
               </div>
               <div class="border rounded-md p-3 space-y-1.5 bg-background">
-                <div class="font-medium text-sm">{{ selectedMeta.name }}</div>
+                <div class="flex items-center gap-2">
+                  <span class="font-medium text-sm">{{ selectedMeta.name }}</span>
+                  <Badge variant="secondary" class="text-[10px]">{{ selectedMeta.type }}</Badge>
+                </div>
                 <div class="text-xs text-muted-foreground font-mono break-all">{{ selectedMeta.path }}</div>
-                <Badge variant="secondary" class="text-[10px]">
-                  {{ selectedMeta.type }}
-                </Badge>
+                <router-link
+                  :to="`/metadata/${selectedMeta.guid}`"
+                  class="inline-flex items-center gap-1 text-xs text-accent hover:underline mt-1"
+                >
+                  <ExternalLink class="h-3 w-3" />
+                  {{ t("explainSQL.viewInBrowser") }}
+                </router-link>
               </div>
-              <div v-if="selectedMeta.sqlPreview" class="space-y-1">
-                <span class="text-xs text-muted-foreground">{{ t("explainSQL.sqlPreview") }}</span>
-                <pre class="text-xs font-mono bg-background border rounded-md p-2 max-h-32 overflow-y-auto whitespace-pre-wrap">{{ selectedMeta.sqlPreview }}</pre>
+              <div class="space-y-1">
+                <span class="text-xs text-muted-foreground">{{ t("explainSQL.sqlContent") }}</span>
+                <div v-if="loadingSql" class="text-xs text-muted-foreground text-center py-4 border rounded-md">
+                  {{ t("explainSQL.loading") }}
+                </div>
+                <pre
+                  v-else-if="selectedMeta.sqlPreview"
+                  class="text-xs font-mono bg-background border rounded-md p-3 max-h-48 overflow-y-auto whitespace-pre-wrap"
+                >{{ selectedMeta.sqlPreview }}</pre>
+                <div v-else class="text-xs text-muted-foreground text-center py-4 border rounded-md">
+                  {{ t("explainSQL.noSqlContent") }}
+                </div>
               </div>
             </div>
           </template>
@@ -158,18 +174,16 @@
 </template>
 
 <script setup lang="ts">
-import { Search, Sparkles } from "lucide-vue-next";
+import { ExternalLink, Search, Sparkles } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
-
-import { explainSQL } from "@/api/explain";
 import { getSchemaString, searchMetadata } from "@/api/database";
-import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
-
+import { explainSQL } from "@/api/explain";
 import Badge from "@/components/ui/badge/Badge.vue";
 import Button from "@/components/ui/button/Button.vue";
 import Label from "@/components/ui/label/Label.vue";
+import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -193,7 +207,7 @@ interface SelectedMeta {
 
 // ---- state ----
 const sourceMode = ref<"metadata" | "custom">(
-  route.params.guid ? "metadata" : "metadata",
+  route.params.guid ? "metadata" : "metadata"
 );
 const customSQL = ref("");
 
@@ -205,7 +219,7 @@ let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Selected metadata
 const selectedMeta = ref<SelectedMeta | null>(null);
-const loadingMeta = ref(false);
+const loadingSql = ref(false);
 
 // Explanation
 const isExplaining = ref(false);
@@ -240,36 +254,34 @@ function getGuidFromRoute(): string {
 }
 
 async function loadMetaByGuid(guid: string) {
-  loadingMeta.value = true;
+  const parts = guid.split(";");
+  const name = parts[parts.length - 1] ?? guid;
+  const path = parts.join(" / ");
+
+  selectedMeta.value = {
+    guid,
+    name,
+    type: guessTypeFromGuid(guid),
+    path,
+    sqlPreview: "",
+  };
+
+  // Fetch DDL asynchronously.
+  await fetchMetaSQL(guid, 0 as MetaType);
+}
+
+async function fetchMetaSQL(guid: string, metaType: MetaType) {
+  loadingSql.value = true;
   try {
-    // Try to get schema string to show DDL preview.
-    const schemaResp = await getSchemaString({ guid, metaType: 0 as MetaType });
-    const sqlPreview = (schemaResp as any).schemaString ?? "";
-
-    // Parse GUID for path: instance;database;schema;name
-    const parts = guid.split(";");
-    const name = parts[parts.length - 1] ?? guid;
-    const path = parts.join(" / ");
-
-    selectedMeta.value = {
-      guid,
-      name,
-      type: guessTypeFromGuid(guid),
-      path,
-      sqlPreview,
-    };
+    const schemaResp = await getSchemaString({ guid, metaType });
+    const sql = (schemaResp as any).schemaString ?? "";
+    if (sql && selectedMeta.value && selectedMeta.value.guid === guid) {
+      selectedMeta.value = { ...selectedMeta.value, sqlPreview: sql };
+    }
   } catch {
-    // Fallback: just show GUID info.
-    const parts = guid.split(";");
-    selectedMeta.value = {
-      guid,
-      name: parts[parts.length - 1] ?? guid,
-      type: guessTypeFromGuid(guid),
-      path: parts.join(" / "),
-      sqlPreview: "",
-    };
+    // Silently ignore — show "no SQL content" state.
   } finally {
-    loadingMeta.value = false;
+    loadingSql.value = false;
   }
 }
 
@@ -322,9 +334,17 @@ async function doSearch(q: string) {
 
 function metaTypeLabel(t: MetaType): string {
   const labels: Record<number, string> = {
-    0: "UNSPECIFIED", 1: "INSTANCE", 2: "DATABASE", 3: "SCHEMA",
-    4: "TABLE", 5: "VIEW", 6: "MATERIALIZED_VIEW",
-    7: "COLUMN", 10: "PROCEDURE", 11: "FUNCTION", 18: "MANUAL_SQL",
+    0: "UNSPECIFIED",
+    1: "INSTANCE",
+    2: "DATABASE",
+    3: "SCHEMA",
+    4: "TABLE",
+    5: "VIEW",
+    6: "MATERIALIZED_VIEW",
+    7: "COLUMN",
+    10: "PROCEDURE",
+    11: "FUNCTION",
+    18: "MANUAL_SQL",
   };
   return labels[t as number] ?? `TYPE_${t}`;
 }
@@ -333,22 +353,15 @@ async function selectSearchResult(item: SearchItem) {
   metaSearch.value = "";
   searchResults.value = [];
 
-  // Fetch DDL preview.
-  let sqlPreview = "";
-  try {
-    const schemaResp = await getSchemaString({ guid: item.guid, metaType: item.metaType });
-    sqlPreview = (schemaResp as any).schemaString ?? "";
-  } catch {
-    // ignore
-  }
-
   selectedMeta.value = {
     guid: item.guid,
     name: item.name,
     type: item.type,
     path: item.path,
-    sqlPreview,
+    sqlPreview: "",
   };
+
+  await fetchMetaSQL(item.guid, item.metaType);
 }
 
 async function startExplain(forceRegen = false) {
@@ -358,9 +371,10 @@ async function startExplain(forceRegen = false) {
   explainError.value = null;
   explainMeta.value = null;
 
-  const input = sourceMode.value === "metadata" && selectedMeta.value
-    ? { metaGuid: selectedMeta.value.guid, forceRegenerate: forceRegen }
-    : { sqlText: customSQL.value.trim(), forceRegenerate: forceRegen };
+  const input =
+    sourceMode.value === "metadata" && selectedMeta.value
+      ? { metaGuid: selectedMeta.value.guid, forceRegenerate: forceRegen }
+      : { sqlText: customSQL.value.trim(), forceRegenerate: forceRegen };
 
   try {
     const stream = explainSQL(input);
