@@ -317,7 +317,7 @@ watch(
   (t) => {
     const def = getBuiltinByEnum(t);
     formData.baseUrl = def?.defaultBaseUrl ?? "";
-  },
+  }
 );
 
 const availableModels = ref<string[]>([]);
