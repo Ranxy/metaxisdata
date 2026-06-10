@@ -97,41 +97,39 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 	// Build schema context from lineage.
 	ctxObjects := s.buildSchemaContext(ctx, metaGUID, metaType)
 
-	// Build messages.
-	messages := buildMessages(sqlText, metaGUID, metaType, ctxObjects)
-
 	// Build tools.
 	tools := llm.ExplainSQLTools()
 	executor := func(tc llm.ToolCall) ([]llm.ToolResult, error) {
 		return llm.ExecuteTool(tc, ctxObjects)
 	}
 
-	// Stream from LLM and buffer for caching.
+	// Run agent loop.
 	var fullResponse strings.Builder
-
-	var ch <-chan llm.StreamChunk
-	if s.registry.DebugEnabled() {
-		debugLogger := llm.NewDBDebugLogger(s.store, resolvedConfig.ProfileName, resolvedConfig.ModelName)
-		ch = llm.StreamChatWithDebug(ctx, *resolvedConfig, messages, tools, executor, debugLogger)
-	} else {
-		ch = llm.StreamChat(ctx, *resolvedConfig, messages, tools, executor)
+	cfg := llm.AgentConfig{
+		Provider:     *resolvedConfig,
+		SystemPrompt: buildSystemPrompt(sqlText, metaGUID, metaType, ctxObjects),
+		UserPrompt:   sqlText,
+		Tools:        tools,
+		Executor:     executor,
 	}
-	for chunk := range ch {
-		if chunk.Error != nil {
-			return connect.NewError(connect.CodeInternal, chunk.Error)
-		}
-		if chunk.Content != "" {
-			_, _ = fullResponse.WriteString(chunk.Content)
+	if s.registry.DebugEnabled() {
+		cfg.DebugLogger = llm.NewDBDebugLogger(s.store, resolvedConfig.ProfileName, resolvedConfig.ModelName)
+	}
+
+	for evt := range llm.RunAgentLoop(ctx, cfg) {
+		switch evt.Type {
+		case llm.AgentEventError:
+			return connect.NewError(connect.CodeInternal, evt.Error)
+		case llm.AgentEventContent:
+			_, _ = fullResponse.WriteString(evt.Content)
 			if err := stream.Send(&v1pb.ExplainSQLResponse{
-				Payload: &v1pb.ExplainSQLResponse_Content{
-					Content: chunk.Content,
-				},
+				Payload: &v1pb.ExplainSQLResponse_Content{Content: evt.Content},
 			}); err != nil {
 				return err
 			}
-		}
-		if chunk.Done {
-			break
+		case llm.AgentEventAgentEnd:
+			// loop finished
+		default:
 		}
 	}
 
@@ -263,14 +261,14 @@ func (s *ExplainSQLService) buildSchemaContext(_ context.Context, metaGUID strin
 	return ctxObj
 }
 
-func buildMessages(sqlText, _ string, metaType storepb.MetaType, ctx *llm.SchemaContext) []llm.Message {
+func buildSystemPrompt(_ string, _ string, metaType storepb.MetaType, ctx *llm.SchemaContext) string {
 	typeLabel := metaType.String()
 	if metaType == storepb.MetaType_UNSPECIFIED {
 		typeLabel = "SQL"
 	}
 
 	contextText := buildContextText(ctx)
-	systemPrompt := fmt.Sprintf(`You are an expert SQL analyst. Explain the following %s in detail.
+	return fmt.Sprintf(`You are an expert SQL analyst. Explain the following %s in detail.
 
 Return your response as a JSON object with exactly this structure:
 {
@@ -288,11 +286,6 @@ Include these sections:
 
 You have access to tools to query schema information. Use them when you need to understand an object's structure.
 %s`, typeLabel, contextText)
-
-	return []llm.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: sqlText},
-	}
 }
 
 func buildContextText(ctx *llm.SchemaContext) string {
