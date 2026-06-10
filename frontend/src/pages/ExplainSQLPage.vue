@@ -274,7 +274,7 @@ async function fetchMetaSQL(guid: string, metaType: MetaType) {
   loadingSql.value = true;
   try {
     const schemaResp = await getSchemaString({ guid, metaType });
-    const sql = (schemaResp as any).schemaString ?? "";
+    const sql = schemaResp.schema ?? "";
     if (sql && selectedMeta.value && selectedMeta.value.guid === guid) {
       selectedMeta.value = { ...selectedMeta.value, sqlPreview: sql };
     }
