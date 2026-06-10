@@ -52,7 +52,7 @@
                 <div class="text-xs text-muted-foreground font-mono break-all">{{ selectedMeta.path }}</div>
                 <router-link
                   :to="`/metadata/${selectedMeta.guid}`"
-                  class="inline-flex items-center gap-1 text-xs text-accent hover:underline mt-1"
+                  class="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 font-medium hover:underline mt-1"
                 >
                   <ExternalLink class="h-3 w-3" />
                   {{ t("explainSQL.viewInBrowser") }}
