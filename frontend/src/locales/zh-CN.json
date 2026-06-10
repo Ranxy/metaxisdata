@@ -853,7 +853,6 @@
     "title": "SQL 解释",
     "fromMetadata": "从元数据",
     "customSQL": "自定义 SQL",
-    "sqlPlaceholder": "输入要解释的 SQL...",
     "explain": "解释",
     "explaining": "解释中...",
     "idleHint": "选择元数据对象或输入自定义 SQL，然后点击「解释」。",

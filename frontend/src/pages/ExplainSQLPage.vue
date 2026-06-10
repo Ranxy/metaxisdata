@@ -63,10 +63,13 @@
                 <div v-if="loadingSql" class="text-xs text-muted-foreground text-center py-4 border rounded-md">
                   {{ t("explainSQL.loading") }}
                 </div>
-                <pre
+                <DefinitionMonacoViewer
                   v-else-if="selectedMeta.sqlPreview"
-                  class="text-xs font-mono bg-background border rounded-md p-3 max-h-48 overflow-y-auto whitespace-pre-wrap"
-                >{{ selectedMeta.sqlPreview }}</pre>
+                  :content="selectedMeta.sqlPreview"
+                  language="sql"
+                  :min-height="120"
+                  :max-height="320"
+                />
                 <div v-else class="text-xs text-muted-foreground text-center py-4 border rounded-md">
                   {{ t("explainSQL.noSqlContent") }}
                 </div>
@@ -113,11 +116,13 @@
 
         <!-- Custom SQL mode -->
         <template v-else>
-          <textarea
-            v-model="customSQL"
-            :placeholder="t('explainSQL.sqlPlaceholder')"
-            class="flex-1 min-h-[200px] bg-input-surface border border-border rounded-md p-3 text-sm font-mono outline-none focus:border-accent resize-none"
-          />
+          <div class="flex-1 min-h-0 border rounded-md overflow-hidden">
+            <MonacoEditor
+              v-model:content="customSQL"
+              language="sql"
+              :options="{ fontSize: 13, minimap: { enabled: false } }"
+            />
+          </div>
         </template>
 
         <Button
@@ -183,6 +188,8 @@ import { explainSQL } from "@/api/explain";
 import Badge from "@/components/ui/badge/Badge.vue";
 import Button from "@/components/ui/button/Button.vue";
 import Label from "@/components/ui/label/Label.vue";
+import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
+import MonacoEditor from "@/components/monaco-editor/MonacoEditor.vue";
 import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
 
 const { t } = useI18n();
