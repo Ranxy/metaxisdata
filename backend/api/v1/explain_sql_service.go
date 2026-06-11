@@ -102,7 +102,7 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 	}
 
 	// Build schema context from lineage.
-	ctxObjects := s.buildSchemaContext(ctx, metaGUID, metaType)
+	ctxObjects := s.buildSchemaContext(ctx, metaGUID, metaType, req.Msg.ScopePrefix)
 
 	// Build tools.
 	tools := llm.ExplainSQLTools()
@@ -253,9 +253,12 @@ func (s *ExplainSQLService) resolveSource(ctx context.Context, req *v1pb.Explain
 	return "", "", storepb.MetaType_UNSPECIFIED, "", "", connect.NewError(connect.CodeInvalidArgument, errors.New("either sql_text or meta_guid is required"))
 }
 
-func (s *ExplainSQLService) buildSchemaContext(_ context.Context, metaGUID string, _ storepb.MetaType) *llm.SchemaContext {
+func (s *ExplainSQLService) buildSchemaContext(ctx context.Context, metaGUID string, _ storepb.MetaType, scopePrefix string) *llm.SchemaContext {
 	if metaGUID == "" {
-		return &llm.SchemaContext{}
+		if scopePrefix == "" {
+			return &llm.SchemaContext{}
+		}
+		return s.buildSchemaContextFromScope(ctx, scopePrefix)
 	}
 
 	// Collect upstream and downstream GUIDs from column_lineage.
@@ -294,6 +297,46 @@ func (s *ExplainSQLService) buildSchemaContext(_ context.Context, metaGUID strin
 			continue
 		}
 		metas = append(metas, list[0].Metadata)
+	}
+
+	ctxObj := llm.BuildContextFromMetadata(metas, guids)
+	if len(ctxObj.Objects) > 10 {
+		ctxObj.Objects = ctxObj.Objects[:10]
+	}
+	return ctxObj
+}
+
+var scopeObjectTypes = []storepb.MetaType{
+	storepb.MetaType_TABLE,
+	storepb.MetaType_VIEW,
+	storepb.MetaType_MATERIALIZED_VIEW,
+	storepb.MetaType_FUNCTION,
+	storepb.MetaType_PROCEDURE,
+}
+
+func (s *ExplainSQLService) buildSchemaContextFromScope(ctx context.Context, scopePrefix string) *llm.SchemaContext {
+	limit := 50
+	list, err := s.store.ListMetaRegistryResource(ctx, &store.FindMetaRegistryResourceMessage{
+		GUIDPrefix: &scopePrefix,
+		Limit:      &limit,
+	})
+	if err != nil || len(list) == 0 {
+		return &llm.SchemaContext{}
+	}
+
+	allowedTypes := make(map[storepb.MetaType]bool, len(scopeObjectTypes))
+	for _, t := range scopeObjectTypes {
+		allowedTypes[t] = true
+	}
+
+	var metas []*storepb.StoredMetadata
+	var guids []string
+	for _, item := range list {
+		if !allowedTypes[item.ObjectType] {
+			continue
+		}
+		metas = append(metas, item.Metadata)
+		guids = append(guids, item.GUID)
 	}
 
 	ctxObj := llm.BuildContextFromMetadata(metas, guids)

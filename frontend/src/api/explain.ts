@@ -8,6 +8,7 @@ export interface ExplainSQLInput {
   metaType?: number;
   forceRegenerate?: boolean;
   providerName?: string;
+  scopePrefix?: string;
 }
 
 export function explainSQL(input: ExplainSQLInput) {
@@ -17,6 +18,7 @@ export function explainSQL(input: ExplainSQLInput) {
     metaType: input.metaType ?? 0,
     forceRegenerate: input.forceRegenerate ?? false,
     providerName: input.providerName ?? "",
+    scopePrefix: input.scopePrefix ?? "",
   });
   return explainSQLClient.explainSQL(request);
 }

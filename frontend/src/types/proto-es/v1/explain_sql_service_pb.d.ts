@@ -40,6 +40,11 @@ export declare type ExplainSQLRequest = Message<"metaxisdata.v1.ExplainSQLReques
    * @generated from field: string provider_name = 5;
    */
   providerName: string;
+
+  /**
+   * @generated from field: string scope_prefix = 6;
+   */
+  scopePrefix: string;
 };
 
 /**

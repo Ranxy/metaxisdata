@@ -3118,6 +3118,8 @@ components:
                     type: boolean
                 providerName:
                     type: string
+                scopePrefix:
+                    type: string
         ExplainSQLResponse:
             type: object
             properties:

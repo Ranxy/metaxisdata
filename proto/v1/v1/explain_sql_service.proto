@@ -21,6 +21,7 @@ message ExplainSQLRequest {
   string sql_text = 3;
   bool force_regenerate = 4;
   string provider_name = 5;
+  string scope_prefix = 6;
 }
 
 message ExplainSQLResponse {

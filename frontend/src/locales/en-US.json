@@ -870,6 +870,11 @@
     "viewInBrowser": "View in Metadata Browser",
     "thinking": "Analyzing...",
     "thinkingProcess": "Thought process",
-    "cacheHint": "Showing cached result from {time} — click Regenerate to refresh."
+    "cacheHint": "Showing cached result from {time} — click Regenerate to refresh.",
+    "selectDatabase": "Select database",
+    "selectSchema": "Select schema",
+    "selectScope": "Select instance, database, schema...",
+    "noDatabases": "No databases found",
+    "noSchemas": "No schemas found"
   }
 }

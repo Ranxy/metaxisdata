@@ -3346,6 +3346,7 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | sql_text | [string](#string) |  |  |
 | force_regenerate | [bool](#bool) |  |  |
 | provider_name | [string](#string) |  |  |
+| scope_prefix | [string](#string) |  |  |
 
 
 

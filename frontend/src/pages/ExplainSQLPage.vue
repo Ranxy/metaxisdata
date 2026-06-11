@@ -81,7 +81,7 @@
           <template v-else>
             <div class="space-y-2">
               <Label>{{ t("explainSQL.searchMetadata") }}</Label>
-              <div class="relative">
+          <div id="scope-dropdown" class="relative">
                 <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
                   v-model="metaSearch"
@@ -116,6 +116,51 @@
 
         <!-- Custom SQL mode -->
         <template v-else>
+          <!-- Scope selector -->
+          <div class="relative">
+            <button
+              type="button"
+              class="w-full bg-input-surface border border-border rounded-md py-1.5 px-3 text-xs text-left outline-none focus:border-accent flex items-center gap-1"
+              @click="scopeOpen = !scopeOpen"
+            >
+              <span v-if="scopeDisplay" class="truncate text-foreground">{{ scopeDisplay }}</span>
+              <span v-else class="text-muted-foreground">{{ t("explainSQL.selectScope") }}</span>
+              <ChevronDown class="h-3 w-3 text-muted-foreground shrink-0 ml-auto" />
+            </button>
+            <div
+              v-if="scopeOpen"
+              class="absolute z-10 left-0 right-0 top-full mt-1 bg-background border border-border rounded-md shadow-md overflow-hidden"
+            >
+              <div
+                v-if="scopeStep !== 'instance'"
+                class="flex items-center gap-2 border-b border-border px-2 py-1.5"
+              >
+                <button
+                  class="text-muted-foreground hover:text-foreground shrink-0"
+                  @click="scopeStep = scopeStep === 'schema' ? 'database' : 'instance'"
+                >
+                  <ArrowLeft class="h-3.5 w-3.5" />
+                </button>
+                <span class="text-xs text-muted-foreground truncate">{{ scopeStepLabel }}</span>
+              </div>
+              <div class="max-h-48 overflow-y-auto">
+                <button
+                  v-for="item in scopeStepItems"
+                  :key="item.value"
+                  class="w-full text-left px-3 py-1.5 text-xs hover:bg-accent/30 transition-colors"
+                  @click="scopeSelectItem(item.value)"
+                >
+                  {{ item.label }}
+                </button>
+                <div
+                  v-if="scopeStepItems.length === 0 && !scopeStepLoading"
+                  class="px-3 py-2 text-xs text-muted-foreground"
+                >
+                  {{ scopeStepEmpty }}
+                </div>
+              </div>
+            </div>
+          </div>
           <div class="flex-1 min-h-0 border rounded-md overflow-hidden">
             <MonacoEditor
               v-model:content="customSQL"
@@ -231,6 +276,8 @@
 
 <script setup lang="ts">
 import {
+  ArrowLeft,
+  ChevronDown,
   Clock,
   ExternalLink,
   Loader2,
@@ -238,17 +285,18 @@ import {
   Sparkles,
 } from "lucide-vue-next";
 import MarkdownRender from "markstream-vue";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
-import { getSchemaString, searchMetadata } from "@/api/database";
+import { getSchemaString, listMetadata, searchMetadata } from "@/api/database";
 import { explainSQL } from "@/api/explain";
+import { listInstances } from "@/api/instance";
 import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
 import MonacoEditor from "@/components/monaco-editor/MonacoEditor.vue";
 import Badge from "@/components/ui/badge/Badge.vue";
 import Button from "@/components/ui/button/Button.vue";
 import Label from "@/components/ui/label/Label.vue";
-import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type { ExplainSQLProgress } from "@/types/proto-es/v1/explain_sql_service_pb";
 
 const { t } = useI18n();
@@ -277,6 +325,138 @@ const sourceMode = ref<"metadata" | "custom">(
   route.params.guid ? "metadata" : "metadata"
 );
 const customSQL = ref("");
+
+// Scope for custom SQL
+interface ScopeInstance {
+  id: string;
+  title: string;
+}
+interface ScopeItem {
+  value: string;
+  label: string;
+}
+const scopeInstances = ref<ScopeInstance[]>([]);
+const scopeDatabases = ref<string[]>([]);
+const scopeSchemas = ref<string[]>([]);
+const scopeInstance = ref("");
+const scopeDatabase = ref("");
+const scopeSchema = ref("");
+const scopeOpen = ref(false);
+const scopeStep = ref<"instance" | "database" | "schema">("instance");
+const scopeStepLoading = ref(false);
+
+const scopeDisplay = computed(() => {
+  const parts: string[] = [];
+  const inst = scopeInstances.value.find((i) => i.id === scopeInstance.value);
+  if (inst) parts.push(inst.title);
+  if (scopeDatabase.value) parts.push(scopeDatabase.value);
+  if (scopeSchema.value) parts.push(scopeSchema.value);
+  return parts.join(" \u203A ");
+});
+
+const scopeStepLabel = computed(() => {
+  if (scopeStep.value === "database") return t("explainSQL.selectDatabase");
+  return t("explainSQL.selectSchema");
+});
+
+const scopeStepItems = computed<ScopeItem[]>(() => {
+  if (scopeStep.value === "instance") {
+    return scopeInstances.value.map((i) => ({ value: i.id, label: i.title }));
+  }
+  if (scopeStep.value === "database") {
+    return scopeDatabases.value.map((db) => ({ value: db, label: db }));
+  }
+  return scopeSchemas.value.map((sch) => ({ value: sch, label: sch }));
+});
+
+const scopeStepEmpty = computed(() => {
+  if (scopeStep.value === "database") return t("explainSQL.noDatabases");
+  return t("explainSQL.noSchemas");
+});
+
+const scopePrefix = computed(() => {
+  if (!scopeInstance.value || !scopeDatabase.value) return "";
+  const parts = [scopeInstance.value, scopeDatabase.value];
+  if (scopeSchema.value) parts.push(scopeSchema.value);
+  return parts.join(";");
+});
+
+watch(scopeInstance, async (val) => {
+  scopeDatabase.value = "";
+  scopeSchema.value = "";
+  scopeDatabases.value = [];
+  scopeSchemas.value = [];
+  if (!val) {
+    scopeStep.value = "instance";
+    return;
+  }
+  scopeStepLoading.value = true;
+  try {
+    const resp = await listMetadata({ parentGuid: val, pageSize: 100 });
+    const dbGroup = resp.typesStoredMetadata.find(
+      (g) => g.metaType === MetaType.DATABASE
+    );
+    scopeDatabases.value = dbGroup
+      ? dbGroup.list.map((item) => item.type.value?.name ?? "").filter(Boolean)
+      : [];
+    scopeStep.value = "database";
+  } catch {
+    scopeDatabases.value = [];
+  } finally {
+    scopeStepLoading.value = false;
+  }
+});
+
+watch(scopeDatabase, async (val) => {
+  scopeSchema.value = "";
+  scopeSchemas.value = [];
+  if (!val) return;
+  scopeStepLoading.value = true;
+  try {
+    const parentGuid = `${scopeInstance.value};${val}`;
+    const resp = await listMetadata({ parentGuid, pageSize: 100 });
+    const schemaGroup = resp.typesStoredMetadata.find(
+      (g) => g.metaType === MetaType.SCHEMA
+    );
+    scopeSchemas.value = schemaGroup
+      ? schemaGroup.list
+          .map((item) => item.type.value?.name ?? "")
+          .filter(Boolean)
+      : [];
+    if (scopeSchemas.value.length === 0) {
+      scopeOpen.value = false;
+    } else {
+      scopeStep.value = "schema";
+    }
+  } catch {
+    scopeSchemas.value = [];
+  } finally {
+    scopeStepLoading.value = false;
+  }
+});
+
+watch(scopeSchema, (val) => {
+  if (val) {
+    scopeOpen.value = false;
+  }
+});
+
+function scopeSelectItem(value: string) {
+  if (scopeStep.value === "instance") {
+    scopeInstance.value = value;
+  } else if (scopeStep.value === "database") {
+    scopeDatabase.value = value;
+  } else {
+    scopeSchema.value = value;
+  }
+}
+
+function handleClickOutside(e: MouseEvent) {
+  const el = document.getElementById("scope-dropdown");
+  if (el && !el.contains(e.target as Node)) {
+    scopeOpen.value = false;
+  }
+}
 
 // Metadata search
 const metaSearch = ref("");
@@ -321,11 +501,17 @@ const metadataBrowserUrl = computed(() => {
 
 // ---- lifecycle ----
 onMounted(async () => {
+  loadScopeInstances();
+  document.addEventListener("mousedown", handleClickOutside);
   const guidFromRoute = getGuidFromRoute();
   if (guidFromRoute) {
     const metaTypeFromQuery = Number(route.query.metaType) || 0;
     await loadMetaByGuid(guidFromRoute, metaTypeFromQuery as MetaType);
   }
+});
+
+onUnmounted(() => {
+  document.removeEventListener("mousedown", handleClickOutside);
 });
 
 // ---- methods ----
@@ -448,6 +634,18 @@ function formatCacheTime(iso: string): string {
   return d.toLocaleString();
 }
 
+async function loadScopeInstances() {
+  try {
+    const resp = await listInstances({ pageSize: 100 });
+    scopeInstances.value = (resp.instances ?? []).map((inst) => ({
+      id: inst.name.replace("instances/", ""),
+      title: inst.title || inst.name.replace("instances/", ""),
+    }));
+  } catch {
+    scopeInstances.value = [];
+  }
+}
+
 async function selectSearchResult(item: SearchItem) {
   metaSearch.value = "";
   searchResults.value = [];
@@ -476,7 +674,11 @@ async function startExplain(forceRegen = false) {
   const input =
     sourceMode.value === "metadata" && selectedMeta.value
       ? { metaGuid: selectedMeta.value.guid, forceRegenerate: forceRegen }
-      : { sqlText: customSQL.value.trim(), forceRegenerate: forceRegen };
+      : {
+          sqlText: customSQL.value.trim(),
+          forceRegenerate: forceRegen,
+          scopePrefix: scopePrefix.value,
+        };
 
   try {
     const stream = explainSQL(input);

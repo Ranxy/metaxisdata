@@ -870,6 +870,11 @@
     "viewInBrowser": "在元数据浏览器中查看",
     "thinking": "分析中...",
     "thinkingProcess": "思考过程",
-    "cacheHint": "正在显示 {time} 的缓存结果 — 点击重新生成以刷新。"
+    "cacheHint": "正在显示 {time} 的缓存结果 — 点击重新生成以刷新。",
+    "selectDatabase": "选择数据库",
+    "selectSchema": "选择 Schema",
+    "selectScope": "选择实例、数据库、Schema...",
+    "noDatabases": "没有找到数据库",
+    "noSchemas": "没有找到 Schema"
   }
 }
