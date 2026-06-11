@@ -1,8 +1,6 @@
 package llm
 
 import (
-	"encoding/json"
-	"fmt"
 	"strings"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -117,19 +115,16 @@ func convertToSchemaObject(guid string, meta *storepb.StoredMetadata) *SchemaObj
 		return nil
 	}
 
-	// Extract schema and database name from GUID: instance;db;schema;name
 	parts := strings.Split(guid, ";")
 	if len(parts) >= 2 {
 		obj.DBName = parts[1]
 	}
-	if len(parts) >= 3 {
+	if len(parts) >= 4 {
 		obj.SchemaName = parts[2]
 	}
 
 	return obj
 }
-
-// ---- Tool Definitions ----
 
 // ExplainSQLTools returns the tool definitions available for SQL explanation.
 func ExplainSQLTools() []ToolDef {
@@ -148,7 +143,7 @@ func ExplainSQLTools() []ToolDef {
 					"properties": map[string]any{
 						"name": map[string]any{
 							"type":        "string",
-							"description": "The object name. Can be unqualified (e.g. 'users') or qualified (e.g. 'public.users'). Case-insensitive fuzzy match is supported.",
+							"description": "The object name. Can be unqualified (e.g. 'users') or qualified (e.g. 'public.users').",
 						},
 					},
 					"required": []string{"name"},
@@ -177,132 +172,4 @@ func ExplainSQLTools() []ToolDef {
 			},
 		},
 	}
-}
-
-// ExecuteTool executes a tool call against the given schema context.
-func ExecuteTool(tc ToolCall, ctx *SchemaContext) ([]ToolResult, error) {
-	switch tc.Function.Name {
-	case "get_object_schema":
-		return executeGetObjectSchema(tc, ctx)
-	case "search_objects":
-		return executeSearchObjects(tc, ctx)
-	default:
-		return nil, fmt.Errorf("unknown tool: %s", tc.Function.Name)
-	}
-}
-
-func executeGetObjectSchema(tc ToolCall, ctx *SchemaContext) ([]ToolResult, error) {
-	var args struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
-		return nil, fmt.Errorf("invalid arguments for get_object_schema: %w", err)
-	}
-
-	query := strings.ToLower(args.Name)
-
-	var matches []SchemaObject
-	for _, obj := range ctx.Objects {
-		if matchObject(obj, query) {
-			matches = append(matches, obj)
-		}
-	}
-
-	if len(matches) == 0 {
-		return []ToolResult{{ToolCallID: tc.ID, Content: fmt.Sprintf(`{"error": "no object found matching '%s'"}`, args.Name)}}, nil
-	}
-
-	// Format results as JSON.
-	type resultObj struct {
-		Name       string       `json:"name"`
-		Type       string       `json:"type"`
-		Schema     string       `json:"schema,omitempty"`
-		Database   string       `json:"database,omitempty"`
-		Columns    []ColumnInfo `json:"columns,omitempty"`
-		Indexes    []string     `json:"indexes,omitempty"`
-		SQLPreview string       `json:"sql_preview,omitempty"`
-	}
-
-	results := make([]resultObj, 0, len(matches))
-	for _, obj := range matches {
-		sqlPreview := obj.SQLText
-		if len(sqlPreview) > 500 {
-			sqlPreview = sqlPreview[:500] + "..."
-		}
-		results = append(results, resultObj{
-			Name:       obj.Name,
-			Type:       obj.MetaType.String(),
-			Schema:     obj.SchemaName,
-			Database:   obj.DBName,
-			Columns:    obj.Columns,
-			Indexes:    obj.Indexes,
-			SQLPreview: sqlPreview,
-		})
-	}
-
-	resultJSON, err := json.Marshal(results)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal tool result: %w", err)
-	}
-
-	return []ToolResult{{ToolCallID: tc.ID, Content: string(resultJSON)}}, nil
-}
-
-func executeSearchObjects(tc ToolCall, ctx *SchemaContext) ([]ToolResult, error) {
-	var args struct {
-		Keyword string `json:"keyword"`
-	}
-	if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
-		return nil, fmt.Errorf("invalid arguments for search_objects: %w", err)
-	}
-
-	kw := strings.ToLower(args.Keyword)
-
-	type objSummary struct {
-		Name     string `json:"name"`
-		Type     string `json:"type"`
-		Schema   string `json:"schema,omitempty"`
-		Database string `json:"database,omitempty"`
-	}
-
-	var matches []objSummary
-	for _, obj := range ctx.Objects {
-		if matchObject(obj, kw) {
-			matches = append(matches, objSummary{
-				Name:     obj.Name,
-				Type:     obj.MetaType.String(),
-				Schema:   obj.SchemaName,
-				Database: obj.DBName,
-			})
-		}
-	}
-
-	if len(matches) == 0 {
-		return []ToolResult{{ToolCallID: tc.ID, Content: `{"objects": []}`}}, nil
-	}
-
-	resultJSON, _ := json.Marshal(map[string]any{"objects": matches})
-	return []ToolResult{{ToolCallID: tc.ID, Content: string(resultJSON)}}, nil
-}
-
-func matchObject(obj SchemaObject, query string) bool {
-	qParts := strings.Split(query, ".")
-	lastPart := qParts[len(qParts)-1]
-
-	if strings.Contains(strings.ToLower(obj.Name), lastPart) {
-		return true
-	}
-	if obj.SchemaName != "" && strings.Contains(strings.ToLower(obj.SchemaName), lastPart) {
-		return true
-	}
-	// Fuzzy: if query has schema.name format, match both.
-	if len(qParts) == 2 {
-		schemaPart := strings.ToLower(qParts[0])
-		namePart := strings.ToLower(qParts[1])
-		if (obj.SchemaName == "" || strings.Contains(strings.ToLower(obj.SchemaName), schemaPart)) &&
-			strings.Contains(strings.ToLower(obj.Name), namePart) {
-			return true
-		}
-	}
-	return false
 }

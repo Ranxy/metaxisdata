@@ -15,6 +15,8 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -101,13 +103,24 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 		resolvedConfig = &configs[0]
 	}
 
-	// Build schema context from lineage.
-	ctxObjects := s.buildSchemaContext(ctx, metaGUID, metaType, req.Msg.ScopePrefix)
+	scopePrefix := req.Msg.ScopePrefix
+	if scopePrefix == "" && metaGUID != "" {
+		scopePrefix = metaGUIScope(metaGUID)
+	}
+	instanceID := scopeInstanceID(scopePrefix)
+
+	// Build schema context.
+	var ctxObjects *llm.SchemaContext
+	if metaGUID != "" {
+		ctxObjects = s.buildContextFromLineage(ctx, metaGUID, metaType)
+	} else if scopePrefix != "" {
+		ctxObjects = s.buildContextFromSQL(ctx, scopePrefix, sqlText)
+	}
 
 	// Build tools.
 	tools := llm.ExplainSQLTools()
 	executor := func(tc llm.ToolCall) ([]llm.ToolResult, error) {
-		return llm.ExecuteTool(tc, ctxObjects)
+		return s.executeExplainTool(ctx, tc, scopePrefix, instanceID)
 	}
 
 	// Run agent loop.
@@ -197,7 +210,6 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 	}
 
 	if err := s.store.UpsertExplainSQLCache(ctx, cacheEntry); err != nil {
-		// Log but don't fail — the user already got the explanation.
 		_ = err
 	}
 
@@ -216,7 +228,278 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 	return nil
 }
 
-// resolveSource determines sql_text, cache_key, and cache_type from the request.
+// ---- Scope helpers ----
+
+func scopeInstanceID(scopePrefix string) string {
+	if scopePrefix == "" {
+		return ""
+	}
+	parts := strings.SplitN(scopePrefix, ";", 2)
+	return parts[0]
+}
+
+func metaGUIScope(metaGUID string) string {
+	parts := strings.Split(metaGUID, ";")
+	if len(parts) <= 1 {
+		return metaGUID
+	}
+	return strings.Join(parts[:len(parts)-1], ";")
+}
+
+func isMySQLEngine(engine storepb.Engine) bool {
+	switch engine {
+	case storepb.Engine_MYSQL, storepb.Engine_TIDB, storepb.Engine_MARIADB:
+		return true
+	default:
+		return false
+	}
+}
+
+func resolveObjectIdentifier(name string, scopePrefix string, isMySQL bool) model.ObjectIdentifier {
+	objID := model.StrToObjectIdentifier(name)
+
+	if isMySQL && objID.Database == "" && objID.Schema != "" {
+		objID.Database = objID.Schema
+		objID.Schema = ""
+	}
+
+	parts := strings.Split(scopePrefix, ";")
+	objID.InstanceID = scopeInstanceID(scopePrefix)
+
+	if objID.Database == "" && len(parts) >= 2 && parts[1] != "" {
+		objID.Database = parts[1]
+	}
+	if objID.Schema == "" && len(parts) >= 3 && parts[2] != "" {
+		objID.Schema = parts[2]
+	}
+
+	return objID
+}
+
+// ---- Context building ----
+
+func (s *ExplainSQLService) buildContextFromLineage(ctx context.Context, metaGUID string, metaType storepb.MetaType) *llm.SchemaContext {
+	lineageList, err := s.store.ListColumnLineage(ctx, &store.FindColumnLineageMessage{
+		MetaGUID: &metaGUID,
+		MetaType: &metaType,
+	})
+	if err != nil || len(lineageList) == 0 {
+		return s.fetchObjectsByGUIDs(ctx, []string{metaGUID})
+	}
+
+	guidSet := make(map[string]bool)
+	guidSet[metaGUID] = true
+	for _, line := range lineageList {
+		if isTableLikeType(line.SourceType) {
+			guidSet[line.SourceGUID] = true
+		}
+		if isTableLikeType(line.TargetType) {
+			guidSet[line.TargetGUID] = true
+		}
+	}
+
+	guids := make([]string, 0, len(guidSet))
+	for guid := range guidSet {
+		guids = append(guids, guid)
+	}
+	return s.fetchObjectsByGUIDs(ctx, guids)
+}
+
+func (s *ExplainSQLService) buildContextFromSQL(ctx context.Context, scopePrefix string, sqlText string) *llm.SchemaContext {
+	instanceID := scopeInstanceID(scopePrefix)
+
+	inst, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
+	if err != nil || inst == nil || inst.Metadata == nil {
+		return &llm.SchemaContext{}
+	}
+	engine := inst.Metadata.Engine
+
+	relations, err := lineage.GetAnalyzeRelation(ctx, engine, sqlText)
+	if err != nil || len(relations) == 0 {
+		return &llm.SchemaContext{}
+	}
+
+	guidSet := make(map[string]bool)
+	for _, rel := range relations {
+		if id := rel.Source.Table; id.Name != "" && !rel.IsTemp {
+			id.InstanceID = instanceID
+			guidSet[id.GUID()] = true
+		}
+		if id := rel.Target.Table; id.Name != "" && !rel.IsTemp {
+			id.InstanceID = instanceID
+			guidSet[id.GUID()] = true
+		}
+	}
+
+	guids := make([]string, 0, len(guidSet))
+	for guid := range guidSet {
+		guids = append(guids, guid)
+	}
+	return s.fetchObjectsByGUIDs(ctx, guids)
+}
+
+func (s *ExplainSQLService) fetchObjectsByGUIDs(ctx context.Context, guids []string) *llm.SchemaContext {
+	if len(guids) == 0 {
+		return &llm.SchemaContext{}
+	}
+
+	var metas []*storepb.StoredMetadata
+	for _, guid := range guids {
+		list, err := s.store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{
+			GUID: &guid,
+		})
+		if err != nil || len(list) == 0 || list[0].Metadata == nil {
+			continue
+		}
+		metas = append(metas, list[0].Metadata)
+	}
+
+	if len(metas) == 0 {
+		return &llm.SchemaContext{}
+	}
+
+	ctxObj := llm.BuildContextFromMetadata(metas, guids[:len(metas)])
+	if len(ctxObj.Objects) > 10 {
+		ctxObj.Objects = ctxObj.Objects[:10]
+	}
+	return ctxObj
+}
+
+func isTableLikeType(mt storepb.MetaType) bool {
+	switch mt {
+	case storepb.MetaType_TABLE, storepb.MetaType_VIEW, storepb.MetaType_MATERIALIZED_VIEW,
+		storepb.MetaType_FUNCTION, storepb.MetaType_PROCEDURE, storepb.MetaType_EXTERNAL_TABLE:
+		return true
+	default:
+		return false
+	}
+}
+
+// ---- Tool execution ----
+
+func (s *ExplainSQLService) executeExplainTool(ctx context.Context, tc llm.ToolCall, scopePrefix, instanceID string) ([]llm.ToolResult, error) {
+	switch tc.Function.Name {
+	case "get_object_schema":
+		return s.toolGetObjectSchema(ctx, tc, scopePrefix, instanceID)
+	case "search_objects":
+		return s.toolSearchObjects(ctx, tc, scopePrefix)
+	default:
+		return nil, fmt.Errorf("unknown tool: %s", tc.Function.Name)
+	}
+}
+
+func (s *ExplainSQLService) toolGetObjectSchema(ctx context.Context, tc llm.ToolCall, scopePrefix, instanceID string) ([]llm.ToolResult, error) {
+	var args struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
+		return nil, fmt.Errorf("invalid arguments for get_object_schema: %w", err)
+	}
+
+	engine, err := s.getScopeEngine(ctx, instanceID)
+	if err != nil {
+		return []llm.ToolResult{{ToolCallID: tc.ID, Content: fmt.Sprintf(`{"error": "failed to resolve engine: %s"}`, err.Error())}}, nil
+	}
+
+	objID := resolveObjectIdentifier(args.Name, scopePrefix, isMySQLEngine(engine))
+	guid := objID.GUID()
+
+	list, _ := s.store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{
+		GUID: &guid,
+	})
+	if len(list) == 0 || list[0].Metadata == nil {
+		return []llm.ToolResult{{ToolCallID: tc.ID, Content: fmt.Sprintf(`{"error": "no object found matching '%s'"}`, args.Name)}}, nil
+	}
+
+	obj := llm.BuildContextFromMetadata([]*storepb.StoredMetadata{list[0].Metadata}, []string{guid})
+	if len(obj.Objects) == 0 {
+		return []llm.ToolResult{{ToolCallID: tc.ID, Content: fmt.Sprintf(`{"error": "no object found matching '%s'"}`, args.Name)}}, nil
+	}
+
+	o := obj.Objects[0]
+	sqlPreview := o.SQLText
+	if len(sqlPreview) > 500 {
+		sqlPreview = sqlPreview[:500] + "..."
+	}
+
+	resultJSON, _ := json.Marshal([]map[string]any{{
+		"name":        o.Name,
+		"type":        o.MetaType.String(),
+		"schema":      o.SchemaName,
+		"database":    o.DBName,
+		"columns":     o.Columns,
+		"indexes":     o.Indexes,
+		"sql_preview": sqlPreview,
+	}})
+
+	return []llm.ToolResult{{ToolCallID: tc.ID, Content: string(resultJSON)}}, nil
+}
+
+func (s *ExplainSQLService) toolSearchObjects(ctx context.Context, tc llm.ToolCall, scopePrefix string) ([]llm.ToolResult, error) {
+	var args struct {
+		Keyword string `json:"keyword"`
+	}
+	if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
+		return nil, fmt.Errorf("invalid arguments for search_objects: %w", err)
+	}
+
+	list, _ := s.store.SearchMetaRegistryResource(ctx, &store.SearchMetaRegistryResourceMessage{
+		SearchStr:  args.Keyword,
+		GUIDPrefix: &scopePrefix,
+		Limit:      20,
+	})
+	if len(list) == 0 {
+		return []llm.ToolResult{{ToolCallID: tc.ID, Content: `{"objects": []}`}}, nil
+	}
+
+	type objSummary struct {
+		Name     string `json:"name"`
+		Type     string `json:"type"`
+		Schema   string `json:"schema,omitempty"`
+		Database string `json:"database,omitempty"`
+	}
+
+	matches := make([]objSummary, 0, len(list))
+	for _, item := range list {
+		if item.Metadata == nil {
+			continue
+		}
+		obj := llm.BuildContextFromMetadata([]*storepb.StoredMetadata{item.Metadata}, []string{item.GUID})
+		if len(obj.Objects) == 0 {
+			continue
+		}
+		matches = append(matches, objSummary{
+			Name:     obj.Objects[0].Name,
+			Type:     obj.Objects[0].MetaType.String(),
+			Schema:   obj.Objects[0].SchemaName,
+			Database: obj.Objects[0].DBName,
+		})
+	}
+
+	if len(matches) == 0 {
+		return []llm.ToolResult{{ToolCallID: tc.ID, Content: `{"objects": []}`}}, nil
+	}
+
+	resultJSON, _ := json.Marshal(map[string]any{"objects": matches})
+	return []llm.ToolResult{{ToolCallID: tc.ID, Content: string(resultJSON)}}, nil
+}
+
+func (s *ExplainSQLService) getScopeEngine(ctx context.Context, instanceID string) (storepb.Engine, error) {
+	if instanceID == "" {
+		return storepb.Engine_ENGINE_UNSPECIFIED, errors.New("no instance selected")
+	}
+	inst, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
+	if err != nil {
+		return storepb.Engine_ENGINE_UNSPECIFIED, err
+	}
+	if inst == nil || inst.Metadata == nil {
+		return storepb.Engine_ENGINE_UNSPECIFIED, fmt.Errorf("instance not found: %s", instanceID)
+	}
+	return inst.Metadata.Engine, nil
+}
+
+// ---- resolveSource, buildSystemPrompt, etc. (unchanged) ----
+
 func (s *ExplainSQLService) resolveSource(ctx context.Context, req *v1pb.ExplainSQLRequest) (sqlText, metaGUID string, metaType storepb.MetaType, cacheKey, cacheType string, err error) {
 	if req.SqlText != "" {
 		hash := sha256.Sum256([]byte(req.SqlText))
@@ -225,7 +508,6 @@ func (s *ExplainSQLService) resolveSource(ctx context.Context, req *v1pb.Explain
 	}
 
 	if req.MetaGuid != "" {
-		// Look up metadata from registry.
 		metas, listErr := s.store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{
 			GUID: &req.MetaGuid,
 		})
@@ -239,7 +521,6 @@ func (s *ExplainSQLService) resolveSource(ctx context.Context, req *v1pb.Explain
 			return "", "", storepb.MetaType_UNSPECIFIED, "", "", connect.NewError(connect.CodeInvalidArgument, errors.New("no SQL text available for this metadata type"))
 		}
 
-		// Cache key is the meta_hash.
 		if meta.MetaHash != nil {
 			cacheKey = fmt.Sprintf("meta:%x", meta.MetaHash)
 		} else {
@@ -251,99 +532,6 @@ func (s *ExplainSQLService) resolveSource(ctx context.Context, req *v1pb.Explain
 	}
 
 	return "", "", storepb.MetaType_UNSPECIFIED, "", "", connect.NewError(connect.CodeInvalidArgument, errors.New("either sql_text or meta_guid is required"))
-}
-
-func (s *ExplainSQLService) buildSchemaContext(ctx context.Context, metaGUID string, _ storepb.MetaType, scopePrefix string) *llm.SchemaContext {
-	if metaGUID == "" {
-		if scopePrefix == "" {
-			return &llm.SchemaContext{}
-		}
-		return s.buildSchemaContextFromScope(ctx, scopePrefix)
-	}
-
-	// Collect upstream and downstream GUIDs from column_lineage.
-	relatedGUIDs := make(map[string]bool)
-	relatedGUIDs[metaGUID] = true
-
-	// Upstream: find all sources for this object.
-	upstreamRows, err := s.store.QueryColumnLineageSources(context.Background(), metaGUID)
-	if err == nil {
-		for _, r := range upstreamRows {
-			relatedGUIDs[r] = true
-		}
-	}
-
-	// Downstream: find all targets for this object.
-	downstreamRows, err := s.store.QueryColumnLineageTargets(context.Background(), metaGUID)
-	if err == nil {
-		for _, r := range downstreamRows {
-			relatedGUIDs[r] = true
-		}
-	}
-
-	// Fetch metadata for all related GUIDs.
-	// (Ignore unknowable objects like PROCEDURE/FUNCTION without lineage — LLM can use tools.)
-	guids := make([]string, 0, len(relatedGUIDs))
-	for guid := range relatedGUIDs {
-		guids = append(guids, guid)
-	}
-
-	var metas []*storepb.StoredMetadata
-	for _, guid := range guids {
-		list, err := s.store.ListMetaRegistry(context.Background(), &store.FindMetaRegistryResourceMessage{
-			GUID: &guid,
-		})
-		if err != nil || len(list) == 0 {
-			continue
-		}
-		metas = append(metas, list[0].Metadata)
-	}
-
-	ctxObj := llm.BuildContextFromMetadata(metas, guids)
-	if len(ctxObj.Objects) > 10 {
-		ctxObj.Objects = ctxObj.Objects[:10]
-	}
-	return ctxObj
-}
-
-var scopeObjectTypes = []storepb.MetaType{
-	storepb.MetaType_TABLE,
-	storepb.MetaType_VIEW,
-	storepb.MetaType_MATERIALIZED_VIEW,
-	storepb.MetaType_FUNCTION,
-	storepb.MetaType_PROCEDURE,
-}
-
-func (s *ExplainSQLService) buildSchemaContextFromScope(ctx context.Context, scopePrefix string) *llm.SchemaContext {
-	limit := 50
-	list, err := s.store.ListMetaRegistryResource(ctx, &store.FindMetaRegistryResourceMessage{
-		GUIDPrefix: &scopePrefix,
-		Limit:      &limit,
-	})
-	if err != nil || len(list) == 0 {
-		return &llm.SchemaContext{}
-	}
-
-	allowedTypes := make(map[storepb.MetaType]bool, len(scopeObjectTypes))
-	for _, t := range scopeObjectTypes {
-		allowedTypes[t] = true
-	}
-
-	var metas []*storepb.StoredMetadata
-	var guids []string
-	for _, item := range list {
-		if !allowedTypes[item.ObjectType] {
-			continue
-		}
-		metas = append(metas, item.Metadata)
-		guids = append(guids, item.GUID)
-	}
-
-	ctxObj := llm.BuildContextFromMetadata(metas, guids)
-	if len(ctxObj.Objects) > 10 {
-		ctxObj.Objects = ctxObj.Objects[:10]
-	}
-	return ctxObj
 }
 
 func buildSystemPrompt(_ string, _ string, metaType storepb.MetaType, ctx *llm.SchemaContext) string {
@@ -381,7 +569,7 @@ You have tools to query schema information — use them when needed.
 }
 
 func buildContextText(ctx *llm.SchemaContext) string {
-	if len(ctx.Objects) == 0 {
+	if ctx == nil || len(ctx.Objects) == 0 {
 		return "\nNo schema context is available. Use the tools to query schema information."
 	}
 

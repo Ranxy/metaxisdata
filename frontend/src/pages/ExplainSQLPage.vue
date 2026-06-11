@@ -349,9 +349,11 @@ const scopeDisplay = computed(() => {
   const parts: string[] = [];
   const inst = scopeInstances.value.find((i) => i.id === scopeInstance.value);
   if (inst) parts.push(inst.title);
-  if (scopeDatabase.value) parts.push(scopeDatabase.value);
-  if (scopeSchema.value) parts.push(scopeSchema.value);
-  return parts.join(" \u203A ");
+  if (scopeDatabase.value) {
+    parts.push(scopeDatabase.value);
+    if (scopeSchema.value) parts.push(scopeSchema.value);
+  }
+  return parts.length > 0 ? parts.join(" \u203A ") : "";
 });
 
 const scopeStepLabel = computed(() => {
@@ -375,9 +377,12 @@ const scopeStepEmpty = computed(() => {
 });
 
 const scopePrefix = computed(() => {
-  if (!scopeInstance.value || !scopeDatabase.value) return "";
-  const parts = [scopeInstance.value, scopeDatabase.value];
-  if (scopeSchema.value) parts.push(scopeSchema.value);
+  if (!scopeInstance.value) return "";
+  const parts = [scopeInstance.value];
+  if (scopeDatabase.value) {
+    parts.push(scopeDatabase.value);
+    if (scopeSchema.value) parts.push(scopeSchema.value);
+  }
   return parts.join(";");
 });
 
