@@ -88,7 +88,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { MetaType, type FunctionMetadata } from "@/types/proto-es/v1/database_service_pb";
+import {
+  type FunctionMetadata,
+  MetaType,
+} from "@/types/proto-es/v1/database_service_pb";
 import ExpandableText from "./ExpandableText.vue";
 
 const props = defineProps<{ fn: FunctionMetadata; guid?: string }>();

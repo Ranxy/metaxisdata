@@ -4,6 +4,7 @@ import { i18n } from "./locales";
 import router from "./router";
 import { pinia } from "./store";
 import "./assets/styles/main.css";
+import "markstream-vue/index.css";
 
 async function bootstrap() {
   const app = createApp(App);

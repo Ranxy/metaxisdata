@@ -147,13 +147,15 @@
 
         <template v-else>
           <div class="flex-1">
-            <div
+            <MarkdownRender
               v-if="isExplaining || resultText"
-              class="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap"
-            >
-              {{ resultText }}
-              <span v-if="isExplaining" class="inline-block w-2 h-4 bg-accent animate-pulse align-middle ml-0.5" />
-            </div>
+              mode="chat"
+              :content="resultText"
+              :final="!isExplaining"
+              :max-live-nodes="0"
+              :fade="false"
+              :typewriter="true"
+            />
             <div v-if="explainError" class="text-destructive text-sm p-4 border border-destructive/30 rounded-md">
               {{ explainError }}
             </div>
@@ -180,16 +182,17 @@
 
 <script setup lang="ts">
 import { ExternalLink, Search, Sparkles } from "lucide-vue-next";
+import MarkdownRender from "markstream-vue";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 import { getSchemaString, searchMetadata } from "@/api/database";
 import { explainSQL } from "@/api/explain";
+import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
+import MonacoEditor from "@/components/monaco-editor/MonacoEditor.vue";
 import Badge from "@/components/ui/badge/Badge.vue";
 import Button from "@/components/ui/button/Button.vue";
 import Label from "@/components/ui/label/Label.vue";
-import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
-import MonacoEditor from "@/components/monaco-editor/MonacoEditor.vue";
 import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
 
 const { t } = useI18n();

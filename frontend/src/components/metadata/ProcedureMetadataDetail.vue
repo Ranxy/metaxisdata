@@ -55,7 +55,10 @@ import { Sparkles } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
 import { Button } from "@/components/ui/button";
-import { MetaType, type ProcedureMetadata } from "@/types/proto-es/v1/database_service_pb";
+import {
+  MetaType,
+  type ProcedureMetadata,
+} from "@/types/proto-es/v1/database_service_pb";
 import ExpandableText from "./ExpandableText.vue";
 
 defineProps<{ proc: ProcedureMetadata; guid?: string }>();

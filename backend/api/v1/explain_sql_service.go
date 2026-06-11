@@ -18,6 +18,11 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
+type explainSection struct {
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
 // ExplainSQLService implements the explain SQL service.
 type ExplainSQLService struct {
 	v1connect.UnimplementedExplainSQLServiceHandler
@@ -46,13 +51,14 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 		}
 		if cached != nil {
 			var explanation struct {
-				Summary  string `json:"summary"`
-				Sections []struct {
-					Title   string `json:"title"`
-					Content string `json:"content"`
-				} `json:"sections"`
+				Summary  string           `json:"summary"`
+				Sections []explainSection `json:"sections"`
 			}
 			if err := json.Unmarshal([]byte(cached.ExplanationJSON), &explanation); err == nil {
+				md := buildMarkdownFromSections(explanation.Summary, explanation.Sections)
+				_ = stream.Send(&v1pb.ExplainSQLResponse{
+					Payload: &v1pb.ExplainSQLResponse_Content{Content: md},
+				})
 				sectionsJSON, _ := json.Marshal(explanation.Sections)
 				_ = stream.Send(&v1pb.ExplainSQLResponse{
 					Payload: &v1pb.ExplainSQLResponse_Metadata{
@@ -270,21 +276,28 @@ func buildSystemPrompt(_ string, _ string, metaType storepb.MetaType, ctx *llm.S
 	contextText := buildContextText(ctx)
 	return fmt.Sprintf(`You are an expert SQL analyst. Explain the following %s in detail.
 
-Return your response as a JSON object with exactly this structure:
-{
-  "summary": "one-sentence summary of what this SQL does",
-  "sections": [
-    {"title": "section title", "content": "detailed explanation in markdown"}
-  ]
-}
+Start with a one-sentence summary. Then provide four sections using ## headings. Follow this exact structure:
 
-Include these sections:
-1. "执行逻辑" (Execution Logic) — step-by-step breakdown of what the SQL does
-2. "涉及对象" (Objects Involved) — list of tables/views/functions referenced, with their structure
-3. "潜在问题" (Potential Issues) — performance concerns, edge cases, risks
-4. "优化建议" (Optimization Suggestions) — concrete improvements
+## 执行逻辑
+(step-by-step breakdown: execution flow, data transformations, join order, filter conditions)
 
-You have access to tools to query schema information. Use them when you need to understand an object's structure.
+## 涉及对象
+(list tables, views, functions, procedures with their columns, types, and relevant structure)
+
+## 潜在问题
+(performance issues, edge cases, null handling, missing indexes, security concerns)
+
+## 优化建议
+(concrete improvements: index recommendations, query rewrites, partitioning, caching)
+
+Rules:
+- Use markdown code blocks for SQL snippets
+- Use bullet lists for enumeration
+- Keep exactly four ## headings as specified above
+- Do not add extra introductory or concluding text
+- Do not wrap response in JSON or code fences
+
+You have tools to query schema information — use them when needed.
 %s`, typeLabel, contextText)
 }
 
@@ -350,35 +363,59 @@ func buildCreateTableSQL(t *storepb.TableMetadata) string {
 }
 
 func parseStructuredResponse(text string) (summary string, sectionsJSON string) {
-	// Try to find JSON in the response.
 	text = strings.TrimSpace(text)
 
-	// Strip markdown code fences if present.
-	if strings.HasPrefix(text, "```json") {
-		text = strings.TrimPrefix(text, "```json")
-		text = strings.TrimSuffix(text, "```")
-		text = strings.TrimSpace(text)
-	} else if strings.HasPrefix(text, "```") {
-		text = strings.TrimPrefix(text, "```")
-		text = strings.TrimSuffix(text, "```")
-		text = strings.TrimSpace(text)
+	idx := strings.Index(text, "\n## ")
+	var summaryText string
+	if idx >= 0 {
+		summaryText = strings.TrimSpace(text[:idx])
+		text = text[idx+1:]
+	} else {
+		summaryText = strings.TrimSpace(text)
+		text = ""
+	}
+	if summaryText == "" {
+		summaryText = "SQL Explanation"
 	}
 
-	var result struct {
-		Summary  string `json:"summary"`
-		Sections []struct {
-			Title   string `json:"title"`
-			Content string `json:"content"`
-		} `json:"sections"`
+	var sections []explainSection
+	sectionParts := strings.Split(text, "\n## ")
+	for _, part := range sectionParts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		lineEnd := strings.Index(part, "\n")
+		var title, content string
+		if lineEnd >= 0 {
+			title = strings.TrimSpace(part[:lineEnd])
+			content = strings.TrimSpace(part[lineEnd+1:])
+		} else {
+			title = strings.TrimSpace(part)
+			content = ""
+		}
+		if title != "" {
+			sections = append(sections, explainSection{Title: title, Content: content})
+		}
 	}
 
-	if err := json.Unmarshal([]byte(text), &result); err != nil {
-		// Fallback: treat entire text as summary with one section.
-		return text, `[{"title":"Explanation","content":"` + escapeJSON(text) + `"}]`
+	if len(sections) == 0 {
+		var legacy struct {
+			Summary  string           `json:"summary"`
+			Sections []explainSection `json:"sections"`
+		}
+		if err := json.Unmarshal([]byte(text), &legacy); err == nil && len(legacy.Sections) > 0 {
+			sections = legacy.Sections
+			if legacy.Summary != "" {
+				summaryText = legacy.Summary
+			}
+		} else {
+			sections = append(sections, explainSection{Title: "Explanation", Content: text})
+		}
 	}
 
-	sectionsBytes, _ := json.Marshal(result.Sections)
-	return result.Summary, string(sectionsBytes)
+	sectionsBytes, _ := json.Marshal(sections)
+	return summaryText, string(sectionsBytes)
 }
 
 func toExplanationJSON(summary, sectionsJSON string) string {
@@ -390,9 +427,14 @@ func jsonEscape(s string) string {
 	return string(b)
 }
 
-func escapeJSON(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `"`, `\"`)
-	s = strings.ReplaceAll(s, "\n", `\n`)
-	return s
+func buildMarkdownFromSections(summary string, sections []explainSection) string {
+	var sb strings.Builder
+	_, _ = sb.WriteString(summary)
+	for _, s := range sections {
+		_, _ = sb.WriteString("\n\n## ")
+		_, _ = sb.WriteString(s.Title)
+		_, _ = sb.WriteString("\n\n")
+		_, _ = sb.WriteString(s.Content)
+	}
+	return sb.String()
 }

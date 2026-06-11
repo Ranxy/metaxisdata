@@ -33,6 +33,7 @@
 		"clsx": "^2.1.1",
 		"lodash-es": "^4.17.21",
 		"lucide-vue-next": "^0.561.0",
+		"markstream-vue": "1.0.1-beta.5",
 		"monaco-editor": "^0.55.1",
 		"pinia": "3.0.4",
 		"radix-vue": "^1.9.17",
