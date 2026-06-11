@@ -904,6 +904,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ExplainSQLProgress"><span class="badge">M</span>ExplainSQLProgress</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ExplainSQLRequest"><span class="badge">M</span>ExplainSQLRequest</a>
                 </li>
               
@@ -9901,6 +9905,65 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
 
         
       
+        <h3 id="metaxisdata.v1.ExplainSQLProgress">ExplainSQLProgress</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>type</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>turn</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tool_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tool_input</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tool_output</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tool_error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.ExplainSQLRequest">ExplainSQLRequest</h3>
         <p></p>
 
@@ -9980,6 +10043,13 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
                 <tr>
                   <td>error</td>
                   <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>progress</td>
+                  <td><a href="#metaxisdata.v1.ExplainSQLProgress">ExplainSQLProgress</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>

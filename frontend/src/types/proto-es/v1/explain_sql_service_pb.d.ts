@@ -73,6 +73,12 @@ export declare type ExplainSQLResponse = Message<"metaxisdata.v1.ExplainSQLRespo
      */
     value: string;
     case: "error";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.ExplainSQLProgress progress = 4;
+     */
+    value: ExplainSQLProgress;
+    case: "progress";
   } | { case: undefined; value?: undefined };
 };
 
@@ -81,6 +87,47 @@ export declare type ExplainSQLResponse = Message<"metaxisdata.v1.ExplainSQLRespo
  * Use `create(ExplainSQLResponseSchema)` to create a new message.
  */
 export declare const ExplainSQLResponseSchema: GenMessage<ExplainSQLResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.ExplainSQLProgress
+ */
+export declare type ExplainSQLProgress = Message<"metaxisdata.v1.ExplainSQLProgress"> & {
+  /**
+   * @generated from field: string type = 1;
+   */
+  type: string;
+
+  /**
+   * @generated from field: int32 turn = 2;
+   */
+  turn: number;
+
+  /**
+   * @generated from field: string tool_name = 3;
+   */
+  toolName: string;
+
+  /**
+   * @generated from field: string tool_input = 4;
+   */
+  toolInput: string;
+
+  /**
+   * @generated from field: string tool_output = 5;
+   */
+  toolOutput: string;
+
+  /**
+   * @generated from field: string tool_error = 6;
+   */
+  toolError: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ExplainSQLProgress.
+ * Use `create(ExplainSQLProgressSchema)` to create a new message.
+ */
+export declare const ExplainSQLProgressSchema: GenMessage<ExplainSQLProgress>;
 
 /**
  * @generated from message metaxisdata.v1.ExplainSQLMetadata

@@ -126,6 +126,42 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 		switch evt.Type {
 		case llm.AgentEventError:
 			return connect.NewError(connect.CodeInternal, evt.Error)
+		case llm.AgentEventTurnStart:
+			_ = stream.Send(&v1pb.ExplainSQLResponse{
+				Payload: &v1pb.ExplainSQLResponse_Progress{
+					Progress: &v1pb.ExplainSQLProgress{
+						Type: "thinking",
+						Turn: int32(evt.Turn),
+					},
+				},
+			})
+		case llm.AgentEventToolStart:
+			_ = stream.Send(&v1pb.ExplainSQLResponse{
+				Payload: &v1pb.ExplainSQLResponse_Progress{
+					Progress: &v1pb.ExplainSQLProgress{
+						Type:      "tool_start",
+						Turn:      int32(evt.Turn),
+						ToolName:  evt.ToolCall.GetName(),
+						ToolInput: evt.ToolCall.Function.Arguments,
+					},
+				},
+			})
+		case llm.AgentEventToolEnd:
+			toolName := ""
+			if evt.ToolCall != nil {
+				toolName = evt.ToolCall.GetName()
+			}
+			_ = stream.Send(&v1pb.ExplainSQLResponse{
+				Payload: &v1pb.ExplainSQLResponse_Progress{
+					Progress: &v1pb.ExplainSQLProgress{
+						Type:       "tool_end",
+						Turn:       int32(evt.Turn),
+						ToolName:   toolName,
+						ToolOutput: evt.ToolResult,
+						ToolError:  evt.ToolError,
+					},
+				},
+			})
 		case llm.AgentEventContent:
 			_, _ = fullResponse.WriteString(evt.Content)
 			if err := stream.Send(&v1pb.ExplainSQLResponse{
@@ -134,7 +170,6 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 				return err
 			}
 		case llm.AgentEventAgentEnd:
-			// loop finished
 		default:
 		}
 	}

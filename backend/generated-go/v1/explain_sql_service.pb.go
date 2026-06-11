@@ -105,6 +105,7 @@ type ExplainSQLResponse struct {
 	//	*ExplainSQLResponse_Content
 	//	*ExplainSQLResponse_Metadata
 	//	*ExplainSQLResponse_Error
+	//	*ExplainSQLResponse_Progress
 	Payload       isExplainSQLResponse_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -174,6 +175,15 @@ func (x *ExplainSQLResponse) GetError() string {
 	return ""
 }
 
+func (x *ExplainSQLResponse) GetProgress() *ExplainSQLProgress {
+	if x != nil {
+		if x, ok := x.Payload.(*ExplainSQLResponse_Progress); ok {
+			return x.Progress
+		}
+	}
+	return nil
+}
+
 type isExplainSQLResponse_Payload interface {
 	isExplainSQLResponse_Payload()
 }
@@ -190,11 +200,101 @@ type ExplainSQLResponse_Error struct {
 	Error string `protobuf:"bytes,3,opt,name=error,proto3,oneof"`
 }
 
+type ExplainSQLResponse_Progress struct {
+	Progress *ExplainSQLProgress `protobuf:"bytes,4,opt,name=progress,proto3,oneof"`
+}
+
 func (*ExplainSQLResponse_Content) isExplainSQLResponse_Payload() {}
 
 func (*ExplainSQLResponse_Metadata) isExplainSQLResponse_Payload() {}
 
 func (*ExplainSQLResponse_Error) isExplainSQLResponse_Payload() {}
+
+func (*ExplainSQLResponse_Progress) isExplainSQLResponse_Payload() {}
+
+type ExplainSQLProgress struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	Turn          int32                  `protobuf:"varint,2,opt,name=turn,proto3" json:"turn,omitempty"`
+	ToolName      string                 `protobuf:"bytes,3,opt,name=tool_name,json=toolName,proto3" json:"tool_name,omitempty"`
+	ToolInput     string                 `protobuf:"bytes,4,opt,name=tool_input,json=toolInput,proto3" json:"tool_input,omitempty"`
+	ToolOutput    string                 `protobuf:"bytes,5,opt,name=tool_output,json=toolOutput,proto3" json:"tool_output,omitempty"`
+	ToolError     string                 `protobuf:"bytes,6,opt,name=tool_error,json=toolError,proto3" json:"tool_error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExplainSQLProgress) Reset() {
+	*x = ExplainSQLProgress{}
+	mi := &file_v1_explain_sql_service_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExplainSQLProgress) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExplainSQLProgress) ProtoMessage() {}
+
+func (x *ExplainSQLProgress) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_explain_sql_service_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExplainSQLProgress.ProtoReflect.Descriptor instead.
+func (*ExplainSQLProgress) Descriptor() ([]byte, []int) {
+	return file_v1_explain_sql_service_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ExplainSQLProgress) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *ExplainSQLProgress) GetTurn() int32 {
+	if x != nil {
+		return x.Turn
+	}
+	return 0
+}
+
+func (x *ExplainSQLProgress) GetToolName() string {
+	if x != nil {
+		return x.ToolName
+	}
+	return ""
+}
+
+func (x *ExplainSQLProgress) GetToolInput() string {
+	if x != nil {
+		return x.ToolInput
+	}
+	return ""
+}
+
+func (x *ExplainSQLProgress) GetToolOutput() string {
+	if x != nil {
+		return x.ToolOutput
+	}
+	return ""
+}
+
+func (x *ExplainSQLProgress) GetToolError() string {
+	if x != nil {
+		return x.ToolError
+	}
+	return ""
+}
 
 type ExplainSQLMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -211,7 +311,7 @@ type ExplainSQLMetadata struct {
 
 func (x *ExplainSQLMetadata) Reset() {
 	*x = ExplainSQLMetadata{}
-	mi := &file_v1_explain_sql_service_proto_msgTypes[2]
+	mi := &file_v1_explain_sql_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -223,7 +323,7 @@ func (x *ExplainSQLMetadata) String() string {
 func (*ExplainSQLMetadata) ProtoMessage() {}
 
 func (x *ExplainSQLMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_explain_sql_service_proto_msgTypes[2]
+	mi := &file_v1_explain_sql_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -236,7 +336,7 @@ func (x *ExplainSQLMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainSQLMetadata.ProtoReflect.Descriptor instead.
 func (*ExplainSQLMetadata) Descriptor() ([]byte, []int) {
-	return file_v1_explain_sql_service_proto_rawDescGZIP(), []int{2}
+	return file_v1_explain_sql_service_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ExplainSQLMetadata) GetSummary() string {
@@ -298,12 +398,23 @@ const file_v1_explain_sql_service_proto_rawDesc = "" +
 	"\tmeta_type\x18\x02 \x01(\x05R\bmetaType\x12\x19\n" +
 	"\bsql_text\x18\x03 \x01(\tR\asqlText\x12)\n" +
 	"\x10force_regenerate\x18\x04 \x01(\bR\x0fforceRegenerate\x12#\n" +
-	"\rprovider_name\x18\x05 \x01(\tR\fproviderName\"\x95\x01\n" +
+	"\rprovider_name\x18\x05 \x01(\tR\fproviderName\"\xd7\x01\n" +
 	"\x12ExplainSQLResponse\x12\x1a\n" +
 	"\acontent\x18\x01 \x01(\tH\x00R\acontent\x12@\n" +
 	"\bmetadata\x18\x02 \x01(\v2\".metaxisdata.v1.ExplainSQLMetadataH\x00R\bmetadata\x12\x16\n" +
-	"\x05error\x18\x03 \x01(\tH\x00R\x05errorB\t\n" +
-	"\apayload\"\xdb\x01\n" +
+	"\x05error\x18\x03 \x01(\tH\x00R\x05error\x12@\n" +
+	"\bprogress\x18\x04 \x01(\v2\".metaxisdata.v1.ExplainSQLProgressH\x00R\bprogressB\t\n" +
+	"\apayload\"\xb8\x01\n" +
+	"\x12ExplainSQLProgress\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x12\n" +
+	"\x04turn\x18\x02 \x01(\x05R\x04turn\x12\x1b\n" +
+	"\ttool_name\x18\x03 \x01(\tR\btoolName\x12\x1d\n" +
+	"\n" +
+	"tool_input\x18\x04 \x01(\tR\ttoolInput\x12\x1f\n" +
+	"\vtool_output\x18\x05 \x01(\tR\n" +
+	"toolOutput\x12\x1d\n" +
+	"\n" +
+	"tool_error\x18\x06 \x01(\tR\ttoolError\"\xdb\x01\n" +
 	"\x12ExplainSQLMetadata\x12\x18\n" +
 	"\asummary\x18\x01 \x01(\tR\asummary\x12#\n" +
 	"\rsections_json\x18\x02 \x01(\tR\fsectionsJson\x12\x1a\n" +
@@ -329,21 +440,23 @@ func file_v1_explain_sql_service_proto_rawDescGZIP() []byte {
 	return file_v1_explain_sql_service_proto_rawDescData
 }
 
-var file_v1_explain_sql_service_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_v1_explain_sql_service_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_v1_explain_sql_service_proto_goTypes = []any{
 	(*ExplainSQLRequest)(nil),  // 0: metaxisdata.v1.ExplainSQLRequest
 	(*ExplainSQLResponse)(nil), // 1: metaxisdata.v1.ExplainSQLResponse
-	(*ExplainSQLMetadata)(nil), // 2: metaxisdata.v1.ExplainSQLMetadata
+	(*ExplainSQLProgress)(nil), // 2: metaxisdata.v1.ExplainSQLProgress
+	(*ExplainSQLMetadata)(nil), // 3: metaxisdata.v1.ExplainSQLMetadata
 }
 var file_v1_explain_sql_service_proto_depIdxs = []int32{
-	2, // 0: metaxisdata.v1.ExplainSQLResponse.metadata:type_name -> metaxisdata.v1.ExplainSQLMetadata
-	0, // 1: metaxisdata.v1.ExplainSQLService.ExplainSQL:input_type -> metaxisdata.v1.ExplainSQLRequest
-	1, // 2: metaxisdata.v1.ExplainSQLService.ExplainSQL:output_type -> metaxisdata.v1.ExplainSQLResponse
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	3, // 0: metaxisdata.v1.ExplainSQLResponse.metadata:type_name -> metaxisdata.v1.ExplainSQLMetadata
+	2, // 1: metaxisdata.v1.ExplainSQLResponse.progress:type_name -> metaxisdata.v1.ExplainSQLProgress
+	0, // 2: metaxisdata.v1.ExplainSQLService.ExplainSQL:input_type -> metaxisdata.v1.ExplainSQLRequest
+	1, // 3: metaxisdata.v1.ExplainSQLService.ExplainSQL:output_type -> metaxisdata.v1.ExplainSQLResponse
+	3, // [3:4] is the sub-list for method output_type
+	2, // [2:3] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_v1_explain_sql_service_proto_init() }
@@ -355,6 +468,7 @@ func file_v1_explain_sql_service_proto_init() {
 		(*ExplainSQLResponse_Content)(nil),
 		(*ExplainSQLResponse_Metadata)(nil),
 		(*ExplainSQLResponse_Error)(nil),
+		(*ExplainSQLResponse_Progress)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -362,7 +476,7 @@ func file_v1_explain_sql_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_explain_sql_service_proto_rawDesc), len(file_v1_explain_sql_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

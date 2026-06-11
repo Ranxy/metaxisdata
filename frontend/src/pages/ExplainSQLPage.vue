@@ -147,8 +147,51 @@
 
         <template v-else>
           <div class="flex-1">
+            <details
+              v-if="progressSteps.length > 0"
+              :open="showProgress"
+              class="mb-3"
+            >
+              <summary class="text-sm text-muted-foreground cursor-pointer py-1 select-none">
+                <Loader2 v-if="showProgress" class="h-3 w-3 animate-spin inline mr-1.5" />
+                {{ showProgress ? t("explainSQL.thinking") : t("explainSQL.thinkingProcess") }}
+              </summary>
+              <div class="mt-2 ml-2 border-l-2 border-muted/60 pl-3 space-y-1">
+                <div
+                  v-for="(step, i) in progressSteps"
+                  :key="i"
+                  class="text-xs flex items-start gap-1.5"
+                >
+                  <template v-if="step.type === 'tool_start'">
+                    <span class="text-blue-500 font-mono">{{ step.toolName }}</span>
+                    <span v-if="step.toolInput" class="text-muted-foreground">
+                      ({{ formatToolArgsShort(step.toolInput) }})
+                    </span>
+                  </template>
+                  <template v-else-if="step.type === 'tool_end'">
+                    <template v-if="step.toolError">
+                      <span class="text-red-500">&#10007; {{ step.toolName }}: {{ step.toolError }}</span>
+                    </template>
+                    <template v-else>
+                      <span class="text-green-500">&#10003; {{ step.toolName }}</span>
+                      <span v-if="step.toolOutput" class="text-muted-foreground truncate max-w-md">
+                        &mdash; {{ formatToolOutputShort(step.toolOutput) }}
+                      </span>
+                    </template>
+                  </template>
+                </div>
+              </div>
+            </details>
+            <div
+              v-else-if="isExplaining && !resultText"
+              class="flex items-center gap-2 text-sm text-muted-foreground py-1 mb-3"
+            >
+              <Loader2 class="h-3 w-3 animate-spin" />
+              {{ t("explainSQL.thinking") }}
+            </div>
+
             <MarkdownRender
-              v-if="isExplaining || resultText"
+              v-if="resultText"
               mode="chat"
               :content="resultText"
               :final="!isExplaining"
@@ -181,7 +224,7 @@
 </template>
 
 <script setup lang="ts">
-import { ExternalLink, Search, Sparkles } from "lucide-vue-next";
+import { ExternalLink, Loader2, Search, Sparkles } from "lucide-vue-next";
 import MarkdownRender from "markstream-vue";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -194,6 +237,7 @@ import Badge from "@/components/ui/badge/Badge.vue";
 import Button from "@/components/ui/button/Button.vue";
 import Label from "@/components/ui/label/Label.vue";
 import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import type { ExplainSQLProgress } from "@/types/proto-es/v1/explain_sql_service_pb";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -242,6 +286,10 @@ const explainMeta = ref<{
   fromCache: boolean;
   expired: boolean;
 } | null>(null);
+
+// Progress tracking
+const progressSteps = ref<ExplainSQLProgress[]>([]);
+const showProgress = ref(true);
 
 // ---- computed ----
 const canExplain = computed(() => {
@@ -362,6 +410,23 @@ function metaTypeLabel(t: MetaType): string {
   return labels[t as number] ?? `TYPE_${t}`;
 }
 
+function formatToolArgsShort(jsonArgs: string): string {
+  try {
+    const obj = JSON.parse(jsonArgs);
+    return Object.values(obj)
+      .map((v) => String(v))
+      .join(", ");
+  } catch {
+    return "";
+  }
+}
+
+function formatToolOutputShort(output: string): string {
+  const maxLen = 120;
+  if (output.length <= maxLen) return output;
+  return output.slice(0, maxLen) + "...";
+}
+
 async function selectSearchResult(item: SearchItem) {
   metaSearch.value = "";
   searchResults.value = [];
@@ -384,6 +449,8 @@ async function startExplain(forceRegen = false) {
   resultText.value = "";
   explainError.value = null;
   explainMeta.value = null;
+  progressSteps.value = [];
+  showProgress.value = true;
 
   const input =
     sourceMode.value === "metadata" && selectedMeta.value
@@ -394,7 +461,13 @@ async function startExplain(forceRegen = false) {
     const stream = explainSQL(input);
     for await (const chunk of stream) {
       if (chunk.payload?.case === "content" && chunk.payload.value) {
+        showProgress.value = false;
         resultText.value += chunk.payload.value;
+      } else if (chunk.payload?.case === "progress" && chunk.payload.value) {
+        const p = chunk.payload.value;
+        if (p.type === "tool_start" || p.type === "tool_end") {
+          progressSteps.value.push(p);
+        }
       } else if (chunk.payload?.case === "metadata" && chunk.payload.value) {
         const m = chunk.payload.value;
         explainMeta.value = {

@@ -191,6 +191,7 @@
   
 - [v1/explain_sql_service.proto](#v1_explain_sql_service-proto)
     - [ExplainSQLMetadata](#metaxisdata-v1-ExplainSQLMetadata)
+    - [ExplainSQLProgress](#metaxisdata-v1-ExplainSQLProgress)
     - [ExplainSQLRequest](#metaxisdata-v1-ExplainSQLRequest)
     - [ExplainSQLResponse](#metaxisdata-v1-ExplainSQLResponse)
   
@@ -3311,6 +3312,26 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 
 
 
+<a name="metaxisdata-v1-ExplainSQLProgress"></a>
+
+### ExplainSQLProgress
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| type | [string](#string) |  |  |
+| turn | [int32](#int32) |  |  |
+| tool_name | [string](#string) |  |  |
+| tool_input | [string](#string) |  |  |
+| tool_output | [string](#string) |  |  |
+| tool_error | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ExplainSQLRequest"></a>
 
 ### ExplainSQLRequest
@@ -3341,6 +3362,7 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | content | [string](#string) |  |  |
 | metadata | [ExplainSQLMetadata](#metaxisdata-v1-ExplainSQLMetadata) |  |  |
 | error | [string](#string) |  |  |
+| progress | [ExplainSQLProgress](#metaxisdata-v1-ExplainSQLProgress) |  |  |
 
 
 

@@ -28,7 +28,17 @@ message ExplainSQLResponse {
     string content = 1;
     ExplainSQLMetadata metadata = 2;
     string error = 3;
+    ExplainSQLProgress progress = 4;
   }
+}
+
+message ExplainSQLProgress {
+  string type = 1;
+  int32 turn = 2;
+  string tool_name = 3;
+  string tool_input = 4;
+  string tool_output = 5;
+  string tool_error = 6;
 }
 
 message ExplainSQLMetadata {

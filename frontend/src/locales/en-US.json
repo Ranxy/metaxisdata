@@ -867,6 +867,8 @@
     "sqlContent": "SQL Content",
     "loading": "Loading...",
     "noSqlContent": "No SQL content available for this object.",
-    "viewInBrowser": "View in Metadata Browser"
+    "viewInBrowser": "View in Metadata Browser",
+    "thinking": "Analyzing...",
+    "thinkingProcess": "Thought process"
   }
 }

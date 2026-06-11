@@ -867,6 +867,8 @@
     "sqlContent": "SQL 内容",
     "loading": "加载中...",
     "noSqlContent": "此对象没有可用的 SQL 内容。",
-    "viewInBrowser": "在元数据浏览器中查看"
+    "viewInBrowser": "在元数据浏览器中查看",
+    "thinking": "分析中...",
+    "thinkingProcess": "思考过程"
   }
 }

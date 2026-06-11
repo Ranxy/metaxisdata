@@ -24,6 +24,13 @@ type ToolCall struct {
 	} `json:"function"`
 }
 
+func (t *ToolCall) GetName() string {
+	if t == nil {
+		return ""
+	}
+	return t.Function.Name
+}
+
 // ToolDef defines a tool available to the LLM.
 type ToolDef struct {
 	Type     string `json:"type"`
