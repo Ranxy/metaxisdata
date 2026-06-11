@@ -3086,6 +3086,8 @@ components:
                     type: boolean
                 fromCache:
                     type: boolean
+                cacheCreatedAt:
+                    type: string
         ExplainSQLProgress:
             type: object
             properties:

@@ -49,4 +49,5 @@ message ExplainSQLMetadata {
   string cache_key = 5;
   bool expired = 6;
   bool from_cache = 7;
+  string cache_created_at = 8;
 }

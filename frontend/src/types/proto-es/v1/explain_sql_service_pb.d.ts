@@ -167,6 +167,11 @@ export declare type ExplainSQLMetadata = Message<"metaxisdata.v1.ExplainSQLMetad
    * @generated from field: bool from_cache = 7;
    */
   fromCache: boolean;
+
+  /**
+   * @generated from field: string cache_created_at = 8;
+   */
+  cacheCreatedAt: string;
 };
 
 /**

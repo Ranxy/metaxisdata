@@ -63,12 +63,13 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 				_ = stream.Send(&v1pb.ExplainSQLResponse{
 					Payload: &v1pb.ExplainSQLResponse_Metadata{
 						Metadata: &v1pb.ExplainSQLMetadata{
-							Summary:      explanation.Summary,
-							SectionsJson: string(sectionsJSON),
-							Provider:     cached.Provider,
-							Model:        cached.Model,
-							CacheKey:     cached.CacheKey,
-							FromCache:    true,
+							Summary:        explanation.Summary,
+							SectionsJson:   string(sectionsJSON),
+							Provider:       cached.Provider,
+							Model:          cached.Model,
+							CacheKey:       cached.CacheKey,
+							CacheCreatedAt: cached.CreatedAt.Format(time.RFC3339),
+							FromCache:      true,
 						},
 					},
 				})

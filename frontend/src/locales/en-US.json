@@ -869,6 +869,7 @@
     "noSqlContent": "No SQL content available for this object.",
     "viewInBrowser": "View in Metadata Browser",
     "thinking": "Analyzing...",
-    "thinkingProcess": "Thought process"
+    "thinkingProcess": "Thought process",
+    "cacheHint": "Showing cached result from {time} — click Regenerate to refresh."
   }
 }

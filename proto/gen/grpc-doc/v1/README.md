@@ -3306,6 +3306,7 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | cache_key | [string](#string) |  |  |
 | expired | [bool](#bool) |  |  |
 | from_cache | [bool](#bool) |  |  |
+| cache_created_at | [string](#string) |  |  |
 
 
 

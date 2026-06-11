@@ -127,11 +127,10 @@
 
         <Button
           :disabled="!canExplain || isExplaining"
-          class="mt-auto"
-          @click="startExplain()"
+          @click="startExplain(resultFromCache)"
         >
           <Sparkles class="h-4 w-4 mr-2" />
-          {{ isExplaining ? t("explainSQL.explaining") : t("explainSQL.explain") }}
+          {{ isExplaining ? t("explainSQL.explaining") : resultFromCache ? t("explainSQL.regenerate") : t("explainSQL.explain") }}
         </Button>
       </div>
 
@@ -146,6 +145,13 @@
         </div>
 
         <template v-else>
+          <div
+            v-if="resultFromCache && explainMeta?.cacheCreatedAt"
+            class="shrink-0 text-xs text-muted-foreground bg-muted/40 rounded-md px-3 py-2 flex items-center gap-2"
+          >
+            <Clock class="h-3.5 w-3.5 shrink-0" />
+            {{ t("explainSQL.cacheHint", { time: formatCacheTime(explainMeta.cacheCreatedAt) }) }}
+          </div>
           <div class="flex-1">
             <details
               v-if="progressSteps.length > 0"
@@ -224,7 +230,13 @@
 </template>
 
 <script setup lang="ts">
-import { ExternalLink, Loader2, Search, Sparkles } from "lucide-vue-next";
+import {
+  Clock,
+  ExternalLink,
+  Loader2,
+  Search,
+  Sparkles,
+} from "lucide-vue-next";
 import MarkdownRender from "markstream-vue";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -285,6 +297,7 @@ const explainMeta = ref<{
   model: string;
   fromCache: boolean;
   expired: boolean;
+  cacheCreatedAt: string;
 } | null>(null);
 
 // Progress tracking
@@ -296,6 +309,8 @@ const canExplain = computed(() => {
   if (sourceMode.value === "metadata") return !!selectedMeta.value;
   return customSQL.value.trim() !== "";
 });
+
+const resultFromCache = computed(() => !!explainMeta.value?.fromCache);
 
 const metadataBrowserUrl = computed(() => {
   const m = selectedMeta.value;
@@ -427,6 +442,12 @@ function formatToolOutputShort(output: string): string {
   return output.slice(0, maxLen) + "...";
 }
 
+function formatCacheTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString();
+}
+
 async function selectSearchResult(item: SearchItem) {
   metaSearch.value = "";
   searchResults.value = [];
@@ -475,6 +496,7 @@ async function startExplain(forceRegen = false) {
           model: m.model,
           fromCache: m.fromCache,
           expired: m.expired,
+          cacheCreatedAt: m.cacheCreatedAt,
         };
       } else if (chunk.payload?.case === "error" && chunk.payload.value) {
         explainError.value = chunk.payload.value;

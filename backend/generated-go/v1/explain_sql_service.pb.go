@@ -297,16 +297,17 @@ func (x *ExplainSQLProgress) GetToolError() string {
 }
 
 type ExplainSQLMetadata struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Summary       string                 `protobuf:"bytes,1,opt,name=summary,proto3" json:"summary,omitempty"`
-	SectionsJson  string                 `protobuf:"bytes,2,opt,name=sections_json,json=sectionsJson,proto3" json:"sections_json,omitempty"`
-	Provider      string                 `protobuf:"bytes,3,opt,name=provider,proto3" json:"provider,omitempty"`
-	Model         string                 `protobuf:"bytes,4,opt,name=model,proto3" json:"model,omitempty"`
-	CacheKey      string                 `protobuf:"bytes,5,opt,name=cache_key,json=cacheKey,proto3" json:"cache_key,omitempty"`
-	Expired       bool                   `protobuf:"varint,6,opt,name=expired,proto3" json:"expired,omitempty"`
-	FromCache     bool                   `protobuf:"varint,7,opt,name=from_cache,json=fromCache,proto3" json:"from_cache,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Summary        string                 `protobuf:"bytes,1,opt,name=summary,proto3" json:"summary,omitempty"`
+	SectionsJson   string                 `protobuf:"bytes,2,opt,name=sections_json,json=sectionsJson,proto3" json:"sections_json,omitempty"`
+	Provider       string                 `protobuf:"bytes,3,opt,name=provider,proto3" json:"provider,omitempty"`
+	Model          string                 `protobuf:"bytes,4,opt,name=model,proto3" json:"model,omitempty"`
+	CacheKey       string                 `protobuf:"bytes,5,opt,name=cache_key,json=cacheKey,proto3" json:"cache_key,omitempty"`
+	Expired        bool                   `protobuf:"varint,6,opt,name=expired,proto3" json:"expired,omitempty"`
+	FromCache      bool                   `protobuf:"varint,7,opt,name=from_cache,json=fromCache,proto3" json:"from_cache,omitempty"`
+	CacheCreatedAt string                 `protobuf:"bytes,8,opt,name=cache_created_at,json=cacheCreatedAt,proto3" json:"cache_created_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ExplainSQLMetadata) Reset() {
@@ -388,6 +389,13 @@ func (x *ExplainSQLMetadata) GetFromCache() bool {
 	return false
 }
 
+func (x *ExplainSQLMetadata) GetCacheCreatedAt() string {
+	if x != nil {
+		return x.CacheCreatedAt
+	}
+	return ""
+}
+
 var File_v1_explain_sql_service_proto protoreflect.FileDescriptor
 
 const file_v1_explain_sql_service_proto_rawDesc = "" +
@@ -414,7 +422,7 @@ const file_v1_explain_sql_service_proto_rawDesc = "" +
 	"\vtool_output\x18\x05 \x01(\tR\n" +
 	"toolOutput\x12\x1d\n" +
 	"\n" +
-	"tool_error\x18\x06 \x01(\tR\ttoolError\"\xdb\x01\n" +
+	"tool_error\x18\x06 \x01(\tR\ttoolError\"\x85\x02\n" +
 	"\x12ExplainSQLMetadata\x12\x18\n" +
 	"\asummary\x18\x01 \x01(\tR\asummary\x12#\n" +
 	"\rsections_json\x18\x02 \x01(\tR\fsectionsJson\x12\x1a\n" +
@@ -423,7 +431,8 @@ const file_v1_explain_sql_service_proto_rawDesc = "" +
 	"\tcache_key\x18\x05 \x01(\tR\bcacheKey\x12\x18\n" +
 	"\aexpired\x18\x06 \x01(\bR\aexpired\x12\x1d\n" +
 	"\n" +
-	"from_cache\x18\a \x01(\bR\tfromCache2\x86\x01\n" +
+	"from_cache\x18\a \x01(\bR\tfromCache\x12(\n" +
+	"\x10cache_created_at\x18\b \x01(\tR\x0ecacheCreatedAt2\x86\x01\n" +
 	"\x11ExplainSQLService\x12q\n" +
 	"\n" +
 	"ExplainSQL\x12!.metaxisdata.v1.ExplainSQLRequest\x1a\".metaxisdata.v1.ExplainSQLResponse\"\x1a\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/v1/explain-sql0\x01B6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
