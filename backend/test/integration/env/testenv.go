@@ -5,13 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -21,6 +18,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/migrator"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
@@ -84,7 +82,7 @@ func SetupMySQLEnv(t *testing.T) *TestEnv {
 	t.Cleanup(func() { _ = stores.Close() })
 	env.Store = stores
 
-	require.NoError(t, applyMigratorSQL(ctx, stores.GetDB()))
+	require.NoError(t, migrator.MigrateSchema(ctx, stores.GetDB()))
 	_, err = stores.UpsertSettingV2(ctx, &store.SetSettingMessage{
 		Name:  storepb.SettingName_AUTH_SECRET,
 		Value: "integration-test-secret",
@@ -448,20 +446,6 @@ func postgresDSN(host, port, database string) string {
 
 func quotePostgresIdentifier(identifier string) string {
 	return `"` + strings.ReplaceAll(identifier, `"`, `""`) + `"`
-}
-
-func applyMigratorSQL(ctx context.Context, db *sql.DB) error {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		return errors.Errorf("failed to locate testenv.go path")
-	}
-	migratorPath := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "../../../migrator/latest.sql"))
-	content, err := os.ReadFile(migratorPath)
-	if err != nil {
-		return err
-	}
-	_, err = db.ExecContext(ctx, string(content))
-	return err
 }
 
 func skipIfDockerUnavailable(t *testing.T, err error) {

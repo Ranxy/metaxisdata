@@ -440,3 +440,19 @@ CREATE TABLE llm_debug_log (
 );
 
 ALTER SEQUENCE llm_debug_log_id_seq RESTART WITH 101;
+
+
+-- schema_migration_history records every applied schema version, one row per
+-- migration (and one baseline row for a fresh install). It is the version
+-- ledger the migrator (backend/migrator) reads to decide which incremental
+-- files under migration/{MAJOR.MINOR}/ are still pending. Created by this file
+-- on fresh installs and by the migrator when adopting a pre-framework
+-- database; never written by application code.
+CREATE TABLE IF NOT EXISTS schema_migration_history (
+    id BIGSERIAL PRIMARY KEY,
+    version TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_schema_migration_history_unique_version
+    ON schema_migration_history (version);

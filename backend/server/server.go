@@ -16,6 +16,7 @@ import (
 	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
+	"github.com/Ranxy/metaxisdata/backend/migrator"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
@@ -71,6 +72,13 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		return nil, errors.Wrapf(err, "failed to new store")
 	}
 	s.store = stores
+
+	// Migrate the metadata schema to the latest embedded version before any
+	// subsystem reads from it.
+	if err := migrator.MigrateSchema(ctx, stores.GetDB()); err != nil {
+		return nil, errors.Wrap(err, "failed to migrate database schema")
+	}
+
 	s.runnerCtx, s.runnerCancel = context.WithCancel(ctx)
 
 	dbFactory := dbfactory.New(stores)

@@ -37,7 +37,7 @@ Feature design documents live in `spec/` (product/UX specs) and `plan/` (impleme
 | `backend/plugin/idp/` | Identity providers (OAuth2/OIDC/LDAP) |
 | `backend/plugin/metric/` | Metric collection and reporting |
 | `backend/runner/` | Background runners: `lineageanalyzer`, `schemasync` |
-| `backend/migrator/latest.sql` | Cumulative schema applied to a fresh database |
+| `backend/migrator/` | Embedded, versioned schema migrations (`migration/LATEST.sql` + incrementals) and the startup migrator |
 | `backend/generated-go/` | Generated protobuf/Connect/Gateway code — never hand-edit |
 | `frontend/src/` | Vue 3 + TypeScript SPA (Vite, Pinia, vue-router, Tailwind, shadcn-vue) |
 | `proto/v1/`, `proto/store/` | Public ConnectRPC service definitions and database row shapes |
@@ -51,9 +51,10 @@ Feature design documents live in `spec/` (product/UX specs) and `plan/` (impleme
 
 ### Database Schema and Migrations
 
-- `backend/migrator/latest.sql` is the only schema artifact: the cumulative schema for a fresh install.
-- There is **no schema-version table and no in-process migration runner**. The server never executes `latest.sql` at startup — operators apply it out-of-band, and only the integration test harness applies it to fresh test databases.
-- Consequence: a schema change must be reflected in `latest.sql` **and** applied to existing databases by whatever external process the deployment uses; there is no automatic upgrade path. Keep `backend/store` queries and `latest.sql` in sync in the same change.
+- `backend/migrator/` owns the metadata schema. `migration/LATEST.sql` is the cumulative schema at the newest version; `migration/{MAJOR.MINOR}/{NNNN}##{desc}.sql` are forward-only incremental migrations (the current version line is `0.1`, baseline version `0.1.0`).
+- `migrator.MigrateSchema` runs in-process on every server startup, before any subsystem reads the schema. Fresh installs apply `LATEST.sql`; existing deployments apply only the pending incrementals; a database that already has the schema but predates the framework is adopted at the baseline version. A session-level advisory lock serializes migrations across replicas.
+- `schema_migration_history` is the version ledger. Never write it from application code.
+- Consequence: every schema change must BOTH append the idempotent DDL to `migration/LATEST.sql` (fresh installs) AND add an incremental file under the current `{MAJOR.MINOR}` directory (existing deployments). Keep `backend/store` queries, `LATEST.sql`, and the incremental in sync in the same change. See `plan/schema_migration_plan.md`.
 - JSONB columns hold `protojson.Marshal` output of the `proto/store` message named in the column's SQL comment. When you add or remove proto fields, update the proto and the store together.
 
 ### Store Layer
@@ -76,7 +77,7 @@ External-service env vars:
 - `INTEGRATION_POSTGRES_HOST`, `INTEGRATION_POSTGRES_PORT`, `INTEGRATION_POSTGRES_DB` (optional, defaults to `metaxisdata`)
 - `INTEGRATION_MYSQL_HOST`, `INTEGRATION_MYSQL_PORT`
 
-In both modes the harness performs readiness checks, applies `backend/migrator/latest.sql`, and seeds the MySQL fixture schema. Partial env config fails fast rather than silently mixing modes. Full details: `backend/test/integration/README.md`.
+In both modes the harness performs readiness checks, runs the schema migrator (`backend/migrator`), and seeds the MySQL fixture schema. Partial env config fails fast rather than silently mixing modes. Full details: `backend/test/integration/README.md`.
 
 Frontend tests are Vitest with jsdom (`frontend/vitest.config.ts`), colocated with source as `*.test.ts(x)`.
 

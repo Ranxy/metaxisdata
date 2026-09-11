@@ -30,6 +30,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
+	"github.com/Ranxy/metaxisdata/backend/migrator"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -207,7 +208,7 @@ func StartMySQLServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 		cleanupServiceResources(nil, bootstrap.containers, "", nil, nil)
 		return nil, nil, err
 	}
-	if err := applyMigratorSQL(ctx, stores.GetDB()); err != nil {
+	if err := migrator.MigrateSchema(ctx, stores.GetDB()); err != nil {
 		cleanupServiceResources(stores, bootstrap.containers, "", nil, nil)
 		return nil, nil, err
 	}
@@ -292,7 +293,7 @@ func StartPostgresServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 		cleanupServiceResources(nil, bootstrap.containers, "", nil, nil)
 		return nil, nil, err
 	}
-	if err := applyMigratorSQL(ctx, stores.GetDB()); err != nil {
+	if err := migrator.MigrateSchema(ctx, stores.GetDB()); err != nil {
 		cleanupServiceResources(stores, bootstrap.containers, "", nil, nil)
 		return nil, nil, err
 	}

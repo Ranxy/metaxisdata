@@ -14,7 +14,7 @@ When no integration service environment variables are present, the harness will:
 
 - start PostgreSQL with `testcontainers`
 - start MySQL with `testcontainers`
-- apply the backend migrator SQL to PostgreSQL
+- run the backend schema migrator (`backend/migrator`) against PostgreSQL
 - seed the MySQL fixture schema used by the integration scenarios
 
 This is the default behavior for commands such as:

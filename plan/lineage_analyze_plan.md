@@ -14,7 +14,7 @@ Build a periodic + event-driven runner that analyzes SQL definitions from stored
 
 ### Phase 1: Database Schema (migration)
 
-**File**: `backend/migrator/latest.sql` — append two new tables
+**File**: `backend/migrator/migration/LATEST.sql` — append two new tables
 
 **Table `column_lineage`**: stores individual lineage edges
 - `id BIGSERIAL PRIMARY KEY`
@@ -115,7 +115,7 @@ Public trigger: `QueueAnalysis(metaGUID string, metaType storepb.MetaType)` — 
 
 ## Relevant Files
 
-- `backend/migrator/latest.sql` — append column_lineage + column_lineage_version CREATE TABLE
+- `backend/migrator/migration/LATEST.sql` — append column_lineage + column_lineage_version CREATE TABLE
 - `backend/store/column_lineage.go` — NEW: store CRUD for lineage data (reference `meta_resource.go` patterns for batch ops, `database.go` for query builder)
 - `backend/runner/lineageanalyzer/analyzer.go` — NEW: runner (reference `schemasync/syncer.go` for lifecycle/pool/queue patterns)
 - `backend/plugin/lineage/catalog/provide.go` — MODIFY: add AnalysisContext to fill missing ObjectIdentifier parts
