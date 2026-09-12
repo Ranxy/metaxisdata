@@ -388,7 +388,29 @@ func compareColumnFields(before, after *v1pb.ColumnMetadata) []*v1pb.MetadataFie
 	appendBoolFieldChange(&changes, "default_on_null", "default on null", before.GetDefaultOnNull(), after.GetDefaultOnNull())
 	appendBoolFieldChange(&changes, "is_identity", "identity", before.GetIsIdentity(), after.GetIsIdentity())
 	appendStringFieldChange(&changes, "identity_generation", "identity generation", before.GetIdentityGeneration().String(), after.GetIdentityGeneration().String())
+	// Generated columns and MSSQL identity sequences are real changes that the
+	// comparator used to ignore, so they were reported as "no changes".
+	appendStringFieldChange(&changes, "generation_type", "generation type", before.GetGeneration().GetType().String(), after.GetGeneration().GetType().String())
+	appendStringFieldChange(&changes, "generation_expression", "generation expression", before.GetGeneration().GetExpression(), after.GetGeneration().GetExpression())
+	appendInt64FieldChange(&changes, "identity_seed", "identity seed", before.GetIdentitySeed(), after.GetIdentitySeed())
+	appendInt64FieldChange(&changes, "identity_increment", "identity increment", before.GetIdentityIncrement(), after.GetIdentityIncrement())
 	return changes
+}
+
+func appendInt64FieldChange(changes *[]*v1pb.MetadataFieldChange, field, displayName string, before, after int64) {
+	if before == after {
+		return
+	}
+	*changes = append(*changes, &v1pb.MetadataFieldChange{Field: field, DisplayName: displayName, Before: fmt.Sprintf("%d", before), After: fmt.Sprintf("%d", after)})
+}
+
+// appendSliceFieldChange reports a change when an ordered list differs, which
+// covers the per-column index attributes such as key length and descending.
+func appendSliceFieldChange[T comparable](changes *[]*v1pb.MetadataFieldChange, field, displayName string, before, after []T) {
+	if slices.Equal(before, after) {
+		return
+	}
+	*changes = append(*changes, &v1pb.MetadataFieldChange{Field: field, DisplayName: displayName, Before: fmt.Sprint(before), After: fmt.Sprint(after)})
 }
 
 func appendStringFieldChange(changes *[]*v1pb.MetadataFieldChange, field, displayName, before, after string) {

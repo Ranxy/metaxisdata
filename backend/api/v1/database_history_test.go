@@ -118,3 +118,68 @@ func TestBuildMetadataHistoryEventResultForManualSQL(t *testing.T) {
 	require.Equal(t, v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_TAG, result.ChangeGroups[0].Section)
 	require.Equal(t, v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_ATTRIBUTE, result.ChangeGroups[1].Section)
 }
+
+// Generated columns, MSSQL identity sequences and the per-column index
+// attributes are real changes; the comparators used to ignore them, so an
+// update that only touched one of them showed as "no changes".
+func TestCompareColumnFieldsCoversGenerationAndIdentity(t *testing.T) {
+	t.Parallel()
+
+	before := &v1pb.ColumnMetadata{
+		Name:       "total",
+		Generation: &v1pb.GenerationMetadata{Type: v1pb.GenerationMetadata_TYPE_STORED, Expression: "a + b"},
+	}
+	after := &v1pb.ColumnMetadata{
+		Name:              "total",
+		Generation:        &v1pb.GenerationMetadata{Type: v1pb.GenerationMetadata_TYPE_STORED, Expression: "a + c"},
+		IdentitySeed:      5,
+		IdentityIncrement: 2,
+	}
+
+	fields := map[string]*v1pb.MetadataFieldChange{}
+	for _, change := range compareColumnFields(before, after) {
+		fields[change.GetField()] = change
+	}
+	require.Contains(t, fields, "generation_expression")
+	require.Contains(t, fields, "identity_seed")
+	require.Contains(t, fields, "identity_increment")
+	require.NotContains(t, fields, "type")
+}
+
+func TestDiffIndexGroupCoversPerColumnAttributes(t *testing.T) {
+	t.Parallel()
+
+	before := &v1pb.IndexMetadata{Name: "idx", KeyLength: []int64{-1}, Descending: []bool{false}}
+	after := &v1pb.IndexMetadata{Name: "idx", KeyLength: []int64{10}, Descending: []bool{true}, OpclassNames: []string{"text_pattern_ops"}}
+
+	group := diffIndexGroupFromList([]*v1pb.IndexMetadata{before}, []*v1pb.IndexMetadata{after})
+	require.NotNil(t, group)
+	require.Len(t, group.Changes, 1)
+
+	fields := map[string]bool{}
+	for _, change := range group.Changes[0].GetFieldChanges() {
+		fields[change.GetField()] = true
+	}
+	require.True(t, fields["key_length"])
+	require.True(t, fields["descending"])
+	require.True(t, fields["opclass_names"])
+}
+
+func TestDiffForeignKeyGroupCoversMatchType(t *testing.T) {
+	t.Parallel()
+
+	before := &v1pb.TableMetadata{
+		Name:        "orders",
+		ForeignKeys: []*v1pb.ForeignKeyMetadata{{Name: "fk", MatchType: "SIMPLE"}},
+	}
+	after := &v1pb.TableMetadata{
+		Name:        "orders",
+		ForeignKeys: []*v1pb.ForeignKeyMetadata{{Name: "fk", MatchType: "FULL"}},
+	}
+
+	group := diffForeignKeyGroup(before, after)
+	require.NotNil(t, group)
+	require.Len(t, group.Changes, 1)
+	require.Len(t, group.Changes[0].GetFieldChanges(), 1)
+	require.Equal(t, "match_type", group.Changes[0].GetFieldChanges()[0].GetField())
+}

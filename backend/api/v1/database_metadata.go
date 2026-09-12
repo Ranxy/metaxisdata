@@ -3,7 +3,6 @@ package v1
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -150,7 +149,19 @@ func (s *DatabaseService) DiffMetadata(ctx context.Context, req *connect.Request
 	engine := instance.Metadata.GetEngine()
 
 	// 2. Rebuild DatabaseSchemaMetadata at source and target times
-	sourceMeta, err := s.buildDatabaseSchemaAtTime(ctx, guid, req.Msg.GetSourceTime())
+	sourceTime := req.Msg.GetSourceTime()
+	if sourceTime == nil {
+		// The proto promises "the earliest available version"; defaulting to now
+		// made source and target identical, so the diff was always empty.
+		earliest, err := s.earliestVersionTime(ctx, guid)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to find the earliest version"))
+		}
+		if !earliest.IsZero() {
+			sourceTime = timestamppb.New(earliest)
+		}
+	}
+	sourceMeta, err := s.buildDatabaseSchemaAtTime(ctx, guid, sourceTime)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to build source schema"))
 	}
@@ -184,6 +195,24 @@ func (s *DatabaseService) DiffMetadata(ctx context.Context, req *connect.Request
 		DiffSummary: summary,
 		Ddl:         ddl,
 	}), nil
+}
+
+// earliestVersionTime returns the valid_from of the oldest history row in the
+// GUID subtree. That is the "earliest available version" the diff falls back to
+// when source_time is not set.
+func (s *DatabaseService) earliestVersionTime(ctx context.Context, guid string) (time.Time, error) {
+	limit := 1
+	history, err := s.store.ListMetaRegistryHistory(ctx, &store.FindMetaRegistryHistoryMessage{
+		GUIDPrefix: &guid,
+		Limit:      &limit,
+	})
+	if err != nil {
+		return time.Time{}, err
+	}
+	if len(history) == 0 {
+		return time.Time{}, nil
+	}
+	return history[0].ValidFrom, nil
 }
 
 func (s *DatabaseService) buildDatabaseSchemaAtTime(ctx context.Context, guid string, asOf *timestamppb.Timestamp) (*storepb.DatabaseSchemaMetadata, error) {
@@ -221,7 +250,12 @@ func (s *DatabaseService) buildDatabaseSchemaAtTime(ctx context.Context, guid st
 
 		// Rebuild this schema's contents
 		schemaGUID := schemaObj.GUID
-		rebuilt := s.rebuildSchemaContents(ctx, schemaGUID, schemaMeta, asOfTime)
+		rebuilt, err := s.rebuildSchemaContents(ctx, schemaGUID, schemaMeta, asOfTime)
+		if err != nil {
+			// Falling back to the current metadata produced a plausible but
+			// wrong historical diff, so the error propagates instead.
+			return nil, err
+		}
 		result.Schemas = append(result.Schemas, rebuilt)
 	}
 
@@ -243,146 +277,155 @@ func (s *DatabaseService) buildDatabaseSchemaAtTime(ctx context.Context, guid st
 func (s *DatabaseService) rebuildDatabaseObjects(ctx context.Context, guid string, asOfTime time.Time) (*storepb.SchemaMetadata, error) {
 	result := &storepb.SchemaMetadata{Name: ""}
 
-	// Fetch tables
-	tableType := storepb.MetaType_TABLE
-	tables, err := s.store.ListMetaRegistryResourceAsOf(ctx, &store.FindMetaRegistryResourceMessage{
-		GUIDPrefix: &guid,
-		ObjectType: &tableType,
-	}, asOfTime)
-	if err != nil {
-		return nil, err
+	// Every schema-level object type the registry stores has to be rebuilt, or a
+	// change to it is reported as "no changes detected". Each entry maps a meta
+	// type onto the SchemaMetadata slice it fills.
+	type objectType struct {
+		metaType storepb.MetaType
+		collect  func(result *storepb.SchemaMetadata, meta *storepb.StoredMetadata) bool
+	}
+	objectTypes := []objectType{
+		{storepb.MetaType_TABLE, func(r *storepb.SchemaMetadata, meta *storepb.StoredMetadata) bool {
+			if v := meta.GetTableMetadata(); v != nil {
+				r.Tables = append(r.Tables, v)
+				return true
+			}
+			return false
+		}},
+		{storepb.MetaType_EXTERNAL_TABLE, func(r *storepb.SchemaMetadata, meta *storepb.StoredMetadata) bool {
+			if v := meta.GetExternalTableMetadata(); v != nil {
+				r.ExternalTables = append(r.ExternalTables, v)
+				return true
+			}
+			return false
+		}},
+		{storepb.MetaType_VIEW, func(r *storepb.SchemaMetadata, meta *storepb.StoredMetadata) bool {
+			if v := meta.GetViewMetadata(); v != nil {
+				r.Views = append(r.Views, v)
+				return true
+			}
+			return false
+		}},
+		{storepb.MetaType_MATERIALIZED_VIEW, func(r *storepb.SchemaMetadata, meta *storepb.StoredMetadata) bool {
+			if v := meta.GetMaterializedViewMetadata(); v != nil {
+				r.MaterializedViews = append(r.MaterializedViews, v)
+				return true
+			}
+			return false
+		}},
+		{storepb.MetaType_FUNCTION, func(r *storepb.SchemaMetadata, meta *storepb.StoredMetadata) bool {
+			if v := meta.GetFunctionMetadata(); v != nil {
+				r.Functions = append(r.Functions, v)
+				return true
+			}
+			return false
+		}},
+		{storepb.MetaType_PROCEDURE, func(r *storepb.SchemaMetadata, meta *storepb.StoredMetadata) bool {
+			if v := meta.GetProcedureMetadata(); v != nil {
+				r.Procedures = append(r.Procedures, v)
+				return true
+			}
+			return false
+		}},
+		{storepb.MetaType_SEQUENCE, func(r *storepb.SchemaMetadata, meta *storepb.StoredMetadata) bool {
+			if v := meta.GetSequenceMetadata(); v != nil {
+				r.Sequences = append(r.Sequences, v)
+				return true
+			}
+			return false
+		}},
 	}
 
-	for _, tbl := range tables {
-		tableMeta := tbl.Metadata.GetTableMetadata()
-		if tableMeta == nil {
-			continue
+	for _, objectType := range objectTypes {
+		metaType := objectType.metaType
+		objects, err := s.store.ListMetaRegistryResourceAsOf(ctx, &store.FindMetaRegistryResourceMessage{
+			GUIDPrefix: &guid,
+			ObjectType: &metaType,
+		}, asOfTime)
+		if err != nil {
+			return nil, err
 		}
-		result.Tables = append(result.Tables, tableMeta)
-	}
-
-	// Fetch views
-	viewType := storepb.MetaType_VIEW
-	views, err := s.store.ListMetaRegistryResourceAsOf(ctx, &store.FindMetaRegistryResourceMessage{
-		GUIDPrefix: &guid,
-		ObjectType: &viewType,
-	}, asOfTime)
-	if err != nil {
-		return nil, err
-	}
-	for _, v := range views {
-		if vm := v.Metadata.GetViewMetadata(); vm != nil {
-			result.Views = append(result.Views, vm)
-		}
-	}
-
-	// Fetch functions
-	funcType := storepb.MetaType_FUNCTION
-	funcs, err := s.store.ListMetaRegistryResourceAsOf(ctx, &store.FindMetaRegistryResourceMessage{
-		GUIDPrefix: &guid,
-		ObjectType: &funcType,
-	}, asOfTime)
-	if err != nil {
-		return nil, err
-	}
-	for _, f := range funcs {
-		if fm := f.Metadata.GetFunctionMetadata(); fm != nil {
-			result.Functions = append(result.Functions, fm)
-		}
-	}
-
-	// Fetch procedures
-	procType := storepb.MetaType_PROCEDURE
-	procs, err := s.store.ListMetaRegistryResourceAsOf(ctx, &store.FindMetaRegistryResourceMessage{
-		GUIDPrefix: &guid,
-		ObjectType: &procType,
-	}, asOfTime)
-	if err != nil {
-		return nil, err
-	}
-	for _, p := range procs {
-		if pm := p.Metadata.GetProcedureMetadata(); pm != nil {
-			result.Procedures = append(result.Procedures, pm)
+		for _, object := range objects {
+			objectType.collect(result, object.Metadata)
 		}
 	}
 
 	return result, nil
 }
 
-func (s *DatabaseService) rebuildSchemaContents(ctx context.Context, schemaGUID string, schemaMeta *storepb.SchemaMetadata, asOfTime time.Time) *storepb.SchemaMetadata {
+func (s *DatabaseService) rebuildSchemaContents(ctx context.Context, schemaGUID string, schemaMeta *storepb.SchemaMetadata, asOfTime time.Time) (*storepb.SchemaMetadata, error) {
 	result, err := s.rebuildDatabaseObjects(ctx, schemaGUID, asOfTime)
 	if err != nil {
-		slog.Warn("failed to rebuild schema contents", "schema", schemaGUID, "error", err)
-		return schemaMeta // fall back to the stored metadata
+		return nil, err
 	}
+	// The schema's own attributes are not separate objects in the registry, so
+	// they come from the version being reconstructed.
 	result.Name = schemaMeta.Name
-	return result
+	result.Owner = schemaMeta.Owner
+	result.Comment = schemaMeta.Comment
+	result.SkipDump = schemaMeta.SkipDump
+	return result, nil
+}
+
+// countDiffActions tallies create/alter/drop for one category of the diff.
+func countDiffActions[T any](changes []T, action func(T) schema.MetadataDiffAction) (created, altered, dropped int) {
+	for _, change := range changes {
+		switch action(change) {
+		case schema.MetadataDiffActionCreate:
+			created++
+		case schema.MetadataDiffActionAlter:
+			altered++
+		case schema.MetadataDiffActionDrop:
+			dropped++
+		default:
+		}
+	}
+	return created, altered, dropped
 }
 
 func buildDiffSummary(diff *schema.MetadataDiff) string {
-	parts := make([]string, 0)
+	// Every category the differ reports has to appear here: the summary used to
+	// count only tables, views, functions and schemas, so a change to a
+	// materialized view, sequence, enum type or event was summarised as
+	// "No changes detected." even though the DDL contained it.
+	schemaC, schemaA, schemaD := countDiffActions(diff.SchemaChanges, func(c *schema.SchemaDiff) schema.MetadataDiffAction { return c.Action })
+	tableC, tableA, tableD := countDiffActions(diff.TableChanges, func(c *schema.TableDiff) schema.MetadataDiffAction { return c.Action })
+	viewC, viewA, viewD := countDiffActions(diff.ViewChanges, func(c *schema.ViewDiff) schema.MetadataDiffAction { return c.Action })
+	mvC, mvA, mvD := countDiffActions(diff.MaterializedViewChanges, func(c *schema.MaterializedViewDiff) schema.MetadataDiffAction { return c.Action })
+	funcC, funcA, funcD := countDiffActions(diff.FunctionChanges, func(c *schema.FunctionDiff) schema.MetadataDiffAction { return c.Action })
+	procC, procA, procD := countDiffActions(diff.ProcedureChanges, func(c *schema.ProcedureDiff) schema.MetadataDiffAction { return c.Action })
+	seqC, seqA, seqD := countDiffActions(diff.SequenceChanges, func(c *schema.SequenceDiff) schema.MetadataDiffAction { return c.Action })
+	enumC, enumA, enumD := countDiffActions(diff.EnumTypeChanges, func(c *schema.EnumTypeDiff) schema.MetadataDiffAction { return c.Action })
+	extC, extA, extD := countDiffActions(diff.ExtensionChanges, func(c *schema.ExtensionDiff) schema.MetadataDiffAction { return c.Action })
+	triggerC, triggerA, triggerD := countDiffActions(diff.EventTriggerChanges, func(c *schema.EventTriggerDiff) schema.MetadataDiffAction { return c.Action })
+	eventC, eventA, eventD := countDiffActions(diff.EventChanges, func(c *schema.EventDiff) schema.MetadataDiffAction { return c.Action })
+	commentC, commentA, commentD := countDiffActions(diff.CommentChanges, func(c *schema.CommentDiff) schema.MetadataDiffAction { return c.Action })
 
-	countCreate := 0
-	countDrop := 0
-	countAlter := 0
-	for _, tc := range diff.TableChanges {
-		switch tc.Action {
-		case schema.MetadataDiffActionCreate:
-			countCreate++
-		case schema.MetadataDiffActionDrop:
-			countDrop++
-		case schema.MetadataDiffActionAlter:
-			countAlter++
-		default:
-		}
-	}
-	if countCreate+countDrop+countAlter > 0 {
-		parts = append(parts, fmt.Sprintf("Tables: +%d created, ~%d modified, -%d dropped", countCreate, countAlter, countDrop))
-	}
-
-	viewCreate := 0
-	viewDrop := 0
-	for _, vc := range diff.ViewChanges {
-		switch vc.Action {
-		case schema.MetadataDiffActionCreate:
-			viewCreate++
-		case schema.MetadataDiffActionDrop:
-			viewDrop++
-		default:
-		}
-	}
-	if viewCreate+viewDrop > 0 {
-		parts = append(parts, fmt.Sprintf("Views: +%d created, -%d dropped", viewCreate, viewDrop))
-	}
-
-	funcCreate := 0
-	funcDrop := 0
-	for _, fc := range diff.FunctionChanges {
-		switch fc.Action {
-		case schema.MetadataDiffActionCreate:
-			funcCreate++
-		case schema.MetadataDiffActionDrop:
-			funcDrop++
-		default:
-		}
-	}
-	if funcCreate+funcDrop > 0 {
-		parts = append(parts, fmt.Sprintf("Functions: +%d created, -%d dropped", funcCreate, funcDrop))
+	categories := []struct {
+		label                     string
+		created, altered, dropped int
+	}{
+		{"Schemas", schemaC, schemaA, schemaD},
+		{"Tables", tableC, tableA, tableD},
+		{"Views", viewC, viewA, viewD},
+		{"Materialized views", mvC, mvA, mvD},
+		{"Functions", funcC, funcA, funcD},
+		{"Procedures", procC, procA, procD},
+		{"Sequences", seqC, seqA, seqD},
+		{"Enum types", enumC, enumA, enumD},
+		{"Extensions", extC, extA, extD},
+		{"Event triggers", triggerC, triggerA, triggerD},
+		{"Events", eventC, eventA, eventD},
+		{"Comments", commentC, commentA, commentD},
 	}
 
-	schemaCreate := 0
-	schemaDrop := 0
-	for _, sc := range diff.SchemaChanges {
-		switch sc.Action {
-		case schema.MetadataDiffActionCreate:
-			schemaCreate++
-		case schema.MetadataDiffActionDrop:
-			schemaDrop++
-		default:
+	parts := make([]string, 0, len(categories))
+	for _, category := range categories {
+		if category.created+category.altered+category.dropped == 0 {
+			continue
 		}
-	}
-	if schemaCreate+schemaDrop > 0 {
-		parts = append(parts, fmt.Sprintf("Schemas: +%d created, -%d dropped", schemaCreate, schemaDrop))
+		parts = append(parts, fmt.Sprintf("%s: +%d created, ~%d modified, -%d dropped",
+			category.label, category.created, category.altered, category.dropped))
 	}
 
 	if len(parts) == 0 {

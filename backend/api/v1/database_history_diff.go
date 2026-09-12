@@ -108,10 +108,12 @@ func diffForeignKeyGroup(beforeTable, afterTable *v1pb.TableMetadata) *v1pb.Meta
 		case before != nil && after != nil:
 			fieldChanges := []*v1pb.MetadataFieldChange{}
 			appendStringFieldChange(&fieldChanges, "columns", "columns", strings.Join(before.GetColumns(), ", "), strings.Join(after.GetColumns(), ", "))
+			appendStringFieldChange(&fieldChanges, "referenced_schema", "referenced schema", before.GetReferencedSchema(), after.GetReferencedSchema())
 			appendStringFieldChange(&fieldChanges, "referenced_table", "referenced table", before.GetReferencedTable(), after.GetReferencedTable())
 			appendStringFieldChange(&fieldChanges, "referenced_columns", "referenced columns", strings.Join(before.GetReferencedColumns(), ", "), strings.Join(after.GetReferencedColumns(), ", "))
 			appendStringFieldChange(&fieldChanges, "on_delete", "on delete", before.GetOnDelete(), after.GetOnDelete())
 			appendStringFieldChange(&fieldChanges, "on_update", "on update", before.GetOnUpdate(), after.GetOnUpdate())
+			appendStringFieldChange(&fieldChanges, "match_type", "match type", before.GetMatchType(), after.GetMatchType())
 			if len(fieldChanges) == 0 {
 				continue
 			}
@@ -370,6 +372,15 @@ func diffNamedIndexLikeGroup(section v1pb.MetadataHistorySection, beforeIndexes,
 			appendBoolFieldChange(&fieldChanges, "visible", "visible", before.GetVisible(), after.GetVisible())
 			appendStringFieldChange(&fieldChanges, "comment", "comment", before.GetComment(), after.GetComment())
 			appendStringFieldChange(&fieldChanges, "definition", "definition", before.GetDefinition(), after.GetDefinition())
+			// The per-column attributes and the PostgreSQL operator classes are
+			// part of the index behaviour, so they must be diffed too.
+			appendSliceFieldChange(&fieldChanges, "key_length", "key length", before.GetKeyLength(), after.GetKeyLength())
+			appendSliceFieldChange(&fieldChanges, "descending", "descending", before.GetDescending(), after.GetDescending())
+			appendStringFieldChange(&fieldChanges, "parent_index_schema", "parent index schema", before.GetParentIndexSchema(), after.GetParentIndexSchema())
+			appendStringFieldChange(&fieldChanges, "parent_index_name", "parent index name", before.GetParentIndexName(), after.GetParentIndexName())
+			appendBoolFieldChange(&fieldChanges, "is_constraint", "unique constraint", before.GetIsConstraint(), after.GetIsConstraint())
+			appendSliceFieldChange(&fieldChanges, "opclass_names", "operator classes", before.GetOpclassNames(), after.GetOpclassNames())
+			appendSliceFieldChange(&fieldChanges, "opclass_defaults", "operator class defaults", before.GetOpclassDefaults(), after.GetOpclassDefaults())
 			if len(fieldChanges) == 0 {
 				continue
 			}
