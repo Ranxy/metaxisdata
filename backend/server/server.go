@@ -28,6 +28,11 @@ import (
 
 const gracefulShutdownPeriod = 10 * time.Second
 
+// runnerShutdownTimeout bounds how long Shutdown waits for the background
+// runners after cancelling them. A runner blocked in external database I/O must
+// not hold the process open past the graceful period.
+const runnerShutdownTimeout = 10 * time.Second
+
 // minJWTSecretLength is the minimum length of the JWT signing key. The key must
 // be long enough that it cannot be brute-forced offline.
 const minJWTSecretLength = 32
@@ -191,14 +196,27 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		s.cancel()
 	}
 
-	// Shutdown echo
+	// Shutdown echo. A failure is logged rather than fatal: os.Exit here would
+	// skip closing the store and running the stoppers.
 	if s.echoServer != nil {
 		if err := s.echoServer.Shutdown(ctx); err != nil {
-			s.echoServer.Logger.Fatal(err)
+			slog.Error("failed to shut down the web server", log.WithError(err))
 		}
 	}
 
-	s.runnerWG.Wait()
+	// Wait for the runners with a bound. They are given the chance to observe
+	// the cancelled context, but a stuck runner must not block exit forever.
+	runnersDone := make(chan struct{})
+	go func() {
+		s.runnerWG.Wait()
+		close(runnersDone)
+	}()
+	select {
+	case <-runnersDone:
+	case <-time.After(runnerShutdownTimeout):
+		slog.Warn("background runners did not stop within the timeout; exiting anyway",
+			slog.Duration("timeout", runnerShutdownTimeout))
+	}
 
 	// Close db connection
 	if s.store != nil {

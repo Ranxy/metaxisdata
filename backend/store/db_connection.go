@@ -3,42 +3,61 @@ package store
 import (
 	"context"
 	"database/sql"
+	"sync"
+	"time"
 
-	_ "github.com/jackc/pgx/v5" // pgx driver
+	// Registers the "pgx" driver used by sql.Open below.
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/pkg/errors"
 )
 
+const (
+	// maxOpenConnsCap keeps a single server from claiming too much of the
+	// database's connection budget.
+	maxOpenConnsCap = 50
+	// maxIdleConns keeps a pool of warm connections for bursts; the database/sql
+	// default of 2 forces frequent reconnects under concurrency.
+	maxIdleConns = 10
+	// connMaxLifetime recycles connections so a stale one behind a NAT or a
+	// connection pooler (PgBouncer) is not reused indefinitely.
+	connMaxLifetime = 30 * time.Minute
+	// connMaxIdleTime releases connections that have been idle for a while.
+	connMaxIdleTime = 5 * time.Minute
+)
+
 type DBConnectionManager struct {
-	db          *sql.DB
-	pgURL       string
-	stopWatcher chan struct{}
+	db      *sql.DB
+	pgURL   string
+	init    sync.Once
+	initErr error
 }
 
 func NewDBConnectionManager(pgURL string) *DBConnectionManager {
-	return &DBConnectionManager{
-		pgURL:       pgURL,
-		stopWatcher: make(chan struct{}),
-	}
+	return &DBConnectionManager{pgURL: pgURL}
 }
 
+// Initialize opens the connection pool. It is safe to call more than once and
+// from multiple goroutines: without the guard two callers could each open a
+// pool and leak one of them.
 func (m *DBConnectionManager) Initialize(ctx context.Context) error {
-	if m.pgURL == "" {
-		return errors.New("database URL is not provided")
-	}
-
-	var err error
-	db, err := createConnection(ctx, m.pgURL)
-	if err != nil {
-		return err
-	}
-
-	m.db = db
-	return nil
+	m.init.Do(func() {
+		if m.pgURL == "" {
+			m.initErr = errors.New("database URL is not provided")
+			return
+		}
+		db, err := createConnection(ctx, m.pgURL)
+		if err != nil {
+			m.initErr = err
+			return
+		}
+		m.db = db
+	})
+	return m.initErr
 }
 
-// GetDB returns the current database connection.
+// GetDB returns the current database connection. It is nil until Initialize
+// succeeds.
 func (m *DBConnectionManager) GetDB() *sql.DB {
 	return m.db
 }
@@ -73,11 +92,19 @@ func createConnection(ctx context.Context, pgURL string) (*sql.DB, error) {
 		return nil, errors.Wrap(err, "failed to get superuser_reserved_connections")
 	}
 
-	maxOpenConns := maxConns - reservedConns
-	if maxOpenConns > 50 {
-		maxOpenConns = 50
-	}
-	db.SetMaxOpenConns(maxOpenConns)
+	// A misconfigured server can report max_connections <= reserved, and
+	// database/sql treats 0 (or a negative value) as "unlimited", so clamp to at
+	// least one.
+	db.SetMaxOpenConns(clampMaxOpenConns(maxConns, reservedConns))
+	db.SetMaxIdleConns(maxIdleConns)
+	db.SetConnMaxLifetime(connMaxLifetime)
+	db.SetConnMaxIdleTime(connMaxIdleTime)
 
 	return db, nil
+}
+
+// clampMaxOpenConns derives the pool size from the server's connection budget,
+// capped and floored at one so it can never be interpreted as "unlimited".
+func clampMaxOpenConns(maxConns, reservedConns int) int {
+	return max(1, min(maxConns-reservedConns, maxOpenConnsCap))
 }
