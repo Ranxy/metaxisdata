@@ -152,6 +152,7 @@ func (s *Store) UpdateGroup(ctx context.Context, email string, patch *UpdateGrou
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to begin transaction")
 	}
+	defer tx.Rollback()
 
 	set, args := []string{}, []any{}
 
