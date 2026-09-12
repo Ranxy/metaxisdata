@@ -4,6 +4,8 @@
 
 **结论**：AGENTS.md 关于"`go test ./...` 是 hermetic 的"这一点成立（本环境实测 exit 0、无需 Docker/DB）。但 CI **从不运行** hermetic 测试；集成测试在缺少 Docker 时不是 skip 而是 `os.Exit(1)`；存在约 500 行死测试基础设施；AGENTS.md 要求的"查询形状 guard 测试"在两处内联 GUID 谓词和数据库范围谓词上缺失；`backend/api/auth` 零测试文件。
 
+**阶段 0 更新**：新增 2 个测试文件（`filter_injection_test.go`、扩展 `audit_test.go`），T-H5 ◐（脱敏谓词已有表驱动测试）；T-C1/T-C2/T-H1/T-H3/T-H4 与 CI 相关条目**未处理**。另：审查时无法运行的 `golangci-lint` 在阶段 0 复测中已可运行（`0 issues`），"lint 清洁度未验证"这一限制已解除。
+
 ---
 
 ## 严重（Critical）
@@ -48,10 +50,25 @@
 - **修复**：加表驱动 hermetic 测试（Bearer 大小写、畸形头、cookie 优先级、过期/错误 audience/错误 kid 拒绝、`IsAuthenticationAllowed`），并加一个集成反向测试。
 
 ### T-H5. 审计脱敏谓词与拦截器 helper 几乎无测试
+> **◐ 部分修复（阶段 0）** · `89ef84a`：新增 `TestIsSensitiveAuditField`（表驱动，覆盖每个精确匹配标记）与 `TestMarshalAuditMessageRedactsSecrets`（`CreateAPIKeyResponse.key`、`DataSource.sslCert`/`sslKey`/`gcpCredential`）。**剩余**：`shouldSkipAudit`/`resolveParent`/`resolveResource`/`resolveActor`/`mapSeverity`/`buildAuditStatus`/`buildRequestMetadata`/`getServiceData` 仍未测试；大小写/空白归一与嵌套数组的覆盖仍偏薄。
+
 - **位置**：`backend/api/v1/audit.go:197-208`
 - **证据**：只有 `marshalAuditMessage` 与 `isNilConnectValue` 有测试（`audit_test.go`），覆盖 `password` 与 `idpContext`。`isSensitiveAuditField` 的完整标记列表以及 `shouldSkipAudit:146`、`resolveParent:210`、`resolveResource:222`、`resolveActor:238`、`mapSeverity:277`、`buildAuditStatus:293`、`buildRequestMetadata:304`、`getServiceData:326` 均未测试。
 - **影响**：新增敏感字段名或改动标记列表可能把凭据写进 `audit_log` 而没有任何测试失败（这正是 `sslKey`/`content`/`key` 漏洞未被发现的原因）。
 - **修复**：对 `isSensitiveAuditField` 做表驱动测试（每个标记、大小写/空白归一、嵌套数组），并覆盖 severity/status 映射与 IP/UA 回退。
+
+---
+
+## 阶段 0 新增的 guard 测试（已落地）
+
+| 文件 | 测试 | 保护的不变量 |
+| --- | --- | --- |
+| `backend/api/v1/filter_injection_test.go`（新，`3321801`） | `TestFilterParsersDoNotSpliceLiterals` | user/instance/database-name/database-table/database-label 五条 CEL→SQL 路径收到注入载荷时，载荷不出现在生成的 `Where` 中，且值出现在 `Args` 里 |
+| 同上 | `TestLikePatternEscapesWildcards` | `%`/`_`/`\` 先转义再包成 `%...%` |
+| `backend/api/v1/audit_test.go`（扩展，`89ef84a`） | `TestMarshalAuditMessageRedactsSecrets` | `CreateAPIKeyResponse.key`、`DataSource` 的 `sslCert`/`sslKey`/`gcpCredential` 不得进入审计 payload |
+| 同上 | `TestIsSensitiveAuditField` | 脱敏标记列表的精确匹配行为 |
+
+> 注意：T-H3 指出的 **store 侧** guard（`listSublevelMetaRegistryResourceImpl`/`listSublevelMetaRegistryResourceHistoryImpl`/`listDatabaseImplV2`）仍缺失，新测试只覆盖 API 层 filter 翻译器。
 
 ---
 
@@ -85,7 +102,7 @@
 **完全没有测试文件的模块**（`go test ./...` 输出确认）：
 - `backend/api/auth` —— JWT 生成/校验、header/cookie 提取、认证拦截器、`IsAuthenticationAllowed`。
 - `backend/server` —— Echo/Connect 路由装配、拦截器、优雅关停、pprof、前端 handler。
-- `backend/api/v1` 的 `debug_interceptor.go`、`auth_service.go`、`user_service.go`、`instance_service.go`、`database_service.go`、`lineage_service.go`、`llm_service.go`、`explain_sql_service.go`、`openlineage_service.go`、`openlineage_handler.go`、`common.go`（只有 5 个纯 helper 测试文件）。
+- `backend/api/v1` 的 `debug_interceptor.go`、`auth_service.go`、`user_service.go`、`instance_service.go`、`database_service.go`、`lineage_service.go`、`llm_service.go`、`explain_sql_service.go`、`openlineage_service.go`、`openlineage_handler.go`、`setting_service.go`（阶段 0 新增，无测试）、`acl_interceptor.go`（阶段 0 新增，无测试）、`common.go`（阶段 0 后为 6 个纯 helper 测试文件：新增 `filter_injection_test.go`）。
 - `backend/component/llm`（8 个文件）—— agent 循环、tools、registry、fetcher、message/event。
 - `backend/component/state`、`backend/component/dbfactory`、`backend/config`、`backend/metric`、`backend/bin/server/cmd`、`backend/test/integration/env`（harness 自身无自测）。
 - `backend/common`（CEL 构建、GUID/resource name、错误码）、`common/log`、`common/stacktrace`、`backend/utils`。
@@ -107,4 +124,4 @@
 - `make test-integration-smoke` 是否应覆盖 `./backend/migrator/...`？孤立的集成文件可能是有意为之，但没有任何文档说明。
 - "partial env config fails fast" 是按引擎还是跨两个引擎？AGENTS.md 与 README:93 读起来是跨引擎，代码只实现了按引擎。
 - 前端测试是有意缺失吗？AGENTS.md 记录了 Vitest/jsdom 和 `frontend/vitest.config.ts`，但零测试文件。
-- **golangci-lint 在本沙箱无法运行**：报 `context loading failed: no go files to analyze`，加 `--no-config`/显式路径后报 `loading compiled Go files from cache: ... cache entry not found` 与 `/home/ran/.cache/golangci-lint` 只读；在最小临时模块上同样复现，因此是环境限制而非仓库缺陷。本报告无法验证 lint 清洁度。`go build ./...`、`go vet ./...`、`go test ./...` 均已通过（exit 0）。
+- **golangci-lint 在本沙箱无法运行**（**阶段 0 已解除**）：审查当时报 `context loading failed: no go files to analyze`，加 `--no-config`/显式路径后报 `loading compiled Go files from cache: ... cache entry not found` 与 `/home/ran/.cache/golangci-lint` 只读；在最小临时模块上同样复现，因此当时判定为环境限制而非仓库缺陷。阶段 0 修复后复测 `golangci-lint run --allow-parallel-runners` 输出 `0 issues.`，**lint 清洁度现已验证**。`go build ./...`、`go vet ./...`、`go test ./...` 均已通过（exit 0）。

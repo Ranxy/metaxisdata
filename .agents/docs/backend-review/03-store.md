@@ -4,11 +4,15 @@
 
 **结论**：Store 层是全后端第二高风险区。核心问题：① 有两处 SQL 注入（project ID 拼接）；② `enableCache=false` 使"缓存未命中即全表加载"成为热路径，每个认证请求都全表扫描 `principal`；③ 若干部件引用了已不存在的表（`db_schema`、`issue`、`query_history` 等），对应功能必然运行时报错；④ 枚举以整数参数传入 text 列导致过滤静默失效；⑤ 事务卫生不一致（缺 `defer Rollback`、跨事务读改写）。
 
+**阶段 0 更新**：S-C1 ✅（project ID 校验）、M12 ✅（`PatchWorkspaceIamPolicy` 改事务化，不再改缓存指针）；`CountUsers` 增加 `deleted = FALSE`、`CreateUser` 加 advisory lock 并在同事务授予首个管理员（见 `02` C2）。S-H1/S-H3/S-H6、M1-M11 等**未处理**。
+
 ---
 
 ## 严重（Critical）
 
 ### S-C1. project ID 拼接导致 SQL 注入（`ListUsers` 可达）
+> **✅ 已修复（阶段 0）** · `3321801`：选择"校验字符"而非改成占位符——`store/principal.go` 与 `store/group.go` 现在先用 `common.IsValidResourceID`（新增于 `backend/common/resource_name.go`，正则 `^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$`）校验 `*v`，非法即返回 `common.InvalidArgument`，合法值才拼接进 CTE。API 侧的 `isValidResourceID` 也改为委托同一个实现，避免两处分叉。守卫测试见 `backend/api/v1/filter_injection_test.go`（`project` 过滤注入载荷）。
+
 - **位置**：`backend/store/principal.go:233`（同型：`backend/store/group.go:111`）
 - **证据**：
   ```go
@@ -58,6 +62,8 @@
 - **修复**：统一传 `.String()`（对照正确的 `parseToEngineSQL`，`database_service.go:745-749`）；`policy.go` 同样改用 `.String()`，或删除未用方法。
 
 ### S-H6. 用户创建无唯一性约束/检查
+> **⏳ 未处理（阶段 0 范围外）**：唯一索引与 `AlreadyExists` 映射仍未加。阶段 0 只在 handler 层保留了 `GetUserByEmail` 预检查（`user_service.go`）与 `CreateUser` 的小写校验，仍无法防并发重复邮箱。
+
 - **位置**：`backend/store/principal.go:329-334`、`LATEST.sql:18-31`、`api/v1/user_service.go:286-384`
 - **证据**：`CreateUser` 只校验小写；`email text NOT NULL` 无唯一索引；API 也未预检查。
 - **影响**：可创建重复邮箱账号；`GetUserByEmail` 从"最后一次缓存的重复行"中任取其一，登录可能绑定到错误账号，改密可能改错行。
@@ -78,7 +84,7 @@
 - **M9. 元数据历史查询无界**：`store/meta_resource.go:486-528` 支持 Limit/Offset，但唯一调用方（`database_history.go:48-51,93-96`）不传，导致全量历史（含完整 JSONB）加载后在内存分页。
 - **M10. 元数据搜索是全 JSONB 扫描且无索引**：`store/meta_resource.go:262-279`，`meta_registry_resource` 只有 `(guid,object_type)` 唯一索引，没有 `metadata` 的 GIN/表达式索引；而 `manual_sql` 有 `search_vector` GIN。
 - **M11. meta 缓存 key 只用 GUID，忽略 ObjectType**：`store/meta_resource.go:103-107,121-124`（缓存定义 `store.go:29`），唯一约束是 `(guid,object_type)`；`MANUAL_SQL` 与 `TABLE` 可能共享四段 GUID 形状。当前被 `enableCache=false` 掩盖，一旦开启缓存即成错误结果 bug。
-- **M12. `PatchWorkspaceIamPolicy` 原地修改缓存策略**：`store/policy.go:41-74`，`GetWorkspaceIamPolicy` 返回 `policyCache` 中的指针，循环在 upsert 前编辑其 bindings；并发读者可见半更新状态，失败时缓存永久不一致。
+- **M12. `PatchWorkspaceIamPolicy` 原地修改缓存策略**：~~`store/policy.go:41-74`，`GetWorkspaceIamPolicy` 返回 `policyCache` 中的指针，循环在 upsert 前编辑其 bindings；并发读者可见半更新状态，失败时缓存永久不一致。~~ —— **✅ 已修复（阶段 0，`5b19778`）**：`PatchWorkspaceIamPolicy` 现在开启事务并调用新的 `(s *Store) patchWorkspaceIamPolicyImpl(ctx, txn, patch)`；实现通过 `listPolicyImplV2` 在事务内**重新读取并反序列化**到独立对象（不再触碰缓存指针），提交后再 `policyCache.Remove(...)` 并重新读取。`store.CreateUser` 也在同一事务里调用该 impl，因此首个管理员授予与用户插入原子。注意 `GetPolicyV2` 命中缓存时仍返回共享指针（若开启缓存需另行处理）。
 - **M13. `Store.Secret` 懒初始化 data race**：`store/setting.go:155-168` 无锁读写导出字段 `s.Secret`，而 `Store` 被所有请求 goroutine 共享；`obfuscateInstance`/`unObfuscateInstance` 每行都调用。**建议 `store.New` 时用 `sync.Once` 初始化，并停止导出可变字段。**
 - **M14. namespace mapping 部分更新会清空 `database_name`**：`store/namespace_mapping.go:115` 无条件设置，而 `namespace`/`instance_resource_id` 只在非空时设置；只更新 namespace 会清掉 database，破坏 OpenLineage 解析。
 - **M15. `CreateManualSQL` upsert 改变 GUID 却不清理旧 GUID 的镜像/血缘**：`store/manual_sql.go:449-450`，冲突键 `(instance, database, name)` 不含 `schema_name`，而 GUID 含 schema；`CreateManualSQL`（221-251）不像 `UpdateManualSQL`（348-355）那样删除被取代 GUID 的 `meta_registry_resource` 与 `column_lineage`，留下孤儿行。
@@ -107,7 +113,7 @@
 - **store 错误普遍绕过 `common.Code`**：`meta_resource.go:117,188,942,950`、`instance.go:58,64`、`database.go:94`、`group.go:67`、`project.go`、`role.go:199` 等。
 - **`UpdateInstanceV2` 不做 data source 校验**：`instance.go:97`（create 有，update 没有），可持久化 0 个或多个 ADMIN 数据源。
 - **`systemBotUser` 回退对象与种子行不一致**：`principal.go:22-27` 用 `SYSTEM_BOT@example.com`（大写），而 `LATEST.sql:114` 种子是 `support@example.com`。
-- **`CountIssues` 查询不存在的 `issue` 表**：`stats.go:126-145`；`CountActiveUsers` 有不可达的 `sql.ErrNoRows` 分支（88-92）；`id > 101` 魔法偏移是 Bytebase 播种遗留。
+- **`CountIssues` 查询不存在的 `issue` 表**：`stats.go:126-145`；`CountActiveUsers` 有不可达的 `sql.ErrNoRows` 分支（88-92）；`id > 101` 魔法偏移是 Bytebase 播种遗留。（`CountUsers` 已在阶段 0 补上 `principal.deleted = FALSE`，见 `02` C2。）
 - **LIMIT/OFFSET 用 `Sprintf` 插值**：`manual_sql.go:577-582`、`column_lineage.go:162-167`、`openlineage_run.go:306-311`、`openlineage_task.go:251-256`。不可注入（Go int），但与其它地方不一致，且负值会得到原始 PG 错误。
 - **`ManualSQLID` 是幻影字段**：`manual_sql.go:481,527`，无 `manual_sql_id` 列，filter 映射到 `name`。
 - **`ListOpenLineageAPIKey` 仍 select `key_hash`**：`openlineage_api_key.go:105-108`，注释却说 "without hashes exposed"；当前 `convertAPIKey` 不返回，但未来通用序列化会泄漏。

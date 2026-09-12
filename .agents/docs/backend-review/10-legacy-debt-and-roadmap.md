@@ -9,7 +9,7 @@
 ### 1. Bytebase 时代的组织/权限模型
 - **store**：`store/role.go` 整文件无调用者；`store/project.go` 整个 store API 无调用者，且 `DeleteProject` 引用 15 张不存在的表（`query_history`/`worksheet`/`issue*`/`plan*`/`pipeline`/`task*`/`sheet`/`release`/`changelist`/`db_group`/`project_webhook`）。
 - **proto**：`store.Policy`/`TagPolicy` 零使用；`TagPolicy.tags` 引用不存在的 `reviewConfigs`；`policy` 表支持 `WORKSPACE/ENVIRONMENT/PROJECT` 但无 API；`store.RolePermissions` 无 RoleService；`GroupPayload`/`GroupMember` 无 GroupService。
-- **API**：`common.AuthContext.Permission`/`AuthMethod`/`Resources`、`HasWorkspaceResource`、`GetProjectResources` 无消费者；`utils/member.go` 的 IAM 组合逻辑只通过彼此可达。
+- **API**：~~`common.AuthContext.Permission`~~（**阶段 0 已修复**：`ACLInterceptor` 消费它，proto 写方法已声明 `permission`）/`AuthMethod`/`Resources`、`HasWorkspaceResource`、`GetProjectResources` 仍无消费者；`utils/member.go` 的 IAM 组合逻辑只通过彼此可达。
 - **设置**：`WORKSPACE_APPROVAL`、`WORKSPACE_EXTERNAL_APPROVAL`、`APP_IM`、`WATERMARK`、`AI`、`SCHEMA_TEMPLATE`、`DATA_CLASSIFICATION`、`SEMANTIC_TYPES`、`SCIM` 全部未实现。
 - **错误码**：`common.Code` 的 301-410（task/sql type）与 201-206（migration）大多未用。
 
@@ -38,7 +38,7 @@
 - `migrator` 的 `goMigrations` 空注册表；`migration/0.1/` 增量目录缺失。
 - `metric` 包与 `plugin/metric` 无 reporter 实现。
 - CLI flag `externalURL`/`dataDir`/`ha`/`saas`/`demo`/`memoryProfileThreshold` 未注册；`--enable-json-logging` 空实现；`--debug` 对日志无效。
-- `config.Profile.Secret` 从未赋值；`LastActiveTS` 只写不读。
+- ~~`config.Profile.Secret` 从未赋值~~（**阶段 0 已接线**：`getBaseProfile` 用 `os.Getenv("JWT_SECRET")` 赋值）；`LastActiveTS` 只写不读。
 - `common.ServiceDataKey` 从不写入，`getServiceData` 恒返回 nil。
 - `explain_sql` 的 `ExplainSQLMetadata.expired`/`ExplainSQLResponse.error`/`sections_json`/`ExplainSQLRequest.meta_type` 未使用或未设置。
 - `component/llm` 的 `AgentConfig.Hooks`/`MaxTurns`/`AgentEvent.Done` 从未设置/读取。
@@ -95,29 +95,37 @@
 
 ## 四、分阶段整改路线图
 
-### 阶段 0：安全止血（必须最先做）
-1. JWT 签名密钥改为环境注入并 fail-closed；作废历史 token。
-2. 恢复授权层：至少给用户/实例/数据源/OpenLineage key 的写操作加管理员校验。
-3. 关闭未认证注册或强制 `DisallowSignup`；首个管理员授予改原子。
-4. 修 SQL 注入（user/instance/database filter + principal/group project ID）。
-5. 审计脱敏补 `key`/`content`/`sslKey`/`keytab`，并为 `CreateAPIKeyResponse` 加测试。
-6. panic 不再回传堆栈；`validate_only` 加权限 + 内网地址限制。
+### 阶段 0：安全止血（必须最先做）——**本轮已完成**
 
-### 阶段 1：正确性与可运维性
+| # | 事项 | 状态 | 提交 |
+| --- | --- | --- | --- |
+| 1 | JWT 签名密钥改为环境注入并 fail-closed；作废历史 token | ◐ | `adfec91` |
+| 2 | 恢复授权层：至少给用户/实例/数据源/OpenLineage key 的写操作加管理员校验 | ◐ | `ec49607` `0f2165e` |
+| 3 | 关闭未认证注册或强制 `DisallowSignup`；首个管理员授予改原子 | ✅ | `5b19778` `c4e22fc` |
+| 4 | 修 SQL 注入（user/instance/database filter + principal/group project ID） | ✅ | `3321801` |
+| 5 | 审计脱敏补 `key`/`content`/`sslKey`/`keytab`，并为 `CreateAPIKeyResponse` 加测试 | ✅ | `89ef84a` |
+| 6 | panic 不再回传堆栈；`validate_only` 加权限 + 内网地址限制 | ◐ | `5446a10` `ec49607` |
+
+- **1 的剩余项**：`JWT_SECRET` 环境变量优先、缺失时回退 DB `AUTH_SECRET`、`< 32` 字符启动失败已完成，解析侧三项校验已补（历史 token 失效）。但 `profile_release.go` 导入错误的模块路径 `github.com/Ranxy/laelia/...`，`-tags release` 无法编译 → prod profile 不可用，`Mode` 仍恒为 `dev`。
+- **2 的剩余项**：写操作已全部要求 workspaceAdmin；读路径（Get/List/血缘/OpenLineage run/raw_payload）仍未收紧；尚未实现 permission→role 的细粒度映射（当前语义是"注解非空 ⇒ 管理员"）。
+- **6 的剩余项**：**内网地址限制经确认后主动放弃**——自托管产品的核心用法就是让用户连接内网数据库，加私网 deny 会破坏功能，因此只保留管理员权限约束；CEL 类型断言 panic 本身仍未修（只是不再泄露堆栈）。
+- 配置侧顺带完成：`config.Profile.Secret` 现在由 `JWT_SECRET` 赋值（不再是"从未赋值"）；`disallow_signup` 默认仍为 `false`，需管理员在新增的 `/settings/general` 页面显式打开。
+
+### 阶段 1：正确性与可运维性（未开始）
 7. 补 `migration/0.1/` 增量 + guard 测试；修 `db_schema` 过滤。
 8. 修 schemasync 两个生命周期 bug 与破坏性 diff；`LastSyncTime` 进事务。
 9. 修 CEL 类型断言 panic；统一 `InvalidArgument`。
 10. 接线日志系统（`slog.SetDefault` + LogLevel/Replace）；注册 `--external-url`。
 11. `UpdateInstance(data_sources)` 改为按 ID 合并；`UpdateDatabase` 判空。
 
-### 阶段 2：性能与资源
+### 阶段 2：性能与资源（未开始）
 12. `GetUserByID/Email` 改定向查询；决定 `enableCache` 的去留。
 13. OpenLineage 读路径加 LIMIT/聚合/请求内解析缓存；ExplainSQL 缓存 key 加 scope + TTL。
 14. 补 `meta_registry_resource(object_type)`、`metadata` GIN、`principal(email)` 唯一索引。
 15. LLM agent：ctx-aware 发送、真流式、错误传播、禁止缓存截断结果。
 16. 连接池 lifetime/idle 配置；runner 关停超时。
 
-### 阶段 3：清理与重构
+### 阶段 3：清理与重构（未开始）
 17. 删除第二节的死代码与遗留 proto/枚举。
 18. 合并 CEL 翻译器、拆分超长文件、统一分页与错误映射。
 19. CI：`go test -race ./...` + lint + 前端测试 + migrator 集成测试入列。
@@ -127,7 +135,9 @@
 
 ## 五、验证方式
 
-- 本报告结论来自源码通读 + `go build ./...`、`go vet ./...`、`go test ./...`（均 exit 0）。
-- `golangci-lint` 在本次环境无法运行（cache/加载问题，非仓库缺陷），lint 清洁度未验证。
+- 本报告结论来自源码通读 + `go build ./...`、`go vet ./...`、`go test ./...`（审查时均 exit 0）。
+- `golangci-lint` 在审查环境无法运行（cache/加载问题，非仓库缺陷），当时 lint 清洁度未验证；**阶段 0 修复后已可运行并输出 `0 issues.`**。
 - 多数安全结论（SQL 注入、JWT 伪造、SSRF、缓存串租户、panic 路径）为代码级论证，**建议在修复前先补最小复现测试**（尤其是 SQL 注入与 ExplainSQL 缓存碰撞）。
+- 阶段 0 已补的回归测试：`backend/api/v1/filter_injection_test.go`（注入载荷 + LIKE 转义）、`backend/api/v1/audit_test.go` 扩展（`key`/`sslKey`/`cert` 等脱敏）。
+- 阶段 0 复测：`gofmt -l` 空、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`go vet -tags integration ./...`（仅编译）与 release 二进制构建全部通过；`-tags release` 编译失败（`profile_release.go` 模块路径错误）。
 - 部分结论标注了"待确认"，需要与作者或通过集成测试确认（见各模块报告末尾）。

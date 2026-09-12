@@ -4,11 +4,27 @@
 
 **审查方式**：按模块通读源码（含 `store`、`api/v1`、`api/auth`、`server`、`runner`、`migrator`、`component`、`common/utils`、`proto`、测试基础设施），并对每个发现给出 `文件:行号` 与代码证据。审查期间未修改任何代码。
 
-**验证基线**（本次环境实测）：
+**验证基线**（审查当时实测）：
 - `go build ./...` ✅ exit 0
 - `go vet ./...` ✅ exit 0
 - `go test ./...`（hermetic）✅ exit 0，无需 PostgreSQL/MySQL/Docker
-- `golangci-lint run` ⚠️ **本环境无法运行**（`context loading failed: no go files to analyze`，`--no-config` 下报 cache 只读/条目缺失；在最小临时模块上同样复现）——属环境限制，**lint 清洁度未验证**。
+- `golangci-lint run` ⚠️ 审查当时本环境无法运行（`context loading failed: no go files to analyze`，`--no-config` 下报 cache 只读/条目缺失）——属环境限制，**当时 lint 清洁度未验证**。
+
+**阶段 0 修复后复测**（详见下文"阶段 0 修复状态"）：
+- `gofmt -l backend/` 空输出；`go build ./...`、`go vet ./...`、`go test ./...` 全部 exit 0
+- `golangci-lint run --allow-parallel-runners` ✅ **0 issues**（环境限制已消失，lint 清洁度现已验证）
+- `go vet -tags integration ./...` ✅ exit 0（仅编译，未实际运行集成用例）
+- release 构建 `go build -ldflags "-w -s" -p=16 -o ./build/metaxisdata ./backend/bin/server/main.go` ✅ exit 0
+  - ⚠️ 但 `-tags release` 目前**编译失败**：`profile_release.go` 导入 `github.com/Ranxy/laelia/...`（应为 `metaxisdata`），见 `01-entrypoint-server.md` C1
+- 前端 `biome check`、`eslint`、`vue-tsc --build` 均通过（仓库内 `vitest` 无测试文件）
+
+**修复状态标记**（用于下文全部模块报告）：
+
+| 标记 | 含义 |
+| --- | --- |
+| ✅ **已修复（阶段 0）** | 已按阶段 0 要求修完并验证，附对应 commit |
+| ◐ **部分修复（阶段 0）** | 主要风险已消除，但存在明确的剩余项（报告中已列出） |
+| ⏳ **未处理** | 阶段 0 未涉及，仍需按路线图处理 |
 
 ---
 
@@ -40,7 +56,9 @@
 第一版审查以独立条目形式记录 **101 条发现**（严重 15 条、高 51 条、中 20 条，其余为低/债务），另有大量中低问题以清单形式列在各模块末尾。跨模块存在重复计数（例如"授权缺失"在 02/04 各出现一次、"JWT 密钥"在 01/02 各出现一次），去重后独立问题约 80 条。最需要立即处理的是 5 类问题：
 
 ### 1. 授权层实际上不存在（贯穿全部 API）
-`backend/server/grpc_routes.go:85` 的 ACL 拦截器被注释，且其引用的 `NewACLInterceptor`/`iamManager` 在仓库中已不存在。`AuthContext.Permission` 被解析出来后**没有任何消费者**，没有任何 proto 方法设置 `permission`。后果：
+> **◐ 部分修复（阶段 0）** · `ec49607` `0f2165e`：ACL 拦截器已重建并接线，写操作（用户增删改、实例/数据源、`SyncDatabase`、OpenLineage namespace/key、LLM profile、settings）均要求 workspaceAdmin。**剩余**：读路径（列表/血缘/run/raw_payload）仍是"任意已认证用户"；细粒度 role→permission 映射推迟。
+
+`backend/server/grpc_routes.go:85` 的 ACL 拦截器当时被注释，且其引用的 `NewACLInterceptor`/`iamManager` 在仓库中已不存在。`AuthContext.Permission` 被解析出来后**没有任何消费者**，没有任何 proto 方法设置 `permission`。后果：
 - 任意已认证用户可修改**任意用户（含管理员）的密码**并登录（`user_service.go:500-507`，无权限校验、无原密码校验）；
 - 可删除/恢复任意账号、修改任意邮箱；
 - 可 CRUD 任意实例、轮换数据源凭据、触发任意实例同步；
@@ -49,9 +67,13 @@
 整个身份层唯一真正生效的检查是 `ListAuditLogs`。
 
 ### 2. JWT 签名密钥是公开常量
+> **◐ 部分修复（阶段 0）** · `adfec91`：硬编码常量已删除，改为 `JWT_SECRET` 环境变量（缺失时回退 DB `AUTH_SECRET`）且 `< 32` 字符启动失败；历史 token 因 `WithValidMethods/WithIssuer/WithExpirationRequired` 全部失效。**剩余**：`-tags release` 的 prod profile 因错误模块路径无法编译；`Mode` 默认仍为 `dev`。
+
 `backend/bin/server/cmd/profile_dev.go:11` 把 `Secret` 硬编码为 `"00000000-0000-0000-0000-000000000000"`，且 `activeProfile` 是唯一实现（无 build tag、无 prod 版本），`Mode` 恒为 `dev`。攻击者可自行签发 `sub=1`（首个用户即 workspaceAdmin）、`aud=mt.user.access.dev` 的 token，且**跨实例通用**。随机生成的 `AUTH_SECRET` 只用于字段混淆，从不参与 JWT。
 
 ### 3. SQL 注入（6 处）
+> **✅ 已修复（阶段 0）** · `3321801`：4 处 handler filter 全部改为 `LIKE $n` 参数绑定并转义 `%`/`_`，label key 参数化；`store/principal.go`、`store/group.go` 的 project ID 先经 `common.IsValidResourceID` 校验；新增 `backend/api/v1/filter_injection_test.go` 守卫测试（含 `TestLikePatternEscapesWildcards`）。
+
 CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 - `user_service.go:256`（`ListUsers` 的 `.matches()`）
 - `instance_service.go:152,154,156`（`ListInstances`）
@@ -60,33 +82,54 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 任意已认证用户可达；由于注册接口未认证开放（`CreateUser` 带 `allow_without_credential`，且 `DisallowSignup` 校验被注释），未认证攻击者可先注册再注入。
 
 ### 4. 敏感信息落库与回传
+> **◐ 部分修复（阶段 0）** · `89ef84a` `5446a10`：脱敏表补齐裸字段名 `key`/`content`/`sslKey`/`sslCert`/`keytab`/`passwd`/`pwd`/`bearer`/`jwt`/`session`，并为 `CreateAPIKeyResponse`、`DataSource` 凭据加回归测试；panic 不再回传堆栈。**剩余**：`Obfuscate` 仍是重复密钥 XOR，密钥与密文同库；审计写入被静默吞掉。
+
 - **明文 OpenLineage ingestion key**：`CreateAPIKey` 标了 `audit = true`，审计拦截器把**响应**写入 `audit_log.response`，而脱敏列表漏了裸字段名 `key` → key 可经 `ListAuditLogs` 读回（`02` H3、`04` B-C1）。
 - **TLS 私钥 / GCP 服务账号 JSON / Kerberos keytab**：`sslKey`/`content`/`keytab` 同样不在脱敏列表 → 明文进 `audit_log`（`08` P-C1、`04` A-H5）。
 - **panic 时把完整 Go 堆栈返回给客户端**（`grpc_routes.go:73-78`）。
 - **凭据"加密"是重复密钥 XOR，密钥与密文同库**（`common/utils.go:65-84`）→ 有 DB 读权限即可还原全部实例密码/SSH 私钥/LLM API key。
 
 ### 5. 与 schema 不一致的功能必然失败
+> **⏳ 未处理**（阶段 1 第 7 项）。
+
 - `LATEST.sql` **没有 `db_schema` 表**，而 `ListDatabases` 的 `table` 过滤器硬编码 join 它 → 该公开功能 100% 报 `relation does not exist`。
 - `migration/` **没有增量目录**，只有 `LATEST.sql` → 只改 `LATEST.sql` 的 schema 变更永远到不了已有部署，新装与升级静默分叉。
 - 若干部件引用已删除的表（`issue`、`query_history` 等）。
 
 ---
 
+## 阶段 0「安全止血」修复状态
+
+阶段 0 的 6 项要求均有对应提交（多数一项一个 commit，第 2/6 项共享 `ec49607`），另有 `099fbc4` 固定 buf 插件版本以隔离代码生成 churn。详见 `10-legacy-debt-and-roadmap.md` 第四节。
+
+| # | 阶段 0 要求 | 状态 | 提交 | 落地说明 |
+| --- | --- | --- | --- | --- |
+| 1 | JWT 签名密钥环境注入 + fail-closed；作废历史 token | ◐ | `adfec91` | 删除硬编码常量；`JWT_SECRET` 环境变量优先，缺失时回退 DB 中每部署随机的 `AUTH_SECRET`；`< 32` 字符启动失败；解析侧加 `WithValidMethods(HS256)`/`WithIssuer`/`WithExpirationRequired`，历史 token 全部失效。**遗留**：`profile_release.go` 导入 `github.com/Ranxy/laelia/...`，`-tags release` 编译失败，`Mode=prod` 尚不可用。 |
+| 2 | 恢复授权层：用户/实例/数据源/OpenLineage key 写操作加管理员校验 | ◐ | `ec49607` `0f2165e` | 重建 `ACLInterceptor` 并接线；proto 逐方法声明 `permission`，非空即要求 workspaceAdmin，覆盖用户删除/恢复、实例与数据源全部写操作（含 `validate_only`）、`SyncDatabase`、OpenLineage namespace/key、LLM profile、settings 写入；`UpdateUser` 因含自助场景在 handler 内鉴权。**剩余**：读路径未收紧；permission 到 role 的细粒度映射未实现（当前"非空 ⇒ 管理员"）。 |
+| 3 | 关闭未认证注册或强制 `DisallowSignup`；首个管理员授予改原子 | ✅ | `5b19778` `c4e22fc` | `CreateUser` 按 `disallow_signup` 判定（管理员可建任意用户；其他调用者只能注册 END_USER；首个 END_USER 始终放行以完成引导）；store `CreateUser` 用 `pg_advisory_xact_lock` 串行化并在同一事务内授予首个管理员（SSO 首用户路径顺带修复）；`CountUsers` 只统计未删除用户；新增 `SettingService` + `/settings/general` 供管理员开关。 |
+| 4 | 修 SQL 注入（user/instance/database filter + principal/group project ID） | ✅ | `3321801` | 见执行摘要第 3 条。 |
+| 5 | 审计脱敏补 `key`/`content`/`sslKey`/`keytab` + `CreateAPIKeyResponse` 测试 | ✅ | `89ef84a` | 见执行摘要第 4 条；另补 `sslCert`/`passwd`/`pwd`/`bearer`/`jwt`/`session`。 |
+| 6 | panic 不回传堆栈；`validate_only` 加权限 + 内网地址限制 | ◐ | `5446a10` `ec49607` | panic 只回通用 `internal server error`，堆栈仅写日志；`validate_only` 所属的实例写方法已要求 workspaceAdmin。**内网地址限制经确认后主动放弃**（自托管场景下用户连接的目标本就是内网数据库），仅保留管理员权限约束。 |
+
+**验证**：`gofmt` 无差异；`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`go vet -tags integration ./...`、release 二进制构建、前端 `biome`/`eslint`/`vue-tsc` 全部通过。集成测试（需 Docker）仅做了编译级校验，未实际运行。
+
+---
+
 ## 横切主题
 
-| 主题 | 说明 | 主要位置 |
-| --- | --- | --- |
-| **授权缺失** | 拦截器被注释、`permission` 从不校验 | `server/grpc_routes.go:85`、`api/auth/auth.go:350` |
-| **SQL 拼接** | 4 个 handler + 2 个 store 把用户输入拼进 `WHERE` | `user/instance/database_service.go`、`store/principal.go`、`store/group.go` |
-| **秘密处理** | 硬编码 JWT 密钥、XOR"加密"、审计脱敏遗漏 | `profile_dev.go:11`、`common/utils.go`、`api/v1/audit.go:197` |
-| **未认证入口** | `CreateUser` 免凭证 + 首个用户自动管理员 | `user_service.proto:53`、`user_service.go:286-398` |
-| **缓存被禁用但仍在写** | `store.New(..., false)` 使所有 LRU 读失效，写仍发生；`GetUserByID` 因此每请求全表扫描 | `server/server.go:70`、`store/principal.go:89-114` |
-| **错误码不生效** | `common.Code` 无映射链路，store 的 NotFound/Conflict 到客户端变 500 | `common/error.go:87`、`server/grpc_routes.go:80` |
-| **日志系统未接线** | `LogLevel`/`Replace` 从未安装，`--debug`/`--enable-json-logging` 无效 | `common/log/log.go`、`cmd/root.go:72,78` |
-| **无界查询 / N+1** | OpenLineage 数据集全表 + payload 解析；血缘无分页；`queueAll` 每小时全表 | `openlineage_dataset.go:40,119`、`lineage_service.go:57`、`analyzer.go:105` |
-| **分页不一致** | 标准 page_token 与 OpenLineage 裸 offset、LLM 无 token、sublevel 无 offset 并存 | `proto/v1/*`、`api/v1/common.go:338` |
-| **大量 Bytebase 遗留** | IAM/role/project/issue/多引擎/SCIM/2FA、`V2` 命名 | 见 `10-legacy-debt-and-roadmap.md` |
-| **测试/CI 缺口** | CI 从不跑 hermetic 测试；缺 Docker 时集成测试硬失败；auth 零测试 | `09-tests.md` |
+| 主题 | 说明 | 主要位置 | 阶段 0 状态 |
+| --- | --- | --- | --- |
+| **授权缺失** | 拦截器被注释、`permission` 从不校验 | `server/grpc_routes.go:85`、`api/auth/auth.go:350` | ◐ 拦截器已恢复，写操作限管理员；读路径未收紧 |
+| **SQL 拼接** | 4 个 handler + 2 个 store 把用户输入拼进 `WHERE` | `user/instance/database_service.go`、`store/principal.go`、`store/group.go` | ✅ 全部参数化 + project ID 校验 + guard 测试 |
+| **秘密处理** | 硬编码 JWT 密钥、XOR"加密"、审计脱敏遗漏 | `profile_dev.go:11`、`common/utils.go`、`api/v1/audit.go:197` | ◐ JWT 与审计脱敏已修；XOR 混淆仍在 |
+| **未认证入口** | `CreateUser` 免凭证 + 首个用户自动管理员 | `user_service.proto:53`、`user_service.go:286-398` | ✅ 按 `disallow_signup` 判定，首管理员授予原子化 |
+| **缓存被禁用但仍在写** | `store.New(..., false)` 使所有 LRU 读失效，写仍发生；`GetUserByID` 因此每请求全表扫描 | `server/server.go:70`、`store/principal.go:89-114` | ⏳ 未处理（阶段 2） |
+| **错误码不生效** | `common.Code` 无映射链路，store 的 NotFound/Conflict 到客户端变 500 | `common/error.go:87`、`server/grpc_routes.go:80` | ⏳ 未处理（阶段 3） |
+| **日志系统未接线** | `LogLevel`/`Replace` 从未安装，`--debug`/`--enable-json-logging` 无效 | `common/log/log.go`、`cmd/root.go:72,78` | ⏳ 未处理（阶段 1） |
+| **无界查询 / N+1** | OpenLineage 数据集全表 + payload 解析；血缘无分页；`queueAll` 每小时全表 | `openlineage_dataset.go:40,119`、`lineage_service.go:57`、`analyzer.go:105` | ⏳ 未处理（阶段 2） |
+| **分页不一致** | 标准 page_token 与 OpenLineage 裸 offset、LLM 无 token、sublevel 无 offset 并存 | `proto/v1/*`、`api/v1/common.go:338` | ⏳ 未处理（阶段 3） |
+| **大量 Bytebase 遗留** | IAM/role/project/issue/多引擎/SCIM/2FA、`V2` 命名 | 见 `10-legacy-debt-and-roadmap.md` | ⏳ 未处理（阶段 3） |
+| **测试/CI 缺口** | CI 从不跑 hermetic 测试；缺 Docker 时集成测试硬失败；auth 零测试 | `09-tests.md` | ◐ 新增注入/脱敏 guard 测试；CI 与 auth 测试未补 |
 
 ---
 
@@ -104,6 +147,8 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 | 08 Proto | 1 | 6 | 23 | 大量 | store/v1 契约分叉；AIP 违规；审计脱敏根因 |
 | 09 测试 | 2 | 5 | 10 | 5 | CI 不跑单测；auth 零测试；guard 测试缺失 |
 
+> 阶段 0 修复后，上表中的问题数量尚未重新统计；已修复条目见"阶段 0「安全止血」修复状态"与各模块报告中的 ✅/◐ 标记。新增测试：`backend/api/v1/filter_injection_test.go`、`backend/api/v1/audit_test.go` 扩展。
+
 ---
 
 ## 建议的阅读与整改顺序
@@ -112,7 +157,7 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 2. **再读** [`04-api-v1.md`](04-api-v1.md) 与 [`03-store.md`](03-store.md)，覆盖注入、SSRF、无界查询与持久层正确性。
 3. **然后** [`06-runners-migrator.md`](06-runners-migrator.md)（迁移与同步的正确性/数据安全）。
 4. **最后** [`05`](05-components.md)、[`07`](07-common-utils.md)、[`08`](08-proto-contract.md)、[`09`](09-tests.md) 与 [`10`](10-legacy-debt-and-roadmap.md)（组件、基础设施、契约、测试、清理路线）。
-5. 整改排期见 [`10-legacy-debt-and-roadmap.md`](10-legacy-debt-and-roadmap.md) 第四节，其中"阶段 0：安全止血"应在任何对外部署前完成。
+5. 整改排期见 [`10-legacy-debt-and-roadmap.md`](10-legacy-debt-and-roadmap.md) 第四节，其中"阶段 0：安全止血"已于本轮完成（3 条完整修复、3 条部分修复，剩余项已逐条标注），可在对外部署前作为基线。
 
 ---
 

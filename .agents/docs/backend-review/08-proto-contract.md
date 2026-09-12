@@ -1,8 +1,10 @@
 # 08 · Proto 契约（proto/v1 公开 API + proto/store 持久化形状）
 
-**范围**：`proto/v1/v1/*.proto`（10 个服务 + `common.proto`/`annotation.proto`）与 `proto/store/store/*.proto`。
+**范围**：`proto/v1/v1/*.proto`（10 个服务 + `common.proto`/`annotation.proto`；阶段 0 新增 `setting_service.proto`，共 11 个服务）与 `proto/store/store/*.proto`。
 
 **结论**：公开 API 混合了 AIP 标准方法与大量 Bytebase 时代表面（IAM/policy/role/group/project store 消息、28 种数据库引擎、注释里的 issue/task/approval、SCIM/2FA/Entra ID 字段）。store 与 v1 的一致性双向破损：`principal.mfa_config` 文档指向不存在的 `MFAConfig`；store `StoredMetadata` 有 v1 无法表达的 OpenLineage 分支；`Engine`/`MetaType`/`DataSourceType` 在两个包中重复定义。分页风格不一致（标准 page_token 与 OpenLineage 的裸 offset 并存）。另有一条真实的密钥泄露路径：`ssl_key` 与 GCP `content` 不会被审计脱敏。
+
+**阶段 0 更新**：P-C1 ✅（脱敏名单补齐，proto 字段名未改）；P-H2/P-H3/P-H4/P-H5/P-H6 等契约问题**未处理**。阶段 0 的 proto 改动集中在：新增 `SettingService`、为写方法补 `permission` 注解、`UpdateUserRequest` 增加 `current_password`、`buf.gen.yaml` 固定插件版本（`099fbc4`，避免重新生成时产生无关 churn）。
 
 > 注：`buf lint` 只启用了 `BASIC`（`proto/buf.yaml`），AIP 合规没有工具强制。
 
@@ -11,6 +13,8 @@
 ## 严重（Critical）
 
 ### P-C1. 审计日志会持久化未脱敏的私钥（proto 字段命名导致）
+> **✅ 已修复（阶段 0）** · `89ef84a`：选择修脱敏侧而非改字段名——`isSensitiveAuditField` 现在精确匹配裸字段名 `sslkey`/`content`/`keytab`（归一化后比较，大小写与空白不敏感），另补 `sslcert`/`key`/`passwd`/`pwd`/`bearer`/`jwt`/`session`；`audit_test.go` 覆盖 `DataSource.sslCert`/`sslKey`/`gcpCredential`。**剩余**：`ssl_key`/`content` 的字段名未按建议重命名，脱敏仍是名字启发式而非按 `INPUT_ONLY` descriptor 结构化——新增敏感字段名仍可能漏网。
+
 - **位置**：`proto/v1/v1/instance_service.proto:437,491`、`backend/api/v1/audit.go:197-208`
 - **证据**：`string ssl_key = 7 [(google.api.field_behavior) = INPUT_ONLY];`、`message GCPCredential { string content = 1 [INPUT_ONLY]; }`；审计脱敏只按 key 名包含 `password|token|secret|credential|servicekey|apikey|api_key|accesskey|privatekey|private_key` 判断，`sslKey`/`content` 都不匹配。`CreateInstance`/`AddDataSource`/`UpdateDataSource` 都标了 `audit = true`，拦截器把 `protojson.Marshal(requestMessage)` 写入 `audit_log.payload` JSONB。`INPUT_ONLY` 只是注解，protojson 不会执行。
 - **影响**：PEM 客户端私钥与 GCP 服务账号 JSON key 明文进入审计表；Kerberos `keytab`（`instance_service.proto:577`）同理。
@@ -77,8 +81,8 @@
 - **M14. `setting` 注释与枚举不一致**：`setting.proto:20` 有 `SCHEMA_TEMPLATE = 10`，SQL 注释（LATEST.sql:36-39）没有；且 `setting.value` 是 `text` 而非 JSONB。
 - **M15. `UserType` 与 `PrincipalType` 对同一个值用不同名字**：v1 `USER=1` vs store `END_USER=1`（`user_service.proto:235` vs `store/user.proto:10-18`），DB CHECK 用 `END_USER`。
 - **M16. `GetCurrentUser` 标注免凭证却必然要求认证**：`user_service.proto:35-36` 有 `allow_without_credential = true`，但 handler 在无 user 时返回 `Unauthenticated`（`user_service.go:88-93`）。
-- **M17. `annotation.proto` 的 `permission` 扩展从未使用，`AuthMethod.IAM` 是遗留**：`annotation.proto:11,16-22`；拦截器读取 `permission`（`auth.go:323`）但无人设置，产品也没有 IAM/组织资源。
-- **M18. Create/Update 在 `allow_missing`/`validate_only`/`<resource>_id` 上不一致**：`CreateInstanceRequest` 有 `instance_id`+`validate_only`，`CreateUserRequest` 都没有；`UpdateUserRequest` 有 `allow_missing`，其它 Update 没有。
+- **M17. `annotation.proto` 的 `permission` 扩展从未使用，`AuthMethod.IAM` 是遗留**：~~`annotation.proto:11,16-22`；拦截器读取 `permission`（`auth.go:323`）但无人设置~~ —— **✅ 部分修复（阶段 0，`ec49607`）**：`permission` 现已被真实使用，写在 `instance_service.proto`（10 处 `metaxisdata.instances.write`）、`user_service.proto`（`metaxisdata.users.delete`/`.undelete`）、`database_service.proto`（`metaxisdata.databases.sync`）、`openlineage_service.proto`（`...namespaceMappings.write`/`...apiKeys.write`）、`llm_service.proto`（`metaxisdata.llm.profiles.write`）与新增的 `setting_service.proto`（`metaxisdata.settings.write`）；`acl_interceptor.go` 消费该注解。**剩余**：`AuthMethod.IAM` 仍是遗留枚举值；读方法未声明 permission；`method_signature = "parent"`（P-H2）等契约问题未动。
+- **M18. Create/Update 在 `allow_missing`/`validate_only`/`<resource>_id` 上不一致**：`CreateInstanceRequest` 有 `instance_id`+`validate_only`，`CreateUserRequest` 都没有；`UpdateUserRequest` 有 `allow_missing`，其它 Update 没有。（阶段 0 为自助改密在 `UpdateUserRequest` 新增了 `string current_password = 3 [(google.api.field_behavior) = INPUT_ONLY]`，并重新生成了三处 buf 产物。）
 - **M19. `CreateInstanceRequest.instance_id` 的字符类文档写错**：`instance_service.proto:195`（以及 `store/setting.proto:85-86`）写成 `/[a-z][0-9]-/`，实际意图是 `[a-z0-9-]`。
 - **M20. `ListUsersRequest.filter` 文档描述产品没有的 project/服务账号模型**：`user_service.proto:141`。
 - **M21. `GetLineage`/`GetLineageForContext` 的 HTTP 路径虚构了 `lineages/` 前缀**：`lineage_service.proto:19,24`，而 `guid` 文档是 `"instance_1;db2;schema3;table4"`。

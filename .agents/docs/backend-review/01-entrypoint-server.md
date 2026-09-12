@@ -4,11 +4,17 @@
 
 **结论**：这一层代码量不大，但集中了 3 个全局性的严重问题（硬编码 JWT 密钥、权限拦截器被注释、panic 堆栈回传客户端），以及若干"看起来在配置、实际没接线"的死配置（日志级别、JSON 日志、多个 CLI flag）。启动装配本身可以工作（`go build`/`go vet`/`go test ./...` 均通过），但可观测性和关停路径有明确缺陷。
 
+**阶段 0 更新**：C1 ◐、C2 ✅、H1 ◐、H5 ◐ 已处理；H2（CORS/CSRF）与 H4（日志接线）**未处理**，仍待阶段 1。阶段 0 后 `golangci-lint` 已可运行（0 issues）。
+
 ---
 
 ## 严重（Critical）
 
 ### C1. JWT 签名密钥硬编码，且 `Mode` 永远是 dev
+> **◐ 部分修复（阶段 0）** · `adfec91`
+> - 已修：`p.Secret` 的硬编码常量被删除；`getBaseProfile` 改为 `Secret: os.Getenv("JWT_SECRET")`；`server.resolveJWTSecret` 在环境变量为空时回退到 DB 的 `AUTH_SECRET`，两者都缺失或长度 `< 32`（`minJWTSecretLength`）则启动失败（fail-closed）。`auth.go` 解析侧加 `WithValidMethods(HS256)`/`WithIssuer(issuer)`/`WithExpirationRequired()`，历史 token 因签名密钥变化与声明校验全部失效。
+> - 剩余：`profile_release.go`（`-tags release`）导入 `github.com/Ranxy/laelia/backend/...`，而本仓库 module 是 `github.com/Ranxy/metaxisdata`，`go build -tags release ./backend/bin/server/` 直接编译失败（`laelia` 疑为复制粘贴残留）——prod profile 实际不可用，`Mode` 默认仍为 `dev`。另注意 `profile.Mode` 恒为 dev 带来的 CORS/audience 影响见 H2。
+
 - **位置**：`backend/bin/server/cmd/profile_dev.go:10-11`、`backend/server/server.go:106`、`backend/server/grpc_routes.go:83`
 - **证据**：
   ```go
@@ -25,6 +31,8 @@
 - **详见**：`02-auth-authorization.md`。
 
 ### C2. panic 时把完整 Go 调用栈返回给客户端
+> **✅ 已修复（阶段 0）** · `5446a10`：`onPanic` 现在只返回 `connect.NewError(connect.CodeInternal, errors.New("internal server error"))`，堆栈仍写入 `slog.Error`（含 `connect.Spec`），不再进入响应。注意：CEL 过滤器的类型断言 panic（`04` M1 / `02` M3）本身仍未修，只是不再泄露堆栈。
+
 - **位置**：`backend/server/grpc_routes.go:73-78`
 - **证据**：
   ```go
@@ -42,13 +50,19 @@
 ## 高（High）
 
 ### H1. 全局授权拦截器被注释，权限字段从不校验
+> **◐ 部分修复（阶段 0）** · `ec49607`
+> - 已修：新增 `backend/api/v1/acl_interceptor.go` 的 `ACLInterceptor`/`NewACLInterceptor(store)` 并在 `grpc_routes.go` 接线（顺序：debug → auth → audit → acl）；拦截器消费 `AuthContext.Permission`——只要 proto 方法声明了非空 `permission` 就要求 workspaceAdmin。已在 proto 中声明 permission 的写方法见 `08-proto-contract.md` M17。`AuthContext.Permission` 现在有了真实消费者，不再是死字段。
+> - 剩余：语义是"非空 permission ⇒ 管理员"，尚未实现 permission→role 的细粒度映射；读方法（Get/List/血缘/OpenLineage 读）仍未声明 permission，故仍是"任意已认证用户"。
+
 - **位置**：`backend/server/grpc_routes.go:80-88`（`// apiv1.NewACLInterceptor(...)` 在第 85 行）、`backend/api/auth/auth.go:350-355`
-- **证据**：`authContext.Permission` 被解析出来后没有任何消费者；`NewACLInterceptor` 在整个仓库已不存在（注释掉的代码无法编译）。所有 proto 方法都没有设置 `permission`。
+- **证据（修复前）**：`authContext.Permission` 被解析出来后没有任何消费者；`NewACLInterceptor` 在整个仓库已不存在（注释掉的代码无法编译）。所有 proto 方法都没有设置 `permission`。
 - **影响**：任意已认证用户可执行所有 RPC。结合 C1 与公开注册（`02` 中 C2/C3），未认证攻击者可先注册再提权。
 - **修复**：重建授权拦截器并强制 `AuthContext.Permission`；为每个 RPC 声明权限；或在 handler 内显式鉴权。
 - **详见**：`02-auth-authorization.md`。
 
 ### H2. dev 模式恒为真 → CORS 永久全开且允许携带凭证
+> **⏳ 未处理（阶段 0 范围外）**：本轮只删除了硬编码 JWT 常量，`profile_dev.go` 仍设置 `p.Mode = common.ReleaseModeDev`，而 `Mode=prod` 的 release profile 又无法编译（见 C1），因此 CORS 全开与 `SameSite=None` 的现状**没有改变**。修 CORS 时必须同时解决 release profile 的编译问题，否则无法真正切到非 dev 模式。
+
 - **位置**：`backend/server/echo_routes.go:25-35`、`backend/api/auth/header.go:46-50`
 - **证据**：`if profile.Mode == common.ReleaseModeDev { ... AllowOriginFunc: func(string) (bool, error) { return true, nil } ... AllowCredentials: true }`，而 `Mode` 恒为 `dev`；HTTPS 下 cookie 设为 `SameSite=None; Secure`，`origin` 又来自客户端可控的 `Origin`/`grpcgateway-origin` 头。
 - **影响**：HTTPS 部署时任意站点可发起带凭证的跨域写请求（无 CSRF token），可创建/删除用户、创建实例等。
@@ -67,6 +81,8 @@
 - **修复**：在 `start()` 中构造 handler（`slog.NewTextHandler`/`NewJSONHandler` + `HandlerOptions{Level: LogLevel, ReplaceAttr: log.Replace}`）并 `slog.SetDefault`，或删除这些 flag。
 
 ### H5. 大量 CLI flag 声明但从未注册，`externalURL` 缺失导致 SSO 回调地址为空
+> **◐ 部分修复（阶段 0）** · `c4e22fc`：新增 `SettingService`（`proto/v1/v1/setting_service.proto`），管理员可通过 `UpdateWorkspaceProfileSetting` 写入 `external_url`（`metaxisdata.settings.write`，audit），`initializeSetting` 只在 `profile.ExternalURL != ""` 时覆盖该值，因此管理员的设置不会被每次启动清掉。**剩余**：`--external-url` CLI flag 仍未注册，前端设置页只暴露了 `disallow_signup`/`disallow_password_signin` 两个开关，`external_url` 目前只能走 API。
+
 - **位置**：`backend/bin/server/cmd/root.go:40-54,70-74`
 - **证据**：`externalURL`、`dataDir`、`ha`、`saas`、`demo`、`memoryProfileThreshold` 都只在 struct 里声明，`init()` 只注册了 `port`/`enable-json-logging`/`debug`。而 `backend/api/v1/auth_service.go:262` 用 `setting.ExternalUrl` 拼 OAuth 回调；`initializeSetting` 写入的 `ExternalUrl` 来自 `profile.ExternalURL`（恒为空）。
 - **影响**：SSO 登录回调 `"/oauth/callback"` 不完整，OAuth2 登录开箱不可用（除非管理员另行通过设置接口写入 external URL）。其余 flag 是 Bytebase 遗留。
@@ -137,8 +153,8 @@
 
 ## 建议的整改顺序
 
-1. 修 C1（JWT 密钥）与 H1（授权）——这两条决定整个系统的安全边界。
-2. 修 C2（堆栈回传）与 H2（CORS/CSRF）。
-3. 接线日志系统（H4）与 `--external-url`（H5），否则 SSO 与排障都不可用。
+1. ~~修 C1（JWT 密钥）与 H1（授权）~~ —— **阶段 0 已部分完成**：C1 改为环境注入 + fail-closed（`adfec91`），H1 重建拦截器并接线（`ec49607`）。**收尾**：修 `profile_release.go` 模块路径，让 `-tags release` 可编译，真正启用 prod profile。
+2. ~~修 C2（堆栈回传）~~ ✅（`5446a10`）；**H2（CORS/CSRF）仍未处理**，依赖上一条的 prod profile。
+3. 接线日志系统（H4）与 `--external-url`（H5），否则 SSO 与排障都不可用。H5 已部分完成（SettingService 可写 `external_url`，`c4e22fc`），仍缺 CLI flag 与前端入口。
 4. 清理关停路径（M1）与连接池（M4）。
 5. 删除未注册 flag、调试残留与死字段。

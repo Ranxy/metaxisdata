@@ -7,6 +7,8 @@
 
 **结论**：这一层代码量最大（约 7000 行），问题也最密集。两个全局性问题贯穿所有文件：**没有任何授权检查**，以及 **CEL 过滤器到 SQL 的拼接存在注入**（4 处 handler + 2 处 store）。此外有 SSRF、缓存串租户、无界查询、N+1、分页失效、大量 Bytebase 遗留 stub。
 
+**阶段 0 更新**：A-C2 ✅、A-H5 ✅、B-C1 ✅；A-C1 ◐、A-H1 ◐、B-C2 ◐、B-H5 ◐（写操作已限管理员，读路径与 URL 校验未做）。`validate_only` 的**内网地址限制经确认后主动放弃**（见 A-H1）。M1（类型断言 panic）、B-H1/B-H4 等性能与正确性条目**未处理**。
+
 ---
 
 # A. 数据面：Instance / Database / History
@@ -14,12 +16,19 @@
 ## 严重（Critical）
 
 ### A-C1. 所有数据面 handler 都没有授权/归属校验
+> **◐ 部分修复（阶段 0）** · `ec49607`：`InstanceService` 的 10 个写方法（`CreateInstance`/`UpdateInstance`/`DeleteInstance`/`UndeleteInstance`/`SyncInstance`/`BatchSyncInstances`/`BatchUpdateInstances`/`AddDataSource`/`UpdateDataSource`/`RemoveDataSource`）与 `DatabaseService.SyncDatabase` 已在 proto 声明 `permission`（`metaxisdata.instances.write`/`metaxisdata.databases.sync`），由 `ACLInterceptor` 强制 workspaceAdmin；`create`/`add_data_source` 等带的 `validate_only` 分支因此同样受限。**剩余**：所有读路径（`GetInstance`/`ListInstances`/`ListDatabases`/`ListMetadata`/血缘等）未声明 permission，仍是"任意已认证用户"；也没有实例级的归属范围校验。
+
 - **位置**：`instance_service.go:50-57` 及全部 handler；`database_service.go` 同理
 - **证据**：`GetInstance` → `getInstanceMessage(ctx, s.store, req.Msg.Name)`，没有任何 user/permission 检查；`Create/Update/Delete/SyncInstance`、`Add/Update/RemoveDataSource`、以及 `DatabaseService` 全部方法都一样。`common.UserContextKey` 被拦截器写入但这里从不读取。
 - **影响**：任意已认证用户（含只读用户、刚自助注册的攻击者）可读取任意实例（含数据源配置）、创建/删除实例、触发同步（导致服务端主动外连）、轮换数据源凭证。
 - **修复**：恢复/实现 ACL 拦截器，或在每个 handler 内显式校验权限与实例范围；补充"无权限用户应得 `CodePermissionDenied`"的测试。
 
 ### A-C2. CEL 过滤器 SQL 注入
+> **✅ 已修复（阶段 0）** · `3321801`
+> - `instance_service.go` 的 title/resource_id/host/port 与 `database_service.go` 的 name/table 全部改为 `LIKE $n` 参数绑定，值经 `likePattern()` 转义 `%`/`_`（`api/v1/common.go` 的 `likePatternEscaper`，与 `store/meta_resource.go` 既有实现同源）；`label` 的 key 也改成 `db.metadata->'labels'->>$n = ANY($m)` 并把 key 一并绑定。
+> - 顺带统一了大小写行为（`table.matches` 之前只小写 pattern 不小写列名的问题仍未改，见"低"节）。
+> - 守卫测试：`backend/api/v1/filter_injection_test.go` + `TestLikePatternEscapesWildcards`。
+
 - **位置**：`instance_service.go:152,154,156`、`database_service.go:815,874,880`
 - **证据**：
   ```go
@@ -36,6 +45,9 @@
 ## 高（High）
 
 ### A-H1. `validate_only` 造成 SSRF / 内网探测
+> **◐ 部分修复（阶段 0）** · `ec49607`：`CreateInstance`/`AddDataSource`/`UpdateDataSource` 等 `validate_only` 路径已要求 workspaceAdmin，因此不再对任意已认证用户开放。
+> **内网地址限制已按产品决策主动放弃**：自托管场景下用户连接的数据库本来就在内网，加私网 deny 会破坏核心功能；因此本轮不加 allow/deny 列表，仅保留管理员权限约束。**剩余**：driver 原始错误（含 `dial tcp <内网 IP>:<port>`）仍会透传给管理员调用方，未脱敏。
+
 - **位置**：`instance_service.go:283-308,605-627,805-825`
 - **证据**：`s.dbFactory.GetDataSourceDriver(ctx, instanceMessage, ds, ...)` 后 `connect.NewError(connect.CodeInvalidArgument, errors.Wrapf(err, "invalid datasource %s", ...))`，把 driver 原始错误返回给调用方。
 - **影响**：任意已认证用户可让服务端连接任意 `host/port`（含 SSH host），并从错误信息读出 `dial tcp 10.0.0.5:6379: connect: connection refused` 之类结果 → 内网端口扫描 + 服务指纹。
@@ -60,6 +72,8 @@
 - **修复**：按 data source ID 合并到现有 store metadata，保留未回传字段与密钥；不要整体替换列表。
 
 ### A-H5. 审计脱敏遗漏 GCP `content`、`sslKey`、Kerberos `keytab`
+> **✅ 已修复（阶段 0）** · `89ef84a`：`isSensitiveAuditField` 补齐裸字段名 `content`/`sslkey`/`sslcert`/`keytab`（另加 `key`/`passwd`/`pwd`/`bearer`/`jwt`/`session`）；`audit_test.go` 增加 `DataSource` 凭据与 `CreateAPIKeyResponse` 的回归测试。**剩余**：仍是名字启发式，未改为按 proto `INPUT_ONLY`/descriptor 结构化脱敏。
+
 - **位置**：`backend/api/v1/audit.go:197-208`（由这些 handler 的 `audit: true` 触发）
 - **影响**：GCP 服务账号 JSON、TLS 私钥、Kerberos keytab 明文落入 `audit_log.request`。
 - **修复**：补充 `content`/`sslkey`/`keytab`/`ssl_cert` 标记，或按 proto 注解结构化脱敏；加回归测试。
@@ -67,7 +81,7 @@
 
 ## 中（Medium）
 
-- **M1. 未检查类型断言 / `AsLiteral()` panic**：`instance_service.go:78,81,84,91,98,106,109,112,141`；`database_service.go:741,808,833,865`。`name == 123`、`engine in [1]`、`name.matches(ident)` 都会 panic → 500。
+- **M1. 未检查类型断言 / `AsLiteral()` panic**：`instance_service.go:78,81,84,91,98,106,109,112,141`；`database_service.go:741,808,833,865`。`name == 123`、`engine in [1]`、`name.matches(ident)` 都会 panic → 500。（**⏳ 阶段 0 未修**；`5446a10` 只是让 panic 不再把堆栈回传给客户端。）
 - **M2. `ListMetadata` 在 `meta_type` 为空时翻页失效**：`database_service.go:200-231`；`FindSubLevelMetaRegistryResourceMessage` 只有 `LimitPreObjectType`，没有 offset（`store/meta_resource.go:51-55,775`），但仍会返回 `next_page_token`，第 2 页与第 1 页相同。
 - **M3. `ListMetadataHistory` 全量加载 + 分页 off-by-one**：`database_history.go:48-51,59-72`，查询无 limit/offset，之后 `if len(events) > limitPlusOne` 应为 `>=`，否则返回 `page_size+1` 条且无 token。
 - **M4. `GetSchemaString` 序列查询前缀错误**：`database_service.go:345` 用 `common.GUIDPrefix`（按 `"."` 切分，`common/guid.go:33-38`），而所有 GUID 用 `";"` 拼接 → 前缀恒为空，PG 的 `ALTER SEQUENCE ... OWNED BY`/identity DDL 丢失。
@@ -100,7 +114,7 @@
 - `database_history.go:151-155` 死分支：在外层已要求相等的前提下再判断不等。
 - `buildInstanceName`/`buildEnvironmentName`（`instance_service.go:909-924`）与 `common.FormatInstance`/`FormatEnvironment` 重复。
 - `InstanceService.stateCfg`、`DatabaseService.stateCfg`/`dbFactory` 赋值后从不读取。
-- `parseListInstanceFilter` 与 `getListDatabaseFilter` 是约 120 行的近重复 CEL→SQL 翻译器；store 通过 `strings.Contains(filter.Where, "ds.metadata->'schemas'")`/`hasHostPortFilter` 反推 join，十分脆弱。
+- `parseListInstanceFilter` 与 `getListDatabaseFilter` 是约 120 行的近重复 CEL→SQL 翻译器（阶段 0 已统一参数化写法，但**未合并**，重复仍在）；store 通过 `strings.Contains(filter.Where, "ds.metadata->'schemas'")`/`hasHostPortFilter` 反推 join，十分脆弱。
 - `common.go:49-185` 的 `ParseFilter`/`normalizeFilter`/`Expression` 是旧过滤器解析器，无引用。
 - `convertStoredMetadataMessage` 静默丢弃 store-only 的 `openlineage_run_summary`/`openlineage_task_summary`（`database_convert.go:73-74`）。
 - `convertRedisType` 把 `REDIS_TYPE_UNSPECIFIED` 映射为 `STANDALONE`（`instance_service.go:1293-1305`），语义错误。
@@ -112,6 +126,8 @@
 ## 严重（Critical）
 
 ### B-C1. 明文 ingestion API key 落审计日志并可通过审计 API 读取
+> **✅ 已修复（阶段 0）** · `89ef84a`：裸字段名 `key` 现被精确匹配脱敏（同一改动也覆盖 `sslKey`/`content`/`keytab` 等），并为 `CreateAPIKeyResponse` 加了回归测试。**剩余**：`ListAuditLogs` 仍原样返回历史 `response`，此前已写入的明文 key 需按数据保留策略清理。
+
 - **位置**：`proto/v1/v1/openlineage_service.proto:66-75,300-304`、`backend/api/v1/audit.go:114-134,179-208`、`audit_log_service.go:185-202`
 - **证据**：`CreateAPIKey` 带 `audit = true`；审计拦截器把**响应**也写入；`CreateAPIKeyResponse.key` 的 protojson 字段名就是 `"key"`，不在脱敏标记列表中；`ListAuditLogs` 返回 `Response`。
 - **影响**：一次性明文 key 持久化且可被读取，"只返回一次"的承诺失效，轮换无意义。
@@ -119,8 +135,10 @@
 - **关联**：`02` 的 H3。
 
 ### B-C2. 全层无授权：任意已认证用户可读任意实例血缘、读取全部 run/raw_payload、创建/吊销全局 ingestion key
+> **◐ 部分修复（阶段 0）** · `ec49607`：`CreateAPIKey`/`RevokeAPIKey` 已声明 `metaxisdata.openlineage.apiKeys.write`、namespace mapping 的三个写方法声明 `...namespaceMappings.write`，由 `ACLInterceptor` 强制 workspaceAdmin。**剩余**：`ListAPIKey`、`GetLineage`、OpenLineage 全部读接口（run/dataset/event/raw_payload）仍未声明 permission，仍是"任意已认证用户可读"；key 也未绑定 owner/namespace（见 B-H8）。
+
 - **位置**：`backend/server/grpc_routes.go:85`、`lineage_service.go:41-90`、`openlineage_service.go:202-242`
-- **证据**：`GetLineage` 只接收 GUID 并直接 `FindColumnLineageMessage{TargetGUID: &req.Msg.Guid}`；`CreateAPIKey`/`ListAPIKey`/`RevokeAPIKey` 无任何权限检查；`apiv1.NewACLInterceptor` 符号已不存在。
+- **证据（修复前）**：`GetLineage` 只接收 GUID 并直接 `FindColumnLineageMessage{TargetGUID: &req.Msg.Guid}`；`CreateAPIKey`/`ListAPIKey`/`RevokeAPIKey` 无任何权限检查；`apiv1.NewACLInterceptor` 符号已不存在。
 - **影响**：血缘、OpenLineage 数据、原始 payload 全部跨实例可读；可铸造或吊销他人的 key。
 - **修复**：恢复授权拦截器并声明 `permission`；key 的创建/吊销限定到 owner 或管理员。
 
@@ -150,6 +168,8 @@
 - **修复**：key 纳入 instance/GUID/scopePrefix 与 provider/model；增加 scope 列。
 
 ### B-H5. LLM provider key 可被外带（无归属校验 + base_url 未校验 → SSRF）
+> **◐ 部分修复（阶段 0）** · `ec49607`：`CreateLLMProviderProfile`/`UpdateLLMProviderProfile`/`DeleteLLMProviderProfile` 与 `FetchLLMModels` 已声明 `metaxisdata.llm.profiles.write`，需 workspaceAdmin，任意已认证用户不再能改 `base_url` 或触发外带。**剩余**：`base_url` 本身仍未校验（https/私网），管理员误配或恶意管理员仍可指向内网；URL 变更后"回退使用已存密钥"的行为未改。
+
 - **位置**：`llm_service.go:80-170,200-204`、`component/llm/fetcher.go:26-34`、`component/llm/agent.go:161,178`
 - **证据**：`FetchLLMModels` 在请求未带 api_key 时回退到 `prof.Metadata.ApiKeyEncrypted`，然后 `GET baseURL + "/v1/models"` 并携带 `Authorization: Bearer <key>`；`Create/UpdateLLMProviderProfile` 对 `BaseUrl` 无任何校验、无管理员/归属检查。
 - **影响**：任意已认证用户可把某个 profile 的 `base_url` 指向自己的服务器，再触发 `FetchLLMModels`/`ExplainSQL`，让服务端把该 profile 的存储密钥发给自己；同时构成任意出站请求（如 `http://169.254.169.254/…`）。

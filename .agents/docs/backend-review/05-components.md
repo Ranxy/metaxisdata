@@ -4,6 +4,8 @@
 
 **结论**：LLM agent 循环有两个会相互放大的高危缺陷（吞掉 body 读取错误 + 1MiB 静默截断；channel 发送不感知 ctx 导致 goroutine 永久泄漏），并且"流式"实际是整包缓冲。`dbfactory`/`state` 很小，但 `dbfactory` 是 SSRF 与 nil deref 的入口。
 
+**阶段 0 更新**：C-H4 ◐、M8 ◐——两者的"任意已认证用户可利用"入口已由管理员权限注解关闭，但组件内部的 nil 判空、URL 校验、响应大小限制**均未修**；C-H1/C-H2/C-H3 未处理。
+
 ---
 
 ## 高（High）
@@ -28,6 +30,8 @@
 - **详见**：`07-common-utils.md`。
 
 ### C-H4. `dbfactory` 连接任意用户主机，且 instance 为 nil 时 panic
+> **◐ 部分修复（阶段 0）** · `ec49607`：触发该路径的 `validate_only`（`CreateInstance`/`AddDataSource`/`UpdateDataSource` 等）已要求 workspaceAdmin，任意已认证用户不再能驱动内网探测。**内网 allowlist/deny 经产品决策主动放弃**（自托管场景必须允许连接内网数据库）。**剩余**：`instance` 为 nil 的 panic 与 `db.Open` 错误未包装仍未修。
+
 - **位置**：`backend/component/dbfactory/dbfactory.go:29-31,40-58`、`backend/utils/utils.go:11`
 - **证据**：`utils.DataSourceFromInstanceWithType(instance, ...)` 解引用 `instance.Metadata` 无判空；`db.Open(...)` 无 host/port 校验。
 - **影响**：配合 `api/v1/instance_service.go:286-303` 的 `validate_only` 路径，任意已认证用户可让服务端对任意内网地址做 TCP 连接 + 协议探测（SSRF 端口扫描，错误信息可区分服务）；`db.Open` 错误未包装，调用方无法分类。
@@ -44,7 +48,7 @@
 - **M5. `NewDBDebugLogger` 无界 fire-and-forget goroutine + 脱离请求的 context**：`debug.go:14-18`，每次 LLM 调用一个 goroutine、`context.Background()`、错误丢弃（`_ = err`）、无并发上限、无保留策略。
 - **M6. CEL 条件 fail-open**：`common/cel.go:257-299`，`if !celtypes.IsBool(out) { return true, nil }`；env 声明了 `resource.database` 等属性但 `EvalBindingCondition` 只绑定 `request.time`。任何引用 `resource.*` 的 binding 求值为 residual 即返回 true → 本应限定单库的角色被全局授予。当前 binding 构造不带 condition（`store/policy.go:68`），属潜伏。
 - **M7. 每次 binding 求值都新建 CEL 环境**：`common/cel.go:262`，`cel.NewEnv` 在 `validateIAMBinding`（`utils/member.go:17-24`）中每个 binding 调用一次，而 `GetUserFormattedRolesMap` 每请求遍历所有 binding。
-- **M8. fetcher SSRF + 无界响应读取**：`fetcher.go:26,49`，`url := baseURL + "/v1/models"` 无 scheme/host 校验，`json.NewDecoder(resp.Body).Decode` 无 `io.LimitReader`；配合 `llm_service.go:94-97` 任意 base_url → 带存储密钥的 SSRF 与内存放大（详见 `04` B-H5）。
+- **M8. fetcher SSRF + 无界响应读取**：`fetcher.go:26,49`，`url := baseURL + "/v1/models"` 无 scheme/host 校验，`json.NewDecoder(resp.Body).Decode` 无 `io.LimitReader`；配合 `llm_service.go:94-97` 任意 base_url → 带存储密钥的 SSRF 与内存放大（详见 `04` B-H5）。（**◐ 阶段 0**：profile 写操作与 `FetchLLMModels` 已限 workspaceAdmin，任意已认证用户的利用路径被切断；`base_url` 校验与 `LimitReader` 仍未加。）
 - **M9. `BuildContextFromMetadata` 位置化配对并行切片**：`tools.go:36-49`，调用方 `explain_sql_service.go:341-361` 只在查找成功时 append，之后 `guids[:len(metas)]` 配对错位，导致 DBName/SchemaName 归属错误并进入 LLM 提示。
 - **M10. 每请求查询全部 LLM profile 且无缓存**：`registry.go:34-35` + `explain_sql_service.go:84`，每次 ExplainSQL 一次 DB 往返 + 解密全部 profile 的 key；`configs[0]` 是隐式的"最近更新"。
 
@@ -55,7 +59,7 @@
 - `registry.go:55` `APIKey: p.Metadata.ApiKeyEncrypted` 实际是解密后的明文（字段名误导，容易被打日志）；`BaseURL` 为空时生成相对路径 `/v1/chat/completions`，报出令人困惑的 `unsupported protocol scheme`。
 - `state.go:49-52` `resourceLimiter.Decrement` 可能把计数减成负数（不配对调用时）。
 - `state.go:17` `TokenExpireCache` 容量 128（见 `02` H1）。
-- `config/profile.go` 的 `Profile.Secret` 从未被赋值（`getBaseProfile` 不含它），因此 `store.GetSecret` 总是回退到 DB 设置——这既是 C1（JWT 密钥）问题的另一半，也说明"从 profile 注入密钥"的设计从未接通。
+- ~~`config/profile.go` 的 `Profile.Secret` 从未被赋值（`getBaseProfile` 不含它），因此 `store.GetSecret` 总是回退到 DB 设置——这既是 C1（JWT 密钥）问题的另一半，也说明"从 profile 注入密钥"的设计从未接通。~~ —— **阶段 0 已接线（`adfec91`）**：`getBaseProfile` 现在用 `os.Getenv("JWT_SECRET")` 赋值；注意 JWT 密钥与 `store.GetSecret()`（字段混淆）已分离，不要再把 `JWT_SECRET` 写进 `store.Secret`，否则会破坏既有数据的去混淆。
 
 ---
 
