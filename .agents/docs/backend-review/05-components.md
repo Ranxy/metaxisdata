@@ -11,6 +11,8 @@
 
 **阶段 3 补遗更新**：M4/M5/M6/M8/M9/M10 本轮全部处理（`10631e0` `6f2b63d` `11943ae`）：`FetchModels` 新增 `ValidateBaseURL`（要求绝对 http/https + host，空值不再拼出相对路径）与 8MiB `io.LimitReader`，并改用共享 `llmHTTPClient` + 15s 期限；`Registry.ListEnabled` 改为走全部分页 + 30s 缓存 + `Invalidate()`（profile 写侧失效），不再每个 ExplainSQL 请求打库并解密全部 key，也不再看不见第 50 个之后的 profile；`ConvertToLlm` 在有 tool call 时保留 assistant 文本；`NewDBDebugLogger` 从「每次调用一个无界 goroutine 且丢弃错误」改为固定 2 个 worker + 64 长度队列 + 10s 写超时（队列满时告警丢弃）；CEL 条件改为 fail closed；`BuildContextFromMetadata` 的调用方不再按位置配对 GUID。**仍未处理**：`AgentConfig.Hooks` 仍是死代码，`MaxTurns` 仍未由调用方显式设置（默认 6）。
 
+**阶段 3 收尾二更新**：`component/llm` 的三个"纯逻辑"文件首次有测试（`c162bc0`）：`fetcher_test.go` 用表驱动覆盖 `ValidateBaseURL`（空/纯空白/相对路径/无 host/非 HTTP scheme 都拒绝），并用 `httptest` 的 stub provider 覆盖 `FetchModels` 的正常解析、`Bearer` 头、无 key 时不带 Authorization、非 200、空列表、**超过 8MiB 的响应必须解码失败而不是被静默截断**、未知字段容忍；`message_test.go` 覆盖 `ConvertToLlm` 的角色映射（`toolResult`→`tool`）、**assistant 的文本与 tool calls 同时保留**（这正是上一轮修掉的回归）、未知角色丢弃与空输入返回非 nil；`tools_test.go` 覆盖 `BuildContextFromMetadata` 的 GUID 配对（GUID 列表比 metadata 短时不得错配）、不支持的类型跳过、table/view/function/procedure 的列与 SQL 映射，以及 `ExplainSQLTools` 的形状。registry 的缓存与分页仍只由集成/上层路径覆盖。
+
 
 ---
 

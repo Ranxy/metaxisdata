@@ -17,6 +17,8 @@
 
 **阶段 3 补遗更新**：① `migrator/tableExists` 只按表名查 `information_schema`，而该视图覆盖库内所有 schema，别的 schema 里的同名表会被误认为元数据 schema 已存在、从而跳过全新安装路径；改为限定 `current_schema()` 且 `BASE TABLE`（`2131420`）。② advisory lock 的解锁与 `lock_timeout` 复位改用不可取消的 context（ctx 被取消会让连接带着会话级锁回到连接池、之后所有迁移死锁），并给加锁本身加 `lock_timeout`，让卡住的同伴副本显式失败（`2131420`）。③ ledger 比二进制已知的最新版本新时拒绝启动，不再静默跑在不认识的 schema 上（`2131420`）。④ `analyzer.analyzeObject` 对没有 lineage analyzer 的引擎不再静默 `return nil`（那会让 `queueAll` 每小时无限重排），改为把这次跳过连同 meta hash 与原因写进 `column_lineage_version`（`9019140`）；`queueAll` 同时从「N 次全量 metadata 拉取 + N 次版本查询」改为「digest 列表 + 每类型一次版本查询」（`f50fbbc`）。⑤ 新增 `runner/maintenance`（启动时与每 6 小时）：清理过期 ExplainSQL 缓存行与 7 天前的 `llm_debug_log`；`--openlineage-retention-days`（默认 0 = 永久保留）开启时按保留期删除 run、重算 task 聚合、清理空 task 与镜像 registry 行（`cfa74df`）。⑥ 新增增量 `0.1.0005##metadata_search_index.sql`（`pg_trgm`、`meta_registry_search_text` 函数、`search_text` 生成列、三个索引），`LATEST.sql` 同步（`f50fbbc`）。
 
+**阶段 3 收尾二更新**：① migrator 的集成测试过去每次运行都往容器里漏一个 `migrator_test_*` 库——`newTestDatabase` 用 `defer admin.Close()` 关掉管理连接池，而 `t.Cleanup` 的 `DROP DATABASE ... WITH (FORCE)` 在测试结束后才执行，错误又被 `_, _ =` 丢弃；现在管理池活到 DROP 之后，DROP 失败会让测试失败（`48d65be`）。② 同一文件不再自己用字符串匹配判断"没有 Docker"，改为复用 `backend/test/integration/dockerutil` 的探测与 sentinel，并新增共享的集成 target：`make test-integration`/`test-integration-smoke` 现在包含 `./backend/migrator/...`（CI 调用的就是 `make test-integration`），三条迁移路径（fresh install / upgrade / legacy adoption）第一次进入门禁；另外补上了文档里提到但 Makefile 中不存在的 `make test-integration-mysql`（`8823ac2`）。
+
 
 **阶段 3 续更正**：上一段收尾更新的四条结论已被本轮取代——`LATEST.sql` 已有 `0003`/`0004` 两个新增量，不再是无 schema 变更；`principal.mfa_config` 列已删除；`idp.type` 的 CHECK 已收窄，不再是为兼容既有行而保留；`role`/`project` 表已 DROP，`db.project` 的外键随列一起删除，不再是删表的阻碍。
 

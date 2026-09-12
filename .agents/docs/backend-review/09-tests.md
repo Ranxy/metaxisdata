@@ -17,6 +17,8 @@
 
 **阶段 3 补遗更新**：① 上一段那条「既有失败」的根因已定位并修复——**不是** lineage analyzer 回写，而是集成 harness 的 `inspectStore`（第二个 in-process store）缓存了 server 进程删除前的 VIEW 行，而缓存失效不跨进程传播；新增 `store.WithCacheDisabled()` 并让 harness 的两个 `inspectStore` 启用后，**集成套件全部通过**（`runner` 48.56s、`migrator` 12.83s，exit 0；该用例单测复跑 11.47s PASS，两个邻居用例同跑 PASS，`f50fbbc`）。② 修掉 `backend/server` 测试的 `-race` 竞态：dev/prod 两个 `sync.Once` 在并行测试下同时调用 echo-contrib 的 `registerMetrics`，约 1/5 概率失败；改为一个 Once 顺序构建两个 server，连续 8 次 `-race` 全绿（`a16c8d4`）。③ 新增 `backend/common/guid_test.go`、`backend/common/cel_test.go`（含「未绑定变量必须 fail closed」用例）与 `backend/api/v1/pagination_test.go` 的血缘分页用例。**仍未做**：T-C2（缺 Docker 时 skip 而非硬失败）、T-H3（store 三处查询形状 guard）、`api/v1` 各 handler 与 `debug_interceptor` 测试、`backend/server` 启停路径测试、前端 Vitest 与 CI 前端 job、`./backend/migrator/...` 并入集成 target。
 
+**阶段 3 收尾二更新**：本节剩下的欠账本轮全部收口。**T-C2 ✅** + **M7 ✅**（`061208c`）：新增 `backend/test/integration/dockerutil`（用 testcontainers provider 探测容器运行时），无 Docker 时两个套件都打印跳过信息并 exit 0；`TestMain` 的 setup panic 被 recover 并上报，不再让收集端等到 workflow 超时。**M2/M3/M9 ✅**（同 commit）：`ValidateIntegrationEnv` 拒绝部分外部服务配置、服务器启动失败换端口重试并在进程提前退出时立刻带日志失败、DSN 凭据可用 `INTEGRATION_*_USER/PASSWORD` 覆盖且只 DROP 自己派生的 `*_integration` 库。**M1 ✅**（`48d65be`）：migrator 集成测试的 `DROP DATABASE` 从已关闭的管理池上跑、错误被丢弃，改为管理池活到 DROP 之后且失败即测试失败。**T-H1 ✅ / M10 ✅**（`8823ac2`）：补上 `make test-integration-mysql`，`test-integration`/`test-integration-smoke` 纳入 `./backend/migrator/...`，迁移三条路径进入 CI。**T-H3 ✅**（`df97e0a` `f65baaa`）：两处内联 GUID 子树谓词与数据库列表范围谓词改成纯构造函数并补形状 guard（含"占位符编号 = 参数长度"）。**M8 ✅**（`711c0aa`）：`patchIamPolicyBindings`（顺带确定化顺序）与 manual SQL 四个 helper、`generateEtag` 补测试。**T-H5 剩余 ✅ / handler 与拦截器缺口 ✅**（`c162bc0`）：审计 helper 全套表驱动测试（含"已认证用户优先于请求字段"）、`debug_interceptor` 的 `[TRUNCATED]` 截断、`backend/server` 真实启停路径、`component/llm` 的 fetcher/message/tools，并新增真实 server 的未认证反向集成测试与 `DataSource` 生命周期集成测试（`513940f`）。**M6 ✅**（`65f4eaa`）：CI 新增 frontend job（`biome ci` + `lint:ci` + `vue-tsc` + `vitest run` + 生产构建）与 Go 单测 `-cover`；前端首次有 12 个 Vitest 用例（`frontend/src/utils/error.test.ts`、`frontend/src/api/lineage.test.ts`）。**仍未做**：CI workflow 从未在 GitHub 实跑、前端覆盖率（需要新增 `@vitest/coverage-v8`）、M5（harness 与 runner 的 fixture DDL 重复）与低优先项（`waitForHTTPReady` 把 5xx 当 ready、`SELECT 1;` 空断言、部分测试缺 `t.Parallel()`/风格不一致）。
+
 
 **阶段 3 续更正**：① T-H1 的“从不执行”在本地手动跑过一次（`./backend/migrator/...` 通过），但 `Makefile`/CI 仍未包含它，结论不变；② store 侧 impl helper 的 V2 后缀已随 `8b328ae` 去掉（`listDatabaseImplV2` → `listDatabaseImpl`），T-H3 的 store 侧 guard 仍缺失这一结论不变。
 
@@ -31,6 +33,7 @@
 - **修复**：新增 `unit` job，在每个 PR 上跑 `go test -race -count=1 ./...`（paths: `backend/**`、`go.mod`、`go.sum`），integration 单独保留。
 
 ### T-C2. 缺 Docker 时集成测试硬失败而非 skip
+> **✅ 已修复（阶段 3 收尾二）** · `061208c`：新增 `backend/test/integration/dockerutil`（`Available`/`IsUnavailable`/`WrapUnavailable`），runner 的 `TestMain` 在没有外部服务且探测失败时打印 `skipping integration tests: docker is unavailable` 并 exit 0；migrator 集成测试同样复用该探测。容器启动失败若被判定为"运行时不可达"也会转成同一个 sentinel，避免中途 Docker 掉线时误报产品失败。
 - **位置**：`backend/test/integration/env/service_env.go:765-767,844-846`、`runner/main_test.go:73-88`
 - **证据**：`startPostgresForEnv`/`startMySQLForEnv` 出错直接 `return err`，`TestMain` 随后打印并 `os.Exit(1)`。AGENTS.md 写的是"requires a working Docker daemon and skips when Docker is unavailable"。
 - **影响**：`make test-integration`/`make test-integration-smoke` 在没有 Docker 的开发机和 CI runner 上直接失败。唯一的 Docker-skip 逻辑在死代码 `testenv.go:451 skipIfDockerUnavailable` 里。
@@ -41,6 +44,8 @@
 ## 高（High）
 
 ### T-H1. migrator 集成测试被孤立，从不执行
+> **✅ 已修复（阶段 3 收尾二）** · `8823ac2`：`make test-integration` 与 `test-integration-smoke` 都包含 `./backend/migrator/...`（CI 调用的就是 `make test-integration`），本地实测 `runner` 49.48s + `migrator` 11.29s 通过。
+
 - **位置**：`backend/migrator/migrator_integration_test.go`（`//go:build integration`）、`Makefile:6,9`
 - **证据**：`test-integration-smoke` 跑 `./backend/test/integration/...`，`test-integration`/CI 跑 `./backend/test/integration/runner`，都不含 `./backend/migrator`。
 - **影响**：全新安装、升级、legacy adoption 三条迁移路径在 CI 中完全无验证，迁移回归只能到生产才暴露。
@@ -53,6 +58,8 @@
 - **修复**：删除 `SetupMySQLEnv`/`TestEnv` 接线与未用的 `Setup*ServiceEnv`/`shared*ServiceEnv`/`hasDetailedEdge`；在 `.golangci.yaml` 加 `build-tags: [integration]`。
 
 ### T-H3. 内联 GUID-subtree 谓词与数据库范围谓词没有 guard 测试
+> **✅ 已修复（阶段 3 收尾二）** · `df97e0a` `f65baaa`：两处内联谓词改为调用/复用 `appendGUIDSubtreeCondition` 的纯构造函数 `buildSublevelMetaRegistryResourceQuery`，数据库列表范围谓词抽到 `buildListDatabaseQuery`；`backend/store/meta_resource_query_test.go` 与 `backend/store/database_test.go` 断言谓词形状、LIKE 元字符转义与占位符编号始终等于参数长度。
+
 - **位置**：`backend/store/meta_resource.go:774,846`、`backend/store/database.go:360-398`
 - **证据**：`appendGUIDSubtreeCondition`（`meta_resource.go:85`）有 `meta_resource_test.go:13` 覆盖，但同一谓词被复制粘贴到 `listSublevelMetaRegistryResourceImpl`（:774）和 `listSublevelMetaRegistryResourceHistoryImpl`（:846）却没有测试；`listDatabaseImplV2`（`database.go:360-398`）的 `ShowDeleted`/大小写/项目/环境/实例范围谓词也没有 guard。
 - **影响**：AGENTS.md 明确要求"当查询形状本身就是不变量时"补 guard 测试，而恰好这类回归（丢掉 `ESCAPE`/`deleted = false` 谓词会静默扩大结果）在两处 GUID 站点和数据库列表查询上没有保护。
@@ -65,6 +72,7 @@
 
 ### T-H5. 审计脱敏谓词与拦截器 helper 几乎无测试
 > **◐ 部分修复（阶段 0）** · `89ef84a`：新增 `TestIsSensitiveAuditField`（表驱动，覆盖每个精确匹配标记）与 `TestMarshalAuditMessageRedactsSecrets`（`CreateAPIKeyResponse.key`、`DataSource.sslCert`/`sslKey`/`gcpCredential`）。**剩余**：`shouldSkipAudit`/`resolveParent`/`resolveResource`/`resolveActor`/`mapSeverity`/`buildAuditStatus`/`buildRequestMetadata`/`getServiceData` 仍未测试；大小写/空白归一与嵌套数组的覆盖仍偏薄。
+> **✅ 阶段 3 收尾二（`c162bc0`）**：除 `getServiceData`（已随死代码删除）外全部补齐：`shouldSkipAudit` 的 `validate_only` 分支、`resolveParent`/`resolveResource` 的优先级、`resolveActor` 的"已认证用户优先于请求/响应字段"、`mapSeverity` 的客户端/服务端错误划分、`buildAuditStatus` 的三种形态、`buildRequestMetadata` 的 XFF/网关头/peer 地址/UA 回退与 `getNestedString` 的嵌套与非字符串分支。
 
 - **位置**：`backend/api/v1/audit.go:197-208`
 - **证据**：只有 `marshalAuditMessage` 与 `isNilConnectValue` 有测试（`audit_test.go`），覆盖 `password` 与 `idpContext`。`isSensitiveAuditField` 的完整标记列表以及 `shouldSkipAudit:146`、`resolveParent:210`、`resolveResource:222`、`resolveActor:238`、`mapSeverity:277`、`buildAuditStatus:293`、`buildRequestMetadata:304`、`getServiceData:326` 均未测试。
@@ -120,16 +128,16 @@
 
 ## 中（Medium）
 
-- **M1. migrator 集成测试清理是静默空操作**：`migrator_integration_test.go:151,156-158`，`defer admin.Close()` 在 `newTestDatabase` 返回时执行，而 `t.Cleanup` 的 `DROP DATABASE` 在测试结束时对已关闭的连接池执行，错误被 `_, _ =` 丢弃。
-- **M2. 部分外部服务 env 会静默混用模式**：`service_env.go:729-748,819-829` 只按引擎检查各自变量；只设 MySQL 变量会让 PostgreSQL 仍走 testcontainers。README:93 与 AGENTS.md 说的是"partial env config fails fast"。
-- **M3. `reservePort` 存在 TOCTOU**：`service_env.go:704-711`，读取端口后关闭 listener，服务器稍后再绑定；`TestMain` 并发启动 MySQL 与 PostgreSQL env（`main_test.go:56-57`），可能撞端口 → 60s 超时 → 整个 integration job 失败。
-- **M4. 容器清理注册太晚**：`testenv.go:106-110`，在 `startPostgres`、`store.New`、`MigrateSchema`、`UpsertSettingV2`、`startMySQL` 之后才注册；中间任何 `require` 失败都会泄漏容器（Ryuk 可缓解）。
+- **M1. migrator 集成测试清理是静默空操作**（**✅ 阶段 3 收尾二**：`48d65be`，管理池活到 DROP 之后且失败即测试失败）：`migrator_integration_test.go:151,156-158`，`defer admin.Close()` 在 `newTestDatabase` 返回时执行，而 `t.Cleanup` 的 `DROP DATABASE` 在测试结束时对已关闭的连接池执行，错误被 `_, _ =` 丢弃。
+- **M2. 部分外部服务 env 会静默混用模式**（**✅ 阶段 3 收尾二**：`061208c`，`ValidateIntegrationEnv` 直接拒绝）：`service_env.go:729-748,819-829` 只按引擎检查各自变量；只设 MySQL 变量会让 PostgreSQL 仍走 testcontainers。README:93 与 AGENTS.md 说的是"partial env config fails fast"。
+- **M3. `reservePort` 存在 TOCTOU**（**✅ 阶段 3 收尾二**：`061208c`，readiness 失败换端口重试最多 3 次，进程提前退出立刻失败）：`service_env.go:704-711`，读取端口后关闭 listener，服务器稍后再绑定；`TestMain` 并发启动 MySQL 与 PostgreSQL env（`main_test.go:56-57`），可能撞端口 → 60s 超时 → 整个 integration job 失败。
+- **M4. 容器清理注册太晚**（**✅ 阶段 3 收尾二**：`061208c` 的启动重构把 `cleanupServiceResources` 放在每条失败路径上，并在服务器进程启动前后都持有容器句柄；死掉的 `serverDir` 一并删除）：`testenv.go:106-110`，在 `startPostgres`、`store.New`、`MigrateSchema`、`UpsertSettingV2`、`startMySQL` 之后才注册；中间任何 `require` 失败都会泄漏容器（Ryuk 可缓解）。
 - **M5. 跨 harness 与 runner 的 fixture 重复**：`testenv.go:260-429` 与 `mysql test:196-221`/`postgres test:286-318` 重复声明同一套 `users`/`orders`/`user_order_view` DDL；启动时创建的 `it_app`/`it_drop_me` 未被 per-test DB 使用。
-- **M6. CI 缺 race/覆盖率/lint/前端 job**：单 job、无 `-race`、无 `-cover`、无 `golangci-lint`、无 `pnpm --dir frontend test`；`frontend` 里 `*.test.ts(x)` 数量为 0（尽管 AGENTS.md 记录了 Vitest + jsdom）。
-- **M7. `TestMain` 在启动 panic 时可能永久挂起**：`runner/main_test.go:38-71`，两个 goroutine 向容量 2 的 channel 发送，panic 则无人发送，`for range 2 { <-results }` 永不返回，只能等 workflow 20 分钟超时。
-- **M8. store 纯函数不变量无测试**：`manual_sql.go:69,73,107,171`（`buildManualSQLGUID`/`normalizeManualSQLTags`/`normalizeManualSQLAttributes`/`buildManualSQLStoredMetadata`）、`policy.go:24,41`（`generateEtag`/`PatchWorkspaceIamPolicy`）；只有 delete 语句构造器有 guard。
-- **M9. 外部模式硬编码凭据并派生性地 DROP 数据库**：`service_env.go:204,289,435,796-817,887`、`testenv.go:55,215,261`；DSN 硬编码 `postgres:postgres`/`root:root`，`recreatePostgresDatabase` 对派生名 `{INTEGRATION_POSTGRES_DB}_{scope}_integration` 无条件 `DROP DATABASE IF EXISTS`。无 admin 用户/密码覆盖。
-- **M10. 文档中的 `make test-integration-mysql` 目标不存在**：`README:23,86` 与 `Makefile:1` 的 `.PHONY` 都提到，但 Makefile 里没有该 target。
+- **M6. CI 缺 race/覆盖率/lint/前端 job**（**✅ 阶段 3 收尾二**：`65f4eaa`，Go 单测 job 加 `-cover`，新增 frontend job 跑 `biome ci`/`lint:ci`/`vue-tsc`/`vitest run`/生产构建；前端覆盖率仍缺，因为需要新增 `@vitest/coverage-v8` 依赖）：单 job、无 `-race`、无 `-cover`、无 `golangci-lint`、无 `pnpm --dir frontend test`；`frontend` 里 `*.test.ts(x)` 数量为 0（尽管 AGENTS.md 记录了 Vitest + jsdom）。
+- **M7. `TestMain` 在启动 panic 时可能永久挂起**（**✅ 阶段 3 收尾二**：`061208c`，setup goroutine 内 recover 并把 panic 作为该 env 的错误上报）：`runner/main_test.go:38-71`，两个 goroutine 向容量 2 的 channel 发送，panic 则无人发送，`for range 2 { <-results }` 永不返回，只能等 workflow 20 分钟超时。
+- **M8. store 纯函数不变量无测试**（**✅ 阶段 3 收尾二**：`711c0aa`，`patchIamPolicyBindings` 与 `buildManualSQLGUID`/`normalizeManualSQLTags`/`normalizeManualSQLAttributes`/`buildManualSQLStoredMetadata`/`generateEtag` 补齐）：`manual_sql.go:69,73,107,171`（`buildManualSQLGUID`/`normalizeManualSQLTags`/`normalizeManualSQLAttributes`/`buildManualSQLStoredMetadata`）、`policy.go:24,41`（`generateEtag`/`PatchWorkspaceIamPolicy`）；只有 delete 语句构造器有 guard。
+- **M9. 外部模式硬编码凭据并派生性地 DROP 数据库**（**✅ 阶段 3 收尾二**：`061208c`，新增 `INTEGRATION_POSTGRES_USER/PASSWORD` 与 `INTEGRATION_MYSQL_USER/PASSWORD`，且只 DROP 自己派生的 `*_integration` 库）：`service_env.go:204,289,435,796-817,887`、`testenv.go:55,215,261`；DSN 硬编码 `postgres:postgres`/`root:root`，`recreatePostgresDatabase` 对派生名 `{INTEGRATION_POSTGRES_DB}_{scope}_integration` 无条件 `DROP DATABASE IF EXISTS`。无 admin 用户/密码覆盖。
+- **M10. 文档中的 `make test-integration-mysql` 目标不存在**（**✅ 阶段 3 收尾二**：`8823ac2`，补齐 target）：`README:23,86` 与 `Makefile:1` 的 `.PHONY` 都提到，但 Makefile 里没有该 target。
 
 ---
 
@@ -146,13 +154,13 @@
 ## 覆盖缺口（明确清单）
 
 **完全没有测试文件的模块**（`go test ./...` 输出确认）：
-- `backend/api/auth` —— JWT 生成/校验、header/cookie 提取、认证拦截器、`IsAuthenticationAllowed`。
-- `backend/server` —— Echo/Connect 路由装配、拦截器、优雅关停、pprof、前端 handler。
-- `backend/api/v1` 的 `debug_interceptor.go`、`auth_service.go`、`user_service.go`、`instance_service.go`、`database_service.go`、`lineage_service.go`、`llm_service.go`、`explain_sql_service.go`、`openlineage_service.go`、`openlineage_handler.go`、`setting_service.go`（阶段 0 新增，无测试）、`acl_interceptor.go`（阶段 0 新增，无测试）、`common.go`（阶段 0 后为 6 个纯 helper 测试文件：新增 `filter_injection_test.go`）。
-- `backend/component/llm`（8 个文件）—— agent 循环、tools、registry、fetcher、message/event。（**阶段 2 部分**：`agent_test.go` 覆盖 SSE 解析、超时、截断与发送取消；tools/registry/fetcher/message 仍未测。）
+- ~~`backend/api/auth`~~（**阶段 3 已建测试**：JWT 生成/校验、header/cookie 提取、拦截器、`IsAuthenticationAllowed`；**阶段 3 收尾二**又加了真实 server 的未认证反向集成测试）。
+- ~~`backend/server`~~（**阶段 3 收尾二**：`echo_routes_test.go` 覆盖路由/CORS/pprof/占位页，`server_lifecycle_test.go` 覆盖真实监听端口的 Run/Shutdown 与 runner 等待）。
+- ~~`backend/api/v1` 的 `debug_interceptor.go`~~（**阶段 3 收尾二**：`debug_interceptor_test.go` 覆盖截断与透传）、`auth_service.go`、`user_service.go`、`instance_service.go`、`database_service.go`、`lineage_service.go`、`llm_service.go`、`explain_sql_service.go`、`openlineage_service.go`、`openlineage_handler.go`、`setting_service.go`（阶段 0 新增，无测试）、`acl_interceptor.go`（阶段 0 新增，无测试）、`common.go`（阶段 0 后为 6 个纯 helper 测试文件：新增 `filter_injection_test.go`）。
+- `backend/component/llm`（8 个文件）—— agent 循环、tools、registry、fetcher、message/event。（**阶段 2 部分**：`agent_test.go` 覆盖 SSE 解析、超时、截断与发送取消。**阶段 3 收尾二**：新增 `fetcher_test.go`（`ValidateBaseURL` 表驱动、`FetchModels` 对 stub provider 的正常/非 200/空列表/8MiB 上限/未知字段）、`message_test.go`（`ConvertToLlm` 角色映射与 assistant 文本+tool call）、`tools_test.go`（`BuildContextFromMetadata` 的 GUID 配对与不支持类型跳过、`ExplainSQLTools` 形状）；registry 的缓存/分页仍只由集成路径覆盖。）
 - `backend/component/state`、`backend/component/dbfactory`、`backend/config`、`backend/metric`、`backend/bin/server/cmd`、`backend/test/integration/env`（harness 自身无自测）。
 - `backend/common`（CEL 构建、GUID/resource name、错误码）、`common/log`、`common/stacktrace`、`backend/utils`。
-- `frontend` —— 0 个 Vitest 文件，尽管 AGENTS.md 记录了 Vitest。
+- ~~`frontend`~~ —— **阶段 3 收尾二**：首批 12 个用例（`src/utils/error.test.ts`、`src/api/lineage.test.ts`），并进入 CI 的 frontend job；覆盖率仍缺（需要 `@vitest/coverage-v8`）。
 
 **无直接测试的 store 文件**（只有 `audit_log.go`、`manual_sql.go` 的 delete builder、`meta_resource.go` 的 helper、`openlineage_api_key.go` 的 mask 有测试）：`policy.go`、`role.go`、`group.go`、~~`principal.go`~~（阶段 2 新增 23505 判定测试）、`project.go`、`database.go`、`instance.go`、`column_lineage.go`、`openlineage_run.go`、`openlineage_task.go`、`llm.go`、`setting.go`、`idp.go`、`namespace_mapping.go`、`stats.go`、`explain_sql.go`、`external_dataset.go`、~~`db_connection.go`~~（阶段 2 新增池上限测试）、`environment.go`、`common.go`、`store.go`。
 
@@ -160,14 +168,14 @@
 
 **Migrator**：`migrator_test.go` 只覆盖版本/路径纯逻辑；覆盖 fresh install/upgrade/legacy adoption 的集成文件从不执行。
 
-**AGENTS.md 要求但缺失的 guard**：`listSublevelMetaRegistryResourceImpl`（`meta_resource.go:774`）、`listSublevelMetaRegistryResourceHistoryImpl`（:846）、`listDatabaseImplV2`（`database.go:360-398`）。
+**AGENTS.md 要求但缺失的 guard**：~~`listSublevelMetaRegistryResourceImpl`、`listSublevelMetaRegistryResourceHistoryImpl`、`listDatabaseImpl`~~ —— **阶段 3 收尾二已补齐**（`df97e0a` `f65baaa`，见 T-H3）。
 
 ---
 
 ## 待确认
 
-- 缺 Docker 时的 skip 行为是有意移除，还是替换 harness 时丢失？需与作者确认。
-- `make test-integration-smoke` 是否应覆盖 `./backend/migrator/...`？孤立的集成文件可能是有意为之，但没有任何文档说明。
+- ~~缺 Docker 时的 skip 行为是有意移除，还是替换 harness 时丢失？~~ **✅ 阶段 3 收尾二关闭**：已按 AGENTS.md 的语义恢复 skip（`061208c`），并把探测集中到 `dockerutil`。
+- ~~`make test-integration-smoke` 是否应覆盖 `./backend/migrator/...`？~~ **✅ 阶段 3 收尾二关闭**：应覆盖，smoke 与 `test-integration` 都已纳入（`8823ac2`）。
 - "partial env config fails fast" 是按引擎还是跨两个引擎？AGENTS.md 与 README:93 读起来是跨引擎，代码只实现了按引擎。
-- 前端测试是有意缺失吗？AGENTS.md 记录了 Vitest/jsdom 和 `frontend/vitest.config.ts`，但零测试文件。
+- ~~前端测试是有意缺失吗？~~ **✅ 阶段 3 收尾二关闭**：不是有意缺失，首批用例与 CI frontend job 已落地（`65f4eaa`）；覆盖率仍作为已知剩余项。
 - **golangci-lint 在本沙箱无法运行**（**阶段 0 已解除**）：审查当时报 `context loading failed: no go files to analyze`，加 `--no-config`/显式路径后报 `loading compiled Go files from cache: ... cache entry not found` 与 `/home/ran/.cache/golangci-lint` 只读；在最小临时模块上同样复现，因此当时判定为环境限制而非仓库缺陷。阶段 0 修复后复测 `golangci-lint run --allow-parallel-runners` 输出 `0 issues.`，**lint 清洁度现已验证**。`go build ./...`、`go vet ./...`、`go test ./...` 均已通过（exit 0）。

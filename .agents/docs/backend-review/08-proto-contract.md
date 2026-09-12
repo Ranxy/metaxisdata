@@ -18,6 +18,8 @@
 
 **阶段 3 补遗更新**：v1 `GetLineageRequest`/`GetLineageForContextRequest` 新增 `page_size`/`page_token`，两个响应新增 `next_page_token`（`dd6df51`）——这是**纯增量**改动；`GetLineage` 的 `page_size` 对 `relations_source` 与 `relations_target` 两个列表分别生效，沿用 `ListMetadata` 的表述。除这两个分页字段外，本轮没有别的 proto 改动。M9（`DataSource` 资源化）与 M4（OpenLineage/API key 资源化）经确认**继续推迟**，仍是唯一的契约类遗留。
 
+**阶段 3 收尾二更新**（最后两个契约遗留，2 个 commit）：**M4**（`c2a67e0`）把 `NamespaceMappingResource`/`OpenLineageRunResource`/`OpenLineageTaskResource`/`APIKeyResource` 改造成真正的资源——改名去掉 `-Resource` 后缀、声明 `metaxisdata/<Kind>` 与 `openlineage/...` pattern、`name` 取代 `int64 id`，Get 绑 `{name=openlineage/runs/*}` / `{name=openlineage/tasks/*}`，Update 绑 `{mapping.name=...}`，Delete/Revoke 收资源名；只读聚合消息保持原样。**M9**（`513940f`）把 `DataSource` 变成 Instance 的 AIP 子资源：声明 `metaxisdata/DataSource`（`instances/{instance}/dataSources/{data_source}`）、以 `name` 为标识，`AddDataSource`/`RemoveDataSource`/`UpdateDataSource` 改为 `CreateDataSource`（AIP-133）/`UpdateDataSource`（AIP-134）/`DeleteDataSource`（AIP-135），`UpdateInstance` 不再接受 `data_sources` mask。两次改动都同步了 `common` 的资源名 helper、Go handler、前端调用点与生成产物，并各有一个 guard（资源名往返/非法名拒绝）或集成测试（真实 server 上的数据源生命周期、未认证反向用例）。至此 **M 系列全部处理完毕**，`08` 不再有未做的契约条目；仍待确认的是部署拓扑、`METADATA_SECRET_KEY` 轮换与 `RETURNING` 行序。
+
 ---
 
 ## 严重（Critical）
@@ -81,12 +83,14 @@
   - **◐ 阶段 3 收尾（`ceb6a3d`）**：`Engine` 28→5 且两侧**值完全一致**（注释写明"must stay value-compatible"），`MetaType` 两侧都加了 `OPENLINEAGE`，`convertToEngine`/`convertEngine` 从 27 个 case 降到 5 个。**双份定义按设计保留**：v1 是公开契约、store 是 JSONB 行形状，两者必须能各自演进而数字对齐——真正的风险是"改了单侧导致 marshal 复制错位"，这也是阶段 3 收尾每次删除都同时保留两侧 field number 的原因（`database_convert.go` 的 `proto.Marshal`→`proto.Unmarshal` 依赖这一点）。`DataSourceType` 仍是两份同值定义。
 - **M3. `GetOpenLineageDataset` 的 `namespace`/`name` 是死字段**：`openlineage_service.proto:230-232`，handler 在 guid 为空时直接拒绝（`openlineage_dataset.go:115-117`）。
 - **M4. OpenLineage/API key 消息不是 AIP 资源**：`NamespaceMappingResource`（82-89）、`OpenLineageRunResource`（91-119）、`OpenLineageTaskResource`（121-144）、`APIKeyResource`（285-294）无 `(google.api.resource)`、无 `name`、用 `int64 id`，路径绑定 `{id}`；`-Resource` 后缀也不标准。
+  - **✅ 阶段 3 收尾二（`c2a67e0`）**：四个消息改名为 `NamespaceMapping`/`OpenLineageRun`/`OpenLineageTask`/`APIKey`，各自声明 `metaxisdata/<Kind>` 与 `openlineage/namespaceMappings/{namespace_mapping}`、`openlineage/runs/{run}`、`openlineage/tasks/{task}`、`openlineage/apiKeys/{api_key}` pattern，首字段从 `int64 id` 改为资源 `name`（编号不回收：仍是字段 1）。`GetOpenLineageRun`/`GetOpenLineageTask` 改为 `{name=openlineage/runs/*}` / `{name=openlineage/tasks/*}`（GUID 是 `name` 的最后一段，`guid` 字段保留），`UpdateNamespaceMapping` 绑 `{mapping.name=...}`，`DeleteNamespaceMapping`/`RevokeAPIKey` 收资源 `name`。只读聚合消息（`OpenLineageDataset*Resource`）保持原样。
 - **M5. List 方法名单数**：`ListDatabase`、`ListManualSQL`、`ListNamespaceMapping`、`ListAPIKey`（AIP-132 要求 `List<复数>`），与 `ListUsers`/`ListInstances` 不一致。
 - **M6. `MetadataList` 命名违反"不用 xxxList"**：`database_service.proto:270-279`。
 - **M7. `ListMetadata` 分页语义非标准且文档自相矛盾**：`database_service.proto:265` 注释"未指定 meta_type 时忽略 page_size，每类返回前 20 条"，而代码用 `page_size+1`；`page_token` 注释还错误地引用 `ListDatabases`。
 - **M8. `ListInstanceDatabaseRequest.instance` 同时 optional 与 REQUIRED**：`instance_service.proto:256`；且该只读列表是 POST 自定义方法，`SyncInstanceResponse.databases` 与 `ListInstanceDatabaseResponse.databases` 重复。
 - **M9. `UpdateDataSource` 是对父实例的 PATCH 自定义方法**：`instance_service.proto:108`，`DataSource`（428）没有资源名只有 `id`；路径变量标识父、body 标识子，语义模糊。
   - **◐ 阶段 3 续：经确认跳过**。完整资源化要新增 `DataSource.name = instances/{i}/dataSources/{id}` 并把 `Add/Remove/UpdateDataSource` 改成 AIP-133/135 的 `CreateDataSource`/`UpdateDataSource`/`DeleteDataSource`（连前端与集成测试），本轮范围不含，保留为已知遗留。
+  - **✅ 阶段 3 收尾二（`513940f`）**：`DataSource` 声明 `metaxisdata/DataSource`（`instances/{instance}/dataSources/{data_source}`）并以 `name` 为标识（字段 1，取代 `id`）。三个自定义方法改为 `CreateDataSource`（AIP-133：`parent`、`data_source`、`data_source_id`、`validate_only`，返回 `DataSource`）、`UpdateDataSource`（AIP-134：`{data_source.name=instances/*/dataSources/*}` + `update_mask` + `validate_only`）与 `DeleteDataSource`（AIP-135：`name`，返回 `Empty`）。`UpdateInstance` **不再接受 `data_sources` mask**（返回 `InvalidArgument` 并指向子资源方法）；`mergeDataSources`/`mergeDataSource` 由纯函数 `patchDataSource` 取代——掩码外的字段保持存储值，因此由读取结果构造的更新不会清空密码或降级 TLS 校验。创建实例仍可携带数据源：客户端知道实例 ID 时用 `instances/{id}/dataSources/{ds}` 表达自定义 ID，否则由服务端生成。前端编辑表单改为 diff（新增 → Create、改动 → Update 只发改动字段、缺失 → Delete），实例详情页的自定义 ID 输入保留。
 - **M10. `transformation` 在 v1 是 string，在 DB 是 JSONB 数组**：`lineage_service.proto:53` vs `LATEST.sql:249`；Go 侧 `json.Marshal([]model.Transformation)` 后再二次编码为字符串。
   - **✅ 阶段 3 续（`997ede9`）**：v1 改为 `repeated Transformation transformations = 11`（字段号沿用），新消息字段与存储模型一一对应；`convertColumnLineage` 直接构造、不再返回恒 nil 的 error，前端改吃结构化字段。JSONB 列与 `model.Transformation` 不变。
 - **M11. `raw_payload` 三处类型不同**：store `bytes`、v1 `string`、DB `JSONB`（`openlineage_service.proto:116` vs `LATEST.sql:311`）。
@@ -136,7 +140,7 @@
   - **✅ 阶段 3 续更正（`b2e80ae`）**：上一轮把 store 的 `OpenLineageTask`/`ExternalDataset`/`NamespaceMapping` 写成"活 store"，那说的是 `store/*.go` 里的**手写** `*Message` 结构；这些 proto **消息**本身零引用，已随 `OpenLineageRun` 一起删除。`SchemaField` 是唯一被引用的（`store/external_dataset.go` 的 JSONB 列），保留。
 - **未使用的 store 字段**：`DatabaseMetadata.backup_available`（`store/database.proto:14`，备份功能遗留）；`Instance.labels`（`store/instance.proto:42`）存在但 v1 `Instance` 无 `labels`，实例标签无法通过 API 读写。
   - **✅ 收敛（`ddff264` `ceb6a3d`）**：两个字段都删除。
-- **阶段 3 收尾仍未动的遗留**：~~`DatabaseSchemaMetadata.service_name`（Oracle 概念）、`IndexMetadata.granularity`（注释写 ClickHouse）~~（**阶段 3 续已删**，`ee3c39b`）；~~`principal.mfa_config` 列（无 proto 消息、无读写）~~、~~`idp.type` 的宽 CHECK~~（**阶段 3 续已删/已收窄**，`904fb09`）；~~`project`/`role` 表结构与 `db.project` 列~~（**阶段 3 续已删**，`451cb78` `904fb09`）。**仍保留**：`policy` 表（WORKSPACE/IAM 行是活路径）、`setting.value` 的 text 类型（见待确认 3，已确认有意）、M9/M4 的资源化、`GroupPayload`/`GroupMember`（SSO 分组同步在用）。
+- **阶段 3 收尾仍未动的遗留**：~~`DatabaseSchemaMetadata.service_name`（Oracle 概念）、`IndexMetadata.granularity`（注释写 ClickHouse）~~（**阶段 3 续已删**，`ee3c39b`）；~~`principal.mfa_config` 列（无 proto 消息、无读写）~~、~~`idp.type` 的宽 CHECK~~（**阶段 3 续已删/已收窄**，`904fb09`）；~~`project`/`role` 表结构与 `db.project` 列~~（**阶段 3 续已删**，`451cb78` `904fb09`）。**仍保留**：`policy` 表（WORKSPACE/IAM 行是活路径）、`setting.value` 的 text 类型（见待确认 3，已确认有意）、`GroupPayload`/`GroupMember`（SSO 分组同步在用）。~~M9/M4 的资源化~~（**阶段 3 收尾二已完成**）。
 
 ---
 

@@ -15,6 +15,8 @@
 
 **阶段 3 补遗更新**：`common.EvalBindingCondition` 对 residual（表达式引用了未绑定的 `resource.*`）曾返回 true，等于把本应限定单库的角色全局授予；现在 fail closed——返回错误，`utils.validateIAMBinding` 记日志并丢弃该 binding；CEL env 也从「每次求值新建」改为构建一次（`6f2b63d`）。当前 `store/policy.go` 构造的 binding 不带 condition，所以这是潜伏缺陷的收口，权限模型本身未变。
 
+**阶段 3 收尾二更新**：`api/v1` 的审计拦截器 helper 补齐表驱动测试（`c162bc0`）：`shouldSkipAudit`（`validate_only` 为真则跳过）、`resolveParent`/`resolveResource` 的优先级链、`resolveActor`、`mapSeverity` 的客户端/服务端错误划分、`buildAuditStatus` 的三种形态、`buildRequestMetadata` 的 XFF/网关头/peer 地址/UA 回退、`getNestedString`。其中安全相关的一条是 **`resolveActor` 必须让已认证用户优先于请求/响应里调用方可控的字段**，测试里用 `common.UserContextKey` 注入用户并断言伪造的 `user.name` 不会成为审计主体。另外新增真实 server 的反向集成测试（`backend/test/integration/runner/auth_reverse_service_test.go`）：缺失、畸形、空与 `alg=none` 的凭据都必须返回 `Unauthenticated`。审计测试里 `DataSource` 的 fixture 也从 `id` 改为资源 `name`（`513940f`）。
+
 
 ---
 

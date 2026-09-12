@@ -17,6 +17,8 @@
 
 **阶段 3 补遗更新**：M1（CEL 条件 fail-open）✅（`6f2b63d`）：求值为 residual（引用未绑定的 `resource.*`）时不再返回 true，而是返回错误、由 `validateIAMBinding` 丢弃该 binding；M2（每次求值新建 CEL env）✅（改为 `sync.OnceValues` 构建一次）。`common.GUIDPrefix` ✅（`6f2b63d`）：原来按点号切分，而所有 GUID 用 `;` 拼接，因此对真实 GUID 恒返回空串——`GetSchemaString` 用它做 sequence 子树前缀，导致 PostgreSQL 表的 `ALTER SEQUENCE ... OWNED BY`/identity DDL 一直缺失；现在按 `MetaGUIDSplit` 去掉最后一段，并补了 `guid_test.go`。
 
+**阶段 3 收尾二更新**：`resource_name.go` 新增两组资源名 helper：OpenLineage 侧 `FormatNamespaceMapping`/`GetNamespaceMappingID`、`FormatOpenLineageRun`/`GetOpenLineageRunGUID`、`FormatOpenLineageTask`/`GetOpenLineageTaskGUID`、`FormatAPIKey`/`GetAPIKeyID`（`c2a67e0`），DataSource 侧 `FormatDataSource`/`GetInstanceDataSourceID`（`513940f`）。四个 pattern 与 `FormatInstance` 共用同一命名风格，解析侧共用 `GetOpenLineageToken`/`GetOpenLineageIntID`：**畸形、缺段、带多余斜杠或不属于该实例的名字都在任何 store 调用之前返回错误**（handler 转成 `InvalidArgument`）。`utils_test.go` 里补了往返 + 非法名拒绝的表驱动测试；同一文件加上兄弟测试文件已有的 `//nolint:revive` 包名标记（包名 `common` 本身触发 revive 的 package-naming）。
+
 
 ---
 

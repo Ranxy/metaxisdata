@@ -17,6 +17,8 @@
 
 **阶段 3 补遗更新**：① 搜索改读生成的 `search_text` 列（内容恰为 name/title/comment/userComment 的拼接，由 IMMUTABLE SQL 函数维护）并加 `pg_trgm` GIN 索引（增量 `0.1.0005`，`f50fbbc`），谓词从 `m.inner_meta->>'…' ILIKE $n` 变为 `r.search_text ILIKE $n`——匹配行不变（已在真实 PostgreSQL 16 上对 `%`/`_`/双引号/反斜杠等关键字与旧 `jsonb_each` 谓词逐一对拍），并去掉了 LATERAL 扫描；空 `SearchStr` 返回 `common.Invalid`，空 `GUIDPrefix` 表示不限定实例（此前生成 `guid = '' OR guid LIKE ';%'`，恒空）。② 新增 `ListMetaRegistryResourceDigest`（不取 metadata、不碰缓存）与 `ListColumnLineageVersions`（一次取某种类型的全部版本），analyzer 的每小时 N+1 次查询降为每类型 2 次（`f50fbbc` `9019140`）。③ 新增 `WithCacheDisabled()`：观察别的进程写入的 store（集成 harness 的 `inspectStore`）不再读到本进程的陈旧缓存（`f50fbbc`）。④ 新增 `DeleteExpiredExplainSQLCache`/`DeleteExpiredLLMDebugLog`/`DeleteOpenLineageRunsBefore`（后者在同一事务内重算受影响 task 的聚合、删除已无 run 的 task 与两者的 meta registry 行）与两张表的 `created_at` 索引（`f50fbbc`）。⑤ `upsertOpenLineageTask` 的入参从 `*OpenLineageRunMessage` 改为 `taskGUID`，供保留清理复用（`f50fbbc`）。
 
+**阶段 3 收尾二更新**：本节"查询形状即不变量"的欠账补齐（`df97e0a` `f65baaa` `711c0aa`）。① T-H3：两个子层级 list impl 里复制粘贴的 GUID 子树谓词、以及 `listDatabaseImpl` 的环境/实例/大小写/`ShowDeleted` 范围谓词，分别抽成纯构造函数 `buildSublevelMetaRegistryResourceQuery`（内部复用 `appendGUIDSubtreeCondition`）与 `buildListDatabaseQuery`；新增 `meta_resource_query_test.go`/`database_test.go` 断言谓词形状、LIKE 元字符转义、`LIMIT/OFFSET`、filter 占位符编号，并用一个公共断言保证**最大占位符编号恰好等于参数切片长度**（不匹配就是运行期 SQL 错误）。② M8：工作区 IAM 的成员/角色合并从 `patchWorkspaceIamPolicyImpl` 抽成纯函数 `patchIamPolicyBindings`，顺带修掉一个隐患——缺失角色过去按 map 迭代顺序追加，现在按请求顺序，存储 payload 确定；`generateEtag` 与 manual SQL 的 `buildManualSQLGUID`/`normalizeManualSQLTags`/`normalizeManualSQLAttributes`/`buildManualSQLStoredMetadata` 也补了测试（`policy_test.go`/`manual_sql_pure_test.go`）。
+
 
 ---
 

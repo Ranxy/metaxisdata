@@ -69,15 +69,16 @@ Integration suites are gated by the `integration` build tag and run the real ser
 
 | Mode | How | Notes |
 | --- | --- | --- |
-| Local (default) | `make test-integration` / `make test-integration-smoke` | Uses `testcontainers-go` to start PostgreSQL + MySQL; requires a working Docker daemon and skips when Docker is unavailable |
+| Local (default) | `make test-integration` / `make test-integration-smoke` / `make test-integration-mysql` | Uses `testcontainers-go` to start PostgreSQL + MySQL; requires a working Docker daemon and skips (exit 0) when Docker is unavailable |
 | External services (CI) | Set the env vars below, then run the same targets | Connects to already-running services; only container creation is skipped |
 
 External-service env vars:
 
 - `INTEGRATION_POSTGRES_HOST`, `INTEGRATION_POSTGRES_PORT`, `INTEGRATION_POSTGRES_DB` (optional, defaults to `metaxisdata`)
 - `INTEGRATION_MYSQL_HOST`, `INTEGRATION_MYSQL_PORT`
+- optional credential overrides: `INTEGRATION_POSTGRES_USER`/`INTEGRATION_POSTGRES_PASSWORD`, `INTEGRATION_MYSQL_USER`/`INTEGRATION_MYSQL_PASSWORD`
 
-In both modes the harness performs readiness checks, runs the schema migrator (`backend/migrator`), and seeds the MySQL fixture schema. Partial env config fails fast rather than silently mixing modes. Full details: `backend/test/integration/README.md`.
+In both modes the harness performs readiness checks, runs the schema migrator (`backend/migrator`), and seeds the MySQL fixture schema. Partial env config fails fast rather than silently mixing modes. The external PostgreSQL database is only recreated when its name is the derived `{INTEGRATION_POSTGRES_DB}_{scope}_integration` one — the configured base database is never dropped. `make test-integration` and `make test-integration-smoke` also run `./backend/migrator/...`, which covers fresh install, incremental upgrade and legacy adoption. Full details: `backend/test/integration/README.md`.
 
 Frontend tests are Vitest with jsdom (`frontend/vitest.config.ts`), colocated with source as `*.test.ts(x)`.
 
@@ -142,8 +143,11 @@ go mod tidy
 # All integration-tagged tests (real server + testcontainers by default)
 make test-integration-smoke
 
-# Real-server schemasync/lineage scenarios only
+# Real-server schemasync/lineage scenarios plus the migrator suite
 make test-integration
+
+# MySQL real-server scenarios only
+make test-integration-mysql
 
 # CI mode: use existing services instead of testcontainers
 INTEGRATION_POSTGRES_HOST=127.0.0.1 INTEGRATION_POSTGRES_PORT=5432 INTEGRATION_POSTGRES_DB=metaxisdata \
