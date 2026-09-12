@@ -1,5 +1,28 @@
 # 阶段 6 实施计划（backend-review 收尾）
 
+## 进度（随实施更新）
+
+| 步骤 | 状态 | 提交 |
+| --- | --- | --- |
+| A1 Token 吊销加固（`02 H1`） | ✅ | `976ebc5` |
+| A2 CORS / CSRF 收口（`01/02 H2`） | ✅ | `976ebc5` |
+| A3 登录时间与限流（`02 M2`） | ✅ | `8ae989f` |
+| A4 OAuth2 state + 配置校验 + 脱敏日志（`02 M4`） | ✅ | `25a001a` |
+| A5 审计链路加固（`02 M8/M9/M10`、`04 B-C1` 残留） | ✅ | `2208521` |
+| A6 ingestion key digest + 作用域（`04 B-H6/B-H8`、`03 M25`） | ✅ | `415e16e` |
+| A7 其它安全缺口（`01 M6`、`A-H1` 残留、`07 U-H2`、`S-H5` 之外的杂项） | ✅ | `f112e5c` |
+| A8 token header 白名单与 web token 回传（`02` 低节） | ✅ | `c30d73f` |
+| D1 修复既有失败测试 | ✅ | `7912fc2` |
+| B 批 正确性 | ⏳ 进行中 | — |
+| C 批 性能/资源 | ⏳ | — |
+| D2/D3 全量验证与文档同步 | ⏳ | — |
+
+A 批完成时已验证：`gofmt -l` 空、`go build ./...`、`go vet`（默认/release/integration）、`golangci-lint`（0 issues）、
+`go test ./...`、`go test -race -count=1 ./...`、`make build-release` 全绿；A1/A8 的集成用例在真实 server 上通过；
+A6 的增量迁移在本地 PostgreSQL 16 上验证了全新安装、增量重复执行幂等与列/索引形状。
+
+---
+
 依据：`.agents/docs/backend-review/README.md` 与 `01`–`10` 各模块报告的「仍未处理 / 剩余 / 待确认」清单，逐条核对当前代码后整理。
 本计划只覆盖**经确认要实施**的范围；未选入范围的条目在文末「本轮不做」中列明。
 
