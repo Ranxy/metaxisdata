@@ -36,7 +36,7 @@ Feature design documents live in `spec/` (product/UX specs) and `plan/` (impleme
 | `backend/plugin/openlineage/` | OpenLineage event parsing, processing, resolution, and Airflow links |
 | `backend/plugin/idp/` | Identity providers (OAuth2/OIDC/LDAP) |
 | `backend/plugin/metric/` | Metric collection and reporting |
-| `backend/runner/` | Background runners: `lineageanalyzer`, `schemasync` |
+| `backend/runner/` | Background runners: `lineageanalyzer`, `schemasync`, `maintenance` |
 | `backend/migrator/` | Embedded, versioned schema migrations (`migration/LATEST.sql` + incrementals) and the startup migrator |
 | `backend/generated-go/` | Generated protobuf/Connect/Gateway code — never hand-edit |
 | `frontend/src/` | Vue 3 + TypeScript SPA (Vite, Pinia, vue-router, Tailwind, shadcn-vue) |
