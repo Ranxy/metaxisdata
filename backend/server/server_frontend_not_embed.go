@@ -1,5 +1,3 @@
-//go:build !embed_frontend
-
 package server
 
 import (
@@ -10,7 +8,7 @@ import (
 )
 
 func embedFrontend(e *echo.Echo) {
-	slog.Info("Skip embedding frontend, build with 'embed_frontend' tag if you want embedded frontend.")
+	slog.Info("This build does not bundle the frontend; serve frontend/dist separately.")
 
 	e.GET("/*", func(c echo.Context) error {
 		return c.HTML(http.StatusOK, "This server build does not bundle frontend and backend together.")
