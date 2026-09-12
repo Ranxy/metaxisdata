@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -39,13 +40,6 @@ func TestFilterParsersDoNotSpliceLiterals(t *testing.T) {
 		require.Equal(t, []any{`%` + strings.ToLower(payload) + `%`}, filter.Args)
 	})
 
-	t.Run("database-table", func(t *testing.T) {
-		filter, err := getListDatabaseFilter(`table.matches("` + payload + `")`)
-		require.NoError(t, err)
-		require.NotContains(t, filter.Where, marker)
-		require.Equal(t, []any{`%` + strings.ToLower(payload) + `%`}, filter.Args)
-	})
-
 	t.Run("database-label", func(t *testing.T) {
 		// The label key used to be interpolated into db.metadata->'labels'->>'...'.
 		filter, err := getListDatabaseFilter(`label == "k':v"`)
@@ -53,6 +47,20 @@ func TestFilterParsersDoNotSpliceLiterals(t *testing.T) {
 		require.NotContains(t, filter.Where, `'k'`)
 		require.Equal(t, []any{"k'", []string{"v"}}, filter.Args)
 	})
+}
+
+// The table filter used to expand into json_array_elements(ds.metadata->'schemas')
+// against a db_schema table that never existed, so every request failed with
+// 42P01. It was removed rather than reimplemented; reject it explicitly so a
+// stale client gets InvalidArgument instead of a broken query.
+func TestListDatabaseFilterRejectsTableFilter(t *testing.T) {
+	for _, filter := range []string{`table == "sample"`, `table.matches("sam")`} {
+		t.Run(filter, func(t *testing.T) {
+			_, err := getListDatabaseFilter(filter)
+			require.Error(t, err)
+			require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		})
+	}
 }
 
 // LIKE patterns must escape wildcards in user input so that a literal "%" does

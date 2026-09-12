@@ -854,7 +854,6 @@ type ListDatabaseRequest struct {
 	// - engine: the database engine, check Engine enum for values. Support "==", "in [xx]", "!(in [xx])" operator.
 	// - exclude_unassigned: should be "true" or "false", will not show unassigned databases if it's true, support "==" operator.
 	// - drifted: should be "true" or "false", show drifted databases if it's true, support "==" operator.
-	// - table: filter by the database table, support "==" and ".matches()" operator.
 	// - labels.{key}: the database label, support "==" and "in" operators.
 	//
 	// For example:
@@ -868,8 +867,6 @@ type ListDatabaseRequest struct {
 	// !(engine in ["MYSQL", "POSTGRES"])
 	// exclude_unassigned == true
 	// drifted == true
-	// table == "sample"
-	// table.matches("sam")
 	// labels.environment == "production"
 	// labels.region == "asia"
 	// labels.region in ["asia", "europe"]

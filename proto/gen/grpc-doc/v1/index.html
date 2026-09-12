@@ -6409,7 +6409,6 @@ Supported filter:
 - engine: the database engine, check Engine enum for values. Support &#34;==&#34;, &#34;in [xx]&#34;, &#34;!(in [xx])&#34; operator.
 - exclude_unassigned: should be &#34;true&#34; or &#34;false&#34;, will not show unassigned databases if it&#39;s true, support &#34;==&#34; operator.
 - drifted: should be &#34;true&#34; or &#34;false&#34;, show drifted databases if it&#39;s true, support &#34;==&#34; operator.
-- table: filter by the database table, support &#34;==&#34; and &#34;.matches()&#34; operator.
 - labels.{key}: the database label, support &#34;==&#34; and &#34;in&#34; operators.
 
 For example:
@@ -6423,8 +6422,6 @@ engine in [&#34;MYSQL&#34;, &#34;POSTGRES&#34;]
 !(engine in [&#34;MYSQL&#34;, &#34;POSTGRES&#34;])
 exclude_unassigned == true
 drifted == true
-table == &#34;sample&#34;
-table.matches(&#34;sam&#34;)
 labels.environment == &#34;production&#34;
 labels.region == &#34;asia&#34;
 labels.region in [&#34;asia&#34;, &#34;europe&#34;]
