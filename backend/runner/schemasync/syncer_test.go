@@ -267,6 +267,29 @@ func TestGetOrDefaultSyncInterval(t *testing.T) {
 	}
 }
 
+// A deactivated instance reports a zero sync interval, which means "never sync".
+// The scheduling predicate must reject it even though lastSyncTime.Add(0) is
+// never after now, otherwise every tick re-queues all of its databases.
+func TestShouldSyncNowRejectsNeverSyncInterval(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	require.False(t, shouldSyncNow(defaultSyncInterval, time.Unix(0, 0), now))
+	require.False(t, shouldSyncNow(defaultSyncInterval, now.Add(-time.Hour), now))
+}
+
+func TestShouldSyncNowRespectsInterval(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	const interval = 15 * time.Minute
+
+	require.True(t, shouldSyncNow(interval, time.Unix(0, 0), now), "never synced resource is due")
+	require.False(t, shouldSyncNow(interval, now.Add(-time.Minute), now), "recently synced resource is not due")
+	require.True(t, shouldSyncNow(interval, now.Add(-interval), now), "resource synced exactly one interval ago is due")
+	require.True(t, shouldSyncNow(interval, now.Add(-2*interval), now), "stale resource is due")
+}
+
 func TestGetOrDefaultLastSyncTime(t *testing.T) {
 	t.Parallel()
 

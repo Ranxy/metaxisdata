@@ -90,10 +90,10 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 			case <-ticker.C:
 				instances, err := s.store.ListInstancesV2(ctx, &store.FindInstanceMessage{})
 				if err != nil {
-					if err != nil {
-						slog.Error("Failed to list instance", log.WithError(err))
-						return
-					}
+					// A transient store error must not stop the checker for the
+					// lifetime of the process; skip this tick and retry.
+					slog.Error("Failed to list instance", log.WithError(err))
+					continue
 				}
 				instanceMap := make(map[string]*store.InstanceMessage)
 				for _, instance := range instances {
@@ -128,7 +128,7 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 						}()
 						slog.Debug("Sync database schema", slog.String("instance", database.InstanceID), slog.String("database", database.DatabaseName))
 						if err := s.SyncDatabaseSchema(ctx, database); err != nil {
-							slog.Debug("Failed to sync database schema",
+							slog.Warn("Failed to sync database schema",
 								slog.String("instance", database.InstanceID),
 								slog.String("databaseName", database.DatabaseName),
 								log.WithError(err))
@@ -164,24 +164,16 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 	}
 	now := time.Now()
 	for _, instance := range instances {
-		interval := getOrDefaultSyncInterval(instance)
-		if interval == defaultSyncInterval {
-			continue
-		}
-		lastSyncTime := getOrDefaultLastSyncTime(instance.Metadata.LastSyncTime)
-		// lastSyncTime + syncInterval > now
-		// Next round not started yet.
-		nextSyncTime := lastSyncTime.Add(interval)
-		if now.Before(nextSyncTime) {
+		if !shouldSyncNow(getOrDefaultSyncInterval(instance), getOrDefaultLastSyncTime(instance.Metadata.LastSyncTime), now) {
 			continue
 		}
 
 		wp.Go(func() {
 			slog.Debug("Sync instance schema", slog.String("instance", instance.ResourceID))
 			if _, _, _, err := s.SyncInstance(ctx, instance); err != nil {
-				slog.Debug("Failed to sync instance",
+				slog.Warn("Failed to sync instance",
 					slog.String("instance", instance.ResourceID),
-					slog.String("error", err.Error()))
+					log.WithError(err))
 			}
 		})
 	}
@@ -207,12 +199,7 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 			continue
 		}
 		// The database inherits the sync interval from the instance.
-		interval := getOrDefaultSyncInterval(instance)
-		lastSyncTime := getOrDefaultLastSyncTime(database.Metadata.LastSyncTime)
-		// lastSyncTime + syncInterval > now
-		// Next round not started yet.
-		nextSyncTime := lastSyncTime.Add(interval)
-		if now.Before(nextSyncTime) {
+		if !shouldSyncNow(getOrDefaultSyncInterval(instance), getOrDefaultLastSyncTime(database.Metadata.LastSyncTime), now) {
 			continue
 		}
 
@@ -341,17 +328,30 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 		}
 	}
 
+	// Databases that vanished from the instance snapshot are soft-deleted. The
+	// snapshot is privilege-filtered on some engines (MySQL's information_schema
+	// only lists what the connecting user may see) and an incomplete
+	// instanceMeta.Databases would stop their sync, so log what disappears.
+	var missingDatabases []string
 	for _, database := range databases {
-		idx := slices.IndexFunc(filteredDatabaseMetadatas, func(db *storepb.DatabaseSchemaMetadata) bool { return db.Name == database.DatabaseName })
-		if idx < 0 {
-			d := true
-			if _, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
-				InstanceID:   instance.ResourceID,
-				DatabaseName: database.DatabaseName,
-				Deleted:      &d,
-			}); err != nil {
-				return nil, nil, nil, errors.Errorf("failed to update database %q for instance %q", database.DatabaseName, instance.ResourceID)
-			}
+		if slices.IndexFunc(filteredDatabaseMetadatas, func(db *storepb.DatabaseSchemaMetadata) bool { return db.Name == database.DatabaseName }) < 0 {
+			missingDatabases = append(missingDatabases, database.DatabaseName)
+		}
+	}
+	if len(missingDatabases) > 0 {
+		slog.Warn("Soft-deleting databases missing from the synced instance snapshot",
+			slog.String("instance", instance.ResourceID),
+			slog.Int("count", len(missingDatabases)),
+			slog.Any("databases", missingDatabases))
+	}
+	for _, databaseName := range missingDatabases {
+		d := true
+		if _, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
+			InstanceID:   instance.ResourceID,
+			DatabaseName: databaseName,
+			Deleted:      &d,
+		}); err != nil {
+			return nil, nil, nil, errors.Errorf("failed to update database %q for instance %q", databaseName, instance.ResourceID)
 		}
 	}
 
@@ -500,6 +500,8 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to batch store metadata for database %q", database.DatabaseName)
 	}
 
+	logSchemaSyncDeletion(common.FormatDatabase(database.InstanceID, database.DatabaseName), bmc.deletes)
+
 	// Clean lineage rows for deleted VIEW and MATERIALIZED_VIEW metadata in the same transaction.
 	for _, item := range bmc.deletes {
 		if item.ObjectType != storepb.MetaType_VIEW && item.ObjectType != storepb.MetaType_MATERIALIZED_VIEW {
@@ -510,34 +512,36 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		}
 	}
 
-	// Build metadata updates
-	metadataUpdates := []func(*storepb.DatabaseMetadata){
-		func(md *storepb.DatabaseMetadata) {
-			md.LastSyncTime = timestamppb.Now()
-		},
-	}
-
-	if _, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
-		InstanceID:      database.InstanceID,
-		DatabaseName:    database.DatabaseName,
-		Deleted:         proto.Bool(false),
-		MetadataUpdates: metadataUpdates,
-	}); err != nil {
-		return errors.Wrapf(err, "failed to update database %q for instance %q", database.DatabaseName, database.InstanceID)
-	}
-
 	err = tx.Commit()
 	if err != nil {
 		return errors.Wrapf(err, "failed to commit transaction for database %q", database.DatabaseName)
 	}
 
-	// Queue changed VIEWs and MATERIALIZED_VIEWs for lineage analysis.
+	// Queue changed VIEWs and MATERIALIZED_VIEWs before touching the db row: if
+	// the LastSyncTime update below fails, the next sync sees unchanged hashes
+	// and would never queue them again.
 	if s.lineageAnalyzer != nil {
 		for _, item := range bmc.updates {
 			if item.ObjectType == storepb.MetaType_VIEW || item.ObjectType == storepb.MetaType_MATERIALIZED_VIEW {
 				s.lineageAnalyzer.QueueAnalysis(item.GUID, item.ObjectType)
 			}
 		}
+	}
+
+	// LastSyncTime is recorded only after the metadata transaction committed.
+	// Writing it first would mark the database as synced even when the commit
+	// failed, skipping it for a whole sync interval.
+	if _, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
+		InstanceID:   database.InstanceID,
+		DatabaseName: database.DatabaseName,
+		Deleted:      proto.Bool(false),
+		MetadataUpdates: []func(*storepb.DatabaseMetadata){
+			func(md *storepb.DatabaseMetadata) {
+				md.LastSyncTime = timestamppb.Now()
+			},
+		},
+	}); err != nil {
+		return errors.Wrapf(err, "failed to update database %q for instance %q", database.DatabaseName, database.InstanceID)
 	}
 
 	return nil
@@ -751,6 +755,46 @@ func buildColumnMetadataResources(prefix string, cols []*storepb.ColumnMetadata)
 		})
 	}
 	return resources
+}
+
+// maxLoggedDeletedGUIDs bounds how many deleted GUIDs a single log record names.
+const maxLoggedDeletedGUIDs = 20
+
+// logSchemaSyncDeletion records the metadata resources a sync is about to
+// delete. The driver snapshot is treated as the source of truth, so an empty or
+// partial snapshot silently removes rows — MySQL's information_schema only
+// lists objects the connecting user may see, with no error. This log is the
+// only trace of that happening.
+func logSchemaSyncDeletion(database string, deletes []*store.MetaRegistryResource) {
+	if len(deletes) == 0 {
+		return
+	}
+	counts := map[storepb.MetaType]int{}
+	guids := make([]string, 0, min(len(deletes), maxLoggedDeletedGUIDs))
+	for _, item := range deletes {
+		counts[item.ObjectType]++
+		if len(guids) < maxLoggedDeletedGUIDs {
+			guids = append(guids, item.GUID)
+		}
+	}
+	slog.Warn("Deleting metadata resources missing from the synced snapshot",
+		slog.String("database", database),
+		slog.Int("count", len(deletes)),
+		slog.Int("omittedGUIDs", len(deletes)-len(guids)),
+		slog.Any("countByObjectType", counts),
+		slog.Any("sampleGUIDs", guids))
+}
+
+// shouldSyncNow reports whether a resource whose last successful sync was
+// lastSyncTime, under an instance whose sync interval is interval, is due at
+// now. An interval of defaultSyncInterval means "never sync": it must be
+// rejected explicitly, because lastSyncTime.Add(0) is never after now and would
+// otherwise schedule every deactivated instance on every tick.
+func shouldSyncNow(interval time.Duration, lastSyncTime, now time.Time) bool {
+	if interval == defaultSyncInterval {
+		return false
+	}
+	return !now.Before(lastSyncTime.Add(interval))
 }
 
 func getOrDefaultSyncInterval(instance *store.InstanceMessage) time.Duration {
