@@ -13,7 +13,8 @@ import (
 )
 
 func (s *Server) initializeSetting(ctx context.Context) error {
-	// secretLength is the length for the secret used to sign the JWT auto token.
+	// secretLength is the length of the per-deployment secret used to obfuscate
+	// stored credentials and, when JWT_SECRET is not set, to sign access tokens.
 	const secretLength = 32
 
 	// initial branding

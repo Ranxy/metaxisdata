@@ -16,6 +16,7 @@ import (
 	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/migrator"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
@@ -26,6 +27,10 @@ import (
 )
 
 const gracefulShutdownPeriod = 10 * time.Second
+
+// minJWTSecretLength is the minimum length of the JWT signing key. The key must
+// be long enough that it cannot be brute-forced offline.
+const minJWTSecretLength = 32
 
 type Server struct {
 	runnerWG        sync.WaitGroup
@@ -100,6 +105,11 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	if err := s.initializeSetting(ctx); err != nil {
 		return nil, errors.Wrap(err, "failed to init config")
 	}
+
+	if err := s.resolveJWTSecret(ctx); err != nil {
+		return nil, err
+	}
+
 	// Configure echo server.
 	s.echoServer = echo.New()
 
@@ -121,6 +131,29 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	serverStarted = true
 
 	return s, nil
+}
+
+// resolveJWTSecret determines the key used to sign and verify access tokens.
+//
+// The key is never a compiled-in constant: it comes from the JWT_SECRET
+// environment variable when set, otherwise from the randomly generated
+// per-deployment AUTH_SECRET setting in the database. Because the key is
+// deployment-specific, every token signed with a former key stops verifying.
+func (s *Server) resolveJWTSecret(ctx context.Context) error {
+	if s.profile.Secret == "" {
+		setting, err := s.store.GetSettingV2(ctx, storepb.SettingName_AUTH_SECRET)
+		if err != nil {
+			return errors.Wrap(err, "failed to load the JWT signing key")
+		}
+		if setting == nil || setting.Value == "" {
+			return errors.New("JWT signing key is not configured: set the JWT_SECRET environment variable")
+		}
+		s.profile.Secret = setting.Value
+	}
+	if len(s.profile.Secret) < minJWTSecretLength {
+		return errors.Errorf("JWT signing key must be at least %d characters, got %d", minJWTSecretLength, len(s.profile.Secret))
+	}
+	return nil
 }
 
 func (s *Server) Run(ctx context.Context, port int) error {

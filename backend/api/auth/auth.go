@@ -142,16 +142,17 @@ func (in *APIAuthInterceptor) authenticateConnect(ctx context.Context, accessTok
 	}
 	claims := &claimsMessage{}
 	if _, err := jwt.ParseWithClaims(accessTokenStr, claims, func(t *jwt.Token) (any, error) {
-		if t.Method.Alg() != jwt.SigningMethodHS256.Name {
-			return nil, errs.Errorf("unexpected access token signing method=%v, expect %v", t.Header["alg"], jwt.SigningMethodHS256)
-		}
 		if kid, ok := t.Header["kid"].(string); ok {
-			if kid == "v1" {
+			if kid == keyID {
 				return []byte(in.secret), nil
 			}
 		}
 		return nil, errs.Errorf("unexpected access token kid=%v", t.Header["kid"])
-	}); err != nil {
+	},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}),
+		jwt.WithIssuer(issuer),
+		jwt.WithExpirationRequired(),
+	); err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return nil, connect.NewError(connect.CodeUnauthenticated, errs.New("access token expired"))
 		}
