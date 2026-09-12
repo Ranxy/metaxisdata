@@ -99,12 +99,9 @@ func (s *DatabaseService) ListDatabases(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("%v", err.Error()))
 	}
 
-	nextPageToken := ""
-	if len(databaseMessages) == limitPlusOne {
-		databaseMessages = databaseMessages[:offset.limit]
-		if nextPageToken, err = offset.getNextPageToken(); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to marshal next page token, error: %v", err))
-		}
+	databaseMessages, nextPageToken, err := paginate(databaseMessages, offset)
+	if err != nil {
+		return nil, err
 	}
 
 	response := &v1pb.ListDatabasesResponse{
@@ -158,11 +155,8 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 				return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list meta registry resources under %q: %v", req.Msg.ParentGuid, err))
 			}
 			nextPageToken := ""
-			if len(subLevelList) == limitPlusOne {
-				subLevelList = subLevelList[:offset.limit]
-				if nextPageToken, err = offset.getNextPageToken(); err != nil {
-					return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to marshal next page token"))
-				}
+			if subLevelList, nextPageToken, err = paginate(subLevelList, offset); err != nil {
+				return nil, err
 			}
 			typesStoredMetadataMap := make(map[v1pb.MetaType][]*v1pb.StoredMetadata)
 			for _, meta := range subLevelList {
@@ -184,9 +178,10 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 			return list, nil
 		}
 		subLevelFindMessage := &store.FindSubLevelMetaRegistryResourceMessage{
-			ParentGUID:         req.Msg.ParentGuid,
-			ObjectType:         parentType,
-			LimitPreObjectType: limitPlusOne,
+			ParentGUID:          req.Msg.ParentGuid,
+			ObjectType:          parentType,
+			LimitPreObjectType:  limitPlusOne,
+			OffsetPreObjectType: offset.offset,
 		}
 		subLevelList, err := s.store.ListSublevelMetaRegistryResource(ctx, subLevelFindMessage)
 		if err != nil {
@@ -203,16 +198,13 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 		list = []*v1pb.MetadataResponse_Metadata{}
 
 		for tp, storeLit := range typesStoredMetadataMap {
-			nextPageToken := ""
-			if len(storeLit) == limitPlusOne {
-				storeLit = storeLit[:offset.limit]
-				if nextPageToken, err = offset.getNextPageToken(); err != nil {
-					return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to marshal next page token"))
-				}
+			page, nextPageToken, err := paginate(storeLit, offset)
+			if err != nil {
+				return nil, err
 			}
 			list = append(list, &v1pb.MetadataResponse_Metadata{
 				MetaType:      tp,
-				List:          storeLit,
+				List:          page,
 				NextPageToken: nextPageToken,
 			})
 		}
@@ -256,11 +248,25 @@ func (s *DatabaseService) SearchMetadata(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("search_str is required"))
 	}
 
-	const searchLimit = 50
+	// Search used to be hard-coded to 50 results; keep that as the default now
+	// that the request can page.
+	size := int(req.Msg.GetPageSize())
+	if size <= 0 {
+		size = 50
+	}
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:   req.Msg.GetPageToken(),
+		limit:   size,
+		maximum: 1000,
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	find := &store.SearchMetaRegistryResourceMessage{
 		SearchStr: searchStr,
-		Limit:     searchLimit + 1,
+		Limit:     offset.limit + 1,
+		Offset:    offset.offset,
 	}
 	if req.Msg.ParentGuidPrefix != nil {
 		find.GUIDPrefix = req.Msg.ParentGuidPrefix
@@ -275,10 +281,12 @@ func (s *DatabaseService) SearchMetadata(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to search metadata: %v", err))
 	}
 
-	response := &v1pb.SearchMetadataResponse{}
-	if len(list) > searchLimit {
-		list = list[:searchLimit]
+	list, nextPageToken, err := paginate(list, offset)
+	if err != nil {
+		return nil, err
 	}
+
+	response := &v1pb.SearchMetadataResponse{NextPageToken: nextPageToken}
 	for _, meta := range list {
 		response.Results = append(response.Results, &v1pb.SearchMetadataResult{
 			Guid:     meta.GUID,
@@ -483,14 +491,11 @@ func (s *DatabaseService) ListManualSQLs(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list manual SQL"))
 	}
 
-	response := &v1pb.ListManualSQLsResponse{}
-	if len(list) == limitPlusOne {
-		list = list[:offset.limit]
-		response.NextPageToken, err = offset.getNextPageToken()
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to marshal next page token"))
-		}
+	list, nextPageToken, err := paginate(list, offset)
+	if err != nil {
+		return nil, err
 	}
+	response := &v1pb.ListManualSQLsResponse{NextPageToken: nextPageToken}
 	for _, item := range list {
 		response.ManualSqls = append(response.ManualSqls, convertManualSQLResource(item))
 	}
@@ -539,14 +544,11 @@ func (s *DatabaseService) SearchManualSQL(ctx context.Context, req *connect.Requ
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to search manual SQL"))
 	}
-	response := &v1pb.SearchManualSQLResponse{}
-	if len(list) == limitPlusOne {
-		list = list[:offset.limit]
-		response.NextPageToken, err = offset.getNextPageToken()
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to marshal next page token"))
-		}
+	list, nextPageToken, err := paginate(list, offset)
+	if err != nil {
+		return nil, err
 	}
+	response := &v1pb.SearchManualSQLResponse{NextPageToken: nextPageToken}
 	for _, item := range list {
 		response.ManualSqls = append(response.ManualSqls, convertManualSQLResource(item))
 	}

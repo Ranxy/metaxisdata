@@ -41,8 +41,6 @@ func (s *DatabaseService) ListMetadataHistory(ctx context.Context, req *connect.
 	if err != nil {
 		return nil, err
 	}
-	limitPlusOne := offset.limit + 1
-
 	guid := req.Msg.GetGuid()
 	metaType := storepb.MetaType(req.Msg.GetMetaType())
 	history, err := s.store.ListMetaRegistryHistory(ctx, &store.FindMetaRegistryHistoryMessage{
@@ -55,23 +53,20 @@ func (s *DatabaseService) ListMetadataHistory(ctx context.Context, req *connect.
 
 	events := s.buildMetadataHistoryEvents(ctx, req.Msg.GetGuid(), req.Msg.GetMetaType(), history)
 
-	response := &v1pb.ListMetadataHistoryResponse{}
 	if offset.offset < len(events) {
 		events = events[offset.offset:]
 	} else {
 		events = nil
 	}
-	if len(events) > limitPlusOne {
-		response.Entries = events[:offset.limit]
-		response.NextPageToken, err = offset.getNextPageToken()
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to marshal next page token"))
-		}
-	} else {
-		response.Entries = events
+	entries, nextPageToken, err := paginate(events, offset)
+	if err != nil {
+		return nil, err
 	}
 
-	return connect.NewResponse(response), nil
+	return connect.NewResponse(&v1pb.ListMetadataHistoryResponse{
+		Entries:       entries,
+		NextPageToken: nextPageToken,
+	}), nil
 }
 
 func (s *DatabaseService) GetMetadataHistoryEvent(ctx context.Context, req *connect.Request[v1pb.GetMetadataHistoryEventRequest]) (*connect.Response[v1pb.MetadataHistoryEvent], error) {

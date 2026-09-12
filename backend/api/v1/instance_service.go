@@ -74,12 +74,9 @@ func (s *InstanceService) ListInstances(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	nextPageToken := ""
-	if len(instances) == limitPlusOne {
-		instances = instances[:offset.limit]
-		if nextPageToken, err = offset.getNextPageToken(); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to marshal next page token"))
-		}
+	instances, nextPageToken, err := paginate(instances, offset)
+	if err != nil {
+		return nil, err
 	}
 
 	response := &v1pb.ListInstancesResponse{

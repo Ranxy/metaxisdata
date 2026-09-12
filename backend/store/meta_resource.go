@@ -49,9 +49,10 @@ type FindMetaRegistryResourceMessage struct {
 }
 
 type FindSubLevelMetaRegistryResourceMessage struct {
-	ParentGUID         string
-	ObjectType         storepb.MetaType
-	LimitPreObjectType int
+	ParentGUID          string
+	ObjectType          storepb.MetaType
+	LimitPreObjectType  int
+	OffsetPreObjectType int
 }
 
 type CreateMetaRegistryResourceMessage struct {
@@ -705,7 +706,7 @@ func (s *Store) ListSublevelMetaRegistryResource(ctx context.Context, find *Find
 		find.LimitPreObjectType = common.DefaultMetaSubLevelLimit
 	}
 
-	list, err := s.listSublevelMetaRegistryResourceImpl(ctx, tx, find.ParentGUID, find.ObjectType, find.LimitPreObjectType)
+	list, err := s.listSublevelMetaRegistryResourceImpl(ctx, tx, find.ParentGUID, find.ObjectType, find.LimitPreObjectType, find.OffsetPreObjectType)
 	if err != nil {
 		return nil, err
 	}
@@ -732,7 +733,7 @@ func (s *Store) ListSublevelMetaRegistryResourceAsOf(ctx context.Context, find *
 		find.LimitPreObjectType = common.DefaultMetaSubLevelLimit
 	}
 
-	list, err := s.listSublevelMetaRegistryResourceHistoryImpl(ctx, tx, find.ParentGUID, find.ObjectType, find.LimitPreObjectType, asOf)
+	list, err := s.listSublevelMetaRegistryResourceHistoryImpl(ctx, tx, find.ParentGUID, find.ObjectType, find.LimitPreObjectType, find.OffsetPreObjectType, asOf)
 	if err != nil {
 		return nil, err
 	}
@@ -742,7 +743,7 @@ func (s *Store) ListSublevelMetaRegistryResourceAsOf(ctx context.Context, find *
 	return list, nil
 }
 
-func (*Store) listSublevelMetaRegistryResourceImpl(ctx context.Context, txn *sql.Tx, parentGUID string, objectType storepb.MetaType, limitPreObjectType int) ([]*MetaRegistryResource, error) {
+func (*Store) listSublevelMetaRegistryResourceImpl(ctx context.Context, txn *sql.Tx, parentGUID string, objectType storepb.MetaType, limitPreObjectType, offsetPreObjectType int) ([]*MetaRegistryResource, error) {
 	// Whether using Lateral Join or Windows, for large datasets,
 	// PG's query optimizer seems unable to select the correct index.
 	// Therefore, we directly use the UNION ALL method here.
@@ -771,8 +772,8 @@ func (*Store) listSublevelMetaRegistryResourceImpl(ctx context.Context, txn *sql
 			meta_registry_resource.meta_hash
 		FROM meta_registry_resource
 		WHERE (meta_registry_resource.guid = $%d OR meta_registry_resource.guid LIKE $%d ESCAPE E'\\') AND meta_registry_resource.object_type = $%d
-		ORDER BY guid limit %d)
-		`, unionStr, len(args)+1, len(args)+2, len(args)+3, limitPreObjectType)
+		ORDER BY guid limit %d offset %d)
+		`, unionStr, len(args)+1, len(args)+2, len(args)+3, limitPreObjectType, offsetPreObjectType)
 		args = append(
 			args,
 			parentGUID,
@@ -819,7 +820,7 @@ func (*Store) listSublevelMetaRegistryResourceImpl(ctx context.Context, txn *sql
 	return metaRegistryMessages, nil
 }
 
-func (*Store) listSublevelMetaRegistryResourceHistoryImpl(ctx context.Context, txn *sql.Tx, parentGUID string, objectType storepb.MetaType, limitPreObjectType int, asOf time.Time) ([]*MetaRegistryResource, error) {
+func (*Store) listSublevelMetaRegistryResourceHistoryImpl(ctx context.Context, txn *sql.Tx, parentGUID string, objectType storepb.MetaType, limitPreObjectType, offsetPreObjectType int, asOf time.Time) ([]*MetaRegistryResource, error) {
 	nextTypes := getNextLevelObjectType(objectType)
 	if len(nextTypes) == 0 {
 		return []*MetaRegistryResource{}, nil
@@ -846,8 +847,8 @@ func (*Store) listSublevelMetaRegistryResourceHistoryImpl(ctx context.Context, t
 			AND meta_registry_resource_history.object_type = $%d
 			AND meta_registry_resource_history.valid_from <= $%d
 			AND (meta_registry_resource_history.valid_to IS NULL OR meta_registry_resource_history.valid_to > $%d)
-		ORDER BY guid limit %d)
-		`, unionStr, len(args)+1, len(args)+2, len(args)+3, len(args)+4, len(args)+4, limitPreObjectType)
+		ORDER BY guid limit %d offset %d)
+		`, unionStr, len(args)+1, len(args)+2, len(args)+3, len(args)+4, len(args)+4, limitPreObjectType, offsetPreObjectType)
 		args = append(
 			args,
 			parentGUID,

@@ -203,6 +203,19 @@ func (p *pageOffset) getNextPageToken() (string, error) {
 	})
 }
 
+// paginate cuts a limit+1 probe down to the requested page and derives the next
+// page token. A probe shorter than limit+1 means the caller reached the end.
+func paginate[T any](items []T, offset *pageOffset) ([]T, string, error) {
+	if len(items) < offset.limit+1 {
+		return items, "", nil
+	}
+	nextPageToken, err := offset.getNextPageToken()
+	if err != nil {
+		return nil, "", connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to marshal next page token"))
+	}
+	return items[:offset.limit], nextPageToken, nil
+}
+
 func parseLimitAndOffset(size *pageSize) (*pageOffset, error) {
 	offset := &pageOffset{}
 	if size.token != "" {
@@ -214,6 +227,12 @@ func parseLimitAndOffset(size *pageSize) (*pageOffset, error) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("page size cannot be negative"))
 		}
 		offset.limit = int(size.limit)
+		if offset.limit <= 0 {
+			// The follow-up request left page_size unset; keep the size the
+			// token was issued with instead of silently re-defaulting it, which
+			// used to overlap or skip rows.
+			offset.limit = int(token.Limit)
+		}
 		offset.offset = int(token.Offset)
 	} else {
 		offset.limit = int(size.limit)
@@ -223,6 +242,9 @@ func parseLimitAndOffset(size *pageSize) (*pageOffset, error) {
 	}
 	if offset.limit > size.maximum {
 		offset.limit = size.maximum
+	}
+	if offset.offset < 0 {
+		offset.offset = 0
 	}
 	return offset, nil
 }

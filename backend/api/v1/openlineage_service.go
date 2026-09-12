@@ -62,12 +62,9 @@ func (s *OpenLineageService) ListOpenLineageTasks(ctx context.Context, req *conn
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list openlineage tasks"))
 	}
 
-	nextPageToken := ""
-	if len(list) == limitPlusOne {
-		list = list[:offset.limit]
-		if nextPageToken, err = offset.getNextPageToken(); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to marshal next page token"))
-		}
+	list, nextPageToken, err := paginate(list, offset)
+	if err != nil {
+		return nil, err
 	}
 
 	resp := &v1pb.ListOpenLineageTasksResponse{NextPageToken: nextPageToken}
@@ -139,12 +136,9 @@ func (s *OpenLineageService) ListOpenLineageRuns(ctx context.Context, req *conne
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list openlineage runs"))
 	}
 
-	nextPageToken := ""
-	if len(list) == limitPlusOne {
-		list = list[:offset.limit]
-		if nextPageToken, err = offset.getNextPageToken(); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to marshal next page token"))
-		}
+	list, nextPageToken, err := paginate(list, offset)
+	if err != nil {
+		return nil, err
 	}
 
 	resp := &v1pb.ListOpenLineageRunsResponse{NextPageToken: nextPageToken}

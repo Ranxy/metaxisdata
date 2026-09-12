@@ -71,20 +71,19 @@ func (s *OpenLineageService) ListOpenLineageDatasets(ctx context.Context, req *c
 		return connect.NewResponse(&v1pb.ListOpenLineageDatasetsResponse{}), nil
 	}
 
-	end := offset.offset + offset.limit
-	if end > len(aggregates) {
-		end = len(aggregates)
+	// The datasets come from an in-memory aggregate, so probe one row past the
+	// page exactly like the SQL-backed lists do.
+	probe := aggregates[offset.offset:]
+	if len(probe) > offset.limit+1 {
+		probe = probe[:offset.limit+1]
 	}
-
-	nextPageToken := ""
-	if end < len(aggregates) {
-		if nextPageToken, err = offset.getNextPageToken(); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to marshal next page token"))
-		}
+	page, nextPageToken, err := paginate(probe, offset)
+	if err != nil {
+		return nil, err
 	}
 
 	resp := &v1pb.ListOpenLineageDatasetsResponse{NextPageToken: nextPageToken}
-	for _, dataset := range aggregates[offset.offset:end] {
+	for _, dataset := range page {
 		resource := &v1pb.OpenLineageDatasetResource{
 			Guid:                  dataset.GUID,
 			Namespace:             dataset.Namespace,

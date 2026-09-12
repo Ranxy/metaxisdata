@@ -52,18 +52,32 @@ func getDefaultBaseURL(providerID string) string {
 // ---- RPC handlers ----
 
 func (s *LLMService) ListLLMProviderProfiles(ctx context.Context, req *connect.Request[v1pb.ListLLMProviderProfilesRequest]) (*connect.Response[v1pb.ListLLMProviderProfilesResponse], error) {
-	limit := int(req.Msg.PageSize)
-	if limit <= 0 {
-		limit = 50
+	// Keep the historical default of 50 profiles per page.
+	size := int(req.Msg.GetPageSize())
+	if size <= 0 {
+		size = 50
 	}
-	offset := 0
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:   req.Msg.GetPageToken(),
+		limit:   size,
+		maximum: 1000,
+	})
+	if err != nil {
+		return nil, err
+	}
+	limitPlusOne := offset.limit + 1
 
 	profiles, err := s.store.ListLLMProfiles(ctx, &store.FindLLMProfileMessage{
-		Limit:  &limit,
-		Offset: &offset,
+		Limit:  &limitPlusOne,
+		Offset: &offset.offset,
 	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list LLM profiles"))
+	}
+
+	profiles, nextPageToken, err := paginate(profiles, offset)
+	if err != nil {
+		return nil, err
 	}
 
 	pbProfiles := make([]*v1pb.LlmProviderProfile, 0, len(profiles))
@@ -72,8 +86,9 @@ func (s *LLMService) ListLLMProviderProfiles(ctx context.Context, req *connect.R
 	}
 
 	return connect.NewResponse(&v1pb.ListLLMProviderProfilesResponse{
-		Profiles:    pbProfiles,
-		Definitions: builtinDefinitions(),
+		Profiles:      pbProfiles,
+		Definitions:   builtinDefinitions(),
+		NextPageToken: nextPageToken,
 	}), nil
 }
 

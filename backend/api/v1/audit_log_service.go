@@ -70,14 +70,12 @@ func (s *AuditLogService) ListAuditLogs(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list audit logs"))
 	}
 
-	response := &v1pb.ListAuditLogsResponse{}
-	if len(auditLogs) == limitPlusOne {
-		auditLogs = auditLogs[:offset.limit]
-		response.NextPageToken, err = offset.getNextPageToken()
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to marshal next page token"))
-		}
+	auditLogs, nextPageToken, err := paginate(auditLogs, offset)
+	if err != nil {
+		return nil, err
 	}
+
+	response := &v1pb.ListAuditLogsResponse{NextPageToken: nextPageToken}
 	for _, auditLog := range auditLogs {
 		response.AuditLogs = append(response.AuditLogs, convertToV1AuditLog(auditLog))
 	}

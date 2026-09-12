@@ -119,12 +119,9 @@ func (s *UserService) ListUsers(ctx context.Context, request *connect.Request[v1
 		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list user, error: %v", err))
 	}
 
-	nextPageToken := ""
-	if len(users) == limitPlusOne {
-		users = users[:offset.limit]
-		if nextPageToken, err = offset.getNextPageToken(); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to marshal next page token, error: %v", err))
-		}
+	users, nextPageToken, err := paginate(users, offset)
+	if err != nil {
+		return nil, err
 	}
 
 	response := &v1pb.ListUsersResponse{
