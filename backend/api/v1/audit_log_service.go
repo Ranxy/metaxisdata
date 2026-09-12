@@ -104,27 +104,27 @@ func convertToV1AuditLog(auditLog *storepb.AuditLog) *v1pb.AuditLog {
 	}
 }
 
-func convertAuditSeverity(severity storepb.AuditSeverity) v1pb.AuditLogSeverity {
+func convertAuditSeverity(severity storepb.AuditLogSeverity) v1pb.AuditLogSeverity {
 	switch severity {
-	case storepb.AuditSeverity_INFO:
+	case storepb.AuditLogSeverity_INFO:
 		return v1pb.AuditLogSeverity_INFO
-	case storepb.AuditSeverity_WARNING:
+	case storepb.AuditLogSeverity_WARNING:
 		return v1pb.AuditLogSeverity_WARNING
-	case storepb.AuditSeverity_ERROR:
+	case storepb.AuditLogSeverity_ERROR:
 		return v1pb.AuditLogSeverity_ERROR
 	default:
 		return v1pb.AuditLogSeverity_AUDIT_LOG_SEVERITY_UNSPECIFIED
 	}
 }
 
-func convertAuditStatus(status *storepb.AuditStatus) *v1pb.AuditLogStatus {
+func convertAuditStatus(status *storepb.AuditLogStatus) *v1pb.AuditLogStatus {
 	if status == nil {
 		return nil
 	}
 	return &v1pb.AuditLogStatus{Code: status.GetCode(), Message: status.GetMessage()}
 }
 
-func convertAuditRequestMetadata(metadata *storepb.RequestMetadata) *v1pb.AuditRequestMetadata {
+func convertAuditRequestMetadata(metadata *storepb.AuditRequestMetadata) *v1pb.AuditRequestMetadata {
 	if metadata == nil {
 		return nil
 	}

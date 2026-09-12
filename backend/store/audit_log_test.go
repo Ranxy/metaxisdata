@@ -44,7 +44,7 @@ func TestScanAuditLog(t *testing.T) {
 	require.Equal(t, "workspaces/default", auditLog.GetParent())
 	require.Equal(t, "/metaxisdata.v1.AuthService/Login", auditLog.GetMethod())
 	require.Equal(t, "users/101", auditLog.GetResource())
-	require.Equal(t, storepb.AuditSeverity_INFO, auditLog.GetSeverity())
+	require.Equal(t, storepb.AuditLogSeverity_INFO, auditLog.GetSeverity())
 	require.Equal(t, timestamppb.New(createdAt).AsTime(), auditLog.GetCreateTime().AsTime())
 	require.Equal(t, "alice@example.com", auditLog.GetRequest().GetFields()["email"].GetStringValue())
 	require.Equal(t, int64(42), auditLog.GetLatencyMs())

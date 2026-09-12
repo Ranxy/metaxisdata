@@ -276,34 +276,34 @@ func getNestedString(raw map[string]any, keys ...string) string {
 	return value
 }
 
-func mapSeverity(err error) storepb.AuditSeverity {
+func mapSeverity(err error) storepb.AuditLogSeverity {
 	if err == nil {
-		return storepb.AuditSeverity_INFO
+		return storepb.AuditLogSeverity_INFO
 	}
 	connectErr, ok := errors.AsType[*connect.Error](err)
 	if !ok {
-		return storepb.AuditSeverity_ERROR
+		return storepb.AuditLogSeverity_ERROR
 	}
 	switch connectErr.Code() {
 	case connect.CodeUnauthenticated, connect.CodePermissionDenied, connect.CodeInvalidArgument, connect.CodeNotFound, connect.CodeAlreadyExists:
-		return storepb.AuditSeverity_WARNING
+		return storepb.AuditLogSeverity_WARNING
 	default:
-		return storepb.AuditSeverity_ERROR
+		return storepb.AuditLogSeverity_ERROR
 	}
 }
 
-func buildAuditStatus(err error) *storepb.AuditStatus {
+func buildAuditStatus(err error) *storepb.AuditLogStatus {
 	if err == nil {
-		return &storepb.AuditStatus{Message: "ok"}
+		return &storepb.AuditLogStatus{Message: "ok"}
 	}
 	connectErr, ok := errors.AsType[*connect.Error](err)
 	if !ok {
-		return &storepb.AuditStatus{Code: int32(connect.CodeUnknown), Message: err.Error()}
+		return &storepb.AuditLogStatus{Code: int32(connect.CodeUnknown), Message: err.Error()}
 	}
-	return &storepb.AuditStatus{Code: int32(connectErr.Code()), Message: connectErr.Message()}
+	return &storepb.AuditLogStatus{Code: int32(connectErr.Code()), Message: connectErr.Message()}
 }
 
-func buildRequestMetadata(header http.Header, peerAddr string) *storepb.RequestMetadata {
+func buildRequestMetadata(header http.Header, peerAddr string) *storepb.AuditRequestMetadata {
 	ip := strings.TrimSpace(strings.Split(header.Get("X-Forwarded-For"), ",")[0])
 	if ip == "" {
 		ip = strings.TrimSpace(strings.Split(header.Get("grpcgateway-x-forwarded-for"), ",")[0])
@@ -322,7 +322,7 @@ func buildRequestMetadata(header http.Header, peerAddr string) *storepb.RequestM
 		userAgent = header.Get("grpcgateway-user-agent")
 	}
 
-	return &storepb.RequestMetadata{Ip: ip, UserAgent: userAgent}
+	return &storepb.AuditRequestMetadata{Ip: ip, UserAgent: userAgent}
 }
 
 func isNilConnectValue(value any) bool {

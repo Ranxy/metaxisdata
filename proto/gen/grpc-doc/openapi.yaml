@@ -2336,6 +2336,10 @@ components:
             properties:
                 id:
                     type: string
+                    description: |-
+                        The audit_log row's primary key. The public v1 AuditLog exposes it as the
+                         resource name "{parent}/auditLogs/{id}" instead, because audit rows are
+                         identified by an opaque server-generated id.
                 createTime:
                     type: string
                     format: date-time
@@ -2360,20 +2364,27 @@ components:
                 response:
                     type: object
                 status:
-                    $ref: '#/components/schemas/AuditStatus'
+                    $ref: '#/components/schemas/AuditLogStatus'
                 latencyMs:
                     type: string
                 serviceData:
                     type: object
                 requestMetadata:
-                    $ref: '#/components/schemas/RequestMetadata'
-        AuditStatus:
+                    $ref: '#/components/schemas/AuditRequestMetadata'
+        AuditLogStatus:
             type: object
             properties:
                 code:
                     type: integer
                     format: int32
                 message:
+                    type: string
+        AuditRequestMetadata:
+            type: object
+            properties:
+                ip:
+                    type: string
+                userAgent:
                     type: string
         BatchGetUsersResponse:
             type: object
@@ -4180,13 +4191,6 @@ components:
                     description: |-
                         Identified by data source ID.
                          Only READ_ONLY data source can be removed.
-        RequestMetadata:
-            type: object
-            properties:
-                ip:
-                    type: string
-                userAgent:
-                    type: string
         RuleMetadata:
             type: object
             properties:

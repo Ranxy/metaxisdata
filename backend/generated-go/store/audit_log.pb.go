@@ -23,24 +23,24 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type AuditSeverity int32
+type AuditLogSeverity int32
 
 const (
-	AuditSeverity_AUDIT_SEVERITY_UNSPECIFIED AuditSeverity = 0
-	AuditSeverity_INFO                       AuditSeverity = 1
-	AuditSeverity_WARNING                    AuditSeverity = 2
-	AuditSeverity_ERROR                      AuditSeverity = 3
+	AuditLogSeverity_AUDIT_SEVERITY_UNSPECIFIED AuditLogSeverity = 0
+	AuditLogSeverity_INFO                       AuditLogSeverity = 1
+	AuditLogSeverity_WARNING                    AuditLogSeverity = 2
+	AuditLogSeverity_ERROR                      AuditLogSeverity = 3
 )
 
-// Enum value maps for AuditSeverity.
+// Enum value maps for AuditLogSeverity.
 var (
-	AuditSeverity_name = map[int32]string{
+	AuditLogSeverity_name = map[int32]string{
 		0: "AUDIT_SEVERITY_UNSPECIFIED",
 		1: "INFO",
 		2: "WARNING",
 		3: "ERROR",
 	}
-	AuditSeverity_value = map[string]int32{
+	AuditLogSeverity_value = map[string]int32{
 		"AUDIT_SEVERITY_UNSPECIFIED": 0,
 		"INFO":                       1,
 		"WARNING":                    2,
@@ -48,34 +48,34 @@ var (
 	}
 )
 
-func (x AuditSeverity) Enum() *AuditSeverity {
-	p := new(AuditSeverity)
+func (x AuditLogSeverity) Enum() *AuditLogSeverity {
+	p := new(AuditLogSeverity)
 	*p = x
 	return p
 }
 
-func (x AuditSeverity) String() string {
+func (x AuditLogSeverity) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (AuditSeverity) Descriptor() protoreflect.EnumDescriptor {
+func (AuditLogSeverity) Descriptor() protoreflect.EnumDescriptor {
 	return file_store_audit_log_proto_enumTypes[0].Descriptor()
 }
 
-func (AuditSeverity) Type() protoreflect.EnumType {
+func (AuditLogSeverity) Type() protoreflect.EnumType {
 	return &file_store_audit_log_proto_enumTypes[0]
 }
 
-func (x AuditSeverity) Number() protoreflect.EnumNumber {
+func (x AuditLogSeverity) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use AuditSeverity.Descriptor instead.
-func (AuditSeverity) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use AuditLogSeverity.Descriptor instead.
+func (AuditLogSeverity) EnumDescriptor() ([]byte, []int) {
 	return file_store_audit_log_proto_rawDescGZIP(), []int{0}
 }
 
-type AuditStatus struct {
+type AuditLogStatus struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Code          int32                  `protobuf:"varint,1,opt,name=code,proto3" json:"code,omitempty"`
 	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
@@ -83,20 +83,20 @@ type AuditStatus struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *AuditStatus) Reset() {
-	*x = AuditStatus{}
+func (x *AuditLogStatus) Reset() {
+	*x = AuditLogStatus{}
 	mi := &file_store_audit_log_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AuditStatus) String() string {
+func (x *AuditLogStatus) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AuditStatus) ProtoMessage() {}
+func (*AuditLogStatus) ProtoMessage() {}
 
-func (x *AuditStatus) ProtoReflect() protoreflect.Message {
+func (x *AuditLogStatus) ProtoReflect() protoreflect.Message {
 	mi := &file_store_audit_log_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -108,26 +108,26 @@ func (x *AuditStatus) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use AuditStatus.ProtoReflect.Descriptor instead.
-func (*AuditStatus) Descriptor() ([]byte, []int) {
+// Deprecated: Use AuditLogStatus.ProtoReflect.Descriptor instead.
+func (*AuditLogStatus) Descriptor() ([]byte, []int) {
 	return file_store_audit_log_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *AuditStatus) GetCode() int32 {
+func (x *AuditLogStatus) GetCode() int32 {
 	if x != nil {
 		return x.Code
 	}
 	return 0
 }
 
-func (x *AuditStatus) GetMessage() string {
+func (x *AuditLogStatus) GetMessage() string {
 	if x != nil {
 		return x.Message
 	}
 	return ""
 }
 
-type RequestMetadata struct {
+type AuditRequestMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ip            string                 `protobuf:"bytes,1,opt,name=ip,proto3" json:"ip,omitempty"`
 	UserAgent     string                 `protobuf:"bytes,2,opt,name=user_agent,json=userAgent,proto3" json:"user_agent,omitempty"`
@@ -135,20 +135,20 @@ type RequestMetadata struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *RequestMetadata) Reset() {
-	*x = RequestMetadata{}
+func (x *AuditRequestMetadata) Reset() {
+	*x = AuditRequestMetadata{}
 	mi := &file_store_audit_log_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *RequestMetadata) String() string {
+func (x *AuditRequestMetadata) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RequestMetadata) ProtoMessage() {}
+func (*AuditRequestMetadata) ProtoMessage() {}
 
-func (x *RequestMetadata) ProtoReflect() protoreflect.Message {
+func (x *AuditRequestMetadata) ProtoReflect() protoreflect.Message {
 	mi := &file_store_audit_log_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -160,19 +160,19 @@ func (x *RequestMetadata) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RequestMetadata.ProtoReflect.Descriptor instead.
-func (*RequestMetadata) Descriptor() ([]byte, []int) {
+// Deprecated: Use AuditRequestMetadata.ProtoReflect.Descriptor instead.
+func (*AuditRequestMetadata) Descriptor() ([]byte, []int) {
 	return file_store_audit_log_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *RequestMetadata) GetIp() string {
+func (x *AuditRequestMetadata) GetIp() string {
 	if x != nil {
 		return x.Ip
 	}
 	return ""
 }
 
-func (x *RequestMetadata) GetUserAgent() string {
+func (x *AuditRequestMetadata) GetUserAgent() string {
 	if x != nil {
 		return x.UserAgent
 	}
@@ -180,20 +180,23 @@ func (x *RequestMetadata) GetUserAgent() string {
 }
 
 type AuditLog struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The audit_log row's primary key. The public v1 AuditLog exposes it as the
+	// resource name "{parent}/auditLogs/{id}" instead, because audit rows are
+	// identified by an opaque server-generated id.
 	Id              int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	CreateTime      *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
 	Parent          string                 `protobuf:"bytes,3,opt,name=parent,proto3" json:"parent,omitempty"`
 	Method          string                 `protobuf:"bytes,4,opt,name=method,proto3" json:"method,omitempty"`
 	Resource        string                 `protobuf:"bytes,5,opt,name=resource,proto3" json:"resource,omitempty"`
 	User            string                 `protobuf:"bytes,6,opt,name=user,proto3" json:"user,omitempty"`
-	Severity        AuditSeverity          `protobuf:"varint,7,opt,name=severity,proto3,enum=metaxisdata.store.AuditSeverity" json:"severity,omitempty"`
+	Severity        AuditLogSeverity       `protobuf:"varint,7,opt,name=severity,proto3,enum=metaxisdata.store.AuditLogSeverity" json:"severity,omitempty"`
 	Request         *structpb.Struct       `protobuf:"bytes,8,opt,name=request,proto3" json:"request,omitempty"`
 	Response        *structpb.Struct       `protobuf:"bytes,9,opt,name=response,proto3" json:"response,omitempty"`
-	Status          *AuditStatus           `protobuf:"bytes,10,opt,name=status,proto3" json:"status,omitempty"`
+	Status          *AuditLogStatus        `protobuf:"bytes,10,opt,name=status,proto3" json:"status,omitempty"`
 	LatencyMs       int64                  `protobuf:"varint,11,opt,name=latency_ms,json=latencyMs,proto3" json:"latency_ms,omitempty"`
 	ServiceData     *structpb.Struct       `protobuf:"bytes,12,opt,name=service_data,json=serviceData,proto3" json:"service_data,omitempty"`
-	RequestMetadata *RequestMetadata       `protobuf:"bytes,13,opt,name=request_metadata,json=requestMetadata,proto3" json:"request_metadata,omitempty"`
+	RequestMetadata *AuditRequestMetadata  `protobuf:"bytes,13,opt,name=request_metadata,json=requestMetadata,proto3" json:"request_metadata,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -270,11 +273,11 @@ func (x *AuditLog) GetUser() string {
 	return ""
 }
 
-func (x *AuditLog) GetSeverity() AuditSeverity {
+func (x *AuditLog) GetSeverity() AuditLogSeverity {
 	if x != nil {
 		return x.Severity
 	}
-	return AuditSeverity_AUDIT_SEVERITY_UNSPECIFIED
+	return AuditLogSeverity_AUDIT_SEVERITY_UNSPECIFIED
 }
 
 func (x *AuditLog) GetRequest() *structpb.Struct {
@@ -291,7 +294,7 @@ func (x *AuditLog) GetResponse() *structpb.Struct {
 	return nil
 }
 
-func (x *AuditLog) GetStatus() *AuditStatus {
+func (x *AuditLog) GetStatus() *AuditLogStatus {
 	if x != nil {
 		return x.Status
 	}
@@ -312,7 +315,7 @@ func (x *AuditLog) GetServiceData() *structpb.Struct {
 	return nil
 }
 
-func (x *AuditLog) GetRequestMetadata() *RequestMetadata {
+func (x *AuditLog) GetRequestMetadata() *AuditRequestMetadata {
 	if x != nil {
 		return x.RequestMetadata
 	}
@@ -323,14 +326,14 @@ var File_store_audit_log_proto protoreflect.FileDescriptor
 
 const file_store_audit_log_proto_rawDesc = "" +
 	"\n" +
-	"\x15store/audit_log.proto\x12\x11metaxisdata.store\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\";\n" +
-	"\vAuditStatus\x12\x12\n" +
+	"\x15store/audit_log.proto\x12\x11metaxisdata.store\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\">\n" +
+	"\x0eAuditLogStatus\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\x05R\x04code\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"@\n" +
-	"\x0fRequestMetadata\x12\x0e\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"E\n" +
+	"\x14AuditRequestMetadata\x12\x0e\n" +
 	"\x02ip\x18\x01 \x01(\tR\x02ip\x12\x1d\n" +
 	"\n" +
-	"user_agent\x18\x02 \x01(\tR\tuserAgent\"\xbf\x04\n" +
+	"user_agent\x18\x02 \x01(\tR\tuserAgent\"\xca\x04\n" +
 	"\bAuditLog\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12;\n" +
 	"\vcreate_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
@@ -338,17 +341,17 @@ const file_store_audit_log_proto_rawDesc = "" +
 	"\x06parent\x18\x03 \x01(\tR\x06parent\x12\x16\n" +
 	"\x06method\x18\x04 \x01(\tR\x06method\x12\x1a\n" +
 	"\bresource\x18\x05 \x01(\tR\bresource\x12\x12\n" +
-	"\x04user\x18\x06 \x01(\tR\x04user\x12<\n" +
-	"\bseverity\x18\a \x01(\x0e2 .metaxisdata.store.AuditSeverityR\bseverity\x121\n" +
+	"\x04user\x18\x06 \x01(\tR\x04user\x12?\n" +
+	"\bseverity\x18\a \x01(\x0e2#.metaxisdata.store.AuditLogSeverityR\bseverity\x121\n" +
 	"\arequest\x18\b \x01(\v2\x17.google.protobuf.StructR\arequest\x123\n" +
-	"\bresponse\x18\t \x01(\v2\x17.google.protobuf.StructR\bresponse\x126\n" +
+	"\bresponse\x18\t \x01(\v2\x17.google.protobuf.StructR\bresponse\x129\n" +
 	"\x06status\x18\n" +
-	" \x01(\v2\x1e.metaxisdata.store.AuditStatusR\x06status\x12\x1d\n" +
+	" \x01(\v2!.metaxisdata.store.AuditLogStatusR\x06status\x12\x1d\n" +
 	"\n" +
 	"latency_ms\x18\v \x01(\x03R\tlatencyMs\x12:\n" +
-	"\fservice_data\x18\f \x01(\v2\x17.google.protobuf.StructR\vserviceData\x12M\n" +
-	"\x10request_metadata\x18\r \x01(\v2\".metaxisdata.store.RequestMetadataR\x0frequestMetadata*Q\n" +
-	"\rAuditSeverity\x12\x1e\n" +
+	"\fservice_data\x18\f \x01(\v2\x17.google.protobuf.StructR\vserviceData\x12R\n" +
+	"\x10request_metadata\x18\r \x01(\v2'.metaxisdata.store.AuditRequestMetadataR\x0frequestMetadata*T\n" +
+	"\x10AuditLogSeverity\x12\x1e\n" +
 	"\x1aAUDIT_SEVERITY_UNSPECIFIED\x10\x00\x12\b\n" +
 	"\x04INFO\x10\x01\x12\v\n" +
 	"\aWARNING\x10\x02\x12\t\n" +
@@ -369,21 +372,21 @@ func file_store_audit_log_proto_rawDescGZIP() []byte {
 var file_store_audit_log_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_store_audit_log_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_store_audit_log_proto_goTypes = []any{
-	(AuditSeverity)(0),            // 0: metaxisdata.store.AuditSeverity
-	(*AuditStatus)(nil),           // 1: metaxisdata.store.AuditStatus
-	(*RequestMetadata)(nil),       // 2: metaxisdata.store.RequestMetadata
+	(AuditLogSeverity)(0),         // 0: metaxisdata.store.AuditLogSeverity
+	(*AuditLogStatus)(nil),        // 1: metaxisdata.store.AuditLogStatus
+	(*AuditRequestMetadata)(nil),  // 2: metaxisdata.store.AuditRequestMetadata
 	(*AuditLog)(nil),              // 3: metaxisdata.store.AuditLog
 	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
 	(*structpb.Struct)(nil),       // 5: google.protobuf.Struct
 }
 var file_store_audit_log_proto_depIdxs = []int32{
 	4, // 0: metaxisdata.store.AuditLog.create_time:type_name -> google.protobuf.Timestamp
-	0, // 1: metaxisdata.store.AuditLog.severity:type_name -> metaxisdata.store.AuditSeverity
+	0, // 1: metaxisdata.store.AuditLog.severity:type_name -> metaxisdata.store.AuditLogSeverity
 	5, // 2: metaxisdata.store.AuditLog.request:type_name -> google.protobuf.Struct
 	5, // 3: metaxisdata.store.AuditLog.response:type_name -> google.protobuf.Struct
-	1, // 4: metaxisdata.store.AuditLog.status:type_name -> metaxisdata.store.AuditStatus
+	1, // 4: metaxisdata.store.AuditLog.status:type_name -> metaxisdata.store.AuditLogStatus
 	5, // 5: metaxisdata.store.AuditLog.service_data:type_name -> google.protobuf.Struct
-	2, // 6: metaxisdata.store.AuditLog.request_metadata:type_name -> metaxisdata.store.RequestMetadata
+	2, // 6: metaxisdata.store.AuditLog.request_metadata:type_name -> metaxisdata.store.AuditRequestMetadata
 	7, // [7:7] is the sub-list for method output_type
 	7, // [7:7] is the sub-list for method input_type
 	7, // [7:7] is the sub-list for extension type_name

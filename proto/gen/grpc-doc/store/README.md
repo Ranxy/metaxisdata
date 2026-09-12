@@ -5,10 +5,10 @@
 
 - [store/audit_log.proto](#store_audit_log-proto)
     - [AuditLog](#metaxisdata-store-AuditLog)
-    - [AuditStatus](#metaxisdata-store-AuditStatus)
-    - [RequestMetadata](#metaxisdata-store-RequestMetadata)
+    - [AuditLogStatus](#metaxisdata-store-AuditLogStatus)
+    - [AuditRequestMetadata](#metaxisdata-store-AuditRequestMetadata)
   
-    - [AuditSeverity](#metaxisdata-store-AuditSeverity)
+    - [AuditLogSeverity](#metaxisdata-store-AuditLogSeverity)
   
 - [store/common.proto](#store_common-proto)
     - [PageToken](#metaxisdata-store-PageToken)
@@ -133,28 +133,28 @@
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [int64](#int64) |  |  |
+| id | [int64](#int64) |  | The audit_log row&#39;s primary key. The public v1 AuditLog exposes it as the resource name &#34;{parent}/auditLogs/{id}&#34; instead, because audit rows are identified by an opaque server-generated id. |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | parent | [string](#string) |  |  |
 | method | [string](#string) |  |  |
 | resource | [string](#string) |  |  |
 | user | [string](#string) |  |  |
-| severity | [AuditSeverity](#metaxisdata-store-AuditSeverity) |  |  |
+| severity | [AuditLogSeverity](#metaxisdata-store-AuditLogSeverity) |  |  |
 | request | [google.protobuf.Struct](#google-protobuf-Struct) |  |  |
 | response | [google.protobuf.Struct](#google-protobuf-Struct) |  |  |
-| status | [AuditStatus](#metaxisdata-store-AuditStatus) |  |  |
+| status | [AuditLogStatus](#metaxisdata-store-AuditLogStatus) |  |  |
 | latency_ms | [int64](#int64) |  |  |
 | service_data | [google.protobuf.Struct](#google-protobuf-Struct) |  |  |
-| request_metadata | [RequestMetadata](#metaxisdata-store-RequestMetadata) |  |  |
+| request_metadata | [AuditRequestMetadata](#metaxisdata-store-AuditRequestMetadata) |  |  |
 
 
 
 
 
 
-<a name="metaxisdata-store-AuditStatus"></a>
+<a name="metaxisdata-store-AuditLogStatus"></a>
 
-### AuditStatus
+### AuditLogStatus
 
 
 
@@ -168,9 +168,9 @@
 
 
 
-<a name="metaxisdata-store-RequestMetadata"></a>
+<a name="metaxisdata-store-AuditRequestMetadata"></a>
 
-### RequestMetadata
+### AuditRequestMetadata
 
 
 
@@ -186,9 +186,9 @@
  
 
 
-<a name="metaxisdata-store-AuditSeverity"></a>
+<a name="metaxisdata-store-AuditLogSeverity"></a>
 
-### AuditSeverity
+### AuditLogSeverity
 
 
 | Name | Number | Description |
