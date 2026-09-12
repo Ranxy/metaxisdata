@@ -443,8 +443,8 @@ func (s *UserService) validatePassword(ctx context.Context, password string) err
 
 // UpdateUser updates a user.
 func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v1pb.UpdateUserRequest]) (*connect.Response[v1pb.User], error) {
-	_, ok := GetUserFromContext(ctx)
-	if !ok {
+	callerUser, ok := GetUserFromContext(ctx)
+	if !ok || callerUser == nil {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.Errorf("failed to get caller user"))
 	}
 	if request.Msg.User == nil {
@@ -464,7 +464,10 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 	}
 	if user == nil {
 		if request.Msg.AllowMissing {
-			// TODO CHECK PERMISSION
+			// Creating a user through PATCH is still a user creation.
+			if err := requireWorkspaceAdmin(ctx, s.store, callerUser); err != nil {
+				return nil, err
+			}
 			return s.CreateUser(ctx, connect.NewRequest(&v1pb.CreateUserRequest{
 				User: request.Msg.User,
 			}))
@@ -475,9 +478,14 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("user %d has been deleted", userID))
 	}
 
-	// if callerUser.ID != userID {
-	// 	// TODO check permission
-	// }
+	// Updating another user, including rotating their credentials, requires
+	// workspace admin. A user may update themselves.
+	isSelf := callerUser.ID == user.ID
+	if !isSelf {
+		if err := requireWorkspaceAdmin(ctx, s.store, callerUser); err != nil {
+			return nil, err
+		}
+	}
 
 	var passwordPatch *string
 	patch := &store.UpdateUserMessage{}
@@ -500,6 +508,16 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 		case "password":
 			if user.Type != storepb.PrincipalType_END_USER {
 				return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("password can be mutated for end users only"))
+			}
+			// Changing your own password requires proving you know it;
+			// otherwise a stolen token is enough to take over the account.
+			if isSelf {
+				if request.Msg.CurrentPassword == "" {
+					return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("current_password is required to change your own password"))
+				}
+				if err := bcrypt.CompareHashAndPassword([]byte(callerUser.PasswordHash), []byte(request.Msg.CurrentPassword)); err != nil {
+					return nil, connect.NewError(connect.CodePermissionDenied, errors.Errorf("current_password is incorrect"))
+				}
 			}
 			if err := s.validatePassword(ctx, request.Msg.User.Password); err != nil {
 				return nil, err

@@ -339,6 +339,14 @@
               {{ t("userManagement.changePasswordHint") }}
             </p>
             <AppInput
+              v-if="isEditingSelf"
+              v-model="editForm.currentPassword"
+              type="password"
+              :label="t('userManagement.currentPassword')"
+              :placeholder="t('userManagement.currentPasswordPlaceholder')"
+              :error="editFormErrors.currentPassword"
+            />
+            <AppInput
               v-model="editForm.password"
               type="password"
               :label="t('userManagement.newPassword')"
@@ -489,6 +497,7 @@ const editForm = ref({
   title: "",
   phone: "",
   password: "",
+  currentPassword: "",
 });
 
 const editFormErrors = ref({
@@ -496,12 +505,18 @@ const editFormErrors = ref({
   password: "",
   phone: "",
   title: "",
+  currentPassword: "",
 });
 
 // Computed
 const activeUsers = computed(() => {
   return users.value.filter((u) => u.state !== State.DELETED);
 });
+
+// Changing your own password requires proving you know the current one.
+const isEditingSelf = computed(
+  () => !!userToEdit.value && authStore.user?.name === userToEdit.value.name
+);
 
 // Methods
 function getInitials(name: string): string {
@@ -644,8 +659,15 @@ function openEditModal(user: User) {
     title: user.title,
     phone: user.phone,
     password: "",
+    currentPassword: "",
   };
-  editFormErrors.value = { email: "", password: "", phone: "", title: "" };
+  editFormErrors.value = {
+    email: "",
+    password: "",
+    phone: "",
+    title: "",
+    currentPassword: "",
+  };
   showEditModal.value = true;
 }
 
@@ -696,7 +718,13 @@ function validateCreateForm(): boolean {
 
 function validateEditForm(): boolean {
   let valid = true;
-  editFormErrors.value = { email: "", password: "", phone: "", title: "" };
+  editFormErrors.value = {
+    email: "",
+    password: "",
+    phone: "",
+    title: "",
+    currentPassword: "",
+  };
 
   if (!editForm.value.email) {
     editFormErrors.value.email = t("userManagement.emailRequired");
@@ -708,6 +736,17 @@ function validateEditForm(): boolean {
 
   if (editForm.value.password && editForm.value.password.length < 8) {
     editFormErrors.value.password = t("userManagement.passwordTooShort");
+    valid = false;
+  }
+
+  if (
+    editForm.value.password &&
+    isEditingSelf.value &&
+    !editForm.value.currentPassword
+  ) {
+    editFormErrors.value.currentPassword = t(
+      "userManagement.currentPasswordRequired"
+    );
     valid = false;
   }
 
@@ -752,7 +791,11 @@ async function handleUpdateUser() {
       userData.password = editForm.value.password;
     }
 
-    await updateUser(userData, updateFields);
+    await updateUser(
+      userData,
+      updateFields,
+      editForm.value.currentPassword || undefined
+    );
     showEditModal.value = false;
     showSuccess(t("userManagement.updateSuccess"));
     await fetchUsers();

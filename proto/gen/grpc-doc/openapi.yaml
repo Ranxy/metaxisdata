@@ -2220,6 +2220,13 @@ paths:
                   schema:
                     type: string
                     format: field-mask
+                - name: currentPassword
+                  in: query
+                  description: |-
+                    The user's current password. Required when a user changes their own
+                     password; an admin changing another user's password does not need it.
+                  schema:
+                    type: string
                 - name: allowMissing
                   in: query
                   description: |-

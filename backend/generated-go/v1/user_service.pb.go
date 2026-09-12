@@ -424,6 +424,9 @@ type UpdateUserRequest struct {
 	User *User `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
 	// The list of fields to update.
 	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	// The user's current password. Required when a user changes their own
+	// password; an admin changing another user's password does not need it.
+	CurrentPassword string `protobuf:"bytes,3,opt,name=current_password,json=currentPassword,proto3" json:"current_password,omitempty"`
 	// If set to true, and the user is not found, a new user will be created.
 	// In this situation, `update_mask` is ignored.
 	AllowMissing  bool `protobuf:"varint,6,opt,name=allow_missing,json=allowMissing,proto3" json:"allow_missing,omitempty"`
@@ -473,6 +476,13 @@ func (x *UpdateUserRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
 		return x.UpdateMask
 	}
 	return nil
+}
+
+func (x *UpdateUserRequest) GetCurrentPassword() string {
+	if x != nil {
+		return x.CurrentPassword
+	}
+	return ""
 }
 
 func (x *UpdateUserRequest) GetAllowMissing() bool {
@@ -789,11 +799,12 @@ const file_v1_user_service_proto_rawDesc = "" +
 	"\x05users\x18\x01 \x03(\v2\x14.metaxisdata.v1.UserR\x05users\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"B\n" +
 	"\x11CreateUserRequest\x12-\n" +
-	"\x04user\x18\x01 \x01(\v2\x14.metaxisdata.v1.UserB\x03\xe0A\x02R\x04user\"\xa4\x01\n" +
+	"\x04user\x18\x01 \x01(\v2\x14.metaxisdata.v1.UserB\x03\xe0A\x02R\x04user\"\xd4\x01\n" +
 	"\x11UpdateUserRequest\x12-\n" +
 	"\x04user\x18\x01 \x01(\v2\x14.metaxisdata.v1.UserB\x03\xe0A\x02R\x04user\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x12#\n" +
+	"updateMask\x12.\n" +
+	"\x10current_password\x18\x03 \x01(\tB\x03\xe0A\x04R\x0fcurrentPassword\x12#\n" +
 	"\rallow_missing\x18\x06 \x01(\bR\fallowMissing\"A\n" +
 	"\x11DeleteUserRequest\x12,\n" +
 	"\x04name\x18\x01 \x01(\tB\x18\xe0A\x02\xfaA\x12\n" +

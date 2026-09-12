@@ -202,6 +202,14 @@ export declare type UpdateUserRequest = Message<"metaxisdata.v1.UpdateUserReques
   updateMask?: FieldMask;
 
   /**
+   * The user's current password. Required when a user changes their own
+   * password; an admin changing another user's password does not need it.
+   *
+   * @generated from field: string current_password = 3;
+   */
+  currentPassword: string;
+
+  /**
    * If set to true, and the user is not found, a new user will be created.
    * In this situation, `update_mask` is ignored.
    *

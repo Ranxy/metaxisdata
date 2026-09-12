@@ -62,12 +62,18 @@ func (in *ACLInterceptor) authorize(ctx context.Context) error {
 	if !ok || user == nil {
 		return connect.NewError(connect.CodePermissionDenied, errors.Errorf("permission %q is required", authCtx.Permission))
 	}
-	isAdmin, err := isUserWorkspaceAdmin(ctx, in.store, user)
+	return requireWorkspaceAdmin(ctx, in.store, user)
+}
+
+// requireWorkspaceAdmin returns a PermissionDenied error unless the user is a
+// workspace admin.
+func requireWorkspaceAdmin(ctx context.Context, stores *store.Store, user *store.UserMessage) error {
+	isAdmin, err := isUserWorkspaceAdmin(ctx, stores, user)
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check permission"))
 	}
 	if !isAdmin {
-		return connect.NewError(connect.CodePermissionDenied, errors.Errorf("user %q does not have permission %q", user.Email, authCtx.Permission))
+		return connect.NewError(connect.CodePermissionDenied, errors.Errorf("user %q must be a workspace admin", user.Email))
 	}
 	return nil
 }

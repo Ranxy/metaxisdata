@@ -175,6 +175,10 @@ message UpdateUserRequest {
   // The list of fields to update.
   google.protobuf.FieldMask update_mask = 2;
 
+  // The user's current password. Required when a user changes their own
+  // password; an admin changing another user's password does not need it.
+  string current_password = 3 [(google.api.field_behavior) = INPUT_ONLY];
+
   // If set to true, and the user is not found, a new user will be created.
   // In this situation, `update_mask` is ignored.
   bool allow_missing = 6;

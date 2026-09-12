@@ -66,7 +66,8 @@ export async function updateUser(
     phone?: string;
     password?: string;
   },
-  updateMask?: string[]
+  updateMask?: string[],
+  currentPassword?: string
 ) {
   const request = create(UpdateUserRequestSchema, {
     user: create(UserSchema, {
@@ -79,6 +80,7 @@ export async function updateUser(
     updateMask: updateMask
       ? { paths: updateMask }
       : { paths: ["email", "title", "phone"] },
+    currentPassword: currentPassword ?? "",
   });
   return await userClient.updateUser(request);
 }
