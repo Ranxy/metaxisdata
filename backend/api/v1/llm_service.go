@@ -147,44 +147,11 @@ func (s *LLMService) UpdateLLMProviderProfile(ctx context.Context, req *connect.
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid profile name"))
 	}
 
-	update := &store.UpdateLLMProfileMessage{ResourceID: resourceID}
-
-	if len(req.Msg.UpdateMask.GetPaths()) == 0 {
-		title := pbProfile.Title
-		update.Title = &title
-		baseURL := pbProfile.BaseUrl
-		if err := llm.ValidateBaseURL(baseURL); err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, err)
-		}
-		update.BaseURL = &baseURL
-		update.Models = convertV1ModelsToStore(pbProfile.Models)
-		if pbProfile.ApiKey != "" {
-			apiKey := pbProfile.ApiKey
-			update.APIKey = &apiKey
-		}
-	} else {
-		for _, path := range req.Msg.UpdateMask.GetPaths() {
-			switch path {
-			case "title":
-				title := pbProfile.Title
-				update.Title = &title
-			case "base_url":
-				baseURL := pbProfile.BaseUrl
-				if err := llm.ValidateBaseURL(baseURL); err != nil {
-					return nil, connect.NewError(connect.CodeInvalidArgument, err)
-				}
-				update.BaseURL = &baseURL
-			case "models":
-				update.Models = convertV1ModelsToStore(pbProfile.Models)
-			case "api_key":
-				if pbProfile.ApiKey != "" {
-					apiKey := pbProfile.ApiKey
-					update.APIKey = &apiKey
-				}
-			default:
-			}
-		}
+	update, err := buildLLMProfileUpdate(pbProfile, req.Msg.UpdateMask.GetPaths())
+	if err != nil {
+		return nil, err
 	}
+	update.ResourceID = resourceID
 
 	msg, err := s.store.UpdateLLMProfile(ctx, update)
 	if err != nil {
@@ -193,6 +160,59 @@ func (s *LLMService) UpdateLLMProviderProfile(ctx context.Context, req *connect.
 	s.registry.Invalidate()
 
 	return connect.NewResponse(convertProfileToV1(msg)), nil
+}
+
+// buildLLMProfileUpdate turns a profile plus its update mask into a store
+// patch. An empty mask means "write only the fields the caller populated": a
+// wholesale replacement let a title-only PATCH wipe the model list and drop the
+// profile from the enabled set. Clearing a list still works with an explicit
+// "models" mask.
+func buildLLMProfileUpdate(pbProfile *v1pb.LlmProviderProfile, maskPaths []string) (*store.UpdateLLMProfileMessage, error) {
+	update := &store.UpdateLLMProfileMessage{}
+	if len(maskPaths) == 0 {
+		if pbProfile.GetTitle() != "" {
+			title := pbProfile.GetTitle()
+			update.Title = &title
+		}
+		if pbProfile.GetBaseUrl() != "" {
+			baseURL := pbProfile.GetBaseUrl()
+			if err := llm.ValidateBaseURL(baseURL); err != nil {
+				return nil, connect.NewError(connect.CodeInvalidArgument, err)
+			}
+			update.BaseURL = &baseURL
+		}
+		if len(pbProfile.GetModels()) > 0 {
+			update.Models = convertV1ModelsToStore(pbProfile.GetModels())
+		}
+		if pbProfile.GetApiKey() != "" {
+			apiKey := pbProfile.GetApiKey()
+			update.APIKey = &apiKey
+		}
+		return update, nil
+	}
+
+	for _, path := range maskPaths {
+		switch path {
+		case "title":
+			title := pbProfile.GetTitle()
+			update.Title = &title
+		case "base_url":
+			baseURL := pbProfile.GetBaseUrl()
+			if err := llm.ValidateBaseURL(baseURL); err != nil {
+				return nil, connect.NewError(connect.CodeInvalidArgument, err)
+			}
+			update.BaseURL = &baseURL
+		case "models":
+			update.Models = convertV1ModelsToStore(pbProfile.GetModels())
+		case "api_key":
+			if pbProfile.GetApiKey() != "" {
+				apiKey := pbProfile.GetApiKey()
+				update.APIKey = &apiKey
+			}
+		default:
+		}
+	}
+	return update, nil
 }
 
 func (s *LLMService) DeleteLLMProviderProfile(ctx context.Context, req *connect.Request[v1pb.DeleteLLMProviderProfileRequest]) (*connect.Response[emptypb.Empty], error) {
