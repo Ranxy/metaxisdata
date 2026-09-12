@@ -601,22 +601,20 @@ func filterOpenLineageDatasets(datasets []*openLineageDatasetAggregate, req *v1p
 	return result
 }
 
+// formatResolvedTarget renders the database.schema.table tail of a resolved
+// internal GUID. Segments are handled positionally: dropping the empty ones
+// first shifted a MySQL guid (instance;db;;table) down to three segments, so it
+// was no longer trimmed and the instance id was rendered as the database.
 func formatResolvedTarget(guid string, internal bool) string {
 	if !internal {
 		return ""
 	}
-	parts := make([]string, 0, 4)
-	for _, part := range strings.Split(guid, ";") {
-		if strings.TrimSpace(part) == "" {
-			continue
-		}
-		parts = append(parts, part)
+	parts := strings.Split(guid, ";")
+	if len(parts) > 3 {
+		parts = parts[len(parts)-3:]
 	}
 	if len(parts) == 0 {
 		return guid
-	}
-	if len(parts) > 3 {
-		parts = parts[len(parts)-3:]
 	}
 	return strings.Join(parts, ".")
 }

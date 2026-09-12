@@ -91,19 +91,11 @@ func DeriveRunMetadata(event *RunEvent) DerivedRunMetadata {
 	return derived
 }
 
+// hasLineageSignal reports whether an event carries dataset lineage. A column
+// lineage facet lives on an output dataset, so a non-empty input or output list
+// is the whole signal; the facet loop that used to follow was unreachable.
 func hasLineageSignal(event *RunEvent) bool {
-	if len(event.Inputs) > 0 || len(event.Outputs) > 0 {
-		return true
-	}
-	for _, output := range event.Outputs {
-		if output.Facets.ColumnLineage == nil {
-			continue
-		}
-		if len(output.Facets.ColumnLineage.Fields) > 0 || len(output.Facets.ColumnLineage.Dataset) > 0 {
-			return true
-		}
-	}
-	return false
+	return len(event.Inputs) > 0 || len(event.Outputs) > 0
 }
 
 func buildOpenLineageScopedGUID(prefix string, parts ...string) string {

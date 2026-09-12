@@ -72,5 +72,10 @@ func (c *resourceLimiter) Increment(key string, limit int) bool {
 func (c *resourceLimiter) Decrement(key string) {
 	c.Lock()
 	defer c.Unlock()
+	if c.connections[key] <= 1 {
+		// Never go negative, and do not keep zero entries forever.
+		delete(c.connections, key)
+		return
+	}
 	c.connections[key]--
 }

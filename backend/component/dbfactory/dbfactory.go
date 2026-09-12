@@ -26,6 +26,9 @@ func New(store *store.Store) *DBFactory {
 // GetAdminDatabaseDriver gets the admin database driver using the instance's admin data source.
 // Upon successful return, caller must call driver.Close(). Otherwise, it will leak the database connection.
 func (d *DBFactory) GetAdminDatabaseDriver(ctx context.Context, instance *store.InstanceMessage, database *store.DatabaseMessage, connectionContext db.ConnectionContext) (db.Driver, error) {
+	if instance == nil {
+		return nil, common.Errorf(common.Internal, "cannot build an admin database driver for a nil instance")
+	}
 	dataSource := utils.DataSourceFromInstanceWithType(instance, storepb.DataSourceType_ADMIN)
 	if dataSource == nil {
 		return nil, common.Errorf(common.Internal, "admin data source not found for instance %q", instance.ResourceID)
@@ -38,6 +41,12 @@ func (d *DBFactory) GetAdminDatabaseDriver(ctx context.Context, instance *store.
 
 // GetDataSourceDriver returns the database driver for a data source.
 func (*DBFactory) GetDataSourceDriver(ctx context.Context, instance *store.InstanceMessage, dataSource *storepb.DataSource, connectionContext db.ConnectionContext) (db.Driver, error) {
+	if instance == nil || instance.Metadata == nil {
+		return nil, common.Errorf(common.Internal, "cannot build a database driver without an instance")
+	}
+	if dataSource == nil {
+		return nil, common.Errorf(common.Invalid, "data source must be set")
+	}
 	password := dataSource.GetPassword()
 	connectionContext.InstanceID = instance.ResourceID
 	connectionContext.EngineVersion = instance.Metadata.GetVersion()
@@ -52,6 +61,8 @@ func (*DBFactory) GetDataSourceDriver(ctx context.Context, instance *store.Insta
 		},
 	)
 	if err != nil {
+		// The raw driver error carries the resolved host and port, which the
+		// callers that surface it to a user already sanitize.
 		return nil, err
 	}
 

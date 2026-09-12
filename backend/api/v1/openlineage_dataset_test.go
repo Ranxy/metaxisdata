@@ -241,3 +241,14 @@ func findDatasetAggregateByName(t *testing.T, datasets []*openLineageDatasetAggr
 	t.Fatalf("dataset %q not found", name)
 	return nil
 }
+
+// A MySQL guid has an empty schema segment. It must be trimmed positionally, so
+// the instance id is never rendered as the database.
+func TestFormatResolvedTargetKeepsTheSegmentPositions(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "db.schema.table", formatResolvedTarget("inst;db;schema;table", true))
+	require.Equal(t, "db..table", formatResolvedTarget("inst;db;;table", true))
+	require.Equal(t, "db.table", formatResolvedTarget("db;table", true))
+	require.Empty(t, formatResolvedTarget("inst;db;;table", false))
+}

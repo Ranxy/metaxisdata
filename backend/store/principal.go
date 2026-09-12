@@ -21,10 +21,12 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
+// systemBotUser mirrors the seeded row in LATEST.sql. It is the fallback when
+// the row cannot be read, so the two must describe the same principal.
 var systemBotUser = &UserMessage{
 	ID:    common.SystemBotID,
-	Name:  "SYSTEM_BOT",
-	Email: "SYSTEM_BOT@example.com",
+	Name:  "SYSTEM",
+	Email: "support@example.com",
 	Type:  storepb.PrincipalType_SYSTEM_BOT,
 }
 
