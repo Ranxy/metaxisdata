@@ -282,7 +282,11 @@ func getAuthContext(fullMethod string) (*common.AuthContext, error) {
 	if !ok {
 		return nil, errs.Errorf("invalid service descriptor, full method name %q", fullMethod)
 	}
-	md, ok := sd.Methods().ByName(protoreflect.Name(methodTokens[2])).Options().(*descriptorpb.MethodOptions)
+	methodDesc := sd.Methods().ByName(protoreflect.Name(methodTokens[2]))
+	if methodDesc == nil {
+		return nil, errs.Errorf("method %q not found in service %q", methodTokens[2], methodTokens[1])
+	}
+	md, ok := methodDesc.Options().(*descriptorpb.MethodOptions)
 	if !ok {
 		return nil, errs.Errorf("invalid method options, full method name %q", fullMethod)
 	}
