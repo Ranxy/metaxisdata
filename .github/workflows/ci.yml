@@ -6,6 +6,7 @@ on:
       - .github/workflows/ci.yml
       - .golangci.yaml
       - backend/**
+      - frontend/**
       - go.mod
       - go.sum
       - Makefile
@@ -16,6 +17,7 @@ on:
       - .github/workflows/ci.yml
       - .golangci.yaml
       - backend/**
+      - frontend/**
       - go.mod
       - go.sum
       - Makefile
@@ -31,9 +33,10 @@ concurrency:
 jobs:
   # The hermetic suite needs no PostgreSQL, MySQL or Docker, so it runs on every
   # change. -race is on because most of the concurrency in this server (store
-  # caches, the LLM agent, the runners) is invisible to the plain build.
+  # caches, the LLM agent, the runners) is invisible to the plain build, and
+  # -cover reports how much of each package the suite actually executes.
   unit:
-    name: Unit Tests (race)
+    name: Unit Tests (race, cover)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -47,7 +50,7 @@ jobs:
           cache: true
 
       - name: Run hermetic tests
-        run: go test -race -count=1 ./...
+        run: go test -race -count=1 -cover ./...
 
   lint:
     name: Lint
@@ -70,3 +73,42 @@ jobs:
         with:
           version: v2.13.1
           args: --allow-parallel-runners
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+
+      # biome:ci and lint:ci are the read-only counterparts of the local
+      # biome:check/lint scripts, which rewrite files.
+      - name: Format and lint
+        run: |
+          pnpm --dir frontend biome:ci
+          pnpm --dir frontend lint:ci
+
+      - name: Type check
+        run: pnpm --dir frontend type-check
+
+      - name: Test
+        run: pnpm --dir frontend test run
+
+      - name: Build
+        run: pnpm --dir frontend build
