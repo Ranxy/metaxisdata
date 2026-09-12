@@ -4,6 +4,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -34,10 +35,32 @@ func TestMain(m *testing.M) {
 	start := time.Now()
 	ctx, cancel := context.WithCancel(context.Background())
 
+	if err := integrationenv.ValidateIntegrationEnv(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "invalid integration service configuration: %v\n", err)
+		cancel()
+		//nolint:revive // A configuration error must fail the binary; returning here would report success.
+		os.Exit(1)
+	}
+	// External services need no container runtime; without them the suite is
+	// documented to skip rather than fail when Docker is unavailable. Returning
+	// without running the tests exits 0.
+	if !integrationenv.ExternalServicesConfigured() && !integrationenv.DockerAvailable(ctx) {
+		_, _ = fmt.Println("skipping integration tests: docker is unavailable")
+		cancel()
+		return
+	}
+
 	results := make(chan sharedEnvStartResult, 2)
 	var wg sync.WaitGroup
 	startEnv := func(name string, fn func(context.Context) (*integrationenv.ServiceEnv, func(), error)) {
 		wg.Go(func() {
+			defer func() {
+				// A panic in setup would otherwise crash the process and leave
+				// the collector below waiting forever.
+				if r := recover(); r != nil {
+					results <- sharedEnvStartResult{name: name, err: fmt.Errorf("panic starting %s integration env: %v", name, r)}
+				}
+			}()
 			envStart := time.Now()
 			env, cleanup, err := fn(ctx)
 			results <- sharedEnvStartResult{
@@ -77,6 +100,11 @@ func TestMain(m *testing.M) {
 			postgresResult.cleanup()
 		}
 		integrationenv.CleanupIntegrationServerBinaryCache()
+		if errors.Is(mysqlResult.err, integrationenv.ErrDockerUnavailable) || errors.Is(postgresResult.err, integrationenv.ErrDockerUnavailable) {
+			_, _ = fmt.Println("skipping integration tests: docker is unavailable")
+			cancel()
+			return
+		}
 		if mysqlResult.err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "failed to start shared MySQL integration env: %v\n", mysqlResult.err)
 		}

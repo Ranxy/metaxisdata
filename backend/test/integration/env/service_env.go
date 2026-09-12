@@ -32,6 +32,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/migrator"
 	"github.com/Ranxy/metaxisdata/backend/store"
+	"github.com/Ranxy/metaxisdata/backend/test/integration/dockerutil"
 )
 
 const (
@@ -41,6 +42,10 @@ const (
 	serviceStartupTimeout    = 60 * time.Second
 	databaseSyncTimeout      = 30 * time.Second
 	lineageWaitTimeout       = 45 * time.Second
+
+	// serverStartAttempts bounds the retries when a reserved port is taken
+	// before the integration server can bind it.
+	serverStartAttempts = 3
 )
 
 var sharedServerBinaryCache = newServerBinaryCache()
@@ -66,10 +71,47 @@ type ServiceEnv struct {
 	token      string
 
 	containers []testcontainers.Container
-	serverCmd  *exec.Cmd
-	serverDone chan error
-	serverLogs *lockedBuffer
-	serverDir  string
+	server     *serverProcess
+}
+
+// serverProcess tracks the real server child process. Readiness waiting and
+// shutdown both observe its exit through a closed channel, so neither can race
+// the other for the single value of a buffered error channel.
+type serverProcess struct {
+	baseURL string
+	cmd     *exec.Cmd
+	logs    *lockedBuffer
+	exited  chan struct{}
+
+	mu      sync.Mutex
+	waitErr error
+}
+
+func (p *serverProcess) wait() {
+	err := p.cmd.Wait()
+	p.mu.Lock()
+	p.waitErr = err
+	p.mu.Unlock()
+	close(p.exited)
+}
+
+func (p *serverProcess) err() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.waitErr
+}
+
+func (p *serverProcess) stop() {
+	if p == nil || p.cmd == nil {
+		return
+	}
+	if p.cmd.Process != nil {
+		_ = p.cmd.Process.Kill()
+	}
+	select {
+	case <-p.exited:
+	case <-time.After(10 * time.Second):
+	}
 }
 
 type lockedBuffer struct {
@@ -162,50 +204,50 @@ func CleanupIntegrationServerBinaryCache() {
 // StartMySQLServiceEnv starts metadata PostgreSQL, source MySQL, and the real server process.
 // The returned cleanup function is idempotent and should be called once the shared environment is no longer needed.
 func StartMySQLServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
+	if err := ValidateIntegrationEnv(); err != nil {
+		return nil, nil, err
+	}
+
 	bootstrap := &TestEnv{}
 	pgHost, pgPort, pgDBName, err := startPostgresForEnv(ctx, bootstrap, "mysql")
 	if err != nil {
 		return nil, nil, err
 	}
-	pgURL := fmt.Sprintf("postgres://postgres:postgres@%s:%s/%s?sslmode=disable", pgHost, pgPort, pgDBName)
+	pgURL := postgresDSN(pgHost, pgPort, pgDBName)
 
 	stores, err := store.New(ctx, pgURL)
 	if err != nil {
-		cleanupServiceResources(nil, bootstrap.containers, "", nil, nil)
+		cleanupServiceResources(nil, bootstrap.containers, nil)
 		return nil, nil, err
 	}
 	if err := migrator.MigrateSchema(ctx, stores.GetDB()); err != nil {
-		cleanupServiceResources(stores, bootstrap.containers, "", nil, nil)
+		cleanupServiceResources(stores, bootstrap.containers, nil)
 		return nil, nil, err
 	}
 	if err := stores.Close(); err != nil {
-		cleanupServiceResources(stores, bootstrap.containers, "", nil, nil)
+		cleanupServiceResources(stores, bootstrap.containers, nil)
 		return nil, nil, err
 	}
 
 	mysqlHost, mysqlPort, err := startMySQLForEnv(ctx, bootstrap)
 	if err != nil {
-		cleanupServiceResources(nil, bootstrap.containers, "", nil, nil)
+		cleanupServiceResources(nil, bootstrap.containers, nil)
 		return nil, nil, err
 	}
 	if err := seedMySQLSchema(ctx, mysqlHost, mysqlPort); err != nil {
-		cleanupServiceResources(nil, bootstrap.containers, "", nil, nil)
+		cleanupServiceResources(nil, bootstrap.containers, nil)
 		return nil, nil, err
 	}
-	serverDir := ""
-	baseURL, serverCmd, serverDone, serverLogs, err := startServerProcess(ctx, pgURL)
+	server, err := startServerProcess(ctx, pgURL)
 	if err != nil {
-		cleanupServiceResources(nil, bootstrap.containers, "", nil, nil)
+		cleanupServiceResources(nil, bootstrap.containers, nil)
 		return nil, nil, err
 	}
-	if err := waitForHTTPReady(ctx, baseURL); err != nil {
-		cleanupServiceResources(nil, bootstrap.containers, serverDir, serverCmd, serverDone)
-		return nil, nil, err
-	}
+	baseURL := server.baseURL
 
 	inspectStore, err := store.New(ctx, pgURL, store.WithCacheDisabled())
 	if err != nil {
-		cleanupServiceResources(nil, bootstrap.containers, serverDir, serverCmd, serverDone)
+		cleanupServiceResources(nil, bootstrap.containers, server)
 		return nil, nil, err
 	}
 
@@ -225,20 +267,17 @@ func StartMySQLServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 		databaseClient: v1connect.NewDatabaseServiceClient(httpClient, baseURL),
 		lineageClient:  v1connect.NewLineageServiceClient(httpClient, baseURL),
 		containers:     bootstrap.containers,
-		serverCmd:      serverCmd,
-		serverDone:     serverDone,
-		serverLogs:     serverLogs,
-		serverDir:      serverDir,
+		server:         server,
 	}
 	if err := env.bootstrapAdmin(ctx); err != nil {
-		cleanupServiceResources(inspectStore, bootstrap.containers, serverDir, serverCmd, serverDone)
+		cleanupServiceResources(inspectStore, bootstrap.containers, server)
 		return nil, nil, err
 	}
 
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
-			cleanupServiceResources(env.Store, env.containers, env.serverDir, env.serverCmd, env.serverDone)
+			cleanupServiceResources(env.Store, env.containers, env.server)
 		})
 	}
 	return env, cleanup, nil
@@ -247,44 +286,44 @@ func StartMySQLServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 // StartPostgresServiceEnv starts metadata PostgreSQL, a seeded PostgreSQL source database, and the real server process.
 // The returned cleanup function is idempotent and should be called once the shared environment is no longer needed.
 func StartPostgresServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
+	if err := ValidateIntegrationEnv(); err != nil {
+		return nil, nil, err
+	}
+
 	bootstrap := &TestEnv{}
 	pgHost, pgPort, pgDBName, err := startPostgresForEnv(ctx, bootstrap, "postgres")
 	if err != nil {
 		return nil, nil, err
 	}
-	pgURL := fmt.Sprintf("postgres://postgres:postgres@%s:%s/%s?sslmode=disable", pgHost, pgPort, pgDBName)
+	pgURL := postgresDSN(pgHost, pgPort, pgDBName)
 
 	stores, err := store.New(ctx, pgURL)
 	if err != nil {
-		cleanupServiceResources(nil, bootstrap.containers, "", nil, nil)
+		cleanupServiceResources(nil, bootstrap.containers, nil)
 		return nil, nil, err
 	}
 	if err := migrator.MigrateSchema(ctx, stores.GetDB()); err != nil {
-		cleanupServiceResources(stores, bootstrap.containers, "", nil, nil)
+		cleanupServiceResources(stores, bootstrap.containers, nil)
 		return nil, nil, err
 	}
 	if err := stores.Close(); err != nil {
-		cleanupServiceResources(stores, bootstrap.containers, "", nil, nil)
+		cleanupServiceResources(stores, bootstrap.containers, nil)
 		return nil, nil, err
 	}
 	if err := seedPostgresSchema(ctx, pgHost, pgPort); err != nil {
-		cleanupServiceResources(nil, bootstrap.containers, "", nil, nil)
+		cleanupServiceResources(nil, bootstrap.containers, nil)
 		return nil, nil, err
 	}
-	serverDir := ""
-	baseURL, serverCmd, serverDone, serverLogs, err := startServerProcess(ctx, pgURL)
+	server, err := startServerProcess(ctx, pgURL)
 	if err != nil {
-		cleanupServiceResources(nil, bootstrap.containers, "", nil, nil)
+		cleanupServiceResources(nil, bootstrap.containers, nil)
 		return nil, nil, err
 	}
-	if err := waitForHTTPReady(ctx, baseURL); err != nil {
-		cleanupServiceResources(nil, bootstrap.containers, serverDir, serverCmd, serverDone)
-		return nil, nil, err
-	}
+	baseURL := server.baseURL
 
 	inspectStore, err := store.New(ctx, pgURL, store.WithCacheDisabled())
 	if err != nil {
-		cleanupServiceResources(nil, bootstrap.containers, serverDir, serverCmd, serverDone)
+		cleanupServiceResources(nil, bootstrap.containers, server)
 		return nil, nil, err
 	}
 
@@ -302,20 +341,17 @@ func StartPostgresServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 		databaseClient: v1connect.NewDatabaseServiceClient(httpClient, baseURL),
 		lineageClient:  v1connect.NewLineageServiceClient(httpClient, baseURL),
 		containers:     bootstrap.containers,
-		serverCmd:      serverCmd,
-		serverDone:     serverDone,
-		serverLogs:     serverLogs,
-		serverDir:      serverDir,
+		server:         server,
 	}
 	if err := env.bootstrapAdmin(ctx); err != nil {
-		cleanupServiceResources(inspectStore, bootstrap.containers, serverDir, serverCmd, serverDone)
+		cleanupServiceResources(inspectStore, bootstrap.containers, server)
 		return nil, nil, err
 	}
 
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
-			cleanupServiceResources(env.Store, env.containers, env.serverDir, env.serverCmd, env.serverDone)
+			cleanupServiceResources(env.Store, env.containers, env.server)
 		})
 	}
 	return env, cleanup, nil
@@ -333,10 +369,10 @@ func (e *ServiceEnv) ResetPostgresSource(ctx context.Context) error {
 
 // ServerLogs returns the buffered output from the shared integration server process.
 func (e *ServiceEnv) ServerLogs() string {
-	if e == nil || e.serverLogs == nil {
+	if e == nil || e.server == nil {
 		return ""
 	}
-	return e.serverLogs.String()
+	return e.server.logs.String()
 }
 
 // CreateMySQLInstance creates an instance against the self-booted MySQL source database.
@@ -398,7 +434,7 @@ func (e *ServiceEnv) CreatePostgresInstance(ctx context.Context, instanceID stri
 
 // ExecMySQL executes SQL directly against the source MySQL server used by the scenario.
 func (e *ServiceEnv) ExecMySQL(ctx context.Context, statement string) error {
-	dsn := fmt.Sprintf("root:root@tcp(%s:%s)/?multiStatements=true&parseTime=true", e.MySQLHost, e.MySQLPort)
+	dsn := mysqlDSN(e.MySQLHost, e.MySQLPort)
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return err
@@ -588,39 +624,49 @@ func (e *ServiceEnv) getDatabaseByFullName(ctx context.Context, t *testing.T, fu
 	return e.findDatabase(ctx, t, instanceName, databaseName)
 }
 
-func startServerProcess(ctx context.Context, pgURL string) (string, *exec.Cmd, chan error, *lockedBuffer, error) {
-	port, err := reservePort()
-	if err != nil {
-		return "", nil, nil, nil, err
-	}
-	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
-	logs := &lockedBuffer{}
-
+// startServerProcess builds the integration server binary and starts it with a
+// freshly reserved port. The port reservation is closed before the child binds
+// it, so another process can steal the port in between; a failed attempt is
+// retried with a new port instead of failing the whole suite.
+func startServerProcess(ctx context.Context, pgURL string) (*serverProcess, error) {
 	binaryPath, err := sharedServerBinaryCache.getOrBuild(ctx)
 	if err != nil {
-		return "", nil, nil, nil, err
+		return nil, err
 	}
 
 	root, err := repoRoot()
 	if err != nil {
-		return "", nil, nil, nil, err
+		return nil, err
 	}
 
-	cmd := exec.CommandContext(ctx, binaryPath, "--port", strconv.Itoa(port))
-	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "PG_URL="+pgURL)
-	cmd.Stdout = logs
-	cmd.Stderr = logs
-	if err := cmd.Start(); err != nil {
-		return "", nil, nil, nil, err
+	var lastErr error
+	for range serverStartAttempts {
+		port, err := reservePort()
+		if err != nil {
+			return nil, err
+		}
+		baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+		logs := &lockedBuffer{}
+
+		cmd := exec.CommandContext(ctx, binaryPath, "--port", strconv.Itoa(port))
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), "PG_URL="+pgURL)
+		cmd.Stdout = logs
+		cmd.Stderr = logs
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+
+		proc := &serverProcess{baseURL: baseURL, cmd: cmd, logs: logs, exited: make(chan struct{})}
+		go proc.wait()
+		if err := waitForServerReady(ctx, proc); err != nil {
+			proc.stop()
+			lastErr = err
+			continue
+		}
+		return proc, nil
 	}
-
-	done := make(chan error, 1)
-	go func() {
-		done <- cmd.Wait()
-	}()
-
-	return baseURL, cmd, done, logs, nil
+	return nil, lastErr
 }
 
 func buildIntegrationServerBinary(ctx context.Context) (string, string, error) {
@@ -650,24 +696,17 @@ func buildIntegrationServerBinary(ctx context.Context) (string, string, error) {
 	return binaryPath, binaryDir, nil
 }
 
-func shutdownServerProcess(cmd *exec.Cmd, done chan error) {
-	if cmd == nil || done == nil {
-		return
-	}
-	if cmd.Process != nil {
-		_ = cmd.Process.Kill()
-	}
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-	}
+func shutdownServerProcess(proc *serverProcess) {
+	proc.stop()
 }
 
-func waitForHTTPReady(ctx context.Context, baseURL string) error {
+// waitForServerReady polls the server's HTTP endpoint and fails fast, with the
+// captured logs, when the process exits instead of listening.
+func waitForServerReady(ctx context.Context, proc *serverProcess) error {
 	client := &http.Client{Timeout: 2 * time.Second}
 	deadline := time.Now().Add(serviceStartupTimeout)
 	for time.Now().Before(deadline) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/v1/not-found", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, proc.baseURL+"/v1/not-found", nil)
 		if err != nil {
 			return err
 		}
@@ -680,10 +719,12 @@ func waitForHTTPReady(ctx context.Context, baseURL string) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-proc.exited:
+			return errors.Errorf("integration server exited before becoming ready: %v\n%s", proc.err(), proc.logs.String())
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
-	return errors.Errorf("server did not become ready within %v", serviceStartupTimeout)
+	return errors.Errorf("server did not become ready within %v\n%s", serviceStartupTimeout, proc.logs.String())
 }
 
 func reservePort() (int, error) {
@@ -723,7 +764,7 @@ func startPostgresForEnv(ctx context.Context, env *TestEnv, metadataScope string
 		}
 		baseDBName := getenvDefault(integrationPostgresDBEnv, db)
 		dbName := integrationMetadataDatabaseName(baseDBName, metadataScope)
-		if err := recreatePostgresDatabase(ctx, host, port, dbName); err != nil {
+		if err := recreatePostgresDatabase(ctx, host, port, baseDBName, dbName); err != nil {
 			return "", "", "", err
 		}
 		if err := waitForPostgresReadyNoTest(ctx, host, port, dbName); err != nil {
@@ -748,7 +789,7 @@ func startPostgresForEnv(ctx context.Context, env *TestEnv, metadataScope string
 		Started:          true,
 	})
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", dockerutil.WrapUnavailable(err)
 	}
 	env.containers = append(env.containers, container)
 
@@ -778,7 +819,14 @@ func integrationMetadataDatabaseName(baseName, metadataScope string) string {
 	return fmt.Sprintf("%s_%s_integration", baseName, metadataScope)
 }
 
-func recreatePostgresDatabase(ctx context.Context, host, port, databaseName string) error {
+// recreatePostgresDatabase recreates the derived per-scope metadata database.
+// The configured base database itself is never dropped: a scope-less name is
+// rejected so that a misconfigured INTEGRATION_POSTGRES_DB cannot destroy real
+// data.
+func recreatePostgresDatabase(ctx context.Context, host, port, baseName, databaseName string) error {
+	if databaseName == baseName {
+		return errors.Errorf("refusing to recreate %q: the harness only drops derived *_integration databases", databaseName)
+	}
 	adminDB, err := sql.Open("pgx", postgresDSN(host, port, "postgres"))
 	if err != nil {
 		return err
@@ -827,7 +875,7 @@ func startMySQLForEnv(ctx context.Context, env *TestEnv) (string, string, error)
 		Started:          true,
 	})
 	if err != nil {
-		return "", "", err
+		return "", "", dockerutil.WrapUnavailable(err)
 	}
 	env.containers = append(env.containers, container)
 
@@ -846,7 +894,7 @@ func startMySQLForEnv(ctx context.Context, env *TestEnv) (string, string, error)
 }
 
 func waitForPostgresReadyNoTest(ctx context.Context, host, port, dbName string) error {
-	dsn := fmt.Sprintf("postgres://postgres:postgres@%s:%s/%s?sslmode=disable", host, port, dbName)
+	dsn := postgresDSN(host, port, dbName)
 	deadline := time.Now().Add(45 * time.Second)
 	for time.Now().Before(deadline) {
 		db, err := sql.Open("pgx", dsn)
@@ -869,7 +917,7 @@ func waitForPostgresReadyNoTest(ctx context.Context, host, port, dbName string) 
 }
 
 func waitForMySQLReadyNoTest(ctx context.Context, host, port string) error {
-	dsn := fmt.Sprintf("root:root@tcp(%s:%s)/?multiStatements=true&parseTime=true", host, port)
+	dsn := mysqlDSN(host, port)
 	deadline := time.Now().Add(45 * time.Second)
 	for time.Now().Before(deadline) {
 		db, err := sql.Open("mysql", dsn)
@@ -891,15 +939,12 @@ func waitForMySQLReadyNoTest(ctx context.Context, host, port string) error {
 	return errors.Errorf("mysql did not become ready at %s:%s", host, port)
 }
 
-func cleanupServiceResources(stores *store.Store, containers []testcontainers.Container, serverDir string, cmd *exec.Cmd, done chan error) {
+func cleanupServiceResources(stores *store.Store, containers []testcontainers.Container, server *serverProcess) {
 	if stores != nil {
 		_ = stores.Close()
 	}
-	shutdownServerProcess(cmd, done)
+	shutdownServerProcess(server)
 	for _, c := range containers {
 		_ = c.Terminate(context.Background())
-	}
-	if serverDir != "" {
-		_ = os.RemoveAll(serverDir)
 	}
 }
