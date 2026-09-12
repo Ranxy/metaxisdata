@@ -362,6 +362,7 @@ func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Reque
 
 func (s *InstanceService) checkInstanceDataSources(instance *store.InstanceMessage, dataSources []*storepb.DataSource) error {
 	dsIDMap := map[string]bool{}
+	adminCount := 0
 	for _, ds := range dataSources {
 		if err := s.checkDataSource(instance, ds); err != nil {
 			return err
@@ -370,9 +371,55 @@ func (s *InstanceService) checkInstanceDataSources(instance *store.InstanceMessa
 			return connect.NewError(connect.CodeInvalidArgument, errors.Errorf(`duplicate data source id "%s"`, ds.GetId()))
 		}
 		dsIDMap[ds.GetId()] = true
+		if ds.GetType() == storepb.DataSourceType_ADMIN {
+			adminCount++
+		}
+	}
+	// The instance is unusable without exactly one admin data source; without
+	// this the update path could persist zero or several of them.
+	if adminCount != 1 {
+		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("require exactly one admin data source, got %d", adminCount))
 	}
 
 	return nil
+}
+
+// mergeDataSources keys the requested data source list, which is authoritative
+// for membership, by ID and edits each entry in place of the stored one with
+// the same ID. IDs absent from the request are removed, matching the
+// update_mask semantics for a repeated field.
+func mergeDataSources(stored, requested []*storepb.DataSource) []*storepb.DataSource {
+	storedByID := make(map[string]*storepb.DataSource, len(stored))
+	for _, ds := range stored {
+		storedByID[ds.GetId()] = ds
+	}
+	merged := make([]*storepb.DataSource, 0, len(requested))
+	for _, ds := range requested {
+		existing, ok := storedByID[ds.GetId()]
+		if !ok {
+			merged = append(merged, ds)
+			continue
+		}
+		merged = append(merged, mergeDataSource(existing, ds))
+	}
+	return merged
+}
+
+// mergeDataSource overlays the fields a request carries onto the stored data
+// source. proto.Merge copies only populated proto3 scalars, so a field the
+// request omits — notably every credential, which reads never return — keeps
+// its stored value. Repeated fields are appended rather than overwritten, so
+// one the request does carry is cleared first.
+func mergeDataSource(stored, requested *storepb.DataSource) *storepb.DataSource {
+	merged, ok := proto.Clone(stored).(*storepb.DataSource)
+	if !ok {
+		return requested
+	}
+	if len(requested.GetAdditionalAddresses()) > 0 {
+		merged.AdditionalAddresses = nil
+	}
+	proto.Merge(merged, requested)
+	return merged
 }
 
 func (*InstanceService) checkDataSource(_ *store.InstanceMessage, dataSource *storepb.DataSource) error {
@@ -432,6 +479,10 @@ func (s *InstanceService) UpdateInstance(ctx context.Context, req *connect.Reque
 			if err != nil {
 				return nil, connect.NewError(connect.CodeInvalidArgument, err)
 			}
+			// A data source list built from a Get response carries no credentials
+			// and no store-only fields, so merge every entry into the stored one
+			// with the same ID instead of overwriting it.
+			dataSources = mergeDataSources(instance.Metadata.GetDataSources(), dataSources)
 			if err := s.checkInstanceDataSources(instance, dataSources); err != nil {
 				return nil, err
 			}

@@ -253,6 +253,11 @@ func (s *Store) UpdateDatabase(ctx context.Context, patch *UpdateDatabaseMessage
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get database %q", common.FormatDatabase(patch.InstanceID, patch.DatabaseName))
 		}
+		// GetDatabaseV2 returns (nil, nil) when the row is gone; cloning its
+		// metadata would panic the whole process.
+		if database == nil {
+			return nil, common.Errorf(common.NotFound, "database %q not found", common.FormatDatabase(patch.InstanceID, patch.DatabaseName))
+		}
 		md := proto.CloneOf(database.Metadata)
 		for _, f := range fs {
 			f(md)
