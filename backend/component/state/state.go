@@ -16,6 +16,8 @@ type State struct {
 	TokenExpireCache *lru.Cache[string, bool]
 	// InstanceOutstandingConnections is the maximum number of connections per instance.
 	InstanceOutstandingConnections *resourceLimiter
+	// LoginLimiter throttles failed password logins per (email, source).
+	LoginLimiter *LoginLimiter
 }
 
 func New() (*State, error) {
@@ -26,6 +28,7 @@ func New() (*State, error) {
 	return &State{
 		InstanceOutstandingConnections: &resourceLimiter{connections: map[string]int{}},
 		TokenExpireCache:               expireCache,
+		LoginLimiter:                   newLoginLimiter(),
 	}, nil
 }
 

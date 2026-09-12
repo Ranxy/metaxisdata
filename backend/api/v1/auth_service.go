@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -32,7 +34,25 @@ import (
 
 var (
 	invalidUserOrPasswordError = connect.NewError(connect.CodeUnauthenticated, errors.Errorf("the email or password is not valid"))
+
+	// dummyPasswordHash is compared when the email is unknown so the login path
+	// costs the same whether or not the account exists. It hashes a fixed,
+	// unguessable string at the default bcrypt cost.
+	dummyPasswordHash = sync.OnceValues(func() ([]byte, error) {
+		return bcrypt.GenerateFromPassword([]byte("metaxisdata-timing-equalizer"), bcrypt.DefaultCost)
+	})
 )
+
+// loginThrottleKey scopes failed-attempt counting to one account from one
+// source, so neither a single account nor a single client can be hammered. The
+// peer address comes from the connection, not from a forwarding header.
+func loginThrottleKey(email, peerAddr string) string {
+	host := peerAddr
+	if h, _, err := net.SplitHostPort(peerAddr); err == nil {
+		host = h
+	}
+	return strings.ToLower(strings.TrimSpace(email)) + "|" + host
+}
 
 // AuthService implements the auth service.
 type AuthService struct {
@@ -68,10 +88,16 @@ func (s *AuthService) Login(ctx context.Context, req *connect.Request[v1pb.Login
 			return nil, err
 		}
 	} else {
+		throttleKey := loginThrottleKey(request.Email, req.Peer().Addr)
+		if s.stateCfg.LoginLimiter.Blocked(throttleKey, time.Now()) {
+			return nil, connect.NewError(connect.CodeResourceExhausted, errors.Errorf("too many failed login attempts, try again later"))
+		}
 		loginUser, err = s.getAndVerifyUser(ctx, request)
 		if err != nil {
+			s.stateCfg.LoginLimiter.RecordFailure(throttleKey, time.Now())
 			return nil, err
 		}
+		s.stateCfg.LoginLimiter.Reset(throttleKey)
 		// Reset password restriction only works for end user with email & password login.
 		response.RequireResetPassword = s.needResetPassword(ctx, loginUser)
 	}
@@ -215,6 +241,11 @@ func (s *AuthService) getAndVerifyUser(ctx context.Context, request *v1pb.LoginR
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get user by email %q", request.Email))
 	}
 	if user == nil {
+		// Still spend the bcrypt time of a real comparison: otherwise the
+		// response time tells an attacker which emails exist.
+		if hash, err := dummyPasswordHash(); err == nil {
+			_ = bcrypt.CompareHashAndPassword(hash, []byte(request.Password))
+		}
 		return nil, invalidUserOrPasswordError
 	}
 	// Compare the stored hashed password, with the hashed version of the password that was received.
