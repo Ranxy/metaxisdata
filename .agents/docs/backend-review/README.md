@@ -14,8 +14,9 @@
 - `gofmt -l backend/` 空输出；`go build ./...`、`go vet ./...`、`go test ./...` 全部 exit 0
 - `golangci-lint run --allow-parallel-runners` ✅ **0 issues**（环境限制已消失，lint 清洁度现已验证）
 - `go vet -tags integration ./...` ✅ exit 0（仅编译，未实际运行集成用例）
-- release 构建 `go build -ldflags "-w -s" -p=16 -o ./build/metaxisdata ./backend/bin/server/main.go` ✅ exit 0
-  - ⚠️ 但 `-tags release` 目前**编译失败**：`profile_release.go` 导入 `github.com/Ranxy/laelia/...`（应为 `metaxisdata`），见 `01-entrypoint-server.md` C1
+- dev 构建 `go build -ldflags "-w -s" -p=16 -o ./build/metaxisdata ./backend/bin/server/main.go` ✅ exit 0
+- prod profile：`go build -tags release ./backend/bin/server/`、`go vet -tags release ./...`、`go build -ldflags "-w -s" -p=16 -tags release ./backend/bin/server/main.go` 全部 ✅ exit 0（`84b16db` 修正了 `profile_release.go` 的 import）
+  - 注意：`Mode` 由 build tag 决定（加 `release` ⇒ `ReleaseModeProd`，否则 `ReleaseModeDev`），而 `Makefile`/CI/Docker **没有任何地方加 `-tags release`**，因此现存构建产物仍按 dev 模式运行
 - 前端 `biome check`、`eslint`、`vue-tsc --build` 均通过（仓库内 `vitest` 无测试文件）
 
 **修复状态标记**（用于下文全部模块报告）：
@@ -67,9 +68,9 @@
 整个身份层唯一真正生效的检查是 `ListAuditLogs`。
 
 ### 2. JWT 签名密钥是公开常量
-> **◐ 部分修复（阶段 0）** · `adfec91`：硬编码常量已删除，改为 `JWT_SECRET` 环境变量（缺失时回退 DB `AUTH_SECRET`）且 `< 32` 字符启动失败；历史 token 因 `WithValidMethods/WithIssuer/WithExpirationRequired` 全部失效。**剩余**：`-tags release` 的 prod profile 因错误模块路径无法编译；`Mode` 默认仍为 `dev`。
+> **✅ 已修复（阶段 0）** · `adfec91` `84b16db`：硬编码常量已删除，改为 `JWT_SECRET` 环境变量（缺失时回退 DB `AUTH_SECRET`）且 `< 32` 字符启动失败；解析侧加 `WithValidMethods(HS256)`/`WithIssuer`/`WithExpirationRequired`，历史 token 全部失效。prod profile（`-tags release` ⇒ `Mode=prod`）现已可编译。**注意**：`Makefile`/CI/Docker 均未使用该 tag，默认构建仍按 dev 运行，详见 `01` C1。
 
-`backend/bin/server/cmd/profile_dev.go:11` 把 `Secret` 硬编码为 `"00000000-0000-0000-0000-000000000000"`，且 `activeProfile` 是唯一实现（无 build tag、无 prod 版本），`Mode` 恒为 `dev`。攻击者可自行签发 `sub=1`（首个用户即 workspaceAdmin）、`aud=mt.user.access.dev` 的 token，且**跨实例通用**。随机生成的 `AUTH_SECRET` 只用于字段混淆，从不参与 JWT。
+`backend/bin/server/cmd/profile_dev.go:11` 当时把 `Secret` 硬编码为 `"00000000-0000-0000-0000-000000000000"`，且 `activeProfile` 是唯一实现（无 build tag、无 prod 版本），`Mode` 恒为 `dev`。攻击者可自行签发 `sub=1`（首个用户即 workspaceAdmin）、`aud=mt.user.access.dev` 的 token，且**跨实例通用**。随机生成的 `AUTH_SECRET` 只用于字段混淆，从不参与 JWT。
 
 ### 3. SQL 注入（6 处）
 > **✅ 已修复（阶段 0）** · `3321801`：4 处 handler filter 全部改为 `LIKE $n` 参数绑定并转义 `%`/`_`，label key 参数化；`store/principal.go`、`store/group.go` 的 project ID 先经 `common.IsValidResourceID` 校验；新增 `backend/api/v1/filter_injection_test.go` 守卫测试（含 `TestLikePatternEscapesWildcards`）。
@@ -104,7 +105,7 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 
 | # | 阶段 0 要求 | 状态 | 提交 | 落地说明 |
 | --- | --- | --- | --- | --- |
-| 1 | JWT 签名密钥环境注入 + fail-closed；作废历史 token | ◐ | `adfec91` | 删除硬编码常量；`JWT_SECRET` 环境变量优先，缺失时回退 DB 中每部署随机的 `AUTH_SECRET`；`< 32` 字符启动失败；解析侧加 `WithValidMethods(HS256)`/`WithIssuer`/`WithExpirationRequired`，历史 token 全部失效。**遗留**：`profile_release.go` 导入 `github.com/Ranxy/laelia/...`，`-tags release` 编译失败，`Mode=prod` 尚不可用。 |
+| 1 | JWT 签名密钥环境注入 + fail-closed；作废历史 token | ✅ | `adfec91` `84b16db` | 删除硬编码常量；`JWT_SECRET` 环境变量优先，缺失时回退 DB 中每部署随机的 `AUTH_SECRET`；`< 32` 字符启动失败；解析侧加 `WithValidMethods(HS256)`/`WithIssuer`/`WithExpirationRequired`，历史 token 全部失效。prod profile（`-tags release` ⇒ `Mode=prod`）已可编译并通过 `go vet -tags release ./...`。**注意**：无任何构建目标使用该 tag，默认构建仍为 dev（见 `01` H2 的 CORS 影响）。 |
 | 2 | 恢复授权层：用户/实例/数据源/OpenLineage key 写操作加管理员校验 | ◐ | `ec49607` `0f2165e` | 重建 `ACLInterceptor` 并接线；proto 逐方法声明 `permission`，非空即要求 workspaceAdmin，覆盖用户删除/恢复、实例与数据源全部写操作（含 `validate_only`）、`SyncDatabase`、OpenLineage namespace/key、LLM profile、settings 写入；`UpdateUser` 因含自助场景在 handler 内鉴权。**剩余**：读路径未收紧；permission 到 role 的细粒度映射未实现（当前"非空 ⇒ 管理员"）。 |
 | 3 | 关闭未认证注册或强制 `DisallowSignup`；首个管理员授予改原子 | ✅ | `5b19778` `c4e22fc` | `CreateUser` 按 `disallow_signup` 判定（管理员可建任意用户；其他调用者只能注册 END_USER；首个 END_USER 始终放行以完成引导）；store `CreateUser` 用 `pg_advisory_xact_lock` 串行化并在同一事务内授予首个管理员（SSO 首用户路径顺带修复）；`CountUsers` 只统计未删除用户；新增 `SettingService` + `/settings/general` 供管理员开关。 |
 | 4 | 修 SQL 注入（user/instance/database filter + principal/group project ID） | ✅ | `3321801` | 见执行摘要第 3 条。 |
@@ -157,7 +158,7 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 2. **再读** [`04-api-v1.md`](04-api-v1.md) 与 [`03-store.md`](03-store.md)，覆盖注入、SSRF、无界查询与持久层正确性。
 3. **然后** [`06-runners-migrator.md`](06-runners-migrator.md)（迁移与同步的正确性/数据安全）。
 4. **最后** [`05`](05-components.md)、[`07`](07-common-utils.md)、[`08`](08-proto-contract.md)、[`09`](09-tests.md) 与 [`10`](10-legacy-debt-and-roadmap.md)（组件、基础设施、契约、测试、清理路线）。
-5. 整改排期见 [`10-legacy-debt-and-roadmap.md`](10-legacy-debt-and-roadmap.md) 第四节，其中"阶段 0：安全止血"已于本轮完成（3 条完整修复、3 条部分修复，剩余项已逐条标注），可在对外部署前作为基线。
+5. 整改排期见 [`10-legacy-debt-and-roadmap.md`](10-legacy-debt-and-roadmap.md) 第四节，其中"阶段 0：安全止血"已于本轮完成（4 条完整修复、2 条部分修复，剩余项已逐条标注），可在对外部署前作为基线。
 
 ---
 

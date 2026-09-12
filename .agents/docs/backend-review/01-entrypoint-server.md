@@ -4,16 +4,17 @@
 
 **结论**：这一层代码量不大，但集中了 3 个全局性的严重问题（硬编码 JWT 密钥、权限拦截器被注释、panic 堆栈回传客户端），以及若干"看起来在配置、实际没接线"的死配置（日志级别、JSON 日志、多个 CLI flag）。启动装配本身可以工作（`go build`/`go vet`/`go test ./...` 均通过），但可观测性和关停路径有明确缺陷。
 
-**阶段 0 更新**：C1 ◐、C2 ✅、H1 ◐、H5 ◐ 已处理；H2（CORS/CSRF）与 H4（日志接线）**未处理**，仍待阶段 1。阶段 0 后 `golangci-lint` 已可运行（0 issues）。
+**阶段 0 更新**：C1 ✅、C2 ✅、H1 ◐、H5 ◐ 已处理；H2（CORS/CSRF）与 H4（日志接线）**未处理**，仍待阶段 1。阶段 0 后 `golangci-lint` 已可运行（0 issues），`-tags release` 也恢复可编译。
 
 ---
 
 ## 严重（Critical）
 
 ### C1. JWT 签名密钥硬编码，且 `Mode` 永远是 dev
-> **◐ 部分修复（阶段 0）** · `adfec91`
-> - 已修：`p.Secret` 的硬编码常量被删除；`getBaseProfile` 改为 `Secret: os.Getenv("JWT_SECRET")`；`server.resolveJWTSecret` 在环境变量为空时回退到 DB 的 `AUTH_SECRET`，两者都缺失或长度 `< 32`（`minJWTSecretLength`）则启动失败（fail-closed）。`auth.go` 解析侧加 `WithValidMethods(HS256)`/`WithIssuer(issuer)`/`WithExpirationRequired()`，历史 token 因签名密钥变化与声明校验全部失效。
-> - 剩余：`profile_release.go`（`-tags release`）导入 `github.com/Ranxy/laelia/backend/...`，而本仓库 module 是 `github.com/Ranxy/metaxisdata`，`go build -tags release ./backend/bin/server/` 直接编译失败（`laelia` 疑为复制粘贴残留）——prod profile 实际不可用，`Mode` 默认仍为 `dev`。另注意 `profile.Mode` 恒为 dev 带来的 CORS/audience 影响见 H2。
+> **✅ 已修复（阶段 0）** · `adfec91` `84b16db`
+> - 硬编码常量被删除；`getBaseProfile` 改为 `Secret: os.Getenv("JWT_SECRET")`；`server.resolveJWTSecret` 在环境变量为空时回退到 DB 的 `AUTH_SECRET`，两者都缺失或长度 `< 32`（`minJWTSecretLength`）则启动失败（fail-closed）。`auth.go` 解析侧加 `WithValidMethods(HS256)`/`WithIssuer(issuer)`/`WithExpirationRequired()`，历史 token 因签名密钥变化与声明校验全部失效。
+> - **prod profile 已可用**：`activeProfile` 不再是唯一实现，新增 `//go:build release` 的 `profile_release.go`（`Mode = common.ReleaseModeProd`）；`84b16db` 把它的两个 import 从 `github.com/Ranxy/laelia/...` 修正为 `github.com/Ranxy/metaxisdata/backend/common` 与 `.../backend/config`。`go build -tags release ./backend/bin/server/` 与 `go vet -tags release ./...` 均通过。
+> - **注意（非缺陷，但部署相关）**：`Mode` 完全由 build tag 决定，而 `Makefile`、CI、Docker 与 AGENTS.md 的构建命令**都没有 `-tags release`**，因此默认产物仍以 `ReleaseModeDev` 运行（CORS 影响见 H2）。若要 prod 行为，构建时必须显式加上 `-tags release`，或在后续阶段把模式改为运行时配置。
 
 - **位置**：`backend/bin/server/cmd/profile_dev.go:10-11`、`backend/server/server.go:106`、`backend/server/grpc_routes.go:83`
 - **证据**：
@@ -61,10 +62,13 @@
 - **详见**：`02-auth-authorization.md`。
 
 ### H2. dev 模式恒为真 → CORS 永久全开且允许携带凭证
-> **⏳ 未处理（阶段 0 范围外）**：本轮只删除了硬编码 JWT 常量，`profile_dev.go` 仍设置 `p.Mode = common.ReleaseModeDev`，而 `Mode=prod` 的 release profile 又无法编译（见 C1），因此 CORS 全开与 `SameSite=None` 的现状**没有改变**。修 CORS 时必须同时解决 release profile 的编译问题，否则无法真正切到非 dev 模式。
+> **⏳ 未处理（阶段 0 范围外）** · 现状已部分缓解但仍不完整：
+> - CORS 中间件本身是**条件安装**的（`if profile.Mode == common.ReleaseModeDev`），因此用 `-tags release` 构建时不注册任何 CORS 中间件 → 同源限制生效，H2 的主要风险消失。**但默认构建（`go build`/`make run`/现有 CI）不带该 tag，`Mode` 仍是 dev，CORS 依旧全开**。
+> - cookie 侧未改：`GetTokenCookie` 仍按**客户端可控的** `Origin` 头决定 `SameSite`（https ⇒ `SameSite=None`），且没有 CSRF token。即使 CORS 关闭，这也只是深度防御缺口，建议一并修（例如依据服务端 TLS 配置、默认 `SameSite=Lax`）。
+> - 修 CORS/CSRF 时的依赖项已解除：`-tags release` 现在可以编译（C1）。
 
 - **位置**：`backend/server/echo_routes.go:25-35`、`backend/api/auth/header.go:46-50`
-- **证据**：`if profile.Mode == common.ReleaseModeDev { ... AllowOriginFunc: func(string) (bool, error) { return true, nil } ... AllowCredentials: true }`，而 `Mode` 恒为 `dev`；HTTPS 下 cookie 设为 `SameSite=None; Secure`，`origin` 又来自客户端可控的 `Origin`/`grpcgateway-origin` 头。
+- **证据（默认构建仍是 dev）**：`if profile.Mode == common.ReleaseModeDev { ... AllowOriginFunc: func(string) (bool, error) { return true, nil } ... AllowCredentials: true }`，而默认构建的 `Mode` 为 `dev`；HTTPS 下 cookie 设为 `SameSite=None; Secure`，`origin` 又来自客户端可控的 `Origin`/`grpcgateway-origin` 头。
 - **影响**：HTTPS 部署时任意站点可发起带凭证的跨域写请求（无 CSRF token），可创建/删除用户、创建实例等。
 - **修复**：CORS 改为显式 allowlist 且与 `Mode` 解耦；`Secure` 依据服务端 TLS 配置而非请求头；增加 CSRF 防护。
 
@@ -153,8 +157,8 @@
 
 ## 建议的整改顺序
 
-1. ~~修 C1（JWT 密钥）与 H1（授权）~~ —— **阶段 0 已部分完成**：C1 改为环境注入 + fail-closed（`adfec91`），H1 重建拦截器并接线（`ec49607`）。**收尾**：修 `profile_release.go` 模块路径，让 `-tags release` 可编译，真正启用 prod profile。
-2. ~~修 C2（堆栈回传）~~ ✅（`5446a10`）；**H2（CORS/CSRF）仍未处理**，依赖上一条的 prod profile。
+1. ~~修 C1（JWT 密钥）与 H1（授权）~~ —— **阶段 0 已完成**：C1 ✅（环境注入 + fail-closed + 可用 prod profile，`adfec91` `84b16db`），H1 ◐（拦截器重建并接线，`ec49607`；读路径与细粒度映射留待后续）。
+2. ~~修 C2（堆栈回传）~~ ✅（`5446a10`）；**H2（CORS/CSRF）仍未处理**——用 `-tags release` 可绕开全开 CORS，但默认构建仍是 dev，且 cookie 的 `SameSite` 逻辑与 CSRF 防护未改。
 3. 接线日志系统（H4）与 `--external-url`（H5），否则 SSO 与排障都不可用。H5 已部分完成（SettingService 可写 `external_url`，`c4e22fc`），仍缺 CLI flag 与前端入口。
 4. 清理关停路径（M1）与连接池（M4）。
-5. 删除未注册 flag、调试残留与死字段。
+5. 删除未注册 flag、调试残留与死字段；补一个真正使用 `-tags release` 的构建目标（Makefile/CI），否则 prod 模式形同虚设。

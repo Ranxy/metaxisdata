@@ -47,7 +47,7 @@
 - **`GetQueryExportFactors`/`findField` 脆弱**：`common/cel.go:208-248`，`if issues != nil` 不是正确的失败判断（其它地方用 `issues.Err() != nil`）；只检查 `Args[0]`，`"x" == resource.database` 检测不到；`idExpr != nil` 分支提前 `return` 不递归；可能把 `""` 追加进 `Databases`。
 - **`guid.go` 拼写错误**：`GetInstaceFromGUID`（导出 API，用于 `database_service.go:308,919`）；`GetDatabaseFromGUID` 无调用者；`llm/tools.go:118-124` 重复实现了 GUID 解析。
 - **`const.go` 未使用常量**：`DefaultTestEnvironmentID`、`DefaultProdEnvironmentID`、`MetaInsertBatchSize`；`ServiceAccountAccessKeyPrefix` 是服务账号遗留。
-- **`config.go`**：`ReleaseModeProd` 现被 `profile_release.go` 引用（阶段 0），但该文件因错误的模块路径（`github.com/Ranxy/laelia/...`）无法编译，`ReleaseModeProd` 实际仍不可用；`ReleaseModeDev` 只被 `profile.go` 的字面量 `common.ReleaseMode("dev")` 间接使用。
+- **`config.go`**：`ReleaseModeProd` 现被 `profile_release.go`（`//go:build release`，阶段 0）使用，import 修正后 `-tags release` 构建通过（`84b16db`）；但 `ReleaseModeDev` 只被 `profile.go` 的字面量 `common.ReleaseMode("dev")` 间接使用，且没有任何构建目标带 `-tags release`，因此 prod 模式需要显式构建参数才生效。
 - **`utils.Map`**（`utils/collection.go`）零调用者。
 - **`utils/member.go`**：整段注释掉的 `GetUsersByRoleInIAMPolicy`（L26-68）是死 Bytebase 代码；`MemberContainsUser`/`GetUserIAMPolicyBindings`/`GetUserRolesInIamPolicy` 只通过彼此可达（`GetUserFormattedRolesMap` 是唯一活跃入口）；`utils.Uniq` 只被死的 `GetUserRolesInIamPolicy` 使用。
 - **`stacktrace.TakeStacktrace`** 在 recover 之后调用时拿到的不是 panic 发生点的栈（见 `01` M6）。

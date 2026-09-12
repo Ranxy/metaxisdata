@@ -4,18 +4,18 @@
 
 **结论**：这是整个后端风险最集中的模块。认证层能"跑通"，但密钥是公开常量；授权层实际上不存在（拦截器被注释、`permission` 字段从不校验）；公开注册接口可未认证创建账号，且首个用户自动成为管理员；用户列表过滤器存在 SQL 注入；审计日志会把一次性明文 API key 落库。**这些不是"优化项"，而是必须在任何对外部署前修复的安全漏洞。**
 
-**阶段 0 更新**：C1 ◐、C2 ✅、C3 ✅、C4 ◐、H3 ✅，另修复 M5（SSO 首用户管理员）、M7（`DisallowSignup` 真正生效）、M12（`allow_missing` 需管理员）与低优先级的 JWT 解析校验项。H1（token 吊销）、H4（最后管理员组绕过）、M1/M3/M4/M6 等**仍未处理**；`userCountGuard` 仍是空实现（首管理员选举已下沉到 store，不再依赖它）。
+**阶段 0 更新**：C1 ✅、C2 ✅、C3 ✅、C4 ◐、H3 ✅，另修复 M5（SSO 首用户管理员）、M7（`DisallowSignup` 真正生效）、M12（`allow_missing` 需管理员）与低优先级的 JWT 解析校验项。H1（token 吊销）、H4（最后管理员组绕过）、M1/M3/M4/M6 等**仍未处理**；`userCountGuard` 仍是空实现（首管理员选举已下沉到 store，不再依赖它）。
 
 ---
 
 ## 严重（Critical）
 
 ### C1. JWT 签名密钥为硬编码常量，`Mode` 恒为 dev
-> **◐ 部分修复（阶段 0）** · `adfec91`：硬编码常量删除，改为 `JWT_SECRET` 环境变量（缺失时回退 DB `AUTH_SECRET`），`< 32` 字符启动失败；解析侧加 `WithValidMethods(HS256)`/`WithIssuer`/`WithExpirationRequired()`，历史 token 全部失效。**剩余**：`-tags release` 的 prod profile 因错误的模块路径（`github.com/Ranxy/laelia/...`）无法编译，`Mode` 默认仍为 `dev`（audience 与 CORS 影响仍在），详见 `01` C1。
+> **✅ 已修复（阶段 0）** · `adfec91` `84b16db`：硬编码常量删除，改为 `JWT_SECRET` 环境变量（缺失时回退 DB `AUTH_SECRET`），`< 32` 字符启动失败；解析侧加 `WithValidMethods(HS256)`/`WithIssuer`/`WithExpirationRequired()`，历史 token 全部失效。新增的 `profile_release.go`（`-tags release`）提供 `Mode=prod`，import 修正后 release 构建与 `go vet -tags release ./...` 均通过。**注意**：`Mode` 仍由 build tag 决定，默认构建为 dev（audience 与 CORS 影响见 `01` H2）。
 
 - **位置**：`backend/bin/server/cmd/profile_dev.go:10-11`、`backend/server/server.go:106`、`backend/server/grpc_routes.go:83`、`backend/api/auth/auth.go:144-166`
 - **证据**：`p.Secret = "00000000-0000-0000-0000-000000000000"`，`activeProfile` 是唯一实现且无 build tag；`auth.go` 用该 secret 做 HS256 校验；`init.go:29-38` 生成的随机 `AUTH_SECRET` 只用于字段混淆。
-- **影响**：攻击者可自行签发 `kid=v1`、`sub=<任意用户 ID>`、`aud=mt.user.access.dev` 的 token 通过校验。由于 `Mode` 恒为 `dev`，所有部署 audience 相同，一个实例的 token 可在其他实例上使用，`sub=1` 即首个管理员。
+- **影响（修复前）**：攻击者可自行签发 `kid=v1`、`sub=<任意用户 ID>`、`aud=mt.user.access.dev` 的 token 通过校验。由于 `Mode` 恒为 `dev`，所有部署 audience 相同，一个实例的 token 可在其他实例上使用，`sub=1` 即首个管理员。
 - **修复**：从环境变量/`AUTH_SECRET` 读取签名密钥并在缺失时启动失败；删除 dev 常量；补充 prod profile；已运行的部署需轮换并作废全部历史 token。
 
 ### C2. 未认证即可创建用户，且首个用户自动成为 workspaceAdmin
@@ -84,7 +84,7 @@
 
 ### H2. CORS 永久全开 + `SameSite=None` cookie → CSRF
 - **位置**：`backend/server/echo_routes.go:25-35`、`backend/api/auth/header.go:46-50`
-- **证据**：`Mode` 恒为 `dev`，因此 `AllowOriginFunc` 返回 `true` 且 `AllowCredentials: true`；cookie 的 `SameSite`/`Secure` 依据客户端可控的 `Origin` 头决定，HTTPS 时为 `SameSite=None`。
+- **证据（默认构建仍是 dev）**：`Mode` 恒为 `dev`，因此 `AllowOriginFunc` 返回 `true` 且 `AllowCredentials: true`；cookie 的 `SameSite`/`Secure` 依据客户端可控的 `Origin` 头决定，HTTPS 时为 `SameSite=None`。
 - **影响**：HTTPS 部署下任意站点可发起携带 cookie 的跨域写请求（预检通过），无 CSRF token。
 - **修复**：CORS 改为配置驱动的显式 allowlist，与 `Mode` 解耦；`Secure` 依据服务端 TLS 配置；增加 CSRF 防护。
 

@@ -99,14 +99,14 @@
 
 | # | 事项 | 状态 | 提交 |
 | --- | --- | --- | --- |
-| 1 | JWT 签名密钥改为环境注入并 fail-closed；作废历史 token | ◐ | `adfec91` |
+| 1 | JWT 签名密钥改为环境注入并 fail-closed；作废历史 token | ✅ | `adfec91` `84b16db` |
 | 2 | 恢复授权层：至少给用户/实例/数据源/OpenLineage key 的写操作加管理员校验 | ◐ | `ec49607` `0f2165e` |
 | 3 | 关闭未认证注册或强制 `DisallowSignup`；首个管理员授予改原子 | ✅ | `5b19778` `c4e22fc` |
 | 4 | 修 SQL 注入（user/instance/database filter + principal/group project ID） | ✅ | `3321801` |
 | 5 | 审计脱敏补 `key`/`content`/`sslKey`/`keytab`，并为 `CreateAPIKeyResponse` 加测试 | ✅ | `89ef84a` |
 | 6 | panic 不再回传堆栈；`validate_only` 加权限 + 内网地址限制 | ◐ | `5446a10` `ec49607` |
 
-- **1 的剩余项**：`JWT_SECRET` 环境变量优先、缺失时回退 DB `AUTH_SECRET`、`< 32` 字符启动失败已完成，解析侧三项校验已补（历史 token 失效）。但 `profile_release.go` 导入错误的模块路径 `github.com/Ranxy/laelia/...`，`-tags release` 无法编译 → prod profile 不可用，`Mode` 仍恒为 `dev`。
+- **1 的收尾说明（非剩余缺陷）**：`JWT_SECRET` 环境变量优先、缺失时回退 DB `AUTH_SECRET`、`< 32` 字符启动失败、解析侧三项校验（历史 token 失效）均已完成；`profile_release.go` 的 import 修正后（`84b16db`）`-tags release` 可编译并通过 `go vet -tags release ./...`。但 `Makefile`/CI/Docker 未使用该 tag，默认产物仍是 dev 模式——部署 prod 必须显式 `-tags release`，后续应把它固化到构建目标或改为运行时配置。
 - **2 的剩余项**：写操作已全部要求 workspaceAdmin；读路径（Get/List/血缘/OpenLineage run/raw_payload）仍未收紧；尚未实现 permission→role 的细粒度映射（当前语义是"注解非空 ⇒ 管理员"）。
 - **6 的剩余项**：**内网地址限制经确认后主动放弃**——自托管产品的核心用法就是让用户连接内网数据库，加私网 deny 会破坏功能，因此只保留管理员权限约束；CEL 类型断言 panic 本身仍未修（只是不再泄露堆栈）。
 - 配置侧顺带完成：`config.Profile.Secret` 现在由 `JWT_SECRET` 赋值（不再是"从未赋值"）；`disallow_signup` 默认仍为 `false`，需管理员在新增的 `/settings/general` 页面显式打开。
@@ -115,7 +115,7 @@
 7. 补 `migration/0.1/` 增量 + guard 测试；修 `db_schema` 过滤。
 8. 修 schemasync 两个生命周期 bug 与破坏性 diff；`LastSyncTime` 进事务。
 9. 修 CEL 类型断言 panic；统一 `InvalidArgument`。
-10. 接线日志系统（`slog.SetDefault` + LogLevel/Replace）；注册 `--external-url`。
+10. 接线日志系统（`slog.SetDefault` + LogLevel/Replace）；注册 `--external-url`；把 `-tags release` 固化到构建目标（Makefile/CI/Docker/文档），否则 prod profile 不会被任何既有构建使用。
 11. `UpdateInstance(data_sources)` 改为按 ID 合并；`UpdateDatabase` 判空。
 
 ### 阶段 2：性能与资源（未开始）
@@ -139,5 +139,5 @@
 - `golangci-lint` 在审查环境无法运行（cache/加载问题，非仓库缺陷），当时 lint 清洁度未验证；**阶段 0 修复后已可运行并输出 `0 issues.`**。
 - 多数安全结论（SQL 注入、JWT 伪造、SSRF、缓存串租户、panic 路径）为代码级论证，**建议在修复前先补最小复现测试**（尤其是 SQL 注入与 ExplainSQL 缓存碰撞）。
 - 阶段 0 已补的回归测试：`backend/api/v1/filter_injection_test.go`（注入载荷 + LIKE 转义）、`backend/api/v1/audit_test.go` 扩展（`key`/`sslKey`/`cert` 等脱敏）。
-- 阶段 0 复测：`gofmt -l` 空、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`go vet -tags integration ./...`（仅编译）与 release 二进制构建全部通过；`-tags release` 编译失败（`profile_release.go` 模块路径错误）。
+- 阶段 0 复测：`gofmt -l` 空、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`go vet -tags integration ./...`（仅编译）与 dev/prod 两种二进制构建全部通过；prod profile 需 `go build -tags release`（`84b16db` 修正 import 后才可用）。
 - 部分结论标注了"待确认"，需要与作者或通过集成测试确认（见各模块报告末尾）。
