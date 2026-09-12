@@ -3,6 +3,8 @@ package store
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestMaskOpenLineageAPIKey(t *testing.T) {
@@ -25,9 +27,19 @@ func TestMaskOpenLineageAPIKey(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := maskOpenLineageAPIKey(test.plainKey); got != test.want {
-				t.Fatalf("maskOpenLineageAPIKey() = %q, want %q", got, test.want)
-			}
+			require.Equal(t, test.want, maskOpenLineageAPIKey(test.plainKey))
 		})
 	}
+}
+
+// The digest is the O(1) lookup key for validation. It must be stable for the
+// same plaintext and different for a different one; the bcrypt hash still
+// decides acceptance, so the digest need not be a password hash.
+func TestOpenLineageAPIKeyDigest(t *testing.T) {
+	t.Parallel()
+
+	key := "ol_6271bc3fd27f3d5a4d540d0a58bf774b53df50ef95475a8d689edd5df8"
+	require.Len(t, openLineageAPIKeyDigest(key), 64)
+	require.Equal(t, openLineageAPIKeyDigest(key), openLineageAPIKeyDigest(key))
+	require.NotEqual(t, openLineageAPIKeyDigest(key), openLineageAPIKeyDigest(key+"x"))
 }

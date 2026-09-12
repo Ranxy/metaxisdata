@@ -172,6 +172,9 @@
               <TableHead>{{
                 t("openlineageSettings.lastUsedAt")
               }}</TableHead>
+              <TableHead>{{
+                t("openlineageSettings.keyScope")
+              }}</TableHead>
               <TableHead class="text-right">
                 {{ t("openlineageSettings.actions") }}
               </TableHead>
@@ -197,6 +200,9 @@
               </TableCell>
               <TableCell class="text-muted-foreground">
                 {{ formatTimestamp(key.lastUsedAt) }}
+              </TableCell>
+              <TableCell class="font-mono text-sm">
+                {{ key.scopeNamespace || t("openlineageSettings.keyScopeAll") }}
               </TableCell>
               <TableCell class="text-right">
                 <Button
@@ -327,6 +333,11 @@
               t('openlineageSettings.apiKeyDescriptionPlaceholder')
             "
             required
+          />
+          <AppInput
+            v-model="keyForm.scopeNamespace"
+            :label="t('openlineageSettings.keyScope')"
+            :placeholder="t('openlineageSettings.keyScopePlaceholder')"
           />
         </div>
       </form>
@@ -495,7 +506,7 @@ const showCreateKeyModal = ref(false);
 const showKeyResultModal = ref(false);
 const showRevokeKeyModal = ref(false);
 const keyToRevoke = ref<APIKey | null>(null);
-const keyForm = ref({ description: "" });
+const keyForm = ref({ description: "", scopeNamespace: "" });
 const createdKeyValue = ref("");
 const copied = ref(false);
 
@@ -626,7 +637,7 @@ async function handleDeleteMapping() {
 
 // API key actions
 function openCreateKeyModal() {
-  keyForm.value = { description: "" };
+  keyForm.value = { description: "", scopeNamespace: "" };
   showCreateKeyModal.value = true;
 }
 
@@ -639,7 +650,10 @@ async function handleCreateKey() {
   if (!keyForm.value.description) return;
   isCreatingKey.value = true;
   try {
-    const resp = await createAPIKey(keyForm.value.description);
+    const resp = await createAPIKey(
+      keyForm.value.description,
+      keyForm.value.scopeNamespace
+    );
     showCreateKeyModal.value = false;
     createdKeyValue.value = resp.key;
     copied.value = false;

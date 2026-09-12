@@ -1956,9 +1956,13 @@ type APIKey struct {
 	CreatedAt   *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	LastUsedAt  *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=last_used_at,json=lastUsedAt,proto3" json:"last_used_at,omitempty"`
 	// Non-empty only when the key is revoked.
-	RevokedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RevokedAt *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"`
+	// The OpenLineage namespace this key may write to. Empty means the key is
+	// unscoped and may submit events for any namespace. Ingestion rejects an
+	// event whose job or dataset namespace differs from the scope.
+	ScopeNamespace string `protobuf:"bytes,8,opt,name=scope_namespace,json=scopeNamespace,proto3" json:"scope_namespace,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *APIKey) Reset() {
@@ -2040,11 +2044,21 @@ func (x *APIKey) GetRevokedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *APIKey) GetScopeNamespace() string {
+	if x != nil {
+		return x.ScopeNamespace
+	}
+	return ""
+}
+
 type CreateAPIKeyRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Description   string                 `protobuf:"bytes,1,opt,name=description,proto3" json:"description,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Description string                 `protobuf:"bytes,1,opt,name=description,proto3" json:"description,omitempty"`
+	// Optional OpenLineage namespace to restrict the key to. Empty creates an
+	// unscoped key, which is what the previous behavior always did.
+	ScopeNamespace string `protobuf:"bytes,2,opt,name=scope_namespace,json=scopeNamespace,proto3" json:"scope_namespace,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CreateAPIKeyRequest) Reset() {
@@ -2080,6 +2094,13 @@ func (*CreateAPIKeyRequest) Descriptor() ([]byte, []int) {
 func (x *CreateAPIKeyRequest) GetDescription() string {
 	if x != nil {
 		return x.Description
+	}
+	return ""
+}
+
+func (x *CreateAPIKeyRequest) GetScopeNamespace() string {
+	if x != nil {
+		return x.ScopeNamespace
 	}
 	return ""
 }
@@ -2452,7 +2473,7 @@ const file_v1_openlineage_service_proto_rawDesc = "" +
 	"updateMask\"Y\n" +
 	"\x1dDeleteNamespaceMappingRequest\x128\n" +
 	"\x04name\x18\x01 \x01(\tB$\xe0A\x02\xfaA\x1e\n" +
-	"\x1cmetaxisdata/NamespaceMappingR\x04name\"\xe8\x02\n" +
+	"\x1cmetaxisdata/NamespaceMappingR\x04name\"\x91\x03\n" +
 	"\x06APIKey\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
@@ -2465,10 +2486,12 @@ const file_v1_openlineage_service_proto_rawDesc = "" +
 	"\flast_used_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"lastUsedAt\x129\n" +
 	"\n" +
-	"revoked_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\trevokedAt:6\xeaA3\n" +
-	"\x12metaxisdata/APIKey\x12\x1dopenlineage/apiKeys/{api_key}\"<\n" +
+	"revoked_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\trevokedAt\x12'\n" +
+	"\x0fscope_namespace\x18\b \x01(\tR\x0escopeNamespace:6\xeaA3\n" +
+	"\x12metaxisdata/APIKey\x12\x1dopenlineage/apiKeys/{api_key}\"e\n" +
 	"\x13CreateAPIKeyRequest\x12%\n" +
-	"\vdescription\x18\x01 \x01(\tB\x03\xe0A\x02R\vdescription\"Y\n" +
+	"\vdescription\x18\x01 \x01(\tB\x03\xe0A\x02R\vdescription\x12'\n" +
+	"\x0fscope_namespace\x18\x02 \x01(\tR\x0escopeNamespace\"Y\n" +
 	"\x14CreateAPIKeyResponse\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12/\n" +
 	"\aapi_key\x18\x02 \x01(\v2\x16.metaxisdata.v1.APIKeyR\x06apiKey\"\x14\n" +

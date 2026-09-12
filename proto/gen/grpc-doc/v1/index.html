@@ -10237,6 +10237,15 @@ Format: openlineage/apiKeys/{api_key} </p></td>
                   <td><p>Non-empty only when the key is revoked. </p></td>
                 </tr>
               
+                <tr>
+                  <td>scope_namespace</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The OpenLineage namespace this key may write to. Empty means the key is
+unscoped and may submit events for any namespace. Ingestion rejects an
+event whose job or dataset namespace differs from the scope. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -10259,6 +10268,14 @@ Format: openlineage/apiKeys/{api_key} </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>scope_namespace</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Optional OpenLineage namespace to restrict the key to. Empty creates an
+unscoped key, which is what the previous behavior always did. </p></td>
                 </tr>
               
             </tbody>

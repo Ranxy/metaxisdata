@@ -2738,6 +2738,12 @@ components:
                     type: string
                     description: Non-empty only when the key is revoked.
                     format: date-time
+                scopeNamespace:
+                    type: string
+                    description: |-
+                        The OpenLineage namespace this key may write to. Empty means the key is
+                         unscoped and may submit events for any namespace. Ingestion rejects an
+                         event whose job or dataset namespace differs from the scope.
         AuditLog:
             type: object
             properties:
@@ -2988,6 +2994,11 @@ components:
             properties:
                 description:
                     type: string
+                scopeNamespace:
+                    type: string
+                    description: |-
+                        Optional OpenLineage namespace to restrict the key to. Empty creates an
+                         unscoped key, which is what the previous behavior always did.
         CreateAPIKeyResponse:
             type: object
             properties:

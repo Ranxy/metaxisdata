@@ -377,6 +377,9 @@ ALTER SEQUENCE namespace_mapping_id_seq RESTART WITH 101;
 
 
 -- openlineage_api_key stores hashed API keys for authenticating OpenLineage event submissions.
+-- key_digest is a SHA-256 lookup digest so validation does not have to bcrypt
+-- every row; scope_namespace restricts a key to one OpenLineage namespace
+-- ('' means unscoped).
 CREATE TABLE openlineage_api_key (
     id BIGSERIAL PRIMARY KEY,
     key_hash TEXT NOT NULL,
@@ -385,10 +388,13 @@ CREATE TABLE openlineage_api_key (
     created_by TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_used_at TIMESTAMPTZ,
-    revoked_at TIMESTAMPTZ
+    revoked_at TIMESTAMPTZ,
+    key_digest TEXT,
+    scope_namespace TEXT NOT NULL DEFAULT ''
 );
 
 CREATE UNIQUE INDEX idx_openlineage_api_key_hash ON openlineage_api_key(key_hash);
+CREATE UNIQUE INDEX idx_openlineage_api_key_digest ON openlineage_api_key(key_digest) WHERE key_digest IS NOT NULL;
 
 ALTER SEQUENCE openlineage_api_key_id_seq RESTART WITH 101;
 

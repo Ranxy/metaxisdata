@@ -363,10 +363,18 @@ message APIKey {
   google.protobuf.Timestamp last_used_at = 6;
   // Non-empty only when the key is revoked.
   google.protobuf.Timestamp revoked_at = 7;
+  // The OpenLineage namespace this key may write to. Empty means the key is
+  // unscoped and may submit events for any namespace. Ingestion rejects an
+  // event whose job or dataset namespace differs from the scope.
+  string scope_namespace = 8;
 }
 
 message CreateAPIKeyRequest {
   string description = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // Optional OpenLineage namespace to restrict the key to. Empty creates an
+  // unscoped key, which is what the previous behavior always did.
+  string scope_namespace = 2;
 }
 
 message CreateAPIKeyResponse {

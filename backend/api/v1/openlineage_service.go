@@ -250,7 +250,7 @@ func (s *OpenLineageService) CreateAPIKey(ctx context.Context, req *connect.Requ
 		createdBy = user.Email
 	}
 
-	plainKey, keyMsg, err := s.store.CreateOpenLineageAPIKey(ctx, req.Msg.GetDescription(), createdBy)
+	plainKey, keyMsg, err := s.store.CreateOpenLineageAPIKey(ctx, req.Msg.GetDescription(), createdBy, req.Msg.GetScopeNamespace())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to create API key"))
 	}
@@ -298,11 +298,12 @@ func convertNamespaceMapping(m *store.NamespaceMappingMessage) *v1pb.NamespaceMa
 
 func convertAPIKey(k *store.OpenLineageAPIKeyMessage) *v1pb.APIKey {
 	res := &v1pb.APIKey{
-		Name:        common.FormatAPIKey(k.ID),
-		MaskedKey:   k.MaskedKey,
-		Description: k.Description,
-		CreatedBy:   k.CreatedBy,
-		CreatedAt:   timestamppb.New(k.CreatedAt),
+		Name:           common.FormatAPIKey(k.ID),
+		MaskedKey:      k.MaskedKey,
+		Description:    k.Description,
+		CreatedBy:      k.CreatedBy,
+		CreatedAt:      timestamppb.New(k.CreatedAt),
+		ScopeNamespace: k.ScopeNamespace,
 	}
 	if k.LastUsedAt != nil {
 		res.LastUsedAt = timestamppb.New(*k.LastUsedAt)

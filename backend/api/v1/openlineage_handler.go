@@ -45,7 +45,8 @@ func (h *OpenLineageHandler) receiveEvent(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing or invalid Authorization header"})
 	}
 
-	if _, err := h.store.ValidateOpenLineageAPIKey(c.Request().Context(), apiKey); err != nil {
+	keyMessage, err := h.store.ValidateOpenLineageAPIKey(c.Request().Context(), apiKey)
+	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid API key"})
 	}
 
@@ -58,13 +59,16 @@ func (h *OpenLineageHandler) receiveEvent(c echo.Context) error {
 	// Detect whether the payload is a single event or a batch (JSON array).
 	trimmed := bytes.TrimLeft(body, " \t\n\r")
 	if len(trimmed) > 0 && trimmed[0] == '[' {
-		return h.processBatchEvents(c, body)
+		return h.processBatchEvents(c, body, keyMessage.ScopeNamespace)
 	}
 
 	event, err := openlineage.ParseRunEvent(body)
 	if err != nil {
 		slog.Warn("invalid OpenLineage event", "error", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	if !eventWithinScope(event, keyMessage.ScopeNamespace) {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "API key is not scoped to this OpenLineage namespace"})
 	}
 
 	persistedRun, err := h.persistEvent(c.Request().Context(), event)
@@ -81,7 +85,7 @@ func (h *OpenLineageHandler) receiveEvent(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte) error {
+func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, scope string) error {
 	var rawEvents []json.RawMessage
 	if err := json.Unmarshal(body, &rawEvents); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "failed to parse event array"})
@@ -90,7 +94,10 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte) err
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "empty event array"})
 	}
 
-	processed, invalid, failed := 0, 0, 0
+	// Parse everything before writing anything, so a scoped key is rejected as a
+	// whole request rather than half-applied.
+	var events []*openlineage.RunEvent
+	invalid := 0
 	var firstErr error
 	for i, raw := range rawEvents {
 		event, err := openlineage.ParseRunEvent(raw)
@@ -102,6 +109,17 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte) err
 			}
 			continue
 		}
+		if !eventWithinScope(event, scope) {
+			return c.JSON(http.StatusForbidden, map[string]any{
+				"error": "API key is not scoped to this OpenLineage namespace",
+				"index": i,
+			})
+		}
+		events = append(events, event)
+	}
+
+	processed, failed := 0, 0
+	for i, event := range events {
 		persistedRun, err := h.persistEvent(c.Request().Context(), event)
 		if err != nil {
 			slog.Error("failed to persist batch event", "index", i, "runId", event.Run.RunID, "error", err)
@@ -141,6 +159,29 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte) err
 		"processed": processed,
 		"failed":    invalid + failed,
 	})
+}
+
+// eventWithinScope reports whether a scoped key may submit this event. A key is
+// scoped to one OpenLineage namespace, and every namespace in the event -- the
+// job plus each input and output dataset -- must match it.
+func eventWithinScope(event *openlineage.RunEvent, scope string) bool {
+	if scope == "" {
+		return true
+	}
+	if event.Job.Namespace != scope {
+		return false
+	}
+	for _, dataset := range event.Inputs {
+		if dataset.Namespace != scope {
+			return false
+		}
+	}
+	for _, dataset := range event.Outputs {
+		if dataset.Namespace != scope {
+			return false
+		}
+	}
+	return true
 }
 
 func (h *OpenLineageHandler) persistEvent(ctx context.Context, event *openlineage.RunEvent) (*store.OpenLineageRunMessage, error) {

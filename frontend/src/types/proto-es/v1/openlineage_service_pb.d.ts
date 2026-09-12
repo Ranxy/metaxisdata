@@ -990,6 +990,15 @@ export declare type APIKey = Message<"metaxisdata.v1.APIKey"> & {
    * @generated from field: google.protobuf.Timestamp revoked_at = 7;
    */
   revokedAt?: Timestamp;
+
+  /**
+   * The OpenLineage namespace this key may write to. Empty means the key is
+   * unscoped and may submit events for any namespace. Ingestion rejects an
+   * event whose job or dataset namespace differs from the scope.
+   *
+   * @generated from field: string scope_namespace = 8;
+   */
+  scopeNamespace: string;
 };
 
 /**
@@ -1006,6 +1015,14 @@ export declare type CreateAPIKeyRequest = Message<"metaxisdata.v1.CreateAPIKeyRe
    * @generated from field: string description = 1;
    */
   description: string;
+
+  /**
+   * Optional OpenLineage namespace to restrict the key to. Empty creates an
+   * unscoped key, which is what the previous behavior always did.
+   *
+   * @generated from field: string scope_namespace = 2;
+   */
+  scopeNamespace: string;
 };
 
 /**

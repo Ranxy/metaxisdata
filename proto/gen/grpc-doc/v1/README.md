@@ -3530,6 +3530,7 @@ column, derived from the view&#39;s SQL.
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | last_used_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | revoked_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Non-empty only when the key is revoked. |
+| scope_namespace | [string](#string) |  | The OpenLineage namespace this key may write to. Empty means the key is unscoped and may submit events for any namespace. Ingestion rejects an event whose job or dataset namespace differs from the scope. |
 
 
 
@@ -3545,6 +3546,7 @@ column, derived from the view&#39;s SQL.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | description | [string](#string) |  |  |
+| scope_namespace | [string](#string) |  | Optional OpenLineage namespace to restrict the key to. Empty creates an unscoped key, which is what the previous behavior always did. |
 
 
 

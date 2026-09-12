@@ -140,8 +140,11 @@ export async function listAPIKeys() {
   return await openLineageClient.listAPIKeys(request);
 }
 
-export async function createAPIKey(description: string) {
-  const request = create(CreateAPIKeyRequestSchema, { description });
+export async function createAPIKey(description: string, scopeNamespace = "") {
+  const request = create(CreateAPIKeyRequestSchema, {
+    description,
+    scopeNamespace,
+  });
   return await openLineageClient.createAPIKey(request);
 }
 
