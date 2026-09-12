@@ -279,7 +279,10 @@ func (s *Store) UpdateDatabase(ctx context.Context, patch *UpdateDatabaseMessage
 	return s.GetDatabase(ctx, &FindDatabaseMessage{InstanceID: &patch.InstanceID, DatabaseName: &patch.DatabaseName, ShowDeleted: true})
 }
 
-func (*Store) listDatabaseImpl(ctx context.Context, txn *sql.Tx, find *FindDatabaseMessage) ([]*DatabaseMessage, error) {
+// buildListDatabaseQuery builds the scoped database list query. The scoping
+// predicates are the invariant: dropping the ShowDeleted guards silently widens
+// the result set, so the shape is asserted by database_test.go.
+func buildListDatabaseQuery(find *FindDatabaseMessage) (string, []any) {
 	where, args := []string{"TRUE"}, []any{}
 	if filter := find.Filter; filter != nil {
 		where = append(where, filter.Where)
@@ -332,6 +335,12 @@ func (*Store) listDatabaseImpl(ctx context.Context, txn *sql.Tx, find *FindDatab
 	if v := find.Offset; v != nil {
 		query += fmt.Sprintf(" OFFSET %d", *v)
 	}
+
+	return query, args
+}
+
+func (*Store) listDatabaseImpl(ctx context.Context, txn *sql.Tx, find *FindDatabaseMessage) ([]*DatabaseMessage, error) {
+	query, args := buildListDatabaseQuery(find)
 
 	var databaseMessages []*DatabaseMessage
 	rows, err := txn.QueryContext(ctx, query,

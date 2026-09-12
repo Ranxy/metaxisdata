@@ -232,80 +232,15 @@ func (*Store) listMetaRegistryHistoryImpl(ctx context.Context, txn *sql.Tx, find
 }
 
 func (*Store) listSublevelMetaRegistryResourceImpl(ctx context.Context, txn *sql.Tx, parentGUID string, objectType storepb.MetaType, limitPreObjectType, offsetPreObjectType int) ([]*MetaRegistryResource, error) {
-	// Whether using Lateral Join or Windows, for large datasets,
-	// PG's query optimizer seems unable to select the correct index.
-	// Therefore, we directly use the UNION ALL method here.
-
 	nextTypes := getNextLevelObjectType(objectType)
 	if len(nextTypes) == 0 {
 		return []*MetaRegistryResource{}, nil
 	}
 
-	args := []any{}
-
-	qb := strings.Builder{}
-
-	for idx, nextType := range nextTypes {
-		unionStr := ""
-		if idx != 0 {
-			unionStr = "UNION ALL "
-		}
-		nextQuery := fmt.Sprintf(`%s
-		SELECT * FROM(
-		SELECT
-			meta_registry_resource.id,
-			meta_registry_resource.guid,
-			meta_registry_resource.object_type,
-			meta_registry_resource.metadata,
-			meta_registry_resource.meta_hash
-		FROM meta_registry_resource
-		WHERE (meta_registry_resource.guid = $%d OR meta_registry_resource.guid LIKE $%d ESCAPE E'\\') AND meta_registry_resource.object_type = $%d
-		ORDER BY guid limit %d offset %d)
-		`, unionStr, len(args)+1, len(args)+2, len(args)+3, limitPreObjectType, offsetPreObjectType)
-		args = append(
-			args,
-			parentGUID,
-			likePatternEscaper.Replace(parentGUID+common.MetaGUIDSplit)+"%",
-			nextType,
-		)
-		//nolint:revive
-		if _, err := qb.WriteString(nextQuery); err != nil {
-			return nil, err
-		}
-	}
-	var metaRegistryMessages []*MetaRegistryResource
-	rows, err := txn.QueryContext(ctx, qb.String(), args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var metadata []byte
-		var metaRegistryMessage MetaRegistryResource
-		if err := rows.Scan(
-			&metaRegistryMessage.ID,
-			&metaRegistryMessage.GUID,
-			&metaRegistryMessage.ObjectType,
-			&metadata,
-			&metaRegistryMessage.MetaHash,
-		); err != nil {
-			return nil, err
-		}
-		if len(metadata) != 0 {
-			m := &storepb.StoredMetadata{}
-			if err := common.ProtojsonUnmarshaler.Unmarshal(metadata, m); err != nil {
-				return nil, errors.Wrap(err, " failed to unmarshal stored metadata")
-			}
-			metaRegistryMessage.Metadata = m
-		}
-
-		metaRegistryMessages = append(metaRegistryMessages, &metaRegistryMessage)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return metaRegistryMessages, nil
+	query, args := buildSublevelMetaRegistryResourceQuery(
+		"meta_registry_resource", nextTypes, parentGUID, limitPreObjectType, offsetPreObjectType, nil,
+	)
+	return scanMetaRegistryResources(ctx, txn, query, args)
 }
 
 func (*Store) listSublevelMetaRegistryResourceHistoryImpl(ctx context.Context, txn *sql.Tx, parentGUID string, objectType storepb.MetaType, limitPreObjectType, offsetPreObjectType int, asOf time.Time) ([]*MetaRegistryResource, error) {
@@ -314,6 +249,21 @@ func (*Store) listSublevelMetaRegistryResourceHistoryImpl(ctx context.Context, t
 		return []*MetaRegistryResource{}, nil
 	}
 
+	query, args := buildSublevelMetaRegistryResourceQuery(
+		"meta_registry_resource_history", nextTypes, parentGUID, limitPreObjectType, offsetPreObjectType, &asOf,
+	)
+	return scanMetaRegistryResources(ctx, txn, query, args)
+}
+
+// buildSublevelMetaRegistryResourceQuery builds the UNION ALL query that lists
+// the direct children of parentGUID. The GUID-subtree predicate must stay
+// identical to appendGUIDSubtreeCondition: an exact match plus an escaped
+// descendant LIKE, with object_type and (for the history table) the validity
+// window applied per branch.
+func buildSublevelMetaRegistryResourceQuery(table string, nextTypes []storepb.MetaType, parentGUID string, limit, offset int, asOf *time.Time) (string, []any) {
+	// Whether using Lateral Join or Windows, for large datasets,
+	// PG's query optimizer seems unable to select the correct index.
+	// Therefore, we directly use the UNION ALL method here.
 	args := []any{}
 	qb := strings.Builder{}
 
@@ -322,35 +272,42 @@ func (*Store) listSublevelMetaRegistryResourceHistoryImpl(ctx context.Context, t
 		if idx != 0 {
 			unionStr = "UNION ALL "
 		}
+
+		where, nextArgs := appendGUIDSubtreeCondition(nil, args, table+".guid", parentGUID)
+		args = append(nextArgs, nextType)
+		where = append(where, fmt.Sprintf("%s.object_type = $%d", table, len(args)))
+		if asOf != nil {
+			args = append(args, *asOf)
+			where = append(where,
+				fmt.Sprintf("%s.valid_from <= $%d", table, len(args)),
+				fmt.Sprintf("(%s.valid_to IS NULL OR %s.valid_to > $%d)", table, table, len(args)),
+			)
+		}
+
 		nextQuery := fmt.Sprintf(`%s
 		SELECT * FROM(
 		SELECT
-			meta_registry_resource_history.id,
-			meta_registry_resource_history.guid,
-			meta_registry_resource_history.object_type,
-			meta_registry_resource_history.metadata,
-			meta_registry_resource_history.meta_hash
-		FROM meta_registry_resource_history
-		WHERE (meta_registry_resource_history.guid = $%d OR meta_registry_resource_history.guid LIKE $%d ESCAPE E'\\')
-			AND meta_registry_resource_history.object_type = $%d
-			AND meta_registry_resource_history.valid_from <= $%d
-			AND (meta_registry_resource_history.valid_to IS NULL OR meta_registry_resource_history.valid_to > $%d)
+			%s.id,
+			%s.guid,
+			%s.object_type,
+			%s.metadata,
+			%s.meta_hash
+		FROM %s
+		WHERE %s
 		ORDER BY guid limit %d offset %d)
-		`, unionStr, len(args)+1, len(args)+2, len(args)+3, len(args)+4, len(args)+4, limitPreObjectType, offsetPreObjectType)
-		args = append(
-			args,
-			parentGUID,
-			likePatternEscaper.Replace(parentGUID+common.MetaGUIDSplit)+"%",
-			nextType,
-			asOf,
-		)
+		`, unionStr, table, table, table, table, table, table, strings.Join(where, " AND "), limit, offset)
+		//nolint:revive
 		if _, err := qb.WriteString(nextQuery); err != nil {
-			return nil, err
+			panic(err)
 		}
 	}
 
+	return qb.String(), args
+}
+
+func scanMetaRegistryResources(ctx context.Context, txn *sql.Tx, query string, args []any) ([]*MetaRegistryResource, error) {
 	var metaRegistryMessages []*MetaRegistryResource
-	rows, err := txn.QueryContext(ctx, qb.String(), args...)
+	rows, err := txn.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
