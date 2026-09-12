@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io/fs"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"testing/fstest"
@@ -18,6 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/Ranxy/metaxisdata/backend/test/integration/dockerutil"
 )
 
 // These tests exercise the migrator against a real PostgreSQL started with
@@ -148,24 +149,31 @@ func newTestDatabase(t *testing.T) *sql.DB {
 	host, port := startPostgres(t)
 	admin, err := sql.Open("pgx", testDSN(host, port, "metaxisdata"))
 	require.NoError(t, err)
-	defer admin.Close()
+	// t.Cleanup is LIFO: the drop below runs before this close.
+	t.Cleanup(func() { _ = admin.Close() })
 
 	name := fmt.Sprintf("migrator_test_%d_%d", time.Now().UnixNano(), atomic.AddInt64(&testDBCounter, 1))
 	_, err = admin.ExecContext(ctx, `CREATE DATABASE "`+name+`"`)
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		_, _ = admin.ExecContext(context.Background(), `DROP DATABASE IF EXISTS "`+name+`" WITH (FORCE)`)
-	})
 
 	db, err := sql.Open("pgx", testDSN(host, port, name))
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() {
+		// Close the pool before dropping, then fail the test if the drop does
+		// not happen — a leaked test database used to be swallowed silently.
+		_ = db.Close()
+		_, dropErr := admin.ExecContext(context.Background(), `DROP DATABASE IF EXISTS "`+name+`" WITH (FORCE)`)
+		require.NoError(t, dropErr)
+	})
 	return db
 }
 
 func startPostgres(t *testing.T) (host, port string) {
 	t.Helper()
 	ctx := context.Background()
+	if !dockerutil.Available(ctx) {
+		t.Skip("docker is unavailable")
+	}
 	req := testcontainers.ContainerRequest{
 		Image: "postgres:16-alpine",
 		Env: map[string]string{
@@ -181,11 +189,8 @@ func startPostgres(t *testing.T) (host, port string) {
 		Started:          true,
 	})
 	if err != nil {
-		msg := strings.ToLower(err.Error())
-		if strings.Contains(msg, "docker") && strings.Contains(msg, "daemon") {
-			t.Skipf("docker is unavailable: %v", err)
-		}
-		require.NoError(t, err)
+		require.Truef(t, dockerutil.IsUnavailable(err), "failed to start PostgreSQL container: %v", err)
+		t.Skipf("docker is unavailable: %v", err)
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
 
