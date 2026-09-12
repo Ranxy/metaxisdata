@@ -13,6 +13,10 @@ import (
 // TestMarshalRolePermissionsIsDeterministic pins the payload invariant: equal
 // permission sets encode identically regardless of map iteration order, so a
 // role update that changes nothing produces no spurious JSONB diff.
+//
+// The assertion is semantic on purpose. protojson deliberately randomizes the
+// whitespace after commas (internal/detrand), so comparing its exact bytes is
+// not a property of this code and fails on some builds.
 func TestMarshalRolePermissionsIsDeterministic(t *testing.T) {
 	t.Parallel()
 
@@ -29,7 +33,14 @@ func TestMarshalRolePermissionsIsDeterministic(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, string(first), string(second))
-	require.Equal(t, `{"permissions":["metaxisdata.instances.get","metaxisdata.roles.list","metaxisdata.users.delete"]}`, string(first))
+
+	var decoded storepb.RolePermissions
+	require.NoError(t, common.ProtojsonUnmarshaler.Unmarshal(first, &decoded))
+	require.Equal(t, []string{
+		"metaxisdata.instances.get",
+		"metaxisdata.roles.list",
+		"metaxisdata.users.delete",
+	}, decoded.GetPermissions())
 }
 
 func TestMarshalRolePermissionsEmpty(t *testing.T) {
