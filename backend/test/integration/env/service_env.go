@@ -528,7 +528,7 @@ func (e *ServiceEnv) bootstrapAdmin(ctx context.Context) error {
 			Email:    integrationAdminEmail,
 			Title:    integrationAdminTitle,
 			Password: integrationAdminPassword,
-			UserType: v1pb.UserType_USER,
+			UserType: v1pb.UserType_END_USER,
 		},
 	}))
 	if err != nil {

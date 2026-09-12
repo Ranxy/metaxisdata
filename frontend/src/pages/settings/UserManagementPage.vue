@@ -535,8 +535,8 @@ function getUserId(name: string): string {
 
 // Permission checks
 function canEditUser(user: User): boolean {
-  // Only normal users (UserType.USER) can be edited
-  return user.userType === UserType.USER;
+  // Only normal users (UserType.END_USER) can be edited
+  return user.userType === UserType.END_USER;
 }
 
 function canDeleteUser(user: User): boolean {
@@ -563,7 +563,7 @@ function getCannotDeleteReason(user: User): string {
 
 function getUserTypeLabel(userType: UserType): string {
   switch (userType) {
-    case UserType.USER:
+    case UserType.END_USER:
       return t("userManagement.typeUser");
     case UserType.SERVICE_ACCOUNT:
       return t("userManagement.typeServiceAccount");

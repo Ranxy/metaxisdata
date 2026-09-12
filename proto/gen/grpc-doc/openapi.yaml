@@ -4702,7 +4702,7 @@ components:
                 userType:
                     enum:
                         - USER_TYPE_UNSPECIFIED
-                        - USER
+                        - END_USER
                         - SERVICE_ACCOUNT
                         - SYSTEM_BOT
                     type: string

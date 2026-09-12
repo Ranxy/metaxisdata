@@ -647,7 +647,7 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | USER_TYPE_UNSPECIFIED | 0 |  |
-| USER | 1 |  |
+| END_USER | 1 | The human user. Matches store PrincipalType.END_USER and the principal table&#39;s type check. |
 | SERVICE_ACCOUNT | 2 |  |
 | SYSTEM_BOT | 3 |  |
 

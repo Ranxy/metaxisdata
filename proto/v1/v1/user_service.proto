@@ -234,7 +234,9 @@ message User {
 
 enum UserType {
   USER_TYPE_UNSPECIFIED = 0;
-  USER = 1;
+  // The human user. Matches store PrincipalType.END_USER and the principal
+  // table's type check.
+  END_USER = 1;
   SERVICE_ACCOUNT = 2;
   SYSTEM_BOT = 3;
 }

@@ -50,7 +50,7 @@ export async function createUser(
     email,
     password,
     title: title || "",
-    userType: UserType.USER,
+    userType: UserType.END_USER,
   });
   const request = create(CreateUserRequestSchema, {
     user,

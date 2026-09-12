@@ -29,22 +29,24 @@ type UserType int32
 
 const (
 	UserType_USER_TYPE_UNSPECIFIED UserType = 0
-	UserType_USER                  UserType = 1
-	UserType_SERVICE_ACCOUNT       UserType = 2
-	UserType_SYSTEM_BOT            UserType = 3
+	// The human user. Matches store PrincipalType.END_USER and the principal
+	// table's type check.
+	UserType_END_USER        UserType = 1
+	UserType_SERVICE_ACCOUNT UserType = 2
+	UserType_SYSTEM_BOT      UserType = 3
 )
 
 // Enum value maps for UserType.
 var (
 	UserType_name = map[int32]string{
 		0: "USER_TYPE_UNSPECIFIED",
-		1: "USER",
+		1: "END_USER",
 		2: "SERVICE_ACCOUNT",
 		3: "SYSTEM_BOT",
 	}
 	UserType_value = map[string]int32{
 		"USER_TYPE_UNSPECIFIED": 0,
-		"USER":                  1,
+		"END_USER":              1,
 		"SERVICE_ACCOUNT":       2,
 		"SYSTEM_BOT":            3,
 	}
@@ -807,10 +809,10 @@ const file_v1_user_service_proto_rawDesc = "" +
 	"\x10metaxisdata/User\x12\fusers/{user}J\x04\b\v\x10\fR\x0erecovery_codes\"\xb6\x01\n" +
 	"\vUserProfile\x12B\n" +
 	"\x0flast_login_time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\rlastLoginTime\x12U\n" +
-	"\x19last_change_password_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x16lastChangePasswordTimeJ\x04\b\x03\x10\x04R\x06source*T\n" +
+	"\x19last_change_password_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x16lastChangePasswordTimeJ\x04\b\x03\x10\x04R\x06source*X\n" +
 	"\bUserType\x12\x19\n" +
-	"\x15USER_TYPE_UNSPECIFIED\x10\x00\x12\b\n" +
-	"\x04USER\x10\x01\x12\x13\n" +
+	"\x15USER_TYPE_UNSPECIFIED\x10\x00\x12\f\n" +
+	"\bEND_USER\x10\x01\x12\x13\n" +
 	"\x0fSERVICE_ACCOUNT\x10\x02\x12\x0e\n" +
 	"\n" +
 	"SYSTEM_BOT\x10\x032\xbe\a\n" +

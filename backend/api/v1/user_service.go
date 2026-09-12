@@ -146,7 +146,7 @@ func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v
 	if err != nil {
 		return nil, err
 	}
-	if request.Msg.User.UserType != v1pb.UserType_SERVICE_ACCOUNT && request.Msg.User.UserType != v1pb.UserType_USER {
+	if request.Msg.User.UserType != v1pb.UserType_SERVICE_ACCOUNT && request.Msg.User.UserType != v1pb.UserType_END_USER {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("support user and service account only"))
 	}
 	if err := s.authorizeCreateUser(ctx, request.Msg.User.UserType); err != nil {
@@ -244,7 +244,7 @@ func (s *UserService) authorizeCreateUser(ctx context.Context, userType v1pb.Use
 		}
 	}
 
-	if userType != v1pb.UserType_USER {
+	if userType != v1pb.UserType_END_USER {
 		return connect.NewError(connect.CodePermissionDenied, errors.Errorf("only a workspace admin can create a %s", userType))
 	}
 
@@ -542,7 +542,7 @@ func (s *UserService) UndeleteUser(ctx context.Context, request *connect.Request
 func convertToV1UserType(userType storepb.PrincipalType) v1pb.UserType {
 	switch userType {
 	case storepb.PrincipalType_END_USER:
-		return v1pb.UserType_USER
+		return v1pb.UserType_END_USER
 	case storepb.PrincipalType_SYSTEM_BOT:
 		return v1pb.UserType_SYSTEM_BOT
 	case storepb.PrincipalType_SERVICE_ACCOUNT:
@@ -576,7 +576,7 @@ func convertToUser(user *store.UserMessage) *v1pb.User {
 func convertToPrincipalType(userType v1pb.UserType) (storepb.PrincipalType, error) {
 	var t storepb.PrincipalType
 	switch userType {
-	case v1pb.UserType_USER:
+	case v1pb.UserType_END_USER:
 		t = storepb.PrincipalType_END_USER
 	case v1pb.UserType_SYSTEM_BOT:
 		t = storepb.PrincipalType_SYSTEM_BOT

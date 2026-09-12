@@ -361,9 +361,12 @@ export enum UserType {
   USER_TYPE_UNSPECIFIED = 0,
 
   /**
-   * @generated from enum value: USER = 1;
+   * The human user. Matches store PrincipalType.END_USER and the principal
+   * table's type check.
+   *
+   * @generated from enum value: END_USER = 1;
    */
-  USER = 1,
+  END_USER = 1,
 
   /**
    * @generated from enum value: SERVICE_ACCOUNT = 2;
