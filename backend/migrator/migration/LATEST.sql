@@ -72,21 +72,6 @@ CREATE UNIQUE INDEX idx_policy_unique_resource_type_resource_type ON policy(reso
 ALTER SEQUENCE policy_id_seq RESTART WITH 101;
 
 
--- Project
--- No Go code reads or writes this table; db.project still references it.
-CREATE TABLE project (
-    id serial PRIMARY KEY,
-    deleted boolean NOT NULL DEFAULT FALSE,
-    name text NOT NULL,
-    resource_id text NOT NULL,
-    data_classification_config_id text NOT NULL DEFAULT '',
-    -- setting has no proto message left (Project was deleted).
-    setting jsonb NOT NULL DEFAULT '{}'
-);
-
-CREATE UNIQUE INDEX idx_project_unique_resource_id ON project(resource_id);
-
-
 CREATE TABLE user_group (
   email text PRIMARY KEY,
   name text NOT NULL,
@@ -101,11 +86,6 @@ CREATE TABLE user_group (
 INSERT INTO principal (id, type, name, email, password_hash) VALUES (1, 'SYSTEM_BOT', 'SYSTEM', 'support@example.com', '');
 
 ALTER SEQUENCE principal_id_seq RESTART WITH 101;
-
--- Default project.
-INSERT INTO project (id, name, resource_id) VALUES (1, 'Default', 'default');
-
-ALTER SEQUENCE project_id_seq RESTART WITH 101;
 
 
 -- Instance
@@ -127,14 +107,11 @@ ALTER SEQUENCE instance_id_seq RESTART WITH 101;
 CREATE TABLE db (
     id serial PRIMARY KEY,
     deleted boolean NOT NULL DEFAULT FALSE,
-    project text NOT NULL REFERENCES project(resource_id),
     instance text NOT NULL REFERENCES instance(resource_id),
     name text NOT NULL,
     environment text,
     metadata jsonb NOT NULL DEFAULT '{}'
 );
-
-CREATE INDEX idx_db_project ON db(project);
 
 CREATE UNIQUE INDEX idx_db_unique_instance_name ON db(instance, name);
 

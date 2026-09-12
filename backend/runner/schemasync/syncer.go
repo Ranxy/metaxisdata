@@ -312,11 +312,9 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 		idx := slices.IndexFunc(databases, func(db *store.DatabaseMessage) bool { return db.DatabaseName == databaseMetadata.Name })
 
 		if idx < 0 {
-			// Create the database in the default project.
 			newDatabase, err := s.store.CreateDatabaseDefault(ctx, &store.DatabaseMessage{
 				InstanceID:   instance.ResourceID,
 				DatabaseName: databaseMetadata.Name,
-				ProjectID:    common.DefaultProjectID,
 			})
 			if err != nil {
 				return nil, nil, nil, errors.Wrapf(err, "failed to create instance %q database %q in sync runner", instance.ResourceID, databaseMetadata.Name)

@@ -16,9 +16,8 @@ import (
 
 // FindGroupMessage is the message for finding groups.
 type FindGroupMessage struct {
-	Email     *string
-	ProjectID *string
-	Filter    *ListResourceFilter
+	Email  *string
+	Filter *ListResourceFilter
 
 	Limit  *int
 	Offset *int
@@ -101,31 +100,13 @@ func (*Store) listGroupImpl(ctx context.Context, txn *sql.Tx, find *FindGroupMes
 		where, args = append(where, fmt.Sprintf("email = $%d", len(args)+1)), append(args, *v)
 	}
 
-	var with, join string
-	if v := find.ProjectID; v != nil {
-		if !common.IsValidResourceID(*v) {
-			return nil, errors.Errorf("invalid project id %q", *v)
-		}
-		with = `WITH all_members AS (
-			SELECT
-				jsonb_array_elements_text(jsonb_array_elements(policy.payload->'bindings')->'members') AS member,
-				jsonb_array_elements(policy.payload->'bindings')->>'role' AS role
-			FROM policy
-			WHERE ((resource_type = '` + storepb.Policy_PROJECT.String() + `' AND resource = 'projects/` + *v + `') OR resource_type = '` + storepb.Policy_WORKSPACE.String() + `') AND type = '` + storepb.Policy_IAM.String() + `'
-		),
-		project_members AS (
-			SELECT ARRAY_AGG(member) AS members FROM all_members WHERE role NOT LIKE 'roles/workspace%'
-		)`
-		join = `INNER JOIN project_members ON (CONCAT('groups/', user_group.email) = ANY(project_members.members) OR '` + common.AllUsers + `' = ANY(project_members.members))`
-	}
-
-	query := with + `
+	query := `
 	SELECT
 		user_group.email,
 		user_group.name,
 		user_group.description,
 		user_group.payload
-	FROM user_group ` + join + ` WHERE ` + strings.Join(where, " AND ") + ` ORDER BY email`
+	FROM user_group WHERE ` + strings.Join(where, " AND ") + ` ORDER BY email`
 	if v := find.Limit; v != nil {
 		query += fmt.Sprintf(" LIMIT %d", *v)
 	}

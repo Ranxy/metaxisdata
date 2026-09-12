@@ -106,13 +106,6 @@ func (s *UserService) ListUsers(ctx context.Context, request *connect.Request[v1
 	if err := parseListUserFilter(find, request.Msg.Filter); err != nil {
 		return nil, err
 	}
-	if v := find.ProjectID; v != nil {
-		_, ok := GetUserFromContext(ctx)
-		if !ok {
-			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("user not found"))
-		}
-		// TODO check permission
-	}
 
 	users, err := s.store.ListUsers(ctx, find)
 	if err != nil {

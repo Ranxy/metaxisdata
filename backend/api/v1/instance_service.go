@@ -291,29 +291,6 @@ func (s *InstanceService) DeleteInstance(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q has been deleted", req.Msg.Name))
 	}
 
-	databases, err := s.store.ListDatabases(ctx, &store.FindDatabaseMessage{InstanceID: &instance.ResourceID})
-	if err != nil {
-		return nil, err
-	}
-	if req.Msg.Force {
-		if len(databases) > 0 {
-			defaultProjectID := common.DefaultProjectID
-			if _, err := s.store.BatchUpdateDatabases(ctx, databases, &store.BatchUpdateDatabases{ProjectID: &defaultProjectID}); err != nil {
-				return nil, connect.NewError(connect.CodeInternal, err)
-			}
-		}
-	} else {
-		var databaseNames []string
-		for _, database := range databases {
-			if database.ProjectID != common.DefaultProjectID {
-				databaseNames = append(databaseNames, database.DatabaseName)
-			}
-		}
-		if len(databaseNames) > 0 {
-			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("all databases should be transferred to the unassigned project before deleting the instance"))
-		}
-	}
-
 	metadata, ok := proto.Clone(instance.Metadata).(*storepb.Instance)
 	if !ok {
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to convert instance metadata type"))

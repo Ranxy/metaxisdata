@@ -37,7 +37,6 @@ type FindUserMessage struct {
 	Limit       *int
 	Offset      *int
 	Filter      *ListResourceFilter
-	ProjectID   *string
 }
 
 // UpdateUserMessage is the message to update a user.
@@ -243,32 +242,9 @@ func listUserImpl(ctx context.Context, txn *sql.Tx, find *FindUserMessage) ([]*U
 		where, args = append(where, fmt.Sprintf("principal.deleted = $%d", len(args)+1)), append(args, false)
 	}
 
-	var with, join string
-	if v := find.ProjectID; v != nil {
-		if !common.IsValidResourceID(*v) {
-			return nil, errors.Errorf("invalid project id %q", *v)
-		}
-		with = `WITH all_members AS (
-			SELECT
-				jsonb_array_elements_text(jsonb_array_elements(policy.payload->'bindings')->'members') AS member,
-				jsonb_array_elements(policy.payload->'bindings')->>'role' AS role
-			FROM policy
-			WHERE ((resource_type = '` + storepb.Policy_PROJECT.String() + `' AND resource = 'projects/` + *v + `') OR resource_type = '` + storepb.Policy_WORKSPACE.String() + `') AND type = '` + storepb.Policy_IAM.String() + `'
-		),
-		project_members AS (
-			SELECT ARRAY_AGG(member) AS members FROM all_members WHERE role NOT LIKE 'roles/workspace%'
-		)`
-		join = `INNER JOIN project_members ON (CONCAT('users/', principal.id) = ANY(project_members.members) OR '` + common.AllUsers + `' = ANY(project_members.members))`
-	}
-
 	// Join the user_group table to find groups for each user.
 	// The user will be stored in the user_group.payload.members.member field, the member is in the "users/{id}" format
-	if strings.HasPrefix(with, "WITH") {
-		with += ","
-	} else {
-		with = "WITH"
-	}
-	query := with + ` user_groups AS (
+	query := `WITH user_groups AS (
 		SELECT
 			principal.id AS user_id,
 			COALESCE(ARRAY_AGG(user_group.email ORDER BY user_group.email) FILTER (WHERE user_group.email IS NOT NULL), '{}') AS groups
@@ -292,7 +268,7 @@ func listUserImpl(ctx context.Context, txn *sql.Tx, find *FindUserMessage) ([]*U
 		user_groups.groups
 	FROM principal
 	INNER JOIN user_groups ON principal.id = user_groups.user_id
-	` + join + ` WHERE ` + strings.Join(where, " AND ") + ` ORDER BY type DESC, created_at ASC`
+	WHERE ` + strings.Join(where, " AND ") + ` ORDER BY type DESC, created_at ASC`
 
 	if v := find.Limit; v != nil {
 		query += fmt.Sprintf(" LIMIT %d", *v)

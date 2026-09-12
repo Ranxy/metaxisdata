@@ -130,10 +130,6 @@ message Database {
   // The latest synchronization time.
   google.protobuf.Timestamp successful_sync_time = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // The project for a database.
-  // Format: projects/{project}
-  string project = 5;
-
   // The version of database schema.
   string schema_version = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
 
@@ -154,10 +150,12 @@ message Database {
 
   // The schema is drifted from the source of truth.
   bool drifted = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  reserved 5;
+  reserved "project";
 }
 
 message ListDatabasesRequest {
-  // - projects/{project}: list databases in a project.
   // - workspaces/-: list databases in the workspace.
   // - instances/{instances}: list databases in a instance.
   string parent = 1 [
@@ -184,23 +182,19 @@ message ListDatabasesRequest {
   // Supported filter:
   // - environment: the environment full name in "environments/{id}" format, support "==" operator.
   // - name: the database name, support ".matches()" operator.
-  // - project: the project full name in "projects/{id}" format, support "==" operator.
   // - instance: the instance full name in "instances/{id}" format, support "==" operator.
   // - engine: the database engine, check Engine enum for values. Support "==", "in [xx]", "!(in [xx])" operator.
-  // - exclude_unassigned: should be "true" or "false", will not show unassigned databases if it's true, support "==" operator.
   // - drifted: should be "true" or "false", show drifted databases if it's true, support "==" operator.
   // - labels.{key}: the database label, support "==" and "in" operators.
   //
   // For example:
   // environment == "environments/{environment resource id}"
   // environment == "" (find databases which environment is not set)
-  // project == "projects/{project resource id}"
   // instance == "instances/{instance resource id}"
   // name.matches("database name")
   // engine == "MYSQL"
   // engine in ["MYSQL", "POSTGRES"]
   // !(engine in ["MYSQL", "POSTGRES"])
-  // exclude_unassigned == true
   // drifted == true
   // labels.environment == "production"
   // labels.region == "asia"

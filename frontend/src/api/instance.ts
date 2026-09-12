@@ -92,10 +92,9 @@ export async function createInstance(input: CreateInstanceInput) {
   return await instanceClient.createInstance(request);
 }
 
-export async function deleteInstance(name: string, force?: boolean) {
+export async function deleteInstance(name: string) {
   const request = create(DeleteInstanceRequestSchema, {
     name,
-    force: force ?? false,
   });
   return await instanceClient.deleteInstance(request);
 }

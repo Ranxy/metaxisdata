@@ -295,7 +295,6 @@ func parseListInstanceFilter(filter string) (*store.ListResourceFilter, error) {
 		"environment": resourceField("instance.environment", common.GetEnvironmentID),
 		"state":       enumField("instance.deleted", deletedFilterValue, false),
 		"engine":      enumField("instance.metadata->>'engine'", engineFilterValue, true),
-		"project":     resourceField("db.project", common.GetProjectID),
 	})
 }
 
@@ -306,23 +305,6 @@ func parseListUserFilter(find *store.FindUserMessage, filter string) error {
 		"user_type": enumField("principal.type", principalTypeFilterValue, true),
 		"state":     enumField("principal.deleted", deletedFilterValue, false),
 	}
-	// The project filter scopes the store query instead of the predicate, so it
-	// resolves to TRUE and records the project on find.
-	fields["project"] = filterField{compare: func(_ *filterArgs, variable string, op OperatorType, value any) (string, error) {
-		if op != ComparatorTypeEqual {
-			return "", invalidFilter("%q only supports equality", variable)
-		}
-		v, err := filterString(variable, value)
-		if err != nil {
-			return "", err
-		}
-		projectID, err := common.GetProjectID(v)
-		if err != nil || !isValidResourceID(projectID) {
-			return "", invalidFilter("invalid %s filter %q", variable, v)
-		}
-		find.ProjectID = &projectID
-		return "TRUE", nil
-	}}
 
 	translated, err := translateFilter(filter, fields)
 	if err != nil {
@@ -334,7 +316,6 @@ func parseListUserFilter(find *store.FindUserMessage, filter string) error {
 
 func getListDatabaseFilter(filter string) (*store.ListResourceFilter, error) {
 	return translateFilter(filter, map[string]filterField{
-		"project":     resourceField("db.project", common.GetProjectID),
 		"instance":    resourceField("db.instance", common.GetInstanceID),
 		"environment": resourceField("COALESCE(db.environment, instance.environment)", common.GetEnvironmentID),
 		"engine":      enumField("instance.metadata->>'engine'", engineFilterValue, true),
@@ -361,12 +342,6 @@ func getListDatabaseFilter(filter string) (*store.ListResourceFilter, error) {
 				condition = "IS NOT"
 			}
 			return fmt.Sprintf("(db.metadata->>'drifted')::boolean %s TRUE", condition), nil
-		}),
-		"exclude_unassigned": boolField(func(args *filterArgs, value bool) (string, error) {
-			if !value {
-				return "TRUE", nil
-			}
-			return fmt.Sprintf("db.project != %s", args.add(common.DefaultProjectID)), nil
 		}),
 	})
 }

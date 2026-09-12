@@ -21,11 +21,6 @@ const (
 const DefaultInstanceMaximumConnections = 10
 
 const (
-	// DefaultProjectID is the resource ID for the default project.
-	DefaultProjectID = "default"
-)
-
-const (
 	DefaultMetaSubLevelLimit = 21
 
 	// MetaGUIDSplit is the separator for GUID in meta queries.

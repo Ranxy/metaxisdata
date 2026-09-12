@@ -20,7 +20,6 @@ func IsValidResourceID(id string) bool {
 // nolint:revive
 const (
 	WorkspacePrefix            = "workspaces/"
-	ProjectNamePrefix          = "projects/"
 	EnvironmentNamePrefix      = "environments/"
 	InstanceNamePrefix         = "instances/"
 	DatabaseIDPrefix           = "databases/"
@@ -29,15 +28,6 @@ const (
 	RolePrefix                 = "roles/"
 	GroupPrefix                = "groups/"
 )
-
-// GetProjectID returns the project ID from a resource name.
-func GetProjectID(name string) (string, error) {
-	tokens, err := GetNameParentTokens(name, ProjectNamePrefix)
-	if err != nil {
-		return "", err
-	}
-	return tokens[0], nil
-}
 
 // GetUIDFromName returns the UID from a resource name.
 func GetUIDFromName(name, prefix string) (int, error) {
@@ -132,10 +122,6 @@ func GetNameParentTokens(name string, tokenPrefixes ...string) ([]string, error)
 
 func FormatWorkspace(id string) string {
 	return fmt.Sprintf("%s%s", WorkspacePrefix, id)
-}
-
-func FormatProject(id string) string {
-	return fmt.Sprintf("%s%s", ProjectNamePrefix, id)
 }
 
 func FormatUserUID(uid int) string {

@@ -124,8 +124,9 @@ func (Policy_Resource) EnumDescriptor() ([]byte, []int) {
 }
 
 // Policy enumerates the policy rows the store can query. Only the IAM type and
-// the WORKSPACE/PROJECT resources have callers left; the enum values are kept
-// because they are written to the policy table's text columns.
+// the WORKSPACE resource are produced; the enum values are kept because they are
+// written to the policy table's text columns and legacy rows may carry the
+// others.
 type Policy struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields

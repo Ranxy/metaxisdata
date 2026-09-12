@@ -155,7 +155,6 @@ message ListInstancesRequest {
   // - engine: the instance engine, check Engine enum for values. Support "==", "in [xx]", "!(in [xx])" operator.
   // - host: the instance host, support "==" and ".matches()" operator.
   // - port: the instance port, support "==" and ".matches()" operator.
-  // - project: the project full name in "projects/{id}" format, support "==" operator.
   //
   // For example:
   // name == "sample instance"
@@ -171,7 +170,6 @@ message ListInstancesRequest {
   // host.matches("127.0")
   // port == "54321"
   // port.matches("543")
-  // project == "projects/sample-project"
   // You can combine filter conditions like:
   // name.matches("sample") && environment == "environments/test"
   // host == "127.0.0.1" && port == "54321"
@@ -221,8 +219,8 @@ message DeleteInstanceRequest {
     (google.api.resource_reference) = {type: "metaxisdata/Instance"}
   ];
 
-  // If set to true, any databases and sheets from this project will also be moved to default project, and all open issues will be closed.
-  bool force = 2;
+  reserved 2;
+  reserved "force";
 }
 
 message UndeleteInstanceRequest {

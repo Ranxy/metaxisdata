@@ -7,8 +7,9 @@ import "google/type/expr.proto";
 option go_package = "generated-go/store";
 
 // Policy enumerates the policy rows the store can query. Only the IAM type and
-// the WORKSPACE/PROJECT resources have callers left; the enum values are kept
-// because they are written to the policy table's text columns.
+// the WORKSPACE resource are produced; the enum values are kept because they are
+// written to the policy table's text columns and legacy rows may carry the
+// others.
 message Policy {
   enum Type {
     TYPE_UNSPECIFIED = 0;

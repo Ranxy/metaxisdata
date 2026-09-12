@@ -52,7 +52,6 @@
               <TableHead>{{ t("databaseManagement.instance") }}</TableHead>
               <TableHead>{{ t("databaseManagement.engine") }}</TableHead>
               <TableHead>{{ t("databaseManagement.environment") }}</TableHead>
-              <TableHead>{{ t("databaseManagement.project") }}</TableHead>
               <TableHead>{{ t("databaseManagement.lastSync") }}</TableHead>
               <TableHead>{{ t("databaseManagement.status") }}</TableHead>
               <TableHead class="w-36 text-right">{{ t("databaseManagement.actions") }}</TableHead>
@@ -106,17 +105,6 @@
                   v-else
                   class="text-muted-foreground"
                 >-</span>
-              </TableCell>
-              <TableCell>
-                <span v-if="database.project">
-                  {{ getProjectName(database.project) }}
-                </span>
-                <span
-                  v-else
-                  class="text-muted-foreground"
-                >
-                  {{ t("databaseManagement.unassigned") }}
-                </span>
               </TableCell>
               <TableCell>
                 <div
@@ -348,11 +336,6 @@ function getDatabaseName(fullName: string): string {
 function getInstanceName(fullName: string): string {
   const parts = fullName.split("/");
   return parts.length >= 2 ? parts[1] : "";
-}
-
-function getProjectName(fullName: string): string {
-  const parts = fullName.split("/");
-  return parts[parts.length - 1] || fullName;
 }
 
 function getEngineLabel(engine?: Engine): string {

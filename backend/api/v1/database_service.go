@@ -71,12 +71,6 @@ func (s *DatabaseService) ListDatabases(ctx context.Context, req *connect.Reques
 	find.Filter = filter
 
 	switch {
-	case strings.HasPrefix(req.Msg.Parent, common.ProjectNamePrefix):
-		p, err := common.GetProjectID(req.Msg.Parent)
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid parent %q", req.Msg.Parent))
-		}
-		find.ProjectID = &p
 	case strings.HasPrefix(req.Msg.Parent, common.WorkspacePrefix):
 	case strings.HasPrefix(req.Msg.Parent, common.InstanceNamePrefix):
 		instanceID, err := common.GetInstanceID(req.Msg.Parent)
@@ -348,7 +342,6 @@ func (s *DatabaseService) convertToDatabase(ctx context.Context, database *store
 		Name:                 common.FormatDatabase(database.InstanceID, database.DatabaseName),
 		State:                convertDeletedToState(database.Deleted),
 		SuccessfulSyncTime:   database.Metadata.GetLastSyncTime(),
-		Project:              common.FormatProject(database.ProjectID),
 		Environment:          environment,
 		EffectiveEnvironment: effectiveEnvironment,
 		SchemaVersion:        database.Metadata.GetVersion(),

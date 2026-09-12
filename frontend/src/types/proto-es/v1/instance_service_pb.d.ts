@@ -75,7 +75,6 @@ export declare type ListInstancesRequest = Message<"metaxisdata.v1.ListInstances
    * - engine: the instance engine, check Engine enum for values. Support "==", "in [xx]", "!(in [xx])" operator.
    * - host: the instance host, support "==" and ".matches()" operator.
    * - port: the instance port, support "==" and ".matches()" operator.
-   * - project: the project full name in "projects/{id}" format, support "==" operator.
    *
    * For example:
    * name == "sample instance"
@@ -91,7 +90,6 @@ export declare type ListInstancesRequest = Message<"metaxisdata.v1.ListInstances
    * host.matches("127.0")
    * port == "54321"
    * port.matches("543")
-   * project == "projects/sample-project"
    * You can combine filter conditions like:
    * name.matches("sample") && environment == "environments/test"
    * host == "127.0.0.1" && port == "54321"
@@ -208,13 +206,6 @@ export declare type DeleteInstanceRequest = Message<"metaxisdata.v1.DeleteInstan
    * @generated from field: string name = 1;
    */
   name: string;
-
-  /**
-   * If set to true, any databases and sheets from this project will also be moved to default project, and all open issues will be closed.
-   *
-   * @generated from field: bool force = 2;
-   */
-  force: boolean;
 };
 
 /**

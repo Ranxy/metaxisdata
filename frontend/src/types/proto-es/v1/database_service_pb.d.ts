@@ -72,14 +72,6 @@ export declare type Database = Message<"metaxisdata.v1.Database"> & {
   successfulSyncTime?: Timestamp;
 
   /**
-   * The project for a database.
-   * Format: projects/{project}
-   *
-   * @generated from field: string project = 5;
-   */
-  project: string;
-
-  /**
    * The version of database schema.
    *
    * @generated from field: string schema_version = 6;
@@ -136,7 +128,6 @@ export declare const DatabaseSchema: GenMessage<Database>;
  */
 export declare type ListDatabasesRequest = Message<"metaxisdata.v1.ListDatabasesRequest"> & {
   /**
-   * - projects/{project}: list databases in a project.
    * - workspaces/-: list databases in the workspace.
    * - instances/{instances}: list databases in a instance.
    *
@@ -172,23 +163,19 @@ export declare type ListDatabasesRequest = Message<"metaxisdata.v1.ListDatabases
    * Supported filter:
    * - environment: the environment full name in "environments/{id}" format, support "==" operator.
    * - name: the database name, support ".matches()" operator.
-   * - project: the project full name in "projects/{id}" format, support "==" operator.
    * - instance: the instance full name in "instances/{id}" format, support "==" operator.
    * - engine: the database engine, check Engine enum for values. Support "==", "in [xx]", "!(in [xx])" operator.
-   * - exclude_unassigned: should be "true" or "false", will not show unassigned databases if it's true, support "==" operator.
    * - drifted: should be "true" or "false", show drifted databases if it's true, support "==" operator.
    * - labels.{key}: the database label, support "==" and "in" operators.
    *
    * For example:
    * environment == "environments/{environment resource id}"
    * environment == "" (find databases which environment is not set)
-   * project == "projects/{project resource id}"
    * instance == "instances/{instance resource id}"
    * name.matches("database name")
    * engine == "MYSQL"
    * engine in ["MYSQL", "POSTGRES"]
    * !(engine in ["MYSQL", "POSTGRES"])
-   * exclude_unassigned == true
    * drifted == true
    * labels.environment == "production"
    * labels.region == "asia"

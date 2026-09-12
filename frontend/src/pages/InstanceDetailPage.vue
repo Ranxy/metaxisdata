@@ -143,7 +143,6 @@
         <TableHeader>
           <TableRow>
             <TableHead>{{ t("instanceDetail.databaseName") }}</TableHead>
-            <TableHead>{{ t("instanceDetail.project") }}</TableHead>
             <TableHead>{{ t("instanceDetail.environment") }}</TableHead>
             <TableHead>{{ t("instanceDetail.schemaVersion") }}</TableHead>
             <TableHead>{{ t("instanceDetail.lastSync") }}</TableHead>
@@ -168,9 +167,6 @@
                   </div>
                 </div>
               </div>
-            </TableCell>
-            <TableCell class="text-muted-foreground">
-              {{ getProjectId(database.project) }}
             </TableCell>
             <TableCell class="text-muted-foreground">
               {{ getEnvironmentId(database.effectiveEnvironment) }}
@@ -838,12 +834,6 @@ function getDatabaseName(name: string): string {
   // Format: instances/{instance}/databases/{database} -> return database
   const parts = name.split("/");
   return parts[parts.length - 1] || name;
-}
-
-function getProjectId(project: string): string {
-  // Format: projects/{id} -> return id
-  if (!project) return "-";
-  return project.replace("projects/", "");
 }
 
 function getEnvironmentId(environment: string): string {

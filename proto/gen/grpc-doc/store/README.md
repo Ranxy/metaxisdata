@@ -1625,8 +1625,9 @@ EnvironmentTierPolicy were deleted: no code ever produced or consumed them.
 
 ### Policy
 Policy enumerates the policy rows the store can query. Only the IAM type and
-the WORKSPACE/PROJECT resources have callers left; the enum values are kept
-because they are written to the policy table&#39;s text columns.
+the WORKSPACE resource are produced; the enum values are kept because they are
+written to the policy table&#39;s text columns and legacy rows may carry the
+others.
 
 
 

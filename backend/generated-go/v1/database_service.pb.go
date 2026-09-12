@@ -508,9 +508,6 @@ type Database struct {
 	State State `protobuf:"varint,3,opt,name=state,proto3,enum=metaxisdata.v1.State" json:"state,omitempty"`
 	// The latest synchronization time.
 	SuccessfulSyncTime *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=successful_sync_time,json=successfulSyncTime,proto3" json:"successful_sync_time,omitempty"`
-	// The project for a database.
-	// Format: projects/{project}
-	Project string `protobuf:"bytes,5,opt,name=project,proto3" json:"project,omitempty"`
 	// The version of database schema.
 	SchemaVersion string `protobuf:"bytes,6,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
 	// The environment resource.
@@ -581,13 +578,6 @@ func (x *Database) GetSuccessfulSyncTime() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *Database) GetProject() string {
-	if x != nil {
-		return x.Project
-	}
-	return ""
-}
-
 func (x *Database) GetSchemaVersion() string {
 	if x != nil {
 		return x.SchemaVersion
@@ -632,7 +622,6 @@ func (x *Database) GetDrifted() bool {
 
 type ListDatabasesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// - projects/{project}: list databases in a project.
 	// - workspaces/-: list databases in the workspace.
 	// - instances/{instances}: list databases in a instance.
 	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
@@ -653,23 +642,19 @@ type ListDatabasesRequest struct {
 	// Supported filter:
 	// - environment: the environment full name in "environments/{id}" format, support "==" operator.
 	// - name: the database name, support ".matches()" operator.
-	// - project: the project full name in "projects/{id}" format, support "==" operator.
 	// - instance: the instance full name in "instances/{id}" format, support "==" operator.
 	// - engine: the database engine, check Engine enum for values. Support "==", "in [xx]", "!(in [xx])" operator.
-	// - exclude_unassigned: should be "true" or "false", will not show unassigned databases if it's true, support "==" operator.
 	// - drifted: should be "true" or "false", show drifted databases if it's true, support "==" operator.
 	// - labels.{key}: the database label, support "==" and "in" operators.
 	//
 	// For example:
 	// environment == "environments/{environment resource id}"
 	// environment == "" (find databases which environment is not set)
-	// project == "projects/{project resource id}"
 	// instance == "instances/{instance resource id}"
 	// name.matches("database name")
 	// engine == "MYSQL"
 	// engine in ["MYSQL", "POSTGRES"]
 	// !(engine in ["MYSQL", "POSTGRES"])
-	// exclude_unassigned == true
 	// drifted == true
 	// labels.environment == "production"
 	// labels.region == "asia"
@@ -5970,12 +5955,11 @@ const file_v1_database_service_proto_rawDesc = "" +
 	"\x13SyncDatabaseRequest\x120\n" +
 	"\x04name\x18\x01 \x01(\tB\x1c\xe0A\x02\xfaA\x16\n" +
 	"\x14metaxisdata/DatabaseR\x04name\"\x16\n" +
-	"\x14SyncDatabaseResponse\"\x82\x05\n" +
+	"\x14SyncDatabaseResponse\"\xf7\x04\n" +
 	"\bDatabase\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x120\n" +
 	"\x05state\x18\x03 \x01(\x0e2\x15.metaxisdata.v1.StateB\x03\xe0A\x03R\x05state\x12Q\n" +
-	"\x14successful_sync_time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\x12successfulSyncTime\x12\x18\n" +
-	"\aproject\x18\x05 \x01(\tR\aproject\x12*\n" +
+	"\x14successful_sync_time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\x12successfulSyncTime\x12*\n" +
 	"\x0eschema_version\x18\x06 \x01(\tB\x03\xe0A\x03R\rschemaVersion\x12%\n" +
 	"\venvironment\x18\a \x01(\tB\x03\xe0A\x01R\venvironment\x128\n" +
 	"\x15effective_environment\x18\b \x01(\tB\x03\xe0A\x03R\x14effectiveEnvironment\x12<\n" +
@@ -5986,7 +5970,7 @@ const file_v1_database_service_proto_rawDesc = "" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01:D\xeaAA\n" +
-	"\x14metaxisdata/Database\x12)instances/{instance}/databases/{database}J\x04\b\x02\x10\x03\"\xc3\x01\n" +
+	"\x14metaxisdata/Database\x12)instances/{instance}/databases/{database}J\x04\b\x02\x10\x03J\x04\b\x05\x10\x06R\aproject\"\xc3\x01\n" +
 	"\x14ListDatabasesRequest\x124\n" +
 	"\x06parent\x18\x01 \x01(\tB\x1c\xe0A\x02\xfaA\x16\x12\x14metaxisdata/DatabaseR\x06parent\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +

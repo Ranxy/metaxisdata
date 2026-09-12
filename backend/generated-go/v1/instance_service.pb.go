@@ -147,7 +147,6 @@ type ListInstancesRequest struct {
 	// - engine: the instance engine, check Engine enum for values. Support "==", "in [xx]", "!(in [xx])" operator.
 	// - host: the instance host, support "==" and ".matches()" operator.
 	// - port: the instance port, support "==" and ".matches()" operator.
-	// - project: the project full name in "projects/{id}" format, support "==" operator.
 	//
 	// For example:
 	// name == "sample instance"
@@ -163,7 +162,6 @@ type ListInstancesRequest struct {
 	// host.matches("127.0")
 	// port == "54321"
 	// port.matches("543")
-	// project == "projects/sample-project"
 	// You can combine filter conditions like:
 	// name.matches("sample") && environment == "environments/test"
 	// host == "127.0.0.1" && port == "54321"
@@ -413,9 +411,7 @@ type DeleteInstanceRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The name of the instance to delete.
 	// Format: instances/{instance}
-	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// If set to true, any databases and sheets from this project will also be moved to default project, and all open issues will be closed.
-	Force         bool `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"`
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -455,13 +451,6 @@ func (x *DeleteInstanceRequest) GetName() string {
 		return x.Name
 	}
 	return ""
-}
-
-func (x *DeleteInstanceRequest) GetForce() bool {
-	if x != nil {
-		return x.Force
-	}
-	return false
 }
 
 type UndeleteInstanceRequest struct {
@@ -1431,11 +1420,10 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	"\x15UpdateInstanceRequest\x129\n" +
 	"\binstance\x18\x01 \x01(\v2\x18.metaxisdata.v1.InstanceB\x03\xe0A\x02R\binstance\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\"_\n" +
+	"updateMask\"V\n" +
 	"\x15DeleteInstanceRequest\x120\n" +
 	"\x04name\x18\x01 \x01(\tB\x1c\xe0A\x02\xfaA\x16\n" +
-	"\x14metaxisdata/InstanceR\x04name\x12\x14\n" +
-	"\x05force\x18\x02 \x01(\bR\x05force\"K\n" +
+	"\x14metaxisdata/InstanceR\x04nameJ\x04\b\x02\x10\x03R\x05force\"K\n" +
 	"\x17UndeleteInstanceRequest\x120\n" +
 	"\x04name\x18\x01 \x01(\tB\x1c\xe0A\x02\xfaA\x16\n" +
 	"\x14metaxisdata/InstanceR\x04name\"q\n" +

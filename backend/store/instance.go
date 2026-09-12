@@ -192,15 +192,11 @@ func (s *Store) UpdateInstance(ctx context.Context, patch *UpdateInstanceMessage
 func (s *Store) listInstanceImpl(ctx context.Context, txn *sql.Tx, find *FindInstanceMessage) ([]*InstanceMessage, error) {
 	where, args := []string{"TRUE"}, []any{}
 	joinDSQuery := ""
-	joinDBQuery := ""
 	if filter := find.Filter; filter != nil {
 		where = append(where, filter.Where)
 		args = append(args, filter.Args...)
 		if hasHostPortFilter(filter.Where) {
 			joinDSQuery = "CROSS JOIN jsonb_array_elements(instance.metadata -> 'dataSources') AS ds"
-		}
-		if strings.Contains(filter.Where, "db.project") {
-			joinDBQuery = "LEFT JOIN db ON db.instance = instance.resource_id"
 		}
 	}
 	if v := find.ResourceID; v != nil {
@@ -221,9 +217,8 @@ func (s *Store) listInstanceImpl(ctx context.Context, txn *sql.Tx, find *FindIns
 			instance.metadata
 		FROM instance
 		%s
-		%s
 		WHERE %s
-		ORDER BY resource_id`, joinDSQuery, joinDBQuery, strings.Join(where, " AND "))
+		ORDER BY resource_id`, joinDSQuery, strings.Join(where, " AND "))
 	if v := find.Limit; v != nil {
 		query += fmt.Sprintf(" LIMIT %d", *v)
 	}
