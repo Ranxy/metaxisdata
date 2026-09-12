@@ -75,7 +75,8 @@ func configureGrpcRouters(
 		stack := stacktrace.TakeStacktrace(20 /* n */, 5 /* skip */)
 		// keep a multiline stack
 		slog.Error("v1 server panic error", "method", s.Procedure, log.WithError(errors.Errorf("error: %v\n%s", p, stack)))
-		return connect.NewError(connect.CodeInternal, errors.Errorf("error: %v\n%s", p, stack))
+		// The stack stays in the log; the client only gets a generic message.
+		return connect.NewError(connect.CodeInternal, errors.New("internal server error"))
 	}
 
 	handlerOpts := connect.WithHandlerOptions(
