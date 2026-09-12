@@ -23,6 +23,50 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type CreateSSOStateResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	State         string                 `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateSSOStateResponse) Reset() {
+	*x = CreateSSOStateResponse{}
+	mi := &file_v1_auth_service_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateSSOStateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateSSOStateResponse) ProtoMessage() {}
+
+func (x *CreateSSOStateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_auth_service_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateSSOStateResponse.ProtoReflect.Descriptor instead.
+func (*CreateSSOStateResponse) Descriptor() ([]byte, []int) {
+	return file_v1_auth_service_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *CreateSSOStateResponse) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
 type LoginRequest struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Email    string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
@@ -40,7 +84,7 @@ type LoginRequest struct {
 
 func (x *LoginRequest) Reset() {
 	*x = LoginRequest{}
-	mi := &file_v1_auth_service_proto_msgTypes[0]
+	mi := &file_v1_auth_service_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -52,7 +96,7 @@ func (x *LoginRequest) String() string {
 func (*LoginRequest) ProtoMessage() {}
 
 func (x *LoginRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_auth_service_proto_msgTypes[0]
+	mi := &file_v1_auth_service_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -65,7 +109,7 @@ func (x *LoginRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoginRequest.ProtoReflect.Descriptor instead.
 func (*LoginRequest) Descriptor() ([]byte, []int) {
-	return file_v1_auth_service_proto_rawDescGZIP(), []int{0}
+	return file_v1_auth_service_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *LoginRequest) GetEmail() string {
@@ -115,7 +159,7 @@ type IdentityProviderContext struct {
 
 func (x *IdentityProviderContext) Reset() {
 	*x = IdentityProviderContext{}
-	mi := &file_v1_auth_service_proto_msgTypes[1]
+	mi := &file_v1_auth_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -127,7 +171,7 @@ func (x *IdentityProviderContext) String() string {
 func (*IdentityProviderContext) ProtoMessage() {}
 
 func (x *IdentityProviderContext) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_auth_service_proto_msgTypes[1]
+	mi := &file_v1_auth_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -140,7 +184,7 @@ func (x *IdentityProviderContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdentityProviderContext.ProtoReflect.Descriptor instead.
 func (*IdentityProviderContext) Descriptor() ([]byte, []int) {
-	return file_v1_auth_service_proto_rawDescGZIP(), []int{1}
+	return file_v1_auth_service_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *IdentityProviderContext) GetContext() isIdentityProviderContext_Context {
@@ -170,15 +214,21 @@ type IdentityProviderContext_Oauth2Context struct {
 func (*IdentityProviderContext_Oauth2Context) isIdentityProviderContext_Context() {}
 
 type OAuth2IdentityProviderContext struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Code  string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	// The state issued by CreateSSOState. Required: the server rejects a login
+	// whose state is missing, unknown or already used.
+	State string `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	// code_verifier is the PKCE verifier matching the code_challenge sent to the
+	// identity provider. Optional; providers that do not use PKCE ignore it.
+	CodeVerifier  string `protobuf:"bytes,3,opt,name=code_verifier,json=codeVerifier,proto3" json:"code_verifier,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *OAuth2IdentityProviderContext) Reset() {
 	*x = OAuth2IdentityProviderContext{}
-	mi := &file_v1_auth_service_proto_msgTypes[2]
+	mi := &file_v1_auth_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -190,7 +240,7 @@ func (x *OAuth2IdentityProviderContext) String() string {
 func (*OAuth2IdentityProviderContext) ProtoMessage() {}
 
 func (x *OAuth2IdentityProviderContext) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_auth_service_proto_msgTypes[2]
+	mi := &file_v1_auth_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -203,12 +253,26 @@ func (x *OAuth2IdentityProviderContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OAuth2IdentityProviderContext.ProtoReflect.Descriptor instead.
 func (*OAuth2IdentityProviderContext) Descriptor() ([]byte, []int) {
-	return file_v1_auth_service_proto_rawDescGZIP(), []int{2}
+	return file_v1_auth_service_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *OAuth2IdentityProviderContext) GetCode() string {
 	if x != nil {
 		return x.Code
+	}
+	return ""
+}
+
+func (x *OAuth2IdentityProviderContext) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *OAuth2IdentityProviderContext) GetCodeVerifier() string {
+	if x != nil {
+		return x.CodeVerifier
 	}
 	return ""
 }
@@ -225,7 +289,7 @@ type LoginResponse struct {
 
 func (x *LoginResponse) Reset() {
 	*x = LoginResponse{}
-	mi := &file_v1_auth_service_proto_msgTypes[3]
+	mi := &file_v1_auth_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -237,7 +301,7 @@ func (x *LoginResponse) String() string {
 func (*LoginResponse) ProtoMessage() {}
 
 func (x *LoginResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_auth_service_proto_msgTypes[3]
+	mi := &file_v1_auth_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -250,7 +314,7 @@ func (x *LoginResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoginResponse.ProtoReflect.Descriptor instead.
 func (*LoginResponse) Descriptor() ([]byte, []int) {
-	return file_v1_auth_service_proto_rawDescGZIP(), []int{3}
+	return file_v1_auth_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *LoginResponse) GetToken() string {
@@ -282,7 +346,7 @@ type LogoutRequest struct {
 
 func (x *LogoutRequest) Reset() {
 	*x = LogoutRequest{}
-	mi := &file_v1_auth_service_proto_msgTypes[4]
+	mi := &file_v1_auth_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -294,7 +358,7 @@ func (x *LogoutRequest) String() string {
 func (*LogoutRequest) ProtoMessage() {}
 
 func (x *LogoutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_auth_service_proto_msgTypes[4]
+	mi := &file_v1_auth_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -307,14 +371,16 @@ func (x *LogoutRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogoutRequest.ProtoReflect.Descriptor instead.
 func (*LogoutRequest) Descriptor() ([]byte, []int) {
-	return file_v1_auth_service_proto_rawDescGZIP(), []int{4}
+	return file_v1_auth_service_proto_rawDescGZIP(), []int{5}
 }
 
 var File_v1_auth_service_proto protoreflect.FileDescriptor
 
 const file_v1_auth_service_proto_rawDesc = "" +
 	"\n" +
-	"\x15v1/auth_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x13v1/annotation.proto\x1a\x15v1/user_service.proto\"\xb7\x01\n" +
+	"\x15v1/auth_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x13v1/annotation.proto\x1a\x15v1/user_service.proto\".\n" +
+	"\x16CreateSSOStateResponse\x12\x14\n" +
+	"\x05state\x18\x01 \x01(\tR\x05state\"\xb7\x01\n" +
 	"\fLoginRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\x12\x10\n" +
@@ -324,17 +390,20 @@ const file_v1_auth_service_proto_rawDesc = "" +
 	"idpContext\"|\n" +
 	"\x17IdentityProviderContext\x12V\n" +
 	"\x0eoauth2_context\x18\x01 \x01(\v2-.metaxisdata.v1.OAuth2IdentityProviderContextH\x00R\roauth2ContextB\t\n" +
-	"\acontext\"3\n" +
+	"\acontext\"n\n" +
 	"\x1dOAuth2IdentityProviderContext\x12\x12\n" +
-	"\x04code\x18\x01 \x01(\tR\x04code\"\x85\x01\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\x12\x14\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\x12#\n" +
+	"\rcode_verifier\x18\x03 \x01(\tR\fcodeVerifier\"\x85\x01\n" +
 	"\rLoginResponse\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x124\n" +
 	"\x16require_reset_password\x18\x03 \x01(\bR\x14requireResetPassword\x12(\n" +
 	"\x04user\x18\x04 \x01(\v2\x14.metaxisdata.v1.UserR\x04user\"\x0f\n" +
-	"\rLogoutRequest2\xdb\x01\n" +
+	"\rLogoutRequest2\xcf\x02\n" +
 	"\vAuthService\x12g\n" +
 	"\x05Login\x12\x1c.metaxisdata.v1.LoginRequest\x1a\x1d.metaxisdata.v1.LoginResponse\"!\x80\xea0\x01\x98\xea0\x01\x82\xd3\xe4\x93\x02\x13:\x01*\"\x0e/v1/auth/login\x12c\n" +
-	"\x06Logout\x12\x1d.metaxisdata.v1.LogoutRequest\x1a\x16.google.protobuf.Empty\"\"\x80\xea0\x01\x98\xea0\x01\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/v1/auth/logoutB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\x06Logout\x12\x1d.metaxisdata.v1.LogoutRequest\x1a\x16.google.protobuf.Empty\"\"\x80\xea0\x01\x98\xea0\x01\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/v1/auth/logout\x12r\n" +
+	"\x0eCreateSSOState\x12\x16.google.protobuf.Empty\x1a&.metaxisdata.v1.CreateSSOStateResponse\" \x80\xea0\x01\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/auth/ssoStateB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_auth_service_proto_rawDescOnce sync.Once
@@ -348,26 +417,29 @@ func file_v1_auth_service_proto_rawDescGZIP() []byte {
 	return file_v1_auth_service_proto_rawDescData
 }
 
-var file_v1_auth_service_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_v1_auth_service_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_v1_auth_service_proto_goTypes = []any{
-	(*LoginRequest)(nil),                  // 0: metaxisdata.v1.LoginRequest
-	(*IdentityProviderContext)(nil),       // 1: metaxisdata.v1.IdentityProviderContext
-	(*OAuth2IdentityProviderContext)(nil), // 2: metaxisdata.v1.OAuth2IdentityProviderContext
-	(*LoginResponse)(nil),                 // 3: metaxisdata.v1.LoginResponse
-	(*LogoutRequest)(nil),                 // 4: metaxisdata.v1.LogoutRequest
-	(*User)(nil),                          // 5: metaxisdata.v1.User
-	(*emptypb.Empty)(nil),                 // 6: google.protobuf.Empty
+	(*CreateSSOStateResponse)(nil),        // 0: metaxisdata.v1.CreateSSOStateResponse
+	(*LoginRequest)(nil),                  // 1: metaxisdata.v1.LoginRequest
+	(*IdentityProviderContext)(nil),       // 2: metaxisdata.v1.IdentityProviderContext
+	(*OAuth2IdentityProviderContext)(nil), // 3: metaxisdata.v1.OAuth2IdentityProviderContext
+	(*LoginResponse)(nil),                 // 4: metaxisdata.v1.LoginResponse
+	(*LogoutRequest)(nil),                 // 5: metaxisdata.v1.LogoutRequest
+	(*User)(nil),                          // 6: metaxisdata.v1.User
+	(*emptypb.Empty)(nil),                 // 7: google.protobuf.Empty
 }
 var file_v1_auth_service_proto_depIdxs = []int32{
-	1, // 0: metaxisdata.v1.LoginRequest.idp_context:type_name -> metaxisdata.v1.IdentityProviderContext
-	2, // 1: metaxisdata.v1.IdentityProviderContext.oauth2_context:type_name -> metaxisdata.v1.OAuth2IdentityProviderContext
-	5, // 2: metaxisdata.v1.LoginResponse.user:type_name -> metaxisdata.v1.User
-	0, // 3: metaxisdata.v1.AuthService.Login:input_type -> metaxisdata.v1.LoginRequest
-	4, // 4: metaxisdata.v1.AuthService.Logout:input_type -> metaxisdata.v1.LogoutRequest
-	3, // 5: metaxisdata.v1.AuthService.Login:output_type -> metaxisdata.v1.LoginResponse
-	6, // 6: metaxisdata.v1.AuthService.Logout:output_type -> google.protobuf.Empty
-	5, // [5:7] is the sub-list for method output_type
-	3, // [3:5] is the sub-list for method input_type
+	2, // 0: metaxisdata.v1.LoginRequest.idp_context:type_name -> metaxisdata.v1.IdentityProviderContext
+	3, // 1: metaxisdata.v1.IdentityProviderContext.oauth2_context:type_name -> metaxisdata.v1.OAuth2IdentityProviderContext
+	6, // 2: metaxisdata.v1.LoginResponse.user:type_name -> metaxisdata.v1.User
+	1, // 3: metaxisdata.v1.AuthService.Login:input_type -> metaxisdata.v1.LoginRequest
+	5, // 4: metaxisdata.v1.AuthService.Logout:input_type -> metaxisdata.v1.LogoutRequest
+	7, // 5: metaxisdata.v1.AuthService.CreateSSOState:input_type -> google.protobuf.Empty
+	4, // 6: metaxisdata.v1.AuthService.Login:output_type -> metaxisdata.v1.LoginResponse
+	7, // 7: metaxisdata.v1.AuthService.Logout:output_type -> google.protobuf.Empty
+	0, // 8: metaxisdata.v1.AuthService.CreateSSOState:output_type -> metaxisdata.v1.CreateSSOStateResponse
+	6, // [6:9] is the sub-list for method output_type
+	3, // [3:6] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name
 	3, // [3:3] is the sub-list for extension extendee
 	0, // [0:3] is the sub-list for field type_name
@@ -380,7 +452,7 @@ func file_v1_auth_service_proto_init() {
 	}
 	file_v1_annotation_proto_init()
 	file_v1_user_service_proto_init()
-	file_v1_auth_service_proto_msgTypes[1].OneofWrappers = []any{
+	file_v1_auth_service_proto_msgTypes[2].OneofWrappers = []any{
 		(*IdentityProviderContext_Oauth2Context)(nil),
 	}
 	type x struct{}
@@ -389,7 +461,7 @@ func file_v1_auth_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_auth_service_proto_rawDesc), len(file_v1_auth_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

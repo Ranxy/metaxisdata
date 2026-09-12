@@ -12,42 +12,49 @@ import { file_v1_user_service } from "./user_service_pb";
  * Describes the file v1/auth_service.proto.
  */
 export const file_v1_auth_service = /*@__PURE__*/
-  fileDesc("ChV2MS9hdXRoX3NlcnZpY2UucHJvdG8SDm1ldGF4aXNkYXRhLnYxIowBCgxMb2dpblJlcXVlc3QSDQoFZW1haWwYASABKAkSEAoIcGFzc3dvcmQYAiABKAkSCwoDd2ViGAMgASgIEhAKCGlkcF9uYW1lGAQgASgJEjwKC2lkcF9jb250ZXh0GAUgASgLMicubWV0YXhpc2RhdGEudjEuSWRlbnRpdHlQcm92aWRlckNvbnRleHQibQoXSWRlbnRpdHlQcm92aWRlckNvbnRleHQSRwoOb2F1dGgyX2NvbnRleHQYASABKAsyLS5tZXRheGlzZGF0YS52MS5PQXV0aDJJZGVudGl0eVByb3ZpZGVyQ29udGV4dEgAQgkKB2NvbnRleHQiLQodT0F1dGgySWRlbnRpdHlQcm92aWRlckNvbnRleHQSDAoEY29kZRgBIAEoCSJiCg1Mb2dpblJlc3BvbnNlEg0KBXRva2VuGAEgASgJEh4KFnJlcXVpcmVfcmVzZXRfcGFzc3dvcmQYAyABKAgSIgoEdXNlchgEIAEoCzIULm1ldGF4aXNkYXRhLnYxLlVzZXIiDwoNTG9nb3V0UmVxdWVzdDLbAQoLQXV0aFNlcnZpY2USZwoFTG9naW4SHC5tZXRheGlzZGF0YS52MS5Mb2dpblJlcXVlc3QaHS5tZXRheGlzZGF0YS52MS5Mb2dpblJlc3BvbnNlIiGA6jABmOowAYLT5JMCEzoBKiIOL3YxL2F1dGgvbG9naW4SYwoGTG9nb3V0Eh0ubWV0YXhpc2RhdGEudjEuTG9nb3V0UmVxdWVzdBoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eSIigOowAZjqMAGC0+STAhQ6ASoiDy92MS9hdXRoL2xvZ291dEI2WjRnaXRodWIuY29tL1Jhbnh5L21ldGF4aXNkYXRhL2JhY2tlbmQvZ2VuZXJhdGVkLWdvL3YxYgZwcm90bzM", [file_google_api_annotations, file_google_protobuf_empty, file_v1_annotation, file_v1_user_service]);
+  fileDesc("ChV2MS9hdXRoX3NlcnZpY2UucHJvdG8SDm1ldGF4aXNkYXRhLnYxIicKFkNyZWF0ZVNTT1N0YXRlUmVzcG9uc2USDQoFc3RhdGUYASABKAkijAEKDExvZ2luUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIQCghwYXNzd29yZBgCIAEoCRILCgN3ZWIYAyABKAgSEAoIaWRwX25hbWUYBCABKAkSPAoLaWRwX2NvbnRleHQYBSABKAsyJy5tZXRheGlzZGF0YS52MS5JZGVudGl0eVByb3ZpZGVyQ29udGV4dCJtChdJZGVudGl0eVByb3ZpZGVyQ29udGV4dBJHCg5vYXV0aDJfY29udGV4dBgBIAEoCzItLm1ldGF4aXNkYXRhLnYxLk9BdXRoMklkZW50aXR5UHJvdmlkZXJDb250ZXh0SABCCQoHY29udGV4dCJTCh1PQXV0aDJJZGVudGl0eVByb3ZpZGVyQ29udGV4dBIMCgRjb2RlGAEgASgJEg0KBXN0YXRlGAIgASgJEhUKDWNvZGVfdmVyaWZpZXIYAyABKAkiYgoNTG9naW5SZXNwb25zZRINCgV0b2tlbhgBIAEoCRIeChZyZXF1aXJlX3Jlc2V0X3Bhc3N3b3JkGAMgASgIEiIKBHVzZXIYBCABKAsyFC5tZXRheGlzZGF0YS52MS5Vc2VyIg8KDUxvZ291dFJlcXVlc3QyzwIKC0F1dGhTZXJ2aWNlEmcKBUxvZ2luEhwubWV0YXhpc2RhdGEudjEuTG9naW5SZXF1ZXN0Gh0ubWV0YXhpc2RhdGEudjEuTG9naW5SZXNwb25zZSIhgOowAZjqMAGC0+STAhM6ASoiDi92MS9hdXRoL2xvZ2luEmMKBkxvZ291dBIdLm1ldGF4aXNkYXRhLnYxLkxvZ291dFJlcXVlc3QaFi5nb29nbGUucHJvdG9idWYuRW1wdHkiIoDqMAGY6jABgtPkkwIUOgEqIg8vdjEvYXV0aC9sb2dvdXQScgoOQ3JlYXRlU1NPU3RhdGUSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaJi5tZXRheGlzZGF0YS52MS5DcmVhdGVTU09TdGF0ZVJlc3BvbnNlIiCA6jABgtPkkwIWOgEqIhEvdjEvYXV0aC9zc29TdGF0ZUI2WjRnaXRodWIuY29tL1Jhbnh5L21ldGF4aXNkYXRhL2JhY2tlbmQvZ2VuZXJhdGVkLWdvL3YxYgZwcm90bzM", [file_google_api_annotations, file_google_protobuf_empty, file_v1_annotation, file_v1_user_service]);
+
+/**
+ * Describes the message metaxisdata.v1.CreateSSOStateResponse.
+ * Use `create(CreateSSOStateResponseSchema)` to create a new message.
+ */
+export const CreateSSOStateResponseSchema = /*@__PURE__*/
+  messageDesc(file_v1_auth_service, 0);
 
 /**
  * Describes the message metaxisdata.v1.LoginRequest.
  * Use `create(LoginRequestSchema)` to create a new message.
  */
 export const LoginRequestSchema = /*@__PURE__*/
-  messageDesc(file_v1_auth_service, 0);
+  messageDesc(file_v1_auth_service, 1);
 
 /**
  * Describes the message metaxisdata.v1.IdentityProviderContext.
  * Use `create(IdentityProviderContextSchema)` to create a new message.
  */
 export const IdentityProviderContextSchema = /*@__PURE__*/
-  messageDesc(file_v1_auth_service, 1);
+  messageDesc(file_v1_auth_service, 2);
 
 /**
  * Describes the message metaxisdata.v1.OAuth2IdentityProviderContext.
  * Use `create(OAuth2IdentityProviderContextSchema)` to create a new message.
  */
 export const OAuth2IdentityProviderContextSchema = /*@__PURE__*/
-  messageDesc(file_v1_auth_service, 2);
+  messageDesc(file_v1_auth_service, 3);
 
 /**
  * Describes the message metaxisdata.v1.LoginResponse.
  * Use `create(LoginResponseSchema)` to create a new message.
  */
 export const LoginResponseSchema = /*@__PURE__*/
-  messageDesc(file_v1_auth_service, 3);
+  messageDesc(file_v1_auth_service, 4);
 
 /**
  * Describes the message metaxisdata.v1.LogoutRequest.
  * Use `create(LogoutRequestSchema)` to create a new message.
  */
 export const LogoutRequestSchema = /*@__PURE__*/
-  messageDesc(file_v1_auth_service, 4);
+  messageDesc(file_v1_auth_service, 5);
 
 /**
  * @generated from service metaxisdata.v1.AuthService

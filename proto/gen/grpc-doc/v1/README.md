@@ -41,6 +41,7 @@
     - [UserService](#metaxisdata-v1-UserService)
   
 - [v1/auth_service.proto](#v1_auth_service-proto)
+    - [CreateSSOStateResponse](#metaxisdata-v1-CreateSSOStateResponse)
     - [IdentityProviderContext](#metaxisdata-v1-IdentityProviderContext)
     - [LoginRequest](#metaxisdata-v1-LoginRequest)
     - [LoginResponse](#metaxisdata-v1-LoginResponse)
@@ -725,6 +726,21 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 
 
 
+<a name="metaxisdata-v1-CreateSSOStateResponse"></a>
+
+### CreateSSOStateResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| state | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-IdentityProviderContext"></a>
 
 ### IdentityProviderContext
@@ -795,6 +811,8 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | code | [string](#string) |  |  |
+| state | [string](#string) |  | The state issued by CreateSSOState. Required: the server rejects a login whose state is missing, unknown or already used. |
+| code_verifier | [string](#string) |  | code_verifier is the PKCE verifier matching the code_challenge sent to the identity provider. Optional; providers that do not use PKCE ignore it. |
 
 
 
@@ -816,6 +834,7 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 | ----------- | ------------ | ------------- | ------------|
 | Login | [LoginRequest](#metaxisdata-v1-LoginRequest) | [LoginResponse](#metaxisdata-v1-LoginResponse) | Permissions required: None |
 | Logout | [LogoutRequest](#metaxisdata-v1-LogoutRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Permissions required: None |
+| CreateSSOState | [.google.protobuf.Empty](#google-protobuf-Empty) | [CreateSSOStateResponse](#metaxisdata-v1-CreateSSOStateResponse) | CreateSSOState issues a one-time OAuth2 state value. A client must fetch it before redirecting to the identity provider, pass it back to the provider and then send it with the login request; the server consumes it there. Without it an attacker can complete an authorization-code flow in a victim&#39;s browser and bind the victim&#39;s session to the attacker&#39;s identity. Permissions required: None |
 
  
 

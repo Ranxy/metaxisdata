@@ -38,6 +38,9 @@ const (
 	AuthServiceLoginProcedure = "/metaxisdata.v1.AuthService/Login"
 	// AuthServiceLogoutProcedure is the fully-qualified name of the AuthService's Logout RPC.
 	AuthServiceLogoutProcedure = "/metaxisdata.v1.AuthService/Logout"
+	// AuthServiceCreateSSOStateProcedure is the fully-qualified name of the AuthService's
+	// CreateSSOState RPC.
+	AuthServiceCreateSSOStateProcedure = "/metaxisdata.v1.AuthService/CreateSSOState"
 )
 
 // AuthServiceClient is a client for the metaxisdata.v1.AuthService service.
@@ -46,6 +49,13 @@ type AuthServiceClient interface {
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
 	// Permissions required: None
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[emptypb.Empty], error)
+	// CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
+	// before redirecting to the identity provider, pass it back to the provider
+	// and then send it with the login request; the server consumes it there.
+	// Without it an attacker can complete an authorization-code flow in a
+	// victim's browser and bind the victim's session to the attacker's identity.
+	// Permissions required: None
+	CreateSSOState(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.CreateSSOStateResponse], error)
 }
 
 // NewAuthServiceClient constructs a client for the metaxisdata.v1.AuthService service. By default,
@@ -71,13 +81,20 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(authServiceMethods.ByName("Logout")),
 			connect.WithClientOptions(opts...),
 		),
+		createSSOState: connect.NewClient[emptypb.Empty, v1.CreateSSOStateResponse](
+			httpClient,
+			baseURL+AuthServiceCreateSSOStateProcedure,
+			connect.WithSchema(authServiceMethods.ByName("CreateSSOState")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // authServiceClient implements AuthServiceClient.
 type authServiceClient struct {
-	login  *connect.Client[v1.LoginRequest, v1.LoginResponse]
-	logout *connect.Client[v1.LogoutRequest, emptypb.Empty]
+	login          *connect.Client[v1.LoginRequest, v1.LoginResponse]
+	logout         *connect.Client[v1.LogoutRequest, emptypb.Empty]
+	createSSOState *connect.Client[emptypb.Empty, v1.CreateSSOStateResponse]
 }
 
 // Login calls metaxisdata.v1.AuthService.Login.
@@ -90,12 +107,24 @@ func (c *authServiceClient) Logout(ctx context.Context, req *connect.Request[v1.
 	return c.logout.CallUnary(ctx, req)
 }
 
+// CreateSSOState calls metaxisdata.v1.AuthService.CreateSSOState.
+func (c *authServiceClient) CreateSSOState(ctx context.Context, req *connect.Request[emptypb.Empty]) (*connect.Response[v1.CreateSSOStateResponse], error) {
+	return c.createSSOState.CallUnary(ctx, req)
+}
+
 // AuthServiceHandler is an implementation of the metaxisdata.v1.AuthService service.
 type AuthServiceHandler interface {
 	// Permissions required: None
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
 	// Permissions required: None
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[emptypb.Empty], error)
+	// CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
+	// before redirecting to the identity provider, pass it back to the provider
+	// and then send it with the login request; the server consumes it there.
+	// Without it an attacker can complete an authorization-code flow in a
+	// victim's browser and bind the victim's session to the attacker's identity.
+	// Permissions required: None
+	CreateSSOState(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.CreateSSOStateResponse], error)
 }
 
 // NewAuthServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -117,12 +146,20 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(authServiceMethods.ByName("Logout")),
 		connect.WithHandlerOptions(opts...),
 	)
+	authServiceCreateSSOStateHandler := connect.NewUnaryHandler(
+		AuthServiceCreateSSOStateProcedure,
+		svc.CreateSSOState,
+		connect.WithSchema(authServiceMethods.ByName("CreateSSOState")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.AuthService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AuthServiceLoginProcedure:
 			authServiceLoginHandler.ServeHTTP(w, r)
 		case AuthServiceLogoutProcedure:
 			authServiceLogoutHandler.ServeHTTP(w, r)
+		case AuthServiceCreateSSOStateProcedure:
+			authServiceCreateSSOStateHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -138,4 +175,8 @@ func (UnimplementedAuthServiceHandler) Login(context.Context, *connect.Request[v
 
 func (UnimplementedAuthServiceHandler) Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[emptypb.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.AuthService.Logout is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) CreateSSOState(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.CreateSSOStateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.AuthService.CreateSSOState is not implemented"))
 }

@@ -20,8 +20,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AuthService_Login_FullMethodName  = "/metaxisdata.v1.AuthService/Login"
-	AuthService_Logout_FullMethodName = "/metaxisdata.v1.AuthService/Logout"
+	AuthService_Login_FullMethodName          = "/metaxisdata.v1.AuthService/Login"
+	AuthService_Logout_FullMethodName         = "/metaxisdata.v1.AuthService/Logout"
+	AuthService_CreateSSOState_FullMethodName = "/metaxisdata.v1.AuthService/CreateSSOState"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -32,6 +33,13 @@ type AuthServiceClient interface {
 	Login(ctx context.Context, in *LoginRequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	// Permissions required: None
 	Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
+	// before redirecting to the identity provider, pass it back to the provider
+	// and then send it with the login request; the server consumes it there.
+	// Without it an attacker can complete an authorization-code flow in a
+	// victim's browser and bind the victim's session to the attacker's identity.
+	// Permissions required: None
+	CreateSSOState(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*CreateSSOStateResponse, error)
 }
 
 type authServiceClient struct {
@@ -62,6 +70,16 @@ func (c *authServiceClient) Logout(ctx context.Context, in *LogoutRequest, opts 
 	return out, nil
 }
 
+func (c *authServiceClient) CreateSSOState(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*CreateSSOStateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateSSOStateResponse)
+	err := c.cc.Invoke(ctx, AuthService_CreateSSOState_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuthServiceServer is the server API for AuthService service.
 // All implementations must embed UnimplementedAuthServiceServer
 // for forward compatibility.
@@ -70,6 +88,13 @@ type AuthServiceServer interface {
 	Login(context.Context, *LoginRequest) (*LoginResponse, error)
 	// Permissions required: None
 	Logout(context.Context, *LogoutRequest) (*emptypb.Empty, error)
+	// CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
+	// before redirecting to the identity provider, pass it back to the provider
+	// and then send it with the login request; the server consumes it there.
+	// Without it an attacker can complete an authorization-code flow in a
+	// victim's browser and bind the victim's session to the attacker's identity.
+	// Permissions required: None
+	CreateSSOState(context.Context, *emptypb.Empty) (*CreateSSOStateResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
 
@@ -85,6 +110,9 @@ func (UnimplementedAuthServiceServer) Login(context.Context, *LoginRequest) (*Lo
 }
 func (UnimplementedAuthServiceServer) Logout(context.Context, *LogoutRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method Logout not implemented")
+}
+func (UnimplementedAuthServiceServer) CreateSSOState(context.Context, *emptypb.Empty) (*CreateSSOStateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateSSOState not implemented")
 }
 func (UnimplementedAuthServiceServer) mustEmbedUnimplementedAuthServiceServer() {}
 func (UnimplementedAuthServiceServer) testEmbeddedByValue()                     {}
@@ -143,6 +171,24 @@ func _AuthService_Logout_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_CreateSSOState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).CreateSSOState(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_CreateSSOState_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).CreateSSOState(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuthService_ServiceDesc is the grpc.ServiceDesc for AuthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -157,6 +203,10 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Logout",
 			Handler:    _AuthService_Logout_Handler,
+		},
+		{
+			MethodName: "CreateSSOState",
+			Handler:    _AuthService_CreateSSOState_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -2,6 +2,7 @@ package state
 
 import (
 	"sync"
+	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/pkg/errors"
@@ -12,12 +13,21 @@ import (
 // only grow through legitimate logins; the LRU eviction is therefore safe.
 const tokenRevocationCapacity = 4096
 
+// SSOStateTTL is how long a one-time OAuth2 state nonce stays valid.
+const SSOStateTTL = 5 * time.Minute
+
+// ssoStateCapacity bounds the in-flight OAuth2 state nonces.
+const ssoStateCapacity = 1024
+
 type State struct {
 	TokenExpireCache *lru.Cache[string, bool]
 	// InstanceOutstandingConnections is the maximum number of connections per instance.
 	InstanceOutstandingConnections *resourceLimiter
 	// LoginLimiter throttles failed password logins per (email, source).
 	LoginLimiter *LoginLimiter
+	// SSOStateCache holds one-time OAuth2 state nonces issued by
+	// CreateSSOState, mapped to their issue time.
+	SSOStateCache *lru.Cache[string, time.Time]
 }
 
 func New() (*State, error) {
@@ -25,10 +35,15 @@ func New() (*State, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create auth expire cache")
 	}
+	ssoStateCache, err := lru.New[string, time.Time](ssoStateCapacity)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to create sso state cache")
+	}
 	return &State{
 		InstanceOutstandingConnections: &resourceLimiter{connections: map[string]int{}},
 		TokenExpireCache:               expireCache,
 		LoginLimiter:                   newLoginLimiter(),
+		SSOStateCache:                  ssoStateCache,
 	}, nil
 }
 

@@ -115,6 +115,7 @@ func TestACLInterceptorAuthorize(t *testing.T) {
 var unannotatedMethods = map[string]bool{
 	"metaxisdata.v1.AuthService.Login":          true,
 	"metaxisdata.v1.AuthService.Logout":         true,
+	"metaxisdata.v1.AuthService.CreateSSOState": true,
 	"metaxisdata.v1.UserService.GetCurrentUser": true,
 	"metaxisdata.v1.UserService.CreateUser":     true,
 	"metaxisdata.v1.UserService.UpdateUser":     true,

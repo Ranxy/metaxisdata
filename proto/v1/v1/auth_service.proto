@@ -29,6 +29,24 @@ service AuthService {
     option (metaxisdata.v1.allow_without_credential) = true;
     option (metaxisdata.v1.audit) = true;
   }
+
+  // CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
+  // before redirecting to the identity provider, pass it back to the provider
+  // and then send it with the login request; the server consumes it there.
+  // Without it an attacker can complete an authorization-code flow in a
+  // victim's browser and bind the victim's session to the attacker's identity.
+  // Permissions required: None
+  rpc CreateSSOState(google.protobuf.Empty) returns (CreateSSOStateResponse) {
+    option (google.api.http) = {
+      post: "/v1/auth/ssoState"
+      body: "*"
+    };
+    option (metaxisdata.v1.allow_without_credential) = true;
+  }
+}
+
+message CreateSSOStateResponse {
+  string state = 1;
 }
 
 message LoginRequest {
@@ -55,6 +73,14 @@ message IdentityProviderContext {
 
 message OAuth2IdentityProviderContext {
   string code = 1;
+
+  // The state issued by CreateSSOState. Required: the server rejects a login
+  // whose state is missing, unknown or already used.
+  string state = 2;
+
+  // code_verifier is the PKCE verifier matching the code_challenge sent to the
+  // identity provider. Optional; providers that do not use PKCE ignore it.
+  string code_verifier = 3;
 }
 
 message LoginResponse {

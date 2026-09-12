@@ -23,6 +23,21 @@ func TestNewIdentityProvider(t *testing.T) {
 		containsErr string
 	}{
 		{
+			name:        "nil config does not panic",
+			config:      nil,
+			containsErr: "the oauth2 config is empty",
+		},
+		{
+			name: "nil field mapping does not panic",
+			config: &storepb.OAuth2IdentityProviderConfig{
+				ClientId:     "test-client-id",
+				ClientSecret: "test-client-secret",
+				TokenUrl:     "https://example.com/token",
+				UserInfoUrl:  "https://example.com/api/user",
+			},
+			containsErr: `the field "fieldMapping" is empty but required`,
+		},
+		{
 			name: "no tokenUrl",
 			config: &storepb.OAuth2IdentityProviderConfig{
 				ClientId:     "test-client-id",
@@ -151,7 +166,7 @@ func TestIdentityProvider(t *testing.T) {
 	require.NoError(t, err)
 
 	redirectURL := "https://example.com/oauth/callback"
-	oauthToken, err := oauth2.ExchangeToken(ctx, redirectURL, testCode)
+	oauthToken, err := oauth2.ExchangeToken(ctx, redirectURL, testCode, "")
 	require.NoError(t, err)
 	require.Equal(t, testAccessToken, oauthToken)
 
@@ -202,7 +217,7 @@ func TestIdentityProvider_SelfSigned(t *testing.T) {
 		require.NoError(t, err)
 
 		redirectURL := "https://example.com/oauth/callback"
-		_, err = oauth2.ExchangeToken(ctx, redirectURL, testCode)
+		_, err = oauth2.ExchangeToken(ctx, redirectURL, testCode, "")
 		assert.ErrorContains(t, err, "x509: certificate signed by unknown authority")
 	})
 
@@ -224,7 +239,7 @@ func TestIdentityProvider_SelfSigned(t *testing.T) {
 		require.NoError(t, err)
 
 		redirectURL := "https://example.com/oauth/callback"
-		oauthToken, err := oauth2.ExchangeToken(ctx, redirectURL, testCode)
+		oauthToken, err := oauth2.ExchangeToken(ctx, redirectURL, testCode, "")
 		require.NoError(t, err)
 		require.Equal(t, testAccessToken, oauthToken)
 
@@ -237,4 +252,41 @@ func TestIdentityProvider_SelfSigned(t *testing.T) {
 		}
 		assert.Equal(t, wantUserInfo, userInfoResult)
 	})
+}
+
+// PKCE is optional but when the client used it the verifier must reach the
+// token endpoint; otherwise the provider rejects the exchange.
+func TestExchangeTokenSendsThePKCEVerifier(t *testing.T) {
+	t.Parallel()
+
+	var gotVerifier string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		vals, err := url.ParseQuery(string(body))
+		require.NoError(t, err)
+		gotVerifier = vals.Get("code_verifier")
+
+		w.Header().Set("Content-Type", "application/json")
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "token",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		}))
+	}))
+	defer srv.Close()
+
+	provider, err := NewIdentityProvider(&storepb.OAuth2IdentityProviderConfig{
+		ClientId:     "id",
+		ClientSecret: "secret",
+		TokenUrl:     srv.URL,
+		UserInfoUrl:  srv.URL,
+		FieldMapping: &storepb.FieldMapping{Identifier: "email"},
+	})
+	require.NoError(t, err)
+
+	token, err := provider.ExchangeToken(context.Background(), "https://example.com/oauth/callback", "code", "verifier-123")
+	require.NoError(t, err)
+	require.Equal(t, "token", token)
+	require.Equal(t, "verifier-123", gotVerifier)
 }

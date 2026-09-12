@@ -323,6 +323,10 @@
             <ul>
               
                 <li>
+                  <a href="#metaxisdata.v1.CreateSSOStateResponse"><span class="badge">M</span>CreateSSOStateResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.IdentityProviderContext"><span class="badge">M</span>IdentityProviderContext</a>
                 </li>
               
@@ -2343,6 +2347,30 @@ The last remaining workspace admin cannot be deleted.</p></td>
       <p></p>
 
       
+        <h3 id="metaxisdata.v1.CreateSSOStateResponse">CreateSSOStateResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.IdentityProviderContext">IdentityProviderContext</h3>
         <p></p>
 
@@ -2482,6 +2510,22 @@ Format: idps/{idp} </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>state</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The state issued by CreateSSOState. Required: the server rejects a login
+whose state is missing, unknown or already used. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>code_verifier</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>code_verifier is the PKCE verifier matching the code_challenge sent to the
+identity provider. Optional; providers that do not use PKCE ignore it. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -2515,6 +2559,18 @@ Format: idps/{idp} </p></td>
                 <td><a href="#metaxisdata.v1.LogoutRequest">LogoutRequest</a></td>
                 <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
                 <td><p>Permissions required: None</p></td>
+              </tr>
+            
+              <tr>
+                <td>CreateSSOState</td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><a href="#metaxisdata.v1.CreateSSOStateResponse">CreateSSOStateResponse</a></td>
+                <td><p>CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
+before redirecting to the identity provider, pass it back to the provider
+and then send it with the login request; the server consumes it there.
+Without it an attacker can complete an authorization-code flow in a
+victim&#39;s browser and bind the victim&#39;s session to the attacker&#39;s identity.
+Permissions required: None</p></td>
               </tr>
             
           </tbody>
@@ -2551,6 +2607,16 @@ Format: idps/{idp} </p></td>
                 <td>Logout</td>
                 <td>POST</td>
                 <td>/v1/auth/logout</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateSSOState</td>
+                <td>POST</td>
+                <td>/v1/auth/ssoState</td>
                 <td>*</td>
               </tr>
               

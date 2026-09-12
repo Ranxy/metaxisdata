@@ -214,6 +214,31 @@ func (s *AuthService) needResetPassword(ctx context.Context, user *store.UserMes
 	return false
 }
 
+// CreateSSOState issues a one-time OAuth2 state nonce. The client passes it to
+// the identity provider and then back with the login request.
+func (s *AuthService) CreateSSOState(_ context.Context, _ *connect.Request[emptypb.Empty]) (*connect.Response[v1pb.CreateSSOStateResponse], error) {
+	state, err := common.RandomString(32)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate the SSO state"))
+	}
+	s.stateCfg.SSOStateCache.Add(state, time.Now())
+	return connect.NewResponse(&v1pb.CreateSSOStateResponse{State: state}), nil
+}
+
+// consumeSSOState validates a state nonce and removes it: a state can be used
+// exactly once and only within state.SSOStateTTL.
+func (s *AuthService) consumeSSOState(nonce string) bool {
+	if nonce == "" {
+		return false
+	}
+	issuedAt, ok := s.stateCfg.SSOStateCache.Get(nonce)
+	if !ok {
+		return false
+	}
+	s.stateCfg.SSOStateCache.Remove(nonce)
+	return time.Since(issuedAt) <= state.SSOStateTTL
+}
+
 // Logout is the auth logout method.
 func (s *AuthService) Logout(ctx context.Context, req *connect.Request[v1pb.LogoutRequest]) (*connect.Response[emptypb.Empty], error) {
 	accessTokenStr, err := auth.GetTokenFromHeaders(req.Header())
@@ -283,15 +308,21 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 		if oauth2Context == nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("missing OAuth2 context"))
 		}
+		// The state binds the callback to the client that started the flow,
+		// which is what stops an attacker from completing a code exchange in
+		// someone else's browser (login CSRF / authorization code injection).
+		if !s.consumeSSOState(oauth2Context.State) {
+			return nil, connect.NewError(connect.CodePermissionDenied, errors.Errorf("invalid or expired OAuth2 state, request a new one first"))
+		}
 		oauth2IdentityProvider, err := oauth2.NewIdentityProvider(idp.Config.GetOauth2Config())
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to create new OAuth2 identity provider"))
+			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.Wrapf(err, "failed to create new OAuth2 identity provider"))
 		}
 		if setting.ExternalUrl == "" {
 			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("external URL is not configured: set it in the workspace general settings"))
 		}
 		redirectURL := fmt.Sprintf("%s/oauth/callback", setting.ExternalUrl)
-		token, err := oauth2IdentityProvider.ExchangeToken(ctx, redirectURL, oauth2Context.Code)
+		token, err := oauth2IdentityProvider.ExchangeToken(ctx, redirectURL, oauth2Context.Code, oauth2Context.CodeVerifier)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to exchange token"))
 		}

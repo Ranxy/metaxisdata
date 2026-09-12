@@ -85,6 +85,35 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/auth/ssoState:
+        post:
+            tags:
+                - AuthService
+            description: |-
+                CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
+                 before redirecting to the identity provider, pass it back to the provider
+                 and then send it with the login request; the server consumes it there.
+                 Without it an attacker can complete an authorization-code flow in a
+                 victim's browser and bind the victim's session to the attacker's identity.
+                 Permissions required: None
+            operationId: AuthService_CreateSSOState
+            requestBody:
+                content:
+                    application/json: {}
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CreateSSOStateResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/databases:
         get:
             tags:
@@ -2967,6 +2996,11 @@ components:
                     description: The plain-text API key. Only returned once at creation time.
                 apiKey:
                     $ref: '#/components/schemas/APIKey'
+        CreateSSOStateResponse:
+            type: object
+            properties:
+                state:
+                    type: string
         DataSource:
             type: object
             properties:
@@ -4484,6 +4518,16 @@ components:
             properties:
                 code:
                     type: string
+                state:
+                    type: string
+                    description: |-
+                        The state issued by CreateSSOState. Required: the server rejects a login
+                         whose state is missing, unknown or already used.
+                codeVerifier:
+                    type: string
+                    description: |-
+                        code_verifier is the PKCE verifier matching the code_challenge sent to the
+                         identity provider. Optional; providers that do not use PKCE ignore it.
         OpenLineageDatasetDetailResource:
             type: object
             properties:

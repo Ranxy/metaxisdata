@@ -13,6 +13,22 @@ import type { EmptySchema } from "@bufbuild/protobuf/wkt";
 export declare const file_v1_auth_service: GenFile;
 
 /**
+ * @generated from message metaxisdata.v1.CreateSSOStateResponse
+ */
+export declare type CreateSSOStateResponse = Message<"metaxisdata.v1.CreateSSOStateResponse"> & {
+  /**
+   * @generated from field: string state = 1;
+   */
+  state: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateSSOStateResponse.
+ * Use `create(CreateSSOStateResponseSchema)` to create a new message.
+ */
+export declare const CreateSSOStateResponseSchema: GenMessage<CreateSSOStateResponse>;
+
+/**
  * @generated from message metaxisdata.v1.LoginRequest
  */
 export declare type LoginRequest = Message<"metaxisdata.v1.LoginRequest"> & {
@@ -85,6 +101,22 @@ export declare type OAuth2IdentityProviderContext = Message<"metaxisdata.v1.OAut
    * @generated from field: string code = 1;
    */
   code: string;
+
+  /**
+   * The state issued by CreateSSOState. Required: the server rejects a login
+   * whose state is missing, unknown or already used.
+   *
+   * @generated from field: string state = 2;
+   */
+  state: string;
+
+  /**
+   * code_verifier is the PKCE verifier matching the code_challenge sent to the
+   * identity provider. Optional; providers that do not use PKCE ignore it.
+   *
+   * @generated from field: string code_verifier = 3;
+   */
+  codeVerifier: string;
 };
 
 /**
@@ -156,6 +188,21 @@ export declare const AuthService: GenService<{
     methodKind: "unary";
     input: typeof LogoutRequestSchema;
     output: typeof EmptySchema;
+  },
+  /**
+   * CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
+   * before redirecting to the identity provider, pass it back to the provider
+   * and then send it with the login request; the server consumes it there.
+   * Without it an attacker can complete an authorization-code flow in a
+   * victim's browser and bind the victim's session to the attacker's identity.
+   * Permissions required: None
+   *
+   * @generated from rpc metaxisdata.v1.AuthService.CreateSSOState
+   */
+  createSSOState: {
+    methodKind: "unary";
+    input: typeof EmptySchema;
+    output: typeof CreateSSOStateResponseSchema;
   },
 }>;
 
