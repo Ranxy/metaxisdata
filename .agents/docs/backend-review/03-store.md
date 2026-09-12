@@ -13,6 +13,8 @@
 
 **阶段 3 收尾更新**：① `store/role.proto`/`store/project.proto`/`store/explain_sql.proto` 三个文件与 `TagPolicy`/`EnvironmentTierPolicy`/`RolePermissions`/`Project`/`Label` 消息删除；**`store.Policy` 保留**——`store/store.go:125`、`store/group.go:114`、`store/policy.go` 在用它写 `policy.resource_type`/`type` 列（原报告的"零 Go 使用"是 grep 漏了 enum 常量，`722d3cb`）。② `store/instance.go` 的凭据混淆改为表驱动（`secretFields`），删掉 Azure/AWS/GCP 凭据、`authentication_private_key`、`master_password` 的混淆分支；`Instance.roles`/`labels` 字段删除（`ceb6a3d`）。③ `store/database.proto` 删 `backup_available`、`InstanceRoleMetadata`、`LinkedDatabaseMetadata`、`Package`/`Stream`/`Task` 与六种 spatial index 配置（`ddff264`）；`store/idp.go` 只留读取路径（`e0eab33`）。④ `LATEST.sql` 的 `role`/`project`/`policy` 列注释更新为"对应消息已删/无调用者"。**剩余**：M3/M5/M22/M25 与删表删列。
 
+**阶段 3 续更新**：① store 侧 12 个 `*V2` 方法与 impl helper 去掉后缀（`8b328ae`），`listSettingV2Impl`/`listPolicyImplV2`/`listInstanceImplV2` 统一为 `*Impl`。② `db.project` 相关全部移除（`451cb78`）：`DatabaseMessage`/`FindDatabaseMessage`/`UpdateDatabaseMessage.ProjectID`、`BatchUpdateDatabases`（唯一调用者是 `DeleteInstance.force`，一并删除）、所有 INSERT/UPDATE/SELECT/ORDER BY 与 `listInstanceImpl` 的 `db.project` join；`principal.go`/`group.go` 里的 project WITH 子句删除。③ store 审计消息改名对齐 v1（`792ca71`）：`AuditSeverity`→`AuditLogSeverity`、`AuditStatus`→`AuditLogStatus`、`RequestMetadata`→`AuditRequestMetadata`；protojson 存的是枚举**值名**，既有 JSONB 行解码不变。④ `UpdateNamespaceMapping` 新增 `updateMask []string` 参数（`733b3e0`）：空 mask 保持旧行为（namespace/instance_resource_id 为空则跳过、database_name 总是写以便清空）。⑤ `setting.value` 是 text 而非 JSONB 属有意（`d8ce592`）：结构化 setting 存 protojson、标量 setting（`AUTH_SECRET`/`BRANDING_LOGO`/`WORKSPACE_ID`）存裸字符串，后者本身不是合法 JSON。⑥ `store/openlineage.proto` 的 `ExternalDataset`/`NamespaceMapping` 消息删除（`b2e80ae`）——两张表由手写 `*Message` 结构读写，该文件只剩 JSONB 里的 `SchemaField` 与两个 `*Summary` 消息在用。**上一段收尾更新里剩余项中的删表删列已完成**（`904fb09` `451cb78`，见 `06`）；M3/M5/M25 仍未处理。
+
 ---
 
 ## 严重（Critical）
@@ -122,6 +124,7 @@
 - **`ListResourceFilter`/`ExtraArgs` 是无防护的裸 SQL 通道**：`store/common.go:32-40`、`meta_resource.go:332-335`；边界只靠约定。
 - **`BatchUpdateDatabases` 用 `environment = ''` 而非 NULL**：`database.go:304-306`，读路径 `COALESCE('', instance.environment)` 得到 `''` 而非继承实例环境，与缓存分支（341-352）不一致。
 - **`BatchUpdateDatabases` 无界的 OR 列表**：`database.go:316-327`，每库 2 个参数，逼近 PG 65535 上限。
+  - **阶段 3 续更正（`451cb78`）**：`BatchUpdateDatabases` 已随 project 一起删除（唯一调用者是 `DeleteInstance.force`），上面两条 `environment = ''` 与无界 OR 列表的发现不再适用于当前代码。
 - **`unObfuscateInstance` 每行重新取 secret 并重复解码**：`instance.go:260`。
 - **store 错误普遍绕过 `common.Code`**：`meta_resource.go:117,188,942,950`、`instance.go:58,64`、`database.go:94`、`group.go:67`、`project.go`、`role.go:199` 等。
 - **`UpdateInstanceV2` 不做 data source 校验**：`instance.go:97`（create 有，update 没有），可持久化 0 个或多个 ADMIN 数据源。**✅ 已修复（阶段 1）** · `20e284b`：在 API 层补齐——`checkInstanceDataSources`（create/update 两条路径共用）现在要求恰好一个 ADMIN，并保留 ID 唯一性校验，返回 `CodeInvalidArgument`（守卫测试 `TestCheckInstanceDataSourcesRequiresOneAdmin`）。store 的 `UpdateInstanceV2` 本身仍不校验，绕过 API 的调用方不受保护。
@@ -156,6 +159,7 @@
 - **IDP 的 Create/List/Update/Delete 无 API 调用**（只有 `GetIdentityProvider` 被 `auth_service.go:236` 使用）；容量为 4 的 `idpCache` 实际只读；`Store.DeleteCache`（`setting.go:96-101`）不清 `idpCache`/`instanceCache`/`metaRegistryCache`，且自身无调用者。
 - **`db_connection.go:16,22` 的 `stopWatcher` 未使用**；`_ "github.com/jackc/pgx/v5"` 冗余。
 - **`V2` 命名**：`GetSettingV2`/`UpsertSettingV2`/`CreateSettingIfNotExistV2` 等与无 V2 版本并存。
+  - **阶段 3 续更正（`8b328ae`）**：12 个 `*V2` 方法与 impl helper 已去掉后缀，`setting.go` 里现在是 `GetSetting`/`UpsertSetting`/`CreateSettingIfNotExist`；`database.go`/`instance.go`/`policy.go` 同理。
 - **`external_dataset.schema_fields` + `schemaFieldsScanner`** 从无写入者。
 
 ---

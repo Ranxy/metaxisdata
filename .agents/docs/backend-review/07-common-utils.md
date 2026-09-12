@@ -13,6 +13,8 @@
 
 **阶段 3 收尾更新**：本轮**未改 `common` 的行为**；只修掉 `backend/common/utils_test.go` 里 `TestObfuscateRoundTrip` 的 flaky 断言——`NotContains(ciphertext, plaintext)` 对短明文（如 `"a"`）会随机命中 base64 密文，`-race` 全量跑时确实失败过一次，改为比较整体是否相等（`4afe1ba`）。
 
+**阶段 3 续更新**：`common.GetProjectID`、`FormatProject`、`ProjectNamePrefix`、`DefaultProjectID` 随 project 移除而删除（`451cb78`）；`IsValidResourceID` 与 `AllUsers` 仍有调用者，保留。
+
 ---
 
 ## 高（High）
@@ -43,6 +45,7 @@
   - **更正一个此前的猜测**：`expr.AsCall()` 在 cel-go v0.26.1 中是 Kind 守卫的，返回 `nilCall` 哨兵，**不会 panic**（见 `common/ast/expr.go:336-341`）。但 `expr.AsLiteral()` 对非字面量返回 **nil**（`expr.go:357-362`），因此 `args[0].AsLiteral().Value()`（`user_service.go:248`、`instance_service.go:141`、`database_service.go:865`）会 panic；`expr.AsCall().Target().AsIdent()`（`instance_service.go:136`、`database_service.go:860`）在 `Target()` 为 nil 时也会 panic。修复：comma-ok + `Kind() == LiteralKind` 判断 + 返回 `InvalidArgument`。
   - **修复落地**：`getVariableAndValueFromExpr` 改为返回 `(variable, value, error)`，缺变量或缺字面量即 `InvalidArgument`；新增 `filterString`/`filterBool`/`filterStringList`/`matchArgs` 四个带检查的取值 helper（`api/v1/common.go`），所有调用方改用它，`.matches()` 的目标标识符与参数一律经 `matchArgs` 校验（`Target() == nil || Kind() != IdentKind` 与 `Kind() != LiteralKind` 都返回错误）。守卫测试 `backend/api/v1/filter_type_safety_test.go` 覆盖 `email == 123`、`engine in [1]`、`name.matches(ident)`、裸 `matches("x")`、`exclude_unassigned == "true"` 等 12 个用例。
 - **M4. `GetNameParentTokens` 允许空段且逐次构造格式化字符串**：`common/resource_name.go:191-205`，`fmt.Sprintf("%s/", parts[2*i]) != tokenPrefix`；`projects//databases/x` 通过校验并返回空 token，`GetProjectID` 等会返回 `""` 而非报错。
+  - **阶段 3 续更正（`451cb78`）**：`GetProjectID` 已删除，M4 里以它为例的返回空串路径不再存在；`GetNameParentTokens` 允许空段这一缺陷本身未变。
 - **M5. `common/context.go` 的 helper 不安全/不确定**：`HasWorkspaceResource`（`:43-50`）遇到 nil 元素会 panic；`GetProjectResources`（`:52-63`）返回 map 迭代顺序（不确定）。当前两者无调用者。
 - **M6. `common.Error` 的 nil `Err` panic 且不可 Unwrap**：`error.go:81-83` 的 `e.Err.Error()` 在 `&common.Error{Code: ...}` 字面量上 panic；`Wrap(nil, code)` 返回非 nil（违反 nil=成功）；缺 `Unwrap`（见 U-H1）。
 

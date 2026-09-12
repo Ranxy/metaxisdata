@@ -11,6 +11,8 @@
 
 **阶段 3 收尾更新**：IDP 收敛为 **OAuth2 only**——`store/idp.proto` 删 OIDC/LDAP 配置与枚举值，`store/idp.go` 只留登录读取路径（`GetIdentityProvider` + `listIdentityProvidersImpl`），无调用者的 `CreateIdentityProvider`/`ListIdentityProviders`/`UpdateIdentityProvider`/`DeleteIdentityProvider`/`getConfigBytes` 删除，`FieldMapping` 注释不再指向不存在的 `principal.idp_user_info` 列（`e0eab33`）。`User.recovery_codes`（2FA）与 `UserProfile.source`（Entra SCIM）删除；**服务账号路径经确认是活的、保留**：`User.service_key`（`CreateUser` 的 SERVICE_ACCOUNT 分支返回生成的 access key）、`User.phone`（E.164 校验）、`PrincipalType.SERVICE_ACCOUNT`（`GenerateAPIToken` 登录分支）、`ServiceAccountAccessKeyPrefix`。`principal.mfa_config` 列确认无读写、无 proto 消息（注释已改，列保留）。
 
+**阶段 3 续更新**：`idp.type` 的 CHECK 收窄为 `('OAUTH2')`（`904fb09`，增量 `0.1.0003`），历史行若带 OIDC/LDAP 会让迁移以 SQLSTATE 23514 显式失败而不是静默保留。`principal.mfa_config` 列删除（`904fb09`）：确认 2FA 没有任何实现。`role` 表 DROP（`904fb09`）：CRUD/LRU 缓存阶段 3 已删、无 Go 调用者、无外键引用，DROP TABLE 连带 owner sequence 与唯一索引。v1 `UserType.USER` 改名 `END_USER`（`4036e1e`），与 store `PrincipalType.END_USER` 及 `principal.type` CHECK 三处一致，`convertToPrincipalType`、filter 解析、集成 fixture、前端同步改。`ListUsers` 的 `project` filter 与 `store.FindUserMessage.ProjectID` 删除（`451cb78`）——它读的是从来无人写入的 `policy` PROJECT 行；`store/group.go` 同款 `ProjectID` 一并删除（本来就没有 setter）。`policy` 表的 WORKSPACE/IAM 行仍是活路径，表与 `store.Policy` 消息保留。
+
 ---
 
 ## 严重（Critical）
@@ -226,8 +228,10 @@
 - **永不写入的 context key**：`common.ServiceDataKey` 从未被写入，`getServiceData` 恒返回 nil。
 - **注释掉的代码块**：~~注册/许可校验~~（阶段 0 已删除 `user_service.go` 中被注释的注册/许可校验与 `firstEndUser` 块）、metric 上报（`user_service.go:371-380` 仍留）、调用者身份校验（`user_service.go:588,679` 的 `// todo check permission` 仍在，实际鉴权已由 ACL 拦截器按 proto 注解完成）、export format 转换（`common.go:362-390`）、`GetUsersByRoleInIAMPolicy`（`utils/member.go:26-68`）。
 - **Bytebase 时代遗留**：`SERVICE_ACCOUNT`/`service_key`/`sa_` 前缀、`SYSTEM_BOT`、`recovery_codes`（2FA 从未实现）、`require_2fa`/`maximum_role_expiration`、`ListUsers` 的 project 过滤器（产品已无 project 概念）、`UserProfile.source`（SCIM/Entra，从未写入）、`store/stats.go` 引用不存在的 `issue` 表。
+  - **阶段 3 续更正**：`recovery_codes`/`require_2fa`/`maximum_role_expiration`/`UserProfile.source` 已在阶段 3 收尾删除，project 过滤器随 `451cb78` 删除，`stats.go` 的 issue 查询阶段 3 已删；`SERVICE_ACCOUNT`/`service_key`/`SYSTEM_BOT` 经确认是活的，保留（见上方收尾更新）。
 - **未实现的设置**：`WorkspaceProfileSetting.token_duration` 被忽略，`GetTokenDuration` 硬编码 7 天且忽略入参。
 - **`V2` 命名**：`GetSettingV2`/`GetInstanceV2`/`GetDatabaseV2`/`GetPolicyV2` 等与同名无 V2 版本并存。
+  - **阶段 3 续更正（`8b328ae`）**：store 侧 12 个 `*V2` 方法与 impl helper 已去掉后缀（`listSettingV2Impl`/`listPolicyImplV2`/`listInstanceImplV2` → `*Impl`），此处不再有 V2 命名。
 
 ---
 

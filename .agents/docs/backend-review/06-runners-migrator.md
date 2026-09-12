@@ -13,6 +13,10 @@
 
 **阶段 3 收尾更新**：`LATEST.sql` **仍无 schema 变更**，但同步了四条列/表注释——`setting.name` 的取值清单、`principal.mfa_config`（明确为无读写、无 proto 消息的遗留列）、`idp.type`（只有 OAUTH2 被实现，CHECK 保留以免既有行写失败）、`role`/`project`/`policy` 表（对应 store 消息已删除、无 Go 调用者，但 `db.project` 有外键约束）。`runner/schemasync/syncer.go` 删掉 `schema.Packages`/`schema.Streams` 两个永不会被 MySQL/PG 填满的循环，以及 `isSchemaSyncManagedMetaType`/`convertMetadataToGUID` 的 STREAM/PACKAGE 分支（`ddff264`）。
 
+**阶段 3 续更新**：新增两个增量并在 `LATEST.sql` 同步（`904fb09` `451cb78`）：`0.1.0003##drop_dead_auth_schema.sql`（删 `role` 表与 `principal.mfa_config` 列，`idp_type_check` 收窄为 `('OAUTH2')`）与 `0.1.0004##drop_project.sql`（删 `db.project` 列与 `project` 表）。两者都在本地 PostgreSQL 16 实测：全新安装、模拟低版本→升级、重复执行为 no-op；`0003` 另验证了历史 OIDC 行会以 SQLSTATE 23514 显式失败。`runner/schemasync/syncer.go` 不再传 `ProjectID` 给 `CreateDatabaseDefault`（`451cb78`）；`BatchSyncInstances` 的 fail-fast 行为变化见 `04`（`733b3e0`）。
+
+**阶段 3 续更正**：上一段收尾更新的四条结论已被本轮取代——`LATEST.sql` 已有 `0003`/`0004` 两个新增量，不再是无 schema 变更；`principal.mfa_config` 列已删除；`idp.type` 的 CHECK 已收窄，不再是为兼容既有行而保留；`role`/`project` 表已 DROP，`db.project` 的外键随列一起删除，不再是删表的阻碍。
+
 ---
 
 ## 严重（Critical）

@@ -9,9 +9,13 @@
 **阶段 1 更新**：新增 2 个测试文件（`filter_type_safety_test.go`、`instance_data_source_test.go`）并扩展 2 个（`filter_injection_test.go`、`syncer_test.go`），共 8 个新测试见下表。T-C1（CI 不跑 hermetic 测试）仍未修——`make build-release` 只是构建目标，仓库里依然没有 CI job 或 Dockerfile。T-H3 的 store 侧 guard 仍缺失。
 
 **阶段 2 更新**：新增 4 个测试文件（`store/principal_test.go`、`store/db_connection_test.go`、`api/v1/common_test.go`、`component/llm/agent_test.go`）并扩展 2 个（`store/meta_resource_test.go`、`plugin/openlineage/resolver_test.go`），共 15 个新测试函数见下表；首次为 `component/llm`、`store/db_connection.go` 建立测试。T-C1/T-H3、`api/auth` 零测试等仍未处理。
-**阶段 3 更新**：T-C1 ◐（新增 `.github/workflows/ci.yml`：`go test -race -count=1 ./...` 与 `golangci-lint` v2.13.1，`d3d96c1`；**经确认本轮只做 Go 单测与 lint**，前端 job、`./backend/migrator/...` 并入集成 target 推迟）、T-H2 ✅（删除第二套死 harness 与 `skipIfDockerUnavailable`，并在 `.golangci.yaml` 加 `run.build-tags: [integration]`，让集成文件首次进入 lint——正是这一步暴露出 `main_test.go` 的 6 个 revive 问题，已修，`b9a48a3`）、T-H4 ✅（`api/auth` 从零建立测试：token 提取/签发/校验、方法注解、cookie、gateway modifier，`0dae0b7`）。**T-H3 仍未处理**：store 侧 `listSublevelMetaRegistryResourceImpl`/`...HistoryImpl`/`listDatabaseImplV2` 的查询形状 guard 仍缺失（阶段 3 给这三处补了 offset 支持，但没有加 guard 测试）。**T-C2 未处理**（经确认推迟）：缺 Docker 时集成测试仍硬失败。**M6 部分**：CI 已有 race + lint，仍无覆盖率、无前端 job。
+**阶段 3 更新**：T-C1 ◐（新增 `.github/workflows/ci.yml`：`go test -race -count=1 ./...` 与 `golangci-lint` v2.13.1，`d3d96c1`；**经确认本轮只做 Go 单测与 lint**，前端 job、`./backend/migrator/...` 并入集成 target 推迟）、T-H2 ✅（删除第二套死 harness 与 `skipIfDockerUnavailable`，并在 `.golangci.yaml` 加 `run.build-tags: [integration]`，让集成文件首次进入 lint——正是这一步暴露出 `main_test.go` 的 6 个 revive 问题，已修，`b9a48a3`）、T-H4 ✅（`api/auth` 从零建立测试：token 提取/签发/校验、方法注解、cookie、gateway modifier，`0dae0b7`）。**T-H3 仍未处理**：store 侧 `listSublevelMetaRegistryResourceImpl`/`...HistoryImpl`/`listDatabaseImpl`（旧名 `listDatabaseImplV2`）的查询形状 guard 仍缺失（阶段 3 给这三处补了 offset 支持，但没有加 guard 测试）。**T-C2 未处理**（经确认推迟）：缺 Docker 时集成测试仍硬失败。**M6 部分**：CI 已有 race + lint，仍无覆盖率、无前端 job。
 
 **阶段 3 收尾更新**：无新增测试文件（proto 表面收敛是删除性改动，`go test ./...` 全绿即为回归证据）；但 `go test -race -count=1 ./...` 全量跑时暴露出 `TestObfuscateRoundTrip` 的随机失败并已修复（`4afe1ba`）——这是本仓库第一例由 CI 的 unit 命令（而非新增测试）发现的测试缺陷。**新增待办**：`Engine` 收敛到 5 个值、`DataSource` 删除 30 余字段后，应当给 `convertToEngine`/`convertEngine`（现各 5 case）与 `mergeDataSource` 补表驱动 guard 测试，当前仍只有 `instance_data_source_test.go` 的字段保留/覆盖断言。
+
+**阶段 3 续更新**：本机 Docker 可用，**首次真正跑了集成套件**（`go test -count=1 -tags=integration ./backend/test/integration/...`），除一个既有失败外全部通过。该失败是 `TestPostgresLineageDeletedWhenViewDroppedRealServerIntegration`（`backend/test/integration/runner/schemasync_lineage_postgres_service_test.go:87`，`require.Eventually` 报 `Condition never satisfied`：等待被 DROP 的 VIEW 的 meta_registry 行与 column_lineage 行都消失），**与本轮无关**——在 `27d6261`（阶段 2 末尾，早于阶段 3 的删码）上同样稳定失败，在 `f7cfb0d`、`904fb09` 与当前工作树也都失败，需要单独一轮定位（怀疑 lineage analyzer 用陈旧 metadata 重新写回该 GUID 的行）。迁移验证用的是手工临时程序直连 PostgreSQL 16（跑完即删、未入库），不是永久测试；`./backend/migrator/...` 的 integration 测试（testcontainers）通过。
+
+**阶段 3 续更正**：① T-H1 的“从不执行”在本地手动跑过一次（`./backend/migrator/...` 通过），但 `Makefile`/CI 仍未包含它，结论不变；② store 侧 impl helper 的 V2 后缀已随 `8b328ae` 去掉（`listDatabaseImplV2` → `listDatabaseImpl`），T-H3 的 store 侧 guard 仍缺失这一结论不变。
 
 ---
 
@@ -75,7 +79,7 @@
 | `backend/api/v1/audit_test.go`（扩展，`89ef84a`） | `TestMarshalAuditMessageRedactsSecrets` | `CreateAPIKeyResponse.key`、`DataSource` 的 `sslCert`/`sslKey`/`gcpCredential` 不得进入审计 payload |
 | 同上 | `TestIsSensitiveAuditField` | 脱敏标记列表的精确匹配行为 |
 
-> 注意：T-H3 指出的 **store 侧** guard（`listSublevelMetaRegistryResourceImpl`/`listSublevelMetaRegistryResourceHistoryImpl`/`listDatabaseImplV2`）仍缺失，新测试只覆盖 API 层 filter 翻译器。
+> 注意：T-H3 指出的 **store 侧** guard（`listSublevelMetaRegistryResourceImpl`/`listSublevelMetaRegistryResourceHistoryImpl`/`listDatabaseImpl`（旧名 `listDatabaseImplV2`））仍缺失，新测试只覆盖 API 层 filter 翻译器。
 
 ## 阶段 1 新增的 guard 测试（已落地）
 

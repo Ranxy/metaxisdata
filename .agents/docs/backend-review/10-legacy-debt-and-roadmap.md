@@ -9,6 +9,7 @@
 ### 1. Bytebase 时代的组织/权限模型
 > **阶段 3 部分删除**（`a39bc41`）：`store/role.go`、`store/project.go`（含引用 15 张不存在表的 `DeleteProject`）与其 LRU 缓存已删除；`store/policy.go` 只保留工作区 IAM 路径。`project`/`role` 两张表现在没有任何 Go 调用者，但删表未做。
 > **阶段 3 收尾**（`722d3cb`）：`TagPolicy`/`EnvironmentTierPolicy`/`RolePermissions`/`Project`/`Label` 及其 proto 文件已删除；**`store.Policy` 保留**——它的 `Type`/`Resource` enum 仍被 `store/store.go`/`store/group.go`/`store/policy.go` 用来写 `policy.resource_type`/`type` 列（原报告"零 Go 使用"漏掉了 enum 常量）。`project`/`role`/`policy` 表与 `db.project` 列保留（删表/删列属 schema 变更）。
+> **阶段 3 续**（`904fb09` `451cb78`）：`role` 表、`project` 表与 `db.project` 列已 DROP（增量 `0.1.0003`/`0.1.0004`）；`policy` 表保留（WORKSPACE/IAM 行是活路径），其 PROJECT 行已无生产者或消费者。
 - **store**：~~`store/role.go` 整文件无调用者；`store/project.go` 整个 store API 无调用者，且 `DeleteProject` 引用 15 张不存在的表（`query_history`/`worksheet`/`issue*`/`plan*`/`pipeline`/`task*`/`sheet`/`release`/`changelist`/`db_group`/`project_webhook`）。~~
 - **proto**：~~`store.Policy`/`TagPolicy` 零使用；`TagPolicy.tags` 引用不存在的 `reviewConfigs`；`policy` 表支持 `WORKSPACE/ENVIRONMENT/PROJECT` 但无 API；`store.RolePermissions` 无 RoleService；~~`GroupPayload`/`GroupMember` 无 GroupService。**阶段 3 收尾**：`TagPolicy`/`RolePermissions` 删除；`Policy` 的两个 enum 保留（见上）；`GroupPayload`/`GroupMember` 保留（SSO 分组同步在用，仍无 GroupService）。
 - **API**：~~`common.AuthContext.Permission`~~（**阶段 0 已修复**：`ACLInterceptor` 消费它，proto 写方法已声明 `permission`）/`AuthMethod`/`Resources`、`HasWorkspaceResource`、`GetProjectResources` 仍无消费者；`utils/member.go` 的 IAM 组合逻辑只通过彼此可达。
@@ -32,16 +33,19 @@
 - `api/v1/common.go` 的 `convertToEngine`/`convertEngine` 各 27 个 case；`instance_service.go` 的 `convertRedisType` 把 `REDIS_TYPE_UNSPECIFIED` 映射成 `STANDALONE`。
 - `store/database.proto` 的 `backup_available`（备份功能）；`store/database.proto` 的 `InstanceRoleMetadata`。
   - **阶段 3 收尾**：`backup_available` 与 `InstanceRoleMetadata` 已删除（`ddff264`）；`store/database.proto` 的 `DatabaseSchemaMetadata.service_name`（Oracle）与 `IndexMetadata.granularity`（ClickHouse 注释）仍在，属未清字段。
+  - **阶段 3 续**：这两个字段已删除（`ee3c39b`），v1 与 store 两侧编号及名字 `reserved`。
 
 ### 4. SCIM / 2FA / Entra ID / 服务账号
-> **阶段 3 收尾部分收敛**（`e0eab33`）：`User.recovery_codes`、`UserProfile.source`、`GroupPayload.source`、`WorkspaceProfileSetting.require_2fa`/`maximum_role_expiration` 已删除；IDP 只留 OAuth2（OIDC/LDAP 配置与枚举值 reserved，无调用者的 store IDP 写路径删除）。**保留（活路径）**：`User.service_key`（`CreateUser` 的服务账号分支返回生成的 access key）、`User.phone`（有 E.164 校验）、`PrincipalType.SERVICE_ACCOUNT`（登录分支在用）。**仍未清**：`store/idp.proto` 的 `FieldMapping.phone`/`groups` 随 OAuth2 保留（oauth2 插件在用）、`principal.mfa_config` 列、`idp.type` 的宽 CHECK。
+> **阶段 3 收尾部分收敛**（`e0eab33`）：`User.recovery_codes`、`UserProfile.source`、`GroupPayload.source`、`WorkspaceProfileSetting.require_2fa`/`maximum_role_expiration` 已删除；IDP 只留 OAuth2（OIDC/LDAP 配置与枚举值 reserved，无调用者的 store IDP 写路径删除）。**保留（活路径）**：`User.service_key`（`CreateUser` 的服务账号分支返回生成的 access key）、`User.phone`（有 E.164 校验）、`PrincipalType.SERVICE_ACCOUNT`（登录分支在用）。**仍未清**：`store/idp.proto` 的 `FieldMapping.phone`/`groups` 随 OAuth2 保留（oauth2 插件在用）。
+- **阶段 3 续**：`principal.mfa_config` 列已 DROP，`idp.type` CHECK 收窄为 `('OAUTH2')`（`904fb09`，增量 `0.1.0003`）；v1 `UserType.USER` 改名 `END_USER` 与 store/DB 对齐（`4036e1e`）。
 - `User.service_key`、`User.recovery_codes`、`User.phone`、`UserProfile.source`（"Entra ID SCIM sync"）、`WorkspaceProfileSetting.require_2fa`/`maximum_role_expiration`。
 - `store/idp.proto` 的 OIDC/LDAP/SCIM source、`FieldMapping` 注释指向不存在的 `principal.idp_user_info` 列；`principal.mfa_config` 注释指向不存在的 `MFAConfig` message。
 - `auth_service.go` 的 SSO 分组同步、`service account` 登录分支。
   - **阶段 3 收尾更正**：`service account` 登录分支**不是**遗留——`getOrCreateUserWithIDP` 之外的 `case storepb.PrincipalType_SERVICE_ACCOUNT` 会给服务账号签发 API token，且 `CreateUser` 允许创建 SERVICE_ACCOUNT，属活路径。
 
 ### 5. 无意义的 `V2` 命名
-> **阶段 3 部分删除**（`a39bc41`）：`GetPolicyV2`/`CreatePolicyV2`/`UpdatePolicyV2`/`DeletePolicyV2`/`ListPoliciesV2` 随死代码一起删除（只留 `GetPolicyV2` 供 IAM 使用）；`GetSettingV2`/`GetInstanceV2`/`StoreMetaResourceV2` 等活跃方法的重命名**未做**。
+> **阶段 3 部分删除**（`a39bc41`）：`GetPolicyV2`/`CreatePolicyV2`/`UpdatePolicyV2`/`DeletePolicyV2`/`ListPoliciesV2` 随死代码一起删除（只留 `GetPolicyV2` 供 IAM 使用）。
+> **阶段 3 续已完成**（`8b328ae`）：剩下的 12 个 `*V2` 方法（`GetSettingV2`/`UpsertSettingV2`/`CreateSettingIfNotExistV2`/`ListSettingV2`/`DeleteSettingV2`/`GetInstanceV2`/`ListInstancesV2`/`CreateInstanceV2`/`UpdateInstanceV2`/`GetDatabaseV2`/`GetPolicyV2`）及其 impl helper 全部去掉后缀——它们都没有对应的 V1 版本，后缀已无信息量。
 - `GetSettingV2`/`UpsertSettingV2`/`CreateSettingIfNotExistV2`/`ListSettingV2`、`GetInstanceV2`/`ListInstancesV2`/`UpdateInstanceV2`/`CreateInstanceV2`、`GetDatabaseV2`/`ListDatabasesV2`、`GetPolicyV2`/`CreatePolicyV2`/`UpdatePolicyV2`/`DeletePolicyV2`/`ListPoliciesV2`、`StoreMetaResourceV2` —— 均不存在对应的 V1 版本，后缀已无信息量。
 
 ### 6. 未接线/半成品
@@ -61,6 +65,7 @@
 ## 二、死代码清单（可安全删除，需先跑测试）
 
 > **阶段 3 已按本表删除**（`a39bc41` `e42b9ac` `40ec3a4` `b9a48a3` `fedcc12` `3cc4926`）：除下列例外，本表条目全部删除。例外（逐个确认存活调用者后保留）：`store/policy.go` 的工作区 IAM 路径与 `store/group.go` 的读路径（`utils/member.go`/SSO 在使用）、`utils/member.go` 的 `GetUserFormattedRolesMap` 链路、`common/error.go` 的 `ErrorCode`（阶段 3 的错误映射拦截器在使用）、`common/resource_name.go` 与 `common/const.go` 中被活跃代码引用的符号（如 `SystemBotID`、`ServiceAccountAccessKeyPrefix`、`InstanceNamePrefix`）、`manual_sql.go` 的 `withMetadata=false` 分支（`deleteManualSQLMetaRegistryTx` 在用）。`store/db_connection.go` 的各项在阶段 2 已删除。
+> **阶段 3 续又删掉一批**：`role`/`project` 表结构与 `db.project` 列、仓库层全部 project 字段与 `BatchUpdateDatabases`、`common.GetProjectID`/`FormatProject`/`ProjectNamePrefix`/`DefaultProjectID`、store 的 12 个 `*V2` 方法名、store 侧零引用的 openlineage proto 消息（`b2e80ae`）。
 
 | 位置 | 内容 |
 | --- | --- |
@@ -105,6 +110,7 @@
 6. **store 事务规范化**：所有 `BeginTx` 后紧跟 `defer tx.Rollback()`；单语句查询不再开事务；提供 `tx` 参数版本供 runner 复用同一事务。
 7. **删除死代码**（第二节），并在 CI 加 `go test ./...` + `-race` + `golangci-lint`。
 8. **收敛 proto 表面**：删除未实现的 setting/enum/message，修正 `metaxisdata/DatabaseMetadata`、`ListUsers` method_signature、`meta_type` 裸 int32、v1/store 重复枚举。
+   - **阶段 3 + 续已完成**（`73901a1` `ceb6a3d` `e0eab33` `722d3cb` `ddff264` `ee3c39b` `451cb78` `b2e80ae` `792ca71` `997ede9` `4036e1e` `733b3e0`）：P-H1..P-H6 全部处理；M 系列除 **M9**（`DataSource` 资源化）与 **M4**（OpenLineage/API key 资源化）外全部处理；Engine 28→5、DataSource 多引擎/IAM/Vault 表面、project/role/policy 死消息与 `project`/`role` 死表、`service_name`/`granularity` 均已清理。
 
 ---
 
@@ -193,7 +199,30 @@
 - **注释修正（回滚）**：`DeleteInstanceRequest.force` 的 "all open issues will be closed" 应改为 handler 的真实行为（把实例的数据库移到默认 project），文案已写好，但该 proto 改动需要重新生成 buf 产物，而 BSR 远程插件在本轮触发限流；为避免提交与 proto 不一致的生成产物，改动已回滚，留待下一轮随任意 proto 变更一起提交。
 - **测试修复**：阶段 3 新增的 `TestObfuscateRoundTrip` 用 `NotContains(ciphertext, plaintext)` 断言，短明文（如 `"a"`）会随机出现在 base64 密文里，`-race` 全量跑时命中一次；改为比较整体是否相等。这是本轮唯一一个"验证阶段才发现"的缺陷。
 
-**阶段 3 后仍未处理**：`metadata` 搜索索引（需全文检索/`pg_trgm` 改写，`03`/`04`）、血缘列表分页（`04` M6）、`queueAll` 批量化（`06` M4）、CEL 条件 fail-open（`05` M6/`07` M1，当前无 binding 带 condition，属潜伏）、ExplainSQL 过期行的物理清理、`openlineage_run` 保留策略、`project`/`role`/`policy` 表与 `db.project` 列（proto 已收敛，删表/删列属 schema 变更）、`principal.mfa_config` 与 `idp.type` CHECK 的收窄、M1/M9/M10/M11/M15/M18/M22/M23 的契约重设计、`api/auth` 的集成反向测试、`backend/server` 的启动/关停路径测试、`api/v1` 的 `debug_interceptor.go`/各 service handler 的测试缺口、前端 0 个 Vitest 文件。
+### 阶段 3 续：proto 残留、schema 清理与 M 系列——**本轮已完成（10 个 commit）**
+
+| # | 事项 | 状态 | 提交 |
+| --- | --- | --- | --- |
+| 25 | 删两侧无生产者的 `service_name`/`granularity`；store 的 `V2` 后缀重命名 | ✅ | `ee3c39b` `8b328ae` |
+| 26 | 删 `role` 表、`principal.mfa_config` 列，收窄 `idp.type` CHECK（增量 `0.1.0003`） | ✅ | `904fb09` |
+| 27 | 删 `project` 表与 `db.project` 列及其全部 API 表面（增量 `0.1.0004`） | ✅ | `451cb78` |
+| 28 | M1/M10/M11/M15 契约形状与类型对齐 | ✅ | `792ca71` `997ede9` `4036e1e` |
+| 29 | M22/M23 请求形状：逐项批同步结果、mapping 身份 + `update_mask` | ✅ | `733b3e0` |
+| 30 | `setting.value` 契约写进列注释（关闭待确认 3） | ✅ | `d8ce592` |
+| — | 删 store 侧零引用的 openlineage 消息（`ExternalDataset`/`NamespaceMapping`） | ✅ | `b2e80ae` |
+| — | M9 `UpdateDataSource` 资源化 | ◐ | 经确认跳过 |
+| — | M18 create/update 一致性 | ✅ | 不改契约，规则文档化 |
+
+- **25 的说明**：`DatabaseSchemaMetadata.service_name`（Oracle 概念）只被 `database_convert.go` 从 store 复制到 v1、两侧都没人填，`IndexMetadata.granularity`（ClickHouse 概念）连复制都没有；两者在 v1 与 store 同时删除、编号与名字 `reserved`。store 侧 12 个 `*V2` 方法及其 impl helper 去掉后缀（`GetSettingV2`→`GetSetting` 等），`listSettingV2Impl`/`listPolicyImplV2`/`listInstanceImplV2` 统一为 `*Impl` 命名。
+- **26 的说明**：`role` 表无 Go 调用者、无外键引用，`DROP TABLE` 连带其 owner sequence 与唯一索引；`principal.mfa_config` 无读写无消息。`idp.type` CHECK 收窄为 `('OAUTH2')`——drop/re-add 幂等，历史行若带 OIDC/LDAP 会让迁移以 SQLSTATE 23514 **显式失败**而不是静默保留一个登录路径已无法处理的类型。
+- **27 的说明**：project 从来没有自己的 API、只有一行 "Default"，`db.project` 恒等于它。删掉持久化后，所有读取方一并删除：仓库层的 project 字段/过滤/排序/`BatchUpdateDatabases`、实例列表的 `db.project` join、v1 的 `Database.project`、`ListDatabases` 的 `projects/{project}` parent、数据库/实例的 `project` 过滤、数据库 `exclude_unassigned`、用户/分组的 project 成员过滤（读的是无人写入的 `policy` PROJECT 行）、`DeleteInstanceRequest.force` 与"移到 default project"步骤、前端两处 project 列与三个 i18n key。`common.GetProjectID`/`FormatProject`/`ProjectNamePrefix`/`DefaultProjectID` 随之为死代码并删除。
+- **28 的说明**：**M1** store 审计消息改名对齐 v1（protojson 存的是枚举值名，既有 JSONB 行不受影响），并注明 v1 用资源名表达 `AuditLog.id`；**M10** `LineageRelation.transformation` 由"内嵌 JSON 的 string"改为 `repeated Transformation`，去掉 `json.Marshal` 二次编码与恒 nil 的 error 分支，前端不再 `JSON.parse`；**M11** `bytes raw_payload` 所在的死消息删除、v1 `raw_payload` 文档化为落库 JSON 文本；**M15** v1 `UserType.USER`→`END_USER`，与 store/DB 三处一致。
+- **29 的说明**：`BatchSyncInstancesResponse` 由空消息改为逐项 `BatchSyncInstanceResult{name,databases,error}`，handler 不再遇错即返回——原来的"前半成功、后半失败"不再不可见；只有 `requests` 为空才整请求失败（`BatchUpdateInstances` 保持 fail-fast，其响应已能表达成功项）。`UpdateNamespaceMappingRequest` 删掉与路径重复的顶层 `id`，身份移入 `mapping.id`（路径 `{mapping.id}`）并新增 `update_mask`，store 按 mask 生成 SET；空 mask 保持旧行为（namespace/instance_resource_id 为空则跳过、`database_name` 总是写以便清空）。
+- **M9/M18 的说明**：M9 需要把 `DataSource` 提升为带 `name` 的子资源并把三个自定义方法改成 AIP-133/135 的标准方法（连前端与集成测试），经确认本轮不做。M18 经确认**不改契约**：`validate_only` 只保留在真的会验证外部连接的 `CreateInstance`/`AddDataSource`/`UpdateDataSource`，`allow_missing` 只保留在已实现的 `UpdateUserRequest`，规则写进 `08`；原文对 M22 的"repeated UpdateInstanceRequest"指控是误报（AIP-231 的规定）。
+- **30 的说明**：`setting.value` 是多态列（结构化 setting 存 protojson、`AUTH_SECRET`/`BRANDING_LOGO`/`WORKSPACE_ID` 存裸字符串），绑不到单一 store 消息，因此明确保留 `text` 并把契约写进 `LATEST.sql` 列注释，而不是改成 JSONB 再给每个标量加一层引号。同时关闭待确认 5：`transformation` 已结构化、`raw_payload` 的 `bytes` 那份已删、`explanation_json` 本来就是 JSONB。
+- **验证**：`LATEST.sql` 与两个增量在本地 PostgreSQL 16 上实测了全新安装、模拟低版本升级、重复执行为 no-op，以及 `0003` 的历史 OIDC 行显式失败；集成套件首次真正运行（见第五节）。
+
+**阶段 3 后仍未处理**：`metadata` 搜索索引（需全文检索/`pg_trgm` 改写，`03`/`04`）、血缘列表分页（`04` M6）、`queueAll` 批量化（`06` M4）、CEL 条件 fail-open（`05` M6/`07` M1，当前无 binding 带 condition，属潜伏）、ExplainSQL 过期行的物理清理、`openlineage_run` 保留策略、**M9 与 M4 的资源化重设计**（`DataSource`、OpenLineage/API key 消息）、`MARIADB`/`OCEANBASE` 虽是一等引擎但 `plugin/lineage/mysql` 只注册 MYSQL/TIDB、`plugin/schema/mysql` 只注册 MYSQL/OCEANBASE（schema/血缘覆盖缺口）、`api/auth` 的集成反向测试、`backend/server` 的启动/关停路径测试、`api/v1` 的 `debug_interceptor.go` 与各 handler 的测试缺口、前端 0 个 Vitest 文件、CI workflow 从未在 GitHub 实跑、缺 Docker 时集成测试的 skip 行为（T-C2）与前端 CI job。**新发现（未修）**：`TestPostgresLineageDeletedWhenViewDroppedRealServerIntegration` 稳定失败，且早于本轮（见第五节）。
 
 ---
 
@@ -214,4 +243,7 @@
 - 阶段 3 收尾复测：`gofmt -l backend/` 空、`go build ./...`、`go vet ./...`、`go vet -tags release ./...`、`go vet -tags integration ./...`、`go test ./...`、`go test -race -count=1 ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`make build-release` 全部通过；`buf format -w proto`、`buf lint proto`、`cd proto && buf generate` 通过且可复现（改动确认后重跑无 diff）；前端 `vue-tsc --build` 0 错误、`biome check src`（177 文件）、`eslint src --max-warnings=0`、`vite build` 全部通过。集成测试仍需 Docker，仍未运行。
 - 阶段 3 收尾关闭的"待确认"：`principal.mfa_config` 是死列（2FA 无任何实现，`LATEST.sql` 注释已改）、`store.ExplainSQLCache` 应删除（已删，手写 `ExplainSQLCacheRow` 是唯一形状）、`policy`/`user_group` 表是活路径、`project`/`role` 表无调用者但受外键约束不能直接删。
 - 阶段 3 收尾新增的"待确认"：① `project`/`role` 表与 `db.project` 列的删除时机（需要一次真实 schema 变更，且要同时改 `store/database.go` 的 project 写入）；② `MARIADB`/`OCEANBASE` 虽被保留为一等引擎，但 `plugin/lineage/mysql` 只注册了 MYSQL/TIDB、`plugin/schema/mysql` 只注册了 MYSQL/OCEANBASE，两个引擎的 schema/血缘覆盖仍是缺口（本轮刻意未改行为，见 `08`）；③ `DatabaseSchemaMetadata.service_name`、`IndexMetadata.granularity` 等未清字段的删除时机。
-- 生成产物的一个运维注意事项：`proto/buf.gen.yaml` 使用 `clean: true` + 远程插件，BSR 限流（`resource_exhausted: too many requests`）会在生成失败前先清空输出目录；本次收尾确实遇到过一次并已 `git reset` 恢复。**在提交前务必确认 `git status` 没有大批生成文件被删除**，限流时等一段时间重试。本轮在提交这个仅改注释的 proto 变更时误把 `clean: true` 清空后的空目录 `git add` 进了 commit（全仓库 93 个生成文件被删），已用 `git reset --hard HEAD~1` 回滚，并在后续重试全部失败后**放弃了该注释改动**——这是本轮唯一未落地的计划项。
+- 阶段 3 续复测：`gofmt -l backend/` 空、`go build ./...`、`go vet ./...`、`go vet -tags release ./...`、`go vet -tags integration ./...`、`go test ./...`、`go test -race -count=1 ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`make build-release` 全部通过；每次 proto 改动后 `buf format -w proto`、`buf lint proto`、`cd proto && buf generate` 均通过且产物可复现（未改 proto 时无 diff）；前端 `vue-tsc --build` 0 错误、`biome check src`（177 文件）、`eslint src --max-warnings=0`、`vite build` 全部通过。`LATEST.sql` 与 `0.1.0003`/`0.1.0004` 在本地 PostgreSQL 16 实测：全新安装、模拟 0.1.2→0.1.3 与 0.1.3→0.1.4 升级（先把旧表/列恢复回去）、重复执行为 no-op，`0003` 另验证历史 OIDC 行会以 SQLSTATE 23514 显式失败。**这也是本轮第一次真正运行集成套件**（本机 Docker 可用）：除下一条外全部通过。
+- 阶段 3 续的**新发现（未修，与本轮无关）**：`TestPostgresLineageDeletedWhenViewDroppedRealServerIntegration`（`backend/test/integration/runner/schemasync_lineage_postgres_service_test.go:87`）稳定失败，`require.Eventually` 报 "Condition never satisfied"——它等的是被 DROP 的 VIEW 的 `meta_registry_resource` 行与 `column_lineage` 行都消失。用 `git worktree` 逐点验证：`27d6261`（阶段 2 末尾，早于阶段 3 的删码）、`f7cfb0d`（阶段 3 收尾）、`904fb09`（本轮 B1）与当前工作树**都失败**，所以既不是本轮引入、也不是阶段 3 引入。同一次运行的日志里确实出现了 `Deleting metadata resources missing from the synced snapshot ... countByObjectType=map[VIEW:1]`，说明元数据删除本身发生了；怀疑是 lineage analyzer 拿着陈旧 metadata 在删除之后又把该 GUID 的行写回，需要单独一轮定位。
+- 阶段 3 续新增的"待确认"：① 上述既有集成失败的根因与修复时机；② M9/M4 资源化重设计的产品决策；③ 部署拓扑、`METADATA_SECRET_KEY` 的注入与轮换、`RETURNING` 行序等前几轮的待确认仍未关闭。
+- 生成产物的一个运维注意事项：`proto/buf.gen.yaml` 使用 `clean: true` + 远程插件，BSR 限流（`resource_exhausted: too many requests`）会在生成失败前先清空输出目录；本次收尾确实遇到过一次并已 `git reset` 恢复。**在提交前务必确认 `git status` 没有大批生成文件被删除**，限流时等一段时间重试。本轮在提交这个仅改注释的 proto 变更时误把 `clean: true` 清空后的空目录 `git add` 进了 commit（全仓库 93 个生成文件被删），已用 `git reset --hard HEAD~1` 回滚，并在后续重试全部失败后**放弃了该注释改动**。该遗留已在阶段 3 续以"删除 `DeleteInstanceRequest.force` 字段"收口（`451cb78`）；阶段 3 续全程 `buf registry whoami` 显示已登录（metaxisdata），四次 `buf generate` 均成功，说明那次限流是一次性事件。

@@ -16,6 +16,10 @@
 
 **阶段 3 收尾更新**：`convertToEngine`/`convertEngine` 从各 27 个 case 降到 5 个（`ceb6a3d`）；`instance_convert.go` 删掉 8 个已无对应字段的转换函数（`convertDataSourceExternalSecret`/`convertV1DataSourceExternalSecret`/`convertV1DataSourceSaslConfig`/`convertDataSourceSaslConfig`/`convertDataSourceAddresses`/`convertAdditionalAddresses`/`convertV1AuthenticationType`/`convertV1RedisType`/`convertRedisType`），`mergeDataSource` 因 `additional_addresses` 删除退化为纯 `proto.Merge`，`UpdateDataSource` 的 `update_mask` 删掉 20 个已删字段分支（含整段 IAM 凭据合并逻辑）；`instance_service.go` 的 `DeleteInstance` 注释修正因 BSR 限流未落地（见 `10` 第五节）。`database_convert.go` 删掉 `convertPackageMetadata`/`convertStreamMetadata`/`convertTaskMetadata`/`convertLinkedDatabaseMetadata` 与对应 oneof case（`ddff264`）；`convertToUser` 不再填 `Profile.source`（`e0eab33`）。前端 `MetadataBrowserPage.vue` 的 `getMetadataName` 同步删掉三个已不存在的一分支。**新增未处理项**：`MARIADB`/`OCEANBASE` 现在是一等引擎，但 `isMySQLEngine`（`explain_sql_service.go:279`）只把 MYSQL/TIDB/MARIADB 视为 MySQL（原有不一致，本轮刻意未改行为）。
 
+**阶段 3 续更新**：① v1 `Database.project` 字段、`ListDatabases` 的 `projects/{project}` parent、数据库与实例的 `project` filter、数据库 `exclude_unassigned` filter、`DeleteInstanceRequest.force` 与其移到 default project 的逻辑全部删除（`451cb78`），`DeleteInstance` 不再需要先查库列表。② `BatchSyncInstances` 不再 fail-fast（`733b3e0`）：响应改为 `repeated BatchSyncInstanceResult`（name/databases/error），逐项报告失败并继续，只有 `requests` 为空才整请求失败；`BatchUpdateInstances` 仍是 fail-fast（响应 `repeated Instance`）。③ `UpdateNamespaceMappingRequest` 的 id 移入资源（`mapping.id`，路径 `{mapping.id}`）并新增 `update_mask`（`733b3e0`），handler 校验 mask 只允许 namespace/instance_resource_id/database_name。④ `LineageRelation.transformation`（string，内含 JSON）改为 `repeated Transformation transformations`（`997ede9`），`convertColumnLineage` 不再返回 error，前端不再 `JSON.parse`。⑤ 删除无引用的 `DatabaseSchemaMetadata.service_name` 与 `IndexMetadata.granularity`（`ee3c39b`）。
+
+**阶段 3 续更正**：上一段收尾更新里 `DeleteInstance` 注释修正因 BSR 限流未落地的事项不再成立——`DeleteInstanceRequest.force` 与其注释本轮随 project 一起删除（`451cb78`）。
+
 ---
 
 # A. 数据面：Instance / Database / History
