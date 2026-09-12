@@ -18,6 +18,9 @@
 
 **阶段 3 续更新**：① v1 `Database.project` 字段、`ListDatabases` 的 `projects/{project}` parent、数据库与实例的 `project` filter、数据库 `exclude_unassigned` filter、`DeleteInstanceRequest.force` 与其移到 default project 的逻辑全部删除（`451cb78`），`DeleteInstance` 不再需要先查库列表。② `BatchSyncInstances` 不再 fail-fast（`733b3e0`）：响应改为 `repeated BatchSyncInstanceResult`（name/databases/error），逐项报告失败并继续，只有 `requests` 为空才整请求失败；`BatchUpdateInstances` 仍是 fail-fast（响应 `repeated Instance`）。③ `UpdateNamespaceMappingRequest` 的 id 移入资源（`mapping.id`，路径 `{mapping.id}`）并新增 `update_mask`（`733b3e0`），handler 校验 mask 只允许 namespace/instance_resource_id/database_name。④ `LineageRelation.transformation`（string，内含 JSON）改为 `repeated Transformation transformations`（`997ede9`），`convertColumnLineage` 不再返回 error，前端不再 `JSON.parse`。⑤ 删除无引用的 `DatabaseSchemaMetadata.service_name` 与 `IndexMetadata.granularity`（`ee3c39b`）。
 
+**阶段 3 补遗更新**：① 血缘两个列表补分页（`dd6df51`）：`GetLineage`/`GetLineageForContext` 新增 `page_size`/`page_token` 与 `next_page_token`（默认 500、上限 5000），`GetLineage` 用同一个 offset 分别页化 source（`TargetGUID` 过滤）与 target（`SourceGUID` 过滤）两个列表。② ExplainSQL 的 `search_objects` 不再因为空 scope 而恒返回空，空关键字给出明确工具错误，搜索失败不再被丢弃；`fetchObjectsByGUIDs` 的 GUID/metadata 位置配对改为成对携带（`11943ae`）。③ `processBatchEvents` 不再「只要一条成功就 200」（`d562a50`）。④ LLM 写路径校验 `base_url` 并返回 `InvalidArgument`、profile 写入后失效 registry 缓存、`FetchLLMModels` 响应加 8MiB 上限（`10631e0`）。⑤ `isMySQLEngine` 纳入 OCEANBASE（`729db71`）。
+
+
 **阶段 3 续更正**：上一段收尾更新里 `DeleteInstance` 注释修正因 BSR 限流未落地的事项不再成立——`DeleteInstanceRequest.force` 与其注释本轮随 project 一起删除（`451cb78`）。
 
 ---
@@ -214,12 +217,12 @@
 
 ## 中（Medium）
 
-- **M1. 批量摄取静默丢事件却返回成功**：`openlineage_handler.go:89-115`，全部事件解析失败时 `lastErr` 仍为 nil，返回 `200 {"status":"ok","processed":0}`，生产者不会重试 → 血缘静默丢失。
+- **M1. 批量摄取静默丢事件却返回成功**：`openlineage_handler.go:89-115`，全部事件解析失败时 `lastErr` 仍为 nil，返回 `200 {"status":"ok","processed":0}`，生产者不会重试 → 血缘静默丢失。 —— **✅ 已修复（阶段 3 补遗，`d562a50`）**：handler 分别统计 `processed`/`failed` 并回显，全部无法解析返回 400（重发无用），存在服务端失败返回 500（可重试），不再「只要一条成功就 200」。
 - **M2. `fetchObjectsByGUIDs` 的 metas 与 guids 错位**：`explain_sql_service.go:346-361`，跳过失败的 GUID 后用 `guids[:len(metas)]` 配对，导致后续对象被归到错误的 GUID/库/schema，产出"自信但错误"的解释。
 - **M3. store 错误被吞成"对象不存在"**：`explain_sql_service.go:407,446`（以及 `351`），瞬时 DB 故障被当作 miss 告诉模型。
-- **M4. 空 `scope_prefix` 使 `search_objects` 恒返回空**：`explain_sql_service.go:106,446` + `store/meta_resource.go:85-95`，空前缀生成 `guid LIKE ';%'`，而系统提示仍在告诉模型"有工具可查 schema"；前端未选实例时会发空 scope。
+- **M4. 空 `scope_prefix` 使 `search_objects` 恒返回空**：`explain_sql_service.go:106,446` + `store/meta_resource.go:85-95`，空前缀生成 `guid LIKE ';%'`，而系统提示仍在告诉模型"有工具可查 schema"；前端未选实例时会发空 scope。 —— **✅ 已修复（阶段 3 补遗，`11943ae`）**：空前缀在 store 里现在表示「不限实例」（此前生成 `guid = '' OR guid LIKE ';%'`，恒空），空关键字返回明确的工具错误，搜索失败不再被 `_` 丢弃。
 - **M5. 缓存写入错误被吞且使用请求 ctx**：`explain_sql_service.go:212-214`，客户端断开导致昂贵结果被丢弃且无日志。 —— **✅ 已修复（阶段 2，`8c34542`）**：写入改用 `context.WithoutCancel(ctx)` + 5s 超时，失败记 `slog.Warn`（含 cache_key）。
-- **M6. 血缘关系列表无界**：`lineage_service.go:57,72,148`，store 支持 Limit/Offset 但 handler 从不设置。
+- **M6. 血缘关系列表无界**：`lineage_service.go:57,72,148`，store 支持 Limit/Offset 但 handler 从不设置。 —— **✅ 已修复（阶段 3 补遗，`dd6df51`）**：两个列表补 `page_size`/`page_token`/`next_page_token`（默认 500、上限 5000），handler 用同一个 offset 页化 source/target，前端 `getLineage` 循环取全。
 - **M7. `collectExternalDatasets` 静默降级**：`lineage_service.go:121-124`，DB 错误时返回空列表，UI 无法区分"无元数据"与"查询失败"。
 - **M8. `formatResolvedTarget` 对 MySQL 空 schema 泄露 instance id**：`openlineage_dataset.go:556-574`，`"inst;db;;table"` 去掉空段后恰好 3 段不再裁剪。
 - **M9. LLM profile 分页不可用**：`llm_service.go:54-78`，`page_token` 从不读取、`next_page_token` 从不设置、`page_size` 无上限，只能看到最近 50 条。

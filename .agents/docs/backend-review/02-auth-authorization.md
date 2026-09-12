@@ -13,6 +13,9 @@
 
 **阶段 3 续更新**：`idp.type` 的 CHECK 收窄为 `('OAUTH2')`（`904fb09`，增量 `0.1.0003`），历史行若带 OIDC/LDAP 会让迁移以 SQLSTATE 23514 显式失败而不是静默保留。`principal.mfa_config` 列删除（`904fb09`）：确认 2FA 没有任何实现。`role` 表 DROP（`904fb09`）：CRUD/LRU 缓存阶段 3 已删、无 Go 调用者、无外键引用，DROP TABLE 连带 owner sequence 与唯一索引。v1 `UserType.USER` 改名 `END_USER`（`4036e1e`），与 store `PrincipalType.END_USER` 及 `principal.type` CHECK 三处一致，`convertToPrincipalType`、filter 解析、集成 fixture、前端同步改。`ListUsers` 的 `project` filter 与 `store.FindUserMessage.ProjectID` 删除（`451cb78`）——它读的是从来无人写入的 `policy` PROJECT 行；`store/group.go` 同款 `ProjectID` 一并删除（本来就没有 setter）。`policy` 表的 WORKSPACE/IAM 行仍是活路径，表与 `store.Policy` 消息保留。
 
+**阶段 3 补遗更新**：`common.EvalBindingCondition` 对 residual（表达式引用了未绑定的 `resource.*`）曾返回 true，等于把本应限定单库的角色全局授予；现在 fail closed——返回错误，`utils.validateIAMBinding` 记日志并丢弃该 binding；CEL env 也从「每次求值新建」改为构建一次（`6f2b63d`）。当前 `store/policy.go` 构造的 binding 不带 condition，所以这是潜伏缺陷的收口，权限模型本身未变。
+
+
 ---
 
 ## 严重（Critical）

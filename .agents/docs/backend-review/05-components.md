@@ -9,6 +9,9 @@
 **阶段 2 更新**：C-H1 ✅（所有发送 ctx-aware + handler 取消子 context）、C-H2 ✅（真流式 + 错误/截断传播 + 不缓存残缺结果）、M1 ✅（空回答与 MaxTurns 耗尽均为错误）、M2 ✅（畸形 chunk/未知 finish_reason 报错，tool-call index 不再丢）、M3 ✅（真流式 + 超时改造 + 共享 http.Client）；C-H3（XOR 混淆）、M4-M8、M10 仍未处理（阶段 3）。
 **阶段 3 更新**：C-H3 ✅（`common.Obfuscate`/`Unobfuscate` 改为 AES-256-GCM + 随机 nonce + `v1:` 版本前缀，密钥优先环境变量 `METADATA_SECRET_KEY`，空的/过短的 key 报错；`store` 的所有调用点处理错误。见 `07` U-H2，`a1faf65`）。**仍未处理**：M4（有 tool call 时 assistant 文本被丢弃）、M5（`NewDBDebugLogger` 无界 goroutine）、M6（CEL 条件 fail-open）、M8（fetcher 的 `base_url` 校验、`io.LimitReader` 仍缺，但写操作已限管理员）、M10（每请求查询全部 LLM profile）、`AgentConfig.Hooks`/`MaxTurns` 仍未由调用方设置。
 
+**阶段 3 补遗更新**：M4/M5/M6/M8/M9/M10 本轮全部处理（`10631e0` `6f2b63d` `11943ae`）：`FetchModels` 新增 `ValidateBaseURL`（要求绝对 http/https + host，空值不再拼出相对路径）与 8MiB `io.LimitReader`，并改用共享 `llmHTTPClient` + 15s 期限；`Registry.ListEnabled` 改为走全部分页 + 30s 缓存 + `Invalidate()`（profile 写侧失效），不再每个 ExplainSQL 请求打库并解密全部 key，也不再看不见第 50 个之后的 profile；`ConvertToLlm` 在有 tool call 时保留 assistant 文本；`NewDBDebugLogger` 从「每次调用一个无界 goroutine 且丢弃错误」改为固定 2 个 worker + 64 长度队列 + 10s 写超时（队列满时告警丢弃）；CEL 条件改为 fail closed；`BuildContextFromMetadata` 的调用方不再按位置配对 GUID。**仍未处理**：`AgentConfig.Hooks` 仍是死代码，`MaxTurns` 仍未由调用方显式设置（默认 6）。
+
+
 ---
 
 ## 高（High）
@@ -51,13 +54,13 @@
 - **M1. 达到最大轮次与"成功"无法区分**：`agent.go:41-113`，`MaxTurns` 从未被设置（恒为 6，`explain_sql_service.go:128-134`）；第 6 轮的工具结果追加后从未发给模型，最终文本可能是空，但同样发 `AgentEventAgentEnd{Done:true}`，且 `evt.Done` 从未被读取（`explain_sql_service.go:186-187`）；被截断的答案仍会入缓存。空内容响应（如代理返回 HTML）也会被当成有效解释缓存。 —— **✅ 已修复（阶段 2，`8acbfe6`）**：循环耗尽 MaxTurns 且仍有 tool call 时改发 `AgentEventError`（"reached the maximum of N turns"），空回答同样报错，因此都不会被当作成功或写入缓存。`MaxTurns` 仍未由调用方显式设置（默认 6）。
 - **M2. `parseStream` 静默丢弃畸形 chunk、tool-call index 间隙与非 `data: ` 行**：`agent.go:230,251,264,277`。`buildAccumulatedToolCalls` 按连续 `0..len-1` 索引 map，provider 从 index 1 开始或留空即丢 tool call；`finish_reason: "length"` 被当正常完成。 —— **✅ 已修复（阶段 2，`8acbfe6`）**：畸形 `data:` 行报错，`finish_reason` 只接受 `stop`/`tool_calls`（`length` 与未知值报错），tool call 按 index 排序收集（不再丢非连续索引），非 `data: ` 行仍跳过（兼容 SSE 注释/心跳）。
 - **M3. 全量缓冲使流式名存实亡，且 5 分钟超时是总生成上限**：`agent.go:193`、`client.go:6`。`AgentEventContent` 在整轮结束后一次性产出，TTFT = 总生成时间；超过 5 分钟中途失败并按 H2 被当作成功。每次请求新建 `*http.Client`（连接仍复用 `http.DefaultTransport`）。 —— **✅ 已修复（阶段 2，`8acbfe6`）**：body 边到边解析，"流式"名副其实；去掉 5 分钟总超时，改为 30s 响应头超时 + 60s 空闲读超时（`idleTimeoutReader` 在无数据时取消请求，长回答不会被切断）；`llmHTTPClient` 改为包级共享（连接池化）。
-- **M4. 有 tool call 时 assistant 文本被丢弃**：`message.go:25-29`，`ConvertToLlm` 在 `len(ToolCalls)>0` 时不带 `Content`，下一轮丢失模型的推理/前言；`default:` 空分支静默丢弃未知 role。
-- **M5. `NewDBDebugLogger` 无界 fire-and-forget goroutine + 脱离请求的 context**：`debug.go:14-18`，每次 LLM 调用一个 goroutine、`context.Background()`、错误丢弃（`_ = err`）、无并发上限、无保留策略。
-- **M6. CEL 条件 fail-open**：`common/cel.go:257-299`，`if !celtypes.IsBool(out) { return true, nil }`；env 声明了 `resource.database` 等属性但 `EvalBindingCondition` 只绑定 `request.time`。任何引用 `resource.*` 的 binding 求值为 residual 即返回 true → 本应限定单库的角色被全局授予。当前 binding 构造不带 condition（`store/policy.go:68`），属潜伏。
+- **M4. 有 tool call 时 assistant 文本被丢弃**：`message.go:25-29`，`ConvertToLlm` 在 `len(ToolCalls)>0` 时不带 `Content`，下一轮丢失模型的推理/前言；`default:` 空分支静默丢弃未知 role。 —— **✅ 已修复（阶段 3 补遗，`10631e0`）**：`ConvertToLlm` 现在同时携带 `Content` 与 `ToolCalls`。
+- **M5. `NewDBDebugLogger` 无界 fire-and-forget goroutine + 脱离请求的 context**：`debug.go:14-18`，每次 LLM 调用一个 goroutine、`context.Background()`、错误丢弃（`_ = err`）、无并发上限、无保留策略。 —— **✅ 已修复（阶段 3 补遗，`10631e0`）**：改为固定 2 个 worker + 64 长度队列 + 10s 写超时，队列满时告警丢弃；写入错误不再被吞掉。`llm_debug_log` 同时有了 7 天保留清理（`cfa74df`）。
+- **M6. CEL 条件 fail-open**：`common/cel.go:257-299`，`if !celtypes.IsBool(out) { return true, nil }`；env 声明了 `resource.database` 等属性但 `EvalBindingCondition` 只绑定 `request.time`。任何引用 `resource.*` 的 binding 求值为 residual 即返回 true → 本应限定单库的角色被全局授予。当前 binding 构造不带 condition（`store/policy.go:68`），属潜伏。 —— **✅ 已修复（阶段 3 补遗，`6f2b63d`）**：求值为 residual（引用未绑定的 `resource.*`）时不再返回 true，而是返回错误、由 `validateIAMBinding` 记日志并丢弃该 binding。
 - **M7. 每次 binding 求值都新建 CEL 环境**：`common/cel.go:262`，`cel.NewEnv` 在 `validateIAMBinding`（`utils/member.go:17-24`）中每个 binding 调用一次，而 `GetUserFormattedRolesMap` 每请求遍历所有 binding。
-- **M8. fetcher SSRF + 无界响应读取**：`fetcher.go:26,49`，`url := baseURL + "/v1/models"` 无 scheme/host 校验，`json.NewDecoder(resp.Body).Decode` 无 `io.LimitReader`；配合 `llm_service.go:94-97` 任意 base_url → 带存储密钥的 SSRF 与内存放大（详见 `04` B-H5）。（**◐ 阶段 0**：profile 写操作与 `FetchLLMModels` 已限 workspaceAdmin，任意已认证用户的利用路径被切断；`base_url` 校验与 `LimitReader` 仍未加。）
-- **M9. `BuildContextFromMetadata` 位置化配对并行切片**：`tools.go:36-49`，调用方 `explain_sql_service.go:341-361` 只在查找成功时 append，之后 `guids[:len(metas)]` 配对错位，导致 DBName/SchemaName 归属错误并进入 LLM 提示。
-- **M10. 每请求查询全部 LLM profile 且无缓存**：`registry.go:34-35` + `explain_sql_service.go:84`，每次 ExplainSQL 一次 DB 往返 + 解密全部 profile 的 key；`configs[0]` 是隐式的"最近更新"。
+- **M8. fetcher SSRF + 无界响应读取**：`fetcher.go:26,49`，`url := baseURL + "/v1/models"` 无 scheme/host 校验，`json.NewDecoder(resp.Body).Decode` 无 `io.LimitReader`；配合 `llm_service.go:94-97` 任意 base_url → 带存储密钥的 SSRF 与内存放大（详见 `04` B-H5）。（**◐ 阶段 0**：profile 写操作与 `FetchLLMModels` 已限 workspaceAdmin，任意已认证用户的利用路径被切断；`base_url` 校验与 `LimitReader` 仍未加。） —— **✅ 已修复（阶段 3 补遗，`10631e0`）**：新增 `ValidateBaseURL`（要求绝对 http/https + host）、8MiB `io.LimitReader`、共享连接池 + 15s 期限；profile 写入路径也对 `base_url` 返回 `InvalidArgument`。
+- **M9. `BuildContextFromMetadata` 位置化配对并行切片**：`tools.go:36-49`，调用方 `explain_sql_service.go:341-361` 只在查找成功时 append，之后 `guids[:len(metas)]` 配对错位，导致 DBName/SchemaName 归属错误并进入 LLM 提示。 —— **✅ 已修复（阶段 3 补遗，`11943ae`）**：调用方改为把 GUID 与解析出的 metadata 成对携带，不再用 `guids[:len(metas)]` 重建配对。
+- **M10. 每请求查询全部 LLM profile 且无缓存**：`registry.go:34-35` + `explain_sql_service.go:84`，每次 ExplainSQL 一次 DB 往返 + 解密全部 profile 的 key；`configs[0]` 是隐式的"最近更新"。 —— **✅ 已修复（阶段 3 补遗，`10631e0`）**：`Registry.ListEnabled` 走全部分页（不再被 50 条默认上限截断）+ 30s 缓存，`Create/Update/DeleteLLMProviderProfile` 写入后 `Invalidate()`。
 
 ---
 

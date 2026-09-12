@@ -15,6 +15,9 @@
 
 **阶段 3 续更新**：本机 Docker 可用，**首次真正跑了集成套件**（`go test -count=1 -tags=integration ./backend/test/integration/...`），除一个既有失败外全部通过。该失败是 `TestPostgresLineageDeletedWhenViewDroppedRealServerIntegration`（`backend/test/integration/runner/schemasync_lineage_postgres_service_test.go:87`，`require.Eventually` 报 `Condition never satisfied`：等待被 DROP 的 VIEW 的 meta_registry 行与 column_lineage 行都消失），**与本轮无关**——在 `27d6261`（阶段 2 末尾，早于阶段 3 的删码）上同样稳定失败，在 `f7cfb0d`、`904fb09` 与当前工作树也都失败，需要单独一轮定位（怀疑 lineage analyzer 用陈旧 metadata 重新写回该 GUID 的行）。迁移验证用的是手工临时程序直连 PostgreSQL 16（跑完即删、未入库），不是永久测试；`./backend/migrator/...` 的 integration 测试（testcontainers）通过。
 
+**阶段 3 补遗更新**：① 上一段那条「既有失败」的根因已定位并修复——**不是** lineage analyzer 回写，而是集成 harness 的 `inspectStore`（第二个 in-process store）缓存了 server 进程删除前的 VIEW 行，而缓存失效不跨进程传播；新增 `store.WithCacheDisabled()` 并让 harness 的两个 `inspectStore` 启用后，**集成套件全部通过**（`runner` 48.56s、`migrator` 12.83s，exit 0；该用例单测复跑 11.47s PASS，两个邻居用例同跑 PASS，`f50fbbc`）。② 修掉 `backend/server` 测试的 `-race` 竞态：dev/prod 两个 `sync.Once` 在并行测试下同时调用 echo-contrib 的 `registerMetrics`，约 1/5 概率失败；改为一个 Once 顺序构建两个 server，连续 8 次 `-race` 全绿（`a16c8d4`）。③ 新增 `backend/common/guid_test.go`、`backend/common/cel_test.go`（含「未绑定变量必须 fail closed」用例）与 `backend/api/v1/pagination_test.go` 的血缘分页用例。**仍未做**：T-C2（缺 Docker 时 skip 而非硬失败）、T-H3（store 三处查询形状 guard）、`api/v1` 各 handler 与 `debug_interceptor` 测试、`backend/server` 启停路径测试、前端 Vitest 与 CI 前端 job、`./backend/migrator/...` 并入集成 target。
+
+
 **阶段 3 续更正**：① T-H1 的“从不执行”在本地手动跑过一次（`./backend/migrator/...` 通过），但 `Makefile`/CI 仍未包含它，结论不变；② store 侧 impl helper 的 V2 后缀已随 `8b328ae` 去掉（`listDatabaseImplV2` → `listDatabaseImpl`），T-H3 的 store 侧 guard 仍缺失这一结论不变。
 
 ---

@@ -15,6 +15,9 @@
 
 **阶段 3 续更新**：`common.GetProjectID`、`FormatProject`、`ProjectNamePrefix`、`DefaultProjectID` 随 project 移除而删除（`451cb78`）；`IsValidResourceID` 与 `AllUsers` 仍有调用者，保留。
 
+**阶段 3 补遗更新**：M1（CEL 条件 fail-open）✅（`6f2b63d`）：求值为 residual（引用未绑定的 `resource.*`）时不再返回 true，而是返回错误、由 `validateIAMBinding` 丢弃该 binding；M2（每次求值新建 CEL env）✅（改为 `sync.OnceValues` 构建一次）。`common.GUIDPrefix` ✅（`6f2b63d`）：原来按点号切分，而所有 GUID 用 `;` 拼接，因此对真实 GUID 恒返回空串——`GetSchemaString` 用它做 sequence 子树前缀，导致 PostgreSQL 表的 `ALTER SEQUENCE ... OWNED BY`/identity DDL 一直缺失；现在按 `MetaGUIDSplit` 去掉最后一段，并补了 `guid_test.go`。
+
+
 ---
 
 ## 高（High）
@@ -39,8 +42,8 @@
 
 ## 中（Medium）
 
-- **M1. CEL 条件 fail-open**：`common/cel.go:257-299`，`if !celtypes.IsBool(out) { return true, nil }`；env 声明 `resource.database/schema_name/table_name`（`:46-49`）但 `EvalBindingCondition` 只绑定 `request.time`（`:250-255`）。`utils/member.go:18` 在活跃路径上对每个 binding 调用它；引用 `resource.*` 的 condition 会被当作满足，角色被全局授予。当前 binding 构造不带 condition（`store/policy.go:68`），属潜伏。**修复**：绑定真实资源属性或返回"无法求值"并拒绝；要求编译结果为 bool。
-- **M2. 每次 binding 求值都新建 CEL 环境**：`common/cel.go:262`，`cel.NewEnv` 在 `validateIAMBinding`（`utils/member.go:17-24`）里逐 binding 调用；`GetUserFormattedRolesMap` 每请求遍历所有 policy 的所有 binding。建议包级 `sync.Once` 构建一次；并在单次 `GetUserIAMPolicyBindings` 内 memoize group 查询（`member.go:148`）。
+- **M1. CEL 条件 fail-open**：`common/cel.go:257-299`，`if !celtypes.IsBool(out) { return true, nil }`；env 声明 `resource.database/schema_name/table_name`（`:46-49`）但 `EvalBindingCondition` 只绑定 `request.time`（`:250-255`）。`utils/member.go:18` 在活跃路径上对每个 binding 调用它；引用 `resource.*` 的 condition 会被当作满足，角色被全局授予。当前 binding 构造不带 condition（`store/policy.go:68`），属潜伏。**修复**：绑定真实资源属性或返回"无法求值"并拒绝；要求编译结果为 bool。 —— **✅ 已修复（阶段 3 补遗，`6f2b63d`）**：residual 不再当作满足，改为返回错误由调用方丢弃 binding；守卫测试见 `backend/common/cel_test.go`。
+- **M2. 每次 binding 求值都新建 CEL 环境**：`common/cel.go:262`，`cel.NewEnv` 在 `validateIAMBinding`（`utils/member.go:17-24`）里逐 binding 调用；`GetUserFormattedRolesMap` 每请求遍历所有 policy 的所有 binding。建议包级 `sync.Once` 构建一次；并在单次 `GetUserIAMPolicyBindings` 内 memoize group 查询（`member.go:148`）。 —— **✅ 已修复（阶段 3 补遗，`6f2b63d`）**：环境用 `sync.OnceValues` 构建一次，program 仍是每次求值单独构造。
 - **M3. 未检查类型断言导致 panic**：`common.go:441-467` 的 `getVariableAndValueFromExpr` 返回 `any`，调用方（`user_service.go:165,168,171,182,189,215`、`instance_service.go:78,81,84,91,98,106,109,112`、`database_service.go:741,808,833,865`）直接 `value.(string)`。`filter=email == 1` 会 panic → `connect.WithRecover` 转成 500 并回传堆栈。（**✅ 已修复（阶段 1）** · `ff914ac`）
   - **更正一个此前的猜测**：`expr.AsCall()` 在 cel-go v0.26.1 中是 Kind 守卫的，返回 `nilCall` 哨兵，**不会 panic**（见 `common/ast/expr.go:336-341`）。但 `expr.AsLiteral()` 对非字面量返回 **nil**（`expr.go:357-362`），因此 `args[0].AsLiteral().Value()`（`user_service.go:248`、`instance_service.go:141`、`database_service.go:865`）会 panic；`expr.AsCall().Target().AsIdent()`（`instance_service.go:136`、`database_service.go:860`）在 `Target()` 为 nil 时也会 panic。修复：comma-ok + `Kind() == LiteralKind` 判断 + 返回 `InvalidArgument`。
   - **修复落地**：`getVariableAndValueFromExpr` 改为返回 `(variable, value, error)`，缺变量或缺字面量即 `InvalidArgument`；新增 `filterString`/`filterBool`/`filterStringList`/`matchArgs` 四个带检查的取值 helper（`api/v1/common.go`），所有调用方改用它，`.matches()` 的目标标识符与参数一律经 `matchArgs` 校验（`Target() == nil || Kind() != IdentKind` 与 `Kind() != LiteralKind` 都返回错误）。守卫测试 `backend/api/v1/filter_type_safety_test.go` 覆盖 `email == 123`、`engine in [1]`、`name.matches(ident)`、裸 `matches("x")`、`exclude_unassigned == "true"` 等 12 个用例。

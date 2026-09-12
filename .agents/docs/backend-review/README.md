@@ -56,6 +56,13 @@
 - `LATEST.sql` 与 `0.1.0003`/`0.1.0004` 在本地 PostgreSQL 16 实测：全新安装、模拟 0.1.2→0.1.3 与 0.1.3→0.1.4 升级（先把旧表/列恢复回去）、重复执行为 no-op；`0003` 另验证历史 OIDC 行会以 SQLSTATE 23514 显式失败
 - **本轮第一次真正运行集成套件**（本机 Docker 可用）：`go test -count=1 -tags=integration ./backend/test/integration/...` 除一条**既有**失败外全部通过。`TestPostgresLineageDeletedWhenViewDroppedRealServerIntegration` 在 `27d6261`（阶段 2 末尾）、`f7cfb0d`、`904fb09` 与当前工作树上**都失败**，与本轮及阶段 3 均无关；根因待单独一轮定位（见下文与 `10` 第五节）
 
+**阶段 3 补遗（正确性遗留 + 安全加固 + 性能与保留 + 引擎覆盖）后复测**（详见下文“阶段 3 补遗修复状态”）：
+- `gofmt -l backend/` 空；`go build ./...`、`go vet ./...`、`go vet -tags release ./...`、`go vet -tags integration ./...`、`go test ./...`、`go test -race -count=1 ./...`、`make build-release` 全部 exit 0；`golangci-lint run --allow-parallel-runners` ✅ 0 issues
+- `buf format -w proto`、`buf lint proto`、`cd proto && buf generate` ✅（`lineage_service.proto` 新增分页字段，生成产物只有 3 个文件变化，重跑无 diff）
+- 前端：`vue-tsc --build` 0 错误、`biome check src`（177 文件）、`eslint src --max-warnings=0`、`vite build` 全部通过
+- **集成套件全部通过**（含此前稳定失败的那条）：`go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...` → `runner` 48.56s、`migrator` 12.83s，exit 0；`TestPostgresLineageDeletedWhenViewDroppedRealServerIntegration` 单测复跑 11.47s PASS
+- 迁移在本地 PostgreSQL 16 实测：全新安装记录 `0.1.5`；升级路径（删掉 `search_text`/函数/三个索引并把 ledger 回退到 `0.1.4`）重新迁移可恢复；重复执行为 no-op；ledger 被改成 `9.9.9` 时启动被拒绝；`search_text` 与旧 `jsonb_each` 谓词逐关键字对拍一致，`EXPLAIN` 确认走 trgm 索引；保留清理的 run/task/registry 行数变化逐项断言
+
 **修复状态标记**（用于下文全部模块报告）：
 
 | 标记 | 含义 |
@@ -68,6 +75,8 @@
 | ◐ **部分修复（阶段 2）** | 阶段 2 处理了经确认的部分，剩余项已在报告中写明 |
 | ✅ **已修复（阶段 3）** | 阶段 3 已修完并验证，附对应 commit |
 | ◐ **部分修复（阶段 3）** | 阶段 3 处理了经确认的部分，剩余项已在报告中写明 |
+| ✅ **已修复（阶段 3 补遗）** | 阶段 3 补遗已修完并验证，附对应 commit |
+| ◐ **部分修复（阶段 3 补遗）** | 阶段 3 补遗处理了经确认的部分，剩余项已在报告中写明 |
 | ⏳ **未处理** | 尚未涉及，仍需按路线图处理 |
 
 ---
@@ -235,7 +244,35 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 | — | M9 `UpdateDataSource` 资源化 | ◐ | （无） | 经确认跳过：需要给 `DataSource` 加 `name` 并把三个自定义方法改成 AIP-133/135 标准方法（连前端与集成测试），本轮范围不含。 |
 | — | M18 create/update 一致性 | ✅ | （无） | 经确认**不改契约**：`validate_only` 只保留在真的验证外部连接的三处，`allow_missing` 只保留在已实现的 `UpdateUserRequest`；规则写进 `08`。 |
 
-**新发现（未修，与本轮无关）**：`TestPostgresLineageDeletedWhenViewDroppedRealServerIntegration`（`backend/test/integration/runner/schemasync_lineage_postgres_service_test.go:87`）稳定失败——`require.Eventually` 等被 DROP 的 VIEW 的 `meta_registry_resource` 与 `column_lineage` 行都消失，20s 内未满足。已用 `git worktree` 验证它在 `27d6261`（阶段 2 末尾）、`f7cfb0d`、`904fb09` 与当前树上都失败，因此不是本轮或阶段 3 引入。
+**新发现（已在阶段 3 补遗修复）**：`TestPostgresLineageDeletedWhenViewDroppedRealServerIntegration`（`backend/test/integration/runner/schemasync_lineage_postgres_service_test.go:87`）曾稳定失败——`require.Eventually` 等被 DROP 的 VIEW 的 `meta_registry_resource` 与 `column_lineage` 行都消失，20s 内未满足；用 `git worktree` 验证过它在 `27d6261`（阶段 2 末尾）、`f7cfb0d`、`904fb09` 与当时的工作树上都失败，因此不是阶段 3 引入。**根因是集成 harness 的测试替身缓存**（`backend/test/integration/env/service_env.go` 的 `inspectStore` 是第二个 in-process store，`f22f61e` 打开缓存后它也开始缓存 VIEW 行，而 server 进程的缓存失效不会跨进程传播），数据库里那两行其实早已为空。修法是新增 `store.WithCacheDisabled()` 并让两个 `inspectStore` 启用它（`f50fbbc`），生产缓存不受影响。
+
+---
+
+## 阶段 3 补遗「正确性遗留 + 安全加固 + 性能与保留 + 引擎覆盖」修复状态
+
+阶段 3 收尾与阶段 3 续之后，各模块报告里剩下的「仍未处理」项本轮做了一批：正确性遗留（A）、安全加固（C）、性能与保留（B）、引擎覆盖（G），外加一条既有集成失败的根因定位（E）。测试/CI 类遗留（前端 Vitest 与 CI job、T-C2 Docker skip、T-H3 guard、`api/v1` handler 测试等）**本轮未做**。共 11 个 commit + 1 个测试修复（`10-legacy-debt-and-roadmap.md` 第四节的 31–40）。
+
+| # | 事项 | 状态 | 提交 | 落地说明 |
+| --- | --- | --- | --- | --- |
+| 31 | GUID 前缀 + IAM 条件 fail-closed | ✅ | `6f2b63d` | `common.GUIDPrefix` 按 `"."` 切分而 GUID 用 `";"`，对真实 GUID 恒返回空串，`GetSchemaString` 因此永远查不到 sequence，PG 的 `ALTER SEQUENCE ... OWNED BY`/identity DDL 丢失；改为按 `MetaGUIDSplit` 去掉最后一段并补单测。CEL 求值为 residual（引用未绑定的 `resource.*`）时曾返回 true = 全局授权，现在 fail closed（返回错误、调用方记日志并丢弃 binding），env 改为构建一次。 |
+| 32 | 血缘列表分页 | ✅ | `dd6df51` | `GetLineage`/`GetLineageForContext` 新增 `page_size`/`page_token`/`next_page_token`（默认 500、上限 5000）；`GetLineage` 用同一 offset 页化 source/target，`lineage_type` 只选一个时 token 仍有效。前端 `getLineage` 循环取页并合并（`external_datasets` 按 GUID 合并），血缘图可见集合不变；集成 harness 同步取全。 |
+| 33 | OpenLineage 批摄取 | ✅ | `d562a50` | 过去只要一条成功就返回 200、解析失败的事件被静默跳过；现在回显 `processed`/`failed`，全不可解析返回 400，存在服务端失败返回 500。 |
+| 34 | 空 scope + 对象配对 | ✅ | `11943ae` | 空 `scope_prefix` 曾生成 `guid = '' OR guid LIKE ';%'`（恒空），而未选实例时它恰好为空；空前缀现在表示跨全部实例，空关键字返回明确工具错误，搜索失败不再被丢弃。`fetchObjectsByGUIDs` 的 `guids[:len(metas)]` 位置配对会让一次失败后的 GUID 全部错位，改为成对携带。 |
+| 35 | LLM 组件四项 | ✅ | `10631e0` | `ValidateBaseURL`（绝对 http/https + host）+ 8MiB 响应上限 + 连接池复用 + 15s 期限，profile 写入对非法 base_url 返回 `InvalidArgument`；`Registry.ListEnabled` 改全部分页 + 30s 缓存 + 写侧失效（原来每请求打库并解密全部 key，且第 50 个 profile 之后不可见）；`ConvertToLlm` 保留 assistant 文本；`NewDBDebugLogger` 改有界 worker 队列。 |
+| 36 | 搜索索引 + 批量扫描 + 清理/保留 | ✅ | `f50fbbc` `2259abd` | 新增 `search_text` 存储生成列（恰为 name/title/comment/userComment 拼接）+ `pg_trgm` GIN 索引（增量 `0.1.0005`），谓词改为 `search_text ILIKE $n`，匹配行与旧 `jsonb_each` 谓词逐关键字对拍一致；空搜索串改为 `InvalidArgument`。`queueAll` 与 schemasync 的 `diff()` 都改 digest 列表 + 每类型一次版本查询（后者不再解析每个 JSONB 行，`2259abd`）。新增 `DeleteExpiredExplainSQLCache`/`DeleteExpiredLLMDebugLog`/`DeleteOpenLineageRunsBefore` 与 `WithCacheDisabled`。 |
+| 37 | migrator 三项 | ✅ | `2131420` | `tableExists` 限定 `current_schema()` + `BASE TABLE`（原来别的 schema 的同名表会让全新安装路径被跳过）；advisory lock 的解锁与 `lock_timeout` 复位改用不可取消的 ctx，并给加锁本身加 `lock_timeout`；ledger 比二进制新时拒绝启动。 |
+| 38 | 不支持引擎的重试 | ✅ | `9019140` | 引擎无 lineage analyzer 时把跳过连同 meta hash 与原因写进 `column_lineage_version`，不再每小时无限重排队。 |
+| 39 | 保留清理 runner | ✅ | `cfa74df` | `runner/maintenance` 启动时与每 6 小时清理过期 ExplainSQL 缓存行与 7 天前的 `llm_debug_log`；`openlineage_run` 默认永久保留，`--openlineage-retention-days`（默认 0）显式开启后连带重算 task 聚合并清理空 task 与镜像 registry 行。 |
+| 40 | 引擎注册覆盖 | ✅ | `729db71` | driver 补 `TIDB`（此前完全缺失，TiDB 实例连 Open 都失败）；schema DDL/迁移补 `MARIADB`/`TIDB`；lineage 补 `MARIADB`/`OCEANBASE`；OpenLineage resolver 的 `isMySQLLike` 纳入 `OCEANBASE`。 |
+| — | 既有集成失败根因 | ✅ | `f50fbbc` | 见上：测试替身缓存，不是产品缺陷。 |
+| — | `backend/server` 测试竞态 | ✅ | `a16c8d4` | dev/prod 两个 `sync.Once` 在并行测试下同时调用 `registerMetrics`，约 1/5 概率 `-race` 失败；改为一个 Once 顺序构建。 |
+| — | M9 / M4 资源化 | ◐ | （无） | 经确认**继续推迟**：`DataSource` 与 OpenLineage/API key 消息的资源化（`name` + AIP-133/135 标准方法 + 前端与集成测试）仍是已知遗留。 |
+
+**已知取舍（阶段 3 补遗）**：
+- `metadata` 搜索仍是**子串匹配**（ILIKE），只是改由 trgm 索引服务；没有改成全文检索，因为 FTS 是词元匹配，会改变 `search_objects` 与 `SearchMetadata` 的语义。
+- `openlineage_run` 默认仍永久保留（可审计数据）；开启保留期会连带删除由这些 run 聚合出的 task 与两者的 registry 行。
+- LLM profile 列表只是 30s TTL 缓存 + 写侧失效，没有做按需加载单个 profile。
+- 空 `scope_prefix` 现在表示"跨全部实例搜索"：所有已认证用户本来就能浏览全部实例，因此不是新的信息暴露面。
 
 ---
 
@@ -251,10 +288,10 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 | **缓存被禁用但仍在写** | `store.New(..., false)` 使所有 LRU 读失效，写仍发生；`GetUserByID` 因此每请求全表扫描 | `server/server.go:70`、`store/principal.go:89-114` | ✅ 阶段 2：缓存启用、开关删除、定向查询 + key/竞态修复（`f22f61e`） |
 | **错误码不生效** | `common.Code` 无映射链路，store 的 NotFound/Conflict 到客户端变 500 | `common/error.go:87`、`server/grpc_routes.go:80` | ✅ 阶段 3：新增 `ErrorMappingInterceptor` 统一映射，`common.Error` 补 `Unwrap()`（`89baa3a`） |
 | **日志系统未接线** | `LogLevel`/`Replace` 从未安装，`--debug`/`--enable-json-logging` 无效 | `common/log/log.go`、`cmd/root.go:72,78` | ✅ 阶段 1：`slog.SetDefault` + Text/JSON handler（`7fdcead`） |
-| **无界查询 / N+1** | OpenLineage 数据集全表 + payload 解析；血缘无分页；`queueAll` 每小时全表 | `openlineage_dataset.go:40,119`、`lineage_service.go:57`、`analyzer.go:105` | ◐ 阶段 2/3：数据集读限 5000 + 请求内缓存（`8c34542`）；三个 OpenLineage 列表补分页（`52213af`）；血缘列表分页与 `queueAll` 批量化仍未做 |
+| **无界查询 / N+1** | OpenLineage 数据集全表 + payload 解析；血缘无分页；`queueAll` 每小时全表 | `openlineage_dataset.go:40,119`、`lineage_service.go:57`、`analyzer.go:105` | ✅ 阶段 2/3/补遗：数据集读限 5000 + 请求内缓存（`8c34542`）；三个 OpenLineage 列表补分页（`52213af`）；血缘两列表补 `page_size`/`page_token`（`dd6df51`）；`queueAll` 改为 2 次查询/类型且不再解析 metadata（`f50fbbc`） |
 | **分页不一致** | 标准 page_token 与 OpenLineage 裸 offset、LLM 无 token、sublevel 无 offset 并存 | `proto/v1/*`、`api/v1/common.go:338` | ✅ 阶段 3：统一 `page_token`/`next_page_token` 与 `paginate[T]`（`73901a1` `52213af`） |
 | **大量 Bytebase 遗留** | IAM/role/project/issue/多引擎/SCIM/2FA、`V2` 命名 | 见 `10-legacy-debt-and-roadmap.md` | ✅ 阶段 3 + 收尾 + 续：Go 侧死代码、role/project store API、metric 栈、CEL 死代码已删（`a39bc41`–`3cc4926`）；proto 表面收敛完成——Engine 28→5、DataSource 多引擎/IAM/SASL/Vault 字段、9 个未实现 setting、OIDC/LDAP、`recovery_codes`/`source`、policy/role/project 死消息、不可达 metadata 消息、`service_name`/`granularity`、store 死 openlineage 消息全部删除（`ceb6a3d` `e0eab33` `722d3cb` `ddff264` `ee3c39b` `b2e80ae`）；`role`/`project` 表与 `db.project` 列已 DROP（`904fb09` `451cb78`）；`V2` 命名重命名完成（`8b328ae`）；M 系列除 M9/M4 外全部处理。**剩余**：M9/M4 的资源化重设计 |
-| **测试/CI 缺口** | CI 从不跑 hermetic 测试；缺 Docker 时集成测试硬失败；auth 零测试 | `09-tests.md` | ◐ 阶段 3：CI 新增 `-race` 单测 + lint job、`api/auth` 与 `backend/server` 从零建立测试（`d3d96c1` `0dae0b7`）；阶段 3 续首次真正运行集成套件（本机 Docker 可用），除 1 个**既有**失败（`TestPostgresLineageDeletedWhenViewDropped…`，早于阶段 3）外全部通过；缺 Docker 的 skip 行为（T-C2）与前端 job 仍未做 |
+| **测试/CI 缺口** | CI 从不跑 hermetic 测试；缺 Docker 时集成测试硬失败；auth 零测试 | `09-tests.md` | ◐ 阶段 3/补遗：CI 新增 `-race` 单测 + lint job、`api/auth` 与 `backend/server` 从零建立测试（`d3d96c1` `0dae0b7`）；集成套件现已**全部通过**（既有失败根因是 harness 的 inspectStore 缓存，`f50fbbc`）；顺带修掉 `backend/server` 测试约 1/5 概率的 `-race` 竞态（`a16c8d4`）；缺 Docker 的 skip 行为（T-C2）、前端 job、`./backend/migrator/...` 并入集成 target 仍未做 |
 
 ---
 
@@ -272,7 +309,7 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 | 08 Proto | 1 | 6 | 23 | 大量 | store/v1 契约分叉；AIP 违规；审计脱敏根因 |
 | 09 测试 | 2 | 5 | 10 | 5 | CI 不跑单测；auth 零测试；guard 测试缺失 |
 
-> 阶段 0/1/2 修复后，上表中的问题数量尚未重新统计；已修复条目见各阶段修复状态与各模块报告中的 ✅/◐ 标记。新增测试：`backend/api/v1/filter_injection_test.go`、`backend/api/v1/filter_type_safety_test.go`、`backend/api/v1/instance_data_source_test.go`、`backend/api/v1/common_test.go`、`backend/api/v1/audit_test.go` 扩展、`backend/runner/schemasync/syncer_test.go` 扩展、`backend/store/principal_test.go`、`backend/store/db_connection_test.go`、`backend/store/meta_resource_test.go` 扩展、`backend/plugin/openlineage/resolver_test.go` 扩展、`backend/component/llm/agent_test.go`；**阶段 3 新增**：`backend/api/v1/filter_test.go`、`backend/api/v1/pagination_test.go`、`backend/api/v1/error_interceptor_test.go`（即改写后的 `common_test.go`）、`backend/common/error_test.go`、`backend/common/utils_test.go`、`backend/store/setting_test.go`、`backend/api/auth/auth_test.go`、`backend/server/echo_routes_test.go`。**阶段 3 收尾**没有新增测试，但修掉了 `backend/common/utils_test.go` 里一个会随机失败的断言（`4afe1ba`）。
+> 阶段 0/1/2 修复后，上表中的问题数量尚未重新统计；已修复条目见各阶段修复状态与各模块报告中的 ✅/◐ 标记。新增测试：`backend/api/v1/filter_injection_test.go`、`backend/api/v1/filter_type_safety_test.go`、`backend/api/v1/instance_data_source_test.go`、`backend/api/v1/common_test.go`、`backend/api/v1/audit_test.go` 扩展、`backend/runner/schemasync/syncer_test.go` 扩展、`backend/store/principal_test.go`、`backend/store/db_connection_test.go`、`backend/store/meta_resource_test.go` 扩展、`backend/plugin/openlineage/resolver_test.go` 扩展、`backend/component/llm/agent_test.go`；**阶段 3 新增**：`backend/api/v1/filter_test.go`、`backend/api/v1/pagination_test.go`、`backend/api/v1/error_interceptor_test.go`（即改写后的 `common_test.go`）、`backend/common/error_test.go`、`backend/common/utils_test.go`、`backend/store/setting_test.go`、`backend/api/auth/auth_test.go`、`backend/server/echo_routes_test.go`。**阶段 3 收尾**没有新增测试，但修掉了 `backend/common/utils_test.go` 里一个会随机失败的断言（`4afe1ba`）。**阶段 3 补遗新增**：`backend/common/guid_test.go`、`backend/common/cel_test.go`（含“未绑定变量必须 fail closed”用例）、`backend/api/v1/pagination_test.go` 的血缘分页用例；并修掉 `backend/server/echo_routes_test.go` 的 `-race` 竞态（`a16c8d4`）。
 
 ---
 
@@ -282,12 +319,12 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 2. **再读** [`04-api-v1.md`](04-api-v1.md) 与 [`03-store.md`](03-store.md)，覆盖注入、SSRF、无界查询与持久层正确性。
 3. **然后** [`06-runners-migrator.md`](06-runners-migrator.md)（迁移与同步的正确性/数据安全）。
 4. **最后** [`05`](05-components.md)、[`07`](07-common-utils.md)、[`08`](08-proto-contract.md)、[`09`](09-tests.md) 与 [`10`](10-legacy-debt-and-roadmap.md)（组件、基础设施、契约、测试、清理路线）。
-5. 整改排期见 [`10-legacy-debt-and-roadmap.md`](10-legacy-debt-and-roadmap.md) 第四节："阶段 0：安全止血"（4 条完整修复、2 条部分修复）、"阶段 1：正确性与可运维性"（3 条完整修复、2 条部分修复）、"阶段 2：性能与资源"（4 条完整修复、1 条部分修复）、"阶段 3：清理与重构"（17/18 完整修复；19/20 各有一项经确认推迟，其中 20 的推迟范围已在"阶段 3 收尾：proto 表面收敛"一节做完，19 的前端 job/migrator 集成/Docker skip 仍未做）、"阶段 3 续：proto 残留、schema 清理与 M 系列"（25–30 完成，仅 M9 经确认跳过）均已完成，剩余项已逐条标注，可在对外部署前作为基线。
+5. 整改排期见 [`10-legacy-debt-and-roadmap.md`](10-legacy-debt-and-roadmap.md) 第四节："阶段 0：安全止血"（4 条完整修复、2 条部分修复）、"阶段 1：正确性与可运维性"（3 条完整修复、2 条部分修复）、"阶段 2：性能与资源"（4 条完整修复、1 条部分修复）、"阶段 3：清理与重构"（17/18 完整修复；19/20 各有一项经确认推迟，其中 20 的推迟范围已在"阶段 3 收尾：proto 表面收敛"一节做完，19 的前端 job/migrator 集成/Docker skip 仍未做）、"阶段 3 续：proto 残留、schema 清理与 M 系列"（25–30 完成，仅 M9 经确认跳过）、"阶段 3 补遗：正确性遗留、安全加固、性能与保留、引擎覆盖"（31–40 完成，M9/M4 经确认继续推迟）均已完成，剩余项已逐条标注，可在对外部署前作为基线。
 
 ---
 
 ## 关于本报告的确定性
 
-- 所有条目均附 `文件:行号` 与代码摘录；标注"待确认"的条目表示需要作者确认或需要集成测试/运行时验证。**阶段 1 已关闭两条**：`db_schema` 的实际报错形态（该过滤器被整体删除，`bb93ee0`）与 `SyncDBSchema` 是否会静默返回空/部分快照（会：MySQL 的 `information_schema` 按权限过滤行，`fcb6a98`）。**阶段 2 又关闭一条**：`enableCache` 的去留（经确认启用，`f22f61e`）。**阶段 3 收尾关闭四条**：`principal.mfa_config` 是死列（2FA 无实现）、`store.ExplainSQLCache` 应删（已删）、`policy`/`user_group` 表是活路径、`project`/`role` 表无 Go 调用者但受 `db.project` 外键约束不能直接删（`08` 已逐条补注）。**阶段 3 续关闭三条**：`setting.value` 是**有意**的 `text`（多态列，`d8ce592`）、`transformation`/`raw_payload` 的编码问题已解决（`997ede9` `b2e80ae`）、`project`/`role` 表与 `db.project` 列已实际删除（`451cb78` `904fb09`）。仍待确认的集中在：**集成套件里那个既有失败（`TestPostgresLineageDeletedWhenViewDropped…`）的根因**、M9/M4 的资源化决策、部署拓扑（是否有反向代理、是否单租户）、`RETURNING` 顺序、`MARIADB`/`OCEANBASE` 的 schema/血缘覆盖缺口。
+- 所有条目均附 `文件:行号` 与代码摘录；标注"待确认"的条目表示需要作者确认或需要集成测试/运行时验证。**阶段 1 已关闭两条**：`db_schema` 的实际报错形态（该过滤器被整体删除，`bb93ee0`）与 `SyncDBSchema` 是否会静默返回空/部分快照（会：MySQL 的 `information_schema` 按权限过滤行，`fcb6a98`）。**阶段 2 又关闭一条**：`enableCache` 的去留（经确认启用，`f22f61e`）。**阶段 3 收尾关闭四条**：`principal.mfa_config` 是死列（2FA 无实现）、`store.ExplainSQLCache` 应删（已删）、`policy`/`user_group` 表是活路径、`project`/`role` 表无 Go 调用者但受 `db.project` 外键约束不能直接删（`08` 已逐条补注）。**阶段 3 续关闭三条**：`setting.value` 是**有意**的 `text`（多态列，`d8ce592`）、`transformation`/`raw_payload` 的编码问题已解决（`997ede9` `b2e80ae`）、`project`/`role` 表与 `db.project` 列已实际删除（`451cb78` `904fb09`）。**阶段 3 补遗又关闭三条**：集成套件里那条既有失败的根因（是集成 harness 的 `inspectStore` 缓存了别的进程写入前的行，不是 lineage analyzer 回写，`f50fbbc`）、`MARIADB`/`OCEANBASE` 乃至 `TIDB` 的 schema/血缘/driver 注册缺口（`729db71`）、`search_text` 是否为可行索引方案（已实测谓词等价且走 trgm 索引）。仍待确认的集中在：M9/M4 的资源化决策、部署拓扑（是否有反向代理、是否单租户）、`RETURNING` 顺序。
 - 少数结论已通过独立执行验证（例如 `parseStructuredResponse` 的 `"## ## "` 缺陷用独立程序复现）。
 - 一处此前的推测已被更正：cel-go v0.26.1 的 `expr.AsCall()` 是 Kind 守卫的、不会 panic；真正会 panic 的是未检查的 `value.(string)` 类型断言与对非字面量调用 `AsLiteral().Value()`（详见 `07` M3，阶段 1 已修，`ff914ac`）。

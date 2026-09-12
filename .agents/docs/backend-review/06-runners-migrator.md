@@ -15,6 +15,9 @@
 
 **阶段 3 续更新**：新增两个增量并在 `LATEST.sql` 同步（`904fb09` `451cb78`）：`0.1.0003##drop_dead_auth_schema.sql`（删 `role` 表与 `principal.mfa_config` 列，`idp_type_check` 收窄为 `('OAUTH2')`）与 `0.1.0004##drop_project.sql`（删 `db.project` 列与 `project` 表）。两者都在本地 PostgreSQL 16 实测：全新安装、模拟低版本→升级、重复执行为 no-op；`0003` 另验证了历史 OIDC 行会以 SQLSTATE 23514 显式失败。`runner/schemasync/syncer.go` 不再传 `ProjectID` 给 `CreateDatabaseDefault`（`451cb78`）；`BatchSyncInstances` 的 fail-fast 行为变化见 `04`（`733b3e0`）。
 
+**阶段 3 补遗更新**：① `migrator/tableExists` 只按表名查 `information_schema`，而该视图覆盖库内所有 schema，别的 schema 里的同名表会被误认为元数据 schema 已存在、从而跳过全新安装路径；改为限定 `current_schema()` 且 `BASE TABLE`（`2131420`）。② advisory lock 的解锁与 `lock_timeout` 复位改用不可取消的 context（ctx 被取消会让连接带着会话级锁回到连接池、之后所有迁移死锁），并给加锁本身加 `lock_timeout`，让卡住的同伴副本显式失败（`2131420`）。③ ledger 比二进制已知的最新版本新时拒绝启动，不再静默跑在不认识的 schema 上（`2131420`）。④ `analyzer.analyzeObject` 对没有 lineage analyzer 的引擎不再静默 `return nil`（那会让 `queueAll` 每小时无限重排），改为把这次跳过连同 meta hash 与原因写进 `column_lineage_version`（`9019140`）；`queueAll` 同时从「N 次全量 metadata 拉取 + N 次版本查询」改为「digest 列表 + 每类型一次版本查询」（`f50fbbc`）。⑤ 新增 `runner/maintenance`（启动时与每 6 小时）：清理过期 ExplainSQL 缓存行与 7 天前的 `llm_debug_log`；`--openlineage-retention-days`（默认 0 = 永久保留）开启时按保留期删除 run、重算 task 聚合、清理空 task 与镜像 registry 行（`cfa74df`）。⑥ 新增增量 `0.1.0005##metadata_search_index.sql`（`pg_trgm`、`meta_registry_search_text` 函数、`search_text` 生成列、三个索引），`LATEST.sql` 同步（`f50fbbc`）。
+
+
 **阶段 3 续更正**：上一段收尾更新的四条结论已被本轮取代——`LATEST.sql` 已有 `0003`/`0004` 两个新增量，不再是无 schema 变更；`principal.mfa_config` 列已删除；`idp.type` 的 CHECK 已收窄，不再是为兼容既有行而保留；`role`/`project` 表已 DROP，`db.project` 的外键随列一起删除，不再是删表的阻碍。
 
 ---
@@ -82,6 +85,7 @@
 - **修复**：创建 `migration/0.1/` 基线增量；增加 guard 测试/CI 检查（`LATEST.sql` 变更必须伴随新增量）。
 
 ### R-H6. advisory lock 可能泄漏，永久阻塞其他副本
+- **✅ 已修复（阶段 3 补遗，`2131420`）**：解锁与 `lock_timeout` 复位改用 `context.WithoutCancel`，加锁本身加 `lock_timeout`，卡住的同伴副本会显式失败而不是永久阻塞。
 - **位置**：`backend/migrator/migrator.go:112-119`
 - **证据**：`defer func() { conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", ...) }()` 使用会被取消的 `ctx`；获取时也没有 `lock_timeout`。
 - **影响**：启动期间收到 SIGTERM 或 unlock 失败时，连接带着会话级锁回到连接池；下一个副本的 `pg_advisory_lock` 会无限阻塞。同一会话重复获取还会累加锁计数。
@@ -91,11 +95,11 @@
 
 ## 中（Medium）
 
-- **M1. `tableExists` 忽略 `table_schema`**：`migrator.go:376-378`，任意 schema 下存在同名表就让迁移器认为"已存在部署"，空 public schema 会被跳过 `LATEST.sql`，随后记录基线并在缺表状态下运行。应加 `table_schema = current_schema()` 或改用 `to_regclass`。
+- **M1. `tableExists` 忽略 `table_schema`**：`migrator.go:376-378`，任意 schema 下存在同名表就让迁移器认为"已存在部署"，空 public schema 会被跳过 `LATEST.sql`，随后记录基线并在缺表状态下运行。应加 `table_schema = current_schema()` 或改用 `to_regclass`。 —— **✅ 已修复（阶段 3 补遗，`2131420`）**：查询限定 `table_schema = current_schema()` 且 `table_type = 'BASE TABLE'`。
 - **M2. 分析失败要等到下一个小时级扫描才重试**：`analyzer.go:129-138`，`drainAndAnalyze` 先删除 `analyzeMap` 全部 key 再分析，失败只记日志；血缘可陈旧长达 `lineageAnalysisInterval`（1h）。
-- **M3. 不支持的引擎从不标记为已分析 → 每小时无限重试**：`analyzer.go:204-206`，`ErrorEngineNotSupported` 分支直接 `return nil`，没有 `markAnalyzed`；`queueAll` 每小时重新入队并重试所有视图/MV/manual SQL。
-- **M4. `queueAll` 是 N+1 全表扫描，且 `meta_registry_resource.object_type` 无索引**：`analyzer.go:105-124` + `LATEST.sql:157-165`；每小时 3 次未索引扫描 + 每对象一次查询。**部分修复（阶段 2，`ff9b22a`）**：增量 `0.1.0002` 已加 `object_type` 索引，扫描不再全表；`queueAll` 的逐对象查询 N+1 仍未批量化。
-- **M5. 为比较 hash 而全量加载并反序列化元数据**：`syncer.go:392` + `store/meta_resource.go:340-354`，`ListMetaRegistry` 带 `withMetadata=true` 解析每个 JSONB 行，而 `diff()` 只需要 `GUIDKey` + `MetaHash`。建议增加轻量列表（guid, object_type, meta_hash）。
+- **M3. 不支持的引擎从不标记为已分析 → 每小时无限重试**：`analyzer.go:204-206`，`ErrorEngineNotSupported` 分支直接 `return nil`，没有 `markAnalyzed`；`queueAll` 每小时重新入队并重试所有视图/MV/manual SQL。 —— **✅ 已修复（阶段 3 补遗，`9019140`）**：把这次跳过连同当前 meta hash 与原因写进 `column_lineage_version`，在 metadata 变化前不再重排；同时补齐了四个引擎的 lineage/schema/driver 注册（`729db71`）。
+- **M4. `queueAll` 是 N+1 全表扫描，且 `meta_registry_resource.object_type` 无索引**：`analyzer.go:105-124` + `LATEST.sql:157-165`；每小时 3 次未索引扫描 + 每对象一次查询。**部分修复（阶段 2，`ff9b22a`）**：增量 `0.1.0002` 已加 `object_type` 索引，扫描不再全表；`queueAll` 的逐对象查询 N+1 仍未批量化。 —— **✅ 已修复（阶段 3 补遗，`f50fbbc`）**：另加 digest 列表（不取 metadata、不碰缓存）与 `ListColumnLineageVersions`（一次取某类型全部版本），每类型 2 次查询，逐对象的那次查询与全量 metadata 解析都去掉了。
+- **M5. 为比较 hash 而全量加载并反序列化元数据**：`syncer.go:392` + `store/meta_resource.go:340-354`，`ListMetaRegistry` 带 `withMetadata=true` 解析每个 JSONB 行，而 `diff()` 只需要 `GUIDKey` + `MetaHash`。建议增加轻量列表（guid, object_type, meta_hash）。 —— **✅ 已修复（阶段 3 补遗，`f50fbbc` `2259abd`）**：analyzer 与 syncer 都改走 `ListMetaRegistryResourceDigest`，只取 guid/object_type/meta_hash，不再解析每个 JSONB 行。
 - **M6. 每实例连接限流被 `SyncInstance` 与 API 触发的同步绕过**：`syncer.go:120-128`、`api/v1/database_service.go:63`、`api/v1/instance_service.go:516`；限流只在 10s 的 DB 检查器里生效，而每个 driver 会开 `SetMaxOpenConns(50)`（`plugin/db/mysql/mysql.go:89`）。
 - **M7. 表/列被删除后血缘行从不清理**：`syncer.go:504-511` 只处理 VIEW/MV，drop 表后依赖视图的 `column_lineage` 仍指向不存在的 GUID。
 - **M8. 同步失败只用 Debug 级别记录**：`syncer.go:131-135,181-185`，生产 info 级别下永久失败的实例/库完全不可见，无指标无告警。**✅ 已修复（阶段 1）** · `fcb6a98`：两处改为 `slog.Warn` 并用 `log.WithError(err)` 输出完整错误（原先实例级只记 `err.Error()` 字符串）。仍无指标/告警。
@@ -103,7 +107,7 @@
 - **M10. Shutdown 的 WaitGroup 等待无超时**：`backend/server/server.go:168`（见 `01` M1）。 —— **✅ 已修复（阶段 2，`fb8ca14`）**：`runnerWG.Wait()` 由 10s 超时兜底，超时记 Warn 后继续退出。
 - **M11. `SyncInstance` 返回未过滤的数据库列表**：`syncer.go:322-342,358`，构建了遵守 `sync_databases` 的 `filteredDatabaseMetadatas`，却返回 `instanceMeta.Databases`；`SyncInstance` RPC（`instance_service.go:528-530`）会报告未同步的库。
 - **M12. `principal.email` 无 UNIQUE/NOT NULL 保护**：`LATEST.sql:18-31`（见 `03` S-H6）。
-- **M13. 旧二进制对着更新的 ledger 静默运行**：`migrator.go:160-194` 只检查 `f.version.LE(*recorded)`；当 `recorded` 大于内嵌最新版本时，不迁移也不报错，只打印内嵌版本号。应显式报错拒绝启动。
+- **M13. 旧二进制对着更新的 ledger 静默运行**：`migrator.go:160-194` 只检查 `f.version.LE(*recorded)`；当 `recorded` 大于内嵌最新版本时，不迁移也不报错，只打印内嵌版本号。应显式报错拒绝启动。 —— **✅ 已修复（阶段 3 补遗，`2131420`）**：`recorded > latestVersion` 时拒绝启动。
 
 ---
 
