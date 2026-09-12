@@ -82,34 +82,7 @@ func (s *Store) patchWorkspaceIamPolicyImpl(ctx context.Context, txn *sql.Tx, pa
 		}
 	}
 
-	roleMap := map[string]bool{}
-	for _, role := range patch.Roles {
-		roleMap[role] = true
-	}
-
-	for _, binding := range workspaceIamPolicy.Bindings {
-		index := slices.Index(binding.Members, patch.Member)
-		if !roleMap[binding.Role] {
-			if index >= 0 {
-				binding.Members = slices.Delete(binding.Members, index, index+1)
-			}
-		} else {
-			if index < 0 {
-				binding.Members = append(binding.Members, patch.Member)
-			}
-		}
-
-		delete(roleMap, binding.Role)
-	}
-
-	for role := range roleMap {
-		workspaceIamPolicy.Bindings = append(workspaceIamPolicy.Bindings, &storepb.Binding{
-			Role: role,
-			Members: []string{
-				patch.Member,
-			},
-		})
-	}
+	patchIamPolicyBindings(workspaceIamPolicy, patch.Member, patch.Roles)
 
 	policyPayload, err := protojson.Marshal(workspaceIamPolicy)
 	if err != nil {
@@ -128,6 +101,40 @@ func (s *Store) patchWorkspaceIamPolicyImpl(ctx context.Context, txn *sql.Tx, pa
 	}
 
 	return nil
+}
+
+// patchIamPolicyBindings grants member every role in roles and revokes it from
+// every other binding. Missing roles are appended in request order so the stored
+// payload is deterministic.
+func patchIamPolicyBindings(policy *storepb.IamPolicy, member string, roles []string) {
+	pending := map[string]bool{}
+	for _, role := range roles {
+		pending[role] = true
+	}
+
+	for _, binding := range policy.Bindings {
+		index := slices.Index(binding.Members, member)
+		switch {
+		case !pending[binding.Role]:
+			if index >= 0 {
+				binding.Members = slices.Delete(binding.Members, index, index+1)
+			}
+		case index < 0:
+			binding.Members = append(binding.Members, member)
+		}
+		delete(pending, binding.Role)
+	}
+
+	for _, role := range roles {
+		if !pending[role] {
+			continue
+		}
+		delete(pending, role)
+		policy.Bindings = append(policy.Bindings, &storepb.Binding{
+			Role:    role,
+			Members: []string{member},
+		})
+	}
 }
 
 func (s *Store) getIamPolicy(ctx context.Context, find *FindPolicyMessage) (*IamPolicyMessage, error) {
