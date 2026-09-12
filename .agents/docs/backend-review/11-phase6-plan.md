@@ -13,7 +13,23 @@
 | A7 其它安全缺口（`01 M6`、`A-H1` 残留、`07 U-H2`、`S-H5` 之外的杂项） | ✅ | `f112e5c` |
 | A8 token header 白名单与 web token 回传（`02` 低节） | ✅ | `c30d73f` |
 | D1 修复既有失败测试 | ✅ | `7912fc2` |
-| B 批 正确性 | ⏳ 进行中 | — |
+| B1 engine 过滤按枚举名比较（`03 S-H5`） | ✅ | `824232a` |
+| B2 SyncInstance 返回过滤后的库列表（`06 M11`） | ✅ | `68f3149` |
+| B3 悬空血缘清理 + manual SQL 旧 GUID（`06 M7`、`03 M15`） | ✅ | `9c69196` |
+| B4 事务回滚与单语句去事务（`03 M2`） | ✅ | `a71716a` |
+| B5 `RETURNING` 按键回填（`03 M3`） | ✅ | `7f0e3a0` |
+| B6 历史谓词配对（`03 M7`） | ✅ | `7f0e3a0` |
+| B7 `UpdateDatabase` 单事务加锁（`03 M5`） | ✅ | `eca3686` |
+| B8 LLM 空 mask 部分更新（`04 B-M10`） | ✅ | `14b8f01` |
+| B9 `parseStructuredResponse` 标题残留（`04 B-M17`） | ✅ | `4d936c3` |
+| B10 血缘失败退避重试（`06 M2`） | ✅ | `480b957` |
+| B11 runner panic 隔离（`06 M9`） | ✅ | `480b957` |
+| B13 API 输入校验与错误映射（`04 A-M5/A-M9/A-M10`） | ✅ | `48dbecb` |
+| B14 store 失败不再降级（`04 B-M7/B-M16`、`03 M21`） | ✅ | `0151bcb` |
+| B15 nil 防护与解析修正（`05 C-H4/L2`、`04 B-M8`） | ✅ | `e7239db` |
+| B17 `disallow_password_signin` 覆盖服务账号（`02 M7`） | ✅ | `83b1229` |
+| B12 `DiffMetadata` 与历史比较（`04 A-H2/A-H3/A-M11/A-M12`） | ⏳ | — |
+| B16 `RequireResetPassword` / `allow_missing`（`02 M12/M13`） | ⏳ | — |
 | C 批 性能/资源 | ⏳ | — |
 | D2/D3 全量验证与文档同步 | ⏳ | — |
 
