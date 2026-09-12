@@ -56,6 +56,11 @@ const (
 	// key so that in HA deployments only one replica runs migrations.
 	advisoryLockKey = 9012345678901234
 
+	// advisoryLockTimeout bounds the wait for the advisory lock. lock_timeout
+	// applies to advisory locks too, so a replica stuck mid-migration makes this
+	// startup fail loudly instead of hanging forever.
+	advisoryLockTimeout = "2min"
+
 	// schemaSentinelTable is the table whose existence distinguishes a truly
 	// fresh install from an existing deployment. principal is one of the first
 	// tables LATEST.sql creates.
@@ -109,11 +114,26 @@ func migrateSchemaFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 	}
 	defer func() { _ = conn.Close() }()
 
+	// Bound the acquisition wait, then drop the bound again so the migrations
+	// themselves are not subject to it.
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET lock_timeout = '%s'", advisoryLockTimeout)); err != nil {
+		return errors.Wrap(err, "failed to set migration lock timeout")
+	}
+	defer func() {
+		if _, err := conn.ExecContext(context.WithoutCancel(ctx), "RESET lock_timeout"); err != nil {
+			slog.Error("Failed to reset migration lock timeout", "error", err)
+		}
+	}()
+
 	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", advisoryLockKey); err != nil {
 		return errors.Wrap(err, "failed to acquire migration advisory lock")
 	}
+	// Release on a context that is never cancelled. A cancelled startup context
+	// would make the unlock fail, and the pooled connection would then hold the
+	// session-level advisory lock for the life of the process, deadlocking every
+	// future migration.
 	defer func() {
-		if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", advisoryLockKey); err != nil {
+		if _, err := conn.ExecContext(context.WithoutCancel(ctx), "SELECT pg_advisory_unlock($1)", advisoryLockKey); err != nil {
 			slog.Error("Failed to release migration advisory lock", "error", err)
 		}
 	}()
@@ -163,6 +183,12 @@ func migrateSchemaFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 	}
 	if recorded == nil {
 		return errors.New("the latest database version is not found")
+	}
+	// A binary older than the database must not run: the ledger already records
+	// versions this build does not know about, so it would silently start
+	// against a schema it cannot understand.
+	if recorded.GT(latestVersion) {
+		return errors.Errorf("database schema version %s is newer than the newest version this binary knows (%s); refusing to start", recorded, latestVersion)
 	}
 
 	for _, f := range files {
@@ -369,12 +395,15 @@ func getLatestDatabaseVersion(ctx context.Context, conn *sql.Conn) (*semver.Vers
 	return &version, nil
 }
 
-// tableExists reports whether a table named table exists in the current
-// database.
+// tableExists reports whether a base table named table exists in the schema an
+// unqualified CREATE TABLE would target (the first schema on the search_path).
+// Filtering on table_schema matters: information_schema.tables spans every
+// schema in the database, so a same-named table elsewhere (a tenant schema, a
+// leftover) would otherwise be mistaken for the metadata schema itself.
 func tableExists(ctx context.Context, conn *sql.Conn, table string) (bool, error) {
 	var ok bool
 	if err := conn.QueryRowContext(ctx,
-		"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = $1)",
+		"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_type = 'BASE TABLE' AND table_name = $1)",
 		table,
 	).Scan(&ok); err != nil {
 		return false, err
