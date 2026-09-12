@@ -53,9 +53,6 @@ type Server struct {
 
 	// stateCfg is the shared in-momory state within the server.
 	stateCfg *state.State
-
-	// boot specifies that whether the server boot correctly
-	cancel context.CancelFunc
 }
 
 // NewServer creates a server.
@@ -128,9 +125,11 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 
 	configureEchoRouters(s.echoServer, profile)
 
-	s.echoServer.Debug = true
-	for _, route := range s.echoServer.Routes() {
-		fmt.Printf("Path: %s, Method: %s\n", route.Path, route.Method)
+	if profile.RuntimeDebug.Load() {
+		s.echoServer.Debug = true
+		for _, route := range s.echoServer.Routes() {
+			fmt.Printf("Path: %s, Method: %s\n", route.Path, route.Method)
+		}
 	}
 
 	serverStarted = true
@@ -161,10 +160,7 @@ func (s *Server) resolveJWTSecret(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) Run(ctx context.Context, port int) error {
-	_, cancel := context.WithCancel(ctx)
-	s.cancel = cancel
-
+func (s *Server) Run(_ context.Context, port int) error {
 	address := fmt.Sprintf(":%d", port)
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
@@ -192,10 +188,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	if s.runnerCancel != nil {
 		s.runnerCancel()
 	}
-	if s.cancel != nil {
-		s.cancel()
-	}
-
 	// Shutdown echo. A failure is logged rather than fatal: os.Exit here would
 	// skip closing the store and running the stoppers.
 	if s.echoServer != nil {

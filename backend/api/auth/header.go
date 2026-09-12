@@ -14,9 +14,7 @@ import (
 )
 
 // GatewayResponseModifier is the response modifier for grpc gateway.
-type GatewayResponseModifier struct {
-	Store *store.Store
-}
+type GatewayResponseModifier struct{}
 
 // Modify is the mux option for modifying response header.
 func (*GatewayResponseModifier) Modify(ctx context.Context, response http.ResponseWriter, _ proto.Message) error {

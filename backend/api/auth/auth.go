@@ -185,8 +185,6 @@ func (in *APIAuthInterceptor) getUserConnect(ctx context.Context, accessTokenStr
 		return nil, err
 	}
 
-	// Only update for authorized request.
-	in.profile.LastActiveTS.Store(time.Now().Unix())
 	return user, nil
 }
 

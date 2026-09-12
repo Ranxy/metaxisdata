@@ -7,8 +7,8 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/config"
 )
 
-func activeProfile(dataDir string) *config.Profile {
-	p := getBaseProfile(dataDir)
+func activeProfile() *config.Profile {
+	p := getBaseProfile()
 	p.Mode = common.ReleaseModeDev
 	return p
 }

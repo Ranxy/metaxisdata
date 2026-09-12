@@ -7,7 +7,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/config"
 )
 
-func getBaseProfile(_ string) *config.Profile {
+func getBaseProfile() *config.Profile {
 	config := &config.Profile{
 		Mode:  common.ReleaseMode("dev"),
 		Port:  flags.port,

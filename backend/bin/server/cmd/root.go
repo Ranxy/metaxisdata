@@ -41,16 +41,9 @@ var (
 		// Used for command line config
 		port        int
 		externalURL string
-		dataDir     string
-		ha          bool
-		saas        bool
 		// output logs in json format
 		enableJSONLogging bool
-		// demo mode.
-		demo  bool
-		debug bool
-		// memoryProfileThreshold is the threshold of memory usage in bytes to trigger a memory profile.
-		memoryProfileThreshold uint64
+		debug             bool
 	}
 
 	rootCmd = &cobra.Command{
@@ -98,7 +91,7 @@ func start() {
 	}
 	setupLogging(flags.enableJSONLogging)
 
-	profile := activeProfile(flags.dataDir)
+	profile := activeProfile()
 
 	if profile.PgURL == "" {
 		slog.Error("must set PG_URL environment variable")
