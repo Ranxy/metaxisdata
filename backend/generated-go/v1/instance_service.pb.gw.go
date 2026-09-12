@@ -414,97 +414,66 @@ func local_request_InstanceService_BatchUpdateInstances_0(ctx context.Context, m
 	return msg, metadata, err
 }
 
-func request_InstanceService_AddDataSource_0(ctx context.Context, marshaler runtime.Marshaler, client InstanceServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+var filter_InstanceService_CreateDataSource_0 = &utilities.DoubleArray{Encoding: map[string]int{"data_source": 0, "parent": 1}, Base: []int{1, 1, 2, 0, 0}, Check: []int{0, 1, 1, 2, 3}}
+
+func request_InstanceService_CreateDataSource_0(ctx context.Context, marshaler runtime.Marshaler, client InstanceServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq AddDataSourceRequest
+		protoReq CreateDataSourceRequest
 		metadata runtime.ServerMetadata
 		err      error
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq.DataSource); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
 	}
-	val, ok := pathParams["name"]
+	val, ok := pathParams["parent"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
 	}
-	protoReq.Name, err = runtime.String(val)
+	protoReq.Parent, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
 	}
-	msg, err := client.AddDataSource(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_InstanceService_CreateDataSource_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	msg, err := client.CreateDataSource(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 }
 
-func local_request_InstanceService_AddDataSource_0(ctx context.Context, marshaler runtime.Marshaler, server InstanceServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func local_request_InstanceService_CreateDataSource_0(ctx context.Context, marshaler runtime.Marshaler, server InstanceServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq AddDataSourceRequest
+		protoReq CreateDataSourceRequest
 		metadata runtime.ServerMetadata
 		err      error
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq.DataSource); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	val, ok := pathParams["name"]
+	val, ok := pathParams["parent"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
 	}
-	protoReq.Name, err = runtime.String(val)
+	protoReq.Parent, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
 	}
-	msg, err := server.AddDataSource(ctx, &protoReq)
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_InstanceService_CreateDataSource_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	msg, err := server.CreateDataSource(ctx, &protoReq)
 	return msg, metadata, err
 }
 
-func request_InstanceService_RemoveDataSource_0(ctx context.Context, marshaler runtime.Marshaler, client InstanceServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq RemoveDataSourceRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	msg, err := client.RemoveDataSource(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_InstanceService_RemoveDataSource_0(ctx context.Context, marshaler runtime.Marshaler, server InstanceServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq RemoveDataSourceRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	msg, err := server.RemoveDataSource(ctx, &protoReq)
-	return msg, metadata, err
-}
-
-var filter_InstanceService_UpdateDataSource_0 = &utilities.DoubleArray{Encoding: map[string]int{"data_source": 0, "name": 1}, Base: []int{1, 1, 2, 0, 0}, Check: []int{0, 1, 1, 2, 3}}
+var filter_InstanceService_UpdateDataSource_0 = &utilities.DoubleArray{Encoding: map[string]int{"data_source": 0, "name": 1}, Base: []int{1, 2, 1, 0, 0}, Check: []int{0, 1, 2, 3, 2}}
 
 func request_InstanceService_UpdateDataSource_0(ctx context.Context, marshaler runtime.Marshaler, client InstanceServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
@@ -529,13 +498,13 @@ func request_InstanceService_UpdateDataSource_0(ctx context.Context, marshaler r
 			protoReq.UpdateMask = fieldMask
 		}
 	}
-	val, ok := pathParams["name"]
+	val, ok := pathParams["data_source.name"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "data_source.name")
 	}
-	protoReq.Name, err = runtime.String(val)
+	err = runtime.PopulateFieldFromPath(&protoReq, "data_source.name", val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "data_source.name", err)
 	}
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
@@ -567,13 +536,13 @@ func local_request_InstanceService_UpdateDataSource_0(ctx context.Context, marsh
 			protoReq.UpdateMask = fieldMask
 		}
 	}
-	val, ok := pathParams["name"]
+	val, ok := pathParams["data_source.name"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "data_source.name")
 	}
-	protoReq.Name, err = runtime.String(val)
+	err = runtime.PopulateFieldFromPath(&protoReq, "data_source.name", val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "data_source.name", err)
 	}
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
@@ -582,6 +551,45 @@ func local_request_InstanceService_UpdateDataSource_0(ctx context.Context, marsh
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	msg, err := server.UpdateDataSource(ctx, &protoReq)
+	return msg, metadata, err
+}
+
+func request_InstanceService_DeleteDataSource_0(ctx context.Context, marshaler runtime.Marshaler, client InstanceServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq DeleteDataSourceRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := client.DeleteDataSource(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_InstanceService_DeleteDataSource_0(ctx context.Context, marshaler runtime.Marshaler, server InstanceServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq DeleteDataSourceRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := server.DeleteDataSource(ctx, &protoReq)
 	return msg, metadata, err
 }
 
@@ -771,45 +779,25 @@ func RegisterInstanceServiceHandlerServer(ctx context.Context, mux *runtime.Serv
 		}
 		forward_InstanceService_BatchUpdateInstances_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InstanceService_AddDataSource_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_InstanceService_CreateDataSource_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.InstanceService/AddDataSource", runtime.WithHTTPPathPattern("/v1/{name=instances/*}:addDataSource"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.InstanceService/CreateDataSource", runtime.WithHTTPPathPattern("/v1/{parent=instances/*}/dataSources"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_InstanceService_AddDataSource_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_InstanceService_CreateDataSource_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_InstanceService_AddDataSource_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_InstanceService_RemoveDataSource_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.InstanceService/RemoveDataSource", runtime.WithHTTPPathPattern("/v1/{name=instances/*}:removeDataSource"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_InstanceService_RemoveDataSource_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_InstanceService_RemoveDataSource_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_InstanceService_CreateDataSource_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodPatch, pattern_InstanceService_UpdateDataSource_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -817,7 +805,7 @@ func RegisterInstanceServiceHandlerServer(ctx context.Context, mux *runtime.Serv
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.InstanceService/UpdateDataSource", runtime.WithHTTPPathPattern("/v1/{name=instances/*}:updateDataSource"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.InstanceService/UpdateDataSource", runtime.WithHTTPPathPattern("/v1/{data_source.name=instances/*/dataSources/*}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -830,6 +818,26 @@ func RegisterInstanceServiceHandlerServer(ctx context.Context, mux *runtime.Serv
 			return
 		}
 		forward_InstanceService_UpdateDataSource_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodDelete, pattern_InstanceService_DeleteDataSource_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.InstanceService/DeleteDataSource", runtime.WithHTTPPathPattern("/v1/{name=instances/*/dataSources/*}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_InstanceService_DeleteDataSource_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_InstanceService_DeleteDataSource_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 
 	return nil
@@ -1024,45 +1032,28 @@ func RegisterInstanceServiceHandlerClient(ctx context.Context, mux *runtime.Serv
 		}
 		forward_InstanceService_BatchUpdateInstances_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InstanceService_AddDataSource_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_InstanceService_CreateDataSource_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.InstanceService/AddDataSource", runtime.WithHTTPPathPattern("/v1/{name=instances/*}:addDataSource"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.InstanceService/CreateDataSource", runtime.WithHTTPPathPattern("/v1/{parent=instances/*}/dataSources"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_InstanceService_AddDataSource_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_InstanceService_CreateDataSource_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_InstanceService_AddDataSource_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_InstanceService_RemoveDataSource_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.InstanceService/RemoveDataSource", runtime.WithHTTPPathPattern("/v1/{name=instances/*}:removeDataSource"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_InstanceService_RemoveDataSource_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_InstanceService_RemoveDataSource_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_InstanceService_CreateDataSource_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodPatch, pattern_InstanceService_UpdateDataSource_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.InstanceService/UpdateDataSource", runtime.WithHTTPPathPattern("/v1/{name=instances/*}:updateDataSource"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.InstanceService/UpdateDataSource", runtime.WithHTTPPathPattern("/v1/{data_source.name=instances/*/dataSources/*}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1074,6 +1065,23 @@ func RegisterInstanceServiceHandlerClient(ctx context.Context, mux *runtime.Serv
 			return
 		}
 		forward_InstanceService_UpdateDataSource_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodDelete, pattern_InstanceService_DeleteDataSource_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.InstanceService/DeleteDataSource", runtime.WithHTTPPathPattern("/v1/{name=instances/*/dataSources/*}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_InstanceService_DeleteDataSource_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_InstanceService_DeleteDataSource_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	return nil
 }
@@ -1088,9 +1096,9 @@ var (
 	pattern_InstanceService_SyncInstance_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2}, []string{"v1", "instances", "name"}, "sync"))
 	pattern_InstanceService_BatchSyncInstances_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "instances"}, "batchSync"))
 	pattern_InstanceService_BatchUpdateInstances_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "instances"}, "batchUpdate"))
-	pattern_InstanceService_AddDataSource_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2}, []string{"v1", "instances", "name"}, "addDataSource"))
-	pattern_InstanceService_RemoveDataSource_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2}, []string{"v1", "instances", "name"}, "removeDataSource"))
-	pattern_InstanceService_UpdateDataSource_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2}, []string{"v1", "instances", "name"}, "updateDataSource"))
+	pattern_InstanceService_CreateDataSource_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "instances", "parent", "dataSources"}, ""))
+	pattern_InstanceService_UpdateDataSource_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "instances", "dataSources", "data_source.name"}, ""))
+	pattern_InstanceService_DeleteDataSource_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "instances", "dataSources", "name"}, ""))
 )
 
 var (
@@ -1103,7 +1111,7 @@ var (
 	forward_InstanceService_SyncInstance_0         = runtime.ForwardResponseMessage
 	forward_InstanceService_BatchSyncInstances_0   = runtime.ForwardResponseMessage
 	forward_InstanceService_BatchUpdateInstances_0 = runtime.ForwardResponseMessage
-	forward_InstanceService_AddDataSource_0        = runtime.ForwardResponseMessage
-	forward_InstanceService_RemoveDataSource_0     = runtime.ForwardResponseMessage
+	forward_InstanceService_CreateDataSource_0     = runtime.ForwardResponseMessage
 	forward_InstanceService_UpdateDataSource_0     = runtime.ForwardResponseMessage
+	forward_InstanceService_DeleteDataSource_0     = runtime.ForwardResponseMessage
 )

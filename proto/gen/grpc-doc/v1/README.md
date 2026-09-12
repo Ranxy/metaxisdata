@@ -50,22 +50,22 @@
     - [AuthService](#metaxisdata-v1-AuthService)
   
 - [v1/instance_service.proto](#v1_instance_service-proto)
-    - [AddDataSourceRequest](#metaxisdata-v1-AddDataSourceRequest)
     - [BatchSyncInstanceResult](#metaxisdata-v1-BatchSyncInstanceResult)
     - [BatchSyncInstancesRequest](#metaxisdata-v1-BatchSyncInstancesRequest)
     - [BatchSyncInstancesResponse](#metaxisdata-v1-BatchSyncInstancesResponse)
     - [BatchUpdateInstancesRequest](#metaxisdata-v1-BatchUpdateInstancesRequest)
     - [BatchUpdateInstancesResponse](#metaxisdata-v1-BatchUpdateInstancesResponse)
+    - [CreateDataSourceRequest](#metaxisdata-v1-CreateDataSourceRequest)
     - [CreateInstanceRequest](#metaxisdata-v1-CreateInstanceRequest)
     - [DataSource](#metaxisdata-v1-DataSource)
     - [DataSource.ExtraConnectionParametersEntry](#metaxisdata-v1-DataSource-ExtraConnectionParametersEntry)
+    - [DeleteDataSourceRequest](#metaxisdata-v1-DeleteDataSourceRequest)
     - [DeleteInstanceRequest](#metaxisdata-v1-DeleteInstanceRequest)
     - [GetInstanceRequest](#metaxisdata-v1-GetInstanceRequest)
     - [Instance](#metaxisdata-v1-Instance)
     - [InstanceResource](#metaxisdata-v1-InstanceResource)
     - [ListInstancesRequest](#metaxisdata-v1-ListInstancesRequest)
     - [ListInstancesResponse](#metaxisdata-v1-ListInstancesResponse)
-    - [RemoveDataSourceRequest](#metaxisdata-v1-RemoveDataSourceRequest)
     - [SyncInstanceRequest](#metaxisdata-v1-SyncInstanceRequest)
     - [SyncInstanceResponse](#metaxisdata-v1-SyncInstanceResponse)
     - [UndeleteInstanceRequest](#metaxisdata-v1-UndeleteInstanceRequest)
@@ -789,23 +789,6 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 
 
 
-<a name="metaxisdata-v1-AddDataSourceRequest"></a>
-
-### AddDataSourceRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | The name of the instance to add a data source to. Format: instances/{instance} |
-| data_source | [DataSource](#metaxisdata-v1-DataSource) |  | Identified by data source ID. Only READ_ONLY data source can be added. |
-| validate_only | [bool](#bool) |  | Validate only also tests the data source connection. |
-
-
-
-
-
-
 <a name="metaxisdata-v1-BatchSyncInstanceResult"></a>
 
 ### BatchSyncInstanceResult
@@ -883,6 +866,26 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 
 
 
+<a name="metaxisdata-v1-CreateDataSourceRequest"></a>
+
+### CreateDataSourceRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | The name of the instance to add a data source to. Format: instances/{instance} |
+| data_source | [DataSource](#metaxisdata-v1-DataSource) |  | The data source to create. Its `name` must be empty; the server derives it from `data_source_id`. Only READ_ONLY data sources can be created here; the ADMIN data source is part of the instance itself. |
+| data_source_id | [string](#string) |  | The ID to use for the data source, which will become the final component of the data source&#39;s resource name.
+
+This value should be 4-63 characters, and valid characters are /[a-z0-9-]/. When empty, the server generates an ID. |
+| validate_only | [bool](#bool) |  | Validate only also tests the data source connection. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-CreateInstanceRequest"></a>
 
 ### CreateInstanceRequest
@@ -910,7 +913,7 @@ This value should be 4-63 characters, and valid characters are /[a-z0-9-]/. |
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [string](#string) |  |  |
+| name | [string](#string) |  | The name of the data source. Format: instances/{instance}/dataSources/{data_source} |
 | type | [DataSourceType](#metaxisdata-v1-DataSourceType) |  |  |
 | username | [string](#string) |  |  |
 | password | [string](#string) |  |  |
@@ -943,6 +946,21 @@ This value should be 4-63 characters, and valid characters are /[a-z0-9-]/. |
 | ----- | ---- | ----- | ----------- |
 | key | [string](#string) |  |  |
 | value | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteDataSourceRequest"></a>
+
+### DeleteDataSourceRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The name of the data source to delete. Format: instances/{instance}/dataSources/{data_source} |
 
 
 
@@ -993,7 +1011,9 @@ This value should be 4-63 characters, and valid characters are /[a-z0-9-]/. |
 | engine | [Engine](#metaxisdata-v1-Engine) |  |  |
 | engine_version | [string](#string) |  |  |
 | external_link | [string](#string) |  |  |
-| data_sources | [DataSource](#metaxisdata-v1-DataSource) | repeated |  |
+| data_sources | [DataSource](#metaxisdata-v1-DataSource) | repeated | The data sources of the instance.
+
+`CreateInstance` creates the initial admin connection and any read-only sources carried in the request; afterwards the set is managed through `CreateDataSource`/`UpdateDataSource`/`DeleteDataSource`. `UpdateInstance` does not accept a `data_sources` update mask. |
 | environment | [string](#string) |  | The environment resource. Format: environments/prod where prod is the environment resource ID. |
 | activation | [bool](#bool) |  |  |
 | sync_interval | [google.protobuf.Duration](#google-protobuf-Duration) |  | How often the instance is synced. |
@@ -1067,22 +1087,6 @@ For example: name == &#34;sample instance&#34; name.matches(&#34;sample&#34;) re
 
 
 
-<a name="metaxisdata-v1-RemoveDataSourceRequest"></a>
-
-### RemoveDataSourceRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | The name of the instance to remove a data source from. Format: instances/{instance} |
-| data_source | [DataSource](#metaxisdata-v1-DataSource) |  | Identified by data source ID. Only READ_ONLY data source can be removed. |
-
-
-
-
-
-
 <a name="metaxisdata-v1-SyncInstanceRequest"></a>
 
 ### SyncInstanceRequest
@@ -1137,9 +1141,10 @@ For example: name == &#34;sample instance&#34; name.matches(&#34;sample&#34;) re
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | The name of the instance to update a data source. Format: instances/{instance} |
-| data_source | [DataSource](#metaxisdata-v1-DataSource) |  | Identified by data source ID. |
-| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The list of fields to update. |
+| data_source | [DataSource](#metaxisdata-v1-DataSource) |  | The data source to update.
+
+The data source&#39;s `name` field is used to identify it. Format: instances/{instance}/dataSources/{data_source} |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The list of fields to update. Fields not listed keep their stored value, which is how reads that omit credentials stay non-destructive. |
 | validate_only | [bool](#bool) |  | Validate only also tests the data source connection. |
 
 
@@ -1200,9 +1205,9 @@ The instance&#39;s `name` field is used to identify the instance to update. Form
 | SyncInstance | [SyncInstanceRequest](#metaxisdata-v1-SyncInstanceRequest) | [SyncInstanceResponse](#metaxisdata-v1-SyncInstanceResponse) |  |
 | BatchSyncInstances | [BatchSyncInstancesRequest](#metaxisdata-v1-BatchSyncInstancesRequest) | [BatchSyncInstancesResponse](#metaxisdata-v1-BatchSyncInstancesResponse) |  |
 | BatchUpdateInstances | [BatchUpdateInstancesRequest](#metaxisdata-v1-BatchUpdateInstancesRequest) | [BatchUpdateInstancesResponse](#metaxisdata-v1-BatchUpdateInstancesResponse) |  |
-| AddDataSource | [AddDataSourceRequest](#metaxisdata-v1-AddDataSourceRequest) | [Instance](#metaxisdata-v1-Instance) |  |
-| RemoveDataSource | [RemoveDataSourceRequest](#metaxisdata-v1-RemoveDataSourceRequest) | [Instance](#metaxisdata-v1-Instance) |  |
-| UpdateDataSource | [UpdateDataSourceRequest](#metaxisdata-v1-UpdateDataSourceRequest) | [Instance](#metaxisdata-v1-Instance) |  |
+| CreateDataSource | [CreateDataSourceRequest](#metaxisdata-v1-CreateDataSourceRequest) | [DataSource](#metaxisdata-v1-DataSource) |  |
+| UpdateDataSource | [UpdateDataSourceRequest](#metaxisdata-v1-UpdateDataSourceRequest) | [DataSource](#metaxisdata-v1-DataSource) |  |
+| DeleteDataSource | [DeleteDataSourceRequest](#metaxisdata-v1-DeleteDataSourceRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
 
  
 

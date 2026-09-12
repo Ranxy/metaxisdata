@@ -385,91 +385,37 @@ export declare type BatchUpdateInstancesResponse = Message<"metaxisdata.v1.Batch
 export declare const BatchUpdateInstancesResponseSchema: GenMessage<BatchUpdateInstancesResponse>;
 
 /**
- * @generated from message metaxisdata.v1.AddDataSourceRequest
+ * @generated from message metaxisdata.v1.CreateDataSourceRequest
  */
-export declare type AddDataSourceRequest = Message<"metaxisdata.v1.AddDataSourceRequest"> & {
+export declare type CreateDataSourceRequest = Message<"metaxisdata.v1.CreateDataSourceRequest"> & {
   /**
    * The name of the instance to add a data source to.
    * Format: instances/{instance}
    *
-   * @generated from field: string name = 1;
+   * @generated from field: string parent = 1;
    */
-  name: string;
+  parent: string;
 
   /**
-   * Identified by data source ID.
-   * Only READ_ONLY data source can be added.
+   * The data source to create.
+   * Its `name` must be empty; the server derives it from `data_source_id`.
+   * Only READ_ONLY data sources can be created here; the ADMIN data source is
+   * part of the instance itself.
    *
    * @generated from field: metaxisdata.v1.DataSource data_source = 2;
    */
   dataSource?: DataSource;
 
   /**
-   * Validate only also tests the data source connection.
+   * The ID to use for the data source, which will become the final component of
+   * the data source's resource name.
    *
-   * @generated from field: bool validate_only = 3;
-   */
-  validateOnly: boolean;
-};
-
-/**
- * Describes the message metaxisdata.v1.AddDataSourceRequest.
- * Use `create(AddDataSourceRequestSchema)` to create a new message.
- */
-export declare const AddDataSourceRequestSchema: GenMessage<AddDataSourceRequest>;
-
-/**
- * @generated from message metaxisdata.v1.RemoveDataSourceRequest
- */
-export declare type RemoveDataSourceRequest = Message<"metaxisdata.v1.RemoveDataSourceRequest"> & {
-  /**
-   * The name of the instance to remove a data source from.
-   * Format: instances/{instance}
+   * This value should be 4-63 characters, and valid characters
+   * are /[a-z0-9-]/. When empty, the server generates an ID.
    *
-   * @generated from field: string name = 1;
+   * @generated from field: string data_source_id = 3;
    */
-  name: string;
-
-  /**
-   * Identified by data source ID.
-   * Only READ_ONLY data source can be removed.
-   *
-   * @generated from field: metaxisdata.v1.DataSource data_source = 2;
-   */
-  dataSource?: DataSource;
-};
-
-/**
- * Describes the message metaxisdata.v1.RemoveDataSourceRequest.
- * Use `create(RemoveDataSourceRequestSchema)` to create a new message.
- */
-export declare const RemoveDataSourceRequestSchema: GenMessage<RemoveDataSourceRequest>;
-
-/**
- * @generated from message metaxisdata.v1.UpdateDataSourceRequest
- */
-export declare type UpdateDataSourceRequest = Message<"metaxisdata.v1.UpdateDataSourceRequest"> & {
-  /**
-   * The name of the instance to update a data source.
-   * Format: instances/{instance}
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * Identified by data source ID.
-   *
-   * @generated from field: metaxisdata.v1.DataSource data_source = 2;
-   */
-  dataSource?: DataSource;
-
-  /**
-   * The list of fields to update.
-   *
-   * @generated from field: google.protobuf.FieldMask update_mask = 3;
-   */
-  updateMask?: FieldMask;
+  dataSourceId: string;
 
   /**
    * Validate only also tests the data source connection.
@@ -480,10 +426,65 @@ export declare type UpdateDataSourceRequest = Message<"metaxisdata.v1.UpdateData
 };
 
 /**
+ * Describes the message metaxisdata.v1.CreateDataSourceRequest.
+ * Use `create(CreateDataSourceRequestSchema)` to create a new message.
+ */
+export declare const CreateDataSourceRequestSchema: GenMessage<CreateDataSourceRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateDataSourceRequest
+ */
+export declare type UpdateDataSourceRequest = Message<"metaxisdata.v1.UpdateDataSourceRequest"> & {
+  /**
+   * The data source to update.
+   *
+   * The data source's `name` field is used to identify it.
+   * Format: instances/{instance}/dataSources/{data_source}
+   *
+   * @generated from field: metaxisdata.v1.DataSource data_source = 1;
+   */
+  dataSource?: DataSource;
+
+  /**
+   * The list of fields to update. Fields not listed keep their stored value,
+   * which is how reads that omit credentials stay non-destructive.
+   *
+   * @generated from field: google.protobuf.FieldMask update_mask = 2;
+   */
+  updateMask?: FieldMask;
+
+  /**
+   * Validate only also tests the data source connection.
+   *
+   * @generated from field: bool validate_only = 3;
+   */
+  validateOnly: boolean;
+};
+
+/**
  * Describes the message metaxisdata.v1.UpdateDataSourceRequest.
  * Use `create(UpdateDataSourceRequestSchema)` to create a new message.
  */
 export declare const UpdateDataSourceRequestSchema: GenMessage<UpdateDataSourceRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.DeleteDataSourceRequest
+ */
+export declare type DeleteDataSourceRequest = Message<"metaxisdata.v1.DeleteDataSourceRequest"> & {
+  /**
+   * The name of the data source to delete.
+   * Format: instances/{instance}/dataSources/{data_source}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DeleteDataSourceRequest.
+ * Use `create(DeleteDataSourceRequestSchema)` to create a new message.
+ */
+export declare const DeleteDataSourceRequestSchema: GenMessage<DeleteDataSourceRequest>;
 
 /**
  * @generated from message metaxisdata.v1.Instance
@@ -523,6 +524,13 @@ export declare type Instance = Message<"metaxisdata.v1.Instance"> & {
   externalLink: string;
 
   /**
+   * The data sources of the instance.
+   *
+   * `CreateInstance` creates the initial admin connection and any read-only
+   * sources carried in the request; afterwards the set is managed through
+   * `CreateDataSource`/`UpdateDataSource`/`DeleteDataSource`. `UpdateInstance`
+   * does not accept a `data_sources` update mask.
+   *
    * @generated from field: repeated metaxisdata.v1.DataSource data_sources = 8;
    */
   dataSources: DataSource[];
@@ -582,9 +590,12 @@ export declare const InstanceSchema: GenMessage<Instance>;
  */
 export declare type DataSource = Message<"metaxisdata.v1.DataSource"> & {
   /**
-   * @generated from field: string id = 1;
+   * The name of the data source.
+   * Format: instances/{instance}/dataSources/{data_source}
+   *
+   * @generated from field: string name = 1;
    */
-  id: string;
+  name: string;
 
   /**
    * @generated from field: metaxisdata.v1.DataSourceType type = 2;
@@ -846,20 +857,12 @@ export declare const InstanceService: GenService<{
     output: typeof BatchUpdateInstancesResponseSchema;
   },
   /**
-   * @generated from rpc metaxisdata.v1.InstanceService.AddDataSource
+   * @generated from rpc metaxisdata.v1.InstanceService.CreateDataSource
    */
-  addDataSource: {
+  createDataSource: {
     methodKind: "unary";
-    input: typeof AddDataSourceRequestSchema;
-    output: typeof InstanceSchema;
-  },
-  /**
-   * @generated from rpc metaxisdata.v1.InstanceService.RemoveDataSource
-   */
-  removeDataSource: {
-    methodKind: "unary";
-    input: typeof RemoveDataSourceRequestSchema;
-    output: typeof InstanceSchema;
+    input: typeof CreateDataSourceRequestSchema;
+    output: typeof DataSourceSchema;
   },
   /**
    * @generated from rpc metaxisdata.v1.InstanceService.UpdateDataSource
@@ -867,7 +870,15 @@ export declare const InstanceService: GenService<{
   updateDataSource: {
     methodKind: "unary";
     input: typeof UpdateDataSourceRequestSchema;
-    output: typeof InstanceSchema;
+    output: typeof DataSourceSchema;
+  },
+  /**
+   * @generated from rpc metaxisdata.v1.InstanceService.DeleteDataSource
+   */
+  deleteDataSource: {
+    methodKind: "unary";
+    input: typeof DeleteDataSourceRequestSchema;
+    output: typeof EmptySchema;
   },
 }>;
 

@@ -846,145 +846,105 @@ func (x *BatchUpdateInstancesResponse) GetInstances() []*Instance {
 	return nil
 }
 
-type AddDataSourceRequest struct {
+type CreateDataSourceRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The name of the instance to add a data source to.
 	// Format: instances/{instance}
-	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// Identified by data source ID.
-	// Only READ_ONLY data source can be added.
+	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	// The data source to create.
+	// Its `name` must be empty; the server derives it from `data_source_id`.
+	// Only READ_ONLY data sources can be created here; the ADMIN data source is
+	// part of the instance itself.
 	DataSource *DataSource `protobuf:"bytes,2,opt,name=data_source,json=dataSource,proto3" json:"data_source,omitempty"`
-	// Validate only also tests the data source connection.
-	ValidateOnly  bool `protobuf:"varint,3,opt,name=validate_only,json=validateOnly,proto3" json:"validate_only,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AddDataSourceRequest) Reset() {
-	*x = AddDataSourceRequest{}
-	mi := &file_v1_instance_service_proto_msgTypes[14]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AddDataSourceRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AddDataSourceRequest) ProtoMessage() {}
-
-func (x *AddDataSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[14]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AddDataSourceRequest.ProtoReflect.Descriptor instead.
-func (*AddDataSourceRequest) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{14}
-}
-
-func (x *AddDataSourceRequest) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *AddDataSourceRequest) GetDataSource() *DataSource {
-	if x != nil {
-		return x.DataSource
-	}
-	return nil
-}
-
-func (x *AddDataSourceRequest) GetValidateOnly() bool {
-	if x != nil {
-		return x.ValidateOnly
-	}
-	return false
-}
-
-type RemoveDataSourceRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// The name of the instance to remove a data source from.
-	// Format: instances/{instance}
-	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// Identified by data source ID.
-	// Only READ_ONLY data source can be removed.
-	DataSource    *DataSource `protobuf:"bytes,2,opt,name=data_source,json=dataSource,proto3" json:"data_source,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RemoveDataSourceRequest) Reset() {
-	*x = RemoveDataSourceRequest{}
-	mi := &file_v1_instance_service_proto_msgTypes[15]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RemoveDataSourceRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RemoveDataSourceRequest) ProtoMessage() {}
-
-func (x *RemoveDataSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[15]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RemoveDataSourceRequest.ProtoReflect.Descriptor instead.
-func (*RemoveDataSourceRequest) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{15}
-}
-
-func (x *RemoveDataSourceRequest) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *RemoveDataSourceRequest) GetDataSource() *DataSource {
-	if x != nil {
-		return x.DataSource
-	}
-	return nil
-}
-
-type UpdateDataSourceRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// The name of the instance to update a data source.
-	// Format: instances/{instance}
-	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// Identified by data source ID.
-	DataSource *DataSource `protobuf:"bytes,2,opt,name=data_source,json=dataSource,proto3" json:"data_source,omitempty"`
-	// The list of fields to update.
-	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,3,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	// The ID to use for the data source, which will become the final component of
+	// the data source's resource name.
+	//
+	// This value should be 4-63 characters, and valid characters
+	// are /[a-z0-9-]/. When empty, the server generates an ID.
+	DataSourceId string `protobuf:"bytes,3,opt,name=data_source_id,json=dataSourceId,proto3" json:"data_source_id,omitempty"`
 	// Validate only also tests the data source connection.
 	ValidateOnly  bool `protobuf:"varint,4,opt,name=validate_only,json=validateOnly,proto3" json:"validate_only,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
+func (x *CreateDataSourceRequest) Reset() {
+	*x = CreateDataSourceRequest{}
+	mi := &file_v1_instance_service_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateDataSourceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateDataSourceRequest) ProtoMessage() {}
+
+func (x *CreateDataSourceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_instance_service_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateDataSourceRequest.ProtoReflect.Descriptor instead.
+func (*CreateDataSourceRequest) Descriptor() ([]byte, []int) {
+	return file_v1_instance_service_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *CreateDataSourceRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
+func (x *CreateDataSourceRequest) GetDataSource() *DataSource {
+	if x != nil {
+		return x.DataSource
+	}
+	return nil
+}
+
+func (x *CreateDataSourceRequest) GetDataSourceId() string {
+	if x != nil {
+		return x.DataSourceId
+	}
+	return ""
+}
+
+func (x *CreateDataSourceRequest) GetValidateOnly() bool {
+	if x != nil {
+		return x.ValidateOnly
+	}
+	return false
+}
+
+type UpdateDataSourceRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The data source to update.
+	//
+	// The data source's `name` field is used to identify it.
+	// Format: instances/{instance}/dataSources/{data_source}
+	DataSource *DataSource `protobuf:"bytes,1,opt,name=data_source,json=dataSource,proto3" json:"data_source,omitempty"`
+	// The list of fields to update. Fields not listed keep their stored value,
+	// which is how reads that omit credentials stay non-destructive.
+	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	// Validate only also tests the data source connection.
+	ValidateOnly  bool `protobuf:"varint,3,opt,name=validate_only,json=validateOnly,proto3" json:"validate_only,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
 func (x *UpdateDataSourceRequest) Reset() {
 	*x = UpdateDataSourceRequest{}
-	mi := &file_v1_instance_service_proto_msgTypes[16]
+	mi := &file_v1_instance_service_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -996,7 +956,7 @@ func (x *UpdateDataSourceRequest) String() string {
 func (*UpdateDataSourceRequest) ProtoMessage() {}
 
 func (x *UpdateDataSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[16]
+	mi := &file_v1_instance_service_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1009,14 +969,7 @@ func (x *UpdateDataSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateDataSourceRequest.ProtoReflect.Descriptor instead.
 func (*UpdateDataSourceRequest) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{16}
-}
-
-func (x *UpdateDataSourceRequest) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
+	return file_v1_instance_service_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *UpdateDataSourceRequest) GetDataSource() *DataSource {
@@ -1040,17 +993,69 @@ func (x *UpdateDataSourceRequest) GetValidateOnly() bool {
 	return false
 }
 
+type DeleteDataSourceRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The name of the data source to delete.
+	// Format: instances/{instance}/dataSources/{data_source}
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteDataSourceRequest) Reset() {
+	*x = DeleteDataSourceRequest{}
+	mi := &file_v1_instance_service_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteDataSourceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteDataSourceRequest) ProtoMessage() {}
+
+func (x *DeleteDataSourceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_instance_service_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteDataSourceRequest.ProtoReflect.Descriptor instead.
+func (*DeleteDataSourceRequest) Descriptor() ([]byte, []int) {
+	return file_v1_instance_service_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *DeleteDataSourceRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
 type Instance struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The name of the instance.
 	// Format: instances/{instance}
-	Name          string        `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	State         State         `protobuf:"varint,3,opt,name=state,proto3,enum=metaxisdata.v1.State" json:"state,omitempty"`
-	Title         string        `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
-	Engine        Engine        `protobuf:"varint,5,opt,name=engine,proto3,enum=metaxisdata.v1.Engine" json:"engine,omitempty"`
-	EngineVersion string        `protobuf:"bytes,6,opt,name=engine_version,json=engineVersion,proto3" json:"engine_version,omitempty"`
-	ExternalLink  string        `protobuf:"bytes,7,opt,name=external_link,json=externalLink,proto3" json:"external_link,omitempty"`
-	DataSources   []*DataSource `protobuf:"bytes,8,rep,name=data_sources,json=dataSources,proto3" json:"data_sources,omitempty"`
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	State         State  `protobuf:"varint,3,opt,name=state,proto3,enum=metaxisdata.v1.State" json:"state,omitempty"`
+	Title         string `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
+	Engine        Engine `protobuf:"varint,5,opt,name=engine,proto3,enum=metaxisdata.v1.Engine" json:"engine,omitempty"`
+	EngineVersion string `protobuf:"bytes,6,opt,name=engine_version,json=engineVersion,proto3" json:"engine_version,omitempty"`
+	ExternalLink  string `protobuf:"bytes,7,opt,name=external_link,json=externalLink,proto3" json:"external_link,omitempty"`
+	// The data sources of the instance.
+	//
+	// `CreateInstance` creates the initial admin connection and any read-only
+	// sources carried in the request; afterwards the set is managed through
+	// `CreateDataSource`/`UpdateDataSource`/`DeleteDataSource`. `UpdateInstance`
+	// does not accept a `data_sources` update mask.
+	DataSources []*DataSource `protobuf:"bytes,8,rep,name=data_sources,json=dataSources,proto3" json:"data_sources,omitempty"`
 	// The environment resource.
 	// Format: environments/prod where prod is the environment resource ID.
 	Environment string `protobuf:"bytes,9,opt,name=environment,proto3" json:"environment,omitempty"`
@@ -1191,11 +1196,13 @@ func (x *Instance) GetLastSyncTime() *timestamppb.Timestamp {
 }
 
 type DataSource struct {
-	state    protoimpl.MessageState `protogen:"open.v1"`
-	Id       string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Type     DataSourceType         `protobuf:"varint,2,opt,name=type,proto3,enum=metaxisdata.v1.DataSourceType" json:"type,omitempty"`
-	Username string                 `protobuf:"bytes,3,opt,name=username,proto3" json:"username,omitempty"`
-	Password string                 `protobuf:"bytes,4,opt,name=password,proto3" json:"password,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The name of the data source.
+	// Format: instances/{instance}/dataSources/{data_source}
+	Name     string         `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Type     DataSourceType `protobuf:"varint,2,opt,name=type,proto3,enum=metaxisdata.v1.DataSourceType" json:"type,omitempty"`
+	Username string         `protobuf:"bytes,3,opt,name=username,proto3" json:"username,omitempty"`
+	Password string         `protobuf:"bytes,4,opt,name=password,proto3" json:"password,omitempty"`
 	// Use SSL to connect to the data source. By default, we use system default SSL configuration.
 	UseSsl   bool   `protobuf:"varint,30,opt,name=use_ssl,json=useSsl,proto3" json:"use_ssl,omitempty"`
 	SslCa    string `protobuf:"bytes,5,opt,name=ssl_ca,json=sslCa,proto3" json:"ssl_ca,omitempty"`
@@ -1255,9 +1262,9 @@ func (*DataSource) Descriptor() ([]byte, []int) {
 	return file_v1_instance_service_proto_rawDescGZIP(), []int{18}
 }
 
-func (x *DataSource) GetId() string {
+func (x *DataSource) GetName() string {
 	if x != nil {
-		return x.Id
+		return x.Name
 	}
 	return ""
 }
@@ -1519,26 +1526,23 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	"\x1bBatchUpdateInstancesRequest\x12F\n" +
 	"\brequests\x18\x01 \x03(\v2%.metaxisdata.v1.UpdateInstanceRequestB\x03\xe0A\x02R\brequests\"V\n" +
 	"\x1cBatchUpdateInstancesResponse\x126\n" +
-	"\tinstances\x18\x01 \x03(\v2\x18.metaxisdata.v1.InstanceR\tinstances\"\xaf\x01\n" +
-	"\x14AddDataSourceRequest\x120\n" +
-	"\x04name\x18\x01 \x01(\tB\x1c\xe0A\x02\xfaA\x16\n" +
-	"\x14metaxisdata/InstanceR\x04name\x12@\n" +
+	"\tinstances\x18\x01 \x03(\v2\x18.metaxisdata.v1.InstanceR\tinstances\"\xdc\x01\n" +
+	"\x17CreateDataSourceRequest\x124\n" +
+	"\x06parent\x18\x01 \x01(\tB\x1c\xe0A\x02\xfaA\x16\n" +
+	"\x14metaxisdata/InstanceR\x06parent\x12@\n" +
 	"\vdata_source\x18\x02 \x01(\v2\x1a.metaxisdata.v1.DataSourceB\x03\xe0A\x02R\n" +
-	"dataSource\x12#\n" +
-	"\rvalidate_only\x18\x03 \x01(\bR\fvalidateOnly\"\x8d\x01\n" +
-	"\x17RemoveDataSourceRequest\x120\n" +
-	"\x04name\x18\x01 \x01(\tB\x1c\xe0A\x02\xfaA\x16\n" +
-	"\x14metaxisdata/InstanceR\x04name\x12@\n" +
-	"\vdata_source\x18\x02 \x01(\v2\x1a.metaxisdata.v1.DataSourceB\x03\xe0A\x02R\n" +
-	"dataSource\"\xef\x01\n" +
-	"\x17UpdateDataSourceRequest\x120\n" +
-	"\x04name\x18\x01 \x01(\tB\x1c\xe0A\x02\xfaA\x16\n" +
-	"\x14metaxisdata/InstanceR\x04name\x12@\n" +
-	"\vdata_source\x18\x02 \x01(\v2\x1a.metaxisdata.v1.DataSourceB\x03\xe0A\x02R\n" +
+	"dataSource\x12$\n" +
+	"\x0edata_source_id\x18\x03 \x01(\tR\fdataSourceId\x12#\n" +
+	"\rvalidate_only\x18\x04 \x01(\bR\fvalidateOnly\"\xbd\x01\n" +
+	"\x17UpdateDataSourceRequest\x12@\n" +
+	"\vdata_source\x18\x01 \x01(\v2\x1a.metaxisdata.v1.DataSourceB\x03\xe0A\x02R\n" +
 	"dataSource\x12;\n" +
-	"\vupdate_mask\x18\x03 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
+	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
 	"updateMask\x12#\n" +
-	"\rvalidate_only\x18\x04 \x01(\bR\fvalidateOnly\"\xf8\x04\n" +
+	"\rvalidate_only\x18\x03 \x01(\bR\fvalidateOnly\"M\n" +
+	"\x17DeleteDataSourceRequest\x122\n" +
+	"\x04name\x18\x01 \x01(\tB\x1e\xe0A\x02\xfaA\x18\n" +
+	"\x16metaxisdata/DataSourceR\x04name\"\xf8\x04\n" +
 	"\bInstance\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12+\n" +
 	"\x05state\x18\x03 \x01(\x0e2\x15.metaxisdata.v1.StateR\x05state\x12\x14\n" +
@@ -1556,10 +1560,10 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	"\x13maximum_connections\x18\x0e \x01(\x05R\x12maximumConnections\x12%\n" +
 	"\x0esync_databases\x18\x0f \x03(\tR\rsyncDatabases\x12E\n" +
 	"\x0elast_sync_time\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\flastSyncTime:/\xeaA,\n" +
-	"\x14metaxisdata/Instance\x12\x14instances/{instance}\"\xf3\b\n" +
+	"\x14metaxisdata/Instance\x12\x14instances/{instance}\"\xc4\t\n" +
 	"\n" +
-	"DataSource\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x122\n" +
+	"DataSource\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x122\n" +
 	"\x04type\x18\x02 \x01(\x0e2\x1e.metaxisdata.v1.DataSourceTypeR\x04type\x12\x1a\n" +
 	"\busername\x18\x03 \x01(\tR\busername\x12\x1f\n" +
 	"\bpassword\x18\x04 \x01(\tB\x03\xe0A\x04R\bpassword\x12\x17\n" +
@@ -1579,7 +1583,8 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	"\x1bextra_connection_parameters\x18$ \x03(\v29.metaxisdata.v1.DataSource.ExtraConnectionParametersEntryR\x19extraConnectionParameters\x1aL\n" +
 	"\x1eExtraConnectionParametersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x14\x10\x15J\x04\b\x15\x10\x16J\x04\b\x16\x10\x17J\x04\b\x17\x10\x18J\x04\b\x18\x10\x19J\x04\b\x19\x10\x1aJ\x04\b\x1a\x10\x1bJ\x04\b\x1b\x10\x1cJ\x04\b\x1c\x10\x1dJ\x04\b\x1d\x10\x1eJ\x04\b\x1f\x10 J\x04\b \x10!J\x04\b!\x10\"J\x04\b\"\x10#J\x04\b#\x10$J\x04\b%\x10&J\x04\b&\x10'R\x03srvR\x17authentication_databaseR\vreplica_setR\x03sidR\fservice_nameR\x1aauthentication_private_keyR\x0fexternal_secretR\x13authentication_typeR\x10azure_credentialR\x0eaws_credentialR\x0egcp_credentialR\vsasl_configR\x14additional_addressesR\x11direct_connectionR\x06regionR\fwarehouse_idR\vmaster_nameR\x0fmaster_usernameR\x0fmaster_passwordR\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01:K\xeaAH\n" +
+	"\x16metaxisdata/DataSource\x12.instances/{instance}/dataSources/{data_source}J\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x14\x10\x15J\x04\b\x15\x10\x16J\x04\b\x16\x10\x17J\x04\b\x17\x10\x18J\x04\b\x18\x10\x19J\x04\b\x19\x10\x1aJ\x04\b\x1a\x10\x1bJ\x04\b\x1b\x10\x1cJ\x04\b\x1c\x10\x1dJ\x04\b\x1d\x10\x1eJ\x04\b\x1f\x10 J\x04\b \x10!J\x04\b!\x10\"J\x04\b\"\x10#J\x04\b#\x10$J\x04\b%\x10&J\x04\b&\x10'R\x03srvR\x17authentication_databaseR\vreplica_setR\x03sidR\fservice_nameR\x1aauthentication_private_keyR\x0fexternal_secretR\x13authentication_typeR\x10azure_credentialR\x0eaws_credentialR\x0egcp_credentialR\vsasl_configR\x14additional_addressesR\x11direct_connectionR\x06regionR\fwarehouse_idR\vmaster_nameR\x0fmaster_usernameR\x0fmaster_passwordR\n" +
 	"redis_typeR\acluster\"\x99\x02\n" +
 	"\x10InstanceResource\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x12.\n" +
@@ -1594,7 +1599,7 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	"\x0eDataSourceType\x12\x1b\n" +
 	"\x17DATA_SOURCE_UNSPECIFIED\x10\x00\x12\t\n" +
 	"\x05ADMIN\x10\x01\x12\r\n" +
-	"\tREAD_ONLY\x10\x022\xe5\x0f\n" +
+	"\tREAD_ONLY\x10\x022\xfb\x0f\n" +
 	"\x0fInstanceService\x12r\n" +
 	"\vGetInstance\x12\".metaxisdata.v1.GetInstanceRequest\x1a\x18.metaxisdata.v1.Instance\"%\xdaA\x04name\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/{name=instances/*}\x12v\n" +
 	"\rListInstances\x12$.metaxisdata.v1.ListInstancesRequest\x1a%.metaxisdata.v1.ListInstancesResponse\"\x18\xdaA\x00\x82\xd3\xe4\x93\x02\x0f\x12\r/v1/instances\x12\xa0\x01\n" +
@@ -1604,10 +1609,10 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	"\x10UndeleteInstance\x12'.metaxisdata.v1.UndeleteInstanceRequest\x1a\x18.metaxisdata.v1.Instance\"M\x8a\xea0\x1bmetaxisdata.instances.write\x98\xea0\x01\x82\xd3\xe4\x93\x02$:\x01*\"\x1f/v1/{name=instances/*}:undelete\x12\xa4\x01\n" +
 	"\fSyncInstance\x12#.metaxisdata.v1.SyncInstanceRequest\x1a$.metaxisdata.v1.SyncInstanceResponse\"I\x8a\xea0\x1bmetaxisdata.instances.write\x98\xea0\x01\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/{name=instances/*}:sync\x12\xb2\x01\n" +
 	"\x12BatchSyncInstances\x12).metaxisdata.v1.BatchSyncInstancesRequest\x1a*.metaxisdata.v1.BatchSyncInstancesResponse\"E\x8a\xea0\x1bmetaxisdata.instances.write\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/instances:batchSync\x12\xba\x01\n" +
-	"\x14BatchUpdateInstances\x12+.metaxisdata.v1.BatchUpdateInstancesRequest\x1a,.metaxisdata.v1.BatchUpdateInstancesResponse\"G\x8a\xea0\x1bmetaxisdata.instances.write\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/instances:batchUpdate\x12\xa3\x01\n" +
-	"\rAddDataSource\x12$.metaxisdata.v1.AddDataSourceRequest\x1a\x18.metaxisdata.v1.Instance\"R\x8a\xea0\x1bmetaxisdata.instances.write\x98\xea0\x01\x82\xd3\xe4\x93\x02):\x01*\"$/v1/{name=instances/*}:addDataSource\x12\xac\x01\n" +
-	"\x10RemoveDataSource\x12'.metaxisdata.v1.RemoveDataSourceRequest\x1a\x18.metaxisdata.v1.Instance\"U\x8a\xea0\x1bmetaxisdata.instances.write\x98\xea0\x01\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/{name=instances/*}:removeDataSource\x12\xd0\x01\n" +
-	"\x10UpdateDataSource\x12'.metaxisdata.v1.UpdateDataSourceRequest\x1a\x18.metaxisdata.v1.Instance\"y\xdaA\x17data_source,update_mask\x8a\xea0\x1bmetaxisdata.instances.write\x98\xea0\x01\x82\xd3\xe4\x93\x026:\vdata_source2'/v1/{name=instances/*}:updateDataSourceB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\x14BatchUpdateInstances\x12+.metaxisdata.v1.BatchUpdateInstancesRequest\x1a,.metaxisdata.v1.BatchUpdateInstancesResponse\"G\x8a\xea0\x1bmetaxisdata.instances.write\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/instances:batchUpdate\x12\xb5\x01\n" +
+	"\x10CreateDataSource\x12'.metaxisdata.v1.CreateDataSourceRequest\x1a\x1a.metaxisdata.v1.DataSource\"\\\x8a\xea0\x1bmetaxisdata.instances.write\x98\xea0\x01\x82\xd3\xe4\x93\x023:\vdata_source\"$/v1/{parent=instances/*}/dataSources\x12\xdc\x01\n" +
+	"\x10UpdateDataSource\x12'.metaxisdata.v1.UpdateDataSourceRequest\x1a\x1a.metaxisdata.v1.DataSource\"\x82\x01\xdaA\x17data_source,update_mask\x8a\xea0\x1bmetaxisdata.instances.write\x98\xea0\x01\x82\xd3\xe4\x93\x02?:\vdata_source20/v1/{data_source.name=instances/*/dataSources/*}\x12\xa4\x01\n" +
+	"\x10DeleteDataSource\x12'.metaxisdata.v1.DeleteDataSourceRequest\x1a\x16.google.protobuf.Empty\"O\x8a\xea0\x1bmetaxisdata.instances.write\x98\xea0\x01\x82\xd3\xe4\x93\x02&*$/v1/{name=instances/*/dataSources/*}B6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_instance_service_proto_rawDescOnce sync.Once
@@ -1639,9 +1644,9 @@ var file_v1_instance_service_proto_goTypes = []any{
 	(*BatchSyncInstanceResult)(nil),      // 12: metaxisdata.v1.BatchSyncInstanceResult
 	(*BatchUpdateInstancesRequest)(nil),  // 13: metaxisdata.v1.BatchUpdateInstancesRequest
 	(*BatchUpdateInstancesResponse)(nil), // 14: metaxisdata.v1.BatchUpdateInstancesResponse
-	(*AddDataSourceRequest)(nil),         // 15: metaxisdata.v1.AddDataSourceRequest
-	(*RemoveDataSourceRequest)(nil),      // 16: metaxisdata.v1.RemoveDataSourceRequest
-	(*UpdateDataSourceRequest)(nil),      // 17: metaxisdata.v1.UpdateDataSourceRequest
+	(*CreateDataSourceRequest)(nil),      // 15: metaxisdata.v1.CreateDataSourceRequest
+	(*UpdateDataSourceRequest)(nil),      // 16: metaxisdata.v1.UpdateDataSourceRequest
+	(*DeleteDataSourceRequest)(nil),      // 17: metaxisdata.v1.DeleteDataSourceRequest
 	(*Instance)(nil),                     // 18: metaxisdata.v1.Instance
 	(*DataSource)(nil),                   // 19: metaxisdata.v1.DataSource
 	(*InstanceResource)(nil),             // 20: metaxisdata.v1.InstanceResource
@@ -1662,48 +1667,47 @@ var file_v1_instance_service_proto_depIdxs = []int32{
 	12, // 5: metaxisdata.v1.BatchSyncInstancesResponse.results:type_name -> metaxisdata.v1.BatchSyncInstanceResult
 	5,  // 6: metaxisdata.v1.BatchUpdateInstancesRequest.requests:type_name -> metaxisdata.v1.UpdateInstanceRequest
 	18, // 7: metaxisdata.v1.BatchUpdateInstancesResponse.instances:type_name -> metaxisdata.v1.Instance
-	19, // 8: metaxisdata.v1.AddDataSourceRequest.data_source:type_name -> metaxisdata.v1.DataSource
-	19, // 9: metaxisdata.v1.RemoveDataSourceRequest.data_source:type_name -> metaxisdata.v1.DataSource
-	19, // 10: metaxisdata.v1.UpdateDataSourceRequest.data_source:type_name -> metaxisdata.v1.DataSource
-	22, // 11: metaxisdata.v1.UpdateDataSourceRequest.update_mask:type_name -> google.protobuf.FieldMask
-	23, // 12: metaxisdata.v1.Instance.state:type_name -> metaxisdata.v1.State
-	24, // 13: metaxisdata.v1.Instance.engine:type_name -> metaxisdata.v1.Engine
-	19, // 14: metaxisdata.v1.Instance.data_sources:type_name -> metaxisdata.v1.DataSource
-	25, // 15: metaxisdata.v1.Instance.sync_interval:type_name -> google.protobuf.Duration
-	26, // 16: metaxisdata.v1.Instance.last_sync_time:type_name -> google.protobuf.Timestamp
-	0,  // 17: metaxisdata.v1.DataSource.type:type_name -> metaxisdata.v1.DataSourceType
-	21, // 18: metaxisdata.v1.DataSource.extra_connection_parameters:type_name -> metaxisdata.v1.DataSource.ExtraConnectionParametersEntry
-	24, // 19: metaxisdata.v1.InstanceResource.engine:type_name -> metaxisdata.v1.Engine
-	19, // 20: metaxisdata.v1.InstanceResource.data_sources:type_name -> metaxisdata.v1.DataSource
-	1,  // 21: metaxisdata.v1.InstanceService.GetInstance:input_type -> metaxisdata.v1.GetInstanceRequest
-	2,  // 22: metaxisdata.v1.InstanceService.ListInstances:input_type -> metaxisdata.v1.ListInstancesRequest
-	4,  // 23: metaxisdata.v1.InstanceService.CreateInstance:input_type -> metaxisdata.v1.CreateInstanceRequest
-	5,  // 24: metaxisdata.v1.InstanceService.UpdateInstance:input_type -> metaxisdata.v1.UpdateInstanceRequest
-	6,  // 25: metaxisdata.v1.InstanceService.DeleteInstance:input_type -> metaxisdata.v1.DeleteInstanceRequest
-	7,  // 26: metaxisdata.v1.InstanceService.UndeleteInstance:input_type -> metaxisdata.v1.UndeleteInstanceRequest
-	8,  // 27: metaxisdata.v1.InstanceService.SyncInstance:input_type -> metaxisdata.v1.SyncInstanceRequest
-	10, // 28: metaxisdata.v1.InstanceService.BatchSyncInstances:input_type -> metaxisdata.v1.BatchSyncInstancesRequest
-	13, // 29: metaxisdata.v1.InstanceService.BatchUpdateInstances:input_type -> metaxisdata.v1.BatchUpdateInstancesRequest
-	15, // 30: metaxisdata.v1.InstanceService.AddDataSource:input_type -> metaxisdata.v1.AddDataSourceRequest
-	16, // 31: metaxisdata.v1.InstanceService.RemoveDataSource:input_type -> metaxisdata.v1.RemoveDataSourceRequest
-	17, // 32: metaxisdata.v1.InstanceService.UpdateDataSource:input_type -> metaxisdata.v1.UpdateDataSourceRequest
-	18, // 33: metaxisdata.v1.InstanceService.GetInstance:output_type -> metaxisdata.v1.Instance
-	3,  // 34: metaxisdata.v1.InstanceService.ListInstances:output_type -> metaxisdata.v1.ListInstancesResponse
-	18, // 35: metaxisdata.v1.InstanceService.CreateInstance:output_type -> metaxisdata.v1.Instance
-	18, // 36: metaxisdata.v1.InstanceService.UpdateInstance:output_type -> metaxisdata.v1.Instance
-	27, // 37: metaxisdata.v1.InstanceService.DeleteInstance:output_type -> google.protobuf.Empty
-	18, // 38: metaxisdata.v1.InstanceService.UndeleteInstance:output_type -> metaxisdata.v1.Instance
-	9,  // 39: metaxisdata.v1.InstanceService.SyncInstance:output_type -> metaxisdata.v1.SyncInstanceResponse
-	11, // 40: metaxisdata.v1.InstanceService.BatchSyncInstances:output_type -> metaxisdata.v1.BatchSyncInstancesResponse
-	14, // 41: metaxisdata.v1.InstanceService.BatchUpdateInstances:output_type -> metaxisdata.v1.BatchUpdateInstancesResponse
-	18, // 42: metaxisdata.v1.InstanceService.AddDataSource:output_type -> metaxisdata.v1.Instance
-	18, // 43: metaxisdata.v1.InstanceService.RemoveDataSource:output_type -> metaxisdata.v1.Instance
-	18, // 44: metaxisdata.v1.InstanceService.UpdateDataSource:output_type -> metaxisdata.v1.Instance
-	33, // [33:45] is the sub-list for method output_type
-	21, // [21:33] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	19, // 8: metaxisdata.v1.CreateDataSourceRequest.data_source:type_name -> metaxisdata.v1.DataSource
+	19, // 9: metaxisdata.v1.UpdateDataSourceRequest.data_source:type_name -> metaxisdata.v1.DataSource
+	22, // 10: metaxisdata.v1.UpdateDataSourceRequest.update_mask:type_name -> google.protobuf.FieldMask
+	23, // 11: metaxisdata.v1.Instance.state:type_name -> metaxisdata.v1.State
+	24, // 12: metaxisdata.v1.Instance.engine:type_name -> metaxisdata.v1.Engine
+	19, // 13: metaxisdata.v1.Instance.data_sources:type_name -> metaxisdata.v1.DataSource
+	25, // 14: metaxisdata.v1.Instance.sync_interval:type_name -> google.protobuf.Duration
+	26, // 15: metaxisdata.v1.Instance.last_sync_time:type_name -> google.protobuf.Timestamp
+	0,  // 16: metaxisdata.v1.DataSource.type:type_name -> metaxisdata.v1.DataSourceType
+	21, // 17: metaxisdata.v1.DataSource.extra_connection_parameters:type_name -> metaxisdata.v1.DataSource.ExtraConnectionParametersEntry
+	24, // 18: metaxisdata.v1.InstanceResource.engine:type_name -> metaxisdata.v1.Engine
+	19, // 19: metaxisdata.v1.InstanceResource.data_sources:type_name -> metaxisdata.v1.DataSource
+	1,  // 20: metaxisdata.v1.InstanceService.GetInstance:input_type -> metaxisdata.v1.GetInstanceRequest
+	2,  // 21: metaxisdata.v1.InstanceService.ListInstances:input_type -> metaxisdata.v1.ListInstancesRequest
+	4,  // 22: metaxisdata.v1.InstanceService.CreateInstance:input_type -> metaxisdata.v1.CreateInstanceRequest
+	5,  // 23: metaxisdata.v1.InstanceService.UpdateInstance:input_type -> metaxisdata.v1.UpdateInstanceRequest
+	6,  // 24: metaxisdata.v1.InstanceService.DeleteInstance:input_type -> metaxisdata.v1.DeleteInstanceRequest
+	7,  // 25: metaxisdata.v1.InstanceService.UndeleteInstance:input_type -> metaxisdata.v1.UndeleteInstanceRequest
+	8,  // 26: metaxisdata.v1.InstanceService.SyncInstance:input_type -> metaxisdata.v1.SyncInstanceRequest
+	10, // 27: metaxisdata.v1.InstanceService.BatchSyncInstances:input_type -> metaxisdata.v1.BatchSyncInstancesRequest
+	13, // 28: metaxisdata.v1.InstanceService.BatchUpdateInstances:input_type -> metaxisdata.v1.BatchUpdateInstancesRequest
+	15, // 29: metaxisdata.v1.InstanceService.CreateDataSource:input_type -> metaxisdata.v1.CreateDataSourceRequest
+	16, // 30: metaxisdata.v1.InstanceService.UpdateDataSource:input_type -> metaxisdata.v1.UpdateDataSourceRequest
+	17, // 31: metaxisdata.v1.InstanceService.DeleteDataSource:input_type -> metaxisdata.v1.DeleteDataSourceRequest
+	18, // 32: metaxisdata.v1.InstanceService.GetInstance:output_type -> metaxisdata.v1.Instance
+	3,  // 33: metaxisdata.v1.InstanceService.ListInstances:output_type -> metaxisdata.v1.ListInstancesResponse
+	18, // 34: metaxisdata.v1.InstanceService.CreateInstance:output_type -> metaxisdata.v1.Instance
+	18, // 35: metaxisdata.v1.InstanceService.UpdateInstance:output_type -> metaxisdata.v1.Instance
+	27, // 36: metaxisdata.v1.InstanceService.DeleteInstance:output_type -> google.protobuf.Empty
+	18, // 37: metaxisdata.v1.InstanceService.UndeleteInstance:output_type -> metaxisdata.v1.Instance
+	9,  // 38: metaxisdata.v1.InstanceService.SyncInstance:output_type -> metaxisdata.v1.SyncInstanceResponse
+	11, // 39: metaxisdata.v1.InstanceService.BatchSyncInstances:output_type -> metaxisdata.v1.BatchSyncInstancesResponse
+	14, // 40: metaxisdata.v1.InstanceService.BatchUpdateInstances:output_type -> metaxisdata.v1.BatchUpdateInstancesResponse
+	19, // 41: metaxisdata.v1.InstanceService.CreateDataSource:output_type -> metaxisdata.v1.DataSource
+	19, // 42: metaxisdata.v1.InstanceService.UpdateDataSource:output_type -> metaxisdata.v1.DataSource
+	27, // 43: metaxisdata.v1.InstanceService.DeleteDataSource:output_type -> google.protobuf.Empty
+	32, // [32:44] is the sub-list for method output_type
+	20, // [20:32] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_v1_instance_service_proto_init() }

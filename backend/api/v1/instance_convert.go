@@ -1,8 +1,9 @@
 package v1
 
 import (
+	"strings"
+
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -12,7 +13,7 @@ import (
 
 func convertInstanceMessage(instance *store.InstanceMessage) *v1pb.Instance {
 	engine := convertToEngine(instance.Metadata.GetEngine())
-	dataSources := convertDataSources(instance.Metadata.GetDataSources())
+	dataSources := convertDataSources(instance.ResourceID, instance.Metadata.GetDataSources())
 
 	return &v1pb.Instance{
 		Name:               common.FormatInstance(instance.ResourceID),
@@ -32,7 +33,7 @@ func convertInstanceMessage(instance *store.InstanceMessage) *v1pb.Instance {
 }
 
 func convertInstanceToInstanceMessage(instanceID string, instance *v1pb.Instance) (*store.InstanceMessage, error) {
-	datasources, err := convertV1DataSources(instance.DataSources)
+	datasources, err := convertV1DataSources(instanceID, instance.DataSources)
 	if err != nil {
 		return nil, err
 	}
@@ -70,10 +71,10 @@ func convertInstanceMessageToInstanceResource(instanceMessage *store.InstanceMes
 	}
 }
 
-func convertV1DataSources(dataSources []*v1pb.DataSource) ([]*storepb.DataSource, error) {
+func convertV1DataSources(instanceID string, dataSources []*v1pb.DataSource) ([]*storepb.DataSource, error) {
 	var values []*storepb.DataSource
 	for _, ds := range dataSources {
-		dataSource, err := convertV1DataSource(ds)
+		dataSource, err := convertV1DataSource(instanceID, ds)
 		if err != nil {
 			return nil, err
 		}
@@ -83,45 +84,78 @@ func convertV1DataSources(dataSources []*v1pb.DataSource) ([]*storepb.DataSource
 	return values, nil
 }
 
-func convertDataSources(dataSources []*storepb.DataSource) []*v1pb.DataSource {
-	var v1DataSources []*v1pb.DataSource
+func convertDataSources(instanceID string, dataSources []*storepb.DataSource) []*v1pb.DataSource {
+	v1DataSources := make([]*v1pb.DataSource, 0, len(dataSources))
 	for _, ds := range dataSources {
-		dataSourceType := v1pb.DataSourceType_DATA_SOURCE_UNSPECIFIED
-		switch ds.GetType() {
-		case storepb.DataSourceType_ADMIN:
-			dataSourceType = v1pb.DataSourceType_ADMIN
-		case storepb.DataSourceType_READ_ONLY:
-			dataSourceType = v1pb.DataSourceType_READ_ONLY
-		default:
-		}
-
-		v1DataSources = append(v1DataSources, &v1pb.DataSource{
-			Id:       ds.GetId(),
-			Type:     dataSourceType,
-			Username: ds.GetUsername(),
-			// We don't return the password and SSLs on reads.
-			Host:                      ds.GetHost(),
-			Port:                      ds.GetPort(),
-			Database:                  ds.GetDatabase(),
-			SshHost:                   ds.GetSshHost(),
-			SshPort:                   ds.GetSshPort(),
-			SshUser:                   ds.GetSshUser(),
-			UseSsl:                    ds.GetUseSsl(),
-			ExtraConnectionParameters: ds.GetExtraConnectionParameters(),
-		})
+		v1DataSources = append(v1DataSources, convertDataSource(instanceID, ds))
 	}
 
 	return v1DataSources
 }
 
-func convertV1DataSource(dataSource *v1pb.DataSource) (*storepb.DataSource, error) {
+func convertToDataSourceType(tp storepb.DataSourceType) v1pb.DataSourceType {
+	switch tp {
+	case storepb.DataSourceType_ADMIN:
+		return v1pb.DataSourceType_ADMIN
+	case storepb.DataSourceType_READ_ONLY:
+		return v1pb.DataSourceType_READ_ONLY
+	default:
+		return v1pb.DataSourceType_DATA_SOURCE_UNSPECIFIED
+	}
+}
+
+// convertDataSource converts one stored data source into its public shape.
+func convertDataSource(instanceID string, dataSource *storepb.DataSource) *v1pb.DataSource {
+	return &v1pb.DataSource{
+		Name:                      common.FormatDataSource(instanceID, dataSource.GetId()),
+		Type:                      convertToDataSourceType(dataSource.GetType()),
+		Username:                  dataSource.GetUsername(),
+		Host:                      dataSource.GetHost(),
+		Port:                      dataSource.GetPort(),
+		Database:                  dataSource.GetDatabase(),
+		SshHost:                   dataSource.GetSshHost(),
+		SshPort:                   dataSource.GetSshPort(),
+		SshUser:                   dataSource.GetSshUser(),
+		UseSsl:                    dataSource.GetUseSsl(),
+		ExtraConnectionParameters: dataSource.GetExtraConnectionParameters(),
+	}
+}
+
+// dataSourceID returns the store ID of a data source. A resource name must
+// belong to instanceID; an empty name asks the server to generate an ID.
+func dataSourceID(instanceID, name string) (string, error) {
+	if name == "" {
+		generated, err := common.RandomString(8)
+		if err != nil {
+			return "", errors.Wrap(err, "failed to generate a data source ID")
+		}
+		return strings.ToLower(generated), nil
+	}
+	owner, id, err := common.GetInstanceDataSourceID(name)
+	if err != nil {
+		return "", err
+	}
+	if owner != instanceID {
+		return "", errors.Errorf("data source %q does not belong to instance %q", name, instanceID)
+	}
+	if !common.IsValidResourceID(id) {
+		return "", errors.Errorf("invalid data source ID %q", id)
+	}
+	return id, nil
+}
+
+func convertV1DataSource(instanceID string, dataSource *v1pb.DataSource) (*storepb.DataSource, error) {
 	dsType, err := convertV1DataSourceType(dataSource.Type)
+	if err != nil {
+		return nil, err
+	}
+	id, err := dataSourceID(instanceID, dataSource.GetName())
 	if err != nil {
 		return nil, err
 	}
 
 	return &storepb.DataSource{
-		Id:                        dataSource.Id,
+		Id:                        id,
 		Type:                      dsType,
 		Username:                  dataSource.Username,
 		Password:                  dataSource.Password,
@@ -141,6 +175,50 @@ func convertV1DataSource(dataSource *v1pb.DataSource) (*storepb.DataSource, erro
 	}, nil
 }
 
+// patchDataSource applies the fields named in paths from requested onto the
+// stored data source. Fields outside the mask keep their stored value: a request
+// built from a read never carries credentials, and an empty password must not
+// silently overwrite one.
+func patchDataSource(stored *storepb.DataSource, requested *v1pb.DataSource, paths []string) error {
+	for _, path := range paths {
+		switch path {
+		case "username":
+			stored.Username = requested.GetUsername()
+		case "password":
+			stored.Password = requested.GetPassword()
+		case "ssl_ca":
+			stored.SslCa = requested.GetSslCa()
+		case "ssl_cert":
+			stored.SslCert = requested.GetSslCert()
+		case "ssl_key":
+			stored.SslKey = requested.GetSslKey()
+		case "host":
+			stored.Host = requested.GetHost()
+		case "port":
+			stored.Port = requested.GetPort()
+		case "database":
+			stored.Database = requested.GetDatabase()
+		case "ssh_host":
+			stored.SshHost = requested.GetSshHost()
+		case "ssh_port":
+			stored.SshPort = requested.GetSshPort()
+		case "ssh_user":
+			stored.SshUser = requested.GetSshUser()
+		case "ssh_password":
+			stored.SshPassword = requested.GetSshPassword()
+		case "ssh_private_key":
+			stored.SshPrivateKey = requested.GetSshPrivateKey()
+		case "use_ssl":
+			stored.UseSsl = requested.GetUseSsl()
+		case "extra_connection_parameters":
+			stored.ExtraConnectionParameters = requested.GetExtraConnectionParameters()
+		default:
+			return errors.Errorf(`unsupported update_mask %q`, path)
+		}
+	}
+	return nil
+}
+
 func convertV1DataSourceType(tp v1pb.DataSourceType) (storepb.DataSourceType, error) {
 	switch tp {
 	case v1pb.DataSourceType_READ_ONLY:
@@ -150,30 +228,4 @@ func convertV1DataSourceType(tp v1pb.DataSourceType) (storepb.DataSourceType, er
 	default:
 		return storepb.DataSourceType_DATA_SOURCE_UNSPECIFIED, errors.Errorf("invalid data source type %v", tp)
 	}
-}
-
-func mergeDataSources(stored, requested []*storepb.DataSource) []*storepb.DataSource {
-	storedByID := make(map[string]*storepb.DataSource, len(stored))
-	for _, ds := range stored {
-		storedByID[ds.GetId()] = ds
-	}
-	merged := make([]*storepb.DataSource, 0, len(requested))
-	for _, ds := range requested {
-		existing, ok := storedByID[ds.GetId()]
-		if !ok {
-			merged = append(merged, ds)
-			continue
-		}
-		merged = append(merged, mergeDataSource(existing, ds))
-	}
-	return merged
-}
-
-func mergeDataSource(stored, requested *storepb.DataSource) *storepb.DataSource {
-	merged, ok := proto.Clone(stored).(*storepb.DataSource)
-	if !ok {
-		return requested
-	}
-	proto.Merge(merged, requested)
-	return merged
 }

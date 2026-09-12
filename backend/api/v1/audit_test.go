@@ -53,7 +53,7 @@ func TestMarshalAuditMessageRedactsSecrets(t *testing.T) {
 		{
 			name: "data source credentials",
 			message: &v1pb.DataSource{
-				Id:            "admin",
+				Name:          "instances/i1/dataSources/admin",
 				SslCert:       "-----BEGIN CERTIFICATE-----",
 				SslKey:        "-----BEGIN PRIVATE KEY-----",
 				SshPrivateKey: "-----BEGIN OPENSSH PRIVATE KEY-----",

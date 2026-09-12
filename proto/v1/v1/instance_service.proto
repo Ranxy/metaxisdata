@@ -89,30 +89,27 @@ service InstanceService {
     option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
   }
 
-  rpc AddDataSource(AddDataSourceRequest) returns (Instance) {
+  rpc CreateDataSource(CreateDataSourceRequest) returns (DataSource) {
     option (google.api.http) = {
-      post: "/v1/{name=instances/*}:addDataSource"
-      body: "*"
+      post: "/v1/{parent=instances/*}/dataSources"
+      body: "data_source"
     };
     option (metaxisdata.v1.audit) = true;
     option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
   }
 
-  rpc RemoveDataSource(RemoveDataSourceRequest) returns (Instance) {
+  rpc UpdateDataSource(UpdateDataSourceRequest) returns (DataSource) {
     option (google.api.http) = {
-      post: "/v1/{name=instances/*}:removeDataSource"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
-  }
-
-  rpc UpdateDataSource(UpdateDataSourceRequest) returns (Instance) {
-    option (google.api.http) = {
-      patch: "/v1/{name=instances/*}:updateDataSource"
+      patch: "/v1/{data_source.name=instances/*/dataSources/*}"
       body: "data_source"
     };
     option (google.api.method_signature) = "data_source,update_mask";
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
+  }
+
+  rpc DeleteDataSource(DeleteDataSourceRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=instances/*/dataSources/*}"};
     option (metaxisdata.v1.audit) = true;
     option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
   }
@@ -284,51 +281,53 @@ message BatchUpdateInstancesResponse {
   repeated Instance instances = 1;
 }
 
-message AddDataSourceRequest {
+message CreateDataSourceRequest {
   // The name of the instance to add a data source to.
   // Format: instances/{instance}
-  string name = 1 [
+  string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference) = {type: "metaxisdata/Instance"}
   ];
 
-  // Identified by data source ID.
-  // Only READ_ONLY data source can be added.
+  // The data source to create.
+  // Its `name` must be empty; the server derives it from `data_source_id`.
+  // Only READ_ONLY data sources can be created here; the ADMIN data source is
+  // part of the instance itself.
   DataSource data_source = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // The ID to use for the data source, which will become the final component of
+  // the data source's resource name.
+  //
+  // This value should be 4-63 characters, and valid characters
+  // are /[a-z0-9-]/. When empty, the server generates an ID.
+  string data_source_id = 3;
+
+  // Validate only also tests the data source connection.
+  bool validate_only = 4;
+}
+
+message UpdateDataSourceRequest {
+  // The data source to update.
+  //
+  // The data source's `name` field is used to identify it.
+  // Format: instances/{instance}/dataSources/{data_source}
+  DataSource data_source = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The list of fields to update. Fields not listed keep their stored value,
+  // which is how reads that omit credentials stay non-destructive.
+  google.protobuf.FieldMask update_mask = 2;
 
   // Validate only also tests the data source connection.
   bool validate_only = 3;
 }
 
-message RemoveDataSourceRequest {
-  // The name of the instance to remove a data source from.
-  // Format: instances/{instance}
+message DeleteDataSourceRequest {
+  // The name of the data source to delete.
+  // Format: instances/{instance}/dataSources/{data_source}
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "metaxisdata/Instance"}
+    (google.api.resource_reference) = {type: "metaxisdata/DataSource"}
   ];
-
-  // Identified by data source ID.
-  // Only READ_ONLY data source can be removed.
-  DataSource data_source = 2 [(google.api.field_behavior) = REQUIRED];
-}
-
-message UpdateDataSourceRequest {
-  // The name of the instance to update a data source.
-  // Format: instances/{instance}
-  string name = 1 [
-    (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "metaxisdata/Instance"}
-  ];
-
-  // Identified by data source ID.
-  DataSource data_source = 2 [(google.api.field_behavior) = REQUIRED];
-
-  // The list of fields to update.
-  google.protobuf.FieldMask update_mask = 3;
-
-  // Validate only also tests the data source connection.
-  bool validate_only = 4;
 }
 
 message Instance {
@@ -351,6 +350,12 @@ message Instance {
 
   string external_link = 7;
 
+  // The data sources of the instance.
+  //
+  // `CreateInstance` creates the initial admin connection and any read-only
+  // sources carried in the request; afterwards the set is managed through
+  // `CreateDataSource`/`UpdateDataSource`/`DeleteDataSource`. `UpdateInstance`
+  // does not accept a `data_sources` update mask.
   repeated DataSource data_sources = 8;
 
   // The environment resource.
@@ -375,7 +380,15 @@ message Instance {
 }
 
 message DataSource {
-  string id = 1;
+  option (google.api.resource) = {
+    type: "metaxisdata/DataSource"
+    pattern: "instances/{instance}/dataSources/{data_source}"
+  };
+
+  // The name of the data source.
+  // Format: instances/{instance}/dataSources/{data_source}
+  string name = 1;
+
   DataSourceType type = 2;
   string username = 3;
   string password = 4 [(google.api.field_behavior) = INPUT_ONLY];

@@ -358,10 +358,6 @@
             <ul>
               
                 <li>
-                  <a href="#metaxisdata.v1.AddDataSourceRequest"><span class="badge">M</span>AddDataSourceRequest</a>
-                </li>
-              
-                <li>
                   <a href="#metaxisdata.v1.BatchSyncInstanceResult"><span class="badge">M</span>BatchSyncInstanceResult</a>
                 </li>
               
@@ -382,6 +378,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.CreateDataSourceRequest"><span class="badge">M</span>CreateDataSourceRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.CreateInstanceRequest"><span class="badge">M</span>CreateInstanceRequest</a>
                 </li>
               
@@ -391,6 +391,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.DataSource.ExtraConnectionParametersEntry"><span class="badge">M</span>DataSource.ExtraConnectionParametersEntry</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DeleteDataSourceRequest"><span class="badge">M</span>DeleteDataSourceRequest</a>
                 </li>
               
                 <li>
@@ -415,10 +419,6 @@
               
                 <li>
                   <a href="#metaxisdata.v1.ListInstancesResponse"><span class="badge">M</span>ListInstancesResponse</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.v1.RemoveDataSourceRequest"><span class="badge">M</span>RemoveDataSourceRequest</a>
                 </li>
               
                 <li>
@@ -2413,46 +2413,6 @@ Format: idps/{idp} </p></td>
       <p></p>
 
       
-        <h3 id="metaxisdata.v1.AddDataSourceRequest">AddDataSourceRequest</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>name</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The name of the instance to add a data source to.
-Format: instances/{instance} </p></td>
-                </tr>
-              
-                <tr>
-                  <td>data_source</td>
-                  <td><a href="#metaxisdata.v1.DataSource">DataSource</a></td>
-                  <td></td>
-                  <td><p>Identified by data source ID.
-Only READ_ONLY data source can be added. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>validate_only</td>
-                  <td><a href="#bool">bool</a></td>
-                  <td></td>
-                  <td><p>Validate only also tests the data source connection. </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
         <h3 id="metaxisdata.v1.BatchSyncInstanceResult">BatchSyncInstanceResult</h3>
         <p></p>
 
@@ -2591,6 +2551,59 @@ are reported here and do not abort the remaining instances. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.CreateDataSourceRequest">CreateDataSourceRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The name of the instance to add a data source to.
+Format: instances/{instance} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>data_source</td>
+                  <td><a href="#metaxisdata.v1.DataSource">DataSource</a></td>
+                  <td></td>
+                  <td><p>The data source to create.
+Its `name` must be empty; the server derives it from `data_source_id`.
+Only READ_ONLY data sources can be created here; the ADMIN data source is
+part of the instance itself. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>data_source_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The ID to use for the data source, which will become the final component of
+the data source&#39;s resource name.
+
+This value should be 4-63 characters, and valid characters
+are /[a-z0-9-]/. When empty, the server generates an ID. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>validate_only</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Validate only also tests the data source connection. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.CreateInstanceRequest">CreateInstanceRequest</h3>
         <p></p>
 
@@ -2644,10 +2657,11 @@ are /[a-z0-9-]/. </p></td>
             <tbody>
               
                 <tr>
-                  <td>id</td>
+                  <td>name</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The name of the data source.
+Format: instances/{instance}/dataSources/{data_source} </p></td>
                 </tr>
               
                 <tr>
@@ -2805,6 +2819,31 @@ For PostgreSQL HA, this can be used to set target_session_attrs=read-write </p><
 
         
       
+        <h3 id="metaxisdata.v1.DeleteDataSourceRequest">DeleteDataSourceRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The name of the data source to delete.
+Format: instances/{instance}/dataSources/{data_source} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.DeleteInstanceRequest">DeleteInstanceRequest</h3>
         <p></p>
 
@@ -2912,7 +2951,12 @@ Format: instances/{instance} </p></td>
                   <td>data_sources</td>
                   <td><a href="#metaxisdata.v1.DataSource">DataSource</a></td>
                   <td>repeated</td>
-                  <td><p> </p></td>
+                  <td><p>The data sources of the instance.
+
+`CreateInstance` creates the initial admin connection and any read-only
+sources carried in the request; afterwards the set is managed through
+`CreateDataSource`/`UpdateDataSource`/`DeleteDataSource`. `UpdateInstance`
+does not accept a `data_sources` update mask. </p></td>
                 </tr>
               
                 <tr>
@@ -3147,39 +3191,6 @@ If this field is omitted, there are no subsequent pages. </p></td>
 
         
       
-        <h3 id="metaxisdata.v1.RemoveDataSourceRequest">RemoveDataSourceRequest</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>name</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The name of the instance to remove a data source from.
-Format: instances/{instance} </p></td>
-                </tr>
-              
-                <tr>
-                  <td>data_source</td>
-                  <td><a href="#metaxisdata.v1.DataSource">DataSource</a></td>
-                  <td></td>
-                  <td><p>Identified by data source ID.
-Only READ_ONLY data source can be removed. </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
         <h3 id="metaxisdata.v1.SyncInstanceRequest">SyncInstanceRequest</h3>
         <p></p>
 
@@ -3273,25 +3284,21 @@ Format: instances/{instance} </p></td>
             <tbody>
               
                 <tr>
-                  <td>name</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The name of the instance to update a data source.
-Format: instances/{instance} </p></td>
-                </tr>
-              
-                <tr>
                   <td>data_source</td>
                   <td><a href="#metaxisdata.v1.DataSource">DataSource</a></td>
                   <td></td>
-                  <td><p>Identified by data source ID. </p></td>
+                  <td><p>The data source to update.
+
+The data source&#39;s `name` field is used to identify it.
+Format: instances/{instance}/dataSources/{data_source} </p></td>
                 </tr>
               
                 <tr>
                   <td>update_mask</td>
                   <td><a href="#google.protobuf.FieldMask">google.protobuf.FieldMask</a></td>
                   <td></td>
-                  <td><p>The list of fields to update. </p></td>
+                  <td><p>The list of fields to update. Fields not listed keep their stored value,
+which is how reads that omit credentials stay non-destructive. </p></td>
                 </tr>
               
                 <tr>
@@ -3449,23 +3456,23 @@ Format: instances/{instance} </p></td>
               </tr>
             
               <tr>
-                <td>AddDataSource</td>
-                <td><a href="#metaxisdata.v1.AddDataSourceRequest">AddDataSourceRequest</a></td>
-                <td><a href="#metaxisdata.v1.Instance">Instance</a></td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>RemoveDataSource</td>
-                <td><a href="#metaxisdata.v1.RemoveDataSourceRequest">RemoveDataSourceRequest</a></td>
-                <td><a href="#metaxisdata.v1.Instance">Instance</a></td>
+                <td>CreateDataSource</td>
+                <td><a href="#metaxisdata.v1.CreateDataSourceRequest">CreateDataSourceRequest</a></td>
+                <td><a href="#metaxisdata.v1.DataSource">DataSource</a></td>
                 <td><p></p></td>
               </tr>
             
               <tr>
                 <td>UpdateDataSource</td>
                 <td><a href="#metaxisdata.v1.UpdateDataSourceRequest">UpdateDataSourceRequest</a></td>
-                <td><a href="#metaxisdata.v1.Instance">Instance</a></td>
+                <td><a href="#metaxisdata.v1.DataSource">DataSource</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DeleteDataSource</td>
+                <td><a href="#metaxisdata.v1.DeleteDataSourceRequest">DeleteDataSourceRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
                 <td><p></p></td>
               </tr>
             
@@ -3580,20 +3587,10 @@ Format: instances/{instance} </p></td>
               
               
               <tr>
-                <td>AddDataSource</td>
+                <td>CreateDataSource</td>
                 <td>POST</td>
-                <td>/v1/{name=instances/*}:addDataSource</td>
-                <td>*</td>
-              </tr>
-              
-            
-              
-              
-              <tr>
-                <td>RemoveDataSource</td>
-                <td>POST</td>
-                <td>/v1/{name=instances/*}:removeDataSource</td>
-                <td>*</td>
+                <td>/v1/{parent=instances/*}/dataSources</td>
+                <td>data_source</td>
               </tr>
               
             
@@ -3602,8 +3599,18 @@ Format: instances/{instance} </p></td>
               <tr>
                 <td>UpdateDataSource</td>
                 <td>PATCH</td>
-                <td>/v1/{name=instances/*}:updateDataSource</td>
+                <td>/v1/{data_source.name=instances/*/dataSources/*}</td>
                 <td>data_source</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DeleteDataSource</td>
+                <td>DELETE</td>
+                <td>/v1/{name=instances/*/dataSources/*}</td>
+                <td></td>
               </tr>
               
             

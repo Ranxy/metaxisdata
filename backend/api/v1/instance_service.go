@@ -161,12 +161,12 @@ func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Reque
 	return connect.NewResponse(result), nil
 }
 
-func (s *InstanceService) checkInstanceDataSources(instance *store.InstanceMessage, dataSources []*storepb.DataSource) error {
+func (*InstanceService) checkInstanceDataSources(_ *store.InstanceMessage, dataSources []*storepb.DataSource) error {
 	dsIDMap := map[string]bool{}
 	adminCount := 0
 	for _, ds := range dataSources {
-		if err := s.checkDataSource(instance, ds); err != nil {
-			return err
+		if ds.GetId() == "" {
+			return connect.NewError(connect.CodeInvalidArgument, errors.New("data source id is required"))
 		}
 		if dsIDMap[ds.GetId()] {
 			return connect.NewError(connect.CodeInvalidArgument, errors.Errorf(`duplicate data source id "%s"`, ds.GetId()))
@@ -180,25 +180,6 @@ func (s *InstanceService) checkInstanceDataSources(instance *store.InstanceMessa
 	// this the update path could persist zero or several of them.
 	if adminCount != 1 {
 		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("require exactly one admin data source, got %d", adminCount))
-	}
-
-	return nil
-}
-
-// mergeDataSources keys the requested data source list, which is authoritative
-// for membership, by ID and edits each entry in place of the stored one with
-// the same ID. IDs absent from the request are removed, matching the
-// update_mask semantics for a repeated field.
-
-// mergeDataSource overlays the fields a request carries onto the stored data
-// source. proto.Merge copies only populated proto3 scalars, so a field the
-// request omits — notably every credential, which reads never return — keeps
-// its stored value. Repeated fields are appended rather than overwritten, so
-// one the request does carry is cleared first.
-
-func (*InstanceService) checkDataSource(_ *store.InstanceMessage, dataSource *storepb.DataSource) error {
-	if dataSource.GetId() == "" {
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("data source id is required"))
 	}
 
 	return nil
@@ -249,18 +230,8 @@ func (s *InstanceService) UpdateInstance(ctx context.Context, req *connect.Reque
 		case "external_link":
 			patch.Metadata.ExternalLink = req.Msg.Instance.ExternalLink
 		case "data_sources":
-			dataSources, err := convertV1DataSources(req.Msg.Instance.DataSources)
-			if err != nil {
-				return nil, connect.NewError(connect.CodeInvalidArgument, err)
-			}
-			// A data source list built from a Get response carries no credentials
-			// and no store-only fields, so merge every entry into the stored one
-			// with the same ID instead of overwriting it.
-			dataSources = mergeDataSources(instance.Metadata.GetDataSources(), dataSources)
-			if err := s.checkInstanceDataSources(instance, dataSources); err != nil {
-				return nil, err
-			}
-			patch.Metadata.DataSources = dataSources
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				errors.New("data_sources cannot be updated through UpdateInstance; use CreateDataSource, UpdateDataSource and DeleteDataSource"))
 		case "activation":
 			patch.Metadata.Activation = req.Msg.Instance.Activation
 		case "sync_interval":
@@ -419,65 +390,55 @@ func (s *InstanceService) BatchUpdateInstances(ctx context.Context, req *connect
 	return connect.NewResponse(response), nil
 }
 
-// AddDataSource adds a data source to an instance.
-func (s *InstanceService) AddDataSource(ctx context.Context, req *connect.Request[v1pb.AddDataSourceRequest]) (*connect.Response[v1pb.Instance], error) {
+// CreateDataSource adds a read-only data source to an instance.
+func (s *InstanceService) CreateDataSource(ctx context.Context, req *connect.Request[v1pb.CreateDataSourceRequest]) (*connect.Response[v1pb.DataSource], error) {
 	if req.Msg.DataSource == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("data sources is required"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("data_source is required"))
 	}
-	// We only support add RO type datasouce to instance now, see more details in instance_service.proto.
+	// We only support adding RO type data source to instance now, see more details in instance_service.proto.
 	if req.Msg.DataSource.Type != v1pb.DataSourceType_READ_ONLY {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("only support adding read-only data source"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("only support creating read-only data source"))
+	}
+	if req.Msg.DataSource.GetName() != "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("data_source.name must be empty; set data_source_id instead"))
 	}
 
-	dataSource, err := convertV1DataSource(req.Msg.DataSource)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("failed to convert data source"))
-	}
-
-	instance, err := getInstanceMessage(ctx, s.store, req.Msg.Name)
+	instance, err := getInstanceMessage(ctx, s.store, req.Msg.GetParent())
 	if err != nil {
 		return nil, err
 	}
 	if instance.Deleted {
-		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q has been deleted", req.Msg.Name))
-	}
-	for _, ds := range instance.Metadata.GetDataSources() {
-		if ds.GetId() == req.Msg.DataSource.Id {
-			return nil, connect.NewError(connect.CodeNotFound, errors.New("data source already exists with the same name"))
-		}
-	}
-	if err := s.checkDataSource(instance, dataSource); err != nil {
-		return nil, err
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q has been deleted", req.Msg.GetParent()))
 	}
 
-	// Test connection.
+	requested, ok := proto.Clone(req.Msg.DataSource).(*v1pb.DataSource)
+	if !ok {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to clone data source"))
+	}
+	if id := req.Msg.GetDataSourceId(); id != "" {
+		if !common.IsValidResourceID(id) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid data_source_id %q", id))
+		}
+		requested.Name = common.FormatDataSource(instance.ResourceID, id)
+	}
+	dataSource, err := convertV1DataSource(instance.ResourceID, requested)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	for _, ds := range instance.Metadata.GetDataSources() {
+		if ds.GetId() == dataSource.GetId() {
+			return nil, connect.NewError(connect.CodeAlreadyExists, errors.Errorf("data source %q already exists", dataSource.GetId()))
+		}
+	}
+
 	if req.Msg.ValidateOnly {
-		err := func() error {
-			driver, err := s.dbFactory.GetDataSourceDriver(
-				ctx, instance, dataSource,
-				db.ConnectionContext{
-					ReadOnly: dataSource.GetType() == storepb.DataSourceType_READ_ONLY,
-				},
-			)
-			if err != nil {
-				return connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get database driver"))
-			}
-			defer driver.Close(ctx)
-			if err := driver.Ping(ctx); err != nil {
-				return connect.NewError(connect.CodeInvalidArgument, errors.Wrapf(err, "invalid datasource %s", dataSource.GetType()))
-			}
-			return nil
-		}()
-		if err != nil {
+		if err := s.pingDataSource(ctx, instance, dataSource); err != nil {
 			return nil, err
 		}
-		result := convertInstanceMessage(instance)
-		return connect.NewResponse(result), nil
+		return connect.NewResponse(convertDataSource(instance.ResourceID, dataSource)), nil
 	}
 
-	if dataSource.GetType() != storepb.DataSourceType_READ_ONLY {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("only read-only data source can be added"))
-	}
 	metadata, ok := proto.Clone(instance.Metadata).(*storepb.Instance)
 	if !ok {
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to convert instance metadata type"))
@@ -488,125 +449,77 @@ func (s *InstanceService) AddDataSource(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	result := convertInstanceMessage(instance)
-	return connect.NewResponse(result), nil
+	return connect.NewResponse(convertDataSource(instance.ResourceID, dataSource)), nil
 }
 
-// UpdateDataSource updates a data source of an instance.
-func (s *InstanceService) UpdateDataSource(ctx context.Context, req *connect.Request[v1pb.UpdateDataSourceRequest]) (*connect.Response[v1pb.Instance], error) {
+// UpdateDataSource updates one data source of an instance. Only the fields named
+// in the update mask are written, so an update built from a read (which never
+// returns credentials) keeps the stored secrets.
+func (s *InstanceService) UpdateDataSource(ctx context.Context, req *connect.Request[v1pb.UpdateDataSourceRequest]) (*connect.Response[v1pb.DataSource], error) {
 	if req.Msg.DataSource == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("datasource is required"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("data_source is required"))
 	}
 	if req.Msg.UpdateMask == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("update_mask must be set"))
 	}
 
-	instance, err := getInstanceMessage(ctx, s.store, req.Msg.Name)
+	instanceID, dataSourceID, err := common.GetInstanceDataSourceID(req.Msg.DataSource.GetName())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	instance, err := getInstanceMessage(ctx, s.store, common.FormatInstance(instanceID))
 	if err != nil {
 		return nil, err
 	}
 	if instance.Deleted {
-		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q has been deleted", req.Msg.Name))
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q has been deleted", common.FormatInstance(instanceID)))
 	}
+
 	metadata, ok := proto.Clone(instance.Metadata).(*storepb.Instance)
 	if !ok {
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to convert instance metadata type"))
 	}
 	var dataSource *storepb.DataSource
 	for _, ds := range metadata.GetDataSources() {
-		if ds.GetId() == req.Msg.DataSource.Id {
+		if ds.GetId() == dataSourceID {
 			dataSource = ds
 			break
 		}
 	}
 	if dataSource == nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf(`cannot found data source "%s"`, req.Msg.DataSource.Id))
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("data source %q not found", req.Msg.DataSource.GetName()))
 	}
 
-	for _, path := range req.Msg.UpdateMask.Paths {
-		switch path {
-		case "username":
-			dataSource.Username = req.Msg.DataSource.Username
-		case "password":
-			dataSource.Password = req.Msg.DataSource.Password
-		case "ssl_ca":
-			dataSource.SslCa = req.Msg.DataSource.SslCa
-		case "ssl_cert":
-			dataSource.SslCert = req.Msg.DataSource.SslCert
-		case "ssl_key":
-			dataSource.SslKey = req.Msg.DataSource.SslKey
-		case "host":
-			dataSource.Host = req.Msg.DataSource.Host
-		case "port":
-			dataSource.Port = req.Msg.DataSource.Port
-		case "database":
-			dataSource.Database = req.Msg.DataSource.Database
-		case "ssh_host":
-			dataSource.SshHost = req.Msg.DataSource.SshHost
-		case "ssh_port":
-			dataSource.SshPort = req.Msg.DataSource.SshPort
-		case "ssh_user":
-			dataSource.SshUser = req.Msg.DataSource.SshUser
-		case "ssh_password":
-			dataSource.SshPassword = req.Msg.DataSource.SshPassword
-		case "ssh_private_key":
-			dataSource.SshPrivateKey = req.Msg.DataSource.SshPrivateKey
-		case "use_ssl":
-			dataSource.UseSsl = req.Msg.DataSource.UseSsl
-		case "extra_connection_parameters":
-			dataSource.ExtraConnectionParameters = req.Msg.DataSource.ExtraConnectionParameters
-		default:
-			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf(`unsupported update_mask "%s"`, path))
-		}
+	if err := patchDataSource(dataSource, req.Msg.DataSource, req.Msg.UpdateMask.GetPaths()); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	if err := s.checkDataSource(instance, dataSource); err != nil {
-		return nil, err
-	}
-
-	// Test connection.
 	if req.Msg.ValidateOnly {
-		err := func() error {
-			driver, err := s.dbFactory.GetDataSourceDriver(
-				ctx, instance, dataSource,
-				db.ConnectionContext{ReadOnly: dataSource.GetType() == storepb.DataSourceType_READ_ONLY},
-			)
-			if err != nil {
-				return connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get database driver"))
-			}
-			defer driver.Close(ctx)
-			if err := driver.Ping(ctx); err != nil {
-				return connect.NewError(connect.CodeInvalidArgument, errors.Wrapf(err, "invalid datasource %s", dataSource.GetType()))
-			}
-			return nil
-		}()
-		if err != nil {
+		if err := s.pingDataSource(ctx, instance, dataSource); err != nil {
 			return nil, err
 		}
-		result := convertInstanceMessage(instance)
-		return connect.NewResponse(result), nil
+		return connect.NewResponse(convertDataSource(instance.ResourceID, dataSource)), nil
 	}
 
 	instance, err = s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{ResourceID: instance.ResourceID, Metadata: metadata})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	result := convertInstanceMessage(instance)
-	return connect.NewResponse(result), nil
+	return connect.NewResponse(convertDataSource(instance.ResourceID, dataSource)), nil
 }
 
-// RemoveDataSource removes a data source to an instance.
-func (s *InstanceService) RemoveDataSource(ctx context.Context, req *connect.Request[v1pb.RemoveDataSourceRequest]) (*connect.Response[v1pb.Instance], error) {
-	if req.Msg.DataSource == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("data sources is required"))
+// DeleteDataSource removes a read-only data source from an instance.
+func (s *InstanceService) DeleteDataSource(ctx context.Context, req *connect.Request[v1pb.DeleteDataSourceRequest]) (*connect.Response[emptypb.Empty], error) {
+	instanceID, dataSourceID, err := common.GetInstanceDataSourceID(req.Msg.GetName())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-
-	instance, err := getInstanceMessage(ctx, s.store, req.Msg.Name)
+	instance, err := getInstanceMessage(ctx, s.store, common.FormatInstance(instanceID))
 	if err != nil {
 		return nil, err
 	}
 	if instance.Deleted {
-		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q has been deleted", req.Msg.Name))
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q has been deleted", common.FormatInstance(instanceID)))
 	}
 
 	metadata, ok := proto.Clone(instance.Metadata).(*storepb.Instance)
@@ -616,36 +529,42 @@ func (s *InstanceService) RemoveDataSource(ctx context.Context, req *connect.Req
 	var updatedDataSources []*storepb.DataSource
 	var dataSource *storepb.DataSource
 	for _, ds := range instance.Metadata.GetDataSources() {
-		if ds.GetId() == req.Msg.DataSource.Id {
+		if ds.GetId() == dataSourceID {
 			dataSource = ds
 		} else {
 			updatedDataSources = append(updatedDataSources, ds)
 		}
 	}
 	if dataSource == nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("data source not found"))
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("data source %q not found", req.Msg.GetName()))
 	}
-
-	// We only support remove RO type datasource to instance now, see more details in instance_service.proto.
+	// We only support removing RO type data source from an instance, see more details in instance_service.proto.
 	if dataSource.GetType() != storepb.DataSourceType_READ_ONLY {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("only support remove read-only data source"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("only support deleting read-only data source"))
 	}
 
 	metadata.DataSources = updatedDataSources
-	instance, err = s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{ResourceID: instance.ResourceID, Metadata: metadata})
-	if err != nil {
+	if _, err := s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{ResourceID: instance.ResourceID, Metadata: metadata}); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	instance, err = s.store.GetInstance(ctx, &store.FindInstanceMessage{
-		ResourceID: &instance.ResourceID,
-	})
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
+	return connect.NewResponse(&emptypb.Empty{}), nil
+}
 
-	result := convertInstanceMessage(instance)
-	return connect.NewResponse(result), nil
+// pingDataSource verifies that the server can actually connect with dataSource.
+func (s *InstanceService) pingDataSource(ctx context.Context, instance *store.InstanceMessage, dataSource *storepb.DataSource) error {
+	driver, err := s.dbFactory.GetDataSourceDriver(
+		ctx, instance, dataSource,
+		db.ConnectionContext{ReadOnly: dataSource.GetType() == storepb.DataSourceType_READ_ONLY},
+	)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get database driver"))
+	}
+	defer driver.Close(ctx)
+	if err := driver.Ping(ctx); err != nil {
+		return connect.NewError(connect.CodeInvalidArgument, errors.Wrapf(err, "invalid datasource %s", dataSource.GetType()))
+	}
+	return nil
 }
 
 func getInstanceMessage(ctx context.Context, stores *store.Store, name string) (*store.InstanceMessage, error) {

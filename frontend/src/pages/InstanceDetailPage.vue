@@ -311,14 +311,14 @@
           >
             <div
               v-for="ds in instance?.dataSources ?? []"
-              :key="ds.id"
+              :key="ds.name"
               class="border rounded-lg p-3 text-sm space-y-1"
             >
               <div class="flex items-center gap-2">
                 <Badge variant="secondary">
                   {{ ds.type === 1 ? "ADMIN" : "READ_ONLY" }}
                 </Badge>
-                <span class="font-medium">{{ ds.id }}</span>
+                <span class="font-medium">{{ dataSourceId(ds.name) }}</span>
               </div>
               <div class="text-muted-foreground">
                 {{ ds.host }}:{{ ds.port }} · {{ ds.username }} {{ ds.database ? `· ${ds.database}` : "" }}
@@ -511,7 +511,15 @@ import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { listDatabases, syncDatabase } from "@/api/database";
-import { listInstances, syncInstance, updateInstance } from "@/api/instance";
+import {
+  createDataSource,
+  dataSourceId,
+  deleteDataSource,
+  listInstances,
+  syncInstance,
+  updateDataSource,
+  updateInstance,
+} from "@/api/instance";
 import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
@@ -534,7 +542,6 @@ import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import {
-  DataSourceSchema,
   DataSourceType,
   InstanceSchema,
 } from "@/types/proto-es/v1/instance_service_pb";
@@ -560,7 +567,8 @@ const showEditModal = ref(false);
 const isUpdating = ref(false);
 
 interface EditDataSourceForm {
-  id: string;
+  /** The resource name; empty for a data source that does not exist yet. */
+  name: string;
   host: string;
   port: string;
   username: string;
@@ -576,7 +584,7 @@ const editForm = ref({
   syncIntervalMinutes: "15",
   editDataSources: false,
   adminDataSource: {
-    id: "admin",
+    name: "",
     host: "",
     port: "",
     username: "",
@@ -618,7 +626,7 @@ function openEditModal() {
     syncIntervalMinutes: syncSeconds > 0 ? String(syncSeconds / 60) : "15",
     editDataSources: false,
     adminDataSource: {
-      id: adminDs?.id ?? "admin",
+      name: adminDs?.name ?? "",
       host: adminDs?.host ?? "",
       port: adminDs?.port ?? "",
       username: adminDs?.username ?? "",
@@ -626,7 +634,7 @@ function openEditModal() {
       database: adminDs?.database ?? "",
     },
     readOnlyDataSources: readOnlyDs.map((ds) => ({
-      id: ds.id,
+      name: ds.name,
       host: ds.host,
       port: ds.port,
       username: ds.username,
@@ -646,7 +654,7 @@ function openEditModal() {
 
 function addEditReadOnlyDataSource() {
   editForm.value.readOnlyDataSources.push({
-    id: `readonly-${editForm.value.readOnlyDataSources.length + 1}`,
+    name: "",
     host: "",
     port: "",
     username: "",
@@ -743,39 +751,18 @@ async function handleUpdateInstance() {
       });
     }
 
-    // Only include data sources when user explicitly opts in
-    if (editForm.value.editDataSources) {
-      updateMask.push("data_sources");
-      instanceData.dataSources = [
-        create(DataSourceSchema, {
-          id: editForm.value.adminDataSource.id.trim(),
-          type: DataSourceType.ADMIN,
-          host: editForm.value.adminDataSource.host.trim(),
-          port: editForm.value.adminDataSource.port.trim(),
-          username: editForm.value.adminDataSource.username.trim(),
-          password: editForm.value.adminDataSource.password,
-          database: editForm.value.adminDataSource.database.trim(),
-        }),
-        ...editForm.value.readOnlyDataSources.map((ds) =>
-          create(DataSourceSchema, {
-            id: ds.id.trim(),
-            type: DataSourceType.READ_ONLY,
-            host: ds.host.trim(),
-            port: ds.port.trim(),
-            username: ds.username.trim(),
-            password: ds.password,
-            database: ds.database.trim(),
-          })
-        ),
-      ];
-    }
-
     const updatedInstance = create(InstanceSchema, instanceData);
 
     await updateInstance({
       instance: updatedInstance,
       updateMask,
     });
+
+    // Data sources are their own resources: create the new ones, update the
+    // changed ones and delete the omitted ones through the child methods.
+    if (editForm.value.editDataSources) {
+      await applyDataSourceChanges(instance.value.name);
+    }
 
     showEditModal.value = false;
     showSuccess(t("instanceDetail.updateSuccess"));
@@ -784,6 +771,74 @@ async function handleUpdateInstance() {
     handleError(e, t("instanceDetail.updateError"));
   } finally {
     isUpdating.value = false;
+  }
+}
+
+/**
+ * applyDataSourceChanges turns the edited form into Create/Update/Delete calls.
+ * A form entry without a name is new; a stored data source that is no longer in
+ * the form is deleted. Only the fields that actually changed are sent, so an
+ * untouched password is never cleared.
+ */
+async function applyDataSourceChanges(instanceName: string) {
+  if (!instance.value) return;
+
+  const stored = new Map(instance.value.dataSources.map((ds) => [ds.name, ds]));
+  const entries: {
+    form: EditDataSourceForm;
+    type: DataSourceType;
+  }[] = [
+    { form: editForm.value.adminDataSource, type: DataSourceType.ADMIN },
+    ...editForm.value.readOnlyDataSources.map((form) => ({
+      form,
+      type: DataSourceType.READ_ONLY,
+    })),
+  ];
+
+  for (const { form, type } of entries) {
+    const patch = {
+      username: form.username.trim(),
+      host: form.host.trim(),
+      port: form.port.trim(),
+      database: form.database.trim(),
+    };
+
+    if (!form.name) {
+      // The server only creates read-only data sources here; the admin
+      // connection is part of the instance and cannot be re-created.
+      if (type === DataSourceType.READ_ONLY) {
+        await createDataSource(instanceName, {
+          type,
+          ...patch,
+          password: form.password,
+        });
+      }
+      continue;
+    }
+
+    const before = stored.get(form.name);
+    stored.delete(form.name);
+    if (!before) continue;
+
+    const updateMask: string[] = [];
+    if (before.host !== patch.host) updateMask.push("host");
+    if (before.port !== patch.port) updateMask.push("port");
+    if (before.username !== patch.username) updateMask.push("username");
+    if ((before.database ?? "") !== patch.database) updateMask.push("database");
+    // Reads never return the password: a non-empty one replaces it, an empty
+    // one means "unchanged".
+    if (form.password) updateMask.push("password");
+    if (updateMask.length === 0) continue;
+
+    await updateDataSource(
+      form.name,
+      { ...patch, password: form.password },
+      updateMask
+    );
+  }
+
+  for (const name of stored.keys()) {
+    await deleteDataSource(name);
   }
 }
 

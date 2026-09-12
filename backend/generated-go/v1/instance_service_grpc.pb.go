@@ -29,9 +29,9 @@ const (
 	InstanceService_SyncInstance_FullMethodName         = "/metaxisdata.v1.InstanceService/SyncInstance"
 	InstanceService_BatchSyncInstances_FullMethodName   = "/metaxisdata.v1.InstanceService/BatchSyncInstances"
 	InstanceService_BatchUpdateInstances_FullMethodName = "/metaxisdata.v1.InstanceService/BatchUpdateInstances"
-	InstanceService_AddDataSource_FullMethodName        = "/metaxisdata.v1.InstanceService/AddDataSource"
-	InstanceService_RemoveDataSource_FullMethodName     = "/metaxisdata.v1.InstanceService/RemoveDataSource"
+	InstanceService_CreateDataSource_FullMethodName     = "/metaxisdata.v1.InstanceService/CreateDataSource"
 	InstanceService_UpdateDataSource_FullMethodName     = "/metaxisdata.v1.InstanceService/UpdateDataSource"
+	InstanceService_DeleteDataSource_FullMethodName     = "/metaxisdata.v1.InstanceService/DeleteDataSource"
 )
 
 // InstanceServiceClient is the client API for InstanceService service.
@@ -47,9 +47,9 @@ type InstanceServiceClient interface {
 	SyncInstance(ctx context.Context, in *SyncInstanceRequest, opts ...grpc.CallOption) (*SyncInstanceResponse, error)
 	BatchSyncInstances(ctx context.Context, in *BatchSyncInstancesRequest, opts ...grpc.CallOption) (*BatchSyncInstancesResponse, error)
 	BatchUpdateInstances(ctx context.Context, in *BatchUpdateInstancesRequest, opts ...grpc.CallOption) (*BatchUpdateInstancesResponse, error)
-	AddDataSource(ctx context.Context, in *AddDataSourceRequest, opts ...grpc.CallOption) (*Instance, error)
-	RemoveDataSource(ctx context.Context, in *RemoveDataSourceRequest, opts ...grpc.CallOption) (*Instance, error)
-	UpdateDataSource(ctx context.Context, in *UpdateDataSourceRequest, opts ...grpc.CallOption) (*Instance, error)
+	CreateDataSource(ctx context.Context, in *CreateDataSourceRequest, opts ...grpc.CallOption) (*DataSource, error)
+	UpdateDataSource(ctx context.Context, in *UpdateDataSourceRequest, opts ...grpc.CallOption) (*DataSource, error)
+	DeleteDataSource(ctx context.Context, in *DeleteDataSourceRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type instanceServiceClient struct {
@@ -150,30 +150,30 @@ func (c *instanceServiceClient) BatchUpdateInstances(ctx context.Context, in *Ba
 	return out, nil
 }
 
-func (c *instanceServiceClient) AddDataSource(ctx context.Context, in *AddDataSourceRequest, opts ...grpc.CallOption) (*Instance, error) {
+func (c *instanceServiceClient) CreateDataSource(ctx context.Context, in *CreateDataSourceRequest, opts ...grpc.CallOption) (*DataSource, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Instance)
-	err := c.cc.Invoke(ctx, InstanceService_AddDataSource_FullMethodName, in, out, cOpts...)
+	out := new(DataSource)
+	err := c.cc.Invoke(ctx, InstanceService_CreateDataSource_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *instanceServiceClient) RemoveDataSource(ctx context.Context, in *RemoveDataSourceRequest, opts ...grpc.CallOption) (*Instance, error) {
+func (c *instanceServiceClient) UpdateDataSource(ctx context.Context, in *UpdateDataSourceRequest, opts ...grpc.CallOption) (*DataSource, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Instance)
-	err := c.cc.Invoke(ctx, InstanceService_RemoveDataSource_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *instanceServiceClient) UpdateDataSource(ctx context.Context, in *UpdateDataSourceRequest, opts ...grpc.CallOption) (*Instance, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Instance)
+	out := new(DataSource)
 	err := c.cc.Invoke(ctx, InstanceService_UpdateDataSource_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *instanceServiceClient) DeleteDataSource(ctx context.Context, in *DeleteDataSourceRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, InstanceService_DeleteDataSource_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -193,9 +193,9 @@ type InstanceServiceServer interface {
 	SyncInstance(context.Context, *SyncInstanceRequest) (*SyncInstanceResponse, error)
 	BatchSyncInstances(context.Context, *BatchSyncInstancesRequest) (*BatchSyncInstancesResponse, error)
 	BatchUpdateInstances(context.Context, *BatchUpdateInstancesRequest) (*BatchUpdateInstancesResponse, error)
-	AddDataSource(context.Context, *AddDataSourceRequest) (*Instance, error)
-	RemoveDataSource(context.Context, *RemoveDataSourceRequest) (*Instance, error)
-	UpdateDataSource(context.Context, *UpdateDataSourceRequest) (*Instance, error)
+	CreateDataSource(context.Context, *CreateDataSourceRequest) (*DataSource, error)
+	UpdateDataSource(context.Context, *UpdateDataSourceRequest) (*DataSource, error)
+	DeleteDataSource(context.Context, *DeleteDataSourceRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedInstanceServiceServer()
 }
 
@@ -233,14 +233,14 @@ func (UnimplementedInstanceServiceServer) BatchSyncInstances(context.Context, *B
 func (UnimplementedInstanceServiceServer) BatchUpdateInstances(context.Context, *BatchUpdateInstancesRequest) (*BatchUpdateInstancesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BatchUpdateInstances not implemented")
 }
-func (UnimplementedInstanceServiceServer) AddDataSource(context.Context, *AddDataSourceRequest) (*Instance, error) {
-	return nil, status.Error(codes.Unimplemented, "method AddDataSource not implemented")
+func (UnimplementedInstanceServiceServer) CreateDataSource(context.Context, *CreateDataSourceRequest) (*DataSource, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateDataSource not implemented")
 }
-func (UnimplementedInstanceServiceServer) RemoveDataSource(context.Context, *RemoveDataSourceRequest) (*Instance, error) {
-	return nil, status.Error(codes.Unimplemented, "method RemoveDataSource not implemented")
-}
-func (UnimplementedInstanceServiceServer) UpdateDataSource(context.Context, *UpdateDataSourceRequest) (*Instance, error) {
+func (UnimplementedInstanceServiceServer) UpdateDataSource(context.Context, *UpdateDataSourceRequest) (*DataSource, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateDataSource not implemented")
+}
+func (UnimplementedInstanceServiceServer) DeleteDataSource(context.Context, *DeleteDataSourceRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteDataSource not implemented")
 }
 func (UnimplementedInstanceServiceServer) mustEmbedUnimplementedInstanceServiceServer() {}
 func (UnimplementedInstanceServiceServer) testEmbeddedByValue()                         {}
@@ -425,38 +425,20 @@ func _InstanceService_BatchUpdateInstances_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
-func _InstanceService_AddDataSource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AddDataSourceRequest)
+func _InstanceService_CreateDataSource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateDataSourceRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(InstanceServiceServer).AddDataSource(ctx, in)
+		return srv.(InstanceServiceServer).CreateDataSource(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: InstanceService_AddDataSource_FullMethodName,
+		FullMethod: InstanceService_CreateDataSource_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InstanceServiceServer).AddDataSource(ctx, req.(*AddDataSourceRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _InstanceService_RemoveDataSource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RemoveDataSourceRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InstanceServiceServer).RemoveDataSource(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InstanceService_RemoveDataSource_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InstanceServiceServer).RemoveDataSource(ctx, req.(*RemoveDataSourceRequest))
+		return srv.(InstanceServiceServer).CreateDataSource(ctx, req.(*CreateDataSourceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -475,6 +457,24 @@ func _InstanceService_UpdateDataSource_Handler(srv interface{}, ctx context.Cont
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(InstanceServiceServer).UpdateDataSource(ctx, req.(*UpdateDataSourceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _InstanceService_DeleteDataSource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteDataSourceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InstanceServiceServer).DeleteDataSource(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InstanceService_DeleteDataSource_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InstanceServiceServer).DeleteDataSource(ctx, req.(*DeleteDataSourceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -523,16 +523,16 @@ var InstanceService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _InstanceService_BatchUpdateInstances_Handler,
 		},
 		{
-			MethodName: "AddDataSource",
-			Handler:    _InstanceService_AddDataSource_Handler,
-		},
-		{
-			MethodName: "RemoveDataSource",
-			Handler:    _InstanceService_RemoveDataSource_Handler,
+			MethodName: "CreateDataSource",
+			Handler:    _InstanceService_CreateDataSource_Handler,
 		},
 		{
 			MethodName: "UpdateDataSource",
 			Handler:    _InstanceService_UpdateDataSource_Handler,
+		},
+		{
+			MethodName: "DeleteDataSource",
+			Handler:    _InstanceService_DeleteDataSource_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

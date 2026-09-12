@@ -390,6 +390,129 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/instances/{instance}/dataSources:
+        post:
+            tags:
+                - InstanceService
+            operationId: InstanceService_CreateDataSource
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+                - name: dataSourceId
+                  in: query
+                  description: |-
+                    The ID to use for the data source, which will become the final component of
+                     the data source's resource name.
+
+                     This value should be 4-63 characters, and valid characters
+                     are /[a-z0-9-]/. When empty, the server generates an ID.
+                  schema:
+                    type: string
+                - name: validateOnly
+                  in: query
+                  description: Validate only also tests the data source connection.
+                  schema:
+                    type: boolean
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DataSource'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DataSource'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/instances/{instance}/dataSources/{dataSource}:
+        delete:
+            tags:
+                - InstanceService
+            operationId: InstanceService_DeleteDataSource
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+                - name: dataSource
+                  in: path
+                  description: The dataSource id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - InstanceService
+            operationId: InstanceService_UpdateDataSource
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+                - name: dataSource
+                  in: path
+                  description: The dataSource id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  description: |-
+                    The list of fields to update. Fields not listed keep their stored value,
+                     which is how reads that omit credentials stay non-destructive.
+                  schema:
+                    type: string
+                    format: field-mask
+                - name: validateOnly
+                  in: query
+                  description: Validate only also tests the data source connection.
+                  schema:
+                    type: boolean
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DataSource'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DataSource'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/instances/{instance}/databases/{database}/manualSqls:
         get:
             tags:
@@ -700,68 +823,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/instances/{instance}:addDataSource:
-        post:
-            tags:
-                - InstanceService
-            operationId: InstanceService_AddDataSource
-            parameters:
-                - name: instance
-                  in: path
-                  description: The instance id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/AddDataSourceRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Instance'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/instances/{instance}:removeDataSource:
-        post:
-            tags:
-                - InstanceService
-            operationId: InstanceService_RemoveDataSource
-            parameters:
-                - name: instance
-                  in: path
-                  description: The instance id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/RemoveDataSourceRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Instance'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/instances/{instance}:sync:
         post:
             tags:
@@ -810,48 +871,6 @@ paths:
                     application/json:
                         schema:
                             $ref: '#/components/schemas/UndeleteInstanceRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Instance'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/instances/{instance}:updateDataSource:
-        patch:
-            tags:
-                - InstanceService
-            operationId: InstanceService_UpdateDataSource
-            parameters:
-                - name: instance
-                  in: path
-                  description: The instance id.
-                  required: true
-                  schema:
-                    type: string
-                - name: updateMask
-                  in: query
-                  description: The list of fields to update.
-                  schema:
-                    type: string
-                    format: field-mask
-                - name: validateOnly
-                  in: query
-                  description: Validate only also tests the data source connection.
-                  schema:
-                    type: boolean
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/DataSource'
                 required: true
             responses:
                 "200":
@@ -2320,26 +2339,6 @@ components:
                     type: string
                     description: Non-empty only when the key is revoked.
                     format: date-time
-        AddDataSourceRequest:
-            required:
-                - name
-                - dataSource
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: |-
-                        The name of the instance to add a data source to.
-                         Format: instances/{instance}
-                dataSource:
-                    allOf:
-                        - $ref: '#/components/schemas/DataSource'
-                    description: |-
-                        Identified by data source ID.
-                         Only READ_ONLY data source can be added.
-                validateOnly:
-                    type: boolean
-                    description: Validate only also tests the data source connection.
         AuditLog:
             type: object
             properties:
@@ -4234,23 +4233,6 @@ components:
                 skipDump:
                     type: boolean
             description: ProcedureMetadata is the metadata for procedures.
-        RemoveDataSourceRequest:
-            required:
-                - name
-                - dataSource
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: |-
-                        The name of the instance to remove a data source from.
-                         Format: instances/{instance}
-                dataSource:
-                    allOf:
-                        - $ref: '#/components/schemas/DataSource'
-                    description: |-
-                        Identified by data source ID.
-                         Only READ_ONLY data source can be removed.
         RuleMetadata:
             type: object
             properties:

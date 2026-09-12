@@ -3,18 +3,31 @@ import { DurationSchema, FieldMaskSchema } from "@bufbuild/protobuf/wkt";
 import type { Engine } from "@/types/proto-es/v1/common_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import {
+  CreateDataSourceRequestSchema,
   CreateInstanceRequestSchema,
   DataSourceSchema,
   DataSourceType,
+  DeleteDataSourceRequestSchema,
   DeleteInstanceRequestSchema,
   GetInstanceRequestSchema,
   InstanceSchema,
   ListInstancesRequestSchema,
   SyncInstanceRequestSchema,
   UndeleteInstanceRequestSchema,
+  UpdateDataSourceRequestSchema,
   UpdateInstanceRequestSchema,
 } from "@/types/proto-es/v1/instance_service_pb";
 import { instanceClient } from "./client";
+
+/** The ID of a data source, the last segment of its resource name. */
+export function dataSourceId(name: string): string {
+  return name.split("/").pop() ?? name;
+}
+
+/** The resource name of a data source of the given instance. */
+export function dataSourceName(instanceName: string, id: string): string {
+  return `${instanceName}/dataSources/${id}`;
+}
 
 export interface DataSourceInput {
   id: string;
@@ -59,7 +72,11 @@ export async function getInstance(name: string) {
 export async function createInstance(input: CreateInstanceInput) {
   const dataSources = input.dataSources.map((ds) =>
     create(DataSourceSchema, {
-      id: ds.id,
+      // The server names the data source instances/{instance}/dataSources/{id};
+      // on create the client composes it so the ID it asked for is kept.
+      name: input.instanceId
+        ? dataSourceName(`instances/${input.instanceId}`, ds.id)
+        : "",
       type: ds.type,
       username: ds.username,
       password: ds.password,
@@ -110,6 +127,58 @@ export async function syncInstance(name: string, enableFullSync = false) {
     enableFullSync,
   });
   return await instanceClient.syncInstance(request);
+}
+
+/** DataSourcePatch carries the fields to write for one data source. */
+export interface DataSourcePatch {
+  username?: string;
+  password?: string;
+  host?: string;
+  port?: string;
+  database?: string;
+}
+
+/** createDataSource adds a read-only data source to an instance. */
+export async function createDataSource(
+  parent: string,
+  dataSource: Omit<DataSourceInput, "id"> & { id?: string }
+) {
+  const request = create(CreateDataSourceRequestSchema, {
+    parent,
+    dataSourceId: dataSource.id ?? "",
+    dataSource: create(DataSourceSchema, {
+      type: dataSource.type,
+      username: dataSource.username,
+      password: dataSource.password,
+      host: dataSource.host,
+      port: dataSource.port,
+      database: dataSource.database ?? "",
+    }),
+  });
+  return await instanceClient.createDataSource(request);
+}
+
+/**
+ * updateDataSource writes exactly the fields named in updateMask. Fields left
+ * out keep their stored value, which is how an edit that does not carry a
+ * password avoids clearing one.
+ */
+export async function updateDataSource(
+  name: string,
+  patch: DataSourcePatch,
+  updateMask: string[]
+) {
+  const request = create(UpdateDataSourceRequestSchema, {
+    dataSource: create(DataSourceSchema, { name, ...patch }),
+    updateMask: create(FieldMaskSchema, { paths: updateMask }),
+  });
+  return await instanceClient.updateDataSource(request);
+}
+
+/** deleteDataSource removes a read-only data source from an instance. */
+export async function deleteDataSource(name: string) {
+  const request = create(DeleteDataSourceRequestSchema, { name });
+  return await instanceClient.deleteDataSource(request);
 }
 
 export interface UpdateInstanceInput {

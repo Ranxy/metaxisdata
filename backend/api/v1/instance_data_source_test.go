@@ -6,16 +6,16 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Ranxy/metaxisdata/backend/store"
-
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// A data source list built from a Get response carries neither credentials nor
-// store-only fields, because reads never return them. Overwriting the stored
-// entry with it blanked every password, dropped SSL material and reset TLS
-// verification to false.
-func TestMergeDataSourcePreservesUnreturnedFields(t *testing.T) {
+// patchDataSource writes only the fields named in the update mask. A request
+// built from a read never carries credentials, so an unmasked password, SSL
+// material or TLS verification setting must survive the update — overwriting the
+// stored entry blanked every password and reset TLS verification to false.
+func TestPatchDataSourcePreservesUnmaskedFields(t *testing.T) {
 	t.Parallel()
 
 	stored := &storepb.DataSource{
@@ -38,87 +38,81 @@ func TestMergeDataSourcePreservesUnreturnedFields(t *testing.T) {
 			"timeout": "5s",
 		},
 	}
-	requested := &storepb.DataSource{
-		Id:       "admin",
-		Type:     storepb.DataSourceType_ADMIN,
+	requested := &v1pb.DataSource{
 		Host:     "new-host",
 		Port:     "3307",
-		Username: "root",
+		Password: "",
 	}
 
-	merged := mergeDataSource(stored, requested)
+	require.NoError(t, patchDataSource(stored, requested, []string{"host", "port"}))
 
-	require.Equal(t, "new-host", merged.GetHost(), "requested host wins")
-	require.Equal(t, "3307", merged.GetPort(), "requested port wins")
-	require.Equal(t, "stored-password", merged.GetPassword(), "omitted credential is kept")
-	require.Equal(t, "obfuscated", merged.GetObfuscatedPassword())
-	require.Equal(t, "stored-ca", merged.GetSslCa())
-	require.Equal(t, "stored-key", merged.GetSslKey())
-	require.True(t, merged.GetVerifyTlsCertificate(), "TLS verification must not be downgraded")
-	require.Equal(t, "bastion", merged.GetSshHost())
-	require.Equal(t, "22", merged.GetSshPort())
-	require.Equal(t, "tunnel", merged.GetSshUser())
-	require.Equal(t, "stored-private-key", merged.GetSshPrivateKey())
-	require.Equal(t, map[string]string{"timeout": "5s"}, merged.GetExtraConnectionParameters())
-
-	// The stored entry itself is never mutated.
-	require.Equal(t, "old-host", stored.GetHost())
+	require.Equal(t, "new-host", stored.GetHost(), "a masked field is written")
+	require.Equal(t, "3307", stored.GetPort())
+	require.Equal(t, "stored-password", stored.GetPassword(), "an unmasked credential keeps its stored value")
+	require.Equal(t, "obfuscated", stored.GetObfuscatedPassword())
+	require.Equal(t, "stored-ca", stored.GetSslCa())
+	require.Equal(t, "stored-key", stored.GetSslKey())
+	require.True(t, stored.GetVerifyTlsCertificate(), "TLS verification must not be downgraded")
+	require.Equal(t, "bastion", stored.GetSshHost())
+	require.Equal(t, "22", stored.GetSshPort())
+	require.Equal(t, "tunnel", stored.GetSshUser())
+	require.Equal(t, "stored-private-key", stored.GetSshPrivateKey())
+	require.Equal(t, map[string]string{"timeout": "5s"}, stored.GetExtraConnectionParameters())
 }
 
-func TestMergeDataSourceOverlaysProvidedValues(t *testing.T) {
+func TestPatchDataSourceWritesEverySupportedField(t *testing.T) {
 	t.Parallel()
 
-	stored := &storepb.DataSource{
-		Id:       "admin",
-		Type:     storepb.DataSourceType_ADMIN,
-		Password: "old-password",
-		ExtraConnectionParameters: map[string]string{
-			"timeout": "5s",
-			"sslmode": "disable",
-		},
-	}
-	requested := &storepb.DataSource{
-		Id:       "admin",
-		Type:     storepb.DataSourceType_ADMIN,
-		Password: "new-password",
-		Database: "app",
-		UseSsl:   true,
-		SshHost:  "new-bastion",
-		ExtraConnectionParameters: map[string]string{
-			"timeout": "9s",
-		},
+	stored := &storepb.DataSource{Id: "admin", Type: storepb.DataSourceType_ADMIN}
+	requested := &v1pb.DataSource{
+		Username:                  "new-user",
+		Password:                  "new-password",
+		SslCa:                     "new-ca",
+		SslCert:                   "new-cert",
+		SslKey:                    "new-key",
+		Host:                      "new-host",
+		Port:                      "3307",
+		Database:                  "app",
+		SshHost:                   "new-bastion",
+		SshPort:                   "2222",
+		SshUser:                   "new-tunnel",
+		SshPassword:               "new-ssh-password",
+		SshPrivateKey:             "new-private-key",
+		UseSsl:                    true,
+		ExtraConnectionParameters: map[string]string{"timeout": "9s"},
 	}
 
-	merged := mergeDataSource(stored, requested)
+	require.NoError(t, patchDataSource(stored, requested, []string{
+		"username", "password", "ssl_ca", "ssl_cert", "ssl_key", "host", "port", "database",
+		"ssh_host", "ssh_port", "ssh_user", "ssh_password", "ssh_private_key", "use_ssl",
+		"extra_connection_parameters",
+	}))
 
-	require.Equal(t, "new-password", merged.GetPassword(), "a provided credential replaces the stored one")
-	require.Equal(t, "app", merged.GetDatabase())
-	require.True(t, merged.GetUseSsl())
-	require.Equal(t, "new-bastion", merged.GetSshHost())
-	require.Equal(t, map[string]string{"timeout": "9s", "sslmode": "disable"}, merged.GetExtraConnectionParameters())
+	require.Equal(t, "new-user", stored.GetUsername())
+	require.Equal(t, "new-password", stored.GetPassword())
+	require.Equal(t, "new-ca", stored.GetSslCa())
+	require.Equal(t, "new-cert", stored.GetSslCert())
+	require.Equal(t, "new-key", stored.GetSslKey())
+	require.Equal(t, "new-host", stored.GetHost())
+	require.Equal(t, "3307", stored.GetPort())
+	require.Equal(t, "app", stored.GetDatabase())
+	require.Equal(t, "new-bastion", stored.GetSshHost())
+	require.Equal(t, "2222", stored.GetSshPort())
+	require.Equal(t, "new-tunnel", stored.GetSshUser())
+	require.Equal(t, "new-ssh-password", stored.GetSshPassword())
+	require.Equal(t, "new-private-key", stored.GetSshPrivateKey())
+	require.True(t, stored.GetUseSsl())
+	require.Equal(t, map[string]string{"timeout": "9s"}, stored.GetExtraConnectionParameters())
 }
 
-func TestMergeDataSourcesKeysByID(t *testing.T) {
+func TestPatchDataSourceRejectsUnknownMaskPaths(t *testing.T) {
 	t.Parallel()
 
-	stored := []*storepb.DataSource{
-		{Id: "admin", Type: storepb.DataSourceType_ADMIN, Password: "admin-password", VerifyTlsCertificate: true},
-		{Id: "readonly", Type: storepb.DataSourceType_READ_ONLY, Password: "readonly-password"},
-	}
-	requested := []*storepb.DataSource{
-		{Id: "admin", Type: storepb.DataSourceType_ADMIN, Host: "db.internal"},
-		{Id: "new-readonly", Type: storepb.DataSourceType_READ_ONLY, Host: "reporting.internal"},
-	}
+	stored := &storepb.DataSource{Id: "admin", Host: "old-host"}
 
-	merged := mergeDataSources(stored, requested)
-
-	require.Len(t, merged, 2, "an ID missing from the request is removed")
-	require.Equal(t, "admin", merged[0].GetId())
-	require.Equal(t, "db.internal", merged[0].GetHost())
-	require.Equal(t, "admin-password", merged[0].GetPassword())
-	require.True(t, merged[0].GetVerifyTlsCertificate())
-	require.Equal(t, "new-readonly", merged[1].GetId(), "an unknown ID is added as requested")
-	require.Equal(t, "reporting.internal", merged[1].GetHost())
+	require.ErrorContains(t, patchDataSource(stored, &v1pb.DataSource{}, []string{"name"}), "unsupported update_mask")
+	require.ErrorContains(t, patchDataSource(stored, &v1pb.DataSource{}, []string{"type"}), "unsupported update_mask")
+	require.Equal(t, "old-host", stored.GetHost(), "a rejected mask leaves the stored entry untouched")
 }
 
 func TestCheckInstanceDataSourcesRequiresOneAdmin(t *testing.T) {

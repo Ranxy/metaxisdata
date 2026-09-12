@@ -26,6 +26,8 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -387,7 +389,7 @@ func (e *ServiceEnv) CreateMySQLInstance(ctx context.Context, instanceID string)
 			SyncInterval: durationpb.New(time.Minute),
 			DataSources: []*v1pb.DataSource{
 				{
-					Id:       "admin",
+					Name:     common.FormatDataSource(instanceID, "admin"),
 					Type:     v1pb.DataSourceType_ADMIN,
 					Username: "root",
 					Password: "root",
@@ -415,7 +417,7 @@ func (e *ServiceEnv) CreatePostgresInstance(ctx context.Context, instanceID stri
 			SyncInterval: durationpb.New(time.Minute),
 			DataSources: []*v1pb.DataSource{
 				{
-					Id:       "admin",
+					Name:     common.FormatDataSource(instanceID, "admin"),
 					Type:     v1pb.DataSourceType_ADMIN,
 					Username: "postgres",
 					Password: "postgres",
@@ -430,6 +432,58 @@ func (e *ServiceEnv) CreatePostgresInstance(ctx context.Context, instanceID stri
 		return nil, err
 	}
 	return resp.Msg, nil
+}
+
+// GetInstance reads an instance through the public API.
+func (e *ServiceEnv) GetInstance(ctx context.Context, name string) (*v1pb.Instance, error) {
+	resp, err := e.instanceClient.GetInstance(ctx, authorizedRequest(e.token, &v1pb.GetInstanceRequest{Name: name}))
+	if err != nil {
+		return nil, err
+	}
+	return resp.Msg, nil
+}
+
+// DeleteInstance deletes an instance through the public API.
+func (e *ServiceEnv) DeleteInstance(ctx context.Context, name string) (*emptypb.Empty, error) {
+	resp, err := e.instanceClient.DeleteInstance(ctx, authorizedRequest(e.token, &v1pb.DeleteInstanceRequest{Name: name}))
+	if err != nil {
+		return nil, err
+	}
+	return resp.Msg, nil
+}
+
+// CreateDataSource adds a data source through the public API.
+func (e *ServiceEnv) CreateDataSource(ctx context.Context, parent string, dataSource *v1pb.DataSource, dataSourceID string, validateOnly bool) (*v1pb.DataSource, error) {
+	resp, err := e.instanceClient.CreateDataSource(ctx, authorizedRequest(e.token, &v1pb.CreateDataSourceRequest{
+		Parent:       parent,
+		DataSource:   dataSource,
+		DataSourceId: dataSourceID,
+		ValidateOnly: validateOnly,
+	}))
+	if err != nil {
+		return nil, err
+	}
+	return resp.Msg, nil
+}
+
+// UpdateDataSource writes the masked fields of one data source through the public API.
+func (e *ServiceEnv) UpdateDataSource(ctx context.Context, name string, dataSource *v1pb.DataSource, updateMask []string, validateOnly bool) (*v1pb.DataSource, error) {
+	dataSource.Name = name
+	resp, err := e.instanceClient.UpdateDataSource(ctx, authorizedRequest(e.token, &v1pb.UpdateDataSourceRequest{
+		DataSource:   dataSource,
+		UpdateMask:   &fieldmaskpb.FieldMask{Paths: updateMask},
+		ValidateOnly: validateOnly,
+	}))
+	if err != nil {
+		return nil, err
+	}
+	return resp.Msg, nil
+}
+
+// DeleteDataSource removes a data source through the public API.
+func (e *ServiceEnv) DeleteDataSource(ctx context.Context, name string) error {
+	_, err := e.instanceClient.DeleteDataSource(ctx, authorizedRequest(e.token, &v1pb.DeleteDataSourceRequest{Name: name}))
+	return err
 }
 
 // ExecMySQL executes SQL directly against the source MySQL server used by the scenario.

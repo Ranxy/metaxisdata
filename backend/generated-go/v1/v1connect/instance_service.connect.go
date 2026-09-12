@@ -61,15 +61,15 @@ const (
 	// InstanceServiceBatchUpdateInstancesProcedure is the fully-qualified name of the InstanceService's
 	// BatchUpdateInstances RPC.
 	InstanceServiceBatchUpdateInstancesProcedure = "/metaxisdata.v1.InstanceService/BatchUpdateInstances"
-	// InstanceServiceAddDataSourceProcedure is the fully-qualified name of the InstanceService's
-	// AddDataSource RPC.
-	InstanceServiceAddDataSourceProcedure = "/metaxisdata.v1.InstanceService/AddDataSource"
-	// InstanceServiceRemoveDataSourceProcedure is the fully-qualified name of the InstanceService's
-	// RemoveDataSource RPC.
-	InstanceServiceRemoveDataSourceProcedure = "/metaxisdata.v1.InstanceService/RemoveDataSource"
+	// InstanceServiceCreateDataSourceProcedure is the fully-qualified name of the InstanceService's
+	// CreateDataSource RPC.
+	InstanceServiceCreateDataSourceProcedure = "/metaxisdata.v1.InstanceService/CreateDataSource"
 	// InstanceServiceUpdateDataSourceProcedure is the fully-qualified name of the InstanceService's
 	// UpdateDataSource RPC.
 	InstanceServiceUpdateDataSourceProcedure = "/metaxisdata.v1.InstanceService/UpdateDataSource"
+	// InstanceServiceDeleteDataSourceProcedure is the fully-qualified name of the InstanceService's
+	// DeleteDataSource RPC.
+	InstanceServiceDeleteDataSourceProcedure = "/metaxisdata.v1.InstanceService/DeleteDataSource"
 )
 
 // InstanceServiceClient is a client for the metaxisdata.v1.InstanceService service.
@@ -83,9 +83,9 @@ type InstanceServiceClient interface {
 	SyncInstance(context.Context, *connect.Request[v1.SyncInstanceRequest]) (*connect.Response[v1.SyncInstanceResponse], error)
 	BatchSyncInstances(context.Context, *connect.Request[v1.BatchSyncInstancesRequest]) (*connect.Response[v1.BatchSyncInstancesResponse], error)
 	BatchUpdateInstances(context.Context, *connect.Request[v1.BatchUpdateInstancesRequest]) (*connect.Response[v1.BatchUpdateInstancesResponse], error)
-	AddDataSource(context.Context, *connect.Request[v1.AddDataSourceRequest]) (*connect.Response[v1.Instance], error)
-	RemoveDataSource(context.Context, *connect.Request[v1.RemoveDataSourceRequest]) (*connect.Response[v1.Instance], error)
-	UpdateDataSource(context.Context, *connect.Request[v1.UpdateDataSourceRequest]) (*connect.Response[v1.Instance], error)
+	CreateDataSource(context.Context, *connect.Request[v1.CreateDataSourceRequest]) (*connect.Response[v1.DataSource], error)
+	UpdateDataSource(context.Context, *connect.Request[v1.UpdateDataSourceRequest]) (*connect.Response[v1.DataSource], error)
+	DeleteDataSource(context.Context, *connect.Request[v1.DeleteDataSourceRequest]) (*connect.Response[emptypb.Empty], error)
 }
 
 // NewInstanceServiceClient constructs a client for the metaxisdata.v1.InstanceService service. By
@@ -153,22 +153,22 @@ func NewInstanceServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(instanceServiceMethods.ByName("BatchUpdateInstances")),
 			connect.WithClientOptions(opts...),
 		),
-		addDataSource: connect.NewClient[v1.AddDataSourceRequest, v1.Instance](
+		createDataSource: connect.NewClient[v1.CreateDataSourceRequest, v1.DataSource](
 			httpClient,
-			baseURL+InstanceServiceAddDataSourceProcedure,
-			connect.WithSchema(instanceServiceMethods.ByName("AddDataSource")),
+			baseURL+InstanceServiceCreateDataSourceProcedure,
+			connect.WithSchema(instanceServiceMethods.ByName("CreateDataSource")),
 			connect.WithClientOptions(opts...),
 		),
-		removeDataSource: connect.NewClient[v1.RemoveDataSourceRequest, v1.Instance](
-			httpClient,
-			baseURL+InstanceServiceRemoveDataSourceProcedure,
-			connect.WithSchema(instanceServiceMethods.ByName("RemoveDataSource")),
-			connect.WithClientOptions(opts...),
-		),
-		updateDataSource: connect.NewClient[v1.UpdateDataSourceRequest, v1.Instance](
+		updateDataSource: connect.NewClient[v1.UpdateDataSourceRequest, v1.DataSource](
 			httpClient,
 			baseURL+InstanceServiceUpdateDataSourceProcedure,
 			connect.WithSchema(instanceServiceMethods.ByName("UpdateDataSource")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteDataSource: connect.NewClient[v1.DeleteDataSourceRequest, emptypb.Empty](
+			httpClient,
+			baseURL+InstanceServiceDeleteDataSourceProcedure,
+			connect.WithSchema(instanceServiceMethods.ByName("DeleteDataSource")),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -185,9 +185,9 @@ type instanceServiceClient struct {
 	syncInstance         *connect.Client[v1.SyncInstanceRequest, v1.SyncInstanceResponse]
 	batchSyncInstances   *connect.Client[v1.BatchSyncInstancesRequest, v1.BatchSyncInstancesResponse]
 	batchUpdateInstances *connect.Client[v1.BatchUpdateInstancesRequest, v1.BatchUpdateInstancesResponse]
-	addDataSource        *connect.Client[v1.AddDataSourceRequest, v1.Instance]
-	removeDataSource     *connect.Client[v1.RemoveDataSourceRequest, v1.Instance]
-	updateDataSource     *connect.Client[v1.UpdateDataSourceRequest, v1.Instance]
+	createDataSource     *connect.Client[v1.CreateDataSourceRequest, v1.DataSource]
+	updateDataSource     *connect.Client[v1.UpdateDataSourceRequest, v1.DataSource]
+	deleteDataSource     *connect.Client[v1.DeleteDataSourceRequest, emptypb.Empty]
 }
 
 // GetInstance calls metaxisdata.v1.InstanceService.GetInstance.
@@ -235,19 +235,19 @@ func (c *instanceServiceClient) BatchUpdateInstances(ctx context.Context, req *c
 	return c.batchUpdateInstances.CallUnary(ctx, req)
 }
 
-// AddDataSource calls metaxisdata.v1.InstanceService.AddDataSource.
-func (c *instanceServiceClient) AddDataSource(ctx context.Context, req *connect.Request[v1.AddDataSourceRequest]) (*connect.Response[v1.Instance], error) {
-	return c.addDataSource.CallUnary(ctx, req)
-}
-
-// RemoveDataSource calls metaxisdata.v1.InstanceService.RemoveDataSource.
-func (c *instanceServiceClient) RemoveDataSource(ctx context.Context, req *connect.Request[v1.RemoveDataSourceRequest]) (*connect.Response[v1.Instance], error) {
-	return c.removeDataSource.CallUnary(ctx, req)
+// CreateDataSource calls metaxisdata.v1.InstanceService.CreateDataSource.
+func (c *instanceServiceClient) CreateDataSource(ctx context.Context, req *connect.Request[v1.CreateDataSourceRequest]) (*connect.Response[v1.DataSource], error) {
+	return c.createDataSource.CallUnary(ctx, req)
 }
 
 // UpdateDataSource calls metaxisdata.v1.InstanceService.UpdateDataSource.
-func (c *instanceServiceClient) UpdateDataSource(ctx context.Context, req *connect.Request[v1.UpdateDataSourceRequest]) (*connect.Response[v1.Instance], error) {
+func (c *instanceServiceClient) UpdateDataSource(ctx context.Context, req *connect.Request[v1.UpdateDataSourceRequest]) (*connect.Response[v1.DataSource], error) {
 	return c.updateDataSource.CallUnary(ctx, req)
+}
+
+// DeleteDataSource calls metaxisdata.v1.InstanceService.DeleteDataSource.
+func (c *instanceServiceClient) DeleteDataSource(ctx context.Context, req *connect.Request[v1.DeleteDataSourceRequest]) (*connect.Response[emptypb.Empty], error) {
+	return c.deleteDataSource.CallUnary(ctx, req)
 }
 
 // InstanceServiceHandler is an implementation of the metaxisdata.v1.InstanceService service.
@@ -261,9 +261,9 @@ type InstanceServiceHandler interface {
 	SyncInstance(context.Context, *connect.Request[v1.SyncInstanceRequest]) (*connect.Response[v1.SyncInstanceResponse], error)
 	BatchSyncInstances(context.Context, *connect.Request[v1.BatchSyncInstancesRequest]) (*connect.Response[v1.BatchSyncInstancesResponse], error)
 	BatchUpdateInstances(context.Context, *connect.Request[v1.BatchUpdateInstancesRequest]) (*connect.Response[v1.BatchUpdateInstancesResponse], error)
-	AddDataSource(context.Context, *connect.Request[v1.AddDataSourceRequest]) (*connect.Response[v1.Instance], error)
-	RemoveDataSource(context.Context, *connect.Request[v1.RemoveDataSourceRequest]) (*connect.Response[v1.Instance], error)
-	UpdateDataSource(context.Context, *connect.Request[v1.UpdateDataSourceRequest]) (*connect.Response[v1.Instance], error)
+	CreateDataSource(context.Context, *connect.Request[v1.CreateDataSourceRequest]) (*connect.Response[v1.DataSource], error)
+	UpdateDataSource(context.Context, *connect.Request[v1.UpdateDataSourceRequest]) (*connect.Response[v1.DataSource], error)
+	DeleteDataSource(context.Context, *connect.Request[v1.DeleteDataSourceRequest]) (*connect.Response[emptypb.Empty], error)
 }
 
 // NewInstanceServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -327,22 +327,22 @@ func NewInstanceServiceHandler(svc InstanceServiceHandler, opts ...connect.Handl
 		connect.WithSchema(instanceServiceMethods.ByName("BatchUpdateInstances")),
 		connect.WithHandlerOptions(opts...),
 	)
-	instanceServiceAddDataSourceHandler := connect.NewUnaryHandler(
-		InstanceServiceAddDataSourceProcedure,
-		svc.AddDataSource,
-		connect.WithSchema(instanceServiceMethods.ByName("AddDataSource")),
-		connect.WithHandlerOptions(opts...),
-	)
-	instanceServiceRemoveDataSourceHandler := connect.NewUnaryHandler(
-		InstanceServiceRemoveDataSourceProcedure,
-		svc.RemoveDataSource,
-		connect.WithSchema(instanceServiceMethods.ByName("RemoveDataSource")),
+	instanceServiceCreateDataSourceHandler := connect.NewUnaryHandler(
+		InstanceServiceCreateDataSourceProcedure,
+		svc.CreateDataSource,
+		connect.WithSchema(instanceServiceMethods.ByName("CreateDataSource")),
 		connect.WithHandlerOptions(opts...),
 	)
 	instanceServiceUpdateDataSourceHandler := connect.NewUnaryHandler(
 		InstanceServiceUpdateDataSourceProcedure,
 		svc.UpdateDataSource,
 		connect.WithSchema(instanceServiceMethods.ByName("UpdateDataSource")),
+		connect.WithHandlerOptions(opts...),
+	)
+	instanceServiceDeleteDataSourceHandler := connect.NewUnaryHandler(
+		InstanceServiceDeleteDataSourceProcedure,
+		svc.DeleteDataSource,
+		connect.WithSchema(instanceServiceMethods.ByName("DeleteDataSource")),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/metaxisdata.v1.InstanceService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -365,12 +365,12 @@ func NewInstanceServiceHandler(svc InstanceServiceHandler, opts ...connect.Handl
 			instanceServiceBatchSyncInstancesHandler.ServeHTTP(w, r)
 		case InstanceServiceBatchUpdateInstancesProcedure:
 			instanceServiceBatchUpdateInstancesHandler.ServeHTTP(w, r)
-		case InstanceServiceAddDataSourceProcedure:
-			instanceServiceAddDataSourceHandler.ServeHTTP(w, r)
-		case InstanceServiceRemoveDataSourceProcedure:
-			instanceServiceRemoveDataSourceHandler.ServeHTTP(w, r)
+		case InstanceServiceCreateDataSourceProcedure:
+			instanceServiceCreateDataSourceHandler.ServeHTTP(w, r)
 		case InstanceServiceUpdateDataSourceProcedure:
 			instanceServiceUpdateDataSourceHandler.ServeHTTP(w, r)
+		case InstanceServiceDeleteDataSourceProcedure:
+			instanceServiceDeleteDataSourceHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -416,14 +416,14 @@ func (UnimplementedInstanceServiceHandler) BatchUpdateInstances(context.Context,
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.InstanceService.BatchUpdateInstances is not implemented"))
 }
 
-func (UnimplementedInstanceServiceHandler) AddDataSource(context.Context, *connect.Request[v1.AddDataSourceRequest]) (*connect.Response[v1.Instance], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.InstanceService.AddDataSource is not implemented"))
+func (UnimplementedInstanceServiceHandler) CreateDataSource(context.Context, *connect.Request[v1.CreateDataSourceRequest]) (*connect.Response[v1.DataSource], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.InstanceService.CreateDataSource is not implemented"))
 }
 
-func (UnimplementedInstanceServiceHandler) RemoveDataSource(context.Context, *connect.Request[v1.RemoveDataSourceRequest]) (*connect.Response[v1.Instance], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.InstanceService.RemoveDataSource is not implemented"))
-}
-
-func (UnimplementedInstanceServiceHandler) UpdateDataSource(context.Context, *connect.Request[v1.UpdateDataSourceRequest]) (*connect.Response[v1.Instance], error) {
+func (UnimplementedInstanceServiceHandler) UpdateDataSource(context.Context, *connect.Request[v1.UpdateDataSourceRequest]) (*connect.Response[v1.DataSource], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.InstanceService.UpdateDataSource is not implemented"))
+}
+
+func (UnimplementedInstanceServiceHandler) DeleteDataSource(context.Context, *connect.Request[v1.DeleteDataSourceRequest]) (*connect.Response[emptypb.Empty], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.InstanceService.DeleteDataSource is not implemented"))
 }

@@ -27,6 +27,7 @@ const (
 	IdentityProviderNamePrefix = "idps/"
 	RolePrefix                 = "roles/"
 	GroupPrefix                = "groups/"
+	DataSourceIDPrefix         = "dataSources/"
 	NamespaceMappingPrefix     = "openlineage/namespaceMappings/"
 	OpenLineageRunPrefix       = "openlineage/runs/"
 	OpenLineageTaskPrefix      = "openlineage/tasks/"
@@ -155,6 +156,16 @@ func GetUserEmail(name string) (string, error) {
 	return tokens[0], nil
 }
 
+// GetInstanceDataSourceID returns the instance and data source IDs from a data
+// source resource name.
+func GetInstanceDataSourceID(name string) (string, string, error) {
+	tokens, err := GetNameParentTokens(name, InstanceNamePrefix, DataSourceIDPrefix)
+	if err != nil {
+		return "", "", err
+	}
+	return tokens[0], tokens[1], nil
+}
+
 // GetIdentityProviderID returns the identity provider ID from a resource name.
 func GetIdentityProviderID(name string) (string, error) {
 	tokens, err := GetNameParentTokens(name, IdentityProviderNamePrefix)
@@ -212,6 +223,11 @@ func FormatInstance(resourceID string) string {
 
 func FormatDatabase(instance string, database string) string {
 	return fmt.Sprintf("%s/%s%s", FormatInstance(instance), DatabaseIDPrefix, database)
+}
+
+// FormatDataSource formats a data source resource name.
+func FormatDataSource(instanceID, dataSourceID string) string {
+	return fmt.Sprintf("%s/%s%s", FormatInstance(instanceID), DataSourceIDPrefix, dataSourceID)
 }
 
 func FormatRole(role string) string {
