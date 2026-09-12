@@ -196,7 +196,12 @@ func sanitizeAuditValue(value any) {
 
 func isSensitiveAuditField(key string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(key))
-	if normalized == "code" || normalized == "authorization" || normalized == "cookie" || normalized == "idpcontext" {
+	switch normalized {
+	case "code", "authorization", "cookie", "idpcontext",
+		// These are bare field names of credential-bearing messages, so a
+		// substring match would not catch them.
+		"key", "content", "sslkey", "sslcert", "keytab",
+		"passwd", "pwd", "bearer", "jwt", "session":
 		return true
 	}
 	for _, marker := range []string{"password", "token", "secret", "credential", "servicekey", "apikey", "api_key", "accesskey", "privatekey", "private_key"} {
