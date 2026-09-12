@@ -44,6 +44,8 @@ var (
 		// output logs in json format
 		enableJSONLogging bool
 		debug             bool
+		// openlineageRetentionDays bounds how long OpenLineage runs are kept.
+		openlineageRetentionDays int
 	}
 
 	rootCmd = &cobra.Command{
@@ -65,6 +67,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flags.enableJSONLogging, "enable-json-logging", false, "enable output logs in json format")
 	rootCmd.PersistentFlags().BoolVar(&flags.debug, "debug", false, "whether to enable debug level logging")
 	rootCmd.PersistentFlags().StringVar(&flags.externalURL, "external-url", "", "the external URL the server is reachable at; used to build SSO callback URLs when the workspace setting does not already set one")
+	rootCmd.PersistentFlags().IntVar(&flags.openlineageRetentionDays, "openlineage-retention-days", 0, "delete persisted OpenLineage runs older than this many days; 0 keeps them forever")
 }
 
 // setupLogging installs the process-wide logger. Without it slog.Default keeps

@@ -20,6 +20,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/migrator"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
+	"github.com/Ranxy/metaxisdata/backend/runner/maintenance"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
 	"github.com/Ranxy/metaxisdata/backend/store"
 
@@ -47,6 +48,7 @@ type Server struct {
 	startedTS       int64
 	lineageAnalyzer *lineageanalyzer.Analyzer
 	schemaSync      *schemasync.Syncer
+	maintenance     *maintenance.Runner
 	llmRegistry     *llmcomp.Registry
 	// PG server stoppers.
 	stopper []func()
@@ -102,6 +104,8 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 
 	s.schemaSync = schemasync.NewSyncer(stores, dbFactory, profile, stateCfg, s.lineageAnalyzer)
 
+	s.maintenance = maintenance.NewRunner(stores, profile)
+
 	s.llmRegistry = llmcomp.NewRegistry(stores, profile)
 
 	if err := s.initializeSetting(ctx); err != nil {
@@ -119,9 +123,10 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")
 	}
 
-	s.runnerWG.Add(2)
+	s.runnerWG.Add(3)
 	go s.lineageAnalyzer.Run(s.runnerCtx, &s.runnerWG)
 	go s.schemaSync.Run(s.runnerCtx, &s.runnerWG)
+	go s.maintenance.Run(s.runnerCtx, &s.runnerWG)
 
 	configureEchoRouters(s.echoServer, profile)
 

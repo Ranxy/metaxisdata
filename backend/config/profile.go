@@ -21,6 +21,10 @@ type Profile struct {
 	// AUTH_SECRET setting in the database.
 	EncryptionKey string
 
+	// OpenLineageRetentionDays bounds how long persisted OpenLineage runs are
+	// kept. Zero (the default) keeps them forever: they are audit data.
+	OpenLineageRetentionDays int
+
 	// can be set in runtime
 	RuntimeDebug atomic.Bool
 
