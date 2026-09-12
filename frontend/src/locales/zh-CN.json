@@ -79,7 +79,11 @@
     "loadError": "加载设置失败",
     "saveSuccess": "设置已保存",
     "saveError": "保存设置失败",
-    "readOnlyHint": "您没有修改工作区设置的权限。"
+    "readOnlyHint": "您没有修改工作区设置的权限。",
+    "debugSection": "调试模式",
+    "debugSectionDescription": "用于排查问题的运行时诊断开关，修改后立即生效。",
+    "debugMode": "开启运行时调试模式",
+    "debugModeHint": "将服务端日志级别切换为 debug，开启详细请求日志与 /debug/pprof，并允许 panic 处理把堆栈返回给调用方。排查完成后请及时关闭。"
   },
   "auditLogs": {
     "title": "审计日志",

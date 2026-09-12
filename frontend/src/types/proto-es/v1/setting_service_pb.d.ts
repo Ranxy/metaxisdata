@@ -82,6 +82,72 @@ export declare type UpdateWorkspaceProfileSettingRequest = Message<"metaxisdata.
 export declare const UpdateWorkspaceProfileSettingRequestSchema: GenMessage<UpdateWorkspaceProfileSettingRequest>;
 
 /**
+ * @generated from message metaxisdata.v1.GetDebugConfigRequest
+ */
+export declare type GetDebugConfigRequest = Message<"metaxisdata.v1.GetDebugConfigRequest"> & {
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetDebugConfigRequest.
+ * Use `create(GetDebugConfigRequestSchema)` to create a new message.
+ */
+export declare const GetDebugConfigRequestSchema: GenMessage<GetDebugConfigRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetDebugConfigResponse
+ */
+export declare type GetDebugConfigResponse = Message<"metaxisdata.v1.GetDebugConfigResponse"> & {
+  /**
+   * Whether runtime debug mode is currently enabled.
+   *
+   * @generated from field: bool enabled = 1;
+   */
+  enabled: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetDebugConfigResponse.
+ * Use `create(GetDebugConfigResponseSchema)` to create a new message.
+ */
+export declare const GetDebugConfigResponseSchema: GenMessage<GetDebugConfigResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateDebugConfigRequest
+ */
+export declare type UpdateDebugConfigRequest = Message<"metaxisdata.v1.UpdateDebugConfigRequest"> & {
+  /**
+   * Whether to enable runtime debug mode.
+   *
+   * @generated from field: bool enabled = 1;
+   */
+  enabled: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateDebugConfigRequest.
+ * Use `create(UpdateDebugConfigRequestSchema)` to create a new message.
+ */
+export declare const UpdateDebugConfigRequestSchema: GenMessage<UpdateDebugConfigRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateDebugConfigResponse
+ */
+export declare type UpdateDebugConfigResponse = Message<"metaxisdata.v1.UpdateDebugConfigResponse"> & {
+  /**
+   * The resulting runtime debug mode.
+   *
+   * @generated from field: bool enabled = 1;
+   */
+  enabled: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateDebugConfigResponse.
+ * Use `create(UpdateDebugConfigResponseSchema)` to create a new message.
+ */
+export declare const UpdateDebugConfigResponseSchema: GenMessage<UpdateDebugConfigResponse>;
+
+/**
  * @generated from service metaxisdata.v1.SettingService
  */
 export declare const SettingService: GenService<{
@@ -108,6 +174,31 @@ export declare const SettingService: GenService<{
     methodKind: "unary";
     input: typeof UpdateWorkspaceProfileSettingRequestSchema;
     output: typeof WorkspaceProfileSettingSchema;
+  },
+  /**
+   * Get the workspace runtime debug config.
+   *
+   * @generated from rpc metaxisdata.v1.SettingService.GetDebugConfig
+   */
+  getDebugConfig: {
+    methodKind: "unary";
+    input: typeof GetDebugConfigRequestSchema;
+    output: typeof GetDebugConfigResponseSchema;
+  },
+  /**
+   * Update the workspace runtime debug config.
+   *
+   * Enabling it switches the process-wide log level to debug, gates the
+   * verbose request logging emitted by the debug interceptor, exposes
+   * /debug/pprof, and allows panic handlers to return stack traces to the
+   * caller. Disabling it restores info-level logging and generic panic errors.
+   *
+   * @generated from rpc metaxisdata.v1.SettingService.UpdateDebugConfig
+   */
+  updateDebugConfig: {
+    methodKind: "unary";
+    input: typeof UpdateDebugConfigRequestSchema;
+    output: typeof UpdateDebugConfigResponseSchema;
   },
 }>;
 

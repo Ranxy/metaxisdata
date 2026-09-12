@@ -2,11 +2,14 @@ package v1
 
 import (
 	"context"
+	"log/slog"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/config"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
@@ -16,12 +19,13 @@ import (
 // SettingService implements the setting service.
 type SettingService struct {
 	v1connect.UnimplementedSettingServiceHandler
-	store *store.Store
+	store   *store.Store
+	profile *config.Profile
 }
 
 // NewSettingService creates a new SettingService.
-func NewSettingService(store *store.Store) *SettingService {
-	return &SettingService{store: store}
+func NewSettingService(store *store.Store, profile *config.Profile) *SettingService {
+	return &SettingService{store: store, profile: profile}
 }
 
 // GetWorkspaceProfileSetting gets the workspace profile setting.
@@ -78,4 +82,26 @@ func convertToWorkspaceProfileSetting(setting *storepb.WorkspaceProfileSetting) 
 		DisallowSignup:         setting.GetDisallowSignup(),
 		DisallowPasswordSignin: setting.GetDisallowPasswordSignin(),
 	}
+}
+
+// GetDebugConfig gets the runtime debug config.
+func (s *SettingService) GetDebugConfig(_ context.Context, _ *connect.Request[v1pb.GetDebugConfigRequest]) (*connect.Response[v1pb.GetDebugConfigResponse], error) {
+	return connect.NewResponse(&v1pb.GetDebugConfigResponse{Enabled: s.profile.RuntimeDebug.Load()}), nil
+}
+
+// UpdateDebugConfig updates the runtime debug config.
+//
+// RuntimeDebug is the single switch the whole process reads: it selects the
+// slog level, gates the debug interceptor's chatty logs and /debug/pprof, and
+// decides whether panic handlers hand stack traces back to the caller. Keep it
+// and the log level in lockstep so a toggle takes effect without a restart.
+func (s *SettingService) UpdateDebugConfig(_ context.Context, request *connect.Request[v1pb.UpdateDebugConfigRequest]) (*connect.Response[v1pb.UpdateDebugConfigResponse], error) {
+	enabled := request.Msg.GetEnabled()
+	s.profile.RuntimeDebug.Store(enabled)
+	if enabled {
+		log.LogLevel.Set(slog.LevelDebug)
+	} else {
+		log.LogLevel.Set(slog.LevelInfo)
+	}
+	return connect.NewResponse(&v1pb.UpdateDebugConfigResponse{Enabled: enabled}), nil
 }

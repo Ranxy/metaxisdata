@@ -177,6 +177,177 @@ func (x *UpdateWorkspaceProfileSettingRequest) GetUpdateMask() *fieldmaskpb.Fiel
 	return nil
 }
 
+type GetDebugConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDebugConfigRequest) Reset() {
+	*x = GetDebugConfigRequest{}
+	mi := &file_v1_setting_service_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDebugConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDebugConfigRequest) ProtoMessage() {}
+
+func (x *GetDebugConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDebugConfigRequest.ProtoReflect.Descriptor instead.
+func (*GetDebugConfigRequest) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{3}
+}
+
+type GetDebugConfigResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether runtime debug mode is currently enabled.
+	Enabled       bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDebugConfigResponse) Reset() {
+	*x = GetDebugConfigResponse{}
+	mi := &file_v1_setting_service_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDebugConfigResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDebugConfigResponse) ProtoMessage() {}
+
+func (x *GetDebugConfigResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDebugConfigResponse.ProtoReflect.Descriptor instead.
+func (*GetDebugConfigResponse) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GetDebugConfigResponse) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+type UpdateDebugConfigRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether to enable runtime debug mode.
+	Enabled       bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateDebugConfigRequest) Reset() {
+	*x = UpdateDebugConfigRequest{}
+	mi := &file_v1_setting_service_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateDebugConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateDebugConfigRequest) ProtoMessage() {}
+
+func (x *UpdateDebugConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateDebugConfigRequest.ProtoReflect.Descriptor instead.
+func (*UpdateDebugConfigRequest) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *UpdateDebugConfigRequest) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+type UpdateDebugConfigResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The resulting runtime debug mode.
+	Enabled       bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateDebugConfigResponse) Reset() {
+	*x = UpdateDebugConfigResponse{}
+	mi := &file_v1_setting_service_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateDebugConfigResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateDebugConfigResponse) ProtoMessage() {}
+
+func (x *UpdateDebugConfigResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateDebugConfigResponse.ProtoReflect.Descriptor instead.
+func (*UpdateDebugConfigResponse) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *UpdateDebugConfigResponse) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
 var File_v1_setting_service_proto protoreflect.FileDescriptor
 
 const file_v1_setting_service_proto_rawDesc = "" +
@@ -190,10 +361,19 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"$UpdateWorkspaceProfileSettingRequest\x12F\n" +
 	"\asetting\x18\x01 \x01(\v2'.metaxisdata.v1.WorkspaceProfileSettingB\x03\xe0A\x02R\asetting\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask2\xbc\x03\n" +
+	"updateMask\"\x17\n" +
+	"\x15GetDebugConfigRequest\"2\n" +
+	"\x16GetDebugConfigResponse\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\"9\n" +
+	"\x18UpdateDebugConfigRequest\x12\x1d\n" +
+	"\aenabled\x18\x01 \x01(\bB\x03\xe0A\x02R\aenabled\"5\n" +
+	"\x19UpdateDebugConfigResponse\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled2\x99\x06\n" +
 	"\x0eSettingService\x12\xbf\x01\n" +
 	"\x1aGetWorkspaceProfileSetting\x121.metaxisdata.v1.GetWorkspaceProfileSettingRequest\x1a'.metaxisdata.v1.WorkspaceProfileSetting\"E\x80\xea0\x01\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/settings/workspaceProfile\x12\xe7\x01\n" +
-	"\x1dUpdateWorkspaceProfileSetting\x124.metaxisdata.v1.UpdateWorkspaceProfileSettingRequest\x1a'.metaxisdata.v1.WorkspaceProfileSetting\"g\xdaA\x13setting,update_mask\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02(:\asetting2\x1d/v1/settings/workspaceProfileB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\x1dUpdateWorkspaceProfileSetting\x124.metaxisdata.v1.UpdateWorkspaceProfileSettingRequest\x1a'.metaxisdata.v1.WorkspaceProfileSetting\"g\xdaA\x13setting,update_mask\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02(:\asetting2\x1d/v1/settings/workspaceProfile\x12\x9d\x01\n" +
+	"\x0eGetDebugConfig\x12%.metaxisdata.v1.GetDebugConfigRequest\x1a&.metaxisdata.v1.GetDebugConfigResponse\"<\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/settings/debugConfig\x12\xba\x01\n" +
+	"\x11UpdateDebugConfig\x12(.metaxisdata.v1.UpdateDebugConfigRequest\x1a).metaxisdata.v1.UpdateDebugConfigResponse\"P\xdaA\aenabled\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1d:\x01*2\x18/v1/settings/debugConfigB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_setting_service_proto_rawDescOnce sync.Once
@@ -207,22 +387,30 @@ func file_v1_setting_service_proto_rawDescGZIP() []byte {
 	return file_v1_setting_service_proto_rawDescData
 }
 
-var file_v1_setting_service_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_v1_setting_service_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_v1_setting_service_proto_goTypes = []any{
 	(*WorkspaceProfileSetting)(nil),              // 0: metaxisdata.v1.WorkspaceProfileSetting
 	(*GetWorkspaceProfileSettingRequest)(nil),    // 1: metaxisdata.v1.GetWorkspaceProfileSettingRequest
 	(*UpdateWorkspaceProfileSettingRequest)(nil), // 2: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
-	(*fieldmaskpb.FieldMask)(nil),                // 3: google.protobuf.FieldMask
+	(*GetDebugConfigRequest)(nil),                // 3: metaxisdata.v1.GetDebugConfigRequest
+	(*GetDebugConfigResponse)(nil),               // 4: metaxisdata.v1.GetDebugConfigResponse
+	(*UpdateDebugConfigRequest)(nil),             // 5: metaxisdata.v1.UpdateDebugConfigRequest
+	(*UpdateDebugConfigResponse)(nil),            // 6: metaxisdata.v1.UpdateDebugConfigResponse
+	(*fieldmaskpb.FieldMask)(nil),                // 7: google.protobuf.FieldMask
 }
 var file_v1_setting_service_proto_depIdxs = []int32{
 	0, // 0: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.setting:type_name -> metaxisdata.v1.WorkspaceProfileSetting
-	3, // 1: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	7, // 1: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
 	1, // 2: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:input_type -> metaxisdata.v1.GetWorkspaceProfileSettingRequest
 	2, // 3: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:input_type -> metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
-	0, // 4: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
-	0, // 5: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
+	3, // 4: metaxisdata.v1.SettingService.GetDebugConfig:input_type -> metaxisdata.v1.GetDebugConfigRequest
+	5, // 5: metaxisdata.v1.SettingService.UpdateDebugConfig:input_type -> metaxisdata.v1.UpdateDebugConfigRequest
+	0, // 6: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
+	0, // 7: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
+	4, // 8: metaxisdata.v1.SettingService.GetDebugConfig:output_type -> metaxisdata.v1.GetDebugConfigResponse
+	6, // 9: metaxisdata.v1.SettingService.UpdateDebugConfig:output_type -> metaxisdata.v1.UpdateDebugConfigResponse
+	6, // [6:10] is the sub-list for method output_type
+	2, // [2:6] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name
@@ -240,7 +428,7 @@ func file_v1_setting_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_setting_service_proto_rawDesc), len(file_v1_setting_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -39,6 +39,12 @@ const (
 	// SettingServiceUpdateWorkspaceProfileSettingProcedure is the fully-qualified name of the
 	// SettingService's UpdateWorkspaceProfileSetting RPC.
 	SettingServiceUpdateWorkspaceProfileSettingProcedure = "/metaxisdata.v1.SettingService/UpdateWorkspaceProfileSetting"
+	// SettingServiceGetDebugConfigProcedure is the fully-qualified name of the SettingService's
+	// GetDebugConfig RPC.
+	SettingServiceGetDebugConfigProcedure = "/metaxisdata.v1.SettingService/GetDebugConfig"
+	// SettingServiceUpdateDebugConfigProcedure is the fully-qualified name of the SettingService's
+	// UpdateDebugConfig RPC.
+	SettingServiceUpdateDebugConfigProcedure = "/metaxisdata.v1.SettingService/UpdateDebugConfig"
 )
 
 // SettingServiceClient is a client for the metaxisdata.v1.SettingService service.
@@ -51,6 +57,15 @@ type SettingServiceClient interface {
 	GetWorkspaceProfileSetting(context.Context, *connect.Request[v1.GetWorkspaceProfileSettingRequest]) (*connect.Response[v1.WorkspaceProfileSetting], error)
 	// Update the workspace profile setting.
 	UpdateWorkspaceProfileSetting(context.Context, *connect.Request[v1.UpdateWorkspaceProfileSettingRequest]) (*connect.Response[v1.WorkspaceProfileSetting], error)
+	// Get the workspace runtime debug config.
+	GetDebugConfig(context.Context, *connect.Request[v1.GetDebugConfigRequest]) (*connect.Response[v1.GetDebugConfigResponse], error)
+	// Update the workspace runtime debug config.
+	//
+	// Enabling it switches the process-wide log level to debug, gates the
+	// verbose request logging emitted by the debug interceptor, exposes
+	// /debug/pprof, and allows panic handlers to return stack traces to the
+	// caller. Disabling it restores info-level logging and generic panic errors.
+	UpdateDebugConfig(context.Context, *connect.Request[v1.UpdateDebugConfigRequest]) (*connect.Response[v1.UpdateDebugConfigResponse], error)
 }
 
 // NewSettingServiceClient constructs a client for the metaxisdata.v1.SettingService service. By
@@ -76,6 +91,18 @@ func NewSettingServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(settingServiceMethods.ByName("UpdateWorkspaceProfileSetting")),
 			connect.WithClientOptions(opts...),
 		),
+		getDebugConfig: connect.NewClient[v1.GetDebugConfigRequest, v1.GetDebugConfigResponse](
+			httpClient,
+			baseURL+SettingServiceGetDebugConfigProcedure,
+			connect.WithSchema(settingServiceMethods.ByName("GetDebugConfig")),
+			connect.WithClientOptions(opts...),
+		),
+		updateDebugConfig: connect.NewClient[v1.UpdateDebugConfigRequest, v1.UpdateDebugConfigResponse](
+			httpClient,
+			baseURL+SettingServiceUpdateDebugConfigProcedure,
+			connect.WithSchema(settingServiceMethods.ByName("UpdateDebugConfig")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -83,6 +110,8 @@ func NewSettingServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 type settingServiceClient struct {
 	getWorkspaceProfileSetting    *connect.Client[v1.GetWorkspaceProfileSettingRequest, v1.WorkspaceProfileSetting]
 	updateWorkspaceProfileSetting *connect.Client[v1.UpdateWorkspaceProfileSettingRequest, v1.WorkspaceProfileSetting]
+	getDebugConfig                *connect.Client[v1.GetDebugConfigRequest, v1.GetDebugConfigResponse]
+	updateDebugConfig             *connect.Client[v1.UpdateDebugConfigRequest, v1.UpdateDebugConfigResponse]
 }
 
 // GetWorkspaceProfileSetting calls metaxisdata.v1.SettingService.GetWorkspaceProfileSetting.
@@ -95,6 +124,16 @@ func (c *settingServiceClient) UpdateWorkspaceProfileSetting(ctx context.Context
 	return c.updateWorkspaceProfileSetting.CallUnary(ctx, req)
 }
 
+// GetDebugConfig calls metaxisdata.v1.SettingService.GetDebugConfig.
+func (c *settingServiceClient) GetDebugConfig(ctx context.Context, req *connect.Request[v1.GetDebugConfigRequest]) (*connect.Response[v1.GetDebugConfigResponse], error) {
+	return c.getDebugConfig.CallUnary(ctx, req)
+}
+
+// UpdateDebugConfig calls metaxisdata.v1.SettingService.UpdateDebugConfig.
+func (c *settingServiceClient) UpdateDebugConfig(ctx context.Context, req *connect.Request[v1.UpdateDebugConfigRequest]) (*connect.Response[v1.UpdateDebugConfigResponse], error) {
+	return c.updateDebugConfig.CallUnary(ctx, req)
+}
+
 // SettingServiceHandler is an implementation of the metaxisdata.v1.SettingService service.
 type SettingServiceHandler interface {
 	// Get the workspace profile setting.
@@ -105,6 +144,15 @@ type SettingServiceHandler interface {
 	GetWorkspaceProfileSetting(context.Context, *connect.Request[v1.GetWorkspaceProfileSettingRequest]) (*connect.Response[v1.WorkspaceProfileSetting], error)
 	// Update the workspace profile setting.
 	UpdateWorkspaceProfileSetting(context.Context, *connect.Request[v1.UpdateWorkspaceProfileSettingRequest]) (*connect.Response[v1.WorkspaceProfileSetting], error)
+	// Get the workspace runtime debug config.
+	GetDebugConfig(context.Context, *connect.Request[v1.GetDebugConfigRequest]) (*connect.Response[v1.GetDebugConfigResponse], error)
+	// Update the workspace runtime debug config.
+	//
+	// Enabling it switches the process-wide log level to debug, gates the
+	// verbose request logging emitted by the debug interceptor, exposes
+	// /debug/pprof, and allows panic handlers to return stack traces to the
+	// caller. Disabling it restores info-level logging and generic panic errors.
+	UpdateDebugConfig(context.Context, *connect.Request[v1.UpdateDebugConfigRequest]) (*connect.Response[v1.UpdateDebugConfigResponse], error)
 }
 
 // NewSettingServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -126,12 +174,28 @@ func NewSettingServiceHandler(svc SettingServiceHandler, opts ...connect.Handler
 		connect.WithSchema(settingServiceMethods.ByName("UpdateWorkspaceProfileSetting")),
 		connect.WithHandlerOptions(opts...),
 	)
+	settingServiceGetDebugConfigHandler := connect.NewUnaryHandler(
+		SettingServiceGetDebugConfigProcedure,
+		svc.GetDebugConfig,
+		connect.WithSchema(settingServiceMethods.ByName("GetDebugConfig")),
+		connect.WithHandlerOptions(opts...),
+	)
+	settingServiceUpdateDebugConfigHandler := connect.NewUnaryHandler(
+		SettingServiceUpdateDebugConfigProcedure,
+		svc.UpdateDebugConfig,
+		connect.WithSchema(settingServiceMethods.ByName("UpdateDebugConfig")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.SettingService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SettingServiceGetWorkspaceProfileSettingProcedure:
 			settingServiceGetWorkspaceProfileSettingHandler.ServeHTTP(w, r)
 		case SettingServiceUpdateWorkspaceProfileSettingProcedure:
 			settingServiceUpdateWorkspaceProfileSettingHandler.ServeHTTP(w, r)
+		case SettingServiceGetDebugConfigProcedure:
+			settingServiceGetDebugConfigHandler.ServeHTTP(w, r)
+		case SettingServiceUpdateDebugConfigProcedure:
+			settingServiceUpdateDebugConfigHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -147,4 +211,12 @@ func (UnimplementedSettingServiceHandler) GetWorkspaceProfileSetting(context.Con
 
 func (UnimplementedSettingServiceHandler) UpdateWorkspaceProfileSetting(context.Context, *connect.Request[v1.UpdateWorkspaceProfileSettingRequest]) (*connect.Response[v1.WorkspaceProfileSetting], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting is not implemented"))
+}
+
+func (UnimplementedSettingServiceHandler) GetDebugConfig(context.Context, *connect.Request[v1.GetDebugConfigRequest]) (*connect.Response[v1.GetDebugConfigResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.SettingService.GetDebugConfig is not implemented"))
+}
+
+func (UnimplementedSettingServiceHandler) UpdateDebugConfig(context.Context, *connect.Request[v1.UpdateDebugConfigRequest]) (*connect.Response[v1.UpdateDebugConfigResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.SettingService.UpdateDebugConfig is not implemented"))
 }

@@ -259,7 +259,11 @@
     - [RoleService](#metaxisdata-v1-RoleService)
   
 - [v1/setting_service.proto](#v1_setting_service-proto)
+    - [GetDebugConfigRequest](#metaxisdata-v1-GetDebugConfigRequest)
+    - [GetDebugConfigResponse](#metaxisdata-v1-GetDebugConfigResponse)
     - [GetWorkspaceProfileSettingRequest](#metaxisdata-v1-GetWorkspaceProfileSettingRequest)
+    - [UpdateDebugConfigRequest](#metaxisdata-v1-UpdateDebugConfigRequest)
+    - [UpdateDebugConfigResponse](#metaxisdata-v1-UpdateDebugConfigResponse)
     - [UpdateWorkspaceProfileSettingRequest](#metaxisdata-v1-UpdateWorkspaceProfileSettingRequest)
     - [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting)
   
@@ -4220,10 +4224,65 @@ metaxisdata.roles.* permissions.
 
 
 
+<a name="metaxisdata-v1-GetDebugConfigRequest"></a>
+
+### GetDebugConfigRequest
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetDebugConfigResponse"></a>
+
+### GetDebugConfigResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  | Whether runtime debug mode is currently enabled. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetWorkspaceProfileSettingRequest"></a>
 
 ### GetWorkspaceProfileSettingRequest
 
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateDebugConfigRequest"></a>
+
+### UpdateDebugConfigRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  | Whether to enable runtime debug mode. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateDebugConfigResponse"></a>
+
+### UpdateDebugConfigResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  | The resulting runtime debug mode. |
 
 
 
@@ -4280,6 +4339,10 @@ metaxisdata.roles.* permissions.
 
 This method is readable without credentials because the login page needs to know whether self-service signup is enabled. |
 | UpdateWorkspaceProfileSetting | [UpdateWorkspaceProfileSettingRequest](#metaxisdata-v1-UpdateWorkspaceProfileSettingRequest) | [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting) | Update the workspace profile setting. |
+| GetDebugConfig | [GetDebugConfigRequest](#metaxisdata-v1-GetDebugConfigRequest) | [GetDebugConfigResponse](#metaxisdata-v1-GetDebugConfigResponse) | Get the workspace runtime debug config. |
+| UpdateDebugConfig | [UpdateDebugConfigRequest](#metaxisdata-v1-UpdateDebugConfigRequest) | [UpdateDebugConfigResponse](#metaxisdata-v1-UpdateDebugConfigResponse) | Update the workspace runtime debug config.
+
+Enabling it switches the process-wide log level to debug, gates the verbose request logging emitted by the debug interceptor, exposes /debug/pprof, and allows panic handlers to return stack traces to the caller. Disabling it restores info-level logging and generic panic errors. |
 
  
 

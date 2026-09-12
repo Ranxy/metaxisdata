@@ -79,7 +79,11 @@
     "loadError": "Failed to load settings",
     "saveSuccess": "Settings saved",
     "saveError": "Failed to save settings",
-    "readOnlyHint": "You do not have permission to change the workspace settings."
+    "readOnlyHint": "You do not have permission to change the workspace settings.",
+    "debugSection": "Debug mode",
+    "debugSectionDescription": "Runtime diagnostics for troubleshooting. Changes apply immediately.",
+    "debugMode": "Enable runtime debug mode",
+    "debugModeHint": "Switches server logging to debug level, turns on verbose request logs and /debug/pprof, and lets panic handlers return stack traces to clients. Turn it off again once you are done."
   },
   "auditLogs": {
     "title": "Audit Logs",

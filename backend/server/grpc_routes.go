@@ -71,7 +71,7 @@ func configureGrpcRouters(
 	openLineageService := apiv1.NewOpenLineageService(stores)
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
 	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry)
-	settingService := apiv1.NewSettingService(stores)
+	settingService := apiv1.NewSettingService(stores, profile)
 	roleService := apiv1.NewRoleService(stores)
 	groupService := apiv1.NewGroupService(stores)
 	iamService := apiv1.NewIamService(stores)
@@ -80,7 +80,12 @@ func configureGrpcRouters(
 		stack := stacktrace.TakeStacktrace(20 /* n */, 5 /* skip */)
 		// keep a multiline stack
 		slog.Error("v1 server panic error", "method", s.Procedure, log.WithError(errors.Errorf("error: %v\n%s", p, stack)))
-		// The stack stays in the log; the client only gets a generic message.
+		// Panic details (internal file paths, function names, line numbers) are
+		// only safe to hand back in debug mode; otherwise they help a caller map
+		// the server internals. The full stack is always logged above.
+		if profile.RuntimeDebug.Load() {
+			return connect.NewError(connect.CodeInternal, errors.Errorf("error: %v\n%s", p, stack))
+		}
 		return connect.NewError(connect.CodeInternal, errors.New("internal server error"))
 	}
 

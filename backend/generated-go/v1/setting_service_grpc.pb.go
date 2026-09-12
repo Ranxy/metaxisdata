@@ -21,6 +21,8 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	SettingService_GetWorkspaceProfileSetting_FullMethodName    = "/metaxisdata.v1.SettingService/GetWorkspaceProfileSetting"
 	SettingService_UpdateWorkspaceProfileSetting_FullMethodName = "/metaxisdata.v1.SettingService/UpdateWorkspaceProfileSetting"
+	SettingService_GetDebugConfig_FullMethodName                = "/metaxisdata.v1.SettingService/GetDebugConfig"
+	SettingService_UpdateDebugConfig_FullMethodName             = "/metaxisdata.v1.SettingService/UpdateDebugConfig"
 )
 
 // SettingServiceClient is the client API for SettingService service.
@@ -35,6 +37,15 @@ type SettingServiceClient interface {
 	GetWorkspaceProfileSetting(ctx context.Context, in *GetWorkspaceProfileSettingRequest, opts ...grpc.CallOption) (*WorkspaceProfileSetting, error)
 	// Update the workspace profile setting.
 	UpdateWorkspaceProfileSetting(ctx context.Context, in *UpdateWorkspaceProfileSettingRequest, opts ...grpc.CallOption) (*WorkspaceProfileSetting, error)
+	// Get the workspace runtime debug config.
+	GetDebugConfig(ctx context.Context, in *GetDebugConfigRequest, opts ...grpc.CallOption) (*GetDebugConfigResponse, error)
+	// Update the workspace runtime debug config.
+	//
+	// Enabling it switches the process-wide log level to debug, gates the
+	// verbose request logging emitted by the debug interceptor, exposes
+	// /debug/pprof, and allows panic handlers to return stack traces to the
+	// caller. Disabling it restores info-level logging and generic panic errors.
+	UpdateDebugConfig(ctx context.Context, in *UpdateDebugConfigRequest, opts ...grpc.CallOption) (*UpdateDebugConfigResponse, error)
 }
 
 type settingServiceClient struct {
@@ -65,6 +76,26 @@ func (c *settingServiceClient) UpdateWorkspaceProfileSetting(ctx context.Context
 	return out, nil
 }
 
+func (c *settingServiceClient) GetDebugConfig(ctx context.Context, in *GetDebugConfigRequest, opts ...grpc.CallOption) (*GetDebugConfigResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetDebugConfigResponse)
+	err := c.cc.Invoke(ctx, SettingService_GetDebugConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *settingServiceClient) UpdateDebugConfig(ctx context.Context, in *UpdateDebugConfigRequest, opts ...grpc.CallOption) (*UpdateDebugConfigResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateDebugConfigResponse)
+	err := c.cc.Invoke(ctx, SettingService_UpdateDebugConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SettingServiceServer is the server API for SettingService service.
 // All implementations must embed UnimplementedSettingServiceServer
 // for forward compatibility.
@@ -77,6 +108,15 @@ type SettingServiceServer interface {
 	GetWorkspaceProfileSetting(context.Context, *GetWorkspaceProfileSettingRequest) (*WorkspaceProfileSetting, error)
 	// Update the workspace profile setting.
 	UpdateWorkspaceProfileSetting(context.Context, *UpdateWorkspaceProfileSettingRequest) (*WorkspaceProfileSetting, error)
+	// Get the workspace runtime debug config.
+	GetDebugConfig(context.Context, *GetDebugConfigRequest) (*GetDebugConfigResponse, error)
+	// Update the workspace runtime debug config.
+	//
+	// Enabling it switches the process-wide log level to debug, gates the
+	// verbose request logging emitted by the debug interceptor, exposes
+	// /debug/pprof, and allows panic handlers to return stack traces to the
+	// caller. Disabling it restores info-level logging and generic panic errors.
+	UpdateDebugConfig(context.Context, *UpdateDebugConfigRequest) (*UpdateDebugConfigResponse, error)
 	mustEmbedUnimplementedSettingServiceServer()
 }
 
@@ -92,6 +132,12 @@ func (UnimplementedSettingServiceServer) GetWorkspaceProfileSetting(context.Cont
 }
 func (UnimplementedSettingServiceServer) UpdateWorkspaceProfileSetting(context.Context, *UpdateWorkspaceProfileSettingRequest) (*WorkspaceProfileSetting, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateWorkspaceProfileSetting not implemented")
+}
+func (UnimplementedSettingServiceServer) GetDebugConfig(context.Context, *GetDebugConfigRequest) (*GetDebugConfigResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDebugConfig not implemented")
+}
+func (UnimplementedSettingServiceServer) UpdateDebugConfig(context.Context, *UpdateDebugConfigRequest) (*UpdateDebugConfigResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateDebugConfig not implemented")
 }
 func (UnimplementedSettingServiceServer) mustEmbedUnimplementedSettingServiceServer() {}
 func (UnimplementedSettingServiceServer) testEmbeddedByValue()                        {}
@@ -150,6 +196,42 @@ func _SettingService_UpdateWorkspaceProfileSetting_Handler(srv interface{}, ctx 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SettingService_GetDebugConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDebugConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SettingServiceServer).GetDebugConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SettingService_GetDebugConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SettingServiceServer).GetDebugConfig(ctx, req.(*GetDebugConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SettingService_UpdateDebugConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateDebugConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SettingServiceServer).UpdateDebugConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SettingService_UpdateDebugConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SettingServiceServer).UpdateDebugConfig(ctx, req.(*UpdateDebugConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SettingService_ServiceDesc is the grpc.ServiceDesc for SettingService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -164,6 +246,14 @@ var SettingService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateWorkspaceProfileSetting",
 			Handler:    _SettingService_UpdateWorkspaceProfileSetting_Handler,
+		},
+		{
+			MethodName: "GetDebugConfig",
+			Handler:    _SettingService_GetDebugConfig_Handler,
+		},
+		{
+			MethodName: "UpdateDebugConfig",
+			Handler:    _SettingService_UpdateDebugConfig_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -1161,7 +1161,23 @@
             <ul>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetDebugConfigRequest"><span class="badge">M</span>GetDebugConfigRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetDebugConfigResponse"><span class="badge">M</span>GetDebugConfigResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetWorkspaceProfileSettingRequest"><span class="badge">M</span>GetWorkspaceProfileSettingRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.UpdateDebugConfigRequest"><span class="badge">M</span>UpdateDebugConfigRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.UpdateDebugConfigResponse"><span class="badge">M</span>UpdateDebugConfigResponse</a>
                 </li>
               
                 <li>
@@ -12216,10 +12232,89 @@ string from the permission catalog. </p></td>
       <p></p>
 
       
+        <h3 id="metaxisdata.v1.GetDebugConfigRequest">GetDebugConfigRequest</h3>
+        <p></p>
+
+        
+
+        
+      
+        <h3 id="metaxisdata.v1.GetDebugConfigResponse">GetDebugConfigResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether runtime debug mode is currently enabled. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetWorkspaceProfileSettingRequest">GetWorkspaceProfileSettingRequest</h3>
         <p></p>
 
         
+
+        
+      
+        <h3 id="metaxisdata.v1.UpdateDebugConfigRequest">UpdateDebugConfigRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether to enable runtime debug mode. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.UpdateDebugConfigResponse">UpdateDebugConfigResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>The resulting runtime debug mode. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
 
         
       
@@ -12325,6 +12420,25 @@ to know whether self-service signup is enabled.</p></td>
                 <td><p>Update the workspace profile setting.</p></td>
               </tr>
             
+              <tr>
+                <td>GetDebugConfig</td>
+                <td><a href="#metaxisdata.v1.GetDebugConfigRequest">GetDebugConfigRequest</a></td>
+                <td><a href="#metaxisdata.v1.GetDebugConfigResponse">GetDebugConfigResponse</a></td>
+                <td><p>Get the workspace runtime debug config.</p></td>
+              </tr>
+            
+              <tr>
+                <td>UpdateDebugConfig</td>
+                <td><a href="#metaxisdata.v1.UpdateDebugConfigRequest">UpdateDebugConfigRequest</a></td>
+                <td><a href="#metaxisdata.v1.UpdateDebugConfigResponse">UpdateDebugConfigResponse</a></td>
+                <td><p>Update the workspace runtime debug config.
+
+Enabling it switches the process-wide log level to debug, gates the
+verbose request logging emitted by the debug interceptor, exposes
+/debug/pprof, and allows panic handlers to return stack traces to the
+caller. Disabling it restores info-level logging and generic panic errors.</p></td>
+              </tr>
+            
           </tbody>
         </table>
 
@@ -12360,6 +12474,26 @@ to know whether self-service signup is enabled.</p></td>
                 <td>PATCH</td>
                 <td>/v1/settings/workspaceProfile</td>
                 <td>setting</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetDebugConfig</td>
+                <td>GET</td>
+                <td>/v1/settings/debugConfig</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>UpdateDebugConfig</td>
+                <td>PATCH</td>
+                <td>/v1/settings/debugConfig</td>
+                <td>*</td>
               </tr>
               
             

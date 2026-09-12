@@ -32,6 +32,28 @@ service SettingService {
     option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
     option (metaxisdata.v1.audit) = true;
   }
+
+  // Get the workspace runtime debug config.
+  rpc GetDebugConfig(GetDebugConfigRequest) returns (GetDebugConfigResponse) {
+    option (google.api.http) = {get: "/v1/settings/debugConfig"};
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.get";
+  }
+
+  // Update the workspace runtime debug config.
+  //
+  // Enabling it switches the process-wide log level to debug, gates the
+  // verbose request logging emitted by the debug interceptor, exposes
+  // /debug/pprof, and allows panic handlers to return stack traces to the
+  // caller. Disabling it restores info-level logging and generic panic errors.
+  rpc UpdateDebugConfig(UpdateDebugConfigRequest) returns (UpdateDebugConfigResponse) {
+    option (google.api.http) = {
+      patch: "/v1/settings/debugConfig"
+      body: "*"
+    };
+    option (google.api.method_signature) = "enabled";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.audit) = true;
+  }
 }
 
 message WorkspaceProfileSetting {
@@ -54,4 +76,21 @@ message UpdateWorkspaceProfileSettingRequest {
 
   // The list of fields to update.
   google.protobuf.FieldMask update_mask = 2;
+}
+
+message GetDebugConfigRequest {}
+
+message GetDebugConfigResponse {
+  // Whether runtime debug mode is currently enabled.
+  bool enabled = 1;
+}
+
+message UpdateDebugConfigRequest {
+  // Whether to enable runtime debug mode.
+  bool enabled = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdateDebugConfigResponse {
+  // The resulting runtime debug mode.
+  bool enabled = 1;
 }
