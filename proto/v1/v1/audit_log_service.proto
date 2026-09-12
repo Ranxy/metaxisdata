@@ -15,6 +15,9 @@ service AuditLogService {
     option (google.api.http) = {get: "/v1/{parent=**}/auditLogs"};
     option (google.api.method_signature) = "parent";
     option (metaxisdata.v1.permission) = "metaxisdata.auditLogs.search";
+    // Reading the audit trail is itself an auditable event: an admin browsing
+    // it must not do so invisibly.
+    option (metaxisdata.v1.audit) = true;
   }
 }
 

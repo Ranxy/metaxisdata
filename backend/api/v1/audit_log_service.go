@@ -8,6 +8,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
@@ -30,8 +31,14 @@ func (s *AuditLogService) ListAuditLogs(ctx context.Context, req *connect.Reques
 	if parent == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("parent is required"))
 	}
+	// "workspaces/-" means "the current workspace". It used to blank the parent,
+	// which silently dropped the scope filter instead of resolving it.
 	if parent == "workspaces/-" {
-		parent = ""
+		workspaceID, err := s.store.GetWorkspaceID(ctx)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to resolve the workspace"))
+		}
+		parent = common.FormatWorkspace(workspaceID)
 	}
 
 	offset, err := parseLimitAndOffset(&pageSize{
@@ -85,8 +92,8 @@ func convertToV1AuditLog(auditLog *storepb.AuditLog) *v1pb.AuditLog {
 		Resource:        auditLog.GetResource(),
 		User:            auditLog.GetUser(),
 		Severity:        convertAuditSeverity(auditLog.GetSeverity()),
-		Request:         auditLog.GetRequest(),
-		Response:        auditLog.GetResponse(),
+		Request:         sanitizeAuditStruct(auditLog.GetRequest()),
+		Response:        sanitizeAuditStruct(auditLog.GetResponse()),
 		Status:          convertAuditStatus(auditLog.GetStatus()),
 		LatencyMs:       auditLog.GetLatencyMs(),
 		ServiceData:     auditLog.GetServiceData(),

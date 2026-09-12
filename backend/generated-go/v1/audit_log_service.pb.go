@@ -483,9 +483,9 @@ const file_v1_audit_log_service_proto_rawDesc = "" +
 	"\x1eAUDIT_LOG_SEVERITY_UNSPECIFIED\x10\x00\x12\b\n" +
 	"\x04INFO\x10\x01\x12\v\n" +
 	"\aWARNING\x10\x02\x12\t\n" +
-	"\x05ERROR\x10\x032\xbc\x01\n" +
-	"\x0fAuditLogService\x12\xa8\x01\n" +
-	"\rListAuditLogs\x12$.metaxisdata.v1.ListAuditLogsRequest\x1a%.metaxisdata.v1.ListAuditLogsResponse\"J\xdaA\x06parent\x8a\xea0\x1cmetaxisdata.auditLogs.search\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/{parent=**}/auditLogsB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\x05ERROR\x10\x032\xc0\x01\n" +
+	"\x0fAuditLogService\x12\xac\x01\n" +
+	"\rListAuditLogs\x12$.metaxisdata.v1.ListAuditLogsRequest\x1a%.metaxisdata.v1.ListAuditLogsResponse\"N\xdaA\x06parent\x8a\xea0\x1cmetaxisdata.auditLogs.search\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/{parent=**}/auditLogsB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_audit_log_service_proto_rawDescOnce sync.Once

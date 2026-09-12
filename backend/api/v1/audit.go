@@ -26,12 +26,25 @@ import (
 
 const redactedValue = "[REDACTED]"
 
+// auditWriteTimeout bounds an audit write that runs detached from the request,
+// so a hung database cannot pile up audit goroutines.
+const auditWriteTimeout = 10 * time.Second
+
 type AuditInterceptor struct {
 	store *store.Store
+	// trustedProxies are the peer IPs/CIDRs whose forwarding headers may be
+	// believed. Empty means the connection address is the client address.
+	trustedProxies []string
 }
 
-func NewAuditInterceptor(store *store.Store) *AuditInterceptor {
-	return &AuditInterceptor{store: store}
+func NewAuditInterceptor(store *store.Store, trustedProxies []string) *AuditInterceptor {
+	return &AuditInterceptor{store: store, trustedProxies: trustedProxies}
+}
+
+// auditContext detaches an audit write from the request: a client disconnect
+// must not cancel the record of what that client did.
+func auditContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), auditWriteTimeout)
 }
 
 func (in *AuditInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
@@ -73,7 +86,9 @@ func (in *AuditInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFu
 
 		startTime := time.Now()
 		err := next(ctx, conn)
-		workspaceID, workspaceErr := in.store.GetWorkspaceID(ctx)
+		auditCtx, cancel := auditContext(ctx)
+		defer cancel()
+		workspaceID, workspaceErr := in.store.GetWorkspaceID(auditCtx)
 		if workspaceErr == nil {
 			auditLog := &storepb.AuditLog{
 				Parent:          common.FormatWorkspace(workspaceID),
@@ -82,9 +97,9 @@ func (in *AuditInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFu
 				Severity:        mapSeverity(err),
 				Status:          buildAuditStatus(err),
 				LatencyMs:       time.Since(startTime).Milliseconds(),
-				RequestMetadata: buildRequestMetadata(conn.RequestHeader(), ""),
+				RequestMetadata: buildRequestMetadata(conn.RequestHeader(), "", in.trustedProxies),
 			}
-			if _, createErr := in.store.CreateAuditLog(ctx, auditLog); createErr != nil {
+			if _, createErr := in.store.CreateAuditLog(auditCtx, auditLog); createErr != nil {
 				slog.Error("failed to persist stream audit log", "method", conn.Spec().Procedure, clog.WithError(createErr))
 			}
 		}
@@ -93,7 +108,10 @@ func (in *AuditInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFu
 }
 
 func (in *AuditInterceptor) createAuditLog(ctx context.Context, req connect.AnyRequest, resp connect.AnyResponse, err error, startTime time.Time) error {
-	workspaceID, workspaceErr := in.store.GetWorkspaceID(ctx)
+	auditCtx, cancel := auditContext(ctx)
+	defer cancel()
+
+	workspaceID, workspaceErr := in.store.GetWorkspaceID(auditCtx)
 	if workspaceErr != nil {
 		return pkgerrors.Wrap(workspaceErr, "failed to get workspace id for audit log")
 	}
@@ -129,14 +147,14 @@ func (in *AuditInterceptor) createAuditLog(ctx context.Context, req connect.AnyR
 		Response:        responseStruct,
 		Status:          buildAuditStatus(err),
 		LatencyMs:       time.Since(startTime).Milliseconds(),
-		RequestMetadata: buildRequestMetadata(req.Header(), req.Peer().Addr),
+		RequestMetadata: buildRequestMetadata(req.Header(), req.Peer().Addr, in.trustedProxies),
 	}
 
 	if auditLog.Resource == "" {
 		auditLog.Resource = auditLog.User
 	}
 
-	_, createErr := in.store.CreateAuditLog(ctx, auditLog)
+	_, createErr := in.store.CreateAuditLog(auditCtx, auditLog)
 	return createErr
 }
 
@@ -189,6 +207,22 @@ func sanitizeAuditValue(value any) {
 		}
 	default:
 	}
+}
+
+// sanitizeAuditStruct re-runs redaction over a stored payload. Rows written
+// before the redaction list was complete may still hold plaintext credentials,
+// so the read path must not hand them back.
+func sanitizeAuditStruct(payload *structpb.Struct) *structpb.Struct {
+	if payload == nil {
+		return nil
+	}
+	raw := payload.AsMap()
+	sanitizeAuditValue(raw)
+	sanitized, err := structpb.NewStruct(raw)
+	if err != nil {
+		return payload
+	}
+	return sanitized
 }
 
 func isSensitiveAuditField(key string) bool {
@@ -303,17 +337,16 @@ func buildAuditStatus(err error) *storepb.AuditLogStatus {
 	return &storepb.AuditLogStatus{Code: int32(connectErr.Code()), Message: connectErr.Message()}
 }
 
-func buildRequestMetadata(header http.Header, peerAddr string) *storepb.AuditRequestMetadata {
-	ip := strings.TrimSpace(strings.Split(header.Get("X-Forwarded-For"), ",")[0])
-	if ip == "" {
-		ip = strings.TrimSpace(strings.Split(header.Get("grpcgateway-x-forwarded-for"), ",")[0])
-	}
-	if ip == "" && peerAddr != "" {
-		host, _, err := net.SplitHostPort(peerAddr)
-		if err == nil {
-			ip = host
-		} else {
-			ip = peerAddr
+// buildRequestMetadata records where a request came from. Forwarding headers are
+// only believed when the connection itself comes from a configured trusted
+// proxy: otherwise any client could pick its own audit IP by sending
+// X-Forwarded-For.
+func buildRequestMetadata(header http.Header, peerAddr string, trustedProxies []string) *storepb.AuditRequestMetadata {
+	peerHost := hostFromAddr(peerAddr)
+	ip := peerHost
+	if peerHost != "" && isTrustedProxy(peerHost, trustedProxies) {
+		if forwarded := firstForwardedFor(header); forwarded != "" {
+			ip = forwarded
 		}
 	}
 
@@ -323,6 +356,53 @@ func buildRequestMetadata(header http.Header, peerAddr string) *storepb.AuditReq
 	}
 
 	return &storepb.AuditRequestMetadata{Ip: ip, UserAgent: userAgent}
+}
+
+func hostFromAddr(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	return host
+}
+
+func firstForwardedFor(header http.Header) string {
+	for _, key := range []string{"X-Forwarded-For", "grpcgateway-x-forwarded-for"} {
+		if value := header.Get(key); value != "" {
+			if first := strings.TrimSpace(strings.Split(value, ",")[0]); first != "" {
+				return first
+			}
+		}
+	}
+	return ""
+}
+
+// isTrustedProxy matches the peer against an exact IP or a CIDR entry.
+func isTrustedProxy(host string, trustedProxies []string) bool {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, entry := range trustedProxies {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if strings.Contains(entry, "/") {
+			if _, network, err := net.ParseCIDR(entry); err == nil && network.Contains(ip) {
+				return true
+			}
+			continue
+		}
+		if parsed := net.ParseIP(entry); parsed != nil && parsed.Equal(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 func isNilConnectValue(value any) bool {

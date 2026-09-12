@@ -8,6 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -141,29 +142,80 @@ func TestBuildRequestMetadata(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		headers   map[string]string
-		peerAddr  string
-		wantIP    string
-		wantAgent string
+		name           string
+		headers        map[string]string
+		peerAddr       string
+		trustedProxies []string
+		wantIP         string
+		wantAgent      string
 	}{
-		{"forwarded for takes the first hop", map[string]string{"X-Forwarded-For": " 203.0.113.7 , 10.0.0.1"}, "", "203.0.113.7", ""},
-		{"gateway forwarded for", map[string]string{"grpcgateway-x-forwarded-for": "203.0.113.9"}, "", "203.0.113.9", ""},
-		{"peer address host", nil, "10.1.2.3:54321", "10.1.2.3", ""},
-		{"peer address without port", nil, "10.1.2.3", "10.1.2.3", ""},
-		{"forwarded wins over peer", map[string]string{"X-Forwarded-For": "203.0.113.7"}, "10.1.2.3:54321", "203.0.113.7", ""},
-		{"user agent", map[string]string{"User-Agent": "curl/8"}, "", "", "curl/8"},
-		{"gateway user agent", map[string]string{"grpcgateway-user-agent": "grpc-go/1"}, "", "", "grpc-go/1"},
+		{
+			name: "forwarded for is ignored from an untrusted peer", headers: map[string]string{"X-Forwarded-For": " 203.0.113.7 , 10.0.0.1"},
+			peerAddr: "10.1.2.3:54321", wantIP: "10.1.2.3",
+		},
+		{
+			name: "forwarded for is believed from a trusted peer", headers: map[string]string{"X-Forwarded-For": " 203.0.113.7 , 10.0.0.1"},
+			peerAddr: "10.1.2.3:54321", trustedProxies: []string{"10.1.2.3"}, wantIP: "203.0.113.7",
+		},
+		{
+			name: "gateway forwarded for from a trusted peer", headers: map[string]string{"grpcgateway-x-forwarded-for": "203.0.113.9"},
+			peerAddr: "10.1.2.3:54321", trustedProxies: []string{"10.1.2.0/24"}, wantIP: "203.0.113.9",
+		},
+		{
+			name: "trusted exact ip without a port", headers: map[string]string{"X-Forwarded-For": "203.0.113.7"},
+			peerAddr: "10.1.2.3", trustedProxies: []string{"10.1.2.3"}, wantIP: "203.0.113.7",
+		},
+		{name: "peer address host", peerAddr: "10.1.2.3:54321", wantIP: "10.1.2.3"},
+		{name: "peer address without port", peerAddr: "10.1.2.3", wantIP: "10.1.2.3"},
+		{name: "user agent", headers: map[string]string{"User-Agent": "curl/8"}, wantAgent: "curl/8"},
+		{name: "gateway user agent", headers: map[string]string{"grpcgateway-user-agent": "grpc-go/1"}, wantAgent: "grpc-go/1"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			metadata := buildRequestMetadata(headerFromMap(tt.headers), tt.peerAddr)
+			metadata := buildRequestMetadata(headerFromMap(tt.headers), tt.peerAddr, tt.trustedProxies)
 			require.Equal(t, tt.wantIP, metadata.GetIp())
 			require.Equal(t, tt.wantAgent, metadata.GetUserAgent())
 		})
 	}
+}
+
+// A caller must not be able to pick its own audit IP by sending a forwarding
+// header from an address that is not a configured proxy.
+func TestIsTrustedProxy(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, isTrustedProxy("10.0.0.1", []string{"10.0.0.1"}))
+	require.True(t, isTrustedProxy("10.0.0.7", []string{"10.0.0.0/24"}))
+	require.False(t, isTrustedProxy("10.0.1.7", []string{"10.0.0.0/24"}))
+	require.False(t, isTrustedProxy("10.0.0.1", nil))
+	require.False(t, isTrustedProxy("not-an-ip", []string{"10.0.0.0/24"}))
+	require.False(t, isTrustedProxy("10.0.0.1", []string{"", "10.0.0.0/33"}))
+}
+
+// Sanitizing a stored payload is what keeps pre-fix audit rows from handing
+// plaintext credentials back to a reader.
+func TestSanitizeAuditStructRedactsHistoricalPayloads(t *testing.T) {
+	t.Parallel()
+
+	payload, err := structpb.NewStruct(map[string]any{
+		"key":      "ol_plaintext",
+		"password": "hunter2",
+		"nested":   map[string]any{"sslKey": "private", "title": "keep me"},
+	})
+	require.NoError(t, err)
+
+	sanitized := sanitizeAuditStruct(payload)
+	raw := sanitized.AsMap()
+	require.Equal(t, redactedValue, raw["key"])
+	require.Equal(t, redactedValue, raw["password"])
+	nested, ok := raw["nested"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, redactedValue, nested["sslKey"])
+	require.Equal(t, "keep me", nested["title"])
+
+	require.Nil(t, sanitizeAuditStruct(nil))
 }
 
 // headerFromMap builds a real http.Header: Set canonicalizes the keys the same

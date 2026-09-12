@@ -48,6 +48,8 @@ var (
 		// comma-separated browser origins allowed to call the server with
 		// credentials. Empty installs no CORS middleware at all.
 		corsAllowOrigins string
+		// comma-separated peer IPs/CIDRs whose forwarding headers are trusted.
+		trustedProxies string
 	}
 
 	rootCmd = &cobra.Command{
@@ -69,6 +71,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flags.enableJSONLogging, "enable-json-logging", false, "enable output logs in json format")
 	rootCmd.PersistentFlags().BoolVar(&flags.debug, "debug", false, "whether to enable debug level logging")
 	rootCmd.PersistentFlags().StringVar(&flags.corsAllowOrigins, "cors-allow-origins", "", "comma-separated browser origins allowed to call the API with credentials; empty disables CORS")
+	rootCmd.PersistentFlags().StringVar(&flags.trustedProxies, "trusted-proxies", "", "comma-separated peer IPs or CIDRs whose X-Forwarded-For may be trusted for audit logging")
 }
 
 // defaultDevCORSOrigins matches the Vite dev server, which proxies /v1 and
@@ -77,12 +80,23 @@ func init() {
 // credentialed cross-site requests from anywhere.
 var defaultDevCORSOrigins = []string{"http://localhost:3000", "http://127.0.0.1:3000"}
 
+// parseCommaList splits a comma-separated flag and drops empty entries.
+func parseCommaList(raw string) []string {
+	var values []string
+	for _, part := range strings.Split(raw, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	return values
+}
+
 // parseCORSAllowOrigins splits the comma-separated flag and drops empty entries
 // and trailing slashes, which browsers never include in an Origin header.
 func parseCORSAllowOrigins(raw string) []string {
-	var origins []string
-	for _, part := range strings.Split(raw, ",") {
-		if trimmed := strings.TrimSpace(strings.TrimRight(part, "/")); trimmed != "" {
+	origins := make([]string, 0)
+	for _, origin := range parseCommaList(raw) {
+		if trimmed := strings.TrimRight(origin, "/"); trimmed != "" {
 			origins = append(origins, trimmed)
 		}
 	}
@@ -118,6 +132,7 @@ func start() {
 	if len(profile.CORSAllowOrigins) == 0 && profile.Mode == common.ReleaseModeDev {
 		profile.CORSAllowOrigins = defaultDevCORSOrigins
 	}
+	profile.TrustedProxies = parseCommaList(flags.trustedProxies)
 
 	if profile.PgURL == "" {
 		slog.Error("must set PG_URL environment variable")

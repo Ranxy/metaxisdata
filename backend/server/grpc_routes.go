@@ -93,7 +93,7 @@ func configureGrpcRouters(
 		connect.WithInterceptors(
 			apiv1.NewDebugInterceptor(),
 			auth.New(stores, secret, stateCfg, profile),
-			apiv1.NewAuditInterceptor(stores),
+			apiv1.NewAuditInterceptor(stores, profile.TrustedProxies),
 			apiv1.NewACLInterceptor(iamManager),
 			// Innermost, so the audit interceptor records the status the client
 			// actually received.
