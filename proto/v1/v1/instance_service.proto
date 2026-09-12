@@ -256,7 +256,24 @@ message BatchSyncInstancesRequest {
   repeated SyncInstanceRequest requests = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
-message BatchSyncInstancesResponse {}
+message BatchSyncInstancesResponse {
+  // One result per requested instance, in request order. Per-instance failures
+  // are reported here and do not abort the remaining instances.
+  repeated BatchSyncInstanceResult results = 1;
+}
+
+message BatchSyncInstanceResult {
+  // The name of the instance.
+  // Format: instances/{instance}
+  string name = 1;
+
+  // The names of the databases discovered by this sync.
+  repeated string databases = 2;
+
+  // Empty when the sync succeeded; otherwise why this instance could not be
+  // synced.
+  string error = 3;
+}
 
 message BatchUpdateInstancesRequest {
   // The request message specifying the resources to update.

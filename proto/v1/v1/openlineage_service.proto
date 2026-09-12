@@ -5,6 +5,7 @@ package metaxisdata.v1;
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "v1/annotation.proto";
 import "v1/database_service.proto";
@@ -51,7 +52,7 @@ service OpenLineageService {
 
   rpc UpdateNamespaceMapping(UpdateNamespaceMappingRequest) returns (NamespaceMappingResource) {
     option (google.api.http) = {
-      patch: "/v1/openlineage/namespaceMappings/{id}"
+      patch: "/v1/openlineage/namespaceMappings/{mapping.id}"
       body: "mapping"
     };
     option (metaxisdata.v1.audit) = true;
@@ -282,8 +283,12 @@ message ListNamespaceMappingsResponse {
 }
 
 message UpdateNamespaceMappingRequest {
-  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
-  NamespaceMappingResource mapping = 2 [(google.api.field_behavior) = REQUIRED];
+  // The mapping to update. Its `id` field identifies the row.
+  NamespaceMappingResource mapping = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The list of fields to update. When omitted, the fields the request carries
+  // are updated; `database_name` is always written so it can be cleared.
+  google.protobuf.FieldMask update_mask = 2;
 }
 
 message DeleteNamespaceMappingRequest {

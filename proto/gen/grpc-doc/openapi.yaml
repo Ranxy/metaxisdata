@@ -1776,16 +1776,25 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/openlineage/namespaceMappings/{mapping.id}:
         patch:
             tags:
                 - OpenLineageService
             operationId: OpenLineageService_UpdateNamespaceMapping
             parameters:
-                - name: id
+                - name: mapping.id
                   in: path
                   required: true
                   schema:
                     type: string
+                - name: updateMask
+                  in: query
+                  description: |-
+                    The list of fields to update. When omitted, the fields the request carries
+                     are updated; `database_name` is always written so it can be cleared.
+                  schema:
+                    type: string
+                    format: field-mask
             requestBody:
                 content:
                     application/json:
@@ -2394,6 +2403,24 @@ components:
                     items:
                         $ref: '#/components/schemas/User'
                     description: The users from the specified request.
+        BatchSyncInstanceResult:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        The name of the instance.
+                         Format: instances/{instance}
+                databases:
+                    type: array
+                    items:
+                        type: string
+                    description: The names of the databases discovered by this sync.
+                error:
+                    type: string
+                    description: |-
+                        Empty when the sync succeeded; otherwise why this instance could not be
+                         synced.
         BatchSyncInstancesRequest:
             required:
                 - requests
@@ -2408,7 +2435,14 @@ components:
                          A maximum of 1000 instances can be synced in a batch.
         BatchSyncInstancesResponse:
             type: object
-            properties: {}
+            properties:
+                results:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BatchSyncInstanceResult'
+                    description: |-
+                        One result per requested instance, in request order. Per-instance failures
+                         are reported here and do not abort the remaining instances.
         BatchUpdateInstancesRequest:
             required:
                 - requests

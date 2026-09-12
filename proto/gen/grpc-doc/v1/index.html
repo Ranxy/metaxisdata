@@ -362,6 +362,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.BatchSyncInstanceResult"><span class="badge">M</span>BatchSyncInstanceResult</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.BatchSyncInstancesRequest"><span class="badge">M</span>BatchSyncInstancesRequest</a>
                 </li>
               
@@ -2449,6 +2453,46 @@ Only READ_ONLY data source can be added. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.BatchSyncInstanceResult">BatchSyncInstanceResult</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The name of the instance.
+Format: instances/{instance} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>databases</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The names of the databases discovered by this sync. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Empty when the sync succeeded; otherwise why this instance could not be
+synced. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.BatchSyncInstancesRequest">BatchSyncInstancesRequest</h3>
         <p></p>
 
@@ -2478,6 +2522,24 @@ A maximum of 1000 instances can be synced in a batch. </p></td>
         <p></p>
 
         
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>results</td>
+                  <td><a href="#metaxisdata.v1.BatchSyncInstanceResult">BatchSyncInstanceResult</a></td>
+                  <td>repeated</td>
+                  <td><p>One result per requested instance, in request order. Per-instance failures
+are reported here and do not abort the remaining instances. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
 
         
       
@@ -10662,17 +10724,18 @@ in the `raw_payload` JSONB column. </p></td>
             <tbody>
               
                 <tr>
-                  <td>id</td>
-                  <td><a href="#int64">int64</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
                   <td>mapping</td>
                   <td><a href="#metaxisdata.v1.NamespaceMappingResource">NamespaceMappingResource</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The mapping to update. Its `id` field identifies the row. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_mask</td>
+                  <td><a href="#google.protobuf.FieldMask">google.protobuf.FieldMask</a></td>
+                  <td></td>
+                  <td><p>The list of fields to update. When omitted, the fields the request carries
+are updated; `database_name` is always written so it can be cleared. </p></td>
                 </tr>
               
             </tbody>
@@ -10925,7 +10988,7 @@ in the `raw_payload` JSONB column. </p></td>
               <tr>
                 <td>UpdateNamespaceMapping</td>
                 <td>PATCH</td>
-                <td>/v1/openlineage/namespaceMappings/{id}</td>
+                <td>/v1/openlineage/namespaceMappings/{mapping.id}</td>
                 <td>mapping</td>
               </tr>
               

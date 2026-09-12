@@ -51,6 +51,7 @@
   
 - [v1/instance_service.proto](#v1_instance_service-proto)
     - [AddDataSourceRequest](#metaxisdata-v1-AddDataSourceRequest)
+    - [BatchSyncInstanceResult](#metaxisdata-v1-BatchSyncInstanceResult)
     - [BatchSyncInstancesRequest](#metaxisdata-v1-BatchSyncInstancesRequest)
     - [BatchSyncInstancesResponse](#metaxisdata-v1-BatchSyncInstancesResponse)
     - [BatchUpdateInstancesRequest](#metaxisdata-v1-BatchUpdateInstancesRequest)
@@ -805,6 +806,23 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 
 
 
+<a name="metaxisdata-v1-BatchSyncInstanceResult"></a>
+
+### BatchSyncInstanceResult
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The name of the instance. Format: instances/{instance} |
+| databases | [string](#string) | repeated | The names of the databases discovered by this sync. |
+| error | [string](#string) |  | Empty when the sync succeeded; otherwise why this instance could not be synced. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-BatchSyncInstancesRequest"></a>
 
 ### BatchSyncInstancesRequest
@@ -824,6 +842,11 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 
 ### BatchSyncInstancesResponse
 
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| results | [BatchSyncInstanceResult](#metaxisdata-v1-BatchSyncInstanceResult) | repeated | One result per requested instance, in request order. Per-instance failures are reported here and do not abort the remaining instances. |
 
 
 
@@ -3656,8 +3679,8 @@ column, derived from the view&#39;s SQL.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [int64](#int64) |  |  |
-| mapping | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) |  |  |
+| mapping | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) |  | The mapping to update. Its `id` field identifies the row. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The list of fields to update. When omitted, the fields the request carries are updated; `database_name` is always written so it can be cleared. |
 
 
 

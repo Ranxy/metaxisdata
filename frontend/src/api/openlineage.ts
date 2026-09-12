@@ -119,8 +119,7 @@ export async function updateNamespaceMapping(
   mapping: MessageInitShape<typeof NamespaceMappingResourceSchema>
 ) {
   const request = create(UpdateNamespaceMappingRequestSchema, {
-    id,
-    mapping: create(NamespaceMappingResourceSchema, mapping),
+    mapping: create(NamespaceMappingResourceSchema, { ...mapping, id }),
   });
   return await openLineageClient.updateNamespaceMapping(request);
 }

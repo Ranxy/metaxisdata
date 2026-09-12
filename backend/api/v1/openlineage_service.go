@@ -201,11 +201,25 @@ func (s *OpenLineageService) ListNamespaceMappings(ctx context.Context, _ *conne
 
 func (s *OpenLineageService) UpdateNamespaceMapping(ctx context.Context, req *connect.Request[v1pb.UpdateNamespaceMappingRequest]) (*connect.Response[v1pb.NamespaceMappingResource], error) {
 	mapping := req.Msg.GetMapping()
-	result, err := s.store.UpdateNamespaceMapping(ctx, req.Msg.GetId(), &store.NamespaceMappingMessage{
+	if mapping == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("mapping is required"))
+	}
+	if mapping.GetId() == 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("mapping.id is required"))
+	}
+	updateMask := req.Msg.GetUpdateMask().GetPaths()
+	for _, path := range updateMask {
+		switch path {
+		case "namespace", "instance_resource_id", "database_name":
+		default:
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported update_mask %q", path))
+		}
+	}
+	result, err := s.store.UpdateNamespaceMapping(ctx, mapping.GetId(), &store.NamespaceMappingMessage{
 		Namespace:          mapping.GetNamespace(),
 		InstanceResourceID: mapping.GetInstanceResourceId(),
 		DatabaseName:       mapping.GetDatabaseName(),
-	})
+	}, updateMask)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to update namespace mapping"))
 	}

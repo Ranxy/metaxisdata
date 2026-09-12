@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"connectrpc.com/connect"
@@ -358,29 +359,51 @@ func (s *InstanceService) SyncInstance(ctx context.Context, req *connect.Request
 }
 
 // BatchSyncInstances syncs multiple instances.
+//
+// Each instance is processed independently and its outcome is reported in a
+// BatchSyncInstanceResult, so one bad instance does not hide the syncs that
+// already happened before it. Only a malformed request (no instances) fails the
+// whole call.
 func (s *InstanceService) BatchSyncInstances(ctx context.Context, req *connect.Request[v1pb.BatchSyncInstancesRequest]) (*connect.Response[v1pb.BatchSyncInstancesResponse], error) {
-	for _, r := range req.Msg.Requests {
-		instance, err := getInstanceMessage(ctx, s.store, r.Name)
+	if len(req.Msg.GetRequests()) == 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("requests must not be empty"))
+	}
+
+	response := &v1pb.BatchSyncInstancesResponse{}
+	for _, r := range req.Msg.GetRequests() {
+		result := &v1pb.BatchSyncInstanceResult{Name: r.GetName()}
+
+		instance, err := getInstanceMessage(ctx, s.store, r.GetName())
 		if err != nil {
-			return nil, err
+			result.Error = err.Error()
+			response.Results = append(response.Results, result)
+			continue
 		}
 		if instance.Deleted {
-			return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q has been deleted", r.Name))
+			result.Error = fmt.Sprintf("instance %q has been deleted", r.GetName())
+			response.Results = append(response.Results, result)
+			continue
 		}
 
 		updatedInstance, _, newDatabases, err := s.schemaSyncer.SyncInstance(ctx, instance)
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to sync instance"))
+			result.Error = err.Error()
+			response.Results = append(response.Results, result)
+			continue
 		}
-		if r.EnableFullSync {
+		for _, database := range newDatabases {
+			result.Databases = append(result.Databases, database.DatabaseName)
+		}
+		if r.GetEnableFullSync() {
 			// Sync all databases in the instance asynchronously.
 			s.schemaSyncer.SyncAllDatabases(ctx, updatedInstance)
 		} else {
 			s.schemaSyncer.SyncDatabasesAsync(newDatabases)
 		}
+		response.Results = append(response.Results, result)
 	}
 
-	return connect.NewResponse(&v1pb.BatchSyncInstancesResponse{}), nil
+	return connect.NewResponse(response), nil
 }
 
 // BatchUpdateInstances update multiple instances.

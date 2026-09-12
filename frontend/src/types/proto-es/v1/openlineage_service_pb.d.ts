@@ -4,7 +4,7 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
-import type { EmptySchema, Timestamp } from "@bufbuild/protobuf/wkt";
+import type { EmptySchema, FieldMask, Timestamp } from "@bufbuild/protobuf/wkt";
 import type { MetaType } from "./database_service_pb";
 
 /**
@@ -886,14 +886,19 @@ export declare const ListNamespaceMappingsResponseSchema: GenMessage<ListNamespa
  */
 export declare type UpdateNamespaceMappingRequest = Message<"metaxisdata.v1.UpdateNamespaceMappingRequest"> & {
   /**
-   * @generated from field: int64 id = 1;
-   */
-  id: bigint;
-
-  /**
-   * @generated from field: metaxisdata.v1.NamespaceMappingResource mapping = 2;
+   * The mapping to update. Its `id` field identifies the row.
+   *
+   * @generated from field: metaxisdata.v1.NamespaceMappingResource mapping = 1;
    */
   mapping?: NamespaceMappingResource;
+
+  /**
+   * The list of fields to update. When omitted, the fields the request carries
+   * are updated; `database_name` is always written so it can be cleared.
+   *
+   * @generated from field: google.protobuf.FieldMask update_mask = 2;
+   */
+  updateMask?: FieldMask;
 };
 
 /**

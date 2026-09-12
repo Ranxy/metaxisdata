@@ -11,6 +11,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -1831,9 +1832,12 @@ func (x *ListNamespaceMappingsResponse) GetMappings() []*NamespaceMappingResourc
 }
 
 type UpdateNamespaceMappingRequest struct {
-	state         protoimpl.MessageState    `protogen:"open.v1"`
-	Id            int64                     `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Mapping       *NamespaceMappingResource `protobuf:"bytes,2,opt,name=mapping,proto3" json:"mapping,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The mapping to update. Its `id` field identifies the row.
+	Mapping *NamespaceMappingResource `protobuf:"bytes,1,opt,name=mapping,proto3" json:"mapping,omitempty"`
+	// The list of fields to update. When omitted, the fields the request carries
+	// are updated; `database_name` is always written so it can be cleared.
+	UpdateMask    *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1868,16 +1872,16 @@ func (*UpdateNamespaceMappingRequest) Descriptor() ([]byte, []int) {
 	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{20}
 }
 
-func (x *UpdateNamespaceMappingRequest) GetId() int64 {
-	if x != nil {
-		return x.Id
-	}
-	return 0
-}
-
 func (x *UpdateNamespaceMappingRequest) GetMapping() *NamespaceMappingResource {
 	if x != nil {
 		return x.Mapping
+	}
+	return nil
+}
+
+func (x *UpdateNamespaceMappingRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
+	if x != nil {
+		return x.UpdateMask
 	}
 	return nil
 }
@@ -2244,7 +2248,7 @@ var File_v1_openlineage_service_proto protoreflect.FileDescriptor
 
 const file_v1_openlineage_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1cv1/openlineage_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\x1a\x19v1/database_service.proto\"\x9f\x02\n" +
+	"\x1cv1/openlineage_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\x1a\x19v1/database_service.proto\"\x9f\x02\n" +
 	"\x18NamespaceMappingResource\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12!\n" +
 	"\tnamespace\x18\x02 \x01(\tB\x03\xe0A\x02R\tnamespace\x125\n" +
@@ -2417,10 +2421,11 @@ const file_v1_openlineage_service_proto_rawDesc = "" +
 	"\amapping\x18\x01 \x01(\v2(.metaxisdata.v1.NamespaceMappingResourceB\x03\xe0A\x02R\amapping\"\x1e\n" +
 	"\x1cListNamespaceMappingsRequest\"e\n" +
 	"\x1dListNamespaceMappingsResponse\x12D\n" +
-	"\bmappings\x18\x01 \x03(\v2(.metaxisdata.v1.NamespaceMappingResourceR\bmappings\"}\n" +
-	"\x1dUpdateNamespaceMappingRequest\x12\x13\n" +
-	"\x02id\x18\x01 \x01(\x03B\x03\xe0A\x02R\x02id\x12G\n" +
-	"\amapping\x18\x02 \x01(\v2(.metaxisdata.v1.NamespaceMappingResourceB\x03\xe0A\x02R\amapping\"4\n" +
+	"\bmappings\x18\x01 \x03(\v2(.metaxisdata.v1.NamespaceMappingResourceR\bmappings\"\xa5\x01\n" +
+	"\x1dUpdateNamespaceMappingRequest\x12G\n" +
+	"\amapping\x18\x01 \x01(\v2(.metaxisdata.v1.NamespaceMappingResourceB\x03\xe0A\x02R\amapping\x12;\n" +
+	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
+	"updateMask\"4\n" +
 	"\x1dDeleteNamespaceMappingRequest\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\x03B\x03\xe0A\x02R\x02id\"\xb4\x02\n" +
 	"\x0eAPIKeyResource\x12\x0e\n" +
@@ -2450,7 +2455,7 @@ const file_v1_openlineage_service_proto_rawDesc = "" +
 	"%OPENLINEAGE_DATASET_SCOPE_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dOPENLINEAGE_DATASET_SCOPE_ALL\x10\x01\x12&\n" +
 	"\"OPENLINEAGE_DATASET_SCOPE_INTERNAL\x10\x02\x12&\n" +
-	"\"OPENLINEAGE_DATASET_SCOPE_EXTERNAL\x10\x032\x83\x11\n" +
+	"\"OPENLINEAGE_DATASET_SCOPE_EXTERNAL\x10\x032\x8b\x11\n" +
 	"\x12OpenLineageService\x12\x90\x01\n" +
 	"\x14ListOpenLineageTasks\x12+.metaxisdata.v1.ListOpenLineageTasksRequest\x1a,.metaxisdata.v1.ListOpenLineageTasksResponse\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/openlineage/tasks\x12\x9c\x01\n" +
 	"\x17ListOpenLineageDatasets\x12..metaxisdata.v1.ListOpenLineageDatasetsRequest\x1a/.metaxisdata.v1.ListOpenLineageDatasetsResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/openlineage/datasets\x12\x98\x01\n" +
@@ -2459,8 +2464,8 @@ const file_v1_openlineage_service_proto_rawDesc = "" +
 	"\x13ListOpenLineageRuns\x12*.metaxisdata.v1.ListOpenLineageRunsRequest\x1a+.metaxisdata.v1.ListOpenLineageRunsResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/openlineage/runs\x12\x8a\x01\n" +
 	"\x11GetOpenLineageRun\x12(.metaxisdata.v1.GetOpenLineageRunRequest\x1a&.metaxisdata.v1.OpenLineageRunResource\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/openlineage/runs/{guid}\x12\xdc\x01\n" +
 	"\x16CreateNamespaceMapping\x12-.metaxisdata.v1.CreateNamespaceMappingRequest\x1a(.metaxisdata.v1.NamespaceMappingResource\"i\x8a\xea0/metaxisdata.openlineage.namespaceMappings.write\x98\xea0\x01\x82\xd3\xe4\x93\x02,:\amapping\"!/v1/openlineage/namespaceMappings\x12\x9f\x01\n" +
-	"\x15ListNamespaceMappings\x12,.metaxisdata.v1.ListNamespaceMappingsRequest\x1a-.metaxisdata.v1.ListNamespaceMappingsResponse\")\x82\xd3\xe4\x93\x02#\x12!/v1/openlineage/namespaceMappings\x12\xe1\x01\n" +
-	"\x16UpdateNamespaceMapping\x12-.metaxisdata.v1.UpdateNamespaceMappingRequest\x1a(.metaxisdata.v1.NamespaceMappingResource\"n\x8a\xea0/metaxisdata.openlineage.namespaceMappings.write\x98\xea0\x01\x82\xd3\xe4\x93\x021:\amapping2&/v1/openlineage/namespaceMappings/{id}\x12\xc6\x01\n" +
+	"\x15ListNamespaceMappings\x12,.metaxisdata.v1.ListNamespaceMappingsRequest\x1a-.metaxisdata.v1.ListNamespaceMappingsResponse\")\x82\xd3\xe4\x93\x02#\x12!/v1/openlineage/namespaceMappings\x12\xe9\x01\n" +
+	"\x16UpdateNamespaceMapping\x12-.metaxisdata.v1.UpdateNamespaceMappingRequest\x1a(.metaxisdata.v1.NamespaceMappingResource\"v\x8a\xea0/metaxisdata.openlineage.namespaceMappings.write\x98\xea0\x01\x82\xd3\xe4\x93\x029:\amapping2./v1/openlineage/namespaceMappings/{mapping.id}\x12\xc6\x01\n" +
 	"\x16DeleteNamespaceMapping\x12-.metaxisdata.v1.DeleteNamespaceMappingRequest\x1a\x16.google.protobuf.Empty\"e\x8a\xea0/metaxisdata.openlineage.namespaceMappings.write\x98\xea0\x01\x82\xd3\xe4\x93\x02(*&/v1/openlineage/namespaceMappings/{id}\x12\xaa\x01\n" +
 	"\fCreateAPIKey\x12#.metaxisdata.v1.CreateAPIKeyRequest\x1a$.metaxisdata.v1.CreateAPIKeyResponse\"O\x8a\xea0%metaxisdata.openlineage.apiKeys.write\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/openlineage/apiKeys\x12w\n" +
 	"\vListAPIKeys\x12\".metaxisdata.v1.ListAPIKeysRequest\x1a#.metaxisdata.v1.ListAPIKeysResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/openlineage/apiKeys\x12\x9e\x01\n" +
@@ -2512,7 +2517,8 @@ var file_v1_openlineage_service_proto_goTypes = []any{
 	(*RevokeAPIKeyRequest)(nil),              // 28: metaxisdata.v1.RevokeAPIKeyRequest
 	(*timestamppb.Timestamp)(nil),            // 29: google.protobuf.Timestamp
 	(MetaType)(0),                            // 30: metaxisdata.v1.MetaType
-	(*emptypb.Empty)(nil),                    // 31: google.protobuf.Empty
+	(*fieldmaskpb.FieldMask)(nil),            // 31: google.protobuf.FieldMask
+	(*emptypb.Empty)(nil),                    // 32: google.protobuf.Empty
 }
 var file_v1_openlineage_service_proto_depIdxs = []int32{
 	29, // 0: metaxisdata.v1.NamespaceMappingResource.created_at:type_name -> google.protobuf.Timestamp
@@ -2538,42 +2544,43 @@ var file_v1_openlineage_service_proto_depIdxs = []int32{
 	1,  // 20: metaxisdata.v1.CreateNamespaceMappingRequest.mapping:type_name -> metaxisdata.v1.NamespaceMappingResource
 	1,  // 21: metaxisdata.v1.ListNamespaceMappingsResponse.mappings:type_name -> metaxisdata.v1.NamespaceMappingResource
 	1,  // 22: metaxisdata.v1.UpdateNamespaceMappingRequest.mapping:type_name -> metaxisdata.v1.NamespaceMappingResource
-	29, // 23: metaxisdata.v1.APIKeyResource.created_at:type_name -> google.protobuf.Timestamp
-	29, // 24: metaxisdata.v1.APIKeyResource.last_used_at:type_name -> google.protobuf.Timestamp
-	29, // 25: metaxisdata.v1.APIKeyResource.revoked_at:type_name -> google.protobuf.Timestamp
-	23, // 26: metaxisdata.v1.CreateAPIKeyResponse.api_key:type_name -> metaxisdata.v1.APIKeyResource
-	23, // 27: metaxisdata.v1.ListAPIKeysResponse.api_keys:type_name -> metaxisdata.v1.APIKeyResource
-	9,  // 28: metaxisdata.v1.OpenLineageService.ListOpenLineageTasks:input_type -> metaxisdata.v1.ListOpenLineageTasksRequest
-	10, // 29: metaxisdata.v1.OpenLineageService.ListOpenLineageDatasets:input_type -> metaxisdata.v1.ListOpenLineageDatasetsRequest
-	11, // 30: metaxisdata.v1.OpenLineageService.GetOpenLineageDataset:input_type -> metaxisdata.v1.GetOpenLineageDatasetRequest
-	14, // 31: metaxisdata.v1.OpenLineageService.GetOpenLineageTask:input_type -> metaxisdata.v1.GetOpenLineageTaskRequest
-	15, // 32: metaxisdata.v1.OpenLineageService.ListOpenLineageRuns:input_type -> metaxisdata.v1.ListOpenLineageRunsRequest
-	17, // 33: metaxisdata.v1.OpenLineageService.GetOpenLineageRun:input_type -> metaxisdata.v1.GetOpenLineageRunRequest
-	18, // 34: metaxisdata.v1.OpenLineageService.CreateNamespaceMapping:input_type -> metaxisdata.v1.CreateNamespaceMappingRequest
-	19, // 35: metaxisdata.v1.OpenLineageService.ListNamespaceMappings:input_type -> metaxisdata.v1.ListNamespaceMappingsRequest
-	21, // 36: metaxisdata.v1.OpenLineageService.UpdateNamespaceMapping:input_type -> metaxisdata.v1.UpdateNamespaceMappingRequest
-	22, // 37: metaxisdata.v1.OpenLineageService.DeleteNamespaceMapping:input_type -> metaxisdata.v1.DeleteNamespaceMappingRequest
-	24, // 38: metaxisdata.v1.OpenLineageService.CreateAPIKey:input_type -> metaxisdata.v1.CreateAPIKeyRequest
-	26, // 39: metaxisdata.v1.OpenLineageService.ListAPIKeys:input_type -> metaxisdata.v1.ListAPIKeysRequest
-	28, // 40: metaxisdata.v1.OpenLineageService.RevokeAPIKey:input_type -> metaxisdata.v1.RevokeAPIKeyRequest
-	12, // 41: metaxisdata.v1.OpenLineageService.ListOpenLineageTasks:output_type -> metaxisdata.v1.ListOpenLineageTasksResponse
-	13, // 42: metaxisdata.v1.OpenLineageService.ListOpenLineageDatasets:output_type -> metaxisdata.v1.ListOpenLineageDatasetsResponse
-	8,  // 43: metaxisdata.v1.OpenLineageService.GetOpenLineageDataset:output_type -> metaxisdata.v1.OpenLineageDatasetDetailResource
-	3,  // 44: metaxisdata.v1.OpenLineageService.GetOpenLineageTask:output_type -> metaxisdata.v1.OpenLineageTaskResource
-	16, // 45: metaxisdata.v1.OpenLineageService.ListOpenLineageRuns:output_type -> metaxisdata.v1.ListOpenLineageRunsResponse
-	2,  // 46: metaxisdata.v1.OpenLineageService.GetOpenLineageRun:output_type -> metaxisdata.v1.OpenLineageRunResource
-	1,  // 47: metaxisdata.v1.OpenLineageService.CreateNamespaceMapping:output_type -> metaxisdata.v1.NamespaceMappingResource
-	20, // 48: metaxisdata.v1.OpenLineageService.ListNamespaceMappings:output_type -> metaxisdata.v1.ListNamespaceMappingsResponse
-	1,  // 49: metaxisdata.v1.OpenLineageService.UpdateNamespaceMapping:output_type -> metaxisdata.v1.NamespaceMappingResource
-	31, // 50: metaxisdata.v1.OpenLineageService.DeleteNamespaceMapping:output_type -> google.protobuf.Empty
-	25, // 51: metaxisdata.v1.OpenLineageService.CreateAPIKey:output_type -> metaxisdata.v1.CreateAPIKeyResponse
-	27, // 52: metaxisdata.v1.OpenLineageService.ListAPIKeys:output_type -> metaxisdata.v1.ListAPIKeysResponse
-	31, // 53: metaxisdata.v1.OpenLineageService.RevokeAPIKey:output_type -> google.protobuf.Empty
-	41, // [41:54] is the sub-list for method output_type
-	28, // [28:41] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	31, // 23: metaxisdata.v1.UpdateNamespaceMappingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	29, // 24: metaxisdata.v1.APIKeyResource.created_at:type_name -> google.protobuf.Timestamp
+	29, // 25: metaxisdata.v1.APIKeyResource.last_used_at:type_name -> google.protobuf.Timestamp
+	29, // 26: metaxisdata.v1.APIKeyResource.revoked_at:type_name -> google.protobuf.Timestamp
+	23, // 27: metaxisdata.v1.CreateAPIKeyResponse.api_key:type_name -> metaxisdata.v1.APIKeyResource
+	23, // 28: metaxisdata.v1.ListAPIKeysResponse.api_keys:type_name -> metaxisdata.v1.APIKeyResource
+	9,  // 29: metaxisdata.v1.OpenLineageService.ListOpenLineageTasks:input_type -> metaxisdata.v1.ListOpenLineageTasksRequest
+	10, // 30: metaxisdata.v1.OpenLineageService.ListOpenLineageDatasets:input_type -> metaxisdata.v1.ListOpenLineageDatasetsRequest
+	11, // 31: metaxisdata.v1.OpenLineageService.GetOpenLineageDataset:input_type -> metaxisdata.v1.GetOpenLineageDatasetRequest
+	14, // 32: metaxisdata.v1.OpenLineageService.GetOpenLineageTask:input_type -> metaxisdata.v1.GetOpenLineageTaskRequest
+	15, // 33: metaxisdata.v1.OpenLineageService.ListOpenLineageRuns:input_type -> metaxisdata.v1.ListOpenLineageRunsRequest
+	17, // 34: metaxisdata.v1.OpenLineageService.GetOpenLineageRun:input_type -> metaxisdata.v1.GetOpenLineageRunRequest
+	18, // 35: metaxisdata.v1.OpenLineageService.CreateNamespaceMapping:input_type -> metaxisdata.v1.CreateNamespaceMappingRequest
+	19, // 36: metaxisdata.v1.OpenLineageService.ListNamespaceMappings:input_type -> metaxisdata.v1.ListNamespaceMappingsRequest
+	21, // 37: metaxisdata.v1.OpenLineageService.UpdateNamespaceMapping:input_type -> metaxisdata.v1.UpdateNamespaceMappingRequest
+	22, // 38: metaxisdata.v1.OpenLineageService.DeleteNamespaceMapping:input_type -> metaxisdata.v1.DeleteNamespaceMappingRequest
+	24, // 39: metaxisdata.v1.OpenLineageService.CreateAPIKey:input_type -> metaxisdata.v1.CreateAPIKeyRequest
+	26, // 40: metaxisdata.v1.OpenLineageService.ListAPIKeys:input_type -> metaxisdata.v1.ListAPIKeysRequest
+	28, // 41: metaxisdata.v1.OpenLineageService.RevokeAPIKey:input_type -> metaxisdata.v1.RevokeAPIKeyRequest
+	12, // 42: metaxisdata.v1.OpenLineageService.ListOpenLineageTasks:output_type -> metaxisdata.v1.ListOpenLineageTasksResponse
+	13, // 43: metaxisdata.v1.OpenLineageService.ListOpenLineageDatasets:output_type -> metaxisdata.v1.ListOpenLineageDatasetsResponse
+	8,  // 44: metaxisdata.v1.OpenLineageService.GetOpenLineageDataset:output_type -> metaxisdata.v1.OpenLineageDatasetDetailResource
+	3,  // 45: metaxisdata.v1.OpenLineageService.GetOpenLineageTask:output_type -> metaxisdata.v1.OpenLineageTaskResource
+	16, // 46: metaxisdata.v1.OpenLineageService.ListOpenLineageRuns:output_type -> metaxisdata.v1.ListOpenLineageRunsResponse
+	2,  // 47: metaxisdata.v1.OpenLineageService.GetOpenLineageRun:output_type -> metaxisdata.v1.OpenLineageRunResource
+	1,  // 48: metaxisdata.v1.OpenLineageService.CreateNamespaceMapping:output_type -> metaxisdata.v1.NamespaceMappingResource
+	20, // 49: metaxisdata.v1.OpenLineageService.ListNamespaceMappings:output_type -> metaxisdata.v1.ListNamespaceMappingsResponse
+	1,  // 50: metaxisdata.v1.OpenLineageService.UpdateNamespaceMapping:output_type -> metaxisdata.v1.NamespaceMappingResource
+	32, // 51: metaxisdata.v1.OpenLineageService.DeleteNamespaceMapping:output_type -> google.protobuf.Empty
+	25, // 52: metaxisdata.v1.OpenLineageService.CreateAPIKey:output_type -> metaxisdata.v1.CreateAPIKeyResponse
+	27, // 53: metaxisdata.v1.OpenLineageService.ListAPIKeys:output_type -> metaxisdata.v1.ListAPIKeysResponse
+	32, // 54: metaxisdata.v1.OpenLineageService.RevokeAPIKey:output_type -> google.protobuf.Empty
+	42, // [42:55] is the sub-list for method output_type
+	29, // [29:42] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_v1_openlineage_service_proto_init() }

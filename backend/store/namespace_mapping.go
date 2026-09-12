@@ -103,16 +103,35 @@ func (s *Store) ListNamespaceMapping(ctx context.Context, find *FindNamespaceMap
 }
 
 // UpdateNamespaceMapping updates an existing namespace mapping.
-func (s *Store) UpdateNamespaceMapping(ctx context.Context, id int64, msg *NamespaceMappingMessage) (*NamespaceMappingMessage, error) {
-	sets, args := []string{}, []any{}
+//
+// updateMask lists the proto field paths to write. An empty mask keeps the
+// fields a proto3 caller cannot mark as absent: namespace and
+// instance_resource_id are skipped when empty, while database_name is always
+// written so it can be cleared.
+func (s *Store) UpdateNamespaceMapping(ctx context.Context, id int64, msg *NamespaceMappingMessage, updateMask []string) (*NamespaceMappingMessage, error) {
+	if len(updateMask) == 0 {
+		if msg.Namespace != "" {
+			updateMask = append(updateMask, "namespace")
+		}
+		if msg.InstanceResourceID != "" {
+			updateMask = append(updateMask, "instance_resource_id")
+		}
+		updateMask = append(updateMask, "database_name")
+	}
 
-	if msg.Namespace != "" {
-		sets, args = append(sets, fmt.Sprintf("namespace = $%d", len(args)+1)), append(args, msg.Namespace)
+	sets, args := []string{}, []any{}
+	for _, path := range updateMask {
+		switch path {
+		case "namespace":
+			sets, args = append(sets, fmt.Sprintf("namespace = $%d", len(args)+1)), append(args, msg.Namespace)
+		case "instance_resource_id":
+			sets, args = append(sets, fmt.Sprintf("instance_resource_id = $%d", len(args)+1)), append(args, msg.InstanceResourceID)
+		case "database_name":
+			sets, args = append(sets, fmt.Sprintf("database_name = $%d", len(args)+1)), append(args, msg.DatabaseName)
+		default:
+			return nil, errors.Errorf("unsupported namespace mapping update mask %q", path)
+		}
 	}
-	if msg.InstanceResourceID != "" {
-		sets, args = append(sets, fmt.Sprintf("instance_resource_id = $%d", len(args)+1)), append(args, msg.InstanceResourceID)
-	}
-	sets, args = append(sets, fmt.Sprintf("database_name = $%d", len(args)+1)), append(args, msg.DatabaseName)
 	sets = append(sets, "updated_at = NOW()")
 
 	args = append(args, id)

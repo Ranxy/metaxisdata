@@ -301,6 +301,13 @@ export declare const BatchSyncInstancesRequestSchema: GenMessage<BatchSyncInstan
  * @generated from message metaxisdata.v1.BatchSyncInstancesResponse
  */
 export declare type BatchSyncInstancesResponse = Message<"metaxisdata.v1.BatchSyncInstancesResponse"> & {
+  /**
+   * One result per requested instance, in request order. Per-instance failures
+   * are reported here and do not abort the remaining instances.
+   *
+   * @generated from field: repeated metaxisdata.v1.BatchSyncInstanceResult results = 1;
+   */
+  results: BatchSyncInstanceResult[];
 };
 
 /**
@@ -308,6 +315,40 @@ export declare type BatchSyncInstancesResponse = Message<"metaxisdata.v1.BatchSy
  * Use `create(BatchSyncInstancesResponseSchema)` to create a new message.
  */
 export declare const BatchSyncInstancesResponseSchema: GenMessage<BatchSyncInstancesResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.BatchSyncInstanceResult
+ */
+export declare type BatchSyncInstanceResult = Message<"metaxisdata.v1.BatchSyncInstanceResult"> & {
+  /**
+   * The name of the instance.
+   * Format: instances/{instance}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The names of the databases discovered by this sync.
+   *
+   * @generated from field: repeated string databases = 2;
+   */
+  databases: string[];
+
+  /**
+   * Empty when the sync succeeded; otherwise why this instance could not be
+   * synced.
+   *
+   * @generated from field: string error = 3;
+   */
+  error: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.BatchSyncInstanceResult.
+ * Use `create(BatchSyncInstanceResultSchema)` to create a new message.
+ */
+export declare const BatchSyncInstanceResultSchema: GenMessage<BatchSyncInstanceResult>;
 
 /**
  * @generated from message metaxisdata.v1.BatchUpdateInstancesRequest
