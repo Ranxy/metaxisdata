@@ -124,6 +124,19 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 					s.databaseSyncMap.Delete(key)
 					dbwp.Go(func() {
 						defer func() {
+							// A panic inside one database sync must not propagate
+							// out of Wait() and take the checker goroutine (or the
+							// process) down with it.
+							if r := recover(); r != nil {
+								err, ok := r.(error)
+								if !ok {
+									err = errors.Errorf("%v", r)
+								}
+								slog.Error("Database schema sync PANIC RECOVER",
+									slog.String("instance", database.InstanceID),
+									slog.String("database", database.DatabaseName),
+									log.WithError(err))
+							}
 							s.stateCfg.InstanceOutstandingConnections.Decrement(instance.ResourceID)
 						}()
 						slog.Debug("Sync database schema", slog.String("instance", database.InstanceID), slog.String("database", database.DatabaseName))

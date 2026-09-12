@@ -2,6 +2,9 @@ package lineageanalyzer
 
 import (
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -77,4 +80,55 @@ func TestBuildSQL(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A failed analysis is retried with a bounded backoff instead of waiting for
+// the hourly full scan, and a fresh queue request resets that backoff.
+func TestAnalyzerRetryBackoff(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 30*time.Second, analysisRetryBackoff(1))
+	require.Equal(t, 2*time.Minute, analysisRetryBackoff(2))
+	require.Equal(t, 5*time.Minute, analysisRetryBackoff(3))
+}
+
+func TestScheduleRetryBacksOffAndGivesUp(t *testing.T) {
+	t.Parallel()
+
+	analyzer := &Analyzer{}
+	key := analyzeKey{MetaGUID: "guid", MetaType: storepb.MetaType_VIEW}
+
+	analyzer.scheduleRetry(key)
+	entry, ok := analyzer.retryMap.Load(key)
+	require.True(t, ok)
+	require.Equal(t, 1, entry.(analysisRetry).attempts)
+	_, queued := analyzer.analyzeMap.Load(key)
+	require.True(t, queued, "a retry must stay queued")
+
+	analyzer.scheduleRetry(key)
+	require.Equal(t, 2, mustRetry(t, analyzer, key).attempts)
+
+	// A fresh queue request supersedes the pending backoff.
+	analyzer.QueueAnalysis("guid", storepb.MetaType_VIEW)
+	_, ok = analyzer.retryMap.Load(key)
+	require.False(t, ok)
+
+	// After the last allowed attempt the object is left to the full scan: the
+	// next failure is the one that exceeds the cap.
+	for range maxAnalysisRetries + 1 {
+		analyzer.scheduleRetry(key)
+	}
+	_, ok = analyzer.retryMap.Load(key)
+	require.False(t, ok)
+	_, queued = analyzer.analyzeMap.Load(key)
+	require.False(t, queued)
+}
+
+func mustRetry(t *testing.T, analyzer *Analyzer, key analyzeKey) analysisRetry {
+	t.Helper()
+	v, ok := analyzer.retryMap.Load(key)
+	require.True(t, ok)
+	entry, ok := v.(analysisRetry)
+	require.True(t, ok)
+	return entry
 }

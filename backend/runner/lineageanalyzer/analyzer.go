@@ -41,6 +41,31 @@ type Analyzer struct {
 	store      *store.Store
 	profile    *config.Profile
 	analyzeMap sync.Map // map[analyzeKey]struct{}
+	// retryMap tracks how many times a failed analysis was retried and when it
+	// is due again, so a transient failure does not wait for the hourly scan.
+	retryMap sync.Map // map[analyzeKey]analysisRetry
+}
+
+// analysisRetry is the backoff state of a failed analysis.
+type analysisRetry struct {
+	attempts int
+	nextAt   time.Time
+}
+
+// maxAnalysisRetries bounds the retries before the object waits for the next
+// full scan.
+const maxAnalysisRetries = 3
+
+// analysisRetryBackoff returns the delay before the next attempt.
+func analysisRetryBackoff(attempts int) time.Duration {
+	switch attempts {
+	case 1:
+		return 30 * time.Second
+	case 2:
+		return 2 * time.Minute
+	default:
+		return 5 * time.Minute
+	}
 }
 
 // NewAnalyzer creates a new lineage Analyzer.
@@ -53,7 +78,33 @@ func NewAnalyzer(stores *store.Store, profile *config.Profile) *Analyzer {
 
 // QueueAnalysis enqueues an object for lineage analysis.
 func (a *Analyzer) QueueAnalysis(metaGUID string, metaType storepb.MetaType) {
-	a.analyzeMap.Store(analyzeKey{MetaGUID: metaGUID, MetaType: metaType}, struct{}{})
+	key := analyzeKey{MetaGUID: metaGUID, MetaType: metaType}
+	// A fresh queue request supersedes any pending backoff.
+	a.retryMap.Delete(key)
+	a.analyzeMap.Store(key, struct{}{})
+}
+
+// scheduleRetry re-queues a failed analysis with a bounded backoff. After the
+// last attempt the object is left to the next full scan.
+func (a *Analyzer) scheduleRetry(key analyzeKey) {
+	attempts := 1
+	if v, ok := a.retryMap.Load(key); ok {
+		if entry, ok := v.(analysisRetry); ok {
+			attempts = entry.attempts + 1
+		}
+	}
+	if attempts > maxAnalysisRetries {
+		// Drop the key entirely: leaving it queued would restart the backoff on
+		// the very next tick, which is the hourly retry loop this replaces.
+		a.retryMap.Delete(key)
+		a.analyzeMap.Delete(key)
+		slog.Error("Lineage analysis gave up after repeated failures",
+			slog.String("guid", key.MetaGUID),
+			slog.String("type", key.MetaType.String()))
+		return
+	}
+	a.retryMap.Store(key, analysisRetry{attempts: attempts, nextAt: time.Now().Add(analysisRetryBackoff(attempts))})
+	a.analyzeMap.Store(key, struct{}{})
 }
 
 // Run starts the analyzer. It blocks until ctx is cancelled, then signals wg.Done().
@@ -129,13 +180,21 @@ func (a *Analyzer) queueAll(ctx context.Context) {
 
 // drainAndAnalyze drains the analyzeMap and runs analysis for each object.
 func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
+	now := time.Now()
 	var keys []analyzeKey
 	a.analyzeMap.Range(func(k, _ any) bool {
 		key, ok := k.(analyzeKey)
-		if ok {
-			keys = append(keys, key)
-			a.analyzeMap.Delete(k)
+		if !ok {
+			return true
 		}
+		// A failed object stays queued until its backoff elapses.
+		if v, ok := a.retryMap.Load(key); ok {
+			if entry, ok := v.(analysisRetry); ok && now.Before(entry.nextAt) {
+				return true
+			}
+		}
+		keys = append(keys, key)
+		a.analyzeMap.Delete(k)
 		return true
 	})
 	if len(keys) == 0 {
@@ -146,12 +205,26 @@ func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
 	for _, key := range keys {
 		k := key
 		wp.Go(func() {
+			// A panic in one object must not take the process down or stop the
+			// other objects in this batch.
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("Lineage analysis panicked",
+						slog.String("guid", k.MetaGUID),
+						slog.String("type", k.MetaType.String()),
+						slog.Any("panic", r))
+					a.scheduleRetry(k)
+				}
+			}()
 			if err := a.analyzeObject(ctx, k.MetaGUID, k.MetaType); err != nil {
 				slog.Error("Lineage analysis failed",
 					slog.String("guid", k.MetaGUID),
 					slog.String("type", k.MetaType.String()),
 					log.WithError(err))
+				a.scheduleRetry(k)
+				return
 			}
+			a.retryMap.Delete(k)
 		})
 	}
 	wp.Wait()
