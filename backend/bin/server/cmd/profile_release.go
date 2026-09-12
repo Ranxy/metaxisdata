@@ -3,8 +3,8 @@
 package cmd
 
 import (
-	"github.com/Ranxy/laelia/backend/common"
-	"github.com/Ranxy/laelia/backend/manager/config"
+	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/config"
 )
 
 func activeProfile(dataDir string) *config.Profile {
