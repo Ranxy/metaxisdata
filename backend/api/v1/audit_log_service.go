@@ -4,12 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"connectrpc.com/connect"
-	"github.com/google/cel-go/cel"
-	celast "github.com/google/cel-go/common/ast"
-	celoperators "github.com/google/cel-go/common/operators"
 	"github.com/pkg/errors"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -87,108 +83,6 @@ func (s *AuditLogService) ListAuditLogs(ctx context.Context, req *connect.Reques
 	}
 
 	return connect.NewResponse(response), nil
-}
-
-func parseAuditLogFilter(filter string) (*store.ListResourceFilter, error) {
-	if strings.TrimSpace(filter) == "" {
-		return nil, nil
-	}
-
-	env, err := cel.NewEnv()
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to create cel env"))
-	}
-	ast, iss := env.Parse(filter)
-	if iss != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("failed to parse filter %q, error: %v", filter, iss.String()))
-	}
-
-	var positionalArgs []any
-	parseToSQL := func(variable string, value any, operator OperatorType) (string, error) {
-		switch variable {
-		case "resource", "method", "user":
-			stringValue, ok := value.(string)
-			if !ok {
-				return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("expect string value for %q", variable))
-			}
-			if operator != ComparatorTypeEqual {
-				return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("only equality filter is supported for %q", variable))
-			}
-			positionalArgs = append(positionalArgs, stringValue)
-			return fmt.Sprintf("payload->>'%s' = $%d", variable, len(positionalArgs)), nil
-		case "severity":
-			stringValue, ok := value.(string)
-			if !ok {
-				return "", connect.NewError(connect.CodeInvalidArgument, errors.New("severity must be a string literal"))
-			}
-			if _, ok := v1pb.AuditLogSeverity_value[stringValue]; !ok {
-				return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid severity %q", stringValue))
-			}
-			if operator != ComparatorTypeEqual {
-				return "", connect.NewError(connect.CodeInvalidArgument, errors.New("severity only supports equality filter"))
-			}
-			positionalArgs = append(positionalArgs, stringValue)
-			return fmt.Sprintf("payload->>'severity' = $%d", len(positionalArgs)), nil
-		case "create_time":
-			stringValue, ok := value.(string)
-			if !ok {
-				return "", connect.NewError(connect.CodeInvalidArgument, errors.New("create_time must be a string literal in RFC3339 format"))
-			}
-			parsedTime, err := time.Parse(time.RFC3339, stringValue)
-			if err != nil {
-				return "", connect.NewError(connect.CodeInvalidArgument, errors.Wrap(err, "invalid create_time filter"))
-			}
-			if operator != ComparatorTypeEqual && operator != ComparatorTypeGreaterEqual && operator != ComparatorTypeLessEqual {
-				return "", connect.NewError(connect.CodeInvalidArgument, errors.New("create_time only supports =, >=, <= operators"))
-			}
-			positionalArgs = append(positionalArgs, parsedTime)
-			return fmt.Sprintf("created_at %s $%d", operator, len(positionalArgs)), nil
-		default:
-			return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported audit log filter field %q", variable))
-		}
-	}
-
-	var getFilter func(expr celast.Expr) (string, error)
-	getFilter = func(expr celast.Expr) (string, error) {
-		switch expr.Kind() {
-		case celast.CallKind:
-			switch expr.AsCall().FunctionName() {
-			case celoperators.LogicalOr:
-				return getSubConditionFromExpr(expr, getFilter, "OR")
-			case celoperators.LogicalAnd:
-				return getSubConditionFromExpr(expr, getFilter, "AND")
-			case celoperators.Equals:
-				variable, value, err := getVariableAndValueFromExpr(expr)
-				if err != nil {
-					return "", err
-				}
-				return parseToSQL(variable, value, ComparatorTypeEqual)
-			case celoperators.GreaterEquals:
-				variable, value, err := getVariableAndValueFromExpr(expr)
-				if err != nil {
-					return "", err
-				}
-				return parseToSQL(variable, value, ComparatorTypeGreaterEqual)
-			case celoperators.LessEquals:
-				variable, value, err := getVariableAndValueFromExpr(expr)
-				if err != nil {
-					return "", err
-				}
-				return parseToSQL(variable, value, ComparatorTypeLessEqual)
-			default:
-				return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported audit log filter operator %q", expr.AsCall().FunctionName()))
-			}
-		default:
-			return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unexpected audit log filter expr kind %v", expr.Kind()))
-		}
-	}
-
-	where, err := getFilter(ast.NativeRep().Expr())
-	if err != nil {
-		return nil, err
-	}
-
-	return &store.ListResourceFilter{Args: positionalArgs, Where: "(" + where + ")"}, nil
 }
 
 func convertToV1AuditLog(auditLog *storepb.AuditLog) *v1pb.AuditLog {

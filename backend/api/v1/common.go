@@ -276,18 +276,6 @@ func GetUserFromContext(ctx context.Context) (*store.UserMessage, bool) {
 	return user, ok
 }
 
-func getSubConditionFromExpr(expr celast.Expr, getFilter func(expr celast.Expr) (string, error), join string) (string, error) {
-	var args []string
-	for _, arg := range expr.AsCall().Args() {
-		s, err := getFilter(arg)
-		if err != nil {
-			return "", err
-		}
-		args = append(args, "("+s+")")
-	}
-	return strings.Join(args, fmt.Sprintf(" %s ", join)), nil
-}
-
 // getVariableAndValueFromExpr extracts the variable and the literal operand of
 // a simple filter comparison such as `name == "x"` or `engine in ["MYSQL"]`.
 // Any other shape is rejected as InvalidArgument.
