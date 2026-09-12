@@ -450,6 +450,17 @@ func (s *Store) BatchCreateMetaRegistryResourceAt(ctx context.Context, tx *sql.T
 		metadata = append(metadata, string(create.MetadataBytes))
 	}
 
+	// PostgreSQL does not promise the row order of RETURNING, so the returned
+	// id has to be matched back by (guid, object_type) rather than by position.
+	type resourceKey struct {
+		guid       string
+		objectType storepb.MetaType
+	}
+	index := make(map[resourceKey]int, len(creates))
+	for i, create := range creates {
+		index[resourceKey{guid: create.GUID, objectType: create.ObjectType}] = i
+	}
+
 	query := `
 			INSERT INTO meta_registry_resource (
 				guid,
@@ -460,7 +471,7 @@ func (s *Store) BatchCreateMetaRegistryResourceAt(ctx context.Context, tx *sql.T
 			ON CONFLICT(guid, object_type) DO UPDATE SET 
 				metadata = EXCLUDED.metadata,
 				meta_hash = EXCLUDED.meta_hash
-			RETURNING id
+			RETURNING id, guid, object_type
 		`
 
 	rows, err := tx.QueryContext(ctx, query,
@@ -475,16 +486,29 @@ func (s *Store) BatchCreateMetaRegistryResourceAt(ctx context.Context, tx *sql.T
 	}
 	defer rows.Close()
 
-	i := 0
+	seen := 0
 	for rows.Next() {
-		if err := rows.Scan(&creates[i].ID); err != nil {
-			slog.Error("InsertReturningFailed", slog.String("guid", creates[i].GUID), "object_type", creates[i].ObjectType.String())
+		var (
+			id         int64
+			guid       string
+			objectType int32
+		)
+		if err := rows.Scan(&id, &guid, &objectType); err != nil {
+			slog.Error("InsertReturningFailed", slog.Int("count", len(creates)))
 			return nil, errors.Wrap(err, "InsertReturningFailed")
 		}
-		i++
+		i, ok := index[resourceKey{guid: guid, objectType: storepb.MetaType(objectType)}]
+		if !ok {
+			return nil, errors.Errorf("upsert returned an unknown resource %q/%d", guid, objectType)
+		}
+		creates[i].ID = id
+		seen++
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	if seen != len(creates) {
+		return nil, errors.Errorf("upsert returned %d rows for %d resources", seen, len(creates))
 	}
 
 	if err := s.upsertMetaRegistryHistory(ctx, tx, creates, observedAt); err != nil {

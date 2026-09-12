@@ -122,3 +122,15 @@ func TestBuildSublevelMetaRegistryResourceQueryHasNoPredicateWhenNoChildType(t *
 	require.Empty(t, query)
 	require.Empty(t, args)
 }
+
+// The open-history lookup must pair guid with object_type. The previous
+// `guid = ANY($1) AND object_type = ANY($2)` also matched cross combinations.
+func TestBuildOpenMetaRegistryHistoryByKeyQueryIsPaired(t *testing.T) {
+	t.Parallel()
+
+	query := buildOpenMetaRegistryHistoryByKeyQuery()
+	require.Contains(t, query, "valid_to IS NULL")
+	require.Contains(t, query, "(guid, object_type::int) IN (SELECT * FROM unnest($1::text[], $2::int[]))")
+	require.NotContains(t, query, "ANY($1)")
+	require.NotContains(t, query, "ANY($2)")
+}

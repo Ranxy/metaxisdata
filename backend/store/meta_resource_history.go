@@ -29,6 +29,19 @@ func buildMetaRegistryHistoryMutations(existing map[MetaGUIDKey]*MetaRegistryHis
 	return toClose, toOpen
 }
 
+// buildOpenMetaRegistryHistoryByKeyQuery returns the lookup for the open
+// history row of each requested key. The predicate pairs guid with object_type:
+// `guid = ANY($1) AND object_type = ANY($2)` also matches every cross
+// combination, so it can return unrequested resources.
+func buildOpenMetaRegistryHistoryByKeyQuery() string {
+	return `
+		SELECT id, guid, object_type, meta_hash, valid_from, valid_to
+		FROM meta_registry_resource_history
+		WHERE valid_to IS NULL
+			AND (guid, object_type::int) IN (SELECT * FROM unnest($1::text[], $2::int[]))
+	`
+}
+
 func (*Store) listOpenMetaRegistryHistoryByKey(ctx context.Context, tx *sql.Tx, keys []MetaGUIDKey) (map[MetaGUIDKey]*MetaRegistryHistory, error) {
 	result := make(map[MetaGUIDKey]*MetaRegistryHistory)
 	if len(keys) == 0 {
@@ -42,13 +55,7 @@ func (*Store) listOpenMetaRegistryHistoryByKey(ctx context.Context, tx *sql.Tx, 
 		objectTypes = append(objectTypes, key.ObjectType)
 	}
 
-	rows, err := tx.QueryContext(ctx, `
-		SELECT id, guid, object_type, meta_hash, valid_from, valid_to
-		FROM meta_registry_resource_history
-		WHERE valid_to IS NULL
-			AND guid = ANY($1)
-			AND object_type = ANY($2)
-	`, pq.Array(guids), pq.Array(objectTypes))
+	rows, err := tx.QueryContext(ctx, buildOpenMetaRegistryHistoryByKeyQuery(), pq.Array(guids), pq.Array(objectTypes))
 	if err != nil {
 		return nil, err
 	}
