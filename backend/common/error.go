@@ -3,6 +3,7 @@ package common
 
 import (
 	"errors"
+	"fmt"
 
 	pkgerrors "github.com/pkg/errors"
 )
@@ -43,7 +44,16 @@ type Error struct {
 
 // Error implements the error interface. Not used by the application otherwise.
 func (e *Error) Error() string {
+	if e.Err == nil {
+		return fmt.Sprintf("common: error code %d", e.Code)
+	}
 	return e.Err.Error()
+}
+
+// Unwrap exposes the wrapped error so errors.Is/errors.As and the API boundary
+// can inspect the cause behind an application code.
+func (e *Error) Unwrap() error {
+	return e.Err
 }
 
 // ErrorCode unwraps an application error and returns its code.

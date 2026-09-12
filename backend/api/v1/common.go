@@ -249,18 +249,6 @@ func parseLimitAndOffset(size *pageSize) (*pageOffset, error) {
 	return offset, nil
 }
 
-// connectErrorForWrite maps a store write error to a Connect error. A duplicate
-// key (a store common.Conflict) is reported as CodeAlreadyExists so a concurrent
-// duplicate registration surfaces as a conflict instead of a 500; every other
-// store error stays internal. A general common.Code -> Connect mapping does not
-// exist yet, so this covers the one case callers act on.
-func connectErrorForWrite(err error, message string) error {
-	if common.ErrorCode(err) == common.Conflict {
-		return connect.NewError(connect.CodeAlreadyExists, errors.Wrap(err, message))
-	}
-	return connect.NewError(connect.CodeInternal, errors.Wrap(err, message))
-}
-
 // getDatabaseMessage retrieves a database by parsing the database resource name.
 // This is a common utility function to avoid code duplication across services.
 func getDatabaseMessage(ctx context.Context, s *store.Store, databaseResourceName string) (*store.DatabaseMessage, error) {

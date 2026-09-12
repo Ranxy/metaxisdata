@@ -85,6 +85,9 @@ func configureGrpcRouters(
 			auth.New(stores, secret, stateCfg, profile),
 			apiv1.NewAuditInterceptor(stores),
 			apiv1.NewACLInterceptor(stores),
+			// Innermost, so the audit interceptor records the status the client
+			// actually received.
+			apiv1.NewErrorMappingInterceptor(),
 		),
 		connect.WithRecover(onPanic),
 	)

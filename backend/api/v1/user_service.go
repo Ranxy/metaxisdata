@@ -211,7 +211,7 @@ func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v
 
 	user, err := s.store.CreateUser(ctx, userMessage)
 	if err != nil {
-		return nil, connectErrorForWrite(err, "failed to create user")
+		return nil, errors.Wrap(err, "failed to create user")
 	}
 
 	// s.metricReporter.Report(ctx, &metric.Metric{
@@ -414,7 +414,7 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 
 	user, err = s.store.UpdateUser(ctx, user, patch)
 	if err != nil {
-		return nil, connectErrorForWrite(err, "failed to update user")
+		return nil, errors.Wrap(err, "failed to update user")
 	}
 
 	userResponse := convertToUser(user)

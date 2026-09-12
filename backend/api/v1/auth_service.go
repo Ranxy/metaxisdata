@@ -338,7 +338,7 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 		PasswordHash: string(passwordHash),
 	})
 	if err != nil {
-		return nil, connectErrorForWrite(err, "failed to create user")
+		return nil, errors.Wrap(err, "failed to create user")
 	}
 	if userInfo.HasGroups {
 		// Sync user groups with the identity provider.
