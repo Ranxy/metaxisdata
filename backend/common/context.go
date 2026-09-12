@@ -9,7 +9,6 @@ const (
 	// UserContextKey is the key name used to store user message in the context.
 	UserContextKey ContextKey = iota
 	AuthContextKey
-	ServiceDataKey
 )
 
 type AuthContext struct {

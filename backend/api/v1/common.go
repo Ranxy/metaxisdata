@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -23,11 +22,8 @@ type OperatorType string
 
 const (
 	ComparatorTypeEqual        OperatorType = "="
-	ComparatorTypeLess         OperatorType = "<"
 	ComparatorTypeLessEqual    OperatorType = "<="
-	ComparatorTypeGreater      OperatorType = ">"
 	ComparatorTypeGreaterEqual OperatorType = ">="
-	ComparatorTypeNotEqual     OperatorType = "!="
 )
 
 var (
@@ -54,144 +50,6 @@ func convertDeletedToState(deleted bool) v1pb.State {
 
 func isValidResourceID(resourceID string) bool {
 	return common.IsValidResourceID(resourceID)
-}
-
-type Expression struct {
-	Key      string
-	Operator OperatorType
-	Value    string
-}
-
-// ParseFilter will parse the simple filter.
-// TODO(rebelice): support more complex filter.
-// Currently we support the following syntax:
-//  1. for single expression:
-//     i.   defined as `key comparator "val"`.
-//     ii.  Comparator can be `=`, `!=`, `>`, `>=`, `<`, `<=`.
-//     iii. If val doesn't contain space, we can omit the double quotes.
-//  2. for multiple expressions:
-//     i.  We only support && currently.
-//     ii. defined as `key comparator "val" && key comparator "val" && ...`.
-func ParseFilter(filter string) ([]Expression, error) {
-	if filter == "" {
-		return nil, nil
-	}
-
-	normalized, quotedString, err := normalizeFilter(filter)
-	if err != nil {
-		return nil, err
-	}
-
-	var result []Expression
-	nextStringPos := 0
-
-	// Split the normalized filter by " && " to get the list of expressions.
-	expressions := strings.Split(normalized, " && ")
-	for _, expressionString := range expressions {
-		expr, err := parseExpression(expressionString)
-		if err != nil {
-			return nil, err
-		}
-		if expr.Value == "?" {
-			if nextStringPos >= len(quotedString) {
-				return nil, errors.Errorf("invalid filter %q", filter)
-			}
-			expr.Value = quotedString[nextStringPos]
-			nextStringPos++
-		}
-		result = append(result, expr)
-	}
-
-	return result, nil
-}
-
-func parseExpression(expr string) (Expression, error) {
-	// Split the expression by " " to get the key, comparator and val.
-	re := regexp.MustCompile(`\s+`)
-	words := re.Split(strings.TrimSpace(expr), -1)
-	if len(words) != 3 {
-		return Expression{}, errors.Errorf("invalid expression %q", expr)
-	}
-
-	comparator, err := getComparatorType(words[1])
-	if err != nil {
-		return Expression{}, err
-	}
-
-	return Expression{
-		Key:      words[0],
-		Operator: comparator,
-		Value:    words[2],
-	}, nil
-}
-
-func getComparatorType(op string) (OperatorType, error) {
-	switch op {
-	case "=", "eq":
-		return ComparatorTypeEqual, nil
-	case "!=":
-		return ComparatorTypeNotEqual, nil
-	case ">":
-		return ComparatorTypeGreater, nil
-	case ">=":
-		return ComparatorTypeGreaterEqual, nil
-	case "<":
-		return ComparatorTypeLess, nil
-	case "<=":
-		return ComparatorTypeLessEqual, nil
-	default:
-		return ComparatorTypeEqual, errors.Errorf("invalid comparator %q", op)
-	}
-}
-
-// normalizeFilter will replace all quoted string with ? and return the list of quoted strings.
-func normalizeFilter(filter string) (string, []string, error) {
-	var (
-		normalizedFilter string
-		quotedStrings    []string
-	)
-	inQuotes := false
-	lastQuoteIndex := 0
-	for i, s := range filter {
-		if s == '"' {
-			if inQuotes {
-				quotedStrings = append(quotedStrings, filter[lastQuoteIndex+1:i])
-				normalizedFilter += "?"
-			} else {
-				lastQuoteIndex = i
-			}
-			inQuotes = !inQuotes
-		} else if !inQuotes {
-			// If we are not in quotes, we need to normalize the filter.
-			// We need to add space before and after the comparator.
-			// For example, "a>b" should be normalized to "a > b".
-			switch s {
-			case '!':
-				normalizedFilter += " "
-				normalizedFilter += string(s)
-			case '<', '>':
-				normalizedFilter += " "
-				normalizedFilter += string(s)
-				if i+1 < len(filter) && filter[i+1] != '=' {
-					normalizedFilter += " "
-				}
-			case '=':
-				if i > 0 && (filter[i-1] != '!' && filter[i-1] != '<' && filter[i-1] != '>') {
-					normalizedFilter += " "
-				}
-				normalizedFilter += string(s)
-				normalizedFilter += " "
-			default:
-				normalizedFilter += string(s)
-			}
-		}
-	}
-
-	if inQuotes {
-		return "", nil, errors.Errorf("invalid filter %q", filter)
-	}
-
-	return normalizedFilter, quotedStrings, nil
 }
 
 func convertToEngine(engine storepb.Engine) v1pb.Engine {
@@ -368,36 +226,6 @@ func parseLimitAndOffset(size *pageSize) (*pageOffset, error) {
 	}
 	return offset, nil
 }
-
-// func convertExportFormat(format storepb.ExportFormat) v1pb.ExportFormat {
-// 	switch format {
-// 	case storepb.ExportFormat_CSV:
-// 		return v1pb.ExportFormat_CSV
-// 	case storepb.ExportFormat_JSON:
-// 		return v1pb.ExportFormat_JSON
-// 	case storepb.ExportFormat_SQL:
-// 		return v1pb.ExportFormat_SQL
-// 	case storepb.ExportFormat_XLSX:
-// 		return v1pb.ExportFormat_XLSX
-// 	default:
-// 	}
-// 	return v1pb.ExportFormat_FORMAT_UNSPECIFIED
-// }
-
-// func convertToExportFormat(format v1pb.ExportFormat) storepb.ExportFormat {
-// 	switch format {
-// 	case v1pb.ExportFormat_CSV:
-// 		return storepb.ExportFormat_CSV
-// 	case v1pb.ExportFormat_JSON:
-// 		return storepb.ExportFormat_JSON
-// 	case v1pb.ExportFormat_SQL:
-// 		return storepb.ExportFormat_SQL
-// 	case v1pb.ExportFormat_XLSX:
-// 		return storepb.ExportFormat_XLSX
-// 	default:
-// 	}
-// 	return storepb.ExportFormat_FORMAT_UNSPECIFIED
-// }
 
 // connectErrorForWrite maps a store write error to a Connect error. A duplicate
 // key (a store common.Conflict) is reported as CodeAlreadyExists so a concurrent

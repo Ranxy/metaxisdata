@@ -333,20 +333,9 @@ func autoGenerateTitle(pb *v1pb.LlmProviderProfile) string {
 		}
 	}
 	if len(modelNames) > 0 {
-		return fmt.Sprintf("%s — %s", label, stringsJoin(modelNames, ", "))
+		return fmt.Sprintf("%s — %s", label, strings.Join(modelNames, ", "))
 	}
 	return label
-}
-
-func stringsJoin(parts []string, sep string) string {
-	result := ""
-	for i, p := range parts {
-		if i > 0 {
-			result += sep
-		}
-		result += p
-	}
-	return result
 }
 
 func extractLLMProfileResourceID(name string) string {

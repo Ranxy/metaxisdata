@@ -18,8 +18,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
-	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
-	"github.com/Ranxy/metaxisdata/backend/component/state"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
@@ -32,17 +30,13 @@ import (
 type DatabaseService struct {
 	v1connect.UnimplementedDatabaseServiceHandler
 	store        *store.Store
-	stateCfg     *state.State
-	dbFactory    *dbfactory.DBFactory
 	schemaSyncer *schemasync.Syncer
 }
 
 // NewDatabaseService creates a new DatabaseService.
-func NewDatabaseService(store *store.Store, stateCfg *state.State, dbFactory *dbfactory.DBFactory, schemaSyncer *schemasync.Syncer) *DatabaseService {
+func NewDatabaseService(store *store.Store, schemaSyncer *schemasync.Syncer) *DatabaseService {
 	return &DatabaseService{
 		store:        store,
-		stateCfg:     stateCfg,
-		dbFactory:    dbFactory,
 		schemaSyncer: schemaSyncer,
 	}
 }

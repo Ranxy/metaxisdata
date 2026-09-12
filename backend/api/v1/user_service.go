@@ -18,7 +18,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
-	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -30,17 +29,15 @@ import (
 // UserService implements the user service.
 type UserService struct {
 	v1connect.UnimplementedUserServiceHandler
-	store    *store.Store
-	profile  *config.Profile
-	stateCfg *state.State
+	store   *store.Store
+	profile *config.Profile
 }
 
 // NewUserService creates a new UserService.
-func NewUserService(store *store.Store, profile *config.Profile, stateCfg *state.State) *UserService {
+func NewUserService(store *store.Store, profile *config.Profile) *UserService {
 	return &UserService{
-		store:    store,
-		profile:  profile,
-		stateCfg: stateCfg,
+		store:   store,
+		profile: profile,
 	}
 }
 
@@ -381,7 +378,6 @@ func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v
 		return nil, connectErrorForWrite(err, "failed to create user")
 	}
 
-	// isFirstUser := user.ID == common.PrincipalIDForFirstUser
 	// s.metricReporter.Report(ctx, &metric.Metric{
 	// 	Name:  metricapi.PrincipalRegistrationMetricName,
 	// 	Value: 1,

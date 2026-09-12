@@ -8,33 +8,24 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
-	"github.com/Ranxy/metaxisdata/backend/component/state"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
-	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 // LineageService implements the instance service.
 type LineageService struct {
 	v1connect.UnimplementedLineageServiceHandler
-	store        *store.Store
-	stateCfg     *state.State
-	dbFactory    *dbfactory.DBFactory
-	schemaSyncer *schemasync.Syncer
+	store *store.Store
 }
 
 // NewLineageService creates a new LineageService.
-func NewLineageService(store *store.Store, stateCfg *state.State, dbFactory *dbfactory.DBFactory, schemaSyncer *schemasync.Syncer) *LineageService {
+func NewLineageService(store *store.Store) *LineageService {
 	return &LineageService{
-		store:        store,
-		stateCfg:     stateCfg,
-		dbFactory:    dbFactory,
-		schemaSyncer: schemaSyncer,
+		store: store,
 	}
 }
 

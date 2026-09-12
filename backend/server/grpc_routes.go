@@ -60,12 +60,12 @@ func configureGrpcRouters(
 		}),
 	)
 
-	userService := apiv1.NewUserService(stores, profile, stateCfg)
+	userService := apiv1.NewUserService(stores, profile)
 	authService := apiv1.NewAuthService(stores, secret, profile, stateCfg)
 	auditLogService := apiv1.NewAuditLogService(stores)
-	instanceService := apiv1.NewInstanceService(stores, stateCfg, dbFactory, schemaSync)
-	databaseService := apiv1.NewDatabaseService(stores, stateCfg, dbFactory, schemaSync)
-	lineageService := apiv1.NewLineageService(stores, stateCfg, dbFactory, schemaSync)
+	instanceService := apiv1.NewInstanceService(stores, dbFactory, schemaSync)
+	databaseService := apiv1.NewDatabaseService(stores, schemaSync)
+	lineageService := apiv1.NewLineageService(stores)
 	openLineageService := apiv1.NewOpenLineageService(stores)
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
 	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry)

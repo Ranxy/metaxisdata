@@ -18,7 +18,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
-	"github.com/Ranxy/metaxisdata/backend/component/state"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
@@ -31,16 +30,14 @@ import (
 type InstanceService struct {
 	v1connect.UnimplementedInstanceServiceHandler
 	store        *store.Store
-	stateCfg     *state.State
 	dbFactory    *dbfactory.DBFactory
 	schemaSyncer *schemasync.Syncer
 }
 
 // NewInstanceService creates a new InstanceService.
-func NewInstanceService(store *store.Store, stateCfg *state.State, dbFactory *dbfactory.DBFactory, schemaSyncer *schemasync.Syncer) *InstanceService {
+func NewInstanceService(store *store.Store, dbFactory *dbfactory.DBFactory, schemaSyncer *schemasync.Syncer) *InstanceService {
 	return &InstanceService{
 		store:        store,
-		stateCfg:     stateCfg,
 		dbFactory:    dbFactory,
 		schemaSyncer: schemaSyncer,
 	}
@@ -705,10 +702,6 @@ func (s *InstanceService) AddDataSource(ctx context.Context, req *connect.Reques
 	if dataSource.GetType() != storepb.DataSourceType_READ_ONLY {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("only read-only data source can be added"))
 	}
-	// if err := s.licenseService.IsFeatureEnabledForInstance(v1pb.PlanFeature_FEATURE_INSTANCE_READ_ONLY_CONNECTION, instance); err != nil {
-	// 	return nil, connect.NewError(connect.CodePermissionDenied, err)
-	// }
-
 	metadata, ok := proto.Clone(instance.Metadata).(*storepb.Instance)
 	if !ok {
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to convert instance metadata type"))
@@ -753,12 +746,6 @@ func (s *InstanceService) UpdateDataSource(ctx context.Context, req *connect.Req
 	if dataSource == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf(`cannot found data source "%s"`, req.Msg.DataSource.Id))
 	}
-
-	// if dataSource.GetType() == storepb.DataSourceType_READ_ONLY {
-	// 	if err := s.licenseService.IsFeatureEnabledForInstance(v1pb.PlanFeature_FEATURE_INSTANCE_READ_ONLY_CONNECTION, instance); err != nil {
-	// 		return nil, connect.NewError(connect.CodePermissionDenied, err)
-	// 	}
-	// }
 
 	for _, path := range req.Msg.UpdateMask.Paths {
 		switch path {
@@ -981,37 +968,19 @@ func getInstanceMessage(ctx context.Context, stores *store.Store, name string) (
 	return instance, nil
 }
 
-// buildInstanceName builds the instance name with the given instance ID.
-func buildInstanceName(instanceID string) string {
-	var b strings.Builder
-	b.Grow(len(common.InstanceNamePrefix) + len(instanceID))
-	_, _ = b.WriteString(common.InstanceNamePrefix)
-	_, _ = b.WriteString(instanceID)
-	return b.String()
-}
-
-// buildEnvironmentName builds the environment name with the given environment ID.
-func buildEnvironmentName(environmentID string) string {
-	var b strings.Builder
-	b.Grow(len("environments/") + len(environmentID))
-	_, _ = b.WriteString("environments/")
-	_, _ = b.WriteString(environmentID)
-	return b.String()
-}
-
 func convertInstanceMessage(instance *store.InstanceMessage) *v1pb.Instance {
 	engine := convertToEngine(instance.Metadata.GetEngine())
 	dataSources := convertDataSources(instance.Metadata.GetDataSources())
 
 	return &v1pb.Instance{
-		Name:               buildInstanceName(instance.ResourceID),
+		Name:               common.FormatInstance(instance.ResourceID),
 		Title:              instance.Metadata.GetTitle(),
 		Engine:             engine,
 		EngineVersion:      instance.Metadata.GetVersion(),
 		ExternalLink:       instance.Metadata.GetExternalLink(),
 		DataSources:        dataSources,
 		State:              convertDeletedToState(instance.Deleted),
-		Environment:        buildEnvironmentName(instance.EnvironmentID),
+		Environment:        common.FormatEnvironment(instance.EnvironmentID),
 		Activation:         instance.Metadata.GetActivation(),
 		SyncInterval:       instance.Metadata.GetSyncInterval(),
 		MaximumConnections: instance.Metadata.GetMaximumConnections(),

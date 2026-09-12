@@ -132,9 +132,6 @@ func (in *AuditInterceptor) createAuditLog(ctx context.Context, req connect.AnyR
 		RequestMetadata: buildRequestMetadata(req.Header(), req.Peer().Addr),
 	}
 
-	if serviceData := getServiceData(ctx); serviceData != nil {
-		auditLog.ServiceData = serviceData
-	}
 	if auditLog.Resource == "" {
 		auditLog.Resource = auditLog.User
 	}
@@ -326,18 +323,6 @@ func buildRequestMetadata(header http.Header, peerAddr string) *storepb.RequestM
 	}
 
 	return &storepb.RequestMetadata{Ip: ip, UserAgent: userAgent}
-}
-
-func getServiceData(ctx context.Context) *structpb.Struct {
-	serviceData, ok := ctx.Value(common.ServiceDataKey).(map[string]any)
-	if !ok || len(serviceData) == 0 {
-		return nil
-	}
-	structured, err := structpb.NewStruct(serviceData)
-	if err != nil {
-		return nil
-	}
-	return structured
 }
 
 func isNilConnectValue(value any) bool {

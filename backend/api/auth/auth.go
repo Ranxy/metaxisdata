@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
@@ -40,11 +39,6 @@ const (
 
 	// AccessTokenCookieName is the cookie name of access token.
 	AccessTokenCookieName = "access-token"
-
-	// GatewayMetadataAccessTokenKey is the gateway metadata key for access token.
-	GatewayMetadataAccessTokenKey = "metaxisdata-access-token"
-	// GatewayMetadataRequestOriginKey is the gateway metadata key for the request origin header.
-	GatewayMetadataRequestOriginKey = "metaxisdata-request-origin"
 )
 
 // APIAuthInterceptor is the auth interceptor for gRPC server.
@@ -194,28 +188,6 @@ func (in *APIAuthInterceptor) getUserConnect(ctx context.Context, accessTokenStr
 	// Only update for authorized request.
 	in.profile.LastActiveTS.Store(time.Now().Unix())
 	return user, nil
-}
-
-func GetTokenFromMetadata(md metadata.MD) (string, error) {
-	authorizationHeaders := md.Get("Authorization")
-	if len(md.Get("Authorization")) > 0 {
-		authHeaderParts := strings.Fields(authorizationHeaders[0])
-		if len(authHeaderParts) != 2 || strings.ToLower(authHeaderParts[0]) != "bearer" {
-			return "", errs.Errorf("authorization header format must be Bearer {token}")
-		}
-		return authHeaderParts[1], nil
-	}
-	// check the HTTP cookie
-	var accessToken string
-	for _, t := range append(md.Get("grpcgateway-cookie"), md.Get("cookie")...) {
-		header := http.Header{}
-		header.Add("Cookie", t)
-		request := http.Request{Header: header}
-		if v, _ := request.Cookie(AccessTokenCookieName); v != nil {
-			accessToken = v.Value
-		}
-	}
-	return accessToken, nil
 }
 
 // GetTokenFromHeaders extracts the access token from HTTP headers for ConnectRPC.

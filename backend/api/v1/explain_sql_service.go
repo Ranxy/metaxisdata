@@ -195,7 +195,6 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 			}); err != nil {
 				return err
 			}
-		case llm.AgentEventAgentEnd:
 		default:
 		}
 	}
@@ -526,8 +525,6 @@ func (s *ExplainSQLService) getScopeEngine(ctx context.Context, instanceID strin
 	}
 	return inst.Metadata.Engine, nil
 }
-
-// ---- resolveSource, buildSystemPrompt, etc. (unchanged) ----
 
 // resolveSource returns the SQL to explain, the object it belongs to, the
 // identity the cached answer is valid for before scoping, and the cache kind.

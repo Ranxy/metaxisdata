@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -55,7 +56,7 @@ func (h *OpenLineageHandler) receiveEvent(c echo.Context) error {
 	}
 
 	// Detect whether the payload is a single event or a batch (JSON array).
-	trimmed := bytesTrimLeft(body)
+	trimmed := bytes.TrimLeft(body, " \t\n\r")
 	if len(trimmed) > 0 && trimmed[0] == '[' {
 		return h.processBatchEvents(c, body)
 	}
@@ -167,14 +168,4 @@ func extractBearerToken(r *http.Request) string {
 		return ""
 	}
 	return auth[len(prefix):]
-}
-
-// bytesTrimLeft returns body with leading whitespace removed.
-func bytesTrimLeft(b []byte) []byte {
-	for i := range b {
-		if b[i] != ' ' && b[i] != '\t' && b[i] != '\n' && b[i] != '\r' {
-			return b[i:]
-		}
-	}
-	return nil
 }
