@@ -114,11 +114,13 @@ func (s *AuthService) Login(ctx context.Context, req *connect.Request[v1pb.Login
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to check user roles, error"))
 	}
+	// disallow_password_signin covers every principal that authenticates with a
+	// password-style credential. A service account signs in with its access
+	// key, so exempting it was a policy bypass.
+	if !isWorkspaceAdmin && setting.DisallowPasswordSignin && !loginViaIDP {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.Errorf("password signin is disallowed"))
+	}
 	if !isWorkspaceAdmin && loginUser.Type == storepb.PrincipalType_END_USER {
-		if setting.DisallowPasswordSignin && !loginViaIDP {
-			return nil, connect.NewError(connect.CodePermissionDenied, errors.Errorf("password signin is disallowed"))
-		}
-
 		// Check domain restriction for end users.
 		if err := validateEmailWithDomains(ctx, s.store, loginUser.Email, false); err != nil {
 			return nil, err
