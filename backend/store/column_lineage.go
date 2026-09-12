@@ -218,6 +218,35 @@ func (s *Store) UpsertColumnLineageVersion(ctx context.Context, v *ColumnLineage
 	return err
 }
 
+// ListColumnLineageVersions returns the analysis state of every object of the
+// given meta type, keyed by meta GUID. The analyzer used to issue one lookup per
+// object on every scan; column_lineage_version holds one row per analyzable
+// object, so a single query is enough.
+func (s *Store) ListColumnLineageVersions(ctx context.Context, metaType storepb.MetaType) (map[string]*ColumnLineageVersion, error) {
+	rows, err := s.GetDB().QueryContext(ctx, `
+		SELECT meta_guid, meta_type, meta_hash, analyzed_at, error_message
+		FROM column_lineage_version
+		WHERE meta_type = $1
+	`, metaType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]*ColumnLineageVersion)
+	for rows.Next() {
+		var v ColumnLineageVersion
+		if err := rows.Scan(&v.MetaGUID, &v.MetaType, &v.MetaHash, &v.AnalyzedAt, &v.ErrorMessage); err != nil {
+			return nil, err
+		}
+		result[v.MetaGUID] = &v
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // GetColumnLineageVersion returns the analysis version record for an object, or nil if not found.
 func (s *Store) GetColumnLineageVersion(ctx context.Context, metaGUID string, metaType storepb.MetaType) (*ColumnLineageVersion, error) {
 	row := s.GetDB().QueryRowContext(ctx, `

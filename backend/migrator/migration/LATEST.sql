@@ -123,18 +123,40 @@ CREATE UNIQUE INDEX idx_db_unique_instance_name ON db(instance, name);
 ALTER SEQUENCE db_id_seq RESTART WITH 101;
 
 -- meta registry for all metadata resources global_id and guid
+-- meta_registry_resource holds one row per metadata object; metadata is the
+-- protojson form of the proto/store message named by object_type.
+--
+-- search_text is a stored generated column holding exactly the name/title/
+-- comment/userComment fields of the row's inner metadata object, so the search
+-- predicate can be a plain `search_text ILIKE '%x%'` served by the trigram GIN
+-- index below instead of a sequential scan over a LATERAL jsonb_each.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE OR REPLACE FUNCTION meta_registry_search_text(metadata jsonb) RETURNS text
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+    SELECT COALESCE(string_agg(field, ' '), '')
+    FROM jsonb_each(metadata) AS e(key, inner_meta)
+    CROSS JOIN LATERAL (
+        VALUES (inner_meta->>'name'), (inner_meta->>'title'),
+               (inner_meta->>'comment'), (inner_meta->>'userComment')
+    ) AS fields(field)
+    WHERE field IS NOT NULL
+$$;
+
 CREATE TABLE meta_registry_resource (
     id serial PRIMARY KEY,
     guid text COLLATE "C" NOT NULL,
     object_type int2 NOT NULL,
     metadata jsonb NOT NULL DEFAULT '{}',
-    meta_hash bytea
+    meta_hash bytea,
+    search_text text GENERATED ALWAYS AS (meta_registry_search_text(metadata)) STORED
 );
 
 CREATE UNIQUE INDEX idx_meta_registry_resource_guid_object_type ON meta_registry_resource(guid,object_type);
 -- Serves the lineage analyzer's scan by object_type; the unique index above is
 -- led by guid and cannot.
 CREATE INDEX idx_meta_registry_resource_object_type ON meta_registry_resource(object_type);
+CREATE INDEX idx_meta_registry_resource_search_text ON meta_registry_resource USING GIN (search_text gin_trgm_ops);
 
 CREATE TABLE meta_registry_resource_history (
     id BIGSERIAL PRIMARY KEY,
@@ -403,6 +425,9 @@ CREATE TABLE explain_sql_cache (
 
 ALTER SEQUENCE explain_sql_cache_id_seq RESTART WITH 101;
 
+-- The maintenance runner prunes expired rows by created_at.
+CREATE INDEX idx_explain_sql_cache_created_at ON explain_sql_cache(created_at);
+
 
 -- llm_debug_log stores full LLM request/response bodies when RuntimeDebug is enabled.
 CREATE TABLE llm_debug_log (
@@ -415,6 +440,9 @@ CREATE TABLE llm_debug_log (
 );
 
 ALTER SEQUENCE llm_debug_log_id_seq RESTART WITH 101;
+
+-- The maintenance runner prunes old debug entries by created_at.
+CREATE INDEX idx_llm_debug_log_created_at ON llm_debug_log(created_at);
 
 
 -- schema_migration_history records every applied schema version, one row per

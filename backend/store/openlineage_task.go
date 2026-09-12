@@ -50,8 +50,8 @@ type FindOpenLineageTaskMessage struct {
 	Offset       *int
 }
 
-func (s *Store) upsertOpenLineageTask(ctx context.Context, tx *sql.Tx, run *OpenLineageRunMessage) error {
-	agg, err := buildOpenLineageTaskAggregate(ctx, tx, run.TaskGUID)
+func (s *Store) upsertOpenLineageTask(ctx context.Context, tx *sql.Tx, taskGUID string) error {
+	agg, err := buildOpenLineageTaskAggregate(ctx, tx, taskGUID)
 	if err != nil {
 		return err
 	}

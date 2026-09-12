@@ -40,7 +40,7 @@ type GroupMessage struct {
 
 // GetGroup gets a group.
 func (s *Store) GetGroup(ctx context.Context, email string) (*GroupMessage, error) {
-	if v, ok := s.groupCache.Get(email); ok {
+	if v, ok := s.groupCache.Get(email); ok && !s.cacheDisabled {
 		return v, nil
 	}
 

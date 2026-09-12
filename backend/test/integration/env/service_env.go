@@ -203,7 +203,7 @@ func StartMySQLServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 		return nil, nil, err
 	}
 
-	inspectStore, err := store.New(ctx, pgURL)
+	inspectStore, err := store.New(ctx, pgURL, store.WithCacheDisabled())
 	if err != nil {
 		cleanupServiceResources(nil, bootstrap.containers, serverDir, serverCmd, serverDone)
 		return nil, nil, err
@@ -282,7 +282,7 @@ func StartPostgresServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 		return nil, nil, err
 	}
 
-	inspectStore, err := store.New(ctx, pgURL)
+	inspectStore, err := store.New(ctx, pgURL, store.WithCacheDisabled())
 	if err != nil {
 		cleanupServiceResources(nil, bootstrap.containers, serverDir, serverCmd, serverDone)
 		return nil, nil, err
@@ -501,19 +501,38 @@ func (e *ServiceEnv) WaitForContextLineage(ctx context.Context, t *testing.T, gu
 	var relations []*v1pb.LineageRelation
 	var lastErr error
 	require.Eventuallyf(t, func() bool {
-		resp, err := e.lineageClient.GetLineageForContext(ctx, authorizedRequest(e.token, &v1pb.GetLineageForContextRequest{
-			Guid:     guid,
-			MetaType: metaType,
-		}))
+		list, err := e.fetchContextLineage(ctx, guid, metaType)
 		if err != nil {
 			lastErr = err
 			return false
 		}
 		lastErr = nil
-		relations = resp.Msg.GetRelations()
+		relations = list
 		return predicate(relations)
 	}, lineageWaitTimeout, time.Second, "lineage not ready for guid=%s metaType=%s lastErr=%v relations=%v", guid, metaType.String(), lastErr, relations)
 	return relations
+}
+
+// fetchContextLineage reads every page, so a predicate always sees the whole list.
+func (e *ServiceEnv) fetchContextLineage(ctx context.Context, guid string, metaType v1pb.MetaType) ([]*v1pb.LineageRelation, error) {
+	var relations []*v1pb.LineageRelation
+	pageToken := ""
+	for {
+		resp, err := e.lineageClient.GetLineageForContext(ctx, authorizedRequest(e.token, &v1pb.GetLineageForContextRequest{
+			Guid:      guid,
+			MetaType:  metaType,
+			PageToken: pageToken,
+		}))
+		if err != nil {
+			return nil, err
+		}
+		relations = append(relations, resp.Msg.GetRelations()...)
+		nextPageToken := resp.Msg.GetNextPageToken()
+		if nextPageToken == "" || nextPageToken == pageToken {
+			return relations, nil
+		}
+		pageToken = nextPageToken
+	}
 }
 
 func authorizedRequest[T any](token string, msg *T) *connect.Request[T] {

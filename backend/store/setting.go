@@ -103,7 +103,7 @@ func (s *Store) DeleteCache() {
 
 // GetSetting returns the setting by name.
 func (s *Store) GetSetting(ctx context.Context, name storepb.SettingName) (*SettingMessage, error) {
-	if v, ok := s.settingCache.Get(name); ok {
+	if v, ok := s.settingCache.Get(name); ok && !s.cacheDisabled {
 		return v, nil
 	}
 
@@ -237,7 +237,7 @@ func (s *Store) UpsertSetting(ctx context.Context, update *SetSettingMessage) (*
 
 // CreateSettingIfNotExist creates a new setting only if the named setting doesn't exist.
 func (s *Store) CreateSettingIfNotExist(ctx context.Context, create *SettingMessage) (*SettingMessage, bool, error) {
-	if v, ok := s.settingCache.Get(create.Name); ok {
+	if v, ok := s.settingCache.Get(create.Name); ok && !s.cacheDisabled {
 		return v, false, nil
 	}
 

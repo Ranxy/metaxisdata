@@ -106,7 +106,7 @@ func metaRegistryGUIDCacheKey(find *FindMetaRegistryResourceMessage) (MetaGUIDKe
 
 func (s *Store) GetMetaRegistry(ctx context.Context, find *FindMetaRegistryResourceMessage) (*MetaRegistryResource, error) {
 	if find.ID != nil {
-		if v, ok := s.metaRegistryCache.Get(*find.ID); ok {
+		if v, ok := s.metaRegistryCache.Get(*find.ID); ok && !s.cacheDisabled {
 			return v, nil
 		}
 	}
@@ -114,7 +114,7 @@ func (s *Store) GetMetaRegistry(ctx context.Context, find *FindMetaRegistryResou
 	// (guid, object_type). Only consult the GUID cache for a lookup that also
 	// narrowed the object type.
 	if key, ok := metaRegistryGUIDCacheKey(find); ok {
-		if v, ok := s.metaRegistryGUIDCache.Get(key); ok {
+		if v, ok := s.metaRegistryGUIDCache.Get(key); ok && !s.cacheDisabled {
 			return v, nil
 		}
 	}
@@ -189,6 +189,29 @@ func (s *Store) ListMetaRegistryResource(ctx context.Context, find *FindMetaRegi
 	return list, nil
 }
 
+// ListMetaRegistryResourceDigest lists meta registry rows without loading or
+// unmarshalling their metadata: only ID, GUID, ObjectType and MetaHash are
+// populated. The lineage analyzer scans every analyzable object hourly just to
+// compare hashes, and the full listing made it parse every view definition.
+//
+// It deliberately does not touch the metadata caches — a cached entry with a
+// nil Metadata would corrupt later reads.
+func (s *Store) ListMetaRegistryResourceDigest(ctx context.Context, find *FindMetaRegistryResourceMessage) ([]*MetaRegistryResource, error) {
+	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	list, err := s.listMetaRegistryResourceImpl(ctx, tx, find, false)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
 func (s *Store) GetMetaRegistryAsOf(ctx context.Context, find *FindMetaRegistryResourceMessage, asOf time.Time) (*MetaRegistryResource, error) {
 	list, err := s.ListMetaRegistryResourceAsOf(ctx, find, asOf)
 	if err != nil {
@@ -239,7 +262,12 @@ func (s *Store) ListMetaRegistryHistory(ctx context.Context, find *FindMetaRegis
 // SearchMetaRegistryResourceMessage is the message to search meta registry resources
 // by matching name/comment fields inside the metadata JSONB.
 type SearchMetaRegistryResourceMessage struct {
-	SearchStr  string
+	SearchStr string
+	// GUIDPrefix restricts the search to a GUID subtree. A nil or empty prefix
+	// searches every instance; an empty prefix used to compile to
+	// `guid = '' OR guid LIKE ';%'`, which matched nothing, so the
+	// explain-SQL search tool silently returned no rows when no instance was
+	// selected.
 	GUIDPrefix *string
 	ObjectType *storepb.MetaType
 	Limit      int
@@ -247,9 +275,15 @@ type SearchMetaRegistryResourceMessage struct {
 }
 
 // SearchMetaRegistryResource searches metadata by name and comment within the JSONB column.
-// It uses a LATERAL join to extract the single inner metadata object (e.g. tableMetadata, schemaMetadata)
-// and searches the name, comment, and userComment text fields.
+// It reads the generated search_text column, which is exactly the concatenation
+// of the inner object's name, title, comment and userComment fields: the matched
+// rows are the same, but the predicate is answered by the trigram index instead
+// of a sequential LATERAL jsonb_each scan.
 func (s *Store) SearchMetaRegistryResource(ctx context.Context, find *SearchMetaRegistryResourceMessage) ([]*MetaRegistryResource, error) {
+	if find.SearchStr == "" {
+		return nil, common.Errorf(common.Invalid, "search string is required")
+	}
+
 	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, err
@@ -258,7 +292,7 @@ func (s *Store) SearchMetaRegistryResource(ctx context.Context, find *SearchMeta
 
 	where, args := []string{}, []any{}
 
-	if v := find.GUIDPrefix; v != nil {
+	if v := find.GUIDPrefix; v != nil && *v != "" {
 		where, args = appendGUIDSubtreeCondition(where, args, "r.guid", *v)
 	}
 	if v := find.ObjectType; v != nil {
@@ -266,11 +300,8 @@ func (s *Store) SearchMetaRegistryResource(ctx context.Context, find *SearchMeta
 	}
 
 	// Escape LIKE metacharacters in user input.
-	escaped := likePatternEscaper.Replace(find.SearchStr)
-	searchPattern := "%" + escaped + "%"
-	args = append(args, searchPattern)
-	searchIdx := len(args)
-	where = append(where, fmt.Sprintf(`(m.inner_meta->>'name' ILIKE $%d OR m.inner_meta->>'title' ILIKE $%d OR m.inner_meta->>'comment' ILIKE $%d OR m.inner_meta->>'userComment' ILIKE $%d)`, searchIdx, searchIdx, searchIdx, searchIdx))
+	args = append(args, "%"+likePatternEscaper.Replace(find.SearchStr)+"%")
+	where = append(where, fmt.Sprintf("r.search_text ILIKE $%d", len(args)))
 
 	query := fmt.Sprintf(`
 		SELECT
@@ -279,8 +310,7 @@ func (s *Store) SearchMetaRegistryResource(ctx context.Context, find *SearchMeta
 			r.object_type,
 			r.metadata,
 			r.meta_hash
-		FROM meta_registry_resource r,
-			LATERAL (SELECT value AS inner_meta FROM jsonb_each(r.metadata) LIMIT 1) AS m
+		FROM meta_registry_resource r
 		WHERE %s
 		ORDER BY r.guid`, strings.Join(where, " AND "))
 

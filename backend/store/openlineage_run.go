@@ -69,7 +69,7 @@ func (s *Store) UpsertOpenLineageRun(ctx context.Context, run *OpenLineageRunMes
 		return nil, err
 	}
 
-	if err := s.upsertOpenLineageTask(ctx, tx, persisted); err != nil {
+	if err := s.upsertOpenLineageTask(ctx, tx, persisted.TaskGUID); err != nil {
 		return nil, err
 	}
 

@@ -26,6 +26,11 @@ type Store struct {
 	// (config.Profile.EncryptionKey). Empty means "fall back to AUTH_SECRET".
 	encryptionKey string
 
+	// cacheDisabled makes every cache read go to the database. It is meant for
+	// short-lived observer stores (the integration harness) that read rows
+	// written by another process and cannot invalidate this process's cache.
+	cacheDisabled bool
+
 	// Cache
 	userIDCache           *lru.Cache[int, *UserMessage]
 	userEmailCache        *lru.Cache[string, *UserMessage]
@@ -46,6 +51,16 @@ type Option func(*Store)
 func WithEncryptionKey(key string) Option {
 	return func(s *Store) {
 		s.encryptionKey = key
+	}
+}
+
+// WithCacheDisabled makes cache reads bypass the cache and query the database.
+// Use it for a store that observes rows written by another process: such a store
+// never sees the writer's cache invalidation, so a cached row would stay visible
+// after the writer deleted it.
+func WithCacheDisabled() Option {
+	return func(s *Store) {
+		s.cacheDisabled = true
 	}
 }
 
