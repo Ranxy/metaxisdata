@@ -22,11 +22,10 @@ func ConvertToLlm(msgs []AgentMessage) []Message {
 		case "user":
 			out = append(out, Message{Role: "user", Content: m.Content})
 		case "assistant":
-			if len(m.ToolCalls) > 0 {
-				out = append(out, Message{Role: "assistant", ToolCalls: m.ToolCalls})
-			} else {
-				out = append(out, Message{Role: "assistant", Content: m.Content})
-			}
+			// Keep the assistant's text alongside its tool calls. Sending only
+			// the calls dropped the model's reasoning/preface from the
+			// transcript, so the next turn could not see what it had said.
+			out = append(out, Message{Role: "assistant", Content: m.Content, ToolCalls: m.ToolCalls})
 		case "toolResult":
 			out = append(out, Message{
 				Role:       "tool",

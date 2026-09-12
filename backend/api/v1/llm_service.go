@@ -110,6 +110,9 @@ func (s *LLMService) CreateLLMProviderProfile(ctx context.Context, req *connect.
 	if baseURL == "" {
 		baseURL = getDefaultBaseURL(providerTypeToString(pbProfile.Type))
 	}
+	if err := llm.ValidateBaseURL(baseURL); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 
 	title := pbProfile.Title
 	if title == "" {
@@ -128,6 +131,7 @@ func (s *LLMService) CreateLLMProviderProfile(ctx context.Context, req *connect.
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to create LLM profile"))
 	}
+	s.registry.Invalidate()
 
 	return connect.NewResponse(convertProfileToV1(msg)), nil
 }
@@ -149,6 +153,9 @@ func (s *LLMService) UpdateLLMProviderProfile(ctx context.Context, req *connect.
 		title := pbProfile.Title
 		update.Title = &title
 		baseURL := pbProfile.BaseUrl
+		if err := llm.ValidateBaseURL(baseURL); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
 		update.BaseURL = &baseURL
 		update.Models = convertV1ModelsToStore(pbProfile.Models)
 		if pbProfile.ApiKey != "" {
@@ -163,6 +170,9 @@ func (s *LLMService) UpdateLLMProviderProfile(ctx context.Context, req *connect.
 				update.Title = &title
 			case "base_url":
 				baseURL := pbProfile.BaseUrl
+				if err := llm.ValidateBaseURL(baseURL); err != nil {
+					return nil, connect.NewError(connect.CodeInvalidArgument, err)
+				}
 				update.BaseURL = &baseURL
 			case "models":
 				update.Models = convertV1ModelsToStore(pbProfile.Models)
@@ -180,6 +190,7 @@ func (s *LLMService) UpdateLLMProviderProfile(ctx context.Context, req *connect.
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to update LLM profile"))
 	}
+	s.registry.Invalidate()
 
 	return connect.NewResponse(convertProfileToV1(msg)), nil
 }
@@ -193,6 +204,7 @@ func (s *LLMService) DeleteLLMProviderProfile(ctx context.Context, req *connect.
 	if err := s.store.DeleteLLMProfile(ctx, resourceID); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to delete LLM profile"))
 	}
+	s.registry.Invalidate()
 
 	return connect.NewResponse(&emptypb.Empty{}), nil
 }

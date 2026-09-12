@@ -246,6 +246,10 @@ func streamRaw(ctx context.Context, cfg AgentConfig, messages []Message) <-chan 
 
 	go func() {
 		defer close(ch)
+		if err := ValidateBaseURL(cfg.Provider.BaseURL); err != nil {
+			sendRaw(ctx, ch, rawStreamChunk{Error: err})
+			return
+		}
 		endpoint := strings.TrimRight(cfg.Provider.BaseURL, "/") + "/v1/chat/completions"
 
 		body := chatRequest{
