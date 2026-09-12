@@ -274,9 +274,11 @@ func metaGUIScope(metaGUID string) string {
 	return strings.Join(parts[:len(parts)-1], ";")
 }
 
+// isMySQLEngine reports whether names are addressed as database.table rather
+// than schema.table. Keep it in sync with the engines the MySQL driver serves.
 func isMySQLEngine(engine storepb.Engine) bool {
 	switch engine {
-	case storepb.Engine_MYSQL, storepb.Engine_TIDB, storepb.Engine_MARIADB:
+	case storepb.Engine_MYSQL, storepb.Engine_TIDB, storepb.Engine_MARIADB, storepb.Engine_OCEANBASE:
 		return true
 	default:
 		return false
@@ -371,7 +373,11 @@ func (s *ExplainSQLService) fetchObjectsByGUIDs(ctx context.Context, guids []str
 		return &llm.SchemaContext{}
 	}
 
+	// Keep the GUID next to the metadata it was resolved from: the pairs used to
+	// be rebuilt positionally from the request list, so one failed lookup
+	// shifted every following GUID onto the wrong metadata.
 	var metas []*storepb.StoredMetadata
+	matchedGUIDs := make([]string, 0, len(guids))
 	for _, guid := range guids {
 		list, err := s.store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{
 			GUID: &guid,
@@ -380,13 +386,14 @@ func (s *ExplainSQLService) fetchObjectsByGUIDs(ctx context.Context, guids []str
 			continue
 		}
 		metas = append(metas, list[0].Metadata)
+		matchedGUIDs = append(matchedGUIDs, guid)
 	}
 
 	if len(metas) == 0 {
 		return &llm.SchemaContext{}
 	}
 
-	ctxObj := llm.BuildContextFromMetadata(metas, guids[:len(metas)])
+	ctxObj := llm.BuildContextFromMetadata(metas, matchedGUIDs)
 	if len(ctxObj.Objects) > 10 {
 		ctxObj.Objects = ctxObj.Objects[:10]
 	}
@@ -470,12 +477,20 @@ func (s *ExplainSQLService) toolSearchObjects(ctx context.Context, tc llm.ToolCa
 	if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
 		return nil, fmt.Errorf("invalid arguments for search_objects: %w", err)
 	}
+	if strings.TrimSpace(args.Keyword) == "" {
+		return []llm.ToolResult{{ToolCallID: tc.ID, Content: `{"error": "keyword is required"}`}}, nil
+	}
 
-	list, _ := s.store.SearchMetaRegistryResource(ctx, &store.SearchMetaRegistryResourceMessage{
+	// An empty scope_prefix means no instance was selected; the search then runs
+	// across all instances instead of matching nothing.
+	list, err := s.store.SearchMetaRegistryResource(ctx, &store.SearchMetaRegistryResourceMessage{
 		SearchStr:  args.Keyword,
 		GUIDPrefix: &scopePrefix,
 		Limit:      20,
 	})
+	if err != nil {
+		return []llm.ToolResult{{ToolCallID: tc.ID, Content: fmt.Sprintf(`{"error": "search failed: %s"}`, err.Error())}}, nil
+	}
 	if len(list) == 0 {
 		return []llm.ToolResult{{ToolCallID: tc.ID, Content: `{"objects": []}`}}, nil
 	}
