@@ -86,34 +86,61 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte) err
 	if err := json.Unmarshal(body, &rawEvents); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "failed to parse event array"})
 	}
+	if len(rawEvents) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "empty event array"})
+	}
 
-	var lastErr error
-	processed := 0
-	for _, raw := range rawEvents {
+	processed, invalid, failed := 0, 0, 0
+	var firstErr error
+	for i, raw := range rawEvents {
 		event, err := openlineage.ParseRunEvent(raw)
 		if err != nil {
-			slog.Warn("skipping invalid event in batch", "error", err)
+			slog.Warn("skipping invalid event in batch", "index", i, "error", err)
+			invalid++
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		}
 		persistedRun, err := h.persistEvent(c.Request().Context(), event)
 		if err != nil {
-			slog.Error("failed to persist batch event", "runId", event.Run.RunID, "error", err)
-			lastErr = err
+			slog.Error("failed to persist batch event", "index", i, "runId", event.Run.RunID, "error", err)
+			failed++
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		}
 		if err := h.processor.ProcessRunEvent(c.Request().Context(), event, persistedRun); err != nil {
-			slog.Error("failed to process batch event", "runId", event.Run.RunID, "error", err)
-			lastErr = err
+			slog.Error("failed to process batch event", "index", i, "runId", event.Run.RunID, "error", err)
+			failed++
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		}
 		processed++
 	}
 
-	if lastErr != nil && processed == 0 {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to process any events"})
+	// The old handler answered 200 as long as one event succeeded, so dropped
+	// events were invisible and the producer never retried them.
+	if invalid+failed == 0 {
+		return c.JSON(http.StatusOK, map[string]any{"status": "ok", "processed": processed, "failed": 0})
 	}
-
-	return c.JSON(http.StatusOK, map[string]any{"status": "ok", "processed": processed})
+	if processed == 0 && failed == 0 {
+		// Every event was unparseable: resending the same body cannot help.
+		return c.JSON(http.StatusBadRequest, map[string]any{
+			"error":     "no event in the batch could be parsed",
+			"processed": 0,
+			"failed":    invalid,
+		})
+	}
+	return c.JSON(http.StatusInternalServerError, map[string]any{
+		"status":    "error",
+		"error":     firstErr.Error(),
+		"processed": processed,
+		"failed":    invalid + failed,
+	})
 }
 
 func (h *OpenLineageHandler) persistEvent(ctx context.Context, event *openlineage.RunEvent) (*store.OpenLineageRunMessage, error) {
