@@ -124,12 +124,7 @@ func (s *AuthService) Login(ctx context.Context, req *connect.Request[v1pb.Login
 			return nil, connect.NewError(connect.CodePermissionDenied, errors.Errorf("only users can use web login"))
 		}
 
-		origin := req.Header().Get("Origin")
-		if origin == "" {
-			origin = req.Header().Get("grpcgateway-origin")
-		}
-
-		cookie := auth.GetTokenCookie(ctx, s.store, origin, response.Token)
+		cookie := auth.GetTokenCookie(ctx, s.store, response.Token)
 		resp.Header().Add("Set-Cookie", cookie.String())
 	}
 
@@ -199,15 +194,17 @@ func (s *AuthService) Logout(ctx context.Context, req *connect.Request[v1pb.Logo
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
+	// Only a token this server actually issued may be revoked. Without this
+	// check an unauthenticated caller could flood the revocation cache with
+	// forged strings and evict genuine entries.
+	if _, err := auth.VerifyAccessToken(accessTokenStr, s.secret, s.profile.Mode); err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.Errorf("invalid access token"))
+	}
 	s.stateCfg.TokenExpireCache.Add(accessTokenStr, true)
 
 	resp := connect.NewResponse(&emptypb.Empty{})
 
-	origin := req.Header().Get("Origin")
-	if origin == "" {
-		origin = req.Header().Get("grpcgateway-origin")
-	}
-	cookie := auth.GetTokenCookie(ctx, s.store, origin, "")
+	cookie := auth.GetTokenCookie(ctx, s.store, "")
 	resp.Header().Add("Set-Cookie", cookie.String())
 	return resp, nil
 }

@@ -9,7 +9,6 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/pkg/errors"
 
-	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/config"
 
@@ -22,17 +21,22 @@ func configureEchoRouters(
 ) {
 	e.Use(recoverMiddleware)
 
-	if profile.Mode == common.ReleaseModeDev {
+	// CORS is installed only for explicitly configured origins. A credentialed
+	// CORS policy that echoes any origin lets any website issue authenticated
+	// requests, so the wide-open dev default is gone.
+	if len(profile.CORSAllowOrigins) > 0 {
 		e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-			AllowOriginFunc: func(string) (bool, error) {
-				return true, nil
-			},
+			AllowOrigins:     profile.CORSAllowOrigins,
 			AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodOptions},
 			AllowHeaders:     connectcors.AllowedHeaders(),
 			ExposeHeaders:    connectcors.ExposedHeaders(),
 			AllowCredentials: true,
 		}))
 	}
+
+	// Defense in depth for the cookie-based web login: a state-changing request
+	// that rides a session cookie must come from a trusted origin.
+	e.Use(csrfProtectionMiddleware(profile))
 
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		LogURI:    true,

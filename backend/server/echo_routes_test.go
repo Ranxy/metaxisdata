@@ -28,7 +28,10 @@ var (
 func testServers() {
 	testServersOnce.Do(func() {
 		devServer = echo.New()
-		configureEchoRouters(devServer, &config.Profile{Mode: common.ReleaseModeDev})
+		configureEchoRouters(devServer, &config.Profile{
+			Mode:             common.ReleaseModeDev,
+			CORSAllowOrigins: []string{"http://localhost:3000"},
+		})
 		prodServer = echo.New()
 		configureEchoRouters(prodServer, &config.Profile{Mode: common.ReleaseModeProd})
 	})
@@ -63,20 +66,30 @@ func TestConfigureEchoRoutersServesHealthz(t *testing.T) {
 	require.Equal(t, "OK", recorder.Body.String())
 }
 
-// Dev installs a wide-open CORS middleware; prod installs none, so the browser
-// same-origin policy applies. A default build is a dev build, which is why the
-// release tag matters.
+// CORS is an explicit allowlist now. A credentialed policy that echoes any
+// origin lets any website issue authenticated requests, which is why the former
+// "any origin in dev" default is gone.
 func TestConfigureEchoRoutersCORSFollowsTheProfile(t *testing.T) {
 	t.Parallel()
 
-	t.Run("dev allows any origin with credentials", func(t *testing.T) {
+	t.Run("allowed origin is echoed", func(t *testing.T) {
+		t.Parallel()
+		recorder := doRequest(devTestServer(), http.MethodOptions, "/healthz", map[string]string{
+			"Origin":                        "http://localhost:3000",
+			"Access-Control-Request-Method": http.MethodPost,
+		})
+		require.Equal(t, "http://localhost:3000", recorder.Header().Get("Access-Control-Allow-Origin"))
+		require.Equal(t, "true", recorder.Header().Get("Access-Control-Allow-Credentials"))
+	})
+
+	t.Run("unlisted origin gets no CORS headers", func(t *testing.T) {
 		t.Parallel()
 		recorder := doRequest(devTestServer(), http.MethodOptions, "/healthz", map[string]string{
 			"Origin":                        "https://evil.example.com",
 			"Access-Control-Request-Method": http.MethodPost,
 		})
-		require.Equal(t, "https://evil.example.com", recorder.Header().Get("Access-Control-Allow-Origin"))
-		require.Equal(t, "true", recorder.Header().Get("Access-Control-Allow-Credentials"))
+		require.Empty(t, recorder.Header().Get("Access-Control-Allow-Origin"))
+		require.Empty(t, recorder.Header().Get("Access-Control-Allow-Credentials"))
 	})
 
 	t.Run("prod emits no CORS headers", func(t *testing.T) {

@@ -126,6 +126,91 @@ func TestGeneratedTokensRoundTrip(t *testing.T) {
 	})
 }
 
+// VerifyAccessToken is what both the auth interceptor and Logout rely on. Logout
+// in particular must reject a token it cannot verify, otherwise an
+// unauthenticated caller could flood the revocation cache and evict genuine
+// entries.
+func TestVerifyAccessToken(t *testing.T) {
+	t.Parallel()
+
+	const secret = "0123456789abcdef0123456789abcdef"
+
+	t.Run("valid token yields the identity", func(t *testing.T) {
+		t.Parallel()
+		token, err := GenerateAccessToken("alice@example.com", 101, common.ReleaseModeDev, secret, time.Hour)
+		require.NoError(t, err)
+		identity, err := VerifyAccessToken(token, secret, common.ReleaseModeDev)
+		require.NoError(t, err)
+		require.Equal(t, 101, identity.UserID)
+		require.WithinDuration(t, time.Now(), identity.IssuedAt, time.Minute)
+	})
+
+	t.Run("wrong key is rejected", func(t *testing.T) {
+		t.Parallel()
+		token, err := GenerateAccessToken("alice@example.com", 101, common.ReleaseModeDev, secret, time.Hour)
+		require.NoError(t, err)
+		_, err = VerifyAccessToken(token, "another-key-another-key-another", common.ReleaseModeDev)
+		require.Error(t, err)
+	})
+
+	t.Run("wrong audience is rejected", func(t *testing.T) {
+		t.Parallel()
+		token, err := GenerateAccessToken("alice@example.com", 101, common.ReleaseModeProd, secret, time.Hour)
+		require.NoError(t, err)
+		_, err = VerifyAccessToken(token, secret, common.ReleaseModeDev)
+		require.Error(t, err)
+	})
+
+	t.Run("expired token is rejected", func(t *testing.T) {
+		t.Parallel()
+		token, err := GenerateAccessToken("alice@example.com", 101, common.ReleaseModeDev, secret, -time.Minute)
+		require.NoError(t, err)
+		_, err = VerifyAccessToken(token, secret, common.ReleaseModeDev)
+		require.ErrorIs(t, err, jwt.ErrTokenExpired)
+	})
+
+	t.Run("unsigned token is rejected", func(t *testing.T) {
+		t.Parallel()
+		unsigned := jwt.NewWithClaims(jwt.SigningMethodNone, &claimsMessage{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Audience:  jwt.ClaimStrings{"mt.user.access.dev"},
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				Issuer:    issuer,
+				Subject:   "101",
+			},
+		})
+		tokenString, err := unsigned.SignedString(jwt.UnsafeAllowNoneSignatureType)
+		require.NoError(t, err)
+		_, err = VerifyAccessToken(tokenString, secret, common.ReleaseModeDev)
+		require.Error(t, err)
+	})
+
+	// The iat claim has second granularity, so without a per-token id two
+	// logins in the same second yield the same string and Logout cannot tell
+	// the sessions apart.
+	t.Run("tokens minted together are distinct", func(t *testing.T) {
+		t.Parallel()
+		first, err := GenerateAccessToken("alice@example.com", 101, common.ReleaseModeDev, secret, time.Hour)
+		require.NoError(t, err)
+		second, err := GenerateAccessToken("alice@example.com", 101, common.ReleaseModeDev, secret, time.Hour)
+		require.NoError(t, err)
+		require.NotEqual(t, first, second)
+	})
+}
+
+func TestTokenPredatesPasswordChange(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	require.False(t, tokenPredatesPasswordChange(time.Time{}, now), "tokens without an iat claim are not judged")
+	require.False(t, tokenPredatesPasswordChange(now, time.Time{}), "users who never changed their password are not judged")
+	require.True(t, tokenPredatesPasswordChange(now.Add(-time.Hour), now))
+	require.False(t, tokenPredatesPasswordChange(now.Add(time.Hour), now))
+	// The JWT iat claim has second granularity, so a token minted in the same
+	// second as the password change must survive.
+	require.False(t, tokenPredatesPasswordChange(now, now))
+}
+
 func TestIsAuthenticationAllowed(t *testing.T) {
 	t.Parallel()
 
@@ -183,26 +268,39 @@ func TestGetTokenCookie(t *testing.T) {
 
 	t.Run("empty token expires the cookie", func(t *testing.T) {
 		t.Parallel()
-		cookie := GetTokenCookie(context.Background(), nil, "https://example.com", "")
+		cookie := GetTokenCookie(context.Background(), nil, "")
 		require.Equal(t, AccessTokenCookieName, cookie.Name)
 		require.Empty(t, cookie.Value)
 		require.True(t, cookie.Expires.Before(time.Now()))
 	})
 
-	t.Run("http origin uses SameSite strict", func(t *testing.T) {
+	t.Run("an unconfigured deployment gets SameSite lax", func(t *testing.T) {
 		t.Parallel()
-		cookie := GetTokenCookie(context.Background(), nil, "http://localhost:3000", "token")
+		cookie := GetTokenCookie(context.Background(), nil, "token")
 		require.False(t, cookie.Secure)
-		require.Equal(t, http.SameSiteStrictMode, cookie.SameSite)
+		require.Equal(t, http.SameSiteLaxMode, cookie.SameSite)
 		require.True(t, cookie.HttpOnly)
 	})
+}
 
-	t.Run("https origin uses SameSite none", func(t *testing.T) {
-		t.Parallel()
-		cookie := GetTokenCookie(context.Background(), nil, "https://example.com", "token")
-		require.True(t, cookie.Secure)
-		require.Equal(t, http.SameSiteNoneMode, cookie.SameSite)
-	})
+// The cookie's Secure/SameSite policy used to come from the client-controlled
+// Origin header, so a caller could ask for SameSite=None from plain http.
+func TestCookieSecurityComesFromTheServerSideURL(t *testing.T) {
+	t.Parallel()
+
+	secure, sameSite := cookieSecurityForExternalURL("")
+	require.False(t, secure)
+	require.Equal(t, http.SameSiteLaxMode, sameSite)
+
+	secure, sameSite = cookieSecurityForExternalURL("http://metaxis.example.com")
+	require.False(t, secure)
+	require.Equal(t, http.SameSiteLaxMode, sameSite)
+
+	// A cross-origin SPA needs SameSite=None, which only a deliberately
+	// configured https deployment may select.
+	secure, sameSite = cookieSecurityForExternalURL("https://metaxis.example.com")
+	require.True(t, secure)
+	require.Equal(t, http.SameSiteNoneMode, sameSite)
 }
 
 func TestGatewayResponseModifierCopiesSetCookie(t *testing.T) {

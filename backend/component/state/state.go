@@ -7,6 +7,11 @@ import (
 	"github.com/pkg/errors"
 )
 
+// tokenRevocationCapacity bounds the process-local set of revoked access
+// tokens. Logout only revokes a token it has already verified, so the set can
+// only grow through legitimate logins; the LRU eviction is therefore safe.
+const tokenRevocationCapacity = 4096
+
 type State struct {
 	TokenExpireCache *lru.Cache[string, bool]
 	// InstanceOutstandingConnections is the maximum number of connections per instance.
@@ -14,7 +19,7 @@ type State struct {
 }
 
 func New() (*State, error) {
-	expireCache, err := lru.New[string, bool](128)
+	expireCache, err := lru.New[string, bool](tokenRevocationCapacity)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create auth expire cache")
 	}

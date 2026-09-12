@@ -126,19 +126,21 @@ func (in *APIAuthInterceptor) WrapStreamingHandler(next connect.StreamingHandler
 	}
 }
 
-// authenticateConnect is a ConnectRPC-specific version that returns ConnectRPC errors.
-func (in *APIAuthInterceptor) authenticateConnect(ctx context.Context, accessTokenStr string) (*store.UserMessage, error) {
-	if accessTokenStr == "" {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.New("access token not found"))
-	}
-	if _, ok := in.stateCfg.TokenExpireCache.Get(accessTokenStr); ok {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.New("access token expired"))
-	}
+// AccessTokenIdentity is the verified identity carried by an access token.
+type AccessTokenIdentity struct {
+	UserID   int
+	IssuedAt time.Time
+}
+
+// VerifyAccessToken validates an access token's signature, algorithm, issuer,
+// audience and expiry. It performs no database lookup, so callers that need the
+// principal record must still load it.
+func VerifyAccessToken(accessTokenStr, secret string, mode common.ReleaseMode) (*AccessTokenIdentity, error) {
 	claims := &claimsMessage{}
 	if _, err := jwt.ParseWithClaims(accessTokenStr, claims, func(t *jwt.Token) (any, error) {
 		if kid, ok := t.Header["kid"].(string); ok {
 			if kid == keyID {
-				return []byte(in.secret), nil
+				return []byte(secret), nil
 			}
 		}
 		return nil, errs.Errorf("unexpected access token kid=%v", t.Header["kid"])
@@ -147,35 +149,73 @@ func (in *APIAuthInterceptor) authenticateConnect(ctx context.Context, accessTok
 		jwt.WithIssuer(issuer),
 		jwt.WithExpirationRequired(),
 	); err != nil {
+		return nil, err
+	}
+	if !audienceContains(claims.Audience, fmt.Sprintf(AccessTokenAudienceFmt, mode)) {
+		return nil, errs.Errorf(
+			"invalid access token, audience mismatch, got %q, expected %q. you may send request to the wrong environment",
+			claims.Audience,
+			fmt.Sprintf(AccessTokenAudienceFmt, mode),
+		)
+	}
+	principalID, err := strconv.Atoi(claims.Subject)
+	if err != nil {
+		return nil, errs.Wrapf(err, "malformed ID %s in the access token", claims.Subject)
+	}
+	identity := &AccessTokenIdentity{UserID: principalID}
+	if claims.IssuedAt != nil {
+		identity.IssuedAt = claims.IssuedAt.Time
+	}
+	return identity, nil
+}
+
+// authenticateConnect is a ConnectRPC-specific version that returns ConnectRPC errors.
+func (in *APIAuthInterceptor) authenticateConnect(ctx context.Context, accessTokenStr string) (*store.UserMessage, error) {
+	if accessTokenStr == "" {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errs.New("access token not found"))
+	}
+	if _, ok := in.stateCfg.TokenExpireCache.Get(accessTokenStr); ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errs.New("access token expired"))
+	}
+	identity, err := VerifyAccessToken(accessTokenStr, in.secret, in.profile.Mode)
+	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return nil, connect.NewError(connect.CodeUnauthenticated, errs.New("access token expired"))
 		}
 		return nil, connect.NewError(connect.CodeUnauthenticated, errs.New("failed to parse claim"))
 	}
-	if !audienceContains(claims.Audience, fmt.Sprintf(AccessTokenAudienceFmt, in.profile.Mode)) {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf(
-			"invalid access token, audience mismatch, got %q, expected %q. you may send request to the wrong environment",
-			claims.Audience,
-			fmt.Sprintf(AccessTokenAudienceFmt, in.profile.Mode),
-		))
-	}
 
-	principalID, err := strconv.Atoi(claims.Subject)
+	user, err := in.store.GetUserByID(ctx, identity.UserID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("malformed ID %s in the access token", claims.Subject))
-	}
-	user, err := in.store.GetUserByID(ctx, principalID)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("failed to find user ID %d in the access token", principalID))
+		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("failed to find user ID %d in the access token", identity.UserID))
 	}
 	if user == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("user ID %d not exists in the access token", principalID))
+		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("user ID %d not exists in the access token", identity.UserID))
 	}
 	if user.MemberDeleted {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("user ID %d has been deactivated by administrators", user.ID))
 	}
+	// A token minted before the last password change must not survive it. The
+	// comparison uses persisted state, so it holds across replicas. The one
+	// second slack absorbs the second-granularity of the JWT iat claim.
+	if lastChange := user.Profile.GetLastChangePasswordTime(); lastChange != nil {
+		if tokenPredatesPasswordChange(identity.IssuedAt, lastChange.AsTime()) {
+			return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("access token of user ID %d was issued before the last password change", user.ID))
+		}
+	}
 
 	return user, nil
+}
+
+// tokenPredatesPasswordChange reports whether a token issued at issuedAt must be
+// rejected because the password changed at changedAt afterwards. A zero time is
+// treated as "not applicable" so tokens without an iat claim and users who never
+// changed their password are unaffected.
+func tokenPredatesPasswordChange(issuedAt, changedAt time.Time) bool {
+	if issuedAt.IsZero() || changedAt.IsZero() {
+		return false
+	}
+	return issuedAt.Add(time.Second).Before(changedAt)
 }
 
 // getUserConnect is a ConnectRPC-specific version that returns ConnectRPC errors.
@@ -243,6 +283,14 @@ func GenerateAccessToken(userName string, userID int, mode common.ReleaseMode, s
 
 // Pay attention to this function. It holds the main JWT token generation logic.
 func generateToken(userName string, userID int, aud string, expirationTime time.Time, secret []byte) (string, error) {
+	// The iat claim only has second granularity, so two logins in the same
+	// second would otherwise produce byte-identical tokens. Logout revokes a
+	// token by its string, so identical tokens would let one session's logout
+	// kill the other session.
+	tokenID, err := common.RandomString(16)
+	if err != nil {
+		return "", errs.Wrap(err, "failed to generate a token id")
+	}
 	// Create the JWT claims, which includes the username and expiry time.
 	claims := &claimsMessage{
 		Name: userName,
@@ -253,6 +301,7 @@ func generateToken(userName string, userID int, aud string, expirationTime time.
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			Issuer:    issuer,
 			Subject:   strconv.Itoa(userID),
+			ID:        tokenID,
 		},
 	}
 

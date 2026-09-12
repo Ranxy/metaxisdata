@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/jackc/pgconn"
 	"github.com/spf13/cobra"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/server"
 )
@@ -43,6 +45,9 @@ var (
 		// output logs in json format
 		enableJSONLogging bool
 		debug             bool
+		// comma-separated browser origins allowed to call the server with
+		// credentials. Empty installs no CORS middleware at all.
+		corsAllowOrigins string
 	}
 
 	rootCmd = &cobra.Command{
@@ -63,6 +68,25 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&flags.port, "port", 8080, "port where server runs. Default to 80")
 	rootCmd.PersistentFlags().BoolVar(&flags.enableJSONLogging, "enable-json-logging", false, "enable output logs in json format")
 	rootCmd.PersistentFlags().BoolVar(&flags.debug, "debug", false, "whether to enable debug level logging")
+	rootCmd.PersistentFlags().StringVar(&flags.corsAllowOrigins, "cors-allow-origins", "", "comma-separated browser origins allowed to call the API with credentials; empty disables CORS")
+}
+
+// defaultDevCORSOrigins matches the Vite dev server, which proxies /v1 and
+// /metaxisdata.v1 to the backend. Any other origin must be opted in explicitly
+// with --cors-allow-origins; the previous "any origin in dev" behavior allowed
+// credentialed cross-site requests from anywhere.
+var defaultDevCORSOrigins = []string{"http://localhost:3000", "http://127.0.0.1:3000"}
+
+// parseCORSAllowOrigins splits the comma-separated flag and drops empty entries
+// and trailing slashes, which browsers never include in an Origin header.
+func parseCORSAllowOrigins(raw string) []string {
+	var origins []string
+	for _, part := range strings.Split(raw, ",") {
+		if trimmed := strings.TrimSpace(strings.TrimRight(part, "/")); trimmed != "" {
+			origins = append(origins, trimmed)
+		}
+	}
+	return origins
 }
 
 // setupLogging installs the process-wide logger. Without it slog.Default keeps
@@ -90,6 +114,10 @@ func start() {
 	setupLogging(flags.enableJSONLogging)
 
 	profile := activeProfile()
+	profile.CORSAllowOrigins = parseCORSAllowOrigins(flags.corsAllowOrigins)
+	if len(profile.CORSAllowOrigins) == 0 && profile.Mode == common.ReleaseModeDev {
+		profile.CORSAllowOrigins = defaultDevCORSOrigins
+	}
 
 	if profile.PgURL == "" {
 		slog.Error("must set PG_URL environment variable")

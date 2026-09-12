@@ -31,8 +31,14 @@ func (*GatewayResponseModifier) Modify(ctx context.Context, response http.Respon
 	return nil
 }
 
-// token="" => unset
-func GetTokenCookie(ctx context.Context, stores *store.Store, origin, token string) *http.Cookie {
+// GetTokenCookie builds the web session cookie. Passing token="" clears it.
+//
+// Secure and SameSite are derived from the server-side external URL, never from
+// the client-controlled Origin header: a client could otherwise claim https and
+// force SameSite=None, which is exactly the cross-site cookie behavior CSRF
+// protection wants to avoid. Deployments that serve the SPA from another origin
+// must configure an https external URL, which selects SameSite=None; Secure.
+func GetTokenCookie(ctx context.Context, stores *store.Store, token string) *http.Cookie {
 	if token == "" {
 		return &http.Cookie{
 			Name:    AccessTokenCookieName,
@@ -41,11 +47,7 @@ func GetTokenCookie(ctx context.Context, stores *store.Store, origin, token stri
 			Path:    "/",
 		}
 	}
-	isHTTPS := strings.HasPrefix(origin, "https")
-	sameSite := http.SameSiteStrictMode
-	if isHTTPS {
-		sameSite = http.SameSiteNoneMode
-	}
+	secure, sameSite := cookieSecurity(ctx, stores)
 	tokenDuration := GetTokenDuration(ctx, stores)
 	return &http.Cookie{
 		Name:  AccessTokenCookieName,
@@ -59,9 +61,31 @@ func GetTokenCookie(ctx context.Context, stores *store.Store, origin, token stri
 		Path:    "/",
 		// Http-only helps mitigate the risk of client side script accessing the protected cookie.
 		HttpOnly: true,
-		Secure:   isHTTPS,
+		Secure:   secure,
 		SameSite: sameSite,
 	}
+}
+
+// cookieSecurity reports whether the session cookie must be Secure and which
+// SameSite policy applies. It reads the admin-configured external URL from the
+// database; an unconfigured or plain-http deployment gets SameSite=Lax, which
+// blocks cross-site form posts and XHR.
+func cookieSecurity(ctx context.Context, stores *store.Store) (bool, http.SameSite) {
+	if stores == nil {
+		return cookieSecurityForExternalURL("")
+	}
+	setting, err := stores.GetWorkspaceGeneralSetting(ctx)
+	if err != nil {
+		return cookieSecurityForExternalURL("")
+	}
+	return cookieSecurityForExternalURL(setting.GetExternalUrl())
+}
+
+func cookieSecurityForExternalURL(externalURL string) (bool, http.SameSite) {
+	if strings.HasPrefix(externalURL, "https://") {
+		return true, http.SameSiteNoneMode
+	}
+	return false, http.SameSiteLaxMode
 }
 
 func GetTokenDuration(_ context.Context, _ *store.Store) time.Duration {

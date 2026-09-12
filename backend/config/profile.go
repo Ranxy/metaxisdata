@@ -21,4 +21,11 @@ type Profile struct {
 	// from the AUTH_SECRET setting in the database at startup, never from a
 	// flag or environment variable.
 	Secret string
+
+	// CORSAllowOrigins is the exact list of browser origins allowed to call the
+	// server with credentials. An empty list installs no CORS middleware at
+	// all, so only the browser same-origin policy applies. It replaces the
+	// former "any origin in dev" behavior: a wide-open credentialed CORS is a
+	// CSRF vector and must be opted into explicitly.
+	CORSAllowOrigins []string
 }
