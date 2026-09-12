@@ -166,7 +166,7 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	instanceID, database, schema, name := parts[0], parts[1], parts[2], parts[3]
 
 	// Look up instance to get engine type.
-	instance, err := a.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
+	instance, err := a.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
 	if err != nil {
 		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to get instance")
 	}

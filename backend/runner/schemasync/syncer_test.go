@@ -58,12 +58,12 @@ func TestConvertMetadataToGUID(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestBatchMetaCreateStoreMetaResourceV2Table(t *testing.T) {
+func TestBatchMetaCreateStoreMetaResourceTable(t *testing.T) {
 	t.Parallel()
 
 	b := &batchMetaCreate{}
 	prefix := buildGUID("inst1", "db1", "public")
-	err := b.StoreMetaResourceV2(context.Background(), prefix, storepb.MetaType_TABLE, buildTableMeta("users", "id", "name"))
+	err := b.StoreMetaResource(context.Background(), prefix, storepb.MetaType_TABLE, buildTableMeta("users", "id", "name"))
 	require.NoError(t, err)
 	require.Len(t, b.guidList, 3)
 

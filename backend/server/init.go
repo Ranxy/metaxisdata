@@ -19,7 +19,7 @@ func (s *Server) initializeSetting(ctx context.Context) error {
 	const secretLength = 32
 
 	// initial branding
-	_, firstTimeOnboarding, err := s.store.CreateSettingIfNotExistV2(ctx, &store.SettingMessage{
+	_, firstTimeOnboarding, err := s.store.CreateSettingIfNotExist(ctx, &store.SettingMessage{
 		Name:  storepb.SettingName_BRANDING_LOGO,
 		Value: "",
 	})
@@ -32,7 +32,7 @@ func (s *Server) initializeSetting(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to generate random JWT secret")
 	}
-	if _, _, err := s.store.CreateSettingIfNotExistV2(ctx, &store.SettingMessage{
+	if _, _, err := s.store.CreateSettingIfNotExist(ctx, &store.SettingMessage{
 		Name:  storepb.SettingName_AUTH_SECRET,
 		Value: secret,
 	}); err != nil {
@@ -40,7 +40,7 @@ func (s *Server) initializeSetting(ctx context.Context) error {
 	}
 
 	// initial workspace
-	if _, _, err := s.store.CreateSettingIfNotExistV2(ctx, &store.SettingMessage{
+	if _, _, err := s.store.CreateSettingIfNotExist(ctx, &store.SettingMessage{
 		Name:  storepb.SettingName_WORKSPACE_ID,
 		Value: uuid.New().String(),
 	}); err != nil {
@@ -59,7 +59,7 @@ func (s *Server) initializeSetting(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal initial password validation setting")
 	}
-	if _, _, err := s.store.CreateSettingIfNotExistV2(ctx, &store.SettingMessage{
+	if _, _, err := s.store.CreateSettingIfNotExist(ctx, &store.SettingMessage{
 		Name:  storepb.SettingName_PASSWORD_RESTRICTION,
 		Value: string(passwordSettingValue),
 	}); err != nil {
@@ -67,7 +67,7 @@ func (s *Server) initializeSetting(ctx context.Context) error {
 	}
 
 	// initial workspace profile setting
-	workspaceProfileSetting, err := s.store.GetSettingV2(ctx, storepb.SettingName_WORKSPACE_PROFILE)
+	workspaceProfileSetting, err := s.store.GetSetting(ctx, storepb.SettingName_WORKSPACE_PROFILE)
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func (s *Server) initializeSetting(ctx context.Context) error {
 		return err
 	}
 
-	if _, err := s.store.UpsertSettingV2(ctx, &store.SetSettingMessage{
+	if _, err := s.store.UpsertSetting(ctx, &store.SetSettingMessage{
 		Name:  storepb.SettingName_WORKSPACE_PROFILE,
 		Value: string(bytes),
 	}); err != nil {
@@ -125,7 +125,7 @@ func (s *Server) initializeSetting(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrapf(err, "failed to marshal initial environment setting")
 	}
-	if _, _, err := s.store.CreateSettingIfNotExistV2(ctx, &store.SettingMessage{
+	if _, _, err := s.store.CreateSettingIfNotExist(ctx, &store.SettingMessage{
 		Name:  storepb.SettingName_ENVIRONMENT,
 		Value: string(environmentSettingValue),
 	}); err != nil {

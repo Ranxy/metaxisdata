@@ -69,7 +69,7 @@ func (s *InstanceService) ListInstances(ctx context.Context, req *connect.Reques
 		return nil, err
 	}
 	find.Filter = filter
-	instances, err := s.store.ListInstancesV2(ctx, find)
+	instances, err := s.store.ListInstances(ctx, find)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -136,7 +136,7 @@ func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Reque
 		return nil, err
 	}
 
-	instance, err := s.store.CreateInstanceV2(ctx, instanceMessage)
+	instance, err := s.store.CreateInstance(ctx, instanceMessage)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -273,7 +273,7 @@ func (s *InstanceService) UpdateInstance(ctx context.Context, req *connect.Reque
 		}
 	}
 
-	ins, err := s.store.UpdateInstanceV2(ctx, patch)
+	ins, err := s.store.UpdateInstance(ctx, patch)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -319,7 +319,7 @@ func (s *InstanceService) DeleteInstance(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to convert instance metadata type"))
 	}
 	metadata.Activation = false
-	if _, err := s.store.UpdateInstanceV2(ctx, &store.UpdateInstanceMessage{
+	if _, err := s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{
 		ResourceID: instance.ResourceID,
 		Deleted:    &deletePatch,
 		Metadata:   metadata,
@@ -340,7 +340,7 @@ func (s *InstanceService) UndeleteInstance(ctx context.Context, req *connect.Req
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("instance %q is active", req.Msg.Name))
 	}
 
-	ins, err := s.store.UpdateInstanceV2(ctx, &store.UpdateInstanceMessage{
+	ins, err := s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{
 		ResourceID: instance.ResourceID,
 		Deleted:    &undeletePatch,
 	})
@@ -483,7 +483,7 @@ func (s *InstanceService) AddDataSource(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to convert instance metadata type"))
 	}
 	metadata.DataSources = append(metadata.DataSources, dataSource)
-	instance, err = s.store.UpdateInstanceV2(ctx, &store.UpdateInstanceMessage{ResourceID: instance.ResourceID, Metadata: metadata})
+	instance, err = s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{ResourceID: instance.ResourceID, Metadata: metadata})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -587,7 +587,7 @@ func (s *InstanceService) UpdateDataSource(ctx context.Context, req *connect.Req
 		return connect.NewResponse(result), nil
 	}
 
-	instance, err = s.store.UpdateInstanceV2(ctx, &store.UpdateInstanceMessage{ResourceID: instance.ResourceID, Metadata: metadata})
+	instance, err = s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{ResourceID: instance.ResourceID, Metadata: metadata})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -632,12 +632,12 @@ func (s *InstanceService) RemoveDataSource(ctx context.Context, req *connect.Req
 	}
 
 	metadata.DataSources = updatedDataSources
-	instance, err = s.store.UpdateInstanceV2(ctx, &store.UpdateInstanceMessage{ResourceID: instance.ResourceID, Metadata: metadata})
+	instance, err = s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{ResourceID: instance.ResourceID, Metadata: metadata})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	instance, err = s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{
+	instance, err = s.store.GetInstance(ctx, &store.FindInstanceMessage{
 		ResourceID: &instance.ResourceID,
 	})
 	if err != nil {
@@ -657,7 +657,7 @@ func getInstanceMessage(ctx context.Context, stores *store.Store, name string) (
 	find := &store.FindInstanceMessage{
 		ResourceID: &instanceID,
 	}
-	instance, err := stores.GetInstanceV2(ctx, find)
+	instance, err := stores.GetInstance(ctx, find)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

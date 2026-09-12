@@ -336,7 +336,7 @@ func (s *ExplainSQLService) buildContextFromLineage(ctx context.Context, metaGUI
 func (s *ExplainSQLService) buildContextFromSQL(ctx context.Context, scopePrefix string, sqlText string) *llm.SchemaContext {
 	instanceID := scopeInstanceID(scopePrefix)
 
-	inst, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
+	inst, err := s.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
 	if err != nil || inst == nil || inst.Metadata == nil {
 		return &llm.SchemaContext{}
 	}
@@ -516,7 +516,7 @@ func (s *ExplainSQLService) getScopeEngine(ctx context.Context, instanceID strin
 	if instanceID == "" {
 		return storepb.Engine_ENGINE_UNSPECIFIED, errors.New("no instance selected")
 	}
-	inst, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
+	inst, err := s.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
 	if err != nil {
 		return storepb.Engine_ENGINE_UNSPECIFIED, err
 	}

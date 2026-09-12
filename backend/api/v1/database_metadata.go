@@ -29,7 +29,7 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid guid %q", req.Msg.Guid))
 	}
 
-	instance, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceGUID})
+	instance, err := s.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &instanceGUID})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get instance %q: %v", instanceGUID, err))
 	}
@@ -140,7 +140,7 @@ func (s *DatabaseService) DiffMetadata(ctx context.Context, req *connect.Request
 	if !ok {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid guid %q", guid))
 	}
-	instance, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceGUID})
+	instance, err := s.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &instanceGUID})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get instance %q", instanceGUID))
 	}

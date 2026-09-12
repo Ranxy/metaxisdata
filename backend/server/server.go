@@ -145,7 +145,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 // deployment-specific, every token signed with a former key stops verifying.
 func (s *Server) resolveJWTSecret(ctx context.Context) error {
 	if s.profile.Secret == "" {
-		setting, err := s.store.GetSettingV2(ctx, storepb.SettingName_AUTH_SECRET)
+		setting, err := s.store.GetSetting(ctx, storepb.SettingName_AUTH_SECRET)
 		if err != nil {
 			return errors.Wrap(err, "failed to load the JWT signing key")
 		}

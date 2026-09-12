@@ -88,7 +88,7 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 		for {
 			select {
 			case <-ticker.C:
-				instances, err := s.store.ListInstancesV2(ctx, &store.FindInstanceMessage{})
+				instances, err := s.store.ListInstances(ctx, &store.FindInstanceMessage{})
 				if err != nil {
 					// A transient store error must not stop the checker for the
 					// lifetime of the process; skip this tick and retry.
@@ -157,7 +157,7 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 	}()
 
 	wp := pool.New().WithMaxGoroutines(MaximumOutstanding)
-	instances, err := s.store.ListInstancesV2(ctx, &store.FindInstanceMessage{})
+	instances, err := s.store.ListInstances(ctx, &store.FindInstanceMessage{})
 	if err != nil {
 		slog.Error("Failed to retrieve instances", log.WithError(err))
 		return
@@ -292,7 +292,7 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 	if instanceMeta.Version != instance.Metadata.GetVersion() {
 		metadata.Version = instanceMeta.Version
 	}
-	updatedInstance, err := s.store.UpdateInstanceV2(ctx, updateInstance)
+	updatedInstance, err := s.store.UpdateInstance(ctx, updateInstance)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -360,7 +360,7 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 // SyncDatabaseSchema will sync the schema for a database.
 func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.DatabaseMessage) (retErr error) {
 	// TODO get schema and get previous schema from store, compare and update
-	instance, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &database.InstanceID})
+	instance, err := s.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &database.InstanceID})
 	if err != nil {
 		return errors.Wrapf(err, "failed to get instance %q", database.InstanceID)
 	}
@@ -403,7 +403,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		for _, table := range schema.Tables {
 			meta := &storepb.StoredMetadata{Type: &storepb.StoredMetadata_TableMetadata{TableMetadata: table}}
 
-			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_TABLE, meta)
+			err = bmc.StoreMetaResource(ctx, schemaGUIDPrefix, storepb.MetaType_TABLE, meta)
 			if err != nil {
 				return errors.Wrapf(err, "failed to store table metadata for table %q in database %q", table.Name, database.DatabaseName)
 			}
@@ -414,7 +414,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		for _, view := range schema.Views {
 			meta := &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ViewMetadata{ViewMetadata: view}}
 
-			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_VIEW, meta)
+			err = bmc.StoreMetaResource(ctx, schemaGUIDPrefix, storepb.MetaType_VIEW, meta)
 			if err != nil {
 				return errors.Wrapf(err, "failed to store view metadata for view %q in database %q", view.Name, database.DatabaseName)
 			}
@@ -422,7 +422,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		schema.Views = nil
 
 		for _, materializedView := range schema.MaterializedViews {
-			err = bmc.StoreMetaResourceV2(ctx, buildGUID(databaseGUID, schema.Name), storepb.MetaType_MATERIALIZED_VIEW, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_MaterializedViewMetadata{MaterializedViewMetadata: materializedView}})
+			err = bmc.StoreMetaResource(ctx, buildGUID(databaseGUID, schema.Name), storepb.MetaType_MATERIALIZED_VIEW, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_MaterializedViewMetadata{MaterializedViewMetadata: materializedView}})
 			if err != nil {
 				return errors.Wrapf(err, "failed to store materialized view metadata for materialized view %q in database %q", materializedView.Name, database.DatabaseName)
 			}
@@ -430,7 +430,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		schema.MaterializedViews = nil
 
 		for _, sequence := range schema.Sequences {
-			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_SEQUENCE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_SequenceMetadata{SequenceMetadata: sequence}})
+			err = bmc.StoreMetaResource(ctx, schemaGUIDPrefix, storepb.MetaType_SEQUENCE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_SequenceMetadata{SequenceMetadata: sequence}})
 			if err != nil {
 				return errors.Wrapf(err, "failed to store sequence metadata for sequence %q in database %q", sequence.Name, database.DatabaseName)
 			}
@@ -438,7 +438,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		schema.Sequences = nil
 
 		for _, function := range schema.Functions {
-			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_FUNCTION, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_FunctionMetadata{FunctionMetadata: function}})
+			err = bmc.StoreMetaResource(ctx, schemaGUIDPrefix, storepb.MetaType_FUNCTION, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_FunctionMetadata{FunctionMetadata: function}})
 			if err != nil {
 				return errors.Wrapf(err, "failed to store function metadata for function %q in database %q", function.Name, database.DatabaseName)
 			}
@@ -446,7 +446,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		schema.Functions = nil
 
 		for _, procedure := range schema.Procedures {
-			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_PROCEDURE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ProcedureMetadata{ProcedureMetadata: procedure}})
+			err = bmc.StoreMetaResource(ctx, schemaGUIDPrefix, storepb.MetaType_PROCEDURE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ProcedureMetadata{ProcedureMetadata: procedure}})
 			if err != nil {
 				return errors.Wrapf(err, "failed to store procedure metadata for procedure %q in database %q", procedure.Name, database.DatabaseName)
 			}
@@ -454,7 +454,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		schema.Procedures = nil
 
 		for _, externalTable := range schema.ExternalTables {
-			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_EXTERNAL_TABLE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ExternalTableMetadata{ExternalTableMetadata: externalTable}})
+			err = bmc.StoreMetaResource(ctx, schemaGUIDPrefix, storepb.MetaType_EXTERNAL_TABLE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ExternalTableMetadata{ExternalTableMetadata: externalTable}})
 			if err != nil {
 				return errors.Wrapf(err, "failed to store external table metadata for external table %q in database %q", externalTable.Name, database.DatabaseName)
 			}
@@ -463,7 +463,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 
 		{
 			meta := &storepb.StoredMetadata{Type: &storepb.StoredMetadata_SchemaMetadata{SchemaMetadata: schema}}
-			err = bmc.StoreMetaResourceV2(ctx, databaseGUID, storepb.MetaType_SCHEMA, meta)
+			err = bmc.StoreMetaResource(ctx, databaseGUID, storepb.MetaType_SCHEMA, meta)
 			if err != nil {
 				return errors.Wrapf(err, "failed to store schema metadata for schema %q in database %q", schema.Name, database.DatabaseName)
 			}
@@ -472,7 +472,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	databaseMetadata.Schemas = nil
 	{
 		meta := &storepb.StoredMetadata{Type: &storepb.StoredMetadata_DatabaseSchemaMetadata{DatabaseSchemaMetadata: databaseMetadata}}
-		err = bmc.StoreMetaResourceV2(ctx, database.InstanceID, storepb.MetaType_DATABASE, meta)
+		err = bmc.StoreMetaResource(ctx, database.InstanceID, storepb.MetaType_DATABASE, meta)
 		if err != nil {
 			return errors.Wrapf(err, "failed to store database metadata for  database %q", database.DatabaseName)
 		}
@@ -546,7 +546,7 @@ type batchMetaCreate struct {
 	deletes  []*store.MetaRegistryResource              // populated after Run()
 }
 
-func (b *batchMetaCreate) StoreMetaResourceV2(_ context.Context, prefixName string, objectType storepb.MetaType, data *storepb.StoredMetadata) error {
+func (b *batchMetaCreate) StoreMetaResource(_ context.Context, prefixName string, objectType storepb.MetaType, data *storepb.StoredMetadata) error {
 	guid, err := convertMetadataToGUID(prefixName, objectType, data)
 	if err != nil {
 		return err

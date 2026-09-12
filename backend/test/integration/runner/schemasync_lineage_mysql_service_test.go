@@ -166,7 +166,7 @@ CREATE TABLE IF NOT EXISTS t1 (id INT PRIMARY KEY);
 
 	require.Eventually(t, func() bool {
 		databaseName := droppedDatabaseName
-		dropped, err := env.Store.GetDatabaseV2(ctx, &store.FindDatabaseMessage{InstanceID: &instanceID, DatabaseName: &databaseName, ShowDeleted: true})
+		dropped, err := env.Store.GetDatabase(ctx, &store.FindDatabaseMessage{InstanceID: &instanceID, DatabaseName: &databaseName, ShowDeleted: true})
 		if err != nil || dropped == nil {
 			return false
 		}

@@ -329,7 +329,7 @@ func (s *DatabaseService) getTableSequences(ctx context.Context, schemaPrefix, t
 // buildDiffSummary creates a human-readable summary from a MetadataDiff.
 
 func (s *DatabaseService) convertToDatabase(ctx context.Context, database *store.DatabaseMessage) (*v1pb.Database, error) {
-	instance, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{
+	instance, err := s.store.GetInstance(ctx, &store.FindInstanceMessage{
 		ResourceID: &database.InstanceID,
 	})
 	if err != nil {

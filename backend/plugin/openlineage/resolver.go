@@ -128,7 +128,7 @@ func (r *Resolver) resolveByManualMapping(ctx context.Context, namespace, datase
 		return nil, nil
 	}
 
-	instance, err := r.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &mapping.InstanceResourceID})
+	instance, err := r.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &mapping.InstanceResourceID})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get instance")
 	}
@@ -184,7 +184,7 @@ func (r *Resolver) listInstances(ctx context.Context) ([]*store.InstanceMessage,
 	if r.requestScoped && r.instancesDone {
 		return r.instances, nil
 	}
-	instances, err := r.store.ListInstancesV2(ctx, &store.FindInstanceMessage{})
+	instances, err := r.store.ListInstances(ctx, &store.FindInstanceMessage{})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list instances")
 	}

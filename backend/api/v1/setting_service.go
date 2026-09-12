@@ -63,7 +63,7 @@ func (s *SettingService) UpdateWorkspaceProfileSetting(ctx context.Context, requ
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to marshal workspace profile setting"))
 	}
-	if _, err := s.store.UpsertSettingV2(ctx, &store.SetSettingMessage{
+	if _, err := s.store.UpsertSetting(ctx, &store.SetSettingMessage{
 		Name:  storepb.SettingName_WORKSPACE_PROFILE,
 		Value: string(payload),
 	}); err != nil {

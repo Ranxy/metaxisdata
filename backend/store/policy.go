@@ -63,7 +63,7 @@ func (s *Store) PatchWorkspaceIamPolicy(ctx context.Context, patch *PatchIamPoli
 func (s *Store) patchWorkspaceIamPolicyImpl(ctx context.Context, txn *sql.Tx, patch *PatchIamPolicyMessage) error {
 	resourceType := storepb.Policy_WORKSPACE
 	pType := storepb.Policy_IAM
-	policies, err := s.listPolicyImplV2(ctx, txn, &FindPolicyMessage{
+	policies, err := s.listPolicyImpl(ctx, txn, &FindPolicyMessage{
 		ResourceType: &resourceType,
 		Type:         &pType,
 		ShowAll:      true,
@@ -116,7 +116,7 @@ func (s *Store) patchWorkspaceIamPolicyImpl(ctx context.Context, txn *sql.Tx, pa
 		return err
 	}
 
-	if _, err := upsertPolicyV2Impl(ctx, txn, &PolicyMessage{
+	if _, err := upsertPolicyImpl(ctx, txn, &PolicyMessage{
 		ResourceType:      storepb.Policy_WORKSPACE,
 		Payload:           string(policyPayload),
 		Type:              storepb.Policy_IAM,
@@ -133,7 +133,7 @@ func (s *Store) patchWorkspaceIamPolicyImpl(ctx context.Context, txn *sql.Tx, pa
 func (s *Store) getIamPolicy(ctx context.Context, find *FindPolicyMessage) (*IamPolicyMessage, error) {
 	pType := storepb.Policy_IAM
 	find.Type = &pType
-	policy, err := s.GetPolicyV2(ctx, find)
+	policy, err := s.GetPolicy(ctx, find)
 	if err != nil {
 		return nil, err
 	}
@@ -175,8 +175,8 @@ type FindPolicyMessage struct {
 	ShowAll bool
 }
 
-// GetPolicyV2 gets a policy.
-func (s *Store) GetPolicyV2(ctx context.Context, find *FindPolicyMessage) (*PolicyMessage, error) {
+// GetPolicy gets a policy.
+func (s *Store) GetPolicy(ctx context.Context, find *FindPolicyMessage) (*PolicyMessage, error) {
 	if find.ResourceType != nil && find.Resource != nil && find.Type != nil {
 		if v, ok := s.policyCache.Get(getPolicyCacheKey(*find.ResourceType, *find.Resource, *find.Type)); ok {
 			return v, nil
@@ -191,7 +191,7 @@ func (s *Store) GetPolicyV2(ctx context.Context, find *FindPolicyMessage) (*Poli
 
 	// We will always return the resource regardless of its deleted state.
 	find.ShowAll = true
-	policies, err := s.listPolicyImplV2(ctx, tx, find)
+	policies, err := s.listPolicyImpl(ctx, tx, find)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +216,7 @@ func (s *Store) GetPolicyV2(ctx context.Context, find *FindPolicyMessage) (*Poli
 	return policy, nil
 }
 
-func upsertPolicyV2Impl(ctx context.Context, txn *sql.Tx, create *PolicyMessage) (*PolicyMessage, error) {
+func upsertPolicyImpl(ctx context.Context, txn *sql.Tx, create *PolicyMessage) (*PolicyMessage, error) {
 	create.UpdatedAt = time.Now()
 	if _, err := txn.ExecContext(ctx, `
 		INSERT INTO policy (
@@ -248,7 +248,7 @@ func upsertPolicyV2Impl(ctx context.Context, txn *sql.Tx, create *PolicyMessage)
 	return create, nil
 }
 
-func (*Store) listPolicyImplV2(ctx context.Context, txn *sql.Tx, find *FindPolicyMessage) ([]*PolicyMessage, error) {
+func (*Store) listPolicyImpl(ctx context.Context, txn *sql.Tx, find *FindPolicyMessage) ([]*PolicyMessage, error) {
 	where, args := []string{"TRUE"}, []any{}
 	if v := find.ResourceType; v != nil {
 		where, args = append(where, fmt.Sprintf("resource_type = $%d", len(args)+1)), append(args, v.String())
