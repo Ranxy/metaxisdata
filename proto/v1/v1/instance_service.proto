@@ -33,6 +33,7 @@ service InstanceService {
     };
     option (google.api.method_signature) = "instance";
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
   }
 
   rpc UpdateInstance(UpdateInstanceRequest) returns (Instance) {
@@ -42,12 +43,14 @@ service InstanceService {
     };
     option (google.api.method_signature) = "instance,update_mask";
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
   }
 
   rpc DeleteInstance(DeleteInstanceRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/{name=instances/*}"};
     option (google.api.method_signature) = "name";
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
   }
 
   rpc UndeleteInstance(UndeleteInstanceRequest) returns (Instance) {
@@ -56,6 +59,7 @@ service InstanceService {
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
   }
 
   rpc SyncInstance(SyncInstanceRequest) returns (SyncInstanceResponse) {
@@ -64,6 +68,7 @@ service InstanceService {
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
   }
 
   rpc ListInstanceDatabase(ListInstanceDatabaseRequest) returns (ListInstanceDatabaseResponse) {
@@ -79,6 +84,7 @@ service InstanceService {
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
   }
 
   rpc BatchUpdateInstances(BatchUpdateInstancesRequest) returns (BatchUpdateInstancesResponse) {
@@ -87,6 +93,7 @@ service InstanceService {
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
   }
 
   rpc AddDataSource(AddDataSourceRequest) returns (Instance) {
@@ -95,6 +102,7 @@ service InstanceService {
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
   }
 
   rpc RemoveDataSource(RemoveDataSourceRequest) returns (Instance) {
@@ -103,6 +111,7 @@ service InstanceService {
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
   }
 
   rpc UpdateDataSource(UpdateDataSourceRequest) returns (Instance) {
@@ -112,6 +121,7 @@ service InstanceService {
     };
     option (google.api.method_signature) = "data_source,update_mask";
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
   }
 }
 

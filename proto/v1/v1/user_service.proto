@@ -71,6 +71,7 @@ service UserService {
     option (google.api.http) = {delete: "/v1/{name=users/*}"};
     option (google.api.method_signature) = "name";
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.users.delete";
   }
 
   // Only the user with permission on the workspace can undelete the user.
@@ -80,6 +81,7 @@ service UserService {
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.users.undelete";
   }
 }
 

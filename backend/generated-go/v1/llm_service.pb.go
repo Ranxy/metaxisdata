@@ -668,7 +668,7 @@ var File_v1_llm_service_proto protoreflect.FileDescriptor
 
 const file_v1_llm_service_proto_rawDesc = "" +
 	"\n" +
-	"\x14v1/llm_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x89\x01\n" +
+	"\x14v1/llm_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\"\x89\x01\n" +
 	"\x15LlmProviderDefinition\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x12 \n" +
@@ -716,14 +716,14 @@ const file_v1_llm_service_proto_rawDesc = "" +
 	"\x18LLM_PROVIDER_TYPE_OPENAI\x10\x01\x12\x1e\n" +
 	"\x1aLLM_PROVIDER_TYPE_DEEPSEEK\x10\x02\x12 \n" +
 	"\x1cLLM_PROVIDER_TYPE_OPENROUTER\x10\x03\x12\x1c\n" +
-	"\x18LLM_PROVIDER_TYPE_CUSTOM\x10\x042\xc9\x06\n" +
+	"\x18LLM_PROVIDER_TYPE_CUSTOM\x10\x042\xd1\a\n" +
 	"\n" +
 	"LLMService\x12\xa0\x01\n" +
-	"\x17ListLLMProviderProfiles\x12..metaxisdata.v1.ListLLMProviderProfilesRequest\x1a/.metaxisdata.v1.ListLLMProviderProfilesResponse\"$\xdaA\x00\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/llm-provider-profiles\x12\xa5\x01\n" +
-	"\x18CreateLLMProviderProfile\x12/.metaxisdata.v1.CreateLLMProviderProfileRequest\x1a\".metaxisdata.v1.LlmProviderProfile\"4\xdaA\aprofile\x82\xd3\xe4\x93\x02$:\aprofile\"\x19/v1/llm-provider-profiles\x12\xc2\x01\n" +
-	"\x18UpdateLLMProviderProfile\x12/.metaxisdata.v1.UpdateLLMProviderProfileRequest\x1a\".metaxisdata.v1.LlmProviderProfile\"Q\xdaA\x13profile,update_mask\x82\xd3\xe4\x93\x025:\aprofile2*/v1/{profile.name=llm-provider-profiles/*}\x12\x96\x01\n" +
-	"\x18DeleteLLMProviderProfile\x12/.metaxisdata.v1.DeleteLLMProviderProfileRequest\x1a\x16.google.protobuf.Empty\"1\xdaA\x04name\x82\xd3\xe4\x93\x02$*\"/v1/{name=llm-provider-profiles/*}\x12\x91\x01\n" +
-	"\x0eFetchLLMModels\x12%.metaxisdata.v1.FetchLLMModelsRequest\x1a&.metaxisdata.v1.FetchLLMModelsResponse\"0\x82\xd3\xe4\x93\x02*:\x01*\"%/v1/llm-provider-profiles:fetchModelsB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\x17ListLLMProviderProfiles\x12..metaxisdata.v1.ListLLMProviderProfilesRequest\x1a/.metaxisdata.v1.ListLLMProviderProfilesResponse\"$\xdaA\x00\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/llm-provider-profiles\x12\xc7\x01\n" +
+	"\x18CreateLLMProviderProfile\x12/.metaxisdata.v1.CreateLLMProviderProfileRequest\x1a\".metaxisdata.v1.LlmProviderProfile\"V\xdaA\aprofile\x8a\xea0\x1emetaxisdata.llm.profiles.write\x82\xd3\xe4\x93\x02$:\aprofile\"\x19/v1/llm-provider-profiles\x12\xe4\x01\n" +
+	"\x18UpdateLLMProviderProfile\x12/.metaxisdata.v1.UpdateLLMProviderProfileRequest\x1a\".metaxisdata.v1.LlmProviderProfile\"s\xdaA\x13profile,update_mask\x8a\xea0\x1emetaxisdata.llm.profiles.write\x82\xd3\xe4\x93\x025:\aprofile2*/v1/{profile.name=llm-provider-profiles/*}\x12\xb8\x01\n" +
+	"\x18DeleteLLMProviderProfile\x12/.metaxisdata.v1.DeleteLLMProviderProfileRequest\x1a\x16.google.protobuf.Empty\"S\xdaA\x04name\x8a\xea0\x1emetaxisdata.llm.profiles.write\x82\xd3\xe4\x93\x02$*\"/v1/{name=llm-provider-profiles/*}\x12\xb3\x01\n" +
+	"\x0eFetchLLMModels\x12%.metaxisdata.v1.FetchLLMModelsRequest\x1a&.metaxisdata.v1.FetchLLMModelsResponse\"R\x8a\xea0\x1emetaxisdata.llm.profiles.write\x82\xd3\xe4\x93\x02*:\x01*\"%/v1/llm-provider-profiles:fetchModelsB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_llm_service_proto_rawDescOnce sync.Once
@@ -788,6 +788,7 @@ func file_v1_llm_service_proto_init() {
 	if File_v1_llm_service_proto != nil {
 		return
 	}
+	file_v1_annotation_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

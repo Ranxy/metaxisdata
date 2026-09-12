@@ -42,6 +42,7 @@ service OpenLineageService {
       body: "mapping"
     };
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.namespaceMappings.write";
   }
 
   rpc ListNamespaceMapping(ListNamespaceMappingRequest) returns (ListNamespaceMappingResponse) {
@@ -54,11 +55,13 @@ service OpenLineageService {
       body: "mapping"
     };
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.namespaceMappings.write";
   }
 
   rpc DeleteNamespaceMapping(DeleteNamespaceMappingRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/openlineage/namespaceMappings/{id}"};
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.namespaceMappings.write";
   }
 
   rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse) {
@@ -67,6 +70,7 @@ service OpenLineageService {
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.apiKeys.write";
   }
 
   rpc ListAPIKey(ListAPIKeyRequest) returns (ListAPIKeyResponse) {
@@ -76,6 +80,7 @@ service OpenLineageService {
   rpc RevokeAPIKey(RevokeAPIKeyRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/openlineage/apiKeys/{id}"};
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.apiKeys.write";
   }
 }
 

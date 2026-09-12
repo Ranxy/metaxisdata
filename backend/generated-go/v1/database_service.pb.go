@@ -7861,10 +7861,10 @@ const file_v1_database_service_proto_rawDesc = "" +
 	"\aPACKAGE\x10\r\x12\n" +
 	"\n" +
 	"\x06STREAM\x10\x0e\x12\b\n" +
-	"\x04TASK\x10\x0f2\xa0\x12\n" +
+	"\x04TASK\x10\x0f2\xbe\x12\n" +
 	"\x0fDatabaseService\x12~\n" +
-	"\vGetDatabase\x12\".metaxisdata.v1.GetDatabaseRequest\x1a\x18.metaxisdata.v1.Database\"1\xdaA\x04name\x82\xd3\xe4\x93\x02$\x12\"/v1/{name=instances/*/databases/*}\x12\x98\x01\n" +
-	"\fSyncDatabase\x12#.metaxisdata.v1.SyncDatabaseRequest\x1a$.metaxisdata.v1.SyncDatabaseResponse\"=\xdaA\x04name\x98\xea0\x01\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/{name=instances/*/databases/*}:sync\x12p\n" +
+	"\vGetDatabase\x12\".metaxisdata.v1.GetDatabaseRequest\x1a\x18.metaxisdata.v1.Database\"1\xdaA\x04name\x82\xd3\xe4\x93\x02$\x12\"/v1/{name=instances/*/databases/*}\x12\xb6\x01\n" +
+	"\fSyncDatabase\x12#.metaxisdata.v1.SyncDatabaseRequest\x1a$.metaxisdata.v1.SyncDatabaseResponse\"[\xdaA\x04name\x8a\xea0\x1ametaxisdata.databases.sync\x98\xea0\x01\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/{name=instances/*/databases/*}:sync\x12p\n" +
 	"\fListDatabase\x12#.metaxisdata.v1.ListDatabaseRequest\x1a%.metaxisdata.v1.ListDatabasesResponse\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/database\x12p\n" +
 	"\fListMetadata\x12#.metaxisdata.v1.ListMetadataRequest\x1a .metaxisdata.v1.MetadataResponse\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/metadata/list\x12l\n" +
 	"\vGetMetadata\x12\".metaxisdata.v1.GetMetadataRequest\x1a#.metaxisdata.v1.GetMetadataResponse\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/metadata\x12\x8c\x01\n" +

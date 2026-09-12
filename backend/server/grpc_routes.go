@@ -82,7 +82,7 @@ func configureGrpcRouters(
 			apiv1.NewDebugInterceptor(),
 			auth.New(stores, secret, stateCfg, profile),
 			apiv1.NewAuditInterceptor(stores),
-			// apiv1.NewACLInterceptor(stores, secret, iamManager, profile),
+			apiv1.NewACLInterceptor(stores),
 		),
 		connect.WithRecover(onPanic),
 	)

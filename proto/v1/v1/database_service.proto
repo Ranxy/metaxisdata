@@ -28,6 +28,7 @@ service DatabaseService {
     };
     option (google.api.method_signature) = "name";
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.databases.sync";
   }
 
   rpc ListDatabase(ListDatabaseRequest) returns (ListDatabasesResponse) {

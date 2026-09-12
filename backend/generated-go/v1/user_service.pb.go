@@ -824,7 +824,7 @@ const file_v1_user_service_proto_rawDesc = "" +
 	"\x04USER\x10\x01\x12\x13\n" +
 	"\x0fSERVICE_ACCOUNT\x10\x02\x12\x0e\n" +
 	"\n" +
-	"SYSTEM_BOT\x10\x032\x97\a\n" +
+	"SYSTEM_BOT\x10\x032\xd3\a\n" +
 	"\vUserService\x12b\n" +
 	"\aGetUser\x12\x1e.metaxisdata.v1.GetUserRequest\x1a\x14.metaxisdata.v1.User\"!\xdaA\x04name\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/{name=users/*}\x12x\n" +
 	"\rBatchGetUsers\x12$.metaxisdata.v1.BatchGetUsersRequest\x1a%.metaxisdata.v1.BatchGetUsersResponse\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/users:batchGet\x12\\\n" +
@@ -833,10 +833,10 @@ const file_v1_user_service_proto_rawDesc = "" +
 	"\n" +
 	"CreateUser\x12!.metaxisdata.v1.CreateUserRequest\x1a\x14.metaxisdata.v1.User\"*\xdaA\x04user\x80\xea0\x01\x90\xea0\x02\x98\xea0\x01\x82\xd3\xe4\x93\x02\x11:\x04user\"\t/v1/users\x12\x83\x01\n" +
 	"\n" +
-	"UpdateUser\x12!.metaxisdata.v1.UpdateUserRequest\x1a\x14.metaxisdata.v1.User\"<\xdaA\x10user,update_mask\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1f:\x04user2\x17/v1/{user.name=users/*}\x12n\n" +
+	"UpdateUser\x12!.metaxisdata.v1.UpdateUserRequest\x1a\x14.metaxisdata.v1.User\"<\xdaA\x10user,update_mask\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1f:\x04user2\x17/v1/{user.name=users/*}\x12\x8a\x01\n" +
 	"\n" +
-	"DeleteUser\x12!.metaxisdata.v1.DeleteUserRequest\x1a\x16.google.protobuf.Empty\"%\xdaA\x04name\x98\xea0\x01\x82\xd3\xe4\x93\x02\x14*\x12/v1/{name=users/*}\x12u\n" +
-	"\fUndeleteUser\x12#.metaxisdata.v1.UndeleteUserRequest\x1a\x14.metaxisdata.v1.User\"*\x98\xea0\x01\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/{name=users/*}:undeleteB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"DeleteUser\x12!.metaxisdata.v1.DeleteUserRequest\x1a\x16.google.protobuf.Empty\"A\xdaA\x04name\x8a\xea0\x18metaxisdata.users.delete\x98\xea0\x01\x82\xd3\xe4\x93\x02\x14*\x12/v1/{name=users/*}\x12\x93\x01\n" +
+	"\fUndeleteUser\x12#.metaxisdata.v1.UndeleteUserRequest\x1a\x14.metaxisdata.v1.User\"H\x8a\xea0\x1ametaxisdata.users.undelete\x98\xea0\x01\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/{name=users/*}:undeleteB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_user_service_proto_rawDescOnce sync.Once
