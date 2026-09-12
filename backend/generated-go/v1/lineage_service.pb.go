@@ -382,7 +382,19 @@ type GetLineageRequest struct {
 	Guid     string   `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
 	MetaType MetaType `protobuf:"varint,2,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.v1.MetaType" json:"meta_type,omitempty"`
 	// The lineage type to query, source or target. If not specified, both source and target lineage will be returned.
-	LineageType   LineageType `protobuf:"varint,3,opt,name=lineage_type,json=lineageType,proto3,enum=metaxisdata.v1.LineageType" json:"lineage_type,omitempty"`
+	LineageType LineageType `protobuf:"varint,3,opt,name=lineage_type,json=lineageType,proto3,enum=metaxisdata.v1.LineageType" json:"lineage_type,omitempty"`
+	// The maximum number of relations to return. The service may return fewer
+	// than this value. page_size applies to relations_source and relations_target
+	// separately.
+	// If unspecified, at most 500 relations are returned per list. The maximum
+	// value is 5000; values above 5000 will be coerced to 5000.
+	PageSize int32 `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// A page token, received from a previous `GetLineage` call.
+	// Provide this to retrieve the subsequent page.
+	//
+	// When paginating, all other parameters provided to `GetLineage` must match
+	// the call that provided the page token.
+	PageToken     string `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -438,6 +450,20 @@ func (x *GetLineageRequest) GetLineageType() LineageType {
 	return LineageType_LINEAGE_TYPE_UNSPECIFIED
 }
 
+func (x *GetLineageRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *GetLineageRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 type GetLineageResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The list of lineage relations for the given metadata.
@@ -445,8 +471,11 @@ type GetLineageResponse struct {
 	RelationsTarget []*LineageRelation `protobuf:"bytes,2,rep,name=relations_target,json=relationsTarget,proto3" json:"relations_target,omitempty"`
 	// Metadata for external datasets referenced in the lineage relations.
 	ExternalDatasets []*ExternalDatasetInfo `protobuf:"bytes,3,rep,name=external_datasets,json=externalDatasets,proto3" json:"external_datasets,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// A token, which can be sent as `page_token` to retrieve the next page.
+	// If this field is omitted, there are no subsequent pages.
+	NextPageToken string `protobuf:"bytes,4,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetLineageResponse) Reset() {
@@ -498,6 +527,13 @@ func (x *GetLineageResponse) GetExternalDatasets() []*ExternalDatasetInfo {
 		return x.ExternalDatasets
 	}
 	return nil
+}
+
+func (x *GetLineageResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
 }
 
 // ExternalDatasetInfo provides metadata for a dataset outside of managed instances.
@@ -576,8 +612,19 @@ type GetLineageForContextRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The global unique id for metadata
 	// view: "instance_1;db2;schema3;view1"
-	Guid          string   `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
-	MetaType      MetaType `protobuf:"varint,2,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.v1.MetaType" json:"meta_type,omitempty"`
+	Guid     string   `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
+	MetaType MetaType `protobuf:"varint,2,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.v1.MetaType" json:"meta_type,omitempty"`
+	// The maximum number of relations to return. The service may return fewer
+	// than this value.
+	// If unspecified, at most 500 relations are returned. The maximum value is
+	// 5000; values above 5000 will be coerced to 5000.
+	PageSize int32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// A page token, received from a previous `GetLineageForContext` call.
+	// Provide this to retrieve the subsequent page.
+	//
+	// When paginating, all other parameters provided to `GetLineageForContext`
+	// must match the call that provided the page token.
+	PageToken     string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -626,10 +673,27 @@ func (x *GetLineageForContextRequest) GetMetaType() MetaType {
 	return MetaType_UNSPECIFIED
 }
 
+func (x *GetLineageForContextRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *GetLineageForContextRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 type GetLineageForContextResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The list of lineage relations for the given metadata.
-	Relations     []*LineageRelation `protobuf:"bytes,1,rep,name=relations,proto3" json:"relations,omitempty"`
+	Relations []*LineageRelation `protobuf:"bytes,1,rep,name=relations,proto3" json:"relations,omitempty"`
+	// A token, which can be sent as `page_token` to retrieve the next page.
+	// If this field is omitted, there are no subsequent pages.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -671,6 +735,13 @@ func (x *GetLineageForContextResponse) GetRelations() []*LineageRelation {
 	return nil
 }
 
+func (x *GetLineageForContextResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
 var File_v1_lineage_service_proto protoreflect.FileDescriptor
 
 const file_v1_lineage_service_proto_rawDesc = "" +
@@ -707,25 +778,33 @@ const file_v1_lineage_service_proto_rawDesc = "" +
 	"\fpartition_by\x18\x06 \x03(\tR\vpartitionBy\x12\x19\n" +
 	"\border_by\x18\a \x03(\tR\aorderBy\x12\x17\n" +
 	"\aop_type\x18\b \x01(\tR\x06opType\x12\x1c\n" +
-	"\tcondition\x18\t \x01(\tR\tcondition\"\xa3\x01\n" +
+	"\tcondition\x18\t \x01(\tR\tcondition\"\xdf\x01\n" +
 	"\x11GetLineageRequest\x12\x17\n" +
 	"\x04guid\x18\x01 \x01(\tB\x03\xe0A\x02R\x04guid\x125\n" +
 	"\tmeta_type\x18\x02 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12>\n" +
-	"\flineage_type\x18\x03 \x01(\x0e2\x1b.metaxisdata.v1.LineageTypeR\vlineageType\"\xfe\x01\n" +
+	"\flineage_type\x18\x03 \x01(\x0e2\x1b.metaxisdata.v1.LineageTypeR\vlineageType\x12\x1b\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x05 \x01(\tR\tpageToken\"\xa6\x02\n" +
 	"\x12GetLineageResponse\x12J\n" +
 	"\x10relations_source\x18\x01 \x03(\v2\x1f.metaxisdata.v1.LineageRelationR\x0frelationsSource\x12J\n" +
 	"\x10relations_target\x18\x02 \x03(\v2\x1f.metaxisdata.v1.LineageRelationR\x0frelationsTarget\x12P\n" +
-	"\x11external_datasets\x18\x03 \x03(\v2#.metaxisdata.v1.ExternalDatasetInfoR\x10externalDatasets\"~\n" +
+	"\x11external_datasets\x18\x03 \x03(\v2#.metaxisdata.v1.ExternalDatasetInfoR\x10externalDatasets\x12&\n" +
+	"\x0fnext_page_token\x18\x04 \x01(\tR\rnextPageToken\"~\n" +
 	"\x13ExternalDatasetInfo\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12!\n" +
-	"\fdataset_type\x18\x04 \x01(\tR\vdatasetType\"m\n" +
+	"\fdataset_type\x18\x04 \x01(\tR\vdatasetType\"\xa9\x01\n" +
 	"\x1bGetLineageForContextRequest\x12\x17\n" +
 	"\x04guid\x18\x01 \x01(\tB\x03\xe0A\x02R\x04guid\x125\n" +
-	"\tmeta_type\x18\x02 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\"]\n" +
+	"\tmeta_type\x18\x02 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\"\x85\x01\n" +
 	"\x1cGetLineageForContextResponse\x12=\n" +
-	"\trelations\x18\x01 \x03(\v2\x1f.metaxisdata.v1.LineageRelationR\trelations*C\n" +
+	"\trelations\x18\x01 \x03(\v2\x1f.metaxisdata.v1.LineageRelationR\trelations\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken*C\n" +
 	"\vLineageType\x12\x1c\n" +
 	"\x18LINEAGE_TYPE_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +

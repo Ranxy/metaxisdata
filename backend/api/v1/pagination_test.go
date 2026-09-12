@@ -130,3 +130,46 @@ func TestPaginate(t *testing.T) {
 		require.NotEmpty(t, token)
 	})
 }
+
+// The lineage endpoints default to a page large enough that the graph UI gets
+// the whole list in one request, unlike the shared 10-row default.
+func TestLineagePageOffset(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty request uses the lineage default", func(t *testing.T) {
+		t.Parallel()
+		offset, err := lineagePageOffset(0, "")
+		require.NoError(t, err)
+		require.Equal(t, defaultLineagePageSize, offset.limit)
+		require.Equal(t, 0, offset.offset)
+	})
+
+	t.Run("requested size is honoured and clamped to the maximum", func(t *testing.T) {
+		t.Parallel()
+		offset, err := lineagePageOffset(50, "")
+		require.NoError(t, err)
+		require.Equal(t, 50, offset.limit)
+
+		offset, err = lineagePageOffset(maxLineagePageSize+1, "")
+		require.NoError(t, err)
+		require.Equal(t, maxLineagePageSize, offset.limit)
+	})
+
+	t.Run("follow-up request without page_size keeps the issued size", func(t *testing.T) {
+		t.Parallel()
+		token, err := marshalPageToken(&storepb.PageToken{Limit: 50, Offset: 100})
+		require.NoError(t, err)
+
+		offset, err := lineagePageOffset(0, token)
+		require.NoError(t, err)
+		require.Equal(t, 50, offset.limit)
+		require.Equal(t, 100, offset.offset)
+	})
+
+	t.Run("invalid token is rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := lineagePageOffset(0, "not-a-token")
+		require.Error(t, err)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	})
+}

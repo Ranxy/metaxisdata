@@ -28,6 +28,28 @@ func NewLineageService(store *store.Store) *LineageService {
 	}
 }
 
+// Lineage page sizes. The lists are column-level edges for one object, so they
+// are usually small, but a widely referenced table can have many.
+const (
+	defaultLineagePageSize = 500
+	maxLineagePageSize     = 5000
+)
+
+// lineagePageOffset parses the page_size/page_token pair. Unlike the shared
+// helper it defaults to defaultLineagePageSize rather than 10, because callers
+// (the lineage graph) ask for the whole list at once.
+func lineagePageOffset(pageSizeValue int32, pageToken string) (*pageOffset, error) {
+	limit := int(pageSizeValue)
+	if limit <= 0 && pageToken == "" {
+		limit = defaultLineagePageSize
+	}
+	return parseLimitAndOffset(&pageSize{
+		token:   pageToken,
+		limit:   limit,
+		maximum: maxLineagePageSize,
+	})
+}
+
 func (s *LineageService) GetLineage(ctx context.Context, req *connect.Request[v1pb.GetLineageRequest]) (*connect.Response[v1pb.GetLineageResponse], error) {
 	if req.Msg.GetGuid() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("guid is required"))
@@ -43,11 +65,28 @@ func (s *LineageService) GetLineage(ctx context.Context, req *connect.Request[v1
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid lineage type %v", req.Msg.GetLineageType()))
 	}
 
+	offset, err := lineagePageOffset(req.Msg.GetPageSize(), req.Msg.GetPageToken())
+	if err != nil {
+		return nil, err
+	}
+	// One extra row tells whether another page follows. The same offset applies
+	// to both lists, so an exhausted list simply returns empty later pages.
+	probe := offset.limit + 1
+	hasMore := false
+
 	if shouldIncludeSource(req.Msg.GetLineageType()) {
-		find := &store.FindColumnLineageMessage{TargetGUID: &req.Msg.Guid}
+		find := &store.FindColumnLineageMessage{
+			TargetGUID: &req.Msg.Guid,
+			Limit:      &probe,
+			Offset:     &offset.offset,
+		}
 		lineages, err := s.store.ListColumnLineage(ctx, find)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list source lineage for %q: %v", req.Msg.Guid, err))
+		}
+		if len(lineages) > offset.limit {
+			hasMore = true
+			lineages = lineages[:offset.limit]
 		}
 		for _, lineage := range lineages {
 			response.RelationsSource = append(response.RelationsSource, convertColumnLineage(lineage))
@@ -55,10 +94,18 @@ func (s *LineageService) GetLineage(ctx context.Context, req *connect.Request[v1
 	}
 
 	if shouldIncludeTarget(req.Msg.GetLineageType()) {
-		find := &store.FindColumnLineageMessage{SourceGUID: &req.Msg.Guid}
+		find := &store.FindColumnLineageMessage{
+			SourceGUID: &req.Msg.Guid,
+			Limit:      &probe,
+			Offset:     &offset.offset,
+		}
 		lineages, err := s.store.ListColumnLineage(ctx, find)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list target lineage for %q: %v", req.Msg.Guid, err))
+		}
+		if len(lineages) > offset.limit {
+			hasMore = true
+			lineages = lineages[:offset.limit]
 		}
 		for _, lineage := range lineages {
 			response.RelationsTarget = append(response.RelationsTarget, convertColumnLineage(lineage))
@@ -67,6 +114,14 @@ func (s *LineageService) GetLineage(ctx context.Context, req *connect.Request[v1
 
 	// Enrich response with external dataset metadata.
 	response.ExternalDatasets = s.collectExternalDatasets(ctx, response)
+
+	if hasMore {
+		nextPageToken, err := offset.getNextPageToken()
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to marshal next page token"))
+		}
+		response.NextPageToken = nextPageToken
+	}
 
 	return connect.NewResponse(response), nil
 }
@@ -127,17 +182,30 @@ func (s *LineageService) GetLineageForContext(ctx context.Context, req *connect.
 		return nil, err
 	}
 
+	offset, err := lineagePageOffset(req.Msg.GetPageSize(), req.Msg.GetPageToken())
+	if err != nil {
+		return nil, err
+	}
+	probe := offset.limit + 1
+
 	find := &store.FindColumnLineageMessage{
 		MetaGUID: &req.Msg.Guid,
 		MetaType: &meta.ObjectType,
+		Limit:    &probe,
+		Offset:   &offset.offset,
 	}
 	lineages, err := s.store.ListColumnLineage(ctx, find)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list context lineage for %q: %v", req.Msg.Guid, err))
 	}
 
-	response := &v1pb.GetLineageForContextResponse{}
-	for _, lineage := range lineages {
+	page, nextPageToken, err := paginate(lineages, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &v1pb.GetLineageForContextResponse{NextPageToken: nextPageToken}
+	for _, lineage := range page {
 		response.Relations = append(response.Relations, convertColumnLineage(lineage))
 	}
 

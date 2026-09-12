@@ -84,6 +84,20 @@ message GetLineageRequest {
   MetaType meta_type = 2;
   // The lineage type to query, source or target. If not specified, both source and target lineage will be returned.
   LineageType lineage_type = 3;
+
+  // The maximum number of relations to return. The service may return fewer
+  // than this value. page_size applies to relations_source and relations_target
+  // separately.
+  // If unspecified, at most 500 relations are returned per list. The maximum
+  // value is 5000; values above 5000 will be coerced to 5000.
+  int32 page_size = 4;
+
+  // A page token, received from a previous `GetLineage` call.
+  // Provide this to retrieve the subsequent page.
+  //
+  // When paginating, all other parameters provided to `GetLineage` must match
+  // the call that provided the page token.
+  string page_token = 5;
 }
 
 message GetLineageResponse {
@@ -92,6 +106,10 @@ message GetLineageResponse {
   repeated LineageRelation relations_target = 2;
   // Metadata for external datasets referenced in the lineage relations.
   repeated ExternalDatasetInfo external_datasets = 3;
+
+  // A token, which can be sent as `page_token` to retrieve the next page.
+  // If this field is omitted, there are no subsequent pages.
+  string next_page_token = 4;
 }
 
 // ExternalDatasetInfo provides metadata for a dataset outside of managed instances.
@@ -110,9 +128,26 @@ message GetLineageForContextRequest {
   // view: "instance_1;db2;schema3;view1"
   string guid = 1 [(google.api.field_behavior) = REQUIRED];
   MetaType meta_type = 2;
+
+  // The maximum number of relations to return. The service may return fewer
+  // than this value.
+  // If unspecified, at most 500 relations are returned. The maximum value is
+  // 5000; values above 5000 will be coerced to 5000.
+  int32 page_size = 3;
+
+  // A page token, received from a previous `GetLineageForContext` call.
+  // Provide this to retrieve the subsequent page.
+  //
+  // When paginating, all other parameters provided to `GetLineageForContext`
+  // must match the call that provided the page token.
+  string page_token = 4;
 }
 
 message GetLineageForContextResponse {
   // The list of lineage relations for the given metadata.
   repeated LineageRelation relations = 1;
+
+  // A token, which can be sent as `page_token` to retrieve the next page.
+  // If this field is omitted, there are no subsequent pages.
+  string next_page_token = 2;
 }

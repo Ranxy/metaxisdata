@@ -184,6 +184,28 @@ export declare type GetLineageRequest = Message<"metaxisdata.v1.GetLineageReques
    * @generated from field: metaxisdata.v1.LineageType lineage_type = 3;
    */
   lineageType: LineageType;
+
+  /**
+   * The maximum number of relations to return. The service may return fewer
+   * than this value. page_size applies to relations_source and relations_target
+   * separately.
+   * If unspecified, at most 500 relations are returned per list. The maximum
+   * value is 5000; values above 5000 will be coerced to 5000.
+   *
+   * @generated from field: int32 page_size = 4;
+   */
+  pageSize: number;
+
+  /**
+   * A page token, received from a previous `GetLineage` call.
+   * Provide this to retrieve the subsequent page.
+   *
+   * When paginating, all other parameters provided to `GetLineage` must match
+   * the call that provided the page token.
+   *
+   * @generated from field: string page_token = 5;
+   */
+  pageToken: string;
 };
 
 /**
@@ -214,6 +236,14 @@ export declare type GetLineageResponse = Message<"metaxisdata.v1.GetLineageRespo
    * @generated from field: repeated metaxisdata.v1.ExternalDatasetInfo external_datasets = 3;
    */
   externalDatasets: ExternalDatasetInfo[];
+
+  /**
+   * A token, which can be sent as `page_token` to retrieve the next page.
+   * If this field is omitted, there are no subsequent pages.
+   *
+   * @generated from field: string next_page_token = 4;
+   */
+  nextPageToken: string;
 };
 
 /**
@@ -277,6 +307,27 @@ export declare type GetLineageForContextRequest = Message<"metaxisdata.v1.GetLin
    * @generated from field: metaxisdata.v1.MetaType meta_type = 2;
    */
   metaType: MetaType;
+
+  /**
+   * The maximum number of relations to return. The service may return fewer
+   * than this value.
+   * If unspecified, at most 500 relations are returned. The maximum value is
+   * 5000; values above 5000 will be coerced to 5000.
+   *
+   * @generated from field: int32 page_size = 3;
+   */
+  pageSize: number;
+
+  /**
+   * A page token, received from a previous `GetLineageForContext` call.
+   * Provide this to retrieve the subsequent page.
+   *
+   * When paginating, all other parameters provided to `GetLineageForContext`
+   * must match the call that provided the page token.
+   *
+   * @generated from field: string page_token = 4;
+   */
+  pageToken: string;
 };
 
 /**
@@ -295,6 +346,14 @@ export declare type GetLineageForContextResponse = Message<"metaxisdata.v1.GetLi
    * @generated from field: repeated metaxisdata.v1.LineageRelation relations = 1;
    */
   relations: LineageRelation[];
+
+  /**
+   * A token, which can be sent as `page_token` to retrieve the next page.
+   * If this field is omitted, there are no subsequent pages.
+   *
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
 };
 
 /**

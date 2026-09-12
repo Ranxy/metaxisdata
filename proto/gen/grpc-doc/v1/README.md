@@ -2788,6 +2788,10 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | ----- | ---- | ----- | ----------- |
 | guid | [string](#string) |  | The global unique id for metadata view: &#34;instance_1;db2;schema3;view1&#34; |
 | meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| page_size | [int32](#int32) |  | The maximum number of relations to return. The service may return fewer than this value. If unspecified, at most 500 relations are returned. The maximum value is 5000; values above 5000 will be coerced to 5000. |
+| page_token | [string](#string) |  | A page token, received from a previous `GetLineageForContext` call. Provide this to retrieve the subsequent page.
+
+When paginating, all other parameters provided to `GetLineageForContext` must match the call that provided the page token. |
 
 
 
@@ -2803,6 +2807,7 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | relations | [LineageRelation](#metaxisdata-v1-LineageRelation) | repeated | The list of lineage relations for the given metadata. |
+| next_page_token | [string](#string) |  | A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages. |
 
 
 
@@ -2820,6 +2825,10 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | guid | [string](#string) |  | The global unique id for metadata table: &#34;instance_1;db2;schema3;table4&#34; |
 | meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
 | lineage_type | [LineageType](#metaxisdata-v1-LineageType) |  | The lineage type to query, source or target. If not specified, both source and target lineage will be returned. |
+| page_size | [int32](#int32) |  | The maximum number of relations to return. The service may return fewer than this value. page_size applies to relations_source and relations_target separately. If unspecified, at most 500 relations are returned per list. The maximum value is 5000; values above 5000 will be coerced to 5000. |
+| page_token | [string](#string) |  | A page token, received from a previous `GetLineage` call. Provide this to retrieve the subsequent page.
+
+When paginating, all other parameters provided to `GetLineage` must match the call that provided the page token. |
 
 
 
@@ -2837,6 +2846,7 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | relations_source | [LineageRelation](#metaxisdata-v1-LineageRelation) | repeated | The list of lineage relations for the given metadata. |
 | relations_target | [LineageRelation](#metaxisdata-v1-LineageRelation) | repeated |  |
 | external_datasets | [ExternalDatasetInfo](#metaxisdata-v1-ExternalDatasetInfo) | repeated | Metadata for external datasets referenced in the lineage relations. |
+| next_page_token | [string](#string) |  | A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages. |
 
 
 
