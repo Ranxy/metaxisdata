@@ -282,9 +282,12 @@ func buildGUID(instanceResourceID string, engine storepb.Engine, databaseOverrid
 	return strings.Join([]string{instanceResourceID, database, schema, table}, common.MetaGUIDSplit)
 }
 
+// isMySQLLike reports whether the engine addresses objects as database.table
+// (rather than schema.table). Every MySQL-compatible engine behaves that way,
+// OceanBase included.
 func isMySQLLike(engine storepb.Engine) bool {
 	switch engine {
-	case storepb.Engine_MYSQL, storepb.Engine_TIDB, storepb.Engine_MARIADB:
+	case storepb.Engine_MYSQL, storepb.Engine_TIDB, storepb.Engine_MARIADB, storepb.Engine_OCEANBASE:
 		return true
 	default:
 		return false

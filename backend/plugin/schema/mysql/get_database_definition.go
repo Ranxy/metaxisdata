@@ -41,17 +41,21 @@ const (
 )
 
 func init() {
-	schema.RegisterGetTableDefinition(storepb.Engine_MYSQL, GetTableDefinition)
-	schema.RegisterGetTableDefinition(storepb.Engine_OCEANBASE, GetTableDefinition)
-
-	schema.RegisterGetViewDefinition(storepb.Engine_MYSQL, GetViewDefinition)
-	schema.RegisterGetViewDefinition(storepb.Engine_OCEANBASE, GetViewDefinition)
-
-	schema.RegisterGetFunctionDefinition(storepb.Engine_MYSQL, GetFunctionDefinition)
-	schema.RegisterGetFunctionDefinition(storepb.Engine_OCEANBASE, GetFunctionDefinition)
-
-	schema.RegisterGetProcedureDefinition(storepb.Engine_MYSQL, GetProcedureDefinition)
-	schema.RegisterGetProcedureDefinition(storepb.Engine_OCEANBASE, GetProcedureDefinition)
+	// Every MySQL-compatible engine renders its DDL the same way. Registering
+	// only some of them made GetSchemaString / DiffMetadata answer
+	// "engine X is not supported" for the others.
+	engines := []storepb.Engine{
+		storepb.Engine_MYSQL,
+		storepb.Engine_MARIADB,
+		storepb.Engine_TIDB,
+		storepb.Engine_OCEANBASE,
+	}
+	for _, engine := range engines {
+		schema.RegisterGetTableDefinition(engine, GetTableDefinition)
+		schema.RegisterGetViewDefinition(engine, GetViewDefinition)
+		schema.RegisterGetFunctionDefinition(engine, GetFunctionDefinition)
+		schema.RegisterGetProcedureDefinition(engine, GetProcedureDefinition)
+	}
 }
 
 func GetTableDefinition(_ string, table *storepb.TableMetadata, _ []*storepb.SequenceMetadata) (string, error) {

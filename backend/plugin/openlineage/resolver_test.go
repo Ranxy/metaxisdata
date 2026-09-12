@@ -317,6 +317,7 @@ func TestIsMySQLLike(t *testing.T) {
 	assert.True(t, isMySQLLike(storepb.Engine_MYSQL))
 	assert.True(t, isMySQLLike(storepb.Engine_TIDB))
 	assert.True(t, isMySQLLike(storepb.Engine_MARIADB))
+	assert.True(t, isMySQLLike(storepb.Engine_OCEANBASE))
 	assert.False(t, isMySQLLike(storepb.Engine_POSTGRES))
 	assert.False(t, isMySQLLike(storepb.Engine_ENGINE_UNSPECIFIED))
 }

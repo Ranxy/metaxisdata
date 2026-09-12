@@ -19,8 +19,13 @@ import (
 )
 
 func init() {
+	// MariaDB, TiDB and OceanBase in MySQL mode all speak MySQL SQL, so they
+	// share this analyzer. Only MYSQL and TIDB used to be registered, which left
+	// the other two engines queued for analysis every hour and skipped.
 	lineage.RegisterAnalyzeRelation(storepb.Engine_MYSQL, Analyze)
 	lineage.RegisterAnalyzeRelation(storepb.Engine_TIDB, Analyze)
+	lineage.RegisterAnalyzeRelation(storepb.Engine_MARIADB, Analyze)
+	lineage.RegisterAnalyzeRelation(storepb.Engine_OCEANBASE, Analyze)
 }
 
 // Constants for special table/column markers.

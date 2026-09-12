@@ -31,7 +31,11 @@ var (
 )
 
 func init() {
+	// TiDB, MariaDB and OceanBase in MySQL mode all connect over the MySQL wire
+	// protocol with the MySQL driver. TIDB used to be missing here entirely, so
+	// a TiDB instance could not even be opened.
 	db.Register(storepb.Engine_MYSQL, newDriver)
+	db.Register(storepb.Engine_TIDB, newDriver)
 	db.Register(storepb.Engine_MARIADB, newDriver)
 	db.Register(storepb.Engine_OCEANBASE, newDriver)
 }

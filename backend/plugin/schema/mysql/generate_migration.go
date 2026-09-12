@@ -9,8 +9,17 @@ import (
 )
 
 func init() {
-	schema.RegisterGenerateMigration(storepb.Engine_MYSQL, generateMigration)
-	schema.RegisterGenerateMigration(storepb.Engine_OCEANBASE, generateMigration)
+	// Every MySQL-compatible engine is served by this generator. The registry is
+	// per engine, so one missing entry means DiffMetadata answers
+	// "engine X is not supported" for that engine.
+	for _, engine := range []storepb.Engine{
+		storepb.Engine_MYSQL,
+		storepb.Engine_MARIADB,
+		storepb.Engine_TIDB,
+		storepb.Engine_OCEANBASE,
+	} {
+		schema.RegisterGenerateMigration(engine, generateMigration)
+	}
 }
 
 func generateMigration(diff *schema.MetadataDiff) (string, error) {
