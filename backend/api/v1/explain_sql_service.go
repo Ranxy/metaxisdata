@@ -5,12 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
 
+	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -39,11 +41,44 @@ func NewExplainSQLService(st *store.Store, registry *llm.Registry) *ExplainSQLSe
 
 // ExplainSQL explains SQL using LLM.
 func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request[v1pb.ExplainSQLRequest], stream *connect.ServerStream[v1pb.ExplainSQLResponse]) error {
-	// Resolve SQL text and cache key.
-	sqlText, metaGUID, metaType, cacheKey, cacheType, err := s.resolveSource(ctx, req.Msg)
+	// Resolve SQL text and the identity the explanation is valid for.
+	sqlText, metaGUID, metaType, cacheIdentity, cacheType, err := s.resolveSource(ctx, req.Msg)
 	if err != nil {
 		return err
 	}
+
+	// The cache key must carry the provider/model and the instance scope, so
+	// resolve them before consulting the cache. Two instances with identical SQL
+	// text used to share one cached explanation.
+	configs, err := s.registry.ListEnabled(ctx)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get LLM config"))
+	}
+	var resolvedConfig *llm.ResolvedConfig
+	if req.Msg.ProviderName != "" {
+		for _, c := range configs {
+			if c.ProfileName == req.Msg.ProviderName {
+				resolvedConfig = &c
+				break
+			}
+		}
+		if resolvedConfig == nil {
+			return connect.NewError(connect.CodeNotFound, errors.Errorf("LLM profile %q not found", req.Msg.ProviderName))
+		}
+	} else {
+		if len(configs) == 0 {
+			return connect.NewError(connect.CodeFailedPrecondition, errors.New("no enabled LLM provider profiles"))
+		}
+		resolvedConfig = &configs[0]
+	}
+
+	scopePrefix := req.Msg.ScopePrefix
+	if scopePrefix == "" && metaGUID != "" {
+		scopePrefix = metaGUIScope(metaGUID)
+	}
+	instanceID := scopeInstanceID(scopePrefix)
+
+	cacheKey := explainSQLCacheKey(cacheIdentity, scopePrefix, resolvedConfig.ProfileName, resolvedConfig.ModelName)
 
 	// Check cache.
 	if !req.Msg.ForceRegenerate {
@@ -79,35 +114,6 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 			}
 		}
 	}
-
-	// Get active LLM provider config.
-	configs, err := s.registry.ListEnabled(ctx)
-	if err != nil {
-		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get LLM config"))
-	}
-	var resolvedConfig *llm.ResolvedConfig
-	if req.Msg.ProviderName != "" {
-		for _, c := range configs {
-			if c.ProfileName == req.Msg.ProviderName {
-				resolvedConfig = &c
-				break
-			}
-		}
-		if resolvedConfig == nil {
-			return connect.NewError(connect.CodeNotFound, errors.Errorf("LLM profile %q not found", req.Msg.ProviderName))
-		}
-	} else {
-		if len(configs) == 0 {
-			return connect.NewError(connect.CodeFailedPrecondition, errors.New("no enabled LLM provider profiles"))
-		}
-		resolvedConfig = &configs[0]
-	}
-
-	scopePrefix := req.Msg.ScopePrefix
-	if scopePrefix == "" && metaGUID != "" {
-		scopePrefix = metaGUIScope(metaGUID)
-	}
-	instanceID := scopeInstanceID(scopePrefix)
 
 	// Build schema context.
 	var ctxObjects *llm.SchemaContext
@@ -202,6 +208,7 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 			return 1
 		}(),
 		MetaGUID:        metaGUID,
+		Scope:           scopePrefix,
 		SQLText:         sqlText,
 		Provider:        resolvedConfig.ProfileName,
 		Model:           resolvedConfig.ModelName,
@@ -209,8 +216,13 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 		CreatedAt:       now,
 	}
 
-	if err := s.store.UpsertExplainSQLCache(ctx, cacheEntry); err != nil {
-		_ = err
+	// Write the cache on a context detached from the request: the client often
+	// disconnects right after reading the final chunk, and cancelling the write
+	// would throw away an expensive result.
+	writeCtx, cancelWrite := context.WithTimeout(context.WithoutCancel(ctx), explainSQLCacheWriteTimeout)
+	defer cancelWrite()
+	if err := s.store.UpsertExplainSQLCache(writeCtx, cacheEntry); err != nil {
+		slog.Warn("failed to cache SQL explanation", slog.String("cache_key", cacheKey), log.WithError(err))
 	}
 
 	_ = stream.Send(&v1pb.ExplainSQLResponse{
@@ -229,6 +241,17 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 }
 
 // ---- Scope helpers ----
+
+// explainSQLCacheWriteTimeout bounds the detached cache write.
+const explainSQLCacheWriteTimeout = 5 * time.Second
+
+// explainSQLCacheKey scopes a cached explanation to the instance (or object)
+// identity it was built for, and to the provider/model that produced it. The
+// old key was the bare SQL or metadata hash, so two instances with the same SQL
+// text shared an answer and switching provider returned the stale one.
+func explainSQLCacheKey(cacheIdentity, scopePrefix, provider, model string) string {
+	return fmt.Sprintf("%s|scope:%s|provider:%s|model:%s", cacheIdentity, scopePrefix, provider, model)
+}
 
 func scopeInstanceID(scopePrefix string) string {
 	if scopePrefix == "" {
@@ -500,11 +523,12 @@ func (s *ExplainSQLService) getScopeEngine(ctx context.Context, instanceID strin
 
 // ---- resolveSource, buildSystemPrompt, etc. (unchanged) ----
 
-func (s *ExplainSQLService) resolveSource(ctx context.Context, req *v1pb.ExplainSQLRequest) (sqlText, metaGUID string, metaType storepb.MetaType, cacheKey, cacheType string, err error) {
+// resolveSource returns the SQL to explain, the object it belongs to, the
+// identity the cached answer is valid for before scoping, and the cache kind.
+func (s *ExplainSQLService) resolveSource(ctx context.Context, req *v1pb.ExplainSQLRequest) (sqlText, metaGUID string, metaType storepb.MetaType, cacheIdentity, cacheType string, err error) {
 	if req.SqlText != "" {
 		hash := sha256.Sum256([]byte(req.SqlText))
-		cacheKey = fmt.Sprintf("sql:%x", hash)
-		return req.SqlText, "", storepb.MetaType_UNSPECIFIED, cacheKey, "custom", nil
+		return req.SqlText, "", storepb.MetaType_UNSPECIFIED, fmt.Sprintf("sql:%x", hash), "custom", nil
 	}
 
 	if req.MetaGuid != "" {
@@ -522,13 +546,13 @@ func (s *ExplainSQLService) resolveSource(ctx context.Context, req *v1pb.Explain
 		}
 
 		if meta.MetaHash != nil {
-			cacheKey = fmt.Sprintf("meta:%x", meta.MetaHash)
+			cacheIdentity = fmt.Sprintf("meta:%x", meta.MetaHash)
 		} else {
 			hash := sha256.Sum256([]byte(req.MetaGuid + sqlText))
-			cacheKey = fmt.Sprintf("meta:%x", hash)
+			cacheIdentity = fmt.Sprintf("meta:%x", hash)
 		}
 
-		return sqlText, req.MetaGuid, meta.ObjectType, cacheKey, "metadata", nil
+		return sqlText, req.MetaGuid, meta.ObjectType, cacheIdentity, "metadata", nil
 	}
 
 	return "", "", storepb.MetaType_UNSPECIFIED, "", "", connect.NewError(connect.CodeInvalidArgument, errors.New("either sql_text or meta_guid is required"))

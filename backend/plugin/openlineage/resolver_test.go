@@ -1,6 +1,7 @@
 package openlineage
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -371,4 +372,21 @@ func TestFormatExternalGUID(t *testing.T) {
 
 	guid = FormatExternalGUID("s3://my-bucket", "data/file.parquet")
 	assert.Equal(t, "external:s3://my-bucket:data/file.parquet", guid)
+}
+
+func TestRequestScopedResolverMemoizesPreview(t *testing.T) {
+	// A nil store proves the cached answer is served without any lookup.
+	resolver := NewRequestScopedResolver(nil)
+	want := &ResolvedDataset{GUID: "inst;db;public;orders", MetaType: storepb.MetaType_TABLE, Internal: true}
+	resolver.previews[previewKey{namespace: "postgres://host:5432/db", name: "public.orders"}] = want
+
+	got, err := resolver.ResolveDatasetPreview(context.Background(), "postgres://host:5432/db", "public.orders")
+	assert.NoError(t, err)
+	assert.Same(t, want, got)
+}
+
+func TestNewResolverDoesNotMemoize(t *testing.T) {
+	// Ingestion resolvers outlive one resolution, so they must not cache.
+	assert.False(t, NewResolver(nil).requestScoped)
+	assert.True(t, NewRequestScopedResolver(nil).requestScoped)
 }

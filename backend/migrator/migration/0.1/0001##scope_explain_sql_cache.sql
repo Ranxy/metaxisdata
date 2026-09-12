@@ -1,0 +1,11 @@
+-- Scope the ExplainSQL cache to the instance (or object) it was generated for.
+--
+-- The cache key was "sql:<sha256(sqlText)>" or "meta:<sha256(StoredMetadata)>".
+-- Neither identifies the instance, and StoredMetadata does not carry a GUID, so
+-- two instances with the same SQL text (or identical table definitions) shared
+-- one explanation, and the answer could embed another instance's column names
+-- and DDL. The key now also carries the scope, provider and model; this column
+-- records the scope so cached rows can be inspected and invalidated per
+-- instance. Entries older than the TTL are treated as a miss on read, so no
+-- cleanup task is required.
+ALTER TABLE explain_sql_cache ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT '';

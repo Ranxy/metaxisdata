@@ -419,6 +419,9 @@ CREATE TABLE explain_sql_cache (
     cache_key TEXT UNIQUE NOT NULL,
     cache_type INT NOT NULL DEFAULT 0,
     meta_guid TEXT NOT NULL DEFAULT '',
+    -- scope is the instance/object prefix the explanation was generated for;
+    -- it is part of cache_key and stored separately for inspection.
+    scope TEXT NOT NULL DEFAULT '',
     sql_text TEXT NOT NULL DEFAULT '',
     provider TEXT NOT NULL DEFAULT '',
     model TEXT NOT NULL DEFAULT '',

@@ -24,11 +24,36 @@ type ResolvedDataset struct {
 // Resolver maps OpenLineage dataset namespaces and names to internal GUIDs or external datasets.
 type Resolver struct {
 	store *store.Store
+
+	// requestScoped enables per-request memoization of dataset previews and the
+	// instance list. Without it a read endpoint re-resolves every dataset once
+	// per run and lists every instance once per distinct dataset namespace.
+	requestScoped bool
+	previews      map[previewKey]*ResolvedDataset
+
+	instances     []*store.InstanceMessage
+	instancesDone bool
+}
+
+type previewKey struct {
+	namespace string
+	name      string
 }
 
 // NewResolver creates a new Resolver.
 func NewResolver(s *store.Store) *Resolver {
 	return &Resolver{store: s}
+}
+
+// NewRequestScopedResolver creates a Resolver that memoizes lookups for the
+// lifetime of one request. Use NewResolver for ingestion, where a resolver may
+// serve many resolutions and cached answers could go stale.
+func NewRequestScopedResolver(s *store.Store) *Resolver {
+	return &Resolver{
+		store:         s,
+		requestScoped: true,
+		previews:      make(map[previewKey]*ResolvedDataset),
+	}
 }
 
 // ResolveDataset resolves an OpenLineage dataset (namespace + name) to a GUID and MetaType.
@@ -54,6 +79,24 @@ func (r *Resolver) ResolveDataset(ctx context.Context, namespace, datasetName st
 
 // ResolveDatasetPreview resolves an OpenLineage dataset without creating external-dataset rows.
 func (r *Resolver) ResolveDatasetPreview(ctx context.Context, namespace, datasetName string) (*ResolvedDataset, error) {
+	key := previewKey{namespace: namespace, name: datasetName}
+	if r.requestScoped {
+		if v, ok := r.previews[key]; ok {
+			return v, nil
+		}
+	}
+
+	resolved, err := r.resolveDatasetPreviewUncached(ctx, namespace, datasetName)
+	if err != nil {
+		return nil, err
+	}
+	if r.requestScoped {
+		r.previews[key] = resolved
+	}
+	return resolved, nil
+}
+
+func (r *Resolver) resolveDatasetPreviewUncached(ctx context.Context, namespace, datasetName string) (*ResolvedDataset, error) {
 	// 1. Manual mapping
 	if resolved, err := r.resolveByManualMapping(ctx, namespace, datasetName); err != nil {
 		return nil, err
@@ -107,9 +150,9 @@ func (r *Resolver) resolveByAutoMatch(ctx context.Context, namespace, datasetNam
 		return nil, nil
 	}
 
-	instances, err := r.store.ListInstancesV2(ctx, &store.FindInstanceMessage{})
+	instances, err := r.listInstances(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to list instances")
+		return nil, err
 	}
 
 	for _, inst := range instances {
@@ -133,6 +176,22 @@ func (r *Resolver) resolveByAutoMatch(ctx context.Context, namespace, datasetNam
 	}
 
 	return nil, nil
+}
+
+// listInstances returns the instance list, memoized for the request when the
+// resolver is request-scoped.
+func (r *Resolver) listInstances(ctx context.Context) ([]*store.InstanceMessage, error) {
+	if r.requestScoped && r.instancesDone {
+		return r.instances, nil
+	}
+	instances, err := r.store.ListInstancesV2(ctx, &store.FindInstanceMessage{})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list instances")
+	}
+	if r.requestScoped {
+		r.instances, r.instancesDone = instances, true
+	}
+	return instances, nil
 }
 
 // parseNamespace extracts host, port, and optional database from an OpenLineage namespace URL.

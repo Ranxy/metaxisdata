@@ -10,10 +10,16 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	openlineageplugin "github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
+
+// defaultOpenLineageRunLimit bounds how many runs the dataset endpoints read
+// and parse. The run table grows with every ingested event, so an unbounded
+// read made one page load parse the entire event history in memory.
+const defaultOpenLineageRunLimit = 5000
 
 type openLineageDatasetAggregate struct {
 	GUID                  string
@@ -37,12 +43,13 @@ type openLineageDatasetAggregate struct {
 }
 
 func (s *OpenLineageService) ListOpenLineageDatasets(ctx context.Context, req *connect.Request[v1pb.ListOpenLineageDatasetsRequest]) (*connect.Response[v1pb.ListOpenLineageDatasetsResponse], error) {
-	runs, err := s.store.ListOpenLineageRun(ctx, &store.FindOpenLineageRunMessage{})
+	limit := defaultOpenLineageRunLimit
+	runs, err := s.store.ListOpenLineageRun(ctx, &store.FindOpenLineageRunMessage{Limit: &limit})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list openlineage runs for dataset aggregation"))
 	}
 
-	resolver := openlineageplugin.NewResolver(s.store)
+	resolver := openlineageplugin.NewRequestScopedResolver(s.store)
 	aggregates := aggregateOpenLineageDatasets(ctx, runs, func(ctx context.Context, namespace, name string) (*openlineageplugin.ResolvedDataset, error) {
 		return resolver.ResolveDatasetPreview(ctx, namespace, name)
 	})
@@ -116,12 +123,13 @@ func (s *OpenLineageService) GetOpenLineageDataset(ctx context.Context, req *con
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("guid is required"))
 	}
 
-	runs, err := s.store.ListOpenLineageRun(ctx, &store.FindOpenLineageRunMessage{})
+	limit := defaultOpenLineageRunLimit
+	runs, err := s.store.ListOpenLineageRun(ctx, &store.FindOpenLineageRunMessage{Limit: &limit})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list openlineage runs for dataset detail"))
 	}
 
-	resolver := openlineageplugin.NewResolver(s.store)
+	resolver := openlineageplugin.NewRequestScopedResolver(s.store)
 	detail, found := buildOpenLineageDatasetDetail(
 		ctx,
 		runs,
@@ -223,17 +231,25 @@ func buildOpenLineageDatasetDetail(
 	name string,
 	resolve datasetPreviewResolver,
 ) (*openLineageDatasetDetail, bool) {
-	aggregates := aggregateOpenLineageDatasets(ctx, runs, resolve)
-	dataset := findOpenLineageDatasetAggregate(aggregates, guid, namespace, name)
-	if dataset == nil {
-		return nil, false
-	}
-
 	columnLineageReadyFields := make(map[string]struct{})
 	relatedJobs := make(map[string]*openLineageDatasetJobAggregate)
 	recentRuns := make([]*v1pb.OpenLineageDatasetRunResource, 0)
 	var bestSchema []openlineageplugin.SchemaField
 	var bestSchemaUpdatedAt *time.Time
+
+	// One pass produces both the target dataset's aggregate and its detail. The
+	// previous version walked (and JSON-parsed) every run twice, once to find
+	// the aggregate and once to collect the detail.
+	target := &openLineageDatasetAggregate{
+		GUID:           guid,
+		Namespace:      namespace,
+		Name:           name,
+		sourceJobKeys:  make(map[string]struct{}),
+		targetJobKeys:  make(map[string]struct{}),
+		integrationSet: make(map[string]struct{}),
+		sourceSet:      make(map[string]struct{}),
+	}
+	found := false
 
 	for _, run := range runs {
 		event, err := openlineageplugin.ParseRunEvent(run.RawPayload)
@@ -241,9 +257,27 @@ func buildOpenLineageDatasetDetail(
 			continue
 		}
 
-		readsDataset, writesDataset, matchedDataset := matchDatasetInRun(ctx, event, run, dataset, resolve)
+		readsDataset, writesDataset, matchedDataset, resolvedDataset := matchDatasetInRun(ctx, event, target, resolve)
 		if matchedDataset == nil {
 			continue
+		}
+
+		if !found {
+			found = true
+			if resolvedDataset == nil {
+				resolvedDataset = &openlineageplugin.ResolvedDataset{
+					GUID:     openlineageplugin.FormatExternalGUID(matchedDataset.Namespace, matchedDataset.Name),
+					MetaType: storepb.MetaType_EXTERNAL_DATASET,
+					Internal: false,
+				}
+			}
+			target.GUID = resolvedDataset.GUID
+			target.Namespace = matchedDataset.Namespace
+			target.Name = matchedDataset.Name
+			target.DatasetType = openlineageplugin.InferDatasetType(matchedDataset.Namespace)
+			target.ResolvedTarget = formatResolvedTarget(resolvedDataset.GUID, resolvedDataset.Internal)
+			target.ResolvedMetaType = v1pb.MetaType(resolvedDataset.MetaType)
+			target.Internal = resolvedDataset.Internal
 		}
 
 		if matchedDataset.Facets.Schema != nil {
@@ -254,12 +288,33 @@ func buildOpenLineageDatasetDetail(
 			}
 		}
 
-		collectDatasetColumnReadiness(columnLineageReadyFields, event, dataset)
+		collectDatasetColumnReadiness(columnLineageReadyFields, event, target)
 
 		jobKey := run.TaskGUID
 		if strings.TrimSpace(jobKey) == "" {
 			jobKey = openlineageplugin.BuildOpenLineageTaskGUID(run.JobNamespace, run.JobName, run.JobType)
 		}
+
+		if writesDataset {
+			target.targetJobKeys[jobKey] = struct{}{}
+			if matchedDataset.Facets.ColumnLineage != nil && (len(matchedDataset.Facets.ColumnLineage.Fields) > 0 || len(matchedDataset.Facets.ColumnLineage.Dataset) > 0) {
+				target.SupportsColumnLineage = true
+			}
+		}
+		if readsDataset {
+			target.sourceJobKeys[jobKey] = struct{}{}
+		}
+		if run.Integration != "" {
+			target.integrationSet[run.Integration] = struct{}{}
+		}
+		if run.Source != "" {
+			target.sourceSet[run.Source] = struct{}{}
+		}
+		if run.EventTime != nil && (target.LastSeen == nil || run.EventTime.After(*target.LastSeen)) {
+			seen := *run.EventTime
+			target.LastSeen = &seen
+		}
+
 		job := relatedJobs[jobKey]
 		if job == nil {
 			job = &openLineageDatasetJobAggregate{
@@ -301,6 +356,15 @@ func buildOpenLineageDatasetDetail(
 		}
 		recentRuns = append(recentRuns, runResource)
 	}
+
+	if !found {
+		return nil, false
+	}
+
+	target.SourceJobCount = int32(len(target.sourceJobKeys))
+	target.TargetJobCount = int32(len(target.targetJobKeys))
+	target.Integrations = sortedKeys(target.integrationSet)
+	target.Sources = sortedKeys(target.sourceSet)
 
 	jobList := make([]*v1pb.OpenLineageDatasetJobResource, 0, len(relatedJobs))
 	for _, job := range relatedJobs {
@@ -345,70 +409,50 @@ func buildOpenLineageDatasetDetail(
 	}
 
 	return &openLineageDatasetDetail{
-		Dataset:      dataset,
+		Dataset:      target,
 		SchemaFields: schemaFields,
 		RelatedJobs:  jobList,
 		RecentRuns:   recentRuns,
 	}, true
 }
 
-func findOpenLineageDatasetAggregate(aggregates []*openLineageDatasetAggregate, guid, namespace, name string) *openLineageDatasetAggregate {
-	for _, dataset := range aggregates {
-		if namespace != "" && name != "" {
-			if dataset.Namespace == namespace && dataset.Name == name {
-				return dataset
-			}
-			continue
-		}
-		if dataset.GUID == guid {
-			return dataset
-		}
-	}
-	return nil
-}
-
 func matchDatasetInRun(
 	ctx context.Context,
 	event *openlineageplugin.RunEvent,
-	run *store.OpenLineageRunMessage,
 	target *openLineageDatasetAggregate,
 	resolve datasetPreviewResolver,
-) (bool, bool, *openlineageplugin.Dataset) {
-	var matched *openlineageplugin.Dataset
-	readsDataset := false
-	writesDataset := false
-
-	for _, dataset := range event.Inputs {
-		if datasetMatchesAggregate(ctx, dataset, target, resolve) {
-			readsDataset = true
-			matchedDataset := dataset
-			matched = &matchedDataset
+) (reads bool, writes bool, matched *openlineageplugin.Dataset, resolved *openlineageplugin.ResolvedDataset) {
+	for i := range event.Inputs {
+		if r, ok := resolveDatasetMatch(ctx, event.Inputs[i], target, resolve); ok {
+			reads = true
+			matched, resolved = &event.Inputs[i], r
 		}
 	}
-	for _, dataset := range event.Outputs {
-		if datasetMatchesAggregate(ctx, dataset, target, resolve) {
-			writesDataset = true
-			matchedDataset := dataset
-			matched = &matchedDataset
+	for i := range event.Outputs {
+		if r, ok := resolveDatasetMatch(ctx, event.Outputs[i], target, resolve); ok {
+			writes = true
+			matched, resolved = &event.Outputs[i], r
 		}
 	}
-
-	if matched == nil && run.TaskGUID == target.GUID {
-		return false, false, nil
-	}
-
-	return readsDataset, writesDataset, matched
+	return reads, writes, matched, resolved
 }
 
-func datasetMatchesAggregate(ctx context.Context, dataset openlineageplugin.Dataset, target *openLineageDatasetAggregate, resolve datasetPreviewResolver) bool {
-	if dataset.Namespace == target.Namespace && dataset.Name == target.Name {
-		return true
-	}
+// resolveDatasetMatch reports whether dataset is the target and returns its
+// resolution. A dataset matches by exact namespace/name or by resolving to the
+// target GUID; the resolution is returned either way so the first match can
+// describe the target dataset.
+func resolveDatasetMatch(ctx context.Context, dataset openlineageplugin.Dataset, target *openLineageDatasetAggregate, resolve datasetPreviewResolver) (*openlineageplugin.ResolvedDataset, bool) {
 	resolved, err := resolve(ctx, dataset.Namespace, dataset.Name)
-	if err != nil || resolved == nil {
-		return false
+	if err != nil {
+		resolved = nil
 	}
-	return resolved.GUID == target.GUID
+	if dataset.Namespace == target.Namespace && dataset.Name == target.Name {
+		return resolved, true
+	}
+	if resolved == nil {
+		return nil, false
+	}
+	return resolved, resolved.GUID == target.GUID
 }
 
 func collectDatasetColumnReadiness(fieldSet map[string]struct{}, event *openlineageplugin.RunEvent, target *openLineageDatasetAggregate) {
@@ -467,7 +511,7 @@ func upsertOpenLineageDatasetAggregate(
 		if err != nil || resolved == nil {
 			resolved = &openlineageplugin.ResolvedDataset{
 				GUID:     openlineageplugin.FormatExternalGUID(dataset.Namespace, dataset.Name),
-				MetaType: 17,
+				MetaType: storepb.MetaType_EXTERNAL_DATASET,
 				Internal: false,
 			}
 		}
