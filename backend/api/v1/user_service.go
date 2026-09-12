@@ -288,26 +288,6 @@ func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v
 		return nil, err
 	}
 
-	// setting, err := s.store.GetWorkspaceGeneralSetting(ctx)
-	// if err != nil {
-	// 	return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to find workspace setting, error: %v", err))
-	// }
-
-	// if err := s.licenseService.IsFeatureEnabled(v1pb.PlanFeature_FEATURE_DISALLOW_SELF_SERVICE_SIGNUP); err == nil {
-	// 	if setting.DisallowSignup || s.profile.SaaS {
-	// 		callerUser, ok := GetUserFromContext(ctx)
-	// 		if !ok {
-	// 			return nil, connect.NewError(connect.CodePermissionDenied, errors.Errorf("sign up is disallowed"))
-	// 		}
-	// 		ok, err := s.iamManager.CheckPermission(ctx, iam.PermissionUsersCreate, callerUser)
-	// 		if err != nil {
-	// 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to check permission with error: %v", err.Error()))
-	// 		}
-	// 		if !ok {
-	// 			return nil, connect.NewError(connect.CodePermissionDenied, errors.Errorf("user does not have permission %q", iam.PermissionUsersCreate))
-	// 		}
-	// 	}
-	// }
 	if request.Msg.User == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("user must be set"))
 	}
@@ -325,12 +305,9 @@ func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v
 	if request.Msg.User.UserType != v1pb.UserType_SERVICE_ACCOUNT && request.Msg.User.UserType != v1pb.UserType_USER {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("support user and service account only"))
 	}
-
-	count, err := s.store.CountUsers(ctx, storepb.PrincipalType_END_USER)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to count users, error: %v", err))
+	if err := s.authorizeCreateUser(ctx, request.Msg.User.UserType); err != nil {
+		return nil, err
 	}
-	firstEndUser := count == 0
 
 	if request.Msg.User.Phone != "" {
 		if err := common.ValidatePhone(request.Msg.User.Phone); err != nil {
@@ -386,17 +363,6 @@ func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v
 		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to create user, error: %v", err))
 	}
 
-	if firstEndUser {
-		// The first end user should be workspace admin.
-		updateRole := &store.PatchIamPolicyMessage{
-			Member: common.FormatUserUID(user.ID),
-			Roles:  []string{common.FormatRole(common.WorkspaceAdmin)},
-		}
-		if _, err := s.store.PatchWorkspaceIamPolicy(ctx, updateRole); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
-		}
-	}
-
 	// isFirstUser := user.ID == common.PrincipalIDForFirstUser
 	// s.metricReporter.Report(ctx, &metric.Metric{
 	// 	Name:  metricapi.PrincipalRegistrationMetricName,
@@ -416,6 +382,45 @@ func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v
 		userResponse.ServiceKey = password
 	}
 	return connect.NewResponse(userResponse), nil
+}
+
+// authorizeCreateUser distinguishes an admin creating a user from self-service
+// signup.
+//
+// An admin may create any user. Everyone else may only sign up as an end user,
+// and only while self-service signup is enabled. The very first end user is
+// always allowed so that a fresh workspace can be bootstrapped.
+func (s *UserService) authorizeCreateUser(ctx context.Context, userType v1pb.UserType) error {
+	if caller, ok := GetUserFromContext(ctx); ok && caller != nil {
+		isAdmin, err := isUserWorkspaceAdmin(ctx, s.store, caller)
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check permission"))
+		}
+		if isAdmin {
+			return nil
+		}
+	}
+
+	if userType != v1pb.UserType_USER {
+		return connect.NewError(connect.CodePermissionDenied, errors.Errorf("only a workspace admin can create a %s", userType))
+	}
+
+	activeEndUserCount, err := s.store.CountUsers(ctx, storepb.PrincipalType_END_USER)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, errors.Errorf("failed to count users, error: %v", err))
+	}
+	if activeEndUserCount == 0 {
+		return nil
+	}
+
+	setting, err := s.store.GetWorkspaceGeneralSetting(ctx)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to find workspace setting"))
+	}
+	if setting.DisallowSignup {
+		return connect.NewError(connect.CodePermissionDenied, errors.Errorf("self-service signup is disallowed"))
+	}
+	return nil
 }
 
 func (s *UserService) validatePassword(ctx context.Context, password string) error {

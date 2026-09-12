@@ -39,9 +39,47 @@ type PatchIamPolicyMessage struct {
 
 // PatchWorkspaceIamPolicy will set or remove the member for the workspace role.
 func (s *Store) PatchWorkspaceIamPolicy(ctx context.Context, patch *PatchIamPolicyMessage) (*IamPolicyMessage, error) {
-	workspaceIamPolicy, err := s.GetWorkspaceIamPolicy(ctx)
+	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
+	}
+	defer tx.Rollback()
+
+	if err := s.patchWorkspaceIamPolicyImpl(ctx, tx, patch); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	s.policyCache.Remove(getPolicyCacheKey(storepb.Policy_WORKSPACE, "", storepb.Policy_IAM))
+
+	return s.GetWorkspaceIamPolicy(ctx)
+}
+
+// patchWorkspaceIamPolicyImpl sets or removes the member for the workspace role
+// within the caller's transaction.
+func (s *Store) patchWorkspaceIamPolicyImpl(ctx context.Context, txn *sql.Tx, patch *PatchIamPolicyMessage) error {
+	resourceType := storepb.Policy_WORKSPACE
+	pType := storepb.Policy_IAM
+	policies, err := s.listPolicyImplV2(ctx, txn, &FindPolicyMessage{
+		ResourceType: &resourceType,
+		Type:         &pType,
+		ShowAll:      true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(policies) > 1 {
+		return errors.Errorf("found %d workspace iam policies, expect at most 1", len(policies))
+	}
+
+	workspaceIamPolicy := &storepb.IamPolicy{}
+	if len(policies) == 1 && policies[0].Payload != "" {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(policies[0].Payload), workspaceIamPolicy); err != nil {
+			return errors.Wrapf(err, "failed to unmarshal workspace iam policy")
+		}
 	}
 
 	roleMap := map[string]bool{}
@@ -49,7 +87,7 @@ func (s *Store) PatchWorkspaceIamPolicy(ctx context.Context, patch *PatchIamPoli
 		roleMap[role] = true
 	}
 
-	for _, binding := range workspaceIamPolicy.Policy.Bindings {
+	for _, binding := range workspaceIamPolicy.Bindings {
 		index := slices.Index(binding.Members, patch.Member)
 		if !roleMap[binding.Role] {
 			if index >= 0 {
@@ -65,7 +103,7 @@ func (s *Store) PatchWorkspaceIamPolicy(ctx context.Context, patch *PatchIamPoli
 	}
 
 	for role := range roleMap {
-		workspaceIamPolicy.Policy.Bindings = append(workspaceIamPolicy.Policy.Bindings, &storepb.Binding{
+		workspaceIamPolicy.Bindings = append(workspaceIamPolicy.Bindings, &storepb.Binding{
 			Role: role,
 			Members: []string{
 				patch.Member,
@@ -73,12 +111,12 @@ func (s *Store) PatchWorkspaceIamPolicy(ctx context.Context, patch *PatchIamPoli
 		})
 	}
 
-	policyPayload, err := protojson.Marshal(workspaceIamPolicy.Policy)
+	policyPayload, err := protojson.Marshal(workspaceIamPolicy)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	if _, err := s.CreatePolicyV2(ctx, &PolicyMessage{
+	if _, err := upsertPolicyV2Impl(ctx, txn, &PolicyMessage{
 		ResourceType:      storepb.Policy_WORKSPACE,
 		Payload:           string(policyPayload),
 		Type:              storepb.Policy_IAM,
@@ -86,10 +124,10 @@ func (s *Store) PatchWorkspaceIamPolicy(ctx context.Context, patch *PatchIamPoli
 		// Enforce cannot be false while creating a policy.
 		Enforce: true,
 	}); err != nil {
-		return nil, err
+		return err
 	}
 
-	return s.GetWorkspaceIamPolicy(ctx)
+	return nil
 }
 
 func (s *Store) getIamPolicy(ctx context.Context, find *FindPolicyMessage) (*IamPolicyMessage, error) {

@@ -325,7 +325,16 @@ func listUserImpl(ctx context.Context, txn *sql.Tx, find *FindUserMessage) ([]*U
 	return userMessages, nil
 }
 
+// createEndUserAdvisoryLockKey serializes end-user creation so that two
+// concurrent registrations cannot both be elected as the first workspace admin.
+const createEndUserAdvisoryLockKey int64 = 0x6d65746178697301
+
 // CreateUser creates an user.
+//
+// When the new user is an end user and there is no other active end user, the
+// user is granted the workspace admin role in the same transaction. This is
+// what bootstraps a fresh workspace, and doing it atomically prevents a
+// concurrent registration from also being elected admin.
 func (s *Store) CreateUser(ctx context.Context, create *UserMessage) (*UserMessage, error) {
 	// Double check the passing-in emails.
 	// We use lower-case for emails.
@@ -338,6 +347,22 @@ func (s *Store) CreateUser(ctx context.Context, create *UserMessage) (*UserMessa
 		return nil, err
 	}
 	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", createEndUserAdvisoryLockKey); err != nil {
+		return nil, err
+	}
+
+	activeEndUserCount := 0
+	if create.Type == storepb.PrincipalType_END_USER {
+		if err := tx.QueryRowContext(ctx, `
+			SELECT COUNT(*)
+			FROM principal
+			WHERE type = $1 AND deleted = FALSE`,
+			storepb.PrincipalType_END_USER.String(),
+		).Scan(&activeEndUserCount); err != nil {
+			return nil, err
+		}
+	}
 
 	if create.Profile == nil {
 		create.Profile = &storepb.UserProfile{}
@@ -367,9 +392,20 @@ func (s *Store) CreateUser(ctx context.Context, create *UserMessage) (*UserMessa
 		return nil, err
 	}
 
+	if create.Type == storepb.PrincipalType_END_USER && activeEndUserCount == 0 {
+		if err := s.patchWorkspaceIamPolicyImpl(ctx, tx, &PatchIamPolicyMessage{
+			Member: common.FormatUserUID(userID),
+			Roles:  []string{common.FormatRole(common.WorkspaceAdmin)},
+		}); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+
+	s.policyCache.Remove(getPolicyCacheKey(storepb.Policy_WORKSPACE, "", storepb.Policy_IAM))
 
 	user := &UserMessage{
 		ID:           userID,
