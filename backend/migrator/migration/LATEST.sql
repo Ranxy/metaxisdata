@@ -274,13 +274,13 @@ CREATE TABLE column_lineage_version (
 
 
 -- external_dataset stores datasets discovered via OpenLineage that are not managed by any instance.
+-- The dataset schema stays on the OpenLineage run payload; there is no schema_fields column.
 CREATE TABLE external_dataset (
     id BIGSERIAL PRIMARY KEY,
     guid TEXT COLLATE "C" NOT NULL,
     namespace TEXT NOT NULL,
     name TEXT NOT NULL,
     dataset_type TEXT NOT NULL DEFAULT 'unknown',
-    schema_fields JSONB NOT NULL DEFAULT '[]',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

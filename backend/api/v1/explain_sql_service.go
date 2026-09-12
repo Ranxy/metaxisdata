@@ -553,7 +553,12 @@ func (s *ExplainSQLService) resolveSource(ctx context.Context, req *v1pb.Explain
 		metas, listErr := s.store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{
 			GUID: &req.MetaGuid,
 		})
-		if listErr != nil || len(metas) == 0 {
+		// A store failure is not the same as a missing row: reporting it as
+		// NotFound hid outages behind a client error.
+		if listErr != nil {
+			return "", "", storepb.MetaType_UNSPECIFIED, "", "", connect.NewError(connect.CodeInternal, errors.Errorf("failed to look up metadata %q: %v", req.MetaGuid, listErr))
+		}
+		if len(metas) == 0 {
 			return "", "", storepb.MetaType_UNSPECIFIED, "", "", connect.NewError(connect.CodeNotFound, errors.Errorf("metadata not found for guid %q", req.MetaGuid))
 		}
 

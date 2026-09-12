@@ -113,7 +113,11 @@ func (s *LineageService) GetLineage(ctx context.Context, req *connect.Request[v1
 	}
 
 	// Enrich response with external dataset metadata.
-	response.ExternalDatasets = s.collectExternalDatasets(ctx, response)
+	externalDatasets, err := s.collectExternalDatasets(ctx, response)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to load external datasets"))
+	}
+	response.ExternalDatasets = externalDatasets
 
 	if hasMore {
 		nextPageToken, err := offset.getNextPageToken()
@@ -127,7 +131,9 @@ func (s *LineageService) GetLineage(ctx context.Context, req *connect.Request[v1
 }
 
 // collectExternalDatasets finds all external GUIDs in the lineage response and fetches their metadata.
-func (s *LineageService) collectExternalDatasets(ctx context.Context, resp *v1pb.GetLineageResponse) []*v1pb.ExternalDatasetInfo {
+// A store failure is returned rather than downgraded to an empty list, which
+// the UI could not tell apart from "no external datasets".
+func (s *LineageService) collectExternalDatasets(ctx context.Context, resp *v1pb.GetLineageResponse) ([]*v1pb.ExternalDatasetInfo, error) {
 	guidSet := make(map[string]struct{})
 	for _, r := range resp.RelationsSource {
 		if openlineage.IsExternalGUID(r.SourceGuid) {
@@ -147,7 +153,7 @@ func (s *LineageService) collectExternalDatasets(ctx context.Context, resp *v1pb
 	}
 
 	if len(guidSet) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	guids := make([]string, 0, len(guidSet))
@@ -157,7 +163,7 @@ func (s *LineageService) collectExternalDatasets(ctx context.Context, resp *v1pb
 
 	datasets, err := s.store.FindExternalDatasetByGUIDs(ctx, guids)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	result := make([]*v1pb.ExternalDatasetInfo, 0, len(datasets))
@@ -169,7 +175,7 @@ func (s *LineageService) collectExternalDatasets(ctx context.Context, resp *v1pb
 			DatasetType: d.DatasetType,
 		})
 	}
-	return result
+	return result, nil
 }
 
 func (s *LineageService) GetLineageForContext(ctx context.Context, req *connect.Request[v1pb.GetLineageForContextRequest]) (*connect.Response[v1pb.GetLineageForContextResponse], error) {

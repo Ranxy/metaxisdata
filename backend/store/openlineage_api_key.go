@@ -183,7 +183,7 @@ func (s *Store) FindExternalDatasetByGUIDs(ctx context.Context, guids []string) 
 	}
 
 	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT id, guid, namespace, name, dataset_type, schema_fields, created_at, updated_at
+		SELECT id, guid, namespace, name, dataset_type, created_at, updated_at
 		FROM external_dataset
 		WHERE guid IN (`+strings.Join(placeholders, ", ")+`)
 		ORDER BY id ASC
@@ -198,7 +198,6 @@ func (s *Store) FindExternalDatasetByGUIDs(ctx context.Context, guids []string) 
 		var msg ExternalDatasetMessage
 		if err := rows.Scan(
 			&msg.ID, &msg.GUID, &msg.Namespace, &msg.Name, &msg.DatasetType,
-			&schemaFieldsScanner{fields: &msg.SchemaFields},
 			&msg.CreatedAt, &msg.UpdatedAt,
 		); err != nil {
 			return nil, errors.Wrap(err, "failed to scan external dataset")
