@@ -165,50 +165,6 @@ func (*Store) listGroupImpl(ctx context.Context, txn *sql.Tx, find *FindGroupMes
 	return groups, nil
 }
 
-// CreateGroup creates a group.
-func (s *Store) CreateGroup(ctx context.Context, create *GroupMessage) (*GroupMessage, error) {
-	if create.Payload == nil {
-		create.Payload = &storepb.GroupPayload{}
-	}
-
-	query := `
-		INSERT INTO user_group (
-			email,
-			name,
-			description,
-			payload
-		) VALUES ($1, $2, $3, $4)
-	`
-	payloadBytes, err := protojson.Marshal(create.Payload)
-	if err != nil {
-		return nil, err
-	}
-
-	tx, err := s.GetDB().BeginTx(ctx, nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to begin tx")
-	}
-	defer tx.Rollback()
-
-	if _, err := tx.ExecContext(
-		ctx,
-		query,
-		create.Email,
-		create.Title,
-		create.Description,
-		payloadBytes,
-	); err != nil {
-		return nil, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "failed to commit")
-	}
-
-	s.groupCache.Add(create.Email, create)
-	return create, nil
-}
-
 // UpdateGroup updates a group.
 func (s *Store) UpdateGroup(ctx context.Context, email string, patch *UpdateGroupMessage) (*GroupMessage, error) {
 	tx, err := s.GetDB().BeginTx(ctx, nil)
@@ -266,24 +222,4 @@ func (s *Store) UpdateGroup(ctx context.Context, email string, patch *UpdateGrou
 
 	s.groupCache.Add(group.Email, &group)
 	return &group, nil
-}
-
-// DeleteGroup deletes a group.
-func (s *Store) DeleteGroup(ctx context.Context, email string) error {
-	tx, err := s.GetDB().BeginTx(ctx, nil)
-	if err != nil {
-		return errors.Wrap(err, "failed to begin transaction")
-	}
-	defer tx.Rollback()
-
-	if _, err := tx.ExecContext(ctx, `DELETE FROM user_group WHERE email = $1`, email); err != nil {
-		return err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return errors.Wrap(err, "failed to commit transaction")
-	}
-
-	s.groupCache.Remove(email)
-	return nil
 }

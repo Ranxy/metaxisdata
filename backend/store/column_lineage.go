@@ -236,27 +236,3 @@ func (s *Store) GetColumnLineageVersion(ctx context.Context, metaGUID string, me
 	}
 	return &v, nil
 }
-
-// DeleteColumnLineageByMeta removes all lineage data for the given object.
-func (s *Store) DeleteColumnLineageByMeta(ctx context.Context, metaGUID string, metaType storepb.MetaType) error {
-	tx, err := s.GetDB().BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM column_lineage WHERE meta_guid = $1 AND meta_type = $2`,
-		metaGUID, metaType,
-	); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM column_lineage_version WHERE meta_guid = $1 AND meta_type = $2`,
-		metaGUID, metaType,
-	); err != nil {
-		return err
-	}
-
-	return tx.Commit()
-}

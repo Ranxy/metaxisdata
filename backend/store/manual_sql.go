@@ -381,11 +381,6 @@ func buildDeleteManualSQLStatement(guid string, updatedBy *string) (string, []an
 		WHERE guid = $` + fmt.Sprintf("%d", len(args)), args
 }
 
-func buildDeleteManualSQLMetaRegistryStatement(guid string) (string, []any) {
-	where, args := appendGUIDSubtreeCondition(nil, nil, "guid", guid)
-	return `DELETE FROM meta_registry_resource WHERE ` + where[0], args
-}
-
 func buildDeleteColumnLineageByGUIDStatement(tableName, guid string) (string, []any) {
 	where, args := appendGUIDSubtreeCondition(nil, nil, "meta_guid", guid)
 	return `DELETE FROM ` + tableName + ` WHERE ` + where[0], args

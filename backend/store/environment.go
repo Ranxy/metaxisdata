@@ -3,8 +3,6 @@ package store
 import (
 	"context"
 
-	"github.com/pkg/errors"
-
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -19,20 +17,4 @@ func (s *Store) GetEnvironmentByID(ctx context.Context, id string) (*storepb.Env
 		}
 	}
 	return nil, nil
-}
-
-func (s *Store) CheckDatabaseUseEnvironment(ctx context.Context, id string) (bool, error) {
-	var exists bool
-
-	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM db 
-			WHERE db.environment = $1
-		)
-	`, id).Scan(&exists); err != nil {
-		return false, errors.Wrapf(err, "failed to check if databases uses environment %q", id)
-	}
-
-	return exists, nil
 }

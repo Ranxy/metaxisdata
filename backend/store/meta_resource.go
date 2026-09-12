@@ -209,7 +209,7 @@ func (s *Store) ListMetaRegistryResourceAsOf(ctx context.Context, find *FindMeta
 		return nil, err
 	}
 	defer tx.Rollback()
-	list, err := s.listMetaRegistryResourceHistoryImpl(ctx, tx, find, asOf, true)
+	list, err := s.listMetaRegistryResourceHistoryImpl(ctx, tx, find, asOf)
 	if err != nil {
 		return nil, err
 	}
@@ -421,16 +421,14 @@ func (*Store) listMetaRegistryResourceImpl(ctx context.Context, txn *sql.Tx, fin
 	return metaRegistryMessages, nil
 }
 
-func (*Store) listMetaRegistryResourceHistoryImpl(ctx context.Context, txn *sql.Tx, find *FindMetaRegistryResourceMessage, asOf time.Time, withMetadata bool) ([]*MetaRegistryResource, error) {
+func (*Store) listMetaRegistryResourceHistoryImpl(ctx context.Context, txn *sql.Tx, find *FindMetaRegistryResourceMessage, asOf time.Time) ([]*MetaRegistryResource, error) {
 	where, args := buildMetaRegistryWhereClause("meta_registry_resource_history", find)
 	args = append(args, asOf)
 	asOfArg := len(args)
 	where = append(where, fmt.Sprintf("meta_registry_resource_history.valid_from <= $%d", asOfArg))
 	where = append(where, fmt.Sprintf("(meta_registry_resource_history.valid_to IS NULL OR meta_registry_resource_history.valid_to > $%d)", asOfArg))
 
-	var query string
-	if withMetadata {
-		query = `
+	query := `
 		SELECT
 			meta_registry_resource_history.id,
 			meta_registry_resource_history.guid,
@@ -440,18 +438,6 @@ func (*Store) listMetaRegistryResourceHistoryImpl(ctx context.Context, txn *sql.
 		FROM meta_registry_resource_history
 		WHERE %s
 		ORDER BY guid`
-	} else {
-		query = `
-		SELECT
-			meta_registry_resource_history.id,
-			meta_registry_resource_history.guid,
-			meta_registry_resource_history.object_type,
-			NULL AS metadata,
-			meta_registry_resource_history.meta_hash
-		FROM meta_registry_resource_history
-		WHERE %s
-		ORDER BY guid`
-	}
 
 	query = fmt.Sprintf(query, strings.Join(where, " AND "))
 	if v := find.Limit; v != nil {

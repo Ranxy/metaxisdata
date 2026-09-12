@@ -33,18 +33,6 @@ func TestBuildDeleteManualSQLStatement(t *testing.T) {
 	})
 }
 
-func TestBuildDeleteManualSQLMetaRegistryStatement(t *testing.T) {
-	t.Parallel()
-
-	guid := `inst;db_1%prod;public;__manual_sql__/summary`
-	query, args := buildDeleteManualSQLMetaRegistryStatement(guid)
-
-	require.Contains(t, query, "DELETE FROM meta_registry_resource WHERE")
-	require.Contains(t, query, "guid = $1 OR guid LIKE $2")
-	require.Contains(t, query, "ESCAPE E'\\\\'")
-	require.Equal(t, []any{guid, likePatternEscaper.Replace(guid+common.MetaGUIDSplit) + "%"}, args)
-}
-
 func TestBuildDeleteColumnLineageByGUIDStatement(t *testing.T) {
 	t.Parallel()
 

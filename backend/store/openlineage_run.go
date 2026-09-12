@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -397,18 +396,4 @@ func buildOpenLineageRunStoredMetadata(run *OpenLineageRunMessage) *storepb.Stor
 			OpenlineageRunSummary: summary,
 		},
 	}
-}
-
-// MarshalOpenLineageRunPayload normalizes the stored raw payload for API responses.
-func MarshalOpenLineageRunPayload(run *OpenLineageRunMessage) ([]byte, error) {
-	message := &storepb.OpenLineageRun{
-		Id:         run.ID,
-		Summary:    buildOpenLineageRunStoredMetadata(run).GetOpenlineageRunSummary(),
-		RawPayload: run.RawPayload,
-	}
-	b, err := protojson.Marshal(message)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to marshal openlineage run payload")
-	}
-	return b, nil
 }
