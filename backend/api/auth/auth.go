@@ -67,16 +67,21 @@ func New(
 // WrapUnary implements the ConnectRPC interceptor interface for unary RPCs.
 func (in *APIAuthInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		accessTokenStr, err := GetTokenFromHeaders(req.Header())
-		if err != nil {
-			return nil, connect.NewError(connect.CodeUnauthenticated, err)
-		}
-
 		authContext, err := getAuthContext(req.Spec().Procedure)
 		if err != nil {
 			return nil, err
 		}
 		ctx = context.WithValue(ctx, common.AuthContextKey, authContext)
+
+		// A malformed Authorization header must not break a method that allows
+		// anonymous access: the header is simply ignored there.
+		accessTokenStr, tokenErr := GetTokenFromHeaders(req.Header())
+		if tokenErr != nil {
+			if IsAuthenticationAllowed(req.Spec().Procedure, authContext) {
+				return next(ctx, req)
+			}
+			return nil, connect.NewError(connect.CodeUnauthenticated, tokenErr)
+		}
 
 		user, err := in.getUserConnect(ctx, accessTokenStr)
 		if err != nil {
@@ -101,16 +106,19 @@ func (*APIAuthInterceptor) WrapStreamingClient(next connect.StreamingClientFunc)
 // WrapStreamingHandler implements the ConnectRPC interceptor interface for streaming handlers.
 func (in *APIAuthInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
-		accessTokenStr, err := GetTokenFromHeaders(conn.RequestHeader())
-		if err != nil {
-			return connect.NewError(connect.CodeUnauthenticated, err)
-		}
-
 		authContext, err := getAuthContext(conn.Spec().Procedure)
 		if err != nil {
 			return err
 		}
 		ctx = context.WithValue(ctx, common.AuthContextKey, authContext)
+
+		accessTokenStr, tokenErr := GetTokenFromHeaders(conn.RequestHeader())
+		if tokenErr != nil {
+			if IsAuthenticationAllowed(conn.Spec().Procedure, authContext) {
+				return next(ctx, conn)
+			}
+			return connect.NewError(connect.CodeUnauthenticated, tokenErr)
+		}
 
 		user, err := in.getUserConnect(ctx, accessTokenStr)
 		if err != nil {
@@ -163,7 +171,9 @@ func VerifyAccessToken(accessTokenStr, secret string, mode common.ReleaseMode) (
 		return nil, errs.Wrapf(err, "malformed ID %s in the access token", claims.Subject)
 	}
 	identity := &AccessTokenIdentity{UserID: principalID}
-	if claims.IssuedAt != nil {
+	if claims.IssuedAtNanos != 0 {
+		identity.IssuedAt = time.Unix(0, claims.IssuedAtNanos)
+	} else if claims.IssuedAt != nil {
 		identity.IssuedAt = claims.IssuedAt.Time
 	}
 	return identity, nil
@@ -196,8 +206,9 @@ func (in *APIAuthInterceptor) authenticateConnect(ctx context.Context, accessTok
 		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("user ID %d has been deactivated by administrators", user.ID))
 	}
 	// A token minted before the last password change must not survive it. The
-	// comparison uses persisted state, so it holds across replicas. The one
-	// second slack absorbs the second-granularity of the JWT iat claim.
+	// comparison uses persisted state, so it holds across replicas. Both
+	// timestamps come from this process's clock and the iat claim carries
+	// sub-second precision, so the ordering is exact.
 	if lastChange := user.Profile.GetLastChangePasswordTime(); lastChange != nil {
 		if tokenPredatesPasswordChange(identity.IssuedAt, lastChange.AsTime()) {
 			return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("access token of user ID %d was issued before the last password change", user.ID))
@@ -215,7 +226,7 @@ func tokenPredatesPasswordChange(issuedAt, changedAt time.Time) bool {
 	if issuedAt.IsZero() || changedAt.IsZero() {
 		return false
 	}
-	return issuedAt.Add(time.Second).Before(changedAt)
+	return issuedAt.Before(changedAt)
 }
 
 // getUserConnect is a ConnectRPC-specific version that returns ConnectRPC errors.
@@ -267,6 +278,10 @@ func audienceContains(audience jwt.ClaimStrings, token string) bool {
 type claimsMessage struct {
 	Name string `json:"name"`
 	jwt.RegisteredClaims
+	// IssuedAtNanos mirrors iat with the precision jwt's NumericDate drops
+	// (TimePrecision defaults to one second), so a password change can be
+	// ordered against the token without a whole-second blind spot.
+	IssuedAtNanos int64 `json:"iat_ns"`
 }
 
 // GenerateAPIToken generates an API token.
@@ -291,6 +306,7 @@ func generateToken(userName string, userID int, aud string, expirationTime time.
 	if err != nil {
 		return "", errs.Wrap(err, "failed to generate a token id")
 	}
+	now := time.Now()
 	// Create the JWT claims, which includes the username and expiry time.
 	claims := &claimsMessage{
 		Name: userName,
@@ -298,11 +314,12 @@ func generateToken(userName string, userID int, aud string, expirationTime time.
 			Audience: jwt.ClaimStrings{aud},
 			// In JWT, the expiry time is expressed as unix milliseconds.
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			IssuedAt:  jwt.NewNumericDate(now),
 			Issuer:    issuer,
 			Subject:   strconv.Itoa(userID),
 			ID:        tokenID,
 		},
+		IssuedAtNanos: now.UnixNano(),
 	}
 
 	// Declare the token with the HS256 algorithm used for signing, and the claims.

@@ -206,8 +206,10 @@ func TestTokenPredatesPasswordChange(t *testing.T) {
 	require.False(t, tokenPredatesPasswordChange(now, time.Time{}), "users who never changed their password are not judged")
 	require.True(t, tokenPredatesPasswordChange(now.Add(-time.Hour), now))
 	require.False(t, tokenPredatesPasswordChange(now.Add(time.Hour), now))
-	// The JWT iat claim has second granularity, so a token minted in the same
-	// second as the password change must survive.
+	// The iat claim carries sub-second precision, so the ordering around the
+	// change instant is exact.
+	require.True(t, tokenPredatesPasswordChange(now.Add(-time.Millisecond), now))
+	require.False(t, tokenPredatesPasswordChange(now.Add(time.Millisecond), now))
 	require.False(t, tokenPredatesPasswordChange(now, now))
 }
 

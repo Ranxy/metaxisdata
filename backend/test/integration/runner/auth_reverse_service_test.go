@@ -154,3 +154,33 @@ func TestLogoutAndPasswordChangeRevokeTokensRealServerIntegration(t *testing.T) 
 // authRevokeUserSeq keeps the per-subtest emails unique even if the wall clock
 // has coarse resolution.
 var authRevokeUserSeq atomic.Int64
+
+// A malformed Authorization header must not break an endpoint that allows
+// anonymous access; it used to fail before the allowlist was consulted.
+func TestLoginIgnoresAMalformedAuthorizationHeaderRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env := sharedPostgresServiceEnvNoReset(t)
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	userClient := v1connect.NewUserServiceClient(httpClient, env.BaseURL)
+	authClient := v1connect.NewAuthServiceClient(httpClient, env.BaseURL)
+	ctx := context.Background()
+
+	const password = "Integration-pass-1!"
+	email := fmt.Sprintf("auth-header-%d-%d@example.com", time.Now().UnixNano(), authRevokeUserSeq.Add(1))
+	_, err := userClient.CreateUser(ctx, withToken(env.AdminToken(), &v1pb.CreateUserRequest{
+		User: &v1pb.User{
+			Email:    email,
+			Title:    "Auth Header Test",
+			Password: password,
+			UserType: v1pb.UserType_END_USER,
+		},
+	}))
+	require.NoError(t, err)
+
+	req := connect.NewRequest(&v1pb.LoginRequest{Email: email, Password: password})
+	req.Header().Set("Authorization", "Bearer not-a-jwt")
+	resp, err := authClient.Login(ctx, req)
+	require.NoError(t, err)
+	require.NotEmpty(t, resp.Msg.GetToken(), "a plain login still returns its token")
+}
