@@ -114,12 +114,11 @@ func patchIamPolicyBindings(policy *storepb.IamPolicy, member string, roles []st
 
 	for _, binding := range policy.Bindings {
 		index := slices.Index(binding.Members, member)
-		switch {
-		case !pending[binding.Role]:
+		if !pending[binding.Role] {
 			if index >= 0 {
 				binding.Members = slices.Delete(binding.Members, index, index+1)
 			}
-		case index < 0:
+		} else if index < 0 {
 			binding.Members = append(binding.Members, member)
 		}
 		delete(pending, binding.Role)

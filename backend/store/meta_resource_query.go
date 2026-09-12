@@ -273,8 +273,9 @@ func buildSublevelMetaRegistryResourceQuery(table string, nextTypes []storepb.Me
 			unionStr = "UNION ALL "
 		}
 
-		where, nextArgs := appendGUIDSubtreeCondition(nil, args, table+".guid", parentGUID)
-		args = append(nextArgs, nextType)
+		var where []string
+		where, args = appendGUIDSubtreeCondition(where, args, table+".guid", parentGUID)
+		args = append(args, nextType)
 		where = append(where, fmt.Sprintf("%s.object_type = $%d", table, len(args)))
 		if asOf != nil {
 			args = append(args, *asOf)
