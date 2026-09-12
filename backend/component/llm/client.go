@@ -1,10 +1,6 @@
 // Package llm provides LLM client capabilities.
 package llm
 
-import "time"
-
-const httpClientTimeout = 5 * time.Minute
-
 // Message represents a chat message sent to the LLM API.
 type Message struct {
 	Role       string     `json:"role"`

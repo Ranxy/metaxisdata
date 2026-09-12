@@ -142,7 +142,13 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 		cfg.DebugLogger = llm.NewDBDebugLogger(s.store, resolvedConfig.ProfileName, resolvedConfig.ModelName)
 	}
 
-	for evt := range llm.RunAgentLoop(ctx, cfg) {
+	// The producer stops as soon as this context is cancelled: returning from
+	// this handler (a failed stream.Send, a client disconnect) must not leave the
+	// agent goroutine blocked forever on a full channel.
+	agentCtx, cancelAgent := context.WithCancel(ctx)
+	defer cancelAgent()
+
+	for evt := range llm.RunAgentLoop(agentCtx, cfg) {
 		switch evt.Type {
 		case llm.AgentEventError:
 			return connect.NewError(connect.CodeInternal, evt.Error)
