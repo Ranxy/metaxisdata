@@ -96,7 +96,8 @@ func (a *Analyzer) Run(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 // queueAll scans all lineage-analyzable objects and queues those whose metahash
-// has changed since the last analysis.
+// has changed since the last analysis. Each object type costs two queries
+// (objects and their analysis state) instead of one query per object.
 func (a *Analyzer) queueAll(ctx context.Context) {
 	viewType := storepb.MetaType_VIEW
 	mvType := storepb.MetaType_MATERIALIZED_VIEW
@@ -104,20 +105,21 @@ func (a *Analyzer) queueAll(ctx context.Context) {
 
 	for _, objType := range []storepb.MetaType{viewType, mvType, manualSQLType} {
 		t := objType
-		list, err := a.store.ListMetaRegistryResource(ctx, &store.FindMetaRegistryResourceMessage{
+		list, err := a.store.ListMetaRegistryResourceDigest(ctx, &store.FindMetaRegistryResourceMessage{
 			ObjectType: &t,
 		})
 		if err != nil {
 			slog.Error("Lineage analyzer failed to list meta registry", slog.String("type", t.String()), log.WithError(err))
 			continue
 		}
+		versions, err := a.store.ListColumnLineageVersions(ctx, t)
+		if err != nil {
+			slog.Error("Lineage analyzer failed to list analysis versions", slog.String("type", t.String()), log.WithError(err))
+			continue
+		}
 		for _, res := range list {
-			ver, err := a.store.GetColumnLineageVersion(ctx, res.GUID, res.ObjectType)
-			if err != nil {
-				slog.Error("Lineage analyzer failed to get version", slog.String("guid", res.GUID), log.WithError(err))
-				continue
-			}
 			// Queue if never analyzed or hash changed.
+			ver := versions[res.GUID]
 			if ver == nil || !bytes.Equal(ver.MetaHash, res.MetaHash) {
 				a.QueueAnalysis(res.GUID, res.ObjectType)
 			}
@@ -202,7 +204,13 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	relations, err := lineage.GetAnalyzeRelation(analysisCtx, engine, wrappedSQL)
 	if err != nil {
 		if errors.Is(err, lineage.ErrorEngineNotSupported) {
-			return nil // Engine not supported, skip analysis without error.
+			// No analyzer is registered for this engine. Record the skip together
+			// with the current hash so the hourly scan stops re-queueing the
+			// object, and keep the reason visible in error_message.
+			slog.Warn("Lineage analysis skipped: the engine has no lineage analyzer",
+				slog.String("guid", metaGUID), slog.String("engine", engine.String()))
+			return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash,
+				fmt.Sprintf("engine %s has no lineage analyzer; analysis skipped", engine))
 		}
 		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to analyze lineage")
 	}
@@ -383,11 +391,18 @@ func storeError(ctx context.Context, s *store.Store, metaGUID string, metaType s
 	return errors.New(msg)
 }
 
-// markAnalyzed records a successful analysis with the current metahash.
-func markAnalyzed(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, metaHash []byte, _ string) error {
-	return s.UpsertColumnLineageVersion(ctx, &store.ColumnLineageVersion{
+// markAnalyzed records a successful analysis (or a deliberate skip) with the
+// current metahash. A non-empty errorMessage documents why analysis was skipped
+// while still recording the hash, so the object is not retried until its
+// metadata changes.
+func markAnalyzed(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, metaHash []byte, errorMessage string) error {
+	v := &store.ColumnLineageVersion{
 		MetaGUID: metaGUID,
 		MetaType: metaType,
 		MetaHash: metaHash,
-	})
+	}
+	if errorMessage != "" {
+		v.ErrorMessage = &errorMessage
+	}
+	return s.UpsertColumnLineageVersion(ctx, v)
 }
