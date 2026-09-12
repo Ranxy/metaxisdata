@@ -44,7 +44,7 @@ func TestBuildSQL(t *testing.T) {
 		},
 		{
 			name:        "unsupported engine falls back to bare identifier",
-			engine:      storepb.Engine_CLICKHOUSE,
+			engine:      storepb.Engine_ENGINE_UNSPECIFIED,
 			metaType:    storepb.MetaType_VIEW,
 			resource:    &store.MetaRegistryResource{Metadata: &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ViewMetadata{ViewMetadata: &storepb.ViewMetadata{Definition: "SELECT id FROM users"}}}},
 			wantDef:     "SELECT id FROM users",

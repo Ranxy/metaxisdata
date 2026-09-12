@@ -97,24 +97,9 @@
   
 - [store/instance.proto](#store_instance-proto)
     - [DataSource](#metaxisdata-store-DataSource)
-    - [DataSource.AWSCredential](#metaxisdata-store-DataSource-AWSCredential)
-    - [DataSource.Address](#metaxisdata-store-DataSource-Address)
-    - [DataSource.AzureCredential](#metaxisdata-store-DataSource-AzureCredential)
     - [DataSource.ExtraConnectionParametersEntry](#metaxisdata-store-DataSource-ExtraConnectionParametersEntry)
-    - [DataSource.GCPCredential](#metaxisdata-store-DataSource-GCPCredential)
-    - [DataSourceExternalSecret](#metaxisdata-store-DataSourceExternalSecret)
-    - [DataSourceExternalSecret.AppRoleAuthOption](#metaxisdata-store-DataSourceExternalSecret-AppRoleAuthOption)
     - [Instance](#metaxisdata-store-Instance)
-    - [Instance.LabelsEntry](#metaxisdata-store-Instance-LabelsEntry)
-    - [InstanceRole](#metaxisdata-store-InstanceRole)
-    - [KerberosConfig](#metaxisdata-store-KerberosConfig)
-    - [SASLConfig](#metaxisdata-store-SASLConfig)
   
-    - [DataSource.AuthenticationType](#metaxisdata-store-DataSource-AuthenticationType)
-    - [DataSource.RedisType](#metaxisdata-store-DataSource-RedisType)
-    - [DataSourceExternalSecret.AppRoleAuthOption.SecretType](#metaxisdata-store-DataSourceExternalSecret-AppRoleAuthOption-SecretType)
-    - [DataSourceExternalSecret.AuthType](#metaxisdata-store-DataSourceExternalSecret-AuthType)
-    - [DataSourceExternalSecret.SecretType](#metaxisdata-store-DataSourceExternalSecret-SecretType)
     - [DataSourceType](#metaxisdata-store-DataSourceType)
   
 - [store/llm.proto](#store_llm-proto)
@@ -314,36 +299,17 @@ offset.
 <a name="metaxisdata-store-Engine"></a>
 
 ### Engine
-
+Engine is the database engine of an instance. It must stay value-compatible
+with metaxisdata.v1.Engine.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | ENGINE_UNSPECIFIED | 0 |  |
-| CLICKHOUSE | 1 |  |
 | MYSQL | 2 |  |
 | POSTGRES | 3 |  |
-| SNOWFLAKE | 4 |  |
-| SQLITE | 5 |  |
 | TIDB | 6 |  |
-| MONGODB | 7 |  |
-| REDIS | 8 |  |
-| ORACLE | 9 |  |
-| SPANNER | 10 |  |
-| MSSQL | 11 |  |
-| REDSHIFT | 12 |  |
 | MARIADB | 13 |  |
 | OCEANBASE | 14 |  |
-| STARROCKS | 18 |  |
-| DORIS | 19 |  |
-| HIVE | 20 |  |
-| ELASTICSEARCH | 21 |  |
-| BIGQUERY | 22 |  |
-| DYNAMODB | 23 |  |
-| DATABRICKS | 24 |  |
-| COCKROACHDB | 25 |  |
-| COSMOSDB | 26 |  |
-| TRINO | 27 |  |
-| CASSANDRA | 28 |  |
 
 
  
@@ -1814,11 +1780,6 @@ OIDCIdentityProviderConfig is the structure for OIDC identity provider config.
 | host | [string](#string) |  |  |
 | port | [string](#string) |  |  |
 | database | [string](#string) |  |  |
-| srv | [bool](#bool) |  | srv, authentication_database, and replica_set are used for MongoDB. srv is a boolean flag that indicates whether the host is a DNS SRV record. |
-| authentication_database | [string](#string) |  | authentication_database is the database name to authenticate against, which stores the user credentials. |
-| replica_set | [string](#string) |  | replica_set is used for MongoDB replica set. |
-| sid | [string](#string) |  | sid and service_name are used for Oracle. |
-| service_name | [string](#string) |  |  |
 | ssh_host | [string](#string) |  | SSH related The hostname of the SSH server agent. |
 | ssh_port | [string](#string) |  | The port of the SSH server agent. It&#39;s 22 typically. |
 | ssh_user | [string](#string) |  | The user to login the server. |
@@ -1826,81 +1787,7 @@ OIDCIdentityProviderConfig is the structure for OIDC identity provider config.
 | obfuscated_ssh_password | [string](#string) |  |  |
 | ssh_private_key | [string](#string) |  | The private key to login the server. If it&#39;s empty string, we will use the system default private key from os.Getenv(&#34;SSH_AUTH_SOCK&#34;). |
 | obfuscated_ssh_private_key | [string](#string) |  |  |
-| authentication_private_key | [string](#string) |  | PKCS#8 private key in PEM format. If it&#39;s empty string, no private key is required. Used for authentication when connecting to the data source. |
-| obfuscated_authentication_private_key | [string](#string) |  |  |
-| external_secret | [DataSourceExternalSecret](#metaxisdata-store-DataSourceExternalSecret) |  |  |
-| authentication_type | [DataSource.AuthenticationType](#metaxisdata-store-DataSource-AuthenticationType) |  |  |
-| azure_credential | [DataSource.AzureCredential](#metaxisdata-store-DataSource-AzureCredential) |  |  |
-| aws_credential | [DataSource.AWSCredential](#metaxisdata-store-DataSource-AWSCredential) |  |  |
-| gcp_credential | [DataSource.GCPCredential](#metaxisdata-store-DataSource-GCPCredential) |  |  |
-| sasl_config | [SASLConfig](#metaxisdata-store-SASLConfig) |  |  |
-| additional_addresses | [DataSource.Address](#metaxisdata-store-DataSource-Address) | repeated | additional_addresses is used for MongoDB replica set. |
-| direct_connection | [bool](#bool) |  | direct_connection is used for MongoDB to dispatch all the operations to the node specified in the connection string. |
-| region | [string](#string) |  | Region is the location of the database, used for AWS RDS. For example, us-east-1. |
-| warehouse_id | [string](#string) |  | warehouse_id is used by Databricks. |
-| master_name | [string](#string) |  | master_name is the master name used by connecting redis-master via redis sentinel. |
-| master_username | [string](#string) |  | master_username and master_obfuscated_password are master credentials used by redis sentinel mode. |
-| master_password | [string](#string) |  |  |
-| obfuscated_master_password | [string](#string) |  |  |
-| redis_type | [DataSource.RedisType](#metaxisdata-store-DataSource-RedisType) |  |  |
-| cluster | [string](#string) |  | Cluster is the cluster name for the data source. Used by CockroachDB. |
 | extra_connection_parameters | [DataSource.ExtraConnectionParametersEntry](#metaxisdata-store-DataSource-ExtraConnectionParametersEntry) | repeated | Extra connection parameters for the database connection. For PostgreSQL HA, this can be used to set target_session_attrs=read-write |
-
-
-
-
-
-
-<a name="metaxisdata-store-DataSource-AWSCredential"></a>
-
-### DataSource.AWSCredential
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| access_key_id | [string](#string) |  |  |
-| obfuscated_access_key_id | [string](#string) |  |  |
-| secret_access_key | [string](#string) |  |  |
-| obfuscated_secret_access_key | [string](#string) |  |  |
-| session_token | [string](#string) |  |  |
-| obfuscated_session_token | [string](#string) |  |  |
-| role_arn | [string](#string) |  | ARN of IAM role to assume for cross-account access. See: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use.html |
-| external_id | [string](#string) |  | Optional external ID for additional security when assuming role. See: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-user_externalid.html |
-
-
-
-
-
-
-<a name="metaxisdata-store-DataSource-Address"></a>
-
-### DataSource.Address
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| host | [string](#string) |  |  |
-| port | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-DataSource-AzureCredential"></a>
-
-### DataSource.AzureCredential
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| tenant_id | [string](#string) |  |  |
-| client_id | [string](#string) |  |  |
-| client_secret | [string](#string) |  |  |
-| obfuscated_client_secret | [string](#string) |  |  |
 
 
 
@@ -1917,69 +1804,6 @@ OIDCIdentityProviderConfig is the structure for OIDC identity provider config.
 | ----- | ---- | ----- | ----------- |
 | key | [string](#string) |  |  |
 | value | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-DataSource-GCPCredential"></a>
-
-### DataSource.GCPCredential
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| content | [string](#string) |  |  |
-| obfuscated_content | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-DataSourceExternalSecret"></a>
-
-### DataSourceExternalSecret
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| secret_type | [DataSourceExternalSecret.SecretType](#metaxisdata-store-DataSourceExternalSecret-SecretType) |  |  |
-| url | [string](#string) |  |  |
-| auth_type | [DataSourceExternalSecret.AuthType](#metaxisdata-store-DataSourceExternalSecret-AuthType) |  |  |
-| app_role | [DataSourceExternalSecret.AppRoleAuthOption](#metaxisdata-store-DataSourceExternalSecret-AppRoleAuthOption) |  |  |
-| token | [string](#string) |  |  |
-| engine_name | [string](#string) |  | engine name is the name for secret engine. |
-| secret_name | [string](#string) |  | the secret name in the engine to store the password. |
-| password_key_name | [string](#string) |  | the key name for the password. |
-| skip_vault_tls_verification | [bool](#bool) |  | TLS configuration for connecting to Vault server. These fields are separate from the database TLS configuration in DataSource. skip_vault_tls_verification disables TLS certificate verification for Vault connections. Default is false (verification enabled) for security. Only set to true for development or when certificates cannot be properly validated. |
-| vault_ssl_ca | [string](#string) |  | CA certificate for Vault server verification. |
-| obfuscated_vault_ssl_ca | [string](#string) |  |  |
-| vault_ssl_cert | [string](#string) |  | Client certificate for mutual TLS authentication with Vault. |
-| obfuscated_vault_ssl_cert | [string](#string) |  |  |
-| vault_ssl_key | [string](#string) |  | Client private key for mutual TLS authentication with Vault. |
-| obfuscated_vault_ssl_key | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-DataSourceExternalSecret-AppRoleAuthOption"></a>
-
-### DataSourceExternalSecret.AppRoleAuthOption
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| role_id | [string](#string) |  |  |
-| secret_id | [string](#string) |  | The secret ID for the role without TTL. |
-| type | [DataSourceExternalSecret.AppRoleAuthOption.SecretType](#metaxisdata-store-DataSourceExternalSecret-AppRoleAuthOption-SecretType) |  |  |
-| mount_path | [string](#string) |  | The path where the approle auth method is mounted. |
 
 
 
@@ -2005,153 +1829,12 @@ Instance is the proto for instances.
 | sync_databases | [string](#string) | repeated | Enable sync for the following databases. Default empty, means sync all schemas &amp; databases. |
 | mysql_lower_case_table_names | [int32](#int32) |  | The lower_case_table_names config for MySQL instances. It is used to determine whether the table names and database names are case sensitive. |
 | last_sync_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| roles | [InstanceRole](#metaxisdata-store-InstanceRole) | repeated |  |
-| labels | [Instance.LabelsEntry](#metaxisdata-store-Instance-LabelsEntry) | repeated | Labels are key-value pairs that can be attached to the instance. For example, { &#34;org_group&#34;: &#34;infrastructure&#34;, &#34;environment&#34;: &#34;production&#34; } |
-
-
-
-
-
-
-<a name="metaxisdata-store-Instance-LabelsEntry"></a>
-
-### Instance.LabelsEntry
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| key | [string](#string) |  |  |
-| value | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-InstanceRole"></a>
-
-### InstanceRole
-InstanceRole is the API message for instance role.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | The role name. |
-| connection_limit | [int32](#int32) | optional | The connection count limit for this role. |
-| valid_until | [string](#string) | optional | The expiration for the role&#39;s password. |
-| attribute | [string](#string) | optional | The role attribute. For PostgreSQL, it contains super_user, no_inherit, create_role, create_db, can_login, replication and bypass_rls. Docs: https://www.postgresql.org/docs/current/role-attributes.html For MySQL, it is the global privileges as GRANT statements, which means it only contains &#34;GRANT ... ON *.* TO ...&#34;. Docs: https://dev.mysql.com/doc/refman/8.0/en/grant.html |
-
-
-
-
-
-
-<a name="metaxisdata-store-KerberosConfig"></a>
-
-### KerberosConfig
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| primary | [string](#string) |  |  |
-| instance | [string](#string) |  |  |
-| realm | [string](#string) |  |  |
-| keytab | [bytes](#bytes) |  |  |
-| kdc_host | [string](#string) |  |  |
-| kdc_port | [string](#string) |  |  |
-| kdc_transport_protocol | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-SASLConfig"></a>
-
-### SASLConfig
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| krb_config | [KerberosConfig](#metaxisdata-store-KerberosConfig) |  |  |
 
 
 
 
 
  
-
-
-<a name="metaxisdata-store-DataSource-AuthenticationType"></a>
-
-### DataSource.AuthenticationType
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| AUTHENTICATION_UNSPECIFIED | 0 |  |
-| PASSWORD | 1 |  |
-| GOOGLE_CLOUD_SQL_IAM | 2 |  |
-| AWS_RDS_IAM | 3 |  |
-| AZURE_IAM | 4 |  |
-
-
-
-<a name="metaxisdata-store-DataSource-RedisType"></a>
-
-### DataSource.RedisType
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| REDIS_TYPE_UNSPECIFIED | 0 |  |
-| STANDALONE | 1 |  |
-| SENTINEL | 2 |  |
-| CLUSTER | 3 |  |
-
-
-
-<a name="metaxisdata-store-DataSourceExternalSecret-AppRoleAuthOption-SecretType"></a>
-
-### DataSourceExternalSecret.AppRoleAuthOption.SecretType
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| SECRET_TYPE_UNSPECIFIED | 0 |  |
-| PLAIN | 1 |  |
-| ENVIRONMENT | 2 |  |
-
-
-
-<a name="metaxisdata-store-DataSourceExternalSecret-AuthType"></a>
-
-### DataSourceExternalSecret.AuthType
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| AUTH_TYPE_UNSPECIFIED | 0 |  |
-| TOKEN | 1 | ref: https://developer.hashicorp.com/vault/docs/auth/token |
-| VAULT_APP_ROLE | 2 | ref: https://developer.hashicorp.com/vault/docs/auth/approle |
-
-
-
-<a name="metaxisdata-store-DataSourceExternalSecret-SecretType"></a>
-
-### DataSourceExternalSecret.SecretType
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| SECRET_TYPE_UNSPECIFIED | 0 |  |
-| VAULT_KV_V2 | 1 | ref: https://developer.hashicorp.com/vault/api-docs/secret/kv/kv-v2 |
-| AWS_SECRETS_MANAGER | 2 | ref: https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html |
-| GCP_SECRET_MANAGER | 3 | ref: https://cloud.google.com/secret-manager/docs |
-
 
 
 <a name="metaxisdata-store-DataSourceType"></a>

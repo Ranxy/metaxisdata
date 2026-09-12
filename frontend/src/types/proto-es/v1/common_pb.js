@@ -2,27 +2,13 @@
 // @generated from file v1/common.proto (package metaxisdata.v1, syntax proto3)
 /* eslint-disable */
 
-import { enumDesc, fileDesc, messageDesc, tsEnum } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, tsEnum } from "@bufbuild/protobuf/codegenv2";
 
 /**
  * Describes the file v1/common.proto.
  */
 export const file_v1_common = /*@__PURE__*/
-  fileDesc("Cg92MS9jb21tb24ucHJvdG8SDm1ldGF4aXNkYXRhLnYxIigKCFBvc2l0aW9uEgwKBGxpbmUYASABKAUSDgoGY29sdW1uGAIgASgFIiMKBVJhbmdlEg0KBXN0YXJ0GAEgASgFEgsKA2VuZBgCIAEoBSo3CgVTdGF0ZRIVChFTVEFURV9VTlNQRUNJRklFRBAAEgoKBkFDVElWRRABEgsKB0RFTEVURUQQAirwAgoGRW5naW5lEhYKEkVOR0lORV9VTlNQRUNJRklFRBAAEg4KCkNMSUNLSE9VU0UQARIJCgVNWVNRTBACEgwKCFBPU1RHUkVTEAMSDQoJU05PV0ZMQUtFEAQSCgoGU1FMSVRFEAUSCAoEVElEQhAGEgsKB01PTkdPREIQBxIJCgVSRURJUxAIEgoKBk9SQUNMRRAJEgsKB1NQQU5ORVIQChIJCgVNU1NRTBALEgwKCFJFRFNISUZUEAwSCwoHTUFSSUFEQhANEg0KCU9DRUFOQkFTRRAOEg0KCVNUQVJST0NLUxASEgkKBURPUklTEBMSCAoESElWRRAUEhEKDUVMQVNUSUNTRUFSQ0gQFRIMCghCSUdRVUVSWRAWEgwKCERZTkFNT0RCEBcSDgoKREFUQUJSSUNLUxAYEg8KC0NPQ0tST0FDSERCEBkSDAoIQ09TTU9TREIQGhIJCgVUUklOTxAbEg0KCUNBU1NBTkRSQRAcKkgKCVJpc2tMZXZlbBIaChZSSVNLX0xFVkVMX1VOU1BFQ0lGSUVEEAASBwoDTE9XEAESDAoITU9ERVJBVEUQAhIICgRISUdIEANCNlo0Z2l0aHViLmNvbS9SYW54eS9tZXRheGlzZGF0YS9iYWNrZW5kL2dlbmVyYXRlZC1nby92MWIGcHJvdG8z");
-
-/**
- * Describes the message metaxisdata.v1.Position.
- * Use `create(PositionSchema)` to create a new message.
- */
-export const PositionSchema = /*@__PURE__*/
-  messageDesc(file_v1_common, 0);
-
-/**
- * Describes the message metaxisdata.v1.Range.
- * Use `create(RangeSchema)` to create a new message.
- */
-export const RangeSchema = /*@__PURE__*/
-  messageDesc(file_v1_common, 1);
+  fileDesc("Cg92MS9jb21tb24ucHJvdG8SDm1ldGF4aXNkYXRhLnYxKjcKBVN0YXRlEhUKEVNUQVRFX1VOU1BFQ0lGSUVEEAASCgoGQUNUSVZFEAESCwoHREVMRVRFRBACKrgCCgZFbmdpbmUSFgoSRU5HSU5FX1VOU1BFQ0lGSUVEEAASCQoFTVlTUUwQAhIMCghQT1NUR1JFUxADEggKBFRJREIQBhILCgdNQVJJQURCEA0SDQoJT0NFQU5CQVNFEA4iBAgBEAEiBAgEEAUiBAgHEAwiBAgPEBwqCkNMSUNLSE9VU0UqCVNOT1dGTEFLRSoGU1FMSVRFKgdNT05HT0RCKgVSRURJUyoGT1JBQ0xFKgdTUEFOTkVSKgVNU1NRTCoIUkVEU0hJRlQqCVNUQVJST0NLUyoFRE9SSVMqBEhJVkUqDUVMQVNUSUNTRUFSQ0gqCEJJR1FVRVJZKghEWU5BTU9EQioKREFUQUJSSUNLUyoLQ09DS1JPQUNIREIqCENPU01PU0RCKgVUUklOTyoJQ0FTU0FORFJBQjZaNGdpdGh1Yi5jb20vUmFueHkvbWV0YXhpc2RhdGEvYmFja2VuZC9nZW5lcmF0ZWQtZ28vdjFiBnByb3RvMw");
 
 /**
  * Describes the enum metaxisdata.v1.State.
@@ -43,22 +29,13 @@ export const EngineSchema = /*@__PURE__*/
   enumDesc(file_v1_common, 1);
 
 /**
+ * Engine is the database engine of an instance. Only the engines the product
+ * actually supports are kept: MySQL-compatible ones (MySQL, TiDB, MariaDB,
+ * OceanBase) and PostgreSQL. The removed Bytebase-era values keep their numbers
+ * reserved so they can never be silently reused for something else.
+ *
  * @generated from enum metaxisdata.v1.Engine
  */
 export const Engine = /*@__PURE__*/
   tsEnum(EngineSchema);
-
-/**
- * Describes the enum metaxisdata.v1.RiskLevel.
- */
-export const RiskLevelSchema = /*@__PURE__*/
-  enumDesc(file_v1_common, 2);
-
-/**
- * RiskLevel is the risk level.
- *
- * @generated from enum metaxisdata.v1.RiskLevel
- */
-export const RiskLevel = /*@__PURE__*/
-  tsEnum(RiskLevelSchema);
 

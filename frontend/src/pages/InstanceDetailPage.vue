@@ -864,31 +864,11 @@ function getHostInfo(instance: Instance): string {
 function getEngineLabel(engine: Engine): string {
   const engineLabels: Record<number, string> = {
     [Engine.ENGINE_UNSPECIFIED]: "Unknown",
-    [Engine.CLICKHOUSE]: "ClickHouse",
     [Engine.MYSQL]: "MySQL",
     [Engine.POSTGRES]: "PostgreSQL",
-    [Engine.SNOWFLAKE]: "Snowflake",
-    [Engine.SQLITE]: "SQLite",
     [Engine.TIDB]: "TiDB",
-    [Engine.MONGODB]: "MongoDB",
-    [Engine.REDIS]: "Redis",
-    [Engine.ORACLE]: "Oracle",
-    [Engine.SPANNER]: "Spanner",
-    [Engine.MSSQL]: "SQL Server",
-    [Engine.REDSHIFT]: "Redshift",
     [Engine.MARIADB]: "MariaDB",
     [Engine.OCEANBASE]: "OceanBase",
-    [Engine.STARROCKS]: "StarRocks",
-    [Engine.DORIS]: "Doris",
-    [Engine.HIVE]: "Hive",
-    [Engine.ELASTICSEARCH]: "Elasticsearch",
-    [Engine.BIGQUERY]: "BigQuery",
-    [Engine.DYNAMODB]: "DynamoDB",
-    [Engine.DATABRICKS]: "Databricks",
-    [Engine.COCKROACHDB]: "CockroachDB",
-    [Engine.COSMOSDB]: "CosmosDB",
-    [Engine.TRINO]: "Trino",
-    [Engine.CASSANDRA]: "Cassandra",
   };
   return engineLabels[engine] || "Unknown";
 }

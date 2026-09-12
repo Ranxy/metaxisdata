@@ -197,7 +197,7 @@ func isSensitiveAuditField(key string) bool {
 	case "code", "authorization", "cookie", "idpcontext",
 		// These are bare field names of credential-bearing messages, so a
 		// substring match would not catch them.
-		"key", "content", "sslkey", "sslcert", "keytab",
+		"key", "sslkey", "sslcert", "sshprivatekey",
 		"passwd", "pwd", "bearer", "jwt", "session":
 		return true
 	}

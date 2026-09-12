@@ -2626,22 +2626,6 @@ components:
                     type: string
                 database:
                     type: string
-                srv:
-                    type: boolean
-                    description: |-
-                        srv, authentication_database, and replica_set are used for MongoDB.
-                         srv is a boolean flag that indicates whether the host is a DNS SRV record.
-                authenticationDatabase:
-                    type: string
-                    description: authentication_database is the database name to authenticate against, which stores the user credentials.
-                replicaSet:
-                    type: string
-                    description: replica_set is used for MongoDB replica set.
-                sid:
-                    type: string
-                    description: sid and service_name are used for Oracle.
-                serviceName:
-                    type: string
                 sshHost:
                     type: string
                     description: |-
@@ -2663,67 +2647,6 @@ components:
                     description: The private key to login the server. If it's empty string, we will use the system default private key from os.Getenv("SSH_AUTH_SOCK").
                 obfuscatedSshPrivateKey:
                     type: string
-                authenticationPrivateKey:
-                    type: string
-                    description: |-
-                        PKCS#8 private key in PEM format. If it's empty string, no private key is required.
-                         Used for authentication when connecting to the data source.
-                obfuscatedAuthenticationPrivateKey:
-                    type: string
-                externalSecret:
-                    $ref: '#/components/schemas/DataSourceExternalSecret'
-                authenticationType:
-                    enum:
-                        - AUTHENTICATION_UNSPECIFIED
-                        - PASSWORD
-                        - GOOGLE_CLOUD_SQL_IAM
-                        - AWS_RDS_IAM
-                        - AZURE_IAM
-                    type: string
-                    format: enum
-                azureCredential:
-                    $ref: '#/components/schemas/DataSource_AzureCredential'
-                awsCredential:
-                    $ref: '#/components/schemas/DataSource_AWSCredential'
-                gcpCredential:
-                    $ref: '#/components/schemas/DataSource_GCPCredential'
-                saslConfig:
-                    $ref: '#/components/schemas/SASLConfig'
-                additionalAddresses:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/DataSource_Address'
-                    description: additional_addresses is used for MongoDB replica set.
-                directConnection:
-                    type: boolean
-                    description: direct_connection is used for MongoDB to dispatch all the operations to the node specified in the connection string.
-                region:
-                    type: string
-                    description: Region is the location of the database, used for AWS RDS. For example, us-east-1.
-                warehouseId:
-                    type: string
-                    description: warehouse_id is used by Databricks.
-                masterName:
-                    type: string
-                    description: master_name is the master name used by connecting redis-master via redis sentinel.
-                masterUsername:
-                    type: string
-                    description: master_username and master_obfuscated_password are master credentials used by redis sentinel mode.
-                masterPassword:
-                    type: string
-                obfuscatedMasterPassword:
-                    type: string
-                redisType:
-                    enum:
-                        - REDIS_TYPE_UNSPECIFIED
-                        - STANDALONE
-                        - SENTINEL
-                        - CLUSTER
-                    type: string
-                    format: enum
-                cluster:
-                    type: string
-                    description: Cluster is the cluster name for the data source. Used by CockroachDB.
                 extraConnectionParameters:
                     type: object
                     additionalProperties:
@@ -2731,117 +2654,6 @@ components:
                     description: |-
                         Extra connection parameters for the database connection.
                          For PostgreSQL HA, this can be used to set target_session_attrs=read-write
-        DataSourceExternalSecret:
-            type: object
-            properties:
-                secretType:
-                    enum:
-                        - SECRET_TYPE_UNSPECIFIED
-                        - VAULT_KV_V2
-                        - AWS_SECRETS_MANAGER
-                        - GCP_SECRET_MANAGER
-                    type: string
-                    format: enum
-                url:
-                    type: string
-                authType:
-                    enum:
-                        - AUTH_TYPE_UNSPECIFIED
-                        - TOKEN
-                        - VAULT_APP_ROLE
-                    type: string
-                    format: enum
-                appRole:
-                    $ref: '#/components/schemas/DataSourceExternalSecret_AppRoleAuthOption'
-                token:
-                    type: string
-                engineName:
-                    type: string
-                    description: engine name is the name for secret engine.
-                secretName:
-                    type: string
-                    description: the secret name in the engine to store the password.
-                passwordKeyName:
-                    type: string
-                    description: the key name for the password.
-                skipVaultTlsVerification:
-                    type: boolean
-                    description: |-
-                        TLS configuration for connecting to Vault server.
-                         These fields are separate from the database TLS configuration in DataSource.
-                         skip_vault_tls_verification disables TLS certificate verification for Vault connections.
-                         Default is false (verification enabled) for security.
-                         Only set to true for development or when certificates cannot be properly validated.
-                vaultSslCa:
-                    type: string
-                    description: CA certificate for Vault server verification.
-                obfuscatedVaultSslCa:
-                    type: string
-                vaultSslCert:
-                    type: string
-                    description: Client certificate for mutual TLS authentication with Vault.
-                obfuscatedVaultSslCert:
-                    type: string
-                vaultSslKey:
-                    type: string
-                    description: Client private key for mutual TLS authentication with Vault.
-                obfuscatedVaultSslKey:
-                    type: string
-        DataSourceExternalSecret_AppRoleAuthOption:
-            type: object
-            properties:
-                roleId:
-                    writeOnly: true
-                    type: string
-                secretId:
-                    writeOnly: true
-                    type: string
-                    description: the secret id for the role without ttl.
-                type:
-                    enum:
-                        - SECRET_TYPE_UNSPECIFIED
-                        - PLAIN
-                        - ENVIRONMENT
-                    type: string
-                    format: enum
-                mountPath:
-                    type: string
-                    description: The path where the approle auth method is mounted.
-        DataSource_AWSCredential:
-            type: object
-            properties:
-                accessKeyId:
-                    writeOnly: true
-                    type: string
-                secretAccessKey:
-                    writeOnly: true
-                    type: string
-                sessionToken:
-                    writeOnly: true
-                    type: string
-        DataSource_Address:
-            type: object
-            properties:
-                host:
-                    type: string
-                port:
-                    type: string
-        DataSource_AzureCredential:
-            type: object
-            properties:
-                tenantId:
-                    type: string
-                clientId:
-                    type: string
-                clientSecret:
-                    writeOnly: true
-                    type: string
-        DataSource_GCPCredential:
-            type: object
-            properties:
-                content:
-                    writeOnly: true
-                    type: string
         Database:
             type: object
             properties:
@@ -3461,31 +3273,11 @@ components:
                 engine:
                     enum:
                         - ENGINE_UNSPECIFIED
-                        - CLICKHOUSE
                         - MYSQL
                         - POSTGRES
-                        - SNOWFLAKE
-                        - SQLITE
                         - TIDB
-                        - MONGODB
-                        - REDIS
-                        - ORACLE
-                        - SPANNER
-                        - MSSQL
-                        - REDSHIFT
                         - MARIADB
                         - OCEANBASE
-                        - STARROCKS
-                        - DORIS
-                        - HIVE
-                        - ELASTICSEARCH
-                        - BIGQUERY
-                        - DYNAMODB
-                        - DATABRICKS
-                        - COCKROACHDB
-                        - COSMOSDB
-                        - TRINO
-                        - CASSANDRA
                     type: string
                     format: enum
                 activation:
@@ -3524,17 +3316,6 @@ components:
                 lastSyncTime:
                     type: string
                     format: date-time
-                roles:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/InstanceRole'
-                labels:
-                    type: object
-                    additionalProperties:
-                        type: string
-                    description: |-
-                        Labels are key-value pairs that can be attached to the instance.
-                         For example, { "org_group": "infrastructure", "environment": "production" }
             description: Instance is the proto for instances.
         InstanceResource:
             type: object
@@ -3544,31 +3325,11 @@ components:
                 engine:
                     enum:
                         - ENGINE_UNSPECIFIED
-                        - CLICKHOUSE
                         - MYSQL
                         - POSTGRES
-                        - SNOWFLAKE
-                        - SQLITE
                         - TIDB
-                        - MONGODB
-                        - REDIS
-                        - ORACLE
-                        - SPANNER
-                        - MSSQL
-                        - REDSHIFT
                         - MARIADB
                         - OCEANBASE
-                        - STARROCKS
-                        - DORIS
-                        - HIVE
-                        - ELASTICSEARCH
-                        - BIGQUERY
-                        - DYNAMODB
-                        - DATABRICKS
-                        - COCKROACHDB
-                        - COSMOSDB
-                        - TRINO
-                        - CASSANDRA
                     type: string
                     format: enum
                 engineVersion:
@@ -3590,44 +3351,6 @@ components:
                     description: |-
                         The environment resource.
                          Format: environments/prod where prod is the environment resource ID.
-        InstanceRole:
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: The role name.
-                connectionLimit:
-                    type: integer
-                    description: The connection count limit for this role.
-                    format: int32
-                validUntil:
-                    type: string
-                    description: The expiration for the role's password.
-                attribute:
-                    type: string
-                    description: |-
-                        The role attribute.
-                         For PostgreSQL, it contains super_user, no_inherit, create_role, create_db, can_login, replication and bypass_rls. Docs: https://www.postgresql.org/docs/current/role-attributes.html
-                         For MySQL, it is the global privileges as GRANT statements, which means it only contains "GRANT ... ON *.* TO ...". Docs: https://dev.mysql.com/doc/refman/8.0/en/grant.html
-            description: InstanceRole is the API message for instance role.
-        KerberosConfig:
-            type: object
-            properties:
-                primary:
-                    type: string
-                instance:
-                    type: string
-                realm:
-                    type: string
-                keytab:
-                    type: string
-                    format: bytes
-                kdcHost:
-                    type: string
-                kdcPort:
-                    type: string
-                kdcTransportProtocol:
-                    type: string
         LineageRelation:
             type: object
             properties:
@@ -4635,11 +4358,6 @@ components:
                     type: string
                     description: The full CREATE RULE statement.
             description: RuleMetadata is the metadata for PostgreSQL rules.
-        SASLConfig:
-            type: object
-            properties:
-                krbConfig:
-                    $ref: '#/components/schemas/KerberosConfig'
         SchemaMetadata:
             type: object
             properties:

@@ -75,268 +75,6 @@ func (DataSourceType) EnumDescriptor() ([]byte, []int) {
 	return file_v1_instance_service_proto_rawDescGZIP(), []int{0}
 }
 
-type DataSourceExternalSecret_SecretType int32
-
-const (
-	DataSourceExternalSecret_SAECRET_TYPE_UNSPECIFIED DataSourceExternalSecret_SecretType = 0
-	// ref: https://developer.hashicorp.com/vault/api-docs/secret/kv/kv-v2
-	DataSourceExternalSecret_VAULT_KV_V2 DataSourceExternalSecret_SecretType = 1
-	// ref: https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html
-	DataSourceExternalSecret_AWS_SECRETS_MANAGER DataSourceExternalSecret_SecretType = 2
-	// ref: https://cloud.google.com/secret-manager/docs
-	DataSourceExternalSecret_GCP_SECRET_MANAGER DataSourceExternalSecret_SecretType = 3
-)
-
-// Enum value maps for DataSourceExternalSecret_SecretType.
-var (
-	DataSourceExternalSecret_SecretType_name = map[int32]string{
-		0: "SAECRET_TYPE_UNSPECIFIED",
-		1: "VAULT_KV_V2",
-		2: "AWS_SECRETS_MANAGER",
-		3: "GCP_SECRET_MANAGER",
-	}
-	DataSourceExternalSecret_SecretType_value = map[string]int32{
-		"SAECRET_TYPE_UNSPECIFIED": 0,
-		"VAULT_KV_V2":              1,
-		"AWS_SECRETS_MANAGER":      2,
-		"GCP_SECRET_MANAGER":       3,
-	}
-)
-
-func (x DataSourceExternalSecret_SecretType) Enum() *DataSourceExternalSecret_SecretType {
-	p := new(DataSourceExternalSecret_SecretType)
-	*p = x
-	return p
-}
-
-func (x DataSourceExternalSecret_SecretType) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (DataSourceExternalSecret_SecretType) Descriptor() protoreflect.EnumDescriptor {
-	return file_v1_instance_service_proto_enumTypes[1].Descriptor()
-}
-
-func (DataSourceExternalSecret_SecretType) Type() protoreflect.EnumType {
-	return &file_v1_instance_service_proto_enumTypes[1]
-}
-
-func (x DataSourceExternalSecret_SecretType) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use DataSourceExternalSecret_SecretType.Descriptor instead.
-func (DataSourceExternalSecret_SecretType) EnumDescriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{17, 0}
-}
-
-type DataSourceExternalSecret_AuthType int32
-
-const (
-	DataSourceExternalSecret_AUTH_TYPE_UNSPECIFIED DataSourceExternalSecret_AuthType = 0
-	// ref: https://developer.hashicorp.com/vault/docs/auth/token
-	DataSourceExternalSecret_TOKEN DataSourceExternalSecret_AuthType = 1
-	// ref: https://developer.hashicorp.com/vault/docs/auth/approle
-	DataSourceExternalSecret_VAULT_APP_ROLE DataSourceExternalSecret_AuthType = 2
-)
-
-// Enum value maps for DataSourceExternalSecret_AuthType.
-var (
-	DataSourceExternalSecret_AuthType_name = map[int32]string{
-		0: "AUTH_TYPE_UNSPECIFIED",
-		1: "TOKEN",
-		2: "VAULT_APP_ROLE",
-	}
-	DataSourceExternalSecret_AuthType_value = map[string]int32{
-		"AUTH_TYPE_UNSPECIFIED": 0,
-		"TOKEN":                 1,
-		"VAULT_APP_ROLE":        2,
-	}
-)
-
-func (x DataSourceExternalSecret_AuthType) Enum() *DataSourceExternalSecret_AuthType {
-	p := new(DataSourceExternalSecret_AuthType)
-	*p = x
-	return p
-}
-
-func (x DataSourceExternalSecret_AuthType) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (DataSourceExternalSecret_AuthType) Descriptor() protoreflect.EnumDescriptor {
-	return file_v1_instance_service_proto_enumTypes[2].Descriptor()
-}
-
-func (DataSourceExternalSecret_AuthType) Type() protoreflect.EnumType {
-	return &file_v1_instance_service_proto_enumTypes[2]
-}
-
-func (x DataSourceExternalSecret_AuthType) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use DataSourceExternalSecret_AuthType.Descriptor instead.
-func (DataSourceExternalSecret_AuthType) EnumDescriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{17, 1}
-}
-
-type DataSourceExternalSecret_AppRoleAuthOption_SecretType int32
-
-const (
-	DataSourceExternalSecret_AppRoleAuthOption_SECRET_TYPE_UNSPECIFIED DataSourceExternalSecret_AppRoleAuthOption_SecretType = 0
-	DataSourceExternalSecret_AppRoleAuthOption_PLAIN                   DataSourceExternalSecret_AppRoleAuthOption_SecretType = 1
-	DataSourceExternalSecret_AppRoleAuthOption_ENVIRONMENT             DataSourceExternalSecret_AppRoleAuthOption_SecretType = 2
-)
-
-// Enum value maps for DataSourceExternalSecret_AppRoleAuthOption_SecretType.
-var (
-	DataSourceExternalSecret_AppRoleAuthOption_SecretType_name = map[int32]string{
-		0: "SECRET_TYPE_UNSPECIFIED",
-		1: "PLAIN",
-		2: "ENVIRONMENT",
-	}
-	DataSourceExternalSecret_AppRoleAuthOption_SecretType_value = map[string]int32{
-		"SECRET_TYPE_UNSPECIFIED": 0,
-		"PLAIN":                   1,
-		"ENVIRONMENT":             2,
-	}
-)
-
-func (x DataSourceExternalSecret_AppRoleAuthOption_SecretType) Enum() *DataSourceExternalSecret_AppRoleAuthOption_SecretType {
-	p := new(DataSourceExternalSecret_AppRoleAuthOption_SecretType)
-	*p = x
-	return p
-}
-
-func (x DataSourceExternalSecret_AppRoleAuthOption_SecretType) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (DataSourceExternalSecret_AppRoleAuthOption_SecretType) Descriptor() protoreflect.EnumDescriptor {
-	return file_v1_instance_service_proto_enumTypes[3].Descriptor()
-}
-
-func (DataSourceExternalSecret_AppRoleAuthOption_SecretType) Type() protoreflect.EnumType {
-	return &file_v1_instance_service_proto_enumTypes[3]
-}
-
-func (x DataSourceExternalSecret_AppRoleAuthOption_SecretType) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use DataSourceExternalSecret_AppRoleAuthOption_SecretType.Descriptor instead.
-func (DataSourceExternalSecret_AppRoleAuthOption_SecretType) EnumDescriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{17, 0, 0}
-}
-
-type DataSource_AuthenticationType int32
-
-const (
-	DataSource_AUTHENTICATION_UNSPECIFIED DataSource_AuthenticationType = 0
-	DataSource_PASSWORD                   DataSource_AuthenticationType = 1
-	DataSource_GOOGLE_CLOUD_SQL_IAM       DataSource_AuthenticationType = 2
-	DataSource_AWS_RDS_IAM                DataSource_AuthenticationType = 3
-	DataSource_AZURE_IAM                  DataSource_AuthenticationType = 4
-)
-
-// Enum value maps for DataSource_AuthenticationType.
-var (
-	DataSource_AuthenticationType_name = map[int32]string{
-		0: "AUTHENTICATION_UNSPECIFIED",
-		1: "PASSWORD",
-		2: "GOOGLE_CLOUD_SQL_IAM",
-		3: "AWS_RDS_IAM",
-		4: "AZURE_IAM",
-	}
-	DataSource_AuthenticationType_value = map[string]int32{
-		"AUTHENTICATION_UNSPECIFIED": 0,
-		"PASSWORD":                   1,
-		"GOOGLE_CLOUD_SQL_IAM":       2,
-		"AWS_RDS_IAM":                3,
-		"AZURE_IAM":                  4,
-	}
-)
-
-func (x DataSource_AuthenticationType) Enum() *DataSource_AuthenticationType {
-	p := new(DataSource_AuthenticationType)
-	*p = x
-	return p
-}
-
-func (x DataSource_AuthenticationType) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (DataSource_AuthenticationType) Descriptor() protoreflect.EnumDescriptor {
-	return file_v1_instance_service_proto_enumTypes[4].Descriptor()
-}
-
-func (DataSource_AuthenticationType) Type() protoreflect.EnumType {
-	return &file_v1_instance_service_proto_enumTypes[4]
-}
-
-func (x DataSource_AuthenticationType) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use DataSource_AuthenticationType.Descriptor instead.
-func (DataSource_AuthenticationType) EnumDescriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{18, 0}
-}
-
-type DataSource_RedisType int32
-
-const (
-	DataSource_REDIS_TYPE_UNSPECIFIED DataSource_RedisType = 0
-	DataSource_STANDALONE             DataSource_RedisType = 1
-	DataSource_SENTINEL               DataSource_RedisType = 2
-	DataSource_CLUSTER                DataSource_RedisType = 3
-)
-
-// Enum value maps for DataSource_RedisType.
-var (
-	DataSource_RedisType_name = map[int32]string{
-		0: "REDIS_TYPE_UNSPECIFIED",
-		1: "STANDALONE",
-		2: "SENTINEL",
-		3: "CLUSTER",
-	}
-	DataSource_RedisType_value = map[string]int32{
-		"REDIS_TYPE_UNSPECIFIED": 0,
-		"STANDALONE":             1,
-		"SENTINEL":               2,
-		"CLUSTER":                3,
-	}
-)
-
-func (x DataSource_RedisType) Enum() *DataSource_RedisType {
-	p := new(DataSource_RedisType)
-	*p = x
-	return p
-}
-
-func (x DataSource_RedisType) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (DataSource_RedisType) Descriptor() protoreflect.EnumDescriptor {
-	return file_v1_instance_service_proto_enumTypes[5].Descriptor()
-}
-
-func (DataSource_RedisType) Type() protoreflect.EnumType {
-	return &file_v1_instance_service_proto_enumTypes[5]
-}
-
-func (x DataSource_RedisType) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use DataSource_RedisType.Descriptor instead.
-func (DataSource_RedisType) EnumDescriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{18, 1}
-}
-
 type GetInstanceRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The name of the instance to retrieve.
@@ -1388,139 +1126,6 @@ func (x *Instance) GetLastSyncTime() *timestamppb.Timestamp {
 	return nil
 }
 
-type DataSourceExternalSecret struct {
-	state      protoimpl.MessageState              `protogen:"open.v1"`
-	SecretType DataSourceExternalSecret_SecretType `protobuf:"varint,1,opt,name=secret_type,json=secretType,proto3,enum=metaxisdata.v1.DataSourceExternalSecret_SecretType" json:"secret_type,omitempty"`
-	Url        string                              `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
-	AuthType   DataSourceExternalSecret_AuthType   `protobuf:"varint,3,opt,name=auth_type,json=authType,proto3,enum=metaxisdata.v1.DataSourceExternalSecret_AuthType" json:"auth_type,omitempty"`
-	// Types that are valid to be assigned to AuthOption:
-	//
-	//	*DataSourceExternalSecret_AppRole
-	//	*DataSourceExternalSecret_Token
-	AuthOption isDataSourceExternalSecret_AuthOption `protobuf_oneof:"auth_option"`
-	// engine name is the name for secret engine.
-	EngineName string `protobuf:"bytes,6,opt,name=engine_name,json=engineName,proto3" json:"engine_name,omitempty"`
-	// the secret name in the engine to store the password.
-	SecretName string `protobuf:"bytes,7,opt,name=secret_name,json=secretName,proto3" json:"secret_name,omitempty"`
-	// the key name for the password.
-	PasswordKeyName string `protobuf:"bytes,8,opt,name=password_key_name,json=passwordKeyName,proto3" json:"password_key_name,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *DataSourceExternalSecret) Reset() {
-	*x = DataSourceExternalSecret{}
-	mi := &file_v1_instance_service_proto_msgTypes[17]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DataSourceExternalSecret) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DataSourceExternalSecret) ProtoMessage() {}
-
-func (x *DataSourceExternalSecret) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[17]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DataSourceExternalSecret.ProtoReflect.Descriptor instead.
-func (*DataSourceExternalSecret) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{17}
-}
-
-func (x *DataSourceExternalSecret) GetSecretType() DataSourceExternalSecret_SecretType {
-	if x != nil {
-		return x.SecretType
-	}
-	return DataSourceExternalSecret_SAECRET_TYPE_UNSPECIFIED
-}
-
-func (x *DataSourceExternalSecret) GetUrl() string {
-	if x != nil {
-		return x.Url
-	}
-	return ""
-}
-
-func (x *DataSourceExternalSecret) GetAuthType() DataSourceExternalSecret_AuthType {
-	if x != nil {
-		return x.AuthType
-	}
-	return DataSourceExternalSecret_AUTH_TYPE_UNSPECIFIED
-}
-
-func (x *DataSourceExternalSecret) GetAuthOption() isDataSourceExternalSecret_AuthOption {
-	if x != nil {
-		return x.AuthOption
-	}
-	return nil
-}
-
-func (x *DataSourceExternalSecret) GetAppRole() *DataSourceExternalSecret_AppRoleAuthOption {
-	if x != nil {
-		if x, ok := x.AuthOption.(*DataSourceExternalSecret_AppRole); ok {
-			return x.AppRole
-		}
-	}
-	return nil
-}
-
-func (x *DataSourceExternalSecret) GetToken() string {
-	if x != nil {
-		if x, ok := x.AuthOption.(*DataSourceExternalSecret_Token); ok {
-			return x.Token
-		}
-	}
-	return ""
-}
-
-func (x *DataSourceExternalSecret) GetEngineName() string {
-	if x != nil {
-		return x.EngineName
-	}
-	return ""
-}
-
-func (x *DataSourceExternalSecret) GetSecretName() string {
-	if x != nil {
-		return x.SecretName
-	}
-	return ""
-}
-
-func (x *DataSourceExternalSecret) GetPasswordKeyName() string {
-	if x != nil {
-		return x.PasswordKeyName
-	}
-	return ""
-}
-
-type isDataSourceExternalSecret_AuthOption interface {
-	isDataSourceExternalSecret_AuthOption()
-}
-
-type DataSourceExternalSecret_AppRole struct {
-	AppRole *DataSourceExternalSecret_AppRoleAuthOption `protobuf:"bytes,4,opt,name=app_role,json=appRole,proto3,oneof"`
-}
-
-type DataSourceExternalSecret_Token struct {
-	Token string `protobuf:"bytes,5,opt,name=token,proto3,oneof"`
-}
-
-func (*DataSourceExternalSecret_AppRole) isDataSourceExternalSecret_AuthOption() {}
-
-func (*DataSourceExternalSecret_Token) isDataSourceExternalSecret_AuthOption() {}
-
 type DataSource struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Id       string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -1535,16 +1140,6 @@ type DataSource struct {
 	Host     string `protobuf:"bytes,8,opt,name=host,proto3" json:"host,omitempty"`
 	Port     string `protobuf:"bytes,9,opt,name=port,proto3" json:"port,omitempty"`
 	Database string `protobuf:"bytes,10,opt,name=database,proto3" json:"database,omitempty"`
-	// srv, authentication_database and replica_set are used for MongoDB.
-	// srv is a boolean flag that indicates whether the host is a DNS SRV record.
-	Srv bool `protobuf:"varint,11,opt,name=srv,proto3" json:"srv,omitempty"`
-	// authentication_database is the database name to authenticate against, which stores the user credentials.
-	AuthenticationDatabase string `protobuf:"bytes,12,opt,name=authentication_database,json=authenticationDatabase,proto3" json:"authentication_database,omitempty"`
-	// replica_set is used for MongoDB replica set.
-	ReplicaSet string `protobuf:"bytes,25,opt,name=replica_set,json=replicaSet,proto3" json:"replica_set,omitempty"`
-	// sid and service_name are used for Oracle.
-	Sid         string `protobuf:"bytes,13,opt,name=sid,proto3" json:"sid,omitempty"`
-	ServiceName string `protobuf:"bytes,14,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
 	// Connection over SSH.
 	// The hostname of the SSH server agent.
 	// Required.
@@ -1559,34 +1154,6 @@ type DataSource struct {
 	SshPassword string `protobuf:"bytes,18,opt,name=ssh_password,json=sshPassword,proto3" json:"ssh_password,omitempty"`
 	// The private key to login the server. If it's empty string, we will use the system default private key from os.Getenv("SSH_AUTH_SOCK").
 	SshPrivateKey string `protobuf:"bytes,19,opt,name=ssh_private_key,json=sshPrivateKey,proto3" json:"ssh_private_key,omitempty"`
-	// PKCS#8 private key in PEM format. If it's empty string, no private key is required.
-	// Used for authentication when connecting to the data source.
-	AuthenticationPrivateKey string                        `protobuf:"bytes,20,opt,name=authentication_private_key,json=authenticationPrivateKey,proto3" json:"authentication_private_key,omitempty"`
-	ExternalSecret           *DataSourceExternalSecret     `protobuf:"bytes,21,opt,name=external_secret,json=externalSecret,proto3" json:"external_secret,omitempty"`
-	AuthenticationType       DataSource_AuthenticationType `protobuf:"varint,22,opt,name=authentication_type,json=authenticationType,proto3,enum=metaxisdata.v1.DataSource_AuthenticationType" json:"authentication_type,omitempty"`
-	// Types that are valid to be assigned to IamExtension:
-	//
-	//	*DataSource_AzureCredential_
-	//	*DataSource_AwsCredential
-	//	*DataSource_GcpCredential
-	IamExtension isDataSource_IamExtension `protobuf_oneof:"iam_extension"`
-	SaslConfig   *SASLConfig               `protobuf:"bytes,24,opt,name=sasl_config,json=saslConfig,proto3" json:"sasl_config,omitempty"`
-	// additional_addresses is used for MongoDB replica set.
-	AdditionalAddresses []*DataSource_Address `protobuf:"bytes,26,rep,name=additional_addresses,json=additionalAddresses,proto3" json:"additional_addresses,omitempty"`
-	// direct_connection is used for MongoDB to dispatch all the operations to the node specified in the connection string.
-	DirectConnection bool `protobuf:"varint,27,opt,name=direct_connection,json=directConnection,proto3" json:"direct_connection,omitempty"`
-	// region is the location of where the DB is, works for AWS RDS. For example, us-east-1.
-	Region string `protobuf:"bytes,28,opt,name=region,proto3" json:"region,omitempty"`
-	// warehouse_id is used by Databricks.
-	WarehouseId string `protobuf:"bytes,29,opt,name=warehouse_id,json=warehouseId,proto3" json:"warehouse_id,omitempty"`
-	// master_name is the master name used by connecting redis-master via redis sentinel.
-	MasterName string `protobuf:"bytes,31,opt,name=master_name,json=masterName,proto3" json:"master_name,omitempty"`
-	// master_username and master_password are master credentials used by redis sentinel mode.
-	MasterUsername string               `protobuf:"bytes,32,opt,name=master_username,json=masterUsername,proto3" json:"master_username,omitempty"`
-	MasterPassword string               `protobuf:"bytes,33,opt,name=master_password,json=masterPassword,proto3" json:"master_password,omitempty"`
-	RedisType      DataSource_RedisType `protobuf:"varint,34,opt,name=redis_type,json=redisType,proto3,enum=metaxisdata.v1.DataSource_RedisType" json:"redis_type,omitempty"`
-	// Cluster is the cluster name for the data source. Used by CockroachDB.
-	Cluster string `protobuf:"bytes,35,opt,name=cluster,proto3" json:"cluster,omitempty"`
 	// Extra connection parameters for the database connection.
 	// For PostgreSQL HA, this can be used to set target_session_attrs=read-write
 	ExtraConnectionParameters map[string]string `protobuf:"bytes,36,rep,name=extra_connection_parameters,json=extraConnectionParameters,proto3" json:"extra_connection_parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -1596,7 +1163,7 @@ type DataSource struct {
 
 func (x *DataSource) Reset() {
 	*x = DataSource{}
-	mi := &file_v1_instance_service_proto_msgTypes[18]
+	mi := &file_v1_instance_service_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1608,7 +1175,7 @@ func (x *DataSource) String() string {
 func (*DataSource) ProtoMessage() {}
 
 func (x *DataSource) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[18]
+	mi := &file_v1_instance_service_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1621,7 +1188,7 @@ func (x *DataSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataSource.ProtoReflect.Descriptor instead.
 func (*DataSource) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{18}
+	return file_v1_instance_service_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *DataSource) GetId() string {
@@ -1701,41 +1268,6 @@ func (x *DataSource) GetDatabase() string {
 	return ""
 }
 
-func (x *DataSource) GetSrv() bool {
-	if x != nil {
-		return x.Srv
-	}
-	return false
-}
-
-func (x *DataSource) GetAuthenticationDatabase() string {
-	if x != nil {
-		return x.AuthenticationDatabase
-	}
-	return ""
-}
-
-func (x *DataSource) GetReplicaSet() string {
-	if x != nil {
-		return x.ReplicaSet
-	}
-	return ""
-}
-
-func (x *DataSource) GetSid() string {
-	if x != nil {
-		return x.Sid
-	}
-	return ""
-}
-
-func (x *DataSource) GetServiceName() string {
-	if x != nil {
-		return x.ServiceName
-	}
-	return ""
-}
-
 func (x *DataSource) GetSshHost() string {
 	if x != nil {
 		return x.SshHost
@@ -1771,159 +1303,12 @@ func (x *DataSource) GetSshPrivateKey() string {
 	return ""
 }
 
-func (x *DataSource) GetAuthenticationPrivateKey() string {
-	if x != nil {
-		return x.AuthenticationPrivateKey
-	}
-	return ""
-}
-
-func (x *DataSource) GetExternalSecret() *DataSourceExternalSecret {
-	if x != nil {
-		return x.ExternalSecret
-	}
-	return nil
-}
-
-func (x *DataSource) GetAuthenticationType() DataSource_AuthenticationType {
-	if x != nil {
-		return x.AuthenticationType
-	}
-	return DataSource_AUTHENTICATION_UNSPECIFIED
-}
-
-func (x *DataSource) GetIamExtension() isDataSource_IamExtension {
-	if x != nil {
-		return x.IamExtension
-	}
-	return nil
-}
-
-func (x *DataSource) GetAzureCredential() *DataSource_AzureCredential {
-	if x != nil {
-		if x, ok := x.IamExtension.(*DataSource_AzureCredential_); ok {
-			return x.AzureCredential
-		}
-	}
-	return nil
-}
-
-func (x *DataSource) GetAwsCredential() *DataSource_AWSCredential {
-	if x != nil {
-		if x, ok := x.IamExtension.(*DataSource_AwsCredential); ok {
-			return x.AwsCredential
-		}
-	}
-	return nil
-}
-
-func (x *DataSource) GetGcpCredential() *DataSource_GCPCredential {
-	if x != nil {
-		if x, ok := x.IamExtension.(*DataSource_GcpCredential); ok {
-			return x.GcpCredential
-		}
-	}
-	return nil
-}
-
-func (x *DataSource) GetSaslConfig() *SASLConfig {
-	if x != nil {
-		return x.SaslConfig
-	}
-	return nil
-}
-
-func (x *DataSource) GetAdditionalAddresses() []*DataSource_Address {
-	if x != nil {
-		return x.AdditionalAddresses
-	}
-	return nil
-}
-
-func (x *DataSource) GetDirectConnection() bool {
-	if x != nil {
-		return x.DirectConnection
-	}
-	return false
-}
-
-func (x *DataSource) GetRegion() string {
-	if x != nil {
-		return x.Region
-	}
-	return ""
-}
-
-func (x *DataSource) GetWarehouseId() string {
-	if x != nil {
-		return x.WarehouseId
-	}
-	return ""
-}
-
-func (x *DataSource) GetMasterName() string {
-	if x != nil {
-		return x.MasterName
-	}
-	return ""
-}
-
-func (x *DataSource) GetMasterUsername() string {
-	if x != nil {
-		return x.MasterUsername
-	}
-	return ""
-}
-
-func (x *DataSource) GetMasterPassword() string {
-	if x != nil {
-		return x.MasterPassword
-	}
-	return ""
-}
-
-func (x *DataSource) GetRedisType() DataSource_RedisType {
-	if x != nil {
-		return x.RedisType
-	}
-	return DataSource_REDIS_TYPE_UNSPECIFIED
-}
-
-func (x *DataSource) GetCluster() string {
-	if x != nil {
-		return x.Cluster
-	}
-	return ""
-}
-
 func (x *DataSource) GetExtraConnectionParameters() map[string]string {
 	if x != nil {
 		return x.ExtraConnectionParameters
 	}
 	return nil
 }
-
-type isDataSource_IamExtension interface {
-	isDataSource_IamExtension()
-}
-
-type DataSource_AzureCredential_ struct {
-	AzureCredential *DataSource_AzureCredential `protobuf:"bytes,23,opt,name=azure_credential,json=azureCredential,proto3,oneof"`
-}
-
-type DataSource_AwsCredential struct {
-	AwsCredential *DataSource_AWSCredential `protobuf:"bytes,37,opt,name=aws_credential,json=awsCredential,proto3,oneof"`
-}
-
-type DataSource_GcpCredential struct {
-	GcpCredential *DataSource_GCPCredential `protobuf:"bytes,38,opt,name=gcp_credential,json=gcpCredential,proto3,oneof"`
-}
-
-func (*DataSource_AzureCredential_) isDataSource_IamExtension() {}
-
-func (*DataSource_AwsCredential) isDataSource_IamExtension() {}
-
-func (*DataSource_GcpCredential) isDataSource_IamExtension() {}
 
 type InstanceResource struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1944,7 +1329,7 @@ type InstanceResource struct {
 
 func (x *InstanceResource) Reset() {
 	*x = InstanceResource{}
-	mi := &file_v1_instance_service_proto_msgTypes[19]
+	mi := &file_v1_instance_service_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1956,7 +1341,7 @@ func (x *InstanceResource) String() string {
 func (*InstanceResource) ProtoMessage() {}
 
 func (x *InstanceResource) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[19]
+	mi := &file_v1_instance_service_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1969,7 +1354,7 @@ func (x *InstanceResource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstanceResource.ProtoReflect.Descriptor instead.
 func (*InstanceResource) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{19}
+	return file_v1_instance_service_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *InstanceResource) GetTitle() string {
@@ -2017,450 +1402,6 @@ func (x *InstanceResource) GetName() string {
 func (x *InstanceResource) GetEnvironment() string {
 	if x != nil {
 		return x.Environment
-	}
-	return ""
-}
-
-type SASLConfig struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Mechanism:
-	//
-	//	*SASLConfig_KrbConfig
-	Mechanism     isSASLConfig_Mechanism `protobuf_oneof:"mechanism"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SASLConfig) Reset() {
-	*x = SASLConfig{}
-	mi := &file_v1_instance_service_proto_msgTypes[20]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SASLConfig) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SASLConfig) ProtoMessage() {}
-
-func (x *SASLConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[20]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SASLConfig.ProtoReflect.Descriptor instead.
-func (*SASLConfig) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{20}
-}
-
-func (x *SASLConfig) GetMechanism() isSASLConfig_Mechanism {
-	if x != nil {
-		return x.Mechanism
-	}
-	return nil
-}
-
-func (x *SASLConfig) GetKrbConfig() *KerberosConfig {
-	if x != nil {
-		if x, ok := x.Mechanism.(*SASLConfig_KrbConfig); ok {
-			return x.KrbConfig
-		}
-	}
-	return nil
-}
-
-type isSASLConfig_Mechanism interface {
-	isSASLConfig_Mechanism()
-}
-
-type SASLConfig_KrbConfig struct {
-	KrbConfig *KerberosConfig `protobuf:"bytes,1,opt,name=krb_config,json=krbConfig,proto3,oneof"`
-}
-
-func (*SASLConfig_KrbConfig) isSASLConfig_Mechanism() {}
-
-type KerberosConfig struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	Primary              string                 `protobuf:"bytes,1,opt,name=primary,proto3" json:"primary,omitempty"`
-	Instance             string                 `protobuf:"bytes,2,opt,name=instance,proto3" json:"instance,omitempty"`
-	Realm                string                 `protobuf:"bytes,3,opt,name=realm,proto3" json:"realm,omitempty"`
-	Keytab               []byte                 `protobuf:"bytes,4,opt,name=keytab,proto3" json:"keytab,omitempty"`
-	KdcHost              string                 `protobuf:"bytes,5,opt,name=kdc_host,json=kdcHost,proto3" json:"kdc_host,omitempty"`
-	KdcPort              string                 `protobuf:"bytes,6,opt,name=kdc_port,json=kdcPort,proto3" json:"kdc_port,omitempty"`
-	KdcTransportProtocol string                 `protobuf:"bytes,7,opt,name=kdc_transport_protocol,json=kdcTransportProtocol,proto3" json:"kdc_transport_protocol,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
-}
-
-func (x *KerberosConfig) Reset() {
-	*x = KerberosConfig{}
-	mi := &file_v1_instance_service_proto_msgTypes[21]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KerberosConfig) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KerberosConfig) ProtoMessage() {}
-
-func (x *KerberosConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[21]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KerberosConfig.ProtoReflect.Descriptor instead.
-func (*KerberosConfig) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{21}
-}
-
-func (x *KerberosConfig) GetPrimary() string {
-	if x != nil {
-		return x.Primary
-	}
-	return ""
-}
-
-func (x *KerberosConfig) GetInstance() string {
-	if x != nil {
-		return x.Instance
-	}
-	return ""
-}
-
-func (x *KerberosConfig) GetRealm() string {
-	if x != nil {
-		return x.Realm
-	}
-	return ""
-}
-
-func (x *KerberosConfig) GetKeytab() []byte {
-	if x != nil {
-		return x.Keytab
-	}
-	return nil
-}
-
-func (x *KerberosConfig) GetKdcHost() string {
-	if x != nil {
-		return x.KdcHost
-	}
-	return ""
-}
-
-func (x *KerberosConfig) GetKdcPort() string {
-	if x != nil {
-		return x.KdcPort
-	}
-	return ""
-}
-
-func (x *KerberosConfig) GetKdcTransportProtocol() string {
-	if x != nil {
-		return x.KdcTransportProtocol
-	}
-	return ""
-}
-
-type DataSourceExternalSecret_AppRoleAuthOption struct {
-	state  protoimpl.MessageState `protogen:"open.v1"`
-	RoleId string                 `protobuf:"bytes,1,opt,name=role_id,json=roleId,proto3" json:"role_id,omitempty"`
-	// the secret id for the role without ttl.
-	SecretId string                                                `protobuf:"bytes,2,opt,name=secret_id,json=secretId,proto3" json:"secret_id,omitempty"`
-	Type     DataSourceExternalSecret_AppRoleAuthOption_SecretType `protobuf:"varint,3,opt,name=type,proto3,enum=metaxisdata.v1.DataSourceExternalSecret_AppRoleAuthOption_SecretType" json:"type,omitempty"`
-	// The path where the approle auth method is mounted.
-	MountPath     string `protobuf:"bytes,4,opt,name=mount_path,json=mountPath,proto3" json:"mount_path,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DataSourceExternalSecret_AppRoleAuthOption) Reset() {
-	*x = DataSourceExternalSecret_AppRoleAuthOption{}
-	mi := &file_v1_instance_service_proto_msgTypes[22]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DataSourceExternalSecret_AppRoleAuthOption) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DataSourceExternalSecret_AppRoleAuthOption) ProtoMessage() {}
-
-func (x *DataSourceExternalSecret_AppRoleAuthOption) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[22]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DataSourceExternalSecret_AppRoleAuthOption.ProtoReflect.Descriptor instead.
-func (*DataSourceExternalSecret_AppRoleAuthOption) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{17, 0}
-}
-
-func (x *DataSourceExternalSecret_AppRoleAuthOption) GetRoleId() string {
-	if x != nil {
-		return x.RoleId
-	}
-	return ""
-}
-
-func (x *DataSourceExternalSecret_AppRoleAuthOption) GetSecretId() string {
-	if x != nil {
-		return x.SecretId
-	}
-	return ""
-}
-
-func (x *DataSourceExternalSecret_AppRoleAuthOption) GetType() DataSourceExternalSecret_AppRoleAuthOption_SecretType {
-	if x != nil {
-		return x.Type
-	}
-	return DataSourceExternalSecret_AppRoleAuthOption_SECRET_TYPE_UNSPECIFIED
-}
-
-func (x *DataSourceExternalSecret_AppRoleAuthOption) GetMountPath() string {
-	if x != nil {
-		return x.MountPath
-	}
-	return ""
-}
-
-type DataSource_AzureCredential struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	ClientId      string                 `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
-	ClientSecret  string                 `protobuf:"bytes,3,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DataSource_AzureCredential) Reset() {
-	*x = DataSource_AzureCredential{}
-	mi := &file_v1_instance_service_proto_msgTypes[23]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DataSource_AzureCredential) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DataSource_AzureCredential) ProtoMessage() {}
-
-func (x *DataSource_AzureCredential) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[23]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DataSource_AzureCredential.ProtoReflect.Descriptor instead.
-func (*DataSource_AzureCredential) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{18, 0}
-}
-
-func (x *DataSource_AzureCredential) GetTenantId() string {
-	if x != nil {
-		return x.TenantId
-	}
-	return ""
-}
-
-func (x *DataSource_AzureCredential) GetClientId() string {
-	if x != nil {
-		return x.ClientId
-	}
-	return ""
-}
-
-func (x *DataSource_AzureCredential) GetClientSecret() string {
-	if x != nil {
-		return x.ClientSecret
-	}
-	return ""
-}
-
-type DataSource_AWSCredential struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	AccessKeyId     string                 `protobuf:"bytes,1,opt,name=access_key_id,json=accessKeyId,proto3" json:"access_key_id,omitempty"`
-	SecretAccessKey string                 `protobuf:"bytes,2,opt,name=secret_access_key,json=secretAccessKey,proto3" json:"secret_access_key,omitempty"`
-	SessionToken    string                 `protobuf:"bytes,3,opt,name=session_token,json=sessionToken,proto3" json:"session_token,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *DataSource_AWSCredential) Reset() {
-	*x = DataSource_AWSCredential{}
-	mi := &file_v1_instance_service_proto_msgTypes[24]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DataSource_AWSCredential) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DataSource_AWSCredential) ProtoMessage() {}
-
-func (x *DataSource_AWSCredential) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[24]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DataSource_AWSCredential.ProtoReflect.Descriptor instead.
-func (*DataSource_AWSCredential) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{18, 1}
-}
-
-func (x *DataSource_AWSCredential) GetAccessKeyId() string {
-	if x != nil {
-		return x.AccessKeyId
-	}
-	return ""
-}
-
-func (x *DataSource_AWSCredential) GetSecretAccessKey() string {
-	if x != nil {
-		return x.SecretAccessKey
-	}
-	return ""
-}
-
-func (x *DataSource_AWSCredential) GetSessionToken() string {
-	if x != nil {
-		return x.SessionToken
-	}
-	return ""
-}
-
-type DataSource_GCPCredential struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Content       string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DataSource_GCPCredential) Reset() {
-	*x = DataSource_GCPCredential{}
-	mi := &file_v1_instance_service_proto_msgTypes[25]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DataSource_GCPCredential) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DataSource_GCPCredential) ProtoMessage() {}
-
-func (x *DataSource_GCPCredential) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[25]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DataSource_GCPCredential.ProtoReflect.Descriptor instead.
-func (*DataSource_GCPCredential) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{18, 2}
-}
-
-func (x *DataSource_GCPCredential) GetContent() string {
-	if x != nil {
-		return x.Content
-	}
-	return ""
-}
-
-type DataSource_Address struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Host          string                 `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
-	Port          string                 `protobuf:"bytes,2,opt,name=port,proto3" json:"port,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DataSource_Address) Reset() {
-	*x = DataSource_Address{}
-	mi := &file_v1_instance_service_proto_msgTypes[26]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DataSource_Address) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DataSource_Address) ProtoMessage() {}
-
-func (x *DataSource_Address) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[26]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DataSource_Address.ProtoReflect.Descriptor instead.
-func (*DataSource_Address) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{18, 3}
-}
-
-func (x *DataSource_Address) GetHost() string {
-	if x != nil {
-		return x.Host
-	}
-	return ""
-}
-
-func (x *DataSource_Address) GetPort() string {
-	if x != nil {
-		return x.Port
 	}
 	return ""
 }
@@ -2547,41 +1488,7 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	"\x13maximum_connections\x18\x0e \x01(\x05R\x12maximumConnections\x12%\n" +
 	"\x0esync_databases\x18\x0f \x03(\tR\rsyncDatabases\x12E\n" +
 	"\x0elast_sync_time\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\flastSyncTime:/\xeaA,\n" +
-	"\x14metaxisdata/Instance\x12\x14instances/{instance}\"\x90\a\n" +
-	"\x18DataSourceExternalSecret\x12T\n" +
-	"\vsecret_type\x18\x01 \x01(\x0e23.metaxisdata.v1.DataSourceExternalSecret.SecretTypeR\n" +
-	"secretType\x12\x10\n" +
-	"\x03url\x18\x02 \x01(\tR\x03url\x12N\n" +
-	"\tauth_type\x18\x03 \x01(\x0e21.metaxisdata.v1.DataSourceExternalSecret.AuthTypeR\bauthType\x12W\n" +
-	"\bapp_role\x18\x04 \x01(\v2:.metaxisdata.v1.DataSourceExternalSecret.AppRoleAuthOptionH\x00R\aappRole\x12\x1b\n" +
-	"\x05token\x18\x05 \x01(\tB\x03\xe0A\x04H\x00R\x05token\x12\x1f\n" +
-	"\vengine_name\x18\x06 \x01(\tR\n" +
-	"engineName\x12\x1f\n" +
-	"\vsecret_name\x18\a \x01(\tR\n" +
-	"secretName\x12*\n" +
-	"\x11password_key_name\x18\b \x01(\tR\x0fpasswordKeyName\x1a\x94\x02\n" +
-	"\x11AppRoleAuthOption\x12\x1c\n" +
-	"\arole_id\x18\x01 \x01(\tB\x03\xe0A\x04R\x06roleId\x12 \n" +
-	"\tsecret_id\x18\x02 \x01(\tB\x03\xe0A\x04R\bsecretId\x12Y\n" +
-	"\x04type\x18\x03 \x01(\x0e2E.metaxisdata.v1.DataSourceExternalSecret.AppRoleAuthOption.SecretTypeR\x04type\x12\x1d\n" +
-	"\n" +
-	"mount_path\x18\x04 \x01(\tR\tmountPath\"E\n" +
-	"\n" +
-	"SecretType\x12\x1b\n" +
-	"\x17SECRET_TYPE_UNSPECIFIED\x10\x00\x12\t\n" +
-	"\x05PLAIN\x10\x01\x12\x0f\n" +
-	"\vENVIRONMENT\x10\x02\"l\n" +
-	"\n" +
-	"SecretType\x12\x1c\n" +
-	"\x18SAECRET_TYPE_UNSPECIFIED\x10\x00\x12\x0f\n" +
-	"\vVAULT_KV_V2\x10\x01\x12\x17\n" +
-	"\x13AWS_SECRETS_MANAGER\x10\x02\x12\x16\n" +
-	"\x12GCP_SECRET_MANAGER\x10\x03\"D\n" +
-	"\bAuthType\x12\x19\n" +
-	"\x15AUTH_TYPE_UNSPECIFIED\x10\x00\x12\t\n" +
-	"\x05TOKEN\x10\x01\x12\x12\n" +
-	"\x0eVAULT_APP_ROLE\x10\x02B\r\n" +
-	"\vauth_option\"\xef\x12\n" +
+	"\x14metaxisdata/Instance\x12\x14instances/{instance}\"\xf3\b\n" +
 	"\n" +
 	"DataSource\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x122\n" +
@@ -2595,67 +1502,17 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	"\x04host\x18\b \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\t \x01(\tR\x04port\x12\x1a\n" +
 	"\bdatabase\x18\n" +
-	" \x01(\tR\bdatabase\x12\x10\n" +
-	"\x03srv\x18\v \x01(\bR\x03srv\x127\n" +
-	"\x17authentication_database\x18\f \x01(\tR\x16authenticationDatabase\x12\x1f\n" +
-	"\vreplica_set\x18\x19 \x01(\tR\n" +
-	"replicaSet\x12\x10\n" +
-	"\x03sid\x18\r \x01(\tR\x03sid\x12!\n" +
-	"\fservice_name\x18\x0e \x01(\tR\vserviceName\x12\x19\n" +
+	" \x01(\tR\bdatabase\x12\x19\n" +
 	"\bssh_host\x18\x0f \x01(\tR\asshHost\x12\x19\n" +
 	"\bssh_port\x18\x10 \x01(\tR\asshPort\x12\x19\n" +
 	"\bssh_user\x18\x11 \x01(\tR\asshUser\x12&\n" +
 	"\fssh_password\x18\x12 \x01(\tB\x03\xe0A\x04R\vsshPassword\x12+\n" +
-	"\x0fssh_private_key\x18\x13 \x01(\tB\x03\xe0A\x04R\rsshPrivateKey\x12A\n" +
-	"\x1aauthentication_private_key\x18\x14 \x01(\tB\x03\xe0A\x04R\x18authenticationPrivateKey\x12Q\n" +
-	"\x0fexternal_secret\x18\x15 \x01(\v2(.metaxisdata.v1.DataSourceExternalSecretR\x0eexternalSecret\x12^\n" +
-	"\x13authentication_type\x18\x16 \x01(\x0e2-.metaxisdata.v1.DataSource.AuthenticationTypeR\x12authenticationType\x12W\n" +
-	"\x10azure_credential\x18\x17 \x01(\v2*.metaxisdata.v1.DataSource.AzureCredentialH\x00R\x0fazureCredential\x12Q\n" +
-	"\x0eaws_credential\x18% \x01(\v2(.metaxisdata.v1.DataSource.AWSCredentialH\x00R\rawsCredential\x12Q\n" +
-	"\x0egcp_credential\x18& \x01(\v2(.metaxisdata.v1.DataSource.GCPCredentialH\x00R\rgcpCredential\x12;\n" +
-	"\vsasl_config\x18\x18 \x01(\v2\x1a.metaxisdata.v1.SASLConfigR\n" +
-	"saslConfig\x12Z\n" +
-	"\x14additional_addresses\x18\x1a \x03(\v2\".metaxisdata.v1.DataSource.AddressB\x03\xe0A\x01R\x13additionalAddresses\x12+\n" +
-	"\x11direct_connection\x18\x1b \x01(\bR\x10directConnection\x12\x16\n" +
-	"\x06region\x18\x1c \x01(\tR\x06region\x12!\n" +
-	"\fwarehouse_id\x18\x1d \x01(\tR\vwarehouseId\x12\x1f\n" +
-	"\vmaster_name\x18\x1f \x01(\tR\n" +
-	"masterName\x12'\n" +
-	"\x0fmaster_username\x18  \x01(\tR\x0emasterUsername\x12'\n" +
-	"\x0fmaster_password\x18! \x01(\tR\x0emasterPassword\x12C\n" +
-	"\n" +
-	"redis_type\x18\" \x01(\x0e2$.metaxisdata.v1.DataSource.RedisTypeR\tredisType\x12\x18\n" +
-	"\acluster\x18# \x01(\tR\acluster\x12y\n" +
-	"\x1bextra_connection_parameters\x18$ \x03(\v29.metaxisdata.v1.DataSource.ExtraConnectionParametersEntryR\x19extraConnectionParameters\x1au\n" +
-	"\x0fAzureCredential\x12\x1b\n" +
-	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1b\n" +
-	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12(\n" +
-	"\rclient_secret\x18\x03 \x01(\tB\x03\xe0A\x04R\fclientSecret\x1a\x93\x01\n" +
-	"\rAWSCredential\x12'\n" +
-	"\raccess_key_id\x18\x01 \x01(\tB\x03\xe0A\x04R\vaccessKeyId\x12/\n" +
-	"\x11secret_access_key\x18\x02 \x01(\tB\x03\xe0A\x04R\x0fsecretAccessKey\x12(\n" +
-	"\rsession_token\x18\x03 \x01(\tB\x03\xe0A\x04R\fsessionToken\x1a.\n" +
-	"\rGCPCredential\x12\x1d\n" +
-	"\acontent\x18\x01 \x01(\tB\x03\xe0A\x04R\acontent\x1a1\n" +
-	"\aAddress\x12\x12\n" +
-	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
-	"\x04port\x18\x02 \x01(\tR\x04port\x1aL\n" +
+	"\x0fssh_private_key\x18\x13 \x01(\tB\x03\xe0A\x04R\rsshPrivateKey\x12y\n" +
+	"\x1bextra_connection_parameters\x18$ \x03(\v29.metaxisdata.v1.DataSource.ExtraConnectionParametersEntryR\x19extraConnectionParameters\x1aL\n" +
 	"\x1eExtraConnectionParametersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"|\n" +
-	"\x12AuthenticationType\x12\x1e\n" +
-	"\x1aAUTHENTICATION_UNSPECIFIED\x10\x00\x12\f\n" +
-	"\bPASSWORD\x10\x01\x12\x18\n" +
-	"\x14GOOGLE_CLOUD_SQL_IAM\x10\x02\x12\x0f\n" +
-	"\vAWS_RDS_IAM\x10\x03\x12\r\n" +
-	"\tAZURE_IAM\x10\x04\"R\n" +
-	"\tRedisType\x12\x1a\n" +
-	"\x16REDIS_TYPE_UNSPECIFIED\x10\x00\x12\x0e\n" +
-	"\n" +
-	"STANDALONE\x10\x01\x12\f\n" +
-	"\bSENTINEL\x10\x02\x12\v\n" +
-	"\aCLUSTER\x10\x03B\x0f\n" +
-	"\riam_extension\"\x99\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x14\x10\x15J\x04\b\x15\x10\x16J\x04\b\x16\x10\x17J\x04\b\x17\x10\x18J\x04\b\x18\x10\x19J\x04\b\x19\x10\x1aJ\x04\b\x1a\x10\x1bJ\x04\b\x1b\x10\x1cJ\x04\b\x1c\x10\x1dJ\x04\b\x1d\x10\x1eJ\x04\b\x1f\x10 J\x04\b \x10!J\x04\b!\x10\"J\x04\b\"\x10#J\x04\b#\x10$J\x04\b%\x10&J\x04\b&\x10'R\x03srvR\x17authentication_databaseR\vreplica_setR\x03sidR\fservice_nameR\x1aauthentication_private_keyR\x0fexternal_secretR\x13authentication_typeR\x10azure_credentialR\x0eaws_credentialR\x0egcp_credentialR\vsasl_configR\x14additional_addressesR\x11direct_connectionR\x06regionR\fwarehouse_idR\vmaster_nameR\x0fmaster_usernameR\x0fmaster_passwordR\n" +
+	"redis_typeR\acluster\"\x99\x02\n" +
 	"\x10InstanceResource\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x12.\n" +
 	"\x06engine\x18\x02 \x01(\x0e2\x16.metaxisdata.v1.EngineR\x06engine\x12*\n" +
@@ -2665,20 +1522,7 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	"activation\x18\x05 \x01(\bR\n" +
 	"activation\x12\x12\n" +
 	"\x04name\x18\x06 \x01(\tR\x04name\x12 \n" +
-	"\venvironment\x18\a \x01(\tR\venvironment\"Z\n" +
-	"\n" +
-	"SASLConfig\x12?\n" +
-	"\n" +
-	"krb_config\x18\x01 \x01(\v2\x1e.metaxisdata.v1.KerberosConfigH\x00R\tkrbConfigB\v\n" +
-	"\tmechanism\"\xe0\x01\n" +
-	"\x0eKerberosConfig\x12\x18\n" +
-	"\aprimary\x18\x01 \x01(\tR\aprimary\x12\x1a\n" +
-	"\binstance\x18\x02 \x01(\tR\binstance\x12\x14\n" +
-	"\x05realm\x18\x03 \x01(\tR\x05realm\x12\x16\n" +
-	"\x06keytab\x18\x04 \x01(\fR\x06keytab\x12\x19\n" +
-	"\bkdc_host\x18\x05 \x01(\tR\akdcHost\x12\x19\n" +
-	"\bkdc_port\x18\x06 \x01(\tR\akdcPort\x124\n" +
-	"\x16kdc_transport_protocol\x18\a \x01(\tR\x14kdcTransportProtocol*G\n" +
+	"\venvironment\x18\a \x01(\tR\venvironment*G\n" +
 	"\x0eDataSourceType\x12\x1b\n" +
 	"\x17DATA_SOURCE_UNSPECIFIED\x10\x00\x12\t\n" +
 	"\x05ADMIN\x10\x01\x12\r\n" +
@@ -2709,113 +1553,87 @@ func file_v1_instance_service_proto_rawDescGZIP() []byte {
 	return file_v1_instance_service_proto_rawDescData
 }
 
-var file_v1_instance_service_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_v1_instance_service_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_v1_instance_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_v1_instance_service_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_v1_instance_service_proto_goTypes = []any{
-	(DataSourceType)(0),                                        // 0: metaxisdata.v1.DataSourceType
-	(DataSourceExternalSecret_SecretType)(0),                   // 1: metaxisdata.v1.DataSourceExternalSecret.SecretType
-	(DataSourceExternalSecret_AuthType)(0),                     // 2: metaxisdata.v1.DataSourceExternalSecret.AuthType
-	(DataSourceExternalSecret_AppRoleAuthOption_SecretType)(0), // 3: metaxisdata.v1.DataSourceExternalSecret.AppRoleAuthOption.SecretType
-	(DataSource_AuthenticationType)(0),                         // 4: metaxisdata.v1.DataSource.AuthenticationType
-	(DataSource_RedisType)(0),                                  // 5: metaxisdata.v1.DataSource.RedisType
-	(*GetInstanceRequest)(nil),                                 // 6: metaxisdata.v1.GetInstanceRequest
-	(*ListInstancesRequest)(nil),                               // 7: metaxisdata.v1.ListInstancesRequest
-	(*ListInstancesResponse)(nil),                              // 8: metaxisdata.v1.ListInstancesResponse
-	(*CreateInstanceRequest)(nil),                              // 9: metaxisdata.v1.CreateInstanceRequest
-	(*UpdateInstanceRequest)(nil),                              // 10: metaxisdata.v1.UpdateInstanceRequest
-	(*DeleteInstanceRequest)(nil),                              // 11: metaxisdata.v1.DeleteInstanceRequest
-	(*UndeleteInstanceRequest)(nil),                            // 12: metaxisdata.v1.UndeleteInstanceRequest
-	(*SyncInstanceRequest)(nil),                                // 13: metaxisdata.v1.SyncInstanceRequest
-	(*SyncInstanceResponse)(nil),                               // 14: metaxisdata.v1.SyncInstanceResponse
-	(*BatchSyncInstancesRequest)(nil),                          // 15: metaxisdata.v1.BatchSyncInstancesRequest
-	(*BatchSyncInstancesResponse)(nil),                         // 16: metaxisdata.v1.BatchSyncInstancesResponse
-	(*BatchUpdateInstancesRequest)(nil),                        // 17: metaxisdata.v1.BatchUpdateInstancesRequest
-	(*BatchUpdateInstancesResponse)(nil),                       // 18: metaxisdata.v1.BatchUpdateInstancesResponse
-	(*AddDataSourceRequest)(nil),                               // 19: metaxisdata.v1.AddDataSourceRequest
-	(*RemoveDataSourceRequest)(nil),                            // 20: metaxisdata.v1.RemoveDataSourceRequest
-	(*UpdateDataSourceRequest)(nil),                            // 21: metaxisdata.v1.UpdateDataSourceRequest
-	(*Instance)(nil),                                           // 22: metaxisdata.v1.Instance
-	(*DataSourceExternalSecret)(nil),                           // 23: metaxisdata.v1.DataSourceExternalSecret
-	(*DataSource)(nil),                                         // 24: metaxisdata.v1.DataSource
-	(*InstanceResource)(nil),                                   // 25: metaxisdata.v1.InstanceResource
-	(*SASLConfig)(nil),                                         // 26: metaxisdata.v1.SASLConfig
-	(*KerberosConfig)(nil),                                     // 27: metaxisdata.v1.KerberosConfig
-	(*DataSourceExternalSecret_AppRoleAuthOption)(nil),         // 28: metaxisdata.v1.DataSourceExternalSecret.AppRoleAuthOption
-	(*DataSource_AzureCredential)(nil),                         // 29: metaxisdata.v1.DataSource.AzureCredential
-	(*DataSource_AWSCredential)(nil),                           // 30: metaxisdata.v1.DataSource.AWSCredential
-	(*DataSource_GCPCredential)(nil),                           // 31: metaxisdata.v1.DataSource.GCPCredential
-	(*DataSource_Address)(nil),                                 // 32: metaxisdata.v1.DataSource.Address
-	nil,                                                        // 33: metaxisdata.v1.DataSource.ExtraConnectionParametersEntry
-	(*fieldmaskpb.FieldMask)(nil),                              // 34: google.protobuf.FieldMask
-	(State)(0),                                                 // 35: metaxisdata.v1.State
-	(Engine)(0),                                                // 36: metaxisdata.v1.Engine
-	(*durationpb.Duration)(nil),                                // 37: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),                              // 38: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),                                      // 39: google.protobuf.Empty
+	(DataSourceType)(0),                  // 0: metaxisdata.v1.DataSourceType
+	(*GetInstanceRequest)(nil),           // 1: metaxisdata.v1.GetInstanceRequest
+	(*ListInstancesRequest)(nil),         // 2: metaxisdata.v1.ListInstancesRequest
+	(*ListInstancesResponse)(nil),        // 3: metaxisdata.v1.ListInstancesResponse
+	(*CreateInstanceRequest)(nil),        // 4: metaxisdata.v1.CreateInstanceRequest
+	(*UpdateInstanceRequest)(nil),        // 5: metaxisdata.v1.UpdateInstanceRequest
+	(*DeleteInstanceRequest)(nil),        // 6: metaxisdata.v1.DeleteInstanceRequest
+	(*UndeleteInstanceRequest)(nil),      // 7: metaxisdata.v1.UndeleteInstanceRequest
+	(*SyncInstanceRequest)(nil),          // 8: metaxisdata.v1.SyncInstanceRequest
+	(*SyncInstanceResponse)(nil),         // 9: metaxisdata.v1.SyncInstanceResponse
+	(*BatchSyncInstancesRequest)(nil),    // 10: metaxisdata.v1.BatchSyncInstancesRequest
+	(*BatchSyncInstancesResponse)(nil),   // 11: metaxisdata.v1.BatchSyncInstancesResponse
+	(*BatchUpdateInstancesRequest)(nil),  // 12: metaxisdata.v1.BatchUpdateInstancesRequest
+	(*BatchUpdateInstancesResponse)(nil), // 13: metaxisdata.v1.BatchUpdateInstancesResponse
+	(*AddDataSourceRequest)(nil),         // 14: metaxisdata.v1.AddDataSourceRequest
+	(*RemoveDataSourceRequest)(nil),      // 15: metaxisdata.v1.RemoveDataSourceRequest
+	(*UpdateDataSourceRequest)(nil),      // 16: metaxisdata.v1.UpdateDataSourceRequest
+	(*Instance)(nil),                     // 17: metaxisdata.v1.Instance
+	(*DataSource)(nil),                   // 18: metaxisdata.v1.DataSource
+	(*InstanceResource)(nil),             // 19: metaxisdata.v1.InstanceResource
+	nil,                                  // 20: metaxisdata.v1.DataSource.ExtraConnectionParametersEntry
+	(*fieldmaskpb.FieldMask)(nil),        // 21: google.protobuf.FieldMask
+	(State)(0),                           // 22: metaxisdata.v1.State
+	(Engine)(0),                          // 23: metaxisdata.v1.Engine
+	(*durationpb.Duration)(nil),          // 24: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),        // 25: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),                // 26: google.protobuf.Empty
 }
 var file_v1_instance_service_proto_depIdxs = []int32{
-	22, // 0: metaxisdata.v1.ListInstancesResponse.instances:type_name -> metaxisdata.v1.Instance
-	22, // 1: metaxisdata.v1.CreateInstanceRequest.instance:type_name -> metaxisdata.v1.Instance
-	22, // 2: metaxisdata.v1.UpdateInstanceRequest.instance:type_name -> metaxisdata.v1.Instance
-	34, // 3: metaxisdata.v1.UpdateInstanceRequest.update_mask:type_name -> google.protobuf.FieldMask
-	13, // 4: metaxisdata.v1.BatchSyncInstancesRequest.requests:type_name -> metaxisdata.v1.SyncInstanceRequest
-	10, // 5: metaxisdata.v1.BatchUpdateInstancesRequest.requests:type_name -> metaxisdata.v1.UpdateInstanceRequest
-	22, // 6: metaxisdata.v1.BatchUpdateInstancesResponse.instances:type_name -> metaxisdata.v1.Instance
-	24, // 7: metaxisdata.v1.AddDataSourceRequest.data_source:type_name -> metaxisdata.v1.DataSource
-	24, // 8: metaxisdata.v1.RemoveDataSourceRequest.data_source:type_name -> metaxisdata.v1.DataSource
-	24, // 9: metaxisdata.v1.UpdateDataSourceRequest.data_source:type_name -> metaxisdata.v1.DataSource
-	34, // 10: metaxisdata.v1.UpdateDataSourceRequest.update_mask:type_name -> google.protobuf.FieldMask
-	35, // 11: metaxisdata.v1.Instance.state:type_name -> metaxisdata.v1.State
-	36, // 12: metaxisdata.v1.Instance.engine:type_name -> metaxisdata.v1.Engine
-	24, // 13: metaxisdata.v1.Instance.data_sources:type_name -> metaxisdata.v1.DataSource
-	37, // 14: metaxisdata.v1.Instance.sync_interval:type_name -> google.protobuf.Duration
-	38, // 15: metaxisdata.v1.Instance.last_sync_time:type_name -> google.protobuf.Timestamp
-	1,  // 16: metaxisdata.v1.DataSourceExternalSecret.secret_type:type_name -> metaxisdata.v1.DataSourceExternalSecret.SecretType
-	2,  // 17: metaxisdata.v1.DataSourceExternalSecret.auth_type:type_name -> metaxisdata.v1.DataSourceExternalSecret.AuthType
-	28, // 18: metaxisdata.v1.DataSourceExternalSecret.app_role:type_name -> metaxisdata.v1.DataSourceExternalSecret.AppRoleAuthOption
-	0,  // 19: metaxisdata.v1.DataSource.type:type_name -> metaxisdata.v1.DataSourceType
-	23, // 20: metaxisdata.v1.DataSource.external_secret:type_name -> metaxisdata.v1.DataSourceExternalSecret
-	4,  // 21: metaxisdata.v1.DataSource.authentication_type:type_name -> metaxisdata.v1.DataSource.AuthenticationType
-	29, // 22: metaxisdata.v1.DataSource.azure_credential:type_name -> metaxisdata.v1.DataSource.AzureCredential
-	30, // 23: metaxisdata.v1.DataSource.aws_credential:type_name -> metaxisdata.v1.DataSource.AWSCredential
-	31, // 24: metaxisdata.v1.DataSource.gcp_credential:type_name -> metaxisdata.v1.DataSource.GCPCredential
-	26, // 25: metaxisdata.v1.DataSource.sasl_config:type_name -> metaxisdata.v1.SASLConfig
-	32, // 26: metaxisdata.v1.DataSource.additional_addresses:type_name -> metaxisdata.v1.DataSource.Address
-	5,  // 27: metaxisdata.v1.DataSource.redis_type:type_name -> metaxisdata.v1.DataSource.RedisType
-	33, // 28: metaxisdata.v1.DataSource.extra_connection_parameters:type_name -> metaxisdata.v1.DataSource.ExtraConnectionParametersEntry
-	36, // 29: metaxisdata.v1.InstanceResource.engine:type_name -> metaxisdata.v1.Engine
-	24, // 30: metaxisdata.v1.InstanceResource.data_sources:type_name -> metaxisdata.v1.DataSource
-	27, // 31: metaxisdata.v1.SASLConfig.krb_config:type_name -> metaxisdata.v1.KerberosConfig
-	3,  // 32: metaxisdata.v1.DataSourceExternalSecret.AppRoleAuthOption.type:type_name -> metaxisdata.v1.DataSourceExternalSecret.AppRoleAuthOption.SecretType
-	6,  // 33: metaxisdata.v1.InstanceService.GetInstance:input_type -> metaxisdata.v1.GetInstanceRequest
-	7,  // 34: metaxisdata.v1.InstanceService.ListInstances:input_type -> metaxisdata.v1.ListInstancesRequest
-	9,  // 35: metaxisdata.v1.InstanceService.CreateInstance:input_type -> metaxisdata.v1.CreateInstanceRequest
-	10, // 36: metaxisdata.v1.InstanceService.UpdateInstance:input_type -> metaxisdata.v1.UpdateInstanceRequest
-	11, // 37: metaxisdata.v1.InstanceService.DeleteInstance:input_type -> metaxisdata.v1.DeleteInstanceRequest
-	12, // 38: metaxisdata.v1.InstanceService.UndeleteInstance:input_type -> metaxisdata.v1.UndeleteInstanceRequest
-	13, // 39: metaxisdata.v1.InstanceService.SyncInstance:input_type -> metaxisdata.v1.SyncInstanceRequest
-	15, // 40: metaxisdata.v1.InstanceService.BatchSyncInstances:input_type -> metaxisdata.v1.BatchSyncInstancesRequest
-	17, // 41: metaxisdata.v1.InstanceService.BatchUpdateInstances:input_type -> metaxisdata.v1.BatchUpdateInstancesRequest
-	19, // 42: metaxisdata.v1.InstanceService.AddDataSource:input_type -> metaxisdata.v1.AddDataSourceRequest
-	20, // 43: metaxisdata.v1.InstanceService.RemoveDataSource:input_type -> metaxisdata.v1.RemoveDataSourceRequest
-	21, // 44: metaxisdata.v1.InstanceService.UpdateDataSource:input_type -> metaxisdata.v1.UpdateDataSourceRequest
-	22, // 45: metaxisdata.v1.InstanceService.GetInstance:output_type -> metaxisdata.v1.Instance
-	8,  // 46: metaxisdata.v1.InstanceService.ListInstances:output_type -> metaxisdata.v1.ListInstancesResponse
-	22, // 47: metaxisdata.v1.InstanceService.CreateInstance:output_type -> metaxisdata.v1.Instance
-	22, // 48: metaxisdata.v1.InstanceService.UpdateInstance:output_type -> metaxisdata.v1.Instance
-	39, // 49: metaxisdata.v1.InstanceService.DeleteInstance:output_type -> google.protobuf.Empty
-	22, // 50: metaxisdata.v1.InstanceService.UndeleteInstance:output_type -> metaxisdata.v1.Instance
-	14, // 51: metaxisdata.v1.InstanceService.SyncInstance:output_type -> metaxisdata.v1.SyncInstanceResponse
-	16, // 52: metaxisdata.v1.InstanceService.BatchSyncInstances:output_type -> metaxisdata.v1.BatchSyncInstancesResponse
-	18, // 53: metaxisdata.v1.InstanceService.BatchUpdateInstances:output_type -> metaxisdata.v1.BatchUpdateInstancesResponse
-	22, // 54: metaxisdata.v1.InstanceService.AddDataSource:output_type -> metaxisdata.v1.Instance
-	22, // 55: metaxisdata.v1.InstanceService.RemoveDataSource:output_type -> metaxisdata.v1.Instance
-	22, // 56: metaxisdata.v1.InstanceService.UpdateDataSource:output_type -> metaxisdata.v1.Instance
-	45, // [45:57] is the sub-list for method output_type
-	33, // [33:45] is the sub-list for method input_type
-	33, // [33:33] is the sub-list for extension type_name
-	33, // [33:33] is the sub-list for extension extendee
-	0,  // [0:33] is the sub-list for field type_name
+	17, // 0: metaxisdata.v1.ListInstancesResponse.instances:type_name -> metaxisdata.v1.Instance
+	17, // 1: metaxisdata.v1.CreateInstanceRequest.instance:type_name -> metaxisdata.v1.Instance
+	17, // 2: metaxisdata.v1.UpdateInstanceRequest.instance:type_name -> metaxisdata.v1.Instance
+	21, // 3: metaxisdata.v1.UpdateInstanceRequest.update_mask:type_name -> google.protobuf.FieldMask
+	8,  // 4: metaxisdata.v1.BatchSyncInstancesRequest.requests:type_name -> metaxisdata.v1.SyncInstanceRequest
+	5,  // 5: metaxisdata.v1.BatchUpdateInstancesRequest.requests:type_name -> metaxisdata.v1.UpdateInstanceRequest
+	17, // 6: metaxisdata.v1.BatchUpdateInstancesResponse.instances:type_name -> metaxisdata.v1.Instance
+	18, // 7: metaxisdata.v1.AddDataSourceRequest.data_source:type_name -> metaxisdata.v1.DataSource
+	18, // 8: metaxisdata.v1.RemoveDataSourceRequest.data_source:type_name -> metaxisdata.v1.DataSource
+	18, // 9: metaxisdata.v1.UpdateDataSourceRequest.data_source:type_name -> metaxisdata.v1.DataSource
+	21, // 10: metaxisdata.v1.UpdateDataSourceRequest.update_mask:type_name -> google.protobuf.FieldMask
+	22, // 11: metaxisdata.v1.Instance.state:type_name -> metaxisdata.v1.State
+	23, // 12: metaxisdata.v1.Instance.engine:type_name -> metaxisdata.v1.Engine
+	18, // 13: metaxisdata.v1.Instance.data_sources:type_name -> metaxisdata.v1.DataSource
+	24, // 14: metaxisdata.v1.Instance.sync_interval:type_name -> google.protobuf.Duration
+	25, // 15: metaxisdata.v1.Instance.last_sync_time:type_name -> google.protobuf.Timestamp
+	0,  // 16: metaxisdata.v1.DataSource.type:type_name -> metaxisdata.v1.DataSourceType
+	20, // 17: metaxisdata.v1.DataSource.extra_connection_parameters:type_name -> metaxisdata.v1.DataSource.ExtraConnectionParametersEntry
+	23, // 18: metaxisdata.v1.InstanceResource.engine:type_name -> metaxisdata.v1.Engine
+	18, // 19: metaxisdata.v1.InstanceResource.data_sources:type_name -> metaxisdata.v1.DataSource
+	1,  // 20: metaxisdata.v1.InstanceService.GetInstance:input_type -> metaxisdata.v1.GetInstanceRequest
+	2,  // 21: metaxisdata.v1.InstanceService.ListInstances:input_type -> metaxisdata.v1.ListInstancesRequest
+	4,  // 22: metaxisdata.v1.InstanceService.CreateInstance:input_type -> metaxisdata.v1.CreateInstanceRequest
+	5,  // 23: metaxisdata.v1.InstanceService.UpdateInstance:input_type -> metaxisdata.v1.UpdateInstanceRequest
+	6,  // 24: metaxisdata.v1.InstanceService.DeleteInstance:input_type -> metaxisdata.v1.DeleteInstanceRequest
+	7,  // 25: metaxisdata.v1.InstanceService.UndeleteInstance:input_type -> metaxisdata.v1.UndeleteInstanceRequest
+	8,  // 26: metaxisdata.v1.InstanceService.SyncInstance:input_type -> metaxisdata.v1.SyncInstanceRequest
+	10, // 27: metaxisdata.v1.InstanceService.BatchSyncInstances:input_type -> metaxisdata.v1.BatchSyncInstancesRequest
+	12, // 28: metaxisdata.v1.InstanceService.BatchUpdateInstances:input_type -> metaxisdata.v1.BatchUpdateInstancesRequest
+	14, // 29: metaxisdata.v1.InstanceService.AddDataSource:input_type -> metaxisdata.v1.AddDataSourceRequest
+	15, // 30: metaxisdata.v1.InstanceService.RemoveDataSource:input_type -> metaxisdata.v1.RemoveDataSourceRequest
+	16, // 31: metaxisdata.v1.InstanceService.UpdateDataSource:input_type -> metaxisdata.v1.UpdateDataSourceRequest
+	17, // 32: metaxisdata.v1.InstanceService.GetInstance:output_type -> metaxisdata.v1.Instance
+	3,  // 33: metaxisdata.v1.InstanceService.ListInstances:output_type -> metaxisdata.v1.ListInstancesResponse
+	17, // 34: metaxisdata.v1.InstanceService.CreateInstance:output_type -> metaxisdata.v1.Instance
+	17, // 35: metaxisdata.v1.InstanceService.UpdateInstance:output_type -> metaxisdata.v1.Instance
+	26, // 36: metaxisdata.v1.InstanceService.DeleteInstance:output_type -> google.protobuf.Empty
+	17, // 37: metaxisdata.v1.InstanceService.UndeleteInstance:output_type -> metaxisdata.v1.Instance
+	9,  // 38: metaxisdata.v1.InstanceService.SyncInstance:output_type -> metaxisdata.v1.SyncInstanceResponse
+	11, // 39: metaxisdata.v1.InstanceService.BatchSyncInstances:output_type -> metaxisdata.v1.BatchSyncInstancesResponse
+	13, // 40: metaxisdata.v1.InstanceService.BatchUpdateInstances:output_type -> metaxisdata.v1.BatchUpdateInstancesResponse
+	17, // 41: metaxisdata.v1.InstanceService.AddDataSource:output_type -> metaxisdata.v1.Instance
+	17, // 42: metaxisdata.v1.InstanceService.RemoveDataSource:output_type -> metaxisdata.v1.Instance
+	17, // 43: metaxisdata.v1.InstanceService.UpdateDataSource:output_type -> metaxisdata.v1.Instance
+	32, // [32:44] is the sub-list for method output_type
+	20, // [20:32] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_v1_instance_service_proto_init() }
@@ -2825,25 +1643,13 @@ func file_v1_instance_service_proto_init() {
 	}
 	file_v1_annotation_proto_init()
 	file_v1_common_proto_init()
-	file_v1_instance_service_proto_msgTypes[17].OneofWrappers = []any{
-		(*DataSourceExternalSecret_AppRole)(nil),
-		(*DataSourceExternalSecret_Token)(nil),
-	}
-	file_v1_instance_service_proto_msgTypes[18].OneofWrappers = []any{
-		(*DataSource_AzureCredential_)(nil),
-		(*DataSource_AwsCredential)(nil),
-		(*DataSource_GcpCredential)(nil),
-	}
-	file_v1_instance_service_proto_msgTypes[20].OneofWrappers = []any{
-		(*SASLConfig_KrbConfig)(nil),
-	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_instance_service_proto_rawDesc), len(file_v1_instance_service_proto_rawDesc)),
-			NumEnums:      6,
-			NumMessages:   28,
+			NumEnums:      1,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

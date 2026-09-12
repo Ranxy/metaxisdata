@@ -52,58 +52,21 @@ func isValidResourceID(resourceID string) bool {
 	return common.IsValidResourceID(resourceID)
 }
 
+// convertToEngine maps the store engine onto its public counterpart. The two
+// enums are value-compatible, and everything the drivers cannot connect to was
+// removed from both, so an unknown value can only be a stale row.
 func convertToEngine(engine storepb.Engine) v1pb.Engine {
 	switch engine {
-	case storepb.Engine_CLICKHOUSE:
-		return v1pb.Engine_CLICKHOUSE
 	case storepb.Engine_MYSQL:
 		return v1pb.Engine_MYSQL
 	case storepb.Engine_POSTGRES:
 		return v1pb.Engine_POSTGRES
-	case storepb.Engine_SNOWFLAKE:
-		return v1pb.Engine_SNOWFLAKE
-	case storepb.Engine_SQLITE:
-		return v1pb.Engine_SQLITE
 	case storepb.Engine_TIDB:
 		return v1pb.Engine_TIDB
-	case storepb.Engine_MONGODB:
-		return v1pb.Engine_MONGODB
-	case storepb.Engine_REDIS:
-		return v1pb.Engine_REDIS
-	case storepb.Engine_ORACLE:
-		return v1pb.Engine_ORACLE
-	case storepb.Engine_SPANNER:
-		return v1pb.Engine_SPANNER
-	case storepb.Engine_MSSQL:
-		return v1pb.Engine_MSSQL
-	case storepb.Engine_REDSHIFT:
-		return v1pb.Engine_REDSHIFT
 	case storepb.Engine_MARIADB:
 		return v1pb.Engine_MARIADB
 	case storepb.Engine_OCEANBASE:
 		return v1pb.Engine_OCEANBASE
-	case storepb.Engine_STARROCKS:
-		return v1pb.Engine_STARROCKS
-	case storepb.Engine_DORIS:
-		return v1pb.Engine_DORIS
-	case storepb.Engine_HIVE:
-		return v1pb.Engine_HIVE
-	case storepb.Engine_ELASTICSEARCH:
-		return v1pb.Engine_ELASTICSEARCH
-	case storepb.Engine_BIGQUERY:
-		return v1pb.Engine_BIGQUERY
-	case storepb.Engine_DYNAMODB:
-		return v1pb.Engine_DYNAMODB
-	case storepb.Engine_DATABRICKS:
-		return v1pb.Engine_DATABRICKS
-	case storepb.Engine_COCKROACHDB:
-		return v1pb.Engine_COCKROACHDB
-	case storepb.Engine_COSMOSDB:
-		return v1pb.Engine_COSMOSDB
-	case storepb.Engine_CASSANDRA:
-		return v1pb.Engine_CASSANDRA
-	case storepb.Engine_TRINO:
-		return v1pb.Engine_TRINO
 	default:
 	}
 	return v1pb.Engine_ENGINE_UNSPECIFIED
@@ -111,56 +74,16 @@ func convertToEngine(engine storepb.Engine) v1pb.Engine {
 
 func convertEngine(engine v1pb.Engine) storepb.Engine {
 	switch engine {
-	case v1pb.Engine_CLICKHOUSE:
-		return storepb.Engine_CLICKHOUSE
 	case v1pb.Engine_MYSQL:
 		return storepb.Engine_MYSQL
 	case v1pb.Engine_POSTGRES:
 		return storepb.Engine_POSTGRES
-	case v1pb.Engine_SNOWFLAKE:
-		return storepb.Engine_SNOWFLAKE
-	case v1pb.Engine_SQLITE:
-		return storepb.Engine_SQLITE
 	case v1pb.Engine_TIDB:
 		return storepb.Engine_TIDB
-	case v1pb.Engine_MONGODB:
-		return storepb.Engine_MONGODB
-	case v1pb.Engine_REDIS:
-		return storepb.Engine_REDIS
-	case v1pb.Engine_ORACLE:
-		return storepb.Engine_ORACLE
-	case v1pb.Engine_SPANNER:
-		return storepb.Engine_SPANNER
-	case v1pb.Engine_MSSQL:
-		return storepb.Engine_MSSQL
-	case v1pb.Engine_REDSHIFT:
-		return storepb.Engine_REDSHIFT
 	case v1pb.Engine_MARIADB:
 		return storepb.Engine_MARIADB
 	case v1pb.Engine_OCEANBASE:
 		return storepb.Engine_OCEANBASE
-	case v1pb.Engine_STARROCKS:
-		return storepb.Engine_STARROCKS
-	case v1pb.Engine_DORIS:
-		return storepb.Engine_DORIS
-	case v1pb.Engine_HIVE:
-		return storepb.Engine_HIVE
-	case v1pb.Engine_ELASTICSEARCH:
-		return storepb.Engine_ELASTICSEARCH
-	case v1pb.Engine_BIGQUERY:
-		return storepb.Engine_BIGQUERY
-	case v1pb.Engine_DYNAMODB:
-		return storepb.Engine_DYNAMODB
-	case v1pb.Engine_DATABRICKS:
-		return storepb.Engine_DATABRICKS
-	case v1pb.Engine_COCKROACHDB:
-		return storepb.Engine_COCKROACHDB
-	case v1pb.Engine_COSMOSDB:
-		return storepb.Engine_COSMOSDB
-	case v1pb.Engine_CASSANDRA:
-		return storepb.Engine_CASSANDRA
-	case v1pb.Engine_TRINO:
-		return storepb.Engine_TRINO
 	default:
 	}
 	return storepb.Engine_ENGINE_UNSPECIFIED

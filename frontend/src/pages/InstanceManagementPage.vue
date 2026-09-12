@@ -746,31 +746,11 @@ function getHostInfo(instance: Instance): string {
 function getEngineLabel(engine: Engine): string {
   const engineLabels: Record<number, string> = {
     [Engine.ENGINE_UNSPECIFIED]: "Unknown",
-    [Engine.CLICKHOUSE]: "ClickHouse",
     [Engine.MYSQL]: "MySQL",
     [Engine.POSTGRES]: "PostgreSQL",
-    [Engine.SNOWFLAKE]: "Snowflake",
-    [Engine.SQLITE]: "SQLite",
     [Engine.TIDB]: "TiDB",
-    [Engine.MONGODB]: "MongoDB",
-    [Engine.REDIS]: "Redis",
-    [Engine.ORACLE]: "Oracle",
-    [Engine.SPANNER]: "Spanner",
-    [Engine.MSSQL]: "SQL Server",
-    [Engine.REDSHIFT]: "Redshift",
     [Engine.MARIADB]: "MariaDB",
     [Engine.OCEANBASE]: "OceanBase",
-    [Engine.STARROCKS]: "StarRocks",
-    [Engine.DORIS]: "Doris",
-    [Engine.HIVE]: "Hive",
-    [Engine.ELASTICSEARCH]: "Elasticsearch",
-    [Engine.BIGQUERY]: "BigQuery",
-    [Engine.DYNAMODB]: "DynamoDB",
-    [Engine.DATABRICKS]: "Databricks",
-    [Engine.COCKROACHDB]: "CockroachDB",
-    [Engine.COSMOSDB]: "CosmosDB",
-    [Engine.TRINO]: "Trino",
-    [Engine.CASSANDRA]: "Cassandra",
   };
   return engineLabels[engine] || "Unknown";
 }
@@ -779,17 +759,9 @@ function getEngineIcon(engine: Engine): string {
   const engineIcons: Record<number, string> = {
     [Engine.MYSQL]: "My",
     [Engine.POSTGRES]: "PG",
-    [Engine.CLICKHOUSE]: "CH",
-    [Engine.MONGODB]: "MG",
-    [Engine.REDIS]: "RD",
-    [Engine.ORACLE]: "OR",
-    [Engine.MSSQL]: "MS",
-    [Engine.SQLITE]: "SL",
     [Engine.TIDB]: "Ti",
     [Engine.MARIADB]: "Ma",
-    [Engine.SNOWFLAKE]: "SF",
-    [Engine.BIGQUERY]: "BQ",
-    [Engine.ELASTICSEARCH]: "ES",
+    [Engine.OCEANBASE]: "OB",
   };
   return engineIcons[engine] || "DB";
 }
@@ -798,14 +770,9 @@ function getEngineBgClass(engine: Engine): string {
   const bgClasses: Record<number, string> = {
     [Engine.MYSQL]: "bg-orange-100",
     [Engine.POSTGRES]: "bg-blue-100",
-    [Engine.CLICKHOUSE]: "bg-yellow-100",
-    [Engine.MONGODB]: "bg-green-100",
-    [Engine.REDIS]: "bg-red-100",
-    [Engine.ORACLE]: "bg-red-100",
-    [Engine.MSSQL]: "bg-blue-100",
-    [Engine.SQLITE]: "bg-gray-100",
     [Engine.TIDB]: "bg-purple-100",
     [Engine.MARIADB]: "bg-teal-100",
+    [Engine.OCEANBASE]: "bg-cyan-100",
   };
   return bgClasses[engine] || "bg-gray-100";
 }
@@ -814,14 +781,9 @@ function getEngineTextClass(engine: Engine): string {
   const textClasses: Record<number, string> = {
     [Engine.MYSQL]: "text-orange-600",
     [Engine.POSTGRES]: "text-blue-600",
-    [Engine.CLICKHOUSE]: "text-yellow-600",
-    [Engine.MONGODB]: "text-green-600",
-    [Engine.REDIS]: "text-red-600",
-    [Engine.ORACLE]: "text-red-600",
-    [Engine.MSSQL]: "text-blue-600",
-    [Engine.SQLITE]: "text-gray-600",
     [Engine.TIDB]: "text-purple-600",
     [Engine.MARIADB]: "text-teal-600",
+    [Engine.OCEANBASE]: "text-cyan-600",
   };
   return textClasses[engine] || "text-gray-600";
 }
@@ -831,14 +793,9 @@ function getEngineBadgeClass(engine: Engine): string {
   const badgeClasses: Record<number, string> = {
     [Engine.MYSQL]: `${base} bg-orange-100 text-orange-700`,
     [Engine.POSTGRES]: `${base} bg-blue-100 text-blue-700`,
-    [Engine.CLICKHOUSE]: `${base} bg-yellow-100 text-yellow-700`,
-    [Engine.MONGODB]: `${base} bg-green-100 text-green-700`,
-    [Engine.REDIS]: `${base} bg-red-100 text-red-700`,
-    [Engine.ORACLE]: `${base} bg-red-100 text-red-700`,
-    [Engine.MSSQL]: `${base} bg-blue-100 text-blue-700`,
-    [Engine.SQLITE]: `${base} bg-gray-100 text-gray-700`,
     [Engine.TIDB]: `${base} bg-purple-100 text-purple-700`,
     [Engine.MARIADB]: `${base} bg-teal-100 text-teal-700`,
+    [Engine.OCEANBASE]: `${base} bg-cyan-100 text-cyan-700`,
   };
   return badgeClasses[engine] || `${base} bg-gray-100 text-gray-700`;
 }

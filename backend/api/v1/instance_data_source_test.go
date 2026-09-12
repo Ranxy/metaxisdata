@@ -30,11 +30,10 @@ func TestMergeDataSourcePreservesUnreturnedFields(t *testing.T) {
 		SslCa:                "stored-ca",
 		SslKey:               "stored-key",
 		VerifyTlsCertificate: true,
-		Srv:                  true,
 		SshHost:              "bastion",
+		SshPort:              "22",
+		SshUser:              "tunnel",
 		SshPrivateKey:        "stored-private-key",
-		AuthenticationType:   storepb.DataSource_AWS_RDS_IAM,
-		AdditionalAddresses:  []*storepb.DataSource_Address{{Host: "replica", Port: "3307"}},
 		ExtraConnectionParameters: map[string]string{
 			"timeout": "5s",
 		},
@@ -56,17 +55,14 @@ func TestMergeDataSourcePreservesUnreturnedFields(t *testing.T) {
 	require.Equal(t, "stored-ca", merged.GetSslCa())
 	require.Equal(t, "stored-key", merged.GetSslKey())
 	require.True(t, merged.GetVerifyTlsCertificate(), "TLS verification must not be downgraded")
-	require.True(t, merged.GetSrv())
 	require.Equal(t, "bastion", merged.GetSshHost())
+	require.Equal(t, "22", merged.GetSshPort())
+	require.Equal(t, "tunnel", merged.GetSshUser())
 	require.Equal(t, "stored-private-key", merged.GetSshPrivateKey())
-	require.Equal(t, storepb.DataSource_AWS_RDS_IAM, merged.GetAuthenticationType())
 	require.Equal(t, map[string]string{"timeout": "5s"}, merged.GetExtraConnectionParameters())
-	require.Len(t, merged.GetAdditionalAddresses(), 1, "stored addresses must not be duplicated or dropped")
-	require.Equal(t, "replica", merged.GetAdditionalAddresses()[0].GetHost())
 
 	// The stored entry itself is never mutated.
 	require.Equal(t, "old-host", stored.GetHost())
-	require.Len(t, stored.GetAdditionalAddresses(), 1)
 }
 
 func TestMergeDataSourceOverlaysProvidedValues(t *testing.T) {
@@ -76,21 +72,20 @@ func TestMergeDataSourceOverlaysProvidedValues(t *testing.T) {
 		Id:       "admin",
 		Type:     storepb.DataSourceType_ADMIN,
 		Password: "old-password",
-		AdditionalAddresses: []*storepb.DataSource_Address{
-			{Host: "old-replica", Port: "3307"},
+		ExtraConnectionParameters: map[string]string{
+			"timeout": "5s",
+			"sslmode": "disable",
 		},
 	}
 	requested := &storepb.DataSource{
-		Id:         "admin",
-		Type:       storepb.DataSourceType_ADMIN,
-		Password:   "new-password",
-		Database:   "app",
-		Region:     "us-east-1",
-		UseSsl:     true,
-		RedisType:  storepb.DataSource_STANDALONE,
-		MasterName: "master",
-		AdditionalAddresses: []*storepb.DataSource_Address{
-			{Host: "new-replica", Port: "3308"},
+		Id:       "admin",
+		Type:     storepb.DataSourceType_ADMIN,
+		Password: "new-password",
+		Database: "app",
+		UseSsl:   true,
+		SshHost:  "new-bastion",
+		ExtraConnectionParameters: map[string]string{
+			"timeout": "9s",
 		},
 	}
 
@@ -98,11 +93,9 @@ func TestMergeDataSourceOverlaysProvidedValues(t *testing.T) {
 
 	require.Equal(t, "new-password", merged.GetPassword(), "a provided credential replaces the stored one")
 	require.Equal(t, "app", merged.GetDatabase())
-	require.Equal(t, "us-east-1", merged.GetRegion())
 	require.True(t, merged.GetUseSsl())
-	require.Equal(t, "master", merged.GetMasterName())
-	require.Len(t, merged.GetAdditionalAddresses(), 1, "a provided address list replaces the stored one")
-	require.Equal(t, "new-replica", merged.GetAdditionalAddresses()[0].GetHost())
+	require.Equal(t, "new-bastion", merged.GetSshHost())
+	require.Equal(t, map[string]string{"timeout": "9s", "sslmode": "disable"}, merged.GetExtraConnectionParameters())
 }
 
 func TestMergeDataSourcesKeysByID(t *testing.T) {

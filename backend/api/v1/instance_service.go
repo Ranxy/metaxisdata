@@ -541,14 +541,6 @@ func (s *InstanceService) UpdateDataSource(ctx context.Context, req *connect.Req
 			dataSource.Port = req.Msg.DataSource.Port
 		case "database":
 			dataSource.Database = req.Msg.DataSource.Database
-		case "srv":
-			dataSource.Srv = req.Msg.DataSource.Srv
-		case "authentication_database":
-			dataSource.AuthenticationDatabase = req.Msg.DataSource.AuthenticationDatabase
-		case "sid":
-			dataSource.Sid = req.Msg.DataSource.Sid
-		case "service_name":
-			dataSource.ServiceName = req.Msg.DataSource.ServiceName
 		case "ssh_host":
 			dataSource.SshHost = req.Msg.DataSource.SshHost
 		case "ssh_port":
@@ -559,78 +551,10 @@ func (s *InstanceService) UpdateDataSource(ctx context.Context, req *connect.Req
 			dataSource.SshPassword = req.Msg.DataSource.SshPassword
 		case "ssh_private_key":
 			dataSource.SshPrivateKey = req.Msg.DataSource.SshPrivateKey
-		case "authentication_private_key":
-			dataSource.AuthenticationPrivateKey = req.Msg.DataSource.AuthenticationPrivateKey
-		case "external_secret":
-			externalSecret, err := convertV1DataSourceExternalSecret(req.Msg.DataSource.ExternalSecret)
-			if err != nil {
-				return nil, err
-			}
-			dataSource.ExternalSecret = externalSecret
-		case "sasl_config":
-			dataSource.SaslConfig = convertV1DataSourceSaslConfig(req.Msg.DataSource.SaslConfig)
-		case "authentication_type":
-			dataSource.AuthenticationType = convertV1AuthenticationType(req.Msg.DataSource.AuthenticationType)
-		case "additional_addresses":
-			dataSource.AdditionalAddresses = convertAdditionalAddresses(req.Msg.DataSource.AdditionalAddresses)
-		case "replica_set":
-			dataSource.ReplicaSet = req.Msg.DataSource.ReplicaSet
-		case "direct_connection":
-			dataSource.DirectConnection = req.Msg.DataSource.DirectConnection
-		case "region":
-			dataSource.Region = req.Msg.DataSource.Region
-		case "warehouse_id":
-			dataSource.WarehouseId = req.Msg.DataSource.WarehouseId
 		case "use_ssl":
 			dataSource.UseSsl = req.Msg.DataSource.UseSsl
-		case "redis_type":
-			dataSource.RedisType = convertV1RedisType(req.Msg.DataSource.RedisType)
-		case "master_name":
-			dataSource.MasterName = req.Msg.DataSource.MasterName
-		case "master_username":
-			dataSource.MasterUsername = req.Msg.DataSource.MasterUsername
-		case "master_password":
-			dataSource.MasterPassword = req.Msg.DataSource.MasterPassword
 		case "extra_connection_parameters":
 			dataSource.ExtraConnectionParameters = req.Msg.DataSource.ExtraConnectionParameters
-		case "azure_credential", "aws_credential", "gcp_credential":
-			switch req.Msg.DataSource.AuthenticationType {
-			case v1pb.DataSource_AZURE_IAM:
-				if azureCredential := req.Msg.DataSource.GetAzureCredential(); azureCredential != nil {
-					dataSource.IamExtension = &storepb.DataSource_AzureCredential_{
-						AzureCredential: &storepb.DataSource_AzureCredential{
-							TenantId:     azureCredential.TenantId,
-							ClientId:     azureCredential.ClientId,
-							ClientSecret: azureCredential.ClientSecret,
-						},
-					}
-				} else {
-					dataSource.IamExtension = nil
-				}
-			case v1pb.DataSource_AWS_RDS_IAM:
-				if awsCredential := req.Msg.DataSource.GetAwsCredential(); awsCredential != nil {
-					dataSource.IamExtension = &storepb.DataSource_AwsCredential{
-						AwsCredential: &storepb.DataSource_AWSCredential{
-							AccessKeyId:     awsCredential.AccessKeyId,
-							SecretAccessKey: awsCredential.SecretAccessKey,
-							SessionToken:    awsCredential.SessionToken,
-						},
-					}
-				} else {
-					dataSource.IamExtension = nil
-				}
-			case v1pb.DataSource_GOOGLE_CLOUD_SQL_IAM:
-				if gcpCredential := req.Msg.DataSource.GetGcpCredential(); gcpCredential != nil {
-					dataSource.IamExtension = &storepb.DataSource_GcpCredential{
-						GcpCredential: &storepb.DataSource_GCPCredential{
-							Content: gcpCredential.Content,
-						},
-					}
-				} else {
-					dataSource.IamExtension = nil
-				}
-			default:
-			}
 		default:
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf(`unsupported update_mask "%s"`, path))
 		}

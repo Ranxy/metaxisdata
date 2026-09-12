@@ -20,11 +20,7 @@
     - [AuditLogService](#metaxisdata-v1-AuditLogService)
   
 - [v1/common.proto](#v1_common-proto)
-    - [Position](#metaxisdata-v1-Position)
-    - [Range](#metaxisdata-v1-Range)
-  
     - [Engine](#metaxisdata-v1-Engine)
-    - [RiskLevel](#metaxisdata-v1-RiskLevel)
     - [State](#metaxisdata-v1-State)
   
 - [v1/user_service.proto](#v1_user_service-proto)
@@ -61,33 +57,20 @@
     - [BatchUpdateInstancesResponse](#metaxisdata-v1-BatchUpdateInstancesResponse)
     - [CreateInstanceRequest](#metaxisdata-v1-CreateInstanceRequest)
     - [DataSource](#metaxisdata-v1-DataSource)
-    - [DataSource.AWSCredential](#metaxisdata-v1-DataSource-AWSCredential)
-    - [DataSource.Address](#metaxisdata-v1-DataSource-Address)
-    - [DataSource.AzureCredential](#metaxisdata-v1-DataSource-AzureCredential)
     - [DataSource.ExtraConnectionParametersEntry](#metaxisdata-v1-DataSource-ExtraConnectionParametersEntry)
-    - [DataSource.GCPCredential](#metaxisdata-v1-DataSource-GCPCredential)
-    - [DataSourceExternalSecret](#metaxisdata-v1-DataSourceExternalSecret)
-    - [DataSourceExternalSecret.AppRoleAuthOption](#metaxisdata-v1-DataSourceExternalSecret-AppRoleAuthOption)
     - [DeleteInstanceRequest](#metaxisdata-v1-DeleteInstanceRequest)
     - [GetInstanceRequest](#metaxisdata-v1-GetInstanceRequest)
     - [Instance](#metaxisdata-v1-Instance)
     - [InstanceResource](#metaxisdata-v1-InstanceResource)
-    - [KerberosConfig](#metaxisdata-v1-KerberosConfig)
     - [ListInstancesRequest](#metaxisdata-v1-ListInstancesRequest)
     - [ListInstancesResponse](#metaxisdata-v1-ListInstancesResponse)
     - [RemoveDataSourceRequest](#metaxisdata-v1-RemoveDataSourceRequest)
-    - [SASLConfig](#metaxisdata-v1-SASLConfig)
     - [SyncInstanceRequest](#metaxisdata-v1-SyncInstanceRequest)
     - [SyncInstanceResponse](#metaxisdata-v1-SyncInstanceResponse)
     - [UndeleteInstanceRequest](#metaxisdata-v1-UndeleteInstanceRequest)
     - [UpdateDataSourceRequest](#metaxisdata-v1-UpdateDataSourceRequest)
     - [UpdateInstanceRequest](#metaxisdata-v1-UpdateInstanceRequest)
   
-    - [DataSource.AuthenticationType](#metaxisdata-v1-DataSource-AuthenticationType)
-    - [DataSource.RedisType](#metaxisdata-v1-DataSource-RedisType)
-    - [DataSourceExternalSecret.AppRoleAuthOption.SecretType](#metaxisdata-v1-DataSourceExternalSecret-AppRoleAuthOption-SecretType)
-    - [DataSourceExternalSecret.AuthType](#metaxisdata-v1-DataSourceExternalSecret-AuthType)
-    - [DataSourceExternalSecret.SecretType](#metaxisdata-v1-DataSourceExternalSecret-SecretType)
     - [DataSourceType](#metaxisdata-v1-DataSourceType)
   
     - [InstanceService](#metaxisdata-v1-InstanceService)
@@ -430,89 +413,25 @@
 ## v1/common.proto
 
 
-
-<a name="metaxisdata-v1-Position"></a>
-
-### Position
-Position in a text expressed as zero-based line and zero-based column byte
-offset.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| line | [int32](#int32) |  | Line position in a text (zero-based). |
-| column | [int32](#int32) |  | Column position in a text (zero-based), equivalent to byte offset. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-Range"></a>
-
-### Range
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| start | [int32](#int32) |  |  |
-| end | [int32](#int32) |  |  |
-
-
-
-
-
  
 
 
 <a name="metaxisdata-v1-Engine"></a>
 
 ### Engine
-
+Engine is the database engine of an instance. Only the engines the product
+actually supports are kept: MySQL-compatible ones (MySQL, TiDB, MariaDB,
+OceanBase) and PostgreSQL. The removed Bytebase-era values keep their numbers
+reserved so they can never be silently reused for something else.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | ENGINE_UNSPECIFIED | 0 |  |
-| CLICKHOUSE | 1 |  |
 | MYSQL | 2 |  |
 | POSTGRES | 3 |  |
-| SNOWFLAKE | 4 |  |
-| SQLITE | 5 |  |
 | TIDB | 6 |  |
-| MONGODB | 7 |  |
-| REDIS | 8 |  |
-| ORACLE | 9 |  |
-| SPANNER | 10 |  |
-| MSSQL | 11 |  |
-| REDSHIFT | 12 |  |
 | MARIADB | 13 |  |
 | OCEANBASE | 14 |  |
-| STARROCKS | 18 |  |
-| DORIS | 19 |  |
-| HIVE | 20 |  |
-| ELASTICSEARCH | 21 |  |
-| BIGQUERY | 22 |  |
-| DYNAMODB | 23 |  |
-| DATABRICKS | 24 |  |
-| COCKROACHDB | 25 |  |
-| COSMOSDB | 26 |  |
-| TRINO | 27 |  |
-| CASSANDRA | 28 |  |
-
-
-
-<a name="metaxisdata-v1-RiskLevel"></a>
-
-### RiskLevel
-RiskLevel is the risk level.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| RISK_LEVEL_UNSPECIFIED | 0 |  |
-| LOW | 1 |  |
-| MODERATE | 2 |  |
-| HIGH | 3 |  |
 
 
 
@@ -995,83 +914,12 @@ This value should be 4-63 characters, and valid characters are /[a-z0-9-]/. |
 | host | [string](#string) |  |  |
 | port | [string](#string) |  |  |
 | database | [string](#string) |  |  |
-| srv | [bool](#bool) |  | srv, authentication_database and replica_set are used for MongoDB. srv is a boolean flag that indicates whether the host is a DNS SRV record. |
-| authentication_database | [string](#string) |  | authentication_database is the database name to authenticate against, which stores the user credentials. |
-| replica_set | [string](#string) |  | replica_set is used for MongoDB replica set. |
-| sid | [string](#string) |  | sid and service_name are used for Oracle. |
-| service_name | [string](#string) |  |  |
 | ssh_host | [string](#string) |  | Connection over SSH. The hostname of the SSH server agent. Required. |
 | ssh_port | [string](#string) |  | The port of the SSH server agent. It&#39;s 22 typically. Required. |
 | ssh_user | [string](#string) |  | The user to login the server. Required. |
 | ssh_password | [string](#string) |  | The password to login the server. If it&#39;s empty string, no password is required. |
 | ssh_private_key | [string](#string) |  | The private key to login the server. If it&#39;s empty string, we will use the system default private key from os.Getenv(&#34;SSH_AUTH_SOCK&#34;). |
-| authentication_private_key | [string](#string) |  | PKCS#8 private key in PEM format. If it&#39;s empty string, no private key is required. Used for authentication when connecting to the data source. |
-| external_secret | [DataSourceExternalSecret](#metaxisdata-v1-DataSourceExternalSecret) |  |  |
-| authentication_type | [DataSource.AuthenticationType](#metaxisdata-v1-DataSource-AuthenticationType) |  |  |
-| azure_credential | [DataSource.AzureCredential](#metaxisdata-v1-DataSource-AzureCredential) |  |  |
-| aws_credential | [DataSource.AWSCredential](#metaxisdata-v1-DataSource-AWSCredential) |  |  |
-| gcp_credential | [DataSource.GCPCredential](#metaxisdata-v1-DataSource-GCPCredential) |  |  |
-| sasl_config | [SASLConfig](#metaxisdata-v1-SASLConfig) |  |  |
-| additional_addresses | [DataSource.Address](#metaxisdata-v1-DataSource-Address) | repeated | additional_addresses is used for MongoDB replica set. |
-| direct_connection | [bool](#bool) |  | direct_connection is used for MongoDB to dispatch all the operations to the node specified in the connection string. |
-| region | [string](#string) |  | region is the location of where the DB is, works for AWS RDS. For example, us-east-1. |
-| warehouse_id | [string](#string) |  | warehouse_id is used by Databricks. |
-| master_name | [string](#string) |  | master_name is the master name used by connecting redis-master via redis sentinel. |
-| master_username | [string](#string) |  | master_username and master_password are master credentials used by redis sentinel mode. |
-| master_password | [string](#string) |  |  |
-| redis_type | [DataSource.RedisType](#metaxisdata-v1-DataSource-RedisType) |  |  |
-| cluster | [string](#string) |  | Cluster is the cluster name for the data source. Used by CockroachDB. |
 | extra_connection_parameters | [DataSource.ExtraConnectionParametersEntry](#metaxisdata-v1-DataSource-ExtraConnectionParametersEntry) | repeated | Extra connection parameters for the database connection. For PostgreSQL HA, this can be used to set target_session_attrs=read-write |
-
-
-
-
-
-
-<a name="metaxisdata-v1-DataSource-AWSCredential"></a>
-
-### DataSource.AWSCredential
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| access_key_id | [string](#string) |  |  |
-| secret_access_key | [string](#string) |  |  |
-| session_token | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-DataSource-Address"></a>
-
-### DataSource.Address
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| host | [string](#string) |  |  |
-| port | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-DataSource-AzureCredential"></a>
-
-### DataSource.AzureCredential
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| tenant_id | [string](#string) |  |  |
-| client_id | [string](#string) |  |  |
-| client_secret | [string](#string) |  |  |
 
 
 
@@ -1088,61 +936,6 @@ This value should be 4-63 characters, and valid characters are /[a-z0-9-]/. |
 | ----- | ---- | ----- | ----------- |
 | key | [string](#string) |  |  |
 | value | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-DataSource-GCPCredential"></a>
-
-### DataSource.GCPCredential
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| content | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-DataSourceExternalSecret"></a>
-
-### DataSourceExternalSecret
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| secret_type | [DataSourceExternalSecret.SecretType](#metaxisdata-v1-DataSourceExternalSecret-SecretType) |  |  |
-| url | [string](#string) |  |  |
-| auth_type | [DataSourceExternalSecret.AuthType](#metaxisdata-v1-DataSourceExternalSecret-AuthType) |  |  |
-| app_role | [DataSourceExternalSecret.AppRoleAuthOption](#metaxisdata-v1-DataSourceExternalSecret-AppRoleAuthOption) |  |  |
-| token | [string](#string) |  |  |
-| engine_name | [string](#string) |  | engine name is the name for secret engine. |
-| secret_name | [string](#string) |  | the secret name in the engine to store the password. |
-| password_key_name | [string](#string) |  | the key name for the password. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-DataSourceExternalSecret-AppRoleAuthOption"></a>
-
-### DataSourceExternalSecret.AppRoleAuthOption
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| role_id | [string](#string) |  |  |
-| secret_id | [string](#string) |  | the secret id for the role without ttl. |
-| type | [DataSourceExternalSecret.AppRoleAuthOption.SecretType](#metaxisdata-v1-DataSourceExternalSecret-AppRoleAuthOption-SecretType) |  |  |
-| mount_path | [string](#string) |  | The path where the approle auth method is mounted. |
 
 
 
@@ -1228,27 +1021,6 @@ This value should be 4-63 characters, and valid characters are /[a-z0-9-]/. |
 
 
 
-<a name="metaxisdata-v1-KerberosConfig"></a>
-
-### KerberosConfig
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| primary | [string](#string) |  |  |
-| instance | [string](#string) |  |  |
-| realm | [string](#string) |  |  |
-| keytab | [bytes](#bytes) |  |  |
-| kdc_host | [string](#string) |  |  |
-| kdc_port | [string](#string) |  |  |
-| kdc_transport_protocol | [string](#string) |  |  |
-
-
-
-
-
-
 <a name="metaxisdata-v1-ListInstancesRequest"></a>
 
 ### ListInstancesRequest
@@ -1299,21 +1071,6 @@ For example: name == &#34;sample instance&#34; name.matches(&#34;sample&#34;) re
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | The name of the instance to remove a data source from. Format: instances/{instance} |
 | data_source | [DataSource](#metaxisdata-v1-DataSource) |  | Identified by data source ID. Only READ_ONLY data source can be removed. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-SASLConfig"></a>
-
-### SASLConfig
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| krb_config | [KerberosConfig](#metaxisdata-v1-KerberosConfig) |  |  |
 
 
 
@@ -1402,75 +1159,6 @@ The instance&#39;s `name` field is used to identify the instance to update. Form
 
 
  
-
-
-<a name="metaxisdata-v1-DataSource-AuthenticationType"></a>
-
-### DataSource.AuthenticationType
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| AUTHENTICATION_UNSPECIFIED | 0 |  |
-| PASSWORD | 1 |  |
-| GOOGLE_CLOUD_SQL_IAM | 2 |  |
-| AWS_RDS_IAM | 3 |  |
-| AZURE_IAM | 4 |  |
-
-
-
-<a name="metaxisdata-v1-DataSource-RedisType"></a>
-
-### DataSource.RedisType
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| REDIS_TYPE_UNSPECIFIED | 0 |  |
-| STANDALONE | 1 |  |
-| SENTINEL | 2 |  |
-| CLUSTER | 3 |  |
-
-
-
-<a name="metaxisdata-v1-DataSourceExternalSecret-AppRoleAuthOption-SecretType"></a>
-
-### DataSourceExternalSecret.AppRoleAuthOption.SecretType
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| SECRET_TYPE_UNSPECIFIED | 0 |  |
-| PLAIN | 1 |  |
-| ENVIRONMENT | 2 |  |
-
-
-
-<a name="metaxisdata-v1-DataSourceExternalSecret-AuthType"></a>
-
-### DataSourceExternalSecret.AuthType
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| AUTH_TYPE_UNSPECIFIED | 0 |  |
-| TOKEN | 1 | ref: https://developer.hashicorp.com/vault/docs/auth/token |
-| VAULT_APP_ROLE | 2 | ref: https://developer.hashicorp.com/vault/docs/auth/approle |
-
-
-
-<a name="metaxisdata-v1-DataSourceExternalSecret-SecretType"></a>
-
-### DataSourceExternalSecret.SecretType
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| SAECRET_TYPE_UNSPECIFIED | 0 |  |
-| VAULT_KV_V2 | 1 | ref: https://developer.hashicorp.com/vault/api-docs/secret/kv/kv-v2 |
-| AWS_SECRETS_MANAGER | 2 | ref: https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html |
-| GCP_SECRET_MANAGER | 3 | ref: https://cloud.google.com/secret-manager/docs |
-
 
 
 <a name="metaxisdata-v1-DataSourceType"></a>

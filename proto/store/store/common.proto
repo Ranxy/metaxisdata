@@ -10,33 +10,19 @@ message PageToken {
   int32 offset = 2;
 }
 
+// Engine is the database engine of an instance. It must stay value-compatible
+// with metaxisdata.v1.Engine.
 enum Engine {
   ENGINE_UNSPECIFIED = 0;
-  CLICKHOUSE = 1;
+
+  reserved 1, 4 to 5, 7 to 12, 15 to 28;
+  reserved "CLICKHOUSE", "SNOWFLAKE", "SQLITE", "MONGODB", "REDIS", "ORACLE", "SPANNER", "MSSQL", "REDSHIFT", "STARROCKS", "DORIS", "HIVE", "ELASTICSEARCH", "BIGQUERY", "DYNAMODB", "DATABRICKS", "COCKROACHDB", "COSMOSDB", "TRINO", "CASSANDRA";
+
   MYSQL = 2;
   POSTGRES = 3;
-  SNOWFLAKE = 4;
-  SQLITE = 5;
   TIDB = 6;
-  MONGODB = 7;
-  REDIS = 8;
-  ORACLE = 9;
-  SPANNER = 10;
-  MSSQL = 11;
-  REDSHIFT = 12;
   MARIADB = 13;
   OCEANBASE = 14;
-  STARROCKS = 18;
-  DORIS = 19;
-  HIVE = 20;
-  ELASTICSEARCH = 21;
-  BIGQUERY = 22;
-  DYNAMODB = 23;
-  DATABRICKS = 24;
-  COCKROACHDB = 25;
-  COSMOSDB = 26;
-  TRINO = 27;
-  CASSANDRA = 28;
 }
 
 // Position in a text expressed as zero-based line and zero-based column byte

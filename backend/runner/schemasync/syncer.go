@@ -284,7 +284,6 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 	}
 	metadata.LastSyncTime = instanceMeta.Metadata.LastSyncTime
 	metadata.MysqlLowerCaseTableNames = instanceMeta.Metadata.MysqlLowerCaseTableNames
-	metadata.Roles = instanceMeta.Metadata.Roles
 
 	updateInstance := &store.UpdateInstanceMessage{
 		ResourceID: instance.ResourceID,

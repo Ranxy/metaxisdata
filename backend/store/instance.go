@@ -310,23 +310,17 @@ func IsObjectCaseSensitive(instance *InstanceMessage) bool {
 		return false
 	case storepb.Engine_MYSQL, storepb.Engine_MARIADB, storepb.Engine_OCEANBASE:
 		return instance.Metadata == nil || instance.Metadata.MysqlLowerCaseTableNames == 0
-	case storepb.Engine_MSSQL:
-		// In fact, SQL Server is possible to create a case-sensitive database and case-insensitive database on one instance.
-		// https://www.webucator.com/article/how-to-check-case-sensitivity-in-sql-server/
-		// But by default, SQL Server is case-insensitive.
-		return false
 	default:
 		return true
 	}
 }
 
+// obfuscateInstance returns a clone with every credential field replaced by its
+// obfuscated form and the plaintext cleared.
 func (s *Store) obfuscateInstance(ctx context.Context, instance *storepb.Instance) (*storepb.Instance, error) {
 	secret, err := s.GetSecret(ctx)
 	if err != nil {
 		return nil, err
-	}
-	obfuscate := func(plaintext string) (string, error) {
-		return common.Obfuscate(plaintext, secret)
 	}
 
 	redacted, ok := proto.Clone(instance).(*storepb.Instance)
@@ -334,66 +328,13 @@ func (s *Store) obfuscateInstance(ctx context.Context, instance *storepb.Instanc
 		return nil, errors.Errorf("failed to clone instance")
 	}
 	for _, ds := range redacted.GetDataSources() {
-		if ds.ObfuscatedPassword, err = obfuscate(ds.GetPassword()); err != nil {
-			return nil, err
-		}
-		ds.Password = ""
-		if ds.ObfuscatedSslCa, err = obfuscate(ds.GetSslCa()); err != nil {
-			return nil, err
-		}
-		ds.SslCa = ""
-		if ds.ObfuscatedSslCert, err = obfuscate(ds.GetSslCert()); err != nil {
-			return nil, err
-		}
-		ds.SslCert = ""
-		if ds.ObfuscatedSslKey, err = obfuscate(ds.GetSslKey()); err != nil {
-			return nil, err
-		}
-		ds.SslKey = ""
-		if ds.ObfuscatedSshPassword, err = obfuscate(ds.GetSshPassword()); err != nil {
-			return nil, err
-		}
-		ds.SshPassword = ""
-		if ds.ObfuscatedSshPrivateKey, err = obfuscate(ds.GetSshPrivateKey()); err != nil {
-			return nil, err
-		}
-		ds.SshPrivateKey = ""
-		if ds.ObfuscatedAuthenticationPrivateKey, err = obfuscate(ds.GetAuthenticationPrivateKey()); err != nil {
-			return nil, err
-		}
-		ds.AuthenticationPrivateKey = ""
-		if ds.ObfuscatedMasterPassword, err = obfuscate(ds.GetMasterPassword()); err != nil {
-			return nil, err
-		}
-		ds.MasterPassword = ""
-
-		if azureCredential := ds.GetAzureCredential(); azureCredential != nil {
-			if azureCredential.ObfuscatedClientSecret, err = obfuscate(azureCredential.ClientSecret); err != nil {
+		for _, field := range secretFields(ds) {
+			obfuscated, err := common.Obfuscate(*field.plaintext, secret)
+			if err != nil {
 				return nil, err
 			}
-			azureCredential.ClientSecret = ""
-		}
-		if awsCredential := ds.GetAwsCredential(); awsCredential != nil {
-			if awsCredential.ObfuscatedAccessKeyId, err = obfuscate(awsCredential.AccessKeyId); err != nil {
-				return nil, err
-			}
-			awsCredential.AccessKeyId = ""
-
-			if awsCredential.ObfuscatedSecretAccessKey, err = obfuscate(awsCredential.SecretAccessKey); err != nil {
-				return nil, err
-			}
-			awsCredential.SecretAccessKey = ""
-
-			if awsCredential.ObfuscatedSessionToken, err = obfuscate(awsCredential.SessionToken); err != nil {
-				return nil, err
-			}
-			awsCredential.SessionToken = ""
-		}
-		if gcpCredential := ds.GetGcpCredential(); gcpCredential != nil {
-			if gcpCredential.ObfuscatedContent, err = obfuscate(gcpCredential.Content); err != nil {
-				return nil, err
-			}
-			gcpCredential.Content = ""
+			*field.obfuscated = obfuscated
+			*field.plaintext = ""
 		}
 	}
 	return redacted, nil
@@ -406,89 +347,31 @@ func (s *Store) unObfuscateInstance(ctx context.Context, instance *storepb.Insta
 	}
 
 	for _, ds := range instance.GetDataSources() {
-		password, err := common.Unobfuscate(ds.GetObfuscatedPassword(), secret)
-		if err != nil {
-			return err
-		}
-		ds.Password = password
-
-		sslCa, err := common.Unobfuscate(ds.GetObfuscatedSslCa(), secret)
-		if err != nil {
-			return err
-		}
-		ds.SslCa = sslCa
-
-		sslCert, err := common.Unobfuscate(ds.GetObfuscatedSslCert(), secret)
-		if err != nil {
-			return err
-		}
-		ds.SslCert = sslCert
-
-		sslKey, err := common.Unobfuscate(ds.GetObfuscatedSslKey(), secret)
-		if err != nil {
-			return err
-		}
-		ds.SslKey = sslKey
-
-		sshPassword, err := common.Unobfuscate(ds.GetObfuscatedSshPassword(), secret)
-		if err != nil {
-			return err
-		}
-		ds.SshPassword = sshPassword
-
-		sshPrivateKey, err := common.Unobfuscate(ds.GetObfuscatedSshPrivateKey(), secret)
-		if err != nil {
-			return err
-		}
-		ds.SshPrivateKey = sshPrivateKey
-
-		authenticationPrivateKey, err := common.Unobfuscate(ds.GetObfuscatedAuthenticationPrivateKey(), secret)
-		if err != nil {
-			return err
-		}
-		ds.AuthenticationPrivateKey = authenticationPrivateKey
-
-		masterPassword, err := common.Unobfuscate(ds.GetObfuscatedMasterPassword(), secret)
-		if err != nil {
-			return err
-		}
-		ds.MasterPassword = masterPassword
-
-		if azureCredential := ds.GetAzureCredential(); azureCredential != nil {
-			clientSecret, err := common.Unobfuscate(azureCredential.ObfuscatedClientSecret, secret)
+		for _, field := range secretFields(ds) {
+			plaintext, err := common.Unobfuscate(*field.obfuscated, secret)
 			if err != nil {
 				return err
 			}
-			ds.GetAzureCredential().ClientSecret = clientSecret
-		}
-
-		if awsCredential := ds.GetAwsCredential(); awsCredential != nil {
-			accessKeyID, err := common.Unobfuscate(awsCredential.ObfuscatedAccessKeyId, secret)
-			if err != nil {
-				return err
-			}
-			awsCredential.AccessKeyId = accessKeyID
-
-			secretAccessKey, err := common.Unobfuscate(awsCredential.ObfuscatedSecretAccessKey, secret)
-			if err != nil {
-				return err
-			}
-			awsCredential.SecretAccessKey = secretAccessKey
-
-			sessionToken, err := common.Unobfuscate(awsCredential.ObfuscatedSessionToken, secret)
-			if err != nil {
-				return err
-			}
-			awsCredential.SessionToken = sessionToken
-		}
-
-		if gcpCredential := ds.GetGcpCredential(); gcpCredential != nil {
-			content, err := common.Unobfuscate(gcpCredential.ObfuscatedContent, secret)
-			if err != nil {
-				return err
-			}
-			gcpCredential.Content = content
+			*field.plaintext = plaintext
 		}
 	}
 	return nil
+}
+
+// secretField pairs a plaintext data source field with its obfuscated
+// counterpart.
+type secretField struct {
+	plaintext  *string
+	obfuscated *string
+}
+
+func secretFields(ds *storepb.DataSource) []secretField {
+	return []secretField{
+		{plaintext: &ds.Password, obfuscated: &ds.ObfuscatedPassword},
+		{plaintext: &ds.SslCa, obfuscated: &ds.ObfuscatedSslCa},
+		{plaintext: &ds.SslCert, obfuscated: &ds.ObfuscatedSslCert},
+		{plaintext: &ds.SslKey, obfuscated: &ds.ObfuscatedSslKey},
+		{plaintext: &ds.SshPassword, obfuscated: &ds.ObfuscatedSshPassword},
+		{plaintext: &ds.SshPrivateKey, obfuscated: &ds.ObfuscatedSshPrivateKey},
+	}
 }

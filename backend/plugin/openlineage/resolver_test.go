@@ -318,8 +318,7 @@ func TestIsMySQLLike(t *testing.T) {
 	assert.True(t, isMySQLLike(storepb.Engine_TIDB))
 	assert.True(t, isMySQLLike(storepb.Engine_MARIADB))
 	assert.False(t, isMySQLLike(storepb.Engine_POSTGRES))
-	assert.False(t, isMySQLLike(storepb.Engine_CLICKHOUSE))
-	assert.False(t, isMySQLLike(storepb.Engine_SNOWFLAKE))
+	assert.False(t, isMySQLLike(storepb.Engine_ENGINE_UNSPECIFIED))
 }
 
 func TestInferDatasetType(t *testing.T) {

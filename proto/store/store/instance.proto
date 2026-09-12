@@ -35,28 +35,8 @@ message Instance {
 
   google.protobuf.Timestamp last_sync_time = 11;
 
-  repeated InstanceRole roles = 12;
-
-  // Labels are key-value pairs that can be attached to the instance.
-  // For example, { "org_group": "infrastructure", "environment": "production" }
-  map<string, string> labels = 13;
-}
-
-// InstanceRole is the API message for instance role.
-message InstanceRole {
-  // The role name.
-  string name = 1;
-
-  // The connection count limit for this role.
-  optional int32 connection_limit = 2;
-
-  // The expiration for the role's password.
-  optional string valid_until = 3;
-
-  // The role attribute.
-  // For PostgreSQL, it contains super_user, no_inherit, create_role, create_db, can_login, replication and bypass_rls. Docs: https://www.postgresql.org/docs/current/role-attributes.html
-  // For MySQL, it is the global privileges as GRANT statements, which means it only contains "GRANT ... ON *.* TO ...". Docs: https://dev.mysql.com/doc/refman/8.0/en/grant.html
-  optional string attribute = 4;
+  reserved 12, 13;
+  reserved "roles", "labels";
 }
 
 message DataSource {
@@ -83,17 +63,6 @@ message DataSource {
   string port = 9;
   string database = 10;
 
-  // srv, authentication_database, and replica_set are used for MongoDB.
-  // srv is a boolean flag that indicates whether the host is a DNS SRV record.
-  bool srv = 11;
-  // authentication_database is the database name to authenticate against, which stores the user credentials.
-  string authentication_database = 12;
-  // replica_set is used for MongoDB replica set.
-  string replica_set = 25;
-
-  // sid and service_name are used for Oracle.
-  string sid = 13;
-  string service_name = 14;
   // SSH related
   // The hostname of the SSH server agent.
   string ssh_host = 15;
@@ -107,179 +76,17 @@ message DataSource {
   // The private key to login the server. If it's empty string, we will use the system default private key from os.Getenv("SSH_AUTH_SOCK").
   string ssh_private_key = 42;
   string obfuscated_ssh_private_key = 19;
-  // PKCS#8 private key in PEM format. If it's empty string, no private key is required.
-  // Used for authentication when connecting to the data source.
-  string authentication_private_key = 43;
-  string obfuscated_authentication_private_key = 20;
-
-  DataSourceExternalSecret external_secret = 21;
-
-  enum AuthenticationType {
-    AUTHENTICATION_UNSPECIFIED = 0;
-    PASSWORD = 1;
-    GOOGLE_CLOUD_SQL_IAM = 2;
-    AWS_RDS_IAM = 3;
-    AZURE_IAM = 4;
-  }
-  AuthenticationType authentication_type = 22;
-
-  message AzureCredential {
-    string tenant_id = 1;
-    string client_id = 2;
-    string client_secret = 3;
-    string obfuscated_client_secret = 4;
-  }
-  message AWSCredential {
-    string access_key_id = 1;
-    string obfuscated_access_key_id = 2;
-    string secret_access_key = 3;
-    string obfuscated_secret_access_key = 4;
-    string session_token = 5;
-    string obfuscated_session_token = 6;
-    // ARN of IAM role to assume for cross-account access.
-    // See: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use.html
-    string role_arn = 7;
-    // Optional external ID for additional security when assuming role.
-    // See: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-user_externalid.html
-    string external_id = 8;
-  }
-  message GCPCredential {
-    string content = 1;
-    string obfuscated_content = 2;
-  }
-  oneof iam_extension {
-    AzureCredential azure_credential = 23;
-    AWSCredential aws_credential = 45;
-    GCPCredential gcp_credential = 46;
-  }
-
-  SASLConfig sasl_config = 24;
-
-  message Address {
-    string host = 1;
-    string port = 2;
-  }
-  // additional_addresses is used for MongoDB replica set.
-  repeated Address additional_addresses = 26;
-
-  // direct_connection is used for MongoDB to dispatch all the operations to the node specified in the connection string.
-  bool direct_connection = 27;
-
-  // Region is the location of the database, used for AWS RDS. For example, us-east-1.
-  string region = 28;
-
-  // warehouse_id is used by Databricks.
-  string warehouse_id = 29;
-
-  // master_name is the master name used by connecting redis-master via redis sentinel.
-  string master_name = 31;
-
-  // master_username and master_obfuscated_password are master credentials used by redis sentinel mode.
-  string master_username = 32;
-  string master_password = 44;
-  string obfuscated_master_password = 33;
-
-  enum RedisType {
-    REDIS_TYPE_UNSPECIFIED = 0;
-    STANDALONE = 1;
-    SENTINEL = 2;
-    CLUSTER = 3;
-  }
-  RedisType redis_type = 34;
-  // Cluster is the cluster name for the data source. Used by CockroachDB.
-  string cluster = 35;
 
   // Extra connection parameters for the database connection.
   // For PostgreSQL HA, this can be used to set target_session_attrs=read-write
   map<string, string> extra_connection_parameters = 36;
-}
 
-message SASLConfig {
-  oneof mechanism {
-    KerberosConfig krb_config = 1;
-  }
-}
-
-message KerberosConfig {
-  string primary = 1;
-  string instance = 2;
-  string realm = 3;
-  bytes keytab = 4;
-  string kdc_host = 5;
-  string kdc_port = 6;
-  string kdc_transport_protocol = 7;
+  reserved 11, 12, 13, 14, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31, 32, 33, 34, 35, 43, 44, 45, 46;
+  reserved "srv", "authentication_database", "replica_set", "sid", "service_name", "authentication_private_key", "obfuscated_authentication_private_key", "external_secret", "authentication_type", "azure_credential", "aws_credential", "gcp_credential", "sasl_config", "additional_addresses", "direct_connection", "region", "warehouse_id", "master_name", "master_username", "master_password", "obfuscated_master_password", "redis_type", "cluster";
 }
 
 enum DataSourceType {
   DATA_SOURCE_UNSPECIFIED = 0;
   ADMIN = 1;
   READ_ONLY = 2;
-}
-
-message DataSourceExternalSecret {
-  enum SecretType {
-    SECRET_TYPE_UNSPECIFIED = 0;
-    // ref: https://developer.hashicorp.com/vault/api-docs/secret/kv/kv-v2
-    VAULT_KV_V2 = 1;
-    // ref: https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html
-    AWS_SECRETS_MANAGER = 2;
-    // ref: https://cloud.google.com/secret-manager/docs
-    GCP_SECRET_MANAGER = 3;
-  }
-  SecretType secret_type = 1;
-  string url = 2;
-
-  enum AuthType {
-    AUTH_TYPE_UNSPECIFIED = 0;
-    // ref: https://developer.hashicorp.com/vault/docs/auth/token
-    TOKEN = 1;
-    // ref: https://developer.hashicorp.com/vault/docs/auth/approle
-    VAULT_APP_ROLE = 2;
-  }
-  AuthType auth_type = 3;
-
-  message AppRoleAuthOption {
-    string role_id = 1;
-    // The secret ID for the role without TTL.
-    string secret_id = 2;
-
-    enum SecretType {
-      SECRET_TYPE_UNSPECIFIED = 0;
-      PLAIN = 1;
-      ENVIRONMENT = 2;
-    }
-
-    SecretType type = 3;
-
-    // The path where the approle auth method is mounted.
-    string mount_path = 4;
-  }
-
-  oneof auth_option {
-    AppRoleAuthOption app_role = 4;
-    string token = 5;
-  }
-
-  // engine name is the name for secret engine.
-  string engine_name = 6;
-  // the secret name in the engine to store the password.
-  string secret_name = 7;
-  // the key name for the password.
-  string password_key_name = 8;
-
-  // TLS configuration for connecting to Vault server.
-  // These fields are separate from the database TLS configuration in DataSource.
-  // skip_vault_tls_verification disables TLS certificate verification for Vault connections.
-  // Default is false (verification enabled) for security.
-  // Only set to true for development or when certificates cannot be properly validated.
-  bool skip_vault_tls_verification = 9;
-  // CA certificate for Vault server verification.
-  string vault_ssl_ca = 10;
-  string obfuscated_vault_ssl_ca = 11;
-  // Client certificate for mutual TLS authentication with Vault.
-  string vault_ssl_cert = 12;
-  string obfuscated_vault_ssl_cert = 13;
-  // Client private key for mutual TLS authentication with Vault.
-  string vault_ssl_key = 14;
-  string obfuscated_vault_ssl_key = 15;
 }

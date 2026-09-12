@@ -21,94 +21,36 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Engine is the database engine of an instance. It must stay value-compatible
+// with metaxisdata.v1.Engine.
 type Engine int32
 
 const (
 	Engine_ENGINE_UNSPECIFIED Engine = 0
-	Engine_CLICKHOUSE         Engine = 1
 	Engine_MYSQL              Engine = 2
 	Engine_POSTGRES           Engine = 3
-	Engine_SNOWFLAKE          Engine = 4
-	Engine_SQLITE             Engine = 5
 	Engine_TIDB               Engine = 6
-	Engine_MONGODB            Engine = 7
-	Engine_REDIS              Engine = 8
-	Engine_ORACLE             Engine = 9
-	Engine_SPANNER            Engine = 10
-	Engine_MSSQL              Engine = 11
-	Engine_REDSHIFT           Engine = 12
 	Engine_MARIADB            Engine = 13
 	Engine_OCEANBASE          Engine = 14
-	Engine_STARROCKS          Engine = 18
-	Engine_DORIS              Engine = 19
-	Engine_HIVE               Engine = 20
-	Engine_ELASTICSEARCH      Engine = 21
-	Engine_BIGQUERY           Engine = 22
-	Engine_DYNAMODB           Engine = 23
-	Engine_DATABRICKS         Engine = 24
-	Engine_COCKROACHDB        Engine = 25
-	Engine_COSMOSDB           Engine = 26
-	Engine_TRINO              Engine = 27
-	Engine_CASSANDRA          Engine = 28
 )
 
 // Enum value maps for Engine.
 var (
 	Engine_name = map[int32]string{
 		0:  "ENGINE_UNSPECIFIED",
-		1:  "CLICKHOUSE",
 		2:  "MYSQL",
 		3:  "POSTGRES",
-		4:  "SNOWFLAKE",
-		5:  "SQLITE",
 		6:  "TIDB",
-		7:  "MONGODB",
-		8:  "REDIS",
-		9:  "ORACLE",
-		10: "SPANNER",
-		11: "MSSQL",
-		12: "REDSHIFT",
 		13: "MARIADB",
 		14: "OCEANBASE",
-		18: "STARROCKS",
-		19: "DORIS",
-		20: "HIVE",
-		21: "ELASTICSEARCH",
-		22: "BIGQUERY",
-		23: "DYNAMODB",
-		24: "DATABRICKS",
-		25: "COCKROACHDB",
-		26: "COSMOSDB",
-		27: "TRINO",
-		28: "CASSANDRA",
 	}
 	Engine_value = map[string]int32{
 		"ENGINE_UNSPECIFIED": 0,
-		"CLICKHOUSE":         1,
 		"MYSQL":              2,
 		"POSTGRES":           3,
-		"SNOWFLAKE":          4,
-		"SQLITE":             5,
 		"TIDB":               6,
-		"MONGODB":            7,
-		"REDIS":              8,
-		"ORACLE":             9,
-		"SPANNER":            10,
-		"MSSQL":              11,
-		"REDSHIFT":           12,
 		"MARIADB":            13,
 		"OCEANBASE":          14,
-		"STARROCKS":          18,
-		"DORIS":              19,
-		"HIVE":               20,
-		"ELASTICSEARCH":      21,
-		"BIGQUERY":           22,
-		"DYNAMODB":           23,
-		"DATABRICKS":         24,
-		"COCKROACHDB":        25,
-		"COSMOSDB":           26,
-		"TRINO":              27,
-		"CASSANDRA":          28,
 	}
 )
 
@@ -313,39 +255,16 @@ const file_store_common_proto_rawDesc = "" +
 	"\x06column\x18\x02 \x01(\x05R\x06column\"/\n" +
 	"\x05Range\x12\x14\n" +
 	"\x05start\x18\x01 \x01(\x05R\x05start\x12\x10\n" +
-	"\x03end\x18\x02 \x01(\x05R\x03end*\xf0\x02\n" +
+	"\x03end\x18\x02 \x01(\x05R\x03end*\xb8\x02\n" +
 	"\x06Engine\x12\x16\n" +
-	"\x12ENGINE_UNSPECIFIED\x10\x00\x12\x0e\n" +
-	"\n" +
-	"CLICKHOUSE\x10\x01\x12\t\n" +
+	"\x12ENGINE_UNSPECIFIED\x10\x00\x12\t\n" +
 	"\x05MYSQL\x10\x02\x12\f\n" +
-	"\bPOSTGRES\x10\x03\x12\r\n" +
-	"\tSNOWFLAKE\x10\x04\x12\n" +
-	"\n" +
-	"\x06SQLITE\x10\x05\x12\b\n" +
+	"\bPOSTGRES\x10\x03\x12\b\n" +
 	"\x04TIDB\x10\x06\x12\v\n" +
-	"\aMONGODB\x10\a\x12\t\n" +
-	"\x05REDIS\x10\b\x12\n" +
-	"\n" +
-	"\x06ORACLE\x10\t\x12\v\n" +
-	"\aSPANNER\x10\n" +
-	"\x12\t\n" +
-	"\x05MSSQL\x10\v\x12\f\n" +
-	"\bREDSHIFT\x10\f\x12\v\n" +
 	"\aMARIADB\x10\r\x12\r\n" +
-	"\tOCEANBASE\x10\x0e\x12\r\n" +
-	"\tSTARROCKS\x10\x12\x12\t\n" +
-	"\x05DORIS\x10\x13\x12\b\n" +
-	"\x04HIVE\x10\x14\x12\x11\n" +
-	"\rELASTICSEARCH\x10\x15\x12\f\n" +
-	"\bBIGQUERY\x10\x16\x12\f\n" +
-	"\bDYNAMODB\x10\x17\x12\x0e\n" +
-	"\n" +
-	"DATABRICKS\x10\x18\x12\x0f\n" +
-	"\vCOCKROACHDB\x10\x19\x12\f\n" +
-	"\bCOSMOSDB\x10\x1a\x12\t\n" +
-	"\x05TRINO\x10\x1b\x12\r\n" +
-	"\tCASSANDRA\x10\x1cB\x14Z\x12generated-go/storeb\x06proto3"
+	"\tOCEANBASE\x10\x0e\"\x04\b\x01\x10\x01\"\x04\b\x04\x10\x05\"\x04\b\a\x10\f\"\x04\b\x0f\x10\x1c*\n" +
+	"CLICKHOUSE*\tSNOWFLAKE*\x06SQLITE*\aMONGODB*\x05REDIS*\x06ORACLE*\aSPANNER*\x05MSSQL*\bREDSHIFT*\tSTARROCKS*\x05DORIS*\x04HIVE*\rELASTICSEARCH*\bBIGQUERY*\bDYNAMODB*\n" +
+	"DATABRICKS*\vCOCKROACHDB*\bCOSMOSDB*\x05TRINO*\tCASSANDRAB\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
 	file_store_common_proto_rawDescOnce sync.Once

@@ -53,18 +53,15 @@ func TestMarshalAuditMessageRedactsSecrets(t *testing.T) {
 		{
 			name: "data source credentials",
 			message: &v1pb.DataSource{
-				Id:      "admin",
-				SslCert: "-----BEGIN CERTIFICATE-----",
-				SslKey:  "-----BEGIN PRIVATE KEY-----",
-				IamExtension: &v1pb.DataSource_GcpCredential{
-					GcpCredential: &v1pb.DataSource_GCPCredential{Content: `{"private_key":"..."}`},
-				},
+				Id:            "admin",
+				SslCert:       "-----BEGIN CERTIFICATE-----",
+				SslKey:        "-----BEGIN PRIVATE KEY-----",
+				SshPrivateKey: "-----BEGIN OPENSSH PRIVATE KEY-----",
 			},
 			assert: func(t *testing.T, raw map[string]any) {
 				require.Equal(t, redactedValue, raw["sslCert"])
 				require.Equal(t, redactedValue, raw["sslKey"])
-				// The whole credential object is redacted by its field name.
-				require.Equal(t, redactedValue, raw["gcpCredential"])
+				require.Equal(t, redactedValue, raw["sshPrivateKey"])
 			},
 		},
 	}
@@ -83,7 +80,7 @@ func TestMarshalAuditMessageRedactsSecrets(t *testing.T) {
 func TestIsSensitiveAuditField(t *testing.T) {
 	t.Parallel()
 
-	for _, field := range []string{"key", "content", "sslKey", "sslCert", "keytab", "passwd", "pwd", "bearer", "jwt", "session", "password", "apiKey", "accessKeyId"} {
+	for _, field := range []string{"key", "sslKey", "sslCert", "passwd", "pwd", "bearer", "jwt", "session", "password", "apiKey", "accessKeyId", "sshPrivateKey"} {
 		require.True(t, isSensitiveAuditField(field), "expected %q to be redacted", field)
 	}
 	for _, field := range []string{"email", "name", "host", "port", "description"} {
