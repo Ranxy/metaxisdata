@@ -260,6 +260,13 @@
   
     - [OpenLineageService](#metaxisdata-v1-OpenLineageService)
   
+- [v1/setting_service.proto](#v1_setting_service-proto)
+    - [GetWorkspaceProfileSettingRequest](#metaxisdata-v1-GetWorkspaceProfileSettingRequest)
+    - [UpdateWorkspaceProfileSettingRequest](#metaxisdata-v1-UpdateWorkspaceProfileSettingRequest)
+    - [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting)
+  
+    - [SettingService](#metaxisdata-v1-SettingService)
+  
 - [Scalar Value Types](#scalar-value-types)
 
 
@@ -4340,6 +4347,78 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | CreateAPIKey | [CreateAPIKeyRequest](#metaxisdata-v1-CreateAPIKeyRequest) | [CreateAPIKeyResponse](#metaxisdata-v1-CreateAPIKeyResponse) |  |
 | ListAPIKey | [ListAPIKeyRequest](#metaxisdata-v1-ListAPIKeyRequest) | [ListAPIKeyResponse](#metaxisdata-v1-ListAPIKeyResponse) |  |
 | RevokeAPIKey | [RevokeAPIKeyRequest](#metaxisdata-v1-RevokeAPIKeyRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
+
+ 
+
+
+
+<a name="v1_setting_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/setting_service.proto
+
+
+
+<a name="metaxisdata-v1-GetWorkspaceProfileSettingRequest"></a>
+
+### GetWorkspaceProfileSettingRequest
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateWorkspaceProfileSettingRequest"></a>
+
+### UpdateWorkspaceProfileSettingRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| setting | [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting) |  | The setting to update. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The list of fields to update. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-WorkspaceProfileSetting"></a>
+
+### WorkspaceProfileSetting
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| external_url | [string](#string) |  | The external URL used for the SSO authentication callback. |
+| disallow_signup | [bool](#bool) |  | Disallow self-service signup. When enabled, only a workspace admin can create users. |
+| disallow_password_signin | [bool](#bool) |  | Disallow password signin. Workspace admins are exempt. |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-SettingService"></a>
+
+### SettingService
+
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| GetWorkspaceProfileSetting | [GetWorkspaceProfileSettingRequest](#metaxisdata-v1-GetWorkspaceProfileSettingRequest) | [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting) | Get the workspace profile setting. Permissions required: None
+
+This method is readable without credentials because the login page needs to know whether self-service signup is enabled. |
+| UpdateWorkspaceProfileSetting | [UpdateWorkspaceProfileSettingRequest](#metaxisdata-v1-UpdateWorkspaceProfileSettingRequest) | [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting) | Update the workspace profile setting. |
 
  
 

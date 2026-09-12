@@ -1162,6 +1162,33 @@
             </ul>
           </li>
         
+          
+          <li>
+            <a href="#v1%2fsetting_service.proto">v1/setting_service.proto</a>
+            <ul>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetWorkspaceProfileSettingRequest"><span class="badge">M</span>GetWorkspaceProfileSettingRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.UpdateWorkspaceProfileSettingRequest"><span class="badge">M</span>UpdateWorkspaceProfileSettingRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.WorkspaceProfileSetting"><span class="badge">M</span>WorkspaceProfileSetting</a>
+                </li>
+              
+              
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.SettingService"><span class="badge">S</span>SettingService</a>
+                </li>
+              
+            </ul>
+          </li>
+        
         <li><a href="#scalar-value-types">Scalar Value Types</a></li>
       </ul>
     </div>
@@ -12840,6 +12867,165 @@ If lineage_type is not specified, both source and target lineage will be returne
                 <td>DELETE</td>
                 <td>/v1/openlineage/apiKeys/{id}</td>
                 <td></td>
+              </tr>
+              
+            
+            </tbody>
+          </table>
+          
+        
+    
+      
+      <div class="file-heading">
+        <h2 id="v1/setting_service.proto">v1/setting_service.proto</h2><a href="#title">Top</a>
+      </div>
+      <p></p>
+
+      
+        <h3 id="metaxisdata.v1.GetWorkspaceProfileSettingRequest">GetWorkspaceProfileSettingRequest</h3>
+        <p></p>
+
+        
+
+        
+      
+        <h3 id="metaxisdata.v1.UpdateWorkspaceProfileSettingRequest">UpdateWorkspaceProfileSettingRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>setting</td>
+                  <td><a href="#metaxisdata.v1.WorkspaceProfileSetting">WorkspaceProfileSetting</a></td>
+                  <td></td>
+                  <td><p>The setting to update. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_mask</td>
+                  <td><a href="#google.protobuf.FieldMask">google.protobuf.FieldMask</a></td>
+                  <td></td>
+                  <td><p>The list of fields to update. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.WorkspaceProfileSetting">WorkspaceProfileSetting</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>external_url</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The external URL used for the SSO authentication callback. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>disallow_signup</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Disallow self-service signup. When enabled, only a workspace admin can
+create users. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>disallow_password_signin</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Disallow password signin. Workspace admins are exempt. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+
+      
+
+      
+
+      
+        <h3 id="metaxisdata.v1.SettingService">SettingService</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>GetWorkspaceProfileSetting</td>
+                <td><a href="#metaxisdata.v1.GetWorkspaceProfileSettingRequest">GetWorkspaceProfileSettingRequest</a></td>
+                <td><a href="#metaxisdata.v1.WorkspaceProfileSetting">WorkspaceProfileSetting</a></td>
+                <td><p>Get the workspace profile setting.
+Permissions required: None
+
+This method is readable without credentials because the login page needs
+to know whether self-service signup is enabled.</p></td>
+              </tr>
+            
+              <tr>
+                <td>UpdateWorkspaceProfileSetting</td>
+                <td><a href="#metaxisdata.v1.UpdateWorkspaceProfileSettingRequest">UpdateWorkspaceProfileSettingRequest</a></td>
+                <td><a href="#metaxisdata.v1.WorkspaceProfileSetting">WorkspaceProfileSetting</a></td>
+                <td><p>Update the workspace profile setting.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+
+        
+          
+          
+          <h4>Methods with HTTP bindings</h4>
+          <table>
+            <thead>
+              <tr>
+                <td>Method Name</td>
+                <td>Method</td>
+                <td>Pattern</td>
+                <td>Body</td>
+              </tr>
+            </thead>
+            <tbody>
+            
+              
+              
+              <tr>
+                <td>GetWorkspaceProfileSetting</td>
+                <td>GET</td>
+                <td>/v1/settings/workspaceProfile</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>UpdateWorkspaceProfileSetting</td>
+                <td>PATCH</td>
+                <td>/v1/settings/workspaceProfile</td>
+                <td>setting</td>
               </tr>
               
             

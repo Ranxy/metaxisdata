@@ -58,10 +58,24 @@
     "datasets": "Datasets",
     "events": "Events",
     "settings": "Settings",
+    "generalSettings": "General",
     "users": "User Management",
     "auditLogs": "Audit Logs",
     "openlineage": "OpenLineage",
     "explainSQL": "Explain SQL"
+  },
+  "generalSettings": {
+    "title": "General",
+    "description": "Workspace-wide settings.",
+    "signupSection": "Signup & Signin",
+    "signupSectionDescription": "Control how users join and sign in to this workspace.",
+    "disallowSignup": "Disallow self-service signup",
+    "disallowSignupHint": "When enabled, only workspace admins can create users.",
+    "disallowPasswordSignin": "Disallow password signin",
+    "disallowPasswordSigninHint": "When enabled, users must sign in with SSO. Workspace admins are exempt.",
+    "loadError": "Failed to load settings",
+    "saveSuccess": "Settings saved",
+    "saveError": "Failed to save settings"
   },
   "auditLogs": {
     "title": "Audit Logs",

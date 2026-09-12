@@ -58,10 +58,24 @@
     "datasets": "Datasets",
     "events": "Events",
     "settings": "设置",
+    "generalSettings": "通用设置",
     "users": "用户管理",
     "auditLogs": "审计日志",
     "openlineage": "OpenLineage",
     "explainSQL": "SQL 解释"
+  },
+  "generalSettings": {
+    "title": "通用设置",
+    "description": "工作区级别的设置。",
+    "signupSection": "注册与登录",
+    "signupSectionDescription": "控制用户如何加入和登录该工作区。",
+    "disallowSignup": "禁止自助注册",
+    "disallowSignupHint": "开启后，只有工作区管理员可以创建用户。",
+    "disallowPasswordSignin": "禁止密码登录",
+    "disallowPasswordSigninHint": "开启后，用户必须通过 SSO 登录，工作区管理员不受限制。",
+    "loadError": "加载设置失败",
+    "saveSuccess": "设置已保存",
+    "saveError": "保存设置失败"
   },
   "auditLogs": {
     "title": "审计日志",

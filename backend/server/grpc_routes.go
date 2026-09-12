@@ -69,6 +69,7 @@ func configureGrpcRouters(
 	openLineageService := apiv1.NewOpenLineageService(stores)
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
 	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry)
+	settingService := apiv1.NewSettingService(stores)
 
 	onPanic := func(_ context.Context, s connect.Spec, _ http.Header, p any) error {
 		stack := stacktrace.TakeStacktrace(20 /* n */, 5 /* skip */)
@@ -107,6 +108,8 @@ func configureGrpcRouters(
 	connectHandlers[llmPath] = llmHandler
 	explainSQLPath, explainSQLHandler := v1connect.NewExplainSQLServiceHandler(explainSQLService, handlerOpts)
 	connectHandlers[explainSQLPath] = explainSQLHandler
+	settingPath, settingHandler := v1connect.NewSettingServiceHandler(settingService, handlerOpts)
+	connectHandlers[settingPath] = settingHandler
 	// grpc reflection handlers.
 	reflector := grpcreflect.NewStaticReflector(
 		v1connect.AuthServiceName,
@@ -118,6 +121,7 @@ func configureGrpcRouters(
 		v1connect.OpenLineageServiceName,
 		v1connect.LLMServiceName,
 		v1connect.ExplainSQLServiceName,
+		v1connect.SettingServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
 	connectHandlers[reflectPath] = reflectHandler
@@ -163,6 +167,9 @@ func configureGrpcRouters(
 		return err
 	}
 	if err := v1pb.RegisterExplainSQLServiceHandler(ctx, mux, grpcConn); err != nil {
+		return err
+	}
+	if err := v1pb.RegisterSettingServiceHandler(ctx, mux, grpcConn); err != nil {
 		return err
 	}
 

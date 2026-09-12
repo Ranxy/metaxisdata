@@ -94,7 +94,10 @@
             </Button>
 
             <!-- Switch to Register -->
-            <div class="mt-6 text-center text-sm">
+            <div
+              v-if="allowSignup"
+              class="mt-6 text-center text-sm"
+            >
               <span class="text-muted-foreground">{{ t("login.noAccount") }}</span>
               <Button
                 variant="link"
@@ -227,9 +230,10 @@ import {
   Loader2,
   Lock,
 } from "lucide-vue-next";
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
+import { getWorkspaceProfileSetting } from "@/api/setting";
 import * as userApi from "@/api/user";
 import AppInput from "@/components/common/AppInput.vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -253,6 +257,8 @@ const appStore = useAppStore();
 
 // Mode toggle
 const isRegisterMode = ref(false);
+// Signup can be disabled workspace-wide; hide the register entry then.
+const allowSignup = ref(true);
 
 // Login form
 const loginForm = ref({
@@ -370,4 +376,17 @@ async function handleRegister() {
     isRegistering.value = false;
   }
 }
+
+onMounted(async () => {
+  try {
+    const setting = await getWorkspaceProfileSetting();
+    allowSignup.value = !setting.disallowSignup;
+    if (!allowSignup.value) {
+      isRegisterMode.value = false;
+    }
+  } catch {
+    // Keep signup visible if the setting cannot be loaded; the server still
+    // enforces the policy.
+  }
+});
 </script>

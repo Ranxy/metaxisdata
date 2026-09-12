@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package metaxisdata.v1;
+
+import "google/api/annotations.proto";
+import "google/api/client.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/field_mask.proto";
+import "v1/annotation.proto";
+
+option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
+
+service SettingService {
+  // Get the workspace profile setting.
+  // Permissions required: None
+  //
+  // This method is readable without credentials because the login page needs
+  // to know whether self-service signup is enabled.
+  rpc GetWorkspaceProfileSetting(GetWorkspaceProfileSettingRequest) returns (WorkspaceProfileSetting) {
+    option (google.api.http) = {get: "/v1/settings/workspaceProfile"};
+    option (metaxisdata.v1.allow_without_credential) = true;
+    option (metaxisdata.v1.auth_method) = CUSTOM;
+  }
+
+  // Update the workspace profile setting.
+  rpc UpdateWorkspaceProfileSetting(UpdateWorkspaceProfileSettingRequest) returns (WorkspaceProfileSetting) {
+    option (google.api.http) = {
+      patch: "/v1/settings/workspaceProfile"
+      body: "setting"
+    };
+    option (google.api.method_signature) = "setting,update_mask";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.write";
+    option (metaxisdata.v1.audit) = true;
+  }
+}
+
+message WorkspaceProfileSetting {
+  // The external URL used for the SSO authentication callback.
+  string external_url = 1;
+
+  // Disallow self-service signup. When enabled, only a workspace admin can
+  // create users.
+  bool disallow_signup = 2;
+
+  // Disallow password signin. Workspace admins are exempt.
+  bool disallow_password_signin = 3;
+}
+
+message GetWorkspaceProfileSettingRequest {}
+
+message UpdateWorkspaceProfileSettingRequest {
+  // The setting to update.
+  WorkspaceProfileSetting setting = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The list of fields to update.
+  google.protobuf.FieldMask update_mask = 2;
+}

@@ -83,6 +83,7 @@ import {
   LayoutDashboard,
   Network,
   Settings,
+  SlidersHorizontal,
   Sparkles,
   Users,
 } from "lucide-vue-next";
@@ -186,6 +187,12 @@ const menuItems = computed<MenuItem[]>(() => [
     path: "#",
     icon: Settings,
     children: [
+      {
+        key: "general",
+        label: t("menu.generalSettings"),
+        path: "/settings/general",
+        icon: SlidersHorizontal,
+      },
       {
         key: "users",
         label: t("menu.users"),
