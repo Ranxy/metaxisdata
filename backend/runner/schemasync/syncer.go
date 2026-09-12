@@ -517,6 +517,15 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to commit transaction for database %q", database.DatabaseName)
 	}
 
+	// The metadata cache is invalidated only after a successful commit, so a
+	// rolled-back sync cannot leave stale or uncommitted entries behind.
+	invalidated := make([]*store.MetaRegistryResource, 0, len(bmc.updates)+len(bmc.deletes))
+	for _, item := range bmc.updates {
+		invalidated = append(invalidated, &item.MetaRegistryResource)
+	}
+	invalidated = append(invalidated, bmc.deletes...)
+	s.store.InvalidateMetaRegistryCache(invalidated)
+
 	// Queue changed VIEWs and MATERIALIZED_VIEWs before touching the db row: if
 	// the LastSyncTime update below fails, the next sync sees unchanged hashes
 	// and would never queue them again.

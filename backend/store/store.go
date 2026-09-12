@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
+	"sync"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/pkg/errors"
@@ -15,10 +16,13 @@ import (
 
 type Store struct {
 	dbConnManager *DBConnectionManager
-	enableCache   bool
+
+	// secret caches the AUTH_SECRET setting. It is read on every obfuscated
+	// instance/LLM row, so it must not be written lazily without a lock.
+	secretMu sync.Mutex
+	secret   string
 
 	// Cache
-	Secret                string
 	userIDCache           *lru.Cache[int, *UserMessage]
 	userEmailCache        *lru.Cache[string, *UserMessage]
 	groupCache            *lru.Cache[string, *GroupMessage]
@@ -26,14 +30,14 @@ type Store struct {
 	instanceCache         *lru.Cache[string, *InstanceMessage]
 	databaseCache         *lru.Cache[string, *DatabaseMessage]
 	metaRegistryCache     *lru.Cache[int64, *MetaRegistryResource]
-	metaRegistryGUIDCache *lru.Cache[string, *MetaRegistryResource]
+	metaRegistryGUIDCache *lru.Cache[MetaGUIDKey, *MetaRegistryResource]
 	policyCache           *lru.Cache[string, *PolicyMessage]
 	projectCache          *lru.Cache[string, *ProjectMessage]
 	rolesCache            *lru.Cache[string, *RoleMessage]
 	settingCache          *lru.Cache[storepb.SettingName, *SettingMessage]
 }
 
-func New(ctx context.Context, pgURL string, enableCache bool) (*Store, error) {
+func New(ctx context.Context, pgURL string) (*Store, error) {
 	userIDCache, err := lru.New[int, *UserMessage](32768)
 	if err != nil {
 		return nil, err
@@ -62,7 +66,7 @@ func New(ctx context.Context, pgURL string, enableCache bool) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	metaRegistryGUIDCache, err := lru.New[string, *MetaRegistryResource](65536)
+	metaRegistryGUIDCache, err := lru.New[MetaGUIDKey, *MetaRegistryResource](65536)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +92,6 @@ func New(ctx context.Context, pgURL string, enableCache bool) (*Store, error) {
 	}
 	s := &Store{
 		dbConnManager:         dbConnManager,
-		enableCache:           enableCache,
 		userIDCache:           userIDCache,
 		userEmailCache:        userEmailCache,
 		rolesCache:            rolesCache,

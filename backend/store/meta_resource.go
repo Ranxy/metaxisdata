@@ -94,14 +94,27 @@ func appendGUIDSubtreeCondition(where []string, args []any, column string, guidP
 	return where, args
 }
 
+// metaRegistryGUIDCacheKey returns the cache key for a GUID-scoped lookup. It
+// reports false when the lookup is not narrowed to a single object type, since
+// a GUID may exist under several object types.
+func metaRegistryGUIDCacheKey(find *FindMetaRegistryResourceMessage) (MetaGUIDKey, bool) {
+	if find.GUID == nil || find.ObjectType == nil {
+		return MetaGUIDKey{}, false
+	}
+	return MetaGUIDKey{GUID: *find.GUID, ObjectType: *find.ObjectType}, true
+}
+
 func (s *Store) GetMetaRegistry(ctx context.Context, find *FindMetaRegistryResourceMessage) (*MetaRegistryResource, error) {
 	if find.ID != nil {
-		if v, ok := s.metaRegistryCache.Get(*find.ID); ok && s.enableCache {
+		if v, ok := s.metaRegistryCache.Get(*find.ID); ok {
 			return v, nil
 		}
 	}
-	if find.GUID != nil {
-		if v, ok := s.metaRegistryGUIDCache.Get(*find.GUID); ok && s.enableCache {
+	// The GUID alone is not unique: the table's unique constraint is
+	// (guid, object_type). Only consult the GUID cache for a lookup that also
+	// narrowed the object type.
+	if key, ok := metaRegistryGUIDCacheKey(find); ok {
+		if v, ok := s.metaRegistryGUIDCache.Get(key); ok {
 			return v, nil
 		}
 	}
@@ -120,7 +133,7 @@ func (s *Store) GetMetaRegistry(ctx context.Context, find *FindMetaRegistryResou
 
 	if isMetaTypeCached(metaRegistry.ObjectType) {
 		s.metaRegistryCache.Add(metaRegistry.ID, metaRegistry)
-		s.metaRegistryGUIDCache.Add(metaRegistry.GUID, metaRegistry)
+		s.metaRegistryGUIDCache.Add(metaRegistry.GUIDKey(), metaRegistry)
 	}
 	return metaRegistry, nil
 }
@@ -141,7 +154,7 @@ func (s *Store) ListMetaRegistry(ctx context.Context, find *FindMetaRegistryReso
 	for _, metaRegistry := range list {
 		if isMetaTypeCached(metaRegistry.ObjectType) {
 			s.metaRegistryCache.Add(metaRegistry.ID, metaRegistry)
-			s.metaRegistryGUIDCache.Add(metaRegistry.GUID, metaRegistry)
+			s.metaRegistryGUIDCache.Add(metaRegistry.GUIDKey(), metaRegistry)
 		}
 	}
 	return list, nil
@@ -170,7 +183,7 @@ func (s *Store) ListMetaRegistryResource(ctx context.Context, find *FindMetaRegi
 				MetaHash:   metaRegistry.MetaHash,
 			}
 			s.metaRegistryCache.Add(metaRegistry.ID, reg)
-			s.metaRegistryGUIDCache.Add(metaRegistry.GUID, reg)
+			s.metaRegistryGUIDCache.Add(reg.GUIDKey(), reg)
 		}
 	}
 	return list, nil
@@ -716,7 +729,7 @@ func (s *Store) ListSublevelMetaRegistryResource(ctx context.Context, find *Find
 	for _, metaRegistry := range list {
 		if isMetaTypeCached(metaRegistry.ObjectType) {
 			s.metaRegistryCache.Add(metaRegistry.ID, metaRegistry)
-			s.metaRegistryGUIDCache.Add(metaRegistry.GUID, metaRegistry)
+			s.metaRegistryGUIDCache.Add(metaRegistry.GUIDKey(), metaRegistry)
 		}
 	}
 	return list, nil
@@ -959,19 +972,9 @@ func (s *Store) BatchCreateMetaRegistryResourceAt(ctx context.Context, tx *sql.T
 		return nil, err
 	}
 
-	for _, create := range creates {
-		metaRegistory := &MetaRegistryResource{
-			ID:         create.ID,
-			GUID:       create.GUID,
-			ObjectType: create.ObjectType,
-			Metadata:   create.Metadata,
-			MetaHash:   create.MetaHash,
-		}
-		if isMetaTypeCached(metaRegistory.ObjectType) {
-			s.metaRegistryCache.Add(metaRegistory.ID, metaRegistory)
-			s.metaRegistryGUIDCache.Add(metaRegistory.GUID, metaRegistory)
-		}
-	}
+	// The cache is intentionally not touched here: this runs inside a
+	// caller-owned transaction that may still roll back. Callers invalidate the
+	// affected keys with InvalidateMetaRegistryCache after committing.
 
 	resp := make([]*MetaRegistryResource, 0, len(creates))
 	for _, create := range creates {
@@ -979,6 +982,19 @@ func (s *Store) BatchCreateMetaRegistryResourceAt(ctx context.Context, tx *sql.T
 	}
 
 	return resp, nil
+}
+
+// InvalidateMetaRegistryCache drops the current-snapshot cache entries for the
+// given rows. Call it after the transaction that wrote them has committed, so a
+// rolled-back write can never leave a stale or uncommitted entry behind.
+func (s *Store) InvalidateMetaRegistryCache(list []*MetaRegistryResource) {
+	for _, registry := range list {
+		if !isMetaTypeCached(registry.ObjectType) {
+			continue
+		}
+		s.metaRegistryCache.Remove(registry.ID)
+		s.metaRegistryGUIDCache.Remove(registry.GUIDKey())
+	}
 }
 
 // BatchDeleteMetaRegistry deletes current meta registry rows and closes their open history records.
@@ -1007,10 +1023,8 @@ func (s *Store) BatchDeleteMetaRegistryAt(ctx context.Context, tx *sql.Tx, list 
 		return err
 	}
 
-	for _, registry := range list {
-		s.metaRegistryCache.Remove(registry.ID)
-		s.metaRegistryGUIDCache.Remove(registry.GUID)
-	}
+	// See BatchCreateMetaRegistryResourceAt: invalidation happens after the
+	// caller commits, via InvalidateMetaRegistryCache.
 	return nil
 }
 

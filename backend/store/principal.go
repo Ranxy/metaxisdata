@@ -11,6 +11,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -87,29 +88,57 @@ func (s *Store) GetSystemBotUser(ctx context.Context) *UserMessage {
 
 // GetUserByID gets the user by ID.
 func (s *Store) GetUserByID(ctx context.Context, id int) (*UserMessage, error) {
-	if v, ok := s.userIDCache.Get(id); ok && s.enableCache {
+	if v, ok := s.userIDCache.Get(id); ok {
 		return v, nil
 	}
-
-	if err := s.listAndCacheAllUsers(ctx); err != nil {
-		return nil, err
-	}
-
-	user, _ := s.userIDCache.Get(id)
-	return user, nil
+	return s.getUser(ctx, &FindUserMessage{ID: &id, ShowDeleted: true})
 }
 
 // GetUserByEmail gets the user by email.
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*UserMessage, error) {
-	if v, ok := s.userEmailCache.Get(email); ok && s.enableCache {
+	cacheKey := userEmailCacheKey(email)
+	if v, ok := s.userEmailCache.Get(cacheKey); ok {
 		return v, nil
 	}
+	return s.getUser(ctx, &FindUserMessage{Email: &email, ShowDeleted: true})
+}
 
-	if err := s.listAndCacheAllUsers(ctx); err != nil {
+// userEmailCacheKey normalizes an email the same way listUserImpl does, so a
+// lookup with different casing hits the cached row instead of a second query.
+func userEmailCacheKey(email string) string {
+	if email == common.AllUsers {
+		return email
+	}
+	return strings.ToLower(email)
+}
+
+// getUser loads a single user (with groups) and caches it. It replaces the old
+// "cache miss loads every user" path, which made each authenticated request an
+// unindexed full-table scan.
+func (s *Store) getUser(ctx context.Context, find *FindUserMessage) (*UserMessage, error) {
+	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
 		return nil, err
 	}
+	defer tx.Rollback()
 
-	user, _ := s.userEmailCache.Get(email)
+	users, err := listUserImpl(ctx, tx, find)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	if len(users) == 0 {
+		return nil, nil
+	}
+	if len(users) > 1 {
+		return nil, errors.Errorf("found multiple users matching the criteria")
+	}
+
+	user := users[0]
+	s.userIDCache.Add(user.ID, user)
+	s.userEmailCache.Add(user.Email, user)
 	return user, nil
 }
 
@@ -174,30 +203,6 @@ func (s *Store) ListUsers(ctx context.Context, find *FindUserMessage) ([]*UserMe
 		s.userEmailCache.Add(user.Email, user)
 	}
 	return users, nil
-}
-
-// listAndCacheAllUsers is used for caching all users.
-func (s *Store) listAndCacheAllUsers(ctx context.Context) error {
-	tx, err := s.GetDB().BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	users, err := listUserImpl(ctx, tx, &FindUserMessage{ShowDeleted: true})
-	if err != nil {
-		return err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-
-	for _, user := range users {
-		s.userIDCache.Add(user.ID, user)
-		s.userEmailCache.Add(user.Email, user)
-	}
-	return nil
 }
 
 func listUserImpl(ctx context.Context, txn *sql.Tx, find *FindUserMessage) ([]*UserMessage, error) {
@@ -444,8 +449,14 @@ func (s *Store) UpdateUser(ctx context.Context, currentUser *UserMessage, patch 
 	if v := patch.PasswordHash; v != nil {
 		principalSet, principalArgs = append(principalSet, fmt.Sprintf("password_hash = $%d", len(principalArgs)+1)), append(principalArgs, *v)
 		if patch.Profile == nil {
-			patch.Profile = currentUser.Profile
-			patch.Profile.LastChangePasswordTime = timestamppb.New(time.Now())
+			// Clone: currentUser may be the shared cache entry, which must not
+			// be mutated in place.
+			profile := proto.CloneOf(currentUser.Profile)
+			if profile == nil {
+				profile = &storepb.UserProfile{}
+			}
+			profile.LastChangePasswordTime = timestamppb.New(time.Now())
+			patch.Profile = profile
 		}
 	}
 	if v := patch.Phone; v != nil {

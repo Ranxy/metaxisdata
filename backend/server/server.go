@@ -72,7 +72,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		}
 	}()
 
-	stores, err := store.New(ctx, profile.PgURL, false)
+	stores, err := store.New(ctx, profile.PgURL)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to new store")
 	}

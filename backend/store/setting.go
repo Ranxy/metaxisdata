@@ -102,7 +102,7 @@ func (s *Store) DeleteCache() {
 
 // GetSettingV2 returns the setting by name.
 func (s *Store) GetSettingV2(ctx context.Context, name storepb.SettingName) (*SettingMessage, error) {
-	if v, ok := s.settingCache.Get(name); ok && s.enableCache {
+	if v, ok := s.settingCache.Get(name); ok {
 		return v, nil
 	}
 
@@ -128,6 +128,8 @@ func (s *Store) GetSettingV2(ctx context.Context, name storepb.SettingName) (*Se
 	if err := tx.Commit(); err != nil {
 		return nil, errors.Wrap(err, "failed to commit transaction")
 	}
+
+	s.settingCache.Add(settings[0].Name, settings[0])
 	return settings[0], nil
 }
 
@@ -153,8 +155,11 @@ func (s *Store) ListSettingV2(ctx context.Context, find *FindSettingMessage) ([]
 }
 
 func (s *Store) GetSecret(ctx context.Context) (string, error) {
-	if s.Secret != "" {
-		return s.Secret, nil
+	s.secretMu.Lock()
+	defer s.secretMu.Unlock()
+
+	if s.secret != "" {
+		return s.secret, nil
 	}
 	setting, err := s.GetSettingV2(ctx, storepb.SettingName_AUTH_SECRET)
 	if err != nil {
@@ -163,7 +168,7 @@ func (s *Store) GetSecret(ctx context.Context) (string, error) {
 	if setting == nil {
 		return "", errors.New("auth secret not found")
 	}
-	s.Secret = setting.Value
+	s.secret = setting.Value
 	return setting.Value, nil
 }
 
@@ -210,7 +215,7 @@ func (s *Store) UpsertSettingV2(ctx context.Context, update *SetSettingMessage) 
 
 // CreateSettingIfNotExistV2 creates a new setting only if the named setting doesn't exist.
 func (s *Store) CreateSettingIfNotExistV2(ctx context.Context, create *SettingMessage) (*SettingMessage, bool, error) {
-	if v, ok := s.settingCache.Get(create.Name); ok && s.enableCache {
+	if v, ok := s.settingCache.Get(create.Name); ok {
 		return v, false, nil
 	}
 

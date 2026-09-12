@@ -29,6 +29,29 @@ func TestGetNextLevelObjectTypeIncludesManualSQLUnderSchema(t *testing.T) {
 	)
 }
 
+func TestMetaRegistryGUIDCacheKeyIncludesObjectType(t *testing.T) {
+	t.Parallel()
+
+	guid := "inst;db;public;orders"
+	tableType, viewType := storepb.MetaType_TABLE, storepb.MetaType_VIEW
+	// A GUID may exist under several object types, so the cache key must not be
+	// the bare GUID: two different types must not share an entry.
+	tableFind := &FindMetaRegistryResourceMessage{GUID: &guid, ObjectType: &tableType}
+	viewFind := &FindMetaRegistryResourceMessage{GUID: &guid, ObjectType: &viewType}
+
+	tableKey, tableOK := metaRegistryGUIDCacheKey(tableFind)
+	viewKey, viewOK := metaRegistryGUIDCacheKey(viewFind)
+	require.True(t, tableOK)
+	require.True(t, viewOK)
+	require.NotEqual(t, tableKey, viewKey)
+	require.Equal(t, storepb.MetaType_TABLE, tableKey.ObjectType)
+	require.Equal(t, storepb.MetaType_VIEW, viewKey.ObjectType)
+
+	// A GUID-only lookup is not cacheable: it could match any object type.
+	_, ok := metaRegistryGUIDCacheKey(&FindMetaRegistryResourceMessage{GUID: &guid})
+	require.False(t, ok)
+}
+
 func TestBuildMetaRegistryHistoryMutations(t *testing.T) {
 	t.Parallel()
 

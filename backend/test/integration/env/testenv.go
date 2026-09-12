@@ -77,7 +77,7 @@ func SetupMySQLEnv(t *testing.T) *TestEnv {
 	env.PostgresPort = pgPort
 	pgURL := fmt.Sprintf("postgres://postgres:postgres@%s:%s/%s?sslmode=disable", pgHost, pgPort, pgDBName)
 
-	stores, err := store.New(ctx, pgURL, false)
+	stores, err := store.New(ctx, pgURL)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = stores.Close() })
 	env.Store = stores
@@ -200,7 +200,7 @@ func waitForPostgresReady(ctx context.Context, t *testing.T, host, port, dbName 
 
 	dsn := fmt.Sprintf("postgres://postgres:postgres@%s:%s/%s?sslmode=disable", host, port, dbName)
 	require.Eventually(t, func() bool {
-		stores, openErr := store.New(ctx, dsn, false)
+		stores, openErr := store.New(ctx, dsn)
 		if openErr != nil {
 			return false
 		}

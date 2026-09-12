@@ -203,7 +203,7 @@ func StartMySQLServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 	}
 	pgURL := fmt.Sprintf("postgres://postgres:postgres@%s:%s/%s?sslmode=disable", pgHost, pgPort, pgDBName)
 
-	stores, err := store.New(ctx, pgURL, false)
+	stores, err := store.New(ctx, pgURL)
 	if err != nil {
 		cleanupServiceResources(nil, bootstrap.containers, "", nil, nil)
 		return nil, nil, err
@@ -237,7 +237,7 @@ func StartMySQLServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 		return nil, nil, err
 	}
 
-	inspectStore, err := store.New(ctx, pgURL, false)
+	inspectStore, err := store.New(ctx, pgURL)
 	if err != nil {
 		cleanupServiceResources(nil, bootstrap.containers, serverDir, serverCmd, serverDone)
 		return nil, nil, err
@@ -288,7 +288,7 @@ func StartPostgresServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 	}
 	pgURL := fmt.Sprintf("postgres://postgres:postgres@%s:%s/%s?sslmode=disable", pgHost, pgPort, pgDBName)
 
-	stores, err := store.New(ctx, pgURL, false)
+	stores, err := store.New(ctx, pgURL)
 	if err != nil {
 		cleanupServiceResources(nil, bootstrap.containers, "", nil, nil)
 		return nil, nil, err
@@ -316,7 +316,7 @@ func StartPostgresServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 		return nil, nil, err
 	}
 
-	inspectStore, err := store.New(ctx, pgURL, false)
+	inspectStore, err := store.New(ctx, pgURL)
 	if err != nil {
 		cleanupServiceResources(nil, bootstrap.containers, serverDir, serverCmd, serverDone)
 		return nil, nil, err
