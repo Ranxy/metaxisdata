@@ -306,7 +306,8 @@ func buildListDatabaseQuery(find *FindDatabaseMessage) (string, []any) {
 		}
 	}
 	if v := find.Engine; v != nil {
-		where, args = append(where, fmt.Sprintf("instance.metadata->>'engine' = $%d", len(args)+1)), append(args, *v)
+		// metadata is protojson, which stores the enum value name.
+		where, args = append(where, fmt.Sprintf("instance.metadata->>'engine' = $%d", len(args)+1)), append(args, v.String())
 	}
 	if !find.ShowDeleted {
 		where, args = append(where, fmt.Sprintf("instance.deleted = $%d", len(args)+1)), append(args, false)

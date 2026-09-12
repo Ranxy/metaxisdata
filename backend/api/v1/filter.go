@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -259,13 +260,18 @@ func boolField(predicate func(args *filterArgs, value bool) (string, error)) fil
 }
 
 // engineFilterValue maps a v1 engine name to the store engine recorded in the
-// instance metadata.
+// instance metadata. The metadata is protojson, which stores the enum value
+// name (not its number), so the predicate must compare against the name.
 func engineFilterValue(name string) (any, error) {
 	value, ok := v1pb.Engine_value[name]
 	if !ok {
 		return nil, errors.Errorf("unknown engine %q", name)
 	}
-	return convertEngine(v1pb.Engine(value)), nil
+	engine := convertEngine(v1pb.Engine(value))
+	if engine == storepb.Engine_ENGINE_UNSPECIFIED {
+		return nil, errors.Errorf("unsupported engine %q", name)
+	}
+	return engine.String(), nil
 }
 
 // deletedFilterValue maps a v1 State name to the `deleted` column value.

@@ -5,8 +5,6 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
-
-	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
 // The four list methods share one CEL->SQL translator. These cases pin the
@@ -64,12 +62,31 @@ func TestTranslateFilterGrammar(t *testing.T) {
 }
 
 // The engine list filter used to paste `'MYSQL','POSTGRES'` into the statement.
-// It must bind values like every other predicate.
+// It must bind values like every other predicate, and the bound value must be
+// the enum name because the metadata column is protojson.
 func TestInstanceEngineInFilterIsParameterized(t *testing.T) {
 	t.Parallel()
 
 	filter, err := parseListInstanceFilter(`engine in ["MYSQL", "POSTGRES"]`)
 	require.NoError(t, err)
 	require.Equal(t, `(instance.metadata->>'engine' IN ($1, $2))`, filter.Where)
-	require.Equal(t, []any{storepb.Engine_MYSQL, storepb.Engine_POSTGRES}, filter.Args)
+	require.Equal(t, []any{"MYSQL", "POSTGRES"}, filter.Args)
+}
+
+// The engine filter compared the text column against the enum's number, so it
+// silently matched nothing. It must bind the enum name that protojson wrote.
+func TestEngineFilterBindsTheEnumName(t *testing.T) {
+	t.Parallel()
+
+	filter, err := parseListInstanceFilter(`engine == "MYSQL"`)
+	require.NoError(t, err)
+	require.Equal(t, `(instance.metadata->>'engine' = $1)`, filter.Where)
+	require.Equal(t, []any{"MYSQL"}, filter.Args)
+
+	databaseFilter, err := getListDatabaseFilter(`engine == "TIDB"`)
+	require.NoError(t, err)
+	require.Equal(t, []any{"TIDB"}, databaseFilter.Args)
+
+	_, err = parseListInstanceFilter(`engine == "MONGODB"`)
+	require.Error(t, err, "an engine the product no longer supports is rejected")
 }

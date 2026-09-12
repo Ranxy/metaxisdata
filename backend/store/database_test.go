@@ -70,7 +70,7 @@ func TestBuildListDatabaseQueryScopePredicates(t *testing.T) {
 	require.Contains(t, query, "instance.metadata->>'engine' = $3")
 	require.Contains(t, query, " LIMIT 50")
 	require.Contains(t, query, " OFFSET 100")
-	require.Equal(t, []any{"environments/prod", "instance_1", storepb.Engine_MYSQL, false, false}, args)
+	require.Equal(t, []any{"environments/prod", "instance_1", "MYSQL", false, false}, args)
 	requirePlaceholdersMatchArgs(t, query, args)
 }
 
@@ -88,5 +88,18 @@ func TestBuildListDatabaseQueryNumbersFilterPlaceholdersAroundItsOwnArgs(t *test
 	require.Contains(t, query, "db.name <> $1")
 	require.Contains(t, query, "db.instance = $2")
 	require.Equal(t, []any{"ignored", "instance_1", false, false}, args)
+	requirePlaceholdersMatchArgs(t, query, args)
+}
+
+// The engine filter compared the protojson text column against the enum's
+// number, so it never matched; the bound value must be the enum name.
+func TestBuildListDatabaseQueryComparesTheEngineName(t *testing.T) {
+	t.Parallel()
+
+	query, args := buildListDatabaseQuery(&FindDatabaseMessage{
+		Engine: ptr(storepb.Engine_MYSQL),
+	})
+	require.Contains(t, query, "instance.metadata->>'engine' = $1")
+	require.Equal(t, []any{"MYSQL", false, false}, args)
 	requirePlaceholdersMatchArgs(t, query, args)
 }
