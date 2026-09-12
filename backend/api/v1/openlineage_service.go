@@ -26,14 +26,19 @@ func NewOpenLineageService(s *store.Store) *OpenLineageService {
 }
 
 func (s *OpenLineageService) ListOpenLineageTasks(ctx context.Context, req *connect.Request[v1pb.ListOpenLineageTasksRequest]) (*connect.Response[v1pb.ListOpenLineageTasksResponse], error) {
-	find := &store.FindOpenLineageTaskMessage{}
-	if req.Msg.GetPageSize() > 0 {
-		limit := int(req.Msg.GetPageSize())
-		find.Limit = &limit
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:   req.Msg.GetPageToken(),
+		limit:   int(req.Msg.GetPageSize()),
+		maximum: 1000,
+	})
+	if err != nil {
+		return nil, err
 	}
-	if req.Msg.GetOffset() > 0 {
-		offset := int(req.Msg.GetOffset())
-		find.Offset = &offset
+	limitPlusOne := offset.limit + 1
+
+	find := &store.FindOpenLineageTaskMessage{
+		Limit:  &limitPlusOne,
+		Offset: &offset.offset,
 	}
 	if req.Msg.GetJobNamespace() != "" {
 		jobNamespace := req.Msg.GetJobNamespace()
@@ -57,7 +62,15 @@ func (s *OpenLineageService) ListOpenLineageTasks(ctx context.Context, req *conn
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list openlineage tasks"))
 	}
 
-	resp := &v1pb.ListOpenLineageTasksResponse{}
+	nextPageToken := ""
+	if len(list) == limitPlusOne {
+		list = list[:offset.limit]
+		if nextPageToken, err = offset.getNextPageToken(); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to marshal next page token"))
+		}
+	}
+
+	resp := &v1pb.ListOpenLineageTasksResponse{NextPageToken: nextPageToken}
 	for _, task := range list {
 		resp.Tasks = append(resp.Tasks, convertOpenLineageTask(task))
 	}
@@ -82,14 +95,19 @@ func (s *OpenLineageService) GetOpenLineageTask(ctx context.Context, req *connec
 }
 
 func (s *OpenLineageService) ListOpenLineageRuns(ctx context.Context, req *connect.Request[v1pb.ListOpenLineageRunsRequest]) (*connect.Response[v1pb.ListOpenLineageRunsResponse], error) {
-	find := &store.FindOpenLineageRunMessage{}
-	if req.Msg.GetPageSize() > 0 {
-		limit := int(req.Msg.GetPageSize())
-		find.Limit = &limit
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:   req.Msg.GetPageToken(),
+		limit:   int(req.Msg.GetPageSize()),
+		maximum: 1000,
+	})
+	if err != nil {
+		return nil, err
 	}
-	if req.Msg.GetOffset() > 0 {
-		offset := int(req.Msg.GetOffset())
-		find.Offset = &offset
+	limitPlusOne := offset.limit + 1
+
+	find := &store.FindOpenLineageRunMessage{
+		Limit:  &limitPlusOne,
+		Offset: &offset.offset,
 	}
 	if req.Msg.GetJobNamespace() != "" {
 		jobNamespace := req.Msg.GetJobNamespace()
@@ -121,7 +139,15 @@ func (s *OpenLineageService) ListOpenLineageRuns(ctx context.Context, req *conne
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list openlineage runs"))
 	}
 
-	resp := &v1pb.ListOpenLineageRunsResponse{}
+	nextPageToken := ""
+	if len(list) == limitPlusOne {
+		list = list[:offset.limit]
+		if nextPageToken, err = offset.getNextPageToken(); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to marshal next page token"))
+		}
+	}
+
+	resp := &v1pb.ListOpenLineageRunsResponse{NextPageToken: nextPageToken}
 	for _, run := range list {
 		resp.Runs = append(resp.Runs, convertOpenLineageRun(run, false))
 	}
@@ -166,13 +192,13 @@ func (s *OpenLineageService) CreateNamespaceMapping(ctx context.Context, req *co
 	return connect.NewResponse(convertNamespaceMapping(result)), nil
 }
 
-func (s *OpenLineageService) ListNamespaceMapping(ctx context.Context, _ *connect.Request[v1pb.ListNamespaceMappingRequest]) (*connect.Response[v1pb.ListNamespaceMappingResponse], error) {
+func (s *OpenLineageService) ListNamespaceMappings(ctx context.Context, _ *connect.Request[v1pb.ListNamespaceMappingsRequest]) (*connect.Response[v1pb.ListNamespaceMappingsResponse], error) {
 	list, err := s.store.ListNamespaceMapping(ctx, &store.FindNamespaceMappingMessage{})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list namespace mappings"))
 	}
 
-	resp := &v1pb.ListNamespaceMappingResponse{}
+	resp := &v1pb.ListNamespaceMappingsResponse{}
 	for _, m := range list {
 		resp.Mappings = append(resp.Mappings, convertNamespaceMapping(m))
 	}
@@ -221,13 +247,13 @@ func (s *OpenLineageService) CreateAPIKey(ctx context.Context, req *connect.Requ
 	}), nil
 }
 
-func (s *OpenLineageService) ListAPIKey(ctx context.Context, _ *connect.Request[v1pb.ListAPIKeyRequest]) (*connect.Response[v1pb.ListAPIKeyResponse], error) {
+func (s *OpenLineageService) ListAPIKeys(ctx context.Context, _ *connect.Request[v1pb.ListAPIKeysRequest]) (*connect.Response[v1pb.ListAPIKeysResponse], error) {
 	list, err := s.store.ListOpenLineageAPIKey(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list API keys"))
 	}
 
-	resp := &v1pb.ListAPIKeyResponse{}
+	resp := &v1pb.ListAPIKeysResponse{}
 	for _, k := range list {
 		resp.ApiKeys = append(resp.ApiKeys, convertAPIKey(k))
 	}

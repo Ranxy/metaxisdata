@@ -555,7 +555,7 @@ var File_v1_lineage_service_proto protoreflect.FileDescriptor
 
 const file_v1_lineage_service_proto_rawDesc = "" +
 	"\n" +
-	"\x18v1/lineage_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19v1/database_service.proto\"\x9d\x04\n" +
+	"\x18v1/lineage_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19v1/database_service.proto\"\x9d\x04\n" +
 	"\x0fLineageRelation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1b\n" +
 	"\tmeta_guid\x18\x02 \x01(\tR\bmetaGuid\x125\n" +
@@ -574,10 +574,9 @@ const file_v1_lineage_service_proto_rawDesc = "" +
 	" \x01(\x0e2\x1c.metaxisdata.v1.RelationTypeR\frelationType\x12&\n" +
 	"\x0etransformation\x18\v \x01(\tR\x0etransformation\x129\n" +
 	"\n" +
-	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xc4\x01\n" +
-	"\x11GetLineageRequest\x128\n" +
-	"\x04guid\x18\x01 \x01(\tB$\xe0A\x02\xfaA\x1e\n" +
-	"\x1cmetaxisdata/DatabaseMetadataR\x04guid\x125\n" +
+	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xa3\x01\n" +
+	"\x11GetLineageRequest\x12\x17\n" +
+	"\x04guid\x18\x01 \x01(\tB\x03\xe0A\x02R\x04guid\x125\n" +
 	"\tmeta_type\x18\x02 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12>\n" +
 	"\flineage_type\x18\x03 \x01(\x0e2\x1b.metaxisdata.v1.LineageTypeR\vlineageType\"\xfe\x01\n" +
 	"\x12GetLineageResponse\x12J\n" +
@@ -588,10 +587,9 @@ const file_v1_lineage_service_proto_rawDesc = "" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12!\n" +
-	"\fdataset_type\x18\x04 \x01(\tR\vdatasetType\"\x8e\x01\n" +
-	"\x1bGetLineageForContextRequest\x128\n" +
-	"\x04guid\x18\x01 \x01(\tB$\xe0A\x02\xfaA\x1e\n" +
-	"\x1cmetaxisdata/DatabaseMetadataR\x04guid\x125\n" +
+	"\fdataset_type\x18\x04 \x01(\tR\vdatasetType\"m\n" +
+	"\x1bGetLineageForContextRequest\x12\x17\n" +
+	"\x04guid\x18\x01 \x01(\tB\x03\xe0A\x02R\x04guid\x125\n" +
 	"\tmeta_type\x18\x02 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\"]\n" +
 	"\x1cGetLineageForContextResponse\x12=\n" +
 	"\trelations\x18\x01 \x03(\v2\x1f.metaxisdata.v1.LineageRelationR\trelations*C\n" +
@@ -605,11 +603,11 @@ const file_v1_lineage_service_proto_rawDesc = "" +
 	"\x19RELATION_TYPE_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +
 	"\x06DIRECT\x10\x01\x12\f\n" +
-	"\bINDIRECT\x10\x022\x9f\x02\n" +
-	"\x0eLineageService\x12r\n" +
+	"\bINDIRECT\x10\x022\x8d\x02\n" +
+	"\x0eLineageService\x12i\n" +
 	"\n" +
-	"GetLineage\x12!.metaxisdata.v1.GetLineageRequest\x1a\".metaxisdata.v1.GetLineageResponse\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/{guid=lineages/*}\x12\x98\x01\n" +
-	"\x14GetLineageForContext\x12+.metaxisdata.v1.GetLineageForContextRequest\x1a,.metaxisdata.v1.GetLineageForContextResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/context/{guid=lineages/*}B6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"GetLineage\x12!.metaxisdata.v1.GetLineageRequest\x1a\".metaxisdata.v1.GetLineageResponse\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/lineages\x12\x8f\x01\n" +
+	"\x14GetLineageForContext\x12+.metaxisdata.v1.GetLineageForContextRequest\x1a,.metaxisdata.v1.GetLineageForContextResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/lineages:contextB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_lineage_service_proto_rawDescOnce sync.Once

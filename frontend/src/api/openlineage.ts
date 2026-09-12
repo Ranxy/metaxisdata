@@ -7,8 +7,8 @@ import {
   GetOpenLineageDatasetRequestSchema,
   GetOpenLineageRunRequestSchema,
   GetOpenLineageTaskRequestSchema,
-  ListAPIKeyRequestSchema,
-  ListNamespaceMappingRequestSchema,
+  ListAPIKeysRequestSchema,
+  ListNamespaceMappingsRequestSchema,
   ListOpenLineageDatasetsRequestSchema,
   ListOpenLineageRunsRequestSchema,
   ListOpenLineageTasksRequestSchema,
@@ -18,14 +18,14 @@ import {
 } from "@/types/proto-es/v1/openlineage_service_pb";
 import { openLineageClient } from "./client";
 
-export async function listNamespaceMapping() {
-  const request = create(ListNamespaceMappingRequestSchema, {});
-  return await openLineageClient.listNamespaceMapping(request);
+export async function listNamespaceMappings() {
+  const request = create(ListNamespaceMappingsRequestSchema, {});
+  return await openLineageClient.listNamespaceMappings(request);
 }
 
 export async function listOpenLineageTasks(params?: {
   pageSize?: number;
-  offset?: number;
+  pageToken?: string;
   jobNamespace?: string;
   jobName?: string;
   jobType?: string;
@@ -33,7 +33,7 @@ export async function listOpenLineageTasks(params?: {
 }) {
   const request = create(ListOpenLineageTasksRequestSchema, {
     pageSize: params?.pageSize ?? 100,
-    offset: params?.offset ?? 0,
+    pageToken: params?.pageToken ?? "",
     jobNamespace: params?.jobNamespace ?? "",
     jobName: params?.jobName ?? "",
     jobType: params?.jobType ?? "TASK",
@@ -49,7 +49,7 @@ export async function getOpenLineageTask(guid: string) {
 
 export async function listOpenLineageDatasets(params?: {
   pageSize?: number;
-  offset?: number;
+  pageToken?: string;
   search?: string;
   namespace?: string;
   integration?: string;
@@ -59,7 +59,7 @@ export async function listOpenLineageDatasets(params?: {
 }) {
   const request = create(ListOpenLineageDatasetsRequestSchema, {
     pageSize: params?.pageSize ?? 200,
-    offset: params?.offset ?? 0,
+    pageToken: params?.pageToken ?? "",
     search: params?.search ?? "",
     namespace: params?.namespace ?? "",
     integration: params?.integration ?? "",
@@ -70,22 +70,14 @@ export async function listOpenLineageDatasets(params?: {
   return await openLineageClient.listOpenLineageDatasets(request);
 }
 
-export async function getOpenLineageDataset(params: {
-  guid: string;
-  namespace: string;
-  name: string;
-}) {
-  const request = create(GetOpenLineageDatasetRequestSchema, {
-    guid: params.guid,
-    namespace: params.namespace,
-    name: params.name,
-  });
+export async function getOpenLineageDataset(guid: string) {
+  const request = create(GetOpenLineageDatasetRequestSchema, { guid });
   return await openLineageClient.getOpenLineageDataset(request);
 }
 
 export async function listOpenLineageRuns(params?: {
   pageSize?: number;
-  offset?: number;
+  pageToken?: string;
   jobNamespace?: string;
   jobName?: string;
   taskGuid?: string;
@@ -95,7 +87,7 @@ export async function listOpenLineageRuns(params?: {
 }) {
   const request = create(ListOpenLineageRunsRequestSchema, {
     pageSize: params?.pageSize ?? 100,
-    offset: params?.offset ?? 0,
+    pageToken: params?.pageToken ?? "",
     jobNamespace: params?.jobNamespace ?? "",
     jobName: params?.jobName ?? "",
     taskGuid: params?.taskGuid ?? "",
@@ -138,9 +130,9 @@ export async function deleteNamespaceMapping(id: bigint) {
   return await openLineageClient.deleteNamespaceMapping(request);
 }
 
-export async function listAPIKey() {
-  const request = create(ListAPIKeyRequestSchema, {});
-  return await openLineageClient.listAPIKey(request);
+export async function listAPIKeys() {
+  const request = create(ListAPIKeysRequestSchema, {});
+  return await openLineageClient.listAPIKeys(request);
 }
 
 export async function createAPIKey(description: string) {

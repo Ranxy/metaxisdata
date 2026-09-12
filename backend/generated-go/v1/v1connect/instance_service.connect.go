@@ -55,9 +55,6 @@ const (
 	// InstanceServiceSyncInstanceProcedure is the fully-qualified name of the InstanceService's
 	// SyncInstance RPC.
 	InstanceServiceSyncInstanceProcedure = "/metaxisdata.v1.InstanceService/SyncInstance"
-	// InstanceServiceListInstanceDatabaseProcedure is the fully-qualified name of the InstanceService's
-	// ListInstanceDatabase RPC.
-	InstanceServiceListInstanceDatabaseProcedure = "/metaxisdata.v1.InstanceService/ListInstanceDatabase"
 	// InstanceServiceBatchSyncInstancesProcedure is the fully-qualified name of the InstanceService's
 	// BatchSyncInstances RPC.
 	InstanceServiceBatchSyncInstancesProcedure = "/metaxisdata.v1.InstanceService/BatchSyncInstances"
@@ -84,7 +81,6 @@ type InstanceServiceClient interface {
 	DeleteInstance(context.Context, *connect.Request[v1.DeleteInstanceRequest]) (*connect.Response[emptypb.Empty], error)
 	UndeleteInstance(context.Context, *connect.Request[v1.UndeleteInstanceRequest]) (*connect.Response[v1.Instance], error)
 	SyncInstance(context.Context, *connect.Request[v1.SyncInstanceRequest]) (*connect.Response[v1.SyncInstanceResponse], error)
-	ListInstanceDatabase(context.Context, *connect.Request[v1.ListInstanceDatabaseRequest]) (*connect.Response[v1.ListInstanceDatabaseResponse], error)
 	BatchSyncInstances(context.Context, *connect.Request[v1.BatchSyncInstancesRequest]) (*connect.Response[v1.BatchSyncInstancesResponse], error)
 	BatchUpdateInstances(context.Context, *connect.Request[v1.BatchUpdateInstancesRequest]) (*connect.Response[v1.BatchUpdateInstancesResponse], error)
 	AddDataSource(context.Context, *connect.Request[v1.AddDataSourceRequest]) (*connect.Response[v1.Instance], error)
@@ -145,12 +141,6 @@ func NewInstanceServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(instanceServiceMethods.ByName("SyncInstance")),
 			connect.WithClientOptions(opts...),
 		),
-		listInstanceDatabase: connect.NewClient[v1.ListInstanceDatabaseRequest, v1.ListInstanceDatabaseResponse](
-			httpClient,
-			baseURL+InstanceServiceListInstanceDatabaseProcedure,
-			connect.WithSchema(instanceServiceMethods.ByName("ListInstanceDatabase")),
-			connect.WithClientOptions(opts...),
-		),
 		batchSyncInstances: connect.NewClient[v1.BatchSyncInstancesRequest, v1.BatchSyncInstancesResponse](
 			httpClient,
 			baseURL+InstanceServiceBatchSyncInstancesProcedure,
@@ -193,7 +183,6 @@ type instanceServiceClient struct {
 	deleteInstance       *connect.Client[v1.DeleteInstanceRequest, emptypb.Empty]
 	undeleteInstance     *connect.Client[v1.UndeleteInstanceRequest, v1.Instance]
 	syncInstance         *connect.Client[v1.SyncInstanceRequest, v1.SyncInstanceResponse]
-	listInstanceDatabase *connect.Client[v1.ListInstanceDatabaseRequest, v1.ListInstanceDatabaseResponse]
 	batchSyncInstances   *connect.Client[v1.BatchSyncInstancesRequest, v1.BatchSyncInstancesResponse]
 	batchUpdateInstances *connect.Client[v1.BatchUpdateInstancesRequest, v1.BatchUpdateInstancesResponse]
 	addDataSource        *connect.Client[v1.AddDataSourceRequest, v1.Instance]
@@ -236,11 +225,6 @@ func (c *instanceServiceClient) SyncInstance(ctx context.Context, req *connect.R
 	return c.syncInstance.CallUnary(ctx, req)
 }
 
-// ListInstanceDatabase calls metaxisdata.v1.InstanceService.ListInstanceDatabase.
-func (c *instanceServiceClient) ListInstanceDatabase(ctx context.Context, req *connect.Request[v1.ListInstanceDatabaseRequest]) (*connect.Response[v1.ListInstanceDatabaseResponse], error) {
-	return c.listInstanceDatabase.CallUnary(ctx, req)
-}
-
 // BatchSyncInstances calls metaxisdata.v1.InstanceService.BatchSyncInstances.
 func (c *instanceServiceClient) BatchSyncInstances(ctx context.Context, req *connect.Request[v1.BatchSyncInstancesRequest]) (*connect.Response[v1.BatchSyncInstancesResponse], error) {
 	return c.batchSyncInstances.CallUnary(ctx, req)
@@ -275,7 +259,6 @@ type InstanceServiceHandler interface {
 	DeleteInstance(context.Context, *connect.Request[v1.DeleteInstanceRequest]) (*connect.Response[emptypb.Empty], error)
 	UndeleteInstance(context.Context, *connect.Request[v1.UndeleteInstanceRequest]) (*connect.Response[v1.Instance], error)
 	SyncInstance(context.Context, *connect.Request[v1.SyncInstanceRequest]) (*connect.Response[v1.SyncInstanceResponse], error)
-	ListInstanceDatabase(context.Context, *connect.Request[v1.ListInstanceDatabaseRequest]) (*connect.Response[v1.ListInstanceDatabaseResponse], error)
 	BatchSyncInstances(context.Context, *connect.Request[v1.BatchSyncInstancesRequest]) (*connect.Response[v1.BatchSyncInstancesResponse], error)
 	BatchUpdateInstances(context.Context, *connect.Request[v1.BatchUpdateInstancesRequest]) (*connect.Response[v1.BatchUpdateInstancesResponse], error)
 	AddDataSource(context.Context, *connect.Request[v1.AddDataSourceRequest]) (*connect.Response[v1.Instance], error)
@@ -332,12 +315,6 @@ func NewInstanceServiceHandler(svc InstanceServiceHandler, opts ...connect.Handl
 		connect.WithSchema(instanceServiceMethods.ByName("SyncInstance")),
 		connect.WithHandlerOptions(opts...),
 	)
-	instanceServiceListInstanceDatabaseHandler := connect.NewUnaryHandler(
-		InstanceServiceListInstanceDatabaseProcedure,
-		svc.ListInstanceDatabase,
-		connect.WithSchema(instanceServiceMethods.ByName("ListInstanceDatabase")),
-		connect.WithHandlerOptions(opts...),
-	)
 	instanceServiceBatchSyncInstancesHandler := connect.NewUnaryHandler(
 		InstanceServiceBatchSyncInstancesProcedure,
 		svc.BatchSyncInstances,
@@ -384,8 +361,6 @@ func NewInstanceServiceHandler(svc InstanceServiceHandler, opts ...connect.Handl
 			instanceServiceUndeleteInstanceHandler.ServeHTTP(w, r)
 		case InstanceServiceSyncInstanceProcedure:
 			instanceServiceSyncInstanceHandler.ServeHTTP(w, r)
-		case InstanceServiceListInstanceDatabaseProcedure:
-			instanceServiceListInstanceDatabaseHandler.ServeHTTP(w, r)
 		case InstanceServiceBatchSyncInstancesProcedure:
 			instanceServiceBatchSyncInstancesHandler.ServeHTTP(w, r)
 		case InstanceServiceBatchUpdateInstancesProcedure:
@@ -431,10 +406,6 @@ func (UnimplementedInstanceServiceHandler) UndeleteInstance(context.Context, *co
 
 func (UnimplementedInstanceServiceHandler) SyncInstance(context.Context, *connect.Request[v1.SyncInstanceRequest]) (*connect.Response[v1.SyncInstanceResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.InstanceService.SyncInstance is not implemented"))
-}
-
-func (UnimplementedInstanceServiceHandler) ListInstanceDatabase(context.Context, *connect.Request[v1.ListInstanceDatabaseRequest]) (*connect.Response[v1.ListInstanceDatabaseResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.InstanceService.ListInstanceDatabase is not implemented"))
 }
 
 func (UnimplementedInstanceServiceHandler) BatchSyncInstances(context.Context, *connect.Request[v1.BatchSyncInstancesRequest]) (*connect.Response[v1.BatchSyncInstancesResponse], error) {

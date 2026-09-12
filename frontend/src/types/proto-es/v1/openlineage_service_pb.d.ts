@@ -590,9 +590,9 @@ export declare type ListOpenLineageTasksRequest = Message<"metaxisdata.v1.ListOp
   pageSize: number;
 
   /**
-   * @generated from field: int32 offset = 2;
+   * @generated from field: string page_token = 2;
    */
-  offset: number;
+  pageToken: string;
 
   /**
    * @generated from field: string job_namespace = 3;
@@ -631,9 +631,9 @@ export declare type ListOpenLineageDatasetsRequest = Message<"metaxisdata.v1.Lis
   pageSize: number;
 
   /**
-   * @generated from field: int32 offset = 2;
+   * @generated from field: string page_token = 2;
    */
-  offset: number;
+  pageToken: string;
 
   /**
    * @generated from field: string search = 3;
@@ -680,16 +680,6 @@ export declare type GetOpenLineageDatasetRequest = Message<"metaxisdata.v1.GetOp
    * @generated from field: string guid = 1;
    */
   guid: string;
-
-  /**
-   * @generated from field: string namespace = 2;
-   */
-  namespace: string;
-
-  /**
-   * @generated from field: string name = 3;
-   */
-  name: string;
 };
 
 /**
@@ -706,6 +696,11 @@ export declare type ListOpenLineageTasksResponse = Message<"metaxisdata.v1.ListO
    * @generated from field: repeated metaxisdata.v1.OpenLineageTaskResource tasks = 1;
    */
   tasks: OpenLineageTaskResource[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
 };
 
 /**
@@ -722,6 +717,11 @@ export declare type ListOpenLineageDatasetsResponse = Message<"metaxisdata.v1.Li
    * @generated from field: repeated metaxisdata.v1.OpenLineageDatasetResource datasets = 1;
    */
   datasets: OpenLineageDatasetResource[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
 };
 
 /**
@@ -756,9 +756,9 @@ export declare type ListOpenLineageRunsRequest = Message<"metaxisdata.v1.ListOpe
   pageSize: number;
 
   /**
-   * @generated from field: int32 offset = 2;
+   * @generated from field: string page_token = 2;
    */
-  offset: number;
+  pageToken: string;
 
   /**
    * @generated from field: string job_namespace = 3;
@@ -805,6 +805,11 @@ export declare type ListOpenLineageRunsResponse = Message<"metaxisdata.v1.ListOp
    * @generated from field: repeated metaxisdata.v1.OpenLineageRunResource runs = 1;
    */
   runs: OpenLineageRunResource[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
 };
 
 /**
@@ -846,21 +851,21 @@ export declare type CreateNamespaceMappingRequest = Message<"metaxisdata.v1.Crea
 export declare const CreateNamespaceMappingRequestSchema: GenMessage<CreateNamespaceMappingRequest>;
 
 /**
- * @generated from message metaxisdata.v1.ListNamespaceMappingRequest
+ * @generated from message metaxisdata.v1.ListNamespaceMappingsRequest
  */
-export declare type ListNamespaceMappingRequest = Message<"metaxisdata.v1.ListNamespaceMappingRequest"> & {
+export declare type ListNamespaceMappingsRequest = Message<"metaxisdata.v1.ListNamespaceMappingsRequest"> & {
 };
 
 /**
- * Describes the message metaxisdata.v1.ListNamespaceMappingRequest.
- * Use `create(ListNamespaceMappingRequestSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.ListNamespaceMappingsRequest.
+ * Use `create(ListNamespaceMappingsRequestSchema)` to create a new message.
  */
-export declare const ListNamespaceMappingRequestSchema: GenMessage<ListNamespaceMappingRequest>;
+export declare const ListNamespaceMappingsRequestSchema: GenMessage<ListNamespaceMappingsRequest>;
 
 /**
- * @generated from message metaxisdata.v1.ListNamespaceMappingResponse
+ * @generated from message metaxisdata.v1.ListNamespaceMappingsResponse
  */
-export declare type ListNamespaceMappingResponse = Message<"metaxisdata.v1.ListNamespaceMappingResponse"> & {
+export declare type ListNamespaceMappingsResponse = Message<"metaxisdata.v1.ListNamespaceMappingsResponse"> & {
   /**
    * @generated from field: repeated metaxisdata.v1.NamespaceMappingResource mappings = 1;
    */
@@ -868,10 +873,10 @@ export declare type ListNamespaceMappingResponse = Message<"metaxisdata.v1.ListN
 };
 
 /**
- * Describes the message metaxisdata.v1.ListNamespaceMappingResponse.
- * Use `create(ListNamespaceMappingResponseSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.ListNamespaceMappingsResponse.
+ * Use `create(ListNamespaceMappingsResponseSchema)` to create a new message.
  */
-export declare const ListNamespaceMappingResponseSchema: GenMessage<ListNamespaceMappingResponse>;
+export declare const ListNamespaceMappingsResponseSchema: GenMessage<ListNamespaceMappingsResponse>;
 
 /**
  * @generated from message metaxisdata.v1.UpdateNamespaceMappingRequest
@@ -998,21 +1003,21 @@ export declare type CreateAPIKeyResponse = Message<"metaxisdata.v1.CreateAPIKeyR
 export declare const CreateAPIKeyResponseSchema: GenMessage<CreateAPIKeyResponse>;
 
 /**
- * @generated from message metaxisdata.v1.ListAPIKeyRequest
+ * @generated from message metaxisdata.v1.ListAPIKeysRequest
  */
-export declare type ListAPIKeyRequest = Message<"metaxisdata.v1.ListAPIKeyRequest"> & {
+export declare type ListAPIKeysRequest = Message<"metaxisdata.v1.ListAPIKeysRequest"> & {
 };
 
 /**
- * Describes the message metaxisdata.v1.ListAPIKeyRequest.
- * Use `create(ListAPIKeyRequestSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.ListAPIKeysRequest.
+ * Use `create(ListAPIKeysRequestSchema)` to create a new message.
  */
-export declare const ListAPIKeyRequestSchema: GenMessage<ListAPIKeyRequest>;
+export declare const ListAPIKeysRequestSchema: GenMessage<ListAPIKeysRequest>;
 
 /**
- * @generated from message metaxisdata.v1.ListAPIKeyResponse
+ * @generated from message metaxisdata.v1.ListAPIKeysResponse
  */
-export declare type ListAPIKeyResponse = Message<"metaxisdata.v1.ListAPIKeyResponse"> & {
+export declare type ListAPIKeysResponse = Message<"metaxisdata.v1.ListAPIKeysResponse"> & {
   /**
    * @generated from field: repeated metaxisdata.v1.APIKeyResource api_keys = 1;
    */
@@ -1020,10 +1025,10 @@ export declare type ListAPIKeyResponse = Message<"metaxisdata.v1.ListAPIKeyRespo
 };
 
 /**
- * Describes the message metaxisdata.v1.ListAPIKeyResponse.
- * Use `create(ListAPIKeyResponseSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.ListAPIKeysResponse.
+ * Use `create(ListAPIKeysResponseSchema)` to create a new message.
  */
-export declare const ListAPIKeyResponseSchema: GenMessage<ListAPIKeyResponse>;
+export declare const ListAPIKeysResponseSchema: GenMessage<ListAPIKeysResponse>;
 
 /**
  * @generated from message metaxisdata.v1.RevokeAPIKeyRequest
@@ -1132,12 +1137,12 @@ export declare const OpenLineageService: GenService<{
     output: typeof NamespaceMappingResourceSchema;
   },
   /**
-   * @generated from rpc metaxisdata.v1.OpenLineageService.ListNamespaceMapping
+   * @generated from rpc metaxisdata.v1.OpenLineageService.ListNamespaceMappings
    */
-  listNamespaceMapping: {
+  listNamespaceMappings: {
     methodKind: "unary";
-    input: typeof ListNamespaceMappingRequestSchema;
-    output: typeof ListNamespaceMappingResponseSchema;
+    input: typeof ListNamespaceMappingsRequestSchema;
+    output: typeof ListNamespaceMappingsResponseSchema;
   },
   /**
    * @generated from rpc metaxisdata.v1.OpenLineageService.UpdateNamespaceMapping
@@ -1164,12 +1169,12 @@ export declare const OpenLineageService: GenService<{
     output: typeof CreateAPIKeyResponseSchema;
   },
   /**
-   * @generated from rpc metaxisdata.v1.OpenLineageService.ListAPIKey
+   * @generated from rpc metaxisdata.v1.OpenLineageService.ListAPIKeys
    */
-  listAPIKey: {
+  listAPIKeys: {
     methodKind: "unary";
-    input: typeof ListAPIKeyRequestSchema;
-    output: typeof ListAPIKeyResponseSchema;
+    input: typeof ListAPIKeysRequestSchema;
+    output: typeof ListAPIKeysResponseSchema;
   },
   /**
    * @generated from rpc metaxisdata.v1.OpenLineageService.RevokeAPIKey

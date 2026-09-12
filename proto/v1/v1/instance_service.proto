@@ -71,13 +71,6 @@ service InstanceService {
     option (metaxisdata.v1.permission) = "metaxisdata.instances.write";
   }
 
-  rpc ListInstanceDatabase(ListInstanceDatabaseRequest) returns (ListInstanceDatabaseResponse) {
-    option (google.api.http) = {
-      post: "/v1/{name=instances/*}:databases"
-      body: "*"
-    };
-  }
-
   rpc BatchSyncInstances(BatchSyncInstancesRequest) returns (BatchSyncInstancesResponse) {
     option (google.api.http) = {
       post: "/v1/instances:batchSync"
@@ -202,7 +195,7 @@ message CreateInstanceRequest {
   // the instance's resource name.
   //
   // This value should be 4-63 characters, and valid characters
-  // are /[a-z][0-9]-/.
+  // are /[a-z0-9-]/.
   string instance_id = 2;
 
   // Validate only also tests the data source connection.
@@ -252,23 +245,6 @@ message SyncInstanceRequest {
   // When full sync is enabled, all databases in the instance will be synchronized. Otherwise, only
   // the instance metadata (such as the database list) and any newly discovered instances will be synced.
   bool enable_full_sync = 2;
-}
-
-message ListInstanceDatabaseRequest {
-  // The name of the instance.
-  // Format: instances/{instance}
-  string name = 1 [
-    (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "metaxisdata/Instance"}
-  ];
-
-  // The target instance. We need to set this field if the target instance is not created yet.
-  optional Instance instance = 2 [(google.api.field_behavior) = REQUIRED];
-}
-
-message ListInstanceDatabaseResponse {
-  // All database name list in the instance.
-  repeated string databases = 1;
 }
 
 message SyncInstanceResponse {

@@ -4,6 +4,7 @@
 
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
+import type { MetaType } from "./database_service_pb";
 
 /**
  * Describes the file v1/explain_sql_service.proto.
@@ -20,11 +21,12 @@ export declare type ExplainSQLRequest = Message<"metaxisdata.v1.ExplainSQLReques
   metaGuid: string;
 
   /**
-   * store.MetaType
+   * Advisory type of the object named by meta_guid. The server resolves the
+   * authoritative type from the registry entry and ignores this field.
    *
-   * @generated from field: int32 meta_type = 2;
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 2;
    */
-  metaType: number;
+  metaType: MetaType;
 
   /**
    * @generated from field: string sql_text = 3;

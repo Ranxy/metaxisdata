@@ -109,21 +109,19 @@ export declare type ListUsersRequest = Message<"metaxisdata.v1.ListUsersRequest"
    * - email: the user email, support "==" and ".matches()" operator.
    * - user_type: the type, check UserType enum for values, support "==", "in [xx]", "!(in [xx])" operator.
    * - state: check State enum for values, support "==" operator.
-   * - project: the project full name in "projects/{id}" format, support "==" operator.
    *
    * For example:
    * name == "ed"
    * name.matches("ed")
    * email == "ed@example.com"
    * email.matches("ed")
-   * user_type == "SERVICE_ACCOUNT"
-   * user_type in ["SERVICE_ACCOUNT", "USER"]
-   * !(user_type in ["SERVICE_ACCOUNT", "USER"])
+   * user_type == "USER"
+   * user_type in ["USER"]
+   * !(user_type in ["USER"])
    * state == "DELETED"
-   * project == "projects/sample-project"
    * You can combine filter conditions like:
-   * name.matches("ed") && project == "projects/sample-project"
-   * (name == "ed" || email == "ed@example.com") && project == "projects/sample-project"
+   * name.matches("ed") && state == "ACTIVE"
+   * (name == "ed" || email == "ed@example.com") && user_type == "USER"
    *
    * @generated from field: string filter = 4;
    */

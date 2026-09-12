@@ -519,7 +519,7 @@ import {
   type FunctionMetadata,
   type ManualSQLMetadata,
   type MaterializedViewMetadata,
-  type MetadataResponse_MetadataList,
+  type MetadataResponse_Metadata,
   MetaType,
   type ProcedureMetadata,
   type SearchMetadataResult,
@@ -651,7 +651,7 @@ const filteredScopeSchemas = computed(() => {
 });
 
 const instances = ref<Instance[]>([]);
-const metadataGroups = ref<MetadataResponse_MetadataList[]>([]);
+const metadataGroups = ref<MetadataResponse_Metadata[]>([]);
 
 const activeMetaType = ref<MetaType | null>(null);
 const selectedMetaType = ref<MetaType | null>(null);

@@ -23,13 +23,15 @@ const (
 )
 
 type ExplainSQLRequest struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	MetaGuid        string                 `protobuf:"bytes,1,opt,name=meta_guid,json=metaGuid,proto3" json:"meta_guid,omitempty"`
-	MetaType        int32                  `protobuf:"varint,2,opt,name=meta_type,json=metaType,proto3" json:"meta_type,omitempty"` // store.MetaType
-	SqlText         string                 `protobuf:"bytes,3,opt,name=sql_text,json=sqlText,proto3" json:"sql_text,omitempty"`
-	ForceRegenerate bool                   `protobuf:"varint,4,opt,name=force_regenerate,json=forceRegenerate,proto3" json:"force_regenerate,omitempty"`
-	ProviderName    string                 `protobuf:"bytes,5,opt,name=provider_name,json=providerName,proto3" json:"provider_name,omitempty"`
-	ScopePrefix     string                 `protobuf:"bytes,6,opt,name=scope_prefix,json=scopePrefix,proto3" json:"scope_prefix,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	MetaGuid string                 `protobuf:"bytes,1,opt,name=meta_guid,json=metaGuid,proto3" json:"meta_guid,omitempty"`
+	// Advisory type of the object named by meta_guid. The server resolves the
+	// authoritative type from the registry entry and ignores this field.
+	MetaType        MetaType `protobuf:"varint,2,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.v1.MetaType" json:"meta_type,omitempty"`
+	SqlText         string   `protobuf:"bytes,3,opt,name=sql_text,json=sqlText,proto3" json:"sql_text,omitempty"`
+	ForceRegenerate bool     `protobuf:"varint,4,opt,name=force_regenerate,json=forceRegenerate,proto3" json:"force_regenerate,omitempty"`
+	ProviderName    string   `protobuf:"bytes,5,opt,name=provider_name,json=providerName,proto3" json:"provider_name,omitempty"`
+	ScopePrefix     string   `protobuf:"bytes,6,opt,name=scope_prefix,json=scopePrefix,proto3" json:"scope_prefix,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -71,11 +73,11 @@ func (x *ExplainSQLRequest) GetMetaGuid() string {
 	return ""
 }
 
-func (x *ExplainSQLRequest) GetMetaType() int32 {
+func (x *ExplainSQLRequest) GetMetaType() MetaType {
 	if x != nil {
 		return x.MetaType
 	}
-	return 0
+	return MetaType_UNSPECIFIED
 }
 
 func (x *ExplainSQLRequest) GetSqlText() string {
@@ -408,10 +410,10 @@ var File_v1_explain_sql_service_proto protoreflect.FileDescriptor
 
 const file_v1_explain_sql_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1cv1/explain_sql_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\"\xdb\x01\n" +
+	"\x1cv1/explain_sql_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x19v1/database_service.proto\"\xf5\x01\n" +
 	"\x11ExplainSQLRequest\x12\x1b\n" +
-	"\tmeta_guid\x18\x01 \x01(\tR\bmetaGuid\x12\x1b\n" +
-	"\tmeta_type\x18\x02 \x01(\x05R\bmetaType\x12\x19\n" +
+	"\tmeta_guid\x18\x01 \x01(\tR\bmetaGuid\x125\n" +
+	"\tmeta_type\x18\x02 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12\x19\n" +
 	"\bsql_text\x18\x03 \x01(\tR\asqlText\x12)\n" +
 	"\x10force_regenerate\x18\x04 \x01(\bR\x0fforceRegenerate\x12#\n" +
 	"\rprovider_name\x18\x05 \x01(\tR\fproviderName\x12!\n" +
@@ -464,17 +466,19 @@ var file_v1_explain_sql_service_proto_goTypes = []any{
 	(*ExplainSQLResponse)(nil), // 1: metaxisdata.v1.ExplainSQLResponse
 	(*ExplainSQLProgress)(nil), // 2: metaxisdata.v1.ExplainSQLProgress
 	(*ExplainSQLMetadata)(nil), // 3: metaxisdata.v1.ExplainSQLMetadata
+	(MetaType)(0),              // 4: metaxisdata.v1.MetaType
 }
 var file_v1_explain_sql_service_proto_depIdxs = []int32{
-	3, // 0: metaxisdata.v1.ExplainSQLResponse.metadata:type_name -> metaxisdata.v1.ExplainSQLMetadata
-	2, // 1: metaxisdata.v1.ExplainSQLResponse.progress:type_name -> metaxisdata.v1.ExplainSQLProgress
-	0, // 2: metaxisdata.v1.ExplainSQLService.ExplainSQL:input_type -> metaxisdata.v1.ExplainSQLRequest
-	1, // 3: metaxisdata.v1.ExplainSQLService.ExplainSQL:output_type -> metaxisdata.v1.ExplainSQLResponse
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	4, // 0: metaxisdata.v1.ExplainSQLRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	3, // 1: metaxisdata.v1.ExplainSQLResponse.metadata:type_name -> metaxisdata.v1.ExplainSQLMetadata
+	2, // 2: metaxisdata.v1.ExplainSQLResponse.progress:type_name -> metaxisdata.v1.ExplainSQLProgress
+	0, // 3: metaxisdata.v1.ExplainSQLService.ExplainSQL:input_type -> metaxisdata.v1.ExplainSQLRequest
+	1, // 4: metaxisdata.v1.ExplainSQLService.ExplainSQL:output_type -> metaxisdata.v1.ExplainSQLResponse
+	4, // [4:5] is the sub-list for method output_type
+	3, // [3:4] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_v1_explain_sql_service_proto_init() }
@@ -482,6 +486,7 @@ func file_v1_explain_sql_service_proto_init() {
 	if File_v1_explain_sql_service_proto != nil {
 		return
 	}
+	file_v1_database_service_proto_init()
 	file_v1_explain_sql_service_proto_msgTypes[1].OneofWrappers = []any{
 		(*ExplainSQLResponse_Content)(nil),
 		(*ExplainSQLResponse_Metadata)(nil),

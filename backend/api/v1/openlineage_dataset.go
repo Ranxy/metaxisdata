@@ -55,25 +55,36 @@ func (s *OpenLineageService) ListOpenLineageDatasets(ctx context.Context, req *c
 	})
 	aggregates = filterOpenLineageDatasets(aggregates, req.Msg)
 
-	pageSize := int(req.Msg.GetPageSize())
-	if pageSize <= 0 {
-		pageSize = 200
+	size := int(req.Msg.GetPageSize())
+	if size <= 0 {
+		size = 200
 	}
-	offset := int(req.Msg.GetOffset())
-	if offset < 0 {
-		offset = 0
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:   req.Msg.GetPageToken(),
+		limit:   size,
+		maximum: 1000,
+	})
+	if err != nil {
+		return nil, err
 	}
-	if offset >= len(aggregates) {
+	if offset.offset >= len(aggregates) {
 		return connect.NewResponse(&v1pb.ListOpenLineageDatasetsResponse{}), nil
 	}
 
-	end := offset + pageSize
+	end := offset.offset + offset.limit
 	if end > len(aggregates) {
 		end = len(aggregates)
 	}
 
-	resp := &v1pb.ListOpenLineageDatasetsResponse{}
-	for _, dataset := range aggregates[offset:end] {
+	nextPageToken := ""
+	if end < len(aggregates) {
+		if nextPageToken, err = offset.getNextPageToken(); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to marshal next page token"))
+		}
+	}
+
+	resp := &v1pb.ListOpenLineageDatasetsResponse{NextPageToken: nextPageToken}
+	for _, dataset := range aggregates[offset.offset:end] {
 		resource := &v1pb.OpenLineageDatasetResource{
 			Guid:                  dataset.GUID,
 			Namespace:             dataset.Namespace,
@@ -134,8 +145,6 @@ func (s *OpenLineageService) GetOpenLineageDataset(ctx context.Context, req *con
 		ctx,
 		runs,
 		req.Msg.GetGuid(),
-		req.Msg.GetNamespace(),
-		req.Msg.GetName(),
 		func(ctx context.Context, namespace, name string) (*openlineageplugin.ResolvedDataset, error) {
 			return resolver.ResolveDatasetPreview(ctx, namespace, name)
 		},
@@ -227,8 +236,6 @@ func buildOpenLineageDatasetDetail(
 	ctx context.Context,
 	runs []*store.OpenLineageRunMessage,
 	guid string,
-	namespace string,
-	name string,
 	resolve datasetPreviewResolver,
 ) (*openLineageDatasetDetail, bool) {
 	columnLineageReadyFields := make(map[string]struct{})
@@ -242,8 +249,6 @@ func buildOpenLineageDatasetDetail(
 	// the aggregate and once to collect the detail.
 	target := &openLineageDatasetAggregate{
 		GUID:           guid,
-		Namespace:      namespace,
-		Name:           name,
 		sourceJobKeys:  make(map[string]struct{}),
 		targetJobKeys:  make(map[string]struct{}),
 		integrationSet: make(map[string]struct{}),

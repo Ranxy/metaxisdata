@@ -549,7 +549,7 @@ func (e *ServiceEnv) bootstrapAdmin(ctx context.Context) error {
 func (e *ServiceEnv) findDatabase(ctx context.Context, t *testing.T, instanceName, databaseName string) *v1pb.Database {
 	t.Helper()
 
-	resp, err := e.databaseClient.ListDatabase(ctx, authorizedRequest(e.token, &v1pb.ListDatabaseRequest{
+	resp, err := e.databaseClient.ListDatabases(ctx, authorizedRequest(e.token, &v1pb.ListDatabasesRequest{
 		Parent:   instanceName,
 		PageSize: 1000,
 	}))

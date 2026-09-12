@@ -14,25 +14,6 @@ import type { InstanceResource } from "./instance_service_pb";
 export declare const file_v1_database_service: GenFile;
 
 /**
- * @generated from message metaxisdata.v1.GetDatabaseRequest
- */
-export declare type GetDatabaseRequest = Message<"metaxisdata.v1.GetDatabaseRequest"> & {
-  /**
-   * The name of the database to retrieve.
-   * Format: instances/{instance}/databases/{database}
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.GetDatabaseRequest.
- * Use `create(GetDatabaseRequestSchema)` to create a new message.
- */
-export declare const GetDatabaseRequestSchema: GenMessage<GetDatabaseRequest>;
-
-/**
  * @generated from message metaxisdata.v1.SyncDatabaseRequest
  */
 export declare type SyncDatabaseRequest = Message<"metaxisdata.v1.SyncDatabaseRequest"> & {
@@ -151,9 +132,9 @@ export declare type Database = Message<"metaxisdata.v1.Database"> & {
 export declare const DatabaseSchema: GenMessage<Database>;
 
 /**
- * @generated from message metaxisdata.v1.ListDatabaseRequest
+ * @generated from message metaxisdata.v1.ListDatabasesRequest
  */
-export declare type ListDatabaseRequest = Message<"metaxisdata.v1.ListDatabaseRequest"> & {
+export declare type ListDatabasesRequest = Message<"metaxisdata.v1.ListDatabasesRequest"> & {
   /**
    * - projects/{project}: list databases in a project.
    * - workspaces/-: list databases in the workspace.
@@ -229,10 +210,10 @@ export declare type ListDatabaseRequest = Message<"metaxisdata.v1.ListDatabaseRe
 };
 
 /**
- * Describes the message metaxisdata.v1.ListDatabaseRequest.
- * Use `create(ListDatabaseRequestSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.ListDatabasesRequest.
+ * Use `create(ListDatabasesRequestSchema)` to create a new message.
  */
-export declare const ListDatabaseRequestSchema: GenMessage<ListDatabaseRequest>;
+export declare const ListDatabasesRequestSchema: GenMessage<ListDatabasesRequest>;
 
 /**
  * @generated from message metaxisdata.v1.ListDatabasesResponse
@@ -269,6 +250,10 @@ export declare type ListMetadataRequest = Message<"metaxisdata.v1.ListMetadataRe
    * database: "instance_100;database3"
    * table: "instance_1;db2;schema3;table4"
    *
+   * A GUID is an opaque, ';'-joined identifier rather than an AIP resource
+   * name, so it carries no resource_reference (the same applies to every other
+   * guid field in this file).
+   *
    * @generated from field: string parent_guid = 1;
    */
   parentGuid: string;
@@ -284,11 +269,14 @@ export declare type ListMetadataRequest = Message<"metaxisdata.v1.ListMetadataRe
   pageSize: number;
 
   /**
-   * A page token, received from a previous `ListDatabases` call.
+   * A page token, received from a previous `ListMetadata` call.
    * Provide this to retrieve the subsequent page.
    *
-   * When paginating, all other parameters provided to `ListDatabases` must
+   * When paginating, all other parameters provided to `ListMetadata` must
    * match the call that provided the page token.
+   *
+   * When meta_type is unset the response groups the rows by type and
+   * page_size applies to each group separately.
    *
    * @generated from field: string page_token = 3;
    */
@@ -296,7 +284,6 @@ export declare type ListMetadataRequest = Message<"metaxisdata.v1.ListMetadataRe
 
   /**
    * the type of metadata
-   * If meta_type is not specified, the query will ignore page_size and return the first 20 records of each meta_type.
    *
    * @generated from field: optional metaxisdata.v1.MetaType meta_type = 4;
    */
@@ -316,9 +303,9 @@ export declare type MetadataResponse = Message<"metaxisdata.v1.MetadataResponse"
   /**
    * The list of stored metadata.
    *
-   * @generated from field: repeated metaxisdata.v1.MetadataResponse.MetadataList types_stored_metadata = 3;
+   * @generated from field: repeated metaxisdata.v1.MetadataResponse.Metadata types_stored_metadata = 3;
    */
-  typesStoredMetadata: MetadataResponse_MetadataList[];
+  typesStoredMetadata: MetadataResponse_Metadata[];
 };
 
 /**
@@ -328,9 +315,9 @@ export declare type MetadataResponse = Message<"metaxisdata.v1.MetadataResponse"
 export declare const MetadataResponseSchema: GenMessage<MetadataResponse>;
 
 /**
- * @generated from message metaxisdata.v1.MetadataResponse.MetadataList
+ * @generated from message metaxisdata.v1.MetadataResponse.Metadata
  */
-export declare type MetadataResponse_MetadataList = Message<"metaxisdata.v1.MetadataResponse.MetadataList"> & {
+export declare type MetadataResponse_Metadata = Message<"metaxisdata.v1.MetadataResponse.Metadata"> & {
   /**
    * @generated from field: metaxisdata.v1.MetaType meta_type = 1;
    */
@@ -351,10 +338,10 @@ export declare type MetadataResponse_MetadataList = Message<"metaxisdata.v1.Meta
 };
 
 /**
- * Describes the message metaxisdata.v1.MetadataResponse.MetadataList.
- * Use `create(MetadataResponse_MetadataListSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.MetadataResponse.Metadata.
+ * Use `create(MetadataResponse_MetadataSchema)` to create a new message.
  */
-export declare const MetadataResponse_MetadataListSchema: GenMessage<MetadataResponse_MetadataList>;
+export declare const MetadataResponse_MetadataSchema: GenMessage<MetadataResponse_Metadata>;
 
 /**
  * @generated from message metaxisdata.v1.GetMetadataRequest
@@ -825,6 +812,23 @@ export declare type SearchMetadataRequest = Message<"metaxisdata.v1.SearchMetada
    * @generated from field: string search_str = 3;
    */
   searchStr: string;
+
+  /**
+   * The maximum number of results to return. If unspecified, at most 50
+   * results will be returned. The maximum value is 1000; values above 1000
+   * will be coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 4;
+   */
+  pageSize: number;
+
+  /**
+   * A page token, received from a previous `SearchMetadata` call. Provide this
+   * to retrieve the subsequent page.
+   *
+   * @generated from field: string page_token = 5;
+   */
+  pageToken: string;
 };
 
 /**
@@ -1067,9 +1071,9 @@ export declare type GetManualSQLRequest = Message<"metaxisdata.v1.GetManualSQLRe
 export declare const GetManualSQLRequestSchema: GenMessage<GetManualSQLRequest>;
 
 /**
- * @generated from message metaxisdata.v1.ListManualSQLRequest
+ * @generated from message metaxisdata.v1.ListManualSQLsRequest
  */
-export declare type ListManualSQLRequest = Message<"metaxisdata.v1.ListManualSQLRequest"> & {
+export declare type ListManualSQLsRequest = Message<"metaxisdata.v1.ListManualSQLsRequest"> & {
   /**
    * Format: instances/{instance}/databases/{database}
    *
@@ -1108,15 +1112,15 @@ export declare type ListManualSQLRequest = Message<"metaxisdata.v1.ListManualSQL
 };
 
 /**
- * Describes the message metaxisdata.v1.ListManualSQLRequest.
- * Use `create(ListManualSQLRequestSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.ListManualSQLsRequest.
+ * Use `create(ListManualSQLsRequestSchema)` to create a new message.
  */
-export declare const ListManualSQLRequestSchema: GenMessage<ListManualSQLRequest>;
+export declare const ListManualSQLsRequestSchema: GenMessage<ListManualSQLsRequest>;
 
 /**
- * @generated from message metaxisdata.v1.ListManualSQLResponse
+ * @generated from message metaxisdata.v1.ListManualSQLsResponse
  */
-export declare type ListManualSQLResponse = Message<"metaxisdata.v1.ListManualSQLResponse"> & {
+export declare type ListManualSQLsResponse = Message<"metaxisdata.v1.ListManualSQLsResponse"> & {
   /**
    * @generated from field: repeated metaxisdata.v1.ManualSQL manual_sqls = 1;
    */
@@ -1129,10 +1133,10 @@ export declare type ListManualSQLResponse = Message<"metaxisdata.v1.ListManualSQ
 };
 
 /**
- * Describes the message metaxisdata.v1.ListManualSQLResponse.
- * Use `create(ListManualSQLResponseSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.ListManualSQLsResponse.
+ * Use `create(ListManualSQLsResponseSchema)` to create a new message.
  */
-export declare const ListManualSQLResponseSchema: GenMessage<ListManualSQLResponse>;
+export declare const ListManualSQLsResponseSchema: GenMessage<ListManualSQLsResponse>;
 
 /**
  * @generated from message metaxisdata.v1.SearchManualSQLRequest
@@ -1310,6 +1314,14 @@ export declare type ManualSQLMetadata = Message<"metaxisdata.v1.ManualSQLMetadat
 export declare const ManualSQLMetadataSchema: GenMessage<ManualSQLMetadata>;
 
 /**
+ * StoredMetadata is the v1 view of one meta_registry_resource row.
+ *
+ * OpenLineage registry rows (store.MetaType_OPENLINEAGE) have no v1
+ * representation: they are internal summaries of ingested events, and the
+ * supported way to read them is the OpenLineageService resources. They are
+ * filtered out of ListMetadata/GetMetadata/SearchMetadata rather than
+ * serialized as an empty StoredMetadata.
+ *
  * @generated from message metaxisdata.v1.StoredMetadata
  */
 export declare type StoredMetadata = Message<"metaxisdata.v1.StoredMetadata"> & {
@@ -4019,6 +4031,15 @@ export enum MetaType {
    * @generated from enum value: TASK = 15;
    */
   TASK = 15,
+
+  /**
+   * OPENLINEAGE marks meta registry rows that back the OpenLineage service.
+   * See StoredMetadata for why these rows are not returned by the metadata
+   * methods.
+   *
+   * @generated from enum value: OPENLINEAGE = 100;
+   */
+  OPENLINEAGE = 100,
 }
 
 /**
@@ -4031,14 +4052,6 @@ export declare const MetaTypeSchema: GenEnum<MetaType>;
  */
 export declare const DatabaseService: GenService<{
   /**
-   * @generated from rpc metaxisdata.v1.DatabaseService.GetDatabase
-   */
-  getDatabase: {
-    methodKind: "unary";
-    input: typeof GetDatabaseRequestSchema;
-    output: typeof DatabaseSchema;
-  },
-  /**
    * @generated from rpc metaxisdata.v1.DatabaseService.SyncDatabase
    */
   syncDatabase: {
@@ -4047,11 +4060,11 @@ export declare const DatabaseService: GenService<{
     output: typeof SyncDatabaseResponseSchema;
   },
   /**
-   * @generated from rpc metaxisdata.v1.DatabaseService.ListDatabase
+   * @generated from rpc metaxisdata.v1.DatabaseService.ListDatabases
    */
-  listDatabase: {
+  listDatabases: {
     methodKind: "unary";
-    input: typeof ListDatabaseRequestSchema;
+    input: typeof ListDatabasesRequestSchema;
     output: typeof ListDatabasesResponseSchema;
   },
   /**
@@ -4131,12 +4144,12 @@ export declare const DatabaseService: GenService<{
     output: typeof ManualSQLSchema;
   },
   /**
-   * @generated from rpc metaxisdata.v1.DatabaseService.ListManualSQL
+   * @generated from rpc metaxisdata.v1.DatabaseService.ListManualSQLs
    */
-  listManualSQL: {
+  listManualSQLs: {
     methodKind: "unary";
-    input: typeof ListManualSQLRequestSchema;
-    output: typeof ListManualSQLResponseSchema;
+    input: typeof ListManualSQLsRequestSchema;
+    output: typeof ListManualSQLsResponseSchema;
   },
   /**
    * @generated from rpc metaxisdata.v1.DatabaseService.SearchManualSQL

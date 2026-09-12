@@ -27,11 +27,11 @@ const (
 	OpenLineageService_ListOpenLineageRuns_FullMethodName     = "/metaxisdata.v1.OpenLineageService/ListOpenLineageRuns"
 	OpenLineageService_GetOpenLineageRun_FullMethodName       = "/metaxisdata.v1.OpenLineageService/GetOpenLineageRun"
 	OpenLineageService_CreateNamespaceMapping_FullMethodName  = "/metaxisdata.v1.OpenLineageService/CreateNamespaceMapping"
-	OpenLineageService_ListNamespaceMapping_FullMethodName    = "/metaxisdata.v1.OpenLineageService/ListNamespaceMapping"
+	OpenLineageService_ListNamespaceMappings_FullMethodName   = "/metaxisdata.v1.OpenLineageService/ListNamespaceMappings"
 	OpenLineageService_UpdateNamespaceMapping_FullMethodName  = "/metaxisdata.v1.OpenLineageService/UpdateNamespaceMapping"
 	OpenLineageService_DeleteNamespaceMapping_FullMethodName  = "/metaxisdata.v1.OpenLineageService/DeleteNamespaceMapping"
 	OpenLineageService_CreateAPIKey_FullMethodName            = "/metaxisdata.v1.OpenLineageService/CreateAPIKey"
-	OpenLineageService_ListAPIKey_FullMethodName              = "/metaxisdata.v1.OpenLineageService/ListAPIKey"
+	OpenLineageService_ListAPIKeys_FullMethodName             = "/metaxisdata.v1.OpenLineageService/ListAPIKeys"
 	OpenLineageService_RevokeAPIKey_FullMethodName            = "/metaxisdata.v1.OpenLineageService/RevokeAPIKey"
 )
 
@@ -46,11 +46,11 @@ type OpenLineageServiceClient interface {
 	ListOpenLineageRuns(ctx context.Context, in *ListOpenLineageRunsRequest, opts ...grpc.CallOption) (*ListOpenLineageRunsResponse, error)
 	GetOpenLineageRun(ctx context.Context, in *GetOpenLineageRunRequest, opts ...grpc.CallOption) (*OpenLineageRunResource, error)
 	CreateNamespaceMapping(ctx context.Context, in *CreateNamespaceMappingRequest, opts ...grpc.CallOption) (*NamespaceMappingResource, error)
-	ListNamespaceMapping(ctx context.Context, in *ListNamespaceMappingRequest, opts ...grpc.CallOption) (*ListNamespaceMappingResponse, error)
+	ListNamespaceMappings(ctx context.Context, in *ListNamespaceMappingsRequest, opts ...grpc.CallOption) (*ListNamespaceMappingsResponse, error)
 	UpdateNamespaceMapping(ctx context.Context, in *UpdateNamespaceMappingRequest, opts ...grpc.CallOption) (*NamespaceMappingResource, error)
 	DeleteNamespaceMapping(ctx context.Context, in *DeleteNamespaceMappingRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	CreateAPIKey(ctx context.Context, in *CreateAPIKeyRequest, opts ...grpc.CallOption) (*CreateAPIKeyResponse, error)
-	ListAPIKey(ctx context.Context, in *ListAPIKeyRequest, opts ...grpc.CallOption) (*ListAPIKeyResponse, error)
+	ListAPIKeys(ctx context.Context, in *ListAPIKeysRequest, opts ...grpc.CallOption) (*ListAPIKeysResponse, error)
 	RevokeAPIKey(ctx context.Context, in *RevokeAPIKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
@@ -132,10 +132,10 @@ func (c *openLineageServiceClient) CreateNamespaceMapping(ctx context.Context, i
 	return out, nil
 }
 
-func (c *openLineageServiceClient) ListNamespaceMapping(ctx context.Context, in *ListNamespaceMappingRequest, opts ...grpc.CallOption) (*ListNamespaceMappingResponse, error) {
+func (c *openLineageServiceClient) ListNamespaceMappings(ctx context.Context, in *ListNamespaceMappingsRequest, opts ...grpc.CallOption) (*ListNamespaceMappingsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListNamespaceMappingResponse)
-	err := c.cc.Invoke(ctx, OpenLineageService_ListNamespaceMapping_FullMethodName, in, out, cOpts...)
+	out := new(ListNamespaceMappingsResponse)
+	err := c.cc.Invoke(ctx, OpenLineageService_ListNamespaceMappings_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -172,10 +172,10 @@ func (c *openLineageServiceClient) CreateAPIKey(ctx context.Context, in *CreateA
 	return out, nil
 }
 
-func (c *openLineageServiceClient) ListAPIKey(ctx context.Context, in *ListAPIKeyRequest, opts ...grpc.CallOption) (*ListAPIKeyResponse, error) {
+func (c *openLineageServiceClient) ListAPIKeys(ctx context.Context, in *ListAPIKeysRequest, opts ...grpc.CallOption) (*ListAPIKeysResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListAPIKeyResponse)
-	err := c.cc.Invoke(ctx, OpenLineageService_ListAPIKey_FullMethodName, in, out, cOpts...)
+	out := new(ListAPIKeysResponse)
+	err := c.cc.Invoke(ctx, OpenLineageService_ListAPIKeys_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -203,11 +203,11 @@ type OpenLineageServiceServer interface {
 	ListOpenLineageRuns(context.Context, *ListOpenLineageRunsRequest) (*ListOpenLineageRunsResponse, error)
 	GetOpenLineageRun(context.Context, *GetOpenLineageRunRequest) (*OpenLineageRunResource, error)
 	CreateNamespaceMapping(context.Context, *CreateNamespaceMappingRequest) (*NamespaceMappingResource, error)
-	ListNamespaceMapping(context.Context, *ListNamespaceMappingRequest) (*ListNamespaceMappingResponse, error)
+	ListNamespaceMappings(context.Context, *ListNamespaceMappingsRequest) (*ListNamespaceMappingsResponse, error)
 	UpdateNamespaceMapping(context.Context, *UpdateNamespaceMappingRequest) (*NamespaceMappingResource, error)
 	DeleteNamespaceMapping(context.Context, *DeleteNamespaceMappingRequest) (*emptypb.Empty, error)
 	CreateAPIKey(context.Context, *CreateAPIKeyRequest) (*CreateAPIKeyResponse, error)
-	ListAPIKey(context.Context, *ListAPIKeyRequest) (*ListAPIKeyResponse, error)
+	ListAPIKeys(context.Context, *ListAPIKeysRequest) (*ListAPIKeysResponse, error)
 	RevokeAPIKey(context.Context, *RevokeAPIKeyRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedOpenLineageServiceServer()
 }
@@ -240,8 +240,8 @@ func (UnimplementedOpenLineageServiceServer) GetOpenLineageRun(context.Context, 
 func (UnimplementedOpenLineageServiceServer) CreateNamespaceMapping(context.Context, *CreateNamespaceMappingRequest) (*NamespaceMappingResource, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateNamespaceMapping not implemented")
 }
-func (UnimplementedOpenLineageServiceServer) ListNamespaceMapping(context.Context, *ListNamespaceMappingRequest) (*ListNamespaceMappingResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListNamespaceMapping not implemented")
+func (UnimplementedOpenLineageServiceServer) ListNamespaceMappings(context.Context, *ListNamespaceMappingsRequest) (*ListNamespaceMappingsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListNamespaceMappings not implemented")
 }
 func (UnimplementedOpenLineageServiceServer) UpdateNamespaceMapping(context.Context, *UpdateNamespaceMappingRequest) (*NamespaceMappingResource, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateNamespaceMapping not implemented")
@@ -252,8 +252,8 @@ func (UnimplementedOpenLineageServiceServer) DeleteNamespaceMapping(context.Cont
 func (UnimplementedOpenLineageServiceServer) CreateAPIKey(context.Context, *CreateAPIKeyRequest) (*CreateAPIKeyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateAPIKey not implemented")
 }
-func (UnimplementedOpenLineageServiceServer) ListAPIKey(context.Context, *ListAPIKeyRequest) (*ListAPIKeyResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListAPIKey not implemented")
+func (UnimplementedOpenLineageServiceServer) ListAPIKeys(context.Context, *ListAPIKeysRequest) (*ListAPIKeysResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListAPIKeys not implemented")
 }
 func (UnimplementedOpenLineageServiceServer) RevokeAPIKey(context.Context, *RevokeAPIKeyRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method RevokeAPIKey not implemented")
@@ -405,20 +405,20 @@ func _OpenLineageService_CreateNamespaceMapping_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _OpenLineageService_ListNamespaceMapping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListNamespaceMappingRequest)
+func _OpenLineageService_ListNamespaceMappings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNamespaceMappingsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(OpenLineageServiceServer).ListNamespaceMapping(ctx, in)
+		return srv.(OpenLineageServiceServer).ListNamespaceMappings(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: OpenLineageService_ListNamespaceMapping_FullMethodName,
+		FullMethod: OpenLineageService_ListNamespaceMappings_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(OpenLineageServiceServer).ListNamespaceMapping(ctx, req.(*ListNamespaceMappingRequest))
+		return srv.(OpenLineageServiceServer).ListNamespaceMappings(ctx, req.(*ListNamespaceMappingsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -477,20 +477,20 @@ func _OpenLineageService_CreateAPIKey_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
-func _OpenLineageService_ListAPIKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListAPIKeyRequest)
+func _OpenLineageService_ListAPIKeys_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAPIKeysRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(OpenLineageServiceServer).ListAPIKey(ctx, in)
+		return srv.(OpenLineageServiceServer).ListAPIKeys(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: OpenLineageService_ListAPIKey_FullMethodName,
+		FullMethod: OpenLineageService_ListAPIKeys_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(OpenLineageServiceServer).ListAPIKey(ctx, req.(*ListAPIKeyRequest))
+		return srv.(OpenLineageServiceServer).ListAPIKeys(ctx, req.(*ListAPIKeysRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -549,8 +549,8 @@ var OpenLineageService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _OpenLineageService_CreateNamespaceMapping_Handler,
 		},
 		{
-			MethodName: "ListNamespaceMapping",
-			Handler:    _OpenLineageService_ListNamespaceMapping_Handler,
+			MethodName: "ListNamespaceMappings",
+			Handler:    _OpenLineageService_ListNamespaceMappings_Handler,
 		},
 		{
 			MethodName: "UpdateNamespaceMapping",
@@ -565,8 +565,8 @@ var OpenLineageService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _OpenLineageService_CreateAPIKey_Handler,
 		},
 		{
-			MethodName: "ListAPIKey",
-			Handler:    _OpenLineageService_ListAPIKey_Handler,
+			MethodName: "ListAPIKeys",
+			Handler:    _OpenLineageService_ListAPIKeys_Handler,
 		},
 		{
 			MethodName: "RevokeAPIKey",

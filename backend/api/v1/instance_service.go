@@ -93,41 +93,6 @@ func (s *InstanceService) ListInstances(ctx context.Context, req *connect.Reques
 }
 
 // ListInstanceDatabase list all databases in the instance.
-func (*InstanceService) ListInstanceDatabase(context.Context, *connect.Request[v1pb.ListInstanceDatabaseRequest]) (*connect.Response[v1pb.ListInstanceDatabaseResponse], error) {
-	// var instanceMessage *store.InstanceMessage
-
-	// if req.Msg.Instance != nil {
-	// 	instanceID, err := common.GetInstanceID(req.Msg.Name)
-	// 	if err != nil {
-	// 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
-	// 	}
-
-	// 	if instanceMessage, err = convertInstanceToInstanceMessage(instanceID, req.Msg.Instance); err != nil {
-	// 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
-	// 	}
-	// } else {
-	// 	instance, err := getInstanceMessage(ctx, s.store, req.Msg.Name)
-	// 	if err != nil {
-	// 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
-	// 	}
-	// 	instanceMessage = instance
-	// }
-
-	// instanceMeta, err := s.schemaSyncer.GetInstanceMeta(ctx, instanceMessage)
-	// if err != nil {
-	// 	return nil, connect.NewError(connect.CodeInternal, err)
-	// }
-
-	// response := &v1pb.ListInstanceDatabaseResponse{}
-	// for _, database := range instanceMeta.Databases {
-	// 	response.Databases = append(response.Databases, database.Name)
-	// }
-	// return connect.NewResponse(response), nil
-
-	// TODO(implement when database is ready)
-	return connect.NewResponse(&v1pb.ListInstanceDatabaseResponse{}), nil
-}
-
 // CreateInstance creates an instance.
 func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Request[v1pb.CreateInstanceRequest]) (*connect.Response[v1pb.Instance], error) {
 	if req.Msg.Instance == nil {

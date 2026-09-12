@@ -9,8 +9,8 @@ import {
   GetMetadataHistoryEventRequestSchema,
   GetMetadataRequestSchema,
   GetSchemaStringRequestSchema,
-  ListDatabaseRequestSchema,
-  ListManualSQLRequestSchema,
+  ListDatabasesRequestSchema,
+  ListManualSQLsRequestSchema,
   ListMetadataHistoryRequestSchema,
   ListMetadataRequestSchema,
   type ManualSQL,
@@ -31,14 +31,14 @@ export async function listDatabases(options: {
   filter?: string;
   showDeleted?: boolean;
 }) {
-  const request = create(ListDatabaseRequestSchema, {
+  const request = create(ListDatabasesRequestSchema, {
     parent: options.parent,
     pageSize: options.pageSize ?? 50,
     pageToken: options.pageToken ?? "",
     filter: options.filter ?? "",
     showDeleted: options.showDeleted ?? false,
   });
-  return await databaseClient.listDatabase(request);
+  return await databaseClient.listDatabases(request);
 }
 
 /**
@@ -186,7 +186,7 @@ export async function listManualSQL(options: {
   tags?: string[];
   showDeleted?: boolean;
 }) {
-  const request = create(ListManualSQLRequestSchema, {
+  const request = create(ListManualSQLsRequestSchema, {
     parent: options.parent,
     pageSize: options.pageSize ?? 50,
     pageToken: options.pageToken ?? "",
@@ -194,7 +194,7 @@ export async function listManualSQL(options: {
     tags: options.tags ?? [],
     showDeleted: options.showDeleted ?? false,
   });
-  return await databaseClient.listManualSQL(request);
+  return await databaseClient.listManualSQLs(request);
 }
 
 export async function searchManualSQL(options: {

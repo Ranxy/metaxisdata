@@ -374,7 +374,7 @@ type EnvironmentSetting_Environment struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The resource id of the environment.
 	// This value should be 4-63 characters, and valid characters
-	// are /[a-z][0-9]-/.
+	// are /[a-z0-9-]/.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// The display name of the environment.
 	Title         string            `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`

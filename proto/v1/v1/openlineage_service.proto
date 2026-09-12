@@ -45,7 +45,7 @@ service OpenLineageService {
     option (metaxisdata.v1.permission) = "metaxisdata.openlineage.namespaceMappings.write";
   }
 
-  rpc ListNamespaceMapping(ListNamespaceMappingRequest) returns (ListNamespaceMappingResponse) {
+  rpc ListNamespaceMappings(ListNamespaceMappingsRequest) returns (ListNamespaceMappingsResponse) {
     option (google.api.http) = {get: "/v1/openlineage/namespaceMappings"};
   }
 
@@ -73,7 +73,7 @@ service OpenLineageService {
     option (metaxisdata.v1.permission) = "metaxisdata.openlineage.apiKeys.write";
   }
 
-  rpc ListAPIKey(ListAPIKeyRequest) returns (ListAPIKeyResponse) {
+  rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse) {
     option (google.api.http) = {get: "/v1/openlineage/apiKeys"};
   }
 
@@ -213,7 +213,7 @@ message OpenLineageDatasetDetailResource {
 
 message ListOpenLineageTasksRequest {
   int32 page_size = 1;
-  int32 offset = 2;
+  string page_token = 2;
   string job_namespace = 3;
   string job_name = 4;
   string job_type = 5;
@@ -222,7 +222,7 @@ message ListOpenLineageTasksRequest {
 
 message ListOpenLineageDatasetsRequest {
   int32 page_size = 1;
-  int32 offset = 2;
+  string page_token = 2;
   string search = 3;
   string namespace = 4;
   string integration = 5;
@@ -233,16 +233,16 @@ message ListOpenLineageDatasetsRequest {
 
 message GetOpenLineageDatasetRequest {
   string guid = 1 [(google.api.field_behavior) = REQUIRED];
-  string namespace = 2;
-  string name = 3;
 }
 
 message ListOpenLineageTasksResponse {
   repeated OpenLineageTaskResource tasks = 1;
+  string next_page_token = 2;
 }
 
 message ListOpenLineageDatasetsResponse {
   repeated OpenLineageDatasetResource datasets = 1;
+  string next_page_token = 2;
 }
 
 message GetOpenLineageTaskRequest {
@@ -251,7 +251,7 @@ message GetOpenLineageTaskRequest {
 
 message ListOpenLineageRunsRequest {
   int32 page_size = 1;
-  int32 offset = 2;
+  string page_token = 2;
   string job_namespace = 3;
   string job_name = 4;
   string task_guid = 5;
@@ -262,6 +262,7 @@ message ListOpenLineageRunsRequest {
 
 message ListOpenLineageRunsResponse {
   repeated OpenLineageRunResource runs = 1;
+  string next_page_token = 2;
 }
 
 message GetOpenLineageRunRequest {
@@ -272,9 +273,9 @@ message CreateNamespaceMappingRequest {
   NamespaceMappingResource mapping = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
-message ListNamespaceMappingRequest {}
+message ListNamespaceMappingsRequest {}
 
-message ListNamespaceMappingResponse {
+message ListNamespaceMappingsResponse {
   repeated NamespaceMappingResource mappings = 1;
 }
 
@@ -308,9 +309,9 @@ message CreateAPIKeyResponse {
   APIKeyResource api_key = 2;
 }
 
-message ListAPIKeyRequest {}
+message ListAPIKeysRequest {}
 
-message ListAPIKeyResponse {
+message ListAPIKeysResponse {
   repeated APIKeyResource api_keys = 1;
 }
 

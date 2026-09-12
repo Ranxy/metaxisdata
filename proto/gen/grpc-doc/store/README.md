@@ -77,8 +77,6 @@
     - [TaskMetadata.State](#metaxisdata-store-TaskMetadata-State)
   
 - [store/explain_sql.proto](#store_explain_sql-proto)
-    - [ExplainSQLCache](#metaxisdata-store-ExplainSQLCache)
-  
 - [store/group.proto](#store_group-proto)
     - [GroupMember](#metaxisdata-store-GroupMember)
     - [GroupPayload](#metaxisdata-store-GroupPayload)
@@ -1533,28 +1531,6 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 ## store/explain_sql.proto
 
 
-
-<a name="metaxisdata-store-ExplainSQLCache"></a>
-
-### ExplainSQLCache
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| cache_key | [string](#string) |  |  |
-| cache_type | [int32](#int32) |  | 0=metadata, 1=custom_sql |
-| meta_guid | [string](#string) |  |  |
-| sql_text | [string](#string) |  |  |
-| provider | [string](#string) |  |  |
-| model | [string](#string) |  |  |
-| explanation_json | [string](#string) |  |  |
-| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
  
 
  
@@ -2585,7 +2561,7 @@ EnvironmentTierPolicy is the tier of an environment.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [string](#string) |  | The resource id of the environment. This value should be 4-63 characters, and valid characters are /[a-z][0-9]-/. |
+| id | [string](#string) |  | The resource id of the environment. This value should be 4-63 characters, and valid characters are /[a-z0-9-]/. |
 | title | [string](#string) |  | The display name of the environment. |
 | tags | [EnvironmentSetting.Environment.TagsEntry](#metaxisdata-store-EnvironmentSetting-Environment-TagsEntry) | repeated |  |
 | color | [string](#string) |  |  |

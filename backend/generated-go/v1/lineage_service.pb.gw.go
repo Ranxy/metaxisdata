@@ -35,24 +35,15 @@ var (
 	_ = metadata.Join
 )
 
-var filter_LineageService_GetLineage_0 = &utilities.DoubleArray{Encoding: map[string]int{"guid": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
+var filter_LineageService_GetLineage_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
 
 func request_LineageService_GetLineage_0(ctx context.Context, marshaler runtime.Marshaler, client LineageServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq GetLineageRequest
 		metadata runtime.ServerMetadata
-		err      error
 	)
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["guid"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "guid")
-	}
-	protoReq.Guid, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "guid", err)
 	}
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
@@ -68,16 +59,7 @@ func local_request_LineageService_GetLineage_0(ctx context.Context, marshaler ru
 	var (
 		protoReq GetLineageRequest
 		metadata runtime.ServerMetadata
-		err      error
 	)
-	val, ok := pathParams["guid"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "guid")
-	}
-	protoReq.Guid, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "guid", err)
-	}
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
@@ -88,24 +70,15 @@ func local_request_LineageService_GetLineage_0(ctx context.Context, marshaler ru
 	return msg, metadata, err
 }
 
-var filter_LineageService_GetLineageForContext_0 = &utilities.DoubleArray{Encoding: map[string]int{"guid": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
+var filter_LineageService_GetLineageForContext_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
 
 func request_LineageService_GetLineageForContext_0(ctx context.Context, marshaler runtime.Marshaler, client LineageServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq GetLineageForContextRequest
 		metadata runtime.ServerMetadata
-		err      error
 	)
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["guid"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "guid")
-	}
-	protoReq.Guid, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "guid", err)
 	}
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
@@ -121,16 +94,7 @@ func local_request_LineageService_GetLineageForContext_0(ctx context.Context, ma
 	var (
 		protoReq GetLineageForContextRequest
 		metadata runtime.ServerMetadata
-		err      error
 	)
-	val, ok := pathParams["guid"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "guid")
-	}
-	protoReq.Guid, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "guid", err)
-	}
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
@@ -153,7 +117,7 @@ func RegisterLineageServiceHandlerServer(ctx context.Context, mux *runtime.Serve
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.LineageService/GetLineage", runtime.WithHTTPPathPattern("/v1/{guid=lineages/*}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.LineageService/GetLineage", runtime.WithHTTPPathPattern("/v1/lineages"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -173,7 +137,7 @@ func RegisterLineageServiceHandlerServer(ctx context.Context, mux *runtime.Serve
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.LineageService/GetLineageForContext", runtime.WithHTTPPathPattern("/v1/context/{guid=lineages/*}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.LineageService/GetLineageForContext", runtime.WithHTTPPathPattern("/v1/lineages:context"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -231,7 +195,7 @@ func RegisterLineageServiceHandlerClient(ctx context.Context, mux *runtime.Serve
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.LineageService/GetLineage", runtime.WithHTTPPathPattern("/v1/{guid=lineages/*}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.LineageService/GetLineage", runtime.WithHTTPPathPattern("/v1/lineages"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -248,7 +212,7 @@ func RegisterLineageServiceHandlerClient(ctx context.Context, mux *runtime.Serve
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.LineageService/GetLineageForContext", runtime.WithHTTPPathPattern("/v1/context/{guid=lineages/*}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.LineageService/GetLineageForContext", runtime.WithHTTPPathPattern("/v1/lineages:context"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -265,8 +229,8 @@ func RegisterLineageServiceHandlerClient(ctx context.Context, mux *runtime.Serve
 }
 
 var (
-	pattern_LineageService_GetLineage_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2}, []string{"v1", "lineages", "guid"}, ""))
-	pattern_LineageService_GetLineageForContext_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 2, 5, 3}, []string{"v1", "context", "lineages", "guid"}, ""))
+	pattern_LineageService_GetLineage_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "lineages"}, ""))
+	pattern_LineageService_GetLineageForContext_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "lineages"}, "context"))
 )
 
 var (

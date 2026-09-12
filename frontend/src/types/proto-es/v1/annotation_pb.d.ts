@@ -2,42 +2,13 @@
 // @generated from file v1/annotation.proto (package metaxisdata.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenEnum, GenExtension, GenFile } from "@bufbuild/protobuf/codegenv2";
+import type { GenExtension, GenFile } from "@bufbuild/protobuf/codegenv2";
 import type { MethodOptions } from "@bufbuild/protobuf/wkt";
 
 /**
  * Describes the file v1/annotation.proto.
  */
 export declare const file_v1_annotation: GenFile;
-
-/**
- * @generated from enum metaxisdata.v1.AuthMethod
- */
-export enum AuthMethod {
-  /**
-   * @generated from enum value: AUTH_METHOD_UNSPECIFIED = 0;
-   */
-  AUTH_METHOD_UNSPECIFIED = 0,
-
-  /**
-   * IAM uses the standard IAM authorization check on the organizational resources.
-   *
-   * @generated from enum value: IAM = 1;
-   */
-  IAM = 1,
-
-  /**
-   * Custom authorization method.
-   *
-   * @generated from enum value: CUSTOM = 2;
-   */
-  CUSTOM = 2,
-}
-
-/**
- * Describes the enum metaxisdata.v1.AuthMethod.
- */
-export declare const AuthMethodSchema: GenEnum<AuthMethod>;
 
 /**
  * @generated from extension: bool allow_without_credential = 100000;
@@ -48,11 +19,6 @@ export declare const allow_without_credential: GenExtension<MethodOptions, boole
  * @generated from extension: string permission = 100001;
  */
 export declare const permission: GenExtension<MethodOptions, string>;
-
-/**
- * @generated from extension: metaxisdata.v1.AuthMethod auth_method = 100002;
- */
-export declare const auth_method: GenExtension<MethodOptions, AuthMethod>;
 
 /**
  * @generated from extension: bool audit = 100003;

@@ -27,7 +27,6 @@ const (
 	InstanceService_DeleteInstance_FullMethodName       = "/metaxisdata.v1.InstanceService/DeleteInstance"
 	InstanceService_UndeleteInstance_FullMethodName     = "/metaxisdata.v1.InstanceService/UndeleteInstance"
 	InstanceService_SyncInstance_FullMethodName         = "/metaxisdata.v1.InstanceService/SyncInstance"
-	InstanceService_ListInstanceDatabase_FullMethodName = "/metaxisdata.v1.InstanceService/ListInstanceDatabase"
 	InstanceService_BatchSyncInstances_FullMethodName   = "/metaxisdata.v1.InstanceService/BatchSyncInstances"
 	InstanceService_BatchUpdateInstances_FullMethodName = "/metaxisdata.v1.InstanceService/BatchUpdateInstances"
 	InstanceService_AddDataSource_FullMethodName        = "/metaxisdata.v1.InstanceService/AddDataSource"
@@ -46,7 +45,6 @@ type InstanceServiceClient interface {
 	DeleteInstance(ctx context.Context, in *DeleteInstanceRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	UndeleteInstance(ctx context.Context, in *UndeleteInstanceRequest, opts ...grpc.CallOption) (*Instance, error)
 	SyncInstance(ctx context.Context, in *SyncInstanceRequest, opts ...grpc.CallOption) (*SyncInstanceResponse, error)
-	ListInstanceDatabase(ctx context.Context, in *ListInstanceDatabaseRequest, opts ...grpc.CallOption) (*ListInstanceDatabaseResponse, error)
 	BatchSyncInstances(ctx context.Context, in *BatchSyncInstancesRequest, opts ...grpc.CallOption) (*BatchSyncInstancesResponse, error)
 	BatchUpdateInstances(ctx context.Context, in *BatchUpdateInstancesRequest, opts ...grpc.CallOption) (*BatchUpdateInstancesResponse, error)
 	AddDataSource(ctx context.Context, in *AddDataSourceRequest, opts ...grpc.CallOption) (*Instance, error)
@@ -132,16 +130,6 @@ func (c *instanceServiceClient) SyncInstance(ctx context.Context, in *SyncInstan
 	return out, nil
 }
 
-func (c *instanceServiceClient) ListInstanceDatabase(ctx context.Context, in *ListInstanceDatabaseRequest, opts ...grpc.CallOption) (*ListInstanceDatabaseResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListInstanceDatabaseResponse)
-	err := c.cc.Invoke(ctx, InstanceService_ListInstanceDatabase_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *instanceServiceClient) BatchSyncInstances(ctx context.Context, in *BatchSyncInstancesRequest, opts ...grpc.CallOption) (*BatchSyncInstancesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(BatchSyncInstancesResponse)
@@ -203,7 +191,6 @@ type InstanceServiceServer interface {
 	DeleteInstance(context.Context, *DeleteInstanceRequest) (*emptypb.Empty, error)
 	UndeleteInstance(context.Context, *UndeleteInstanceRequest) (*Instance, error)
 	SyncInstance(context.Context, *SyncInstanceRequest) (*SyncInstanceResponse, error)
-	ListInstanceDatabase(context.Context, *ListInstanceDatabaseRequest) (*ListInstanceDatabaseResponse, error)
 	BatchSyncInstances(context.Context, *BatchSyncInstancesRequest) (*BatchSyncInstancesResponse, error)
 	BatchUpdateInstances(context.Context, *BatchUpdateInstancesRequest) (*BatchUpdateInstancesResponse, error)
 	AddDataSource(context.Context, *AddDataSourceRequest) (*Instance, error)
@@ -239,9 +226,6 @@ func (UnimplementedInstanceServiceServer) UndeleteInstance(context.Context, *Und
 }
 func (UnimplementedInstanceServiceServer) SyncInstance(context.Context, *SyncInstanceRequest) (*SyncInstanceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SyncInstance not implemented")
-}
-func (UnimplementedInstanceServiceServer) ListInstanceDatabase(context.Context, *ListInstanceDatabaseRequest) (*ListInstanceDatabaseResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListInstanceDatabase not implemented")
 }
 func (UnimplementedInstanceServiceServer) BatchSyncInstances(context.Context, *BatchSyncInstancesRequest) (*BatchSyncInstancesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BatchSyncInstances not implemented")
@@ -405,24 +389,6 @@ func _InstanceService_SyncInstance_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
-func _InstanceService_ListInstanceDatabase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListInstanceDatabaseRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InstanceServiceServer).ListInstanceDatabase(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InstanceService_ListInstanceDatabase_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InstanceServiceServer).ListInstanceDatabase(ctx, req.(*ListInstanceDatabaseRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _InstanceService_BatchSyncInstances_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(BatchSyncInstancesRequest)
 	if err := dec(in); err != nil {
@@ -547,10 +513,6 @@ var InstanceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SyncInstance",
 			Handler:    _InstanceService_SyncInstance_Handler,
-		},
-		{
-			MethodName: "ListInstanceDatabase",
-			Handler:    _InstanceService_ListInstanceDatabase_Handler,
 		},
 		{
 			MethodName: "BatchSyncInstances",

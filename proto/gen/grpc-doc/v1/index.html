@@ -179,14 +179,6 @@
             <ul>
               
               
-                <li>
-                  <a href="#metaxisdata.v1.AuthMethod"><span class="badge">E</span>AuthMethod</a>
-                </li>
-              
-              
-                <li>
-                  <a href="#v1%2fannotation.proto-extensions"><span class="badge">X</span>File-level Extensions</a>
-                </li>
               
                 <li>
                   <a href="#v1%2fannotation.proto-extensions"><span class="badge">X</span>File-level Extensions</a>
@@ -454,14 +446,6 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.ListInstanceDatabaseRequest"><span class="badge">M</span>ListInstanceDatabaseRequest</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.v1.ListInstanceDatabaseResponse"><span class="badge">M</span>ListInstanceDatabaseResponse</a>
-                </li>
-              
-                <li>
                   <a href="#metaxisdata.v1.ListInstancesRequest"><span class="badge">M</span>ListInstancesRequest</a>
                 </li>
               
@@ -625,10 +609,6 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.GetDatabaseRequest"><span class="badge">M</span>GetDatabaseRequest</a>
-                </li>
-              
-                <li>
                   <a href="#metaxisdata.v1.GetManualSQLRequest"><span class="badge">M</span>GetManualSQLRequest</a>
                 </li>
               
@@ -665,7 +645,7 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.ListDatabaseRequest"><span class="badge">M</span>ListDatabaseRequest</a>
+                  <a href="#metaxisdata.v1.ListDatabasesRequest"><span class="badge">M</span>ListDatabasesRequest</a>
                 </li>
               
                 <li>
@@ -673,11 +653,11 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.ListManualSQLRequest"><span class="badge">M</span>ListManualSQLRequest</a>
+                  <a href="#metaxisdata.v1.ListManualSQLsRequest"><span class="badge">M</span>ListManualSQLsRequest</a>
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.ListManualSQLResponse"><span class="badge">M</span>ListManualSQLResponse</a>
+                  <a href="#metaxisdata.v1.ListManualSQLsResponse"><span class="badge">M</span>ListManualSQLsResponse</a>
                 </li>
               
                 <li>
@@ -745,7 +725,7 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.MetadataResponse.MetadataList"><span class="badge">M</span>MetadataResponse.MetadataList</a>
+                  <a href="#metaxisdata.v1.MetadataResponse.Metadata"><span class="badge">M</span>MetadataResponse.Metadata</a>
                 </li>
               
                 <li>
@@ -1069,19 +1049,19 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.ListAPIKeyRequest"><span class="badge">M</span>ListAPIKeyRequest</a>
+                  <a href="#metaxisdata.v1.ListAPIKeysRequest"><span class="badge">M</span>ListAPIKeysRequest</a>
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.ListAPIKeyResponse"><span class="badge">M</span>ListAPIKeyResponse</a>
+                  <a href="#metaxisdata.v1.ListAPIKeysResponse"><span class="badge">M</span>ListAPIKeysResponse</a>
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.ListNamespaceMappingRequest"><span class="badge">M</span>ListNamespaceMappingRequest</a>
+                  <a href="#metaxisdata.v1.ListNamespaceMappingsRequest"><span class="badge">M</span>ListNamespaceMappingsRequest</a>
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.ListNamespaceMappingResponse"><span class="badge">M</span>ListNamespaceMappingResponse</a>
+                  <a href="#metaxisdata.v1.ListNamespaceMappingsResponse"><span class="badge">M</span>ListNamespaceMappingsResponse</a>
                 </li>
               
                 <li>
@@ -1203,35 +1183,6 @@
       
 
       
-        <h3 id="metaxisdata.v1.AuthMethod">AuthMethod</h3>
-        <p></p>
-        <table class="enum-table">
-          <thead>
-            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
-          </thead>
-          <tbody>
-            
-              <tr>
-                <td>AUTH_METHOD_UNSPECIFIED</td>
-                <td>0</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>IAM</td>
-                <td>1</td>
-                <td><p>IAM uses the standard IAM authorization check on the organizational resources.</p></td>
-              </tr>
-            
-              <tr>
-                <td>CUSTOM</td>
-                <td>2</td>
-                <td><p>Custom authorization method.</p></td>
-              </tr>
-            
-          </tbody>
-        </table>
-      
 
       
         <h3 id="v1/annotation.proto-extensions">File-level Extensions</h3>
@@ -1254,14 +1205,6 @@
                 <td><a href="#bool">bool</a></td>
                 <td><a href="#google.protobuf.MethodOptions">.google.protobuf.MethodOptions</a></td>
                 <td>100003</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>auth_method</td>
-                <td><a href="#metaxisdata.v1.AuthMethod">AuthMethod</a></td>
-                <td><a href="#google.protobuf.MethodOptions">.google.protobuf.MethodOptions</a></td>
-                <td>100002</td>
                 <td><p></p></td>
               </tr>
             
@@ -2108,21 +2051,19 @@ Supported filter:
 - email: the user email, support &#34;==&#34; and &#34;.matches()&#34; operator.
 - user_type: the type, check UserType enum for values, support &#34;==&#34;, &#34;in [xx]&#34;, &#34;!(in [xx])&#34; operator.
 - state: check State enum for values, support &#34;==&#34; operator.
-- project: the project full name in &#34;projects/{id}&#34; format, support &#34;==&#34; operator.
 
 For example:
 name == &#34;ed&#34;
 name.matches(&#34;ed&#34;)
 email == &#34;ed@example.com&#34;
 email.matches(&#34;ed&#34;)
-user_type == &#34;SERVICE_ACCOUNT&#34;
-user_type in [&#34;SERVICE_ACCOUNT&#34;, &#34;USER&#34;]
-!(user_type in [&#34;SERVICE_ACCOUNT&#34;, &#34;USER&#34;])
+user_type == &#34;USER&#34;
+user_type in [&#34;USER&#34;]
+!(user_type in [&#34;USER&#34;])
 state == &#34;DELETED&#34;
-project == &#34;projects/sample-project&#34;
 You can combine filter conditions like:
-name.matches(&#34;ed&#34;) &amp;&amp; project == &#34;projects/sample-project&#34;
-(name == &#34;ed&#34; || email == &#34;ed@example.com&#34;) &amp;&amp; project == &#34;projects/sample-project&#34; </p></td>
+name.matches(&#34;ed&#34;) &amp;&amp; state == &#34;ACTIVE&#34;
+(name == &#34;ed&#34; || email == &#34;ed@example.com&#34;) &amp;&amp; user_type == &#34;USER&#34; </p></td>
                 </tr>
               
             </tbody>
@@ -2963,7 +2904,7 @@ A maximum of 1000 instances can be synced in a batch. </p></td>
 the instance&#39;s resource name.
 
 This value should be 4-63 characters, and valid characters
-are /[a-z][0-9]-/. </p></td>
+are /[a-z0-9-]/. </p></td>
                 </tr>
               
                 <tr>
@@ -3853,62 +3794,6 @@ Format: environments/prod where prod is the environment resource ID. </p></td>
 
         
       
-        <h3 id="metaxisdata.v1.ListInstanceDatabaseRequest">ListInstanceDatabaseRequest</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>name</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The name of the instance.
-Format: instances/{instance} </p></td>
-                </tr>
-              
-                <tr>
-                  <td>instance</td>
-                  <td><a href="#metaxisdata.v1.Instance">Instance</a></td>
-                  <td>optional</td>
-                  <td><p>The target instance. We need to set this field if the target instance is not created yet. </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.v1.ListInstanceDatabaseResponse">ListInstanceDatabaseResponse</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>databases</td>
-                  <td><a href="#string">string</a></td>
-                  <td>repeated</td>
-                  <td><p>All database name list in the instance. </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
         <h3 id="metaxisdata.v1.ListInstancesRequest">ListInstancesRequest</h3>
         <p></p>
 
@@ -4504,13 +4389,6 @@ Format: instances/{instance} </p></td>
               </tr>
             
               <tr>
-                <td>ListInstanceDatabase</td>
-                <td><a href="#metaxisdata.v1.ListInstanceDatabaseRequest">ListInstanceDatabaseRequest</a></td>
-                <td><a href="#metaxisdata.v1.ListInstanceDatabaseResponse">ListInstanceDatabaseResponse</a></td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
                 <td>BatchSyncInstances</td>
                 <td><a href="#metaxisdata.v1.BatchSyncInstancesRequest">BatchSyncInstancesRequest</a></td>
                 <td><a href="#metaxisdata.v1.BatchSyncInstancesResponse">BatchSyncInstancesResponse</a></td>
@@ -4629,16 +4507,6 @@ Format: instances/{instance} </p></td>
                 <td>SyncInstance</td>
                 <td>POST</td>
                 <td>/v1/{name=instances/*}:sync</td>
-                <td>*</td>
-              </tr>
-              
-            
-              
-              
-              <tr>
-                <td>ListInstanceDatabase</td>
-                <td>POST</td>
-                <td>/v1/{name=instances/*}:databases</td>
                 <td>*</td>
               </tr>
               
@@ -5929,31 +5797,6 @@ For PostgreSQL, it&#39;s the list of tables that the function depends on the ret
 
         
       
-        <h3 id="metaxisdata.v1.GetDatabaseRequest">GetDatabaseRequest</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>name</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The name of the database to retrieve.
-Format: instances/{instance}/databases/{database} </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
         <h3 id="metaxisdata.v1.GetManualSQLRequest">GetManualSQLRequest</h3>
         <p></p>
 
@@ -6354,7 +6197,7 @@ engine. </p></td>
 
         
       
-        <h3 id="metaxisdata.v1.ListDatabaseRequest">ListDatabaseRequest</h3>
+        <h3 id="metaxisdata.v1.ListDatabasesRequest">ListDatabasesRequest</h3>
         <p></p>
 
         
@@ -6476,7 +6319,7 @@ If this field is omitted, there are no subsequent pages. </p></td>
 
         
       
-        <h3 id="metaxisdata.v1.ListManualSQLRequest">ListManualSQLRequest</h3>
+        <h3 id="metaxisdata.v1.ListManualSQLsRequest">ListManualSQLsRequest</h3>
         <p></p>
 
         
@@ -6535,7 +6378,7 @@ If this field is omitted, there are no subsequent pages. </p></td>
 
         
       
-        <h3 id="metaxisdata.v1.ListManualSQLResponse">ListManualSQLResponse</h3>
+        <h3 id="metaxisdata.v1.ListManualSQLsResponse">ListManualSQLsResponse</h3>
         <p></p>
 
         
@@ -6658,7 +6501,11 @@ If this field is omitted, there are no subsequent pages. </p></td>
                   <td></td>
                   <td><p>The global unique id for all metadata
 database: &#34;instance_100;database3&#34;
-table: &#34;instance_1;db2;schema3;table4&#34; </p></td>
+table: &#34;instance_1;db2;schema3;table4&#34;
+
+A GUID is an opaque, &#39;;&#39;-joined identifier rather than an AIP resource
+name, so it carries no resource_reference (the same applies to every other
+guid field in this file). </p></td>
                 </tr>
               
                 <tr>
@@ -6675,19 +6522,21 @@ The maximum value is 1000; values above 1000 will be coerced to 1000. </p></td>
                   <td>page_token</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>A page token, received from a previous `ListDatabases` call.
+                  <td><p>A page token, received from a previous `ListMetadata` call.
 Provide this to retrieve the subsequent page.
 
-When paginating, all other parameters provided to `ListDatabases` must
-match the call that provided the page token. </p></td>
+When paginating, all other parameters provided to `ListMetadata` must
+match the call that provided the page token.
+
+When meta_type is unset the response groups the rows by type and
+page_size applies to each group separately. </p></td>
                 </tr>
               
                 <tr>
                   <td>meta_type</td>
                   <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
                   <td>optional</td>
-                  <td><p>the type of metadata
-If meta_type is not specified, the query will ignore page_size and return the first 20 records of each meta_type. </p></td>
+                  <td><p>the type of metadata </p></td>
                 </tr>
               
             </tbody>
@@ -7390,7 +7239,7 @@ Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql} </p></
               
                 <tr>
                   <td>types_stored_metadata</td>
-                  <td><a href="#metaxisdata.v1.MetadataResponse.MetadataList">MetadataResponse.MetadataList</a></td>
+                  <td><a href="#metaxisdata.v1.MetadataResponse.Metadata">MetadataResponse.Metadata</a></td>
                   <td>repeated</td>
                   <td><p>The list of stored metadata. </p></td>
                 </tr>
@@ -7402,7 +7251,7 @@ Format: instances/{instance}/databases/{database}/manualSqls/{manual_sql} </p></
 
         
       
-        <h3 id="metaxisdata.v1.MetadataResponse.MetadataList">MetadataResponse.MetadataList</h3>
+        <h3 id="metaxisdata.v1.MetadataResponse.Metadata">MetadataResponse.Metadata</h3>
         <p></p>
 
         
@@ -7897,6 +7746,23 @@ table: &#34;instance_1;db2;schema3;table4&#34; </p></td>
                   <td><p>the search string </p></td>
                 </tr>
               
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The maximum number of results to return. If unspecified, at most 50
+results will be returned. The maximum value is 1000; values above 1000
+will be coerced to 1000. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A page token, received from a previous `SearchMetadata` call. Provide this
+to retrieve the subsequent page. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -8284,7 +8150,7 @@ Examples: &#34;SPATIAL&#34; (MySQL/SQL Server), &#34;GIST&#34;/&#34;SPGIST&#34; 
         
       
         <h3 id="metaxisdata.v1.StoredMetadata">StoredMetadata</h3>
-        <p></p>
+        <p>StoredMetadata is the v1 view of one meta_registry_resource row.</p><p>OpenLineage registry rows (store.MetaType_OPENLINEAGE) have no v1</p><p>representation: they are internal summaries of ingested events, and the</p><p>supported way to read them is the OpenLineageService resources. They are</p><p>filtered out of ListMetadata/GetMetadata/SearchMetadata rather than</p><p>serialized as an empty StoredMetadata.</p>
 
         
           <table class="field-table">
@@ -9290,6 +9156,14 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
                 <td><p></p></td>
               </tr>
             
+              <tr>
+                <td>OPENLINEAGE</td>
+                <td>100</td>
+                <td><p>OPENLINEAGE marks meta registry rows that back the OpenLineage service.
+See StoredMetadata for why these rows are not returned by the metadata
+methods.</p></td>
+              </tr>
+            
           </tbody>
         </table>
       
@@ -9570,13 +9444,6 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
           <tbody>
             
               <tr>
-                <td>GetDatabase</td>
-                <td><a href="#metaxisdata.v1.GetDatabaseRequest">GetDatabaseRequest</a></td>
-                <td><a href="#metaxisdata.v1.Database">Database</a></td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
                 <td>SyncDatabase</td>
                 <td><a href="#metaxisdata.v1.SyncDatabaseRequest">SyncDatabaseRequest</a></td>
                 <td><a href="#metaxisdata.v1.SyncDatabaseResponse">SyncDatabaseResponse</a></td>
@@ -9584,8 +9451,8 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
               </tr>
             
               <tr>
-                <td>ListDatabase</td>
-                <td><a href="#metaxisdata.v1.ListDatabaseRequest">ListDatabaseRequest</a></td>
+                <td>ListDatabases</td>
+                <td><a href="#metaxisdata.v1.ListDatabasesRequest">ListDatabasesRequest</a></td>
                 <td><a href="#metaxisdata.v1.ListDatabasesResponse">ListDatabasesResponse</a></td>
                 <td><p></p></td>
               </tr>
@@ -9654,9 +9521,9 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
               </tr>
             
               <tr>
-                <td>ListManualSQL</td>
-                <td><a href="#metaxisdata.v1.ListManualSQLRequest">ListManualSQLRequest</a></td>
-                <td><a href="#metaxisdata.v1.ListManualSQLResponse">ListManualSQLResponse</a></td>
+                <td>ListManualSQLs</td>
+                <td><a href="#metaxisdata.v1.ListManualSQLsRequest">ListManualSQLsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListManualSQLsResponse">ListManualSQLsResponse</a></td>
                 <td><p></p></td>
               </tr>
             
@@ -9702,16 +9569,6 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
               
               
               <tr>
-                <td>GetDatabase</td>
-                <td>GET</td>
-                <td>/v1/{name=instances/*/databases/*}</td>
-                <td></td>
-              </tr>
-              
-            
-              
-              
-              <tr>
                 <td>SyncDatabase</td>
                 <td>POST</td>
                 <td>/v1/{name=instances/*/databases/*}:sync</td>
@@ -9722,9 +9579,9 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
               
               
               <tr>
-                <td>ListDatabase</td>
+                <td>ListDatabases</td>
                 <td>GET</td>
-                <td>/v1/database</td>
+                <td>/v1/databases</td>
                 <td></td>
               </tr>
               
@@ -9822,7 +9679,7 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
               
               
               <tr>
-                <td>ListManualSQL</td>
+                <td>ListManualSQLs</td>
                 <td>GET</td>
                 <td>/v1/{parent=instances/*/databases/*}/manualSqls</td>
                 <td></td>
@@ -10022,9 +9879,10 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
               
                 <tr>
                   <td>meta_type</td>
-                  <td><a href="#int32">int32</a></td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
                   <td></td>
-                  <td><p>store.MetaType </p></td>
+                  <td><p>Advisory type of the object named by meta_guid. The server resolves the
+authoritative type from the registry entry and ignores this field. </p></td>
                 </tr>
               
                 <tr>
@@ -10559,7 +10417,7 @@ If lineage_type is not specified, both source and target lineage will be returne
               <tr>
                 <td>GetLineage</td>
                 <td>GET</td>
-                <td>/v1/{guid=lineages/*}</td>
+                <td>/v1/lineages</td>
                 <td></td>
               </tr>
               
@@ -10569,7 +10427,7 @@ If lineage_type is not specified, both source and target lineage will be returne
               <tr>
                 <td>GetLineageForContext</td>
                 <td>GET</td>
-                <td>/v1/context/{guid=lineages/*}</td>
+                <td>/v1/lineages:context</td>
                 <td></td>
               </tr>
               
@@ -11308,20 +11166,6 @@ If lineage_type is not specified, both source and target lineage will be returne
                   <td><p> </p></td>
                 </tr>
               
-                <tr>
-                  <td>namespace</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>name</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
             </tbody>
           </table>
 
@@ -11377,14 +11221,14 @@ If lineage_type is not specified, both source and target lineage will be returne
 
         
       
-        <h3 id="metaxisdata.v1.ListAPIKeyRequest">ListAPIKeyRequest</h3>
+        <h3 id="metaxisdata.v1.ListAPIKeysRequest">ListAPIKeysRequest</h3>
         <p></p>
 
         
 
         
       
-        <h3 id="metaxisdata.v1.ListAPIKeyResponse">ListAPIKeyResponse</h3>
+        <h3 id="metaxisdata.v1.ListAPIKeysResponse">ListAPIKeysResponse</h3>
         <p></p>
 
         
@@ -11408,14 +11252,14 @@ If lineage_type is not specified, both source and target lineage will be returne
 
         
       
-        <h3 id="metaxisdata.v1.ListNamespaceMappingRequest">ListNamespaceMappingRequest</h3>
+        <h3 id="metaxisdata.v1.ListNamespaceMappingsRequest">ListNamespaceMappingsRequest</h3>
         <p></p>
 
         
 
         
       
-        <h3 id="metaxisdata.v1.ListNamespaceMappingResponse">ListNamespaceMappingResponse</h3>
+        <h3 id="metaxisdata.v1.ListNamespaceMappingsResponse">ListNamespaceMappingsResponse</h3>
         <p></p>
 
         
@@ -11457,8 +11301,8 @@ If lineage_type is not specified, both source and target lineage will be returne
                 </tr>
               
                 <tr>
-                  <td>offset</td>
-                  <td><a href="#int32">int32</a></td>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -11529,6 +11373,13 @@ If lineage_type is not specified, both source and target lineage will be returne
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -11554,8 +11405,8 @@ If lineage_type is not specified, both source and target lineage will be returne
                 </tr>
               
                 <tr>
-                  <td>offset</td>
-                  <td><a href="#int32">int32</a></td>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -11626,6 +11477,13 @@ If lineage_type is not specified, both source and target lineage will be returne
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -11651,8 +11509,8 @@ If lineage_type is not specified, both source and target lineage will be returne
                 </tr>
               
                 <tr>
-                  <td>offset</td>
-                  <td><a href="#int32">int32</a></td>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -11706,6 +11564,13 @@ If lineage_type is not specified, both source and target lineage will be returne
                   <td>tasks</td>
                   <td><a href="#metaxisdata.v1.OpenLineageTaskResource">OpenLineageTaskResource</a></td>
                   <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
                   <td><p> </p></td>
                 </tr>
               
@@ -12678,9 +12543,9 @@ If lineage_type is not specified, both source and target lineage will be returne
               </tr>
             
               <tr>
-                <td>ListNamespaceMapping</td>
-                <td><a href="#metaxisdata.v1.ListNamespaceMappingRequest">ListNamespaceMappingRequest</a></td>
-                <td><a href="#metaxisdata.v1.ListNamespaceMappingResponse">ListNamespaceMappingResponse</a></td>
+                <td>ListNamespaceMappings</td>
+                <td><a href="#metaxisdata.v1.ListNamespaceMappingsRequest">ListNamespaceMappingsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListNamespaceMappingsResponse">ListNamespaceMappingsResponse</a></td>
                 <td><p></p></td>
               </tr>
             
@@ -12706,9 +12571,9 @@ If lineage_type is not specified, both source and target lineage will be returne
               </tr>
             
               <tr>
-                <td>ListAPIKey</td>
-                <td><a href="#metaxisdata.v1.ListAPIKeyRequest">ListAPIKeyRequest</a></td>
-                <td><a href="#metaxisdata.v1.ListAPIKeyResponse">ListAPIKeyResponse</a></td>
+                <td>ListAPIKeys</td>
+                <td><a href="#metaxisdata.v1.ListAPIKeysRequest">ListAPIKeysRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListAPIKeysResponse">ListAPIKeysResponse</a></td>
                 <td><p></p></td>
               </tr>
             
@@ -12810,7 +12675,7 @@ If lineage_type is not specified, both source and target lineage will be returne
               
               
               <tr>
-                <td>ListNamespaceMapping</td>
+                <td>ListNamespaceMappings</td>
                 <td>GET</td>
                 <td>/v1/openlineage/namespaceMappings</td>
                 <td></td>
@@ -12850,7 +12715,7 @@ If lineage_type is not specified, both source and target lineage will be returne
               
               
               <tr>
-                <td>ListAPIKey</td>
+                <td>ListAPIKeys</td>
                 <td>GET</td>
                 <td>/v1/openlineage/apiKeys</td>
                 <td></td>

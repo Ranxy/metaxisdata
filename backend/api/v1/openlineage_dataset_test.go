@@ -199,8 +199,6 @@ func TestBuildOpenLineageDatasetDetail(t *testing.T) {
 		context.Background(),
 		runs,
 		"inst;analytics;public;daily_orders",
-		"postgres://warehouse:5432/analytics",
-		"public.daily_orders",
 		func(_ context.Context, namespace, name string) (*openlineageplugin.ResolvedDataset, error) {
 			switch {
 			case namespace == "postgres://warehouse:5432/analytics" && name == "public.orders":

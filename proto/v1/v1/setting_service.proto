@@ -19,7 +19,6 @@ service SettingService {
   rpc GetWorkspaceProfileSetting(GetWorkspaceProfileSettingRequest) returns (WorkspaceProfileSetting) {
     option (google.api.http) = {get: "/v1/settings/workspaceProfile"};
     option (metaxisdata.v1.allow_without_credential) = true;
-    option (metaxisdata.v1.auth_method) = CUSTOM;
   }
 
   // Update the workspace profile setting.

@@ -83,7 +83,7 @@ message EnvironmentSetting {
   message Environment {
     // The resource id of the environment.
     // This value should be 4-63 characters, and valid characters
-    // are /[a-z][0-9]-/.
+    // are /[a-z0-9-]/.
     string id = 1;
     // The display name of the environment.
     string title = 2;

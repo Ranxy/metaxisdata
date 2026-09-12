@@ -49,14 +49,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  type MetadataResponse_MetadataList,
+  type MetadataResponse_Metadata,
   MetaType,
 } from "@/types/proto-es/v1/database_service_pb";
 
 const { t } = useI18n();
 
 const props = defineProps<{
-  groups: MetadataResponse_MetadataList[];
+  groups: MetadataResponse_Metadata[];
   active: MetaType | null;
 }>();
 

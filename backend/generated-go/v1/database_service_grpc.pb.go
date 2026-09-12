@@ -20,9 +20,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DatabaseService_GetDatabase_FullMethodName             = "/metaxisdata.v1.DatabaseService/GetDatabase"
 	DatabaseService_SyncDatabase_FullMethodName            = "/metaxisdata.v1.DatabaseService/SyncDatabase"
-	DatabaseService_ListDatabase_FullMethodName            = "/metaxisdata.v1.DatabaseService/ListDatabase"
+	DatabaseService_ListDatabases_FullMethodName           = "/metaxisdata.v1.DatabaseService/ListDatabases"
 	DatabaseService_ListMetadata_FullMethodName            = "/metaxisdata.v1.DatabaseService/ListMetadata"
 	DatabaseService_GetMetadata_FullMethodName             = "/metaxisdata.v1.DatabaseService/GetMetadata"
 	DatabaseService_ListMetadataHistory_FullMethodName     = "/metaxisdata.v1.DatabaseService/ListMetadataHistory"
@@ -32,7 +31,7 @@ const (
 	DatabaseService_DiffMetadata_FullMethodName            = "/metaxisdata.v1.DatabaseService/DiffMetadata"
 	DatabaseService_CreateManualSQL_FullMethodName         = "/metaxisdata.v1.DatabaseService/CreateManualSQL"
 	DatabaseService_GetManualSQL_FullMethodName            = "/metaxisdata.v1.DatabaseService/GetManualSQL"
-	DatabaseService_ListManualSQL_FullMethodName           = "/metaxisdata.v1.DatabaseService/ListManualSQL"
+	DatabaseService_ListManualSQLs_FullMethodName          = "/metaxisdata.v1.DatabaseService/ListManualSQLs"
 	DatabaseService_SearchManualSQL_FullMethodName         = "/metaxisdata.v1.DatabaseService/SearchManualSQL"
 	DatabaseService_UpdateManualSQL_FullMethodName         = "/metaxisdata.v1.DatabaseService/UpdateManualSQL"
 	DatabaseService_DeleteManualSQL_FullMethodName         = "/metaxisdata.v1.DatabaseService/DeleteManualSQL"
@@ -42,9 +41,8 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DatabaseServiceClient interface {
-	GetDatabase(ctx context.Context, in *GetDatabaseRequest, opts ...grpc.CallOption) (*Database, error)
 	SyncDatabase(ctx context.Context, in *SyncDatabaseRequest, opts ...grpc.CallOption) (*SyncDatabaseResponse, error)
-	ListDatabase(ctx context.Context, in *ListDatabaseRequest, opts ...grpc.CallOption) (*ListDatabasesResponse, error)
+	ListDatabases(ctx context.Context, in *ListDatabasesRequest, opts ...grpc.CallOption) (*ListDatabasesResponse, error)
 	ListMetadata(ctx context.Context, in *ListMetadataRequest, opts ...grpc.CallOption) (*MetadataResponse, error)
 	GetMetadata(ctx context.Context, in *GetMetadataRequest, opts ...grpc.CallOption) (*GetMetadataResponse, error)
 	ListMetadataHistory(ctx context.Context, in *ListMetadataHistoryRequest, opts ...grpc.CallOption) (*ListMetadataHistoryResponse, error)
@@ -56,7 +54,7 @@ type DatabaseServiceClient interface {
 	DiffMetadata(ctx context.Context, in *DiffMetadataRequest, opts ...grpc.CallOption) (*DiffMetadataResponse, error)
 	CreateManualSQL(ctx context.Context, in *CreateManualSQLRequest, opts ...grpc.CallOption) (*ManualSQL, error)
 	GetManualSQL(ctx context.Context, in *GetManualSQLRequest, opts ...grpc.CallOption) (*ManualSQL, error)
-	ListManualSQL(ctx context.Context, in *ListManualSQLRequest, opts ...grpc.CallOption) (*ListManualSQLResponse, error)
+	ListManualSQLs(ctx context.Context, in *ListManualSQLsRequest, opts ...grpc.CallOption) (*ListManualSQLsResponse, error)
 	SearchManualSQL(ctx context.Context, in *SearchManualSQLRequest, opts ...grpc.CallOption) (*SearchManualSQLResponse, error)
 	UpdateManualSQL(ctx context.Context, in *UpdateManualSQLRequest, opts ...grpc.CallOption) (*ManualSQL, error)
 	DeleteManualSQL(ctx context.Context, in *DeleteManualSQLRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -70,16 +68,6 @@ func NewDatabaseServiceClient(cc grpc.ClientConnInterface) DatabaseServiceClient
 	return &databaseServiceClient{cc}
 }
 
-func (c *databaseServiceClient) GetDatabase(ctx context.Context, in *GetDatabaseRequest, opts ...grpc.CallOption) (*Database, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Database)
-	err := c.cc.Invoke(ctx, DatabaseService_GetDatabase_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *databaseServiceClient) SyncDatabase(ctx context.Context, in *SyncDatabaseRequest, opts ...grpc.CallOption) (*SyncDatabaseResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SyncDatabaseResponse)
@@ -90,10 +78,10 @@ func (c *databaseServiceClient) SyncDatabase(ctx context.Context, in *SyncDataba
 	return out, nil
 }
 
-func (c *databaseServiceClient) ListDatabase(ctx context.Context, in *ListDatabaseRequest, opts ...grpc.CallOption) (*ListDatabasesResponse, error) {
+func (c *databaseServiceClient) ListDatabases(ctx context.Context, in *ListDatabasesRequest, opts ...grpc.CallOption) (*ListDatabasesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListDatabasesResponse)
-	err := c.cc.Invoke(ctx, DatabaseService_ListDatabase_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, DatabaseService_ListDatabases_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -190,10 +178,10 @@ func (c *databaseServiceClient) GetManualSQL(ctx context.Context, in *GetManualS
 	return out, nil
 }
 
-func (c *databaseServiceClient) ListManualSQL(ctx context.Context, in *ListManualSQLRequest, opts ...grpc.CallOption) (*ListManualSQLResponse, error) {
+func (c *databaseServiceClient) ListManualSQLs(ctx context.Context, in *ListManualSQLsRequest, opts ...grpc.CallOption) (*ListManualSQLsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListManualSQLResponse)
-	err := c.cc.Invoke(ctx, DatabaseService_ListManualSQL_FullMethodName, in, out, cOpts...)
+	out := new(ListManualSQLsResponse)
+	err := c.cc.Invoke(ctx, DatabaseService_ListManualSQLs_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -234,9 +222,8 @@ func (c *databaseServiceClient) DeleteManualSQL(ctx context.Context, in *DeleteM
 // All implementations must embed UnimplementedDatabaseServiceServer
 // for forward compatibility.
 type DatabaseServiceServer interface {
-	GetDatabase(context.Context, *GetDatabaseRequest) (*Database, error)
 	SyncDatabase(context.Context, *SyncDatabaseRequest) (*SyncDatabaseResponse, error)
-	ListDatabase(context.Context, *ListDatabaseRequest) (*ListDatabasesResponse, error)
+	ListDatabases(context.Context, *ListDatabasesRequest) (*ListDatabasesResponse, error)
 	ListMetadata(context.Context, *ListMetadataRequest) (*MetadataResponse, error)
 	GetMetadata(context.Context, *GetMetadataRequest) (*GetMetadataResponse, error)
 	ListMetadataHistory(context.Context, *ListMetadataHistoryRequest) (*ListMetadataHistoryResponse, error)
@@ -248,7 +235,7 @@ type DatabaseServiceServer interface {
 	DiffMetadata(context.Context, *DiffMetadataRequest) (*DiffMetadataResponse, error)
 	CreateManualSQL(context.Context, *CreateManualSQLRequest) (*ManualSQL, error)
 	GetManualSQL(context.Context, *GetManualSQLRequest) (*ManualSQL, error)
-	ListManualSQL(context.Context, *ListManualSQLRequest) (*ListManualSQLResponse, error)
+	ListManualSQLs(context.Context, *ListManualSQLsRequest) (*ListManualSQLsResponse, error)
 	SearchManualSQL(context.Context, *SearchManualSQLRequest) (*SearchManualSQLResponse, error)
 	UpdateManualSQL(context.Context, *UpdateManualSQLRequest) (*ManualSQL, error)
 	DeleteManualSQL(context.Context, *DeleteManualSQLRequest) (*emptypb.Empty, error)
@@ -262,14 +249,11 @@ type DatabaseServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedDatabaseServiceServer struct{}
 
-func (UnimplementedDatabaseServiceServer) GetDatabase(context.Context, *GetDatabaseRequest) (*Database, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetDatabase not implemented")
-}
 func (UnimplementedDatabaseServiceServer) SyncDatabase(context.Context, *SyncDatabaseRequest) (*SyncDatabaseResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SyncDatabase not implemented")
 }
-func (UnimplementedDatabaseServiceServer) ListDatabase(context.Context, *ListDatabaseRequest) (*ListDatabasesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListDatabase not implemented")
+func (UnimplementedDatabaseServiceServer) ListDatabases(context.Context, *ListDatabasesRequest) (*ListDatabasesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListDatabases not implemented")
 }
 func (UnimplementedDatabaseServiceServer) ListMetadata(context.Context, *ListMetadataRequest) (*MetadataResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListMetadata not implemented")
@@ -298,8 +282,8 @@ func (UnimplementedDatabaseServiceServer) CreateManualSQL(context.Context, *Crea
 func (UnimplementedDatabaseServiceServer) GetManualSQL(context.Context, *GetManualSQLRequest) (*ManualSQL, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetManualSQL not implemented")
 }
-func (UnimplementedDatabaseServiceServer) ListManualSQL(context.Context, *ListManualSQLRequest) (*ListManualSQLResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListManualSQL not implemented")
+func (UnimplementedDatabaseServiceServer) ListManualSQLs(context.Context, *ListManualSQLsRequest) (*ListManualSQLsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListManualSQLs not implemented")
 }
 func (UnimplementedDatabaseServiceServer) SearchManualSQL(context.Context, *SearchManualSQLRequest) (*SearchManualSQLResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SearchManualSQL not implemented")
@@ -331,24 +315,6 @@ func RegisterDatabaseServiceServer(s grpc.ServiceRegistrar, srv DatabaseServiceS
 	s.RegisterService(&DatabaseService_ServiceDesc, srv)
 }
 
-func _DatabaseService_GetDatabase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetDatabaseRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DatabaseServiceServer).GetDatabase(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DatabaseService_GetDatabase_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DatabaseServiceServer).GetDatabase(ctx, req.(*GetDatabaseRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _DatabaseService_SyncDatabase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SyncDatabaseRequest)
 	if err := dec(in); err != nil {
@@ -367,20 +333,20 @@ func _DatabaseService_SyncDatabase_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DatabaseService_ListDatabase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListDatabaseRequest)
+func _DatabaseService_ListDatabases_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDatabasesRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(DatabaseServiceServer).ListDatabase(ctx, in)
+		return srv.(DatabaseServiceServer).ListDatabases(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: DatabaseService_ListDatabase_FullMethodName,
+		FullMethod: DatabaseService_ListDatabases_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DatabaseServiceServer).ListDatabase(ctx, req.(*ListDatabaseRequest))
+		return srv.(DatabaseServiceServer).ListDatabases(ctx, req.(*ListDatabasesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -547,20 +513,20 @@ func _DatabaseService_GetManualSQL_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DatabaseService_ListManualSQL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListManualSQLRequest)
+func _DatabaseService_ListManualSQLs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListManualSQLsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(DatabaseServiceServer).ListManualSQL(ctx, in)
+		return srv.(DatabaseServiceServer).ListManualSQLs(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: DatabaseService_ListManualSQL_FullMethodName,
+		FullMethod: DatabaseService_ListManualSQLs_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DatabaseServiceServer).ListManualSQL(ctx, req.(*ListManualSQLRequest))
+		return srv.(DatabaseServiceServer).ListManualSQLs(ctx, req.(*ListManualSQLsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -627,16 +593,12 @@ var DatabaseService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*DatabaseServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "GetDatabase",
-			Handler:    _DatabaseService_GetDatabase_Handler,
-		},
-		{
 			MethodName: "SyncDatabase",
 			Handler:    _DatabaseService_SyncDatabase_Handler,
 		},
 		{
-			MethodName: "ListDatabase",
-			Handler:    _DatabaseService_ListDatabase_Handler,
+			MethodName: "ListDatabases",
+			Handler:    _DatabaseService_ListDatabases_Handler,
 		},
 		{
 			MethodName: "ListMetadata",
@@ -675,8 +637,8 @@ var DatabaseService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _DatabaseService_GetManualSQL_Handler,
 		},
 		{
-			MethodName: "ListManualSQL",
-			Handler:    _DatabaseService_ListManualSQL_Handler,
+			MethodName: "ListManualSQLs",
+			Handler:    _DatabaseService_ListManualSQLs_Handler,
 		},
 		{
 			MethodName: "SearchManualSQL",

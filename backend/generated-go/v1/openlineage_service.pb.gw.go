@@ -280,24 +280,24 @@ func local_request_OpenLineageService_CreateNamespaceMapping_0(ctx context.Conte
 	return msg, metadata, err
 }
 
-func request_OpenLineageService_ListNamespaceMapping_0(ctx context.Context, marshaler runtime.Marshaler, client OpenLineageServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func request_OpenLineageService_ListNamespaceMappings_0(ctx context.Context, marshaler runtime.Marshaler, client OpenLineageServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq ListNamespaceMappingRequest
+		protoReq ListNamespaceMappingsRequest
 		metadata runtime.ServerMetadata
 	)
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
 	}
-	msg, err := client.ListNamespaceMapping(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.ListNamespaceMappings(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 }
 
-func local_request_OpenLineageService_ListNamespaceMapping_0(ctx context.Context, marshaler runtime.Marshaler, server OpenLineageServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func local_request_OpenLineageService_ListNamespaceMappings_0(ctx context.Context, marshaler runtime.Marshaler, server OpenLineageServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq ListNamespaceMappingRequest
+		protoReq ListNamespaceMappingsRequest
 		metadata runtime.ServerMetadata
 	)
-	msg, err := server.ListNamespaceMapping(ctx, &protoReq)
+	msg, err := server.ListNamespaceMappings(ctx, &protoReq)
 	return msg, metadata, err
 }
 
@@ -412,24 +412,24 @@ func local_request_OpenLineageService_CreateAPIKey_0(ctx context.Context, marsha
 	return msg, metadata, err
 }
 
-func request_OpenLineageService_ListAPIKey_0(ctx context.Context, marshaler runtime.Marshaler, client OpenLineageServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func request_OpenLineageService_ListAPIKeys_0(ctx context.Context, marshaler runtime.Marshaler, client OpenLineageServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq ListAPIKeyRequest
+		protoReq ListAPIKeysRequest
 		metadata runtime.ServerMetadata
 	)
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
 	}
-	msg, err := client.ListAPIKey(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.ListAPIKeys(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 }
 
-func local_request_OpenLineageService_ListAPIKey_0(ctx context.Context, marshaler runtime.Marshaler, server OpenLineageServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func local_request_OpenLineageService_ListAPIKeys_0(ctx context.Context, marshaler runtime.Marshaler, server OpenLineageServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq ListAPIKeyRequest
+		protoReq ListAPIKeysRequest
 		metadata runtime.ServerMetadata
 	)
-	msg, err := server.ListAPIKey(ctx, &protoReq)
+	msg, err := server.ListAPIKeys(ctx, &protoReq)
 	return msg, metadata, err
 }
 
@@ -618,25 +618,25 @@ func RegisterOpenLineageServiceHandlerServer(ctx context.Context, mux *runtime.S
 		}
 		forward_OpenLineageService_CreateNamespaceMapping_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodGet, pattern_OpenLineageService_ListNamespaceMapping_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_OpenLineageService_ListNamespaceMappings_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/ListNamespaceMapping", runtime.WithHTTPPathPattern("/v1/openlineage/namespaceMappings"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/ListNamespaceMappings", runtime.WithHTTPPathPattern("/v1/openlineage/namespaceMappings"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_OpenLineageService_ListNamespaceMapping_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_OpenLineageService_ListNamespaceMappings_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_OpenLineageService_ListNamespaceMapping_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_OpenLineageService_ListNamespaceMappings_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodPatch, pattern_OpenLineageService_UpdateNamespaceMapping_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -698,25 +698,25 @@ func RegisterOpenLineageServiceHandlerServer(ctx context.Context, mux *runtime.S
 		}
 		forward_OpenLineageService_CreateAPIKey_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodGet, pattern_OpenLineageService_ListAPIKey_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_OpenLineageService_ListAPIKeys_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/ListAPIKey", runtime.WithHTTPPathPattern("/v1/openlineage/apiKeys"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/ListAPIKeys", runtime.WithHTTPPathPattern("/v1/openlineage/apiKeys"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_OpenLineageService_ListAPIKey_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_OpenLineageService_ListAPIKeys_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_OpenLineageService_ListAPIKey_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_OpenLineageService_ListAPIKeys_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodDelete, pattern_OpenLineageService_RevokeAPIKey_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -897,22 +897,22 @@ func RegisterOpenLineageServiceHandlerClient(ctx context.Context, mux *runtime.S
 		}
 		forward_OpenLineageService_CreateNamespaceMapping_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodGet, pattern_OpenLineageService_ListNamespaceMapping_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_OpenLineageService_ListNamespaceMappings_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/ListNamespaceMapping", runtime.WithHTTPPathPattern("/v1/openlineage/namespaceMappings"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/ListNamespaceMappings", runtime.WithHTTPPathPattern("/v1/openlineage/namespaceMappings"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_OpenLineageService_ListNamespaceMapping_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_OpenLineageService_ListNamespaceMappings_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_OpenLineageService_ListNamespaceMapping_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_OpenLineageService_ListNamespaceMappings_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodPatch, pattern_OpenLineageService_UpdateNamespaceMapping_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -965,22 +965,22 @@ func RegisterOpenLineageServiceHandlerClient(ctx context.Context, mux *runtime.S
 		}
 		forward_OpenLineageService_CreateAPIKey_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodGet, pattern_OpenLineageService_ListAPIKey_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_OpenLineageService_ListAPIKeys_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/ListAPIKey", runtime.WithHTTPPathPattern("/v1/openlineage/apiKeys"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/ListAPIKeys", runtime.WithHTTPPathPattern("/v1/openlineage/apiKeys"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_OpenLineageService_ListAPIKey_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_OpenLineageService_ListAPIKeys_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_OpenLineageService_ListAPIKey_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_OpenLineageService_ListAPIKeys_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodDelete, pattern_OpenLineageService_RevokeAPIKey_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -1010,11 +1010,11 @@ var (
 	pattern_OpenLineageService_ListOpenLineageRuns_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "openlineage", "runs"}, ""))
 	pattern_OpenLineageService_GetOpenLineageRun_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "openlineage", "runs", "guid"}, ""))
 	pattern_OpenLineageService_CreateNamespaceMapping_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "openlineage", "namespaceMappings"}, ""))
-	pattern_OpenLineageService_ListNamespaceMapping_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "openlineage", "namespaceMappings"}, ""))
+	pattern_OpenLineageService_ListNamespaceMappings_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "openlineage", "namespaceMappings"}, ""))
 	pattern_OpenLineageService_UpdateNamespaceMapping_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "openlineage", "namespaceMappings", "id"}, ""))
 	pattern_OpenLineageService_DeleteNamespaceMapping_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "openlineage", "namespaceMappings", "id"}, ""))
 	pattern_OpenLineageService_CreateAPIKey_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "openlineage", "apiKeys"}, ""))
-	pattern_OpenLineageService_ListAPIKey_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "openlineage", "apiKeys"}, ""))
+	pattern_OpenLineageService_ListAPIKeys_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "openlineage", "apiKeys"}, ""))
 	pattern_OpenLineageService_RevokeAPIKey_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "openlineage", "apiKeys", "id"}, ""))
 )
 
@@ -1026,10 +1026,10 @@ var (
 	forward_OpenLineageService_ListOpenLineageRuns_0     = runtime.ForwardResponseMessage
 	forward_OpenLineageService_GetOpenLineageRun_0       = runtime.ForwardResponseMessage
 	forward_OpenLineageService_CreateNamespaceMapping_0  = runtime.ForwardResponseMessage
-	forward_OpenLineageService_ListNamespaceMapping_0    = runtime.ForwardResponseMessage
+	forward_OpenLineageService_ListNamespaceMappings_0   = runtime.ForwardResponseMessage
 	forward_OpenLineageService_UpdateNamespaceMapping_0  = runtime.ForwardResponseMessage
 	forward_OpenLineageService_DeleteNamespaceMapping_0  = runtime.ForwardResponseMessage
 	forward_OpenLineageService_CreateAPIKey_0            = runtime.ForwardResponseMessage
-	forward_OpenLineageService_ListAPIKey_0              = runtime.ForwardResponseMessage
+	forward_OpenLineageService_ListAPIKeys_0             = runtime.ForwardResponseMessage
 	forward_OpenLineageService_RevokeAPIKey_0            = runtime.ForwardResponseMessage
 )

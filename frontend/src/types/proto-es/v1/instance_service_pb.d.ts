@@ -149,7 +149,7 @@ export declare type CreateInstanceRequest = Message<"metaxisdata.v1.CreateInstan
    * the instance's resource name.
    *
    * This value should be 4-63 characters, and valid characters
-   * are /[a-z][0-9]-/.
+   * are /[a-z0-9-]/.
    *
    * @generated from field: string instance_id = 2;
    */
@@ -268,50 +268,6 @@ export declare type SyncInstanceRequest = Message<"metaxisdata.v1.SyncInstanceRe
  * Use `create(SyncInstanceRequestSchema)` to create a new message.
  */
 export declare const SyncInstanceRequestSchema: GenMessage<SyncInstanceRequest>;
-
-/**
- * @generated from message metaxisdata.v1.ListInstanceDatabaseRequest
- */
-export declare type ListInstanceDatabaseRequest = Message<"metaxisdata.v1.ListInstanceDatabaseRequest"> & {
-  /**
-   * The name of the instance.
-   * Format: instances/{instance}
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * The target instance. We need to set this field if the target instance is not created yet.
-   *
-   * @generated from field: optional metaxisdata.v1.Instance instance = 2;
-   */
-  instance?: Instance;
-};
-
-/**
- * Describes the message metaxisdata.v1.ListInstanceDatabaseRequest.
- * Use `create(ListInstanceDatabaseRequestSchema)` to create a new message.
- */
-export declare const ListInstanceDatabaseRequestSchema: GenMessage<ListInstanceDatabaseRequest>;
-
-/**
- * @generated from message metaxisdata.v1.ListInstanceDatabaseResponse
- */
-export declare type ListInstanceDatabaseResponse = Message<"metaxisdata.v1.ListInstanceDatabaseResponse"> & {
-  /**
-   * All database name list in the instance.
-   *
-   * @generated from field: repeated string databases = 1;
-   */
-  databases: string[];
-};
-
-/**
- * Describes the message metaxisdata.v1.ListInstanceDatabaseResponse.
- * Use `create(ListInstanceDatabaseResponseSchema)` to create a new message.
- */
-export declare const ListInstanceDatabaseResponseSchema: GenMessage<ListInstanceDatabaseResponse>;
 
 /**
  * @generated from message metaxisdata.v1.SyncInstanceResponse
@@ -1390,14 +1346,6 @@ export declare const InstanceService: GenService<{
     methodKind: "unary";
     input: typeof SyncInstanceRequestSchema;
     output: typeof SyncInstanceResponseSchema;
-  },
-  /**
-   * @generated from rpc metaxisdata.v1.InstanceService.ListInstanceDatabase
-   */
-  listInstanceDatabase: {
-    methodKind: "unary";
-    input: typeof ListInstanceDatabaseRequestSchema;
-    output: typeof ListInstanceDatabaseResponseSchema;
   },
   /**
    * @generated from rpc metaxisdata.v1.InstanceService.BatchSyncInstances

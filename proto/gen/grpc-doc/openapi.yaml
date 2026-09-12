@@ -85,62 +85,11 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/context/lineages/{lineage}:
-        get:
-            tags:
-                - LineageService
-            description: GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).
-            operationId: LineageService_GetLineageForContext
-            parameters:
-                - name: lineage
-                  in: path
-                  description: The lineage id.
-                  required: true
-                  schema:
-                    type: string
-                - name: metaType
-                  in: query
-                  schema:
-                    enum:
-                        - UNSPECIFIED
-                        - INSTANCE
-                        - DATABASE
-                        - SCHEMA
-                        - TABLE
-                        - EXTERNAL_TABLE
-                        - EXTERNAL_DATASET
-                        - MANUAL_SQL
-                        - VIEW
-                        - MATERIALIZED_VIEW
-                        - COLUMN
-                        - INDEX
-                        - FOREIGN_KEY
-                        - PROCEDURE
-                        - FUNCTION
-                        - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
-                    type: string
-                    format: enum
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/GetLineageForContextResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/database:
+    /v1/databases:
         get:
             tags:
                 - DatabaseService
-            operationId: DatabaseService_ListDatabase
+            operationId: DatabaseService_ListDatabases
             parameters:
                 - name: parent
                   in: query
@@ -339,7 +288,7 @@ paths:
                      the instance's resource name.
 
                      This value should be 4-63 characters, and valid characters
-                     are /[a-z][0-9]-/.
+                     are /[a-z0-9-]/.
                   schema:
                     type: string
                 - name: validateOnly
@@ -453,42 +402,11 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/instances/{instance}/databases/{database}:
-        get:
-            tags:
-                - DatabaseService
-            operationId: DatabaseService_GetDatabase
-            parameters:
-                - name: instance
-                  in: path
-                  description: The instance id.
-                  required: true
-                  schema:
-                    type: string
-                - name: database
-                  in: path
-                  description: The database id.
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Database'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/instances/{instance}/databases/{database}/manualSqls:
         get:
             tags:
                 - DatabaseService
-            operationId: DatabaseService_ListManualSQL
+            operationId: DatabaseService_ListManualSQLs
             parameters:
                 - name: instance
                   in: path
@@ -533,7 +451,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ListManualSQLResponse'
+                                $ref: '#/components/schemas/ListManualSQLsResponse'
                 default:
                     description: Default error response
                     content:
@@ -825,37 +743,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/instances/{instance}:databases:
-        post:
-            tags:
-                - InstanceService
-            operationId: InstanceService_ListInstanceDatabase
-            parameters:
-                - name: instance
-                  in: path
-                  description: The instance id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListInstanceDatabaseRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ListInstanceDatabaseResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/instances/{instance}:removeDataSource:
         post:
             tags:
@@ -1039,7 +926,7 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/lineages/{lineage}:
+    /v1/lineages:
         get:
             tags:
                 - LineageService
@@ -1050,10 +937,11 @@ paths:
                  If lineage_type is not specified, both source and target lineage will be returned.
             operationId: LineageService_GetLineage
             parameters:
-                - name: lineage
-                  in: path
-                  description: The lineage id.
-                  required: true
+                - name: guid
+                  in: query
+                  description: |-
+                    The global unique id for metadata
+                     table: "instance_1;db2;schema3;table4"
                   schema:
                     type: string
                 - name: metaType
@@ -1079,6 +967,7 @@ paths:
                         - PACKAGE
                         - STREAM
                         - TASK
+                        - OPENLINEAGE
                     type: string
                     format: enum
                 - name: lineageType
@@ -1098,6 +987,59 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/GetLineageResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/lineages:context:
+        get:
+            tags:
+                - LineageService
+            description: GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).
+            operationId: LineageService_GetLineageForContext
+            parameters:
+                - name: guid
+                  in: query
+                  description: |-
+                    The global unique id for metadata
+                     view: "instance_1;db2;schema3;view1"
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - PACKAGE
+                        - STREAM
+                        - TASK
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetLineageForContextResponse'
                 default:
                     description: Default error response
                     content:
@@ -1273,6 +1215,7 @@ paths:
                         - PACKAGE
                         - STREAM
                         - TASK
+                        - OPENLINEAGE
                     type: string
                     format: enum
             responses:
@@ -1365,6 +1308,7 @@ paths:
                         - PACKAGE
                         - STREAM
                         - TASK
+                        - OPENLINEAGE
                     type: string
                     format: enum
                 - name: pageSize
@@ -1422,6 +1366,7 @@ paths:
                         - PACKAGE
                         - STREAM
                         - TASK
+                        - OPENLINEAGE
                     type: string
                     format: enum
                 - name: eventTime
@@ -1464,6 +1409,10 @@ paths:
                     The global unique id for all metadata
                      database: "instance_100;database3"
                      table: "instance_1;db2;schema3;table4"
+
+                     A GUID is an opaque, ';'-joined identifier rather than an AIP resource
+                     name, so it carries no resource_reference (the same applies to every other
+                     guid field in this file).
                   schema:
                     type: string
                 - name: pageSize
@@ -1479,18 +1428,19 @@ paths:
                 - name: pageToken
                   in: query
                   description: |-
-                    A page token, received from a previous `ListDatabases` call.
+                    A page token, received from a previous `ListMetadata` call.
                      Provide this to retrieve the subsequent page.
 
-                     When paginating, all other parameters provided to `ListDatabases` must
+                     When paginating, all other parameters provided to `ListMetadata` must
                      match the call that provided the page token.
+
+                     When meta_type is unset the response groups the rows by type and
+                     page_size applies to each group separately.
                   schema:
                     type: string
                 - name: metaType
                   in: query
-                  description: |-
-                    the type of metadata
-                     If meta_type is not specified, the query will ignore page_size and return the first 20 records of each meta_type.
+                  description: the type of metadata
                   schema:
                     enum:
                         - UNSPECIFIED
@@ -1512,6 +1462,7 @@ paths:
                         - PACKAGE
                         - STREAM
                         - TASK
+                        - OPENLINEAGE
                     type: string
                     format: enum
             responses:
@@ -1565,6 +1516,7 @@ paths:
                         - PACKAGE
                         - STREAM
                         - TASK
+                        - OPENLINEAGE
                     type: string
                     format: enum
             responses:
@@ -1618,11 +1570,28 @@ paths:
                         - PACKAGE
                         - STREAM
                         - TASK
+                        - OPENLINEAGE
                     type: string
                     format: enum
                 - name: searchStr
                   in: query
                   description: the search string
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of results to return. If unspecified, at most 50
+                     results will be returned. The maximum value is 1000; values above 1000
+                     will be coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous `SearchMetadata` call. Provide this
+                     to retrieve the subsequent page.
                   schema:
                     type: string
             responses:
@@ -1642,14 +1611,14 @@ paths:
         get:
             tags:
                 - OpenLineageService
-            operationId: OpenLineageService_ListAPIKey
+            operationId: OpenLineageService_ListAPIKeys
             responses:
                 "200":
                     description: OK
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ListAPIKeyResponse'
+                                $ref: '#/components/schemas/ListAPIKeysResponse'
                 default:
                     description: Default error response
                     content:
@@ -1710,14 +1679,6 @@ paths:
                   in: query
                   schema:
                     type: string
-                - name: namespace
-                  in: query
-                  schema:
-                    type: string
-                - name: name
-                  in: query
-                  schema:
-                    type: string
             responses:
                 "200":
                     description: OK
@@ -1742,11 +1703,10 @@ paths:
                   schema:
                     type: integer
                     format: int32
-                - name: offset
+                - name: pageToken
                   in: query
                   schema:
-                    type: integer
-                    format: int32
+                    type: string
                 - name: search
                   in: query
                   schema:
@@ -1794,14 +1754,14 @@ paths:
         get:
             tags:
                 - OpenLineageService
-            operationId: OpenLineageService_ListNamespaceMapping
+            operationId: OpenLineageService_ListNamespaceMappings
             responses:
                 "200":
                     description: OK
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ListNamespaceMappingResponse'
+                                $ref: '#/components/schemas/ListNamespaceMappingsResponse'
                 default:
                     description: Default error response
                     content:
@@ -1892,11 +1852,10 @@ paths:
                   schema:
                     type: integer
                     format: int32
-                - name: offset
+                - name: pageToken
                   in: query
                   schema:
-                    type: integer
-                    format: int32
+                    type: string
                 - name: jobNamespace
                   in: query
                   schema:
@@ -1969,11 +1928,10 @@ paths:
                   schema:
                     type: integer
                     format: int32
-                - name: offset
+                - name: pageToken
                   in: query
                   schema:
-                    type: integer
-                    format: int32
+                    type: string
                 - name: jobNamespace
                   in: query
                   schema:
@@ -2127,21 +2085,19 @@ paths:
                      - email: the user email, support "==" and ".matches()" operator.
                      - user_type: the type, check UserType enum for values, support "==", "in [xx]", "!(in [xx])" operator.
                      - state: check State enum for values, support "==" operator.
-                     - project: the project full name in "projects/{id}" format, support "==" operator.
 
                      For example:
                      name == "ed"
                      name.matches("ed")
                      email == "ed@example.com"
                      email.matches("ed")
-                     user_type == "SERVICE_ACCOUNT"
-                     user_type in ["SERVICE_ACCOUNT", "USER"]
-                     !(user_type in ["SERVICE_ACCOUNT", "USER"])
+                     user_type == "USER"
+                     user_type in ["USER"]
+                     !(user_type in ["USER"])
                      state == "DELETED"
-                     project == "projects/sample-project"
                      You can combine filter conditions like:
-                     name.matches("ed") && project == "projects/sample-project"
-                     (name == "ed" || email == "ed@example.com") && project == "projects/sample-project"
+                     name.matches("ed") && state == "ACTIVE"
+                     (name == "ed" || email == "ed@example.com") && user_type == "USER"
                   schema:
                     type: string
             responses:
@@ -3169,8 +3125,32 @@ components:
                 metaGuid:
                     type: string
                 metaType:
-                    type: integer
-                    format: int32
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - PACKAGE
+                        - STREAM
+                        - TASK
+                        - OPENLINEAGE
+                    type: string
+                    description: |-
+                        Advisory type of the object named by meta_guid. The server resolves the
+                         authoritative type from the registry entry and ignores this field.
+                    format: enum
                 sqlText:
                     type: string
                 forceRegenerate:
@@ -3676,6 +3656,7 @@ components:
                         - PACKAGE
                         - STREAM
                         - TASK
+                        - OPENLINEAGE
                     type: string
                     format: enum
                 sourceGuid:
@@ -3703,6 +3684,7 @@ components:
                         - PACKAGE
                         - STREAM
                         - TASK
+                        - OPENLINEAGE
                     type: string
                     format: enum
                 targetGuid:
@@ -3730,6 +3712,7 @@ components:
                         - PACKAGE
                         - STREAM
                         - TASK
+                        - OPENLINEAGE
                     type: string
                     format: enum
                 relationType:
@@ -3753,7 +3736,7 @@ components:
                     type: string
                 host:
                     type: string
-        ListAPIKeyResponse:
+        ListAPIKeysResponse:
             type: object
             properties:
                 apiKeys:
@@ -3782,29 +3765,6 @@ components:
                     description: |-
                         A token, which can be sent as `page_token` to retrieve the next page.
                          If this field is omitted, there are no subsequent pages.
-        ListInstanceDatabaseRequest:
-            required:
-                - name
-                - instance
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: |-
-                        The name of the instance.
-                         Format: instances/{instance}
-                instance:
-                    allOf:
-                        - $ref: '#/components/schemas/Instance'
-                    description: The target instance. We need to set this field if the target instance is not created yet.
-        ListInstanceDatabaseResponse:
-            type: object
-            properties:
-                databases:
-                    type: array
-                    items:
-                        type: string
-                    description: All database name list in the instance.
         ListInstancesResponse:
             type: object
             properties:
@@ -3831,7 +3791,7 @@ components:
                         $ref: '#/components/schemas/LlmProviderDefinition'
                 nextPageToken:
                     type: string
-        ListManualSQLResponse:
+        ListManualSQLsResponse:
             type: object
             properties:
                 manualSqls:
@@ -3849,7 +3809,7 @@ components:
                         $ref: '#/components/schemas/MetadataHistoryTimelineEntry'
                 nextPageToken:
                     type: string
-        ListNamespaceMappingResponse:
+        ListNamespaceMappingsResponse:
             type: object
             properties:
                 mappings:
@@ -3863,6 +3823,8 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/OpenLineageDatasetResource'
+                nextPageToken:
+                    type: string
         ListOpenLineageRunsResponse:
             type: object
             properties:
@@ -3870,6 +3832,8 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/OpenLineageRunResource'
+                nextPageToken:
+                    type: string
         ListOpenLineageTasksResponse:
             type: object
             properties:
@@ -3877,6 +3841,8 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/OpenLineageTaskResource'
+                nextPageToken:
+                    type: string
         ListUsersResponse:
             type: object
             properties:
@@ -4231,6 +4197,7 @@ components:
                         - PACKAGE
                         - STREAM
                         - TASK
+                        - OPENLINEAGE
                     type: string
                     format: enum
                 eventTime:
@@ -4262,9 +4229,9 @@ components:
                 typesStoredMetadata:
                     type: array
                     items:
-                        $ref: '#/components/schemas/MetadataResponse_MetadataList'
+                        $ref: '#/components/schemas/MetadataResponse_Metadata'
                     description: The list of stored metadata.
-        MetadataResponse_MetadataList:
+        MetadataResponse_Metadata:
             type: object
             properties:
                 metaType:
@@ -4288,6 +4255,7 @@ components:
                         - PACKAGE
                         - STREAM
                         - TASK
+                        - OPENLINEAGE
                     type: string
                     format: enum
                 list:
@@ -4416,6 +4384,7 @@ components:
                         - PACKAGE
                         - STREAM
                         - TASK
+                        - OPENLINEAGE
                     type: string
                     format: enum
                 internal:
@@ -4795,6 +4764,7 @@ components:
                         - PACKAGE
                         - STREAM
                         - TASK
+                        - OPENLINEAGE
                     type: string
                     description: The type of the metadata.
                     format: enum
@@ -4954,6 +4924,14 @@ components:
                     $ref: '#/components/schemas/ManualSQLMetadata'
                 columnMetadata:
                     $ref: '#/components/schemas/ColumnMetadata'
+            description: |-
+                StoredMetadata is the v1 view of one meta_registry_resource row.
+
+                 OpenLineage registry rows (store.MetaType_OPENLINEAGE) have no v1
+                 representation: they are internal summaries of ingested events, and the
+                 supported way to read them is the OpenLineageService resources. They are
+                 filtered out of ListMetadata/GetMetadata/SearchMetadata rather than
+                 serialized as an empty StoredMetadata.
         StreamMetadata:
             type: object
             properties:

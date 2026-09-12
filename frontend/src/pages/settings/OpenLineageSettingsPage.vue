@@ -432,8 +432,8 @@ import {
   createAPIKey,
   createNamespaceMapping,
   deleteNamespaceMapping,
-  listAPIKey,
-  listNamespaceMapping,
+  listAPIKeys,
+  listNamespaceMappings,
   revokeAPIKey,
   updateNamespaceMapping,
 } from "@/api/openlineage";
@@ -527,7 +527,7 @@ function formatTimestamp(ts: Timestamp | undefined): string {
 async function fetchMappings() {
   isLoadingMappings.value = true;
   try {
-    const resp = await listNamespaceMapping();
+    const resp = await listNamespaceMappings();
     mappings.value = resp.mappings;
   } catch (e) {
     handleError(e);
@@ -539,7 +539,7 @@ async function fetchMappings() {
 async function fetchAPIKeys() {
   isLoadingKeys.value = true;
   try {
-    const resp = await listAPIKey();
+    const resp = await listAPIKeys();
     apiKeys.value = resp.apiKeys;
   } catch (e) {
     handleError(e);

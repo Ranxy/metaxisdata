@@ -55,9 +55,9 @@ const (
 	// OpenLineageServiceCreateNamespaceMappingProcedure is the fully-qualified name of the
 	// OpenLineageService's CreateNamespaceMapping RPC.
 	OpenLineageServiceCreateNamespaceMappingProcedure = "/metaxisdata.v1.OpenLineageService/CreateNamespaceMapping"
-	// OpenLineageServiceListNamespaceMappingProcedure is the fully-qualified name of the
-	// OpenLineageService's ListNamespaceMapping RPC.
-	OpenLineageServiceListNamespaceMappingProcedure = "/metaxisdata.v1.OpenLineageService/ListNamespaceMapping"
+	// OpenLineageServiceListNamespaceMappingsProcedure is the fully-qualified name of the
+	// OpenLineageService's ListNamespaceMappings RPC.
+	OpenLineageServiceListNamespaceMappingsProcedure = "/metaxisdata.v1.OpenLineageService/ListNamespaceMappings"
 	// OpenLineageServiceUpdateNamespaceMappingProcedure is the fully-qualified name of the
 	// OpenLineageService's UpdateNamespaceMapping RPC.
 	OpenLineageServiceUpdateNamespaceMappingProcedure = "/metaxisdata.v1.OpenLineageService/UpdateNamespaceMapping"
@@ -67,9 +67,9 @@ const (
 	// OpenLineageServiceCreateAPIKeyProcedure is the fully-qualified name of the OpenLineageService's
 	// CreateAPIKey RPC.
 	OpenLineageServiceCreateAPIKeyProcedure = "/metaxisdata.v1.OpenLineageService/CreateAPIKey"
-	// OpenLineageServiceListAPIKeyProcedure is the fully-qualified name of the OpenLineageService's
-	// ListAPIKey RPC.
-	OpenLineageServiceListAPIKeyProcedure = "/metaxisdata.v1.OpenLineageService/ListAPIKey"
+	// OpenLineageServiceListAPIKeysProcedure is the fully-qualified name of the OpenLineageService's
+	// ListAPIKeys RPC.
+	OpenLineageServiceListAPIKeysProcedure = "/metaxisdata.v1.OpenLineageService/ListAPIKeys"
 	// OpenLineageServiceRevokeAPIKeyProcedure is the fully-qualified name of the OpenLineageService's
 	// RevokeAPIKey RPC.
 	OpenLineageServiceRevokeAPIKeyProcedure = "/metaxisdata.v1.OpenLineageService/RevokeAPIKey"
@@ -84,11 +84,11 @@ type OpenLineageServiceClient interface {
 	ListOpenLineageRuns(context.Context, *connect.Request[v1.ListOpenLineageRunsRequest]) (*connect.Response[v1.ListOpenLineageRunsResponse], error)
 	GetOpenLineageRun(context.Context, *connect.Request[v1.GetOpenLineageRunRequest]) (*connect.Response[v1.OpenLineageRunResource], error)
 	CreateNamespaceMapping(context.Context, *connect.Request[v1.CreateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMappingResource], error)
-	ListNamespaceMapping(context.Context, *connect.Request[v1.ListNamespaceMappingRequest]) (*connect.Response[v1.ListNamespaceMappingResponse], error)
+	ListNamespaceMappings(context.Context, *connect.Request[v1.ListNamespaceMappingsRequest]) (*connect.Response[v1.ListNamespaceMappingsResponse], error)
 	UpdateNamespaceMapping(context.Context, *connect.Request[v1.UpdateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMappingResource], error)
 	DeleteNamespaceMapping(context.Context, *connect.Request[v1.DeleteNamespaceMappingRequest]) (*connect.Response[emptypb.Empty], error)
 	CreateAPIKey(context.Context, *connect.Request[v1.CreateAPIKeyRequest]) (*connect.Response[v1.CreateAPIKeyResponse], error)
-	ListAPIKey(context.Context, *connect.Request[v1.ListAPIKeyRequest]) (*connect.Response[v1.ListAPIKeyResponse], error)
+	ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error)
 	RevokeAPIKey(context.Context, *connect.Request[v1.RevokeAPIKeyRequest]) (*connect.Response[emptypb.Empty], error)
 }
 
@@ -145,10 +145,10 @@ func NewOpenLineageServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(openLineageServiceMethods.ByName("CreateNamespaceMapping")),
 			connect.WithClientOptions(opts...),
 		),
-		listNamespaceMapping: connect.NewClient[v1.ListNamespaceMappingRequest, v1.ListNamespaceMappingResponse](
+		listNamespaceMappings: connect.NewClient[v1.ListNamespaceMappingsRequest, v1.ListNamespaceMappingsResponse](
 			httpClient,
-			baseURL+OpenLineageServiceListNamespaceMappingProcedure,
-			connect.WithSchema(openLineageServiceMethods.ByName("ListNamespaceMapping")),
+			baseURL+OpenLineageServiceListNamespaceMappingsProcedure,
+			connect.WithSchema(openLineageServiceMethods.ByName("ListNamespaceMappings")),
 			connect.WithClientOptions(opts...),
 		),
 		updateNamespaceMapping: connect.NewClient[v1.UpdateNamespaceMappingRequest, v1.NamespaceMappingResource](
@@ -169,10 +169,10 @@ func NewOpenLineageServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(openLineageServiceMethods.ByName("CreateAPIKey")),
 			connect.WithClientOptions(opts...),
 		),
-		listAPIKey: connect.NewClient[v1.ListAPIKeyRequest, v1.ListAPIKeyResponse](
+		listAPIKeys: connect.NewClient[v1.ListAPIKeysRequest, v1.ListAPIKeysResponse](
 			httpClient,
-			baseURL+OpenLineageServiceListAPIKeyProcedure,
-			connect.WithSchema(openLineageServiceMethods.ByName("ListAPIKey")),
+			baseURL+OpenLineageServiceListAPIKeysProcedure,
+			connect.WithSchema(openLineageServiceMethods.ByName("ListAPIKeys")),
 			connect.WithClientOptions(opts...),
 		),
 		revokeAPIKey: connect.NewClient[v1.RevokeAPIKeyRequest, emptypb.Empty](
@@ -193,11 +193,11 @@ type openLineageServiceClient struct {
 	listOpenLineageRuns     *connect.Client[v1.ListOpenLineageRunsRequest, v1.ListOpenLineageRunsResponse]
 	getOpenLineageRun       *connect.Client[v1.GetOpenLineageRunRequest, v1.OpenLineageRunResource]
 	createNamespaceMapping  *connect.Client[v1.CreateNamespaceMappingRequest, v1.NamespaceMappingResource]
-	listNamespaceMapping    *connect.Client[v1.ListNamespaceMappingRequest, v1.ListNamespaceMappingResponse]
+	listNamespaceMappings   *connect.Client[v1.ListNamespaceMappingsRequest, v1.ListNamespaceMappingsResponse]
 	updateNamespaceMapping  *connect.Client[v1.UpdateNamespaceMappingRequest, v1.NamespaceMappingResource]
 	deleteNamespaceMapping  *connect.Client[v1.DeleteNamespaceMappingRequest, emptypb.Empty]
 	createAPIKey            *connect.Client[v1.CreateAPIKeyRequest, v1.CreateAPIKeyResponse]
-	listAPIKey              *connect.Client[v1.ListAPIKeyRequest, v1.ListAPIKeyResponse]
+	listAPIKeys             *connect.Client[v1.ListAPIKeysRequest, v1.ListAPIKeysResponse]
 	revokeAPIKey            *connect.Client[v1.RevokeAPIKeyRequest, emptypb.Empty]
 }
 
@@ -236,9 +236,9 @@ func (c *openLineageServiceClient) CreateNamespaceMapping(ctx context.Context, r
 	return c.createNamespaceMapping.CallUnary(ctx, req)
 }
 
-// ListNamespaceMapping calls metaxisdata.v1.OpenLineageService.ListNamespaceMapping.
-func (c *openLineageServiceClient) ListNamespaceMapping(ctx context.Context, req *connect.Request[v1.ListNamespaceMappingRequest]) (*connect.Response[v1.ListNamespaceMappingResponse], error) {
-	return c.listNamespaceMapping.CallUnary(ctx, req)
+// ListNamespaceMappings calls metaxisdata.v1.OpenLineageService.ListNamespaceMappings.
+func (c *openLineageServiceClient) ListNamespaceMappings(ctx context.Context, req *connect.Request[v1.ListNamespaceMappingsRequest]) (*connect.Response[v1.ListNamespaceMappingsResponse], error) {
+	return c.listNamespaceMappings.CallUnary(ctx, req)
 }
 
 // UpdateNamespaceMapping calls metaxisdata.v1.OpenLineageService.UpdateNamespaceMapping.
@@ -256,9 +256,9 @@ func (c *openLineageServiceClient) CreateAPIKey(ctx context.Context, req *connec
 	return c.createAPIKey.CallUnary(ctx, req)
 }
 
-// ListAPIKey calls metaxisdata.v1.OpenLineageService.ListAPIKey.
-func (c *openLineageServiceClient) ListAPIKey(ctx context.Context, req *connect.Request[v1.ListAPIKeyRequest]) (*connect.Response[v1.ListAPIKeyResponse], error) {
-	return c.listAPIKey.CallUnary(ctx, req)
+// ListAPIKeys calls metaxisdata.v1.OpenLineageService.ListAPIKeys.
+func (c *openLineageServiceClient) ListAPIKeys(ctx context.Context, req *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error) {
+	return c.listAPIKeys.CallUnary(ctx, req)
 }
 
 // RevokeAPIKey calls metaxisdata.v1.OpenLineageService.RevokeAPIKey.
@@ -275,11 +275,11 @@ type OpenLineageServiceHandler interface {
 	ListOpenLineageRuns(context.Context, *connect.Request[v1.ListOpenLineageRunsRequest]) (*connect.Response[v1.ListOpenLineageRunsResponse], error)
 	GetOpenLineageRun(context.Context, *connect.Request[v1.GetOpenLineageRunRequest]) (*connect.Response[v1.OpenLineageRunResource], error)
 	CreateNamespaceMapping(context.Context, *connect.Request[v1.CreateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMappingResource], error)
-	ListNamespaceMapping(context.Context, *connect.Request[v1.ListNamespaceMappingRequest]) (*connect.Response[v1.ListNamespaceMappingResponse], error)
+	ListNamespaceMappings(context.Context, *connect.Request[v1.ListNamespaceMappingsRequest]) (*connect.Response[v1.ListNamespaceMappingsResponse], error)
 	UpdateNamespaceMapping(context.Context, *connect.Request[v1.UpdateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMappingResource], error)
 	DeleteNamespaceMapping(context.Context, *connect.Request[v1.DeleteNamespaceMappingRequest]) (*connect.Response[emptypb.Empty], error)
 	CreateAPIKey(context.Context, *connect.Request[v1.CreateAPIKeyRequest]) (*connect.Response[v1.CreateAPIKeyResponse], error)
-	ListAPIKey(context.Context, *connect.Request[v1.ListAPIKeyRequest]) (*connect.Response[v1.ListAPIKeyResponse], error)
+	ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error)
 	RevokeAPIKey(context.Context, *connect.Request[v1.RevokeAPIKeyRequest]) (*connect.Response[emptypb.Empty], error)
 }
 
@@ -332,10 +332,10 @@ func NewOpenLineageServiceHandler(svc OpenLineageServiceHandler, opts ...connect
 		connect.WithSchema(openLineageServiceMethods.ByName("CreateNamespaceMapping")),
 		connect.WithHandlerOptions(opts...),
 	)
-	openLineageServiceListNamespaceMappingHandler := connect.NewUnaryHandler(
-		OpenLineageServiceListNamespaceMappingProcedure,
-		svc.ListNamespaceMapping,
-		connect.WithSchema(openLineageServiceMethods.ByName("ListNamespaceMapping")),
+	openLineageServiceListNamespaceMappingsHandler := connect.NewUnaryHandler(
+		OpenLineageServiceListNamespaceMappingsProcedure,
+		svc.ListNamespaceMappings,
+		connect.WithSchema(openLineageServiceMethods.ByName("ListNamespaceMappings")),
 		connect.WithHandlerOptions(opts...),
 	)
 	openLineageServiceUpdateNamespaceMappingHandler := connect.NewUnaryHandler(
@@ -356,10 +356,10 @@ func NewOpenLineageServiceHandler(svc OpenLineageServiceHandler, opts ...connect
 		connect.WithSchema(openLineageServiceMethods.ByName("CreateAPIKey")),
 		connect.WithHandlerOptions(opts...),
 	)
-	openLineageServiceListAPIKeyHandler := connect.NewUnaryHandler(
-		OpenLineageServiceListAPIKeyProcedure,
-		svc.ListAPIKey,
-		connect.WithSchema(openLineageServiceMethods.ByName("ListAPIKey")),
+	openLineageServiceListAPIKeysHandler := connect.NewUnaryHandler(
+		OpenLineageServiceListAPIKeysProcedure,
+		svc.ListAPIKeys,
+		connect.WithSchema(openLineageServiceMethods.ByName("ListAPIKeys")),
 		connect.WithHandlerOptions(opts...),
 	)
 	openLineageServiceRevokeAPIKeyHandler := connect.NewUnaryHandler(
@@ -384,16 +384,16 @@ func NewOpenLineageServiceHandler(svc OpenLineageServiceHandler, opts ...connect
 			openLineageServiceGetOpenLineageRunHandler.ServeHTTP(w, r)
 		case OpenLineageServiceCreateNamespaceMappingProcedure:
 			openLineageServiceCreateNamespaceMappingHandler.ServeHTTP(w, r)
-		case OpenLineageServiceListNamespaceMappingProcedure:
-			openLineageServiceListNamespaceMappingHandler.ServeHTTP(w, r)
+		case OpenLineageServiceListNamespaceMappingsProcedure:
+			openLineageServiceListNamespaceMappingsHandler.ServeHTTP(w, r)
 		case OpenLineageServiceUpdateNamespaceMappingProcedure:
 			openLineageServiceUpdateNamespaceMappingHandler.ServeHTTP(w, r)
 		case OpenLineageServiceDeleteNamespaceMappingProcedure:
 			openLineageServiceDeleteNamespaceMappingHandler.ServeHTTP(w, r)
 		case OpenLineageServiceCreateAPIKeyProcedure:
 			openLineageServiceCreateAPIKeyHandler.ServeHTTP(w, r)
-		case OpenLineageServiceListAPIKeyProcedure:
-			openLineageServiceListAPIKeyHandler.ServeHTTP(w, r)
+		case OpenLineageServiceListAPIKeysProcedure:
+			openLineageServiceListAPIKeysHandler.ServeHTTP(w, r)
 		case OpenLineageServiceRevokeAPIKeyProcedure:
 			openLineageServiceRevokeAPIKeyHandler.ServeHTTP(w, r)
 		default:
@@ -433,8 +433,8 @@ func (UnimplementedOpenLineageServiceHandler) CreateNamespaceMapping(context.Con
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.OpenLineageService.CreateNamespaceMapping is not implemented"))
 }
 
-func (UnimplementedOpenLineageServiceHandler) ListNamespaceMapping(context.Context, *connect.Request[v1.ListNamespaceMappingRequest]) (*connect.Response[v1.ListNamespaceMappingResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.OpenLineageService.ListNamespaceMapping is not implemented"))
+func (UnimplementedOpenLineageServiceHandler) ListNamespaceMappings(context.Context, *connect.Request[v1.ListNamespaceMappingsRequest]) (*connect.Response[v1.ListNamespaceMappingsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.OpenLineageService.ListNamespaceMappings is not implemented"))
 }
 
 func (UnimplementedOpenLineageServiceHandler) UpdateNamespaceMapping(context.Context, *connect.Request[v1.UpdateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMappingResource], error) {
@@ -449,8 +449,8 @@ func (UnimplementedOpenLineageServiceHandler) CreateAPIKey(context.Context, *con
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.OpenLineageService.CreateAPIKey is not implemented"))
 }
 
-func (UnimplementedOpenLineageServiceHandler) ListAPIKey(context.Context, *connect.Request[v1.ListAPIKeyRequest]) (*connect.Response[v1.ListAPIKeyResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.OpenLineageService.ListAPIKey is not implemented"))
+func (UnimplementedOpenLineageServiceHandler) ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.OpenLineageService.ListAPIKeys is not implemented"))
 }
 
 func (UnimplementedOpenLineageServiceHandler) RevokeAPIKey(context.Context, *connect.Request[v1.RevokeAPIKeyRequest]) (*connect.Response[emptypb.Empty], error) {

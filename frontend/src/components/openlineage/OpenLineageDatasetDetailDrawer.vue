@@ -259,11 +259,9 @@ watch(
   () => ({
     isOpen: props.modelValue,
     guid: props.dataset?.guid ?? "",
-    namespace: props.dataset?.namespace ?? "",
-    name: props.dataset?.name ?? "",
   }),
-  async ({ isOpen, guid, namespace, name }) => {
-    if (!isOpen || !guid || !namespace || !name) {
+  async ({ isOpen, guid }) => {
+    if (!isOpen || !guid) {
       if (!isOpen) {
         detail.value = null;
         errorMessage.value = "";
@@ -274,7 +272,7 @@ watch(
     isLoading.value = true;
     errorMessage.value = "";
     try {
-      detail.value = await getOpenLineageDataset({ guid, namespace, name });
+      detail.value = await getOpenLineageDataset(guid);
     } catch (error) {
       detail.value = null;
       errorMessage.value = extractErrorMessage(error);

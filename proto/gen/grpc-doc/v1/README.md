@@ -4,9 +4,6 @@
 ## Table of Contents
 
 - [v1/annotation.proto](#v1_annotation-proto)
-    - [AuthMethod](#metaxisdata-v1-AuthMethod)
-  
-    - [File-level Extensions](#v1_annotation-proto-extensions)
     - [File-level Extensions](#v1_annotation-proto-extensions)
     - [File-level Extensions](#v1_annotation-proto-extensions)
     - [File-level Extensions](#v1_annotation-proto-extensions)
@@ -76,8 +73,6 @@
     - [Instance](#metaxisdata-v1-Instance)
     - [InstanceResource](#metaxisdata-v1-InstanceResource)
     - [KerberosConfig](#metaxisdata-v1-KerberosConfig)
-    - [ListInstanceDatabaseRequest](#metaxisdata-v1-ListInstanceDatabaseRequest)
-    - [ListInstanceDatabaseResponse](#metaxisdata-v1-ListInstanceDatabaseResponse)
     - [ListInstancesRequest](#metaxisdata-v1-ListInstancesRequest)
     - [ListInstancesResponse](#metaxisdata-v1-ListInstancesResponse)
     - [RemoveDataSourceRequest](#metaxisdata-v1-RemoveDataSourceRequest)
@@ -120,7 +115,6 @@
     - [ForeignKeyMetadata](#metaxisdata-v1-ForeignKeyMetadata)
     - [FunctionMetadata](#metaxisdata-v1-FunctionMetadata)
     - [GenerationMetadata](#metaxisdata-v1-GenerationMetadata)
-    - [GetDatabaseRequest](#metaxisdata-v1-GetDatabaseRequest)
     - [GetManualSQLRequest](#metaxisdata-v1-GetManualSQLRequest)
     - [GetMetadataHistoryEventRequest](#metaxisdata-v1-GetMetadataHistoryEventRequest)
     - [GetMetadataRequest](#metaxisdata-v1-GetMetadataRequest)
@@ -130,10 +124,10 @@
     - [IndexMetadata](#metaxisdata-v1-IndexMetadata)
     - [InstanceRoleMetadata](#metaxisdata-v1-InstanceRoleMetadata)
     - [LinkedDatabaseMetadata](#metaxisdata-v1-LinkedDatabaseMetadata)
-    - [ListDatabaseRequest](#metaxisdata-v1-ListDatabaseRequest)
+    - [ListDatabasesRequest](#metaxisdata-v1-ListDatabasesRequest)
     - [ListDatabasesResponse](#metaxisdata-v1-ListDatabasesResponse)
-    - [ListManualSQLRequest](#metaxisdata-v1-ListManualSQLRequest)
-    - [ListManualSQLResponse](#metaxisdata-v1-ListManualSQLResponse)
+    - [ListManualSQLsRequest](#metaxisdata-v1-ListManualSQLsRequest)
+    - [ListManualSQLsResponse](#metaxisdata-v1-ListManualSQLsResponse)
     - [ListMetadataHistoryRequest](#metaxisdata-v1-ListMetadataHistoryRequest)
     - [ListMetadataHistoryResponse](#metaxisdata-v1-ListMetadataHistoryResponse)
     - [ListMetadataRequest](#metaxisdata-v1-ListMetadataRequest)
@@ -150,7 +144,7 @@
     - [MetadataHistorySectionChangeCount](#metaxisdata-v1-MetadataHistorySectionChangeCount)
     - [MetadataHistoryTimelineEntry](#metaxisdata-v1-MetadataHistoryTimelineEntry)
     - [MetadataResponse](#metaxisdata-v1-MetadataResponse)
-    - [MetadataResponse.MetadataList](#metaxisdata-v1-MetadataResponse-MetadataList)
+    - [MetadataResponse.Metadata](#metaxisdata-v1-MetadataResponse-Metadata)
     - [MetadataSchemaString](#metaxisdata-v1-MetadataSchemaString)
     - [PackageMetadata](#metaxisdata-v1-PackageMetadata)
     - [ProcedureMetadata](#metaxisdata-v1-ProcedureMetadata)
@@ -235,10 +229,10 @@
     - [GetOpenLineageDatasetRequest](#metaxisdata-v1-GetOpenLineageDatasetRequest)
     - [GetOpenLineageRunRequest](#metaxisdata-v1-GetOpenLineageRunRequest)
     - [GetOpenLineageTaskRequest](#metaxisdata-v1-GetOpenLineageTaskRequest)
-    - [ListAPIKeyRequest](#metaxisdata-v1-ListAPIKeyRequest)
-    - [ListAPIKeyResponse](#metaxisdata-v1-ListAPIKeyResponse)
-    - [ListNamespaceMappingRequest](#metaxisdata-v1-ListNamespaceMappingRequest)
-    - [ListNamespaceMappingResponse](#metaxisdata-v1-ListNamespaceMappingResponse)
+    - [ListAPIKeysRequest](#metaxisdata-v1-ListAPIKeysRequest)
+    - [ListAPIKeysResponse](#metaxisdata-v1-ListAPIKeysResponse)
+    - [ListNamespaceMappingsRequest](#metaxisdata-v1-ListNamespaceMappingsRequest)
+    - [ListNamespaceMappingsResponse](#metaxisdata-v1-ListNamespaceMappingsResponse)
     - [ListOpenLineageDatasetsRequest](#metaxisdata-v1-ListOpenLineageDatasetsRequest)
     - [ListOpenLineageDatasetsResponse](#metaxisdata-v1-ListOpenLineageDatasetsResponse)
     - [ListOpenLineageRunsRequest](#metaxisdata-v1-ListOpenLineageRunsRequest)
@@ -279,19 +273,6 @@
 
  
 
-
-<a name="metaxisdata-v1-AuthMethod"></a>
-
-### AuthMethod
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| AUTH_METHOD_UNSPECIFIED | 0 |  |
-| IAM | 1 | IAM uses the standard IAM authorization check on the organizational resources. |
-| CUSTOM | 2 | Custom authorization method. |
-
-
  
 
 
@@ -302,7 +283,6 @@
 | --------- | ---- | ---- | ------ | ----------- |
 | allow_without_credential | bool | .google.protobuf.MethodOptions | 100000 |  |
 | audit | bool | .google.protobuf.MethodOptions | 100003 |  |
-| auth_method | AuthMethod | .google.protobuf.MethodOptions | 100002 |  |
 | permission | string | .google.protobuf.MethodOptions | 100001 |  |
 
  
@@ -653,9 +633,9 @@ When paginating, all other parameters provided to `ListUsers` must match the cal
 | show_deleted | [bool](#bool) |  | Show deleted users if specified. |
 | filter | [string](#string) |  | Filter is used to filter users returned in the list. The syntax and semantics of CEL are documented at https://github.com/google/cel-spec
 
-Supported filter: - name: the user name, support &#34;==&#34; and &#34;.matches()&#34; operator. - email: the user email, support &#34;==&#34; and &#34;.matches()&#34; operator. - user_type: the type, check UserType enum for values, support &#34;==&#34;, &#34;in [xx]&#34;, &#34;!(in [xx])&#34; operator. - state: check State enum for values, support &#34;==&#34; operator. - project: the project full name in &#34;projects/{id}&#34; format, support &#34;==&#34; operator.
+Supported filter: - name: the user name, support &#34;==&#34; and &#34;.matches()&#34; operator. - email: the user email, support &#34;==&#34; and &#34;.matches()&#34; operator. - user_type: the type, check UserType enum for values, support &#34;==&#34;, &#34;in [xx]&#34;, &#34;!(in [xx])&#34; operator. - state: check State enum for values, support &#34;==&#34; operator.
 
-For example: name == &#34;ed&#34; name.matches(&#34;ed&#34;) email == &#34;ed@example.com&#34; email.matches(&#34;ed&#34;) user_type == &#34;SERVICE_ACCOUNT&#34; user_type in [&#34;SERVICE_ACCOUNT&#34;, &#34;USER&#34;] !(user_type in [&#34;SERVICE_ACCOUNT&#34;, &#34;USER&#34;]) state == &#34;DELETED&#34; project == &#34;projects/sample-project&#34; You can combine filter conditions like: name.matches(&#34;ed&#34;) &amp;&amp; project == &#34;projects/sample-project&#34; (name == &#34;ed&#34; || email == &#34;ed@example.com&#34;) &amp;&amp; project == &#34;projects/sample-project&#34; |
+For example: name == &#34;ed&#34; name.matches(&#34;ed&#34;) email == &#34;ed@example.com&#34; email.matches(&#34;ed&#34;) user_type == &#34;USER&#34; user_type in [&#34;USER&#34;] !(user_type in [&#34;USER&#34;]) state == &#34;DELETED&#34; You can combine filter conditions like: name.matches(&#34;ed&#34;) &amp;&amp; state == &#34;ACTIVE&#34; (name == &#34;ed&#34; || email == &#34;ed@example.com&#34;) &amp;&amp; user_type == &#34;USER&#34; |
 
 
 
@@ -988,7 +968,7 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 | instance | [Instance](#metaxisdata-v1-Instance) |  | The instance to create. |
 | instance_id | [string](#string) |  | The ID to use for the instance, which will become the final component of the instance&#39;s resource name.
 
-This value should be 4-63 characters, and valid characters are /[a-z][0-9]-/. |
+This value should be 4-63 characters, and valid characters are /[a-z0-9-]/. |
 | validate_only | [bool](#bool) |  | Validate only also tests the data source connection. |
 
 
@@ -1269,37 +1249,6 @@ This value should be 4-63 characters, and valid characters are /[a-z][0-9]-/. |
 
 
 
-<a name="metaxisdata-v1-ListInstanceDatabaseRequest"></a>
-
-### ListInstanceDatabaseRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | The name of the instance. Format: instances/{instance} |
-| instance | [Instance](#metaxisdata-v1-Instance) | optional | The target instance. We need to set this field if the target instance is not created yet. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListInstanceDatabaseResponse"></a>
-
-### ListInstanceDatabaseResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| databases | [string](#string) | repeated | All database name list in the instance. |
-
-
-
-
-
-
 <a name="metaxisdata-v1-ListInstancesRequest"></a>
 
 ### ListInstancesRequest
@@ -1555,7 +1504,6 @@ The instance&#39;s `name` field is used to identify the instance to update. Form
 | DeleteInstance | [DeleteInstanceRequest](#metaxisdata-v1-DeleteInstanceRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
 | UndeleteInstance | [UndeleteInstanceRequest](#metaxisdata-v1-UndeleteInstanceRequest) | [Instance](#metaxisdata-v1-Instance) |  |
 | SyncInstance | [SyncInstanceRequest](#metaxisdata-v1-SyncInstanceRequest) | [SyncInstanceResponse](#metaxisdata-v1-SyncInstanceResponse) |  |
-| ListInstanceDatabase | [ListInstanceDatabaseRequest](#metaxisdata-v1-ListInstanceDatabaseRequest) | [ListInstanceDatabaseResponse](#metaxisdata-v1-ListInstanceDatabaseResponse) |  |
 | BatchSyncInstances | [BatchSyncInstancesRequest](#metaxisdata-v1-BatchSyncInstancesRequest) | [BatchSyncInstancesResponse](#metaxisdata-v1-BatchSyncInstancesResponse) |  |
 | BatchUpdateInstances | [BatchUpdateInstancesRequest](#metaxisdata-v1-BatchUpdateInstancesRequest) | [BatchUpdateInstancesResponse](#metaxisdata-v1-BatchUpdateInstancesResponse) |  |
 | AddDataSource | [AddDataSourceRequest](#metaxisdata-v1-AddDataSourceRequest) | [Instance](#metaxisdata-v1-Instance) |  |
@@ -2005,21 +1953,6 @@ FunctionMetadata is the metadata for functions.
 
 
 
-<a name="metaxisdata-v1-GetDatabaseRequest"></a>
-
-### GetDatabaseRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | The name of the database to retrieve. Format: instances/{instance}/databases/{database} |
-
-
-
-
-
-
 <a name="metaxisdata-v1-GetManualSQLRequest"></a>
 
 ### GetManualSQLRequest
@@ -2180,9 +2113,9 @@ InstanceRoleMetadata is the message for instance role.
 
 
 
-<a name="metaxisdata-v1-ListDatabaseRequest"></a>
+<a name="metaxisdata-v1-ListDatabasesRequest"></a>
 
-### ListDatabaseRequest
+### ListDatabasesRequest
 
 
 
@@ -2223,9 +2156,9 @@ You can combine filter conditions like: environment == &#34;environments/prod&#3
 
 
 
-<a name="metaxisdata-v1-ListManualSQLRequest"></a>
+<a name="metaxisdata-v1-ListManualSQLsRequest"></a>
 
-### ListManualSQLRequest
+### ListManualSQLsRequest
 
 
 
@@ -2243,9 +2176,9 @@ You can combine filter conditions like: environment == &#34;environments/prod&#3
 
 
 
-<a name="metaxisdata-v1-ListManualSQLResponse"></a>
+<a name="metaxisdata-v1-ListManualSQLsResponse"></a>
 
-### ListManualSQLResponse
+### ListManualSQLsResponse
 
 
 
@@ -2301,12 +2234,16 @@ You can combine filter conditions like: environment == &#34;environments/prod&#3
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| parent_guid | [string](#string) |  | The global unique id for all metadata database: &#34;instance_100;database3&#34; table: &#34;instance_1;db2;schema3;table4&#34; |
-| page_size | [int32](#int32) |  | The maximum number of databases to return. The service may return fewer than this value. If unspecified, at most 10 databases will be returned. The maximum value is 1000; values above 1000 will be coerced to 1000. |
-| page_token | [string](#string) |  | A page token, received from a previous `ListDatabases` call. Provide this to retrieve the subsequent page.
+| parent_guid | [string](#string) |  | The global unique id for all metadata database: &#34;instance_100;database3&#34; table: &#34;instance_1;db2;schema3;table4&#34;
 
-When paginating, all other parameters provided to `ListDatabases` must match the call that provided the page token. |
-| meta_type | [MetaType](#metaxisdata-v1-MetaType) | optional | the type of metadata If meta_type is not specified, the query will ignore page_size and return the first 20 records of each meta_type. |
+A GUID is an opaque, &#39;;&#39;-joined identifier rather than an AIP resource name, so it carries no resource_reference (the same applies to every other guid field in this file). |
+| page_size | [int32](#int32) |  | The maximum number of databases to return. The service may return fewer than this value. If unspecified, at most 10 databases will be returned. The maximum value is 1000; values above 1000 will be coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous `ListMetadata` call. Provide this to retrieve the subsequent page.
+
+When paginating, all other parameters provided to `ListMetadata` must match the call that provided the page token.
+
+When meta_type is unset the response groups the rows by type and page_size applies to each group separately. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) | optional | the type of metadata |
 
 
 
@@ -2557,16 +2494,16 @@ MaterializedViewMetadata is the metadata for materialized views.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| types_stored_metadata | [MetadataResponse.MetadataList](#metaxisdata-v1-MetadataResponse-MetadataList) | repeated | The list of stored metadata. |
+| types_stored_metadata | [MetadataResponse.Metadata](#metaxisdata-v1-MetadataResponse-Metadata) | repeated | The list of stored metadata. |
 
 
 
 
 
 
-<a name="metaxisdata-v1-MetadataResponse-MetadataList"></a>
+<a name="metaxisdata-v1-MetadataResponse-Metadata"></a>
 
-### MetadataResponse.MetadataList
+### MetadataResponse.Metadata
 
 
 
@@ -2734,6 +2671,8 @@ This is the concept of schema in Postgres, but it&#39;s a no-op for MySQL.
 | parent_guid_prefix | [string](#string) | optional | Optional metadata prefixes to search for. database: &#34;instance_100;database3&#34; table: &#34;instance_1;db2;schema3;table4&#34; |
 | meta_type | [MetaType](#metaxisdata-v1-MetaType) | optional | the type of metadata |
 | search_str | [string](#string) |  | the search string |
+| page_size | [int32](#int32) |  | The maximum number of results to return. If unspecified, at most 50 results will be returned. The maximum value is 1000; values above 1000 will be coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous `SearchMetadata` call. Provide this to retrieve the subsequent page. |
 
 
 
@@ -2868,7 +2807,13 @@ StorageConfig defines storage and performance parameters for spatial indexes.
 <a name="metaxisdata-v1-StoredMetadata"></a>
 
 ### StoredMetadata
+StoredMetadata is the v1 view of one meta_registry_resource row.
 
+OpenLineage registry rows (store.MetaType_OPENLINEAGE) have no v1
+representation: they are internal summaries of ingested events, and the
+supported way to read them is the OpenLineageService resources. They are
+filtered out of ListMetadata/GetMetadata/SearchMetadata rather than
+serialized as an empty StoredMetadata.
 
 
 | Field | Type | Label | Description |
@@ -3158,6 +3103,7 @@ ViewMetadata is the metadata for views.
 | PACKAGE | 13 |  |
 | STREAM | 14 |  |
 | TASK | 15 |  |
+| OPENLINEAGE | 100 | OPENLINEAGE marks meta registry rows that back the OpenLineage service. See StoredMetadata for why these rows are not returned by the metadata methods. |
 
 
 
@@ -3271,9 +3217,8 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
-| GetDatabase | [GetDatabaseRequest](#metaxisdata-v1-GetDatabaseRequest) | [Database](#metaxisdata-v1-Database) |  |
 | SyncDatabase | [SyncDatabaseRequest](#metaxisdata-v1-SyncDatabaseRequest) | [SyncDatabaseResponse](#metaxisdata-v1-SyncDatabaseResponse) |  |
-| ListDatabase | [ListDatabaseRequest](#metaxisdata-v1-ListDatabaseRequest) | [ListDatabasesResponse](#metaxisdata-v1-ListDatabasesResponse) |  |
+| ListDatabases | [ListDatabasesRequest](#metaxisdata-v1-ListDatabasesRequest) | [ListDatabasesResponse](#metaxisdata-v1-ListDatabasesResponse) |  |
 | ListMetadata | [ListMetadataRequest](#metaxisdata-v1-ListMetadataRequest) | [MetadataResponse](#metaxisdata-v1-MetadataResponse) |  |
 | GetMetadata | [GetMetadataRequest](#metaxisdata-v1-GetMetadataRequest) | [GetMetadataResponse](#metaxisdata-v1-GetMetadataResponse) |  |
 | ListMetadataHistory | [ListMetadataHistoryRequest](#metaxisdata-v1-ListMetadataHistoryRequest) | [ListMetadataHistoryResponse](#metaxisdata-v1-ListMetadataHistoryResponse) |  |
@@ -3283,7 +3228,7 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | DiffMetadata | [DiffMetadataRequest](#metaxisdata-v1-DiffMetadataRequest) | [DiffMetadataResponse](#metaxisdata-v1-DiffMetadataResponse) | Computes the schema diff and migration DDL between two metadata versions. |
 | CreateManualSQL | [CreateManualSQLRequest](#metaxisdata-v1-CreateManualSQLRequest) | [ManualSQL](#metaxisdata-v1-ManualSQL) |  |
 | GetManualSQL | [GetManualSQLRequest](#metaxisdata-v1-GetManualSQLRequest) | [ManualSQL](#metaxisdata-v1-ManualSQL) |  |
-| ListManualSQL | [ListManualSQLRequest](#metaxisdata-v1-ListManualSQLRequest) | [ListManualSQLResponse](#metaxisdata-v1-ListManualSQLResponse) |  |
+| ListManualSQLs | [ListManualSQLsRequest](#metaxisdata-v1-ListManualSQLsRequest) | [ListManualSQLsResponse](#metaxisdata-v1-ListManualSQLsResponse) |  |
 | SearchManualSQL | [SearchManualSQLRequest](#metaxisdata-v1-SearchManualSQLRequest) | [SearchManualSQLResponse](#metaxisdata-v1-SearchManualSQLResponse) |  |
 | UpdateManualSQL | [UpdateManualSQLRequest](#metaxisdata-v1-UpdateManualSQLRequest) | [ManualSQL](#metaxisdata-v1-ManualSQL) |  |
 | DeleteManualSQL | [DeleteManualSQLRequest](#metaxisdata-v1-DeleteManualSQLRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
@@ -3350,7 +3295,7 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | meta_guid | [string](#string) |  |  |
-| meta_type | [int32](#int32) |  | store.MetaType |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  | Advisory type of the object named by meta_guid. The server resolves the authoritative type from the registry entry and ignores this field. |
 | sql_text | [string](#string) |  |  |
 | force_regenerate | [bool](#bool) |  |  |
 | provider_name | [string](#string) |  |  |
@@ -3871,8 +3816,6 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | guid | [string](#string) |  |  |
-| namespace | [string](#string) |  |  |
-| name | [string](#string) |  |  |
 
 
 
@@ -3909,19 +3852,19 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 
 
 
-<a name="metaxisdata-v1-ListAPIKeyRequest"></a>
+<a name="metaxisdata-v1-ListAPIKeysRequest"></a>
 
-### ListAPIKeyRequest
-
-
+### ListAPIKeysRequest
 
 
 
 
 
-<a name="metaxisdata-v1-ListAPIKeyResponse"></a>
 
-### ListAPIKeyResponse
+
+<a name="metaxisdata-v1-ListAPIKeysResponse"></a>
+
+### ListAPIKeysResponse
 
 
 
@@ -3934,19 +3877,19 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 
 
 
-<a name="metaxisdata-v1-ListNamespaceMappingRequest"></a>
+<a name="metaxisdata-v1-ListNamespaceMappingsRequest"></a>
 
-### ListNamespaceMappingRequest
-
-
+### ListNamespaceMappingsRequest
 
 
 
 
 
-<a name="metaxisdata-v1-ListNamespaceMappingResponse"></a>
 
-### ListNamespaceMappingResponse
+
+<a name="metaxisdata-v1-ListNamespaceMappingsResponse"></a>
+
+### ListNamespaceMappingsResponse
 
 
 
@@ -3968,7 +3911,7 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | page_size | [int32](#int32) |  |  |
-| offset | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
 | search | [string](#string) |  |  |
 | namespace | [string](#string) |  |  |
 | integration | [string](#string) |  |  |
@@ -3990,6 +3933,7 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | datasets | [OpenLineageDatasetResource](#metaxisdata-v1-OpenLineageDatasetResource) | repeated |  |
+| next_page_token | [string](#string) |  |  |
 
 
 
@@ -4005,7 +3949,7 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | page_size | [int32](#int32) |  |  |
-| offset | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
 | job_namespace | [string](#string) |  |  |
 | job_name | [string](#string) |  |  |
 | task_guid | [string](#string) |  |  |
@@ -4027,6 +3971,7 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | runs | [OpenLineageRunResource](#metaxisdata-v1-OpenLineageRunResource) | repeated |  |
+| next_page_token | [string](#string) |  |  |
 
 
 
@@ -4042,7 +3987,7 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | page_size | [int32](#int32) |  |  |
-| offset | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
 | job_namespace | [string](#string) |  |  |
 | job_name | [string](#string) |  |  |
 | job_type | [string](#string) |  |  |
@@ -4062,6 +4007,7 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | tasks | [OpenLineageTaskResource](#metaxisdata-v1-OpenLineageTaskResource) | repeated |  |
+| next_page_token | [string](#string) |  |  |
 
 
 
@@ -4341,11 +4287,11 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | ListOpenLineageRuns | [ListOpenLineageRunsRequest](#metaxisdata-v1-ListOpenLineageRunsRequest) | [ListOpenLineageRunsResponse](#metaxisdata-v1-ListOpenLineageRunsResponse) |  |
 | GetOpenLineageRun | [GetOpenLineageRunRequest](#metaxisdata-v1-GetOpenLineageRunRequest) | [OpenLineageRunResource](#metaxisdata-v1-OpenLineageRunResource) |  |
 | CreateNamespaceMapping | [CreateNamespaceMappingRequest](#metaxisdata-v1-CreateNamespaceMappingRequest) | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) |  |
-| ListNamespaceMapping | [ListNamespaceMappingRequest](#metaxisdata-v1-ListNamespaceMappingRequest) | [ListNamespaceMappingResponse](#metaxisdata-v1-ListNamespaceMappingResponse) |  |
+| ListNamespaceMappings | [ListNamespaceMappingsRequest](#metaxisdata-v1-ListNamespaceMappingsRequest) | [ListNamespaceMappingsResponse](#metaxisdata-v1-ListNamespaceMappingsResponse) |  |
 | UpdateNamespaceMapping | [UpdateNamespaceMappingRequest](#metaxisdata-v1-UpdateNamespaceMappingRequest) | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) |  |
 | DeleteNamespaceMapping | [DeleteNamespaceMappingRequest](#metaxisdata-v1-DeleteNamespaceMappingRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
 | CreateAPIKey | [CreateAPIKeyRequest](#metaxisdata-v1-CreateAPIKeyRequest) | [CreateAPIKeyResponse](#metaxisdata-v1-CreateAPIKeyResponse) |  |
-| ListAPIKey | [ListAPIKeyRequest](#metaxisdata-v1-ListAPIKeyRequest) | [ListAPIKeyResponse](#metaxisdata-v1-ListAPIKeyResponse) |  |
+| ListAPIKeys | [ListAPIKeysRequest](#metaxisdata-v1-ListAPIKeysRequest) | [ListAPIKeysResponse](#metaxisdata-v1-ListAPIKeysResponse) |  |
 | RevokeAPIKey | [RevokeAPIKeyRequest](#metaxisdata-v1-RevokeAPIKeyRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
 
  

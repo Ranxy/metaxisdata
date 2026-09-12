@@ -4,7 +4,6 @@ package metaxisdata.v1;
 
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
-import "google/api/resource.proto";
 import "google/protobuf/timestamp.proto";
 import "v1/database_service.proto";
 
@@ -16,12 +15,12 @@ service LineageService {
   // depending on the lineage_type specified in the request.
   // If lineage_type is not specified, both source and target lineage will be returned.
   rpc GetLineage(GetLineageRequest) returns (GetLineageResponse) {
-    option (google.api.http) = {get: "/v1/{guid=lineages/*}"};
+    option (google.api.http) = {get: "/v1/lineages"};
   }
 
   // GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).
   rpc GetLineageForContext(GetLineageForContextRequest) returns (GetLineageForContextResponse) {
-    option (google.api.http) = {get: "/v1/context/{guid=lineages/*}"};
+    option (google.api.http) = {get: "/v1/lineages:context"};
   }
 }
 
@@ -57,10 +56,7 @@ message LineageRelation {
 message GetLineageRequest {
   // The global unique id for metadata
   // table: "instance_1;db2;schema3;table4"
-  string guid = 1 [
-    (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "metaxisdata/DatabaseMetadata"}
-  ];
+  string guid = 1 [(google.api.field_behavior) = REQUIRED];
   MetaType meta_type = 2;
   // The lineage type to query, source or target. If not specified, both source and target lineage will be returned.
   LineageType lineage_type = 3;
@@ -88,10 +84,7 @@ message ExternalDatasetInfo {
 message GetLineageForContextRequest {
   // The global unique id for metadata
   // view: "instance_1;db2;schema3;view1"
-  string guid = 1 [
-    (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "metaxisdata/DatabaseMetadata"}
-  ];
+  string guid = 1 [(google.api.field_behavior) = REQUIRED];
   MetaType meta_type = 2;
 }
 
