@@ -2,7 +2,6 @@ package v1
 
 import (
 	"context"
-	"encoding/json"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
@@ -51,11 +50,7 @@ func (s *LineageService) GetLineage(ctx context.Context, req *connect.Request[v1
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list source lineage for %q: %v", req.Msg.Guid, err))
 		}
 		for _, lineage := range lineages {
-			relation, err := convertColumnLineage(lineage)
-			if err != nil {
-				return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to convert source lineage relation %d: %v", lineage.ID, err))
-			}
-			response.RelationsSource = append(response.RelationsSource, relation)
+			response.RelationsSource = append(response.RelationsSource, convertColumnLineage(lineage))
 		}
 	}
 
@@ -66,11 +61,7 @@ func (s *LineageService) GetLineage(ctx context.Context, req *connect.Request[v1
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list target lineage for %q: %v", req.Msg.Guid, err))
 		}
 		for _, lineage := range lineages {
-			relation, err := convertColumnLineage(lineage)
-			if err != nil {
-				return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to convert target lineage relation %d: %v", lineage.ID, err))
-			}
-			response.RelationsTarget = append(response.RelationsTarget, relation)
+			response.RelationsTarget = append(response.RelationsTarget, convertColumnLineage(lineage))
 		}
 	}
 
@@ -147,11 +138,7 @@ func (s *LineageService) GetLineageForContext(ctx context.Context, req *connect.
 
 	response := &v1pb.GetLineageForContextResponse{}
 	for _, lineage := range lineages {
-		relation, err := convertColumnLineage(lineage)
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to convert lineage relation %d: %v", lineage.ID, err))
-		}
-		response.Relations = append(response.Relations, relation)
+		response.Relations = append(response.Relations, convertColumnLineage(lineage))
 	}
 
 	return connect.NewResponse(response), nil
@@ -209,38 +196,39 @@ func shouldIncludeTarget(lineageType v1pb.LineageType) bool {
 	}
 }
 
-func convertColumnLineage(lineage *store.ColumnLineage) (*v1pb.LineageRelation, error) {
-	transformation, err := marshalTransformations(lineage.Transformation)
-	if err != nil {
-		return nil, err
-	}
-
+func convertColumnLineage(lineage *store.ColumnLineage) *v1pb.LineageRelation {
 	return &v1pb.LineageRelation{
-		Id:             lineage.ID,
-		MetaGuid:       lineage.MetaGUID,
-		MetaType:       v1pb.MetaType(lineage.MetaType),
-		SourceGuid:     lineage.SourceGUID,
-		SourceColumn:   lineage.SourceColumn,
-		SourceType:     v1pb.MetaType(lineage.SourceType),
-		TargetGuid:     lineage.TargetGUID,
-		TargetColumn:   lineage.TargetColumn,
-		TargetType:     v1pb.MetaType(lineage.TargetType),
-		RelationType:   convertRelationType(lineage.RelationType),
-		Transformation: transformation,
-		UpdatedAt:      timestamppb.New(lineage.UpdatedAt),
-	}, nil
+		Id:              lineage.ID,
+		MetaGuid:        lineage.MetaGUID,
+		MetaType:        v1pb.MetaType(lineage.MetaType),
+		SourceGuid:      lineage.SourceGUID,
+		SourceColumn:    lineage.SourceColumn,
+		SourceType:      v1pb.MetaType(lineage.SourceType),
+		TargetGuid:      lineage.TargetGUID,
+		TargetColumn:    lineage.TargetColumn,
+		TargetType:      v1pb.MetaType(lineage.TargetType),
+		RelationType:    convertRelationType(lineage.RelationType),
+		Transformations: convertTransformations(lineage.Transformation),
+		UpdatedAt:       timestamppb.New(lineage.UpdatedAt),
+	}
 }
 
-func marshalTransformations(transformations []model.Transformation) (string, error) {
-	if len(transformations) == 0 {
-		return "", nil
+func convertTransformations(transformations []model.Transformation) []*v1pb.Transformation {
+	result := make([]*v1pb.Transformation, 0, len(transformations))
+	for _, transformation := range transformations {
+		result = append(result, &v1pb.Transformation{
+			Operation:    string(transformation.Operation),
+			Expression:   transformation.Expression,
+			FunctionName: transformation.FunctionName,
+			Arguments:    transformation.Arguments,
+			GroupKeys:    transformation.GroupKeys,
+			PartitionBy:  transformation.PartitionBy,
+			OrderBy:      transformation.OrderBy,
+			OpType:       transformation.OpType,
+			Condition:    transformation.Condition,
+		})
 	}
-
-	b, err := json.Marshal(transformations)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to marshal transformation")
-	}
-	return string(b), nil
+	return result
 }
 
 func convertRelationType(relationType model.RelationType) v1pb.RelationType {

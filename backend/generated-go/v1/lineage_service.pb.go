@@ -124,21 +124,21 @@ func (RelationType) EnumDescriptor() ([]byte, []int) {
 }
 
 type LineageRelation struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Id             int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	MetaGuid       string                 `protobuf:"bytes,2,opt,name=meta_guid,json=metaGuid,proto3" json:"meta_guid,omitempty"`
-	MetaType       MetaType               `protobuf:"varint,3,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.v1.MetaType" json:"meta_type,omitempty"`
-	SourceGuid     string                 `protobuf:"bytes,4,opt,name=source_guid,json=sourceGuid,proto3" json:"source_guid,omitempty"`
-	SourceColumn   string                 `protobuf:"bytes,5,opt,name=source_column,json=sourceColumn,proto3" json:"source_column,omitempty"`
-	SourceType     MetaType               `protobuf:"varint,6,opt,name=source_type,json=sourceType,proto3,enum=metaxisdata.v1.MetaType" json:"source_type,omitempty"`
-	TargetGuid     string                 `protobuf:"bytes,7,opt,name=target_guid,json=targetGuid,proto3" json:"target_guid,omitempty"`
-	TargetColumn   string                 `protobuf:"bytes,8,opt,name=target_column,json=targetColumn,proto3" json:"target_column,omitempty"`
-	TargetType     MetaType               `protobuf:"varint,9,opt,name=target_type,json=targetType,proto3,enum=metaxisdata.v1.MetaType" json:"target_type,omitempty"`
-	RelationType   RelationType           `protobuf:"varint,10,opt,name=relation_type,json=relationType,proto3,enum=metaxisdata.v1.RelationType" json:"relation_type,omitempty"`
-	Transformation string                 `protobuf:"bytes,11,opt,name=transformation,proto3" json:"transformation,omitempty"`
-	UpdatedAt      *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Id              int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	MetaGuid        string                 `protobuf:"bytes,2,opt,name=meta_guid,json=metaGuid,proto3" json:"meta_guid,omitempty"`
+	MetaType        MetaType               `protobuf:"varint,3,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.v1.MetaType" json:"meta_type,omitempty"`
+	SourceGuid      string                 `protobuf:"bytes,4,opt,name=source_guid,json=sourceGuid,proto3" json:"source_guid,omitempty"`
+	SourceColumn    string                 `protobuf:"bytes,5,opt,name=source_column,json=sourceColumn,proto3" json:"source_column,omitempty"`
+	SourceType      MetaType               `protobuf:"varint,6,opt,name=source_type,json=sourceType,proto3,enum=metaxisdata.v1.MetaType" json:"source_type,omitempty"`
+	TargetGuid      string                 `protobuf:"bytes,7,opt,name=target_guid,json=targetGuid,proto3" json:"target_guid,omitempty"`
+	TargetColumn    string                 `protobuf:"bytes,8,opt,name=target_column,json=targetColumn,proto3" json:"target_column,omitempty"`
+	TargetType      MetaType               `protobuf:"varint,9,opt,name=target_type,json=targetType,proto3,enum=metaxisdata.v1.MetaType" json:"target_type,omitempty"`
+	RelationType    RelationType           `protobuf:"varint,10,opt,name=relation_type,json=relationType,proto3,enum=metaxisdata.v1.RelationType" json:"relation_type,omitempty"`
+	Transformations []*Transformation      `protobuf:"bytes,11,rep,name=transformations,proto3" json:"transformations,omitempty"`
+	UpdatedAt       *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *LineageRelation) Reset() {
@@ -241,11 +241,11 @@ func (x *LineageRelation) GetRelationType() RelationType {
 	return RelationType_RELATION_TYPE_UNSPECIFIED
 }
 
-func (x *LineageRelation) GetTransformation() string {
+func (x *LineageRelation) GetTransformations() []*Transformation {
 	if x != nil {
-		return x.Transformation
+		return x.Transformations
 	}
-	return ""
+	return nil
 }
 
 func (x *LineageRelation) GetUpdatedAt() *timestamppb.Timestamp {
@@ -253,6 +253,126 @@ func (x *LineageRelation) GetUpdatedAt() *timestamppb.Timestamp {
 		return x.UpdatedAt
 	}
 	return nil
+}
+
+// Transformation describes one step of how a source column becomes a target
+// column, derived from the view's SQL.
+type Transformation struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The transformation kind: DELETE, UNION, PROJECT, FUNCTION, AGGREGATE,
+	// WINDOW, OPERATOR or CASE.
+	Operation string `protobuf:"bytes,1,opt,name=operation,proto3" json:"operation,omitempty"`
+	// The text representation of the expression (most kinds).
+	Expression string `protobuf:"bytes,2,opt,name=expression,proto3" json:"expression,omitempty"`
+	// The function name (FUNCTION, AGGREGATE, WINDOW).
+	FunctionName string `protobuf:"bytes,3,opt,name=function_name,json=functionName,proto3" json:"function_name,omitempty"`
+	// The function arguments (FUNCTION).
+	Arguments []string `protobuf:"bytes,4,rep,name=arguments,proto3" json:"arguments,omitempty"`
+	// The GROUP BY keys (AGGREGATE).
+	GroupKeys []string `protobuf:"bytes,5,rep,name=group_keys,json=groupKeys,proto3" json:"group_keys,omitempty"`
+	// The PARTITION BY columns (WINDOW).
+	PartitionBy []string `protobuf:"bytes,6,rep,name=partition_by,json=partitionBy,proto3" json:"partition_by,omitempty"`
+	// The ORDER BY columns (WINDOW).
+	OrderBy []string `protobuf:"bytes,7,rep,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
+	// The operator type, e.g. "+", "=" (OPERATOR).
+	OpType string `protobuf:"bytes,8,opt,name=op_type,json=opType,proto3" json:"op_type,omitempty"`
+	// The WHERE condition (DELETE).
+	Condition     string `protobuf:"bytes,9,opt,name=condition,proto3" json:"condition,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Transformation) Reset() {
+	*x = Transformation{}
+	mi := &file_v1_lineage_service_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Transformation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Transformation) ProtoMessage() {}
+
+func (x *Transformation) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_lineage_service_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Transformation.ProtoReflect.Descriptor instead.
+func (*Transformation) Descriptor() ([]byte, []int) {
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Transformation) GetOperation() string {
+	if x != nil {
+		return x.Operation
+	}
+	return ""
+}
+
+func (x *Transformation) GetExpression() string {
+	if x != nil {
+		return x.Expression
+	}
+	return ""
+}
+
+func (x *Transformation) GetFunctionName() string {
+	if x != nil {
+		return x.FunctionName
+	}
+	return ""
+}
+
+func (x *Transformation) GetArguments() []string {
+	if x != nil {
+		return x.Arguments
+	}
+	return nil
+}
+
+func (x *Transformation) GetGroupKeys() []string {
+	if x != nil {
+		return x.GroupKeys
+	}
+	return nil
+}
+
+func (x *Transformation) GetPartitionBy() []string {
+	if x != nil {
+		return x.PartitionBy
+	}
+	return nil
+}
+
+func (x *Transformation) GetOrderBy() []string {
+	if x != nil {
+		return x.OrderBy
+	}
+	return nil
+}
+
+func (x *Transformation) GetOpType() string {
+	if x != nil {
+		return x.OpType
+	}
+	return ""
+}
+
+func (x *Transformation) GetCondition() string {
+	if x != nil {
+		return x.Condition
+	}
+	return ""
 }
 
 type GetLineageRequest struct {
@@ -269,7 +389,7 @@ type GetLineageRequest struct {
 
 func (x *GetLineageRequest) Reset() {
 	*x = GetLineageRequest{}
-	mi := &file_v1_lineage_service_proto_msgTypes[1]
+	mi := &file_v1_lineage_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -281,7 +401,7 @@ func (x *GetLineageRequest) String() string {
 func (*GetLineageRequest) ProtoMessage() {}
 
 func (x *GetLineageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_lineage_service_proto_msgTypes[1]
+	mi := &file_v1_lineage_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -294,7 +414,7 @@ func (x *GetLineageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLineageRequest.ProtoReflect.Descriptor instead.
 func (*GetLineageRequest) Descriptor() ([]byte, []int) {
-	return file_v1_lineage_service_proto_rawDescGZIP(), []int{1}
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *GetLineageRequest) GetGuid() string {
@@ -331,7 +451,7 @@ type GetLineageResponse struct {
 
 func (x *GetLineageResponse) Reset() {
 	*x = GetLineageResponse{}
-	mi := &file_v1_lineage_service_proto_msgTypes[2]
+	mi := &file_v1_lineage_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -343,7 +463,7 @@ func (x *GetLineageResponse) String() string {
 func (*GetLineageResponse) ProtoMessage() {}
 
 func (x *GetLineageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_lineage_service_proto_msgTypes[2]
+	mi := &file_v1_lineage_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -356,7 +476,7 @@ func (x *GetLineageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLineageResponse.ProtoReflect.Descriptor instead.
 func (*GetLineageResponse) Descriptor() ([]byte, []int) {
-	return file_v1_lineage_service_proto_rawDescGZIP(), []int{2}
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *GetLineageResponse) GetRelationsSource() []*LineageRelation {
@@ -396,7 +516,7 @@ type ExternalDatasetInfo struct {
 
 func (x *ExternalDatasetInfo) Reset() {
 	*x = ExternalDatasetInfo{}
-	mi := &file_v1_lineage_service_proto_msgTypes[3]
+	mi := &file_v1_lineage_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -408,7 +528,7 @@ func (x *ExternalDatasetInfo) String() string {
 func (*ExternalDatasetInfo) ProtoMessage() {}
 
 func (x *ExternalDatasetInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_lineage_service_proto_msgTypes[3]
+	mi := &file_v1_lineage_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -421,7 +541,7 @@ func (x *ExternalDatasetInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExternalDatasetInfo.ProtoReflect.Descriptor instead.
 func (*ExternalDatasetInfo) Descriptor() ([]byte, []int) {
-	return file_v1_lineage_service_proto_rawDescGZIP(), []int{3}
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ExternalDatasetInfo) GetGuid() string {
@@ -464,7 +584,7 @@ type GetLineageForContextRequest struct {
 
 func (x *GetLineageForContextRequest) Reset() {
 	*x = GetLineageForContextRequest{}
-	mi := &file_v1_lineage_service_proto_msgTypes[4]
+	mi := &file_v1_lineage_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -476,7 +596,7 @@ func (x *GetLineageForContextRequest) String() string {
 func (*GetLineageForContextRequest) ProtoMessage() {}
 
 func (x *GetLineageForContextRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_lineage_service_proto_msgTypes[4]
+	mi := &file_v1_lineage_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -489,7 +609,7 @@ func (x *GetLineageForContextRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLineageForContextRequest.ProtoReflect.Descriptor instead.
 func (*GetLineageForContextRequest) Descriptor() ([]byte, []int) {
-	return file_v1_lineage_service_proto_rawDescGZIP(), []int{4}
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetLineageForContextRequest) GetGuid() string {
@@ -516,7 +636,7 @@ type GetLineageForContextResponse struct {
 
 func (x *GetLineageForContextResponse) Reset() {
 	*x = GetLineageForContextResponse{}
-	mi := &file_v1_lineage_service_proto_msgTypes[5]
+	mi := &file_v1_lineage_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -528,7 +648,7 @@ func (x *GetLineageForContextResponse) String() string {
 func (*GetLineageForContextResponse) ProtoMessage() {}
 
 func (x *GetLineageForContextResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_lineage_service_proto_msgTypes[5]
+	mi := &file_v1_lineage_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -541,7 +661,7 @@ func (x *GetLineageForContextResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLineageForContextResponse.ProtoReflect.Descriptor instead.
 func (*GetLineageForContextResponse) Descriptor() ([]byte, []int) {
-	return file_v1_lineage_service_proto_rawDescGZIP(), []int{5}
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GetLineageForContextResponse) GetRelations() []*LineageRelation {
@@ -555,7 +675,7 @@ var File_v1_lineage_service_proto protoreflect.FileDescriptor
 
 const file_v1_lineage_service_proto_rawDesc = "" +
 	"\n" +
-	"\x18v1/lineage_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19v1/database_service.proto\"\x9d\x04\n" +
+	"\x18v1/lineage_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19v1/database_service.proto\"\xbf\x04\n" +
 	"\x0fLineageRelation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1b\n" +
 	"\tmeta_guid\x18\x02 \x01(\tR\bmetaGuid\x125\n" +
@@ -571,10 +691,23 @@ const file_v1_lineage_service_proto_rawDesc = "" +
 	"\vtarget_type\x18\t \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\n" +
 	"targetType\x12A\n" +
 	"\rrelation_type\x18\n" +
-	" \x01(\x0e2\x1c.metaxisdata.v1.RelationTypeR\frelationType\x12&\n" +
-	"\x0etransformation\x18\v \x01(\tR\x0etransformation\x129\n" +
+	" \x01(\x0e2\x1c.metaxisdata.v1.RelationTypeR\frelationType\x12H\n" +
+	"\x0ftransformations\x18\v \x03(\v2\x1e.metaxisdata.v1.TransformationR\x0ftransformations\x129\n" +
 	"\n" +
-	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xa3\x01\n" +
+	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xa5\x02\n" +
+	"\x0eTransformation\x12\x1c\n" +
+	"\toperation\x18\x01 \x01(\tR\toperation\x12\x1e\n" +
+	"\n" +
+	"expression\x18\x02 \x01(\tR\n" +
+	"expression\x12#\n" +
+	"\rfunction_name\x18\x03 \x01(\tR\ffunctionName\x12\x1c\n" +
+	"\targuments\x18\x04 \x03(\tR\targuments\x12\x1d\n" +
+	"\n" +
+	"group_keys\x18\x05 \x03(\tR\tgroupKeys\x12!\n" +
+	"\fpartition_by\x18\x06 \x03(\tR\vpartitionBy\x12\x19\n" +
+	"\border_by\x18\a \x03(\tR\aorderBy\x12\x17\n" +
+	"\aop_type\x18\b \x01(\tR\x06opType\x12\x1c\n" +
+	"\tcondition\x18\t \x01(\tR\tcondition\"\xa3\x01\n" +
 	"\x11GetLineageRequest\x12\x17\n" +
 	"\x04guid\x18\x01 \x01(\tB\x03\xe0A\x02R\x04guid\x125\n" +
 	"\tmeta_type\x18\x02 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12>\n" +
@@ -622,41 +755,43 @@ func file_v1_lineage_service_proto_rawDescGZIP() []byte {
 }
 
 var file_v1_lineage_service_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_v1_lineage_service_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_v1_lineage_service_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_v1_lineage_service_proto_goTypes = []any{
 	(LineageType)(0),                     // 0: metaxisdata.v1.LineageType
 	(RelationType)(0),                    // 1: metaxisdata.v1.RelationType
 	(*LineageRelation)(nil),              // 2: metaxisdata.v1.LineageRelation
-	(*GetLineageRequest)(nil),            // 3: metaxisdata.v1.GetLineageRequest
-	(*GetLineageResponse)(nil),           // 4: metaxisdata.v1.GetLineageResponse
-	(*ExternalDatasetInfo)(nil),          // 5: metaxisdata.v1.ExternalDatasetInfo
-	(*GetLineageForContextRequest)(nil),  // 6: metaxisdata.v1.GetLineageForContextRequest
-	(*GetLineageForContextResponse)(nil), // 7: metaxisdata.v1.GetLineageForContextResponse
-	(MetaType)(0),                        // 8: metaxisdata.v1.MetaType
-	(*timestamppb.Timestamp)(nil),        // 9: google.protobuf.Timestamp
+	(*Transformation)(nil),               // 3: metaxisdata.v1.Transformation
+	(*GetLineageRequest)(nil),            // 4: metaxisdata.v1.GetLineageRequest
+	(*GetLineageResponse)(nil),           // 5: metaxisdata.v1.GetLineageResponse
+	(*ExternalDatasetInfo)(nil),          // 6: metaxisdata.v1.ExternalDatasetInfo
+	(*GetLineageForContextRequest)(nil),  // 7: metaxisdata.v1.GetLineageForContextRequest
+	(*GetLineageForContextResponse)(nil), // 8: metaxisdata.v1.GetLineageForContextResponse
+	(MetaType)(0),                        // 9: metaxisdata.v1.MetaType
+	(*timestamppb.Timestamp)(nil),        // 10: google.protobuf.Timestamp
 }
 var file_v1_lineage_service_proto_depIdxs = []int32{
-	8,  // 0: metaxisdata.v1.LineageRelation.meta_type:type_name -> metaxisdata.v1.MetaType
-	8,  // 1: metaxisdata.v1.LineageRelation.source_type:type_name -> metaxisdata.v1.MetaType
-	8,  // 2: metaxisdata.v1.LineageRelation.target_type:type_name -> metaxisdata.v1.MetaType
+	9,  // 0: metaxisdata.v1.LineageRelation.meta_type:type_name -> metaxisdata.v1.MetaType
+	9,  // 1: metaxisdata.v1.LineageRelation.source_type:type_name -> metaxisdata.v1.MetaType
+	9,  // 2: metaxisdata.v1.LineageRelation.target_type:type_name -> metaxisdata.v1.MetaType
 	1,  // 3: metaxisdata.v1.LineageRelation.relation_type:type_name -> metaxisdata.v1.RelationType
-	9,  // 4: metaxisdata.v1.LineageRelation.updated_at:type_name -> google.protobuf.Timestamp
-	8,  // 5: metaxisdata.v1.GetLineageRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	0,  // 6: metaxisdata.v1.GetLineageRequest.lineage_type:type_name -> metaxisdata.v1.LineageType
-	2,  // 7: metaxisdata.v1.GetLineageResponse.relations_source:type_name -> metaxisdata.v1.LineageRelation
-	2,  // 8: metaxisdata.v1.GetLineageResponse.relations_target:type_name -> metaxisdata.v1.LineageRelation
-	5,  // 9: metaxisdata.v1.GetLineageResponse.external_datasets:type_name -> metaxisdata.v1.ExternalDatasetInfo
-	8,  // 10: metaxisdata.v1.GetLineageForContextRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	2,  // 11: metaxisdata.v1.GetLineageForContextResponse.relations:type_name -> metaxisdata.v1.LineageRelation
-	3,  // 12: metaxisdata.v1.LineageService.GetLineage:input_type -> metaxisdata.v1.GetLineageRequest
-	6,  // 13: metaxisdata.v1.LineageService.GetLineageForContext:input_type -> metaxisdata.v1.GetLineageForContextRequest
-	4,  // 14: metaxisdata.v1.LineageService.GetLineage:output_type -> metaxisdata.v1.GetLineageResponse
-	7,  // 15: metaxisdata.v1.LineageService.GetLineageForContext:output_type -> metaxisdata.v1.GetLineageForContextResponse
-	14, // [14:16] is the sub-list for method output_type
-	12, // [12:14] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	3,  // 4: metaxisdata.v1.LineageRelation.transformations:type_name -> metaxisdata.v1.Transformation
+	10, // 5: metaxisdata.v1.LineageRelation.updated_at:type_name -> google.protobuf.Timestamp
+	9,  // 6: metaxisdata.v1.GetLineageRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	0,  // 7: metaxisdata.v1.GetLineageRequest.lineage_type:type_name -> metaxisdata.v1.LineageType
+	2,  // 8: metaxisdata.v1.GetLineageResponse.relations_source:type_name -> metaxisdata.v1.LineageRelation
+	2,  // 9: metaxisdata.v1.GetLineageResponse.relations_target:type_name -> metaxisdata.v1.LineageRelation
+	6,  // 10: metaxisdata.v1.GetLineageResponse.external_datasets:type_name -> metaxisdata.v1.ExternalDatasetInfo
+	9,  // 11: metaxisdata.v1.GetLineageForContextRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	2,  // 12: metaxisdata.v1.GetLineageForContextResponse.relations:type_name -> metaxisdata.v1.LineageRelation
+	4,  // 13: metaxisdata.v1.LineageService.GetLineage:input_type -> metaxisdata.v1.GetLineageRequest
+	7,  // 14: metaxisdata.v1.LineageService.GetLineageForContext:input_type -> metaxisdata.v1.GetLineageForContextRequest
+	5,  // 15: metaxisdata.v1.LineageService.GetLineage:output_type -> metaxisdata.v1.GetLineageResponse
+	8,  // 16: metaxisdata.v1.LineageService.GetLineageForContext:output_type -> metaxisdata.v1.GetLineageForContextResponse
+	15, // [15:17] is the sub-list for method output_type
+	13, // [13:15] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_v1_lineage_service_proto_init() }
@@ -671,7 +806,7 @@ func file_v1_lineage_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_lineage_service_proto_rawDesc), len(file_v1_lineage_service_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   6,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

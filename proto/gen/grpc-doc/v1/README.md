@@ -166,6 +166,7 @@
     - [GetLineageRequest](#metaxisdata-v1-GetLineageRequest)
     - [GetLineageResponse](#metaxisdata-v1-GetLineageResponse)
     - [LineageRelation](#metaxisdata-v1-LineageRelation)
+    - [Transformation](#metaxisdata-v1-Transformation)
   
     - [LineageType](#metaxisdata-v1-LineageType)
     - [RelationType](#metaxisdata-v1-RelationType)
@@ -2837,8 +2838,32 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | target_column | [string](#string) |  |  |
 | target_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
 | relation_type | [RelationType](#metaxisdata-v1-RelationType) |  |  |
-| transformation | [string](#string) |  |  |
+| transformations | [Transformation](#metaxisdata-v1-Transformation) | repeated |  |
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-Transformation"></a>
+
+### Transformation
+Transformation describes one step of how a source column becomes a target
+column, derived from the view&#39;s SQL.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| operation | [string](#string) |  | The transformation kind: DELETE, UNION, PROJECT, FUNCTION, AGGREGATE, WINDOW, OPERATOR or CASE. |
+| expression | [string](#string) |  | The text representation of the expression (most kinds). |
+| function_name | [string](#string) |  | The function name (FUNCTION, AGGREGATE, WINDOW). |
+| arguments | [string](#string) | repeated | The function arguments (FUNCTION). |
+| group_keys | [string](#string) | repeated | The GROUP BY keys (AGGREGATE). |
+| partition_by | [string](#string) | repeated | The PARTITION BY columns (WINDOW). |
+| order_by | [string](#string) | repeated | The ORDER BY columns (WINDOW). |
+| op_type | [string](#string) |  | The operator type, e.g. &#34;&#43;&#34;, &#34;=&#34; (OPERATOR). |
+| condition | [string](#string) |  | The WHERE condition (DELETE). |
 
 
 
@@ -3563,7 +3588,7 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 | has_lineage | [bool](#bool) |  |  |
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| raw_payload | [string](#string) |  |  |
+| raw_payload | [string](#string) |  | The OpenLineage event as JSON text, exactly as it was received and stored in the `raw_payload` JSONB column. |
 | airflow_dag_url | [string](#string) |  |  |
 | airflow_run_log_url | [string](#string) |  |  |
 

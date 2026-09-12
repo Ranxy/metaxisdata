@@ -3338,8 +3338,10 @@ components:
                         - INDIRECT
                     type: string
                     format: enum
-                transformation:
-                    type: string
+                transformations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Transformation'
                 updatedAt:
                     type: string
                     format: date-time
@@ -4090,6 +4092,9 @@ components:
                     format: date-time
                 rawPayload:
                     type: string
+                    description: |-
+                        The OpenLineage event as JSON text, exactly as it was received and stored
+                         in the `raw_payload` JSONB column.
                 airflowDagUrl:
                     type: string
                 airflowRunLogUrl:
@@ -4621,6 +4626,49 @@ components:
                     items:
                         $ref: '#/components/schemas/ExcludeConstraintMetadata'
             description: TablePartitionMetadata is the metadata for table partitions.
+        Transformation:
+            type: object
+            properties:
+                operation:
+                    type: string
+                    description: |-
+                        The transformation kind: DELETE, UNION, PROJECT, FUNCTION, AGGREGATE,
+                         WINDOW, OPERATOR or CASE.
+                expression:
+                    type: string
+                    description: The text representation of the expression (most kinds).
+                functionName:
+                    type: string
+                    description: The function name (FUNCTION, AGGREGATE, WINDOW).
+                arguments:
+                    type: array
+                    items:
+                        type: string
+                    description: The function arguments (FUNCTION).
+                groupKeys:
+                    type: array
+                    items:
+                        type: string
+                    description: The GROUP BY keys (AGGREGATE).
+                partitionBy:
+                    type: array
+                    items:
+                        type: string
+                    description: The PARTITION BY columns (WINDOW).
+                orderBy:
+                    type: array
+                    items:
+                        type: string
+                    description: The ORDER BY columns (WINDOW).
+                opType:
+                    type: string
+                    description: The operator type, e.g. "+", "=" (OPERATOR).
+                condition:
+                    type: string
+                    description: The WHERE condition (DELETE).
+            description: |-
+                Transformation describes one step of how a source column becomes a target
+                 column, derived from the view's SQL.
         TriggerMetadata:
             type: object
             properties:

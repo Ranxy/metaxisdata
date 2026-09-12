@@ -178,6 +178,9 @@ export declare type OpenLineageRunResource = Message<"metaxisdata.v1.OpenLineage
   updatedAt?: Timestamp;
 
   /**
+   * The OpenLineage event as JSON text, exactly as it was received and stored
+   * in the `raw_payload` JSONB column.
+   *
    * @generated from field: string raw_payload = 25;
    */
   rawPayload: string;

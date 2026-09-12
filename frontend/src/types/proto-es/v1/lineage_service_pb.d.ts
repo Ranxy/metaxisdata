@@ -67,9 +67,9 @@ export declare type LineageRelation = Message<"metaxisdata.v1.LineageRelation"> 
   relationType: RelationType;
 
   /**
-   * @generated from field: string transformation = 11;
+   * @generated from field: repeated metaxisdata.v1.Transformation transformations = 11;
    */
-  transformation: string;
+  transformations: Transformation[];
 
   /**
    * @generated from field: google.protobuf.Timestamp updated_at = 12;
@@ -82,6 +82,84 @@ export declare type LineageRelation = Message<"metaxisdata.v1.LineageRelation"> 
  * Use `create(LineageRelationSchema)` to create a new message.
  */
 export declare const LineageRelationSchema: GenMessage<LineageRelation>;
+
+/**
+ * Transformation describes one step of how a source column becomes a target
+ * column, derived from the view's SQL.
+ *
+ * @generated from message metaxisdata.v1.Transformation
+ */
+export declare type Transformation = Message<"metaxisdata.v1.Transformation"> & {
+  /**
+   * The transformation kind: DELETE, UNION, PROJECT, FUNCTION, AGGREGATE,
+   * WINDOW, OPERATOR or CASE.
+   *
+   * @generated from field: string operation = 1;
+   */
+  operation: string;
+
+  /**
+   * The text representation of the expression (most kinds).
+   *
+   * @generated from field: string expression = 2;
+   */
+  expression: string;
+
+  /**
+   * The function name (FUNCTION, AGGREGATE, WINDOW).
+   *
+   * @generated from field: string function_name = 3;
+   */
+  functionName: string;
+
+  /**
+   * The function arguments (FUNCTION).
+   *
+   * @generated from field: repeated string arguments = 4;
+   */
+  arguments: string[];
+
+  /**
+   * The GROUP BY keys (AGGREGATE).
+   *
+   * @generated from field: repeated string group_keys = 5;
+   */
+  groupKeys: string[];
+
+  /**
+   * The PARTITION BY columns (WINDOW).
+   *
+   * @generated from field: repeated string partition_by = 6;
+   */
+  partitionBy: string[];
+
+  /**
+   * The ORDER BY columns (WINDOW).
+   *
+   * @generated from field: repeated string order_by = 7;
+   */
+  orderBy: string[];
+
+  /**
+   * The operator type, e.g. "+", "=" (OPERATOR).
+   *
+   * @generated from field: string op_type = 8;
+   */
+  opType: string;
+
+  /**
+   * The WHERE condition (DELETE).
+   *
+   * @generated from field: string condition = 9;
+   */
+  condition: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.Transformation.
+ * Use `create(TransformationSchema)` to create a new message.
+ */
+export declare const TransformationSchema: GenMessage<Transformation>;
 
 /**
  * @generated from message metaxisdata.v1.GetLineageRequest

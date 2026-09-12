@@ -486,67 +486,6 @@ func (x *OpenLineageRunSummary) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
-// OpenLineageRun stores the normalized metadata together with the raw payload.
-type OpenLineageRun struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Summary       *OpenLineageRunSummary `protobuf:"bytes,2,opt,name=summary,proto3" json:"summary,omitempty"`
-	RawPayload    []byte                 `protobuf:"bytes,3,opt,name=raw_payload,json=rawPayload,proto3" json:"raw_payload,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *OpenLineageRun) Reset() {
-	*x = OpenLineageRun{}
-	mi := &file_store_openlineage_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *OpenLineageRun) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*OpenLineageRun) ProtoMessage() {}
-
-func (x *OpenLineageRun) ProtoReflect() protoreflect.Message {
-	mi := &file_store_openlineage_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use OpenLineageRun.ProtoReflect.Descriptor instead.
-func (*OpenLineageRun) Descriptor() ([]byte, []int) {
-	return file_store_openlineage_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *OpenLineageRun) GetId() int64 {
-	if x != nil {
-		return x.Id
-	}
-	return 0
-}
-
-func (x *OpenLineageRun) GetSummary() *OpenLineageRunSummary {
-	if x != nil {
-		return x.Summary
-	}
-	return nil
-}
-
-func (x *OpenLineageRun) GetRawPayload() []byte {
-	if x != nil {
-		return x.RawPayload
-	}
-	return nil
-}
-
 // OpenLineageTaskSummary stores the aggregated task/job-level view derived from persisted runs.
 type OpenLineageTaskSummary struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
@@ -575,7 +514,7 @@ type OpenLineageTaskSummary struct {
 
 func (x *OpenLineageTaskSummary) Reset() {
 	*x = OpenLineageTaskSummary{}
-	mi := &file_store_openlineage_proto_msgTypes[5]
+	mi := &file_store_openlineage_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -587,7 +526,7 @@ func (x *OpenLineageTaskSummary) String() string {
 func (*OpenLineageTaskSummary) ProtoMessage() {}
 
 func (x *OpenLineageTaskSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_store_openlineage_proto_msgTypes[5]
+	mi := &file_store_openlineage_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -600,7 +539,7 @@ func (x *OpenLineageTaskSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenLineageTaskSummary.ProtoReflect.Descriptor instead.
 func (*OpenLineageTaskSummary) Descriptor() ([]byte, []int) {
-	return file_store_openlineage_proto_rawDescGZIP(), []int{5}
+	return file_store_openlineage_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *OpenLineageTaskSummary) GetGuid() string {
@@ -736,59 +675,6 @@ func (x *OpenLineageTaskSummary) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
-// OpenLineageTask stores the aggregated task summary.
-type OpenLineageTask struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Id            int64                   `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Summary       *OpenLineageTaskSummary `protobuf:"bytes,2,opt,name=summary,proto3" json:"summary,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *OpenLineageTask) Reset() {
-	*x = OpenLineageTask{}
-	mi := &file_store_openlineage_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *OpenLineageTask) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*OpenLineageTask) ProtoMessage() {}
-
-func (x *OpenLineageTask) ProtoReflect() protoreflect.Message {
-	mi := &file_store_openlineage_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use OpenLineageTask.ProtoReflect.Descriptor instead.
-func (*OpenLineageTask) Descriptor() ([]byte, []int) {
-	return file_store_openlineage_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *OpenLineageTask) GetId() int64 {
-	if x != nil {
-		return x.Id
-	}
-	return 0
-}
-
-func (x *OpenLineageTask) GetSummary() *OpenLineageTaskSummary {
-	if x != nil {
-		return x.Summary
-	}
-	return nil
-}
-
 var File_store_openlineage_proto protoreflect.FileDescriptor
 
 const file_store_openlineage_proto_rawDesc = "" +
@@ -847,12 +733,7 @@ const file_store_openlineage_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x17 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x85\x01\n" +
-	"\x0eOpenLineageRun\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id\x12B\n" +
-	"\asummary\x18\x02 \x01(\v2(.metaxisdata.store.OpenLineageRunSummaryR\asummary\x12\x1f\n" +
-	"\vraw_payload\x18\x03 \x01(\fR\n" +
-	"rawPayload\"\x9f\x06\n" +
+	"updated_at\x18\x17 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x9f\x06\n" +
 	"\x16OpenLineageTaskSummary\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12#\n" +
 	"\rjob_namespace\x18\x02 \x01(\tR\fjobNamespace\x12\x19\n" +
@@ -875,10 +756,7 @@ const file_store_openlineage_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"f\n" +
-	"\x0fOpenLineageTask\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id\x12C\n" +
-	"\asummary\x18\x02 \x01(\v2).metaxisdata.store.OpenLineageTaskSummaryR\asummaryB\x14Z\x12generated-go/storeb\x06proto3"
+	"updated_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
 	file_store_openlineage_proto_rawDescOnce sync.Once
@@ -892,36 +770,32 @@ func file_store_openlineage_proto_rawDescGZIP() []byte {
 	return file_store_openlineage_proto_rawDescData
 }
 
-var file_store_openlineage_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_store_openlineage_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_store_openlineage_proto_goTypes = []any{
 	(*ExternalDataset)(nil),        // 0: metaxisdata.store.ExternalDataset
 	(*SchemaField)(nil),            // 1: metaxisdata.store.SchemaField
 	(*NamespaceMapping)(nil),       // 2: metaxisdata.store.NamespaceMapping
 	(*OpenLineageRunSummary)(nil),  // 3: metaxisdata.store.OpenLineageRunSummary
-	(*OpenLineageRun)(nil),         // 4: metaxisdata.store.OpenLineageRun
-	(*OpenLineageTaskSummary)(nil), // 5: metaxisdata.store.OpenLineageTaskSummary
-	(*OpenLineageTask)(nil),        // 6: metaxisdata.store.OpenLineageTask
-	(*timestamppb.Timestamp)(nil),  // 7: google.protobuf.Timestamp
+	(*OpenLineageTaskSummary)(nil), // 4: metaxisdata.store.OpenLineageTaskSummary
+	(*timestamppb.Timestamp)(nil),  // 5: google.protobuf.Timestamp
 }
 var file_store_openlineage_proto_depIdxs = []int32{
 	1,  // 0: metaxisdata.store.ExternalDataset.schema_fields:type_name -> metaxisdata.store.SchemaField
-	7,  // 1: metaxisdata.store.ExternalDataset.created_at:type_name -> google.protobuf.Timestamp
-	7,  // 2: metaxisdata.store.ExternalDataset.updated_at:type_name -> google.protobuf.Timestamp
-	7,  // 3: metaxisdata.store.NamespaceMapping.created_at:type_name -> google.protobuf.Timestamp
-	7,  // 4: metaxisdata.store.NamespaceMapping.updated_at:type_name -> google.protobuf.Timestamp
-	7,  // 5: metaxisdata.store.OpenLineageRunSummary.event_time:type_name -> google.protobuf.Timestamp
-	7,  // 6: metaxisdata.store.OpenLineageRunSummary.created_at:type_name -> google.protobuf.Timestamp
-	7,  // 7: metaxisdata.store.OpenLineageRunSummary.updated_at:type_name -> google.protobuf.Timestamp
-	3,  // 8: metaxisdata.store.OpenLineageRun.summary:type_name -> metaxisdata.store.OpenLineageRunSummary
-	7,  // 9: metaxisdata.store.OpenLineageTaskSummary.latest_event_time:type_name -> google.protobuf.Timestamp
-	7,  // 10: metaxisdata.store.OpenLineageTaskSummary.created_at:type_name -> google.protobuf.Timestamp
-	7,  // 11: metaxisdata.store.OpenLineageTaskSummary.updated_at:type_name -> google.protobuf.Timestamp
-	5,  // 12: metaxisdata.store.OpenLineageTask.summary:type_name -> metaxisdata.store.OpenLineageTaskSummary
-	13, // [13:13] is the sub-list for method output_type
-	13, // [13:13] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	5,  // 1: metaxisdata.store.ExternalDataset.created_at:type_name -> google.protobuf.Timestamp
+	5,  // 2: metaxisdata.store.ExternalDataset.updated_at:type_name -> google.protobuf.Timestamp
+	5,  // 3: metaxisdata.store.NamespaceMapping.created_at:type_name -> google.protobuf.Timestamp
+	5,  // 4: metaxisdata.store.NamespaceMapping.updated_at:type_name -> google.protobuf.Timestamp
+	5,  // 5: metaxisdata.store.OpenLineageRunSummary.event_time:type_name -> google.protobuf.Timestamp
+	5,  // 6: metaxisdata.store.OpenLineageRunSummary.created_at:type_name -> google.protobuf.Timestamp
+	5,  // 7: metaxisdata.store.OpenLineageRunSummary.updated_at:type_name -> google.protobuf.Timestamp
+	5,  // 8: metaxisdata.store.OpenLineageTaskSummary.latest_event_time:type_name -> google.protobuf.Timestamp
+	5,  // 9: metaxisdata.store.OpenLineageTaskSummary.created_at:type_name -> google.protobuf.Timestamp
+	5,  // 10: metaxisdata.store.OpenLineageTaskSummary.updated_at:type_name -> google.protobuf.Timestamp
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_store_openlineage_proto_init() }
@@ -935,7 +809,7 @@ func file_store_openlineage_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_openlineage_proto_rawDesc), len(file_store_openlineage_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

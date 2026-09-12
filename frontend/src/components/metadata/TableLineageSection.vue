@@ -103,7 +103,7 @@
             </TableCell>
             <TableCell class="max-w-xl text-muted-foreground">
               <LineageTransformationCell
-                :text="relation.transformation"
+                :transformations="relation.transformations"
                 :item-name="relation.currentColumn"
                 :dialog-title="t('metadataBrowser.transformationDetails')"
               />
@@ -156,6 +156,7 @@ import {
   type ExternalDatasetInfo,
   type LineageRelation,
   RelationType,
+  type Transformation,
 } from "@/types/proto-es/v1/lineage_service_pb";
 import { extractErrorMessage } from "@/utils/error";
 
@@ -171,7 +172,7 @@ type DisplayRelation = {
   relationTypeLabel: string;
   relationTypeVariant: "secondary" | "success";
   searchText: string;
-  transformation: string;
+  transformations: Transformation[];
 };
 
 const props = withDefaults(
@@ -391,13 +392,33 @@ function buildDisplayRelation(options: {
       options.relatedColumn,
       options.relatedGuid,
       relatedObject,
-      options.relation.transformation,
+      transformationText(options.relation.transformations),
       options.directionLabel,
     ]
       .join(" ")
       .toLowerCase(),
-    transformation: options.relation.transformation,
+    transformations: options.relation.transformations,
   };
+}
+
+// transformationText flattens the structured transformation steps into one
+// string for the search index and the relation key.
+function transformationText(
+  transformations: Transformation[] | undefined
+): string {
+  return (transformations ?? [])
+    .map((item) =>
+      [
+        item.operation,
+        item.functionName,
+        item.opType,
+        item.expression,
+        item.condition,
+      ]
+        .filter(Boolean)
+        .join(" ")
+    )
+    .join(" ");
 }
 
 function buildRelationKey(
@@ -411,7 +432,7 @@ function buildRelationKey(
     relation.sourceGuid,
     relation.sourceColumn,
     relation.relationType,
-    relation.transformation,
+    transformationText(relation.transformations),
   ].join(":");
 }
 

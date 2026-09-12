@@ -810,6 +810,10 @@
                   <a href="#metaxisdata.v1.LineageRelation"><span class="badge">M</span>LineageRelation</a>
                 </li>
               
+                <li>
+                  <a href="#metaxisdata.v1.Transformation"><span class="badge">M</span>Transformation</a>
+                </li>
+              
               
                 <li>
                   <a href="#metaxisdata.v1.LineageType"><span class="badge">E</span>LineageType</a>
@@ -8437,9 +8441,9 @@ table: &#34;instance_1;db2;schema3;table4&#34; </p></td>
                 </tr>
               
                 <tr>
-                  <td>transformation</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
+                  <td>transformations</td>
+                  <td><a href="#metaxisdata.v1.Transformation">Transformation</a></td>
+                  <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
               
@@ -8448,6 +8452,87 @@ table: &#34;instance_1;db2;schema3;table4&#34; </p></td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.Transformation">Transformation</h3>
+        <p>Transformation describes one step of how a source column becomes a target</p><p>column, derived from the view's SQL.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>operation</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The transformation kind: DELETE, UNION, PROJECT, FUNCTION, AGGREGATE,
+WINDOW, OPERATOR or CASE. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expression</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The text representation of the expression (most kinds). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>function_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The function name (FUNCTION, AGGREGATE, WINDOW). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>arguments</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The function arguments (FUNCTION). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>group_keys</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The GROUP BY keys (AGGREGATE). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>partition_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The PARTITION BY columns (WINDOW). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>order_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The ORDER BY columns (WINDOW). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>op_type</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The operator type, e.g. &#34;&#43;&#34;, &#34;=&#34; (OPERATOR). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>condition</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The WHERE condition (DELETE). </p></td>
                 </tr>
               
             </tbody>
@@ -10346,7 +10431,8 @@ If lineage_type is not specified, both source and target lineage will be returne
                   <td>raw_payload</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The OpenLineage event as JSON text, exactly as it was received and stored
+in the `raw_payload` JSONB column. </p></td>
                 </tr>
               
                 <tr>

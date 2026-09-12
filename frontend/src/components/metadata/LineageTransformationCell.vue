@@ -61,20 +61,6 @@
               </div>
             </div>
           </template>
-
-          <div
-            v-else
-            class="rounded-md border p-4"
-          >
-            <div class="grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
-              <div class="text-sm font-medium text-muted-foreground">
-                {{ t("metadataBrowser.rawTransformation") }}
-              </div>
-              <div class="min-w-0 text-sm break-words whitespace-pre-wrap">
-                {{ rawText }}
-              </div>
-            </div>
-          </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -95,18 +81,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-
-type LineageTransformation = {
-  arguments?: string[];
-  condition?: string;
-  expression?: string;
-  function_name?: string;
-  group_keys?: string[];
-  op_type?: string;
-  operation?: string;
-  order_by?: string[];
-  partition_by?: string[];
-};
+import type { Transformation } from "@/types/proto-es/v1/lineage_service_pb";
 
 type TransformationDetail = {
   label: string;
@@ -114,7 +89,7 @@ type TransformationDetail = {
 };
 
 const props = defineProps<{
-  text?: string;
+  transformations?: Transformation[];
   itemName?: string;
   dialogTitle?: string;
 }>();
@@ -123,70 +98,33 @@ const { t } = useI18n();
 
 const detailOpen = ref(false);
 
-const rawText = computed(() => normalizeRawText(props.text));
+const parsedItems = computed(() => props.transformations ?? []);
 
-const parsedItems = computed(() => parseTransformations(rawText.value));
+const summaryText = computed(() =>
+  parsedItems.value.map((item) => buildSummary(item)).join(" | ")
+);
 
-const summaryText = computed(() => {
-  if (parsedItems.value.length > 0) {
-    return parsedItems.value.map((item) => buildSummary(item)).join(" | ");
-  }
-
-  return rawText.value;
-});
-
-const hasDetail = computed(() => Boolean(rawText.value));
+const hasDetail = computed(() => parsedItems.value.length > 0);
 
 const dialogTitle = computed(
   () => props.dialogTitle || t("metadataBrowser.transformationDetails")
 );
 
-function normalizeRawText(text: string | undefined): string {
-  const trimmed = text?.trim() ?? "";
-  if (!trimmed || trimmed === "[]") {
-    return "";
-  }
-  return trimmed;
-}
-
-function parseTransformations(text: string): LineageTransformation[] {
-  if (!text) {
-    return [];
-  }
-
-  try {
-    const value: unknown = JSON.parse(text);
-    if (!Array.isArray(value)) {
-      return [];
-    }
-
-    return value.filter(isLineageTransformation);
-  } catch {
-    return [];
-  }
-}
-
-function isLineageTransformation(
-  value: unknown
-): value is LineageTransformation {
-  return typeof value === "object" && value !== null;
-}
-
-function buildSummary(item: LineageTransformation): string {
+function buildSummary(item: Transformation): string {
   const operation = item.operation || t("metadataBrowser.unknown");
 
   switch (item.operation) {
     case "FUNCTION":
-      return item.function_name
-        ? `${operation}: ${item.function_name}`
+      return item.functionName
+        ? `${operation}: ${item.functionName}`
         : `${operation}: ${shorten(item.expression)}`;
     case "AGGREGATE":
     case "WINDOW":
-      return item.function_name
-        ? `${operation}: ${item.function_name}`
+      return item.functionName
+        ? `${operation}: ${item.functionName}`
         : operation;
     case "OPERATOR":
-      return item.op_type ? `${operation}: ${item.op_type}` : operation;
+      return item.opType ? `${operation}: ${item.opType}` : operation;
     case "DELETE":
       return item.condition
         ? `${operation}: ${shorten(item.condition)}`
@@ -217,22 +155,18 @@ function shorten(value: string | undefined, maxLength = 72): string {
 }
 
 function buildTransformationDetails(
-  item: LineageTransformation
+  item: Transformation
 ): TransformationDetail[] {
   const details: TransformationDetail[] = [];
 
   appendDetail(details, t("metadataBrowser.operation"), item.operation);
   appendDetail(details, t("metadataBrowser.expression"), item.expression);
-  appendDetail(details, t("metadataBrowser.functionName"), item.function_name);
+  appendDetail(details, t("metadataBrowser.functionName"), item.functionName);
   appendListDetail(details, t("metadataBrowser.arguments"), item.arguments);
-  appendListDetail(details, t("metadataBrowser.groupKeys"), item.group_keys);
-  appendListDetail(
-    details,
-    t("metadataBrowser.partitionBy"),
-    item.partition_by
-  );
-  appendListDetail(details, t("metadataBrowser.orderBy"), item.order_by);
-  appendDetail(details, t("metadataBrowser.operatorType"), item.op_type);
+  appendListDetail(details, t("metadataBrowser.groupKeys"), item.groupKeys);
+  appendListDetail(details, t("metadataBrowser.partitionBy"), item.partitionBy);
+  appendListDetail(details, t("metadataBrowser.orderBy"), item.orderBy);
+  appendDetail(details, t("metadataBrowser.operatorType"), item.opType);
   appendDetail(details, t("metadataBrowser.condition"), item.condition);
 
   if (details.length === 0) {
@@ -270,14 +204,11 @@ function appendListDetail(
   details.push({ label, value: value.join("\n") });
 }
 
-function buildTransformationKey(
-  item: LineageTransformation,
-  index: number
-): string {
+function buildTransformationKey(item: Transformation, index: number): string {
   return [
     item.operation,
-    item.function_name,
-    item.op_type,
+    item.functionName,
+    item.opType,
     item.expression,
     item.condition,
     String(index),

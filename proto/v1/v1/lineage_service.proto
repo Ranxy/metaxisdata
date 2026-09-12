@@ -49,8 +49,32 @@ message LineageRelation {
   string target_column = 8;
   MetaType target_type = 9;
   RelationType relation_type = 10;
-  string transformation = 11;
+  repeated Transformation transformations = 11;
   google.protobuf.Timestamp updated_at = 12;
+}
+
+// Transformation describes one step of how a source column becomes a target
+// column, derived from the view's SQL.
+message Transformation {
+  // The transformation kind: DELETE, UNION, PROJECT, FUNCTION, AGGREGATE,
+  // WINDOW, OPERATOR or CASE.
+  string operation = 1;
+  // The text representation of the expression (most kinds).
+  string expression = 2;
+  // The function name (FUNCTION, AGGREGATE, WINDOW).
+  string function_name = 3;
+  // The function arguments (FUNCTION).
+  repeated string arguments = 4;
+  // The GROUP BY keys (AGGREGATE).
+  repeated string group_keys = 5;
+  // The PARTITION BY columns (WINDOW).
+  repeated string partition_by = 6;
+  // The ORDER BY columns (WINDOW).
+  repeated string order_by = 7;
+  // The operator type, e.g. "+", "=" (OPERATOR).
+  string op_type = 8;
+  // The WHERE condition (DELETE).
+  string condition = 9;
 }
 
 message GetLineageRequest {

@@ -118,6 +118,8 @@ message OpenLineageRunResource {
   bool has_lineage = 22;
   google.protobuf.Timestamp created_at = 23;
   google.protobuf.Timestamp updated_at = 24;
+  // The OpenLineage event as JSON text, exactly as it was received and stored
+  // in the `raw_payload` JSONB column.
   string raw_payload = 25;
   string airflow_dag_url = 26;
   string airflow_run_log_url = 27;

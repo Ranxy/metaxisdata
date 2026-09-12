@@ -20,9 +20,7 @@
 - [store/openlineage.proto](#store_openlineage-proto)
     - [ExternalDataset](#metaxisdata-store-ExternalDataset)
     - [NamespaceMapping](#metaxisdata-store-NamespaceMapping)
-    - [OpenLineageRun](#metaxisdata-store-OpenLineageRun)
     - [OpenLineageRunSummary](#metaxisdata-store-OpenLineageRunSummary)
-    - [OpenLineageTask](#metaxisdata-store-OpenLineageTask)
     - [OpenLineageTaskSummary](#metaxisdata-store-OpenLineageTaskSummary)
     - [SchemaField](#metaxisdata-store-SchemaField)
   
@@ -338,23 +336,6 @@ NamespaceMapping maps an OpenLineage namespace to an internal instance.
 
 
 
-<a name="metaxisdata-store-OpenLineageRun"></a>
-
-### OpenLineageRun
-OpenLineageRun stores the normalized metadata together with the raw payload.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [int64](#int64) |  |  |
-| summary | [OpenLineageRunSummary](#metaxisdata-store-OpenLineageRunSummary) |  |  |
-| raw_payload | [bytes](#bytes) |  |  |
-
-
-
-
-
-
 <a name="metaxisdata-store-OpenLineageRunSummary"></a>
 
 ### OpenLineageRunSummary
@@ -386,22 +367,6 @@ OpenLineageRunSummary stores the normalized metadata for a persisted COMPLETE ru
 | has_lineage | [bool](#bool) |  |  |
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-OpenLineageTask"></a>
-
-### OpenLineageTask
-OpenLineageTask stores the aggregated task summary.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [int64](#int64) |  |  |
-| summary | [OpenLineageTaskSummary](#metaxisdata-store-OpenLineageTaskSummary) |  |  |
 
 
 

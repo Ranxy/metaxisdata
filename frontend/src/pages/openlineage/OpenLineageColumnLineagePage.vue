@@ -86,8 +86,8 @@
                       <span v-if="rel.relationType" class="rounded bg-muted px-1.5 py-0.5 text-[10px]">
                         {{ formatRelationType(rel.relationType) }}
                       </span>
-                      <span v-if="rel.transformation" class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono">
-                        {{ rel.transformation }}
+                      <span v-if="formatTransformation(rel.transformations)" class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono">
+                        {{ formatTransformation(rel.transformations) }}
                       </span>
                     </div>
                   </div>
@@ -108,8 +108,8 @@
                       <span v-if="rel.relationType" class="rounded bg-muted px-1.5 py-0.5 text-[10px]">
                         {{ formatRelationType(rel.relationType) }}
                       </span>
-                      <span v-if="rel.transformation" class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono">
-                        {{ rel.transformation }}
+                      <span v-if="formatTransformation(rel.transformations)" class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono">
+                        {{ formatTransformation(rel.transformations) }}
                       </span>
                     </div>
                   </div>
@@ -176,7 +176,10 @@ import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectio
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
-import type { LineageRelation } from "@/types/proto-es/v1/lineage_service_pb";
+import type {
+  LineageRelation,
+  Transformation,
+} from "@/types/proto-es/v1/lineage_service_pb";
 import { RelationType } from "@/types/proto-es/v1/lineage_service_pb";
 import { extractErrorMessage } from "@/utils/error";
 
@@ -440,6 +443,21 @@ function toGuidPath(guid: string): string {
 function formatGuidLabel(guid: string): string {
   const segments = guid.split(";").filter(Boolean);
   return segments[segments.length - 1] || guid;
+}
+
+// formatTransformation renders the structured transformation steps as a short
+// label, e.g. "FUNCTION: count | PROJECT".
+function formatTransformation(
+  transformations: Transformation[] | undefined
+): string {
+  return (transformations ?? [])
+    .map((item) =>
+      item.functionName
+        ? `${item.operation}: ${item.functionName}`
+        : item.operation
+    )
+    .filter(Boolean)
+    .join(" | ");
 }
 
 function formatRelationType(relationType: number): string {

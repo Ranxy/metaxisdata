@@ -186,11 +186,13 @@ type OpenLineageRunResource struct {
 	HasLineage         bool                   `protobuf:"varint,22,opt,name=has_lineage,json=hasLineage,proto3" json:"has_lineage,omitempty"`
 	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,23,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt          *timestamppb.Timestamp `protobuf:"bytes,24,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	RawPayload         string                 `protobuf:"bytes,25,opt,name=raw_payload,json=rawPayload,proto3" json:"raw_payload,omitempty"`
-	AirflowDagUrl      string                 `protobuf:"bytes,26,opt,name=airflow_dag_url,json=airflowDagUrl,proto3" json:"airflow_dag_url,omitempty"`
-	AirflowRunLogUrl   string                 `protobuf:"bytes,27,opt,name=airflow_run_log_url,json=airflowRunLogUrl,proto3" json:"airflow_run_log_url,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// The OpenLineage event as JSON text, exactly as it was received and stored
+	// in the `raw_payload` JSONB column.
+	RawPayload       string `protobuf:"bytes,25,opt,name=raw_payload,json=rawPayload,proto3" json:"raw_payload,omitempty"`
+	AirflowDagUrl    string `protobuf:"bytes,26,opt,name=airflow_dag_url,json=airflowDagUrl,proto3" json:"airflow_dag_url,omitempty"`
+	AirflowRunLogUrl string `protobuf:"bytes,27,opt,name=airflow_run_log_url,json=airflowRunLogUrl,proto3" json:"airflow_run_log_url,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *OpenLineageRunResource) Reset() {
