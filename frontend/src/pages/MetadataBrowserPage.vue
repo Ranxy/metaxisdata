@@ -1401,10 +1401,7 @@ function getMetadataName(item: StoredMetadata): string {
     case "materializedViewMetadata":
     case "functionMetadata":
     case "procedureMetadata":
-    case "packageMetadata":
     case "sequenceMetadata":
-    case "streamMetadata":
-    case "taskMetadata":
       return item.type.value.name;
     case "columnMetadata":
       return item.type.value.name;

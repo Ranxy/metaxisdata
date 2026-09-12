@@ -461,22 +461,6 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		}
 		schema.ExternalTables = nil
 
-		for _, pkg := range schema.Packages {
-			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_PACKAGE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_PackageMetadata{PackageMetadata: pkg}})
-			if err != nil {
-				return errors.Wrapf(err, "failed to store package metadata for package %q in database %q", pkg.Name, database.DatabaseName)
-			}
-		}
-		schema.Packages = nil
-
-		for _, stream := range schema.Streams {
-			err = bmc.StoreMetaResourceV2(ctx, schemaGUIDPrefix, storepb.MetaType_STREAM, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_StreamMetadata{StreamMetadata: stream}})
-			if err != nil {
-				return errors.Wrapf(err, "failed to store stream metadata for stream %q in database %q", stream.Name, database.DatabaseName)
-			}
-		}
-		schema.Streams = nil
-
 		{
 			meta := &storepb.StoredMetadata{Type: &storepb.StoredMetadata_SchemaMetadata{SchemaMetadata: schema}}
 			err = bmc.StoreMetaResourceV2(ctx, databaseGUID, storepb.MetaType_SCHEMA, meta)
@@ -663,10 +647,8 @@ func isSchemaSyncManagedMetaType(metaType storepb.MetaType) bool {
 		storepb.MetaType_EXTERNAL_TABLE,
 		storepb.MetaType_FUNCTION,
 		storepb.MetaType_PROCEDURE,
-		storepb.MetaType_STREAM,
 		storepb.MetaType_MATERIALIZED_VIEW,
-		storepb.MetaType_SEQUENCE,
-		storepb.MetaType_PACKAGE:
+		storepb.MetaType_SEQUENCE:
 		return true
 	default:
 		return false
@@ -714,14 +696,10 @@ func convertMetadataToGUID(prefix string, objectType storepb.MetaType, data *sto
 		return buildGUID(prefix, data.GetFunctionMetadata().Name), nil
 	case storepb.MetaType_PROCEDURE:
 		return buildGUID(prefix, data.GetProcedureMetadata().Name), nil
-	case storepb.MetaType_STREAM:
-		return buildGUID(prefix, data.GetStreamMetadata().Name), nil
 	case storepb.MetaType_MATERIALIZED_VIEW:
 		return buildGUID(prefix, data.GetMaterializedViewMetadata().Name), nil
 	case storepb.MetaType_SEQUENCE:
 		return buildGUID(prefix, data.GetSequenceMetadata().Name), nil
-	case storepb.MetaType_PACKAGE:
-		return buildGUID(prefix, data.GetPackageMetadata().Name), nil
 	default:
 		return "", errors.Errorf("unsupported meta type %v", objectType)
 	}

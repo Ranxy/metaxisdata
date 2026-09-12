@@ -21,10 +21,10 @@ enum MetaType {
   PROCEDURE = 10;
   FUNCTION = 11;
   SEQUENCE = 12;
-  PACKAGE = 13;
-  STREAM = 14;
-  TASK = 15;
 
   // for Non-database internal structure
   OPENLINEAGE = 100;
+
+  reserved 13, 14, 15;
+  reserved "PACKAGE", "STREAM", "TASK";
 }

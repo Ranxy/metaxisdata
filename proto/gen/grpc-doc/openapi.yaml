@@ -964,9 +964,6 @@ paths:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     format: enum
@@ -1027,9 +1024,6 @@ paths:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     format: enum
@@ -1212,9 +1206,6 @@ paths:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     format: enum
@@ -1305,9 +1296,6 @@ paths:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     format: enum
@@ -1363,9 +1351,6 @@ paths:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     format: enum
@@ -1459,9 +1444,6 @@ paths:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     format: enum
@@ -1513,9 +1495,6 @@ paths:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     format: enum
@@ -1567,9 +1546,6 @@ paths:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     format: enum
@@ -2451,22 +2427,6 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/Instance'
-        BoundingBox:
-            type: object
-            properties:
-                xmin:
-                    type: number
-                    format: double
-                ymin:
-                    type: number
-                    format: double
-                xmax:
-                    type: number
-                    format: double
-                ymax:
-                    type: number
-                    format: double
-            description: BoundingBox defines the bounding box for spatial indexes.
         CheckConstraintMetadata:
             type: object
             properties:
@@ -2739,10 +2699,6 @@ components:
                 serviceName:
                     type: string
                     description: The service name of the database. It's an Oracle-specific concept.
-                linkedDatabases:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/LinkedDatabaseMetadata'
                 owner:
                     type: string
                 searchPath:
@@ -2787,32 +2743,6 @@ components:
                 ddl:
                     type: string
                     description: The full DDL migration SQL from source to target.
-        DimensionalConfig:
-            type: object
-            properties:
-                dimensions:
-                    type: integer
-                    description: Number of dimensions (2-4, default 2)
-                    format: int32
-                dataType:
-                    type: string
-                    description: |-
-                        Spatial data type
-                         Examples: GEOMETRY, GEOGRAPHY, POINT, POLYGON, etc.
-                operatorClass:
-                    type: string
-                    description: |-
-                        PostgreSQL operator class
-                         Examples: gist_geometry_ops_2d, gist_geometry_ops_nd, etc.
-                layerGtype:
-                    type: string
-                    description: |-
-                        Oracle geometry type constraint
-                         Examples: POINT, LINE, POLYGON, COLLECTION
-                parallelBuild:
-                    type: boolean
-                    description: Parallel index creation
-            description: DimensionalConfig defines dimensional and constraint parameters for spatial indexes.
         EnumTypeMetadata:
             type: object
             properties:
@@ -2954,9 +2884,6 @@ components:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     description: |-
@@ -3177,15 +3104,6 @@ components:
                     description: The type of the serialized message.
             additionalProperties: true
             description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message.
-        GridLevel:
-            type: object
-            properties:
-                level:
-                    type: integer
-                    format: int32
-                density:
-                    type: string
-            description: GridLevel defines a grid level for spatial tessellation.
         IdentityProviderContext:
             type: object
             properties:
@@ -3248,10 +3166,6 @@ components:
                     description: |-
                         It's a PostgreSQL specific field.
                          The unique constraint and unique index are not the same thing in PostgreSQL.
-                spatialConfig:
-                    allOf:
-                        - $ref: '#/components/schemas/SpatialIndexConfig'
-                    description: Spatial index specific configuration
                 opclassNames:
                     type: array
                     items:
@@ -3376,9 +3290,6 @@ components:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     format: enum
@@ -3404,9 +3315,6 @@ components:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     format: enum
@@ -3432,9 +3340,6 @@ components:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     format: enum
@@ -3450,15 +3355,6 @@ components:
                 updatedAt:
                     type: string
                     format: date-time
-        LinkedDatabaseMetadata:
-            type: object
-            properties:
-                name:
-                    type: string
-                username:
-                    type: string
-                host:
-                    type: string
         ListAPIKeysResponse:
             type: object
             properties:
@@ -3917,9 +3813,6 @@ components:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     format: enum
@@ -3975,9 +3868,6 @@ components:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     format: enum
@@ -4104,9 +3994,6 @@ components:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     format: enum
@@ -4271,16 +4158,6 @@ components:
                     type: string
                 latestEventType:
                     type: string
-        PackageMetadata:
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: The name of the package.
-                definition:
-                    type: string
-                    description: The definition is the definition of a package.
-            description: PackageMetadata is the metadata for packages.
         ProcedureMetadata:
             type: object
             properties:
@@ -4391,16 +4268,6 @@ components:
                     items:
                         $ref: '#/components/schemas/ProcedureMetadata'
                     description: The list of procedures in a schema.
-                streams:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/StreamMetadata'
-                    description: The list of streams in a schema, currently only used for Snowflake.
-                tasks:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/TaskMetadata'
-                    description: The list of tasks in a schema, currently only used for Snowflake.
                 materializedViews:
                     type: array
                     items:
@@ -4411,11 +4278,6 @@ components:
                     items:
                         $ref: '#/components/schemas/SequenceMetadata'
                     description: The list of sequences in a schema.
-                packages:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/PackageMetadata'
-                    description: The list of packages in a schema.
                 owner:
                     type: string
                 comment:
@@ -4479,9 +4341,6 @@ components:
                         - PROCEDURE
                         - FUNCTION
                         - SEQUENCE
-                        - PACKAGE
-                        - STREAM
-                        - TASK
                         - OPENLINEAGE
                     type: string
                     description: The type of the metadata.
@@ -4530,32 +4389,6 @@ components:
                     type: string
                 skipDump:
                     type: boolean
-        SpatialIndexConfig:
-            type: object
-            properties:
-                method:
-                    type: string
-                    description: |-
-                        Index method/type (database-specific)
-                         Examples: "SPATIAL" (MySQL/SQL Server), "GIST"/"SPGIST" (PostgreSQL), "MDSYS.SPATIAL_INDEX_V2" (Oracle)
-                tessellation:
-                    allOf:
-                        - $ref: '#/components/schemas/TessellationConfig'
-                    description: Tessellation configuration (primarily SQL Server)
-                storage:
-                    allOf:
-                        - $ref: '#/components/schemas/StorageConfig'
-                    description: Storage and performance parameters
-                dimensional:
-                    allOf:
-                        - $ref: '#/components/schemas/DimensionalConfig'
-                    description: Dimensional and constraint parameters
-                engineSpecific:
-                    type: object
-                    additionalProperties:
-                        type: string
-                    description: Database-specific parameters (stored as key-value pairs for extensibility)
-            description: SpatialIndexConfig is the configuration for spatial indexes across different database engines.
         Status:
             type: object
             properties:
@@ -4572,45 +4405,6 @@ components:
                         $ref: '#/components/schemas/GoogleProtobufAny'
                     description: A list of messages that carry the error details.  There is a common set of message types for APIs to use.
             description: 'The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).'
-        StorageConfig:
-            type: object
-            properties:
-                fillfactor:
-                    type: integer
-                    description: PostgreSQL parameters
-                    format: int32
-                buffering:
-                    type: string
-                tablespace:
-                    type: string
-                    description: Oracle parameters
-                workTablespace:
-                    type: string
-                sdoLevel:
-                    type: integer
-                    format: int32
-                commitInterval:
-                    type: integer
-                    format: int32
-                padIndex:
-                    type: boolean
-                    description: SQL Server parameters
-                sortInTempdb:
-                    type: string
-                dropExisting:
-                    type: boolean
-                online:
-                    type: boolean
-                allowRowLocks:
-                    type: boolean
-                allowPageLocks:
-                    type: boolean
-                maxdop:
-                    type: integer
-                    format: int32
-                dataCompression:
-                    type: string
-            description: StorageConfig defines storage and performance parameters for spatial indexes.
         StoredMetadata:
             type: object
             properties:
@@ -4630,14 +4424,8 @@ components:
                     $ref: '#/components/schemas/FunctionMetadata'
                 procedureMetadata:
                     $ref: '#/components/schemas/ProcedureMetadata'
-                packageMetadata:
-                    $ref: '#/components/schemas/PackageMetadata'
                 sequenceMetadata:
                     $ref: '#/components/schemas/SequenceMetadata'
-                streamMetadata:
-                    $ref: '#/components/schemas/StreamMetadata'
-                taskMetadata:
-                    $ref: '#/components/schemas/TaskMetadata'
                 manualSqlMetadata:
                     $ref: '#/components/schemas/ManualSQLMetadata'
                 columnMetadata:
@@ -4650,43 +4438,6 @@ components:
                  supported way to read them is the OpenLineageService resources. They are
                  filtered out of ListMetadata/GetMetadata/SearchMetadata rather than
                  serialized as an empty StoredMetadata.
-        StreamMetadata:
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: The name of the stream.
-                tableName:
-                    type: string
-                    description: The table_name is the name of the table/view that the stream is created on.
-                owner:
-                    type: string
-                    description: The owner of the stream.
-                comment:
-                    type: string
-                    description: The comment of the stream.
-                type:
-                    enum:
-                        - TYPE_UNSPECIFIED
-                        - TYPE_DELTA
-                    type: string
-                    description: The type of the stream.
-                    format: enum
-                stale:
-                    type: boolean
-                    description: Indicates whether the stream was last read before the `stale_after` time.
-                mode:
-                    enum:
-                        - MODE_UNSPECIFIED
-                        - MODE_DEFAULT
-                        - MODE_APPEND_ONLY
-                        - MODE_INSERT_ONLY
-                    type: string
-                    description: The mode of the stream.
-                    format: enum
-                definition:
-                    type: string
-                    description: The definition of the stream.
         SyncDatabaseRequest:
             required:
                 - name
@@ -4889,70 +4640,6 @@ components:
                     items:
                         $ref: '#/components/schemas/ExcludeConstraintMetadata'
             description: TablePartitionMetadata is the metadata for table partitions.
-        TaskMetadata:
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: The name of the task.
-                id:
-                    type: string
-                    description: |-
-                        The Snowflake-generated ID of the task.
-                         Example: 01ad32a0-1bb6-5e93-0000-000000000001.
-                owner:
-                    type: string
-                    description: The owner of the task.
-                comment:
-                    type: string
-                    description: The comment of the task.
-                warehouse:
-                    type: string
-                    description: The warehouse of the task.
-                schedule:
-                    type: string
-                    description: The schedule interval of the task.
-                predecessors:
-                    type: array
-                    items:
-                        type: string
-                    description: The predecessor tasks of the task.
-                state:
-                    enum:
-                        - STATE_UNSPECIFIED
-                        - STATE_STARTED
-                        - STATE_SUSPENDED
-                    type: string
-                    description: The state of the task.
-                    format: enum
-                condition:
-                    type: string
-                    description: The condition of the task.
-                definition:
-                    type: string
-                    description: The definition of the task.
-        TessellationConfig:
-            type: object
-            properties:
-                scheme:
-                    type: string
-                    description: |-
-                        Tessellation scheme
-                         Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
-                boundingBox:
-                    allOf:
-                        - $ref: '#/components/schemas/BoundingBox'
-                    description: Bounding box for GEOMETRY indexes (SQL Server)
-                gridLevels:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/GridLevel'
-                    description: Grid level configuration (SQL Server)
-                cellsPerObject:
-                    type: integer
-                    description: Cells per object (SQL Server)
-                    format: int32
-            description: TessellationConfig defines tessellation parameters for spatial indexes.
         TriggerMetadata:
             type: object
             properties:

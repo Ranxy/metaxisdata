@@ -76,7 +76,6 @@
     - [InstanceService](#metaxisdata-v1-InstanceService)
   
 - [v1/database_service.proto](#v1_database_service-proto)
-    - [BoundingBox](#metaxisdata-v1-BoundingBox)
     - [CheckConstraintMetadata](#metaxisdata-v1-CheckConstraintMetadata)
     - [ColumnMetadata](#metaxisdata-v1-ColumnMetadata)
     - [CreateManualSQLRequest](#metaxisdata-v1-CreateManualSQLRequest)
@@ -88,7 +87,6 @@
     - [DependencyTable](#metaxisdata-v1-DependencyTable)
     - [DiffMetadataRequest](#metaxisdata-v1-DiffMetadataRequest)
     - [DiffMetadataResponse](#metaxisdata-v1-DiffMetadataResponse)
-    - [DimensionalConfig](#metaxisdata-v1-DimensionalConfig)
     - [EnumTypeMetadata](#metaxisdata-v1-EnumTypeMetadata)
     - [EventMetadata](#metaxisdata-v1-EventMetadata)
     - [EventTriggerMetadata](#metaxisdata-v1-EventTriggerMetadata)
@@ -103,10 +101,7 @@
     - [GetMetadataRequest](#metaxisdata-v1-GetMetadataRequest)
     - [GetMetadataResponse](#metaxisdata-v1-GetMetadataResponse)
     - [GetSchemaStringRequest](#metaxisdata-v1-GetSchemaStringRequest)
-    - [GridLevel](#metaxisdata-v1-GridLevel)
     - [IndexMetadata](#metaxisdata-v1-IndexMetadata)
-    - [InstanceRoleMetadata](#metaxisdata-v1-InstanceRoleMetadata)
-    - [LinkedDatabaseMetadata](#metaxisdata-v1-LinkedDatabaseMetadata)
     - [ListDatabasesRequest](#metaxisdata-v1-ListDatabasesRequest)
     - [ListDatabasesResponse](#metaxisdata-v1-ListDatabasesResponse)
     - [ListManualSQLsRequest](#metaxisdata-v1-ListManualSQLsRequest)
@@ -129,7 +124,6 @@
     - [MetadataResponse](#metaxisdata-v1-MetadataResponse)
     - [MetadataResponse.Metadata](#metaxisdata-v1-MetadataResponse-Metadata)
     - [MetadataSchemaString](#metaxisdata-v1-MetadataSchemaString)
-    - [PackageMetadata](#metaxisdata-v1-PackageMetadata)
     - [ProcedureMetadata](#metaxisdata-v1-ProcedureMetadata)
     - [RuleMetadata](#metaxisdata-v1-RuleMetadata)
     - [SchemaMetadata](#metaxisdata-v1-SchemaMetadata)
@@ -139,17 +133,11 @@
     - [SearchMetadataResponse](#metaxisdata-v1-SearchMetadataResponse)
     - [SearchMetadataResult](#metaxisdata-v1-SearchMetadataResult)
     - [SequenceMetadata](#metaxisdata-v1-SequenceMetadata)
-    - [SpatialIndexConfig](#metaxisdata-v1-SpatialIndexConfig)
-    - [SpatialIndexConfig.EngineSpecificEntry](#metaxisdata-v1-SpatialIndexConfig-EngineSpecificEntry)
-    - [StorageConfig](#metaxisdata-v1-StorageConfig)
     - [StoredMetadata](#metaxisdata-v1-StoredMetadata)
-    - [StreamMetadata](#metaxisdata-v1-StreamMetadata)
     - [SyncDatabaseRequest](#metaxisdata-v1-SyncDatabaseRequest)
     - [SyncDatabaseResponse](#metaxisdata-v1-SyncDatabaseResponse)
     - [TableMetadata](#metaxisdata-v1-TableMetadata)
     - [TablePartitionMetadata](#metaxisdata-v1-TablePartitionMetadata)
-    - [TaskMetadata](#metaxisdata-v1-TaskMetadata)
-    - [TessellationConfig](#metaxisdata-v1-TessellationConfig)
     - [TriggerMetadata](#metaxisdata-v1-TriggerMetadata)
     - [UpdateManualSQLRequest](#metaxisdata-v1-UpdateManualSQLRequest)
     - [ViewMetadata](#metaxisdata-v1-ViewMetadata)
@@ -159,10 +147,7 @@
     - [MetaType](#metaxisdata-v1-MetaType)
     - [MetadataHistoryOperation](#metaxisdata-v1-MetadataHistoryOperation)
     - [MetadataHistorySection](#metaxisdata-v1-MetadataHistorySection)
-    - [StreamMetadata.Mode](#metaxisdata-v1-StreamMetadata-Mode)
-    - [StreamMetadata.Type](#metaxisdata-v1-StreamMetadata-Type)
     - [TablePartitionMetadata.Type](#metaxisdata-v1-TablePartitionMetadata-Type)
-    - [TaskMetadata.State](#metaxisdata-v1-TaskMetadata-State)
   
     - [DatabaseService](#metaxisdata-v1-DatabaseService)
   
@@ -1207,24 +1192,6 @@ The instance&#39;s `name` field is used to identify the instance to update. Form
 
 
 
-<a name="metaxisdata-v1-BoundingBox"></a>
-
-### BoundingBox
-BoundingBox defines the bounding box for spatial indexes.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| xmin | [double](#double) |  |  |
-| ymin | [double](#double) |  |  |
-| xmax | [double](#double) |  |  |
-| ymax | [double](#double) |  |  |
-
-
-
-
-
-
 <a name="metaxisdata-v1-CheckConstraintMetadata"></a>
 
 ### CheckConstraintMetadata
@@ -1352,7 +1319,6 @@ DatabaseSchemaMetadata is the schema metadata for databases.
 | extensions | [ExtensionMetadata](#metaxisdata-v1-ExtensionMetadata) | repeated | The list of extensions in a database. |
 | datashare | [bool](#bool) |  | The database belongs to a datashare. |
 | service_name | [string](#string) |  | The service name of the database. It&#39;s an Oracle-specific concept. |
-| linked_databases | [LinkedDatabaseMetadata](#metaxisdata-v1-LinkedDatabaseMetadata) | repeated |  |
 | owner | [string](#string) |  |  |
 | search_path | [string](#string) |  | The search_path is the search path of a PostgreSQL database. |
 | event_triggers | [EventTriggerMetadata](#metaxisdata-v1-EventTriggerMetadata) | repeated | The list of event triggers in a database (PostgreSQL specific). Event triggers are database-level objects, not schema-scoped. |
@@ -1437,25 +1403,6 @@ DependencyColumn is the metadata for dependency columns.
 | ----- | ---- | ----- | ----------- |
 | diff_summary | [string](#string) |  | A human-readable summary of the schema changes. |
 | ddl | [string](#string) |  | The full DDL migration SQL from source to target. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-DimensionalConfig"></a>
-
-### DimensionalConfig
-DimensionalConfig defines dimensional and constraint parameters for spatial indexes.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| dimensions | [int32](#int32) |  | Number of dimensions (2-4, default 2) |
-| data_type | [string](#string) |  | Spatial data type Examples: GEOMETRY, GEOGRAPHY, POINT, POLYGON, etc. |
-| operator_class | [string](#string) |  | PostgreSQL operator class Examples: gist_geometry_ops_2d, gist_geometry_ops_nd, etc. |
-| layer_gtype | [string](#string) |  | Oracle geometry type constraint Examples: POINT, LINE, POLYGON, COLLECTION |
-| parallel_build | [bool](#bool) |  | Parallel index creation |
 
 
 
@@ -1719,22 +1666,6 @@ FunctionMetadata is the metadata for functions.
 
 
 
-<a name="metaxisdata-v1-GridLevel"></a>
-
-### GridLevel
-GridLevel defines a grid level for spatial tessellation.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| level | [int32](#int32) |  | 1-4 for SQL Server |
-| density | [string](#string) |  | LOW, MEDIUM, HIGH |
-
-
-
-
-
-
 <a name="metaxisdata-v1-IndexMetadata"></a>
 
 ### IndexMetadata
@@ -1757,42 +1688,8 @@ IndexMetadata is the metadata for indexes.
 | parent_index_name | [string](#string) |  | The index name of the parent index. |
 | granularity | [int64](#int64) |  | The number of granules in the block. It&#39;s a ClickHouse specific field. |
 | is_constraint | [bool](#bool) |  | It&#39;s a PostgreSQL specific field. The unique constraint and unique index are not the same thing in PostgreSQL. |
-| spatial_config | [SpatialIndexConfig](#metaxisdata-v1-SpatialIndexConfig) |  | Spatial index specific configuration |
 | opclass_names | [string](#string) | repeated | https://www.postgresql.org/docs/current/catalog-pg-opclass.html Name of the operator class for each column. (PostgreSQL specific). |
 | opclass_defaults | [bool](#bool) | repeated | True if the operator class is the default. (PostgreSQL specific). |
-
-
-
-
-
-
-<a name="metaxisdata-v1-InstanceRoleMetadata"></a>
-
-### InstanceRoleMetadata
-InstanceRoleMetadata is the message for instance role.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | The role name. It&#39;s unique within the instance. |
-| grant | [string](#string) |  | The grant display string on the instance. It&#39;s generated by database engine. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-LinkedDatabaseMetadata"></a>
-
-### LinkedDatabaseMetadata
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  |  |
-| username | [string](#string) |  |  |
-| host | [string](#string) |  |  |
 
 
 
@@ -2219,22 +2116,6 @@ MetadataSchemaString is the schema define for metadata.
 
 
 
-<a name="metaxisdata-v1-PackageMetadata"></a>
-
-### PackageMetadata
-PackageMetadata is the metadata for packages.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | The name of the package. |
-| definition | [string](#string) |  | The definition is the definition of a package. |
-
-
-
-
-
-
 <a name="metaxisdata-v1-ProcedureMetadata"></a>
 
 ### ProcedureMetadata
@@ -2294,11 +2175,8 @@ This is the concept of schema in Postgres, but it&#39;s a no-op for MySQL.
 | views | [ViewMetadata](#metaxisdata-v1-ViewMetadata) | repeated | The list of views in a schema. |
 | functions | [FunctionMetadata](#metaxisdata-v1-FunctionMetadata) | repeated | The list of functions in a schema. |
 | procedures | [ProcedureMetadata](#metaxisdata-v1-ProcedureMetadata) | repeated | The list of procedures in a schema. |
-| streams | [StreamMetadata](#metaxisdata-v1-StreamMetadata) | repeated | The list of streams in a schema, currently only used for Snowflake. |
-| tasks | [TaskMetadata](#metaxisdata-v1-TaskMetadata) | repeated | The list of tasks in a schema, currently only used for Snowflake. |
 | materialized_views | [MaterializedViewMetadata](#metaxisdata-v1-MaterializedViewMetadata) | repeated | The list of materialized views in a schema. |
 | sequences | [SequenceMetadata](#metaxisdata-v1-SequenceMetadata) | repeated | The list of sequences in a schema. |
-| packages | [PackageMetadata](#metaxisdata-v1-PackageMetadata) | repeated | The list of packages in a schema. |
 | owner | [string](#string) |  |  |
 | comment | [string](#string) |  |  |
 | events | [EventMetadata](#metaxisdata-v1-EventMetadata) | repeated |  |
@@ -2425,71 +2303,6 @@ This is the concept of schema in Postgres, but it&#39;s a no-op for MySQL.
 
 
 
-<a name="metaxisdata-v1-SpatialIndexConfig"></a>
-
-### SpatialIndexConfig
-SpatialIndexConfig is the configuration for spatial indexes across different database engines.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| method | [string](#string) |  | Index method/type (database-specific) Examples: &#34;SPATIAL&#34; (MySQL/SQL Server), &#34;GIST&#34;/&#34;SPGIST&#34; (PostgreSQL), &#34;MDSYS.SPATIAL_INDEX_V2&#34; (Oracle) |
-| tessellation | [TessellationConfig](#metaxisdata-v1-TessellationConfig) |  | Tessellation configuration (primarily SQL Server) |
-| storage | [StorageConfig](#metaxisdata-v1-StorageConfig) |  | Storage and performance parameters |
-| dimensional | [DimensionalConfig](#metaxisdata-v1-DimensionalConfig) |  | Dimensional and constraint parameters |
-| engine_specific | [SpatialIndexConfig.EngineSpecificEntry](#metaxisdata-v1-SpatialIndexConfig-EngineSpecificEntry) | repeated | Database-specific parameters (stored as key-value pairs for extensibility) |
-
-
-
-
-
-
-<a name="metaxisdata-v1-SpatialIndexConfig-EngineSpecificEntry"></a>
-
-### SpatialIndexConfig.EngineSpecificEntry
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| key | [string](#string) |  |  |
-| value | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-StorageConfig"></a>
-
-### StorageConfig
-StorageConfig defines storage and performance parameters for spatial indexes.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| fillfactor | [int32](#int32) |  | PostgreSQL parameters
-
-10-100 |
-| buffering | [string](#string) |  | auto, on, off |
-| tablespace | [string](#string) |  | Oracle parameters |
-| work_tablespace | [string](#string) |  |  |
-| sdo_level | [int32](#int32) |  |  |
-| commit_interval | [int32](#int32) |  |  |
-| pad_index | [bool](#bool) |  | SQL Server parameters |
-| sort_in_tempdb | [string](#string) |  | ON, OFF |
-| drop_existing | [bool](#bool) |  |  |
-| online | [bool](#bool) |  |  |
-| allow_row_locks | [bool](#bool) |  |  |
-| allow_page_locks | [bool](#bool) |  |  |
-| maxdop | [int32](#int32) |  |  |
-| data_compression | [string](#string) |  | NONE, ROW, PAGE |
-
-
-
-
-
-
 <a name="metaxisdata-v1-StoredMetadata"></a>
 
 ### StoredMetadata
@@ -2512,34 +2325,9 @@ serialized as an empty StoredMetadata.
 | materialized_view_metadata | [MaterializedViewMetadata](#metaxisdata-v1-MaterializedViewMetadata) |  |  |
 | function_metadata | [FunctionMetadata](#metaxisdata-v1-FunctionMetadata) |  |  |
 | procedure_metadata | [ProcedureMetadata](#metaxisdata-v1-ProcedureMetadata) |  |  |
-| package_metadata | [PackageMetadata](#metaxisdata-v1-PackageMetadata) |  |  |
 | sequence_metadata | [SequenceMetadata](#metaxisdata-v1-SequenceMetadata) |  |  |
-| stream_metadata | [StreamMetadata](#metaxisdata-v1-StreamMetadata) |  |  |
-| task_metadata | [TaskMetadata](#metaxisdata-v1-TaskMetadata) |  |  |
 | manual_sql_metadata | [ManualSQLMetadata](#metaxisdata-v1-ManualSQLMetadata) |  |  |
 | column_metadata | [ColumnMetadata](#metaxisdata-v1-ColumnMetadata) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-StreamMetadata"></a>
-
-### StreamMetadata
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | The name of the stream. |
-| table_name | [string](#string) |  | The table_name is the name of the table/view that the stream is created on. |
-| owner | [string](#string) |  | The owner of the stream. |
-| comment | [string](#string) |  | The comment of the stream. |
-| type | [StreamMetadata.Type](#metaxisdata-v1-StreamMetadata-Type) |  | The type of the stream. |
-| stale | [bool](#bool) |  | Indicates whether the stream was last read before the `stale_after` time. |
-| mode | [StreamMetadata.Mode](#metaxisdata-v1-StreamMetadata-Mode) |  | The mode of the stream. |
-| definition | [string](#string) |  | The definition of the stream. |
 
 
 
@@ -2626,48 +2414,6 @@ TablePartitionMetadata is the metadata for table partitions.
 | indexes | [IndexMetadata](#metaxisdata-v1-IndexMetadata) | repeated |  |
 | check_constraints | [CheckConstraintMetadata](#metaxisdata-v1-CheckConstraintMetadata) | repeated |  |
 | exclude_constraints | [ExcludeConstraintMetadata](#metaxisdata-v1-ExcludeConstraintMetadata) | repeated |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-TaskMetadata"></a>
-
-### TaskMetadata
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | The name of the task. |
-| id | [string](#string) |  | The Snowflake-generated ID of the task. Example: 01ad32a0-1bb6-5e93-0000-000000000001. |
-| owner | [string](#string) |  | The owner of the task. |
-| comment | [string](#string) |  | The comment of the task. |
-| warehouse | [string](#string) |  | The warehouse of the task. |
-| schedule | [string](#string) |  | The schedule interval of the task. |
-| predecessors | [string](#string) | repeated | The predecessor tasks of the task. |
-| state | [TaskMetadata.State](#metaxisdata-v1-TaskMetadata-State) |  | The state of the task. |
-| condition | [string](#string) |  | The condition of the task. |
-| definition | [string](#string) |  | The definition of the task. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-TessellationConfig"></a>
-
-### TessellationConfig
-TessellationConfig defines tessellation parameters for spatial indexes.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| scheme | [string](#string) |  | Tessellation scheme Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID |
-| bounding_box | [BoundingBox](#metaxisdata-v1-BoundingBox) |  | Bounding box for GEOMETRY indexes (SQL Server) |
-| grid_levels | [GridLevel](#metaxisdata-v1-GridLevel) | repeated | Grid level configuration (SQL Server) |
-| cells_per_object | [int32](#int32) |  | Cells per object (SQL Server) |
 
 
 
@@ -2786,9 +2532,6 @@ ViewMetadata is the metadata for views.
 | PROCEDURE | 10 |  |
 | FUNCTION | 11 |  |
 | SEQUENCE | 12 |  |
-| PACKAGE | 13 |  |
-| STREAM | 14 |  |
-| TASK | 15 |  |
 | OPENLINEAGE | 100 | OPENLINEAGE marks meta registry rows that back the OpenLineage service. See StoredMetadata for why these rows are not returned by the metadata methods. |
 
 
@@ -2828,32 +2571,6 @@ ViewMetadata is the metadata for views.
 
 
 
-<a name="metaxisdata-v1-StreamMetadata-Mode"></a>
-
-### StreamMetadata.Mode
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| MODE_UNSPECIFIED | 0 |  |
-| MODE_DEFAULT | 1 |  |
-| MODE_APPEND_ONLY | 2 |  |
-| MODE_INSERT_ONLY | 3 |  |
-
-
-
-<a name="metaxisdata-v1-StreamMetadata-Type"></a>
-
-### StreamMetadata.Type
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| TYPE_UNSPECIFIED | 0 |  |
-| TYPE_DELTA | 1 |  |
-
-
-
 <a name="metaxisdata-v1-TablePartitionMetadata-Type"></a>
 
 ### TablePartitionMetadata.Type
@@ -2876,19 +2593,6 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | LINEAR_HASH | 6 |  |
 | KEY | 7 |  |
 | LINEAR_KEY | 8 |  |
-
-
-
-<a name="metaxisdata-v1-TaskMetadata-State"></a>
-
-### TaskMetadata.State
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| STATE_UNSPECIFIED | 0 |  |
-| STATE_STARTED | 1 |  |
-| STATE_SUSPENDED | 2 |  |
 
 
  

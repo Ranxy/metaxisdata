@@ -1378,28 +1378,10 @@ export declare type StoredMetadata = Message<"metaxisdata.v1.StoredMetadata"> & 
     case: "procedureMetadata";
   } | {
     /**
-     * @generated from field: metaxisdata.v1.PackageMetadata package_metadata = 9;
-     */
-    value: PackageMetadata;
-    case: "packageMetadata";
-  } | {
-    /**
      * @generated from field: metaxisdata.v1.SequenceMetadata sequence_metadata = 10;
      */
     value: SequenceMetadata;
     case: "sequenceMetadata";
-  } | {
-    /**
-     * @generated from field: metaxisdata.v1.StreamMetadata stream_metadata = 11;
-     */
-    value: StreamMetadata;
-    case: "streamMetadata";
-  } | {
-    /**
-     * @generated from field: metaxisdata.v1.TaskMetadata task_metadata = 12;
-     */
-    value: TaskMetadata;
-    case: "taskMetadata";
   } | {
     /**
      * @generated from field: metaxisdata.v1.ManualSQLMetadata manual_sql_metadata = 15;
@@ -1475,11 +1457,6 @@ export declare type DatabaseSchemaMetadata = Message<"metaxisdata.v1.DatabaseSch
   serviceName: string;
 
   /**
-   * @generated from field: repeated metaxisdata.v1.LinkedDatabaseMetadata linked_databases = 8;
-   */
-  linkedDatabases: LinkedDatabaseMetadata[];
-
-  /**
    * @generated from field: string owner = 9;
    */
   owner: string;
@@ -1505,32 +1482,6 @@ export declare type DatabaseSchemaMetadata = Message<"metaxisdata.v1.DatabaseSch
  * Use `create(DatabaseSchemaMetadataSchema)` to create a new message.
  */
 export declare const DatabaseSchemaMetadataSchema: GenMessage<DatabaseSchemaMetadata>;
-
-/**
- * @generated from message metaxisdata.v1.LinkedDatabaseMetadata
- */
-export declare type LinkedDatabaseMetadata = Message<"metaxisdata.v1.LinkedDatabaseMetadata"> & {
-  /**
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * @generated from field: string username = 2;
-   */
-  username: string;
-
-  /**
-   * @generated from field: string host = 3;
-   */
-  host: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.LinkedDatabaseMetadata.
- * Use `create(LinkedDatabaseMetadataSchema)` to create a new message.
- */
-export declare const LinkedDatabaseMetadataSchema: GenMessage<LinkedDatabaseMetadata>;
 
 /**
  * SchemaMetadata is the metadata for schemas.
@@ -1583,20 +1534,6 @@ export declare type SchemaMetadata = Message<"metaxisdata.v1.SchemaMetadata"> & 
   procedures: ProcedureMetadata[];
 
   /**
-   * The list of streams in a schema, currently only used for Snowflake.
-   *
-   * @generated from field: repeated metaxisdata.v1.StreamMetadata streams = 7;
-   */
-  streams: StreamMetadata[];
-
-  /**
-   * The list of tasks in a schema, currently only used for Snowflake.
-   *
-   * @generated from field: repeated metaxisdata.v1.TaskMetadata tasks = 8;
-   */
-  tasks: TaskMetadata[];
-
-  /**
    * The list of materialized views in a schema.
    *
    * @generated from field: repeated metaxisdata.v1.MaterializedViewMetadata materialized_views = 9;
@@ -1609,13 +1546,6 @@ export declare type SchemaMetadata = Message<"metaxisdata.v1.SchemaMetadata"> & 
    * @generated from field: repeated metaxisdata.v1.SequenceMetadata sequences = 10;
    */
   sequences: SequenceMetadata[];
-
-  /**
-   * The list of packages in a schema.
-   *
-   * @generated from field: repeated metaxisdata.v1.PackageMetadata packages = 11;
-   */
-  packages: PackageMetadata[];
 
   /**
    * @generated from field: string owner = 12;
@@ -1959,230 +1889,6 @@ export declare type RuleMetadata = Message<"metaxisdata.v1.RuleMetadata"> & {
  * Use `create(RuleMetadataSchema)` to create a new message.
  */
 export declare const RuleMetadataSchema: GenMessage<RuleMetadata>;
-
-/**
- * @generated from message metaxisdata.v1.TaskMetadata
- */
-export declare type TaskMetadata = Message<"metaxisdata.v1.TaskMetadata"> & {
-  /**
-   * The name of the task.
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * The Snowflake-generated ID of the task.
-   * Example: 01ad32a0-1bb6-5e93-0000-000000000001.
-   *
-   * @generated from field: string id = 2;
-   */
-  id: string;
-
-  /**
-   * The owner of the task.
-   *
-   * @generated from field: string owner = 3;
-   */
-  owner: string;
-
-  /**
-   * The comment of the task.
-   *
-   * @generated from field: string comment = 4;
-   */
-  comment: string;
-
-  /**
-   * The warehouse of the task.
-   *
-   * @generated from field: string warehouse = 5;
-   */
-  warehouse: string;
-
-  /**
-   * The schedule interval of the task.
-   *
-   * @generated from field: string schedule = 6;
-   */
-  schedule: string;
-
-  /**
-   * The predecessor tasks of the task.
-   *
-   * @generated from field: repeated string predecessors = 7;
-   */
-  predecessors: string[];
-
-  /**
-   * The state of the task.
-   *
-   * @generated from field: metaxisdata.v1.TaskMetadata.State state = 8;
-   */
-  state: TaskMetadata_State;
-
-  /**
-   * The condition of the task.
-   *
-   * @generated from field: string condition = 9;
-   */
-  condition: string;
-
-  /**
-   * The definition of the task.
-   *
-   * @generated from field: string definition = 10;
-   */
-  definition: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.TaskMetadata.
- * Use `create(TaskMetadataSchema)` to create a new message.
- */
-export declare const TaskMetadataSchema: GenMessage<TaskMetadata>;
-
-/**
- * @generated from enum metaxisdata.v1.TaskMetadata.State
- */
-export enum TaskMetadata_State {
-  /**
-   * @generated from enum value: STATE_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * @generated from enum value: STATE_STARTED = 1;
-   */
-  STARTED = 1,
-
-  /**
-   * @generated from enum value: STATE_SUSPENDED = 2;
-   */
-  SUSPENDED = 2,
-}
-
-/**
- * Describes the enum metaxisdata.v1.TaskMetadata.State.
- */
-export declare const TaskMetadata_StateSchema: GenEnum<TaskMetadata_State>;
-
-/**
- * @generated from message metaxisdata.v1.StreamMetadata
- */
-export declare type StreamMetadata = Message<"metaxisdata.v1.StreamMetadata"> & {
-  /**
-   * The name of the stream.
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * The table_name is the name of the table/view that the stream is created on.
-   *
-   * @generated from field: string table_name = 2;
-   */
-  tableName: string;
-
-  /**
-   * The owner of the stream.
-   *
-   * @generated from field: string owner = 3;
-   */
-  owner: string;
-
-  /**
-   * The comment of the stream.
-   *
-   * @generated from field: string comment = 4;
-   */
-  comment: string;
-
-  /**
-   * The type of the stream.
-   *
-   * @generated from field: metaxisdata.v1.StreamMetadata.Type type = 5;
-   */
-  type: StreamMetadata_Type;
-
-  /**
-   * Indicates whether the stream was last read before the `stale_after` time.
-   *
-   * @generated from field: bool stale = 6;
-   */
-  stale: boolean;
-
-  /**
-   * The mode of the stream.
-   *
-   * @generated from field: metaxisdata.v1.StreamMetadata.Mode mode = 7;
-   */
-  mode: StreamMetadata_Mode;
-
-  /**
-   * The definition of the stream.
-   *
-   * @generated from field: string definition = 8;
-   */
-  definition: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.StreamMetadata.
- * Use `create(StreamMetadataSchema)` to create a new message.
- */
-export declare const StreamMetadataSchema: GenMessage<StreamMetadata>;
-
-/**
- * @generated from enum metaxisdata.v1.StreamMetadata.Type
- */
-export enum StreamMetadata_Type {
-  /**
-   * @generated from enum value: TYPE_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * @generated from enum value: TYPE_DELTA = 1;
-   */
-  DELTA = 1,
-}
-
-/**
- * Describes the enum metaxisdata.v1.StreamMetadata.Type.
- */
-export declare const StreamMetadata_TypeSchema: GenEnum<StreamMetadata_Type>;
-
-/**
- * @generated from enum metaxisdata.v1.StreamMetadata.Mode
- */
-export enum StreamMetadata_Mode {
-  /**
-   * @generated from enum value: MODE_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * @generated from enum value: MODE_DEFAULT = 1;
-   */
-  DEFAULT = 1,
-
-  /**
-   * @generated from enum value: MODE_APPEND_ONLY = 2;
-   */
-  APPEND_ONLY = 2,
-
-  /**
-   * @generated from enum value: MODE_INSERT_ONLY = 3;
-   */
-  INSERT_ONLY = 3,
-}
-
-/**
- * Describes the enum metaxisdata.v1.StreamMetadata.Mode.
- */
-export declare const StreamMetadata_ModeSchema: GenEnum<StreamMetadata_Mode>;
 
 /**
  * TableMetadata is the metadata for tables.
@@ -3157,33 +2863,6 @@ export declare type ProcedureMetadata = Message<"metaxisdata.v1.ProcedureMetadat
 export declare const ProcedureMetadataSchema: GenMessage<ProcedureMetadata>;
 
 /**
- * PackageMetadata is the metadata for packages.
- *
- * @generated from message metaxisdata.v1.PackageMetadata
- */
-export declare type PackageMetadata = Message<"metaxisdata.v1.PackageMetadata"> & {
-  /**
-   * The name of the package.
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * The definition is the definition of a package.
-   *
-   * @generated from field: string definition = 2;
-   */
-  definition: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.PackageMetadata.
- * Use `create(PackageMetadataSchema)` to create a new message.
- */
-export declare const PackageMetadataSchema: GenMessage<PackageMetadata>;
-
-/**
  * IndexMetadata is the metadata for indexes.
  *
  * @generated from message metaxisdata.v1.IndexMetadata
@@ -3291,13 +2970,6 @@ export declare type IndexMetadata = Message<"metaxisdata.v1.IndexMetadata"> & {
   isConstraint: boolean;
 
   /**
-   * Spatial index specific configuration
-   *
-   * @generated from field: metaxisdata.v1.SpatialIndexConfig spatial_config = 15;
-   */
-  spatialConfig?: SpatialIndexConfig;
-
-  /**
    * https://www.postgresql.org/docs/current/catalog-pg-opclass.html
    * Name of the operator class for each column. (PostgreSQL specific).
    *
@@ -3318,305 +2990,6 @@ export declare type IndexMetadata = Message<"metaxisdata.v1.IndexMetadata"> & {
  * Use `create(IndexMetadataSchema)` to create a new message.
  */
 export declare const IndexMetadataSchema: GenMessage<IndexMetadata>;
-
-/**
- * SpatialIndexConfig is the configuration for spatial indexes across different database engines.
- *
- * @generated from message metaxisdata.v1.SpatialIndexConfig
- */
-export declare type SpatialIndexConfig = Message<"metaxisdata.v1.SpatialIndexConfig"> & {
-  /**
-   * Index method/type (database-specific)
-   * Examples: "SPATIAL" (MySQL/SQL Server), "GIST"/"SPGIST" (PostgreSQL), "MDSYS.SPATIAL_INDEX_V2" (Oracle)
-   *
-   * @generated from field: string method = 1;
-   */
-  method: string;
-
-  /**
-   * Tessellation configuration (primarily SQL Server)
-   *
-   * @generated from field: metaxisdata.v1.TessellationConfig tessellation = 2;
-   */
-  tessellation?: TessellationConfig;
-
-  /**
-   * Storage and performance parameters
-   *
-   * @generated from field: metaxisdata.v1.StorageConfig storage = 3;
-   */
-  storage?: StorageConfig;
-
-  /**
-   * Dimensional and constraint parameters
-   *
-   * @generated from field: metaxisdata.v1.DimensionalConfig dimensional = 4;
-   */
-  dimensional?: DimensionalConfig;
-
-  /**
-   * Database-specific parameters (stored as key-value pairs for extensibility)
-   *
-   * @generated from field: map<string, string> engine_specific = 5;
-   */
-  engineSpecific: { [key: string]: string };
-};
-
-/**
- * Describes the message metaxisdata.v1.SpatialIndexConfig.
- * Use `create(SpatialIndexConfigSchema)` to create a new message.
- */
-export declare const SpatialIndexConfigSchema: GenMessage<SpatialIndexConfig>;
-
-/**
- * TessellationConfig defines tessellation parameters for spatial indexes.
- *
- * @generated from message metaxisdata.v1.TessellationConfig
- */
-export declare type TessellationConfig = Message<"metaxisdata.v1.TessellationConfig"> & {
-  /**
-   * Tessellation scheme
-   * Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
-   *
-   * @generated from field: string scheme = 1;
-   */
-  scheme: string;
-
-  /**
-   * Bounding box for GEOMETRY indexes (SQL Server)
-   *
-   * @generated from field: metaxisdata.v1.BoundingBox bounding_box = 2;
-   */
-  boundingBox?: BoundingBox;
-
-  /**
-   * Grid level configuration (SQL Server)
-   *
-   * @generated from field: repeated metaxisdata.v1.GridLevel grid_levels = 3;
-   */
-  gridLevels: GridLevel[];
-
-  /**
-   * Cells per object (SQL Server)
-   *
-   * @generated from field: int32 cells_per_object = 4;
-   */
-  cellsPerObject: number;
-};
-
-/**
- * Describes the message metaxisdata.v1.TessellationConfig.
- * Use `create(TessellationConfigSchema)` to create a new message.
- */
-export declare const TessellationConfigSchema: GenMessage<TessellationConfig>;
-
-/**
- * BoundingBox defines the bounding box for spatial indexes.
- *
- * @generated from message metaxisdata.v1.BoundingBox
- */
-export declare type BoundingBox = Message<"metaxisdata.v1.BoundingBox"> & {
-  /**
-   * @generated from field: double xmin = 1;
-   */
-  xmin: number;
-
-  /**
-   * @generated from field: double ymin = 2;
-   */
-  ymin: number;
-
-  /**
-   * @generated from field: double xmax = 3;
-   */
-  xmax: number;
-
-  /**
-   * @generated from field: double ymax = 4;
-   */
-  ymax: number;
-};
-
-/**
- * Describes the message metaxisdata.v1.BoundingBox.
- * Use `create(BoundingBoxSchema)` to create a new message.
- */
-export declare const BoundingBoxSchema: GenMessage<BoundingBox>;
-
-/**
- * GridLevel defines a grid level for spatial tessellation.
- *
- * @generated from message metaxisdata.v1.GridLevel
- */
-export declare type GridLevel = Message<"metaxisdata.v1.GridLevel"> & {
-  /**
-   * 1-4 for SQL Server
-   *
-   * @generated from field: int32 level = 1;
-   */
-  level: number;
-
-  /**
-   * LOW, MEDIUM, HIGH
-   *
-   * @generated from field: string density = 2;
-   */
-  density: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.GridLevel.
- * Use `create(GridLevelSchema)` to create a new message.
- */
-export declare const GridLevelSchema: GenMessage<GridLevel>;
-
-/**
- * StorageConfig defines storage and performance parameters for spatial indexes.
- *
- * @generated from message metaxisdata.v1.StorageConfig
- */
-export declare type StorageConfig = Message<"metaxisdata.v1.StorageConfig"> & {
-  /**
-   * PostgreSQL parameters
-   *
-   * 10-100
-   *
-   * @generated from field: int32 fillfactor = 1;
-   */
-  fillfactor: number;
-
-  /**
-   * auto, on, off
-   *
-   * @generated from field: string buffering = 2;
-   */
-  buffering: string;
-
-  /**
-   * Oracle parameters
-   *
-   * @generated from field: string tablespace = 3;
-   */
-  tablespace: string;
-
-  /**
-   * @generated from field: string work_tablespace = 4;
-   */
-  workTablespace: string;
-
-  /**
-   * @generated from field: int32 sdo_level = 5;
-   */
-  sdoLevel: number;
-
-  /**
-   * @generated from field: int32 commit_interval = 6;
-   */
-  commitInterval: number;
-
-  /**
-   * SQL Server parameters
-   *
-   * @generated from field: bool pad_index = 7;
-   */
-  padIndex: boolean;
-
-  /**
-   * ON, OFF
-   *
-   * @generated from field: string sort_in_tempdb = 8;
-   */
-  sortInTempdb: string;
-
-  /**
-   * @generated from field: bool drop_existing = 9;
-   */
-  dropExisting: boolean;
-
-  /**
-   * @generated from field: bool online = 10;
-   */
-  online: boolean;
-
-  /**
-   * @generated from field: bool allow_row_locks = 11;
-   */
-  allowRowLocks: boolean;
-
-  /**
-   * @generated from field: bool allow_page_locks = 12;
-   */
-  allowPageLocks: boolean;
-
-  /**
-   * @generated from field: int32 maxdop = 13;
-   */
-  maxdop: number;
-
-  /**
-   * NONE, ROW, PAGE
-   *
-   * @generated from field: string data_compression = 14;
-   */
-  dataCompression: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.StorageConfig.
- * Use `create(StorageConfigSchema)` to create a new message.
- */
-export declare const StorageConfigSchema: GenMessage<StorageConfig>;
-
-/**
- * DimensionalConfig defines dimensional and constraint parameters for spatial indexes.
- *
- * @generated from message metaxisdata.v1.DimensionalConfig
- */
-export declare type DimensionalConfig = Message<"metaxisdata.v1.DimensionalConfig"> & {
-  /**
-   * Number of dimensions (2-4, default 2)
-   *
-   * @generated from field: int32 dimensions = 1;
-   */
-  dimensions: number;
-
-  /**
-   * Spatial data type
-   * Examples: GEOMETRY, GEOGRAPHY, POINT, POLYGON, etc.
-   *
-   * @generated from field: string data_type = 2;
-   */
-  dataType: string;
-
-  /**
-   * PostgreSQL operator class
-   * Examples: gist_geometry_ops_2d, gist_geometry_ops_nd, etc.
-   *
-   * @generated from field: string operator_class = 3;
-   */
-  operatorClass: string;
-
-  /**
-   * Oracle geometry type constraint
-   * Examples: POINT, LINE, POLYGON, COLLECTION
-   *
-   * @generated from field: string layer_gtype = 4;
-   */
-  layerGtype: string;
-
-  /**
-   * Parallel index creation
-   *
-   * @generated from field: bool parallel_build = 5;
-   */
-  parallelBuild: boolean;
-};
-
-/**
- * Describes the message metaxisdata.v1.DimensionalConfig.
- * Use `create(DimensionalConfigSchema)` to create a new message.
- */
-export declare const DimensionalConfigSchema: GenMessage<DimensionalConfig>;
 
 /**
  * ExtensionMetadata is the metadata for extensions.
@@ -3811,34 +3184,6 @@ export declare type ForeignKeyMetadata = Message<"metaxisdata.v1.ForeignKeyMetad
 export declare const ForeignKeyMetadataSchema: GenMessage<ForeignKeyMetadata>;
 
 /**
- * InstanceRoleMetadata is the message for instance role.
- *
- * @generated from message metaxisdata.v1.InstanceRoleMetadata
- */
-export declare type InstanceRoleMetadata = Message<"metaxisdata.v1.InstanceRoleMetadata"> & {
-  /**
-   * The role name. It's unique within the instance.
-   *
-   * @generated from field: string name = 2;
-   */
-  name: string;
-
-  /**
-   * The grant display string on the instance. It's generated by database
-   * engine.
-   *
-   * @generated from field: string grant = 7;
-   */
-  grant: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.InstanceRoleMetadata.
- * Use `create(InstanceRoleMetadataSchema)` to create a new message.
- */
-export declare const InstanceRoleMetadataSchema: GenMessage<InstanceRoleMetadata>;
-
-/**
  * @generated from enum metaxisdata.v1.MetadataHistoryOperation
  */
 export enum MetadataHistoryOperation {
@@ -4016,21 +3361,6 @@ export enum MetaType {
    * @generated from enum value: SEQUENCE = 12;
    */
   SEQUENCE = 12,
-
-  /**
-   * @generated from enum value: PACKAGE = 13;
-   */
-  PACKAGE = 13,
-
-  /**
-   * @generated from enum value: STREAM = 14;
-   */
-  STREAM = 14,
-
-  /**
-   * @generated from enum value: TASK = 15;
-   */
-  TASK = 15,
 
   /**
    * OPENLINEAGE marks meta registry rows that back the OpenLineage service.

@@ -27,7 +27,6 @@
     - [SchemaField](#metaxisdata-store-SchemaField)
   
 - [store/database.proto](#store_database-proto)
-    - [BoundingBox](#metaxisdata-store-BoundingBox)
     - [CheckConstraintMetadata](#metaxisdata-store-CheckConstraintMetadata)
     - [ColumnMetadata](#metaxisdata-store-ColumnMetadata)
     - [DatabaseMetadata](#metaxisdata-store-DatabaseMetadata)
@@ -35,7 +34,6 @@
     - [DatabaseSchemaMetadata](#metaxisdata-store-DatabaseSchemaMetadata)
     - [DependencyColumn](#metaxisdata-store-DependencyColumn)
     - [DependencyTable](#metaxisdata-store-DependencyTable)
-    - [DimensionalConfig](#metaxisdata-store-DimensionalConfig)
     - [EnumTypeMetadata](#metaxisdata-store-EnumTypeMetadata)
     - [EventMetadata](#metaxisdata-store-EventMetadata)
     - [EventTriggerMetadata](#metaxisdata-store-EventTriggerMetadata)
@@ -45,36 +43,23 @@
     - [ForeignKeyMetadata](#metaxisdata-store-ForeignKeyMetadata)
     - [FunctionMetadata](#metaxisdata-store-FunctionMetadata)
     - [GenerationMetadata](#metaxisdata-store-GenerationMetadata)
-    - [GridLevel](#metaxisdata-store-GridLevel)
     - [IndexMetadata](#metaxisdata-store-IndexMetadata)
-    - [InstanceRoleMetadata](#metaxisdata-store-InstanceRoleMetadata)
-    - [LinkedDatabaseMetadata](#metaxisdata-store-LinkedDatabaseMetadata)
     - [ManualSQLMetadata](#metaxisdata-store-ManualSQLMetadata)
     - [ManualSQLMetadata.AttributesEntry](#metaxisdata-store-ManualSQLMetadata-AttributesEntry)
     - [MaterializedViewMetadata](#metaxisdata-store-MaterializedViewMetadata)
-    - [PackageMetadata](#metaxisdata-store-PackageMetadata)
     - [ProcedureMetadata](#metaxisdata-store-ProcedureMetadata)
     - [RuleMetadata](#metaxisdata-store-RuleMetadata)
     - [SchemaMetadata](#metaxisdata-store-SchemaMetadata)
     - [SequenceMetadata](#metaxisdata-store-SequenceMetadata)
-    - [SpatialIndexConfig](#metaxisdata-store-SpatialIndexConfig)
-    - [SpatialIndexConfig.EngineSpecificEntry](#metaxisdata-store-SpatialIndexConfig-EngineSpecificEntry)
-    - [StorageConfig](#metaxisdata-store-StorageConfig)
     - [StoredMetadata](#metaxisdata-store-StoredMetadata)
-    - [StreamMetadata](#metaxisdata-store-StreamMetadata)
     - [TableMetadata](#metaxisdata-store-TableMetadata)
     - [TablePartitionMetadata](#metaxisdata-store-TablePartitionMetadata)
-    - [TaskMetadata](#metaxisdata-store-TaskMetadata)
-    - [TessellationConfig](#metaxisdata-store-TessellationConfig)
     - [TriggerMetadata](#metaxisdata-store-TriggerMetadata)
     - [ViewMetadata](#metaxisdata-store-ViewMetadata)
   
     - [ColumnMetadata.IdentityGeneration](#metaxisdata-store-ColumnMetadata-IdentityGeneration)
     - [GenerationMetadata.Type](#metaxisdata-store-GenerationMetadata-Type)
-    - [StreamMetadata.Mode](#metaxisdata-store-StreamMetadata-Mode)
-    - [StreamMetadata.Type](#metaxisdata-store-StreamMetadata-Type)
     - [TablePartitionMetadata.Type](#metaxisdata-store-TablePartitionMetadata-Type)
-    - [TaskMetadata.State](#metaxisdata-store-TaskMetadata-State)
   
 - [store/group.proto](#store_group-proto)
     - [GroupMember](#metaxisdata-store-GroupMember)
@@ -489,24 +474,6 @@ SchemaField describes a single field in a dataset schema.
 
 
 
-<a name="metaxisdata-store-BoundingBox"></a>
-
-### BoundingBox
-BoundingBox defines the bounding box for spatial indexes.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| xmin | [double](#double) |  |  |
-| ymin | [double](#double) |  |  |
-| xmax | [double](#double) |  |  |
-| ymax | [double](#double) |  |  |
-
-
-
-
-
-
 <a name="metaxisdata-store-CheckConstraintMetadata"></a>
 
 ### CheckConstraintMetadata
@@ -572,7 +539,6 @@ DatabaseMetadata is the metadata for databases.
 | ----- | ---- | ----- | ----------- |
 | labels | [DatabaseMetadata.LabelsEntry](#metaxisdata-store-DatabaseMetadata-LabelsEntry) | repeated |  |
 | last_sync_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| backup_available | [bool](#bool) |  |  |
 | datashare | [bool](#bool) |  |  |
 | drifted | [bool](#bool) |  | The schema has drifted from the source of truth. |
 | version | [string](#string) |  | The version of database schema. |
@@ -613,7 +579,6 @@ DatabaseSchemaMetadata is the schema metadata for databases.
 | extensions | [ExtensionMetadata](#metaxisdata-store-ExtensionMetadata) | repeated | The list of extensions in a database. |
 | datashare | [bool](#bool) |  | The database belongs to a datashare. |
 | service_name | [string](#string) |  | The service name of the database. It&#39;s an Oracle-specific concept. |
-| linked_databases | [LinkedDatabaseMetadata](#metaxisdata-store-LinkedDatabaseMetadata) | repeated |  |
 | owner | [string](#string) |  |  |
 | search_path | [string](#string) |  | The search_path is the search path of a PostgreSQL database. |
 | event_triggers | [EventTriggerMetadata](#metaxisdata-store-EventTriggerMetadata) | repeated | The list of event triggers in a database (PostgreSQL specific). Event triggers are database-level objects, not schema-scoped. |
@@ -650,25 +615,6 @@ DependencyColumn is the metadata for dependency columns.
 | ----- | ---- | ----- | ----------- |
 | schema | [string](#string) |  | The schema is the schema of a reference table. |
 | table | [string](#string) |  | The table is the name of a reference table. |
-
-
-
-
-
-
-<a name="metaxisdata-store-DimensionalConfig"></a>
-
-### DimensionalConfig
-DimensionalConfig defines dimensional and constraint parameters for spatial indexes.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| dimensions | [int32](#int32) |  | Number of dimensions (2-4, default 2) |
-| data_type | [string](#string) |  | Spatial data type Examples: GEOMETRY, GEOGRAPHY, POINT, POLYGON, etc. |
-| operator_class | [string](#string) |  | PostgreSQL operator class Examples: gist_geometry_ops_2d, gist_geometry_ops_nd, etc. |
-| layer_gtype | [string](#string) |  | Oracle geometry type constraint Examples: POINT, LINE, POLYGON, COLLECTION |
-| parallel_build | [bool](#bool) |  | Parallel index creation |
 
 
 
@@ -852,22 +798,6 @@ FunctionMetadata is the metadata for functions.
 
 
 
-<a name="metaxisdata-store-GridLevel"></a>
-
-### GridLevel
-GridLevel defines a grid level for spatial tessellation.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| level | [int32](#int32) |  | 1-4 for SQL Server |
-| density | [string](#string) |  | LOW, MEDIUM, HIGH |
-
-
-
-
-
-
 <a name="metaxisdata-store-IndexMetadata"></a>
 
 ### IndexMetadata
@@ -890,42 +820,8 @@ IndexMetadata is the metadata for indexes.
 | parent_index_name | [string](#string) |  | The index name of the parent index. |
 | granularity | [int64](#int64) |  | The number of granules in the block. It&#39;s a ClickHouse specific field. |
 | is_constraint | [bool](#bool) |  | It&#39;s a PostgreSQL specific field. The unique constraint and unique index are not the same thing in PostgreSQL. |
-| spatial_config | [SpatialIndexConfig](#metaxisdata-store-SpatialIndexConfig) |  | Spatial index specific configuration |
 | opclass_names | [string](#string) | repeated | https://www.postgresql.org/docs/current/catalog-pg-opclass.html Name of the operator class for each column. (PostgreSQL specific). |
 | opclass_defaults | [bool](#bool) | repeated | True if the operator class is the default. (PostgreSQL specific). |
-
-
-
-
-
-
-<a name="metaxisdata-store-InstanceRoleMetadata"></a>
-
-### InstanceRoleMetadata
-InstanceRoleMetadata is the message for instance role.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | The role name. It&#39;s unique within the instance. |
-| grant | [string](#string) |  | The grant display string on the instance. It&#39;s generated by database engine. |
-
-
-
-
-
-
-<a name="metaxisdata-store-LinkedDatabaseMetadata"></a>
-
-### LinkedDatabaseMetadata
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  |  |
-| username | [string](#string) |  |  |
-| host | [string](#string) |  |  |
 
 
 
@@ -993,22 +889,6 @@ MaterializedViewMetadata is the metadata for materialized views.
 
 
 
-<a name="metaxisdata-store-PackageMetadata"></a>
-
-### PackageMetadata
-PackageMetadata is the metadata for packages.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | The name of the package. |
-| definition | [string](#string) |  | The definition is the definition of a package. |
-
-
-
-
-
-
 <a name="metaxisdata-store-ProcedureMetadata"></a>
 
 ### ProcedureMetadata
@@ -1068,11 +948,8 @@ This is the concept of schema in Postgres, but it&#39;s a no-op for MySQL.
 | views | [ViewMetadata](#metaxisdata-store-ViewMetadata) | repeated | The list of views in a schema. |
 | functions | [FunctionMetadata](#metaxisdata-store-FunctionMetadata) | repeated | The list of functions in a schema. |
 | procedures | [ProcedureMetadata](#metaxisdata-store-ProcedureMetadata) | repeated | The list of procedures in a schema. |
-| streams | [StreamMetadata](#metaxisdata-store-StreamMetadata) | repeated | The list of streams in a schema, currently only used for Snowflake. |
-| tasks | [TaskMetadata](#metaxisdata-store-TaskMetadata) | repeated | The list of tasks in a schema, currently only used for Snowflake. |
 | materialized_views | [MaterializedViewMetadata](#metaxisdata-store-MaterializedViewMetadata) | repeated | The list of materialized views in a schema. |
 | sequences | [SequenceMetadata](#metaxisdata-store-SequenceMetadata) | repeated | The list of sequences in a schema. |
-| packages | [PackageMetadata](#metaxisdata-store-PackageMetadata) | repeated | The list of packages in a schema. |
 | owner | [string](#string) |  |  |
 | comment | [string](#string) |  |  |
 | events | [EventMetadata](#metaxisdata-store-EventMetadata) | repeated |  |
@@ -1111,71 +988,6 @@ This is the concept of schema in Postgres, but it&#39;s a no-op for MySQL.
 
 
 
-<a name="metaxisdata-store-SpatialIndexConfig"></a>
-
-### SpatialIndexConfig
-SpatialIndexConfig is the configuration for spatial indexes across different database engines.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| method | [string](#string) |  | Index method/type (database-specific) Examples: &#34;SPATIAL&#34; (MySQL/SQL Server), &#34;GIST&#34;/&#34;SPGIST&#34; (PostgreSQL), &#34;MDSYS.SPATIAL_INDEX_V2&#34; (Oracle) |
-| tessellation | [TessellationConfig](#metaxisdata-store-TessellationConfig) |  | Tessellation configuration (primarily SQL Server) |
-| storage | [StorageConfig](#metaxisdata-store-StorageConfig) |  | Storage and performance parameters |
-| dimensional | [DimensionalConfig](#metaxisdata-store-DimensionalConfig) |  | Dimensional and constraint parameters |
-| engine_specific | [SpatialIndexConfig.EngineSpecificEntry](#metaxisdata-store-SpatialIndexConfig-EngineSpecificEntry) | repeated | Database-specific parameters (stored as key-value pairs for extensibility) |
-
-
-
-
-
-
-<a name="metaxisdata-store-SpatialIndexConfig-EngineSpecificEntry"></a>
-
-### SpatialIndexConfig.EngineSpecificEntry
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| key | [string](#string) |  |  |
-| value | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-StorageConfig"></a>
-
-### StorageConfig
-StorageConfig defines storage and performance parameters for spatial indexes.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| fillfactor | [int32](#int32) |  | PostgreSQL parameters
-
-10-100 |
-| buffering | [string](#string) |  | auto, on, off |
-| tablespace | [string](#string) |  | Oracle parameters |
-| work_tablespace | [string](#string) |  |  |
-| sdo_level | [int32](#int32) |  |  |
-| commit_interval | [int32](#int32) |  |  |
-| pad_index | [bool](#bool) |  | SQL Server parameters |
-| sort_in_tempdb | [string](#string) |  | ON, OFF |
-| drop_existing | [bool](#bool) |  |  |
-| online | [bool](#bool) |  |  |
-| allow_row_locks | [bool](#bool) |  |  |
-| allow_page_locks | [bool](#bool) |  |  |
-| maxdop | [int32](#int32) |  |  |
-| data_compression | [string](#string) |  | NONE, ROW, PAGE |
-
-
-
-
-
-
 <a name="metaxisdata-store-StoredMetadata"></a>
 
 ### StoredMetadata
@@ -1192,36 +1004,11 @@ StorageConfig defines storage and performance parameters for spatial indexes.
 | materialized_view_metadata | [MaterializedViewMetadata](#metaxisdata-store-MaterializedViewMetadata) |  |  |
 | function_metadata | [FunctionMetadata](#metaxisdata-store-FunctionMetadata) |  |  |
 | procedure_metadata | [ProcedureMetadata](#metaxisdata-store-ProcedureMetadata) |  |  |
-| package_metadata | [PackageMetadata](#metaxisdata-store-PackageMetadata) |  |  |
 | sequence_metadata | [SequenceMetadata](#metaxisdata-store-SequenceMetadata) |  |  |
-| stream_metadata | [StreamMetadata](#metaxisdata-store-StreamMetadata) |  |  |
-| task_metadata | [TaskMetadata](#metaxisdata-store-TaskMetadata) |  |  |
 | openlineage_run_summary | [OpenLineageRunSummary](#metaxisdata-store-OpenLineageRunSummary) |  |  |
 | openlineage_task_summary | [OpenLineageTaskSummary](#metaxisdata-store-OpenLineageTaskSummary) |  |  |
 | manual_sql_metadata | [ManualSQLMetadata](#metaxisdata-store-ManualSQLMetadata) |  |  |
 | column_metadata | [ColumnMetadata](#metaxisdata-store-ColumnMetadata) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-StreamMetadata"></a>
-
-### StreamMetadata
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | The name of the stream. |
-| table_name | [string](#string) |  | The table_name is the name of the table/view that the stream is created on. |
-| owner | [string](#string) |  | The owner of the stream. |
-| comment | [string](#string) |  | The comment of the stream. |
-| type | [StreamMetadata.Type](#metaxisdata-store-StreamMetadata-Type) |  | The type of the stream. |
-| stale | [bool](#bool) |  | Indicates whether the stream was last read before the `stale_after` time. |
-| mode | [StreamMetadata.Mode](#metaxisdata-store-StreamMetadata-Mode) |  | The mode of the stream. |
-| definition | [string](#string) |  | The definition of the stream. |
 
 
 
@@ -1283,48 +1070,6 @@ TablePartitionMetadata is the metadata for table partitions.
 | indexes | [IndexMetadata](#metaxisdata-store-IndexMetadata) | repeated |  |
 | check_constraints | [CheckConstraintMetadata](#metaxisdata-store-CheckConstraintMetadata) | repeated |  |
 | exclude_constraints | [ExcludeConstraintMetadata](#metaxisdata-store-ExcludeConstraintMetadata) | repeated |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-TaskMetadata"></a>
-
-### TaskMetadata
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | The name of the task. |
-| id | [string](#string) |  | The Snowflake-generated ID of the task. Example: 01ad32a0-1bb6-5e93-0000-000000000001. |
-| owner | [string](#string) |  | The owner of the task. |
-| comment | [string](#string) |  | The comment of the task. |
-| warehouse | [string](#string) |  | The warehouse of the task. |
-| schedule | [string](#string) |  | The schedule interval of the task. |
-| predecessors | [string](#string) | repeated | The predecessor tasks of the task. |
-| state | [TaskMetadata.State](#metaxisdata-store-TaskMetadata-State) |  | The state of the task. |
-| condition | [string](#string) |  | The condition of the task. |
-| definition | [string](#string) |  | The definition of the task. |
-
-
-
-
-
-
-<a name="metaxisdata-store-TessellationConfig"></a>
-
-### TessellationConfig
-TessellationConfig defines tessellation parameters for spatial indexes.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| scheme | [string](#string) |  | Tessellation scheme Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID |
-| bounding_box | [BoundingBox](#metaxisdata-store-BoundingBox) |  | Bounding box for GEOMETRY indexes (SQL Server) |
-| grid_levels | [GridLevel](#metaxisdata-store-GridLevel) | repeated | Grid level configuration (SQL Server) |
-| cells_per_object | [int32](#int32) |  | Cells per object (SQL Server) |
 
 
 
@@ -1404,32 +1149,6 @@ ViewMetadata is the metadata for views.
 
 
 
-<a name="metaxisdata-store-StreamMetadata-Mode"></a>
-
-### StreamMetadata.Mode
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| MODE_UNSPECIFIED | 0 |  |
-| MODE_DEFAULT | 1 |  |
-| MODE_APPEND_ONLY | 2 |  |
-| MODE_INSERT_ONLY | 3 |  |
-
-
-
-<a name="metaxisdata-store-StreamMetadata-Type"></a>
-
-### StreamMetadata.Type
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| TYPE_UNSPECIFIED | 0 |  |
-| TYPE_DELTA | 1 |  |
-
-
-
 <a name="metaxisdata-store-TablePartitionMetadata-Type"></a>
 
 ### TablePartitionMetadata.Type
@@ -1452,19 +1171,6 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | LINEAR_HASH | 6 |  |
 | KEY | 7 |  |
 | LINEAR_KEY | 8 |  |
-
-
-
-<a name="metaxisdata-store-TaskMetadata-State"></a>
-
-### TaskMetadata.State
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| STATE_UNSPECIFIED | 0 |  |
-| STATE_STARTED | 1 |  |
-| STATE_SUSPENDED | 2 |  |
 
 
  
@@ -1866,9 +1572,6 @@ Instance is the proto for instances.
 | PROCEDURE | 10 |  |
 | FUNCTION | 11 |  |
 | SEQUENCE | 12 |  |
-| PACKAGE | 13 |  |
-| STREAM | 14 |  |
-| TASK | 15 |  |
 | OPENLINEAGE | 100 | for Non-database internal structure |
 
 

@@ -40,9 +40,6 @@ const (
 	MetaType_PROCEDURE         MetaType = 10
 	MetaType_FUNCTION          MetaType = 11
 	MetaType_SEQUENCE          MetaType = 12
-	MetaType_PACKAGE           MetaType = 13
-	MetaType_STREAM            MetaType = 14
-	MetaType_TASK              MetaType = 15
 	// for Non-database internal structure
 	MetaType_OPENLINEAGE MetaType = 100
 )
@@ -66,9 +63,6 @@ var (
 		10:  "PROCEDURE",
 		11:  "FUNCTION",
 		12:  "SEQUENCE",
-		13:  "PACKAGE",
-		14:  "STREAM",
-		15:  "TASK",
 		100: "OPENLINEAGE",
 	}
 	MetaType_value = map[string]int32{
@@ -88,9 +82,6 @@ var (
 		"PROCEDURE":         10,
 		"FUNCTION":          11,
 		"SEQUENCE":          12,
-		"PACKAGE":           13,
-		"STREAM":            14,
-		"TASK":              15,
 		"OPENLINEAGE":       100,
 	}
 )
@@ -126,7 +117,7 @@ var File_store_meta_proto protoreflect.FileDescriptor
 
 const file_store_meta_proto_rawDesc = "" +
 	"\n" +
-	"\x10store/meta.proto\x12\x11metaxisdata.store*\xb0\x02\n" +
+	"\x10store/meta.proto\x12\x11metaxisdata.store*\xb6\x02\n" +
 	"\bMetaType\x12\x0f\n" +
 	"\vUNSPECIFIED\x10\x00\x12\f\n" +
 	"\bINSTANCE\x10\x01\x12\f\n" +
@@ -147,12 +138,8 @@ const file_store_meta_proto_rawDesc = "" +
 	"\tPROCEDURE\x10\n" +
 	"\x12\f\n" +
 	"\bFUNCTION\x10\v\x12\f\n" +
-	"\bSEQUENCE\x10\f\x12\v\n" +
-	"\aPACKAGE\x10\r\x12\n" +
-	"\n" +
-	"\x06STREAM\x10\x0e\x12\b\n" +
-	"\x04TASK\x10\x0f\x12\x0f\n" +
-	"\vOPENLINEAGE\x10dB\x14Z\x12generated-go/storeb\x06proto3"
+	"\bSEQUENCE\x10\f\x12\x0f\n" +
+	"\vOPENLINEAGE\x10d\"\x04\b\r\x10\r\"\x04\b\x0e\x10\x0e\"\x04\b\x0f\x10\x0f*\aPACKAGE*\x06STREAM*\x04TASKB\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
 	file_store_meta_proto_rawDescOnce sync.Once
