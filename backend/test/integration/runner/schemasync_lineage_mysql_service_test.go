@@ -270,12 +270,3 @@ func hasAPILineageEdge(relations []*v1pb.LineageRelation, sourceGUID, sourceColu
 	}
 	return false
 }
-
-func hasDetailedEdge(lineages []*store.ColumnLineage, sourceGUID, sourceColumn, targetGUID, targetColumn string) bool {
-	for _, item := range lineages {
-		if item.SourceGUID == sourceGUID && item.SourceColumn == sourceColumn && item.TargetGUID == targetGUID && item.TargetColumn == targetColumn {
-			return true
-		}
-	}
-	return false
-}

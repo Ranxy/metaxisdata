@@ -157,42 +157,8 @@ func CleanupIntegrationServerBinaryCache() {
 }
 
 // SetupMySQLServiceEnv starts metadata PostgreSQL, source MySQL, the real server process, and API clients.
-func SetupMySQLServiceEnv(t *testing.T) *ServiceEnv {
-	t.Helper()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	t.Cleanup(cancel)
-
-	env, cleanup, err := StartMySQLServiceEnv(ctx)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		cleanup()
-		if t.Failed() {
-			t.Logf("integration server logs:\n%s", env.ServerLogs())
-		}
-	})
-	return env
-}
-
 // SetupPostgresServiceEnv starts metadata PostgreSQL, seeds a PostgreSQL source database on the same server,
 // then starts the real server process and API clients.
-func SetupPostgresServiceEnv(t *testing.T) *ServiceEnv {
-	t.Helper()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	t.Cleanup(cancel)
-
-	env, cleanup, err := StartPostgresServiceEnv(ctx)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		cleanup()
-		if t.Failed() {
-			t.Logf("integration server logs:\n%s", env.ServerLogs())
-		}
-	})
-	return env
-}
-
 // StartMySQLServiceEnv starts metadata PostgreSQL, source MySQL, and the real server process.
 // The returned cleanup function is idempotent and should be called once the shared environment is no longer needed.
 func StartMySQLServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {

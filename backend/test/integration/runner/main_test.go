@@ -33,14 +33,11 @@ type sharedEnvStartResult struct {
 func TestMain(m *testing.M) {
 	start := time.Now()
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	results := make(chan sharedEnvStartResult, 2)
 	var wg sync.WaitGroup
 	startEnv := func(name string, fn func(context.Context) (*integrationenv.ServiceEnv, func(), error)) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			envStart := time.Now()
 			env, cleanup, err := fn(ctx)
 			results <- sharedEnvStartResult{
@@ -50,7 +47,7 @@ func TestMain(m *testing.M) {
 				err:      err,
 				duration: time.Since(envStart),
 			}
-		}()
+		})
 	}
 
 	startEnv("MySQL", integrationenv.StartMySQLServiceEnv)
@@ -65,6 +62,8 @@ func TestMain(m *testing.M) {
 			mysqlResult = result
 		case "PostgreSQL":
 			postgresResult = result
+		default:
+			_, _ = fmt.Fprintf(os.Stderr, "unknown integration environment %q\n", result.name)
 		}
 	}
 	wg.Wait()
@@ -79,11 +78,13 @@ func TestMain(m *testing.M) {
 		}
 		integrationenv.CleanupIntegrationServerBinaryCache()
 		if mysqlResult.err != nil {
-			fmt.Fprintf(os.Stderr, "failed to start shared MySQL integration env: %v\n", mysqlResult.err)
+			_, _ = fmt.Fprintf(os.Stderr, "failed to start shared MySQL integration env: %v\n", mysqlResult.err)
 		}
 		if postgresResult.err != nil {
-			fmt.Fprintf(os.Stderr, "failed to start shared PostgreSQL integration env: %v\n", postgresResult.err)
+			_, _ = fmt.Fprintf(os.Stderr, "failed to start shared PostgreSQL integration env: %v\n", postgresResult.err)
 		}
+		cancel()
+		//nolint:revive // A setup failure must fail the binary; returning here would report success.
 		os.Exit(1)
 	}
 
@@ -96,28 +97,13 @@ func TestMain(m *testing.M) {
 	fmt.Printf("PostgreSQL integration environment setup took %v\n", postgresResult.duration)
 	fmt.Printf("combined integration environment setup took %v\n", time.Since(start))
 
-	code := m.Run()
+	m.Run()
 
 	fmt.Printf("total integration test time: %v\n", time.Since(start))
 	sharedPostgresClean()
 	sharedMySQLCleanup()
 	integrationenv.CleanupIntegrationServerBinaryCache()
-	os.Exit(code)
-}
-
-func sharedMySQLServiceEnv(t *testing.T) *integrationenv.ServiceEnv {
-	t.Helper()
-	require.NotNil(t, sharedMySQLEnv)
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	t.Cleanup(cancel)
-	require.NoError(t, sharedMySQLEnv.ResetMySQLSource(ctx))
-	t.Cleanup(func() {
-		if t.Failed() {
-			t.Logf("shared MySQL integration server logs:\n%s", sharedMySQLEnv.ServerLogs())
-		}
-	})
-	return sharedMySQLEnv
+	cancel()
 }
 
 func sharedMySQLServiceEnvNoReset(t *testing.T) *integrationenv.ServiceEnv {
@@ -129,21 +115,6 @@ func sharedMySQLServiceEnvNoReset(t *testing.T) *integrationenv.ServiceEnv {
 		}
 	})
 	return sharedMySQLEnv
-}
-
-func sharedPostgresServiceEnv(t *testing.T) *integrationenv.ServiceEnv {
-	t.Helper()
-	require.NotNil(t, sharedPostgresEnv)
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	t.Cleanup(cancel)
-	require.NoError(t, sharedPostgresEnv.ResetPostgresSource(ctx))
-	t.Cleanup(func() {
-		if t.Failed() {
-			t.Logf("shared PostgreSQL integration server logs:\n%s", sharedPostgresEnv.ServerLogs())
-		}
-	})
-	return sharedPostgresEnv
 }
 
 func sharedPostgresServiceEnvNoReset(t *testing.T) *integrationenv.ServiceEnv {

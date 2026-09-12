@@ -1,4 +1,11 @@
 version: "2"
+
+# Analyze the integration-tagged harness and tests too; without the tag they are
+# never compiled, so dead code and lint issues there stayed invisible.
+run:
+  build-tags:
+    - integration
+
 linters:
   enable:
     - bodyclose
