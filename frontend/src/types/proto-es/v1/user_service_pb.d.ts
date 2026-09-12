@@ -303,13 +303,6 @@ export declare type User = Message<"metaxisdata.v1.User"> & {
   serviceKey: string;
 
   /**
-   * The recovery_codes is the temporary recovery codes using in two phase verification.
-   *
-   * @generated from field: repeated string recovery_codes = 11;
-   */
-  recoveryCodes: string[];
-
-  /**
    * Should be a valid E.164 compliant phone number.
    * Could be empty.
    *
@@ -350,13 +343,6 @@ export declare type UserProfile = Message<"metaxisdata.v1.UserProfile"> & {
    * @generated from field: google.protobuf.Timestamp last_change_password_time = 2;
    */
   lastChangePasswordTime?: Timestamp;
-
-  /**
-   * source means where the user comes from. For now we support Entra ID SCIM sync, so the source could be Entra ID.
-   *
-   * @generated from field: string source = 3;
-   */
-  source: string;
 };
 
 /**

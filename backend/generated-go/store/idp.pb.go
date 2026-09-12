@@ -21,13 +21,14 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// IdentityProviderType is the type of a configured identity provider. Only
+// OAuth2 is implemented: the login path rejects anything else, and there is no
+// admin API that could create an OIDC/LDAP row.
 type IdentityProviderType int32
 
 const (
 	IdentityProviderType_IDENTITY_PROVIDER_TYPE_UNSPECIFIED IdentityProviderType = 0
 	IdentityProviderType_OAUTH2                             IdentityProviderType = 1
-	IdentityProviderType_OIDC                               IdentityProviderType = 2
-	IdentityProviderType_LDAP                               IdentityProviderType = 3
 )
 
 // Enum value maps for IdentityProviderType.
@@ -35,14 +36,10 @@ var (
 	IdentityProviderType_name = map[int32]string{
 		0: "IDENTITY_PROVIDER_TYPE_UNSPECIFIED",
 		1: "OAUTH2",
-		2: "OIDC",
-		3: "LDAP",
 	}
 	IdentityProviderType_value = map[string]int32{
 		"IDENTITY_PROVIDER_TYPE_UNSPECIFIED": 0,
 		"OAUTH2":                             1,
-		"OIDC":                               2,
-		"LDAP":                               3,
 	}
 )
 
@@ -126,62 +123,11 @@ func (OAuth2AuthStyle) EnumDescriptor() ([]byte, []int) {
 	return file_store_idp_proto_rawDescGZIP(), []int{1}
 }
 
-type LDAPIdentityProviderConfig_SecurityProtocol int32
-
-const (
-	LDAPIdentityProviderConfig_SECURITY_PROTOCOL_UNSPECIFIED LDAPIdentityProviderConfig_SecurityProtocol = 0
-	LDAPIdentityProviderConfig_START_TLS                     LDAPIdentityProviderConfig_SecurityProtocol = 1 // StartTLS is the security protocol that starts with an unencrypted connection and then upgrades to TLS.
-	LDAPIdentityProviderConfig_LDAPS                         LDAPIdentityProviderConfig_SecurityProtocol = 2 // LDAPS is the security protocol that uses TLS from the beginning.
-)
-
-// Enum value maps for LDAPIdentityProviderConfig_SecurityProtocol.
-var (
-	LDAPIdentityProviderConfig_SecurityProtocol_name = map[int32]string{
-		0: "SECURITY_PROTOCOL_UNSPECIFIED",
-		1: "START_TLS",
-		2: "LDAPS",
-	}
-	LDAPIdentityProviderConfig_SecurityProtocol_value = map[string]int32{
-		"SECURITY_PROTOCOL_UNSPECIFIED": 0,
-		"START_TLS":                     1,
-		"LDAPS":                         2,
-	}
-)
-
-func (x LDAPIdentityProviderConfig_SecurityProtocol) Enum() *LDAPIdentityProviderConfig_SecurityProtocol {
-	p := new(LDAPIdentityProviderConfig_SecurityProtocol)
-	*p = x
-	return p
-}
-
-func (x LDAPIdentityProviderConfig_SecurityProtocol) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (LDAPIdentityProviderConfig_SecurityProtocol) Descriptor() protoreflect.EnumDescriptor {
-	return file_store_idp_proto_enumTypes[2].Descriptor()
-}
-
-func (LDAPIdentityProviderConfig_SecurityProtocol) Type() protoreflect.EnumType {
-	return &file_store_idp_proto_enumTypes[2]
-}
-
-func (x LDAPIdentityProviderConfig_SecurityProtocol) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use LDAPIdentityProviderConfig_SecurityProtocol.Descriptor instead.
-func (LDAPIdentityProviderConfig_SecurityProtocol) EnumDescriptor() ([]byte, []int) {
-	return file_store_idp_proto_rawDescGZIP(), []int{3, 0}
-}
-
 type IdentityProviderConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Config:
 	//
 	//	*IdentityProviderConfig_Oauth2Config
-	//	*IdentityProviderConfig_OidcConfig
-	//	*IdentityProviderConfig_LdapConfig
 	Config        isIdentityProviderConfig_Config `protobuf_oneof:"config"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -233,24 +179,6 @@ func (x *IdentityProviderConfig) GetOauth2Config() *OAuth2IdentityProviderConfig
 	return nil
 }
 
-func (x *IdentityProviderConfig) GetOidcConfig() *OIDCIdentityProviderConfig {
-	if x != nil {
-		if x, ok := x.Config.(*IdentityProviderConfig_OidcConfig); ok {
-			return x.OidcConfig
-		}
-	}
-	return nil
-}
-
-func (x *IdentityProviderConfig) GetLdapConfig() *LDAPIdentityProviderConfig {
-	if x != nil {
-		if x, ok := x.Config.(*IdentityProviderConfig_LdapConfig); ok {
-			return x.LdapConfig
-		}
-	}
-	return nil
-}
-
 type isIdentityProviderConfig_Config interface {
 	isIdentityProviderConfig_Config()
 }
@@ -259,19 +187,7 @@ type IdentityProviderConfig_Oauth2Config struct {
 	Oauth2Config *OAuth2IdentityProviderConfig `protobuf:"bytes,1,opt,name=oauth2_config,json=oauth2Config,proto3,oneof"`
 }
 
-type IdentityProviderConfig_OidcConfig struct {
-	OidcConfig *OIDCIdentityProviderConfig `protobuf:"bytes,2,opt,name=oidc_config,json=oidcConfig,proto3,oneof"`
-}
-
-type IdentityProviderConfig_LdapConfig struct {
-	LdapConfig *LDAPIdentityProviderConfig `protobuf:"bytes,3,opt,name=ldap_config,json=ldapConfig,proto3,oneof"`
-}
-
 func (*IdentityProviderConfig_Oauth2Config) isIdentityProviderConfig_Config() {}
-
-func (*IdentityProviderConfig_OidcConfig) isIdentityProviderConfig_Config() {}
-
-func (*IdentityProviderConfig_LdapConfig) isIdentityProviderConfig_Config() {}
 
 // OAuth2IdentityProviderConfig is the structure for OAuth2 identity provider config.
 type OAuth2IdentityProviderConfig struct {
@@ -382,226 +298,9 @@ func (x *OAuth2IdentityProviderConfig) GetAuthStyle() OAuth2AuthStyle {
 	return OAuth2AuthStyle_OAUTH2_AUTH_STYLE_UNSPECIFIED
 }
 
-// OIDCIdentityProviderConfig is the structure for OIDC identity provider config.
-type OIDCIdentityProviderConfig struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Issuer        string                 `protobuf:"bytes,1,opt,name=issuer,proto3" json:"issuer,omitempty"`
-	ClientId      string                 `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
-	ClientSecret  string                 `protobuf:"bytes,3,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"`
-	FieldMapping  *FieldMapping          `protobuf:"bytes,4,opt,name=field_mapping,json=fieldMapping,proto3" json:"field_mapping,omitempty"`
-	SkipTlsVerify bool                   `protobuf:"varint,5,opt,name=skip_tls_verify,json=skipTlsVerify,proto3" json:"skip_tls_verify,omitempty"`
-	AuthStyle     OAuth2AuthStyle        `protobuf:"varint,6,opt,name=auth_style,json=authStyle,proto3,enum=metaxisdata.store.OAuth2AuthStyle" json:"auth_style,omitempty"`
-	Scopes        []string               `protobuf:"bytes,7,rep,name=scopes,proto3" json:"scopes,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *OIDCIdentityProviderConfig) Reset() {
-	*x = OIDCIdentityProviderConfig{}
-	mi := &file_store_idp_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *OIDCIdentityProviderConfig) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*OIDCIdentityProviderConfig) ProtoMessage() {}
-
-func (x *OIDCIdentityProviderConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_idp_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use OIDCIdentityProviderConfig.ProtoReflect.Descriptor instead.
-func (*OIDCIdentityProviderConfig) Descriptor() ([]byte, []int) {
-	return file_store_idp_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *OIDCIdentityProviderConfig) GetIssuer() string {
-	if x != nil {
-		return x.Issuer
-	}
-	return ""
-}
-
-func (x *OIDCIdentityProviderConfig) GetClientId() string {
-	if x != nil {
-		return x.ClientId
-	}
-	return ""
-}
-
-func (x *OIDCIdentityProviderConfig) GetClientSecret() string {
-	if x != nil {
-		return x.ClientSecret
-	}
-	return ""
-}
-
-func (x *OIDCIdentityProviderConfig) GetFieldMapping() *FieldMapping {
-	if x != nil {
-		return x.FieldMapping
-	}
-	return nil
-}
-
-func (x *OIDCIdentityProviderConfig) GetSkipTlsVerify() bool {
-	if x != nil {
-		return x.SkipTlsVerify
-	}
-	return false
-}
-
-func (x *OIDCIdentityProviderConfig) GetAuthStyle() OAuth2AuthStyle {
-	if x != nil {
-		return x.AuthStyle
-	}
-	return OAuth2AuthStyle_OAUTH2_AUTH_STYLE_UNSPECIFIED
-}
-
-func (x *OIDCIdentityProviderConfig) GetScopes() []string {
-	if x != nil {
-		return x.Scopes
-	}
-	return nil
-}
-
-// LDAPIdentityProviderConfig is the structure for LDAP identity provider config.
-type LDAPIdentityProviderConfig struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Host is the hostname or IP address of the LDAP server, e.g.
-	// "ldap.example.com".
-	Host string `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
-	// Port is the port number of the LDAP server, e.g. 389. When not set, the
-	// default port of the corresponding security protocol will be used, i.e. 389
-	// for StartTLS and 636 for LDAPS.
-	Port int32 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
-	// SkipTLSVerify controls whether to skip TLS certificate verification.
-	SkipTlsVerify bool `protobuf:"varint,3,opt,name=skip_tls_verify,json=skipTlsVerify,proto3" json:"skip_tls_verify,omitempty"`
-	// BindDN is the DN of the user to bind as a service account to perform
-	// search requests.
-	BindDn string `protobuf:"bytes,4,opt,name=bind_dn,json=bindDn,proto3" json:"bind_dn,omitempty"`
-	// BindPassword is the password of the user to bind as a service account.
-	BindPassword string `protobuf:"bytes,5,opt,name=bind_password,json=bindPassword,proto3" json:"bind_password,omitempty"`
-	// BaseDN is the base DN to search for users, e.g. "ou=users,dc=example,dc=com".
-	BaseDn string `protobuf:"bytes,6,opt,name=base_dn,json=baseDn,proto3" json:"base_dn,omitempty"`
-	// UserFilter is the filter to search for users, e.g. "(uid=%s)".
-	UserFilter string `protobuf:"bytes,7,opt,name=user_filter,json=userFilter,proto3" json:"user_filter,omitempty"`
-	// SecurityProtocol is the security protocol to be used for establishing
-	// connections with the LDAP server.
-	SecurityProtocol LDAPIdentityProviderConfig_SecurityProtocol `protobuf:"varint,8,opt,name=security_protocol,json=securityProtocol,proto3,enum=metaxisdata.store.LDAPIdentityProviderConfig_SecurityProtocol" json:"security_protocol,omitempty"`
-	// FieldMapping is the mapping of the user attributes returned by the LDAP
-	// server.
-	FieldMapping  *FieldMapping `protobuf:"bytes,9,opt,name=field_mapping,json=fieldMapping,proto3" json:"field_mapping,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *LDAPIdentityProviderConfig) Reset() {
-	*x = LDAPIdentityProviderConfig{}
-	mi := &file_store_idp_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *LDAPIdentityProviderConfig) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*LDAPIdentityProviderConfig) ProtoMessage() {}
-
-func (x *LDAPIdentityProviderConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_idp_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use LDAPIdentityProviderConfig.ProtoReflect.Descriptor instead.
-func (*LDAPIdentityProviderConfig) Descriptor() ([]byte, []int) {
-	return file_store_idp_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *LDAPIdentityProviderConfig) GetHost() string {
-	if x != nil {
-		return x.Host
-	}
-	return ""
-}
-
-func (x *LDAPIdentityProviderConfig) GetPort() int32 {
-	if x != nil {
-		return x.Port
-	}
-	return 0
-}
-
-func (x *LDAPIdentityProviderConfig) GetSkipTlsVerify() bool {
-	if x != nil {
-		return x.SkipTlsVerify
-	}
-	return false
-}
-
-func (x *LDAPIdentityProviderConfig) GetBindDn() string {
-	if x != nil {
-		return x.BindDn
-	}
-	return ""
-}
-
-func (x *LDAPIdentityProviderConfig) GetBindPassword() string {
-	if x != nil {
-		return x.BindPassword
-	}
-	return ""
-}
-
-func (x *LDAPIdentityProviderConfig) GetBaseDn() string {
-	if x != nil {
-		return x.BaseDn
-	}
-	return ""
-}
-
-func (x *LDAPIdentityProviderConfig) GetUserFilter() string {
-	if x != nil {
-		return x.UserFilter
-	}
-	return ""
-}
-
-func (x *LDAPIdentityProviderConfig) GetSecurityProtocol() LDAPIdentityProviderConfig_SecurityProtocol {
-	if x != nil {
-		return x.SecurityProtocol
-	}
-	return LDAPIdentityProviderConfig_SECURITY_PROTOCOL_UNSPECIFIED
-}
-
-func (x *LDAPIdentityProviderConfig) GetFieldMapping() *FieldMapping {
-	if x != nil {
-		return x.FieldMapping
-	}
-	return nil
-}
-
-// FieldMapping saves the field names from user info API of identity provider.
-// As we save all raw json string of user info response data into `principal.idp_user_info`,
-// we can extract the relevant data based with `FieldMapping`.
+// FieldMapping maps the field names of the identity provider user info response
+// onto the user info consumed at login time. Nothing is persisted: the raw
+// response and the mapped values only live for the duration of a login.
 type FieldMapping struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Identifier is the field name of the unique identifier in 3rd-party idp user info. Required.
@@ -619,7 +318,7 @@ type FieldMapping struct {
 
 func (x *FieldMapping) Reset() {
 	*x = FieldMapping{}
-	mi := &file_store_idp_proto_msgTypes[4]
+	mi := &file_store_idp_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -631,7 +330,7 @@ func (x *FieldMapping) String() string {
 func (*FieldMapping) ProtoMessage() {}
 
 func (x *FieldMapping) ProtoReflect() protoreflect.Message {
-	mi := &file_store_idp_proto_msgTypes[4]
+	mi := &file_store_idp_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -644,7 +343,7 @@ func (x *FieldMapping) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FieldMapping.ProtoReflect.Descriptor instead.
 func (*FieldMapping) Descriptor() ([]byte, []int) {
-	return file_store_idp_proto_rawDescGZIP(), []int{4}
+	return file_store_idp_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *FieldMapping) GetIdentifier() string {
@@ -693,7 +392,7 @@ type IdentityProviderUserInfo struct {
 
 func (x *IdentityProviderUserInfo) Reset() {
 	*x = IdentityProviderUserInfo{}
-	mi := &file_store_idp_proto_msgTypes[5]
+	mi := &file_store_idp_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -705,7 +404,7 @@ func (x *IdentityProviderUserInfo) String() string {
 func (*IdentityProviderUserInfo) ProtoMessage() {}
 
 func (x *IdentityProviderUserInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_store_idp_proto_msgTypes[5]
+	mi := &file_store_idp_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -718,7 +417,7 @@ func (x *IdentityProviderUserInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdentityProviderUserInfo.ProtoReflect.Descriptor instead.
 func (*IdentityProviderUserInfo) Descriptor() ([]byte, []int) {
-	return file_store_idp_proto_rawDescGZIP(), []int{5}
+	return file_store_idp_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *IdentityProviderUserInfo) GetIdentifier() string {
@@ -760,14 +459,10 @@ var File_store_idp_proto protoreflect.FileDescriptor
 
 const file_store_idp_proto_rawDesc = "" +
 	"\n" +
-	"\x0fstore/idp.proto\x12\x11metaxisdata.store\"\x9e\x02\n" +
+	"\x0fstore/idp.proto\x12\x11metaxisdata.store\"\xa0\x01\n" +
 	"\x16IdentityProviderConfig\x12V\n" +
-	"\roauth2_config\x18\x01 \x01(\v2/.metaxisdata.store.OAuth2IdentityProviderConfigH\x00R\foauth2Config\x12P\n" +
-	"\voidc_config\x18\x02 \x01(\v2-.metaxisdata.store.OIDCIdentityProviderConfigH\x00R\n" +
-	"oidcConfig\x12P\n" +
-	"\vldap_config\x18\x03 \x01(\v2-.metaxisdata.store.LDAPIdentityProviderConfigH\x00R\n" +
-	"ldapConfigB\b\n" +
-	"\x06config\"\x85\x03\n" +
+	"\roauth2_config\x18\x01 \x01(\v2/.metaxisdata.store.OAuth2IdentityProviderConfigH\x00R\foauth2ConfigB\b\n" +
+	"\x06configJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\voidc_configR\vldap_config\"\x85\x03\n" +
 	"\x1cOAuth2IdentityProviderConfig\x12\x19\n" +
 	"\bauth_url\x18\x01 \x01(\tR\aauthUrl\x12\x1b\n" +
 	"\ttoken_url\x18\x02 \x01(\tR\btokenUrl\x12\"\n" +
@@ -778,31 +473,7 @@ const file_store_idp_proto_rawDesc = "" +
 	"\rfield_mapping\x18\a \x01(\v2\x1f.metaxisdata.store.FieldMappingR\ffieldMapping\x12&\n" +
 	"\x0fskip_tls_verify\x18\b \x01(\bR\rskipTlsVerify\x12A\n" +
 	"\n" +
-	"auth_style\x18\t \x01(\x0e2\".metaxisdata.store.OAuth2AuthStyleR\tauthStyle\"\xbf\x02\n" +
-	"\x1aOIDCIdentityProviderConfig\x12\x16\n" +
-	"\x06issuer\x18\x01 \x01(\tR\x06issuer\x12\x1b\n" +
-	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12#\n" +
-	"\rclient_secret\x18\x03 \x01(\tR\fclientSecret\x12D\n" +
-	"\rfield_mapping\x18\x04 \x01(\v2\x1f.metaxisdata.store.FieldMappingR\ffieldMapping\x12&\n" +
-	"\x0fskip_tls_verify\x18\x05 \x01(\bR\rskipTlsVerify\x12A\n" +
-	"\n" +
-	"auth_style\x18\x06 \x01(\x0e2\".metaxisdata.store.OAuth2AuthStyleR\tauthStyle\x12\x16\n" +
-	"\x06scopes\x18\a \x03(\tR\x06scopes\"\xe8\x03\n" +
-	"\x1aLDAPIdentityProviderConfig\x12\x12\n" +
-	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
-	"\x04port\x18\x02 \x01(\x05R\x04port\x12&\n" +
-	"\x0fskip_tls_verify\x18\x03 \x01(\bR\rskipTlsVerify\x12\x17\n" +
-	"\abind_dn\x18\x04 \x01(\tR\x06bindDn\x12#\n" +
-	"\rbind_password\x18\x05 \x01(\tR\fbindPassword\x12\x17\n" +
-	"\abase_dn\x18\x06 \x01(\tR\x06baseDn\x12\x1f\n" +
-	"\vuser_filter\x18\a \x01(\tR\n" +
-	"userFilter\x12k\n" +
-	"\x11security_protocol\x18\b \x01(\x0e2>.metaxisdata.store.LDAPIdentityProviderConfig.SecurityProtocolR\x10securityProtocol\x12D\n" +
-	"\rfield_mapping\x18\t \x01(\v2\x1f.metaxisdata.store.FieldMappingR\ffieldMapping\"O\n" +
-	"\x10SecurityProtocol\x12!\n" +
-	"\x1dSECURITY_PROTOCOL_UNSPECIFIED\x10\x00\x12\r\n" +
-	"\tSTART_TLS\x10\x01\x12\t\n" +
-	"\x05LDAPS\x10\x02\"\x85\x01\n" +
+	"auth_style\x18\t \x01(\x0e2\".metaxisdata.store.OAuth2AuthStyleR\tauthStyle\"\x85\x01\n" +
 	"\fFieldMapping\x12\x1e\n" +
 	"\n" +
 	"identifier\x18\x01 \x01(\tR\n" +
@@ -818,13 +489,11 @@ const file_store_idp_proto_rawDesc = "" +
 	"\x05phone\x18\x04 \x01(\tR\x05phone\x12\x16\n" +
 	"\x06groups\x18\x05 \x03(\tR\x06groups\x12\x1d\n" +
 	"\n" +
-	"has_groups\x18\x06 \x01(\bR\thasGroupsJ\x04\b\x03\x10\x04*^\n" +
+	"has_groups\x18\x06 \x01(\bR\thasGroupsJ\x04\b\x03\x10\x04*b\n" +
 	"\x14IdentityProviderType\x12&\n" +
 	"\"IDENTITY_PROVIDER_TYPE_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +
-	"\x06OAUTH2\x10\x01\x12\b\n" +
-	"\x04OIDC\x10\x02\x12\b\n" +
-	"\x04LDAP\x10\x03*R\n" +
+	"\x06OAUTH2\x10\x01\"\x04\b\x02\x10\x02\"\x04\b\x03\x10\x03*\x04OIDC*\x04LDAP*R\n" +
 	"\x0fOAuth2AuthStyle\x12!\n" +
 	"\x1dOAUTH2_AUTH_STYLE_UNSPECIFIED\x10\x00\x12\r\n" +
 	"\tIN_PARAMS\x10\x01\x12\r\n" +
@@ -842,34 +511,25 @@ func file_store_idp_proto_rawDescGZIP() []byte {
 	return file_store_idp_proto_rawDescData
 }
 
-var file_store_idp_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_store_idp_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_store_idp_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_store_idp_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_store_idp_proto_goTypes = []any{
-	(IdentityProviderType)(0),                        // 0: metaxisdata.store.IdentityProviderType
-	(OAuth2AuthStyle)(0),                             // 1: metaxisdata.store.OAuth2AuthStyle
-	(LDAPIdentityProviderConfig_SecurityProtocol)(0), // 2: metaxisdata.store.LDAPIdentityProviderConfig.SecurityProtocol
-	(*IdentityProviderConfig)(nil),                   // 3: metaxisdata.store.IdentityProviderConfig
-	(*OAuth2IdentityProviderConfig)(nil),             // 4: metaxisdata.store.OAuth2IdentityProviderConfig
-	(*OIDCIdentityProviderConfig)(nil),               // 5: metaxisdata.store.OIDCIdentityProviderConfig
-	(*LDAPIdentityProviderConfig)(nil),               // 6: metaxisdata.store.LDAPIdentityProviderConfig
-	(*FieldMapping)(nil),                             // 7: metaxisdata.store.FieldMapping
-	(*IdentityProviderUserInfo)(nil),                 // 8: metaxisdata.store.IdentityProviderUserInfo
+	(IdentityProviderType)(0),            // 0: metaxisdata.store.IdentityProviderType
+	(OAuth2AuthStyle)(0),                 // 1: metaxisdata.store.OAuth2AuthStyle
+	(*IdentityProviderConfig)(nil),       // 2: metaxisdata.store.IdentityProviderConfig
+	(*OAuth2IdentityProviderConfig)(nil), // 3: metaxisdata.store.OAuth2IdentityProviderConfig
+	(*FieldMapping)(nil),                 // 4: metaxisdata.store.FieldMapping
+	(*IdentityProviderUserInfo)(nil),     // 5: metaxisdata.store.IdentityProviderUserInfo
 }
 var file_store_idp_proto_depIdxs = []int32{
-	4, // 0: metaxisdata.store.IdentityProviderConfig.oauth2_config:type_name -> metaxisdata.store.OAuth2IdentityProviderConfig
-	5, // 1: metaxisdata.store.IdentityProviderConfig.oidc_config:type_name -> metaxisdata.store.OIDCIdentityProviderConfig
-	6, // 2: metaxisdata.store.IdentityProviderConfig.ldap_config:type_name -> metaxisdata.store.LDAPIdentityProviderConfig
-	7, // 3: metaxisdata.store.OAuth2IdentityProviderConfig.field_mapping:type_name -> metaxisdata.store.FieldMapping
-	1, // 4: metaxisdata.store.OAuth2IdentityProviderConfig.auth_style:type_name -> metaxisdata.store.OAuth2AuthStyle
-	7, // 5: metaxisdata.store.OIDCIdentityProviderConfig.field_mapping:type_name -> metaxisdata.store.FieldMapping
-	1, // 6: metaxisdata.store.OIDCIdentityProviderConfig.auth_style:type_name -> metaxisdata.store.OAuth2AuthStyle
-	2, // 7: metaxisdata.store.LDAPIdentityProviderConfig.security_protocol:type_name -> metaxisdata.store.LDAPIdentityProviderConfig.SecurityProtocol
-	7, // 8: metaxisdata.store.LDAPIdentityProviderConfig.field_mapping:type_name -> metaxisdata.store.FieldMapping
-	9, // [9:9] is the sub-list for method output_type
-	9, // [9:9] is the sub-list for method input_type
-	9, // [9:9] is the sub-list for extension type_name
-	9, // [9:9] is the sub-list for extension extendee
-	0, // [0:9] is the sub-list for field type_name
+	3, // 0: metaxisdata.store.IdentityProviderConfig.oauth2_config:type_name -> metaxisdata.store.OAuth2IdentityProviderConfig
+	4, // 1: metaxisdata.store.OAuth2IdentityProviderConfig.field_mapping:type_name -> metaxisdata.store.FieldMapping
+	1, // 2: metaxisdata.store.OAuth2IdentityProviderConfig.auth_style:type_name -> metaxisdata.store.OAuth2AuthStyle
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_store_idp_proto_init() }
@@ -879,16 +539,14 @@ func file_store_idp_proto_init() {
 	}
 	file_store_idp_proto_msgTypes[0].OneofWrappers = []any{
 		(*IdentityProviderConfig_Oauth2Config)(nil),
-		(*IdentityProviderConfig_OidcConfig)(nil),
-		(*IdentityProviderConfig_LdapConfig)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_idp_proto_rawDesc), len(file_store_idp_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   6,
+			NumEnums:      2,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

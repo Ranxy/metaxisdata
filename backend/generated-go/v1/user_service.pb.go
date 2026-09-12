@@ -593,8 +593,6 @@ type User struct {
 	UserType   UserType `protobuf:"varint,5,opt,name=user_type,json=userType,proto3,enum=metaxisdata.v1.UserType" json:"user_type,omitempty"`
 	Password   string   `protobuf:"bytes,7,opt,name=password,proto3" json:"password,omitempty"`
 	ServiceKey string   `protobuf:"bytes,8,opt,name=service_key,json=serviceKey,proto3" json:"service_key,omitempty"`
-	// The recovery_codes is the temporary recovery codes using in two phase verification.
-	RecoveryCodes []string `protobuf:"bytes,11,rep,name=recovery_codes,json=recoveryCodes,proto3" json:"recovery_codes,omitempty"`
 	// Should be a valid E.164 compliant phone number.
 	// Could be empty.
 	Phone   string       `protobuf:"bytes,12,opt,name=phone,proto3" json:"phone,omitempty"`
@@ -685,13 +683,6 @@ func (x *User) GetServiceKey() string {
 	return ""
 }
 
-func (x *User) GetRecoveryCodes() []string {
-	if x != nil {
-		return x.RecoveryCodes
-	}
-	return nil
-}
-
 func (x *User) GetPhone() string {
 	if x != nil {
 		return x.Phone
@@ -717,10 +708,8 @@ type UserProfile struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
 	LastLoginTime          *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=last_login_time,json=lastLoginTime,proto3" json:"last_login_time,omitempty"`
 	LastChangePasswordTime *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=last_change_password_time,json=lastChangePasswordTime,proto3" json:"last_change_password_time,omitempty"`
-	// source means where the user comes from. For now we support Entra ID SCIM sync, so the source could be Entra ID.
-	Source        string `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *UserProfile) Reset() {
@@ -767,13 +756,6 @@ func (x *UserProfile) GetLastChangePasswordTime() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *UserProfile) GetSource() string {
-	if x != nil {
-		return x.Source
-	}
-	return ""
-}
-
 var File_v1_user_service_proto protoreflect.FileDescriptor
 
 const file_v1_user_service_proto_rawDesc = "" +
@@ -809,7 +791,7 @@ const file_v1_user_service_proto_rawDesc = "" +
 	"\x10metaxisdata/UserR\x04name\"C\n" +
 	"\x13UndeleteUserRequest\x12,\n" +
 	"\x04name\x18\x01 \x01(\tB\x18\xe0A\x02\xfaA\x12\n" +
-	"\x10metaxisdata/UserR\x04name\"\xac\x03\n" +
+	"\x10metaxisdata/UserR\x04name\"\x9b\x03\n" +
 	"\x04User\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x03R\x04name\x12+\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x15.metaxisdata.v1.StateR\x05state\x12\x14\n" +
@@ -818,16 +800,14 @@ const file_v1_user_service_proto_rawDesc = "" +
 	"\tuser_type\x18\x05 \x01(\x0e2\x18.metaxisdata.v1.UserTypeR\buserType\x12\x1f\n" +
 	"\bpassword\x18\a \x01(\tB\x03\xe0A\x04R\bpassword\x12$\n" +
 	"\vservice_key\x18\b \x01(\tB\x03\xe0A\x04R\n" +
-	"serviceKey\x12%\n" +
-	"\x0erecovery_codes\x18\v \x03(\tR\rrecoveryCodes\x12\x14\n" +
+	"serviceKey\x12\x14\n" +
 	"\x05phone\x18\f \x01(\tR\x05phone\x125\n" +
 	"\aprofile\x18\r \x01(\v2\x1b.metaxisdata.v1.UserProfileR\aprofile\x12\x1b\n" +
 	"\x06groups\x18\x0e \x03(\tB\x03\xe0A\x03R\x06groups:#\xeaA \n" +
-	"\x10metaxisdata/User\x12\fusers/{user}\"\xc0\x01\n" +
+	"\x10metaxisdata/User\x12\fusers/{user}J\x04\b\v\x10\fR\x0erecovery_codes\"\xb6\x01\n" +
 	"\vUserProfile\x12B\n" +
 	"\x0flast_login_time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\rlastLoginTime\x12U\n" +
-	"\x19last_change_password_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x16lastChangePasswordTime\x12\x16\n" +
-	"\x06source\x18\x03 \x01(\tR\x06source*T\n" +
+	"\x19last_change_password_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x16lastChangePasswordTimeJ\x04\b\x03\x10\x04R\x06source*T\n" +
 	"\bUserType\x12\x19\n" +
 	"\x15USER_TYPE_UNSPECIFIED\x10\x00\x12\b\n" +
 	"\x04USER\x10\x01\x12\x13\n" +

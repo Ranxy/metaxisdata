@@ -218,9 +218,6 @@ message User {
 
   string service_key = 8 [(google.api.field_behavior) = INPUT_ONLY];
 
-  // The recovery_codes is the temporary recovery codes using in two phase verification.
-  repeated string recovery_codes = 11;
-
   // Should be a valid E.164 compliant phone number.
   // Could be empty.
   string phone = 12;
@@ -230,6 +227,9 @@ message User {
   // The groups for the user.
   // Format: groups/{email}
   repeated string groups = 14 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  reserved 11;
+  reserved "recovery_codes";
 }
 
 enum UserType {
@@ -242,6 +242,7 @@ enum UserType {
 message UserProfile {
   google.protobuf.Timestamp last_login_time = 1;
   google.protobuf.Timestamp last_change_password_time = 2;
-  // source means where the user comes from. For now we support Entra ID SCIM sync, so the source could be Entra ID.
-  string source = 3;
+
+  reserved 3;
+  reserved "source";
 }

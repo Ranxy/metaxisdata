@@ -570,7 +570,6 @@ func convertToUser(user *store.UserMessage) *v1pb.User {
 		Profile: &v1pb.UserProfile{
 			LastLoginTime:          user.Profile.LastLoginTime,
 			LastChangePasswordTime: user.Profile.LastChangePasswordTime,
-			Source:                 user.Profile.Source,
 		},
 	}
 

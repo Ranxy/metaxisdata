@@ -517,24 +517,12 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.store.LDAPIdentityProviderConfig"><span class="badge">M</span>LDAPIdentityProviderConfig</a>
-                </li>
-              
-                <li>
                   <a href="#metaxisdata.store.OAuth2IdentityProviderConfig"><span class="badge">M</span>OAuth2IdentityProviderConfig</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.store.OIDCIdentityProviderConfig"><span class="badge">M</span>OIDCIdentityProviderConfig</a>
                 </li>
               
               
                 <li>
                   <a href="#metaxisdata.store.IdentityProviderType"><span class="badge">E</span>IdentityProviderType</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.store.LDAPIdentityProviderConfig.SecurityProtocol"><span class="badge">E</span>LDAPIdentityProviderConfig.SecurityProtocol</a>
                 </li>
               
                 <li>
@@ -4870,13 +4858,6 @@ Format: users/{userUID}. </p></td>
                   <td><p> </p></td>
                 </tr>
               
-                <tr>
-                  <td>source</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>source means where the group comes from. For now we support Entra ID SCIM sync, so the source could be Entra ID. </p></td>
-                </tr>
-              
             </tbody>
           </table>
 
@@ -4928,7 +4909,7 @@ Format: users/{userUID}. </p></td>
 
       
         <h3 id="metaxisdata.store.FieldMapping">FieldMapping</h3>
-        <p>FieldMapping saves the field names from user info API of identity provider.</p><p>As we save all raw json string of user info response data into `principal.idp_user_info`,</p><p>we can extract the relevant data based with `FieldMapping`.</p>
+        <p>FieldMapping maps the field names of the identity provider user info response</p><p>onto the user info consumed at login time. Nothing is persisted: the raw</p><p>response and the mapped values only live for the duration of a login.</p>
 
         
           <table class="field-table">
@@ -4990,20 +4971,6 @@ Mainly used for OIDC: https://developer.okta.com/docs/guides/customize-tokens-gr
                   <td><p> </p></td>
                 </tr>
               
-                <tr>
-                  <td>oidc_config</td>
-                  <td><a href="#metaxisdata.store.OIDCIdentityProviderConfig">OIDCIdentityProviderConfig</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>ldap_config</td>
-                  <td><a href="#metaxisdata.store.LDAPIdentityProviderConfig">LDAPIdentityProviderConfig</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
             </tbody>
           </table>
 
@@ -5055,92 +5022,6 @@ Mainly used for OIDC: https://developer.okta.com/docs/guides/customize-tokens-gr
                   <td><a href="#bool">bool</a></td>
                   <td></td>
                   <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.store.LDAPIdentityProviderConfig">LDAPIdentityProviderConfig</h3>
-        <p>LDAPIdentityProviderConfig is the structure for LDAP identity provider config.</p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>host</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>Host is the hostname or IP address of the LDAP server, e.g.
-&#34;ldap.example.com&#34;. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>port</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p>Port is the port number of the LDAP server, e.g. 389. When not set, the
-default port of the corresponding security protocol will be used, i.e. 389
-for StartTLS and 636 for LDAPS. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>skip_tls_verify</td>
-                  <td><a href="#bool">bool</a></td>
-                  <td></td>
-                  <td><p>SkipTLSVerify controls whether to skip TLS certificate verification. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>bind_dn</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>BindDN is the DN of the user to bind as a service account to perform
-search requests. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>bind_password</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>BindPassword is the password of the user to bind as a service account. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>base_dn</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>BaseDN is the base DN to search for users, e.g. &#34;ou=users,dc=example,dc=com&#34;. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>user_filter</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>UserFilter is the filter to search for users, e.g. &#34;(uid=%s)&#34;. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>security_protocol</td>
-                  <td><a href="#metaxisdata.store.LDAPIdentityProviderConfig.SecurityProtocol">LDAPIdentityProviderConfig.SecurityProtocol</a></td>
-                  <td></td>
-                  <td><p>SecurityProtocol is the security protocol to be used for establishing
-connections with the LDAP server. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>field_mapping</td>
-                  <td><a href="#metaxisdata.store.FieldMapping">FieldMapping</a></td>
-                  <td></td>
-                  <td><p>FieldMapping is the mapping of the user attributes returned by the LDAP
-server. </p></td>
                 </tr>
               
             </tbody>
@@ -5230,76 +5111,10 @@ server. </p></td>
 
         
       
-        <h3 id="metaxisdata.store.OIDCIdentityProviderConfig">OIDCIdentityProviderConfig</h3>
-        <p>OIDCIdentityProviderConfig is the structure for OIDC identity provider config.</p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>issuer</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>client_id</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>client_secret</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>field_mapping</td>
-                  <td><a href="#metaxisdata.store.FieldMapping">FieldMapping</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>skip_tls_verify</td>
-                  <td><a href="#bool">bool</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>auth_style</td>
-                  <td><a href="#metaxisdata.store.OAuth2AuthStyle">OAuth2AuthStyle</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>scopes</td>
-                  <td><a href="#string">string</a></td>
-                  <td>repeated</td>
-                  <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
 
       
         <h3 id="metaxisdata.store.IdentityProviderType">IdentityProviderType</h3>
-        <p></p>
+        <p>IdentityProviderType is the type of a configured identity provider. Only</p><p>OAuth2 is implemented: the login path rejects anything else, and there is no</p><p>admin API that could create an OIDC/LDAP row.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Name</td><td>Number</td><td>Description</td></tr>
@@ -5316,47 +5131,6 @@ server. </p></td>
                 <td>OAUTH2</td>
                 <td>1</td>
                 <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>OIDC</td>
-                <td>2</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>LDAP</td>
-                <td>3</td>
-                <td><p></p></td>
-              </tr>
-            
-          </tbody>
-        </table>
-      
-        <h3 id="metaxisdata.store.LDAPIdentityProviderConfig.SecurityProtocol">LDAPIdentityProviderConfig.SecurityProtocol</h3>
-        <p></p>
-        <table class="enum-table">
-          <thead>
-            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
-          </thead>
-          <tbody>
-            
-              <tr>
-                <td>SECURITY_PROTOCOL_UNSPECIFIED</td>
-                <td>0</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>START_TLS</td>
-                <td>1</td>
-                <td><p>StartTLS is the security protocol that starts with an unencrypted connection and then upgrades to TLS.</p></td>
-              </tr>
-            
-              <tr>
-                <td>LDAPS</td>
-                <td>2</td>
-                <td><p>LDAPS is the security protocol that uses TLS from the beginning.</p></td>
               </tr>
             
           </tbody>
@@ -6694,27 +6468,6 @@ are /[a-z0-9-]/. </p></td>
                 </tr>
               
                 <tr>
-                  <td>require_2fa</td>
-                  <td><a href="#bool">bool</a></td>
-                  <td></td>
-                  <td><p>Require 2FA for all users. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>token_duration</td>
-                  <td><a href="#google.protobuf.Duration">google.protobuf.Duration</a></td>
-                  <td></td>
-                  <td><p>The duration for token. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>maximum_role_expiration</td>
-                  <td><a href="#google.protobuf.Duration">google.protobuf.Duration</a></td>
-                  <td></td>
-                  <td><p>The max duration for role expired. </p></td>
-                </tr>
-              
-                <tr>
                   <td>domains</td>
                   <td><a href="#string">string</a></td>
                   <td>repeated</td>
@@ -6735,13 +6488,6 @@ are /[a-z0-9-]/. </p></td>
                   <td><p>Whether to disallow password signin. (Except workspace admins) </p></td>
                 </tr>
               
-                <tr>
-                  <td>enable_metric_collection</td>
-                  <td><a href="#bool">bool</a></td>
-                  <td></td>
-                  <td><p>Whether to enable metric collection for the workspace. </p></td>
-                </tr>
-              
             </tbody>
           </table>
 
@@ -6752,7 +6498,7 @@ are /[a-z0-9-]/. </p></td>
 
       
         <h3 id="metaxisdata.store.SettingName">SettingName</h3>
-        <p></p>
+        <p>SettingName is the name of a workspace setting. Only the settings the server</p><p>actually reads or writes are kept; the approval/IM/watermark/AI/CEL/SCIM</p><p>leftovers keep their numbers reserved.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Name</td><td>Number</td><td>Description</td></tr>
@@ -6786,60 +6532,6 @@ are /[a-z0-9-]/. </p></td>
               <tr>
                 <td>WORKSPACE_PROFILE</td>
                 <td>4</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>WORKSPACE_APPROVAL</td>
-                <td>5</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>WORKSPACE_EXTERNAL_APPROVAL</td>
-                <td>6</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>APP_IM</td>
-                <td>7</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>WATERMARK</td>
-                <td>8</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>AI</td>
-                <td>9</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>SCHEMA_TEMPLATE</td>
-                <td>10</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>DATA_CLASSIFICATION</td>
-                <td>11</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>SEMANTIC_TYPES</td>
-                <td>12</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>SCIM</td>
-                <td>13</td>
                 <td><p></p></td>
               </tr>
             
@@ -6892,13 +6584,6 @@ are /[a-z0-9-]/. </p></td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
                   <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>source</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>source means where the user comes from. For now we support Entra ID SCIM sync, so the source could be Entra ID. </p></td>
                 </tr>
               
             </tbody>

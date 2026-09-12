@@ -5049,11 +5049,6 @@ components:
                 serviceKey:
                     writeOnly: true
                     type: string
-                recoveryCodes:
-                    type: array
-                    items:
-                        type: string
-                    description: The recovery_codes is the temporary recovery codes using in two phase verification.
                 phone:
                     type: string
                     description: |-
@@ -5078,9 +5073,6 @@ components:
                 lastChangePasswordTime:
                     type: string
                     format: date-time
-                source:
-                    type: string
-                    description: source means where the user comes from. For now we support Entra ID SCIM sync, so the source could be Entra ID.
         ViewMetadata:
             type: object
             properties:
@@ -5125,17 +5117,6 @@ components:
                 disallowSignup:
                     type: boolean
                     description: Disallow self-service signup, users can only be invited by the owner.
-                require2fa:
-                    type: boolean
-                    description: Require 2FA for all users.
-                tokenDuration:
-                    pattern: ^-?(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,9})?s$
-                    type: string
-                    description: The duration for token.
-                maximumRoleExpiration:
-                    pattern: ^-?(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,9})?s$
-                    type: string
-                    description: The max duration for role expired.
                 domains:
                     type: array
                     items:
@@ -5147,9 +5128,6 @@ components:
                 disallowPasswordSignin:
                     type: boolean
                     description: Whether to disallow password signin. (Except workspace admins)
-                enableMetricCollection:
-                    type: boolean
-                    description: Whether to enable metric collection for the workspace.
 tags:
     - name: AuditLogService
     - name: AuthService

@@ -4,6 +4,8 @@ CREATE TABLE idp (
   resource_id text NOT NULL,
   name text NOT NULL,
   domain text NOT NULL,
+  -- Only 'OAUTH2' is implemented. The check keeps the OIDC/LDAP leftovers so an
+  -- existing row does not start failing writes; the server rejects them at login.
   type text NOT NULL CONSTRAINT idp_type_check CHECK (type IN ('OAUTH2', 'OIDC', 'LDAP')),
   -- config stores the corresponding configuration of the IdP, which may vary depending on the type of the IdP.
   -- Stored as IdentityProviderConfig (proto/store/store/idp.proto)
@@ -24,7 +26,8 @@ CREATE TABLE principal (
     email text NOT NULL,
     password_hash text NOT NULL,
     phone text NOT NULL DEFAULT '',
-    -- Stored as MFAConfig (proto/store/store/user.proto)
+    -- mfa_config is a leftover of the removed two-factor authentication
+    -- feature: no code reads or writes it and no proto message describes it.
     mfa_config jsonb NOT NULL DEFAULT '{}',
     -- Stored as UserProfile (proto/store/store/user.proto)
     profile jsonb NOT NULL DEFAULT '{}'
@@ -38,9 +41,8 @@ CREATE UNIQUE INDEX idx_principal_unique_email ON principal (LOWER(email)) WHERE
 -- Setting
 CREATE TABLE setting (
     id serial PRIMARY KEY,
-    -- name: AUTH_SECRET, BRANDING_LOGO, WORKSPACE_ID, WORKSPACE_PROFILE, WORKSPACE_APPROVAL,
-    -- WORKSPACE_EXTERNAL_APPROVAL, APP_IM, WATERMARK, AI,
-    -- DATA_CLASSIFICATION, SEMANTIC_TYPES, SCIM, PASSWORD_RESTRICTION, ENVIRONMENT
+    -- name: AUTH_SECRET, BRANDING_LOGO, WORKSPACE_ID, WORKSPACE_PROFILE,
+    -- PASSWORD_RESTRICTION, ENVIRONMENT
     -- Enum: SettingName (proto/store/store/setting.proto)
     name text NOT NULL,
     value text NOT NULL

@@ -87,12 +87,9 @@
     - [FieldMapping](#metaxisdata-store-FieldMapping)
     - [IdentityProviderConfig](#metaxisdata-store-IdentityProviderConfig)
     - [IdentityProviderUserInfo](#metaxisdata-store-IdentityProviderUserInfo)
-    - [LDAPIdentityProviderConfig](#metaxisdata-store-LDAPIdentityProviderConfig)
     - [OAuth2IdentityProviderConfig](#metaxisdata-store-OAuth2IdentityProviderConfig)
-    - [OIDCIdentityProviderConfig](#metaxisdata-store-OIDCIdentityProviderConfig)
   
     - [IdentityProviderType](#metaxisdata-store-IdentityProviderType)
-    - [LDAPIdentityProviderConfig.SecurityProtocol](#metaxisdata-store-LDAPIdentityProviderConfig-SecurityProtocol)
     - [OAuth2AuthStyle](#metaxisdata-store-OAuth2AuthStyle)
   
 - [store/instance.proto](#store_instance-proto)
@@ -1541,7 +1538,6 @@ Format: users/{userUID}. |
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | members | [GroupMember](#metaxisdata-store-GroupMember) | repeated |  |
-| source | [string](#string) |  | source means where the group comes from. For now we support Entra ID SCIM sync, so the source could be Entra ID. |
 
 
 
@@ -1580,9 +1576,9 @@ Format: users/{userUID}. |
 <a name="metaxisdata-store-FieldMapping"></a>
 
 ### FieldMapping
-FieldMapping saves the field names from user info API of identity provider.
-As we save all raw json string of user info response data into `principal.idp_user_info`,
-we can extract the relevant data based with `FieldMapping`.
+FieldMapping maps the field names of the identity provider user info response
+onto the user info consumed at login time. Nothing is persisted: the raw
+response and the mapped values only live for the duration of a login.
 
 
 | Field | Type | Label | Description |
@@ -1606,8 +1602,6 @@ we can extract the relevant data based with `FieldMapping`.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | oauth2_config | [OAuth2IdentityProviderConfig](#metaxisdata-store-OAuth2IdentityProviderConfig) |  |  |
-| oidc_config | [OIDCIdentityProviderConfig](#metaxisdata-store-OIDCIdentityProviderConfig) |  |  |
-| ldap_config | [LDAPIdentityProviderConfig](#metaxisdata-store-LDAPIdentityProviderConfig) |  |  |
 
 
 
@@ -1627,29 +1621,6 @@ we can extract the relevant data based with `FieldMapping`.
 | phone | [string](#string) |  | Phone is the value of primary phone in 3rd-party idp user info. |
 | groups | [string](#string) | repeated | Groups is the value of groups in 3rd-party idp user info. Mainly used for OIDC: https://developer.okta.com/docs/guides/customize-tokens-groups-claim/main/ |
 | has_groups | [bool](#bool) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-LDAPIdentityProviderConfig"></a>
-
-### LDAPIdentityProviderConfig
-LDAPIdentityProviderConfig is the structure for LDAP identity provider config.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| host | [string](#string) |  | Host is the hostname or IP address of the LDAP server, e.g. &#34;ldap.example.com&#34;. |
-| port | [int32](#int32) |  | Port is the port number of the LDAP server, e.g. 389. When not set, the default port of the corresponding security protocol will be used, i.e. 389 for StartTLS and 636 for LDAPS. |
-| skip_tls_verify | [bool](#bool) |  | SkipTLSVerify controls whether to skip TLS certificate verification. |
-| bind_dn | [string](#string) |  | BindDN is the DN of the user to bind as a service account to perform search requests. |
-| bind_password | [string](#string) |  | BindPassword is the password of the user to bind as a service account. |
-| base_dn | [string](#string) |  | BaseDN is the base DN to search for users, e.g. &#34;ou=users,dc=example,dc=com&#34;. |
-| user_filter | [string](#string) |  | UserFilter is the filter to search for users, e.g. &#34;(uid=%s)&#34;. |
-| security_protocol | [LDAPIdentityProviderConfig.SecurityProtocol](#metaxisdata-store-LDAPIdentityProviderConfig-SecurityProtocol) |  | SecurityProtocol is the security protocol to be used for establishing connections with the LDAP server. |
-| field_mapping | [FieldMapping](#metaxisdata-store-FieldMapping) |  | FieldMapping is the mapping of the user attributes returned by the LDAP server. |
 
 
 
@@ -1678,54 +1649,20 @@ OAuth2IdentityProviderConfig is the structure for OAuth2 identity provider confi
 
 
 
-
-<a name="metaxisdata-store-OIDCIdentityProviderConfig"></a>
-
-### OIDCIdentityProviderConfig
-OIDCIdentityProviderConfig is the structure for OIDC identity provider config.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| issuer | [string](#string) |  |  |
-| client_id | [string](#string) |  |  |
-| client_secret | [string](#string) |  |  |
-| field_mapping | [FieldMapping](#metaxisdata-store-FieldMapping) |  |  |
-| skip_tls_verify | [bool](#bool) |  |  |
-| auth_style | [OAuth2AuthStyle](#metaxisdata-store-OAuth2AuthStyle) |  |  |
-| scopes | [string](#string) | repeated |  |
-
-
-
-
-
  
 
 
 <a name="metaxisdata-store-IdentityProviderType"></a>
 
 ### IdentityProviderType
-
+IdentityProviderType is the type of a configured identity provider. Only
+OAuth2 is implemented: the login path rejects anything else, and there is no
+admin API that could create an OIDC/LDAP row.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | IDENTITY_PROVIDER_TYPE_UNSPECIFIED | 0 |  |
 | OAUTH2 | 1 |  |
-| OIDC | 2 |  |
-| LDAP | 3 |  |
-
-
-
-<a name="metaxisdata-store-LDAPIdentityProviderConfig-SecurityProtocol"></a>
-
-### LDAPIdentityProviderConfig.SecurityProtocol
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| SECURITY_PROTOCOL_UNSPECIFIED | 0 |  |
-| START_TLS | 1 | StartTLS is the security protocol that starts with an unencrypted connection and then upgrades to TLS. |
-| LDAPS | 2 | LDAPS is the security protocol that uses TLS from the beginning. |
 
 
 
@@ -2301,13 +2238,9 @@ EnvironmentTierPolicy is the tier of an environment.
 | ----- | ---- | ----- | ----------- |
 | external_url | [string](#string) |  | The external URL is used for sso authentication callback. |
 | disallow_signup | [bool](#bool) |  | Disallow self-service signup, users can only be invited by the owner. |
-| require_2fa | [bool](#bool) |  | Require 2FA for all users. |
-| token_duration | [google.protobuf.Duration](#google-protobuf-Duration) |  | The duration for token. |
-| maximum_role_expiration | [google.protobuf.Duration](#google-protobuf-Duration) |  | The max duration for role expired. |
 | domains | [string](#string) | repeated | The workspace domain, e.g. example.com. |
 | enforce_identity_domain | [bool](#bool) |  | Only user and group from the domains can be created and login. |
 | disallow_password_signin | [bool](#bool) |  | Whether to disallow password signin. (Except workspace admins) |
-| enable_metric_collection | [bool](#bool) |  | Whether to enable metric collection for the workspace. |
 
 
 
@@ -2319,7 +2252,9 @@ EnvironmentTierPolicy is the tier of an environment.
 <a name="metaxisdata-store-SettingName"></a>
 
 ### SettingName
-
+SettingName is the name of a workspace setting. Only the settings the server
+actually reads or writes are kept; the approval/IM/watermark/AI/CEL/SCIM
+leftovers keep their numbers reserved.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
@@ -2328,15 +2263,6 @@ EnvironmentTierPolicy is the tier of an environment.
 | BRANDING_LOGO | 2 |  |
 | WORKSPACE_ID | 3 |  |
 | WORKSPACE_PROFILE | 4 |  |
-| WORKSPACE_APPROVAL | 5 |  |
-| WORKSPACE_EXTERNAL_APPROVAL | 6 |  |
-| APP_IM | 7 |  |
-| WATERMARK | 8 |  |
-| AI | 9 |  |
-| SCHEMA_TEMPLATE | 10 |  |
-| DATA_CLASSIFICATION | 11 |  |
-| SEMANTIC_TYPES | 12 |  |
-| SCIM | 13 |  |
 | PASSWORD_RESTRICTION | 14 |  |
 | ENVIRONMENT | 15 |  |
 
@@ -2366,7 +2292,6 @@ EnvironmentTierPolicy is the tier of an environment.
 | ----- | ---- | ----- | ----------- |
 | last_login_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | last_change_password_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| source | [string](#string) |  | source means where the user comes from. For now we support Entra ID SCIM sync, so the source could be Entra ID. |
 
 
 

@@ -22,25 +22,19 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// SettingName is the name of a workspace setting. Only the settings the server
+// actually reads or writes are kept; the approval/IM/watermark/AI/CEL/SCIM
+// leftovers keep their numbers reserved.
 type SettingName int32
 
 const (
-	SettingName_SETTING_NAME_UNSPECIFIED    SettingName = 0
-	SettingName_AUTH_SECRET                 SettingName = 1
-	SettingName_BRANDING_LOGO               SettingName = 2
-	SettingName_WORKSPACE_ID                SettingName = 3
-	SettingName_WORKSPACE_PROFILE           SettingName = 4
-	SettingName_WORKSPACE_APPROVAL          SettingName = 5
-	SettingName_WORKSPACE_EXTERNAL_APPROVAL SettingName = 6
-	SettingName_APP_IM                      SettingName = 7
-	SettingName_WATERMARK                   SettingName = 8
-	SettingName_AI                          SettingName = 9
-	SettingName_SCHEMA_TEMPLATE             SettingName = 10
-	SettingName_DATA_CLASSIFICATION         SettingName = 11
-	SettingName_SEMANTIC_TYPES              SettingName = 12
-	SettingName_SCIM                        SettingName = 13
-	SettingName_PASSWORD_RESTRICTION        SettingName = 14
-	SettingName_ENVIRONMENT                 SettingName = 15
+	SettingName_SETTING_NAME_UNSPECIFIED SettingName = 0
+	SettingName_AUTH_SECRET              SettingName = 1
+	SettingName_BRANDING_LOGO            SettingName = 2
+	SettingName_WORKSPACE_ID             SettingName = 3
+	SettingName_WORKSPACE_PROFILE        SettingName = 4
+	SettingName_PASSWORD_RESTRICTION     SettingName = 14
+	SettingName_ENVIRONMENT              SettingName = 15
 )
 
 // Enum value maps for SettingName.
@@ -51,35 +45,17 @@ var (
 		2:  "BRANDING_LOGO",
 		3:  "WORKSPACE_ID",
 		4:  "WORKSPACE_PROFILE",
-		5:  "WORKSPACE_APPROVAL",
-		6:  "WORKSPACE_EXTERNAL_APPROVAL",
-		7:  "APP_IM",
-		8:  "WATERMARK",
-		9:  "AI",
-		10: "SCHEMA_TEMPLATE",
-		11: "DATA_CLASSIFICATION",
-		12: "SEMANTIC_TYPES",
-		13: "SCIM",
 		14: "PASSWORD_RESTRICTION",
 		15: "ENVIRONMENT",
 	}
 	SettingName_value = map[string]int32{
-		"SETTING_NAME_UNSPECIFIED":    0,
-		"AUTH_SECRET":                 1,
-		"BRANDING_LOGO":               2,
-		"WORKSPACE_ID":                3,
-		"WORKSPACE_PROFILE":           4,
-		"WORKSPACE_APPROVAL":          5,
-		"WORKSPACE_EXTERNAL_APPROVAL": 6,
-		"APP_IM":                      7,
-		"WATERMARK":                   8,
-		"AI":                          9,
-		"SCHEMA_TEMPLATE":             10,
-		"DATA_CLASSIFICATION":         11,
-		"SEMANTIC_TYPES":              12,
-		"SCIM":                        13,
-		"PASSWORD_RESTRICTION":        14,
-		"ENVIRONMENT":                 15,
+		"SETTING_NAME_UNSPECIFIED": 0,
+		"AUTH_SECRET":              1,
+		"BRANDING_LOGO":            2,
+		"WORKSPACE_ID":             3,
+		"WORKSPACE_PROFILE":        4,
+		"PASSWORD_RESTRICTION":     14,
+		"ENVIRONMENT":              15,
 	}
 )
 
@@ -116,20 +92,12 @@ type WorkspaceProfileSetting struct {
 	ExternalUrl string `protobuf:"bytes,1,opt,name=external_url,json=externalUrl,proto3" json:"external_url,omitempty"`
 	// Disallow self-service signup, users can only be invited by the owner.
 	DisallowSignup bool `protobuf:"varint,2,opt,name=disallow_signup,json=disallowSignup,proto3" json:"disallow_signup,omitempty"`
-	// Require 2FA for all users.
-	Require_2Fa bool `protobuf:"varint,3,opt,name=require_2fa,json=require2fa,proto3" json:"require_2fa,omitempty"`
-	// The duration for token.
-	TokenDuration *durationpb.Duration `protobuf:"bytes,6,opt,name=token_duration,json=tokenDuration,proto3" json:"token_duration,omitempty"`
-	// The max duration for role expired.
-	MaximumRoleExpiration *durationpb.Duration `protobuf:"bytes,8,opt,name=maximum_role_expiration,json=maximumRoleExpiration,proto3" json:"maximum_role_expiration,omitempty"`
 	// The workspace domain, e.g. example.com.
 	Domains []string `protobuf:"bytes,9,rep,name=domains,proto3" json:"domains,omitempty"`
 	// Only user and group from the domains can be created and login.
 	EnforceIdentityDomain bool `protobuf:"varint,10,opt,name=enforce_identity_domain,json=enforceIdentityDomain,proto3" json:"enforce_identity_domain,omitempty"`
 	// Whether to disallow password signin. (Except workspace admins)
 	DisallowPasswordSignin bool `protobuf:"varint,12,opt,name=disallow_password_signin,json=disallowPasswordSignin,proto3" json:"disallow_password_signin,omitempty"`
-	// Whether to enable metric collection for the workspace.
-	EnableMetricCollection bool `protobuf:"varint,13,opt,name=enable_metric_collection,json=enableMetricCollection,proto3" json:"enable_metric_collection,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -178,27 +146,6 @@ func (x *WorkspaceProfileSetting) GetDisallowSignup() bool {
 	return false
 }
 
-func (x *WorkspaceProfileSetting) GetRequire_2Fa() bool {
-	if x != nil {
-		return x.Require_2Fa
-	}
-	return false
-}
-
-func (x *WorkspaceProfileSetting) GetTokenDuration() *durationpb.Duration {
-	if x != nil {
-		return x.TokenDuration
-	}
-	return nil
-}
-
-func (x *WorkspaceProfileSetting) GetMaximumRoleExpiration() *durationpb.Duration {
-	if x != nil {
-		return x.MaximumRoleExpiration
-	}
-	return nil
-}
-
 func (x *WorkspaceProfileSetting) GetDomains() []string {
 	if x != nil {
 		return x.Domains
@@ -216,13 +163,6 @@ func (x *WorkspaceProfileSetting) GetEnforceIdentityDomain() bool {
 func (x *WorkspaceProfileSetting) GetDisallowPasswordSignin() bool {
 	if x != nil {
 		return x.DisallowPasswordSignin
-	}
-	return false
-}
-
-func (x *WorkspaceProfileSetting) GetEnableMetricCollection() bool {
-	if x != nil {
-		return x.EnableMetricCollection
 	}
 	return false
 }
@@ -446,19 +386,14 @@ var File_store_setting_proto protoreflect.FileDescriptor
 
 const file_store_setting_proto_rawDesc = "" +
 	"\n" +
-	"\x13store/setting.proto\x12\x11metaxisdata.store\x1a\x1egoogle/protobuf/duration.proto\"\xe1\x03\n" +
+	"\x13store/setting.proto\x12\x11metaxisdata.store\x1a\x1egoogle/protobuf/duration.proto\"\x89\x03\n" +
 	"\x17WorkspaceProfileSetting\x12!\n" +
 	"\fexternal_url\x18\x01 \x01(\tR\vexternalUrl\x12'\n" +
-	"\x0fdisallow_signup\x18\x02 \x01(\bR\x0edisallowSignup\x12\x1f\n" +
-	"\vrequire_2fa\x18\x03 \x01(\bR\n" +
-	"require2fa\x12@\n" +
-	"\x0etoken_duration\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\rtokenDuration\x12Q\n" +
-	"\x17maximum_role_expiration\x18\b \x01(\v2\x19.google.protobuf.DurationR\x15maximumRoleExpiration\x12\x18\n" +
+	"\x0fdisallow_signup\x18\x02 \x01(\bR\x0edisallowSignup\x12\x18\n" +
 	"\adomains\x18\t \x03(\tR\adomains\x126\n" +
 	"\x17enforce_identity_domain\x18\n" +
 	" \x01(\bR\x15enforceIdentityDomain\x128\n" +
-	"\x18disallow_password_signin\x18\f \x01(\bR\x16disallowPasswordSignin\x128\n" +
-	"\x18enable_metric_collection\x18\r \x01(\bR\x16enableMetricCollection\"\x9a\x03\n" +
+	"\x18disallow_password_signin\x18\f \x01(\bR\x16disallowPasswordSigninJ\x04\b\x03\x10\x04J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\v\x10\fJ\x04\b\r\x10\x0eR\vrequire_2faR\x0etoken_durationR\fannouncementR\x17maximum_role_expirationR\x14database_change_modeR\x18enable_metric_collection\"\x9a\x03\n" +
 	"\x1aPasswordRestrictionSetting\x12\x1d\n" +
 	"\n" +
 	"min_length\x18\x01 \x01(\x05R\tminLength\x12%\n" +
@@ -477,26 +412,15 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x05color\x18\x04 \x01(\tR\x05color\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\xcb\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\xad\x02\n" +
 	"\vSettingName\x12\x1c\n" +
 	"\x18SETTING_NAME_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vAUTH_SECRET\x10\x01\x12\x11\n" +
 	"\rBRANDING_LOGO\x10\x02\x12\x10\n" +
 	"\fWORKSPACE_ID\x10\x03\x12\x15\n" +
-	"\x11WORKSPACE_PROFILE\x10\x04\x12\x16\n" +
-	"\x12WORKSPACE_APPROVAL\x10\x05\x12\x1f\n" +
-	"\x1bWORKSPACE_EXTERNAL_APPROVAL\x10\x06\x12\n" +
-	"\n" +
-	"\x06APP_IM\x10\a\x12\r\n" +
-	"\tWATERMARK\x10\b\x12\x06\n" +
-	"\x02AI\x10\t\x12\x13\n" +
-	"\x0fSCHEMA_TEMPLATE\x10\n" +
-	"\x12\x17\n" +
-	"\x13DATA_CLASSIFICATION\x10\v\x12\x12\n" +
-	"\x0eSEMANTIC_TYPES\x10\f\x12\b\n" +
-	"\x04SCIM\x10\r\x12\x18\n" +
+	"\x11WORKSPACE_PROFILE\x10\x04\x12\x18\n" +
 	"\x14PASSWORD_RESTRICTION\x10\x0e\x12\x0f\n" +
-	"\vENVIRONMENT\x10\x0fB\x14Z\x12generated-go/storeb\x06proto3"
+	"\vENVIRONMENT\x10\x0f\"\x04\b\x05\x10\r*\x12WORKSPACE_APPROVAL*\x1bWORKSPACE_EXTERNAL_APPROVAL*\x06APP_IM*\tWATERMARK*\x02AI*\x0fSCHEMA_TEMPLATE*\x13DATA_CLASSIFICATION*\x0eSEMANTIC_TYPES*\x04SCIMB\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
 	file_store_setting_proto_rawDescOnce sync.Once
@@ -522,16 +446,14 @@ var file_store_setting_proto_goTypes = []any{
 	(*durationpb.Duration)(nil),            // 6: google.protobuf.Duration
 }
 var file_store_setting_proto_depIdxs = []int32{
-	6, // 0: metaxisdata.store.WorkspaceProfileSetting.token_duration:type_name -> google.protobuf.Duration
-	6, // 1: metaxisdata.store.WorkspaceProfileSetting.maximum_role_expiration:type_name -> google.protobuf.Duration
-	6, // 2: metaxisdata.store.PasswordRestrictionSetting.password_rotation:type_name -> google.protobuf.Duration
-	4, // 3: metaxisdata.store.EnvironmentSetting.environments:type_name -> metaxisdata.store.EnvironmentSetting.Environment
-	5, // 4: metaxisdata.store.EnvironmentSetting.Environment.tags:type_name -> metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	6, // 0: metaxisdata.store.PasswordRestrictionSetting.password_rotation:type_name -> google.protobuf.Duration
+	4, // 1: metaxisdata.store.EnvironmentSetting.environments:type_name -> metaxisdata.store.EnvironmentSetting.Environment
+	5, // 2: metaxisdata.store.EnvironmentSetting.Environment.tags:type_name -> metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_store_setting_proto_init() }

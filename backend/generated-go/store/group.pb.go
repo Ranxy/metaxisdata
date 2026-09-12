@@ -126,10 +126,8 @@ func (x *GroupMember) GetRole() GroupMember_Role {
 }
 
 type GroupPayload struct {
-	state   protoimpl.MessageState `protogen:"open.v1"`
-	Members []*GroupMember         `protobuf:"bytes,1,rep,name=members,proto3" json:"members,omitempty"`
-	// source means where the group comes from. For now we support Entra ID SCIM sync, so the source could be Entra ID.
-	Source        string `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Members       []*GroupMember         `protobuf:"bytes,1,rep,name=members,proto3" json:"members,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -171,13 +169,6 @@ func (x *GroupPayload) GetMembers() []*GroupMember {
 	return nil
 }
 
-func (x *GroupPayload) GetSource() string {
-	if x != nil {
-		return x.Source
-	}
-	return ""
-}
-
 var File_store_group_proto protoreflect.FileDescriptor
 
 const file_store_group_proto_rawDesc = "" +
@@ -190,10 +181,9 @@ const file_store_group_proto_rawDesc = "" +
 	"\x10ROLE_UNSPECIFIED\x10\x00\x12\t\n" +
 	"\x05OWNER\x10\x01\x12\n" +
 	"\n" +
-	"\x06MEMBER\x10\x02\"`\n" +
+	"\x06MEMBER\x10\x02\"V\n" +
 	"\fGroupPayload\x128\n" +
-	"\amembers\x18\x01 \x03(\v2\x1e.metaxisdata.store.GroupMemberR\amembers\x12\x16\n" +
-	"\x06source\x18\x02 \x01(\tR\x06sourceB\x14Z\x12generated-go/storeb\x06proto3"
+	"\amembers\x18\x01 \x03(\v2\x1e.metaxisdata.store.GroupMemberR\amembersJ\x04\b\x02\x10\x03R\x06sourceB\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
 	file_store_group_proto_rawDescOnce sync.Once
