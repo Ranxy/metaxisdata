@@ -12,7 +12,7 @@ import {
   ListOpenLineageDatasetsRequestSchema,
   ListOpenLineageRunsRequestSchema,
   ListOpenLineageTasksRequestSchema,
-  NamespaceMappingResourceSchema,
+  NamespaceMappingSchema,
   RevokeAPIKeyRequestSchema,
   UpdateNamespaceMappingRequestSchema,
 } from "@/types/proto-es/v1/openlineage_service_pb";
@@ -42,8 +42,11 @@ export async function listOpenLineageTasks(params?: {
   return await openLineageClient.listOpenLineageTasks(request);
 }
 
+/** getOpenLineageTask reads one task by its guid (openlineage/tasks/{guid}). */
 export async function getOpenLineageTask(guid: string) {
-  const request = create(GetOpenLineageTaskRequestSchema, { guid });
+  const request = create(GetOpenLineageTaskRequestSchema, {
+    name: `openlineage/tasks/${guid}`,
+  });
   return await openLineageClient.getOpenLineageTask(request);
 }
 
@@ -98,8 +101,11 @@ export async function listOpenLineageRuns(params?: {
   return await openLineageClient.listOpenLineageRuns(request);
 }
 
+/** getOpenLineageRun reads one run by its guid (openlineage/runs/{guid}). */
 export async function getOpenLineageRun(guid: string) {
-  const request = create(GetOpenLineageRunRequestSchema, { guid });
+  const request = create(GetOpenLineageRunRequestSchema, {
+    name: `openlineage/runs/${guid}`,
+  });
   return await openLineageClient.getOpenLineageRun(request);
 }
 
@@ -109,23 +115,23 @@ export async function createNamespaceMapping(mapping: {
   databaseName?: string;
 }) {
   const request = create(CreateNamespaceMappingRequestSchema, {
-    mapping: create(NamespaceMappingResourceSchema, mapping),
+    mapping: create(NamespaceMappingSchema, mapping),
   });
   return await openLineageClient.createNamespaceMapping(request);
 }
 
 export async function updateNamespaceMapping(
-  id: bigint,
-  mapping: MessageInitShape<typeof NamespaceMappingResourceSchema>
+  name: string,
+  mapping: MessageInitShape<typeof NamespaceMappingSchema>
 ) {
   const request = create(UpdateNamespaceMappingRequestSchema, {
-    mapping: create(NamespaceMappingResourceSchema, { ...mapping, id }),
+    mapping: create(NamespaceMappingSchema, { ...mapping, name }),
   });
   return await openLineageClient.updateNamespaceMapping(request);
 }
 
-export async function deleteNamespaceMapping(id: bigint) {
-  const request = create(DeleteNamespaceMappingRequestSchema, { id });
+export async function deleteNamespaceMapping(name: string) {
+  const request = create(DeleteNamespaceMappingRequestSchema, { name });
   return await openLineageClient.deleteNamespaceMapping(request);
 }
 
@@ -139,7 +145,7 @@ export async function createAPIKey(description: string) {
   return await openLineageClient.createAPIKey(request);
 }
 
-export async function revokeAPIKey(id: bigint) {
-  const request = create(RevokeAPIKeyRequestSchema, { id });
+export async function revokeAPIKey(name: string) {
+  const request = create(RevokeAPIKeyRequestSchema, { name });
   return await openLineageClient.revokeAPIKey(request);
 }

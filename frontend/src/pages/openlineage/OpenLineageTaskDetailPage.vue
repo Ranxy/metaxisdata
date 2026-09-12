@@ -286,8 +286,8 @@ import {
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { aggregateOpenLineageDatasets } from "@/lib/openlineage";
 import type {
-  OpenLineageRunResource,
-  OpenLineageTaskResource,
+  OpenLineageRun,
+  OpenLineageTask,
 } from "@/types/proto-es/v1/openlineage_service_pb";
 
 const route = useRoute();
@@ -297,8 +297,8 @@ const { handleError } = useErrorHandler();
 
 const isLoading = ref(false);
 const isRunsLoading = ref(false);
-const task = ref<OpenLineageTaskResource | null>(null);
-const runs = ref<OpenLineageRunResource[]>([]);
+const task = ref<OpenLineageTask | null>(null);
+const runs = ref<OpenLineageRun[]>([]);
 const lineageOnlyRuns = ref(false);
 
 const currentGuid = computed(() => {

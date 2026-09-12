@@ -80,12 +80,12 @@ type OpenLineageServiceClient interface {
 	ListOpenLineageTasks(context.Context, *connect.Request[v1.ListOpenLineageTasksRequest]) (*connect.Response[v1.ListOpenLineageTasksResponse], error)
 	ListOpenLineageDatasets(context.Context, *connect.Request[v1.ListOpenLineageDatasetsRequest]) (*connect.Response[v1.ListOpenLineageDatasetsResponse], error)
 	GetOpenLineageDataset(context.Context, *connect.Request[v1.GetOpenLineageDatasetRequest]) (*connect.Response[v1.OpenLineageDatasetDetailResource], error)
-	GetOpenLineageTask(context.Context, *connect.Request[v1.GetOpenLineageTaskRequest]) (*connect.Response[v1.OpenLineageTaskResource], error)
+	GetOpenLineageTask(context.Context, *connect.Request[v1.GetOpenLineageTaskRequest]) (*connect.Response[v1.OpenLineageTask], error)
 	ListOpenLineageRuns(context.Context, *connect.Request[v1.ListOpenLineageRunsRequest]) (*connect.Response[v1.ListOpenLineageRunsResponse], error)
-	GetOpenLineageRun(context.Context, *connect.Request[v1.GetOpenLineageRunRequest]) (*connect.Response[v1.OpenLineageRunResource], error)
-	CreateNamespaceMapping(context.Context, *connect.Request[v1.CreateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMappingResource], error)
+	GetOpenLineageRun(context.Context, *connect.Request[v1.GetOpenLineageRunRequest]) (*connect.Response[v1.OpenLineageRun], error)
+	CreateNamespaceMapping(context.Context, *connect.Request[v1.CreateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMapping], error)
 	ListNamespaceMappings(context.Context, *connect.Request[v1.ListNamespaceMappingsRequest]) (*connect.Response[v1.ListNamespaceMappingsResponse], error)
-	UpdateNamespaceMapping(context.Context, *connect.Request[v1.UpdateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMappingResource], error)
+	UpdateNamespaceMapping(context.Context, *connect.Request[v1.UpdateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMapping], error)
 	DeleteNamespaceMapping(context.Context, *connect.Request[v1.DeleteNamespaceMappingRequest]) (*connect.Response[emptypb.Empty], error)
 	CreateAPIKey(context.Context, *connect.Request[v1.CreateAPIKeyRequest]) (*connect.Response[v1.CreateAPIKeyResponse], error)
 	ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error)
@@ -121,7 +121,7 @@ func NewOpenLineageServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(openLineageServiceMethods.ByName("GetOpenLineageDataset")),
 			connect.WithClientOptions(opts...),
 		),
-		getOpenLineageTask: connect.NewClient[v1.GetOpenLineageTaskRequest, v1.OpenLineageTaskResource](
+		getOpenLineageTask: connect.NewClient[v1.GetOpenLineageTaskRequest, v1.OpenLineageTask](
 			httpClient,
 			baseURL+OpenLineageServiceGetOpenLineageTaskProcedure,
 			connect.WithSchema(openLineageServiceMethods.ByName("GetOpenLineageTask")),
@@ -133,13 +133,13 @@ func NewOpenLineageServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(openLineageServiceMethods.ByName("ListOpenLineageRuns")),
 			connect.WithClientOptions(opts...),
 		),
-		getOpenLineageRun: connect.NewClient[v1.GetOpenLineageRunRequest, v1.OpenLineageRunResource](
+		getOpenLineageRun: connect.NewClient[v1.GetOpenLineageRunRequest, v1.OpenLineageRun](
 			httpClient,
 			baseURL+OpenLineageServiceGetOpenLineageRunProcedure,
 			connect.WithSchema(openLineageServiceMethods.ByName("GetOpenLineageRun")),
 			connect.WithClientOptions(opts...),
 		),
-		createNamespaceMapping: connect.NewClient[v1.CreateNamespaceMappingRequest, v1.NamespaceMappingResource](
+		createNamespaceMapping: connect.NewClient[v1.CreateNamespaceMappingRequest, v1.NamespaceMapping](
 			httpClient,
 			baseURL+OpenLineageServiceCreateNamespaceMappingProcedure,
 			connect.WithSchema(openLineageServiceMethods.ByName("CreateNamespaceMapping")),
@@ -151,7 +151,7 @@ func NewOpenLineageServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(openLineageServiceMethods.ByName("ListNamespaceMappings")),
 			connect.WithClientOptions(opts...),
 		),
-		updateNamespaceMapping: connect.NewClient[v1.UpdateNamespaceMappingRequest, v1.NamespaceMappingResource](
+		updateNamespaceMapping: connect.NewClient[v1.UpdateNamespaceMappingRequest, v1.NamespaceMapping](
 			httpClient,
 			baseURL+OpenLineageServiceUpdateNamespaceMappingProcedure,
 			connect.WithSchema(openLineageServiceMethods.ByName("UpdateNamespaceMapping")),
@@ -189,12 +189,12 @@ type openLineageServiceClient struct {
 	listOpenLineageTasks    *connect.Client[v1.ListOpenLineageTasksRequest, v1.ListOpenLineageTasksResponse]
 	listOpenLineageDatasets *connect.Client[v1.ListOpenLineageDatasetsRequest, v1.ListOpenLineageDatasetsResponse]
 	getOpenLineageDataset   *connect.Client[v1.GetOpenLineageDatasetRequest, v1.OpenLineageDatasetDetailResource]
-	getOpenLineageTask      *connect.Client[v1.GetOpenLineageTaskRequest, v1.OpenLineageTaskResource]
+	getOpenLineageTask      *connect.Client[v1.GetOpenLineageTaskRequest, v1.OpenLineageTask]
 	listOpenLineageRuns     *connect.Client[v1.ListOpenLineageRunsRequest, v1.ListOpenLineageRunsResponse]
-	getOpenLineageRun       *connect.Client[v1.GetOpenLineageRunRequest, v1.OpenLineageRunResource]
-	createNamespaceMapping  *connect.Client[v1.CreateNamespaceMappingRequest, v1.NamespaceMappingResource]
+	getOpenLineageRun       *connect.Client[v1.GetOpenLineageRunRequest, v1.OpenLineageRun]
+	createNamespaceMapping  *connect.Client[v1.CreateNamespaceMappingRequest, v1.NamespaceMapping]
 	listNamespaceMappings   *connect.Client[v1.ListNamespaceMappingsRequest, v1.ListNamespaceMappingsResponse]
-	updateNamespaceMapping  *connect.Client[v1.UpdateNamespaceMappingRequest, v1.NamespaceMappingResource]
+	updateNamespaceMapping  *connect.Client[v1.UpdateNamespaceMappingRequest, v1.NamespaceMapping]
 	deleteNamespaceMapping  *connect.Client[v1.DeleteNamespaceMappingRequest, emptypb.Empty]
 	createAPIKey            *connect.Client[v1.CreateAPIKeyRequest, v1.CreateAPIKeyResponse]
 	listAPIKeys             *connect.Client[v1.ListAPIKeysRequest, v1.ListAPIKeysResponse]
@@ -217,7 +217,7 @@ func (c *openLineageServiceClient) GetOpenLineageDataset(ctx context.Context, re
 }
 
 // GetOpenLineageTask calls metaxisdata.v1.OpenLineageService.GetOpenLineageTask.
-func (c *openLineageServiceClient) GetOpenLineageTask(ctx context.Context, req *connect.Request[v1.GetOpenLineageTaskRequest]) (*connect.Response[v1.OpenLineageTaskResource], error) {
+func (c *openLineageServiceClient) GetOpenLineageTask(ctx context.Context, req *connect.Request[v1.GetOpenLineageTaskRequest]) (*connect.Response[v1.OpenLineageTask], error) {
 	return c.getOpenLineageTask.CallUnary(ctx, req)
 }
 
@@ -227,12 +227,12 @@ func (c *openLineageServiceClient) ListOpenLineageRuns(ctx context.Context, req 
 }
 
 // GetOpenLineageRun calls metaxisdata.v1.OpenLineageService.GetOpenLineageRun.
-func (c *openLineageServiceClient) GetOpenLineageRun(ctx context.Context, req *connect.Request[v1.GetOpenLineageRunRequest]) (*connect.Response[v1.OpenLineageRunResource], error) {
+func (c *openLineageServiceClient) GetOpenLineageRun(ctx context.Context, req *connect.Request[v1.GetOpenLineageRunRequest]) (*connect.Response[v1.OpenLineageRun], error) {
 	return c.getOpenLineageRun.CallUnary(ctx, req)
 }
 
 // CreateNamespaceMapping calls metaxisdata.v1.OpenLineageService.CreateNamespaceMapping.
-func (c *openLineageServiceClient) CreateNamespaceMapping(ctx context.Context, req *connect.Request[v1.CreateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMappingResource], error) {
+func (c *openLineageServiceClient) CreateNamespaceMapping(ctx context.Context, req *connect.Request[v1.CreateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMapping], error) {
 	return c.createNamespaceMapping.CallUnary(ctx, req)
 }
 
@@ -242,7 +242,7 @@ func (c *openLineageServiceClient) ListNamespaceMappings(ctx context.Context, re
 }
 
 // UpdateNamespaceMapping calls metaxisdata.v1.OpenLineageService.UpdateNamespaceMapping.
-func (c *openLineageServiceClient) UpdateNamespaceMapping(ctx context.Context, req *connect.Request[v1.UpdateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMappingResource], error) {
+func (c *openLineageServiceClient) UpdateNamespaceMapping(ctx context.Context, req *connect.Request[v1.UpdateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMapping], error) {
 	return c.updateNamespaceMapping.CallUnary(ctx, req)
 }
 
@@ -271,12 +271,12 @@ type OpenLineageServiceHandler interface {
 	ListOpenLineageTasks(context.Context, *connect.Request[v1.ListOpenLineageTasksRequest]) (*connect.Response[v1.ListOpenLineageTasksResponse], error)
 	ListOpenLineageDatasets(context.Context, *connect.Request[v1.ListOpenLineageDatasetsRequest]) (*connect.Response[v1.ListOpenLineageDatasetsResponse], error)
 	GetOpenLineageDataset(context.Context, *connect.Request[v1.GetOpenLineageDatasetRequest]) (*connect.Response[v1.OpenLineageDatasetDetailResource], error)
-	GetOpenLineageTask(context.Context, *connect.Request[v1.GetOpenLineageTaskRequest]) (*connect.Response[v1.OpenLineageTaskResource], error)
+	GetOpenLineageTask(context.Context, *connect.Request[v1.GetOpenLineageTaskRequest]) (*connect.Response[v1.OpenLineageTask], error)
 	ListOpenLineageRuns(context.Context, *connect.Request[v1.ListOpenLineageRunsRequest]) (*connect.Response[v1.ListOpenLineageRunsResponse], error)
-	GetOpenLineageRun(context.Context, *connect.Request[v1.GetOpenLineageRunRequest]) (*connect.Response[v1.OpenLineageRunResource], error)
-	CreateNamespaceMapping(context.Context, *connect.Request[v1.CreateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMappingResource], error)
+	GetOpenLineageRun(context.Context, *connect.Request[v1.GetOpenLineageRunRequest]) (*connect.Response[v1.OpenLineageRun], error)
+	CreateNamespaceMapping(context.Context, *connect.Request[v1.CreateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMapping], error)
 	ListNamespaceMappings(context.Context, *connect.Request[v1.ListNamespaceMappingsRequest]) (*connect.Response[v1.ListNamespaceMappingsResponse], error)
-	UpdateNamespaceMapping(context.Context, *connect.Request[v1.UpdateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMappingResource], error)
+	UpdateNamespaceMapping(context.Context, *connect.Request[v1.UpdateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMapping], error)
 	DeleteNamespaceMapping(context.Context, *connect.Request[v1.DeleteNamespaceMappingRequest]) (*connect.Response[emptypb.Empty], error)
 	CreateAPIKey(context.Context, *connect.Request[v1.CreateAPIKeyRequest]) (*connect.Response[v1.CreateAPIKeyResponse], error)
 	ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error)
@@ -417,7 +417,7 @@ func (UnimplementedOpenLineageServiceHandler) GetOpenLineageDataset(context.Cont
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.OpenLineageService.GetOpenLineageDataset is not implemented"))
 }
 
-func (UnimplementedOpenLineageServiceHandler) GetOpenLineageTask(context.Context, *connect.Request[v1.GetOpenLineageTaskRequest]) (*connect.Response[v1.OpenLineageTaskResource], error) {
+func (UnimplementedOpenLineageServiceHandler) GetOpenLineageTask(context.Context, *connect.Request[v1.GetOpenLineageTaskRequest]) (*connect.Response[v1.OpenLineageTask], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.OpenLineageService.GetOpenLineageTask is not implemented"))
 }
 
@@ -425,11 +425,11 @@ func (UnimplementedOpenLineageServiceHandler) ListOpenLineageRuns(context.Contex
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.OpenLineageService.ListOpenLineageRuns is not implemented"))
 }
 
-func (UnimplementedOpenLineageServiceHandler) GetOpenLineageRun(context.Context, *connect.Request[v1.GetOpenLineageRunRequest]) (*connect.Response[v1.OpenLineageRunResource], error) {
+func (UnimplementedOpenLineageServiceHandler) GetOpenLineageRun(context.Context, *connect.Request[v1.GetOpenLineageRunRequest]) (*connect.Response[v1.OpenLineageRun], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.OpenLineageService.GetOpenLineageRun is not implemented"))
 }
 
-func (UnimplementedOpenLineageServiceHandler) CreateNamespaceMapping(context.Context, *connect.Request[v1.CreateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMappingResource], error) {
+func (UnimplementedOpenLineageServiceHandler) CreateNamespaceMapping(context.Context, *connect.Request[v1.CreateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMapping], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.OpenLineageService.CreateNamespaceMapping is not implemented"))
 }
 
@@ -437,7 +437,7 @@ func (UnimplementedOpenLineageServiceHandler) ListNamespaceMappings(context.Cont
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.OpenLineageService.ListNamespaceMappings is not implemented"))
 }
 
-func (UnimplementedOpenLineageServiceHandler) UpdateNamespaceMapping(context.Context, *connect.Request[v1.UpdateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMappingResource], error) {
+func (UnimplementedOpenLineageServiceHandler) UpdateNamespaceMapping(context.Context, *connect.Request[v1.UpdateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMapping], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.OpenLineageService.UpdateNamespaceMapping is not implemented"))
 }
 

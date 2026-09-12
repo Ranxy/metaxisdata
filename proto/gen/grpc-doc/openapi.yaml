@@ -1653,27 +1653,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/openlineage/apiKeys/{id}:
-        delete:
-            tags:
-                - OpenLineageService
-            operationId: OpenLineageService_RevokeAPIKey
-            parameters:
-                - name: id
-                  in: path
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content: {}
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/openlineage/dataset:
         get:
             tags:
@@ -1781,7 +1760,7 @@ paths:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/NamespaceMappingResource'
+                            $ref: '#/components/schemas/NamespaceMapping'
                 required: true
             responses:
                 "200":
@@ -1789,66 +1768,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/NamespaceMappingResource'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/openlineage/namespaceMappings/{id}:
-        delete:
-            tags:
-                - OpenLineageService
-            operationId: OpenLineageService_DeleteNamespaceMapping
-            parameters:
-                - name: id
-                  in: path
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content: {}
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/openlineage/namespaceMappings/{mapping.id}:
-        patch:
-            tags:
-                - OpenLineageService
-            operationId: OpenLineageService_UpdateNamespaceMapping
-            parameters:
-                - name: mapping.id
-                  in: path
-                  required: true
-                  schema:
-                    type: string
-                - name: updateMask
-                  in: query
-                  description: |-
-                    The list of fields to update. When omitted, the fields the request carries
-                     are updated; `database_name` is always written so it can be cleared.
-                  schema:
-                    type: string
-                    format: field-mask
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/NamespaceMappingResource'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/NamespaceMappingResource'
+                                $ref: '#/components/schemas/NamespaceMapping'
                 default:
                     description: Default error response
                     content:
@@ -1907,30 +1827,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/openlineage/runs/{guid}:
-        get:
-            tags:
-                - OpenLineageService
-            operationId: OpenLineageService_GetOpenLineageRun
-            parameters:
-                - name: guid
-                  in: path
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/OpenLineageRunResource'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/openlineage/tasks:
         get:
             tags:
@@ -1975,14 +1871,15 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/openlineage/tasks/{guid}:
+    /v1/openlineage/{openlineage}/*:
         get:
             tags:
                 - OpenLineageService
-            operationId: OpenLineageService_GetOpenLineageTask
+            operationId: OpenLineageService_GetOpenLineageRun
             parameters:
-                - name: guid
+                - name: openlineage
                   in: path
+                  description: The openlineage id.
                   required: true
                   schema:
                     type: string
@@ -1992,7 +1889,66 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/OpenLineageTaskResource'
+                                $ref: '#/components/schemas/OpenLineageRun'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        delete:
+            tags:
+                - OpenLineageService
+            operationId: OpenLineageService_RevokeAPIKey
+            parameters:
+                - name: openlineage
+                  in: path
+                  description: The openlineage id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - OpenLineageService
+            operationId: OpenLineageService_UpdateNamespaceMapping
+            parameters:
+                - name: openlineage
+                  in: path
+                  description: The openlineage id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  description: |-
+                    The list of fields to update. When omitted, the fields the request carries
+                     are updated; `database_name` is always written so it can be cleared.
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/NamespaceMapping'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/NamespaceMapping'
                 default:
                     description: Default error response
                     content:
@@ -2340,11 +2296,14 @@ paths:
                                 $ref: '#/components/schemas/Status'
 components:
     schemas:
-        APIKeyResource:
+        APIKey:
             type: object
             properties:
-                id:
+                name:
                     type: string
+                    description: |-
+                        The name of the API key.
+                         Format: openlineage/apiKeys/{api_key}
                 maskedKey:
                     type: string
                 description:
@@ -2612,7 +2571,7 @@ components:
                     type: string
                     description: The plain-text API key. Only returned once at creation time.
                 apiKey:
-                    $ref: '#/components/schemas/APIKeyResource'
+                    $ref: '#/components/schemas/APIKey'
         DataSource:
             type: object
             properties:
@@ -3436,7 +3395,7 @@ components:
                 apiKeys:
                     type: array
                     items:
-                        $ref: '#/components/schemas/APIKeyResource'
+                        $ref: '#/components/schemas/APIKey'
         ListAuditLogsResponse:
             type: object
             properties:
@@ -3509,7 +3468,7 @@ components:
                 mappings:
                     type: array
                     items:
-                        $ref: '#/components/schemas/NamespaceMappingResource'
+                        $ref: '#/components/schemas/NamespaceMapping'
         ListOpenLineageDatasetsResponse:
             type: object
             properties:
@@ -3525,7 +3484,7 @@ components:
                 runs:
                     type: array
                     items:
-                        $ref: '#/components/schemas/OpenLineageRunResource'
+                        $ref: '#/components/schemas/OpenLineageRun'
                 nextPageToken:
                     type: string
         ListOpenLineageTasksResponse:
@@ -3534,7 +3493,7 @@ components:
                 tasks:
                     type: array
                     items:
-                        $ref: '#/components/schemas/OpenLineageTaskResource'
+                        $ref: '#/components/schemas/OpenLineageTask'
                 nextPageToken:
                     type: string
         ListUsersResponse:
@@ -3962,14 +3921,17 @@ components:
                     type: string
                     description: The schema dump from metadata.
             description: MetadataSchemaString is the schema define for metadata.
-        NamespaceMappingResource:
+        NamespaceMapping:
             required:
                 - namespace
                 - instanceResourceId
             type: object
             properties:
-                id:
+                name:
                     type: string
+                    description: |-
+                        The name of the namespace mapping.
+                         Format: openlineage/namespaceMappings/{namespace_mapping}
                 namespace:
                     type: string
                 instanceResourceId:
@@ -4119,13 +4081,17 @@ components:
                     type: boolean
                 writesDataset:
                     type: boolean
-        OpenLineageRunResource:
+        OpenLineageRun:
             type: object
             properties:
-                id:
+                name:
                     type: string
+                    description: |-
+                        The name of the run.
+                         Format: openlineage/runs/{guid}
                 guid:
                     type: string
+                    description: The run identifier, equal to the last segment of `name`.
                 taskGuid:
                     type: string
                 runId:
@@ -4184,13 +4150,17 @@ components:
                     type: string
                 airflowRunLogUrl:
                     type: string
-        OpenLineageTaskResource:
+        OpenLineageTask:
             type: object
             properties:
-                id:
+                name:
                     type: string
+                    description: |-
+                        The name of the task.
+                         Format: openlineage/tasks/{guid}
                 guid:
                     type: string
+                    description: The task identifier, equal to the last segment of `name`.
                 jobNamespace:
                     type: string
                 jobName:

@@ -27,7 +27,77 @@ const (
 	IdentityProviderNamePrefix = "idps/"
 	RolePrefix                 = "roles/"
 	GroupPrefix                = "groups/"
+	NamespaceMappingPrefix     = "openlineage/namespaceMappings/"
+	OpenLineageRunPrefix       = "openlineage/runs/"
+	OpenLineageTaskPrefix      = "openlineage/tasks/"
+	APIKeyPrefix               = "openlineage/apiKeys/"
 )
+
+// GetOpenLineageToken returns the last segment of an OpenLineage resource name.
+func GetOpenLineageToken(name, prefix string) (string, error) {
+	if !strings.HasPrefix(name, prefix) {
+		return "", errors.Errorf("invalid prefix %q in request %q", prefix, name)
+	}
+	token := strings.TrimPrefix(name, prefix)
+	if token == "" || strings.Contains(token, "/") {
+		return "", errors.Errorf("invalid request %q", name)
+	}
+	return token, nil
+}
+
+// GetOpenLineageIntID returns the numeric resource ID of a top-level OpenLineage
+// resource name.
+func GetOpenLineageIntID(name, prefix string) (int64, error) {
+	token, err := GetOpenLineageToken(name, prefix)
+	if err != nil {
+		return 0, err
+	}
+	id, err := strconv.ParseInt(token, 10, 64)
+	if err != nil {
+		return 0, errors.Errorf("invalid ID %q", token)
+	}
+	return id, nil
+}
+
+// GetNamespaceMappingID returns the namespace mapping ID from its resource name.
+func GetNamespaceMappingID(name string) (int64, error) {
+	return GetOpenLineageIntID(name, NamespaceMappingPrefix)
+}
+
+// GetOpenLineageRunGUID returns the run GUID from its resource name.
+func GetOpenLineageRunGUID(name string) (string, error) {
+	return GetOpenLineageToken(name, OpenLineageRunPrefix)
+}
+
+// GetOpenLineageTaskGUID returns the task GUID from its resource name.
+func GetOpenLineageTaskGUID(name string) (string, error) {
+	return GetOpenLineageToken(name, OpenLineageTaskPrefix)
+}
+
+// GetAPIKeyID returns the API key ID from its resource name.
+func GetAPIKeyID(name string) (int64, error) {
+	return GetOpenLineageIntID(name, APIKeyPrefix)
+}
+
+// FormatNamespaceMapping formats a namespace mapping resource name.
+func FormatNamespaceMapping(id int64) string {
+	return fmt.Sprintf("%s%d", NamespaceMappingPrefix, id)
+}
+
+// FormatOpenLineageRun formats an OpenLineage run resource name.
+func FormatOpenLineageRun(guid string) string {
+	return fmt.Sprintf("%s%s", OpenLineageRunPrefix, guid)
+}
+
+// FormatOpenLineageTask formats an OpenLineage task resource name.
+func FormatOpenLineageTask(guid string) string {
+	return fmt.Sprintf("%s%s", OpenLineageTaskPrefix, guid)
+}
+
+// FormatAPIKey formats an API key resource name.
+func FormatAPIKey(id int64) string {
+	return fmt.Sprintf("%s%d", APIKeyPrefix, id)
+}
 
 // GetUIDFromName returns the UID from a resource name.
 func GetUIDFromName(name, prefix string) (int, error) {

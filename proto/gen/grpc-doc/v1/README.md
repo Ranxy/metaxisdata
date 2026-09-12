@@ -191,7 +191,7 @@
     - [LLMService](#metaxisdata-v1-LLMService)
   
 - [v1/openlineage_service.proto](#v1_openlineage_service-proto)
-    - [APIKeyResource](#metaxisdata-v1-APIKeyResource)
+    - [APIKey](#metaxisdata-v1-APIKey)
     - [CreateAPIKeyRequest](#metaxisdata-v1-CreateAPIKeyRequest)
     - [CreateAPIKeyResponse](#metaxisdata-v1-CreateAPIKeyResponse)
     - [CreateNamespaceMappingRequest](#metaxisdata-v1-CreateNamespaceMappingRequest)
@@ -209,14 +209,14 @@
     - [ListOpenLineageRunsResponse](#metaxisdata-v1-ListOpenLineageRunsResponse)
     - [ListOpenLineageTasksRequest](#metaxisdata-v1-ListOpenLineageTasksRequest)
     - [ListOpenLineageTasksResponse](#metaxisdata-v1-ListOpenLineageTasksResponse)
-    - [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource)
+    - [NamespaceMapping](#metaxisdata-v1-NamespaceMapping)
     - [OpenLineageDatasetDetailResource](#metaxisdata-v1-OpenLineageDatasetDetailResource)
     - [OpenLineageDatasetField](#metaxisdata-v1-OpenLineageDatasetField)
     - [OpenLineageDatasetJobResource](#metaxisdata-v1-OpenLineageDatasetJobResource)
     - [OpenLineageDatasetResource](#metaxisdata-v1-OpenLineageDatasetResource)
     - [OpenLineageDatasetRunResource](#metaxisdata-v1-OpenLineageDatasetRunResource)
-    - [OpenLineageRunResource](#metaxisdata-v1-OpenLineageRunResource)
-    - [OpenLineageTaskResource](#metaxisdata-v1-OpenLineageTaskResource)
+    - [OpenLineageRun](#metaxisdata-v1-OpenLineageRun)
+    - [OpenLineageTask](#metaxisdata-v1-OpenLineageTask)
     - [RevokeAPIKeyRequest](#metaxisdata-v1-RevokeAPIKeyRequest)
     - [UpdateNamespaceMappingRequest](#metaxisdata-v1-UpdateNamespaceMappingRequest)
   
@@ -3169,15 +3169,15 @@ column, derived from the view&#39;s SQL.
 
 
 
-<a name="metaxisdata-v1-APIKeyResource"></a>
+<a name="metaxisdata-v1-APIKey"></a>
 
-### APIKeyResource
+### APIKey
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [int64](#int64) |  |  |
+| name | [string](#string) |  | The name of the API key. Format: openlineage/apiKeys/{api_key} |
 | masked_key | [string](#string) |  |  |
 | description | [string](#string) |  |  |
 | created_by | [string](#string) |  |  |
@@ -3214,7 +3214,7 @@ column, derived from the view&#39;s SQL.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | key | [string](#string) |  | The plain-text API key. Only returned once at creation time. |
-| api_key | [APIKeyResource](#metaxisdata-v1-APIKeyResource) |  |  |
+| api_key | [APIKey](#metaxisdata-v1-APIKey) |  |  |
 
 
 
@@ -3229,7 +3229,7 @@ column, derived from the view&#39;s SQL.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| mapping | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) |  |  |
+| mapping | [NamespaceMapping](#metaxisdata-v1-NamespaceMapping) |  | The mapping to create. The server assigns its resource ID. |
 
 
 
@@ -3244,7 +3244,7 @@ column, derived from the view&#39;s SQL.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [int64](#int64) |  |  |
+| name | [string](#string) |  | The name of the mapping to delete. Format: openlineage/namespaceMappings/{namespace_mapping} |
 
 
 
@@ -3274,7 +3274,7 @@ column, derived from the view&#39;s SQL.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| guid | [string](#string) |  |  |
+| name | [string](#string) |  | The name of the run to retrieve. Format: openlineage/runs/{run} |
 
 
 
@@ -3289,7 +3289,7 @@ column, derived from the view&#39;s SQL.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| guid | [string](#string) |  |  |
+| name | [string](#string) |  | The name of the task to retrieve. Format: openlineage/tasks/{task} |
 
 
 
@@ -3314,7 +3314,7 @@ column, derived from the view&#39;s SQL.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| api_keys | [APIKeyResource](#metaxisdata-v1-APIKeyResource) | repeated |  |
+| api_keys | [APIKey](#metaxisdata-v1-APIKey) | repeated |  |
 
 
 
@@ -3339,7 +3339,7 @@ column, derived from the view&#39;s SQL.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| mappings | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) | repeated |  |
+| mappings | [NamespaceMapping](#metaxisdata-v1-NamespaceMapping) | repeated |  |
 
 
 
@@ -3414,7 +3414,7 @@ column, derived from the view&#39;s SQL.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| runs | [OpenLineageRunResource](#metaxisdata-v1-OpenLineageRunResource) | repeated |  |
+| runs | [OpenLineageRun](#metaxisdata-v1-OpenLineageRun) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -3450,7 +3450,7 @@ column, derived from the view&#39;s SQL.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| tasks | [OpenLineageTaskResource](#metaxisdata-v1-OpenLineageTaskResource) | repeated |  |
+| tasks | [OpenLineageTask](#metaxisdata-v1-OpenLineageTask) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -3458,15 +3458,15 @@ column, derived from the view&#39;s SQL.
 
 
 
-<a name="metaxisdata-v1-NamespaceMappingResource"></a>
+<a name="metaxisdata-v1-NamespaceMapping"></a>
 
-### NamespaceMappingResource
+### NamespaceMapping
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [int64](#int64) |  |  |
+| name | [string](#string) |  | The name of the namespace mapping. Format: openlineage/namespaceMappings/{namespace_mapping} |
 | namespace | [string](#string) |  |  |
 | instance_resource_id | [string](#string) |  |  |
 | database_name | [string](#string) |  |  |
@@ -3589,16 +3589,16 @@ column, derived from the view&#39;s SQL.
 
 
 
-<a name="metaxisdata-v1-OpenLineageRunResource"></a>
+<a name="metaxisdata-v1-OpenLineageRun"></a>
 
-### OpenLineageRunResource
+### OpenLineageRun
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [int64](#int64) |  |  |
-| guid | [string](#string) |  |  |
+| name | [string](#string) |  | The name of the run. Format: openlineage/runs/{guid} |
+| guid | [string](#string) |  | The run identifier, equal to the last segment of `name`. |
 | task_guid | [string](#string) |  |  |
 | run_id | [string](#string) |  |  |
 | job_namespace | [string](#string) |  |  |
@@ -3630,16 +3630,16 @@ column, derived from the view&#39;s SQL.
 
 
 
-<a name="metaxisdata-v1-OpenLineageTaskResource"></a>
+<a name="metaxisdata-v1-OpenLineageTask"></a>
 
-### OpenLineageTaskResource
+### OpenLineageTask
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [int64](#int64) |  |  |
-| guid | [string](#string) |  |  |
+| name | [string](#string) |  | The name of the task. Format: openlineage/tasks/{guid} |
+| guid | [string](#string) |  | The task identifier, equal to the last segment of `name`. |
 | job_namespace | [string](#string) |  |  |
 | job_name | [string](#string) |  |  |
 | job_type | [string](#string) |  |  |
@@ -3674,7 +3674,7 @@ column, derived from the view&#39;s SQL.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [int64](#int64) |  |  |
+| name | [string](#string) |  | The name of the API key to revoke. Format: openlineage/apiKeys/{api_key} |
 
 
 
@@ -3689,7 +3689,7 @@ column, derived from the view&#39;s SQL.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| mapping | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) |  | The mapping to update. Its `id` field identifies the row. |
+| mapping | [NamespaceMapping](#metaxisdata-v1-NamespaceMapping) |  | The mapping to update. Its `name` field identifies the row. |
 | update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The list of fields to update. When omitted, the fields the request carries are updated; `database_name` is always written so it can be cleared. |
 
 
@@ -3727,12 +3727,12 @@ column, derived from the view&#39;s SQL.
 | ListOpenLineageTasks | [ListOpenLineageTasksRequest](#metaxisdata-v1-ListOpenLineageTasksRequest) | [ListOpenLineageTasksResponse](#metaxisdata-v1-ListOpenLineageTasksResponse) |  |
 | ListOpenLineageDatasets | [ListOpenLineageDatasetsRequest](#metaxisdata-v1-ListOpenLineageDatasetsRequest) | [ListOpenLineageDatasetsResponse](#metaxisdata-v1-ListOpenLineageDatasetsResponse) |  |
 | GetOpenLineageDataset | [GetOpenLineageDatasetRequest](#metaxisdata-v1-GetOpenLineageDatasetRequest) | [OpenLineageDatasetDetailResource](#metaxisdata-v1-OpenLineageDatasetDetailResource) |  |
-| GetOpenLineageTask | [GetOpenLineageTaskRequest](#metaxisdata-v1-GetOpenLineageTaskRequest) | [OpenLineageTaskResource](#metaxisdata-v1-OpenLineageTaskResource) |  |
+| GetOpenLineageTask | [GetOpenLineageTaskRequest](#metaxisdata-v1-GetOpenLineageTaskRequest) | [OpenLineageTask](#metaxisdata-v1-OpenLineageTask) |  |
 | ListOpenLineageRuns | [ListOpenLineageRunsRequest](#metaxisdata-v1-ListOpenLineageRunsRequest) | [ListOpenLineageRunsResponse](#metaxisdata-v1-ListOpenLineageRunsResponse) |  |
-| GetOpenLineageRun | [GetOpenLineageRunRequest](#metaxisdata-v1-GetOpenLineageRunRequest) | [OpenLineageRunResource](#metaxisdata-v1-OpenLineageRunResource) |  |
-| CreateNamespaceMapping | [CreateNamespaceMappingRequest](#metaxisdata-v1-CreateNamespaceMappingRequest) | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) |  |
+| GetOpenLineageRun | [GetOpenLineageRunRequest](#metaxisdata-v1-GetOpenLineageRunRequest) | [OpenLineageRun](#metaxisdata-v1-OpenLineageRun) |  |
+| CreateNamespaceMapping | [CreateNamespaceMappingRequest](#metaxisdata-v1-CreateNamespaceMappingRequest) | [NamespaceMapping](#metaxisdata-v1-NamespaceMapping) |  |
 | ListNamespaceMappings | [ListNamespaceMappingsRequest](#metaxisdata-v1-ListNamespaceMappingsRequest) | [ListNamespaceMappingsResponse](#metaxisdata-v1-ListNamespaceMappingsResponse) |  |
-| UpdateNamespaceMapping | [UpdateNamespaceMappingRequest](#metaxisdata-v1-UpdateNamespaceMappingRequest) | [NamespaceMappingResource](#metaxisdata-v1-NamespaceMappingResource) |  |
+| UpdateNamespaceMapping | [UpdateNamespaceMappingRequest](#metaxisdata-v1-UpdateNamespaceMappingRequest) | [NamespaceMapping](#metaxisdata-v1-NamespaceMapping) |  |
 | DeleteNamespaceMapping | [DeleteNamespaceMappingRequest](#metaxisdata-v1-DeleteNamespaceMappingRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
 | CreateAPIKey | [CreateAPIKeyRequest](#metaxisdata-v1-CreateAPIKeyRequest) | [CreateAPIKeyResponse](#metaxisdata-v1-CreateAPIKeyResponse) |  |
 | ListAPIKeys | [ListAPIKeysRequest](#metaxisdata-v1-ListAPIKeysRequest) | [ListAPIKeysResponse](#metaxisdata-v1-ListAPIKeysResponse) |  |

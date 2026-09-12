@@ -84,7 +84,7 @@
           <TableBody>
             <TableRow
               v-for="m in mappings"
-              :key="String(m.id)"
+              :key="m.name"
             >
               <TableCell class="font-mono text-sm">
                 {{ m.namespace }}
@@ -180,7 +180,7 @@
           <TableBody>
             <TableRow
               v-for="key in apiKeys"
-              :key="String(key.id)"
+              :key="key.name"
               :class="{ 'opacity-60': key.revokedAt }"
             >
               <TableCell class="font-medium">
@@ -459,8 +459,8 @@ import {
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import type {
-  APIKeyResource,
-  NamespaceMappingResource,
+  APIKey,
+  NamespaceMapping,
 } from "@/types/proto-es/v1/openlineage_service_pb";
 
 const { t, locale } = useI18n();
@@ -475,15 +475,15 @@ const isDeletingMapping = ref(false);
 const isCreatingKey = ref(false);
 const isRevokingKey = ref(false);
 
-const mappings = ref<NamespaceMappingResource[]>([]);
-const apiKeys = ref<APIKeyResource[]>([]);
+const mappings = ref<NamespaceMapping[]>([]);
+const apiKeys = ref<APIKey[]>([]);
 const instances = ref<Instance[]>([]);
 
 // Mapping modals
 const showMappingModal = ref(false);
 const showDeleteMappingModal = ref(false);
-const editingMapping = ref<NamespaceMappingResource | null>(null);
-const mappingToDelete = ref<NamespaceMappingResource | null>(null);
+const editingMapping = ref<NamespaceMapping | null>(null);
+const mappingToDelete = ref<NamespaceMapping | null>(null);
 const mappingForm = ref({
   namespace: "",
   instanceResourceId: "",
@@ -494,7 +494,7 @@ const mappingForm = ref({
 const showCreateKeyModal = ref(false);
 const showKeyResultModal = ref(false);
 const showRevokeKeyModal = ref(false);
-const keyToRevoke = ref<APIKeyResource | null>(null);
+const keyToRevoke = ref<APIKey | null>(null);
 const keyForm = ref({ description: "" });
 const createdKeyValue = ref("");
 const copied = ref(false);
@@ -568,7 +568,7 @@ function openCreateMappingModal() {
   showMappingModal.value = true;
 }
 
-function openEditMappingModal(m: NamespaceMappingResource) {
+function openEditMappingModal(m: NamespaceMapping) {
   editingMapping.value = m;
   mappingForm.value = {
     namespace: m.namespace,
@@ -578,7 +578,7 @@ function openEditMappingModal(m: NamespaceMappingResource) {
   showMappingModal.value = true;
 }
 
-function confirmDeleteMapping(m: NamespaceMappingResource) {
+function confirmDeleteMapping(m: NamespaceMapping) {
   mappingToDelete.value = m;
   showDeleteMappingModal.value = true;
 }
@@ -589,7 +589,7 @@ async function handleSaveMapping() {
   isSavingMapping.value = true;
   try {
     if (editingMapping.value) {
-      await updateNamespaceMapping(editingMapping.value.id, {
+      await updateNamespaceMapping(editingMapping.value.name, {
         namespace: mappingForm.value.namespace,
         instanceResourceId: mappingForm.value.instanceResourceId,
         databaseName: mappingForm.value.databaseName,
@@ -614,7 +614,7 @@ async function handleDeleteMapping() {
   if (!mappingToDelete.value) return;
   isDeletingMapping.value = true;
   try {
-    await deleteNamespaceMapping(mappingToDelete.value.id);
+    await deleteNamespaceMapping(mappingToDelete.value.name);
     showDeleteMappingModal.value = false;
     await fetchMappings();
   } catch (e) {
@@ -630,7 +630,7 @@ function openCreateKeyModal() {
   showCreateKeyModal.value = true;
 }
 
-function confirmRevokeKey(key: APIKeyResource) {
+function confirmRevokeKey(key: APIKey) {
   keyToRevoke.value = key;
   showRevokeKeyModal.value = true;
 }
@@ -656,7 +656,7 @@ async function handleRevokeKey() {
   if (!keyToRevoke.value) return;
   isRevokingKey.value = true;
   try {
-    await revokeAPIKey(keyToRevoke.value.id);
+    await revokeAPIKey(keyToRevoke.value.name);
     showRevokeKeyModal.value = false;
     showSuccess(t("openlineageSettings.revokeAPIKey"));
     await fetchAPIKeys();

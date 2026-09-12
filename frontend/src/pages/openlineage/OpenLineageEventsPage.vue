@@ -132,7 +132,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
-import type { OpenLineageRunResource } from "@/types/proto-es/v1/openlineage_service_pb";
+import type { OpenLineageRun } from "@/types/proto-es/v1/openlineage_service_pb";
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -140,7 +140,7 @@ const router = useRouter();
 const { handleError } = useErrorHandler();
 
 const isLoading = ref(false);
-const runs = ref<OpenLineageRunResource[]>([]);
+const runs = ref<OpenLineageRun[]>([]);
 const activeFilters = ref<ActiveFilter[]>([]);
 const lineageOnly = ref(route.query.lineageOnly !== "false");
 

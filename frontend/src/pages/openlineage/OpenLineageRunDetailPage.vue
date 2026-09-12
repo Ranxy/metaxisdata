@@ -185,7 +185,7 @@ import {
 } from "@/components/ui/card";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { extractOpenLineageDatasets } from "@/lib/openlineage";
-import type { OpenLineageRunResource } from "@/types/proto-es/v1/openlineage_service_pb";
+import type { OpenLineageRun } from "@/types/proto-es/v1/openlineage_service_pb";
 
 const route = useRoute();
 const router = useRouter();
@@ -193,7 +193,7 @@ const { t, locale } = useI18n();
 const { handleError } = useErrorHandler();
 
 const isLoading = ref(false);
-const run = ref<OpenLineageRunResource | null>(null);
+const run = ref<OpenLineageRun | null>(null);
 
 const currentGuid = computed(() => {
   const guidParam = route.params.guid;

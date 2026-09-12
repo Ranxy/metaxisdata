@@ -140,7 +140,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
-import type { OpenLineageTaskResource } from "@/types/proto-es/v1/openlineage_service_pb";
+import type { OpenLineageTask } from "@/types/proto-es/v1/openlineage_service_pb";
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -148,7 +148,7 @@ const router = useRouter();
 const { handleError } = useErrorHandler();
 
 const isLoading = ref(false);
-const tasks = ref<OpenLineageTaskResource[]>([]);
+const tasks = ref<OpenLineageTask[]>([]);
 const activeFilters = ref<ActiveFilter[]>([]);
 const lineageOnly = ref(route.query.lineageOnly !== "false");
 
@@ -296,7 +296,7 @@ function openGraph(guid: string) {
   });
 }
 
-function openEvents(task: OpenLineageTaskResource) {
+function openEvents(task: OpenLineageTask) {
   router.push({
     name: "OpenLineageEvents",
     query: {

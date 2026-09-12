@@ -8,6 +8,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	openlineageplugin "github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
@@ -74,18 +75,18 @@ func (s *OpenLineageService) ListOpenLineageTasks(ctx context.Context, req *conn
 	return connect.NewResponse(resp), nil
 }
 
-func (s *OpenLineageService) GetOpenLineageTask(ctx context.Context, req *connect.Request[v1pb.GetOpenLineageTaskRequest]) (*connect.Response[v1pb.OpenLineageTaskResource], error) {
-	if req.Msg.GetGuid() == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("guid is required"))
+func (s *OpenLineageService) GetOpenLineageTask(ctx context.Context, req *connect.Request[v1pb.GetOpenLineageTaskRequest]) (*connect.Response[v1pb.OpenLineageTask], error) {
+	guid, err := common.GetOpenLineageTaskGUID(req.Msg.GetName())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	guid := req.Msg.GetGuid()
 	task, err := s.store.GetOpenLineageTask(ctx, &store.FindOpenLineageTaskMessage{GUID: &guid})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get openlineage task"))
 	}
 	if task == nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("openlineage task %q not found", req.Msg.GetGuid()))
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("openlineage task %q not found", req.Msg.GetName()))
 	}
 
 	return connect.NewResponse(convertOpenLineageTask(task)), nil
@@ -148,24 +149,24 @@ func (s *OpenLineageService) ListOpenLineageRuns(ctx context.Context, req *conne
 	return connect.NewResponse(resp), nil
 }
 
-func (s *OpenLineageService) GetOpenLineageRun(ctx context.Context, req *connect.Request[v1pb.GetOpenLineageRunRequest]) (*connect.Response[v1pb.OpenLineageRunResource], error) {
-	if req.Msg.GetGuid() == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("guid is required"))
+func (s *OpenLineageService) GetOpenLineageRun(ctx context.Context, req *connect.Request[v1pb.GetOpenLineageRunRequest]) (*connect.Response[v1pb.OpenLineageRun], error) {
+	guid, err := common.GetOpenLineageRunGUID(req.Msg.GetName())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	guid := req.Msg.GetGuid()
 	run, err := s.store.GetOpenLineageRun(ctx, &store.FindOpenLineageRunMessage{GUID: &guid})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get openlineage run"))
 	}
 	if run == nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("openlineage run %q not found", req.Msg.GetGuid()))
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("openlineage run %q not found", req.Msg.GetName()))
 	}
 
 	return connect.NewResponse(convertOpenLineageRun(run, true)), nil
 }
 
-func (s *OpenLineageService) CreateNamespaceMapping(ctx context.Context, req *connect.Request[v1pb.CreateNamespaceMappingRequest]) (*connect.Response[v1pb.NamespaceMappingResource], error) {
+func (s *OpenLineageService) CreateNamespaceMapping(ctx context.Context, req *connect.Request[v1pb.CreateNamespaceMappingRequest]) (*connect.Response[v1pb.NamespaceMapping], error) {
 	mapping := req.Msg.GetMapping()
 	if mapping.GetNamespace() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("namespace is required"))
@@ -199,13 +200,14 @@ func (s *OpenLineageService) ListNamespaceMappings(ctx context.Context, _ *conne
 	return connect.NewResponse(resp), nil
 }
 
-func (s *OpenLineageService) UpdateNamespaceMapping(ctx context.Context, req *connect.Request[v1pb.UpdateNamespaceMappingRequest]) (*connect.Response[v1pb.NamespaceMappingResource], error) {
+func (s *OpenLineageService) UpdateNamespaceMapping(ctx context.Context, req *connect.Request[v1pb.UpdateNamespaceMappingRequest]) (*connect.Response[v1pb.NamespaceMapping], error) {
 	mapping := req.Msg.GetMapping()
 	if mapping == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("mapping is required"))
 	}
-	if mapping.GetId() == 0 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("mapping.id is required"))
+	mappingID, err := common.GetNamespaceMappingID(mapping.GetName())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	updateMask := req.Msg.GetUpdateMask().GetPaths()
 	for _, path := range updateMask {
@@ -215,7 +217,7 @@ func (s *OpenLineageService) UpdateNamespaceMapping(ctx context.Context, req *co
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported update_mask %q", path))
 		}
 	}
-	result, err := s.store.UpdateNamespaceMapping(ctx, mapping.GetId(), &store.NamespaceMappingMessage{
+	result, err := s.store.UpdateNamespaceMapping(ctx, mappingID, &store.NamespaceMappingMessage{
 		Namespace:          mapping.GetNamespace(),
 		InstanceResourceID: mapping.GetInstanceResourceId(),
 		DatabaseName:       mapping.GetDatabaseName(),
@@ -227,7 +229,11 @@ func (s *OpenLineageService) UpdateNamespaceMapping(ctx context.Context, req *co
 }
 
 func (s *OpenLineageService) DeleteNamespaceMapping(ctx context.Context, req *connect.Request[v1pb.DeleteNamespaceMappingRequest]) (*connect.Response[emptypb.Empty], error) {
-	if err := s.store.DeleteNamespaceMapping(ctx, req.Msg.GetId()); err != nil {
+	mappingID, err := common.GetNamespaceMappingID(req.Msg.GetName())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if err := s.store.DeleteNamespaceMapping(ctx, mappingID); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to delete namespace mapping"))
 	}
 	return connect.NewResponse(&emptypb.Empty{}), nil
@@ -269,15 +275,19 @@ func (s *OpenLineageService) ListAPIKeys(ctx context.Context, _ *connect.Request
 }
 
 func (s *OpenLineageService) RevokeAPIKey(ctx context.Context, req *connect.Request[v1pb.RevokeAPIKeyRequest]) (*connect.Response[emptypb.Empty], error) {
-	if err := s.store.RevokeOpenLineageAPIKey(ctx, req.Msg.GetId()); err != nil {
+	keyID, err := common.GetAPIKeyID(req.Msg.GetName())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if err := s.store.RevokeOpenLineageAPIKey(ctx, keyID); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to revoke API key"))
 	}
 	return connect.NewResponse(&emptypb.Empty{}), nil
 }
 
-func convertNamespaceMapping(m *store.NamespaceMappingMessage) *v1pb.NamespaceMappingResource {
-	return &v1pb.NamespaceMappingResource{
-		Id:                 m.ID,
+func convertNamespaceMapping(m *store.NamespaceMappingMessage) *v1pb.NamespaceMapping {
+	return &v1pb.NamespaceMapping{
+		Name:               common.FormatNamespaceMapping(m.ID),
 		Namespace:          m.Namespace,
 		InstanceResourceId: m.InstanceResourceID,
 		DatabaseName:       m.DatabaseName,
@@ -286,9 +296,9 @@ func convertNamespaceMapping(m *store.NamespaceMappingMessage) *v1pb.NamespaceMa
 	}
 }
 
-func convertAPIKey(k *store.OpenLineageAPIKeyMessage) *v1pb.APIKeyResource {
-	res := &v1pb.APIKeyResource{
-		Id:          k.ID,
+func convertAPIKey(k *store.OpenLineageAPIKeyMessage) *v1pb.APIKey {
+	res := &v1pb.APIKey{
+		Name:        common.FormatAPIKey(k.ID),
 		MaskedKey:   k.MaskedKey,
 		Description: k.Description,
 		CreatedBy:   k.CreatedBy,
@@ -303,10 +313,10 @@ func convertAPIKey(k *store.OpenLineageAPIKeyMessage) *v1pb.APIKeyResource {
 	return res
 }
 
-func convertOpenLineageRun(run *store.OpenLineageRunMessage, includePayload bool) *v1pb.OpenLineageRunResource {
+func convertOpenLineageRun(run *store.OpenLineageRunMessage, includePayload bool) *v1pb.OpenLineageRun {
 	airflowLinks := openlineageplugin.DeriveAirflowLinks(run.RawPayload)
-	res := &v1pb.OpenLineageRunResource{
-		Id:                 run.ID,
+	res := &v1pb.OpenLineageRun{
+		Name:               common.FormatOpenLineageRun(run.GUID),
 		Guid:               run.GUID,
 		TaskGuid:           run.TaskGUID,
 		RunId:              run.RunID,
@@ -341,10 +351,10 @@ func convertOpenLineageRun(run *store.OpenLineageRunMessage, includePayload bool
 	return res
 }
 
-func convertOpenLineageTask(task *store.OpenLineageTaskMessage) *v1pb.OpenLineageTaskResource {
+func convertOpenLineageTask(task *store.OpenLineageTaskMessage) *v1pb.OpenLineageTask {
 	airflowLinks := openlineageplugin.DeriveAirflowLinks(task.LatestRawPayload)
-	res := &v1pb.OpenLineageTaskResource{
-		Id:                 task.ID,
+	res := &v1pb.OpenLineageTask{
+		Name:               common.FormatOpenLineageTask(task.GUID),
 		Guid:               task.GUID,
 		JobNamespace:       task.JobNamespace,
 		JobName:            task.JobName,

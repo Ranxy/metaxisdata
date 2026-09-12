@@ -13,13 +13,16 @@ import type { MetaType } from "./database_service_pb";
 export declare const file_v1_openlineage_service: GenFile;
 
 /**
- * @generated from message metaxisdata.v1.NamespaceMappingResource
+ * @generated from message metaxisdata.v1.NamespaceMapping
  */
-export declare type NamespaceMappingResource = Message<"metaxisdata.v1.NamespaceMappingResource"> & {
+export declare type NamespaceMapping = Message<"metaxisdata.v1.NamespaceMapping"> & {
   /**
-   * @generated from field: int64 id = 1;
+   * The name of the namespace mapping.
+   * Format: openlineage/namespaceMappings/{namespace_mapping}
+   *
+   * @generated from field: string name = 1;
    */
-  id: bigint;
+  name: string;
 
   /**
    * @generated from field: string namespace = 2;
@@ -48,21 +51,26 @@ export declare type NamespaceMappingResource = Message<"metaxisdata.v1.Namespace
 };
 
 /**
- * Describes the message metaxisdata.v1.NamespaceMappingResource.
- * Use `create(NamespaceMappingResourceSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.NamespaceMapping.
+ * Use `create(NamespaceMappingSchema)` to create a new message.
  */
-export declare const NamespaceMappingResourceSchema: GenMessage<NamespaceMappingResource>;
+export declare const NamespaceMappingSchema: GenMessage<NamespaceMapping>;
 
 /**
- * @generated from message metaxisdata.v1.OpenLineageRunResource
+ * @generated from message metaxisdata.v1.OpenLineageRun
  */
-export declare type OpenLineageRunResource = Message<"metaxisdata.v1.OpenLineageRunResource"> & {
+export declare type OpenLineageRun = Message<"metaxisdata.v1.OpenLineageRun"> & {
   /**
-   * @generated from field: int64 id = 1;
+   * The name of the run.
+   * Format: openlineage/runs/{guid}
+   *
+   * @generated from field: string name = 1;
    */
-  id: bigint;
+  name: string;
 
   /**
+   * The run identifier, equal to the last segment of `name`.
+   *
    * @generated from field: string guid = 2;
    */
   guid: string;
@@ -197,21 +205,26 @@ export declare type OpenLineageRunResource = Message<"metaxisdata.v1.OpenLineage
 };
 
 /**
- * Describes the message metaxisdata.v1.OpenLineageRunResource.
- * Use `create(OpenLineageRunResourceSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.OpenLineageRun.
+ * Use `create(OpenLineageRunSchema)` to create a new message.
  */
-export declare const OpenLineageRunResourceSchema: GenMessage<OpenLineageRunResource>;
+export declare const OpenLineageRunSchema: GenMessage<OpenLineageRun>;
 
 /**
- * @generated from message metaxisdata.v1.OpenLineageTaskResource
+ * @generated from message metaxisdata.v1.OpenLineageTask
  */
-export declare type OpenLineageTaskResource = Message<"metaxisdata.v1.OpenLineageTaskResource"> & {
+export declare type OpenLineageTask = Message<"metaxisdata.v1.OpenLineageTask"> & {
   /**
-   * @generated from field: int64 id = 1;
+   * The name of the task.
+   * Format: openlineage/tasks/{guid}
+   *
+   * @generated from field: string name = 1;
    */
-  id: bigint;
+  name: string;
 
   /**
+   * The task identifier, equal to the last segment of `name`.
+   *
    * @generated from field: string guid = 2;
    */
   guid: string;
@@ -318,10 +331,10 @@ export declare type OpenLineageTaskResource = Message<"metaxisdata.v1.OpenLineag
 };
 
 /**
- * Describes the message metaxisdata.v1.OpenLineageTaskResource.
- * Use `create(OpenLineageTaskResourceSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.OpenLineageTask.
+ * Use `create(OpenLineageTaskSchema)` to create a new message.
  */
-export declare const OpenLineageTaskResourceSchema: GenMessage<OpenLineageTaskResource>;
+export declare const OpenLineageTaskSchema: GenMessage<OpenLineageTask>;
 
 /**
  * @generated from message metaxisdata.v1.OpenLineageDatasetResource
@@ -696,9 +709,9 @@ export declare const GetOpenLineageDatasetRequestSchema: GenMessage<GetOpenLinea
  */
 export declare type ListOpenLineageTasksResponse = Message<"metaxisdata.v1.ListOpenLineageTasksResponse"> & {
   /**
-   * @generated from field: repeated metaxisdata.v1.OpenLineageTaskResource tasks = 1;
+   * @generated from field: repeated metaxisdata.v1.OpenLineageTask tasks = 1;
    */
-  tasks: OpenLineageTaskResource[];
+  tasks: OpenLineageTask[];
 
   /**
    * @generated from field: string next_page_token = 2;
@@ -738,9 +751,12 @@ export declare const ListOpenLineageDatasetsResponseSchema: GenMessage<ListOpenL
  */
 export declare type GetOpenLineageTaskRequest = Message<"metaxisdata.v1.GetOpenLineageTaskRequest"> & {
   /**
-   * @generated from field: string guid = 1;
+   * The name of the task to retrieve.
+   * Format: openlineage/tasks/{task}
+   *
+   * @generated from field: string name = 1;
    */
-  guid: string;
+  name: string;
 };
 
 /**
@@ -805,9 +821,9 @@ export declare const ListOpenLineageRunsRequestSchema: GenMessage<ListOpenLineag
  */
 export declare type ListOpenLineageRunsResponse = Message<"metaxisdata.v1.ListOpenLineageRunsResponse"> & {
   /**
-   * @generated from field: repeated metaxisdata.v1.OpenLineageRunResource runs = 1;
+   * @generated from field: repeated metaxisdata.v1.OpenLineageRun runs = 1;
    */
-  runs: OpenLineageRunResource[];
+  runs: OpenLineageRun[];
 
   /**
    * @generated from field: string next_page_token = 2;
@@ -826,9 +842,12 @@ export declare const ListOpenLineageRunsResponseSchema: GenMessage<ListOpenLinea
  */
 export declare type GetOpenLineageRunRequest = Message<"metaxisdata.v1.GetOpenLineageRunRequest"> & {
   /**
-   * @generated from field: string guid = 1;
+   * The name of the run to retrieve.
+   * Format: openlineage/runs/{run}
+   *
+   * @generated from field: string name = 1;
    */
-  guid: string;
+  name: string;
 };
 
 /**
@@ -842,9 +861,11 @@ export declare const GetOpenLineageRunRequestSchema: GenMessage<GetOpenLineageRu
  */
 export declare type CreateNamespaceMappingRequest = Message<"metaxisdata.v1.CreateNamespaceMappingRequest"> & {
   /**
-   * @generated from field: metaxisdata.v1.NamespaceMappingResource mapping = 1;
+   * The mapping to create. The server assigns its resource ID.
+   *
+   * @generated from field: metaxisdata.v1.NamespaceMapping mapping = 1;
    */
-  mapping?: NamespaceMappingResource;
+  mapping?: NamespaceMapping;
 };
 
 /**
@@ -870,9 +891,9 @@ export declare const ListNamespaceMappingsRequestSchema: GenMessage<ListNamespac
  */
 export declare type ListNamespaceMappingsResponse = Message<"metaxisdata.v1.ListNamespaceMappingsResponse"> & {
   /**
-   * @generated from field: repeated metaxisdata.v1.NamespaceMappingResource mappings = 1;
+   * @generated from field: repeated metaxisdata.v1.NamespaceMapping mappings = 1;
    */
-  mappings: NamespaceMappingResource[];
+  mappings: NamespaceMapping[];
 };
 
 /**
@@ -886,11 +907,11 @@ export declare const ListNamespaceMappingsResponseSchema: GenMessage<ListNamespa
  */
 export declare type UpdateNamespaceMappingRequest = Message<"metaxisdata.v1.UpdateNamespaceMappingRequest"> & {
   /**
-   * The mapping to update. Its `id` field identifies the row.
+   * The mapping to update. Its `name` field identifies the row.
    *
-   * @generated from field: metaxisdata.v1.NamespaceMappingResource mapping = 1;
+   * @generated from field: metaxisdata.v1.NamespaceMapping mapping = 1;
    */
-  mapping?: NamespaceMappingResource;
+  mapping?: NamespaceMapping;
 
   /**
    * The list of fields to update. When omitted, the fields the request carries
@@ -912,9 +933,12 @@ export declare const UpdateNamespaceMappingRequestSchema: GenMessage<UpdateNames
  */
 export declare type DeleteNamespaceMappingRequest = Message<"metaxisdata.v1.DeleteNamespaceMappingRequest"> & {
   /**
-   * @generated from field: int64 id = 1;
+   * The name of the mapping to delete.
+   * Format: openlineage/namespaceMappings/{namespace_mapping}
+   *
+   * @generated from field: string name = 1;
    */
-  id: bigint;
+  name: string;
 };
 
 /**
@@ -924,13 +948,16 @@ export declare type DeleteNamespaceMappingRequest = Message<"metaxisdata.v1.Dele
 export declare const DeleteNamespaceMappingRequestSchema: GenMessage<DeleteNamespaceMappingRequest>;
 
 /**
- * @generated from message metaxisdata.v1.APIKeyResource
+ * @generated from message metaxisdata.v1.APIKey
  */
-export declare type APIKeyResource = Message<"metaxisdata.v1.APIKeyResource"> & {
+export declare type APIKey = Message<"metaxisdata.v1.APIKey"> & {
   /**
-   * @generated from field: int64 id = 1;
+   * The name of the API key.
+   * Format: openlineage/apiKeys/{api_key}
+   *
+   * @generated from field: string name = 1;
    */
-  id: bigint;
+  name: string;
 
   /**
    * @generated from field: string masked_key = 2;
@@ -966,10 +993,10 @@ export declare type APIKeyResource = Message<"metaxisdata.v1.APIKeyResource"> & 
 };
 
 /**
- * Describes the message metaxisdata.v1.APIKeyResource.
- * Use `create(APIKeyResourceSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.APIKey.
+ * Use `create(APIKeySchema)` to create a new message.
  */
-export declare const APIKeyResourceSchema: GenMessage<APIKeyResource>;
+export declare const APIKeySchema: GenMessage<APIKey>;
 
 /**
  * @generated from message metaxisdata.v1.CreateAPIKeyRequest
@@ -999,9 +1026,9 @@ export declare type CreateAPIKeyResponse = Message<"metaxisdata.v1.CreateAPIKeyR
   key: string;
 
   /**
-   * @generated from field: metaxisdata.v1.APIKeyResource api_key = 2;
+   * @generated from field: metaxisdata.v1.APIKey api_key = 2;
    */
-  apiKey?: APIKeyResource;
+  apiKey?: APIKey;
 };
 
 /**
@@ -1027,9 +1054,9 @@ export declare const ListAPIKeysRequestSchema: GenMessage<ListAPIKeysRequest>;
  */
 export declare type ListAPIKeysResponse = Message<"metaxisdata.v1.ListAPIKeysResponse"> & {
   /**
-   * @generated from field: repeated metaxisdata.v1.APIKeyResource api_keys = 1;
+   * @generated from field: repeated metaxisdata.v1.APIKey api_keys = 1;
    */
-  apiKeys: APIKeyResource[];
+  apiKeys: APIKey[];
 };
 
 /**
@@ -1043,9 +1070,12 @@ export declare const ListAPIKeysResponseSchema: GenMessage<ListAPIKeysResponse>;
  */
 export declare type RevokeAPIKeyRequest = Message<"metaxisdata.v1.RevokeAPIKeyRequest"> & {
   /**
-   * @generated from field: int64 id = 1;
+   * The name of the API key to revoke.
+   * Format: openlineage/apiKeys/{api_key}
+   *
+   * @generated from field: string name = 1;
    */
-  id: bigint;
+  name: string;
 };
 
 /**
@@ -1118,7 +1148,7 @@ export declare const OpenLineageService: GenService<{
   getOpenLineageTask: {
     methodKind: "unary";
     input: typeof GetOpenLineageTaskRequestSchema;
-    output: typeof OpenLineageTaskResourceSchema;
+    output: typeof OpenLineageTaskSchema;
   },
   /**
    * @generated from rpc metaxisdata.v1.OpenLineageService.ListOpenLineageRuns
@@ -1134,7 +1164,7 @@ export declare const OpenLineageService: GenService<{
   getOpenLineageRun: {
     methodKind: "unary";
     input: typeof GetOpenLineageRunRequestSchema;
-    output: typeof OpenLineageRunResourceSchema;
+    output: typeof OpenLineageRunSchema;
   },
   /**
    * @generated from rpc metaxisdata.v1.OpenLineageService.CreateNamespaceMapping
@@ -1142,7 +1172,7 @@ export declare const OpenLineageService: GenService<{
   createNamespaceMapping: {
     methodKind: "unary";
     input: typeof CreateNamespaceMappingRequestSchema;
-    output: typeof NamespaceMappingResourceSchema;
+    output: typeof NamespaceMappingSchema;
   },
   /**
    * @generated from rpc metaxisdata.v1.OpenLineageService.ListNamespaceMappings
@@ -1158,7 +1188,7 @@ export declare const OpenLineageService: GenService<{
   updateNamespaceMapping: {
     methodKind: "unary";
     input: typeof UpdateNamespaceMappingRequestSchema;
-    output: typeof NamespaceMappingResourceSchema;
+    output: typeof NamespaceMappingSchema;
   },
   /**
    * @generated from rpc metaxisdata.v1.OpenLineageService.DeleteNamespaceMapping

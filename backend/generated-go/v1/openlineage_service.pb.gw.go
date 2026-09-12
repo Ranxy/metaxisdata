@@ -149,13 +149,13 @@ func request_OpenLineageService_GetOpenLineageTask_0(ctx context.Context, marsha
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
 	}
-	val, ok := pathParams["guid"]
+	val, ok := pathParams["name"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "guid")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
 	}
-	protoReq.Guid, err = runtime.String(val)
+	protoReq.Name, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "guid", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
 	}
 	msg, err := client.GetOpenLineageTask(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -167,13 +167,13 @@ func local_request_OpenLineageService_GetOpenLineageTask_0(ctx context.Context, 
 		metadata runtime.ServerMetadata
 		err      error
 	)
-	val, ok := pathParams["guid"]
+	val, ok := pathParams["name"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "guid")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
 	}
-	protoReq.Guid, err = runtime.String(val)
+	protoReq.Name, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "guid", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
 	}
 	msg, err := server.GetOpenLineageTask(ctx, &protoReq)
 	return msg, metadata, err
@@ -223,13 +223,13 @@ func request_OpenLineageService_GetOpenLineageRun_0(ctx context.Context, marshal
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
 	}
-	val, ok := pathParams["guid"]
+	val, ok := pathParams["name"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "guid")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
 	}
-	protoReq.Guid, err = runtime.String(val)
+	protoReq.Name, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "guid", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
 	}
 	msg, err := client.GetOpenLineageRun(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -241,13 +241,13 @@ func local_request_OpenLineageService_GetOpenLineageRun_0(ctx context.Context, m
 		metadata runtime.ServerMetadata
 		err      error
 	)
-	val, ok := pathParams["guid"]
+	val, ok := pathParams["name"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "guid")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
 	}
-	protoReq.Guid, err = runtime.String(val)
+	protoReq.Name, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "guid", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
 	}
 	msg, err := server.GetOpenLineageRun(ctx, &protoReq)
 	return msg, metadata, err
@@ -301,7 +301,7 @@ func local_request_OpenLineageService_ListNamespaceMappings_0(ctx context.Contex
 	return msg, metadata, err
 }
 
-var filter_OpenLineageService_UpdateNamespaceMapping_0 = &utilities.DoubleArray{Encoding: map[string]int{"mapping": 0, "id": 1}, Base: []int{1, 2, 1, 0, 0}, Check: []int{0, 1, 2, 3, 2}}
+var filter_OpenLineageService_UpdateNamespaceMapping_0 = &utilities.DoubleArray{Encoding: map[string]int{"mapping": 0, "name": 1}, Base: []int{1, 2, 1, 0, 0}, Check: []int{0, 1, 2, 3, 2}}
 
 func request_OpenLineageService_UpdateNamespaceMapping_0(ctx context.Context, marshaler runtime.Marshaler, client OpenLineageServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
@@ -326,13 +326,13 @@ func request_OpenLineageService_UpdateNamespaceMapping_0(ctx context.Context, ma
 			protoReq.UpdateMask = fieldMask
 		}
 	}
-	val, ok := pathParams["mapping.id"]
+	val, ok := pathParams["mapping.name"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "mapping.id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "mapping.name")
 	}
-	err = runtime.PopulateFieldFromPath(&protoReq, "mapping.id", val)
+	err = runtime.PopulateFieldFromPath(&protoReq, "mapping.name", val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "mapping.id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "mapping.name", err)
 	}
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
@@ -364,13 +364,13 @@ func local_request_OpenLineageService_UpdateNamespaceMapping_0(ctx context.Conte
 			protoReq.UpdateMask = fieldMask
 		}
 	}
-	val, ok := pathParams["mapping.id"]
+	val, ok := pathParams["mapping.name"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "mapping.id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "mapping.name")
 	}
-	err = runtime.PopulateFieldFromPath(&protoReq, "mapping.id", val)
+	err = runtime.PopulateFieldFromPath(&protoReq, "mapping.name", val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "mapping.id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "mapping.name", err)
 	}
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
@@ -391,13 +391,13 @@ func request_OpenLineageService_DeleteNamespaceMapping_0(ctx context.Context, ma
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
 	}
-	val, ok := pathParams["id"]
+	val, ok := pathParams["name"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
 	}
-	protoReq.Id, err = runtime.Int64(val)
+	protoReq.Name, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
 	}
 	msg, err := client.DeleteNamespaceMapping(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -409,13 +409,13 @@ func local_request_OpenLineageService_DeleteNamespaceMapping_0(ctx context.Conte
 		metadata runtime.ServerMetadata
 		err      error
 	)
-	val, ok := pathParams["id"]
+	val, ok := pathParams["name"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
 	}
-	protoReq.Id, err = runtime.Int64(val)
+	protoReq.Name, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
 	}
 	msg, err := server.DeleteNamespaceMapping(ctx, &protoReq)
 	return msg, metadata, err
@@ -478,13 +478,13 @@ func request_OpenLineageService_RevokeAPIKey_0(ctx context.Context, marshaler ru
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
 	}
-	val, ok := pathParams["id"]
+	val, ok := pathParams["name"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
 	}
-	protoReq.Id, err = runtime.Int64(val)
+	protoReq.Name, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
 	}
 	msg, err := client.RevokeAPIKey(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -496,13 +496,13 @@ func local_request_OpenLineageService_RevokeAPIKey_0(ctx context.Context, marsha
 		metadata runtime.ServerMetadata
 		err      error
 	)
-	val, ok := pathParams["id"]
+	val, ok := pathParams["name"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
 	}
-	protoReq.Id, err = runtime.Int64(val)
+	protoReq.Name, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
 	}
 	msg, err := server.RevokeAPIKey(ctx, &protoReq)
 	return msg, metadata, err
@@ -580,7 +580,7 @@ func RegisterOpenLineageServiceHandlerServer(ctx context.Context, mux *runtime.S
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/GetOpenLineageTask", runtime.WithHTTPPathPattern("/v1/openlineage/tasks/{guid}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/GetOpenLineageTask", runtime.WithHTTPPathPattern("/v1/{name=openlineage/tasks/*}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -620,7 +620,7 @@ func RegisterOpenLineageServiceHandlerServer(ctx context.Context, mux *runtime.S
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/GetOpenLineageRun", runtime.WithHTTPPathPattern("/v1/openlineage/runs/{guid}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/GetOpenLineageRun", runtime.WithHTTPPathPattern("/v1/{name=openlineage/runs/*}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -680,7 +680,7 @@ func RegisterOpenLineageServiceHandlerServer(ctx context.Context, mux *runtime.S
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/UpdateNamespaceMapping", runtime.WithHTTPPathPattern("/v1/openlineage/namespaceMappings/{mapping.id}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/UpdateNamespaceMapping", runtime.WithHTTPPathPattern("/v1/{mapping.name=openlineage/namespaceMappings/*}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -700,7 +700,7 @@ func RegisterOpenLineageServiceHandlerServer(ctx context.Context, mux *runtime.S
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/DeleteNamespaceMapping", runtime.WithHTTPPathPattern("/v1/openlineage/namespaceMappings/{id}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/DeleteNamespaceMapping", runtime.WithHTTPPathPattern("/v1/{name=openlineage/namespaceMappings/*}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -760,7 +760,7 @@ func RegisterOpenLineageServiceHandlerServer(ctx context.Context, mux *runtime.S
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/RevokeAPIKey", runtime.WithHTTPPathPattern("/v1/openlineage/apiKeys/{id}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/RevokeAPIKey", runtime.WithHTTPPathPattern("/v1/{name=openlineage/apiKeys/*}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -869,7 +869,7 @@ func RegisterOpenLineageServiceHandlerClient(ctx context.Context, mux *runtime.S
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/GetOpenLineageTask", runtime.WithHTTPPathPattern("/v1/openlineage/tasks/{guid}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/GetOpenLineageTask", runtime.WithHTTPPathPattern("/v1/{name=openlineage/tasks/*}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -903,7 +903,7 @@ func RegisterOpenLineageServiceHandlerClient(ctx context.Context, mux *runtime.S
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/GetOpenLineageRun", runtime.WithHTTPPathPattern("/v1/openlineage/runs/{guid}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/GetOpenLineageRun", runtime.WithHTTPPathPattern("/v1/{name=openlineage/runs/*}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -954,7 +954,7 @@ func RegisterOpenLineageServiceHandlerClient(ctx context.Context, mux *runtime.S
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/UpdateNamespaceMapping", runtime.WithHTTPPathPattern("/v1/openlineage/namespaceMappings/{mapping.id}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/UpdateNamespaceMapping", runtime.WithHTTPPathPattern("/v1/{mapping.name=openlineage/namespaceMappings/*}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -971,7 +971,7 @@ func RegisterOpenLineageServiceHandlerClient(ctx context.Context, mux *runtime.S
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/DeleteNamespaceMapping", runtime.WithHTTPPathPattern("/v1/openlineage/namespaceMappings/{id}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/DeleteNamespaceMapping", runtime.WithHTTPPathPattern("/v1/{name=openlineage/namespaceMappings/*}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1022,7 +1022,7 @@ func RegisterOpenLineageServiceHandlerClient(ctx context.Context, mux *runtime.S
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/RevokeAPIKey", runtime.WithHTTPPathPattern("/v1/openlineage/apiKeys/{id}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.OpenLineageService/RevokeAPIKey", runtime.WithHTTPPathPattern("/v1/{name=openlineage/apiKeys/*}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1042,16 +1042,16 @@ var (
 	pattern_OpenLineageService_ListOpenLineageTasks_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "openlineage", "tasks"}, ""))
 	pattern_OpenLineageService_ListOpenLineageDatasets_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "openlineage", "datasets"}, ""))
 	pattern_OpenLineageService_GetOpenLineageDataset_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "openlineage", "dataset"}, ""))
-	pattern_OpenLineageService_GetOpenLineageTask_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "openlineage", "tasks", "guid"}, ""))
+	pattern_OpenLineageService_GetOpenLineageTask_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 3, 5, 3}, []string{"v1", "openlineage", "tasks", "name"}, ""))
 	pattern_OpenLineageService_ListOpenLineageRuns_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "openlineage", "runs"}, ""))
-	pattern_OpenLineageService_GetOpenLineageRun_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "openlineage", "runs", "guid"}, ""))
+	pattern_OpenLineageService_GetOpenLineageRun_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 3, 5, 3}, []string{"v1", "openlineage", "runs", "name"}, ""))
 	pattern_OpenLineageService_CreateNamespaceMapping_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "openlineage", "namespaceMappings"}, ""))
 	pattern_OpenLineageService_ListNamespaceMappings_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "openlineage", "namespaceMappings"}, ""))
-	pattern_OpenLineageService_UpdateNamespaceMapping_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "openlineage", "namespaceMappings", "mapping.id"}, ""))
-	pattern_OpenLineageService_DeleteNamespaceMapping_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "openlineage", "namespaceMappings", "id"}, ""))
+	pattern_OpenLineageService_UpdateNamespaceMapping_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 3, 5, 3}, []string{"v1", "openlineage", "namespaceMappings", "mapping.name"}, ""))
+	pattern_OpenLineageService_DeleteNamespaceMapping_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 3, 5, 3}, []string{"v1", "openlineage", "namespaceMappings", "name"}, ""))
 	pattern_OpenLineageService_CreateAPIKey_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "openlineage", "apiKeys"}, ""))
 	pattern_OpenLineageService_ListAPIKeys_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "openlineage", "apiKeys"}, ""))
-	pattern_OpenLineageService_RevokeAPIKey_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "openlineage", "apiKeys", "id"}, ""))
+	pattern_OpenLineageService_RevokeAPIKey_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 3, 5, 3}, []string{"v1", "openlineage", "apiKeys", "name"}, ""))
 )
 
 var (

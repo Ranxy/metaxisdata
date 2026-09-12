@@ -901,7 +901,7 @@
             <ul>
               
                 <li>
-                  <a href="#metaxisdata.v1.APIKeyResource"><span class="badge">M</span>APIKeyResource</a>
+                  <a href="#metaxisdata.v1.APIKey"><span class="badge">M</span>APIKey</a>
                 </li>
               
                 <li>
@@ -973,7 +973,7 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.NamespaceMappingResource"><span class="badge">M</span>NamespaceMappingResource</a>
+                  <a href="#metaxisdata.v1.NamespaceMapping"><span class="badge">M</span>NamespaceMapping</a>
                 </li>
               
                 <li>
@@ -997,11 +997,11 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.OpenLineageRunResource"><span class="badge">M</span>OpenLineageRunResource</a>
+                  <a href="#metaxisdata.v1.OpenLineageRun"><span class="badge">M</span>OpenLineageRun</a>
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.OpenLineageTaskResource"><span class="badge">M</span>OpenLineageTaskResource</a>
+                  <a href="#metaxisdata.v1.OpenLineageTask"><span class="badge">M</span>OpenLineageTask</a>
                 </li>
               
                 <li>
@@ -9338,7 +9338,7 @@ If lineage_type is not specified, both source and target lineage will be returne
       <p></p>
 
       
-        <h3 id="metaxisdata.v1.APIKeyResource">APIKeyResource</h3>
+        <h3 id="metaxisdata.v1.APIKey">APIKey</h3>
         <p></p>
 
         
@@ -9349,10 +9349,11 @@ If lineage_type is not specified, both source and target lineage will be returne
             <tbody>
               
                 <tr>
-                  <td>id</td>
-                  <td><a href="#int64">int64</a></td>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The name of the API key.
+Format: openlineage/apiKeys/{api_key} </p></td>
                 </tr>
               
                 <tr>
@@ -9447,7 +9448,7 @@ If lineage_type is not specified, both source and target lineage will be returne
               
                 <tr>
                   <td>api_key</td>
-                  <td><a href="#metaxisdata.v1.APIKeyResource">APIKeyResource</a></td>
+                  <td><a href="#metaxisdata.v1.APIKey">APIKey</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -9471,9 +9472,9 @@ If lineage_type is not specified, both source and target lineage will be returne
               
                 <tr>
                   <td>mapping</td>
-                  <td><a href="#metaxisdata.v1.NamespaceMappingResource">NamespaceMappingResource</a></td>
+                  <td><a href="#metaxisdata.v1.NamespaceMapping">NamespaceMapping</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The mapping to create. The server assigns its resource ID. </p></td>
                 </tr>
               
             </tbody>
@@ -9494,10 +9495,11 @@ If lineage_type is not specified, both source and target lineage will be returne
             <tbody>
               
                 <tr>
-                  <td>id</td>
-                  <td><a href="#int64">int64</a></td>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The name of the mapping to delete.
+Format: openlineage/namespaceMappings/{namespace_mapping} </p></td>
                 </tr>
               
             </tbody>
@@ -9542,10 +9544,11 @@ If lineage_type is not specified, both source and target lineage will be returne
             <tbody>
               
                 <tr>
-                  <td>guid</td>
+                  <td>name</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The name of the run to retrieve.
+Format: openlineage/runs/{run} </p></td>
                 </tr>
               
             </tbody>
@@ -9566,10 +9569,11 @@ If lineage_type is not specified, both source and target lineage will be returne
             <tbody>
               
                 <tr>
-                  <td>guid</td>
+                  <td>name</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The name of the task to retrieve.
+Format: openlineage/tasks/{task} </p></td>
                 </tr>
               
             </tbody>
@@ -9598,7 +9602,7 @@ If lineage_type is not specified, both source and target lineage will be returne
               
                 <tr>
                   <td>api_keys</td>
-                  <td><a href="#metaxisdata.v1.APIKeyResource">APIKeyResource</a></td>
+                  <td><a href="#metaxisdata.v1.APIKey">APIKey</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -9629,7 +9633,7 @@ If lineage_type is not specified, both source and target lineage will be returne
               
                 <tr>
                   <td>mappings</td>
-                  <td><a href="#metaxisdata.v1.NamespaceMappingResource">NamespaceMappingResource</a></td>
+                  <td><a href="#metaxisdata.v1.NamespaceMapping">NamespaceMapping</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -9830,7 +9834,7 @@ If lineage_type is not specified, both source and target lineage will be returne
               
                 <tr>
                   <td>runs</td>
-                  <td><a href="#metaxisdata.v1.OpenLineageRunResource">OpenLineageRunResource</a></td>
+                  <td><a href="#metaxisdata.v1.OpenLineageRun">OpenLineageRun</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -9920,7 +9924,7 @@ If lineage_type is not specified, both source and target lineage will be returne
               
                 <tr>
                   <td>tasks</td>
-                  <td><a href="#metaxisdata.v1.OpenLineageTaskResource">OpenLineageTaskResource</a></td>
+                  <td><a href="#metaxisdata.v1.OpenLineageTask">OpenLineageTask</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -9939,7 +9943,7 @@ If lineage_type is not specified, both source and target lineage will be returne
 
         
       
-        <h3 id="metaxisdata.v1.NamespaceMappingResource">NamespaceMappingResource</h3>
+        <h3 id="metaxisdata.v1.NamespaceMapping">NamespaceMapping</h3>
         <p></p>
 
         
@@ -9950,10 +9954,11 @@ If lineage_type is not specified, both source and target lineage will be returne
             <tbody>
               
                 <tr>
-                  <td>id</td>
-                  <td><a href="#int64">int64</a></td>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The name of the namespace mapping.
+Format: openlineage/namespaceMappings/{namespace_mapping} </p></td>
                 </tr>
               
                 <tr>
@@ -10370,7 +10375,7 @@ If lineage_type is not specified, both source and target lineage will be returne
 
         
       
-        <h3 id="metaxisdata.v1.OpenLineageRunResource">OpenLineageRunResource</h3>
+        <h3 id="metaxisdata.v1.OpenLineageRun">OpenLineageRun</h3>
         <p></p>
 
         
@@ -10381,17 +10386,18 @@ If lineage_type is not specified, both source and target lineage will be returne
             <tbody>
               
                 <tr>
-                  <td>id</td>
-                  <td><a href="#int64">int64</a></td>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The name of the run.
+Format: openlineage/runs/{guid} </p></td>
                 </tr>
               
                 <tr>
                   <td>guid</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The run identifier, equal to the last segment of `name`. </p></td>
                 </tr>
               
                 <tr>
@@ -10577,7 +10583,7 @@ in the `raw_payload` JSONB column. </p></td>
 
         
       
-        <h3 id="metaxisdata.v1.OpenLineageTaskResource">OpenLineageTaskResource</h3>
+        <h3 id="metaxisdata.v1.OpenLineageTask">OpenLineageTask</h3>
         <p></p>
 
         
@@ -10588,17 +10594,18 @@ in the `raw_payload` JSONB column. </p></td>
             <tbody>
               
                 <tr>
-                  <td>id</td>
-                  <td><a href="#int64">int64</a></td>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The name of the task.
+Format: openlineage/tasks/{guid} </p></td>
                 </tr>
               
                 <tr>
                   <td>guid</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The task identifier, equal to the last segment of `name`. </p></td>
                 </tr>
               
                 <tr>
@@ -10759,10 +10766,11 @@ in the `raw_payload` JSONB column. </p></td>
             <tbody>
               
                 <tr>
-                  <td>id</td>
-                  <td><a href="#int64">int64</a></td>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The name of the API key to revoke.
+Format: openlineage/apiKeys/{api_key} </p></td>
                 </tr>
               
             </tbody>
@@ -10784,9 +10792,9 @@ in the `raw_payload` JSONB column. </p></td>
               
                 <tr>
                   <td>mapping</td>
-                  <td><a href="#metaxisdata.v1.NamespaceMappingResource">NamespaceMappingResource</a></td>
+                  <td><a href="#metaxisdata.v1.NamespaceMapping">NamespaceMapping</a></td>
                   <td></td>
-                  <td><p>The mapping to update. Its `id` field identifies the row. </p></td>
+                  <td><p>The mapping to update. Its `name` field identifies the row. </p></td>
                 </tr>
               
                 <tr>
@@ -10877,7 +10885,7 @@ are updated; `database_name` is always written so it can be cleared. </p></td>
               <tr>
                 <td>GetOpenLineageTask</td>
                 <td><a href="#metaxisdata.v1.GetOpenLineageTaskRequest">GetOpenLineageTaskRequest</a></td>
-                <td><a href="#metaxisdata.v1.OpenLineageTaskResource">OpenLineageTaskResource</a></td>
+                <td><a href="#metaxisdata.v1.OpenLineageTask">OpenLineageTask</a></td>
                 <td><p></p></td>
               </tr>
             
@@ -10891,14 +10899,14 @@ are updated; `database_name` is always written so it can be cleared. </p></td>
               <tr>
                 <td>GetOpenLineageRun</td>
                 <td><a href="#metaxisdata.v1.GetOpenLineageRunRequest">GetOpenLineageRunRequest</a></td>
-                <td><a href="#metaxisdata.v1.OpenLineageRunResource">OpenLineageRunResource</a></td>
+                <td><a href="#metaxisdata.v1.OpenLineageRun">OpenLineageRun</a></td>
                 <td><p></p></td>
               </tr>
             
               <tr>
                 <td>CreateNamespaceMapping</td>
                 <td><a href="#metaxisdata.v1.CreateNamespaceMappingRequest">CreateNamespaceMappingRequest</a></td>
-                <td><a href="#metaxisdata.v1.NamespaceMappingResource">NamespaceMappingResource</a></td>
+                <td><a href="#metaxisdata.v1.NamespaceMapping">NamespaceMapping</a></td>
                 <td><p></p></td>
               </tr>
             
@@ -10912,7 +10920,7 @@ are updated; `database_name` is always written so it can be cleared. </p></td>
               <tr>
                 <td>UpdateNamespaceMapping</td>
                 <td><a href="#metaxisdata.v1.UpdateNamespaceMappingRequest">UpdateNamespaceMappingRequest</a></td>
-                <td><a href="#metaxisdata.v1.NamespaceMappingResource">NamespaceMappingResource</a></td>
+                <td><a href="#metaxisdata.v1.NamespaceMapping">NamespaceMapping</a></td>
                 <td><p></p></td>
               </tr>
             
@@ -10997,7 +11005,7 @@ are updated; `database_name` is always written so it can be cleared. </p></td>
               <tr>
                 <td>GetOpenLineageTask</td>
                 <td>GET</td>
-                <td>/v1/openlineage/tasks/{guid}</td>
+                <td>/v1/{name=openlineage/tasks/*}</td>
                 <td></td>
               </tr>
               
@@ -11017,7 +11025,7 @@ are updated; `database_name` is always written so it can be cleared. </p></td>
               <tr>
                 <td>GetOpenLineageRun</td>
                 <td>GET</td>
-                <td>/v1/openlineage/runs/{guid}</td>
+                <td>/v1/{name=openlineage/runs/*}</td>
                 <td></td>
               </tr>
               
@@ -11047,7 +11055,7 @@ are updated; `database_name` is always written so it can be cleared. </p></td>
               <tr>
                 <td>UpdateNamespaceMapping</td>
                 <td>PATCH</td>
-                <td>/v1/openlineage/namespaceMappings/{mapping.id}</td>
+                <td>/v1/{mapping.name=openlineage/namespaceMappings/*}</td>
                 <td>mapping</td>
               </tr>
               
@@ -11057,7 +11065,7 @@ are updated; `database_name` is always written so it can be cleared. </p></td>
               <tr>
                 <td>DeleteNamespaceMapping</td>
                 <td>DELETE</td>
-                <td>/v1/openlineage/namespaceMappings/{id}</td>
+                <td>/v1/{name=openlineage/namespaceMappings/*}</td>
                 <td></td>
               </tr>
               
@@ -11087,7 +11095,7 @@ are updated; `database_name` is always written so it can be cleared. </p></td>
               <tr>
                 <td>RevokeAPIKey</td>
                 <td>DELETE</td>
-                <td>/v1/openlineage/apiKeys/{id}</td>
+                <td>/v1/{name=openlineage/apiKeys/*}</td>
                 <td></td>
               </tr>
               
