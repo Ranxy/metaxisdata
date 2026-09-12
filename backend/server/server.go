@@ -74,7 +74,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		}
 	}()
 
-	stores, err := store.New(ctx, profile.PgURL)
+	stores, err := store.New(ctx, profile.PgURL, store.WithEncryptionKey(profile.EncryptionKey))
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to new store")
 	}

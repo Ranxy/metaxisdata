@@ -325,45 +325,74 @@ func (s *Store) obfuscateInstance(ctx context.Context, instance *storepb.Instanc
 	if err != nil {
 		return nil, err
 	}
+	obfuscate := func(plaintext string) (string, error) {
+		return common.Obfuscate(plaintext, secret)
+	}
 
 	redacted, ok := proto.Clone(instance).(*storepb.Instance)
 	if !ok {
 		return nil, errors.Errorf("failed to clone instance")
 	}
 	for _, ds := range redacted.GetDataSources() {
-		ds.ObfuscatedPassword = common.Obfuscate(ds.GetPassword(), secret)
+		if ds.ObfuscatedPassword, err = obfuscate(ds.GetPassword()); err != nil {
+			return nil, err
+		}
 		ds.Password = ""
-		ds.ObfuscatedSslCa = common.Obfuscate(ds.GetSslCa(), secret)
+		if ds.ObfuscatedSslCa, err = obfuscate(ds.GetSslCa()); err != nil {
+			return nil, err
+		}
 		ds.SslCa = ""
-		ds.ObfuscatedSslCert = common.Obfuscate(ds.GetSslCert(), secret)
+		if ds.ObfuscatedSslCert, err = obfuscate(ds.GetSslCert()); err != nil {
+			return nil, err
+		}
 		ds.SslCert = ""
-		ds.ObfuscatedSslKey = common.Obfuscate(ds.GetSslKey(), secret)
+		if ds.ObfuscatedSslKey, err = obfuscate(ds.GetSslKey()); err != nil {
+			return nil, err
+		}
 		ds.SslKey = ""
-		ds.ObfuscatedSshPassword = common.Obfuscate(ds.GetSshPassword(), secret)
+		if ds.ObfuscatedSshPassword, err = obfuscate(ds.GetSshPassword()); err != nil {
+			return nil, err
+		}
 		ds.SshPassword = ""
-		ds.ObfuscatedSshPrivateKey = common.Obfuscate(ds.GetSshPrivateKey(), secret)
+		if ds.ObfuscatedSshPrivateKey, err = obfuscate(ds.GetSshPrivateKey()); err != nil {
+			return nil, err
+		}
 		ds.SshPrivateKey = ""
-		ds.ObfuscatedAuthenticationPrivateKey = common.Obfuscate(ds.GetAuthenticationPrivateKey(), secret)
+		if ds.ObfuscatedAuthenticationPrivateKey, err = obfuscate(ds.GetAuthenticationPrivateKey()); err != nil {
+			return nil, err
+		}
 		ds.AuthenticationPrivateKey = ""
-		ds.ObfuscatedMasterPassword = common.Obfuscate(ds.GetMasterPassword(), secret)
+		if ds.ObfuscatedMasterPassword, err = obfuscate(ds.GetMasterPassword()); err != nil {
+			return nil, err
+		}
 		ds.MasterPassword = ""
 
 		if azureCredential := ds.GetAzureCredential(); azureCredential != nil {
-			azureCredential.ObfuscatedClientSecret = common.Obfuscate(azureCredential.ClientSecret, secret)
+			if azureCredential.ObfuscatedClientSecret, err = obfuscate(azureCredential.ClientSecret); err != nil {
+				return nil, err
+			}
 			azureCredential.ClientSecret = ""
 		}
 		if awsCredential := ds.GetAwsCredential(); awsCredential != nil {
-			awsCredential.ObfuscatedAccessKeyId = common.Obfuscate(awsCredential.AccessKeyId, secret)
+			if awsCredential.ObfuscatedAccessKeyId, err = obfuscate(awsCredential.AccessKeyId); err != nil {
+				return nil, err
+			}
 			awsCredential.AccessKeyId = ""
 
-			awsCredential.ObfuscatedSecretAccessKey = common.Obfuscate(awsCredential.SecretAccessKey, secret)
+			if awsCredential.ObfuscatedSecretAccessKey, err = obfuscate(awsCredential.SecretAccessKey); err != nil {
+				return nil, err
+			}
 			awsCredential.SecretAccessKey = ""
 
-			awsCredential.ObfuscatedSessionToken = common.Obfuscate(awsCredential.SessionToken, secret)
+			if awsCredential.ObfuscatedSessionToken, err = obfuscate(awsCredential.SessionToken); err != nil {
+				return nil, err
+			}
 			awsCredential.SessionToken = ""
 		}
 		if gcpCredential := ds.GetGcpCredential(); gcpCredential != nil {
-			gcpCredential.ObfuscatedContent = common.Obfuscate(gcpCredential.Content, secret)
+			if gcpCredential.ObfuscatedContent, err = obfuscate(gcpCredential.Content); err != nil {
+				return nil, err
+			}
 			gcpCredential.Content = ""
 		}
 	}

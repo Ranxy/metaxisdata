@@ -13,8 +13,9 @@ import (
 )
 
 func (s *Server) initializeSetting(ctx context.Context) error {
-	// secretLength is the length of the per-deployment secret used to obfuscate
-	// stored credentials and, when JWT_SECRET is not set, to sign access tokens.
+	// secretLength is the length of the per-deployment AUTH_SECRET. It is the
+	// fallback key for stored credentials when METADATA_SECRET_KEY is unset, and
+	// the fallback signing key when JWT_SECRET is unset.
 	const secretLength = 32
 
 	// initial branding

@@ -2,9 +2,13 @@
 package common
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 
@@ -61,25 +65,72 @@ func ValidatePhone(phone string) error {
 	return nil
 }
 
-// Obfuscate obfuscates a string with a seed string.
-func Obfuscate(src, seed string) string {
-	srcBytes, seedBytes := []byte(src), []byte(seed)
-	obfuscated := make([]byte, len(srcBytes))
-	for i, b := range srcBytes {
-		obfuscated[i] = b ^ seedBytes[i%len(seedBytes)]
-	}
-	return base64.StdEncoding.EncodeToString(obfuscated)
-}
+// obfuscateVersion prefixes every ciphertext so the scheme can be rotated
+// without having to guess what an existing value is.
+const obfuscateVersion = "v1:"
 
-// Unobfuscate unobfuscates a string with a seed string.
-func Unobfuscate(dst, seed string) (string, error) {
-	obfuscated, err := base64.StdEncoding.DecodeString(dst)
+// Obfuscate encrypts src with AES-256-GCM. The key is derived from keyMaterial,
+// so it may be any length, and every call uses a fresh random nonce. The
+// authentication tag makes a wrong key or a tampered value fail closed instead
+// of returning garbage. An empty src stays empty, which is how the store marks
+// "no credential set".
+func Obfuscate(src, keyMaterial string) (string, error) {
+	if src == "" {
+		return "", nil
+	}
+	aead, err := newAEAD(keyMaterial)
 	if err != nil {
 		return "", err
 	}
-	unobfuscated, seedBytes := make([]byte, len(obfuscated)), []byte(seed)
-	for i, b := range obfuscated {
-		unobfuscated[i] = b ^ seedBytes[i%len(seedBytes)]
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", fmt.Errorf("failed to read nonce: %w", err)
 	}
-	return string(unobfuscated), nil
+	sealed := aead.Seal(nonce, nonce, []byte(src), nil)
+	return obfuscateVersion + base64.StdEncoding.EncodeToString(sealed), nil
+}
+
+// Unobfuscate reverses Obfuscate. It rejects anything that is not a v1
+// ciphertext, including values written by the previous XOR scheme, rather than
+// returning plausible-looking plaintext.
+func Unobfuscate(dst, keyMaterial string) (string, error) {
+	if dst == "" {
+		return "", nil
+	}
+	encoded, ok := strings.CutPrefix(dst, obfuscateVersion)
+	if !ok {
+		return "", fmt.Errorf("unsupported ciphertext format")
+	}
+	raw, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode ciphertext: %w", err)
+	}
+	aead, err := newAEAD(keyMaterial)
+	if err != nil {
+		return "", err
+	}
+	if len(raw) < aead.NonceSize() {
+		return "", fmt.Errorf("ciphertext is too short")
+	}
+	nonce, ciphertext := raw[:aead.NonceSize()], raw[aead.NonceSize():]
+	plaintext, err := aead.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt ciphertext: %w", err)
+	}
+	return string(plaintext), nil
+}
+
+// newAEAD builds the AEAD used for stored credentials. An empty key material is
+// an error: without it nothing may be written, since the alternative is storing
+// a credential in a form the caller believes is encrypted.
+func newAEAD(keyMaterial string) (cipher.AEAD, error) {
+	if keyMaterial == "" {
+		return nil, fmt.Errorf("encryption key is empty")
+	}
+	key := sha256.Sum256([]byte(keyMaterial))
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cipher: %w", err)
+	}
+	return cipher.NewGCM(block)
 }

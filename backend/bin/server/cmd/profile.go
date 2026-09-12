@@ -17,6 +17,9 @@ func getBaseProfile() *config.Profile {
 		// stored in the database.
 		Secret:      os.Getenv("JWT_SECRET"),
 		ExternalURL: flags.externalURL,
+		// Credential encryption key. Keep it separate from JWT_SECRET so that
+		// rotating one does not invalidate the other.
+		EncryptionKey: os.Getenv("METADATA_SECRET_KEY"),
 	}
 
 	config.RuntimeDebug.Store(flags.debug)

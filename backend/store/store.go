@@ -17,10 +17,14 @@ import (
 type Store struct {
 	dbConnManager *DBConnectionManager
 
-	// secret caches the AUTH_SECRET setting. It is read on every obfuscated
-	// instance/LLM row, so it must not be written lazily without a lock.
+	// secret caches the key material used to encrypt stored credentials. It is
+	// read on every obfuscated instance/LLM row, so it must not be written
+	// lazily without a lock.
 	secretMu sync.Mutex
 	secret   string
+	// encryptionKey is the operator-supplied credential key
+	// (config.Profile.EncryptionKey). Empty means "fall back to AUTH_SECRET".
+	encryptionKey string
 
 	// Cache
 	userIDCache           *lru.Cache[int, *UserMessage]
@@ -35,7 +39,17 @@ type Store struct {
 	settingCache          *lru.Cache[storepb.SettingName, *SettingMessage]
 }
 
-func New(ctx context.Context, pgURL string) (*Store, error) {
+// Option customises a Store.
+type Option func(*Store)
+
+// WithEncryptionKey sets the key material used to encrypt stored credentials.
+func WithEncryptionKey(key string) Option {
+	return func(s *Store) {
+		s.encryptionKey = key
+	}
+}
+
+func New(ctx context.Context, pgURL string, opts ...Option) (*Store, error) {
 	userIDCache, err := lru.New[int, *UserMessage](32768)
 	if err != nil {
 		return nil, err
@@ -92,6 +106,9 @@ func New(ctx context.Context, pgURL string) (*Store, error) {
 		policyCache:           policyCache,
 		groupCache:            groupCache,
 		settingCache:          settingCache,
+	}
+	for _, opt := range opts {
+		opt(s)
 	}
 
 	return s, nil
