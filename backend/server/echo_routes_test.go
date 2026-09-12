@@ -14,29 +14,33 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/config"
 )
 
-// configureEchoRouters registers the Prometheus middleware, which registers
-// process-wide metrics; a second registration only logs. Build one instance per
-// mode and share it so the tests stay quiet.
+// configureEchoRouters registers the Prometheus middleware, which mutates a
+// process-wide registry; a second registration only logs. Both servers are built
+// inside ONE Once because the tests run in parallel: two independent Once bodies
+// (dev and prod) could otherwise call registerMetrics at the same time, which is
+// a data race inside echo-contrib.
 var (
-	devServerOnce  sync.Once
-	devServer      *echo.Echo
-	prodServerOnce sync.Once
-	prodServer     *echo.Echo
+	testServersOnce sync.Once
+	devServer       *echo.Echo
+	prodServer      *echo.Echo
 )
 
-func devTestServer() *echo.Echo {
-	devServerOnce.Do(func() {
+func testServers() {
+	testServersOnce.Do(func() {
 		devServer = echo.New()
 		configureEchoRouters(devServer, &config.Profile{Mode: common.ReleaseModeDev})
+		prodServer = echo.New()
+		configureEchoRouters(prodServer, &config.Profile{Mode: common.ReleaseModeProd})
 	})
+}
+
+func devTestServer() *echo.Echo {
+	testServers()
 	return devServer
 }
 
 func prodTestServer() *echo.Echo {
-	prodServerOnce.Do(func() {
-		prodServer = echo.New()
-		configureEchoRouters(prodServer, &config.Profile{Mode: common.ReleaseModeProd})
-	})
+	testServers()
 	return prodServer
 }
 
