@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/ci.yml
+      - .golangci.yaml
+      - backend/**
+      - go.mod
+      - go.sum
+      - Makefile
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ci.yml
+      - .golangci.yaml
+      - backend/**
+      - go.mod
+      - go.sum
+      - Makefile
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The hermetic suite needs no PostgreSQL, MySQL or Docker, so it runs on every
+  # change. -race is on because most of the concurrency in this server (store
+  # caches, the LLM agent, the runners) is invisible to the plain build.
+  unit:
+    name: Unit Tests (race)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run hermetic tests
+        run: go test -race -count=1 ./...
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The repo config is golangci-lint v2 and enables the integration build
+      # tag, so the harness is linted too.
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.13.1
+          args: --allow-parallel-runners
