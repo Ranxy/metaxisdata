@@ -105,6 +105,21 @@ func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
+	// The engine and the environment are not validated by conversion: the enum
+	// carries reserved values and the environment only has to exist.
+	if !isSupportedStoreEngine(instanceMessage.Metadata.GetEngine()) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported engine %s", instanceMessage.Metadata.GetEngine().String()))
+	}
+	if instanceMessage.EnvironmentID != "" {
+		environment, err := s.store.GetEnvironmentByID(ctx, instanceMessage.EnvironmentID)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+		if environment == nil {
+			return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("environment %q not found", instanceMessage.EnvironmentID))
+		}
+	}
+
 	// Test connection.
 	if req.Msg.ValidateOnly {
 		for _, ds := range instanceMessage.Metadata.GetDataSources() {
@@ -160,6 +175,21 @@ func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Reque
 
 	result := convertInstanceMessage(instance)
 	return connect.NewResponse(result), nil
+}
+
+// supportedStoreEngines are the engines the server has a driver for. The proto
+// enum also carries reserved values that no driver answers, so creation must
+// reject them instead of storing an instance that can never be opened.
+var supportedStoreEngines = map[storepb.Engine]bool{
+	storepb.Engine_MYSQL:     true,
+	storepb.Engine_POSTGRES:  true,
+	storepb.Engine_TIDB:      true,
+	storepb.Engine_MARIADB:   true,
+	storepb.Engine_OCEANBASE: true,
+}
+
+func isSupportedStoreEngine(engine storepb.Engine) bool {
+	return supportedStoreEngines[engine]
 }
 
 func (*InstanceService) checkInstanceDataSources(_ *store.InstanceMessage, dataSources []*storepb.DataSource) error {

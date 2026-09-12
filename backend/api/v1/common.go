@@ -193,15 +193,15 @@ func parseLimitAndOffset(size *pageSize) (*pageOffset, error) {
 func getDatabaseMessage(ctx context.Context, s *store.Store, databaseResourceName string) (*store.DatabaseMessage, error) {
 	instanceID, databaseName, err := common.GetInstanceDatabaseID(databaseResourceName)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse %q", databaseResourceName)
+		return nil, common.Errorf(common.Invalid, "invalid database resource name %q", databaseResourceName)
 	}
 
 	instance, err := s.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get instance %s", instanceID)
+		return nil, common.Errorf(common.Internal, "failed to get instance %s: %v", instanceID, err)
 	}
 	if instance == nil {
-		return nil, errors.Errorf("instance not found")
+		return nil, common.Errorf(common.NotFound, "instance %q not found", instanceID)
 	}
 
 	find := &store.FindDatabaseMessage{
@@ -212,10 +212,10 @@ func getDatabaseMessage(ctx context.Context, s *store.Store, databaseResourceNam
 	}
 	database, err := s.GetDatabase(ctx, find)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get database")
+		return nil, common.Errorf(common.Internal, "failed to get database %q: %v", databaseResourceName, err)
 	}
 	if database == nil {
-		return nil, errors.Errorf("database %q not found", databaseResourceName)
+		return nil, common.Errorf(common.NotFound, "database %q not found", databaseResourceName)
 	}
 	return database, nil
 }

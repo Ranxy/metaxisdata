@@ -145,3 +145,21 @@ func TestCheckInstanceDataSourcesRequiresOneAdmin(t *testing.T) {
 	})
 	require.Error(t, err, "duplicate IDs are still rejected")
 }
+
+// Only the engines the server actually has a driver for may be stored; the
+// proto enum also carries reserved values.
+func TestIsSupportedStoreEngine(t *testing.T) {
+	t.Parallel()
+
+	for _, engine := range []storepb.Engine{
+		storepb.Engine_MYSQL,
+		storepb.Engine_POSTGRES,
+		storepb.Engine_TIDB,
+		storepb.Engine_MARIADB,
+		storepb.Engine_OCEANBASE,
+	} {
+		require.True(t, isSupportedStoreEngine(engine), engine.String())
+	}
+	require.False(t, isSupportedStoreEngine(storepb.Engine_ENGINE_UNSPECIFIED))
+	require.False(t, isSupportedStoreEngine(storepb.Engine(28)))
+}

@@ -24,6 +24,11 @@ func (s *DatabaseService) CreateManualSQL(ctx context.Context, req *connect.Requ
 	if req.Msg.GetManualSqlId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("manual_sql_id is required"))
 	}
+	// The ID becomes a path segment of the resource name; one containing "/"
+	// produces a name that can never be parsed back.
+	if !common.IsValidResourceID(req.Msg.GetManualSqlId()) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid manual_sql_id %q", req.Msg.GetManualSqlId()))
+	}
 	if req.Msg.GetManualSql() == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("manual_sql is required"))
 	}

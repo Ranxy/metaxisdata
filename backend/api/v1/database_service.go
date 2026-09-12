@@ -215,6 +215,11 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 }
 
 func (s *DatabaseService) GetMetadata(ctx context.Context, req *connect.Request[v1pb.GetMetadataRequest]) (*connect.Response[v1pb.GetMetadataResponse], error) {
+	// An unspecified type used to be looked up as object_type 0, so the caller
+	// saw NotFound instead of being told the request is malformed.
+	if req.Msg.MetaType == v1pb.MetaType_UNSPECIFIED {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("meta_type is required"))
+	}
 	meta, err := s.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &req.Msg.Guid, ObjectType: (*storepb.MetaType)(&req.Msg.MetaType)})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get meta registry %q: %v", req.Msg.Guid, err))
@@ -260,6 +265,9 @@ func (s *DatabaseService) SearchMetadata(ctx context.Context, req *connect.Reque
 		find.GUIDPrefix = req.Msg.ParentGuidPrefix
 	}
 	if req.Msg.MetaType != nil {
+		if *req.Msg.MetaType == v1pb.MetaType_UNSPECIFIED {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("meta_type must not be unspecified"))
+		}
 		metaType := storepb.MetaType(*req.Msg.MetaType)
 		find.ObjectType = &metaType
 	}
