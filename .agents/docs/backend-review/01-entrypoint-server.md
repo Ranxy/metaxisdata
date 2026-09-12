@@ -9,6 +9,7 @@
 **阶段 1 更新**：H4 ✅（日志系统接线，`7fdcead`）、H5 ◐→✅（`--external-url` 已注册并接线，`7fdcead`）、部署侧新增 `make build-release` 让 prod profile 有了真实构建目标（`7fdcead`）。H2（CORS/CSRF）仍未处理。
 
 **阶段 2 更新**：M1 ✅（关停不再 `Fatal`，runner 等待加 10s 上限，`fb8ca14`）、M4 ✅（连接池钳制 + idle/lifetime/idleTime + `sync.Once` 初始化，`fb8ca14`）。M2（派生后丢弃 context）、M3（启动打印全部路由）、M5、M6 仍未处理。
+**阶段 3 更新**：M2 ✅（删除派生后丢弃的 context 与 `Server.cancel`——它取消的 context 无人监听；真正的 runner 取消是 `runnerCtx`/`runnerCancel`）、M3 ✅（`echo.Debug` 与路由列表打印改为仅在 `RuntimeDebug`/`--debug` 时输出）、低节"未注册 flag"与 `dataDir` ✅（`fedcc12`：删除 `ha`/`saas`/`demo`/`memoryProfileThreshold` 与 `dataDir`，`activeProfile`/`getBaseProfile` 不再收参数）、`Profile.LastActiveTS` ✅（只在授权请求里写、从不读）。另删除两个无实现且会直接编译失败的构建约束：`ultimate.go` 的 `!minidemo` 与 `server_frontend_not_embed.go` 的 `!embed_frontend`（`3cc4926`，实测 `go build -tags embed_frontend ./backend/server/` 曾报 `undefined: embedFrontend`）。**H2（CORS/CSRF）仍未处理**：cookie 的 `SameSite` 仍由客户端可控的 `Origin` 决定、无 CSRF token；不过阶段 3 为路由装配补了测试，覆盖"dev 全开 CORS / prod 不发 CORS 头"（`0dae0b7`）。**M5、M6 仍未处理**。
 
 ---
 

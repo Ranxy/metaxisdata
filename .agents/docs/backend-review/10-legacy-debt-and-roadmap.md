@@ -7,7 +7,8 @@
 ## 一、遗留功能债务（按"产品已无此功能但代码还在"归类）
 
 ### 1. Bytebase 时代的组织/权限模型
-- **store**：`store/role.go` 整文件无调用者；`store/project.go` 整个 store API 无调用者，且 `DeleteProject` 引用 15 张不存在的表（`query_history`/`worksheet`/`issue*`/`plan*`/`pipeline`/`task*`/`sheet`/`release`/`changelist`/`db_group`/`project_webhook`）。
+> **阶段 3 部分删除**（`a39bc41`）：`store/role.go`、`store/project.go`（含引用 15 张不存在表的 `DeleteProject`）与其 LRU 缓存已删除；`store/policy.go` 只保留工作区 IAM 路径。`project`/`role` 两张表现在没有任何 Go 调用者，但删表未做。
+- **store**：~~`store/role.go` 整文件无调用者；`store/project.go` 整个 store API 无调用者，且 `DeleteProject` 引用 15 张不存在的表（`query_history`/`worksheet`/`issue*`/`plan*`/`pipeline`/`task*`/`sheet`/`release`/`changelist`/`db_group`/`project_webhook`）。
 - **proto**：`store.Policy`/`TagPolicy` 零使用；`TagPolicy.tags` 引用不存在的 `reviewConfigs`；`policy` 表支持 `WORKSPACE/ENVIRONMENT/PROJECT` 但无 API；`store.RolePermissions` 无 RoleService；`GroupPayload`/`GroupMember` 无 GroupService。
 - **API**：~~`common.AuthContext.Permission`~~（**阶段 0 已修复**：`ACLInterceptor` 消费它，proto 写方法已声明 `permission`）/`AuthMethod`/`Resources`、`HasWorkspaceResource`、`GetProjectResources` 仍无消费者；`utils/member.go` 的 IAM 组合逻辑只通过彼此可达。
 - **设置**：`WORKSPACE_APPROVAL`、`WORKSPACE_EXTERNAL_APPROVAL`、`APP_IM`、`WATERMARK`、`AI`、`SCHEMA_TEMPLATE`、`DATA_CLASSIFICATION`、`SEMANTIC_TYPES`、`SCIM` 全部未实现。
@@ -30,9 +31,11 @@
 - `auth_service.go` 的 SSO 分组同步、`service account` 登录分支。
 
 ### 5. 无意义的 `V2` 命名
+> **阶段 3 部分删除**（`a39bc41`）：`GetPolicyV2`/`CreatePolicyV2`/`UpdatePolicyV2`/`DeletePolicyV2`/`ListPoliciesV2` 随死代码一起删除（只留 `GetPolicyV2` 供 IAM 使用）；`GetSettingV2`/`GetInstanceV2`/`StoreMetaResourceV2` 等活跃方法的重命名**未做**。
 - `GetSettingV2`/`UpsertSettingV2`/`CreateSettingIfNotExistV2`/`ListSettingV2`、`GetInstanceV2`/`ListInstancesV2`/`UpdateInstanceV2`/`CreateInstanceV2`、`GetDatabaseV2`/`ListDatabasesV2`、`GetPolicyV2`/`CreatePolicyV2`/`UpdatePolicyV2`/`DeletePolicyV2`/`ListPoliciesV2`、`StoreMetaResourceV2` —— 均不存在对应的 V1 版本，后缀已无信息量。
 
 ### 6. 未接线/半成品
+> **阶段 3 已修**：`ListInstanceDatabase` 空 stub 与 `DatabaseService.GetDatabase`（恒 `Unimplemented`）两个 RPC 已删除（`73901a1`）；`ServiceDataKey`/`getServiceData`、`common.const.go` 的三个死常量、`dataDir`/`ha`/`saas`/`demo`/`memoryProfileThreshold` flag、`Profile.LastActiveTS`、`ultimate.go` 的 `!minidemo` 与 `server_frontend_not_embed.go` 的 `!embed_frontend` 约束（`-tags embed_frontend` 曾直接编译失败）均已清理（`a39bc41`–`3cc4926`）。**仍未做**：前端内嵌、`migrator` 的 `goMigrations` 空注册表、`ExplainSQL` 的未用字段、`AgentConfig.Hooks`。
 - 前端未内嵌（`server_frontend_not_embed.go` + `embed_frontend` tag 无实现文件）。
 - `ListInstanceDatabase` 是空 stub；`DatabaseService.GetDatabase` 返回 `Unimplemented`。
 - `migrator` 的 `goMigrations` 空注册表；~~`migration/0.1/` 增量目录缺失~~（**阶段 2 已建立**，`8c34542` `ff9b22a`）。
@@ -46,6 +49,8 @@
 ---
 
 ## 二、死代码清单（可安全删除，需先跑测试）
+
+> **阶段 3 已按本表删除**（`a39bc41` `e42b9ac` `40ec3a4` `b9a48a3` `fedcc12` `3cc4926`）：除下列例外，本表条目全部删除。例外（逐个确认存活调用者后保留）：`store/policy.go` 的工作区 IAM 路径与 `store/group.go` 的读路径（`utils/member.go`/SSO 在使用）、`utils/member.go` 的 `GetUserFormattedRolesMap` 链路、`common/error.go` 的 `ErrorCode`（阶段 3 的错误映射拦截器在使用）、`common/resource_name.go` 与 `common/const.go` 中被活跃代码引用的符号（如 `SystemBotID`、`ServiceAccountAccessKeyPrefix`、`InstanceNamePrefix`）、`manual_sql.go` 的 `withMetadata=false` 分支（`deleteManualSQLMetaRegistryTx` 在用）。`store/db_connection.go` 的各项在阶段 2 已删除。
 
 | 位置 | 内容 |
 | --- | --- |
@@ -142,13 +147,25 @@
 - **15 的收尾说明**：SSE 改为边读边解析（行长上限 8MiB、总量上限 32MiB 且超限报错），无总超时（30s 响应头 + 60s 空闲读）；读错误/畸形 chunk/`length`/未知 finish_reason/无终止标记的 EOF/空回答都是错误，故不进缓存；tool call 按 index 排序收集；所有发送 ctx-aware 且 handler 取消子 context。`data: [DONE]` 仍视为正常结束以兼容不设 `finish_reason` 的 provider。**剩余**：`MaxTurns` 仍未由调用方显式设置（默认 6），`AgentConfig.Hooks` 仍是死代码。
 - **16 的收尾说明**：池上限钳制到 `[1, 50]`（原 0 = 无上限）、`MaxIdleConns=10`、`ConnMaxLifetime=30m`、`ConnMaxIdleTime=5m`、`Initialize` 用 `sync.Once`；关停不再 `Fatal`（原会跳过 store 关闭），runner 等待上限 10s。`GetDB()` 初始化前仍返回 nil（由 `sync.Once` 保证只初始化一次）。
 
-### 阶段 3：清理与重构（未开始）
-17. 删除第二节的死代码与遗留 proto/枚举。
-18. 合并 CEL 翻译器、拆分超长文件、统一分页与错误映射。
-19. CI：`go test -race ./...` + lint + 前端测试 + migrator 集成测试入列。
-20. 修正 proto 契约问题（P-H1..P-H6、M 系列）并按 breaking-change 流程发布。
+### 阶段 3：清理与重构——**本轮已完成（16 个 commit）**
 
-**阶段 2 后的遗留（转入阶段 3 或后续）**：`metadata` 搜索索引（需全文检索/`pg_trgm` 改写）、血缘列表分页（`04` M6）、`queueAll` 批量化（`06` M4）、`Obfuscate` 改 AES-GCM（`05` C-H3）、`common.Code`→Connect 通用映射（`07` U-H1）、ExplainSQL 过期行的物理清理、`api/auth` 与 `backend/server` 的测试缺口。
+| # | 事项 | 状态 | 提交 |
+| --- | --- | --- | --- |
+| 17 | 删除第二节的死代码与遗留表面 | ✅ | `a39bc41` `e42b9ac` `40ec3a4` `b9a48a3` `fedcc12` `3cc4926` |
+| 18 | 合并 CEL 翻译器、统一分页、统一错误映射、拆分超长文件 | ✅ | `7bfdfb6` `52213af` `89baa3a` `0590607` `4de82e3` `6be2262` |
+| 19 | CI：`go test -race ./...` + lint | ◐ | `d3d96c1` |
+| 20 | 修正 proto 契约问题（P-H1..P-H6、M 系列） | ◐ | `73901a1` |
+| — | 遗留安全项：`Obfuscate` 改 AES-GCM | ✅ | `a1faf65` |
+| — | 遗留测试项：`api/auth` 与 `backend/server` 测试 | ✅ | `0dae0b7` |
+
+- **17 的收尾说明**：Go 侧死代码按第二节清单删除——`store/role.go`/`store/project.go` 整文件与两个 LRU 缓存、`stats.go` 的 5 个统计方法、`policy.go` 的 4 个 V2 CRUD、`group.go` 的写路径、`common/cel.go` 的 8 个 helper 与 6 个变量、`cel_attributes.go` 的 15 个常量、`resource_name.go` 的 26 个符号、整个 `metric` 遥测栈、`utils` 的两个死文件、测试用的双套 harness、未注册的 CLI flag、`Server.cancel` 与 `GatewayResponseModifier.Store` 等。**与 IAM 有牵连的部分逐个确认后保留**：`store/policy.go` 的工作区 IAM 路径（`GetWorkspaceIamPolicy`/`PatchWorkspaceIamPolicy`/`GetPolicyV2`）、`store/group.go` 的读路径（`GetGroup`/`ListGroups`/`UpdateGroup`，被 `utils/member.go` 与 SSO 同步使用）、`utils/member.go` 的 `GetUserFormattedRolesMap` 链路。顺带修掉两处文档与实际不符：`SystemBotID`/`ServiceAccountAccessKeyPrefix` 仍有调用者（保留），`withMetadata=false` 分支在 `manual_sql.go` 仍被使用（只删了 history 侧的死参数）。**注意**：`project`/`role` 两张表已无任何 Go 调用者，但删表属 schema 变更，未在本轮处理。
+- **18 的收尾说明**：① CEL 翻译器合并为 `api/v1/filter.go` 的单一实现，字段处理器只能通过 `filterArgs` 申请占位符；唯一行为变化是 `engine in [...]` 由内联字面量改为参数绑定。② 分页统一到 `paginate[T]`，修复 token limit 被忽略、`ListMetadata` 子层级无 offset、`ListMetadataHistory` off-by-one、`ListLLMProviderProfiles` 与 `SearchMetadata` 完全没有分页四个缺陷。③ 新增 `ErrorMappingInterceptor`，`common.Code` 首次真正映射为 Connect 状态码，`connectErrorForWrite` 退役，`common.Error` 补 `Unwrap()` 且 `Error()` 不再对 nil cause panic。④ 四个超长文件按职责拆分（`meta_resource.go` → 3 个、`instance_service.go`/`database_service.go`/`database_history.go` → 各自 2–3 个），共 3 个纯移动 commit，每个都校验了"函数集合完全一致"。
+- **19 的收尾说明**：新增 `.github/workflows/ci.yml`，两个 job：`go test -race -count=1 ./...` 与 `golangci-lint` v2.13.1（配置已带 `run.build-tags: [integration]`，因此集成 harness 也进入 lint）。按确认**未做**：前端 job、把 `./backend/migrator/...` 并入集成 target、缺 Docker 时的 skip 行为（T-C2）。**未验证项**：workflow 只做了本地 YAML 解析校验与本地等价命令（`go test -race`、`golangci-lint`）验证，没有在 GitHub 上真正跑过。
+- **20 的收尾说明**：P-H1..P-H6 全部处理（`DatabaseMetadata` 伪引用删除并记明 GUID 是不透明标识、`method_signature="parent"` 删除、ExplainSQL `meta_type` 改枚举、OpenLineage 三处改 `page_token`/`next_page_token`、`SearchMetadata` 补分页字段、v1 `MetaType` 增 `OPENLINEAGE` 并文档化 OpenLineage 行被过滤）；M 系列做了 M3/M5/M6/M7/M8/M12/M14/M16/M17/M19/M20/M21，其中 `GetDatabase` 与 `ListInstanceDatabase` 两个 stub RPC 直接删除。**P-H6 选择的是"显式过滤 + 文档化"而不是补 oneof 分支**（补分支要在 v1 复制 store 的消息，与 M2 的重复定义问题相冲突）。**按确认推迟到下一轮**：Engine 28→3、`DataSource` 78 个字段里的 MongoDB/Oracle/Redis/IAM/SSH/Vault、SCIM/2FA/服务账号字段、未实现的 setting 枚举、policy/role/project store 消息、死 v1 消息。**未做**：M1/M9/M10/M11/M15/M18/M22/M23（需要产品决策或资源化重设计），以及仓库内并不存在的"发布/breaking-change 流程"——本轮只在 commit message 标注 `!` 并在文档说明。
+- **遗留安全项收尾**：`Obfuscate`/`Unobfuscate` 改为 AES-256-GCM + SHA-256 派生密钥 + 随机 nonce + `v1:` 前缀，密钥优先取 `METADATA_SECRET_KEY`（新增 `config.Profile.EncryptionKey` + `store.WithEncryptionKey`），未配置时回退数据库 `AUTH_SECRET` 并打 Warn，key 为空或过短即报错。**破坏性影响**：XOR 时代的密文不再可读，已有部署必须重新录入实例/LLM 凭证（项目未上线，可接受）。
+- **遗留测试项收尾**：`api/auth` 从零测试到覆盖 token 提取/签发/校验、方法注解读取、cookie 与 gateway modifier；`backend/server` 覆盖 `/healthz`、CORS 随 profile、pprof 门控、前端占位页与 recover 中间件。**新测试顺带发现并修复一个真实缺陷**：`getAuthContext` 对未知方法名 `sd.Methods().ByName(...)` 返回 nil 后直接 `.Options()` 会 panic，现在返回 error。
+
+**阶段 3 后仍未处理**：`metadata` 搜索索引（需全文检索/`pg_trgm` 改写，`03`/`04`）、血缘列表分页（`04` M6）、`queueAll` 批量化（`06` M4）、CEL 条件 fail-open（`05` M6/`07` M1，当前无 binding 带 condition，属潜伏）、ExplainSQL 过期行的物理清理、`openlineage_run` 保留策略、`project`/`role` 死表、proto 过宽表面收敛、`api/auth` 的集成反向测试、`backend/server` 的启动/关停路径测试、`api/v1` 的 `debug_interceptor.go`/各 service handler 的测试缺口、前端 0 个 Vitest 文件。
 
 ---
 
@@ -163,3 +180,6 @@
 - 阶段 1 关闭的"待确认"：① `driver.SyncDBSchema` 确实会在不报错的情况下返回空/部分 schema（MySQL 的 `information_schema` 按权限过滤行），这是 R-H3 只加日志的依据；② `table` 过滤器前端未使用，且 `db.metadata` 无 `schemas` 字段、`db_schema` 表从未存在，故整体删除而非改写。
 - 阶段 2 复测：`gofmt -l backend/` 空、`go build ./...`、`go vet ./...`、`go test ./...`（含新增 13 个 guard 测试）、`golangci-lint run --allow-parallel-runners`（0 issues）、`make build-release`、`go vet -tags release ./...` 全部通过。迁移在本地 PostgreSQL 16 上实测：全新安装、0.1.0→0.1.2 真实升级（migrator 日志 `Migrating 0.1.1.`/`0.1.2.` + `schema_migration_history` 落账）、增量重复执行幂等、唯一邮箱索引语义（拒绝大小写变体、软删后可复用）均通过；服务端 SIGTERM 关停路径也在该测试中顺带验证。集成测试仍未运行（需 Docker），前端未改动故未重跑前端检查。
 - 阶段 2 关闭的"待确认"：`enableCache` 的去留（经确认启用，`f22f61e`）。仍待确认：部署拓扑（单租户？）、`RETURNING` 顺序、部分 proto 字段是否为有意保留。
+- 阶段 3 复测：`gofmt -l backend/` 空、`go build ./...`、`go vet ./...`、`go vet -tags release ./...`、`go vet -tags integration ./...`、`go test ./...`、`go test -race -count=1 ./...`（CI 的 unit 命令，本地实测通过）、`golangci-lint run --allow-parallel-runners`（0 issues，配置新增 `run.build-tags: [integration]` 后仍为 0）、`make build-release` 全部通过。前端因 proto 改动重跑 `vue-tsc --build`（0 错误）、`biome check`（改动文件）、`eslint`（改动文件）与 `vite build`（成功）。`buf format -w proto`、`buf lint proto`、`cd proto && buf generate` 均通过，且生成产物可复现（未改动 proto 时 `buf generate` 无 diff）。
+- 阶段 3 关闭的"待确认"：`metaxisdata/DatabaseMetadata` 是有意的不声明伪类型还是声明被删——**按"GUID 是不透明标识、不应声明资源"处理**，删除 8 处 `resource_reference` 并写明约定（`73901a1`）；`getAuthContext` 对未知方法名会 panic——**确认为真实缺陷并修复**（`0dae0b7`）。
+- 阶段 3 新增的"待确认"：① `METADATA_SECRET_KEY` 的实际部署方式（KMS？secret 注入？）与轮换流程；② `project`/`role` 死表与 proto 过宽表面的收敛时机（已确认推迟到下一轮）；③ CI workflow 尚未在 GitHub 上实跑。

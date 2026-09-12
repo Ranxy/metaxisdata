@@ -9,6 +9,7 @@
 **阶段 1 更新**：新增 2 个测试文件（`filter_type_safety_test.go`、`instance_data_source_test.go`）并扩展 2 个（`filter_injection_test.go`、`syncer_test.go`），共 8 个新测试见下表。T-C1（CI 不跑 hermetic 测试）仍未修——`make build-release` 只是构建目标，仓库里依然没有 CI job 或 Dockerfile。T-H3 的 store 侧 guard 仍缺失。
 
 **阶段 2 更新**：新增 4 个测试文件（`store/principal_test.go`、`store/db_connection_test.go`、`api/v1/common_test.go`、`component/llm/agent_test.go`）并扩展 2 个（`store/meta_resource_test.go`、`plugin/openlineage/resolver_test.go`），共 15 个新测试函数见下表；首次为 `component/llm`、`store/db_connection.go` 建立测试。T-C1/T-H3、`api/auth` 零测试等仍未处理。
+**阶段 3 更新**：T-C1 ◐（新增 `.github/workflows/ci.yml`：`go test -race -count=1 ./...` 与 `golangci-lint` v2.13.1，`d3d96c1`；**经确认本轮只做 Go 单测与 lint**，前端 job、`./backend/migrator/...` 并入集成 target 推迟）、T-H2 ✅（删除第二套死 harness 与 `skipIfDockerUnavailable`，并在 `.golangci.yaml` 加 `run.build-tags: [integration]`，让集成文件首次进入 lint——正是这一步暴露出 `main_test.go` 的 6 个 revive 问题，已修，`b9a48a3`）、T-H4 ✅（`api/auth` 从零建立测试：token 提取/签发/校验、方法注解、cookie、gateway modifier，`0dae0b7`）。**T-H3 仍未处理**：store 侧 `listSublevelMetaRegistryResourceImpl`/`...HistoryImpl`/`listDatabaseImplV2` 的查询形状 guard 仍缺失（阶段 3 给这三处补了 offset 支持，但没有加 guard 测试）。**T-C2 未处理**（经确认推迟）：缺 Docker 时集成测试仍硬失败。**M6 部分**：CI 已有 race + lint，仍无覆盖率、无前端 job。
 
 ---
 

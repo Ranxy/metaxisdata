@@ -7,6 +7,7 @@
 **阶段 0 更新**：C-H4 ◐、M8 ◐——两者的"任意已认证用户可利用"入口已由管理员权限注解关闭，但组件内部的 nil 判空、URL 校验、响应大小限制**均未修**；C-H1/C-H2/C-H3 未处理。
 
 **阶段 2 更新**：C-H1 ✅（所有发送 ctx-aware + handler 取消子 context）、C-H2 ✅（真流式 + 错误/截断传播 + 不缓存残缺结果）、M1 ✅（空回答与 MaxTurns 耗尽均为错误）、M2 ✅（畸形 chunk/未知 finish_reason 报错，tool-call index 不再丢）、M3 ✅（真流式 + 超时改造 + 共享 http.Client）；C-H3（XOR 混淆）、M4-M8、M10 仍未处理（阶段 3）。
+**阶段 3 更新**：C-H3 ✅（`common.Obfuscate`/`Unobfuscate` 改为 AES-256-GCM + 随机 nonce + `v1:` 版本前缀，密钥优先环境变量 `METADATA_SECRET_KEY`，空的/过短的 key 报错；`store` 的所有调用点处理错误。见 `07` U-H2，`a1faf65`）。**仍未处理**：M4（有 tool call 时 assistant 文本被丢弃）、M5（`NewDBDebugLogger` 无界 goroutine）、M6（CEL 条件 fail-open）、M8（fetcher 的 `base_url` 校验、`io.LimitReader` 仍缺，但写操作已限管理员）、M10（每请求查询全部 LLM profile）、`AgentConfig.Hooks`/`MaxTurns` 仍未由调用方设置。
 
 ---
 

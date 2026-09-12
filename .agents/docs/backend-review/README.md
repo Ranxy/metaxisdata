@@ -33,6 +33,15 @@
 - 迁移在本地 PostgreSQL 16 上实测：① 当前 `LATEST.sql` 全新安装 ✅（含 `scope` 列与两个索引）；② 用阶段 2 之前的 `LATEST.sql` 造出 0.1.0 部署后启动服务端，真实 migrator 依次应用 `0.1.1`、`0.1.2` 并记录版本 ✅；③ 两个增量重复执行幂等 ✅；④ 唯一邮箱索引拒绝大小写变体重复、软删后可复用 ✅
 - 前端未改动，未重跑前端检查；集成测试需 Docker，仍未运行
 
+**阶段 3 修复后复测**（详见下文"阶段 3 修复状态"）：
+- `gofmt -l backend/` 空输出；`go build ./...`、`go vet ./...`、`go vet -tags release ./...`、`go vet -tags integration ./...`、`go test ./...` 全部 exit 0
+- `go test -race -count=1 ./...` exit 0（这正是新增 CI 的 unit 命令，本地实测通过）
+- `golangci-lint run --allow-parallel-runners` ✅ 0 issues（配置新增 `run.build-tags: [integration]`，集成 harness 现被 lint 覆盖）
+- `make build-release` ✅ exit 0
+- `buf format -w proto`、`buf lint proto`、`cd proto && buf generate` ✅；未改动 proto 时 `buf generate` 可复现（无 diff）
+- 前端（因 proto 契约变更同步修改）：`vue-tsc --build` 0 错误、改动文件 `biome check`/`eslint` 通过、`vite build` 成功
+- 集成测试仍需 Docker，仍未运行；新增的 CI workflow 只做了本地 YAML 解析与等价命令验证，未在 GitHub 上实跑
+
 **修复状态标记**（用于下文全部模块报告）：
 
 | 标记 | 含义 |
@@ -43,6 +52,8 @@
 | ◐ **部分修复（阶段 1）** | 阶段 1 处理了经确认的部分，剩余项已在报告中写明 |
 | ✅ **已修复（阶段 2）** | 阶段 2 已修完并验证，附对应 commit |
 | ◐ **部分修复（阶段 2）** | 阶段 2 处理了经确认的部分，剩余项已在报告中写明 |
+| ✅ **已修复（阶段 3）** | 阶段 3 已修完并验证，附对应 commit |
+| ◐ **部分修复（阶段 3）** | 阶段 3 处理了经确认的部分，剩余项已在报告中写明 |
 | ⏳ **未处理** | 尚未涉及，仍需按路线图处理 |
 
 ---
@@ -162,6 +173,19 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 | 15 | LLM agent：ctx-aware 发送、真流式、错误传播、禁止缓存截断结果 | ✅ | `8acbfe6` | SSE body 边读边解析（`bufio.Scanner`，工具调用参数 delta 上限 8MiB）；读错误、畸形 chunk、`finish_reason=length`、未知 finish_reason、超 32MiB、EOF 既无 finish_reason 也无 `[DONE]`、空回答全部成为错误，因此不会返回也不会入缓存；工具调用按 index 排序（不再 `0..len-1` 丢调用）；所有发送 `select` ctx；handler 用子 context 取消生产者；MaxTurns 耗尽且仍有 tool call 视为错误。超时改为 30s 响应头 + 60s 空闲读（去掉 5 分钟总超时），共享 `http.Client` 复用连接。 |
 | 16 | 连接池 lifetime/idle 配置；runner 关停超时 | ✅ | `fb8ca14` | 连接池钳制到 `[1, 50]`（原 `0` 会被 `database/sql` 解释为无上限）、`MaxIdleConns=10`、`ConnMaxLifetime=30m`、`ConnMaxIdleTime=5m`，`Initialize` 用 `sync.Once`（避免并发双开泄漏），删除死字段与冗余 import。关停不再 `Fatal`（原会 `os.Exit(1)` 跳过 store 关闭），`runnerWG.Wait()` 加 10s 上限，超时记 Warn 后继续退出。 |
 
+## 阶段 3「清理与重构」修复状态
+
+阶段 3 的 4 个编号任务按子任务拆成 16 个 commit（`10-legacy-debt-and-roadmap.md` 第四节）。19 与 20 各有一个经确认后**不做**的范围，因此标 ◐。
+
+| # | 阶段 3 要求 | 状态 | 提交 | 落地说明 |
+| --- | --- | --- | --- | --- |
+| 17 | 删除死代码与遗留表面 | ✅ | `a39bc41` `e42b9ac` `40ec3a4` `b9a48a3` `fedcc12` `3cc4926` | 按第二节清单删除：`store/role.go`+`store/project.go` 整文件（含其 LRU 缓存）、`stats.go` 的 5 个统计方法、`policy.go` 的 4 个 V2 CRUD、`group.go` 写路径、`common/cel.go` 的 8 个 helper/6 个变量、`cel_attributes.go` 的 15 个常量、`resource_name.go` 的 26 个符号、整个 `metric` 遥测栈、`utils` 两个死文件、测试双套 harness、未注册 flag、`Server.cancel`、`GatewayResponseModifier.Store`、`-tags embed_frontend`/`minidemo` 两个无实现且会编译失败的约束。**IAM 牵连部分逐个确认后保留**（工作区 IAM 路径、group 读路径、`GetUserFormattedRolesMap`）。 |
+| 18 | 合并 CEL 翻译器 / 拆分超长文件 / 统一分页与错误映射 | ✅ | `7bfdfb6` `52213af` `89baa3a` `0590607` `4de82e3` `6be2262` | 4 个 filter 翻译器合并为 `api/v1/filter.go` 的单一实现（字段处理器只能经 `filterArgs` 申请占位符；`engine in [...]` 由内联字面量改为参数绑定）；分页统一到 `paginate[T]`，修掉 token limit 被忽略、sublevel 无 offset、metadata history off-by-one、LLM profile 与 SearchMetadata 无分页；新增 `ErrorMappingInterceptor` 让 `common.Code` 真正映射为 Connect 状态码（`connectErrorForWrite` 退役、`common.Error` 补 `Unwrap()` 且不再 nil panic）；4 个超长文件按职责拆成 2–3 个文件（3 个纯移动 commit，均校验函数集合一致）。 |
+| 19 | CI：`go test -race ./...` + lint + 前端测试 + migrator 集成测试入列 | ◐ | `d3d96c1` | 新增 `.github/workflows/ci.yml`：`unit`（`go test -race -count=1 ./...`）+ `lint`（golangci-lint v2.13.1）。经确认**只做 Go 单测与 lint**：前端 job、`./backend/migrator/...` 并入集成 target、缺 Docker 的 skip 行为（T-C2）均推迟。workflow 未在 GitHub 实跑。 |
+| 20 | 修正 proto 契约问题（P-H1..P-H6、M 系列）并按 breaking-change 流程发布 | ◐ | `73901a1` | P-H1..P-H6 全部处理；M 系列做了 M3/M5/M6/M7/M8/M12/M14/M16/M17/M19/M20/M21（含删除 `GetDatabase`、`ListInstanceDatabase` 两个 stub RPC）。P-H6 选择"显式过滤 + 文档化"而非补 v1 oneof 分支。**经确认推迟**：Engine 28→3、`DataSource` 的多引擎/IAM/SSH/Vault 字段、SCIM/2FA/服务账号、未实现 setting 枚举、policy/role/project store 消息、死 v1 消息。M1/M9/M10/M11/M15/M18/M22/M23 未做（需产品决策）。仓库内不存在"发布流程"，本轮以 commit `!` + 文档说明代替。 |
+| — | 遗留安全项：`Obfuscate` 改 AES-GCM | ✅ | `a1faf65` | AES-256-GCM + SHA-256 派生密钥 + 随机 nonce + `v1:` 版本前缀；密钥优先 `METADATA_SECRET_KEY`（`config.Profile.EncryptionKey` + `store.WithEncryptionKey`），未配置时回退数据库 `AUTH_SECRET` 并 Warn，为空/过短即报错；所有调用点处理错误。**破坏性**：XOR 时代密文不可读，已有部署需重新录入凭证。 |
+| — | 遗留测试项：`api/auth` 与 `backend/server` 测试 | ✅ | `0dae0b7` | `api/auth` 覆盖 token 提取/签发/校验、方法注解、cookie、gateway modifier；`backend/server` 覆盖 `/healthz`、CORS 随 profile、pprof 门控、前端占位页、recover 中间件。新测试发现并修复 `getAuthContext` 对未知方法名的 nil deref panic。 |
+
 **已知取舍（阶段 2）**：
 - 启用缓存后，事务内写不再预写缓存，而是提交后失效 + 下一次读回填；`GetMetaRegistry` 仅带 GUID（不带 object type）的调用不再命中缓存（该查询本身走 `(guid, object_type)` 索引）。
 - 破坏性 schema 同步仍只记日志不拦截（阶段 1 的产品决策，见 `06` R-H3）。
@@ -173,18 +197,18 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 
 | 主题 | 说明 | 主要位置 | 修复状态 |
 | --- | --- | --- | --- |
-| **授权缺失** | 拦截器被注释、`permission` 从不校验 | `server/grpc_routes.go:85`、`api/auth/auth.go:350` | ◐ 阶段 0：拦截器已恢复，写操作限管理员；读路径未收紧 |
+| **授权缺失** | 拦截器被注释、`permission` 从不校验 | `server/grpc_routes.go:85`、`api/auth/auth.go:350` | ◐ 阶段 0：拦截器已恢复，写操作限管理员；读路径未收紧（阶段 3 补了 `api/auth` 的注解读取测试） |
 | **SQL 拼接** | 4 个 handler + 2 个 store 把用户输入拼进 `WHERE` | `user/instance/database_service.go`、`store/principal.go`、`store/group.go` | ✅ 阶段 0：全部参数化 + project ID 校验 + guard 测试 |
-| **秘密处理** | 硬编码 JWT 密钥、XOR"加密"、审计脱敏遗漏 | `profile_dev.go:11`、`common/utils.go`、`api/v1/audit.go:197` | ◐ 阶段 0：JWT 与审计脱敏已修；XOR 混淆仍在 |
+| **秘密处理** | 硬编码 JWT 密钥、XOR"加密"、审计脱敏遗漏 | `profile_dev.go:11`、`common/utils.go`、`api/v1/audit.go:197` | ✅ 阶段 0/3：JWT 与审计脱敏已修，XOR 换成 AES-256-GCM + `METADATA_SECRET_KEY`（`a1faf65`） |
 | **凭据被往返请求清空** | `UpdateInstance(data_sources)` 整体替换数据源列表，丢掉读取路径不返回的密钥/store-only 字段 | `instance_service.go:405-413,1307-1353` | ✅ 阶段 1：按 ID 合并（`20e284b`） |
 | **未认证入口** | `CreateUser` 免凭证 + 首个用户自动管理员 | `user_service.proto:53`、`user_service.go:286-398` | ✅ 阶段 0：按 `disallow_signup` 判定，首管理员授予原子化 |
 | **缓存被禁用但仍在写** | `store.New(..., false)` 使所有 LRU 读失效，写仍发生；`GetUserByID` 因此每请求全表扫描 | `server/server.go:70`、`store/principal.go:89-114` | ✅ 阶段 2：缓存启用、开关删除、定向查询 + key/竞态修复（`f22f61e`） |
-| **错误码不生效** | `common.Code` 无映射链路，store 的 NotFound/Conflict 到客户端变 500 | `common/error.go:87`、`server/grpc_routes.go:80` | ◐ 阶段 1/2：filter 解析统一 `InvalidArgument`；阶段 2 补了 Conflict→AlreadyExists 的写路径映射；通用 `common.Code`→Connect 映射仍未做（阶段 3） |
+| **错误码不生效** | `common.Code` 无映射链路，store 的 NotFound/Conflict 到客户端变 500 | `common/error.go:87`、`server/grpc_routes.go:80` | ✅ 阶段 3：新增 `ErrorMappingInterceptor` 统一映射，`common.Error` 补 `Unwrap()`（`89baa3a`） |
 | **日志系统未接线** | `LogLevel`/`Replace` 从未安装，`--debug`/`--enable-json-logging` 无效 | `common/log/log.go`、`cmd/root.go:72,78` | ✅ 阶段 1：`slog.SetDefault` + Text/JSON handler（`7fdcead`） |
-| **无界查询 / N+1** | OpenLineage 数据集全表 + payload 解析；血缘无分页；`queueAll` 每小时全表 | `openlineage_dataset.go:40,119`、`lineage_service.go:57`、`analyzer.go:105` | ◐ 阶段 2：数据集读限 5000 + 请求内缓存 + 单次遍历（`8c34542`）；`object_type` 索引（`ff9b22a`）；血缘列表分页与 `queueAll` 批量化仍未做 |
-| **分页不一致** | 标准 page_token 与 OpenLineage 裸 offset、LLM 无 token、sublevel 无 offset 并存 | `proto/v1/*`、`api/v1/common.go:338` | ⏳ 未处理（阶段 3） |
-| **大量 Bytebase 遗留** | IAM/role/project/issue/多引擎/SCIM/2FA、`V2` 命名 | 见 `10-legacy-debt-and-roadmap.md` | ◐ 阶段 1：删掉 `db_schema`/`table` 过滤器一处；其余仍在（阶段 3） |
-| **测试/CI 缺口** | CI 从不跑 hermetic 测试；缺 Docker 时集成测试硬失败；auth 零测试 | `09-tests.md` | ◐ 阶段 0/1 新增 10 个 guard 测试；CI 与 auth 测试未补 |
+| **无界查询 / N+1** | OpenLineage 数据集全表 + payload 解析；血缘无分页；`queueAll` 每小时全表 | `openlineage_dataset.go:40,119`、`lineage_service.go:57`、`analyzer.go:105` | ◐ 阶段 2/3：数据集读限 5000 + 请求内缓存（`8c34542`）；三个 OpenLineage 列表补分页（`52213af`）；血缘列表分页与 `queueAll` 批量化仍未做 |
+| **分页不一致** | 标准 page_token 与 OpenLineage 裸 offset、LLM 无 token、sublevel 无 offset 并存 | `proto/v1/*`、`api/v1/common.go:338` | ✅ 阶段 3：统一 `page_token`/`next_page_token` 与 `paginate[T]`（`73901a1` `52213af`） |
+| **大量 Bytebase 遗留** | IAM/role/project/issue/多引擎/SCIM/2FA、`V2` 命名 | 见 `10-legacy-debt-and-roadmap.md` | ◐ 阶段 1/3：Go 侧死代码与 role/project store API、metric 栈、CEL 死代码已删（`a39bc41`–`3cc4926`）；proto 过宽表面（多引擎/SCIM/2FA/policy 消息）按确认推迟 |
+| **测试/CI 缺口** | CI 从不跑 hermetic 测试；缺 Docker 时集成测试硬失败；auth 零测试 | `09-tests.md` | ◐ 阶段 3：CI 新增 `-race` 单测 + lint job、`api/auth` 与 `backend/server` 从零建立测试（`d3d96c1` `0dae0b7`）；缺 Docker 的 skip 行为（T-C2）与前端 job 仍未做 |
 
 ---
 
@@ -202,7 +226,7 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 | 08 Proto | 1 | 6 | 23 | 大量 | store/v1 契约分叉；AIP 违规；审计脱敏根因 |
 | 09 测试 | 2 | 5 | 10 | 5 | CI 不跑单测；auth 零测试；guard 测试缺失 |
 
-> 阶段 0/1/2 修复后，上表中的问题数量尚未重新统计；已修复条目见各阶段修复状态与各模块报告中的 ✅/◐ 标记。新增测试：`backend/api/v1/filter_injection_test.go`、`backend/api/v1/filter_type_safety_test.go`、`backend/api/v1/instance_data_source_test.go`、`backend/api/v1/common_test.go`、`backend/api/v1/audit_test.go` 扩展、`backend/runner/schemasync/syncer_test.go` 扩展、`backend/store/principal_test.go`、`backend/store/db_connection_test.go`、`backend/store/meta_resource_test.go` 扩展、`backend/plugin/openlineage/resolver_test.go` 扩展、`backend/component/llm/agent_test.go`。
+> 阶段 0/1/2 修复后，上表中的问题数量尚未重新统计；已修复条目见各阶段修复状态与各模块报告中的 ✅/◐ 标记。新增测试：`backend/api/v1/filter_injection_test.go`、`backend/api/v1/filter_type_safety_test.go`、`backend/api/v1/instance_data_source_test.go`、`backend/api/v1/common_test.go`、`backend/api/v1/audit_test.go` 扩展、`backend/runner/schemasync/syncer_test.go` 扩展、`backend/store/principal_test.go`、`backend/store/db_connection_test.go`、`backend/store/meta_resource_test.go` 扩展、`backend/plugin/openlineage/resolver_test.go` 扩展、`backend/component/llm/agent_test.go`；**阶段 3 新增**：`backend/api/v1/filter_test.go`、`backend/api/v1/pagination_test.go`、`backend/api/v1/error_interceptor_test.go`（即改写后的 `common_test.go`）、`backend/common/error_test.go`、`backend/common/utils_test.go`、`backend/store/setting_test.go`、`backend/api/auth/auth_test.go`、`backend/server/echo_routes_test.go`。
 
 ---
 
@@ -212,7 +236,7 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 2. **再读** [`04-api-v1.md`](04-api-v1.md) 与 [`03-store.md`](03-store.md)，覆盖注入、SSRF、无界查询与持久层正确性。
 3. **然后** [`06-runners-migrator.md`](06-runners-migrator.md)（迁移与同步的正确性/数据安全）。
 4. **最后** [`05`](05-components.md)、[`07`](07-common-utils.md)、[`08`](08-proto-contract.md)、[`09`](09-tests.md) 与 [`10`](10-legacy-debt-and-roadmap.md)（组件、基础设施、契约、测试、清理路线）。
-5. 整改排期见 [`10-legacy-debt-and-roadmap.md`](10-legacy-debt-and-roadmap.md) 第四节："阶段 0：安全止血"（4 条完整修复、2 条部分修复）、"阶段 1：正确性与可运维性"（3 条完整修复、2 条部分修复）与"阶段 2：性能与资源"（4 条完整修复、1 条部分修复）均已完成，剩余项已逐条标注，可在对外部署前作为基线。
+5. 整改排期见 [`10-legacy-debt-and-roadmap.md`](10-legacy-debt-and-roadmap.md) 第四节："阶段 0：安全止血"（4 条完整修复、2 条部分修复）、"阶段 1：正确性与可运维性"（3 条完整修复、2 条部分修复）、"阶段 2：性能与资源"（4 条完整修复、1 条部分修复）与"阶段 3：清理与重构"（17/18 完整修复，18 的三个子任务全做；19/20 各有一项经确认推迟）均已完成，剩余项已逐条标注，可在对外部署前作为基线。
 
 ---
 

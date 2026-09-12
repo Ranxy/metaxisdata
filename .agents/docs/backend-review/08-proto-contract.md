@@ -9,6 +9,7 @@
 **阶段 1 更新**：`ListDatabasesRequest.filter` 的文档删除了 `table` 过滤器（连同实现，`bb93ee0`）——这是一处**公开契约的收窄**，属于删除从未工作的功能，不是 breaking change 的规避。其余契约问题未处理。
 
 > 注：`buf lint` 只启用了 `BASIC`（`proto/buf.yaml`），AIP 合规没有工具强制。
+**阶段 3 更新**：P-H1..P-H6 全部处理、M 系列处理了 M3/M5/M6/M7/M8/M12/M14/M16/M17/M19/M20/M21，`buf format`/`buf lint`/`buf generate` 通过，生成产物（`backend/generated-go/`、`frontend/src/types/proto-es/`、`proto/gen/grpc-doc/`）与前端调用点同步更新（`73901a1`）。要点：`metaxisdata/DatabaseMetadata` 的 8 处 `resource_reference` 删除并写明"GUID 是不透明 `;` 连接标识"；`ListUsers` 的 `method_signature="parent"` 删除；ExplainSQL `meta_type` 改为公共 `MetaType` 枚举（并注明服务端以注册表为准、忽略该字段）；三个 OpenLineage 列表的 `int32 offset` 换成 `page_token` + `next_page_token`；`SearchMetadata` 补 `page_size`/`page_token`；v1 `MetaType` 增 `OPENLINEAGE = 100`，`StoredMetadata` 文档化"OpenLineage 行被显式过滤"（**选择过滤+文档而不是补 oneof 分支**，因为在 v1 复制 store 消息会加重 M2 的重复定义）；`ListDatabase`/`ListManualSQL`/`ListNamespaceMapping`/`ListAPIKey` 改为复数；`GetDatabase` 与 `ListInstanceDatabase` 两个 stub RPC 删除；store `ExplainSQLCache` 删除；`auth_method` 扩展与 `AuthMethod` 枚举删除；`GetCurrentUser` 去掉 `allow_without_credential`；ID 字符类文档修正；`GetLineage`/`GetLineageForContext` 去掉虚构的 `lineages/{guid}` 路径。**经确认推迟到下一轮**：Engine 28→3、`DataSource` 的多引擎/IAM/SSH/Vault 字段、SCIM/2FA/服务账号字段、未实现 setting 枚举、policy/role/project store 消息、死 v1 消息（`RiskLevel`/`Position`/`Range`/`InstanceRoleMetadata`/`DependencyTable` 等）。**未做**：M1/M9/M10/M11/M15/M18/M22/M23（需产品决策或资源化重设计）。
 
 ---
 

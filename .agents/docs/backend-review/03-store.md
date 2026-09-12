@@ -9,6 +9,7 @@
 **阶段 1 更新**：S-H3 ✅（`db_schema` join 与整个 `table` 过滤器一起删除，`bb93ee0`）、S-H4 ✅（`UpdateDatabase` 判空，`20e284b`）、低节"`UpdateInstanceV2` 不做 data source 校验" ✅（API 层 `checkInstanceDataSources` 现在要求恰好一个 ADMIN，`20e284b`）。S-H1/S-H5/S-H6、M1-M11 等仍未处理（阶段 2/3）。
 
 **阶段 2 更新**：S-H1 ✅（缓存启用并删除 `enableCache`，缓存 miss 改定向查询，`f22f61e`）、S-H6 ✅（唯一邮箱索引 + 冲突映射，`ff9b22a`）、M10 部分 ✅（`object_type` 索引已加，`metadata` GIN 经确认不加）、M11 ✅（GUID 缓存 key 纳入 `object_type`）、M13 ✅（`GetSecret` 互斥锁 + 字段不导出）、M19 ✅（`explain_sql_cache` 加 7 天 TTL）。M3/M5/M22/M25 等仍未处理。
+**阶段 3 更新**：① 死代码按 `10` 第二节清单删除——`role.go`/`project.go` 整文件与 `rolesCache`/`projectCache`、`stats.go` 的 5 个统计方法（含查询不存在 `issue`/`project` 表的 `CountIssues`/`CountProjects`）、`policy.go` 的 4 个 V2 CRUD、`group.go` 的 `CreateGroup`/`DeleteGroup`、`DeleteColumnLineageByMeta`、`QueryColumnLineageSources`/`Targets`、`CheckDatabaseUseEnvironment`、`MarshalOpenLineageRunPayload`、`common.go` 的 `RowStatus`/`SortOrder`/`OrderByKey`（`a39bc41`）；**IAM 牵连部分逐个确认后保留**（工作区 IAM 路径、group 读路径，两者被 `utils/member.go`/SSO 使用）。② 凭证加密换成 AES-256-GCM，密钥优先 `METADATA_SECRET_KEY`（新增 `store.WithEncryptionKey`），否则回退数据库 `AUTH_SECRET` 并打 Warn，空的/过短的 key 直接报错（`a1faf65`）——`GetSecret` 不再存在空 seed 导致静默乱码或除零的路径。③ `meta_resource.go`(1058 行) 拆为 `meta_resource.go`/`meta_resource_query.go`/`meta_resource_history.go`；`FindSubLevelMetaRegistryResourceMessage` 新增 `OffsetPreObjectType` 并在两个子层级查询里 `OFFSET`，子层级分页此前第 2 页会重复第 1 页（`52213af` `0590607`）。④ 新增 `setting_test.go`（密钥优先级与短 key 拒绝）。**未处理**：M3/M5/M22/M25、`project`/`role` 死表删除。
 
 ---
 

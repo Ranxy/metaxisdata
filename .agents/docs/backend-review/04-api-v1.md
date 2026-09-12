@@ -12,6 +12,7 @@
 **阶段 1 更新**：A-H4 ✅、M1 ✅、M6 ✅（`20e284b`/`ff914ac`），另**删除**了遗留的 `table` 过滤器（`bb93ee0`，见 `03` S-H3）。B-H1/B-H4 等性能与正确性条目仍未处理（阶段 2）。
 
 **阶段 2 更新**：B-H1 ✅、B-H2 ✅、B-H3 ✅、B-H4 ✅、M5 ✅、M11 ✅（见下，均 `8c34542`）；`common.go` 新增 `connectErrorForWrite`（store `common.Conflict` → `CodeAlreadyExists`，`ff9b22a`）。B-H5 的 `base_url` 校验、B-H6/B-H7/B-H8、M2/M3/M4/M6-M10、M12-M18 仍未处理。
+**阶段 3 更新**：M2 ✅（`ListMetadata` 在 `meta_type` 为空时改用带 offset 的子层级查询，第 2 页不再重复第 1 页，`52213af`）、M3 ✅（`ListMetadataHistory` 的 `> limitPlusOne` off-by-one 与"全量后再切片"改为统一 `paginate`）、M9 ✅（`ListLLMProviderProfiles` 真正读取 `page_token`/返回 `next_page_token`，默认仍 50 条）、M15 ✅（store 的 not-found 现经 `ErrorMappingInterceptor` 映射为 `NotFound` 而非 500）；另补 P-H5 的 `SearchMetadata` 分页。四个 filter 翻译器（user/instance/database/audit）与 `parseToEngineSQL` 合并为 `api/v1/filter.go` 的单一实现（`7bfdfb6`），`getSubConditionFromExpr` 删除，`engine in [...]` 由内联字面量改为参数绑定。`ListInstanceDatabase` 空 stub 与 `DatabaseService.GetDatabase`（恒 `Unimplemented`）两个 RPC 删除（`73901a1`）；`instance_service.go`/`database_service.go`/`database_history.go` 按职责拆分（`4de82e3` `6be2262`）。**未处理**：M4（`GetSchemaString` 的 `GUIDPrefix` 前缀错误）、M6（血缘列表分页）、M7、M8、M10、M12、M16、M17（`parseStructuredResponse` 的 `"## ##"`）、M18 的字段名（密钥本身已改 AES-GCM）、B-H5 的 `base_url` 校验、B-H6/B-H7/B-H8。
 
 ---
 

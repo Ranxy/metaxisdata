@@ -9,6 +9,7 @@
 **阶段 1 更新**：R-C1（`db_schema`）✅、R-H1/R-H2/R-H4 ✅、R-H3 ◐（按产品决策只加日志，不改删除行为）、M8 ✅。R-H5（增量目录）经确认**不做**——当前没有待发布的 schema 变更，空增量目录只会是噪音；遗留的是"改 `LATEST.sql` 时容易忘记补增量"这一流程约束。R-H6、M1-M7、M9-M13 仍待阶段 2/3。
 
 **阶段 2 更新**：R-H5 ✅（`migration/0.1/` 已建立：`0001##scope_explain_sql_cache.sql`、`0002##add_missing_indexes.sql`，`LATEST.sql` 同步，`8c34542` `ff9b22a`）、M4 部分 ✅（`object_type` 索引已加，`queueAll` 本身的 N+1 仍在）、M10 ✅（runner 等待加 10s 上限，`fb8ca14`）、低节"缓存在提交前更新"✅（事务内不再写缓存，提交后 `InvalidateMetaRegistryCache`，`f22f61e`）。R-H6、M1-M3、M5-M9、M11-M13 仍未处理。
+**阶段 3 更新**：本层基本未动（阶段 3 的范围是死代码/重构/契约/CI）。**唯一相关**：`migration/` 双写流程在阶段 3 **没有新的 schema 变更**，因此 `LATEST.sql` 与 `migration/0.1/` 未变；`store` 侧删除 `stats.go` 的统计方法顺带移除了对不存在 `issue`/`project` 表的查询（`a39bc41`，见 `03`）。**仍未处理**：R-H6（advisory lock 用会被取消的 ctx 解锁、无 `lock_timeout`）、M1（`tableExists` 忽略 `table_schema`）、M2/M3（分析失败要等一小时、不支持引擎每小时重试）、M4 的 `queueAll` 批量化、M5-M9、M11（`SyncInstance` 返回未过滤列表）、M13（旧二进制对着更新的 ledger 静默运行）、`migrator` 集成测试仍未并入 CI。
 
 ---
 
