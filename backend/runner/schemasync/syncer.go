@@ -386,7 +386,10 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 
 	databaseGUID := buildGUID(database.InstanceID, database.DatabaseName)
 
-	storedMetadatas, err := s.store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUIDPrefix: &databaseGUID})
+	// Only the GUID, object type and meta hash are needed to diff the snapshot
+	// against what is stored; the digest listing avoids parsing every JSONB row
+	// on every sync.
+	storedMetadatas, err := s.store.ListMetaRegistryResourceDigest(ctx, &store.FindMetaRegistryResourceMessage{GUIDPrefix: &databaseGUID})
 	if err != nil {
 		return errors.Wrapf(err, "failed to list existing meta registry for database %q", database.DatabaseName)
 	}
