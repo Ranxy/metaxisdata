@@ -13,6 +13,8 @@
 
 **阶段 3 收尾更新**：`backend/server/init.go` 不再向 `WORKSPACE_PROFILE` 写入 `EnableMetricCollection: true`（该字段与整个 metric 栈已删除，`e0eab33`）；`LATEST.sql` 中 `setting.name` 取值、`principal.mfa_config`、`idp.type` 的注释改为如实描述（表结构未动，`e0eab33`）。
 
+**阶段 5 更新**：H5 的 `--external-url` 与 C1 的 `JWT_SECRET` 均被移除（`7870016`）。`ExternalURL` 不再进 `config.Profile`，SSO 回调 base 只从 `WORKSPACE_PROFILE.external_url` 读取、由管理员在 `/settings/general` 配置；该设置行现在只在全新安装时创建，启动不再覆盖管理员的值。JWT 签名密钥始终读数据库 `AUTH_SECRET`（`resolveJWTSecret`），环境变量变化不再让 token 失效。`config.Profile` 因此只剩 `Mode`/`Port`/`PgURL`/`RuntimeDebug`/`Secret`，其中 `Secret` 是启动时从 DB 解析出的运行时值，不再是构造 profile 时的输入。
+
 ---
 
 ## 严重（Critical）

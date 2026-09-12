@@ -22,6 +22,8 @@
 
 **阶段 3 续更正**：① T-H1 的“从不执行”在本地手动跑过一次（`./backend/migrator/...` 通过），但 `Makefile`/CI 仍未包含它，结论不变；② store 侧 impl helper 的 V2 后缀已随 `8b328ae` 去掉（`listDatabaseImplV2` → `listDatabaseImpl`），T-H3 的 store 侧 guard 仍缺失这一结论不变。
 
+**阶段 5 更新**：测试随凭证加密回滚调整（`7870016`）——`common/utils_test.go` 删除 `TestObfuscateRoundTrip`/`TestObfuscateUsesAFreshNonce`/`TestObfuscateEmptyInputStaysEmpty`/`TestObfuscateFailsClosed`（保留 `TestOpenLineageResourceNames`），`store/setting_test.go` 从「密钥优先级/短 key 拒绝」改写为「已解析 secret 走缓存、不查库」的 hermetic guard。阶段 3 收尾提到的 `TestObfuscateRoundTrip`（`4afe1ba`）已不存在。前端新增 OpenLineage 保留天数输入，`vitest` 仍为既有用例；`go test ./...` 除既有失败 `TestMarshalRolePermissionsIsDeterministic` 外全绿。
+
 ---
 
 ## 严重（Critical）

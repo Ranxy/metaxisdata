@@ -19,6 +19,8 @@
 
 **阶段 3 收尾二更新**：本节"查询形状即不变量"的欠账补齐（`df97e0a` `f65baaa` `711c0aa`）。① T-H3：两个子层级 list impl 里复制粘贴的 GUID 子树谓词、以及 `listDatabaseImpl` 的环境/实例/大小写/`ShowDeleted` 范围谓词，分别抽成纯构造函数 `buildSublevelMetaRegistryResourceQuery`（内部复用 `appendGUIDSubtreeCondition`）与 `buildListDatabaseQuery`；新增 `meta_resource_query_test.go`/`database_test.go` 断言谓词形状、LIKE 元字符转义、`LIMIT/OFFSET`、filter 占位符编号，并用一个公共断言保证**最大占位符编号恰好等于参数切片长度**（不匹配就是运行期 SQL 错误）。② M8：工作区 IAM 的成员/角色合并从 `patchWorkspaceIamPolicyImpl` 抽成纯函数 `patchIamPolicyBindings`，顺带修掉一个隐患——缺失角色过去按 map 迭代顺序追加，现在按请求顺序，存储 payload 确定；`generateEtag` 与 manual SQL 的 `buildManualSQLGUID`/`normalizeManualSQLTags`/`normalizeManualSQLAttributes`/`buildManualSQLStoredMetadata` 也补了测试（`policy_test.go`/`manual_sql_pure_test.go`）。
 
+**阶段 5 更新**：阶段 3 ②的凭证加密被回滚（`7870016`）——`common.Obfuscate`/`Unobfuscate` 回到 `AUTH_SECRET` 种子 XOR，删除 `store.WithEncryptionKey` 与 `Store.encryptionKey`，`GetSecret` 只读 `AUTH_SECRET`（保留"缺失/为空即报错"，避免空 seed 除零）。`setting_test.go` 相应重写为「已解析 secret 走缓存、不查库」的 hermetic guard。另：`GetWorkspaceGeneralSetting` 里的 `openlineage_retention_days` 由 `runner/maintenance` 每轮读取（见 `06`）。
+
 
 ---
 

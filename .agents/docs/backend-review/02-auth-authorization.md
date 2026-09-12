@@ -25,6 +25,8 @@
 > - **审计**：`ListAuditLogs` 的手工管理员检查删除，改由注解 `metaxisdata.auditLogs.search` 统一拦截。
 > - **未做**：仍是单工作区、仅 WORKSPACE 策略，没有 per-resource（实例/数据库）策略与 `ResourceRef` 解析；H1（token 吊销）、H2（CORS/CSRF）、M2（登录枚举/限流）、M8/M9/M10（审计写入与来源）等条目不受本轮影响。
 
+**阶段 5 更新（JWT 密钥来源）**：签名密钥的注入路径收口（`7870016`）——删除 `JWT_SECRET` 环境变量，`resolveJWTSecret` 始终从数据库 `AUTH_SECRET` 读取，环境变量变化不再作废全部 token。SSO 侧新增前置校验：`getOrCreateUserWithIDP` 在 `external_url` 未配置时返回 `FailedPrecondition`，不再拼出空的 `/oauth/callback`。阶段 0 那条"`JWT_SECRET` 环境变量优先、缺失时回退 DB"的记录已是历史。
+
 
 
 ---

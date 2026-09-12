@@ -70,6 +70,12 @@
 - **集成套件全部通过**（含 migrator 与两条新用例）：`go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...` → `runner` 49.48s、`migrator` 11.29s，exit 0；`TestDataSourceResourceLifecycleRealServerIntegration` 18.11s PASS、`TestUnauthenticatedRequestsAreRejectedRealServerIntegration` 19.58s PASS
 - 集成 harness 新增"无 Docker 时 skip（exit 0）"、部分 env fail-fast、服务器启动换端口重试与可覆盖凭据；`make test-integration-mysql` 补上，`test-integration`/`test-integration-smoke` 纳入 `./backend/migrator/...`
 
+**阶段 5（settings 收回数据库 + 回滚 METADATA_SECRET_KEY）后复测**（详见下文"阶段 5 修复状态"）：
+- `gofmt -l backend/` 空；`go build ./...`、`go vet ./...`、`go test ./...`、部署构建 `go build -ldflags "-w -s" -p=16 -o ./build/metaxisdata ./backend/bin/server/main.go`、`golangci-lint run --allow-parallel-runners` ✅ 0 issues
+- `buf format -w proto`、`buf lint proto`、`cd proto && buf generate` ✅（`WorkspaceProfileSetting` 新增 `openlineage_retention_days`，store/v1/前端/API 文档产物同步）
+- 前端：`biome check`（188 文件）、`eslint`、`vue-tsc --build`、`vitest run`（17 用例）全部通过
+- 集成测试未重跑（需 Docker）；本机 `go test ./...` 另有一条既有失败 `TestMarshalRolePermissionsIsDeterministic`（clean HEAD 上同样失败：本机 protobuf 的 protojson 在数组元素间输出 `", "`），与本次改动无关
+
 **修复状态标记**（用于下文全部模块报告）：
 
 | 标记 | 含义 |
@@ -84,6 +90,8 @@
 | ◐ **部分修复（阶段 3）** | 阶段 3 处理了经确认的部分，剩余项已在报告中写明 |
 | ✅ **已修复（阶段 3 补遗）** | 阶段 3 补遗已修完并验证，附对应 commit |
 | ◐ **部分修复（阶段 3 补遗）** | 阶段 3 补遗处理了经确认的部分，剩余项已在报告中写明 |
+| ✅ **已修复（阶段 4）** | 阶段 4（IAM 权限管理）已修完并验证，附对应 commit |
+| ✅ **已修复（阶段 5）** | 阶段 5（settings 收回数据库 + 回滚 METADATA_SECRET_KEY）已修完并验证，附对应 commit |
 | ⏳ **未处理** | 尚未涉及，仍需按路线图处理 |
 
 ---
@@ -164,7 +172,7 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 
 | # | 阶段 0 要求 | 状态 | 提交 | 落地说明 |
 | --- | --- | --- | --- | --- |
-| 1 | JWT 签名密钥环境注入 + fail-closed；作废历史 token | ✅ | `adfec91` `84b16db` | 删除硬编码常量；`JWT_SECRET` 环境变量优先，缺失时回退 DB 中每部署随机的 `AUTH_SECRET`；`< 32` 字符启动失败；解析侧加 `WithValidMethods(HS256)`/`WithIssuer`/`WithExpirationRequired`，历史 token 全部失效。prod profile（`-tags release` ⇒ `Mode=prod`）已可编译并通过 `go vet -tags release ./...`。**注意**：无任何构建目标使用该 tag，默认构建仍为 dev（见 `01` H2 的 CORS 影响）。 |
+| 1 | JWT 签名密钥环境注入 + fail-closed；作废历史 token | ✅ | `adfec91` `84b16db` | 删除硬编码常量；`JWT_SECRET` 环境变量优先，缺失时回退 DB 中每部署随机的 `AUTH_SECRET`；`< 32` 字符启动失败；解析侧加 `WithValidMethods(HS256)`/`WithIssuer`/`WithExpirationRequired`，历史 token 全部失效。prod profile（`-tags release` ⇒ `Mode=prod`）已可编译并通过 `go vet -tags release ./...`。**注意**：无任何构建目标使用该 tag，默认构建仍为 dev（见 `01` H2 的 CORS 影响）。**阶段 5**：`JWT_SECRET` 已删除，签名密钥只从 DB `AUTH_SECRET` 读取（`7870016`）。 |
 | 2 | 恢复授权层：用户/实例/数据源/OpenLineage key 写操作加管理员校验 | ◐ | `ec49607` `0f2165e` | 重建 `ACLInterceptor` 并接线；proto 逐方法声明 `permission`，非空即要求 workspaceAdmin，覆盖用户删除/恢复、实例与数据源全部写操作（含 `validate_only`）、`SyncDatabase`、OpenLineage namespace/key、LLM profile、settings 写入；`UpdateUser` 因含自助场景在 handler 内鉴权。**剩余**：读路径未收紧；permission 到 role 的细粒度映射未实现（当前"非空 ⇒ 管理员"）。 |
 | 3 | 关闭未认证注册或强制 `DisallowSignup`；首个管理员授予改原子 | ✅ | `5b19778` `c4e22fc` | `CreateUser` 按 `disallow_signup` 判定（管理员可建任意用户；其他调用者只能注册 END_USER；首个 END_USER 始终放行以完成引导）；store `CreateUser` 用 `pg_advisory_xact_lock` 串行化并在同一事务内授予首个管理员（SSO 首用户路径顺带修复）；`CountUsers` 只统计未删除用户；新增 `SettingService` + `/settings/general` 供管理员开关。 |
 | 4 | 修 SQL 注入（user/instance/database filter + principal/group project ID） | ✅ | `3321801` | 见执行摘要第 3 条。 |
@@ -184,7 +192,7 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 | 7 | 补 `migration/0.1/` 增量 + guard 测试；修 `db_schema` 过滤 | ◐ | `bb93ee0` | `db_schema` 确认为不需要的遗留代码（`db.metadata` 存 `DatabaseMetadata`，无 `schemas` 字段；schema 树在 `meta_registry_resource`），因此**删除**：API 的 `table` 过滤器分支、store 的 join 推断、proto 过滤文档一并移除，`table` 改为返回 `InvalidArgument` + 守卫测试。**增量目录 `migration/0.1/` 经确认不创建**（当前无待发布 schema 变更），"改 `LATEST.sql` 必须同时补增量"仍是人工流程约束。 |
 | 8 | 修 schemasync 两个生命周期 bug 与破坏性 diff；`LastSyncTime` 进事务 | ◐ | `fcb6a98` | checker 瞬时错误改为记日志 + `continue`（不再永久退出）；调度收敛到 `shouldSyncNow`，显式拒绝 `interval == 0`（停用实例不再被排队）；`LastSyncTime` 改为提交成功后再写、血缘排队提到写 `db` 行之前；同步失败日志 Debug→Warn。**破坏性删除按产品决策只加日志**：`logSchemaSyncDeletion` 记录条数/类型分布/GUID 样本，实例级软删记 Warn，但不拦截、不设阈值。 |
 | 9 | 修 CEL 类型断言 panic；统一 `InvalidArgument` | ✅ | `ff914ac` | `getVariableAndValueFromExpr` 改为返回 error，新增 `filterString`/`filterBool`/`filterStringList`/`matchArgs`，user/instance/database/audit 四个解析器全部走检查路径；`email == 123`、`engine in [1]`、`name.matches(ident)`、裸 `matches("x")` 不再 panic 而是 `InvalidArgument`；`exclude_unassigned` 不再静默忽略非布尔值。12 个用例的守卫测试。 |
-| 10 | 接线日志系统 + 注册 `--external-url` + `-tags release` 进构建目标 | ✅ | `7fdcead` | `setupLogging` 用 `HandlerOptions{AddSource, Level: LogLevel, ReplaceAttr: log.Replace}` 构造 Text/JSON handler 并 `slog.SetDefault`；`--external-url` 注册并写入 `profile.ExternalURL`（SSO 回调 base 不再为空）；新增 `make build-release`（`-tags release` ⇒ prod profile），`make build` 与 AGENTS.md 开发构建保持 dev，文档同步更新。 |
+| 10 | 接线日志系统 + 注册 `--external-url` + `-tags release` 进构建目标 | ✅ | `7fdcead` | `setupLogging` 用 `HandlerOptions{AddSource, Level: LogLevel, ReplaceAttr: log.Replace}` 构造 Text/JSON handler 并 `slog.SetDefault`；`--external-url` 注册并写入 `profile.ExternalURL`（SSO 回调 base 不再为空）；新增 `make build-release`（`-tags release` ⇒ prod profile），`make build` 与 AGENTS.md 开发构建保持 dev，文档同步更新。**阶段 5**：`--external-url` 已移除，`external_url` 只由管理员在 `/settings/general` 配置（`7870016`）。 |
 | 11 | `UpdateInstance(data_sources)` 按 ID 合并；`UpdateDatabase` 判空 | ✅ | `20e284b` | `mergeDataSources`/`mergeDataSource` 用 `proto.Merge` 按 ID 叠加：请求未带的凭据、SSL/SSH 私钥、`verify_tls_certificate` 等 store-only 字段全部保留，成员仍由请求列表决定（缺席即删除）；顺带在 API 层补"恰好一个 ADMIN"校验。`UpdateDatabase` 对 `GetDatabaseV2` 的 `(nil, nil)` 返回 `NotFound`，不再 panic。 |
 
 **已知语义边界**：`UpdateInstance(data_sources)` 用的是"空值即未变更"，因为 proto3 无法区分"未发送"与"发送了空串"——要清空某个非密钥字段需删除后用 `AddDataSource` 重建。
@@ -213,7 +221,7 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 | 18 | 合并 CEL 翻译器 / 拆分超长文件 / 统一分页与错误映射 | ✅ | `7bfdfb6` `52213af` `89baa3a` `0590607` `4de82e3` `6be2262` | 4 个 filter 翻译器合并为 `api/v1/filter.go` 的单一实现（字段处理器只能经 `filterArgs` 申请占位符；`engine in [...]` 由内联字面量改为参数绑定）；分页统一到 `paginate[T]`，修掉 token limit 被忽略、sublevel 无 offset、metadata history off-by-one、LLM profile 与 SearchMetadata 无分页；新增 `ErrorMappingInterceptor` 让 `common.Code` 真正映射为 Connect 状态码（`connectErrorForWrite` 退役、`common.Error` 补 `Unwrap()` 且不再 nil panic）；4 个超长文件按职责拆成 2–3 个文件（3 个纯移动 commit，均校验函数集合一致）。 |
 | 19 | CI：`go test -race ./...` + lint + 前端测试 + migrator 集成测试入列 | ◐ | `d3d96c1` | 新增 `.github/workflows/ci.yml`：`unit`（`go test -race -count=1 ./...`）+ `lint`（golangci-lint v2.13.1）。经确认**只做 Go 单测与 lint**：前端 job、`./backend/migrator/...` 并入集成 target、缺 Docker 的 skip 行为（T-C2）均推迟。workflow 未在 GitHub 实跑。 |
 | 20 | 修正 proto 契约问题（P-H1..P-H6、M 系列）并按 breaking-change 流程发布 | ◐ | `73901a1` | P-H1..P-H6 全部处理；M 系列做了 M3/M5/M6/M7/M8/M12/M14/M16/M17/M19/M20/M21（含删除 `GetDatabase`、`ListInstanceDatabase` 两个 stub RPC）。P-H6 选择"显式过滤 + 文档化"而非补 v1 oneof 分支。**经确认推迟**：Engine 28→3、`DataSource` 的多引擎/IAM/SSH/Vault 字段、SCIM/2FA/服务账号、未实现 setting 枚举、policy/role/project store 消息、死 v1 消息。M1/M9/M10/M11/M15/M18/M22/M23 未做（需产品决策）。仓库内不存在"发布流程"，本轮以 commit `!` + 文档说明代替。 |
-| — | 遗留安全项：`Obfuscate` 改 AES-GCM | ✅ | `a1faf65` | AES-256-GCM + SHA-256 派生密钥 + 随机 nonce + `v1:` 版本前缀；密钥优先 `METADATA_SECRET_KEY`（`config.Profile.EncryptionKey` + `store.WithEncryptionKey`），未配置时回退数据库 `AUTH_SECRET` 并 Warn，为空/过短即报错；所有调用点处理错误。**破坏性**：XOR 时代密文不可读，已有部署需重新录入凭证。 |
+| — | 遗留安全项：`Obfuscate` 改 AES-GCM | ◐ | `a1faf65` | AES-256-GCM + SHA-256 派生密钥 + 随机 nonce + `v1:` 版本前缀；密钥优先 `METADATA_SECRET_KEY`（`config.Profile.EncryptionKey` + `store.WithEncryptionKey`），未配置时回退数据库 `AUTH_SECRET` 并 Warn，为空/过短即报错；所有调用点处理错误。**破坏性**：XOR 时代密文不可读，已有部署需重新录入凭证。**阶段 5 整体回滚为 `AUTH_SECRET` 种子 XOR**（`7870016`），同库密钥问题重新成立。 |
 | — | 遗留测试项：`api/auth` 与 `backend/server` 测试 | ✅ | `0dae0b7` | `api/auth` 覆盖 token 提取/签发/校验、方法注解、cookie、gateway modifier；`backend/server` 覆盖 `/healthz`、CORS 随 profile、pprof 门控、前端占位页、recover 中间件。新测试发现并修复 `getAuthContext` 对未知方法名的 nil deref panic。 |
 
 ## 阶段 3 收尾「proto 表面收敛」修复状态
@@ -269,7 +277,7 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 | 36 | 搜索索引 + 批量扫描 + 清理/保留 | ✅ | `f50fbbc` `2259abd` | 新增 `search_text` 存储生成列（恰为 name/title/comment/userComment 拼接）+ `pg_trgm` GIN 索引（增量 `0.1.0005`），谓词改为 `search_text ILIKE $n`，匹配行与旧 `jsonb_each` 谓词逐关键字对拍一致；空搜索串改为 `InvalidArgument`。`queueAll` 与 schemasync 的 `diff()` 都改 digest 列表 + 每类型一次版本查询（后者不再解析每个 JSONB 行，`2259abd`）。新增 `DeleteExpiredExplainSQLCache`/`DeleteExpiredLLMDebugLog`/`DeleteOpenLineageRunsBefore` 与 `WithCacheDisabled`。 |
 | 37 | migrator 三项 | ✅ | `2131420` | `tableExists` 限定 `current_schema()` + `BASE TABLE`（原来别的 schema 的同名表会让全新安装路径被跳过）；advisory lock 的解锁与 `lock_timeout` 复位改用不可取消的 ctx，并给加锁本身加 `lock_timeout`；ledger 比二进制新时拒绝启动。 |
 | 38 | 不支持引擎的重试 | ✅ | `9019140` | 引擎无 lineage analyzer 时把跳过连同 meta hash 与原因写进 `column_lineage_version`，不再每小时无限重排队。 |
-| 39 | 保留清理 runner | ✅ | `cfa74df` | `runner/maintenance` 启动时与每 6 小时清理过期 ExplainSQL 缓存行与 7 天前的 `llm_debug_log`；`openlineage_run` 默认永久保留，`--openlineage-retention-days`（默认 0）显式开启后连带重算 task 聚合并清理空 task 与镜像 registry 行。 |
+| 39 | 保留清理 runner | ✅ | `cfa74df` | `runner/maintenance` 启动时与每 6 小时清理过期 ExplainSQL 缓存行与 7 天前的 `llm_debug_log`；`openlineage_run` 默认永久保留，`--openlineage-retention-days`（默认 0）显式开启后连带重算 task 聚合并清理空 task 与镜像 registry 行。**阶段 5**：该 flag 已移除，保留期改由 `WorkspaceProfileSetting.openlineage_retention_days` 配置（`7870016`）。 |
 | 40 | 引擎注册覆盖 | ✅ | `729db71` | driver 补 `TIDB`（此前完全缺失，TiDB 实例连 Open 都失败）；schema DDL/迁移补 `MARIADB`/`TIDB`；lineage 补 `MARIADB`/`OCEANBASE`；OpenLineage resolver 的 `isMySQLLike` 纳入 `OCEANBASE`。 |
 | — | 既有集成失败根因 | ✅ | `f50fbbc` | 见上：测试替身缓存，不是产品缺陷。 |
 | — | `backend/server` 测试竞态 | ✅ | `a16c8d4` | dev/prod 两个 `sync.Once` 在并行测试下同时调用 `registerMetrics`，约 1/5 概率 `-race` 失败；改为一个 Once 顺序构建。 |
@@ -303,8 +311,26 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 **已知取舍与剩余（阶段 3 收尾二）**：
 - CI workflow 仍**从未在 GitHub 上真正执行**，本地只验证了等价命令与 YAML 结构。
 - 前端仍**没有覆盖率**：`test:coverage` 需要新增 `@vitest/coverage-v8` 依赖，本轮以 Go 侧 `-cover` 代替。
-- `metadata` 搜索仍是有意的子串匹配（trgm 索引服务），LLM profile 仍是 30s TTL 缓存 + 写侧失效，`openlineage_run` 默认永久保留。
+- `metadata` 搜索仍是有意的子串匹配（trgm 索引服务），LLM profile 仍是 30s TTL 缓存 + 写侧失效，`openlineage_run` 默认永久保留（保留期改由管理员设置，见阶段 5）。
 - `09` 的低优先项（`waitForHTTPReady` 把 5xx 当 ready、`SELECT 1;` 空断言、fixture DDL 重复（M5）、部分测试缺 `t.Parallel()`）保留。
+
+---
+
+## 阶段 5「settings 收回数据库 + 回滚 METADATA_SECRET_KEY」修复状态
+
+一次功能改动（`7870016`）：把运行期配置从进程 profile / 环境变量收回数据库设置，并回滚 `a1faf65` 引入的凭证加密密钥。四项改动互相牵连在 `cmd/profile.go`、`config/profile.go`、`server/` 等文件里，作为单个 commit 提交。
+
+| # | 事项 | 状态 | 提交 | 落地说明 |
+| --- | --- | --- | --- | --- |
+| 51 | `OpenLineageRetentionDays` 改为管理员设置 | ✅ | `7870016` | 移入 `WorkspaceProfileSetting.openlineage_retention_days`（store 字段 14 / v1 字段 4）；`runner/maintenance` 每轮 `GetWorkspaceGeneralSetting` 读取（无需重启），`/settings/general` 可编辑；删除 `--openlineage-retention-days`。 |
+| 52 | `ExternalURL` 改为管理员设置 | ✅ | `7870016` | 删除 `--external-url` 与 `initializeSetting` 的启动覆盖，`WORKSPACE_PROFILE` 只在全新安装时创建、之后完全由管理员管理；前端补齐入口；保存时去掉尾部 `/`；未配置时 SSO 返回 `FailedPrecondition`。 |
+| 53 | JWT 签名密钥只从数据库读取 | ✅ | `7870016` | 删除 `JWT_SECRET` 环境变量，`resolveJWTSecret` 始终读 `AUTH_SECRET`；环境变化不再让全部 token 失效。 |
+| 54 | 回滚 `METADATA_SECRET_KEY` / AES-GCM | ✅ | `7870016` | `common.Obfuscate/Unobfuscate` 回到 `AUTH_SECRET` 种子 XOR；删除 `Profile.EncryptionKey`/`store.WithEncryptionKey`；`GetSecret` 仍对缺失/空的 `AUTH_SECRET` 报错（避免空 seed 除零）；`store/setting_test.go` 换成「已解析 secret 走缓存」的 hermetic guard。**破坏性**：已写入 AES `v1:` 密文的部署需重新录入凭证。 |
+
+**已知取舍与剩余（阶段 5）**：
+- `AUTH_SECRET` 同时用于 JWT 签名与字段混淆（回到 `a1faf65` 之前的形态），这是本轮明确选择的取舍；若将来要分离，需要新设置项与迁移路径。
+- 回滚意味着"同库密钥 XOR"这一问题重新成立：`07` U-H2 与 `04` M18 从"已修复"退回"待办"（见各模块报告的第 5 阶段更新）。
+- 字段混淆侧的空 seed 由 `GetSecret` 的空值检查兜住，但 `common.Obfuscate` 本身对空 seed 仍会除零（当前除 `store` 外无其它调用者）。
 
 ---
 
@@ -314,7 +340,7 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 | --- | --- | --- | --- |
 | **授权缺失** | 拦截器被注释、`permission` 从不校验 | `server/grpc_routes.go:85`、`api/auth/auth.go:350` | ✅ 阶段 0 恢复拦截器，阶段 4 完成：全部方法（含读）带注解，`iam.Manager` 按角色/权限集解析，新增 IAM/Role/Group 管理面与前端页面 |
 | **SQL 拼接** | 4 个 handler + 2 个 store 把用户输入拼进 `WHERE` | `user/instance/database_service.go`、`store/principal.go`、`store/group.go` | ✅ 阶段 0：全部参数化 + project ID 校验 + guard 测试 |
-| **秘密处理** | 硬编码 JWT 密钥、XOR"加密"、审计脱敏遗漏 | `profile_dev.go:11`、`common/utils.go`、`api/v1/audit.go:197` | ✅ 阶段 0/3：JWT 与审计脱敏已修，XOR 换成 AES-256-GCM + `METADATA_SECRET_KEY`（`a1faf65`） |
+| **秘密处理** | 硬编码 JWT 密钥、XOR"加密"、审计脱敏遗漏 | `profile_dev.go:11`、`common/utils.go`、`api/v1/audit.go:197` | ✅ 阶段 0/3/5：JWT 与审计脱敏已修；阶段 3 换成 AES-256-GCM + `METADATA_SECRET_KEY`（`a1faf65`），**阶段 5 又回滚为 `AUTH_SECRET` 种子 XOR 并删除 `METADATA_SECRET_KEY`**（`7870016`）——同库密钥问题因此重新成立，见 `07` U-H2 |
 | **凭据被往返请求清空** | `UpdateInstance(data_sources)` 整体替换数据源列表，丢掉读取路径不返回的密钥/store-only 字段 | `instance_service.go:405-413,1307-1353` | ✅ 阶段 1：按 ID 合并（`20e284b`） |
 | **未认证入口** | `CreateUser` 免凭证 + 首个用户自动管理员 | `user_service.proto:53`、`user_service.go:286-398` | ✅ 阶段 0：按 `disallow_signup` 判定，首管理员授予原子化 |
 | **缓存被禁用但仍在写** | `store.New(..., false)` 使所有 LRU 读失效，写仍发生；`GetUserByID` 因此每请求全表扫描 | `server/server.go:70`、`store/principal.go:89-114` | ✅ 阶段 2：缓存启用、开关删除、定向查询 + key/竞态修复（`f22f61e`） |
@@ -341,7 +367,7 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 | 08 Proto | 1 | 6 | 23 | 大量 | store/v1 契约分叉；AIP 违规；审计脱敏根因 |
 | 09 测试 | 2 | 5 | 10 | 5 | CI 不跑单测；auth 零测试；guard 测试缺失 |
 
-> 阶段 0/1/2 修复后，上表中的问题数量尚未重新统计；已修复条目见各阶段修复状态与各模块报告中的 ✅/◐ 标记。新增测试：`backend/api/v1/filter_injection_test.go`、`backend/api/v1/filter_type_safety_test.go`、`backend/api/v1/instance_data_source_test.go`、`backend/api/v1/common_test.go`、`backend/api/v1/audit_test.go` 扩展、`backend/runner/schemasync/syncer_test.go` 扩展、`backend/store/principal_test.go`、`backend/store/db_connection_test.go`、`backend/store/meta_resource_test.go` 扩展、`backend/plugin/openlineage/resolver_test.go` 扩展、`backend/component/llm/agent_test.go`；**阶段 3 新增**：`backend/api/v1/filter_test.go`、`backend/api/v1/pagination_test.go`、`backend/api/v1/error_interceptor_test.go`（即改写后的 `common_test.go`）、`backend/common/error_test.go`、`backend/common/utils_test.go`、`backend/store/setting_test.go`、`backend/api/auth/auth_test.go`、`backend/server/echo_routes_test.go`。**阶段 3 收尾**没有新增测试，但修掉了 `backend/common/utils_test.go` 里一个会随机失败的断言（`4afe1ba`）。**阶段 3 补遗新增**：`backend/common/guid_test.go`、`backend/common/cel_test.go`（含“未绑定变量必须 fail closed”用例）、`backend/api/v1/pagination_test.go` 的血缘分页用例；并修掉 `backend/server/echo_routes_test.go` 的 `-race` 竞态（`a16c8d4`）。**阶段 3 收尾二新增**：`backend/test/integration/dockerutil/dockerutil_test.go`、`backend/test/integration/env/env_config_test.go`、`backend/store/meta_resource_query_test.go`、`backend/store/database_test.go`、`backend/store/policy_test.go`、`backend/store/manual_sql_pure_test.go`、`backend/api/v1/audit_helpers_test.go`、`backend/api/v1/debug_interceptor_test.go`、`backend/server/server_lifecycle_test.go`、`backend/component/llm/{fetcher,message,tools}_test.go`、`backend/test/integration/runner/{auth_reverse_service_test.go,instance_data_source_service_test.go}`，以及首批前端 `frontend/src/{utils/error.test.ts,api/lineage.test.ts}`（12 个用例）。
+> 阶段 0/1/2 修复后，上表中的问题数量尚未重新统计；已修复条目见各阶段修复状态与各模块报告中的 ✅/◐ 标记。新增测试：`backend/api/v1/filter_injection_test.go`、`backend/api/v1/filter_type_safety_test.go`、`backend/api/v1/instance_data_source_test.go`、`backend/api/v1/common_test.go`、`backend/api/v1/audit_test.go` 扩展、`backend/runner/schemasync/syncer_test.go` 扩展、`backend/store/principal_test.go`、`backend/store/db_connection_test.go`、`backend/store/meta_resource_test.go` 扩展、`backend/plugin/openlineage/resolver_test.go` 扩展、`backend/component/llm/agent_test.go`；**阶段 3 新增**：`backend/api/v1/filter_test.go`、`backend/api/v1/pagination_test.go`、`backend/api/v1/error_interceptor_test.go`（即改写后的 `common_test.go`）、`backend/common/error_test.go`、`backend/common/utils_test.go`、`backend/store/setting_test.go`、`backend/api/auth/auth_test.go`、`backend/server/echo_routes_test.go`。**阶段 3 收尾**没有新增测试，但修掉了 `backend/common/utils_test.go` 里一个会随机失败的断言（`4afe1ba`）。**阶段 3 补遗新增**：`backend/common/guid_test.go`、`backend/common/cel_test.go`（含“未绑定变量必须 fail closed”用例）、`backend/api/v1/pagination_test.go` 的血缘分页用例；并修掉 `backend/server/echo_routes_test.go` 的 `-race` 竞态（`a16c8d4`）。**阶段 3 收尾二新增**：`backend/test/integration/dockerutil/dockerutil_test.go`、`backend/test/integration/env/env_config_test.go`、`backend/store/meta_resource_query_test.go`、`backend/store/database_test.go`、`backend/store/policy_test.go`、`backend/store/manual_sql_pure_test.go`、`backend/api/v1/audit_helpers_test.go`、`backend/api/v1/debug_interceptor_test.go`、`backend/server/server_lifecycle_test.go`、`backend/component/llm/{fetcher,message,tools}_test.go`、`backend/test/integration/runner/{auth_reverse_service_test.go,instance_data_source_service_test.go}`，以及首批前端 `frontend/src/{utils/error.test.ts,api/lineage.test.ts}`（12 个用例）。**阶段 5**：`backend/common/utils_test.go` 删除 AES 的 4 个用例（保留资源名测试），`backend/store/setting_test.go` 从「密钥优先级/短 key 拒绝」重写为「已解析 secret 走缓存、不查库」的 hermetic guard。
 
 ---
 
@@ -351,12 +377,12 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 2. **再读** [`04-api-v1.md`](04-api-v1.md) 与 [`03-store.md`](03-store.md)，覆盖注入、SSRF、无界查询与持久层正确性。
 3. **然后** [`06-runners-migrator.md`](06-runners-migrator.md)（迁移与同步的正确性/数据安全）。
 4. **最后** [`05`](05-components.md)、[`07`](07-common-utils.md)、[`08`](08-proto-contract.md)、[`09`](09-tests.md) 与 [`10`](10-legacy-debt-and-roadmap.md)（组件、基础设施、契约、测试、清理路线）。
-5. 整改排期见 [`10-legacy-debt-and-roadmap.md`](10-legacy-debt-and-roadmap.md) 第四节："阶段 0：安全止血"（4 条完整修复、2 条部分修复）、"阶段 1：正确性与可运维性"（3 条完整修复、2 条部分修复）、"阶段 2：性能与资源"（4 条完整修复、1 条部分修复）、"阶段 3：清理与重构"（17/18 完整修复；19/20 各有一项经确认推迟，其中 20 的推迟范围已在"阶段 3 收尾：proto 表面收敛"一节做完，19 的前端 job/migrator 集成/Docker skip 仍未做）、"阶段 3 续：proto 残留、schema 清理与 M 系列"（25–30 完成，仅 M9 经确认跳过）、"阶段 3 补遗：正确性遗留、安全加固、性能与保留、引擎覆盖"（31–40 完成）、"阶段 3 收尾二：测试与 CI 收口 + M9/M4 资源化"（41–50 完成，M9/M4 已落地）均已完成，剩余项已逐条标注，可在对外部署前作为基线。
+5. 整改排期见 [`10-legacy-debt-and-roadmap.md`](10-legacy-debt-and-roadmap.md) 第四节："阶段 0：安全止血"（4 条完整修复、2 条部分修复）、"阶段 1：正确性与可运维性"（3 条完整修复、2 条部分修复）、"阶段 2：性能与资源"（4 条完整修复、1 条部分修复）、"阶段 3：清理与重构"（17/18 完整修复；19/20 各有一项经确认推迟，其中 20 的推迟范围已在"阶段 3 收尾：proto 表面收敛"一节做完，19 的前端 job/migrator 集成/Docker skip 仍未做）、"阶段 3 续：proto 残留、schema 清理与 M 系列"（25–30 完成，仅 M9 经确认跳过）、"阶段 3 补遗：正确性遗留、安全加固、性能与保留、引擎覆盖"（31–40 完成）、"阶段 3 收尾二：测试与 CI 收口 + M9/M4 资源化"（41–50 完成，M9/M4 已落地）、"阶段 4：IAM 权限管理"（`6fddae6`）、"阶段 5：settings 收回数据库 + 回滚 METADATA_SECRET_KEY"（51–54 完成）均已完成，剩余项已逐条标注，可在对外部署前作为基线。
 
 ---
 
 ## 关于本报告的确定性
 
-- 所有条目均附 `文件:行号` 与代码摘录；标注"待确认"的条目表示需要作者确认或需要集成测试/运行时验证。**阶段 1 已关闭两条**：`db_schema` 的实际报错形态（该过滤器被整体删除，`bb93ee0`）与 `SyncDBSchema` 是否会静默返回空/部分快照（会：MySQL 的 `information_schema` 按权限过滤行，`fcb6a98`）。**阶段 2 又关闭一条**：`enableCache` 的去留（经确认启用，`f22f61e`）。**阶段 3 收尾关闭四条**：`principal.mfa_config` 是死列（2FA 无实现）、`store.ExplainSQLCache` 应删（已删）、`policy`/`user_group` 表是活路径、`project`/`role` 表无 Go 调用者但受 `db.project` 外键约束不能直接删（`08` 已逐条补注）。**阶段 3 续关闭三条**：`setting.value` 是**有意**的 `text`（多态列，`d8ce592`）、`transformation`/`raw_payload` 的编码问题已解决（`997ede9` `b2e80ae`）、`project`/`role` 表与 `db.project` 列已实际删除（`451cb78` `904fb09`）。**阶段 3 补遗又关闭三条**：集成套件里那条既有失败的根因（是集成 harness 的 `inspectStore` 缓存了别的进程写入前的行，不是 lineage analyzer 回写，`f50fbbc`）、`MARIADB`/`OCEANBASE` 乃至 `TIDB` 的 schema/血缘/driver 注册缺口（`729db71`）、`search_text` 是否为可行索引方案（已实测谓词等价且走 trgm 索引）。**阶段 3 收尾二又关闭一条**：M9/M4 的资源化决策——`DataSource` 与 OpenLineage/API key 均已按 AIP 资源化（`513940f` `c2a67e0`）。仍待确认的集中在：部署拓扑（是否有反向代理、是否单租户）、`METADATA_SECRET_KEY` 的注入与轮换、`RETURNING` 顺序；另有一条流程性事实：CI workflow 从未在 GitHub 实跑。
+- 所有条目均附 `文件:行号` 与代码摘录；标注"待确认"的条目表示需要作者确认或需要集成测试/运行时验证。**阶段 1 已关闭两条**：`db_schema` 的实际报错形态（该过滤器被整体删除，`bb93ee0`）与 `SyncDBSchema` 是否会静默返回空/部分快照（会：MySQL 的 `information_schema` 按权限过滤行，`fcb6a98`）。**阶段 2 又关闭一条**：`enableCache` 的去留（经确认启用，`f22f61e`）。**阶段 3 收尾关闭四条**：`principal.mfa_config` 是死列（2FA 无实现）、`store.ExplainSQLCache` 应删（已删）、`policy`/`user_group` 表是活路径、`project`/`role` 表无 Go 调用者但受 `db.project` 外键约束不能直接删（`08` 已逐条补注）。**阶段 3 续关闭三条**：`setting.value` 是**有意**的 `text`（多态列，`d8ce592`）、`transformation`/`raw_payload` 的编码问题已解决（`997ede9` `b2e80ae`）、`project`/`role` 表与 `db.project` 列已实际删除（`451cb78` `904fb09`）。**阶段 3 补遗又关闭三条**：集成套件里那条既有失败的根因（是集成 harness 的 `inspectStore` 缓存了别的进程写入前的行，不是 lineage analyzer 回写，`f50fbbc`）、`MARIADB`/`OCEANBASE` 乃至 `TIDB` 的 schema/血缘/driver 注册缺口（`729db71`）、`search_text` 是否为可行索引方案（已实测谓词等价且走 trgm 索引）。**阶段 3 收尾二又关闭一条**：M9/M4 的资源化决策——`DataSource` 与 OpenLineage/API key 均已按 AIP 资源化（`513940f` `c2a67e0`）。**阶段 5 关闭一条并重开一条**：`METADATA_SECRET_KEY` 的注入与轮换不再是待确认项——该密钥连同 `JWT_SECRET` 一起删除，运行期配置统一回到数据库设置（`7870016`）；代价是"同库密钥 XOR"重新成立，`07` U-H2 / `04` M18 重新成为待办。仍待确认的集中在：部署拓扑（是否有反向代理、是否单租户）、`RETURNING` 顺序；另有一条流程性事实：CI workflow 从未在 GitHub 实跑。
 - 少数结论已通过独立执行验证（例如 `parseStructuredResponse` 的 `"## ## "` 缺陷用独立程序复现）。
 - 一处此前的推测已被更正：cel-go v0.26.1 的 `expr.AsCall()` 是 Kind 守卫的、不会 panic；真正会 panic 的是未检查的 `value.(string)` 类型断言与对非字面量调用 `AsLiteral().Value()`（详见 `07` M3，阶段 1 已修，`ff914ac`）。

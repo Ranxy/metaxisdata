@@ -19,6 +19,8 @@
 
 **阶段 3 收尾二更新**：`resource_name.go` 新增两组资源名 helper：OpenLineage 侧 `FormatNamespaceMapping`/`GetNamespaceMappingID`、`FormatOpenLineageRun`/`GetOpenLineageRunGUID`、`FormatOpenLineageTask`/`GetOpenLineageTaskGUID`、`FormatAPIKey`/`GetAPIKeyID`（`c2a67e0`），DataSource 侧 `FormatDataSource`/`GetInstanceDataSourceID`（`513940f`）。四个 pattern 与 `FormatInstance` 共用同一命名风格，解析侧共用 `GetOpenLineageToken`/`GetOpenLineageIntID`：**畸形、缺段、带多余斜杠或不属于该实例的名字都在任何 store 调用之前返回错误**（handler 转成 `InvalidArgument`）。`utils_test.go` 里补了往返 + 非法名拒绝的表驱动测试；同一文件加上兄弟测试文件已有的 `//nolint:revive` 包名标记（包名 `common` 本身触发 revive 的 package-naming）。
 
+**阶段 5 更新**：U-H2 被回滚（`7870016`）——`Obfuscate`/`Unobfuscate` 回到 `AUTH_SECRET` 种子 XOR（删除 AES-GCM、`v1:` 前缀与 `newAEAD`），`store` 侧的"同库密钥"问题重新成立，U-H2 状态从 ✅ 退回待办。`config/profile.go` 删除 `ExternalURL`/`EncryptionKey`/`OpenLineageRetentionDays`，`Secret` 改为启动时从数据库 `AUTH_SECRET` 解析的运行时值；`JWT_SECRET` 环境变量已不存在。本文件开头提到的"`AUTH_SECRET` 为空时 `Obfuscate` 除零"现在由 `GetSecret` 的空值检查兜住（`Obfuscate` 自身仍无保护，但除 `store` 外无调用者）。
+
 
 ---
 

@@ -13,6 +13,8 @@
 
 **阶段 3 收尾二更新**：`component/llm` 的三个"纯逻辑"文件首次有测试（`c162bc0`）：`fetcher_test.go` 用表驱动覆盖 `ValidateBaseURL`（空/纯空白/相对路径/无 host/非 HTTP scheme 都拒绝），并用 `httptest` 的 stub provider 覆盖 `FetchModels` 的正常解析、`Bearer` 头、无 key 时不带 Authorization、非 200、空列表、**超过 8MiB 的响应必须解码失败而不是被静默截断**、未知字段容忍；`message_test.go` 覆盖 `ConvertToLlm` 的角色映射（`toolResult`→`tool`）、**assistant 的文本与 tool calls 同时保留**（这正是上一轮修掉的回归）、未知角色丢弃与空输入返回非 nil；`tools_test.go` 覆盖 `BuildContextFromMetadata` 的 GUID 配对（GUID 列表比 metadata 短时不得错配）、不支持的类型跳过、table/view/function/procedure 的列与 SQL 映射，以及 `ExplainSQLTools` 的形状。registry 的缓存与分页仍只由集成/上层路径覆盖。
 
+**阶段 5 更新**：阶段 3 的 C-H3（AES-256-GCM + `METADATA_SECRET_KEY`）被回滚（`7870016`）——`common.Obfuscate`/`Unobfuscate` 回到 `AUTH_SECRET` 种子 XOR，`store` 侧不再注入环境密钥。C-H3 状态从 ✅ 退回待办（同库密钥问题见 `07` U-H2）。
+
 
 ---
 

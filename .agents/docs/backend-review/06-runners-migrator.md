@@ -22,6 +22,8 @@
 
 **阶段 3 续更正**：上一段收尾更新的四条结论已被本轮取代——`LATEST.sql` 已有 `0003`/`0004` 两个新增量，不再是无 schema 变更；`principal.mfa_config` 列已删除；`idp.type` 的 CHECK 已收窄，不再是为兼容既有行而保留；`role`/`project` 表已 DROP，`db.project` 的外键随列一起删除，不再是删表的阻碍。
 
+**阶段 5 更新**：`runner/maintenance` 的 OpenLineage 保留期不再来自 `--openlineage-retention-days` 这个 CLI flag（已删除），改为每轮执行时读取 `WORKSPACE_PROFILE.openlineage_retention_days`（`7870016`）——管理员在 `/settings/general` 修改后无需重启即可生效；`NewRunner` 因此不再需要 `*config.Profile`。本轮无 schema 变更（保留期是 JSONB 里的新字段，不需要迁移）。
+
 ---
 
 ## 严重（Critical）

@@ -25,6 +25,8 @@
 
 **阶段 3 续更正**：上一段收尾更新里 `DeleteInstance` 注释修正因 BSR 限流未落地的事项不再成立——`DeleteInstanceRequest.force` 与其注释本轮随 project 一起删除（`451cb78`）。
 
+**阶段 5 更新**：`setting_service.go` 的 `UpdateWorkspaceProfileSetting` 掩码新增 `openlineage_retention_days`（拒绝负数），`external_url` 保存时去掉尾部 `/`（`7870016`）。`common.Obfuscate` 回滚为 XOR 后，**M18 重新成立**（LLM/实例凭据仍是同库密钥 XOR；上文"密钥本身已改 AES-GCM"的括注作废），M18 的待确认"`profile.Secret`（XOR seed）如何生成/轮换"回到"与 JWT 共用数据库 `AUTH_SECRET`"这一答案。
+
 ---
 
 # A. 数据面：Instance / Database / History

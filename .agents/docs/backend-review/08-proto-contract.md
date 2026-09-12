@@ -20,6 +20,8 @@
 
 **阶段 3 收尾二更新**（最后两个契约遗留，2 个 commit）：**M4**（`c2a67e0`）把 `NamespaceMappingResource`/`OpenLineageRunResource`/`OpenLineageTaskResource`/`APIKeyResource` 改造成真正的资源——改名去掉 `-Resource` 后缀、声明 `metaxisdata/<Kind>` 与 `openlineage/...` pattern、`name` 取代 `int64 id`，Get 绑 `{name=openlineage/runs/*}` / `{name=openlineage/tasks/*}`，Update 绑 `{mapping.name=...}`，Delete/Revoke 收资源名；只读聚合消息保持原样。**M9**（`513940f`）把 `DataSource` 变成 Instance 的 AIP 子资源：声明 `metaxisdata/DataSource`（`instances/{instance}/dataSources/{data_source}`）、以 `name` 为标识，`AddDataSource`/`RemoveDataSource`/`UpdateDataSource` 改为 `CreateDataSource`（AIP-133）/`UpdateDataSource`（AIP-134）/`DeleteDataSource`（AIP-135），`UpdateInstance` 不再接受 `data_sources` mask。两次改动都同步了 `common` 的资源名 helper、Go handler、前端调用点与生成产物，并各有一个 guard（资源名往返/非法名拒绝）或集成测试（真实 server 上的数据源生命周期、未认证反向用例）。至此 **M 系列全部处理完毕**，`08` 不再有未做的契约条目；仍待确认的是部署拓扑、`METADATA_SECRET_KEY` 轮换与 `RETURNING` 行序。
 
+**阶段 5 更新**：`WorkspaceProfileSetting` 新增 `openlineage_retention_days`（store 字段 14 / v1 字段 4，`7870016`），与既有的 `external_url` 一起由管理员在 `/settings/general` 配置；store 与 v1 同步，生成产物与 API 文档一起提交（`buf format`/`buf lint`/`buf generate` 通过）。上文"仍待确认的是……`METADATA_SECRET_KEY` 轮换"随之关闭——该密钥已删除。
+
 ---
 
 ## 严重（Critical）
