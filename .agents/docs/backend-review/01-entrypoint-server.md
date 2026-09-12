@@ -11,6 +11,8 @@
 **阶段 2 更新**：M1 ✅（关停不再 `Fatal`，runner 等待加 10s 上限，`fb8ca14`）、M4 ✅（连接池钳制 + idle/lifetime/idleTime + `sync.Once` 初始化，`fb8ca14`）。M2（派生后丢弃 context）、M3（启动打印全部路由）、M5、M6 仍未处理。
 **阶段 3 更新**：M2 ✅（删除派生后丢弃的 context 与 `Server.cancel`——它取消的 context 无人监听；真正的 runner 取消是 `runnerCtx`/`runnerCancel`）、M3 ✅（`echo.Debug` 与路由列表打印改为仅在 `RuntimeDebug`/`--debug` 时输出）、低节"未注册 flag"与 `dataDir` ✅（`fedcc12`：删除 `ha`/`saas`/`demo`/`memoryProfileThreshold` 与 `dataDir`，`activeProfile`/`getBaseProfile` 不再收参数）、`Profile.LastActiveTS` ✅（只在授权请求里写、从不读）。另删除两个无实现且会直接编译失败的构建约束：`ultimate.go` 的 `!minidemo` 与 `server_frontend_not_embed.go` 的 `!embed_frontend`（`3cc4926`，实测 `go build -tags embed_frontend ./backend/server/` 曾报 `undefined: embedFrontend`）。**H2（CORS/CSRF）仍未处理**：cookie 的 `SameSite` 仍由客户端可控的 `Origin` 决定、无 CSRF token；不过阶段 3 为路由装配补了测试，覆盖"dev 全开 CORS / prod 不发 CORS 头"（`0dae0b7`）。**M5、M6 仍未处理**。
 
+**阶段 3 收尾更新**：`backend/server/init.go` 不再向 `WORKSPACE_PROFILE` 写入 `EnableMetricCollection: true`（该字段与整个 metric 栈已删除，`e0eab33`）；`LATEST.sql` 中 `setting.name` 取值、`principal.mfa_config`、`idp.type` 的注释改为如实描述（表结构未动，`e0eab33`）。
+
 ---
 
 ## 严重（Critical）

@@ -11,6 +11,8 @@
 **阶段 2 更新**：M13 相关的 `Store.Secret` 竞态 ✅（改为私有字段 + 互斥锁，`f22f61e`）；`enableCache` 待确认项已关闭（启用缓存，见下）。U-H1（`common.Code`→Connect 映射）与 U-H2（XOR 混淆）仍未处理。
 **阶段 3 更新**：U-H1 ✅（新增 `api/v1/ErrorMappingInterceptor`，`common.Code` 首次真正映射为 Connect 状态码；`common.Error` 补 `Unwrap()`；`connectErrorForWrite` 退役，`89baa3a`）、U-H2 ✅（AES-256-GCM + 环境密钥 + 随机 nonce + 版本前缀，`a1faf65`）、M6 ✅（`Error()` 不再对 nil cause panic、可 `Unwrap`、`errors.Join` 链可穿透）、死代码清单 ✅（`cel.go` 的 8 个 helper/6 个变量、`cel_attributes.go` 的 15 个常量、`error.go` 的 `Wrap`/`Wrapf`/`Code.Int`/`Code.Int32` 与 migration/task 错误码族、`resource_name.go` 的 26 个符号、`const.go` 的死常量、`utils/collection.go`、`utils/member.go` 的注释块与 `MemberContainsUser`、整个 `metric` 栈均删除；`e42b9ac`）。**M1（CEL 条件 fail-open）仍未处理**：`EvalBindingCondition` 对引用 `resource.*` 的表达式仍返回 true；当前 binding 构造不带 condition，属潜伏，阶段 3 未动其语义。**M2（每次求值新建 CEL env）仍未处理**。
 
+**阶段 3 收尾更新**：本轮**未改 `common` 的行为**；只修掉 `backend/common/utils_test.go` 里 `TestObfuscateRoundTrip` 的 flaky 断言——`NotContains(ciphertext, plaintext)` 对短明文（如 `"a"`）会随机命中 base64 密文，`-race` 全量跑时确实失败过一次，改为比较整体是否相等（`4afe1ba`）。
+
 ---
 
 ## 高（High）

@@ -9,6 +9,8 @@
 **阶段 2 更新**：M1 ✅（缓存启用 + `GetUserByID/Email` 定向查询，`f22f61e`）；重复邮箱的并发注册由唯一索引 + `CodeAlreadyExists` 兜住（`ff9b22a`，见 `03` S-H6）。H1/H4、M2（用户枚举时间差/无限流）等仍未处理。
 **阶段 3 更新**：① `api/auth` 首次有了测试（`0dae0b7`）：`GetTokenFromHeaders`（Bearer 大小写/多余空白/缺 token/错误 scheme/cookie 回退/Authorization 优先）、token 签发与校验（kid/iss/aud/sub/exp、错误密钥、prod token 不满足 dev audience、API token 过期）、`IsAuthenticationAllowed`、`getAuthContext` 的注解读取、`GetTokenCookie`（http/https 的 SameSite 与 Secure）、`GatewayResponseModifier` 的 Set-Cookie 复制。② 该测试发现并修复一个真实缺陷：`getAuthContext` 对未知方法名时 `sd.Methods().ByName(...)` 返回 nil 后直接 `.Options()` 会 panic，现在返回 error。③ `auth_method` 扩展与 `AuthMethod` 枚举（M17 的剩余项）已删除，`getAuthContext` 不再读取它；`GetCurrentUser` 去掉 `allow_without_credential`（M16，此前标注免凭证却在无用户时返回 `Unauthenticated`）。④ 审计脱敏以外的错误处理：store 的错误码现在由 `api/v1` 的错误映射拦截器转为 Connect 状态码，审计拦截器记录的是客户端实际收到的状态（`89baa3a`）。**仍未处理**：H1/H4、M2（用户枚举时间差/无限流）、读路径授权、`ListAuditLogs` 中历史已落库的明文 key 清理、`Obfuscate` 之外的历史明文数据。
 
+**阶段 3 收尾更新**：IDP 收敛为 **OAuth2 only**——`store/idp.proto` 删 OIDC/LDAP 配置与枚举值，`store/idp.go` 只留登录读取路径（`GetIdentityProvider` + `listIdentityProvidersImpl`），无调用者的 `CreateIdentityProvider`/`ListIdentityProviders`/`UpdateIdentityProvider`/`DeleteIdentityProvider`/`getConfigBytes` 删除，`FieldMapping` 注释不再指向不存在的 `principal.idp_user_info` 列（`e0eab33`）。`User.recovery_codes`（2FA）与 `UserProfile.source`（Entra SCIM）删除；**服务账号路径经确认是活的、保留**：`User.service_key`（`CreateUser` 的 SERVICE_ACCOUNT 分支返回生成的 access key）、`User.phone`（E.164 校验）、`PrincipalType.SERVICE_ACCOUNT`（`GenerateAPIToken` 登录分支）、`ServiceAccountAccessKeyPrefix`。`principal.mfa_config` 列确认无读写、无 proto 消息（注释已改，列保留）。
+
 ---
 
 ## 严重（Critical）
