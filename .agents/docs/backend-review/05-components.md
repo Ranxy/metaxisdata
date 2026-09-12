@@ -6,21 +6,27 @@
 
 **阶段 0 更新**：C-H4 ◐、M8 ◐——两者的"任意已认证用户可利用"入口已由管理员权限注解关闭，但组件内部的 nil 判空、URL 校验、响应大小限制**均未修**；C-H1/C-H2/C-H3 未处理。
 
+**阶段 2 更新**：C-H1 ✅（所有发送 ctx-aware + handler 取消子 context）、C-H2 ✅（真流式 + 错误/截断传播 + 不缓存残缺结果）、M1 ✅（空回答与 MaxTurns 耗尽均为错误）、M2 ✅（畸形 chunk/未知 finish_reason 报错，tool-call index 不再丢）、M3 ✅（真流式 + 超时改造 + 共享 http.Client）；C-H3（XOR 混淆）、M4-M8、M10 仍未处理（阶段 3）。
+
 ---
 
 ## 高（High）
 
 ### C-H1. Agent 循环在消费者退出/客户端断开时泄漏 goroutine
+> **✅ 已修复（阶段 2）** · `8acbfe6`：新增 `sendEvent`/`sendRaw`，所有发送都是 `select { case ch <- evt: case <-ctx.Done(): return }`；`ExplainSQL` handler 用 `context.WithCancel(ctx)` 派生子 context 并在返回时 `cancel()`，因此即使消费者只是停止 range（连接未被框架取消），生产者也会退出。
+
 - **位置**：`backend/component/llm/agent.go:20,42-47,49,113`、`backend/api/v1/explain_sql_service.go:142,184`
 - **证据**：channel 容量 32；唯一的 ctx 检查是 L42-47 的非阻塞 `select`；所有 `ch <- ...` 都没有 `ctx.Done()` 分支。消费者在 `AgentEventError` 或 `stream.Send` 失败时提前返回。
 - **影响**：消费者停止 range 后，生产者填满 32 槽即永久阻塞；每次中断的 ExplainSQL 流泄漏 1 个 goroutine + 累积的 `messages`（系统提示 + 最多 6 轮工具结果）。反复中断是任意已认证用户可用的廉价内存/goroutine DoS。
 - **修复**：所有发送走 `select { case ch <- evt: case <-ctx.Done(): return }` 的辅助函数。
 
 ### C-H2. 吞掉 body 读取错误 + 1MiB 静默截断，并当作成功写入缓存
+> **✅ 已修复（阶段 2）** · `8acbfe6`：改为 `bufio.Scanner` 逐行读 SSE，读取错误、畸形 chunk、`finish_reason=length`、未知 finish_reason、超过 32MiB 上限、无 `finish_reason` 且无 `[DONE]` 的 EOF、空回答全部返回错误；`ExplainSQL` 在 `AgentEventError` 时提前返回，因此这些结果既不返回也不写缓存。
+
 - **位置**：`backend/component/llm/agent.go:193,205,272`
 - **证据**：`bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))`；错误被丢弃；`parseStream` 未见 `finish_reason` 时仍发 `Done`。
 - **影响**：TCP reset、5 分钟超时或 ctx 取消时，`bodyBytes` 是部分 SSE，但 `StatusCode` 仍 200 → `streamOneTurn` 返回"成功"的 assistant 消息；`ExplainSQL` 解析该部分文本并 `UpsertExplainSQLCache` 持久化（`explain_sql_service.go:212`），污染按 SQL/meta hash 索引的缓存。超过 1MiB 的响应静默截断，丢失尾部 tool-call 参数。
-- **修复**：检查 `ReadAll` 错误并作为 `rawStreamChunk{Error:...}` 返回；改用 `bufio.Scanner`/`json.Decoder` 直接读 `resp.Body`；把截断视为错误；出错/截断时禁止写缓存。
+- **修复**：检查 `ReadAll` 错误并作为 `rawStreamChunk{Error:...}` 返回；改用 `bufio.Scanner`/`json.Decoder` 直接读 `resp.Body`；把截断视为错误；出错/截断时禁止写缓存。（另：`data: [DONE]` 视为正常结束，以兼容不设 `finish_reason` 的 provider；`llmDebugBodyLimit` 只限制调试日志副本，不影响解析。）
 
 ### C-H3. 凭据"加密"用的是同库存储的密钥，且无完整性校验
 - **位置**：`backend/common/utils.go:65-84`、`backend/store/setting.go:155-168`、`backend/server/init.go:29-38`
@@ -41,9 +47,9 @@
 
 ## 中（Medium）
 
-- **M1. 达到最大轮次与"成功"无法区分**：`agent.go:41-113`，`MaxTurns` 从未被设置（恒为 6，`explain_sql_service.go:128-134`）；第 6 轮的工具结果追加后从未发给模型，最终文本可能是空，但同样发 `AgentEventAgentEnd{Done:true}`，且 `evt.Done` 从未被读取（`explain_sql_service.go:186-187`）；被截断的答案仍会入缓存。空内容响应（如代理返回 HTML）也会被当成有效解释缓存。
-- **M2. `parseStream` 静默丢弃畸形 chunk、tool-call index 间隙与非 `data: ` 行**：`agent.go:230,251,264,277`。`buildAccumulatedToolCalls` 按连续 `0..len-1` 索引 map，provider 从 index 1 开始或留空即丢 tool call；`finish_reason: "length"` 被当正常完成。
-- **M3. 全量缓冲使流式名存实亡，且 5 分钟超时是总生成上限**：`agent.go:193`、`client.go:6`。`AgentEventContent` 在整轮结束后一次性产出，TTFT = 总生成时间；超过 5 分钟中途失败并按 H2 被当作成功。每次请求新建 `*http.Client`（连接仍复用 `http.DefaultTransport`）。
+- **M1. 达到最大轮次与"成功"无法区分**：`agent.go:41-113`，`MaxTurns` 从未被设置（恒为 6，`explain_sql_service.go:128-134`）；第 6 轮的工具结果追加后从未发给模型，最终文本可能是空，但同样发 `AgentEventAgentEnd{Done:true}`，且 `evt.Done` 从未被读取（`explain_sql_service.go:186-187`）；被截断的答案仍会入缓存。空内容响应（如代理返回 HTML）也会被当成有效解释缓存。 —— **✅ 已修复（阶段 2，`8acbfe6`）**：循环耗尽 MaxTurns 且仍有 tool call 时改发 `AgentEventError`（"reached the maximum of N turns"），空回答同样报错，因此都不会被当作成功或写入缓存。`MaxTurns` 仍未由调用方显式设置（默认 6）。
+- **M2. `parseStream` 静默丢弃畸形 chunk、tool-call index 间隙与非 `data: ` 行**：`agent.go:230,251,264,277`。`buildAccumulatedToolCalls` 按连续 `0..len-1` 索引 map，provider 从 index 1 开始或留空即丢 tool call；`finish_reason: "length"` 被当正常完成。 —— **✅ 已修复（阶段 2，`8acbfe6`）**：畸形 `data:` 行报错，`finish_reason` 只接受 `stop`/`tool_calls`（`length` 与未知值报错），tool call 按 index 排序收集（不再丢非连续索引），非 `data: ` 行仍跳过（兼容 SSE 注释/心跳）。
+- **M3. 全量缓冲使流式名存实亡，且 5 分钟超时是总生成上限**：`agent.go:193`、`client.go:6`。`AgentEventContent` 在整轮结束后一次性产出，TTFT = 总生成时间；超过 5 分钟中途失败并按 H2 被当作成功。每次请求新建 `*http.Client`（连接仍复用 `http.DefaultTransport`）。 —— **✅ 已修复（阶段 2，`8acbfe6`）**：body 边到边解析，"流式"名副其实；去掉 5 分钟总超时，改为 30s 响应头超时 + 60s 空闲读超时（`idleTimeoutReader` 在无数据时取消请求，长回答不会被切断）；`llmHTTPClient` 改为包级共享（连接池化）。
 - **M4. 有 tool call 时 assistant 文本被丢弃**：`message.go:25-29`，`ConvertToLlm` 在 `len(ToolCalls)>0` 时不带 `Content`，下一轮丢失模型的推理/前言；`default:` 空分支静默丢弃未知 role。
 - **M5. `NewDBDebugLogger` 无界 fire-and-forget goroutine + 脱离请求的 context**：`debug.go:14-18`，每次 LLM 调用一个 goroutine、`context.Background()`、错误丢弃（`_ = err`）、无并发上限、无保留策略。
 - **M6. CEL 条件 fail-open**：`common/cel.go:257-299`，`if !celtypes.IsBool(out) { return true, nil }`；env 声明了 `resource.database` 等属性但 `EvalBindingCondition` 只绑定 `request.time`。任何引用 `resource.*` 的 binding 求值为 residual 即返回 true → 本应限定单库的角色被全局授予。当前 binding 构造不带 condition（`store/policy.go:68`），属潜伏。

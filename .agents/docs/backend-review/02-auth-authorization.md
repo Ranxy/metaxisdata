@@ -6,6 +6,8 @@
 
 **阶段 0 更新**：C1 ✅、C2 ✅、C3 ✅、C4 ◐、H3 ✅，另修复 M5（SSO 首用户管理员）、M7（`DisallowSignup` 真正生效）、M12（`allow_missing` 需管理员）与低优先级的 JWT 解析校验项。H1（token 吊销）、H4（最后管理员组绕过）、M1/M3/M4/M6 等**仍未处理**；`userCountGuard` 仍是空实现（首管理员选举已下沉到 store，不再依赖它）。
 
+**阶段 2 更新**：M1 ✅（缓存启用 + `GetUserByID/Email` 定向查询，`f22f61e`）；重复邮箱的并发注册由唯一索引 + `CodeAlreadyExists` 兜住（`ff9b22a`，见 `03` S-H6）。H1/H4、M2（用户枚举时间差/无限流）等仍未处理。
+
 ---
 
 ## 严重（Critical）
@@ -109,6 +111,8 @@
 ## 中（Medium）
 
 ### M1. 每个已认证请求都会全表扫描 principal
+> **✅ 已修复（阶段 2）** · `f22f61e`：缓存启用（`enableCache` 参数删除），miss 路径改为 `getUser` 的 `WHERE id/email = $1` 定向查询后回填，`listAndCacheAllUsers` 删除；`GetUserByEmail` 的缓存 key 归一化小写，避免大小写不同导致重复回查。
+
 - **位置**：`backend/store/principal.go:89-114`、`backend/server/server.go:70`
 - **证据**：`GetUserByID/GetUserByEmail` 命中缓存的前提是 `s.enableCache`，而 `store.New(ctx, profile.PgURL, false)` 恒传 `false`；未命中即执行 `listAndCacheAllUsers`（`SELECT ... FROM principal` + `user_group` join，无 `WHERE id`）。
 - **影响**：认证拦截器每个 RPC 都调用 `GetUserByID`（`auth.go:172`），即每个请求全表扫描并重建永远不会被读取的缓存；`BatchGetUsers` 放大 N 倍。
@@ -229,6 +233,6 @@
 1. 是否存在构建包装用 ldflags/生成文件注入真实 `profile.Secret`？仓库内无证据，但 dev 默认值仍会随二进制发布。
 2. 生产是否有反向代理统一剥离/规范化 `Origin` 与 `X-Forwarded-For`？这决定 CSRF 与审计 IP 的实际可利用性。
 3. 创建 IDP 时是否强制 `OAUTH2` 必须有 `oauth2_config`（决定 nil-config panic 是否可达）？
-4. `store.enableCache` 是否有意在某处开启？目前全部调用点传 `false`，应明确"启用缓存"或"删除缓存"。
+4. ~~`store.enableCache` 是否有意在某处开启？目前全部调用点传 `false`，应明确"启用缓存"或"删除缓存"。~~ —— **阶段 2 已关闭（`f22f61e`）**：经确认启用缓存，`enableCache` 参数与字段删除，缓存读取无条件生效。
 5. `GetUser`/`BatchGetUsers`/`ListUsers` 的 proto 注释写的是"any authenticated user"——在自助注册开放的前提下，这个策略是否仍成立？
 6. 插件层 `backend/plugin/idp/oauth2/oauth2.go` 在 error/debug 级别打印授权码、access token、userinfo 与 claims（超出本次 plugin 排除范围，建议单独排查）。

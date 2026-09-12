@@ -8,6 +8,8 @@
 
 **阶段 1 更新**：S-H3 ✅（`db_schema` join 与整个 `table` 过滤器一起删除，`bb93ee0`）、S-H4 ✅（`UpdateDatabase` 判空，`20e284b`）、低节"`UpdateInstanceV2` 不做 data source 校验" ✅（API 层 `checkInstanceDataSources` 现在要求恰好一个 ADMIN，`20e284b`）。S-H1/S-H5/S-H6、M1-M11 等仍未处理（阶段 2/3）。
 
+**阶段 2 更新**：S-H1 ✅（缓存启用并删除 `enableCache`，缓存 miss 改定向查询，`f22f61e`）、S-H6 ✅（唯一邮箱索引 + 冲突映射，`ff9b22a`）、M10 部分 ✅（`object_type` 索引已加，`metadata` GIN 经确认不加）、M11 ✅（GUID 缓存 key 纳入 `object_type`）、M13 ✅（`GetSecret` 互斥锁 + 字段不导出）、M19 ✅（`explain_sql_cache` 加 7 天 TTL）。M3/M5/M22/M25 等仍未处理。
+
 ---
 
 ## 严重（Critical）
@@ -29,6 +31,8 @@
 ## 高（High）
 
 ### S-H1. `enableCache=false` 导致每次用户查询全表扫描
+> **✅ 已修复（阶段 2）** · `f22f61e`：经确认走"启用缓存"而非删除缓存。`store.New` 的 `enableCache` 参数已删除，所有缓存读取无条件生效；缓存 miss 不再加载全部用户，`GetUserByID`/`GetUserByEmail` 改为 `WHERE id/email` 定向查询后回填（`getUser`），`listAndCacheAllUsers` 删除。同时修掉被"关着读"掩盖的缺陷：`GetSettingV2` miss 时补写 `settingCache`；`GetSecret` 的导出可变字段 `Store.Secret` 改为 `secretMu` 保护的私有字段。
+
 - **位置**：`backend/store/principal.go:89-114,180-201`、`backend/server/server.go:70`
 - **证据**：
   ```go
@@ -68,12 +72,12 @@
 - **修复**：统一传 `.String()`（对照正确的 `parseToEngineSQL`，`database_service.go:745-749`）；`policy.go` 同样改用 `.String()`，或删除未用方法。
 
 ### S-H6. 用户创建无唯一性约束/检查
-> **⏳ 未处理（阶段 0 范围外）**：唯一索引与 `AlreadyExists` 映射仍未加。阶段 0 只在 handler 层保留了 `GetUserByEmail` 预检查（`user_service.go`）与 `CreateUser` 的小写校验，仍无法防并发重复邮箱。
+> **✅ 已修复（阶段 2）** · `ff9b22a`：增量 `0.1.0002` 加 `CREATE UNIQUE INDEX idx_principal_unique_email ON principal (LOWER(email)) WHERE deleted = FALSE`，`LATEST.sql` 同步。`CreateUser`/`UpdateUser` 把 23505（同时识别 `*pgconn.PgError` 与 `*pq.Error`）映射为 `common.Conflict`，handler 经 `connectErrorForWrite` 转成 `CodeAlreadyExists`。**未做去重迁移**：项目尚未上线、无历史重复数据，受影响部署会直接迁移失败而非静默停用账号。
 
 - **位置**：`backend/store/principal.go:329-334`、`LATEST.sql:18-31`、`api/v1/user_service.go:286-384`
 - **证据**：`CreateUser` 只校验小写；`email text NOT NULL` 无唯一索引；API 也未预检查。
 - **影响**：可创建重复邮箱账号；`GetUserByEmail` 从"最后一次缓存的重复行"中任取其一，登录可能绑定到错误账号，改密可能改错行。
-- **修复**：在 `LATEST.sql` + 增量中加唯一索引（建议 `LOWER(email) WHERE deleted = FALSE`），冲突映射为 `common.AlreadyExists`。
+- **修复**：在 `LATEST.sql` + 增量中加唯一索引（建议 `LOWER(email) WHERE deleted = FALSE`），冲突映射为 `common.AlreadyExists`。（注：本仓库实际错误码是 `common.Conflict`，没有 `AlreadyExists`；API 侧的 Connect 码才是 `CodeAlreadyExists`。）
 
 ---
 
@@ -88,23 +92,23 @@
 - **M7. open-history 查询是 `ANY/ANY` 笛卡尔谓词**：`store/meta_resource.go:603-609`，`guid = ANY($1) AND object_type = ANY($2)` 会匹配未请求的 `(guid,type)` 组合。
 - **M8. 子层级元数据列表无法翻页**：`store/meta_resource.go:51-55,698-709`，`FindSubLevelMetaRegistryResourceMessage` 没有 Offset，API 算了 offset 却只是切片，第 2 页返回第 1 页（见 `04` A-M2）。
 - **M9. 元数据历史查询无界**：`store/meta_resource.go:486-528` 支持 Limit/Offset，但唯一调用方（`database_history.go:48-51,93-96`）不传，导致全量历史（含完整 JSONB）加载后在内存分页。
-- **M10. 元数据搜索是全 JSONB 扫描且无索引**：`store/meta_resource.go:262-279`，`meta_registry_resource` 只有 `(guid,object_type)` 唯一索引，没有 `metadata` 的 GIN/表达式索引；而 `manual_sql` 有 `search_vector` GIN。
-- **M11. meta 缓存 key 只用 GUID，忽略 ObjectType**：`store/meta_resource.go:103-107,121-124`（缓存定义 `store.go:29`），唯一约束是 `(guid,object_type)`；`MANUAL_SQL` 与 `TABLE` 可能共享四段 GUID 形状。当前被 `enableCache=false` 掩盖，一旦开启缓存即成错误结果 bug。
+- **M10. 元数据搜索是全 JSONB 扫描且无索引**：`store/meta_resource.go:262-279`，`meta_registry_resource` 只有 `(guid,object_type)` 唯一索引，没有 `metadata` 的 GIN/表达式索引；而 `manual_sql` 有 `search_vector` GIN。**◐ 阶段 2（`ff9b22a`）**：加了 `object_type` 索引（服务 `queueAll` 的扫描），`metadata` GIN **经确认不加**——搜索谓词是 `inner_meta->>'name' ILIKE '%x%'`，GIN 索引无法服务子串匹配，且全仓库没有任何 jsonb `@>` 包含查询可以让它生效；要真正走索引需要改成全文检索或 `pg_trgm`，属行为变更，留待后续。
+- **M11. meta 缓存 key 只用 GUID，忽略 ObjectType**：~~`store/meta_resource.go:103-107,121-124`（缓存定义 `store.go:29`），唯一约束是 `(guid,object_type)`；`MANUAL_SQL` 与 `TABLE` 可能共享四段 GUID 形状。当前被 `enableCache=false` 掩盖，一旦开启缓存即成错误结果 bug。~~ —— **✅ 已修复（阶段 2，`f22f61e`）**：GUID 缓存改为 `lru.Cache[MetaGUIDKey, ...]`，读路径经 `metaRegistryGUIDCacheKey` 只在调用方同时指定 `object_type` 时命中（GUID-only 查询直接打库）；写路径统一用 `GUIDKey()`。另：`BatchCreateMetaRegistryResourceAt`/`BatchDeleteMetaRegistryAt` 不再在调用方事务内改缓存，改为提交后由 `InvalidateMetaRegistryCache` 失效（`syncer.go` 调用）。
 - **M12. `PatchWorkspaceIamPolicy` 原地修改缓存策略**：~~`store/policy.go:41-74`，`GetWorkspaceIamPolicy` 返回 `policyCache` 中的指针，循环在 upsert 前编辑其 bindings；并发读者可见半更新状态，失败时缓存永久不一致。~~ —— **✅ 已修复（阶段 0，`5b19778`）**：`PatchWorkspaceIamPolicy` 现在开启事务并调用新的 `(s *Store) patchWorkspaceIamPolicyImpl(ctx, txn, patch)`；实现通过 `listPolicyImplV2` 在事务内**重新读取并反序列化**到独立对象（不再触碰缓存指针），提交后再 `policyCache.Remove(...)` 并重新读取。`store.CreateUser` 也在同一事务里调用该 impl，因此首个管理员授予与用户插入原子。注意 `GetPolicyV2` 命中缓存时仍返回共享指针（若开启缓存需另行处理）。
-- **M13. `Store.Secret` 懒初始化 data race**：`store/setting.go:155-168` 无锁读写导出字段 `s.Secret`，而 `Store` 被所有请求 goroutine 共享；`obfuscateInstance`/`unObfuscateInstance` 每行都调用。**建议 `store.New` 时用 `sync.Once` 初始化，并停止导出可变字段。**
+- **M13. `Store.Secret` 懒初始化 data race**：`store/setting.go:155-168` 无锁读写导出字段 `s.Secret`，而 `Store` 被所有请求 goroutine 共享；`obfuscateInstance`/`unObfuscateInstance` 每行都调用。**建议 `store.New` 时用 `sync.Once` 初始化，并停止导出可变字段。** —— **✅ 已修复（阶段 2，`f22f61e`）**：字段改为不导出的 `secret`，由 `secretMu` 保护；未命中时读 `AUTH_SECRET` 并缓存。没有用 `sync.Once`，因为互斥锁版本在瞬时 DB 失败后可以重试，而 `Once` 会把错误永久缓存。
 - **M14. namespace mapping 部分更新会清空 `database_name`**：`store/namespace_mapping.go:115` 无条件设置，而 `namespace`/`instance_resource_id` 只在非空时设置；只更新 namespace 会清掉 database，破坏 OpenLineage 解析。
 - **M15. `CreateManualSQL` upsert 改变 GUID 却不清理旧 GUID 的镜像/血缘**：`store/manual_sql.go:449-450`，冲突键 `(instance, database, name)` 不含 `schema_name`，而 GUID 含 schema；`CreateManualSQL`（221-251）不像 `UpdateManualSQL`（348-355）那样删除被取代 GUID 的 `meta_registry_resource` 与 `column_lineage`，留下孤儿行。
 - **M16. store 的 not-found 错误不带 `common.Code` → API 返回 500**：`store/manual_sql.go:301,414,523`、`namespace_mapping.go:137,159`、`openlineage_api_key.go:147` 等用裸 `errors.Errorf`，调用方统一包成 `CodeInternal`。应为 `common.Errorf(common.NotFound, ...)`。
 - **M17. `updateIdentityProviderImpl` 在无字段可改时生成非法 SQL**：`store/idp.go:175-197`，`UPDATE idp SET  WHERE ...`；另外 `err == sql.ErrNoRows` 未用 `errors.Is`（213）。
 - **M18. IDP 密钥明文存储**：`store/idp.go:25-37,72-89`，`protojson.Marshal` 后原样写入 `idp.config`（含 OAuth2 client secret / LDAP bind password）。
-- **M19. `explain_sql_cache` 永不过期**：`store/explain_sql.go:75-91` 无时间谓词，`UpsertExplainSQLCache` 接受调用方传入的 `created_at`；表无 TTL 列。
+- **M19. `explain_sql_cache` 永不过期**：`store/explain_sql.go:75-91` 无时间谓词，`UpsertExplainSQLCache` 接受调用方传入的 `created_at`；表无 TTL 列。 —— **✅ 已修复（阶段 2，`8c34542`）**：`GetExplainSQLCache` 加 `created_at > now()-7d` 谓词（`ExplainSQLCacheTTL`），过期即视为 miss 并由下一次生成覆盖；同时增量 `0.1.0001` 增加 `scope` 列（缓存 key 现在也含 scope/provider/model）。`expired` 标记服务端仍不设置——过期条目根本不会被返回。
 - **M20. `GetOrCreateExternalDataset` 每次解析都写库，且已有行不更新 `dataset_type`**：`store/external_dataset.go:53-57`。
 - **M21. `external_dataset.schema_fields` 从无写入者**：唯一 INSERT（53-57）不含该列，`FindExternalDatasetByGUIDs`（`openlineage_api_key.go:181`）仍在读取；`lineage_service.go:121` 永远拿到空 `SchemaFields`。
 - **M22. OpenLineage task 聚合在每个事件上全量重算**：`store/openlineage_task.go:109-166`，`COUNT(*) OVER () ... FROM openlineage_run WHERE task_guid = $1`，每个事件 O(runs)；外加每事件一次 registry upsert + history 行。
 - **M23. `SearchAuditLogs` 接受调用方提供的 WHERE 片段**：`store/audit_log.go:64-67`。当前安全（唯一构造器白名单化变量并参数化），但 store API 接受任意 SQL 文本是安全路径上的隐患。
 - **M24. 审计时间可由调用方设置**：`store/audit_log.go:35-39`，`cloned.CreateTime` 可回填；当前拦截器不设置，但 store 允许伪造；且无完整性保护（无哈希链）。
 - **M25. `ValidateOpenLineageAPIKey` 是 O(N) bcrypt 扫描 + 每请求写**：`store/openlineage_api_key.go:67-103`（详见 `04` B-H6）。
-- **M26. OpenLineage run/task 列表无默认 LIMIT**：`store/openlineage_run.go:306-311`、`store/openlineage_task.go:251-256`（详见 `04` B-H1）。
+- **M26. OpenLineage run/task 列表无默认 LIMIT**：`store/openlineage_run.go:306-311`、`store/openlineage_task.go:251-256`（详见 `04` B-H1）。**部分修复（阶段 2，`8c34542`）**：数据集页/详情两个端点已传 `Limit: 5000`；store 层仍只在 `Limit != nil` 时加 LIMIT，run 列表端点仍依赖请求参数。
 
 ---
 
@@ -160,4 +164,4 @@
 3. **保留策略**：`openlineage_run`/`openlineage_task`/registry history/`audit_log`/`llm_debug_log` 都没有删除路径，需确认是否有意如此。
 4. **`RETURNING` 顺序**（`meta_resource.go:934-956`）：未实测，建议无论顺序如何都改为按 `(guid, object_type)` 匹配。
 5. **`listOpenMetaRegistryHistoryByKey` 笛卡尔谓词**（`meta_resource.go:603-609`）：未能构造实际故障场景（结果 map 会按真实 key 重新索引），属谓词 bug。
-6. **`enableCache` 是否计划在某处开启**？全部调用点传 `false`，需明确"启用"或"删除缓存"。
+6. **`enableCache` 是否计划在某处开启**？~~全部调用点传 `false`，需明确"启用"或"删除缓存"。~~ —— **阶段 2 已关闭（`f22f61e`）**：经确认启用缓存，`enableCache` 参数与字段一并删除，缓存读取无条件生效。

@@ -6,7 +6,9 @@
 
 **阶段 0 更新**：C1 ✅、C2 ✅、H1 ◐、H5 ◐ 已处理；H2（CORS/CSRF）与 H4（日志接线）**未处理**，仍待阶段 1。阶段 0 后 `golangci-lint` 已可运行（0 issues），`-tags release` 也恢复可编译。
 
-**阶段 1 更新**：H4 ✅（日志系统接线，`7fdcead`）、H5 ◐→✅（`--external-url` 已注册并接线，`7fdcead`）、部署侧新增 `make build-release` 让 prod profile 有了真实构建目标（`7fdcead`）。H2（CORS/CSRF）与 M1（关停无超时）、M4（连接池）仍未处理。
+**阶段 1 更新**：H4 ✅（日志系统接线，`7fdcead`）、H5 ◐→✅（`--external-url` 已注册并接线，`7fdcead`）、部署侧新增 `make build-release` 让 prod profile 有了真实构建目标（`7fdcead`）。H2（CORS/CSRF）仍未处理。
+
+**阶段 2 更新**：M1 ✅（关停不再 `Fatal`，runner 等待加 10s 上限，`fb8ca14`）、M4 ✅（连接池钳制 + idle/lifetime/idleTime + `sync.Once` 初始化，`fb8ca14`）。M2（派生后丢弃 context）、M3（启动打印全部路由）、M5、M6 仍未处理。
 
 ---
 
@@ -101,6 +103,8 @@
 ## 中（Medium）
 
 ### M1. 关停路径可能直接 `os.Exit(1)`，并可能无限等待 runner
+> **✅ 已修复（阶段 2）** · `fb8ca14`：`echoServer.Shutdown` 的错误改为 `slog.Error` 后继续（不再 `Logger.Fatal` ⇒ `os.Exit(1)`，因此 store 关闭与 stopper 都会执行）；`runnerWG.Wait()` 改为 `select` + `runnerShutdownTimeout`（10s，与 `gracefulShutdownPeriod` 一致），超时记 Warn 后继续退出。
+
 - **位置**：`backend/server/server.go:146-181`
 - **证据**：
   ```go
@@ -126,6 +130,8 @@
 - **修复**：仅在 `RuntimeDebug`/debug 模式打印。
 
 ### M4. 连接池配置不完整，且可能被配置成"无限制"
+> **✅ 已修复（阶段 2）** · `fb8ca14`：`maxOpenConns` 经 `clampMaxOpenConns` 钳制到 `[1, 50]`（原 `maxConns - reservedConns` 可为 0，而 `database/sql` 把 0 当作无上限）；新增 `SetMaxIdleConns(10)`、`SetConnMaxLifetime(30m)`、`SetConnMaxIdleTime(5m)`；`Initialize` 用 `sync.Once` 保护（并发调用不再可能双开连接池并泄漏其一）；删除未使用的 `stopWatcher` 字段与冗余的 `_ "github.com/jackc/pgx/v5"` 导入。`GetDB()` 在初始化前仍返回 nil（由 `sync.Once` 保证只初始化一次，调用方在 `New` 失败时不会继续）。
+
 - **位置**：`backend/store/db_connection.go:16,19-24,53-82`
 - **证据**：`stopWatcher chan struct{}` 创建后从未使用；`maxOpenConns := maxConns - reservedConns; if maxOpenConns > 50 { maxOpenConns = 50 }` 没有下限，若 `SHOW` 结果异常得到 0 或负数，`database/sql` 将其解释为**无限制**；未设置 `SetMaxIdleConns`（默认 2）、`SetConnMaxLifetime`、`SetConnMaxIdleTime`；`Initialize`/`GetDB` 无同步，初始化前 `GetDB()` 返回 nil。
 - **影响**：误配置下连接数失控；空闲连接默认只有 2 个，高并发时连接频繁重建；经过 NAT/PgBouncer 时缺少 lifetime 可能导致陈旧连接错误；并发初始化存在竞态。
@@ -164,5 +170,5 @@
 1. ~~修 C1（JWT 密钥）与 H1（授权）~~ —— **阶段 0 已完成**：C1 ✅（环境注入 + fail-closed + 可用 prod profile，`adfec91` `84b16db`），H1 ◐（拦截器重建并接线，`ec49607`；读路径与细粒度映射留待后续）。
 2. ~~修 C2（堆栈回传）~~ ✅（`5446a10`）；**H2（CORS/CSRF）仍未处理**——用 `-tags release` 可绕开全开 CORS，但默认构建仍是 dev，且 cookie 的 `SameSite` 逻辑与 CSRF 防护未改。
 3. ~~接线日志系统（H4）与 `--external-url`（H5）~~ —— **阶段 1 已完成**：H4 ✅（`setupLogging` + `slog.SetDefault`，`7fdcead`），H5 ✅（`--external-url` 注册并接入 profile，`7fdcead`）。剩余：其余未注册的遗留 flag、前端 `external_url` 入口。
-4. 清理关停路径（M1）与连接池（M4）——**未开始**。
+4. ~~清理关停路径（M1）与连接池（M4）~~ —— **阶段 2 已完成**：M1 ✅（不再 `Fatal`，runner 等待 10s 上限），M4 ✅（钳制 + idle/lifetime/idleTime + `sync.Once`），`fb8ca14`。剩余：M2（派生后丢弃 context）、M3（启动打印全部路由与 `echo.Debug=true`）。
 5. 删除未注册 flag、调试残留与死字段；~~补一个真正使用 `-tags release` 的构建目标（Makefile/CI）~~ —— **构建目标已补**（`make build-release`，`7fdcead`）；flag/死字段清理未做，CI 与 Docker 仍不存在。

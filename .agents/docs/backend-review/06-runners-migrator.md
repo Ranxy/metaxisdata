@@ -8,6 +8,8 @@
 
 **阶段 1 更新**：R-C1（`db_schema`）✅、R-H1/R-H2/R-H4 ✅、R-H3 ◐（按产品决策只加日志，不改删除行为）、M8 ✅。R-H5（增量目录）经确认**不做**——当前没有待发布的 schema 变更，空增量目录只会是噪音；遗留的是"改 `LATEST.sql` 时容易忘记补增量"这一流程约束。R-H6、M1-M7、M9-M13 仍待阶段 2/3。
 
+**阶段 2 更新**：R-H5 ✅（`migration/0.1/` 已建立：`0001##scope_explain_sql_cache.sql`、`0002##add_missing_indexes.sql`，`LATEST.sql` 同步，`8c34542` `ff9b22a`）、M4 部分 ✅（`object_type` 索引已加，`queueAll` 本身的 N+1 仍在）、M10 ✅（runner 等待加 10s 上限，`fb8ca14`）、低节"缓存在提交前更新"✅（事务内不再写缓存，提交后 `InvalidateMetaRegistryCache`，`f22f61e`）。R-H6、M1-M3、M5-M9、M11-M13 仍未处理。
+
 ---
 
 ## 严重（Critical）
@@ -65,6 +67,8 @@
 - **修复**：提供接受 `tx` 的 `UpdateDatabase`，或在提交成功后再更新 `LastSyncTime`。
 
 ### R-H5. 没有增量迁移目录：新装与升级会静默分叉
+> **✅ 已修复（阶段 2）** · `8c34542` `ff9b22a`：`migration/0.1/` 已建立并首次走完双写流程——`0001##scope_explain_sql_cache.sql`（`explain_sql_cache.scope`）与 `0002##add_missing_indexes.sql`（`meta_registry_resource(object_type)`、`principal(LOWER(email)) WHERE deleted=FALSE`），`LATEST.sql` 同步更新。**剩余**：仍没有自动校验"`LATEST.sql` 与增量链一致"的 guard 测试/CI（见 M13 与 `09`）。
+
 - **位置**：`backend/migrator/migration/`（只有 `LATEST.sql`）、`backend/migrator/migrator.go:20-27,233-267`
 - **证据**：`ls backend/migrator/migration` 只有 `LATEST.sql`，`getSortedVersionedFiles` 恒返回空。AGENTS.md 要求每次变更**同时**改 `LATEST.sql` 与 `migration/{MAJOR.MINOR}/`。
 - **影响**：只改 `LATEST.sql` 的 schema 变更永远不会到达已有部署（停在 0.1.0，无可应用增量），而全新安装却带上它——store 查询只在升级过的实例上失败。没有测试/CI 校验 `LATEST.sql` 与增量链一致。
@@ -83,13 +87,13 @@
 - **M1. `tableExists` 忽略 `table_schema`**：`migrator.go:376-378`，任意 schema 下存在同名表就让迁移器认为"已存在部署"，空 public schema 会被跳过 `LATEST.sql`，随后记录基线并在缺表状态下运行。应加 `table_schema = current_schema()` 或改用 `to_regclass`。
 - **M2. 分析失败要等到下一个小时级扫描才重试**：`analyzer.go:129-138`，`drainAndAnalyze` 先删除 `analyzeMap` 全部 key 再分析，失败只记日志；血缘可陈旧长达 `lineageAnalysisInterval`（1h）。
 - **M3. 不支持的引擎从不标记为已分析 → 每小时无限重试**：`analyzer.go:204-206`，`ErrorEngineNotSupported` 分支直接 `return nil`，没有 `markAnalyzed`；`queueAll` 每小时重新入队并重试所有视图/MV/manual SQL。
-- **M4. `queueAll` 是 N+1 全表扫描，且 `meta_registry_resource.object_type` 无索引**：`analyzer.go:105-124` + `LATEST.sql:157-165`；每小时 3 次未索引扫描 + 每对象一次查询。
+- **M4. `queueAll` 是 N+1 全表扫描，且 `meta_registry_resource.object_type` 无索引**：`analyzer.go:105-124` + `LATEST.sql:157-165`；每小时 3 次未索引扫描 + 每对象一次查询。**部分修复（阶段 2，`ff9b22a`）**：增量 `0.1.0002` 已加 `object_type` 索引，扫描不再全表；`queueAll` 的逐对象查询 N+1 仍未批量化。
 - **M5. 为比较 hash 而全量加载并反序列化元数据**：`syncer.go:392` + `store/meta_resource.go:340-354`，`ListMetaRegistry` 带 `withMetadata=true` 解析每个 JSONB 行，而 `diff()` 只需要 `GUIDKey` + `MetaHash`。建议增加轻量列表（guid, object_type, meta_hash）。
 - **M6. 每实例连接限流被 `SyncInstance` 与 API 触发的同步绕过**：`syncer.go:120-128`、`api/v1/database_service.go:63`、`api/v1/instance_service.go:516`；限流只在 10s 的 DB 检查器里生效，而每个 driver 会开 `SetMaxOpenConns(50)`（`plugin/db/mysql/mysql.go:89`）。
 - **M7. 表/列被删除后血缘行从不清理**：`syncer.go:504-511` 只处理 VIEW/MV，drop 表后依赖视图的 `column_lineage` 仍指向不存在的 GUID。
 - **M8. 同步失败只用 Debug 级别记录**：`syncer.go:131-135,181-185`，生产 info 级别下永久失败的实例/库完全不可见，无指标无告警。**✅ 已修复（阶段 1）** · `fcb6a98`：两处改为 `slog.Warn` 并用 `log.WithError(err)` 输出完整错误（原先实例级只记 `err.Error()` 字符串）。仍无指标/告警。
 - **M9. worker pool 中的 panic 会打挂进程**：`syncer.go:125-139`、`analyzer.go:95,143-155`；`conc/pool` 会把任务 panic 传播出 `Wait()`，只有 `trySyncAll` 有 recover。
-- **M10. Shutdown 的 WaitGroup 等待无超时**：`backend/server/server.go:168`（见 `01` M1）。
+- **M10. Shutdown 的 WaitGroup 等待无超时**：`backend/server/server.go:168`（见 `01` M1）。 —— **✅ 已修复（阶段 2，`fb8ca14`）**：`runnerWG.Wait()` 由 10s 超时兜底，超时记 Warn 后继续退出。
 - **M11. `SyncInstance` 返回未过滤的数据库列表**：`syncer.go:322-342,358`，构建了遵守 `sync_databases` 的 `filteredDatabaseMetadatas`，却返回 `instanceMeta.Databases`；`SyncInstance` RPC（`instance_service.go:528-530`）会报告未同步的库。
 - **M12. `principal.email` 无 UNIQUE/NOT NULL 保护**：`LATEST.sql:18-31`（见 `03` S-H6）。
 - **M13. 旧二进制对着更新的 ledger 静默运行**：`migrator.go:160-194` 只检查 `f.version.LE(*recorded)`；当 `recorded` 大于内嵌最新版本时，不迁移也不报错，只打印内嵌版本号。应显式报错拒绝启动。
@@ -105,7 +109,7 @@
 - `getVersionFromPath` 接受畸形版本（`migrator.go:283-288`，`00001`、负数、任意 `MAJOR.MINOR` 目录）。
 - 重复迁移版本未提前检测（`migrator.go:258-266`）。
 - `adoptLegacySchema` 不校验基线形状（`migrator.go:202-223`）。
-- store 缓存在调用方事务提交前就被更新：`store/meta_resource.go:970-973`（由 `syncer.go:591` 调用）；当前被 `enableCache=false` 掩盖。
+- store 缓存在调用方事务提交前就被更新：`store/meta_resource.go:970-973`（由 `syncer.go:591` 调用）；当前被 `enableCache=false` 掩盖。 —— **✅ 已修复（阶段 2，`f22f61e`）**：事务内不再写缓存，`syncer` 提交后调用 `InvalidateMetaRegistryCache` 失效受影响的 `(guid, object_type)`。
 - COLUMN 元资源只为 TABLE 创建：`syncer.go:718-725` vs `store/meta_resource.go:1051-1052`，导致 `ListSublevelMetaRegistryResource` 在视图下返回不了列（需确认 UI 是否直接读 `viewMetadata.columns`）。
 - `SyncInstance` 中的 O(n²) 名称查找：`syncer.go:326,345` 使用 `slices.IndexFunc`。
 - 未知实例的 `databaseSyncMap` 无界增长：`syncer.go:109-115`，找不到实例时 `return true` 保留条目，每 10s 重试并重复记日志。
@@ -121,7 +125,7 @@
 - 泛滥的无意义 `V2` 后缀（`ListInstancesV2`、`UpdateInstanceV2`、`GetInstanceV2`、`StoreMetaResourceV2`），且不存在对应的 V1。
 - `syncer.go:92-97` 重复嵌套 `if err != nil`。
 - 硬编码的间隔/上限（`instanceSyncInterval`、`databaseSyncCheckerInterval`、`syncTimeout`、`MaximumOutstanding`、`MaxGoroutines`、`lineageAnalysisInterval`、`analyzeCheckerInterval`），而注入的 `profile` 却未被读取。
-- **缺失 `migration/0.1/` 目录本身是最大的遗留债务**（见 R-H5）。
+- ~~缺失 `migration/0.1/` 目录本身是最大的遗留债务~~（见 R-H5）。 —— **阶段 2 已修复**：目录与两个增量已建立（`8c34542` `ff9b22a`）。
 - 引用不存在表的遗留 store 路径：~~`db_schema`（`store/database.go:368`，可达，**阶段 1 已删除** `bb93ee0`）~~、`DeleteProject`（`store/project.go:364`）、`CountIssues`（`store/stats.go:126`）。
 
 ---

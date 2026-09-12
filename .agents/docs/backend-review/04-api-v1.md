@@ -11,6 +11,8 @@
 
 **阶段 1 更新**：A-H4 ✅、M1 ✅、M6 ✅（`20e284b`/`ff914ac`），另**删除**了遗留的 `table` 过滤器（`bb93ee0`，见 `03` S-H3）。B-H1/B-H4 等性能与正确性条目仍未处理（阶段 2）。
 
+**阶段 2 更新**：B-H1 ✅、B-H2 ✅、B-H3 ✅、B-H4 ✅、M5 ✅、M11 ✅（见下，均 `8c34542`）；`common.go` 新增 `connectErrorForWrite`（store `common.Conflict` → `CodeAlreadyExists`，`ff9b22a`）。B-H5 的 `base_url` 校验、B-H6/B-H7/B-H8、M2/M3/M4/M6-M10、M12-M18 仍未处理。
+
 ---
 
 # A. 数据面：Instance / Database / History
@@ -149,23 +151,31 @@
 ## 高（High）
 
 ### B-H1. OpenLineage 数据集接口无界扫描全表并解析全部 payload
+> **✅ 已修复（阶段 2）** · `8c34542`：两个数据集端点（`ListOpenLineageDatasets`/`GetOpenLineageDataset`）改为只读最近 5000 个 run（`defaultOpenLineageRunLimit`，按 `event_time DESC`），解析器换成 `NewRequestScopedResolver`（按请求 memoize dataset preview），聚合与详情合并为一次遍历。**未做**：SQL 侧聚合与保留清理任务——经确认数据量假设与内存上界（5000 条 payload）已足够，且 `openlineage_run` 属可审计数据，不自动删除。注意数据集统计因此只覆盖最近 5000 个事件。
+
 - **位置**：`openlineage_dataset.go:40,119`、`store/openlineage_run.go:299,306-311`
 - **证据**：`ListOpenLineageRun(ctx, &store.FindOpenLineageRunMessage{})`；store 仅在 `Limit != nil` 时追加 LIMIT，且始终 select `raw_payload`；随后每个 run 都 JSON 解析。
 - **影响**：内存/CPU 随事件总量线性增长，无上限；前端传的 `pageSize: 500` 只作用于内存聚合，不进入查询。
 - **修复**：服务端聚合（SQL），或至少把 limit/offset 与时间窗下推到查询，并增加保留策略。
 
 ### B-H2. 数据集解析 N+1（每个 dataset 一次 namespace 映射查询 + 全实例表扫描）
+> **✅ 已修复（阶段 2）** · `8c34542`：读端点改用 `openlineageplugin.NewRequestScopedResolver`，preview 按 `(namespace, name)` memoize，`ListInstancesV2` 在同一个 resolver 内只查一次（`listInstances` lazy + 缓存）。采集路径仍用 `NewResolver`（不缓存），避免长生命周期 resolver 返回陈旧结果。
+
 - **位置**：`openlineage_dataset.go:407`、`plugin/openlineage/resolver.go:80,110`
 - **证据**：`ResolveDatasetPreview` 每次都执行 `ListInstancesV2(ctx, &store.FindInstanceMessage{})`（读事务 + 全表扫描），无 memoization。
 - **影响**：每次请求 `O(runs × datasets)` 次 DB 往返。
 - **修复**：按 `(namespace,name)` 在请求内做一次解析缓存；把 `ListInstancesV2` 提到循环外。
 
 ### B-H3. `GetOpenLineageDataset` 对同一批 run 解析两遍
+> **✅ 已修复（阶段 2）** · `8c34542`：`buildOpenLineageDatasetDetail` 重写为单次遍历，同时产出目标数据集的聚合与详情；`aggregateOpenLineageDatasets`/`findOpenLineageDatasetAggregate` 不再在详情路径上重复执行（列表端点仍用前者）。顺带删掉 `matchDatasetInRun` 里把 task GUID 与 dataset GUID 比较的死分支。
+
 - **位置**：`openlineage_dataset.go:226,238`
 - **影响**：在已经无界的接口上再翻倍 JSON 解析与解析工作量。
 - **修复**：一次遍历同时产出聚合与详情。
 
 ### B-H4. ExplainSQL 缓存 key 不含实例/GUID/provider → 跨实例串用
+> **✅ 已修复（阶段 2）** · `8c34542`：缓存 key 改为 `explainSQLCacheKey(identity, scopePrefix, provider, model)`——identity 是 `sql:<sha256>` 或 `meta:<metaHash>`，并叠加 scope（实例/对象前缀）与 provider/model；增量 `0.1.0001` 增加 `scope` 列并落库。TTL 7 天，`expired` 不再需要显式设置（过期行直接不返回）。**行为变化**：缓存命中现在要求至少一个启用的 LLM profile，因为 provider/model 参与 key；禁用全部 provider 后旧缓存不再返回。
+
 - **位置**：`explain_sql_service.go:505,524`、`store/store.go:129-137`、`LATEST.sql:417-427`
 - **证据**：`cacheKey = "sql:<sha256(sqlText)>"`；`"meta:<metaHash>"`，而 `MetaHash` 只是 `StoredMetadata` 的 sha256，不含 GUID/instance；`explain_sql_cache` 无 scope 列；`GetExplainSQLCache` 只按 `cache_key` 查。
 - **影响**：两个实例中定义相同的表（或不同实例下相同的 SQL 文本）共享缓存；返回的解释里嵌入了另一个实例的列名/DDL/对象名，跨实例信息泄露；切换 provider 后仍返回旧 provider 的结果。
@@ -201,16 +211,16 @@
 - **M2. `fetchObjectsByGUIDs` 的 metas 与 guids 错位**：`explain_sql_service.go:346-361`，跳过失败的 GUID 后用 `guids[:len(metas)]` 配对，导致后续对象被归到错误的 GUID/库/schema，产出"自信但错误"的解释。
 - **M3. store 错误被吞成"对象不存在"**：`explain_sql_service.go:407,446`（以及 `351`），瞬时 DB 故障被当作 miss 告诉模型。
 - **M4. 空 `scope_prefix` 使 `search_objects` 恒返回空**：`explain_sql_service.go:106,446` + `store/meta_resource.go:85-95`，空前缀生成 `guid LIKE ';%'`，而系统提示仍在告诉模型"有工具可查 schema"；前端未选实例时会发空 scope。
-- **M5. 缓存写入错误被吞且使用请求 ctx**：`explain_sql_service.go:212-214`，客户端断开导致昂贵结果被丢弃且无日志。
+- **M5. 缓存写入错误被吞且使用请求 ctx**：`explain_sql_service.go:212-214`，客户端断开导致昂贵结果被丢弃且无日志。 —— **✅ 已修复（阶段 2，`8c34542`）**：写入改用 `context.WithoutCancel(ctx)` + 5s 超时，失败记 `slog.Warn`（含 cache_key）。
 - **M6. 血缘关系列表无界**：`lineage_service.go:57,72,148`，store 支持 Limit/Offset 但 handler 从不设置。
 - **M7. `collectExternalDatasets` 静默降级**：`lineage_service.go:121-124`，DB 错误时返回空列表，UI 无法区分"无元数据"与"查询失败"。
 - **M8. `formatResolvedTarget` 对 MySQL 空 schema 泄露 instance id**：`openlineage_dataset.go:556-574`，`"inst;db;;table"` 去掉空段后恰好 3 段不再裁剪。
 - **M9. LLM profile 分页不可用**：`llm_service.go:54-78`，`page_token` 从不读取、`next_page_token` 从不设置、`page_size` 无上限，只能看到最近 50 条。
 - **M10. 空 update_mask 全量替换会清空 models**：`llm_service.go:133,260-269` + `store/llm.go:124-126`，只改标题的 PATCH 会禁用全部模型，profile 从 `Registry.ListEnabled` 消失。
-- **M11. 自定义 SQL 解释无失效/TTL**：`explain_sql_service.go:505` + `store/explain_sql.go:75-91`，schema 变更后旧解释永久返回；`expired` 标记服务端从不设置。
+- **M11. 自定义 SQL 解释无失效/TTL**：`explain_sql_service.go:505` + `store/explain_sql.go:75-91`，schema 变更后旧解释永久返回；`expired` 标记服务端从不设置。 —— **✅ 已修复（阶段 2，`8c34542`）**：7 天 TTL 在读取时生效（过期即 miss 并重新生成），`expired` 仍不设置（过期行不会返回）。metadata 类解释仍由 metaHash 自动失效。
 - **M12. LLM 输出全量驻留内存且无配额**：`explain_sql_service.go:127,180`，每轮上限 1MB × 最多 6 轮，且每轮重发整个会话；无限流/配额。
-- **M13. 客户端断开导致 goroutine 泄漏**：`explain_sql_service.go:181-185` + `component/llm/agent.go:19-28,117-145`，handler 返回后不再消费 channel，生产者在 32 槽缓冲满后永久阻塞，且阻塞在 send 上无法感知 ctx 取消。
-- **M14. "流式"实为整包缓冲，且超过 1MB 静默截断**：`component/llm/agent.go:193-205`，`io.ReadAll(io.LimitReader(resp.Body, 1MB))` 后才解析，客户端在整轮结束前收不到任何内容；超限的 SSE 尾部被丢弃，截断结果还会被缓存。
+- **M13. 客户端断开导致 goroutine 泄漏**：`explain_sql_service.go:181-185` + `component/llm/agent.go:19-28,117-145`，handler 返回后不再消费 channel，生产者在 32 槽缓冲满后永久阻塞，且阻塞在 send 上无法感知 ctx 取消。 —— **✅ 已修复（阶段 2，`8acbfe6`）**：所有发送改为 `select { case ch <- evt: case <-ctx.Done(): return }`（`sendEvent`/`sendRaw`），且 handler 用 `context.WithCancel` 派生子 context 并在返回时取消，因此即使 Connect 不取消服务端 ctx，生产者也不会永久阻塞。
+- **M14. "流式"实为整包缓冲，且超过 1MB 静默截断**：`component/llm/agent.go:193-205`，`io.ReadAll(io.LimitReader(resp.Body, 1MB))` 后才解析，客户端在整轮结束前收不到任何内容；超限的 SSE 尾部被丢弃，截断结果还会被缓存。 —— **✅ 已修复（阶段 2，`8acbfe6`）**：改为 `bufio.Scanner` 边读边解析（SSE 行长上限 8MiB，响应总量上限 32MiB 且超限报错而非截断），错误/截断/空回答一律中止且不写缓存；`data: [DONE]` 作为正常结束（兼容不设 `finish_reason` 的 provider），无 finish_reason 且无 `[DONE]` 的 EOF 视为流中断。
 - **M15. not-found 映射为 `CodeInternal`(500)**：`openlineage_service.go:184,237` + store 返回裸 `errors.Errorf`（`store/namespace_mapping.go:137,159`、`store/openlineage_api_key.go:147`）。
 - **M16. `resolveSource` 把 DB 故障报成 `NotFound`**：`explain_sql_service.go:511`。
 - **M17. `parseStructuredResponse` 首个 section 标题残留 `"## "`**：`explain_sql_service.go:639,649`，缓存命中时 `buildMarkdownFromSection` 再拼 `"## "` → 渲染成 `## ## 执行逻辑`；若模型首行就是标题，`idx == -1` 会把全文当 summary 并产生一个空 section（已用独立程序复现该逻辑）。
@@ -219,13 +229,13 @@
 ## 低（Low）／死代码（血缘/LLM）
 
 - `openlineage_dataset.go:396-398` 死分支：用 run 的 *task* GUID 与 *dataset* GUID 比较，且返回与 fall-through 相同的值。
-- `openlineage_dataset.go:470` 魔法数 `MetaType: 17`，应使用 `storepb.MetaType_EXTERNAL_DATASET`。
+- `openlineage_dataset.go:470` 魔法数 `MetaType: 17`，应使用 `storepb.MetaType_EXTERNAL_DATASET`。 —— **✅ 已修复（阶段 2，`8c34542`）**：改用 `storepb.MetaType_EXTERNAL_DATASET`。
 - 未使用的 proto 字段：`ExplainSQLRequest.meta_type`（handler 用 `meta.ObjectType`）、`ExplainSQLMetadata.expired`（UI 有"过期"徽标但服务端从不设置）、`ExplainSQLResponse.error`（错误一律走 RPC error）、`ExplainSQLMetadata.sections_json`（前端未用）、`FetchLLMModelsRequest.provider_name`（前端从不发送）。
 - `GetOpenLineageDatasetRequest.namespace/name` 在 `guid` 为空时被拒绝，实际不可单独使用（`openlineage_dataset.go:115`）。
 - 重复实现标准库：`stringsJoin`（`llm_service.go:341-350`）、`bytesTrimLeft`（`openlineage_handler.go:172-180`）。
 - 陈旧注释/空分支：`grpc_routes.go:85` 引用不存在的函数；`explain_sql_service.go:501` 的 `// ---- resolveSource, buildSystemPrompt, etc. (unchanged) ----` 编辑残留；`explain_sql_service.go:186` 空 `case llm.AgentEventAgentEnd`。
 - `plugin/openlineage/metadata.go:94-107` 的 `hasLineageSignal` 在 inputs/outputs 非空时恒为 true，使后续列血缘循环不可达。
-- `openlineage_run`/`explain_sql_cache`/`llm_debug_log` 均无保留/清理任务；`llm_debug_log` 以 fire-and-forget goroutine + `context.Background()` 写入完整 prompt/响应且吞掉错误。
+- `openlineage_run`/`explain_sql_cache`/`llm_debug_log` 均无保留/清理任务；`llm_debug_log` 以 fire-and-forget goroutine + `context.Background()` 写入完整 prompt/响应且吞掉错误。**阶段 2 部分**：`explain_sql_cache` 现按 7 天 TTL 在读取时失效（`8c34542`），但仍不物理清理过期行；`openlineage_run` 经确认**不**加自动清理（数据可审计），改以读路径限 5000 控制内存。
 - `/api/v1/lineage` 是普通 Echo 路由（`grpc_routes.go:169-172`），绕过审计与 debug 拦截器。
 - 请求体超限被静默截断后报"解析失败"，而不是 413（`openlineage_handler.go:52`）。
 - provider 错误体被透传给客户端：`fmt.Errorf("LLM status %d: %.4000s", resp.StatusCode, respStr)`（`agent.go:201`）。

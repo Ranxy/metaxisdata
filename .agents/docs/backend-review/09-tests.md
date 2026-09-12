@@ -8,6 +8,8 @@
 
 **阶段 1 更新**：新增 2 个测试文件（`filter_type_safety_test.go`、`instance_data_source_test.go`）并扩展 2 个（`filter_injection_test.go`、`syncer_test.go`），共 8 个新测试见下表。T-C1（CI 不跑 hermetic 测试）仍未修——`make build-release` 只是构建目标，仓库里依然没有 CI job 或 Dockerfile。T-H3 的 store 侧 guard 仍缺失。
 
+**阶段 2 更新**：新增 4 个测试文件（`store/principal_test.go`、`store/db_connection_test.go`、`api/v1/common_test.go`、`component/llm/agent_test.go`）并扩展 2 个（`store/meta_resource_test.go`、`plugin/openlineage/resolver_test.go`），共 15 个新测试函数见下表；首次为 `component/llm`、`store/db_connection.go` 建立测试。T-C1/T-H3、`api/auth` 零测试等仍未处理。
+
 ---
 
 ## 严重（Critical）
@@ -86,6 +88,26 @@
 
 ---
 
+## 阶段 2 新增的 guard 测试（已落地）
+
+| 文件 | 测试 | 保护的不变量 |
+| --- | --- | --- |
+| `backend/store/meta_resource_test.go`（扩展，`f22f61e`） | `TestMetaRegistryGUIDCacheKeyIncludesObjectType` | GUID 缓存 key 必须含 `object_type`；仅带 GUID 的查询不可缓存（否则 TABLE/VIEW 同名 GUID 串用） |
+| `backend/store/principal_test.go`（新，`ff9b22a`） | `TestIsUniqueViolation` | 23505 在 `*pgconn.PgError`（真实驱动）与 `*pq.Error` 两种形态下都被识别，其他码与普通错误不被误判 |
+| `backend/store/db_connection_test.go`（新，`fb8ca14`） | `TestClampMaxOpenConns` | 池上限落在 `[1, 50]`：`max_connections <= reserved` 或异常 `SHOW` 结果不得产出 0（会被解释为无上限） |
+| `backend/api/v1/common_test.go`（新，`ff9b22a`） | `TestConnectErrorForWriteMapsConflictToAlreadyExists` | store 的 `common.Conflict` 映射为 `CodeAlreadyExists`，其他错误保持 `CodeInternal` |
+| `backend/plugin/openlineage/resolver_test.go`（扩展，`8c34542`） | `TestRequestScopedResolverMemoizesPreview`、`TestNewResolverDoesNotMemoize` | 请求内解析缓存命中不触库；采集用的 `NewResolver` 不缓存 |
+| `backend/component/llm/agent_test.go`（新，`8acbfe6`） | `TestParseStreamEmitsContentAndDone` | 正常 SSE 逐块产出 content + Done |
+| 同上 | `TestParseStreamAcceptsDoneWithoutFinishReason` | `data: [DONE]` 视为正常结束（兼容不设 `finish_reason` 的 provider） |
+| 同上 | `TestParseStreamKeepsToolCallsWithNonContiguousIndexes` | 非连续/乱序 tool-call index 不再丢调用，参数按块拼接 |
+| 同上 | `TestParseStreamRejectsTruncatedAndIncompleteResponses` | `finish_reason=length`、无终止标记的 EOF、畸形 chunk、未知 finish_reason 都报错（不进缓存） |
+| 同上 | `TestParseStreamPropagatesReadErrors`、`TestMaxBytesReaderFailsInsteadOfTruncating` | 超限是错误而非静默截断 |
+| 同上 | `TestSendEventStopsOnCancelledContext` | 消费端消失时发送不再永久阻塞（C-H1 回归守卫） |
+| 同上 | `TestBoundedBufferCapsDebugCopyOnly` | 调试日志副本有上限，且 `Write` 返回完整长度（否则 `TeeReader` 会把短写当错误） |
+| 同上 | `TestIdleTimeoutReaderCancelsAStalledStream` | 空闲读超时会取消请求 |
+
+---
+
 ## 中（Medium）
 
 - **M1. migrator 集成测试清理是静默空操作**：`migrator_integration_test.go:151,156-158`，`defer admin.Close()` 在 `newTestDatabase` 返回时执行，而 `t.Cleanup` 的 `DROP DATABASE` 在测试结束时对已关闭的连接池执行，错误被 `_, _ =` 丢弃。
@@ -117,12 +139,12 @@
 - `backend/api/auth` —— JWT 生成/校验、header/cookie 提取、认证拦截器、`IsAuthenticationAllowed`。
 - `backend/server` —— Echo/Connect 路由装配、拦截器、优雅关停、pprof、前端 handler。
 - `backend/api/v1` 的 `debug_interceptor.go`、`auth_service.go`、`user_service.go`、`instance_service.go`、`database_service.go`、`lineage_service.go`、`llm_service.go`、`explain_sql_service.go`、`openlineage_service.go`、`openlineage_handler.go`、`setting_service.go`（阶段 0 新增，无测试）、`acl_interceptor.go`（阶段 0 新增，无测试）、`common.go`（阶段 0 后为 6 个纯 helper 测试文件：新增 `filter_injection_test.go`）。
-- `backend/component/llm`（8 个文件）—— agent 循环、tools、registry、fetcher、message/event。
+- `backend/component/llm`（8 个文件）—— agent 循环、tools、registry、fetcher、message/event。（**阶段 2 部分**：`agent_test.go` 覆盖 SSE 解析、超时、截断与发送取消；tools/registry/fetcher/message 仍未测。）
 - `backend/component/state`、`backend/component/dbfactory`、`backend/config`、`backend/metric`、`backend/bin/server/cmd`、`backend/test/integration/env`（harness 自身无自测）。
 - `backend/common`（CEL 构建、GUID/resource name、错误码）、`common/log`、`common/stacktrace`、`backend/utils`。
 - `frontend` —— 0 个 Vitest 文件，尽管 AGENTS.md 记录了 Vitest。
 
-**无直接测试的 store 文件**（只有 `audit_log.go`、`manual_sql.go` 的 delete builder、`meta_resource.go` 的 helper、`openlineage_api_key.go` 的 mask 有测试）：`policy.go`、`role.go`、`group.go`、`principal.go`、`project.go`、`database.go`、`instance.go`、`column_lineage.go`、`openlineage_run.go`、`openlineage_task.go`、`llm.go`、`setting.go`、`idp.go`、`namespace_mapping.go`、`stats.go`、`explain_sql.go`、`external_dataset.go`、`db_connection.go`、`environment.go`、`common.go`、`store.go`。
+**无直接测试的 store 文件**（只有 `audit_log.go`、`manual_sql.go` 的 delete builder、`meta_resource.go` 的 helper、`openlineage_api_key.go` 的 mask 有测试）：`policy.go`、`role.go`、`group.go`、~~`principal.go`~~（阶段 2 新增 23505 判定测试）、`project.go`、`database.go`、`instance.go`、`column_lineage.go`、`openlineage_run.go`、`openlineage_task.go`、`llm.go`、`setting.go`、`idp.go`、`namespace_mapping.go`、`stats.go`、`explain_sql.go`、`external_dataset.go`、~~`db_connection.go`~~（阶段 2 新增池上限测试）、`environment.go`、`common.go`、`store.go`。
 
 **Runner**：`schemasync` 只测纯 helper（`convertMetadataToGUID`、`normalizeMetadataForHash`、`batchMetaCreate.diff`、间隔/上次同步默认值、异步入队），同步循环/缓存更新/DB 交互未测；`lineageanalyzer` 只测 `buildSQL`。
 

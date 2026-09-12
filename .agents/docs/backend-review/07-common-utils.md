@@ -8,6 +8,8 @@
 
 **阶段 1 更新**：M3 ✅（`ff914ac`，CEL 类型断言不再 panic，统一 `InvalidArgument`）、低节"日志系统未接线" ✅（`7fdcead`）。U-H1/U-H2、M1（CEL condition fail-open）等仍未处理。
 
+**阶段 2 更新**：M13 相关的 `Store.Secret` 竞态 ✅（改为私有字段 + 互斥锁，`f22f61e`）；`enableCache` 待确认项已关闭（启用缓存，见下）。U-H1（`common.Code`→Connect 映射）与 U-H2（XOR 混淆）仍未处理。
+
 ---
 
 ## 高（High）
@@ -72,5 +74,5 @@
 
 1. `AUTH_SECRET` 的设置值是否可能为空（管理员清空、或恢复的 DB 缺 `setting` 但有实例行）？若是，`Obfuscate` 的除零可达，且所有实例解密失败。**阶段 0 更新**：JWT 侧已 fail-closed（`JWT_SECRET` 与 `AUTH_SECRET` 都缺失或过短时启动失败），但**字段混淆侧的除零与空 seed 仍未修**，本条仍然成立。
 2. 是否有任何 API 能写入 `Binding.Condition`？目前 binding 只在不带 condition 的情况下创建，这使 M1 的 fail-open 从"活跃"降级为"潜伏"。
-3. 跨包但很重要：`store.New(ctx, profile.PgURL, false)`（`backend/server/server.go:70`）关闭了**所有** store LRU 缓存（`enableCache` 门控每个缓存读），但缓存写仍无条件发生 → 每个元数据/数据库/group 读取都打 PostgreSQL，同时白白占用内存。需确认 `false` 是否有意。
+3. ~~跨包但很重要：`store.New(ctx, profile.PgURL, false)`（`backend/server/server.go:70`）关闭了**所有** store LRU 缓存（`enableCache` 门控每个缓存读），但缓存写仍无条件发生 → 每个元数据/数据库/group 读取都打 PostgreSQL，同时白白占用内存。需确认 `false` 是否有意。~~ —— **阶段 2 已关闭（`f22f61e`）**：经确认启用缓存，`enableCache` 参数与字段删除，缓存读取无条件生效；缓存 miss 的定向查询与失效时机（提交后）也在同一提交修正。
 4. `backend/server/grpc_routes.go:129-139` 为 REST gateway 创建的 `grpc.NewClient` 连接在 shutdown 时未关闭（反复启动/停止的测试场景可能泄漏），需确认。
