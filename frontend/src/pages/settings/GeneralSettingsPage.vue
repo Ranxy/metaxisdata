@@ -31,6 +31,7 @@
             <Checkbox
               id="disallow-signup"
               :checked="disallowSignup"
+              :disabled="!canUpdate"
               @update:checked="disallowSignup = $event === true"
             />
             <div class="grid gap-1">
@@ -47,6 +48,7 @@
             <Checkbox
               id="disallow-password-signin"
               :checked="disallowPasswordSignin"
+              :disabled="!canUpdate"
               @update:checked="disallowPasswordSignin = $event === true"
             />
             <div class="grid gap-1">
@@ -59,13 +61,19 @@
             </div>
           </div>
 
-          <div class="pt-2">
+          <div class="pt-2 space-y-2">
             <Button
-              :disabled="isSaving"
+              :disabled="isSaving || !canUpdate"
               @click="handleSave"
             >
               {{ t("common.save") }}
             </Button>
+            <p
+              v-if="!canUpdate"
+              class="text-sm text-muted-foreground"
+            >
+              {{ t("generalSettings.readOnlyHint") }}
+            </p>
           </div>
         </div>
       </CardContent>
@@ -74,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   getWorkspaceProfileSetting,
@@ -92,9 +100,17 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useErrorHandler } from "@/composables/useErrorHandler";
+import { useAuthStore } from "@/store/modules/auth";
 
 const { t } = useI18n();
+const authStore = useAuthStore();
 const { handleError, showSuccess } = useErrorHandler();
+
+// The setting is readable by every member (the login page reads it too), but
+// only metaxisdata.settings.update may change it.
+const canUpdate = computed(() =>
+  authStore.hasPermission("metaxisdata.settings.update")
+);
 
 const isLoading = ref(false);
 const isSaving = ref(false);

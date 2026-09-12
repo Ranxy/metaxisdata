@@ -16,26 +16,32 @@ option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 service OpenLineageService {
   rpc ListOpenLineageTasks(ListOpenLineageTasksRequest) returns (ListOpenLineageTasksResponse) {
     option (google.api.http) = {get: "/v1/openlineage/tasks"};
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.read";
   }
 
   rpc ListOpenLineageDatasets(ListOpenLineageDatasetsRequest) returns (ListOpenLineageDatasetsResponse) {
     option (google.api.http) = {get: "/v1/openlineage/datasets"};
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.read";
   }
 
   rpc GetOpenLineageDataset(GetOpenLineageDatasetRequest) returns (OpenLineageDatasetDetailResource) {
     option (google.api.http) = {get: "/v1/openlineage/dataset"};
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.read";
   }
 
   rpc GetOpenLineageTask(GetOpenLineageTaskRequest) returns (OpenLineageTask) {
     option (google.api.http) = {get: "/v1/{name=openlineage/tasks/*}"};
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.read";
   }
 
   rpc ListOpenLineageRuns(ListOpenLineageRunsRequest) returns (ListOpenLineageRunsResponse) {
     option (google.api.http) = {get: "/v1/openlineage/runs"};
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.read";
   }
 
   rpc GetOpenLineageRun(GetOpenLineageRunRequest) returns (OpenLineageRun) {
     option (google.api.http) = {get: "/v1/{name=openlineage/runs/*}"};
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.read";
   }
 
   rpc CreateNamespaceMapping(CreateNamespaceMappingRequest) returns (NamespaceMapping) {
@@ -44,11 +50,12 @@ service OpenLineageService {
       body: "mapping"
     };
     option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.namespaceMappings.write";
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.namespaceMappings.create";
   }
 
   rpc ListNamespaceMappings(ListNamespaceMappingsRequest) returns (ListNamespaceMappingsResponse) {
     option (google.api.http) = {get: "/v1/openlineage/namespaceMappings"};
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.namespaceMappings.list";
   }
 
   rpc UpdateNamespaceMapping(UpdateNamespaceMappingRequest) returns (NamespaceMapping) {
@@ -57,13 +64,13 @@ service OpenLineageService {
       body: "mapping"
     };
     option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.namespaceMappings.write";
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.namespaceMappings.update";
   }
 
   rpc DeleteNamespaceMapping(DeleteNamespaceMappingRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/{name=openlineage/namespaceMappings/*}"};
     option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.namespaceMappings.write";
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.namespaceMappings.delete";
   }
 
   rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse) {
@@ -72,17 +79,18 @@ service OpenLineageService {
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.apiKeys.write";
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.apiKeys.create";
   }
 
   rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse) {
     option (google.api.http) = {get: "/v1/openlineage/apiKeys"};
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.apiKeys.list";
   }
 
   rpc RevokeAPIKey(RevokeAPIKeyRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/{name=openlineage/apiKeys/*}"};
     option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.apiKeys.write";
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.apiKeys.delete";
   }
 }
 

@@ -21,6 +21,11 @@ export const useAuthStore = defineStore("auth", {
   getters: {
     userName: (state) => state.user?.title || state.user?.email || "",
     userEmail: (state) => state.user?.email || "",
+    // The effective workspace permissions, populated by GetCurrentUser. The
+    // server is authoritative; this only hides UI the caller cannot use.
+    permissions: (state) => state.user?.permissions ?? [],
+    hasPermission: (state) => (permission: string) =>
+      state.user?.permissions.includes(permission) ?? false,
   },
 
   actions: {

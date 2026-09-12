@@ -96,6 +96,9 @@
     - [Policy.Resource](#metaxisdata-store-Policy-Resource)
     - [Policy.Type](#metaxisdata-store-Policy-Type)
   
+- [store/role.proto](#store_role-proto)
+    - [RolePermissions](#metaxisdata-store-RolePermissions)
+  
 - [store/setting.proto](#store_setting-proto)
     - [EnvironmentSetting](#metaxisdata-store-EnvironmentSetting)
     - [EnvironmentSetting.Environment](#metaxisdata-store-EnvironmentSetting-Environment)
@@ -1583,6 +1586,40 @@ others.
 | IAM | 1 |  |
 | TAG | 2 |  |
 
+
+ 
+
+ 
+
+ 
+
+
+
+<a name="store_role-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## store/role.proto
+
+
+
+<a name="metaxisdata-store-RolePermissions"></a>
+
+### RolePermissions
+RolePermissions is the payload stored in the role table&#39;s permissions JSONB
+column: the permission bundle of a custom role. Predefined roles are defined
+in Go (backend/store/predefined_roles.go) and never stored, so only custom
+roles have a row here.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| permissions | [string](#string) | repeated |  |
+
+
+
+
+
+ 
 
  
 

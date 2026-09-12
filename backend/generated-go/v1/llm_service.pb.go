@@ -716,14 +716,14 @@ const file_v1_llm_service_proto_rawDesc = "" +
 	"\x18LLM_PROVIDER_TYPE_OPENAI\x10\x01\x12\x1e\n" +
 	"\x1aLLM_PROVIDER_TYPE_DEEPSEEK\x10\x02\x12 \n" +
 	"\x1cLLM_PROVIDER_TYPE_OPENROUTER\x10\x03\x12\x1c\n" +
-	"\x18LLM_PROVIDER_TYPE_CUSTOM\x10\x042\xd1\a\n" +
+	"\x18LLM_PROVIDER_TYPE_CUSTOM\x10\x042\xfb\a\n" +
 	"\n" +
-	"LLMService\x12\xa0\x01\n" +
-	"\x17ListLLMProviderProfiles\x12..metaxisdata.v1.ListLLMProviderProfilesRequest\x1a/.metaxisdata.v1.ListLLMProviderProfilesResponse\"$\xdaA\x00\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/llm-provider-profiles\x12\xc7\x01\n" +
-	"\x18CreateLLMProviderProfile\x12/.metaxisdata.v1.CreateLLMProviderProfileRequest\x1a\".metaxisdata.v1.LlmProviderProfile\"V\xdaA\aprofile\x8a\xea0\x1emetaxisdata.llm.profiles.write\x82\xd3\xe4\x93\x02$:\aprofile\"\x19/v1/llm-provider-profiles\x12\xe4\x01\n" +
-	"\x18UpdateLLMProviderProfile\x12/.metaxisdata.v1.UpdateLLMProviderProfileRequest\x1a\".metaxisdata.v1.LlmProviderProfile\"s\xdaA\x13profile,update_mask\x8a\xea0\x1emetaxisdata.llm.profiles.write\x82\xd3\xe4\x93\x025:\aprofile2*/v1/{profile.name=llm-provider-profiles/*}\x12\xb8\x01\n" +
-	"\x18DeleteLLMProviderProfile\x12/.metaxisdata.v1.DeleteLLMProviderProfileRequest\x1a\x16.google.protobuf.Empty\"S\xdaA\x04name\x8a\xea0\x1emetaxisdata.llm.profiles.write\x82\xd3\xe4\x93\x02$*\"/v1/{name=llm-provider-profiles/*}\x12\xb3\x01\n" +
-	"\x0eFetchLLMModels\x12%.metaxisdata.v1.FetchLLMModelsRequest\x1a&.metaxisdata.v1.FetchLLMModelsResponse\"R\x8a\xea0\x1emetaxisdata.llm.profiles.write\x82\xd3\xe4\x93\x02*:\x01*\"%/v1/llm-provider-profiles:fetchModelsB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"LLMService\x12\xc1\x01\n" +
+	"\x17ListLLMProviderProfiles\x12..metaxisdata.v1.ListLLMProviderProfilesRequest\x1a/.metaxisdata.v1.ListLLMProviderProfilesResponse\"E\xdaA\x00\x8a\xea0\x1dmetaxisdata.llm.profiles.list\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/llm-provider-profiles\x12\xc8\x01\n" +
+	"\x18CreateLLMProviderProfile\x12/.metaxisdata.v1.CreateLLMProviderProfileRequest\x1a\".metaxisdata.v1.LlmProviderProfile\"W\xdaA\aprofile\x8a\xea0\x1fmetaxisdata.llm.profiles.create\x82\xd3\xe4\x93\x02$:\aprofile\"\x19/v1/llm-provider-profiles\x12\xe5\x01\n" +
+	"\x18UpdateLLMProviderProfile\x12/.metaxisdata.v1.UpdateLLMProviderProfileRequest\x1a\".metaxisdata.v1.LlmProviderProfile\"t\xdaA\x13profile,update_mask\x8a\xea0\x1fmetaxisdata.llm.profiles.update\x82\xd3\xe4\x93\x025:\aprofile2*/v1/{profile.name=llm-provider-profiles/*}\x12\xb9\x01\n" +
+	"\x18DeleteLLMProviderProfile\x12/.metaxisdata.v1.DeleteLLMProviderProfileRequest\x1a\x16.google.protobuf.Empty\"T\xdaA\x04name\x8a\xea0\x1fmetaxisdata.llm.profiles.delete\x82\xd3\xe4\x93\x02$*\"/v1/{name=llm-provider-profiles/*}\x12\xb9\x01\n" +
+	"\x0eFetchLLMModels\x12%.metaxisdata.v1.FetchLLMModelsRequest\x1a&.metaxisdata.v1.FetchLLMModelsResponse\"X\x8a\xea0$metaxisdata.llm.profiles.fetchModels\x82\xd3\xe4\x93\x02*:\x01*\"%/v1/llm-provider-profiles:fetchModelsB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_llm_service_proto_rawDescOnce sync.Once

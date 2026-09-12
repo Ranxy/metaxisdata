@@ -24,18 +24,8 @@ func NewAuditLogService(store *store.Store) *AuditLogService {
 }
 
 func (s *AuditLogService) ListAuditLogs(ctx context.Context, req *connect.Request[v1pb.ListAuditLogsRequest]) (*connect.Response[v1pb.ListAuditLogsResponse], error) {
-	user, ok := GetUserFromContext(ctx)
-	if !ok || user == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authenticated user not found"))
-	}
-	isAdmin, err := isUserWorkspaceAdmin(ctx, s.store, user)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check workspace role"))
-	}
-	if !isAdmin {
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("only workspace admins can list audit logs"))
-	}
-
+	// metaxisdata.auditLogs.search is enforced by the ACL interceptor through
+	// the method annotation.
 	parent := strings.TrimSpace(req.Msg.GetParent())
 	if parent == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("parent is required"))

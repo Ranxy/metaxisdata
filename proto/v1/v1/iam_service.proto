@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package metaxisdata.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/type/expr.proto";
+import "v1/annotation.proto";
+
+option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
+
+// Binding binds one role to a set of principals. It is the v1 view of the
+// stored IAM binding; the workspace IAM policy is written whole through
+// IamService.SetWorkspaceIamPolicy.
+message Binding {
+  // The role that is assigned to the members.
+  // Format: roles/{role}
+  string role = 1;
+
+  // The principals requesting access.
+  // For users: users/{userUID}; for groups: groups/{email}; the pseudo-member
+  // allUsers matches every authenticated principal.
+  repeated string members = 2;
+
+  // The condition that is associated with this binding. When present the
+  // binding applies only while the condition evaluates to true.
+  google.type.Expr condition = 3;
+}
+
+message IamPolicy {
+  // A binding binds one role to one or more members.
+  repeated Binding bindings = 1;
+}
+
+// IamPolicyView is an IAM policy together with its etag. The etag is returned
+// by Get and must be supplied on Set for optimistic concurrency: a Set whose
+// etag does not match the stored policy's etag is rejected with
+// connect.CodeAborted so the caller can re-fetch and retry. An empty etag
+// skips the check (first write).
+message IamPolicyView {
+  IamPolicy policy = 1;
+  string etag = 2;
+}
+
+message GetWorkspaceIamPolicyRequest {}
+
+message SetWorkspaceIamPolicyRequest {
+  IamPolicy policy = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The etag from the last GetWorkspaceIamPolicy. Empty means "do not check".
+  string etag = 2;
+}
+
+// IamService exposes the workspace IAM policy for management. Get reads the
+// whole policy; Set replaces it whole, guarded by the etag. Both RPCs are gated
+// by metaxisdata.iam.getPolicy / metaxisdata.iam.setPolicy.
+service IamService {
+  // Get the workspace IAM policy.
+  rpc GetWorkspaceIamPolicy(GetWorkspaceIamPolicyRequest) returns (IamPolicyView) {
+    option (google.api.http) = {get: "/v1/iamPolicy"};
+    option (metaxisdata.v1.permission) = "metaxisdata.iam.getPolicy";
+  }
+
+  // Set the workspace IAM policy (full replace, etag-guarded).
+  rpc SetWorkspaceIamPolicy(SetWorkspaceIamPolicyRequest) returns (IamPolicyView) {
+    option (google.api.http) = {
+      put: "/v1/iamPolicy"
+      body: "*"
+    };
+    option (metaxisdata.v1.permission) = "metaxisdata.iam.setPolicy";
+    option (metaxisdata.v1.audit) = true;
+  }
+}

@@ -2482,21 +2482,21 @@ const file_v1_openlineage_service_proto_rawDesc = "" +
 	"%OPENLINEAGE_DATASET_SCOPE_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dOPENLINEAGE_DATASET_SCOPE_ALL\x10\x01\x12&\n" +
 	"\"OPENLINEAGE_DATASET_SCOPE_INTERNAL\x10\x02\x12&\n" +
-	"\"OPENLINEAGE_DATASET_SCOPE_EXTERNAL\x10\x032\xfb\x10\n" +
-	"\x12OpenLineageService\x12\x90\x01\n" +
-	"\x14ListOpenLineageTasks\x12+.metaxisdata.v1.ListOpenLineageTasksRequest\x1a,.metaxisdata.v1.ListOpenLineageTasksResponse\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/openlineage/tasks\x12\x9c\x01\n" +
-	"\x17ListOpenLineageDatasets\x12..metaxisdata.v1.ListOpenLineageDatasetsRequest\x1a/.metaxisdata.v1.ListOpenLineageDatasetsResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/openlineage/datasets\x12\x98\x01\n" +
-	"\x15GetOpenLineageDataset\x12,.metaxisdata.v1.GetOpenLineageDatasetRequest\x1a0.metaxisdata.v1.OpenLineageDatasetDetailResource\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/openlineage/dataset\x12\x88\x01\n" +
-	"\x12GetOpenLineageTask\x12).metaxisdata.v1.GetOpenLineageTaskRequest\x1a\x1f.metaxisdata.v1.OpenLineageTask\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/{name=openlineage/tasks/*}\x12\x8c\x01\n" +
-	"\x13ListOpenLineageRuns\x12*.metaxisdata.v1.ListOpenLineageRunsRequest\x1a+.metaxisdata.v1.ListOpenLineageRunsResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/openlineage/runs\x12\x84\x01\n" +
-	"\x11GetOpenLineageRun\x12(.metaxisdata.v1.GetOpenLineageRunRequest\x1a\x1e.metaxisdata.v1.OpenLineageRun\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/{name=openlineage/runs/*}\x12\xd4\x01\n" +
-	"\x16CreateNamespaceMapping\x12-.metaxisdata.v1.CreateNamespaceMappingRequest\x1a .metaxisdata.v1.NamespaceMapping\"i\x8a\xea0/metaxisdata.openlineage.namespaceMappings.write\x98\xea0\x01\x82\xd3\xe4\x93\x02,:\amapping\"!/v1/openlineage/namespaceMappings\x12\x9f\x01\n" +
-	"\x15ListNamespaceMappings\x12,.metaxisdata.v1.ListNamespaceMappingsRequest\x1a-.metaxisdata.v1.ListNamespaceMappingsResponse\")\x82\xd3\xe4\x93\x02#\x12!/v1/openlineage/namespaceMappings\x12\xe5\x01\n" +
-	"\x16UpdateNamespaceMapping\x12-.metaxisdata.v1.UpdateNamespaceMappingRequest\x1a .metaxisdata.v1.NamespaceMapping\"z\x8a\xea0/metaxisdata.openlineage.namespaceMappings.write\x98\xea0\x01\x82\xd3\xe4\x93\x02=:\amapping22/v1/{mapping.name=openlineage/namespaceMappings/*}\x12\xca\x01\n" +
-	"\x16DeleteNamespaceMapping\x12-.metaxisdata.v1.DeleteNamespaceMappingRequest\x1a\x16.google.protobuf.Empty\"i\x8a\xea0/metaxisdata.openlineage.namespaceMappings.write\x98\xea0\x01\x82\xd3\xe4\x93\x02,**/v1/{name=openlineage/namespaceMappings/*}\x12\xaa\x01\n" +
-	"\fCreateAPIKey\x12#.metaxisdata.v1.CreateAPIKeyRequest\x1a$.metaxisdata.v1.CreateAPIKeyResponse\"O\x8a\xea0%metaxisdata.openlineage.apiKeys.write\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/openlineage/apiKeys\x12w\n" +
-	"\vListAPIKeys\x12\".metaxisdata.v1.ListAPIKeysRequest\x1a#.metaxisdata.v1.ListAPIKeysResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/openlineage/apiKeys\x12\xa2\x01\n" +
-	"\fRevokeAPIKey\x12#.metaxisdata.v1.RevokeAPIKeyRequest\x1a\x16.google.protobuf.Empty\"U\x8a\xea0%metaxisdata.openlineage.apiKeys.write\x98\xea0\x01\x82\xd3\xe4\x93\x02\"* /v1/{name=openlineage/apiKeys/*}B6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\"OPENLINEAGE_DATASET_SCOPE_EXTERNAL\x10\x032\x9b\x13\n" +
+	"\x12OpenLineageService\x12\xb0\x01\n" +
+	"\x14ListOpenLineageTasks\x12+.metaxisdata.v1.ListOpenLineageTasksRequest\x1a,.metaxisdata.v1.ListOpenLineageTasksResponse\"=\x8a\xea0\x1cmetaxisdata.openlineage.read\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/openlineage/tasks\x12\xbc\x01\n" +
+	"\x17ListOpenLineageDatasets\x12..metaxisdata.v1.ListOpenLineageDatasetsRequest\x1a/.metaxisdata.v1.ListOpenLineageDatasetsResponse\"@\x8a\xea0\x1cmetaxisdata.openlineage.read\x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/openlineage/datasets\x12\xb8\x01\n" +
+	"\x15GetOpenLineageDataset\x12,.metaxisdata.v1.GetOpenLineageDatasetRequest\x1a0.metaxisdata.v1.OpenLineageDatasetDetailResource\"?\x8a\xea0\x1cmetaxisdata.openlineage.read\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/openlineage/dataset\x12\xa8\x01\n" +
+	"\x12GetOpenLineageTask\x12).metaxisdata.v1.GetOpenLineageTaskRequest\x1a\x1f.metaxisdata.v1.OpenLineageTask\"F\x8a\xea0\x1cmetaxisdata.openlineage.read\x82\xd3\xe4\x93\x02 \x12\x1e/v1/{name=openlineage/tasks/*}\x12\xac\x01\n" +
+	"\x13ListOpenLineageRuns\x12*.metaxisdata.v1.ListOpenLineageRunsRequest\x1a+.metaxisdata.v1.ListOpenLineageRunsResponse\"<\x8a\xea0\x1cmetaxisdata.openlineage.read\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/openlineage/runs\x12\xa4\x01\n" +
+	"\x11GetOpenLineageRun\x12(.metaxisdata.v1.GetOpenLineageRunRequest\x1a\x1e.metaxisdata.v1.OpenLineageRun\"E\x8a\xea0\x1cmetaxisdata.openlineage.read\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/{name=openlineage/runs/*}\x12\xd5\x01\n" +
+	"\x16CreateNamespaceMapping\x12-.metaxisdata.v1.CreateNamespaceMappingRequest\x1a .metaxisdata.v1.NamespaceMapping\"j\x8a\xea00metaxisdata.openlineage.namespaceMappings.create\x98\xea0\x01\x82\xd3\xe4\x93\x02,:\amapping\"!/v1/openlineage/namespaceMappings\x12\xd1\x01\n" +
+	"\x15ListNamespaceMappings\x12,.metaxisdata.v1.ListNamespaceMappingsRequest\x1a-.metaxisdata.v1.ListNamespaceMappingsResponse\"[\x8a\xea0.metaxisdata.openlineage.namespaceMappings.list\x82\xd3\xe4\x93\x02#\x12!/v1/openlineage/namespaceMappings\x12\xe6\x01\n" +
+	"\x16UpdateNamespaceMapping\x12-.metaxisdata.v1.UpdateNamespaceMappingRequest\x1a .metaxisdata.v1.NamespaceMapping\"{\x8a\xea00metaxisdata.openlineage.namespaceMappings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02=:\amapping22/v1/{mapping.name=openlineage/namespaceMappings/*}\x12\xcb\x01\n" +
+	"\x16DeleteNamespaceMapping\x12-.metaxisdata.v1.DeleteNamespaceMappingRequest\x1a\x16.google.protobuf.Empty\"j\x8a\xea00metaxisdata.openlineage.namespaceMappings.delete\x98\xea0\x01\x82\xd3\xe4\x93\x02,**/v1/{name=openlineage/namespaceMappings/*}\x12\xab\x01\n" +
+	"\fCreateAPIKey\x12#.metaxisdata.v1.CreateAPIKeyRequest\x1a$.metaxisdata.v1.CreateAPIKeyResponse\"P\x8a\xea0&metaxisdata.openlineage.apiKeys.create\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/openlineage/apiKeys\x12\x9f\x01\n" +
+	"\vListAPIKeys\x12\".metaxisdata.v1.ListAPIKeysRequest\x1a#.metaxisdata.v1.ListAPIKeysResponse\"G\x8a\xea0$metaxisdata.openlineage.apiKeys.list\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/openlineage/apiKeys\x12\xa3\x01\n" +
+	"\fRevokeAPIKey\x12#.metaxisdata.v1.RevokeAPIKeyRequest\x1a\x16.google.protobuf.Empty\"V\x8a\xea0&metaxisdata.openlineage.apiKeys.delete\x98\xea0\x01\x82\xd3\xe4\x93\x02\"* /v1/{name=openlineage/apiKeys/*}B6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_openlineage_service_proto_rawDescOnce sync.Once

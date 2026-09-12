@@ -190,10 +190,10 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"$UpdateWorkspaceProfileSettingRequest\x12F\n" +
 	"\asetting\x18\x01 \x01(\v2'.metaxisdata.v1.WorkspaceProfileSettingB\x03\xe0A\x02R\asetting\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask2\x9f\x03\n" +
-	"\x0eSettingService\x12\xa3\x01\n" +
-	"\x1aGetWorkspaceProfileSetting\x121.metaxisdata.v1.GetWorkspaceProfileSettingRequest\x1a'.metaxisdata.v1.WorkspaceProfileSetting\")\x80\xea0\x01\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/settings/workspaceProfile\x12\xe6\x01\n" +
-	"\x1dUpdateWorkspaceProfileSetting\x124.metaxisdata.v1.UpdateWorkspaceProfileSettingRequest\x1a'.metaxisdata.v1.WorkspaceProfileSetting\"f\xdaA\x13setting,update_mask\x8a\xea0\x1ametaxisdata.settings.write\x98\xea0\x01\x82\xd3\xe4\x93\x02(:\asetting2\x1d/v1/settings/workspaceProfileB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"updateMask2\xbc\x03\n" +
+	"\x0eSettingService\x12\xbf\x01\n" +
+	"\x1aGetWorkspaceProfileSetting\x121.metaxisdata.v1.GetWorkspaceProfileSettingRequest\x1a'.metaxisdata.v1.WorkspaceProfileSetting\"E\x80\xea0\x01\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/settings/workspaceProfile\x12\xe7\x01\n" +
+	"\x1dUpdateWorkspaceProfileSetting\x124.metaxisdata.v1.UpdateWorkspaceProfileSettingRequest\x1a'.metaxisdata.v1.WorkspaceProfileSetting\"g\xdaA\x13setting,update_mask\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02(:\asetting2\x1d/v1/settings/workspaceProfileB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_setting_service_proto_rawDescOnce sync.Once

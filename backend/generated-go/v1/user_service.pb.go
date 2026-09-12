@@ -601,7 +601,11 @@ type User struct {
 	Profile *UserProfile `protobuf:"bytes,13,opt,name=profile,proto3" json:"profile,omitempty"`
 	// The groups for the user.
 	// Format: groups/{email}
-	Groups        []string `protobuf:"bytes,14,rep,name=groups,proto3" json:"groups,omitempty"`
+	Groups []string `protobuf:"bytes,14,rep,name=groups,proto3" json:"groups,omitempty"`
+	// The effective workspace permissions of the caller, as a list of
+	// `metaxisdata.<resource>.<verb>` strings. Populated by GetCurrentUser only,
+	// so the frontend can gate navigation and actions without probing each RPC.
+	Permissions   []string `protobuf:"bytes,15,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -706,6 +710,13 @@ func (x *User) GetGroups() []string {
 	return nil
 }
 
+func (x *User) GetPermissions() []string {
+	if x != nil {
+		return x.Permissions
+	}
+	return nil
+}
+
 type UserProfile struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
 	LastLoginTime          *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=last_login_time,json=lastLoginTime,proto3" json:"last_login_time,omitempty"`
@@ -793,7 +804,7 @@ const file_v1_user_service_proto_rawDesc = "" +
 	"\x10metaxisdata/UserR\x04name\"C\n" +
 	"\x13UndeleteUserRequest\x12,\n" +
 	"\x04name\x18\x01 \x01(\tB\x18\xe0A\x02\xfaA\x12\n" +
-	"\x10metaxisdata/UserR\x04name\"\x9b\x03\n" +
+	"\x10metaxisdata/UserR\x04name\"\xc2\x03\n" +
 	"\x04User\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x03R\x04name\x12+\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x15.metaxisdata.v1.StateR\x05state\x12\x14\n" +
@@ -805,7 +816,8 @@ const file_v1_user_service_proto_rawDesc = "" +
 	"serviceKey\x12\x14\n" +
 	"\x05phone\x18\f \x01(\tR\x05phone\x125\n" +
 	"\aprofile\x18\r \x01(\v2\x1b.metaxisdata.v1.UserProfileR\aprofile\x12\x1b\n" +
-	"\x06groups\x18\x0e \x03(\tB\x03\xe0A\x03R\x06groups:#\xeaA \n" +
+	"\x06groups\x18\x0e \x03(\tB\x03\xe0A\x03R\x06groups\x12%\n" +
+	"\vpermissions\x18\x0f \x03(\tB\x03\xe0A\x03R\vpermissions:#\xeaA \n" +
 	"\x10metaxisdata/User\x12\fusers/{user}J\x04\b\v\x10\fR\x0erecovery_codes\"\xb6\x01\n" +
 	"\vUserProfile\x12B\n" +
 	"\x0flast_login_time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\rlastLoginTime\x12U\n" +
@@ -815,12 +827,12 @@ const file_v1_user_service_proto_rawDesc = "" +
 	"\bEND_USER\x10\x01\x12\x13\n" +
 	"\x0fSERVICE_ACCOUNT\x10\x02\x12\x0e\n" +
 	"\n" +
-	"SYSTEM_BOT\x10\x032\xbe\a\n" +
-	"\vUserService\x12b\n" +
-	"\aGetUser\x12\x1e.metaxisdata.v1.GetUserRequest\x1a\x14.metaxisdata.v1.User\"!\xdaA\x04name\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/{name=users/*}\x12x\n" +
-	"\rBatchGetUsers\x12$.metaxisdata.v1.BatchGetUsersRequest\x1a%.metaxisdata.v1.BatchGetUsersResponse\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/users:batchGet\x12T\n" +
-	"\x0eGetCurrentUser\x12\x16.google.protobuf.Empty\x1a\x14.metaxisdata.v1.User\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/users/me\x12c\n" +
-	"\tListUsers\x12 .metaxisdata.v1.ListUsersRequest\x1a!.metaxisdata.v1.ListUsersResponse\"\x11\x82\xd3\xe4\x93\x02\v\x12\t/v1/users\x12m\n" +
+	"SYSTEM_BOT\x10\x032\x8b\b\n" +
+	"\vUserService\x12{\n" +
+	"\aGetUser\x12\x1e.metaxisdata.v1.GetUserRequest\x1a\x14.metaxisdata.v1.User\":\xdaA\x04name\x8a\xea0\x15metaxisdata.users.get\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/{name=users/*}\x12\x91\x01\n" +
+	"\rBatchGetUsers\x12$.metaxisdata.v1.BatchGetUsersRequest\x1a%.metaxisdata.v1.BatchGetUsersResponse\"3\x8a\xea0\x15metaxisdata.users.get\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/users:batchGet\x12T\n" +
+	"\x0eGetCurrentUser\x12\x16.google.protobuf.Empty\x1a\x14.metaxisdata.v1.User\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/users/me\x12}\n" +
+	"\tListUsers\x12 .metaxisdata.v1.ListUsersRequest\x1a!.metaxisdata.v1.ListUsersResponse\"+\x8a\xea0\x16metaxisdata.users.list\x82\xd3\xe4\x93\x02\v\x12\t/v1/users\x12m\n" +
 	"\n" +
 	"CreateUser\x12!.metaxisdata.v1.CreateUserRequest\x1a\x14.metaxisdata.v1.User\"&\xdaA\x04user\x80\xea0\x01\x98\xea0\x01\x82\xd3\xe4\x93\x02\x11:\x04user\"\t/v1/users\x12\x83\x01\n" +
 	"\n" +

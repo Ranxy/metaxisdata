@@ -6,6 +6,7 @@ import "google/api/annotations.proto";
 import "google/api/client.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
+import "v1/annotation.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 
@@ -13,6 +14,7 @@ service AuditLogService {
   rpc ListAuditLogs(ListAuditLogsRequest) returns (ListAuditLogsResponse) {
     option (google.api.http) = {get: "/v1/{parent=**}/auditLogs"};
     option (google.api.method_signature) = "parent";
+    option (metaxisdata.v1.permission) = "metaxisdata.auditLogs.search";
   }
 }
 

@@ -147,7 +147,7 @@ func TestGetAuthContextReadsMethodOptions(t *testing.T) {
 		t.Parallel()
 		authCtx, err := getAuthContext("/metaxisdata.v1.InstanceService/UpdateInstance")
 		require.NoError(t, err)
-		require.Equal(t, "metaxisdata.instances.write", authCtx.Permission)
+		require.Equal(t, "metaxisdata.instances.update", authCtx.Permission)
 		require.False(t, authCtx.AllowWithoutCredential)
 	})
 

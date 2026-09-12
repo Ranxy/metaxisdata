@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package metaxisdata.store;
+
+option go_package = "generated-go/store";
+
+// RolePermissions is the payload stored in the role table's permissions JSONB
+// column: the permission bundle of a custom role. Predefined roles are defined
+// in Go (backend/store/predefined_roles.go) and never stored, so only custom
+// roles have a row here.
+message RolePermissions {
+  repeated string permissions = 1;
+}

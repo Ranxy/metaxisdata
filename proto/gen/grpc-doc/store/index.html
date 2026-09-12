@@ -545,6 +545,21 @@
         
           
           <li>
+            <a href="#store%2frole.proto">store/role.proto</a>
+            <ul>
+              
+                <li>
+                  <a href="#metaxisdata.store.RolePermissions"><span class="badge">M</span>RolePermissions</a>
+                </li>
+              
+              
+              
+              
+            </ul>
+          </li>
+        
+          
+          <li>
             <a href="#store%2fsetting.proto">store/setting.proto</a>
             <ul>
               
@@ -4816,6 +4831,44 @@ A binding binds one or more members or groups to a single role. </p></td>
             
           </tbody>
         </table>
+      
+
+      
+
+      
+    
+      
+      <div class="file-heading">
+        <h2 id="store/role.proto">store/role.proto</h2><a href="#title">Top</a>
+      </div>
+      <p></p>
+
+      
+        <h3 id="metaxisdata.store.RolePermissions">RolePermissions</h3>
+        <p>RolePermissions is the payload stored in the role table's permissions JSONB</p><p>column: the permission bundle of a custom role. Predefined roles are defined</p><p>in Go (backend/store/predefined_roles.go) and never stored, so only custom</p><p>roles have a row here.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>permissions</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+
       
 
       

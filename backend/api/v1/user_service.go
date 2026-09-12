@@ -14,6 +14,8 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
+	"github.com/Ranxy/metaxisdata/backend/component/iam"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -26,13 +28,15 @@ import (
 type UserService struct {
 	v1connect.UnimplementedUserServiceHandler
 	store   *store.Store
+	iam     *iam.Manager
 	profile *config.Profile
 }
 
 // NewUserService creates a new UserService.
-func NewUserService(store *store.Store, profile *config.Profile) *UserService {
+func NewUserService(store *store.Store, iamManager *iam.Manager, profile *config.Profile) *UserService {
 	return &UserService{
 		store:   store,
+		iam:     iamManager,
 		profile: profile,
 	}
 }
@@ -78,12 +82,20 @@ func (s *UserService) BatchGetUsers(ctx context.Context, request *connect.Reques
 }
 
 // GetCurrentUser gets the current authenticated user.
-func (*UserService) GetCurrentUser(ctx context.Context, _ *connect.Request[emptypb.Empty]) (*connect.Response[v1pb.User], error) {
+func (s *UserService) GetCurrentUser(ctx context.Context, _ *connect.Request[emptypb.Empty]) (*connect.Response[v1pb.User], error) {
 	user, ok := GetUserFromContext(ctx)
 	if !ok || user == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.Errorf("authenticated user not found"))
 	}
-	return connect.NewResponse(convertToUser(user)), nil
+	response := convertToUser(user)
+	// The effective permissions are what the SPA gates navigation and actions
+	// on; only GetCurrentUser populates them.
+	permissions, err := s.iam.EffectivePermissions(ctx, user)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to resolve user permissions"))
+	}
+	response.Permissions = permissions
+	return connect.NewResponse(response), nil
 }
 
 // ListUsers lists all users.
@@ -235,7 +247,7 @@ func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v
 // always allowed so that a fresh workspace can be bootstrapped.
 func (s *UserService) authorizeCreateUser(ctx context.Context, userType v1pb.UserType) error {
 	if caller, ok := GetUserFromContext(ctx); ok && caller != nil {
-		isAdmin, err := isUserWorkspaceAdmin(ctx, s.store, caller)
+		isAdmin, err := s.iam.CheckPermission(ctx, permission.UsersCreate, caller)
 		if err != nil {
 			return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check permission"))
 		}
@@ -313,7 +325,7 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 	if user == nil {
 		if request.Msg.AllowMissing {
 			// Creating a user through PATCH is still a user creation.
-			if err := requireWorkspaceAdmin(ctx, s.store, callerUser); err != nil {
+			if err := requirePermission(ctx, s.iam, permission.UsersCreate); err != nil {
 				return nil, err
 			}
 			return s.CreateUser(ctx, connect.NewRequest(&v1pb.CreateUserRequest{
@@ -327,10 +339,10 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 	}
 
 	// Updating another user, including rotating their credentials, requires
-	// workspace admin. A user may update themselves.
+	// metaxisdata.users.update. A user may update themselves.
 	isSelf := callerUser.ID == user.ID
 	if !isSelf {
-		if err := requireWorkspaceAdmin(ctx, s.store, callerUser); err != nil {
+		if err := requirePermission(ctx, s.iam, permission.UsersUpdate); err != nil {
 			return nil, err
 		}
 	}
@@ -419,12 +431,12 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 
 // DeleteUser deletes a user.
 func (s *UserService) DeleteUser(ctx context.Context, request *connect.Request[v1pb.DeleteUserRequest]) (*connect.Response[emptypb.Empty], error) {
-	_, ok := GetUserFromContext(ctx)
-	if !ok {
+	if _, ok := GetUserFromContext(ctx); !ok {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.Errorf("failed to get caller user"))
 	}
 
-	// todo check permission
+	// metaxisdata.users.delete is enforced by the ACL interceptor through the
+	// method annotation.
 
 	userID, err := common.GetUserID(request.Msg.Name)
 	if err != nil {
@@ -446,7 +458,7 @@ func (s *UserService) DeleteUser(ctx context.Context, request *connect.Request[v
 	if err != nil {
 		return nil, err
 	}
-	hasExtraWorkspaceAdmin, err := s.hasExtraWorkspaceAdmin(ctx, policy.Policy, user.ID)
+	hasExtraWorkspaceAdmin, err := hasActiveWorkspaceAdmin(ctx, s.store, policy.Policy, user.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -460,62 +472,17 @@ func (s *UserService) DeleteUser(ctx context.Context, request *connect.Request[v
 	return connect.NewResponse(&emptypb.Empty{}), nil
 }
 
-func (s *UserService) getActiveUserCount(ctx context.Context) (int, error) {
-	userStat, err := s.store.StatUsers(ctx)
-	if err != nil {
-		return 0, connect.NewError(connect.CodeInternal, errors.Errorf("failed to stat users with error: %v", err.Error()))
-	}
-	activeEndUserCount := 0
-	for _, stat := range userStat {
-		if !stat.Deleted && stat.Type == storepb.PrincipalType_END_USER {
-			activeEndUserCount = stat.Count
-			break
-		}
-	}
-	return activeEndUserCount, nil
-}
-
-func (s *UserService) hasExtraWorkspaceAdmin(ctx context.Context, policy *storepb.IamPolicy, userID int) (bool, error) {
-	workspaceAdminRole := common.FormatRole(common.WorkspaceAdmin)
-	userMember := common.FormatUserUID(userID)
-
-	for _, binding := range policy.GetBindings() {
-		if binding.GetRole() != workspaceAdminRole {
-			continue
-		}
-		for _, member := range binding.GetMembers() {
-			if member == userMember {
-				continue
-			}
-			if member == common.AllUsers {
-				activeEndUserCount, err := s.getActiveUserCount(ctx)
-				if err != nil {
-					return false, err
-				}
-				return activeEndUserCount > 1, nil
-			}
-			users := utils.GetUsersByMember(ctx, s.store, member)
-			for _, user := range users {
-				if !user.MemberDeleted && user.Type == storepb.PrincipalType_END_USER {
-					return true, nil
-				}
-			}
-		}
-	}
-	return false, nil
-}
-
 // UndeleteUser undeletes a user.
 func (s *UserService) UndeleteUser(ctx context.Context, request *connect.Request[v1pb.UndeleteUserRequest]) (*connect.Response[v1pb.User], error) {
 	if err := s.userCountGuard(ctx); err != nil {
 		return nil, err
 	}
 
-	_, ok := GetUserFromContext(ctx)
-	if !ok {
+	if _, ok := GetUserFromContext(ctx); !ok {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.Errorf("failed to get caller user"))
 	}
-	// todo check permission
+	// metaxisdata.users.undelete is enforced by the ACL interceptor through the
+	// method annotation.
 
 	userID, err := common.GetUserID(request.Msg.Name)
 	if err != nil {

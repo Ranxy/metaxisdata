@@ -20,9 +20,20 @@ type IamPolicyMessage struct {
 	Etag   string
 }
 
+// ErrPolicyEtagMismatch reports a Set whose etag does not match the stored
+// policy. Callers map it to connect.CodeAborted so the client re-fetches.
+var ErrPolicyEtagMismatch = errors.New("iam policy etag mismatch")
+
 // generateEtag generates etag for the given body.
 func generateEtag(t time.Time) string {
 	return fmt.Sprintf("%d", t.UnixMilli())
+}
+
+// etagMismatch reports whether a Set must be rejected. An empty provided etag
+// skips the check (a first write, or a client that did not read first); any
+// other value must equal the stored policy's etag.
+func etagMismatch(current, provided string) bool {
+	return provided != "" && provided != current
 }
 
 func (s *Store) GetWorkspaceIamPolicy(ctx context.Context) (*IamPolicyMessage, error) {
@@ -30,6 +41,53 @@ func (s *Store) GetWorkspaceIamPolicy(ctx context.Context) (*IamPolicyMessage, e
 	return s.getIamPolicy(ctx, &FindPolicyMessage{
 		ResourceType: &resourceType,
 	})
+}
+
+// SetWorkspaceIamPolicy replaces the workspace IAM policy whole. etag guards
+// optimistic concurrency: an empty etag skips the check (a first write), any
+// other value must equal the etag returned by GetWorkspaceIamPolicy.
+func (s *Store) SetWorkspaceIamPolicy(ctx context.Context, policy *storepb.IamPolicy, etag string) (*IamPolicyMessage, error) {
+	// Read the current policy with a strong read: a cached etag could be stale
+	// after a write through another connection, which would let this Set
+	// overwrite that change even though the caller read an older policy.
+	s.policyCache.Remove(getPolicyCacheKey(storepb.Policy_WORKSPACE, "", storepb.Policy_IAM))
+	existing, err := s.GetWorkspaceIamPolicy(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if etagMismatch(existing.Etag, etag) {
+		return nil, ErrPolicyEtagMismatch
+	}
+
+	payload, err := protojson.Marshal(policy)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to marshal workspace iam policy")
+	}
+
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	if err := upsertPolicyImpl(ctx, tx, &PolicyMessage{
+		ResourceType:      storepb.Policy_WORKSPACE,
+		Payload:           string(payload),
+		Type:              storepb.Policy_IAM,
+		InheritFromParent: false,
+		// Enforce cannot be false while creating a policy.
+		Enforce: true,
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	s.policyCache.Remove(getPolicyCacheKey(storepb.Policy_WORKSPACE, "", storepb.Policy_IAM))
+
+	return s.GetWorkspaceIamPolicy(ctx)
 }
 
 type PatchIamPolicyMessage struct {
@@ -89,7 +147,7 @@ func (s *Store) patchWorkspaceIamPolicyImpl(ctx context.Context, txn *sql.Tx, pa
 		return err
 	}
 
-	if _, err := upsertPolicyImpl(ctx, txn, &PolicyMessage{
+	if err := upsertPolicyImpl(ctx, txn, &PolicyMessage{
 		ResourceType:      storepb.Policy_WORKSPACE,
 		Payload:           string(policyPayload),
 		Type:              storepb.Policy_IAM,
@@ -222,7 +280,7 @@ func (s *Store) GetPolicy(ctx context.Context, find *FindPolicyMessage) (*Policy
 	return policy, nil
 }
 
-func upsertPolicyImpl(ctx context.Context, txn *sql.Tx, create *PolicyMessage) (*PolicyMessage, error) {
+func upsertPolicyImpl(ctx context.Context, txn *sql.Tx, create *PolicyMessage) error {
 	create.UpdatedAt = time.Now()
 	if _, err := txn.ExecContext(ctx, `
 		INSERT INTO policy (
@@ -249,9 +307,9 @@ func upsertPolicyImpl(ctx context.Context, txn *sql.Tx, create *PolicyMessage) (
 		create.Enforce,
 		create.UpdatedAt,
 	); err != nil {
-		return nil, err
+		return err
 	}
-	return create, nil
+	return nil
 }
 
 func (*Store) listPolicyImpl(ctx context.Context, txn *sql.Tx, find *FindPolicyMessage) ([]*PolicyMessage, error) {

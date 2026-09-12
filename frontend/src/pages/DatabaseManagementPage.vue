@@ -125,6 +125,7 @@
               </TableCell>
               <TableCell class="w-36 text-right">
                 <Button
+                  v-if="canSync"
                   class="w-28 justify-center"
                   variant="outline"
                   size="sm"
@@ -195,13 +196,21 @@ import TableCell from "@/components/ui/table/TableCell.vue";
 import TableHead from "@/components/ui/table/TableHead.vue";
 import TableHeader from "@/components/ui/table/TableHeader.vue";
 import TableRow from "@/components/ui/table/TableRow.vue";
+import { useAuthStore } from "@/store/modules/auth";
 import { useToastStore } from "@/store/modules/toast";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 
 const { t, locale } = useI18n();
+const authStore = useAuthStore();
 const toastStore = useToastStore();
+
+// Syncing a database rewrites its stored schema, so it needs the sync
+// permission; browsing the list only needs databases.list.
+const canSync = computed(() =>
+  authStore.hasPermission("metaxisdata.databases.sync")
+);
 
 const isLoading = ref(false);
 const error = ref("");

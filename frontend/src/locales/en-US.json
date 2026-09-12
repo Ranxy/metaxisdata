@@ -62,7 +62,10 @@
     "users": "User Management",
     "auditLogs": "Audit Logs",
     "openlineage": "OpenLineage",
-    "explainSQL": "Explain SQL"
+    "explainSQL": "Explain SQL",
+    "iam": "Members & Permissions",
+    "roles": "Roles",
+    "groups": "Groups"
   },
   "generalSettings": {
     "title": "General",
@@ -75,7 +78,8 @@
     "disallowPasswordSigninHint": "When enabled, users must sign in with SSO. Workspace admins are exempt.",
     "loadError": "Failed to load settings",
     "saveSuccess": "Settings saved",
-    "saveError": "Failed to save settings"
+    "saveError": "Failed to save settings",
+    "readOnlyHint": "You do not have permission to change the workspace settings."
   },
   "auditLogs": {
     "title": "Audit Logs",
@@ -148,18 +152,15 @@
     "defaultSchema": "(default)",
     "selectType": "Select type",
     "empty": "No data",
-
     "databases": "Databases",
     "databaseName": "Database Name",
     "characterSet": "Character Set",
     "collation": "Collation",
     "owner": "Owner",
     "noDatabases": "No databases",
-
     "schemas": "Schemas",
     "schemaName": "Schema Name",
     "noSchemas": "No schemas",
-
     "tables": "Tables",
     "tableName": "Table Name",
     "externalTables": "External Tables",
@@ -204,7 +205,6 @@
     "value": "Value",
     "comment": "Comment",
     "noTables": "No tables",
-
     "views": "Views",
     "viewName": "View Name",
     "viewDetail": "View Details",
@@ -212,7 +212,6 @@
     "viewSchema": "View Schema",
     "schemaDefinition": "Schema Definition (DDL)",
     "noViews": "No views",
-
     "materializedViews": "Materialized Views",
     "materializedViewName": "Materialized View Name",
     "materializedViewDetail": "Materialized View Detail",
@@ -289,17 +288,14 @@
     "totalRelations": "Total Relations",
     "noLineageRelations": "No lineage relations",
     "lineageFetchError": "Failed to load lineage analysis",
-
     "functions": "Functions",
     "functionName": "Function Name",
     "noFunctions": "No functions",
     "signature": "Signature",
     "dependencyTables": "Dependency Tables",
-
     "procedures": "Procedures",
     "procedureName": "Procedure Name",
     "noProcedures": "No procedures",
-
     "sequences": "Sequences",
     "sequenceName": "Sequence Name",
     "sequenceInfo": "Sequence Info",
@@ -315,13 +311,11 @@
     "cycle": "Cycle",
     "cacheSize": "Cache Size",
     "lastValue": "Last Value",
-
     "triggers": "Triggers",
     "triggersCount": "triggers",
     "triggerName": "Name",
     "event": "Event",
     "timing": "Timing",
-
     "other": "Other",
     "loadMore": "Load More",
     "fetchError": "Failed to load data",
@@ -344,7 +338,6 @@
     "scopeStepDatabase": "Database (optional)",
     "scopeStepSchema": "Schema (optional)",
     "done": "Done",
-
     "historyTab": "History",
     "versionDiffTab": "Version Diff",
     "versionDiffTitle": "Version Diff",
@@ -890,5 +883,74 @@
     "selectScope": "Select instance, database, schema...",
     "noDatabases": "No databases found",
     "noSchemas": "No schemas found"
+  },
+  "iam": {
+    "roles": {
+      "pageTitle": "Roles",
+      "pageDescription": "A role is a named bundle of permissions. Predefined roles are built in and read-only; custom roles can be edited here.",
+      "create": "Create role",
+      "edit": "Edit role",
+      "deleteTitle": "Delete role",
+      "deleteConfirm": "Delete role {name}? Members bound to it lose its permissions.",
+      "nameLabel": "Resource name",
+      "namePlaceholder": "roles/analyst",
+      "nameHint": "Use the form roles/analyst; immutable after creation.",
+      "titleLabel": "Title",
+      "descriptionLabel": "Description",
+      "typeLabel": "Type",
+      "predefined": "Predefined",
+      "custom": "Custom",
+      "predefinedReadonly": "Predefined roles are read-only",
+      "permissionsLabel": "Permissions",
+      "selectAll": "Select all",
+      "clearAll": "Clear all",
+      "noRoles": "No roles found",
+      "created": "Role created",
+      "updated": "Role updated",
+      "deleted": "Role deleted"
+    },
+    "groups": {
+      "pageTitle": "Groups",
+      "pageDescription": "A group binds many users to one IAM principal, so a role can be granted to the whole group at once.",
+      "create": "Create group",
+      "edit": "Edit group",
+      "deleteTitle": "Delete group",
+      "deleteConfirm": "Delete group {name}? It must not be bound in the IAM policy.",
+      "nameLabel": "Resource name",
+      "namePlaceholder": "groups/data-team",
+      "nameHint": "Use the form groups/data-team; immutable after creation.",
+      "titleLabel": "Title",
+      "descriptionLabel": "Description",
+      "membersLabel": "Members",
+      "noMembers": "No members",
+      "noGroups": "No groups found",
+      "noUsers": "No users available",
+      "created": "Group created",
+      "updated": "Group updated",
+      "deleted": "Group deleted"
+    },
+    "policy": {
+      "pageTitle": "Members & Permissions",
+      "pageDescription": "The workspace IAM policy binds users and groups to roles. Workspace members already have read access; grant workspaceAdmin or a custom role to add more.",
+      "role": "Role",
+      "members": "Members",
+      "noMembers": "No members",
+      "noBindings": "No bindings",
+      "addBinding": "Add role binding",
+      "addMember": "Add member",
+      "removeMember": "Remove member",
+      "memberType": "Member type",
+      "memberTypeUser": "User",
+      "memberTypeGroup": "Group",
+      "memberTypeAllUsers": "All users",
+      "user": "User",
+      "group": "Group",
+      "selectUser": "Select a user",
+      "selectGroup": "Select a group",
+      "selectRole": "Select a role",
+      "reload": "Reload",
+      "saved": "IAM policy saved",
+      "saveFailed": "Failed to save the IAM policy"
+    }
   }
 }

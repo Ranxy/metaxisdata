@@ -62,7 +62,10 @@
     "users": "用户管理",
     "auditLogs": "审计日志",
     "openlineage": "OpenLineage",
-    "explainSQL": "SQL 解释"
+    "explainSQL": "SQL 解释",
+    "iam": "成员与权限",
+    "roles": "角色",
+    "groups": "用户组"
   },
   "generalSettings": {
     "title": "通用设置",
@@ -75,7 +78,8 @@
     "disallowPasswordSigninHint": "开启后，用户必须通过 SSO 登录，工作区管理员不受限制。",
     "loadError": "加载设置失败",
     "saveSuccess": "设置已保存",
-    "saveError": "保存设置失败"
+    "saveError": "保存设置失败",
+    "readOnlyHint": "您没有修改工作区设置的权限。"
   },
   "auditLogs": {
     "title": "审计日志",
@@ -148,18 +152,15 @@
     "defaultSchema": "(默认)",
     "selectType": "选择类型",
     "empty": "暂无数据",
-
     "databases": "数据库",
     "databaseName": "数据库名称",
     "characterSet": "字符集",
     "collation": "排序规则",
     "owner": "所有者",
     "noDatabases": "暂无数据库",
-
     "schemas": "模式",
     "schemaName": "模式名称",
     "noSchemas": "暂无模式",
-
     "tables": "表",
     "tableName": "表名",
     "externalTables": "外部表",
@@ -204,7 +205,6 @@
     "value": "值",
     "comment": "备注",
     "noTables": "暂无表",
-
     "views": "视图",
     "viewName": "视图名称",
     "viewDetail": "视图详情",
@@ -212,7 +212,6 @@
     "viewSchema": "查看结构",
     "schemaDefinition": "结构定义 (DDL)",
     "noViews": "暂无视图",
-
     "materializedViews": "物化视图",
     "materializedViewName": "物化视图名称",
     "materializedViewDetail": "物化视图详情",
@@ -289,17 +288,14 @@
     "totalRelations": "关系总数",
     "noLineageRelations": "暂无血缘关系",
     "lineageFetchError": "加载血缘分析失败",
-
     "functions": "函数",
     "functionName": "函数名称",
     "noFunctions": "暂无函数",
     "signature": "签名",
     "dependencyTables": "依赖表",
-
     "procedures": "存储过程",
     "procedureName": "存储过程名称",
     "noProcedures": "暂无存储过程",
-
     "sequences": "序列",
     "sequenceName": "序列名称",
     "sequenceInfo": "序列信息",
@@ -315,13 +311,11 @@
     "cycle": "循环",
     "cacheSize": "缓存大小",
     "lastValue": "当前值",
-
     "triggers": "触发器",
     "triggersCount": "个触发器",
     "triggerName": "名称",
     "event": "事件",
     "timing": "时机",
-
     "other": "其他",
     "loadMore": "加载更多",
     "fetchError": "加载数据失败",
@@ -344,7 +338,6 @@
     "scopeStepDatabase": "数据库（可选）",
     "scopeStepSchema": "模式（可选）",
     "done": "确定",
-
     "historyTab": "历史",
     "versionDiffTab": "版本对比",
     "versionDiffTitle": "版本对比",
@@ -890,5 +883,74 @@
     "selectScope": "选择实例、数据库、Schema...",
     "noDatabases": "没有找到数据库",
     "noSchemas": "没有找到 Schema"
+  },
+  "iam": {
+    "roles": {
+      "pageTitle": "角色",
+      "pageDescription": "角色是一组权限的集合。预定义角色内置且只读，自定义角色可在此编辑。",
+      "create": "新建角色",
+      "edit": "编辑角色",
+      "deleteTitle": "删除角色",
+      "deleteConfirm": "确认删除角色 {name}？绑定该角色的成员将失去其权限。",
+      "nameLabel": "资源名称",
+      "namePlaceholder": "roles/analyst",
+      "nameHint": "格式形如 roles/analyst，创建后不可修改。",
+      "titleLabel": "名称",
+      "descriptionLabel": "描述",
+      "typeLabel": "类型",
+      "predefined": "预定义",
+      "custom": "自定义",
+      "predefinedReadonly": "预定义角色为只读",
+      "permissionsLabel": "权限",
+      "selectAll": "全选",
+      "clearAll": "清空",
+      "noRoles": "暂无角色",
+      "created": "角色已创建",
+      "updated": "角色已更新",
+      "deleted": "角色已删除"
+    },
+    "groups": {
+      "pageTitle": "用户组",
+      "pageDescription": "用户组把多个用户合并为一个 IAM 主体，一次即可将角色授予整个组。",
+      "create": "新建用户组",
+      "edit": "编辑用户组",
+      "deleteTitle": "删除用户组",
+      "deleteConfirm": "确认删除用户组 {name}？该组不能仍被 IAM 策略引用。",
+      "nameLabel": "资源名称",
+      "namePlaceholder": "groups/data-team",
+      "nameHint": "格式形如 groups/data-team，创建后不可修改。",
+      "titleLabel": "名称",
+      "descriptionLabel": "描述",
+      "membersLabel": "成员",
+      "noMembers": "暂无成员",
+      "noGroups": "暂无用户组",
+      "noUsers": "暂无可选用户",
+      "created": "用户组已创建",
+      "updated": "用户组已更新",
+      "deleted": "用户组已删除"
+    },
+    "policy": {
+      "pageTitle": "成员与权限",
+      "pageDescription": "工作区 IAM 策略把用户和用户组绑定到角色。工作区成员默认拥有读权限，如需更多权限请授予 workspaceAdmin 或自定义角色。",
+      "role": "角色",
+      "members": "成员",
+      "noMembers": "暂无成员",
+      "noBindings": "暂无绑定",
+      "addBinding": "添加角色绑定",
+      "addMember": "添加成员",
+      "removeMember": "移除成员",
+      "memberType": "成员类型",
+      "memberTypeUser": "用户",
+      "memberTypeGroup": "用户组",
+      "memberTypeAllUsers": "所有用户",
+      "user": "用户",
+      "group": "用户组",
+      "selectUser": "请选择用户",
+      "selectGroup": "请选择用户组",
+      "selectRole": "请选择角色",
+      "reload": "重新加载",
+      "saved": "IAM 策略已保存",
+      "saveFailed": "保存 IAM 策略失败"
+    }
   }
 }

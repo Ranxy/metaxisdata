@@ -7,7 +7,10 @@
           {{ t("userManagement.title") }}
         </h1>
       </div>
-      <Button @click="openCreateModal">
+      <Button
+        v-if="canCreateUser"
+        @click="openCreateModal"
+      >
         <Plus class="h-4 w-4 mr-2" />
         {{ t("userManagement.addUser") }}
       </Button>
@@ -455,6 +458,11 @@ import { type User, UserType } from "@/types/proto-es/v1/user_service_pb";
 
 const { t, locale } = useI18n();
 const authStore = useAuthStore();
+
+// users.create / users.delete in addition to the existing self-service rules.
+const canCreateUser = computed(() =>
+  authStore.hasPermission("metaxisdata.users.create")
+);
 const { handleError, showSuccess } = useErrorHandler();
 
 // State

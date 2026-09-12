@@ -80,146 +80,206 @@ import {
   FileCode2,
   Files,
   Home,
+  KeyRound,
   LayoutDashboard,
   Network,
   Settings,
+  Shield,
   SlidersHorizontal,
   Sparkles,
+  UserRound,
   Users,
 } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 import { useAppStore } from "@/store/modules/app";
+import { useAuthStore } from "@/store/modules/auth";
 
 const { t } = useI18n();
 const route = useRoute();
 const appStore = useAppStore();
+const authStore = useAuthStore();
 
 interface MenuItem {
   key: string;
   label: string;
   path: string;
   icon: typeof Home;
+  /** The permission that makes this entry reachable; the server enforces it. */
+  permission?: string;
   children?: MenuItem[];
 }
 
-const menuItems = computed<MenuItem[]>(() => [
-  {
-    key: "home",
-    label: t("menu.home"),
-    path: "/",
-    icon: Home,
-  },
-  {
-    key: "explainSQL",
-    label: t("menu.explainSQL"),
-    path: "/explain-sql",
-    icon: Sparkles,
-  },
-  {
-    key: "datasource",
-    label: t("menu.datasource"),
-    path: "#",
-    icon: Database,
-    children: [
-      {
-        key: "connections",
-        label: t("menu.connections"),
-        path: "/instances",
-        icon: Database,
-      },
-      {
-        key: "databases",
-        label: t("menu.databases"),
-        path: "/databases",
-        icon: Database,
-      },
-      {
-        key: "metadata",
-        label: t("menu.metadata"),
-        path: "/metadata",
-        icon: Database,
-      },
-      {
-        key: "manualSql",
-        label: t("menu.manualSql"),
-        path: "/manual-sql",
-        icon: FileCode2,
-      },
-    ],
-  },
-  {
-    key: "openlineage",
-    label: t("menu.openlineage"),
-    path: "#",
-    icon: Network,
-    children: [
-      {
-        key: "openlineageOverview",
-        label: t("menu.overview"),
-        path: "/openlineage/overview",
-        icon: LayoutDashboard,
-      },
-      {
-        key: "openlineageJobs",
-        label: t("menu.jobs"),
-        path: "/openlineage/jobs",
-        icon: Network,
-      },
-      {
-        key: "openlineageDatasets",
-        label: t("menu.datasets"),
-        path: "/openlineage/datasets",
-        icon: Database,
-      },
-      {
-        key: "openlineageEvents",
-        label: t("menu.events"),
-        path: "/openlineage/events",
-        icon: Files,
-      },
-    ],
-  },
-  {
-    key: "settings",
-    label: t("menu.settings"),
-    path: "#",
-    icon: Settings,
-    children: [
-      {
-        key: "general",
-        label: t("menu.generalSettings"),
-        path: "/settings/general",
-        icon: SlidersHorizontal,
-      },
-      {
-        key: "users",
-        label: t("menu.users"),
-        path: "/settings/users",
-        icon: Users,
-      },
-      {
-        key: "auditLogs",
-        label: t("menu.auditLogs"),
-        path: "/settings/audit-logs",
-        icon: ClipboardList,
-      },
-      {
-        key: "llmProviders",
-        label: t("llmProvider.sidebar"),
-        path: "/settings/llm-providers",
-        icon: Sparkles,
-      },
-      {
-        key: "openlineage",
-        label: t("openlineage.ingestionSettings"),
-        path: "/settings/openlineage",
-        icon: Network,
-      },
-    ],
-  },
-]);
+function buildMenuItems(): MenuItem[] {
+  return [
+    {
+      key: "home",
+      label: t("menu.home"),
+      path: "/",
+      icon: Home,
+    },
+    {
+      key: "explainSQL",
+      label: t("menu.explainSQL"),
+      path: "/explain-sql",
+      icon: Sparkles,
+      permission: "metaxisdata.explainSql.explain",
+    },
+    {
+      key: "datasource",
+      label: t("menu.datasource"),
+      path: "#",
+      icon: Database,
+      children: [
+        {
+          key: "connections",
+          label: t("menu.connections"),
+          path: "/instances",
+          icon: Database,
+          permission: "metaxisdata.instances.list",
+        },
+        {
+          key: "databases",
+          label: t("menu.databases"),
+          path: "/databases",
+          icon: Database,
+          permission: "metaxisdata.databases.list",
+        },
+        {
+          key: "metadata",
+          label: t("menu.metadata"),
+          path: "/metadata",
+          icon: Database,
+          permission: "metaxisdata.databases.read",
+        },
+        {
+          key: "manualSql",
+          label: t("menu.manualSql"),
+          path: "/manual-sql",
+          icon: FileCode2,
+          permission: "metaxisdata.manualSqls.list",
+        },
+      ],
+    },
+    {
+      key: "openlineage",
+      label: t("menu.openlineage"),
+      path: "#",
+      icon: Network,
+      children: [
+        {
+          key: "openlineageOverview",
+          label: t("menu.overview"),
+          path: "/openlineage/overview",
+          icon: LayoutDashboard,
+          permission: "metaxisdata.openlineage.read",
+        },
+        {
+          key: "openlineageJobs",
+          label: t("menu.jobs"),
+          path: "/openlineage/jobs",
+          icon: Network,
+          permission: "metaxisdata.openlineage.read",
+        },
+        {
+          key: "openlineageDatasets",
+          label: t("menu.datasets"),
+          path: "/openlineage/datasets",
+          icon: Database,
+          permission: "metaxisdata.openlineage.read",
+        },
+        {
+          key: "openlineageEvents",
+          label: t("menu.events"),
+          path: "/openlineage/events",
+          icon: Files,
+          permission: "metaxisdata.openlineage.read",
+        },
+      ],
+    },
+    {
+      key: "settings",
+      label: t("menu.settings"),
+      path: "#",
+      icon: Settings,
+      children: [
+        {
+          key: "general",
+          label: t("menu.generalSettings"),
+          path: "/settings/general",
+          icon: SlidersHorizontal,
+          permission: "metaxisdata.settings.get",
+        },
+        {
+          key: "iam",
+          label: t("menu.iam"),
+          path: "/settings/iam",
+          icon: KeyRound,
+          permission: "metaxisdata.iam.getPolicy",
+        },
+        {
+          key: "roles",
+          label: t("menu.roles"),
+          path: "/settings/roles",
+          icon: Shield,
+          permission: "metaxisdata.roles.list",
+        },
+        {
+          key: "groups",
+          label: t("menu.groups"),
+          path: "/settings/groups",
+          icon: UserRound,
+          permission: "metaxisdata.groups.list",
+        },
+        {
+          key: "users",
+          label: t("menu.users"),
+          path: "/settings/users",
+          icon: Users,
+          permission: "metaxisdata.users.list",
+        },
+        {
+          key: "auditLogs",
+          label: t("menu.auditLogs"),
+          path: "/settings/audit-logs",
+          icon: ClipboardList,
+          permission: "metaxisdata.auditLogs.search",
+        },
+        {
+          key: "llmProviders",
+          label: t("llmProvider.sidebar"),
+          path: "/settings/llm-providers",
+          icon: Sparkles,
+          permission: "metaxisdata.llm.profiles.list",
+        },
+        {
+          key: "openlineage",
+          label: t("openlineage.ingestionSettings"),
+          path: "/settings/openlineage",
+          icon: Network,
+          permission: "metaxisdata.openlineage.namespaceMappings.list",
+        },
+      ],
+    },
+  ];
+}
+
+// An entry is hidden when the caller lacks its permission; a parent is hidden
+// when it has no reachable child left. This only avoids dead ends — every RPC
+// is independently authorized by the ACL interceptor.
+const menuItems = computed<MenuItem[]>(() => {
+  const allowed = (item: MenuItem) =>
+    !item.permission || authStore.hasPermission(item.permission);
+  return buildMenuItems()
+    .filter(allowed)
+    .map((item) =>
+      item.children
+        ? { ...item, children: item.children.filter(allowed) }
+        : item
+    )
+    .filter((item) => !item.children || item.children.length > 0);
+});
 
 function isActive(path: string): boolean {
   if (path === "/") {

@@ -160,6 +160,29 @@
   
     - [ExplainSQLService](#metaxisdata-v1-ExplainSQLService)
   
+- [v1/group_service.proto](#v1_group_service-proto)
+    - [CreateGroupRequest](#metaxisdata-v1-CreateGroupRequest)
+    - [DeleteGroupRequest](#metaxisdata-v1-DeleteGroupRequest)
+    - [GetGroupRequest](#metaxisdata-v1-GetGroupRequest)
+    - [Group](#metaxisdata-v1-Group)
+    - [GroupMember](#metaxisdata-v1-GroupMember)
+    - [ListGroupsRequest](#metaxisdata-v1-ListGroupsRequest)
+    - [ListGroupsResponse](#metaxisdata-v1-ListGroupsResponse)
+    - [UpdateGroupRequest](#metaxisdata-v1-UpdateGroupRequest)
+  
+    - [GroupMember.Role](#metaxisdata-v1-GroupMember-Role)
+  
+    - [GroupService](#metaxisdata-v1-GroupService)
+  
+- [v1/iam_service.proto](#v1_iam_service-proto)
+    - [Binding](#metaxisdata-v1-Binding)
+    - [GetWorkspaceIamPolicyRequest](#metaxisdata-v1-GetWorkspaceIamPolicyRequest)
+    - [IamPolicy](#metaxisdata-v1-IamPolicy)
+    - [IamPolicyView](#metaxisdata-v1-IamPolicyView)
+    - [SetWorkspaceIamPolicyRequest](#metaxisdata-v1-SetWorkspaceIamPolicyRequest)
+  
+    - [IamService](#metaxisdata-v1-IamService)
+  
 - [v1/lineage_service.proto](#v1_lineage_service-proto)
     - [ExternalDatasetInfo](#metaxisdata-v1-ExternalDatasetInfo)
     - [GetLineageForContextRequest](#metaxisdata-v1-GetLineageForContextRequest)
@@ -223,6 +246,17 @@
     - [OpenLineageDatasetScope](#metaxisdata-v1-OpenLineageDatasetScope)
   
     - [OpenLineageService](#metaxisdata-v1-OpenLineageService)
+  
+- [v1/role_service.proto](#v1_role_service-proto)
+    - [CreateRoleRequest](#metaxisdata-v1-CreateRoleRequest)
+    - [DeleteRoleRequest](#metaxisdata-v1-DeleteRoleRequest)
+    - [GetRoleRequest](#metaxisdata-v1-GetRoleRequest)
+    - [ListRolesRequest](#metaxisdata-v1-ListRolesRequest)
+    - [ListRolesResponse](#metaxisdata-v1-ListRolesResponse)
+    - [Role](#metaxisdata-v1-Role)
+    - [UpdateRoleRequest](#metaxisdata-v1-UpdateRoleRequest)
+  
+    - [RoleService](#metaxisdata-v1-RoleService)
   
 - [v1/setting_service.proto](#v1_setting_service-proto)
     - [GetWorkspaceProfileSettingRequest](#metaxisdata-v1-GetWorkspaceProfileSettingRequest)
@@ -617,6 +651,7 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 | phone | [string](#string) |  | Should be a valid E.164 compliant phone number. Could be empty. |
 | profile | [UserProfile](#metaxisdata-v1-UserProfile) |  |  |
 | groups | [string](#string) | repeated | The groups for the user. Format: groups/{email} |
+| permissions | [string](#string) | repeated | The effective workspace permissions of the caller, as a list of `metaxisdata.&lt;resource&gt;.&lt;verb&gt;` strings. Populated by GetCurrentUser only, so the frontend can gate navigation and actions without probing each RPC. |
 
 
 
@@ -2758,6 +2793,289 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 
 
 
+<a name="v1_group_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/group_service.proto
+
+
+
+<a name="metaxisdata-v1-CreateGroupRequest"></a>
+
+### CreateGroupRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| group | [Group](#metaxisdata-v1-Group) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteGroupRequest"></a>
+
+### DeleteGroupRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The resource name of the group, in the form `groups/{email}`. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetGroupRequest"></a>
+
+### GetGroupRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The resource name of the group, in the form `groups/{email}`. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-Group"></a>
+
+### Group
+Group is a set of users that can be bound to roles in the IAM policy as a
+single principal (`groups/{email}`).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The resource name of the group, in the form `groups/{email}`. |
+| title | [string](#string) |  | Human-readable title. |
+| description | [string](#string) |  |  |
+| members | [GroupMember](#metaxisdata-v1-GroupMember) | repeated | The group&#39;s members. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GroupMember"></a>
+
+### GroupMember
+GroupMember is a user&#39;s membership in a group.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| member | [string](#string) |  | The member, in the form `users/{userUID}`. |
+| role | [GroupMember.Role](#metaxisdata-v1-GroupMember-Role) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListGroupsRequest"></a>
+
+### ListGroupsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| page_size | [int32](#int32) |  | The maximum number of groups to return. |
+| page_token | [string](#string) |  | A page token, received from a previous `ListGroups` call. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListGroupsResponse"></a>
+
+### ListGroupsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| groups | [Group](#metaxisdata-v1-Group) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateGroupRequest"></a>
+
+### UpdateGroupRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| group | [Group](#metaxisdata-v1-Group) |  |  |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  |  |
+
+
+
+
+
+ 
+
+
+<a name="metaxisdata-v1-GroupMember-Role"></a>
+
+### GroupMember.Role
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| ROLE_UNSPECIFIED | 0 |  |
+| OWNER | 1 |  |
+| MEMBER | 2 |  |
+
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-GroupService"></a>
+
+### GroupService
+GroupService manages groups. A group is an IAM principal: the workspace IAM
+policy may bind roles to `groups/{email}`, which grants every member the
+role. Each RPC is gated by the IAM interceptor with the metaxisdata.groups.*
+permissions.
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| GetGroup | [GetGroupRequest](#metaxisdata-v1-GetGroupRequest) | [Group](#metaxisdata-v1-Group) | Get a group. |
+| ListGroups | [ListGroupsRequest](#metaxisdata-v1-ListGroupsRequest) | [ListGroupsResponse](#metaxisdata-v1-ListGroupsResponse) | List all groups. |
+| CreateGroup | [CreateGroupRequest](#metaxisdata-v1-CreateGroupRequest) | [Group](#metaxisdata-v1-Group) | Create a group. |
+| UpdateGroup | [UpdateGroupRequest](#metaxisdata-v1-UpdateGroupRequest) | [Group](#metaxisdata-v1-Group) | Update a group. |
+| DeleteGroup | [DeleteGroupRequest](#metaxisdata-v1-DeleteGroupRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete a group. The group must not be referenced by any IAM binding. |
+
+ 
+
+
+
+<a name="v1_iam_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/iam_service.proto
+
+
+
+<a name="metaxisdata-v1-Binding"></a>
+
+### Binding
+Binding binds one role to a set of principals. It is the v1 view of the
+stored IAM binding; the workspace IAM policy is written whole through
+IamService.SetWorkspaceIamPolicy.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| role | [string](#string) |  | The role that is assigned to the members. Format: roles/{role} |
+| members | [string](#string) | repeated | The principals requesting access. For users: users/{userUID}; for groups: groups/{email}; the pseudo-member allUsers matches every authenticated principal. |
+| condition | [google.type.Expr](#google-type-Expr) |  | The condition that is associated with this binding. When present the binding applies only while the condition evaluates to true. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetWorkspaceIamPolicyRequest"></a>
+
+### GetWorkspaceIamPolicyRequest
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-IamPolicy"></a>
+
+### IamPolicy
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| bindings | [Binding](#metaxisdata-v1-Binding) | repeated | A binding binds one role to one or more members. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-IamPolicyView"></a>
+
+### IamPolicyView
+IamPolicyView is an IAM policy together with its etag. The etag is returned
+by Get and must be supplied on Set for optimistic concurrency: a Set whose
+etag does not match the stored policy&#39;s etag is rejected with
+connect.CodeAborted so the caller can re-fetch and retry. An empty etag
+skips the check (first write).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| policy | [IamPolicy](#metaxisdata-v1-IamPolicy) |  |  |
+| etag | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SetWorkspaceIamPolicyRequest"></a>
+
+### SetWorkspaceIamPolicyRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| policy | [IamPolicy](#metaxisdata-v1-IamPolicy) |  |  |
+| etag | [string](#string) |  | The etag from the last GetWorkspaceIamPolicy. Empty means &#34;do not check&#34;. |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-IamService"></a>
+
+### IamService
+IamService exposes the workspace IAM policy for management. Get reads the
+whole policy; Set replaces it whole, guarded by the etag. Both RPCs are gated
+by metaxisdata.iam.getPolicy / metaxisdata.iam.setPolicy.
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| GetWorkspaceIamPolicy | [GetWorkspaceIamPolicyRequest](#metaxisdata-v1-GetWorkspaceIamPolicyRequest) | [IamPolicyView](#metaxisdata-v1-IamPolicyView) | Get the workspace IAM policy. |
+| SetWorkspaceIamPolicy | [SetWorkspaceIamPolicyRequest](#metaxisdata-v1-SetWorkspaceIamPolicyRequest) | [IamPolicyView](#metaxisdata-v1-IamPolicyView) | Set the workspace IAM policy (full replace, etag-guarded). |
+
+ 
+
+
+
 <a name="v1_lineage_service-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
@@ -3742,6 +4060,154 @@ column, derived from the view&#39;s SQL.
 | CreateAPIKey | [CreateAPIKeyRequest](#metaxisdata-v1-CreateAPIKeyRequest) | [CreateAPIKeyResponse](#metaxisdata-v1-CreateAPIKeyResponse) |  |
 | ListAPIKeys | [ListAPIKeysRequest](#metaxisdata-v1-ListAPIKeysRequest) | [ListAPIKeysResponse](#metaxisdata-v1-ListAPIKeysResponse) |  |
 | RevokeAPIKey | [RevokeAPIKeyRequest](#metaxisdata-v1-RevokeAPIKeyRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
+
+ 
+
+
+
+<a name="v1_role_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/role_service.proto
+
+
+
+<a name="metaxisdata-v1-CreateRoleRequest"></a>
+
+### CreateRoleRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| role | [Role](#metaxisdata-v1-Role) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteRoleRequest"></a>
+
+### DeleteRoleRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The resource name of the role, in the form `roles/{role}`. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetRoleRequest"></a>
+
+### GetRoleRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The resource name of the role, in the form `roles/{role}`. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListRolesRequest"></a>
+
+### ListRolesRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| page_size | [int32](#int32) |  | The maximum number of roles to return. |
+| page_token | [string](#string) |  | A page token, received from a previous `ListRoles` call. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListRolesResponse"></a>
+
+### ListRolesResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| roles | [Role](#metaxisdata-v1-Role) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-Role"></a>
+
+### Role
+Role is a named bundle of permissions. Predefined roles (workspaceAdmin,
+workspaceMember) are defined in Go and never stored in the DB; custom roles
+live in the role table. Both resolve identically in the IAM engine.
+Predefined roles are read-only over this API.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The resource name of the role, in the form `roles/{role}`. |
+| title | [string](#string) |  | Human-readable title. |
+| description | [string](#string) |  | Longer description of what the role grants. |
+| permissions | [string](#string) | repeated | Permissions bundled into the role, each a `metaxisdata.&lt;resource&gt;.&lt;verb&gt;` string from the permission catalog. |
+| predefined | [bool](#bool) |  | Output only. Whether the role is predefined (defined in Go, read-only). |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateRoleRequest"></a>
+
+### UpdateRoleRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| role | [Role](#metaxisdata-v1-Role) |  |  |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  |  |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-RoleService"></a>
+
+### RoleService
+RoleService manages custom roles. Predefined roles are read-only over this
+API: create/update/delete refuse a resource ID that collides with a
+predefined role. Each RPC is gated by the IAM interceptor with the
+metaxisdata.roles.* permissions.
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| GetRole | [GetRoleRequest](#metaxisdata-v1-GetRoleRequest) | [Role](#metaxisdata-v1-Role) | Get a role. |
+| ListRoles | [ListRolesRequest](#metaxisdata-v1-ListRolesRequest) | [ListRolesResponse](#metaxisdata-v1-ListRolesResponse) | List all roles (predefined and custom). |
+| CreateRole | [CreateRoleRequest](#metaxisdata-v1-CreateRoleRequest) | [Role](#metaxisdata-v1-Role) | Create a custom role. |
+| UpdateRole | [UpdateRoleRequest](#metaxisdata-v1-UpdateRoleRequest) | [Role](#metaxisdata-v1-Role) | Update a custom role. |
+| DeleteRole | [DeleteRoleRequest](#metaxisdata-v1-DeleteRoleRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete a custom role. |
 
  
 

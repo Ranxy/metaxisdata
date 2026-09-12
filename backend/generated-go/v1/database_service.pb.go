@@ -6527,25 +6527,25 @@ const file_v1_database_service_proto_rawDesc = "" +
 	"\x12\f\n" +
 	"\bFUNCTION\x10\v\x12\f\n" +
 	"\bSEQUENCE\x10\f\x12\x0f\n" +
-	"\vOPENLINEAGE\x10d\"\x04\b\r\x10\r\"\x04\b\x0e\x10\x0e\"\x04\b\x0f\x10\x0f*\aPACKAGE*\x06STREAM*\x04TASK2\xc4\x11\n" +
+	"\vOPENLINEAGE\x10d\"\x04\b\r\x10\r\"\x04\b\x0e\x10\x0e\"\x04\b\x0f\x10\x0f*\aPACKAGE*\x06STREAM*\x04TASK2\xfa\x14\n" +
 	"\x0fDatabaseService\x12\xb6\x01\n" +
-	"\fSyncDatabase\x12#.metaxisdata.v1.SyncDatabaseRequest\x1a$.metaxisdata.v1.SyncDatabaseResponse\"[\xdaA\x04name\x8a\xea0\x1ametaxisdata.databases.sync\x98\xea0\x01\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/{name=instances/*/databases/*}:sync\x12s\n" +
-	"\rListDatabases\x12$.metaxisdata.v1.ListDatabasesRequest\x1a%.metaxisdata.v1.ListDatabasesResponse\"\x15\x82\xd3\xe4\x93\x02\x0f\x12\r/v1/databases\x12p\n" +
-	"\fListMetadata\x12#.metaxisdata.v1.ListMetadataRequest\x1a .metaxisdata.v1.MetadataResponse\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/metadata/list\x12l\n" +
-	"\vGetMetadata\x12\".metaxisdata.v1.GetMetadataRequest\x1a#.metaxisdata.v1.GetMetadataResponse\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/metadata\x12\x8c\x01\n" +
-	"\x13ListMetadataHistory\x12*.metaxisdata.v1.ListMetadataHistoryRequest\x1a+.metaxisdata.v1.ListMetadataHistoryResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/metadata/history\x12\x93\x01\n" +
-	"\x17GetMetadataHistoryEvent\x12..metaxisdata.v1.GetMetadataHistoryEventRequest\x1a$.metaxisdata.v1.MetadataHistoryEvent\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/metadata/history/event\x12|\n" +
-	"\x0eSearchMetadata\x12%.metaxisdata.v1.SearchMetadataRequest\x1a&.metaxisdata.v1.SearchMetadataResponse\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/metadata/search\x12\x82\x01\n" +
-	"\x0fGetSchemaString\x12&.metaxisdata.v1.GetSchemaStringRequest\x1a$.metaxisdata.v1.MetadataSchemaString\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/metadata/schemaString\x12t\n" +
-	"\fDiffMetadata\x12#.metaxisdata.v1.DiffMetadataRequest\x1a$.metaxisdata.v1.DiffMetadataResponse\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/metadata/diff\x12\xbf\x01\n" +
-	"\x0fCreateManualSQL\x12&.metaxisdata.v1.CreateManualSQLRequest\x1a\x19.metaxisdata.v1.ManualSQL\"i\xdaA\x1fparent,manual_sql,manual_sql_id\x98\xea0\x01\x82\xd3\xe4\x93\x02=:\n" +
-	"manual_sql\"//v1/{parent=instances/*/databases/*}/manualSqls\x12\x8e\x01\n" +
-	"\fGetManualSQL\x12#.metaxisdata.v1.GetManualSQLRequest\x1a\x19.metaxisdata.v1.ManualSQL\">\xdaA\x04name\x82\xd3\xe4\x93\x021\x12//v1/{name=instances/*/databases/*/manualSqls/*}\x12\xa1\x01\n" +
-	"\x0eListManualSQLs\x12%.metaxisdata.v1.ListManualSQLsRequest\x1a&.metaxisdata.v1.ListManualSQLsResponse\"@\xdaA\x06parent\x82\xd3\xe4\x93\x021\x12//v1/{parent=instances/*/databases/*}/manualSqls\x12\xb1\x01\n" +
-	"\x0fSearchManualSQL\x12&.metaxisdata.v1.SearchManualSQLRequest\x1a'.metaxisdata.v1.SearchManualSQLResponse\"M\xdaA\fparent,query\x82\xd3\xe4\x93\x028\x126/v1/{parent=instances/*/databases/*}/manualSqls:search\x12\xc1\x01\n" +
-	"\x0fUpdateManualSQL\x12&.metaxisdata.v1.UpdateManualSQLRequest\x1a\x19.metaxisdata.v1.ManualSQL\"k\xdaA\x16manual_sql,update_mask\x98\xea0\x01\x82\xd3\xe4\x93\x02H:\n" +
-	"manual_sql2:/v1/{manual_sql.name=instances/*/databases/*/manualSqls/*}\x12\x95\x01\n" +
-	"\x0fDeleteManualSQL\x12&.metaxisdata.v1.DeleteManualSQLRequest\x1a\x16.google.protobuf.Empty\"B\xdaA\x04name\x98\xea0\x01\x82\xd3\xe4\x93\x021*//v1/{name=instances/*/databases/*/manualSqls/*}B6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\fSyncDatabase\x12#.metaxisdata.v1.SyncDatabaseRequest\x1a$.metaxisdata.v1.SyncDatabaseResponse\"[\xdaA\x04name\x8a\xea0\x1ametaxisdata.databases.sync\x98\xea0\x01\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/{name=instances/*/databases/*}:sync\x12\x91\x01\n" +
+	"\rListDatabases\x12$.metaxisdata.v1.ListDatabasesRequest\x1a%.metaxisdata.v1.ListDatabasesResponse\"3\x8a\xea0\x1ametaxisdata.databases.list\x82\xd3\xe4\x93\x02\x0f\x12\r/v1/databases\x12\x8e\x01\n" +
+	"\fListMetadata\x12#.metaxisdata.v1.ListMetadataRequest\x1a .metaxisdata.v1.MetadataResponse\"7\x8a\xea0\x1ametaxisdata.databases.read\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/metadata/list\x12\x8a\x01\n" +
+	"\vGetMetadata\x12\".metaxisdata.v1.GetMetadataRequest\x1a#.metaxisdata.v1.GetMetadataResponse\"2\x8a\xea0\x1ametaxisdata.databases.read\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/metadata\x12\xaa\x01\n" +
+	"\x13ListMetadataHistory\x12*.metaxisdata.v1.ListMetadataHistoryRequest\x1a+.metaxisdata.v1.ListMetadataHistoryResponse\":\x8a\xea0\x1ametaxisdata.databases.read\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/metadata/history\x12\xb1\x01\n" +
+	"\x17GetMetadataHistoryEvent\x12..metaxisdata.v1.GetMetadataHistoryEventRequest\x1a$.metaxisdata.v1.MetadataHistoryEvent\"@\x8a\xea0\x1ametaxisdata.databases.read\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/metadata/history/event\x12\x9a\x01\n" +
+	"\x0eSearchMetadata\x12%.metaxisdata.v1.SearchMetadataRequest\x1a&.metaxisdata.v1.SearchMetadataResponse\"9\x8a\xea0\x1ametaxisdata.databases.read\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/metadata/search\x12\xa0\x01\n" +
+	"\x0fGetSchemaString\x12&.metaxisdata.v1.GetSchemaStringRequest\x1a$.metaxisdata.v1.MetadataSchemaString\"?\x8a\xea0\x1ametaxisdata.databases.read\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/metadata/schemaString\x12\x92\x01\n" +
+	"\fDiffMetadata\x12#.metaxisdata.v1.DiffMetadataRequest\x1a$.metaxisdata.v1.DiffMetadataResponse\"7\x8a\xea0\x1ametaxisdata.databases.read\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/metadata/diff\x12\xe1\x01\n" +
+	"\x0fCreateManualSQL\x12&.metaxisdata.v1.CreateManualSQLRequest\x1a\x19.metaxisdata.v1.ManualSQL\"\x8a\x01\xdaA\x1fparent,manual_sql,manual_sql_id\x8a\xea0\x1dmetaxisdata.manualSqls.create\x98\xea0\x01\x82\xd3\xe4\x93\x02=:\n" +
+	"manual_sql\"//v1/{parent=instances/*/databases/*}/manualSqls\x12\xac\x01\n" +
+	"\fGetManualSQL\x12#.metaxisdata.v1.GetManualSQLRequest\x1a\x19.metaxisdata.v1.ManualSQL\"\\\xdaA\x04name\x8a\xea0\x1ametaxisdata.manualSqls.get\x82\xd3\xe4\x93\x021\x12//v1/{name=instances/*/databases/*/manualSqls/*}\x12\xc0\x01\n" +
+	"\x0eListManualSQLs\x12%.metaxisdata.v1.ListManualSQLsRequest\x1a&.metaxisdata.v1.ListManualSQLsResponse\"_\xdaA\x06parent\x8a\xea0\x1bmetaxisdata.manualSqls.list\x82\xd3\xe4\x93\x021\x12//v1/{parent=instances/*/databases/*}/manualSqls\x12\xd0\x01\n" +
+	"\x0fSearchManualSQL\x12&.metaxisdata.v1.SearchManualSQLRequest\x1a'.metaxisdata.v1.SearchManualSQLResponse\"l\xdaA\fparent,query\x8a\xea0\x1bmetaxisdata.manualSqls.list\x82\xd3\xe4\x93\x028\x126/v1/{parent=instances/*/databases/*}/manualSqls:search\x12\xe3\x01\n" +
+	"\x0fUpdateManualSQL\x12&.metaxisdata.v1.UpdateManualSQLRequest\x1a\x19.metaxisdata.v1.ManualSQL\"\x8c\x01\xdaA\x16manual_sql,update_mask\x8a\xea0\x1dmetaxisdata.manualSqls.update\x98\xea0\x01\x82\xd3\xe4\x93\x02H:\n" +
+	"manual_sql2:/v1/{manual_sql.name=instances/*/databases/*/manualSqls/*}\x12\xb6\x01\n" +
+	"\x0fDeleteManualSQL\x12&.metaxisdata.v1.DeleteManualSQLRequest\x1a\x16.google.protobuf.Empty\"c\xdaA\x04name\x8a\xea0\x1dmetaxisdata.manualSqls.delete\x98\xea0\x01\x82\xd3\xe4\x93\x021*//v1/{name=instances/*/databases/*/manualSqls/*}B6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_database_service_proto_rawDescOnce sync.Once

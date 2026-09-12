@@ -139,6 +139,22 @@ func paginate[T any](items []T, offset *pageOffset) ([]T, string, error) {
 	return items[:offset.limit], nextPageToken, nil
 }
 
+// paginateInMemory pages an already-materialized slice. It is for collections
+// assembled after the query (predefined roles merged with custom ones), where
+// the limit+1 probe paginate expects cannot be pushed into SQL.
+func paginateInMemory[T any](items []T, offset *pageOffset) ([]T, string, error) {
+	start := min(offset.offset, len(items))
+	end := min(start+offset.limit, len(items))
+	if end == len(items) {
+		return items[start:end], "", nil
+	}
+	nextPageToken, err := offset.getNextPageToken()
+	if err != nil {
+		return nil, "", connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to marshal next page token"))
+	}
+	return items[start:end], nextPageToken, nil
+}
+
 func parseLimitAndOffset(size *pageSize) (*pageOffset, error) {
 	offset := &pageOffset{}
 	if size.token != "" {

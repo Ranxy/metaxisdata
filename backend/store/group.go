@@ -204,3 +204,53 @@ func (s *Store) UpdateGroup(ctx context.Context, email string, patch *UpdateGrou
 	s.groupCache.Add(group.Email, &group)
 	return &group, nil
 }
+
+// GetGroupByName resolves a group resource name (`groups/{email}`). It backs
+// IAM binding validation and member expansion.
+func (s *Store) GetGroupByName(ctx context.Context, name string) (*GroupMessage, error) {
+	email, err := common.GetGroupEmail(name)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetGroup(ctx, email)
+}
+
+// CreateGroup creates a group. The email is the primary key, so a duplicate is
+// reported as a conflict rather than an internal error.
+func (s *Store) CreateGroup(ctx context.Context, group *GroupMessage) (*GroupMessage, error) {
+	payload, err := protojson.Marshal(group.Payload)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to marshal group payload")
+	}
+	if _, err := s.GetDB().ExecContext(ctx, `
+		INSERT INTO user_group (email, name, description, payload)
+		VALUES ($1, $2, $3, $4)
+	`,
+		group.Email,
+		group.Title,
+		group.Description,
+		payload,
+	); err != nil {
+		if isUniqueViolation(err) {
+			return nil, &common.Error{Code: common.Conflict, Err: errors.Errorf("group %q already exists", group.Email)}
+		}
+		return nil, err
+	}
+	s.groupCache.Add(group.Email, group)
+	return group, nil
+}
+
+// DeleteGroup deletes a group. It reports whether a row was removed; callers
+// map false to NotFound.
+func (s *Store) DeleteGroup(ctx context.Context, email string) (bool, error) {
+	result, err := s.GetDB().ExecContext(ctx, `DELETE FROM user_group WHERE email = $1`, email)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	s.groupCache.Remove(email)
+	return affected > 0, nil
+}

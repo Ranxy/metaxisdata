@@ -28,36 +28,44 @@ service DatabaseService {
 
   rpc ListDatabases(ListDatabasesRequest) returns (ListDatabasesResponse) {
     option (google.api.http) = {get: "/v1/databases"};
+    option (metaxisdata.v1.permission) = "metaxisdata.databases.list";
   }
 
   rpc ListMetadata(ListMetadataRequest) returns (MetadataResponse) {
     option (google.api.http) = {get: "/v1/metadata/list"};
+    option (metaxisdata.v1.permission) = "metaxisdata.databases.read";
   }
 
   rpc GetMetadata(GetMetadataRequest) returns (GetMetadataResponse) {
     option (google.api.http) = {get: "/v1/metadata"};
+    option (metaxisdata.v1.permission) = "metaxisdata.databases.read";
   }
 
   rpc ListMetadataHistory(ListMetadataHistoryRequest) returns (ListMetadataHistoryResponse) {
     option (google.api.http) = {get: "/v1/metadata/history"};
+    option (metaxisdata.v1.permission) = "metaxisdata.databases.read";
   }
 
   rpc GetMetadataHistoryEvent(GetMetadataHistoryEventRequest) returns (MetadataHistoryEvent) {
     option (google.api.http) = {get: "/v1/metadata/history/event"};
+    option (metaxisdata.v1.permission) = "metaxisdata.databases.read";
   }
 
   rpc SearchMetadata(SearchMetadataRequest) returns (SearchMetadataResponse) {
     option (google.api.http) = {get: "/v1/metadata/search"};
+    option (metaxisdata.v1.permission) = "metaxisdata.databases.read";
   }
 
   // Generates schema DDL for a database object.
   rpc GetSchemaString(GetSchemaStringRequest) returns (MetadataSchemaString) {
     option (google.api.http) = {get: "/v1/metadata/schemaString"};
+    option (metaxisdata.v1.permission) = "metaxisdata.databases.read";
   }
 
   // Computes the schema diff and migration DDL between two metadata versions.
   rpc DiffMetadata(DiffMetadataRequest) returns (DiffMetadataResponse) {
     option (google.api.http) = {get: "/v1/metadata/diff"};
+    option (metaxisdata.v1.permission) = "metaxisdata.databases.read";
   }
 
   rpc CreateManualSQL(CreateManualSQLRequest) returns (ManualSQL) {
@@ -67,21 +75,25 @@ service DatabaseService {
     };
     option (google.api.method_signature) = "parent,manual_sql,manual_sql_id";
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.manualSqls.create";
   }
 
   rpc GetManualSQL(GetManualSQLRequest) returns (ManualSQL) {
     option (google.api.http) = {get: "/v1/{name=instances/*/databases/*/manualSqls/*}"};
     option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.manualSqls.get";
   }
 
   rpc ListManualSQLs(ListManualSQLsRequest) returns (ListManualSQLsResponse) {
     option (google.api.http) = {get: "/v1/{parent=instances/*/databases/*}/manualSqls"};
     option (google.api.method_signature) = "parent";
+    option (metaxisdata.v1.permission) = "metaxisdata.manualSqls.list";
   }
 
   rpc SearchManualSQL(SearchManualSQLRequest) returns (SearchManualSQLResponse) {
     option (google.api.http) = {get: "/v1/{parent=instances/*/databases/*}/manualSqls:search"};
     option (google.api.method_signature) = "parent,query";
+    option (metaxisdata.v1.permission) = "metaxisdata.manualSqls.list";
   }
 
   rpc UpdateManualSQL(UpdateManualSQLRequest) returns (ManualSQL) {
@@ -91,12 +103,14 @@ service DatabaseService {
     };
     option (google.api.method_signature) = "manual_sql,update_mask";
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.manualSqls.update";
   }
 
   rpc DeleteManualSQL(DeleteManualSQLRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/{name=instances/*/databases/*/manualSqls/*}"};
     option (google.api.method_signature) = "name";
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.manualSqls.delete";
   }
 }
 

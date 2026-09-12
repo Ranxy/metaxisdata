@@ -631,6 +631,25 @@ func authorizedRequest[T any](token string, msg *T) *connect.Request[T] {
 	return req
 }
 
+// AdminToken returns the access token of the bootstrapped first user, which is
+// the workspace admin. It lets a test build clients for services ServiceEnv does
+// not own.
+func (e *ServiceEnv) AdminToken() string {
+	return e.token
+}
+
+// LoginAs signs in as an existing user and returns the access token.
+func (e *ServiceEnv) LoginAs(ctx context.Context, email, password string) (string, error) {
+	resp, err := e.authClient.Login(ctx, connect.NewRequest(&v1pb.LoginRequest{
+		Email:    email,
+		Password: password,
+	}))
+	if err != nil {
+		return "", err
+	}
+	return resp.Msg.GetToken(), nil
+}
+
 func (e *ServiceEnv) bootstrapAdmin(ctx context.Context) error {
 	_, err := e.userClient.CreateUser(ctx, connect.NewRequest(&v1pb.CreateUserRequest{
 		User: &v1pb.User{

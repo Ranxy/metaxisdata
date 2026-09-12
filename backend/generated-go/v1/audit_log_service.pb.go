@@ -444,7 +444,7 @@ var File_v1_audit_log_service_proto protoreflect.FileDescriptor
 
 const file_v1_audit_log_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1av1/audit_log_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\">\n" +
+	"\x1av1/audit_log_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\">\n" +
 	"\x0eAuditLogStatus\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\x05R\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"E\n" +
@@ -483,9 +483,9 @@ const file_v1_audit_log_service_proto_rawDesc = "" +
 	"\x1eAUDIT_LOG_SEVERITY_UNSPECIFIED\x10\x00\x12\b\n" +
 	"\x04INFO\x10\x01\x12\v\n" +
 	"\aWARNING\x10\x02\x12\t\n" +
-	"\x05ERROR\x10\x032\x9c\x01\n" +
-	"\x0fAuditLogService\x12\x88\x01\n" +
-	"\rListAuditLogs\x12$.metaxisdata.v1.ListAuditLogsRequest\x1a%.metaxisdata.v1.ListAuditLogsResponse\"*\xdaA\x06parent\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/{parent=**}/auditLogsB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\x05ERROR\x10\x032\xbc\x01\n" +
+	"\x0fAuditLogService\x12\xa8\x01\n" +
+	"\rListAuditLogs\x12$.metaxisdata.v1.ListAuditLogsRequest\x1a%.metaxisdata.v1.ListAuditLogsResponse\"J\xdaA\x06parent\x8a\xea0\x1cmetaxisdata.auditLogs.search\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/{parent=**}/auditLogsB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_audit_log_service_proto_rawDescOnce sync.Once
@@ -534,6 +534,7 @@ func file_v1_audit_log_service_proto_init() {
 	if File_v1_audit_log_service_proto != nil {
 		return
 	}
+	file_v1_annotation_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

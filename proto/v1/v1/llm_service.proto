@@ -16,6 +16,7 @@ service LLMService {
   rpc ListLLMProviderProfiles(ListLLMProviderProfilesRequest) returns (ListLLMProviderProfilesResponse) {
     option (google.api.http) = {get: "/v1/llm-provider-profiles"};
     option (google.api.method_signature) = "";
+    option (metaxisdata.v1.permission) = "metaxisdata.llm.profiles.list";
   }
 
   rpc CreateLLMProviderProfile(CreateLLMProviderProfileRequest) returns (LlmProviderProfile) {
@@ -24,7 +25,7 @@ service LLMService {
       body: "profile"
     };
     option (google.api.method_signature) = "profile";
-    option (metaxisdata.v1.permission) = "metaxisdata.llm.profiles.write";
+    option (metaxisdata.v1.permission) = "metaxisdata.llm.profiles.create";
   }
 
   rpc UpdateLLMProviderProfile(UpdateLLMProviderProfileRequest) returns (LlmProviderProfile) {
@@ -33,13 +34,13 @@ service LLMService {
       body: "profile"
     };
     option (google.api.method_signature) = "profile,update_mask";
-    option (metaxisdata.v1.permission) = "metaxisdata.llm.profiles.write";
+    option (metaxisdata.v1.permission) = "metaxisdata.llm.profiles.update";
   }
 
   rpc DeleteLLMProviderProfile(DeleteLLMProviderProfileRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/{name=llm-provider-profiles/*}"};
     option (google.api.method_signature) = "name";
-    option (metaxisdata.v1.permission) = "metaxisdata.llm.profiles.write";
+    option (metaxisdata.v1.permission) = "metaxisdata.llm.profiles.delete";
   }
 
   rpc FetchLLMModels(FetchLLMModelsRequest) returns (FetchLLMModelsResponse) {
@@ -47,7 +48,7 @@ service LLMService {
       post: "/v1/llm-provider-profiles:fetchModels"
       body: "*"
     };
-    option (metaxisdata.v1.permission) = "metaxisdata.llm.profiles.write";
+    option (metaxisdata.v1.permission) = "metaxisdata.llm.profiles.fetchModels";
   }
 }
 

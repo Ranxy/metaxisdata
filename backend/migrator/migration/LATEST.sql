@@ -86,6 +86,19 @@ CREATE TABLE user_group (
 );
 
 
+-- Role
+-- role stores custom IAM roles: the permission bundles an operator defines
+-- alongside the predefined workspaceAdmin/workspaceMember roles, which live in
+-- Go (backend/store/predefined_roles.go) and never get a row here.
+CREATE TABLE role (
+    resource_id text PRIMARY KEY,
+    name text NOT NULL,
+    description text NOT NULL DEFAULT '',
+    -- Stored as RolePermissions (proto/store/store/role.proto)
+    permissions jsonb NOT NULL DEFAULT '{}'
+);
+
+
 
 -- Default system account id is 1.
 INSERT INTO principal (id, type, name, email, password_hash) VALUES (1, 'SYSTEM_BOT', 'SYSTEM', 'support@example.com', '');

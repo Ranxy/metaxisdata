@@ -5,6 +5,7 @@ package metaxisdata.v1;
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/timestamp.proto";
+import "v1/annotation.proto";
 import "v1/database_service.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
@@ -16,11 +17,13 @@ service LineageService {
   // If lineage_type is not specified, both source and target lineage will be returned.
   rpc GetLineage(GetLineageRequest) returns (GetLineageResponse) {
     option (google.api.http) = {get: "/v1/lineages"};
+    option (metaxisdata.v1.permission) = "metaxisdata.lineage.get";
   }
 
   // GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).
   rpc GetLineageForContext(GetLineageForContextRequest) returns (GetLineageForContextResponse) {
     option (google.api.http) = {get: "/v1/lineages:context"};
+    option (metaxisdata.v1.permission) = "metaxisdata.lineage.get";
   }
 }
 

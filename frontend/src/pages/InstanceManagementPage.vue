@@ -7,7 +7,10 @@
           {{ t("instanceManagement.title") }}
         </h1>
       </div>
-      <Button @click="openCreateModal">
+      <Button
+        v-if="canCreate"
+        @click="openCreateModal"
+      >
         <Plus class="h-4 w-4 mr-2" />
         {{ t("instanceManagement.addInstance") }}
       </Button>
@@ -124,6 +127,7 @@
             </TableCell>
             <TableCell class="text-right">
               <Button
+                v-if="canDelete"
                 variant="ghost"
                 size="icon"
                 :title="t('common.delete')"
@@ -605,13 +609,24 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
+import { useAuthStore } from "@/store/modules/auth";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import { DataSourceType } from "@/types/proto-es/v1/instance_service_pb";
 
 const { t, locale } = useI18n();
 const router = useRouter();
+const authStore = useAuthStore();
 const { handleError, showSuccess } = useErrorHandler();
+
+// Instances and their data sources are administered by holders of the
+// instance write permissions; members keep read-only access.
+const canCreate = computed(() =>
+  authStore.hasPermission("metaxisdata.instances.create")
+);
+const canDelete = computed(() =>
+  authStore.hasPermission("metaxisdata.instances.delete")
+);
 
 // State
 const isLoading = ref(false);

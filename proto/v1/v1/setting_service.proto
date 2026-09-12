@@ -19,6 +19,7 @@ service SettingService {
   rpc GetWorkspaceProfileSetting(GetWorkspaceProfileSettingRequest) returns (WorkspaceProfileSetting) {
     option (google.api.http) = {get: "/v1/settings/workspaceProfile"};
     option (metaxisdata.v1.allow_without_credential) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.get";
   }
 
   // Update the workspace profile setting.
@@ -28,7 +29,7 @@ service SettingService {
       body: "setting"
     };
     option (google.api.method_signature) = "setting,update_mask";
-    option (metaxisdata.v1.permission) = "metaxisdata.settings.write";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
     option (metaxisdata.v1.audit) = true;
   }
 }

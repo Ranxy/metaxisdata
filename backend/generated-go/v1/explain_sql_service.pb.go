@@ -410,7 +410,7 @@ var File_v1_explain_sql_service_proto protoreflect.FileDescriptor
 
 const file_v1_explain_sql_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1cv1/explain_sql_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x19v1/database_service.proto\"\xf5\x01\n" +
+	"\x1cv1/explain_sql_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x13v1/annotation.proto\x1a\x19v1/database_service.proto\"\xf5\x01\n" +
 	"\x11ExplainSQLRequest\x12\x1b\n" +
 	"\tmeta_guid\x18\x01 \x01(\tR\bmetaGuid\x125\n" +
 	"\tmeta_type\x18\x02 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12\x19\n" +
@@ -443,10 +443,10 @@ const file_v1_explain_sql_service_proto_rawDesc = "" +
 	"\aexpired\x18\x06 \x01(\bR\aexpired\x12\x1d\n" +
 	"\n" +
 	"from_cache\x18\a \x01(\bR\tfromCache\x12(\n" +
-	"\x10cache_created_at\x18\b \x01(\tR\x0ecacheCreatedAt2\x86\x01\n" +
-	"\x11ExplainSQLService\x12q\n" +
+	"\x10cache_created_at\x18\b \x01(\tR\x0ecacheCreatedAt2\xa9\x01\n" +
+	"\x11ExplainSQLService\x12\x93\x01\n" +
 	"\n" +
-	"ExplainSQL\x12!.metaxisdata.v1.ExplainSQLRequest\x1a\".metaxisdata.v1.ExplainSQLResponse\"\x1a\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/v1/explain-sql0\x01B6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"ExplainSQL\x12!.metaxisdata.v1.ExplainSQLRequest\x1a\".metaxisdata.v1.ExplainSQLResponse\"<\x8a\xea0\x1emetaxisdata.explainSql.explain\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/v1/explain-sql0\x01B6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_explain_sql_service_proto_rawDescOnce sync.Once
@@ -486,6 +486,7 @@ func file_v1_explain_sql_service_proto_init() {
 	if File_v1_explain_sql_service_proto != nil {
 		return
 	}
+	file_v1_annotation_proto_init()
 	file_v1_database_service_proto_init()
 	file_v1_explain_sql_service_proto_msgTypes[1].OneofWrappers = []any{
 		(*ExplainSQLResponse_Content)(nil),

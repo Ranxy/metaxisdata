@@ -322,6 +322,15 @@ export declare type User = Message<"metaxisdata.v1.User"> & {
    * @generated from field: repeated string groups = 14;
    */
   groups: string[];
+
+  /**
+   * The effective workspace permissions of the caller, as a list of
+   * `metaxisdata.<resource>.<verb>` strings. Populated by GetCurrentUser only,
+   * so the frontend can gate navigation and actions without probing each RPC.
+   *
+   * @generated from field: repeated string permissions = 15;
+   */
+  permissions: string[];
 };
 
 /**

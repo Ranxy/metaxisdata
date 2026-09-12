@@ -3,6 +3,7 @@ syntax = "proto3";
 package metaxisdata.v1;
 
 import "google/api/annotations.proto";
+import "v1/annotation.proto";
 import "v1/database_service.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
@@ -13,6 +14,7 @@ service ExplainSQLService {
       post: "/v1/explain-sql"
       body: "*"
     };
+    option (metaxisdata.v1.permission) = "metaxisdata.explainSql.explain";
   }
 }
 

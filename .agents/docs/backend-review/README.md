@@ -116,7 +116,7 @@
 第一版审查以独立条目形式记录 **101 条发现**（严重 15 条、高 51 条、中 20 条，其余为低/债务），另有大量中低问题以清单形式列在各模块末尾。跨模块存在重复计数（例如"授权缺失"在 02/04 各出现一次、"JWT 密钥"在 01/02 各出现一次），去重后独立问题约 80 条。最需要立即处理的是 5 类问题：
 
 ### 1. 授权层实际上不存在（贯穿全部 API）
-> **◐ 部分修复（阶段 0）** · `ec49607` `0f2165e`：ACL 拦截器已重建并接线，写操作（用户增删改、实例/数据源、`SyncDatabase`、OpenLineage namespace/key、LLM profile、settings）均要求 workspaceAdmin。**剩余**：读路径（列表/血缘/run/raw_payload）仍是"任意已认证用户"；细粒度 role→permission 映射推迟。
+> **✅ 已修复（阶段 0 起步，阶段 4 收口）** · `ec49607` `0f2165e` + IAM 子系统：ACL 拦截器已重建并接线，**全部 v1 方法（含读路径）都声明 `permission` 注解**，由 `iam.Manager` 按 `workspaceMember` 读基线 / `workspaceAdmin` 全目录 / 自定义角色权限集解析，不再是"注解非空 ⇒ 管理员"。管理面新增 `IamService`（工作区策略 Get/Set，etag 乐观并发）、`RoleService`（自定义角色 CRUD）、`GroupService`（组 CRUD），前端新增 Roles / Groups / Members & Permissions 页面并按 `User.permissions` 隐藏入口。守卫测试 `TestEveryMethodIsPermissionGated` 要求除显式 allowlist（Login/Logout/GetCurrentUser/CreateUser/UpdateUser）外每个方法都必须带目录内注解。详见 `plan/iam_permission_plan.md` 与 `02` C4/H4。**剩余**：仍是单工作区、仅 WORKSPACE 策略，没有 per-resource（实例/数据库）策略；H1 token 吊销等条目不受影响。
 
 `backend/server/grpc_routes.go:85` 的 ACL 拦截器当时被注释，且其引用的 `NewACLInterceptor`/`iamManager` 在仓库中已不存在。`AuthContext.Permission` 被解析出来后**没有任何消费者**，没有任何 proto 方法设置 `permission`。后果：
 - 任意已认证用户可修改**任意用户（含管理员）的密码**并登录（`user_service.go:500-507`，无权限校验、无原密码校验）；
@@ -312,7 +312,7 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 
 | 主题 | 说明 | 主要位置 | 修复状态 |
 | --- | --- | --- | --- |
-| **授权缺失** | 拦截器被注释、`permission` 从不校验 | `server/grpc_routes.go:85`、`api/auth/auth.go:350` | ◐ 阶段 0：拦截器已恢复，写操作限管理员；读路径未收紧（阶段 3 补了 `api/auth` 的注解读取测试） |
+| **授权缺失** | 拦截器被注释、`permission` 从不校验 | `server/grpc_routes.go:85`、`api/auth/auth.go:350` | ✅ 阶段 0 恢复拦截器，阶段 4 完成：全部方法（含读）带注解，`iam.Manager` 按角色/权限集解析，新增 IAM/Role/Group 管理面与前端页面 |
 | **SQL 拼接** | 4 个 handler + 2 个 store 把用户输入拼进 `WHERE` | `user/instance/database_service.go`、`store/principal.go`、`store/group.go` | ✅ 阶段 0：全部参数化 + project ID 校验 + guard 测试 |
 | **秘密处理** | 硬编码 JWT 密钥、XOR"加密"、审计脱敏遗漏 | `profile_dev.go:11`、`common/utils.go`、`api/v1/audit.go:197` | ✅ 阶段 0/3：JWT 与审计脱敏已修，XOR 换成 AES-256-GCM + `METADATA_SECRET_KEY`（`a1faf65`） |
 | **凭据被往返请求清空** | `UpdateInstance(data_sources)` 整体替换数据源列表，丢掉读取路径不返回的密钥/store-only 字段 | `instance_service.go:405-413,1307-1353` | ✅ 阶段 1：按 ID 合并（`20e284b`） |

@@ -233,3 +233,26 @@ func FormatDataSource(instanceID, dataSourceID string) string {
 func FormatRole(role string) string {
 	return fmt.Sprintf("%s%s", RolePrefix, role)
 }
+
+// roleIDMatcher accepts the role IDs used in `roles/{role}`: a letter followed
+// by letters, digits or hyphens. It deliberately allows uppercase because the
+// predefined role IDs are camelCased (workspaceAdmin, workspaceMember), unlike
+// the lowercased IsValidResourceID used for URL-path resource IDs.
+var roleIDMatcher = regexp.MustCompile("^[a-zA-Z]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$")
+
+// IsValidRoleID reports whether id is a syntactically valid role ID.
+func IsValidRoleID(id string) bool {
+	return roleIDMatcher.MatchString(id)
+}
+
+// GetRoleID returns the role ID from a role resource name (`roles/{role}`).
+func GetRoleID(name string) (string, error) {
+	tokens, err := GetNameParentTokens(name, RolePrefix)
+	if err != nil {
+		return "", err
+	}
+	if !IsValidRoleID(tokens[0]) {
+		return "", errors.Errorf("invalid role ID %q", tokens[0])
+	}
+	return tokens[0], nil
+}

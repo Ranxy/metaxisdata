@@ -61,6 +61,36 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, layout: "default" },
   },
   {
+    path: "/settings/roles",
+    name: "RoleManagement",
+    component: () => import("@/pages/settings/RoleManagementPage.vue"),
+    meta: {
+      requiresAuth: true,
+      layout: "default",
+      permission: "metaxisdata.roles.list",
+    },
+  },
+  {
+    path: "/settings/groups",
+    name: "GroupManagement",
+    component: () => import("@/pages/settings/GroupManagementPage.vue"),
+    meta: {
+      requiresAuth: true,
+      layout: "default",
+      permission: "metaxisdata.groups.list",
+    },
+  },
+  {
+    path: "/settings/iam",
+    name: "IamPolicy",
+    component: () => import("@/pages/settings/IamPage.vue"),
+    meta: {
+      requiresAuth: true,
+      layout: "default",
+      permission: "metaxisdata.iam.getPolicy",
+    },
+  },
+  {
     path: "/settings/llm-providers",
     name: "LLMProviderManagement",
     component: () => import("@/pages/settings/LLMProviderManagementPage.vue"),
@@ -182,6 +212,14 @@ router.beforeEach(async (to, _from, next) => {
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next({ name: "Login", query: { redirect: to.fullPath } });
   } else if (to.name === "Login" && authStore.isAuthenticated) {
+    next({ name: "Home" });
+  } else if (
+    typeof to.meta.permission === "string" &&
+    authStore.isAuthenticated &&
+    !authStore.hasPermission(to.meta.permission)
+  ) {
+    // The server enforces the same permission on every RPC; this only keeps a
+    // caller from landing on a page whose every request would be denied.
     next({ name: "Home" });
   } else {
     next();

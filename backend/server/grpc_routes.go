@@ -21,6 +21,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/stacktrace"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
+	"github.com/Ranxy/metaxisdata/backend/component/iam"
 	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
@@ -60,7 +61,8 @@ func configureGrpcRouters(
 		}),
 	)
 
-	userService := apiv1.NewUserService(stores, profile)
+	iamManager := iam.NewManager(stores)
+	userService := apiv1.NewUserService(stores, iamManager, profile)
 	authService := apiv1.NewAuthService(stores, secret, profile, stateCfg)
 	auditLogService := apiv1.NewAuditLogService(stores)
 	instanceService := apiv1.NewInstanceService(stores, dbFactory, schemaSync)
@@ -70,6 +72,9 @@ func configureGrpcRouters(
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
 	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry)
 	settingService := apiv1.NewSettingService(stores)
+	roleService := apiv1.NewRoleService(stores)
+	groupService := apiv1.NewGroupService(stores)
+	iamService := apiv1.NewIamService(stores)
 
 	onPanic := func(_ context.Context, s connect.Spec, _ http.Header, p any) error {
 		stack := stacktrace.TakeStacktrace(20 /* n */, 5 /* skip */)
@@ -84,7 +89,7 @@ func configureGrpcRouters(
 			apiv1.NewDebugInterceptor(),
 			auth.New(stores, secret, stateCfg, profile),
 			apiv1.NewAuditInterceptor(stores),
-			apiv1.NewACLInterceptor(stores),
+			apiv1.NewACLInterceptor(iamManager),
 			// Innermost, so the audit interceptor records the status the client
 			// actually received.
 			apiv1.NewErrorMappingInterceptor(),
@@ -114,6 +119,12 @@ func configureGrpcRouters(
 	connectHandlers[explainSQLPath] = explainSQLHandler
 	settingPath, settingHandler := v1connect.NewSettingServiceHandler(settingService, handlerOpts)
 	connectHandlers[settingPath] = settingHandler
+	rolePath, roleHandler := v1connect.NewRoleServiceHandler(roleService, handlerOpts)
+	connectHandlers[rolePath] = roleHandler
+	groupPath, groupHandler := v1connect.NewGroupServiceHandler(groupService, handlerOpts)
+	connectHandlers[groupPath] = groupHandler
+	iamPath, iamHandler := v1connect.NewIamServiceHandler(iamService, handlerOpts)
+	connectHandlers[iamPath] = iamHandler
 	// grpc reflection handlers.
 	reflector := grpcreflect.NewStaticReflector(
 		v1connect.AuthServiceName,
@@ -126,6 +137,9 @@ func configureGrpcRouters(
 		v1connect.LLMServiceName,
 		v1connect.ExplainSQLServiceName,
 		v1connect.SettingServiceName,
+		v1connect.RoleServiceName,
+		v1connect.GroupServiceName,
+		v1connect.IamServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
 	connectHandlers[reflectPath] = reflectHandler
@@ -174,6 +188,15 @@ func configureGrpcRouters(
 		return err
 	}
 	if err := v1pb.RegisterSettingServiceHandler(ctx, mux, grpcConn); err != nil {
+		return err
+	}
+	if err := v1pb.RegisterRoleServiceHandler(ctx, mux, grpcConn); err != nil {
+		return err
+	}
+	if err := v1pb.RegisterGroupServiceHandler(ctx, mux, grpcConn); err != nil {
+		return err
+	}
+	if err := v1pb.RegisterIamServiceHandler(ctx, mux, grpcConn); err != nil {
 		return err
 	}
 

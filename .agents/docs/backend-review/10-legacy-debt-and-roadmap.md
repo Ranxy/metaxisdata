@@ -123,14 +123,14 @@
 | # | 事项 | 状态 | 提交 |
 | --- | --- | --- | --- |
 | 1 | JWT 签名密钥改为环境注入并 fail-closed；作废历史 token | ✅ | `adfec91` `84b16db` |
-| 2 | 恢复授权层：至少给用户/实例/数据源/OpenLineage key 的写操作加管理员校验 | ◐ | `ec49607` `0f2165e` |
+| 2 | 恢复授权层：至少给用户/实例/数据源/OpenLineage key 的写操作加管理员校验 | ✅ | `ec49607` `0f2165e` + IAM 子系统 |
 | 3 | 关闭未认证注册或强制 `DisallowSignup`；首个管理员授予改原子 | ✅ | `5b19778` `c4e22fc` |
 | 4 | 修 SQL 注入（user/instance/database filter + principal/group project ID） | ✅ | `3321801` |
 | 5 | 审计脱敏补 `key`/`content`/`sslKey`/`keytab`，并为 `CreateAPIKeyResponse` 加测试 | ✅ | `89ef84a` |
 | 6 | panic 不再回传堆栈；`validate_only` 加权限 + 内网地址限制 | ◐ | `5446a10` `ec49607` |
 
 - **1 的收尾说明（非剩余缺陷）**：`JWT_SECRET` 环境变量优先、缺失时回退 DB `AUTH_SECRET`、`< 32` 字符启动失败、解析侧三项校验（历史 token 失效）均已完成；`profile_release.go` 的 import 修正后（`84b16db`）`-tags release` 可编译并通过 `go vet -tags release ./...`。但 `Makefile`/CI/Docker 未使用该 tag，默认产物仍是 dev 模式——部署 prod 必须显式 `-tags release`，后续应把它固化到构建目标或改为运行时配置。
-- **2 的剩余项**：写操作已全部要求 workspaceAdmin；读路径（Get/List/血缘/OpenLineage run/raw_payload）仍未收紧；尚未实现 permission→role 的细粒度映射（当前语义是"注解非空 ⇒ 管理员"）。
+- **2 的收尾说明（阶段 4 完成）**：写操作早已要求 workspaceAdmin；本轮补上读路径并落地真正的 permission→role 映射。`backend/common/permission/` 是单一来源的目录（`permission.json` → `permission_gen.go`），`backend/store/predefined_roles.go` 定义 `workspaceAdmin`（全目录）/`workspaceMember`（读基线），自定义角色存 `role` 表（增量 `0.1.0006` + `LATEST.sql`），`backend/component/iam` 解析调用者权限，`ACLInterceptor` 逐方法注解鉴权，`IamService`/`RoleService`/`GroupService` 提供管理面，`GetCurrentUser` 返回 `User.permissions` 供前端 gating，前端新增 Roles / Groups / Members & Permissions 页面。守卫与端到端验证：`TestEveryMethodIsPermissionGated`（注解覆盖 + 目录漂移）、`iam.Manager` 表驱动测试（基线/管理员/自定义角色/组展开/allUsers/条件 fail-closed）、`test/integration/runner/iam_service_test.go`（真实 server：基线拒绝 → 自定义角色与组授权 → `GetCurrentUser` 可见 → etag `Aborted` → 零管理员 `InvalidArgument` → 引用中角色/组不可删）。**仍未做**：仅 WORKSPACE 策略，无 per-resource（实例/数据库）策略；H1/H2/M2/M8/M9/M10 不受影响。
 - **6 的剩余项**：**内网地址限制经确认后主动放弃**——自托管产品的核心用法就是让用户连接内网数据库，加私网 deny 会破坏功能，因此只保留管理员权限约束；CEL 类型断言 panic 本身仍未修（只是不再泄露堆栈）。
 - 配置侧顺带完成：`config.Profile.Secret` 现在由 `JWT_SECRET` 赋值（不再是"从未赋值"）；`disallow_signup` 默认仍为 `false`，需管理员在新增的 `/settings/general` 页面显式打开。
 

@@ -1,0 +1,140 @@
+syntax = "proto3";
+
+package metaxisdata.v1;
+
+import "google/api/annotations.proto";
+import "google/api/client.proto";
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
+import "v1/annotation.proto";
+
+option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
+
+// GroupMember is a user's membership in a group.
+message GroupMember {
+  // The member, in the form `users/{userUID}`.
+  string member = 1;
+
+  enum Role {
+    ROLE_UNSPECIFIED = 0;
+    OWNER = 1;
+    MEMBER = 2;
+  }
+
+  Role role = 2;
+}
+
+// Group is a set of users that can be bound to roles in the IAM policy as a
+// single principal (`groups/{email}`).
+message Group {
+  option (google.api.resource) = {
+    type: "metaxisdata/Group"
+    pattern: "groups/{group}"
+  };
+
+  // The resource name of the group, in the form `groups/{email}`.
+  string name = 1 [
+    (google.api.field_behavior) = IDENTIFIER,
+    (google.api.field_behavior) = REQUIRED
+  ];
+
+  // Human-readable title.
+  string title = 2;
+
+  string description = 3;
+
+  // The group's members.
+  repeated GroupMember members = 4;
+}
+
+message GetGroupRequest {
+  // The resource name of the group, in the form `groups/{email}`.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/Group"}
+  ];
+}
+
+message ListGroupsRequest {
+  // The maximum number of groups to return.
+  int32 page_size = 1;
+
+  // A page token, received from a previous `ListGroups` call.
+  string page_token = 2;
+}
+
+message ListGroupsResponse {
+  repeated Group groups = 1;
+
+  string next_page_token = 2;
+}
+
+message CreateGroupRequest {
+  Group group = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdateGroupRequest {
+  Group group = 1 [(google.api.field_behavior) = REQUIRED];
+
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+message DeleteGroupRequest {
+  // The resource name of the group, in the form `groups/{email}`.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/Group"}
+  ];
+}
+
+// GroupService manages groups. A group is an IAM principal: the workspace IAM
+// policy may bind roles to `groups/{email}`, which grants every member the
+// role. Each RPC is gated by the IAM interceptor with the metaxisdata.groups.*
+// permissions.
+service GroupService {
+  // Get a group.
+  rpc GetGroup(GetGroupRequest) returns (Group) {
+    option (google.api.http) = {get: "/v1/{name=groups/*}"};
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.groups.get";
+  }
+
+  // List all groups.
+  rpc ListGroups(ListGroupsRequest) returns (ListGroupsResponse) {
+    option (google.api.http) = {get: "/v1/groups"};
+    option (google.api.method_signature) = "";
+    option (metaxisdata.v1.permission) = "metaxisdata.groups.list";
+  }
+
+  // Create a group.
+  rpc CreateGroup(CreateGroupRequest) returns (Group) {
+    option (google.api.http) = {
+      post: "/v1/groups"
+      body: "group"
+    };
+    option (google.api.method_signature) = "group";
+    option (metaxisdata.v1.permission) = "metaxisdata.groups.create";
+    option (metaxisdata.v1.audit) = true;
+  }
+
+  // Update a group.
+  rpc UpdateGroup(UpdateGroupRequest) returns (Group) {
+    option (google.api.http) = {
+      patch: "/v1/{group.name=groups/*}"
+      body: "group"
+    };
+    option (google.api.method_signature) = "group,update_mask";
+    option (metaxisdata.v1.permission) = "metaxisdata.groups.update";
+    option (metaxisdata.v1.audit) = true;
+  }
+
+  // Delete a group. The group must not be referenced by any IAM binding.
+  rpc DeleteGroup(DeleteGroupRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=groups/*}"};
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.groups.delete";
+    option (metaxisdata.v1.audit) = true;
+  }
+}

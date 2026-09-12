@@ -20,12 +20,14 @@ service UserService {
   rpc GetUser(GetUserRequest) returns (User) {
     option (google.api.http) = {get: "/v1/{name=users/*}"};
     option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.users.get";
   }
 
   // Get the users in batch.
   // Any authenticated user can batch get users.
   rpc BatchGetUsers(BatchGetUsersRequest) returns (BatchGetUsersResponse) {
     option (google.api.http) = {get: "/v1/users:batchGet"};
+    option (metaxisdata.v1.permission) = "metaxisdata.users.get";
   }
 
   // Get the current authenticated user.
@@ -38,6 +40,7 @@ service UserService {
   // Any authenticated user can list users.
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse) {
     option (google.api.http) = {get: "/v1/users"};
+    option (metaxisdata.v1.permission) = "metaxisdata.users.list";
   }
 
   // Create a user.
@@ -227,6 +230,11 @@ message User {
   // The groups for the user.
   // Format: groups/{email}
   repeated string groups = 14 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The effective workspace permissions of the caller, as a list of
+  // `metaxisdata.<resource>.<verb>` strings. Populated by GetCurrentUser only,
+  // so the frontend can gate navigation and actions without probing each RPC.
+  repeated string permissions = 15 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   reserved 11;
   reserved "recovery_codes";

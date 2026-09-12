@@ -14,6 +14,14 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
+// MemberStore is the subset of *store.Store the IAM membership helpers read.
+// Narrowing it keeps the expansion logic testable without a database and
+// documents exactly which lookups group expansion performs.
+type MemberStore interface {
+	GetGroup(ctx context.Context, email string) (*store.GroupMessage, error)
+	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
+}
+
 func validateIAMBinding(binding *storepb.Binding) bool {
 	ok, err := common.EvalBindingCondition(binding.Condition.GetExpression(), time.Now())
 	if err != nil {
@@ -25,7 +33,7 @@ func validateIAMBinding(binding *storepb.Binding) bool {
 
 // GetUsersByMember gets user messages by member.
 // The member should in users/{uid} or groups/{email} format.
-func GetUsersByMember(ctx context.Context, stores *store.Store, member string) []*store.UserMessage {
+func GetUsersByMember(ctx context.Context, stores MemberStore, member string) []*store.UserMessage {
 	var users []*store.UserMessage
 	if strings.HasPrefix(member, common.UserNamePrefix) {
 		user := getUserByIdentifier(ctx, stores, member)
@@ -59,7 +67,7 @@ func GetUsersByMember(ctx context.Context, stores *store.Store, member string) [
 
 // getUserByIdentifier gets user message by identifier.
 // The identifier should in users/{uid} format.
-func getUserByIdentifier(ctx context.Context, stores *store.Store, identifier string) *store.UserMessage {
+func getUserByIdentifier(ctx context.Context, stores MemberStore, identifier string) *store.UserMessage {
 	userUID, err := common.GetUserID(identifier)
 	if err != nil {
 		slog.Error("failed to parse user id", slog.String("user", identifier), log.WithError(err))
@@ -74,7 +82,7 @@ func getUserByIdentifier(ctx context.Context, stores *store.Store, identifier st
 }
 
 // GetUserIAMPolicyBindings return the valid bindings for the user.
-func GetUserIAMPolicyBindings(ctx context.Context, stores *store.Store, user *store.UserMessage, policies ...*storepb.IamPolicy) []*storepb.Binding {
+func GetUserIAMPolicyBindings(ctx context.Context, stores MemberStore, user *store.UserMessage, policies ...*storepb.IamPolicy) []*storepb.Binding {
 	userIDFullName := common.FormatUserUID(user.ID)
 
 	var bindings []*storepb.Binding
@@ -132,7 +140,7 @@ func GetUserIAMPolicyBindings(ctx context.Context, stores *store.Store, user *st
 // GetUserRolesInIamPolicy returns the `uniq`ed roles of a user, including workspace roles and the roles in the projects.
 // the condition of role binding is respected and evaluated with request.time=time.Now().
 // the returned role name should in the roles/{id} format.
-func GetUserRolesInIamPolicy(ctx context.Context, stores *store.Store, user *store.UserMessage, policies ...*storepb.IamPolicy) []string {
+func GetUserRolesInIamPolicy(ctx context.Context, stores MemberStore, user *store.UserMessage, policies ...*storepb.IamPolicy) []string {
 	var roles []string
 
 	for _, policy := range policies {
@@ -147,7 +155,7 @@ func GetUserRolesInIamPolicy(ctx context.Context, stores *store.Store, user *sto
 }
 
 // See GetUserRoles. The returned map key format is roles/{role}.
-func GetUserFormattedRolesMap(ctx context.Context, stores *store.Store, user *store.UserMessage, projectPolicies ...*storepb.IamPolicy) map[string]bool {
+func GetUserFormattedRolesMap(ctx context.Context, stores MemberStore, user *store.UserMessage, projectPolicies ...*storepb.IamPolicy) map[string]bool {
 	roles := GetUserRolesInIamPolicy(ctx, stores, user, projectPolicies...)
 
 	rolesMap := make(map[string]bool)

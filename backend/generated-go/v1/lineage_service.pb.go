@@ -746,7 +746,7 @@ var File_v1_lineage_service_proto protoreflect.FileDescriptor
 
 const file_v1_lineage_service_proto_rawDesc = "" +
 	"\n" +
-	"\x18v1/lineage_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19v1/database_service.proto\"\xbf\x04\n" +
+	"\x18v1/lineage_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\x1a\x19v1/database_service.proto\"\xbf\x04\n" +
 	"\x0fLineageRelation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1b\n" +
 	"\tmeta_guid\x18\x02 \x01(\tR\bmetaGuid\x125\n" +
@@ -815,11 +815,11 @@ const file_v1_lineage_service_proto_rawDesc = "" +
 	"\x19RELATION_TYPE_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +
 	"\x06DIRECT\x10\x01\x12\f\n" +
-	"\bINDIRECT\x10\x022\x8d\x02\n" +
-	"\x0eLineageService\x12i\n" +
+	"\bINDIRECT\x10\x022\xc4\x02\n" +
+	"\x0eLineageService\x12\x84\x01\n" +
 	"\n" +
-	"GetLineage\x12!.metaxisdata.v1.GetLineageRequest\x1a\".metaxisdata.v1.GetLineageResponse\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/lineages\x12\x8f\x01\n" +
-	"\x14GetLineageForContext\x12+.metaxisdata.v1.GetLineageForContextRequest\x1a,.metaxisdata.v1.GetLineageForContextResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/lineages:contextB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"GetLineage\x12!.metaxisdata.v1.GetLineageRequest\x1a\".metaxisdata.v1.GetLineageResponse\"/\x8a\xea0\x17metaxisdata.lineage.get\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/lineages\x12\xaa\x01\n" +
+	"\x14GetLineageForContext\x12+.metaxisdata.v1.GetLineageForContextRequest\x1a,.metaxisdata.v1.GetLineageForContextResponse\"7\x8a\xea0\x17metaxisdata.lineage.get\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/lineages:contextB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_lineage_service_proto_rawDescOnce sync.Once
@@ -878,6 +878,7 @@ func file_v1_lineage_service_proto_init() {
 	if File_v1_lineage_service_proto != nil {
 		return
 	}
+	file_v1_annotation_proto_init()
 	file_v1_database_service_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{

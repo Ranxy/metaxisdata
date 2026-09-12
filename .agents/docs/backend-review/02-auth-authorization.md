@@ -17,6 +17,15 @@
 
 **阶段 3 收尾二更新**：`api/v1` 的审计拦截器 helper 补齐表驱动测试（`c162bc0`）：`shouldSkipAudit`（`validate_only` 为真则跳过）、`resolveParent`/`resolveResource` 的优先级链、`resolveActor`、`mapSeverity` 的客户端/服务端错误划分、`buildAuditStatus` 的三种形态、`buildRequestMetadata` 的 XFF/网关头/peer 地址/UA 回退、`getNestedString`。其中安全相关的一条是 **`resolveActor` 必须让已认证用户优先于请求/响应里调用方可控的字段**，测试里用 `common.UserContextKey` 注入用户并断言伪造的 `user.name` 不会成为审计主体。另外新增真实 server 的反向集成测试（`backend/test/integration/runner/auth_reverse_service_test.go`）：缺失、畸形、空与 `alg=none` 的凭据都必须返回 `Unauthenticated`。审计测试里 `DataSource` 的 fixture 也从 `id` 改为资源 `name`（`513940f`）。
 
+**阶段 4 更新（IAM 权限管理）**：C4 **完全修复**、H4 修复。本轮把 laelia 的 IAM 模型移植进来——单一来源的权限目录（`backend/common/permission/`，`permission.json` 经 `go generate ./backend/common/permission` 生成 `permission_gen.go`）、角色（预定义 `workspaceAdmin`/`workspaceMember` 在 Go 内、自定义角色回到 `role` 表）、工作区 IAM 策略的 Get/Set（etag 乐观并发、`CodeAborted`）、组管理（`user_group` 的 create/delete + GroupService）与解析引擎（`backend/component/iam`），具体见 `plan/iam_permission_plan.md`。关键变化：
+> - **授权从"注解非空 ⇒ 管理员"变为真正的 permission→role 映射**：`ACLInterceptor`（`backend/api/v1/acl_interceptor.go`）改为委托 `iam.Manager.CheckPermission`，按 `workspaceMember` 基线 → 工作区策略里用户（含组展开、`allUsers`、条件求值）持有的角色 → 角色权限集解析；未知角色、求值失败、DB 错误一律 fail closed。
+> - **读路径全部收紧**：`GetUser`/`BatchGetUsers`/`ListUsers`、实例与元数据读、血缘、OpenLineage 读、`ListAuditLogs` 均带 `permission` 注解；`GetCurrentUser` 仍免注解（客户端引导）并新增 `User.permissions` 供前端 gating。守卫测试 `backend/api/v1/acl_interceptor_test.go` 的 `TestEveryMethodIsPermissionGated` 规定：除显式 allowlist（Login/Logout/GetCurrentUser/CreateUser/UpdateUser）外，任何 v1 方法缺少注解或注解不在目录中都会失败。
+> - **自助路径保留在 handler**：`CreateUser`（`disallow_signup`/引导首位用户）、`UpdateUser`（本人改资料/改密需 `current_password`）用 `requirePermission(users.create/users.update)` 表达"管理员或本人"，不再依赖 `isUserWorkspaceAdmin`（后者只剩 `Login` 的密码策略豁免与最后管理员判定在用）。
+> - **H4 修复**：`hasActiveWorkspaceAdmin`（`backend/api/v1/iam_helpers.go`）展开组绑定时空掉被删用户，仅含该管理员的组不再算作"还有别的管理员"；`SetWorkspaceIamPolicy` 也复用同一判定，拒绝写入一个会让工作区零管理员的策略。
+> - **审计**：`ListAuditLogs` 的手工管理员检查删除，改由注解 `metaxisdata.auditLogs.search` 统一拦截。
+> - **未做**：仍是单工作区、仅 WORKSPACE 策略，没有 per-resource（实例/数据库）策略与 `ResourceRef` 解析；H1（token 吊销）、H2（CORS/CSRF）、M2（登录枚举/限流）、M8/M9/M10（审计写入与来源）等条目不受本轮影响。
+
+
 
 ---
 
@@ -66,9 +75,9 @@
 - **同类问题**：`instance_service.go:152,154,156`、`database_service.go:874,880`、`store/group.go:111`，详见 `04-api-v1.md`。
 
 ### C4. 授权层实际不存在：任意成员可接管/删除任意账号
-> **◐ 部分修复（阶段 0）** · `ec49607` `0f2165e`
+> **✅ 已修复（阶段 0 起，阶段 4 收口）** · `ec49607` `0f2165e` + 阶段 4 的 IAM 子系统
 > - 已修：重建 `ACLInterceptor` 并在 `grpc_routes.go` 接线，消费 proto 的 `permission` 注解（非空 ⇒ workspaceAdmin）；`DeleteUser`/`UndeleteUser` 已声明 `metaxisdata.users.delete`/`.undelete`。`UpdateUser` 因含自助场景在 handler 内鉴权：`allow_missing` 分支要求管理员；改他人（含改密、改邮箱）要求 workspaceAdmin；**本人改密必须提供并匹配 `current_password`**，否则 `CodeInvalidArgument`/`CodePermissionDenied`。proto 新增 `UpdateUserRequest.current_password`（INPUT_ONLY），前端 `UserManagementPage.vue` 编辑自己时展示该输入框。
-> - 剩余：读路径（`ListUsers`/`GetUser`/`BatchGetUsers`）仍是"任意已认证用户"；尚无 permission→role 的细粒度映射（当前所有非空 permission 都等同于管理员）；H1 的 token 吊销问题未解决，改密后旧 token 仍可用。
+> - 阶段 4 收口：**读路径全部加注解**（`users.get/list`、实例/元数据读、血缘、OpenLineage 读、`auditLogs.search`），**permission 不再是"非空即管理员"**——`ACLInterceptor` 由 `iam.Manager` 按角色/权限集解析，`workspaceMember` 只有读基线，`workspaceAdmin` 持有全目录，自定义角色按需授权。`UpdateUser` 的非本人路径改用 `requirePermission(metaxisdata.users.update)`，`allow_missing` 改用 `users.create`。`GetCurrentUser` 返回 `User.permissions` 供前端 gating。守卫测试 `TestEveryMethodIsPermissionGated` 锁住"除 allowlist 外每个方法都必须有目录内注解"。H1 的 token 吊销问题仍未解决，改密后旧 token 仍可用。
 
 - **位置**：`backend/server/grpc_routes.go:80-88`（第 85 行被注释）、`backend/api/auth/auth.go:317-321,350-355`、`backend/api/v1/user_service.go:445-471,500-507,555-595,643-674`
 - **证据**：`// apiv1.NewACLInterceptor(stores, secret, iamManager, profile),` —— `NewACLInterceptor` 与 `iamManager` 在整个仓库都不存在（即使取消注释也无法编译）；`AuthContext.Permission` 被写入后没有任何消费者；没有任何 proto 方法设置 `permission`；handler 只做 `_, ok := GetUserFromContext(ctx)` 然后 `// todo check permission`。
@@ -109,7 +118,7 @@
 - **修复**：把 `key`（以及 `passwd/pwd/bearer/jwt/session`）加入脱敏列表；更稳妥的是按 proto field behavior 结构化脱敏；为 `CreateAPIKeyResponse` 增加回归测试。
 
 ### H4. 最后一个管理员的保护可被"组绑定"绕过
-> **⏳ 未处理（阶段 0 范围外）**：本轮只把首个管理员的授予原子化，`hasExtraWorkspaceAdmin` 的组展开逻辑未改，删除最后一名管理员仍可能被"仅含该用户的组"绕过。
+> **✅ 已修复（阶段 4）** · IAM 子系统：`hasActiveWorkspaceAdmin`（`backend/api/v1/iam_helpers.go`）在展开 `groups/{email}` 时跳过被删用户本人，因此"仅含该用户的组"不再算作幸存管理员；`DeleteUser` 与 `SetWorkspaceIamPolicy` 共用这一判定。集成测试 `backend/test/integration/runner/iam_service_test.go` 验证了空策略（零管理员）被拒。
 
 - **位置**：`backend/api/v1/user_service.go:612-640`
 - **证据**：非 `allUsers` 成员走 `utils.GetUsersByMember`，该方法返回组内**全部**成员（包含正在被删除的用户），随后 `if !user.MemberDeleted && user.Type == END_USER { return true }`。
