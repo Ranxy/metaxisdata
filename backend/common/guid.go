@@ -21,11 +21,13 @@ func GetSchemaFromGUID(guid string) (string, bool) {
 	return list[2], true
 }
 
-// GUIDPrefix returns the prefix of a GUID up to the last dot.
+// GUIDPrefix returns the parent prefix of a GUID: the GUID without its last
+// MetaGUIDSplit-separated segment. It returns "" when the GUID has no parent
+// segment.
 func GUIDPrefix(guid string) string {
-	lastDotIndex := strings.LastIndex(guid, ".")
-	if lastDotIndex == -1 {
+	index := strings.LastIndex(guid, MetaGUIDSplit)
+	if index == -1 {
 		return ""
 	}
-	return guid[:lastDotIndex]
+	return guid[:index]
 }

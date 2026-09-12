@@ -2,6 +2,7 @@
 package common
 
 import (
+	"sync"
 	"time"
 
 	"github.com/google/cel-go/cel"
@@ -21,6 +22,15 @@ var IAMPolicyConditionCELAttributes = []cel.EnvOption{
 	cel.ParserExpressionSizeLimit(celLimit),
 }
 
+// celEnv is built once: the attribute list is a constant, and building an
+// environment per evaluation ran for every binding of every request.
+var celEnv = sync.OnceValues(func() (*cel.Env, error) {
+	return cel.NewEnv(IAMPolicyConditionCELAttributes...)
+})
+
+// EvalBindingCondition reports whether the binding condition holds. A condition
+// that cannot be decided from the bound variables is reported as an error rather
+// than as satisfied: see doEvalBindingCondition.
 func EvalBindingCondition(expr string, requestTime time.Time) (bool, error) {
 	input := map[string]any{
 		CELAttributeRequestTime: requestTime,
@@ -33,7 +43,7 @@ func doEvalBindingCondition(expr string, input map[string]any) (bool, error) {
 		return true, nil
 	}
 
-	e, err := cel.NewEnv(IAMPolicyConditionCELAttributes...)
+	e, err := celEnv()
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to new cel env")
 	}
@@ -60,10 +70,12 @@ func doEvalBindingCondition(expr string, input map[string]any) (bool, error) {
 	// - False
 	// - a residual expression.
 
-	// return true if the result is a residual expression
-	// which means that it passes "the request.time < xxx" check.
+	// A residual means the expression depends on variables we did not bind
+	// (resource.database and friends). Treating that as satisfied used to grant
+	// the binding globally, so fail closed instead: the caller logs the error and
+	// drops the binding.
 	if !celtypes.IsBool(out) {
-		return true, nil
+		return false, errors.Errorf("condition %q depends on variables that are not bound and cannot be evaluated", expr)
 	}
 
 	res, ok := out.Equal(celtypes.True).Value().(bool)
