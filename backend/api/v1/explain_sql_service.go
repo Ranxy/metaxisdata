@@ -674,38 +674,42 @@ func buildCreateTableSQL(t *storepb.TableMetadata) string {
 func parseStructuredResponse(text string) (summary string, sectionsJSON string) {
 	text = strings.TrimSpace(text)
 
-	idx := strings.Index(text, "\n## ")
-	var summaryText string
-	if idx >= 0 {
-		summaryText = strings.TrimSpace(text[:idx])
-		text = text[idx+1:]
-	} else {
-		summaryText = strings.TrimSpace(text)
-		text = ""
-	}
-	if summaryText == "" {
-		summaryText = "SQL Explanation"
-	}
-
+	// Split on every line that starts with "## ", including the very first
+	// line. Looking only for "\n## " left the marker inside the first section
+	// title (rendered as "## ## ...") and, when the model's first line was a
+	// heading, kept the whole answer as the summary with an empty section.
+	var summaryLines []string
+	var contentLines []string
 	var sections []explainSection
-	sectionParts := strings.Split(text, "\n## ")
-	for _, part := range sectionParts {
-		part = strings.TrimSpace(part)
-		if part == "" {
+	currentTitle := ""
+	flush := func() {
+		if currentTitle == "" {
+			return
+		}
+		sections = append(sections, explainSection{
+			Title:   currentTitle,
+			Content: strings.TrimSpace(strings.Join(contentLines, "\n")),
+		})
+		contentLines = nil
+	}
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if heading, ok := strings.CutPrefix(trimmed, "## "); ok {
+			flush()
+			currentTitle = strings.TrimSpace(heading)
 			continue
 		}
-		lineEnd := strings.Index(part, "\n")
-		var title, content string
-		if lineEnd >= 0 {
-			title = strings.TrimSpace(part[:lineEnd])
-			content = strings.TrimSpace(part[lineEnd+1:])
+		if currentTitle == "" {
+			summaryLines = append(summaryLines, line)
 		} else {
-			title = strings.TrimSpace(part)
-			content = ""
+			contentLines = append(contentLines, line)
 		}
-		if title != "" {
-			sections = append(sections, explainSection{Title: title, Content: content})
-		}
+	}
+	flush()
+
+	summaryText := strings.TrimSpace(strings.Join(summaryLines, "\n"))
+	if summaryText == "" {
+		summaryText = "SQL Explanation"
 	}
 
 	if len(sections) == 0 {
