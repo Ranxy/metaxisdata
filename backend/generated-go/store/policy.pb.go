@@ -123,55 +123,9 @@ func (Policy_Resource) EnumDescriptor() ([]byte, []int) {
 	return file_store_policy_proto_rawDescGZIP(), []int{0, 1}
 }
 
-type EnvironmentTierPolicy_EnvironmentTier int32
-
-const (
-	EnvironmentTierPolicy_ENVIRONMENT_TIER_UNSPECIFIED EnvironmentTierPolicy_EnvironmentTier = 0
-	EnvironmentTierPolicy_PROTECTED                    EnvironmentTierPolicy_EnvironmentTier = 1
-	EnvironmentTierPolicy_UNPROTECTED                  EnvironmentTierPolicy_EnvironmentTier = 2
-)
-
-// Enum value maps for EnvironmentTierPolicy_EnvironmentTier.
-var (
-	EnvironmentTierPolicy_EnvironmentTier_name = map[int32]string{
-		0: "ENVIRONMENT_TIER_UNSPECIFIED",
-		1: "PROTECTED",
-		2: "UNPROTECTED",
-	}
-	EnvironmentTierPolicy_EnvironmentTier_value = map[string]int32{
-		"ENVIRONMENT_TIER_UNSPECIFIED": 0,
-		"PROTECTED":                    1,
-		"UNPROTECTED":                  2,
-	}
-)
-
-func (x EnvironmentTierPolicy_EnvironmentTier) Enum() *EnvironmentTierPolicy_EnvironmentTier {
-	p := new(EnvironmentTierPolicy_EnvironmentTier)
-	*p = x
-	return p
-}
-
-func (x EnvironmentTierPolicy_EnvironmentTier) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (EnvironmentTierPolicy_EnvironmentTier) Descriptor() protoreflect.EnumDescriptor {
-	return file_store_policy_proto_enumTypes[2].Descriptor()
-}
-
-func (EnvironmentTierPolicy_EnvironmentTier) Type() protoreflect.EnumType {
-	return &file_store_policy_proto_enumTypes[2]
-}
-
-func (x EnvironmentTierPolicy_EnvironmentTier) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use EnvironmentTierPolicy_EnvironmentTier.Descriptor instead.
-func (EnvironmentTierPolicy_EnvironmentTier) EnumDescriptor() ([]byte, []int) {
-	return file_store_policy_proto_rawDescGZIP(), []int{4, 0}
-}
-
+// Policy enumerates the policy rows the store can query. Only the IAM type and
+// the WORKSPACE/PROJECT resources have callers left; the enum values are kept
+// because they are written to the policy table's text columns.
 type Policy struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -208,52 +162,8 @@ func (*Policy) Descriptor() ([]byte, []int) {
 	return file_store_policy_proto_rawDescGZIP(), []int{0}
 }
 
-type TagPolicy struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// tags is the key - value map for resources.
-	// for example, the environment resource can have the sql review config tag, like "mt.tag.review_config": "reviewConfigs/{review config resource id}"
-	Tags          map[string]string `protobuf:"bytes,1,rep,name=tags,proto3" json:"tags,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *TagPolicy) Reset() {
-	*x = TagPolicy{}
-	mi := &file_store_policy_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *TagPolicy) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*TagPolicy) ProtoMessage() {}
-
-func (x *TagPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_store_policy_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use TagPolicy.ProtoReflect.Descriptor instead.
-func (*TagPolicy) Descriptor() ([]byte, []int) {
-	return file_store_policy_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *TagPolicy) GetTags() map[string]string {
-	if x != nil {
-		return x.Tags
-	}
-	return nil
-}
-
+// The policy table stores the workspace IAM policy as IamPolicy. TagPolicy and
+// EnvironmentTierPolicy were deleted: no code ever produced or consumed them.
 type Binding struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The role that is assigned to the members.
@@ -273,7 +183,7 @@ type Binding struct {
 
 func (x *Binding) Reset() {
 	*x = Binding{}
-	mi := &file_store_policy_proto_msgTypes[2]
+	mi := &file_store_policy_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -285,7 +195,7 @@ func (x *Binding) String() string {
 func (*Binding) ProtoMessage() {}
 
 func (x *Binding) ProtoReflect() protoreflect.Message {
-	mi := &file_store_policy_proto_msgTypes[2]
+	mi := &file_store_policy_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -298,7 +208,7 @@ func (x *Binding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Binding.ProtoReflect.Descriptor instead.
 func (*Binding) Descriptor() ([]byte, []int) {
-	return file_store_policy_proto_rawDescGZIP(), []int{2}
+	return file_store_policy_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *Binding) GetRole() string {
@@ -333,7 +243,7 @@ type IamPolicy struct {
 
 func (x *IamPolicy) Reset() {
 	*x = IamPolicy{}
-	mi := &file_store_policy_proto_msgTypes[3]
+	mi := &file_store_policy_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -345,7 +255,7 @@ func (x *IamPolicy) String() string {
 func (*IamPolicy) ProtoMessage() {}
 
 func (x *IamPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_store_policy_proto_msgTypes[3]
+	mi := &file_store_policy_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -358,7 +268,7 @@ func (x *IamPolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IamPolicy.ProtoReflect.Descriptor instead.
 func (*IamPolicy) Descriptor() ([]byte, []int) {
-	return file_store_policy_proto_rawDescGZIP(), []int{3}
+	return file_store_policy_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *IamPolicy) GetBindings() []*Binding {
@@ -366,59 +276,6 @@ func (x *IamPolicy) GetBindings() []*Binding {
 		return x.Bindings
 	}
 	return nil
-}
-
-// EnvironmentTierPolicy is the tier of an environment.
-type EnvironmentTierPolicy struct {
-	state           protoimpl.MessageState                `protogen:"open.v1"`
-	EnvironmentTier EnvironmentTierPolicy_EnvironmentTier `protobuf:"varint,1,opt,name=environment_tier,json=environmentTier,proto3,enum=metaxisdata.store.EnvironmentTierPolicy_EnvironmentTier" json:"environment_tier,omitempty"`
-	Color           string                                `protobuf:"bytes,2,opt,name=color,proto3" json:"color,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *EnvironmentTierPolicy) Reset() {
-	*x = EnvironmentTierPolicy{}
-	mi := &file_store_policy_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *EnvironmentTierPolicy) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*EnvironmentTierPolicy) ProtoMessage() {}
-
-func (x *EnvironmentTierPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_store_policy_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use EnvironmentTierPolicy.ProtoReflect.Descriptor instead.
-func (*EnvironmentTierPolicy) Descriptor() ([]byte, []int) {
-	return file_store_policy_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *EnvironmentTierPolicy) GetEnvironmentTier() EnvironmentTierPolicy_EnvironmentTier {
-	if x != nil {
-		return x.EnvironmentTier
-	}
-	return EnvironmentTierPolicy_ENVIRONMENT_TIER_UNSPECIFIED
-}
-
-func (x *EnvironmentTierPolicy) GetColor() string {
-	if x != nil {
-		return x.Color
-	}
-	return ""
 }
 
 var File_store_policy_proto protoreflect.FileDescriptor
@@ -435,25 +292,13 @@ const file_store_policy_proto_rawDesc = "" +
 	"\x14RESOURCE_UNSPECIFIED\x10\x00\x12\r\n" +
 	"\tWORKSPACE\x10\x01\x12\x0f\n" +
 	"\vENVIRONMENT\x10\x02\x12\v\n" +
-	"\aPROJECT\x10\x03\"\x80\x01\n" +
-	"\tTagPolicy\x12:\n" +
-	"\x04tags\x18\x01 \x03(\v2&.metaxisdata.store.TagPolicy.TagsEntryR\x04tags\x1a7\n" +
-	"\tTagsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"h\n" +
+	"\aPROJECT\x10\x03\"h\n" +
 	"\aBinding\x12\x12\n" +
 	"\x04role\x18\x01 \x01(\tR\x04role\x12\x18\n" +
 	"\amembers\x18\x02 \x03(\tR\amembers\x12/\n" +
 	"\tcondition\x18\x03 \x01(\v2\x11.google.type.ExprR\tcondition\"C\n" +
 	"\tIamPolicy\x126\n" +
-	"\bbindings\x18\x01 \x03(\v2\x1a.metaxisdata.store.BindingR\bbindings\"\xe7\x01\n" +
-	"\x15EnvironmentTierPolicy\x12c\n" +
-	"\x10environment_tier\x18\x01 \x01(\x0e28.metaxisdata.store.EnvironmentTierPolicy.EnvironmentTierR\x0fenvironmentTier\x12\x14\n" +
-	"\x05color\x18\x02 \x01(\tR\x05color\"S\n" +
-	"\x0fEnvironmentTier\x12 \n" +
-	"\x1cENVIRONMENT_TIER_UNSPECIFIED\x10\x00\x12\r\n" +
-	"\tPROTECTED\x10\x01\x12\x0f\n" +
-	"\vUNPROTECTED\x10\x02B\x14Z\x12generated-go/storeb\x06proto3"
+	"\bbindings\x18\x01 \x03(\v2\x1a.metaxisdata.store.BindingR\bbindingsB\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
 	file_store_policy_proto_rawDescOnce sync.Once
@@ -467,30 +312,24 @@ func file_store_policy_proto_rawDescGZIP() []byte {
 	return file_store_policy_proto_rawDescData
 }
 
-var file_store_policy_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_store_policy_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_store_policy_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_store_policy_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_store_policy_proto_goTypes = []any{
-	(Policy_Type)(0),                           // 0: metaxisdata.store.Policy.Type
-	(Policy_Resource)(0),                       // 1: metaxisdata.store.Policy.Resource
-	(EnvironmentTierPolicy_EnvironmentTier)(0), // 2: metaxisdata.store.EnvironmentTierPolicy.EnvironmentTier
-	(*Policy)(nil),                             // 3: metaxisdata.store.Policy
-	(*TagPolicy)(nil),                          // 4: metaxisdata.store.TagPolicy
-	(*Binding)(nil),                            // 5: metaxisdata.store.Binding
-	(*IamPolicy)(nil),                          // 6: metaxisdata.store.IamPolicy
-	(*EnvironmentTierPolicy)(nil),              // 7: metaxisdata.store.EnvironmentTierPolicy
-	nil,                                        // 8: metaxisdata.store.TagPolicy.TagsEntry
-	(*expr.Expr)(nil),                          // 9: google.type.Expr
+	(Policy_Type)(0),     // 0: metaxisdata.store.Policy.Type
+	(Policy_Resource)(0), // 1: metaxisdata.store.Policy.Resource
+	(*Policy)(nil),       // 2: metaxisdata.store.Policy
+	(*Binding)(nil),      // 3: metaxisdata.store.Binding
+	(*IamPolicy)(nil),    // 4: metaxisdata.store.IamPolicy
+	(*expr.Expr)(nil),    // 5: google.type.Expr
 }
 var file_store_policy_proto_depIdxs = []int32{
-	8, // 0: metaxisdata.store.TagPolicy.tags:type_name -> metaxisdata.store.TagPolicy.TagsEntry
-	9, // 1: metaxisdata.store.Binding.condition:type_name -> google.type.Expr
-	5, // 2: metaxisdata.store.IamPolicy.bindings:type_name -> metaxisdata.store.Binding
-	2, // 3: metaxisdata.store.EnvironmentTierPolicy.environment_tier:type_name -> metaxisdata.store.EnvironmentTierPolicy.EnvironmentTier
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	5, // 0: metaxisdata.store.Binding.condition:type_name -> google.type.Expr
+	3, // 1: metaxisdata.store.IamPolicy.bindings:type_name -> metaxisdata.store.Binding
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_store_policy_proto_init() }
@@ -503,8 +342,8 @@ func file_store_policy_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_policy_proto_rawDesc), len(file_store_policy_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   6,
+			NumEnums:      2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

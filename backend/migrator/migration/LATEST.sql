@@ -54,12 +54,13 @@ ALTER SEQUENCE setting_id_seq RESTART WITH 101;
 
 
 -- Role
+-- The role CRUD was deleted; no Go code reads or writes this table.
 CREATE TABLE role (
     id bigserial PRIMARY KEY,
     resource_id text NOT NULL,
     name text NOT NULL,
     description text NOT NULL,
-    -- Stored as RolePermissions (proto/store/store/role.proto)
+    -- permissions has no proto message left (RolePermissions was deleted).
     permissions jsonb NOT NULL DEFAULT '{}',
     -- saved for future use
     payload jsonb NOT NULL DEFAULT '{}'
@@ -71,19 +72,18 @@ ALTER SEQUENCE role_id_seq RESTART WITH 101;
 
 
 -- Policy
--- policy stores the policies for each resources.
+-- policy stores the workspace IAM policy; only the WORKSPACE/IAM row is used.
 CREATE TABLE policy (
     id serial PRIMARY KEY,
     enforce boolean NOT NULL DEFAULT TRUE,
     updated_at timestamptz NOT NULL DEFAULT now(),
-    -- resource_type: WORKSPACE, ENVIRONMENT, PROJECT
-    -- Enum: Policy.Resource (proto/store/store/policy.proto)
+    -- resource_type: only WORKSPACE is produced now.
     resource_type text NOT NULL,
     -- resource: resource name in format like "environments/{environment}", "projects/{project}", etc.
     resource TEXT NOT NULL,
-    -- Enum: Policy.Type (proto/store/store/policy.proto)
+    -- type: only IAM is produced now.
     type text NOT NULL,
-    -- Stored as different types based on policy type (proto/store/store/policy.proto):
+    -- Stored as IamPolicy (proto/store/store/policy.proto) for workspace IAM rows.
     payload jsonb NOT NULL DEFAULT '{}',
     inherit_from_parent boolean NOT NULL DEFAULT TRUE
 );
@@ -94,13 +94,14 @@ ALTER SEQUENCE policy_id_seq RESTART WITH 101;
 
 
 -- Project
+-- No Go code reads or writes this table; db.project still references it.
 CREATE TABLE project (
     id serial PRIMARY KEY,
     deleted boolean NOT NULL DEFAULT FALSE,
     name text NOT NULL,
     resource_id text NOT NULL,
     data_classification_config_id text NOT NULL DEFAULT '',
-    -- Stored as Project (proto/store/store/project.proto)
+    -- setting has no proto message left (Project was deleted).
     setting jsonb NOT NULL DEFAULT '{}'
 );
 

@@ -467,17 +467,6 @@
         
           
           <li>
-            <a href="#store%2fexplain_sql.proto">store/explain_sql.proto</a>
-            <ul>
-              
-              
-              
-              
-            </ul>
-          </li>
-        
-          
-          <li>
             <a href="#store%2fgroup.proto">store/group.proto</a>
             <ul>
               
@@ -609,10 +598,6 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.store.EnvironmentTierPolicy"><span class="badge">M</span>EnvironmentTierPolicy</a>
-                </li>
-              
-                <li>
                   <a href="#metaxisdata.store.IamPolicy"><span class="badge">M</span>IamPolicy</a>
                 </li>
               
@@ -620,18 +605,6 @@
                   <a href="#metaxisdata.store.Policy"><span class="badge">M</span>Policy</a>
                 </li>
               
-                <li>
-                  <a href="#metaxisdata.store.TagPolicy"><span class="badge">M</span>TagPolicy</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.store.TagPolicy.TagsEntry"><span class="badge">M</span>TagPolicy.TagsEntry</a>
-                </li>
-              
-              
-                <li>
-                  <a href="#metaxisdata.store.EnvironmentTierPolicy.EnvironmentTier"><span class="badge">E</span>EnvironmentTierPolicy.EnvironmentTier</a>
-                </li>
               
                 <li>
                   <a href="#metaxisdata.store.Policy.Resource"><span class="badge">E</span>Policy.Resource</a>
@@ -640,44 +613,6 @@
                 <li>
                   <a href="#metaxisdata.store.Policy.Type"><span class="badge">E</span>Policy.Type</a>
                 </li>
-              
-              
-              
-            </ul>
-          </li>
-        
-          
-          <li>
-            <a href="#store%2fproject.proto">store/project.proto</a>
-            <ul>
-              
-                <li>
-                  <a href="#metaxisdata.store.Label"><span class="badge">M</span>Label</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.store.Project"><span class="badge">M</span>Project</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.store.Project.LabelsEntry"><span class="badge">M</span>Project.LabelsEntry</a>
-                </li>
-              
-              
-              
-              
-            </ul>
-          </li>
-        
-          
-          <li>
-            <a href="#store%2frole.proto">store/role.proto</a>
-            <ul>
-              
-                <li>
-                  <a href="#metaxisdata.store.RolePermissions"><span class="badge">M</span>RolePermissions</a>
-                </li>
-              
               
               
               
@@ -4789,20 +4724,6 @@ Examples: GEOMETRY_GRID, GEOGRAPHY_GRID, GEOMETRY_AUTO_GRID, GEOGRAPHY_AUTO_GRID
     
       
       <div class="file-heading">
-        <h2 id="store/explain_sql.proto">store/explain_sql.proto</h2><a href="#title">Top</a>
-      </div>
-      <p></p>
-
-      
-
-      
-
-      
-
-      
-    
-      
-      <div class="file-heading">
         <h2 id="store/group.proto">store/group.proto</h2><a href="#title">Top</a>
       </div>
       <p></p>
@@ -5846,7 +5767,7 @@ It is used to determine whether the table names and database names are case sens
 
       
         <h3 id="metaxisdata.store.Binding">Binding</h3>
-        <p></p>
+        <p>The policy table stores the workspace IAM policy as IamPolicy. TagPolicy and</p><p>EnvironmentTierPolicy were deleted: no code ever produced or consumed them.</p>
 
         
           <table class="field-table">
@@ -5888,37 +5809,6 @@ If the condition evaluates to false, then this binding does not apply to the cur
 
         
       
-        <h3 id="metaxisdata.store.EnvironmentTierPolicy">EnvironmentTierPolicy</h3>
-        <p>EnvironmentTierPolicy is the tier of an environment.</p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>environment_tier</td>
-                  <td><a href="#metaxisdata.store.EnvironmentTierPolicy.EnvironmentTier">EnvironmentTierPolicy.EnvironmentTier</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>color</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
         <h3 id="metaxisdata.store.IamPolicy">IamPolicy</h3>
         <p></p>
 
@@ -5945,98 +5835,13 @@ A binding binds one or more members or groups to a single role. </p></td>
         
       
         <h3 id="metaxisdata.store.Policy">Policy</h3>
-        <p></p>
+        <p>Policy enumerates the policy rows the store can query. Only the IAM type and</p><p>the WORKSPACE/PROJECT resources have callers left; the enum values are kept</p><p>because they are written to the policy table's text columns.</p>
 
         
 
         
       
-        <h3 id="metaxisdata.store.TagPolicy">TagPolicy</h3>
-        <p></p>
 
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>tags</td>
-                  <td><a href="#metaxisdata.store.TagPolicy.TagsEntry">TagPolicy.TagsEntry</a></td>
-                  <td>repeated</td>
-                  <td><p>tags is the key - value map for resources.
-for example, the environment resource can have the sql review config tag, like &#34;mt.tag.review_config&#34;: &#34;reviewConfigs/{review config resource id}&#34; </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.store.TagPolicy.TagsEntry">TagPolicy.TagsEntry</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>key</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>value</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-
-      
-        <h3 id="metaxisdata.store.EnvironmentTierPolicy.EnvironmentTier">EnvironmentTierPolicy.EnvironmentTier</h3>
-        <p></p>
-        <table class="enum-table">
-          <thead>
-            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
-          </thead>
-          <tbody>
-            
-              <tr>
-                <td>ENVIRONMENT_TIER_UNSPECIFIED</td>
-                <td>0</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>PROTECTED</td>
-                <td>1</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>UNPROTECTED</td>
-                <td>2</td>
-                <td><p></p></td>
-              </tr>
-            
-          </tbody>
-        </table>
       
         <h3 id="metaxisdata.store.Policy.Resource">Policy.Resource</h3>
         <p></p>
@@ -6101,167 +5906,6 @@ for example, the environment resource can have the sql review config tag, like &
             
           </tbody>
         </table>
-      
-
-      
-
-      
-    
-      
-      <div class="file-heading">
-        <h2 id="store/project.proto">store/project.proto</h2><a href="#title">Top</a>
-      </div>
-      <p></p>
-
-      
-        <h3 id="metaxisdata.store.Label">Label</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>value</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>color</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>group</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.store.Project">Project</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>issue_labels</td>
-                  <td><a href="#metaxisdata.store.Label">Label</a></td>
-                  <td>repeated</td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>postgres_database_tenant_mode</td>
-                  <td><a href="#bool">bool</a></td>
-                  <td></td>
-                  <td><p>Whether to enable the database tenant mode for PostgreSQL.
-If enabled, the issue will be created with the prepend &#34;set role &lt;db_owner&gt;&#34; statement. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>labels</td>
-                  <td><a href="#metaxisdata.store.Project.LabelsEntry">Project.LabelsEntry</a></td>
-                  <td>repeated</td>
-                  <td><p>Labels are key-value pairs that can be attached to the project.
-For example, { &#34;environment&#34;: &#34;production&#34;, &#34;team&#34;: &#34;backend&#34; } </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.store.Project.LabelsEntry">Project.LabelsEntry</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>key</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>value</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-
-      
-
-      
-
-      
-    
-      
-      <div class="file-heading">
-        <h2 id="store/role.proto">store/role.proto</h2><a href="#title">Top</a>
-      </div>
-      <p></p>
-
-      
-        <h3 id="metaxisdata.store.RolePermissions">RolePermissions</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>permissions</td>
-                  <td><a href="#string">string</a></td>
-                  <td>repeated</td>
-                  <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-
       
 
       

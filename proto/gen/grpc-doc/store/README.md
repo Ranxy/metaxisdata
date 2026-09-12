@@ -76,7 +76,6 @@
     - [TablePartitionMetadata.Type](#metaxisdata-store-TablePartitionMetadata-Type)
     - [TaskMetadata.State](#metaxisdata-store-TaskMetadata-State)
   
-- [store/explain_sql.proto](#store_explain_sql-proto)
 - [store/group.proto](#store_group-proto)
     - [GroupMember](#metaxisdata-store-GroupMember)
     - [GroupPayload](#metaxisdata-store-GroupPayload)
@@ -110,23 +109,11 @@
   
 - [store/policy.proto](#store_policy-proto)
     - [Binding](#metaxisdata-store-Binding)
-    - [EnvironmentTierPolicy](#metaxisdata-store-EnvironmentTierPolicy)
     - [IamPolicy](#metaxisdata-store-IamPolicy)
     - [Policy](#metaxisdata-store-Policy)
-    - [TagPolicy](#metaxisdata-store-TagPolicy)
-    - [TagPolicy.TagsEntry](#metaxisdata-store-TagPolicy-TagsEntry)
   
-    - [EnvironmentTierPolicy.EnvironmentTier](#metaxisdata-store-EnvironmentTierPolicy-EnvironmentTier)
     - [Policy.Resource](#metaxisdata-store-Policy-Resource)
     - [Policy.Type](#metaxisdata-store-Policy-Type)
-  
-- [store/project.proto](#store_project-proto)
-    - [Label](#metaxisdata-store-Label)
-    - [Project](#metaxisdata-store-Project)
-    - [Project.LabelsEntry](#metaxisdata-store-Project-LabelsEntry)
-  
-- [store/role.proto](#store_role-proto)
-    - [RolePermissions](#metaxisdata-store-RolePermissions)
   
 - [store/setting.proto](#store_setting-proto)
     - [EnvironmentSetting](#metaxisdata-store-EnvironmentSetting)
@@ -1488,22 +1475,6 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 
 
 
-<a name="store_explain_sql-proto"></a>
-<p align="right"><a href="#top">Top</a></p>
-
-## store/explain_sql.proto
-
-
- 
-
- 
-
- 
-
- 
-
-
-
 <a name="store_group-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
@@ -1919,7 +1890,8 @@ Instance is the proto for instances.
 <a name="metaxisdata-store-Binding"></a>
 
 ### Binding
-
+The policy table stores the workspace IAM policy as IamPolicy. TagPolicy and
+EnvironmentTierPolicy were deleted: no code ever produced or consumed them.
 
 
 | Field | Type | Label | Description |
@@ -1927,22 +1899,6 @@ Instance is the proto for instances.
 | role | [string](#string) |  | The role that is assigned to the members. Format: roles/{role} |
 | members | [string](#string) | repeated | Specifies the principals requesting access for a resource. For users, the member should be: users/{userUID} For groups, the member should be: groups/{email} |
 | condition | [google.type.Expr](#google-type-Expr) |  | The condition that is associated with this binding. If the condition evaluates to true, then this binding applies to the current request. If the condition evaluates to false, then this binding does not apply to the current request. However, a different role binding might grant the same role to one or more of the principals in this binding. |
-
-
-
-
-
-
-<a name="metaxisdata-store-EnvironmentTierPolicy"></a>
-
-### EnvironmentTierPolicy
-EnvironmentTierPolicy is the tier of an environment.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| environment_tier | [EnvironmentTierPolicy.EnvironmentTier](#metaxisdata-store-EnvironmentTierPolicy-EnvironmentTier) |  |  |
-| color | [string](#string) |  |  |
 
 
 
@@ -1967,57 +1923,15 @@ EnvironmentTierPolicy is the tier of an environment.
 <a name="metaxisdata-store-Policy"></a>
 
 ### Policy
-
-
-
-
-
-
-
-<a name="metaxisdata-store-TagPolicy"></a>
-
-### TagPolicy
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| tags | [TagPolicy.TagsEntry](#metaxisdata-store-TagPolicy-TagsEntry) | repeated | tags is the key - value map for resources. for example, the environment resource can have the sql review config tag, like &#34;mt.tag.review_config&#34;: &#34;reviewConfigs/{review config resource id}&#34; |
-
-
-
-
-
-
-<a name="metaxisdata-store-TagPolicy-TagsEntry"></a>
-
-### TagPolicy.TagsEntry
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| key | [string](#string) |  |  |
-| value | [string](#string) |  |  |
+Policy enumerates the policy rows the store can query. Only the IAM type and
+the WORKSPACE/PROJECT resources have callers left; the enum values are kept
+because they are written to the policy table&#39;s text columns.
 
 
 
 
 
  
-
-
-<a name="metaxisdata-store-EnvironmentTierPolicy-EnvironmentTier"></a>
-
-### EnvironmentTierPolicy.EnvironmentTier
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| ENVIRONMENT_TIER_UNSPECIFIED | 0 |  |
-| PROTECTED | 1 |  |
-| UNPROTECTED | 2 |  |
-
 
 
 <a name="metaxisdata-store-Policy-Resource"></a>
@@ -2045,103 +1959,6 @@ EnvironmentTierPolicy is the tier of an environment.
 | IAM | 1 |  |
 | TAG | 2 |  |
 
-
- 
-
- 
-
- 
-
-
-
-<a name="store_project-proto"></a>
-<p align="right"><a href="#top">Top</a></p>
-
-## store/project.proto
-
-
-
-<a name="metaxisdata-store-Label"></a>
-
-### Label
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| value | [string](#string) |  |  |
-| color | [string](#string) |  |  |
-| group | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-Project"></a>
-
-### Project
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| issue_labels | [Label](#metaxisdata-store-Label) | repeated |  |
-| postgres_database_tenant_mode | [bool](#bool) |  | Whether to enable the database tenant mode for PostgreSQL. If enabled, the issue will be created with the prepend &#34;set role &lt;db_owner&gt;&#34; statement. |
-| labels | [Project.LabelsEntry](#metaxisdata-store-Project-LabelsEntry) | repeated | Labels are key-value pairs that can be attached to the project. For example, { &#34;environment&#34;: &#34;production&#34;, &#34;team&#34;: &#34;backend&#34; } |
-
-
-
-
-
-
-<a name="metaxisdata-store-Project-LabelsEntry"></a>
-
-### Project.LabelsEntry
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| key | [string](#string) |  |  |
-| value | [string](#string) |  |  |
-
-
-
-
-
- 
-
- 
-
- 
-
- 
-
-
-
-<a name="store_role-proto"></a>
-<p align="right"><a href="#top">Top</a></p>
-
-## store/role.proto
-
-
-
-<a name="metaxisdata-store-RolePermissions"></a>
-
-### RolePermissions
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| permissions | [string](#string) | repeated |  |
-
-
-
-
-
- 
 
  
 
