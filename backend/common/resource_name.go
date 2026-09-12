@@ -23,28 +23,11 @@ const (
 	ProjectNamePrefix          = "projects/"
 	EnvironmentNamePrefix      = "environments/"
 	InstanceNamePrefix         = "instances/"
-	PolicyNamePrefix           = "policies/"
 	DatabaseIDPrefix           = "databases/"
-	InstanceRolePrefix         = "roles/"
 	UserNamePrefix             = "users/"
 	IdentityProviderNamePrefix = "idps/"
-	SettingNamePrefix          = "settings/"
 	RolePrefix                 = "roles/"
-	WebhookIDPrefix            = "webhooks/"
-	DatabaseGroupNamePrefix    = "databaseGroups/"
-	SchemaNamePrefix           = "schemas/"
-	TableNamePrefix            = "tables/"
-	LogNamePrefix              = "logs/"
-	DeploymentConfigPrefix     = "deploymentConfigs/"
-	AuditLogPrefix             = "auditLogs/"
 	GroupPrefix                = "groups/"
-
-	SchemaSuffix   = "/schema"
-	MetadataSuffix = "/metadata"
-	CatalogSuffix  = "/catalog"
-
-	UserBindingPrefix  = "user:"
-	GroupBindingPrefix = "group:"
 )
 
 // GetProjectID returns the project ID from a resource name.
@@ -54,36 +37,6 @@ func GetProjectID(name string) (string, error) {
 		return "", err
 	}
 	return tokens[0], nil
-}
-
-// GetProjectIDDatabaseGroupID returns the project ID and database group ID from a resource name.
-func GetProjectIDDatabaseGroupID(name string) (string, string, error) {
-	tokens, err := GetNameParentTokens(name, ProjectNamePrefix, DatabaseGroupNamePrefix)
-	if err != nil {
-		return "", "", err
-	}
-	return tokens[0], tokens[1], nil
-}
-
-// GetSchemaTableName returns the schema and table names from a resource name.
-func GetSchemaTableName(name string) (string, string, error) {
-	tokens, err := GetNameParentTokens(name, SchemaNamePrefix, TableNamePrefix)
-	if err != nil {
-		return "", "", err
-	}
-	if tokens[0] == "-" {
-		tokens[0] = ""
-	}
-	return tokens[0], tokens[1], nil
-}
-
-// GetProjectIDWebhookID returns the project ID and webhook ID from a resource name.
-func GetProjectIDWebhookID(name string) (string, string, error) {
-	tokens, err := GetNameParentTokens(name, ProjectNamePrefix, WebhookIDPrefix)
-	if err != nil {
-		return "", "", err
-	}
-	return tokens[0], tokens[1], nil
 }
 
 // GetUIDFromName returns the UID from a resource name.
@@ -97,15 +50,6 @@ func GetUIDFromName(name, prefix string) (int, error) {
 		return 0, errors.Errorf("invalid ID %q", tokens[0])
 	}
 	return uid, nil
-}
-
-// TrimSuffixAndGetInstanceDatabaseID trims the suffix from the name and returns the instance ID and database ID.
-func TrimSuffixAndGetInstanceDatabaseID(name string, suffix string) (string, string, error) {
-	trimmed, err := TrimSuffix(name, suffix)
-	if err != nil {
-		return "", "", err
-	}
-	return GetInstanceDatabaseID(trimmed)
 }
 
 // GetEnvironmentID returns the environment ID from a resource name.
@@ -151,27 +95,9 @@ func GetUserEmail(name string) (string, error) {
 	return tokens[0], nil
 }
 
-// GetSettingName returns the setting name from a resource name.
-func GetSettingName(name string) (string, error) {
-	token, err := GetNameParentTokens(name, SettingNamePrefix)
-	if err != nil {
-		return "", err
-	}
-	return token[0], nil
-}
-
 // GetIdentityProviderID returns the identity provider ID from a resource name.
 func GetIdentityProviderID(name string) (string, error) {
 	tokens, err := GetNameParentTokens(name, IdentityProviderNamePrefix)
-	if err != nil {
-		return "", err
-	}
-	return tokens[0], nil
-}
-
-// GetRoleID returns the role ID from a resource name.
-func GetRoleID(name string) (string, error) {
-	tokens, err := GetNameParentTokens(name, RolePrefix)
 	if err != nil {
 		return "", err
 	}
@@ -185,14 +111,6 @@ func GetGroupEmail(name string) (string, error) {
 		return "", err
 	}
 	return tokens[0], nil
-}
-
-// TrimSuffix trims the suffix from the name and returns the trimmed name.
-func TrimSuffix(name, suffix string) (string, error) {
-	if !strings.HasSuffix(name, suffix) {
-		return "", errors.Errorf("invalid request %q with suffix %q", name, suffix)
-	}
-	return strings.TrimSuffix(name, suffix), nil
 }
 
 // GetNameParentTokens returns the tokens from a resource name.
@@ -218,10 +136,6 @@ func FormatWorkspace(id string) string {
 
 func FormatProject(id string) string {
 	return fmt.Sprintf("%s%s", ProjectNamePrefix, id)
-}
-
-func FormatUserEmail(email string) string {
-	return fmt.Sprintf("%s%s", UserNamePrefix, email)
 }
 
 func FormatUserUID(uid int) string {

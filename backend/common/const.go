@@ -4,7 +4,6 @@ package common
 const (
 	WorkspaceAdmin  = "workspaceAdmin"
 	WorkspaceMember = "workspaceMember"
-	ProjectOwner    = "projectOwner"
 )
 
 const (
@@ -13,9 +12,6 @@ const (
 
 	// AllUsers is the email of the pseudo allUsers account.
 	AllUsers = "allUsers"
-
-	// PrincipalIDForFirstUser is the principal id for the first user in workspace.
-	PrincipalIDForFirstUser = 101
 
 	// ServiceAccountAccessKeyPrefix is the prefix for service account access key.
 	ServiceAccountAccessKeyPrefix = "sa_"
@@ -27,20 +23,9 @@ const DefaultInstanceMaximumConnections = 10
 const (
 	// DefaultProjectID is the resource ID for the default project.
 	DefaultProjectID = "default"
-	// DefaultTestEnvironmentID is the initial resource ID for the test environment.
-	// This can be mutated by the user. But for now this is only used by onboarding flow to create
-	// a test instance after first signup, so it's safe to refer it.
-	DefaultTestEnvironmentID = "test"
-	// DefaultProdEnvironmentID is the initial resource ID for the prod environment.
-	// This can be mutated by the user. But for now this is only used by onboarding flow to create
-	// a prod instance after first signup, so it's safe to refer it.
-	DefaultProdEnvironmentID = "prod"
 )
 
 const (
-	// MetaInsertBatchSize is the batch size for inserting meta resources.
-	MetaInsertBatchSize = 100
-
 	DefaultMetaSubLevelLimit = 21
 
 	// MetaGUIDSplit is the separator for GUID in meta queries.

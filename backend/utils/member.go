@@ -23,50 +23,6 @@ func validateIAMBinding(binding *storepb.Binding) bool {
 	return ok
 }
 
-// GetUsersByRoleInIAMPolicy gets users in the iam policy.
-// func GetUsersByRoleInIAMPolicy(ctx context.Context, stores *store.Store, role string, policies ...*storepb.IamPolicy) []*store.UserMessage {
-// 	roleFullName := common.FormatRole(role)
-// 	var users []*store.UserMessage
-
-// 	seen := map[string]bool{}
-// 	for _, policy := range policies {
-// 		for _, binding := range policy.Bindings {
-// 			if binding.Role != roleFullName {
-// 				continue
-// 			}
-
-// 			if !validateIAMBinding(binding) {
-// 				continue
-// 			}
-
-// 			for _, member := range binding.Members {
-// 				if member == common.AllUsers {
-// 					// TODO(d): make it more efficient.
-// 					allUsers, err := stores.ListUsers(ctx, &store.FindUserMessage{
-// 						ShowDeleted: false,
-// 					})
-// 					if err != nil {
-// 						slog.Error("failed to list all users for role", slog.String("role", role), log.WithError(err))
-// 						continue
-// 					}
-// 					return allUsers
-// 				}
-// 				userMessages := GetUsersByMember(ctx, stores, member)
-
-// 				for _, user := range userMessages {
-// 					if seen[user.Email] {
-// 						continue
-// 					}
-// 					seen[user.Email] = true
-// 					users = append(users, user)
-// 				}
-// 			}
-// 		}
-// 	}
-
-// 	return users
-// }
-
 // GetUsersByMember gets user messages by member.
 // The member should in users/{uid} or groups/{email} format.
 func GetUsersByMember(ctx context.Context, stores *store.Store, member string) []*store.UserMessage {
@@ -171,50 +127,6 @@ func GetUserIAMPolicyBindings(ctx context.Context, stores *store.Store, user *st
 		}
 	}
 	return bindings
-}
-
-// MemberContainsUser checks if a member (user or group) contains the specified user.
-// The member should be in users/{uid} or groups/{email} format.
-func MemberContainsUser(ctx context.Context, stores *store.Store, member string, user *store.UserMessage) bool {
-	if member == common.AllUsers {
-		return true
-	}
-
-	// Check if member is a user
-	if strings.HasPrefix(member, common.UserNamePrefix) {
-		memberUID, err := common.GetUserID(member)
-		if err != nil {
-			slog.Error("failed to parse user id", slog.String("member", member), log.WithError(err))
-			return false
-		}
-		return memberUID == user.ID
-	}
-
-	// Check if member is a group
-	if strings.HasPrefix(member, common.GroupPrefix) {
-		groupEmail, err := common.GetGroupEmail(member)
-		if err != nil {
-			slog.Error("failed to parse group email", slog.String("group", member), log.WithError(err))
-			return false
-		}
-		group, err := stores.GetGroup(ctx, groupEmail)
-		if err != nil {
-			slog.Error("failed to get group", slog.String("group", member), log.WithError(err))
-			return false
-		}
-		if group == nil {
-			slog.Error("cannot find group", slog.String("group", member))
-			return false
-		}
-		userIDFullName := common.FormatUserUID(user.ID)
-		for _, groupMember := range group.Payload.Members {
-			if userIDFullName == groupMember.Member {
-				return true
-			}
-		}
-	}
-
-	return false
 }
 
 // GetUserRolesInIamPolicy returns the `uniq`ed roles of a user, including workspace roles and the roles in the projects.

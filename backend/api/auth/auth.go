@@ -326,22 +326,6 @@ func getAuthContext(fullMethod string) (*common.AuthContext, error) {
 	if !ok {
 		return nil, errs.Errorf("invalid permission extension, full method name %q", fullMethod)
 	}
-	authMethodAny := proto.GetExtension(md, v1pb.E_AuthMethod)
-	am, ok := authMethodAny.(v1pb.AuthMethod)
-	if !ok {
-		return nil, errs.Errorf("invalid auth method extension, full method name %q", fullMethod)
-	}
-	var authMethod common.AuthMethod
-	switch am {
-	case v1pb.AuthMethod_AUTH_METHOD_UNSPECIFIED:
-		authMethod = common.AuthMethodUnspecified
-	case v1pb.AuthMethod_IAM:
-		authMethod = common.AuthMethodIAM
-	case v1pb.AuthMethod_CUSTOM:
-		authMethod = common.AuthMethodCustom
-	default:
-		return nil, errs.Errorf("unknown auth method %v for full method name %q", am, fullMethod)
-	}
 	auditAny := proto.GetExtension(md, v1pb.E_Audit)
 	audit, ok := auditAny.(bool)
 	if !ok {
@@ -351,7 +335,6 @@ func getAuthContext(fullMethod string) (*common.AuthContext, error) {
 	return &common.AuthContext{
 		AllowWithoutCredential: allowWithoutCredential,
 		Permission:             permission,
-		AuthMethod:             authMethod,
 		Audit:                  audit,
 	}, nil
 }

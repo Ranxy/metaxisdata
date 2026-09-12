@@ -23,44 +23,8 @@ const (
 	SizeExceeded   Code = 7
 
 	// 101 ~ 199 db error.
-	DBConnectionFailure Code = 101
-	DBExecutionError    Code = 102
-
-	// 201 db migration error
-	// Db migration is a core feature, so we separate it from the db error.
-	MigrationSchemaMissing  Code = 201
-	MigrationAlreadyApplied Code = 202
-	MigrationOutOfOrder     Code = 203
-	// MigrationBaselineMissing is no longer used.
-	// MigrationBaselineMissing Code = 204.
-	MigrationPending Code = 205
-	MigrationFailed  Code = 206
-
-	// 301 task error.
-	TaskTimingNotAllowed Code = 301
-
-	// 401 task sql type error.
-	TaskTypeNotDML         Code = 401
-	TaskTypeNotDDL         Code = 402
-	TaskTypeDropDatabase   Code = 403
-	TaskTypeCreateDatabase Code = 404
-	TaskTypeDropTable      Code = 405
-	TaskTypeDropIndex      Code = 406
-	TaskTypeDropColumn     Code = 407
-	TaskTypeDropPrimaryKey Code = 408
-	TaskTypeDropForeignKey Code = 409
-	TaskTypeDropCheck      Code = 410
+	DBExecutionError Code = 102
 )
-
-// Int returns the int type of code.
-func (c Code) Int() int {
-	return int(c)
-}
-
-// Int32 returns the int32 type of code.
-func (c Code) Int32() int32 {
-	return int32(c)
-}
 
 // Error represents an application-specific error. Application errors can be
 // unwrapped by the caller to extract out the code & message.
@@ -93,27 +57,11 @@ func ErrorCode(err error) Code {
 	return Internal
 }
 
-// Wrapf is a helper function to wrap an Error with given code and formatted message.
-func Wrapf(err error, code Code, format string, args ...any) *Error {
-	return &Error{
-		Code: code,
-		Err:  pkgerrors.Wrapf(err, format, args...),
-	}
-}
-
 // Errorf is a helper function to create an Error with given code and formatted message.
 func Errorf(code Code, format string, args ...any) *Error {
 	return &Error{
 		Code: code,
 		Err:  pkgerrors.Errorf(format, args...),
-	}
-}
-
-// Wrap is a helper function to wrap an Error with given code.
-func Wrap(err error, code Code) *Error {
-	return &Error{
-		Code: code,
-		Err:  err,
 	}
 }
 

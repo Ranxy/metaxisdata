@@ -12,53 +12,13 @@ const (
 	ServiceDataKey
 )
 
-type AuthMethod int
-
-const (
-	AuthMethodUnspecified AuthMethod = iota
-	AuthMethodIAM
-	AuthMethodCustom
-)
-
-type Resource struct {
-	Type      string
-	Name      string
-	ProjectID string
-	Workspace bool
-}
-
 type AuthContext struct {
 	Audit                  bool
 	AllowWithoutCredential bool
 	Permission             string
-	AuthMethod             AuthMethod
-	Resources              []*Resource
 }
 
 func GetAuthContextFromContext(ctx context.Context) (*AuthContext, bool) {
 	authCtx, ok := ctx.Value(AuthContextKey).(*AuthContext)
 	return authCtx, ok
-}
-
-func (c *AuthContext) HasWorkspaceResource() bool {
-	for _, r := range c.Resources {
-		if r.Workspace {
-			return true
-		}
-	}
-	return false
-}
-
-func (c *AuthContext) GetProjectResources() []string {
-	projectIDMap := make(map[string]bool)
-	for _, r := range c.Resources {
-		if r.ProjectID != "" {
-			projectIDMap[r.ProjectID] = true
-		}
-	}
-	var projectIDs []string
-	for projectID := range projectIDMap {
-		projectIDs = append(projectIDs, projectID)
-	}
-	return projectIDs
 }

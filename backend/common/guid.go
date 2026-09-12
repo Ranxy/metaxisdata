@@ -13,14 +13,6 @@ func GetInstaceFromGUID(guid string) (string, bool) {
 	return guid[:index], true
 }
 
-func GetDatabaseFromGUID(guid string) (string, bool) {
-	list := strings.Split(guid, MetaGUIDSplit)
-	if len(list) < 2 {
-		return "", false
-	}
-	return list[1], true
-}
-
 func GetSchemaFromGUID(guid string) (string, bool) {
 	list := strings.Split(guid, MetaGUIDSplit)
 	if len(list) < 3 {
