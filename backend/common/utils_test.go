@@ -70,3 +70,29 @@ func TestOpenLineageResourceNames(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+// Obfuscate used to divide by zero on an empty seed, and an empty plaintext
+// must round-trip as empty rather than as "encrypted" garbage.
+func TestObfuscateHandlesEmptySeedAndInput(t *testing.T) {
+	t.Parallel()
+
+	empty, err := Obfuscate("", "")
+	require.NoError(t, err)
+	require.Empty(t, empty)
+
+	_, err = Obfuscate("secret", "")
+	require.Error(t, err)
+
+	_, err = Unobfuscate("c2VjcmV0", "")
+	require.Error(t, err)
+
+	encoded, err := Obfuscate("secret", "seed")
+	require.NoError(t, err)
+	decoded, err := Unobfuscate(encoded, "seed")
+	require.NoError(t, err)
+	require.Equal(t, "secret", decoded)
+
+	decoded, err = Unobfuscate("", "seed")
+	require.NoError(t, err)
+	require.Empty(t, decoded)
+}

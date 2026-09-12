@@ -32,8 +32,15 @@ func (in *DebugInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc 
 		// Truncate error message to 10240 characters.
 		if connectErr, ok := errors.AsType[*connect.Error](err); ok {
 			if msg, truncated := common.TruncateString(connectErr.Message(), 10240); truncated {
-				slog.Info("Truncated error message", slog.String("fullMethod", req.Spec().Procedure), slog.String("original error message", connectErr.Message()))
-				err = connect.NewError(connectErr.Code(), errors.New("[TRUNCATED] "+msg))
+				// Log the length, not the text: the message may carry data the
+				// caller was entitled to but the log file should not retain.
+				slog.Info("Truncated error message", slog.String("fullMethod", req.Spec().Procedure), slog.Int("originalLength", len(connectErr.Message())))
+				truncatedErr := connect.NewError(connectErr.Code(), errors.New("[TRUNCATED] "+msg))
+				// Rebuilding the error must not silently drop its details.
+				for _, detail := range connectErr.Details() {
+					truncatedErr.AddDetail(detail)
+				}
+				err = truncatedErr
 			}
 		}
 

@@ -324,7 +324,11 @@ func (s *Store) obfuscateInstance(ctx context.Context, instance *storepb.Instanc
 	}
 	for _, ds := range redacted.GetDataSources() {
 		for _, field := range secretFields(ds) {
-			*field.obfuscated = common.Obfuscate(*field.plaintext, secret)
+			obfuscated, err := common.Obfuscate(*field.plaintext, secret)
+			if err != nil {
+				return nil, err
+			}
+			*field.obfuscated = obfuscated
 			*field.plaintext = ""
 		}
 	}

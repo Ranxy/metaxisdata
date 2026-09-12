@@ -158,7 +158,10 @@ func configureGrpcRouters(
 		grpcEndpoint,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(100*1024*1024), // Set MaxCallRecvMsgSize to 100M so that users can receive up to 100M via REST calls.
+			// Bound both directions: the gateway used to accept 100MB while
+			// sending without any matching ceiling.
+			grpc.MaxCallRecvMsgSize(100*1024*1024),
+			grpc.MaxCallSendMsgSize(100*1024*1024),
 		),
 	)
 	if err != nil {

@@ -61,18 +61,31 @@ func ValidatePhone(phone string) error {
 	return nil
 }
 
-// Obfuscate obfuscates a string with a seed string.
-func Obfuscate(src, seed string) string {
+// Obfuscate obfuscates a string with a seed string. An empty seed is rejected
+// instead of dividing by zero, and an empty input stays empty.
+func Obfuscate(src, seed string) (string, error) {
+	if src == "" {
+		return "", nil
+	}
+	if seed == "" {
+		return "", errors.New("cannot obfuscate with an empty seed")
+	}
 	srcBytes, seedBytes := []byte(src), []byte(seed)
 	obfuscated := make([]byte, len(srcBytes))
 	for i, b := range srcBytes {
 		obfuscated[i] = b ^ seedBytes[i%len(seedBytes)]
 	}
-	return base64.StdEncoding.EncodeToString(obfuscated)
+	return base64.StdEncoding.EncodeToString(obfuscated), nil
 }
 
 // Unobfuscate unobfuscates a string with a seed string.
 func Unobfuscate(dst, seed string) (string, error) {
+	if dst == "" {
+		return "", nil
+	}
+	if seed == "" {
+		return "", errors.New("cannot unobfuscate with an empty seed")
+	}
 	obfuscated, err := base64.StdEncoding.DecodeString(dst)
 	if err != nil {
 		return "", err

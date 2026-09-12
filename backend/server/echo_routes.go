@@ -3,6 +3,7 @@ package server
 import (
 	"log/slog"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/labstack/echo-contrib/prometheus"
 	"github.com/labstack/echo/v4"
@@ -20,6 +21,10 @@ func configureEchoRouters(
 	profile *config.Profile,
 ) {
 	e.Use(recoverMiddleware)
+
+	// Cap the request body. The REST gateway allowed up to 100MB to be received
+	// but never bounded what a client could send.
+	e.Use(middleware.BodyLimit("100M"))
 
 	// CORS is installed only for explicitly configured origins. A credentialed
 	// CORS policy that echoes any origin lets any website issue authenticated
@@ -59,6 +64,9 @@ func configureEchoRouters(
 
 	registerPprof(e, &profile.RuntimeDebug)
 
+	// /metrics exposes route-level request counts to anyone who can reach the
+	// server, so it follows the same runtime-debug gate as pprof.
+	e.Use(metricsGateMiddleware(&profile.RuntimeDebug))
 	p := prometheus.NewPrometheus("api", nil)
 	p.RequestCounterURLLabelMappingFunc = func(c echo.Context) string {
 		return c.Request().URL.Path
@@ -68,6 +76,20 @@ func configureEchoRouters(
 	e.GET("/healthz", func(c echo.Context) error {
 		return c.String(http.StatusOK, "OK")
 	})
+}
+
+// metricsGateMiddleware hides the Prometheus endpoint unless runtime debug is
+// enabled. It is checked per request, so the admin setting takes effect without
+// a restart.
+func metricsGateMiddleware(runtimeDebug *atomic.Bool) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			if c.Request().URL.Path == "/metrics" && !runtimeDebug.Load() {
+				return echo.ErrNotFound
+			}
+			return next(c)
+		}
+	}
 }
 
 func recoverMiddleware(next echo.HandlerFunc) echo.HandlerFunc {

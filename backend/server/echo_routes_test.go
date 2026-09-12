@@ -157,3 +157,25 @@ func TestRegisterPprofUsesThePointer(t *testing.T) {
 	// The payload is a gzipped profile, so only the status is asserted here.
 	require.Equal(t, http.StatusOK, doRequest(e, http.MethodGet, "/debug/pprof/goroutine", nil).Code)
 }
+
+// /metrics used to be reachable by anyone. It now follows the runtime-debug
+// gate, checked per request so the admin setting applies without a restart.
+func TestMetricsFollowsRuntimeDebug(t *testing.T) {
+	t.Parallel()
+
+	debug := &atomic.Bool{}
+	e := echo.New()
+	e.Use(metricsGateMiddleware(debug))
+	e.GET("/metrics", func(c echo.Context) error {
+		return c.String(http.StatusOK, "metrics")
+	})
+	e.GET("/healthz", func(c echo.Context) error {
+		return c.String(http.StatusOK, "OK")
+	})
+
+	require.Equal(t, http.StatusNotFound, doRequest(e, http.MethodGet, "/metrics", nil).Code)
+	require.Equal(t, http.StatusOK, doRequest(e, http.MethodGet, "/healthz", nil).Code)
+
+	debug.Store(true)
+	require.Equal(t, http.StatusOK, doRequest(e, http.MethodGet, "/metrics", nil).Code)
+}

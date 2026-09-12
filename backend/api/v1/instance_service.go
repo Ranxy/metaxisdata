@@ -120,7 +120,8 @@ func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Reque
 				}
 				defer driver.Close(ctx)
 				if err := driver.Ping(ctx); err != nil {
-					return connect.NewError(connect.CodeInvalidArgument, errors.Wrapf(err, "invalid datasource %s", ds.GetType()))
+					slog.Error("failed to connect to the data source", "type", ds.GetType().String(), log.WithError(err))
+					return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid datasource %s", ds.GetType()))
 				}
 				return nil
 			}()
@@ -562,7 +563,11 @@ func (s *InstanceService) pingDataSource(ctx context.Context, instance *store.In
 	}
 	defer driver.Close(ctx)
 	if err := driver.Ping(ctx); err != nil {
-		return connect.NewError(connect.CodeInvalidArgument, errors.Wrapf(err, "invalid datasource %s", dataSource.GetType()))
+		// The raw driver error contains the resolved host and port. That is
+		// useful in the server log but not something to hand back to a caller,
+		// so only the data source type is echoed.
+		slog.Error("failed to connect to the data source", "instance", instance.ResourceID, "type", dataSource.GetType().String(), log.WithError(err))
+		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid datasource %s", dataSource.GetType()))
 	}
 	return nil
 }

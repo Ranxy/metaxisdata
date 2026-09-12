@@ -127,21 +127,29 @@ func (s *AuthService) Login(ctx context.Context, req *connect.Request[v1pb.Login
 
 	tokenDuration := auth.GetTokenDuration(ctx, s.store)
 
+	var loginToken string
 	switch loginUser.Type {
 	case storepb.PrincipalType_END_USER:
 		token, err := auth.GenerateAccessToken(loginUser.Name, loginUser.ID, s.profile.Mode, s.secret, tokenDuration)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate API access token"))
 		}
-		response.Token = token
+		loginToken = token
 	case storepb.PrincipalType_SERVICE_ACCOUNT:
 		token, err := auth.GenerateAPIToken(loginUser.Name, loginUser.ID, s.profile.Mode, s.secret)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate API access token"))
 		}
-		response.Token = token
+		loginToken = token
 	default:
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.Errorf("user type %s cannot login", loginUser.Type))
+	}
+
+	// A web login carries the token in an HttpOnly cookie only. Echoing it in
+	// the response body as well would let any script that reads the response
+	// recover it, which defeats the point of HttpOnly.
+	if !request.Web {
+		response.Token = loginToken
 	}
 
 	if request.Web {
@@ -150,7 +158,7 @@ func (s *AuthService) Login(ctx context.Context, req *connect.Request[v1pb.Login
 			return nil, connect.NewError(connect.CodePermissionDenied, errors.Errorf("only users can use web login"))
 		}
 
-		cookie := auth.GetTokenCookie(ctx, s.store, response.Token)
+		cookie := auth.GetTokenCookie(ctx, s.store, loginToken)
 		resp.Header().Add("Set-Cookie", cookie.String())
 	}
 
