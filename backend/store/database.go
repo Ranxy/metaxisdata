@@ -8,7 +8,6 @@ import (
 
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -227,20 +226,30 @@ func (s *Store) UpdateDatabase(ctx context.Context, patch *UpdateDatabaseMessage
 	if v := patch.Deleted; v != nil {
 		set, args = append(set, fmt.Sprintf("deleted = $%d", len(args)+1)), append(args, *v)
 	}
+
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	if fs := patch.MetadataUpdates; len(fs) > 0 {
-		database, err := s.GetDatabase(ctx, &FindDatabaseMessage{
-			InstanceID:   &patch.InstanceID,
-			DatabaseName: &patch.DatabaseName,
-		})
-		if err != nil {
+		// Lock the row and read its metadata in the same transaction. Reading
+		// first in its own transaction let two concurrent updates clone the same
+		// starting document, so the second write dropped the first's change.
+		var raw []byte
+		if err := tx.QueryRowContext(ctx, `
+			SELECT metadata FROM db WHERE instance = $1 AND name = $2 FOR UPDATE
+		`, patch.InstanceID, patch.DatabaseName).Scan(&raw); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, common.Errorf(common.NotFound, "database %q not found", common.FormatDatabase(patch.InstanceID, patch.DatabaseName))
+			}
 			return nil, errors.Wrapf(err, "failed to get database %q", common.FormatDatabase(patch.InstanceID, patch.DatabaseName))
 		}
-		// GetDatabase returns (nil, nil) when the row is gone; cloning its
-		// metadata would panic the whole process.
-		if database == nil {
-			return nil, common.Errorf(common.NotFound, "database %q not found", common.FormatDatabase(patch.InstanceID, patch.DatabaseName))
+		md := &storepb.DatabaseMetadata{}
+		if err := common.ProtojsonUnmarshaler.Unmarshal(raw, md); err != nil {
+			return nil, errors.Wrapf(err, "failed to unmarshal metadata of database %q", common.FormatDatabase(patch.InstanceID, patch.DatabaseName))
 		}
-		md := proto.CloneOf(database.Metadata)
 		for _, f := range fs {
 			f(md)
 		}
@@ -250,26 +259,24 @@ func (s *Store) UpdateDatabase(ctx context.Context, patch *UpdateDatabaseMessage
 		}
 		set, args = append(set, fmt.Sprintf("metadata = $%d", len(args)+1)), append(args, metadataBytes)
 	}
-	args = append(args, patch.InstanceID, patch.DatabaseName)
 
-	tx, err := s.GetDB().BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
+	if len(set) > 0 {
+		args = append(args, patch.InstanceID, patch.DatabaseName)
+		var databaseUID int
+		if err := tx.QueryRowContext(ctx, fmt.Sprintf(`
+			UPDATE db
+			SET `+strings.Join(set, ", ")+`
+			WHERE instance = $%d AND name = $%d
+			RETURNING id
+		`, len(args)-1, len(args)),
+			args...,
+		).Scan(
+			&databaseUID,
+		); err != nil {
+			return nil, err
+		}
 	}
-	defer tx.Rollback()
-	var databaseUID int
-	if err := tx.QueryRowContext(ctx, fmt.Sprintf(`
-		UPDATE db
-		SET `+strings.Join(set, ", ")+`
-		WHERE instance = $%d AND name = $%d
-		RETURNING id
-	`, len(args)-1, len(args)),
-		args...,
-	).Scan(
-		&databaseUID,
-	); err != nil {
-		return nil, err
-	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
