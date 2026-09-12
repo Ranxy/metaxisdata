@@ -30,6 +30,11 @@ CREATE TABLE principal (
     profile jsonb NOT NULL DEFAULT '{}'
 );
 
+-- Emails are lower-cased on write. The unique expression index is what rejects
+-- a concurrent duplicate registration; soft-deleted rows are excluded so a
+-- deleted account does not block reusing its address.
+CREATE UNIQUE INDEX idx_principal_unique_email ON principal (LOWER(email)) WHERE deleted = FALSE;
+
 -- Setting
 CREATE TABLE setting (
     id serial PRIMARY KEY,
@@ -163,6 +168,9 @@ CREATE TABLE meta_registry_resource (
 );
 
 CREATE UNIQUE INDEX idx_meta_registry_resource_guid_object_type ON meta_registry_resource(guid,object_type);
+-- Serves the lineage analyzer's scan by object_type; the unique index above is
+-- led by guid and cannot.
+CREATE INDEX idx_meta_registry_resource_object_type ON meta_registry_resource(object_type);
 
 CREATE TABLE meta_registry_resource_history (
     id BIGSERIAL PRIMARY KEY,

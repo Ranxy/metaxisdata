@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -71,6 +72,20 @@ type UserStat struct {
 	Type    storepb.PrincipalType
 	Deleted bool
 	Count   int
+}
+
+// isUniqueViolation reports whether err is a PostgreSQL unique-constraint
+// violation (SQLSTATE 23505), so callers can map it to a conflict instead of a
+// 500. Both error shapes are checked: the store talks to PostgreSQL through the
+// pgx stdlib driver, which returns *pgconn.PgError, while lib/pq types appear
+// through helper code that still uses the pq package.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505"
+	}
+	var pqErr *pq.Error
+	return errors.As(err, &pqErr) && pqErr.Code == "23505"
 }
 
 // GetSystemBotUser gets the system bot.
@@ -397,6 +412,9 @@ func (s *Store) CreateUser(ctx context.Context, create *UserMessage) (*UserMessa
 		`, strings.Join(set, ","), strings.Join(placeholder, ",")),
 		args...,
 	).Scan(&userID, &create.CreatedAt); err != nil {
+		if isUniqueViolation(err) {
+			return nil, common.Errorf(common.Conflict, "user with email %q already exists", create.Email)
+		}
 		return nil, err
 	}
 
@@ -488,6 +506,9 @@ func (s *Store) UpdateUser(ctx context.Context, currentUser *UserMessage, patch 
 	`, len(principalArgs)),
 		principalArgs...,
 	); err != nil {
+		if isUniqueViolation(err) {
+			return nil, common.Errorf(common.Conflict, "email already exists")
+		}
 		return nil, err
 	}
 

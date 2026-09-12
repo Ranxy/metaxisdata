@@ -378,7 +378,7 @@ func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v
 
 	user, err := s.store.CreateUser(ctx, userMessage)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to create user, error: %v", err))
+		return nil, connectErrorForWrite(err, "failed to create user")
 	}
 
 	// isFirstUser := user.ID == common.PrincipalIDForFirstUser
@@ -582,7 +582,7 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 
 	user, err = s.store.UpdateUser(ctx, user, patch)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to update user, error: %v", err))
+		return nil, connectErrorForWrite(err, "failed to update user")
 	}
 
 	userResponse := convertToUser(user)
