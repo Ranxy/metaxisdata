@@ -18,8 +18,6 @@
     - [Engine](#metaxisdata-store-Engine)
   
 - [store/openlineage.proto](#store_openlineage-proto)
-    - [ExternalDataset](#metaxisdata-store-ExternalDataset)
-    - [NamespaceMapping](#metaxisdata-store-NamespaceMapping)
     - [OpenLineageRunSummary](#metaxisdata-store-OpenLineageRunSummary)
     - [OpenLineageTaskSummary](#metaxisdata-store-OpenLineageTaskSummary)
     - [SchemaField](#metaxisdata-store-SchemaField)
@@ -294,48 +292,6 @@ with metaxisdata.v1.Engine.
 
 
 
-<a name="metaxisdata-store-ExternalDataset"></a>
-
-### ExternalDataset
-ExternalDataset represents a dataset outside of the managed instances,
-discovered through OpenLineage events (e.g., S3, Kafka, external databases).
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| guid | [string](#string) |  |  |
-| namespace | [string](#string) |  |  |
-| name | [string](#string) |  |  |
-| dataset_type | [string](#string) |  |  |
-| schema_fields | [SchemaField](#metaxisdata-store-SchemaField) | repeated |  |
-| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-NamespaceMapping"></a>
-
-### NamespaceMapping
-NamespaceMapping maps an OpenLineage namespace to an internal instance.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [int64](#int64) |  |  |
-| namespace | [string](#string) |  | The OpenLineage namespace, e.g. &#34;postgres://host:5432&#34;. |
-| instance_resource_id | [string](#string) |  | The resource ID of the matched instance. |
-| database_name | [string](#string) |  | Optional database name override. If empty, the database is inferred from the dataset name. |
-| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
 <a name="metaxisdata-store-OpenLineageRunSummary"></a>
 
 ### OpenLineageRunSummary
@@ -409,7 +365,8 @@ OpenLineageTaskSummary stores the aggregated task/job-level view derived from pe
 <a name="metaxisdata-store-SchemaField"></a>
 
 ### SchemaField
-SchemaField describes a single field in a dataset schema.
+SchemaField describes a single field in a dataset schema. It is stored inside
+the `external_dataset.schema_fields` JSONB column.
 
 
 | Field | Type | Label | Description |

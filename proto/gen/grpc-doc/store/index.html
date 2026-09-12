@@ -233,14 +233,6 @@
             <ul>
               
                 <li>
-                  <a href="#metaxisdata.store.ExternalDataset"><span class="badge">M</span>ExternalDataset</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.store.NamespaceMapping"><span class="badge">M</span>NamespaceMapping</a>
-                </li>
-              
-                <li>
                   <a href="#metaxisdata.store.OpenLineageRunSummary"><span class="badge">M</span>OpenLineageRunSummary</a>
                 </li>
               
@@ -992,131 +984,6 @@ identified by an opaque server-generated id. </p></td>
       <p></p>
 
       
-        <h3 id="metaxisdata.store.ExternalDataset">ExternalDataset</h3>
-        <p>ExternalDataset represents a dataset outside of the managed instances,</p><p>discovered through OpenLineage events (e.g., S3, Kafka, external databases).</p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>guid</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>namespace</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>name</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>dataset_type</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>schema_fields</td>
-                  <td><a href="#metaxisdata.store.SchemaField">SchemaField</a></td>
-                  <td>repeated</td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>created_at</td>
-                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>updated_at</td>
-                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.store.NamespaceMapping">NamespaceMapping</h3>
-        <p>NamespaceMapping maps an OpenLineage namespace to an internal instance.</p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>id</td>
-                  <td><a href="#int64">int64</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>namespace</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The OpenLineage namespace, e.g. &#34;postgres://host:5432&#34;. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>instance_resource_id</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The resource ID of the matched instance. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>database_name</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>Optional database name override. If empty, the database is inferred from the dataset name. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>created_at</td>
-                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>updated_at</td>
-                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
         <h3 id="metaxisdata.store.OpenLineageRunSummary">OpenLineageRunSummary</h3>
         <p>OpenLineageRunSummary stores the normalized metadata for a persisted COMPLETE run.</p>
 
@@ -1446,7 +1313,7 @@ identified by an opaque server-generated id. </p></td>
         
       
         <h3 id="metaxisdata.store.SchemaField">SchemaField</h3>
-        <p>SchemaField describes a single field in a dataset schema.</p>
+        <p>SchemaField describes a single field in a dataset schema. It is stored inside</p><p>the `external_dataset.schema_fields` JSONB column.</p>
 
         
           <table class="field-table">
