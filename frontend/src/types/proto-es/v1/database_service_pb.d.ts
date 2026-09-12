@@ -1450,13 +1450,6 @@ export declare type DatabaseSchemaMetadata = Message<"metaxisdata.v1.DatabaseSch
   datashare: boolean;
 
   /**
-   * The service name of the database. It's an Oracle-specific concept.
-   *
-   * @generated from field: string service_name = 7;
-   */
-  serviceName: string;
-
-  /**
    * @generated from field: string owner = 9;
    */
   owner: string;
@@ -2953,13 +2946,6 @@ export declare type IndexMetadata = Message<"metaxisdata.v1.IndexMetadata"> & {
    * @generated from field: string parent_index_name = 12;
    */
   parentIndexName: string;
-
-  /**
-   * The number of granules in the block. It's a ClickHouse specific field.
-   *
-   * @generated from field: int64 granularity = 13;
-   */
-  granularity: bigint;
 
   /**
    * It's a PostgreSQL specific field.

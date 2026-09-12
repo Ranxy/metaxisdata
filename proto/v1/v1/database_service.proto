@@ -676,9 +676,6 @@ message DatabaseSchemaMetadata {
   // The database belongs to a datashare.
   bool datashare = 6;
 
-  // The service name of the database. It's an Oracle-specific concept.
-  string service_name = 7;
-
   string owner = 9;
 
   // The search_path is the search path of a PostgreSQL database.
@@ -688,8 +685,8 @@ message DatabaseSchemaMetadata {
   // Event triggers are database-level objects, not schema-scoped.
   repeated EventTriggerMetadata event_triggers = 11;
 
-  reserved 8;
-  reserved "linked_databases";
+  reserved 7, 8;
+  reserved "service_name", "linked_databases";
 }
 
 // SchemaMetadata is the metadata for schemas.
@@ -1284,9 +1281,6 @@ message IndexMetadata {
   // The index name of the parent index.
   string parent_index_name = 12;
 
-  // The number of granules in the block. It's a ClickHouse specific field.
-  int64 granularity = 13;
-
   // It's a PostgreSQL specific field.
   // The unique constraint and unique index are not the same thing in PostgreSQL.
   bool is_constraint = 14;
@@ -1297,8 +1291,8 @@ message IndexMetadata {
   // True if the operator class is the default. (PostgreSQL specific).
   repeated bool opclass_defaults = 17;
 
-  reserved 15;
-  reserved "spatial_config";
+  reserved 13, 15;
+  reserved "granularity", "spatial_config";
 }
 
 // ExtensionMetadata is the metadata for extensions.

@@ -286,10 +286,8 @@ type DatabaseSchemaMetadata struct {
 	// The list of extensions in a database.
 	Extensions []*ExtensionMetadata `protobuf:"bytes,5,rep,name=extensions,proto3" json:"extensions,omitempty"`
 	// The database belongs to a datashare.
-	Datashare bool `protobuf:"varint,6,opt,name=datashare,proto3" json:"datashare,omitempty"`
-	// The service name of the database. It's an Oracle-specific concept.
-	ServiceName string `protobuf:"bytes,7,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
-	Owner       string `protobuf:"bytes,9,opt,name=owner,proto3" json:"owner,omitempty"`
+	Datashare bool   `protobuf:"varint,6,opt,name=datashare,proto3" json:"datashare,omitempty"`
+	Owner     string `protobuf:"bytes,9,opt,name=owner,proto3" json:"owner,omitempty"`
 	// The search_path is the search path of a PostgreSQL database.
 	SearchPath string `protobuf:"bytes,10,opt,name=search_path,json=searchPath,proto3" json:"search_path,omitempty"`
 	// The list of event triggers in a database (PostgreSQL specific).
@@ -369,13 +367,6 @@ func (x *DatabaseSchemaMetadata) GetDatashare() bool {
 		return x.Datashare
 	}
 	return false
-}
-
-func (x *DatabaseSchemaMetadata) GetServiceName() string {
-	if x != nil {
-		return x.ServiceName
-	}
-	return ""
 }
 
 func (x *DatabaseSchemaMetadata) GetOwner() string {
@@ -2506,8 +2497,6 @@ type IndexMetadata struct {
 	ParentIndexSchema string `protobuf:"bytes,11,opt,name=parent_index_schema,json=parentIndexSchema,proto3" json:"parent_index_schema,omitempty"`
 	// The index name of the parent index.
 	ParentIndexName string `protobuf:"bytes,12,opt,name=parent_index_name,json=parentIndexName,proto3" json:"parent_index_name,omitempty"`
-	// The number of granules in the block. It's a ClickHouse specific field.
-	Granularity int64 `protobuf:"varint,13,opt,name=granularity,proto3" json:"granularity,omitempty"`
 	// It's a PostgreSQL specific field.
 	// The unique constraint and unique index are not the same thing in PostgreSQL.
 	IsConstraint bool `protobuf:"varint,14,opt,name=is_constraint,json=isConstraint,proto3" json:"is_constraint,omitempty"`
@@ -2632,13 +2621,6 @@ func (x *IndexMetadata) GetParentIndexName() string {
 		return x.ParentIndexName
 	}
 	return ""
-}
-
-func (x *IndexMetadata) GetGranularity() int64 {
-	if x != nil {
-		return x.Granularity
-	}
-	return 0
 }
 
 func (x *IndexMetadata) GetIsConstraint() bool {
@@ -3366,7 +3348,7 @@ const file_store_database_proto_rawDesc = "" +
 	"\aversion\x18\a \x01(\tR\aversion\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x03\x10\x04R\x10backup_available\"\xd2\x03\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x03\x10\x04R\x10backup_available\"\xc3\x03\n" +
 	"\x16DatabaseSchemaMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12;\n" +
 	"\aschemas\x18\x02 \x03(\v2!.metaxisdata.store.SchemaMetadataR\aschemas\x12#\n" +
@@ -3375,13 +3357,12 @@ const file_store_database_proto_rawDesc = "" +
 	"\n" +
 	"extensions\x18\x05 \x03(\v2$.metaxisdata.store.ExtensionMetadataR\n" +
 	"extensions\x12\x1c\n" +
-	"\tdatashare\x18\x06 \x01(\bR\tdatashare\x12!\n" +
-	"\fservice_name\x18\a \x01(\tR\vserviceName\x12\x14\n" +
+	"\tdatashare\x18\x06 \x01(\bR\tdatashare\x12\x14\n" +
 	"\x05owner\x18\t \x01(\tR\x05owner\x12\x1f\n" +
 	"\vsearch_path\x18\n" +
 	" \x01(\tR\n" +
 	"searchPath\x12N\n" +
-	"\x0eevent_triggers\x18\v \x03(\v2'.metaxisdata.store.EventTriggerMetadataR\reventTriggersJ\x04\b\b\x10\tR\x10linked_databases\"\x87\x06\n" +
+	"\x0eevent_triggers\x18\v \x03(\v2'.metaxisdata.store.EventTriggerMetadataR\reventTriggersJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\fservice_nameR\x10linked_databases\"\x87\x06\n" +
 	"\x0eSchemaMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x128\n" +
 	"\x06tables\x18\x02 \x03(\v2 .metaxisdata.store.TableMetadataR\x06tables\x12Q\n" +
@@ -3614,7 +3595,7 @@ const file_store_database_proto_rawDesc = "" +
 	"\x12database_collation\x18\x06 \x01(\tR\x11databaseCollation\x12\x19\n" +
 	"\bsql_mode\x18\a \x01(\tR\asqlMode\x12\x18\n" +
 	"\acomment\x18\t \x01(\tR\acomment\x12\x1b\n" +
-	"\tskip_dump\x18\b \x01(\bR\bskipDump\"\xa7\x04\n" +
+	"\tskip_dump\x18\b \x01(\bR\bskipDump\"\x98\x04\n" +
 	"\rIndexMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vexpressions\x18\x02 \x03(\tR\vexpressions\x12\x1d\n" +
@@ -3633,11 +3614,10 @@ const file_store_database_proto_rawDesc = "" +
 	"definition\x18\b \x01(\tR\n" +
 	"definition\x12.\n" +
 	"\x13parent_index_schema\x18\v \x01(\tR\x11parentIndexSchema\x12*\n" +
-	"\x11parent_index_name\x18\f \x01(\tR\x0fparentIndexName\x12 \n" +
-	"\vgranularity\x18\r \x01(\x03R\vgranularity\x12#\n" +
+	"\x11parent_index_name\x18\f \x01(\tR\x0fparentIndexName\x12#\n" +
 	"\ris_constraint\x18\x0e \x01(\bR\fisConstraint\x12#\n" +
 	"\ropclass_names\x18\x10 \x03(\tR\fopclassNames\x12)\n" +
-	"\x10opclass_defaults\x18\x11 \x03(\bR\x0fopclassDefaultsJ\x04\b\x0f\x10\x10R\x0espatial_config\"{\n" +
+	"\x10opclass_defaults\x18\x11 \x03(\bR\x0fopclassDefaultsJ\x04\b\r\x10\x0eJ\x04\b\x0f\x10\x10R\vgranularityR\x0espatial_config\"{\n" +
 	"\x11ExtensionMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06schema\x18\x02 \x01(\tR\x06schema\x12\x18\n" +

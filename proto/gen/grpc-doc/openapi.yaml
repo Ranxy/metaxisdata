@@ -2696,9 +2696,6 @@ components:
                 datashare:
                     type: boolean
                     description: The database belongs to a datashare.
-                serviceName:
-                    type: string
-                    description: The service name of the database. It's an Oracle-specific concept.
                 owner:
                     type: string
                 searchPath:
@@ -3158,9 +3155,6 @@ components:
                 parentIndexName:
                     type: string
                     description: The index name of the parent index.
-                granularity:
-                    type: string
-                    description: The number of granules in the block. It's a ClickHouse specific field.
                 isConstraint:
                     type: boolean
                     description: |-

@@ -72,7 +72,6 @@ func convertDatabaseSchemaMetadata(meta *storepb.DatabaseSchemaMetadata) *v1pb.D
 		CharacterSet: meta.CharacterSet,
 		Collation:    meta.Collation,
 		Datashare:    meta.Datashare,
-		ServiceName:  meta.ServiceName,
 		Owner:        meta.Owner,
 		SearchPath:   meta.SearchPath,
 	}

@@ -1318,7 +1318,6 @@ DatabaseSchemaMetadata is the schema metadata for databases.
 | collation | [string](#string) |  | The collation of the database. |
 | extensions | [ExtensionMetadata](#metaxisdata-v1-ExtensionMetadata) | repeated | The list of extensions in a database. |
 | datashare | [bool](#bool) |  | The database belongs to a datashare. |
-| service_name | [string](#string) |  | The service name of the database. It&#39;s an Oracle-specific concept. |
 | owner | [string](#string) |  |  |
 | search_path | [string](#string) |  | The search_path is the search path of a PostgreSQL database. |
 | event_triggers | [EventTriggerMetadata](#metaxisdata-v1-EventTriggerMetadata) | repeated | The list of event triggers in a database (PostgreSQL specific). Event triggers are database-level objects, not schema-scoped. |
@@ -1686,7 +1685,6 @@ IndexMetadata is the metadata for indexes.
 | definition | [string](#string) |  | The definition of an index. |
 | parent_index_schema | [string](#string) |  | The schema name of the parent index. |
 | parent_index_name | [string](#string) |  | The index name of the parent index. |
-| granularity | [int64](#int64) |  | The number of granules in the block. It&#39;s a ClickHouse specific field. |
 | is_constraint | [bool](#bool) |  | It&#39;s a PostgreSQL specific field. The unique constraint and unique index are not the same thing in PostgreSQL. |
 | opclass_names | [string](#string) | repeated | https://www.postgresql.org/docs/current/catalog-pg-opclass.html Name of the operator class for each column. (PostgreSQL specific). |
 | opclass_defaults | [bool](#bool) | repeated | True if the operator class is the default. (PostgreSQL specific). |
