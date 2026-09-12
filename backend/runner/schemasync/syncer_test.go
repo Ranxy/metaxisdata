@@ -332,3 +332,20 @@ func countDatabaseSyncMapItems(m *sync.Map) int {
 	})
 	return count
 }
+
+// SyncInstance used to return the whole snapshot, so a caller was told it had
+// synced databases that the sync_databases allowlist had skipped.
+func TestFilterSyncedDatabases(t *testing.T) {
+	t.Parallel()
+
+	databases := []*storepb.DatabaseSchemaMetadata{{Name: "app"}, {Name: "staging"}, {Name: "archive"}}
+
+	require.Equal(t, databases, filterSyncedDatabases(databases, nil), "an empty allowlist syncs everything")
+
+	filtered := filterSyncedDatabases(databases, []string{"app", "archive"})
+	require.Len(t, filtered, 2)
+	require.Equal(t, "app", filtered[0].Name)
+	require.Equal(t, "archive", filtered[1].Name)
+
+	require.Empty(t, filterSyncedDatabases(databases, []string{"not-present"}))
+}

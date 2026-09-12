@@ -273,6 +273,21 @@ func (s *Syncer) GetInstanceMeta(ctx context.Context, instance *store.InstanceMe
 }
 
 // SyncInstance syncs the schema for all databases in an instance.
+// filterSyncedDatabases applies the instance's sync_databases allowlist. An
+// empty allowlist means every database in the snapshot is synced.
+func filterSyncedDatabases(databases []*storepb.DatabaseSchemaMetadata, syncDatabases []string) []*storepb.DatabaseSchemaMetadata {
+	if len(syncDatabases) == 0 {
+		return databases
+	}
+	filtered := make([]*storepb.DatabaseSchemaMetadata, 0, len(databases))
+	for _, database := range databases {
+		if slices.Contains(syncDatabases, database.Name) {
+			filtered = append(filtered, database)
+		}
+	}
+	return filtered
+}
+
 func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessage) (*store.InstanceMessage, []*storepb.DatabaseSchemaMetadata, []*store.DatabaseMessage, error) {
 	instanceMeta, err := s.GetInstanceMeta(ctx, instance)
 	if err != nil {
@@ -302,13 +317,9 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 		return nil, nil, nil, errors.Wrapf(err, "failed to sync database for instance: %s. Failed to find database list", instance.ResourceID)
 	}
 	var newDatabases []*store.DatabaseMessage
-	var filteredDatabaseMetadatas []*storepb.DatabaseSchemaMetadata
+	filteredDatabaseMetadatas := filterSyncedDatabases(instanceMeta.Databases, instance.Metadata.GetSyncDatabases())
 
-	for _, databaseMetadata := range instanceMeta.Databases {
-		if len(instance.Metadata.GetSyncDatabases()) > 0 && !slices.Contains(instance.Metadata.GetSyncDatabases(), databaseMetadata.Name) {
-			continue
-		}
-		filteredDatabaseMetadatas = append(filteredDatabaseMetadatas, databaseMetadata)
+	for _, databaseMetadata := range filteredDatabaseMetadatas {
 		idx := slices.IndexFunc(databases, func(db *store.DatabaseMessage) bool { return db.DatabaseName == databaseMetadata.Name })
 
 		if idx < 0 {
@@ -352,7 +363,10 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 		}
 	}
 
-	return updatedInstance, instanceMeta.Databases, newDatabases, nil
+	// Report only the databases the sync_databases filter selected: returning
+	// the whole snapshot told the caller it had synced databases that were
+	// deliberately skipped.
+	return updatedInstance, filteredDatabaseMetadatas, newDatabases, nil
 }
 
 // SyncDatabaseSchema will sync the schema for a database.
