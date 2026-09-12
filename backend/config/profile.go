@@ -14,19 +14,11 @@ type Profile struct {
 	// PgURL is the PostgreSQL instance connection url
 	PgURL string
 
-	ExternalURL string
-
-	// EncryptionKey is the key material used to encrypt stored credentials. It
-	// comes from METADATA_SECRET_KEY; without it the store falls back to the
-	// AUTH_SECRET setting in the database.
-	EncryptionKey string
-
-	// OpenLineageRetentionDays bounds how long persisted OpenLineage runs are
-	// kept. Zero (the default) keeps them forever: they are audit data.
-	OpenLineageRetentionDays int
-
 	// can be set in runtime
 	RuntimeDebug atomic.Bool
 
+	// Secret is the resolved per-deployment JWT signing key. It is populated
+	// from the AUTH_SECRET setting in the database at startup, never from a
+	// flag or environment variable.
 	Secret string
 }

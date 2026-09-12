@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
-	"github.com/Ranxy/metaxisdata/backend/config"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -26,13 +25,12 @@ const (
 
 // Runner prunes data with a retention window.
 type Runner struct {
-	store   *store.Store
-	profile *config.Profile
+	store *store.Store
 }
 
 // NewRunner creates a maintenance runner.
-func NewRunner(stores *store.Store, profile *config.Profile) *Runner {
-	return &Runner{store: stores, profile: profile}
+func NewRunner(stores *store.Store) *Runner {
+	return &Runner{store: stores}
 }
 
 // Run blocks until ctx is cancelled, then signals wg.Done().
@@ -68,9 +66,14 @@ func (r *Runner) runOnce(ctx context.Context) {
 		slog.Info("Pruned expired LLM debug log entries", slog.Int64("count", deleted))
 	}
 
-	// OpenLineage runs are audit data and are kept forever unless the operator
-	// opts into a retention window.
-	days := r.profile.OpenLineageRetentionDays
+	// OpenLineage runs are audit data and are kept forever unless an admin sets
+	// a retention window in the workspace profile setting.
+	setting, err := r.store.GetWorkspaceGeneralSetting(ctx)
+	if err != nil {
+		slog.Error("Failed to load the OpenLineage retention setting", log.WithError(err))
+		return
+	}
+	days := int(setting.GetOpenlineageRetentionDays())
 	if days <= 0 {
 		return
 	}

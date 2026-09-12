@@ -259,6 +259,9 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to create new OAuth2 identity provider"))
 		}
+		if setting.ExternalUrl == "" {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("external URL is not configured: set it in the workspace general settings"))
+		}
 		redirectURL := fmt.Sprintf("%s/oauth/callback", setting.ExternalUrl)
 		token, err := oauth2IdentityProvider.ExchangeToken(ctx, redirectURL, oauth2Context.Code)
 		if err != nil {

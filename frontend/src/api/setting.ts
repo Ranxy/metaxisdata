@@ -15,15 +15,19 @@ export async function getWorkspaceProfileSetting() {
 
 export async function updateWorkspaceProfileSetting(
   setting: {
+    externalUrl?: string;
     disallowSignup?: boolean;
     disallowPasswordSignin?: boolean;
+    openlineageRetentionDays?: number;
   },
   updateMask: string[]
 ) {
   const request = create(UpdateWorkspaceProfileSettingRequestSchema, {
     setting: create(WorkspaceProfileSettingSchema, {
+      externalUrl: setting.externalUrl ?? "",
       disallowSignup: setting.disallowSignup ?? false,
       disallowPasswordSignin: setting.disallowPasswordSignin ?? false,
+      openlineageRetentionDays: setting.openlineageRetentionDays ?? 0,
     }),
     updateMask: { paths: updateMask },
   });

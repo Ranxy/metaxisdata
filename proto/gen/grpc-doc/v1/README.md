@@ -4316,6 +4316,7 @@ metaxisdata.roles.* permissions.
 | external_url | [string](#string) |  | The external URL used for the SSO authentication callback. |
 | disallow_signup | [bool](#bool) |  | Disallow self-service signup. When enabled, only a workspace admin can create users. |
 | disallow_password_signin | [bool](#bool) |  | Disallow password signin. Workspace admins are exempt. |
+| openlineage_retention_days | [int32](#int32) |  | The number of days persisted OpenLineage runs are kept. Zero (the default) keeps them forever. |
 
 
 

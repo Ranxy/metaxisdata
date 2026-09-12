@@ -76,7 +76,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		}
 	}()
 
-	stores, err := store.New(ctx, profile.PgURL, store.WithEncryptionKey(profile.EncryptionKey))
+	stores, err := store.New(ctx, profile.PgURL)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to new store")
 	}
@@ -104,7 +104,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 
 	s.schemaSync = schemasync.NewSyncer(stores, dbFactory, profile, stateCfg, s.lineageAnalyzer)
 
-	s.maintenance = maintenance.NewRunner(stores, profile)
+	s.maintenance = maintenance.NewRunner(stores)
 
 	s.llmRegistry = llmcomp.NewRegistry(stores, profile)
 
@@ -144,21 +144,20 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 
 // resolveJWTSecret determines the key used to sign and verify access tokens.
 //
-// The key is never a compiled-in constant: it comes from the JWT_SECRET
-// environment variable when set, otherwise from the randomly generated
-// per-deployment AUTH_SECRET setting in the database. Because the key is
-// deployment-specific, every token signed with a former key stops verifying.
+// The key is the randomly generated per-deployment AUTH_SECRET setting in the
+// database, created on first startup: it is never a compiled-in constant, a
+// flag or an environment variable. Because it is deployment-specific and
+// stable, tokens survive restarts; every token signed with a former key stops
+// verifying.
 func (s *Server) resolveJWTSecret(ctx context.Context) error {
-	if s.profile.Secret == "" {
-		setting, err := s.store.GetSetting(ctx, storepb.SettingName_AUTH_SECRET)
-		if err != nil {
-			return errors.Wrap(err, "failed to load the JWT signing key")
-		}
-		if setting == nil || setting.Value == "" {
-			return errors.New("JWT signing key is not configured: set the JWT_SECRET environment variable")
-		}
-		s.profile.Secret = setting.Value
+	setting, err := s.store.GetSetting(ctx, storepb.SettingName_AUTH_SECRET)
+	if err != nil {
+		return errors.Wrap(err, "failed to load the JWT signing key")
 	}
+	if setting == nil || setting.Value == "" {
+		return errors.New("JWT signing key is not configured: the AUTH_SECRET setting is missing")
+	}
+	s.profile.Secret = setting.Value
 	if len(s.profile.Secret) < minJWTSecretLength {
 		return errors.Errorf("JWT signing key must be at least %d characters, got %d", minJWTSecretLength, len(s.profile.Secret))
 	}

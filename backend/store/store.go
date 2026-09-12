@@ -17,14 +17,11 @@ import (
 type Store struct {
 	dbConnManager *DBConnectionManager
 
-	// secret caches the key material used to encrypt stored credentials. It is
-	// read on every obfuscated instance/LLM row, so it must not be written
+	// secret caches the AUTH_SECRET setting, the seed for stored credentials. It
+	// is read on every obfuscated instance/LLM row, so it must not be written
 	// lazily without a lock.
 	secretMu sync.Mutex
 	secret   string
-	// encryptionKey is the operator-supplied credential key
-	// (config.Profile.EncryptionKey). Empty means "fall back to AUTH_SECRET".
-	encryptionKey string
 
 	// cacheDisabled makes every cache read go to the database. It is meant for
 	// short-lived observer stores (the integration harness) that read rows
@@ -47,13 +44,6 @@ type Store struct {
 
 // Option customises a Store.
 type Option func(*Store)
-
-// WithEncryptionKey sets the key material used to encrypt stored credentials.
-func WithEncryptionKey(key string) Option {
-	return func(s *Store) {
-		s.encryptionKey = key
-	}
-}
 
 // WithCacheDisabled makes cache reads bypass the cache and query the database.
 // Use it for a store that observes rows written by another process: such a store

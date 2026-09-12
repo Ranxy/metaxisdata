@@ -5480,6 +5480,12 @@ components:
                 disallowPasswordSignin:
                     type: boolean
                     description: Whether to disallow password signin. (Except workspace admins)
+                openlineageRetentionDays:
+                    type: integer
+                    description: |-
+                        openlineage_retention_days bounds how long persisted OpenLineage runs are
+                         kept. Zero (the default) keeps them forever: they are audit data.
+                    format: int32
 tags:
     - name: AuditLogService
     - name: AuthService

@@ -81,6 +81,57 @@
 
     <Card>
       <CardHeader>
+        <CardTitle>{{ t("generalSettings.workspaceSection") }}</CardTitle>
+        <CardDescription>{{
+          t("generalSettings.workspaceSectionDescription")
+        }}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div
+          v-if="isLoading"
+          class="p-8 flex justify-center"
+        >
+          <AppLoading />
+        </div>
+        <div
+          v-else
+          class="space-y-5"
+        >
+          <AppInput
+            v-model="externalUrl"
+            :label="t('generalSettings.externalUrl')"
+            :placeholder="t('generalSettings.externalUrlPlaceholder')"
+            :hint="t('generalSettings.externalUrlHint')"
+            :disabled="!canUpdate"
+          />
+          <AppInput
+            v-model="retentionDaysInput"
+            type="number"
+            :label="t('generalSettings.retentionDays')"
+            :hint="t('generalSettings.retentionDaysHint')"
+            :error="retentionError"
+            :disabled="!canUpdate"
+          />
+          <div class="pt-2 space-y-2">
+            <Button
+              :disabled="isWorkspaceSaving || !canUpdate || !!retentionError"
+              @click="handleSaveWorkspace"
+            >
+              {{ t("common.save") }}
+            </Button>
+            <p
+              v-if="!canUpdate"
+              class="text-sm text-muted-foreground"
+            >
+              {{ t("generalSettings.readOnlyHint") }}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
         <CardTitle>{{ t("generalSettings.debugSection") }}</CardTitle>
         <CardDescription>{{
           t("generalSettings.debugSectionDescription")
@@ -134,6 +185,7 @@ import {
   updateDebugConfig,
   updateWorkspaceProfileSetting,
 } from "@/api/setting";
+import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import { Button } from "@/components/ui/button";
 import {
@@ -163,6 +215,25 @@ const isSaving = ref(false);
 const disallowSignup = ref(false);
 const disallowPasswordSignin = ref(false);
 
+// Workspace reachability and OpenLineage retention, saved together.
+const isWorkspaceSaving = ref(false);
+const externalUrl = ref("");
+const retentionDaysInput = ref("0");
+
+// Empty is treated as 0 (keep forever); anything not a whole non-negative
+// number is rejected before the request is sent.
+const retentionError = computed(() => {
+  const days = Number(retentionDaysInput.value);
+  if (
+    retentionDaysInput.value.trim() === "" ||
+    !Number.isInteger(days) ||
+    days < 0
+  ) {
+    return t("generalSettings.retentionInvalid");
+  }
+  return "";
+});
+
 // Runtime debug mode is applied immediately server-side; a failed call rolls
 // the checkbox back so the UI never claims a state the server did not accept.
 const isDebugLoading = ref(false);
@@ -175,6 +246,8 @@ async function fetchSetting() {
     const setting = await getWorkspaceProfileSetting();
     disallowSignup.value = setting.disallowSignup;
     disallowPasswordSignin.value = setting.disallowPasswordSignin;
+    externalUrl.value = setting.externalUrl;
+    retentionDaysInput.value = String(setting.openlineageRetentionDays);
   } catch (e) {
     handleError(e, t("generalSettings.loadError"));
   } finally {
@@ -225,6 +298,27 @@ async function handleSave() {
     handleError(e, t("generalSettings.saveError"));
   } finally {
     isSaving.value = false;
+  }
+}
+
+async function handleSaveWorkspace() {
+  if (retentionError.value) {
+    return;
+  }
+  isWorkspaceSaving.value = true;
+  try {
+    await updateWorkspaceProfileSetting(
+      {
+        externalUrl: externalUrl.value.trim(),
+        openlineageRetentionDays: Number(retentionDaysInput.value),
+      },
+      ["external_url", "openlineage_retention_days"]
+    );
+    showSuccess(t("generalSettings.saveSuccess"));
+  } catch (e) {
+    handleError(e, t("generalSettings.saveError"));
+  } finally {
+    isWorkspaceSaving.value = false;
   }
 }
 

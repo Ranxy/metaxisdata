@@ -66,6 +66,10 @@ message WorkspaceProfileSetting {
 
   // Disallow password signin. Workspace admins are exempt.
   bool disallow_password_signin = 3;
+
+  // The number of days persisted OpenLineage runs are kept. Zero (the default)
+  // keeps them forever.
+  int32 openlineage_retention_days = 4;
 }
 
 message GetWorkspaceProfileSettingRequest {}

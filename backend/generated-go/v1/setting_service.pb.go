@@ -32,8 +32,11 @@ type WorkspaceProfileSetting struct {
 	DisallowSignup bool `protobuf:"varint,2,opt,name=disallow_signup,json=disallowSignup,proto3" json:"disallow_signup,omitempty"`
 	// Disallow password signin. Workspace admins are exempt.
 	DisallowPasswordSignin bool `protobuf:"varint,3,opt,name=disallow_password_signin,json=disallowPasswordSignin,proto3" json:"disallow_password_signin,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// The number of days persisted OpenLineage runs are kept. Zero (the default)
+	// keeps them forever.
+	OpenlineageRetentionDays int32 `protobuf:"varint,4,opt,name=openlineage_retention_days,json=openlineageRetentionDays,proto3" json:"openlineage_retention_days,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *WorkspaceProfileSetting) Reset() {
@@ -85,6 +88,13 @@ func (x *WorkspaceProfileSetting) GetDisallowPasswordSignin() bool {
 		return x.DisallowPasswordSignin
 	}
 	return false
+}
+
+func (x *WorkspaceProfileSetting) GetOpenlineageRetentionDays() int32 {
+	if x != nil {
+		return x.OpenlineageRetentionDays
+	}
+	return 0
 }
 
 type GetWorkspaceProfileSettingRequest struct {
@@ -352,11 +362,12 @@ var File_v1_setting_service_proto protoreflect.FileDescriptor
 
 const file_v1_setting_service_proto_rawDesc = "" +
 	"\n" +
-	"\x18v1/setting_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a google/protobuf/field_mask.proto\x1a\x13v1/annotation.proto\"\x9f\x01\n" +
+	"\x18v1/setting_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a google/protobuf/field_mask.proto\x1a\x13v1/annotation.proto\"\xdd\x01\n" +
 	"\x17WorkspaceProfileSetting\x12!\n" +
 	"\fexternal_url\x18\x01 \x01(\tR\vexternalUrl\x12'\n" +
 	"\x0fdisallow_signup\x18\x02 \x01(\bR\x0edisallowSignup\x128\n" +
-	"\x18disallow_password_signin\x18\x03 \x01(\bR\x16disallowPasswordSignin\"#\n" +
+	"\x18disallow_password_signin\x18\x03 \x01(\bR\x16disallowPasswordSignin\x12<\n" +
+	"\x1aopenlineage_retention_days\x18\x04 \x01(\x05R\x18openlineageRetentionDays\"#\n" +
 	"!GetWorkspaceProfileSettingRequest\"\xab\x01\n" +
 	"$UpdateWorkspaceProfileSettingRequest\x12F\n" +
 	"\asetting\x18\x01 \x01(\v2'.metaxisdata.v1.WorkspaceProfileSettingB\x03\xe0A\x02R\asetting\x12;\n" +

@@ -14,8 +14,7 @@ import (
 
 func (s *Server) initializeSetting(ctx context.Context) error {
 	// secretLength is the length of the per-deployment AUTH_SECRET. It is the
-	// fallback key for stored credentials when METADATA_SECRET_KEY is unset, and
-	// the fallback signing key when JWT_SECRET is unset.
+	// seed for stored credentials and the JWT signing key.
 	const secretLength = 32
 
 	// initial branding
@@ -66,35 +65,24 @@ func (s *Server) initializeSetting(ctx context.Context) error {
 		return err
 	}
 
-	// initial workspace profile setting
+	// initial workspace profile setting. It is admin-managed through the setting
+	// API, so only create the row on a fresh install and never overwrite an
+	// existing one on startup.
 	workspaceProfileSetting, err := s.store.GetSetting(ctx, storepb.SettingName_WORKSPACE_PROFILE)
 	if err != nil {
 		return err
 	}
-
-	workspaceProfilePayload := &storepb.WorkspaceProfileSetting{
-		ExternalUrl: s.profile.ExternalURL,
-	}
-	if workspaceProfileSetting != nil {
-		workspaceProfilePayload = new(storepb.WorkspaceProfileSetting)
-		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(workspaceProfileSetting.Value), workspaceProfilePayload); err != nil {
+	if workspaceProfileSetting == nil {
+		bytes, err := protojson.Marshal(&storepb.WorkspaceProfileSetting{})
+		if err != nil {
 			return err
 		}
-		if s.profile.ExternalURL != "" {
-			workspaceProfilePayload.ExternalUrl = s.profile.ExternalURL
+		if _, err := s.store.UpsertSetting(ctx, &store.SetSettingMessage{
+			Name:  storepb.SettingName_WORKSPACE_PROFILE,
+			Value: string(bytes),
+		}); err != nil {
+			return err
 		}
-	}
-
-	bytes, err := protojson.Marshal(workspaceProfilePayload)
-	if err != nil {
-		return err
-	}
-
-	if _, err := s.store.UpsertSetting(ctx, &store.SetSettingMessage{
-		Name:  storepb.SettingName_WORKSPACE_PROFILE,
-		Value: string(bytes),
-	}); err != nil {
-		return err
 	}
 
 	if firstTimeOnboarding {

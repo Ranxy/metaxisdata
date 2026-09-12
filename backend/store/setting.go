@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -155,15 +154,10 @@ func (s *Store) ListSetting(ctx context.Context, find *FindSettingMessage) ([]*S
 	return settings, nil
 }
 
-// minSecretLength is the minimum length of the credential encryption key.
-const minSecretLength = 32
-
-// GetSecret returns the key material used to encrypt stored credentials.
-//
-// It prefers METADATA_SECRET_KEY (config.Profile.EncryptionKey). When that is
-// not configured it falls back to the per-deployment AUTH_SECRET setting, which
-// lives in the same database as the ciphertexts, and warns once: anyone who can
-// read the database can then decrypt every stored credential.
+// GetSecret returns the per-deployment AUTH_SECRET setting, the seed used to
+// obfuscate stored credentials. The server generates it once and keeps it in
+// the database, so it survives restarts. An absent or empty value is an error
+// rather than an empty seed.
 func (s *Store) GetSecret(ctx context.Context) (string, error) {
 	s.secretMu.Lock()
 	defer s.secretMu.Unlock()
@@ -171,14 +165,6 @@ func (s *Store) GetSecret(ctx context.Context) (string, error) {
 	if s.secret != "" {
 		return s.secret, nil
 	}
-	if s.encryptionKey != "" {
-		if len(s.encryptionKey) < minSecretLength {
-			return "", errors.Errorf("METADATA_SECRET_KEY must be at least %d characters", minSecretLength)
-		}
-		s.secret = s.encryptionKey
-		return s.secret, nil
-	}
-
 	setting, err := s.GetSetting(ctx, storepb.SettingName_AUTH_SECRET)
 	if err != nil {
 		return "", err
@@ -186,10 +172,6 @@ func (s *Store) GetSecret(ctx context.Context) (string, error) {
 	if setting == nil || setting.Value == "" {
 		return "", errors.New("auth secret not found")
 	}
-	if len(setting.Value) < minSecretLength {
-		return "", errors.Errorf("AUTH_SECRET must be at least %d characters", minSecretLength)
-	}
-	slog.Warn("credential encryption is using the AUTH_SECRET stored in this database; set METADATA_SECRET_KEY to keep the key outside the database")
 	s.secret = setting.Value
 	return s.secret, nil
 }

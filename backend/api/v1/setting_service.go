@@ -3,6 +3,7 @@ package v1
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
@@ -53,11 +54,16 @@ func (s *SettingService) UpdateWorkspaceProfileSetting(ctx context.Context, requ
 	for _, path := range request.Msg.UpdateMask.Paths {
 		switch path {
 		case "external_url":
-			setting.ExternalUrl = request.Msg.Setting.ExternalUrl
+			setting.ExternalUrl = strings.TrimRight(request.Msg.Setting.ExternalUrl, "/")
 		case "disallow_signup":
 			setting.DisallowSignup = request.Msg.Setting.DisallowSignup
 		case "disallow_password_signin":
 			setting.DisallowPasswordSignin = request.Msg.Setting.DisallowPasswordSignin
+		case "openlineage_retention_days":
+			if request.Msg.Setting.OpenlineageRetentionDays < 0 {
+				return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("openlineage_retention_days must not be negative"))
+			}
+			setting.OpenlineageRetentionDays = request.Msg.Setting.OpenlineageRetentionDays
 		default:
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported update_mask %q", path))
 		}
@@ -78,9 +84,10 @@ func (s *SettingService) UpdateWorkspaceProfileSetting(ctx context.Context, requ
 
 func convertToWorkspaceProfileSetting(setting *storepb.WorkspaceProfileSetting) *v1pb.WorkspaceProfileSetting {
 	return &v1pb.WorkspaceProfileSetting{
-		ExternalUrl:            setting.GetExternalUrl(),
-		DisallowSignup:         setting.GetDisallowSignup(),
-		DisallowPasswordSignin: setting.GetDisallowPasswordSignin(),
+		ExternalUrl:              setting.GetExternalUrl(),
+		DisallowSignup:           setting.GetDisallowSignup(),
+		DisallowPasswordSignin:   setting.GetDisallowPasswordSignin(),
+		OpenlineageRetentionDays: setting.GetOpenlineageRetentionDays(),
 	}
 }
 

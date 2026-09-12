@@ -36,6 +36,14 @@ export declare type WorkspaceProfileSetting = Message<"metaxisdata.v1.WorkspaceP
    * @generated from field: bool disallow_password_signin = 3;
    */
   disallowPasswordSignin: boolean;
+
+  /**
+   * The number of days persisted OpenLineage runs are kept. Zero (the default)
+   * keeps them forever.
+   *
+   * @generated from field: int32 openlineage_retention_days = 4;
+   */
+  openlineageRetentionDays: number;
 };
 
 /**

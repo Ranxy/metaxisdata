@@ -43,11 +43,7 @@ func (s *Store) obfuscateLLMProfile(ctx context.Context, meta *storepb.LlmProvid
 	if err != nil {
 		return err
 	}
-	encrypted, err := common.Obfuscate(meta.ApiKeyEncrypted, secret)
-	if err != nil {
-		return err
-	}
-	meta.ApiKeyEncrypted = encrypted
+	meta.ApiKeyEncrypted = common.Obfuscate(meta.ApiKeyEncrypted, secret)
 	return nil
 }
 

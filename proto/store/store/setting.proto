@@ -39,6 +39,10 @@ message WorkspaceProfileSetting {
   // Whether to disallow password signin. (Except workspace admins)
   bool disallow_password_signin = 12;
 
+  // openlineage_retention_days bounds how long persisted OpenLineage runs are
+  // kept. Zero (the default) keeps them forever: they are audit data.
+  int32 openlineage_retention_days = 14;
+
   reserved 3, 6, 7, 8, 11, 13;
   reserved "require_2fa", "token_duration", "announcement", "maximum_role_expiration", "database_change_mode", "enable_metric_collection";
 }
