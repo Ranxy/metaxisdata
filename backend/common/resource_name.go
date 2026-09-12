@@ -3,11 +3,19 @@ package common
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
 )
+
+var resourceIDMatcher = regexp.MustCompile("^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$")
+
+// IsValidResourceID reports whether id is a syntactically valid resource ID.
+func IsValidResourceID(id string) bool {
+	return resourceIDMatcher.MatchString(id)
+}
 
 // nolint:revive
 const (

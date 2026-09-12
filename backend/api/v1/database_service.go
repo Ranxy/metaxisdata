@@ -811,8 +811,10 @@ func getListDatabaseFilter(filter string) (*store.ListResourceFilter, error) {
 			}
 			labelKey := keyVal[0]
 			labelValues := strings.Split(keyVal[1], ",")
+			positionalArgs = append(positionalArgs, labelKey)
+			keyPlaceholder := len(positionalArgs)
 			positionalArgs = append(positionalArgs, labelValues)
-			return fmt.Sprintf("db.metadata->'labels'->>'%s' = ANY($%d)", labelKey, len(positionalArgs)), nil
+			return fmt.Sprintf("db.metadata->'labels'->>$%d = ANY($%d)", keyPlaceholder, len(positionalArgs)), nil
 		case "drifted":
 			drifted, ok := value.(bool)
 			if !ok {
@@ -871,13 +873,15 @@ func getListDatabaseFilter(filter string) (*store.ListResourceFilter, error) {
 
 				switch variable {
 				case "name":
-					return "LOWER(db.name) LIKE '%" + strValue + "%'", nil
+					positionalArgs = append(positionalArgs, likePattern(strValue))
+					return fmt.Sprintf("LOWER(db.name) LIKE $%d", len(positionalArgs)), nil
 				case "table":
-					return `EXISTS (
+					positionalArgs = append(positionalArgs, likePattern(strValue))
+					return fmt.Sprintf(`EXISTS (
 						SELECT 1
 						FROM json_array_elements(ds.metadata->'schemas') AS s,
 						 	 json_array_elements(s->'tables') AS t
-						WHERE t->>'name' LIKE '%` + strValue + `%')`, nil
+						WHERE t->>'name' LIKE $%d)`, len(positionalArgs)), nil
 				default:
 					return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf(`only "name" or "table" support %q operator, but found %q`, celoverloads.Matches, variable))
 				}

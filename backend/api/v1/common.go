@@ -30,10 +30,19 @@ const (
 )
 
 var (
-	resourceIDMatcher = regexp.MustCompile("^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$")
-	deletePatch       = true
-	undeletePatch     = false
+	deletePatch   = true
+	undeletePatch = false
 )
+
+// likePatternEscaper escapes LIKE wildcards in a literal so that it only
+// matches itself.
+var likePatternEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+// likePattern wraps a literal in LIKE wildcards, escaping any wildcard it
+// contains. Use it together with a parameterized "LIKE $n" predicate.
+func likePattern(value string) string {
+	return "%" + likePatternEscaper.Replace(value) + "%"
+}
 
 func convertDeletedToState(deleted bool) v1pb.State {
 	if deleted {
@@ -43,7 +52,7 @@ func convertDeletedToState(deleted bool) v1pb.State {
 }
 
 func isValidResourceID(resourceID string) bool {
-	return resourceIDMatcher.MatchString(resourceID)
+	return common.IsValidResourceID(resourceID)
 }
 
 type Expression struct {

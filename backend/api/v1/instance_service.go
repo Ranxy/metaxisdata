@@ -149,11 +149,17 @@ func parseListInstanceFilter(filter string) (*store.ListResourceFilter, error) {
 
 				switch variable {
 				case "name":
-					return "LOWER(instance.metadata->>'title') LIKE '%" + strings.ToLower(strValue) + "%'", nil
+					positionalArgs = append(positionalArgs, likePattern(strings.ToLower(strValue)))
+					return fmt.Sprintf("LOWER(instance.metadata->>'title') LIKE $%d", len(positionalArgs)), nil
 				case "resource_id":
-					return "LOWER(instance.resource_id) LIKE '%" + strings.ToLower(strValue) + "%'", nil
-				case "host", "port":
-					return "ds ->> '" + variable + "' LIKE '%" + strValue + "%'", nil
+					positionalArgs = append(positionalArgs, likePattern(strings.ToLower(strValue)))
+					return fmt.Sprintf("LOWER(instance.resource_id) LIKE $%d", len(positionalArgs)), nil
+				case "host":
+					positionalArgs = append(positionalArgs, likePattern(strValue))
+					return fmt.Sprintf("ds ->> 'host' LIKE $%d", len(positionalArgs)), nil
+				case "port":
+					positionalArgs = append(positionalArgs, likePattern(strValue))
+					return fmt.Sprintf("ds ->> 'port' LIKE $%d", len(positionalArgs)), nil
 				default:
 					return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupport variable %q", variable))
 				}

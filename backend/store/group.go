@@ -103,6 +103,9 @@ func (*Store) listGroupImpl(ctx context.Context, txn *sql.Tx, find *FindGroupMes
 
 	var with, join string
 	if v := find.ProjectID; v != nil {
+		if !common.IsValidResourceID(*v) {
+			return nil, errors.Errorf("invalid project id %q", *v)
+		}
 		with = `WITH all_members AS (
 			SELECT
 				jsonb_array_elements_text(jsonb_array_elements(policy.payload->'bindings')->'members') AS member,
