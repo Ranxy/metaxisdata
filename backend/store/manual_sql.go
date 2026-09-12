@@ -228,9 +228,27 @@ func (s *Store) CreateManualSQL(ctx context.Context, msg *ManualSQLMessage) (*Ma
 	}
 	defer tx.Rollback()
 
+	// The upsert conflict key excludes schema_name while the GUID includes it,
+	// so recreating a manual SQL under a different schema rewrites the row's
+	// GUID. Capture the superseded GUID so its mirror and lineage rows can be
+	// cleaned, exactly as UpdateManualSQL does.
+	previousGUID, err := findManualSQLGUIDByConflictKey(ctx, tx, prepared)
+	if err != nil {
+		return nil, err
+	}
+
 	created, err := upsertManualSQLRow(ctx, tx, prepared)
 	if err != nil {
 		return nil, err
+	}
+
+	if previousGUID != "" && previousGUID != created.GUID {
+		if err := s.deleteManualSQLMetaRegistryTx(ctx, tx, previousGUID, observedAt); err != nil {
+			return nil, err
+		}
+		if err := deleteColumnLineageByMetaTx(ctx, tx, previousGUID); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := replaceManualSQLTags(ctx, tx, created.ID, created.Tags); err != nil {
@@ -420,6 +438,23 @@ func (s *Store) DeleteManualSQL(ctx context.Context, guid string, updatedBy *str
 		return errors.Wrap(err, "failed to commit transaction")
 	}
 	return nil
+}
+
+// findManualSQLGUIDByConflictKey returns the GUID of the row the upsert would
+// update, or "" when it would insert a new one.
+func findManualSQLGUIDByConflictKey(ctx context.Context, tx *sql.Tx, msg *ManualSQLMessage) (string, error) {
+	var guid string
+	err := tx.QueryRowContext(ctx, `
+		SELECT guid FROM manual_sql
+		WHERE instance_resource_id = $1 AND database_name = $2 AND name = $3
+	`, msg.InstanceResourceID, msg.DatabaseName, msg.Name).Scan(&guid)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", errors.Wrap(err, "failed to find the existing manual SQL guid")
+	}
+	return guid, nil
 }
 
 func upsertManualSQLRow(ctx context.Context, tx *sql.Tx, msg *ManualSQLMessage) (*ManualSQLMessage, error) {

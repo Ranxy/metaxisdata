@@ -500,11 +500,10 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 
 	logSchemaSyncDeletion(common.FormatDatabase(database.InstanceID, database.DatabaseName), bmc.deletes)
 
-	// Clean lineage rows for deleted VIEW and MATERIALIZED_VIEW metadata in the same transaction.
+	// Clean lineage rows for every deleted object, not only views: a dropped
+	// table or column leaves edges whose endpoint GUID no longer exists, and a
+	// dropped view also stops being the producer of its edges.
 	for _, item := range bmc.deletes {
-		if item.ObjectType != storepb.MetaType_VIEW && item.ObjectType != storepb.MetaType_MATERIALIZED_VIEW {
-			continue
-		}
 		if err := deleteColumnLineageByMetaTx(ctx, tx, item.GUID, item.ObjectType); err != nil {
 			return errors.Wrapf(err, "failed to delete column lineage for guid %q", item.GUID)
 		}
@@ -818,9 +817,16 @@ func getOrDefaultLastSyncTime(t *timestamppb.Timestamp) time.Time {
 	return time.Unix(0, 0)
 }
 
+// deleteColumnLineageByMetaTx removes every lineage row that mentions a deleted
+// object: the edges it produced (meta_guid) and the edges that point at it as a
+// source or target. Rows left behind would reference a GUID that no longer
+// exists.
 func deleteColumnLineageByMetaTx(ctx context.Context, tx *sql.Tx, metaGUID string, metaType storepb.MetaType) error {
 	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM column_lineage WHERE meta_guid = $1 AND meta_type = $2`,
+		`DELETE FROM column_lineage
+		 WHERE (meta_guid = $1 AND meta_type = $2)
+		    OR (source_guid = $1 AND source_type = $2)
+		    OR (target_guid = $1 AND target_type = $2)`,
 		metaGUID, metaType,
 	); err != nil {
 		return err
