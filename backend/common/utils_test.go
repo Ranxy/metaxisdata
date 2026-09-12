@@ -15,17 +15,28 @@ func TestObfuscateRoundTrip(t *testing.T) {
 
 	const key = "0123456789abcdef0123456789abcdef"
 
-	for _, plaintext := range []string{"p@ssw0rd", "a", strings.Repeat("x", 4096), "密码🔐"} {
-		t.Run(plaintext[:1], func(t *testing.T) {
+	tests := []struct {
+		name      string
+		plaintext string
+	}{
+		{name: "password", plaintext: "p@ssw0rd"},
+		{name: "single character", plaintext: "a"},
+		{name: "long", plaintext: strings.Repeat("x", 4096)},
+		{name: "unicode", plaintext: "密码🔐"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			ciphertext, err := Obfuscate(plaintext, key)
+			ciphertext, err := Obfuscate(tc.plaintext, key)
 			require.NoError(t, err)
 			require.True(t, strings.HasPrefix(ciphertext, "v1:"))
-			require.NotContains(t, ciphertext, plaintext)
+			// Base64 output may coincidentally contain the plaintext, so only
+			// the ciphertext as a whole is compared.
+			require.NotEqual(t, tc.plaintext, ciphertext)
 
 			decrypted, err := Unobfuscate(ciphertext, key)
 			require.NoError(t, err)
-			require.Equal(t, plaintext, decrypted)
+			require.Equal(t, tc.plaintext, decrypted)
 		})
 	}
 }
