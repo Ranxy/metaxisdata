@@ -724,21 +724,21 @@ func (s *DatabaseService) getTableSequences(ctx context.Context, schemaPrefix, t
 }
 
 func parseToEngineSQL(expr celast.Expr, relation string) (string, error) {
-	variable, value := getVariableAndValueFromExpr(expr)
+	variable, value, err := getVariableAndValueFromExpr(expr)
+	if err != nil {
+		return "", err
+	}
 	if variable != "engine" {
 		return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf(`only "engine" support "engine in [xx]"/"!(engine in [xx])" operator`))
 	}
 
-	rawEngineList, ok := value.([]any)
-	if !ok {
-		return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid engine value %q", value))
-	}
-	if len(rawEngineList) == 0 {
-		return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("empty engine filter"))
+	rawEngineList, err := filterStringList(variable, value)
+	if err != nil {
+		return "", err
 	}
 	engineList := []string{}
 	for _, rawEngine := range rawEngineList {
-		v1Engine, ok := v1pb.Engine_value[rawEngine.(string)]
+		v1Engine, ok := v1pb.Engine_value[rawEngine]
 		if !ok {
 			return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid engine filter %q", rawEngine))
 		}
@@ -766,24 +766,36 @@ func getListDatabaseFilter(filter string) (*store.ListResourceFilter, error) {
 	var getFilter func(expr celast.Expr) (string, error)
 	var positionalArgs []any
 
-	parseToSQL := func(variable, value any) (string, error) {
+	parseToSQL := func(variable string, value any) (string, error) {
 		switch variable {
 		case "project":
-			projectID, err := common.GetProjectID(value.(string))
+			v, err := filterString(variable, value)
+			if err != nil {
+				return "", err
+			}
+			projectID, err := common.GetProjectID(v)
 			if err != nil {
 				return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid project filter %q", value))
 			}
 			positionalArgs = append(positionalArgs, projectID)
 			return fmt.Sprintf("db.project = $%d", len(positionalArgs)), nil
 		case "instance":
-			instanceID, err := common.GetInstanceID(value.(string))
+			v, err := filterString(variable, value)
+			if err != nil {
+				return "", err
+			}
+			instanceID, err := common.GetInstanceID(v)
 			if err != nil {
 				return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid instance filter %q", value))
 			}
 			positionalArgs = append(positionalArgs, instanceID)
 			return fmt.Sprintf("db.instance = $%d", len(positionalArgs)), nil
 		case "environment":
-			environmentID, err := common.GetEnvironmentID(value.(string))
+			v, err := filterString(variable, value)
+			if err != nil {
+				return "", err
+			}
+			environmentID, err := common.GetEnvironmentID(v)
 			if err != nil {
 				return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid environment filter %q", value))
 			}
@@ -794,7 +806,11 @@ func getListDatabaseFilter(filter string) (*store.ListResourceFilter, error) {
 				instance.environment
 			) = $%d`, len(positionalArgs)), nil
 		case "engine":
-			v1Engine, ok := v1pb.Engine_value[value.(string)]
+			v, err := filterString(variable, value)
+			if err != nil {
+				return "", err
+			}
+			v1Engine, ok := v1pb.Engine_value[v]
 			if !ok {
 				return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid engine filter %q", value))
 			}
@@ -802,10 +818,18 @@ func getListDatabaseFilter(filter string) (*store.ListResourceFilter, error) {
 			positionalArgs = append(positionalArgs, engine)
 			return fmt.Sprintf("instance.metadata->>'engine' = $%d", len(positionalArgs)), nil
 		case "name":
-			positionalArgs = append(positionalArgs, value)
+			v, err := filterString(variable, value)
+			if err != nil {
+				return "", err
+			}
+			positionalArgs = append(positionalArgs, v)
 			return fmt.Sprintf("db.name = $%d", len(positionalArgs)), nil
 		case "label":
-			keyVal := strings.Split(value.(string), ":")
+			v, err := filterString(variable, value)
+			if err != nil {
+				return "", err
+			}
+			keyVal := strings.Split(v, ":")
 			if len(keyVal) != 2 {
 				return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf(`invalid label filter %q, should be in "{label key}:{label value} format"`, value))
 			}
@@ -816,9 +840,9 @@ func getListDatabaseFilter(filter string) (*store.ListResourceFilter, error) {
 			positionalArgs = append(positionalArgs, labelValues)
 			return fmt.Sprintf("db.metadata->'labels'->>$%d = ANY($%d)", keyPlaceholder, len(positionalArgs)), nil
 		case "drifted":
-			drifted, ok := value.(bool)
-			if !ok {
-				return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid drifted filter %q", value))
+			drifted, err := filterBool(variable, value)
+			if err != nil {
+				return "", err
 			}
 			condition := "IS"
 			if !drifted {
@@ -826,11 +850,15 @@ func getListDatabaseFilter(filter string) (*store.ListResourceFilter, error) {
 			}
 			return fmt.Sprintf("(db.metadata->>'drifted')::boolean %s TRUE", condition), nil
 		case "exclude_unassigned":
-			if excludeUnassigned, ok := value.(bool); excludeUnassigned && ok {
-				positionalArgs = append(positionalArgs, common.DefaultProjectID)
-				return fmt.Sprintf("db.project != $%d", len(positionalArgs)), nil
+			excludeUnassigned, err := filterBool(variable, value)
+			if err != nil {
+				return "", err
 			}
-			return "TRUE", nil
+			if !excludeUnassigned {
+				return "TRUE", nil
+			}
+			positionalArgs = append(positionalArgs, common.DefaultProjectID)
+			return fmt.Sprintf("db.project != $%d", len(positionalArgs)), nil
 		default:
 			return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupport variable %q", variable))
 		}
@@ -846,18 +874,19 @@ func getListDatabaseFilter(filter string) (*store.ListResourceFilter, error) {
 			case celoperators.LogicalAnd:
 				return getSubConditionFromExpr(expr, getFilter, "AND")
 			case celoperators.Equals:
-				variable, value := getVariableAndValueFromExpr(expr)
+				variable, value, err := getVariableAndValueFromExpr(expr)
+				if err != nil {
+					return "", err
+				}
 				return parseToSQL(variable, value)
 			case celoverloads.Matches:
-				variable := expr.AsCall().Target().AsIdent()
-				args := expr.AsCall().Args()
-				if len(args) != 1 {
-					return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf(`invalid args for %q`, variable))
+				variable, value, err := matchArgs(expr)
+				if err != nil {
+					return "", err
 				}
-				value := args[0].AsLiteral().Value()
-				strValue, ok := value.(string)
-				if !ok {
-					return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("expect string, got %T, hint: filter literals should be string", value))
+				strValue, err := filterString(variable, value)
+				if err != nil {
+					return "", err
 				}
 				strValue = strings.ToLower(strValue)
 

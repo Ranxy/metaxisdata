@@ -9,6 +9,7 @@ import (
 
 	"connectrpc.com/connect"
 	celast "github.com/google/cel-go/common/ast"
+	celoverloads "github.com/google/cel-go/common/overloads"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
@@ -447,7 +448,10 @@ func getSubConditionFromExpr(expr celast.Expr, getFilter func(expr celast.Expr) 
 	return strings.Join(args, fmt.Sprintf(" %s ", join)), nil
 }
 
-func getVariableAndValueFromExpr(expr celast.Expr) (string, any) {
+// getVariableAndValueFromExpr extracts the variable and the literal operand of
+// a simple filter comparison such as `name == "x"` or `engine in ["MYSQL"]`.
+// Any other shape is rejected as InvalidArgument.
+func getVariableAndValueFromExpr(expr celast.Expr) (string, any, error) {
 	var variable string
 	var value any
 	for _, arg := range expr.AsCall().Args() {
@@ -473,5 +477,70 @@ func getVariableAndValueFromExpr(expr celast.Expr) (string, any) {
 		default:
 		}
 	}
-	return variable, value
+	if variable == "" {
+		return "", nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("expect a filter variable"))
+	}
+	if value == nil {
+		return "", nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("expect a literal value for %q", variable))
+	}
+	return variable, value, nil
+}
+
+// filterString extracts a string literal operand. CEL literals are returned as
+// untyped any, so asserting without checking panics the whole request.
+func filterString(variable string, value any) (string, error) {
+	v, ok := value.(string)
+	if !ok {
+		return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid %s filter: expect a string literal, got %T", variable, value))
+	}
+	return v, nil
+}
+
+// filterBool extracts a bool literal operand.
+func filterBool(variable string, value any) (bool, error) {
+	v, ok := value.(bool)
+	if !ok {
+		return false, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid %s filter: expect a bool literal, got %T", variable, value))
+	}
+	return v, nil
+}
+
+// filterStringList extracts a non-empty list of string literal operands, as
+// used by `engine in ["MYSQL", "POSTGRES"]`.
+func filterStringList(variable string, value any) ([]string, error) {
+	raw, ok := value.([]any)
+	if !ok {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid %s filter: expect a list literal, got %T", variable, value))
+	}
+	if len(raw) == 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("empty %s filter", variable))
+	}
+	list := make([]string, 0, len(raw))
+	for _, item := range raw {
+		v, ok := item.(string)
+		if !ok {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid %s filter: expect string elements, got %T", variable, item))
+		}
+		list = append(list, v)
+	}
+	return list, nil
+}
+
+// matchArgs extracts the identifier and the literal operand of a
+// `x.matches("y")` call. CallExpr.Target() is nil for a non-receiver call and
+// Expr.AsLiteral() returns nil for a non-literal, so neither may be
+// dereferenced unguarded.
+func matchArgs(expr celast.Expr) (string, any, error) {
+	target := expr.AsCall().Target()
+	if target == nil || target.Kind() != celast.IdentKind {
+		return "", nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("expect an identifier before %q", celoverloads.Matches))
+	}
+	args := expr.AsCall().Args()
+	if len(args) != 1 {
+		return "", nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid args for %q", target.AsIdent()))
+	}
+	if args[0].Kind() != celast.LiteralKind {
+		return "", nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("expect a literal argument for %q", celoverloads.Matches))
+	}
+	return target.AsIdent(), args[0].AsLiteral().Value(), nil
 }

@@ -158,13 +158,22 @@ func parseAuditLogFilter(filter string) (*store.ListResourceFilter, error) {
 			case celoperators.LogicalAnd:
 				return getSubConditionFromExpr(expr, getFilter, "AND")
 			case celoperators.Equals:
-				variable, value := getVariableAndValueFromExpr(expr)
+				variable, value, err := getVariableAndValueFromExpr(expr)
+				if err != nil {
+					return "", err
+				}
 				return parseToSQL(variable, value, ComparatorTypeEqual)
 			case celoperators.GreaterEquals:
-				variable, value := getVariableAndValueFromExpr(expr)
+				variable, value, err := getVariableAndValueFromExpr(expr)
+				if err != nil {
+					return "", err
+				}
 				return parseToSQL(variable, value, ComparatorTypeGreaterEqual)
 			case celoperators.LessEquals:
-				variable, value := getVariableAndValueFromExpr(expr)
+				variable, value, err := getVariableAndValueFromExpr(expr)
+				if err != nil {
+					return "", err
+				}
 				return parseToSQL(variable, value, ComparatorTypeLessEqual)
 			default:
 				return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported audit log filter operator %q", expr.AsCall().FunctionName()))

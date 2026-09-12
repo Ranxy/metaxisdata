@@ -72,44 +72,62 @@ func parseListInstanceFilter(filter string) (*store.ListResourceFilter, error) {
 	var getFilter func(expr celast.Expr) (string, error)
 	var positionalArgs []any
 
-	parseToSQL := func(variable, value any) (string, error) {
+	parseToSQL := func(variable string, value any) (string, error) {
 		switch variable {
-		case "name":
-			positionalArgs = append(positionalArgs, value.(string))
-			return fmt.Sprintf("instance.metadata->>'title' = $%d", len(positionalArgs)), nil
-		case "resource_id":
-			positionalArgs = append(positionalArgs, value.(string))
-			return fmt.Sprintf("instance.resource_id = $%d", len(positionalArgs)), nil
+		case "name", "resource_id", "host", "port":
+			v, err := filterString(variable, value)
+			if err != nil {
+				return "", err
+			}
+			positionalArgs = append(positionalArgs, v)
+			switch variable {
+			case "name":
+				return fmt.Sprintf("instance.metadata->>'title' = $%d", len(positionalArgs)), nil
+			case "resource_id":
+				return fmt.Sprintf("instance.resource_id = $%d", len(positionalArgs)), nil
+			default:
+				return fmt.Sprintf("ds ->> '%s' = $%d", variable, len(positionalArgs)), nil
+			}
 		case "environment":
-			environmentID, err := common.GetEnvironmentID(value.(string))
+			v, err := filterString(variable, value)
+			if err != nil {
+				return "", err
+			}
+			environmentID, err := common.GetEnvironmentID(v)
 			if err != nil {
 				return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid environment filter %q", value))
 			}
 			positionalArgs = append(positionalArgs, environmentID)
 			return fmt.Sprintf("instance.environment = $%d", len(positionalArgs)), nil
 		case "state":
-			v1State, ok := v1pb.State_value[value.(string)]
+			v, err := filterString(variable, value)
+			if err != nil {
+				return "", err
+			}
+			v1State, ok := v1pb.State_value[v]
 			if !ok {
 				return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid state filter %q", value))
 			}
 			positionalArgs = append(positionalArgs, v1pb.State(v1State) == v1pb.State_DELETED)
 			return fmt.Sprintf("instance.deleted = $%d", len(positionalArgs)), nil
 		case "engine":
-			v1Engine, ok := v1pb.Engine_value[value.(string)]
+			v, err := filterString(variable, value)
+			if err != nil {
+				return "", err
+			}
+			v1Engine, ok := v1pb.Engine_value[v]
 			if !ok {
 				return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid engine filter %q", value))
 			}
 			engine := convertEngine(v1pb.Engine(v1Engine))
 			positionalArgs = append(positionalArgs, engine)
 			return fmt.Sprintf("instance.metadata->>'engine' = $%d", len(positionalArgs)), nil
-		case "host":
-			positionalArgs = append(positionalArgs, value.(string))
-			return fmt.Sprintf("ds ->> 'host' = $%d", len(positionalArgs)), nil
-		case "port":
-			positionalArgs = append(positionalArgs, value.(string))
-			return fmt.Sprintf("ds ->> 'port' = $%d", len(positionalArgs)), nil
 		case "project":
-			projectID, err := common.GetProjectID(value.(string))
+			v, err := filterString(variable, value)
+			if err != nil {
+				return "", err
+			}
+			projectID, err := common.GetProjectID(v)
 			if err != nil {
 				return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid project filter %q", value))
 			}
@@ -130,18 +148,19 @@ func parseListInstanceFilter(filter string) (*store.ListResourceFilter, error) {
 			case celoperators.LogicalAnd:
 				return getSubConditionFromExpr(expr, getFilter, "AND")
 			case celoperators.Equals:
-				variable, value := getVariableAndValueFromExpr(expr)
+				variable, value, err := getVariableAndValueFromExpr(expr)
+				if err != nil {
+					return "", err
+				}
 				return parseToSQL(variable, value)
 			case celoverloads.Matches:
-				variable := expr.AsCall().Target().AsIdent()
-				args := expr.AsCall().Args()
-				if len(args) != 1 {
-					return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf(`invalid args for %q`, variable))
+				variable, value, err := matchArgs(expr)
+				if err != nil {
+					return "", err
 				}
-				value := args[0].AsLiteral().Value()
-				strValue, ok := value.(string)
-				if !ok {
-					return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf("expect string, got %T, hint: filter literals should be string", value))
+				strValue, err := filterString(variable, value)
+				if err != nil {
+					return "", err
 				}
 				if strValue == "" {
 					return "", connect.NewError(connect.CodeInvalidArgument, errors.Errorf(`empty value for %q`, variable))
