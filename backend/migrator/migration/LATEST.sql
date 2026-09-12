@@ -4,9 +4,9 @@ CREATE TABLE idp (
   resource_id text NOT NULL,
   name text NOT NULL,
   domain text NOT NULL,
-  -- Only 'OAUTH2' is implemented. The check keeps the OIDC/LDAP leftovers so an
-  -- existing row does not start failing writes; the server rejects them at login.
-  type text NOT NULL CONSTRAINT idp_type_check CHECK (type IN ('OAUTH2', 'OIDC', 'LDAP')),
+  -- Only OAuth2 is implemented; the OIDC/LDAP config messages and enum values
+  -- were deleted in the proto surface convergence.
+  type text NOT NULL CONSTRAINT idp_type_check CHECK (type IN ('OAUTH2')),
   -- config stores the corresponding configuration of the IdP, which may vary depending on the type of the IdP.
   -- Stored as IdentityProviderConfig (proto/store/store/idp.proto)
   config jsonb NOT NULL DEFAULT '{}'
@@ -26,9 +26,6 @@ CREATE TABLE principal (
     email text NOT NULL,
     password_hash text NOT NULL,
     phone text NOT NULL DEFAULT '',
-    -- mfa_config is a leftover of the removed two-factor authentication
-    -- feature: no code reads or writes it and no proto message describes it.
-    mfa_config jsonb NOT NULL DEFAULT '{}',
     -- Stored as UserProfile (proto/store/store/user.proto)
     profile jsonb NOT NULL DEFAULT '{}'
 );
@@ -51,24 +48,6 @@ CREATE TABLE setting (
 CREATE UNIQUE INDEX idx_setting_unique_name ON setting(name);
 
 ALTER SEQUENCE setting_id_seq RESTART WITH 101;
-
-
--- Role
--- The role CRUD was deleted; no Go code reads or writes this table.
-CREATE TABLE role (
-    id bigserial PRIMARY KEY,
-    resource_id text NOT NULL,
-    name text NOT NULL,
-    description text NOT NULL,
-    -- permissions has no proto message left (RolePermissions was deleted).
-    permissions jsonb NOT NULL DEFAULT '{}',
-    -- saved for future use
-    payload jsonb NOT NULL DEFAULT '{}'
-);
-
-CREATE UNIQUE INDEX idx_role_unique_resource_id on role (resource_id);
-
-ALTER SEQUENCE role_id_seq RESTART WITH 101;
 
 
 -- Policy
