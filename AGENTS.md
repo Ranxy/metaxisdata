@@ -114,7 +114,10 @@ Frontend tests are Vitest with jsdom (`frontend/vitest.config.ts`), colocated wi
 ### Backend
 
 ```bash
-# Build
+# Build for deployment: `make build-release` (adds -tags release, which selects the prod profile)
+go build -ldflags "-w -s" -p=16 -tags release -o ./build/metaxisdata ./backend/bin/server/main.go
+
+# Build without the release tag: dev profile, wide-open CORS. Local development only.
 go build -ldflags "-w -s" -p=16 -o ./build/metaxisdata ./backend/bin/server/main.go
 
 # Start backend (requires PG_URL; default port 8080 matches the frontend vite proxy)

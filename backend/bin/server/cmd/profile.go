@@ -15,7 +15,8 @@ func getBaseProfile(_ string) *config.Profile {
 		// The JWT signing key is injected through the environment. When it is
 		// absent, the server falls back to the per-deployment AUTH_SECRET setting
 		// stored in the database.
-		Secret: os.Getenv("JWT_SECRET"),
+		Secret:      os.Getenv("JWT_SECRET"),
+		ExternalURL: flags.externalURL,
 	}
 
 	config.RuntimeDebug.Store(flags.debug)

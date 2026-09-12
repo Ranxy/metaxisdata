@@ -71,12 +71,32 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&flags.port, "port", 8080, "port where server runs. Default to 80")
 	rootCmd.PersistentFlags().BoolVar(&flags.enableJSONLogging, "enable-json-logging", false, "enable output logs in json format")
 	rootCmd.PersistentFlags().BoolVar(&flags.debug, "debug", false, "whether to enable debug level logging")
+	rootCmd.PersistentFlags().StringVar(&flags.externalURL, "external-url", "", "the external URL the server is reachable at; used to build SSO callback URLs when the workspace setting does not already set one")
+}
+
+// setupLogging installs the process-wide logger. Without it slog.Default keeps
+// its built-in TextHandler pinned at Info, so --debug and --enable-json-logging
+// had no effect and log.Replace never ran.
+func setupLogging(enableJSONLogging bool) {
+	opts := &slog.HandlerOptions{
+		AddSource:   true,
+		Level:       log.LogLevel,
+		ReplaceAttr: log.Replace,
+	}
+	var handler slog.Handler
+	if enableJSONLogging {
+		handler = slog.NewJSONHandler(os.Stdout, opts)
+	} else {
+		handler = slog.NewTextHandler(os.Stdout, opts)
+	}
+	slog.SetDefault(slog.New(handler))
 }
 
 func start() {
 	if flags.debug {
 		log.LogLevel.Set(slog.LevelDebug)
 	}
+	setupLogging(flags.enableJSONLogging)
 
 	profile := activeProfile(flags.dataDir)
 
