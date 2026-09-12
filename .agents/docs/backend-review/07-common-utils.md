@@ -6,6 +6,8 @@
 
 **阶段 0 更新**：本层仅有的改动是 `common/resource_name.go` 新增并导出了被 store/API 复用的 `IsValidResourceID`（配合 SQL 注入修复，`3321801`）。U-H1（错误码映射）与 U-H2（XOR 混淆）**未处理**；`Profile.Secret` 接线、JWT 解析校验等修在其他层（见 `05`、`02`）。
 
+**阶段 1 更新**：M3 ✅（`ff914ac`，CEL 类型断言不再 panic，统一 `InvalidArgument`）、低节"日志系统未接线" ✅（`7fdcead`）。U-H1/U-H2、M1（CEL condition fail-open）等仍未处理。
+
 ---
 
 ## 高（High）
@@ -32,8 +34,9 @@
 
 - **M1. CEL 条件 fail-open**：`common/cel.go:257-299`，`if !celtypes.IsBool(out) { return true, nil }`；env 声明 `resource.database/schema_name/table_name`（`:46-49`）但 `EvalBindingCondition` 只绑定 `request.time`（`:250-255`）。`utils/member.go:18` 在活跃路径上对每个 binding 调用它；引用 `resource.*` 的 condition 会被当作满足，角色被全局授予。当前 binding 构造不带 condition（`store/policy.go:68`），属潜伏。**修复**：绑定真实资源属性或返回"无法求值"并拒绝；要求编译结果为 bool。
 - **M2. 每次 binding 求值都新建 CEL 环境**：`common/cel.go:262`，`cel.NewEnv` 在 `validateIAMBinding`（`utils/member.go:17-24`）里逐 binding 调用；`GetUserFormattedRolesMap` 每请求遍历所有 policy 的所有 binding。建议包级 `sync.Once` 构建一次；并在单次 `GetUserIAMPolicyBindings` 内 memoize group 查询（`member.go:148`）。
-- **M3. 未检查类型断言导致 panic**：`common.go:441-467` 的 `getVariableAndValueFromExpr` 返回 `any`，调用方（`user_service.go:165,168,171,182,189,215`、`instance_service.go:78,81,84,91,98,106,109,112`、`database_service.go:741,808,833,865`）直接 `value.(string)`。`filter=email == 1` 会 panic → `connect.WithRecover` 转成 500 并回传堆栈。（**⏳ 阶段 0 未修**：`5446a10` 只让 500 不再携带堆栈，断言本身仍会 panic。）
+- **M3. 未检查类型断言导致 panic**：`common.go:441-467` 的 `getVariableAndValueFromExpr` 返回 `any`，调用方（`user_service.go:165,168,171,182,189,215`、`instance_service.go:78,81,84,91,98,106,109,112`、`database_service.go:741,808,833,865`）直接 `value.(string)`。`filter=email == 1` 会 panic → `connect.WithRecover` 转成 500 并回传堆栈。（**✅ 已修复（阶段 1）** · `ff914ac`）
   - **更正一个此前的猜测**：`expr.AsCall()` 在 cel-go v0.26.1 中是 Kind 守卫的，返回 `nilCall` 哨兵，**不会 panic**（见 `common/ast/expr.go:336-341`）。但 `expr.AsLiteral()` 对非字面量返回 **nil**（`expr.go:357-362`），因此 `args[0].AsLiteral().Value()`（`user_service.go:248`、`instance_service.go:141`、`database_service.go:865`）会 panic；`expr.AsCall().Target().AsIdent()`（`instance_service.go:136`、`database_service.go:860`）在 `Target()` 为 nil 时也会 panic。修复：comma-ok + `Kind() == LiteralKind` 判断 + 返回 `InvalidArgument`。
+  - **修复落地**：`getVariableAndValueFromExpr` 改为返回 `(variable, value, error)`，缺变量或缺字面量即 `InvalidArgument`；新增 `filterString`/`filterBool`/`filterStringList`/`matchArgs` 四个带检查的取值 helper（`api/v1/common.go`），所有调用方改用它，`.matches()` 的目标标识符与参数一律经 `matchArgs` 校验（`Target() == nil || Kind() != IdentKind` 与 `Kind() != LiteralKind` 都返回错误）。守卫测试 `backend/api/v1/filter_type_safety_test.go` 覆盖 `email == 123`、`engine in [1]`、`name.matches(ident)`、裸 `matches("x")`、`exclude_unassigned == "true"` 等 12 个用例。
 - **M4. `GetNameParentTokens` 允许空段且逐次构造格式化字符串**：`common/resource_name.go:191-205`，`fmt.Sprintf("%s/", parts[2*i]) != tokenPrefix`；`projects//databases/x` 通过校验并返回空 token，`GetProjectID` 等会返回 `""` 而非报错。
 - **M5. `common/context.go` 的 helper 不安全/不确定**：`HasWorkspaceResource`（`:43-50`）遇到 nil 元素会 panic；`GetProjectResources`（`:52-63`）返回 map 迭代顺序（不确定）。当前两者无调用者。
 - **M6. `common.Error` 的 nil `Err` panic 且不可 Unwrap**：`error.go:81-83` 的 `e.Err.Error()` 在 `&common.Error{Code: ...}` 字面量上 panic；`Wrap(nil, code)` 返回非 nil（违反 nil=成功）；缺 `Unwrap`（见 U-H1）。
@@ -42,7 +45,7 @@
 
 ## 低（Low）
 
-- **日志系统未接线**：`common/log/log.go:12-13,17-33,36-38`，`LogLevel` 与 `Replace` 从未安装到任何 handler；仓库中没有 `slog.SetDefault`/`slog.New`。`--debug` 无效，source 路径裁剪无效。`log.Stack`（`:44-47`）无论级别都会 eager 采集 20 帧栈。
+- **日志系统未接线**：`common/log/log.go:12-13,17-33,36-38`，`LogLevel` 与 `Replace` 从未安装到任何 handler；仓库中没有 `slog.SetDefault`/`slog.New`。`--debug` 无效，source 路径裁剪无效。**✅ 已修复（阶段 1）** · `7fdcead`：`cmd/root.go` 新增 `setupLogging`，用 `HandlerOptions{AddSource: true, Level: log.LogLevel, ReplaceAttr: log.Replace}` 构造 Text/JSON handler 并 `slog.SetDefault`；`--debug` 现在真正生效，实测输出形如 `time=... level=INFO source=server/server.go:64`（路径已被裁剪）与 `--enable-json-logging` 的 JSON 行。**剩余**：`log.Stack`（`:44-47`）无论级别都会 eager 采集 20 帧栈，日志默认输出改到 `os.Stdout`（原先 `slog.Default` 写 stderr）。
 - **`ValidateGroupCELExpr` 返回裸错误**：`common/cel.go:130-144`，而其兄弟函数返回 `connect.CodeInvalidArgument`；`RiskFactors`（`:18-35`）还漏了 `cel.ParserExpressionSizeLimit(celLimit)`。
 - **`GetQueryExportFactors`/`findField` 脆弱**：`common/cel.go:208-248`，`if issues != nil` 不是正确的失败判断（其它地方用 `issues.Err() != nil`）；只检查 `Args[0]`，`"x" == resource.database` 检测不到；`idExpr != nil` 分支提前 `return` 不递归；可能把 `""` 追加进 `Databases`。
 - **`guid.go` 拼写错误**：`GetInstaceFromGUID`（导出 API，用于 `database_service.go:308,919`）；`GetDatabaseFromGUID` 无调用者；`llm/tools.go:118-124` 重复实现了 GUID 解析。

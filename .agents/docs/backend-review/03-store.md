@@ -2,9 +2,11 @@
 
 **范围**：`backend/store/` 全部文件（`store.go`、`db_connection.go`、`common.go`、`meta_resource.go`、`instance.go`、`database.go`、`manual_sql.go`、`column_lineage.go`、`project.go`、`policy.go`、`principal.go`、`role.go`、`group.go`、`setting.go`、`idp.go`、`llm.go`、`stats.go`、`environment.go`、`explain_sql.go`、`external_dataset.go`、`namespace_mapping.go`、`openlineage_run.go`、`openlineage_task.go`、`openlineage_api_key.go`、`audit_log.go`）。
 
-**结论**：Store 层是全后端第二高风险区。核心问题：① 有两处 SQL 注入（project ID 拼接）；② `enableCache=false` 使"缓存未命中即全表加载"成为热路径，每个认证请求都全表扫描 `principal`；③ 若干部件引用了已不存在的表（`db_schema`、`issue`、`query_history` 等），对应功能必然运行时报错；④ 枚举以整数参数传入 text 列导致过滤静默失效；⑤ 事务卫生不一致（缺 `defer Rollback`、跨事务读改写）。
+**结论**：Store 层是全后端第二高风险区。核心问题：① 有两处 SQL 注入（project ID 拼接）；② `enableCache=false` 使"缓存未命中即全表加载"成为热路径，每个认证请求都全表扫描 `principal`；③ 若干部件引用了已不存在的表（~~`db_schema`~~、`issue`、`query_history` 等），对应功能必然运行时报错；④ 枚举以整数参数传入 text 列导致过滤静默失效；⑤ 事务卫生不一致（缺 `defer Rollback`、跨事务读改写）。
 
 **阶段 0 更新**：S-C1 ✅（project ID 校验）、M12 ✅（`PatchWorkspaceIamPolicy` 改事务化，不再改缓存指针）；`CountUsers` 增加 `deleted = FALSE`、`CreateUser` 加 advisory lock 并在同事务授予首个管理员（见 `02` C2）。S-H1/S-H3/S-H6、M1-M11 等**未处理**。
+
+**阶段 1 更新**：S-H3 ✅（`db_schema` join 与整个 `table` 过滤器一起删除，`bb93ee0`）、S-H4 ✅（`UpdateDatabase` 判空，`20e284b`）、低节"`UpdateInstanceV2` 不做 data source 校验" ✅（API 层 `checkInstanceDataSources` 现在要求恰好一个 ADMIN，`20e284b`）。S-H1/S-H5/S-H6、M1-M11 等仍未处理（阶段 2/3）。
 
 ---
 
@@ -44,12 +46,16 @@
 - **修复**：删除该函数及整个不可达的 project store API，或按实际 schema（只有 `db`/`project`）重写并接入调用方。
 
 ### S-H3. `table` 过滤器 join 不存在的 `db_schema` 表
-- **位置**：`backend/store/database.go:367-369`（同 `04` A-C2 的 API 侧）
+> **✅ 已修复（阶段 1）** · `bb93ee0`：经确认这是不需要的遗留代码，处理方式是**删除**而非改写。`store/database.go` 里 `strings.Contains(filter.Where, "ds.metadata->'schemas'")` 的 join 注入、`listDatabaseImplV2` 的 `joinQuery` 变量，以及 `api/v1` 侧生成该片段的 `table` 分支一并移除；顺带发现"改为读 `db.metadata->'schemas'`"这条建议路径**走不通**——`db.metadata` 存的是 `DatabaseMetadata`，没有 `schemas` 字段。守卫测试 `TestListDatabaseFilterRejectsTableFilter` 锁住"table 过滤器返回 InvalidArgument"。
+
+- **位置**：`backend/store/database.go:367-369`（修复前行号，同 `04` A-C2 的 API 侧）
 - **证据**：`if strings.Contains(filter.Where, "ds.metadata->'schemas'") { joinQuery = "INNER JOIN db_schema ds ..." }`，而 `db_schema` 在仓库中不存在。API 的 `table = "x"` 与 `table.matches("x")` 都会生成 `ds.metadata->'schemas'`。
 - **影响**：`ListDatabases` 的按表搜索功能 100% 运行时报错。
 - **修复**：去掉该 join，改为从 `db.metadata->'schemas'` 读取；或真正引入 `db_schema` 表。按 `meta_resource_test.go` 的模式补 guard 测试。
 
 ### S-H4. `UpdateDatabase` 可能 nil deref
+> **✅ 已修复（阶段 1）** · `20e284b`：`MetadataUpdates` 分支在 `proto.CloneOf(database.Metadata)` 之前判空，返回 `common.Errorf(common.NotFound, "database %q not found")`。注意 M5（元数据更新仍是跨事务读-改-写）仍未修。
+
 - **位置**：`backend/store/database.go:248-256`
 - **证据**：`md := proto.CloneOf(database.Metadata)`，而 `GetDatabaseV2` 未命中返回 `(nil, nil)`（`database.go:90-92`）。调用方是 `runner/schemasync/syncer.go:520-524`（每次数据库同步）。
 - **影响**：缺失行时 panic 整个进程。
@@ -111,7 +117,7 @@
 - **`BatchUpdateDatabases` 无界的 OR 列表**：`database.go:316-327`，每库 2 个参数，逼近 PG 65535 上限。
 - **`unObfuscateInstance` 每行重新取 secret 并重复解码**：`instance.go:260`。
 - **store 错误普遍绕过 `common.Code`**：`meta_resource.go:117,188,942,950`、`instance.go:58,64`、`database.go:94`、`group.go:67`、`project.go`、`role.go:199` 等。
-- **`UpdateInstanceV2` 不做 data source 校验**：`instance.go:97`（create 有，update 没有），可持久化 0 个或多个 ADMIN 数据源。
+- **`UpdateInstanceV2` 不做 data source 校验**：`instance.go:97`（create 有，update 没有），可持久化 0 个或多个 ADMIN 数据源。**✅ 已修复（阶段 1）** · `20e284b`：在 API 层补齐——`checkInstanceDataSources`（create/update 两条路径共用）现在要求恰好一个 ADMIN，并保留 ID 唯一性校验，返回 `CodeInvalidArgument`（守卫测试 `TestCheckInstanceDataSourcesRequiresOneAdmin`）。store 的 `UpdateInstanceV2` 本身仍不校验，绕过 API 的调用方不受保护。
 - **`systemBotUser` 回退对象与种子行不一致**：`principal.go:22-27` 用 `SYSTEM_BOT@example.com`（大写），而 `LATEST.sql:114` 种子是 `support@example.com`。
 - **`CountIssues` 查询不存在的 `issue` 表**：`stats.go:126-145`；`CountActiveUsers` 有不可达的 `sql.ErrNoRows` 分支（88-92）；`id > 101` 魔法偏移是 Bytebase 播种遗留。（`CountUsers` 已在阶段 0 补上 `principal.deleted = FALSE`，见 `02` C2。）
 - **LIMIT/OFFSET 用 `Sprintf` 插值**：`manual_sql.go:577-582`、`column_lineage.go:162-167`、`openlineage_run.go:306-311`、`openlineage_task.go:251-256`。不可注入（Go int），但与其它地方不一致，且负值会得到原始 PG 错误。

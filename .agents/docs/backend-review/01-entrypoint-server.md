@@ -6,6 +6,8 @@
 
 **阶段 0 更新**：C1 ✅、C2 ✅、H1 ◐、H5 ◐ 已处理；H2（CORS/CSRF）与 H4（日志接线）**未处理**，仍待阶段 1。阶段 0 后 `golangci-lint` 已可运行（0 issues），`-tags release` 也恢复可编译。
 
+**阶段 1 更新**：H4 ✅（日志系统接线，`7fdcead`）、H5 ◐→✅（`--external-url` 已注册并接线，`7fdcead`）、部署侧新增 `make build-release` 让 prod profile 有了真实构建目标（`7fdcead`）。H2（CORS/CSRF）与 M1（关停无超时）、M4（连接池）仍未处理。
+
 ---
 
 ## 严重（Critical）
@@ -14,7 +16,7 @@
 > **✅ 已修复（阶段 0）** · `adfec91` `84b16db`
 > - 硬编码常量被删除；`getBaseProfile` 改为 `Secret: os.Getenv("JWT_SECRET")`；`server.resolveJWTSecret` 在环境变量为空时回退到 DB 的 `AUTH_SECRET`，两者都缺失或长度 `< 32`（`minJWTSecretLength`）则启动失败（fail-closed）。`auth.go` 解析侧加 `WithValidMethods(HS256)`/`WithIssuer(issuer)`/`WithExpirationRequired()`，历史 token 因签名密钥变化与声明校验全部失效。
 > - **prod profile 已可用**：`activeProfile` 不再是唯一实现，新增 `//go:build release` 的 `profile_release.go`（`Mode = common.ReleaseModeProd`）；`84b16db` 把它的两个 import 从 `github.com/Ranxy/laelia/...` 修正为 `github.com/Ranxy/metaxisdata/backend/common` 与 `.../backend/config`。`go build -tags release ./backend/bin/server/` 与 `go vet -tags release ./...` 均通过。
-> - **注意（非缺陷，但部署相关）**：`Mode` 完全由 build tag 决定，而 `Makefile`、CI、Docker 与 AGENTS.md 的构建命令**都没有 `-tags release`**，因此默认产物仍以 `ReleaseModeDev` 运行（CORS 影响见 H2）。若要 prod 行为，构建时必须显式加上 `-tags release`，或在后续阶段把模式改为运行时配置。
+> - **注意（非缺陷，但部署相关）**：`Mode` 完全由 build tag 决定。阶段 1 新增了 `make build-release`（带 `-tags release` ⇒ `ReleaseModeProd`，`7fdcead`），并在 AGENTS.md 里把 release 构建写成"部署用"的第一步；`make build` 与 AGENTS.md 的开发构建**刻意保持 dev**（本地开发需要宽松 CORS）。CI 与 Docker 仍不存在于仓库中，因此没有任何自动化流程产出 prod 产物——部署方必须显式使用 `make build-release`。
 
 - **位置**：`backend/bin/server/cmd/profile_dev.go:10-11`、`backend/server/server.go:106`、`backend/server/grpc_routes.go:83`
 - **证据**：
@@ -79,13 +81,15 @@
 - **修复**：明确反射的访问策略；若需免认证，按真实 procedure 前缀匹配；否则删除豁免分支并保持需要 token。
 
 ### H4. `--debug` 与 `--enable-json-logging` 实际上无效（日志系统未接线）
+> **✅ 已修复（阶段 1）** · `7fdcead`：`start()` 现在调用 `setupLogging(flags.enableJSONLogging)`，用 `slog.HandlerOptions{AddSource: true, Level: log.LogLevel, ReplaceAttr: log.Replace}` 构造 `NewTextHandler`/`NewJSONHandler` 并 `slog.SetDefault`。`LogLevel` 是 `*slog.LevelVar`，`--debug` 先 `Set(LevelDebug)` 再装 handler，因此调级生效；`log.Replace` 的 source 裁剪也生效（实测日志形如 `source=server/server.go:64`）。**剩余**：`log.Stack` 无论级别都 eager 采集 20 帧栈（`07` 低节）；日志输出改为 `os.Stdout`（此前 `slog.Default` 写 stderr）；`RuntimeDebug` 与日志级别仍是两套开关，没有运行时调级 API。
+
 - **位置**：`backend/common/log/log.go:12-13,36-38`、`backend/bin/server/cmd/root.go:72,77-79`
 - **证据**：`var LogLevel = new(slog.LevelVar)` 从未被安装到任何 handler；`slog.Default()` 仍使用默认 TextHandler + LevelInfo。`log.Replace`（裁剪 source 路径）同样从未安装。`--enable-json-logging` 注册了 flag 但没有任何读取处。
 - **影响**：`--debug` 无法打开 debug 日志，`DebugInterceptor` 里所有 `slog.LevelDebug` 日志被静默丢弃；日志无法输出 JSON 供采集；source 路径裁剪不生效。
 - **修复**：在 `start()` 中构造 handler（`slog.NewTextHandler`/`NewJSONHandler` + `HandlerOptions{Level: LogLevel, ReplaceAttr: log.Replace}`）并 `slog.SetDefault`，或删除这些 flag。
 
 ### H5. 大量 CLI flag 声明但从未注册，`externalURL` 缺失导致 SSO 回调地址为空
-> **◐ 部分修复（阶段 0）** · `c4e22fc`：新增 `SettingService`（`proto/v1/v1/setting_service.proto`），管理员可通过 `UpdateWorkspaceProfileSetting` 写入 `external_url`（`metaxisdata.settings.write`，audit），`initializeSetting` 只在 `profile.ExternalURL != ""` 时覆盖该值，因此管理员的设置不会被每次启动清掉。**剩余**：`--external-url` CLI flag 仍未注册，前端设置页只暴露了 `disallow_signup`/`disallow_password_signin` 两个开关，`external_url` 目前只能走 API。
+> **✅ 已修复（阶段 1，SSO 部分）** · `c4e22fc`（阶段 0）先让管理员可通过 `UpdateWorkspaceProfileSetting` 写 `external_url`；`7fdcead` 注册了 `--external-url` 并把它接进 `getBaseProfile`（`ExternalURL: flags.externalURL`），于是 `initializeSetting` 在启动时能把 `profile.ExternalURL` 写入 `WORKSPACE_PROFILE`（仅当非空），`auth_service.go` 拼 `"/oauth/callback"` 不再得到空 base。**剩余**：前端设置页仍未暴露 `external_url`（只能走 API 或 CLI flag）；`dataDir`/`ha`/`saas`/`demo`/`memoryProfileThreshold` 仍是"声明未注册"的 Bytebase 遗留，未清理。
 
 - **位置**：`backend/bin/server/cmd/root.go:40-54,70-74`
 - **证据**：`externalURL`、`dataDir`、`ha`、`saas`、`demo`、`memoryProfileThreshold` 都只在 struct 里声明，`init()` 只注册了 `port`/`enable-json-logging`/`debug`。而 `backend/api/v1/auth_service.go:262` 用 `setting.ExternalUrl` 拼 OAuth 回调；`initializeSetting` 写入的 `ExternalUrl` 来自 `profile.ExternalURL`（恒为空）。
@@ -159,6 +163,6 @@
 
 1. ~~修 C1（JWT 密钥）与 H1（授权）~~ —— **阶段 0 已完成**：C1 ✅（环境注入 + fail-closed + 可用 prod profile，`adfec91` `84b16db`），H1 ◐（拦截器重建并接线，`ec49607`；读路径与细粒度映射留待后续）。
 2. ~~修 C2（堆栈回传）~~ ✅（`5446a10`）；**H2（CORS/CSRF）仍未处理**——用 `-tags release` 可绕开全开 CORS，但默认构建仍是 dev，且 cookie 的 `SameSite` 逻辑与 CSRF 防护未改。
-3. 接线日志系统（H4）与 `--external-url`（H5），否则 SSO 与排障都不可用。H5 已部分完成（SettingService 可写 `external_url`，`c4e22fc`），仍缺 CLI flag 与前端入口。
-4. 清理关停路径（M1）与连接池（M4）。
-5. 删除未注册 flag、调试残留与死字段；补一个真正使用 `-tags release` 的构建目标（Makefile/CI），否则 prod 模式形同虚设。
+3. ~~接线日志系统（H4）与 `--external-url`（H5）~~ —— **阶段 1 已完成**：H4 ✅（`setupLogging` + `slog.SetDefault`，`7fdcead`），H5 ✅（`--external-url` 注册并接入 profile，`7fdcead`）。剩余：其余未注册的遗留 flag、前端 `external_url` 入口。
+4. 清理关停路径（M1）与连接池（M4）——**未开始**。
+5. 删除未注册 flag、调试残留与死字段；~~补一个真正使用 `-tags release` 的构建目标（Makefile/CI）~~ —— **构建目标已补**（`make build-release`，`7fdcead`）；flag/死字段清理未做，CI 与 Docker 仍不存在。

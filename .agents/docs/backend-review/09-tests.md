@@ -6,6 +6,8 @@
 
 **阶段 0 更新**：新增 2 个测试文件（`filter_injection_test.go`、扩展 `audit_test.go`），T-H5 ◐（脱敏谓词已有表驱动测试）；T-C1/T-C2/T-H1/T-H3/T-H4 与 CI 相关条目**未处理**。另：审查时无法运行的 `golangci-lint` 在阶段 0 复测中已可运行（`0 issues`），"lint 清洁度未验证"这一限制已解除。
 
+**阶段 1 更新**：新增 2 个测试文件（`filter_type_safety_test.go`、`instance_data_source_test.go`）并扩展 2 个（`filter_injection_test.go`、`syncer_test.go`），共 8 个新测试见下表。T-C1（CI 不跑 hermetic 测试）仍未修——`make build-release` 只是构建目标，仓库里依然没有 CI job 或 Dockerfile。T-H3 的 store 侧 guard 仍缺失。
+
 ---
 
 ## 严重（Critical）
@@ -63,12 +65,24 @@
 
 | 文件 | 测试 | 保护的不变量 |
 | --- | --- | --- |
-| `backend/api/v1/filter_injection_test.go`（新，`3321801`） | `TestFilterParsersDoNotSpliceLiterals` | user/instance/database-name/database-table/database-label 五条 CEL→SQL 路径收到注入载荷时，载荷不出现在生成的 `Where` 中，且值出现在 `Args` 里 |
+| `backend/api/v1/filter_injection_test.go`（新，`3321801`） | `TestFilterParsersDoNotSpliceLiterals` | user/instance/database-name/database-label 四条 CEL→SQL 路径收到注入载荷时，载荷不出现在生成的 `Where` 中，且值出现在 `Args` 里（原 database-table 用例已在阶段 1 随过滤器删除） |
 | 同上 | `TestLikePatternEscapesWildcards` | `%`/`_`/`\` 先转义再包成 `%...%` |
 | `backend/api/v1/audit_test.go`（扩展，`89ef84a`） | `TestMarshalAuditMessageRedactsSecrets` | `CreateAPIKeyResponse.key`、`DataSource` 的 `sslCert`/`sslKey`/`gcpCredential` 不得进入审计 payload |
 | 同上 | `TestIsSensitiveAuditField` | 脱敏标记列表的精确匹配行为 |
 
 > 注意：T-H3 指出的 **store 侧** guard（`listSublevelMetaRegistryResourceImpl`/`listSublevelMetaRegistryResourceHistoryImpl`/`listDatabaseImplV2`）仍缺失，新测试只覆盖 API 层 filter 翻译器。
+
+## 阶段 1 新增的 guard 测试（已落地）
+
+| 文件 | 测试 | 保护的不变量 |
+| --- | --- | --- |
+| `backend/api/v1/filter_type_safety_test.go`（新，`ff914ac`） | `TestFilterParsersRejectMistypedOperands` | 12 个畸形过滤器（`email == 123`、`engine in [1]`、`name.matches(ident)`、裸 `matches("x")`、`exclude_unassigned == "true"` 等）在 user/instance/database/audit 四个解析器上都返回 `InvalidArgument`，不 panic |
+| `backend/api/v1/filter_injection_test.go`（扩展，`bb93ee0`） | `TestListDatabaseFilterRejectsTableFilter` | 被删除的 `table` 过滤器返回 `InvalidArgument`，而不是生成 join 不存在表的 SQL |
+| `backend/api/v1/instance_data_source_test.go`（新，`20e284b`） | `TestMergeDataSourcePreservesUnreturnedFields` | 请求未携带的密码/SSL/SSH 私钥/`verify_tls_certificate`/`additional_addresses` 必须保留 store 中的值，且不改动原对象 |
+| 同上 | `TestMergeDataSourceOverlaysProvidedValues` | 请求携带的字段（含新密码、地址列表）覆盖 store 值，重复字段不被追加 |
+| 同上 | `TestMergeDataSourcesKeysByID` | 按 ID 合并；缺席 ID 被删除、未知 ID 原样加入 |
+| 同上 | `TestCheckInstanceDataSourcesRequiresOneAdmin` | 数据源列表必须恰好一个 ADMIN，ID 唯一性仍校验 |
+| `backend/runner/schemasync/syncer_test.go`（扩展，`fcb6a98`） | `TestShouldSyncNowRejectsNeverSyncInterval`、`TestShouldSyncNowRespectsInterval` | 停用实例（interval=0）永不被排队；正常间隔的到期判断正确 |
 
 ---
 

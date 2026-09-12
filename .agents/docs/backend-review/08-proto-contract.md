@@ -6,6 +6,8 @@
 
 **阶段 0 更新**：P-C1 ✅（脱敏名单补齐，proto 字段名未改）；P-H2/P-H3/P-H4/P-H5/P-H6 等契约问题**未处理**。阶段 0 的 proto 改动集中在：新增 `SettingService`、为写方法补 `permission` 注解、`UpdateUserRequest` 增加 `current_password`、`buf.gen.yaml` 固定插件版本（`099fbc4`，避免重新生成时产生无关 churn）。
 
+**阶段 1 更新**：`ListDatabasesRequest.filter` 的文档删除了 `table` 过滤器（连同实现，`bb93ee0`）——这是一处**公开契约的收窄**，属于删除从未工作的功能，不是 breaking change 的规避。其余契约问题未处理。
+
 > 注：`buf lint` 只启用了 `BASIC`（`proto/buf.yaml`），AIP 合规没有工具强制。
 
 ---

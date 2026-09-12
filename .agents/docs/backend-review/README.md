@@ -16,16 +16,24 @@
 - `go vet -tags integration ./...` ✅ exit 0（仅编译，未实际运行集成用例）
 - dev 构建 `go build -ldflags "-w -s" -p=16 -o ./build/metaxisdata ./backend/bin/server/main.go` ✅ exit 0
 - prod profile：`go build -tags release ./backend/bin/server/`、`go vet -tags release ./...`、`go build -ldflags "-w -s" -p=16 -tags release ./backend/bin/server/main.go` 全部 ✅ exit 0（`84b16db` 修正了 `profile_release.go` 的 import）
-  - 注意：`Mode` 由 build tag 决定（加 `release` ⇒ `ReleaseModeProd`，否则 `ReleaseModeDev`），而 `Makefile`/CI/Docker **没有任何地方加 `-tags release`**，因此现存构建产物仍按 dev 模式运行
 - 前端 `biome check`、`eslint`、`vue-tsc --build` 均通过（仓库内 `vitest` 无测试文件）
+
+**阶段 1 修复后复测**（详见下文"阶段 1 修复状态"）：
+- `gofmt -l backend/` 空输出；`go build ./...`、`go vet ./...`、`go test ./...` 全部 exit 0；`golangci-lint run --allow-parallel-runners` ✅ 0 issues
+- `make build-release`（即 `go build -ldflags "-w -s" -p=16 -tags release ...`）✅ exit 0，`go vet -tags release ./...` ✅ exit 0
+- 新增 8 个 guard 测试（`09-tests.md` 有清单），全部随 `go test ./...` 通过
+- 手工验证：`--enable-json-logging` 输出 JSON 行、`source` 已裁剪为 `dir/file.go`、`--external-url` 出现在 `--help`
+- 前端未改动，未重跑前端检查；集成测试需 Docker，仍未运行
 
 **修复状态标记**（用于下文全部模块报告）：
 
 | 标记 | 含义 |
 | --- | --- |
-| ✅ **已修复（阶段 0）** | 已按阶段 0 要求修完并验证，附对应 commit |
-| ◐ **部分修复（阶段 0）** | 主要风险已消除，但存在明确的剩余项（报告中已列出） |
-| ⏳ **未处理** | 阶段 0 未涉及，仍需按路线图处理 |
+| ✅ **已修复（阶段 0）** | 阶段 0 已修完并验证，附对应 commit |
+| ◐ **部分修复（阶段 0）** | 阶段 0 消除了主要风险，但有明确剩余项（报告中已列出） |
+| ✅ **已修复（阶段 1）** | 阶段 1 已修完并验证，附对应 commit |
+| ◐ **部分修复（阶段 1）** | 阶段 1 处理了经确认的部分，剩余项已在报告中写明 |
+| ⏳ **未处理** | 尚未涉及，仍需按路线图处理 |
 
 ---
 
@@ -91,9 +99,9 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 - **凭据"加密"是重复密钥 XOR，密钥与密文同库**（`common/utils.go:65-84`）→ 有 DB 读权限即可还原全部实例密码/SSH 私钥/LLM API key。
 
 ### 5. 与 schema 不一致的功能必然失败
-> **⏳ 未处理**（阶段 1 第 7 项）。
+> **◐ 部分修复（阶段 1）** · `bb93ee0`：`table` 过滤器与它 join 的幽灵表 `db_schema` 一并删除（该过滤器从来不可能工作）。**剩余**：`migration/` 仍没有增量目录（经确认当前无待发布 schema 变更，暂不创建，见 `06` R-H5）；`issue`/`query_history` 等引用不存在表的遗留代码仍在。
 
-- `LATEST.sql` **没有 `db_schema` 表**，而 `ListDatabases` 的 `table` 过滤器硬编码 join 它 → 该公开功能 100% 报 `relation does not exist`。
+- ~~`LATEST.sql` **没有 `db_schema` 表**，而 `ListDatabases` 的 `table` 过滤器硬编码 join 它 → 该公开功能 100% 报 `relation does not exist`。~~ 已删除该过滤器（`bb93ee0`）。
 - `migration/` **没有增量目录**，只有 `LATEST.sql` → 只改 `LATEST.sql` 的 schema 变更永远到不了已有部署，新装与升级静默分叉。
 - 若干部件引用已删除的表（`issue`、`query_history` 等）。
 
@@ -116,21 +124,38 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 
 ---
 
+## 阶段 1「正确性与可运维性」修复状态
+
+阶段 1 的 5 个编号任务各一个 commit（`10-legacy-debt-and-roadmap.md` 第四节）。其中 7、8 各含一个经确认后**不做**的项，因此标 ◐。
+
+| # | 阶段 1 要求 | 状态 | 提交 | 落地说明 |
+| --- | --- | --- | --- | --- |
+| 7 | 补 `migration/0.1/` 增量 + guard 测试；修 `db_schema` 过滤 | ◐ | `bb93ee0` | `db_schema` 确认为不需要的遗留代码（`db.metadata` 存 `DatabaseMetadata`，无 `schemas` 字段；schema 树在 `meta_registry_resource`），因此**删除**：API 的 `table` 过滤器分支、store 的 join 推断、proto 过滤文档一并移除，`table` 改为返回 `InvalidArgument` + 守卫测试。**增量目录 `migration/0.1/` 经确认不创建**（当前无待发布 schema 变更），"改 `LATEST.sql` 必须同时补增量"仍是人工流程约束。 |
+| 8 | 修 schemasync 两个生命周期 bug 与破坏性 diff；`LastSyncTime` 进事务 | ◐ | `fcb6a98` | checker 瞬时错误改为记日志 + `continue`（不再永久退出）；调度收敛到 `shouldSyncNow`，显式拒绝 `interval == 0`（停用实例不再被排队）；`LastSyncTime` 改为提交成功后再写、血缘排队提到写 `db` 行之前；同步失败日志 Debug→Warn。**破坏性删除按产品决策只加日志**：`logSchemaSyncDeletion` 记录条数/类型分布/GUID 样本，实例级软删记 Warn，但不拦截、不设阈值。 |
+| 9 | 修 CEL 类型断言 panic；统一 `InvalidArgument` | ✅ | `ff914ac` | `getVariableAndValueFromExpr` 改为返回 error，新增 `filterString`/`filterBool`/`filterStringList`/`matchArgs`，user/instance/database/audit 四个解析器全部走检查路径；`email == 123`、`engine in [1]`、`name.matches(ident)`、裸 `matches("x")` 不再 panic 而是 `InvalidArgument`；`exclude_unassigned` 不再静默忽略非布尔值。12 个用例的守卫测试。 |
+| 10 | 接线日志系统 + 注册 `--external-url` + `-tags release` 进构建目标 | ✅ | `7fdcead` | `setupLogging` 用 `HandlerOptions{AddSource, Level: LogLevel, ReplaceAttr: log.Replace}` 构造 Text/JSON handler 并 `slog.SetDefault`；`--external-url` 注册并写入 `profile.ExternalURL`（SSO 回调 base 不再为空）；新增 `make build-release`（`-tags release` ⇒ prod profile），`make build` 与 AGENTS.md 开发构建保持 dev，文档同步更新。 |
+| 11 | `UpdateInstance(data_sources)` 按 ID 合并；`UpdateDatabase` 判空 | ✅ | `20e284b` | `mergeDataSources`/`mergeDataSource` 用 `proto.Merge` 按 ID 叠加：请求未带的凭据、SSL/SSH 私钥、`verify_tls_certificate` 等 store-only 字段全部保留，成员仍由请求列表决定（缺席即删除）；顺带在 API 层补"恰好一个 ADMIN"校验。`UpdateDatabase` 对 `GetDatabaseV2` 的 `(nil, nil)` 返回 `NotFound`，不再 panic。 |
+
+**已知语义边界**：`UpdateInstance(data_sources)` 用的是"空值即未变更"，因为 proto3 无法区分"未发送"与"发送了空串"——要清空某个非密钥字段需删除后用 `AddDataSource` 重建。
+
+---
+
 ## 横切主题
 
-| 主题 | 说明 | 主要位置 | 阶段 0 状态 |
+| 主题 | 说明 | 主要位置 | 修复状态 |
 | --- | --- | --- | --- |
-| **授权缺失** | 拦截器被注释、`permission` 从不校验 | `server/grpc_routes.go:85`、`api/auth/auth.go:350` | ◐ 拦截器已恢复，写操作限管理员；读路径未收紧 |
-| **SQL 拼接** | 4 个 handler + 2 个 store 把用户输入拼进 `WHERE` | `user/instance/database_service.go`、`store/principal.go`、`store/group.go` | ✅ 全部参数化 + project ID 校验 + guard 测试 |
-| **秘密处理** | 硬编码 JWT 密钥、XOR"加密"、审计脱敏遗漏 | `profile_dev.go:11`、`common/utils.go`、`api/v1/audit.go:197` | ◐ JWT 与审计脱敏已修；XOR 混淆仍在 |
-| **未认证入口** | `CreateUser` 免凭证 + 首个用户自动管理员 | `user_service.proto:53`、`user_service.go:286-398` | ✅ 按 `disallow_signup` 判定，首管理员授予原子化 |
+| **授权缺失** | 拦截器被注释、`permission` 从不校验 | `server/grpc_routes.go:85`、`api/auth/auth.go:350` | ◐ 阶段 0：拦截器已恢复，写操作限管理员；读路径未收紧 |
+| **SQL 拼接** | 4 个 handler + 2 个 store 把用户输入拼进 `WHERE` | `user/instance/database_service.go`、`store/principal.go`、`store/group.go` | ✅ 阶段 0：全部参数化 + project ID 校验 + guard 测试 |
+| **秘密处理** | 硬编码 JWT 密钥、XOR"加密"、审计脱敏遗漏 | `profile_dev.go:11`、`common/utils.go`、`api/v1/audit.go:197` | ◐ 阶段 0：JWT 与审计脱敏已修；XOR 混淆仍在 |
+| **凭据被往返请求清空** | `UpdateInstance(data_sources)` 整体替换数据源列表，丢掉读取路径不返回的密钥/store-only 字段 | `instance_service.go:405-413,1307-1353` | ✅ 阶段 1：按 ID 合并（`20e284b`） |
+| **未认证入口** | `CreateUser` 免凭证 + 首个用户自动管理员 | `user_service.proto:53`、`user_service.go:286-398` | ✅ 阶段 0：按 `disallow_signup` 判定，首管理员授予原子化 |
 | **缓存被禁用但仍在写** | `store.New(..., false)` 使所有 LRU 读失效，写仍发生；`GetUserByID` 因此每请求全表扫描 | `server/server.go:70`、`store/principal.go:89-114` | ⏳ 未处理（阶段 2） |
-| **错误码不生效** | `common.Code` 无映射链路，store 的 NotFound/Conflict 到客户端变 500 | `common/error.go:87`、`server/grpc_routes.go:80` | ⏳ 未处理（阶段 3） |
-| **日志系统未接线** | `LogLevel`/`Replace` 从未安装，`--debug`/`--enable-json-logging` 无效 | `common/log/log.go`、`cmd/root.go:72,78` | ⏳ 未处理（阶段 1） |
+| **错误码不生效** | `common.Code` 无映射链路，store 的 NotFound/Conflict 到客户端变 500 | `common/error.go:87`、`server/grpc_routes.go:80` | ◐ 阶段 1：filter 解析统一 `InvalidArgument`；`common.Code`→Connect 映射仍未做（阶段 3） |
+| **日志系统未接线** | `LogLevel`/`Replace` 从未安装，`--debug`/`--enable-json-logging` 无效 | `common/log/log.go`、`cmd/root.go:72,78` | ✅ 阶段 1：`slog.SetDefault` + Text/JSON handler（`7fdcead`） |
 | **无界查询 / N+1** | OpenLineage 数据集全表 + payload 解析；血缘无分页；`queueAll` 每小时全表 | `openlineage_dataset.go:40,119`、`lineage_service.go:57`、`analyzer.go:105` | ⏳ 未处理（阶段 2） |
 | **分页不一致** | 标准 page_token 与 OpenLineage 裸 offset、LLM 无 token、sublevel 无 offset 并存 | `proto/v1/*`、`api/v1/common.go:338` | ⏳ 未处理（阶段 3） |
-| **大量 Bytebase 遗留** | IAM/role/project/issue/多引擎/SCIM/2FA、`V2` 命名 | 见 `10-legacy-debt-and-roadmap.md` | ⏳ 未处理（阶段 3） |
-| **测试/CI 缺口** | CI 从不跑 hermetic 测试；缺 Docker 时集成测试硬失败；auth 零测试 | `09-tests.md` | ◐ 新增注入/脱敏 guard 测试；CI 与 auth 测试未补 |
+| **大量 Bytebase 遗留** | IAM/role/project/issue/多引擎/SCIM/2FA、`V2` 命名 | 见 `10-legacy-debt-and-roadmap.md` | ◐ 阶段 1：删掉 `db_schema`/`table` 过滤器一处；其余仍在（阶段 3） |
+| **测试/CI 缺口** | CI 从不跑 hermetic 测试；缺 Docker 时集成测试硬失败；auth 零测试 | `09-tests.md` | ◐ 阶段 0/1 新增 10 个 guard 测试；CI 与 auth 测试未补 |
 
 ---
 
@@ -148,7 +173,7 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 | 08 Proto | 1 | 6 | 23 | 大量 | store/v1 契约分叉；AIP 违规；审计脱敏根因 |
 | 09 测试 | 2 | 5 | 10 | 5 | CI 不跑单测；auth 零测试；guard 测试缺失 |
 
-> 阶段 0 修复后，上表中的问题数量尚未重新统计；已修复条目见"阶段 0「安全止血」修复状态"与各模块报告中的 ✅/◐ 标记。新增测试：`backend/api/v1/filter_injection_test.go`、`backend/api/v1/audit_test.go` 扩展。
+> 阶段 0/1 修复后，上表中的问题数量尚未重新统计；已修复条目见"阶段 0/1 修复状态"与各模块报告中的 ✅/◐ 标记。新增测试：`backend/api/v1/filter_injection_test.go`、`backend/api/v1/filter_type_safety_test.go`、`backend/api/v1/instance_data_source_test.go`、`backend/api/v1/audit_test.go` 扩展、`backend/runner/schemasync/syncer_test.go` 扩展。
 
 ---
 
@@ -158,12 +183,12 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 2. **再读** [`04-api-v1.md`](04-api-v1.md) 与 [`03-store.md`](03-store.md)，覆盖注入、SSRF、无界查询与持久层正确性。
 3. **然后** [`06-runners-migrator.md`](06-runners-migrator.md)（迁移与同步的正确性/数据安全）。
 4. **最后** [`05`](05-components.md)、[`07`](07-common-utils.md)、[`08`](08-proto-contract.md)、[`09`](09-tests.md) 与 [`10`](10-legacy-debt-and-roadmap.md)（组件、基础设施、契约、测试、清理路线）。
-5. 整改排期见 [`10-legacy-debt-and-roadmap.md`](10-legacy-debt-and-roadmap.md) 第四节，其中"阶段 0：安全止血"已于本轮完成（4 条完整修复、2 条部分修复，剩余项已逐条标注），可在对外部署前作为基线。
+5. 整改排期见 [`10-legacy-debt-and-roadmap.md`](10-legacy-debt-and-roadmap.md) 第四节："阶段 0：安全止血"（4 条完整修复、2 条部分修复）与"阶段 1：正确性与可运维性"（3 条完整修复、2 条部分修复）均已完成，剩余项已逐条标注，可在对外部署前作为基线。
 
 ---
 
 ## 关于本报告的确定性
 
-- 所有条目均附 `文件:行号` 与代码摘录；标注"待确认"的条目表示需要作者确认或需要集成测试/运行时验证，主要集中在：部署拓扑（是否有反向代理、是否单租户）、`enableCache` 是否有意关闭、`RETURNING` 顺序、`db_schema` 的实际报错形态、以及部分 proto 字段是否为有意保留。
+- 所有条目均附 `文件:行号` 与代码摘录；标注"待确认"的条目表示需要作者确认或需要集成测试/运行时验证。**阶段 1 已关闭两条**：`db_schema` 的实际报错形态（该过滤器被整体删除，`bb93ee0`）与 `SyncDBSchema` 是否会静默返回空/部分快照（会：MySQL 的 `information_schema` 按权限过滤行，`fcb6a98`）。仍待确认的集中在：部署拓扑（是否有反向代理、是否单租户）、`enableCache` 是否有意关闭、`RETURNING` 顺序、以及部分 proto 字段是否为有意保留。
 - 少数结论已通过独立执行验证（例如 `parseStructuredResponse` 的 `"## ## "` 缺陷用独立程序复现）。
-- 一处此前的推测已被更正：cel-go v0.26.1 的 `expr.AsCall()` 是 Kind 守卫的、不会 panic；真正会 panic 的是未检查的 `value.(string)` 类型断言与对非字面量调用 `AsLiteral().Value()`（详见 `07` M3）。
+- 一处此前的推测已被更正：cel-go v0.26.1 的 `expr.AsCall()` 是 Kind 守卫的、不会 panic；真正会 panic 的是未检查的 `value.(string)` 类型断言与对非字面量调用 `AsLiteral().Value()`（详见 `07` M3，阶段 1 已修，`ff914ac`）。

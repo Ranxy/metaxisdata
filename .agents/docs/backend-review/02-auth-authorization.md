@@ -121,7 +121,7 @@
 - **修复**：用户不存在时也执行一次 dummy bcrypt 比较；增加按 IP/账号的限流与锁定。
 
 ### M3. CEL 过滤器未检查类型断言 → panic/500
-> **⏳ 未处理（阶段 0 只治标）**：类型断言仍未改，`filter=email == 1` 依旧 panic → 500；`5446a10` 只是不再把堆栈回传给客户端。
+> **✅ 已修复（阶段 1）** · `ff914ac`：所有取值改走 `filterString`/`filterBool`/`filterStringList`/`matchArgs` 等带检查的 helper（`api/v1/common.go`），`getVariableAndValueFromExpr` 改为返回 error；`filter=email == 1` 现在是 `CodeInvalidArgument`，不再 panic。详见 `07` M3 与 `04` M1。
 
 - **位置**：`backend/api/v1/user_service.go:165,168,171,182,189,215`（同类：`instance_service.go:78,81,84,91,98,106,109,112`、`database_service.go` 同段）
 - **证据**：`value.(string)`、`rawType.(string)` 等未用 comma-ok；`getVariableAndValueFromExpr` 可能返回 `int64/bool/[]any`。

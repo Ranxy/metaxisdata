@@ -37,7 +37,7 @@
 - `ListInstanceDatabase` 是空 stub；`DatabaseService.GetDatabase` 返回 `Unimplemented`。
 - `migrator` 的 `goMigrations` 空注册表；`migration/0.1/` 增量目录缺失。
 - `metric` 包与 `plugin/metric` 无 reporter 实现。
-- CLI flag `externalURL`/`dataDir`/`ha`/`saas`/`demo`/`memoryProfileThreshold` 未注册；`--enable-json-logging` 空实现；`--debug` 对日志无效。
+- CLI flag `dataDir`/`ha`/`saas`/`demo`/`memoryProfileThreshold` 未注册（~~`externalURL`~~ **阶段 1 已注册并接线**，`7fdcead`）；~~`--enable-json-logging` 空实现；`--debug` 对日志无效~~（**阶段 1 已修**，`7fdcead`：`setupLogging` + `slog.SetDefault`，Text/JSON 可选、`LogLevel` 动态、`Replace` 裁剪 source）。
 - ~~`config.Profile.Secret` 从未赋值~~（**阶段 0 已接线**：`getBaseProfile` 用 `os.Getenv("JWT_SECRET")` 赋值）；`LastActiveTS` 只写不读。
 - `common.ServiceDataKey` 从不写入，`getServiceData` 恒返回 nil。
 - `explain_sql` 的 `ExplainSQLMetadata.expired`/`ExplainSQLResponse.error`/`sections_json`/`ExplainSQLRequest.meta_type` 未使用或未设置。
@@ -68,7 +68,7 @@
 | `backend/common/context.go` | `HasWorkspaceResource`、`GetProjectResources` |
 | `backend/api/auth/auth.go:198` | `GetTokenFromMetadata` + 两个 gateway metadata 常量 |
 | `backend/api/v1/common.go:49-185,362-390` | 旧 `ParseFilter` 系列 + 注释掉的 export format 转换 |
-| `backend/api/v1/common.go:429-467` | `getSubConditionFromExpr`/`getVariableAndValueFromExpr`（注意其类型断言会 panic） |
+| `backend/api/v1/common.go:429-467` | ~~`getSubConditionFromExpr`/`getVariableAndValueFromExpr`（注意其类型断言会 panic）~~ —— **阶段 1 已重写**（`ff914ac`）：`getVariableAndValueFromExpr` 现在返回 error 且类型断言全部经 helper 检查，两个函数都在活跃路径上，不再是死代码候选 |
 | `backend/utils/collection.go` | `Map` |
 | `backend/utils/member.go:26-68` | 注释掉的 `GetUsersByRoleInIAMPolicy` |
 | `backend/metric/` + `backend/plugin/metric/` | 整个遥测栈 |
@@ -95,7 +95,7 @@
 
 ## 四、分阶段整改路线图
 
-### 阶段 0：安全止血（必须最先做）——**本轮已完成**
+### 阶段 0：安全止血（必须最先做）——**已完成**
 
 | # | 事项 | 状态 | 提交 |
 | --- | --- | --- | --- |
@@ -111,12 +111,20 @@
 - **6 的剩余项**：**内网地址限制经确认后主动放弃**——自托管产品的核心用法就是让用户连接内网数据库，加私网 deny 会破坏功能，因此只保留管理员权限约束；CEL 类型断言 panic 本身仍未修（只是不再泄露堆栈）。
 - 配置侧顺带完成：`config.Profile.Secret` 现在由 `JWT_SECRET` 赋值（不再是"从未赋值"）；`disallow_signup` 默认仍为 `false`，需管理员在新增的 `/settings/general` 页面显式打开。
 
-### 阶段 1：正确性与可运维性（未开始）
-7. 补 `migration/0.1/` 增量 + guard 测试；修 `db_schema` 过滤。
-8. 修 schemasync 两个生命周期 bug 与破坏性 diff；`LastSyncTime` 进事务。
-9. 修 CEL 类型断言 panic；统一 `InvalidArgument`。
-10. 接线日志系统（`slog.SetDefault` + LogLevel/Replace）；注册 `--external-url`；把 `-tags release` 固化到构建目标（Makefile/CI/Docker/文档），否则 prod profile 不会被任何既有构建使用。
-11. `UpdateInstance(data_sources)` 改为按 ID 合并；`UpdateDatabase` 判空。
+### 阶段 1：正确性与可运维性——**本轮已完成（5 个任务 5 个 commit）**
+
+| # | 事项 | 状态 | 提交 |
+| --- | --- | --- | --- |
+| 7 | 补 `migration/0.1/` 增量 + guard 测试；修 `db_schema` 过滤 | ◐ | `bb93ee0` |
+| 8 | 修 schemasync 两个生命周期 bug 与破坏性 diff；`LastSyncTime` 进事务 | ◐ | `fcb6a98` |
+| 9 | 修 CEL 类型断言 panic；统一 `InvalidArgument` | ✅ | `ff914ac` |
+| 10 | 接线日志系统（`slog.SetDefault` + LogLevel/Replace）；注册 `--external-url`；把 `-tags release` 固化到构建目标 | ✅ | `7fdcead` |
+| 11 | `UpdateInstance(data_sources)` 改为按 ID 合并；`UpdateDatabase` 判空 | ✅ | `20e284b` |
+
+- **7 的收尾说明**：`db_schema` 经确认是不需要的遗留代码（`db.metadata` 里的 `DatabaseMetadata` 根本没有 `schemas` 字段，schema 树在 `meta_registry_resource`），因此**删除**而非改写：API 的 `table` 过滤器分支、store 的 join 推断、proto 里的过滤文档一并移除，`table` 现在返回 `InvalidArgument`。**`migration/0.1/` 增量目录经确认不创建**——当前没有待发布的 schema 变更，空目录只是噪音；残留的是"改 `LATEST.sql` 时必须同时补增量"这一流程约束（见 `06` R-H5）。
+- **8 的收尾说明**：checker 不再因一次瞬时错误退出 ✅；停用实例不再被排队（`shouldSyncNow` 显式拒绝 `interval == 0`）✅；`LastSyncTime` 改为提交成功后再写、血缘排队提前 ✅；**破坏性删除按产品决策只加日志**（`logSchemaSyncDeletion` + 实例级软删 Warn），不拦截、不设阈值，因此"权限被收窄导致快照变空/变少"仍可能清空注册表，但一定留痕（见 `06` R-H3）。
+- **10 的收尾说明**：日志输出改为 `os.Stdout`（原 `slog.Default` 写 stderr），`AddSource` 打开后由 `log.Replace` 裁剪为 `dir/file.go`；`make build-release` 带 `-tags release`，`make build` 与 AGENTS.md 的开发构建**刻意保持 dev**，CI/Docker 仍不存在，部署方需显式用 `build-release`。
+- **11 的收尾说明**：合并语义是"请求列表决定成员、每个同名 ID 的条目按字段叠加"；proto3 无法区分"未发送"与"空串"，所以**无法通过本接口清空某个非密钥字段**，需要清空时应删除后用 `AddDataSource` 重建。顺带在 API 层补上"恰好一个 ADMIN"校验（原 `03` 低节条目）。
 
 ### 阶段 2：性能与资源（未开始）
 12. `GetUserByID/Email` 改定向查询；决定 `enableCache` 的去留。
@@ -140,4 +148,5 @@
 - 多数安全结论（SQL 注入、JWT 伪造、SSRF、缓存串租户、panic 路径）为代码级论证，**建议在修复前先补最小复现测试**（尤其是 SQL 注入与 ExplainSQL 缓存碰撞）。
 - 阶段 0 已补的回归测试：`backend/api/v1/filter_injection_test.go`（注入载荷 + LIKE 转义）、`backend/api/v1/audit_test.go` 扩展（`key`/`sslKey`/`cert` 等脱敏）。
 - 阶段 0 复测：`gofmt -l` 空、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`go vet -tags integration ./...`（仅编译）与 dev/prod 两种二进制构建全部通过；prod profile 需 `go build -tags release`（`84b16db` 修正 import 后才可用）。
-- 部分结论标注了"待确认"，需要与作者或通过集成测试确认（见各模块报告末尾）。
+- 阶段 1 复测：`gofmt -l backend/` 空、`go build ./...`、`go vet ./...`、`go test ./...`（含新增 8 个 guard 测试）、`golangci-lint run --allow-parallel-runners`（0 issues）、`make build-release`（`-tags release` 二进制构建）、`go vet -tags release ./...` 全部通过；另实测 `--enable-json-logging` 输出 JSON 行、`source` 路径已裁剪、`--external-url` 出现在 `--help` 中。集成测试仍未运行（需 Docker），前端未改动故未重跑前端检查。
+- 阶段 1 关闭的"待确认"：① `driver.SyncDBSchema` 确实会在不报错的情况下返回空/部分 schema（MySQL 的 `information_schema` 按权限过滤行），这是 R-H3 只加日志的依据；② `table` 过滤器前端未使用，且 `db.metadata` 无 `schemas` 字段、`db_schema` 表从未存在，故整体删除而非改写。仍待确认：部署拓扑（单租户？）、`enableCache` 是否有意关闭、`RETURNING` 顺序、部分 proto 字段是否为有意保留。

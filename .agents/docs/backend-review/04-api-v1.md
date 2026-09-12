@@ -9,6 +9,8 @@
 
 **阶段 0 更新**：A-C2 ✅、A-H5 ✅、B-C1 ✅；A-C1 ◐、A-H1 ◐、B-C2 ◐、B-H5 ◐（写操作已限管理员，读路径与 URL 校验未做）。`validate_only` 的**内网地址限制经确认后主动放弃**（见 A-H1）。M1（类型断言 panic）、B-H1/B-H4 等性能与正确性条目**未处理**。
 
+**阶段 1 更新**：A-H4 ✅、M1 ✅、M6 ✅（`20e284b`/`ff914ac`），另**删除**了遗留的 `table` 过滤器（`bb93ee0`，见 `03` S-H3）。B-H1/B-H4 等性能与正确性条目仍未处理（阶段 2）。
+
 ---
 
 # A. 数据面：Instance / Database / History
@@ -25,8 +27,8 @@
 
 ### A-C2. CEL 过滤器 SQL 注入
 > **✅ 已修复（阶段 0）** · `3321801`
-> - `instance_service.go` 的 title/resource_id/host/port 与 `database_service.go` 的 name/table 全部改为 `LIKE $n` 参数绑定，值经 `likePattern()` 转义 `%`/`_`（`api/v1/common.go` 的 `likePatternEscaper`，与 `store/meta_resource.go` 既有实现同源）；`label` 的 key 也改成 `db.metadata->'labels'->>$n = ANY($m)` 并把 key 一并绑定。
-> - 顺带统一了大小写行为（`table.matches` 之前只小写 pattern 不小写列名的问题仍未改，见"低"节）。
+> - `instance_service.go` 的 title/resource_id/host/port 与 `database_service.go` 的 name（以及当时还在的 table）全部改为 `LIKE $n` 参数绑定，值经 `likePattern()` 转义 `%`/`_`（`api/v1/common.go` 的 `likePatternEscaper`，与 `store/meta_resource.go` 既有实现同源）；`label` 的 key 也改成 `db.metadata->'labels'->>$n = ANY($m)` 并把 key 一并绑定。（table 过滤器已在阶段 1 删除，`bb93ee0`。）
+> - 顺带统一了大小写行为（`table.matches` 只小写 pattern 不小写列名的老问题已随该过滤器删除，见"低"节）。
 > - 守卫测试：`backend/api/v1/filter_injection_test.go` + `TestLikePatternEscapesWildcards`。
 
 - **位置**：`instance_service.go:152,154,156`、`database_service.go:815,874,880`
@@ -66,7 +68,9 @@
 - **修复**：重建全部已存储对象类型（或 `ObjectType IN (...)` 批量查询），并把相应 Changes 计入 summary。
 
 ### A-H4. `UpdateInstance(data_sources)` 会清空已存密钥并降级 TLS 校验
-- **位置**：`instance_service.go:405-413,1307-1353`
+> **✅ 已修复（阶段 1）** · `20e284b`：`data_sources` 分支改为按 ID 合并——`mergeDataSources` 以请求列表为准决定成员（缺席的 ID 仍会被删除，符合 repeated 字段的 update_mask 语义），但每个同名 ID 的条目通过 `mergeDataSource` 叠加到 store 里的现有条目上。实现用 `proto.Merge`：它只复制"已设置"的 proto3 标量，因此请求没带（或为空）的字段——包括读取路径从来不返回的密码/SSL/SSH 私钥/IAM 凭据——保留库中值；唯二的例外是 repeated 字段 `additional_addresses`（`proto.Merge` 是追加语义，请求带值时先清空）与 store-only 字段（`verify_tls_certificate`、`cluster`、`role_arn`、Vault TLS 等，因为从未被覆盖而天然保留）。**语义边界**：proto3 无法区分"未发送"与"发送了空串"，所以本接口**无法把某个非密钥字段清空**，需要清空时应删除后通过 `AddDataSource` 重建。守卫测试 `TestMergeDataSourcePreservesUnreturnedFields`/`TestMergeDataSourceOverlaysProvidedValues`/`TestMergeDataSourcesKeysByID`。
+
+- **位置**：`instance_service.go:405-413,1307-1353`（修复前行号）
 - **证据**：`convertV1DataSource` 不填充 `verify_tls_certificate`、`cluster`、`role_arn`/`external_id`、Vault TLS 等 store-only 字段；而读取路径故意不返回 password/SSL（`instance_service.go:1066`）。
 - **影响**：Get → 编辑 → Update 的常规往返会持久化空密码/空 SSL key，并把 `verify_tls_certificate` 重置为 false（TLS 校验降级），静默破坏或削弱既有连接。
 - **修复**：按 data source ID 合并到现有 store metadata，保留未回传字段与密钥；不要整体替换列表。
@@ -81,12 +85,12 @@
 
 ## 中（Medium）
 
-- **M1. 未检查类型断言 / `AsLiteral()` panic**：`instance_service.go:78,81,84,91,98,106,109,112,141`；`database_service.go:741,808,833,865`。`name == 123`、`engine in [1]`、`name.matches(ident)` 都会 panic → 500。（**⏳ 阶段 0 未修**；`5446a10` 只是让 panic 不再把堆栈回传给客户端。）
+- **M1. 未检查类型断言 / `AsLiteral()` panic**：`instance_service.go:78,81,84,91,98,106,109,112,141`；`database_service.go:741,808,833,865`。`name == 123`、`engine in [1]`、`name.matches(ident)` 都会 panic → 500。（**✅ 已修复（阶段 1）** · `ff914ac`：所有取值改走带检查的 helper（`filterString`/`filterBool`/`filterStringList`/`matchArgs`），`getVariableAndValueFromExpr` 现在返回 error 并在缺少变量或字面量时报错，四个过滤器（user/instance/database/audit）统一返回 `InvalidArgument`；`exclude_unassigned` 也不再静默忽略非布尔值。守卫测试 `TestFilterParsersRejectMistypedOperands`（12 个用例）。）
 - **M2. `ListMetadata` 在 `meta_type` 为空时翻页失效**：`database_service.go:200-231`；`FindSubLevelMetaRegistryResourceMessage` 只有 `LimitPreObjectType`，没有 offset（`store/meta_resource.go:51-55,775`），但仍会返回 `next_page_token`，第 2 页与第 1 页相同。
 - **M3. `ListMetadataHistory` 全量加载 + 分页 off-by-one**：`database_history.go:48-51,59-72`，查询无 limit/offset，之后 `if len(events) > limitPlusOne` 应为 `>=`，否则返回 `page_size+1` 条且无 token。
 - **M4. `GetSchemaString` 序列查询前缀错误**：`database_service.go:345` 用 `common.GUIDPrefix`（按 `"."` 切分，`common/guid.go:33-38`），而所有 GUID 用 `";"` 拼接 → 前缀恒为空，PG 的 `ALTER SEQUENCE ... OWNED BY`/identity DDL 丢失。
 - **M5. `CreateInstance` 不校验 environment/engine**：`instance_service.go:277,947-971`，与 `UpdateInstance`（`395-401`）不一致，可创建引用不存在环境的实例。
-- **M6. `UpdateInstance(data_sources)` 可删掉 admin 数据源**：`instance_service.go:405-413,338-351`；store 的 `validateDataSources`（要求恰好一个 ADMIN）在更新路径未被调用。
+- **M6. `UpdateInstance(data_sources)` 可删掉 admin 数据源**：`instance_service.go:405-413,338-351`；store 的 `validateDataSources`（要求恰好一个 ADMIN）在更新路径未被调用。**✅ 已修复（阶段 1）** · `20e284b`：`checkInstanceDataSources` 现在统计 ADMIN 数量，`!= 1` 即返回 `InvalidArgument`（同时覆盖 create 与 update 两条路径）。
 - **M7. 批量 RPC 部分成功无逐项结果**：`instance_service.go:536-555,561-570`；第 N 项失败时前 N-1 项已提交，客户端只拿到一个错误；也未限制 1000 条上限。
 - **M8. `ListDatabase` N+1 且可能 nil deref**：`database_service.go:1178-1195`；每行一次 `GetInstanceV2`（含完整 metadata），`convertInstanceMessageToInstanceResource` 无 nil 检查，而 `GetInstanceV2` 未命中返回 `(nil, nil)`。
 - **M9. `SyncDatabase` 泄漏非 Connect 错误**：`database_service.go:55-58` + `common.go:394-422`，缺失数据库/大小写冲突返回 `CodeUnknown` 而非 `NotFound`/`AlreadyExists`。
@@ -98,7 +102,7 @@
 
 - `SearchMetadata` 永远不返回 `next_page_token`，硬编码 50 条（`database_service.go:273-304`），而响应里有该字段。
 - `meta_type` 未设置时被当成 0 传给 store，导致 `NotFound` 而非解析或 `InvalidArgument`（`database_service.go:252,327`）。
-- `table.matches()` 把 pattern 转小写却不 `LOWER()` 列名（`database_service.go:870,880`），`table.matches("Foo")` 永远匹配不到。
+- ~~`table.matches()` 把 pattern 转小写却不 `LOWER()` 列名（`database_service.go:870,880`），`table.matches("Foo")` 永远匹配不到。~~ **✅ 阶段 1 已随 `table` 过滤器整体删除**（`bb93ee0`，见 `03` S-H3）。
 - `label` 过滤器文档支持 `in`，实际只支持 `==`；含 `:` 的 label 值无法使用（`database_service.go:807-815,884-891`）。
 - `AddDataSource` 重复的类型检查（`instance_service.go:579-581` vs `629-631`）；重复数据源返回 `CodeNotFound` 而非 `CodeAlreadyExists`。
 - `CreateInstance` 在请求路径里做完整 schema sync，且打开了一个多余的 driver 并丢弃其错误（`instance_service.go:314-335`）。
@@ -114,7 +118,7 @@
 - `database_history.go:151-155` 死分支：在外层已要求相等的前提下再判断不等。
 - `buildInstanceName`/`buildEnvironmentName`（`instance_service.go:909-924`）与 `common.FormatInstance`/`FormatEnvironment` 重复。
 - `InstanceService.stateCfg`、`DatabaseService.stateCfg`/`dbFactory` 赋值后从不读取。
-- `parseListInstanceFilter` 与 `getListDatabaseFilter` 是约 120 行的近重复 CEL→SQL 翻译器（阶段 0 已统一参数化写法，但**未合并**，重复仍在）；store 通过 `strings.Contains(filter.Where, "ds.metadata->'schemas'")`/`hasHostPortFilter` 反推 join，十分脆弱。
+- `parseListInstanceFilter` 与 `getListDatabaseFilter` 是约 120 行的近重复 CEL→SQL 翻译器（阶段 0 已统一参数化写法、阶段 1 已统一类型检查 helper，但**未合并**，重复仍在）；store 通过 `strings.Contains(filter.Where, ...)`/`hasHostPortFilter` 反推 join 的脆弱做法，其中 `ds.metadata->'schemas'` 一路已随 `table` 过滤器删除（`bb93ee0`），`hasHostPortFilter` 仍在。
 - `common.go:49-185` 的 `ParseFilter`/`normalizeFilter`/`Expression` 是旧过滤器解析器，无引用。
 - `convertStoredMetadataMessage` 静默丢弃 store-only 的 `openlineage_run_summary`/`openlineage_task_summary`（`database_convert.go:73-74`）。
 - `convertRedisType` 把 `REDIS_TYPE_UNSPECIFIED` 映射为 `STANDALONE`（`instance_service.go:1293-1305`），语义错误。
