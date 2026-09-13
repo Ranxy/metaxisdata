@@ -240,6 +240,21 @@ func eventWithinScope(event *openlineage.RunEvent, scope string) bool {
 // runMessageForEvent derives the run for an event. Only a COMPLETE event is
 // written; anything else yields the identity the processor needs without a
 // database write, which is what the second result reports.
+// parseEventTime parses an OpenLineage eventTime. The spec requires an RFC3339
+// offset, but producers sometimes omit it; assuming UTC keeps the event's
+// ordering and retention behavior instead of storing a NULL that sorts last and
+// is exempt from pruning.
+func parseEventTime(raw string) (time.Time, error) {
+	parsed, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		parsed, err = time.Parse(time.RFC3339Nano, raw+"Z")
+		if err != nil {
+			return time.Time{}, err
+		}
+	}
+	return parsed.UTC(), nil
+}
+
 func (*OpenLineageHandler) runMessageForEvent(event *openlineage.RunEvent) (*store.OpenLineageRunMessage, bool) {
 	derived := openlineage.DeriveRunMetadata(event)
 	guid := openlineage.BuildOpenLineageRunGUID(event.Job.Namespace, event.Job.Name, derived.JobType, event.Run.RunID)
@@ -251,10 +266,13 @@ func (*OpenLineageHandler) runMessageForEvent(event *openlineage.RunEvent) (*sto
 	}
 
 	var eventTime *time.Time
-	if parsedTime, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(event.EventTime)); err == nil {
-		eventTime = &parsedTime
-	} else if strings.TrimSpace(event.EventTime) != "" {
-		slog.Warn("failed to parse OpenLineage event time", "eventTime", event.EventTime, "runId", event.Run.RunID, "error", err)
+	if raw := strings.TrimSpace(event.EventTime); raw != "" {
+		parsedTime, err := parseEventTime(raw)
+		if err != nil {
+			slog.Warn("failed to parse OpenLineage event time", "eventTime", event.EventTime, "runId", event.Run.RunID, "error", err)
+		} else {
+			eventTime = &parsedTime
+		}
 	}
 
 	return &store.OpenLineageRunMessage{

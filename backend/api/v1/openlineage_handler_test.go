@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
@@ -99,4 +100,25 @@ func TestRunMessageForEvent(t *testing.T) {
 	require.Equal(t, int32(1), run.OutputCount)
 	require.NotNil(t, run.EventTime)
 	require.Equal(t, "openlineage", run.Source)
+}
+
+// Producers sometimes omit the timezone offset. Dropping such a timestamp stores
+// NULL, which sorts last and is exempt from retention, so it is assumed UTC.
+func TestParseEventTime(t *testing.T) {
+	t.Parallel()
+
+	withOffset, err := parseEventTime("2024-01-02T03:04:05+08:00")
+	require.NoError(t, err)
+	require.Equal(t, "2024-01-01T19:04:05Z", withOffset.Format(time.RFC3339))
+
+	withoutOffset, err := parseEventTime("2024-01-02T03:04:05")
+	require.NoError(t, err)
+	require.Equal(t, "2024-01-02T03:04:05Z", withoutOffset.Format(time.RFC3339))
+
+	fractional, err := parseEventTime("2024-01-02T03:04:05.123")
+	require.NoError(t, err)
+	require.Equal(t, "2024-01-02T03:04:05.123Z", fractional.Format(time.RFC3339Nano))
+
+	_, err = parseEventTime("not-a-time")
+	require.Error(t, err)
 }
