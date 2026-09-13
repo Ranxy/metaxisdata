@@ -5542,6 +5542,13 @@ components:
                         openlineage_retention_days bounds how long persisted OpenLineage runs are
                          kept. Zero (the default) keeps them forever: they are audit data.
                     format: int32
+                allowedLlmProviderProfiles:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        The LLM provider profiles ExplainSQL may use, as profile resource names.
+                         Empty means every enabled profile is allowed.
 tags:
     - name: AuditLogService
     - name: AuthService

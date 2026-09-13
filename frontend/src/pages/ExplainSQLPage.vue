@@ -170,13 +170,32 @@
           </div>
         </template>
 
-        <Button
-          :disabled="!canExplain || isExplaining"
-          @click="startExplain(resultFromCache)"
-        >
-          <Sparkles class="h-4 w-4 mr-2" />
-          {{ isExplaining ? t("explainSQL.explaining") : resultFromCache ? t("explainSQL.regenerate") : t("explainSQL.explain") }}
-        </Button>
+        <div class="flex items-center gap-3">
+          <Select
+            v-if="providerOptions.length > 1"
+            v-model="selectedProvider"
+          >
+            <SelectTrigger class="w-[220px]">
+              <SelectValue :placeholder="t('explainSQL.provider')" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="option in providerOptions"
+                :key="option.name"
+                :value="option.name"
+              >
+                {{ option.title }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            :disabled="!canExplain || isExplaining"
+            @click="startExplain(resultFromCache)"
+          >
+            <Sparkles class="h-4 w-4 mr-2" />
+            {{ isExplaining ? t("explainSQL.explaining") : resultFromCache ? t("explainSQL.regenerate") : t("explainSQL.explain") }}
+          </Button>
+        </div>
       </div>
 
       <!-- Right panel -->
@@ -282,13 +301,23 @@ import { useRoute } from "vue-router";
 import { getSchemaString, listMetadata, searchMetadata } from "@/api/database";
 import { explainSQL } from "@/api/explain";
 import { listInstances } from "@/api/instance";
+import { listProfiles } from "@/api/llm";
+import { getWorkspaceProfileSetting } from "@/api/setting";
 import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
 import MonacoEditor from "@/components/monaco-editor/MonacoEditor.vue";
 import Badge from "@/components/ui/badge/Badge.vue";
 import Button from "@/components/ui/button/Button.vue";
 import Label from "@/components/ui/label/Label.vue";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type { ExplainSQLProgress } from "@/types/proto-es/v1/explain_sql_service_pb";
+import { isProviderAllowed } from "@/utils/llmProvider";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -468,6 +497,15 @@ const loadingSql = ref(false);
 const isExplaining = ref(false);
 const resultText = ref("");
 const explainError = ref<string | null>(null);
+
+// ExplainSQL may be restricted to an admin-configured set of provider profiles;
+// the picker lists the allowed profiles that have an enabled model.
+interface ProviderOption {
+  name: string;
+  title: string;
+}
+const providerOptions = ref<ProviderOption[]>([]);
+const selectedProvider = ref("");
 const explainMeta = ref<{
   provider: string;
   model: string;
@@ -497,6 +535,7 @@ const metadataBrowserUrl = computed(() => {
 // ---- lifecycle ----
 onMounted(async () => {
   loadScopeInstances();
+  loadProviders();
   document.addEventListener("mousedown", handleClickOutside);
   const guidFromRoute = getGuidFromRoute();
   if (guidFromRoute) {
@@ -510,6 +549,32 @@ onUnmounted(() => {
 });
 
 // ---- methods ----
+async function loadProviders() {
+  try {
+    const [setting, resp] = await Promise.all([
+      getWorkspaceProfileSetting(),
+      listProfiles({ pageSize: 100 }),
+    ]);
+    const allowed = setting.allowedLlmProviderProfiles;
+    providerOptions.value = resp.profiles
+      .filter((profile) => profile.models.some((model) => model.enabled))
+      .filter((profile) => isProviderAllowed(profile.name, allowed))
+      .map((profile) => ({
+        name: profile.name,
+        title: profile.title || profile.name,
+      }));
+    if (
+      providerOptions.value.length > 0 &&
+      !providerOptions.value.some((o) => o.name === selectedProvider.value)
+    ) {
+      selectedProvider.value = providerOptions.value[0].name;
+    }
+  } catch {
+    // A failed lookup leaves the server-side default provider in place.
+    providerOptions.value = [];
+  }
+}
+
 function getGuidFromRoute(): string {
   const g = route.params.guid;
   if (Array.isArray(g)) return g.join("/");
@@ -668,11 +733,16 @@ async function startExplain(forceRegen = false) {
 
   const input =
     sourceMode.value === "metadata" && selectedMeta.value
-      ? { metaGuid: selectedMeta.value.guid, forceRegenerate: forceRegen }
+      ? {
+          metaGuid: selectedMeta.value.guid,
+          forceRegenerate: forceRegen,
+          providerName: selectedProvider.value,
+        }
       : {
           sqlText: customSQL.value.trim(),
           forceRegenerate: forceRegen,
           scopePrefix: scopePrefix.value,
+          providerName: selectedProvider.value,
         };
 
   try {

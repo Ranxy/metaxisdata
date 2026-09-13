@@ -43,6 +43,10 @@ message WorkspaceProfileSetting {
   // kept. Zero (the default) keeps them forever: they are audit data.
   int32 openlineage_retention_days = 14;
 
+  // The LLM provider profiles ExplainSQL may use, as profile resource names.
+  // Empty means every enabled profile is allowed.
+  repeated string allowed_llm_provider_profiles = 15;
+
   reserved 3, 6, 7, 8, 11, 13;
   reserved "require_2fa", "token_duration", "announcement", "maximum_role_expiration", "database_change_mode", "enable_metric_collection";
 }

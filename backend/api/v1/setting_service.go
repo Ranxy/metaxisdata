@@ -64,6 +64,20 @@ func (s *SettingService) UpdateWorkspaceProfileSetting(ctx context.Context, requ
 				return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("openlineage_retention_days must not be negative"))
 			}
 			setting.OpenlineageRetentionDays = request.Msg.Setting.OpenlineageRetentionDays
+		case "domains":
+			domains, err := normalizeIdentityDomains(request.Msg.Setting.Domains)
+			if err != nil {
+				return nil, err
+			}
+			setting.Domains = domains
+		case "enforce_identity_domain":
+			setting.EnforceIdentityDomain = request.Msg.Setting.EnforceIdentityDomain
+		case "allowed_llm_provider_profiles":
+			profiles, err := normalizeAllowedLLMProfiles(request.Msg.Setting.AllowedLlmProviderProfiles)
+			if err != nil {
+				return nil, err
+			}
+			setting.AllowedLlmProviderProfiles = profiles
 		default:
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported update_mask %q", path))
 		}
@@ -84,11 +98,55 @@ func (s *SettingService) UpdateWorkspaceProfileSetting(ctx context.Context, requ
 
 func convertToWorkspaceProfileSetting(setting *storepb.WorkspaceProfileSetting) *v1pb.WorkspaceProfileSetting {
 	return &v1pb.WorkspaceProfileSetting{
-		ExternalUrl:              setting.GetExternalUrl(),
-		DisallowSignup:           setting.GetDisallowSignup(),
-		DisallowPasswordSignin:   setting.GetDisallowPasswordSignin(),
-		OpenlineageRetentionDays: setting.GetOpenlineageRetentionDays(),
+		ExternalUrl:                setting.GetExternalUrl(),
+		DisallowSignup:             setting.GetDisallowSignup(),
+		DisallowPasswordSignin:     setting.GetDisallowPasswordSignin(),
+		OpenlineageRetentionDays:   setting.GetOpenlineageRetentionDays(),
+		Domains:                    setting.GetDomains(),
+		EnforceIdentityDomain:      setting.GetEnforceIdentityDomain(),
+		AllowedLlmProviderProfiles: setting.GetAllowedLlmProviderProfiles(),
 	}
+}
+
+// normalizeIdentityDomains trims and lowercases the entries, drops empties and
+// rejects anything that is not a bare domain: validateEmailWithDomains matches
+// "@"+entry, so an entry that already carries an "@" would never match.
+func normalizeIdentityDomains(domains []string) ([]string, error) {
+	result := make([]string, 0, len(domains))
+	for _, domain := range domains {
+		trimmed := strings.ToLower(strings.TrimSpace(domain))
+		if trimmed == "" {
+			continue
+		}
+		if strings.ContainsAny(trimmed, "@/: ") {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid domain %q", domain))
+		}
+		result = append(result, trimmed)
+	}
+	return result, nil
+}
+
+// normalizeAllowedLLMProfiles trims and de-duplicates the profile resource
+// names, and rejects anything that is not one.
+func normalizeAllowedLLMProfiles(profiles []string) ([]string, error) {
+	const prefix = "llm-provider-profiles/"
+	result := make([]string, 0, len(profiles))
+	seen := make(map[string]struct{}, len(profiles))
+	for _, profile := range profiles {
+		trimmed := strings.TrimSpace(profile)
+		if trimmed == "" {
+			continue
+		}
+		if !strings.HasPrefix(trimmed, prefix) || len(trimmed) == len(prefix) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid LLM provider profile %q", profile))
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	return result, nil
 }
 
 // GetDebugConfig gets the runtime debug config.

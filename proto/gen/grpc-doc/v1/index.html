@@ -12494,6 +12494,31 @@ create users. </p></td>
 keeps them forever. </p></td>
                 </tr>
               
+                <tr>
+                  <td>domains</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The email domains (for example &#34;example.com&#34;) whose users may sign up and
+sign in. Only enforced when enforce_identity_domain is on; an empty list
+disables the restriction. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>enforce_identity_domain</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether to restrict signup and signin to the domains above. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>allowed_llm_provider_profiles</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The LLM provider profiles ExplainSQL may use, as profile resource names
+(&#34;llm-provider-profiles/{id}&#34;). Empty means every enabled profile is
+allowed. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 

@@ -4352,6 +4352,9 @@ metaxisdata.roles.* permissions.
 | disallow_signup | [bool](#bool) |  | Disallow self-service signup. When enabled, only a workspace admin can create users. |
 | disallow_password_signin | [bool](#bool) |  | Disallow password signin. Workspace admins are exempt. |
 | openlineage_retention_days | [int32](#int32) |  | The number of days persisted OpenLineage runs are kept. Zero (the default) keeps them forever. |
+| domains | [string](#string) | repeated | The email domains (for example &#34;example.com&#34;) whose users may sign up and sign in. Only enforced when enforce_identity_domain is on; an empty list disables the restriction. |
+| enforce_identity_domain | [bool](#bool) |  | Whether to restrict signup and signin to the domains above. |
+| allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles ExplainSQL may use, as profile resource names (&#34;llm-provider-profiles/{id}&#34;). Empty means every enabled profile is allowed. |
 
 
 

@@ -19,6 +19,9 @@ export async function updateWorkspaceProfileSetting(
     disallowSignup?: boolean;
     disallowPasswordSignin?: boolean;
     openlineageRetentionDays?: number;
+    domains?: string[];
+    enforceIdentityDomain?: boolean;
+    allowedLlmProviderProfiles?: string[];
   },
   updateMask: string[]
 ) {
@@ -28,6 +31,9 @@ export async function updateWorkspaceProfileSetting(
       disallowSignup: setting.disallowSignup ?? false,
       disallowPasswordSignin: setting.disallowPasswordSignin ?? false,
       openlineageRetentionDays: setting.openlineageRetentionDays ?? 0,
+      domains: setting.domains ?? [],
+      enforceIdentityDomain: setting.enforceIdentityDomain ?? false,
+      allowedLlmProviderProfiles: setting.allowedLlmProviderProfiles ?? [],
     }),
     updateMask: { paths: updateMask },
   });

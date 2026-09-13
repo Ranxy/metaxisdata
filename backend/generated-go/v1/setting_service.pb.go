@@ -35,8 +35,18 @@ type WorkspaceProfileSetting struct {
 	// The number of days persisted OpenLineage runs are kept. Zero (the default)
 	// keeps them forever.
 	OpenlineageRetentionDays int32 `protobuf:"varint,4,opt,name=openlineage_retention_days,json=openlineageRetentionDays,proto3" json:"openlineage_retention_days,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	// The email domains (for example "example.com") whose users may sign up and
+	// sign in. Only enforced when enforce_identity_domain is on; an empty list
+	// disables the restriction.
+	Domains []string `protobuf:"bytes,5,rep,name=domains,proto3" json:"domains,omitempty"`
+	// Whether to restrict signup and signin to the domains above.
+	EnforceIdentityDomain bool `protobuf:"varint,6,opt,name=enforce_identity_domain,json=enforceIdentityDomain,proto3" json:"enforce_identity_domain,omitempty"`
+	// The LLM provider profiles ExplainSQL may use, as profile resource names
+	// ("llm-provider-profiles/{id}"). Empty means every enabled profile is
+	// allowed.
+	AllowedLlmProviderProfiles []string `protobuf:"bytes,7,rep,name=allowed_llm_provider_profiles,json=allowedLlmProviderProfiles,proto3" json:"allowed_llm_provider_profiles,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *WorkspaceProfileSetting) Reset() {
@@ -95,6 +105,27 @@ func (x *WorkspaceProfileSetting) GetOpenlineageRetentionDays() int32 {
 		return x.OpenlineageRetentionDays
 	}
 	return 0
+}
+
+func (x *WorkspaceProfileSetting) GetDomains() []string {
+	if x != nil {
+		return x.Domains
+	}
+	return nil
+}
+
+func (x *WorkspaceProfileSetting) GetEnforceIdentityDomain() bool {
+	if x != nil {
+		return x.EnforceIdentityDomain
+	}
+	return false
+}
+
+func (x *WorkspaceProfileSetting) GetAllowedLlmProviderProfiles() []string {
+	if x != nil {
+		return x.AllowedLlmProviderProfiles
+	}
+	return nil
 }
 
 type GetWorkspaceProfileSettingRequest struct {
@@ -362,12 +393,15 @@ var File_v1_setting_service_proto protoreflect.FileDescriptor
 
 const file_v1_setting_service_proto_rawDesc = "" +
 	"\n" +
-	"\x18v1/setting_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a google/protobuf/field_mask.proto\x1a\x13v1/annotation.proto\"\xdd\x01\n" +
+	"\x18v1/setting_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a google/protobuf/field_mask.proto\x1a\x13v1/annotation.proto\"\xf2\x02\n" +
 	"\x17WorkspaceProfileSetting\x12!\n" +
 	"\fexternal_url\x18\x01 \x01(\tR\vexternalUrl\x12'\n" +
 	"\x0fdisallow_signup\x18\x02 \x01(\bR\x0edisallowSignup\x128\n" +
 	"\x18disallow_password_signin\x18\x03 \x01(\bR\x16disallowPasswordSignin\x12<\n" +
-	"\x1aopenlineage_retention_days\x18\x04 \x01(\x05R\x18openlineageRetentionDays\"#\n" +
+	"\x1aopenlineage_retention_days\x18\x04 \x01(\x05R\x18openlineageRetentionDays\x12\x18\n" +
+	"\adomains\x18\x05 \x03(\tR\adomains\x126\n" +
+	"\x17enforce_identity_domain\x18\x06 \x01(\bR\x15enforceIdentityDomain\x12A\n" +
+	"\x1dallowed_llm_provider_profiles\x18\a \x03(\tR\x1aallowedLlmProviderProfiles\"#\n" +
 	"!GetWorkspaceProfileSettingRequest\"\xab\x01\n" +
 	"$UpdateWorkspaceProfileSettingRequest\x12F\n" +
 	"\asetting\x18\x01 \x01(\v2'.metaxisdata.v1.WorkspaceProfileSettingB\x03\xe0A\x02R\asetting\x12;\n" +

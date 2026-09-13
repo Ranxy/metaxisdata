@@ -44,6 +44,31 @@ export declare type WorkspaceProfileSetting = Message<"metaxisdata.v1.WorkspaceP
    * @generated from field: int32 openlineage_retention_days = 4;
    */
   openlineageRetentionDays: number;
+
+  /**
+   * The email domains (for example "example.com") whose users may sign up and
+   * sign in. Only enforced when enforce_identity_domain is on; an empty list
+   * disables the restriction.
+   *
+   * @generated from field: repeated string domains = 5;
+   */
+  domains: string[];
+
+  /**
+   * Whether to restrict signup and signin to the domains above.
+   *
+   * @generated from field: bool enforce_identity_domain = 6;
+   */
+  enforceIdentityDomain: boolean;
+
+  /**
+   * The LLM provider profiles ExplainSQL may use, as profile resource names
+   * ("llm-provider-profiles/{id}"). Empty means every enabled profile is
+   * allowed.
+   *
+   * @generated from field: repeated string allowed_llm_provider_profiles = 7;
+   */
+  allowedLlmProviderProfiles: string[];
 };
 
 /**

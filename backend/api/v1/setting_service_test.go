@@ -68,3 +68,39 @@ func TestGetDebugConfigReportsRuntimeDebug(t *testing.T) {
 		t.Error("GetDebugConfig = false with RuntimeDebug on, want true")
 	}
 }
+
+func TestNormalizeIdentityDomains(t *testing.T) {
+	t.Parallel()
+
+	domains, err := normalizeIdentityDomains([]string{" Example.com ", "", "corp.example.com"})
+	if err != nil {
+		t.Fatalf("normalizeIdentityDomains returned error: %v", err)
+	}
+	if len(domains) != 2 || domains[0] != "example.com" || domains[1] != "corp.example.com" {
+		t.Fatalf("normalizeIdentityDomains = %v, want [example.com corp.example.com]", domains)
+	}
+
+	if _, err := normalizeIdentityDomains([]string{"@example.com"}); err == nil {
+		t.Fatal("an entry carrying '@' must be rejected: it can never match")
+	} else if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("error code = %v, want InvalidArgument", connect.CodeOf(err))
+	}
+}
+
+func TestNormalizeAllowedLLMProfiles(t *testing.T) {
+	t.Parallel()
+
+	profiles, err := normalizeAllowedLLMProfiles([]string{" llm-provider-profiles/a ", "llm-provider-profiles/a", ""})
+	if err != nil {
+		t.Fatalf("normalizeAllowedLLMProfiles returned error: %v", err)
+	}
+	if len(profiles) != 1 || profiles[0] != "llm-provider-profiles/a" {
+		t.Fatalf("normalizeAllowedLLMProfiles = %v, want [llm-provider-profiles/a]", profiles)
+	}
+
+	if _, err := normalizeAllowedLLMProfiles([]string{"openai"}); err == nil {
+		t.Fatal("a bare id must be rejected: the setting stores resource names")
+	} else if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("error code = %v, want InvalidArgument", connect.CodeOf(err))
+	}
+}

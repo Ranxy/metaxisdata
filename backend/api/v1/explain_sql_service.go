@@ -55,10 +55,18 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get LLM config"))
 	}
+	allowedProfiles, err := s.allowedLLMProfiles(ctx)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get the allowed LLM providers"))
+	}
 	var resolvedConfig *llm.ResolvedConfig
 	if req.Msg.ProviderName != "" {
+		if !isLLMProfileAllowed(req.Msg.ProviderName, allowedProfiles) {
+			return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("LLM profile %q is not allowed by the workspace settings", req.Msg.ProviderName))
+		}
+		wantedID := llmProfileID(req.Msg.ProviderName)
 		for _, c := range configs {
-			if c.ProfileName == req.Msg.ProviderName {
+			if c.ProfileName == wantedID {
 				resolvedConfig = &c
 				break
 			}
@@ -67,8 +75,9 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 			return connect.NewError(connect.CodeNotFound, errors.Errorf("LLM profile %q not found", req.Msg.ProviderName))
 		}
 	} else {
+		configs = filterAllowedLLMConfigs(configs, allowedProfiles)
 		if len(configs) == 0 {
-			return connect.NewError(connect.CodeFailedPrecondition, errors.New("no enabled LLM provider profiles"))
+			return connect.NewError(connect.CodeFailedPrecondition, errors.New("no enabled LLM provider profiles are allowed"))
 		}
 		resolvedConfig = &configs[0]
 	}
@@ -565,6 +574,60 @@ func (s *ExplainSQLService) getScopeEngine(ctx context.Context, instanceID strin
 		return storepb.Engine_ENGINE_UNSPECIFIED, fmt.Errorf("instance not found: %s", instanceID)
 	}
 	return inst.Metadata.Engine, nil
+}
+
+// allowedLLMProfiles returns the workspace's LLM provider allowlist. An empty
+// list means every enabled profile is allowed.
+func (s *ExplainSQLService) allowedLLMProfiles(ctx context.Context) ([]string, error) {
+	setting, err := s.store.GetWorkspaceGeneralSetting(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return setting.GetAllowedLlmProviderProfiles(), nil
+}
+
+// llmProfileID normalizes a profile reference — either the bare id used by the
+// registry or the v1 resource name "llm-provider-profiles/{id}" — to the bare id.
+func llmProfileID(profile string) string {
+	trimmed := strings.TrimSpace(profile)
+	if id, ok := strings.CutPrefix(trimmed, "llm-provider-profiles/"); ok {
+		return id
+	}
+	return trimmed
+}
+
+// filterAllowedLLMConfigs keeps the configs whose profile is in the allowlist.
+// An empty allowlist means no restriction.
+func filterAllowedLLMConfigs(configs []llm.ResolvedConfig, allowed []string) []llm.ResolvedConfig {
+	if len(allowed) == 0 {
+		return configs
+	}
+	allowedIDs := make(map[string]struct{}, len(allowed))
+	for _, profile := range allowed {
+		allowedIDs[llmProfileID(profile)] = struct{}{}
+	}
+	filtered := make([]llm.ResolvedConfig, 0, len(configs))
+	for _, config := range configs {
+		if _, ok := allowedIDs[config.ProfileName]; ok {
+			filtered = append(filtered, config)
+		}
+	}
+	return filtered
+}
+
+// isLLMProfileAllowed reports whether a requested profile is inside the
+// allowlist; an empty allowlist allows everything.
+func isLLMProfileAllowed(profile string, allowed []string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	id := llmProfileID(profile)
+	for _, candidate := range allowed {
+		if llmProfileID(candidate) == id {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveSource returns the SQL to explain, the object it belongs to, the
