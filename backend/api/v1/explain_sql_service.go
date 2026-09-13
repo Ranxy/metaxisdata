@@ -12,6 +12,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -113,12 +114,19 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 		}
 	}
 
-	// Build schema context.
+	// Build schema context. A store failure must surface instead of silently
+	// degrading to an empty context, which the model reads as "no such object".
 	var ctxObjects *llm.SchemaContext
 	if metaGUID != "" {
-		ctxObjects = s.buildContextFromLineage(ctx, metaGUID, metaType)
+		ctxObjects, err = s.buildContextFromLineage(ctx, metaGUID, metaType)
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to build lineage context"))
+		}
 	} else if scopePrefix != "" {
-		ctxObjects = s.buildContextFromSQL(ctx, scopePrefix, sqlText)
+		ctxObjects, err = s.buildContextFromSQL(ctx, scopePrefix, sqlText)
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to build SQL context"))
+		}
 	}
 
 	// Build tools.
@@ -261,16 +269,15 @@ func scopeInstanceID(scopePrefix string) string {
 	if scopePrefix == "" {
 		return ""
 	}
-	parts := strings.SplitN(scopePrefix, ";", 2)
-	return parts[0]
+	return common.SplitMetaGUID(scopePrefix)[0]
 }
 
 func metaGUIScope(metaGUID string) string {
-	parts := strings.Split(metaGUID, ";")
-	if len(parts) <= 1 {
+	index := strings.LastIndex(metaGUID, common.MetaGUIDSplit)
+	if index == -1 {
 		return metaGUID
 	}
-	return strings.Join(parts[:len(parts)-1], ";")
+	return metaGUID[:index]
 }
 
 // isMySQLEngine reports whether names are addressed as database.table rather
@@ -307,12 +314,15 @@ func resolveObjectIdentifier(name string, scopePrefix string, isMySQL bool) mode
 
 // ---- Context building ----
 
-func (s *ExplainSQLService) buildContextFromLineage(ctx context.Context, metaGUID string, metaType storepb.MetaType) *llm.SchemaContext {
+func (s *ExplainSQLService) buildContextFromLineage(ctx context.Context, metaGUID string, metaType storepb.MetaType) (*llm.SchemaContext, error) {
 	lineageList, err := s.store.ListColumnLineage(ctx, &store.FindColumnLineageMessage{
 		MetaGUID: &metaGUID,
 		MetaType: &metaType,
 	})
-	if err != nil || len(lineageList) == 0 {
+	if err != nil {
+		return nil, err
+	}
+	if len(lineageList) == 0 {
 		return s.fetchObjectsByGUIDs(ctx, []string{metaGUID})
 	}
 
@@ -334,18 +344,27 @@ func (s *ExplainSQLService) buildContextFromLineage(ctx context.Context, metaGUI
 	return s.fetchObjectsByGUIDs(ctx, guids)
 }
 
-func (s *ExplainSQLService) buildContextFromSQL(ctx context.Context, scopePrefix string, sqlText string) *llm.SchemaContext {
+func (s *ExplainSQLService) buildContextFromSQL(ctx context.Context, scopePrefix string, sqlText string) (*llm.SchemaContext, error) {
 	instanceID := scopeInstanceID(scopePrefix)
 
 	inst, err := s.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
-	if err != nil || inst == nil || inst.Metadata == nil {
-		return &llm.SchemaContext{}
+	if err != nil {
+		return nil, err
+	}
+	if inst == nil || inst.Metadata == nil {
+		return &llm.SchemaContext{}, nil
 	}
 	engine := inst.Metadata.Engine
 
+	// A relation that cannot be analyzed (unsupported SQL, no registered
+	// analyzer) is not a store failure: log it and continue with an empty
+	// context.
 	relations, err := lineage.GetAnalyzeRelation(ctx, engine, sqlText)
-	if err != nil || len(relations) == 0 {
-		return &llm.SchemaContext{}
+	if err != nil {
+		slog.Debug("Failed to analyze SQL relations; continuing without schema context", log.WithError(err))
+	}
+	if len(relations) == 0 {
+		return &llm.SchemaContext{}, nil
 	}
 
 	guidSet := make(map[string]bool)
@@ -367,21 +386,26 @@ func (s *ExplainSQLService) buildContextFromSQL(ctx context.Context, scopePrefix
 	return s.fetchObjectsByGUIDs(ctx, guids)
 }
 
-func (s *ExplainSQLService) fetchObjectsByGUIDs(ctx context.Context, guids []string) *llm.SchemaContext {
+func (s *ExplainSQLService) fetchObjectsByGUIDs(ctx context.Context, guids []string) (*llm.SchemaContext, error) {
 	if len(guids) == 0 {
-		return &llm.SchemaContext{}
+		return &llm.SchemaContext{}, nil
 	}
 
 	// Keep the GUID next to the metadata it was resolved from: the pairs used to
 	// be rebuilt positionally from the request list, so one failed lookup
-	// shifted every following GUID onto the wrong metadata.
+	// shifted every following GUID onto the wrong metadata. A store failure is
+	// propagated rather than skipped, so a DB outage is not reported as absent
+	// metadata.
 	var metas []*storepb.StoredMetadata
 	matchedGUIDs := make([]string, 0, len(guids))
 	for _, guid := range guids {
 		list, err := s.store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{
 			GUID: &guid,
 		})
-		if err != nil || len(list) == 0 || list[0].Metadata == nil {
+		if err != nil {
+			return nil, err
+		}
+		if len(list) == 0 || list[0].Metadata == nil {
 			continue
 		}
 		metas = append(metas, list[0].Metadata)
@@ -389,14 +413,14 @@ func (s *ExplainSQLService) fetchObjectsByGUIDs(ctx context.Context, guids []str
 	}
 
 	if len(metas) == 0 {
-		return &llm.SchemaContext{}
+		return &llm.SchemaContext{}, nil
 	}
 
 	ctxObj := llm.BuildContextFromMetadata(metas, matchedGUIDs)
 	if len(ctxObj.Objects) > 10 {
 		ctxObj.Objects = ctxObj.Objects[:10]
 	}
-	return ctxObj
+	return ctxObj, nil
 }
 
 func isTableLikeType(mt storepb.MetaType) bool {
@@ -438,9 +462,12 @@ func (s *ExplainSQLService) toolGetObjectSchema(ctx context.Context, tc llm.Tool
 	objID := resolveObjectIdentifier(args.Name, scopePrefix, isMySQLEngine(engine))
 	guid := objID.GUID()
 
-	list, _ := s.store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{
+	list, err := s.store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{
 		GUID: &guid,
 	})
+	if err != nil {
+		return []llm.ToolResult{{ToolCallID: tc.ID, Content: fmt.Sprintf(`{"error": "failed to look up object: %s"}`, err.Error())}}, nil
+	}
 	if len(list) == 0 || list[0].Metadata == nil {
 		return []llm.ToolResult{{ToolCallID: tc.ID, Content: fmt.Sprintf(`{"error": "no object found matching '%s'"}`, args.Name)}}, nil
 	}
