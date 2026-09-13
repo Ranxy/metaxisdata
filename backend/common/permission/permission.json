@@ -7,6 +7,7 @@
     {"name": "InstancesDelete", "id": "metaxisdata.instances.delete"},
     {"name": "InstancesUndelete", "id": "metaxisdata.instances.undelete"},
     {"name": "InstancesSync", "id": "metaxisdata.instances.sync"},
+    {"name": "EnvironmentsList", "id": "metaxisdata.environments.list"},
     {"name": "DataSourcesCreate", "id": "metaxisdata.dataSources.create"},
     {"name": "DataSourcesUpdate", "id": "metaxisdata.dataSources.update"},
     {"name": "DataSourcesDelete", "id": "metaxisdata.dataSources.delete"},

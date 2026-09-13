@@ -29,6 +29,10 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    resource: "environments",
+    permissions: ["metaxisdata.environments.list"],
+  },
+  {
     resource: "dataSources",
     permissions: [
       "metaxisdata.dataSources.create",

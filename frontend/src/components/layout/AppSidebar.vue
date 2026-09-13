@@ -79,6 +79,7 @@ import {
   Database,
   FileCode2,
   Files,
+  Globe,
   Home,
   KeyRound,
   LayoutDashboard,
@@ -209,6 +210,13 @@ function buildMenuItems(): MenuItem[] {
           label: t("menu.generalSettings"),
           path: "/settings/general",
           icon: SlidersHorizontal,
+          permission: "metaxisdata.settings.get",
+        },
+        {
+          key: "environments",
+          label: t("menu.environments"),
+          path: "/settings/environments",
+          icon: Globe,
           permission: "metaxisdata.settings.get",
         },
         {

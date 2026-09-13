@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ChevronDown, Plus, X } from "lucide-vue-next";
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useEnvironmentStore } from "@/store/modules/environment";
 
 export interface FilterCategory {
   type: string;
@@ -55,6 +56,11 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const environmentStore = useEnvironmentStore();
+
+onMounted(() => {
+  void environmentStore.ensureLoaded();
+});
 
 function generateUniqueId(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -70,12 +76,7 @@ const searchInputRef = ref<HTMLInputElement>();
 const filterSearchQuery = ref("");
 const filterTypeSearchQuery = ref("");
 
-const environmentOptions = [
-  { value: "environments/dev", label: "Dev" },
-  { value: "environments/test", label: "Test" },
-  { value: "environments/staging", label: "Staging" },
-  { value: "environments/prod", label: "Prod" },
-];
+const environmentOptions = computed(() => environmentStore.options);
 
 const availableFilterTypes = computed(() => {
   if (props.filterCategories) {
@@ -119,9 +120,9 @@ const filteredInstances = computed(() => {
 });
 
 const filteredEnvironments = computed(() => {
-  if (!filterSearchQuery.value) return environmentOptions;
+  if (!filterSearchQuery.value) return environmentOptions.value;
   const query = filterSearchQuery.value.toLowerCase();
-  return environmentOptions.filter((e) =>
+  return environmentOptions.value.filter((e) =>
     e.label.toLowerCase().includes(query)
   );
 });

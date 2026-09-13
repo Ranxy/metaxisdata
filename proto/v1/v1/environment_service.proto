@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package metaxisdata.v1;
+
+import "google/api/annotations.proto";
+import "google/api/client.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
+import "v1/annotation.proto";
+
+option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
+
+// EnvironmentService manages the workspace's environments. An environment is a
+// small, workspace-scoped resource ("environments/{id}") that instances are
+// tagged with; databases inherit their instance's environment.
+//
+// Environments are stored in the ENVIRONMENT workspace setting, not in a table
+// of their own. The id is derived from the title on create and is immutable:
+// instances store the raw id, so renaming only changes the display title.
+service EnvironmentService {
+  // List the workspace environments.
+  //
+  // Readable by every workspace member: the instance forms and the metadata
+  // filters need the list, and those pages are open to every member.
+  rpc ListEnvironments(ListEnvironmentsRequest) returns (ListEnvironmentsResponse) {
+    option (google.api.http) = {get: "/v1/environments"};
+    option (google.api.method_signature) = "";
+    option (metaxisdata.v1.permission) = "metaxisdata.environments.list";
+  }
+
+  // Create an environment.
+  rpc CreateEnvironment(CreateEnvironmentRequest) returns (Environment) {
+    option (google.api.http) = {
+      post: "/v1/environments"
+      body: "environment"
+    };
+    option (google.api.method_signature) = "environment";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.audit) = true;
+  }
+
+  // Update an environment. Only title, color and tags are mutable; the resource
+  // name (the id) is not.
+  rpc UpdateEnvironment(UpdateEnvironmentRequest) returns (Environment) {
+    option (google.api.http) = {
+      patch: "/v1/{environment.name=environments/*}"
+      body: "environment"
+    };
+    option (google.api.method_signature) = "environment,update_mask";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.audit) = true;
+  }
+
+  // Delete an environment. An environment still assigned to a live instance
+  // cannot be deleted.
+  rpc DeleteEnvironment(DeleteEnvironmentRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=environments/*}"};
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.audit) = true;
+  }
+}
+
+message Environment {
+  // The resource name. Format: environments/{id}. Output only: the id is
+  // derived from the title on create and cannot be changed afterwards.
+  string name = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The display name, e.g. "Production".
+  string title = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // A preset palette key controlling the badge color. One of: slate, blue,
+  // green, amber, orange, red, violet, pink. Empty on create lets the server
+  // pick a stable default.
+  string color = 3 [(google.api.field_behavior) = OPTIONAL];
+
+  // Free-form labels attached to the environment.
+  map<string, string> tags = 4 [(google.api.field_behavior) = OPTIONAL];
+
+  // The number of live instances assigned to this environment. Output only, and
+  // populated by ListEnvironments only. DeleteEnvironment is refused while it
+  // is non-zero.
+  int32 instance_count = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListEnvironmentsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListEnvironmentsResponse {
+  repeated Environment environments = 1;
+  string next_page_token = 2;
+}
+
+message CreateEnvironmentRequest {
+  // The environment to create. The title is required; name and color are
+  // ignored on create (the server derives them).
+  Environment environment = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdateEnvironmentRequest {
+  // The environment to update.
+  Environment environment = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The fields to update: title, color, tags.
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+message DeleteEnvironmentRequest {
+  // The environment resource name. Format: environments/{id}.
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}

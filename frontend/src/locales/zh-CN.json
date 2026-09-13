@@ -11,6 +11,43 @@
     "viewFullContent": "查看完整内容",
     "details": "详情"
   },
+  "environment": {
+    "searchPlaceholder": "搜索环境",
+    "noResults": "未找到环境",
+    "createOption": "新建环境 \"{name}\"",
+    "createHint": "没有匹配的环境，请联系管理员添加",
+    "createTitle": "新建环境",
+    "nameLabel": "环境名称",
+    "namePlaceholder": "例如：预发布",
+    "nameHint": "环境 ID 会根据名称自动生成，创建后不可修改。",
+    "nameRequired": "环境名称不能为空",
+    "cancel": "取消",
+    "create": "创建"
+  },
+  "environmentSettings": {
+    "title": "环境管理",
+    "description": "维护实例可以归属的环境。环境 ID 由名称自动生成，创建后不可修改。",
+    "add": "新建环境",
+    "readOnlyHint": "只有工作区管理员可以维护环境列表。",
+    "empty": "还没有配置任何环境。",
+    "nameColumn": "名称",
+    "idColumn": "ID",
+    "usageColumn": "使用情况",
+    "actionsColumn": "操作",
+    "instanceCount": "{count} 个实例",
+    "createTitle": "新建环境",
+    "editTitle": "编辑环境",
+    "nameLabel": "环境名称",
+    "idImmutableHint": "环境 ID 由名称自动生成，创建后不可修改。",
+    "colorLabel": "颜色",
+    "nameRequired": "环境名称不能为空",
+    "deleteTitle": "删除环境",
+    "deleteConfirm": "确定删除环境 \"{name}\" 吗？",
+    "inUseHint": "该环境正在被实例使用，无法删除。",
+    "updated": "环境已更新",
+    "created": "环境已创建",
+    "deleted": "环境已删除"
+  },
   "error": {
     "unknown": "发生未知错误，请稍后重试"
   },
@@ -82,7 +119,8 @@
     "explainSQL": "SQL 解释",
     "iam": "成员与权限",
     "roles": "角色",
-    "groups": "用户组"
+    "groups": "用户组",
+    "environments": "环境"
   },
   "generalSettings": {
     "title": "通用设置",

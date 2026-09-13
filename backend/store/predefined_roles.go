@@ -39,6 +39,7 @@ var allPermissionSet = func() map[permission.Permission]bool {
 var memberBaselinePermissions = permissionSet(
 	permission.InstancesGet,
 	permission.InstancesList,
+	permission.EnvironmentsList,
 	permission.DatabasesList,
 	permission.DatabasesRead,
 	permission.ManualSQLsGet,

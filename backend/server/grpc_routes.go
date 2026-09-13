@@ -72,6 +72,7 @@ func configureGrpcRouters(
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
 	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry)
 	settingService := apiv1.NewSettingService(stores, profile)
+	environmentService := apiv1.NewEnvironmentService(stores)
 	roleService := apiv1.NewRoleService(stores)
 	groupService := apiv1.NewGroupService(stores)
 	iamService := apiv1.NewIamService(stores)
@@ -124,6 +125,8 @@ func configureGrpcRouters(
 	connectHandlers[explainSQLPath] = explainSQLHandler
 	settingPath, settingHandler := v1connect.NewSettingServiceHandler(settingService, handlerOpts)
 	connectHandlers[settingPath] = settingHandler
+	environmentPath, environmentHandler := v1connect.NewEnvironmentServiceHandler(environmentService, handlerOpts)
+	connectHandlers[environmentPath] = environmentHandler
 	rolePath, roleHandler := v1connect.NewRoleServiceHandler(roleService, handlerOpts)
 	connectHandlers[rolePath] = roleHandler
 	groupPath, groupHandler := v1connect.NewGroupServiceHandler(groupService, handlerOpts)
@@ -142,6 +145,7 @@ func configureGrpcRouters(
 		v1connect.LLMServiceName,
 		v1connect.ExplainSQLServiceName,
 		v1connect.SettingServiceName,
+		v1connect.EnvironmentServiceName,
 		v1connect.RoleServiceName,
 		v1connect.GroupServiceName,
 		v1connect.IamServiceName,
@@ -199,6 +203,9 @@ func configureGrpcRouters(
 		return err
 	}
 	if err := v1pb.RegisterSettingServiceHandler(ctx, mux, grpcConn); err != nil {
+		return err
+	}
+	if err := v1pb.RegisterEnvironmentServiceHandler(ctx, mux, grpcConn); err != nil {
 		return err
 	}
 	if err := v1pb.RegisterRoleServiceHandler(ctx, mux, grpcConn); err != nil {

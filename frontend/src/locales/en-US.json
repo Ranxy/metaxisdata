@@ -11,6 +11,43 @@
     "viewFullContent": "View full content",
     "details": "Details"
   },
+  "environment": {
+    "searchPlaceholder": "Search environments",
+    "noResults": "No environments found",
+    "createOption": "Create environment \"{name}\"",
+    "createHint": "No matching environment. Ask an admin to add one.",
+    "createTitle": "Create environment",
+    "nameLabel": "Environment name",
+    "namePlaceholder": "e.g. Pre-production",
+    "nameHint": "The environment ID is derived from the name and cannot be changed later.",
+    "nameRequired": "Environment name is required",
+    "cancel": "Cancel",
+    "create": "Create"
+  },
+  "environmentSettings": {
+    "title": "Environments",
+    "description": "Manage the environments instances can be assigned to. An environment ID is derived from its name and cannot be changed.",
+    "add": "New environment",
+    "readOnlyHint": "Only workspace admins can manage the environment list.",
+    "empty": "No environments configured yet.",
+    "nameColumn": "Name",
+    "idColumn": "ID",
+    "usageColumn": "Usage",
+    "actionsColumn": "Actions",
+    "instanceCount": "{count} instance(s)",
+    "createTitle": "New environment",
+    "editTitle": "Edit environment",
+    "nameLabel": "Environment name",
+    "idImmutableHint": "The environment ID is derived from the name and cannot be changed.",
+    "colorLabel": "Color",
+    "nameRequired": "Environment name is required",
+    "deleteTitle": "Delete environment",
+    "deleteConfirm": "Delete the environment \"{name}\"?",
+    "inUseHint": "This environment is in use by instances and cannot be deleted.",
+    "updated": "Environment updated",
+    "created": "Environment created",
+    "deleted": "Environment deleted"
+  },
   "error": {
     "unknown": "An unknown error occurred. Please try again later"
   },
@@ -82,7 +119,8 @@
     "explainSQL": "Explain SQL",
     "iam": "Members & Permissions",
     "roles": "Roles",
-    "groups": "Groups"
+    "groups": "Groups",
+    "environments": "Environments"
   },
   "generalSettings": {
     "title": "General",

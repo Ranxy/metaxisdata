@@ -62,7 +62,7 @@
               {{ t("instanceManagement.environment") }}
             </p>
             <p class="font-medium">
-              {{ getEnvironmentId(instance.environment) }}
+              {{ getEnvironmentLabel(instance.environment) }}
             </p>
           </div>
           <div>
@@ -169,7 +169,7 @@
               </div>
             </TableCell>
             <TableCell class="text-muted-foreground">
-              {{ getEnvironmentId(database.effectiveEnvironment) }}
+              {{ getEnvironmentLabel(database.effectiveEnvironment) }}
             </TableCell>
             <TableCell class="text-muted-foreground">
               {{ database.schemaVersion || "-" }}
@@ -240,7 +240,7 @@
             />
           </div>
 
-          <AppInput
+          <EnvironmentSelect
             v-model="editForm.environment"
             :label="t('instanceManagement.environment')"
             :placeholder="t('instanceManagement.environmentPlaceholder')"
@@ -523,6 +523,7 @@ import {
 import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import EnvironmentSelect from "@/components/common/EnvironmentSelect.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -537,6 +538,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
+import { useEnvironmentStore } from "@/store/modules/environment";
 import { useToastStore } from "@/store/modules/toast";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
@@ -551,6 +553,7 @@ const route = useRoute();
 const router = useRouter();
 const { handleError, showSuccess } = useErrorHandler();
 const toastStore = useToastStore();
+const environmentStore = useEnvironmentStore();
 
 // State
 const instanceId = computed(() => route.params.instanceId as string);
@@ -620,7 +623,7 @@ function openEditModal() {
 
   editForm.value = {
     title: inst.title,
-    environment: inst.environment.replace("environments/", ""),
+    environment: inst.environment,
     activation: inst.activation,
     enableSync: syncSeconds > 0,
     syncIntervalMinutes: syncSeconds > 0 ? String(syncSeconds / 60) : "15",
@@ -727,10 +730,8 @@ async function handleUpdateInstance() {
 
   isUpdating.value = true;
   try {
-    let environment = editForm.value.environment.trim();
-    if (!environment.startsWith("environments/")) {
-      environment = `environments/${environment}`;
-    }
+    // The picker already carries the full "environments/{id}" resource name.
+    const environment = editForm.value.environment.trim();
 
     const updateMask = ["title", "environment", "activation", "sync_interval"];
 
@@ -891,10 +892,9 @@ function getDatabaseName(name: string): string {
   return parts[parts.length - 1] || name;
 }
 
-function getEnvironmentId(environment: string): string {
-  // Format: environments/{id} -> return id
+function getEnvironmentLabel(environment: string): string {
   if (!environment) return "-";
-  return environment.replace("environments/", "");
+  return environmentStore.titleOf(environment);
 }
 
 function getHostInfo(instance: Instance): string {
@@ -991,5 +991,6 @@ async function fetchDatabases() {
 onMounted(async () => {
   await fetchInstance();
   await fetchDatabases();
+  void environmentStore.ensureLoaded();
 });
 </script>

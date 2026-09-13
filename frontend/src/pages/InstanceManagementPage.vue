@@ -115,7 +115,7 @@
               {{ getHostInfo(instance) }}
             </TableCell>
             <TableCell class="text-muted-foreground">
-              {{ getEnvironmentId(instance.environment) }}
+              {{ getEnvironmentLabel(instance.environment) }}
             </TableCell>
             <TableCell>
               <Badge :variant="instance.activation ? 'success' : 'secondary'">
@@ -338,7 +338,7 @@
                 {{ createFormErrors.engine }}
               </p>
             </div>
-            <AppInput
+            <EnvironmentSelect
               v-model="createForm.environment"
               :label="t('instanceManagement.environment')"
               :placeholder="t('instanceManagement.environmentPlaceholder')"
@@ -586,6 +586,7 @@ import {
 import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import EnvironmentSelect from "@/components/common/EnvironmentSelect.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -613,6 +614,7 @@ import {
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { useAuthStore } from "@/store/modules/auth";
+import { useEnvironmentStore } from "@/store/modules/environment";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import { DataSourceType } from "@/types/proto-es/v1/instance_service_pb";
@@ -620,6 +622,7 @@ import { DataSourceType } from "@/types/proto-es/v1/instance_service_pb";
 const { t, locale } = useI18n();
 const router = useRouter();
 const authStore = useAuthStore();
+const environmentStore = useEnvironmentStore();
 const { handleError, showSuccess } = useErrorHandler();
 
 // Instances and their data sources are administered by holders of the
@@ -746,10 +749,9 @@ function navigateToInstanceDetail(instance: Instance) {
   router.push({ name: "InstanceDetail", params: { instanceId } });
 }
 
-function getEnvironmentId(environment: string): string {
-  // Format: environments/{id} -> return id
+function getEnvironmentLabel(environment: string): string {
   if (!environment) return "-";
-  return environment.replace("environments/", "");
+  return environmentStore.titleOf(environment);
 }
 
 function getHostInfo(instance: Instance): string {
@@ -1073,11 +1075,8 @@ async function handleCreateInstance() {
 
   isCreating.value = true;
   try {
-    // Format environment: prepend "environments/" if not already present
-    let environment = createForm.value.environment.trim();
-    if (!environment.startsWith("environments/")) {
-      environment = `environments/${environment}`;
-    }
+    // The picker already carries the full "environments/{id}" resource name.
+    const environment = createForm.value.environment.trim();
 
     // Build data sources array: admin first, then read-only nodes
     const dataSources = [
@@ -1127,6 +1126,7 @@ async function handleCreateInstance() {
 onMounted(() => {
   fetchInstances();
   fetchDeletedInstances();
+  void environmentStore.ensureLoaded();
 });
 </script>
 

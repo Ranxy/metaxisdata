@@ -196,6 +196,127 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/environments:
+        get:
+            tags:
+                - EnvironmentService
+            description: |-
+                List the workspace environments.
+
+                 Readable by every workspace member: the instance forms and the metadata
+                 filters need the list, and those pages are open to every member.
+            operationId: EnvironmentService_ListEnvironments
+            parameters:
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListEnvironmentsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - EnvironmentService
+            description: Create an environment.
+            operationId: EnvironmentService_CreateEnvironment
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/Environment'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Environment'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/environments/{environment}:
+        delete:
+            tags:
+                - EnvironmentService
+            description: |-
+                Delete an environment. An environment still assigned to a live instance
+                 cannot be deleted.
+            operationId: EnvironmentService_DeleteEnvironment
+            parameters:
+                - name: environment
+                  in: path
+                  description: The environment id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - EnvironmentService
+            description: |-
+                Update an environment. Only title, color and tags are mutable; the resource
+                 name (the id) is not.
+            operationId: EnvironmentService_UpdateEnvironment
+            parameters:
+                - name: environment
+                  in: path
+                  description: The environment id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  description: 'The fields to update: title, color, tags.'
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/Environment'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Environment'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/explain-sql:
         post:
             tags:
@@ -3283,6 +3404,39 @@ components:
                     type: string
                 skipDump:
                     type: boolean
+        Environment:
+            required:
+                - title
+            type: object
+            properties:
+                name:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        The resource name. Format: environments/{id}. Output only: the id is
+                         derived from the title on create and cannot be changed afterwards.
+                title:
+                    type: string
+                    description: The display name, e.g. "Production".
+                color:
+                    type: string
+                    description: |-
+                        A preset palette key controlling the badge color. One of: slate, blue,
+                         green, amber, orange, red, violet, pink. Empty on create lets the server
+                         pick a stable default.
+                tags:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: Free-form labels attached to the environment.
+                instanceCount:
+                    readOnly: true
+                    type: integer
+                    description: |-
+                        The number of live instances assigned to this environment. Output only, and
+                         populated by ListEnvironments only. DeleteEnvironment is refused while it
+                         is non-zero.
+                    format: int32
         EventMetadata:
             type: object
             properties:
@@ -4027,6 +4181,15 @@ components:
                     description: |-
                         A token, which can be sent as `page_token` to retrieve the next page.
                          If this field is omitted, there are no subsequent pages.
+        ListEnvironmentsResponse:
+            type: object
+            properties:
+                environments:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Environment'
+                nextPageToken:
+                    type: string
         ListGroupsResponse:
             type: object
             properties:
@@ -5689,6 +5852,15 @@ tags:
     - name: AuditLogService
     - name: AuthService
     - name: DatabaseService
+    - name: EnvironmentService
+      description: |-
+        EnvironmentService manages the workspace's environments. An environment is a
+         small, workspace-scoped resource ("environments/{id}") that instances are
+         tagged with; databases inherit their instance's environment.
+
+         Environments are stored in the ENVIRONMENT workspace setting, not in a table
+         of their own. The id is derived from the title on create and is immutable:
+         instances store the raw id, so renaming only changes the display title.
     - name: ExplainSQLService
     - name: GroupService
       description: |-

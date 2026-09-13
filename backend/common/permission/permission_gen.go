@@ -12,6 +12,7 @@ const (
 	InstancesDelete                    Permission = "metaxisdata.instances.delete"
 	InstancesUndelete                  Permission = "metaxisdata.instances.undelete"
 	InstancesSync                      Permission = "metaxisdata.instances.sync"
+	EnvironmentsList                   Permission = "metaxisdata.environments.list"
 	DataSourcesCreate                  Permission = "metaxisdata.dataSources.create"
 	DataSourcesUpdate                  Permission = "metaxisdata.dataSources.update"
 	DataSourcesDelete                  Permission = "metaxisdata.dataSources.delete"
@@ -72,6 +73,7 @@ var allPermissions = []Permission{
 	InstancesDelete,
 	InstancesUndelete,
 	InstancesSync,
+	EnvironmentsList,
 	DataSourcesCreate,
 	DataSourcesUpdate,
 	DataSourcesDelete,

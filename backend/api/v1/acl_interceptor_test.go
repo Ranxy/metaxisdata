@@ -178,6 +178,7 @@ func TestReadPathsAreGated(t *testing.T) {
 		"metaxisdata.v1.UserService.BatchGetUsers":               permission.UsersGet,
 		"metaxisdata.v1.InstanceService.GetInstance":             permission.InstancesGet,
 		"metaxisdata.v1.InstanceService.ListInstances":           permission.InstancesList,
+		"metaxisdata.v1.EnvironmentService.ListEnvironments":     permission.EnvironmentsList,
 		"metaxisdata.v1.DatabaseService.ListDatabases":           permission.DatabasesList,
 		"metaxisdata.v1.DatabaseService.GetMetadata":             permission.DatabasesRead,
 		"metaxisdata.v1.DatabaseService.ListMetadata":            permission.DatabasesRead,

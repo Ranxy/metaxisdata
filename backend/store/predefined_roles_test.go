@@ -44,6 +44,7 @@ func TestWorkspaceMemberBaselineExcludesAdministration(t *testing.T) {
 	require.NotNil(t, member)
 	for _, p := range []permission.Permission{
 		permission.InstancesList,
+		permission.EnvironmentsList,
 		permission.DatabasesRead,
 		permission.ManualSQLsCreate,
 		permission.LineageGet,

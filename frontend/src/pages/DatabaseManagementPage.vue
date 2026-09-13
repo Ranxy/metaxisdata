@@ -95,12 +95,20 @@
                 </Badge>
               </TableCell>
               <TableCell>
-                <Badge
+                <span
                   v-if="database.effectiveEnvironment"
-                  :variant="getEnvironmentVariant(database.effectiveEnvironment)"
+                  class="flex items-center gap-2"
                 >
+                  <span
+                    class="h-2.5 w-2.5 shrink-0 rounded-full"
+                    :style="{
+                      backgroundColor: getEnvironmentColor(
+                        database.effectiveEnvironment
+                      ),
+                    }"
+                  />
                   {{ getEnvironmentLabel(database.effectiveEnvironment) }}
-                </Badge>
+                </span>
                 <span
                   v-else
                   class="text-muted-foreground"
@@ -197,13 +205,16 @@ import TableHead from "@/components/ui/table/TableHead.vue";
 import TableHeader from "@/components/ui/table/TableHeader.vue";
 import TableRow from "@/components/ui/table/TableRow.vue";
 import { useAuthStore } from "@/store/modules/auth";
+import { useEnvironmentStore } from "@/store/modules/environment";
 import { useToastStore } from "@/store/modules/toast";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
+import { environmentColorHex } from "@/utils/environment";
 
 const { t, locale } = useI18n();
 const authStore = useAuthStore();
+const environmentStore = useEnvironmentStore();
 const toastStore = useToastStore();
 
 // Syncing a database rewrites its stored schema, so it needs the sync
@@ -360,18 +371,12 @@ function getEngineBadgeVariant(
 }
 
 function getEnvironmentLabel(environment: string): string {
-  const parts = environment.split("/");
-  return parts[parts.length - 1] || environment;
+  return environmentStore.titleOf(environment);
 }
 
-function getEnvironmentVariant(
-  environment: string
-): "default" | "secondary" | "destructive" | "outline" {
-  const env = environment.toLowerCase();
-  if (env.includes("prod")) return "destructive";
-  if (env.includes("staging")) return "default";
-  if (env.includes("test")) return "secondary";
-  return "outline";
+function getEnvironmentColor(environment: string): string {
+  const resolved = environmentStore.byName(environment);
+  return resolved ? environmentColorHex(resolved) : "var(--muted-foreground)";
 }
 
 function getStateLabel(state: State): string {
@@ -415,6 +420,10 @@ function formatLastSync(timestamp: Timestamp | undefined): string {
 }
 
 onMounted(async () => {
-  await Promise.all([fetchInstances(), fetchDatabases()]);
+  await Promise.all([
+    fetchInstances(),
+    fetchDatabases(),
+    environmentStore.ensureLoaded(),
+  ]);
 });
 </script>

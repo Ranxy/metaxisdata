@@ -161,6 +161,17 @@
   
     - [DatabaseService](#metaxisdata-v1-DatabaseService)
   
+- [v1/environment_service.proto](#v1_environment_service-proto)
+    - [CreateEnvironmentRequest](#metaxisdata-v1-CreateEnvironmentRequest)
+    - [DeleteEnvironmentRequest](#metaxisdata-v1-DeleteEnvironmentRequest)
+    - [Environment](#metaxisdata-v1-Environment)
+    - [Environment.TagsEntry](#metaxisdata-v1-Environment-TagsEntry)
+    - [ListEnvironmentsRequest](#metaxisdata-v1-ListEnvironmentsRequest)
+    - [ListEnvironmentsResponse](#metaxisdata-v1-ListEnvironmentsResponse)
+    - [UpdateEnvironmentRequest](#metaxisdata-v1-UpdateEnvironmentRequest)
+  
+    - [EnvironmentService](#metaxisdata-v1-EnvironmentService)
+  
 - [v1/explain_sql_service.proto](#v1_explain_sql_service-proto)
     - [ExplainSQLMetadata](#metaxisdata-v1-ExplainSQLMetadata)
     - [ExplainSQLProgress](#metaxisdata-v1-ExplainSQLProgress)
@@ -2866,6 +2877,156 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | SearchManualSQL | [SearchManualSQLRequest](#metaxisdata-v1-SearchManualSQLRequest) | [SearchManualSQLResponse](#metaxisdata-v1-SearchManualSQLResponse) |  |
 | UpdateManualSQL | [UpdateManualSQLRequest](#metaxisdata-v1-UpdateManualSQLRequest) | [ManualSQL](#metaxisdata-v1-ManualSQL) |  |
 | DeleteManualSQL | [DeleteManualSQLRequest](#metaxisdata-v1-DeleteManualSQLRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
+
+ 
+
+
+
+<a name="v1_environment_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/environment_service.proto
+
+
+
+<a name="metaxisdata-v1-CreateEnvironmentRequest"></a>
+
+### CreateEnvironmentRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| environment | [Environment](#metaxisdata-v1-Environment) |  | The environment to create. The title is required; name and color are ignored on create (the server derives them). |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteEnvironmentRequest"></a>
+
+### DeleteEnvironmentRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The environment resource name. Format: environments/{id}. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-Environment"></a>
+
+### Environment
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The resource name. Format: environments/{id}. Output only: the id is derived from the title on create and cannot be changed afterwards. |
+| title | [string](#string) |  | The display name, e.g. &#34;Production&#34;. |
+| color | [string](#string) |  | A preset palette key controlling the badge color. One of: slate, blue, green, amber, orange, red, violet, pink. Empty on create lets the server pick a stable default. |
+| tags | [Environment.TagsEntry](#metaxisdata-v1-Environment-TagsEntry) | repeated | Free-form labels attached to the environment. |
+| instance_count | [int32](#int32) |  | The number of live instances assigned to this environment. Output only, and populated by ListEnvironments only. DeleteEnvironment is refused while it is non-zero. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-Environment-TagsEntry"></a>
+
+### Environment.TagsEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListEnvironmentsRequest"></a>
+
+### ListEnvironmentsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListEnvironmentsResponse"></a>
+
+### ListEnvironmentsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| environments | [Environment](#metaxisdata-v1-Environment) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateEnvironmentRequest"></a>
+
+### UpdateEnvironmentRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| environment | [Environment](#metaxisdata-v1-Environment) |  | The environment to update. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The fields to update: title, color, tags. |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-EnvironmentService"></a>
+
+### EnvironmentService
+EnvironmentService manages the workspace&#39;s environments. An environment is a
+small, workspace-scoped resource (&#34;environments/{id}&#34;) that instances are
+tagged with; databases inherit their instance&#39;s environment.
+
+Environments are stored in the ENVIRONMENT workspace setting, not in a table
+of their own. The id is derived from the title on create and is immutable:
+instances store the raw id, so renaming only changes the display title.
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| ListEnvironments | [ListEnvironmentsRequest](#metaxisdata-v1-ListEnvironmentsRequest) | [ListEnvironmentsResponse](#metaxisdata-v1-ListEnvironmentsResponse) | List the workspace environments.
+
+Readable by every workspace member: the instance forms and the metadata filters need the list, and those pages are open to every member. |
+| CreateEnvironment | [CreateEnvironmentRequest](#metaxisdata-v1-CreateEnvironmentRequest) | [Environment](#metaxisdata-v1-Environment) | Create an environment. |
+| UpdateEnvironment | [UpdateEnvironmentRequest](#metaxisdata-v1-UpdateEnvironmentRequest) | [Environment](#metaxisdata-v1-Environment) | Update an environment. Only title, color and tags are mutable; the resource name (the id) is not. |
+| DeleteEnvironment | [DeleteEnvironmentRequest](#metaxisdata-v1-DeleteEnvironmentRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete an environment. An environment still assigned to a live instance cannot be deleted. |
 
  
 

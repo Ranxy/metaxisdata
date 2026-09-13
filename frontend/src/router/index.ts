@@ -43,6 +43,16 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, layout: "default" },
   },
   {
+    path: "/settings/environments",
+    name: "EnvironmentSettings",
+    component: () => import("@/pages/settings/EnvironmentSettingsPage.vue"),
+    meta: {
+      requiresAuth: true,
+      layout: "default",
+      permission: "metaxisdata.settings.get",
+    },
+  },
+  {
     path: "/settings/users",
     name: "UserManagement",
     component: () => import("@/pages/settings/UserManagementPage.vue"),
