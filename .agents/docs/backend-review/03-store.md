@@ -158,13 +158,13 @@
 - **`UpdatePolicyV2`/`DeletePolicyV2`/`ListPoliciesV2`**（`policy.go:192-318`）无调用者，且两个 mutator 已损坏（枚举当 text）。
 - **`store/common.go` 几乎全死**：`RowStatus`/`Normal`/`Archived`/`SortOrder`/`ASC`/`DESC`/`OrderByKey` 无引用。
 - **`withMetadata=false` 分支不可达**：`meta_resource.go:355-366,430-441`（两个调用方都传 `true`）。
-- **未使用的请求字段**：`FindMetaRegistryResourceMessage.ID`/`IDList`/`ExcludeObjectType`；`FindMetaRegistryHistoryMessage.OrderDesc`/`TransitionTime`/`ValidFrom`/`Limit`/`Offset`。
+- **未使用的请求字段**：`FindMetaRegistryResourceMessage.ID`/`IDList`/`ExcludeObjectType`；`FindMetaRegistryHistoryMessage.OrderDesc`/`TransitionTime`/`ValidFrom`/`Limit`/`Offset`。 —— **✅ 阶段 7 已处理**（`40996c6`）：经核对，`ID`/`IDList`/`ExcludeObjectType` 无任何调用者设置（随之删掉无读路径的 ID-keyed `metaRegistryCache`），`ValidFrom` 同；`OrderDesc`/`TransitionTime`/`Limit`/`Offset` 是活字段（`database_history.go` 分页与单事件查询在用），保留。
 - **`GetMetaRegistryAsOf`/`ListSublevelMetaRegistryResourceAsOf`** 仅集成测试使用。
 - **`UserProfile.source`** 被读（`user_service.go:700`）但从不写，且每次登录被清空。
 - **死导出函数**：`DeleteColumnLineageByMeta`（`column_lineage.go:241`）、`QueryColumnLineageSources`/`Targets`（`explain_sql.go:24,45`）、`CheckDatabaseUseEnvironment`（`environment.go:24`）、`MarshalOpenLineageRunPayload`（`openlineage_run.go:403`）。
 - **`openlineage_api_key.go:167-207` 放着无关的 `FindExternalDatasetByGUIDs`**，位置错误。
-- **仅测试使用的 query builder**：`manual_sql.go:384-387` 的 `buildDeleteManualSQLMetaRegistryStatement`，生产走的是另一条 history-aware 路径；该 guard 测试给出虚假信心。
-- **IDP 的 Create/List/Update/Delete 无 API 调用**（只有 `GetIdentityProvider` 被 `auth_service.go:236` 使用）；容量为 4 的 `idpCache` 实际只读；`Store.DeleteCache`（`setting.go:96-101`）不清 `idpCache`/`instanceCache`/`metaRegistryCache`，且自身无调用者。
+- **仅测试使用的 query builder**：`manual_sql.go:384-387` 的 `buildDeleteManualSQLMetaRegistryStatement`，生产走的是另一条 history-aware 路径；该 guard 测试给出虚假信心。 —— **核对更正（阶段 7）**：实际函数名是 `buildDeleteManualSQLStatement`，且**被生产路径调用**（`manual_sql.go:417`），不是死代码；保留。
+- **IDP 的 Create/List/Update/Delete 无 API 调用**（只有 `GetIdentityProvider` 被 `auth_service.go:236` 使用）；容量为 4 的 `idpCache` 实际只读；`Store.DeleteCache`（`setting.go:96-101`）不清 `idpCache`/`instanceCache`/`metaRegistryCache`，且自身无调用者。 —— **阶段 7 决策**：`DeleteCache` 仍无调用者，但本轮保留（不在确认范围内）；`metaRegistryCache` 已在阶段 7 随死字段一并删除（`40996c6`）。
 - **`db_connection.go:16,22` 的 `stopWatcher` 未使用**；`_ "github.com/jackc/pgx/v5"` 冗余。
 - **`V2` 命名**：`GetSettingV2`/`UpsertSettingV2`/`CreateSettingIfNotExistV2` 等与无 V2 版本并存。
   - **阶段 3 续更正（`8b328ae`）**：12 个 `*V2` 方法与 impl helper 已去掉后缀，`setting.go` 里现在是 `GetSetting`/`UpsertSetting`/`CreateSettingIfNotExist`；`database.go`/`instance.go`/`policy.go` 同理。

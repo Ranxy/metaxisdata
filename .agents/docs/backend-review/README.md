@@ -83,6 +83,13 @@
 - **集成套件全部通过**：`go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...` → `runner` 48.7s、`migrator` 13.2s，exit 0；新增真实 server 用例 `TestOpenLineageIngestionAggregatesRunsRealServerIntegration` 覆盖批次事务、去重计数、latest 语义与 dataset 不重写
 - D1 修掉了此前唯一失败的 hermetic 测试 `TestMarshalRolePermissionsIsDeterministic`；D2 顺带发现并修掉 B13 引入的集成失败：既有用例给 `manual_sql_id` 用了含下划线的值（`IsValidResourceID` 按 AIP-122 只允许小写字母/数字/连字符），已把测试 ID 改为连字符形式
 
+**阶段 7（死代码与低优先清理）后复测**（详见下文"阶段 7 修复状态"与 [`12-cleanup-plan.md`](12-cleanup-plan.md)）：
+- `gofmt -l backend/` 空；`go build ./...`、`go vet ./...`（默认/`release`/`integration`/`embed_frontend`/`release embed_frontend`）、`go test ./...`、`go test -race -count=1 ./...`、`golangci-lint run --allow-parallel-runners` ✅ 0 issues、`make build-release` 全部通过
+- `buf format -w proto`、`buf lint proto`、`cd proto && buf generate` ✅（ExplainSQL 四个未用字段删除）；重跑 `buf generate` 无 diff，产物可复现
+- 前端：`biome check src`（187 文件）、`eslint src --max-warnings=0`、`vue-tsc -b`、`vitest run`（17 用例）、`vite build` 全部通过
+- **集成套件全部通过**：`go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...` → `runner` 61.8s、`migrator` 22.3s，exit 0
+- 前端内嵌实测：`vite build` → 拷贝 `frontend/dist` → `go build -tags "release embed_frontend"`（84MB vs 非内嵌 67MB）→ 临时用例断言 `/`、`/instances/some-instance` 返回 SPA shell、`/assets/<hash>.js` 返回 200（用例用完即删）；只留 `.gitkeep` 时该标签仍可编译
+
 **修复状态标记**（用于下文全部模块报告）：
 
 | 标记 | 含义 |
@@ -101,6 +108,7 @@
 | ✅ **已修复（阶段 5）** | 阶段 5（settings 收回数据库 + 回滚 METADATA_SECRET_KEY）已修完并验证，附对应 commit |
 | ✅ **已修复（阶段 6）** | 阶段 6（安全残留 + 正确性 + 性能/资源）已修完并验证，附对应 commit |
 | ◐ **部分修复（阶段 6）** | 阶段 6 处理了经确认的部分，剩余项已在 `11-phase6-plan.md` 文末「本轮不做」写明 |
+| ✅ **已清理（阶段 7）** | 阶段 7（死代码与低优先清理）已删除并验证，附对应 commit |
 | ⏳ **未处理** | 尚未涉及，仍需按路线图处理 |
 
 ---
@@ -120,6 +128,7 @@
 | [`09-tests.md`](09-tests.md) | 测试与测试基础设施、CI |
 | [`10-legacy-debt-and-roadmap.md`](10-legacy-debt-and-roadmap.md) | 遗留债务清单与分阶段整改路线图 |
 | [`11-phase6-plan.md`](11-phase6-plan.md) | 阶段 6（安全残留 + 正确性 + 性能/资源）实施计划、决策与进度 |
+| [`12-cleanup-plan.md`](12-cleanup-plan.md) | 阶段 7（死代码与低优先清理）实施计划、核对方式、决策与进度 |
 
 **严重级别定义**：
 - **严重（Critical）**：可被外部利用的安全漏洞，或必然导致数据泄露/功能完全不可用。
@@ -397,6 +406,35 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 - token 吊销缓存（`state.TokenExpireCache`）仍是**进程内**的：多副本部署下 A 副本的登出不会让 B 副本已签发的 token 失效（密码变更失效走数据库，跨副本有效）。单租户单副本下影响可接受，已在 `02` 写明。
 - `openlineage_run` 仍**默认永久保留**（保留天数由 `WORKSPACE_PROFILE.openlineage_retention_days` 决定，默认不清理），本轮未改默认值。
 - 反射匿名、`metadata` 搜索用子串匹配（非全文检索）、`MARIADB`/`OCEANBASE` 的 plugin 覆盖缺口、per-resource IAM 策略等仍是已知项，见 [`11-phase6-plan.md`](11-phase6-plan.md) 第六节「本轮不做」。
+
+---
+
+## 阶段 7「死代码与低优先清理」修复状态
+
+范围与决策见 [`12-cleanup-plan.md`](12-cleanup-plan.md)：由于 `01`–`09` 的报告已大量过期，先做**全仓库 grep + 整程序 `deadcode` 可达性核对**，再按 9 步（E1–E9）删除经确认的死代码，并顺带把"前端内嵌"从未接线的 placeholder 变成真正可用的构建目标。每步独立 commit。
+
+| 步骤 | 内容 | 状态 | 提交 |
+| --- | --- | --- | --- |
+| E1 | `component/llm`：死掉的 `AgentHooks`/`AgentConfig.Hooks`、`AgentEvent.Done`、`AgentEventTurnEnd` | ✅ | `70e7c20` |
+| E2 | runners：`Syncer.profile`+参数、嵌入 `sync.Mutex`、`Analyzer.profile`+参数、命名返回 `retErr`、陈旧 TODO | ✅ | `e2f381f` |
+| E3 | `permission.Exists`、`GetInstaceFromGUID` 拼写、两个死错误类型、两个 pg 死函数、未接线的独立序列 DDL 与多文件 SDL 脚手架 | ✅ | `cdc2c42` |
+| E4 | store：`FindMetaRegistryResourceMessage` 的 `ID`/`IDList`/`ExcludeObjectType`、`FindMetaRegistryHistoryMessage.ValidFrom`、随之无读路径的 ID-keyed `metaRegistryCache` | ✅ | `40996c6` |
+| E5 | api/v1：两个空实现 `userCountGuard` 及其 4 个调用点 | ✅ | `99d7c6b` |
+| E6 | migrator：空的 `goMigrations`/`GoMigrationFunc` 脚手架 | ✅ | `4ea38d2` |
+| E7 | lineage testutil：仅测试用死 helper 与死再导出（YAML 运行链完整保留） | ✅ | `33f410e` |
+| E8 | ExplainSQL 未用 proto 字段 `meta_type`/`sections_json`/`expired`/`response.error` → `reserved`，前端与 i18n 同步 | ✅ | `bf70f70` |
+| E9 | 真正的前端内嵌：`//go:build embed_frontend` + `//go:embed frontend_dist` + SPA fallback，Makefile `build-embed`/`frontend-dist` | ✅ | `f3a0394` |
+
+**本轮明确的决策**：
+- ExplainSQL 的四个未用字段**全部删除**（`meta_type` 服务端本就忽略、`sections_json` 前端不读、`expired` 服务端从不设置导致 UI 徽标永不显示、`error` 从不发送），编号 `reserved`；前端随之删掉 `expired` 徽标/再生成按钮与该 i18n key（主按钮已能触发再生成）。
+- 空 `goMigrations` 脚手架**删除**——未来要写 Go 数据迁移时再加回十几行即可。
+- 前端内嵌**真正实现**：默认构建仍是"前端单独托管"，`make build-embed` 产出自带 SPA 的单文件二进制。
+- `Store.DeleteCache`（无调用者）、`log.Stack` 的 eager 采集（仅 panic 冷路径）、`08 M13` 的 JSONB 列注释（属 schema 变更）、`06`/`03` 的 Low 语义/性能项（O(n²) 查找、无界 map、GUID 分隔符碰撞、LIMIT/OFFSET 插值等）本轮**不做**。
+
+**已知剩余（阶段 7）**：
+- 独立序列 DDL 生成（`CREATE SEQUENCE`）从未被任何路径调用，本轮按死代码删除；若将来需要"多文件 SDL 输出"或独立序列导出，需要重新实现。
+- `08 M13`（JSONB 列注释写明 `Stored as`）仍是唯一明确遗留的契约类小项。
+- 文档核对中纠正了两处误判：`GetSchemaFromGUID` 实际活跃（构建失败后恢复）、testutil 的 `RunLineageTests`/`RunLineageTest` 是 YAML 用例的执行路径（保留）。
 
 ---
 

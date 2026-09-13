@@ -9,7 +9,7 @@
 **阶段 1 更新**：H4 ✅（日志系统接线，`7fdcead`）、H5 ◐→✅（`--external-url` 已注册并接线，`7fdcead`）、部署侧新增 `make build-release` 让 prod profile 有了真实构建目标（`7fdcead`）。H2（CORS/CSRF）仍未处理。
 
 **阶段 2 更新**：M1 ✅（关停不再 `Fatal`，runner 等待加 10s 上限，`fb8ca14`）、M4 ✅（连接池钳制 + idle/lifetime/idleTime + `sync.Once` 初始化，`fb8ca14`）。M2（派生后丢弃 context）、M3（启动打印全部路由）、M5、M6 仍未处理。
-**阶段 3 更新**：M2 ✅（删除派生后丢弃的 context 与 `Server.cancel`——它取消的 context 无人监听；真正的 runner 取消是 `runnerCtx`/`runnerCancel`）、M3 ✅（`echo.Debug` 与路由列表打印改为仅在 `RuntimeDebug`/`--debug` 时输出）、低节"未注册 flag"与 `dataDir` ✅（`fedcc12`：删除 `ha`/`saas`/`demo`/`memoryProfileThreshold` 与 `dataDir`，`activeProfile`/`getBaseProfile` 不再收参数）、`Profile.LastActiveTS` ✅（只在授权请求里写、从不读）。另删除两个无实现且会直接编译失败的构建约束：`ultimate.go` 的 `!minidemo` 与 `server_frontend_not_embed.go` 的 `!embed_frontend`（`3cc4926`，实测 `go build -tags embed_frontend ./backend/server/` 曾报 `undefined: embedFrontend`）。**H2（CORS/CSRF）仍未处理**：cookie 的 `SameSite` 仍由客户端可控的 `Origin` 决定、无 CSRF token；不过阶段 3 为路由装配补了测试，覆盖"dev 全开 CORS / prod 不发 CORS 头"（`0dae0b7`）。**M5、M6 仍未处理**。
+**阶段 3 更新**：M2 ✅（删除派生后丢弃的 context 与 `Server.cancel`——它取消的 context 无人监听；真正的 runner 取消是 `runnerCtx`/`runnerCancel`）、M3 ✅（`echo.Debug` 与路由列表打印改为仅在 `RuntimeDebug`/`--debug` 时输出）、低节"未注册 flag"与 `dataDir` ✅（`fedcc12`：删除 `ha`/`saas`/`demo`/`memoryProfileThreshold` 与 `dataDir`，`activeProfile`/`getBaseProfile` 不再收参数）、`Profile.LastActiveTS` ✅（只在授权请求里写、从不读）。另删除两个无实现且会直接编译失败的构建约束：`ultimate.go` 的 `!minidemo` 与 `server_frontend_not_embed.go` 的 `!embed_frontend`（`3cc4926`，实测 `go build -tags embed_frontend ./backend/server/` 曾报 `undefined: embedFrontend`）。**H2（CORS/CSRF）仍未处理**：cookie 的 `SameSite` 仍由客户端可控的 `Origin` 决定、无 CSRF token；不过阶段 3 为路由装配补了测试，覆盖"dev 全开 CORS / prod 不发 CORS 头"（`0dae0b7`）。**M5、M6 仍未处理**。**阶段 7 更正**：`!embed_frontend` 约束随"真正的前端内嵌"一起加回（现在有 `server_frontend_embed.go` 提供实现），`go vet -tags embed_frontend ./...` 可编译，见下节低优先项。
 
 **阶段 3 收尾更新**：`backend/server/init.go` 不再向 `WORKSPACE_PROFILE` 写入 `EnableMetricCollection: true`（该字段与整个 metric 栈已删除，`e0eab33`）；`LATEST.sql` 中 `setting.name` 取值、`principal.mfa_config`、`idp.type` 的注释改为如实描述（表结构未动，`e0eab33`）。
 
@@ -165,11 +165,11 @@
 ## 低（Low）／遗留债务
 
 - `backend/server/ultimate.go` 用空导入注册 driver/schema/lineage 插件，属于编译期插件模式；与 `--minidemo` build tag 搭配，但 `minidemo` 在仓库中没有任何对应实现文件，tag 实际无意义。
-- `backend/server/server_frontend_not_embed.go`：`GET /*` 返回占位页，前端未内嵌（AGENTS.md 已注明）；`embed_frontend` build tag 也没有对应实现文件，`--tags embed_frontend` 会编译失败（缺 `embedFrontend` 定义）。**需验证**。
+- `backend/server/server_frontend_not_embed.go`：`GET /*` 返回占位页，前端未内嵌（AGENTS.md 已注明）；`embed_frontend` build tag 也没有对应实现文件，`--tags embed_frontend` 会编译失败（缺 `embedFrontend` 定义）。**需验证**。 —— **✅ 已实现（阶段 7）** · `f3a0394`：`server_frontend_not_embed.go` 加 `!embed_frontend` 约束，新增 `server_frontend_embed.go`（`//go:embed all:frontend_dist` + SPA fallback），`make build-embed` 负责构建并暂存 SPA；`go vet -tags embed_frontend ./...` 可编译（只有 `.gitkeep` 时运行时告警）。
 - `backend/config/profile.go:19-20` `LastActiveTS` 只写不读（许可证/活跃度遗留）。
 - `backend/server/pprof.go:11-21`：pprof 只受启动时的 `--debug` 控制，`RuntimeDebug` 注释说"can be set in runtime"，但没有任何运行时开关 API。
 - `backend/bin/server/cmd/root.go:20-36` 的 banner、`flags.ha/saas/demo` 均为 Bytebase 遗留。
-- `backend/server/echo_routes.go:50` TODO：前端内嵌待实现。
+- `backend/server/echo_routes.go:50` TODO：前端内嵌待实现。 —— **✅ 已实现（阶段 7）** · `f3a0394`：TODO 已删除，`embedFrontend` 现在有两个实现（默认占位 / `embed_frontend` 真正内嵌）。
 
 ---
 

@@ -80,7 +80,7 @@
 
 ## 死代码与遗留债务
 
-- `AgentConfig.Hooks`/`AgentHooks.BeforeToolCall`/`AfterToolCall`（`event.go:44-52,74-76`）从未被设置，`agent.go:71-95` 两个 hook 分支是死代码；`AgentEvent.Done` 从未被读取；`AgentConfig.MaxTurns` 从未设置；`AgentEventTurnEnd` 发出但无消费者。
+- `AgentConfig.Hooks`/`AgentHooks.BeforeToolCall`/`AfterToolCall`（`event.go:44-52,74-76`）从未被设置，`agent.go:71-95` 两个 hook 分支是死代码；`AgentEvent.Done` 从未被读取；`AgentConfig.MaxTurns` 从未设置；`AgentEventTurnEnd` 发出但无消费者。 —— **✅ 已清理（阶段 7）** · `70e7c20`：`AgentHooks`/`Hooks`、两个 hook 分支、`AgentEvent.Done`、`AgentEventTurnEnd`（常量与发送点）全部删除。**核对更正**：`AgentConfig.MaxTurns`/`MaxConversationBytes` 在阶段 6（C7，`03c17b7`）已由 `explain_sql_service.go` 显式设置，是活字段，保留。
 - `metric` 包与 `plugin/metric` 的 Reporter/Collector 无任何实现（见 `07`）。
 - `config.Profile.LastActiveTS` 只写不读。
 - `component/state` 的 `TokenExpireCache`/`resourceLimiter` 语义见 `02`。

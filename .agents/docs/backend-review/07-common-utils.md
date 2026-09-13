@@ -64,11 +64,11 @@
 - **日志系统未接线**：`common/log/log.go:12-13,17-33,36-38`，`LogLevel` 与 `Replace` 从未安装到任何 handler；仓库中没有 `slog.SetDefault`/`slog.New`。`--debug` 无效，source 路径裁剪无效。**✅ 已修复（阶段 1）** · `7fdcead`：`cmd/root.go` 新增 `setupLogging`，用 `HandlerOptions{AddSource: true, Level: log.LogLevel, ReplaceAttr: log.Replace}` 构造 Text/JSON handler 并 `slog.SetDefault`；`--debug` 现在真正生效，实测输出形如 `time=... level=INFO source=server/server.go:64`（路径已被裁剪）与 `--enable-json-logging` 的 JSON 行。**剩余**：`log.Stack`（`:44-47`）无论级别都会 eager 采集 20 帧栈，日志默认输出改到 `os.Stdout`（原先 `slog.Default` 写 stderr）。
 - **`ValidateGroupCELExpr` 返回裸错误**：`common/cel.go:130-144`，而其兄弟函数返回 `connect.CodeInvalidArgument`；`RiskFactors`（`:18-35`）还漏了 `cel.ParserExpressionSizeLimit(celLimit)`。
 - **`GetQueryExportFactors`/`findField` 脆弱**：`common/cel.go:208-248`，`if issues != nil` 不是正确的失败判断（其它地方用 `issues.Err() != nil`）；只检查 `Args[0]`，`"x" == resource.database` 检测不到；`idExpr != nil` 分支提前 `return` 不递归；可能把 `""` 追加进 `Databases`。
-- **`guid.go` 拼写错误**：`GetInstaceFromGUID`（导出 API，用于 `database_service.go:308,919`）；`GetDatabaseFromGUID` 无调用者；`llm/tools.go:118-124` 重复实现了 GUID 解析。
-- **`const.go` 未使用常量**：`DefaultTestEnvironmentID`、`DefaultProdEnvironmentID`、`MetaInsertBatchSize`；`ServiceAccountAccessKeyPrefix` 是服务账号遗留。
-- **`config.go`**：`ReleaseModeProd` 现被 `profile_release.go`（`//go:build release`，阶段 0）使用，import 修正后 `-tags release` 构建通过（`84b16db`）；但 `ReleaseModeDev` 只被 `profile.go` 的字面量 `common.ReleaseMode("dev")` 间接使用，且没有任何构建目标带 `-tags release`，因此 prod 模式需要显式构建参数才生效。
-- **`utils.Map`**（`utils/collection.go`）零调用者。
-- **`utils/member.go`**：整段注释掉的 `GetUsersByRoleInIAMPolicy`（L26-68）是死 Bytebase 代码；`MemberContainsUser`/`GetUserIAMPolicyBindings`/`GetUserRolesInIamPolicy` 只通过彼此可达（`GetUserFormattedRolesMap` 是唯一活跃入口）；`utils.Uniq` 只被死的 `GetUserRolesInIamPolicy` 使用。
+- **`guid.go` 拼写错误**：`GetInstaceFromGUID`（导出 API，用于 `database_service.go:308,919`）；`GetDatabaseFromGUID` 无调用者；`llm/tools.go:118-124` 重复实现了 GUID 解析。 —— **✅ 已清理（阶段 7）** · `cdc2c42`：改名为 `GetInstanceFromGUID`（2 处调用与 `guid_test.go` 同步）；`GetDatabaseFromGUID` 阶段 3 已删。**核对更正**：`GetSchemaFromGUID` 仍被 `database_metadata.go` 使用（活跃，保留）；`llm/tools.go` 的内联 GUID 解析本轮未合并（低优先，未选入）。
+- **`const.go` 未使用常量**：`DefaultTestEnvironmentID`、`DefaultProdEnvironmentID`、`MetaInsertBatchSize`；`ServiceAccountAccessKeyPrefix` 是服务账号遗留。 —— **核对更正（阶段 7）**：前三个常量以及 `LastActiveTS` 阶段 3 已删；`ServiceAccountAccessKeyPrefix`/`SystemBotID`/`AllUsers` 仍是活引用，保留。
+- **`config.go`**：`ReleaseModeProd` 现被 `profile_release.go`（`//go:build release`，阶段 0）使用，import 修正后 `-tags release` 构建通过（`84b16db`）；但 `ReleaseModeDev` 只被 `profile.go` 的字面量 `common.ReleaseMode("dev")` 间接使用，且没有任何构建目标带 `-tags release`，因此 prod 模式需要显式构建参数才生效。 —— **阶段 7 更新**：`make build-release` 已是既定目标；本轮又新增 `make build-embed`（`-tags "release embed_frontend"`），prod 标签现在有两个显式入口。
+- **`utils.Map`**（`utils/collection.go`）零调用者。 —— **✅ 阶段 3 已删**。
+- **`utils/member.go`**：整段注释掉的 `GetUsersByRoleInIAMPolicy`（L26-68）是死 Bytebase 代码；`MemberContainsUser`/`GetUserIAMPolicyBindings`/`GetUserRolesInIamPolicy` 只通过彼此可达（`GetUserFormattedRolesMap` 是唯一活跃入口）；`utils.Uniq` 只被死的 `GetUserRolesInIamPolicy` 使用。 —— **✅ 阶段 3 已删**（注释块与 `MemberContainsUser`）。
 - **`stacktrace.TakeStacktrace`** 在 recover 之后调用时拿到的不是 panic 发生点的栈（见 `01` M6）。
 
 ---
@@ -81,6 +81,8 @@
 - **`common/resource_name.go`**：阶段 0 新增并导出 `IsValidResourceID`（被 `api/v1` 与 `store` 共同复用，替换了 API 层的重复实现）；其余未使用的前缀有 `EnvironmentNamePrefix`、`PolicyNamePrefix`、`InstanceRolePrefix`、`IdentityProviderNamePrefix`、`SettingNamePrefix`、`WebhookIDPrefix`、`DatabaseGroupNamePrefix`、`SchemaNamePrefix`、`TableNamePrefix`、`LogNamePrefix`、`DeploymentConfigPrefix`、`AuditLogPrefix`、`SchemaSuffix`、`MetadataSuffix`、`CatalogSuffix`、`UserBindingPrefix`、`GroupBindingPrefix`；未使用的函数有 `GetProjectIDDatabaseGroupID`、`GetSchemaTableName`、`GetProjectIDWebhookID`、`GetUIDFromName`、`TrimSuffixAndGetInstanceDatabaseID`、`GetSettingName`、`GetRoleID`、`FormatUserEmail`；`RolePrefix` 与 `InstanceRolePrefix` 重复。
 - **`backend/metric/metric.go` + `backend/plugin/metric`**：除类型 `InstanceCountMetric` 外全部常量零引用；`PrincipalRegistrationMetricName`/`PrincipalLoginMetricName` 只出现在注释块中；`metric.Reporter`/`Collector` 无实现；`CountInstanceGroupByEngineAndEnvironmentID` 无调用者。整个遥测栈（`mt.issue.count`、`mt.project.count`、`mt.service-account.count`、`mt.issue.create`、`mt.api.request`）是 Bytebase 遗留且未实现。**修复**：删除，或在 `EnableMetricCollection` 后接一个真实 reporter。
 - **`config/profile.go`**：`LastActiveTS` 只写不读；~~`Secret` 从未被赋值~~（**阶段 0 已接线**：`getBaseProfile` 用 `os.Getenv("JWT_SECRET")` 赋值，见 `05`）。
+
+> **阶段 7 核对**（见 `12-cleanup-plan.md`）：本节清单在阶段 3 已基本清空——`cel.go` 只剩 `EvalBindingCondition`（且 M1 已 fail-closed、M2 已改 `sync.OnceValues`，`cel_attributes.go` 与 `resource_name.go` 的未用符号、`error.go` 的未用错误码族、整个 `metric` 栈均已删除）。本轮新删的 `common/permission.Exists`（只被自身测试使用，`cdc2c42`）与 `guid.go` 拼写见上节；`log.Stack` 的 eager 采集经确认**保留**（只在 panic recover 两条冷路径上）。
 
 ---
 

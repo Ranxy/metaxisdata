@@ -251,7 +251,7 @@
 
 - `openlineage_dataset.go:396-398` 死分支：用 run 的 *task* GUID 与 *dataset* GUID 比较，且返回与 fall-through 相同的值。
 - `openlineage_dataset.go:470` 魔法数 `MetaType: 17`，应使用 `storepb.MetaType_EXTERNAL_DATASET`。 —— **✅ 已修复（阶段 2，`8c34542`）**：改用 `storepb.MetaType_EXTERNAL_DATASET`。
-- 未使用的 proto 字段：`ExplainSQLRequest.meta_type`（handler 用 `meta.ObjectType`）、`ExplainSQLMetadata.expired`（UI 有"过期"徽标但服务端从不设置）、`ExplainSQLResponse.error`（错误一律走 RPC error）、`ExplainSQLMetadata.sections_json`（前端未用）、`FetchLLMModelsRequest.provider_name`（前端从不发送）。
+- 未使用的 proto 字段：`ExplainSQLRequest.meta_type`（handler 用 `meta.ObjectType`）、`ExplainSQLMetadata.expired`（UI 有"过期"徽标但服务端从不设置）、`ExplainSQLResponse.error`（错误一律走 RPC error）、`ExplainSQLMetadata.sections_json`（前端未用）、`FetchLLMModelsRequest.provider_name`（前端从不发送）。 —— **✅ 已清理（阶段 7）** · `bf70f70`：四个 `ExplainSQL*` 字段删除并 `reserved`（`meta_type`(2)、`sections_json`(2)、`expired`(6)、`response.error`(3)），前端去掉 `metaType`/`expired` 徽标与 `error` 分支、删除 `explainSQL.expired` 两个语言包 key；`FetchLLMModelsRequest.provider_name` 早已不存在（文档过期）。**注意**：`ExplainSQLRequest.provider_name`（单数）是活字段，保留。
 - `GetOpenLineageDatasetRequest.namespace/name` 在 `guid` 为空时被拒绝，实际不可单独使用（`openlineage_dataset.go:115`）。
 - 重复实现标准库：`stringsJoin`（`llm_service.go:341-350`）、`bytesTrimLeft`（`openlineage_handler.go:172-180`）。
 - 陈旧注释/空分支：`grpc_routes.go:85` 引用不存在的函数；`explain_sql_service.go:501` 的 `// ---- resolveSource, buildSystemPrompt, etc. (unchanged) ----` 编辑残留；`explain_sql_service.go:186` 空 `case llm.AgentEventAgentEnd`。

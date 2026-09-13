@@ -253,8 +253,8 @@
 ## 死代码与遗留债务
 
 - **被禁用的授权**：~~`grpc_routes.go:85` 引用的 `NewACLInterceptor`/`iamManager` 已不存在~~ —— **◐ 已重建（阶段 0，`ec49607`）**：`acl_interceptor.go` 的 `NewACLInterceptor(store)` 已接线并消费 `common.AuthContext.Permission`；`HasWorkspaceResource`/`GetProjectResources`/`AuthMethod`/`Resources` 仍无消费者，`store.RoleMessage.Permissions` 仍只写不校验。
-- **空实现**：`user_service.go:815` 与 `auth_service.go:353` 两个同名 `userCountGuard` 仍是 `return nil`（**阶段 0 未删**），但首管理员选举已下沉到 `store.CreateUser` 事务内，授权判定改由 `authorizeCreateUser` 负责，它们已不再承担安全语义；`getActiveUserCount` 与 `store.CountActiveUsers` 的重复仍在。
-- **未使用的 helper**：`common.go` 中 `ParseFilter`/`parseExpression`/`normalizeFilter`/`getComparatorType`/`Expression`/`OperatorType` 全仓库无引用；`auth.go:198 GetTokenFromMetadata` 与 `GatewayMetadataAccessTokenKey`/`GatewayMetadataRequestOriginKey` 未使用（`metadata` import 仅为它存在）。
+- **空实现**：`user_service.go:815` 与 `auth_service.go:353` 两个同名 `userCountGuard` 仍是 `return nil`（**阶段 0 未删**），但首管理员选举已下沉到 `store.CreateUser` 事务内，授权判定改由 `authorizeCreateUser` 负责，它们已不再承担安全语义；`getActiveUserCount` 与 `store.CountActiveUsers` 的重复仍在。 —— **✅ 已清理（阶段 7）** · `99d7c6b`：两个 `userCountGuard` 及其 4 个调用点已删除（确实恒 `nil`、无安全语义）。
+- **未使用的 helper**：`common.go` 中 `ParseFilter`/`parseExpression`/`normalizeFilter`/`getComparatorType`/`Expression`/`OperatorType` 全仓库无引用；`auth.go:198 GetTokenFromMetadata` 与 `GatewayMetadataAccessTokenKey`/`GatewayMetadataRequestOriginKey` 未使用（`metadata` import 仅为它存在）。 —— **✅ 已删除（阶段 3）**：这些符号现已不在仓库中；注意 `OperatorType` 仍是 `api/v1/filter.go` 的活类型（阶段 3 保留了它）。
 - **永不写入的 context key**：`common.ServiceDataKey` 从未被写入，`getServiceData` 恒返回 nil。
 - **注释掉的代码块**：~~注册/许可校验~~（阶段 0 已删除 `user_service.go` 中被注释的注册/许可校验与 `firstEndUser` 块）、metric 上报（`user_service.go:371-380` 仍留）、调用者身份校验（`user_service.go:588,679` 的 `// todo check permission` 仍在，实际鉴权已由 ACL 拦截器按 proto 注解完成）、export format 转换（`common.go:362-390`）、`GetUsersByRoleInIAMPolicy`（`utils/member.go:26-68`）。
 - **Bytebase 时代遗留**：`SERVICE_ACCOUNT`/`service_key`/`sa_` 前缀、`SYSTEM_BOT`、`recovery_codes`（2FA 从未实现）、`require_2fa`/`maximum_role_expiration`、`ListUsers` 的 project 过滤器（产品已无 project 概念）、`UserProfile.source`（SCIM/Entra，从未写入）、`store/stats.go` 引用不存在的 `issue` 表。

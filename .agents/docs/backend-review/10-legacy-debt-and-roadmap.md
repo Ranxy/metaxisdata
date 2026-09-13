@@ -50,8 +50,8 @@
 - `GetSettingV2`/`UpsertSettingV2`/`CreateSettingIfNotExistV2`/`ListSettingV2`、`GetInstanceV2`/`ListInstancesV2`/`UpdateInstanceV2`/`CreateInstanceV2`、`GetDatabaseV2`/`ListDatabasesV2`、`GetPolicyV2`/`CreatePolicyV2`/`UpdatePolicyV2`/`DeletePolicyV2`/`ListPoliciesV2`、`StoreMetaResourceV2` —— 均不存在对应的 V1 版本，后缀已无信息量。
 
 ### 6. 未接线/半成品
-> **阶段 3 已修**：`ListInstanceDatabase` 空 stub 与 `DatabaseService.GetDatabase`（恒 `Unimplemented`）两个 RPC 已删除（`73901a1`）；`ServiceDataKey`/`getServiceData`、`common.const.go` 的三个死常量、`dataDir`/`ha`/`saas`/`demo`/`memoryProfileThreshold` flag、`Profile.LastActiveTS`、`ultimate.go` 的 `!minidemo` 与 `server_frontend_not_embed.go` 的 `!embed_frontend` 约束（`-tags embed_frontend` 曾直接编译失败）均已清理（`a39bc41`–`3cc4926`）。**仍未做**：前端内嵌、`migrator` 的 `goMigrations` 空注册表、`ExplainSQL` 的未用字段、`AgentConfig.Hooks`。
-- 前端未内嵌（`server_frontend_not_embed.go` + `embed_frontend` tag 无实现文件）。
+> **阶段 3 已修**：`ListInstanceDatabase` 空 stub 与 `DatabaseService.GetDatabase`（恒 `Unimplemented`）两个 RPC 已删除（`73901a1`）；`ServiceDataKey`/`getServiceData`、`common.const.go` 的三个死常量、`dataDir`/`ha`/`saas`/`demo`/`memoryProfileThreshold` flag、`Profile.LastActiveTS`、`ultimate.go` 的 `!minidemo` 与 `server_frontend_not_embed.go` 的 `!embed_frontend` 约束（`-tags embed_frontend` 曾直接编译失败）均已清理（`a39bc41`–`3cc4926`）。**阶段 7 收口**：其中 4 项本轮已完成——前端内嵌（`f3a0394`）、`migrator` 的 `goMigrations` 空注册表（`4ea38d2`）、`ExplainSQL` 的未用字段（`bf70f70`）、`AgentConfig.Hooks`（`70e7c20`）。
+- 前端未内嵌（`server_frontend_not_embed.go` + `embed_frontend` tag 无实现文件）。 —— **✅ 已实现（阶段 7）** · `f3a0394`：`make build-embed` 用 `-tags "release embed_frontend"` 内嵌 `frontend/dist`，SPA 路由回落 `index.html`；默认构建仍是"前端单独托管"。
 - `ListInstanceDatabase` 是空 stub；`DatabaseService.GetDatabase` 返回 `Unimplemented`。
 - `migrator` 的 `goMigrations` 空注册表；~~`migration/0.1/` 增量目录缺失~~（**阶段 2 已建立**，`8c34542` `ff9b22a`）。
 - `metric` 包与 `plugin/metric` 无 reporter 实现。
@@ -348,6 +348,30 @@
 
 ---
 
+### 阶段 7：死代码与低优先清理——**本轮已完成（9 步 + 1 项新功能；详见 `12-cleanup-plan.md`）**
+
+阶段 6 明确排除的"死代码与低优先清理"单独成轮。`01`–`09` 的报告已大量过期（阶段 3/6 删掉的东西仍留在清单里，部分"死代码"其实活跃），
+因此本轮先用「全仓库 grep（含测试与 integration tag）+ 整程序可达性分析（`golang.org/x/tools/cmd/deadcode ./backend/bin/server`）」
+逐条核对当前代码，再分步删除。范围经确认为 **B 档**：阶段 6 计划列出的死代码项 + 本轮新发现的跨包死导出符号。
+
+| 步骤 | 内容 | 状态 | 提交 |
+| --- | --- | --- | --- |
+| E1 | `component/llm`：`AgentHooks`/`AgentConfig.Hooks`、`AgentEvent.Done`、`AgentEventTurnEnd`（`05`） | ✅ | `70e7c20` |
+| E2 | runners：`Syncer.profile`+参数、嵌入 `sync.Mutex`、`Analyzer.profile`+参数、命名返回 `retErr`、陈旧 TODO（`06`） | ✅ | `e2f381f` |
+| E3 | `permission.Exists`、`GetInstaceFromGUID` 拼写、`ErrorWithPosition`/`LockTimeoutError`/`IsNonTransactionStatement`/`IsSystemUser`、未接线的序列 DDL 与多文件 SDL 脚手架（`07`） | ✅ | `cdc2c42` |
+| E4 | store：`FindMetaRegistryResourceMessage` 的 `ID`/`IDList`/`ExcludeObjectType`、`FindMetaRegistryHistoryMessage.ValidFrom`、随之无读路径的 ID-keyed `metaRegistryCache`（`03`） | ✅ | `40996c6` |
+| E5 | api/v1：两个空实现 `userCountGuard` 及其 4 个调用点（`02`） | ✅ | `99d7c6b` |
+| E6 | migrator：空的 `goMigrations`/`GoMigrationFunc` 脚手架（`06`） | ✅ | `4ea38d2` |
+| E7 | lineage：仅测试用死 helper（`RunLineageTestsFromYAML`、`Assert*`、`CreateSimpleCatalog`/`CreateCatalogWithSchema`、`Bool`/`Int`/`RelType` 及 mysql/postgresql 的死包装）（`09`） | ✅ | `33f410e` |
+| E8 | ExplainSQL 未用 proto 字段 `meta_type`/`sections_json`/`expired`/`response.error` → `reserved`，前端与 i18n 同步（`04`） | ✅ | `bf70f70` |
+| E9 | **真正的前端内嵌**：`//go:build embed_frontend` + `//go:embed frontend_dist` + SPA fallback，Makefile `build-embed`/`frontend-dist`（`01`/`10` 第六节） | ✅ | `f3a0394` |
+
+- **本轮决策（已从"待确认"关闭）**：① ExplainSQL 的四个未用字段**全部删除**（`meta_type` 服务端本就忽略、`sections_json` 前端不读、`expired` 服务端从不设置、`error` 从不发送），编号 `reserved`；② 空 `goMigrations` 脚手架**删除**（未来需要 Go 数据迁移时再加回）；③ 前端内嵌**真正实现**而不是继续留 placeholder；④ `Store.DeleteCache`、`log.Stack` eager 采集、`08 M13` JSONB 列注释（属 schema 变更）、`06`/`03` 的 Low 语义/性能项（O(n²) 查找、无界 map、GUID 分隔符碰撞、LIMIT/OFFSET 插值等）**本轮不做**。
+- **主要落地**：llm 事件与 runner 结构体只剩真正被读写的内容；`permission.Exists`、两个死错误类型、两个 pg 死函数与从未接线的独立序列 DDL/多文件 SDL 脚手架删除；store `find` 消息与缓存只保留有读路径的部分；api/v1 去掉两个恒 `nil` 的配额守卫；migrator 去掉空的 Go 迁移注册表；lineage 测试工具链只留 YAML 路径真正用到的部分；ExplainSQL 公共契约与前端一起瘦身；服务器新增 `-tags embed_frontend` 自包含构建（`make build-embed`）。
+- **核对更正**（避免把活跃代码当死代码删掉）：`GetSchemaFromGUID` 实际被 `database_metadata.go` 使用（首次 grep 输出被截断误判，构建失败后恢复）；testutil 的 `RunLineageTests`/`RunLineageTest` 被 YAML 目录运行器调用，必须保留。`resource_name.go` 零引用常量、`common/cel.go` 的 M1/M2、`const.go` 死常量、`metric` 栈、`role`/`project` 死表、`instance.labels`、`08` 的 `RiskLevel`/`Position`/`Range`/`InstanceRoleMetadata`、`ExplainSQLRequest.provider_name`、`buildDeleteManualSQLStatement`、`pluralize`、`InstanceService.stateCfg`、`config.Profile.LastActiveTS` 等经核对**此前已删除或本就活跃**，本轮不动。
+
+---
+
 ## 五、验证方式
 
 - 本报告结论来自源码通读 + `go build ./...`、`go vet ./...`、`go test ./...`（审查时均 exit 0）。
@@ -378,3 +402,6 @@
 - 阶段 6 复测（全部本地，含 Docker 集成套件）：`gofmt -l backend/` 空、`go build ./...`、`go vet ./...`（默认/`release`/`integration`）、`go test ./...`、`go test -race -count=1 ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`make build-release` 全部通过；`buf format -w proto`、`buf lint proto`、`cd proto && buf generate` 通过且可复现（重跑无 diff，只有 `auth_service`/`user_service` 注释变更的产物）；前端 `biome check src`（187 文件）、`eslint src`、`vue-tsc --noEmit`、`vitest run`（17 用例）、`vite build` 全部通过。**集成套件全部通过**：`go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...` → `runner` 48.7s、`migrator` 13.2s，exit 0。本轮新增的真实 server 用例 `TestOpenLineageIngestionAggregatesRunsRealServerIntegration` 覆盖批次单事务、run 去重计数、latest 语义、lineage 计数增减、未变 dataset 不重写与 scope 403。
 - 阶段 6 顺带修复的既有失败：① D1 修掉 `TestMarshalRolePermissionsIsDeterministic`（改成语义断言，不再依赖 protojson 的随机空白）；② D2 发现 B13 引入的集成失败——既有用例给 `manual_sql_id` 传了含下划线的值（`common.IsValidResourceID` 按 AIP-122 只允许小写字母/数字/连字符），已把三个测试 ID 改为连字符形式（`bef6706`）。这提醒：新增服务端校验后必须跑一遍集成套件。
 - 阶段 6"待确认"：无新增阻塞项。仍开放的是前几轮遗留：token 吊销缓存是进程内的（多副本下登出不通告，密码变更失效跨副本有效）、`openlineage_run` 默认永久保留、per-resource IAM、`MARIADB`/`OCEANBASE` 的 plugin 覆盖缺口、CI workflow 仍未在 GitHub 上实跑。
+- 阶段 7 复测（全部本地，含 Docker 集成套件）：`gofmt -l backend/` 空、`go build ./...`、`go vet ./...`（默认/`release`/`integration`/`embed_frontend`/`release embed_frontend` 五种标签组合）、`go test ./...`、`go test -race -count=1 ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`make build-release` 全部通过；`buf format -w proto`、`buf lint proto`、`cd proto && buf generate` 通过且可复现（重跑无 diff，`explain_sql_service` 的 proto/Go/TS/文档/openapi 产物同步）；`go mod tidy` 把 testutil 直接依赖的 `gopkg.in/yaml.v3` 从 indirect 提升为 direct；前端 `biome check src`（187 文件）、`eslint src --max-warnings=0`、`vue-tsc -b`、`vitest run`（17 用例）、`vite build` 全部通过。**集成套件全部通过**：`go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...` → `runner` 61.8s、`migrator` 22.3s，exit 0。
+- 阶段 7 的前端内嵌验证：本机 `pnpm` 被 `packageManager: pnpm@10.24.0` 门控（实装 11.10.0），故按 `make build-embed` 的等价步骤执行——`frontend/node_modules/.bin/vite build` 生成 `frontend/dist` → 拷进 `backend/server/frontend_dist` → `go build -tags "release embed_frontend"`（84MB，对比非内嵌 67MB）→ 临时包内用例断言 `/` 与 `/instances/some-instance` 都返回含 `id="app"` 的 SPA shell、`/assets/<hash>.js` 返回 200（用例用完即删）。只留 `.gitkeep` 时 `go vet -tags embed_frontend` 仍可编译（运行时告警"no frontend was bundled"）。
+- 阶段 7"待确认"：无新增阻塞项。`08 M13`（JSONB 列注释 `Stored as`）仍是唯一明确遗留的契约类小项；`Store.DeleteCache` 无调用者但保留；`06`/`03` 的 Low 语义/性能项与 CI 相关项继续开放。

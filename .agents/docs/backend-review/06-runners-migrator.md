@@ -119,8 +119,8 @@
 
 - `syncer.go:306-308` 冗余的版本判断（`if instanceMeta.Version != instance.Metadata.GetVersion() { metadata.Version = instanceMeta.Version }`）。
 - `syncer.go:363` 陈旧 TODO（下方代码已实现该功能）。
-- 死字段/参数：`syncer.go:54,58,362`（未使用的嵌入 `sync.Mutex`、`profile`、未赋值的 `retErr`）、`analyzer.go:41,387`（未使用的 `profile`、`markAnalyzed` 的未用参数）。
-- `migrator.go:82-92` 空的 `goMigrations`/`GoMigrationFunc` 脚手架，无测试。
+- 死字段/参数：`syncer.go:54,58,362`（未使用的嵌入 `sync.Mutex`、`profile`、未赋值的 `retErr`）、`analyzer.go:41,387`（未使用的 `profile`、`markAnalyzed` 的未用参数）。 —— **✅ 已清理（阶段 7）** · `e2f381f`：`Syncer.profile`+构造参数、嵌入 `sync.Mutex`、`Analyzer.profile`+构造参数、`SyncDatabaseSchema` 的命名返回 `retErr`、开头陈旧 TODO 全部删除；`markAnalyzed` 的参数实际都在用（文档过期），保留。
+- `migrator.go:82-92` 空的 `goMigrations`/`GoMigrationFunc` 脚手架，无测试。 —— **✅ 已删除（阶段 7）** · `4ea38d2`。
 - `getVersionFromPath` 接受畸形版本（`migrator.go:283-288`，`00001`、负数、任意 `MAJOR.MINOR` 目录）。
 - 重复迁移版本未提前检测（`migrator.go:258-266`）。
 - `adoptLegacySchema` 不校验基线形状（`migrator.go:202-223`）。
@@ -134,8 +134,8 @@
 
 ## 死代码与遗留债务
 
-- `syncer.go:363` 陈旧 TODO；未使用的 `Syncer.profile`、嵌入 `sync.Mutex`、`Analyzer.profile`；未使用的 `retErr`；`markAnalyzed` 的未用参数。
-- 空的 `goMigrations`/`GoMigrationFunc` 注册表（`migrator.go:82-92`）。
+- `syncer.go:363` 陈旧 TODO；未使用的 `Syncer.profile`、嵌入 `sync.Mutex`、`Analyzer.profile`；未使用的 `retErr`；`markAnalyzed` 的未用参数。 —— **✅ 已清理（阶段 7）** · `e2f381f`（见上节；`markAnalyzed` 参数保留）。
+- 空的 `goMigrations`/`GoMigrationFunc` 注册表（`migrator.go:82-92`）。 —— **✅ 已删除（阶段 7）** · `4ea38d2`。
 - 重复的血缘删除 SQL：runner 的 4 参 `deleteColumnLineageByMetaTx`（`syncer.go:776`）与 store 的 3 参版本（`store/manual_sql.go:765`）；store 版本有 GUID-subtree 感知 helper，而 runner 的硬编码 SQL 绕过了它。
 - 泛滥的无意义 `V2` 后缀（`ListInstancesV2`、`UpdateInstanceV2`、`GetInstanceV2`、`StoreMetaResourceV2`），且不存在对应的 V1。
 - `syncer.go:92-97` 重复嵌套 `if err != nil`。

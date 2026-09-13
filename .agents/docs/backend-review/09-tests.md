@@ -150,6 +150,7 @@
 - `schemasync_lineage_postgres_service_test.go:218` 的 `require.NoError(t, env.ExecPostgres(..., "SELECT 1;"))` 是无意义断言。
 - `waitForPostgresReady`（`testenv.go:198`）每次重试都新建完整 `store.Store`；skip 检测靠 `strings.Contains(msg, "docker") && ... "daemon"`（`testenv.go:451`），很脆弱。
 - 风格不一致：`migrator_test.go`/`openlineage_api_key_test.go`/`analyzer_test.go` 用 `t.Fatalf` 而非 testify；`openlineage_dataset_test.go` 缺 `t.Parallel()`；`analyzer_test.go:64` 有冗余 `tt := tt`；`meta_resource_test.go:32` 断言 `toOpen` 切片顺序（实现细节）。
+- **阶段 7 清理**（`33f410e`）：`plugin/lineage/testutil` 里仅测试用的死 helper（`RunLineageTestsFromYAML`、`AssertEdgeCount`、`AssertEdgeExists`、`AssertNoEdgeFromTable`、`AssertAllEdgesToTable`、`CreateSimpleCatalog`、`CreateCatalogWithSchema`、`Bool`/`Int`/`RelType`）与 `plugin/lineage/mysql`/`postgresql` 里已无使用者的包装/再导出全部删除；YAML 运行链（`RunLineageTestSuitesFromYAMLDir` → `RunLineageTests`/`RunLineageTest` → `ValidateExpectedEdges`/`EdgeMatches`/`FormatRelations`）完整保留，`go test -v -run TestAnalyzeYAML` 仍执行全部 YAML 子用例。本节的低优先测试项（`waitForHTTPReady` 5xx、`SELECT 1;` 空断言、fixture DDL 重复、缺 `t.Parallel()`、风格不一致）仍开放。
 
 ---
 

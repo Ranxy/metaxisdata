@@ -4,16 +4,19 @@
 
 | 步骤 | 状态 | 提交 |
 | --- | --- | --- |
-| E1 `component/llm` 死钩子与死事件（`05` 死代码节） | ⏳ | |
-| E2 runners 死字段与陈旧 TODO（`06` 死代码节） | ⏳ | |
-| E3 `common`/`plugin` 死导出符号与 `GetInstaceFromGUID` 拼写（`07` 死代码节） | ⏳ | |
-| E4 store `find` 死字段与 ID 缓存（`03` 死代码节） | ⏳ | |
-| E5 api/v1 空 `userCountGuard`（`02` 死代码节） | ⏳ | |
-| E6 migrator 空 `goMigrations` 脚手架（`06` 死代码节） | ⏳ | |
-| E7 lineage testutil 仅测试用死 helper（`09`） | ⏳ | |
-| E8 ExplainSQL 未用 proto 字段删除（`04` 低节） | ⏳ | |
-| E9 真正的前端内嵌（`go:embed` + Makefile）（`01`/`10` 第六节） | ⏳ | |
-| E10 全量验证与文档同步 | ⏳ | |
+| E1 `component/llm` 死钩子与死事件（`05` 死代码节） | ✅ | `70e7c20` |
+| E2 runners 死字段与陈旧 TODO（`06` 死代码节） | ✅ | `e2f381f` |
+| E3 `common`/`plugin` 死导出符号与 `GetInstaceFromGUID` 拼写（`07` 死代码节） | ✅ | `cdc2c42` |
+| E4 store `find` 死字段与 ID 缓存（`03` 死代码节） | ✅ | `40996c6` |
+| E5 api/v1 空 `userCountGuard`（`02` 死代码节） | ✅ | `99d7c6b` |
+| E6 migrator 空 `goMigrations` 脚手架（`06` 死代码节） | ✅ | `4ea38d2` |
+| E7 lineage testutil 仅测试用死 helper（`09`） | ✅ | `33f410e` |
+| E8 ExplainSQL 未用 proto 字段删除（`04` 低节） | ✅ | `bf70f70` |
+| E9 真正的前端内嵌（`go:embed` + Makefile）（`01`/`10` 第六节） | ✅ | `f3a0394` |
+| E10 全量验证与文档同步 | ✅ | 见下 |
+
+E1–E9 每步提交前都跑了 `gofmt`、`go build ./...` 与对应包的单测；E3 的 `go build` 还发现并纠正了一处误判（`GetSchemaFromGUID`
+实际被 `database_metadata.go` 使用，已恢复）。
 
 ---
 
@@ -63,10 +66,16 @@
 - 验证：`go build ./...`、`go test ./backend/runner/...`。
 
 ### E3 · `common`/`plugin` 死导出符号与拼写
-- `common/permission/permission.go`：删 `Exists`。
-- `common/guid.go`：`GetInstaceFromGUID` → `GetInstanceFromGUID`（2 处调用 + `guid_test.go`）；删 `GetSchemaFromGUID`（仅测试引用）及其测试。
-- `plugin/db/driver.go`：删 `ErrorWithPosition`（含 `Error`/`Unwrap`）；`plugin/db/pg/pg.go` 删 `LockTimeoutError`（含 `Error`）；`plugin/db/pg/pg.go` 删 `IsNonTransactionStatement`；`plugin/db/pg/system_objects.go` 删 `IsSystemUser`。
-- `plugin/schema`：删 `GetSequenceDefinition` 分发器、`RegisterGetSequenceDefinition`、`getSequenceDefinitions` 注册表与 `getSequenceDefinition` 类型；删 `plugin/schema/pg/get_database_definition.go` 的 `GetSequenceDefinition` 及其 init 注册（`writeCreateSequence` 等仍被 `writeTable` 使用，保留）。其余 `Get*Definition` 分发器均有调用者，保留。
+- `common/permission/permission.go`：删 `Exists`（仅被自身测试使用）及其测试。
+- `common/guid.go`：`GetInstaceFromGUID` → `GetInstanceFromGUID`（2 处调用 + `guid_test.go`）。**核对更正**：`GetSchemaFromGUID` 实际被
+  `database_metadata.go` 使用（最初 grep 结果被截断误判为死代码），构建失败后已恢复并保留其测试。
+- `plugin/db/driver.go`：删 `ErrorWithPosition`（含 `Error`/`Unwrap`）；`plugin/db/pg/pg.go` 删 `LockTimeoutError`（含 `Error`）；
+  删 `IsNonTransactionStatement` 及其仅供它使用的 4 个正则变量（连带删 `regexp` 导入）；`plugin/db/pg/system_objects.go` 删 `IsSystemUser`。
+- `plugin/schema`：删 `GetSequenceDefinition` 分发器、`RegisterGetSequenceDefinition`、`getSequenceDefinitions` 注册表与 `getSequenceDefinition` 类型；
+  删 `plugin/schema/pg/get_database_definition.go` 的 `GetSequenceDefinition` 及其 init 注册；**连带**删只被它调用的 `writeCreateSequence`、
+  `writeSequenceComment`（`writeAlterSequenceOwnedBy` 仍被 `writeTable` 使用，保留）。同时删从未接线的多文件 SDL 脚手架类型
+  `GetDefinitionContext`、`File`、`MultiFileSchemaResult`（全仓库零引用）。其余 `Get*Definition` 分发器均有调用者，保留。
+- 说明：独立序列 DDL 生成从未被任何代码路径调用，属未完成特性的一部分；本次按死代码删除，未来需要时再实现。
 - 验证：`go build ./...`、`go test ./backend/common/... ./backend/plugin/...`。
 
 ### E4 · store `find` 死字段与 ID 缓存
@@ -84,10 +93,15 @@
 - 验证：`go test ./backend/migrator/...`。
 
 ### E7 · lineage testutil 死 helper
-- 删 `plugin/lineage/mysql`/`postgresql` 的 `RunLineageTests`/`RunLineageTest`（无调用者），随后删 testutil 中仅被它们使用的实现。
-- 删 testutil 的 `RunLineageTestsFromYAML`、`AssertEdgeCount`、`AssertEdgeExists`、`AssertNoEdgeFromTable`、`AssertAllEdgesToTable`、`CreateCatalogWithSchema`（零引用）。
-- 只被上述函数使用的类型/辅助函数一并清理；`RunLineageTestSuitesFromYAMLDir`、`LoadLineageTestSuiteFromYAML`、`ValidateExpectedEdges`、`EdgeMatches`、`FormatRelations` 保持。
-- 验证：`go test ./backend/plugin/lineage/...`。
+- 删 `plugin/lineage/mysql`/`postgresql` 的 `RunLineageTests`/`RunLineageTest`（`analyze_test.go` 只调用 `RunLineageYAMLTestSuites`），
+  以及这两个文件里已无使用者的 `ExpectedEdge`/`LineageTestCase` 类型别名与 `Bool`/`Int`/`RelType`/`CreateSimpleCatalog` 再导出。
+- **核对更正**：testutil 里的 `RunLineageTests`/`RunLineageTest` **不是**死代码——YAML 目录运行器 `RunLineageTestSuitesFromYAMLDir`
+  正是通过它们执行每个用例，必须保留。
+- 删 testutil 的 `RunLineageTestsFromYAML`、`Bool`、`Int`、`RelType`、`AssertEdgeCount`、`AssertEdgeExists`、`AssertNoEdgeFromTable`、
+  `AssertAllEdgesToTable`、`CreateSimpleCatalog`、`CreateCatalogWithSchema`（零引用）。
+- 保留 `RunLineageTestSuitesFromYAMLDir`、`LoadLineageTestSuiteFromYAML`、`ValidateExpectedEdges`、`EdgeMatches`、`FormatRelations`
+  与 YAML 转换链（`yamlLineageTestCase.toLineageTestCase` 等）。
+- 验证：`go test ./backend/plugin/lineage/...`；`go test -v -run TestAnalyzeYAML` 确认 YAML 子用例仍实际执行（346 个 RUN/PASS 行）。
 
 ### E8 · ExplainSQL 未用 proto 字段
 - `explain_sql_service.proto`：`ExplainSQLRequest.meta_type`(2)、`ExplainSQLMetadata.sections_json`(2)/`expired`(6)、`ExplainSQLResponse.error`(3) → `reserved`。
@@ -98,17 +112,24 @@
 
 ### E9 · 真正的前端内嵌
 - `server_frontend_not_embed.go` 加 `//go:build !embed_frontend`。
-- 新增 `server_frontend_embed.go`（`//go:build embed_frontend`）：`//go:embed all:frontend_dist`，SPA fallback（未知路径回落到 `index.html`），缺 `index.html` 时只告警。
-- 提交 `backend/server/frontend_dist/.gitkeep`，`.gitignore` 忽略该目录下其余文件。
+- 新增 `server_frontend_embed.go`（`//go:build embed_frontend`）：`//go:embed all:frontend_dist`，SPA fallback（未知路径回落到 `index.html`），
+  缺 `index.html` 时只告警；`make build-embed` 把 `frontend/dist` 拷进该目录后再编译。
+- 提交 `backend/server/frontend_dist/.gitkeep`，`.gitignore` 忽略该目录下其余文件（`frontend_dist/*` + `!.gitkeep`），
+  Makefile 的 `frontend-dist` 拷贝后 `touch` 它，保证构建不留 git 脏状态。
 - `Makefile` 新增 `frontend-dist`（`pnpm --dir frontend build` + 拷贝）与 `build-embed`（`-tags "release embed_frontend"`）；`build`/`build-release` 行为不变。
 - 更新 `AGENTS.md` 中"服务器不内嵌前端"的说明。
-- 验证：默认与 `-tags embed_frontend` 均可编译；跑一次 `pnpm --dir frontend build` + `make build-embed` 并确认产物内嵌。
+- 验证：默认与 `-tags embed_frontend` 均可编译（含只有 `.gitkeep` 的空 embed）；本机因 `pnpm` 版本被 `packageManager: pnpm@10.24.0`
+  门控（实装 11.10.0），改用等价步骤验证：`frontend/node_modules/.bin/vite build` → 拷贝 dist → `go build -tags "release embed_frontend"`（产物 84MB，
+  对比非内嵌 67MB）→ 临时包内用例断言 `/`、`/instances/some-instance` 都返回 SPA shell、`/assets/<hash>.js` 返回 200（用完即删）。
 
 ### E10 · 全量验证与文档同步
-- `gofmt -l backend/` 空、`go build ./...`、`go vet ./...`（默认/`release`/`integration`/`embed_frontend`）、`go test ./...`、`go test -race -count=1 ./...`、`golangci-lint run --allow-parallel-runners`（跑到 0 issues）、`make build-release`、`make build-embed`。
-- `buf format`/`lint`/`generate` 可复现；前端 biome/eslint/vue-tsc/vitest/vite build。
-- Docker 集成套件：`go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...`。
-- 文档：`01`–`09` 各模块报告的死代码节标注本轮结果并修正过期描述；`10` 新增「阶段 7」小节；`README.md` 新增「阶段 7」状态节；本文件补全实施记录。
+- 全绿：`gofmt -l backend/` 空；`go build ./...`、`go vet ./...`（默认/`release`/`integration`/`embed_frontend`/`release embed_frontend`）、`go test ./...`、
+  `go test -race -count=1 ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`make build-release`。
+- `buf format -w proto` / `buf lint proto` / `cd proto && buf generate` 可复现（重跑无 diff）；`go mod tidy` 把 `gopkg.in/yaml.v3` 提为 direct。
+- 前端：`biome check src`（187 文件）、`eslint src --max-warnings=0`、`vue-tsc -b`、`vitest run`（17 用例）、`vite build`。
+- Docker 集成套件：`go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...` → `runner` 61.8s、`migrator` 22.3s，exit 0。
+- 前端内嵌：`vite build` → 拷贝 dist → `go build -tags "release embed_frontend"`（84MB vs 67MB）→ 临时用例验证 SPA 回落与静态资源（用完即删）。
+- 文档：`01`–`09` 各模块报告的死代码/低节标注本轮结果并修正过期描述；`10` 新增「阶段 7」小节与复测记录；`README.md` 新增「阶段 7 修复状态」节与标记图例；本文件补全实施记录。
 
 ## 三、本轮不做（已明确排除）
 
