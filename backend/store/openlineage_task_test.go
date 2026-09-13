@@ -71,3 +71,20 @@ func TestOpenLineagePageClause(t *testing.T) {
 	require.Equal(t, " LIMIT 5000 OFFSET 40", openLineagePageClause(nil, &offset))
 	require.Equal(t, " LIMIT 5 OFFSET 40", openLineagePageClause(&five, &offset))
 }
+
+// A batch is persisted in the caller's order even though its tasks are locked in
+// a canonical order: the handler matches each returned run with the event that
+// produced it, so a reordered result would write lineage under the wrong run.
+func TestTaskLockOrderLocksCanonicallyAndKeepsRunOrder(t *testing.T) {
+	t.Parallel()
+
+	runs := []*OpenLineageRunMessage{
+		{TaskGUID: "task-b", RunID: "b1"},
+		{TaskGUID: "task-a", RunID: "a1"},
+		{TaskGUID: "task-b", RunID: "b2"},
+	}
+
+	require.Equal(t, []int{1, 0, 2}, taskLockOrder(runs), "tasks ascending, runs of one task in input order")
+	require.Equal(t, "b1", runs[taskLockOrder(runs)[1]].RunID)
+	require.Empty(t, taskLockOrder(nil))
+}

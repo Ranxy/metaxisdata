@@ -97,16 +97,12 @@ func (s *Store) UpsertOpenLineageRuns(ctx context.Context, runs []*OpenLineageRu
 	defer tx.Rollback()
 
 	// Locking the task of every run in the same order keeps two concurrent
-	// batches from deadlocking on each other's task rows. The stable sort keeps
-	// runs of one task in their original order.
-	sorted := make([]*OpenLineageRunMessage, len(runs))
-	copy(sorted, runs)
-	slices.SortStableFunc(sorted, func(a, b *OpenLineageRunMessage) int {
-		return strings.Compare(a.TaskGUID, b.TaskGUID)
-	})
-
-	persisted := make([]*OpenLineageRunMessage, 0, len(sorted))
-	for _, run := range sorted {
+	// batches from deadlocking on each other's task rows. The returned slice
+	// stays in the caller's order, which callers rely on to match a persisted run
+	// with its event.
+	persisted := make([]*OpenLineageRunMessage, len(runs))
+	for _, index := range taskLockOrder(runs) {
+		run := runs[index]
 		// The task lock has to be taken before the previous run is read, so the
 		// counters below stay exact under concurrent deliveries.
 		task, err := lockOpenLineageTask(ctx, tx, run)
@@ -134,7 +130,7 @@ func (s *Store) UpsertOpenLineageRuns(ctx context.Context, runs []*OpenLineageRu
 		if err := s.upsertOpenLineageTaskMetaRegistry(ctx, tx, updatedTask); err != nil {
 			return nil, err
 		}
-		persisted = append(persisted, runPersisted)
+		persisted[index] = runPersisted
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -142,6 +138,20 @@ func (s *Store) UpsertOpenLineageRuns(ctx context.Context, runs []*OpenLineageRu
 	}
 
 	return persisted, nil
+}
+
+// taskLockOrder returns the indexes of runs ordered by task GUID. Every writer
+// locks its tasks in this order, so two batches cannot deadlock on each other's
+// task rows. The stable sort keeps runs of one task in their original order.
+func taskLockOrder(runs []*OpenLineageRunMessage) []int {
+	order := make([]int, len(runs))
+	for i := range order {
+		order[i] = i
+	}
+	slices.SortStableFunc(order, func(a, b int) int {
+		return strings.Compare(runs[a].TaskGUID, runs[b].TaskGUID)
+	})
+	return order
 }
 
 // previousRunState reports the lineage flag of the run this one replaces, and
