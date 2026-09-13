@@ -18,10 +18,12 @@ func TestGetVersionFromPath(t *testing.T) {
 		{"migration/0.1/0000##init.sql", "0.1.0", false},
 		{"migration/0.1/0001##add_col.sql", "0.1.1", false},
 		{"migration/0.2/0021##migrate_users.sql", "0.2.21", false},
-		{"migration/LATEST.sql", "", true},        // not a versioned migration
-		{"migration/0.1/add_col.sql", "", true},   // missing ## separator
-		{"migration/0.1.sql", "", true},           // wrong depth
-		{"migration/0.1/00ab##bad.sql", "", true}, // non-numeric patch
+		{"migration/LATEST.sql", "", true},          // not a versioned migration
+		{"migration/0.1/add_col.sql", "", true},     // missing ## separator
+		{"migration/0.1.sql", "", true},             // wrong depth
+		{"migration/0.1/00ab##bad.sql", "", true},   // non-numeric patch
+		{"migration/0.1/00001##wide.sql", "", true}, // patch must be exactly four digits
+		{"migration/0.1/1##narrow.sql", "", true},   // patch must be exactly four digits
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
@@ -82,6 +84,24 @@ func TestGetSortedVersionedFilesExcludesLATEST(t *testing.T) {
 	}
 	if len(files) != 0 {
 		t.Fatalf("expected no versioned files, got %v", files)
+	}
+}
+
+// Two files with the same version would both execute and the second ledger
+// insert would fail after the first one's DDL already ran.
+func TestGetSortedVersionedFilesRejectsDuplicateVersions(t *testing.T) {
+	fsys := fstest.MapFS{
+		"migration/LATEST.sql":      {Data: []byte("-- baseline")},
+		"migration/0.1/0001##a.sql": {Data: []byte("-- a")},
+		"migration/0.1/0001##b.sql": {Data: []byte("-- b")},
+	}
+
+	_, err := getSortedVersionedFiles(fsys)
+	if err == nil {
+		t.Fatal("expected a duplicate-version error")
+	}
+	if !strings.Contains(err.Error(), "duplicate migration version 0.1.1") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

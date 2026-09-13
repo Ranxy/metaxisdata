@@ -205,6 +205,14 @@ func migrateSchemaFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 // framework, or was created out-of-band from LATEST.sql). The schema is assumed
 // to match the baseline; future incrementals then apply on top of it.
 func adoptLegacySchema(ctx context.Context, conn *sql.Conn) error {
+	// The sentinel table alone is too weak a signal: a partially created or
+	// unrelated schema can contain `principal` without any of the rest of the
+	// baseline, and the incrementals would then be applied on top of an unknown
+	// shape.
+	if err := verifyBaselineSchema(ctx, conn); err != nil {
+		return err
+	}
+
 	slog.Warn("Database predates the schema migration framework; adopting it at the baseline version. It must already match the cumulative schema in migration/LATEST.sql.",
 		"version", baselineVersion)
 
@@ -225,6 +233,35 @@ func adoptLegacySchema(ctx context.Context, conn *sql.Conn) error {
 	}
 
 	return txn.Commit()
+}
+
+// baselineSchemaSentinels are tables the baseline schema always creates and that
+// no incremental drops. A database that has the sentinel table but misses any of
+// them is not a schema this framework can safely adopt.
+var baselineSchemaSentinels = []string{
+	"setting",
+	"policy",
+	"user_group",
+	"instance",
+	"db",
+	"meta_registry_resource",
+	"meta_registry_resource_history",
+	"manual_sql",
+	"column_lineage",
+	"audit_log",
+}
+
+func verifyBaselineSchema(ctx context.Context, conn *sql.Conn) error {
+	for _, table := range baselineSchemaSentinels {
+		exists, err := tableExists(ctx, conn, table)
+		if err != nil {
+			return errors.Wrapf(err, "failed to check baseline table %q", table)
+		}
+		if !exists {
+			return errors.Errorf("refusing to adopt the legacy schema: baseline table %q is missing", table)
+		}
+	}
+	return nil
 }
 
 type versionedFile struct {
@@ -268,6 +305,18 @@ func getSortedVersionedFiles(fsys fs.FS) ([]versionedFile, error) {
 		}
 		return 0
 	})
+
+	// Two files claiming the same version would both execute and the second
+	// ledger insert would fail halfway through applying it, so reject the tree
+	// before any migration runs.
+	seen := make(map[string]string, len(files))
+	for _, f := range files {
+		key := f.version.String()
+		if previous, ok := seen[key]; ok {
+			return nil, errors.Errorf("duplicate migration version %s in %q and %q", key, previous, f.path)
+		}
+		seen[key] = f.path
+	}
 	return files, nil
 }
 
@@ -284,6 +333,9 @@ func getVersionFromPath(path string) (*semver.Version, error) {
 	splits2 := strings.Split(splits[1], "##")
 	if len(splits2) != 2 {
 		return nil, errors.Errorf("invalid migration path %q", path)
+	}
+	if len(splits2[0]) != 4 {
+		return nil, errors.Errorf("migration filename prefix %q must be exactly four digits such as '0001'", splits2[0])
 	}
 	patch, err := strconv.ParseInt(splits2[0], 10, 64)
 	if err != nil {
