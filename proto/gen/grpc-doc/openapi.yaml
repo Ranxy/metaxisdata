@@ -2914,6 +2914,22 @@ components:
                 Binding binds one role to a set of principals. It is the v1 view of the
                  stored IAM binding; the workspace IAM policy is written whole through
                  IamService.SetWorkspaceIamPolicy.
+        BoundingBox:
+            type: object
+            properties:
+                xmin:
+                    type: number
+                    format: double
+                ymin:
+                    type: number
+                    format: double
+                xmax:
+                    type: number
+                    format: double
+                ymax:
+                    type: number
+                    format: double
+            description: BoundingBox is the bounding box of a spatial index.
         CheckConstraintMetadata:
             type: object
             properties:
@@ -3232,6 +3248,26 @@ components:
                 ddl:
                     type: string
                     description: The full DDL migration SQL from source to target.
+        DimensionalConfig:
+            type: object
+            properties:
+                dimensions:
+                    type: integer
+                    description: The number of dimensions, 2 to 4, default 2.
+                    format: int32
+                dataType:
+                    type: string
+                    description: The spatial data type, such as GEOMETRY or GEOGRAPHY.
+                operatorClass:
+                    type: string
+                    description: The operator class. (PostgreSQL specific).
+                layerGtype:
+                    type: string
+                    description: The geometry type constraint. (Oracle specific).
+                parallelBuild:
+                    type: boolean
+                    description: Whether the index is built in parallel.
+            description: DimensionalConfig holds dimensional parameters of a spatial index.
         EnumTypeMetadata:
             type: object
             properties:
@@ -3635,6 +3671,17 @@ components:
                     description: The type of the serialized message.
             additionalProperties: true
             description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message.
+        GridLevel:
+            type: object
+            properties:
+                level:
+                    type: integer
+                    description: The level, 1 to 4 for SQL Server.
+                    format: int32
+                density:
+                    type: string
+                    description: The density, such as LOW, MEDIUM or HIGH.
+            description: GridLevel is one grid level of a spatial tessellation.
         Group:
             required:
                 - name
@@ -3766,6 +3813,10 @@ components:
                     items:
                         type: boolean
                     description: True if the operator class is the default. (PostgreSQL specific).
+                spatialConfig:
+                    allOf:
+                        - $ref: '#/components/schemas/SpatialIndexConfig'
+                    description: The spatial index configuration. (SQL Server and other engines).
             description: IndexMetadata is the metadata for indexes.
         Instance:
             type: object
@@ -3775,6 +3826,7 @@ components:
                 engine:
                     enum:
                         - ENGINE_UNSPECIFIED
+                        - MSSQL
                         - MYSQL
                         - POSTGRES
                         - TIDB
@@ -3827,6 +3879,7 @@ components:
                 engine:
                     enum:
                         - ENGINE_UNSPECIFIED
+                        - MSSQL
                         - MYSQL
                         - POSTGRES
                         - TIDB
@@ -5044,6 +5097,30 @@ components:
                 etag:
                     type: string
                     description: The etag from the last GetWorkspaceIamPolicy. Empty means "do not check".
+        SpatialIndexConfig:
+            type: object
+            properties:
+                method:
+                    type: string
+                    description: The index method, such as "SPATIAL" or "GIST".
+                tessellation:
+                    allOf:
+                        - $ref: '#/components/schemas/TessellationConfig'
+                    description: The tessellation configuration. (SQL Server specific).
+                storage:
+                    allOf:
+                        - $ref: '#/components/schemas/StorageConfig'
+                    description: The storage and performance parameters.
+                dimensional:
+                    allOf:
+                        - $ref: '#/components/schemas/DimensionalConfig'
+                    description: The dimensional parameters.
+                engineSpecific:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: Engine specific parameters.
+            description: SpatialIndexConfig is the configuration of a spatial index.
         Status:
             type: object
             properties:
@@ -5060,6 +5137,45 @@ components:
                         $ref: '#/components/schemas/GoogleProtobufAny'
                     description: A list of messages that carry the error details.  There is a common set of message types for APIs to use.
             description: 'The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).'
+        StorageConfig:
+            type: object
+            properties:
+                fillfactor:
+                    type: integer
+                    description: PostgreSQL parameters.
+                    format: int32
+                buffering:
+                    type: string
+                tablespace:
+                    type: string
+                    description: Oracle parameters.
+                workTablespace:
+                    type: string
+                sdoLevel:
+                    type: integer
+                    format: int32
+                commitInterval:
+                    type: integer
+                    format: int32
+                padIndex:
+                    type: boolean
+                    description: SQL Server parameters.
+                sortInTempdb:
+                    type: string
+                dropExisting:
+                    type: boolean
+                online:
+                    type: boolean
+                allowRowLocks:
+                    type: boolean
+                allowPageLocks:
+                    type: boolean
+                maxdop:
+                    type: integer
+                    format: int32
+                dataCompression:
+                    type: string
+            description: StorageConfig holds storage and performance parameters of an index.
         StoredMetadata:
             type: object
             properties:
@@ -5295,6 +5411,26 @@ components:
                     items:
                         $ref: '#/components/schemas/ExcludeConstraintMetadata'
             description: TablePartitionMetadata is the metadata for table partitions.
+        TessellationConfig:
+            type: object
+            properties:
+                scheme:
+                    type: string
+                    description: The tessellation scheme, such as GEOMETRY_GRID or GEOGRAPHY_GRID.
+                boundingBox:
+                    allOf:
+                        - $ref: '#/components/schemas/BoundingBox'
+                    description: The bounding box. (SQL Server specific).
+                gridLevels:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GridLevel'
+                    description: The grid levels. (SQL Server specific).
+                cellsPerObject:
+                    type: integer
+                    description: The number of cells per object. (SQL Server specific).
+                    format: int32
+            description: TessellationConfig is the tessellation configuration of a spatial index.
         Transformation:
             type: object
             properties:

@@ -79,6 +79,7 @@
     - [InstanceService](#metaxisdata-v1-InstanceService)
   
 - [v1/database_service.proto](#v1_database_service-proto)
+    - [BoundingBox](#metaxisdata-v1-BoundingBox)
     - [CheckConstraintMetadata](#metaxisdata-v1-CheckConstraintMetadata)
     - [ColumnMetadata](#metaxisdata-v1-ColumnMetadata)
     - [CreateManualSQLRequest](#metaxisdata-v1-CreateManualSQLRequest)
@@ -90,6 +91,7 @@
     - [DependencyTable](#metaxisdata-v1-DependencyTable)
     - [DiffMetadataRequest](#metaxisdata-v1-DiffMetadataRequest)
     - [DiffMetadataResponse](#metaxisdata-v1-DiffMetadataResponse)
+    - [DimensionalConfig](#metaxisdata-v1-DimensionalConfig)
     - [EnumTypeMetadata](#metaxisdata-v1-EnumTypeMetadata)
     - [EventMetadata](#metaxisdata-v1-EventMetadata)
     - [EventTriggerMetadata](#metaxisdata-v1-EventTriggerMetadata)
@@ -104,6 +106,7 @@
     - [GetMetadataRequest](#metaxisdata-v1-GetMetadataRequest)
     - [GetMetadataResponse](#metaxisdata-v1-GetMetadataResponse)
     - [GetSchemaStringRequest](#metaxisdata-v1-GetSchemaStringRequest)
+    - [GridLevel](#metaxisdata-v1-GridLevel)
     - [IndexMetadata](#metaxisdata-v1-IndexMetadata)
     - [ListDatabasesRequest](#metaxisdata-v1-ListDatabasesRequest)
     - [ListDatabasesResponse](#metaxisdata-v1-ListDatabasesResponse)
@@ -136,11 +139,15 @@
     - [SearchMetadataResponse](#metaxisdata-v1-SearchMetadataResponse)
     - [SearchMetadataResult](#metaxisdata-v1-SearchMetadataResult)
     - [SequenceMetadata](#metaxisdata-v1-SequenceMetadata)
+    - [SpatialIndexConfig](#metaxisdata-v1-SpatialIndexConfig)
+    - [SpatialIndexConfig.EngineSpecificEntry](#metaxisdata-v1-SpatialIndexConfig-EngineSpecificEntry)
+    - [StorageConfig](#metaxisdata-v1-StorageConfig)
     - [StoredMetadata](#metaxisdata-v1-StoredMetadata)
     - [SyncDatabaseRequest](#metaxisdata-v1-SyncDatabaseRequest)
     - [SyncDatabaseResponse](#metaxisdata-v1-SyncDatabaseResponse)
     - [TableMetadata](#metaxisdata-v1-TableMetadata)
     - [TablePartitionMetadata](#metaxisdata-v1-TablePartitionMetadata)
+    - [TessellationConfig](#metaxisdata-v1-TessellationConfig)
     - [TriggerMetadata](#metaxisdata-v1-TriggerMetadata)
     - [UpdateManualSQLRequest](#metaxisdata-v1-UpdateManualSQLRequest)
     - [ViewMetadata](#metaxisdata-v1-ViewMetadata)
@@ -448,12 +455,13 @@
 ### Engine
 Engine is the database engine of an instance. Only the engines the product
 actually supports are kept: MySQL-compatible ones (MySQL, TiDB, MariaDB,
-OceanBase) and PostgreSQL. The removed Bytebase-era values keep their numbers
-reserved so they can never be silently reused for something else.
+OceanBase), PostgreSQL and SQL Server. The other removed values keep their
+numbers reserved so they can never be silently reused for something else.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | ENGINE_UNSPECIFIED | 0 |  |
+| MSSQL | 1 |  |
 | MYSQL | 2 |  |
 | POSTGRES | 3 |  |
 | TIDB | 6 |  |
@@ -1296,6 +1304,24 @@ The instance&#39;s `name` field is used to identify the instance to update. Form
 
 
 
+<a name="metaxisdata-v1-BoundingBox"></a>
+
+### BoundingBox
+BoundingBox is the bounding box of a spatial index.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| xmin | [double](#double) |  |  |
+| ymin | [double](#double) |  |  |
+| xmax | [double](#double) |  |  |
+| ymax | [double](#double) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-CheckConstraintMetadata"></a>
 
 ### CheckConstraintMetadata
@@ -1505,6 +1531,25 @@ DependencyColumn is the metadata for dependency columns.
 | ----- | ---- | ----- | ----------- |
 | diff_summary | [string](#string) |  | A human-readable summary of the schema changes. |
 | ddl | [string](#string) |  | The full DDL migration SQL from source to target. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DimensionalConfig"></a>
+
+### DimensionalConfig
+DimensionalConfig holds dimensional parameters of a spatial index.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| dimensions | [int32](#int32) |  | The number of dimensions, 2 to 4, default 2. |
+| data_type | [string](#string) |  | The spatial data type, such as GEOMETRY or GEOGRAPHY. |
+| operator_class | [string](#string) |  | The operator class. (PostgreSQL specific). |
+| layer_gtype | [string](#string) |  | The geometry type constraint. (Oracle specific). |
+| parallel_build | [bool](#bool) |  | Whether the index is built in parallel. |
 
 
 
@@ -1768,6 +1813,22 @@ FunctionMetadata is the metadata for functions.
 
 
 
+<a name="metaxisdata-v1-GridLevel"></a>
+
+### GridLevel
+GridLevel is one grid level of a spatial tessellation.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| level | [int32](#int32) |  | The level, 1 to 4 for SQL Server. |
+| density | [string](#string) |  | The density, such as LOW, MEDIUM or HIGH. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-IndexMetadata"></a>
 
 ### IndexMetadata
@@ -1791,6 +1852,7 @@ IndexMetadata is the metadata for indexes.
 | is_constraint | [bool](#bool) |  | It&#39;s a PostgreSQL specific field. The unique constraint and unique index are not the same thing in PostgreSQL. |
 | opclass_names | [string](#string) | repeated | https://www.postgresql.org/docs/current/catalog-pg-opclass.html Name of the operator class for each column. (PostgreSQL specific). |
 | opclass_defaults | [bool](#bool) | repeated | True if the operator class is the default. (PostgreSQL specific). |
+| spatial_config | [SpatialIndexConfig](#metaxisdata-v1-SpatialIndexConfig) |  | The spatial index configuration. (SQL Server and other engines). |
 
 
 
@@ -2404,6 +2466,69 @@ This is the concept of schema in Postgres, but it&#39;s a no-op for MySQL.
 
 
 
+<a name="metaxisdata-v1-SpatialIndexConfig"></a>
+
+### SpatialIndexConfig
+SpatialIndexConfig is the configuration of a spatial index.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| method | [string](#string) |  | The index method, such as &#34;SPATIAL&#34; or &#34;GIST&#34;. |
+| tessellation | [TessellationConfig](#metaxisdata-v1-TessellationConfig) |  | The tessellation configuration. (SQL Server specific). |
+| storage | [StorageConfig](#metaxisdata-v1-StorageConfig) |  | The storage and performance parameters. |
+| dimensional | [DimensionalConfig](#metaxisdata-v1-DimensionalConfig) |  | The dimensional parameters. |
+| engine_specific | [SpatialIndexConfig.EngineSpecificEntry](#metaxisdata-v1-SpatialIndexConfig-EngineSpecificEntry) | repeated | Engine specific parameters. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SpatialIndexConfig-EngineSpecificEntry"></a>
+
+### SpatialIndexConfig.EngineSpecificEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-StorageConfig"></a>
+
+### StorageConfig
+StorageConfig holds storage and performance parameters of an index.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| fillfactor | [int32](#int32) |  | PostgreSQL parameters. |
+| buffering | [string](#string) |  |  |
+| tablespace | [string](#string) |  | Oracle parameters. |
+| work_tablespace | [string](#string) |  |  |
+| sdo_level | [int32](#int32) |  |  |
+| commit_interval | [int32](#int32) |  |  |
+| pad_index | [bool](#bool) |  | SQL Server parameters. |
+| sort_in_tempdb | [string](#string) |  |  |
+| drop_existing | [bool](#bool) |  |  |
+| online | [bool](#bool) |  |  |
+| allow_row_locks | [bool](#bool) |  |  |
+| allow_page_locks | [bool](#bool) |  |  |
+| maxdop | [int32](#int32) |  |  |
+| data_compression | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-StoredMetadata"></a>
 
 ### StoredMetadata
@@ -2515,6 +2640,24 @@ TablePartitionMetadata is the metadata for table partitions.
 | indexes | [IndexMetadata](#metaxisdata-v1-IndexMetadata) | repeated |  |
 | check_constraints | [CheckConstraintMetadata](#metaxisdata-v1-CheckConstraintMetadata) | repeated |  |
 | exclude_constraints | [ExcludeConstraintMetadata](#metaxisdata-v1-ExcludeConstraintMetadata) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-TessellationConfig"></a>
+
+### TessellationConfig
+TessellationConfig is the tessellation configuration of a spatial index.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| scheme | [string](#string) |  | The tessellation scheme, such as GEOMETRY_GRID or GEOGRAPHY_GRID. |
+| bounding_box | [BoundingBox](#metaxisdata-v1-BoundingBox) |  | The bounding box. (SQL Server specific). |
+| grid_levels | [GridLevel](#metaxisdata-v1-GridLevel) | repeated | The grid levels. (SQL Server specific). |
+| cells_per_object | [int32](#int32) |  | The number of cells per object. (SQL Server specific). |
 
 
 

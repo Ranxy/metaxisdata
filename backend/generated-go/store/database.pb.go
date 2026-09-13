@@ -2505,8 +2505,10 @@ type IndexMetadata struct {
 	OpclassNames []string `protobuf:"bytes,16,rep,name=opclass_names,json=opclassNames,proto3" json:"opclass_names,omitempty"`
 	// True if the operator class is the default. (PostgreSQL specific).
 	OpclassDefaults []bool `protobuf:"varint,17,rep,packed,name=opclass_defaults,json=opclassDefaults,proto3" json:"opclass_defaults,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// The spatial index configuration. (SQL Server and other engines).
+	SpatialConfig *SpatialIndexConfig `protobuf:"bytes,15,opt,name=spatial_config,json=spatialConfig,proto3" json:"spatial_config,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *IndexMetadata) Reset() {
@@ -2644,6 +2646,526 @@ func (x *IndexMetadata) GetOpclassDefaults() []bool {
 	return nil
 }
 
+func (x *IndexMetadata) GetSpatialConfig() *SpatialIndexConfig {
+	if x != nil {
+		return x.SpatialConfig
+	}
+	return nil
+}
+
+// SpatialIndexConfig is the configuration of a spatial index.
+type SpatialIndexConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The index method, such as "SPATIAL" or "GIST".
+	Method string `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
+	// The tessellation configuration. (SQL Server specific).
+	Tessellation *TessellationConfig `protobuf:"bytes,2,opt,name=tessellation,proto3" json:"tessellation,omitempty"`
+	// The storage and performance parameters.
+	Storage *StorageConfig `protobuf:"bytes,3,opt,name=storage,proto3" json:"storage,omitempty"`
+	// The dimensional parameters.
+	Dimensional *DimensionalConfig `protobuf:"bytes,4,opt,name=dimensional,proto3" json:"dimensional,omitempty"`
+	// Engine specific parameters.
+	EngineSpecific map[string]string `protobuf:"bytes,5,rep,name=engine_specific,json=engineSpecific,proto3" json:"engine_specific,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *SpatialIndexConfig) Reset() {
+	*x = SpatialIndexConfig{}
+	mi := &file_store_database_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SpatialIndexConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SpatialIndexConfig) ProtoMessage() {}
+
+func (x *SpatialIndexConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_store_database_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SpatialIndexConfig.ProtoReflect.Descriptor instead.
+func (*SpatialIndexConfig) Descriptor() ([]byte, []int) {
+	return file_store_database_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *SpatialIndexConfig) GetMethod() string {
+	if x != nil {
+		return x.Method
+	}
+	return ""
+}
+
+func (x *SpatialIndexConfig) GetTessellation() *TessellationConfig {
+	if x != nil {
+		return x.Tessellation
+	}
+	return nil
+}
+
+func (x *SpatialIndexConfig) GetStorage() *StorageConfig {
+	if x != nil {
+		return x.Storage
+	}
+	return nil
+}
+
+func (x *SpatialIndexConfig) GetDimensional() *DimensionalConfig {
+	if x != nil {
+		return x.Dimensional
+	}
+	return nil
+}
+
+func (x *SpatialIndexConfig) GetEngineSpecific() map[string]string {
+	if x != nil {
+		return x.EngineSpecific
+	}
+	return nil
+}
+
+// TessellationConfig is the tessellation configuration of a spatial index.
+type TessellationConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The tessellation scheme, such as GEOMETRY_GRID or GEOGRAPHY_GRID.
+	Scheme string `protobuf:"bytes,1,opt,name=scheme,proto3" json:"scheme,omitempty"`
+	// The bounding box. (SQL Server specific).
+	BoundingBox *BoundingBox `protobuf:"bytes,2,opt,name=bounding_box,json=boundingBox,proto3" json:"bounding_box,omitempty"`
+	// The grid levels. (SQL Server specific).
+	GridLevels []*GridLevel `protobuf:"bytes,3,rep,name=grid_levels,json=gridLevels,proto3" json:"grid_levels,omitempty"`
+	// The number of cells per object. (SQL Server specific).
+	CellsPerObject int32 `protobuf:"varint,4,opt,name=cells_per_object,json=cellsPerObject,proto3" json:"cells_per_object,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *TessellationConfig) Reset() {
+	*x = TessellationConfig{}
+	mi := &file_store_database_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TessellationConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TessellationConfig) ProtoMessage() {}
+
+func (x *TessellationConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_store_database_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TessellationConfig.ProtoReflect.Descriptor instead.
+func (*TessellationConfig) Descriptor() ([]byte, []int) {
+	return file_store_database_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *TessellationConfig) GetScheme() string {
+	if x != nil {
+		return x.Scheme
+	}
+	return ""
+}
+
+func (x *TessellationConfig) GetBoundingBox() *BoundingBox {
+	if x != nil {
+		return x.BoundingBox
+	}
+	return nil
+}
+
+func (x *TessellationConfig) GetGridLevels() []*GridLevel {
+	if x != nil {
+		return x.GridLevels
+	}
+	return nil
+}
+
+func (x *TessellationConfig) GetCellsPerObject() int32 {
+	if x != nil {
+		return x.CellsPerObject
+	}
+	return 0
+}
+
+// BoundingBox is the bounding box of a spatial index.
+type BoundingBox struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Xmin          float64                `protobuf:"fixed64,1,opt,name=xmin,proto3" json:"xmin,omitempty"`
+	Ymin          float64                `protobuf:"fixed64,2,opt,name=ymin,proto3" json:"ymin,omitempty"`
+	Xmax          float64                `protobuf:"fixed64,3,opt,name=xmax,proto3" json:"xmax,omitempty"`
+	Ymax          float64                `protobuf:"fixed64,4,opt,name=ymax,proto3" json:"ymax,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BoundingBox) Reset() {
+	*x = BoundingBox{}
+	mi := &file_store_database_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BoundingBox) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BoundingBox) ProtoMessage() {}
+
+func (x *BoundingBox) ProtoReflect() protoreflect.Message {
+	mi := &file_store_database_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BoundingBox.ProtoReflect.Descriptor instead.
+func (*BoundingBox) Descriptor() ([]byte, []int) {
+	return file_store_database_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *BoundingBox) GetXmin() float64 {
+	if x != nil {
+		return x.Xmin
+	}
+	return 0
+}
+
+func (x *BoundingBox) GetYmin() float64 {
+	if x != nil {
+		return x.Ymin
+	}
+	return 0
+}
+
+func (x *BoundingBox) GetXmax() float64 {
+	if x != nil {
+		return x.Xmax
+	}
+	return 0
+}
+
+func (x *BoundingBox) GetYmax() float64 {
+	if x != nil {
+		return x.Ymax
+	}
+	return 0
+}
+
+// GridLevel is one grid level of a spatial tessellation.
+type GridLevel struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The level, 1 to 4 for SQL Server.
+	Level int32 `protobuf:"varint,1,opt,name=level,proto3" json:"level,omitempty"`
+	// The density, such as LOW, MEDIUM or HIGH.
+	Density       string `protobuf:"bytes,2,opt,name=density,proto3" json:"density,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GridLevel) Reset() {
+	*x = GridLevel{}
+	mi := &file_store_database_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GridLevel) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GridLevel) ProtoMessage() {}
+
+func (x *GridLevel) ProtoReflect() protoreflect.Message {
+	mi := &file_store_database_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GridLevel.ProtoReflect.Descriptor instead.
+func (*GridLevel) Descriptor() ([]byte, []int) {
+	return file_store_database_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *GridLevel) GetLevel() int32 {
+	if x != nil {
+		return x.Level
+	}
+	return 0
+}
+
+func (x *GridLevel) GetDensity() string {
+	if x != nil {
+		return x.Density
+	}
+	return ""
+}
+
+// StorageConfig holds storage and performance parameters of an index.
+type StorageConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// PostgreSQL parameters.
+	Fillfactor int32  `protobuf:"varint,1,opt,name=fillfactor,proto3" json:"fillfactor,omitempty"`
+	Buffering  string `protobuf:"bytes,2,opt,name=buffering,proto3" json:"buffering,omitempty"`
+	// Oracle parameters.
+	Tablespace     string `protobuf:"bytes,3,opt,name=tablespace,proto3" json:"tablespace,omitempty"`
+	WorkTablespace string `protobuf:"bytes,4,opt,name=work_tablespace,json=workTablespace,proto3" json:"work_tablespace,omitempty"`
+	SdoLevel       int32  `protobuf:"varint,5,opt,name=sdo_level,json=sdoLevel,proto3" json:"sdo_level,omitempty"`
+	CommitInterval int32  `protobuf:"varint,6,opt,name=commit_interval,json=commitInterval,proto3" json:"commit_interval,omitempty"`
+	// SQL Server parameters.
+	PadIndex        bool   `protobuf:"varint,7,opt,name=pad_index,json=padIndex,proto3" json:"pad_index,omitempty"`
+	SortInTempdb    string `protobuf:"bytes,8,opt,name=sort_in_tempdb,json=sortInTempdb,proto3" json:"sort_in_tempdb,omitempty"`
+	DropExisting    bool   `protobuf:"varint,9,opt,name=drop_existing,json=dropExisting,proto3" json:"drop_existing,omitempty"`
+	Online          bool   `protobuf:"varint,10,opt,name=online,proto3" json:"online,omitempty"`
+	AllowRowLocks   bool   `protobuf:"varint,11,opt,name=allow_row_locks,json=allowRowLocks,proto3" json:"allow_row_locks,omitempty"`
+	AllowPageLocks  bool   `protobuf:"varint,12,opt,name=allow_page_locks,json=allowPageLocks,proto3" json:"allow_page_locks,omitempty"`
+	Maxdop          int32  `protobuf:"varint,13,opt,name=maxdop,proto3" json:"maxdop,omitempty"`
+	DataCompression string `protobuf:"bytes,14,opt,name=data_compression,json=dataCompression,proto3" json:"data_compression,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *StorageConfig) Reset() {
+	*x = StorageConfig{}
+	mi := &file_store_database_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StorageConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StorageConfig) ProtoMessage() {}
+
+func (x *StorageConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_store_database_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StorageConfig.ProtoReflect.Descriptor instead.
+func (*StorageConfig) Descriptor() ([]byte, []int) {
+	return file_store_database_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *StorageConfig) GetFillfactor() int32 {
+	if x != nil {
+		return x.Fillfactor
+	}
+	return 0
+}
+
+func (x *StorageConfig) GetBuffering() string {
+	if x != nil {
+		return x.Buffering
+	}
+	return ""
+}
+
+func (x *StorageConfig) GetTablespace() string {
+	if x != nil {
+		return x.Tablespace
+	}
+	return ""
+}
+
+func (x *StorageConfig) GetWorkTablespace() string {
+	if x != nil {
+		return x.WorkTablespace
+	}
+	return ""
+}
+
+func (x *StorageConfig) GetSdoLevel() int32 {
+	if x != nil {
+		return x.SdoLevel
+	}
+	return 0
+}
+
+func (x *StorageConfig) GetCommitInterval() int32 {
+	if x != nil {
+		return x.CommitInterval
+	}
+	return 0
+}
+
+func (x *StorageConfig) GetPadIndex() bool {
+	if x != nil {
+		return x.PadIndex
+	}
+	return false
+}
+
+func (x *StorageConfig) GetSortInTempdb() string {
+	if x != nil {
+		return x.SortInTempdb
+	}
+	return ""
+}
+
+func (x *StorageConfig) GetDropExisting() bool {
+	if x != nil {
+		return x.DropExisting
+	}
+	return false
+}
+
+func (x *StorageConfig) GetOnline() bool {
+	if x != nil {
+		return x.Online
+	}
+	return false
+}
+
+func (x *StorageConfig) GetAllowRowLocks() bool {
+	if x != nil {
+		return x.AllowRowLocks
+	}
+	return false
+}
+
+func (x *StorageConfig) GetAllowPageLocks() bool {
+	if x != nil {
+		return x.AllowPageLocks
+	}
+	return false
+}
+
+func (x *StorageConfig) GetMaxdop() int32 {
+	if x != nil {
+		return x.Maxdop
+	}
+	return 0
+}
+
+func (x *StorageConfig) GetDataCompression() string {
+	if x != nil {
+		return x.DataCompression
+	}
+	return ""
+}
+
+// DimensionalConfig holds dimensional parameters of a spatial index.
+type DimensionalConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The number of dimensions, 2 to 4, default 2.
+	Dimensions int32 `protobuf:"varint,1,opt,name=dimensions,proto3" json:"dimensions,omitempty"`
+	// The spatial data type, such as GEOMETRY or GEOGRAPHY.
+	DataType string `protobuf:"bytes,2,opt,name=data_type,json=dataType,proto3" json:"data_type,omitempty"`
+	// The operator class. (PostgreSQL specific).
+	OperatorClass string `protobuf:"bytes,3,opt,name=operator_class,json=operatorClass,proto3" json:"operator_class,omitempty"`
+	// The geometry type constraint. (Oracle specific).
+	LayerGtype string `protobuf:"bytes,4,opt,name=layer_gtype,json=layerGtype,proto3" json:"layer_gtype,omitempty"`
+	// Whether the index is built in parallel.
+	ParallelBuild bool `protobuf:"varint,5,opt,name=parallel_build,json=parallelBuild,proto3" json:"parallel_build,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DimensionalConfig) Reset() {
+	*x = DimensionalConfig{}
+	mi := &file_store_database_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DimensionalConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DimensionalConfig) ProtoMessage() {}
+
+func (x *DimensionalConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_store_database_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DimensionalConfig.ProtoReflect.Descriptor instead.
+func (*DimensionalConfig) Descriptor() ([]byte, []int) {
+	return file_store_database_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *DimensionalConfig) GetDimensions() int32 {
+	if x != nil {
+		return x.Dimensions
+	}
+	return 0
+}
+
+func (x *DimensionalConfig) GetDataType() string {
+	if x != nil {
+		return x.DataType
+	}
+	return ""
+}
+
+func (x *DimensionalConfig) GetOperatorClass() string {
+	if x != nil {
+		return x.OperatorClass
+	}
+	return ""
+}
+
+func (x *DimensionalConfig) GetLayerGtype() string {
+	if x != nil {
+		return x.LayerGtype
+	}
+	return ""
+}
+
+func (x *DimensionalConfig) GetParallelBuild() bool {
+	if x != nil {
+		return x.ParallelBuild
+	}
+	return false
+}
+
 // ExtensionMetadata is the metadata for extensions.
 type ExtensionMetadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -2662,7 +3184,7 @@ type ExtensionMetadata struct {
 
 func (x *ExtensionMetadata) Reset() {
 	*x = ExtensionMetadata{}
-	mi := &file_store_database_proto_msgTypes[22]
+	mi := &file_store_database_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2674,7 +3196,7 @@ func (x *ExtensionMetadata) String() string {
 func (*ExtensionMetadata) ProtoMessage() {}
 
 func (x *ExtensionMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_store_database_proto_msgTypes[22]
+	mi := &file_store_database_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2687,7 +3209,7 @@ func (x *ExtensionMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExtensionMetadata.ProtoReflect.Descriptor instead.
 func (*ExtensionMetadata) Descriptor() ([]byte, []int) {
-	return file_store_database_proto_rawDescGZIP(), []int{22}
+	return file_store_database_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ExtensionMetadata) GetName() string {
@@ -2747,7 +3269,7 @@ type EventTriggerMetadata struct {
 
 func (x *EventTriggerMetadata) Reset() {
 	*x = EventTriggerMetadata{}
-	mi := &file_store_database_proto_msgTypes[23]
+	mi := &file_store_database_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2759,7 +3281,7 @@ func (x *EventTriggerMetadata) String() string {
 func (*EventTriggerMetadata) ProtoMessage() {}
 
 func (x *EventTriggerMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_store_database_proto_msgTypes[23]
+	mi := &file_store_database_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2772,7 +3294,7 @@ func (x *EventTriggerMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventTriggerMetadata.ProtoReflect.Descriptor instead.
 func (*EventTriggerMetadata) Descriptor() ([]byte, []int) {
-	return file_store_database_proto_rawDescGZIP(), []int{23}
+	return file_store_database_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *EventTriggerMetadata) GetName() string {
@@ -2866,7 +3388,7 @@ type ForeignKeyMetadata struct {
 
 func (x *ForeignKeyMetadata) Reset() {
 	*x = ForeignKeyMetadata{}
-	mi := &file_store_database_proto_msgTypes[24]
+	mi := &file_store_database_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2878,7 +3400,7 @@ func (x *ForeignKeyMetadata) String() string {
 func (*ForeignKeyMetadata) ProtoMessage() {}
 
 func (x *ForeignKeyMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_store_database_proto_msgTypes[24]
+	mi := &file_store_database_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2891,7 +3413,7 @@ func (x *ForeignKeyMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ForeignKeyMetadata.ProtoReflect.Descriptor instead.
 func (*ForeignKeyMetadata) Descriptor() ([]byte, []int) {
-	return file_store_database_proto_rawDescGZIP(), []int{24}
+	return file_store_database_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ForeignKeyMetadata) GetName() string {
@@ -2979,7 +3501,7 @@ type ManualSQLMetadata struct {
 
 func (x *ManualSQLMetadata) Reset() {
 	*x = ManualSQLMetadata{}
-	mi := &file_store_database_proto_msgTypes[25]
+	mi := &file_store_database_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2991,7 +3513,7 @@ func (x *ManualSQLMetadata) String() string {
 func (*ManualSQLMetadata) ProtoMessage() {}
 
 func (x *ManualSQLMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_store_database_proto_msgTypes[25]
+	mi := &file_store_database_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3004,7 +3526,7 @@ func (x *ManualSQLMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ManualSQLMetadata.ProtoReflect.Descriptor instead.
 func (*ManualSQLMetadata) Descriptor() ([]byte, []int) {
-	return file_store_database_proto_rawDescGZIP(), []int{25}
+	return file_store_database_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ManualSQLMetadata) GetManualSqlId() string {
@@ -3101,7 +3623,7 @@ type StoredMetadata struct {
 
 func (x *StoredMetadata) Reset() {
 	*x = StoredMetadata{}
-	mi := &file_store_database_proto_msgTypes[26]
+	mi := &file_store_database_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3113,7 +3635,7 @@ func (x *StoredMetadata) String() string {
 func (*StoredMetadata) ProtoMessage() {}
 
 func (x *StoredMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_store_database_proto_msgTypes[26]
+	mi := &file_store_database_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3126,7 +3648,7 @@ func (x *StoredMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoredMetadata.ProtoReflect.Descriptor instead.
 func (*StoredMetadata) Descriptor() ([]byte, []int) {
-	return file_store_database_proto_rawDescGZIP(), []int{26}
+	return file_store_database_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *StoredMetadata) GetType() isStoredMetadata_Type {
@@ -3595,7 +4117,7 @@ const file_store_database_proto_rawDesc = "" +
 	"\x12database_collation\x18\x06 \x01(\tR\x11databaseCollation\x12\x19\n" +
 	"\bsql_mode\x18\a \x01(\tR\asqlMode\x12\x18\n" +
 	"\acomment\x18\t \x01(\tR\acomment\x12\x1b\n" +
-	"\tskip_dump\x18\b \x01(\bR\bskipDump\"\x98\x04\n" +
+	"\tskip_dump\x18\b \x01(\bR\bskipDump\"\xd0\x04\n" +
 	"\rIndexMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vexpressions\x18\x02 \x03(\tR\vexpressions\x12\x1d\n" +
@@ -3617,7 +4139,60 @@ const file_store_database_proto_rawDesc = "" +
 	"\x11parent_index_name\x18\f \x01(\tR\x0fparentIndexName\x12#\n" +
 	"\ris_constraint\x18\x0e \x01(\bR\fisConstraint\x12#\n" +
 	"\ropclass_names\x18\x10 \x03(\tR\fopclassNames\x12)\n" +
-	"\x10opclass_defaults\x18\x11 \x03(\bR\x0fopclassDefaultsJ\x04\b\r\x10\x0eJ\x04\b\x0f\x10\x10R\vgranularityR\x0espatial_config\"{\n" +
+	"\x10opclass_defaults\x18\x11 \x03(\bR\x0fopclassDefaults\x12L\n" +
+	"\x0espatial_config\x18\x0f \x01(\v2%.metaxisdata.store.SpatialIndexConfigR\rspatialConfigJ\x04\b\r\x10\x0eR\vgranularity\"\xa2\x03\n" +
+	"\x12SpatialIndexConfig\x12\x16\n" +
+	"\x06method\x18\x01 \x01(\tR\x06method\x12I\n" +
+	"\ftessellation\x18\x02 \x01(\v2%.metaxisdata.store.TessellationConfigR\ftessellation\x12:\n" +
+	"\astorage\x18\x03 \x01(\v2 .metaxisdata.store.StorageConfigR\astorage\x12F\n" +
+	"\vdimensional\x18\x04 \x01(\v2$.metaxisdata.store.DimensionalConfigR\vdimensional\x12b\n" +
+	"\x0fengine_specific\x18\x05 \x03(\v29.metaxisdata.store.SpatialIndexConfig.EngineSpecificEntryR\x0eengineSpecific\x1aA\n" +
+	"\x13EngineSpecificEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd8\x01\n" +
+	"\x12TessellationConfig\x12\x16\n" +
+	"\x06scheme\x18\x01 \x01(\tR\x06scheme\x12A\n" +
+	"\fbounding_box\x18\x02 \x01(\v2\x1e.metaxisdata.store.BoundingBoxR\vboundingBox\x12=\n" +
+	"\vgrid_levels\x18\x03 \x03(\v2\x1c.metaxisdata.store.GridLevelR\n" +
+	"gridLevels\x12(\n" +
+	"\x10cells_per_object\x18\x04 \x01(\x05R\x0ecellsPerObject\"]\n" +
+	"\vBoundingBox\x12\x12\n" +
+	"\x04xmin\x18\x01 \x01(\x01R\x04xmin\x12\x12\n" +
+	"\x04ymin\x18\x02 \x01(\x01R\x04ymin\x12\x12\n" +
+	"\x04xmax\x18\x03 \x01(\x01R\x04xmax\x12\x12\n" +
+	"\x04ymax\x18\x04 \x01(\x01R\x04ymax\";\n" +
+	"\tGridLevel\x12\x14\n" +
+	"\x05level\x18\x01 \x01(\x05R\x05level\x12\x18\n" +
+	"\adensity\x18\x02 \x01(\tR\adensity\"\xf1\x03\n" +
+	"\rStorageConfig\x12\x1e\n" +
+	"\n" +
+	"fillfactor\x18\x01 \x01(\x05R\n" +
+	"fillfactor\x12\x1c\n" +
+	"\tbuffering\x18\x02 \x01(\tR\tbuffering\x12\x1e\n" +
+	"\n" +
+	"tablespace\x18\x03 \x01(\tR\n" +
+	"tablespace\x12'\n" +
+	"\x0fwork_tablespace\x18\x04 \x01(\tR\x0eworkTablespace\x12\x1b\n" +
+	"\tsdo_level\x18\x05 \x01(\x05R\bsdoLevel\x12'\n" +
+	"\x0fcommit_interval\x18\x06 \x01(\x05R\x0ecommitInterval\x12\x1b\n" +
+	"\tpad_index\x18\a \x01(\bR\bpadIndex\x12$\n" +
+	"\x0esort_in_tempdb\x18\b \x01(\tR\fsortInTempdb\x12#\n" +
+	"\rdrop_existing\x18\t \x01(\bR\fdropExisting\x12\x16\n" +
+	"\x06online\x18\n" +
+	" \x01(\bR\x06online\x12&\n" +
+	"\x0fallow_row_locks\x18\v \x01(\bR\rallowRowLocks\x12(\n" +
+	"\x10allow_page_locks\x18\f \x01(\bR\x0eallowPageLocks\x12\x16\n" +
+	"\x06maxdop\x18\r \x01(\x05R\x06maxdop\x12)\n" +
+	"\x10data_compression\x18\x0e \x01(\tR\x0fdataCompression\"\xbf\x01\n" +
+	"\x11DimensionalConfig\x12\x1e\n" +
+	"\n" +
+	"dimensions\x18\x01 \x01(\x05R\n" +
+	"dimensions\x12\x1b\n" +
+	"\tdata_type\x18\x02 \x01(\tR\bdataType\x12%\n" +
+	"\x0eoperator_class\x18\x03 \x01(\tR\roperatorClass\x12\x1f\n" +
+	"\vlayer_gtype\x18\x04 \x01(\tR\n" +
+	"layerGtype\x12%\n" +
+	"\x0eparallel_build\x18\x05 \x01(\bR\rparallelBuild\"{\n" +
 	"\x11ExtensionMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06schema\x18\x02 \x01(\tR\x06schema\x12\x18\n" +
@@ -3694,7 +4269,7 @@ func file_store_database_proto_rawDescGZIP() []byte {
 }
 
 var file_store_database_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_store_database_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
+var file_store_database_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
 var file_store_database_proto_goTypes = []any{
 	(TablePartitionMetadata_Type)(0),       // 0: metaxisdata.store.TablePartitionMetadata.Type
 	(ColumnMetadata_IdentityGeneration)(0), // 1: metaxisdata.store.ColumnMetadata.IdentityGeneration
@@ -3721,23 +4296,30 @@ var file_store_database_proto_goTypes = []any{
 	(*FunctionMetadata)(nil),               // 22: metaxisdata.store.FunctionMetadata
 	(*ProcedureMetadata)(nil),              // 23: metaxisdata.store.ProcedureMetadata
 	(*IndexMetadata)(nil),                  // 24: metaxisdata.store.IndexMetadata
-	(*ExtensionMetadata)(nil),              // 25: metaxisdata.store.ExtensionMetadata
-	(*EventTriggerMetadata)(nil),           // 26: metaxisdata.store.EventTriggerMetadata
-	(*ForeignKeyMetadata)(nil),             // 27: metaxisdata.store.ForeignKeyMetadata
-	(*ManualSQLMetadata)(nil),              // 28: metaxisdata.store.ManualSQLMetadata
-	(*StoredMetadata)(nil),                 // 29: metaxisdata.store.StoredMetadata
-	nil,                                    // 30: metaxisdata.store.DatabaseMetadata.LabelsEntry
-	nil,                                    // 31: metaxisdata.store.ManualSQLMetadata.AttributesEntry
-	(*timestamppb.Timestamp)(nil),          // 32: google.protobuf.Timestamp
-	(*OpenLineageRunSummary)(nil),          // 33: metaxisdata.store.OpenLineageRunSummary
-	(*OpenLineageTaskSummary)(nil),         // 34: metaxisdata.store.OpenLineageTaskSummary
+	(*SpatialIndexConfig)(nil),             // 25: metaxisdata.store.SpatialIndexConfig
+	(*TessellationConfig)(nil),             // 26: metaxisdata.store.TessellationConfig
+	(*BoundingBox)(nil),                    // 27: metaxisdata.store.BoundingBox
+	(*GridLevel)(nil),                      // 28: metaxisdata.store.GridLevel
+	(*StorageConfig)(nil),                  // 29: metaxisdata.store.StorageConfig
+	(*DimensionalConfig)(nil),              // 30: metaxisdata.store.DimensionalConfig
+	(*ExtensionMetadata)(nil),              // 31: metaxisdata.store.ExtensionMetadata
+	(*EventTriggerMetadata)(nil),           // 32: metaxisdata.store.EventTriggerMetadata
+	(*ForeignKeyMetadata)(nil),             // 33: metaxisdata.store.ForeignKeyMetadata
+	(*ManualSQLMetadata)(nil),              // 34: metaxisdata.store.ManualSQLMetadata
+	(*StoredMetadata)(nil),                 // 35: metaxisdata.store.StoredMetadata
+	nil,                                    // 36: metaxisdata.store.DatabaseMetadata.LabelsEntry
+	nil,                                    // 37: metaxisdata.store.SpatialIndexConfig.EngineSpecificEntry
+	nil,                                    // 38: metaxisdata.store.ManualSQLMetadata.AttributesEntry
+	(*timestamppb.Timestamp)(nil),          // 39: google.protobuf.Timestamp
+	(*OpenLineageRunSummary)(nil),          // 40: metaxisdata.store.OpenLineageRunSummary
+	(*OpenLineageTaskSummary)(nil),         // 41: metaxisdata.store.OpenLineageTaskSummary
 }
 var file_store_database_proto_depIdxs = []int32{
-	30, // 0: metaxisdata.store.DatabaseMetadata.labels:type_name -> metaxisdata.store.DatabaseMetadata.LabelsEntry
-	32, // 1: metaxisdata.store.DatabaseMetadata.last_sync_time:type_name -> google.protobuf.Timestamp
+	36, // 0: metaxisdata.store.DatabaseMetadata.labels:type_name -> metaxisdata.store.DatabaseMetadata.LabelsEntry
+	39, // 1: metaxisdata.store.DatabaseMetadata.last_sync_time:type_name -> google.protobuf.Timestamp
 	5,  // 2: metaxisdata.store.DatabaseSchemaMetadata.schemas:type_name -> metaxisdata.store.SchemaMetadata
-	25, // 3: metaxisdata.store.DatabaseSchemaMetadata.extensions:type_name -> metaxisdata.store.ExtensionMetadata
-	26, // 4: metaxisdata.store.DatabaseSchemaMetadata.event_triggers:type_name -> metaxisdata.store.EventTriggerMetadata
+	31, // 3: metaxisdata.store.DatabaseSchemaMetadata.extensions:type_name -> metaxisdata.store.ExtensionMetadata
+	32, // 4: metaxisdata.store.DatabaseSchemaMetadata.event_triggers:type_name -> metaxisdata.store.EventTriggerMetadata
 	11, // 5: metaxisdata.store.SchemaMetadata.tables:type_name -> metaxisdata.store.TableMetadata
 	14, // 6: metaxisdata.store.SchemaMetadata.external_tables:type_name -> metaxisdata.store.ExternalTableMetadata
 	18, // 7: metaxisdata.store.SchemaMetadata.views:type_name -> metaxisdata.store.ViewMetadata
@@ -3749,7 +4331,7 @@ var file_store_database_proto_depIdxs = []int32{
 	6,  // 13: metaxisdata.store.SchemaMetadata.enum_types:type_name -> metaxisdata.store.EnumTypeMetadata
 	16, // 14: metaxisdata.store.TableMetadata.columns:type_name -> metaxisdata.store.ColumnMetadata
 	24, // 15: metaxisdata.store.TableMetadata.indexes:type_name -> metaxisdata.store.IndexMetadata
-	27, // 16: metaxisdata.store.TableMetadata.foreign_keys:type_name -> metaxisdata.store.ForeignKeyMetadata
+	33, // 16: metaxisdata.store.TableMetadata.foreign_keys:type_name -> metaxisdata.store.ForeignKeyMetadata
 	15, // 17: metaxisdata.store.TableMetadata.partitions:type_name -> metaxisdata.store.TablePartitionMetadata
 	12, // 18: metaxisdata.store.TableMetadata.check_constraints:type_name -> metaxisdata.store.CheckConstraintMetadata
 	9,  // 19: metaxisdata.store.TableMetadata.triggers:type_name -> metaxisdata.store.TriggerMetadata
@@ -3772,25 +4354,32 @@ var file_store_database_proto_depIdxs = []int32{
 	9,  // 36: metaxisdata.store.MaterializedViewMetadata.triggers:type_name -> metaxisdata.store.TriggerMetadata
 	24, // 37: metaxisdata.store.MaterializedViewMetadata.indexes:type_name -> metaxisdata.store.IndexMetadata
 	21, // 38: metaxisdata.store.FunctionMetadata.dependency_tables:type_name -> metaxisdata.store.DependencyTable
-	31, // 39: metaxisdata.store.ManualSQLMetadata.attributes:type_name -> metaxisdata.store.ManualSQLMetadata.AttributesEntry
-	4,  // 40: metaxisdata.store.StoredMetadata.database_schema_metadata:type_name -> metaxisdata.store.DatabaseSchemaMetadata
-	5,  // 41: metaxisdata.store.StoredMetadata.schema_metadata:type_name -> metaxisdata.store.SchemaMetadata
-	11, // 42: metaxisdata.store.StoredMetadata.table_metadata:type_name -> metaxisdata.store.TableMetadata
-	14, // 43: metaxisdata.store.StoredMetadata.external_table_metadata:type_name -> metaxisdata.store.ExternalTableMetadata
-	18, // 44: metaxisdata.store.StoredMetadata.view_metadata:type_name -> metaxisdata.store.ViewMetadata
-	20, // 45: metaxisdata.store.StoredMetadata.materialized_view_metadata:type_name -> metaxisdata.store.MaterializedViewMetadata
-	22, // 46: metaxisdata.store.StoredMetadata.function_metadata:type_name -> metaxisdata.store.FunctionMetadata
-	23, // 47: metaxisdata.store.StoredMetadata.procedure_metadata:type_name -> metaxisdata.store.ProcedureMetadata
-	8,  // 48: metaxisdata.store.StoredMetadata.sequence_metadata:type_name -> metaxisdata.store.SequenceMetadata
-	33, // 49: metaxisdata.store.StoredMetadata.openlineage_run_summary:type_name -> metaxisdata.store.OpenLineageRunSummary
-	34, // 50: metaxisdata.store.StoredMetadata.openlineage_task_summary:type_name -> metaxisdata.store.OpenLineageTaskSummary
-	28, // 51: metaxisdata.store.StoredMetadata.manual_sql_metadata:type_name -> metaxisdata.store.ManualSQLMetadata
-	16, // 52: metaxisdata.store.StoredMetadata.column_metadata:type_name -> metaxisdata.store.ColumnMetadata
-	53, // [53:53] is the sub-list for method output_type
-	53, // [53:53] is the sub-list for method input_type
-	53, // [53:53] is the sub-list for extension type_name
-	53, // [53:53] is the sub-list for extension extendee
-	0,  // [0:53] is the sub-list for field type_name
+	25, // 39: metaxisdata.store.IndexMetadata.spatial_config:type_name -> metaxisdata.store.SpatialIndexConfig
+	26, // 40: metaxisdata.store.SpatialIndexConfig.tessellation:type_name -> metaxisdata.store.TessellationConfig
+	29, // 41: metaxisdata.store.SpatialIndexConfig.storage:type_name -> metaxisdata.store.StorageConfig
+	30, // 42: metaxisdata.store.SpatialIndexConfig.dimensional:type_name -> metaxisdata.store.DimensionalConfig
+	37, // 43: metaxisdata.store.SpatialIndexConfig.engine_specific:type_name -> metaxisdata.store.SpatialIndexConfig.EngineSpecificEntry
+	27, // 44: metaxisdata.store.TessellationConfig.bounding_box:type_name -> metaxisdata.store.BoundingBox
+	28, // 45: metaxisdata.store.TessellationConfig.grid_levels:type_name -> metaxisdata.store.GridLevel
+	38, // 46: metaxisdata.store.ManualSQLMetadata.attributes:type_name -> metaxisdata.store.ManualSQLMetadata.AttributesEntry
+	4,  // 47: metaxisdata.store.StoredMetadata.database_schema_metadata:type_name -> metaxisdata.store.DatabaseSchemaMetadata
+	5,  // 48: metaxisdata.store.StoredMetadata.schema_metadata:type_name -> metaxisdata.store.SchemaMetadata
+	11, // 49: metaxisdata.store.StoredMetadata.table_metadata:type_name -> metaxisdata.store.TableMetadata
+	14, // 50: metaxisdata.store.StoredMetadata.external_table_metadata:type_name -> metaxisdata.store.ExternalTableMetadata
+	18, // 51: metaxisdata.store.StoredMetadata.view_metadata:type_name -> metaxisdata.store.ViewMetadata
+	20, // 52: metaxisdata.store.StoredMetadata.materialized_view_metadata:type_name -> metaxisdata.store.MaterializedViewMetadata
+	22, // 53: metaxisdata.store.StoredMetadata.function_metadata:type_name -> metaxisdata.store.FunctionMetadata
+	23, // 54: metaxisdata.store.StoredMetadata.procedure_metadata:type_name -> metaxisdata.store.ProcedureMetadata
+	8,  // 55: metaxisdata.store.StoredMetadata.sequence_metadata:type_name -> metaxisdata.store.SequenceMetadata
+	40, // 56: metaxisdata.store.StoredMetadata.openlineage_run_summary:type_name -> metaxisdata.store.OpenLineageRunSummary
+	41, // 57: metaxisdata.store.StoredMetadata.openlineage_task_summary:type_name -> metaxisdata.store.OpenLineageTaskSummary
+	34, // 58: metaxisdata.store.StoredMetadata.manual_sql_metadata:type_name -> metaxisdata.store.ManualSQLMetadata
+	16, // 59: metaxisdata.store.StoredMetadata.column_metadata:type_name -> metaxisdata.store.ColumnMetadata
+	60, // [60:60] is the sub-list for method output_type
+	60, // [60:60] is the sub-list for method input_type
+	60, // [60:60] is the sub-list for extension type_name
+	60, // [60:60] is the sub-list for extension extendee
+	0,  // [0:60] is the sub-list for field type_name
 }
 
 func init() { file_store_database_proto_init() }
@@ -3799,7 +4388,7 @@ func file_store_database_proto_init() {
 		return
 	}
 	file_store_openlineage_proto_init()
-	file_store_database_proto_msgTypes[26].OneofWrappers = []any{
+	file_store_database_proto_msgTypes[32].OneofWrappers = []any{
 		(*StoredMetadata_DatabaseSchemaMetadata)(nil),
 		(*StoredMetadata_SchemaMetadata)(nil),
 		(*StoredMetadata_TableMetadata)(nil),
@@ -3820,7 +4409,7 @@ func file_store_database_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_database_proto_rawDesc), len(file_store_database_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   29,
+			NumMessages:   36,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

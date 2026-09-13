@@ -469,6 +469,10 @@
             <ul>
               
                 <li>
+                  <a href="#metaxisdata.v1.BoundingBox"><span class="badge">M</span>BoundingBox</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.CheckConstraintMetadata"><span class="badge">M</span>CheckConstraintMetadata</a>
                 </li>
               
@@ -510,6 +514,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.DiffMetadataResponse"><span class="badge">M</span>DiffMetadataResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DimensionalConfig"><span class="badge">M</span>DimensionalConfig</a>
                 </li>
               
                 <li>
@@ -566,6 +574,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.GetSchemaStringRequest"><span class="badge">M</span>GetSchemaStringRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GridLevel"><span class="badge">M</span>GridLevel</a>
                 </li>
               
                 <li>
@@ -697,6 +709,18 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.SpatialIndexConfig"><span class="badge">M</span>SpatialIndexConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SpatialIndexConfig.EngineSpecificEntry"><span class="badge">M</span>SpatialIndexConfig.EngineSpecificEntry</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.StorageConfig"><span class="badge">M</span>StorageConfig</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.StoredMetadata"><span class="badge">M</span>StoredMetadata</a>
                 </li>
               
@@ -714,6 +738,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.TablePartitionMetadata"><span class="badge">M</span>TablePartitionMetadata</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.TessellationConfig"><span class="badge">M</span>TessellationConfig</a>
                 </li>
               
                 <li>
@@ -1611,7 +1639,7 @@
 
       
         <h3 id="metaxisdata.v1.Engine">Engine</h3>
-        <p>Engine is the database engine of an instance. Only the engines the product</p><p>actually supports are kept: MySQL-compatible ones (MySQL, TiDB, MariaDB,</p><p>OceanBase) and PostgreSQL. The removed Bytebase-era values keep their numbers</p><p>reserved so they can never be silently reused for something else.</p>
+        <p>Engine is the database engine of an instance. Only the engines the product</p><p>actually supports are kept: MySQL-compatible ones (MySQL, TiDB, MariaDB,</p><p>OceanBase), PostgreSQL and SQL Server. The other removed values keep their</p><p>numbers reserved so they can never be silently reused for something else.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Name</td><td>Number</td><td>Description</td></tr>
@@ -1621,6 +1649,12 @@
               <tr>
                 <td>ENGINE_UNSPECIFIED</td>
                 <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>MSSQL</td>
+                <td>1</td>
                 <td><p></p></td>
               </tr>
             
@@ -3897,6 +3931,51 @@ Format: instances/{instance} </p></td>
       <p></p>
 
       
+        <h3 id="metaxisdata.v1.BoundingBox">BoundingBox</h3>
+        <p>BoundingBox is the bounding box of a spatial index.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>xmin</td>
+                  <td><a href="#double">double</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>ymin</td>
+                  <td><a href="#double">double</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>xmax</td>
+                  <td><a href="#double">double</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>ymax</td>
+                  <td><a href="#double">double</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.CheckConstraintMetadata">CheckConstraintMetadata</h3>
         <p></p>
 
@@ -4479,6 +4558,58 @@ If not set, uses the current/latest version. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>The full DDL migration SQL from source to target. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DimensionalConfig">DimensionalConfig</h3>
+        <p>DimensionalConfig holds dimensional parameters of a spatial index.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>dimensions</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The number of dimensions, 2 to 4, default 2. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>data_type</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The spatial data type, such as GEOMETRY or GEOGRAPHY. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>operator_class</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The operator class. (PostgreSQL specific). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>layer_gtype</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The geometry type constraint. (Oracle specific). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>parallel_build</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the index is built in parallel. </p></td>
                 </tr>
               
             </tbody>
@@ -5158,6 +5289,37 @@ view: &#34;instance_1;db2;schema3;view2&#34; </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GridLevel">GridLevel</h3>
+        <p>GridLevel is one grid level of a spatial tessellation.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>level</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The level, 1 to 4 for SQL Server. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>density</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The density, such as LOW, MEDIUM or HIGH. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.IndexMetadata">IndexMetadata</h3>
         <p>IndexMetadata is the metadata for indexes.</p>
 
@@ -5275,6 +5437,13 @@ Name of the operator class for each column. (PostgreSQL specific). </p></td>
                   <td><a href="#bool">bool</a></td>
                   <td>repeated</td>
                   <td><p>True if the operator class is the default. (PostgreSQL specific). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>spatial_config</td>
+                  <td><a href="#metaxisdata.v1.SpatialIndexConfig">SpatialIndexConfig</a></td>
+                  <td></td>
+                  <td><p>The spatial index configuration. (SQL Server and other engines). </p></td>
                 </tr>
               
             </tbody>
@@ -6978,6 +7147,204 @@ If this field is omitted, there are no subsequent pages. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.SpatialIndexConfig">SpatialIndexConfig</h3>
+        <p>SpatialIndexConfig is the configuration of a spatial index.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>method</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The index method, such as &#34;SPATIAL&#34; or &#34;GIST&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tessellation</td>
+                  <td><a href="#metaxisdata.v1.TessellationConfig">TessellationConfig</a></td>
+                  <td></td>
+                  <td><p>The tessellation configuration. (SQL Server specific). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>storage</td>
+                  <td><a href="#metaxisdata.v1.StorageConfig">StorageConfig</a></td>
+                  <td></td>
+                  <td><p>The storage and performance parameters. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>dimensional</td>
+                  <td><a href="#metaxisdata.v1.DimensionalConfig">DimensionalConfig</a></td>
+                  <td></td>
+                  <td><p>The dimensional parameters. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>engine_specific</td>
+                  <td><a href="#metaxisdata.v1.SpatialIndexConfig.EngineSpecificEntry">SpatialIndexConfig.EngineSpecificEntry</a></td>
+                  <td>repeated</td>
+                  <td><p>Engine specific parameters. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.SpatialIndexConfig.EngineSpecificEntry">SpatialIndexConfig.EngineSpecificEntry</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>value</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.StorageConfig">StorageConfig</h3>
+        <p>StorageConfig holds storage and performance parameters of an index.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>fillfactor</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>PostgreSQL parameters. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>buffering</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tablespace</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Oracle parameters. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>work_tablespace</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sdo_level</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>commit_interval</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>pad_index</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>SQL Server parameters. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sort_in_tempdb</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>drop_existing</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>online</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>allow_row_locks</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>allow_page_locks</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>maxdop</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>data_compression</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.StoredMetadata">StoredMetadata</h3>
         <p>StoredMetadata is the v1 view of one meta_registry_resource row.</p><p>OpenLineage registry rows (store.MetaType_OPENLINEAGE) have no v1</p><p>representation: they are internal summaries of ingested events, and the</p><p>supported way to read them is the OpenLineageService resources. They are</p><p>filtered out of ListMetadata/GetMetadata/SearchMetadata rather than</p><p>serialized as an empty StoredMetadata.</p>
 
@@ -7382,6 +7749,51 @@ in syntax [SUB]PARTITION {number}. </p></td>
                   <td><a href="#metaxisdata.v1.ExcludeConstraintMetadata">ExcludeConstraintMetadata</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.TessellationConfig">TessellationConfig</h3>
+        <p>TessellationConfig is the tessellation configuration of a spatial index.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>scheme</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The tessellation scheme, such as GEOMETRY_GRID or GEOGRAPHY_GRID. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>bounding_box</td>
+                  <td><a href="#metaxisdata.v1.BoundingBox">BoundingBox</a></td>
+                  <td></td>
+                  <td><p>The bounding box. (SQL Server specific). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>grid_levels</td>
+                  <td><a href="#metaxisdata.v1.GridLevel">GridLevel</a></td>
+                  <td>repeated</td>
+                  <td><p>The grid levels. (SQL Server specific). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>cells_per_object</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The number of cells per object. (SQL Server specific). </p></td>
                 </tr>
               
             </tbody>

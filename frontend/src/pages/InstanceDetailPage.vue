@@ -914,6 +914,7 @@ function getEngineLabel(engine: Engine): string {
     [Engine.TIDB]: "TiDB",
     [Engine.MARIADB]: "MariaDB",
     [Engine.OCEANBASE]: "OceanBase",
+    [Engine.MSSQL]: "SQL Server",
   };
   return engineLabels[engine] || "Unknown";
 }

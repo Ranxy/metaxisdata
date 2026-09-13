@@ -1299,8 +1299,102 @@ message IndexMetadata {
   // True if the operator class is the default. (PostgreSQL specific).
   repeated bool opclass_defaults = 17;
 
-  reserved 13, 15;
-  reserved "granularity", "spatial_config";
+  // The spatial index configuration. (SQL Server and other engines).
+  SpatialIndexConfig spatial_config = 15;
+
+  reserved 13;
+  reserved "granularity";
+}
+
+// SpatialIndexConfig is the configuration of a spatial index.
+message SpatialIndexConfig {
+  // The index method, such as "SPATIAL" or "GIST".
+  string method = 1;
+
+  // The tessellation configuration. (SQL Server specific).
+  TessellationConfig tessellation = 2;
+
+  // The storage and performance parameters.
+  StorageConfig storage = 3;
+
+  // The dimensional parameters.
+  DimensionalConfig dimensional = 4;
+
+  // Engine specific parameters.
+  map<string, string> engine_specific = 5;
+}
+
+// TessellationConfig is the tessellation configuration of a spatial index.
+message TessellationConfig {
+  // The tessellation scheme, such as GEOMETRY_GRID or GEOGRAPHY_GRID.
+  string scheme = 1;
+
+  // The bounding box. (SQL Server specific).
+  BoundingBox bounding_box = 2;
+
+  // The grid levels. (SQL Server specific).
+  repeated GridLevel grid_levels = 3;
+
+  // The number of cells per object. (SQL Server specific).
+  int32 cells_per_object = 4;
+}
+
+// BoundingBox is the bounding box of a spatial index.
+message BoundingBox {
+  double xmin = 1;
+  double ymin = 2;
+  double xmax = 3;
+  double ymax = 4;
+}
+
+// GridLevel is one grid level of a spatial tessellation.
+message GridLevel {
+  // The level, 1 to 4 for SQL Server.
+  int32 level = 1;
+
+  // The density, such as LOW, MEDIUM or HIGH.
+  string density = 2;
+}
+
+// StorageConfig holds storage and performance parameters of an index.
+message StorageConfig {
+  // PostgreSQL parameters.
+  int32 fillfactor = 1;
+  string buffering = 2;
+
+  // Oracle parameters.
+  string tablespace = 3;
+  string work_tablespace = 4;
+  int32 sdo_level = 5;
+  int32 commit_interval = 6;
+
+  // SQL Server parameters.
+  bool pad_index = 7;
+  string sort_in_tempdb = 8;
+  bool drop_existing = 9;
+  bool online = 10;
+  bool allow_row_locks = 11;
+  bool allow_page_locks = 12;
+  int32 maxdop = 13;
+  string data_compression = 14;
+}
+
+// DimensionalConfig holds dimensional parameters of a spatial index.
+message DimensionalConfig {
+  // The number of dimensions, 2 to 4, default 2.
+  int32 dimensions = 1;
+
+  // The spatial data type, such as GEOMETRY or GEOGRAPHY.
+  string data_type = 2;
+
+  // The operator class. (PostgreSQL specific).
+  string operator_class = 3;
+
+  // The geometry type constraint. (Oracle specific).
+  string layer_gtype = 4;
+
+  // Whether the index is built in parallel.
+  bool parallel_build = 5;
 }
 
 // ExtensionMetadata is the metadata for extensions.

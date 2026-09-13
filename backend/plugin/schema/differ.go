@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 
+	"google.golang.org/protobuf/proto"
+
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -580,6 +582,8 @@ func columnsEqual(a, b *storepb.ColumnMetadata) bool {
 		a.Position == b.Position &&
 		a.DefaultOnNull == b.DefaultOnNull &&
 		a.IsIdentity == b.IsIdentity &&
+		a.IdentitySeed == b.IdentitySeed &&
+		a.IdentityIncrement == b.IdentityIncrement &&
 		a.IdentityGeneration == b.IdentityGeneration
 }
 
@@ -633,7 +637,8 @@ func indexesEqual(a, b *storepb.IndexMetadata) bool {
 		a.Unique == b.Unique &&
 		a.Primary == b.Primary &&
 		a.Type == b.Type &&
-		a.IsConstraint == b.IsConstraint
+		a.IsConstraint == b.IsConstraint &&
+		proto.Equal(a.SpatialConfig, b.SpatialConfig)
 }
 
 // compareForeignKeys compares foreign keys between two tables.

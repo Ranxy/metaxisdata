@@ -27,6 +27,7 @@ type Engine int32
 
 const (
 	Engine_ENGINE_UNSPECIFIED Engine = 0
+	Engine_MSSQL              Engine = 1
 	Engine_MYSQL              Engine = 2
 	Engine_POSTGRES           Engine = 3
 	Engine_TIDB               Engine = 6
@@ -38,6 +39,7 @@ const (
 var (
 	Engine_name = map[int32]string{
 		0:  "ENGINE_UNSPECIFIED",
+		1:  "MSSQL",
 		2:  "MYSQL",
 		3:  "POSTGRES",
 		6:  "TIDB",
@@ -46,6 +48,7 @@ var (
 	}
 	Engine_value = map[string]int32{
 		"ENGINE_UNSPECIFIED": 0,
+		"MSSQL":              1,
 		"MYSQL":              2,
 		"POSTGRES":           3,
 		"TIDB":               6,
@@ -142,15 +145,16 @@ const file_store_common_proto_rawDesc = "" +
 	"\x12store/common.proto\x12\x11metaxisdata.store\"9\n" +
 	"\tPageToken\x12\x14\n" +
 	"\x05limit\x18\x01 \x01(\x03R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x02 \x01(\x03R\x06offset*\xb8\x02\n" +
+	"\x06offset\x18\x02 \x01(\x03R\x06offset*\xb6\x02\n" +
 	"\x06Engine\x12\x16\n" +
 	"\x12ENGINE_UNSPECIFIED\x10\x00\x12\t\n" +
+	"\x05MSSQL\x10\x01\x12\t\n" +
 	"\x05MYSQL\x10\x02\x12\f\n" +
 	"\bPOSTGRES\x10\x03\x12\b\n" +
 	"\x04TIDB\x10\x06\x12\v\n" +
 	"\aMARIADB\x10\r\x12\r\n" +
-	"\tOCEANBASE\x10\x0e\"\x04\b\x01\x10\x01\"\x04\b\x04\x10\x05\"\x04\b\a\x10\f\"\x04\b\x0f\x10\x1c*\n" +
-	"CLICKHOUSE*\tSNOWFLAKE*\x06SQLITE*\aMONGODB*\x05REDIS*\x06ORACLE*\aSPANNER*\x05MSSQL*\bREDSHIFT*\tSTARROCKS*\x05DORIS*\x04HIVE*\rELASTICSEARCH*\bBIGQUERY*\bDYNAMODB*\n" +
+	"\tOCEANBASE\x10\x0e\"\x04\b\x04\x10\x05\"\x04\b\a\x10\f\"\x04\b\x0f\x10\x1c*\n" +
+	"CLICKHOUSE*\tSNOWFLAKE*\x06SQLITE*\aMONGODB*\x05REDIS*\x06ORACLE*\aSPANNER*\bREDSHIFT*\tSTARROCKS*\x05DORIS*\x04HIVE*\rELASTICSEARCH*\bBIGQUERY*\bDYNAMODB*\n" +
 	"DATABRICKS*\vCOCKROACHDB*\bCOSMOSDB*\x05TRINO*\tCASSANDRAB\x14Z\x12generated-go/storeb\x06proto3"
 
 var (

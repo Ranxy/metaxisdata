@@ -122,6 +122,7 @@ function getEngineLabel(engine: Engine): string {
   const labels: Partial<Record<Engine, string>> = {
     [Engine.MYSQL]: "MySQL",
     [Engine.POSTGRES]: "PostgreSQL",
+    [Engine.MSSQL]: "SQL Server",
   };
   return labels[engine] || "Unknown";
 }
@@ -130,6 +131,7 @@ function getEngineIcon(engine: Engine): string {
   const icons: Partial<Record<Engine, string>> = {
     [Engine.MYSQL]: "My",
     [Engine.POSTGRES]: "PG",
+    [Engine.MSSQL]: "MS",
   };
   return icons[engine] || "DB";
 }
@@ -138,6 +140,7 @@ function getEngineBgClass(engine: Engine): string {
   const classes: Partial<Record<Engine, string>> = {
     [Engine.MYSQL]: "bg-orange-100",
     [Engine.POSTGRES]: "bg-blue-100",
+    [Engine.MSSQL]: "bg-red-100",
   };
   return classes[engine] || "bg-muted";
 }
@@ -146,6 +149,7 @@ function getEngineTextClass(engine: Engine): string {
   const classes: Partial<Record<Engine, string>> = {
     [Engine.MYSQL]: "text-orange-600",
     [Engine.POSTGRES]: "text-blue-600",
+    [Engine.MSSQL]: "text-red-600",
   };
   return classes[engine] || "text-muted-foreground";
 }

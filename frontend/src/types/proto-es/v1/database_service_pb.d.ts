@@ -2956,6 +2956,13 @@ export declare type IndexMetadata = Message<"metaxisdata.v1.IndexMetadata"> & {
    * @generated from field: repeated bool opclass_defaults = 17;
    */
   opclassDefaults: boolean[];
+
+  /**
+   * The spatial index configuration. (SQL Server and other engines).
+   *
+   * @generated from field: metaxisdata.v1.SpatialIndexConfig spatial_config = 15;
+   */
+  spatialConfig?: SpatialIndexConfig;
 };
 
 /**
@@ -2963,6 +2970,292 @@ export declare type IndexMetadata = Message<"metaxisdata.v1.IndexMetadata"> & {
  * Use `create(IndexMetadataSchema)` to create a new message.
  */
 export declare const IndexMetadataSchema: GenMessage<IndexMetadata>;
+
+/**
+ * SpatialIndexConfig is the configuration of a spatial index.
+ *
+ * @generated from message metaxisdata.v1.SpatialIndexConfig
+ */
+export declare type SpatialIndexConfig = Message<"metaxisdata.v1.SpatialIndexConfig"> & {
+  /**
+   * The index method, such as "SPATIAL" or "GIST".
+   *
+   * @generated from field: string method = 1;
+   */
+  method: string;
+
+  /**
+   * The tessellation configuration. (SQL Server specific).
+   *
+   * @generated from field: metaxisdata.v1.TessellationConfig tessellation = 2;
+   */
+  tessellation?: TessellationConfig;
+
+  /**
+   * The storage and performance parameters.
+   *
+   * @generated from field: metaxisdata.v1.StorageConfig storage = 3;
+   */
+  storage?: StorageConfig;
+
+  /**
+   * The dimensional parameters.
+   *
+   * @generated from field: metaxisdata.v1.DimensionalConfig dimensional = 4;
+   */
+  dimensional?: DimensionalConfig;
+
+  /**
+   * Engine specific parameters.
+   *
+   * @generated from field: map<string, string> engine_specific = 5;
+   */
+  engineSpecific: { [key: string]: string };
+};
+
+/**
+ * Describes the message metaxisdata.v1.SpatialIndexConfig.
+ * Use `create(SpatialIndexConfigSchema)` to create a new message.
+ */
+export declare const SpatialIndexConfigSchema: GenMessage<SpatialIndexConfig>;
+
+/**
+ * TessellationConfig is the tessellation configuration of a spatial index.
+ *
+ * @generated from message metaxisdata.v1.TessellationConfig
+ */
+export declare type TessellationConfig = Message<"metaxisdata.v1.TessellationConfig"> & {
+  /**
+   * The tessellation scheme, such as GEOMETRY_GRID or GEOGRAPHY_GRID.
+   *
+   * @generated from field: string scheme = 1;
+   */
+  scheme: string;
+
+  /**
+   * The bounding box. (SQL Server specific).
+   *
+   * @generated from field: metaxisdata.v1.BoundingBox bounding_box = 2;
+   */
+  boundingBox?: BoundingBox;
+
+  /**
+   * The grid levels. (SQL Server specific).
+   *
+   * @generated from field: repeated metaxisdata.v1.GridLevel grid_levels = 3;
+   */
+  gridLevels: GridLevel[];
+
+  /**
+   * The number of cells per object. (SQL Server specific).
+   *
+   * @generated from field: int32 cells_per_object = 4;
+   */
+  cellsPerObject: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.TessellationConfig.
+ * Use `create(TessellationConfigSchema)` to create a new message.
+ */
+export declare const TessellationConfigSchema: GenMessage<TessellationConfig>;
+
+/**
+ * BoundingBox is the bounding box of a spatial index.
+ *
+ * @generated from message metaxisdata.v1.BoundingBox
+ */
+export declare type BoundingBox = Message<"metaxisdata.v1.BoundingBox"> & {
+  /**
+   * @generated from field: double xmin = 1;
+   */
+  xmin: number;
+
+  /**
+   * @generated from field: double ymin = 2;
+   */
+  ymin: number;
+
+  /**
+   * @generated from field: double xmax = 3;
+   */
+  xmax: number;
+
+  /**
+   * @generated from field: double ymax = 4;
+   */
+  ymax: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.BoundingBox.
+ * Use `create(BoundingBoxSchema)` to create a new message.
+ */
+export declare const BoundingBoxSchema: GenMessage<BoundingBox>;
+
+/**
+ * GridLevel is one grid level of a spatial tessellation.
+ *
+ * @generated from message metaxisdata.v1.GridLevel
+ */
+export declare type GridLevel = Message<"metaxisdata.v1.GridLevel"> & {
+  /**
+   * The level, 1 to 4 for SQL Server.
+   *
+   * @generated from field: int32 level = 1;
+   */
+  level: number;
+
+  /**
+   * The density, such as LOW, MEDIUM or HIGH.
+   *
+   * @generated from field: string density = 2;
+   */
+  density: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GridLevel.
+ * Use `create(GridLevelSchema)` to create a new message.
+ */
+export declare const GridLevelSchema: GenMessage<GridLevel>;
+
+/**
+ * StorageConfig holds storage and performance parameters of an index.
+ *
+ * @generated from message metaxisdata.v1.StorageConfig
+ */
+export declare type StorageConfig = Message<"metaxisdata.v1.StorageConfig"> & {
+  /**
+   * PostgreSQL parameters.
+   *
+   * @generated from field: int32 fillfactor = 1;
+   */
+  fillfactor: number;
+
+  /**
+   * @generated from field: string buffering = 2;
+   */
+  buffering: string;
+
+  /**
+   * Oracle parameters.
+   *
+   * @generated from field: string tablespace = 3;
+   */
+  tablespace: string;
+
+  /**
+   * @generated from field: string work_tablespace = 4;
+   */
+  workTablespace: string;
+
+  /**
+   * @generated from field: int32 sdo_level = 5;
+   */
+  sdoLevel: number;
+
+  /**
+   * @generated from field: int32 commit_interval = 6;
+   */
+  commitInterval: number;
+
+  /**
+   * SQL Server parameters.
+   *
+   * @generated from field: bool pad_index = 7;
+   */
+  padIndex: boolean;
+
+  /**
+   * @generated from field: string sort_in_tempdb = 8;
+   */
+  sortInTempdb: string;
+
+  /**
+   * @generated from field: bool drop_existing = 9;
+   */
+  dropExisting: boolean;
+
+  /**
+   * @generated from field: bool online = 10;
+   */
+  online: boolean;
+
+  /**
+   * @generated from field: bool allow_row_locks = 11;
+   */
+  allowRowLocks: boolean;
+
+  /**
+   * @generated from field: bool allow_page_locks = 12;
+   */
+  allowPageLocks: boolean;
+
+  /**
+   * @generated from field: int32 maxdop = 13;
+   */
+  maxdop: number;
+
+  /**
+   * @generated from field: string data_compression = 14;
+   */
+  dataCompression: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.StorageConfig.
+ * Use `create(StorageConfigSchema)` to create a new message.
+ */
+export declare const StorageConfigSchema: GenMessage<StorageConfig>;
+
+/**
+ * DimensionalConfig holds dimensional parameters of a spatial index.
+ *
+ * @generated from message metaxisdata.v1.DimensionalConfig
+ */
+export declare type DimensionalConfig = Message<"metaxisdata.v1.DimensionalConfig"> & {
+  /**
+   * The number of dimensions, 2 to 4, default 2.
+   *
+   * @generated from field: int32 dimensions = 1;
+   */
+  dimensions: number;
+
+  /**
+   * The spatial data type, such as GEOMETRY or GEOGRAPHY.
+   *
+   * @generated from field: string data_type = 2;
+   */
+  dataType: string;
+
+  /**
+   * The operator class. (PostgreSQL specific).
+   *
+   * @generated from field: string operator_class = 3;
+   */
+  operatorClass: string;
+
+  /**
+   * The geometry type constraint. (Oracle specific).
+   *
+   * @generated from field: string layer_gtype = 4;
+   */
+  layerGtype: string;
+
+  /**
+   * Whether the index is built in parallel.
+   *
+   * @generated from field: bool parallel_build = 5;
+   */
+  parallelBuild: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DimensionalConfig.
+ * Use `create(DimensionalConfigSchema)` to create a new message.
+ */
+export declare const DimensionalConfigSchema: GenMessage<DimensionalConfig>;
 
 /**
  * ExtensionMetadata is the metadata for extensions.

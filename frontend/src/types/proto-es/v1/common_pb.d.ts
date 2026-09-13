@@ -37,8 +37,8 @@ export declare const StateSchema: GenEnum<State>;
 /**
  * Engine is the database engine of an instance. Only the engines the product
  * actually supports are kept: MySQL-compatible ones (MySQL, TiDB, MariaDB,
- * OceanBase) and PostgreSQL. The removed Bytebase-era values keep their numbers
- * reserved so they can never be silently reused for something else.
+ * OceanBase), PostgreSQL and SQL Server. The other removed values keep their
+ * numbers reserved so they can never be silently reused for something else.
  *
  * @generated from enum metaxisdata.v1.Engine
  */
@@ -47,6 +47,11 @@ export enum Engine {
    * @generated from enum value: ENGINE_UNSPECIFIED = 0;
    */
   ENGINE_UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: MSSQL = 1;
+   */
+  MSSQL = 1,
 
   /**
    * @generated from enum value: MYSQL = 2;

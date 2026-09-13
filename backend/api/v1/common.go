@@ -69,6 +69,8 @@ func convertToEngine(engine storepb.Engine) v1pb.Engine {
 		return v1pb.Engine_MARIADB
 	case storepb.Engine_OCEANBASE:
 		return v1pb.Engine_OCEANBASE
+	case storepb.Engine_MSSQL:
+		return v1pb.Engine_MSSQL
 	default:
 	}
 	return v1pb.Engine_ENGINE_UNSPECIFIED
@@ -86,6 +88,8 @@ func convertEngine(engine v1pb.Engine) storepb.Engine {
 		return storepb.Engine_MARIADB
 	case v1pb.Engine_OCEANBASE:
 		return storepb.Engine_OCEANBASE
+	case v1pb.Engine_MSSQL:
+		return storepb.Engine_MSSQL
 	default:
 	}
 	return storepb.Engine_ENGINE_UNSPECIFIED
