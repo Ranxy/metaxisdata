@@ -36,7 +36,12 @@ func (s *Store) GetOrCreateExternalDataset(ctx context.Context, namespace, name,
 		return nil, err
 	}
 	if existing != nil {
-		return existing, nil
+		if existing.DatasetType == datasetType {
+			// The row already is what the resolver would write. Every event used
+			// to rewrite it, which made ingestion write-amplifying.
+			return existing, nil
+		}
+		return s.updateExternalDatasetType(ctx, guid, datasetType)
 	}
 
 	tx, err := s.GetDB().BeginTx(ctx, nil)
@@ -60,6 +65,24 @@ func (s *Store) GetOrCreateExternalDataset(ctx context.Context, namespace, name,
 
 	if err := tx.Commit(); err != nil {
 		return nil, errors.Wrap(err, "failed to commit transaction")
+	}
+	return &msg, nil
+}
+
+// updateExternalDatasetType records a dataset type the resolver knows better than
+// the row that already exists.
+func (s *Store) updateExternalDatasetType(ctx context.Context, guid, datasetType string) (*ExternalDatasetMessage, error) {
+	var msg ExternalDatasetMessage
+	if err := s.GetDB().QueryRowContext(ctx, `
+		UPDATE external_dataset
+		SET dataset_type = $2, updated_at = NOW()
+		WHERE guid = $1
+		RETURNING id, guid, namespace, name, dataset_type, created_at, updated_at
+	`, guid, datasetType).Scan(
+		&msg.ID, &msg.GUID, &msg.Namespace, &msg.Name, &msg.DatasetType,
+		&msg.CreatedAt, &msg.UpdatedAt,
+	); err != nil {
+		return nil, errors.Wrap(err, "failed to update external dataset type")
 	}
 	return &msg, nil
 }

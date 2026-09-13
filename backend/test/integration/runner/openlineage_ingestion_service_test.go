@@ -102,17 +102,41 @@ func TestOpenLineageIngestionAggregatesRunsRealServerIntegration(t *testing.T) {
 	require.Equal(t, "run-4", aggregate.LatestRunID)
 	require.Equal(t, base.Add(2*time.Hour).Unix(), aggregate.LatestEventTime.Unix())
 
+	// Resolving the same dataset again must not rewrite its row.
+	datasetName := "in-table"
+	dataset, err := env.Store.GetExternalDataset(ctx, &store.FindExternalDatasetMessage{
+		Namespace: &namespace,
+		Name:      &datasetName,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, dataset)
+	require.Equal(t, http.StatusOK, post(t, event("run-5", base.Add(3*time.Hour), true)))
+	resolvedAgain, err := env.Store.GetExternalDataset(ctx, &store.FindExternalDatasetMessage{
+		Namespace: &namespace,
+		Name:      &datasetName,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resolvedAgain)
+	require.Equal(t, dataset.ID, resolvedAgain.ID)
+	require.Equal(t, dataset.DatasetType, resolvedAgain.DatasetType)
+	require.Equal(t, dataset.UpdatedAt, resolvedAgain.UpdatedAt, "an unchanged dataset must not be rewritten")
+
+	aggregate = task(t)
+	require.Equal(t, int32(5), aggregate.RunCount)
+	require.Equal(t, int32(2), aggregate.LineageRunCount)
+	require.Equal(t, "run-5", aggregate.LatestRunID)
+
 	// Redelivering the lineage run with its datasets removed must decrement the
 	// lineage counter rather than leave it stale.
 	require.Equal(t, http.StatusOK, post(t, event("run-4", base.Add(2*time.Hour), false)))
 	aggregate = task(t)
-	require.Equal(t, int32(4), aggregate.RunCount)
-	require.Equal(t, int32(0), aggregate.LineageRunCount)
+	require.Equal(t, int32(5), aggregate.RunCount)
+	require.Equal(t, int32(1), aggregate.LineageRunCount)
 
 	// A key scoped to another namespace cannot write into this one.
 	scopedKey, _, err := env.Store.CreateOpenLineageAPIKey(ctx, "integration-scoped", "integration-test", "some-other-ns")
 	require.NoError(t, err)
-	body, err := json.Marshal([]map[string]any{event("run-5", base, false)})
+	body, err := json.Marshal([]map[string]any{event("run-6", base, false)})
 	require.NoError(t, err)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, env.BaseURL+"/api/v1/lineage/batch", bytes.NewReader(body))
 	require.NoError(t, err)
