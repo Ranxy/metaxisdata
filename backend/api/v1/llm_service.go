@@ -153,6 +153,21 @@ func (s *LLMService) UpdateLLMProviderProfile(ctx context.Context, req *connect.
 	}
 	update.ResourceID = resourceID
 
+	// Moving a profile to a new endpoint must not silently forward the stored key
+	// there: the caller has to supply the credential together with the new URL.
+	if update.BaseURL != nil {
+		existing, err := s.store.GetLLMProfile(ctx, &store.FindLLMProfileMessage{ResourceID: &resourceID})
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get LLM profile"))
+		}
+		if existing == nil {
+			return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("LLM profile %q not found", pbProfile.Name))
+		}
+		if update.APIKey == nil && strings.TrimSpace(*update.BaseURL) != strings.TrimSpace(existing.Metadata.GetBaseUrl()) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("api_key is required when changing base_url"))
+		}
+	}
+
 	msg, err := s.store.UpdateLLMProfile(ctx, update)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to update LLM profile"))
