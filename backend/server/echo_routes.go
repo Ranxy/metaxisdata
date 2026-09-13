@@ -56,7 +56,6 @@ func configureEchoRouters(
 		},
 	}))
 
-	// TODO we need to Embed frontend at future. for now, we just use frontend not embed for skip this
 	embedFrontend(e)
 
 	e.HideBanner = true
