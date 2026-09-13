@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS manual_sql_summary (
 `, quoteMySQLIdentifier(sourceDatabase))))
 	env.SyncDatabase(ctx, t, databaseName)
 
-	manual := env.CreateManualSQL(ctx, t, databaseName, "sync_active_users", &v1pb.ManualSQL{
+	manual := env.CreateManualSQL(ctx, t, databaseName, "sync-active-users", &v1pb.ManualSQL{
 		Title:   "Sync Active Users",
 		SqlText: "INSERT INTO manual_sql_summary (user_id, user_name) SELECT id, name FROM users",
 		Tags:    []string{"integration", "manual-sql"},

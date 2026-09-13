@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS public.manual_sql_summary (
 	usersGUID := waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_TABLE, "users")
 	summaryGUID := waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_TABLE, "manual_sql_summary")
 
-	manual := env.CreateManualSQL(ctx, t, databaseName, "sync_active_users", &v1pb.ManualSQL{
+	manual := env.CreateManualSQL(ctx, t, databaseName, "sync-active-users", &v1pb.ManualSQL{
 		Title:   "Sync Active Users",
 		SqlText: "INSERT INTO public.manual_sql_summary (user_id, user_name) SELECT id, name FROM public.users",
 		Tags:    []string{"integration", "manual-sql"},
@@ -187,7 +187,7 @@ func TestPostgresManualSQLMetadataHistoryRealServerIntegration(t *testing.T) {
 	env.SyncDatabase(ctx, t, databaseName)
 	asOfBeforeCreate := time.Now().UTC()
 
-	manual := env.CreateManualSQL(ctx, t, databaseName, "history_active_users", &v1pb.ManualSQL{
+	manual := env.CreateManualSQL(ctx, t, databaseName, "history-active-users", &v1pb.ManualSQL{
 		Title:   "History Active Users",
 		SqlText: "SELECT id, name FROM public.users",
 		Tags:    []string{"integration", "history"},

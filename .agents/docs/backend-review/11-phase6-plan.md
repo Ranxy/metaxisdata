@@ -30,7 +30,14 @@
 | B17 `disallow_password_signin` 覆盖服务账号（`02 M7`） | ✅ | `83b1229` |
 | B12 `DiffMetadata` 与历史比较（`04 A-H2/A-H3/A-M11/A-M12`） | ✅ | `f58c387` |
 | B16 `RequireResetPassword` / `allow_missing`（`02 M6/M12/M13`） | ✅ | `bedadf7` |
-| C 批 性能/资源 | ⏳ | — |
+| C1 ingestion 批次上限与单事务（`04 B-H7`） | ✅ | `e7d15eb` |
+| C2 task 聚合增量计数（`03 M22`） | ✅ | `e7d15eb` |
+| C3 OpenLineage 列表默认 LIMIT（`03 M26`） | ✅ | `311e790` |
+| C4 历史批量关闭与下推分页（`03 M6/M9`） | ✅ | `3e6fbda` |
+| C5 `ListDatabases` 批量取实例（`04 A-M8`） | ✅ | `a7ea214` |
+| C6 external dataset 去写放大（`03 M20`） | ✅ | `99d41ea` |
+| C7 LLM 会话预算与轮数（`04 B-M12`） | ✅ | `03c17b7` |
+| C8 实例密钥每页只取一次（`03` 低节） | ✅ | `390a66c` |
 | D2/D3 全量验证与文档同步 | ⏳ | — |
 
 A 批完成时已验证：`gofmt -l` 空、`go build ./...`、`go vet`（默认/release/integration）、`golangci-lint`（0 issues）、
@@ -293,6 +300,32 @@ A6 的增量迁移在本地 PostgreSQL 16 上验证了全新安装、增量重�
 - 每实例只取一次 secret、只解码一次列表，避免逐行重复 `GetSecret`。
 - 文件：`backend/store/instance.go`。
 - 验收：函数级测试或代码审查记录。
+
+#### C 批实施说明
+- **`C1`（`e7d15eb`）**：单请求上限 1000 事件 / 8MiB 体积，超限显式 413（`io.LimitReader` 此前会静默截断成解析错误）；
+  新增 `Store.UpsertOpenLineageRuns` 让整批事件共用一个事务，`UpsertOpenLineageRun` 复用它。
+- **`C2`（`e7d15eb`）**：`openlineage_task` 的计数改为增量：先取 task 行锁（`INSERT ... ON CONFLICT DO UPDATE SET
+  updated_at = openlineage_task.updated_at`）串行化同一 task 的写入，再按 `(job_namespace, job_name, job_type, run_id)`
+  唯一键点查旧 `has_lineage` 得到本次增量；latest 字段按 `event_time DESC NULLS LAST` 语义就地比较。批量内按 task GUID
+  稳定排序避免多 task 死锁。保留清理改为 `rebuildOpenLineageTask`（唯一仍做全量聚合的路径）。
+- **`C3`（`311e790`）**：`openLineagePageClause` 在 `Limit == nil` 时施加 5000 上限，run/task 两个列表共用。
+- **`C4`（`3e6fbda`）**：`closeOpenMetaRegistryHistory` 改为单条 `UPDATE ... FROM unnest($1,$2)`（按键配对）；
+  `ListMetadataHistory` 改为按「offset+limit+2 行、`ORDER BY valid_from DESC`」下推探测（命中
+  `(guid, object_type, valid_from DESC)` 索引），最旧一行仅作上下文不计入事件；`GetMetadataHistoryEvent` 用
+  `TransitionTime` 只读与事件时刻相关的行。
+- **`C5`（`a7ea214`）**：`ListDatabases` 先 `distinctInstanceIDs` 再 `ListInstances(ResourceIDs)` 一次取齐，
+  `convertToDatabase` 改为纯函数，实例缺失返回 `Internal` 而不是解引用 nil。
+- **`C6`（`99d41ea`）**：`GetOrCreateExternalDataset` 在 `dataset_type` 未变时不再写库，变化时只更新该列。
+- **`C7`（`03c17b7`）**：`llm.DefaultMaxTurns`（6）与 `llm.DefaultMaxConversationBytes`（4MiB）成为显式上限，
+  `run` 用 `conversationBudget` 累计并超限报错；ExplainSQL 调用点显式传入两者。debug 日志早已是脱离请求 ctx 的
+  有界队列 + 保留清理，本轮未改。
+- **`C8`（`390a66c`）**：`unObfuscateInstanceWithSecret` 让整页实例只解析一次 secret（原逐行 `GetSecret` 取锁）。
+- 验收：`store/openlineage_task_test.go`（增量/最新语义、分页 clause）、`api/v1/openlineage_handler_test.go`
+  （批次上限、体积上限、免写路径）、`api/v1/database_history_test.go`（有界探测分页 = 全量分页）、
+  `api/v1/database_convert_test.go`、`llm/agent_test.go`（MaxTurns、会话预算，走假 provider 的真实 loop）、
+  `store/instance_test.go`，以及真实 server 集成用例
+  `backend/test/integration/runner/openlineage_ingestion_service_test.go`（批次事务、去重计数、latest、
+  lineage 增减、dataset 不重写、scope 403）。
 
 ---
 
