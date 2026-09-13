@@ -129,6 +129,8 @@
 | [`10-legacy-debt-and-roadmap.md`](10-legacy-debt-and-roadmap.md) | 遗留债务清单与分阶段整改路线图 |
 | [`11-phase6-plan.md`](11-phase6-plan.md) | 阶段 6（安全残留 + 正确性 + 性能/资源）实施计划、决策与进度 |
 | [`12-cleanup-plan.md`](12-cleanup-plan.md) | 阶段 7（死代码与低优先清理）实施计划、核对方式、决策与进度 |
+| [`13-remaining-work.md`](13-remaining-work.md) | 阶段 7 之后仍未修复条目的重新核对清单（阶段 8 候选）、待确认决策与建议批次 |
+| [`14-phase8-decisions.md`](14-phase8-decisions.md) | 阶段 8 待确认决策清单：10 张决策卡（现状事实/选项代价/推荐/影响条目）与决策记录表 |
 
 **严重级别定义**：
 - **严重（Critical）**：可被外部利用的安全漏洞，或必然导致数据泄露/功能完全不可用。
@@ -435,6 +437,7 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 - 独立序列 DDL 生成（`CREATE SEQUENCE`）从未被任何路径调用，本轮按死代码删除；若将来需要"多文件 SDL 输出"或独立序列导出，需要重新实现。
 - `08 M13`（JSONB 列注释写明 `Stored as`）仍是唯一明确遗留的契约类小项。
 - 文档核对中纠正了两处误判：`GetSchemaFromGUID` 实际活跃（构建失败后恢复）、testutil 的 `RunLineageTests`/`RunLineageTest` 是 YAML 用例的执行路径（保留）。
+- **阶段 7 之后**各模块报告里仍未修复的条目已重新逐条核对并汇总到 [`13-remaining-work.md`](13-remaining-work.md)（去重后 74 项 + 10 个待确认决策 + 阶段 8 建议批次）；旧报告的 `✅/◐/⏳` 标记过期严重，不要直接沿用。
 
 ---
 
