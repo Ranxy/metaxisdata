@@ -96,6 +96,7 @@
 ## 高（High）
 
 ### H1. Token 吊销不完整且可被攻击者"冲掉"
+> **◐ 部分修复（阶段 6）** · `976ebc5`：`Logout` 先校验 token 签名/issuer/audience/有效期，只吊销当前有效 token，无效 token 返回 `Unauthenticated`；吊销缓存容量提升为可配置上限（默认 4096），满时拒绝吊销而非静默淘汰；改密后 `iat` 早于 `Profile.LastChangePasswordTime` 的 token 直接拒绝。**剩余**：吊销缓存仍是进程内，跨副本"登出即失效"需要 DB/Redis，本阶段不做（单租户部署）。
 - **位置**：`backend/component/state/state.go:16-24`、`backend/api/v1/auth_service.go:197-213`、`backend/api/auth/auth.go:140-142`
 - **证据**：`lru.New[string, bool](128)`；`Logout` 对**任意**调用方传入的字符串执行 `TokenExpireCache.Add(accessTokenStr, true)`；校验时只查该 LRU。
 - **影响**：
@@ -106,6 +107,7 @@
 - **修复**：吊销前先校验 token；按 `user + iat/jti` 记录并带 TTL（或持久化）；跨副本共享；改密/删号时主动吊销。
 
 ### H2. CORS 永久全开 + `SameSite=None` cookie → CSRF
+> **✅ 已修复（阶段 6）** · `976ebc5`：CORS 改为显式 allowlist（`--cors-allow-origins`）；cookie 的 `SameSite`/`Secure` 改由服务端配置（TLS/`--external-url`）推导，不再随客户端 `Origin` 变化；新增同源校验中间件：带会话 cookie 且没有 `Authorization` 头的非 GET/HEAD/OPTIONS 请求，若来源不在 CORS allowlist（按 `Sec-Fetch-Site`/`Origin`/`Referer` 判定）则返回 `403`，Bearer 请求不受影响。
 - **位置**：`backend/server/echo_routes.go:25-35`、`backend/api/auth/header.go:46-50`
 - **证据（默认构建仍是 dev）**：`Mode` 恒为 `dev`，因此 `AllowOriginFunc` 返回 `true` 且 `AllowCredentials: true`；cookie 的 `SameSite`/`Secure` 依据客户端可控的 `Origin` 头决定，HTTPS 时为 `SameSite=None`。
 - **影响**：HTTPS 部署下任意站点可发起携带 cookie 的跨域写请求（预检通过），无 CSRF token。
@@ -140,6 +142,7 @@
 - **修复**：改为 `WHERE id/email = $1` 定向查询（并缓存空结果）；要么启用缓存、要么删除缓存代码——不要"读被 flag 关闭、写却无条件执行"。
 
 ### M2. 登录存在用户枚举时间差，且无暴力破解防护
+> **✅ 已修复（阶段 6）** · `8ae989f`：`getAndVerifyUser` 在用户不存在时也执行一次固定 dummy bcrypt 比较，使两条路径耗时一致；新增按 `email` 与来源 IP 双维度的内存登录限流器（固定时间窗内计数上限，超限返回 `ResourceExhausted`），成功登录清零。
 - **位置**：`backend/api/v1/auth_service.go:215-229`
 - **证据**：`if user == nil { return invalidUserOrPasswordError }` 在 bcrypt 之前返回；仓库中不存在任何限流中间件。
 - **影响**：错误文案相同但耗时可测，可枚举已注册邮箱；可无限次在线猜密码，成功后拿到 7 天 token。
@@ -154,6 +157,7 @@
 - **修复**：comma-ok + 类型 switch，返回 `InvalidArgument`。
 
 ### M4. OAuth2 登录缺少 `state`，且可能 nil config panic
+> **✅ 已修复（阶段 6）** · `25a001a`：登录发起时生成随机 `state` 并在回调时校验、一次性消费（proto `OAuth2IdentityProviderContext` 增加 `state` 字段）；`oauth2.NewIdentityProvider` 对 nil 或缺 `client_id`/`client_secret`/`field_mapping.identifier` 的配置返回 `InvalidArgument`，不再解引用 nil；并移除日志中打印授权码/access token/userinfo 的行为。
 - **位置**：`backend/api/v1/auth_service.go:253-273`、`proto/v1/v1/auth_service.proto:48-66`
 - **证据**：`OAuth2IdentityProviderContext` 只有 `code`，全仓库无 state/nonce 校验；`oauth2.NewIdentityProvider(idp.Config.GetOauth2Config())` 会解引用 `ClientId`，配置为空时 panic。
 - **影响**：登录 CSRF / 授权码注入（受害者账号被绑定到攻击者身份）；空配置导致 500。
@@ -168,6 +172,7 @@
 - **修复**：把"创建用户 + 首个管理员授予"收敛到同一个 helper，两条路径共用。
 
 ### M6. 每次登录都会清空 `UserProfile.Source`
+> **✅ 已修复（阶段 6）** · `bedadf7`：登录改为 `profileWithLastLogin`（`proto.CloneOf` + 只覆盖 `last_login_time`），不再整列覆盖 `UserProfile`，既保留其它字段也不写穿 store 缓存。
 - **位置**：`backend/api/v1/auth_service.go:136-143`、`backend/store/principal.go:415-421`
 - **证据**：新构造的 `UserProfile` 只填 `LastLoginTime`/`LastChangePasswordTime`，而 store 是整列 JSONB 覆盖。
 - **影响**：登录后 provenance 字段被重置；未来 `UserProfile` 新增字段也会被静默丢弃。
@@ -175,6 +180,7 @@
 
 ### M7. `DisallowSignup` 从未生效；`DisallowPasswordSignin` 可被服务账号绕过
 > **◐ 部分修复（阶段 0）** · `5b19778` `c4e22fc`：`CreateUser` 现在真正读取 `DisallowSignup` 并在非管理员自注册时拒绝；管理员可通过 `SettingService`/`/settings/general` 修改该设置。**剩余**：`DisallowPasswordSignin` 对服务账号的例外仍在（登录检查只覆盖 `END_USER`），本轮未改。
+> **✅ 已修复（阶段 6）** · `83b1229`：`DisallowPasswordSignin` 不再只覆盖 `END_USER`，对服务账号同样应用禁令。
 
 - **位置**：`backend/api/v1/user_service.go:291-310`、`backend/api/v1/auth_service.go:91-100`
 - **证据**：`DisallowSignup` 整段被注释（且引用了不存在的 `s.profile.SaaS`，无法编译）；登录检查的条件只覆盖 `END_USER`。
@@ -182,23 +188,28 @@
 - **修复**：在 `CreateUser` 中执行 `disallow_signup`；对服务账号同样应用 `disallow_password_signin`，或在 proto 中显式说明例外。
 
 ### M8. 审计写入被静默吞掉，且覆盖面不全
+> **✅ 已修复（阶段 6）** · `2208521`：`createAuditLog` 改用 `context.WithoutCancel(ctx)` + 超时落库，写失败记 Error 不再完全静默；`ListAuditLogs` 补 `audit = true` 注解。
 - **位置**：`backend/api/v1/audit.go:52-57,87-89,95-143`
 - **证据**：`if auditErr := ...; auditErr != nil { slog.Error(...) }`，RPC 仍返回成功；`createAuditLog` 使用请求 `ctx`，客户端断开即可取消写库；`ListAuditLogs` 未标注 `audit = true`。
 - **影响**：攻击者可通过取消请求或制造写失败让已审计操作"不留痕"；读取审计日志本身不被审计。
 - **修复**：使用脱离请求的带超时 context 或队列落库；为 `ListAuditLogs` 与其余变更方法补齐 `audit`。
 
 ### M9. 审计 IP 来自可伪造头
+> **✅ 已修复（阶段 6）** · `2208521`：`X-Forwarded-For` 仅在命中新增的 `--trusted-proxies` 配置时采信，否则使用 `RemoteAddr`。
 - **位置**：`backend/api/v1/audit.go:304-316`
 - **证据**：优先取 `X-Forwarded-For` 的第一段。
 - **影响**：客户端可伪造审计记录中的来源 IP，取证价值下降。
 - **修复**：仅在直连 peer 属于受信代理时才采信转发头。
 
 ### M10. `workspaces/-` 会取消审计日志的 parent 过滤
+> **✅ 已修复（阶段 6）** · `2208521`：删除 `parent == "workspaces/-" → ""` 的绕过逻辑，`workspaces/-` 不再清空审计范围。
 - **位置**：`backend/api/v1/audit_log_service.go:43-49`、`backend/store/audit_log.go:65-68`
 - **影响**：多租户共库时，一个 workspace 的管理员可读到其他 workspace 的审计记录（当前单 workspace 部署影响低）。
 - **修复**：始终按调用者 workspace 约束查询，拒绝空/`-` parent。
 
 ### M11. 分页实现有缺陷（token limit 被忽略、负 offset 未校验、int32 溢出）
+> **◐ 部分修复（阶段 3）** · `52213af`：`parseLimitAndOffset` 现在在请求未带 `page_size` 时沿用 token 里的页大小（不再静默退回默认值导致重叠/跳页），负数 `offset` 归零，`limit` 上限按各调用点收紧。
+> **剩余**：`storepb.PageToken.Offset/Limit` 仍是 `int32`，`getNextPageToken` 仍做 `int32(offset+limit)`；伪造一个极大的 offset 只会在换页时回绕到第 1 页（自伤、无跨租户影响），未在阶段 6 范围内。
 - **位置**：`backend/api/v1/common.go:301-360`
 - **证据**：`token.Limit` 只用于 `< 0` 检查，实际 limit 取自请求；`offset.offset` 无范围校验；`getNextPageToken` 做 `int32(p.offset + p.limit)`。
 - **影响**：伪造 page token（未签名）可让 SQL 收到 `OFFSET -1` 报错；token 中的 page size 被忽略可能导致翻页循环/漏行；大 offset 溢出 int32。
@@ -206,17 +217,20 @@
 
 ### M12. `UpdateUser(allow_missing)` 直接调用未认证语义的 `CreateUser`
 > **◐ 部分修复（阶段 0）** · `0f2165e`：`allow_missing` 分支现在先 `requireWorkspaceAdmin`，再复用 `CreateUser`（后者又按 `disallow_signup` 判定），因此不再是一条匿名创建路径。**剩余**：别名本身仍在，`update_mask` 依旧被忽略。
+> **✅ 已修复（阶段 6）** · `bedadf7`：改为按 AIP-134 应用 `update_mask`——`applyUpdateMaskToUser` 只保留 mask 点名的字段（`user_type` 作为创建类型可被点名），proto 注释同步更正。
 
 - **位置**：`backend/api/v1/user_service.go:465-471`
 - **影响**：忽略 update_mask，继承 `CreateUser` 的全部弱点，形成第二条需要单独加固的创建路径。
 - **修复**：删除该别名，或统一走一个带权限检查的创建 helper。
 
 ### M13. `RequireResetPassword` 只是提示，服务端不强制
+> **✅ 已修复（阶段 6）** · `bedadf7`：`require_reset_password` 为真时签发受限 token（JWT 增 `rst` claim → `auth.TokenRestriction`），拦截器按 `restrictedTokenAllowedProcedures` 白名单放行（当前仅 `UserService/UpdateUser` 与 `AuthService/Logout`）并把限制放进 context；`UpdateUser` 再要求 `isSelf` 且 mask 恰为 `["password"]`；前端登录页内嵌改密表单，改密后用新密码重新登录再跳转。
 - **位置**：`backend/api/v1/auth_service.go:76,158-194`
 - **影响**：密码轮换/首登改密策略未被执行，过期密码仍可换取完整权限 token；前端也没有读取该字段。
 - **修复**：服务端限制 token 权限范围或直接拒绝登录，直到完成改密。
 
 ### M14. store `UpdateUser` 原地修改缓存中的 profile 指针
+> **✅ 已修复（阶段 2）** · `f22f61e`：需要改 profile 时先 `proto.CloneOf(currentUser)` 再改，不再写穿缓存对象；写入后替换缓存项。阶段 6（`bedadf7`）把登录时的 `LastLoginTime` 写入也改为克隆 + 只覆盖该字段，缓存对象不会被就地修改。
 - **位置**：`backend/store/principal.go:405-411`
 - **影响**：与 `userIDCache` 中的对象共享指针，并发读会观察到提交前状态；若启用缓存即为真实 data race。
 - **修复**：`proto.Clone` 后再改，写入后替换缓存项。
@@ -229,10 +243,10 @@
 - `backend/api/v1/user_service.go:116-122`：认证失败却返回 `CodeInternal`，且丢弃了取回的 user。
 - `backend/api/v1/user_service.go:579-586`：`DeleteUser` 直接返回 store 原始错误 → Connect 映射为 `CodeUnknown`。
 - `backend/api/v1/auth_service.go:142`：日志记录用户 email（PII）。
-- `backend/api/v1/debug_interceptor.go:33-37`：截断错误时用 `errors.New` 重建，丢失 `connectErr.Details()` 与原始错误链，同时把完整消息以 Info 级别写入日志。
+- `backend/api/v1/debug_interceptor.go:33-37`：截断错误时用 `errors.New` 重建，丢失 `connectErr.Details()` 与原始错误链，同时把完整消息以 Info 级别写入日志。 —— **✅ 已修复（阶段 6）** · `f112e5c`：截断长错误时保留 `connect.Error` 的 `Details()` 与错误链，日志只记长度而非原文。
 - `backend/api/auth/auth.go:144-159`：~~JWT 解析未使用 `WithValidMethods/WithIssuer/WithExpirationRequired`，`issuer` 常量只写不校验~~ —— **✅ 已修复（阶段 0，`adfec91`）**：三项校验全部补上，`issuer` 现在是硬校验。
-- `backend/api/auth/auth.go:74-79`：`GetTokenFromHeaders` 返回错误（Authorization 头格式错误）时直接 401，**不会**走 `IsAuthenticationAllowed` 豁免，因此给 Login 带上格式错误的 Authorization 头会导致登录失败。
-- `backend/api/v1/auth_service.go:110,121-134`：`web=true` 时 token 同时出现在响应体与 cookie 中，削弱 HttpOnly 的意义。
+- `backend/api/auth/auth.go:74-79`：`GetTokenFromHeaders` 返回错误（Authorization 头格式错误）时直接 401，**不会**走 `IsAuthenticationAllowed` 豁免，因此给 Login 带上格式错误的 Authorization 头会导致登录失败。 —— **✅ 已修复（阶段 6）** · `c30d73f`：改为在 `IsAuthenticationAllowed` 之后再要求 token，格式错误的 Authorization 头不再让 Login 等免认证方法失败。
+- `backend/api/v1/auth_service.go:110,121-134`：`web=true` 时 token 同时出现在响应体与 cookie 中，削弱 HttpOnly 的意义。 —— **✅ 已修复（阶段 6）** · `c30d73f`：`web=true` 时 token 只放在 HttpOnly cookie，不再同时回传响应体。
 
 ---
 

@@ -63,6 +63,7 @@
 > **◐ 部分修复（阶段 0）** · `ec49607`
 > - 已修：新增 `backend/api/v1/acl_interceptor.go` 的 `ACLInterceptor`/`NewACLInterceptor(store)` 并在 `grpc_routes.go` 接线（顺序：debug → auth → audit → acl）；拦截器消费 `AuthContext.Permission`——只要 proto 方法声明了非空 `permission` 就要求 workspaceAdmin。已在 proto 中声明 permission 的写方法见 `08-proto-contract.md` M17。`AuthContext.Permission` 现在有了真实消费者，不再是死字段。
 > - 剩余：语义是"非空 permission ⇒ 管理员"，尚未实现 permission→role 的细粒度映射；读方法（Get/List/血缘/OpenLineage 读）仍未声明 permission，故仍是"任意已认证用户"。
+> **✅ 已修复（阶段 4 收口）** · IAM 子系统：剩余两项都已关闭——**全部 v1 方法（含读路径）都声明了 `permission`**，`iam.Manager` 按 `workspaceMember` 读基线 / `workspaceAdmin` 全目录 / 自定义角色权限集解析，不再是"非空 ⇒ 管理员"；守卫测试 `TestEveryMethodIsPermissionGated` 要求除显式 allowlist（Login/Logout/GetCurrentUser/CreateUser/UpdateUser）外每个方法都带目录内注解。**剩余（有意）**：仍是单工作区、仅 WORKSPACE 策略，没有 per-resource 策略（阶段 6 确认按单租户部署，不做 per-instance 读授权）。
 
 - **位置**：`backend/server/grpc_routes.go:80-88`（`// apiv1.NewACLInterceptor(...)` 在第 85 行）、`backend/api/auth/auth.go:350-355`
 - **证据（修复前）**：`authContext.Permission` 被解析出来后没有任何消费者；`NewACLInterceptor` 在整个仓库已不存在（注释掉的代码无法编译）。所有 proto 方法都没有设置 `permission`。
@@ -75,6 +76,7 @@
 > - CORS 中间件本身是**条件安装**的（`if profile.Mode == common.ReleaseModeDev`），因此用 `-tags release` 构建时不注册任何 CORS 中间件 → 同源限制生效，H2 的主要风险消失。**但默认构建（`go build`/`make run`/现有 CI）不带该 tag，`Mode` 仍是 dev，CORS 依旧全开**。
 > - cookie 侧未改：`GetTokenCookie` 仍按**客户端可控的** `Origin` 头决定 `SameSite`（https ⇒ `SameSite=None`），且没有 CSRF token。即使 CORS 关闭，这也只是深度防御缺口，建议一并修（例如依据服务端 TLS 配置、默认 `SameSite=Lax`）。
 > - 修 CORS/CSRF 时的依赖项已解除：`-tags release` 现在可以编译（C1）。
+> **✅ 已修复（阶段 6）** · `976ebc5`：CORS 改为显式 allowlist（`--cors-allow-origins`，dev 默认本地来源、release 默认空），不再用恒真的 `AllowOriginFunc`；`GetTokenCookie` 的 `SameSite` 默认 `Lax`、`Secure` 由服务端 TLS/`--external-url` 推导，不再受客户端 `Origin` 影响；新增同源校验中间件，对带 cookie 鉴权的非 GET/HEAD 跨站写请求返回 `403`。
 
 - **位置**：`backend/server/echo_routes.go:25-35`、`backend/api/auth/header.go:46-50`
 - **证据（默认构建仍是 dev）**：`if profile.Mode == common.ReleaseModeDev { ... AllowOriginFunc: func(string) (bool, error) { return true, nil } ... AllowCredentials: true }`，而默认构建的 `Mode` 为 `dev`；HTTPS 下 cookie 设为 `SameSite=None; Secure`，`origin` 又来自客户端可控的 `Origin`/`grpcgateway-origin` 头。
@@ -149,6 +151,7 @@
 - **修复**：用显式的 onboarding 标记或 workspace 创建时间判断；仅在值变化时 upsert。
 
 ### M6. 其它装配细节
+> **◐ 部分修复（阶段 6）** · `f112e5c`：`/metrics` 改为受 `RuntimeDebug` 门控（默认关闭）；gateway 客户端补发送消息大小上限并与既有接收上限对齐。**剩余**：`recoverMiddleware` 的栈采集时点与未使用的 `GatewayResponseModifier.Store` 字段本轮未改。
 - **位置/证据**：
   - `backend/server/echo_routes.go:69-83`：`recoverMiddleware` 中 `log.Stack("panic-stack")` 取到的是 recover 之后的栈，不是 panic 发生点的栈。
   - `backend/server/grpc_routes.go:130-135`：gateway 客户端 `grpc.MaxCallRecvMsgSize(100MB)` 仅限制接收；未见对应的发送/请求体大小限制。

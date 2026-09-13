@@ -65,6 +65,7 @@
 ### A-H1. `validate_only` 造成 SSRF / 内网探测
 > **◐ 部分修复（阶段 0）** · `ec49607`：`CreateInstance`/`AddDataSource`/`UpdateDataSource` 等 `validate_only` 路径已要求 workspaceAdmin，因此不再对任意已认证用户开放。
 > **内网地址限制已按产品决策主动放弃**：自托管场景下用户连接的数据库本来就在内网，加私网 deny 会破坏核心功能；因此本轮不加 allow/deny 列表，仅保留管理员权限约束。**剩余**：driver 原始错误（含 `dial tcp <内网 IP>:<port>`）仍会透传给管理员调用方，未脱敏。
+> **✅ 已修复（阶段 6）** · `f112e5c`：`validate_only`/数据源错误里的原始驱动错误（含内网 `dial tcp ip:port`）改为只回通用 `InvalidArgument`，细节写日志。
 
 - **位置**：`instance_service.go:283-308,605-627,805-825`
 - **证据**：`s.dbFactory.GetDataSourceDriver(ctx, instanceMessage, ds, ...)` 后 `connect.NewError(connect.CodeInvalidArgument, errors.Wrapf(err, "invalid datasource %s", ...))`，把 driver 原始错误返回给调用方。
@@ -72,12 +73,14 @@
 - **修复**：要求实例管理权限；对私网/链路本地/回环地址做 allow/deny；返回脱敏后的通用错误。
 
 ### A-H2. `DiffMetadata` 默认 `source_time = now`，文档承诺的"最早版本"无法实现
+> **✅ 已修复（阶段 6）** · `f58c387`：`source_time` 未设置时改取最早可用版本（与 proto 文档一致），不再用 `now`。
 - **位置**：`database_service.go:970-976`
 - **证据**：`if asOf != nil { asOfTime = asOf.AsTime() } else { asOfTime = time.Now() }`，而 proto 注释写的是 "If not set, uses the earliest available version"（`database_service.proto:493-495`）。
 - **影响**：不传 `source_time` 时源与目标都是 now，diff 恒为空，返回 "No changes detected."。
 - **修复**：`source_time` 为空时查询最早历史行（`OrderDesc` + `Limit=1`，或新增 earliest 查询）；只有 `target_time` 默认 now。
 
 ### A-H3. `DiffMetadata` 只重建 4 类对象，多数变更不可见
+> **✅ 已修复（阶段 6）** · `f58c387`：`rebuildDatabaseObjects` 覆盖 differ 已支持的其余对象类型（物化视图/序列/枚举/扩展等），并把相应 Changes 计入 summary。
 - **位置**：`database_service.go:1025-1091,1095-1102,1106-1176`
 - **证据**：`rebuildDatabaseObjects` 只取 `TABLE/VIEW/FUNCTION/PROCEDURE`；`buildDiffSummary` 也只统计 table/view/function/schema。
 - **影响**：物化视图、序列、枚举类型、package、external table、stream、task、event、extension、event trigger、以及 schema 的 owner/comment/skip_dump 变更全部不可见；仅序列或 MV 变化会返回"无变更"和空 DDL，而底层 differ 是支持这些类型的。
@@ -104,15 +107,15 @@
 - **M1. 未检查类型断言 / `AsLiteral()` panic**：`instance_service.go:78,81,84,91,98,106,109,112,141`；`database_service.go:741,808,833,865`。`name == 123`、`engine in [1]`、`name.matches(ident)` 都会 panic → 500。（**✅ 已修复（阶段 1）** · `ff914ac`：所有取值改走带检查的 helper（`filterString`/`filterBool`/`filterStringList`/`matchArgs`），`getVariableAndValueFromExpr` 现在返回 error 并在缺少变量或字面量时报错，四个过滤器（user/instance/database/audit）统一返回 `InvalidArgument`；`exclude_unassigned` 也不再静默忽略非布尔值。守卫测试 `TestFilterParsersRejectMistypedOperands`（12 个用例）。）
 - **M2. `ListMetadata` 在 `meta_type` 为空时翻页失效**：`database_service.go:200-231`；`FindSubLevelMetaRegistryResourceMessage` 只有 `LimitPreObjectType`，没有 offset（`store/meta_resource.go:51-55,775`），但仍会返回 `next_page_token`，第 2 页与第 1 页相同。
 - **M3. `ListMetadataHistory` 全量加载 + 分页 off-by-one**：`database_history.go:48-51,59-72`，查询无 limit/offset，之后 `if len(events) > limitPlusOne` 应为 `>=`，否则返回 `page_size+1` 条且无 token。
-- **M4. `GetSchemaString` 序列查询前缀错误**：`database_service.go:345` 用 `common.GUIDPrefix`（按 `"."` 切分，`common/guid.go:33-38`），而所有 GUID 用 `";"` 拼接 → 前缀恒为空，PG 的 `ALTER SEQUENCE ... OWNED BY`/identity DDL 丢失。
-- **M5. `CreateInstance` 不校验 environment/engine**：`instance_service.go:277,947-971`，与 `UpdateInstance`（`395-401`）不一致，可创建引用不存在环境的实例。
+- **M4. `GetSchemaString` 序列查询前缀错误**：`database_service.go:345` 用 `common.GUIDPrefix`（按 `"."` 切分，`common/guid.go:33-38`），而所有 GUID 用 `";"` 拼接 → 前缀恒为空，PG 的 `ALTER SEQUENCE ... OWNED BY`/identity DDL 丢失。 —— **✅ 已修复** · `6f2b63d`：`common.GUIDPrefix` 改为按 `MetaGUIDSplit`（`";"`）取最后一段之前的前缀，`GetSchemaString`（现位于 `database_metadata.go`）拿到的序列前缀不再恒空。
+- **M5. `CreateInstance` 不校验 environment/engine**：`instance_service.go:277,947-971`，与 `UpdateInstance`（`395-401`）不一致，可创建引用不存在环境的实例。 —— **✅ 已修复（阶段 6）** · `48dbecb`：`CreateInstance` 补上 environment 存在性与 engine 合法性校验（与 `UpdateInstance` 对齐）。
 - **M6. `UpdateInstance(data_sources)` 可删掉 admin 数据源**：`instance_service.go:405-413,338-351`；store 的 `validateDataSources`（要求恰好一个 ADMIN）在更新路径未被调用。**✅ 已修复（阶段 1）** · `20e284b`：`checkInstanceDataSources` 现在统计 ADMIN 数量，`!= 1` 即返回 `InvalidArgument`（同时覆盖 create 与 update 两条路径）。
 - **M7. 批量 RPC 部分成功无逐项结果**：`instance_service.go:536-555,561-570`；第 N 项失败时前 N-1 项已提交，客户端只拿到一个错误；也未限制 1000 条上限。
-- **M8. `ListDatabase` N+1 且可能 nil deref**：`database_service.go:1178-1195`；每行一次 `GetInstanceV2`（含完整 metadata），`convertInstanceMessageToInstanceResource` 无 nil 检查，而 `GetInstanceV2` 未命中返回 `(nil, nil)`。
-- **M9. `SyncDatabase` 泄漏非 Connect 错误**：`database_service.go:55-58` + `common.go:394-422`，缺失数据库/大小写冲突返回 `CodeUnknown` 而非 `NotFound`/`AlreadyExists`。
-- **M10. `CreateManualSQL` 不校验 `manual_sql_id`**：`database_service.go:423-425,682-698`，含 `/` 的 ID 会生成无法被 `parseManualSQLName` 解析的资源名，对象从此不可寻址。
-- **M11. 历史变更检测遗漏大量字段**：`database_history.go:244-281,579-631,754-763,1010-1017`，如列 `generation`/`identity_*`、索引 `key_length`/`descending`/`opclass_*`、外键 `match_type`、表 `triggers`/`rules` 等，真实变更被报成"无变化"。
-- **M12. `rebuildSchemaContents` 吞掉重建错误并回退到当前元数据**：`database_service.go:1095-1102`，会给出"看似合理但错误"的历史 diff。
+- **M8. `ListDatabase` N+1 且可能 nil deref**：`database_service.go:1178-1195`；每行一次 `GetInstanceV2`（含完整 metadata），`convertInstanceMessageToInstanceResource` 无 nil 检查，而 `GetInstanceV2` 未命中返回 `(nil, nil)`。 —— **✅ 已修复（阶段 6）** · `a7ea214`：`ListDatabases` 先取 `distinctInstanceIDs` 再 `ListInstances(ResourceIDs)` 一次取齐；`convertToDatabase` 改为纯函数，实例缺失返回 `Internal` 而不是解引用 nil。
+- **M9. `SyncDatabase` 泄漏非 Connect 错误**：`database_service.go:55-58` + `common.go:394-422`，缺失数据库/大小写冲突返回 `CodeUnknown` 而非 `NotFound`/`AlreadyExists`。 —— **✅ 已修复（阶段 6）** · `48dbecb`：`SyncDatabase` 错误经 `common.Code` 映射（缺失→`NotFound`、冲突→`AlreadyExists`）。
+- **M10. `CreateManualSQL` 不校验 `manual_sql_id`**：`database_service.go:423-425,682-698`，含 `/` 的 ID 会生成无法被 `parseManualSQLName` 解析的资源名，对象从此不可寻址。 —— **✅ 已修复（阶段 6）** · `48dbecb`：`CreateManualSQL` 校验 `manual_sql_id` 合法（`common.IsValidResourceID`），非法返回 `InvalidArgument`。
+- **M11. 历史变更检测遗漏大量字段**：`database_history.go:244-281,579-631,754-763,1010-1017`，如列 `generation`/`identity_*`、索引 `key_length`/`descending`/`opclass_*`、外键 `match_type`、表 `triggers`/`rules` 等，真实变更被报成"无变化"。 —— **✅ 已修复（阶段 6）** · `f58c387`：历史变更检测补齐列 `generation`/identity、索引 `key_length`/`descending`/`opclass`、外键 `match_type` 等字段（按 differ 结构逐项对齐）。
+- **M12. `rebuildSchemaContents` 吞掉重建错误并回退到当前元数据**：`database_service.go:1095-1102`，会给出"看似合理但错误"的历史 diff。 —— **✅ 已修复（阶段 6）** · `f58c387`：`rebuildSchemaContents` 重建失败不再静默回退当前元数据，改为返回错误。
 
 ## 低（Low）／代码质量
 
@@ -147,6 +150,7 @@
 
 ### B-C1. 明文 ingestion API key 落审计日志并可通过审计 API 读取
 > **✅ 已修复（阶段 0）** · `89ef84a`：裸字段名 `key` 现被精确匹配脱敏（同一改动也覆盖 `sslKey`/`content`/`keytab` 等），并为 `CreateAPIKeyResponse` 加了回归测试。**剩余**：`ListAuditLogs` 仍原样返回历史 `response`，此前已写入的明文 key 需按数据保留策略清理。
+> **✅ 已修复（阶段 6）** · `2208521`：`ListAuditLogs` 返回前对历史 `response`/`request` 再跑一次脱敏，清掉阶段 0 之前落库的明文 ingestion key。
 
 - **位置**：`proto/v1/v1/openlineage_service.proto:66-75,300-304`、`backend/api/v1/audit.go:114-134,179-208`、`audit_log_service.go:185-202`
 - **证据**：`CreateAPIKey` 带 `audit = true`；审计拦截器把**响应**也写入；`CreateAPIKeyResponse.key` 的 protojson 字段名就是 `"key"`，不在脱敏标记列表中；`ListAuditLogs` 返回 `Response`。
@@ -204,17 +208,20 @@
 - **修复**：profile 管理限定管理员权限；校验 base_url（https、禁止私网/链路本地）；URL 被修改时不要回退使用已存密钥。
 
 ### B-H6. API key 校验是 O(N) bcrypt 扫描 + 每请求一次写
+> **✅ 已修复（阶段 6）** · `415e16e`：新增 `key_digest`（SHA-256 hex，唯一索引）列，按 digest 定向查询后再 bcrypt 比对，校验从 O(N) 全表 bcrypt 扫描降为一次点查 + 一次比对；`last_used_at` 仍是每请求一次同步单行 UPDATE（有意保留该语义，代价已从扫描中分离）。
 - **位置**：`store/openlineage_api_key.go:67-103`、`openlineage_handler.go:47`
 - **证据**：`SELECT ... WHERE revoked_at IS NULL` 后逐行 `bcrypt.CompareHashAndPassword`，成功后再 `UPDATE ... last_used_at = NOW()`；该端点未认证。
 - **影响**：伪造 Bearer token 即触发对全部 key 的 bcrypt（每个约 100ms），少量并发即可打满 CPU；且在校验循环中占用第二个连接做 UPDATE。
 - **修复**：增加确定性的 key 前缀/ID 索引列，单行查询后只做一次 bcrypt（或改用 HMAC-SHA256 + 常量时间比较）；`last_used_at` 异步/批量更新。
 
 ### B-H7. 批量摄取无上限、逐事件事务
+> **✅ 已修复（阶段 6）** · `e7d15eb`：单请求限制 1000 事件 / 8MiB 体积，超限显式返回 413；新增 `Store.UpsertOpenLineageRuns` 让整批事件共用一个事务，不再逐事件开事务。
 - **位置**：`openlineage_handler.go:52,83-109`、`store/openlineage_run.go:61-86`
 - **影响**：一个 10MB 的最小事件数组可触发上万次事务与数十万次查询，长时间占用连接池；无速率限制、无请求超时。
 - **修复**：限制每批事件数、批内单事务/批量插入、增加限流与服务端超时。
 
 ### B-H8. ingestion key 全局无范围，任何 key 可伪造任意实例血缘
+> **✅ 已修复（阶段 6）** · `415e16e`：`openlineage_api_key` 增加 `scope_namespace`（空串=不限），ingestion handler 校验事件的 job 以及每个输入/输出数据集的 namespace 是否都等于该作用域，超出作用域返回 `403`（handler 会丢弃 keyMessage 的其余维度，没有实例级作用域）。
 - **位置**：`store/openlineage_api_key.go:16-25`、`openlineage_handler.go:47`
 - **影响**：key 没有 namespace/instance/owner 维度，且 handler 丢弃返回的记录；一个泄露的 key 可向任意实例注入伪造血缘（进而污染 ExplainSQL 上下文与 UI）。
 - **修复**：key 绑定 namespace/instance（或 owner），拒绝超出范围的事件。
@@ -227,17 +234,17 @@
 - **M4. 空 `scope_prefix` 使 `search_objects` 恒返回空**：`explain_sql_service.go:106,446` + `store/meta_resource.go:85-95`，空前缀生成 `guid LIKE ';%'`，而系统提示仍在告诉模型"有工具可查 schema"；前端未选实例时会发空 scope。 —— **✅ 已修复（阶段 3 补遗，`11943ae`）**：空前缀在 store 里现在表示「不限实例」（此前生成 `guid = '' OR guid LIKE ';%'`，恒空），空关键字返回明确的工具错误，搜索失败不再被 `_` 丢弃。
 - **M5. 缓存写入错误被吞且使用请求 ctx**：`explain_sql_service.go:212-214`，客户端断开导致昂贵结果被丢弃且无日志。 —— **✅ 已修复（阶段 2，`8c34542`）**：写入改用 `context.WithoutCancel(ctx)` + 5s 超时，失败记 `slog.Warn`（含 cache_key）。
 - **M6. 血缘关系列表无界**：`lineage_service.go:57,72,148`，store 支持 Limit/Offset 但 handler 从不设置。 —— **✅ 已修复（阶段 3 补遗，`dd6df51`）**：两个列表补 `page_size`/`page_token`/`next_page_token`（默认 500、上限 5000），handler 用同一个 offset 页化 source/target，前端 `getLineage` 循环取全。
-- **M7. `collectExternalDatasets` 静默降级**：`lineage_service.go:121-124`，DB 错误时返回空列表，UI 无法区分"无元数据"与"查询失败"。
-- **M8. `formatResolvedTarget` 对 MySQL 空 schema 泄露 instance id**：`openlineage_dataset.go:556-574`，`"inst;db;;table"` 去掉空段后恰好 3 段不再裁剪。
+- **M7. `collectExternalDatasets` 静默降级**：`lineage_service.go:121-124`，DB 错误时返回空列表，UI 无法区分"无元数据"与"查询失败"。 —— **✅ 已修复（阶段 6）** · `0151bcb`：`collectExternalDatasets` 查询失败不再静默返回空列表，改为记日志/返回错误。
+- **M8. `formatResolvedTarget` 对 MySQL 空 schema 泄露 instance id**：`openlineage_dataset.go:556-574`，`"inst;db;;table"` 去掉空段后恰好 3 段不再裁剪。 —— **✅ 已修复（阶段 6）** · `e7239db`：`formatResolvedTarget` 在 MySQL 空 schema 时不再把 instance id 当作 table 段。
 - **M9. LLM profile 分页不可用**：`llm_service.go:54-78`，`page_token` 从不读取、`next_page_token` 从不设置、`page_size` 无上限，只能看到最近 50 条。
-- **M10. 空 update_mask 全量替换会清空 models**：`llm_service.go:133,260-269` + `store/llm.go:124-126`，只改标题的 PATCH 会禁用全部模型，profile 从 `Registry.ListEnabled` 消失。
+- **M10. 空 update_mask 全量替换会清空 models**：`llm_service.go:133,260-269` + `store/llm.go:124-126`，只改标题的 PATCH 会禁用全部模型，profile 从 `Registry.ListEnabled` 消失。 —— **✅ 已修复（阶段 6）** · `14b8f01`：空 `update_mask` 分支改为只写请求中非零字段，不再整体替换 `models`（保持 PATCH 语义）。
 - **M11. 自定义 SQL 解释无失效/TTL**：`explain_sql_service.go:505` + `store/explain_sql.go:75-91`，schema 变更后旧解释永久返回；`expired` 标记服务端从不设置。 —— **✅ 已修复（阶段 2，`8c34542`）**：7 天 TTL 在读取时生效（过期即 miss 并重新生成），`expired` 仍不设置（过期行不会返回）。metadata 类解释仍由 metaHash 自动失效。
-- **M12. LLM 输出全量驻留内存且无配额**：`explain_sql_service.go:127,180`，每轮上限 1MB × 最多 6 轮，且每轮重发整个会话；无限流/配额。
+- **M12. LLM 输出全量驻留内存且无配额**：`explain_sql_service.go:127,180`，每轮上限 1MB × 最多 6 轮，且每轮重发整个会话；无限流/配额。 —— **✅ 已修复（阶段 6）** · `03c17b7`：`llm.DefaultMaxTurns`（6）与 `llm.DefaultMaxConversationBytes`（4MiB）成为显式上限，`run` 用 `conversationBudget` 累计并超限报错，ExplainSQL 调用点显式传入两者。
 - **M13. 客户端断开导致 goroutine 泄漏**：`explain_sql_service.go:181-185` + `component/llm/agent.go:19-28,117-145`，handler 返回后不再消费 channel，生产者在 32 槽缓冲满后永久阻塞，且阻塞在 send 上无法感知 ctx 取消。 —— **✅ 已修复（阶段 2，`8acbfe6`）**：所有发送改为 `select { case ch <- evt: case <-ctx.Done(): return }`（`sendEvent`/`sendRaw`），且 handler 用 `context.WithCancel` 派生子 context 并在返回时取消，因此即使 Connect 不取消服务端 ctx，生产者也不会永久阻塞。
 - **M14. "流式"实为整包缓冲，且超过 1MB 静默截断**：`component/llm/agent.go:193-205`，`io.ReadAll(io.LimitReader(resp.Body, 1MB))` 后才解析，客户端在整轮结束前收不到任何内容；超限的 SSE 尾部被丢弃，截断结果还会被缓存。 —— **✅ 已修复（阶段 2，`8acbfe6`）**：改为 `bufio.Scanner` 边读边解析（SSE 行长上限 8MiB，响应总量上限 32MiB 且超限报错而非截断），错误/截断/空回答一律中止且不写缓存；`data: [DONE]` 作为正常结束（兼容不设 `finish_reason` 的 provider），无 finish_reason 且无 `[DONE]` 的 EOF 视为流中断。
 - **M15. not-found 映射为 `CodeInternal`(500)**：`openlineage_service.go:184,237` + store 返回裸 `errors.Errorf`（`store/namespace_mapping.go:137,159`、`store/openlineage_api_key.go:147`）。
-- **M16. `resolveSource` 把 DB 故障报成 `NotFound`**：`explain_sql_service.go:511`。
-- **M17. `parseStructuredResponse` 首个 section 标题残留 `"## "`**：`explain_sql_service.go:639,649`，缓存命中时 `buildMarkdownFromSection` 再拼 `"## "` → 渲染成 `## ## 执行逻辑`；若模型首行就是标题，`idx == -1` 会把全文当 summary 并产生一个空 section（已用独立程序复现该逻辑）。
+- **M16. `resolveSource` 把 DB 故障报成 `NotFound`**：`explain_sql_service.go:511`。 —— **✅ 已修复（阶段 6）** · `0151bcb`：`resolveSource` 区分 `NotFound` 与 `Internal`，DB 故障不再报成 `NotFound`。
+- **M17. `parseStructuredResponse` 首个 section 标题残留 `"## "`**：`explain_sql_service.go:639,649`，缓存命中时 `buildMarkdownFromSection` 再拼 `"## "` → 渲染成 `## ## 执行逻辑`；若模型首行就是标题，`idx == -1` 会把全文当 summary 并产生一个空 section（已用独立程序复现该逻辑）。 —— **✅ 已修复（阶段 6）** · `4d936c3`：首个 section 标题归一化去掉已带的 `"## "`；`idx == -1` 分支不再把全文当 summary 并输出空 section。
 - **M18. LLM provider key 仅做可逆 XOR 混淆**：`store/llm.go:41-64` + `common/utils.go:65-71`，字段名却叫 `api_key_encrypted`；有 DB 读权限 + 同一库中的 `AUTH_SECRET` 即可还原。
 
 ## 低（Low）／死代码（血缘/LLM）
@@ -248,10 +255,10 @@
 - `GetOpenLineageDatasetRequest.namespace/name` 在 `guid` 为空时被拒绝，实际不可单独使用（`openlineage_dataset.go:115`）。
 - 重复实现标准库：`stringsJoin`（`llm_service.go:341-350`）、`bytesTrimLeft`（`openlineage_handler.go:172-180`）。
 - 陈旧注释/空分支：`grpc_routes.go:85` 引用不存在的函数；`explain_sql_service.go:501` 的 `// ---- resolveSource, buildSystemPrompt, etc. (unchanged) ----` 编辑残留；`explain_sql_service.go:186` 空 `case llm.AgentEventAgentEnd`。
-- `plugin/openlineage/metadata.go:94-107` 的 `hasLineageSignal` 在 inputs/outputs 非空时恒为 true，使后续列血缘循环不可达。
+- `plugin/openlineage/metadata.go:94-107` 的 `hasLineageSignal` 在 inputs/outputs 非空时恒为 true，使后续列血缘循环不可达。 —— **✅ 已修复（阶段 6）** · `e7239db`：删除 `hasLineageSignal` 的不可达分支。
 - `openlineage_run`/`explain_sql_cache`/`llm_debug_log` 均无保留/清理任务；`llm_debug_log` 以 fire-and-forget goroutine + `context.Background()` 写入完整 prompt/响应且吞掉错误。**阶段 2 部分**：`explain_sql_cache` 现按 7 天 TTL 在读取时失效（`8c34542`），但仍不物理清理过期行；`openlineage_run` 经确认**不**加自动清理（数据可审计），改以读路径限 5000 控制内存。
 - `/api/v1/lineage` 是普通 Echo 路由（`grpc_routes.go:169-172`），绕过审计与 debug 拦截器。
-- 请求体超限被静默截断后报"解析失败"，而不是 413（`openlineage_handler.go:52`）。
+- 请求体超限被静默截断后报"解析失败"，而不是 413（`openlineage_handler.go:52`）。 —— **✅ 已修复（阶段 6）** · `e7d15eb`：`readBodyLimited` 多读一字节判断真实越界，超过 8MiB 或超过 1000 个事件都显式返回 413，不再静默截断。
 - provider 错误体被透传给客户端：`fmt.Errorf("LLM status %d: %.4000s", resp.StatusCode, respStr)`（`agent.go:201`）。
 
 ## 待确认（血缘/LLM）

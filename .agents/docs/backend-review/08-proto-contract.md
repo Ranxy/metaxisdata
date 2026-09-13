@@ -98,7 +98,7 @@
 - **M11. `raw_payload` 三处类型不同**：store `bytes`、v1 `string`、DB `JSONB`（`openlineage_service.proto:116` vs `LATEST.sql:311`）。
   - **✅ 阶段 3 续（`997ede9` `b2e80ae`）**：`bytes` 那一份在零引用的 store `OpenLineageRun` 消息里，该消息与其兄弟 `OpenLineageTask` 一并删除；v1 的 `raw_payload` 保持 `string` 并文档化为"落库的 JSON 文本"。三处类型不再互相矛盾：DB 是 JSONB、Go 是 `[]byte`/`string` 承载同一段 JSON 文本、公开契约明确它是 JSON。
 - **M12. store `ExplainSQLCache` 未使用且与列不匹配**：`store/explain_sql.proto:9` 的 `cache_type` 是魔法 int、`explanation_json` 是 string，而列是 JSONB；仓库用 `ExplainSQLCacheRow` 手写结构（`store/explain_sql.go:15-25`）。
-- **M13. 多数 JSONB 列缺 "Stored as <message>" 注释**：`instance.metadata`（LATEST.sql:130）、`db.metadata:147`、`meta_registry_resource.metadata:161`、`history:171`、`audit_log.payload:393`、`llm_provider_profile.metadata:408` 等；AGENTS.md 把这些注释当作 JSONB 与 store message 的绑定契约。
+- **M13. 多数 JSONB 列缺 "Stored as <message>" 注释**（**⏳ 仍未处理，阶段 6 有意排除**：全量补注释是独立的重写工作，`11-phase6-plan.md` 第六节列为后续项；A6 的增量 `0007` 只在迁移文件里写了列用途，未改 `LATEST.sql` 的表注释。本轮已确认的 JSONB→message 绑定以各 store 读取路径为准）：`instance.metadata`（LATEST.sql:130）、`db.metadata:147`、`meta_registry_resource.metadata:161`、`history:171`、`audit_log.payload:393`、`llm_provider_profile.metadata:408` 等；AGENTS.md 把这些注释当作 JSONB 与 store message 的绑定契约。
 - **M14. `setting` 注释与枚举不一致**：`setting.proto:20` 有 `SCHEMA_TEMPLATE = 10`，SQL 注释（LATEST.sql:36-39）没有；且 `setting.value` 是 `text` 而非 JSONB。
 - **M15. `UserType` 与 `PrincipalType` 对同一个值用不同名字**：v1 `USER=1` vs store `END_USER=1`（`user_service.proto:235` vs `store/user.proto:10-18`），DB CHECK 用 `END_USER`。
   - **✅ 阶段 3 续（`4036e1e`）**：v1 改名 `END_USER=1`，三处（v1 枚举、store `PrincipalType`、`principal.type` CHECK）一致；`convertToPrincipalType` 仍显式列出每个 case，filter 解析改为接受 `END_USER`。

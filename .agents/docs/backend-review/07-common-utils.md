@@ -33,6 +33,7 @@
 - **修复**：增加把 `common.ErrorCode(err)` 映射为 connect code 的拦截器，或删除 `common.Error`/`ErrorCode` 统一在 API 边界用 `connect.NewError`。补 `func (e *Error) Unwrap() error`。
 
 ### U-H2. 凭据混淆的密钥与密文同库，且无完整性校验
+> **◐ 部分修复（阶段 6）** · `f112e5c`：`common.Obfuscate`/`Unobfuscate` 补齐 `seed == ""` 防护——空 seed 且输入非空时返回明确错误（不再整数除零），空输入原样往返为空串。**剩余**：按本轮决策保持 `AUTH_SECRET` 种子 XOR，同库密钥与无完整性校验的取舍写入文档，本阶段不改。
 - **位置**：`backend/common/utils.go:64-84`、`backend/store/setting.go:155-168`、`backend/server/init.go:29-38`
 - **证据**：
   ```go
@@ -53,7 +54,7 @@
   - **修复落地**：`getVariableAndValueFromExpr` 改为返回 `(variable, value, error)`，缺变量或缺字面量即 `InvalidArgument`；新增 `filterString`/`filterBool`/`filterStringList`/`matchArgs` 四个带检查的取值 helper（`api/v1/common.go`），所有调用方改用它，`.matches()` 的目标标识符与参数一律经 `matchArgs` 校验（`Target() == nil || Kind() != IdentKind` 与 `Kind() != LiteralKind` 都返回错误）。守卫测试 `backend/api/v1/filter_type_safety_test.go` 覆盖 `email == 123`、`engine in [1]`、`name.matches(ident)`、裸 `matches("x")`、`exclude_unassigned == "true"` 等 12 个用例。
 - **M4. `GetNameParentTokens` 允许空段且逐次构造格式化字符串**：`common/resource_name.go:191-205`，`fmt.Sprintf("%s/", parts[2*i]) != tokenPrefix`；`projects//databases/x` 通过校验并返回空 token，`GetProjectID` 等会返回 `""` 而非报错。
   - **阶段 3 续更正（`451cb78`）**：`GetProjectID` 已删除，M4 里以它为例的返回空串路径不再存在；`GetNameParentTokens` 允许空段这一缺陷本身未变。
-- **M5. `common/context.go` 的 helper 不安全/不确定**：`HasWorkspaceResource`（`:43-50`）遇到 nil 元素会 panic；`GetProjectResources`（`:52-63`）返回 map 迭代顺序（不确定）。当前两者无调用者。
+- **M5. `common/context.go` 的 helper 不安全/不确定**：`HasWorkspaceResource`（`:43-50`）遇到 nil 元素会 panic；`GetProjectResources`（`:52-63`）返回 map 迭代顺序（不确定）。当前两者无调用者。 —— **✅ 已删除** · `e42b9ac`：两个无调用者的 helper 与同批 telemetry 表面一起删除，问题不再存在。
 - **M6. `common.Error` 的 nil `Err` panic 且不可 Unwrap**：`error.go:81-83` 的 `e.Err.Error()` 在 `&common.Error{Code: ...}` 字面量上 panic；`Wrap(nil, code)` 返回非 nil（违反 nil=成功）；缺 `Unwrap`（见 U-H1）。
 
 ---

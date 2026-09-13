@@ -45,6 +45,7 @@
 
 ### C-H4. `dbfactory` 连接任意用户主机，且 instance 为 nil 时 panic
 > **◐ 部分修复（阶段 0）** · `ec49607`：触发该路径的 `validate_only`（`CreateInstance`/`AddDataSource`/`UpdateDataSource` 等）已要求 workspaceAdmin，任意已认证用户不再能驱动内网探测。**内网 allowlist/deny 经产品决策主动放弃**（自托管场景必须允许连接内网数据库）。**剩余**：`instance` 为 nil 的 panic 与 `db.Open` 错误未包装仍未修。
+> **✅ 已修复（阶段 6）** · `e7239db`：`GetAdminDatabaseDriver`/`GetDataSourceDriver` 在 `instance == nil` 或 `instance.Metadata == nil` 时返回明确错误（不再解引用 panic）。`db.Open` 的原始错误按 B15 的取舍**保持原样**返回（`common.Wrapf` 不存在，且调用方已负责脱敏）。
 
 - **位置**：`backend/component/dbfactory/dbfactory.go:29-31,40-58`、`backend/utils/utils.go:11`
 - **证据**：`utils.DataSourceFromInstanceWithType(instance, ...)` 解引用 `instance.Metadata` 无判空；`db.Open(...)` 无 host/port 校验。
@@ -71,7 +72,7 @@
 ## 低（Low）
 
 - `registry.go:55` `APIKey: p.Metadata.ApiKeyEncrypted` 实际是解密后的明文（字段名误导，容易被打日志）；`BaseURL` 为空时生成相对路径 `/v1/chat/completions`，报出令人困惑的 `unsupported protocol scheme`。
-- `state.go:49-52` `resourceLimiter.Decrement` 可能把计数减成负数（不配对调用时）。
+- `state.go:49-52` `resourceLimiter.Decrement` 可能把计数减成负数（不配对调用时）。 —— **✅ 已修复（阶段 6）** · `e7239db`：`Decrement` 加了计数下限，不再减成负数。
 - `state.go:17` `TokenExpireCache` 容量 128（见 `02` H1）。
 - ~~`config/profile.go` 的 `Profile.Secret` 从未被赋值（`getBaseProfile` 不含它），因此 `store.GetSecret` 总是回退到 DB 设置——这既是 C1（JWT 密钥）问题的另一半，也说明"从 profile 注入密钥"的设计从未接通。~~ —— **阶段 0 已接线（`adfec91`）**：`getBaseProfile` 现在用 `os.Getenv("JWT_SECRET")` 赋值；注意 JWT 密钥与 `store.GetSecret()`（字段混淆）已分离，不要再把 `JWT_SECRET` 写进 `store.Secret`，否则会破坏既有数据的去混淆。
 

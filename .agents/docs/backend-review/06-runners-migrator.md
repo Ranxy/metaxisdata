@@ -100,17 +100,17 @@
 ## 中（Medium）
 
 - **M1. `tableExists` 忽略 `table_schema`**：`migrator.go:376-378`，任意 schema 下存在同名表就让迁移器认为"已存在部署"，空 public schema 会被跳过 `LATEST.sql`，随后记录基线并在缺表状态下运行。应加 `table_schema = current_schema()` 或改用 `to_regclass`。 —— **✅ 已修复（阶段 3 补遗，`2131420`）**：查询限定 `table_schema = current_schema()` 且 `table_type = 'BASE TABLE'`。
-- **M2. 分析失败要等到下一个小时级扫描才重试**：`analyzer.go:129-138`，`drainAndAnalyze` 先删除 `analyzeMap` 全部 key 再分析，失败只记日志；血缘可陈旧长达 `lineageAnalysisInterval`（1h）。
+- **M2. 分析失败要等到下一个小时级扫描才重试**：`analyzer.go:129-138`，`drainAndAnalyze` 先删除 `analyzeMap` 全部 key 再分析，失败只记日志；血缘可陈旧长达 `lineageAnalysisInterval`（1h）。 —— **✅ 已修复（阶段 6）** · `480b957`：失败任务重新入队（带退避与重试计数），不再等下一次小时级扫描；连续失败达上限记 Error 并保留失败版本记录。
 - **M3. 不支持的引擎从不标记为已分析 → 每小时无限重试**：`analyzer.go:204-206`，`ErrorEngineNotSupported` 分支直接 `return nil`，没有 `markAnalyzed`；`queueAll` 每小时重新入队并重试所有视图/MV/manual SQL。 —— **✅ 已修复（阶段 3 补遗，`9019140`）**：把这次跳过连同当前 meta hash 与原因写进 `column_lineage_version`，在 metadata 变化前不再重排；同时补齐了四个引擎的 lineage/schema/driver 注册（`729db71`）。
 - **M4. `queueAll` 是 N+1 全表扫描，且 `meta_registry_resource.object_type` 无索引**：`analyzer.go:105-124` + `LATEST.sql:157-165`；每小时 3 次未索引扫描 + 每对象一次查询。**部分修复（阶段 2，`ff9b22a`）**：增量 `0.1.0002` 已加 `object_type` 索引，扫描不再全表；`queueAll` 的逐对象查询 N+1 仍未批量化。 —— **✅ 已修复（阶段 3 补遗，`f50fbbc`）**：另加 digest 列表（不取 metadata、不碰缓存）与 `ListColumnLineageVersions`（一次取某类型全部版本），每类型 2 次查询，逐对象的那次查询与全量 metadata 解析都去掉了。
 - **M5. 为比较 hash 而全量加载并反序列化元数据**：`syncer.go:392` + `store/meta_resource.go:340-354`，`ListMetaRegistry` 带 `withMetadata=true` 解析每个 JSONB 行，而 `diff()` 只需要 `GUIDKey` + `MetaHash`。建议增加轻量列表（guid, object_type, meta_hash）。 —— **✅ 已修复（阶段 3 补遗，`f50fbbc` `2259abd`）**：analyzer 与 syncer 都改走 `ListMetaRegistryResourceDigest`，只取 guid/object_type/meta_hash，不再解析每个 JSONB 行。
 - **M6. 每实例连接限流被 `SyncInstance` 与 API 触发的同步绕过**：`syncer.go:120-128`、`api/v1/database_service.go:63`、`api/v1/instance_service.go:516`；限流只在 10s 的 DB 检查器里生效，而每个 driver 会开 `SetMaxOpenConns(50)`（`plugin/db/mysql/mysql.go:89`）。
-- **M7. 表/列被删除后血缘行从不清理**：`syncer.go:504-511` 只处理 VIEW/MV，drop 表后依赖视图的 `column_lineage` 仍指向不存在的 GUID。
+- **M7. 表/列被删除后血缘行从不清理**：`syncer.go:504-511` 只处理 VIEW/MV，drop 表后依赖视图的 `column_lineage` 仍指向不存在的 GUID。 —— **✅ 已修复（阶段 6）** · `9c69196`：`syncer.go` 的删除清理改为对任何被删除对象都按 `meta_guid`/`source`/`target` 三个方向清理 `column_lineage`，不再只覆盖 VIEW/MV。
 - **M8. 同步失败只用 Debug 级别记录**：`syncer.go:131-135,181-185`，生产 info 级别下永久失败的实例/库完全不可见，无指标无告警。**✅ 已修复（阶段 1）** · `fcb6a98`：两处改为 `slog.Warn` 并用 `log.WithError(err)` 输出完整错误（原先实例级只记 `err.Error()` 字符串）。仍无指标/告警。
-- **M9. worker pool 中的 panic 会打挂进程**：`syncer.go:125-139`、`analyzer.go:95,143-155`；`conc/pool` 会把任务 panic 传播出 `Wait()`，只有 `trySyncAll` 有 recover。
+- **M9. worker pool 中的 panic 会打挂进程**：`syncer.go:125-139`、`analyzer.go:95,143-155`；`conc/pool` 会把任务 panic 传播出 `Wait()`，只有 `trySyncAll` 有 recover。 —— **✅ 已修复（阶段 6）** · `480b957`：`schemasync` 检查协程与 `lineageanalyzer` pool 的任务包装 recover，记录日志后继续（对齐 `trySyncAll`）。
 - **M10. Shutdown 的 WaitGroup 等待无超时**：`backend/server/server.go:168`（见 `01` M1）。 —— **✅ 已修复（阶段 2，`fb8ca14`）**：`runnerWG.Wait()` 由 10s 超时兜底，超时记 Warn 后继续退出。
-- **M11. `SyncInstance` 返回未过滤的数据库列表**：`syncer.go:322-342,358`，构建了遵守 `sync_databases` 的 `filteredDatabaseMetadatas`，却返回 `instanceMeta.Databases`；`SyncInstance` RPC（`instance_service.go:528-530`）会报告未同步的库。
-- **M12. `principal.email` 无 UNIQUE/NOT NULL 保护**：`LATEST.sql:18-31`（见 `03` S-H6）。
+- **M11. `SyncInstance` 返回未过滤的数据库列表**：`syncer.go:322-342,358`，构建了遵守 `sync_databases` 的 `filteredDatabaseMetadatas`，却返回 `instanceMeta.Databases`；`SyncInstance` RPC（`instance_service.go:528-530`）会报告未同步的库。 —— **✅ 已修复（阶段 6）** · `68f3149`：末尾改为返回遵守 `sync_databases` 的 `filteredDatabaseMetadatas`，`SyncInstance` RPC 不再报告未同步的库。
+- **M12. `principal.email` 无 UNIQUE/NOT NULL 保护**：`LATEST.sql:18-31`（见 `03` S-H6）。 —— **✅ 已修复（阶段 2）** · `ff9b22a`：新增唯一邮箱索引（大小写归一后比较），store 的唯一冲突映射为 `common.Conflict`。
 - **M13. 旧二进制对着更新的 ledger 静默运行**：`migrator.go:160-194` 只检查 `f.version.LE(*recorded)`；当 `recorded` 大于内嵌最新版本时，不迁移也不报错，只打印内嵌版本号。应显式报错拒绝启动。 —— **✅ 已修复（阶段 3 补遗，`2131420`）**：`recorded > latestVersion` 时拒绝启动。
 
 ---

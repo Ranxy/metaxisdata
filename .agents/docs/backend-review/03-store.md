@@ -78,6 +78,7 @@
 - **修复**：先判空并返回 `common.Errorf(common.NotFound, ...)`。
 
 ### S-H5. 枚举被当作 text 参数 → 过滤静默失效
+> **✅ 已修复（阶段 6）** · `824232a`：`engineFilterValue` 改为输出 `storepb.Engine_name[...]` 枚举名，`store/database.go`/`store/instance.go` 的谓词按存储的枚举名做字符串比较，并补了表驱动 guard 测试。
 - **位置**：`backend/store/database.go:391-393`；API 侧 `api/v1/instance_service.go:103-104`、`api/v1/database_service.go:802-803`；`store/policy.go:249,266-272,303-307`
 - **证据**：`args = append(args, *v)`，`*v` 是 `storepb.Engine`（int32），lib/pq 会发送文本 `"3"`，而 `metadata->>'engine'` 存的是 protojson 枚举名（如 `"MYSQL"`，见 `stats.go:157,172-176`）→ 谓词变成 `'MYSQL' = '3'`，恒 false（不报错）。
 - **影响**：instance/database 的 engine 过滤静默返回空；`UpdatePolicyV2` 返回 `(nil,nil)`、`DeletePolicyV2` 报成功但什么都没删（当前无调用者，属陷阱）。
@@ -96,31 +97,31 @@
 ## 中（Medium）
 
 - **M1. `GetResourcesUsedByRole` 把 text 列 scan 进枚举**：`store/role.go:56-59`，`policy.resource_type` 是 `text`（如 `"PROJECT"`），scan 进 `storepb.Policy_Resource`（int32）必然报 `converting driver.Value type string to a int32`。整个 `role.go` 无调用者。
-- **M2. `UpdateGroup` 泄漏事务**：`store/group.go:210-215` 没有 `defer tx.Rollback()`（包内其它事务都有）。`protojson.Marshal` 或 Scan 失败即返回存活事务占用连接。该路径由 `auth_service.go:394` 可达。
-- **M3. 批量 upsert 的 `RETURNING id` 位置假设**：`store/meta_resource.go:934-956` 按行序写入 `creates[i]`；PostgreSQL 不保证 `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` 的顺序，且未检查返回行数是否等于输入数。错误 ID 会进入按 ID 索引的缓存。
+- **M2. `UpdateGroup` 泄漏事务**：`store/group.go:210-215` 没有 `defer tx.Rollback()`（包内其它事务都有）。`protojson.Marshal` 或 Scan 失败即返回存活事务占用连接。该路径由 `auth_service.go:394` 可达。 —— **✅ 已修复（阶段 6）** · `a71716a`：`UpdateGroup` 补上 `defer tx.Rollback()`，并对 `backend/store` 全量扫描，保证所有 `BeginTx` 后都跟随回滚、单语句查询不再开事务。
+- **M3. 批量 upsert 的 `RETURNING id` 位置假设**：`store/meta_resource.go:934-956` 按行序写入 `creates[i]`；PostgreSQL 不保证 `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` 的顺序，且未检查返回行数是否等于输入数。错误 ID 会进入按 ID 索引的缓存。 —— **✅ 已修复（阶段 6）** · `7f0e3a0`：批量 upsert 改为 `RETURNING id, guid, object_type`，按 `(guid, object_type)` 回填 `creates[i].ID` 并校验返回行数与输入一致。
 - **M4. `UpdateUser` 原地修改缓存 profile，且可能漏记改密时间**：`store/principal.go:405-421`，`patch.Profile = currentUser.Profile` 直接写穿缓存对象（并发 data race）；若调用方自己传了 `patch.Profile`，则 `LastChangePasswordTime` 完全不设置。
-- **M5. `UpdateDatabase` 元数据更新是非原子的读-改-写**：`store/database.go:248-288`，`GetDatabaseV2` 提交自己的只读事务后，另一个事务执行 UPDATE，无行锁；`syncer.go:498-527` 还在持有外层事务时调用它。
-- **M6. `closeOpenMetaRegistryHistory` 逐行 UPDATE**：`store/meta_resource.go:634-645`，N 次往返；而对应的 history 插入已用 `UNNEST` 批量化。
-- **M7. open-history 查询是 `ANY/ANY` 笛卡尔谓词**：`store/meta_resource.go:603-609`，`guid = ANY($1) AND object_type = ANY($2)` 会匹配未请求的 `(guid,type)` 组合。
+- **M5. `UpdateDatabase` 元数据更新是非原子的读-改-写**：`store/database.go:248-288`，`GetDatabaseV2` 提交自己的只读事务后，另一个事务执行 UPDATE，无行锁；`syncer.go:498-527` 还在持有外层事务时调用它。 —— **✅ 已修复（阶段 6）** · `eca3686`：元数据更新改为在同一事务内对行加锁（`SELECT ... FOR UPDATE`），不再跨事务读-改-写。
+- **M6. `closeOpenMetaRegistryHistory` 逐行 UPDATE**：`store/meta_resource.go:634-645`，N 次往返；而对应的 history 插入已用 `UNNEST` 批量化。 —— **✅ 已修复（阶段 6）** · `3e6fbda`：`closeOpenMetaRegistryHistory` 改为单条 `UPDATE ... FROM unnest($1,$2)` 按键配对批量关闭。
+- **M7. open-history 查询是 `ANY/ANY` 笛卡尔谓词**：`store/meta_resource.go:603-609`，`guid = ANY($1) AND object_type = ANY($2)` 会匹配未请求的 `(guid,type)` 组合。 —— **✅ 已修复（阶段 6）** · `7f0e3a0`：`guid = ANY($1) AND object_type = ANY($2)` 改为按键配对的 row-value 谓词，不再匹配未请求的 `(guid, type)` 组合。
 - **M8. 子层级元数据列表无法翻页**：`store/meta_resource.go:51-55,698-709`，`FindSubLevelMetaRegistryResourceMessage` 没有 Offset，API 算了 offset 却只是切片，第 2 页返回第 1 页（见 `04` A-M2）。
-- **M9. 元数据历史查询无界**：`store/meta_resource.go:486-528` 支持 Limit/Offset，但唯一调用方（`database_history.go:48-51,93-96`）不传，导致全量历史（含完整 JSONB）加载后在内存分页。
+- **M9. 元数据历史查询无界**：`store/meta_resource.go:486-528` 支持 Limit/Offset，但唯一调用方（`database_history.go:48-51,93-96`）不传，导致全量历史（含完整 JSONB）加载后在内存分页。 —— **✅ 已修复（阶段 6）** · `3e6fbda`：`ListMetadataHistory` 把 `Limit/Offset` 下推到 store，按「`offset+limit+2` 行、`ORDER BY valid_from DESC`」有界探测，调用方不再全量加载后在内存分页。
 - **M10. 元数据搜索是全 JSONB 扫描且无索引**：`store/meta_resource.go:262-279`，`meta_registry_resource` 只有 `(guid,object_type)` 唯一索引，没有 `metadata` 的 GIN/表达式索引；而 `manual_sql` 有 `search_vector` GIN。**◐ 阶段 2（`ff9b22a`）**：加了 `object_type` 索引（服务 `queueAll` 的扫描），`metadata` GIN **经确认不加**——搜索谓词是 `inner_meta->>'name' ILIKE '%x%'`，GIN 索引无法服务子串匹配，且全仓库没有任何 jsonb `@>` 包含查询可以让它生效；要真正走索引需要改成全文检索或 `pg_trgm`，属行为变更，留待后续。 —— **✅ 已修复（阶段 3 补遗，`f50fbbc`）**：新增 `search_text` 存储生成列（恰为 name/title/comment/userComment 拼接）+ `pg_trgm` GIN 索引（增量 `0.1.0005`），谓词改为 `search_text ILIKE $n`，匹配行与旧 `jsonb_each` 谓词逐关键字对拍一致；空 `SearchStr` 改为 `common.Invalid`。
 - **M11. meta 缓存 key 只用 GUID，忽略 ObjectType**：~~`store/meta_resource.go:103-107,121-124`（缓存定义 `store.go:29`），唯一约束是 `(guid,object_type)`；`MANUAL_SQL` 与 `TABLE` 可能共享四段 GUID 形状。当前被 `enableCache=false` 掩盖，一旦开启缓存即成错误结果 bug。~~ —— **✅ 已修复（阶段 2，`f22f61e`）**：GUID 缓存改为 `lru.Cache[MetaGUIDKey, ...]`，读路径经 `metaRegistryGUIDCacheKey` 只在调用方同时指定 `object_type` 时命中（GUID-only 查询直接打库）；写路径统一用 `GUIDKey()`。另：`BatchCreateMetaRegistryResourceAt`/`BatchDeleteMetaRegistryAt` 不再在调用方事务内改缓存，改为提交后由 `InvalidateMetaRegistryCache` 失效（`syncer.go` 调用）。
 - **M12. `PatchWorkspaceIamPolicy` 原地修改缓存策略**：~~`store/policy.go:41-74`，`GetWorkspaceIamPolicy` 返回 `policyCache` 中的指针，循环在 upsert 前编辑其 bindings；并发读者可见半更新状态，失败时缓存永久不一致。~~ —— **✅ 已修复（阶段 0，`5b19778`）**：`PatchWorkspaceIamPolicy` 现在开启事务并调用新的 `(s *Store) patchWorkspaceIamPolicyImpl(ctx, txn, patch)`；实现通过 `listPolicyImplV2` 在事务内**重新读取并反序列化**到独立对象（不再触碰缓存指针），提交后再 `policyCache.Remove(...)` 并重新读取。`store.CreateUser` 也在同一事务里调用该 impl，因此首个管理员授予与用户插入原子。注意 `GetPolicyV2` 命中缓存时仍返回共享指针（若开启缓存需另行处理）。
 - **M13. `Store.Secret` 懒初始化 data race**：`store/setting.go:155-168` 无锁读写导出字段 `s.Secret`，而 `Store` 被所有请求 goroutine 共享；`obfuscateInstance`/`unObfuscateInstance` 每行都调用。**建议 `store.New` 时用 `sync.Once` 初始化，并停止导出可变字段。** —— **✅ 已修复（阶段 2，`f22f61e`）**：字段改为不导出的 `secret`，由 `secretMu` 保护；未命中时读 `AUTH_SECRET` 并缓存。没有用 `sync.Once`，因为互斥锁版本在瞬时 DB 失败后可以重试，而 `Once` 会把错误永久缓存。
 - **M14. namespace mapping 部分更新会清空 `database_name`**：`store/namespace_mapping.go:115` 无条件设置，而 `namespace`/`instance_resource_id` 只在非空时设置；只更新 namespace 会清掉 database，破坏 OpenLineage 解析。
-- **M15. `CreateManualSQL` upsert 改变 GUID 却不清理旧 GUID 的镜像/血缘**：`store/manual_sql.go:449-450`，冲突键 `(instance, database, name)` 不含 `schema_name`，而 GUID 含 schema；`CreateManualSQL`（221-251）不像 `UpdateManualSQL`（348-355）那样删除被取代 GUID 的 `meta_registry_resource` 与 `column_lineage`，留下孤儿行。
+- **M15. `CreateManualSQL` upsert 改变 GUID 却不清理旧 GUID 的镜像/血缘**：`store/manual_sql.go:449-450`，冲突键 `(instance, database, name)` 不含 `schema_name`，而 GUID 含 schema；`CreateManualSQL`（221-251）不像 `UpdateManualSQL`（348-355）那样删除被取代 GUID 的 `meta_registry_resource` 与 `column_lineage`，留下孤儿行。 —— **✅ 已修复（阶段 6）** · `9c69196`：`CreateManualSQL` 因 `schema_name` 变化而更换 GUID 时，清理旧 GUID 的 `meta_registry_resource`、history 与 `column_lineage`（与 `UpdateManualSQL` 对齐）。
 - **M16. store 的 not-found 错误不带 `common.Code` → API 返回 500**：`store/manual_sql.go:301,414,523`、`namespace_mapping.go:137,159`、`openlineage_api_key.go:147` 等用裸 `errors.Errorf`，调用方统一包成 `CodeInternal`。应为 `common.Errorf(common.NotFound, ...)`。
 - **M17. `updateIdentityProviderImpl` 在无字段可改时生成非法 SQL**：`store/idp.go:175-197`，`UPDATE idp SET  WHERE ...`；另外 `err == sql.ErrNoRows` 未用 `errors.Is`（213）。
 - **M18. IDP 密钥明文存储**：`store/idp.go:25-37,72-89`，`protojson.Marshal` 后原样写入 `idp.config`（含 OAuth2 client secret / LDAP bind password）。
 - **M19. `explain_sql_cache` 永不过期**：`store/explain_sql.go:75-91` 无时间谓词，`UpsertExplainSQLCache` 接受调用方传入的 `created_at`；表无 TTL 列。 —— **✅ 已修复（阶段 2，`8c34542`）**：`GetExplainSQLCache` 加 `created_at > now()-7d` 谓词（`ExplainSQLCacheTTL`），过期即视为 miss 并由下一次生成覆盖；同时增量 `0.1.0001` 增加 `scope` 列（缓存 key 现在也含 scope/provider/model）。`expired` 标记服务端仍不设置——过期条目根本不会被返回。
-- **M20. `GetOrCreateExternalDataset` 每次解析都写库，且已有行不更新 `dataset_type`**：`store/external_dataset.go:53-57`。
-- **M21. `external_dataset.schema_fields` 从无写入者**：唯一 INSERT（53-57）不含该列，`FindExternalDatasetByGUIDs`（`openlineage_api_key.go:181`）仍在读取；`lineage_service.go:121` 永远拿到空 `SchemaFields`。
-- **M22. OpenLineage task 聚合在每个事件上全量重算**：`store/openlineage_task.go:109-166`，`COUNT(*) OVER () ... FROM openlineage_run WHERE task_guid = $1`，每个事件 O(runs)；外加每事件一次 registry upsert + history 行。
+- **M20. `GetOrCreateExternalDataset` 每次解析都写库，且已有行不更新 `dataset_type`**：`store/external_dataset.go:53-57`。 —— **✅ 已修复（阶段 6）** · `99d41ea`：`GetOrCreateExternalDataset` 在 `dataset_type` 未变时不再写库，变化时只更新该列。
+- **M21. `external_dataset.schema_fields` 从无写入者**：唯一 INSERT（53-57）不含该列，`FindExternalDatasetByGUIDs`（`openlineage_api_key.go:181`）仍在读取；`lineage_service.go:121` 永远拿到空 `SchemaFields`。 —— **✅ 已修复（阶段 6）** · `0151bcb`：按 B14 的"择一"取删除方案——无写入者的 `schema_fields` 列与读取/扫描路径一并删除（增量 `0.1.0008`），不再有"永远为空"的假数据。
+- **M22. OpenLineage task 聚合在每个事件上全量重算**：`store/openlineage_task.go:109-166`，`COUNT(*) OVER () ... FROM openlineage_run WHERE task_guid = $1`，每个事件 O(runs)；外加每事件一次 registry upsert + history 行。 —— **✅ 已修复（阶段 6）** · `e7d15eb`：`openlineage_task` 计数改为增量——先取 task 行锁串行化同一 task 的写入，再按唯一键点查旧 `has_lineage` 得到本次增量，latest 字段就地比较，批量内按 task GUID 稳定排序避免死锁。
 - **M23. `SearchAuditLogs` 接受调用方提供的 WHERE 片段**：`store/audit_log.go:64-67`。当前安全（唯一构造器白名单化变量并参数化），但 store API 接受任意 SQL 文本是安全路径上的隐患。
 - **M24. 审计时间可由调用方设置**：`store/audit_log.go:35-39`，`cloned.CreateTime` 可回填；当前拦截器不设置，但 store 允许伪造；且无完整性保护（无哈希链）。
-- **M25. `ValidateOpenLineageAPIKey` 是 O(N) bcrypt 扫描 + 每请求写**：`store/openlineage_api_key.go:67-103`（详见 `04` B-H6）。
-- **M26. OpenLineage run/task 列表无默认 LIMIT**：`store/openlineage_run.go:306-311`、`store/openlineage_task.go:251-256`（详见 `04` B-H1）。**部分修复（阶段 2，`8c34542`）**：数据集页/详情两个端点已传 `Limit: 5000`；store 层仍只在 `Limit != nil` 时加 LIMIT，run 列表端点仍依赖请求参数。
+- **M25. `ValidateOpenLineageAPIKey` 是 O(N) bcrypt 扫描 + 每请求写**：`store/openlineage_api_key.go:67-103`（详见 `04` B-H6）。 —— **✅ 已修复（阶段 6）** · `415e16e`：新增 `key_digest`（SHA-256 hex，唯一索引）定向查询后再 bcrypt 比对，校验从 O(N) 全表扫描降为一次点查 + 一次比对；每个请求仍会同步写一次 `last_used_at`（有意保留"最后使用时间"语义，代价降为单行 UPDATE）。
+- **M26. OpenLineage run/task 列表无默认 LIMIT**：`store/openlineage_run.go:306-311`、`store/openlineage_task.go:251-256`（详见 `04` B-H1）。**部分修复（阶段 2，`8c34542`）**：数据集页/详情两个端点已传 `Limit: 5000`；store 层仍只在 `Limit != nil` 时加 LIMIT，run 列表端点仍依赖请求参数。 —— **✅ 已修复（阶段 6）** · `311e790`：`openLineagePageClause` 在 `Limit == nil` 时也施加 5000 默认上限，run/task 两个列表共用。
 
 ---
 
@@ -132,10 +133,10 @@
 - **`BatchUpdateDatabases` 用 `environment = ''` 而非 NULL**：`database.go:304-306`，读路径 `COALESCE('', instance.environment)` 得到 `''` 而非继承实例环境，与缓存分支（341-352）不一致。
 - **`BatchUpdateDatabases` 无界的 OR 列表**：`database.go:316-327`，每库 2 个参数，逼近 PG 65535 上限。
   - **阶段 3 续更正（`451cb78`）**：`BatchUpdateDatabases` 已随 project 一起删除（唯一调用者是 `DeleteInstance.force`），上面两条 `environment = ''` 与无界 OR 列表的发现不再适用于当前代码。
-- **`unObfuscateInstance` 每行重新取 secret 并重复解码**：`instance.go:260`。
+- **`unObfuscateInstance` 每行重新取 secret 并重复解码**：`instance.go:260`。 —— **✅ 已修复（阶段 6）** · `390a66c`：`unObfuscateInstanceWithSecret` 让整页实例只解析一次 secret，不再逐行 `GetSecret` 取锁。
 - **store 错误普遍绕过 `common.Code`**：`meta_resource.go:117,188,942,950`、`instance.go:58,64`、`database.go:94`、`group.go:67`、`project.go`、`role.go:199` 等。
 - **`UpdateInstanceV2` 不做 data source 校验**：`instance.go:97`（create 有，update 没有），可持久化 0 个或多个 ADMIN 数据源。**✅ 已修复（阶段 1）** · `20e284b`：在 API 层补齐——`checkInstanceDataSources`（create/update 两条路径共用）现在要求恰好一个 ADMIN，并保留 ID 唯一性校验，返回 `CodeInvalidArgument`（守卫测试 `TestCheckInstanceDataSourcesRequiresOneAdmin`）。store 的 `UpdateInstanceV2` 本身仍不校验，绕过 API 的调用方不受保护。
-- **`systemBotUser` 回退对象与种子行不一致**：`principal.go:22-27` 用 `SYSTEM_BOT@example.com`（大写），而 `LATEST.sql:114` 种子是 `support@example.com`。
+- **`systemBotUser` 回退对象与种子行不一致**：`principal.go:22-27` 用 `SYSTEM_BOT@example.com`（大写），而 `LATEST.sql:114` 种子是 `support@example.com`。 —— **✅ 已修复（阶段 6）** · `e7239db`：`systemBotUser` 回退对象改为与 `LATEST.sql` 种子行（`support@example.com`）对齐。
 - **`CountIssues` 查询不存在的 `issue` 表**：`stats.go:126-145`；`CountActiveUsers` 有不可达的 `sql.ErrNoRows` 分支（88-92）；`id > 101` 魔法偏移是 Bytebase 播种遗留。（`CountUsers` 已在阶段 0 补上 `principal.deleted = FALSE`，见 `02` C2。）
 - **LIMIT/OFFSET 用 `Sprintf` 插值**：`manual_sql.go:577-582`、`column_lineage.go:162-167`、`openlineage_run.go:306-311`、`openlineage_task.go:251-256`。不可注入（Go int），但与其它地方不一致，且负值会得到原始 PG 错误。
 - **`ManualSQLID` 是幻影字段**：`manual_sql.go:481,527`，无 `manual_sql_id` 列，filter 映射到 `name`。
