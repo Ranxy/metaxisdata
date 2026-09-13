@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -411,6 +412,9 @@ func (s *Store) GetOpenLineageTask(ctx context.Context, find *FindOpenLineageTas
 	}
 	if len(list) == 0 {
 		return nil, nil
+	}
+	if len(list) > 1 {
+		return nil, common.Errorf(common.Conflict, "found %d OpenLineage tasks with filter %+v, expect 1", len(list), find)
 	}
 	return list[0], nil
 }

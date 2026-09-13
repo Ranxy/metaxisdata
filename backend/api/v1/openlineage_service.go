@@ -223,7 +223,9 @@ func (s *OpenLineageService) UpdateNamespaceMapping(ctx context.Context, req *co
 		DatabaseName:       mapping.GetDatabaseName(),
 	}, updateMask)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to update namespace mapping"))
+		// Let the ErrorMappingInterceptor map the store's common.Code (e.g.
+		// NotFound) instead of forcing an internal status here.
+		return nil, errors.Wrap(err, "failed to update namespace mapping")
 	}
 	return connect.NewResponse(convertNamespaceMapping(result)), nil
 }
@@ -234,7 +236,7 @@ func (s *OpenLineageService) DeleteNamespaceMapping(ctx context.Context, req *co
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	if err := s.store.DeleteNamespaceMapping(ctx, mappingID); err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to delete namespace mapping"))
+		return nil, errors.Wrap(err, "failed to delete namespace mapping")
 	}
 	return connect.NewResponse(&emptypb.Empty{}), nil
 }
@@ -280,7 +282,7 @@ func (s *OpenLineageService) RevokeAPIKey(ctx context.Context, req *connect.Requ
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	if err := s.store.RevokeOpenLineageAPIKey(ctx, keyID); err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to revoke API key"))
+		return nil, errors.Wrap(err, "failed to revoke API key")
 	}
 	return connect.NewResponse(&emptypb.Empty{}), nil
 }

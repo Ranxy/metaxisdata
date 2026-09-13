@@ -112,7 +112,7 @@ func (s *Store) UpdateLLMProfile(ctx context.Context, update *UpdateLLMProfileMe
 		return nil, err
 	}
 	if existing == nil {
-		return nil, errors.Errorf("LLM profile %q not found", update.ResourceID)
+		return nil, common.Errorf(common.NotFound, "LLM profile %q not found", update.ResourceID)
 	}
 
 	meta := existing.Metadata
@@ -166,6 +166,9 @@ func (s *Store) GetLLMProfile(ctx context.Context, find *FindLLMProfileMessage) 
 	}
 	if len(profiles) == 0 {
 		return nil, nil
+	}
+	if len(profiles) > 1 {
+		return nil, common.Errorf(common.Conflict, "found %d LLM profiles with filter %+v, expect 1", len(profiles), find)
 	}
 	return profiles[0], nil
 }

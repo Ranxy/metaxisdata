@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	pkgerrors "github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -35,6 +36,7 @@ func TestMapCommonError(t *testing.T) {
 		{"handler status wins", connect.NewError(connect.CodePermissionDenied, common.Errorf(common.NotFound, "x")), connect.CodePermissionDenied},
 		{"handler already_exists wins", connect.NewError(connect.CodeAlreadyExists, common.Errorf(common.Conflict, "x")), connect.CodeAlreadyExists},
 		{"internal is upgraded from the chain", connect.NewError(connect.CodeInternal, common.Errorf(common.NotFound, "x")), connect.CodeNotFound},
+		{"a pkg/errors wrap does not hide the code", connect.NewError(connect.CodeInternal, pkgerrors.Wrap(common.Errorf(common.NotFound, "no such mapping"), "failed to delete namespace mapping")), connect.CodeNotFound},
 		{"internal without a common code stays internal", connect.NewError(connect.CodeInternal, errors.New("boom")), connect.CodeInternal},
 	}
 

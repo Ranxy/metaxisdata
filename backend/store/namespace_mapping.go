@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+
+	"github.com/Ranxy/metaxisdata/backend/common"
 )
 
 // NamespaceMappingMessage is the store representation of a namespace mapping.
@@ -60,6 +62,9 @@ func (s *Store) GetNamespaceMapping(ctx context.Context, find *FindNamespaceMapp
 	}
 	if len(list) == 0 {
 		return nil, nil
+	}
+	if len(list) > 1 {
+		return nil, common.Errorf(common.Conflict, "found %d namespace mappings with filter %+v, expect 1", len(list), find)
 	}
 	return list[0], nil
 }
@@ -153,7 +158,7 @@ func (s *Store) UpdateNamespaceMapping(ctx context.Context, id int64, msg *Names
 		&result.CreatedAt, &result.UpdatedAt,
 	); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, errors.Errorf("namespace mapping %d not found", id)
+			return nil, common.Errorf(common.NotFound, "namespace mapping %d not found", id)
 		}
 		return nil, errors.Wrap(err, "failed to update namespace mapping")
 	}
@@ -175,7 +180,7 @@ func (s *Store) DeleteNamespaceMapping(ctx context.Context, id int64) error {
 		return errors.Wrap(err, "failed to get rows affected")
 	}
 	if n == 0 {
-		return errors.Errorf("namespace mapping %d not found", id)
+		return common.Errorf(common.NotFound, "namespace mapping %d not found", id)
 	}
 	return nil
 }

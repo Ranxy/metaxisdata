@@ -12,6 +12,8 @@ import (
 
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/Ranxy/metaxisdata/backend/common"
 )
 
 // OpenLineageAPIKeyMessage is the store representation of an API key.
@@ -149,7 +151,7 @@ func (s *Store) RevokeOpenLineageAPIKey(ctx context.Context, id int64) error {
 		return errors.Wrap(err, "failed to get rows affected")
 	}
 	if n == 0 {
-		return errors.Errorf("API key %d not found or already revoked", id)
+		return common.Errorf(common.NotFound, "API key %d not found or already revoked", id)
 	}
 	return nil
 }

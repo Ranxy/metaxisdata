@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+
+	"github.com/Ranxy/metaxisdata/backend/common"
 )
 
 // ExternalDatasetMessage is the store representation of an external dataset.
@@ -95,6 +97,9 @@ func (s *Store) GetExternalDataset(ctx context.Context, find *FindExternalDatase
 	}
 	if len(list) == 0 {
 		return nil, nil
+	}
+	if len(list) > 1 {
+		return nil, common.Errorf(common.Conflict, "found %d external datasets with filter %+v, expect 1", len(list), find)
 	}
 	return list[0], nil
 }

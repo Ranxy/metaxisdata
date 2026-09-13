@@ -67,7 +67,7 @@ type UpdateManualSQLMessage struct {
 }
 
 func buildManualSQLGUID(instanceResourceID, databaseName, schemaName, manualSQLID string) string {
-	return strings.Join([]string{instanceResourceID, databaseName, schemaName, manualSQLGUIDPrefix + manualSQLID}, common.MetaGUIDSplit)
+	return common.BuildMetaGUID(instanceResourceID, databaseName, schemaName, manualSQLGUIDPrefix+manualSQLID)
 }
 
 func normalizeManualSQLTags(tags []string) []string {
@@ -316,7 +316,7 @@ func (s *Store) UpdateManualSQL(ctx context.Context, guid string, patch *UpdateM
 		return nil, err
 	}
 	if len(currentList) == 0 {
-		return nil, errors.Errorf("manual SQL %q not found", guid)
+		return nil, common.Errorf(common.NotFound, "manual SQL %q not found", guid)
 	}
 	current := currentList[0]
 	updated := *current
@@ -424,7 +424,7 @@ func (s *Store) DeleteManualSQL(ctx context.Context, guid string, updatedBy *str
 		return errors.Wrap(err, "failed to get rows affected for manual SQL delete")
 	}
 	if affected == 0 {
-		return errors.Errorf("manual SQL %q not found", guid)
+		return common.Errorf(common.NotFound, "manual SQL %q not found", guid)
 	}
 
 	if err := s.deleteManualSQLMetaRegistryTx(ctx, tx, guid, observedAt); err != nil {
@@ -550,7 +550,7 @@ func updateManualSQLRow(ctx context.Context, tx *sql.Tx, currentGUID string, msg
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, errors.Errorf("manual SQL %q not found", currentGUID)
+			return nil, common.Errorf(common.NotFound, "manual SQL %q not found", currentGUID)
 		}
 		return nil, errors.Wrap(err, "failed to update manual SQL row")
 	}
