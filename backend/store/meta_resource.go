@@ -36,15 +36,12 @@ type MetaGUIDKey struct {
 }
 
 type FindMetaRegistryResourceMessage struct {
-	ID                *int64
-	IDList            *[]int64
-	GUID              *string
-	GUIDPrefix        *string
-	ObjectType        *storepb.MetaType
-	ExcludeObjectType *[]storepb.MetaType
-	Limit             *int
-	Offset            *int
-	ExtraArgs         []ExtraArgs
+	GUID       *string
+	GUIDPrefix *string
+	ObjectType *storepb.MetaType
+	Limit      *int
+	Offset     *int
+	ExtraArgs  []ExtraArgs
 }
 
 type FindSubLevelMetaRegistryResourceMessage struct {
@@ -75,7 +72,6 @@ type FindMetaRegistryHistoryMessage struct {
 	ObjectType     *storepb.MetaType
 	Limit          *int
 	Offset         *int
-	ValidFrom      *time.Time
 	TransitionTime *time.Time
 	OrderDesc      bool
 }
@@ -105,11 +101,6 @@ func metaRegistryGUIDCacheKey(find *FindMetaRegistryResourceMessage) (MetaGUIDKe
 }
 
 func (s *Store) GetMetaRegistry(ctx context.Context, find *FindMetaRegistryResourceMessage) (*MetaRegistryResource, error) {
-	if find.ID != nil {
-		if v, ok := s.metaRegistryCache.Get(*find.ID); ok && !s.cacheDisabled {
-			return v, nil
-		}
-	}
 	// The GUID alone is not unique: the table's unique constraint is
 	// (guid, object_type). Only consult the GUID cache for a lookup that also
 	// narrowed the object type.
@@ -132,7 +123,6 @@ func (s *Store) GetMetaRegistry(ctx context.Context, find *FindMetaRegistryResou
 	metaRegistry := list[0]
 
 	if isMetaTypeCached(metaRegistry.ObjectType) {
-		s.metaRegistryCache.Add(metaRegistry.ID, metaRegistry)
 		s.metaRegistryGUIDCache.Add(metaRegistry.GUIDKey(), metaRegistry)
 	}
 	return metaRegistry, nil
@@ -153,7 +143,6 @@ func (s *Store) ListMetaRegistry(ctx context.Context, find *FindMetaRegistryReso
 	}
 	for _, metaRegistry := range list {
 		if isMetaTypeCached(metaRegistry.ObjectType) {
-			s.metaRegistryCache.Add(metaRegistry.ID, metaRegistry)
 			s.metaRegistryGUIDCache.Add(metaRegistry.GUIDKey(), metaRegistry)
 		}
 	}
@@ -182,7 +171,6 @@ func (s *Store) ListMetaRegistryResource(ctx context.Context, find *FindMetaRegi
 				Metadata:   metaRegistry.Metadata,
 				MetaHash:   metaRegistry.MetaHash,
 			}
-			s.metaRegistryCache.Add(metaRegistry.ID, reg)
 			s.metaRegistryGUIDCache.Add(reg.GUIDKey(), reg)
 		}
 	}
@@ -354,12 +342,6 @@ func (s *Store) SearchMetaRegistryResource(ctx context.Context, find *SearchMeta
 
 func buildMetaRegistryWhereClause(tableName string, find *FindMetaRegistryResourceMessage) ([]string, []any) {
 	where, args := []string{"TRUE"}, []any{}
-	if v := find.ID; v != nil {
-		where, args = append(where, fmt.Sprintf("%s.id = $%d", tableName, len(args)+1)), append(args, *v)
-	}
-	if v := find.IDList; v != nil {
-		where, args = append(where, fmt.Sprintf("%s.id = ANY($%d)", tableName, len(args)+1)), append(args, *v)
-	}
 	if v := find.GUID; v != nil {
 		where, args = append(where, fmt.Sprintf("%s.guid = $%d", tableName, len(args)+1)), append(args, *v)
 	}
@@ -368,9 +350,6 @@ func buildMetaRegistryWhereClause(tableName string, find *FindMetaRegistryResour
 	}
 	if v := find.ObjectType; v != nil {
 		where, args = append(where, fmt.Sprintf("%s.object_type = $%d", tableName, len(args)+1)), append(args, *v)
-	}
-	if v := find.ExcludeObjectType; v != nil && len(*v) > 0 {
-		where, args = append(where, fmt.Sprintf("%s.object_type != ALL($%d)", tableName, len(args)+1)), append(args, *v)
 	}
 	if v := find.ExtraArgs; len(v) > 0 {
 		for _, extraArg := range v {
@@ -400,7 +379,6 @@ func (s *Store) ListSublevelMetaRegistryResource(ctx context.Context, find *Find
 	}
 	for _, metaRegistry := range list {
 		if isMetaTypeCached(metaRegistry.ObjectType) {
-			s.metaRegistryCache.Add(metaRegistry.ID, metaRegistry)
 			s.metaRegistryGUIDCache.Add(metaRegistry.GUIDKey(), metaRegistry)
 		}
 	}
@@ -535,7 +513,6 @@ func (s *Store) InvalidateMetaRegistryCache(list []*MetaRegistryResource) {
 		if !isMetaTypeCached(registry.ObjectType) {
 			continue
 		}
-		s.metaRegistryCache.Remove(registry.ID)
 		s.metaRegistryGUIDCache.Remove(registry.GUIDKey())
 	}
 }

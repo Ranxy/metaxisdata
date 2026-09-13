@@ -35,7 +35,6 @@ type Store struct {
 	idpCache              *lru.Cache[string, *IdentityProviderMessage]
 	instanceCache         *lru.Cache[string, *InstanceMessage]
 	databaseCache         *lru.Cache[string, *DatabaseMessage]
-	metaRegistryCache     *lru.Cache[int64, *MetaRegistryResource]
 	metaRegistryGUIDCache *lru.Cache[MetaGUIDKey, *MetaRegistryResource]
 	policyCache           *lru.Cache[string, *PolicyMessage]
 	rolesCache            *lru.Cache[string, *RoleMessage]
@@ -80,10 +79,6 @@ func New(ctx context.Context, pgURL string, opts ...Option) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	metaRegistryCache, err := lru.New[int64, *MetaRegistryResource](65536)
-	if err != nil {
-		return nil, err
-	}
 	metaRegistryGUIDCache, err := lru.New[MetaGUIDKey, *MetaRegistryResource](65536)
 	if err != nil {
 		return nil, err
@@ -111,7 +106,6 @@ func New(ctx context.Context, pgURL string, opts ...Option) (*Store, error) {
 		idpCache:              idpCache,
 		instanceCache:         instanceCache,
 		databaseCache:         databaseCache,
-		metaRegistryCache:     metaRegistryCache,
 		metaRegistryGUIDCache: metaRegistryGUIDCache,
 		policyCache:           policyCache,
 		rolesCache:            rolesCache,

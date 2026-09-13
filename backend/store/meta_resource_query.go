@@ -156,9 +156,6 @@ func (*Store) listMetaRegistryHistoryImpl(ctx context.Context, txn *sql.Tx, find
 	if v := find.ObjectType; v != nil {
 		where, args = append(where, fmt.Sprintf("meta_registry_resource_history.object_type = $%d", len(args)+1)), append(args, *v)
 	}
-	if v := find.ValidFrom; v != nil {
-		where, args = append(where, fmt.Sprintf("meta_registry_resource_history.valid_from = $%d", len(args)+1)), append(args, *v)
-	}
 	if v := find.TransitionTime; v != nil {
 		args = append(args, *v)
 		argIndex := len(args)
