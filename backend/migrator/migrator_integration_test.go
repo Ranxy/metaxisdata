@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io/fs"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/fstest"
@@ -93,6 +94,86 @@ func TestMigrateSchemaLegacyAdoption(t *testing.T) {
 	assertHistoryVersions(t, db, baselineVersion, incrementalVersion)
 }
 
+// TestMigrateSchemaLATESTMatchesTheIncrementChain guards the dual-maintenance
+// model: applying every incremental on top of LATEST.sql must be a no-op, i.e.
+// the incrementals and the cumulative file must not disagree about the schema.
+func TestMigrateSchemaLATESTMatchesTheIncrementChain(t *testing.T) {
+	ctx := context.Background()
+
+	// Both databases live in one container: starting a container per database
+	// made this test needlessly heavy inside the full integration suite.
+	host, port := startPostgres(t)
+	fresh := newTestDatabaseIn(t, host, port)
+	require.NoError(t, MigrateSchema(ctx, fresh))
+
+	chained := newTestDatabaseIn(t, host, port)
+	latestBuf, err := fs.ReadFile(migrationFS, latestSchemaFileName)
+	require.NoError(t, err)
+	_, err = chained.ExecContext(ctx, string(latestBuf))
+	require.NoError(t, err)
+
+	files, err := getSortedVersionedFiles(migrationFS)
+	require.NoError(t, err)
+	for _, f := range files {
+		buf, err := fs.ReadFile(migrationFS, f.path)
+		require.NoError(t, err)
+		_, err = chained.ExecContext(ctx, string(buf))
+		require.NoErrorf(t, err, "incremental %s must apply cleanly on top of LATEST.sql", f.path)
+	}
+
+	require.Equal(t, catalogSnapshot(t, fresh), catalogSnapshot(t, chained),
+		"LATEST.sql and the increment chain describe different schemas")
+}
+
+// TestMigrateSchemaSerializesConcurrentReplicas covers the advisory lock: two
+// replicas starting at once must not both apply the baseline.
+func TestMigrateSchemaSerializesConcurrentReplicas(t *testing.T) {
+	db := newTestDatabase(t)
+	ctx := context.Background()
+
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Go(func() {
+			errs <- MigrateSchema(ctx, db)
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	// Only the first replica migrated; the ledger must hold exactly one row.
+	assertHistoryVersions(t, db, embeddedLatestVersion(t).String())
+}
+
+// catalogSnapshot renders the tables, columns and indexes of the current schema
+// as sorted strings so two databases can be compared.
+func catalogSnapshot(t *testing.T, db *sql.DB) []string {
+	t.Helper()
+	rows, err := db.QueryContext(context.Background(), `
+		SELECT table_name || '.' || column_name || ':' || data_type || ':' || is_nullable
+		FROM information_schema.columns
+		WHERE table_schema = current_schema()
+		UNION ALL
+		SELECT indexname || ':' || indexdef
+		FROM pg_indexes
+		WHERE schemaname = current_schema()
+		ORDER BY 1`)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	var snapshot []string
+	for rows.Next() {
+		var entry string
+		require.NoError(t, rows.Scan(&entry))
+		snapshot = append(snapshot, entry)
+	}
+	require.NoError(t, rows.Err())
+	return snapshot
+}
+
 // --- helpers ---
 
 // embeddedLatestVersion computes the newest version of the real embedded
@@ -144,9 +225,17 @@ var testDBCounter int64
 // throwaway database inside it.
 func newTestDatabase(t *testing.T) *sql.DB {
 	t.Helper()
+	host, port := startPostgres(t)
+	return newTestDatabaseIn(t, host, port)
+}
+
+// newTestDatabaseIn creates a throwaway database inside an already running
+// PostgreSQL, so one test can build several databases without starting a
+// container per database.
+func newTestDatabaseIn(t *testing.T, host, port string) *sql.DB {
+	t.Helper()
 	ctx := context.Background()
 
-	host, port := startPostgres(t)
 	admin, err := sql.Open("pgx", testDSN(host, port, "metaxisdata"))
 	require.NoError(t, err)
 	// t.Cleanup is LIFO: the drop below runs before this close.
