@@ -273,10 +273,12 @@ func listUserImpl(ctx context.Context, txn *sql.Tx, find *FindUserMessage) ([]*U
 	WHERE ` + strings.Join(where, " AND ") + ` ORDER BY type DESC, created_at ASC`
 
 	if v := find.Limit; v != nil {
-		query += fmt.Sprintf(" LIMIT %d", *v)
+		args = append(args, max(*v, 0))
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
 	}
 	if v := find.Offset; v != nil {
-		query += fmt.Sprintf(" OFFSET %d", *v)
+		args = append(args, max(*v, 0))
+		query += fmt.Sprintf(" OFFSET $%d", len(args))
 	}
 
 	var userMessages []*UserMessage

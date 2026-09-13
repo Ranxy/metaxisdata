@@ -605,10 +605,12 @@ func listManualSQLImpl(ctx context.Context, tx *sql.Tx, find *FindManualSQLMessa
 		WHERE ` + strings.Join(where, " AND ") + `
 		ORDER BY updated_at DESC, id DESC`
 	if find.Limit != nil {
-		query += fmt.Sprintf(" LIMIT %d", *find.Limit)
+		args = append(args, max(*find.Limit, 0))
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
 	}
 	if find.Offset != nil {
-		query += fmt.Sprintf(" OFFSET %d", *find.Offset)
+		args = append(args, max(*find.Offset, 0))
+		query += fmt.Sprintf(" OFFSET $%d", len(args))
 	}
 
 	rows, err := tx.QueryContext(ctx, query, args...)

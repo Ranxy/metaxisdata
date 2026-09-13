@@ -62,14 +62,29 @@ func TestOpenLineagePageClause(t *testing.T) {
 	five := 5
 	big := 20000
 	zero := 0
+	negative := -3
 	offset := 40
 
-	require.Equal(t, " LIMIT 5000", openLineagePageClause(nil, nil))
-	require.Equal(t, " LIMIT 5", openLineagePageClause(&five, nil))
-	require.Equal(t, " LIMIT 20000", openLineagePageClause(&big, nil), "a caller may ask for more than the default")
-	require.Equal(t, " LIMIT 0", openLineagePageClause(&zero, nil), "an explicit empty page stays empty")
-	require.Equal(t, " LIMIT 5000 OFFSET 40", openLineagePageClause(nil, &offset))
-	require.Equal(t, " LIMIT 5 OFFSET 40", openLineagePageClause(&five, &offset))
+	clause, args := openLineagePageClause(nil, nil, 0)
+	require.Equal(t, " LIMIT $1", clause)
+	require.Equal(t, []any{5000}, args)
+
+	_, args = openLineagePageClause(&five, nil, 0)
+	require.Equal(t, []any{5}, args)
+
+	_, args = openLineagePageClause(&big, nil, 0)
+	require.Equal(t, []any{20000}, args, "a caller may ask for more than the default")
+
+	_, args = openLineagePageClause(&zero, nil, 0)
+	require.Equal(t, []any{0}, args, "an explicit empty page stays empty")
+
+	// PostgreSQL rejects a negative LIMIT, so it is clamped instead.
+	_, args = openLineagePageClause(&negative, &offset, 0)
+	require.Equal(t, []any{0, 40}, args)
+
+	clause, args = openLineagePageClause(nil, &offset, 2)
+	require.Equal(t, " LIMIT $3 OFFSET $4", clause)
+	require.Equal(t, []any{5000, 40}, args, "placeholders continue after the caller's arguments")
 }
 
 // A batch is persisted in the caller's order even though its tasks are locked in

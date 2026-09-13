@@ -108,10 +108,12 @@ func (*Store) listGroupImpl(ctx context.Context, txn *sql.Tx, find *FindGroupMes
 		user_group.payload
 	FROM user_group WHERE ` + strings.Join(where, " AND ") + ` ORDER BY email`
 	if v := find.Limit; v != nil {
-		query += fmt.Sprintf(" LIMIT %d", *v)
+		args = append(args, max(*v, 0))
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
 	}
 	if v := find.Offset; v != nil {
-		query += fmt.Sprintf(" OFFSET %d", *v)
+		args = append(args, max(*v, 0))
+		query += fmt.Sprintf(" OFFSET $%d", len(args))
 	}
 
 	var groups []*GroupMessage

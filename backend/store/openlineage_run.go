@@ -19,18 +19,22 @@ import (
 // its own. An unbounded list would let one request read the whole table.
 const defaultOpenLineageListLimit = 5000
 
-// openLineagePageClause renders the LIMIT/OFFSET of an OpenLineage list query,
-// capping a caller that does not ask for a size itself.
-func openLineagePageClause(limit, offset *int) string {
+// openLineagePageClause renders the LIMIT/OFFSET clause of an OpenLineage list
+// query and returns the arguments to bind after startIndex. A caller that does
+// not ask for a size gets the default cap, and a negative value is clamped
+// because PostgreSQL rejects a negative LIMIT.
+func openLineagePageClause(limit, offset *int, startIndex int) (string, []any) {
 	effective := defaultOpenLineageListLimit
 	if limit != nil {
 		effective = *limit
 	}
-	clause := fmt.Sprintf(" LIMIT %d", effective)
+	pageArgs := []any{max(effective, 0)}
+	clause := fmt.Sprintf(" LIMIT $%d", startIndex+1)
 	if offset != nil {
-		clause += fmt.Sprintf(" OFFSET %d", *offset)
+		pageArgs = append(pageArgs, max(*offset, 0))
+		clause += fmt.Sprintf(" OFFSET $%d", startIndex+len(pageArgs))
 	}
-	return clause
+	return clause, pageArgs
 }
 
 // OpenLineageRunMessage is the store representation of a persisted COMPLETE OpenLineage run.
@@ -392,7 +396,10 @@ func (s *Store) ListOpenLineageRun(ctx context.Context, find *FindOpenLineageRun
 			updated_at
 		FROM openlineage_run
 		WHERE ` + strings.Join(where, " AND ") + `
-		ORDER BY event_time DESC NULLS LAST, id DESC` + openLineagePageClause(find.Limit, find.Offset)
+		ORDER BY event_time DESC NULLS LAST, id DESC`
+	pageClause, pageArgs := openLineagePageClause(find.Limit, find.Offset, len(args))
+	query += pageClause
+	args = append(args, pageArgs...)
 
 	rows, err := s.GetDB().QueryContext(ctx, query, args...)
 	if err != nil {

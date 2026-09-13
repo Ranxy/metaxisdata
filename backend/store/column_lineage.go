@@ -160,10 +160,12 @@ func (s *Store) ListColumnLineage(ctx context.Context, find *FindColumnLineageMe
 		ORDER BY id`, strings.Join(where, " AND "))
 
 	if v := find.Limit; v != nil {
-		query += fmt.Sprintf(" LIMIT %d", *v)
+		args = append(args, max(*v, 0))
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
 	}
 	if v := find.Offset; v != nil {
-		query += fmt.Sprintf(" OFFSET %d", *v)
+		args = append(args, max(*v, 0))
+		query += fmt.Sprintf(" OFFSET $%d", len(args))
 	}
 
 	rows, err := s.GetDB().QueryContext(ctx, query, args...)

@@ -465,7 +465,10 @@ func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTa
 		FROM openlineage_task task
 		LEFT JOIN openlineage_run AS latest_run ON latest_run.guid = task.latest_run_guid
 		WHERE ` + strings.Join(where, " AND ") + `
-		ORDER BY task.latest_event_time DESC NULLS LAST, task.id DESC` + openLineagePageClause(find.Limit, find.Offset)
+		ORDER BY task.latest_event_time DESC NULLS LAST, task.id DESC`
+	pageClause, pageArgs := openLineagePageClause(find.Limit, find.Offset, len(args))
+	query += pageClause
+	args = append(args, pageArgs...)
 
 	rows, err := s.GetDB().QueryContext(ctx, query, args...)
 	if err != nil {
