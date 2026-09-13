@@ -29,6 +29,21 @@ func TestGetNextLevelObjectTypeIncludesManualSQLUnderSchema(t *testing.T) {
 	)
 }
 
+// Views keep their columns inside their own metadata and have no COLUMN
+// registry rows, so the browser must not advertise a column sub-level for them.
+func TestGetNextLevelObjectTypeHasNoColumnUnderViews(t *testing.T) {
+	t.Parallel()
+
+	for _, metaType := range []storepb.MetaType{
+		storepb.MetaType_VIEW,
+		storepb.MetaType_MATERIALIZED_VIEW,
+		storepb.MetaType_EXTERNAL_TABLE,
+	} {
+		require.NotContains(t, getNextLevelObjectType(metaType), storepb.MetaType_COLUMN)
+	}
+	require.Contains(t, getNextLevelObjectType(storepb.MetaType_TABLE), storepb.MetaType_COLUMN)
+}
+
 func TestMetaRegistryGUIDCacheKeyIncludesObjectType(t *testing.T) {
 	t.Parallel()
 

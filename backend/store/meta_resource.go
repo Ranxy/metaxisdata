@@ -580,9 +580,10 @@ func getNextLevelObjectType(metaType storepb.MetaType) []storepb.MetaType {
 		}
 	case storepb.MetaType_TABLE:
 		return []storepb.MetaType{storepb.MetaType_COLUMN}
-	case storepb.MetaType_VIEW, storepb.MetaType_MATERIALIZED_VIEW, storepb.MetaType_EXTERNAL_TABLE:
-		return []storepb.MetaType{storepb.MetaType_COLUMN}
 	default:
+		// Views, materialized views and external tables store their columns
+		// inside their own metadata and have no COLUMN registry rows, so
+		// advertising a column sub-level here listed nothing.
 		return []storepb.MetaType{}
 	}
 }
