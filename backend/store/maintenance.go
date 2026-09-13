@@ -133,8 +133,8 @@ func reconcileOpenLineageTask(ctx context.Context, s *Store, tx *sql.Tx, taskGUI
 	}
 
 	if remaining > 0 {
-		// upsertOpenLineageTask rebuilds the aggregate from the remaining runs.
-		return s.upsertOpenLineageTask(ctx, tx, taskGUID)
+		// rebuildOpenLineageTask recomputes the aggregate from the remaining runs.
+		return s.rebuildOpenLineageTask(ctx, tx, taskGUID)
 	}
 
 	var taskGUIDValue string

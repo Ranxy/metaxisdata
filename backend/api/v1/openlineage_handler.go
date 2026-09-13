@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -16,7 +17,13 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-const maxOpenLineageBodySize = 10 * 1024 * 1024 // 10MB
+const (
+	maxOpenLineageBodySize = 8 << 20 // 8MiB
+	// maxOpenLineageBatchEvents bounds the work one request may ask for. The
+	// body limit alone is not enough: a minimal event is well under 100 bytes,
+	// so a single 8MiB body can still carry tens of thousands of them.
+	maxOpenLineageBatchEvents = 1000
+)
 
 // OpenLineageHandler handles OpenLineage event ingestion via HTTP.
 type OpenLineageHandler struct {
@@ -51,9 +58,15 @@ func (h *OpenLineageHandler) receiveEvent(c echo.Context) error {
 	}
 
 	// Read body with size limit.
-	body, err := io.ReadAll(io.LimitReader(c.Request().Body, maxOpenLineageBodySize))
+	body, tooLarge, err := readBodyLimited(c.Request().Body)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
+	}
+	if tooLarge {
+		return c.JSON(http.StatusRequestEntityTooLarge, map[string]any{
+			"error": fmt.Sprintf("request body exceeds %d bytes", maxOpenLineageBodySize),
+			"limit": maxOpenLineageBodySize,
+		})
 	}
 
 	// Detect whether the payload is a single event or a batch (JSON array).
@@ -93,6 +106,12 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, sco
 	if len(rawEvents) == 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "empty event array"})
 	}
+	if len(rawEvents) > maxOpenLineageBatchEvents {
+		return c.JSON(http.StatusRequestEntityTooLarge, map[string]any{
+			"error": fmt.Sprintf("batch exceeds %d events", maxOpenLineageBatchEvents),
+			"limit": maxOpenLineageBatchEvents,
+		})
+	}
 
 	// Parse everything before writing anything, so a scoped key is rejected as a
 	// whole request rather than half-applied.
@@ -118,18 +137,38 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, sco
 		events = append(events, event)
 	}
 
+	ctx := c.Request().Context()
+	runs := make([]*store.OpenLineageRunMessage, len(events))
+	toPersist := make([]*store.OpenLineageRunMessage, 0, len(events))
+	persistIdx := make([]int, 0, len(events))
+	for i, event := range events {
+		run, needsPersist := h.runMessageForEvent(event)
+		runs[i] = run
+		if needsPersist {
+			toPersist = append(toPersist, run)
+			persistIdx = append(persistIdx, i)
+		}
+	}
+
+	// One transaction for the whole batch: a per-event transaction was the
+	// dominant cost of ingesting a batch.
+	persisted, err := h.store.UpsertOpenLineageRuns(ctx, toPersist)
+	if err != nil {
+		slog.Error("failed to persist batch events", "events", len(toPersist), "error", err)
+		return c.JSON(http.StatusInternalServerError, map[string]any{
+			"status":    "error",
+			"error":     err.Error(),
+			"processed": 0,
+			"failed":    invalid + len(events),
+		})
+	}
+	for i, idx := range persistIdx {
+		runs[idx] = persisted[i]
+	}
+
 	processed, failed := 0, 0
 	for i, event := range events {
-		persistedRun, err := h.persistEvent(c.Request().Context(), event)
-		if err != nil {
-			slog.Error("failed to persist batch event", "index", i, "runId", event.Run.RunID, "error", err)
-			failed++
-			if firstErr == nil {
-				firstErr = err
-			}
-			continue
-		}
-		if err := h.processor.ProcessRunEvent(c.Request().Context(), event, persistedRun); err != nil {
+		if err := h.processor.ProcessRunEvent(ctx, event, runs[i]); err != nil {
 			slog.Error("failed to process batch event", "index", i, "runId", event.Run.RunID, "error", err)
 			failed++
 			if firstErr == nil {
@@ -161,6 +200,20 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, sco
 	})
 }
 
+// readBodyLimited reads at most maxOpenLineageBodySize bytes and reports whether
+// the body was larger, so an oversized request is refused instead of being
+// silently truncated into a parse error.
+func readBodyLimited(r io.Reader) ([]byte, bool, error) {
+	body, err := io.ReadAll(io.LimitReader(r, maxOpenLineageBodySize+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if len(body) > maxOpenLineageBodySize {
+		return nil, true, nil
+	}
+	return body, false, nil
+}
+
 // eventWithinScope reports whether a scoped key may submit this event. A key is
 // scoped to one OpenLineage namespace, and every namespace in the event -- the
 // job plus each input and output dataset -- must match it.
@@ -184,13 +237,17 @@ func eventWithinScope(event *openlineage.RunEvent, scope string) bool {
 	return true
 }
 
-func (h *OpenLineageHandler) persistEvent(ctx context.Context, event *openlineage.RunEvent) (*store.OpenLineageRunMessage, error) {
+// runMessageForEvent derives the run for an event. Only a COMPLETE event is
+// written; anything else yields the identity the processor needs without a
+// database write, which is what the second result reports.
+func (*OpenLineageHandler) runMessageForEvent(event *openlineage.RunEvent) (*store.OpenLineageRunMessage, bool) {
 	derived := openlineage.DeriveRunMetadata(event)
+	guid := openlineage.BuildOpenLineageRunGUID(event.Job.Namespace, event.Job.Name, derived.JobType, event.Run.RunID)
 	if event.EventType != "COMPLETE" {
 		return &store.OpenLineageRunMessage{
-			GUID:     openlineage.BuildOpenLineageRunGUID(event.Job.Namespace, event.Job.Name, derived.JobType, event.Run.RunID),
+			GUID:     guid,
 			TaskGUID: derived.TaskGUID,
-		}, nil
+		}, false
 	}
 
 	var eventTime *time.Time
@@ -200,8 +257,8 @@ func (h *OpenLineageHandler) persistEvent(ctx context.Context, event *openlineag
 		slog.Warn("failed to parse OpenLineage event time", "eventTime", event.EventTime, "runId", event.Run.RunID, "error", err)
 	}
 
-	return h.store.UpsertOpenLineageRun(ctx, &store.OpenLineageRunMessage{
-		GUID:               openlineage.BuildOpenLineageRunGUID(event.Job.Namespace, event.Job.Name, derived.JobType, event.Run.RunID),
+	return &store.OpenLineageRunMessage{
+		GUID:               guid,
 		TaskGUID:           derived.TaskGUID,
 		RunID:              event.Run.RunID,
 		JobNamespace:       event.Job.Namespace,
@@ -223,7 +280,15 @@ func (h *OpenLineageHandler) persistEvent(ctx context.Context, event *openlineag
 		OutputCount:        int32(len(event.Outputs)),
 		HasLineage:         derived.HasLineage,
 		RawPayload:         event.RawJSON,
-	})
+	}, true
+}
+
+func (h *OpenLineageHandler) persistEvent(ctx context.Context, event *openlineage.RunEvent) (*store.OpenLineageRunMessage, error) {
+	run, needsPersist := h.runMessageForEvent(event)
+	if !needsPersist {
+		return run, nil
+	}
+	return h.store.UpsertOpenLineageRun(ctx, run)
 }
 
 func extractBearerToken(r *http.Request) string {

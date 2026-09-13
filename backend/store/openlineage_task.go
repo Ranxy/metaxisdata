@@ -50,7 +50,222 @@ type FindOpenLineageTaskMessage struct {
 	Offset       *int
 }
 
-func (s *Store) upsertOpenLineageTask(ctx context.Context, tx *sql.Tx, taskGUID string) error {
+// openLineageTaskState is a task's stored aggregate, read while its row is
+// locked for one ingested run.
+type openLineageTaskState struct {
+	ID                 int64
+	GUID               string
+	JobNamespace       string
+	JobName            string
+	JobType            string
+	Integration        string
+	ProcessingType     string
+	ParentJobNamespace string
+	ParentJobName      string
+	RootJobNamespace   string
+	RootJobName        string
+	LatestRunGUID      string
+	LatestRunID        string
+	LatestEventTime    *time.Time
+	LatestProducer     string
+	LatestSource       string
+	RunCount           int32
+	LineageRunCount    int32
+}
+
+// lockOpenLineageTask takes the task's row lock and returns its stored aggregate.
+// The lock is what makes the incremental counters exact: it serializes the
+// writers of one task, so two deliveries of the same run cannot both count it as
+// new. A task without runs is created here and filled in by applyOpenLineageRun.
+func lockOpenLineageTask(ctx context.Context, tx *sql.Tx, run *OpenLineageRunMessage) (*openLineageTaskState, error) {
+	var state openLineageTaskState
+	var latestEventTime sql.NullTime
+	if err := tx.QueryRowContext(ctx, `
+		INSERT INTO openlineage_task (guid, job_namespace, job_name, job_type)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (job_namespace, job_name, job_type) DO UPDATE SET
+			updated_at = openlineage_task.updated_at
+		RETURNING
+			id,
+			guid,
+			job_namespace,
+			job_name,
+			job_type,
+			integration,
+			processing_type,
+			parent_job_namespace,
+			parent_job_name,
+			root_job_namespace,
+			root_job_name,
+			latest_run_guid,
+			latest_run_id,
+			latest_event_time,
+			latest_producer,
+			latest_source,
+			run_count,
+			lineage_run_count
+	`, run.TaskGUID, run.JobNamespace, run.JobName, run.JobType).Scan(
+		&state.ID,
+		&state.GUID,
+		&state.JobNamespace,
+		&state.JobName,
+		&state.JobType,
+		&state.Integration,
+		&state.ProcessingType,
+		&state.ParentJobNamespace,
+		&state.ParentJobName,
+		&state.RootJobNamespace,
+		&state.RootJobName,
+		&state.LatestRunGUID,
+		&state.LatestRunID,
+		&latestEventTime,
+		&state.LatestProducer,
+		&state.LatestSource,
+		&state.RunCount,
+		&state.LineageRunCount,
+	); err != nil {
+		return nil, errors.Wrap(err, "failed to lock openlineage task")
+	}
+	if latestEventTime.Valid {
+		t := latestEventTime.Time
+		state.LatestEventTime = &t
+	}
+	return &state, nil
+}
+
+// taskCountDelta reports how one ingested run changes its task's counters. A
+// redelivered run counts once, and its lineage flag only moves when it changed.
+func taskCountDelta(existed, previousHasLineage, hasLineage bool) (runs, lineage int32) {
+	if !existed {
+		runs = 1
+	}
+	if hasLineage {
+		lineage++
+	}
+	if existed && previousHasLineage {
+		lineage--
+	}
+	return runs, lineage
+}
+
+// runIsLatest reports whether a run replaces the task's stored latest run. A run
+// without an event time only wins while the task has no timed run, mirroring the
+// "event_time DESC NULLS LAST" ordering the aggregate used to apply.
+func runIsLatest(storedLatestEventTime, runEventTime *time.Time) bool {
+	if storedLatestEventTime == nil {
+		return true
+	}
+	if runEventTime == nil {
+		return false
+	}
+	return !runEventTime.Before(*storedLatestEventTime)
+}
+
+// applyOpenLineageRun folds one persisted run into the task aggregate. The
+// counters move by the delta rather than being recomputed from every run of the
+// task, which is what made ingestion quadratic in the task's history.
+func (*Store) applyOpenLineageRun(ctx context.Context, tx *sql.Tx, task *openLineageTaskState, run *OpenLineageRunMessage, existed, previousHasLineage bool) (*OpenLineageTaskMessage, error) {
+	deltaRuns, deltaLineage := taskCountDelta(existed, previousHasLineage, run.HasLineage)
+	task.RunCount += deltaRuns
+	task.LineageRunCount += deltaLineage
+	if runIsLatest(task.LatestEventTime, run.EventTime) {
+		task.Integration = run.Integration
+		task.ProcessingType = run.ProcessingType
+		task.ParentJobNamespace = run.ParentJobNamespace
+		task.ParentJobName = run.ParentJobName
+		task.RootJobNamespace = run.RootJobNamespace
+		task.RootJobName = run.RootJobName
+		task.LatestRunGUID = run.GUID
+		task.LatestRunID = run.RunID
+		task.LatestEventTime = run.EventTime
+		task.LatestProducer = run.Producer
+		task.LatestSource = run.Source
+	}
+
+	var latestEventTime any
+	if task.LatestEventTime != nil {
+		latestEventTime = *task.LatestEventTime
+	}
+
+	var updated OpenLineageTaskMessage
+	var updatedEventTime sql.NullTime
+	if err := tx.QueryRowContext(ctx, `
+		UPDATE openlineage_task SET
+			integration = $1,
+			processing_type = $2,
+			parent_job_namespace = $3,
+			parent_job_name = $4,
+			root_job_namespace = $5,
+			root_job_name = $6,
+			latest_run_guid = $7,
+			latest_run_id = $8,
+			latest_event_time = $9,
+			latest_producer = $10,
+			latest_source = $11,
+			run_count = $12,
+			lineage_run_count = $13,
+			updated_at = NOW()
+		WHERE id = $14
+		RETURNING
+			id,
+			guid,
+			job_namespace,
+			job_name,
+			job_type,
+			integration,
+			processing_type,
+			parent_job_namespace,
+			parent_job_name,
+			root_job_namespace,
+			root_job_name,
+			latest_run_guid,
+			latest_run_id,
+			latest_event_time,
+			latest_producer,
+			latest_source,
+			run_count,
+			lineage_run_count,
+			created_at,
+			updated_at
+	`, task.Integration, task.ProcessingType, task.ParentJobNamespace, task.ParentJobName,
+		task.RootJobNamespace, task.RootJobName, task.LatestRunGUID, task.LatestRunID,
+		latestEventTime, task.LatestProducer, task.LatestSource, task.RunCount,
+		task.LineageRunCount, task.ID).Scan(
+		&updated.ID,
+		&updated.GUID,
+		&updated.JobNamespace,
+		&updated.JobName,
+		&updated.JobType,
+		&updated.Integration,
+		&updated.ProcessingType,
+		&updated.ParentJobNamespace,
+		&updated.ParentJobName,
+		&updated.RootJobNamespace,
+		&updated.RootJobName,
+		&updated.LatestRunGUID,
+		&updated.LatestRunID,
+		&updatedEventTime,
+		&updated.LatestProducer,
+		&updated.LatestSource,
+		&updated.RunCount,
+		&updated.LineageRunCount,
+		&updated.CreatedAt,
+		&updated.UpdatedAt,
+	); err != nil {
+		return nil, errors.Wrap(err, "failed to update openlineage task")
+	}
+	if updatedEventTime.Valid {
+		t := updatedEventTime.Time
+		updated.LatestEventTime = &t
+	}
+
+	return &updated, nil
+}
+
+// rebuildOpenLineageTask recomputes a task's aggregate from its remaining runs.
+// Ingestion maintains the counters incrementally; retention cleanup, which can
+// remove a whole batch of runs at once, rebuilds the aggregate instead.
+func (s *Store) rebuildOpenLineageTask(ctx context.Context, tx *sql.Tx, taskGUID string) error {
 	agg, err := buildOpenLineageTaskAggregate(ctx, tx, taskGUID)
 	if err != nil {
 		return err

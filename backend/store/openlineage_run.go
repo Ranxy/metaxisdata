@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -58,23 +59,64 @@ type FindOpenLineageRunMessage struct {
 
 // UpsertOpenLineageRun persists a COMPLETE OpenLineage run and mirrors it into meta_registry_resource.
 func (s *Store) UpsertOpenLineageRun(ctx context.Context, run *OpenLineageRunMessage) (*OpenLineageRunMessage, error) {
+	persisted, err := s.UpsertOpenLineageRuns(ctx, []*OpenLineageRunMessage{run})
+	if err != nil {
+		return nil, err
+	}
+	return persisted[0], nil
+}
+
+// UpsertOpenLineageRuns persists several COMPLETE runs in a single transaction,
+// so ingesting a batch costs one transaction instead of one per event.
+func (s *Store) UpsertOpenLineageRuns(ctx context.Context, runs []*OpenLineageRunMessage) ([]*OpenLineageRunMessage, error) {
+	if len(runs) == 0 {
+		return nil, nil
+	}
 	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to begin transaction")
 	}
 	defer tx.Rollback()
 
-	persisted, err := upsertOpenLineageRunImpl(ctx, tx, run)
-	if err != nil {
-		return nil, err
-	}
+	// Locking the task of every run in the same order keeps two concurrent
+	// batches from deadlocking on each other's task rows. The stable sort keeps
+	// runs of one task in their original order.
+	sorted := make([]*OpenLineageRunMessage, len(runs))
+	copy(sorted, runs)
+	slices.SortStableFunc(sorted, func(a, b *OpenLineageRunMessage) int {
+		return strings.Compare(a.TaskGUID, b.TaskGUID)
+	})
 
-	if err := s.upsertOpenLineageTask(ctx, tx, persisted.TaskGUID); err != nil {
-		return nil, err
-	}
+	persisted := make([]*OpenLineageRunMessage, 0, len(sorted))
+	for _, run := range sorted {
+		// The task lock has to be taken before the previous run is read, so the
+		// counters below stay exact under concurrent deliveries.
+		task, err := lockOpenLineageTask(ctx, tx, run)
+		if err != nil {
+			return nil, err
+		}
+		previousHasLineage, existed, err := previousRunState(ctx, tx, run)
+		if err != nil {
+			return nil, err
+		}
 
-	if err := s.upsertOpenLineageRunMetaRegistry(ctx, tx, persisted); err != nil {
-		return nil, err
+		runPersisted, err := upsertOpenLineageRunImpl(ctx, tx, run)
+		if err != nil {
+			return nil, err
+		}
+
+		updatedTask, err := s.applyOpenLineageRun(ctx, tx, task, runPersisted, existed, previousHasLineage)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := s.upsertOpenLineageRunMetaRegistry(ctx, tx, runPersisted); err != nil {
+			return nil, err
+		}
+		if err := s.upsertOpenLineageTaskMetaRegistry(ctx, tx, updatedTask); err != nil {
+			return nil, err
+		}
+		persisted = append(persisted, runPersisted)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -82,6 +124,24 @@ func (s *Store) UpsertOpenLineageRun(ctx context.Context, run *OpenLineageRunMes
 	}
 
 	return persisted, nil
+}
+
+// previousRunState reports the lineage flag of the run this one replaces, and
+// whether such a run already existed. It must be called while the task row is
+// locked.
+func previousRunState(ctx context.Context, tx *sql.Tx, run *OpenLineageRunMessage) (bool, bool, error) {
+	var hasLineage bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT has_lineage
+		FROM openlineage_run
+		WHERE job_namespace = $1 AND job_name = $2 AND job_type = $3 AND run_id = $4
+	`, run.JobNamespace, run.JobName, run.JobType, run.RunID).Scan(&hasLineage); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, false, nil
+		}
+		return false, false, errors.Wrap(err, "failed to read the previous openlineage run")
+	}
+	return hasLineage, true, nil
 }
 
 func upsertOpenLineageRunImpl(ctx context.Context, tx *sql.Tx, run *OpenLineageRunMessage) (*OpenLineageRunMessage, error) {
