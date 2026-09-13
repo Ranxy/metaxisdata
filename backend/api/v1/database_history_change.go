@@ -320,10 +320,28 @@ func pluralize(label string, count int32) string {
 	if count == 1 {
 		return label
 	}
-	if strings.HasSuffix(label, "y") {
-		return strings.TrimSuffix(label, "y") + "ies"
+	// Pluralize the last word: "index" -> "indexes", "property" -> "properties",
+	// but "foreign key" -> "foreign keys".
+	separator := strings.LastIndexByte(label, ' ')
+	head, word := label[:separator+1], label[separator+1:]
+	switch {
+	case strings.HasSuffix(word, "y") && len(word) > 1 && !isVowel(word[len(word)-2]):
+		return head + word[:len(word)-1] + "ies"
+	case strings.HasSuffix(word, "s"), strings.HasSuffix(word, "x"), strings.HasSuffix(word, "z"),
+		strings.HasSuffix(word, "ch"), strings.HasSuffix(word, "sh"):
+		return head + word + "es"
+	default:
+		return label + "s"
 	}
-	return label + "s"
+}
+
+func isVowel(b byte) bool {
+	switch b {
+	case 'a', 'e', 'i', 'o', 'u':
+		return true
+	default:
+		return false
+	}
 }
 
 func summarizeFieldChanges(fields []*v1pb.MetadataFieldChange) string {

@@ -90,7 +90,6 @@ func (s *InstanceService) ListInstances(ctx context.Context, req *connect.Reques
 	return connect.NewResponse(response), nil
 }
 
-// ListInstanceDatabase list all databases in the instance.
 // CreateInstance creates an instance.
 func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Request[v1pb.CreateInstanceRequest]) (*connect.Response[v1pb.Instance], error) {
 	if req.Msg.Instance == nil {

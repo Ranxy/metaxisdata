@@ -46,11 +46,15 @@ func NewUserService(store *store.Store, iamManager *iam.Manager, profile *config
 func (s *UserService) GetUser(ctx context.Context, request *connect.Request[v1pb.GetUserRequest]) (*connect.Response[v1pb.User], error) {
 	userID, err := common.GetUserID(request.Msg.Name)
 	var user *store.UserMessage
+	// Report what was actually looked up: an email lookup that misses would
+	// otherwise answer "user 0 not found".
+	lookupName := request.Msg.Name
 	if err != nil {
 		email, err := common.GetUserEmail(request.Msg.Name)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
 		}
+		lookupName = email
 		u, err := s.store.GetUserByEmail(ctx, email)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get user, error: %v", err))
@@ -64,7 +68,7 @@ func (s *UserService) GetUser(ctx context.Context, request *connect.Request[v1pb
 		user = u
 	}
 	if user == nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("user %d not found", userID))
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("user %q not found", lookupName))
 	}
 	return connect.NewResponse(convertToUser(user)), nil
 }
@@ -215,19 +219,6 @@ func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create user")
 	}
-
-	// s.metricReporter.Report(ctx, &metric.Metric{
-	// 	Name:  metricapi.PrincipalRegistrationMetricName,
-	// 	Value: 1,
-	// 	Labels: map[string]any{
-	// 		"email": user.Email,
-	// 		"name":  user.Name,
-	// 		"phone": user.Phone,
-	// 		// We only send lark notification for the first principal registration.
-	// 		// false means do not notify upfront. Later the notification will be triggered by the scheduler.
-	// 		"lark_notified": !isFirstUser,
-	// 	},
-	// })
 
 	userResponse := convertToUser(user)
 	if request.Msg.User.UserType == v1pb.UserType_SERVICE_ACCOUNT {

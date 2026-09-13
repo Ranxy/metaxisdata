@@ -185,9 +185,6 @@ func buildMetadataHistoryEventContexts(history []*store.MetaRegistryHistory, ski
 			operation := v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_CREATED
 			if previous != nil && previous.ValidTo != nil && previous.ValidTo.Equal(row.ValidFrom) {
 				operation = v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_UPDATED
-				if previous.ValidTo != nil && !previous.ValidTo.Equal(row.ValidFrom) {
-					operation = v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_CREATED
-				}
 			}
 			events = append(events, metadataHistoryEventContext{
 				eventTime: row.ValidFrom,

@@ -185,14 +185,6 @@ func (s *AuthService) Login(ctx context.Context, req *connect.Request[v1pb.Login
 
 	response.User = convertToUser(loginUser)
 
-	// s.metricReporter.Report(ctx, &metric.Metric{
-	// 	Name:  metricapi.PrincipalLoginMetricName,
-	// 	Value: 1,
-	// 	Labels: map[string]any{
-	// 		"email": loginUser.Email,
-	// 	},
-	// })
-
 	return resp, nil
 }
 
