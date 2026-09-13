@@ -21,6 +21,10 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
+// maxBatchInstances bounds the two instance batch RPCs, matching the limit the
+// proto documents.
+const maxBatchInstances = 1000
+
 // InstanceService implements the instance service.
 type InstanceService struct {
 	v1connect.UnimplementedInstanceServiceHandler
@@ -158,7 +162,13 @@ func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Reque
 	}
 
 	driver, err := s.dbFactory.GetAdminDatabaseDriver(ctx, instance, nil /* database */, db.ConnectionContext{})
-	if err == nil {
+	if err != nil {
+		// The instance row is stored; only the initial discovery is skipped. The
+		// error used to be dropped with no trace at all.
+		slog.Warn("Failed to open an admin driver for the new instance; skipping the initial sync",
+			slog.String("instance", instance.ResourceID),
+			log.WithError(err))
+	} else {
 		defer driver.Close(ctx)
 		updatedInstance, _, _, err := s.schemaSyncer.SyncInstance(ctx, instance)
 		if err != nil {
@@ -369,6 +379,9 @@ func (s *InstanceService) BatchSyncInstances(ctx context.Context, req *connect.R
 	if len(req.Msg.GetRequests()) == 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("requests must not be empty"))
 	}
+	if len(req.Msg.GetRequests()) > maxBatchInstances {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("a batch can contain at most %d instances", maxBatchInstances))
+	}
 
 	response := &v1pb.BatchSyncInstancesResponse{}
 	for _, r := range req.Msg.GetRequests() {
@@ -407,15 +420,27 @@ func (s *InstanceService) BatchSyncInstances(ctx context.Context, req *connect.R
 	return connect.NewResponse(response), nil
 }
 
-// BatchUpdateInstances update multiple instances.
+// BatchUpdateInstances update multiple instances. Per-instance failures are
+// reported in the response instead of aborting the whole batch after earlier
+// updates were already committed.
 func (s *InstanceService) BatchUpdateInstances(ctx context.Context, req *connect.Request[v1pb.BatchUpdateInstancesRequest]) (*connect.Response[v1pb.BatchUpdateInstancesResponse], error) {
+	if len(req.Msg.GetRequests()) == 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("requests must not be empty"))
+	}
+	if len(req.Msg.GetRequests()) > maxBatchInstances {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("a batch can contain at most %d instances", maxBatchInstances))
+	}
+
 	response := &v1pb.BatchUpdateInstancesResponse{}
 	for _, updateReq := range req.Msg.GetRequests() {
+		result := &v1pb.BatchUpdateInstanceResult{Name: updateReq.GetInstance().GetName()}
 		updated, err := s.UpdateInstance(ctx, connect.NewRequest(updateReq))
 		if err != nil {
-			return nil, err
+			result.Error = err.Error()
+		} else {
+			result.Instance = updated.Msg
 		}
-		response.Instances = append(response.Instances, updated.Msg)
+		response.Results = append(response.Results, result)
 	}
 	return connect.NewResponse(response), nil
 }

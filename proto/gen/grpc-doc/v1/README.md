@@ -54,6 +54,7 @@
     - [BatchSyncInstanceResult](#metaxisdata-v1-BatchSyncInstanceResult)
     - [BatchSyncInstancesRequest](#metaxisdata-v1-BatchSyncInstancesRequest)
     - [BatchSyncInstancesResponse](#metaxisdata-v1-BatchSyncInstancesResponse)
+    - [BatchUpdateInstanceResult](#metaxisdata-v1-BatchUpdateInstanceResult)
     - [BatchUpdateInstancesRequest](#metaxisdata-v1-BatchUpdateInstancesRequest)
     - [BatchUpdateInstancesResponse](#metaxisdata-v1-BatchUpdateInstancesResponse)
     - [CreateDataSourceRequest](#metaxisdata-v1-CreateDataSourceRequest)
@@ -894,6 +895,23 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 
 
 
+<a name="metaxisdata-v1-BatchUpdateInstanceResult"></a>
+
+### BatchUpdateInstanceResult
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The name of the instance. Format: instances/{instance} |
+| instance | [Instance](#metaxisdata-v1-Instance) |  | The updated instance; unset when the update failed. |
+| error | [string](#string) |  | Empty when the update succeeded; otherwise why this instance could not be updated. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-BatchUpdateInstancesRequest"></a>
 
 ### BatchUpdateInstancesRequest
@@ -902,7 +920,7 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| requests | [UpdateInstanceRequest](#metaxisdata-v1-UpdateInstanceRequest) | repeated | The request message specifying the resources to update. |
+| requests | [UpdateInstanceRequest](#metaxisdata-v1-UpdateInstanceRequest) | repeated | The request message specifying the resources to update. A maximum of 1000 instances can be updated in a batch. |
 
 
 
@@ -917,7 +935,7 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| instances | [Instance](#metaxisdata-v1-Instance) | repeated |  |
+| results | [BatchUpdateInstanceResult](#metaxisdata-v1-BatchUpdateInstanceResult) | repeated | One result per requested instance, in request order. Per-instance failures are reported here and do not abort the remaining instances. |
 
 
 

@@ -760,6 +760,7 @@ func (x *BatchSyncInstanceResult) GetError() string {
 type BatchUpdateInstancesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The request message specifying the resources to update.
+	// A maximum of 1000 instances can be updated in a batch.
 	Requests      []*UpdateInstanceRequest `protobuf:"bytes,1,rep,name=requests,proto3" json:"requests,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -803,8 +804,10 @@ func (x *BatchUpdateInstancesRequest) GetRequests() []*UpdateInstanceRequest {
 }
 
 type BatchUpdateInstancesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Instances     []*Instance            `protobuf:"bytes,1,rep,name=instances,proto3" json:"instances,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// One result per requested instance, in request order. Per-instance failures
+	// are reported here and do not abort the remaining instances.
+	Results       []*BatchUpdateInstanceResult `protobuf:"bytes,2,rep,name=results,proto3" json:"results,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -839,11 +842,76 @@ func (*BatchUpdateInstancesResponse) Descriptor() ([]byte, []int) {
 	return file_v1_instance_service_proto_rawDescGZIP(), []int{13}
 }
 
-func (x *BatchUpdateInstancesResponse) GetInstances() []*Instance {
+func (x *BatchUpdateInstancesResponse) GetResults() []*BatchUpdateInstanceResult {
 	if x != nil {
-		return x.Instances
+		return x.Results
 	}
 	return nil
+}
+
+type BatchUpdateInstanceResult struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The name of the instance.
+	// Format: instances/{instance}
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The updated instance; unset when the update failed.
+	Instance *Instance `protobuf:"bytes,2,opt,name=instance,proto3" json:"instance,omitempty"`
+	// Empty when the update succeeded; otherwise why this instance could not be
+	// updated.
+	Error         string `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchUpdateInstanceResult) Reset() {
+	*x = BatchUpdateInstanceResult{}
+	mi := &file_v1_instance_service_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchUpdateInstanceResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchUpdateInstanceResult) ProtoMessage() {}
+
+func (x *BatchUpdateInstanceResult) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_instance_service_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchUpdateInstanceResult.ProtoReflect.Descriptor instead.
+func (*BatchUpdateInstanceResult) Descriptor() ([]byte, []int) {
+	return file_v1_instance_service_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *BatchUpdateInstanceResult) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *BatchUpdateInstanceResult) GetInstance() *Instance {
+	if x != nil {
+		return x.Instance
+	}
+	return nil
+}
+
+func (x *BatchUpdateInstanceResult) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
 }
 
 type CreateDataSourceRequest struct {
@@ -870,7 +938,7 @@ type CreateDataSourceRequest struct {
 
 func (x *CreateDataSourceRequest) Reset() {
 	*x = CreateDataSourceRequest{}
-	mi := &file_v1_instance_service_proto_msgTypes[14]
+	mi := &file_v1_instance_service_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -882,7 +950,7 @@ func (x *CreateDataSourceRequest) String() string {
 func (*CreateDataSourceRequest) ProtoMessage() {}
 
 func (x *CreateDataSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[14]
+	mi := &file_v1_instance_service_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -895,7 +963,7 @@ func (x *CreateDataSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateDataSourceRequest.ProtoReflect.Descriptor instead.
 func (*CreateDataSourceRequest) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{14}
+	return file_v1_instance_service_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *CreateDataSourceRequest) GetParent() string {
@@ -944,7 +1012,7 @@ type UpdateDataSourceRequest struct {
 
 func (x *UpdateDataSourceRequest) Reset() {
 	*x = UpdateDataSourceRequest{}
-	mi := &file_v1_instance_service_proto_msgTypes[15]
+	mi := &file_v1_instance_service_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -956,7 +1024,7 @@ func (x *UpdateDataSourceRequest) String() string {
 func (*UpdateDataSourceRequest) ProtoMessage() {}
 
 func (x *UpdateDataSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[15]
+	mi := &file_v1_instance_service_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -969,7 +1037,7 @@ func (x *UpdateDataSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateDataSourceRequest.ProtoReflect.Descriptor instead.
 func (*UpdateDataSourceRequest) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{15}
+	return file_v1_instance_service_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *UpdateDataSourceRequest) GetDataSource() *DataSource {
@@ -1004,7 +1072,7 @@ type DeleteDataSourceRequest struct {
 
 func (x *DeleteDataSourceRequest) Reset() {
 	*x = DeleteDataSourceRequest{}
-	mi := &file_v1_instance_service_proto_msgTypes[16]
+	mi := &file_v1_instance_service_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1016,7 +1084,7 @@ func (x *DeleteDataSourceRequest) String() string {
 func (*DeleteDataSourceRequest) ProtoMessage() {}
 
 func (x *DeleteDataSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[16]
+	mi := &file_v1_instance_service_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1029,7 +1097,7 @@ func (x *DeleteDataSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDataSourceRequest.ProtoReflect.Descriptor instead.
 func (*DeleteDataSourceRequest) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{16}
+	return file_v1_instance_service_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *DeleteDataSourceRequest) GetName() string {
@@ -1076,7 +1144,7 @@ type Instance struct {
 
 func (x *Instance) Reset() {
 	*x = Instance{}
-	mi := &file_v1_instance_service_proto_msgTypes[17]
+	mi := &file_v1_instance_service_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1088,7 +1156,7 @@ func (x *Instance) String() string {
 func (*Instance) ProtoMessage() {}
 
 func (x *Instance) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[17]
+	mi := &file_v1_instance_service_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1101,7 +1169,7 @@ func (x *Instance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Instance.ProtoReflect.Descriptor instead.
 func (*Instance) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{17}
+	return file_v1_instance_service_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Instance) GetName() string {
@@ -1234,7 +1302,7 @@ type DataSource struct {
 
 func (x *DataSource) Reset() {
 	*x = DataSource{}
-	mi := &file_v1_instance_service_proto_msgTypes[18]
+	mi := &file_v1_instance_service_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1246,7 +1314,7 @@ func (x *DataSource) String() string {
 func (*DataSource) ProtoMessage() {}
 
 func (x *DataSource) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[18]
+	mi := &file_v1_instance_service_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1259,7 +1327,7 @@ func (x *DataSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataSource.ProtoReflect.Descriptor instead.
 func (*DataSource) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{18}
+	return file_v1_instance_service_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *DataSource) GetName() string {
@@ -1400,7 +1468,7 @@ type InstanceResource struct {
 
 func (x *InstanceResource) Reset() {
 	*x = InstanceResource{}
-	mi := &file_v1_instance_service_proto_msgTypes[19]
+	mi := &file_v1_instance_service_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1412,7 +1480,7 @@ func (x *InstanceResource) String() string {
 func (*InstanceResource) ProtoMessage() {}
 
 func (x *InstanceResource) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_instance_service_proto_msgTypes[19]
+	mi := &file_v1_instance_service_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1425,7 +1493,7 @@ func (x *InstanceResource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstanceResource.ProtoReflect.Descriptor instead.
 func (*InstanceResource) Descriptor() ([]byte, []int) {
-	return file_v1_instance_service_proto_rawDescGZIP(), []int{19}
+	return file_v1_instance_service_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *InstanceResource) GetTitle() string {
@@ -1524,9 +1592,13 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	"\tdatabases\x18\x02 \x03(\tR\tdatabases\x12\x14\n" +
 	"\x05error\x18\x03 \x01(\tR\x05error\"e\n" +
 	"\x1bBatchUpdateInstancesRequest\x12F\n" +
-	"\brequests\x18\x01 \x03(\v2%.metaxisdata.v1.UpdateInstanceRequestB\x03\xe0A\x02R\brequests\"V\n" +
-	"\x1cBatchUpdateInstancesResponse\x126\n" +
-	"\tinstances\x18\x01 \x03(\v2\x18.metaxisdata.v1.InstanceR\tinstances\"\xdc\x01\n" +
+	"\brequests\x18\x01 \x03(\v2%.metaxisdata.v1.UpdateInstanceRequestB\x03\xe0A\x02R\brequests\"t\n" +
+	"\x1cBatchUpdateInstancesResponse\x12C\n" +
+	"\aresults\x18\x02 \x03(\v2).metaxisdata.v1.BatchUpdateInstanceResultR\aresultsJ\x04\b\x01\x10\x02R\tinstances\"{\n" +
+	"\x19BatchUpdateInstanceResult\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x124\n" +
+	"\binstance\x18\x02 \x01(\v2\x18.metaxisdata.v1.InstanceR\binstance\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"\xdc\x01\n" +
 	"\x17CreateDataSourceRequest\x124\n" +
 	"\x06parent\x18\x01 \x01(\tB\x1c\xe0A\x02\xfaA\x16\n" +
 	"\x14metaxisdata/InstanceR\x06parent\x12@\n" +
@@ -1627,7 +1699,7 @@ func file_v1_instance_service_proto_rawDescGZIP() []byte {
 }
 
 var file_v1_instance_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_v1_instance_service_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_v1_instance_service_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_v1_instance_service_proto_goTypes = []any{
 	(DataSourceType)(0),                  // 0: metaxisdata.v1.DataSourceType
 	(*GetInstanceRequest)(nil),           // 1: metaxisdata.v1.GetInstanceRequest
@@ -1644,70 +1716,72 @@ var file_v1_instance_service_proto_goTypes = []any{
 	(*BatchSyncInstanceResult)(nil),      // 12: metaxisdata.v1.BatchSyncInstanceResult
 	(*BatchUpdateInstancesRequest)(nil),  // 13: metaxisdata.v1.BatchUpdateInstancesRequest
 	(*BatchUpdateInstancesResponse)(nil), // 14: metaxisdata.v1.BatchUpdateInstancesResponse
-	(*CreateDataSourceRequest)(nil),      // 15: metaxisdata.v1.CreateDataSourceRequest
-	(*UpdateDataSourceRequest)(nil),      // 16: metaxisdata.v1.UpdateDataSourceRequest
-	(*DeleteDataSourceRequest)(nil),      // 17: metaxisdata.v1.DeleteDataSourceRequest
-	(*Instance)(nil),                     // 18: metaxisdata.v1.Instance
-	(*DataSource)(nil),                   // 19: metaxisdata.v1.DataSource
-	(*InstanceResource)(nil),             // 20: metaxisdata.v1.InstanceResource
-	nil,                                  // 21: metaxisdata.v1.DataSource.ExtraConnectionParametersEntry
-	(*fieldmaskpb.FieldMask)(nil),        // 22: google.protobuf.FieldMask
-	(State)(0),                           // 23: metaxisdata.v1.State
-	(Engine)(0),                          // 24: metaxisdata.v1.Engine
-	(*durationpb.Duration)(nil),          // 25: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),        // 26: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),                // 27: google.protobuf.Empty
+	(*BatchUpdateInstanceResult)(nil),    // 15: metaxisdata.v1.BatchUpdateInstanceResult
+	(*CreateDataSourceRequest)(nil),      // 16: metaxisdata.v1.CreateDataSourceRequest
+	(*UpdateDataSourceRequest)(nil),      // 17: metaxisdata.v1.UpdateDataSourceRequest
+	(*DeleteDataSourceRequest)(nil),      // 18: metaxisdata.v1.DeleteDataSourceRequest
+	(*Instance)(nil),                     // 19: metaxisdata.v1.Instance
+	(*DataSource)(nil),                   // 20: metaxisdata.v1.DataSource
+	(*InstanceResource)(nil),             // 21: metaxisdata.v1.InstanceResource
+	nil,                                  // 22: metaxisdata.v1.DataSource.ExtraConnectionParametersEntry
+	(*fieldmaskpb.FieldMask)(nil),        // 23: google.protobuf.FieldMask
+	(State)(0),                           // 24: metaxisdata.v1.State
+	(Engine)(0),                          // 25: metaxisdata.v1.Engine
+	(*durationpb.Duration)(nil),          // 26: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),        // 27: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),                // 28: google.protobuf.Empty
 }
 var file_v1_instance_service_proto_depIdxs = []int32{
-	18, // 0: metaxisdata.v1.ListInstancesResponse.instances:type_name -> metaxisdata.v1.Instance
-	18, // 1: metaxisdata.v1.CreateInstanceRequest.instance:type_name -> metaxisdata.v1.Instance
-	18, // 2: metaxisdata.v1.UpdateInstanceRequest.instance:type_name -> metaxisdata.v1.Instance
-	22, // 3: metaxisdata.v1.UpdateInstanceRequest.update_mask:type_name -> google.protobuf.FieldMask
+	19, // 0: metaxisdata.v1.ListInstancesResponse.instances:type_name -> metaxisdata.v1.Instance
+	19, // 1: metaxisdata.v1.CreateInstanceRequest.instance:type_name -> metaxisdata.v1.Instance
+	19, // 2: metaxisdata.v1.UpdateInstanceRequest.instance:type_name -> metaxisdata.v1.Instance
+	23, // 3: metaxisdata.v1.UpdateInstanceRequest.update_mask:type_name -> google.protobuf.FieldMask
 	8,  // 4: metaxisdata.v1.BatchSyncInstancesRequest.requests:type_name -> metaxisdata.v1.SyncInstanceRequest
 	12, // 5: metaxisdata.v1.BatchSyncInstancesResponse.results:type_name -> metaxisdata.v1.BatchSyncInstanceResult
 	5,  // 6: metaxisdata.v1.BatchUpdateInstancesRequest.requests:type_name -> metaxisdata.v1.UpdateInstanceRequest
-	18, // 7: metaxisdata.v1.BatchUpdateInstancesResponse.instances:type_name -> metaxisdata.v1.Instance
-	19, // 8: metaxisdata.v1.CreateDataSourceRequest.data_source:type_name -> metaxisdata.v1.DataSource
-	19, // 9: metaxisdata.v1.UpdateDataSourceRequest.data_source:type_name -> metaxisdata.v1.DataSource
-	22, // 10: metaxisdata.v1.UpdateDataSourceRequest.update_mask:type_name -> google.protobuf.FieldMask
-	23, // 11: metaxisdata.v1.Instance.state:type_name -> metaxisdata.v1.State
-	24, // 12: metaxisdata.v1.Instance.engine:type_name -> metaxisdata.v1.Engine
-	19, // 13: metaxisdata.v1.Instance.data_sources:type_name -> metaxisdata.v1.DataSource
-	25, // 14: metaxisdata.v1.Instance.sync_interval:type_name -> google.protobuf.Duration
-	26, // 15: metaxisdata.v1.Instance.last_sync_time:type_name -> google.protobuf.Timestamp
-	0,  // 16: metaxisdata.v1.DataSource.type:type_name -> metaxisdata.v1.DataSourceType
-	21, // 17: metaxisdata.v1.DataSource.extra_connection_parameters:type_name -> metaxisdata.v1.DataSource.ExtraConnectionParametersEntry
-	24, // 18: metaxisdata.v1.InstanceResource.engine:type_name -> metaxisdata.v1.Engine
-	19, // 19: metaxisdata.v1.InstanceResource.data_sources:type_name -> metaxisdata.v1.DataSource
-	1,  // 20: metaxisdata.v1.InstanceService.GetInstance:input_type -> metaxisdata.v1.GetInstanceRequest
-	2,  // 21: metaxisdata.v1.InstanceService.ListInstances:input_type -> metaxisdata.v1.ListInstancesRequest
-	4,  // 22: metaxisdata.v1.InstanceService.CreateInstance:input_type -> metaxisdata.v1.CreateInstanceRequest
-	5,  // 23: metaxisdata.v1.InstanceService.UpdateInstance:input_type -> metaxisdata.v1.UpdateInstanceRequest
-	6,  // 24: metaxisdata.v1.InstanceService.DeleteInstance:input_type -> metaxisdata.v1.DeleteInstanceRequest
-	7,  // 25: metaxisdata.v1.InstanceService.UndeleteInstance:input_type -> metaxisdata.v1.UndeleteInstanceRequest
-	8,  // 26: metaxisdata.v1.InstanceService.SyncInstance:input_type -> metaxisdata.v1.SyncInstanceRequest
-	10, // 27: metaxisdata.v1.InstanceService.BatchSyncInstances:input_type -> metaxisdata.v1.BatchSyncInstancesRequest
-	13, // 28: metaxisdata.v1.InstanceService.BatchUpdateInstances:input_type -> metaxisdata.v1.BatchUpdateInstancesRequest
-	15, // 29: metaxisdata.v1.InstanceService.CreateDataSource:input_type -> metaxisdata.v1.CreateDataSourceRequest
-	16, // 30: metaxisdata.v1.InstanceService.UpdateDataSource:input_type -> metaxisdata.v1.UpdateDataSourceRequest
-	17, // 31: metaxisdata.v1.InstanceService.DeleteDataSource:input_type -> metaxisdata.v1.DeleteDataSourceRequest
-	18, // 32: metaxisdata.v1.InstanceService.GetInstance:output_type -> metaxisdata.v1.Instance
-	3,  // 33: metaxisdata.v1.InstanceService.ListInstances:output_type -> metaxisdata.v1.ListInstancesResponse
-	18, // 34: metaxisdata.v1.InstanceService.CreateInstance:output_type -> metaxisdata.v1.Instance
-	18, // 35: metaxisdata.v1.InstanceService.UpdateInstance:output_type -> metaxisdata.v1.Instance
-	27, // 36: metaxisdata.v1.InstanceService.DeleteInstance:output_type -> google.protobuf.Empty
-	18, // 37: metaxisdata.v1.InstanceService.UndeleteInstance:output_type -> metaxisdata.v1.Instance
-	9,  // 38: metaxisdata.v1.InstanceService.SyncInstance:output_type -> metaxisdata.v1.SyncInstanceResponse
-	11, // 39: metaxisdata.v1.InstanceService.BatchSyncInstances:output_type -> metaxisdata.v1.BatchSyncInstancesResponse
-	14, // 40: metaxisdata.v1.InstanceService.BatchUpdateInstances:output_type -> metaxisdata.v1.BatchUpdateInstancesResponse
-	19, // 41: metaxisdata.v1.InstanceService.CreateDataSource:output_type -> metaxisdata.v1.DataSource
-	19, // 42: metaxisdata.v1.InstanceService.UpdateDataSource:output_type -> metaxisdata.v1.DataSource
-	27, // 43: metaxisdata.v1.InstanceService.DeleteDataSource:output_type -> google.protobuf.Empty
-	32, // [32:44] is the sub-list for method output_type
-	20, // [20:32] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	15, // 7: metaxisdata.v1.BatchUpdateInstancesResponse.results:type_name -> metaxisdata.v1.BatchUpdateInstanceResult
+	19, // 8: metaxisdata.v1.BatchUpdateInstanceResult.instance:type_name -> metaxisdata.v1.Instance
+	20, // 9: metaxisdata.v1.CreateDataSourceRequest.data_source:type_name -> metaxisdata.v1.DataSource
+	20, // 10: metaxisdata.v1.UpdateDataSourceRequest.data_source:type_name -> metaxisdata.v1.DataSource
+	23, // 11: metaxisdata.v1.UpdateDataSourceRequest.update_mask:type_name -> google.protobuf.FieldMask
+	24, // 12: metaxisdata.v1.Instance.state:type_name -> metaxisdata.v1.State
+	25, // 13: metaxisdata.v1.Instance.engine:type_name -> metaxisdata.v1.Engine
+	20, // 14: metaxisdata.v1.Instance.data_sources:type_name -> metaxisdata.v1.DataSource
+	26, // 15: metaxisdata.v1.Instance.sync_interval:type_name -> google.protobuf.Duration
+	27, // 16: metaxisdata.v1.Instance.last_sync_time:type_name -> google.protobuf.Timestamp
+	0,  // 17: metaxisdata.v1.DataSource.type:type_name -> metaxisdata.v1.DataSourceType
+	22, // 18: metaxisdata.v1.DataSource.extra_connection_parameters:type_name -> metaxisdata.v1.DataSource.ExtraConnectionParametersEntry
+	25, // 19: metaxisdata.v1.InstanceResource.engine:type_name -> metaxisdata.v1.Engine
+	20, // 20: metaxisdata.v1.InstanceResource.data_sources:type_name -> metaxisdata.v1.DataSource
+	1,  // 21: metaxisdata.v1.InstanceService.GetInstance:input_type -> metaxisdata.v1.GetInstanceRequest
+	2,  // 22: metaxisdata.v1.InstanceService.ListInstances:input_type -> metaxisdata.v1.ListInstancesRequest
+	4,  // 23: metaxisdata.v1.InstanceService.CreateInstance:input_type -> metaxisdata.v1.CreateInstanceRequest
+	5,  // 24: metaxisdata.v1.InstanceService.UpdateInstance:input_type -> metaxisdata.v1.UpdateInstanceRequest
+	6,  // 25: metaxisdata.v1.InstanceService.DeleteInstance:input_type -> metaxisdata.v1.DeleteInstanceRequest
+	7,  // 26: metaxisdata.v1.InstanceService.UndeleteInstance:input_type -> metaxisdata.v1.UndeleteInstanceRequest
+	8,  // 27: metaxisdata.v1.InstanceService.SyncInstance:input_type -> metaxisdata.v1.SyncInstanceRequest
+	10, // 28: metaxisdata.v1.InstanceService.BatchSyncInstances:input_type -> metaxisdata.v1.BatchSyncInstancesRequest
+	13, // 29: metaxisdata.v1.InstanceService.BatchUpdateInstances:input_type -> metaxisdata.v1.BatchUpdateInstancesRequest
+	16, // 30: metaxisdata.v1.InstanceService.CreateDataSource:input_type -> metaxisdata.v1.CreateDataSourceRequest
+	17, // 31: metaxisdata.v1.InstanceService.UpdateDataSource:input_type -> metaxisdata.v1.UpdateDataSourceRequest
+	18, // 32: metaxisdata.v1.InstanceService.DeleteDataSource:input_type -> metaxisdata.v1.DeleteDataSourceRequest
+	19, // 33: metaxisdata.v1.InstanceService.GetInstance:output_type -> metaxisdata.v1.Instance
+	3,  // 34: metaxisdata.v1.InstanceService.ListInstances:output_type -> metaxisdata.v1.ListInstancesResponse
+	19, // 35: metaxisdata.v1.InstanceService.CreateInstance:output_type -> metaxisdata.v1.Instance
+	19, // 36: metaxisdata.v1.InstanceService.UpdateInstance:output_type -> metaxisdata.v1.Instance
+	28, // 37: metaxisdata.v1.InstanceService.DeleteInstance:output_type -> google.protobuf.Empty
+	19, // 38: metaxisdata.v1.InstanceService.UndeleteInstance:output_type -> metaxisdata.v1.Instance
+	9,  // 39: metaxisdata.v1.InstanceService.SyncInstance:output_type -> metaxisdata.v1.SyncInstanceResponse
+	11, // 40: metaxisdata.v1.InstanceService.BatchSyncInstances:output_type -> metaxisdata.v1.BatchSyncInstancesResponse
+	14, // 41: metaxisdata.v1.InstanceService.BatchUpdateInstances:output_type -> metaxisdata.v1.BatchUpdateInstancesResponse
+	20, // 42: metaxisdata.v1.InstanceService.CreateDataSource:output_type -> metaxisdata.v1.DataSource
+	20, // 43: metaxisdata.v1.InstanceService.UpdateDataSource:output_type -> metaxisdata.v1.DataSource
+	28, // 44: metaxisdata.v1.InstanceService.DeleteDataSource:output_type -> google.protobuf.Empty
+	33, // [33:45] is the sub-list for method output_type
+	21, // [21:33] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_v1_instance_service_proto_init() }
@@ -1723,7 +1797,7 @@ func file_v1_instance_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_instance_service_proto_rawDesc), len(file_v1_instance_service_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   21,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

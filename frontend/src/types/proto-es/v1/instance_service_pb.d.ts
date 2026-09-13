@@ -356,6 +356,7 @@ export declare const BatchSyncInstanceResultSchema: GenMessage<BatchSyncInstance
 export declare type BatchUpdateInstancesRequest = Message<"metaxisdata.v1.BatchUpdateInstancesRequest"> & {
   /**
    * The request message specifying the resources to update.
+   * A maximum of 1000 instances can be updated in a batch.
    *
    * @generated from field: repeated metaxisdata.v1.UpdateInstanceRequest requests = 1;
    */
@@ -373,9 +374,12 @@ export declare const BatchUpdateInstancesRequestSchema: GenMessage<BatchUpdateIn
  */
 export declare type BatchUpdateInstancesResponse = Message<"metaxisdata.v1.BatchUpdateInstancesResponse"> & {
   /**
-   * @generated from field: repeated metaxisdata.v1.Instance instances = 1;
+   * One result per requested instance, in request order. Per-instance failures
+   * are reported here and do not abort the remaining instances.
+   *
+   * @generated from field: repeated metaxisdata.v1.BatchUpdateInstanceResult results = 2;
    */
-  instances: Instance[];
+  results: BatchUpdateInstanceResult[];
 };
 
 /**
@@ -383,6 +387,40 @@ export declare type BatchUpdateInstancesResponse = Message<"metaxisdata.v1.Batch
  * Use `create(BatchUpdateInstancesResponseSchema)` to create a new message.
  */
 export declare const BatchUpdateInstancesResponseSchema: GenMessage<BatchUpdateInstancesResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.BatchUpdateInstanceResult
+ */
+export declare type BatchUpdateInstanceResult = Message<"metaxisdata.v1.BatchUpdateInstanceResult"> & {
+  /**
+   * The name of the instance.
+   * Format: instances/{instance}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The updated instance; unset when the update failed.
+   *
+   * @generated from field: metaxisdata.v1.Instance instance = 2;
+   */
+  instance?: Instance;
+
+  /**
+   * Empty when the update succeeded; otherwise why this instance could not be
+   * updated.
+   *
+   * @generated from field: string error = 3;
+   */
+  error: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.BatchUpdateInstanceResult.
+ * Use `create(BatchUpdateInstanceResultSchema)` to create a new message.
+ */
+export declare const BatchUpdateInstanceResultSchema: GenMessage<BatchUpdateInstanceResult>;
 
 /**
  * @generated from message metaxisdata.v1.CreateDataSourceRequest
