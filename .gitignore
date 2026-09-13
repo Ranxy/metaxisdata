@@ -1,2 +1,7 @@
 .vscode
 build/
+
+# The embedded SPA is copied here by `make build-embed`; only the placeholder
+# that keeps the //go:embed pattern resolvable is tracked.
+backend/server/frontend_dist/*
+!backend/server/frontend_dist/.gitkeep

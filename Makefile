@@ -1,4 +1,4 @@
-.PHONY: run build build-release test-integration-smoke test-integration-mysql test-integration
+.PHONY: run build build-release build-embed frontend-dist test-integration-smoke test-integration-mysql test-integration
 run:
 	go run ./backend/bin/server/main.go
 
@@ -11,6 +11,19 @@ build:
 # Release build: the release tag selects the prod profile (ReleaseModeProd).
 build-release:
 	go build -ldflags "-w -s" -p=16 -tags release -o ./build/metaxisdata ./backend/bin/server/main.go
+
+# Build the SPA and stage it where the embed_frontend build picks it up.
+frontend-dist:
+	pnpm --dir frontend build
+	rm -rf backend/server/frontend_dist
+	mkdir -p backend/server/frontend_dist
+	cp -r frontend/dist/. backend/server/frontend_dist/
+	touch backend/server/frontend_dist/.gitkeep
+
+# Self-contained release build: the prod profile plus the built SPA embedded in
+# the binary, so the server can be deployed without hosting frontend/dist.
+build-embed: frontend-dist
+	go build -ldflags "-w -s" -p=16 -tags "release embed_frontend" -o ./build/metaxisdata ./backend/bin/server/main.go
 
 # Every integration-tagged test, including the migrator's fresh-install, upgrade
 # and legacy-adoption paths. Skips (exit 0) when Docker is unavailable and no

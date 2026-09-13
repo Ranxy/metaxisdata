@@ -248,5 +248,5 @@ Project-specific rules enforced by `.golangci.yaml`:
 
 - The database JSONB columns store JSON marshalled by `protojson.Marshal` in Go code. `protojson.Marshal` produces camelCased proto field names rather than the snake_case keys suggested by the SQL column names: a column whose `proto/store` field is `enter_to_send` stores `{"enterToSend": ...}`.
 - `frontend/src/types/proto-es/`, `backend/generated-go/`, and `proto/gen/grpc-doc/` are buf output — regenerate with `cd proto && buf generate`, never hand-edit.
-- The Go server currently does not embed the built frontend (`backend/server/server_frontend_not_embed.go` serves a placeholder page); run the frontend dev server or host the built `frontend/dist` separately.
+- The default Go build does not embed the frontend (`backend/server/server_frontend_not_embed.go` serves a placeholder page); run the frontend dev server or host the built `frontend/dist` separately. `make build-embed` builds the SPA and bundles it into the binary via the `embed_frontend` tag (`backend/server/server_frontend_embed.go`), which serves `frontend/dist` with an SPA fallback.
 - When modifying multiple files, run file modification tasks in parallel whenever possible, instead of processing them sequentially.
