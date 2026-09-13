@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -101,18 +100,9 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 						return true
 					}
 
-					instance, ok := instanceMap[database.InstanceID]
-					if !ok {
+					if _, ok := instanceMap[database.InstanceID]; !ok {
 						slog.Debug("Instance not found",
-							slog.String("instance", database.InstanceID),
-							log.WithError(err))
-						return true
-					}
-					maximumConnections := int(instance.Metadata.GetMaximumConnections())
-					if maximumConnections <= 0 {
-						maximumConnections = common.DefaultInstanceMaximumConnections
-					}
-					if s.stateCfg.InstanceOutstandingConnections.Increment(instance.ResourceID, maximumConnections) {
+							slog.String("instance", database.InstanceID))
 						return true
 					}
 
@@ -132,10 +122,15 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 									slog.String("database", database.DatabaseName),
 									log.WithError(err))
 							}
-							s.stateCfg.InstanceOutstandingConnections.Decrement(instance.ResourceID)
 						}()
 						slog.Debug("Sync database schema", slog.String("instance", database.InstanceID), slog.String("database", database.DatabaseName))
 						if err := s.SyncDatabaseSchema(ctx, database); err != nil {
+							if errors.Is(err, errInstanceConnectionsExhausted) {
+								// The per-instance limiter is saturated; keep the
+								// database queued and retry on a later tick.
+								s.databaseSyncMap.Store(database.String(), database)
+								return
+							}
 							slog.Warn("Failed to sync database schema",
 								slog.String("instance", database.InstanceID),
 								slog.String("databaseName", database.DatabaseName),
@@ -256,8 +251,33 @@ func (s *Syncer) QueueLineageAnalysis(metaGUID string, metaType storepb.MetaType
 	s.lineageAnalyzer.QueueAnalysis(metaGUID, metaType)
 }
 
+// errInstanceConnectionsExhausted signals that the per-instance connection
+// limiter is saturated; the caller should retry the sync later.
+var errInstanceConnectionsExhausted = errors.New("instance connection limit reached")
+
+// acquireInstanceConnection reserves one of the instance's outstanding
+// connection slots and returns the release func. Every path that opens a driver
+// goes through it, so instance-level and API-triggered syncs are throttled by
+// the same limit as the periodic checker.
+func (s *Syncer) acquireInstanceConnection(instance *store.InstanceMessage) (func(), error) {
+	maximumConnections := int(instance.Metadata.GetMaximumConnections())
+	if maximumConnections <= 0 {
+		maximumConnections = common.DefaultInstanceMaximumConnections
+	}
+	if s.stateCfg.InstanceOutstandingConnections.Increment(instance.ResourceID, maximumConnections) {
+		return nil, errors.Wrapf(errInstanceConnectionsExhausted, "instance %q already has %d outstanding connections", instance.ResourceID, maximumConnections)
+	}
+	return func() { s.stateCfg.InstanceOutstandingConnections.Decrement(instance.ResourceID) }, nil
+}
+
 // GetInstanceMeta gets the instance metadata.
 func (s *Syncer) GetInstanceMeta(ctx context.Context, instance *store.InstanceMessage) (*db.InstanceMetadata, error) {
+	release, err := s.acquireInstanceConnection(instance)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
 	driver, err := s.dbFactory.GetAdminDatabaseDriver(ctx, instance, nil /* database */, db.ConnectionContext{})
 	if err != nil {
 		return nil, err
@@ -386,6 +406,12 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	if instance == nil {
 		return errors.Errorf("instance %q not found", database.InstanceID)
 	}
+	release, err := s.acquireInstanceConnection(instance)
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	driver, err := s.dbFactory.GetAdminDatabaseDriver(ctx, instance, database, db.ConnectionContext{})
 	if err != nil {
 		return err
@@ -735,8 +761,11 @@ func getChildMetadataResources(parentGUID string, objectType storepb.MetaType, d
 	}
 }
 
-func buildGUID(list ...string) string {
-	return strings.Join(list, common.MetaGUIDSplit)
+// buildGUID appends new segments to a prefix. The first argument is an opaque
+// prefix (an instance ID or an already-built GUID) and is passed through; the
+// remaining arguments are names that get the separator escaped.
+func buildGUID(prefix string, names ...string) string {
+	return prefix + common.MetaGUIDSplit + common.BuildMetaGUID(names...)
 }
 
 func buildColumnMetadataResources(prefix string, cols []*storepb.ColumnMetadata) []*store.CreateMetaRegistryResourceMessage {

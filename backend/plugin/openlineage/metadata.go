@@ -105,7 +105,10 @@ func buildOpenLineageScopedGUID(prefix string, parts ...string) string {
 		if trimmed == "" {
 			trimmed = emptyGUIDPart
 		}
-		escaped = append(escaped, url.PathEscape(trimmed))
+		// PathEscape leaves ':' unescaped (it is a valid path character), but ':'
+		// is the delimiter below, so encode it explicitly. Otherwise
+		// ("a", "b:c") and ("a:b", "c") would build the same GUID.
+		escaped = append(escaped, strings.ReplaceAll(url.PathEscape(trimmed), ":", "%3A"))
 	}
 	return prefix + strings.Join(escaped, ":")
 }

@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/store"
 
 	"github.com/stretchr/testify/require"
@@ -300,6 +301,36 @@ func TestGetOrDefaultLastSyncTime(t *testing.T) {
 	require.True(t, getOrDefaultLastSyncTime(invalid).Equal(time.Unix(0, 0)))
 
 	require.True(t, getOrDefaultLastSyncTime(nil).Equal(time.Unix(0, 0)))
+}
+
+// Every driver-opening path goes through the per-instance limiter, so an
+// instance at its connection limit is refused and the caller retries later
+// instead of opening another pool.
+func TestAcquireInstanceConnectionEnforcesTheLimit(t *testing.T) {
+	t.Parallel()
+
+	stateCfg, err := state.New()
+	require.NoError(t, err)
+	syncer := &Syncer{stateCfg: stateCfg}
+	instance := &store.InstanceMessage{
+		ResourceID: "inst-1",
+		Metadata:   &storepb.Instance{MaximumConnections: 2},
+	}
+
+	releaseFirst, err := syncer.acquireInstanceConnection(instance)
+	require.NoError(t, err)
+	releaseSecond, err := syncer.acquireInstanceConnection(instance)
+	require.NoError(t, err)
+
+	_, err = syncer.acquireInstanceConnection(instance)
+	require.ErrorIs(t, err, errInstanceConnectionsExhausted)
+
+	releaseFirst()
+	releaseThird, err := syncer.acquireInstanceConnection(instance)
+	require.NoError(t, err)
+
+	releaseSecond()
+	releaseThird()
 }
 
 func TestSyncDatabaseAsync(t *testing.T) {

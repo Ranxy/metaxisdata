@@ -1,8 +1,6 @@
 package llm
 
 import (
-	"strings"
-
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
@@ -116,7 +114,7 @@ func convertToSchemaObject(guid string, meta *storepb.StoredMetadata) *SchemaObj
 		return nil
 	}
 
-	parts := strings.Split(guid, common.MetaGUIDSplit)
+	parts := common.SplitMetaGUID(guid)
 	if len(parts) >= 2 {
 		obj.DBName = parts[1]
 	}

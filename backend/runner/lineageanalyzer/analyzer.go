@@ -230,7 +230,7 @@ func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
 // analyzeObject runs lineage analysis for a single lineage-analyzable object.
 func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType storepb.MetaType) error {
 	// Extract context from GUID: instanceID;database;schema;name
-	parts := strings.SplitN(metaGUID, common.MetaGUIDSplit, 4)
+	parts := common.SplitMetaGUID(metaGUID)
 	if len(parts) != 4 {
 		return storeError(ctx, a.store, metaGUID, metaType, nil,
 			fmt.Sprintf("invalid GUID format %q", metaGUID))

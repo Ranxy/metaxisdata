@@ -279,7 +279,7 @@ func buildGUID(instanceResourceID string, engine storepb.Engine, databaseOverrid
 		database = databaseOverride
 	}
 
-	return strings.Join([]string{instanceResourceID, database, schema, table}, common.MetaGUIDSplit)
+	return common.BuildMetaGUID(instanceResourceID, database, schema, table)
 }
 
 // isMySQLLike reports whether the engine addresses objects as database.table

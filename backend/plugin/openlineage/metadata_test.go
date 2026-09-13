@@ -64,3 +64,13 @@ func TestDeriveRunMetadataDefaults(t *testing.T) {
 	assert.False(t, derived.HasLineage)
 	assert.Equal(t, "openlineage:task:UNSPECIFIED:ns:job", derived.TaskGUID)
 }
+
+// ':' is the GUID delimiter and url.PathEscape leaves it unescaped, so it has to
+// be encoded explicitly or two different tuples build the same GUID.
+func TestBuildOpenLineageGUIDEncodesTheDelimiter(t *testing.T) {
+	require.Equal(t, "openlineage:task:type:ns:job", BuildOpenLineageTaskGUID("ns", "job", "type"))
+
+	withColonInNamespace := BuildOpenLineageTaskGUID("b:c", "job", "type")
+	withColonInName := BuildOpenLineageTaskGUID("b", "c:job", "type")
+	require.NotEqual(t, withColonInNamespace, withColonInName)
+}

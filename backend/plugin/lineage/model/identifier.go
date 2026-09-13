@@ -29,7 +29,7 @@ func (o ObjectIdentifier) FullName() string {
 }
 
 func (o ObjectIdentifier) GUID() string {
-	return strings.Join([]string{o.InstanceID, o.Database, o.Schema, o.Name}, common.MetaGUIDSplit)
+	return common.BuildMetaGUID(o.InstanceID, o.Database, o.Schema, o.Name)
 }
 
 func StrToObjectIdentifier(s string) ObjectIdentifier {
