@@ -2,6 +2,8 @@ import { defineStore } from "pinia";
 
 interface AppState {
   sidebarCollapsed: boolean;
+  /** Keys of the sidebar sections the user collapsed. */
+  collapsedSections: string[];
   locale: string;
   theme: "light" | "dark";
 }
@@ -12,7 +14,12 @@ function loadState(): Partial<AppState> {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved) as Partial<AppState>;
+      // A hand-edited or stale payload must not break the sidebar.
+      if (!Array.isArray(parsed.collapsedSections)) {
+        delete parsed.collapsedSections;
+      }
+      return parsed;
     }
   } catch {
     // ignore parse errors
@@ -31,6 +38,7 @@ function saveState(state: AppState) {
 export const useAppStore = defineStore("app", {
   state: (): AppState => ({
     sidebarCollapsed: false,
+    collapsedSections: [],
     locale: "zh-CN",
     theme: "light",
     ...loadState(),
@@ -39,6 +47,13 @@ export const useAppStore = defineStore("app", {
   actions: {
     toggleSidebar() {
       this.sidebarCollapsed = !this.sidebarCollapsed;
+      saveState(this.$state);
+    },
+
+    setSectionCollapsed(key: string, collapsed: boolean) {
+      this.collapsedSections = collapsed
+        ? [...new Set([...this.collapsedSections, key])]
+        : this.collapsedSections.filter((section) => section !== key);
       saveState(this.$state);
     },
 

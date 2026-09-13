@@ -6,29 +6,21 @@
     ]"
   >
     <nav class="flex-1 py-4 overflow-y-auto">
-      <ul class="space-y-1">
+      <!-- The horizontal inset lives on the list: a <button> is shrink-to-fit
+           even with `display:flex`, so the section header needs `w-full` and
+           must not also carry side margins (that overflows the rail). -->
+      <ul class="space-y-1 px-2">
         <li
           v-for="item in menuItems"
           :key="item.key"
         >
-          <!-- Menu Section Header -->
-          <div
-            v-if="item.children && !appStore.sidebarCollapsed"
-            class="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider"
-          >
-            {{ item.label }}
-          </div>
-
           <!-- Menu Item without children -->
           <router-link
             v-if="!item.children"
             :to="item.path"
-            :class="[
-              'flex items-center px-4 py-2 mx-2 rounded-md transition-colors',
-              isActive(item.path)
-                ? 'bg-accent text-accent-foreground'
-                : 'text-foreground hover:bg-accent hover:text-accent-foreground',
-            ]"
+            :title="railLabel(item.label)"
+            :aria-label="railLabel(item.label)"
+            :class="navLinkClass(item.path)"
           >
             <component
               :is="item.icon"
@@ -42,30 +34,64 @@
             </span>
           </router-link>
 
-          <!-- Child Menu Items -->
-          <template v-if="item.children">
-            <router-link
-              v-for="child in item.children"
-              :key="child.key"
-              :to="child.path"
-              :class="[
-                'flex items-center px-4 py-2 mx-2 rounded-md transition-colors',
-                isActive(child.path)
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-              ]"
-            >
-              <component
-                :is="child.icon"
-                class="h-5 w-5 flex-shrink-0"
-              />
-              <span
-                v-if="!appStore.sidebarCollapsed"
-                class="ml-3 truncate"
+          <!-- Collapsible Section -->
+          <template v-else>
+            <!-- Icon rail: a header would not fit, so the section stays flat. -->
+            <template v-if="appStore.sidebarCollapsed">
+              <router-link
+                v-for="child in item.children"
+                :key="child.key"
+                :to="child.path"
+                :title="railLabel(child.label)"
+                :aria-label="railLabel(child.label)"
+                :class="navLinkClass(child.path, { muted: true })"
               >
-                {{ child.label }}
-              </span>
-            </router-link>
+                <component
+                  :is="child.icon"
+                  class="h-5 w-5 flex-shrink-0"
+                />
+              </router-link>
+            </template>
+
+            <Collapsible
+              v-else
+              :open="isSectionExpanded(item.key)"
+              @update:open="(open: boolean) => appStore.setSectionCollapsed(item.key, !open)"
+            >
+              <CollapsibleTrigger
+                :class="[
+                  'flex w-full items-center justify-between gap-2 px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider transition-colors',
+                  hasActiveChild(item)
+                    ? 'text-foreground'
+                    : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                ]"
+              >
+                <span class="truncate">{{ item.label }}</span>
+                <ChevronRight
+                  :class="[
+                    'h-3.5 w-3.5 flex-shrink-0 transition-transform',
+                    isSectionExpanded(item.key) && 'rotate-90',
+                  ]"
+                />
+              </CollapsibleTrigger>
+
+              <CollapsibleContent>
+                <router-link
+                  v-for="child in item.children"
+                  :key="child.key"
+                  :to="child.path"
+                  :class="navLinkClass(child.path, { muted: true })"
+                >
+                  <component
+                    :is="child.icon"
+                    class="h-5 w-5 flex-shrink-0"
+                  />
+                  <span class="ml-3 truncate">
+                    {{ child.label }}
+                  </span>
+                </router-link>
+              </CollapsibleContent>
+            </Collapsible>
           </template>
         </li>
       </ul>
@@ -75,6 +101,7 @@
 
 <script setup lang="ts">
 import {
+  ChevronRight,
   ClipboardList,
   Database,
   FileCode2,
@@ -91,9 +118,14 @@ import {
   UserRound,
   Users,
 } from "lucide-vue-next";
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
 
@@ -296,4 +328,57 @@ function isActive(path: string): boolean {
 
   return route.path === path || route.path.startsWith(`${path}/`);
 }
+
+interface NavLinkOptions {
+  /** Section children sit below a header, so their idle label reads muted. */
+  muted?: boolean;
+}
+
+// The icon rail hides labels, so a link becomes a centred square that fills the
+// rail evenly instead of a left-aligned row with a wide empty right side. The
+// horizontal inset lives on the list, so the section header's `w-full` (a
+// `<button>` never fills its parent on its own) stays inside the sidebar.
+function navLinkClass(path: string, options: NavLinkOptions = {}): string[] {
+  const idle = options.muted
+    ? "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+    : "text-foreground hover:bg-accent hover:text-accent-foreground";
+  return [
+    appStore.sidebarCollapsed
+      ? "mx-auto flex h-10 w-10 items-center justify-center rounded-md transition-colors"
+      : "flex items-center rounded-md px-4 py-2 transition-colors",
+    isActive(path) ? "bg-accent text-accent-foreground" : idle,
+  ];
+}
+
+// Icon-rail links keep their name as a hover tooltip and screen-reader label.
+function railLabel(label: string): string | undefined {
+  return appStore.sidebarCollapsed ? label : undefined;
+}
+
+function isSectionExpanded(key: string): boolean {
+  return !appStore.collapsedSections.includes(key);
+}
+
+function hasActiveChild(item: MenuItem): boolean {
+  return (item.children ?? []).some((child) => isActive(child.path));
+}
+
+// A persisted collapsed section must not hide the page the user is on, so
+// navigation into a section reopens it. Collapsing does not change the route,
+// which keeps the user's choice intact while they stay on the current page.
+watch(
+  () => route.path,
+  () => {
+    for (const item of menuItems.value) {
+      if (
+        item.children &&
+        !isSectionExpanded(item.key) &&
+        hasActiveChild(item)
+      ) {
+        appStore.setSectionCollapsed(item.key, false);
+      }
+    }
+  },
+  { immediate: true }
+);
 </script>
