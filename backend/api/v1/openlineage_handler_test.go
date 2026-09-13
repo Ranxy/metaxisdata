@@ -8,9 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
 
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
 )
 
@@ -121,4 +123,24 @@ func TestParseEventTime(t *testing.T) {
 
 	_, err = parseEventTime("not-a-time")
 	require.Error(t, err)
+}
+
+// Ingestion audit rows reuse the Connect audit mapping, so the HTTP status has
+// to be turned back into the error shape those helpers understand.
+func TestAuditErrorForHTTPStatus(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, auditErrorForHTTPStatus(http.StatusOK))
+	require.NoError(t, auditErrorForHTTPStatus(http.StatusCreated))
+
+	unauthorized := auditErrorForHTTPStatus(http.StatusUnauthorized)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(unauthorized))
+	require.Equal(t, storepb.AuditLogSeverity_WARNING, mapSeverity(unauthorized))
+
+	tooLarge := auditErrorForHTTPStatus(http.StatusRequestEntityTooLarge)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(tooLarge))
+
+	serverErr := auditErrorForHTTPStatus(http.StatusInternalServerError)
+	require.Equal(t, connect.CodeInternal, connect.CodeOf(serverErr))
+	require.Equal(t, storepb.AuditLogSeverity_ERROR, mapSeverity(serverErr))
 }

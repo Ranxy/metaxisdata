@@ -11,8 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/labstack/echo/v4"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
+	clog "github.com/Ranxy/metaxisdata/backend/common/log"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -27,15 +31,18 @@ const (
 
 // OpenLineageHandler handles OpenLineage event ingestion via HTTP.
 type OpenLineageHandler struct {
-	store     *store.Store
-	processor *openlineage.Processor
+	store          *store.Store
+	processor      *openlineage.Processor
+	trustedProxies []string
 }
 
-// NewOpenLineageHandler creates a new OpenLineageHandler.
-func NewOpenLineageHandler(s *store.Store) *OpenLineageHandler {
+// NewOpenLineageHandler creates a new OpenLineageHandler. trustedProxies is the
+// list of peers whose forwarding headers the audit record may believe.
+func NewOpenLineageHandler(s *store.Store, trustedProxies []string) *OpenLineageHandler {
 	return &OpenLineageHandler{
-		store:     s,
-		processor: openlineage.NewProcessor(s),
+		store:          s,
+		processor:      openlineage.NewProcessor(s),
+		trustedProxies: trustedProxies,
 	}
 }
 
@@ -46,8 +53,10 @@ func (h *OpenLineageHandler) RegisterRoutes(g *echo.Group) {
 }
 
 func (h *OpenLineageHandler) receiveEvent(c echo.Context) error {
+	started := time.Now()
+
 	// Validate API key.
-	apiKey := extractBearerToken(c.Request())
+	apiKey := ExtractIngestionKey(c.Request())
 	if apiKey == "" {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing or invalid Authorization header"})
 	}
@@ -57,6 +66,15 @@ func (h *OpenLineageHandler) receiveEvent(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid API key"})
 	}
 
+	// Ingestion is a plain Echo route and never reaches the Connect audit
+	// interceptor, so the handler records the request itself.
+	err = h.handleIngestion(c, keyMessage)
+	h.auditIngestion(c.Request().Context(), c, keyMessage, started, c.Response().Status)
+	return err
+}
+
+// handleIngestion reads, validates and persists one ingestion request.
+func (h *OpenLineageHandler) handleIngestion(c echo.Context, keyMessage *store.OpenLineageAPIKeyMessage) error {
 	// Read body with size limit.
 	body, tooLarge, err := readBodyLimited(c.Request().Body)
 	if err != nil {
@@ -309,7 +327,10 @@ func (h *OpenLineageHandler) persistEvent(ctx context.Context, event *openlineag
 	return h.store.UpsertOpenLineageRun(ctx, run)
 }
 
-func extractBearerToken(r *http.Request) string {
+// ExtractIngestionKey returns the Bearer token of an ingestion request. The
+// server rate limiter uses the same parsing, so the limit key matches the key
+// the handler authenticates.
+func ExtractIngestionKey(r *http.Request) string {
 	auth := r.Header.Get("Authorization")
 	if auth == "" {
 		return ""
@@ -319,4 +340,57 @@ func extractBearerToken(r *http.Request) string {
 		return ""
 	}
 	return auth[len(prefix):]
+}
+
+// auditIngestion records one ingestion request. A failure to write the audit row
+// must not fail the ingestion itself, so it is only logged.
+func (h *OpenLineageHandler) auditIngestion(ctx context.Context, c echo.Context, key *store.OpenLineageAPIKeyMessage, started time.Time, status int) {
+	auditCtx, cancel := auditContext(ctx)
+	defer cancel()
+
+	workspaceID, err := h.store.GetWorkspaceID(auditCtx)
+	if err != nil {
+		slog.Error("failed to resolve the workspace for the ingestion audit log", clog.WithError(err))
+		return
+	}
+
+	actor := key.CreatedBy
+	if actor == "" {
+		actor = common.FormatAPIKey(key.ID)
+	}
+
+	auditErr := auditErrorForHTTPStatus(status)
+	auditLog := &storepb.AuditLog{
+		Parent:          common.FormatWorkspace(workspaceID),
+		Method:          c.Request().URL.Path,
+		Resource:        common.FormatAPIKey(key.ID),
+		User:            actor,
+		Severity:        mapSeverity(auditErr),
+		Status:          buildAuditStatus(auditErr),
+		LatencyMs:       time.Since(started).Milliseconds(),
+		RequestMetadata: buildRequestMetadata(c.Request().Header, c.Request().RemoteAddr, h.trustedProxies),
+	}
+	if _, createErr := h.store.CreateAuditLog(auditCtx, auditLog); createErr != nil {
+		slog.Error("failed to persist the ingestion audit log", clog.WithError(createErr))
+	}
+}
+
+// auditErrorForHTTPStatus maps an ingestion response status onto the error shape
+// mapSeverity/buildAuditStatus understand.
+func auditErrorForHTTPStatus(status int) error {
+	if status >= http.StatusOK && status < http.StatusMultipleChoices {
+		return nil
+	}
+	code := connect.CodeUnknown
+	switch {
+	case status == http.StatusUnauthorized, status == http.StatusForbidden:
+		code = connect.CodePermissionDenied
+	case status == http.StatusBadRequest, status == http.StatusRequestEntityTooLarge, status == http.StatusTooManyRequests:
+		code = connect.CodeInvalidArgument
+	case status >= http.StatusInternalServerError:
+		code = connect.CodeInternal
+	default:
+		// Other statuses (404, 409, …) keep the unknown-code default.
+	}
+	return connect.NewError(code, fmt.Errorf("ingestion request failed with status %d", status))
 }
