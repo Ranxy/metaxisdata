@@ -15,6 +15,8 @@ import (
 )
 
 func TestAggregateOpenLineageDatasets(t *testing.T) {
+	t.Parallel()
+
 	firstSeen := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
 	secondSeen := firstSeen.Add(2 * time.Hour)
 	runs := []*store.OpenLineageRunMessage{
@@ -96,6 +98,8 @@ func TestAggregateOpenLineageDatasets(t *testing.T) {
 }
 
 func TestFilterOpenLineageDatasets(t *testing.T) {
+	t.Parallel()
+
 	datasets := []*openLineageDatasetAggregate{
 		{
 			Name:                  "public.orders",
@@ -137,6 +141,8 @@ func TestFilterOpenLineageDatasets(t *testing.T) {
 }
 
 func TestBuildOpenLineageDatasetDetail(t *testing.T) {
+	t.Parallel()
+
 	firstSeen := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
 	secondSeen := firstSeen.Add(2 * time.Hour)
 	runs := []*store.OpenLineageRunMessage{
