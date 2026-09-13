@@ -209,14 +209,6 @@
                   <a href="#metaxisdata.store.PageToken"><span class="badge">M</span>PageToken</a>
                 </li>
               
-                <li>
-                  <a href="#metaxisdata.store.Position"><span class="badge">M</span>Position</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.store.Range"><span class="badge">M</span>Range</a>
-                </li>
-              
               
                 <li>
                   <a href="#metaxisdata.store.Engine"><span class="badge">E</span>Engine</a>
@@ -238,10 +230,6 @@
               
                 <li>
                   <a href="#metaxisdata.store.OpenLineageTaskSummary"><span class="badge">M</span>OpenLineageTaskSummary</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.store.SchemaField"><span class="badge">M</span>SchemaField</a>
                 </li>
               
               
@@ -876,68 +864,6 @@ identified by an opaque server-generated id. </p></td>
 
         
       
-        <h3 id="metaxisdata.store.Position">Position</h3>
-        <p>Position in a text expressed as zero-based line and zero-based column byte</p><p>offset.</p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>line</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p>Line position in a text (zero-based). </p></td>
-                </tr>
-              
-                <tr>
-                  <td>column</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p>Column position in a text (zero-based), equivalent to byte offset. </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.store.Range">Range</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>start</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>end</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
 
       
         <h3 id="metaxisdata.store.Engine">Engine</h3>
@@ -1316,44 +1242,6 @@ identified by an opaque server-generated id. </p></td>
                 <tr>
                   <td>updated_at</td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.store.SchemaField">SchemaField</h3>
-        <p>SchemaField describes a single field in a dataset schema. It is stored inside</p><p>the `external_dataset.schema_fields` JSONB column.</p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>name</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>type</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>description</td>
-                  <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>

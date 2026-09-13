@@ -35,16 +35,16 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type UserServiceClient interface {
 	// Get the user.
-	// Any authenticated user can get the user.
+	// Requires metaxisdata.users.get.
 	GetUser(ctx context.Context, in *GetUserRequest, opts ...grpc.CallOption) (*User, error)
 	// Get the users in batch.
-	// Any authenticated user can batch get users.
+	// Requires metaxisdata.users.get.
 	BatchGetUsers(ctx context.Context, in *BatchGetUsersRequest, opts ...grpc.CallOption) (*BatchGetUsersResponse, error)
 	// Get the current authenticated user.
 	// Permissions required: None
 	GetCurrentUser(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*User, error)
 	// List all users.
-	// Any authenticated user can list users.
+	// Requires metaxisdata.users.list.
 	ListUsers(ctx context.Context, in *ListUsersRequest, opts ...grpc.CallOption) (*ListUsersResponse, error)
 	// Create a user.
 	CreateUser(ctx context.Context, in *CreateUserRequest, opts ...grpc.CallOption) (*User, error)
@@ -150,16 +150,16 @@ func (c *userServiceClient) UndeleteUser(ctx context.Context, in *UndeleteUserRe
 // for forward compatibility.
 type UserServiceServer interface {
 	// Get the user.
-	// Any authenticated user can get the user.
+	// Requires metaxisdata.users.get.
 	GetUser(context.Context, *GetUserRequest) (*User, error)
 	// Get the users in batch.
-	// Any authenticated user can batch get users.
+	// Requires metaxisdata.users.get.
 	BatchGetUsers(context.Context, *BatchGetUsersRequest) (*BatchGetUsersResponse, error)
 	// Get the current authenticated user.
 	// Permissions required: None
 	GetCurrentUser(context.Context, *emptypb.Empty) (*User, error)
 	// List all users.
-	// Any authenticated user can list users.
+	// Requires metaxisdata.users.list.
 	ListUsers(context.Context, *ListUsersRequest) (*ListUsersResponse, error)
 	// Create a user.
 	CreateUser(context.Context, *CreateUserRequest) (*User, error)

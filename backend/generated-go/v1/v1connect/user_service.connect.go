@@ -58,16 +58,16 @@ const (
 // UserServiceClient is a client for the metaxisdata.v1.UserService service.
 type UserServiceClient interface {
 	// Get the user.
-	// Any authenticated user can get the user.
+	// Requires metaxisdata.users.get.
 	GetUser(context.Context, *connect.Request[v1.GetUserRequest]) (*connect.Response[v1.User], error)
 	// Get the users in batch.
-	// Any authenticated user can batch get users.
+	// Requires metaxisdata.users.get.
 	BatchGetUsers(context.Context, *connect.Request[v1.BatchGetUsersRequest]) (*connect.Response[v1.BatchGetUsersResponse], error)
 	// Get the current authenticated user.
 	// Permissions required: None
 	GetCurrentUser(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.User], error)
 	// List all users.
-	// Any authenticated user can list users.
+	// Requires metaxisdata.users.list.
 	ListUsers(context.Context, *connect.Request[v1.ListUsersRequest]) (*connect.Response[v1.ListUsersResponse], error)
 	// Create a user.
 	CreateUser(context.Context, *connect.Request[v1.CreateUserRequest]) (*connect.Response[v1.User], error)
@@ -197,16 +197,16 @@ func (c *userServiceClient) UndeleteUser(ctx context.Context, req *connect.Reque
 // UserServiceHandler is an implementation of the metaxisdata.v1.UserService service.
 type UserServiceHandler interface {
 	// Get the user.
-	// Any authenticated user can get the user.
+	// Requires metaxisdata.users.get.
 	GetUser(context.Context, *connect.Request[v1.GetUserRequest]) (*connect.Response[v1.User], error)
 	// Get the users in batch.
-	// Any authenticated user can batch get users.
+	// Requires metaxisdata.users.get.
 	BatchGetUsers(context.Context, *connect.Request[v1.BatchGetUsersRequest]) (*connect.Response[v1.BatchGetUsersResponse], error)
 	// Get the current authenticated user.
 	// Permissions required: None
 	GetCurrentUser(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.User], error)
 	// List all users.
-	// Any authenticated user can list users.
+	// Requires metaxisdata.users.list.
 	ListUsers(context.Context, *connect.Request[v1.ListUsersRequest]) (*connect.Response[v1.ListUsersResponse], error)
 	// Create a user.
 	CreateUser(context.Context, *connect.Request[v1.CreateUserRequest]) (*connect.Response[v1.User], error)

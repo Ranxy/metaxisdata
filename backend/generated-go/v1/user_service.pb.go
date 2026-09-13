@@ -245,13 +245,13 @@ type ListUsersRequest struct {
 	// name.matches("ed")
 	// email == "ed@example.com"
 	// email.matches("ed")
-	// user_type == "USER"
-	// user_type in ["USER"]
-	// !(user_type in ["USER"])
+	// user_type == "END_USER"
+	// user_type in ["END_USER"]
+	// !(user_type in ["END_USER"])
 	// state == "DELETED"
 	// You can combine filter conditions like:
 	// name.matches("ed") && state == "ACTIVE"
-	// (name == "ed" || email == "ed@example.com") && user_type == "USER"
+	// (name == "ed" || email == "ed@example.com") && user_type == "END_USER"
 	Filter        string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

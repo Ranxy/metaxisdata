@@ -6,14 +6,6 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "generated-go/store";
 
-// SchemaField describes a single field in a dataset schema. It is stored inside
-// the `external_dataset.schema_fields` JSONB column.
-message SchemaField {
-  string name = 1;
-  string type = 2;
-  string description = 3;
-}
-
 // OpenLineageRunSummary stores the normalized metadata for a persisted COMPLETE run.
 message OpenLineageRunSummary {
   string guid = 1;

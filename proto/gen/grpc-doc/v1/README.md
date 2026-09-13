@@ -580,7 +580,7 @@ When paginating, all other parameters provided to `ListUsers` must match the cal
 
 Supported filter: - name: the user name, support &#34;==&#34; and &#34;.matches()&#34; operator. - email: the user email, support &#34;==&#34; and &#34;.matches()&#34; operator. - user_type: the type, check UserType enum for values, support &#34;==&#34;, &#34;in [xx]&#34;, &#34;!(in [xx])&#34; operator. - state: check State enum for values, support &#34;==&#34; operator.
 
-For example: name == &#34;ed&#34; name.matches(&#34;ed&#34;) email == &#34;ed@example.com&#34; email.matches(&#34;ed&#34;) user_type == &#34;USER&#34; user_type in [&#34;USER&#34;] !(user_type in [&#34;USER&#34;]) state == &#34;DELETED&#34; You can combine filter conditions like: name.matches(&#34;ed&#34;) &amp;&amp; state == &#34;ACTIVE&#34; (name == &#34;ed&#34; || email == &#34;ed@example.com&#34;) &amp;&amp; user_type == &#34;USER&#34; |
+For example: name == &#34;ed&#34; name.matches(&#34;ed&#34;) email == &#34;ed@example.com&#34; email.matches(&#34;ed&#34;) user_type == &#34;END_USER&#34; user_type in [&#34;END_USER&#34;] !(user_type in [&#34;END_USER&#34;]) state == &#34;DELETED&#34; You can combine filter conditions like: name.matches(&#34;ed&#34;) &amp;&amp; state == &#34;ACTIVE&#34; (name == &#34;ed&#34; || email == &#34;ed@example.com&#34;) &amp;&amp; user_type == &#34;END_USER&#34; |
 
 
 
@@ -706,10 +706,10 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
-| GetUser | [GetUserRequest](#metaxisdata-v1-GetUserRequest) | [User](#metaxisdata-v1-User) | Get the user. Any authenticated user can get the user. |
-| BatchGetUsers | [BatchGetUsersRequest](#metaxisdata-v1-BatchGetUsersRequest) | [BatchGetUsersResponse](#metaxisdata-v1-BatchGetUsersResponse) | Get the users in batch. Any authenticated user can batch get users. |
+| GetUser | [GetUserRequest](#metaxisdata-v1-GetUserRequest) | [User](#metaxisdata-v1-User) | Get the user. Requires metaxisdata.users.get. |
+| BatchGetUsers | [BatchGetUsersRequest](#metaxisdata-v1-BatchGetUsersRequest) | [BatchGetUsersResponse](#metaxisdata-v1-BatchGetUsersResponse) | Get the users in batch. Requires metaxisdata.users.get. |
 | GetCurrentUser | [.google.protobuf.Empty](#google-protobuf-Empty) | [User](#metaxisdata-v1-User) | Get the current authenticated user. Permissions required: None |
-| ListUsers | [ListUsersRequest](#metaxisdata-v1-ListUsersRequest) | [ListUsersResponse](#metaxisdata-v1-ListUsersResponse) | List all users. Any authenticated user can list users. |
+| ListUsers | [ListUsersRequest](#metaxisdata-v1-ListUsersRequest) | [ListUsersResponse](#metaxisdata-v1-ListUsersResponse) | List all users. Requires metaxisdata.users.list. |
 | CreateUser | [CreateUserRequest](#metaxisdata-v1-CreateUserRequest) | [User](#metaxisdata-v1-User) | Create a user. |
 | UpdateUser | [UpdateUserRequest](#metaxisdata-v1-UpdateUserRequest) | [User](#metaxisdata-v1-User) | Only the user itself and the user with permission on the workspace can update the user. |
 | DeleteUser | [DeleteUserRequest](#metaxisdata-v1-DeleteUserRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Only the user with permission on the workspace can delete the user. The last remaining workspace admin cannot be deleted. |

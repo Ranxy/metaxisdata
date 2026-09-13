@@ -12,15 +12,12 @@
   
 - [store/common.proto](#store_common-proto)
     - [PageToken](#metaxisdata-store-PageToken)
-    - [Position](#metaxisdata-store-Position)
-    - [Range](#metaxisdata-store-Range)
   
     - [Engine](#metaxisdata-store-Engine)
   
 - [store/openlineage.proto](#store_openlineage-proto)
     - [OpenLineageRunSummary](#metaxisdata-store-OpenLineageRunSummary)
     - [OpenLineageTaskSummary](#metaxisdata-store-OpenLineageTaskSummary)
-    - [SchemaField](#metaxisdata-store-SchemaField)
   
 - [store/database.proto](#store_database-proto)
     - [CheckConstraintMetadata](#metaxisdata-store-CheckConstraintMetadata)
@@ -228,39 +225,6 @@ Used internally for obfuscating the page token.
 
 
 
-
-<a name="metaxisdata-store-Position"></a>
-
-### Position
-Position in a text expressed as zero-based line and zero-based column byte
-offset.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| line | [int32](#int32) |  | Line position in a text (zero-based). |
-| column | [int32](#int32) |  | Column position in a text (zero-based), equivalent to byte offset. |
-
-
-
-
-
-
-<a name="metaxisdata-store-Range"></a>
-
-### Range
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| start | [int32](#int32) |  |  |
-| end | [int32](#int32) |  |  |
-
-
-
-
-
  
 
 
@@ -359,24 +323,6 @@ OpenLineageTaskSummary stores the aggregated task/job-level view derived from pe
 | lineage_run_count | [int32](#int32) |  |  |
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-SchemaField"></a>
-
-### SchemaField
-SchemaField describes a single field in a dataset schema. It is stored inside
-the `external_dataset.schema_fields` JSONB column.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  |  |
-| type | [string](#string) |  |  |
-| description | [string](#string) |  |  |
 
 
 

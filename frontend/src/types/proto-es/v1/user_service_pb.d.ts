@@ -115,13 +115,13 @@ export declare type ListUsersRequest = Message<"metaxisdata.v1.ListUsersRequest"
    * name.matches("ed")
    * email == "ed@example.com"
    * email.matches("ed")
-   * user_type == "USER"
-   * user_type in ["USER"]
-   * !(user_type in ["USER"])
+   * user_type == "END_USER"
+   * user_type in ["END_USER"]
+   * !(user_type in ["END_USER"])
    * state == "DELETED"
    * You can combine filter conditions like:
    * name.matches("ed") && state == "ACTIVE"
-   * (name == "ed" || email == "ed@example.com") && user_type == "USER"
+   * (name == "ed" || email == "ed@example.com") && user_type == "END_USER"
    *
    * @generated from field: string filter = 4;
    */
@@ -401,7 +401,7 @@ export declare const UserTypeSchema: GenEnum<UserType>;
 export declare const UserService: GenService<{
   /**
    * Get the user.
-   * Any authenticated user can get the user.
+   * Requires metaxisdata.users.get.
    *
    * @generated from rpc metaxisdata.v1.UserService.GetUser
    */
@@ -412,7 +412,7 @@ export declare const UserService: GenService<{
   },
   /**
    * Get the users in batch.
-   * Any authenticated user can batch get users.
+   * Requires metaxisdata.users.get.
    *
    * @generated from rpc metaxisdata.v1.UserService.BatchGetUsers
    */
@@ -434,7 +434,7 @@ export declare const UserService: GenService<{
   },
   /**
    * List all users.
-   * Any authenticated user can list users.
+   * Requires metaxisdata.users.list.
    *
    * @generated from rpc metaxisdata.v1.UserService.ListUsers
    */

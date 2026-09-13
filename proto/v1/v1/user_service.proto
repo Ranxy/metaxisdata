@@ -16,7 +16,7 @@ option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 
 service UserService {
   // Get the user.
-  // Any authenticated user can get the user.
+  // Requires metaxisdata.users.get.
   rpc GetUser(GetUserRequest) returns (User) {
     option (google.api.http) = {get: "/v1/{name=users/*}"};
     option (google.api.method_signature) = "name";
@@ -24,7 +24,7 @@ service UserService {
   }
 
   // Get the users in batch.
-  // Any authenticated user can batch get users.
+  // Requires metaxisdata.users.get.
   rpc BatchGetUsers(BatchGetUsersRequest) returns (BatchGetUsersResponse) {
     option (google.api.http) = {get: "/v1/users:batchGet"};
     option (metaxisdata.v1.permission) = "metaxisdata.users.get";
@@ -37,7 +37,7 @@ service UserService {
   }
 
   // List all users.
-  // Any authenticated user can list users.
+  // Requires metaxisdata.users.list.
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse) {
     option (google.api.http) = {get: "/v1/users"};
     option (metaxisdata.v1.permission) = "metaxisdata.users.list";
@@ -138,13 +138,13 @@ message ListUsersRequest {
   // name.matches("ed")
   // email == "ed@example.com"
   // email.matches("ed")
-  // user_type == "USER"
-  // user_type in ["USER"]
-  // !(user_type in ["USER"])
+  // user_type == "END_USER"
+  // user_type in ["END_USER"]
+  // !(user_type in ["END_USER"])
   // state == "DELETED"
   // You can combine filter conditions like:
   // name.matches("ed") && state == "ACTIVE"
-  // (name == "ed" || email == "ed@example.com") && user_type == "USER"
+  // (name == "ed" || email == "ed@example.com") && user_type == "END_USER"
   string filter = 4;
 }
 

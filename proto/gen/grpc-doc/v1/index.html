@@ -1873,13 +1873,13 @@ name == &#34;ed&#34;
 name.matches(&#34;ed&#34;)
 email == &#34;ed@example.com&#34;
 email.matches(&#34;ed&#34;)
-user_type == &#34;USER&#34;
-user_type in [&#34;USER&#34;]
-!(user_type in [&#34;USER&#34;])
+user_type == &#34;END_USER&#34;
+user_type in [&#34;END_USER&#34;]
+!(user_type in [&#34;END_USER&#34;])
 state == &#34;DELETED&#34;
 You can combine filter conditions like:
 name.matches(&#34;ed&#34;) &amp;&amp; state == &#34;ACTIVE&#34;
-(name == &#34;ed&#34; || email == &#34;ed@example.com&#34;) &amp;&amp; user_type == &#34;USER&#34; </p></td>
+(name == &#34;ed&#34; || email == &#34;ed@example.com&#34;) &amp;&amp; user_type == &#34;END_USER&#34; </p></td>
                 </tr>
               
             </tbody>
@@ -2183,7 +2183,7 @@ table&#39;s type check.</p></td>
                 <td><a href="#metaxisdata.v1.GetUserRequest">GetUserRequest</a></td>
                 <td><a href="#metaxisdata.v1.User">User</a></td>
                 <td><p>Get the user.
-Any authenticated user can get the user.</p></td>
+Requires metaxisdata.users.get.</p></td>
               </tr>
             
               <tr>
@@ -2191,7 +2191,7 @@ Any authenticated user can get the user.</p></td>
                 <td><a href="#metaxisdata.v1.BatchGetUsersRequest">BatchGetUsersRequest</a></td>
                 <td><a href="#metaxisdata.v1.BatchGetUsersResponse">BatchGetUsersResponse</a></td>
                 <td><p>Get the users in batch.
-Any authenticated user can batch get users.</p></td>
+Requires metaxisdata.users.get.</p></td>
               </tr>
             
               <tr>
@@ -2207,7 +2207,7 @@ Permissions required: None</p></td>
                 <td><a href="#metaxisdata.v1.ListUsersRequest">ListUsersRequest</a></td>
                 <td><a href="#metaxisdata.v1.ListUsersResponse">ListUsersResponse</a></td>
                 <td><p>List all users.
-Any authenticated user can list users.</p></td>
+Requires metaxisdata.users.list.</p></td>
               </tr>
             
               <tr>

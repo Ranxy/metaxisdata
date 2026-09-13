@@ -134,114 +134,6 @@ func (x *PageToken) GetOffset() int32 {
 	return 0
 }
 
-// Position in a text expressed as zero-based line and zero-based column byte
-// offset.
-type Position struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Line position in a text (zero-based).
-	Line int32 `protobuf:"varint,1,opt,name=line,proto3" json:"line,omitempty"`
-	// Column position in a text (zero-based), equivalent to byte offset.
-	Column        int32 `protobuf:"varint,2,opt,name=column,proto3" json:"column,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Position) Reset() {
-	*x = Position{}
-	mi := &file_store_common_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Position) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Position) ProtoMessage() {}
-
-func (x *Position) ProtoReflect() protoreflect.Message {
-	mi := &file_store_common_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Position.ProtoReflect.Descriptor instead.
-func (*Position) Descriptor() ([]byte, []int) {
-	return file_store_common_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *Position) GetLine() int32 {
-	if x != nil {
-		return x.Line
-	}
-	return 0
-}
-
-func (x *Position) GetColumn() int32 {
-	if x != nil {
-		return x.Column
-	}
-	return 0
-}
-
-type Range struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Start         int32                  `protobuf:"varint,1,opt,name=start,proto3" json:"start,omitempty"`
-	End           int32                  `protobuf:"varint,2,opt,name=end,proto3" json:"end,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Range) Reset() {
-	*x = Range{}
-	mi := &file_store_common_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Range) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Range) ProtoMessage() {}
-
-func (x *Range) ProtoReflect() protoreflect.Message {
-	mi := &file_store_common_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Range.ProtoReflect.Descriptor instead.
-func (*Range) Descriptor() ([]byte, []int) {
-	return file_store_common_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *Range) GetStart() int32 {
-	if x != nil {
-		return x.Start
-	}
-	return 0
-}
-
-func (x *Range) GetEnd() int32 {
-	if x != nil {
-		return x.End
-	}
-	return 0
-}
-
 var File_store_common_proto protoreflect.FileDescriptor
 
 const file_store_common_proto_rawDesc = "" +
@@ -249,13 +141,7 @@ const file_store_common_proto_rawDesc = "" +
 	"\x12store/common.proto\x12\x11metaxisdata.store\"9\n" +
 	"\tPageToken\x12\x14\n" +
 	"\x05limit\x18\x01 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x02 \x01(\x05R\x06offset\"6\n" +
-	"\bPosition\x12\x12\n" +
-	"\x04line\x18\x01 \x01(\x05R\x04line\x12\x16\n" +
-	"\x06column\x18\x02 \x01(\x05R\x06column\"/\n" +
-	"\x05Range\x12\x14\n" +
-	"\x05start\x18\x01 \x01(\x05R\x05start\x12\x10\n" +
-	"\x03end\x18\x02 \x01(\x05R\x03end*\xb8\x02\n" +
+	"\x06offset\x18\x02 \x01(\x05R\x06offset*\xb8\x02\n" +
 	"\x06Engine\x12\x16\n" +
 	"\x12ENGINE_UNSPECIFIED\x10\x00\x12\t\n" +
 	"\x05MYSQL\x10\x02\x12\f\n" +
@@ -279,12 +165,10 @@ func file_store_common_proto_rawDescGZIP() []byte {
 }
 
 var file_store_common_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_store_common_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_store_common_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_store_common_proto_goTypes = []any{
 	(Engine)(0),       // 0: metaxisdata.store.Engine
 	(*PageToken)(nil), // 1: metaxisdata.store.PageToken
-	(*Position)(nil),  // 2: metaxisdata.store.Position
-	(*Range)(nil),     // 3: metaxisdata.store.Range
 }
 var file_store_common_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -305,7 +189,7 @@ func file_store_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_common_proto_rawDesc), len(file_store_common_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   3,
+			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -2434,7 +2434,7 @@ paths:
                 - UserService
             description: |-
                 List all users.
-                 Any authenticated user can list users.
+                 Requires metaxisdata.users.list.
             operationId: UserService_ListUsers
             parameters:
                 - name: pageSize
@@ -2479,13 +2479,13 @@ paths:
                      name.matches("ed")
                      email == "ed@example.com"
                      email.matches("ed")
-                     user_type == "USER"
-                     user_type in ["USER"]
-                     !(user_type in ["USER"])
+                     user_type == "END_USER"
+                     user_type in ["END_USER"]
+                     !(user_type in ["END_USER"])
                      state == "DELETED"
                      You can combine filter conditions like:
                      name.matches("ed") && state == "ACTIVE"
-                     (name == "ed" || email == "ed@example.com") && user_type == "USER"
+                     (name == "ed" || email == "ed@example.com") && user_type == "END_USER"
                   schema:
                     type: string
             responses:
@@ -2552,7 +2552,7 @@ paths:
                 - UserService
             description: |-
                 Get the user.
-                 Any authenticated user can get the user.
+                 Requires metaxisdata.users.get.
             operationId: UserService_GetUser
             parameters:
                 - name: user
@@ -2689,7 +2689,7 @@ paths:
                 - UserService
             description: |-
                 Get the users in batch.
-                 Any authenticated user can batch get users.
+                 Requires metaxisdata.users.get.
             operationId: UserService_BatchGetUsers
             parameters:
                 - name: names
