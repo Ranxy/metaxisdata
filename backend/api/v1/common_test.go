@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 )
 
 // Store and service code returns common.Code values; the interceptor is the
@@ -66,4 +68,26 @@ func TestErrorMappingInterceptorWrapUnary(t *testing.T) {
 	_, err := handler(context.Background(), connect.NewRequest(&struct{}{}))
 	require.Error(t, err)
 	require.Equal(t, connect.CodeAlreadyExists, connect.CodeOf(err))
+}
+
+// The store and v1 engine enums are value-compatible; every value a driver can
+// connect to must round-trip, and anything else must collapse to UNSPECIFIED in
+// both directions instead of leaking a driver-less engine to the client.
+func TestConvertEngineRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	for _, engine := range []storepb.Engine{
+		storepb.Engine_MYSQL,
+		storepb.Engine_POSTGRES,
+		storepb.Engine_TIDB,
+		storepb.Engine_MARIADB,
+		storepb.Engine_OCEANBASE,
+	} {
+		require.Equal(t, engine, convertEngine(convertToEngine(engine)))
+	}
+
+	require.Equal(t, v1pb.Engine_ENGINE_UNSPECIFIED, convertToEngine(storepb.Engine(99)))
+	require.Equal(t, storepb.Engine_ENGINE_UNSPECIFIED, convertEngine(v1pb.Engine(99)))
+	require.Equal(t, v1pb.Engine_ENGINE_UNSPECIFIED, convertToEngine(storepb.Engine_ENGINE_UNSPECIFIED))
+	require.Equal(t, storepb.Engine_ENGINE_UNSPECIFIED, convertEngine(v1pb.Engine_ENGINE_UNSPECIFIED))
 }
