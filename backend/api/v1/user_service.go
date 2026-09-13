@@ -141,10 +141,6 @@ func (s *UserService) ListUsers(ctx context.Context, request *connect.Request[v1
 
 // CreateUser creates a user.
 func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v1pb.CreateUserRequest]) (*connect.Response[v1pb.User], error) {
-	if err := s.userCountGuard(ctx); err != nil {
-		return nil, err
-	}
-
 	if request.Msg.User == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("user must be set"))
 	}
@@ -510,10 +506,6 @@ func (s *UserService) DeleteUser(ctx context.Context, request *connect.Request[v
 
 // UndeleteUser undeletes a user.
 func (s *UserService) UndeleteUser(ctx context.Context, request *connect.Request[v1pb.UndeleteUserRequest]) (*connect.Response[v1pb.User], error) {
-	if err := s.userCountGuard(ctx); err != nil {
-		return nil, err
-	}
-
 	if _, ok := GetUserFromContext(ctx); !ok {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.Errorf("failed to get caller user"))
 	}
@@ -651,10 +643,6 @@ func extractDomain(input string) string {
 		match = strings.Join(domainParts[1:], ".")
 	}
 	return match
-}
-
-func (*UserService) userCountGuard(_ context.Context) error {
-	return nil
 }
 
 func isUserWorkspaceAdmin(ctx context.Context, stores *store.Store, user *store.UserMessage) (bool, error) {
