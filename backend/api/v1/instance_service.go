@@ -134,7 +134,11 @@ func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Reque
 					},
 				)
 				if err != nil {
-					return connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get database driver"))
+					// Driver construction dials SSH before returning, so the raw
+					// error can contain the resolved internal host:port. Log it
+					// and echo only the data source type.
+					slog.Error("failed to build the data source driver", "type", ds.GetType().String(), log.WithError(err))
+					return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid datasource %s", ds.GetType()))
 				}
 				defer driver.Close(ctx)
 				if err := driver.Ping(ctx); err != nil {
@@ -613,7 +617,10 @@ func (s *InstanceService) pingDataSource(ctx context.Context, instance *store.In
 		db.ConnectionContext{ReadOnly: dataSource.GetType() == storepb.DataSourceType_READ_ONLY},
 	)
 	if err != nil {
-		return connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get database driver"))
+		// See the validate_only branch: the driver-construction error carries the
+		// resolved host and port, so it stays in the log.
+		slog.Error("failed to build the data source driver", "instance", instance.ResourceID, "type", dataSource.GetType().String(), log.WithError(err))
+		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid datasource %s", dataSource.GetType()))
 	}
 	defer driver.Close(ctx)
 	if err := driver.Ping(ctx); err != nil {
