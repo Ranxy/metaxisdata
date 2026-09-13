@@ -224,13 +224,38 @@ func (s *DatabaseService) buildDatabaseSchemaAtTime(ctx context.Context, guid st
 	}
 
 	// Determine the scope: database-level or schema-level
-	parts := strings.Split(guid, common.MetaGUIDSplit)
+	parts := common.SplitMetaGUID(guid)
 	if len(parts) < 2 {
 		return nil, errors.Errorf("guid %q is not deep enough (need at least instance;database)", guid)
 	}
 
 	result := &storepb.DatabaseSchemaMetadata{
 		Name: parts[1], // database name
+	}
+
+	// Database-level attributes (charset, collation, extensions, event triggers,
+	// search path) live on the DATABASE registry row rather than on schema rows,
+	// so they have to be restored from that version too.
+	databaseObject, err := s.store.GetMetaRegistryAsOf(ctx, &store.FindMetaRegistryResourceMessage{
+		GUID:       &guid,
+		ObjectType: storepb.MetaType_DATABASE.Enum(),
+	}, asOfTime)
+	if err != nil {
+		return nil, err
+	}
+	if databaseObject != nil {
+		if dbMeta := databaseObject.Metadata.GetDatabaseSchemaMetadata(); dbMeta != nil {
+			if dbMeta.Name != "" {
+				result.Name = dbMeta.Name
+			}
+			result.CharacterSet = dbMeta.CharacterSet
+			result.Collation = dbMeta.Collation
+			result.Extensions = dbMeta.Extensions
+			result.Datashare = dbMeta.Datashare
+			result.Owner = dbMeta.Owner
+			result.SearchPath = dbMeta.SearchPath
+			result.EventTriggers = dbMeta.EventTriggers
+		}
 	}
 
 	// Fetch schemas valid at asOfTime
@@ -359,11 +384,15 @@ func (s *DatabaseService) rebuildSchemaContents(ctx context.Context, schemaGUID 
 		return nil, err
 	}
 	// The schema's own attributes are not separate objects in the registry, so
-	// they come from the version being reconstructed.
+	// they come from the version being reconstructed. Enum types and events live
+	// only inside SchemaMetadata (there is no meta type for them), so dropping
+	// them here made their changes diff as "no changes detected".
 	result.Name = schemaMeta.Name
 	result.Owner = schemaMeta.Owner
 	result.Comment = schemaMeta.Comment
 	result.SkipDump = schemaMeta.SkipDump
+	result.Events = schemaMeta.Events
+	result.EnumTypes = schemaMeta.EnumTypes
 	return result, nil
 }
 
