@@ -103,6 +103,10 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 					if _, ok := instanceMap[database.InstanceID]; !ok {
 						slog.Debug("Instance not found",
 							slog.String("instance", database.InstanceID))
+						// The instance is gone (or not visible any more); drop the
+						// entry instead of retrying and logging it every tick
+						// forever.
+						s.databaseSyncMap.Delete(key)
 						return true
 					}
 
@@ -347,20 +351,26 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 	var newDatabases []*store.DatabaseMessage
 	filteredDatabaseMetadatas := filterSyncedDatabases(instanceMeta.Databases, instance.Metadata.GetSyncDatabases())
 
-	for _, databaseMetadata := range filteredDatabaseMetadatas {
-		idx := slices.IndexFunc(databases, func(db *store.DatabaseMessage) bool { return db.DatabaseName == databaseMetadata.Name })
+	// Index the stored databases once: the loop below used a linear scan per
+	// snapshot entry, which is quadratic for an instance with many databases.
+	storedByName := make(map[string]*store.DatabaseMessage, len(databases))
+	for _, database := range databases {
+		storedByName[database.DatabaseName] = database
+	}
 
-		if idx < 0 {
-			newDatabase, err := s.store.CreateDatabaseDefault(ctx, &store.DatabaseMessage{
-				InstanceID:   instance.ResourceID,
-				DatabaseName: databaseMetadata.Name,
-			})
-			if err != nil {
-				return nil, nil, nil, errors.Wrapf(err, "failed to create instance %q database %q in sync runner", instance.ResourceID, databaseMetadata.Name)
-			}
-			if newDatabase != nil {
-				newDatabases = append(newDatabases, newDatabase)
-			}
+	for _, databaseMetadata := range filteredDatabaseMetadatas {
+		if _, ok := storedByName[databaseMetadata.Name]; ok {
+			continue
+		}
+		newDatabase, err := s.store.CreateDatabaseDefault(ctx, &store.DatabaseMessage{
+			InstanceID:   instance.ResourceID,
+			DatabaseName: databaseMetadata.Name,
+		})
+		if err != nil {
+			return nil, nil, nil, errors.Wrapf(err, "failed to create instance %q database %q in sync runner", instance.ResourceID, databaseMetadata.Name)
+		}
+		if newDatabase != nil {
+			newDatabases = append(newDatabases, newDatabase)
 		}
 	}
 
@@ -368,9 +378,13 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 	// snapshot is privilege-filtered on some engines (MySQL's information_schema
 	// only lists what the connecting user may see) and an incomplete
 	// instanceMeta.Databases would stop their sync, so log what disappears.
+	snapshotNames := make(map[string]struct{}, len(filteredDatabaseMetadatas))
+	for _, databaseMetadata := range filteredDatabaseMetadatas {
+		snapshotNames[databaseMetadata.Name] = struct{}{}
+	}
 	var missingDatabases []string
 	for _, database := range databases {
-		if slices.IndexFunc(filteredDatabaseMetadatas, func(db *storepb.DatabaseSchemaMetadata) bool { return db.Name == database.DatabaseName }) < 0 {
+		if _, ok := snapshotNames[database.DatabaseName]; !ok {
 			missingDatabases = append(missingDatabases, database.DatabaseName)
 		}
 	}
