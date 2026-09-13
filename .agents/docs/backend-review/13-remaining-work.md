@@ -15,7 +15,7 @@
 | --- | --- | --- | --- |
 | 批 1 · 契约与文档一致性 | `C1`、`C4`–`C7`、`C9`、`C10`、`C13`、`D14`–`D16`、`D21`、`B14`；`F1`/`F3` 文档、`F2` 死分支 | ✅ 已完成 | `04b9adc` `21a95a9` `d9b0f16` `c1b6c21` `507e06d` `4f78442` |
 | 批 2 · 正确性 | `B2`–`B12`、`B16` | ✅ 已完成 | `39b2ce5` `ce5a4ff` `7ecca87` `e7e64f1` `1c8509b` `29a143a` `2d8e2c2` `e9ce8a5` `2c26648` |
-| 批 3 · 安全收尾 | `A4`、`A5`、`A6`、`A8`、`A9` | ⏳ 未开始 | |
+| 批 3 · 安全收尾 | `A4`、`A5`、`A6`、`A8`、`A9` | ✅ 已完成 | `ac616d7` `cdf5ec9` `2968b88` `dd9c32d` |
 | 批 4 · 性能与整洁 | `D1`–`D13`、`D17`–`D20`、`C2`、`C3` | ⏳ 未开始 | |
 | 批 5 · 测试与 CI | `E1`–`E13`、`D22` | ⏳ 未开始 | |
 | 批 6 · 决策后的实现 | `B13`、`C11`、`C14`；`F4`/`F6`/`F7` 文档 | ⏳ 未开始 | |
@@ -292,6 +292,24 @@ B13（收掉视图 COLUMN 声明，F5）、C11（暴露域白名单，F8）、C1
 `go test -race -count=1 ./...`（服务器包连跑 8 次 `-race` 无竞态）、`golangci-lint run --allow-parallel-runners`（0 issues）、
 `buf format`/`buf lint`/`cd proto && buf generate`（产物可复现）、`vue-tsc -b`，以及 Docker 集成套件
 `go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...`（`runner` 51.9s、`migrator` 13.3s，exit 0）。
+
+### 批 3 实施记录（已完成）
+
+| 条目 | 落地内容 | 提交 |
+| --- | --- | --- |
+| `A4` | `CreateInstance` 的 `validate_only` 分支与 `pingDataSource` 在**driver 构造**失败时改为"明细写 `slog`、对外只回 `InvalidArgument: invalid datasource <type>`"，与既有 `Ping` 失败路径一致；不再回传含 SSH `host:port` 的原始错误 | `ac616d7` |
+| `A6` | `UpdateLLMProviderProfile` 在**变更 `base_url`** 的请求里要求同时提供 `api_key`（未提供直接 `InvalidArgument: api_key is required when changing base_url`），杜绝把存量密钥静默转发到新端点；`base_url` 未变时行为不变 | `cdf5ec9` |
+| `A8` | `store.PageToken` 的 `limit`/`offset` 由 `int32` 改 `int64`；新增 `maxPageOffset = math.MaxInt32` 上界：负 offset 或超界 token 直接 `InvalidArgument`（原实现把负 offset 夹到 0），`getNextPageToken` 在越界时返回空 token（"没有下一页"）而不是回绕到第一页；补表驱动测试 | `2968b88` |
+| `A5` | 新增 `backend/server/openlineage_ingestion.go`：摄取路由挂上按**摄取 key 摘要**（无 key 时退回客户端 IP）的令牌桶限流（50 req/s、突发 100、3 分钟过期）与 60s `http.TimeoutHandler` 请求期限；超限返回 429；补中间件测试 | `dd9c32d` |
+| `A9` | 摄取 handler 拆出 `handleIngestion`，在返回前写一条审计（`Method` = 请求路径、`Resource`/`User` = ingestion key、按 HTTP 状态映射 severity/status、`LatencyMs`、可信代理下的 `RequestMetadata`）；审计写失败只记日志，不影响摄取；`extractBearerToken` 导出为 `ExtractIngestionKey` 供限流中间件复用；`NewOpenLineageHandler` 增加 `trustedProxies` 参数；补状态映射测试 | `dd9c32d` |
+
+**批 3 的一处偏差（`A6`）**：原计划写的是"非环回主机要求 https 或解析后拒绝私网段"，本轮**没有做 scheme/私网收紧**——自托管场景下 LLM 服务经常就跑在局域网 http（如 Ollama `http://10.x:11434`），拒绝私网或强制 https 会直接破坏该用法（与阶段 0 对实例数据源"放弃内网 deny"的决策一致）。真正的外带路径是"改 URL 后继续用存量密钥"，本批以"改 `base_url` 必须同请求提供 `api_key`"关闭；profile 写操作本就限管理员，叠加此约束后存量密钥不会再被送到调用方新指定的主机。
+
+验证（本地，全部通过）：`gofmt -l backend/` 空、`go build ./...`、`go vet ./...`（默认/`release`/`integration`/`embed_frontend`）、`go test ./...`、
+`go test -race -count=1 ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`buf format`/`buf lint`/`cd proto && buf generate`（仅 `store.PageToken` 相关产物变化，可复现）、
+`vue-tsc -b`，以及 Docker 集成套件 `go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...`（`runner` 53.7s、`migrator` 14.7s，exit 0）。
+
+> 操作提醒：`buf generate` 的 `clean: true` 会短暂清空生成目录，**不要与 `go test`/`go build` 并行运行**（本轮首次集成运行即因此出现"generated file not found"的假失败，串行重跑即通过）。
 
 ---
 
