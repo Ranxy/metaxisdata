@@ -132,11 +132,13 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 	// Run agent loop.
 	var fullResponse strings.Builder
 	cfg := llm.AgentConfig{
-		Provider:     *resolvedConfig,
-		SystemPrompt: buildSystemPrompt(sqlText, metaGUID, metaType, ctxObjects),
-		UserPrompt:   sqlText,
-		Tools:        tools,
-		Executor:     executor,
+		Provider:             *resolvedConfig,
+		SystemPrompt:         buildSystemPrompt(sqlText, metaGUID, metaType, ctxObjects),
+		UserPrompt:           sqlText,
+		Tools:                tools,
+		Executor:             executor,
+		MaxTurns:             llm.DefaultMaxTurns,
+		MaxConversationBytes: llm.DefaultMaxConversationBytes,
 	}
 	if s.registry.DebugEnabled() {
 		cfg.DebugLogger = llm.NewDBDebugLogger(s.store, resolvedConfig.ProfileName, resolvedConfig.ModelName)

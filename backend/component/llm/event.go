@@ -68,8 +68,12 @@ type AgentConfig struct {
 	// Executor runs tool calls.
 	Executor ToolExecutor
 
-	// MaxTurns limits the number of LLM calls (default 6).
+	// MaxTurns limits the number of LLM calls (default DefaultMaxTurns).
 	MaxTurns int
+
+	// MaxConversationBytes limits the conversation kept in memory (default
+	// DefaultMaxConversationBytes).
+	MaxConversationBytes int
 
 	// Hooks for customization.
 	Hooks AgentHooks

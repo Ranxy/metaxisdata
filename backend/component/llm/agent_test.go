@@ -2,6 +2,9 @@ package llm
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -177,4 +180,104 @@ func TestIdleTimeoutReaderCancelsAStalledStream(t *testing.T) {
 		t.Fatal("idle timeout did not cancel the request")
 	}
 	require.True(t, ir.timedOut())
+}
+
+// The conversation the loop keeps is bounded: every turn resends it, so an
+// oversized tool result must fail the explanation instead of growing memory and
+// request size without limit.
+func TestConversationBudget(t *testing.T) {
+	t.Parallel()
+
+	budget := &conversationBudget{limit: 10}
+	require.True(t, budget.add(4))
+	require.True(t, budget.add(6))
+	require.False(t, budget.add(1), "the conversation may not exceed its limit")
+	require.Equal(t, 10, budget.used, "a rejected addition is not recorded")
+
+	// A non-positive limit means unlimited, which is what an unset config falls
+	// back to only through DefaultMaxConversationBytes.
+	unlimited := &conversationBudget{}
+	require.True(t, unlimited.add(1<<30))
+}
+
+// collectAgentEvents drains the agent loop.
+func collectAgentEvents(t *testing.T, events <-chan AgentEvent) []AgentEvent {
+	t.Helper()
+	var collected []AgentEvent
+	for evt := range events {
+		collected = append(collected, evt)
+	}
+	return collected
+}
+
+// toolCallingProvider always answers with the same tool call, so the loop only
+// stops when a limit stops it.
+func toolCallingProvider(t *testing.T) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"{}\"}}]}}]}\n")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n")
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+// MaxTurns has to be the loop's real bound: a provider that always asks for a
+// tool must not keep the agent running forever.
+func TestRunAgentLoopEnforcesMaxTurns(t *testing.T) {
+	t.Parallel()
+
+	server := toolCallingProvider(t)
+	cfg := AgentConfig{
+		Provider:    ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
+		MaxTurns:    3,
+		Tools:       []ToolDef{{Type: "function"}},
+		Executor:    func(ToolCall) ([]ToolResult, error) { return []ToolResult{{Content: "result"}}, nil },
+		DebugLogger: nil,
+	}
+
+	events := collectAgentEvents(t, RunAgentLoop(context.Background(), cfg))
+
+	turns := 0
+	var lastErr error
+	for _, evt := range events {
+		switch evt.Type {
+		case AgentEventTurnStart:
+			turns++
+		case AgentEventError:
+			lastErr = evt.Error
+		default:
+		}
+	}
+	require.Equal(t, 3, turns)
+	require.ErrorContains(t, lastErr, "maximum of 3 turns")
+}
+
+// A tool result larger than the conversation budget stops the loop with a clear
+// error instead of growing until the process runs out of memory.
+func TestRunAgentLoopEnforcesConversationBudget(t *testing.T) {
+	t.Parallel()
+
+	server := toolCallingProvider(t)
+	cfg := AgentConfig{
+		Provider:             ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
+		MaxTurns:             5,
+		MaxConversationBytes: 64,
+		Tools:                []ToolDef{{Type: "function"}},
+		Executor: func(ToolCall) ([]ToolResult, error) {
+			return []ToolResult{{Content: strings.Repeat("x", 1024)}}, nil
+		},
+	}
+
+	events := collectAgentEvents(t, RunAgentLoop(context.Background(), cfg))
+
+	var lastErr error
+	for _, evt := range events {
+		if evt.Type == AgentEventError {
+			lastErr = evt.Error
+		}
+	}
+	require.ErrorContains(t, lastErr, "LLM conversation exceeded 64 bytes")
 }

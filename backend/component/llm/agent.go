@@ -36,7 +36,32 @@ const (
 	// llmDebugBodyLimit caps only the copy of the response kept for the debug
 	// log; the stream itself is bounded by llmMaxResponseBytes.
 	llmDebugBodyLimit = 1 << 20
+
+	// DefaultMaxTurns is how many LLM calls one agent loop may make before it
+	// gives up. Reaching it is an error, never a silent partial answer.
+	DefaultMaxTurns = 6
+
+	// DefaultMaxConversationBytes caps the conversation the loop keeps in memory
+	// and resends on every turn. A single tool result can be arbitrarily large,
+	// so without a cap the context grows by that much per turn.
+	DefaultMaxConversationBytes = 4 << 20
 )
+
+// conversationBudget tracks the size of the conversation in memory.
+type conversationBudget struct {
+	limit int
+	used  int
+}
+
+// add records size more bytes and reports whether they fit. Nothing is recorded
+// for an addition that does not fit, so the overflow is reported once.
+func (b *conversationBudget) add(size int) bool {
+	if b.limit > 0 && b.used+size > b.limit {
+		return false
+	}
+	b.used += size
+	return true
+}
 
 // errResponseTooLarge is returned when a single response exceeds the cap.
 var errResponseTooLarge = errors.New("LLM response exceeded the size limit")
@@ -96,12 +121,30 @@ func sendRaw(ctx context.Context, ch chan<- rawStreamChunk, chunk rawStreamChunk
 func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 	maxTurns := cfg.MaxTurns
 	if maxTurns <= 0 {
-		maxTurns = 6
+		maxTurns = DefaultMaxTurns
 	}
+	maxConversationBytes := cfg.MaxConversationBytes
+	if maxConversationBytes <= 0 {
+		maxConversationBytes = DefaultMaxConversationBytes
+	}
+	budget := &conversationBudget{limit: maxConversationBytes}
+	budget.add(len(cfg.SystemPrompt))
+	budget.add(len(cfg.UserPrompt))
 
 	messages := []AgentMessage{
 		{Role: "system", Content: cfg.SystemPrompt},
 		{Role: "user", Content: cfg.UserPrompt},
+	}
+
+	// appendMessage keeps the conversation inside its budget: every turn resends
+	// the whole conversation, so an oversized tool result would blow up both the
+	// request and the process's memory.
+	appendMessage := func(msg AgentMessage) error {
+		if !budget.add(len(msg.Content)) {
+			return errors.Errorf("LLM conversation exceeded %d bytes", maxConversationBytes)
+		}
+		messages = append(messages, msg)
+		return nil
 	}
 
 	for turn := 1; turn <= maxTurns; turn++ {
@@ -127,7 +170,10 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: errors.New("LLM returned an empty response")})
 			return
 		}
-		messages = append(messages, assistantMsg)
+		if err := appendMessage(assistantMsg); err != nil {
+			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: err})
+			return
+		}
 
 		// 2. No tool calls → agent is done.
 		if len(assistantMsg.ToolCalls) == 0 {
@@ -147,11 +193,14 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 					if !sendEvent(ctx, ch, AgentEvent{Type: AgentEventToolEnd, ToolCall: &tc, ToolError: reason, Turn: turn}) {
 						return
 					}
-					messages = append(messages, AgentMessage{
+					if err := appendMessage(AgentMessage{
 						Role: "toolResult", ToolCallID: tc.ID,
 						ToolName: tc.Function.Name,
 						Content:  fmt.Sprintf("blocked: %s", reason),
-					})
+					}); err != nil {
+						sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: err})
+						return
+					}
 					continue
 				}
 			}
@@ -178,11 +227,14 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 				return
 			}
 
-			messages = append(messages, AgentMessage{
+			if err := appendMessage(AgentMessage{
 				Role: "toolResult", ToolCallID: tc.ID,
 				ToolName: tc.Function.Name,
 				Content:  content,
-			})
+			}); err != nil {
+				sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: err})
+				return
+			}
 		}
 
 		if !sendEvent(ctx, ch, AgentEvent{Type: AgentEventTurnEnd, Turn: turn}) {
