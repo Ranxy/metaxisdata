@@ -9,6 +9,19 @@
   对高危条目另行运行最小复现（如 `common.GetInstanceDatabaseID("instances//databases/x")`、`runtime.Callers` 在 deferred recover 中的行为）。
 - **不包含**：已经修好的条目、以及文档中本就写错的指控（少数重要更正见第九节）。
 
+## 进度（随实施更新）
+
+| 批次 | 内容 | 状态 | 提交 |
+| --- | --- | --- | --- |
+| 批 1 · 契约与文档一致性 | `C1`、`C4`–`C7`、`C9`、`C10`、`C13`、`D14`–`D16`、`D21`、`B14`；`F1`/`F3` 文档、`F2` 死分支 | ✅ 已完成 | `04b9adc` `21a95a9` `d9b0f16` `c1b6c21` `507e06d` `4f78442` |
+| 批 2 · 正确性 | `B2`–`B12`、`B16` | ⏳ 未开始 | |
+| 批 3 · 安全收尾 | `A4`、`A5`、`A6`、`A8`、`A9` | ⏳ 未开始 | |
+| 批 4 · 性能与整洁 | `D1`–`D13`、`D17`–`D20`、`C2`、`C3` | ⏳ 未开始 | |
+| 批 5 · 测试与 CI | `E1`–`E13`、`D22` | ⏳ 未开始 | |
+| 批 6 · 决策后的实现 | `B13`、`C11`、`C14`；`F4`/`F6`/`F7` 文档 | ⏳ 未开始 | |
+
+批 1 的实施细节与逐项对照见第八节末尾「批 1 实施记录」。
+
 ## 零、统计
 
 | 报告 | 候选数（约） | 判定仍需处理 | 其中 open | partial | decision-pending |
@@ -226,6 +239,31 @@ E1（LATEST vs 增量一致性）、E2（migrator 并发/重复版本）、E3、
 **批 6 · 决策后的实现**：
 B13（收掉视图 COLUMN 声明，F5）、C11（暴露域白名单，F8）、C14（provider 选择器 + 管理员配置的允许列表，F9）；
 另把 F4（破坏性同步仅日志）、F6（audit/history 永久保留）、F7（反代契约）的取舍写进 `AGENTS.md` 与部署文档。
+
+### 批 1 实施记录（已完成）
+
+| 条目 | 落地内容 | 提交 |
+| --- | --- | --- |
+| `C1` | `ListMetadata`（两条分支）/`SearchMetadata` 跳过 `MetaType_OPENLINEAGE` 行，`GetMetadata` 对其返回 `NotFound`，使 v1 `StoredMetadata` 的契约注释成立 | `21a95a9` |
+| `C4` | 删除 store 的 `Position`/`Range`/`SchemaField` 三个零引用消息（含指向已删列的过期注释） | `04b9adc` |
+| `C6` | `ListUsersRequest.filter` 示例 `USER` → `END_USER` | `04b9adc` |
+| `C7` | `GetUser`/`BatchGetUsers`/`ListUsers` 的 "Any authenticated user can ..." 改为写明所需权限 | `04b9adc` |
+| `C5` | 删除 `CreateInstance` 上方残留的 `ListInstanceDatabase` 注释 | `d9b0f16` |
+| `C9` | `GetUser` 按 email 查找失败时回显 email 而非 `user 0 not found` | `d9b0f16` |
+| `C10` | `pluralize` 修正为按最后一个词变形：`index`→`indexes`、`property`→`properties`、`foreign key`→`foreign keys`（原实现会产出 `indexs` 与 `foreign keies`）；补表驱动测试 | `d9b0f16` |
+| `D14` | 删除 `auth_service.go`/`user_service.go` 中引用已删除 `metric` 包的注释块（后者还引用不存在的 `isFirstUser`） | `d9b0f16` |
+| `D21` | 删除 `buildMetadataHistoryEventContexts` 中在外层条件内不可达的内层分支 | `d9b0f16` |
+| `B14` | `GetNameParentTokens` 拒绝空路径段并返回 `InvalidArgument` 级错误；补测试（`instances//databases/x`、`instances/i/databases/` 现在报错） | `c1b6c21` |
+| `D15` | `llm/tools.go` 改用 `common.MetaGUIDSplit` 与 `common.GetSchemaFromGUID`，不再硬编码分隔符 | `c1b6c21` |
+| `D16` | 启动横幅改经 `slog.Info`，`--enable-json-logging` 对其生效 | `c1b6c21` |
+| `C13` | 新增 `TestStoredMetadataTypesStayWireCompatible`：递归比对 store↔v1 的字段号/kind/cardinality/枚举值（当前全部一致），把转换函数吞掉的 marshal/unmarshal 错误变成测试失败 | `507e06d` |
+| `F2` | 删除 `IsAuthenticationAllowed` 中不可达的 `/grpc.reflection` 豁免分支，并在注释/`AGENTS.md` 写明反射匿名 | `4f78442` |
+| `F1`/`F3` | `AGENTS.md` 新增「Security and deployment posture」：单租户读基线、凭证 XOR 威胁模型、反射匿名 | `4f78442` |
+
+验证（本地）：`gofmt -l backend/` 空、`go build ./...`、`go vet ./...`（默认/`release`/`integration`/`embed_frontend`）、`go test ./...`、
+`go test -race -count=1 ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`buf format`/`buf lint`/`cd proto && buf generate`（产物可复现）、
+`vue-tsc -b`，以及 Docker 集成套件 `go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...`
+（`runner` 51.6s、`migrator` 12.9s，exit 0）。
 
 ---
 
