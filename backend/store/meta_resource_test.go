@@ -82,5 +82,11 @@ func TestBuildMetaRegistryHistoryMutations(t *testing.T) {
 	require.Len(t, toClose, 1)
 	require.Equal(t, changedItem.GUID, toClose[0].GUID)
 	require.Len(t, toOpen, 2)
-	require.Equal(t, []string{newItem.GUID, changedItem.GUID}, []string{toOpen[0].GUID, toOpen[1].GUID})
+	// Compare as a set: the assertion used to pin the output order, which couples
+	// the test to the iteration order of the input slice.
+	openedGUIDs := make([]string, 0, len(toOpen))
+	for _, item := range toOpen {
+		openedGUIDs = append(openedGUIDs, item.GUID)
+	}
+	require.ElementsMatch(t, []string{newItem.GUID, changedItem.GUID}, openedGUIDs)
 }
