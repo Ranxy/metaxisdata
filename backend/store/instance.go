@@ -226,6 +226,13 @@ func (s *Store) listInstanceImpl(ctx context.Context, txn *sql.Tx, find *FindIns
 		query += fmt.Sprintf(" OFFSET %d", *v)
 	}
 
+	// Resolve the secret once for the whole page: the per-row lookup took the
+	// secret lock for every instance.
+	secret, err := s.GetSecret(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	var instanceMessages []*InstanceMessage
 	rows, err := txn.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -252,7 +259,7 @@ func (s *Store) listInstanceImpl(ctx context.Context, txn *sql.Tx, find *FindIns
 		if err := common.ProtojsonUnmarshaler.Unmarshal(metadata, instanceMetadata); err != nil {
 			return nil, err
 		}
-		if err := s.unObfuscateInstance(ctx, instanceMetadata); err != nil {
+		if err := unObfuscateInstanceWithSecret(instanceMetadata, secret); err != nil {
 			return nil, err
 		}
 		instanceMessage.Metadata = instanceMetadata
@@ -335,12 +342,10 @@ func (s *Store) obfuscateInstance(ctx context.Context, instance *storepb.Instanc
 	return redacted, nil
 }
 
-func (s *Store) unObfuscateInstance(ctx context.Context, instance *storepb.Instance) error {
-	secret, err := s.GetSecret(ctx)
-	if err != nil {
-		return err
-	}
-
+// unObfuscateInstanceWithSecret decrypts every credential field with a secret
+// the caller already resolved, so reading a list of instances resolves it once
+// instead of once per row.
+func unObfuscateInstanceWithSecret(instance *storepb.Instance, secret string) error {
 	for _, ds := range instance.GetDataSources() {
 		for _, field := range secretFields(ds) {
 			plaintext, err := common.Unobfuscate(*field.obfuscated, secret)
