@@ -785,9 +785,14 @@ func waitForServerReady(ctx context.Context, proc *serverProcess) error {
 		}
 		resp, err := client.Do(req)
 		if err == nil {
+			status := resp.StatusCode
 			_, _ = io.Copy(io.Discard, resp.Body)
 			_ = resp.Body.Close()
-			return nil
+			// A 5xx means the process is listening but not serving yet; treating
+			// it as ready started tests against a broken server.
+			if status < http.StatusInternalServerError {
+				return nil
+			}
 		}
 		select {
 		case <-ctx.Done():
