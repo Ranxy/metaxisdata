@@ -92,14 +92,6 @@ func (s *Store) GetEnvironmentSetting(ctx context.Context) (*storepb.Environment
 	return envSetting, nil
 }
 
-// DeleteCache deletes the cache.
-func (s *Store) DeleteCache() {
-	s.settingCache.Purge()
-	s.policyCache.Purge()
-	s.userEmailCache.Purge()
-	s.userIDCache.Purge()
-}
-
 // GetSetting returns the setting by name.
 func (s *Store) GetSetting(ctx context.Context, name storepb.SettingName) (*SettingMessage, error) {
 	if v, ok := s.settingCache.Get(name); ok && !s.cacheDisabled {

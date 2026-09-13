@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"fmt"
 	"strings"
 	"time"
 
@@ -169,45 +168,4 @@ func maskOpenLineageAPIKey(plainKey string) string {
 
 	maskedLength := len(plainKey) - visiblePrefixLength - visibleSuffixLength
 	return plainKey[:visiblePrefixLength] + strings.Repeat("*", maskedLength) + plainKey[len(plainKey)-visibleSuffixLength:]
-}
-
-// FindExternalDatasetByGUIDs returns external datasets matching the given GUIDs.
-func (s *Store) FindExternalDatasetByGUIDs(ctx context.Context, guids []string) ([]*ExternalDatasetMessage, error) {
-	if len(guids) == 0 {
-		return nil, nil
-	}
-
-	placeholders := make([]string, len(guids))
-	args := make([]any, len(guids))
-	for i, g := range guids {
-		placeholders[i] = fmt.Sprintf("$%d", i+1)
-		args[i] = g
-	}
-
-	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT id, guid, namespace, name, dataset_type, created_at, updated_at
-		FROM external_dataset
-		WHERE guid IN (`+strings.Join(placeholders, ", ")+`)
-		ORDER BY id ASC
-	`, args...)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to query external datasets by guids")
-	}
-	defer rows.Close()
-
-	var result []*ExternalDatasetMessage
-	for rows.Next() {
-		var msg ExternalDatasetMessage
-		if err := rows.Scan(
-			&msg.ID, &msg.GUID, &msg.Namespace, &msg.Name, &msg.DatasetType,
-			&msg.CreatedAt, &msg.UpdatedAt,
-		); err != nil {
-			return nil, errors.Wrap(err, "failed to scan external dataset")
-		}
-		result = append(result, &msg)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "rows iteration error")
-	}
-	return result, nil
 }

@@ -240,18 +240,6 @@ func (*Store) listSublevelMetaRegistryResourceImpl(ctx context.Context, txn *sql
 	return scanMetaRegistryResources(ctx, txn, query, args)
 }
 
-func (*Store) listSublevelMetaRegistryResourceHistoryImpl(ctx context.Context, txn *sql.Tx, parentGUID string, objectType storepb.MetaType, limitPreObjectType, offsetPreObjectType int, asOf time.Time) ([]*MetaRegistryResource, error) {
-	nextTypes := getNextLevelObjectType(objectType)
-	if len(nextTypes) == 0 {
-		return []*MetaRegistryResource{}, nil
-	}
-
-	query, args := buildSublevelMetaRegistryResourceQuery(
-		"meta_registry_resource_history", nextTypes, parentGUID, limitPreObjectType, offsetPreObjectType, &asOf,
-	)
-	return scanMetaRegistryResources(ctx, txn, query, args)
-}
-
 // buildSublevelMetaRegistryResourceQuery builds the UNION ALL query that lists
 // the direct children of parentGUID. The GUID-subtree predicate must stay
 // identical to appendGUIDSubtreeCondition: an exact match plus an escaped

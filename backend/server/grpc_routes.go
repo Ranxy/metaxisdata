@@ -167,6 +167,9 @@ func configureGrpcRouters(
 	if err != nil {
 		return err
 	}
+	// The gateway connection is lazy, but it still owns a client channel. Close
+	// it when the server context is cancelled (signal or post-shutdown).
+	context.AfterFunc(ctx, func() { _ = grpcConn.Close() })
 
 	if err := v1pb.RegisterAuthServiceHandler(ctx, mux, grpcConn); err != nil {
 		return err

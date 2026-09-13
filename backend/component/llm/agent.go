@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"slices"
@@ -312,7 +313,10 @@ func streamRaw(ctx context.Context, cfg AgentConfig, messages []Message) <-chan 
 
 		if resp.StatusCode != http.StatusOK {
 			errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-			sendRaw(ctx, ch, rawStreamChunk{Error: fmt.Errorf("LLM status %d: %.4000s", resp.StatusCode, string(errBody))})
+			// The body is the provider's, and may echo request details; keep it
+			// in the server log and return only the status to the caller.
+			slog.Error("LLM provider returned a non-OK status", "status", resp.StatusCode, "body", string(errBody))
+			sendRaw(ctx, ch, rawStreamChunk{Error: fmt.Errorf("LLM provider returned status %d", resp.StatusCode)})
 			return
 		}
 

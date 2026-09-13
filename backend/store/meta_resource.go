@@ -385,27 +385,6 @@ func (s *Store) ListSublevelMetaRegistryResource(ctx context.Context, find *Find
 	return list, nil
 }
 
-func (s *Store) ListSublevelMetaRegistryResourceAsOf(ctx context.Context, find *FindSubLevelMetaRegistryResourceMessage, asOf time.Time) ([]*MetaRegistryResource, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	if find.LimitPreObjectType == 0 {
-		find.LimitPreObjectType = common.DefaultMetaSubLevelLimit
-	}
-
-	list, err := s.listSublevelMetaRegistryResourceHistoryImpl(ctx, tx, find.ParentGUID, find.ObjectType, find.LimitPreObjectType, find.OffsetPreObjectType, asOf)
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return list, nil
-}
-
 // BatchCreateMetaRegistryResource creates or updates the current meta registry snapshot.
 func (s *Store) BatchCreateMetaRegistryResource(ctx context.Context, tx *sql.Tx, creates []*CreateMetaRegistryResourceMessage) ([]*MetaRegistryResource, error) {
 	return s.BatchCreateMetaRegistryResourceAt(ctx, tx, creates, time.Now().UTC())
