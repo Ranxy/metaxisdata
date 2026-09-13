@@ -18,7 +18,7 @@ import (
 )
 
 func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Request[v1pb.GetSchemaStringRequest]) (*connect.Response[v1pb.MetadataSchemaString], error) {
-	instanceGUID, ok := common.GetInstaceFromGUID(req.Msg.Guid)
+	instanceGUID, ok := common.GetInstanceFromGUID(req.Msg.Guid)
 	if !ok {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid guid %q", req.Msg.Guid))
 	}
@@ -135,7 +135,7 @@ func (s *DatabaseService) DiffMetadata(ctx context.Context, req *connect.Request
 	}
 
 	// 1. Get instance engine from GUID
-	instanceGUID, ok := common.GetInstaceFromGUID(guid)
+	instanceGUID, ok := common.GetInstanceFromGUID(guid)
 	if !ok {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid guid %q", guid))
 	}

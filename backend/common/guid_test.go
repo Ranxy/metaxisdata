@@ -24,12 +24,12 @@ func TestGUIDPrefix(t *testing.T) {
 	}
 }
 
-func TestGetInstaceFromGUID(t *testing.T) {
-	if got, ok := GetInstaceFromGUID("inst;db;public;users"); !ok || got != "inst" {
-		t.Errorf("GetInstaceFromGUID = (%q, %v), want (\"inst\", true)", got, ok)
+func TestGetInstanceFromGUID(t *testing.T) {
+	if got, ok := GetInstanceFromGUID("inst;db;public;users"); !ok || got != "inst" {
+		t.Errorf("GetInstanceFromGUID = (%q, %v), want (\"inst\", true)", got, ok)
 	}
-	if _, ok := GetInstaceFromGUID("inst"); ok {
-		t.Error("GetInstaceFromGUID(\"inst\") should report no separator")
+	if _, ok := GetInstanceFromGUID("inst"); ok {
+		t.Error("GetInstanceFromGUID(\"inst\") should report no separator")
 	}
 }
 

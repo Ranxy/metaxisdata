@@ -31,13 +31,3 @@ func AllPermissions() []Permission {
 func Exist(permission string) bool {
 	return allPermissionsMap[permission]
 }
-
-// Exists reports whether every permission string is a known catalog entry.
-func Exists(permissions ...string) bool {
-	for _, p := range permissions {
-		if !Exist(p) {
-			return false
-		}
-	}
-	return true
-}

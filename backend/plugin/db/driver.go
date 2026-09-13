@@ -153,18 +153,3 @@ func Open(ctx context.Context, dbType storepb.Engine, connectionConfig Connectio
 
 	return driver, nil
 }
-
-// ErrorWithPosition is the error with the position information.
-type ErrorWithPosition struct {
-	Err   error
-	Start *storepb.Position
-	End   *storepb.Position
-}
-
-func (e *ErrorWithPosition) Error() string {
-	return e.Err.Error()
-}
-
-func (e *ErrorWithPosition) Unwrap() error {
-	return e.Err
-}

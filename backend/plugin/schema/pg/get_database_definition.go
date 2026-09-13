@@ -14,7 +14,6 @@ func init() {
 	schema.RegisterGetViewDefinition(storepb.Engine_POSTGRES, GetViewDefinition)
 	schema.RegisterGetMaterializedViewDefinition(storepb.Engine_POSTGRES, GetMaterializedViewDefinition)
 	schema.RegisterGetFunctionDefinition(storepb.Engine_POSTGRES, GetFunctionDefinition)
-	schema.RegisterGetSequenceDefinition(storepb.Engine_POSTGRES, GetSequenceDefinition)
 }
 
 func GetTableDefinition(schema string, table *storepb.TableMetadata, sequences []*storepb.SequenceMetadata) (string, error) {
@@ -96,19 +95,6 @@ func GetFunctionDefinition(schema string, function *storepb.FunctionMetadata) (s
 	var buf strings.Builder
 	if err := writeFunction(&buf, schema, function); err != nil {
 		return "", err
-	}
-	return buf.String(), nil
-}
-
-func GetSequenceDefinition(schema string, sequence *storepb.SequenceMetadata) (string, error) {
-	var buf strings.Builder
-	if err := writeCreateSequence(&buf, schema, sequence); err != nil {
-		return "", err
-	}
-	if sequence.OwnerColumn != "" && sequence.OwnerTable != "" {
-		if err := writeAlterSequenceOwnedBy(&buf, schema, sequence); err != nil {
-			return "", err
-		}
 	}
 	return buf.String(), nil
 }
@@ -404,107 +390,6 @@ func writeColumnIdentityGeneration(out io.Writer, schema string, generationTypes
 		return err
 	}
 	_, err := io.WriteString(out, "\n);\n\n")
-	return err
-}
-
-func writeCreateSequence(out io.Writer, schema string, sequence *storepb.SequenceMetadata) error {
-	if _, err := io.WriteString(out, `CREATE SEQUENCE "`); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(out, schema); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(out, `"."`); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(out, sequence.Name); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(out, "\"\n    "); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(out, "AS "); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(out, sequence.DataType); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(out, "\n	START WITH "); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(out, sequence.Start); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(out, "\n	INCREMENT BY "); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(out, sequence.Increment); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(out, "\n	MINVALUE "); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(out, sequence.MinValue); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(out, "\n	MAXVALUE "); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(out, sequence.MaxValue); err != nil {
-		return err
-	}
-	if sequence.Cycle {
-		if _, err := io.WriteString(out, "\n	CYCLE"); err != nil {
-			return err
-		}
-	} else {
-		if _, err := io.WriteString(out, "\n	NO CYCLE"); err != nil {
-			return err
-		}
-	}
-	if _, err := io.WriteString(out, ";\n\n"); err != nil {
-		return err
-	}
-
-	if len(sequence.Comment) > 0 {
-		if err := writeSequenceComment(out, schema, sequence); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func writeSequenceComment(out io.Writer, schema string, sequence *storepb.SequenceMetadata) error {
-	if _, err := io.WriteString(out, `COMMENT ON SEQUENCE "`); err != nil {
-		return err
-	}
-
-	if _, err := io.WriteString(out, schema); err != nil {
-		return err
-	}
-
-	if _, err := io.WriteString(out, `"."`); err != nil {
-		return err
-	}
-
-	if _, err := io.WriteString(out, sequence.Name); err != nil {
-		return err
-	}
-
-	if _, err := io.WriteString(out, `" IS '`); err != nil {
-		return err
-	}
-
-	if _, err := io.WriteString(out, escapeSingleQuote(sequence.Comment)); err != nil {
-		return err
-	}
-
-	if _, err := io.WriteString(out, `';`); err != nil {
-		return err
-	}
-
-	_, err := io.WriteString(out, "\n\n")
 	return err
 }
 

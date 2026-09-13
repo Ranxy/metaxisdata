@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"fmt"
 	"net"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -232,43 +231,6 @@ func (d *Driver) getVersion(ctx context.Context) (string, error) {
 	// Convert to semantic version.
 	major, minor, patch := versionNum/1_00_00, (versionNum/100)%100, versionNum%100
 	return fmt.Sprintf("%d.%d.%d", major, minor, patch), nil
-}
-
-type LockTimeoutError struct {
-	Message string
-}
-
-func (e *LockTimeoutError) Error() string {
-	return e.Message
-}
-
-var (
-	// DROP DATABASE cannot run inside a transaction block.
-	// DROP DATABASE [ IF EXISTS ] name [ [ WITH ] ( option [, ...] ) ]。
-	dropDatabaseReg = regexp.MustCompile(`(?i)DROP DATABASE`)
-	// CREATE INDEX CONCURRENTLY cannot run inside a transaction block.
-	// CREATE [ UNIQUE ] INDEX [ CONCURRENTLY ] [ [ IF NOT EXISTS ] name ] ON [ ONLY ] table_name [ USING method ] ...
-	createIndexReg = regexp.MustCompile(`(?i)CREATE(\s+(UNIQUE\s+)?)INDEX(\s+)CONCURRENTLY`)
-	// DROP INDEX CONCURRENTLY cannot run inside a transaction block.
-	// DROP INDEX [ CONCURRENTLY ] [ IF EXISTS ] name [, ...] [ CASCADE | RESTRICT ].
-	dropIndexReg = regexp.MustCompile(`(?i)DROP(\s+)INDEX(\s+)CONCURRENTLY`)
-	// VACUUM cannot run inside a transaction block.
-	// VACUUM [ ( option [, ...] ) ] [ table_and_columns [, ...] ]
-	// VACUUM [ FULL ] [ FREEZE ] [ VERBOSE ] [ ANALYZE ] [ table_and_columns [, ...] ].
-	vacuumReg = regexp.MustCompile(`(?i)^\s*VACUUM`)
-)
-
-func IsNonTransactionStatement(stmt string) bool {
-	if len(dropDatabaseReg.FindString(stmt)) > 0 {
-		return true
-	}
-	if len(createIndexReg.FindString(stmt)) > 0 {
-		return true
-	}
-	if len(dropIndexReg.FindString(stmt)) > 0 {
-		return true
-	}
-	return len(vacuumReg.FindString(stmt)) > 0
 }
 
 // GetCurrentDatabaseOwner gets the role of the current database.

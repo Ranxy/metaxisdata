@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func GetInstaceFromGUID(guid string) (string, bool) {
+func GetInstanceFromGUID(guid string) (string, bool) {
 	index := strings.Index(guid, MetaGUIDSplit)
 	if index == -1 {
 		return "", false

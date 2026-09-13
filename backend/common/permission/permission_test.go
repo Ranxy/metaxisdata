@@ -58,14 +58,3 @@ func TestPermissionShape(t *testing.T) {
 		}
 	}
 }
-
-// TestExistsIsAllOrNothing pins the plural helper's contract used by role
-// validation.
-func TestExistsIsAllOrNothing(t *testing.T) {
-	if !Exists(UsersGet, UsersList) {
-		t.Error("Exists must accept known permissions")
-	}
-	if Exists(UsersGet, "metaxisdata.nope.nope") {
-		t.Error("Exists must reject the whole list when one entry is unknown")
-	}
-}

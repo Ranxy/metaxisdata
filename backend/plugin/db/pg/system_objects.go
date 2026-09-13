@@ -864,10 +864,6 @@ var (
 	}()
 )
 
-func IsSystemUser(user string) bool {
-	return strings.HasPrefix(user, "alloydb")
-}
-
 func IsSystemDatabase(database string) bool {
 	_, ok := systemDatabases[database]
 	return ok

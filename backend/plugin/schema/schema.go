@@ -16,7 +16,6 @@ var (
 	getMaterializedViewDefinitions = make(map[storepb.Engine]getMaterializedViewDefinition)
 	getFunctionDefinitions         = make(map[storepb.Engine]getFunctionDefinition)
 	getProcedureDefinitions        = make(map[storepb.Engine]getProcedureDefinition)
-	getSequenceDefinitions         = make(map[storepb.Engine]getSequenceDefinition)
 )
 
 type getTableDefinition func(string, *storepb.TableMetadata, []*storepb.SequenceMetadata) (string, error)
@@ -24,16 +23,6 @@ type getViewDefinition func(string, *storepb.ViewMetadata) (string, error)
 type getMaterializedViewDefinition func(string, *storepb.MaterializedViewMetadata) (string, error)
 type getFunctionDefinition func(string, *storepb.FunctionMetadata) (string, error)
 type getProcedureDefinition func(string, *storepb.ProcedureMetadata) (string, error)
-type getSequenceDefinition func(string, *storepb.SequenceMetadata) (string, error)
-
-type GetDefinitionContext struct {
-	SkipBackupSchema bool
-	PrintHeader      bool
-	SDLFormat        bool
-	// MultiFileFormat indicates whether to generate multi-file SDL output.
-	// When true, the result should be organized as multiple files.
-	MultiFileFormat bool
-}
 
 // generateMigration is the function type for generating DDL migration from a diff.
 type generateMigration func(*MetadataDiff) (string, error)
@@ -57,37 +46,6 @@ func GenerateMigration(engine storepb.Engine, diff *MetadataDiff) (string, error
 		return "", errors.Errorf("engine %s is not supported", engine)
 	}
 	return f(diff)
-}
-
-// File represents a single file in a multi-file schema output.
-type File struct {
-	// Name is the file path or name (e.g., "schemas/public/tables/users.sql")
-	Name string
-	// Content is the file content
-	Content string
-}
-
-// MultiFileSchemaResult represents the result of multi-file schema generation.
-type MultiFileSchemaResult struct {
-	// Files is the list of schema files organized by type
-	Files []File
-}
-
-func RegisterGetSequenceDefinition(engine storepb.Engine, f getSequenceDefinition) {
-	mux.Lock()
-	defer mux.Unlock()
-	if _, dup := getSequenceDefinitions[engine]; dup {
-		panic(fmt.Sprintf("Register called twice %s", engine))
-	}
-	getSequenceDefinitions[engine] = f
-}
-
-func GetSequenceDefinition(engine storepb.Engine, schemaName string, sequence *storepb.SequenceMetadata) (string, error) {
-	f, ok := getSequenceDefinitions[engine]
-	if !ok {
-		return "", errors.Errorf("engine %s is not supported", engine)
-	}
-	return f(schemaName, sequence)
 }
 
 func RegisterGetFunctionDefinition(engine storepb.Engine, f getFunctionDefinition) {
