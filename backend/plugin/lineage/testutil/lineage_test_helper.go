@@ -113,21 +113,6 @@ type yamlExpectedEdge struct {
 	IsTemp       *bool   `yaml:"is_temp,omitempty"`
 }
 
-// Bool returns a pointer to a bool value for use in ExpectedEdge.
-func Bool(v bool) *bool {
-	return &v
-}
-
-// Int returns a pointer to an int value for use in LineageTestCase.MinEdges.
-func Int(v int) *int {
-	return &v
-}
-
-// RelType returns a pointer to a RelationType value for use in ExpectedEdge.
-func RelType(v model.RelationType) *model.RelationType {
-	return &v
-}
-
 // AnalyzeFunc is the function signature for analyzing SQL and returning relations.
 type AnalyzeFunc func(sql string, cat catalog.Provide) ([]model.ColumnRelation, error)
 
@@ -161,16 +146,6 @@ func LoadLineageTestSuiteFromYAML(path string) (LineageTestSuite, error) {
 		Name:  suiteName,
 		Cases: cases,
 	}, nil
-}
-
-// RunLineageTestsFromYAML executes all cases defined in a YAML suite file.
-func RunLineageTestsFromYAML(t *testing.T, path string, analyzeFn AnalyzeFunc) {
-	t.Helper()
-
-	suite, err := LoadLineageTestSuiteFromYAML(path)
-	require.NoError(t, err)
-
-	RunLineageTests(t, suite.Cases, analyzeFn)
 }
 
 // RunLineageTestSuitesFromYAMLDir executes every YAML suite in a directory.
@@ -448,78 +423,4 @@ func FormatRelations(relations []model.ColumnRelation) string {
 			r.Target.Table.FullName()+"."+r.Target.Name)
 	}
 	return result
-}
-
-// AssertEdgeCount verifies the exact number of edges returned.
-func AssertEdgeCount(t *testing.T, relations []model.ColumnRelation, expected int) {
-	t.Helper()
-	require.Len(t, relations, expected, "Expected %d edges, got %d", expected, len(relations))
-}
-
-// AssertEdgeExists checks if a specific edge exists in the relations.
-func AssertEdgeExists(t *testing.T, relations []model.ColumnRelation, fromTable, fromField, toTable, toField string) {
-	t.Helper()
-
-	for _, rel := range relations {
-		if rel.Source.Table.Name == fromTable &&
-			rel.Source.Name == fromField &&
-			rel.Target.Table.Name == toTable &&
-			rel.Target.Name == toField {
-			return
-		}
-	}
-
-	require.Fail(t, "Edge not found",
-		"Expected edge %s.%s -> %s.%s not found\nAvailable edges: %s",
-		fromTable, fromField, toTable, toField, FormatRelations(relations))
-}
-
-// AssertNoEdgeFromTable checks that no edges come from the specified table.
-func AssertNoEdgeFromTable(t *testing.T, relations []model.ColumnRelation, tableName string) {
-	t.Helper()
-
-	for _, rel := range relations {
-		if rel.Source.Table.Name == tableName {
-			require.Fail(t, "Unexpected edge",
-				"Found unexpected edge from table %s: %s.%s -> %s.%s",
-				tableName, rel.Source.Table.Name, rel.Source.Name,
-				rel.Target.Table.Name, rel.Target.Name)
-		}
-	}
-}
-
-// AssertAllEdgesToTable checks that all edges target the specified table.
-func AssertAllEdgesToTable(t *testing.T, relations []model.ColumnRelation, tableName string) {
-	t.Helper()
-
-	for _, rel := range relations {
-		require.Equal(t, tableName, rel.Target.Table.Name,
-			"Expected all edges to target %s, but found edge to %s",
-			tableName, rel.Target.Table.Name)
-	}
-}
-
-// CreateSimpleCatalog creates a simple catalog with the specified tables and columns.
-// This is a convenience function for tests that need catalog support.
-func CreateSimpleCatalog(tables map[string][]string) catalog.Provide {
-	cat := catalog.NewMemoryCatalogProvide()
-
-	for tableName, columns := range tables {
-		addCatalogTable(cat, model.ObjectIdentifier{Name: tableName}, columns)
-	}
-
-	return cat
-}
-
-// CreateCatalogWithSchema creates a catalog with schema-qualified tables.
-func CreateCatalogWithSchema(tables map[string]map[string][]string) catalog.Provide {
-	cat := catalog.NewMemoryCatalogProvide()
-
-	for schema, schemaTables := range tables {
-		for tableName, columns := range schemaTables {
-			addCatalogTable(cat, model.ObjectIdentifier{Schema: schema, Name: tableName}, columns)
-		}
-	}
-
-	return cat
 }
