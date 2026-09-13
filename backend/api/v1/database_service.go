@@ -192,6 +192,9 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 			}
 			typesStoredMetadataMap := make(map[v1pb.MetaType][]*v1pb.StoredMetadata)
 			for _, meta := range subLevelList {
+				if meta.ObjectType == storepb.MetaType_OPENLINEAGE {
+					continue
+				}
 				tp := v1pb.MetaType(meta.ObjectType)
 				metaMessage := convertStoredMetadataMessage(meta.Metadata)
 				typesStoredMetadataMap[tp] = append(typesStoredMetadataMap[tp], metaMessage)
@@ -222,6 +225,9 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 
 		typesStoredMetadataMap := make(map[v1pb.MetaType][]*v1pb.StoredMetadata)
 		for _, meta := range subLevelList {
+			if meta.ObjectType == storepb.MetaType_OPENLINEAGE {
+				continue
+			}
 			tp := v1pb.MetaType(meta.ObjectType)
 			metaMessage := convertStoredMetadataMessage(meta.Metadata)
 			typesStoredMetadataMap[tp] = append(typesStoredMetadataMap[tp], metaMessage)
@@ -263,6 +269,12 @@ func (s *DatabaseService) GetMetadata(ctx context.Context, req *connect.Request[
 	// saw NotFound instead of being told the request is malformed.
 	if req.Msg.MetaType == v1pb.MetaType_UNSPECIFIED {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("meta_type is required"))
+	}
+	// OpenLineage registry rows are internal summaries of ingested events with
+	// no v1 StoredMetadata representation, so StoredMetadata documents them as
+	// filtered out rather than serialized as an empty message.
+	if req.Msg.MetaType == v1pb.MetaType_OPENLINEAGE {
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("meta registry %q not found", req.Msg.Guid))
 	}
 	meta, err := s.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &req.Msg.Guid, ObjectType: (*storepb.MetaType)(&req.Msg.MetaType)})
 	if err != nil {
@@ -328,6 +340,9 @@ func (s *DatabaseService) SearchMetadata(ctx context.Context, req *connect.Reque
 
 	response := &v1pb.SearchMetadataResponse{NextPageToken: nextPageToken}
 	for _, meta := range list {
+		if meta.ObjectType == storepb.MetaType_OPENLINEAGE {
+			continue
+		}
 		response.Results = append(response.Results, &v1pb.SearchMetadataResult{
 			Guid:     meta.GUID,
 			MetaType: v1pb.MetaType(meta.ObjectType),
