@@ -108,10 +108,10 @@ func (s *Store) ValidateOpenLineageAPIKey(ctx context.Context, plainKey string) 
 	return &msg, nil
 }
 
-// ListOpenLineageAPIKey returns all API keys (without hashes exposed).
+// ListOpenLineageAPIKey returns all API keys without exposing the hash.
 func (s *Store) ListOpenLineageAPIKey(ctx context.Context) ([]*OpenLineageAPIKeyMessage, error) {
 	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT id, key_hash, masked_key, description, created_by, created_at, last_used_at, revoked_at, scope_namespace
+		SELECT id, masked_key, description, created_by, created_at, last_used_at, revoked_at, scope_namespace
 		FROM openlineage_api_key
 		WHERE revoked_at IS NULL
 		ORDER BY id ASC
@@ -125,7 +125,7 @@ func (s *Store) ListOpenLineageAPIKey(ctx context.Context) ([]*OpenLineageAPIKey
 	for rows.Next() {
 		var msg OpenLineageAPIKeyMessage
 		if err := rows.Scan(
-			&msg.ID, &msg.KeyHash, &msg.MaskedKey, &msg.Description, &msg.CreatedBy, &msg.CreatedAt, &msg.LastUsedAt, &msg.RevokedAt, &msg.ScopeNamespace,
+			&msg.ID, &msg.MaskedKey, &msg.Description, &msg.CreatedBy, &msg.CreatedAt, &msg.LastUsedAt, &msg.RevokedAt, &msg.ScopeNamespace,
 		); err != nil {
 			return nil, errors.Wrap(err, "failed to scan API key")
 		}
