@@ -151,3 +151,27 @@ func requireEnumWireCompatible(t *testing.T, storeEnum, v1Enum protoreflect.Enum
 		require.Truef(t, ok, "%s: enum value %d has no store counterpart", v1Enum.Name(), number)
 	}
 }
+
+// The two packages declare the same enums and rely on their numeric identity:
+// metadata crosses the wire via proto.Marshal/Unmarshal and the converters
+// switch on these values. A one-sided edit must fail here instead of silently
+// mapping to the wrong value or to UNSPECIFIED.
+func TestSharedEnumsStayValueCompatible(t *testing.T) {
+	t.Parallel()
+
+	pairs := []struct {
+		name  string
+		store map[int32]string
+		v1    map[int32]string
+	}{
+		{"Engine", storepb.Engine_name, v1pb.Engine_name},
+		{"MetaType", storepb.MetaType_name, v1pb.MetaType_name},
+		{"DataSourceType", storepb.DataSourceType_name, v1pb.DataSourceType_name},
+	}
+	for _, pair := range pairs {
+		t.Run(pair.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, pair.store, pair.v1)
+		})
+	}
+}
