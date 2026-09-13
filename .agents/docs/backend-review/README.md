@@ -76,6 +76,13 @@
 - 前端：`biome check`（188 文件）、`eslint`、`vue-tsc --build`、`vitest run`（17 用例）全部通过
 - 集成测试未重跑（需 Docker）；本机 `go test ./...` 另有一条既有失败 `TestMarshalRolePermissionsIsDeterministic`（clean HEAD 上同样失败：本机 protobuf 的 protojson 在数组元素间输出 `", "`），与本次改动无关
 
+**阶段 6（安全残留 + 正确性 + 性能/资源）后复测**（详见下文"阶段 6 修复状态"与 [`11-phase6-plan.md`](11-phase6-plan.md)）：
+- `gofmt -l backend/` 空；`go build ./...`、`go vet ./...`（默认/`release`/`integration`）、`go test ./...`、`go test -race -count=1 ./...`、`golangci-lint run --allow-parallel-runners` ✅ 0 issues、`make build-release` 全部通过
+- `buf format -w proto`、`buf lint proto`、`cd proto && buf generate` ✅（`auth_service`/`user_service` 注释变更）；重跑 `buf generate` 无 diff，产物可复现
+- 前端：`biome check src`（187 文件）、`eslint src`、`vue-tsc --noEmit`、`vitest run`（17 用例）、`vite build` 全部通过
+- **集成套件全部通过**：`go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...` → `runner` 48.7s、`migrator` 13.2s，exit 0；新增真实 server 用例 `TestOpenLineageIngestionAggregatesRunsRealServerIntegration` 覆盖批次事务、去重计数、latest 语义与 dataset 不重写
+- D1 修掉了此前唯一失败的 hermetic 测试 `TestMarshalRolePermissionsIsDeterministic`；D2 顺带发现并修掉 B13 引入的集成失败：既有用例给 `manual_sql_id` 用了含下划线的值（`IsValidResourceID` 按 AIP-122 只允许小写字母/数字/连字符），已把测试 ID 改为连字符形式
+
 **修复状态标记**（用于下文全部模块报告）：
 
 | 标记 | 含义 |
@@ -92,6 +99,8 @@
 | ◐ **部分修复（阶段 3 补遗）** | 阶段 3 补遗处理了经确认的部分，剩余项已在报告中写明 |
 | ✅ **已修复（阶段 4）** | 阶段 4（IAM 权限管理）已修完并验证，附对应 commit |
 | ✅ **已修复（阶段 5）** | 阶段 5（settings 收回数据库 + 回滚 METADATA_SECRET_KEY）已修完并验证，附对应 commit |
+| ✅ **已修复（阶段 6）** | 阶段 6（安全残留 + 正确性 + 性能/资源）已修完并验证，附对应 commit |
+| ◐ **部分修复（阶段 6）** | 阶段 6 处理了经确认的部分，剩余项已在 `11-phase6-plan.md` 文末「本轮不做」写明 |
 | ⏳ **未处理** | 尚未涉及，仍需按路线图处理 |
 
 ---
@@ -110,6 +119,7 @@
 | [`08-proto-contract.md`](08-proto-contract.md) | API 与持久化契约：`proto/v1`、`proto/store` |
 | [`09-tests.md`](09-tests.md) | 测试与测试基础设施、CI |
 | [`10-legacy-debt-and-roadmap.md`](10-legacy-debt-and-roadmap.md) | 遗留债务清单与分阶段整改路线图 |
+| [`11-phase6-plan.md`](11-phase6-plan.md) | 阶段 6（安全残留 + 正确性 + 性能/资源）实施计划、决策与进度 |
 
 **严重级别定义**：
 - **严重（Critical）**：可被外部利用的安全漏洞，或必然导致数据泄露/功能完全不可用。
@@ -334,19 +344,75 @@ CEL 过滤器翻译把用户可控字符串直接拼进 SQL：
 
 ---
 
+## 阶段 6「安全残留 + 正确性 + 性能/资源」修复状态
+
+范围与决策见 [`11-phase6-plan.md`](11-phase6-plan.md)：只做**安全残留、正确性缺陷、性能/资源**三批，共 25 个步骤（A1–A8、B1–B17、C1–C8）加 D1–D3；每步独立 commit。
+
+| 批次 | 步骤 | 状态 | 提交 |
+| --- | --- | --- | --- |
+| A · 安全 | A1 token 吊销加固（`02 H1`） | ✅ | `976ebc5` |
+| A · 安全 | A2 CORS / CSRF 收口（`01`/`02 H2`） | ✅ | `976ebc5` |
+| A · 安全 | A3 登录时间与限流（`02 M2`） | ✅ | `8ae989f` |
+| A · 安全 | A4 OAuth2 state + 配置校验 + 脱敏日志（`02 M4`） | ✅ | `25a001a` |
+| A · 安全 | A5 审计链路加固（`02 M8/M9/M10`、`04 B-C1` 残留） | ✅ | `2208521` |
+| A · 安全 | A6 ingestion key digest + 作用域（`04 B-H6/B-H8`、`03 M25`） | ✅ | `415e16e` |
+| A · 安全 | A7 其它安全缺口（`01 M6`、`04 A-H1` 残留、`07 U-H2`、杂项） | ✅ | `f112e5c` |
+| A · 安全 | A8 token header 白名单与 web token 回传（`02` 低节） | ✅ | `c30d73f` |
+| B · 正确性 | B1 engine 过滤按枚举名比较（`03 S-H5`） | ✅ | `824232a` |
+| B · 正确性 | B2 `SyncInstance` 返回过滤后的库列表（`06 M11`） | ✅ | `68f3149` |
+| B · 正确性 | B3 悬空血缘清理 + manual SQL 旧 GUID（`06 M7`、`03 M15`） | ✅ | `9c69196` |
+| B · 正确性 | B4 事务回滚与单语句去事务（`03 M2`） | ✅ | `a71716a` |
+| B · 正确性 | B5/B6 `RETURNING` 按键回填、历史谓词配对（`03 M3/M7`） | ✅ | `7f0e3a0` |
+| B · 正确性 | B7 `UpdateDatabase` 单事务加锁（`03 M5`） | ✅ | `eca3686` |
+| B · 正确性 | B8 LLM 空 mask 部分更新（`04 B-M10`） | ✅ | `14b8f01` |
+| B · 正确性 | B9 `parseStructuredResponse` 标题残留（`04 B-M17`） | ✅ | `4d936c3` |
+| B · 正确性 | B10/B11 血缘失败退避重试、runner panic 隔离（`06 M2/M9`） | ✅ | `480b957` |
+| B · 正确性 | B12 `DiffMetadata` 与历史比较（`04 A-H2/A-H3/A-M11/A-M12`） | ✅ | `f58c387` |
+| B · 正确性 | B13 API 输入校验与错误映射（`04 A-M5/A-M9/A-M10`、低节） | ✅ | `48dbecb` |
+| B · 正确性 | B14 store 失败不再降级（`04 B-M7/B-M16`、`03 M21`） | ✅ | `0151bcb` |
+| B · 正确性 | B15 nil 防护与解析修正（`05 C-H4/L2`、`04 B-M8`） | ✅ | `e7239db` |
+| B · 正确性 | B16 `RequireResetPassword` / `allow_missing`（`02 M6/M12/M13`） | ✅ | `bedadf7` |
+| B · 正确性 | B17 `disallow_password_signin` 覆盖服务账号（`02 M7`） | ✅ | `83b1229` |
+| C · 性能 | C1 ingestion 批次上限与单事务（`04 B-H7`） | ✅ | `e7d15eb` |
+| C · 性能 | C2 task 聚合增量计数（`03 M22`） | ✅ | `e7d15eb` |
+| C · 性能 | C3 OpenLineage 列表默认 LIMIT（`03 M26`） | ✅ | `311e790` |
+| C · 性能 | C4 历史批量关闭与下推分页（`03 M6/M9`） | ✅ | `3e6fbda` |
+| C · 性能 | C5 `ListDatabases` 批量取实例（`04 A-M8`） | ✅ | `a7ea214` |
+| C · 性能 | C6 external dataset 去写放大（`03 M20`） | ✅ | `99d41ea` |
+| C · 性能 | C7 LLM 会话预算与轮数（`04 B-M12`） | ✅ | `03c17b7` |
+| C · 性能 | C8 实例密钥每页只取一次（`03` 低节） | ✅ | `390a66c` |
+| D · 验证 | D1 修复既有失败测试 | ✅ | `7912fc2` |
+| D · 验证 | D2 全量本地验证（含集成套件） | ✅ | 见下节复测 |
+| D · 验证 | D3 文档同步（本节与各模块报告标记） | ✅ | 本节 |
+
+**本轮明确的决策（不再视为待确认）**：
+- 凭证混淆**保持** `AUTH_SECRET` 种子 XOR（尊重阶段 5 的回滚），只在 `store` 侧补空 seed 防护并在文档写明取舍；"同库密钥 XOR"仍是有意接受的已知风险。
+- 部署按**单租户**处理：读路径不新增 per-instance 授权，维持 `permission` 注解现状。
+- 破坏性 schema 同步**保持仅日志**，不加硬拦截。
+- gRPC 反射**保持匿名**（现状，仅把策略写进文档）。
+- **不改 CI workflow**：全量验证只在本地跑（含 Docker 集成套件），结果写进本文档。
+- `RequireResetPassword` 选**受限 token** 方案（JWT 增 `rst` claim，拦截器按白名单只放行自助改密与登出），而不是拒绝登录——拒绝会让首登改密没有入口。
+
+**已知取舍与剩余（阶段 6）**：
+- token 吊销缓存（`state.TokenExpireCache`）仍是**进程内**的：多副本部署下 A 副本的登出不会让 B 副本已签发的 token 失效（密码变更失效走数据库，跨副本有效）。单租户单副本下影响可接受，已在 `02` 写明。
+- `openlineage_run` 仍**默认永久保留**（保留天数由 `WORKSPACE_PROFILE.openlineage_retention_days` 决定，默认不清理），本轮未改默认值。
+- 反射匿名、`metadata` 搜索用子串匹配（非全文检索）、`MARIADB`/`OCEANBASE` 的 plugin 覆盖缺口、per-resource IAM 策略等仍是已知项，见 [`11-phase6-plan.md`](11-phase6-plan.md) 第六节「本轮不做」。
+
+---
+
 ## 横切主题
 
 | 主题 | 说明 | 主要位置 | 修复状态 |
 | --- | --- | --- | --- |
 | **授权缺失** | 拦截器被注释、`permission` 从不校验 | `server/grpc_routes.go:85`、`api/auth/auth.go:350` | ✅ 阶段 0 恢复拦截器，阶段 4 完成：全部方法（含读）带注解，`iam.Manager` 按角色/权限集解析，新增 IAM/Role/Group 管理面与前端页面 |
 | **SQL 拼接** | 4 个 handler + 2 个 store 把用户输入拼进 `WHERE` | `user/instance/database_service.go`、`store/principal.go`、`store/group.go` | ✅ 阶段 0：全部参数化 + project ID 校验 + guard 测试 |
-| **秘密处理** | 硬编码 JWT 密钥、XOR"加密"、审计脱敏遗漏 | `profile_dev.go:11`、`common/utils.go`、`api/v1/audit.go:197` | ✅ 阶段 0/3/5：JWT 与审计脱敏已修；阶段 3 换成 AES-256-GCM + `METADATA_SECRET_KEY`（`a1faf65`），**阶段 5 又回滚为 `AUTH_SECRET` 种子 XOR 并删除 `METADATA_SECRET_KEY`**（`7870016`）——同库密钥问题因此重新成立，见 `07` U-H2 |
+| **秘密处理** | 硬编码 JWT 密钥、XOR"加密"、审计脱敏遗漏 | `profile_dev.go:11`、`common/utils.go`、`api/v1/audit.go:197` | ✅ 阶段 0/3/5/6：JWT 与审计脱敏已修；阶段 3 换成 AES-256-GCM + `METADATA_SECRET_KEY`（`a1faf65`），**阶段 5 又回滚为 `AUTH_SECRET` 种子 XOR 并删除 `METADATA_SECRET_KEY`**（`7870016`）——同库密钥问题因此重新成立，见 `07` U-H2；**阶段 6**：`common.Obfuscate`/`Unobfuscate` 对空 seed 返回错误而不是除零（`f112e5c`），ingestion key 改用 SHA-256 digest 点查 + namespace 作用域（`415e16e`）。 |
 | **凭据被往返请求清空** | `UpdateInstance(data_sources)` 整体替换数据源列表，丢掉读取路径不返回的密钥/store-only 字段 | `instance_service.go:405-413,1307-1353` | ✅ 阶段 1：按 ID 合并（`20e284b`） |
 | **未认证入口** | `CreateUser` 免凭证 + 首个用户自动管理员 | `user_service.proto:53`、`user_service.go:286-398` | ✅ 阶段 0：按 `disallow_signup` 判定，首管理员授予原子化 |
 | **缓存被禁用但仍在写** | `store.New(..., false)` 使所有 LRU 读失效，写仍发生；`GetUserByID` 因此每请求全表扫描 | `server/server.go:70`、`store/principal.go:89-114` | ✅ 阶段 2：缓存启用、开关删除、定向查询 + key/竞态修复（`f22f61e`） |
 | **错误码不生效** | `common.Code` 无映射链路，store 的 NotFound/Conflict 到客户端变 500 | `common/error.go:87`、`server/grpc_routes.go:80` | ✅ 阶段 3：新增 `ErrorMappingInterceptor` 统一映射，`common.Error` 补 `Unwrap()`（`89baa3a`） |
 | **日志系统未接线** | `LogLevel`/`Replace` 从未安装，`--debug`/`--enable-json-logging` 无效 | `common/log/log.go`、`cmd/root.go:72,78` | ✅ 阶段 1：`slog.SetDefault` + Text/JSON handler（`7fdcead`） |
-| **无界查询 / N+1** | OpenLineage 数据集全表 + payload 解析；血缘无分页；`queueAll` 每小时全表 | `openlineage_dataset.go:40,119`、`lineage_service.go:57`、`analyzer.go:105` | ✅ 阶段 2/3/补遗：数据集读限 5000 + 请求内缓存（`8c34542`）；三个 OpenLineage 列表补分页（`52213af`）；血缘两列表补 `page_size`/`page_token`（`dd6df51`）；`queueAll` 改为 2 次查询/类型且不再解析 metadata（`f50fbbc`） |
+| **无界查询 / N+1** | OpenLineage 数据集全表 + payload 解析；血缘无分页；`queueAll` 每小时全表；task 聚合每事件全量重算；`ListDatabases` 每行查实例 | `openlineage_dataset.go:40,119`、`lineage_service.go:57`、`analyzer.go:105`、`store/openlineage_task.go`、`database_service.go` | ✅ 阶段 2/3/补遗/6：数据集读限 5000 + 请求内缓存（`8c34542`）；三个 OpenLineage 列表补分页（`52213af`）；血缘两列表补 `page_size`/`page_token`（`dd6df51`）；`queueAll` 改为 2 次查询/类型且不再解析 metadata（`f50fbbc`）；**阶段 6**：ingestion 批次上限（1000 事件 / 8MiB）+ 整批单事务、task 计数改增量、run/task 列表默认 `LIMIT 5000`、元数据历史批量关闭与分页下推、`ListDatabases` 批量取实例、未变 external dataset 不再重写、LLM 会话轮数与字节预算（`e7d15eb` `311e790` `3e6fbda` `a7ea214` `99d41ea` `03c17b7`） |
 | **分页不一致** | 标准 page_token 与 OpenLineage 裸 offset、LLM 无 token、sublevel 无 offset 并存 | `proto/v1/*`、`api/v1/common.go:338` | ✅ 阶段 3：统一 `page_token`/`next_page_token` 与 `paginate[T]`（`73901a1` `52213af`） |
 | **大量 Bytebase 遗留** | IAM/role/project/issue/多引擎/SCIM/2FA、`V2` 命名 | 见 `10-legacy-debt-and-roadmap.md` | ✅ 阶段 3 + 收尾 + 续：Go 侧死代码、role/project store API、metric 栈、CEL 死代码已删（`a39bc41`–`3cc4926`）；proto 表面收敛完成——Engine 28→5、DataSource 多引擎/IAM/SASL/Vault 字段、9 个未实现 setting、OIDC/LDAP、`recovery_codes`/`source`、policy/role/project 死消息、不可达 metadata 消息、`service_name`/`granularity`、store 死 openlineage 消息全部删除（`ceb6a3d` `e0eab33` `722d3cb` `ddff264` `ee3c39b` `b2e80ae`）；`role`/`project` 表与 `db.project` 列已 DROP（`904fb09` `451cb78`）；`V2` 命名重命名完成（`8b328ae`）；M 系列全部处理（M9/M4 见阶段 3 收尾二）。 |
 | **测试/CI 缺口** | CI 从不跑 hermetic 测试；缺 Docker 时集成测试硬失败；auth 零测试 | `09-tests.md` | ◐ 阶段 3/补遗：CI 新增 `-race` 单测 + lint job、`api/auth` 与 `backend/server` 从零建立测试（`d3d96c1` `0dae0b7`）；集成套件现已**全部通过**（既有失败根因是 harness 的 inspectStore 缓存，`f50fbbc`）；顺带修掉 `backend/server` 测试约 1/5 概率的 `-race` 竞态（`a16c8d4`）；阶段 3 收尾二补齐了缺 Docker 的 skip 行为（T-C2）、前端 job + 首批 Vitest、`./backend/migrator/...` 并入集成 target、store 查询形状 guard（T-H3）、审计 helper/debug 拦截器/server 启停/llm 组件测试；`./backend/migrator/...` 现在随 `make test-integration` 一起跑。**剩余**：CI 从未在 GitHub 实跑、前端覆盖率、`09` 的低优先项 |

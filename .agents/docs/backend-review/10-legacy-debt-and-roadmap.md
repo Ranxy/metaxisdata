@@ -301,6 +301,53 @@
 
 ---
 
+### 阶段 6：安全残留 + 正确性缺陷 + 性能/资源——**本轮已完成（25 步 + 1 个既有测试修复；详见 `11-phase6-plan.md`）**
+
+阶段 5 之后，`01`–`09` 各报告中仍标着"未处理/剩余"的条目按风险分三批收口：**A 批安全残留（8 步）**、**B 批正确性缺陷（17 步）**、**C 批性能与资源（8 步）**，外加 D 批验证与文档。每步一个 commit，完整映射、验收方式与本轮决策见 [`11-phase6-plan.md`](11-phase6-plan.md)。
+
+| 批次 | 步骤 | 状态 | 提交 |
+| --- | --- | --- | --- |
+| A · 安全 | A1 token 吊销加固（`02 H1`） | ✅ | `976ebc5` |
+| A · 安全 | A2 CORS / CSRF 收口（`01`/`02 H2`） | ✅ | `976ebc5` |
+| A · 安全 | A3 登录时间与限流（`02 M2`） | ✅ | `8ae989f` |
+| A · 安全 | A4 OAuth2 state + 配置校验 + 脱敏日志（`02 M4`） | ✅ | `25a001a` |
+| A · 安全 | A5 审计链路加固（`02 M8/M9/M10`、`04 B-C1` 残留） | ✅ | `2208521` |
+| A · 安全 | A6 ingestion key digest + 作用域（`04 B-H6/B-H8`、`03 M25`） | ✅ | `415e16e` |
+| A · 安全 | A7 其它安全缺口（`01 M6`、`04 A-H1` 残留、`07 U-H2`、杂项） | ✅ | `f112e5c` |
+| A · 安全 | A8 token header 白名单与 web token 回传（`02` 低节） | ✅ | `c30d73f` |
+| B · 正确性 | B1 engine 过滤按枚举名比较（`03 S-H5`） | ✅ | `824232a` |
+| B · 正确性 | B2 `SyncInstance` 返回过滤后的库列表（`06 M11`） | ✅ | `68f3149` |
+| B · 正确性 | B3 悬空血缘清理 + manual SQL 旧 GUID（`06 M7`、`03 M15`） | ✅ | `9c69196` |
+| B · 正确性 | B4 事务回滚与单语句去事务（`03 M2`） | ✅ | `a71716a` |
+| B · 正确性 | B5/B6 `RETURNING` 按键回填、历史谓词配对（`03 M3/M7`） | ✅ | `7f0e3a0` |
+| B · 正确性 | B7 `UpdateDatabase` 单事务加锁（`03 M5`） | ✅ | `eca3686` |
+| B · 正确性 | B8 LLM 空 mask 部分更新（`04 B-M10`） | ✅ | `14b8f01` |
+| B · 正确性 | B9 `parseStructuredResponse` 标题残留（`04 B-M17`） | ✅ | `4d936c3` |
+| B · 正确性 | B10/B11 血缘失败退避重试、runner panic 隔离（`06 M2/M9`） | ✅ | `480b957` |
+| B · 正确性 | B12 `DiffMetadata` 与历史比较（`04 A-H2/A-H3/A-M11/A-M12`） | ✅ | `f58c387` |
+| B · 正确性 | B13 API 输入校验与错误映射（`04 A-M5/A-M9/A-M10`、低节） | ✅ | `48dbecb` |
+| B · 正确性 | B14 store 失败不再降级（`04 B-M7/B-M16`、`03 M21`） | ✅ | `0151bcb` |
+| B · 正确性 | B15 nil 防护与解析修正（`05 C-H4/L2`、`04 B-M8`） | ✅ | `e7239db` |
+| B · 正确性 | B16 `RequireResetPassword` / `allow_missing`（`02 M6/M12/M13`） | ✅ | `bedadf7` |
+| B · 正确性 | B17 `disallow_password_signin` 覆盖服务账号（`02 M7`） | ✅ | `83b1229` |
+| C · 性能 | C1 ingestion 批次上限与单事务（`04 B-H7`） | ✅ | `e7d15eb` |
+| C · 性能 | C2 task 聚合增量计数（`03 M22`） | ✅ | `e7d15eb` |
+| C · 性能 | C3 OpenLineage 列表默认 LIMIT（`03 M26`） | ✅ | `311e790` |
+| C · 性能 | C4 历史批量关闭与下推分页（`03 M6/M9`） | ✅ | `3e6fbda` |
+| C · 性能 | C5 `ListDatabases` 批量取实例（`04 A-M8`） | ✅ | `a7ea214` |
+| C · 性能 | C6 external dataset 去写放大（`03 M20`） | ✅ | `99d41ea` |
+| C · 性能 | C7 LLM 会话预算与轮数（`04 B-M12`） | ✅ | `03c17b7` |
+| C · 性能 | C8 实例密钥每页只取一次（`03` 低节） | ✅ | `390a66c` |
+| D · 验证 | D1 修复既有失败测试（`backend/store` 角色权限断言） | ✅ | `7912fc2` |
+| D · 验证 | D2 全量本地验证（含 Docker 集成套件） | ✅ | 见第五节 |
+| D · 验证 | D3 文档同步（本表与各模块报告标记） | ✅ | 本表 |
+
+- **本轮决策（已从"待确认"关闭）**：① 凭证混淆**保持** `AUTH_SECRET` 种子 XOR（尊重阶段 5 的回滚），只在 `store` 侧补空 seed 防护；"同库密钥 XOR"仍是有意接受的已知风险。② 部署按**单租户**处理，读路径不新增 per-instance 授权。③ 破坏性 schema 同步**保持仅日志**。④ gRPC 反射**保持匿名**（仅写进文档）。⑤ **不改 CI workflow**，全量验证只在本地跑（含 Docker 集成套件）并把结果写进文档。⑥ `RequireResetPassword` 选**受限 token**（JWT `rst` claim + 拦截器白名单只放行自助改密/登出），而不是拒绝登录。
+- **主要落地**：登录 JWT 增加 `jti`/`iat_ns` 与受限 claim（登出吊销、密码变更失效、强制改密）；CORS 改 allowlist + CSRF 双提交校验 + 请求体上限；OAuth2 加一次性 state 与 PKCE verifier；审计走脱离请求的有界 ctx 并按可信代理解析客户端 IP；ingestion key 改 SHA-256 digest 查询 + namespace 作用域；`openlineage_task` 计数改增量、批次单事务并加事件/体积上限；元数据历史批量关闭 + 分页下推；`ListDatabases` 批量取实例；external dataset 不再重写未变行；LLM 会话有显式轮数与字节预算。
+- **本轮仍未处理**（有意排除，见 `11-phase6-plan.md` 第六节）：测试/CI 批次（CI release job、集成套件入 CI、前端覆盖率、`09` 低优先测试项）、死代码与低优先清理（`AgentConfig.Hooks`/`AgentEvent.Done`、`log.Stack` eager 采集等）、文档全量重写、产品决策项（per-resource IAM、`disallow_signup` 默认值、字段加密方案变更、`openlineage_run` 保留默认）、破坏性 schema 同步硬拦截、反射策略变更。
+
+---
+
 ## 五、验证方式
 
 - 本报告结论来自源码通读 + `go build ./...`、`go vet ./...`、`go test ./...`（审查时均 exit 0）。
@@ -328,3 +375,6 @@
 - 阶段 3 收尾二"待确认"：无新增阻塞项。仍未关闭的是前几轮的部署拓扑（是否有反向代理、是否单租户）、~~`METADATA_SECRET_KEY` 的注入与轮换流程~~（**阶段 5 已关闭**）、`RETURNING` 行序；另外 CI workflow 仍从未在 GitHub 上真正执行。
 - 阶段 5 复测：`gofmt -l backend/` 空、`go build ./...`、`go vet ./...`、`go test ./...`、部署构建 `go build -ldflags "-w -s" -p=16 -o ./build/metaxisdata ./backend/bin/server/main.go`、`golangci-lint run --allow-parallel-runners`（0 issues）全部通过；`buf format -w proto`、`buf lint proto`、`cd proto && buf generate` 通过且产物只有预期文件变化（`WorkspaceProfileSetting` 新增 `openlineage_retention_days`，store/v1/前端/API 文档同步）；前端 `biome check`（188 文件）、`eslint`、`vue-tsc --build`（0 错误）、`vitest run`（17 用例）全部通过。本机 `go test ./...` 另有一条**既有失败** `TestMarshalRolePermissionsIsDeterministic`（在干净 HEAD worktree 上同样失败：本机 protobuf 的 protojson 在数组元素间输出 `", "`，而断言写的是 `","`），与阶段 5 无关。集成测试未重跑（需 Docker）。
 - 阶段 5"待确认"：无新增阻塞项。`AUTH_SECRET` 同时承担 JWT 签名与字段混淆是这次明确选择的取舍；若将来要分离，需要新设置项与迁移路径。`METADATA_SECRET_KEY` 相关待确认全部关闭。
+- 阶段 6 复测（全部本地，含 Docker 集成套件）：`gofmt -l backend/` 空、`go build ./...`、`go vet ./...`（默认/`release`/`integration`）、`go test ./...`、`go test -race -count=1 ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`make build-release` 全部通过；`buf format -w proto`、`buf lint proto`、`cd proto && buf generate` 通过且可复现（重跑无 diff，只有 `auth_service`/`user_service` 注释变更的产物）；前端 `biome check src`（187 文件）、`eslint src`、`vue-tsc --noEmit`、`vitest run`（17 用例）、`vite build` 全部通过。**集成套件全部通过**：`go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...` → `runner` 48.7s、`migrator` 13.2s，exit 0。本轮新增的真实 server 用例 `TestOpenLineageIngestionAggregatesRunsRealServerIntegration` 覆盖批次单事务、run 去重计数、latest 语义、lineage 计数增减、未变 dataset 不重写与 scope 403。
+- 阶段 6 顺带修复的既有失败：① D1 修掉 `TestMarshalRolePermissionsIsDeterministic`（改成语义断言，不再依赖 protojson 的随机空白）；② D2 发现 B13 引入的集成失败——既有用例给 `manual_sql_id` 传了含下划线的值（`common.IsValidResourceID` 按 AIP-122 只允许小写字母/数字/连字符），已把三个测试 ID 改为连字符形式（`bef6706`）。这提醒：新增服务端校验后必须跑一遍集成套件。
+- 阶段 6"待确认"：无新增阻塞项。仍开放的是前几轮遗留：token 吊销缓存是进程内的（多副本下登出不通告，密码变更失效跨副本有效）、`openlineage_run` 默认永久保留、per-resource IAM、`MARIADB`/`OCEANBASE` 的 plugin 覆盖缺口、CI workflow 仍未在 GitHub 上实跑。
