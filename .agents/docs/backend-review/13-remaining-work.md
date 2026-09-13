@@ -16,7 +16,7 @@
 | 批 1 · 契约与文档一致性 | `C1`、`C4`–`C7`、`C9`、`C10`、`C13`、`D14`–`D16`、`D21`、`B14`；`F1`/`F3` 文档、`F2` 死分支 | ✅ 已完成 | `04b9adc` `21a95a9` `d9b0f16` `c1b6c21` `507e06d` `4f78442` |
 | 批 2 · 正确性 | `B2`–`B12`、`B16` | ✅ 已完成 | `39b2ce5` `ce5a4ff` `7ecca87` `e7e64f1` `1c8509b` `29a143a` `2d8e2c2` `e9ce8a5` `2c26648` |
 | 批 3 · 安全收尾 | `A4`、`A5`、`A6`、`A8`、`A9` | ✅ 已完成 | `ac616d7` `cdf5ec9` `2968b88` `dd9c32d` |
-| 批 4 · 性能与整洁 | `D1`–`D13`、`D17`–`D20`、`C2`、`C3` | ⏳ 未开始 | |
+| 批 4 · 性能与整洁 | `D1`–`D13`、`D17`–`D20`、`C2`、`C3` | ✅ 已完成（`D1`/`D2`/`D5`/`D6`◐/`D11`/`D12`/`D13`/`D18`/`D19`、`C2`/`C3`；`D3`/`D4`/`D6` 两项/`D7`/`D8`/`D9`/`D10`/`D20` 转遗留，`D17` 判定为误报） | `6baef9a` `1d4459b` `40256b1` `2de85ee` `6384d37` `756bcf9` `68aae4b` |
 | 批 5 · 测试与 CI | `E1`–`E13`、`D22` | ✅ 已完成（`E3`/`E6`/`E9` 各留一小部分，`E7`/`E12`/`E13` 转遗留，见下） | `f950059` `98c3db4` `a5214dc` `a9f8e7b` `18638ba` `f4b7baf` `6f96432` `b88515b` |
 | 批 6 · 决策后的实现 | `B13`、`C11`、`C14`；`F4`/`F6`/`F7` 文档 | ✅ 已完成 | `57feb35` `b975a1d` `38dd450` |
 
@@ -354,6 +354,36 @@ B13（收掉视图 COLUMN 声明，F5）、C11（暴露域白名单，F8）、C1
 | `E9` 的一半 | `migrator_test.go` 仍用 `t.Fatalf`（15 处），属纯风格迁移 |
 
 **批 5 的一个小插曲**：首次全量集成运行时 `TestMigrateSchemaLATESTMatchesTheIncrementChain` 因容器连接被重置而失败——该用例最初为两个库各起一个容器，与 runner 套件并行时造成 Docker 资源争用；改为两个库共用一个容器后，单包与全量套件均稳定通过（单包 17.9s，全量 `migrator` 21.6s）。
+
+### 批 4 实施记录（已完成，部分项转遗留）
+
+| 条目 | 落地内容 | 提交 |
+| --- | --- | --- |
+| `D1` | `SyncInstance` 的两次 `slices.IndexFunc` 线性扫描改为先建 `map[string]*DatabaseMessage` / `map[string]struct{}` 再查表，数据库数量大时不再 O(n²) | `1d4459b` |
+| `D2` | checker 发现实例已不存在时**删除** `databaseSyncMap` 条目，而不是每个 tick 重复入队并打日志（B9 已顺带修掉同一处的 nil-error 属性） | `1d4459b` |
+| `D5` | 5 处 store 查询 + OpenLineage 列表的 `LIMIT/OFFSET` 由 `Sprintf` 插值改为**占位符绑定**并 `max(v,0)` 夹紧负值（负 `LIMIT` 是 PostgreSQL 语法错误）；`openLineagePageClause` 改为返回 `(clause, args)` 且占位符从调用方参数之后编号；补 clamp/占位符测试 | `756bcf9` |
+| `D6` | ① `ListOpenLineageAPIKey` 不再 select `key_hash`（注释早写"without hashes exposed"却没做到）；② store `OpenLineageTaskSummary` 新增 `latest_event_type` 并由 `buildOpenLineageTaskStoredMetadata` 填充，与 v1 对齐 | `6384d37` `68aae4b` |
+| `D11` | 删除无调用者且漏 `idpCache`/`instanceCache` 的 `Store.DeleteCache` | `6baef9a` |
+| `D12` | `FindExternalDatasetByGUIDs` 从 `openlineage_api_key.go` 移到 `external_dataset.go` | `6baef9a` |
+| `D13` | 删除零调用的 `ListSublevelMetaRegistryResourceAsOf`，以及随之无调用者的 `listSublevelMetaRegistryResourceHistoryImpl`（`buildSublevelMetaRegistryResourceQuery` 的 asOf 分支仍被测试覆盖，保留） | `6baef9a` |
+| `D18` | REST gateway 的 `grpc.ClientConn` 用 `context.AfterFunc(ctx, …)` 在服务端 ctx 取消（信号/关停）时关闭，不再泄漏客户端通道 | `6baef9a` |
+| `D19` | LLM provider 非 200 响应体只写服务端日志，回给调用方的错误只含状态码（原来最多回传 4000 字节 provider body） | `6baef9a` |
+| `C2` | 新增增量 `0.1/0009##jsonb_column_comments.sql`（9 条 `COMMENT ON COLUMN`，幂等），并在 `LATEST.sql` 同步同样的注释：`instance.db.meta_registry_resource(_history).metadata`、`audit_log.payload`、`llm_provider_profile.metadata`、`explain_sql_cache.explanation_json`（注明非 proto 消息）、`openlineage_api_key.key_digest`/`scope_namespace` | `2de85ee` |
+| `C3` | 新增 `TestSharedEnumsStayValueCompatible`：直接比对 `store`/`v1` 的 `Engine`、`MetaType`、`DataSourceType` 名称→值映射，一侧改动即失败 | `40256b1` |
+| `D17` 误报 | **判定为误报并更正文档**：实测 `log.Stack(20,3)` 的输出以 panic 现场函数开头（`main.boom`），`runtime.Callers(skip=2)` 同样能看到 panic 帧；`TakeStacktrace` 的 `+2` 偏移恰好抵消了 `log.Stack` 与 deferred func 两层，`grpc_routes.go` 的 skip=5 在 `onPanic` 多一层后同样落在 panic 函数上。因此"捕获的是 recover 帧"不成立，无需改动 | — |
+
+**批 4 转为遗留（阶段 8 之后待办）**：
+
+| 项 | 为什么没做完 |
+| --- | --- |
+| `D3` 单语句读不再开事务 | 涉及 `GetSetting`/`GetIdentityProvider`/`getUser`/`GetManualSQL`/`GetMetaRegistry` 五处事务结构，属行为中性的重构；`GetManualSQL` 还是 3 条查询 + 事务，直接改池读需要单独验证一致性，留待专门一轮 |
+| `D4` getter 反写 `find` / nil `find` 解引用 | 需要在 3 个 getter 做局部拷贝、6 个 list 函数统一 nil 语义（拒绝或空过滤器）；牵涉调用方假设，未在本批收口 |
+| `D6` 剩余两项 | `ManualSQLMessage.ManualSQLID` 是"无列、读取时由 name 推导"的幻影字段，删除会连带影响 v1 `ManualSqlId` 的取值来源；OpenLineage API key 过期需要新增列（schema 增量）——两者都需要一次产品决策，暂列遗留 |
+| `D7` store 层 `UpdateInstance` 数据源校验 | 复核后**刻意不做**：`SyncInstance` 会用数据库里的既有 metadata 调 `Store.UpdateInstance`，若在该层强制"恰好一个 ADMIN"，任何历史遗留的 0/2 ADMIN 行会让同步永久失败；校验留在 API 层（`checkInstanceDataSources`，Create/Update/数据源子方法都覆盖） |
+| `D8` 同步失败指标 | 指标栈在阶段 3 已按死代码整体删除；现在失败路径是 `slog.Warn` + 每轮汇总，恢复计数器需要先决定是否重建遥测设施 |
+| `D9` runner 间隔/上限硬编码 | 属**已接受设计**（编译期常量，无运维覆盖）；阶段 7 已删掉"注入 profile 但从不读"的矛盾，是否可配置需产品决策 |
+| `D10` 两套血缘删除 SQL | store 版（带 GUID 子树/转义）与 runner 版（精确匹配的 4 参数裸 SQL）合并需要一个同时满足两侧语义的 helper，改动触及 runner 事务路径，留待专门一轮 |
+| `D20` 实例列表按 SQL 子串决定 join | 需要让 `filter.go` 的翻译器返回结构化标记（如 `NeedsDataSourcesJoin`）并传到 store，属跨层改动；当前值已参数化、不可由用户触发，仅列文本耦合 |
 
 ---
 
