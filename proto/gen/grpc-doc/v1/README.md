@@ -631,7 +631,7 @@ For example: name == &#34;ed&#34; name.matches(&#34;ed&#34;) email == &#34;ed@ex
 The user&#39;s `name` field is used to identify the user to update. Format: users/{user} |
 | update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The list of fields to update. |
 | current_password | [string](#string) |  | The user&#39;s current password. Required when a user changes their own password; an admin changing another user&#39;s password does not need it. |
-| allow_missing | [bool](#bool) |  | If set to true, and the user is not found, a new user will be created. In this situation, `update_mask` is ignored. |
+| allow_missing | [bool](#bool) |  | If set to true, and the user is not found, a new user will be created from the fields named by `update_mask`; fields absent from the mask are ignored. `user_type` is a maskable path because it selects the kind of principal to create. |
 
 
 
@@ -783,8 +783,8 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| token | [string](#string) |  |  |
-| require_reset_password | [bool](#bool) |  |  |
+| token | [string](#string) |  | The access token. Empty for a web login, which carries the token in an HttpOnly cookie instead. |
+| require_reset_password | [bool](#bool) |  | Whether the workspace password policy requires the user to rotate their password before doing anything else. When true, the issued token is restricted to changing the user&#39;s own password (and logging out). |
 | user | [User](#metaxisdata-v1-User) |  | The user of successful login. |
 
 

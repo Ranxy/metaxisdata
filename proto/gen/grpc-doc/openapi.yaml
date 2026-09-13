@@ -2626,8 +2626,10 @@ paths:
                 - name: allowMissing
                   in: query
                   description: |-
-                    If set to true, and the user is not found, a new user will be created.
-                     In this situation, `update_mask` is ignored.
+                    If set to true, and the user is not found, a new user will be created from
+                     the fields named by `update_mask`; fields absent from the mask are ignored.
+                     `user_type` is a maskable path because it selects the kind of principal to
+                     create.
                   schema:
                     type: boolean
             requestBody:
@@ -4161,8 +4163,15 @@ components:
             properties:
                 token:
                     type: string
+                    description: |-
+                        The access token. Empty for a web login, which carries the token in an
+                         HttpOnly cookie instead.
                 requireResetPassword:
                     type: boolean
+                    description: |-
+                        Whether the workspace password policy requires the user to rotate their
+                         password before doing anything else. When true, the issued token is
+                         restricted to changing the user's own password (and logging out).
                 user:
                     allOf:
                         - $ref: '#/components/schemas/User'

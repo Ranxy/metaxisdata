@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/Ranxy/metaxisdata/backend/api/auth"
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -223,6 +224,14 @@ func getDatabaseMessage(ctx context.Context, s *store.Store, databaseResourceNam
 func GetUserFromContext(ctx context.Context) (*store.UserMessage, bool) {
 	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
 	return user, ok
+}
+
+// GetTokenRestrictionFromContext returns the restriction carried by the access
+// token that authenticated the request. The second result is false for a
+// full-access token.
+func GetTokenRestrictionFromContext(ctx context.Context) (auth.TokenRestriction, bool) {
+	restriction, ok := ctx.Value(common.TokenRestrictionContextKey).(auth.TokenRestriction)
+	return restriction, ok
 }
 
 // getVariableAndValueFromExpr extracts the variable and the literal operand of

@@ -19,6 +19,7 @@ import (
 
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -132,7 +133,15 @@ func (s *AuthService) Login(ctx context.Context, req *connect.Request[v1pb.Login
 	var loginToken string
 	switch loginUser.Type {
 	case storepb.PrincipalType_END_USER:
-		token, err := auth.GenerateAccessToken(loginUser.Name, loginUser.ID, s.profile.Mode, s.secret, tokenDuration)
+		var token string
+		var err error
+		if response.RequireResetPassword {
+			// The password policy requires a rotation, so the token only
+			// authorizes the rotation itself instead of the whole API.
+			token, err = auth.GenerateRestrictedAccessToken(loginUser.Name, loginUser.ID, s.profile.Mode, s.secret, tokenDuration, auth.TokenRestrictionResetPassword)
+		} else {
+			token, err = auth.GenerateAccessToken(loginUser.Name, loginUser.ID, s.profile.Mode, s.secret, tokenDuration)
+		}
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate API access token"))
 		}
@@ -164,13 +173,14 @@ func (s *AuthService) Login(ctx context.Context, req *connect.Request[v1pb.Login
 		resp.Header().Add("Set-Cookie", cookie.String())
 	}
 
-	if _, err := s.store.UpdateUser(ctx, loginUser, &store.UpdateUserMessage{
-		Profile: &storepb.UserProfile{
-			LastLoginTime:          timestamppb.Now(),
-			LastChangePasswordTime: loginUser.Profile.GetLastChangePasswordTime(),
-		},
-	}); err != nil {
-		slog.Error("failed to update user profile", log.WithError(err), slog.String("user", loginUser.Email))
+	// Patch the profile instead of replacing the whole JSONB column: the cloned
+	// current profile keeps every other field, and the clone keeps this from
+	// mutating the entry the store caches.
+	updatedUser, err := s.store.UpdateUser(ctx, loginUser, &store.UpdateUserMessage{Profile: profileWithLastLogin(loginUser.Profile)})
+	if err != nil {
+		slog.Error("failed to update user profile", log.WithError(err), slog.Int("user_id", loginUser.ID))
+	} else {
+		loginUser = updatedUser
 	}
 
 	response.User = convertToUser(loginUser)
@@ -184,6 +194,19 @@ func (s *AuthService) Login(ctx context.Context, req *connect.Request[v1pb.Login
 	// })
 
 	return resp, nil
+}
+
+// profileWithLastLogin returns a copy of the current profile with
+// LastLoginTime set to now. Copying keeps the caller from mutating the profile
+// the store caches, and patching the whole profile as a clone preserves every
+// other field instead of replacing the column with just the fields named here.
+func profileWithLastLogin(current *storepb.UserProfile) *storepb.UserProfile {
+	profile := proto.CloneOf(current)
+	if profile == nil {
+		profile = &storepb.UserProfile{}
+	}
+	profile.LastLoginTime = timestamppb.Now()
+	return profile
 }
 
 func (s *AuthService) needResetPassword(ctx context.Context, user *store.UserMessage) bool {

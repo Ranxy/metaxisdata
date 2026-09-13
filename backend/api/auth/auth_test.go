@@ -321,3 +321,48 @@ func TestGatewayResponseModifierCopiesSetCookie(t *testing.T) {
 	// cookies.
 	require.Error(t, (&GatewayResponseModifier{}).Modify(context.Background(), recorder, nil))
 }
+
+func TestRestrictedAccessToken(t *testing.T) {
+	t.Parallel()
+
+	const secret = "test-secret-test-secret-test-secret"
+
+	t.Run("restriction survives a round trip", func(t *testing.T) {
+		t.Parallel()
+		token, err := GenerateRestrictedAccessToken("alice@example.com", 101, common.ReleaseModeDev, secret, time.Hour, TokenRestrictionResetPassword)
+		require.NoError(t, err)
+
+		identity, err := VerifyAccessToken(token, secret, common.ReleaseModeDev)
+		require.NoError(t, err)
+		require.Equal(t, 101, identity.UserID)
+		require.Equal(t, TokenRestrictionResetPassword, identity.Restriction)
+	})
+
+	t.Run("a full-access token carries no restriction", func(t *testing.T) {
+		t.Parallel()
+		token, err := GenerateAccessToken("alice@example.com", 101, common.ReleaseModeDev, secret, time.Hour)
+		require.NoError(t, err)
+
+		identity, err := VerifyAccessToken(token, secret, common.ReleaseModeDev)
+		require.NoError(t, err)
+		require.Empty(t, identity.Restriction)
+	})
+
+	t.Run("only the password reset RPCs are reachable", func(t *testing.T) {
+		t.Parallel()
+		require.True(t, TokenRestrictionResetPassword.allows("/metaxisdata.v1.UserService/UpdateUser"))
+		require.True(t, TokenRestrictionResetPassword.allows("/metaxisdata.v1.AuthService/Logout"))
+		require.False(t, TokenRestrictionResetPassword.allows("/metaxisdata.v1.DatabaseService/ListDatabases"))
+		require.False(t, TokenRestrictionResetPassword.allows("/metaxisdata.v1.UserService/DeleteUser"))
+	})
+
+	t.Run("an unrestricted token reaches everything", func(t *testing.T) {
+		t.Parallel()
+		require.True(t, TokenRestriction("").allows("/metaxisdata.v1.UserService/DeleteUser"))
+	})
+
+	t.Run("an unknown restriction reaches nothing", func(t *testing.T) {
+		t.Parallel()
+		require.False(t, TokenRestriction("no-such-restriction").allows("/metaxisdata.v1.AuthService/Logout"))
+	})
+}

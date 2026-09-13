@@ -10,6 +10,10 @@ const (
 	// UserContextKey is the key name used to store user message in the context.
 	UserContextKey ContextKey = iota
 	AuthContextKey
+	// TokenRestrictionContextKey is the key name used to store the restriction
+	// carried by the access token that authenticated the request. It is absent
+	// for a full-access token.
+	TokenRestrictionContextKey
 )
 
 type AuthContext struct {

@@ -130,11 +130,18 @@ export declare const OAuth2IdentityProviderContextSchema: GenMessage<OAuth2Ident
  */
 export declare type LoginResponse = Message<"metaxisdata.v1.LoginResponse"> & {
   /**
+   * The access token. Empty for a web login, which carries the token in an
+   * HttpOnly cookie instead.
+   *
    * @generated from field: string token = 1;
    */
   token: string;
 
   /**
+   * Whether the workspace password policy requires the user to rotate their
+   * password before doing anything else. When true, the issued token is
+   * restricted to changing the user's own password (and logging out).
+   *
    * @generated from field: bool require_reset_password = 3;
    */
   requireResetPassword: boolean;

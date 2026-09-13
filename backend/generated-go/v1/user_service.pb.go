@@ -427,8 +427,10 @@ type UpdateUserRequest struct {
 	// The user's current password. Required when a user changes their own
 	// password; an admin changing another user's password does not need it.
 	CurrentPassword string `protobuf:"bytes,3,opt,name=current_password,json=currentPassword,proto3" json:"current_password,omitempty"`
-	// If set to true, and the user is not found, a new user will be created.
-	// In this situation, `update_mask` is ignored.
+	// If set to true, and the user is not found, a new user will be created from
+	// the fields named by `update_mask`; fields absent from the mask are ignored.
+	// `user_type` is a maskable path because it selects the kind of principal to
+	// create.
 	AllowMissing  bool `protobuf:"varint,6,opt,name=allow_missing,json=allowMissing,proto3" json:"allow_missing,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

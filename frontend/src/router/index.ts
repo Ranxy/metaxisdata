@@ -211,6 +211,10 @@ router.beforeEach(async (to, _from, next) => {
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next({ name: "Login", query: { redirect: to.fullPath } });
+  } else if (authStore.requireResetPassword && to.name !== "Login") {
+    // A forced password reset has to be completed first: the server only
+    // accepts the password change from the token the login issued.
+    next({ name: "Login" });
   } else if (to.name === "Login" && authStore.isAuthenticated) {
     next({ name: "Home" });
   } else if (

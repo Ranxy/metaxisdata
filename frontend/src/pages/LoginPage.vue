@@ -19,8 +19,78 @@
       <!-- Login/Register Card -->
       <Card class="p-2">
         <CardContent class="pt-6">
+          <!-- Forced Password Reset -->
+          <template v-if="requireResetPassword">
+            <div class="space-y-2 mb-6">
+              <CardTitle>{{ t("resetPassword.title") }}</CardTitle>
+              <CardDescription>{{ t("resetPassword.description") }}</CardDescription>
+            </div>
+
+            <!-- Error Alert -->
+            <Alert
+              v-if="errorMessage"
+              variant="destructive"
+              class="mb-4"
+            >
+              <AlertCircle class="h-4 w-4" />
+              <AlertDescription>{{ errorMessage }}</AlertDescription>
+            </Alert>
+
+            <form
+              class="space-y-4"
+              @submit.prevent="handleResetPassword"
+            >
+              <AppInput
+                v-model="resetForm.currentPassword"
+                type="password"
+                :label="t('resetPassword.currentPassword')"
+                :placeholder="t('resetPassword.currentPasswordPlaceholder')"
+                required
+              />
+
+              <AppInput
+                v-model="resetForm.newPassword"
+                type="password"
+                :label="t('resetPassword.newPassword')"
+                :placeholder="t('resetPassword.newPasswordPlaceholder')"
+                required
+              />
+
+              <AppInput
+                v-model="resetForm.confirmPassword"
+                type="password"
+                :label="t('resetPassword.confirmPassword')"
+                :placeholder="t('resetPassword.confirmPasswordPlaceholder')"
+                required
+              />
+
+              <Button
+                type="submit"
+                :disabled="isResetting"
+                class="w-full"
+                size="lg"
+              >
+                <Loader2
+                  v-if="isResetting"
+                  class="mr-2 h-4 w-4 animate-spin"
+                />
+                {{ isResetting ? t("resetPassword.submitting") : t("resetPassword.submit") }}
+              </Button>
+            </form>
+
+            <div class="mt-6 text-center text-sm">
+              <Button
+                variant="link"
+                class="px-1"
+                @click="handleResetSignOut"
+              >
+                {{ t("resetPassword.signOut") }}
+              </Button>
+            </div>
+          </template>
+
           <!-- Login Mode -->
-          <template v-if="!isRegisterMode">
+          <template v-else-if="!isRegisterMode">
             <div class="space-y-2 mb-6">
               <CardTitle>{{ t("login.welcome") }}</CardTitle>
               <CardDescription>{{ t("login.description") }}</CardDescription>
@@ -278,6 +348,15 @@ const errorMessage = ref("");
 const successMessage = ref("");
 const isLoading = computed(() => authStore.isLoading);
 const isRegistering = ref(false);
+const isResetting = ref(false);
+const requireResetPassword = computed(() => authStore.requireResetPassword);
+
+// Reset form
+const resetForm = ref({
+  currentPassword: "",
+  newPassword: "",
+  confirmPassword: "",
+});
 
 const locales = [
   { value: "zh-CN", label: "简体中文" },
@@ -312,7 +391,17 @@ async function handleLogin() {
   errorMessage.value = "";
 
   try {
-    await authStore.login(loginForm.value.email, loginForm.value.password);
+    const response = await authStore.login(
+      loginForm.value.email,
+      loginForm.value.password
+    );
+
+    if (response.requireResetPassword) {
+      // The server restricted the issued token to this password change, so stay
+      // on this page until it is done instead of heading into the app.
+      resetForm.value.currentPassword = loginForm.value.password;
+      return;
+    }
 
     // Redirect to the original destination or home
     const redirect = route.query.redirect as string;
@@ -323,6 +412,54 @@ async function handleLogin() {
     errorMessage.value = message || t("login.loginFailed");
     console.error("Login error:", error);
   }
+}
+
+async function handleResetPassword() {
+  const { currentPassword, newPassword, confirmPassword } = resetForm.value;
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    errorMessage.value = t("resetPassword.missingFields");
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    errorMessage.value = t("resetPassword.mismatch");
+    return;
+  }
+  if (newPassword === currentPassword) {
+    errorMessage.value = t("resetPassword.sameAsCurrent");
+    return;
+  }
+
+  errorMessage.value = "";
+  isResetting.value = true;
+  try {
+    await authStore.changePassword(currentPassword, newPassword);
+    // The password change invalidates every token minted before it, including
+    // the restricted one, so sign in again to get a full-access token.
+    await authStore.login(loginForm.value.email, newPassword);
+    if (authStore.requireResetPassword) {
+      errorMessage.value = t("resetPassword.failed");
+      return;
+    }
+
+    const redirect = route.query.redirect as string;
+    router.push(redirect || { name: "Home" });
+  } catch (error) {
+    const message = extractErrorMessage(error);
+    errorMessage.value = message || t("resetPassword.failed");
+    console.error("Password reset error:", error);
+  } finally {
+    isResetting.value = false;
+  }
+}
+
+async function handleResetSignOut() {
+  await authStore.logout();
+  resetForm.value = {
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  };
+  errorMessage.value = "";
 }
 
 const REGISTRATION_SUCCESS_DELAY = 1500;

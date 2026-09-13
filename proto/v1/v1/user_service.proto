@@ -176,8 +176,10 @@ message UpdateUserRequest {
   // password; an admin changing another user's password does not need it.
   string current_password = 3 [(google.api.field_behavior) = INPUT_ONLY];
 
-  // If set to true, and the user is not found, a new user will be created.
-  // In this situation, `update_mask` is ignored.
+  // If set to true, and the user is not found, a new user will be created from
+  // the fields named by `update_mask`; fields absent from the mask are ignored.
+  // `user_type` is a maskable path because it selects the kind of principal to
+  // create.
   bool allow_missing = 6;
 }
 

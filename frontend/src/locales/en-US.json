@@ -46,6 +46,23 @@
     "hasAccount": "Already have an account?",
     "signIn": "Sign In"
   },
+  "resetPassword": {
+    "title": "Password Reset Required",
+    "description": "Your workspace requires a new password before you can continue.",
+    "currentPassword": "Current Password",
+    "currentPasswordPlaceholder": "Enter your current password",
+    "newPassword": "New Password",
+    "newPasswordPlaceholder": "Enter your new password",
+    "confirmPassword": "Confirm New Password",
+    "confirmPasswordPlaceholder": "Re-enter your new password",
+    "submit": "Set New Password",
+    "submitting": "Saving...",
+    "missingFields": "Please fill in all required fields",
+    "mismatch": "Passwords do not match",
+    "sameAsCurrent": "The new password must differ from the current one",
+    "failed": "Failed to change the password",
+    "signOut": "Sign Out"
+  },
   "menu": {
     "home": "Home",
     "datasource": "Data Sources",

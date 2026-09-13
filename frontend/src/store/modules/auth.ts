@@ -8,6 +8,8 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  // Set when the server issued a token restricted to a forced password reset.
+  requireResetPassword: boolean;
 }
 
 export const useAuthStore = defineStore("auth", {
@@ -16,6 +18,7 @@ export const useAuthStore = defineStore("auth", {
     isAuthenticated: false,
     isLoading: false,
     error: null,
+    requireResetPassword: false,
   }),
 
   getters: {
@@ -36,6 +39,7 @@ export const useAuthStore = defineStore("auth", {
         const response = await authApi.login(email, password);
         this.user = response.user ?? null;
         this.isAuthenticated = true;
+        this.requireResetPassword = response.requireResetPassword;
         return response;
       } catch (err) {
         this.error = err instanceof Error ? err.message : "Login failed";
@@ -45,6 +49,20 @@ export const useAuthStore = defineStore("auth", {
       }
     },
 
+    // Completes a forced password reset. The server only accepts this call from
+    // the restricted token the login handed out.
+    async changePassword(currentPassword: string, newPassword: string) {
+      if (!this.user) {
+        throw new Error("not authenticated");
+      }
+      await userApi.updateUser(
+        { name: this.user.name, password: newPassword },
+        ["password"],
+        currentPassword
+      );
+      this.requireResetPassword = false;
+    },
+
     async logout() {
       try {
         await authApi.logout();
@@ -52,6 +70,7 @@ export const useAuthStore = defineStore("auth", {
         this.user = null;
         this.isAuthenticated = false;
         this.error = null;
+        this.requireResetPassword = false;
       }
     },
 
@@ -60,6 +79,7 @@ export const useAuthStore = defineStore("auth", {
       try {
         this.user = await userApi.getCurrentUser();
         this.isAuthenticated = true;
+        this.requireResetPassword = false;
       } catch {
         this.user = null;
         this.isAuthenticated = false;

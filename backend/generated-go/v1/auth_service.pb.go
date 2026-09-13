@@ -278,9 +278,14 @@ func (x *OAuth2IdentityProviderContext) GetCodeVerifier() string {
 }
 
 type LoginResponse struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	Token                string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
-	RequireResetPassword bool                   `protobuf:"varint,3,opt,name=require_reset_password,json=requireResetPassword,proto3" json:"require_reset_password,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The access token. Empty for a web login, which carries the token in an
+	// HttpOnly cookie instead.
+	Token string `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
+	// Whether the workspace password policy requires the user to rotate their
+	// password before doing anything else. When true, the issued token is
+	// restricted to changing the user's own password (and logging out).
+	RequireResetPassword bool `protobuf:"varint,3,opt,name=require_reset_password,json=requireResetPassword,proto3" json:"require_reset_password,omitempty"`
 	// The user of successful login.
 	User          *User `protobuf:"bytes,4,opt,name=user,proto3" json:"user,omitempty"`
 	unknownFields protoimpl.UnknownFields

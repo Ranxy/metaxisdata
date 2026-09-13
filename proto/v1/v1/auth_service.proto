@@ -84,8 +84,13 @@ message OAuth2IdentityProviderContext {
 }
 
 message LoginResponse {
+  // The access token. Empty for a web login, which carries the token in an
+  // HttpOnly cookie instead.
   string token = 1;
 
+  // Whether the workspace password policy requires the user to rotate their
+  // password before doing anything else. When true, the issued token is
+  // restricted to changing the user's own password (and logging out).
   bool require_reset_password = 3;
 
   // The user of successful login.

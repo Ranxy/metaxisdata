@@ -208,8 +208,10 @@ export declare type UpdateUserRequest = Message<"metaxisdata.v1.UpdateUserReques
   currentPassword: string;
 
   /**
-   * If set to true, and the user is not found, a new user will be created.
-   * In this situation, `update_mask` is ignored.
+   * If set to true, and the user is not found, a new user will be created from
+   * the fields named by `update_mask`; fields absent from the mask are ignored.
+   * `user_type` is a maskable path because it selects the kind of principal to
+   * create.
    *
    * @generated from field: bool allow_missing = 6;
    */

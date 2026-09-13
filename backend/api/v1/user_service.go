@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/mail"
 	"regexp"
+	"slices"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -328,8 +329,11 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 			if err := requirePermission(ctx, s.iam, permission.UsersCreate); err != nil {
 				return nil, err
 			}
+			// AIP-134: when the resource is missing the mask selects the fields
+			// used to create it, so the request body cannot smuggle in fields
+			// the caller did not declare.
 			return s.CreateUser(ctx, connect.NewRequest(&v1pb.CreateUserRequest{
-				User: request.Msg.User,
+				User: applyUpdateMaskToUser(request.Msg.User, request.Msg.UpdateMask.GetPaths()),
 			}))
 		}
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("user %d not found", userID))
@@ -344,6 +348,14 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 	if !isSelf {
 		if err := requirePermission(ctx, s.iam, permission.UsersUpdate); err != nil {
 			return nil, err
+		}
+	}
+
+	// A token restricted to a forced password reset authorizes exactly that
+	// change and nothing else.
+	if _, restricted := GetTokenRestrictionFromContext(ctx); restricted {
+		if !isSelf || !slices.Equal(request.Msg.UpdateMask.GetPaths(), []string{"password"}) {
+			return nil, connect.NewError(connect.CodePermissionDenied, errors.Errorf("access token restricted to a password reset can only change the user's own password"))
 		}
 	}
 
@@ -427,6 +439,30 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 		userResponse.ServiceKey = *passwordPatch
 	}
 	return connect.NewResponse(userResponse), nil
+}
+
+// applyUpdateMaskToUser keeps only the fields named by an update mask, so that a
+// create through PATCH with allow_missing applies the mask instead of silently
+// adopting the whole request body. `user_type` is a maskable path because it
+// selects the kind of principal to create.
+func applyUpdateMaskToUser(user *v1pb.User, paths []string) *v1pb.User {
+	masked := &v1pb.User{}
+	for _, path := range paths {
+		switch path {
+		case "email":
+			masked.Email = user.Email
+		case "title":
+			masked.Title = user.Title
+		case "password":
+			masked.Password = user.Password
+		case "phone":
+			masked.Phone = user.Phone
+		case "user_type":
+			masked.UserType = user.UserType
+		default:
+		}
+	}
+	return masked
 }
 
 // DeleteUser deletes a user.

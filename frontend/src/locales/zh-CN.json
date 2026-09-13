@@ -46,6 +46,23 @@
     "hasAccount": "已有账户？",
     "signIn": "立即登录"
   },
+  "resetPassword": {
+    "title": "需要重置密码",
+    "description": "根据工作区策略，您需要先设置新密码才能继续使用。",
+    "currentPassword": "当前密码",
+    "currentPasswordPlaceholder": "请输入当前密码",
+    "newPassword": "新密码",
+    "newPasswordPlaceholder": "请输入新密码",
+    "confirmPassword": "确认新密码",
+    "confirmPasswordPlaceholder": "请再次输入新密码",
+    "submit": "设置新密码",
+    "submitting": "保存中...",
+    "missingFields": "请填写所有必填字段",
+    "mismatch": "两次输入的密码不一致",
+    "sameAsCurrent": "新密码不能与当前密码相同",
+    "failed": "修改密码失败",
+    "signOut": "退出登录"
+  },
   "menu": {
     "home": "首页",
     "datasource": "数据源",

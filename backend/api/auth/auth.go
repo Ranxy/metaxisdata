@@ -83,7 +83,7 @@ func (in *APIAuthInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFun
 			return nil, connect.NewError(connect.CodeUnauthenticated, tokenErr)
 		}
 
-		user, err := in.getUserConnect(ctx, accessTokenStr)
+		user, identity, err := in.getUserConnect(ctx, accessTokenStr, req.Spec().Procedure)
 		if err != nil {
 			if IsAuthenticationAllowed(req.Spec().Procedure, authContext) {
 				return next(ctx, req)
@@ -92,6 +92,9 @@ func (in *APIAuthInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFun
 		}
 
 		ctx = context.WithValue(ctx, common.UserContextKey, user)
+		if identity.Restriction != "" {
+			ctx = context.WithValue(ctx, common.TokenRestrictionContextKey, identity.Restriction)
+		}
 		return next(ctx, req)
 	}
 }
@@ -120,7 +123,7 @@ func (in *APIAuthInterceptor) WrapStreamingHandler(next connect.StreamingHandler
 			return connect.NewError(connect.CodeUnauthenticated, tokenErr)
 		}
 
-		user, err := in.getUserConnect(ctx, accessTokenStr)
+		user, identity, err := in.getUserConnect(ctx, accessTokenStr, conn.Spec().Procedure)
 		if err != nil {
 			if IsAuthenticationAllowed(conn.Spec().Procedure, authContext) {
 				return next(ctx, conn)
@@ -129,15 +132,51 @@ func (in *APIAuthInterceptor) WrapStreamingHandler(next connect.StreamingHandler
 		}
 
 		ctx = context.WithValue(ctx, common.UserContextKey, user)
+		if identity.Restriction != "" {
+			ctx = context.WithValue(ctx, common.TokenRestrictionContextKey, identity.Restriction)
+		}
 
 		return next(ctx, conn)
 	}
+}
+
+// TokenRestriction narrows what an access token may be used for. A restricted
+// token is a fully valid, signed token; the auth interceptor refuses it on
+// every RPC outside restrictedTokenAllowedProcedures.
+type TokenRestriction string
+
+const (
+	// TokenRestrictionResetPassword is issued when the workspace password policy
+	// requires the user to rotate their password. It only allows the password
+	// change itself and logging out.
+	TokenRestrictionResetPassword TokenRestriction = "reset_password"
+)
+
+// restrictedTokenAllowedProcedures is the allowlist of RPCs a token carrying a
+// restriction may call. A restriction absent from this map may call nothing.
+var restrictedTokenAllowedProcedures = map[TokenRestriction]map[string]struct{}{
+	TokenRestrictionResetPassword: {
+		"/metaxisdata.v1.UserService/UpdateUser": {},
+		"/metaxisdata.v1.AuthService/Logout":     {},
+	},
+}
+
+// allows reports whether a token carrying the restriction may call procedure. An
+// empty restriction means a full-access token.
+func (r TokenRestriction) allows(procedure string) bool {
+	if r == "" {
+		return true
+	}
+	_, ok := restrictedTokenAllowedProcedures[r][procedure]
+	return ok
 }
 
 // AccessTokenIdentity is the verified identity carried by an access token.
 type AccessTokenIdentity struct {
 	UserID   int
 	IssuedAt time.Time
+	// Restriction is empty for a full-access token.
+	Restriction TokenRestriction
 }
 
 // VerifyAccessToken validates an access token's signature, algorithm, issuer,
@@ -170,7 +209,7 @@ func VerifyAccessToken(accessTokenStr, secret string, mode common.ReleaseMode) (
 	if err != nil {
 		return nil, errs.Wrapf(err, "malformed ID %s in the access token", claims.Subject)
 	}
-	identity := &AccessTokenIdentity{UserID: principalID}
+	identity := &AccessTokenIdentity{UserID: principalID, Restriction: TokenRestriction(claims.Restriction)}
 	if claims.IssuedAtNanos != 0 {
 		identity.IssuedAt = time.Unix(0, claims.IssuedAtNanos)
 	} else if claims.IssuedAt != nil {
@@ -180,30 +219,30 @@ func VerifyAccessToken(accessTokenStr, secret string, mode common.ReleaseMode) (
 }
 
 // authenticateConnect is a ConnectRPC-specific version that returns ConnectRPC errors.
-func (in *APIAuthInterceptor) authenticateConnect(ctx context.Context, accessTokenStr string) (*store.UserMessage, error) {
+func (in *APIAuthInterceptor) authenticateConnect(ctx context.Context, accessTokenStr string) (*store.UserMessage, *AccessTokenIdentity, error) {
 	if accessTokenStr == "" {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.New("access token not found"))
+		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.New("access token not found"))
 	}
 	if _, ok := in.stateCfg.TokenExpireCache.Get(accessTokenStr); ok {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.New("access token expired"))
+		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.New("access token expired"))
 	}
 	identity, err := VerifyAccessToken(accessTokenStr, in.secret, in.profile.Mode)
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, connect.NewError(connect.CodeUnauthenticated, errs.New("access token expired"))
+			return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.New("access token expired"))
 		}
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.New("failed to parse claim"))
+		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.New("failed to parse claim"))
 	}
 
 	user, err := in.store.GetUserByID(ctx, identity.UserID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("failed to find user ID %d in the access token", identity.UserID))
+		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("failed to find user ID %d in the access token", identity.UserID))
 	}
 	if user == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("user ID %d not exists in the access token", identity.UserID))
+		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("user ID %d not exists in the access token", identity.UserID))
 	}
 	if user.MemberDeleted {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("user ID %d has been deactivated by administrators", user.ID))
+		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("user ID %d has been deactivated by administrators", user.ID))
 	}
 	// A token minted before the last password change must not survive it. The
 	// comparison uses persisted state, so it holds across replicas. Both
@@ -211,11 +250,11 @@ func (in *APIAuthInterceptor) authenticateConnect(ctx context.Context, accessTok
 	// sub-second precision, so the ordering is exact.
 	if lastChange := user.Profile.GetLastChangePasswordTime(); lastChange != nil {
 		if tokenPredatesPasswordChange(identity.IssuedAt, lastChange.AsTime()) {
-			return nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("access token of user ID %d was issued before the last password change", user.ID))
+			return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("access token of user ID %d was issued before the last password change", user.ID))
 		}
 	}
 
-	return user, nil
+	return user, identity, nil
 }
 
 // tokenPredatesPasswordChange reports whether a token issued at issuedAt must be
@@ -230,13 +269,17 @@ func tokenPredatesPasswordChange(issuedAt, changedAt time.Time) bool {
 }
 
 // getUserConnect is a ConnectRPC-specific version that returns ConnectRPC errors.
-func (in *APIAuthInterceptor) getUserConnect(ctx context.Context, accessTokenStr string) (*store.UserMessage, error) {
-	user, err := in.authenticateConnect(ctx, accessTokenStr)
+// It also refuses a restricted token outside the RPCs that restriction allows.
+func (in *APIAuthInterceptor) getUserConnect(ctx context.Context, accessTokenStr, procedure string) (*store.UserMessage, *AccessTokenIdentity, error) {
+	user, identity, err := in.authenticateConnect(ctx, accessTokenStr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	if !identity.Restriction.allows(procedure) {
+		return nil, nil, connect.NewError(connect.CodePermissionDenied, errs.Errorf("access token restricted to %q cannot call %s", identity.Restriction, procedure))
 	}
 
-	return user, nil
+	return user, identity, nil
 }
 
 // GetTokenFromHeaders extracts the access token from HTTP headers for ConnectRPC.
@@ -282,22 +325,31 @@ type claimsMessage struct {
 	// (TimePrecision defaults to one second), so a password change can be
 	// ordered against the token without a whole-second blind spot.
 	IssuedAtNanos int64 `json:"iat_ns"`
+	// Restriction is empty for a full-access token.
+	Restriction string `json:"rst,omitempty"`
+}
+
+// GenerateRestrictedAccessToken generates an access token the auth interceptor
+// accepts only for the RPCs allowed by restriction.
+func GenerateRestrictedAccessToken(userName string, userID int, mode common.ReleaseMode, secret string, tokenDuration time.Duration, restriction TokenRestriction) (string, error) {
+	expirationTime := time.Now().Add(tokenDuration)
+	return generateToken(userName, userID, fmt.Sprintf(AccessTokenAudienceFmt, mode), expirationTime, []byte(secret), restriction)
 }
 
 // GenerateAPIToken generates an API token.
 func GenerateAPIToken(userName string, userID int, mode common.ReleaseMode, secret string) (string, error) {
 	expirationTime := time.Now().Add(apiTokenDuration)
-	return generateToken(userName, userID, fmt.Sprintf(AccessTokenAudienceFmt, mode), expirationTime, []byte(secret))
+	return generateToken(userName, userID, fmt.Sprintf(AccessTokenAudienceFmt, mode), expirationTime, []byte(secret), "")
 }
 
 // GenerateAccessToken generates an access token for web.
 func GenerateAccessToken(userName string, userID int, mode common.ReleaseMode, secret string, tokenDuration time.Duration) (string, error) {
 	expirationTime := time.Now().Add(tokenDuration)
-	return generateToken(userName, userID, fmt.Sprintf(AccessTokenAudienceFmt, mode), expirationTime, []byte(secret))
+	return generateToken(userName, userID, fmt.Sprintf(AccessTokenAudienceFmt, mode), expirationTime, []byte(secret), "")
 }
 
 // Pay attention to this function. It holds the main JWT token generation logic.
-func generateToken(userName string, userID int, aud string, expirationTime time.Time, secret []byte) (string, error) {
+func generateToken(userName string, userID int, aud string, expirationTime time.Time, secret []byte, restriction TokenRestriction) (string, error) {
 	// The iat claim only has second granularity, so two logins in the same
 	// second would otherwise produce byte-identical tokens. Logout revokes a
 	// token by its string, so identical tokens would let one session's logout
@@ -320,6 +372,7 @@ func generateToken(userName string, userID int, aud string, expirationTime time.
 			ID:        tokenID,
 		},
 		IssuedAtNanos: now.UnixNano(),
+		Restriction:   string(restriction),
 	}
 
 	// Declare the token with the HS256 algorithm used for signing, and the claims.
