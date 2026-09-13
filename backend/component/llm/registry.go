@@ -30,9 +30,15 @@ type ResolvedConfig struct {
 	ModelName    string
 }
 
+// profileStore is the slice of the store the registry needs. Keeping it an
+// interface lets the cache and page-walk logic be tested without PostgreSQL.
+type profileStore interface {
+	ListLLMProfiles(ctx context.Context, find *store.FindLLMProfileMessage) ([]*store.LLMProfileMessage, error)
+}
+
 // Registry provides access to configured LLM providers for internal consumers.
 type Registry struct {
-	store   *store.Store
+	store   profileStore
 	profile *config.Profile
 
 	mu       sync.Mutex
