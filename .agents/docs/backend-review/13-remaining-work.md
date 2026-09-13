@@ -14,7 +14,7 @@
 | 批次 | 内容 | 状态 | 提交 |
 | --- | --- | --- | --- |
 | 批 1 · 契约与文档一致性 | `C1`、`C4`–`C7`、`C9`、`C10`、`C13`、`D14`–`D16`、`D21`、`B14`；`F1`/`F3` 文档、`F2` 死分支 | ✅ 已完成 | `04b9adc` `21a95a9` `d9b0f16` `c1b6c21` `507e06d` `4f78442` |
-| 批 2 · 正确性 | `B2`–`B12`、`B16` | ⏳ 未开始 | |
+| 批 2 · 正确性 | `B2`–`B12`、`B16` | ✅ 已完成 | `39b2ce5` `ce5a4ff` `7ecca87` `e7e64f1` `1c8509b` `29a143a` `2d8e2c2` `e9ce8a5` `2c26648` |
 | 批 3 · 安全收尾 | `A4`、`A5`、`A6`、`A8`、`A9` | ⏳ 未开始 | |
 | 批 4 · 性能与整洁 | `D1`–`D13`、`D17`–`D20`、`C2`、`C3` | ⏳ 未开始 | |
 | 批 5 · 测试与 CI | `E1`–`E13`、`D22` | ⏳ 未开始 | |
@@ -264,6 +264,34 @@ B13（收掉视图 COLUMN 声明，F5）、C11（暴露域白名单，F8）、C1
 `go test -race -count=1 ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`buf format`/`buf lint`/`cd proto && buf generate`（产物可复现）、
 `vue-tsc -b`，以及 Docker 集成套件 `go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...`
 （`runner` 51.6s、`migrator` 12.9s，exit 0）。
+
+### 批 2 实施记录（已完成）
+
+| 条目 | 落地内容 | 提交 |
+| --- | --- | --- |
+| `B2` | `rebuildSchemaContents` 复制 `SchemaMetadata.Events`/`EnumTypes`；`buildDatabaseSchemaAtTime` 从目标时刻的 DATABASE 注册行恢复 `CharacterSet`/`Collation`/`Extensions`/`Datashare`/`Owner`/`SearchPath`/`EventTriggers`，enum/event/extension/event trigger 的变更不再报 "No changes detected." | `39b2ce5` |
+| `B3` | `namespace_mapping`（2 处）、`openlineage_api_key`、`manual_sql`（3 处）、`llm` 的 not-found 改 `common.Errorf(common.NotFound, …)`；`openlineage_service` 的三个 handler 不再强制 `CodeInternal`，交给 `ErrorMappingInterceptor` 映射；`common_test.go` 新增"pkg/errors 包裹不遮蔽 common.Code"用例（实测链路可用） | `ce5a4ff` |
+| `B4` | `buildContextFromLineage`/`buildContextFromSQL`/`fetchObjectsByGUIDs` 改为返回 error：store 失败向上传播（handler 回 `Internal`），"对象不存在/无法解析 SQL" 仍是空 context；`toolGetObjectSchema` 查库出错时返回 error 形态的 tool result 而不是 "no object found" | `7ecca87` |
+| `B6` | `CreateAuditLog` 不再采用调用方提供的 `CreateTime`，始终 `time.Now().UTC()`（唯一调用方是审计拦截器，本就不设置） | `e7e64f1` |
+| `B7` | `UpdateUser` 只要 `PasswordHash` 变化就无条件写 `LastChangePasswordTime`：clone `patch.Profile`（或当前 profile）后打时间戳，不再只在 `patch.Profile == nil` 时设置 | `1c8509b` |
+| `B16` | 新增 `parseEventTime`：先按 RFC3339 解析（尊重偏移），失败则追加 `Z` 按 UTC 兜底，二者都失败才告警；补 `TestParseEventTime` | `29a143a` |
+| `B12` | `getVersionFromPath` 强制四位数字前缀；`getSortedVersionedFiles` 在任何 DDL 执行前拒绝重复版本；`adoptLegacySchema` 先用 10 个基线哨兵表（`setting`/`policy`/`user_group`/`instance`/`db`/`meta_registry_resource`/`history`/`manual_sql`/`column_lineage`/`audit_log`）校验形状，缺失即拒绝接管；补单元测试 | `2d8e2c2` |
+| `B5` | `BatchUpdateInstancesResponse` 由 `repeated Instance` 改为逐项 `BatchUpdateInstanceResult{name,instance,error}`（`instances=1` 保留号并 `reserved`），handler 逐项报错不再遇错即返回；两个 batch RPC 都执行 proto 文档的 1000 条上限 | `e9ce8a5` |
+| `B11` | `CreateInstance` 的 admin driver 失败不再被静默丢弃（记 Warn）；**初始同步仍保持同步执行**（见下方偏差说明） | `e9ce8a5` |
+| `B10` | 五个 `Get*`（OpenLineage run/task、external dataset、LLM profile、namespace mapping）在匹配多行时返回 `common.Conflict` 而不是静默取第一行 | `ce5a4ff` |
+| `B8` | 新增 `common.EscapeGUIDPart`/`UnescapeGUIDPart`/`BuildMetaGUID`/`SplitMetaGUID`；所有 builder（syncer 的多段拼接、manual SQL、lineage 模型、OpenLineage resolver）与 parser（common GUID 读取、lineage analyzer、LLM tools、`buildDatabaseSchemaAtTime`、ExplainSQL scope）统一走它们；OpenLineage GUID 额外把 `:` 编码为 `%3A`（`url.PathEscape` 不转义它）。**对不含分隔符的名字是 no-op，既有 GUID 不变** | `2c26648` |
+| `B9` | 限流移入 driver 打开路径：`GetInstanceMeta` 与 `SyncDatabaseSchema` 都 acquire/release `InstanceOutstandingConnections`；checker 不再自己 Increment/Decrement，改为在返回 `errInstanceConnectionsExhausted` 时把数据库重新入队等下一 tick；补限流单元测试 | `2c26648` |
+| — | 顺带修掉 `backend/server` 测试的既有 `-race` 竞态（`server_lifecycle_test.go` 的 `configureEchoRouters` 与 `testServers` 的 Once 并发注册 Prometheus，约 1/8 概率失败），改为互斥串行 | `764bc47` |
+
+**批 2 的两处偏差（与原计划不同，已确认合理）**：
+
+- **`B11` 未改为异步**：`SyncAllDatabases` 只入队**已存在**的 `db` 行，而新建实例的数据库正是由 `SyncInstance` 发现的；且实例默认 `sync_interval = 0`，`trySyncAll` 的 `shouldSyncNow` 会显式跳过，因此后台周期扫描不会补做初始同步。改成 goroutine 又缺少生命周期/关停跟踪，故本批只修掉"静默丢错"这一半，保持同步执行；如需异步化，应先给 runner 增加一个受 `runnerWG` 跟踪的入队 API。
+- **`B12` 的目录一致性未按原计划收紧为"必须等于基线 `MAJOR.MINOR`"**：保留旧版本行的增量是合法布局（`migrator_test.go` 现即以 `0.0`/`0.2` 目录为有效样例），强行等于基线行会在版本线升级时拒绝历史文件。本批改为严格四位宽度 + 重复版本检测 + 接管哨兵校验；任意 `MAJOR.MINOR` 目录仍被接受，但错版本目录会以"重复版本/账本版本过新"等方式显式失败。
+
+验证（本地，全部通过）：`gofmt -l backend/` 空、`go build ./...`、`go vet ./...`（默认/`release`/`integration`/`embed_frontend`）、`go test ./...`、
+`go test -race -count=1 ./...`（服务器包连跑 8 次 `-race` 无竞态）、`golangci-lint run --allow-parallel-runners`（0 issues）、
+`buf format`/`buf lint`/`cd proto && buf generate`（产物可复现）、`vue-tsc -b`，以及 Docker 集成套件
+`go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...`（`runner` 51.9s、`migrator` 13.3s，exit 0）。
 
 ---
 
