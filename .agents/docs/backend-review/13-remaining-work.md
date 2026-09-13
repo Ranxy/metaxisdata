@@ -18,7 +18,7 @@
 | 批 3 · 安全收尾 | `A4`、`A5`、`A6`、`A8`、`A9` | ✅ 已完成 | `ac616d7` `cdf5ec9` `2968b88` `dd9c32d` |
 | 批 4 · 性能与整洁 | `D1`–`D13`、`D17`–`D20`、`C2`、`C3` | ⏳ 未开始 | |
 | 批 5 · 测试与 CI | `E1`–`E13`、`D22` | ⏳ 未开始 | |
-| 批 6 · 决策后的实现 | `B13`、`C11`、`C14`；`F4`/`F6`/`F7` 文档 | ⏳ 未开始 | |
+| 批 6 · 决策后的实现 | `B13`、`C11`、`C14`；`F4`/`F6`/`F7` 文档 | ✅ 已完成 | `57feb35` `b975a1d` `38dd450` |
 
 批 1 的实施细节与逐项对照见第八节末尾「批 1 实施记录」。
 
@@ -105,7 +105,7 @@
 | C11 | `08 setting-domain-allowlist-unreachable` | `proto/store/store/setting.proto:34,37`、`backend/api/v1/user_service.go:586-615`、`backend/api/v1/setting_service.go:54-69` | **decision-pending**。`WorkspaceProfileSetting.domains`/`enforce_identity_domain` 被 `validateEmailWithDomains` 读、gating 注册/更新/登录，但**没有任何写入方**：`UpdateWorkspaceProfileSetting` 只接受 4 个 mask 路径，v1 不暴露这两个字段，`init.go` 只写空消息。 | **已决策（F8=B，本轮）**：暴露域白名单。实现动作＝v1 设置消息暴露 `domains`/`enforce_identity_domain`、`UpdateWorkspaceProfileSetting` 增加对应 mask 路径、`/settings/general` 加表单项（两个 locale），并补校验测试（含 `enforce_identity_domain=true` 且列表为空时的语义）。 |
 | C12 | `05 registry-apikey-naming` | `backend/component/llm/registry.go:32,108`、`backend/store/llm.go:222`、`proto/store/store/llm.proto:27` | **partial**。`ResolvedConfig.APIKey` 已注释为 "decrypted"，但源字段仍叫 `api_key_encrypted`，且 `ListLLMProfiles` 返回前原地解混淆，于是**名为 encrypted 的字段装着明文**；其它调用方按该名当 Bearer 用。 | **已决策（F3=A，本轮）**：保留 XOR 与现有命名，本项不再作为代码项；仅补注释说明 `ResolvedConfig.APIKey`（明文）与 `api_key_encrypted`（同样在返回前被解密）的命名歧义，避免新调用方误以为它已加密。 |
 | C13 | `04 A-L-convert-reflection` | `backend/api/v1/database_convert.go:129-226` | **open(debt)**。12 个 metadata 转换函数都是 `data, _ := proto.Marshal(meta); _ = proto.Unmarshal(data, result)`，两个错误都丢弃；仅当 store/v1 字段号完全相同才正确。 | 换成显式字段映射（参照 `convertManualSQLMetadata`），或至少检查错误；加一组 store↔v1 golden 测试。 |
-| C14 | 新增（F9 自定义决策） | `proto/store/store/setting.proto`、`proto/v1/v1/setting_service.proto`、`backend/api/v1/explain_sql_service.go:49-66`、`frontend/src/pages/ExplainSQLPage.vue`、Settings 页面 | **新增功能**。本轮决策：ExplainSQL 前端加 provider/模型选择器，**并在 Settings 增加管理员配置的「允许的 provider 列表」**；服务端解析 `provider_name` 时校验其属于允许列表（不在列表 → `InvalidArgument`，缓存 key 仍按 provider/model 隔离），选择器只列出"允许列表 ∩ 已启用"。 | 新设置字段（workspace setting）+ `UpdateWorkspaceProfileSetting` mask + 前端多选 UI + ExplainSQL 选择器 + 单测（列表为空语义、非允许 provider 被拒）与前端 Vitest；需 schema 增量 + `buf generate`。 |
+| C14 | 新增（F9 自定义决策） | `proto/store/store/setting.proto`、`proto/v1/v1/setting_service.proto`、`backend/api/v1/explain_sql_service.go:49-66`、`frontend/src/pages/ExplainSQLPage.vue`、Settings 页面 | **新增功能**。本轮决策：ExplainSQL 前端加 provider/模型选择器，**并在 Settings 增加管理员配置的「允许的 provider 列表」**；服务端解析 `provider_name` 时校验其属于允许列表（不在列表 → `InvalidArgument`，缓存 key 仍按 provider/model 隔离），选择器只列出"允许列表 ∩ 已启用"。 | 新设置字段（workspace setting）+ `UpdateWorkspaceProfileSetting` mask + 前端多选 UI + ExplainSQL 选择器 + 单测（列表为空语义、非允许 provider 被拒）与前端 Vitest。**更正**：该字段落在既有 `WORKSPACE_PROFILE` 的 `setting.value`（text 列存 protojson）里，只需 proto 改动 + `buf generate`，**不需要 schema 增量**。 |
 
 ---
 
@@ -188,7 +188,7 @@
 | F6 | **明确永久保留**（未采纳推荐） | 关闭；`audit_log` 与 `meta_registry_resource_history` 永久保留写入文档 |
 | F7 | 文档化反向代理契约 | 关闭；部署文档写明代理头契约与 `--trusted-proxies` 要求 |
 | F8 | 暴露域白名单 | `C11` 改为实现 v1 字段 + mask + Settings 表单项 |
-| F9 | 前端选择器 + **管理员配置的允许 provider 列表**（自定义） | 新增 `C14`：设置字段 + mask + 前端多选 + ExplainSQL 校验；需 schema 增量 |
+| F9 | 前端选择器 + **管理员配置的允许 provider 列表**（自定义） | 新增 `C14`：设置字段 + mask + 前端多选 + ExplainSQL 校验（**不需要 schema 增量**：字段在既有 `WORKSPACE_PROFILE` 的 protojson 里） |
 | F10 | 按 UTC 兜底解析 | 新增 `B16`：无偏移时追加 `Z` 再解析 |
 
 ---
@@ -310,6 +310,22 @@ B13（收掉视图 COLUMN 声明，F5）、C11（暴露域白名单，F8）、C1
 `vue-tsc -b`，以及 Docker 集成套件 `go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...`（`runner` 53.7s、`migrator` 14.7s，exit 0）。
 
 > 操作提醒：`buf generate` 的 `clean: true` 会短暂清空生成目录，**不要与 `go test`/`go build` 并行运行**（本轮首次集成运行即因此出现"generated file not found"的假失败，串行重跑即通过）。
+
+### 批 6 实施记录（已完成）
+
+| 条目 | 落地内容 | 提交 |
+| --- | --- | --- |
+| `B13` | `getNextLevelObjectType` 去掉 VIEW/MV/EXTERNAL_TABLE 的 COLUMN 声明（它们的列存在各自 metadata 里，没有 COLUMN 注册行）；补测试锁定"视图无列子层级、表仍有" | `57feb35` |
+| `C11` | v1 `WorkspaceProfileSetting` 新增 `domains`(5)/`enforce_identity_domain`(6)；`UpdateWorkspaceProfileSetting` 支持这两个 mask 路径，并用 `normalizeIdentityDomains`（trim + 小写 + 去空 + 拒绝含 `@`/`/`/`:` 的条目）校验；`/settings/general` 增加"限制注册与登录的邮箱域"开关与域名输入框（两个 locale）；补归一化测试 | `b975a1d` |
+| `C14` | store/v1 `WorkspaceProfileSetting` 新增 `allowed_llm_provider_profiles`（store 15 / v1 7）；mask 路径 `allowed_llm_provider_profiles` + `normalizeAllowedLLMProfiles`（必须是 `llm-provider-profiles/{id}` 资源名、去重）；`ExplainSQL` 读取该设置：显式 `provider_name` 不在允许列表 → `InvalidArgument`，未指定时在允许集合内取第一个，集合为空 → `FailedPrecondition`（允许列表为空 = 放行全部已启用 profile）；Settings 增加 profile 多选（空选 = 全部允许，hint 写明）；ExplainSQL 页新增 provider 选择器并传 `providerName`，只列"允许 ∩ 已启用"且多于一个时才显示；新增前端 `isProviderAllowed` 纯函数 + Vitest，后端 `filterAllowedLLMConfigs`/`isLLMProfileAllowed` 单测 | `b975a1d` |
+| `F4`/`F6`/`F7` | `AGENTS.md` 的「Security and deployment posture」新增三条已接受决策：破坏性 schema 同步仅日志（无阈值/确认开关）、`audit_log` 与 `meta_registry_resource_history` 永久保留、反向代理头与 `--trusted-proxies` 的部署契约 | `38dd450` |
+
+**批 6 的一处计划纠正**：`C11`/`C14` 的设置字段都落在既有 `WORKSPACE_PROFILE` 的 `setting.value`（text 列存 protojson）里，因此**没有 schema 增量、没有 DDL**，只需 proto 改动 + `buf generate`；13 原先写的"需 schema 增量"已更正。另注：`F9` 的 `provider_name` 现已同时接受裸 profile id 与 `llm-provider-profiles/{id}` 资源名（`llmProfileID` 归一到同一空间）。
+
+验证（本地，全部通过）：`gofmt -l backend/` 空、`go build ./...`、`go vet ./...`（默认/`release`/`integration`/`embed_frontend`）、`go test ./...`、
+`go test -race -count=1 ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`buf format`/`buf lint`/`cd proto && buf generate`（可复现）、
+前端 `biome check src`（189 文件）、`eslint src --max-warnings=0`、`vue-tsc -b`、`vitest run`（19 用例）、`vite build`，以及 Docker 集成套件
+`go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...`（`runner` 54.6s、`migrator` 15.2s，exit 0）。
 
 ---
 
