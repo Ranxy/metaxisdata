@@ -80,15 +80,34 @@ func (*Store) listOpenMetaRegistryHistoryByKey(ctx context.Context, tx *sql.Tx, 
 	return result, nil
 }
 
+// buildCloseOpenMetaRegistryHistoryQuery closes the open history row of each
+// given key. The key pairs guid with object_type, so one statement replaces the
+// per-key round trip without closing a cross combination.
+func buildCloseOpenMetaRegistryHistoryQuery() string {
+	return `
+		UPDATE meta_registry_resource_history AS history
+		SET valid_to = $3
+		FROM (SELECT * FROM unnest($1::text[], $2::int[]) AS key(guid, object_type)) AS keys
+		WHERE history.guid = keys.guid
+			AND history.object_type = keys.object_type
+			AND history.valid_to IS NULL
+	`
+}
+
 func (*Store) closeOpenMetaRegistryHistory(ctx context.Context, tx *sql.Tx, list []*MetaRegistryHistory, observedAt time.Time) error {
+	if len(list) == 0 {
+		return nil
+	}
+
+	guids := make([]string, 0, len(list))
+	objectTypes := make([]storepb.MetaType, 0, len(list))
 	for _, history := range list {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE meta_registry_resource_history
-			SET valid_to = $3
-			WHERE guid = $1 AND object_type = $2 AND valid_to IS NULL
-		`, history.GUID, history.ObjectType, observedAt); err != nil {
-			return err
-		}
+		guids = append(guids, history.GUID)
+		objectTypes = append(objectTypes, history.ObjectType)
+	}
+
+	if _, err := tx.ExecContext(ctx, buildCloseOpenMetaRegistryHistoryQuery(), pq.Array(guids), pq.Array(objectTypes), observedAt); err != nil {
+		return err
 	}
 	return nil
 }

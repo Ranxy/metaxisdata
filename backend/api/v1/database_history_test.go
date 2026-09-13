@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func TestBuildMetadataHistoryEventContexts(t *testing.T) {
 	events := buildMetadataHistoryEventContexts([]*store.MetaRegistryHistory{
 		{GUID: "inst;db;public;users", ObjectType: storepb.MetaType_TABLE, ValidFrom: t0, ValidTo: &t1},
 		{GUID: "inst;db;public;users", ObjectType: storepb.MetaType_TABLE, ValidFrom: t1, ValidTo: &t2},
-	})
+	}, false)
 
 	require.Len(t, events, 3)
 	require.Equal(t, v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_CREATED, events[0].operation)
@@ -30,6 +31,20 @@ func TestBuildMetadataHistoryEventContexts(t *testing.T) {
 	require.Equal(t, t1, events[1].eventTime)
 	require.Equal(t, v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_DELETED, events[2].operation)
 	require.Equal(t, t2, events[2].eventTime)
+
+	// The oldest row of a page probe is context only: it tells the row after it
+	// that it replaced it, and contributes no entry of its own.
+	probed := buildMetadataHistoryEventContexts([]*store.MetaRegistryHistory{
+		{GUID: "inst;db;public;users", ObjectType: storepb.MetaType_TABLE, ValidFrom: t0, ValidTo: &t1},
+		{GUID: "inst;db;public;users", ObjectType: storepb.MetaType_TABLE, ValidFrom: t1, ValidTo: &t2},
+	}, true)
+
+	require.Len(t, probed, 2)
+	require.Equal(t, v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_UPDATED, probed[0].operation)
+	require.Equal(t, t1, probed[0].eventTime)
+	require.Equal(t, t0, probed[0].before.ValidFrom, "the dropped row still supplies the replaced state")
+	require.Equal(t, v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_DELETED, probed[1].operation)
+	require.Equal(t, t2, probed[1].eventTime)
 }
 
 func TestBuildMetadataHistoryEventResultForTable(t *testing.T) {
@@ -182,4 +197,78 @@ func TestDiffForeignKeyGroupCoversMatchType(t *testing.T) {
 	require.Len(t, group.Changes, 1)
 	require.Len(t, group.Changes[0].GetFieldChanges(), 1)
 	require.Equal(t, "match_type", group.Changes[0].GetFieldChanges()[0].GetField())
+}
+
+// Paging must not depend on how much history exists: a page derived from the
+// bounded probe has to match the page the whole history would produce, walk
+// every entry exactly once, and end with an empty token.
+func TestMetadataHistoryPageMatchesFullHistory(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, time.May, 29, 10, 0, 0, 0, time.UTC)
+	history := buildDenseMetadataHistory(base, 40)
+
+	full, _, err := metadataHistoryPage(history, &pageOffset{limit: len(history)*2 + 10})
+	require.NoError(t, err)
+
+	for _, size := range []int{1, 3, 7} {
+		limit := size
+		var collected []metadataHistoryEventContext
+		token := ""
+		for page := 0; ; page++ {
+			require.Less(t, page, len(full)+1, "paging must terminate")
+			offset := &pageOffset{limit: limit, offset: 0}
+			if token != "" {
+				parsed, err := parseLimitAndOffset(&pageSize{token: token, limit: limit, maximum: 1000})
+				require.NoError(t, err)
+				offset = parsed
+			}
+
+			probeSize := metadataHistoryProbeSize(offset)
+			start := max(0, len(history)-probeSize)
+			probe := slices.Clone(history[start:])
+			slices.Reverse(probe)
+
+			events, nextToken, err := metadataHistoryPage(probe, offset)
+			require.NoError(t, err)
+			collected = append(collected, events...)
+			if nextToken == "" {
+				break
+			}
+			token = nextToken
+		}
+
+		require.Len(t, collected, len(full), "page size %d must visit every event once", size)
+		for i := range collected {
+			require.Equal(t, full[i].eventTime, collected[i].eventTime, "page size %d entry %d", size, i)
+			require.Equal(t, full[i].operation, collected[i].operation, "page size %d entry %d", size, i)
+		}
+	}
+}
+
+// buildDenseMetadataHistory returns ascending history rows covering creates,
+// updates and deletions, one per hour.
+func buildDenseMetadataHistory(base time.Time, count int) []*store.MetaRegistryHistory {
+	const guid = "inst;db;public;users"
+	rows := make([]*store.MetaRegistryHistory, 0, count)
+	for i := range count {
+		from := base.Add(time.Duration(i) * time.Hour)
+		row := &store.MetaRegistryHistory{GUID: guid, ObjectType: storepb.MetaType_TABLE, ValidFrom: from}
+		if i == count-1 {
+			// The open row: its valid_to stays nil.
+			rows = append(rows, row)
+			continue
+		}
+		if i%4 == 3 {
+			// A gap: the row closes with no successor, which is a deletion.
+			to := from.Add(30 * time.Minute)
+			row.ValidTo = &to
+			rows = append(rows, row)
+			continue
+		}
+		to := base.Add(time.Duration(i+1) * time.Hour)
+		row.ValidTo = &to
+		rows = append(rows, row)
+	}
+	return rows
 }

@@ -134,3 +134,16 @@ func TestBuildOpenMetaRegistryHistoryByKeyQueryIsPaired(t *testing.T) {
 	require.NotContains(t, query, "ANY($1)")
 	require.NotContains(t, query, "ANY($2)")
 }
+
+// Closing the open history rows is one statement for the whole batch, and its
+// key predicate pairs guid with object_type like the read path does.
+func TestBuildCloseOpenMetaRegistryHistoryQuery(t *testing.T) {
+	t.Parallel()
+
+	query := buildCloseOpenMetaRegistryHistoryQuery()
+	require.Contains(t, query, "SET valid_to = $3")
+	require.Contains(t, query, "history.valid_to IS NULL")
+	require.Contains(t, query, "unnest($1::text[], $2::int[])")
+	require.NotContains(t, query, "ANY($1)")
+	require.NotContains(t, query, "ANY($2)")
+}
