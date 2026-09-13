@@ -16,7 +16,7 @@ import (
 func TestParseLimitAndOffset(t *testing.T) {
 	t.Parallel()
 
-	tokenWithLimit := func(limit, offset int32) string {
+	tokenWithLimit := func(limit, offset int64) string {
 		encoded, err := marshalPageToken(&storepb.PageToken{Limit: limit, Offset: offset})
 		require.NoError(t, err)
 		return encoded
@@ -67,11 +67,18 @@ func TestParseLimitAndOffset(t *testing.T) {
 		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 	})
 
-	t.Run("negative token offset is clamped", func(t *testing.T) {
+	t.Run("negative token offset is rejected", func(t *testing.T) {
 		t.Parallel()
-		offset, err := parseLimitAndOffset(&pageSize{token: tokenWithLimit(25, -5), maximum: 1000})
-		require.NoError(t, err)
-		require.Equal(t, 0, offset.offset)
+		_, err := parseLimitAndOffset(&pageSize{token: tokenWithLimit(25, -5), maximum: 1000})
+		require.Error(t, err)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	})
+
+	t.Run("offset beyond the representable bound is rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := parseLimitAndOffset(&pageSize{token: tokenWithLimit(25, maxPageOffset+1), maximum: 1000})
+		require.Error(t, err)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 	})
 
 	t.Run("garbage token is rejected", func(t *testing.T) {
@@ -102,8 +109,8 @@ func TestPaginate(t *testing.T) {
 
 		next := &storepb.PageToken{}
 		require.NoError(t, unmarshalPageToken(token, next))
-		require.Equal(t, int32(3), next.Limit)
-		require.Equal(t, int32(3), next.Offset)
+		require.Equal(t, int64(3), next.Limit)
+		require.Equal(t, int64(3), next.Offset)
 	})
 
 	t.Run("exact page without overflow has no next token", func(t *testing.T) {
@@ -129,6 +136,17 @@ func TestPaginate(t *testing.T) {
 		require.Equal(t, []int{3, 4}, second)
 		require.NotEmpty(t, token)
 	})
+}
+
+// The token used to carry an int32 offset whose addition could wrap negative.
+// Past the bound the correct answer is "no next page", not a token that points
+// back at the first page.
+func TestGetNextPageTokenPastTheBound(t *testing.T) {
+	t.Parallel()
+
+	token, err := (&pageOffset{limit: 10, offset: maxPageOffset}).getNextPageToken()
+	require.NoError(t, err)
+	require.Empty(t, token)
 }
 
 // The lineage endpoints default to a page large enough that the graph UI gets

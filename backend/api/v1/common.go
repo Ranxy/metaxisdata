@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"math"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -120,10 +121,21 @@ type pageOffset struct {
 	offset int
 }
 
+// maxPageOffset bounds the offset a page token may carry. The token used to hold
+// an int32 offset whose addition could wrap negative (falling back to the first
+// page); the bound also keeps a forged token from asking the database for an
+// absurd OFFSET.
+const maxPageOffset = math.MaxInt32
+
 func (p *pageOffset) getNextPageToken() (string, error) {
+	next := int64(p.offset) + int64(p.limit)
+	if next < 0 || next > maxPageOffset {
+		// The caller walked past the representable range; there is no next page.
+		return "", nil
+	}
 	return marshalPageToken(&storepb.PageToken{
-		Limit:  int32(p.limit),
-		Offset: int32(p.offset + p.limit),
+		Limit:  int64(p.limit),
+		Offset: next,
 	})
 }
 
@@ -165,6 +177,9 @@ func parseLimitAndOffset(size *pageSize) (*pageOffset, error) {
 		}
 		if token.Limit < 0 {
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("page size cannot be negative"))
+		}
+		if token.Offset < 0 || token.Offset > maxPageOffset {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid page token offset"))
 		}
 		offset.limit = int(size.limit)
 		if offset.limit <= 0 {

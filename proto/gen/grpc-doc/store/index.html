@@ -834,7 +834,7 @@ identified by an opaque server-generated id. </p></td>
 
       
         <h3 id="metaxisdata.store.PageToken">PageToken</h3>
-        <p>Used internally for obfuscating the page token.</p>
+        <p>Used internally for obfuscating the page token. The fields are int64 so an</p><p>offset cannot overflow int32 after a forged or very large token.</p>
 
         
           <table class="field-table">
@@ -845,14 +845,14 @@ identified by an opaque server-generated id. </p></td>
               
                 <tr>
                   <td>limit</td>
-                  <td><a href="#int32">int32</a></td>
+                  <td><a href="#int64">int64</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
               
                 <tr>
                   <td>offset</td>
-                  <td><a href="#int32">int32</a></td>
+                  <td><a href="#int64">int64</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>

@@ -213,13 +213,14 @@
 <a name="metaxisdata-store-PageToken"></a>
 
 ### PageToken
-Used internally for obfuscating the page token.
+Used internally for obfuscating the page token. The fields are int64 so an
+offset cannot overflow int32 after a forged or very large token.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| limit | [int32](#int32) |  |  |
-| offset | [int32](#int32) |  |  |
+| limit | [int64](#int64) |  |  |
+| offset | [int64](#int64) |  |  |
 
 
 

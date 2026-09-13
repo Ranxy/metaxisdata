@@ -81,11 +81,12 @@ func (Engine) EnumDescriptor() ([]byte, []int) {
 	return file_store_common_proto_rawDescGZIP(), []int{0}
 }
 
-// Used internally for obfuscating the page token.
+// Used internally for obfuscating the page token. The fields are int64 so an
+// offset cannot overflow int32 after a forged or very large token.
 type PageToken struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Limit         int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
-	Offset        int32                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
+	Limit         int64                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        int64                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -120,14 +121,14 @@ func (*PageToken) Descriptor() ([]byte, []int) {
 	return file_store_common_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *PageToken) GetLimit() int32 {
+func (x *PageToken) GetLimit() int64 {
 	if x != nil {
 		return x.Limit
 	}
 	return 0
 }
 
-func (x *PageToken) GetOffset() int32 {
+func (x *PageToken) GetOffset() int64 {
 	if x != nil {
 		return x.Offset
 	}
@@ -140,8 +141,8 @@ const file_store_common_proto_rawDesc = "" +
 	"\n" +
 	"\x12store/common.proto\x12\x11metaxisdata.store\"9\n" +
 	"\tPageToken\x12\x14\n" +
-	"\x05limit\x18\x01 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x02 \x01(\x05R\x06offset*\xb8\x02\n" +
+	"\x05limit\x18\x01 \x01(\x03R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x02 \x01(\x03R\x06offset*\xb8\x02\n" +
 	"\x06Engine\x12\x16\n" +
 	"\x12ENGINE_UNSPECIFIED\x10\x00\x12\t\n" +
 	"\x05MYSQL\x10\x02\x12\f\n" +
