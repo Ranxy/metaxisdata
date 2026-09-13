@@ -17,7 +17,7 @@
 | 批 2 · 正确性 | `B2`–`B12`、`B16` | ✅ 已完成 | `39b2ce5` `ce5a4ff` `7ecca87` `e7e64f1` `1c8509b` `29a143a` `2d8e2c2` `e9ce8a5` `2c26648` |
 | 批 3 · 安全收尾 | `A4`、`A5`、`A6`、`A8`、`A9` | ✅ 已完成 | `ac616d7` `cdf5ec9` `2968b88` `dd9c32d` |
 | 批 4 · 性能与整洁 | `D1`–`D13`、`D17`–`D20`、`C2`、`C3` | ⏳ 未开始 | |
-| 批 5 · 测试与 CI | `E1`–`E13`、`D22` | ⏳ 未开始 | |
+| 批 5 · 测试与 CI | `E1`–`E13`、`D22` | ✅ 已完成（`E3`/`E6`/`E9` 各留一小部分，`E7`/`E12`/`E13` 转遗留，见下） | `f950059` `98c3db4` `a5214dc` `a9f8e7b` `18638ba` `f4b7baf` `6f96432` `b88515b` |
 | 批 6 · 决策后的实现 | `B13`、`C11`、`C14`；`F4`/`F6`/`F7` 文档 | ✅ 已完成 | `57feb35` `b975a1d` `38dd450` |
 
 批 1 的实施细节与逐项对照见第八节末尾「批 1 实施记录」。
@@ -326,6 +326,34 @@ B13（收掉视图 COLUMN 声明，F5）、C11（暴露域白名单，F8）、C1
 `go test -race -count=1 ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`buf format`/`buf lint`/`cd proto && buf generate`（可复现）、
 前端 `biome check src`（189 文件）、`eslint src --max-warnings=0`、`vue-tsc -b`、`vitest run`（19 用例）、`vite build`，以及 Docker 集成套件
 `go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...`（`runner` 54.6s、`migrator` 15.2s，exit 0）。
+
+### 批 5 实施记录（已完成）
+
+| 条目 | 落地内容 | 提交 |
+| --- | --- | --- |
+| `E1` | 新增 `TestMigrateSchemaLATESTMatchesTheIncrementChain`（integration）：库 A 走全新安装，库 B 先执行 `LATEST.sql` 再按序执行全部增量，逐条断言"增量必须能在 LATEST 之上干净执行"，最后比对两份 `information_schema.columns` + `pg_indexes` 快照。当前两者一致（无漂移），任何后续只改一侧的变更都会被这条用例抓住；两个库共用一个容器 | `f950059` |
+| `E2` | 新增 `TestMigrateSchemaSerializesConcurrentReplicas`（integration）：两个 `MigrateSchema` 并发跑同一库，断言都成功且 ledger 恰好一行 → 覆盖 advisory lock 串行化（重复版本检测的单元用例已在批 2 `B12` 补过） | `f950059` |
+| `E3` | 新增 `backend/test/integration/env/fixtures.go`：把 MySQL/Postgres 的 fixture DDL 抽成 4 个常量（seed/reset × 两引擎），harness 的 `seed/reset*Schema` 与 runner 的 `prepare*SourceDatabase` 全部改为引用它们，四处重复的 DDL 收敛到一处 | `98c3db4` |
+| `E4` | `waitForServerReady` 不再把任意可连通的响应当 ready：状态码 ≥ 500 继续等待/最终超时（此前一个正在 5xx 的进程会被判定为就绪） | `a5214dc` |
+| `E5` | 删除 PG 用例末尾不校验任何后置条件的 `SELECT 1;`（该用例的后置条件已由上面的历史断言覆盖） | `98c3db4` |
+| `E6` | 通过 `corepack pnpm@10.24.0` 添加 `@vitest/coverage-v8@4.0.15`（含 lockfile），CI frontend job 的测试步骤改为 `pnpm --dir frontend test:coverage`；**本机无法执行覆盖率**：pnpm 全局 store 在本沙箱是只读的（`ERR_PNPM_EROFS`），已用 `--lockfile-only` 更新并复核了 lockfile（`install --frozen-lockfile --lockfile-only` 通过），实际报告由 CI 产出。暂无阈值（需先有一次基线） | `b88515b` |
+| `E8` | CI 新增 `release` job：`make build-release`（`-tags release` 的 prod profile 此前从没有任何 CI 编译过） | `b88515b` |
+| `E9` | 删除 `analyzer_test.go` 冗余的 `tt := tt`；给 `openlineage_dataset_test.go` 的 3 个用例补 `t.Parallel()`。`migrator_test.go` 的 `t.Fatalf → testify` 迁移仍未做（纯风格，转遗留） | `f4b7baf` |
+| `E10` | `meta_resource_test.go` 的历史变更断言由"固定下标顺序"改为 `require.ElementsMatch` 集合比较 | `a9f8e7b` |
+| `E11` | 新增 `TestConvertEngineRoundTrip`：五个受支持引擎双向转换往返一致，未知值与 `UNSPECIFIED` 都归一到 `ENGINE_UNSPECIFIED` | `18638ba` |
+| `D22` | `Registry.store` 改为最小接口 `profileStore`（仍接受 `*store.Store`），新增 `registry_test.go` 用假 store 覆盖：TTL 内命中缓存、`Invalidate` 强制重载、跨页遍历（>100 个 profile 不丢）、禁用模型过滤、TTL 取值约束 | `6f96432` |
+
+**批 5 转为遗留（阶段 8 之后待办）**：
+
+| 项 | 为什么没做完 |
+| --- | --- |
+| `E7` CI 从未在 GitHub 实跑 | 纯流程事实，只能在推送/PR 后读 Actions 结果；本批已把 `release` job 与 coverage 步骤补进 workflow |
+| `E12`/`E13` 覆盖率缺口 | `config`/`utils`/`dbfactory`/`common/log`/`common/stacktrace`/`runner/maintenance`/`plugin/db` 等包仍无测试文件；`store` 多个文件、`LLMService`/`ExplainSQLService`/`GroupService`/`RoleService` handler、`SyncInstance` 主循环仍无直接单测。本批只补了 `Registry` 与引擎转换两块 |
+| `E3` 的一半 | 启动 fixture（`it_app`/`it_drop_me`）未删除：`it_app` 仍作为 data source 的 database 值出现在 `instance_data_source_service_test.go`，且启动 seed 是 harness 初始化的一部分，删除需先确认没有用例依赖它存在 |
+| `E6` 的一半 | 前端覆盖率无阈值；需 CI 产出一次基线后再设 |
+| `E9` 的一半 | `migrator_test.go` 仍用 `t.Fatalf`（15 处），属纯风格迁移 |
+
+**批 5 的一个小插曲**：首次全量集成运行时 `TestMigrateSchemaLATESTMatchesTheIncrementChain` 因容器连接被重置而失败——该用例最初为两个库各起一个容器，与 runner 套件并行时造成 Docker 资源争用；改为两个库共用一个容器后，单包与全量套件均稳定通过（单包 17.9s，全量 `migrator` 21.6s）。
 
 ---
 
