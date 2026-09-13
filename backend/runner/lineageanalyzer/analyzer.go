@@ -15,7 +15,6 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
-	"github.com/Ranxy/metaxisdata/backend/config"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
@@ -39,7 +38,6 @@ type analyzeKey struct {
 // Analyzer is the column-level lineage analysis runner.
 type Analyzer struct {
 	store      *store.Store
-	profile    *config.Profile
 	analyzeMap sync.Map // map[analyzeKey]struct{}
 	// retryMap tracks how many times a failed analysis was retried and when it
 	// is due again, so a transient failure does not wait for the hourly scan.
@@ -69,10 +67,9 @@ func analysisRetryBackoff(attempts int) time.Duration {
 }
 
 // NewAnalyzer creates a new lineage Analyzer.
-func NewAnalyzer(stores *store.Store, profile *config.Profile) *Analyzer {
+func NewAnalyzer(stores *store.Store) *Analyzer {
 	return &Analyzer{
-		store:   stores,
-		profile: profile,
+		store: stores,
 	}
 }
 

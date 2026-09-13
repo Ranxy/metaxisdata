@@ -21,7 +21,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
-	"github.com/Ranxy/metaxisdata/backend/config"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
 	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -39,11 +38,10 @@ const (
 )
 
 // NewSyncer creates a schema syncer.
-func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, profile *config.Profile, stateCfg *state.State, lineageAnalyzer *lineageanalyzer.Analyzer) *Syncer {
+func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, lineageAnalyzer *lineageanalyzer.Analyzer) *Syncer {
 	return &Syncer{
 		store:           stores,
 		dbFactory:       dbFactory,
-		profile:         profile,
 		stateCfg:        stateCfg,
 		lineageAnalyzer: lineageAnalyzer,
 	}
@@ -51,11 +49,8 @@ func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, profile *con
 
 // Syncer is the schema syncer.
 type Syncer struct {
-	sync.Mutex
-
 	store           *store.Store
 	dbFactory       *dbfactory.DBFactory
-	profile         *config.Profile
 	stateCfg        *state.State
 	lineageAnalyzer *lineageanalyzer.Analyzer
 	databaseSyncMap sync.Map // map[string]*store.DatabaseMessage
@@ -383,8 +378,7 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 }
 
 // SyncDatabaseSchema will sync the schema for a database.
-func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.DatabaseMessage) (retErr error) {
-	// TODO get schema and get previous schema from store, compare and update
+func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.DatabaseMessage) error {
 	instance, err := s.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &database.InstanceID})
 	if err != nil {
 		return errors.Wrapf(err, "failed to get instance %q", database.InstanceID)

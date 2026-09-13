@@ -94,7 +94,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 
 	lineage.InitCatalogProvide(stores)
 
-	s.lineageAnalyzer = lineageanalyzer.NewAnalyzer(stores, profile)
+	s.lineageAnalyzer = lineageanalyzer.NewAnalyzer(stores)
 
 	stateCfg, err := state.New()
 	if err != nil {
@@ -102,7 +102,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	}
 	s.stateCfg = stateCfg
 
-	s.schemaSync = schemasync.NewSyncer(stores, dbFactory, profile, stateCfg, s.lineageAnalyzer)
+	s.schemaSync = schemasync.NewSyncer(stores, dbFactory, stateCfg, s.lineageAnalyzer)
 
 	s.maintenance = maintenance.NewRunner(stores)
 
