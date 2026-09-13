@@ -25,7 +25,7 @@ func TestServerRunAndShutdownStopTheListener(t *testing.T) {
 	defer cancelRunner()
 
 	e := echo.New()
-	configureEchoRouters(e, &config.Profile{Mode: common.ReleaseModeProd})
+	configureEchoRoutersForTest(e, &config.Profile{Mode: common.ReleaseModeProd})
 
 	s := &Server{
 		echoServer:   e,

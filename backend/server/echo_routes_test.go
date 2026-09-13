@@ -25,15 +25,27 @@ var (
 	prodServer      *echo.Echo
 )
 
+// configureEchoRoutersForTest serializes configureEchoRouters across the
+// parallel tests in this package. The registration mutates a process-wide
+// registry, so a call here can race with the hand-built server in
+// server_lifecycle_test.go even though the dev/prod pair share one Once.
+var configureEchoRoutersMu sync.Mutex
+
+func configureEchoRoutersForTest(e *echo.Echo, profile *config.Profile) {
+	configureEchoRoutersMu.Lock()
+	defer configureEchoRoutersMu.Unlock()
+	configureEchoRouters(e, profile)
+}
+
 func testServers() {
 	testServersOnce.Do(func() {
 		devServer = echo.New()
-		configureEchoRouters(devServer, &config.Profile{
+		configureEchoRoutersForTest(devServer, &config.Profile{
 			Mode:             common.ReleaseModeDev,
 			CORSAllowOrigins: []string{"http://localhost:3000"},
 		})
 		prodServer = echo.New()
-		configureEchoRouters(prodServer, &config.Profile{Mode: common.ReleaseModeProd})
+		configureEchoRoutersForTest(prodServer, &config.Profile{Mode: common.ReleaseModeProd})
 	})
 }
 
