@@ -32,10 +32,9 @@ func (s *Store) CreateAuditLog(ctx context.Context, auditLog *storepb.AuditLog) 
 		return nil, errors.New("failed to clone audit log")
 	}
 
+	// The server stamps the time: a caller-supplied CreateTime would let the
+	// audit ordering be forged.
 	createTime := time.Now().UTC()
-	if cloned.CreateTime != nil {
-		createTime = cloned.CreateTime.AsTime().UTC()
-	}
 	cloned.CreateTime = timestamppb.New(createTime)
 
 	payload, err := protojson.Marshal(cloned)
