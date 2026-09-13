@@ -167,7 +167,7 @@ func start() {
 		return
 	}
 
-	fmt.Printf(greetingBanner, fmt.Sprintf("Server has started on port %d 🚀", flags.port))
+	slog.Info(fmt.Sprintf(greetingBanner, fmt.Sprintf("Server has started on port %d 🚀", flags.port)))
 
 	// Execute program.
 	if err := s.Run(ctx, flags.port); err != nil {

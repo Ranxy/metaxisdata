@@ -50,3 +50,17 @@ func TestGroupEmailRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "eng@example.com", email)
 }
+
+func TestGetNameParentTokensRejectsEmptyTokens(t *testing.T) {
+	t.Parallel()
+
+	_, err := GetNameParentTokens("instances//databases/x", "instances/", "databases/")
+	require.Error(t, err)
+
+	_, err = GetNameParentTokens("instances/i/databases/", "instances/", "databases/")
+	require.Error(t, err)
+
+	tokens, err := GetNameParentTokens("instances/i/databases/x", "instances/", "databases/")
+	require.NoError(t, err)
+	require.Equal(t, []string{"i", "x"}, tokens)
+}

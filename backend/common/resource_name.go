@@ -196,6 +196,9 @@ func GetNameParentTokens(name string, tokenPrefixes ...string) ([]string, error)
 		if fmt.Sprintf("%s/", parts[2*i]) != tokenPrefix {
 			return nil, errors.Errorf("invalid prefix %q in request %q", tokenPrefix, name)
 		}
+		if parts[2*i+1] == "" {
+			return nil, errors.Errorf("empty token in request %q", name)
+		}
 		tokens = append(tokens, parts[2*i+1])
 	}
 	return tokens, nil
