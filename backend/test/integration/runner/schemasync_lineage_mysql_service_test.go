@@ -197,27 +197,7 @@ func prepareMySQLSourceDatabase(ctx context.Context, env *integrationenv.Service
 	return env.ExecMySQL(ctx, fmt.Sprintf(`
 CREATE DATABASE IF NOT EXISTS %s;
 USE %s;
-DROP VIEW IF EXISTS user_order_view;
-DROP TABLE IF EXISTS manual_sql_summary;
-DROP TABLE IF EXISTS orders;
-DROP TABLE IF EXISTS users;
-CREATE TABLE users (
-  id INT PRIMARY KEY,
-  name VARCHAR(64) NOT NULL,
-  age INT NOT NULL
-);
-CREATE TABLE orders (
-  id INT PRIMARY KEY,
-  user_id INT NOT NULL,
-  amount DECIMAL(10,2) NOT NULL
-);
-CREATE OR REPLACE VIEW user_order_view AS
-SELECT u.id AS user_id, u.name AS user_name, o.amount AS order_amount
-FROM users u
-JOIN orders o ON u.id = o.user_id;
-INSERT INTO users (id, name, age) VALUES (1, 'alice', 31);
-INSERT INTO orders (id, user_id, amount) VALUES (1, 1, 9.99);
-`, quoteMySQLIdentifier(sourceDatabase), quoteMySQLIdentifier(sourceDatabase)))
+`, quoteMySQLIdentifier(sourceDatabase), quoteMySQLIdentifier(sourceDatabase))+integrationenv.MySQLFixtureResetDDL)
 }
 
 func mysqlServiceInstanceID(t *testing.T) string {

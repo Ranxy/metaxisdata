@@ -183,7 +183,7 @@ func TestPostgresColumnMetadataHistoryRealServerIntegration(t *testing.T) {
 func TestPostgresManualSQLMetadataHistoryRealServerIntegration(t *testing.T) {
 	t.Parallel()
 
-	env, ctx, _, sourceDatabase, databaseName := setupPostgresServiceDatabase(t)
+	env, ctx, _, _, databaseName := setupPostgresServiceDatabase(t)
 	env.SyncDatabase(ctx, t, databaseName)
 	asOfBeforeCreate := time.Now().UTC()
 
@@ -214,8 +214,6 @@ func TestPostgresManualSQLMetadataHistoryRealServerIntegration(t *testing.T) {
 	require.Equal(t, 1, history.Total)
 	require.Equal(t, 0, history.Open)
 	require.Equal(t, 1, history.Closed)
-
-	require.NoError(t, env.ExecPostgres(ctx, sourceDatabase, `SELECT 1;`))
 }
 
 func TestPostgresSyncInstanceMarksDroppedDatabaseDeletedRealServerIntegration(t *testing.T) {
@@ -298,23 +296,7 @@ WHERE datname = '%s' AND pid <> pg_backend_pid();
 		return err
 	}
 
-	return env.ExecPostgres(ctx, sourceDatabase, `
-CREATE TABLE public.users (
-  id INT PRIMARY KEY,
-  name TEXT NOT NULL,
-  age INT NOT NULL
-);
-CREATE TABLE public.orders (
-  id INT PRIMARY KEY,
-  user_id INT NOT NULL,
-  amount NUMERIC(10,2) NOT NULL
-);
-CREATE OR REPLACE VIEW public.user_order_view AS
-SELECT u.id AS user_id, u.name AS user_name
-FROM public.users u;
-INSERT INTO public.users (id, name, age) VALUES (1, 'alice', 31);
-INSERT INTO public.orders (id, user_id, amount) VALUES (1, 1, 9.99);
-`)
+	return env.ExecPostgres(ctx, sourceDatabase, integrationenv.PostgresFixtureResetDDL)
 }
 
 func postgresServiceInstanceID(t *testing.T) string {
