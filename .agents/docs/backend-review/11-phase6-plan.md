@@ -28,8 +28,8 @@
 | B14 store 失败不再降级（`04 B-M7/B-M16`、`03 M21`） | ✅ | `0151bcb` |
 | B15 nil 防护与解析修正（`05 C-H4/L2`、`04 B-M8`） | ✅ | `e7239db` |
 | B17 `disallow_password_signin` 覆盖服务账号（`02 M7`） | ✅ | `83b1229` |
-| B12 `DiffMetadata` 与历史比较（`04 A-H2/A-H3/A-M11/A-M12`） | ⏳ | — |
-| B16 `RequireResetPassword` / `allow_missing`（`02 M12/M13`） | ⏳ | — |
+| B12 `DiffMetadata` 与历史比较（`04 A-H2/A-H3/A-M11/A-M12`） | ✅ | `f58c387` |
+| B16 `RequireResetPassword` / `allow_missing`（`02 M6/M12/M13`） | ✅ | `bedadf7` |
 | C 批 性能/资源 | ⏳ | — |
 | D2/D3 全量验证与文档同步 | ⏳ | — |
 
@@ -233,6 +233,15 @@ A6 的增量迁移在本地 PostgreSQL 16 上验证了全新安装、增量重�
 - `M13`：`require_reset_password` 真正生效——登录时若为真，签发**受限 token**（仅允许改密/登出），或直接拒绝并要求改密；同步前端。
 - 文件：`backend/api/v1/auth_service.go`、`backend/api/v1/user_service.go`、`backend/store/principal.go`、proto、前端。
 - 验收：auth handler 测试。
+- **实施（`bedadf7`，`02 M6/M12/M13`）**：
+  - `M13` 选受限 token 方案：JWT 增 `rst` claim → `auth.TokenRestriction`；拦截器按 `restrictedTokenAllowedProcedures`
+    白名单放行（当前仅 `UserService/UpdateUser` + `AuthService/Logout`），并把限制放进 context；`UpdateUser` 再要求
+    `isSelf` 且 mask 恰为 `["password"]`。前端登录页内嵌改密表单，改密后用新密码重新登录再跳转。
+  - `M6` 改为 `profileWithLastLogin`（`proto.CloneOf` + 只覆盖 `last_login_time`），既保留其它字段也不写穿 store 缓存。
+  - `M12` 改为按 AIP-134 应用 mask：`applyUpdateMaskToUser` 只保留 mask 点名的字段（`user_type` 作为创建类型可被点名），
+    proto 注释同步更正。
+  - 验收：`auth_test.go` 的受限 token 往返/白名单用例，`auth_login_profile_test.go`、`user_update_mask_test.go`；
+    `go test ./...`、`golangci-lint`（0 issues）、前端 `biome`/`eslint`/`vue-tsc`/`vitest` 全绿。
 
 ### B17. `DisallowPasswordSignin` 服务账号例外（`02 M7`）
 - 决策二选一（实施时按最小惊讶原则）：对服务账号同样应用禁令；若确需例外，在 proto 与文档显式声明。
