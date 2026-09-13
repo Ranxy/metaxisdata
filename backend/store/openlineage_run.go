@@ -14,6 +14,24 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
+// defaultOpenLineageListLimit bounds a list query that does not ask for a size of
+// its own. An unbounded list would let one request read the whole table.
+const defaultOpenLineageListLimit = 5000
+
+// openLineagePageClause renders the LIMIT/OFFSET of an OpenLineage list query,
+// capping a caller that does not ask for a size itself.
+func openLineagePageClause(limit, offset *int) string {
+	effective := defaultOpenLineageListLimit
+	if limit != nil {
+		effective = *limit
+	}
+	clause := fmt.Sprintf(" LIMIT %d", effective)
+	if offset != nil {
+		clause += fmt.Sprintf(" OFFSET %d", *offset)
+	}
+	return clause
+}
+
 // OpenLineageRunMessage is the store representation of a persisted COMPLETE OpenLineage run.
 type OpenLineageRunMessage struct {
 	ID                 int64
@@ -360,14 +378,7 @@ func (s *Store) ListOpenLineageRun(ctx context.Context, find *FindOpenLineageRun
 			updated_at
 		FROM openlineage_run
 		WHERE ` + strings.Join(where, " AND ") + `
-		ORDER BY event_time DESC NULLS LAST, id DESC`
-
-	if v := find.Limit; v != nil {
-		query += fmt.Sprintf(" LIMIT %d", *v)
-	}
-	if v := find.Offset; v != nil {
-		query += fmt.Sprintf(" OFFSET %d", *v)
-	}
+		ORDER BY event_time DESC NULLS LAST, id DESC` + openLineagePageClause(find.Limit, find.Offset)
 
 	rows, err := s.GetDB().QueryContext(ctx, query, args...)
 	if err != nil {

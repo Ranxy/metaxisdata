@@ -54,3 +54,20 @@ func TestRunIsLatest(t *testing.T) {
 	require.True(t, runIsLatest(&now, &now), "a redelivered run stays latest")
 	require.False(t, runIsLatest(&now, &earlier))
 }
+
+// A list request without a size is capped instead of reading the whole table.
+func TestOpenLineagePageClause(t *testing.T) {
+	t.Parallel()
+
+	five := 5
+	big := 20000
+	zero := 0
+	offset := 40
+
+	require.Equal(t, " LIMIT 5000", openLineagePageClause(nil, nil))
+	require.Equal(t, " LIMIT 5", openLineagePageClause(&five, nil))
+	require.Equal(t, " LIMIT 20000", openLineagePageClause(&big, nil), "a caller may ask for more than the default")
+	require.Equal(t, " LIMIT 0", openLineagePageClause(&zero, nil), "an explicit empty page stays empty")
+	require.Equal(t, " LIMIT 5000 OFFSET 40", openLineagePageClause(nil, &offset))
+	require.Equal(t, " LIMIT 5 OFFSET 40", openLineagePageClause(&five, &offset))
+}
