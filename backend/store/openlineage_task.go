@@ -536,6 +536,7 @@ func buildOpenLineageTaskStoredMetadata(task *OpenLineageTaskMessage) *storepb.S
 		LatestRunId:        task.LatestRunID,
 		LatestProducer:     task.LatestProducer,
 		LatestSource:       task.LatestSource,
+		LatestEventType:    task.LatestEventType,
 		RunCount:           task.RunCount,
 		LineageRunCount:    task.LineageRunCount,
 		CreatedAt:          timestamppb.New(task.CreatedAt),

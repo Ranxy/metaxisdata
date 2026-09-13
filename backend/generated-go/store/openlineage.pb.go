@@ -265,8 +265,11 @@ type OpenLineageTaskSummary struct {
 	LineageRunCount    int32                  `protobuf:"varint,17,opt,name=lineage_run_count,json=lineageRunCount,proto3" json:"lineage_run_count,omitempty"`
 	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,18,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt          *timestamppb.Timestamp `protobuf:"bytes,19,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// The event type of the latest run (START/COMPLETE/...), so the task snapshot
+	// carries the same information as the v1 OpenLineageTask.
+	LatestEventType string `protobuf:"bytes,20,opt,name=latest_event_type,json=latestEventType,proto3" json:"latest_event_type,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *OpenLineageTaskSummary) Reset() {
@@ -432,6 +435,13 @@ func (x *OpenLineageTaskSummary) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *OpenLineageTaskSummary) GetLatestEventType() string {
+	if x != nil {
+		return x.LatestEventType
+	}
+	return ""
+}
+
 var File_store_openlineage_proto protoreflect.FileDescriptor
 
 const file_store_openlineage_proto_rawDesc = "" +
@@ -467,7 +477,7 @@ const file_store_openlineage_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x17 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x9f\x06\n" +
+	"updated_at\x18\x17 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xcb\x06\n" +
 	"\x16OpenLineageTaskSummary\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12#\n" +
 	"\rjob_namespace\x18\x02 \x01(\tR\fjobNamespace\x12\x19\n" +
@@ -490,7 +500,8 @@ const file_store_openlineage_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB\x14Z\x12generated-go/storeb\x06proto3"
+	"updated_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12*\n" +
+	"\x11latest_event_type\x18\x14 \x01(\tR\x0flatestEventTypeB\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
 	file_store_openlineage_proto_rawDescOnce sync.Once

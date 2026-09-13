@@ -324,6 +324,7 @@ OpenLineageTaskSummary stores the aggregated task/job-level view derived from pe
 | lineage_run_count | [int32](#int32) |  |  |
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| latest_event_type | [string](#string) |  | The event type of the latest run (START/COMPLETE/...), so the task snapshot carries the same information as the v1 OpenLineageTask. |
 
 
 

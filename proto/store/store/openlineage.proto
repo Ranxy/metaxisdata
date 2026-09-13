@@ -54,4 +54,7 @@ message OpenLineageTaskSummary {
   int32 lineage_run_count = 17;
   google.protobuf.Timestamp created_at = 18;
   google.protobuf.Timestamp updated_at = 19;
+  // The event type of the latest run (START/COMPLETE/...), so the task snapshot
+  // carries the same information as the v1 OpenLineageTask.
+  string latest_event_type = 20;
 }
