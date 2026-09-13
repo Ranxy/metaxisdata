@@ -250,3 +250,11 @@ Project-specific rules enforced by `.golangci.yaml`:
 - `frontend/src/types/proto-es/`, `backend/generated-go/`, and `proto/gen/grpc-doc/` are buf output — regenerate with `cd proto && buf generate`, never hand-edit.
 - The default Go build does not embed the frontend (`backend/server/server_frontend_not_embed.go` serves a placeholder page); run the frontend dev server or host the built `frontend/dist` separately. `make build-embed` builds the SPA and bundles it into the binary via the `embed_frontend` tag (`backend/server/server_frontend_embed.go`), which serves `frontend/dist` with an SPA fallback.
 - When modifying multiple files, run file modification tasks in parallel whenever possible, instead of processing them sequentially.
+
+## Security and deployment posture
+
+These are deliberate, accepted decisions — not open bugs. Read them before "fixing" the corresponding behavior.
+
+- **Authorization is workspace-scoped (single tenant).** There is no per-instance or per-database ownership: every authenticated `workspaceMember` can read all instances, databases, metadata, lineage and OpenLineage data (the read baseline in `backend/store/predefined_roles.go`); writes require `workspaceAdmin` or an explicit `permission` annotation. Introducing per-resource IAM would be a subsystem-level change.
+- **Stored credentials are obfuscated, not encrypted.** `common.Obfuscate`/`Unobfuscate` are a base64 XOR keyed by the database-stored `AUTH_SECRET`, which also signs JWTs. Anyone with database read access or a backup can recover every instance password, SSH/SSL key and LLM API key; the ciphertext is deterministic and unauthenticated. This is accepted for the self-hosted, single-database deployment.
+- **gRPC reflection is anonymous.** The reflection handlers are registered without the authentication interceptor, so the registered service/message definitions are public; `/grpc.reflection` is deliberately absent from the authentication exemption list (`backend/api/auth/config.go`).

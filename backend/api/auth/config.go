@@ -1,17 +1,15 @@
 package auth
 
 import (
-	"strings"
-
 	"github.com/Ranxy/metaxisdata/backend/common"
 )
 
 // IsAuthenticationAllowed returns whether the method is exempted from authentication.
-func IsAuthenticationAllowed(fullMethodName string, authContext *common.AuthContext) bool {
-	// "/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo" is used
-	//  for reflection.
-	if strings.HasPrefix(fullMethodName, "/grpc.reflection") {
-		return true
-	}
+//
+// gRPC reflection is intentionally absent: its handlers are registered without
+// the authentication interceptor and are therefore anonymous regardless of this
+// function, and blanket-exempting the /grpc.reflection prefix here would be
+// unreachable code.
+func IsAuthenticationAllowed(_ string, authContext *common.AuthContext) bool {
 	return authContext.AllowWithoutCredential
 }

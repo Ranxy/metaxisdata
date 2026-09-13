@@ -219,7 +219,9 @@ func TestIsAuthenticationAllowed(t *testing.T) {
 	allow := &common.AuthContext{AllowWithoutCredential: true}
 	deny := &common.AuthContext{}
 
-	require.True(t, IsAuthenticationAllowed("/grpc.reflection.v1.ServerReflection/ServerReflectionInfo", deny))
+	// Reflection handlers are registered without the auth interceptor, so this
+	// check never sees them; the prefix must not be blanket-exempted here.
+	require.False(t, IsAuthenticationAllowed("/grpc.reflection.v1.ServerReflection/ServerReflectionInfo", deny))
 	require.True(t, IsAuthenticationAllowed("/metaxisdata.v1.AuthService/Authenticate", allow))
 	require.False(t, IsAuthenticationAllowed("/metaxisdata.v1.UserService/ListUsers", deny))
 }
