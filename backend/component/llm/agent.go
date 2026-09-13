@@ -177,7 +177,7 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 
 		// 2. No tool calls → agent is done.
 		if len(assistantMsg.ToolCalls) == 0 {
-			sendEvent(ctx, ch, AgentEvent{Type: AgentEventAgentEnd, Done: true})
+			sendEvent(ctx, ch, AgentEvent{Type: AgentEventAgentEnd})
 			return
 		}
 
@@ -187,24 +187,6 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 				return
 			}
 
-			// Before hook.
-			if cfg.Hooks.BeforeToolCall != nil {
-				if reason := cfg.Hooks.BeforeToolCall(tc); reason != "" {
-					if !sendEvent(ctx, ch, AgentEvent{Type: AgentEventToolEnd, ToolCall: &tc, ToolError: reason, Turn: turn}) {
-						return
-					}
-					if err := appendMessage(AgentMessage{
-						Role: "toolResult", ToolCallID: tc.ID,
-						ToolName: tc.Function.Name,
-						Content:  fmt.Sprintf("blocked: %s", reason),
-					}); err != nil {
-						sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: err})
-						return
-					}
-					continue
-				}
-			}
-
 			// Execute.
 			results, execErr := cfg.Executor(tc)
 			var content string
@@ -212,11 +194,6 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 				content = fmt.Sprintf("error: %s", execErr.Error())
 			} else if len(results) > 0 {
 				content = results[0].Content
-			}
-
-			// After hook.
-			if cfg.Hooks.AfterToolCall != nil {
-				content = cfg.Hooks.AfterToolCall(tc, content, execErr)
 			}
 
 			evt := AgentEvent{Type: AgentEventToolEnd, ToolCall: &tc, ToolResult: content, Turn: turn}
@@ -235,10 +212,6 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 				sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: err})
 				return
 			}
-		}
-
-		if !sendEvent(ctx, ch, AgentEvent{Type: AgentEventTurnEnd, Turn: turn}) {
-			return
 		}
 	}
 
