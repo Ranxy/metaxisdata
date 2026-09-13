@@ -258,15 +258,6 @@
           <div v-if="explainMeta" class="flex items-center gap-3 text-xs text-muted-foreground pt-3 border-t border-border">
             <span>{{ explainMeta.provider }} / {{ explainMeta.model }}</span>
             <Badge v-if="explainMeta.fromCache" variant="outline">{{ t("explainSQL.cached") }}</Badge>
-            <Badge v-if="explainMeta.expired" variant="secondary" class="text-destructive">{{ t("explainSQL.expired") }}</Badge>
-            <Button
-              v-if="explainMeta.expired"
-              variant="outline"
-              size="sm"
-              @click="startExplain(true)"
-            >
-              {{ t("explainSQL.regenerate") }}
-            </Button>
           </div>
         </template>
       </div>
@@ -481,7 +472,6 @@ const explainMeta = ref<{
   provider: string;
   model: string;
   fromCache: boolean;
-  expired: boolean;
   cacheCreatedAt: string;
 } | null>(null);
 
@@ -702,11 +692,8 @@ async function startExplain(forceRegen = false) {
           provider: m.provider,
           model: m.model,
           fromCache: m.fromCache,
-          expired: m.expired,
           cacheCreatedAt: m.cacheCreatedAt,
         };
-      } else if (chunk.payload?.case === "error" && chunk.payload.value) {
-        explainError.value = chunk.payload.value;
       }
     }
   } catch (e) {

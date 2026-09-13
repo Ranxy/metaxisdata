@@ -96,12 +96,10 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 				_ = stream.Send(&v1pb.ExplainSQLResponse{
 					Payload: &v1pb.ExplainSQLResponse_Content{Content: md},
 				})
-				sectionsJSON, _ := json.Marshal(explanation.Sections)
 				_ = stream.Send(&v1pb.ExplainSQLResponse{
 					Payload: &v1pb.ExplainSQLResponse_Metadata{
 						Metadata: &v1pb.ExplainSQLMetadata{
 							Summary:        explanation.Summary,
-							SectionsJson:   string(sectionsJSON),
 							Provider:       cached.Provider,
 							Model:          cached.Model,
 							CacheKey:       cached.CacheKey,
@@ -235,11 +233,10 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 	_ = stream.Send(&v1pb.ExplainSQLResponse{
 		Payload: &v1pb.ExplainSQLResponse_Metadata{
 			Metadata: &v1pb.ExplainSQLMetadata{
-				Summary:      summary,
-				SectionsJson: sectionsJSON,
-				Provider:     cacheEntry.Provider,
-				Model:        cacheEntry.Model,
-				CacheKey:     cacheEntry.CacheKey,
+				Summary:  summary,
+				Provider: cacheEntry.Provider,
+				Model:    cacheEntry.Model,
+				CacheKey: cacheEntry.CacheKey,
 			},
 		},
 	})

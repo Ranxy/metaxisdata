@@ -4,7 +4,6 @@
 
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
-import type { MetaType } from "./database_service_pb";
 
 /**
  * Describes the file v1/explain_sql_service.proto.
@@ -19,14 +18,6 @@ export declare type ExplainSQLRequest = Message<"metaxisdata.v1.ExplainSQLReques
    * @generated from field: string meta_guid = 1;
    */
   metaGuid: string;
-
-  /**
-   * Advisory type of the object named by meta_guid. The server resolves the
-   * authoritative type from the registry entry and ignores this field.
-   *
-   * @generated from field: metaxisdata.v1.MetaType meta_type = 2;
-   */
-  metaType: MetaType;
 
   /**
    * @generated from field: string sql_text = 3;
@@ -74,12 +65,6 @@ export declare type ExplainSQLResponse = Message<"metaxisdata.v1.ExplainSQLRespo
      */
     value: ExplainSQLMetadata;
     case: "metadata";
-  } | {
-    /**
-     * @generated from field: string error = 3;
-     */
-    value: string;
-    case: "error";
   } | {
     /**
      * @generated from field: metaxisdata.v1.ExplainSQLProgress progress = 4;
@@ -146,11 +131,6 @@ export declare type ExplainSQLMetadata = Message<"metaxisdata.v1.ExplainSQLMetad
   summary: string;
 
   /**
-   * @generated from field: string sections_json = 2;
-   */
-  sectionsJson: string;
-
-  /**
    * @generated from field: string provider = 3;
    */
   provider: string;
@@ -164,11 +144,6 @@ export declare type ExplainSQLMetadata = Message<"metaxisdata.v1.ExplainSQLMetad
    * @generated from field: string cache_key = 5;
    */
   cacheKey: string;
-
-  /**
-   * @generated from field: bool expired = 6;
-   */
-  expired: boolean;
 
   /**
    * @generated from field: bool from_cache = 7;

@@ -896,7 +896,6 @@
     "explaining": "解释中...",
     "idleHint": "选择元数据对象或输入自定义 SQL，然后点击「解释」。",
     "cached": "缓存",
-    "expired": "已过期",
     "regenerate": "重新生成",
     "searchMetadata": "搜索元数据",
     "searchPlaceholder": "搜索表、视图、函数...",

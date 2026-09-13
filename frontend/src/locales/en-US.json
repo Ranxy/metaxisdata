@@ -896,7 +896,6 @@
     "explaining": "Explaining...",
     "idleHint": "Select a metadata object or enter custom SQL, then click \"Explain\".",
     "cached": "Cached",
-    "expired": "Expired",
     "regenerate": "Regenerate",
     "searchMetadata": "Search Metadata",
     "searchPlaceholder": "Search tables, views, functions...",

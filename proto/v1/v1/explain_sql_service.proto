@@ -4,7 +4,6 @@ package metaxisdata.v1;
 
 import "google/api/annotations.proto";
 import "v1/annotation.proto";
-import "v1/database_service.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 
@@ -20,22 +19,24 @@ service ExplainSQLService {
 
 message ExplainSQLRequest {
   string meta_guid = 1;
-  // Advisory type of the object named by meta_guid. The server resolves the
-  // authoritative type from the registry entry and ignores this field.
-  MetaType meta_type = 2;
   string sql_text = 3;
   bool force_regenerate = 4;
   string provider_name = 5;
   string scope_prefix = 6;
+
+  reserved 2;
+  reserved "meta_type";
 }
 
 message ExplainSQLResponse {
   oneof payload {
     string content = 1;
     ExplainSQLMetadata metadata = 2;
-    string error = 3;
     ExplainSQLProgress progress = 4;
   }
+
+  reserved 3;
+  reserved "error";
 }
 
 message ExplainSQLProgress {
@@ -49,11 +50,12 @@ message ExplainSQLProgress {
 
 message ExplainSQLMetadata {
   string summary = 1;
-  string sections_json = 2;
   string provider = 3;
   string model = 4;
   string cache_key = 5;
-  bool expired = 6;
   bool from_cache = 7;
   string cache_created_at = 8;
+
+  reserved 2, 6;
+  reserved "sections_json", "expired";
 }

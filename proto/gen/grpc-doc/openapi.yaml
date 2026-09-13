@@ -3298,16 +3298,12 @@ components:
             properties:
                 summary:
                     type: string
-                sectionsJson:
-                    type: string
                 provider:
                     type: string
                 model:
                     type: string
                 cacheKey:
                     type: string
-                expired:
-                    type: boolean
                 fromCache:
                     type: boolean
                 cacheCreatedAt:
@@ -3333,30 +3329,6 @@ components:
             properties:
                 metaGuid:
                     type: string
-                metaType:
-                    enum:
-                        - UNSPECIFIED
-                        - INSTANCE
-                        - DATABASE
-                        - SCHEMA
-                        - TABLE
-                        - EXTERNAL_TABLE
-                        - EXTERNAL_DATASET
-                        - MANUAL_SQL
-                        - VIEW
-                        - MATERIALIZED_VIEW
-                        - COLUMN
-                        - INDEX
-                        - FOREIGN_KEY
-                        - PROCEDURE
-                        - FUNCTION
-                        - SEQUENCE
-                        - OPENLINEAGE
-                    type: string
-                    description: |-
-                        Advisory type of the object named by meta_guid. The server resolves the
-                         authoritative type from the registry entry and ignores this field.
-                    format: enum
                 sqlText:
                     type: string
                 forceRegenerate:
@@ -3372,8 +3344,6 @@ components:
                     type: string
                 metadata:
                     $ref: '#/components/schemas/ExplainSQLMetadata'
-                error:
-                    type: string
                 progress:
                     $ref: '#/components/schemas/ExplainSQLProgress'
         Expr:

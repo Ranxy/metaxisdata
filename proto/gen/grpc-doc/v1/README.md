@@ -2726,11 +2726,9 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | summary | [string](#string) |  |  |
-| sections_json | [string](#string) |  |  |
 | provider | [string](#string) |  |  |
 | model | [string](#string) |  |  |
 | cache_key | [string](#string) |  |  |
-| expired | [bool](#bool) |  |  |
 | from_cache | [bool](#bool) |  |  |
 | cache_created_at | [string](#string) |  |  |
 
@@ -2768,7 +2766,6 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | meta_guid | [string](#string) |  |  |
-| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  | Advisory type of the object named by meta_guid. The server resolves the authoritative type from the registry entry and ignores this field. |
 | sql_text | [string](#string) |  |  |
 | force_regenerate | [bool](#bool) |  |  |
 | provider_name | [string](#string) |  |  |
@@ -2789,7 +2786,6 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | ----- | ---- | ----- | ----------- |
 | content | [string](#string) |  |  |
 | metadata | [ExplainSQLMetadata](#metaxisdata-v1-ExplainSQLMetadata) |  |  |
-| error | [string](#string) |  |  |
 | progress | [ExplainSQLProgress](#metaxisdata-v1-ExplainSQLProgress) |  |  |
 
 
