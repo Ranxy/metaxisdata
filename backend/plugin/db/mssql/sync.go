@@ -767,7 +767,7 @@ func getIndexes(txn *sql.Tx, schemas []string) (map[db.TableKey][]*storepb.Index
 	FROM sys.indexes i
 	INNER JOIN sys.all_objects o ON o.object_id = i.object_id
 	INNER JOIN sys.schemas s ON s.schema_id = o.schema_id
-	INNER JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+	INNER JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.is_included_column = 0
 	INNER JOIN sys.all_columns col ON ic.column_id = col.column_id AND ic.object_id = col.object_id
 	WHERE i.index_id > 0 AND i.is_primary_key = 0 AND i.is_unique_constraint = 0 
 		AND s.name in (%s) AND o.type IN ('U', 'S', 'V')
@@ -1260,7 +1260,7 @@ func getKeys(txn *sql.Tx, schemas []string) (map[db.TableKey][]*storepb.IndexMet
 	    CAST(p.[value] AS nvarchar(4000)) AS comment
 	FROM
 	    sys.indexes i
-	        LEFT JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+	        LEFT JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.is_included_column = 0
 	        LEFT JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
 	        LEFT JOIN sys.objects co ON co.parent_object_id = i.object_id AND co.name = i.name LEFT JOIN sys.objects o ON o.object_id = i.object_id
 	        LEFT JOIN sys.schemas s ON s.schema_id = o.schema_id

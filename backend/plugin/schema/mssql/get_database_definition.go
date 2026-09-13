@@ -175,7 +175,9 @@ func writeColumn(out *strings.Builder, column *storepb.ColumnMetadata) {
 	if column.IsIdentity {
 		_, _ = fmt.Fprintf(out, " IDENTITY(%d,%d)", column.IdentitySeed, column.IdentityIncrement)
 	}
-	if column.Collation != "" {
+	// A computed column carries its whole definition in the type, so a COLLATE
+	// clause appended here would be invalid syntax ("PERSISTED COLLATE ...").
+	if column.Collation != "" && !isComputedColumn(column) {
 		_, _ = fmt.Fprintf(out, " COLLATE %s", column.Collation)
 	}
 	if column.GetDefault() != "" {
@@ -186,9 +188,15 @@ func writeColumn(out *strings.Builder, column *storepb.ColumnMetadata) {
 	}
 }
 
+// isComputedColumn reports whether the column type is a computed column
+// definition, which the sync renders as "AS <expression> [PERSISTED]".
+func isComputedColumn(column *storepb.ColumnMetadata) bool {
+	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(column.Type)), "AS ")
+}
+
 func writeView(out *strings.Builder, _ string, view *storepb.ViewMetadata) {
-	// The view definition already contains CREATE VIEW statement
-	_, _ = fmt.Fprintf(out, "%s;\n\nGO\n\n", view.Definition)
+	// The view definition already contains the CREATE VIEW statement.
+	_, _ = fmt.Fprintf(out, "%s\n\nGO\n\n", strings.TrimSuffix(strings.TrimSpace(view.Definition), ";"))
 }
 
 func writeFunction(out *strings.Builder, _ string, function *storepb.FunctionMetadata) {
