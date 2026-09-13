@@ -92,17 +92,61 @@ func (s *DatabaseService) ListDatabases(ctx context.Context, req *connect.Reques
 		return nil, err
 	}
 
+	// One lookup for every instance the page mentions, instead of one per row.
+	instances, err := s.instancesForDatabases(ctx, databaseMessages)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to list instances, error: %v", err))
+	}
+
 	response := &v1pb.ListDatabasesResponse{
 		NextPageToken: nextPageToken,
 	}
 	for _, databaseMessage := range databaseMessages {
-		database, err := s.convertToDatabase(ctx, databaseMessage)
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to convert database, error: %v", err))
+		instance, ok := instances[databaseMessage.InstanceID]
+		if !ok {
+			return nil, connect.NewError(connect.CodeInternal, errors.Errorf("instance %q of database %q not found", databaseMessage.InstanceID, databaseMessage.DatabaseName))
 		}
-		response.Databases = append(response.Databases, database)
+		response.Databases = append(response.Databases, convertToDatabase(databaseMessage, instance))
 	}
 	return connect.NewResponse(response), nil
+}
+
+// instancesForDatabases resolves the instances of a page of databases with one
+// query, keyed by resource ID.
+func (s *DatabaseService) instancesForDatabases(ctx context.Context, databases []*store.DatabaseMessage) (map[string]*store.InstanceMessage, error) {
+	instanceIDs := distinctInstanceIDs(databases)
+	if len(instanceIDs) == 0 {
+		return map[string]*store.InstanceMessage{}, nil
+	}
+
+	instances, err := s.store.ListInstances(ctx, &store.FindInstanceMessage{
+		ResourceIDs: &instanceIDs,
+		ShowDeleted: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]*store.InstanceMessage, len(instances))
+	for _, instance := range instances {
+		result[instance.ResourceID] = instance
+	}
+	return result, nil
+}
+
+// distinctInstanceIDs lists the instances a page of databases refers to, once
+// each, so the page costs one query however many rows share an instance.
+func distinctInstanceIDs(databases []*store.DatabaseMessage) []string {
+	ids := make([]string, 0, len(databases))
+	seen := make(map[string]struct{}, len(databases))
+	for _, database := range databases {
+		if _, ok := seen[database.InstanceID]; ok {
+			continue
+		}
+		seen[database.InstanceID] = struct{}{}
+		ids = append(ids, database.InstanceID)
+	}
+	return ids
 }
 
 func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request[v1pb.ListMetadataRequest]) (*connect.Response[v1pb.MetadataResponse], error) {
@@ -330,14 +374,10 @@ func (s *DatabaseService) getTableSequences(ctx context.Context, schemaPrefix, t
 
 // buildDiffSummary creates a human-readable summary from a MetadataDiff.
 
-func (s *DatabaseService) convertToDatabase(ctx context.Context, database *store.DatabaseMessage) (*v1pb.Database, error) {
-	instance, err := s.store.GetInstance(ctx, &store.FindInstanceMessage{
-		ResourceID: &database.InstanceID,
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to find instance")
-	}
-
+// convertToDatabase renders a database row. The caller resolves the instance,
+// so a database without one is reported by the caller instead of dereferencing
+// nil here.
+func convertToDatabase(database *store.DatabaseMessage, instance *store.InstanceMessage) *v1pb.Database {
 	environment, effectiveEnvironment := "", ""
 	if database.EnvironmentID != "" {
 		environment = common.FormatEnvironment(database.EnvironmentID)
@@ -356,5 +396,5 @@ func (s *DatabaseService) convertToDatabase(ctx context.Context, database *store
 		Labels:               database.Metadata.Labels,
 		InstanceResource:     instanceResource,
 		Drifted:              database.Metadata.GetDrifted(),
-	}, nil
+	}
 }
