@@ -84,18 +84,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_schema_migration_history_unique_version
 //go:embed migration
 var migrationFS embed.FS
 
-// GoMigrationFunc performs a data migration in Go code. It receives a context
-// and a dedicated connection, and should manage its own transactions (e.g.
-// batched updates) for optimal performance.
-type GoMigrationFunc func(ctx context.Context, conn *sql.Conn) error
-
-// goMigrations is a registry of version-specific Go migrations that run BEFORE
-// the SQL migration of the same version. If a Go migration fails, the version
-// is not yet recorded in schema_migration_history, so on the next startup both
-// the Go and SQL migrations for that version retry. Useful for large batched
-// data transformations that are awkward to express in pure SQL.
-var goMigrations = map[string]GoMigrationFunc{}
-
 // MigrateSchema migrates the metadata database schema to the latest embedded
 // version. It is safe to call on every server startup: fresh installs apply
 // LATEST.sql, and existing deployments apply only pending incrementals. A
@@ -202,15 +190,6 @@ func migrateSchemaFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 		}
 		version := f.version.String()
 		slog.Info(fmt.Sprintf("Migrating %s.", version))
-
-		// Run Go migration FIRST if one exists for this version. On failure the
-		// version is not recorded and both migrations retry next startup.
-		if goMigration, exists := goMigrations[version]; exists {
-			slog.Info(fmt.Sprintf("Running Go migration for %s.", version))
-			if err := goMigration(ctx, conn); err != nil {
-				return errors.Wrapf(err, "Go migration %s failed", version)
-			}
-		}
 
 		if err := executeMigration(ctx, conn, string(buf), version); err != nil {
 			return err
