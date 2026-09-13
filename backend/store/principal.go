@@ -444,16 +444,18 @@ func (s *Store) UpdateUser(ctx context.Context, currentUser *UserMessage, patch 
 	}
 	if v := patch.PasswordHash; v != nil {
 		principalSet, principalArgs = append(principalSet, fmt.Sprintf("password_hash = $%d", len(principalArgs)+1)), append(principalArgs, *v)
-		if patch.Profile == nil {
-			// Clone: currentUser may be the shared cache entry, which must not
-			// be mutated in place.
-			profile := proto.CloneOf(currentUser.Profile)
-			if profile == nil {
-				profile = &storepb.UserProfile{}
-			}
-			profile.LastChangePasswordTime = timestamppb.New(time.Now())
-			patch.Profile = profile
+		// Clone: patch.Profile (or currentUser.Profile) may be the shared cache
+		// entry. The change time is stamped even when the caller sends a profile
+		// in the same patch, otherwise it would be silently lost.
+		profile := proto.CloneOf(patch.Profile)
+		if profile == nil {
+			profile = proto.CloneOf(currentUser.Profile)
 		}
+		if profile == nil {
+			profile = &storepb.UserProfile{}
+		}
+		profile.LastChangePasswordTime = timestamppb.New(time.Now())
+		patch.Profile = profile
 	}
 	if v := patch.Phone; v != nil {
 		principalSet, principalArgs = append(principalSet, fmt.Sprintf("phone = $%d", len(principalArgs)+1)), append(principalArgs, *v)
