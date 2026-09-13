@@ -38,7 +38,7 @@
 | C6 external dataset 去写放大（`03 M20`） | ✅ | `99d41ea` |
 | C7 LLM 会话预算与轮数（`04 B-M12`） | ✅ | `03c17b7` |
 | C8 实例密钥每页只取一次（`03` 低节） | ✅ | `390a66c` |
-| D2/D3 全量验证与文档同步 | ⏳ | — |
+| D2/D3 全量验证与文档同步 | ✅ | `24e90a6` |
 
 A 批完成时已验证：`gofmt -l` 空、`go build ./...`、`go vet`（默认/release/integration）、`golangci-lint`（0 issues）、
 `go test ./...`、`go test -race -count=1 ./...`、`make build-release` 全绿；A1/A8 的集成用例在真实 server 上通过；
@@ -348,6 +348,24 @@ A6 的增量迁移在本地 PostgreSQL 16 上验证了全新安装、增量重�
 - 明确写入本轮决策：XOR 取舍、单租户、破坏性同步仅日志、匿名反射、CI 未变。
 - 顺带修正已过期状态（`01 H1` 已被阶段 4 覆盖、`02 M11/M14` 已修、`06 M12` 已修、`07 M5` 已删、`04 A-M4` 已修、`08 M13` 待办）。
 - 不在本阶段做：全量重写 `08` 的 JSONB `Stored as` 注释（列为后续项，除非 A6 迁移顺带补上 `openlineage_api_key` 的注释）。
+
+#### D2/D3 实施说明
+- **D2（本地全量，全部通过）**：`gofmt -l backend/` 空；`go build ./...`、`go vet ./...`（默认/`release`/`integration`）、
+  `go test ./...`、`go test -race -count=1 ./...`、`golangci-lint run --allow-parallel-runners`（0 issues）、`make build-release`；
+  `buf format -w proto`/`buf lint proto`/`cd proto && buf generate`（重跑无 diff）；前端 `biome check src`（187 文件）、
+  `eslint src`、`vue-tsc --noEmit`、`vitest run`（17 用例）、`vite build`；
+  集成 `go test -count=1 -tags=integration ./backend/test/integration/... ./backend/migrator/...`（`runner` 53.96s、`migrator` 15.98s，exit 0）。
+  A6 的两个增量（`0007`/`0008`）此前已在本地 PostgreSQL 16 上验证过全新安装/增量升级/重复执行幂等；B14 的 `0008` 同样随该次验证。
+- **D2 顺带修掉的两处既有问题**：① D1 的 `TestMarshalRolePermissionsIsDeterministic`（`7912fc2`）；② B13 的
+  `IsValidResourceID` 校验让两个既有用例里含下划线的 `manual_sql_id` 变成 `InvalidArgument`，已把三个测试 ID 改成连字符形式
+  （`bef6706`）——新增服务端校验后必须跑一遍集成套件。
+- **D2 复查 C1/C2 时新发现并修复**：`UpsertOpenLineageRuns` 曾把"按 task GUID 加锁的顺序"也当成返回顺序，批次跨多个 task 时
+  事件与持久化 run 会错配、血缘写到别的 run GUID 上。已改为"按 canonical 顺序加锁、按调用方顺序返回"（`24e90a6`），并补了
+  真实 server 用例 `TestOpenLineageBatchKeepsEventOrderRealServerIntegration`——把顺序合并回去时该用例稳定失败（45s 超时），
+  修好后通过。
+- **D3**：`README.md` 新增「阶段 6 后复测」与「阶段 6 修复状态」两节（含 25 步表格、本轮决策、已知取舍），
+  `10-legacy-debt-and-roadmap.md` 新增「阶段 6」小节与第五节复测记录，`08`/`01`–`07` 各模块报告为对应 finding 补上
+  `✅/◐（阶段 6）` 标记并修正已过期状态（`01 H1`、`02 M11/M14`、`04 M4`、`06 M12`、`07 M5`、`08 M13`）。
 
 ---
 
