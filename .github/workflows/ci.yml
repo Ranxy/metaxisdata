@@ -74,6 +74,26 @@ jobs:
           version: v2.13.1
           args: --allow-parallel-runners
 
+  # -tags release selects the prod profile, which the default build never
+  # compiles: a release-only breakage (an import behind the tag, a profile
+  # override) otherwise reached deployment unnoticed.
+  release:
+    name: Release build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build the release binary
+        run: make build-release
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
@@ -107,8 +127,10 @@ jobs:
       - name: Type check
         run: pnpm --dir frontend type-check
 
-      - name: Test
-        run: pnpm --dir frontend test run
+      # --coverage runs the same suite and reports per-file coverage; there is no
+      # threshold yet, the report is meant to make gaps visible.
+      - name: Test with coverage
+        run: pnpm --dir frontend test:coverage
 
       - name: Build
         run: pnpm --dir frontend build
