@@ -1,0 +1,43 @@
+name: TestCopyLoadLineage_Table
+cases:
+    - name: COPY INTO a table
+      sql: COPY INTO t1 FROM 's3://bucket/data'
+      expected_edges:
+        - from_table: __file__
+          from_field: '*'
+          to_table: t1
+          relation_type: direct
+          is_temp: false
+    - name: LOAD without a column list
+      sql: LOAD LABEL l1 (DATA INFILE('s3://bucket/f.csv') INTO TABLE t1)
+      expected_edges:
+        - from_table: __file__
+          from_field: '*'
+          to_table: t1
+          relation_type: direct
+          is_temp: false
+    - name: LOAD with a column list
+      sql: LOAD LABEL l1 (DATA INFILE('s3://bucket/f.csv') INTO TABLE t1 COLUMNS (a, b))
+      expected_edges:
+        - from_table: __file__
+          from_field: col1
+          to_table: t1
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_table: __file__
+          from_field: col2
+          to_table: t1
+          to_field: b
+          relation_type: direct
+          is_temp: false
+    - name: LOAD into a database-qualified table
+      sql: LOAD LABEL l1 (DATA INFILE('s3://bucket/f.csv') INTO TABLE db1.t1 COLUMNS (a))
+      expected_edges:
+        - from_table: __file__
+          from_field: col1
+          to_database: db1
+          to_table: t1
+          to_field: a
+          relation_type: direct
+          is_temp: false

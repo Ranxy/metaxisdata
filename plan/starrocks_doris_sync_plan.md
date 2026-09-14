@@ -124,10 +124,15 @@ Non-goals: query execution, SQL validation/splitting, dump/SDL emission, DDL dif
 - **Never exercised against a live StarRocks/Doris.** All coverage is hermetic, and
   the integration harness only provides PostgreSQL + MySQL. A first real run should
   confirm: system-database discovery, column defaults, the MV catalogs, and
-  `SHOW CREATE` output via `GetSchemaString`.
+  `SHOW CREATE` output via `GetSchemaString`. (The StarRocks lineage work did drive
+  the real driver against a live container for schema sync — see
+  `plan/starrocks_lineage_plan.md` — which covers the MV catalog and definitions,
+  but the remaining items above are still unconfirmed here.)
 - **`DiffMetadata` still answers "engine not supported"** for these engines: it needs
   `schema.GenerateMigration`, which is unrelated to the sync and the DDL store.
-- **Lineage / OpenLineage / Explain SQL do not treat these engines as MySQL-like.**
-  The lineage analyzer records a skip for an engine with no registered analyzer, so
-  nothing retries forever — but views synced from these engines produce no column
-  lineage.
+- **Lineage:** `STARROCKS` is now served by `backend/plugin/lineage/starrocks` (see
+  `plan/starrocks_lineage_plan.md`), so synced StarRocks views and materialized
+  views do produce column lineage. `DORIS` is still deliberately unregistered: it
+  keeps resolving to `ErrorEngineNotSupported`, the runner records a per-object
+  skip so nothing retries forever, and its views produce no column lineage until a
+  follow-up plan registers it.

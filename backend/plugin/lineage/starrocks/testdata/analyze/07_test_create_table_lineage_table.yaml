@@ -1,0 +1,93 @@
+name: TestCreateTableLineage_Table
+cases:
+    - name: CREATE TABLE AS SELECT
+      sql: CREATE TABLE t3 AS SELECT id, name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: t3
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: users
+          from_field: name
+          to_table: t3
+          to_field: name
+          relation_type: direct
+          is_temp: false
+    - name: CREATE TABLE AS SELECT with explicit columns
+      sql: CREATE TABLE t3 (k, n) AS SELECT id, name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: t3
+          to_field: k
+          relation_type: direct
+          is_temp: false
+        - from_table: users
+          from_field: name
+          to_table: t3
+          to_field: n
+          relation_type: direct
+          is_temp: false
+    - name: CREATE TABLE AS SELECT with aggregate
+      sql: CREATE TABLE t3 AS SELECT a.id, COUNT(*) AS c FROM users a GROUP BY a.id
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: t3
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: users
+          from_field: '*'
+          to_table: t3
+          to_field: c
+          relation_type: group
+          has_transform: true
+          is_temp: false
+    - name: CREATE TABLE AS SELECT with CTE
+      sql: CREATE TABLE t3 AS WITH c AS (SELECT id, name FROM users) SELECT c.id, c.name FROM c
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: t3
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: users
+          from_field: name
+          to_table: t3
+          to_field: name
+          relation_type: direct
+          is_temp: false
+    - name: CREATE TABLE AS SELECT with set operation
+      sql: CREATE TABLE t3 AS WITH c AS (SELECT id FROM t1) SELECT id FROM c UNION ALL SELECT id FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: t3
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: t2
+          from_field: id
+          to_table: t3
+          to_field: id
+          relation_type: direct
+          is_temp: false
+    - name: CREATE TABLE AS SELECT from a join
+      sql: CREATE TABLE t3 AS SELECT e.name AS ename, d.name AS dname FROM employees e JOIN departments d ON e.department_id = d.id
+      expected_edges:
+        - from_table: employees
+          from_field: name
+          to_table: t3
+          to_field: ename
+          relation_type: direct
+          is_temp: false
+        - from_table: departments
+          from_field: name
+          to_table: t3
+          to_field: dname
+          relation_type: direct
+          is_temp: false

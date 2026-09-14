@@ -1,0 +1,49 @@
+name: TestDeleteLineage_Table
+cases:
+    - name: DELETE by primary key
+      sql: DELETE FROM t1 WHERE id = 1
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: t1
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+    - name: DELETE by a range condition
+      sql: DELETE FROM t1 WHERE created_at < '2024-01-01'
+      expected_edges:
+        - from_table: t1
+          from_field: created_at
+          to_table: t1
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+    - name: DELETE with USING
+      sql: DELETE FROM t1 USING t1 JOIN t2 ON t1.id = t2.id WHERE t2.tag = 'x'
+      expected_edges:
+        - from_table: t2
+          from_field: tag
+          to_table: t1
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+    - name: DELETE with a subquery condition
+      sql: DELETE FROM t1 WHERE id IN (SELECT id FROM t2 WHERE tag = 'x')
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: t1
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+        - from_table: t2
+          from_field: id
+          to_table: t1
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false

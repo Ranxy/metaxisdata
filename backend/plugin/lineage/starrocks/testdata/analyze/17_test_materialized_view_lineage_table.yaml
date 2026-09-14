@@ -1,0 +1,95 @@
+name: TestMaterializedViewLineage_Table
+cases:
+    - name: CREATE MATERIALIZED VIEW with an aggregate
+      sql: CREATE MATERIALIZED VIEW mv AS SELECT id, COUNT(*) AS c FROM t GROUP BY id
+      expected_edges:
+        - from_table: t
+          from_field: id
+          to_table: mv
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: t
+          from_field: '*'
+          to_table: mv
+          to_field: c
+          relation_type: group
+          has_transform: true
+          is_temp: false
+    - name: full SHOW CREATE MATERIALIZED VIEW output
+      sql: |-
+        CREATE MATERIALIZED VIEW `mv1` (`id`, `cnt`, `total`)
+        DISTRIBUTED BY HASH(`id`)
+        REFRESH ASYNC
+        PROPERTIES (
+        "replicated_storage" = "true",
+        "replication_num" = "1",
+        "storage_medium" = "HDD"
+        )
+        AS SELECT id, count(*) AS cnt, sum(amount) AS total FROM t1 GROUP BY id
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: mv1
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: t1
+          from_field: '*'
+          to_table: mv1
+          to_field: cnt
+          relation_type: group
+          has_transform: true
+          is_temp: false
+        - from_table: t1
+          from_field: amount
+          to_table: mv1
+          to_field: total
+          relation_type: group
+          has_transform: true
+          is_temp: false
+    - name: CREATE MATERIALIZED VIEW with a CTE body
+      sql: CREATE MATERIALIZED VIEW mv AS WITH c AS (SELECT id, amount FROM t1) SELECT id, SUM(amount) AS total FROM c GROUP BY id
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: mv
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: t1
+          from_field: amount
+          to_table: mv
+          to_field: total
+          relation_type: group
+          has_transform: true
+          is_temp: false
+    - name: CREATE MATERIALIZED VIEW with a UNION body
+      sql: CREATE MATERIALIZED VIEW mv AS SELECT id FROM t1 UNION ALL SELECT id FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: mv
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: t2
+          from_field: id
+          to_table: mv
+          to_field: id
+          relation_type: direct
+          is_temp: false
+    - name: CREATE MATERIALIZED VIEW with star over a join
+      sql: CREATE MATERIALIZED VIEW mv AS SELECT e.*, d.name FROM employees e JOIN departments d ON e.department_id = d.id
+      expected_edges:
+        - from_table: employees
+          from_field: '*'
+          to_table: mv
+          relation_type: direct
+          is_temp: false
+        - from_table: departments
+          from_field: name
+          to_table: mv
+          to_field: name
+          relation_type: direct
+          is_temp: false

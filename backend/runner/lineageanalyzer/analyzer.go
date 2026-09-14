@@ -423,6 +423,14 @@ func buildSQL(name string, engine storepb.Engine, metaType storepb.MetaType, res
 	if metaType == storepb.MetaType_MANUAL_SQL {
 		return definition, definition, nil
 	}
+	// A stored definition that is already a complete statement is used as-is.
+	// StarRocks keeps the whole SHOW CREATE MATERIALIZED VIEW output in
+	// MaterializedViewMetadata.Definition, so wrapping it in
+	// "CREATE MATERIALIZED VIEW <name> AS ..." would produce
+	// "... AS CREATE MATERIALIZED VIEW ...", which no parser accepts.
+	if isCompleteStatement(definition) {
+		return definition, definition, nil
+	}
 
 	keyword := "CREATE VIEW"
 	if metaType == storepb.MetaType_MATERIALIZED_VIEW {
@@ -440,6 +448,13 @@ func buildSQL(name string, engine storepb.Engine, metaType storepb.MetaType, res
 	}
 
 	return definition, fmt.Sprintf("%s %s AS %s", keyword, identifier, definition), nil
+}
+
+// isCompleteStatement reports whether a stored definition is already a whole
+// CREATE statement rather than a bare query body. A view definition is a query
+// and can never start with CREATE, so the check is safe for every engine.
+func isCompleteStatement(definition string) bool {
+	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(definition)), "CREATE ")
 }
 
 // storeError records the error in column_lineage_version and returns a wrapped error.

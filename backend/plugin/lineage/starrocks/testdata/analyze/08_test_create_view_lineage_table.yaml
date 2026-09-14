@@ -1,0 +1,211 @@
+name: TestCreateViewLineage_Table
+cases:
+    - name: CREATE VIEW with aliased source
+      sql: CREATE VIEW v AS SELECT a.id, a.name FROM users a
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: users
+          from_field: name
+          to_table: v
+          to_field: name
+          relation_type: direct
+          is_temp: false
+    - name: CREATE VIEW with backticked identifiers
+      sql: CREATE VIEW `v1` AS SELECT `a`.`id` AS `user_id`, `a`.`name` FROM `users` `a`
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: v1
+          to_field: user_id
+          relation_type: direct
+          is_temp: false
+        - from_table: users
+          from_field: name
+          to_table: v1
+          to_field: name
+          relation_type: direct
+          is_temp: false
+    - name: CREATE VIEW with explicit column list
+      sql: CREATE VIEW v (x, y) AS SELECT a.id, a.name FROM users a
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: v
+          to_field: x
+          relation_type: direct
+          is_temp: false
+        - from_table: users
+          from_field: name
+          to_table: v
+          to_field: y
+          relation_type: direct
+          is_temp: false
+    - name: CREATE VIEW with an aggregate
+      sql: CREATE VIEW v AS SELECT a.id, SUM(a.amount) AS total FROM orders a GROUP BY a.id
+      expected_edges:
+        - from_table: orders
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: orders
+          from_field: amount
+          to_table: v
+          to_field: total
+          relation_type: group
+          has_transform: true
+          is_temp: false
+    - name: CREATE VIEW with a CTE body
+      sql: CREATE VIEW v AS WITH c AS (SELECT id, name FROM users) SELECT c.id, c.name FROM c
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: users
+          from_field: name
+          to_table: v
+          to_field: name
+          relation_type: direct
+          is_temp: false
+    - name: CREATE VIEW with a UNION body
+      sql: CREATE VIEW v AS SELECT id FROM t1 UNION ALL SELECT id FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: t2
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+    - name: CREATE VIEW with a parenthesized body
+      sql: CREATE VIEW v AS (SELECT id FROM t1)
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+    - name: CREATE OR REPLACE VIEW with a database qualifier
+      sql: CREATE OR REPLACE VIEW db1.v AS SELECT a.id FROM users a
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_database: db1
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+    - name: ALTER VIEW with a UNION body
+      sql: ALTER VIEW v AS SELECT id FROM t1 UNION ALL SELECT id FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: t2
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+    - name: SHOW CREATE VIEW output pasted as manual SQL
+      sql: CREATE VIEW v (a, b) SECURITY NONE AS SELECT id, name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: v
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_table: users
+          from_field: name
+          to_table: v
+          to_field: b
+          relation_type: direct
+          is_temp: false
+    - name: CREATE VIEW with a window function and QUALIFY
+      sql: CREATE VIEW v AS SELECT id, ROW_NUMBER() OVER (PARTITION BY tag ORDER BY id) AS rn FROM events QUALIFY rn = 1
+      expected_edges:
+        - from_table: events
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: events
+          from_field: tag
+          to_table: v
+          to_field: rn
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+        - from_table: events
+          from_field: id
+          to_table: v
+          to_field: rn
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+    - name: CREATE VIEW over a cross-database source
+      sql: CREATE VIEW v AS SELECT raw.id, raw.name FROM raw_data.users raw
+      expected_edges:
+        - from_database: raw_data
+          from_table: users
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_database: raw_data
+          from_table: users
+          from_field: name
+          to_table: v
+          to_field: name
+          relation_type: direct
+          is_temp: false
+    - name: CREATE VIEW with a derived table
+      sql: CREATE VIEW v AS SELECT s.id, s.total FROM (SELECT user_id AS id, SUM(amount) AS total FROM orders GROUP BY user_id) s
+      expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: orders
+          from_field: amount
+          to_table: v
+          to_field: total
+          relation_type: group
+          has_transform: true
+          is_temp: false
+    - name: CREATE VIEW with star over a join
+      sql: CREATE VIEW v AS SELECT * FROM employees e JOIN departments d ON e.department_id = d.id
+      expected_edges:
+        - from_table: employees
+          from_field: '*'
+          to_table: v
+          relation_type: direct
+          is_temp: false
+        - from_table: departments
+          from_field: '*'
+          to_table: v
+          relation_type: direct
+          is_temp: false

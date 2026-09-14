@@ -61,6 +61,27 @@ func TestBuildSQL(t *testing.T) {
 			wantDef:     "INSERT INTO summary SELECT id, name FROM users",
 			wantWrapped: "INSERT INTO summary SELECT id, name FROM users",
 		},
+		{
+			// StarRocks stores SHOW CREATE MATERIALIZED VIEW output verbatim, so
+			// the definition is already a statement and must not be wrapped
+			// again ("... AS CREATE MATERIALIZED VIEW ..." does not parse).
+			name:     "starrocks materialized view definition is already a statement",
+			engine:   storepb.Engine_STARROCKS,
+			metaType: storepb.MetaType_MATERIALIZED_VIEW,
+			resource: &store.MetaRegistryResource{Metadata: &storepb.StoredMetadata{Type: &storepb.StoredMetadata_MaterializedViewMetadata{MaterializedViewMetadata: &storepb.MaterializedViewMetadata{
+				Definition: "CREATE MATERIALIZED VIEW `mv1` (`id`, `cnt`)\nDISTRIBUTED BY HASH(`id`)\nREFRESH ASYNC\nAS SELECT id, count(*) AS cnt FROM t1 GROUP BY id",
+			}}}},
+			wantDef:     "CREATE MATERIALIZED VIEW `mv1` (`id`, `cnt`)\nDISTRIBUTED BY HASH(`id`)\nREFRESH ASYNC\nAS SELECT id, count(*) AS cnt FROM t1 GROUP BY id",
+			wantWrapped: "CREATE MATERIALIZED VIEW `mv1` (`id`, `cnt`)\nDISTRIBUTED BY HASH(`id`)\nREFRESH ASYNC\nAS SELECT id, count(*) AS cnt FROM t1 GROUP BY id",
+		},
+		{
+			name:        "starrocks view keeps the bare query wrapper",
+			engine:      storepb.Engine_STARROCKS,
+			metaType:    storepb.MetaType_VIEW,
+			resource:    &store.MetaRegistryResource{Metadata: &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ViewMetadata{ViewMetadata: &storepb.ViewMetadata{Definition: "SELECT id FROM users"}}}},
+			wantDef:     "SELECT id FROM users",
+			wantWrapped: "CREATE VIEW active_users AS SELECT id FROM users",
+		},
 	}
 
 	for _, tt := range tests {

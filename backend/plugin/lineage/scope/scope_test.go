@@ -220,6 +220,20 @@ func TestScope_ResolveColumn_NotFound(t *testing.T) {
 	require.Contains(t, err.Error(), "table not found")
 }
 
+// A reference that was already resolved in the scope it came from must pass
+// through unchanged, even though this scope has no matching table. This is what
+// lets a merged set-operation arm or a flattened expression subquery keep the
+// table it resolved to in a sibling scope.
+func TestScope_ResolveColumn_ResolvedPassThrough(t *testing.T) {
+	scope := NewScope(nil)
+
+	colRef := ColumnRef{Schema: "db", Table: "t", Column: "c", Resolved: true}
+
+	resolved, err := scope.ResolveColumn(colRef)
+	require.NoError(t, err)
+	require.Equal(t, colRef, *resolved)
+}
+
 func TestScope_ResolveColumn_InParentScope(t *testing.T) {
 	parent := NewScope(nil)
 	child := NewScope(parent)
