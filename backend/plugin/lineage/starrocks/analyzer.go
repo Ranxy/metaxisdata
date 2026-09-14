@@ -7,10 +7,12 @@
 // and derived tables, CTAS and expression subqueries keep their query as raw
 // text).
 //
-// Engine registration lands with the DDL/DML phases (see
-// plan/starrocks_lineage_plan.md); until then the package is exercised by its
-// own hermetic tests only, and statement kinds that are not implemented yet
-// return an explicit error instead of a partial result.
+// Engine registration is deliberately scoped to STARROCKS. DORIS keeps
+// resolving to lineage.ErrorEngineNotSupported, which the runner records as a
+// deliberate per-object skip; see plan/starrocks_lineage_plan.md.
+//
+// A statement kind the analyzer cannot model yet (MERGE) returns an explicit
+// error instead of a partial or empty result.
 package starrocks
 
 import (
@@ -20,6 +22,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
@@ -36,6 +39,10 @@ const (
 	wildcardColumn    = "*"
 	fileSourceMarker  = "__file__" // source marker for COPY INTO / LOAD
 )
+
+func init() {
+	lineage.RegisterAnalyzeRelation(storepb.Engine_STARROCKS, Analyze)
+}
 
 // Analyzer performs direct lineage analysis on one StarRocks statement.
 type Analyzer struct {

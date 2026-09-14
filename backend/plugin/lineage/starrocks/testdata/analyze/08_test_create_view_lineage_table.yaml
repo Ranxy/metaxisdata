@@ -125,6 +125,61 @@ cases:
           to_field: id
           relation_type: direct
           is_temp: false
+    - name: SHOW CREATE VIEW output pasted as manual SQL
+      sql: CREATE VIEW v (a, b) SECURITY NONE AS SELECT id, name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: v
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_table: users
+          from_field: name
+          to_table: v
+          to_field: b
+          relation_type: direct
+          is_temp: false
+    - name: CREATE VIEW with a window function and QUALIFY
+      sql: CREATE VIEW v AS SELECT id, ROW_NUMBER() OVER (PARTITION BY tag ORDER BY id) AS rn FROM events QUALIFY rn = 1
+      expected_edges:
+        - from_table: events
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: events
+          from_field: tag
+          to_table: v
+          to_field: rn
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+        - from_table: events
+          from_field: id
+          to_table: v
+          to_field: rn
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+    - name: CREATE VIEW over a cross-database source
+      sql: CREATE VIEW v AS SELECT raw.id, raw.name FROM raw_data.users raw
+      expected_edges:
+        - from_database: raw_data
+          from_table: users
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_database: raw_data
+          from_table: users
+          from_field: name
+          to_table: v
+          to_field: name
+          relation_type: direct
+          is_temp: false
     - name: CREATE VIEW with a derived table
       sql: CREATE VIEW v AS SELECT s.id, s.total FROM (SELECT user_id AS id, SUM(amount) AS total FROM orders GROUP BY user_id) s
       expected_edges:
