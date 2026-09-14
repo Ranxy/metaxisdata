@@ -1,12 +1,12 @@
 # Plan: StarRocks Column-Level Lineage Analyzer (omni-backed)
 
-> **Status: in progress — P0, P1 and P2 landed.** `buildSQL` pass-through, the
-> package foundation, plain SELECT, CTE, derived tables, set operations and the
-> expression layer (including expression subqueries) are in the tree and
-> lint-clean; the package is not registered yet. Design verified against
-> `github.com/bytebase/omni` `v0.0.0-20260912023254-4574e69bb9f1` and a live
-> StarRocks 4.1 container; both blockers in "Findings" are reproduced, not
-> theoretical.
+> **Status: in progress — P0 through P3 landed.** `buildSQL` pass-through, the
+> package foundation, plain SELECT, CTE, derived tables, set operations, the
+> expression layer and the DDL targets (CREATE VIEW / MATERIALIZED VIEW / CTAS)
+> are in the tree and lint-clean; the package is not registered yet. Design
+> verified against `github.com/bytebase/omni`
+> `v0.0.0-20260912023254-4574e69bb9f1` and a live StarRocks 4.1 container; both
+> blockers in "Findings" are reproduced, not theoretical.
 >
 > Related: `plan/mysql_omni_parser_migration_plan.md` (the pattern this
 > follows), `plan/mysql_family_dialect_lineage_plan.md` (why a dialect gets its
@@ -288,7 +288,7 @@ covered by `TestBuildSQL`.
 | P0 | `buildSQL` pass-through + test; package skeleton, `source`, `exprText`, `collectColumns`; plain SELECT end-to-end | `TestBuildSQL` green; package compiles; hermetic tests green | **landed** |
 | P1 | SELECT core: CTE, derived tables (raw text), set operations, `source` push/pop, temp-table flattening | corpus 03–05 green | **landed** |
 | P2 | Expression layer hardening: expression subqueries (scalar / `IN` / `EXISTS`), wildcard expansion over aliased relations, `relation_type`/`is_temp` coverage; fix a set operation nested in a temp table dropping its non-first arms | corpus 16 green (15 cases); `relation_type`/`is_temp` consistent with the shared algorithm layer | **landed** |
-| P3 | DDL targets: CREATE VIEW / MV / CTAS + `viewbody.go` | `WITH` / `UNION` / parenthesized view corpus green | pending |
+| P3 | DDL targets: CREATE VIEW / MV / CTAS + `viewbody.go` | `WITH` / `UNION` / parenthesized view corpus green | **landed** |
 | P4 | DML: INSERT (incl. Overwrite/ByName), UPDATE, DELETE, COPY/LOAD | DML corpus green | pending |
 | P5 | Register in `ultimate.go`; corpus completion; live StarRocks end-to-end check | `go test ./...` green; lint/build green; real view/MV produce edges | pending |
 
@@ -323,8 +323,19 @@ covered by `TestBuildSQL`.
 Full corpus is now 41 cases across 5 suites (01, 03, 04, 05, 16). `relation_type`
 and `is_temp` are asserted explicitly in the extended-forms suite.
 
-Statement kinds not yet implemented (`CREATE VIEW` / `ALTER VIEW` /
-`CREATE MATERIALIZED VIEW` / CTAS, INSERT / UPDATE / DELETE, COPY / LOAD)
+### P3 landed (what is actually in the tree)
+
+| Artifact | What it does |
+| --- | --- |
+| `lineage/starrocks/viewbody.go` | `extractViewDDL`: the F2 workaround. When omni rejects a view statement, the target name, declared column list and query body are recovered from the token stream so the body can be parsed as a top-level query (which accepts `WITH`, set operations and parentheses) |
+| `lineage/starrocks/analyzer.go` | `processDDLTarget` (CREATE/ALTER VIEW, CREATE MATERIALIZED VIEW), `processViewDDL` (extracted body), `processCreateTable` (CTAS from `RawSelect`), `generateEdgesForTarget`, `traceThroughTableLineageToTarget`, `viewColumnNames`, `isTableTempInCurrentScope`; `inDDLTarget` suppresses `__result__` edges inside a DDL body |
+| `lineage/starrocks/viewbody_test.go` | 11 extractor cases (CTE / set-operation / parenthesized bodies, MV full DDL, `SECURITY NONE`, `COMMENT`, `ALTER VIEW`, and four non-matches) plus the CTAS `LIKE` no-lineage assertion |
+| `lineage/starrocks/testdata/analyze/{07,08,17}_*.yaml` | CTAS (6), CREATE/ALTER VIEW (11) and materialized view (5) |
+
+Full corpus is now 63 cases across 8 suites. DDL targets are asserted with
+`is_temp: false`, and no `__result__` edges are emitted for a DDL body.
+
+Statement kinds not yet implemented (INSERT / UPDATE / DELETE, COPY / LOAD)
 return an explicit `analysis errors: … is not implemented yet` instead of a
 partial result; that contract is pinned by
 `TestUnimplementedStatementsFailLoudly`, whose list shrinks as each phase lands.
@@ -427,12 +438,19 @@ resolved for the same reason. Covered by `star_join_with_aliases`,
 | `SELECT * FROM t x` / `SELECT x.* FROM t x` | no edges | `t.* -> __result__.*` |
 | Set operation nested in a CTE / derived table | first arm only | every arm |
 | `SELECT (SELECT MAX(salary) FROM employees) AS m FROM departments` | `departments.salary` (wrong table) | `employees.salary` |
+| DDL body (`CREATE VIEW` / `MATERIALIZED VIEW` / CTAS) | also emits `__result__` edges | only the target edges |
+| `CREATE VIEW v AS SELECT id FROM t1 UNION ALL SELECT id FROM t2` | target edges from the first arm only | both arms |
 
-All four produce strictly more correct lineage, are pinned by the corpus, and are
-recorded here so the difference is not mistaken for a bug. The transform for a
-scalar subquery's enclosing column is `PROJECT` (the subquery is opaque text),
-where MySQL infers `AGGREGATE` from the inner call — a metadata nuance, not a
-missing edge.
+All of these produce strictly more correct, less noisy lineage; each is pinned by
+the corpus and recorded here so the difference is not mistaken for a bug. The
+transform for a scalar subquery's enclosing column is `PROJECT` (the subquery is
+opaque text), where MySQL infers `AGGREGATE` from the inner call — a metadata
+nuance, not a missing edge.
+
+Suppressing `__result__` inside a DDL body is safe for the runner: for
+`VIEW`/`MATERIALIZED_VIEW` it drops only `IsTemp` rows it discards anyway, and
+for `MANUAL_SQL` the discarded rows were duplicates of the source columns the
+non-temp target edges already contribute.
 
 ### Shared `scope` change introduced in P2
 
