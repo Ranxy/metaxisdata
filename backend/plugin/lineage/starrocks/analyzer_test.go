@@ -95,8 +95,6 @@ func TestUnimplementedStatementsFailLoudly(t *testing.T) {
 	t.Parallel()
 
 	for _, sql := range []string{
-		"CREATE VIEW v AS SELECT id FROM t",
-		"CREATE TABLE t2 AS SELECT id FROM t",
 		"INSERT INTO t2 SELECT id FROM t",
 		"UPDATE t SET id = 1 WHERE id = 2",
 		"DELETE FROM t WHERE id = 1",

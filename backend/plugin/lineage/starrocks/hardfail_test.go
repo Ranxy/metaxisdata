@@ -16,6 +16,9 @@ func TestHardFailOnUnparseableSQL(t *testing.T) {
 		"SELECT FROM WHERE",
 		"THIS IS NOT SQL AT ALL",
 		"SELECT * FROM",
+		// A view statement whose extracted body is itself malformed must still
+		// fail rather than silently yielding no lineage.
+		"CREATE VIEW v AS SELECT * FROM (SELECT",
 	} {
 		relations, err := analyzeSQL(sql, nil)
 		require.Error(t, err, "expected a hard failure for %q", sql)

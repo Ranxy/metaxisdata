@@ -56,6 +56,11 @@ type Analyzer struct {
 	// tempTables tracks CTE and subquery names so intermediate edges can be
 	// filtered out.
 	tempTables map[string]struct{}
+	// inDDLTarget is set while the query body of a CREATE VIEW / MATERIALIZED
+	// VIEW / TABLE ... AS statement is analyzed. Those output columns are
+	// mapped onto the new object, so they must not also be emitted against
+	// __result__.
+	inDDLTarget bool
 }
 
 // Analyze parses a single StarRocks statement and returns its column relations.
@@ -90,6 +95,16 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 
 	file, errs := starrocksparser.Parse(a.sql)
 	if len(errs) > 0 {
+		// omni's CREATE VIEW grammar accepts only a plain SELECT body (finding
+		// F2). A WITH / set-operation / parenthesized body is analyzed from the
+		// extracted query instead; anything else is still a hard failure.
+		if ddl, ok := extractViewDDL(a.sql); ok {
+			a.processViewDDL(ddl)
+			if len(a.errors) > 0 {
+				return nil, errors.Errorf("analysis errors: %s", strings.Join(a.errors, "; "))
+			}
+			return a.edges, nil
+		}
 		return nil, errors.Wrap(&errs[0], "failed to parse StarRocks SQL")
 	}
 	if file == nil || len(file.Stmts) != 1 {
@@ -114,13 +129,13 @@ func (a *Analyzer) dispatch(stmt nodes.Node) {
 	case *nodes.ParenSelect:
 		a.processQueryNode(s)
 	case *nodes.CreateViewStmt:
-		a.unsupported("CREATE VIEW")
+		a.processDDLTarget(s.Name, viewColumnNames(s.Columns), s.Query)
 	case *nodes.AlterViewStmt:
-		a.unsupported("ALTER VIEW")
+		a.processDDLTarget(s.Name, viewColumnNames(s.Columns), s.Query)
 	case *nodes.CreateMTMVStmt:
-		a.unsupported("CREATE MATERIALIZED VIEW")
+		a.processDDLTarget(s.Name, viewColumnNames(s.Columns), s.Query)
 	case *nodes.CreateTableStmt:
-		a.unsupported("CREATE TABLE")
+		a.processCreateTable(s)
 	case *nodes.InsertStmt:
 		a.unsupported("INSERT")
 	case *nodes.UpdateStmt:
@@ -319,6 +334,103 @@ func (a *Analyzer) tempTableShape(sp *scope.Scope, targetName string) ([]string,
 }
 
 // ---------------------------------------------------------------------------
+// DDL targets
+// ---------------------------------------------------------------------------
+
+// processDDLTarget analyzes the query body of a CREATE/ALTER VIEW or CREATE
+// MATERIALIZED VIEW and maps its output columns onto the created object.
+func (a *Analyzer) processDDLTarget(name *nodes.ObjectName, columns []string, query nodes.Node) {
+	if name == nil || query == nil {
+		return
+	}
+	schema, table, ok := tableRefFromObjectName(name)
+	if !ok {
+		return
+	}
+	a.inDDLTarget = true
+	a.processQueryNode(query)
+	a.inDDLTarget = false
+
+	a.generateEdgesForTarget(a.currentScope(), schema, table, columns)
+}
+
+// processViewDDL is processDDLTarget for a view statement whose body omni
+// could not parse in place; the body was extracted by extractViewDDL and is
+// analyzed as a top-level query in its own scope.
+func (a *Analyzer) processViewDDL(ddl *viewDDL) {
+	sp := a.analyzeRawQueryScope(ddl.body, "view query")
+	if sp == nil {
+		return
+	}
+	a.generateEdgesForTarget(sp, ddl.schema, ddl.name, ddl.columns)
+}
+
+// processCreateTable processes CREATE TABLE ... AS SELECT. omni keeps the query
+// as raw text, so it is re-parsed like a derived table's body.
+func (a *Analyzer) processCreateTable(stmt *nodes.CreateTableStmt) {
+	if stmt == nil || stmt.AsSelect == nil {
+		return
+	}
+	schema, table, ok := tableRefFromObjectName(stmt.Name)
+	if !ok {
+		return
+	}
+	raw := strings.TrimSpace(stmt.AsSelect.RawText)
+	if raw == "" {
+		return
+	}
+	sp := a.analyzeRawQueryScope(raw, "CREATE TABLE AS SELECT")
+	if sp == nil {
+		return
+	}
+	a.generateEdgesForTarget(sp, schema, table, stmt.CTASColumns)
+}
+
+// generateEdgesForTarget maps a scope's output columns onto the columns of the
+// object being created. A column list declared on the statement wins over the
+// query's own output alias.
+func (a *Analyzer) generateEdgesForTarget(sp *scope.Scope, targetSchema, targetTable string, targetColumns []string) {
+	if sp == nil {
+		return
+	}
+	for i, outputCol := range sp.GetOutputColumns() {
+		targetColName := outputCol.Alias
+		if i < len(targetColumns) {
+			targetColName = targetColumns[i]
+		}
+		for _, sourceCol := range outputCol.SourceColumns {
+			resolved, err := sp.ResolveColumn(sourceCol)
+			if err != nil {
+				continue
+			}
+			if tableRef, ok := sp.FindTable(resolved.Table); ok && (tableRef.IsCTE || tableRef.IsSubquery) {
+				a.traceThroughTableLineageToTarget(tableRef, resolved.Column, targetSchema, targetTable, targetColName, outputCol.Transform)
+				continue
+			}
+			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetTable)
+			a.addRelation(scope.NewLineageEdge(
+				resolved.Schema, resolved.Table, resolved.Column,
+				targetSchema, targetTable, targetColName,
+				outputCol.Transform,
+				isTemp,
+			))
+		}
+	}
+}
+
+// viewColumnNames extracts the declared column names of a view or materialized
+// view statement.
+func viewColumnNames(cols []*nodes.ViewColumn) []string {
+	out := make([]string, 0, len(cols))
+	for _, c := range cols {
+		if c != nil && c.Name != "" {
+			out = append(out, c.Name)
+		}
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
 // SELECT list
 // ---------------------------------------------------------------------------
 
@@ -479,9 +591,10 @@ func (a *Analyzer) expressionSubquerySources(expr nodes.Node) []scope.ColumnRef 
 // ---------------------------------------------------------------------------
 
 // generateEdges creates ColumnRelation objects from the scope's output columns.
-// Only the root query emits edges to the final result.
+// Only the root query emits edges to the final result, and a DDL body does not
+// (its columns are mapped onto the created object instead).
 func (a *Analyzer) generateEdges(sp *scope.Scope) {
-	if sp == nil || sp.Parent() != nil {
+	if a.inDDLTarget || sp == nil || sp.Parent() != nil {
 		return
 	}
 	for _, outputCol := range sp.GetOutputColumns() {
@@ -599,6 +712,20 @@ func (a *Analyzer) markTempTable(name string) {
 func (a *Analyzer) isTempTable(name string) bool {
 	_, ok := a.tempTables[name]
 	return ok
+}
+
+// isTableTempInCurrentScope reports whether a table name is a CTE or derived
+// table visible from any scope on the stack.
+func (a *Analyzer) isTableTempInCurrentScope(tableName string) bool {
+	for _, sp := range a.scopeStack {
+		if _, ok := sp.FindCTE(tableName); ok {
+			return true
+		}
+		if tableRef, ok := sp.FindTable(tableName); ok {
+			return tableRef.IsSubquery || tableRef.IsCTE
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------
@@ -792,6 +919,27 @@ func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName
 			"", resultTableName, actualOutput,
 			combineTransformations(edge.Transformation, transform),
 			true,
+		))
+	}
+}
+
+// traceThroughTableLineageToTarget traces lineage through a CTE or derived
+// table to a specific target column on a real object.
+func (a *Analyzer) traceThroughTableLineageToTarget(tableRef *scope.TableRef, columnName string, targetSchema string, targetTable string, targetColumn string, transform []model.Transformation) {
+	for _, edge := range tableRef.Lineage {
+		if columnName != wildcardColumn && edge.Target.Name != columnName {
+			continue
+		}
+		actualTargetColumn := targetColumn
+		if columnName == wildcardColumn && targetColumn == wildcardColumn {
+			actualTargetColumn = edge.Target.Name
+		}
+		isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetTable)
+		a.addRelation(scope.NewLineageEdge(
+			edge.Source.Table.Database, edge.Source.Table.Name, edge.Source.Name,
+			targetSchema, targetTable, actualTargetColumn,
+			combineTransformations(edge.Transformation, transform),
+			isTemp,
 		))
 	}
 }
