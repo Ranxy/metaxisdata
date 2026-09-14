@@ -36,8 +36,6 @@ github.com/blang/semver/v4 v4.0.0 h1:1PFHFE6yCCTv8C1TeyNNarDzntLi7wMI5i/pzqYIsAM
 github.com/blang/semver/v4 v4.0.0/go.mod h1:IbckMUScFkM3pff0VJDNKRiT6TG/YpiHIM2yvyW5YoQ=
 github.com/bytebase/omni v0.0.0-20260912023254-4574e69bb9f1 h1:F0XizxSJZ5z5mdDkEMWwjgIso2mWG6kZB4MBNjwwmE0=
 github.com/bytebase/omni v0.0.0-20260912023254-4574e69bb9f1/go.mod h1:9XZE1hqtvr09Oc+DdLu1/yCb8MDcoy/EPdA4AONDHlE=
-github.com/bytebase/parser v0.0.0-20260130090605-effef73942d9 h1:q5MnVPWlV/p3MPe60SysVoUaEnyeS6+OOOk0F3DLLK8=
-github.com/bytebase/parser v0.0.0-20260130090605-effef73942d9/go.mod h1:jeak/EfutSOAuWKvrFIT2IZunhWprM7oTFBRgZ9RCxo=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
 github.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
 github.com/cenkalti/backoff/v5 v5.0.3 h1:ZN+IMa753KfX5hd8vVaMixjnqRZ3y8CuJKRKj1xcsSM=
@@ -217,8 +215,12 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/testcontainers/testcontainers-go v0.41.0 h1:mfpsD0D36YgkxGj2LrIyxuwQ9i2wCKAD+ESsYM1wais=
 github.com/testcontainers/testcontainers-go v0.41.0/go.mod h1:pdFrEIfaPl24zmBjerWTTYaY0M6UHsqA1YSvsoU40MI=
+github.com/testcontainers/testcontainers-go/modules/mariadb v0.41.0 h1:t0J/TOgzTKCO+7Pc7wE6ITJXGCZFufisuokOWYVzNaQ=
+github.com/testcontainers/testcontainers-go/modules/mariadb v0.41.0/go.mod h1:ELA34/aGm5oXG0g9OkPVWmIsw+BDdeybr7wk8i+TQCg=
 github.com/testcontainers/testcontainers-go/modules/mysql v0.41.0 h1:5rwejaJr5nIfw8NK99eKPX7O6k27lnSMklTj5DbYybM=
 github.com/testcontainers/testcontainers-go/modules/mysql v0.41.0/go.mod h1:iMO/aFWnbjYkqHw8VPsJB3rVTOD9hKDsUtV0PvzD0DA=
+github.com/testcontainers/testcontainers-go/modules/postgres v0.41.0 h1:AOtFXssrDlLm84A2sTTR/AhvJiYbrIuCO59d+Ro9Tb0=
+github.com/testcontainers/testcontainers-go/modules/postgres v0.41.0/go.mod h1:k2a09UKhgSp6vNpliIY0QSgm4Hi7GXVTzWvWgUemu/8=
 github.com/tklauser/go-sysconf v0.3.16 h1:frioLaCQSsF5Cy1jgRBrzr6t502KIIwQ0MArYICU0nA=
 github.com/tklauser/go-sysconf v0.3.16/go.mod h1:/qNL9xxDhc7tx3HSRsLWNnuzbVfh3e7gh/BmM179nYI=
 github.com/tklauser/numcpus v0.11.0 h1:nSTwhKH5e1dMNsCdVBukSZrURJRoHbSEQjdEbY+9RXw=

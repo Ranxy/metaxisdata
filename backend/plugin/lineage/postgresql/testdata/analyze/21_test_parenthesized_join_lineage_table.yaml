@@ -1,0 +1,73 @@
+name: TestParenthesizedJoinLineage_Table
+# pg_get_viewdef renders a join tree in parentheses, e.g.
+#   SELECT u.id FROM (users u JOIN orders o ON ((u.id = o.user_id)))
+# which is exactly the shape the lineage runner feeds back for a stored view.
+# The legacy ANTLR analyzer silently produced zero edges for these; the
+# omni-backed analyzer resolves them. These cases pin the corrected behavior and
+# are listed in knownLegacyDefects (parity_test.go / postgresqlantlr helper).
+cases:
+    - name: parenthesized join tree
+      sql: SELECT u.id, o.amount FROM (users u JOIN orders o ON u.id = o.user_id)
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: orders
+          from_field: amount
+          to_table: __result__
+          to_field: amount
+    - name: doubly parenthesized join tree
+      sql: SELECT u.id, o.amount FROM ((users u JOIN orders o ON u.id = o.user_id))
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: orders
+          from_field: amount
+          to_table: __result__
+          to_field: amount
+    - name: parenthesized left join
+      sql: SELECT u.id, o.amount FROM (users u LEFT JOIN orders o ON u.id = o.user_id)
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: orders
+          from_field: amount
+          to_table: __result__
+          to_field: amount
+    - name: parenthesized join wrapped as a view (pg_get_viewdef shape)
+      sql: CREATE VIEW v AS SELECT u.id, o.amount FROM (users u JOIN orders o ON u.id = o.user_id)
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: orders
+          from_field: amount
+          to_table: __result__
+          to_field: amount
+        - from_table: users
+          from_field: id
+          to_table: v
+          to_field: id
+          is_temp: false
+        - from_table: orders
+          from_field: amount
+          to_table: v
+          to_field: amount
+          is_temp: false
+    - name: parenthesized join joined further
+      sql: SELECT u.id, p.val FROM (users u JOIN orders o ON u.id = o.user_id) JOIN products p ON p.id = o.product_id
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: products
+          from_field: val
+          to_table: __result__
+          to_field: val
