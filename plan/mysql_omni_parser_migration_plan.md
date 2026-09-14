@@ -141,10 +141,13 @@ Recorded divergences from the legacy analyzer:
 
 ### Out of scope (separate plans)
 
-- **MariaDB, TiDB, OceanBase.** They keep sharing the current ANTLR analyzer
-  only until this plan's cutover; after that they have no analyzer until their
-  own migrations land. This is intentional: pointing `omni/mysql` at their SQL
-  is exactly the parse-divergence risk we are avoiding.
+- **MariaDB, TiDB.** Landed separately in
+  `backend/plugin/lineage/{tidb,mariadb}` — see
+  `plan/mysql_family_dialect_lineage_plan.md`. They use omni's per-dialect
+  parsers rather than pointing `omni/mysql` at their SQL, which is exactly the
+  parse-divergence risk this plan avoided.
+- **OceanBase.** Dropped by decision; `Engine_OCEANBASE` stays
+  `ErrorEngineNotSupported` (a recorded, deliberate skip).
 - **PostgreSQL.** Untouched. Consequence: `bytebase/parser` and `antlr4-go`
   remain in `go.mod` for the PostgreSQL analyzer (they are used by only two
   files today, so this plan removes one of the two).

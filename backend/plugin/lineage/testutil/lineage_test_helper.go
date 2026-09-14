@@ -151,6 +151,14 @@ func LoadLineageTestSuiteFromYAML(path string) (LineageTestSuite, error) {
 // RunLineageTestSuitesFromYAMLDir executes every YAML suite in a directory.
 func RunLineageTestSuitesFromYAMLDir(t *testing.T, dir string, analyzeFn AnalyzeFunc) {
 	t.Helper()
+	RunLineageTestSuitesFromYAMLDirSkipping(t, dir, analyzeFn, nil)
+}
+
+// RunLineageTestSuitesFromYAMLDirSkipping is RunLineageTestSuitesFromYAMLDir with
+// the named cases omitted. A dialect uses it to record, explicitly, statements
+// its parser cannot handle yet rather than silently narrowing the shared corpus.
+func RunLineageTestSuitesFromYAMLDirSkipping(t *testing.T, dir string, analyzeFn AnalyzeFunc, skip map[string]bool) {
+	t.Helper()
 
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
@@ -169,8 +177,16 @@ func RunLineageTestSuitesFromYAMLDir(t *testing.T, dir string, analyzeFn Analyze
 		suite, err := LoadLineageTestSuiteFromYAML(suitePath)
 		require.NoError(t, err)
 
+		cases := make([]LineageTestCase, 0, len(suite.Cases))
+		for _, tc := range suite.Cases {
+			if skip[tc.Name] {
+				continue
+			}
+			cases = append(cases, tc)
+		}
+
 		t.Run(suite.Name, func(t *testing.T) {
-			RunLineageTests(t, suite.Cases, analyzeFn)
+			RunLineageTests(t, cases, analyzeFn)
 		})
 	}
 }
