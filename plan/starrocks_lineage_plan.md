@@ -1,9 +1,9 @@
 # Plan: StarRocks Column-Level Lineage Analyzer (omni-backed)
 
-> **Status: in progress — P0 landed.** `buildSQL` pass-through and the package
-> skeleton (`source` / `exprText` / `collectColumns` / plain-SELECT traversal)
-> are in the tree and lint-clean; the package is not registered yet. Design
-> verified against `github.com/bytebase/omni`
+> **Status: in progress — P0 and P1 landed.** `buildSQL` pass-through, the
+> package foundation, plain SELECT, CTE, derived tables and set operations are
+> in the tree and lint-clean; the package is not registered yet. Design verified
+> against `github.com/bytebase/omni`
 > `v0.0.0-20260912023254-4574e69bb9f1` and a live StarRocks 4.1 container; both
 > blockers in "Findings" are reproduced, not theoretical.
 >
@@ -285,8 +285,8 @@ covered by `TestBuildSQL`.
 | Phase | Work | Exit criteria | Status |
 | --- | --- | --- | --- |
 | P0 | `buildSQL` pass-through + test; package skeleton, `source`, `exprText`, `collectColumns`; plain SELECT end-to-end | `TestBuildSQL` green; package compiles; hermetic tests green | **landed** |
-| P1 | SELECT core: derived tables (raw text), CTE, set operations, `*source` push/pop | corpus 01–05, 12 green | pending |
-| P2 | Expression layer hardening + transformations + relation-type/temp filtering | corpus 16 green; `relation_type`/`is_temp` consistent with the shared algorithm layer | pending |
+| P1 | SELECT core: CTE, derived tables (raw text), set operations, `source` push/pop, temp-table flattening | corpus 03–05 green | **landed** |
+| P2 | Expression layer hardening: expression subqueries (scalar / `IN` / `EXISTS`), transformation coverage, relation-type/temp filtering; fix a set operation nested in a temp table dropping its non-first arms | corpus 16 green; `relation_type`/`is_temp` consistent with the shared algorithm layer | pending |
 | P3 | DDL targets: CREATE VIEW / MV / CTAS + `viewbody.go` | `WITH` / `UNION` / parenthesized view corpus green | pending |
 | P4 | DML: INSERT (incl. Overwrite/ByName), UPDATE, DELETE, COPY/LOAD | DML corpus green | pending |
 | P5 | Register in `ultimate.go`; corpus completion; live StarRocks end-to-end check | `go test ./...` green; lint/build green; real view/MV produce edges | pending |
@@ -296,18 +296,28 @@ covered by `TestBuildSQL`.
 | Artifact | What it does |
 | --- | --- |
 | `runner/lineageanalyzer/analyzer.go` | `isCompleteStatement` pass-through in `buildSQL`, plus two `TestBuildSQL` cases (StarRocks full MV DDL passthrough, StarRocks view still wrapped) |
-| `lineage/starrocks/analyzer.go` | parse + single-statement rejection + hard-fail; dispatch; plain SELECT (FROM/JOIN, `*` / `t.*` / `* EXCEPT`, expressions and aliases, catalog wildcard expansion); edge generation and dedup |
+| `lineage/starrocks/analyzer.go` | parse + single-statement rejection + hard-fail; dispatch; SELECT traversal; edge generation and dedup |
 | `lineage/starrocks/rawsql.go` | `source` + `currentSource` + `exprText` / `exprTextOf` (whitespace-free reconstruction from tokens) |
 | `lineage/starrocks/expr.go` | `ObjectName` → `scope.ColumnRef` / table mapping (catalog dropped), `collectColumns`, alias inference, aggregate/window/function/case/operator transformation detection |
 | `lineage/starrocks/{analyze_test_helper,analyze_test,analyzer_test,hardfail_test}.go` | YAML-suite wiring, helper unit tests, hard-fail and multi-statement pins |
 | `lineage/starrocks/testdata/analyze/01_test_select_lineage_table.yaml` | 12 hermetic SELECT cases |
 
-Statement kinds not yet implemented (`WITH`, set operations, derived tables,
-CREATE VIEW / MV / CTAS, INSERT / UPDATE / DELETE) return an explicit
-`analysis errors: … is not implemented yet` instead of a partial result; that
-contract is pinned by `TestUnimplementedStatementsFailLoudly`, whose list shrinks
-as each phase lands. The package does **not** call `RegisterAnalyzeRelation` yet,
-so production behavior is unchanged.
+### P1 landed (what is actually in the tree)
+
+| Artifact | What it does |
+| --- | --- |
+| `lineage/starrocks/rawsql.go` | `pushSource` / `popSource` and `parseRawQuery`, the re-parse path for query bodies omni keeps as text |
+| `lineage/starrocks/analyzer.go` | `processQueryNode`; `processCTEs` / `processCTE`; `flattenSetOpArms` / `processSetOperation` / `mergeUnionOutputColumns`; `processDerivedTable`; scope stack (`pushScope` / `popScope`); temp-table tracking; `traceThroughTableLineage`, `appendFlattenedLineage`, `flattenTempSourceLineage` |
+| `lineage/starrocks/expr.go` | `combineTransformations` |
+| `lineage/starrocks/testdata/analyze/{03,04,05}_*.yaml` | derived tables (5), CTEs (4) and set operations (5) |
+
+Statement kinds not yet implemented (`CREATE VIEW` / `ALTER VIEW` /
+`CREATE MATERIALIZED VIEW` / CTAS, INSERT / UPDATE / DELETE, COPY / LOAD)
+return an explicit `analysis errors: … is not implemented yet` instead of a
+partial result; that contract is pinned by
+`TestUnimplementedStatementsFailLoudly`, whose list shrinks as each phase lands.
+The package does **not** call `RegisterAnalyzeRelation` yet, so production
+behavior is unchanged.
 
 ## Files
 
@@ -344,6 +354,57 @@ so production behavior is unchanged.
 | Expression-subquery behavior differs from MySQL | Intentional (MySQL's is a bug); corpus pins the correct expectation and the difference is documented |
 | No StarRocks CI coverage | Hermetic corpus is the contract; live end-to-end is a development-time check only, by decision |
 | `SELECT * REPLACE` / `GROUP BY ALL` unsupported | Kept out of the corpus; recorded as known gaps |
+
+### Known limitation shared with the MySQL analyzer (P1)
+
+A set operation nested inside a CTE or a derived table contributes **only its
+first arm's base tables**. The arms after the first are analyzed in their own
+scopes, but `mergeUnionOutputColumns` merges *unresolved* `scope.ColumnRef`s, and
+the enclosing CTE/derived table later resolves those refs against a scope that
+only holds the first arm's relations — so later arms either collapse onto the
+first arm's table or fail to resolve.
+
+Reproduced against the MySQL analyzer (same result), so this is parity, not a
+regression:
+
+```
+SELECT u.id FROM (SELECT id FROM t1 UNION ALL SELECT id FROM t2) u
+  MySQL  -> t1.id -> __result__.id     (t2 dropped)
+```
+
+Not in the corpus. Fixing it needs resolved-reference identity to survive the
+merge (for example a resolved marker on `scope.ColumnRef`, or threading each
+arm's scope through the merge); it is tracked as a P2 item rather than solved by
+weakening the shared `scope` package during P1.
+
+### Known limitation: expression subqueries are not traced (P1)
+
+omni models a scalar / `IN` / `EXISTS` subquery as `SubqueryExpr`, a walker leaf
+whose body is only `RawText`. `collectColumns` therefore sees no columns inside
+it, and the enclosing expression falls back to a wildcard reference to the
+outer FROM relations:
+
+```
+SELECT (SELECT max(a) FROM t2) AS m FROM t1
+  current -> t1.*  -> __result__.m     (t2 not represented)
+  MySQL   -> t1.a  -> __result__.m     (also wrong: binds the inner column to the outer table)
+```
+
+Neither is correct. P2 re-parses `SubqueryExpr.RawText` through `parseRawQuery`
+and flattens the subquery's own resolved sources onto the enclosing output
+column, which is the behavior the architecture section describes. Not in the P1
+corpus.
+
+### Deliberate divergence: CTE with an explicit column list (P1)
+
+`WITH c (a, b) AS (SELECT id, name FROM users) SELECT c.a, c.b FROM c` maps the
+CTE's declared columns onto the body's output columns, so it produces
+`users.id -> __result__.a` and `users.name -> __result__.b`. The MySQL analyzer
+emits **nothing** for this shape (its CTE lineage keys on the body's own
+aliases while the outer reference uses the declared names). Producing the edges
+is strictly more correct, is covered by
+`testdata/analyze/04_test_c_t_e_lineage_table.yaml`, and is recorded here so the
+difference is not mistaken for a bug.
 
 ## Decisions after review
 
