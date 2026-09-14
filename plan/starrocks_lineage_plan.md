@@ -1,10 +1,11 @@
 # Plan: StarRocks Column-Level Lineage Analyzer (omni-backed)
 
-> **Status: in progress — P0 through P3 landed.** `buildSQL` pass-through, the
-> package foundation, plain SELECT, CTE, derived tables, set operations, the
-> expression layer and the DDL targets (CREATE VIEW / MATERIALIZED VIEW / CTAS)
-> are in the tree and lint-clean; the package is not registered yet. Design
-> verified against `github.com/bytebase/omni`
+> **Status: in progress — P0 through P4 landed.** `buildSQL` pass-through, the
+> package foundation, SELECT (plain, CTE, derived tables, set operations,
+> expression subqueries), the DDL targets (CREATE VIEW / MATERIALIZED VIEW /
+> CTAS) and the DML statements (INSERT / UPDATE / DELETE / COPY / LOAD) are in
+> the tree and lint-clean; the engine is not registered yet, which is P5.
+> Design verified against `github.com/bytebase/omni`
 > `v0.0.0-20260912023254-4574e69bb9f1` and a live StarRocks 4.1 container; both
 > blockers in "Findings" are reproduced, not theoretical.
 >
@@ -289,7 +290,7 @@ covered by `TestBuildSQL`.
 | P1 | SELECT core: CTE, derived tables (raw text), set operations, `source` push/pop, temp-table flattening | corpus 03–05 green | **landed** |
 | P2 | Expression layer hardening: expression subqueries (scalar / `IN` / `EXISTS`), wildcard expansion over aliased relations, `relation_type`/`is_temp` coverage; fix a set operation nested in a temp table dropping its non-first arms | corpus 16 green (15 cases); `relation_type`/`is_temp` consistent with the shared algorithm layer | **landed** |
 | P3 | DDL targets: CREATE VIEW / MV / CTAS + `viewbody.go` | `WITH` / `UNION` / parenthesized view corpus green | **landed** |
-| P4 | DML: INSERT (incl. Overwrite/ByName), UPDATE, DELETE, COPY/LOAD | DML corpus green | pending |
+| P4 | DML: INSERT (incl. Overwrite/ByName), UPDATE, DELETE, COPY/LOAD | DML corpus green | **landed** |
 | P5 | Register in `ultimate.go`; corpus completion; live StarRocks end-to-end check | `go test ./...` green; lint/build green; real view/MV produce edges | pending |
 
 ### P0 landed (what is actually in the tree)
@@ -335,12 +336,36 @@ and `is_temp` are asserted explicitly in the extended-forms suite.
 Full corpus is now 63 cases across 8 suites. DDL targets are asserted with
 `is_temp: false`, and no `__result__` edges are emitted for a DDL body.
 
-Statement kinds not yet implemented (INSERT / UPDATE / DELETE, COPY / LOAD)
-return an explicit `analysis errors: … is not implemented yet` instead of a
-partial result; that contract is pinned by
-`TestUnimplementedStatementsFailLoudly`, whose list shrinks as each phase lands.
-The package does **not** call `RegisterAnalyzeRelation` yet, so production
-behavior is unchanged.
+### P4 landed (what is actually in the tree)
+
+| Artifact | What it does |
+| --- | --- |
+| `lineage/starrocks/analyzer.go` | `processInsertStatement` (SELECT / OVERWRITE / BY NAME), `processUpdateStatement` + `processUpdateList`, `processDeleteStatement`, `processCopyInto`, `processLoadStatement`; `addBaseTable`; `__deletion__` and `__file__` markers re-added; `inDDLTarget` generalized to `inTargetContext` so an INSERT body is suppressed the same way a DDL body is |
+| `lineage/starrocks/expr.go` | `normalizeExpressionText` (used by the UPDATE/DELETE transform text) |
+| `lineage/starrocks/dml_test.go` | `INSERT ... VALUES` and `DELETE` with no `WHERE` return no edges and no error |
+| `lineage/starrocks/testdata/analyze/{06,09,10,18}_*.yaml` | INSERT (8), UPDATE (4), DELETE (4), COPY/LOAD (4) |
+
+Full corpus is now 83 cases across 12 suites. `MERGE INTO` is the only
+statement kind that still fails loudly (see "Remaining gaps"); every other DML
+form either produces lineage or is a statement kind that genuinely has none.
+
+DML notes:
+
+- `INSERT ... BY NAME` matches source column names to target column names; the
+  target's catalog is not consulted, so the source alias is the target name.
+- `LOAD ... SET (...)` is captured by omni only as raw text, so it contributes
+  no column lineage; the file-to-column edges still do.
+- An assignment or condition subquery contributes its own output sources (for
+  example `DELETE FROM t1 WHERE id IN (SELECT id FROM t2 ...)` yields both
+  `t1.id` and `t2.id` as `__deletion__` sources). The MySQL analyzer does not
+  trace subqueries in these positions.
+
+No statement kind is silently ignored any more: `MERGE INTO` is the one DML
+form this analyzer does not model, and it fails loudly
+(`analysis errors: MERGE analysis is not implemented yet`) rather than returning
+no lineage, so it is visible in `column_lineage_version.error_message`. It is
+pinned by `TestUnimplementedStatementsFailLoudly`. The package does **not** call
+`RegisterAnalyzeRelation` yet, so production behavior is unchanged.
 
 ## Files
 
@@ -378,6 +403,7 @@ behavior is unchanged.
 | Expression-subquery behavior differs from MySQL | Intentional (MySQL's is a bug); corpus pins the correct expectation and the difference is documented |
 | No StarRocks CI coverage | Hermetic corpus is the contract; live end-to-end is a development-time check only, by decision |
 | `SELECT * REPLACE` / `GROUP BY ALL` unsupported | Kept out of the corpus; recorded as known gaps |
+| `MERGE INTO` has no analyzer | Fails loudly rather than silently reporting no lineage; a follow-up if a real MERGE appears in analyzed objects |
 
 ### Fixed in P2: set operation nested in a temporary table
 
