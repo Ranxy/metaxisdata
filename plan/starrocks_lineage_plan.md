@@ -1,11 +1,12 @@
 # Plan: StarRocks Column-Level Lineage Analyzer (omni-backed)
 
-> **Status: in progress — P0 and P1 landed.** `buildSQL` pass-through, the
-> package foundation, plain SELECT, CTE, derived tables and set operations are
-> in the tree and lint-clean; the package is not registered yet. Design verified
-> against `github.com/bytebase/omni`
-> `v0.0.0-20260912023254-4574e69bb9f1` and a live StarRocks 4.1 container; both
-> blockers in "Findings" are reproduced, not theoretical.
+> **Status: in progress — P0, P1 and P2 landed.** `buildSQL` pass-through, the
+> package foundation, plain SELECT, CTE, derived tables, set operations and the
+> expression layer (including expression subqueries) are in the tree and
+> lint-clean; the package is not registered yet. Design verified against
+> `github.com/bytebase/omni` `v0.0.0-20260912023254-4574e69bb9f1` and a live
+> StarRocks 4.1 container; both blockers in "Findings" are reproduced, not
+> theoretical.
 >
 > Related: `plan/mysql_omni_parser_migration_plan.md` (the pattern this
 > follows), `plan/mysql_family_dialect_lineage_plan.md` (why a dialect gets its
@@ -286,7 +287,7 @@ covered by `TestBuildSQL`.
 | --- | --- | --- | --- |
 | P0 | `buildSQL` pass-through + test; package skeleton, `source`, `exprText`, `collectColumns`; plain SELECT end-to-end | `TestBuildSQL` green; package compiles; hermetic tests green | **landed** |
 | P1 | SELECT core: CTE, derived tables (raw text), set operations, `source` push/pop, temp-table flattening | corpus 03–05 green | **landed** |
-| P2 | Expression layer hardening: expression subqueries (scalar / `IN` / `EXISTS`), transformation coverage, relation-type/temp filtering; fix a set operation nested in a temp table dropping its non-first arms | corpus 16 green; `relation_type`/`is_temp` consistent with the shared algorithm layer | pending |
+| P2 | Expression layer hardening: expression subqueries (scalar / `IN` / `EXISTS`), wildcard expansion over aliased relations, `relation_type`/`is_temp` coverage; fix a set operation nested in a temp table dropping its non-first arms | corpus 16 green (15 cases); `relation_type`/`is_temp` consistent with the shared algorithm layer | **landed** |
 | P3 | DDL targets: CREATE VIEW / MV / CTAS + `viewbody.go` | `WITH` / `UNION` / parenthesized view corpus green | pending |
 | P4 | DML: INSERT (incl. Overwrite/ByName), UPDATE, DELETE, COPY/LOAD | DML corpus green | pending |
 | P5 | Register in `ultimate.go`; corpus completion; live StarRocks end-to-end check | `go test ./...` green; lint/build green; real view/MV produce edges | pending |
@@ -311,6 +312,17 @@ covered by `TestBuildSQL`.
 | `lineage/starrocks/expr.go` | `combineTransformations` |
 | `lineage/starrocks/testdata/analyze/{03,04,05}_*.yaml` | derived tables (5), CTEs (4) and set operations (5) |
 
+### P2 landed (what is actually in the tree)
+
+| Artifact | What it does |
+| --- | --- |
+| `lineage/scope/types.go`, `scope/scope.go` | `ColumnRef.Resolved` and the `ResolveColumn` pass-through: a reference already resolved in the scope it came from is not rebound by a later lookup in a sibling scope. Other analyzers never set it, so their behavior is byte-identical; a guard test pins that |
+| `lineage/starrocks/analyzer.go` | `analyzeRawQueryScope` + `tempTableShape` (shared by derived tables and expression subqueries); `expressionSubquerySources`, wired into `processSelectExpr`; `resolveOutputColumns` in `processSetOperation`; `wildcardSourceRef` for `*` / `t.*` over aliased relations; catalog expansion marks its refs resolved |
+| `lineage/starrocks/testdata/analyze/16_test_extended_forms_lineage_table.yaml` | 16 extended forms: window/aggregate-over, CASE, COALESCE, GROUP_CONCAT, COUNT(DISTINCT), aliased `*`/`t.*`, `COUNT(*)`, comma join, scalar subqueries, and set operations nested in a derived table / CTE / aliased CTE wildcard |
+
+Full corpus is now 41 cases across 5 suites (01, 03, 04, 05, 16). `relation_type`
+and `is_temp` are asserted explicitly in the extended-forms suite.
+
 Statement kinds not yet implemented (`CREATE VIEW` / `ALTER VIEW` /
 `CREATE MATERIALIZED VIEW` / CTAS, INSERT / UPDATE / DELETE, COPY / LOAD)
 return an explicit `analysis errors: … is not implemented yet` instead of a
@@ -326,8 +338,9 @@ behavior is unchanged.
 | `backend/plugin/lineage/starrocks/*` | ADD (analyzer, tests, corpus) |
 | `backend/runner/lineageanalyzer/analyzer.go` | EDIT `buildSQL` (pass-through) |
 | `backend/runner/lineageanalyzer/analyzer_test.go` | ADD StarRocks MV case |
+| `backend/plugin/lineage/scope/{types,scope}.go` | EDIT `ColumnRef.Resolved` + `ResolveColumn` pass-through (P2) |
 | `backend/server/ultimate.go` | ADD blank import |
-| `backend/plugin/lineage/{scope,model,catalog,lineage}.go` | UNCHANGED |
+| `backend/plugin/lineage/{model,catalog,lineage}.go` | UNCHANGED |
 | `go.mod` | UNCHANGED (`github.com/bytebase/omni` already required) |
 
 ## Verification
@@ -355,56 +368,80 @@ behavior is unchanged.
 | No StarRocks CI coverage | Hermetic corpus is the contract; live end-to-end is a development-time check only, by decision |
 | `SELECT * REPLACE` / `GROUP BY ALL` unsupported | Kept out of the corpus; recorded as known gaps |
 
-### Known limitation shared with the MySQL analyzer (P1)
+### Fixed in P2: set operation nested in a temporary table
 
-A set operation nested inside a CTE or a derived table contributes **only its
-first arm's base tables**. The arms after the first are analyzed in their own
-scopes, but `mergeUnionOutputColumns` merges *unresolved* `scope.ColumnRef`s, and
-the enclosing CTE/derived table later resolves those refs against a scope that
-only holds the first arm's relations — so later arms either collapse onto the
-first arm's table or fail to resolve.
+The P1 analyzer kept **only the first arm** of a set operation nested inside a
+CTE or derived table. `mergeUnionOutputColumns` merges unresolved
+`scope.ColumnRef`s, and the enclosing CTE/derived table later resolved them
+against a scope holding only the first arm's relations, so later arms collapsed
+onto the first arm's table or failed to resolve. The MySQL analyzer still has
+this gap (reproduced: `SELECT u.id FROM (SELECT id FROM t1 UNION ALL SELECT id
+FROM t2) u` yields only `t1.id`).
 
-Reproduced against the MySQL analyzer (same result), so this is parity, not a
-regression:
+P2 resolves each arm's references **within that arm's scope** before merging and
+marks them resolved, so both arms survive:
 
 ```
 SELECT u.id FROM (SELECT id FROM t1 UNION ALL SELECT id FROM t2) u
-  MySQL  -> t1.id -> __result__.id     (t2 dropped)
+  now -> t1.id -> __result__.id  and  t2.id -> __result__.id
 ```
 
-Not in the corpus. Fixing it needs resolved-reference identity to survive the
-merge (for example a resolved marker on `scope.ColumnRef`, or threading each
-arm's scope through the merge); it is tracked as a P2 item rather than solved by
-weakening the shared `scope` package during P1.
+Covered by `set_operation_nested_in_derived_table` and
+`set_operation_nested_in_cte` in the extended-forms corpus.
 
-### Known limitation: expression subqueries are not traced (P1)
+### Fixed in P2: expression subqueries
 
 omni models a scalar / `IN` / `EXISTS` subquery as `SubqueryExpr`, a walker leaf
-whose body is only `RawText`. `collectColumns` therefore sees no columns inside
-it, and the enclosing expression falls back to a wildcard reference to the
-outer FROM relations:
+whose body is only `RawText`, so P1 saw no columns inside it and the enclosing
+expression fell back to a wildcard reference to the outer FROM relations:
 
 ```
-SELECT (SELECT max(a) FROM t2) AS m FROM t1
-  current -> t1.*  -> __result__.m     (t2 not represented)
-  MySQL   -> t1.a  -> __result__.m     (also wrong: binds the inner column to the outer table)
+SELECT (SELECT MAX(salary) FROM employees) AS m FROM departments
+  P1    -> departments.*  -> __result__.m   (wrong table)
+  MySQL -> departments.salary -> __result__.m (wrong too: binds the inner column to the outer table)
+  now   -> employees.salary -> __result__.m
 ```
 
-Neither is correct. P2 re-parses `SubqueryExpr.RawText` through `parseRawQuery`
-and flattens the subquery's own resolved sources onto the enclosing output
-column, which is the behavior the architecture section describes. Not in the P1
-corpus.
+P2 re-parses `SubqueryExpr.RawText` in its own scope (via `analyzeRawQueryScope`)
+and flattens the subquery's resolved sources onto the enclosing output column,
+marking them resolved. Covered by `scalar_subquery` and
+`scalar_subquery_alongside_outer_columns`.
 
-### Deliberate divergence: CTE with an explicit column list (P1)
+### Fixed in P2: `*` / `t.*` over an aliased relation
 
-`WITH c (a, b) AS (SELECT id, name FROM users) SELECT c.a, c.b FROM c` maps the
-CTE's declared columns onto the body's output columns, so it produces
-`users.id -> __result__.a` and `users.name -> __result__.b`. The MySQL analyzer
-emits **nothing** for this shape (its CTE lineage keys on the body's own
-aliases while the outer reference uses the declared names). Producing the edges
-is strictly more correct, is covered by
-`testdata/analyze/04_test_c_t_e_lineage_table.yaml`, and is recorded here so the
-difference is not mistaken for a bug.
+`processStar` emitted the relation's real table name as the source reference,
+then resolution looked it up by name in a scope keyed by alias, failed, and
+dropped the edge — so `SELECT * FROM t x` produced **no lineage at all**. The
+MySQL analyzer still has this gap (verified: `SELECT * FROM employees e` yields
+0 edges there). P2 marks a base table's `*` reference resolved (it is already
+fully identified), and looks a CTE/derived table up by its scope key so the
+temp-table trace still applies. Catalog-driven expansion marks its references
+resolved for the same reason. Covered by `star_join_with_aliases`,
+`table_star_with_alias`, `count_star_with_alias` and `cte_star_with_alias`.
+
+### Deliberate divergences from the MySQL analyzer
+
+| Shape | MySQL | StarRocks |
+| --- | --- | --- |
+| `WITH c (a, b) AS (SELECT id, name FROM users) SELECT c.a, c.b FROM c` | no edges | `users.id -> __result__.a`, `users.name -> __result__.b` |
+| `SELECT * FROM t x` / `SELECT x.* FROM t x` | no edges | `t.* -> __result__.*` |
+| Set operation nested in a CTE / derived table | first arm only | every arm |
+| `SELECT (SELECT MAX(salary) FROM employees) AS m FROM departments` | `departments.salary` (wrong table) | `employees.salary` |
+
+All four produce strictly more correct lineage, are pinned by the corpus, and are
+recorded here so the difference is not mistaken for a bug. The transform for a
+scalar subquery's enclosing column is `PROJECT` (the subquery is opaque text),
+where MySQL infers `AGGREGATE` from the inner call — a metadata nuance, not a
+missing edge.
+
+### Shared `scope` change introduced in P2
+
+`scope.ColumnRef` gained a `Resolved` field and `Scope.ResolveColumn` returns
+such a reference unchanged. It exists because a resolved table can live in a
+scope that a later lookup must not search. Every other analyzer leaves the field
+false, so MySQL/TiDB/MariaDB/PostgreSQL behavior is unchanged — their full
+corpora still pass — and `TestScope_ResolveColumn_ResolvedPassThrough` pins the
+contract.
 
 ## Decisions after review
 
