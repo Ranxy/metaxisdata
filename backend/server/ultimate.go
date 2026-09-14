@@ -13,6 +13,8 @@ import (
 	_ "github.com/Ranxy/metaxisdata/backend/plugin/schema/pg"
 
 	// Lineage.
+	_ "github.com/Ranxy/metaxisdata/backend/plugin/lineage/mariadb"
 	_ "github.com/Ranxy/metaxisdata/backend/plugin/lineage/mysql"
 	_ "github.com/Ranxy/metaxisdata/backend/plugin/lineage/postgresql"
+	_ "github.com/Ranxy/metaxisdata/backend/plugin/lineage/tidb"
 )

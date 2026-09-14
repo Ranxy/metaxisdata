@@ -1,0 +1,240 @@
+name: TestMariaDBFeaturesLineage_Table
+cases:
+    - name: system time as of
+      sql: SELECT name FROM employees FOR SYSTEM_TIME AS OF TIMESTAMP '2024-01-01 00:00:00'
+      expected_edges:
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true
+    - name: system time all
+      sql: SELECT id, name FROM employees FOR SYSTEM_TIME ALL
+      expected_edges:
+        - from_table: employees
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true
+    - name: system time as of with alias
+      sql: SELECT e.salary FROM employees FOR SYSTEM_TIME AS OF TIMESTAMP '2024-01-01 00:00:00' AS e WHERE e.name = 'bill'
+      expected_edges:
+        - from_table: employees
+          from_field: salary
+          to_table: __result__
+          to_field: salary
+          relation_type: direct
+          is_temp: true
+    - name: system time all with alias
+      sql: SELECT e.id, e.salary FROM employees FOR SYSTEM_TIME ALL AS e
+      expected_edges:
+        - from_table: employees
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: employees
+          from_field: salary
+          to_table: __result__
+          to_field: salary
+          relation_type: direct
+          is_temp: true
+    - name: system time from to with alias
+      sql: SELECT e.salary FROM employees FOR SYSTEM_TIME FROM TIMESTAMP '2024-01-01 00:00:00' TO TIMESTAMP '2024-06-01 00:00:00' AS e
+      expected_edges:
+        - from_table: employees
+          from_field: salary
+          to_table: __result__
+          to_field: salary
+          relation_type: direct
+          is_temp: true
+    - name: system time between with alias
+      sql: SELECT e.salary FROM employees FOR SYSTEM_TIME BETWEEN TIMESTAMP '2024-01-01 00:00:00' AND TIMESTAMP '2024-06-01 00:00:00' AS e
+      expected_edges:
+        - from_table: employees
+          from_field: salary
+          to_table: __result__
+          to_field: salary
+          relation_type: direct
+          is_temp: true
+    - name: system time alias without as
+      sql: SELECT e.salary FROM employees FOR SYSTEM_TIME AS OF TIMESTAMP '2024-01-01 00:00:00' e
+      expected_edges:
+        - from_table: employees
+          from_field: salary
+          to_table: __result__
+          to_field: salary
+          relation_type: direct
+          is_temp: true
+    - name: system time join with alias
+      sql: SELECT e.salary, d.id AS did FROM employees FOR SYSTEM_TIME AS OF TIMESTAMP '2024-01-01 00:00:00' AS e JOIN departments d ON e.department_id = d.id
+      expected_edges:
+        - from_table: departments
+          from_field: id
+          to_table: __result__
+          to_field: did
+          relation_type: direct
+          is_temp: true
+        - from_table: employees
+          from_field: salary
+          to_table: __result__
+          to_field: salary
+          relation_type: direct
+          is_temp: true
+    - name: derived table with temporal inner
+      sql: SELECT x.a FROM (SELECT e.id AS a FROM employees FOR SYSTEM_TIME AS OF TIMESTAMP '2024-01-01 00:00:00' AS e) AS x
+      expected_edges:
+        - from_table: employees
+          from_field: id
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          is_temp: true
+    - name: insert select returning
+      sql: INSERT INTO dst (a, b) SELECT id, name FROM src RETURNING a
+      expected_edges:
+        - from_table: src
+          from_field: id
+          to_table: dst
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_table: src
+          from_field: name
+          to_table: dst
+          to_field: b
+          relation_type: direct
+          is_temp: false
+    - name: replace select returning
+      sql: REPLACE INTO dst (a) SELECT id FROM src RETURNING a
+      expected_edges:
+        - from_table: src
+          from_field: id
+          to_table: dst
+          to_field: a
+          relation_type: direct
+          is_temp: false
+    - name: delete returning
+      sql: DELETE FROM employees WHERE employees.id = 1 RETURNING id, name
+      expected_edges:
+        - from_table: employees
+          from_field: id
+          to_table: employees
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+    - name: update for portion of
+      sql: UPDATE employees FOR PORTION OF emp_period FROM '2020-01-01' TO '2021-01-01' SET salary = salary + 1
+      expected_edges:
+        - from_table: employees
+          from_field: salary
+          to_table: employees
+          to_field: salary
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+    - name: delete for portion of
+      sql: DELETE FROM employees FOR PORTION OF emp_period FROM '2020-01-01' TO '2021-01-01' WHERE employees.id = 1
+      expected_edges:
+        - from_table: employees
+          from_field: id
+          to_table: employees
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+    - name: create or replace view
+      sql: CREATE OR REPLACE VIEW v AS SELECT id, name FROM employees
+      expected_edges:
+        - from_table: employees
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: employees
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true
+        - from_table: employees
+          from_field: name
+          to_table: v
+          to_field: name
+          relation_type: direct
+          is_temp: false
+    - name: intersect
+      sql: SELECT id FROM a INTERSECT SELECT id FROM b
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+    - name: except
+      sql: SELECT id FROM a EXCEPT SELECT id FROM b
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+    - name: sequence expression
+      sql: SELECT id, NEXT VALUE FOR seq AS n FROM employees
+      expected_edges:
+        - from_table: employees
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+    - name: json extract
+      sql: SELECT JSON_EXTRACT(doc, '$.x') AS x FROM events
+      expected_edges:
+        - from_table: events
+          from_field: doc
+          to_table: __result__
+          to_field: x
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+    - name: natural join qualified
+      sql: SELECT e.name FROM employees e NATURAL JOIN departments d
+      expected_edges:
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true
