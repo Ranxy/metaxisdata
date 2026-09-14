@@ -86,6 +86,12 @@ func (s *Scope) GetCTEs() map[string]*CTEDefinition {
 // ResolveColumn resolves a column reference to its source table.
 // It handles both qualified (table.column) and unqualified (column) references.
 func (s *Scope) ResolveColumn(colRef ColumnRef) (*ColumnRef, error) {
+	// A reference already resolved against the scope it came from is returned
+	// unchanged: a later lookup happens in a sibling scope that deliberately
+	// does not contain the table it resolved to.
+	if colRef.Resolved {
+		return &colRef, nil
+	}
 	// If fully qualified, just verify it exists
 	if colRef.Table != "" {
 		if ref, ok := s.FindTable(colRef.Table); ok {

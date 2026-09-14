@@ -7,6 +7,12 @@ type ColumnRef struct {
 	Schema string
 	Table  string
 	Column string
+	// Resolved marks a reference that was already resolved against the scope it
+	// originated in. The StarRocks analyzer sets it when it merges
+	// set-operation arms or flattens an expression subquery, where the resolved
+	// table lives in a sibling scope that a later lookup cannot see. Every
+	// other analyzer leaves it false and is unaffected.
+	Resolved bool
 }
 
 // TableRef represents a table or table-like source (subquery, CTE).
