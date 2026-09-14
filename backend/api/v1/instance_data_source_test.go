@@ -157,6 +157,8 @@ func TestIsSupportedStoreEngine(t *testing.T) {
 		storepb.Engine_TIDB,
 		storepb.Engine_MARIADB,
 		storepb.Engine_OCEANBASE,
+		storepb.Engine_STARROCKS,
+		storepb.Engine_DORIS,
 	} {
 		require.True(t, isSupportedStoreEngine(engine), engine.String())
 	}

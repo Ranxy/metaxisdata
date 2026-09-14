@@ -466,8 +466,9 @@
 ### Engine
 Engine is the database engine of an instance. Only the engines the product
 actually supports are kept: MySQL-compatible ones (MySQL, TiDB, MariaDB,
-OceanBase), PostgreSQL and SQL Server. The other removed values keep their
-numbers reserved so they can never be silently reused for something else.
+OceanBase, StarRocks, Doris), PostgreSQL and SQL Server. The other removed
+values keep their numbers reserved so they can never be silently reused for
+something else.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
@@ -478,6 +479,8 @@ numbers reserved so they can never be silently reused for something else.
 | TIDB | 6 |  |
 | MARIADB | 13 |  |
 | OCEANBASE | 14 |  |
+| STARROCKS | 15 |  |
+| DORIS | 16 |  |
 
 
 

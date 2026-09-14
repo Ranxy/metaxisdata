@@ -8,7 +8,7 @@ import { enumDesc, fileDesc, tsEnum } from "@bufbuild/protobuf/codegenv2";
  * Describes the file v1/common.proto.
  */
 export const file_v1_common = /*@__PURE__*/
-  fileDesc("Cg92MS9jb21tb24ucHJvdG8SDm1ldGF4aXNkYXRhLnYxKjcKBVN0YXRlEhUKEVNUQVRFX1VOU1BFQ0lGSUVEEAASCgoGQUNUSVZFEAESCwoHREVMRVRFRBACKrYCCgZFbmdpbmUSFgoSRU5HSU5FX1VOU1BFQ0lGSUVEEAASCQoFTVNTUUwQARIJCgVNWVNRTBACEgwKCFBPU1RHUkVTEAMSCAoEVElEQhAGEgsKB01BUklBREIQDRINCglPQ0VBTkJBU0UQDiIECAQQBSIECAcQDCIECA8QHCoKQ0xJQ0tIT1VTRSoJU05PV0ZMQUtFKgZTUUxJVEUqB01PTkdPREIqBVJFRElTKgZPUkFDTEUqB1NQQU5ORVIqCFJFRFNISUZUKglTVEFSUk9DS1MqBURPUklTKgRISVZFKg1FTEFTVElDU0VBUkNIKghCSUdRVUVSWSoIRFlOQU1PREIqCkRBVEFCUklDS1MqC0NPQ0tST0FDSERCKghDT1NNT1NEQioFVFJJTk8qCUNBU1NBTkRSQUI2WjRnaXRodWIuY29tL1Jhbnh5L21ldGF4aXNkYXRhL2JhY2tlbmQvZ2VuZXJhdGVkLWdvL3YxYgZwcm90bzM");
+  fileDesc("Cg92MS9jb21tb24ucHJvdG8SDm1ldGF4aXNkYXRhLnYxKjcKBVN0YXRlEhUKEVNUQVRFX1VOU1BFQ0lGSUVEEAASCgoGQUNUSVZFEAESCwoHREVMRVRFRBACKr4CCgZFbmdpbmUSFgoSRU5HSU5FX1VOU1BFQ0lGSUVEEAASCQoFTVNTUUwQARIJCgVNWVNRTBACEgwKCFBPU1RHUkVTEAMSCAoEVElEQhAGEgsKB01BUklBREIQDRINCglPQ0VBTkJBU0UQDhINCglTVEFSUk9DS1MQDxIJCgVET1JJUxAQIgQIBBAFIgQIBxAMIgQIERAcKgpDTElDS0hPVVNFKglTTk9XRkxBS0UqBlNRTElURSoHTU9OR09EQioFUkVESVMqBk9SQUNMRSoHU1BBTk5FUioIUkVEU0hJRlQqBEhJVkUqDUVMQVNUSUNTRUFSQ0gqCEJJR1FVRVJZKghEWU5BTU9EQioKREFUQUJSSUNLUyoLQ09DS1JPQUNIREIqCENPU01PU0RCKgVUUklOTyoJQ0FTU0FORFJBQjZaNGdpdGh1Yi5jb20vUmFueHkvbWV0YXhpc2RhdGEvYmFja2VuZC9nZW5lcmF0ZWQtZ28vdjFiBnByb3RvMw");
 
 /**
  * Describes the enum metaxisdata.v1.State.
@@ -31,8 +31,9 @@ export const EngineSchema = /*@__PURE__*/
 /**
  * Engine is the database engine of an instance. Only the engines the product
  * actually supports are kept: MySQL-compatible ones (MySQL, TiDB, MariaDB,
- * OceanBase), PostgreSQL and SQL Server. The other removed values keep their
- * numbers reserved so they can never be silently reused for something else.
+ * OceanBase, StarRocks, Doris), PostgreSQL and SQL Server. The other removed
+ * values keep their numbers reserved so they can never be silently reused for
+ * something else.
  *
  * @generated from enum metaxisdata.v1.Engine
  */

@@ -33,6 +33,8 @@ const (
 	Engine_TIDB               Engine = 6
 	Engine_MARIADB            Engine = 13
 	Engine_OCEANBASE          Engine = 14
+	Engine_STARROCKS          Engine = 15
+	Engine_DORIS              Engine = 16
 )
 
 // Enum value maps for Engine.
@@ -45,6 +47,8 @@ var (
 		6:  "TIDB",
 		13: "MARIADB",
 		14: "OCEANBASE",
+		15: "STARROCKS",
+		16: "DORIS",
 	}
 	Engine_value = map[string]int32{
 		"ENGINE_UNSPECIFIED": 0,
@@ -54,6 +58,8 @@ var (
 		"TIDB":               6,
 		"MARIADB":            13,
 		"OCEANBASE":          14,
+		"STARROCKS":          15,
+		"DORIS":              16,
 	}
 )
 
@@ -145,7 +151,7 @@ const file_store_common_proto_rawDesc = "" +
 	"\x12store/common.proto\x12\x11metaxisdata.store\"9\n" +
 	"\tPageToken\x12\x14\n" +
 	"\x05limit\x18\x01 \x01(\x03R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x02 \x01(\x03R\x06offset*\xb6\x02\n" +
+	"\x06offset\x18\x02 \x01(\x03R\x06offset*\xbe\x02\n" +
 	"\x06Engine\x12\x16\n" +
 	"\x12ENGINE_UNSPECIFIED\x10\x00\x12\t\n" +
 	"\x05MSSQL\x10\x01\x12\t\n" +
@@ -153,8 +159,10 @@ const file_store_common_proto_rawDesc = "" +
 	"\bPOSTGRES\x10\x03\x12\b\n" +
 	"\x04TIDB\x10\x06\x12\v\n" +
 	"\aMARIADB\x10\r\x12\r\n" +
-	"\tOCEANBASE\x10\x0e\"\x04\b\x04\x10\x05\"\x04\b\a\x10\f\"\x04\b\x0f\x10\x1c*\n" +
-	"CLICKHOUSE*\tSNOWFLAKE*\x06SQLITE*\aMONGODB*\x05REDIS*\x06ORACLE*\aSPANNER*\bREDSHIFT*\tSTARROCKS*\x05DORIS*\x04HIVE*\rELASTICSEARCH*\bBIGQUERY*\bDYNAMODB*\n" +
+	"\tOCEANBASE\x10\x0e\x12\r\n" +
+	"\tSTARROCKS\x10\x0f\x12\t\n" +
+	"\x05DORIS\x10\x10\"\x04\b\x04\x10\x05\"\x04\b\a\x10\f\"\x04\b\x11\x10\x1c*\n" +
+	"CLICKHOUSE*\tSNOWFLAKE*\x06SQLITE*\aMONGODB*\x05REDIS*\x06ORACLE*\aSPANNER*\bREDSHIFT*\x04HIVE*\rELASTICSEARCH*\bBIGQUERY*\bDYNAMODB*\n" +
 	"DATABRICKS*\vCOCKROACHDB*\bCOSMOSDB*\x05TRINO*\tCASSANDRAB\x14Z\x12generated-go/storeb\x06proto3"
 
 var (

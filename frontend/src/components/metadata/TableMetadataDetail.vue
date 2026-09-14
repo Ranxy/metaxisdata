@@ -452,7 +452,9 @@ const isMySQLFamily = computed(() => {
   return (
     props.instanceEngine === Engine.MYSQL ||
     props.instanceEngine === Engine.MARIADB ||
-    props.instanceEngine === Engine.TIDB
+    props.instanceEngine === Engine.TIDB ||
+    props.instanceEngine === Engine.STARROCKS ||
+    props.instanceEngine === Engine.DORIS
   );
 });
 

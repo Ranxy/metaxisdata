@@ -72,8 +72,9 @@ func (State) EnumDescriptor() ([]byte, []int) {
 
 // Engine is the database engine of an instance. Only the engines the product
 // actually supports are kept: MySQL-compatible ones (MySQL, TiDB, MariaDB,
-// OceanBase), PostgreSQL and SQL Server. The other removed values keep their
-// numbers reserved so they can never be silently reused for something else.
+// OceanBase, StarRocks, Doris), PostgreSQL and SQL Server. The other removed
+// values keep their numbers reserved so they can never be silently reused for
+// something else.
 type Engine int32
 
 const (
@@ -84,6 +85,8 @@ const (
 	Engine_TIDB               Engine = 6
 	Engine_MARIADB            Engine = 13
 	Engine_OCEANBASE          Engine = 14
+	Engine_STARROCKS          Engine = 15
+	Engine_DORIS              Engine = 16
 )
 
 // Enum value maps for Engine.
@@ -96,6 +99,8 @@ var (
 		6:  "TIDB",
 		13: "MARIADB",
 		14: "OCEANBASE",
+		15: "STARROCKS",
+		16: "DORIS",
 	}
 	Engine_value = map[string]int32{
 		"ENGINE_UNSPECIFIED": 0,
@@ -105,6 +110,8 @@ var (
 		"TIDB":               6,
 		"MARIADB":            13,
 		"OCEANBASE":          14,
+		"STARROCKS":          15,
+		"DORIS":              16,
 	}
 )
 
@@ -144,7 +151,7 @@ const file_v1_common_proto_rawDesc = "" +
 	"\x11STATE_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +
 	"\x06ACTIVE\x10\x01\x12\v\n" +
-	"\aDELETED\x10\x02*\xb6\x02\n" +
+	"\aDELETED\x10\x02*\xbe\x02\n" +
 	"\x06Engine\x12\x16\n" +
 	"\x12ENGINE_UNSPECIFIED\x10\x00\x12\t\n" +
 	"\x05MSSQL\x10\x01\x12\t\n" +
@@ -152,8 +159,10 @@ const file_v1_common_proto_rawDesc = "" +
 	"\bPOSTGRES\x10\x03\x12\b\n" +
 	"\x04TIDB\x10\x06\x12\v\n" +
 	"\aMARIADB\x10\r\x12\r\n" +
-	"\tOCEANBASE\x10\x0e\"\x04\b\x04\x10\x05\"\x04\b\a\x10\f\"\x04\b\x0f\x10\x1c*\n" +
-	"CLICKHOUSE*\tSNOWFLAKE*\x06SQLITE*\aMONGODB*\x05REDIS*\x06ORACLE*\aSPANNER*\bREDSHIFT*\tSTARROCKS*\x05DORIS*\x04HIVE*\rELASTICSEARCH*\bBIGQUERY*\bDYNAMODB*\n" +
+	"\tOCEANBASE\x10\x0e\x12\r\n" +
+	"\tSTARROCKS\x10\x0f\x12\t\n" +
+	"\x05DORIS\x10\x10\"\x04\b\x04\x10\x05\"\x04\b\a\x10\f\"\x04\b\x11\x10\x1c*\n" +
+	"CLICKHOUSE*\tSNOWFLAKE*\x06SQLITE*\aMONGODB*\x05REDIS*\x06ORACLE*\aSPANNER*\bREDSHIFT*\x04HIVE*\rELASTICSEARCH*\bBIGQUERY*\bDYNAMODB*\n" +
 	"DATABRICKS*\vCOCKROACHDB*\bCOSMOSDB*\x05TRINO*\tCASSANDRAB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (

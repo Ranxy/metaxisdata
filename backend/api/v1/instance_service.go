@@ -199,6 +199,8 @@ var supportedStoreEngines = map[storepb.Engine]bool{
 	storepb.Engine_TIDB:      true,
 	storepb.Engine_MARIADB:   true,
 	storepb.Engine_OCEANBASE: true,
+	storepb.Engine_STARROCKS: true,
+	storepb.Engine_DORIS:     true,
 	storepb.Engine_MSSQL:     true,
 }
 

@@ -752,6 +752,8 @@ function engineLabel(engine: Engine): string {
     [Engine.TIDB]: "TiDB",
     [Engine.MARIADB]: "MariaDB",
     [Engine.OCEANBASE]: "OceanBase",
+    [Engine.STARROCKS]: "StarRocks",
+    [Engine.DORIS]: "Doris",
     [Engine.MSSQL]: "SQL Server",
   };
   return labels[engine] || "Unknown";

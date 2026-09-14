@@ -12,13 +12,14 @@ enum State {
 
 // Engine is the database engine of an instance. Only the engines the product
 // actually supports are kept: MySQL-compatible ones (MySQL, TiDB, MariaDB,
-// OceanBase), PostgreSQL and SQL Server. The other removed values keep their
-// numbers reserved so they can never be silently reused for something else.
+// OceanBase, StarRocks, Doris), PostgreSQL and SQL Server. The other removed
+// values keep their numbers reserved so they can never be silently reused for
+// something else.
 enum Engine {
   ENGINE_UNSPECIFIED = 0;
 
-  reserved 4 to 5, 7 to 12, 15 to 28;
-  reserved "CLICKHOUSE", "SNOWFLAKE", "SQLITE", "MONGODB", "REDIS", "ORACLE", "SPANNER", "REDSHIFT", "STARROCKS", "DORIS", "HIVE", "ELASTICSEARCH", "BIGQUERY", "DYNAMODB", "DATABRICKS", "COCKROACHDB", "COSMOSDB", "TRINO", "CASSANDRA";
+  reserved 4 to 5, 7 to 12, 17 to 28;
+  reserved "CLICKHOUSE", "SNOWFLAKE", "SQLITE", "MONGODB", "REDIS", "ORACLE", "SPANNER", "REDSHIFT", "HIVE", "ELASTICSEARCH", "BIGQUERY", "DYNAMODB", "DATABRICKS", "COCKROACHDB", "COSMOSDB", "TRINO", "CASSANDRA";
 
   MSSQL = 1;
   MYSQL = 2;
@@ -26,4 +27,6 @@ enum Engine {
   TIDB = 6;
   MARIADB = 13;
   OCEANBASE = 14;
+  STARROCKS = 15;
+  DORIS = 16;
 }

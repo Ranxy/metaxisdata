@@ -1,5 +1,8 @@
-// Package mysql is the plugin for MySQL driver.
-package mysql
+// Package starrocks is the plugin for the StarRocks and Doris drivers. Both
+// engines speak the MySQL wire protocol and share one schema-sync
+// implementation; they differ only in their system databases and their
+// materialized-view catalog.
+package starrocks
 
 import (
 	"context"
@@ -18,44 +21,26 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
+	dbmysql "github.com/Ranxy/metaxisdata/backend/plugin/db/mysql"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db/util"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
 var (
-	baseTableType = "BASE TABLE"
-	viewTableType = "VIEW"
+	baseTableType        = "BASE TABLE"
+	viewTableType        = "VIEW"
+	materializedViewType = "MATERIALIZED VIEW"
 
 	_ db.Driver = (*Driver)(nil)
 )
 
 func init() {
-	// TiDB, MariaDB and OceanBase in MySQL mode all connect over the MySQL wire
-	// protocol with the MySQL driver. TIDB used to be missing here entirely, so
-	// a TiDB instance could not even be opened.
-	db.Register(storepb.Engine_MYSQL, newDriver)
-	db.Register(storepb.Engine_TIDB, newDriver)
-	db.Register(storepb.Engine_MARIADB, newDriver)
-	db.Register(storepb.Engine_OCEANBASE, newDriver)
+	db.Register(storepb.Engine_STARROCKS, newDriver)
+	db.Register(storepb.Engine_DORIS, newDriver)
 }
 
-// ValidateExtraConnectionParameters validates that no dangerous parameters are present.
-// It is exported so the other MySQL-wire drivers (StarRocks, Doris) enforce the
-// same allowlist instead of letting the check drift.
-func ValidateExtraConnectionParameters(params map[string]string) error {
-	for key := range params {
-		// Normalize key to lowercase for case-insensitive comparison
-		normalizedKey := strings.ToLower(strings.TrimSpace(key))
-		if normalizedKey == "allowallfiles" {
-			// Disables file allowlist for LOAD DATA LOCAL INFILE and allows all files (might be insecure)
-			return errors.Errorf("connection parameter %q is not allowed for security reasons", key)
-		}
-	}
-	return nil
-}
-
-// Driver is the MySQL driver.
+// Driver is the StarRocks/Doris driver.
 type Driver struct {
 	dbType       storepb.Engine
 	db           *sql.DB
@@ -70,7 +55,7 @@ func newDriver() db.Driver {
 	return &Driver{}
 }
 
-// Open opens a MySQL driver.
+// Open opens a StarRocks/Doris driver.
 func (d *Driver) Open(_ context.Context, dbType storepb.Engine, connCfg db.ConnectionConfig) (db.Driver, error) {
 	defer func() {
 		for _, f := range d.openCleanUp {
@@ -78,36 +63,17 @@ func (d *Driver) Open(_ context.Context, dbType storepb.Engine, connCfg db.Conne
 		}
 	}()
 
-	dsn, err := d.getMySQLConnection(connCfg)
-
-	if err != nil {
-		return nil, err
-	}
-
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		return nil, err
-	}
-	d.dbType = dbType
-	d.db = db
-	// TODO(d): remove the work-around once we have clean-up the migration connection hack.
-	db.SetConnMaxLifetime(2 * time.Hour)
-	db.SetMaxOpenConns(50)
-	db.SetMaxIdleConns(15)
-	d.databaseName = connCfg.ConnectionContext.DatabaseName
-
-	return d, nil
-}
-
-func (d *Driver) getMySQLConnection(connCfg db.ConnectionConfig) (string, error) {
 	protocol := "tcp"
 	if strings.HasPrefix(connCfg.DataSource.Host, "/") {
 		protocol = "unix"
 	}
 
-	params := []string{"multiStatements=true", "maxAllowedPacket=0"}
-	if err := ValidateExtraConnectionParameters(connCfg.DataSource.GetExtraConnectionParameters()); err != nil {
-		return "", err
+	// interpolateParams makes the driver substitute placeholders on the client.
+	// StarRocks and Doris have no usable server-side prepared statements, so the
+	// sync queries rely on it.
+	params := []string{"multiStatements=true", "maxAllowedPacket=0", "interpolateParams=true"}
+	if err := dbmysql.ValidateExtraConnectionParameters(connCfg.DataSource.GetExtraConnectionParameters()); err != nil {
+		return nil, err
 	}
 	for key, value := range connCfg.DataSource.GetExtraConnectionParameters() {
 		params = append(params, fmt.Sprintf("%s=%s", key, value))
@@ -115,7 +81,7 @@ func (d *Driver) getMySQLConnection(connCfg db.ConnectionConfig) (string, error)
 	if connCfg.DataSource.GetSshHost() != "" {
 		sshClient, err := util.GetSSHClient(connCfg.DataSource)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		d.sshClient = sshClient
 		protocol = "mysql-tcp-" + uuid.NewString()[:8]
@@ -127,18 +93,31 @@ func (d *Driver) getMySQLConnection(connCfg db.ConnectionConfig) (string, error)
 
 	tlscfg, err := util.GetTLSConfig(connCfg.DataSource)
 	if err != nil {
-		return "", errors.Wrap(err, "sql: tls config error")
+		return nil, errors.Wrap(err, "sql: tls config error")
 	}
 	tlsKey := uuid.NewString()
 	if tlscfg != nil {
 		if err := mysql.RegisterTLSConfig(tlsKey, tlscfg); err != nil {
-			return "", errors.Wrap(err, "sql: failed to register tls config")
+			return nil, errors.Wrap(err, "sql: failed to register tls config")
 		}
 		// TLS config is only used during sql.Open, so should be safe to deregister afterwards.
 		d.openCleanUp = append(d.openCleanUp, func() { mysql.DeregisterTLSConfig(tlsKey) })
 		params = append(params, fmt.Sprintf("tls=%s", tlsKey))
 	}
-	return fmt.Sprintf("%s:%s@%s(%s:%s)/%s?%s", connCfg.DataSource.Username, connCfg.Password, protocol, connCfg.DataSource.Host, connCfg.DataSource.Port, connCfg.ConnectionContext.DatabaseName, strings.Join(params, "&")), nil
+
+	dsn := fmt.Sprintf("%s:%s@%s(%s:%s)/%s?%s", connCfg.DataSource.Username, connCfg.Password, protocol, connCfg.DataSource.Host, connCfg.DataSource.Port, connCfg.ConnectionContext.DatabaseName, strings.Join(params, "&"))
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, err
+	}
+	d.dbType = dbType
+	d.db = db
+	db.SetConnMaxLifetime(2 * time.Hour)
+	db.SetMaxOpenConns(50)
+	db.SetMaxIdleConns(15)
+	d.databaseName = connCfg.ConnectionContext.DatabaseName
+
+	return d, nil
 }
 
 // Close closes the driver.
@@ -180,10 +159,4 @@ func parseVersion(version string) (string, string, error) {
 		return version[loc[0]:loc[1]], version[loc[1]:], nil
 	}
 	return "", "", errors.Errorf("failed to parse version %q", version)
-}
-
-func (d *Driver) StopConnectionByID(id string) error {
-	// We cannot use placeholder parameter because TiDB doesn't accept it.
-	_, err := d.db.Exec(fmt.Sprintf("KILL QUERY %s", id))
-	return err
 }

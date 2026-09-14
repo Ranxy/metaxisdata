@@ -820,7 +820,9 @@ const isMySQLInstance = computed(() => {
   return (
     currentInstanceEngine.value === Engine.MYSQL ||
     currentInstanceEngine.value === Engine.MARIADB ||
-    currentInstanceEngine.value === Engine.TIDB
+    currentInstanceEngine.value === Engine.TIDB ||
+    currentInstanceEngine.value === Engine.STARROCKS ||
+    currentInstanceEngine.value === Engine.DORIS
   );
 });
 

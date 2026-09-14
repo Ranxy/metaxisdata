@@ -82,6 +82,8 @@ func TestConvertEngineRoundTrip(t *testing.T) {
 		storepb.Engine_TIDB,
 		storepb.Engine_MARIADB,
 		storepb.Engine_OCEANBASE,
+		storepb.Engine_STARROCKS,
+		storepb.Engine_DORIS,
 	} {
 		require.Equal(t, engine, convertEngine(convertToEngine(engine)))
 	}

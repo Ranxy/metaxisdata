@@ -244,6 +244,8 @@ const engineOptions = computed(() => [
   { value: "ORACLE", label: "Oracle" },
   { value: "MSSQL", label: "SQL Server" },
   { value: "MARIADB", label: "MariaDB" },
+  { value: "STARROCKS", label: "StarRocks" },
+  { value: "DORIS", label: "Doris" },
   { value: "SQLITE", label: "SQLite" },
 ]);
 

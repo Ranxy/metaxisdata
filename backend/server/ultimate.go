@@ -5,6 +5,7 @@ import (
 	_ "github.com/Ranxy/metaxisdata/backend/plugin/db/mssql"
 	_ "github.com/Ranxy/metaxisdata/backend/plugin/db/mysql"
 	_ "github.com/Ranxy/metaxisdata/backend/plugin/db/pg"
+	_ "github.com/Ranxy/metaxisdata/backend/plugin/db/starrocks"
 
 	// Schema.
 	_ "github.com/Ranxy/metaxisdata/backend/plugin/schema/mssql"

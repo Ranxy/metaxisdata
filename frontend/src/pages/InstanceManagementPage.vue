@@ -329,6 +329,12 @@
                   <SelectItem :value="String(Engine.MSSQL)">
                     SQL Server
                   </SelectItem>
+                  <SelectItem :value="String(Engine.STARROCKS)">
+                    StarRocks
+                  </SelectItem>
+                  <SelectItem :value="String(Engine.DORIS)">
+                    Doris
+                  </SelectItem>
                 </SelectContent>
               </Select>
               <p
@@ -771,6 +777,8 @@ function getEngineLabel(engine: Engine): string {
     [Engine.TIDB]: "TiDB",
     [Engine.MARIADB]: "MariaDB",
     [Engine.OCEANBASE]: "OceanBase",
+    [Engine.STARROCKS]: "StarRocks",
+    [Engine.DORIS]: "Doris",
     [Engine.MSSQL]: "SQL Server",
   };
   return engineLabels[engine] || "Unknown";
@@ -783,6 +791,8 @@ function getEngineIcon(engine: Engine): string {
     [Engine.TIDB]: "Ti",
     [Engine.MARIADB]: "Ma",
     [Engine.OCEANBASE]: "OB",
+    [Engine.STARROCKS]: "SR",
+    [Engine.DORIS]: "Do",
     [Engine.MSSQL]: "MS",
   };
   return engineIcons[engine] || "DB";
@@ -795,6 +805,8 @@ function getEngineBgClass(engine: Engine): string {
     [Engine.TIDB]: "bg-purple-100",
     [Engine.MARIADB]: "bg-teal-100",
     [Engine.OCEANBASE]: "bg-cyan-100",
+    [Engine.STARROCKS]: "bg-indigo-100",
+    [Engine.DORIS]: "bg-lime-100",
     [Engine.MSSQL]: "bg-red-100",
   };
   return bgClasses[engine] || "bg-gray-100";
@@ -807,6 +819,8 @@ function getEngineTextClass(engine: Engine): string {
     [Engine.TIDB]: "text-purple-600",
     [Engine.MARIADB]: "text-teal-600",
     [Engine.OCEANBASE]: "text-cyan-600",
+    [Engine.STARROCKS]: "text-indigo-600",
+    [Engine.DORIS]: "text-lime-600",
     [Engine.MSSQL]: "text-red-600",
   };
   return textClasses[engine] || "text-gray-600";
@@ -820,6 +834,8 @@ function getEngineBadgeClass(engine: Engine): string {
     [Engine.TIDB]: `${base} bg-purple-100 text-purple-700`,
     [Engine.MARIADB]: `${base} bg-teal-100 text-teal-700`,
     [Engine.OCEANBASE]: `${base} bg-cyan-100 text-cyan-700`,
+    [Engine.STARROCKS]: `${base} bg-indigo-100 text-indigo-700`,
+    [Engine.DORIS]: `${base} bg-lime-100 text-lime-700`,
     [Engine.MSSQL]: `${base} bg-red-100 text-red-700`,
   };
   return badgeClasses[engine] || `${base} bg-gray-100 text-gray-700`;
