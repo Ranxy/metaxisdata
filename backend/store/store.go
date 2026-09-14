@@ -2,14 +2,11 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"sync"
 
 	lru "github.com/hashicorp/golang-lru/v2"
-	"github.com/pkg/errors"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
@@ -137,21 +134,4 @@ func getInstanceCacheKey(instanceID string) string {
 
 func getDatabaseCacheKey(instanceID, databaseName string) string {
 	return fmt.Sprintf("%s/%s", instanceID, databaseName)
-}
-
-func CalcStoreMetaHash(meta *storepb.StoredMetadata) (metadata []byte, metaHash []byte, err error) {
-	metadataBytes, err := protojson.Marshal(meta)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to marshal table metadata")
-	}
-
-	h := sha256.Sum256(metadataBytes)
-	return metadataBytes, h[:], nil
-}
-
-// CalcMetaHash computes only the SHA-256 hash of the given StoredMetadata,
-// without returning the serialized JSON bytes.
-func CalcMetaHash(meta *storepb.StoredMetadata) ([]byte, error) {
-	_, hash, err := CalcStoreMetaHash(meta)
-	return hash, err
 }

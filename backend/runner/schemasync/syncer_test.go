@@ -101,70 +101,6 @@ func buildTableMetaWithStats(name string, rowCount, dataSize, indexSize, dataFre
 	}
 }
 
-func TestNormalizeMetadataForHash(t *testing.T) {
-	t.Parallel()
-
-	t.Run("table stats zeroed", func(t *testing.T) {
-		t.Parallel()
-		original := buildTableMetaWithStats("mytable", 1000, 65536, 32768, 1024, "id", "name")
-		normalized := normalizeMetadataForHash(original)
-
-		// Original unchanged
-		require.Equal(t, int64(1000), original.GetTableMetadata().RowCount)
-		require.Equal(t, int64(65536), original.GetTableMetadata().DataSize)
-
-		// Normalized has stats zeroed
-		require.Equal(t, int64(0), normalized.GetTableMetadata().RowCount)
-		require.Equal(t, int64(0), normalized.GetTableMetadata().DataSize)
-		require.Equal(t, int64(0), normalized.GetTableMetadata().IndexSize)
-		require.Equal(t, int64(0), normalized.GetTableMetadata().DataFree)
-
-		// Structural fields preserved
-		require.Equal(t, "mytable", normalized.GetTableMetadata().Name)
-		require.Len(t, normalized.GetTableMetadata().Columns, 2)
-	})
-
-	t.Run("two tables with different stats produce same normalized hash", func(t *testing.T) {
-		t.Parallel()
-		a := buildTableMetaWithStats("t", 100, 200, 300, 400, "id")
-		b := buildTableMetaWithStats("t", 999, 888, 777, 666, "id")
-
-		hashA, err := store.CalcMetaHash(normalizeMetadataForHash(a))
-		require.NoError(t, err)
-		hashB, err := store.CalcMetaHash(normalizeMetadataForHash(b))
-		require.NoError(t, err)
-		require.Equal(t, hashA, hashB)
-	})
-
-	t.Run("two tables with different columns produce different normalized hash", func(t *testing.T) {
-		t.Parallel()
-		a := buildTableMetaWithStats("t", 100, 200, 300, 400, "id")
-		b := buildTableMetaWithStats("t", 100, 200, 300, 400, "id", "name")
-
-		hashA, err := store.CalcMetaHash(normalizeMetadataForHash(a))
-		require.NoError(t, err)
-		hashB, err := store.CalcMetaHash(normalizeMetadataForHash(b))
-		require.NoError(t, err)
-		require.NotEqual(t, hashA, hashB)
-	})
-
-	t.Run("sequence last_value zeroed", func(t *testing.T) {
-		t.Parallel()
-		original := &storepb.StoredMetadata{
-			Type: &storepb.StoredMetadata_SequenceMetadata{
-				SequenceMetadata: &storepb.SequenceMetadata{
-					Name:      "seq1",
-					LastValue: "42",
-				},
-			},
-		}
-		normalized := normalizeMetadataForHash(original)
-		require.Equal(t, "42", original.GetSequenceMetadata().LastValue)
-		require.Equal(t, "", normalized.GetSequenceMetadata().LastValue)
-		require.Equal(t, "seq1", normalized.GetSequenceMetadata().Name)
-	})
-}
-
 func TestBatchMetaCreateDiff(t *testing.T) {
 	t.Parallel()
 
@@ -179,7 +115,7 @@ func TestBatchMetaCreateDiff(t *testing.T) {
 	_, changedBeforeHash, err := store.CalcStoreMetaHash(changedBeforeMeta)
 	require.NoError(t, err)
 	// Stats-changed table: existing entry has the same schema but different stats.
-	statsExistingHash, err := store.CalcMetaHash(normalizeMetadataForHash(buildTableMetaWithStats("stats_only", 999, 888, 777, 666, "col1")))
+	statsExistingHash, err := store.CalcMetaHash(buildTableMetaWithStats("stats_only", 999, 888, 777, 666, "col1"))
 	require.NoError(t, err)
 
 	batch := &batchMetaCreate{
