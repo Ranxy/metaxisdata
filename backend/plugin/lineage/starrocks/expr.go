@@ -92,6 +92,11 @@ func inferColumnAlias(exprText string) string {
 	return exprText
 }
 
+// normalizeExpressionText removes spaces from expression text for consistency.
+func normalizeExpressionText(text string) string {
+	return strings.ReplaceAll(text, " ", "")
+}
+
 // ---------------------------------------------------------------------------
 // Expression analysis
 // ---------------------------------------------------------------------------

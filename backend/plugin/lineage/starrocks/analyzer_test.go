@@ -95,9 +95,7 @@ func TestUnimplementedStatementsFailLoudly(t *testing.T) {
 	t.Parallel()
 
 	for _, sql := range []string{
-		"INSERT INTO t2 SELECT id FROM t",
-		"UPDATE t SET id = 1 WHERE id = 2",
-		"DELETE FROM t WHERE id = 1",
+		"MERGE INTO t1 USING t2 ON t1.id = t2.id WHEN MATCHED THEN UPDATE SET t1.name = t2.tag",
 	} {
 		relations, err := analyzeSQL(sql, nil)
 		require.Error(t, err, "expected an explicit failure for %q", sql)

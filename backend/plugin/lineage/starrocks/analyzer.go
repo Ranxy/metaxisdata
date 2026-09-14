@@ -31,8 +31,10 @@ import (
 
 // Special table/column markers shared with the other analyzers.
 const (
-	resultTableName = "__result__"
-	wildcardColumn  = "*"
+	resultTableName   = "__result__"
+	deletionFieldName = "__deletion__"
+	wildcardColumn    = "*"
+	fileSourceMarker  = "__file__" // source marker for COPY INTO / LOAD
 )
 
 // Analyzer performs direct lineage analysis on one StarRocks statement.
@@ -56,11 +58,11 @@ type Analyzer struct {
 	// tempTables tracks CTE and subquery names so intermediate edges can be
 	// filtered out.
 	tempTables map[string]struct{}
-	// inDDLTarget is set while the query body of a CREATE VIEW / MATERIALIZED
-	// VIEW / TABLE ... AS statement is analyzed. Those output columns are
-	// mapped onto the new object, so they must not also be emitted against
-	// __result__.
-	inDDLTarget bool
+	// inTargetContext is set while the query body of a statement that maps its
+	// output columns onto an explicit object (CREATE VIEW / MATERIALIZED VIEW /
+	// TABLE ... AS, INSERT ... SELECT) is analyzed. Those columns must not also
+	// be emitted against __result__.
+	inTargetContext bool
 }
 
 // Analyze parses a single StarRocks statement and returns its column relations.
@@ -137,11 +139,19 @@ func (a *Analyzer) dispatch(stmt nodes.Node) {
 	case *nodes.CreateTableStmt:
 		a.processCreateTable(s)
 	case *nodes.InsertStmt:
-		a.unsupported("INSERT")
+		a.processInsertStatement(s)
 	case *nodes.UpdateStmt:
-		a.unsupported("UPDATE")
+		a.processUpdateStatement(s)
 	case *nodes.DeleteStmt:
-		a.unsupported("DELETE")
+		a.processDeleteStatement(s)
+	case *nodes.CopyIntoStmt:
+		a.processCopyInto(s)
+	case *nodes.LoadDataStmt:
+		a.processLoadStatement(s)
+	case *nodes.MergeStmt:
+		// MERGE carries column lineage this analyzer does not model yet;
+		// failing loudly keeps it from looking like a statement with none.
+		a.unsupported("MERGE")
 	default:
 		// Statement kinds that carry no lineage are ignored, as in the MySQL
 		// analyzer.
@@ -249,6 +259,19 @@ func (a *Analyzer) processSingleTableRef(ref *nodes.TableRef) {
 			return
 		}
 	}
+	a.addBaseTable(ref.Name, ref.Alias)
+}
+
+// addBaseTable registers a base-table reference in the current scope, keyed by
+// alias (or by its own name when there is none). An unusable name is ignored.
+func (a *Analyzer) addBaseTable(name *nodes.ObjectName, alias string) {
+	schema, table, ok := tableRefFromObjectName(name)
+	if !ok {
+		return
+	}
+	if alias == "" {
+		alias = table
+	}
 	a.currentScope().AddTable(&scope.TableRef{
 		Schema:  schema,
 		Table:   table,
@@ -347,9 +370,9 @@ func (a *Analyzer) processDDLTarget(name *nodes.ObjectName, columns []string, qu
 	if !ok {
 		return
 	}
-	a.inDDLTarget = true
+	a.inTargetContext = true
 	a.processQueryNode(query)
-	a.inDDLTarget = false
+	a.inTargetContext = false
 
 	a.generateEdgesForTarget(a.currentScope(), schema, table, columns)
 }
@@ -428,6 +451,218 @@ func viewColumnNames(cols []*nodes.ViewColumn) []string {
 		}
 	}
 	return out
+}
+
+// ---------------------------------------------------------------------------
+// INSERT / UPDATE / DELETE
+// ---------------------------------------------------------------------------
+
+// processInsertStatement processes INSERT [OVERWRITE] INTO ... SELECT and
+// INSERT ... BY NAME. The VALUES form carries only literals, so it has no
+// lineage.
+func (a *Analyzer) processInsertStatement(stmt *nodes.InsertStmt) {
+	if stmt == nil || stmt.Target == nil {
+		return
+	}
+	schema, table, ok := tableRefFromObjectName(stmt.Target)
+	if !ok {
+		return
+	}
+
+	targetColumns := stmt.Columns
+	if stmt.ByName {
+		// BY NAME matches the source column names to the target's; without the
+		// target's catalog metadata the source alias is the closest available
+		// approximation, so the positional list is dropped.
+		targetColumns = nil
+	}
+
+	if stmt.Query != nil {
+		a.inTargetContext = true
+		a.processQueryNode(stmt.Query)
+		a.inTargetContext = false
+	}
+
+	a.generateEdgesForTarget(a.currentScope(), schema, table, targetColumns)
+}
+
+// processUpdateStatement processes UPDATE ... SET. The target table is also a
+// readable relation, because an assignment may read the row it writes.
+func (a *Analyzer) processUpdateStatement(stmt *nodes.UpdateStmt) {
+	if stmt == nil || stmt.Target == nil {
+		return
+	}
+	if stmt.With != nil {
+		a.processCTEs(stmt.With.CTEs)
+	}
+	a.addBaseTable(stmt.Target, stmt.TargetAlias)
+	for _, te := range stmt.From {
+		a.processTableExpr(te)
+	}
+	a.processUpdateList(stmt.Assignments)
+}
+
+// processUpdateList processes the SET clause of an UPDATE.
+func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment) {
+	sp := a.currentScope()
+	for _, elem := range assignments {
+		if elem == nil || elem.Column == nil {
+			continue
+		}
+		targetCol, ok := columnRefFromObjectName(elem.Column)
+		if !ok {
+			continue
+		}
+		resolved, err := sp.ResolveColumn(targetCol)
+		if err != nil {
+			continue
+		}
+
+		var sourceColumns []scope.ColumnRef
+		var transformInfo []model.Transformation
+		if elem.Value != nil {
+			sourceColumns = collectColumns(elem.Value)
+			sourceColumns = append(sourceColumns, a.expressionSubquerySources(elem.Value)...)
+			exprText := normalizeExpressionText(a.exprTextOf(elem.Value))
+			isDerived := len(sourceColumns) != 1 || exprText != targetCol.Column
+			if isDerived && exprText != "" {
+				transformInfo = a.analyzeExpressionOperator(elem.Value)
+			}
+		}
+		if len(sourceColumns) == 0 {
+			// A literal assignment still depends on the row it overwrites.
+			sourceColumns = []scope.ColumnRef{{
+				Schema: resolved.Schema, Table: resolved.Table, Column: wildcardColumn, Resolved: true,
+			}}
+			if elem.Value != nil {
+				transformInfo = a.analyzeExpressionOperator(elem.Value)
+			}
+		}
+
+		for _, sourceCol := range sourceColumns {
+			resolvedSource, err := sp.ResolveColumn(sourceCol)
+			if err != nil {
+				resolvedSource = &sourceCol
+			}
+			isTemp := resolved.Table == resultTableName || a.isTableTempInCurrentScope(resolved.Table)
+			a.addRelation(scope.NewLineageEdge(
+				resolvedSource.Schema, resolvedSource.Table, resolvedSource.Column,
+				resolved.Schema, resolved.Table, resolved.Column,
+				transformInfo,
+				isTemp,
+			))
+		}
+	}
+}
+
+// processDeleteStatement processes DELETE ... [USING ...] WHERE. The WHERE
+// columns are what determines which rows are removed, so they become
+// __deletion__ edges on the target table.
+func (a *Analyzer) processDeleteStatement(stmt *nodes.DeleteStmt) {
+	if stmt == nil || stmt.Target == nil {
+		return
+	}
+	if stmt.With != nil {
+		a.processCTEs(stmt.With.CTEs)
+	}
+	for _, te := range stmt.Using {
+		a.processTableExpr(te)
+	}
+	a.addBaseTable(stmt.Target, stmt.TargetAlias)
+
+	if stmt.Where == nil {
+		return
+	}
+	schema, table, ok := tableRefFromObjectName(stmt.Target)
+	if !ok {
+		return
+	}
+	// A USING clause may re-introduce the target under an alias; the alias is
+	// then the identity the WHERE resolves through.
+	if stmt.TargetAlias != "" {
+		if ref, ok := a.currentScope().FindTable(stmt.TargetAlias); ok {
+			schema, table = ref.Schema, ref.Table
+		}
+	}
+
+	sp := a.currentScope()
+	conditionColumns := collectColumns(stmt.Where)
+	conditionColumns = append(conditionColumns, a.expressionSubquerySources(stmt.Where)...)
+	transform := []model.Transformation{model.NewDeleteTransformation(normalizeExpressionText(a.exprTextOf(stmt.Where)))}
+
+	for _, condCol := range conditionColumns {
+		resolved, err := sp.ResolveColumn(condCol)
+		if err != nil {
+			resolved = &condCol
+		}
+		if tableRef, ok := sp.FindTable(resolved.Table); ok && (tableRef.IsCTE || tableRef.IsSubquery) {
+			a.traceThroughTableLineageToTarget(tableRef, resolved.Column, schema, table, deletionFieldName, transform)
+			continue
+		}
+		isTemp := table == resultTableName || a.isTableTempInCurrentScope(table)
+		a.addRelation(scope.NewLineageEdge(
+			resolved.Schema, resolved.Table, resolved.Column,
+			schema, table, deletionFieldName,
+			transform,
+			isTemp,
+		))
+	}
+}
+
+// processCopyInto processes COPY INTO <table> FROM <stage>. The staged files'
+// shape is not described by the statement, so the whole file is the source.
+func (a *Analyzer) processCopyInto(stmt *nodes.CopyIntoStmt) {
+	if stmt == nil || stmt.Target == nil {
+		return
+	}
+	schema, table, ok := tableRefFromObjectName(stmt.Target)
+	if !ok {
+		return
+	}
+	isTemp := a.isTableTempInCurrentScope(table)
+	a.addRelation(scope.NewLineageEdge(
+		"", fileSourceMarker, wildcardColumn,
+		schema, table, wildcardColumn,
+		nil,
+		isTemp,
+	))
+}
+
+// processLoadStatement processes LOAD LABEL ... (DATA INFILE ... INTO TABLE).
+// Each data description names its own target and optional column list; a
+// description without one loads the whole file into the table. The SET clause
+// is captured only as raw text by omni, so it contributes no column lineage.
+func (a *Analyzer) processLoadStatement(stmt *nodes.LoadDataStmt) {
+	if stmt == nil {
+		return
+	}
+	for _, desc := range stmt.DataDescs {
+		if desc == nil || desc.Target == nil {
+			continue
+		}
+		schema, table, ok := tableRefFromObjectName(desc.Target)
+		if !ok {
+			continue
+		}
+		isTemp := a.isTableTempInCurrentScope(table)
+		if len(desc.ColumnList) == 0 {
+			a.addRelation(scope.NewLineageEdge(
+				"", fileSourceMarker, wildcardColumn,
+				schema, table, wildcardColumn,
+				nil,
+				isTemp,
+			))
+			continue
+		}
+		for i, colName := range desc.ColumnList {
+			a.addRelation(scope.NewLineageEdge(
+				"", fileSourceMarker, fmt.Sprintf("col%d", i+1),
+				schema, table, colName,
+				nil,
+				isTemp,
+			))
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -594,7 +829,7 @@ func (a *Analyzer) expressionSubquerySources(expr nodes.Node) []scope.ColumnRef 
 // Only the root query emits edges to the final result, and a DDL body does not
 // (its columns are mapped onto the created object instead).
 func (a *Analyzer) generateEdges(sp *scope.Scope) {
-	if a.inDDLTarget || sp == nil || sp.Parent() != nil {
+	if a.inTargetContext || sp == nil || sp.Parent() != nil {
 		return
 	}
 	for _, outputCol := range sp.GetOutputColumns() {
