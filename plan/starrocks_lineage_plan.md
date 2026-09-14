@@ -1,13 +1,14 @@
 # Plan: StarRocks Column-Level Lineage Analyzer (omni-backed)
 
-> **Status: in progress — P0 through P4 landed.** `buildSQL` pass-through, the
-> package foundation, SELECT (plain, CTE, derived tables, set operations,
-> expression subqueries), the DDL targets (CREATE VIEW / MATERIALIZED VIEW /
-> CTAS) and the DML statements (INSERT / UPDATE / DELETE / COPY / LOAD) are in
-> the tree and lint-clean; the engine is not registered yet, which is P5.
+> **Status: implemented — P0 through P5 landed.** The analyzer is registered for
+> `storepb.Engine_STARROCKS` and covers SELECT (plain, CTE, derived tables, set
+> operations, expression subqueries), the DDL targets (CREATE VIEW /
+> MATERIALIZED VIEW / CTAS) and DML (INSERT / UPDATE / DELETE / COPY / LOAD).
+> Validated against a live StarRocks 4.1 container. `DORIS` is deliberately
+> still unregistered, and `MERGE INTO` is the one loud-failure gap.
 > Design verified against `github.com/bytebase/omni`
-> `v0.0.0-20260912023254-4574e69bb9f1` and a live StarRocks 4.1 container; both
-> blockers in "Findings" are reproduced, not theoretical.
+> `v0.0.0-20260912023254-4574e69bb9f1`; both blockers in "Findings" were
+> reproduced, not theoretical.
 >
 > Related: `plan/mysql_omni_parser_migration_plan.md` (the pattern this
 > follows), `plan/mysql_family_dialect_lineage_plan.md` (why a dialect gets its
@@ -291,7 +292,7 @@ covered by `TestBuildSQL`.
 | P2 | Expression layer hardening: expression subqueries (scalar / `IN` / `EXISTS`), wildcard expansion over aliased relations, `relation_type`/`is_temp` coverage; fix a set operation nested in a temp table dropping its non-first arms | corpus 16 green (15 cases); `relation_type`/`is_temp` consistent with the shared algorithm layer | **landed** |
 | P3 | DDL targets: CREATE VIEW / MV / CTAS + `viewbody.go` | `WITH` / `UNION` / parenthesized view corpus green | **landed** |
 | P4 | DML: INSERT (incl. Overwrite/ByName), UPDATE, DELETE, COPY/LOAD | DML corpus green | **landed** |
-| P5 | Register in `ultimate.go`; corpus completion; live StarRocks end-to-end check | `go test ./...` green; lint/build green; real view/MV produce edges | pending |
+| P5 | Register in `ultimate.go`; corpus completion; live StarRocks end-to-end check | `go test ./...` green; lint/build green; real view/MV produce edges | **landed** |
 
 ### P0 landed (what is actually in the tree)
 
@@ -364,8 +365,35 @@ No statement kind is silently ignored any more: `MERGE INTO` is the one DML
 form this analyzer does not model, and it fails loudly
 (`analysis errors: MERGE analysis is not implemented yet`) rather than returning
 no lineage, so it is visible in `column_lineage_version.error_message`. It is
-pinned by `TestUnimplementedStatementsFailLoudly`. The package does **not** call
-`RegisterAnalyzeRelation` yet, so production behavior is unchanged.
+pinned by `TestUnimplementedStatementsFailLoudly`.
+
+### P5 landed (registration and the live check)
+
+| Artifact | What it does |
+| --- | --- |
+| `lineage/starrocks/analyzer.go` | `init()` registers `storepb.Engine_STARROCKS` through `lineage.RegisterAnalyzeRelation` |
+| `lineage/starrocks/registration_test.go` | Asserts `GetAnalyzeRelation(STARROCKS, …)` resolves to this analyzer and that `DORIS` still returns `ErrorEngineNotSupported` |
+| `backend/server/ultimate.go` | Blank-imports the package, so the lineage runner and Explain SQL pick it up |
+| `lineage/starrocks/testdata/analyze/08_*.yaml` | +3 completion cases: `SHOW CREATE VIEW` output pasted as manual SQL (`SECURITY NONE`), a window function with `QUALIFY`, and a cross-database source |
+
+Live check (development-time, against the local StarRocks 4.1 container on
+`localhost:9030`): the **real** `plugin/db/starrocks` driver synced the test
+database, yielding 3 views and 2 materialized views. Each synced definition was
+wrapped exactly as `buildSQL` does and passed through the **registered**
+`lineage.GetAnalyzeRelation(ctx, storepb.Engine_STARROCKS, …)`. Every expected
+edge was present with `is_temp=false`:
+
+| Object | Synced definition shape | Edges |
+| --- | --- | --- |
+| `v1` | JOIN view (`VIEW_DEFINITION`) | `t1.id/name`, `t2.tag` → `v1` |
+| `v_cte` | `WITH …` view | `t1.id/name` → `v_cte` |
+| `v_union` | `UNION ALL` view | `t1.id`, `t2.id` → `v_union` |
+| `mv1` | full `SHOW CREATE MATERIALIZED VIEW` | `t1.id`, `t1.*` → `cnt`, `t1.amount` → `total` |
+| `mv_cte` | full MV DDL with a `WITH …` body | `t1.id`, `t1.amount` → `s` |
+
+This is the check that exercises F1 (MV full-DDL passthrough) and F2 (view
+`WITH`/`UNION` body extraction) on real engine output rather than fixtures.
+DORIS remains unregistered by decision; the runner records its per-object skip.
 
 ## Files
 
@@ -375,7 +403,7 @@ pinned by `TestUnimplementedStatementsFailLoudly`. The package does **not** call
 | `backend/runner/lineageanalyzer/analyzer.go` | EDIT `buildSQL` (pass-through) |
 | `backend/runner/lineageanalyzer/analyzer_test.go` | ADD StarRocks MV case |
 | `backend/plugin/lineage/scope/{types,scope}.go` | EDIT `ColumnRef.Resolved` + `ResolveColumn` pass-through (P2) |
-| `backend/server/ultimate.go` | ADD blank import |
+| `backend/server/ultimate.go` | EDIT blank import (P5) |
 | `backend/plugin/lineage/{model,catalog,lineage}.go` | UNCHANGED |
 | `go.mod` | UNCHANGED (`github.com/bytebase/omni` already required) |
 
@@ -386,12 +414,21 @@ pinned by `TestUnimplementedStatementsFailLoudly`. The package does **not** call
 2. `go test ./... -count=1` green; `gofmt` clean;
    `golangci-lint run --allow-parallel-runners` clean (repeat until clean).
 3. `go build -ldflags "-w -s" -p=16 -o ./build/metaxisdata ./backend/bin/server/main.go`.
-4. **Live StarRocks end-to-end** (local container, `localhost:9030`; CI has no
-   StarRocks, so this is a development check): create a database, a plain view,
-   a CTE view, a `UNION` view and an async MV; sync metadata; run the analyzer;
-   assert the edge sets. This is the only way to exercise F1 and F2 for real.
+4. **Live StarRocks check** (local container, `localhost:9030`; CI has no
+   StarRocks, so this is a development-time check — see "P5 landed"): the real
+   `plugin/db/starrocks` driver synced the test database, and each synced
+   definition was wrapped as `buildSQL` does and run through the registered
+   `GetAnalyzeRelation(STARROCKS, …)`. Plain, `WITH` and `UNION` views plus two
+   materialized views (including the full `SHOW CREATE` DDL) all produced their
+   expected edges with `is_temp=false`. This is what exercises F1 and F2 against
+   real engine output.
 5. Confirm `DORIS` still resolves to `ErrorEngineNotSupported` and the runner
-   records a deliberate skip (not a crash).
+   records a deliberate skip (not a crash) — pinned hermetically by
+   `TestDorisIsNotRegistered`.
+6. **Not covered:** the full server path (HTTP → schemasync runner → lineage
+   runner → `column_lineage` rows) is not exercised for StarRocks, by the
+   no-integration-tests decision. That plumbing is engine-agnostic and covered
+   by the existing MySQL/PostgreSQL integration suites.
 
 ## Risks and limitations
 
