@@ -32,6 +32,11 @@ const (
 	resultTableName   = "__result__"
 	deletionFieldName = "__deletion__"
 	wildcardColumn    = "*"
+	// excludedRelationName is PostgreSQL's ON CONFLICT pseudo-relation holding
+	// the proposed row. It is not a metadata-registry object, so edges sourced
+	// from it can never resolve; the real lineage is already emitted from the
+	// INSERT source.
+	excludedRelationName = "excluded"
 )
 
 // PostgreSQL aggregate functions. Window detection is structural (FuncCall.Over),
@@ -677,7 +682,7 @@ func (a *Analyzer) processOnConflict(onConflict *pgast.OnConflictClause, targetS
 		return
 	}
 	if onConflict.TargetList != nil {
-		a.processSetClauseList(onConflict.TargetList, targetSchema, targetTable)
+		a.processOnConflictSetList(onConflict.TargetList, targetSchema, targetTable)
 	}
 }
 
@@ -708,8 +713,21 @@ func (a *Analyzer) processUpdateStmt(stmt *pgast.UpdateStmt) {
 	}
 }
 
-// processSetClauseList processes assignment targets (UPDATE SET / ON CONFLICT DO UPDATE SET).
+// processSetClauseList processes UPDATE SET assignment targets.
 func (a *Analyzer) processSetClauseList(assignments *pgast.List, targetSchema, targetTable string) {
+	a.processAssignments(assignments, targetSchema, targetTable, false)
+}
+
+// processOnConflictSetList processes ON CONFLICT DO UPDATE SET assignment
+// targets, dropping columns sourced from the EXCLUDED pseudo-relation (see
+// excludedRelationName).
+func (a *Analyzer) processOnConflictSetList(assignments *pgast.List, targetSchema, targetTable string) {
+	a.processAssignments(assignments, targetSchema, targetTable, true)
+}
+
+// processAssignments resolves assignment targets. When skipExcluded is set,
+// source columns qualified by the EXCLUDED pseudo-relation are dropped.
+func (a *Analyzer) processAssignments(assignments *pgast.List, targetSchema, targetTable string, skipExcluded bool) {
 	if assignments == nil {
 		return
 	}
@@ -742,6 +760,10 @@ func (a *Analyzer) processSetClauseList(assignments *pgast.List, targetSchema, t
 		}
 
 		for _, sourceCol := range sourceColumns {
+			if skipExcluded && strings.EqualFold(sourceCol.Table, excludedRelationName) {
+				continue
+			}
+
 			resolvedSource, err := currentScope.ResolveColumn(sourceCol)
 			if err != nil {
 				resolvedSource = &sourceCol

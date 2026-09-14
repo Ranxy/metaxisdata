@@ -110,7 +110,8 @@ Recorded divergences from the legacy analyzer:
 
 1. **Unquoted identifiers fold to lowercase** (PostgreSQL semantics). The corpus
    exercises this directly: the `ON CONFLICT` special relation `EXCLUDED` becomes
-   `excluded`.
+   `excluded`. Resolved as PG-FU-3 (document-only); reason and guards in
+   Appendix C item 3.
 2. **Multi-statement input** is analyzed statement by statement (legacy
    parity), unlike the MySQL analyzer's single-statement rejection.
 3. **Parse errors hard-fail**; the legacy ANTLR path recovered silently and its
@@ -118,6 +119,8 @@ Recorded divergences from the legacy analyzer:
 4. **Parenthesized joins and `table.*` on joined relations now emit edges** where
    legacy emitted none (defect 1). This is the one place parity is intentionally
    not byte-identical, and it is in the direction of correctness.
+5. **`ON CONFLICT … EXCLUDED.col` edges are dropped** (defect 3): they were
+   unresolvable pseudo-relation references.
 
 ## Why do this at all
 
@@ -697,7 +700,8 @@ dropped by a later decision.
 | --- | --- | --- | --- |
 | **PG-FU-1** | Replace text/function-name scanning in `analyzeExpressionOperator` / `isExpressionDerived` with structured AST detection: `FuncCall{Name, Args, AggDistinct, AggStar, Over}` (incl. window `WindowDef.PartitionClause`/`OrderClause`), `*ast.CaseExpr`, `*ast.CoalesceExpr`, `A_Expr{Kind, Name}` for operators. | It deliberately **changes `Transformation` content** (window `PartitionBy`/`OrderBy` become non-nil; function names/args become structured), which would break the byte-identical parity goal this migration is built on. The parity harness is removed at Phase 5, so this must be a separate change validated against the golden corpus + a sweep. | **LANDED.** `plan/postgresql_expression_transformation_plan.md` (implemented; marker `TODO(PG-FU-1)` removed). |
 | **PG-FU-2** | Feed the DML/set-op/window-preserving walker back upstream to `github.com/bytebase/omni` as a production PostgreSQL `analysis` package, shrinking the in-repo walker. | Out of scope for a parity migration; depends on upstream appetite (raised in `plan/mysql_omni_parser_migration_plan.md` as well). | Upstream contribution / separate plan. |
-| **PG-FU-3** | If the Phase 4 sweep shows any real mixed-case-unquoted `MANUAL_SQL` divergence from omni's case folding, decide whether to document-only or add a normalization layer. | Expected to be a non-issue for synced views/matviews (definitions come from `pg_get_viewdef`), which is why it is accepted rather than fixed now. | Revisit only if the Phase 4 sweep finds production impact. |
+| **PG-FU-3** | If the Phase 4 sweep shows any real mixed-case-unquoted `MANUAL_SQL` divergence from omni's case folding, decide whether to document-only or add a normalization layer. | Expected to be a non-issue for synced views/matviews (definitions come from `pg_get_viewdef`), which is why it is accepted rather than fixed now. | **RESOLVED (document-only; no normalization layer).** Analysis showed omni's folding is exactly PostgreSQL's `pg_catalog` form, so the analyzer-derived source GUID matches the registry GUID — the legacy source-case behavior was the broken one. Guards: `backend/plugin/lineage/postgresql/identifier_case_test.go` + the mixed-case MANUAL_SQL integration test. Rationale: Appendix C item 3. |
+| **PG-FU-5** | Resolve `ON CONFLICT … EXCLUDED.col` to the INSERT source column instead of dropping the edge. | This change drops the unresolvable `EXCLUDED`-sourced edge (see "Defects fixed" item 3); the genuinely correct target would be the INSERT's source column, which needs the insert source scope threaded into the conflict clause. The INSERT-source edge already covers the common case. | Follow-up against `backend/plugin/lineage/postgresql/analyzer.go`. |
 
 ## Appendix A — Probe methodology (how the numbers were produced)
 
@@ -794,16 +798,47 @@ type OnConflictClause struct { Action int; Infer *InferClause; TargetList *List
    making the emitted edge unstable run to run. The resolver now iterates sorted
    keys. This is shared code, so MySQL-family analyzers changed with it and their
    corpora stayed green.
+3. **`ON CONFLICT … EXCLUDED.col` edges were unresolvable.** `EXCLUDED` is
+   PostgreSQL's pseudo-relation for the proposed row and is not a registry object,
+   so an edge sourced from it can never resolve; the real lineage is already
+   emitted from the INSERT source. `processOnConflictSetList` now drops
+   `EXCLUDED`-sourced columns while keeping other sources and genuine target
+   self-references (e.g. `quantity = inventory.quantity + EXCLUDED.quantity` keeps
+   `inventory.quantity`, drops `excluded.quantity`). Pinned by
+   `backend/plugin/lineage/postgresql/onconflict_test.go`. Deeper resolution to the
+   INSERT source is **PG-FU-5**.
 
 ### Parity-preserving divergences
 
-3. **Unquoted identifiers fold to lowercase.** omni applies PostgreSQL's
-   case-folding (`MyTable` → `mytable`); legacy ANTLR preserved source case. The
-   corpus exercises this directly through the `ON CONFLICT` special relation
-   `EXCLUDED` → `excluded`, so the parity comparison was made identifier
-   case-insensitive. Production impact is limited to `MANUAL_SQL` with
-   mixed-case unquoted identifiers, because synced view/matview bodies come from
-   `pg_get_viewdef` and are already folded.
+3. **Unquoted identifiers fold to lowercase — RESOLVED (document-only; PG-FU-3).**
+   omni applies PostgreSQL's case-folding (`MyTable` → `mytable`) and preserves
+   quoted names (`"MyTable"`); legacy ANTLR preserved source case for both. The
+   corpus exercises this through the `ON CONFLICT` special relation
+   `EXCLUDED` → `excluded`, so the (now removed) parity comparison was made
+   identifier case-insensitive.
+
+   Why no normalization layer is added:
+   - `pg_catalog` — and therefore the metadata registry — already stores the
+     folded form for unquoted names and the preserved form for quoted ones, so
+     omni's output **is** the registry-canonical form by construction.
+   - Lineage is keyed by GUID: `analyzer name → ObjectIdentifier.GUID()`
+     (`common.BuildMetaGUID`, no normalization) → `column_lineage.source_guid` →
+     `GetMetaRegistry`, whose predicate is an exact `guid = $n`
+     (`backend/store/meta_resource.go:346`). `GetLineage` and the graph's node
+     expansion look that GUID up again, so a case mismatch makes the source node
+     unresolvable.
+   - Measured: for `SELECT ID FROM Users`, `SELECT Users.ID FROM Users`,
+     `SELECT u.ID FROM Users u`, `SELECT ID FROM MySchema.Users` and their quoted
+     counterparts, the analyzer-derived GUID equals the registry GUID in all
+     cases (7/7).
+   - Consequence: for `MANUAL_SQL`, the legacy source-case behavior produced a
+     GUID that does not exist in the registry (the edge was stored, but its source
+     could never resolve); omni's folding **fixes** that. A normalization layer
+     would also have to preserve quoted-name case, so it could only reintroduce
+     the bug.
+   - Guards: `backend/plugin/lineage/postgresql/identifier_case_test.go` (unit,
+     7 cases) and the mixed-case `MANUAL_SQL` integration test
+     (`schemasync_lineage_postgres_service_test.go`).
 4. **Multi-statement contract.** New: every statement is analyzed (legacy
    parity). This deliberately differs from the MySQL analyzer's
    single-statement rejection.
