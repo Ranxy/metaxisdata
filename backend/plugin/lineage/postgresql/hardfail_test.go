@@ -36,9 +36,9 @@ func TestMultiStatementAnalyzed(t *testing.T) {
 	relations, err := analyzeSQL("SELECT t1.a FROM t1; SELECT t2.b FROM t2", nil)
 	require.NoError(t, err)
 
-	require.True(t, hasEdge(relations, "t1", "a", resultTableName, "a"),
+	require.True(t, hasResultEdge(relations, "t1", "a", "a"),
 		"first statement's edge missing: %s", testutil.FormatRelations(relations))
-	require.True(t, hasEdge(relations, "t2", "b", resultTableName, "b"),
+	require.True(t, hasResultEdge(relations, "t2", "b", "b"),
 		"second statement's edge missing: %s", testutil.FormatRelations(relations))
 }
 
@@ -50,10 +50,12 @@ func TestParseErrorFailsWholeInput(t *testing.T) {
 	require.Nil(t, relations)
 }
 
-func hasEdge(relations []model.ColumnRelation, sourceTable, sourceColumn, targetTable, targetColumn string) bool {
+// hasResultEdge reports whether an edge exists from sourceTable.sourceColumn to
+// __result__.targetColumn.
+func hasResultEdge(relations []model.ColumnRelation, sourceTable, sourceColumn, targetColumn string) bool {
 	for _, rel := range relations {
 		if rel.Source.Table.Name == sourceTable && rel.Source.Name == sourceColumn &&
-			rel.Target.Table.Name == targetTable && rel.Target.Name == targetColumn {
+			rel.Target.Table.Name == resultTableName && rel.Target.Name == targetColumn {
 			return true
 		}
 	}

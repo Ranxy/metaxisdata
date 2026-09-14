@@ -34,14 +34,12 @@ const (
 	wildcardColumn    = "*"
 )
 
-// PostgreSQL aggregate functions
-var aggregateFunctions = []string{"COUNT", "SUM", "AVG", "MAX", "MIN", "ARRAY_AGG", "STRING_AGG"}
-
-// PostgreSQL window functions
-var windowFunctions = []string{"ROW_NUMBER", "RANK", "DENSE_RANK", "LEAD", "LAG", "FIRST_VALUE", "LAST_VALUE"}
-
-// Arithmetic operators
-var arithmeticOperators = []string{"+", "-", "*", "/"}
+// PostgreSQL aggregate functions. Window detection is structural (FuncCall.Over),
+// so no window-function name set is needed.
+var aggregateFunctions = map[string]bool{
+	"COUNT": true, "SUM": true, "AVG": true, "MAX": true, "MIN": true,
+	"ARRAY_AGG": true, "STRING_AGG": true,
+}
 
 // Analyzer performs direct lineage analysis on PostgreSQL queries.
 type Analyzer struct {
@@ -597,9 +595,12 @@ func (a *Analyzer) processExpressionTarget(rt *pgast.ResTarget, sp *scope.Scope)
 	}
 
 	sourceColumns := a.extractColumnsFromNode(rt.Val)
-	isDerived := a.isExpressionDerivedText(exprText)
+	isDerived := isExpressionDerived(rt.Val)
 
-	if isDerived && len(sourceColumns) == 0 {
+	// A source-less expression is attributed to the whole relation only when it is
+	// a function call (COUNT(*), now(), …). Casts/arrays/rows of constants have no
+	// source table, so they must not fabricate a `table.*` edge.
+	if isDerived && len(sourceColumns) == 0 && isTableWideExpression(rt.Val) {
 		for _, tableRef := range sp.GetTables() {
 			sourceColumns = append(sourceColumns, scope.ColumnRef{
 				Schema: tableRef.Schema,
@@ -617,7 +618,9 @@ func (a *Analyzer) processExpressionTarget(rt *pgast.ResTarget, sp *scope.Scope)
 	}
 
 	if isDerived {
-		outputCol.Transform = a.analyzeExpressionOperator(rt.Val)
+		if transform, ok := a.classifyExpression(rt.Val); ok {
+			outputCol.Transform = []model.Transformation{transform}
+		}
 	}
 
 	sp.AddOutputColumn(outputCol)
@@ -725,7 +728,9 @@ func (a *Analyzer) processSetClauseList(assignments *pgast.List, targetSchema, t
 		var transformInfo []model.Transformation
 		if rt.Val != nil {
 			sourceColumns = a.extractColumnsFromNode(rt.Val)
-			transformInfo = a.analyzeExpressionOperator(rt.Val)
+			if transform, ok := a.classifyExpression(rt.Val); ok {
+				transformInfo = []model.Transformation{transform}
+			}
 		}
 
 		if len(sourceColumns) == 0 {
