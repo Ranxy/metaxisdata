@@ -254,43 +254,12 @@ func (a *Analyzer) processDerivedTable(ref *nodes.TableRef) {
 	alias := ref.Alias
 	a.markTempTable(alias)
 
-	a.pushSource(newSource(sub.RawText))
-	query, err := parseRawQuery(sub.RawText)
-	if err != nil {
-		a.popSource()
-		a.errors = append(a.errors, fmt.Sprintf("derived table %q: %v", alias, err))
+	subqueryScope := a.analyzeRawQueryScope(sub.RawText, fmt.Sprintf("derived table %q", alias))
+	if subqueryScope == nil {
 		return
 	}
-	a.pushScope()
-	a.processQueryNode(query)
-	subqueryScope := a.popScope()
-	a.popSource()
 
-	columns := make([]string, 0)
-	lineage := make([]model.ColumnRelation, 0)
-	for _, col := range subqueryScope.GetOutputColumns() {
-		colName := col.Alias
-		if colName == "" {
-			colName = "column"
-		}
-		columns = append(columns, colName)
-		for _, sourceCol := range col.SourceColumns {
-			resolved, err := subqueryScope.ResolveColumn(sourceCol)
-			if err != nil {
-				continue
-			}
-			if a.flattenTempSourceLineage(subqueryScope, resolved, alias, colName, col.Transform, &lineage) {
-				continue
-			}
-			lineage = append(lineage, scope.NewLineageEdge(
-				resolved.Schema, resolved.Table, resolved.Column,
-				"", alias, colName,
-				col.Transform,
-				true, // the derived table is temporary
-			))
-		}
-	}
-
+	columns, lineage := a.tempTableShape(subqueryScope, alias)
 	a.currentScope().AddTable(&scope.TableRef{
 		Table:      alias,
 		Alias:      alias,
@@ -298,6 +267,55 @@ func (a *Analyzer) processDerivedTable(ref *nodes.TableRef) {
 		Columns:    columns,
 		Lineage:    lineage,
 	})
+}
+
+// analyzeRawQueryScope parses and analyzes a query body that omni exposes only
+// as text (a derived table, a CTAS body or an expression subquery) in a fresh
+// scope and source. It returns nil, after recording the failure, when the body
+// does not parse.
+func (a *Analyzer) analyzeRawQueryScope(raw string, what string) *scope.Scope {
+	a.pushSource(newSource(raw))
+	query, err := parseRawQuery(raw)
+	if err != nil {
+		a.popSource()
+		a.errors = append(a.errors, fmt.Sprintf("%s: %v", what, err))
+		return nil
+	}
+	a.pushScope()
+	a.processQueryNode(query)
+	subScope := a.popScope()
+	a.popSource()
+	return subScope
+}
+
+// tempTableShape builds the column list and base-table lineage a temporary
+// table (a CTE or derived table) exposes under targetName.
+func (a *Analyzer) tempTableShape(sp *scope.Scope, targetName string) ([]string, []model.ColumnRelation) {
+	columns := make([]string, 0)
+	lineage := make([]model.ColumnRelation, 0)
+	for _, col := range sp.GetOutputColumns() {
+		colName := col.Alias
+		if colName == "" {
+			colName = "column"
+		}
+		columns = append(columns, colName)
+		for _, sourceCol := range col.SourceColumns {
+			resolved, err := sp.ResolveColumn(sourceCol)
+			if err != nil {
+				continue
+			}
+			if a.flattenTempSourceLineage(sp, resolved, targetName, colName, col.Transform, &lineage) {
+				continue
+			}
+			lineage = append(lineage, scope.NewLineageEdge(
+				resolved.Schema, resolved.Table, resolved.Column,
+				"", targetName, colName,
+				col.Transform,
+				true, // the temporary table is not a real object
+			))
+		}
+	}
+	return columns, lineage
 }
 
 // ---------------------------------------------------------------------------
@@ -332,7 +350,7 @@ func (a *Analyzer) processStar(sp *scope.Scope, except []string) {
 		sp.AddOutputColumn(scope.OutputColumn{
 			Alias:         wildcardColumn,
 			Expression:    wildcardColumn,
-			SourceColumns: []scope.ColumnRef{{Schema: tableRef.Schema, Table: tableRef.Table, Column: wildcardColumn}},
+			SourceColumns: []scope.ColumnRef{wildcardSourceRef(tableRef)},
 		})
 	}
 }
@@ -355,8 +373,27 @@ func (a *Analyzer) processTableWildcard(item *nodes.SelectItem, sp *scope.Scope)
 	sp.AddOutputColumn(scope.OutputColumn{
 		Alias:         wildcardColumn,
 		Expression:    tableName + "." + wildcardColumn,
-		SourceColumns: []scope.ColumnRef{{Schema: tableRef.Schema, Table: tableRef.Table, Column: wildcardColumn}},
+		SourceColumns: []scope.ColumnRef{wildcardSourceRef(tableRef)},
 	})
+}
+
+// wildcardSourceRef builds the source reference for a `*` expansion of one FROM
+// relation.
+//
+// A base table is already fully identified here, so the reference is marked
+// resolved: looking it up again by name would fail whenever the relation has an
+// alias, which silently produced no lineage at all for `SELECT * FROM t x`.
+// (The MySQL analyzer still has that gap.) A CTE or derived table is instead
+// looked up by its scope key so the temp-table trace can find it.
+func wildcardSourceRef(tableRef *scope.TableRef) scope.ColumnRef {
+	if tableRef.IsSubquery || tableRef.IsCTE {
+		key := tableRef.Alias
+		if key == "" {
+			key = tableRef.Table
+		}
+		return scope.ColumnRef{Table: key, Column: wildcardColumn}
+	}
+	return scope.ColumnRef{Schema: tableRef.Schema, Table: tableRef.Table, Column: wildcardColumn, Resolved: true}
 }
 
 // processSelectExpr turns one select expression into an output column. aliased
@@ -371,17 +408,14 @@ func (a *Analyzer) processSelectExpr(expr nodes.Node, alias string, aliased bool
 		alias = inferColumnAlias(exprText)
 	}
 	sourceColumns := collectColumns(expr)
+	sourceColumns = append(sourceColumns, a.expressionSubquerySources(expr)...)
 	isDerived := isExpressionDerivedText(exprText)
 
 	// A derived expression with no column reference (for example COUNT(*))
 	// contributes a synthetic reference to every table in scope.
 	if isDerived && len(sourceColumns) == 0 {
 		for _, tableRef := range sp.GetTables() {
-			sourceColumns = append(sourceColumns, scope.ColumnRef{
-				Schema: tableRef.Schema,
-				Table:  tableRef.Table,
-				Column: wildcardColumn,
-			})
+			sourceColumns = append(sourceColumns, wildcardSourceRef(tableRef))
 		}
 	}
 
@@ -395,6 +429,49 @@ func (a *Analyzer) processSelectExpr(expr nodes.Node, alias string, aliased bool
 		outputCol.Transform = a.analyzeExpressionOperator(expr)
 	}
 	sp.AddOutputColumn(outputCol)
+}
+
+// expressionSubquerySources analyzes the subqueries embedded in a select
+// expression. omni models a scalar / IN / EXISTS subquery as a leaf carrying
+// only raw text, so each is re-parsed in its own scope and flattened to
+// base-table references. Those references are marked resolved, because the
+// table they resolved to lives in the subquery's scope and the enclosing query
+// resolves its output columns in a different one.
+func (a *Analyzer) expressionSubquerySources(expr nodes.Node) []scope.ColumnRef {
+	var subqueries []*nodes.SubqueryExpr
+	nodes.Inspect(expr, func(n nodes.Node) bool {
+		sub, ok := n.(*nodes.SubqueryExpr)
+		if !ok {
+			return true
+		}
+		subqueries = append(subqueries, sub)
+		return false // a SubqueryExpr is a leaf; its body is raw text
+	})
+	if len(subqueries) == 0 {
+		return nil
+	}
+
+	refs := make([]scope.ColumnRef, 0)
+	for i, sub := range subqueries {
+		if strings.TrimSpace(sub.RawText) == "" {
+			continue
+		}
+		subScope := a.analyzeRawQueryScope(sub.RawText, "expression subquery")
+		if subScope == nil {
+			continue
+		}
+		synthetic := fmt.Sprintf("__subquery_%d__", i)
+		_, lineage := a.tempTableShape(subScope, synthetic)
+		for _, edge := range lineage {
+			refs = append(refs, scope.ColumnRef{
+				Schema:   edge.Source.Table.Database,
+				Table:    edge.Source.Table.Name,
+				Column:   edge.Source.Name,
+				Resolved: true,
+			})
+		}
+	}
+	return refs
 }
 
 // ---------------------------------------------------------------------------
@@ -473,6 +550,9 @@ func (a *Analyzer) expandWildcardWithCatalog(tableRef *scope.TableRef, sp *scope
 				Schema: tableRef.Schema,
 				Table:  tableRef.Table,
 				Column: colMeta.Name,
+				// The catalog identified the real column, so the reference must
+				// not be rebound by name (which fails for an aliased relation).
+				Resolved: true,
 			}},
 		})
 	}
@@ -622,7 +702,7 @@ func (a *Analyzer) processSetOperation(stmt *nodes.SetOpStmt) {
 	for i, arm := range arms {
 		if i == 0 {
 			a.processSelectStatement(arm)
-			allOutputColumns = append(allOutputColumns, baseScope.GetOutputColumns())
+			allOutputColumns = append(allOutputColumns, resolveOutputColumns(baseScope, baseScope.GetOutputColumns()))
 			continue
 		}
 		tempScope := scope.NewScope(baseScope.Parent())
@@ -633,10 +713,35 @@ func (a *Analyzer) processSetOperation(stmt *nodes.SetOpStmt) {
 		a.scopeStack[len(a.scopeStack)-1] = tempScope
 		a.processSelectStatement(arm)
 		a.scopeStack[len(a.scopeStack)-1] = originalScope
-		allOutputColumns = append(allOutputColumns, tempScope.GetOutputColumns())
+		allOutputColumns = append(allOutputColumns, resolveOutputColumns(tempScope, tempScope.GetOutputColumns()))
 	}
 
 	mergeUnionOutputColumns(baseScope, allOutputColumns)
+}
+
+// resolveOutputColumns resolves each output column's source references against
+// the scope the arm was analyzed in, marking them resolved.
+//
+// The merge below runs after every arm's own scope is gone, and the merged
+// references are later resolved again in the enclosing scope. Without this
+// step an unqualified reference from a non-first arm would bind to the first
+// arm's table, silently dropping the later arms' lineage.
+func resolveOutputColumns(sp *scope.Scope, cols []scope.OutputColumn) []scope.OutputColumn {
+	out := make([]scope.OutputColumn, len(cols))
+	copy(out, cols)
+	for i := range out {
+		resolved := make([]scope.ColumnRef, 0, len(out[i].SourceColumns))
+		for _, ref := range out[i].SourceColumns {
+			if r, err := sp.ResolveColumn(ref); err == nil {
+				r.Resolved = true
+				resolved = append(resolved, *r)
+			} else {
+				resolved = append(resolved, ref)
+			}
+		}
+		out[i].SourceColumns = resolved
+	}
+	return out
 }
 
 // mergeUnionOutputColumns merges output columns from multiple set-operation

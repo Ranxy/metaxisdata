@@ -1,0 +1,231 @@
+name: TestExtendedFormsLineage_Table
+cases:
+    - name: window_row_number
+      sql: SELECT name, ROW_NUMBER() OVER (PARTITION BY department_id ORDER BY salary) AS rn FROM employees
+      expected_edges:
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true
+        - from_table: employees
+          from_field: department_id
+          to_table: __result__
+          to_field: rn
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+        - from_table: employees
+          from_field: salary
+          to_table: __result__
+          to_field: rn
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+    - name: window_aggregate_over
+      sql: SELECT product_id, SUM(amount) OVER (PARTITION BY product_id ORDER BY sale_date) AS running_total FROM sales
+      expected_edges:
+        - from_table: sales
+          from_field: product_id
+          to_table: __result__
+          to_field: product_id
+          relation_type: direct
+          is_temp: true
+        - from_table: sales
+          from_field: amount
+          to_table: __result__
+          to_field: running_total
+          relation_type: group
+          has_transform: true
+          is_temp: true
+        - from_table: sales
+          from_field: product_id
+          to_table: __result__
+          to_field: running_total
+          relation_type: group
+          has_transform: true
+          is_temp: true
+        - from_table: sales
+          from_field: sale_date
+          to_table: __result__
+          to_field: running_total
+          relation_type: group
+          has_transform: true
+          is_temp: true
+    - name: case_expression
+      sql: SELECT CASE WHEN salary > 100 THEN 'hi' ELSE name END AS band FROM employees
+      expected_edges:
+        - from_table: employees
+          from_field: salary
+          to_table: __result__
+          to_field: band
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: band
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+    - name: coalesce
+      sql: SELECT COALESCE(name, 'unknown') AS n FROM employees
+      expected_edges:
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: "n"
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+    - name: group_concat
+      sql: SELECT department_id, GROUP_CONCAT(name) AS names FROM employees GROUP BY department_id
+      expected_edges:
+        - from_table: employees
+          from_field: department_id
+          to_table: __result__
+          to_field: department_id
+          relation_type: direct
+          is_temp: true
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: names
+          relation_type: group
+          has_transform: true
+          is_temp: true
+    - name: count_distinct
+      sql: SELECT COUNT(DISTINCT department_id) AS c FROM employees
+      expected_edges:
+        - from_table: employees
+          from_field: department_id
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          has_transform: true
+          is_temp: true
+    - name: star_join_with_aliases
+      sql: SELECT * FROM employees e JOIN departments d ON e.department_id = d.id
+      expected_edges:
+        - from_table: employees
+          from_field: '*'
+          to_table: __result__
+          relation_type: direct
+          is_temp: true
+        - from_table: departments
+          from_field: '*'
+          to_table: __result__
+          relation_type: direct
+          is_temp: true
+    - name: table_star_with_alias
+      sql: SELECT e.*, d.name FROM employees e JOIN departments d ON e.department_id = d.id
+      expected_edges:
+        - from_table: employees
+          from_field: '*'
+          to_table: __result__
+          relation_type: direct
+          is_temp: true
+        - from_table: departments
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true
+    - name: count_star_with_alias
+      sql: SELECT COUNT(*) AS c FROM employees e
+      expected_edges:
+        - from_table: employees
+          from_field: '*'
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          has_transform: true
+          is_temp: true
+    - name: comma_join
+      sql: SELECT e.name, d.name AS dn FROM employees e, departments d WHERE e.department_id = d.id
+      expected_edges:
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true
+        - from_table: departments
+          from_field: name
+          to_table: __result__
+          to_field: dn
+          relation_type: direct
+          is_temp: true
+    - name: scalar_subquery
+      sql: SELECT (SELECT MAX(salary) FROM employees) AS m FROM departments
+      expected_edges:
+        - from_table: employees
+          from_field: salary
+          to_table: __result__
+          to_field: m
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+    - name: scalar_subquery_alongside_outer_columns
+      sql: SELECT id, (SELECT COUNT(*) FROM orders) AS c FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: orders
+          from_field: '*'
+          to_table: __result__
+          to_field: c
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+    - name: set_operation_nested_in_derived_table
+      sql: SELECT u.id FROM (SELECT id FROM t1 UNION ALL SELECT id FROM t2) u
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: t2
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+    - name: set_operation_nested_in_cte
+      sql: WITH c AS (SELECT id FROM t1 UNION ALL SELECT id FROM t2) SELECT id FROM c
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: t2
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+    - name: cte_star_with_alias
+      sql: WITH c AS (SELECT id, name FROM users) SELECT x.* FROM c x
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true
