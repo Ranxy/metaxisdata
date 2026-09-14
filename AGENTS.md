@@ -30,8 +30,8 @@ Feature design documents live in `spec/` (product/UX specs) and `plan/` (impleme
 | `backend/component/dbfactory/` | Builds a `db.Driver` from an instance's data source |
 | `backend/component/llm/` | LLM provider registry and the iterative agent loop (tools, events, messages) |
 | `backend/component/state/` | In-memory server state (token-expire cache, per-instance connection limiter) |
-| `backend/plugin/db/` | `db.Driver` interface and MySQL/PostgreSQL drivers |
-| `backend/plugin/schema/` | Schema sync, diff, and migration-DDL generation (MySQL/PG) |
+| `backend/plugin/db/` | `db.Driver` interface and the MySQL-wire, PostgreSQL and MSSQL drivers (`mysql`, `pg`, `mssql`, `starrocks` — the last serving StarRocks and Doris) |
+| `backend/plugin/schema/` | Schema sync, diff, and migration-DDL generation (MySQL/PG/MSSQL; StarRocks/Doris are not registered) |
 | `backend/plugin/lineage/` | Table/column lineage analyzers, catalog, and scope resolution (MySQL/PG) |
 | `backend/plugin/openlineage/` | OpenLineage event parsing, processing, resolution, and Airflow links |
 | `backend/plugin/idp/` | Identity providers (OAuth2/OIDC/LDAP) |
