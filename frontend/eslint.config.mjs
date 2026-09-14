@@ -1,6 +1,7 @@
 import vueI18n from "@intlify/eslint-plugin-vue-i18n";
 import vueTsEslintConfig from "@vue/eslint-config-typescript";
 import pluginVue from "eslint-plugin-vue";
+import globals from "globals";
 
 export default [
   ...pluginVue.configs["flat/essential"],
@@ -46,6 +47,8 @@ export default [
             "environmentSettings.created",
             "environmentSettings.updated",
             "environmentSettings.deleted",
+            "auditLogs.fetchError",
+            "auditLogs.exportError",
           ],
           enableFix: false,
         },
@@ -84,6 +87,17 @@ export default [
     files: ["tailwind.config.js"],
     rules: {
       "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+  {
+    // Node CLI helper scripts (i18n checker/sorter) legitimately log to the
+    // console and use Node globals.
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+    rules: {
+      "no-console": "off",
     },
   },
 ];

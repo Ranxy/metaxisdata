@@ -100,8 +100,9 @@ Frontend tests are Vitest with jsdom (`frontend/vitest.config.ts`), colocated wi
 
 1. **Format + lint + imports** — Run `pnpm --dir frontend biome:check` (Biome over `src/`, excluding generated `src/types/proto-es/`) or `cd frontend && pnpm biome check --write <path>` for specific files
 2. **Lint** — Run `pnpm --dir frontend lint` (ESLint: Vue rules plus vue-i18n missing/unused key checks; the script already applies `--fix`)
-3. **Type check** — Run `pnpm --dir frontend type-check`
-4. **Test** — Run `pnpm --dir frontend test run`
+3. **i18n** — Run `pnpm --dir frontend i18n` (standalone missing/unused key, cross-locale and placeholder checks plus the catalog sort check). After editing `frontend/src/locales/*.json`, run `pnpm --dir frontend i18n:sort` to keep keys sorted
+4. **Type check** — Run `pnpm --dir frontend type-check`
+5. **Test** — Run `pnpm --dir frontend test run`
 
 ### Proto Changes
 
@@ -170,6 +171,12 @@ pnpm --dir frontend biome:check
 # Lint only (ESLint; Vue + i18n rules, applies --fix)
 pnpm --dir frontend lint
 
+# i18n audit (missing/unused keys, cross-locale parity, catalog sorting)
+pnpm --dir frontend i18n
+
+# Rewrite locale catalogs with recursively sorted keys
+pnpm --dir frontend i18n:sort
+
 # Type check
 pnpm --dir frontend type-check
 
@@ -218,7 +225,7 @@ psql -h localhost -p 5432 -U <user> -d metaxisdata -c "sql"
 - **API Errors**: Errors returned from `backend/api/v1` and `backend/store` carry a `common.Code` — use `common.Errorf(code, ...)`, `common.Wrap(err, code)`, or `common.Wrapf(err, code, ...)` rather than bare `fmt.Errorf`, so Connect handlers can map them to status codes
 - **Go Resources**: Always use `defer` for resource cleanup like `rows.Close()` (sqlclosecheck)
 - **Go Defer**: Avoid using `defer` inside loops (revive) - use IIFE or scope properly
-- **Frontend**: Vue 3 + TypeScript. All user-facing display text goes through vue-i18n in `frontend/src/locales/{en-US,zh-CN}.json` — add the key to both locales, and note that ESLint enforces missing/unused keys. Prefer shared shadcn-vue primitives from `frontend/src/components/ui/` over hand-rolled markup. Call the API through the ConnectRPC clients in `frontend/src/api/client.ts`, not ad-hoc fetch.
+- **Frontend**: Vue 3 + TypeScript. All user-facing display text goes through vue-i18n in `frontend/src/locales/{en-US,zh-CN}.json` — add the key to both locales, and note that ESLint enforces missing/unused keys. Keys are kept sorted: run `pnpm --dir frontend i18n:sort` after editing locale files. `frontend/scripts/check-vue-i18n.mjs` (part of `pnpm --dir frontend i18n`) additionally checks cross-locale key and `{name}` placeholder parity, and flags double-brace `{{name}}` placeholders, which vue-i18n renders literally. Indirect keys it cannot trace statically — template-literal or variable keys such as `t(messageKey)` — must be listed in its `DYNAMIC_PREFIXES`. Note vue-i18n uses single-brace `{name}` placeholders and pipe-separated plurals, unlike react-i18next. Prefer shared shadcn-vue primitives from `frontend/src/components/ui/` over hand-rolled markup. Call the API through the ConnectRPC clients in `frontend/src/api/client.ts`, not ad-hoc fetch.
 
 ## Common Go Lint Rules
 

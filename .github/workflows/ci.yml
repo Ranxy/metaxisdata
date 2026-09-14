@@ -124,6 +124,11 @@ jobs:
           pnpm --dir frontend biome:ci
           pnpm --dir frontend lint:ci
 
+      # Standalone i18n audit: missing/unused keys, cross-locale key and
+      # placeholder parity, and locale catalog ordering.
+      - name: Check i18n catalogs
+        run: pnpm --dir frontend i18n
+
       - name: Type check
         run: pnpm --dir frontend type-check
 
