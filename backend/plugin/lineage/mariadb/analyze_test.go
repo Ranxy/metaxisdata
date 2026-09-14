@@ -23,4 +23,5 @@ var knownParserGaps = map[string]bool{
 // analyzer, minus statements the MariaDB parser cannot parse yet.
 func TestAnalyzeYAML(t *testing.T) {
 	testutil.RunLineageTestSuitesFromYAMLDirSkipping(t, sharedCorpusDir(), analyzeSQL, knownParserGaps)
+	testutil.RunLineageTestSuitesFromYAMLDir(t, dialectCorpusDir(), analyzeSQL)
 }

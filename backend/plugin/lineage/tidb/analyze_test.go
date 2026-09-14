@@ -10,4 +10,5 @@ import (
 // dialect's analyzer.
 func TestAnalyzeYAML(t *testing.T) {
 	testutil.RunLineageTestSuitesFromYAMLDir(t, sharedCorpusDir(), analyzeSQL)
+	testutil.RunLineageTestSuitesFromYAMLDir(t, dialectCorpusDir(), analyzeSQL)
 }
