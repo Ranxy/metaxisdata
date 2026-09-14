@@ -63,7 +63,7 @@ Landed:
   `RegisterAnalyzeRelation` seam now registers **`Engine_MYSQL` only**.
 - `backend/server/ultimate.go` and the MySQL lineage integration test import
   `plugin/lineage/mysql` again (unchanged path, new implementation).
-- Corpus grew from 51 to **74 golden cases**: 23 extended forms (window
+- Corpus grew from 51 to **73 golden cases**: 22 extended forms (window
   aggregate-OVER, three-arm UNION, CTE chain, derived-table join, scalar
   subquery, table `*`, comma join, `ON DUPLICATE KEY UPDATE`, multi-table
   UPDATE/DELETE, `LOAD DATA` with columns and with `SET`) captured from the
@@ -415,6 +415,10 @@ normalized rendering is wanted.
 8. **Engine scope:** after cutover, assert `MYSQL` resolves to the omni analyzer
    and `TIDB`/`MARIADB`/`OCEANBASE` return `ErrorEngineNotSupported` (a
    deliberate, recorded skip — not a crash).
+9. **Benchmarks:** `go test ./backend/plugin/lineage/mysql/ -run '^$' -bench Benchmark -benchmem`
+   covers the whole corpus, per-case analyze vs parse-only (to separate omni
+   parse cost from the lineage walk), synthetic scaling shapes (wide select,
+   deep subquery, many joins) and the catalog-backed `SELECT *` expansion path.
 
 ## Risks and mitigations
 
