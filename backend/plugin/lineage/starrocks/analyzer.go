@@ -110,9 +110,9 @@ func (a *Analyzer) dispatch(stmt nodes.Node) {
 	case *nodes.SelectStmt:
 		a.processSelectStatement(s)
 	case *nodes.SetOpStmt:
-		a.unsupported("set operation (UNION/INTERSECT/EXCEPT)")
+		a.processSetOperation(s)
 	case *nodes.ParenSelect:
-		a.unsupported("parenthesized query")
+		a.processQueryNode(s)
 	case *nodes.CreateViewStmt:
 		a.unsupported("CREATE VIEW")
 	case *nodes.AlterViewStmt:
@@ -150,10 +150,26 @@ func (a *Analyzer) processSelectStatement(stmt *nodes.SelectStmt) {
 		return
 	}
 	if stmt.With != nil {
-		a.unsupported("CTE (WITH)")
-		return
+		a.processCTEs(stmt.With.CTEs)
 	}
 	a.processQuerySpecification(stmt)
+}
+
+// processQueryNode dispatches a query expression: a SELECT, a set operation or
+// a parenthesized query. Unlike the MySQL analyzer, omni models set operations
+// and parenthesized queries as their own nodes rather than as fields of
+// SelectStmt.
+func (a *Analyzer) processQueryNode(node nodes.Node) {
+	switch n := node.(type) {
+	case *nodes.SelectStmt:
+		a.processSelectStatement(n)
+	case *nodes.SetOpStmt:
+		a.processSetOperation(n)
+	case *nodes.ParenSelect:
+		a.processQueryNode(n.Sel)
+	default:
+		a.unsupported("query expression")
+	}
 }
 
 // processQuerySpecification processes FROM, then the SELECT list, then emits
@@ -195,9 +211,7 @@ func (a *Analyzer) processSingleTableRef(ref *nodes.TableRef) {
 		return
 	}
 	if ref.Subquery != nil {
-		// omni keeps a derived table's query as raw text; re-parsing it lands
-		// with the subquery phase.
-		a.unsupported("derived table")
+		a.processDerivedTable(ref)
 		return
 	}
 	schema, table, ok := tableRefFromObjectName(ref.Name)
@@ -208,11 +222,81 @@ func (a *Analyzer) processSingleTableRef(ref *nodes.TableRef) {
 	if alias == "" {
 		alias = table
 	}
+	if schema == "" {
+		if cte, ok := a.currentScope().FindCTE(table); ok {
+			a.currentScope().AddTable(&scope.TableRef{
+				Table:   table,
+				Alias:   alias,
+				IsCTE:   true,
+				Columns: cte.Columns,
+				Lineage: cte.Lineage,
+			})
+			return
+		}
+	}
 	a.currentScope().AddTable(&scope.TableRef{
 		Schema:  schema,
 		Table:   table,
 		Alias:   alias,
 		Columns: []string{},
+	})
+}
+
+// processDerivedTable processes a derived table (a subquery in FROM). omni
+// keeps the subquery body as raw text, so it is re-parsed with a matching
+// source pushed; the alias is registered as a temporary table carrying the
+// subquery's lineage.
+func (a *Analyzer) processDerivedTable(ref *nodes.TableRef) {
+	sub := ref.Subquery
+	if sub == nil || strings.TrimSpace(sub.RawText) == "" {
+		return
+	}
+	alias := ref.Alias
+	a.markTempTable(alias)
+
+	a.pushSource(newSource(sub.RawText))
+	query, err := parseRawQuery(sub.RawText)
+	if err != nil {
+		a.popSource()
+		a.errors = append(a.errors, fmt.Sprintf("derived table %q: %v", alias, err))
+		return
+	}
+	a.pushScope()
+	a.processQueryNode(query)
+	subqueryScope := a.popScope()
+	a.popSource()
+
+	columns := make([]string, 0)
+	lineage := make([]model.ColumnRelation, 0)
+	for _, col := range subqueryScope.GetOutputColumns() {
+		colName := col.Alias
+		if colName == "" {
+			colName = "column"
+		}
+		columns = append(columns, colName)
+		for _, sourceCol := range col.SourceColumns {
+			resolved, err := subqueryScope.ResolveColumn(sourceCol)
+			if err != nil {
+				continue
+			}
+			if a.flattenTempSourceLineage(subqueryScope, resolved, alias, colName, col.Transform, &lineage) {
+				continue
+			}
+			lineage = append(lineage, scope.NewLineageEdge(
+				resolved.Schema, resolved.Table, resolved.Column,
+				"", alias, colName,
+				col.Transform,
+				true, // the derived table is temporary
+			))
+		}
+	}
+
+	a.currentScope().AddTable(&scope.TableRef{
+		Table:      alias,
+		Alias:      alias,
+		IsSubquery: true,
+		Columns:    columns,
+		Lineage:    lineage,
 	})
 }
 
@@ -329,6 +413,10 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 			if err != nil {
 				continue
 			}
+			if tableRef, ok := sp.FindTable(resolved.Table); ok && (tableRef.IsCTE || tableRef.IsSubquery) {
+				a.traceThroughTableLineage(tableRef, resolved.Column, outputCol.Alias, outputCol.Transform)
+				continue
+			}
 			a.addRelation(scope.NewLineageEdge(
 				resolved.Schema, resolved.Table, resolved.Column,
 				"", resultTableName, outputCol.Alias,
@@ -395,6 +483,21 @@ func (a *Analyzer) expandWildcardWithCatalog(tableRef *scope.TableRef, sp *scope
 // Scope stack and temp-table tracking
 // ---------------------------------------------------------------------------
 
+// pushScope creates and pushes a new scope onto the stack.
+func (a *Analyzer) pushScope() {
+	a.scopeStack = append(a.scopeStack, scope.NewScope(a.currentScope()))
+}
+
+// popScope removes and returns the top scope from the stack.
+func (a *Analyzer) popScope() *scope.Scope {
+	if len(a.scopeStack) == 0 {
+		return nil
+	}
+	top := a.scopeStack[len(a.scopeStack)-1]
+	a.scopeStack = a.scopeStack[:len(a.scopeStack)-1]
+	return top
+}
+
 // currentScope returns the current (innermost) scope.
 func (a *Analyzer) currentScope() *scope.Scope {
 	if len(a.scopeStack) == 0 {
@@ -403,8 +506,236 @@ func (a *Analyzer) currentScope() *scope.Scope {
 	return a.scopeStack[len(a.scopeStack)-1]
 }
 
+// markTempTable records a temporary table name (CTE or derived table) so
+// intermediate edges can be filtered out.
+func (a *Analyzer) markTempTable(name string) {
+	if name == "" {
+		return
+	}
+	a.tempTables[name] = struct{}{}
+}
+
 // isTempTable checks whether a table name was marked as temporary.
 func (a *Analyzer) isTempTable(name string) bool {
 	_, ok := a.tempTables[name]
 	return ok
+}
+
+// ---------------------------------------------------------------------------
+// CTE
+// ---------------------------------------------------------------------------
+
+// processCTEs processes a WITH clause.
+func (a *Analyzer) processCTEs(ctes []*nodes.CTE) {
+	for _, cte := range ctes {
+		a.processCTE(cte)
+	}
+}
+
+// processCTE processes a single CTE: its body is analyzed in a nested scope,
+// and its output columns are flattened into a lineage the outer query can
+// trace through.
+func (a *Analyzer) processCTE(cte *nodes.CTE) {
+	if cte == nil {
+		return
+	}
+	cteName := cte.Name
+	a.markTempTable(cteName)
+
+	lineage := make([]model.ColumnRelation, 0)
+	if cte.Query != nil {
+		a.pushScope()
+		a.processQueryNode(cte.Query)
+		cteScope := a.popScope()
+
+		for i, outputCol := range cteScope.GetOutputColumns() {
+			// A CTE may rename its output columns: WITH c (a, b) AS (SELECT id,
+			// name ...). The MySQL analyzer ignores that list and emits no
+			// lineage at all for this shape; mapping it is strictly more
+			// correct.
+			targetName := outputCol.Alias
+			if i < len(cte.Columns) {
+				targetName = cte.Columns[i]
+			}
+			for _, sourceCol := range outputCol.SourceColumns {
+				resolved, err := cteScope.ResolveColumn(sourceCol)
+				if err != nil {
+					continue
+				}
+				if a.flattenTempSourceLineage(cteScope, resolved, cteName, targetName, outputCol.Transform, &lineage) {
+					continue
+				}
+				lineage = append(lineage, scope.NewLineageEdge(
+					resolved.Schema, resolved.Table, resolved.Column,
+					"", cteName, targetName,
+					outputCol.Transform,
+					true, // a CTE is temporary
+				))
+			}
+		}
+	}
+
+	a.currentScope().AddCTE(&scope.CTEDefinition{
+		Name:          cteName,
+		Columns:       cte.Columns,
+		DefiningScope: a.currentScope(),
+		Lineage:       lineage,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Set operations
+// ---------------------------------------------------------------------------
+
+// flattenSetOpArms flattens a set-operation tree into its leaf SELECTs in
+// order.
+func flattenSetOpArms(node nodes.Node) []*nodes.SelectStmt {
+	switch n := node.(type) {
+	case *nodes.SelectStmt:
+		return []*nodes.SelectStmt{n}
+	case *nodes.ParenSelect:
+		return flattenSetOpArms(n.Sel)
+	case *nodes.SetOpStmt:
+		var out []*nodes.SelectStmt
+		out = append(out, flattenSetOpArms(n.Left)...)
+		out = append(out, flattenSetOpArms(n.Right)...)
+		return out
+	default:
+		return nil
+	}
+}
+
+// processSetOperation handles UNION/INTERSECT/EXCEPT by processing every arm
+// and merging their output columns positionally. Each arm is analyzed in its
+// own scope so one arm's FROM relations cannot leak into the next; arms at the
+// root emit their own edges, and a set operation nested in a CTE or derived
+// table contributes the merged columns to its parent instead.
+func (a *Analyzer) processSetOperation(stmt *nodes.SetOpStmt) {
+	arms := flattenSetOpArms(stmt)
+	if len(arms) == 0 {
+		return
+	}
+
+	baseScope := a.currentScope()
+	var allOutputColumns [][]scope.OutputColumn
+
+	for i, arm := range arms {
+		if i == 0 {
+			a.processSelectStatement(arm)
+			allOutputColumns = append(allOutputColumns, baseScope.GetOutputColumns())
+			continue
+		}
+		tempScope := scope.NewScope(baseScope.Parent())
+		for _, cte := range baseScope.GetCTEs() {
+			tempScope.AddCTE(cte)
+		}
+		originalScope := a.currentScope()
+		a.scopeStack[len(a.scopeStack)-1] = tempScope
+		a.processSelectStatement(arm)
+		a.scopeStack[len(a.scopeStack)-1] = originalScope
+		allOutputColumns = append(allOutputColumns, tempScope.GetOutputColumns())
+	}
+
+	mergeUnionOutputColumns(baseScope, allOutputColumns)
+}
+
+// mergeUnionOutputColumns merges output columns from multiple set-operation
+// arms positionally.
+func mergeUnionOutputColumns(baseScope *scope.Scope, allOutputColumns [][]scope.OutputColumn) {
+	if len(allOutputColumns) == 0 || len(allOutputColumns[0]) == 0 {
+		return
+	}
+	firstQueryOutputs := allOutputColumns[0]
+	for colIdx := 0; colIdx < len(firstQueryOutputs); colIdx++ {
+		firstCol := firstQueryOutputs[colIdx]
+		var mergedSources []scope.ColumnRef
+		var hasDerivedTransform bool
+		for queryIdx := 0; queryIdx < len(allOutputColumns); queryIdx++ {
+			if colIdx < len(allOutputColumns[queryIdx]) {
+				queryCol := allOutputColumns[queryIdx][colIdx]
+				mergedSources = append(mergedSources, queryCol.SourceColumns...)
+				if queryCol.IsDerived {
+					hasDerivedTransform = true
+				}
+			}
+		}
+		firstCol.SourceColumns = mergedSources
+		if hasDerivedTransform && firstCol.Transform == nil {
+			firstCol.Transform = []model.Transformation{model.NewUnionTransformation()}
+		}
+		baseScope.SetOutputColumn(colIdx, firstCol)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Temporary-table lineage flattening
+// ---------------------------------------------------------------------------
+
+// traceThroughTableLineage traces lineage through a CTE or derived table to the
+// final result.
+func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName string, outputAlias string, transform []model.Transformation) {
+	for _, edge := range tableRef.Lineage {
+		if columnName != wildcardColumn && edge.Target.Name != columnName {
+			continue
+		}
+		actualOutput := outputAlias
+		if columnName == wildcardColumn && outputAlias == wildcardColumn {
+			actualOutput = edge.Target.Name
+		}
+		a.addRelation(scope.NewLineageEdge(
+			edge.Source.Table.Database, edge.Source.Table.Name, edge.Source.Name,
+			"", resultTableName, actualOutput,
+			combineTransformations(edge.Transformation, transform),
+			true,
+		))
+	}
+}
+
+// appendFlattenedLineage traces through nested temporary tables to real tables.
+func (a *Analyzer) appendFlattenedLineage(lineage *[]model.ColumnRelation, sp *scope.Scope, tableRef *scope.TableRef, columnName string, targetTable string, targetColumn string, transform []model.Transformation) {
+	for _, edge := range tableRef.Lineage {
+		if columnName != wildcardColumn && edge.Target.Name != columnName {
+			continue
+		}
+		actualTarget := targetColumn
+		if columnName == wildcardColumn && targetColumn == wildcardColumn {
+			actualTarget = edge.Target.Name
+		}
+		combinedTransform := combineTransformations(edge.Transformation, transform)
+		sourceTableName := edge.Source.Table.Name
+		if nestedRef, ok := sp.FindTable(sourceTableName); ok && (nestedRef.IsCTE || nestedRef.IsSubquery) {
+			a.appendFlattenedLineage(lineage, sp, nestedRef, edge.Source.Name, targetTable, actualTarget, combinedTransform)
+			continue
+		}
+		*lineage = append(*lineage, scope.NewLineageEdge(
+			edge.Source.Table.Database, sourceTableName, edge.Source.Name,
+			"", targetTable, actualTarget,
+			combinedTransform,
+			true,
+		))
+	}
+}
+
+// flattenTempSourceLineage resolves a column from a temporary table into base
+// table lineage. It reports whether the source was handled.
+func (a *Analyzer) flattenTempSourceLineage(sp *scope.Scope, resolved *scope.ColumnRef, targetTable string, targetColumn string, transform []model.Transformation, lineage *[]model.ColumnRelation) bool {
+	if resolved == nil {
+		return false
+	}
+	if tableRef, ok := sp.FindTable(resolved.Table); ok && (tableRef.IsSubquery || tableRef.IsCTE) {
+		a.appendFlattenedLineage(lineage, sp, tableRef, resolved.Column, targetTable, targetColumn, transform)
+		return true
+	}
+	if cte, ok := sp.FindCTE(resolved.Table); ok {
+		tempRef := &scope.TableRef{
+			Table:   cte.Name,
+			Alias:   cte.Name,
+			IsCTE:   true,
+			Columns: cte.Columns,
+			Lineage: cte.Lineage,
+		}
+		a.appendFlattenedLineage(lineage, sp, tempRef, resolved.Column, targetTable, targetColumn, transform)
+		return true
+	}
+	return false
 }

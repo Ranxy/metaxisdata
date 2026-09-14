@@ -1,0 +1,71 @@
+name: TestUnionLineage_Table
+cases:
+    - name: simple UNION
+      sql: SELECT id, name FROM employees UNION SELECT id, name FROM contractors
+      expected_edges:
+        - from_table: employees
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+        - from_table: contractors
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: contractors
+          from_field: name
+          to_table: __result__
+          to_field: name
+    - name: UNION ALL with differing aliases
+      sql: SELECT user_id AS uid, amount FROM sales UNION ALL SELECT user_id, amount FROM refunds
+      expected_edges:
+        - from_table: sales
+          from_field: user_id
+          to_table: __result__
+          to_field: uid
+        - from_table: sales
+          from_field: amount
+          to_table: __result__
+          to_field: amount
+        - from_table: refunds
+          from_field: user_id
+          to_table: __result__
+          to_field: user_id
+    - name: three-way UNION
+      sql: SELECT id, name FROM employees UNION SELECT id, name FROM contractors UNION SELECT id, name FROM vendors
+      expected_edges:
+        - from_table: employees
+          to_table: __result__
+        - from_table: contractors
+          to_table: __result__
+        - from_table: vendors
+          to_table: __result__
+    - name: parenthesized arms
+      sql: (SELECT id FROM t1) UNION ALL (SELECT id FROM t2)
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: t2
+          from_field: id
+          to_table: __result__
+          to_field: id
+    - name: UNION with a CTE arm
+      sql: WITH recent AS (SELECT id, amount FROM orders) SELECT id, amount FROM recent UNION ALL SELECT id, amount FROM archive
+      expected_edges:
+        - from_table: orders
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: orders
+          from_field: amount
+          to_table: __result__
+          to_field: amount
+        - from_table: archive
+          from_field: id
+          to_table: __result__
+          to_field: id

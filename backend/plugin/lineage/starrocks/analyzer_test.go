@@ -96,9 +96,10 @@ func TestUnimplementedStatementsFailLoudly(t *testing.T) {
 
 	for _, sql := range []string{
 		"CREATE VIEW v AS SELECT id FROM t",
-		"WITH c AS (SELECT id FROM t) SELECT id FROM c",
-		"SELECT * FROM (SELECT id FROM t) x",
-		"SELECT id FROM t1 UNION ALL SELECT id FROM t2",
+		"CREATE TABLE t2 AS SELECT id FROM t",
+		"INSERT INTO t2 SELECT id FROM t",
+		"UPDATE t SET id = 1 WHERE id = 2",
+		"DELETE FROM t WHERE id = 1",
 	} {
 		relations, err := analyzeSQL(sql, nil)
 		require.Error(t, err, "expected an explicit failure for %q", sql)

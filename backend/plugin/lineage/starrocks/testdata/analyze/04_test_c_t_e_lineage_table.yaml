@@ -1,0 +1,52 @@
+name: TestCTELineage_Table
+cases:
+    - name: simple CTE
+      sql: WITH active_users AS (SELECT id, name FROM users WHERE status = 'active') SELECT au.id, au.name FROM active_users au
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+    - name: multiple CTEs with join
+      sql: WITH active_users AS (SELECT id, name FROM users WHERE status = 'active'), user_orders AS (SELECT user_id, COUNT(*) AS order_count FROM orders GROUP BY user_id) SELECT au.id, au.name, uo.order_count FROM active_users au LEFT JOIN user_orders uo ON au.id = uo.user_id
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
+        - from_table: orders
+          from_field: '*'
+          to_table: __result__
+          to_field: order_count
+          has_transform: true
+    - name: chained CTEs
+      sql: WITH base AS (SELECT id, amount FROM orders), agg AS (SELECT id, SUM(amount) AS total FROM base GROUP BY id) SELECT agg.id, agg.total FROM agg
+      expected_edges:
+        - from_table: orders
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: orders
+          from_field: amount
+          to_table: __result__
+          to_field: total
+          has_transform: true
+    - name: CTE with explicit column aliases
+      sql: WITH c (a, b) AS (SELECT id, name FROM users) SELECT c.a, c.b FROM c
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: a
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: b

@@ -3,6 +3,8 @@ package starrocks
 import (
 	"strings"
 
+	"github.com/pkg/errors"
+
 	nodes "github.com/bytebase/omni/starrocks/ast"
 	starrocksparser "github.com/bytebase/omni/starrocks/parser"
 )
@@ -33,6 +35,34 @@ func (a *Analyzer) currentSource() *source {
 		return nil
 	}
 	return &a.sources[len(a.sources)-1]
+}
+
+// pushSource makes src the current source.
+func (a *Analyzer) pushSource(src source) {
+	a.sources = append(a.sources, src)
+}
+
+// popSource restores the previous source. The top-level source is never
+// removed.
+func (a *Analyzer) popSource() {
+	if len(a.sources) <= 1 {
+		return
+	}
+	a.sources = a.sources[:len(a.sources)-1]
+}
+
+// parseRawQuery parses a query body omni only exposes as text (derived tables,
+// CTAS, expression subqueries). The returned node's Loc values are relative to
+// raw, so the caller must have pushed a matching source.
+func parseRawQuery(raw string) (nodes.Node, error) {
+	file, errs := starrocksparser.Parse(raw)
+	if len(errs) > 0 {
+		return nil, errors.Wrap(&errs[0], "failed to parse raw query")
+	}
+	if file == nil || len(file.Stmts) != 1 {
+		return nil, errors.New("expected exactly 1 statement in raw query")
+	}
+	return file.Stmts[0], nil
 }
 
 // exprText reconstructs an expression's source text with inter-token whitespace

@@ -291,6 +291,20 @@ func (a *Analyzer) extractWindowClauses(fc *nodes.FuncCallExpr) (partitionBy []s
 // Transformation builders
 // ---------------------------------------------------------------------------
 
+// combineTransformations merges two transformation chains.
+func combineTransformations(base, additional []model.Transformation) []model.Transformation {
+	if len(base) == 0 {
+		return additional
+	}
+	if len(additional) == 0 {
+		return base
+	}
+	combined := make([]model.Transformation, len(base)+len(additional))
+	copy(combined, base)
+	copy(combined[len(base):], additional)
+	return combined
+}
+
 func createFunctionOperatorInfo(functionName, exprText string, args []string) model.Transformation {
 	return model.NewFunctionTransformation(functionName, exprText, args)
 }
