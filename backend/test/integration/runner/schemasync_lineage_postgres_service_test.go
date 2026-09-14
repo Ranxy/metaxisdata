@@ -130,9 +130,12 @@ CREATE TABLE IF NOT EXISTS public.manual_sql_summary (
 	usersGUID := waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_TABLE, "users")
 	summaryGUID := waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_TABLE, "manual_sql_summary")
 
+	// Deliberately mixed-case and unquoted: PostgreSQL folds these to
+	// public.manual_sql_summary / public.users, and the analyzer must emit the
+	// folded names so the source GUID resolves to the registry (PG-FU-3).
 	manual := env.CreateManualSQL(ctx, t, databaseName, "sync-active-users", &v1pb.ManualSQL{
 		Title:   "Sync Active Users",
-		SqlText: "INSERT INTO public.manual_sql_summary (user_id, user_name) SELECT id, name FROM public.users",
+		SqlText: "INSERT INTO Public.Manual_SQL_Summary (User_ID, User_Name) SELECT ID, Name FROM Public.Users",
 		Tags:    []string{"integration", "manual-sql"},
 		Attributes: map[string]string{
 			"owner": "integration-test",

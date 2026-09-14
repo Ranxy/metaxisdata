@@ -1,0 +1,146 @@
+name: TestExpressionTransformation_Table
+# Pins the structural expression classification introduced by PG-FU-1
+# (plan/postgresql_expression_transformation_plan.md): relation_type and
+# has_transform were previously wrong or absent for these shapes.
+cases:
+    - name: comparison operator is indirect
+      sql: SELECT id, a = b AS is_equal FROM t
+      expected_edges:
+        - from_table: t
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          has_transform: false
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: is_equal
+          relation_type: indirect
+          has_transform: true
+        - from_table: t
+          from_field: b
+          to_table: __result__
+          to_field: is_equal
+          relation_type: indirect
+          has_transform: true
+    - name: concatenation operator is indirect
+      sql: SELECT first_name || ' ' || last_name AS full_name FROM t
+      expected_edges:
+        - from_table: t
+          from_field: first_name
+          to_table: __result__
+          to_field: full_name
+          relation_type: indirect
+          has_transform: true
+        - from_table: t
+          from_field: last_name
+          to_table: __result__
+          to_field: full_name
+          relation_type: indirect
+          has_transform: true
+    - name: postgres cast syntax is indirect
+      sql: SELECT created_at::date AS create_date FROM t
+      expected_edges:
+        - from_table: t
+          from_field: created_at
+          to_table: __result__
+          to_field: create_date
+          relation_type: indirect
+          has_transform: true
+    - name: cast function is indirect
+      sql: SELECT CAST(created_at AS date) AS create_date FROM t
+      expected_edges:
+        - from_table: t
+          from_field: created_at
+          to_table: __result__
+          to_field: create_date
+          relation_type: indirect
+          has_transform: true
+    - name: null test is indirect
+      sql: SELECT a IS NULL AS is_null FROM t
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: is_null
+          relation_type: indirect
+          has_transform: true
+    - name: coalesce is indirect
+      sql: SELECT COALESCE(a, b) AS c FROM t
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: c
+          relation_type: indirect
+          has_transform: true
+        - from_table: t
+          from_field: b
+          to_table: __result__
+          to_field: c
+          relation_type: indirect
+          has_transform: true
+    - name: greatest is indirect
+      sql: SELECT GREATEST(a, b) AS g FROM t
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: g
+          relation_type: indirect
+          has_transform: true
+        - from_table: t
+          from_field: b
+          to_table: __result__
+          to_field: g
+          relation_type: indirect
+          has_transform: true
+    - name: scalar function is indirect
+      sql: SELECT lower(name) AS lowered FROM t
+      expected_edges:
+        - from_table: t
+          from_field: name
+          to_table: __result__
+          to_field: lowered
+          relation_type: indirect
+          has_transform: true
+    - name: windowed aggregate is a window not a group
+      sql: SELECT SUM(x) OVER (PARTITION BY a ORDER BY b) AS running_total FROM t
+      expected_edges:
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: running_total
+          relation_type: indirect
+          has_transform: true
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: running_total
+          relation_type: indirect
+          has_transform: true
+        - from_table: t
+          from_field: b
+          to_table: __result__
+          to_field: running_total
+          relation_type: indirect
+          has_transform: true
+    - name: case expression is indirect
+      sql: SELECT CASE WHEN a > 1 THEN 1 ELSE 2 END AS bucket FROM t
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: bucket
+          relation_type: indirect
+          has_transform: true
+    - name: aggregate without a column keeps the wildcard fallback
+      sql: SELECT pg_catalog.count(*) AS c FROM t
+      expected_edges:
+        - from_table: t
+          from_field: '*'
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          has_transform: true

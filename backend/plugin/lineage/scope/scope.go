@@ -1,6 +1,8 @@
 package scope
 
 import (
+	"slices"
+
 	"github.com/pkg/errors"
 )
 
@@ -110,11 +112,21 @@ func (s *Scope) ResolveColumn(colRef ColumnRef) (*ColumnRef, error) {
 		return nil, errors.Errorf("table not found: %s", colRef.Table)
 	}
 
-	// Unqualified column - search tables in scope
-	// Return the first match (optimization: avoid collecting all matches)
-	for _, ref := range s.tables {
-		// For now, assume all columns are available from all tables
-		// In a full implementation, we'd check ref.Columns
+	// Unqualified column - search tables in scope.
+	//
+	// The walk is sorted by key rather than ranging the map directly: a map walk
+	// picks an arbitrary relation when the column name is ambiguous across FROM
+	// relations, which made the resolved source (and therefore the emitted
+	// lineage edge) nondeterministic for NATURAL JOIN and similar shapes. Both
+	// the legacy and omni analyzers share this resolver, so sorting keeps them
+	// identical and the product's output stable.
+	tableKeys := make([]string, 0, len(s.tables))
+	for key := range s.tables {
+		tableKeys = append(tableKeys, key)
+	}
+	slices.Sort(tableKeys)
+	for _, key := range tableKeys {
+		ref := s.tables[key]
 		return &ColumnRef{
 			Schema: ref.Schema,
 			Table:  ref.Table,
@@ -122,8 +134,14 @@ func (s *Scope) ResolveColumn(colRef ColumnRef) (*ColumnRef, error) {
 		}, nil
 	}
 
-	// Also check CTEs
-	for _, cte := range s.ctes {
+	// Also check CTEs (also sorted for determinism).
+	cteKeys := make([]string, 0, len(s.ctes))
+	for key := range s.ctes {
+		cteKeys = append(cteKeys, key)
+	}
+	slices.Sort(cteKeys)
+	for _, key := range cteKeys {
+		cte := s.ctes[key]
 		return &ColumnRef{
 			Schema: "",
 			Table:  cte.Name,

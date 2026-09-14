@@ -35,10 +35,14 @@ cases:
           from_field: first_name
           to_table: __result__
           to_field: full_name
+          relation_type: indirect
+          has_transform: true
         - from_table: users
           from_field: last_name
           to_table: __result__
           to_field: full_name
+          relation_type: indirect
+          has_transform: true
     - name: select with CONCAT function
       sql: SELECT id, CONCAT(first_name, ' ', last_name) AS full_name FROM users
       expected_edges:
@@ -138,3 +142,5 @@ cases:
           from_field: created_at
           to_table: __result__
           to_field: create_date
+          relation_type: indirect
+          has_transform: true
