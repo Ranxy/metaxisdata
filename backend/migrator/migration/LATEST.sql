@@ -187,6 +187,26 @@ CREATE UNIQUE INDEX idx_meta_registry_resource_history_open ON meta_registry_res
 ALTER SEQUENCE meta_registry_resource_id_seq RESTART WITH 101;
 ALTER SEQUENCE meta_registry_resource_history_id_seq RESTART WITH 101;
 
+-- meta_registry_resource_schema holds the engine's own DDL for a metadata
+-- object, keyed by the same (guid, object_type) as meta_registry_resource. It is
+-- written by the schema syncer (SHOW CREATE ...) so StarRocks/Doris DDL is
+-- exact instead of reconstructed from metadata, and it is deleted in the same
+-- transaction as the metadata row. A missing row is normal: the read path falls
+-- back to reconstruction.
+--
+-- schema_hash lets the upsert skip rewriting an unchanged row. Deliberately a
+-- separate table: meta_registry_resource is read on every metadata listing and
+-- cached, so a wide DDL column there would be loaded (and held in memory) by
+-- paths that never need it.
+CREATE TABLE meta_registry_resource_schema (
+    guid TEXT COLLATE "C" NOT NULL,
+    object_type INT2 NOT NULL,
+    schema TEXT NOT NULL,
+    schema_hash BYTEA NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (guid, object_type)
+);
+
 
 -- manual_sql stores user-maintained SQL definitions and their execution context.
 CREATE TABLE manual_sql (

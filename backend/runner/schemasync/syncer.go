@@ -545,6 +545,17 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to batch store metadata for database %q", database.DatabaseName)
 	}
 
+	// The engine's own DDL is captured for the objects in this snapshot and
+	// written in the same transaction as their metadata, so a rolled-back sync
+	// cannot leave a definition behind that its metadata row does not have.
+	// deadlineCtx is used for the driver round trips so a hung target cannot
+	// outlive the sync deadline. Engines without the capability are skipped.
+	if reader, ok := driver.(db.ObjectDefinitionReader); ok {
+		if err := syncObjectDefinitions(deadlineCtx, s.store, tx, reader, bmc); err != nil {
+			return errors.Wrapf(err, "failed to sync object definitions for database %q", database.DatabaseName)
+		}
+	}
+
 	logSchemaSyncDeletion(common.FormatDatabase(database.InstanceID, database.DatabaseName), bmc.deletes)
 
 	// Clean lineage rows for every deleted object, not only views: a dropped
@@ -742,28 +753,11 @@ func normalizeMetadataForHash(meta *storepb.StoredMetadata) *storepb.StoredMetad
 }
 
 func convertMetadataToGUID(prefix string, objectType storepb.MetaType, data *storepb.StoredMetadata) (string, error) {
-	switch objectType {
-	case storepb.MetaType_DATABASE:
-		return buildGUID(prefix, data.GetDatabaseSchemaMetadata().Name), nil
-	case storepb.MetaType_SCHEMA:
-		return buildGUID(prefix, data.GetSchemaMetadata().Name), nil
-	case storepb.MetaType_TABLE:
-		return buildGUID(prefix, data.GetTableMetadata().Name), nil
-	case storepb.MetaType_VIEW:
-		return buildGUID(prefix, data.GetViewMetadata().Name), nil
-	case storepb.MetaType_EXTERNAL_TABLE:
-		return buildGUID(prefix, data.GetExternalTableMetadata().Name), nil
-	case storepb.MetaType_FUNCTION:
-		return buildGUID(prefix, data.GetFunctionMetadata().Name), nil
-	case storepb.MetaType_PROCEDURE:
-		return buildGUID(prefix, data.GetProcedureMetadata().Name), nil
-	case storepb.MetaType_MATERIALIZED_VIEW:
-		return buildGUID(prefix, data.GetMaterializedViewMetadata().Name), nil
-	case storepb.MetaType_SEQUENCE:
-		return buildGUID(prefix, data.GetSequenceMetadata().Name), nil
-	default:
-		return "", errors.Errorf("unsupported meta type %v", objectType)
+	name, err := metaObjectName(objectType, data)
+	if err != nil {
+		return "", err
 	}
+	return buildGUID(prefix, name), nil
 }
 
 func getChildMetadataResources(parentGUID string, objectType storepb.MetaType, data *storepb.StoredMetadata) []*store.CreateMetaRegistryResourceMessage {

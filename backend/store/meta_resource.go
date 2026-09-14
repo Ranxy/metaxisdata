@@ -509,8 +509,10 @@ func (s *Store) BatchDeleteMetaRegistryAt(ctx context.Context, tx *sql.Tx, list 
 
 	historyToClose := make([]*MetaRegistryHistory, 0, len(list))
 	ids := make([]int64, 0, len(list))
+	keys := make([]MetaGUIDKey, 0, len(list))
 	for _, registry := range list {
 		ids = append(ids, registry.ID)
+		keys = append(keys, registry.GUIDKey())
 		historyToClose = append(historyToClose, &MetaRegistryHistory{GUID: registry.GUID, ObjectType: registry.ObjectType})
 	}
 
@@ -519,6 +521,13 @@ func (s *Store) BatchDeleteMetaRegistryAt(ctx context.Context, tx *sql.Tx, list 
 	}
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM meta_registry_resource WHERE id = ANY($1)`, pq.Array(ids)); err != nil {
+		return err
+	}
+
+	// This is the only path that deletes current meta registry rows, so deleting
+	// the matching DDL rows here keeps meta_registry_resource_schema a strict
+	// subset of meta_registry_resource for every caller.
+	if err := s.BatchDeleteMetaRegistrySchema(ctx, tx, keys); err != nil {
 		return err
 	}
 

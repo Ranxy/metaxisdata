@@ -122,6 +122,18 @@ type Driver interface {
 	SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchemaMetadata, error)
 }
 
+// ObjectDefinitionReader is an optional capability: a driver that implements it
+// can return the engine's own DDL for an object instead of having it
+// reconstructed from metadata. Reconstruction is lossy for engines whose DDL
+// carries properties the metadata does not model (StarRocks distribution,
+// properties, partitioning), so the syncer prefers this when available.
+type ObjectDefinitionReader interface {
+	// GetObjectDefinition returns the DDL of the named object. ok is false when
+	// this engine has no definition for that object type; the caller then falls
+	// back to reconstruction.
+	GetObjectDefinition(ctx context.Context, objectType storepb.MetaType, name string) (definition string, ok bool, err error)
+}
+
 // Register makes a database driver available by the provided type.
 // If Register is called twice with the same name or if driver is nil,
 // it panics.

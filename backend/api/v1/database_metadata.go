@@ -28,6 +28,17 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid guid %q", req.Msg.Guid))
 	}
 
+	// Prefer the engine's own DDL captured at sync time. It is exact where the
+	// metadata -> DDL reconstruction is lossy (StarRocks distribution,
+	// properties, partitioning), and it is written only for engines that can
+	// produce one. A miss is the normal state for other engines, so it falls
+	// through to the reconstruction path below.
+	if ddl, found, err := s.store.GetMetaRegistrySchema(ctx, req.Msg.Guid, storepb.MetaType(req.Msg.MetaType)); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get object definition %q: %v", req.Msg.Guid, err))
+	} else if found {
+		return connect.NewResponse(&v1pb.MetadataSchemaString{Schema: ddl}), nil
+	}
+
 	instance, err := s.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &instanceGUID})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get instance %q: %v", instanceGUID, err))
