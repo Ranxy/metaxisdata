@@ -1,4 +1,4 @@
-.PHONY: run build build-release build-embed frontend-dist test-integration-smoke test-integration-mysql test-integration
+.PHONY: run build build-release build-cli build-embed frontend-dist test-integration-smoke test-integration-mysql test-integration
 run:
 	go run ./backend/bin/server/main.go
 
@@ -11,6 +11,11 @@ build:
 # Release build: the release tag selects the prod profile (ReleaseModeProd).
 build-release:
 	go build -ldflags "-w -s" -p=16 -tags release -o ./build/metaxisdata ./backend/bin/server/main.go
+
+# The agent CLI. It is a separate artifact from the server, so it is not part
+# of build-release.
+build-cli:
+	go build -ldflags "-w -s" -p=16 -o ./build/mxd ./cli
 
 # Build the SPA and stage it where the embed_frontend build picks it up.
 frontend-dist:
