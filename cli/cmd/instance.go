@@ -55,8 +55,12 @@ func newInstanceListCmd() *cobra.Command {
 				rows = append(rows, output.Row{instance.GetName(), instance.GetTitle(), instance.GetEngine().String(), instance.GetEnvironment()})
 			}
 
+			instancesJSON, err := output.ProtoValues(instances)
+			if err != nil {
+				return err
+			}
 			envelope := map[string]any{
-				"instances": instances,
+				"instances": instancesJSON,
 				"truncated": truncated,
 			}
 			if nextToken != "" {

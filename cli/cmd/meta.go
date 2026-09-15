@@ -120,8 +120,23 @@ step: the GUID of that level ends with ";".`,
 				}
 			}
 
+			payload := make([]map[string]any, 0, len(groups))
+			for _, item := range groups {
+				listJSON, err := output.ProtoValues(item.List)
+				if err != nil {
+					return err
+				}
+				entry := map[string]any{
+					"metaType": item.MetaType.String(),
+					"list":     listJSON,
+				}
+				if item.NextPageToken != "" {
+					entry["nextPageToken"] = item.NextPageToken
+				}
+				payload = append(payload, entry)
+			}
 			return current.out.Envelope(map[string]any{
-				"typesStoredMetadata": groups,
+				"typesStoredMetadata": payload,
 				"truncated":           truncated,
 			}, rows)
 		},
@@ -209,8 +224,12 @@ the commands usable without memorising identifiers.`,
 				rows = append(rows, output.Row{result.GetGuid(), result.GetMetaType().String(), storedName(result.GetMetadata())})
 			}
 
+			resultsJSON, err := output.ProtoValues(results)
+			if err != nil {
+				return err
+			}
 			envelope := map[string]any{
-				"results":   results,
+				"results":   resultsJSON,
 				"truncated": truncated,
 			}
 			if nextToken != "" {

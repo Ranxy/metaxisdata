@@ -144,7 +144,8 @@ scope:  只读进程环境变量 METAXISDATA_SCOPES(不落盘、不缓存),--sco
 | 多 scope 的语义 | **并行多次独立解析,按 scope 分组返回**;不做上下文合并 | scope 可能是不同 instance 甚至不同引擎,解析结果本就不同;合并会伪造出并不存在的跨环境边 |
 | GUID 的可获取性 | 给 `Database` 和 `StoredMetadata` 补 `guid`(OUTPUT_ONLY) | scope 必须是精确 GUID,而它只能由服务端权威给出(引擎差异 + `;` 转义);用户从 `mxd database list` / `mxd meta list` 直接复制,GUID 全程对 CLI 透明 |
 | CLI 分页 | 所有 list 命令**默认自动翻页**,`--page-size` / `--max-items`(默认上限 1000,触顶时输出 `"truncated": true`) | 服务端默认 page_size 为 10/10/10/50,静默截断比报错更毒 |
-| CLI JSON 风格 | 直接 `protojson.Marshal` 的 lowerCamelCase | 与审计日志/JSONB 列/网关 REST 一致,不需要自建编码器;错误信封也用同一风格 |
+| CLI JSON 风格 | `protojson.Marshal`,`EmitUnpopulated: true`;**信封里的嵌套消息也必须走 protojson**(不能直接塞进 `encoding/json`,那会用 protoc-gen-go 的 snake_case struct tag) | 与审计日志/JSONB 列/网关 REST 一致;`EmitUnpopulated` 让空列表是 `[]`、未设字符串是 `""`,shape 不随数据变化,agent 不必区分"缺失"和"空" |
+| temp 关系默认不显示 | `lineage sql` 默认隐藏 `is_temp` 关系,`--include-temp` 打开;某个 scope 因此变空时**必须报出 `tempRelationsHidden` 与提示** | 用户/agent 关心的是真实血缘。但实测:`is_temp` 只在语句结果无处落库时存在(即裸 SELECT),此时它**就是答案**;所以空结果不能静默,否则会被读成"这条 SQL 没有血缘" |
 | Token 有效期 | 沿用 `GetTokenDuration`(当前 7 天) | 不新增设置;过期后 CLI 提示重新 `auth login` |
 | **server 地址** | `auth login --server <url>` 填写并**持久化**到凭据文件;解析顺序 `--server` > `METAXISDATA_SERVER` > 凭据文件 > **报错** | 用户自托管的 server 基本不变,登录时填一次即可;不做"默认 localhost"或地址探测,避免把请求发到错误的地方。token 由某个 server 签发,因此**地址与 token 必须作为一对原子写入**,否则会出现"token 属于 B、地址记的是 A"的静默失败 |
 | token 存储 | CLI **永不打印 token**,只写本机凭据文件(0600);明文落盘是显式接受的取舍 | agent 日志可能被转发/粘贴,打印 token 即泄漏 |
@@ -576,7 +577,7 @@ mxd meta get <guid> [--type]                        # GetMetadata(表→列/索�
 mxd meta search <keyword> [--type] [--parent-guid-prefix]
 mxd meta ddl <guid> [--type]                        # GetSchemaString
 
-mxd lineage sql [--scope <name|guid|all>]... [--file a.sql|-] [--depth N]   # AnalyzeSQL(+可选接 GetLineageGraph)
+mxd lineage sql [--scope <name|guid|all>]... [--file a.sql|-] [--depth N] [--include-temp]  # AnalyzeSQL(+可选接 GetLineageGraph)
 mxd lineage graph <guid> [--depth N] [--direction up|down|both] [--column c]  # GetLineageGraph
 mxd version
 ```

@@ -99,7 +99,7 @@ mxd meta get <guid> [--type]
 mxd meta search <keyword> [--type] [--parent-guid-prefix]
 mxd meta ddl <guid> [--type]
 
-mxd lineage sql [--scope <name|guid|all>]... --file <path|-> [--depth N]
+mxd lineage sql [--scope <name|guid|all>]... --file <path|-> [--depth N] [--include-temp]
 mxd lineage graph <guid> [--depth N] [--direction up|down|both] [--column <name>]
 
 mxd version
@@ -138,9 +138,39 @@ $ mxd lineage sql --file etl.sql --depth 2
 ```
 
 The result is grouped by scope even for a single scope, so a caller never has to
-branch on how many scopes it asked for. A relation whose `targetGuid` is empty
-only exists inside the statement (the result of a bare `SELECT`); `targetColumn`
-still carries the output alias.
+branch on how many scopes it asked for.
+
+**Temporary relations are hidden by default.** Such a relation's target only
+exists inside the statement. It matters in exactly one situation: when the
+statement's result is not written anywhere, which is every bare `SELECT`. As soon
+as the statement has a real target — a view, a table it inserts into — the
+synthetic relations are duplicates of that target and the server drops them, so
+nothing is hidden.
+
+That means the default can leave a scope with no relations to show. When it does,
+the entry carries `"tempRelationsHidden": N` and a warning naming the flag, so an
+empty list never reads as "this statement has no lineage":
+
+```json
+{"results": [{"scopeName": "dev", "scopeGuid": "1;shop", "relations": [],
+              "tempRelationsHidden": 2,
+              "warnings": ["all 2 relations of this scope are temporary: ... pass --include-temp to see them"]}],
+ "warnings": []}
+```
+
+`--include-temp` reports them; `targetGuid` is then empty and `targetColumn` is
+the query's output alias. The flag only affects what is shown: the `--depth`
+expansion never followed a temporary target, because a target that exists only
+inside the statement has no graph to walk.
+
+### The JSON shape
+
+Protobuf messages are rendered with `protojson`, the same encoding the REST
+gateway and the audit log use, so field names are lowerCamelCase (`sourceGuid`,
+not `source_guid`) and enums are names (`"TABLE"`, not `4`). Unset fields are
+emitted rather than omitted — an absent list is `[]`, an unset string is `""`,
+a false flag is `false` — so the shape of the document does not change with the
+data and a caller never has to tell "missing" from "empty".
 
 ## Exit codes
 

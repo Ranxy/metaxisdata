@@ -67,8 +67,12 @@ guess which database a SQL statement belongs to.`,
 				rows = append(rows, output.Row{database.GetName(), database.GetGuid(), database.GetEffectiveEnvironment(), database.GetSuccessfulSyncTime().AsTime().Format("2006-01-02 15:04")})
 			}
 
+			databasesJSON, err := output.ProtoValues(databases)
+			if err != nil {
+				return err
+			}
 			envelope := map[string]any{
-				"databases": databases,
+				"databases": databasesJSON,
 				"truncated": truncated,
 			}
 			if nextToken != "" {

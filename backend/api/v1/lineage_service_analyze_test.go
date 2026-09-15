@@ -108,6 +108,39 @@ func TestBuildAnalyzeSQLRelationsAddressesRealTargets(t *testing.T) {
 	}
 }
 
+// The CLI's default hides temporary relations, so it matters exactly when they
+// exist. They survive the conversion only for a statement whose result is not
+// written anywhere: as soon as a real target exists, every `__result__` edge is
+// dropped as a duplicate of it. A bare SELECT is therefore the case where
+// hiding them hides the whole answer.
+func TestBuildAnalyzeSQLRelationsOnlyReportsTemporaryRelationsForQueryOnlyStatements(t *testing.T) {
+	t.Parallel()
+
+	analysisContext := catalog.AnalysisContext{InstanceID: "1", Database: "shop"}
+
+	for _, sql := range []string{
+		"SELECT amount FROM orders",
+		"WITH recent AS (SELECT amount FROM orders) SELECT amount FROM recent",
+	} {
+		relations := analyzeMySQL(t, analysisContext, sql)
+		require.NotEmpty(t, relations, "sql %q", sql)
+		for _, relation := range relations {
+			require.True(t, relation.GetIsTemp(), "sql %q has no real target, so every relation is temporary", sql)
+		}
+	}
+
+	for _, sql := range []string{
+		"CREATE VIEW daily AS SELECT amount FROM orders",
+		"INSERT INTO daily (amount) SELECT amount FROM orders",
+	} {
+		relations := analyzeMySQL(t, analysisContext, sql)
+		require.NotEmpty(t, relations, "sql %q", sql)
+		for _, relation := range relations {
+			require.False(t, relation.GetIsTemp(), "sql %q writes somewhere real, so no temporary relation survives", sql)
+		}
+	}
+}
+
 // A schema-scoped statement resolves into the schema it was analyzed with,
 // which is what makes a PostgreSQL scope different from a MySQL one.
 func TestBuildAnalyzeSQLRelationsUsesTheScopeSchema(t *testing.T) {

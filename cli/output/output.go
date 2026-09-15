@@ -95,17 +95,70 @@ func (r *Renderer) JSON(value any) error {
 	return encoder.Encode(value)
 }
 
-// ProtoJSON writes a protobuf message using protojson, which is the same field
-// naming the audit log, the JSONB columns and the REST gateway use.
+// protoJSONOptions is the single rendering of a protobuf message, used both for
+// a top-level result and for a message embedded in an envelope.
+//
+// protojson is what the audit log, the JSONB columns and the REST gateway use,
+// so the field names match everywhere. EmitUnpopulated is on because the output
+// is a contract an agent parses: a stable shape (an empty list is [], an unset
+// string is "", a false flag is present) is worth more than the few bytes that
+// omitting them would save.
+var protoJSONOptions = protojson.MarshalOptions{Indent: "  ", EmitUnpopulated: true}
+
+// ProtoJSON writes a protobuf message using protojson.
 func (r *Renderer) ProtoJSON(message proto.Message) error {
 	// protojson.Marshal is allowed by the lint configuration; the unmarshal
 	// wrapper is the one that is not.
-	payload, err := protojson.MarshalOptions{Indent: "  "}.Marshal(message)
+	payload, err := protoJSONOptions.Marshal(message)
 	if err != nil {
 		return err
 	}
 	_, err = fmt.Fprintln(r.stdout, string(payload))
 	return err
+}
+
+// ProtoValue renders a protobuf message for embedding in an envelope.
+//
+// A message put into an envelope as-is would be encoded by encoding/json, which
+// reads the struct tags protoc-gen-go emits: snake_case. The same relation would
+// then look different depending on whether it was the whole result or one entry
+// of a list.
+func ProtoValue(message proto.Message) (json.RawMessage, error) {
+	if message == nil {
+		return json.RawMessage("null"), nil
+	}
+	payload, err := protoJSONOptions.Marshal(message)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(payload), nil
+}
+
+// ProtoValues renders a list of protobuf messages for embedding in an envelope.
+// An empty list encodes as [], never as null.
+func ProtoValues[T proto.Message](messages []T) (json.RawMessage, error) {
+	values := make([]json.RawMessage, 0, len(messages))
+	for _, message := range messages {
+		value, err := ProtoValue(message)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	payload, err := json.Marshal(values)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(payload), nil
+}
+
+// EnsureSlice returns a non-nil slice so an empty list encodes as [] rather
+// than null: a caller iterating the result should not have to special-case it.
+func EnsureSlice[T any](values []T) []T {
+	if values == nil {
+		return []T{}
+	}
+	return values
 }
 
 // Table renders rows as an aligned table on stdout.
