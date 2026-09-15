@@ -28,6 +28,10 @@ type State struct {
 	// SSOStateCache holds one-time OAuth2 state nonces issued by
 	// CreateSSOState, mapped to their issue time.
 	SSOStateCache *lru.Cache[string, time.Time]
+	// DeviceLoginStore holds the in-flight device authorization requests.
+	DeviceLoginStore *DeviceLoginStore
+	// DeviceLoginLimiter throttles CreateDeviceLogin per source address.
+	DeviceLoginLimiter *DeviceLoginLimiter
 }
 
 func New() (*State, error) {
@@ -44,6 +48,8 @@ func New() (*State, error) {
 		TokenExpireCache:               expireCache,
 		LoginLimiter:                   newLoginLimiter(),
 		SSOStateCache:                  ssoStateCache,
+		DeviceLoginStore:               newDeviceLoginStore(),
+		DeviceLoginLimiter:             newDeviceLoginLimiter(),
 	}, nil
 }
 
