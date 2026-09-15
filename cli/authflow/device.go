@@ -30,10 +30,13 @@ type Options struct {
 	ClientVersion string
 	// Timeout bounds the whole flow, waiting for the person included.
 	Timeout time.Duration
-	// PrefillURL uses the address that already carries the code. The default is
-	// the bare address, because a code the user has to read and type is what
-	// makes the comparison on the page meaningful.
-	PrefillURL bool
+	// BareURL prints the page address without the code, so it has to be typed
+	// there. The default carries the code: the terminal that starts the request
+	// is the one that prints the link, so retyping the code it just showed only
+	// adds a way to mistype it. The page still shows the code next to the client
+	// name, version, source address and time, and still asks for an explicit
+	// decision, which is what lets a person notice a request they did not start.
+	BareURL bool
 	// NoBrowser skips the attempt to open a browser.
 	NoBrowser bool
 	// ServerURL is the address the client is talking to. It is the fallback
@@ -74,26 +77,29 @@ const devicePagePath = "/device"
 //
 // The server names the page only when the workspace has an external URL; a
 // fresh or locally run deployment has none, and answering "ask an
-// administrator" would leave the person with no way forward. It is empty
-// rather than wrong on purpose, so the client substitutes the address it is
-// already talking to.
+// administrator" would leave the person with no way forward. It is empty rather
+// than wrong on purpose, so the client substitutes the address it is already
+// talking to.
+//
+// The code is carried in the address unless the caller asked for the bare page:
+// the terminal that prints this link is the one that started the request, so
+// retyping the code it just showed only adds a way to mistype it.
 func confirmationURL(login *v1pb.CreateDeviceLoginResponse, opts Options) (url string, fallback bool) {
-	if login.GetVerificationUri() != "" {
-		if opts.PrefillURL && login.GetVerificationUriComplete() != "" {
-			return login.GetVerificationUriComplete(), false
+	page := login.GetVerificationUri()
+	if page == "" {
+		base := strings.TrimSuffix(opts.ServerURL, "/")
+		if base == "" {
+			return "", false
 		}
-		return login.GetVerificationUri(), false
+		page, fallback = base+devicePagePath, true
 	}
-
-	base := strings.TrimSuffix(opts.ServerURL, "/")
-	if base == "" {
-		return "", false
+	if opts.BareURL {
+		return page, fallback
 	}
-	page := base + devicePagePath
-	if opts.PrefillURL {
-		page += "?user_code=" + neturl.QueryEscape(login.GetUserCode())
+	if complete := login.GetVerificationUriComplete(); complete != "" {
+		return complete, fallback
 	}
-	return page, true
+	return page + "?user_code=" + neturl.QueryEscape(login.GetUserCode()), fallback
 }
 
 // Run performs the whole flow and returns once the server has answered.

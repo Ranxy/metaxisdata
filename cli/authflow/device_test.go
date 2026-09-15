@@ -94,9 +94,10 @@ func TestRunPollsUntilApproved(t *testing.T) {
 	require.NotEmpty(t, lines, "the code and the URL are shown to the person")
 }
 
-// The code is not put in the URL unless the caller asked for it: a prefilled
-// link is what turns a device login into a phishing tool.
-func TestRunPrintsTheBareURLByDefault(t *testing.T) {
+// The link carries the code by default, so the person does not have to retype
+// what their own terminal just showed them. --no-prefill-url restores the bare
+// address.
+func TestRunCarriesTheCodeInTheURL(t *testing.T) {
 	t.Parallel()
 
 	api := newFake(v1pb.DeviceLoginState_APPROVED)
@@ -109,13 +110,13 @@ func TestRunPrintsTheBareURLByDefault(t *testing.T) {
 
 	_, err := Run(context.Background(), api, func(string, ...any) {}, options)
 	require.NoError(t, err)
-	require.Equal(t, "https://mx.example.com/device", opened)
+	require.Equal(t, "https://mx.example.com/device?user_code=7Q2X-9M4K", opened)
 
-	options.PrefillURL = true
+	options.BareURL = true
 	api = newFake(v1pb.DeviceLoginState_APPROVED)
 	_, err = Run(context.Background(), api, func(string, ...any) {}, options)
 	require.NoError(t, err)
-	require.Equal(t, "https://mx.example.com/device?user_code=7Q2X-9M4K", opened)
+	require.Equal(t, "https://mx.example.com/device", opened)
 }
 
 func TestRunReportsDeniedAndExpired(t *testing.T) {
@@ -179,24 +180,25 @@ func TestRunFallsBackToTheServerAddress(t *testing.T) {
 
 	_, err := Run(context.Background(), api, progress, options)
 	require.NoError(t, err)
-	require.Equal(t, "http://localhost:8080/device", opened, "the trailing slash is not doubled")
+	require.Equal(t, "http://localhost:8080/device?user_code=7Q2X-9M4K", opened, "the trailing slash is not doubled")
 
-	// With --prefill-url the code is carried by the address we built ourselves.
+	// --no-prefill-url prints the bare page address instead.
 	api = newFake(v1pb.DeviceLoginState_APPROVED)
 	api.createResponse.VerificationUri = ""
 	api.createResponse.VerificationUriComplete = ""
-	options.PrefillURL = true
+	options.BareURL = true
 	options.OpenBrowser = func(url string) error {
 		opened = url
 		return nil
 	}
 	_, err = Run(context.Background(), api, progress, options)
 	require.NoError(t, err)
-	require.Equal(t, "http://localhost:8080/device?user_code=7Q2X-9M4K", opened)
+	require.Equal(t, "http://localhost:8080/device", opened)
 }
 
 // The server's address wins whenever the workspace has one, even with the
-// fallback available.
+// fallback available: the workspace knows where its page is served, and the
+// client only knows where the API is.
 func TestRunPrefersTheServerSuppliedAddress(t *testing.T) {
 	t.Parallel()
 
@@ -211,7 +213,7 @@ func TestRunPrefersTheServerSuppliedAddress(t *testing.T) {
 
 	_, err := Run(context.Background(), api, func(string, ...any) {}, options)
 	require.NoError(t, err)
-	require.Equal(t, "https://mx.example.com/device", opened)
+	require.Equal(t, "https://mx.example.com/device?user_code=7Q2X-9M4K", opened)
 }
 
 // Without an address and without a server there is nothing to print, and the

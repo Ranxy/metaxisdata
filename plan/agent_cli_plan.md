@@ -134,7 +134,7 @@ scope:  只读进程环境变量 METAXISDATA_SCOPES(不落盘、不缓存),--sco
 | CLI 依赖边界 | `.golangci.yaml` 加 `depguard` 规则:`cli/**` 只允许标准库 + cobra + connect + protobuf + `backend/generated-go/...` | 物理分目录**不等于**依赖隔离:同 module 下 `cli/` 仍可 import `backend/store`,不设闸门必然被拖进服务端内脏(pgx、driver、runner);这条规则把"CLI 只是 API 客户端"变成可强制的约束 |
 | CLI 认证凭据 | 复用现有 JWT(签给确认者本人) | 权限模型不变:CLI 即"用户本人"。不引入 service account / OAuth client 注册等新概念 |
 | Device 会话存储 | 进程内存(`state.State` 新增 store,Lazy TTL) | 与 SSOStateCache 一致;单二进制部署已接受进程内状态。**代价:多副本必须单实例或粘性路由**,见 Further Considerations。备选:数据库表 — 生命周期只有 10 分钟,不值一次 migration,放弃 |
-| 确认链接 | 同时返回 `verification_uri`(裸)与 `verification_uri_complete`;页面默认要求**手动输入** user_code;server 未配 `external_url` 时**由 CLI 回退到 `<server>/device`** | RFC 8628 的码比对只在"用户在自己终端发起"时成立;预填链接会把 CLI 变成钓鱼工具。回退是必须的:全新/本地部署没有 `external_url`,只回一句"让管理员去配"会让人无路可走 |
+| 确认链接 | server 同时返回 `verification_uri`(裸)与 `verification_uri_complete`;**CLI 默认打印带 code 的链接**,`--no-prefill-url` 回到裸地址;页面对带 code 的链接**直接进确认界面**,不带则显示输入框;server 未配 `external_url` 时**由 CLI 回退到 `<server>/device`** | 打印裸地址会逼用户手抄 code,徒增输错的机会;而"码比对"的防钓鱼价值在这种 CLI 场景本来就很弱——攻击者无论给链接还是给码,受害者都没有可比对的对象。真正的防线是确认页显示 client/来源 IP/时间 + 必须显式点击,以及 `auth login` 由用户自己在终端发起。回退是必须的:全新/本地部署没有 `external_url`,只回一句"让管理员去配"会让人无路可走 |
 | 码的形式 | `user_code` 40bit、`device_code` 256bit;`DeviceLogin` 的资源名就是 `deviceLogins/{user_code}` | 页面/URL 只出现 user_code,device_code 永不进 URL、永不进审计 |
 | 多层血缘 | 服务端 BFS 新 RPC `GetLineageGraph` | 一次调用返回全图 + 节点元数据,避免 CLI 侧 N+1;将来前端图页也可换用它。备选:CLI 循环调 `GetLineage` — 逻辑复杂、往返多,放弃 |
 | 图遍历实现 | 每节点**走完整分页**(与前端 `api/lineage.ts` 同语义),节点 500 / 边 10000 / 墙钟预算三重上限 | `column_lineage` 无单对象边数不变量,"Limit 大值即可"会拉回无界行 |
@@ -308,7 +308,7 @@ PENDING ──approve(user)──► APPROVED ──exchange(首次)──► CO
 
 ### 安全边界(必须实现,不是可选项)
 
-1. **不预填 user_code 的默认路径**。页面默认呈现输入框,用户从终端读取并手动输入;`verification_uri_complete` 只作为"用户明确选择 `--prefill-url`"的便利路径存在,并且页面在预填时仍要求点击确认、并把 client 名称/版本/来源 IP 与发起时间显著展示。
+1. **链接默认带 code,但确认动作不可省**。CLI 默认打印 `verification_uri_complete`,页面据此**直接进入确认界面**(不再要求先点"继续");不带 code 打开时页面呈现输入框。无论哪条路径,页面都显著展示 client 名称/版本、来源 IP、发起时间与**大字号 code**,并且必须由用户点击批准或拒绝——这条显式确认才是真正的防线(`--no-prefill-url` 提供纯手动输入的路径)。
 2. **device_code 不进审计**。`CreateDeviceLogin` 保持 `audit=true`,但审计拦截器同时落 request 与 response,而 `isSensitiveAuditField` 的子串名单不命中 `deviceCode`。最小改动是把 `devicecode`/`device_code` 加进 `isSensitiveAuditField` 的 bare-name 名单(`userCode` 不是秘密,不需要脱敏),并在 `audit_test.go` 加一条用例钉住。
 3. **approve 的资格闸门只覆盖密码认证的 END_USER**。`needResetPassword` 在 web 登录路径里**只在非 IDP 分支求值**;若 device 流程无条件套用,会永久挡住"仅 SSO / 开了密码轮换"工作区的用户,而这些人根本不知道自己的随机密码。因此:仅当确认者是 END_USER **且**该工作区允许密码登录路径时才评估密码策略,并与 web 一致。同时复查 `MemberDeleted`(approve → exchange 之间可能被停用)与 `validateEmailWithDomains` 域限制。
 4. **限流分两层**。`CreateDeviceLogin` 按对端 IP 计数(默认 10/min),**并**保留一个更宽松的全局桶,避免反代后所有用户共享同一个 IP 桶而互相饿死。`ExchangeDeviceLogin` 记录 `lastPollAt`,间隔 < 1s 返回 `CodeResourceExhausted`(RFC 8628 `slow_down`)。`GetDeviceLogin`/`ApproveDeviceLogin` 也加一个简单的按调用者计数,避免 user_code 枚举。

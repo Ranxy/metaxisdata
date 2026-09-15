@@ -13,9 +13,15 @@ $ make build-cli                 # produces ./build/mxd
 $ mxd auth login --server https://mx.example.com
 ```
 
-The command prints a URL and a code. Open the URL, sign in, and type the code on
-the confirmation page. `mxd` polls until you decide, then stores the token in
-`~/.config/metaxisdata/config.json` (mode 0600).
+The command prints a URL and a code. The URL already carries the code, so
+opening it goes straight to the confirmation screen; `mxd` polls until you
+decide, then stores the token in `~/.config/metaxisdata/config.json` (mode
+0600). Pass `--no-prefill-url` to print the bare page address instead, for a
+workflow where the code has to be typed.
+
+The confirmation screen always shows the code next to the client name and
+version, the source address and the time, and always requires an explicit
+decision, so a request you did not start is still recognisable.
 
 The address comes from the workspace's **external URL** setting. A fresh or
 locally run workspace usually has none, and rather than leave you with nothing to
@@ -78,7 +84,7 @@ $ mxd meta list '1;shop;' --type SCHEMA   # each row carries "guid", e.g. "1;sho
 ## Commands
 
 ```console
-mxd auth login [--server <url>] [--no-browser] [--prefill-url]
+mxd auth login [--server <url>] [--no-browser] [--no-prefill-url]
 mxd auth status
 mxd auth logout
 

@@ -19,9 +19,17 @@
 
     <Card>
       <CardContent class="space-y-4 pt-6">
-        <!-- Step 1: the user types the code shown in the terminal. -->
+        <div
+          v-if="step === 'input' && isLoading"
+          class="flex justify-center p-8"
+        >
+          <AppLoading />
+        </div>
+
+        <!-- Step 1: the user types the code shown in the terminal. Reached when
+             the page was opened without one. -->
         <form
-          v-if="step === 'input'"
+          v-else-if="step === 'input'"
           class="space-y-4"
           @submit.prevent="loadDeviceLogin"
         >
@@ -32,12 +40,6 @@
             autocomplete="off"
             required
           />
-          <p
-            v-if="prefilled"
-            class="text-sm text-muted-foreground"
-          >
-            {{ t("deviceLogin.prefilledHint") }}
-          </p>
           <AppButton
             type="submit"
             :loading="isLoading"
@@ -66,6 +68,13 @@
             </dt>
             <dd>{{ formatTime(deviceLogin.expireTime) }}</dd>
           </dl>
+
+          <p
+            v-if="prefilled"
+            class="text-sm text-muted-foreground"
+          >
+            {{ t("deviceLogin.prefilledHint") }}
+          </p>
 
           <div class="rounded-md border p-4 text-center">
             <p class="text-sm text-muted-foreground">
@@ -130,6 +139,7 @@ import { useRoute } from "vue-router";
 import { approveDeviceLogin, getDeviceLogin } from "@/api/device-login";
 import AppButton from "@/components/common/AppButton.vue";
 import AppInput from "@/components/common/AppInput.vue";
+import AppLoading from "@/components/common/AppLoading.vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -227,13 +237,21 @@ function startOver() {
   prefilled.value = false;
 }
 
-onMounted(() => {
-  // A code in the URL only prefills the field; the user still has to read the
-  // page and confirm, because such a link can come from anyone.
+onMounted(async () => {
+  // A code in the URL goes straight to the confirmation step: the terminal that
+  // started the request is the one that prints this link, so making the user
+  // retype the code it just showed would only add a way to mistype it.
+  //
+  // The page still asks for an explicit decision, and it shows the client, the
+  // source address and the code, which is what a person can check against their
+  // own terminal. A failed load falls back to the form so a stale or mistyped
+  // code can be corrected.
   const fromQuery = route.query.user_code;
-  if (typeof fromQuery === "string" && fromQuery) {
-    userCodeInput.value = fromQuery;
-    prefilled.value = true;
+  if (typeof fromQuery !== "string" || !fromQuery) {
+    return;
   }
+  userCodeInput.value = fromQuery;
+  prefilled.value = true;
+  await loadDeviceLogin();
 });
 </script>

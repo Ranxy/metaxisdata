@@ -23,7 +23,7 @@ import (
 // authLoginFlags are the login-specific flags, kept out of the global set.
 var authLoginFlags struct {
 	noBrowser      bool
-	prefillURL     bool
+	noPrefillURL   bool
 	serviceAccount string
 }
 
@@ -49,7 +49,7 @@ first time: the address is saved, so later commands do not need it.`,
 		RunE: runAuthLogin,
 	}
 	cmd.Flags().BoolVar(&authLoginFlags.noBrowser, "no-browser", false, "do not try to open a browser")
-	cmd.Flags().BoolVar(&authLoginFlags.prefillURL, "prefill-url", false, "print the confirmation URL with the code already filled in")
+	cmd.Flags().BoolVar(&authLoginFlags.noPrefillURL, "no-prefill-url", false, "print the confirmation URL without the code, so it has to be typed on the page")
 	cmd.Flags().StringVar(&authLoginFlags.serviceAccount, "service-account", "", "sign in as a service account using "+env.ServiceKeyEnv)
 	return cmd
 }
@@ -73,7 +73,7 @@ func runAuthLogin(cmd *cobra.Command, _ []string) error {
 		ClientName:    "mxd",
 		ClientVersion: version,
 		Timeout:       flags.timeout,
-		PrefillURL:    authLoginFlags.prefillURL,
+		BareURL:       authLoginFlags.noPrefillURL,
 		NoBrowser:     authLoginFlags.noBrowser,
 		// The workspace may have no external URL, in which case the server
 		// cannot name the page and the address we are already talking to is the
