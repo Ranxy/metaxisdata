@@ -5,7 +5,7 @@
       class="shrink-0"
     />
 
-    <div class="grid grid-cols-[380px_minmax(0,1fr)] min-h-0 flex-1 border border-border rounded-lg overflow-hidden">
+    <div class="grid grid-cols-[24rem_minmax(0,1fr)] min-h-0 flex-1 border border-border rounded-lg overflow-hidden">
       <!-- Left panel -->
       <div class="border-r border-border p-4 overflow-y-auto flex flex-col gap-3 bg-muted/30">
         <!-- Source tabs -->
@@ -176,7 +176,7 @@
             v-if="providerOptions.length > 1"
             v-model="selectedProvider"
           >
-            <SelectTrigger class="w-[220px]">
+            <SelectTrigger class="w-56">
               <SelectValue :placeholder="t('explainSQL.provider')" />
             </SelectTrigger>
             <SelectContent>

@@ -1,5 +1,5 @@
 <template>
-  <div class="p-4 space-y-6">
+  <div class="p-4 space-y-4">
     <div class="space-y-1">
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
         <div class="text-lg font-semibold wrap-break-word">
@@ -68,7 +68,7 @@
 
     <div class="space-y-2">
       <div class="flex items-center justify-between">
-        <div class="text-sm font-medium">{{ t("metadataBrowser.indexes") }}</div>
+        <h2 class="text-sm font-medium">{{ t("metadataBrowser.indexes") }}</h2>
         <Badge variant="outline">
           {{ view.indexes.length }} {{ t("metadataBrowser.indexesCount") }}
         </Badge>
@@ -121,7 +121,7 @@
       class="space-y-2"
     >
       <div class="flex items-center justify-between">
-        <div class="text-sm font-medium">{{ t("metadataBrowser.triggers") }}</div>
+        <h2 class="text-sm font-medium">{{ t("metadataBrowser.triggers") }}</h2>
         <Badge variant="outline">
           {{ view.triggers.length }} {{ t("metadataBrowser.triggersCount") }}
         </Badge>

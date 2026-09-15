@@ -1,5 +1,5 @@
 <template>
-  <div class="p-4 space-y-6">
+  <div class="p-4 space-y-4">
     <div class="space-y-1">
       <div class="flex flex-wrap items-center gap-3">
         <div class="text-lg font-semibold wrap-break-word">
@@ -15,7 +15,7 @@
     </div>
 
     <div class="space-y-2">
-      <div class="text-sm font-medium">{{ t("metadataBrowser.externalDatasetInfo") }}</div>
+      <h2 class="text-sm font-medium">{{ t("metadataBrowser.externalDatasetInfo") }}</h2>
       <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         <div class="rounded-md border px-3 py-2 sm:col-span-2 xl:col-span-2">
           <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.namespace") }}</div>

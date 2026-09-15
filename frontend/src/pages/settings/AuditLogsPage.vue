@@ -17,7 +17,7 @@
       <div class="space-y-3">
         <div ref="searchBarRef" class="relative">
           <div
-            class="flex min-h-[46px] w-full flex-wrap items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors hover:border-ring focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+            class="flex min-h-11 w-full flex-wrap items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors hover:border-ring focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
           >
             <button
               type="button"
@@ -148,7 +148,7 @@
           <PopoverTrigger as-child>
             <Button
               variant="outline"
-              class="min-h-[46px] min-w-[18rem] justify-between gap-3 px-3 text-left font-normal shadow-sm"
+              class="min-h-11 min-w-[18rem] justify-between gap-3 px-3 text-left font-normal shadow-sm"
             >
               <span class="flex min-w-0 items-center gap-2">
                 <CalendarRange class="h-4 w-4 shrink-0 text-muted-foreground" />

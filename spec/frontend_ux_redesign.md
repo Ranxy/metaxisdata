@@ -61,16 +61,17 @@
 
 **Verification**
 
-1. 内容占比验收：在 1440×900 视口下，`/metadata/<table>?metaType=4` 的首条 column 行 Y 坐标 ≤ 280（当前 669），视口内可见元数据区面积占比 ≥ 55%（当前 19.6%）。
-2. 列表页验收：`/metadata`、`/metadata/<instance>`、`/metadata/<db>`、`/metadata/<schema>` 首条数据行 Y 坐标 ≤ 220（当前 333–346）。
+1. 内容占比验收：在 1440×900 视口下，`/metadata/<table>?metaType=4` 的**表格顶部 Y**（即表格自身表头之前的位置，衡量其上方 chrome 的厚度）≤ 280（基线 669），视口内可见元数据区面积占比 ≥ 55%（基线 19.6%）。同页首条**数据行** Y 作为并列指标一并记录（它比表格顶部低一个表头行高，约 48px）。
+2. 列表页验收：`/metadata`、`/metadata/<instance>`、`/metadata/<db>`、`/metadata/<schema>` 的表格顶部 Y ≤ 220（基线 333–346）。
 3. 骨架验收：桌面端（`lg:` 及以上）不存在顶栏，全部纵向空间从 y=0 起算；侧栏可见顶层项目 ≤ 5，默认只展开当前所在分组。
 4. 滚动验收：详情页只有**一个**滚动容器，`document.querySelectorAll('main *')` 中不存在 `scrollHeight > clientHeight` 的嵌套滚动元素。
-5. 用户菜单验收：侧栏展开态与折叠态（icon rail）下，用户菜单都能打开并包含 Profile / Language / Theme / Logout 四项；语言切换后界面文案与 `app.ts` locale 同步持久化；Theme 切换实际生效。
+5. 用户菜单验收：侧栏展开态与折叠态（icon rail）下，用户菜单都能打开并包含 Language / Theme / Logout；语言切换后界面文案与 `app.ts` locale 同步持久化；Theme 切换实际生效。（`Profile` 因无实现已移除，见 Phase 0 偏离说明。）
 6. 响应式验收：820px 宽下侧栏为 overlay drawer 而非常驻，主内容区可用宽度 ≥ 780px；Columns 表不产生横向溢出，Lineage 标题不折行超过 2 行。
 7. 空态验收：根路径 `/metadata` 不再渲染空面包屑卡片；Lineage 无关系时渲染单行空态而非五件套。
-8. 一致性验收：全站无手写页面级 `<h1>`（一律经 `PageHeader`）；全站无 `max-h-[calc(100vh-16rem)]`；section 标题使用 `<h2>/<h3>`。
+8. 一致性验收：全站无手写页面级 `<h1>`（一律经 `PageHeader`）；全站无 `max-h-[calc(100vh-16rem)]`；section 标签使用真实标题元素且不跳级（h1 → h2 → h3）。
 9. 导航冗余验收：`/openlineage/overview` 不含与侧栏重复的纯跳转卡片，页面存在真实数据行。
 10. 回归验收：`pnpm --dir frontend biome:check`、`pnpm --dir frontend lint`、`pnpm --dir frontend i18n`、`pnpm --dir frontend type-check`、`pnpm --dir frontend test run` 全部通过。
+11. 自动化验收：`pnpm --dir frontend audit:ui` 在 1440×900 下对 12 条关键路由报 `12/12 routes within budget`（退出码 0），且能对越界返回 1、对缺少会话返回 2。
 
 **Decisions**
 
@@ -89,15 +90,17 @@
 
 Phase 0 与 Phase 1 已实现，实测结果（1440×900）：
 
-| 指标 | 改造前 | 目标 | 实测 |
+| 指标（均为**表格顶部** Y，即表格自身表头之前） | 改造前 | 目标 | 实测 |
 | --- | --- | --- | --- |
-| 详情页首条 column 行 | y=669 (74.3%) | ≤280 | **y=264 (29.3%)** |
-| `/metadata` 根首条数据行 | y=333 | ≤220 | **y=200 (22.2%)** |
-| `/metadata/<db>` 列表首条数据行 | y=346 | ≤220 | **y=217 (24.1%)** |
+| `/metadata/<table>` 详情 | y=669 | ≤280 | **y=264** |
+| `/metadata` 根 | y=333 | ≤220 | **y=202** |
+| `/metadata/<db>` 列表 | y=346 | ≤220 | **y=219** |
 | 详情页嵌套滚动容器 | 1 个（632px 被折叠） | 0 | **0** |
 | 侧栏可见顶层项 | 19 行 / 3 分组全展开 | ≤5 | **5 行 / 分组默认收起** |
 | 永久全局 chrome 面积 | 24.1% | ~15% | **~17.8%（仅侧栏）** |
 | 820px 宽主内容可用宽度 | 564px | ≥780px | **820px** |
+
+> **指标口径修正**：本表最初把这一列记作"首条 column 行 / 首条数据行"，但实际量的是表格元素自身的顶部。两者相差一个表头行高（约 48px）。Phase 3 的审计脚本会把两个值都打出来，**预算是表格顶部**（表头属于数据呈现而非 chrome），首条数据行作为并列信息记录：详情页 312、`/metadata` 根 250、列表 267。基线与目标都是在表格顶部口径下测得的，因此这些数字本身无需调整，只需把口径写清楚。
 
 实现中的偏离与理由：
 
@@ -176,6 +179,23 @@ Phase 0 与 Phase 1 已实现，实测结果（1440×900）：
 **8 + 3. 原语铺开与死代码。** `PageHeader` 覆盖全部 15 个路由页（含原先无标题的 `/settings/llm-providers`，它是唯一连 h1 都没有的页面）；h1 字号全站统一为 20px（原 24px），操作按钮位置统一。`PageState`/`EmptyState` 替换了 13 个页面 + 10 个列表组件里复制粘贴的 loading/error/empty 块。死代码清理：`InstanceManagementPage` 与 `UserManagementPage` 各有一整块未被引用的 `.slide-*` scoped CSS（后者是执行时新发现的）；`DatabaseManagementPage` 单子元素 `justify-between`；`MetadataList` 未使用的 `currentGuid` prop；`getEngineBadgeVariant` 空转参数；实例名在 title 缺失时的重复渲染。
 
 **顺带修掉一个同类的路由缺陷。** Phase 2 梳理时发现 `/openlineage/overview` 是唯一没有 `contentWidth: "full"` 的 OpenLineage 非重定向路由——即"落地页比它链向的每一页都窄"，与用户先前报告的设置页漂移是同一类问题。已把 `/openlineage` 改为带 children 的父路由并让标志只在父级声明一次，与其他 6 个子页彻底同步（实测全部 `capped=false`）。至此全站只有 `/` 仍是受限宽度的页面。
+
+**Implementation Status — Phase 3 (done)**
+
+| Step | 内容 | 状态 |
+| --- | --- | --- |
+| 9 | 设计令牌与标题语义 | 完成 |
+| 10 | 可复跑的验收脚手架 | 完成 |
+
+**10. 验收脚手架（`frontend/scripts/audit-ui-layout.mjs`，`pnpm --dir frontend audit:ui`）。** 用 CDP 直连浏览器（依赖 Node 内置 `WebSocket`/`fetch`，**不引入 puppeteer/playwright**）对 12 条关键路由量取：表格顶部 Y、首条数据行 Y、h1 数量、嵌套滚动容器数、横向溢出、heading 是否跳级、console 错误数，并按预算判定。退出码 0 / 1 / 2 分别是"全部达标 / 有路由越界 / 无法运行（无浏览器或缺会话）"。三种路径均已实测：正常 12/12 通过；把某条预算收紧到 100 后正确报 FAIL 且退出 1；用全新浏览器 profile（无会话）运行时识别出 `/login` 重定向、只跑第一条就中止并退出 2。
+
+设计上的两个要点：一是**测量前先等锚点稳定**（连续 3 次采样位置不变）而不是固定 sleep，否则会采到页面尚未安定时的中间态；二是所有等待都有上界，`Page.loadEventFired` 若不来不会把整个审计挂死。
+
+**9a. 标题语义。** 15 处"用样式 div 假装标题"的 section 标签改为真实 `<h2>`（Indexes / Triggers / Signature / Definition / Dependency Tables / Sequence Info / Table Info / External Dataset Info / Version Diff / Diff Summary / Migration DDL / Columns / Lineage 标题）。**数据值刻意保持为 div**（计数、ID、时间戳、字段值、统计数字）——把它们变成标题只会向无障碍树注入假结构。
+
+**9b. 一个被脚手架立刻抓到的既有缺陷。** 加了"heading 不得跳级"检查后，4 条路由立刻报 `h1 → h3`。根因是 `CardTitle` 沿用了上游 shadcn 的 `<h3>`，而本应用的层级是「页面 h1 → 卡片分区」，没有中间那一级。已把 `CardTitle` 改为 `<h2>`（并在组件里注明为何偏离上游）。
+
+**9c. 间距与硬编码尺寸。** 11 个页面根容器从 `space-y-6` 统一为 `space-y-4`（HomePage 的表格顶部因此从 349 降到 333）。魔法像素值换成 Tailwind 令牌：`min-h-[42px]`/`min-h-[46px]` → `min-h-11`（三个筛选栏此前各不相同），`max-h-[400px]` → `max-h-96`，`w-[220px]` → `w-56`，三个工作台栅格 `380px`/`260px`/`140px` → `24rem`/`16rem`/`9rem`。**栅格本身保留"固定侧栏 + `minmax(0,1fr)` 自适应内容"的形态**——它已经是自适应的，改动的意义是把魔法像素变成可读的设计令牌，而不是把它重构成堆叠布局（那会伤害工作台的使用体验）。
 
 **Further Considerations**
 

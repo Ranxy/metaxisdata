@@ -23,7 +23,7 @@
         class="relative"
       >
       <div
-        class="flex items-center flex-wrap gap-2 min-h-[42px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors hover:border-ring focus-within:outline-hidden focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+        class="flex items-center flex-wrap gap-2 min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors hover:border-ring focus-within:outline-hidden focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
       >
         <!-- Active Filter Pills -->
         <Badge
@@ -269,7 +269,7 @@
       <!-- Search Results Dropdown -->
       <div
         v-if="showSearchResults && searchQuery.trim()"
-        class="absolute z-50 top-full mt-1 w-full rounded-md border bg-popover shadow-lg max-h-[400px] overflow-auto"
+        class="absolute z-50 top-full mt-1 w-full rounded-md border bg-popover shadow-lg max-h-96 overflow-auto"
       >
         <div
           v-if="isSearching"

@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-3">
     <div class="flex flex-wrap items-center justify-between gap-2">
-      <div class="text-sm font-medium">{{ title }}</div>
+      <h2 class="text-sm font-medium">{{ title }}</h2>
       <div class="flex flex-wrap items-center gap-2">
         <!-- Search and counting only make sense once relations exist; an empty
              section used to reserve a heading, a search box, a badge and a

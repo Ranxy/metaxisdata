@@ -46,7 +46,7 @@
                 </span>
               </div>
 
-              <div class="grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
+              <div class="grid gap-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
                 <template
                   v-for="detail in buildTransformationDetails(item)"
                   :key="`${buildTransformationKey(item, index)}:${detail.label}`"

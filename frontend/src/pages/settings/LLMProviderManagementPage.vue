@@ -24,7 +24,7 @@
     </div>
 
     <!-- Two-panel layout -->
-    <div class="grid grid-cols-[260px_minmax(0,1fr)] min-h-0 flex-1 border border-border rounded-lg overflow-hidden">
+    <div class="grid grid-cols-[16rem_minmax(0,1fr)] min-h-0 flex-1 border border-border rounded-lg overflow-hidden">
       <!-- Left panel: profile list -->
       <div class="border-r border-border p-2 overflow-y-auto bg-muted/30">
         <div v-if="filteredProfiles.length === 0" class="p-4 text-center text-muted-foreground text-sm">

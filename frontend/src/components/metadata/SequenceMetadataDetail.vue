@@ -1,5 +1,5 @@
 <template>
-  <div class="p-4 space-y-6">
+  <div class="p-4 space-y-4">
     <div class="space-y-1">
       <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <div class="text-lg font-semibold wrap-break-word">
@@ -19,7 +19,7 @@
     </div>
 
     <div class="space-y-2">
-      <div class="text-sm font-medium">{{ t("metadataBrowser.sequenceInfo") }}</div>
+      <h2 class="text-sm font-medium">{{ t("metadataBrowser.sequenceInfo") }}</h2>
       <div class="flex flex-wrap gap-2">
         <div class="rounded-md border px-3 py-2">
           <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.dataType") }}</div>

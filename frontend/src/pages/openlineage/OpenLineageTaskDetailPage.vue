@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <OpenLineageSectionHeader
       :title="task?.jobName || t('openlineage.jobs')"
       :description="t('openlineage.jobsDescription')"
