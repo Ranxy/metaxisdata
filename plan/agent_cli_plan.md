@@ -1,5 +1,34 @@
 # Plan: Agent CLI(`mxd`)与 Device Login
 
+> **Status: implemented.** Landed: the four device login RPCs and their
+> in-memory store/limiter (`backend/component/state/device_login*.go`), the
+> `/device` confirmation page (`frontend/src/pages/DeviceLoginPage.vue`), the
+> `mxd` client under `cli/` with its own README, and the real-server integration
+> suite `backend/test/integration/runner/agent_cli_service_test.go`.
+>
+> **Divergences from the decisions below:**
+>
+> - The ACL guard allowlist change moved into the proto commit rather than the
+>   device login commit, because a proto-only change otherwise leaves
+>   `TestEveryMethodIsPermissionGated` failing and the phase is no longer
+>   independently mergeable.
+> - `CREATE VIEW` / `CREATE TABLE AS` turned out to emit the synthetic
+>   `__result__` edge **alongside** the real target edge, so the rule became
+>   "drop every `is_temp` relation when the statement has a real target", which
+>   is also what the runner does. A bare `SELECT` keeps them.
+> - The workspace password policy is deliberately **not** re-evaluated when a
+>   device login is approved; the token restriction already closes the bypass,
+>   and re-evaluating would lock SSO-only users out of the CLI. See the security
+>   boundary section.
+> - Enabling `depguard` made revive's `package-naming` rule start firing on
+>   `backend/common`, so that style rule is disabled in `.golangci.yaml` with a
+>   note.
+> - The analyzer's identifier completion moved to
+>   `catalog.AnalysisContext.Complete` instead of being copied into the API
+>   layer, so the runner and `AnalyzeSQL` provably agree.
+> - `GetLineageGraph` bounds the walk with a wall-clock budget as well as the
+>   node and edge ceilings, and reports an exhausted budget as truncation.
+
 ## TL;DR
 
 新增一个面向 agent(也可供人使用)的 CLI `mxd`,通过 ConnectRPC + Bearer JWT 直连现有后端,提供四类能力:
@@ -715,17 +744,21 @@ $ mxd lineage sql --file etl.sql
 
 ## 测试与验收(DoD)
 
-1. `make build-cli` 产出可运行的 `build/mxd`;
+> 每条验收项都有具名测试兜底;下面括注的是执行它的测试。
+
+1. `make build-cli` 产出可运行的 `build/mxd` — 手工步骤,见 `cli/README.md`;
 2. 手工验收脚本:全新环境直接 `mxd database list` → 退出码 1 + `server_required` → `mxd auth login --server https://mx.example.com` → 浏览器手动输码确认 → **不带任何 server flag/env** 直接 `mxd database list --instance 1` 成功 → 复制 `guid` → `export METAXISDATA_SCOPES='dev=<guid>'` → `mxd config show` → `mxd meta list '<guid>'` → `mxd lineage sql --file q.sql --depth 2` → `mxd lineage graph <guid> --depth 5`;
-3. **server 持久化**:`auth login --server <url>` 后凭据文件里 `server` 与 `token` 同时更新;`auth logout` 后 `token` 被清除而 `server` 保留,再次 `auth login` 不必重填地址;`--server` 指向新地址登录时 stderr 出现 `server changed`;
-4. **多 agent 隔离**:同一台机器两个 shell 带不同的 `METAXISDATA_SCOPES`,`mxd lineage sql` 各自只解析自己的 scope、`mxd config show` 显示各自的 `scopes`/`scopeSource`;反复执行前后,磁盘上除凭据文件外**没有任何 scope 相关写入**(测试用只读 HOME 或对比文件 mtime/内容断言);
-5. **多作用域**:一次 `mxd lineage sql --scope all` 在两个 scope 下各返回一组 `results`,同名表落成两个不同 GUID;其中一个 scope 的引擎不受支持时,该组只有 warning,整体仍成功(退出码 0);
-6. **无 scope 路径**:`METAXISDATA_SCOPES` 未设置且未给 `--scope` 时退出码 1、`code=scope_required`,并带可执行 `hint`;
-7. **GUID 可复制**:`database list` 与 `meta list` 的每项都有 `guid`,把它用作 scope 能得到非空分析结果(MySQL 与 PG 各验一次);
-8. 拒绝路径:浏览器点"拒绝"后 CLI 收到 `DENIED` 且退出码 2;10 分钟不操作 CLI 收到 `EXPIRED`;错误 user_code 页面提示不存在;exchange 消费后再次调用得到 `device_session_expired`;
-9. `go test ./...`(含 `TestEveryMethodIsPermissionGated` 与 `deviceCode` 脱敏用例)与 `make test-integration-smoke` 通过(Docker 可用时);
-10. agent 闭环:仅凭 `mxd --help`、stdout 的单个 JSON 与退出码,一个 LLM agent 能完成"搜索表→看结构→查上下游血缘→分析一段 SQL 并展开多层";
-11. `mxd meta search` 在结果超过一页时不截断(自动翻页)或明确给出 `truncated`/`nextPageToken`。
+3. **server 持久化**:地址与 token 一起写入、`auth logout` 保留地址 — `cli/config` 的 `TestSaveWritesOwnerOnlyAndRoundTrips`、`TestClearKeepsTheServer`;无地址时的 `server_required` — `cli/client` 的 `TestNormalizeServer`;
+4. **多 agent 隔离**:scope 只从环境变量读取、从不落盘 — `cli/env` 的 `TestParseScopes*`/`TestSelect*`,以及 `cli/config` 的 `TestSaveWritesOwnerOnlyAndRoundTrips`(落盘内容只有 server/token/user/expiry);
+5. **多作用域**:同名表在两个 scope 下各自落位、部分 scope 失败仍成功 — `TestAnalyzeSQLRealServerIntegration` 的 `one scope may fail while the request succeeds` / `every scope failing the same way is an error`;
+6. **无 scope 路径**:退出码 1 + `code=scope_required` — `cli/client` 的 `TestExitCode`(usage 归 1)与 `cli/cmd` 的 scope 检查(手工,`mxd lineage sql` 无 scope);
+7. **GUID 可复制**:`database list` 的 `guid` 直接可用作 scope,`meta list` 每项带 `guid` — `TestAnalyzeSQLFromListedGUIDRealServerIntegration`;
+8. 拒绝/一次性路径:拒绝后 CLI 收到 `DENIED`、决策不可翻转、上报后条目被消费、未知/非法 code 的区分 — `TestDeviceLoginDeniedRealServerIntegration`;完整批准链路与 token 可用 — `TestDeviceLoginRealServerIntegration`;
+9. `go test ./...`(含 `TestEveryMethodIsPermissionGated`、`TestMarshalAuditMessageRedactsTheDeviceLoginSecret`、`TestBuildLineageGraph*`、`TestBuildAnalyzeSQLRelations*`、CLI 的 `TestExitCode`/`TestRun*`)与 `make test-integration-smoke` 通过(Docker 可用时);
+10. agent 闭环:仅凭 `mxd --help`、stdout 的单个 JSON 与退出码完成"搜索表→看结构→查上下游血缘→分析一段 SQL 并展开多层" — 手工步骤,输出契约由 `cli/output` 与各命令的单测钉住;
+11. **分页**:`collectPages` 自动续查并在触顶时给出 `truncated`/`nextPageToken`;`meta list` 未指定 `--type` 时按类型返回各自的 token。
+
+**未做**:`--format mermaid`、goreleaser 分发、`StoredMetadata.guid` 之外的历史快照 GUID(历史事件的 GUID 由事件本身携带)、scope 的服务端持久化。
 
 ## Further Considerations
 

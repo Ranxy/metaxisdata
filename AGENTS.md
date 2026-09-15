@@ -13,6 +13,7 @@ Product surface (frontend routes in `frontend/src/router/index.ts`, sidebar in `
 - **OpenLineage** — Overview / Jobs / Datasets / Events, namespace mapping, API keys, Airflow links.
 - **Explain SQL** — LLM-assisted SQL explanation scoped to selected metadata, with caching.
 - **Settings** — users, audit logs, LLM providers, OpenLineage ingestion.
+- **Device** — the `/device` page approves a command line client's device login.
 
 Feature design documents live in `spec/` (product/UX specs) and `plan/` (implementation plans). Read the matching doc before reworking one of these subsystems, and add one there for new subsystem-scale features.
 
@@ -39,6 +40,7 @@ Feature design documents live in `spec/` (product/UX specs) and `plan/` (impleme
 | `backend/runner/` | Background runners: `lineageanalyzer`, `schemasync`, `maintenance` |
 | `backend/migrator/` | Embedded, versioned schema migrations (`migration/LATEST.sql` + incrementals) and the startup migrator |
 | `backend/generated-go/` | Generated protobuf/Connect/Gateway code — never hand-edit |
+| `cli/` | The `mxd` command line client. A client of the API, never a part of the server: `depguard` in `.golangci.yaml` stops it from importing anything under `backend/` except `backend/generated-go` |
 | `frontend/src/` | Vue 3 + TypeScript SPA (Vite, Pinia, vue-router, Tailwind, shadcn-vue) |
 | `proto/v1/`, `proto/store/` | Public ConnectRPC service definitions and database row shapes |
 | `spec/`, `plan/` | Feature specs and implementation plans |
@@ -264,6 +266,9 @@ These are deliberate, accepted decisions — not open bugs. Read them before "fi
 
 - **Authorization is workspace-scoped (single tenant).** There is no per-instance or per-database ownership: every authenticated `workspaceMember` can read all instances, databases, metadata, lineage and OpenLineage data (the read baseline in `backend/store/predefined_roles.go`); writes require `workspaceAdmin` or an explicit `permission` annotation. Introducing per-resource IAM would be a subsystem-level change.
 - **Stored credentials are obfuscated, not encrypted.** `common.Obfuscate`/`Unobfuscate` are a base64 XOR keyed by the database-stored `AUTH_SECRET`, which also signs JWTs. Anyone with database read access or a backup can recover every instance password, SSH/SSL key and LLM API key; the ciphertext is deterministic and unauthenticated. This is accepted for the self-hosted, single-database deployment.
+- **The CLI stores its credential in clear text.** `mxd` writes the bearer token it received from a device login to `~/.config/metaxisdata/config.json` (mode 0600) or to `$METAXISDATA_CONFIG`. The token is equivalent to a seven day session, and the CLI never prints it; hiding it from a local file was not worth a keychain dependency. The server address is saved beside it, because a token is issued by one server and remembering it next to another address would fail every later request.
+- **Analysis scopes live only in the process environment.** `mxd` reads `METAXISDATA_SCOPES` per invocation and never writes it anywhere. Several agents share a machine while serving different projects, and any remembered scope set would be silently overwritten by whichever agent ran last. Which scopes a project uses is a per-project decision the user keeps in their own project docs.
+- **Device login state is process-local.** `backend/component/state` holds the pending requests, so a client's create, approve and exchange must reach the same replica: run one replica, or put sticky routing in front. Approving reuses the approver's web session and does not re-evaluate the password policy — that policy only governs password sign-in, and applying it here would lock SSO-only users out of the CLI over a random password they never chose.
 - **gRPC reflection is anonymous.** The reflection handlers are registered without the authentication interceptor, so the registered service/message definitions are public; `/grpc.reflection` is deliberately absent from the authentication exemption list (`backend/api/auth/config.go`).
 - **Destructive schema sync is log-only.** When a synced snapshot no longer contains an object, the runner deletes it and records the GUIDs in `logSchemaSyncDeletion` (`backend/runner/schemasync/syncer.go`). There is deliberately no shrink threshold or confirmation flag: a MySQL `information_schema` only lists objects the connecting user may see, so a privilege change can empty a snapshot. Treat the deletion log as the only trace.
 - **`audit_log` and `meta_registry_resource_history` are kept forever.** `runner/maintenance` only prunes ExplainSQL cache rows, old LLM debug logs and OpenLineage runs (per `openlineage_retention_days`); the audit ledger and the metadata history are never pruned.
