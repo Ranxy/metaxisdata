@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col gap-3 h-full min-h-0">
+  <div class="flex min-h-0 flex-1 flex-col gap-3">
     <!-- Top bar -->
     <div class="flex items-center gap-2 shrink-0">
       <div class="flex-1">

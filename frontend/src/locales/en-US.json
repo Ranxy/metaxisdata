@@ -212,8 +212,16 @@
     "workspaceSectionDescription": "How this deployment is reached and how long OpenLineage history is kept."
   },
   "header": {
+    "closeNav": "Close navigation",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
+    "language": "Language",
     "logout": "Logout",
-    "profile": "Profile"
+    "openNav": "Open navigation",
+    "theme": "Theme",
+    "themeDark": "Dark",
+    "themeLight": "Light",
+    "themeSystem": "System"
   },
   "home": {
     "actionAuditLogsDescription": "Inspect the workspace audit trail",
@@ -666,7 +674,6 @@
     "historyBefore": "Before",
     "historyChangeCount": "{count} change | {count} changes",
     "historyCurrent": "Current",
-    "historyDescription": "Inspect timeline entries and open each event to see the exact metadata changes.",
     "historyEventFetchError": "Failed to load metadata history event",
     "historyEventTime": "Event Time",
     "historyFetchError": "Failed to load metadata history",
@@ -688,7 +695,7 @@
     "historySectionSelf": "property",
     "historySectionTag": "tag",
     "historySectionTrigger": "trigger",
-    "historyTab": "History",
+    "historyTimeline": "Timeline",
     "historyTitle": "History",
     "historyValidFrom": "Valid From",
     "historyValidTo": "Valid To",
@@ -703,6 +710,7 @@
     "instance": "Instance",
     "instances": "Database Instances",
     "lastValue": "Last Value",
+    "lineage": "Lineage",
     "lineageFetchError": "Failed to load lineage analysis",
     "lineageRelationsCount": "relations",
     "loadMore": "Load More",
@@ -796,7 +804,6 @@
     "sourceVersion": "Source Version (older)",
     "start": "Start",
     "status": "Status",
-    "tableDetail": "Table Details",
     "tableInfo": "Table Info",
     "tableName": "Table Name",
     "tables": "Tables",

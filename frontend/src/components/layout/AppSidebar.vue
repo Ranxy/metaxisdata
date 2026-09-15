@@ -1,11 +1,74 @@
 <template>
   <aside
+    :inert="!isDesktop && !appStore.mobileNavOpen ? true : undefined"
     :class="[
-      'bg-background border-r transition-all duration-300 flex flex-col',
-      appStore.sidebarCollapsed ? 'w-16' : 'w-64',
+      'flex w-64 flex-col border-r bg-background',
+      'fixed inset-y-0 left-0 z-50 transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0',
+      appStore.mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
+      appStore.sidebarCollapsed ? 'lg:w-16' : 'lg:w-64',
     ]"
   >
-    <nav class="flex-1 py-4 overflow-y-auto">
+    <!-- Brand and rail controls. The collapse toggle is desktop-only; the
+         drawer gets a close button instead.
+
+         The toggle's `ml-auto` is deliberately conditional: the rail turns this
+         row into a column, and in a column flex container an auto side margin
+         absorbs the free space and overrides `items-center`, which pushed the
+         toggle off the axis the brand and every nav icon share. -->
+    <div
+      :class="[
+        'flex shrink-0 items-center gap-2 border-b py-3',
+        rail ? 'flex-col px-2' : 'px-3',
+      ]"
+    >
+      <router-link
+        to="/"
+        :title="rail ? brandName : undefined"
+        class="flex min-w-0 items-center gap-2 rounded-md"
+      >
+        <span
+          class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary text-sm font-bold text-primary-foreground"
+        >
+          M
+        </span>
+        <span
+          v-if="!rail"
+          class="truncate text-base font-bold tracking-tight"
+        >
+          {{ brandName }}
+        </span>
+      </router-link>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        :class="['hidden h-8 w-8 lg:inline-flex', rail ? '' : 'ml-auto']"
+        :title="appStore.sidebarCollapsed ? t('header.expandSidebar') : t('header.collapseSidebar')"
+        :aria-label="appStore.sidebarCollapsed ? t('header.expandSidebar') : t('header.collapseSidebar')"
+        @click="appStore.toggleSidebar"
+      >
+        <PanelLeftOpen
+          v-if="appStore.sidebarCollapsed"
+          :class="rail ? 'h-5 w-5' : 'h-4 w-4'"
+        />
+        <PanelLeftClose
+          v-else
+          :class="rail ? 'h-5 w-5' : 'h-4 w-4'"
+        />
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        class="ml-auto h-8 w-8 lg:hidden"
+        :aria-label="t('header.closeNav')"
+        @click="appStore.setMobileNavOpen(false)"
+      >
+        <X class="h-4 w-4" />
+      </Button>
+    </div>
+
+    <nav class="flex-1 overflow-y-auto py-2">
       <!-- The horizontal inset lives on the list: a <button> is shrink-to-fit
            even with `display:flex`, so the section header needs `w-full` and
            must not also carry side margins (that overflows the rail). -->
@@ -27,7 +90,7 @@
               class="h-5 w-5 flex-shrink-0"
             />
             <span
-              v-if="!appStore.sidebarCollapsed"
+              v-if="!rail"
               class="ml-3 truncate"
             >
               {{ item.label }}
@@ -36,8 +99,14 @@
 
           <!-- Collapsible Section -->
           <template v-else>
-            <!-- Icon rail: a header would not fit, so the section stays flat. -->
-            <template v-if="appStore.sidebarCollapsed">
+            <!-- Icon rail: a header would not fit, so the group's members read as
+                 a flat run of icons and a rule marks where one group ends. -->
+            <template v-if="rail">
+              <div
+                v-if="hasRailDivider(item)"
+                class="mx-auto my-1.5 h-px w-6 bg-border"
+                aria-hidden="true"
+              />
               <router-link
                 v-for="child in item.children"
                 :key="child.key"
@@ -60,7 +129,7 @@
             >
               <CollapsibleTrigger
                 :class="[
-                  'flex w-full items-center justify-between gap-2 px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider transition-colors',
+                  'flex w-full items-center justify-between gap-2 rounded-md px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors',
                   hasActiveChild(item)
                     ? 'text-foreground'
                     : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
@@ -96,31 +165,37 @@
         </li>
       </ul>
     </nav>
+
+    <!-- Set-once controls (account, language, theme) live at the bottom of the
+         rail instead of occupying a permanent top bar. -->
+    <div class="shrink-0 border-t p-2">
+      <UserMenu />
+    </div>
   </aside>
 </template>
 
 <script setup lang="ts">
+import { useMediaQuery } from "@vueuse/core";
 import {
   ChevronRight,
-  ClipboardList,
   Database,
   FileCode2,
   Files,
-  Globe,
   Home,
-  KeyRound,
   LayoutDashboard,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Server,
   Settings,
-  Shield,
-  SlidersHorizontal,
   Sparkles,
-  UserRound,
-  Users,
+  Table2,
+  X,
 } from "lucide-vue-next";
 import { computed, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
+import { Button } from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
@@ -128,11 +203,18 @@ import {
 } from "@/components/ui/collapsible";
 import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
+import UserMenu from "./UserMenu.vue";
 
 const { t } = useI18n();
 const route = useRoute();
 const appStore = useAppStore();
 const authStore = useAuthStore();
+
+const brandName = "MetaxisData";
+
+// Below `lg` the sidebar is an overlay drawer, so the rail never applies there.
+const isDesktop = useMediaQuery("(min-width: 1024px)");
+const rail = computed(() => isDesktop.value && appStore.sidebarCollapsed);
 
 interface MenuItem {
   key: string;
@@ -141,8 +223,23 @@ interface MenuItem {
   icon: typeof Home;
   /** The permission that makes this entry reachable; the server enforces it. */
   permission?: string;
+  /** Visible when the caller holds at least one of these. */
+  anyPermission?: string[];
   children?: MenuItem[];
 }
+
+// Settings is one destination with its own in-page navigation, so the nine
+// administration pages no longer occupy nine permanent sidebar rows.
+const SETTINGS_PERMISSIONS = [
+  "metaxisdata.settings.get",
+  "metaxisdata.iam.getPolicy",
+  "metaxisdata.roles.list",
+  "metaxisdata.groups.list",
+  "metaxisdata.users.list",
+  "metaxisdata.auditLogs.search",
+  "metaxisdata.llm.profiles.list",
+  "metaxisdata.openlineage.namespaceMappings.list",
+];
 
 function buildMenuItems(): MenuItem[] {
   return [
@@ -169,7 +266,7 @@ function buildMenuItems(): MenuItem[] {
           key: "connections",
           label: t("menu.connections"),
           path: "/instances",
-          icon: Database,
+          icon: Server,
           permission: "metaxisdata.instances.list",
         },
         {
@@ -183,7 +280,7 @@ function buildMenuItems(): MenuItem[] {
           key: "metadata",
           label: t("menu.metadata"),
           path: "/metadata",
-          icon: Database,
+          icon: Table2,
           permission: "metaxisdata.databases.read",
         },
         {
@@ -234,83 +331,22 @@ function buildMenuItems(): MenuItem[] {
     {
       key: "settings",
       label: t("menu.settings"),
-      path: "#",
+      path: "/settings",
       icon: Settings,
-      children: [
-        {
-          key: "general",
-          label: t("menu.generalSettings"),
-          path: "/settings/general",
-          icon: SlidersHorizontal,
-          permission: "metaxisdata.settings.get",
-        },
-        {
-          key: "environments",
-          label: t("menu.environments"),
-          path: "/settings/environments",
-          icon: Globe,
-          permission: "metaxisdata.settings.get",
-        },
-        {
-          key: "iam",
-          label: t("menu.iam"),
-          path: "/settings/iam",
-          icon: KeyRound,
-          permission: "metaxisdata.iam.getPolicy",
-        },
-        {
-          key: "roles",
-          label: t("menu.roles"),
-          path: "/settings/roles",
-          icon: Shield,
-          permission: "metaxisdata.roles.list",
-        },
-        {
-          key: "groups",
-          label: t("menu.groups"),
-          path: "/settings/groups",
-          icon: UserRound,
-          permission: "metaxisdata.groups.list",
-        },
-        {
-          key: "users",
-          label: t("menu.users"),
-          path: "/settings/users",
-          icon: Users,
-          permission: "metaxisdata.users.list",
-        },
-        {
-          key: "auditLogs",
-          label: t("menu.auditLogs"),
-          path: "/settings/audit-logs",
-          icon: ClipboardList,
-          permission: "metaxisdata.auditLogs.search",
-        },
-        {
-          key: "llmProviders",
-          label: t("llmProvider.sidebar"),
-          path: "/settings/llm-providers",
-          icon: Sparkles,
-          permission: "metaxisdata.llm.profiles.list",
-        },
-        {
-          key: "openlineage",
-          label: t("openlineage.ingestionSettings"),
-          path: "/settings/openlineage",
-          icon: Network,
-          permission: "metaxisdata.openlineage.namespaceMappings.list",
-        },
-      ],
+      anyPermission: SETTINGS_PERMISSIONS,
     },
   ];
 }
 
-// An entry is hidden when the caller lacks its permission; a parent is hidden
-// when it has no reachable child left. This only avoids dead ends — every RPC
-// is independently authorized by the ACL interceptor.
+// The settings sub-navigation labels, kept next to the sidebar so the two
+// cannot drift apart.
 const menuItems = computed<MenuItem[]>(() => {
   const allowed = (item: MenuItem) =>
-    !item.permission || authStore.hasPermission(item.permission);
+    (!item.permission || authStore.hasPermission(item.permission)) &&
+    (!item.anyPermission ||
+      item.anyPermission.some((permission) =>
+        authStore.hasPermission(permission)
+      ));
   return buildMenuItems()
     .filter(allowed)
     .map((item) =>
@@ -343,7 +379,7 @@ function navLinkClass(path: string, options: NavLinkOptions = {}): string[] {
     ? "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
     : "text-foreground hover:bg-accent hover:text-accent-foreground";
   return [
-    appStore.sidebarCollapsed
+    rail.value
       ? "mx-auto flex h-10 w-10 items-center justify-center rounded-md transition-colors"
       : "flex items-center rounded-md px-4 py-2 transition-colors",
     isActive(path) ? "bg-accent text-accent-foreground" : idle,
@@ -352,7 +388,13 @@ function navLinkClass(path: string, options: NavLinkOptions = {}): string[] {
 
 // Icon-rail links keep their name as a hover tooltip and screen-reader label.
 function railLabel(label: string): string | undefined {
-  return appStore.sidebarCollapsed ? label : undefined;
+  return rail.value ? label : undefined;
+}
+
+// The rail hides section headers, so a rule stands in for them. The first
+// group needs none: the top-level entries above it already separate it.
+function hasRailDivider(item: MenuItem): boolean {
+  return menuItems.value.findIndex((entry) => entry.key === item.key) > 0;
 }
 
 function isSectionExpanded(key: string): boolean {
@@ -380,5 +422,11 @@ watch(
     }
   },
   { immediate: true }
+);
+
+// The drawer is a modal overlay, so a navigation has to dismiss it.
+watch(
+  () => route.path,
+  () => appStore.setMobileNavOpen(false)
 );
 </script>

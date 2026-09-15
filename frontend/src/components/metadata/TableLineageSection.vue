@@ -1,63 +1,58 @@
 <template>
   <div class="space-y-3">
-    <div class="flex items-center justify-between gap-3">
+    <div class="flex flex-wrap items-center justify-between gap-2">
       <div class="text-sm font-medium">{{ title }}</div>
-      <div class="flex items-center gap-2">
-        <RouterLink
-          v-if="guid"
-          :to="lineageGraphRoute"
-          class="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-        >
-          <Share2 class="size-4" />
-          {{ t("lineageGraph.viewGraph") }}
-        </RouterLink>
-        <Input
-          v-model="search"
-          class="h-9 w-80 max-w-full"
-          :placeholder="t('metadataBrowser.searchLineagePlaceholder')"
-        />
-        <Badge variant="outline">
-          {{ filteredRelations.length }} / {{ scopedRelations.length }}
-          {{ t("metadataBrowser.lineageRelationsCount") }}
-        </Badge>
+      <div class="flex flex-wrap items-center gap-2">
+        <!-- Search and counting only make sense once relations exist; an empty
+             section used to reserve a heading, a search box, a badge and a
+             separate empty-state paragraph for nothing. -->
+        <template v-if="scopedRelations.length > 0">
+          <Input
+            v-model="search"
+            class="h-8 w-full sm:w-72"
+            :placeholder="t('metadataBrowser.searchLineagePlaceholder')"
+          />
+          <Badge variant="outline">
+            {{ filteredRelations.length }} / {{ scopedRelations.length }}
+            {{ t("metadataBrowser.lineageRelationsCount") }}
+          </Badge>
+          <RouterLink
+            v-if="guid"
+            :to="lineageGraphRoute"
+            class="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+          >
+            <Share2 class="size-4" />
+            {{ t("lineageGraph.viewGraph") }}
+          </RouterLink>
+        </template>
       </div>
     </div>
 
-    <div
-      v-if="isLoading"
-      class="py-8 flex justify-center"
+    <PageState
+      :loading="isLoading"
+      :error="error"
     >
-      <AppLoading />
-    </div>
+      <template v-if="displayRelations.length > 0">
+        <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <div class="rounded-md border px-3 py-2">
+            <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.totalRelations") }}</div>
+            <div class="text-sm font-medium">{{ displayRelations.length }}</div>
+          </div>
+          <div class="rounded-md border px-3 py-2">
+            <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.upstreamRelations") }}</div>
+            <div class="text-sm font-medium">{{ upstreamRelationCount }}</div>
+          </div>
+          <div class="rounded-md border px-3 py-2">
+            <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.downstreamRelations") }}</div>
+            <div class="text-sm font-medium">{{ downstreamRelationCount }}</div>
+          </div>
+          <div class="rounded-md border px-3 py-2">
+            <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.relatedObjects") }}</div>
+            <div class="text-sm font-medium">{{ relatedObjectCount }}</div>
+          </div>
+        </div>
 
-    <div
-      v-else-if="error"
-      class="text-sm text-destructive"
-    >
-      {{ error }}
-    </div>
-
-    <template v-else-if="displayRelations.length > 0">
-      <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <div class="rounded-md border px-3 py-2">
-          <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.totalRelations") }}</div>
-          <div class="text-sm font-medium">{{ displayRelations.length }}</div>
-        </div>
-        <div class="rounded-md border px-3 py-2">
-          <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.upstreamRelations") }}</div>
-          <div class="text-sm font-medium">{{ upstreamRelationCount }}</div>
-        </div>
-        <div class="rounded-md border px-3 py-2">
-          <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.downstreamRelations") }}</div>
-          <div class="text-sm font-medium">{{ downstreamRelationCount }}</div>
-        </div>
-        <div class="rounded-md border px-3 py-2">
-          <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.relatedObjects") }}</div>
-          <div class="text-sm font-medium">{{ relatedObjectCount }}</div>
-        </div>
-      </div>
-
-      <Table v-if="filteredRelations.length > 0">
+        <Table v-if="filteredRelations.length > 0">
         <TableHeader>
           <TableRow>
             <TableHead>{{ t("metadataBrowser.direction") }}</TableHead>
@@ -112,25 +107,34 @@
         </TableBody>
       </Table>
 
+        <div
+          v-else
+          class="text-sm text-muted-foreground"
+        >
+          {{ t("metadataBrowser.noLineageRelations") }}
+        </div>
+      </template>
+
       <div
         v-else
-        class="text-sm text-muted-foreground"
+        class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
       >
-        {{ t("metadataBrowser.noLineageRelations") }}
+        <span>{{ t("metadataBrowser.noLineageRelations") }}</span>
+        <RouterLink
+          v-if="guid"
+          :to="lineageGraphRoute"
+          class="inline-flex items-center gap-1 text-primary hover:underline"
+        >
+          {{ t("lineageGraph.viewGraph") }}
+          <ArrowRight class="size-3.5" />
+        </RouterLink>
       </div>
-    </template>
-
-    <div
-      v-else
-      class="text-sm text-muted-foreground"
-    >
-      {{ t("metadataBrowser.noLineageRelations") }}
-    </div>
+    </PageState>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Share2 } from "lucide-vue-next";
+import { ArrowRight, Share2 } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
@@ -139,7 +143,7 @@ import {
   RouterLink,
 } from "vue-router";
 import { getLineage } from "@/api/lineage";
-import AppLoading from "@/components/common/AppLoading.vue";
+import PageState from "@/components/common/PageState.vue";
 import LineageTransformationCell from "@/components/metadata/LineageTransformationCell.vue";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";

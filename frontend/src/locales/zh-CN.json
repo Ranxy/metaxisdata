@@ -212,8 +212,16 @@
     "workspaceSectionDescription": "该部署的对外访问地址，以及 OpenLineage 历史的保留时长。"
   },
   "header": {
+    "closeNav": "关闭导航",
+    "collapseSidebar": "收起侧栏",
+    "expandSidebar": "展开侧栏",
+    "language": "语言",
     "logout": "退出登录",
-    "profile": "个人设置"
+    "openNav": "打开导航",
+    "theme": "主题",
+    "themeDark": "深色",
+    "themeLight": "浅色",
+    "themeSystem": "跟随系统"
   },
   "home": {
     "actionAuditLogsDescription": "查看工作区内的操作审计记录",
@@ -666,7 +674,6 @@
     "historyBefore": "变更前",
     "historyChangeCount": "{count} 项变更",
     "historyCurrent": "当前版本",
-    "historyDescription": "查看时间线事件，并打开任一事件以检查具体元数据变更。",
     "historyEventFetchError": "加载历史事件详情失败",
     "historyEventTime": "事件时间",
     "historyFetchError": "加载元数据历史失败",
@@ -688,7 +695,7 @@
     "historySectionSelf": "属性",
     "historySectionTag": "标签",
     "historySectionTrigger": "触发器",
-    "historyTab": "历史",
+    "historyTimeline": "时间线",
     "historyTitle": "历史记录",
     "historyValidFrom": "生效开始",
     "historyValidTo": "生效结束",
@@ -703,6 +710,7 @@
     "instance": "实例",
     "instances": "数据库实例",
     "lastValue": "当前值",
+    "lineage": "血缘",
     "lineageFetchError": "加载血缘分析失败",
     "lineageRelationsCount": "条关系",
     "loadMore": "加载更多",
@@ -796,7 +804,6 @@
     "sourceVersion": "源版本（旧）",
     "start": "起始值",
     "status": "状态",
-    "tableDetail": "表详情",
     "tableInfo": "表信息",
     "tableName": "表名",
     "tables": "表",
