@@ -41,12 +41,21 @@
     - [UserService](#metaxisdata-v1-UserService)
   
 - [v1/auth_service.proto](#v1_auth_service-proto)
+    - [ApproveDeviceLoginRequest](#metaxisdata-v1-ApproveDeviceLoginRequest)
+    - [CreateDeviceLoginRequest](#metaxisdata-v1-CreateDeviceLoginRequest)
+    - [CreateDeviceLoginResponse](#metaxisdata-v1-CreateDeviceLoginResponse)
     - [CreateSSOStateResponse](#metaxisdata-v1-CreateSSOStateResponse)
+    - [DeviceLogin](#metaxisdata-v1-DeviceLogin)
+    - [ExchangeDeviceLoginRequest](#metaxisdata-v1-ExchangeDeviceLoginRequest)
+    - [ExchangeDeviceLoginResponse](#metaxisdata-v1-ExchangeDeviceLoginResponse)
+    - [GetDeviceLoginRequest](#metaxisdata-v1-GetDeviceLoginRequest)
     - [IdentityProviderContext](#metaxisdata-v1-IdentityProviderContext)
     - [LoginRequest](#metaxisdata-v1-LoginRequest)
     - [LoginResponse](#metaxisdata-v1-LoginResponse)
     - [LogoutRequest](#metaxisdata-v1-LogoutRequest)
     - [OAuth2IdentityProviderContext](#metaxisdata-v1-OAuth2IdentityProviderContext)
+  
+    - [DeviceLoginState](#metaxisdata-v1-DeviceLoginState)
   
     - [AuthService](#metaxisdata-v1-AuthService)
   
@@ -204,11 +213,19 @@
     - [IamService](#metaxisdata-v1-IamService)
   
 - [v1/lineage_service.proto](#v1_lineage_service-proto)
+    - [AnalysisScope](#metaxisdata-v1-AnalysisScope)
+    - [AnalyzeSQLRelation](#metaxisdata-v1-AnalyzeSQLRelation)
+    - [AnalyzeSQLRequest](#metaxisdata-v1-AnalyzeSQLRequest)
+    - [AnalyzeSQLResponse](#metaxisdata-v1-AnalyzeSQLResponse)
+    - [AnalyzeSQLResult](#metaxisdata-v1-AnalyzeSQLResult)
     - [ExternalDatasetInfo](#metaxisdata-v1-ExternalDatasetInfo)
     - [GetLineageForContextRequest](#metaxisdata-v1-GetLineageForContextRequest)
     - [GetLineageForContextResponse](#metaxisdata-v1-GetLineageForContextResponse)
+    - [GetLineageGraphRequest](#metaxisdata-v1-GetLineageGraphRequest)
+    - [GetLineageGraphResponse](#metaxisdata-v1-GetLineageGraphResponse)
     - [GetLineageRequest](#metaxisdata-v1-GetLineageRequest)
     - [GetLineageResponse](#metaxisdata-v1-GetLineageResponse)
+    - [LineageNode](#metaxisdata-v1-LineageNode)
     - [LineageRelation](#metaxisdata-v1-LineageRelation)
     - [Transformation](#metaxisdata-v1-Transformation)
   
@@ -749,6 +766,58 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 
 
 
+<a name="metaxisdata-v1-ApproveDeviceLoginRequest"></a>
+
+### ApproveDeviceLoginRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: deviceLogins/{user_code} |
+| approve | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CreateDeviceLoginRequest"></a>
+
+### CreateDeviceLoginRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| client_name | [string](#string) |  | A human-readable client name for the confirmation page, e.g. &#34;mxd&#34;. It is display only and never trusted. |
+| client_version | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CreateDeviceLoginResponse"></a>
+
+### CreateDeviceLoginResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| device_code | [string](#string) |  | The polling secret. Only the client that created the request holds it, and it never appears in a URL or in an audit record. |
+| user_code | [string](#string) |  | The human-readable code the user types on the confirmation page, in Crockford base32 with an &#34;XXXX-XXXX&#34; layout. |
+| verification_uri | [string](#string) |  | The bare confirmation address, `{external_url}/device`. Empty when the workspace has no external URL configured. |
+| verification_uri_complete | [string](#string) |  | The confirmation address with the code prefilled. Clients should only use it when the user explicitly asked to skip typing the code. |
+| expires_in | [int32](#int32) |  | Lifetime of this request in seconds. |
+| interval | [int32](#int32) |  | The minimum polling interval in seconds. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-CreateSSOStateResponse"></a>
 
 ### CreateSSOStateResponse
@@ -758,6 +827,80 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | state | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeviceLogin"></a>
+
+### DeviceLogin
+DeviceLogin is a pending or resolved device authorization request. Its
+resource name is derived from the human-readable code so the confirmation
+page needs nothing else.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: deviceLogins/{user_code} |
+| state | [DeviceLoginState](#metaxisdata-v1-DeviceLoginState) |  |  |
+| user_code | [string](#string) |  |  |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| expire_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| client_name | [string](#string) |  |  |
+| client_version | [string](#string) |  |  |
+| request_ip | [string](#string) |  | The source address the request came from, as the server sees it (it follows the trusted-proxy rules). |
+| request_user_agent | [string](#string) |  |  |
+| approved_by | [User](#metaxisdata-v1-User) |  | The user who approved the request, once it is approved. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ExchangeDeviceLoginRequest"></a>
+
+### ExchangeDeviceLoginRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| device_code | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ExchangeDeviceLoginResponse"></a>
+
+### ExchangeDeviceLoginResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| state | [DeviceLoginState](#metaxisdata-v1-DeviceLoginState) |  |  |
+| token | [string](#string) |  | The access token, returned only when the request was approved. The device login is consumed at the same time, so a second exchange finds nothing. |
+| expires_in | [int64](#int64) |  | The remaining lifetime of the token in seconds. |
+| user | [User](#metaxisdata-v1-User) |  | The user who approved the request. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetDeviceLoginRequest"></a>
+
+### GetDeviceLoginRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The name of the device login to read. Format: deviceLogins/{user_code} |
 
 
 
@@ -843,6 +986,21 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 
  
 
+
+<a name="metaxisdata-v1-DeviceLoginState"></a>
+
+### DeviceLoginState
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| DEVICE_LOGIN_STATE_UNSPECIFIED | 0 |  |
+| PENDING | 1 |  |
+| APPROVED | 2 |  |
+| DENIED | 3 |  |
+| EXPIRED | 4 |  |
+
+
  
 
  
@@ -858,6 +1016,10 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 | Login | [LoginRequest](#metaxisdata-v1-LoginRequest) | [LoginResponse](#metaxisdata-v1-LoginResponse) | Permissions required: None |
 | Logout | [LogoutRequest](#metaxisdata-v1-LogoutRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Permissions required: None |
 | CreateSSOState | [.google.protobuf.Empty](#google-protobuf-Empty) | [CreateSSOStateResponse](#metaxisdata-v1-CreateSSOStateResponse) | CreateSSOState issues a one-time OAuth2 state value. A client must fetch it before redirecting to the identity provider, pass it back to the provider and then send it with the login request; the server consumes it there. Without it an attacker can complete an authorization-code flow in a victim&#39;s browser and bind the victim&#39;s session to the attacker&#39;s identity. Permissions required: None |
+| CreateDeviceLogin | [CreateDeviceLoginRequest](#metaxisdata-v1-CreateDeviceLoginRequest) | [CreateDeviceLoginResponse](#metaxisdata-v1-CreateDeviceLoginResponse) | CreateDeviceLogin starts a device login (RFC 8628 style). The caller gets a polling secret plus a short human-readable code; a signed-in user approves the request from the web confirmation page and the CLI then exchanges the secret for an access token bound to that user. Permissions required: None |
+| GetDeviceLogin | [GetDeviceLoginRequest](#metaxisdata-v1-GetDeviceLoginRequest) | [DeviceLogin](#metaxisdata-v1-DeviceLogin) | GetDeviceLogin returns one pending device login so the confirmation page can show what is being approved. Permissions required: None |
+| ApproveDeviceLogin | [ApproveDeviceLoginRequest](#metaxisdata-v1-ApproveDeviceLoginRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | ApproveDeviceLogin approves or denies a pending device login. The approver becomes the identity the access token is issued for. Permissions required: None |
+| ExchangeDeviceLogin | [ExchangeDeviceLoginRequest](#metaxisdata-v1-ExchangeDeviceLoginRequest) | [ExchangeDeviceLoginResponse](#metaxisdata-v1-ExchangeDeviceLoginResponse) | ExchangeDeviceLogin polls a device login. An approved request is consumed and answered with the token; every other state is reported as-is. Permissions required: None |
 
  
 
@@ -1425,6 +1587,7 @@ This field is populated when syncing from the database. When empty (e.g., when p
 | labels | [Database.LabelsEntry](#metaxisdata-v1-Database-LabelsEntry) | repeated | Labels will be used for deployment and policy control. |
 | instance_resource | [InstanceResource](#metaxisdata-v1-InstanceResource) |  | The instance resource. |
 | drifted | [bool](#bool) |  | The schema is drifted from the source of truth. |
+| guid | [string](#string) |  | The globally unique metadata GUID of the database, e.g. &#34;instance_1;db2&#34;. It can be used directly as an analysis scope for AnalyzeSQL. |
 
 
 
@@ -2568,6 +2731,7 @@ serialized as an empty StoredMetadata.
 | sequence_metadata | [SequenceMetadata](#metaxisdata-v1-SequenceMetadata) |  |  |
 | manual_sql_metadata | [ManualSQLMetadata](#metaxisdata-v1-ManualSQLMetadata) |  |  |
 | column_metadata | [ColumnMetadata](#metaxisdata-v1-ColumnMetadata) |  |  |
+| guid | [string](#string) |  | The globally unique metadata GUID of this object, e.g. &#34;instance_1;db2;schema3;table4&#34;. It is what ListMetadata results are addressed by in GetMetadata, GetSchemaString and the lineage methods. |
 
 
 
@@ -3427,6 +3591,98 @@ by metaxisdata.iam.getPolicy / metaxisdata.iam.setPolicy.
 
 
 
+<a name="metaxisdata-v1-AnalysisScope"></a>
+
+### AnalysisScope
+AnalysisScope is one resolution context for a SQL statement: a named database
+(MySQL family) or schema (PostgreSQL-like). `name` is an opaque
+caller-supplied label that is echoed back so results can be attributed; the
+server attaches no meaning to it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| guid | [string](#string) |  | The metadata GUID of the database or schema the statement is resolved against, e.g. &#34;instance_1;db2&#34; or &#34;instance_1;db2;public&#34;. It only supplies the default instance/database/schema for unqualified names; the existence of the database or schema is not validated. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-AnalyzeSQLRelation"></a>
+
+### AnalyzeSQLRelation
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| source_guid | [string](#string) |  | The table-level GUID of the source column, with instance/database/schema filled in from the scope. It is reported even when the object is not in the metadata registry. |
+| source_column | [string](#string) |  |  |
+| source_type | [MetaType](#metaxisdata-v1-MetaType) |  | TABLE/VIEW/... when the object is found in the metadata registry. |
+| target_guid | [string](#string) |  | Empty when the target is a synthetic object that only exists inside the statement (the result of a bare SELECT, a CTE, a subquery). In that case target_column is the output alias of the query and is_temp is true. |
+| target_column | [string](#string) |  |  |
+| target_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| relation_type | [RelationType](#metaxisdata-v1-RelationType) |  |  |
+| transformations | [Transformation](#metaxisdata-v1-Transformation) | repeated |  |
+| is_temp | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-AnalyzeSQLRequest"></a>
+
+### AnalyzeSQLRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| scopes | [AnalysisScope](#metaxisdata-v1-AnalysisScope) | repeated | The scopes to resolve the statement against, at most 10. The statement is analyzed once per scope, independently: the scopes may live on different instances and even different engines, and their results are not merged. Selecting several scopes does not discover cross-scope relations that are absent from the metadata. |
+| sql_text | [string](#string) |  | The SQL statement to analyze. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-AnalyzeSQLResponse"></a>
+
+### AnalyzeSQLResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| results | [AnalyzeSQLResult](#metaxisdata-v1-AnalyzeSQLResult) | repeated | One result per requested scope, in the same order. |
+| warnings | [string](#string) | repeated | Warnings that apply to the request as a whole. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-AnalyzeSQLResult"></a>
+
+### AnalyzeSQLResult
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| scope_name | [string](#string) |  | The scope name from the request, echoed back. |
+| scope_guid | [string](#string) |  |  |
+| relations | [AnalyzeSQLRelation](#metaxisdata-v1-AnalyzeSQLRelation) | repeated |  |
+| warnings | [string](#string) | repeated | Warnings that only affect this scope, such as an engine without a lineage analyzer. They never fail the whole request. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ExternalDatasetInfo"></a>
 
 ### ExternalDatasetInfo
@@ -3481,6 +3737,44 @@ When paginating, all other parameters provided to `GetLineageForContext` must ma
 
 
 
+<a name="metaxisdata-v1-GetLineageGraphRequest"></a>
+
+### GetLineageGraphRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  | The global unique id for metadata table: &#34;instance_1;db2;schema3;table4&#34; |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| lineage_type | [LineageType](#metaxisdata-v1-LineageType) |  | Which direction to walk: SOURCE looks upstream only, TARGET downstream only, and leaving it unset walks both. |
+| depth | [int32](#int32) |  | How many hops to expand, 1 to 10. Defaults to 3. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetLineageGraphResponse"></a>
+
+### GetLineageGraphResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| root_guid | [string](#string) |  |  |
+| nodes | [LineageNode](#metaxisdata-v1-LineageNode) | repeated | The table-, view- and dataset-level objects in the graph. |
+| edges | [LineageRelation](#metaxisdata-v1-LineageRelation) | repeated | The column-level edges between those objects. |
+| external_datasets | [ExternalDatasetInfo](#metaxisdata-v1-ExternalDatasetInfo) | repeated | Metadata for external datasets referenced in the edges. |
+| depth_reached | [int32](#int32) |  | The number of hops actually expanded. |
+| truncated | [bool](#bool) |  | Whether a node, edge or time budget stopped the expansion early. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetLineageRequest"></a>
 
 ### GetLineageRequest
@@ -3514,6 +3808,30 @@ When paginating, all other parameters provided to `GetLineage` must match the ca
 | relations_target | [LineageRelation](#metaxisdata-v1-LineageRelation) | repeated |  |
 | external_datasets | [ExternalDatasetInfo](#metaxisdata-v1-ExternalDatasetInfo) | repeated | Metadata for external datasets referenced in the lineage relations. |
 | next_page_token | [string](#string) |  | A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-LineageNode"></a>
+
+### LineageNode
+LineageNode is one object in the multi-level graph. Only column-level edges
+are stored, so the table-level relations are the collapse of those edges: an
+object whose definition yields no column-level relation at all (for example a
+bare `SELECT count(*)`, or an object that was never synced) does not appear.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  |  |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| name | [string](#string) |  | The object name; the dataset name for an external dataset. |
+| database | [string](#string) |  |  |
+| schema | [string](#string) |  |  |
+| instance_id | [string](#string) |  |  |
+| distance | [int32](#int32) |  | Hops from the root: negative upstream, positive downstream. |
 
 
 
@@ -3611,6 +3929,8 @@ column, derived from the view&#39;s SQL.
 | ----------- | ------------ | ------------- | ------------|
 | GetLineage | [GetLineageRequest](#metaxisdata-v1-GetLineageRequest) | [GetLineageResponse](#metaxisdata-v1-GetLineageResponse) | GetLineage returns the lineage relations for the given metadata. The lineage relations can be either source lineage or target lineage, depending on the lineage_type specified in the request. If lineage_type is not specified, both source and target lineage will be returned. |
 | GetLineageForContext | [GetLineageForContextRequest](#metaxisdata-v1-GetLineageForContextRequest) | [GetLineageForContextResponse](#metaxisdata-v1-GetLineageForContextResponse) | GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure). |
+| AnalyzeSQL | [AnalyzeSQLRequest](#metaxisdata-v1-AnalyzeSQLRequest) | [AnalyzeSQLResponse](#metaxisdata-v1-AnalyzeSQLResponse) | AnalyzeSQL parses an arbitrary SQL statement and returns its column-level relations, resolved against one or more analysis scopes. The analysis is stateless: nothing is persisted and no lineage runner is triggered, so the result describes this statement only and is not part of the stored graph. |
+| GetLineageGraph | [GetLineageGraphRequest](#metaxisdata-v1-GetLineageGraphRequest) | [GetLineageGraphResponse](#metaxisdata-v1-GetLineageGraphResponse) | GetLineageGraph returns the multi-level lineage graph around one metadata object in a single call, instead of expanding it one hop at a time with GetLineage. |
 
  
 

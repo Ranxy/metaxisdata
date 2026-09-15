@@ -522,7 +522,10 @@ type Database struct {
 	// The instance resource.
 	InstanceResource *InstanceResource `protobuf:"bytes,10,opt,name=instance_resource,json=instanceResource,proto3" json:"instance_resource,omitempty"`
 	// The schema is drifted from the source of truth.
-	Drifted       bool `protobuf:"varint,12,opt,name=drifted,proto3" json:"drifted,omitempty"`
+	Drifted bool `protobuf:"varint,12,opt,name=drifted,proto3" json:"drifted,omitempty"`
+	// The globally unique metadata GUID of the database, e.g. "instance_1;db2".
+	// It can be used directly as an analysis scope for AnalyzeSQL.
+	Guid          string `protobuf:"bytes,11,opt,name=guid,proto3" json:"guid,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -618,6 +621,13 @@ func (x *Database) GetDrifted() bool {
 		return x.Drifted
 	}
 	return false
+}
+
+func (x *Database) GetGuid() string {
+	if x != nil {
+		return x.Guid
+	}
+	return ""
 }
 
 type ListDatabasesRequest struct {
@@ -2997,7 +3007,11 @@ type StoredMetadata struct {
 	//	*StoredMetadata_SequenceMetadata
 	//	*StoredMetadata_ManualSqlMetadata
 	//	*StoredMetadata_ColumnMetadata
-	Type          isStoredMetadata_Type `protobuf_oneof:"type"`
+	Type isStoredMetadata_Type `protobuf_oneof:"type"`
+	// The globally unique metadata GUID of this object, e.g.
+	// "instance_1;db2;schema3;table4". It is what ListMetadata results are
+	// addressed by in GetMetadata, GetSchemaString and the lineage methods.
+	Guid          string `protobuf:"bytes,17,opt,name=guid,proto3" json:"guid,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3136,6 +3150,13 @@ func (x *StoredMetadata) GetColumnMetadata() *ColumnMetadata {
 		}
 	}
 	return nil
+}
+
+func (x *StoredMetadata) GetGuid() string {
+	if x != nil {
+		return x.Guid
+	}
+	return ""
 }
 
 type isStoredMetadata_Type interface {
@@ -6477,7 +6498,7 @@ const file_v1_database_service_proto_rawDesc = "" +
 	"\x13SyncDatabaseRequest\x120\n" +
 	"\x04name\x18\x01 \x01(\tB\x1c\xe0A\x02\xfaA\x16\n" +
 	"\x14metaxisdata/DatabaseR\x04name\"\x16\n" +
-	"\x14SyncDatabaseResponse\"\xf7\x04\n" +
+	"\x14SyncDatabaseResponse\"\x90\x05\n" +
 	"\bDatabase\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x120\n" +
 	"\x05state\x18\x03 \x01(\x0e2\x15.metaxisdata.v1.StateB\x03\xe0A\x03R\x05state\x12Q\n" +
@@ -6488,7 +6509,8 @@ const file_v1_database_service_proto_rawDesc = "" +
 	"\x06labels\x18\t \x03(\v2$.metaxisdata.v1.Database.LabelsEntryR\x06labels\x12R\n" +
 	"\x11instance_resource\x18\n" +
 	" \x01(\v2 .metaxisdata.v1.InstanceResourceB\x03\xe0A\x03R\x10instanceResource\x12\x1d\n" +
-	"\adrifted\x18\f \x01(\bB\x03\xe0A\x03R\adrifted\x1a9\n" +
+	"\adrifted\x18\f \x01(\bB\x03\xe0A\x03R\adrifted\x12\x17\n" +
+	"\x04guid\x18\v \x01(\tB\x03\xe0A\x03R\x04guid\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01:D\xeaAA\n" +
@@ -6698,7 +6720,7 @@ const file_v1_database_service_proto_rawDesc = "" +
 	" \x01(\tR\fdatabaseName\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf9\a\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x92\b\n" +
 	"\x0eStoredMetadata\x12b\n" +
 	"\x18database_schema_metadata\x18\x01 \x01(\v2&.metaxisdata.v1.DatabaseSchemaMetadataH\x00R\x16databaseSchemaMetadata\x12I\n" +
 	"\x0fschema_metadata\x18\x02 \x01(\v2\x1e.metaxisdata.v1.SchemaMetadataH\x00R\x0eschemaMetadata\x12F\n" +
@@ -6711,7 +6733,8 @@ const file_v1_database_service_proto_rawDesc = "" +
 	"\x11sequence_metadata\x18\n" +
 	" \x01(\v2 .metaxisdata.v1.SequenceMetadataH\x00R\x10sequenceMetadata\x12S\n" +
 	"\x13manual_sql_metadata\x18\x0f \x01(\v2!.metaxisdata.v1.ManualSQLMetadataH\x00R\x11manualSqlMetadata\x12I\n" +
-	"\x0fcolumn_metadata\x18\x10 \x01(\v2\x1e.metaxisdata.v1.ColumnMetadataH\x00R\x0ecolumnMetadataB\x06\n" +
+	"\x0fcolumn_metadata\x18\x10 \x01(\v2\x1e.metaxisdata.v1.ColumnMetadataH\x00R\x0ecolumnMetadata\x12\x17\n" +
+	"\x04guid\x18\x11 \x01(\tB\x03\xe0A\x03R\x04guidB\x06\n" +
 	"\x04typeJ\x04\b\t\x10\n" +
 	"J\x04\b\v\x10\fJ\x04\b\f\x10\rR\x10package_metadataR\x0fstream_metadataR\rtask_metadata\"\xba\x03\n" +
 	"\x16DatabaseSchemaMetadata\x12\x12\n" +

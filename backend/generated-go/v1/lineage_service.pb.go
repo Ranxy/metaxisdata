@@ -742,6 +742,624 @@ func (x *GetLineageForContextResponse) GetNextPageToken() string {
 	return ""
 }
 
+// AnalysisScope is one resolution context for a SQL statement: a named database
+// (MySQL family) or schema (PostgreSQL-like). `name` is an opaque
+// caller-supplied label that is echoed back so results can be attributed; the
+// server attaches no meaning to it.
+type AnalysisScope struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The metadata GUID of the database or schema the statement is resolved
+	// against, e.g. "instance_1;db2" or "instance_1;db2;public". It only supplies
+	// the default instance/database/schema for unqualified names; the existence
+	// of the database or schema is not validated.
+	Guid          string `protobuf:"bytes,2,opt,name=guid,proto3" json:"guid,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AnalysisScope) Reset() {
+	*x = AnalysisScope{}
+	mi := &file_v1_lineage_service_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnalysisScope) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnalysisScope) ProtoMessage() {}
+
+func (x *AnalysisScope) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_lineage_service_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnalysisScope.ProtoReflect.Descriptor instead.
+func (*AnalysisScope) Descriptor() ([]byte, []int) {
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *AnalysisScope) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AnalysisScope) GetGuid() string {
+	if x != nil {
+		return x.Guid
+	}
+	return ""
+}
+
+type AnalyzeSQLRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The scopes to resolve the statement against, at most 10. The statement is
+	// analyzed once per scope, independently: the scopes may live on different
+	// instances and even different engines, and their results are not merged.
+	// Selecting several scopes does not discover cross-scope relations that are
+	// absent from the metadata.
+	Scopes []*AnalysisScope `protobuf:"bytes,1,rep,name=scopes,proto3" json:"scopes,omitempty"`
+	// The SQL statement to analyze.
+	SqlText       string `protobuf:"bytes,2,opt,name=sql_text,json=sqlText,proto3" json:"sql_text,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AnalyzeSQLRequest) Reset() {
+	*x = AnalyzeSQLRequest{}
+	mi := &file_v1_lineage_service_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnalyzeSQLRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnalyzeSQLRequest) ProtoMessage() {}
+
+func (x *AnalyzeSQLRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_lineage_service_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnalyzeSQLRequest.ProtoReflect.Descriptor instead.
+func (*AnalyzeSQLRequest) Descriptor() ([]byte, []int) {
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *AnalyzeSQLRequest) GetScopes() []*AnalysisScope {
+	if x != nil {
+		return x.Scopes
+	}
+	return nil
+}
+
+func (x *AnalyzeSQLRequest) GetSqlText() string {
+	if x != nil {
+		return x.SqlText
+	}
+	return ""
+}
+
+type AnalyzeSQLResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// One result per requested scope, in the same order.
+	Results []*AnalyzeSQLResult `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
+	// Warnings that apply to the request as a whole.
+	Warnings      []string `protobuf:"bytes,2,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AnalyzeSQLResponse) Reset() {
+	*x = AnalyzeSQLResponse{}
+	mi := &file_v1_lineage_service_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnalyzeSQLResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnalyzeSQLResponse) ProtoMessage() {}
+
+func (x *AnalyzeSQLResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_lineage_service_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnalyzeSQLResponse.ProtoReflect.Descriptor instead.
+func (*AnalyzeSQLResponse) Descriptor() ([]byte, []int) {
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *AnalyzeSQLResponse) GetResults() []*AnalyzeSQLResult {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
+func (x *AnalyzeSQLResponse) GetWarnings() []string {
+	if x != nil {
+		return x.Warnings
+	}
+	return nil
+}
+
+type AnalyzeSQLResult struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The scope name from the request, echoed back.
+	ScopeName string                `protobuf:"bytes,1,opt,name=scope_name,json=scopeName,proto3" json:"scope_name,omitempty"`
+	ScopeGuid string                `protobuf:"bytes,2,opt,name=scope_guid,json=scopeGuid,proto3" json:"scope_guid,omitempty"`
+	Relations []*AnalyzeSQLRelation `protobuf:"bytes,3,rep,name=relations,proto3" json:"relations,omitempty"`
+	// Warnings that only affect this scope, such as an engine without a lineage
+	// analyzer. They never fail the whole request.
+	Warnings      []string `protobuf:"bytes,4,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AnalyzeSQLResult) Reset() {
+	*x = AnalyzeSQLResult{}
+	mi := &file_v1_lineage_service_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnalyzeSQLResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnalyzeSQLResult) ProtoMessage() {}
+
+func (x *AnalyzeSQLResult) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_lineage_service_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnalyzeSQLResult.ProtoReflect.Descriptor instead.
+func (*AnalyzeSQLResult) Descriptor() ([]byte, []int) {
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *AnalyzeSQLResult) GetScopeName() string {
+	if x != nil {
+		return x.ScopeName
+	}
+	return ""
+}
+
+func (x *AnalyzeSQLResult) GetScopeGuid() string {
+	if x != nil {
+		return x.ScopeGuid
+	}
+	return ""
+}
+
+func (x *AnalyzeSQLResult) GetRelations() []*AnalyzeSQLRelation {
+	if x != nil {
+		return x.Relations
+	}
+	return nil
+}
+
+func (x *AnalyzeSQLResult) GetWarnings() []string {
+	if x != nil {
+		return x.Warnings
+	}
+	return nil
+}
+
+type AnalyzeSQLRelation struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The table-level GUID of the source column, with instance/database/schema
+	// filled in from the scope. It is reported even when the object is not in the
+	// metadata registry.
+	SourceGuid   string `protobuf:"bytes,1,opt,name=source_guid,json=sourceGuid,proto3" json:"source_guid,omitempty"`
+	SourceColumn string `protobuf:"bytes,2,opt,name=source_column,json=sourceColumn,proto3" json:"source_column,omitempty"`
+	// TABLE/VIEW/... when the object is found in the metadata registry.
+	SourceType MetaType `protobuf:"varint,3,opt,name=source_type,json=sourceType,proto3,enum=metaxisdata.v1.MetaType" json:"source_type,omitempty"`
+	// Empty when the target is a synthetic object that only exists inside the
+	// statement (the result of a bare SELECT, a CTE, a subquery). In that case
+	// target_column is the output alias of the query and is_temp is true.
+	TargetGuid      string            `protobuf:"bytes,4,opt,name=target_guid,json=targetGuid,proto3" json:"target_guid,omitempty"`
+	TargetColumn    string            `protobuf:"bytes,5,opt,name=target_column,json=targetColumn,proto3" json:"target_column,omitempty"`
+	TargetType      MetaType          `protobuf:"varint,6,opt,name=target_type,json=targetType,proto3,enum=metaxisdata.v1.MetaType" json:"target_type,omitempty"`
+	RelationType    RelationType      `protobuf:"varint,7,opt,name=relation_type,json=relationType,proto3,enum=metaxisdata.v1.RelationType" json:"relation_type,omitempty"`
+	Transformations []*Transformation `protobuf:"bytes,8,rep,name=transformations,proto3" json:"transformations,omitempty"`
+	IsTemp          bool              `protobuf:"varint,9,opt,name=is_temp,json=isTemp,proto3" json:"is_temp,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *AnalyzeSQLRelation) Reset() {
+	*x = AnalyzeSQLRelation{}
+	mi := &file_v1_lineage_service_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnalyzeSQLRelation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnalyzeSQLRelation) ProtoMessage() {}
+
+func (x *AnalyzeSQLRelation) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_lineage_service_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnalyzeSQLRelation.ProtoReflect.Descriptor instead.
+func (*AnalyzeSQLRelation) Descriptor() ([]byte, []int) {
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *AnalyzeSQLRelation) GetSourceGuid() string {
+	if x != nil {
+		return x.SourceGuid
+	}
+	return ""
+}
+
+func (x *AnalyzeSQLRelation) GetSourceColumn() string {
+	if x != nil {
+		return x.SourceColumn
+	}
+	return ""
+}
+
+func (x *AnalyzeSQLRelation) GetSourceType() MetaType {
+	if x != nil {
+		return x.SourceType
+	}
+	return MetaType_UNSPECIFIED
+}
+
+func (x *AnalyzeSQLRelation) GetTargetGuid() string {
+	if x != nil {
+		return x.TargetGuid
+	}
+	return ""
+}
+
+func (x *AnalyzeSQLRelation) GetTargetColumn() string {
+	if x != nil {
+		return x.TargetColumn
+	}
+	return ""
+}
+
+func (x *AnalyzeSQLRelation) GetTargetType() MetaType {
+	if x != nil {
+		return x.TargetType
+	}
+	return MetaType_UNSPECIFIED
+}
+
+func (x *AnalyzeSQLRelation) GetRelationType() RelationType {
+	if x != nil {
+		return x.RelationType
+	}
+	return RelationType_RELATION_TYPE_UNSPECIFIED
+}
+
+func (x *AnalyzeSQLRelation) GetTransformations() []*Transformation {
+	if x != nil {
+		return x.Transformations
+	}
+	return nil
+}
+
+func (x *AnalyzeSQLRelation) GetIsTemp() bool {
+	if x != nil {
+		return x.IsTemp
+	}
+	return false
+}
+
+type GetLineageGraphRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The global unique id for metadata
+	// table: "instance_1;db2;schema3;table4"
+	Guid     string   `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
+	MetaType MetaType `protobuf:"varint,2,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.v1.MetaType" json:"meta_type,omitempty"`
+	// Which direction to walk: SOURCE looks upstream only, TARGET downstream
+	// only, and leaving it unset walks both.
+	LineageType LineageType `protobuf:"varint,3,opt,name=lineage_type,json=lineageType,proto3,enum=metaxisdata.v1.LineageType" json:"lineage_type,omitempty"`
+	// How many hops to expand, 1 to 10. Defaults to 3.
+	Depth         int32 `protobuf:"varint,4,opt,name=depth,proto3" json:"depth,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetLineageGraphRequest) Reset() {
+	*x = GetLineageGraphRequest{}
+	mi := &file_v1_lineage_service_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetLineageGraphRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetLineageGraphRequest) ProtoMessage() {}
+
+func (x *GetLineageGraphRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_lineage_service_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetLineageGraphRequest.ProtoReflect.Descriptor instead.
+func (*GetLineageGraphRequest) Descriptor() ([]byte, []int) {
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *GetLineageGraphRequest) GetGuid() string {
+	if x != nil {
+		return x.Guid
+	}
+	return ""
+}
+
+func (x *GetLineageGraphRequest) GetMetaType() MetaType {
+	if x != nil {
+		return x.MetaType
+	}
+	return MetaType_UNSPECIFIED
+}
+
+func (x *GetLineageGraphRequest) GetLineageType() LineageType {
+	if x != nil {
+		return x.LineageType
+	}
+	return LineageType_LINEAGE_TYPE_UNSPECIFIED
+}
+
+func (x *GetLineageGraphRequest) GetDepth() int32 {
+	if x != nil {
+		return x.Depth
+	}
+	return 0
+}
+
+type GetLineageGraphResponse struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	RootGuid string                 `protobuf:"bytes,1,opt,name=root_guid,json=rootGuid,proto3" json:"root_guid,omitempty"`
+	// The table-, view- and dataset-level objects in the graph.
+	Nodes []*LineageNode `protobuf:"bytes,2,rep,name=nodes,proto3" json:"nodes,omitempty"`
+	// The column-level edges between those objects.
+	Edges []*LineageRelation `protobuf:"bytes,3,rep,name=edges,proto3" json:"edges,omitempty"`
+	// Metadata for external datasets referenced in the edges.
+	ExternalDatasets []*ExternalDatasetInfo `protobuf:"bytes,4,rep,name=external_datasets,json=externalDatasets,proto3" json:"external_datasets,omitempty"`
+	// The number of hops actually expanded.
+	DepthReached int32 `protobuf:"varint,5,opt,name=depth_reached,json=depthReached,proto3" json:"depth_reached,omitempty"`
+	// Whether a node, edge or time budget stopped the expansion early.
+	Truncated     bool `protobuf:"varint,6,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetLineageGraphResponse) Reset() {
+	*x = GetLineageGraphResponse{}
+	mi := &file_v1_lineage_service_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetLineageGraphResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetLineageGraphResponse) ProtoMessage() {}
+
+func (x *GetLineageGraphResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_lineage_service_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetLineageGraphResponse.ProtoReflect.Descriptor instead.
+func (*GetLineageGraphResponse) Descriptor() ([]byte, []int) {
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *GetLineageGraphResponse) GetRootGuid() string {
+	if x != nil {
+		return x.RootGuid
+	}
+	return ""
+}
+
+func (x *GetLineageGraphResponse) GetNodes() []*LineageNode {
+	if x != nil {
+		return x.Nodes
+	}
+	return nil
+}
+
+func (x *GetLineageGraphResponse) GetEdges() []*LineageRelation {
+	if x != nil {
+		return x.Edges
+	}
+	return nil
+}
+
+func (x *GetLineageGraphResponse) GetExternalDatasets() []*ExternalDatasetInfo {
+	if x != nil {
+		return x.ExternalDatasets
+	}
+	return nil
+}
+
+func (x *GetLineageGraphResponse) GetDepthReached() int32 {
+	if x != nil {
+		return x.DepthReached
+	}
+	return 0
+}
+
+func (x *GetLineageGraphResponse) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+// LineageNode is one object in the multi-level graph. Only column-level edges
+// are stored, so the table-level relations are the collapse of those edges: an
+// object whose definition yields no column-level relation at all (for example a
+// bare `SELECT count(*)`, or an object that was never synced) does not appear.
+type LineageNode struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Guid     string                 `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
+	MetaType MetaType               `protobuf:"varint,2,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.v1.MetaType" json:"meta_type,omitempty"`
+	// The object name; the dataset name for an external dataset.
+	Name       string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	Database   string `protobuf:"bytes,4,opt,name=database,proto3" json:"database,omitempty"`
+	Schema     string `protobuf:"bytes,5,opt,name=schema,proto3" json:"schema,omitempty"`
+	InstanceId string `protobuf:"bytes,6,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
+	// Hops from the root: negative upstream, positive downstream.
+	Distance      int32 `protobuf:"varint,7,opt,name=distance,proto3" json:"distance,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LineageNode) Reset() {
+	*x = LineageNode{}
+	mi := &file_v1_lineage_service_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LineageNode) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LineageNode) ProtoMessage() {}
+
+func (x *LineageNode) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_lineage_service_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LineageNode.ProtoReflect.Descriptor instead.
+func (*LineageNode) Descriptor() ([]byte, []int) {
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *LineageNode) GetGuid() string {
+	if x != nil {
+		return x.Guid
+	}
+	return ""
+}
+
+func (x *LineageNode) GetMetaType() MetaType {
+	if x != nil {
+		return x.MetaType
+	}
+	return MetaType_UNSPECIFIED
+}
+
+func (x *LineageNode) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *LineageNode) GetDatabase() string {
+	if x != nil {
+		return x.Database
+	}
+	return ""
+}
+
+func (x *LineageNode) GetSchema() string {
+	if x != nil {
+		return x.Schema
+	}
+	return ""
+}
+
+func (x *LineageNode) GetInstanceId() string {
+	if x != nil {
+		return x.InstanceId
+	}
+	return ""
+}
+
+func (x *LineageNode) GetDistance() int32 {
+	if x != nil {
+		return x.Distance
+	}
+	return 0
+}
+
 var File_v1_lineage_service_proto protoreflect.FileDescriptor
 
 const file_v1_lineage_service_proto_rawDesc = "" +
@@ -804,7 +1422,58 @@ const file_v1_lineage_service_proto_rawDesc = "" +
 	"page_token\x18\x04 \x01(\tR\tpageToken\"\x85\x01\n" +
 	"\x1cGetLineageForContextResponse\x12=\n" +
 	"\trelations\x18\x01 \x03(\v2\x1f.metaxisdata.v1.LineageRelationR\trelations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken*C\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"<\n" +
+	"\rAnalysisScope\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x17\n" +
+	"\x04guid\x18\x02 \x01(\tB\x03\xe0A\x02R\x04guid\"r\n" +
+	"\x11AnalyzeSQLRequest\x12=\n" +
+	"\x06scopes\x18\x01 \x03(\v2\x1d.metaxisdata.v1.AnalysisScopeB\x06\xe0A\x02\xe0A\aR\x06scopes\x12\x1e\n" +
+	"\bsql_text\x18\x02 \x01(\tB\x03\xe0A\x02R\asqlText\"l\n" +
+	"\x12AnalyzeSQLResponse\x12:\n" +
+	"\aresults\x18\x01 \x03(\v2 .metaxisdata.v1.AnalyzeSQLResultR\aresults\x12\x1a\n" +
+	"\bwarnings\x18\x02 \x03(\tR\bwarnings\"\xae\x01\n" +
+	"\x10AnalyzeSQLResult\x12\x1d\n" +
+	"\n" +
+	"scope_name\x18\x01 \x01(\tR\tscopeName\x12\x1d\n" +
+	"\n" +
+	"scope_guid\x18\x02 \x01(\tR\tscopeGuid\x12@\n" +
+	"\trelations\x18\x03 \x03(\v2\".metaxisdata.v1.AnalyzeSQLRelationR\trelations\x12\x1a\n" +
+	"\bwarnings\x18\x04 \x03(\tR\bwarnings\"\xbc\x03\n" +
+	"\x12AnalyzeSQLRelation\x12\x1f\n" +
+	"\vsource_guid\x18\x01 \x01(\tR\n" +
+	"sourceGuid\x12#\n" +
+	"\rsource_column\x18\x02 \x01(\tR\fsourceColumn\x129\n" +
+	"\vsource_type\x18\x03 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\n" +
+	"sourceType\x12\x1f\n" +
+	"\vtarget_guid\x18\x04 \x01(\tR\n" +
+	"targetGuid\x12#\n" +
+	"\rtarget_column\x18\x05 \x01(\tR\ftargetColumn\x129\n" +
+	"\vtarget_type\x18\x06 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\n" +
+	"targetType\x12A\n" +
+	"\rrelation_type\x18\a \x01(\x0e2\x1c.metaxisdata.v1.RelationTypeR\frelationType\x12H\n" +
+	"\x0ftransformations\x18\b \x03(\v2\x1e.metaxisdata.v1.TransformationR\x0ftransformations\x12\x17\n" +
+	"\ais_temp\x18\t \x01(\bR\x06isTemp\"\xbe\x01\n" +
+	"\x16GetLineageGraphRequest\x12\x17\n" +
+	"\x04guid\x18\x01 \x01(\tB\x03\xe0A\x02R\x04guid\x125\n" +
+	"\tmeta_type\x18\x02 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12>\n" +
+	"\flineage_type\x18\x03 \x01(\x0e2\x1b.metaxisdata.v1.LineageTypeR\vlineageType\x12\x14\n" +
+	"\x05depth\x18\x04 \x01(\x05R\x05depth\"\xb5\x02\n" +
+	"\x17GetLineageGraphResponse\x12\x1b\n" +
+	"\troot_guid\x18\x01 \x01(\tR\brootGuid\x121\n" +
+	"\x05nodes\x18\x02 \x03(\v2\x1b.metaxisdata.v1.LineageNodeR\x05nodes\x125\n" +
+	"\x05edges\x18\x03 \x03(\v2\x1f.metaxisdata.v1.LineageRelationR\x05edges\x12P\n" +
+	"\x11external_datasets\x18\x04 \x03(\v2#.metaxisdata.v1.ExternalDatasetInfoR\x10externalDatasets\x12#\n" +
+	"\rdepth_reached\x18\x05 \x01(\x05R\fdepthReached\x12\x1c\n" +
+	"\ttruncated\x18\x06 \x01(\bR\ttruncated\"\xdd\x01\n" +
+	"\vLineageNode\x12\x12\n" +
+	"\x04guid\x18\x01 \x01(\tR\x04guid\x125\n" +
+	"\tmeta_type\x18\x02 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x1a\n" +
+	"\bdatabase\x18\x04 \x01(\tR\bdatabase\x12\x16\n" +
+	"\x06schema\x18\x05 \x01(\tR\x06schema\x12\x1f\n" +
+	"\vinstance_id\x18\x06 \x01(\tR\n" +
+	"instanceId\x12\x1a\n" +
+	"\bdistance\x18\a \x01(\x05R\bdistance*C\n" +
 	"\vLineageType\x12\x1c\n" +
 	"\x18LINEAGE_TYPE_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +
@@ -815,11 +1484,14 @@ const file_v1_lineage_service_proto_rawDesc = "" +
 	"\x19RELATION_TYPE_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +
 	"\x06DIRECT\x10\x01\x12\f\n" +
-	"\bINDIRECT\x10\x022\xc4\x02\n" +
+	"\bINDIRECT\x10\x022\xf5\x04\n" +
 	"\x0eLineageService\x12\x84\x01\n" +
 	"\n" +
 	"GetLineage\x12!.metaxisdata.v1.GetLineageRequest\x1a\".metaxisdata.v1.GetLineageResponse\"/\x8a\xea0\x17metaxisdata.lineage.get\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/lineages\x12\xaa\x01\n" +
-	"\x14GetLineageForContext\x12+.metaxisdata.v1.GetLineageForContextRequest\x1a,.metaxisdata.v1.GetLineageForContextResponse\"7\x8a\xea0\x17metaxisdata.lineage.get\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/lineages:contextB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\x14GetLineageForContext\x12+.metaxisdata.v1.GetLineageForContextRequest\x1a,.metaxisdata.v1.GetLineageForContextResponse\"7\x8a\xea0\x17metaxisdata.lineage.get\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/lineages:context\x12\x92\x01\n" +
+	"\n" +
+	"AnalyzeSQL\x12!.metaxisdata.v1.AnalyzeSQLRequest\x1a\".metaxisdata.v1.AnalyzeSQLResponse\"=\x8a\xea0\x17metaxisdata.lineage.get\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/lineages:analyzeSql\x12\x99\x01\n" +
+	"\x0fGetLineageGraph\x12&.metaxisdata.v1.GetLineageGraphRequest\x1a'.metaxisdata.v1.GetLineageGraphResponse\"5\x8a\xea0\x17metaxisdata.lineage.get\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/lineages:graphB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_lineage_service_proto_rawDescOnce sync.Once
@@ -834,7 +1506,7 @@ func file_v1_lineage_service_proto_rawDescGZIP() []byte {
 }
 
 var file_v1_lineage_service_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_v1_lineage_service_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_v1_lineage_service_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_v1_lineage_service_proto_goTypes = []any{
 	(LineageType)(0),                     // 0: metaxisdata.v1.LineageType
 	(RelationType)(0),                    // 1: metaxisdata.v1.RelationType
@@ -845,32 +1517,57 @@ var file_v1_lineage_service_proto_goTypes = []any{
 	(*ExternalDatasetInfo)(nil),          // 6: metaxisdata.v1.ExternalDatasetInfo
 	(*GetLineageForContextRequest)(nil),  // 7: metaxisdata.v1.GetLineageForContextRequest
 	(*GetLineageForContextResponse)(nil), // 8: metaxisdata.v1.GetLineageForContextResponse
-	(MetaType)(0),                        // 9: metaxisdata.v1.MetaType
-	(*timestamppb.Timestamp)(nil),        // 10: google.protobuf.Timestamp
+	(*AnalysisScope)(nil),                // 9: metaxisdata.v1.AnalysisScope
+	(*AnalyzeSQLRequest)(nil),            // 10: metaxisdata.v1.AnalyzeSQLRequest
+	(*AnalyzeSQLResponse)(nil),           // 11: metaxisdata.v1.AnalyzeSQLResponse
+	(*AnalyzeSQLResult)(nil),             // 12: metaxisdata.v1.AnalyzeSQLResult
+	(*AnalyzeSQLRelation)(nil),           // 13: metaxisdata.v1.AnalyzeSQLRelation
+	(*GetLineageGraphRequest)(nil),       // 14: metaxisdata.v1.GetLineageGraphRequest
+	(*GetLineageGraphResponse)(nil),      // 15: metaxisdata.v1.GetLineageGraphResponse
+	(*LineageNode)(nil),                  // 16: metaxisdata.v1.LineageNode
+	(MetaType)(0),                        // 17: metaxisdata.v1.MetaType
+	(*timestamppb.Timestamp)(nil),        // 18: google.protobuf.Timestamp
 }
 var file_v1_lineage_service_proto_depIdxs = []int32{
-	9,  // 0: metaxisdata.v1.LineageRelation.meta_type:type_name -> metaxisdata.v1.MetaType
-	9,  // 1: metaxisdata.v1.LineageRelation.source_type:type_name -> metaxisdata.v1.MetaType
-	9,  // 2: metaxisdata.v1.LineageRelation.target_type:type_name -> metaxisdata.v1.MetaType
+	17, // 0: metaxisdata.v1.LineageRelation.meta_type:type_name -> metaxisdata.v1.MetaType
+	17, // 1: metaxisdata.v1.LineageRelation.source_type:type_name -> metaxisdata.v1.MetaType
+	17, // 2: metaxisdata.v1.LineageRelation.target_type:type_name -> metaxisdata.v1.MetaType
 	1,  // 3: metaxisdata.v1.LineageRelation.relation_type:type_name -> metaxisdata.v1.RelationType
 	3,  // 4: metaxisdata.v1.LineageRelation.transformations:type_name -> metaxisdata.v1.Transformation
-	10, // 5: metaxisdata.v1.LineageRelation.updated_at:type_name -> google.protobuf.Timestamp
-	9,  // 6: metaxisdata.v1.GetLineageRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	18, // 5: metaxisdata.v1.LineageRelation.updated_at:type_name -> google.protobuf.Timestamp
+	17, // 6: metaxisdata.v1.GetLineageRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	0,  // 7: metaxisdata.v1.GetLineageRequest.lineage_type:type_name -> metaxisdata.v1.LineageType
 	2,  // 8: metaxisdata.v1.GetLineageResponse.relations_source:type_name -> metaxisdata.v1.LineageRelation
 	2,  // 9: metaxisdata.v1.GetLineageResponse.relations_target:type_name -> metaxisdata.v1.LineageRelation
 	6,  // 10: metaxisdata.v1.GetLineageResponse.external_datasets:type_name -> metaxisdata.v1.ExternalDatasetInfo
-	9,  // 11: metaxisdata.v1.GetLineageForContextRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	17, // 11: metaxisdata.v1.GetLineageForContextRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	2,  // 12: metaxisdata.v1.GetLineageForContextResponse.relations:type_name -> metaxisdata.v1.LineageRelation
-	4,  // 13: metaxisdata.v1.LineageService.GetLineage:input_type -> metaxisdata.v1.GetLineageRequest
-	7,  // 14: metaxisdata.v1.LineageService.GetLineageForContext:input_type -> metaxisdata.v1.GetLineageForContextRequest
-	5,  // 15: metaxisdata.v1.LineageService.GetLineage:output_type -> metaxisdata.v1.GetLineageResponse
-	8,  // 16: metaxisdata.v1.LineageService.GetLineageForContext:output_type -> metaxisdata.v1.GetLineageForContextResponse
-	15, // [15:17] is the sub-list for method output_type
-	13, // [13:15] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	9,  // 13: metaxisdata.v1.AnalyzeSQLRequest.scopes:type_name -> metaxisdata.v1.AnalysisScope
+	12, // 14: metaxisdata.v1.AnalyzeSQLResponse.results:type_name -> metaxisdata.v1.AnalyzeSQLResult
+	13, // 15: metaxisdata.v1.AnalyzeSQLResult.relations:type_name -> metaxisdata.v1.AnalyzeSQLRelation
+	17, // 16: metaxisdata.v1.AnalyzeSQLRelation.source_type:type_name -> metaxisdata.v1.MetaType
+	17, // 17: metaxisdata.v1.AnalyzeSQLRelation.target_type:type_name -> metaxisdata.v1.MetaType
+	1,  // 18: metaxisdata.v1.AnalyzeSQLRelation.relation_type:type_name -> metaxisdata.v1.RelationType
+	3,  // 19: metaxisdata.v1.AnalyzeSQLRelation.transformations:type_name -> metaxisdata.v1.Transformation
+	17, // 20: metaxisdata.v1.GetLineageGraphRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	0,  // 21: metaxisdata.v1.GetLineageGraphRequest.lineage_type:type_name -> metaxisdata.v1.LineageType
+	16, // 22: metaxisdata.v1.GetLineageGraphResponse.nodes:type_name -> metaxisdata.v1.LineageNode
+	2,  // 23: metaxisdata.v1.GetLineageGraphResponse.edges:type_name -> metaxisdata.v1.LineageRelation
+	6,  // 24: metaxisdata.v1.GetLineageGraphResponse.external_datasets:type_name -> metaxisdata.v1.ExternalDatasetInfo
+	17, // 25: metaxisdata.v1.LineageNode.meta_type:type_name -> metaxisdata.v1.MetaType
+	4,  // 26: metaxisdata.v1.LineageService.GetLineage:input_type -> metaxisdata.v1.GetLineageRequest
+	7,  // 27: metaxisdata.v1.LineageService.GetLineageForContext:input_type -> metaxisdata.v1.GetLineageForContextRequest
+	10, // 28: metaxisdata.v1.LineageService.AnalyzeSQL:input_type -> metaxisdata.v1.AnalyzeSQLRequest
+	14, // 29: metaxisdata.v1.LineageService.GetLineageGraph:input_type -> metaxisdata.v1.GetLineageGraphRequest
+	5,  // 30: metaxisdata.v1.LineageService.GetLineage:output_type -> metaxisdata.v1.GetLineageResponse
+	8,  // 31: metaxisdata.v1.LineageService.GetLineageForContext:output_type -> metaxisdata.v1.GetLineageForContextResponse
+	11, // 32: metaxisdata.v1.LineageService.AnalyzeSQL:output_type -> metaxisdata.v1.AnalyzeSQLResponse
+	15, // 33: metaxisdata.v1.LineageService.GetLineageGraph:output_type -> metaxisdata.v1.GetLineageGraphResponse
+	30, // [30:34] is the sub-list for method output_type
+	26, // [26:30] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_v1_lineage_service_proto_init() }
@@ -886,7 +1583,7 @@ func file_v1_lineage_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_lineage_service_proto_rawDesc), len(file_v1_lineage_service_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   7,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -2,9 +2,11 @@
 // @generated from file v1/auth_service.proto (package metaxisdata.v1, syntax proto3)
 /* eslint-disable */
 
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc, serviceDesc, tsEnum } from "@bufbuild/protobuf/codegenv2";
 import { file_google_api_annotations } from "../google/api/annotations_pb";
-import { file_google_protobuf_empty } from "@bufbuild/protobuf/wkt";
+import { file_google_api_field_behavior } from "../google/api/field_behavior_pb";
+import { file_google_api_resource } from "../google/api/resource_pb";
+import { file_google_protobuf_empty, file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
 import { file_v1_annotation } from "./annotation_pb";
 import { file_v1_user_service } from "./user_service_pb";
 
@@ -12,7 +14,7 @@ import { file_v1_user_service } from "./user_service_pb";
  * Describes the file v1/auth_service.proto.
  */
 export const file_v1_auth_service = /*@__PURE__*/
-  fileDesc("ChV2MS9hdXRoX3NlcnZpY2UucHJvdG8SDm1ldGF4aXNkYXRhLnYxIicKFkNyZWF0ZVNTT1N0YXRlUmVzcG9uc2USDQoFc3RhdGUYASABKAkijAEKDExvZ2luUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIQCghwYXNzd29yZBgCIAEoCRILCgN3ZWIYAyABKAgSEAoIaWRwX25hbWUYBCABKAkSPAoLaWRwX2NvbnRleHQYBSABKAsyJy5tZXRheGlzZGF0YS52MS5JZGVudGl0eVByb3ZpZGVyQ29udGV4dCJtChdJZGVudGl0eVByb3ZpZGVyQ29udGV4dBJHCg5vYXV0aDJfY29udGV4dBgBIAEoCzItLm1ldGF4aXNkYXRhLnYxLk9BdXRoMklkZW50aXR5UHJvdmlkZXJDb250ZXh0SABCCQoHY29udGV4dCJTCh1PQXV0aDJJZGVudGl0eVByb3ZpZGVyQ29udGV4dBIMCgRjb2RlGAEgASgJEg0KBXN0YXRlGAIgASgJEhUKDWNvZGVfdmVyaWZpZXIYAyABKAkiYgoNTG9naW5SZXNwb25zZRINCgV0b2tlbhgBIAEoCRIeChZyZXF1aXJlX3Jlc2V0X3Bhc3N3b3JkGAMgASgIEiIKBHVzZXIYBCABKAsyFC5tZXRheGlzZGF0YS52MS5Vc2VyIg8KDUxvZ291dFJlcXVlc3QyzwIKC0F1dGhTZXJ2aWNlEmcKBUxvZ2luEhwubWV0YXhpc2RhdGEudjEuTG9naW5SZXF1ZXN0Gh0ubWV0YXhpc2RhdGEudjEuTG9naW5SZXNwb25zZSIhgOowAZjqMAGC0+STAhM6ASoiDi92MS9hdXRoL2xvZ2luEmMKBkxvZ291dBIdLm1ldGF4aXNkYXRhLnYxLkxvZ291dFJlcXVlc3QaFi5nb29nbGUucHJvdG9idWYuRW1wdHkiIoDqMAGY6jABgtPkkwIUOgEqIg8vdjEvYXV0aC9sb2dvdXQScgoOQ3JlYXRlU1NPU3RhdGUSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaJi5tZXRheGlzZGF0YS52MS5DcmVhdGVTU09TdGF0ZVJlc3BvbnNlIiCA6jABgtPkkwIWOgEqIhEvdjEvYXV0aC9zc29TdGF0ZUI2WjRnaXRodWIuY29tL1Jhbnh5L21ldGF4aXNkYXRhL2JhY2tlbmQvZ2VuZXJhdGVkLWdvL3YxYgZwcm90bzM", [file_google_api_annotations, file_google_protobuf_empty, file_v1_annotation, file_v1_user_service]);
+  fileDesc("ChV2MS9hdXRoX3NlcnZpY2UucHJvdG8SDm1ldGF4aXNkYXRhLnYxIicKFkNyZWF0ZVNTT1N0YXRlUmVzcG9uc2USDQoFc3RhdGUYASABKAkijAEKDExvZ2luUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIQCghwYXNzd29yZBgCIAEoCRILCgN3ZWIYAyABKAgSEAoIaWRwX25hbWUYBCABKAkSPAoLaWRwX2NvbnRleHQYBSABKAsyJy5tZXRheGlzZGF0YS52MS5JZGVudGl0eVByb3ZpZGVyQ29udGV4dCJtChdJZGVudGl0eVByb3ZpZGVyQ29udGV4dBJHCg5vYXV0aDJfY29udGV4dBgBIAEoCzItLm1ldGF4aXNkYXRhLnYxLk9BdXRoMklkZW50aXR5UHJvdmlkZXJDb250ZXh0SABCCQoHY29udGV4dCJTCh1PQXV0aDJJZGVudGl0eVByb3ZpZGVyQ29udGV4dBIMCgRjb2RlGAEgASgJEg0KBXN0YXRlGAIgASgJEhUKDWNvZGVfdmVyaWZpZXIYAyABKAkiYgoNTG9naW5SZXNwb25zZRINCgV0b2tlbhgBIAEoCRIeChZyZXF1aXJlX3Jlc2V0X3Bhc3N3b3JkGAMgASgIEiIKBHVzZXIYBCABKAsyFC5tZXRheGlzZGF0YS52MS5Vc2VyIg8KDUxvZ291dFJlcXVlc3QiRwoYQ3JlYXRlRGV2aWNlTG9naW5SZXF1ZXN0EhMKC2NsaWVudF9uYW1lGAEgASgJEhYKDmNsaWVudF92ZXJzaW9uGAIgASgJIqYBChlDcmVhdGVEZXZpY2VMb2dpblJlc3BvbnNlEhMKC2RldmljZV9jb2RlGAEgASgJEhEKCXVzZXJfY29kZRgCIAEoCRIYChB2ZXJpZmljYXRpb25fdXJpGAMgASgJEiEKGXZlcmlmaWNhdGlvbl91cmlfY29tcGxldGUYBCABKAkSEgoKZXhwaXJlc19pbhgFIAEoBRIQCghpbnRlcnZhbBgGIAEoBSJGChVHZXREZXZpY2VMb2dpblJlcXVlc3QSLQoEbmFtZRgBIAEoCUIf4EEC+kEZChdtZXRheGlzZGF0YS9EZXZpY2VMb2dpbiKEAwoLRGV2aWNlTG9naW4SDAoEbmFtZRgBIAEoCRIvCgVzdGF0ZRgCIAEoDjIgLm1ldGF4aXNkYXRhLnYxLkRldmljZUxvZ2luU3RhdGUSEQoJdXNlcl9jb2RlGAMgASgJEi8KC2NyZWF0ZV90aW1lGAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIvCgtleHBpcmVfdGltZRgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEwoLY2xpZW50X25hbWUYBiABKAkSFgoOY2xpZW50X3ZlcnNpb24YByABKAkSEgoKcmVxdWVzdF9pcBgIIAEoCRIaChJyZXF1ZXN0X3VzZXJfYWdlbnQYCSABKAkSKQoLYXBwcm92ZWRfYnkYCiABKAsyFC5tZXRheGlzZGF0YS52MS5Vc2VyOjnqQTYKF21ldGF4aXNkYXRhL0RldmljZUxvZ2luEhtkZXZpY2VMb2dpbnMve2RldmljZV9sb2dpbn0iWwoZQXBwcm92ZURldmljZUxvZ2luUmVxdWVzdBItCgRuYW1lGAEgASgJQh/gQQL6QRkKF21ldGF4aXNkYXRhL0RldmljZUxvZ2luEg8KB2FwcHJvdmUYAiABKAgiNgoaRXhjaGFuZ2VEZXZpY2VMb2dpblJlcXVlc3QSGAoLZGV2aWNlX2NvZGUYASABKAlCA+BBAiKVAQobRXhjaGFuZ2VEZXZpY2VMb2dpblJlc3BvbnNlEi8KBXN0YXRlGAEgASgOMiAubWV0YXhpc2RhdGEudjEuRGV2aWNlTG9naW5TdGF0ZRINCgV0b2tlbhgCIAEoCRISCgpleHBpcmVzX2luGAMgASgDEiIKBHVzZXIYBCABKAsyFC5tZXRheGlzZGF0YS52MS5Vc2VyKmoKEERldmljZUxvZ2luU3RhdGUSIgoeREVWSUNFX0xPR0lOX1NUQVRFX1VOU1BFQ0lGSUVEEAASCwoHUEVORElORxABEgwKCEFQUFJPVkVEEAISCgoGREVOSUVEEAMSCwoHRVhQSVJFRBAEMokHCgtBdXRoU2VydmljZRJnCgVMb2dpbhIcLm1ldGF4aXNkYXRhLnYxLkxvZ2luUmVxdWVzdBodLm1ldGF4aXNkYXRhLnYxLkxvZ2luUmVzcG9uc2UiIYDqMAGY6jABgtPkkwITOgEqIg4vdjEvYXV0aC9sb2dpbhJjCgZMb2dvdXQSHS5tZXRheGlzZGF0YS52MS5Mb2dvdXRSZXF1ZXN0GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5IiKA6jABmOowAYLT5JMCFDoBKiIPL3YxL2F1dGgvbG9nb3V0EnIKDkNyZWF0ZVNTT1N0YXRlEhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GiYubWV0YXhpc2RhdGEudjEuQ3JlYXRlU1NPU3RhdGVSZXNwb25zZSIggOowAYLT5JMCFjoBKiIRL3YxL2F1dGgvc3NvU3RhdGUSkgEKEUNyZWF0ZURldmljZUxvZ2luEigubWV0YXhpc2RhdGEudjEuQ3JlYXRlRGV2aWNlTG9naW5SZXF1ZXN0GikubWV0YXhpc2RhdGEudjEuQ3JlYXRlRGV2aWNlTG9naW5SZXNwb25zZSIogOowAZjqMAGC0+STAho6ASoiFS92MS9hdXRoL2RldmljZUxvZ2lucxJ3Cg5HZXREZXZpY2VMb2dpbhIlLm1ldGF4aXNkYXRhLnYxLkdldERldmljZUxvZ2luUmVxdWVzdBobLm1ldGF4aXNkYXRhLnYxLkRldmljZUxvZ2luIiGC0+STAhsSGS92MS97bmFtZT1kZXZpY2VMb2dpbnMvKn0SiQEKEkFwcHJvdmVEZXZpY2VMb2dpbhIpLm1ldGF4aXNkYXRhLnYxLkFwcHJvdmVEZXZpY2VMb2dpblJlcXVlc3QaFi5nb29nbGUucHJvdG9idWYuRW1wdHkiMJjqMAGC0+STAiY6ASoiIS92MS97bmFtZT1kZXZpY2VMb2dpbnMvKn06YXBwcm92ZRKdAQoTRXhjaGFuZ2VEZXZpY2VMb2dpbhIqLm1ldGF4aXNkYXRhLnYxLkV4Y2hhbmdlRGV2aWNlTG9naW5SZXF1ZXN0GisubWV0YXhpc2RhdGEudjEuRXhjaGFuZ2VEZXZpY2VMb2dpblJlc3BvbnNlIi2A6jABgtPkkwIjOgEqIh4vdjEvYXV0aC9kZXZpY2VMb2dpbnM6ZXhjaGFuZ2VCNlo0Z2l0aHViLmNvbS9SYW54eS9tZXRheGlzZGF0YS9iYWNrZW5kL2dlbmVyYXRlZC1nby92MWIGcHJvdG8z", [file_google_api_annotations, file_google_api_field_behavior, file_google_api_resource, file_google_protobuf_empty, file_google_protobuf_timestamp, file_v1_annotation, file_v1_user_service]);
 
 /**
  * Describes the message metaxisdata.v1.CreateSSOStateResponse.
@@ -55,6 +57,67 @@ export const LoginResponseSchema = /*@__PURE__*/
  */
 export const LogoutRequestSchema = /*@__PURE__*/
   messageDesc(file_v1_auth_service, 5);
+
+/**
+ * Describes the message metaxisdata.v1.CreateDeviceLoginRequest.
+ * Use `create(CreateDeviceLoginRequestSchema)` to create a new message.
+ */
+export const CreateDeviceLoginRequestSchema = /*@__PURE__*/
+  messageDesc(file_v1_auth_service, 6);
+
+/**
+ * Describes the message metaxisdata.v1.CreateDeviceLoginResponse.
+ * Use `create(CreateDeviceLoginResponseSchema)` to create a new message.
+ */
+export const CreateDeviceLoginResponseSchema = /*@__PURE__*/
+  messageDesc(file_v1_auth_service, 7);
+
+/**
+ * Describes the message metaxisdata.v1.GetDeviceLoginRequest.
+ * Use `create(GetDeviceLoginRequestSchema)` to create a new message.
+ */
+export const GetDeviceLoginRequestSchema = /*@__PURE__*/
+  messageDesc(file_v1_auth_service, 8);
+
+/**
+ * Describes the message metaxisdata.v1.DeviceLogin.
+ * Use `create(DeviceLoginSchema)` to create a new message.
+ */
+export const DeviceLoginSchema = /*@__PURE__*/
+  messageDesc(file_v1_auth_service, 9);
+
+/**
+ * Describes the message metaxisdata.v1.ApproveDeviceLoginRequest.
+ * Use `create(ApproveDeviceLoginRequestSchema)` to create a new message.
+ */
+export const ApproveDeviceLoginRequestSchema = /*@__PURE__*/
+  messageDesc(file_v1_auth_service, 10);
+
+/**
+ * Describes the message metaxisdata.v1.ExchangeDeviceLoginRequest.
+ * Use `create(ExchangeDeviceLoginRequestSchema)` to create a new message.
+ */
+export const ExchangeDeviceLoginRequestSchema = /*@__PURE__*/
+  messageDesc(file_v1_auth_service, 11);
+
+/**
+ * Describes the message metaxisdata.v1.ExchangeDeviceLoginResponse.
+ * Use `create(ExchangeDeviceLoginResponseSchema)` to create a new message.
+ */
+export const ExchangeDeviceLoginResponseSchema = /*@__PURE__*/
+  messageDesc(file_v1_auth_service, 12);
+
+/**
+ * Describes the enum metaxisdata.v1.DeviceLoginState.
+ */
+export const DeviceLoginStateSchema = /*@__PURE__*/
+  enumDesc(file_v1_auth_service, 0);
+
+/**
+ * @generated from enum metaxisdata.v1.DeviceLoginState
+ */
+export const DeviceLoginState = /*@__PURE__*/
+  tsEnum(DeviceLoginStateSchema);
 
 /**
  * @generated from service metaxisdata.v1.AuthService

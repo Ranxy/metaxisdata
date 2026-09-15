@@ -363,6 +363,338 @@ export declare type GetLineageForContextResponse = Message<"metaxisdata.v1.GetLi
 export declare const GetLineageForContextResponseSchema: GenMessage<GetLineageForContextResponse>;
 
 /**
+ * AnalysisScope is one resolution context for a SQL statement: a named database
+ * (MySQL family) or schema (PostgreSQL-like). `name` is an opaque
+ * caller-supplied label that is echoed back so results can be attributed; the
+ * server attaches no meaning to it.
+ *
+ * @generated from message metaxisdata.v1.AnalysisScope
+ */
+export declare type AnalysisScope = Message<"metaxisdata.v1.AnalysisScope"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The metadata GUID of the database or schema the statement is resolved
+   * against, e.g. "instance_1;db2" or "instance_1;db2;public". It only supplies
+   * the default instance/database/schema for unqualified names; the existence
+   * of the database or schema is not validated.
+   *
+   * @generated from field: string guid = 2;
+   */
+  guid: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.AnalysisScope.
+ * Use `create(AnalysisScopeSchema)` to create a new message.
+ */
+export declare const AnalysisScopeSchema: GenMessage<AnalysisScope>;
+
+/**
+ * @generated from message metaxisdata.v1.AnalyzeSQLRequest
+ */
+export declare type AnalyzeSQLRequest = Message<"metaxisdata.v1.AnalyzeSQLRequest"> & {
+  /**
+   * The scopes to resolve the statement against, at most 10. The statement is
+   * analyzed once per scope, independently: the scopes may live on different
+   * instances and even different engines, and their results are not merged.
+   * Selecting several scopes does not discover cross-scope relations that are
+   * absent from the metadata.
+   *
+   * @generated from field: repeated metaxisdata.v1.AnalysisScope scopes = 1;
+   */
+  scopes: AnalysisScope[];
+
+  /**
+   * The SQL statement to analyze.
+   *
+   * @generated from field: string sql_text = 2;
+   */
+  sqlText: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.AnalyzeSQLRequest.
+ * Use `create(AnalyzeSQLRequestSchema)` to create a new message.
+ */
+export declare const AnalyzeSQLRequestSchema: GenMessage<AnalyzeSQLRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.AnalyzeSQLResponse
+ */
+export declare type AnalyzeSQLResponse = Message<"metaxisdata.v1.AnalyzeSQLResponse"> & {
+  /**
+   * One result per requested scope, in the same order.
+   *
+   * @generated from field: repeated metaxisdata.v1.AnalyzeSQLResult results = 1;
+   */
+  results: AnalyzeSQLResult[];
+
+  /**
+   * Warnings that apply to the request as a whole.
+   *
+   * @generated from field: repeated string warnings = 2;
+   */
+  warnings: string[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.AnalyzeSQLResponse.
+ * Use `create(AnalyzeSQLResponseSchema)` to create a new message.
+ */
+export declare const AnalyzeSQLResponseSchema: GenMessage<AnalyzeSQLResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.AnalyzeSQLResult
+ */
+export declare type AnalyzeSQLResult = Message<"metaxisdata.v1.AnalyzeSQLResult"> & {
+  /**
+   * The scope name from the request, echoed back.
+   *
+   * @generated from field: string scope_name = 1;
+   */
+  scopeName: string;
+
+  /**
+   * @generated from field: string scope_guid = 2;
+   */
+  scopeGuid: string;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.AnalyzeSQLRelation relations = 3;
+   */
+  relations: AnalyzeSQLRelation[];
+
+  /**
+   * Warnings that only affect this scope, such as an engine without a lineage
+   * analyzer. They never fail the whole request.
+   *
+   * @generated from field: repeated string warnings = 4;
+   */
+  warnings: string[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.AnalyzeSQLResult.
+ * Use `create(AnalyzeSQLResultSchema)` to create a new message.
+ */
+export declare const AnalyzeSQLResultSchema: GenMessage<AnalyzeSQLResult>;
+
+/**
+ * @generated from message metaxisdata.v1.AnalyzeSQLRelation
+ */
+export declare type AnalyzeSQLRelation = Message<"metaxisdata.v1.AnalyzeSQLRelation"> & {
+  /**
+   * The table-level GUID of the source column, with instance/database/schema
+   * filled in from the scope. It is reported even when the object is not in the
+   * metadata registry.
+   *
+   * @generated from field: string source_guid = 1;
+   */
+  sourceGuid: string;
+
+  /**
+   * @generated from field: string source_column = 2;
+   */
+  sourceColumn: string;
+
+  /**
+   * TABLE/VIEW/... when the object is found in the metadata registry.
+   *
+   * @generated from field: metaxisdata.v1.MetaType source_type = 3;
+   */
+  sourceType: MetaType;
+
+  /**
+   * Empty when the target is a synthetic object that only exists inside the
+   * statement (the result of a bare SELECT, a CTE, a subquery). In that case
+   * target_column is the output alias of the query and is_temp is true.
+   *
+   * @generated from field: string target_guid = 4;
+   */
+  targetGuid: string;
+
+  /**
+   * @generated from field: string target_column = 5;
+   */
+  targetColumn: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType target_type = 6;
+   */
+  targetType: MetaType;
+
+  /**
+   * @generated from field: metaxisdata.v1.RelationType relation_type = 7;
+   */
+  relationType: RelationType;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.Transformation transformations = 8;
+   */
+  transformations: Transformation[];
+
+  /**
+   * @generated from field: bool is_temp = 9;
+   */
+  isTemp: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.AnalyzeSQLRelation.
+ * Use `create(AnalyzeSQLRelationSchema)` to create a new message.
+ */
+export declare const AnalyzeSQLRelationSchema: GenMessage<AnalyzeSQLRelation>;
+
+/**
+ * @generated from message metaxisdata.v1.GetLineageGraphRequest
+ */
+export declare type GetLineageGraphRequest = Message<"metaxisdata.v1.GetLineageGraphRequest"> & {
+  /**
+   * The global unique id for metadata
+   * table: "instance_1;db2;schema3;table4"
+   *
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 2;
+   */
+  metaType: MetaType;
+
+  /**
+   * Which direction to walk: SOURCE looks upstream only, TARGET downstream
+   * only, and leaving it unset walks both.
+   *
+   * @generated from field: metaxisdata.v1.LineageType lineage_type = 3;
+   */
+  lineageType: LineageType;
+
+  /**
+   * How many hops to expand, 1 to 10. Defaults to 3.
+   *
+   * @generated from field: int32 depth = 4;
+   */
+  depth: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetLineageGraphRequest.
+ * Use `create(GetLineageGraphRequestSchema)` to create a new message.
+ */
+export declare const GetLineageGraphRequestSchema: GenMessage<GetLineageGraphRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetLineageGraphResponse
+ */
+export declare type GetLineageGraphResponse = Message<"metaxisdata.v1.GetLineageGraphResponse"> & {
+  /**
+   * @generated from field: string root_guid = 1;
+   */
+  rootGuid: string;
+
+  /**
+   * The table-, view- and dataset-level objects in the graph.
+   *
+   * @generated from field: repeated metaxisdata.v1.LineageNode nodes = 2;
+   */
+  nodes: LineageNode[];
+
+  /**
+   * The column-level edges between those objects.
+   *
+   * @generated from field: repeated metaxisdata.v1.LineageRelation edges = 3;
+   */
+  edges: LineageRelation[];
+
+  /**
+   * Metadata for external datasets referenced in the edges.
+   *
+   * @generated from field: repeated metaxisdata.v1.ExternalDatasetInfo external_datasets = 4;
+   */
+  externalDatasets: ExternalDatasetInfo[];
+
+  /**
+   * The number of hops actually expanded.
+   *
+   * @generated from field: int32 depth_reached = 5;
+   */
+  depthReached: number;
+
+  /**
+   * Whether a node, edge or time budget stopped the expansion early.
+   *
+   * @generated from field: bool truncated = 6;
+   */
+  truncated: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetLineageGraphResponse.
+ * Use `create(GetLineageGraphResponseSchema)` to create a new message.
+ */
+export declare const GetLineageGraphResponseSchema: GenMessage<GetLineageGraphResponse>;
+
+/**
+ * LineageNode is one object in the multi-level graph. Only column-level edges
+ * are stored, so the table-level relations are the collapse of those edges: an
+ * object whose definition yields no column-level relation at all (for example a
+ * bare `SELECT count(*)`, or an object that was never synced) does not appear.
+ *
+ * @generated from message metaxisdata.v1.LineageNode
+ */
+export declare type LineageNode = Message<"metaxisdata.v1.LineageNode"> & {
+  /**
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 2;
+   */
+  metaType: MetaType;
+
+  /**
+   * The object name; the dataset name for an external dataset.
+   *
+   * @generated from field: string name = 3;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string database = 4;
+   */
+  database: string;
+
+  /**
+   * @generated from field: string schema = 5;
+   */
+  schema: string;
+
+  /**
+   * @generated from field: string instance_id = 6;
+   */
+  instanceId: string;
+
+  /**
+   * Hops from the root: negative upstream, positive downstream.
+   *
+   * @generated from field: int32 distance = 7;
+   */
+  distance: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.LineageNode.
+ * Use `create(LineageNodeSchema)` to create a new message.
+ */
+export declare const LineageNodeSchema: GenMessage<LineageNode>;
+
+/**
  * @generated from enum metaxisdata.v1.LineageType
  */
 export enum LineageType {
@@ -442,6 +774,31 @@ export declare const LineageService: GenService<{
     methodKind: "unary";
     input: typeof GetLineageForContextRequestSchema;
     output: typeof GetLineageForContextResponseSchema;
+  },
+  /**
+   * AnalyzeSQL parses an arbitrary SQL statement and returns its column-level
+   * relations, resolved against one or more analysis scopes. The analysis is
+   * stateless: nothing is persisted and no lineage runner is triggered, so the
+   * result describes this statement only and is not part of the stored graph.
+   *
+   * @generated from rpc metaxisdata.v1.LineageService.AnalyzeSQL
+   */
+  analyzeSQL: {
+    methodKind: "unary";
+    input: typeof AnalyzeSQLRequestSchema;
+    output: typeof AnalyzeSQLResponseSchema;
+  },
+  /**
+   * GetLineageGraph returns the multi-level lineage graph around one metadata
+   * object in a single call, instead of expanding it one hop at a time with
+   * GetLineage.
+   *
+   * @generated from rpc metaxisdata.v1.LineageService.GetLineageGraph
+   */
+  getLineageGraph: {
+    methodKind: "unary";
+    input: typeof GetLineageGraphRequestSchema;
+    output: typeof GetLineageGraphResponseSchema;
   },
 }>;
 

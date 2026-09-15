@@ -2,10 +2,10 @@
 // @generated from file v1/auth_service.proto (package metaxisdata.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { User } from "./user_service_pb";
-import type { EmptySchema } from "@bufbuild/protobuf/wkt";
+import type { EmptySchema, Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
  * Describes the file v1/auth_service.proto.
@@ -173,6 +173,290 @@ export declare type LogoutRequest = Message<"metaxisdata.v1.LogoutRequest"> & {
 export declare const LogoutRequestSchema: GenMessage<LogoutRequest>;
 
 /**
+ * @generated from message metaxisdata.v1.CreateDeviceLoginRequest
+ */
+export declare type CreateDeviceLoginRequest = Message<"metaxisdata.v1.CreateDeviceLoginRequest"> & {
+  /**
+   * A human-readable client name for the confirmation page, e.g. "mxd". It is
+   * display only and never trusted.
+   *
+   * @generated from field: string client_name = 1;
+   */
+  clientName: string;
+
+  /**
+   * @generated from field: string client_version = 2;
+   */
+  clientVersion: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateDeviceLoginRequest.
+ * Use `create(CreateDeviceLoginRequestSchema)` to create a new message.
+ */
+export declare const CreateDeviceLoginRequestSchema: GenMessage<CreateDeviceLoginRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.CreateDeviceLoginResponse
+ */
+export declare type CreateDeviceLoginResponse = Message<"metaxisdata.v1.CreateDeviceLoginResponse"> & {
+  /**
+   * The polling secret. Only the client that created the request holds it, and
+   * it never appears in a URL or in an audit record.
+   *
+   * @generated from field: string device_code = 1;
+   */
+  deviceCode: string;
+
+  /**
+   * The human-readable code the user types on the confirmation page, in
+   * Crockford base32 with an "XXXX-XXXX" layout.
+   *
+   * @generated from field: string user_code = 2;
+   */
+  userCode: string;
+
+  /**
+   * The bare confirmation address, `{external_url}/device`. Empty when the
+   * workspace has no external URL configured.
+   *
+   * @generated from field: string verification_uri = 3;
+   */
+  verificationUri: string;
+
+  /**
+   * The confirmation address with the code prefilled. Clients should only use
+   * it when the user explicitly asked to skip typing the code.
+   *
+   * @generated from field: string verification_uri_complete = 4;
+   */
+  verificationUriComplete: string;
+
+  /**
+   * Lifetime of this request in seconds.
+   *
+   * @generated from field: int32 expires_in = 5;
+   */
+  expiresIn: number;
+
+  /**
+   * The minimum polling interval in seconds.
+   *
+   * @generated from field: int32 interval = 6;
+   */
+  interval: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateDeviceLoginResponse.
+ * Use `create(CreateDeviceLoginResponseSchema)` to create a new message.
+ */
+export declare const CreateDeviceLoginResponseSchema: GenMessage<CreateDeviceLoginResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetDeviceLoginRequest
+ */
+export declare type GetDeviceLoginRequest = Message<"metaxisdata.v1.GetDeviceLoginRequest"> & {
+  /**
+   * The name of the device login to read.
+   * Format: deviceLogins/{user_code}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetDeviceLoginRequest.
+ * Use `create(GetDeviceLoginRequestSchema)` to create a new message.
+ */
+export declare const GetDeviceLoginRequestSchema: GenMessage<GetDeviceLoginRequest>;
+
+/**
+ * DeviceLogin is a pending or resolved device authorization request. Its
+ * resource name is derived from the human-readable code so the confirmation
+ * page needs nothing else.
+ *
+ * @generated from message metaxisdata.v1.DeviceLogin
+ */
+export declare type DeviceLogin = Message<"metaxisdata.v1.DeviceLogin"> & {
+  /**
+   * Format: deviceLogins/{user_code}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.DeviceLoginState state = 2;
+   */
+  state: DeviceLoginState;
+
+  /**
+   * @generated from field: string user_code = 3;
+   */
+  userCode: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 4;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp expire_time = 5;
+   */
+  expireTime?: Timestamp;
+
+  /**
+   * @generated from field: string client_name = 6;
+   */
+  clientName: string;
+
+  /**
+   * @generated from field: string client_version = 7;
+   */
+  clientVersion: string;
+
+  /**
+   * The source address the request came from, as the server sees it (it
+   * follows the trusted-proxy rules).
+   *
+   * @generated from field: string request_ip = 8;
+   */
+  requestIp: string;
+
+  /**
+   * @generated from field: string request_user_agent = 9;
+   */
+  requestUserAgent: string;
+
+  /**
+   * The user who approved the request, once it is approved.
+   *
+   * @generated from field: metaxisdata.v1.User approved_by = 10;
+   */
+  approvedBy?: User;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DeviceLogin.
+ * Use `create(DeviceLoginSchema)` to create a new message.
+ */
+export declare const DeviceLoginSchema: GenMessage<DeviceLogin>;
+
+/**
+ * @generated from message metaxisdata.v1.ApproveDeviceLoginRequest
+ */
+export declare type ApproveDeviceLoginRequest = Message<"metaxisdata.v1.ApproveDeviceLoginRequest"> & {
+  /**
+   * Format: deviceLogins/{user_code}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: bool approve = 2;
+   */
+  approve: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ApproveDeviceLoginRequest.
+ * Use `create(ApproveDeviceLoginRequestSchema)` to create a new message.
+ */
+export declare const ApproveDeviceLoginRequestSchema: GenMessage<ApproveDeviceLoginRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ExchangeDeviceLoginRequest
+ */
+export declare type ExchangeDeviceLoginRequest = Message<"metaxisdata.v1.ExchangeDeviceLoginRequest"> & {
+  /**
+   * @generated from field: string device_code = 1;
+   */
+  deviceCode: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ExchangeDeviceLoginRequest.
+ * Use `create(ExchangeDeviceLoginRequestSchema)` to create a new message.
+ */
+export declare const ExchangeDeviceLoginRequestSchema: GenMessage<ExchangeDeviceLoginRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ExchangeDeviceLoginResponse
+ */
+export declare type ExchangeDeviceLoginResponse = Message<"metaxisdata.v1.ExchangeDeviceLoginResponse"> & {
+  /**
+   * @generated from field: metaxisdata.v1.DeviceLoginState state = 1;
+   */
+  state: DeviceLoginState;
+
+  /**
+   * The access token, returned only when the request was approved. The device
+   * login is consumed at the same time, so a second exchange finds nothing.
+   *
+   * @generated from field: string token = 2;
+   */
+  token: string;
+
+  /**
+   * The remaining lifetime of the token in seconds.
+   *
+   * @generated from field: int64 expires_in = 3;
+   */
+  expiresIn: bigint;
+
+  /**
+   * The user who approved the request.
+   *
+   * @generated from field: metaxisdata.v1.User user = 4;
+   */
+  user?: User;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ExchangeDeviceLoginResponse.
+ * Use `create(ExchangeDeviceLoginResponseSchema)` to create a new message.
+ */
+export declare const ExchangeDeviceLoginResponseSchema: GenMessage<ExchangeDeviceLoginResponse>;
+
+/**
+ * @generated from enum metaxisdata.v1.DeviceLoginState
+ */
+export enum DeviceLoginState {
+  /**
+   * @generated from enum value: DEVICE_LOGIN_STATE_UNSPECIFIED = 0;
+   */
+  DEVICE_LOGIN_STATE_UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: PENDING = 1;
+   */
+  PENDING = 1,
+
+  /**
+   * @generated from enum value: APPROVED = 2;
+   */
+  APPROVED = 2,
+
+  /**
+   * @generated from enum value: DENIED = 3;
+   */
+  DENIED = 3,
+
+  /**
+   * @generated from enum value: EXPIRED = 4;
+   */
+  EXPIRED = 4,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.DeviceLoginState.
+ */
+export declare const DeviceLoginStateSchema: GenEnum<DeviceLoginState>;
+
+/**
  * @generated from service metaxisdata.v1.AuthService
  */
 export declare const AuthService: GenService<{
@@ -210,6 +494,56 @@ export declare const AuthService: GenService<{
     methodKind: "unary";
     input: typeof EmptySchema;
     output: typeof CreateSSOStateResponseSchema;
+  },
+  /**
+   * CreateDeviceLogin starts a device login (RFC 8628 style). The caller gets a
+   * polling secret plus a short human-readable code; a signed-in user approves
+   * the request from the web confirmation page and the CLI then exchanges the
+   * secret for an access token bound to that user.
+   * Permissions required: None
+   *
+   * @generated from rpc metaxisdata.v1.AuthService.CreateDeviceLogin
+   */
+  createDeviceLogin: {
+    methodKind: "unary";
+    input: typeof CreateDeviceLoginRequestSchema;
+    output: typeof CreateDeviceLoginResponseSchema;
+  },
+  /**
+   * GetDeviceLogin returns one pending device login so the confirmation page can
+   * show what is being approved.
+   * Permissions required: None
+   *
+   * @generated from rpc metaxisdata.v1.AuthService.GetDeviceLogin
+   */
+  getDeviceLogin: {
+    methodKind: "unary";
+    input: typeof GetDeviceLoginRequestSchema;
+    output: typeof DeviceLoginSchema;
+  },
+  /**
+   * ApproveDeviceLogin approves or denies a pending device login. The approver
+   * becomes the identity the access token is issued for.
+   * Permissions required: None
+   *
+   * @generated from rpc metaxisdata.v1.AuthService.ApproveDeviceLogin
+   */
+  approveDeviceLogin: {
+    methodKind: "unary";
+    input: typeof ApproveDeviceLoginRequestSchema;
+    output: typeof EmptySchema;
+  },
+  /**
+   * ExchangeDeviceLogin polls a device login. An approved request is consumed
+   * and answered with the token; every other state is reported as-is.
+   * Permissions required: None
+   *
+   * @generated from rpc metaxisdata.v1.AuthService.ExchangeDeviceLogin
+   */
+  exchangeDeviceLogin: {
+    methodKind: "unary";
+    input: typeof ExchangeDeviceLoginRequestSchema;
+    output: typeof ExchangeDeviceLoginResponseSchema;
   },
 }>;
 
