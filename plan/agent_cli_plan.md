@@ -134,7 +134,7 @@ scope:  只读进程环境变量 METAXISDATA_SCOPES(不落盘、不缓存),--sco
 | CLI 依赖边界 | `.golangci.yaml` 加 `depguard` 规则:`cli/**` 只允许标准库 + cobra + connect + protobuf + `backend/generated-go/...` | 物理分目录**不等于**依赖隔离:同 module 下 `cli/` 仍可 import `backend/store`,不设闸门必然被拖进服务端内脏(pgx、driver、runner);这条规则把"CLI 只是 API 客户端"变成可强制的约束 |
 | CLI 认证凭据 | 复用现有 JWT(签给确认者本人) | 权限模型不变:CLI 即"用户本人"。不引入 service account / OAuth client 注册等新概念 |
 | Device 会话存储 | 进程内存(`state.State` 新增 store,Lazy TTL) | 与 SSOStateCache 一致;单二进制部署已接受进程内状态。**代价:多副本必须单实例或粘性路由**,见 Further Considerations。备选:数据库表 — 生命周期只有 10 分钟,不值一次 migration,放弃 |
-| 确认链接 | 同时返回 `verification_uri`(裸)与 `verification_uri_complete`;页面默认要求**手动输入** user_code | RFC 8628 的码比对只在"用户在自己终端发起"时成立;预填链接会把 CLI 变成钓鱼工具。`--no-browser` 之外,默认不自动打开也可以接受 |
+| 确认链接 | 同时返回 `verification_uri`(裸)与 `verification_uri_complete`;页面默认要求**手动输入** user_code;server 未配 `external_url` 时**由 CLI 回退到 `<server>/device`** | RFC 8628 的码比对只在"用户在自己终端发起"时成立;预填链接会把 CLI 变成钓鱼工具。回退是必须的:全新/本地部署没有 `external_url`,只回一句"让管理员去配"会让人无路可走 |
 | 码的形式 | `user_code` 40bit、`device_code` 256bit;`DeviceLogin` 的资源名就是 `deviceLogins/{user_code}` | 页面/URL 只出现 user_code,device_code 永不进 URL、永不进审计 |
 | 多层血缘 | 服务端 BFS 新 RPC `GetLineageGraph` | 一次调用返回全图 + 节点元数据,避免 CLI 侧 N+1;将来前端图页也可换用它。备选:CLI 循环调 `GetLineage` — 逻辑复杂、往返多,放弃 |
 | 图遍历实现 | 每节点**走完整分页**(与前端 `api/lineage.ts` 同语义),节点 500 / 边 10000 / 墙钟预算三重上限 | `column_lineage` 无单对象边数不变量,"Limit 大值即可"会拉回无界行 |
@@ -349,7 +349,10 @@ message CreateDeviceLoginRequest {
 message CreateDeviceLoginResponse {
   string device_code = 1;                 // 轮询密钥,256bit,仅 CLI 持有
   string user_code = 2;                   // 人可读,XXXX-XXXX,Crockford base32
-  // 不含 user_code 的裸确认地址,{external_url}/device;未配置 external_url 时为空。
+  // 不含 user_code 的裸确认地址,{external_url}/device。
+  // 未配置 external_url 时留空(而不是给一个错的地址),由客户端回退到它正在
+  // 连接的 server 地址 + /device:server 无法命名一个它不知道的页面,但客户端
+  // 至少知道自己把请求发到了哪里。
   string verification_uri = 3;
   // 带 user_code 的便利地址;仅在用户明确选择 --prefill-url 时使用。
   string verification_uri_complete = 4;

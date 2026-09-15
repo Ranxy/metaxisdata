@@ -3,6 +3,7 @@ package authflow
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -154,4 +155,83 @@ func TestRunBacksOffOnSlowDown(t *testing.T) {
 	_, err := Run(context.Background(), api, func(string, ...any) {}, options)
 	require.ErrorIs(t, err, ErrExpired, "it keeps waiting rather than failing outright")
 	require.Greater(t, api.exchanged, 1)
+}
+
+// A workspace without an external URL returns no address at all. Saying "ask an
+// administrator" and stopping would leave the person with no way to approve the
+// request, so the client substitutes the address it is already talking to.
+func TestRunFallsBackToTheServerAddress(t *testing.T) {
+	t.Parallel()
+
+	api := newFake(v1pb.DeviceLoginState_APPROVED)
+	api.createResponse.VerificationUri = ""
+	api.createResponse.VerificationUriComplete = ""
+
+	var opened string
+	options := noWait()
+	options.ServerURL = "http://localhost:8080/"
+	options.OpenBrowser = func(url string) error {
+		opened = url
+		return nil
+	}
+	var lines []string
+	progress := func(format string, _ ...any) { lines = append(lines, format) }
+
+	_, err := Run(context.Background(), api, progress, options)
+	require.NoError(t, err)
+	require.Equal(t, "http://localhost:8080/device", opened, "the trailing slash is not doubled")
+
+	// With --prefill-url the code is carried by the address we built ourselves.
+	api = newFake(v1pb.DeviceLoginState_APPROVED)
+	api.createResponse.VerificationUri = ""
+	api.createResponse.VerificationUriComplete = ""
+	options.PrefillURL = true
+	options.OpenBrowser = func(url string) error {
+		opened = url
+		return nil
+	}
+	_, err = Run(context.Background(), api, progress, options)
+	require.NoError(t, err)
+	require.Equal(t, "http://localhost:8080/device?user_code=7Q2X-9M4K", opened)
+}
+
+// The server's address wins whenever the workspace has one, even with the
+// fallback available.
+func TestRunPrefersTheServerSuppliedAddress(t *testing.T) {
+	t.Parallel()
+
+	api := newFake(v1pb.DeviceLoginState_APPROVED)
+	var opened string
+	options := noWait()
+	options.ServerURL = "http://localhost:8080"
+	options.OpenBrowser = func(url string) error {
+		opened = url
+		return nil
+	}
+
+	_, err := Run(context.Background(), api, func(string, ...any) {}, options)
+	require.NoError(t, err)
+	require.Equal(t, "https://mx.example.com/device", opened)
+}
+
+// Without an address and without a server there is nothing to print, and the
+// message has to say what is missing rather than fail silently.
+func TestRunWithoutAnyAddressSaysWhatIsMissing(t *testing.T) {
+	t.Parallel()
+
+	api := newFake(v1pb.DeviceLoginState_APPROVED)
+	api.createResponse.VerificationUri = ""
+	api.createResponse.VerificationUriComplete = ""
+	options := noWait()
+	options.OpenBrowser = func(string) error {
+		t.Fatal("nothing should be opened")
+		return nil
+	}
+
+	var lines []string
+	_, err := Run(context.Background(), api, func(format string, _ ...any) {
+		lines = append(lines, format)
+	}, options)
+	require.NoError(t, err)
+	require.Contains(t, strings.Join(lines, "\n"), "No confirmation address is available")
 }

@@ -75,7 +75,11 @@ func runAuthLogin(cmd *cobra.Command, _ []string) error {
 		Timeout:       flags.timeout,
 		PrefillURL:    authLoginFlags.prefillURL,
 		NoBrowser:     authLoginFlags.noBrowser,
-		OpenBrowser:   openBrowser,
+		// The workspace may have no external URL, in which case the server
+		// cannot name the page and the address we are already talking to is the
+		// only sensible one to print.
+		ServerURL:   server,
+		OpenBrowser: openBrowser,
 	})
 	switch {
 	case errors.Is(err, authflow.ErrDenied):

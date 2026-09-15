@@ -17,6 +17,13 @@ The command prints a URL and a code. Open the URL, sign in, and type the code on
 the confirmation page. `mxd` polls until you decide, then stores the token in
 `~/.config/metaxisdata/config.json` (mode 0600).
 
+The address comes from the workspace's **external URL** setting. A fresh or
+locally run workspace usually has none, and rather than leave you with nothing to
+open, `mxd` falls back to `<server>/device`. That is correct whenever the server
+also serves the web application; if you run the SPA separately (the usual local
+setup, where Vite serves it on `:3000`), set the workspace external URL to that
+address and the server will name the right page itself.
+
 The server address is saved **with** the token, because a token is issued by one
 server; later commands do not need `--server` again. `mxd auth logout` revokes
 the token and keeps the address.

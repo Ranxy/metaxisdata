@@ -5,6 +5,8 @@ package authflow
 
 import (
 	"context"
+	neturl "net/url"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -34,6 +36,12 @@ type Options struct {
 	PrefillURL bool
 	// NoBrowser skips the attempt to open a browser.
 	NoBrowser bool
+	// ServerURL is the address the client is talking to. It is the fallback
+	// confirmation address when the workspace has no external URL configured,
+	// which is the normal state of a fresh or local deployment: the server
+	// cannot name a page it does not know about, but the client at least knows
+	// where it is sending requests.
+	ServerURL string
 	// OpenBrowser opens a URL. It is injected so tests do not launch anything.
 	OpenBrowser func(url string) error
 	// Sleep waits between polls. It is injected so tests do not wait.
@@ -57,6 +65,36 @@ var ErrDenied = errors.New("the device login was denied")
 
 // ErrExpired is a request that ran out of time before it was approved.
 var ErrExpired = errors.New("the device login expired")
+
+// devicePagePath is the confirmation page inside the web application.
+const devicePagePath = "/device"
+
+// confirmationURL picks the address to send the person to, and reports whether
+// it had to fall back.
+//
+// The server names the page only when the workspace has an external URL; a
+// fresh or locally run deployment has none, and answering "ask an
+// administrator" would leave the person with no way forward. It is empty
+// rather than wrong on purpose, so the client substitutes the address it is
+// already talking to.
+func confirmationURL(login *v1pb.CreateDeviceLoginResponse, opts Options) (url string, fallback bool) {
+	if login.GetVerificationUri() != "" {
+		if opts.PrefillURL && login.GetVerificationUriComplete() != "" {
+			return login.GetVerificationUriComplete(), false
+		}
+		return login.GetVerificationUri(), false
+	}
+
+	base := strings.TrimSuffix(opts.ServerURL, "/")
+	if base == "" {
+		return "", false
+	}
+	page := base + devicePagePath
+	if opts.PrefillURL {
+		page += "?user_code=" + neturl.QueryEscape(login.GetUserCode())
+	}
+	return page, true
+}
 
 // Run performs the whole flow and returns once the server has answered.
 func Run(ctx context.Context, api DeviceLoginClient, progress Progress, opts Options) (*Result, error) {
@@ -83,17 +121,21 @@ func Run(ctx context.Context, api DeviceLoginClient, progress Progress, opts Opt
 	}
 	login := created.Msg
 
-	verificationURL := login.GetVerificationUri()
-	if opts.PrefillURL && login.GetVerificationUriComplete() != "" {
-		verificationURL = login.GetVerificationUriComplete()
+	verificationURL, fallback := confirmationURL(login, opts)
+	if fallback {
+		progress("The workspace has no external URL configured; using the server address.")
 	}
-	switch {
-	case verificationURL == "":
-		progress("Ask an administrator to configure the workspace external URL, then approve this request from the device page.")
-	case opts.PrefillURL:
+	if verificationURL == "" {
+		progress("No confirmation address is available: ask an administrator to configure the workspace external URL.")
+	} else {
 		progress("Approve this request in a browser:\n  %s\n  code: %s", verificationURL, login.GetUserCode())
-	default:
-		progress("Approve this request in a browser:\n  %s\n  code: %s", verificationURL, login.GetUserCode())
+		if fallback {
+			// The server address is the best guess the client can make. It is
+			// right whenever the server also serves the web application, and
+			// wrong when the SPA runs elsewhere (the usual local setup), so say
+			// what to change instead of letting the person stare at a 404.
+			progress("If that page is not served there, set the workspace external URL so the server can name it.")
+		}
 	}
 	progress("The code is valid for %d seconds.", login.GetExpiresIn())
 
