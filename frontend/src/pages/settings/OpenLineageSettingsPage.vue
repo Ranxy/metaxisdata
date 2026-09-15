@@ -1,11 +1,6 @@
 <template>
   <div class="space-y-4">
-    <!-- Page Header -->
-    <div>
-      <h1 class="text-2xl font-bold tracking-tight">
-        {{ t("openlineageSettings.title") }}
-      </h1>
-    </div>
+    <PageHeader :title="t('openlineageSettings.title')" />
 
     <Card>
       <CardHeader>
@@ -51,73 +46,67 @@
         </div>
       </CardHeader>
       <CardContent>
-        <div
-          v-if="isLoadingMappings"
-          class="p-8 flex justify-center"
-        >
-          <AppLoading />
-        </div>
-        <div
-          v-else-if="mappings.length === 0"
-          class="p-8 text-center text-muted-foreground"
-        >
-          <Network class="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-          <p>{{ t("openlineageSettings.noMappings") }}</p>
-        </div>
-        <Table v-else>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{{
-                t("openlineageSettings.namespace")
-              }}</TableHead>
-              <TableHead>{{
-                t("openlineageSettings.instanceResourceId")
-              }}</TableHead>
-              <TableHead>{{
-                t("openlineageSettings.databaseName")
-              }}</TableHead>
-              <TableHead class="text-right">
-                {{ t("openlineageSettings.actions") }}
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow
-              v-for="m in mappings"
-              :key="m.name"
-            >
-              <TableCell class="font-mono text-sm">
-                {{ m.namespace }}
-              </TableCell>
-              <TableCell>
-                {{ getInstanceTitle(m.instanceResourceId) }}
-              </TableCell>
-              <TableCell class="text-muted-foreground">
-                {{ m.databaseName || "-" }}
-              </TableCell>
-              <TableCell class="text-right">
-                <div class="flex items-center justify-end gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    :title="t('common.edit')"
-                    @click="openEditMappingModal(m)"
-                  >
-                    <Pencil class="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    :title="t('common.delete')"
-                    @click="confirmDeleteMapping(m)"
-                  >
-                    <Trash2 class="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+        <PageState :loading="isLoadingMappings">
+          <EmptyState
+            v-if="mappings.length === 0"
+            :icon="Network"
+            :title="t('openlineageSettings.noMappings')"
+          />
+          <Table v-else>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{{
+                  t("openlineageSettings.namespace")
+                }}</TableHead>
+                <TableHead>{{
+                  t("openlineageSettings.instanceResourceId")
+                }}</TableHead>
+                <TableHead>{{
+                  t("openlineageSettings.databaseName")
+                }}</TableHead>
+                <TableHead class="text-right">
+                  {{ t("openlineageSettings.actions") }}
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="m in mappings"
+                :key="m.name"
+              >
+                <TableCell class="font-mono text-sm">
+                  {{ m.namespace }}
+                </TableCell>
+                <TableCell>
+                  {{ getInstanceTitle(m.instanceResourceId) }}
+                </TableCell>
+                <TableCell class="text-muted-foreground">
+                  {{ m.databaseName || "-" }}
+                </TableCell>
+                <TableCell class="text-right">
+                  <div class="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      :title="t('common.edit')"
+                      @click="openEditMappingModal(m)"
+                    >
+                      <Pencil class="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      :title="t('common.delete')"
+                      @click="confirmDeleteMapping(m)"
+                    >
+                      <Trash2 class="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </PageState>
       </CardContent>
     </Card>
 
@@ -141,83 +130,77 @@
         </div>
       </CardHeader>
       <CardContent>
-        <div
-          v-if="isLoadingKeys"
-          class="p-8 flex justify-center"
-        >
-          <AppLoading />
-        </div>
-        <div
-          v-else-if="apiKeys.length === 0"
-          class="p-8 text-center text-muted-foreground"
-        >
-          <KeyRound class="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-          <p>{{ t("openlineageSettings.noAPIKeys") }}</p>
-        </div>
-        <Table v-else>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{{
-                t("openlineageSettings.apiKeyDescription")
-              }}</TableHead>
-              <TableHead>{{
-                t("openlineageSettings.maskedAPIKey")
-              }}</TableHead>
-              <TableHead>{{
-                t("openlineageSettings.createdBy")
-              }}</TableHead>
-              <TableHead>{{
-                t("openlineageSettings.createdAt")
-              }}</TableHead>
-              <TableHead>{{
-                t("openlineageSettings.lastUsedAt")
-              }}</TableHead>
-              <TableHead>{{
-                t("openlineageSettings.keyScope")
-              }}</TableHead>
-              <TableHead class="text-right">
-                {{ t("openlineageSettings.actions") }}
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow
-              v-for="key in apiKeys"
-              :key="key.name"
-              :class="{ 'opacity-60': key.revokedAt }"
-            >
-              <TableCell class="font-medium">
-                {{ key.description }}
-              </TableCell>
-              <TableCell class="font-mono text-sm">
-                {{ key.maskedKey || "-" }}
-              </TableCell>
-              <TableCell class="text-muted-foreground">
-                {{ key.createdBy || "-" }}
-              </TableCell>
-              <TableCell class="text-muted-foreground">
-                {{ formatTimestamp(key.createdAt) }}
-              </TableCell>
-              <TableCell class="text-muted-foreground">
-                {{ formatTimestamp(key.lastUsedAt) }}
-              </TableCell>
-              <TableCell class="font-mono text-sm">
-                {{ key.scopeNamespace || t("openlineageSettings.keyScopeAll") }}
-              </TableCell>
-              <TableCell class="text-right">
-                <Button
-                  v-if="!key.revokedAt"
-                  variant="ghost"
-                  size="sm"
-                  class="text-destructive hover:text-destructive"
-                  @click="confirmRevokeKey(key)"
-                >
-                  {{ t("openlineageSettings.revokeAPIKey") }}
-                </Button>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+        <PageState :loading="isLoadingKeys">
+          <EmptyState
+            v-if="apiKeys.length === 0"
+            :icon="KeyRound"
+            :title="t('openlineageSettings.noAPIKeys')"
+          />
+          <Table v-else>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{{
+                  t("openlineageSettings.apiKeyDescription")
+                }}</TableHead>
+                <TableHead>{{
+                  t("openlineageSettings.maskedAPIKey")
+                }}</TableHead>
+                <TableHead>{{
+                  t("openlineageSettings.createdBy")
+                }}</TableHead>
+                <TableHead>{{
+                  t("openlineageSettings.createdAt")
+                }}</TableHead>
+                <TableHead>{{
+                  t("openlineageSettings.lastUsedAt")
+                }}</TableHead>
+                <TableHead>{{
+                  t("openlineageSettings.keyScope")
+                }}</TableHead>
+                <TableHead class="text-right">
+                  {{ t("openlineageSettings.actions") }}
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="key in apiKeys"
+                :key="key.name"
+                :class="{ 'opacity-60': key.revokedAt }"
+              >
+                <TableCell class="font-medium">
+                  {{ key.description }}
+                </TableCell>
+                <TableCell class="font-mono text-sm">
+                  {{ key.maskedKey || "-" }}
+                </TableCell>
+                <TableCell class="text-muted-foreground">
+                  {{ key.createdBy || "-" }}
+                </TableCell>
+                <TableCell class="text-muted-foreground">
+                  {{ formatTimestamp(key.createdAt) }}
+                </TableCell>
+                <TableCell class="text-muted-foreground">
+                  {{ formatTimestamp(key.lastUsedAt) }}
+                </TableCell>
+                <TableCell class="font-mono text-sm">
+                  {{ key.scopeNamespace || t("openlineageSettings.keyScopeAll") }}
+                </TableCell>
+                <TableCell class="text-right">
+                  <Button
+                    v-if="!key.revokedAt"
+                    variant="ghost"
+                    size="sm"
+                    class="text-destructive hover:text-destructive"
+                    @click="confirmRevokeKey(key)"
+                  >
+                    {{ t("openlineageSettings.revokeAPIKey") }}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </PageState>
       </CardContent>
     </Card>
 
@@ -449,8 +432,10 @@ import {
   updateNamespaceMapping,
 } from "@/api/openlineage";
 import AppInput from "@/components/common/AppInput.vue";
-import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import PageState from "@/components/common/PageState.vue";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import { Button } from "@/components/ui/button";
 import {
   Card,

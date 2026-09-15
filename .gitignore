@@ -1,5 +1,6 @@
 .vscode
 build/
+temp
 
 # The embedded SPA is copied here by `make build-embed`; only the placeholder
 # that keeps the //go:embed pattern resolvable is tracked.

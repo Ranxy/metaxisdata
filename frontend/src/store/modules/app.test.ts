@@ -14,18 +14,21 @@ describe("app store sidebar sections", () => {
     localStorage.clear();
   });
 
-  it("defaults to every section expanded", () => {
-    expect(freshStore().collapsedSections).toEqual([]);
+  it("defaults to every section collapsed", () => {
+    expect(freshStore().collapsedSections).toEqual([
+      "datasource",
+      "openlineage",
+    ]);
   });
 
   it("persists a collapsed section", () => {
     const store = freshStore();
     store.setSectionCollapsed("settings", true);
 
-    expect(store.collapsedSections).toEqual(["settings"]);
+    expect(store.collapsedSections).toContain("settings");
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}")).toMatchObject(
       {
-        collapsedSections: ["settings"],
+        collapsedSections: ["datasource", "openlineage", "settings"],
       }
     );
   });
@@ -36,13 +39,16 @@ describe("app store sidebar sections", () => {
     store.setSectionCollapsed("openlineage", true);
     store.setSectionCollapsed("settings", false);
 
-    expect(store.collapsedSections).toEqual(["openlineage"]);
+    // `openlineage` is collapsed by default, so setting it again must not add a
+    // duplicate entry.
+    expect(store.collapsedSections).toEqual(["datasource", "openlineage"]);
   });
 
   it("restores collapsed sections when the store is recreated", () => {
-    freshStore().setSectionCollapsed("datasource", true);
+    freshStore().setSectionCollapsed("datasource", false);
+    freshStore().setSectionCollapsed("settings", true);
 
-    expect(freshStore().collapsedSections).toEqual(["datasource"]);
+    expect(freshStore().collapsedSections).toEqual(["openlineage", "settings"]);
   });
 
   it("ignores a stored payload whose collapsed sections are malformed", () => {
@@ -51,6 +57,19 @@ describe("app store sidebar sections", () => {
       JSON.stringify({ collapsedSections: "datasource" })
     );
 
-    expect(freshStore().collapsedSections).toEqual([]);
+    expect(freshStore().collapsedSections).toEqual([
+      "datasource",
+      "openlineage",
+    ]);
+  });
+
+  it("never persists transient navigation state", () => {
+    const store = freshStore();
+    store.setMobileNavOpen(true);
+
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}")
+    ).not.toHaveProperty("mobileNavOpen");
+    expect(freshStore().mobileNavOpen).toBe(false);
   });
 });

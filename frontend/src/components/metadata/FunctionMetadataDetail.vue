@@ -1,5 +1,5 @@
 <template>
-  <div class="p-4 space-y-6">
+  <div class="p-4 space-y-4">
     <div class="space-y-1">
       <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <div class="text-lg font-semibold wrap-break-word">
@@ -34,14 +34,14 @@
       v-if="fn.signature"
       class="space-y-2"
     >
-      <div class="text-sm font-medium">{{ t("metadataBrowser.signature") }}</div>
+      <h2 class="text-sm font-medium">{{ t("metadataBrowser.signature") }}</h2>
       <code class="text-xs bg-muted rounded px-3 py-2 block overflow-auto whitespace-pre-wrap break-words">{{
         fn.signature
       }}</code>
     </div>
 
     <div class="space-y-2">
-      <div class="text-sm font-medium">{{ t("metadataBrowser.definition") }}</div>
+      <h2 class="text-sm font-medium">{{ t("metadataBrowser.definition") }}</h2>
       <DefinitionMonacoViewer :content="fn.definition" />
     </div>
 
@@ -50,7 +50,7 @@
       class="space-y-2"
     >
       <div class="flex items-center justify-between">
-        <div class="text-sm font-medium">{{ t("metadataBrowser.dependencyTables") }}</div>
+        <h2 class="text-sm font-medium">{{ t("metadataBrowser.dependencyTables") }}</h2>
       </div>
 
       <Table>

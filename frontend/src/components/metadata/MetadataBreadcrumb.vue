@@ -1,9 +1,16 @@
 <template>
-  <nav class="flex items-center space-x-1 text-sm">
+  <!-- At the root there is nothing to navigate back to, so the crumb collapses
+       to nothing instead of rendering an empty bordered bar. -->
+  <nav
+    v-if="items.length > 0"
+    class="flex min-w-0 flex-wrap items-center gap-x-1 text-sm"
+    :aria-label="t('metadataBrowser.title')"
+  >
     <Button
       variant="ghost"
       size="icon"
-      class="h-8 w-8"
+      class="h-7 w-7"
+      :aria-label="t('menu.home')"
       @click="$emit('navigate', -1)"
     >
       <Home class="h-4 w-4" />
@@ -13,9 +20,10 @@
       v-for="item in items"
       :key="item.guidIndex"
     >
-      <ChevronRight class="h-4 w-4 text-muted-foreground" />
+      <ChevronRight class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       <button
-        class="hover:text-primary transition-colors"
+        type="button"
+        class="max-w-[16rem] truncate rounded px-1 py-0.5 transition-colors hover:text-primary"
         :class="{
           'font-medium text-foreground': item.guidIndex === lastGuidIndex,
         }"

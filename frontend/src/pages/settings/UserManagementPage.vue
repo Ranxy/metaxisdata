@@ -1,20 +1,16 @@
 <template>
   <div class="space-y-4">
-    <!-- Page Header -->
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight">
-          {{ t("userManagement.title") }}
-        </h1>
-      </div>
-      <Button
-        v-if="canCreateUser"
-        @click="openCreateModal"
-      >
-        <Plus class="h-4 w-4 mr-2" />
-        {{ t("userManagement.addUser") }}
-      </Button>
-    </div>
+    <PageHeader :title="t('userManagement.title')">
+      <template #actions>
+        <Button
+          v-if="canCreateUser"
+          @click="openCreateModal"
+        >
+          <Plus class="h-4 w-4 mr-2" />
+          {{ t("userManagement.addUser") }}
+        </Button>
+      </template>
+    </PageHeader>
 
     <!-- Search Bar -->
     <div class="flex items-center gap-4">
@@ -33,122 +29,109 @@
 
     <!-- Users Table -->
     <Card>
-      <!-- Loading State -->
-      <div
-        v-if="isLoading"
-        class="p-8 flex justify-center"
+      <PageState
+        :loading="isLoading"
+        :error="error"
       >
-        <AppLoading />
-      </div>
+        <!-- Empty State -->
+        <EmptyState
+          v-if="activeUsers.length === 0"
+          :icon="Users"
+          :title="t('userManagement.noUsers')"
+        />
 
-      <!-- Error State -->
-      <div
-        v-else-if="error"
-        class="p-8 text-center text-destructive"
-      >
-        {{ error }}
-      </div>
-
-      <!-- Empty State -->
-      <div
-        v-else-if="activeUsers.length === 0"
-        class="p-8 text-center text-muted-foreground"
-      >
-        <Users class="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-        <p>{{ t("userManagement.noUsers") }}</p>
-      </div>
-
-      <!-- Users List -->
-      <Table v-else>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{{ t("userManagement.user") }}</TableHead>
-            <TableHead>{{ t("userManagement.email") }}</TableHead>
-            <TableHead>{{ t("userManagement.userType") }}</TableHead>
-            <TableHead>
-              {{ t("userManagement.phone") }}
-            </TableHead>
-            <TableHead>{{ t("userManagement.lastLogin") }}</TableHead>
-            <TableHead class="text-right">
-              {{ t("userManagement.actions") }}
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow
-            v-for="user in activeUsers"
-            :key="user.name"
-          >
-            <TableCell>
-              <div class="flex items-center">
-                <Avatar class="h-10 w-10">
-                  <AvatarFallback class="bg-primary/10 text-primary text-sm">
-                    {{ getInitials(user.title || user.email) }}
-                  </AvatarFallback>
-                </Avatar>
-                <div class="ml-4">
-                  <div class="font-medium">
-                    {{ user.title || "-" }}
-                  </div>
-                  <div class="text-sm text-muted-foreground">
-                    {{ getUserId(user.name) }}
+        <!-- Users List -->
+        <Table v-else>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{{ t("userManagement.user") }}</TableHead>
+              <TableHead>{{ t("userManagement.email") }}</TableHead>
+              <TableHead>{{ t("userManagement.userType") }}</TableHead>
+              <TableHead>
+                {{ t("userManagement.phone") }}
+              </TableHead>
+              <TableHead>{{ t("userManagement.lastLogin") }}</TableHead>
+              <TableHead class="text-right">
+                {{ t("userManagement.actions") }}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow
+              v-for="user in activeUsers"
+              :key="user.name"
+            >
+              <TableCell>
+                <div class="flex items-center">
+                  <Avatar class="h-10 w-10">
+                    <AvatarFallback class="bg-primary/10 text-primary text-sm">
+                      {{ getInitials(user.title || user.email) }}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div class="ml-4">
+                    <div class="font-medium">
+                      {{ user.title || "-" }}
+                    </div>
+                    <div class="text-sm text-muted-foreground">
+                      {{ getUserId(user.name) }}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </TableCell>
-            <TableCell class="text-muted-foreground">
-              {{ user.email }}
-            </TableCell>
-            <TableCell>
-              <Badge :variant="user.userType === UserType.SERVICE_ACCOUNT ? 'secondary' : 'default'">
-                {{ getUserTypeLabel(user.userType) }}
-              </Badge>
-            </TableCell>
-            <TableCell class="text-muted-foreground">
-              {{ user.phone || "-" }}
-            </TableCell>
-            <TableCell class="text-muted-foreground">
-              {{ formatLastLogin(user.profile?.lastLoginTime) }}
-            </TableCell>
-            <TableCell class="text-right">
-              <div class="flex items-center justify-end gap-1">
-                <Button
-                  v-if="canEditUser(user)"
-                  variant="ghost"
-                  size="icon"
-                  :title="t('common.edit')"
-                  @click="openEditModal(user)"
-                >
-                  <Pencil class="h-4 w-4 text-muted-foreground" />
-                </Button>
-                <span
-                  v-else
-                  class="p-2 text-muted-foreground/30 cursor-not-allowed"
-                  :title="t('userManagement.cannotEditNonUser')"
-                >
-                  <Pencil class="h-4 w-4" />
-                </span>
-                <Button
-                  v-if="canDeleteUser(user)"
-                  variant="ghost"
-                  size="icon"
-                  :title="t('common.delete')"
-                  @click="confirmDelete(user)"
-                >
-                  <Trash2 class="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                </Button>
-                <span
-                  v-else
-                  class="p-2 text-muted-foreground/30 cursor-not-allowed"
-                  :title="getCannotDeleteReason(user)"
-                >
-                  <Trash2 class="h-4 w-4" />
-                </span>
-              </div>
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
+              </TableCell>
+              <TableCell class="text-muted-foreground">
+                {{ user.email }}
+              </TableCell>
+              <TableCell>
+                <Badge :variant="user.userType === UserType.SERVICE_ACCOUNT ? 'secondary' : 'default'">
+                  {{ getUserTypeLabel(user.userType) }}
+                </Badge>
+              </TableCell>
+              <TableCell class="text-muted-foreground">
+                {{ user.phone || "-" }}
+              </TableCell>
+              <TableCell class="text-muted-foreground">
+                {{ formatLastLogin(user.profile?.lastLoginTime) }}
+              </TableCell>
+              <TableCell class="text-right">
+                <div class="flex items-center justify-end gap-1">
+                  <Button
+                    v-if="canEditUser(user)"
+                    variant="ghost"
+                    size="icon"
+                    :title="t('common.edit')"
+                    @click="openEditModal(user)"
+                  >
+                    <Pencil class="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                  <span
+                    v-else
+                    class="p-2 text-muted-foreground/30 cursor-not-allowed"
+                    :title="t('userManagement.cannotEditNonUser')"
+                  >
+                    <Pencil class="h-4 w-4" />
+                  </span>
+                  <Button
+                    v-if="canDeleteUser(user)"
+                    variant="ghost"
+                    size="icon"
+                    :title="t('common.delete')"
+                    @click="confirmDelete(user)"
+                  >
+                    <Trash2 class="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                  </Button>
+                  <span
+                    v-else
+                    class="p-2 text-muted-foreground/30 cursor-not-allowed"
+                    :title="getCannotDeleteReason(user)"
+                  >
+                    <Trash2 class="h-4 w-4" />
+                  </span>
+                </div>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </PageState>
     </Card>
 
     <!-- Deleted Users (Recycle Bin) -->
@@ -175,80 +158,72 @@
         </CollapsibleTrigger>
 
         <CollapsibleContent>
-          <!-- Loading State -->
-          <div
-            v-if="isLoadingDeleted"
-            class="p-6 flex justify-center"
-          >
-            <AppLoading />
-          </div>
+          <PageState :loading="isLoadingDeleted">
+            <!-- Empty State -->
+            <EmptyState
+              v-if="deletedUsers.length === 0"
+              :icon="RotateCcw"
+              :title="t('userManagement.noDeletedUsers')"
+            />
 
-          <!-- Empty State -->
-          <div
-            v-else-if="deletedUsers.length === 0"
-            class="p-8 text-center text-muted-foreground"
-          >
-            <RotateCcw class="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-            <p>{{ t("userManagement.noDeletedUsers") }}</p>
-          </div>
-
-          <!-- Deleted Users List -->
-          <Table v-else>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{{ t("userManagement.user") }}</TableHead>
-                <TableHead>{{ t("userManagement.email") }}</TableHead>
-                <TableHead>{{ t("userManagement.userType") }}</TableHead>
-                <TableHead class="text-right">
-                  {{ t("userManagement.actions") }}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow
-                v-for="user in deletedUsers"
-                :key="user.name"
-                class="opacity-60"
-              >
-                <TableCell>
-                  <div class="flex items-center">
-                    <Avatar class="h-10 w-10">
-                      <AvatarFallback class="bg-muted text-muted-foreground text-sm">
-                        {{ getInitials(user.title || user.email) }}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div class="ml-4">
-                      <div class="font-medium text-muted-foreground">
-                        {{ user.title || "-" }}
-                      </div>
-                      <div class="text-sm text-muted-foreground/70">
-                        {{ getUserId(user.name) }}
+            <!-- Deleted Users List -->
+            <Table v-else>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{{ t("userManagement.user") }}</TableHead>
+                  <TableHead>{{ t("userManagement.email") }}</TableHead>
+                  <TableHead>{{ t("userManagement.userType") }}</TableHead>
+                  <TableHead class="text-right">
+                    {{ t("userManagement.actions") }}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow
+                  v-for="user in deletedUsers"
+                  :key="user.name"
+                  class="opacity-60"
+                >
+                  <TableCell>
+                    <div class="flex items-center">
+                      <Avatar class="h-10 w-10">
+                        <AvatarFallback class="bg-muted text-muted-foreground text-sm">
+                          {{ getInitials(user.title || user.email) }}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div class="ml-4">
+                        <div class="font-medium text-muted-foreground">
+                          {{ user.title || "-" }}
+                        </div>
+                        <div class="text-sm text-muted-foreground/70">
+                          {{ getUserId(user.name) }}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </TableCell>
-                <TableCell class="text-muted-foreground">
-                  {{ user.email }}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="secondary">
-                    {{ getUserTypeLabel(user.userType) }}
-                  </Badge>
-                </TableCell>
-                <TableCell class="text-right">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    :disabled="restoringUser === user.name"
-                    @click="restoreUser(user)"
-                  >
-                    <RotateCcw class="h-4 w-4 mr-1" />
-                    {{ t("userManagement.restore") }}
-                  </Button>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
+                  </TableCell>
+                  <TableCell class="text-muted-foreground">
+                    {{ user.email }}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">
+                      {{ getUserTypeLabel(user.userType) }}
+                    </Badge>
+                  </TableCell>
+                  <TableCell class="text-right">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      :disabled="restoringUser === user.name"
+                      @click="restoreUser(user)"
+                    >
+                      <RotateCcw class="h-4 w-4 mr-1" />
+                      {{ t("userManagement.restore") }}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </PageState>
         </CollapsibleContent>
       </Card>
     </Collapsible>
@@ -432,8 +407,10 @@ import {
   updateUser,
 } from "@/api/user";
 import AppInput from "@/components/common/AppInput.vue";
-import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import PageState from "@/components/common/PageState.vue";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -855,18 +832,3 @@ watch(showRecycleBin, (isOpen) => {
   }
 });
 </script>
-
-<style scoped>
-.slide-enter-active,
-.slide-leave-active {
-  transition: all 0.3s ease;
-  max-height: 1000px;
-  overflow: hidden;
-}
-
-.slide-enter-from,
-.slide-leave-to {
-  max-height: 0;
-  opacity: 0;
-}
-</style>

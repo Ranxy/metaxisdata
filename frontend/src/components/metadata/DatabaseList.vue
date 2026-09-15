@@ -1,12 +1,10 @@
 <template>
   <div>
-    <div
+    <EmptyState
       v-if="databaseRows.length === 0"
-      class="p-8 text-center text-muted-foreground"
-    >
-      <Database class="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-      <p>{{ t("metadataBrowser.noDatabases") }}</p>
-    </div>
+      :icon="Database"
+      :title="t('metadataBrowser.noDatabases')"
+    />
 
     <Table v-else>
       <TableHeader>
@@ -49,6 +47,7 @@
 import { Database } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import EmptyState from "@/components/common/EmptyState.vue";
 import {
   Table,
   TableBody,

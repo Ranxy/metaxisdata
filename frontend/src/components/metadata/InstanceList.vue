@@ -1,82 +1,76 @@
 <template>
   <div>
-    <div
-      v-if="isLoading"
-      class="p-8 flex justify-center"
-    >
-      <AppLoading />
-    </div>
+    <PageState :loading="isLoading">
+      <EmptyState
+        v-if="instances.length === 0"
+        :icon="Database"
+        :title="t('metadataBrowser.noInstances')"
+      />
 
-    <div
-      v-else-if="instances.length === 0"
-      class="p-8 text-center text-muted-foreground"
-    >
-      <Database class="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-      <p>{{ t("metadataBrowser.noInstances") }}</p>
-    </div>
-
-    <Table v-else>
-      <TableHeader>
-        <TableRow>
-          <TableHead>{{ t("metadataBrowser.instance") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.engine") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.host") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.status") }}</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        <TableRow
-          v-for="instance in instances"
-          :key="instance.name"
-          class="cursor-pointer hover:bg-muted/50"
-          @click="$emit('select', instance)"
-        >
-          <TableCell>
-            <div class="flex items-center gap-3">
-              <div
-                class="w-10 h-10 rounded-full flex items-center justify-center"
-                :class="getEngineBgClass(instance.engine)"
-              >
-                <span
-                  class="font-semibold text-sm"
-                  :class="getEngineTextClass(instance.engine)"
+      <Table v-else>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{{ t("metadataBrowser.instance") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.engine") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.host") }}</TableHead>
+            <TableHead>{{ t("metadataBrowser.status") }}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow
+            v-for="instance in instances"
+            :key="instance.name"
+            class="cursor-pointer hover:bg-muted/50"
+            @click="$emit('select', instance)"
+          >
+            <TableCell>
+              <div class="flex items-center gap-3">
+                <div
+                  class="w-10 h-10 rounded-full flex items-center justify-center"
+                  :class="getEngineBgClass(instance.engine)"
                 >
-                  {{ getEngineIcon(instance.engine) }}
-                </span>
-              </div>
-              <div>
-                <div class="font-medium">{{ instance.title }}</div>
-                <div class="text-sm text-muted-foreground">
-                  {{ getInstanceId(instance.name) }}
+                  <span
+                    class="font-semibold text-sm"
+                    :class="getEngineTextClass(instance.engine)"
+                  >
+                    {{ getEngineIcon(instance.engine) }}
+                  </span>
+                </div>
+                <div>
+                  <div class="font-medium">{{ instance.title }}</div>
+                  <div class="text-sm text-muted-foreground">
+                    {{ getInstanceId(instance.name) }}
+                  </div>
                 </div>
               </div>
-            </div>
-          </TableCell>
-          <TableCell>
-            <Badge variant="secondary">{{ getEngineLabel(instance.engine) }}</Badge>
-          </TableCell>
-          <TableCell class="text-muted-foreground">
-            {{ getHostInfo(instance) }}
-          </TableCell>
-          <TableCell>
-            <Badge :variant="instance.activation ? 'success' : 'secondary'">
-              {{
-                instance.activation
-                  ? t("metadataBrowser.active")
-                  : t("metadataBrowser.inactive")
-              }}
-            </Badge>
-          </TableCell>
-        </TableRow>
-      </TableBody>
-    </Table>
+            </TableCell>
+            <TableCell>
+              <Badge variant="secondary">{{ getEngineLabel(instance.engine) }}</Badge>
+            </TableCell>
+            <TableCell class="text-muted-foreground">
+              {{ getHostInfo(instance) }}
+            </TableCell>
+            <TableCell>
+              <Badge :variant="instance.activation ? 'success' : 'secondary'">
+                {{
+                  instance.activation
+                    ? t("metadataBrowser.active")
+                    : t("metadataBrowser.inactive")
+                }}
+              </Badge>
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </PageState>
   </div>
 </template>
 
 <script setup lang="ts">
 import { Database } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
-import AppLoading from "@/components/common/AppLoading.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import PageState from "@/components/common/PageState.vue";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,

@@ -1,5 +1,10 @@
 <template>
-  <div class="flex flex-col gap-3 h-full min-h-0">
+  <div class="flex min-h-0 flex-1 flex-col gap-3">
+    <PageHeader
+      :title="t('llmProvider.sidebar')"
+      class="shrink-0"
+    />
+
     <!-- Top bar -->
     <div class="flex items-center gap-2 shrink-0">
       <div class="flex-1">
@@ -19,7 +24,7 @@
     </div>
 
     <!-- Two-panel layout -->
-    <div class="grid grid-cols-[260px_minmax(0,1fr)] min-h-0 flex-1 border border-border rounded-lg overflow-hidden">
+    <div class="grid grid-cols-[16rem_minmax(0,1fr)] min-h-0 flex-1 border border-border rounded-lg overflow-hidden">
       <!-- Left panel: profile list -->
       <div class="border-r border-border p-2 overflow-y-auto bg-muted/30">
         <div v-if="filteredProfiles.length === 0" class="p-4 text-center text-muted-foreground text-sm">
@@ -235,6 +240,7 @@ import {
   updateProfile,
 } from "@/api/llm";
 import AppInput from "@/components/common/AppInput.vue";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import Badge from "@/components/ui/badge/Badge.vue";
 import Button from "@/components/ui/button/Button.vue";
 import Checkbox from "@/components/ui/checkbox/Checkbox.vue";

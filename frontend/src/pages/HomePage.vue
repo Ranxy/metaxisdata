@@ -1,16 +1,10 @@
 <template>
-  <div class="space-y-6">
-    <!-- Page header -->
-    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight">
-          {{ t("home.title") }}
-        </h1>
-        <p class="mt-1 text-sm text-muted-foreground">
-          {{ greeting }}
-        </p>
-      </div>
-      <div class="flex items-center gap-3">
+  <div class="space-y-4">
+    <PageHeader
+      :title="t('home.title')"
+      :description="greeting"
+    >
+      <template #actions>
         <span
           v-if="lastUpdated"
           class="hidden text-xs text-muted-foreground sm:inline"
@@ -26,8 +20,8 @@
           <RefreshCw :class="['mr-1 h-4 w-4', isLoading ? 'animate-spin' : '']" />
           {{ t("home.refresh") }}
         </Button>
-      </div>
-    </div>
+      </template>
+    </PageHeader>
 
     <!-- A section that failed to load must not blank the rest of the page. -->
     <Alert
@@ -439,6 +433,7 @@ import {
   useRouter,
 } from "vue-router";
 import AppLoading from "@/components/common/AppLoading.vue";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

@@ -3,6 +3,7 @@ import App from "./App.vue";
 import { i18n } from "./locales";
 import router from "./router";
 import { pinia } from "./store";
+import { initTheme } from "./store/modules/app";
 import "./assets/styles/main.css";
 import "markstream-vue/index.css";
 
@@ -10,6 +11,9 @@ async function bootstrap() {
   const app = createApp(App);
 
   app.use(pinia);
+  // Resolve the persisted theme before the first paint so the app never
+  // flashes the wrong palette.
+  initTheme();
   app.use(router);
   app.use(i18n);
 

@@ -50,66 +50,63 @@
 
     <Card>
       <CardContent class="pt-6">
-        <div v-if="isLoading" class="p-8 flex justify-center">
-          <AppLoading />
-        </div>
-        <div
-          v-else-if="filteredTasks.length === 0"
-          class="p-8 text-center text-muted-foreground"
-        >
-          <ScrollText class="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-          <p>{{ t("openlineageSettings.noTasks") }}</p>
-        </div>
-        <Table v-else>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{{ t("openlineageSettings.namespace") }}</TableHead>
-              <TableHead>{{ t("openlineageSettings.jobName") }}</TableHead>
-              <TableHead>{{ t("openlineageSettings.jobType") }}</TableHead>
-              <TableHead>{{ t("openlineageSettings.integration") }}</TableHead>
-              <TableHead>{{ t("openlineageSettings.latestEventTime") }}</TableHead>
-              <TableHead>{{ t("openlineage.latestRunStatus") }}</TableHead>
-              <TableHead>{{ t("openlineage.coverage") }}</TableHead>
-              <TableHead>{{ t("openlineageSettings.runCount") }}</TableHead>
-              <TableHead>{{ t("openlineageSettings.lineageRunCount") }}</TableHead>
-              <TableHead class="text-right">{{ t("openlineageSettings.actions") }}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow v-for="task in filteredTasks" :key="task.guid">
-              <TableCell class="font-mono text-sm">{{ task.jobNamespace }}</TableCell>
-              <TableCell>{{ task.jobName }}</TableCell>
-              <TableCell>{{ task.jobType }}</TableCell>
-              <TableCell>{{ task.integration || "-" }}</TableCell>
-              <TableCell>{{ formatTimestamp(task.latestEventTime) }}</TableCell>
-              <TableCell>
-                <Badge :variant="statusVariant(task.latestEventType)">
-                  {{ task.latestEventType || "-" }}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <Badge :variant="task.lineageRunCount > 0 ? 'success' : 'secondary'">
-                  {{ task.lineageRunCount > 0 ? t("openlineage.lineageReady") : t("openlineage.lineageMissing") }}
-                </Badge>
-              </TableCell>
-              <TableCell>{{ task.runCount }}</TableCell>
-              <TableCell>{{ task.lineageRunCount }}</TableCell>
-              <TableCell class="text-right">
-                <div class="flex justify-end gap-2">
-                  <Button variant="ghost" size="sm" @click="openGraph(task.guid)">
-                    {{ t("openlineage.openGraph") }}
-                  </Button>
-                  <Button variant="ghost" size="sm" @click="openEvents(task)">
-                    {{ t("openlineage.openEvents") }}
-                  </Button>
-                  <Button variant="ghost" size="sm" @click="openDetail(task.guid)">
-                    {{ t("openlineageSettings.viewDetail") }}
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+        <PageState :loading="isLoading">
+          <EmptyState
+            v-if="filteredTasks.length === 0"
+            :icon="ScrollText"
+            :title="t('openlineageSettings.noTasks')"
+          />
+          <Table v-else>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{{ t("openlineageSettings.namespace") }}</TableHead>
+                <TableHead>{{ t("openlineageSettings.jobName") }}</TableHead>
+                <TableHead>{{ t("openlineageSettings.jobType") }}</TableHead>
+                <TableHead>{{ t("openlineageSettings.integration") }}</TableHead>
+                <TableHead>{{ t("openlineageSettings.latestEventTime") }}</TableHead>
+                <TableHead>{{ t("openlineage.latestRunStatus") }}</TableHead>
+                <TableHead>{{ t("openlineage.coverage") }}</TableHead>
+                <TableHead>{{ t("openlineageSettings.runCount") }}</TableHead>
+                <TableHead>{{ t("openlineageSettings.lineageRunCount") }}</TableHead>
+                <TableHead class="text-right">{{ t("openlineageSettings.actions") }}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow v-for="task in filteredTasks" :key="task.guid">
+                <TableCell class="font-mono text-sm">{{ task.jobNamespace }}</TableCell>
+                <TableCell>{{ task.jobName }}</TableCell>
+                <TableCell>{{ task.jobType }}</TableCell>
+                <TableCell>{{ task.integration || "-" }}</TableCell>
+                <TableCell>{{ formatTimestamp(task.latestEventTime) }}</TableCell>
+                <TableCell>
+                  <Badge :variant="statusVariant(task.latestEventType)">
+                    {{ task.latestEventType || "-" }}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge :variant="task.lineageRunCount > 0 ? 'success' : 'secondary'">
+                    {{ task.lineageRunCount > 0 ? t("openlineage.lineageReady") : t("openlineage.lineageMissing") }}
+                  </Badge>
+                </TableCell>
+                <TableCell>{{ task.runCount }}</TableCell>
+                <TableCell>{{ task.lineageRunCount }}</TableCell>
+                <TableCell class="text-right">
+                  <div class="flex justify-end gap-2">
+                    <Button variant="ghost" size="sm" @click="openGraph(task.guid)">
+                      {{ t("openlineage.openGraph") }}
+                    </Button>
+                    <Button variant="ghost" size="sm" @click="openEvents(task)">
+                      {{ t("openlineage.openEvents") }}
+                    </Button>
+                    <Button variant="ghost" size="sm" @click="openDetail(task.guid)">
+                      {{ t("openlineageSettings.viewDetail") }}
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </PageState>
       </CardContent>
     </Card>
   </div>
@@ -124,7 +121,8 @@ import { useRoute, useRouter } from "vue-router";
 import { listOpenLineageTasks } from "@/api/openlineage";
 import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
 import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
-import AppLoading from "@/components/common/AppLoading.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import PageState from "@/components/common/PageState.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

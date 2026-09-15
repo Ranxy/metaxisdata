@@ -1,12 +1,10 @@
 <template>
   <div>
-    <div
+    <EmptyState
       v-if="viewRows.length === 0"
-      class="p-8 text-center text-muted-foreground"
-    >
-      <Eye class="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-      <p>{{ t("metadataBrowser.noViews") }}</p>
-    </div>
+      :icon="Eye"
+      :title="t('metadataBrowser.noViews')"
+    />
 
     <Table v-else>
       <TableHeader>
@@ -57,6 +55,7 @@
 import { Eye } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import EmptyState from "@/components/common/EmptyState.vue";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,

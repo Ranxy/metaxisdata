@@ -1,19 +1,16 @@
 <template>
   <div class="space-y-4">
-    <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight">
-          {{ t("manualSqlManagement.title") }}
-        </h1>
-      </div>
-      <Button
-        :disabled="availableDatabases.length === 0 || isSaving"
-        @click="openCreateModal"
-      >
-        <Plus class="mr-2 h-4 w-4" />
-        {{ t("manualSqlManagement.create") }}
-      </Button>
-    </div>
+    <PageHeader :title="t('manualSqlManagement.title')">
+      <template #actions>
+        <Button
+          :disabled="availableDatabases.length === 0 || isSaving"
+          @click="openCreateModal"
+        >
+          <Plus class="mr-2 h-4 w-4" />
+          {{ t("manualSqlManagement.create") }}
+        </Button>
+      </template>
+    </PageHeader>
 
     <ManualSQLFilterBar
       :database-options="databaseFilterOptions"
@@ -28,141 +25,130 @@
     />
 
     <Card>
-      <div
-        v-if="isLoading"
-        class="p-8 flex justify-center"
+      <PageState
+        :loading="isLoading"
+        :error="error"
       >
-        <AppLoading />
-      </div>
+        <EmptyState
+          v-if="manualSqls.length === 0"
+          :icon="FileCode2"
+          :title="t('manualSqlManagement.empty')"
+        />
 
-      <div
-        v-else-if="error"
-        class="p-8 text-center text-destructive"
-      >
-        {{ error }}
-      </div>
+        <div v-else>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{{ t("manualSqlManagement.titleColumn") }}</TableHead>
+                <TableHead>{{ t("manualSqlManagement.schema") }}</TableHead>
+                <TableHead>{{ t("manualSqlManagement.tags") }}</TableHead>
+                <TableHead>{{ t("manualSqlManagement.updatedAt") }}</TableHead>
+                <TableHead class="w-44 text-right">{{ t("manualSqlManagement.actions") }}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="item in manualSqls"
+                :key="item.name"
+              >
+                <TableCell>
+                  <div class="font-medium">{{ item.title || extractManualSqlId(item.name) }}</div>
+                  <div class="mt-1 text-xs text-muted-foreground">{{ extractManualSqlId(item.name) }}</div>
+                  <div
+                    v-if="item.comment"
+                    class="mt-2 line-clamp-2 max-w-xl text-xs text-muted-foreground"
+                  >
+                    {{ item.comment }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {{ item.schemaName || t("metadataBrowser.defaultSchema") }}
+                </TableCell>
+                <TableCell>
+                  <div class="flex flex-wrap gap-2">
+                    <Badge
+                      v-for="tag in item.tags"
+                      :key="tag"
+                      variant="secondary"
+                    >
+                      {{ tag }}
+                    </Badge>
+                    <span
+                      v-if="item.tags.length === 0"
+                      class="text-muted-foreground"
+                    >
+                      -
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {{ formatTimestamp(item.updatedAt) }}
+                </TableCell>
+                <TableCell class="text-right">
+                  <div class="flex items-center justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      @click="openMetadata(item.guid)"
+                    >
+                      {{ t("manualSqlManagement.metadata") }}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      @click="openLineage(item.guid)"
+                    >
+                      {{ t("manualSqlManagement.lineage") }}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      @click="openEditModal(item)"
+                    >
+                      <Pencil class="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="text-destructive"
+                      @click="openDeleteModal(item)"
+                    >
+                      <Trash2 class="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
 
-      <div
-        v-else-if="manualSqls.length === 0"
-        class="p-8 text-center text-muted-foreground"
-      >
-        <FileCode2 class="mx-auto mb-4 h-12 w-12 text-muted-foreground/50" />
-        <p>{{ t("manualSqlManagement.empty") }}</p>
-      </div>
-
-      <div v-else>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{{ t("manualSqlManagement.titleColumn") }}</TableHead>
-              <TableHead>{{ t("manualSqlManagement.schema") }}</TableHead>
-              <TableHead>{{ t("manualSqlManagement.tags") }}</TableHead>
-              <TableHead>{{ t("manualSqlManagement.updatedAt") }}</TableHead>
-              <TableHead class="w-44 text-right">{{ t("manualSqlManagement.actions") }}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow
-              v-for="item in manualSqls"
-              :key="item.name"
-            >
-              <TableCell>
-                <div class="font-medium">{{ item.title || extractManualSqlId(item.name) }}</div>
-                <div class="mt-1 text-xs text-muted-foreground">{{ extractManualSqlId(item.name) }}</div>
-                <div
-                  v-if="item.comment"
-                  class="mt-2 line-clamp-2 max-w-xl text-xs text-muted-foreground"
-                >
-                  {{ item.comment }}
-                </div>
-              </TableCell>
-              <TableCell>
-                {{ item.schemaName || t("metadataBrowser.defaultSchema") }}
-              </TableCell>
-              <TableCell>
-                <div class="flex flex-wrap gap-2">
-                  <Badge
-                    v-for="tag in item.tags"
-                    :key="tag"
-                    variant="secondary"
-                  >
-                    {{ tag }}
-                  </Badge>
-                  <span
-                    v-if="item.tags.length === 0"
-                    class="text-muted-foreground"
-                  >
-                    -
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell>
-                {{ formatTimestamp(item.updatedAt) }}
-              </TableCell>
-              <TableCell class="text-right">
-                <div class="flex items-center justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    @click="openMetadata(item.guid)"
-                  >
-                    {{ t("manualSqlManagement.metadata") }}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    @click="openLineage(item.guid)"
-                  >
-                    {{ t("manualSqlManagement.lineage") }}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    @click="openEditModal(item)"
-                  >
-                    <Pencil class="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="text-destructive"
-                    @click="openDeleteModal(item)"
-                  >
-                    <Trash2 class="h-4 w-4" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
-
-        <div
-          v-if="nextPageToken || previousPageTokens.length > 0"
-          class="flex items-center justify-between border-t p-4"
-        >
-          <div class="text-sm text-muted-foreground">
-            {{ t("manualSqlManagement.showingResults", { total: manualSqls.length }) }}
-          </div>
-          <div class="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              :disabled="previousPageTokens.length === 0"
-              @click="goToPreviousPage"
-            >
-              {{ t("common.previous") }}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              :disabled="!nextPageToken"
-              @click="goToNextPage"
-            >
-              {{ t("common.next") }}
-            </Button>
+          <div
+            v-if="nextPageToken || previousPageTokens.length > 0"
+            class="flex items-center justify-between border-t p-4"
+          >
+            <div class="text-sm text-muted-foreground">
+              {{ t("manualSqlManagement.showingResults", { total: manualSqls.length }) }}
+            </div>
+            <div class="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="previousPageTokens.length === 0"
+                @click="goToPreviousPage"
+              >
+                {{ t("common.previous") }}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="!nextPageToken"
+                @click="goToNextPage"
+              >
+                {{ t("common.next") }}
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
+      </PageState>
     </Card>
 
     <AppModal
@@ -395,9 +381,11 @@ import {
   updateManualSQL,
 } from "@/api/database";
 import AppInput from "@/components/common/AppInput.vue";
-import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
 import ManualSQLFilterBar from "@/components/common/ManualSQLFilterBar.vue";
+import PageState from "@/components/common/PageState.vue";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";

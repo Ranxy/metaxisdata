@@ -1,15 +1,29 @@
 <template>
-  <div class="space-y-4">
-    <div>
-      <h1 class="text-2xl font-bold tracking-tight">
-        {{ t("metadataBrowser.title") }}
-      </h1>
-    </div>
+  <div class="flex flex-col gap-3">
+    <!-- Breadcrumb, title and the list-state search stay pinned, so scrolling a
+         long result set never scrolls the user's location away. -->
+    <div
+      class="sticky -top-4 z-30 -mx-4 -mt-4 flex flex-col gap-2 border-b bg-background/95 px-4 pb-3 pt-4 backdrop-blur sm:-top-6 sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-6"
+    >
+      <MetadataBreadcrumb
+        :items="breadcrumbItems"
+        @navigate="handleNavigate"
+      />
 
-    <!-- Search Bar -->
-    <div class="relative">
+      <!-- A leaf detail view is titled by the entity it shows, so the list-page
+           title and its global search bar are list-only chrome. -->
+      <PageHeader
+        v-if="showListChrome"
+        :title="t('metadataBrowser.title')"
+      />
+
+      <!-- Search Bar -->
       <div
-        class="flex items-center flex-wrap gap-2 min-h-[42px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors hover:border-ring focus-within:outline-hidden focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+        v-if="showListChrome"
+        class="relative"
+      >
+      <div
+        class="flex items-center flex-wrap gap-2 min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors hover:border-ring focus-within:outline-hidden focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
       >
         <!-- Active Filter Pills -->
         <Badge
@@ -255,7 +269,7 @@
       <!-- Search Results Dropdown -->
       <div
         v-if="showSearchResults && searchQuery.trim()"
-        class="absolute z-50 top-full mt-1 w-full rounded-md border bg-popover shadow-lg max-h-[400px] overflow-auto"
+        class="absolute z-50 top-full mt-1 w-full rounded-md border bg-popover shadow-lg max-h-96 overflow-auto"
       >
         <div
           v-if="isSearching"
@@ -303,16 +317,8 @@
           </button>
         </div>
       </div>
+      </div>
     </div>
-
-    <Card>
-      <CardContent class="py-3 px-4">
-        <MetadataBreadcrumb
-          :items="breadcrumbItems"
-          @navigate="handleNavigate"
-        />
-      </CardContent>
-    </Card>
 
     <Card>
       <div
@@ -342,7 +348,7 @@
 
       <div v-else>
         <template v-if="isTableDetailView && leafTable">
-          <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
+          <CardContent class="p-0">
             <TableMetadataDetail
               :table="leafTable"
               :instance-engine="currentInstanceEngine"
@@ -353,7 +359,7 @@
         </template>
 
         <template v-else-if="isViewDetailView && leafView">
-          <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
+          <CardContent class="p-0">
             <ViewMetadataDetail
               :view="leafView"
               :guid="currentGuid"
@@ -362,7 +368,7 @@
         </template>
 
         <template v-else-if="isMaterializedViewDetailView && leafMaterializedView">
-          <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
+          <CardContent class="p-0">
             <MaterializedViewMetadataDetail
               :view="leafMaterializedView"
               :guid="currentGuid"
@@ -371,25 +377,25 @@
         </template>
 
         <template v-else-if="isFunctionDetailView && leafFunction">
-          <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
+          <CardContent class="p-0">
             <FunctionMetadataDetail :fn="leafFunction" />
           </CardContent>
         </template>
 
         <template v-else-if="isProcedureDetailView && leafProcedure">
-          <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
+          <CardContent class="p-0">
             <ProcedureMetadataDetail :proc="leafProcedure" />
           </CardContent>
         </template>
 
         <template v-else-if="isSequenceDetailView && leafSequence">
-          <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
+          <CardContent class="p-0">
             <SequenceMetadataDetail :seq="leafSequence" />
           </CardContent>
         </template>
 
         <template v-else-if="isManualSQLDetailView && leafManualSQL">
-          <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
+          <CardContent class="p-0">
             <ManualSQLMetadataDetail
               :manual-sql="leafManualSQL"
               :guid="currentGuid"
@@ -398,7 +404,7 @@
         </template>
 
         <template v-else-if="isExternalDatasetDetailView && externalDatasetDetail">
-          <CardContent class="p-0 max-h-[calc(100vh-16rem)] overflow-auto">
+          <CardContent class="p-0">
             <ExternalDatasetMetadataDetail
               :guid="currentGuid"
               :name="externalDatasetDetail.name"
@@ -409,7 +415,9 @@
         </template>
 
         <template v-else>
-          <CardHeader class="border-b">
+          <!-- The tab strip is a control, not a titled section, so it does not
+               need the CardHeader's default `p-6` around a single row. -->
+          <CardHeader class="border-b px-4 py-2">
             <MetadataTabNav
               :groups="metadataGroups"
               :active="activeMetaType"
@@ -422,16 +430,13 @@
               v-if="activeGroup"
               :meta-type="activeGroup.metaType"
               :items="activeGroup.list"
-              :current-guid="currentGuid"
               :is-mysql="isMySQLInstance"
               @select="handleSelectMetadata"
             />
-            <div
+            <EmptyState
               v-else
-              class="p-8 text-center text-muted-foreground"
-            >
-              {{ t("metadataBrowser.empty") }}
-            </div>
+              :title="t('metadataBrowser.empty')"
+            />
           </CardContent>
 
           <div
@@ -466,6 +471,8 @@ import { useRoute, useRouter } from "vue-router";
 import { getMetadata, listMetadata, searchMetadata } from "@/api/database";
 import { getInstance, listInstances } from "@/api/instance";
 import AppLoading from "@/components/common/AppLoading.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import InstanceList from "@/components/metadata/InstanceList.vue";
 import MetadataBreadcrumb from "@/components/metadata/MetadataBreadcrumb.vue";
 import MetadataList from "@/components/metadata/MetadataList.vue";
@@ -754,6 +761,29 @@ const externalDatasetDetail = computed<ExternalDatasetDetail | null>(() => {
 const isExternalDatasetDetailView = computed(() => {
   return externalDatasetDetail.value != null;
 });
+
+// A leaf detail view titles itself from the entity it resolved, so the page
+// drops the list title and the global search bar. Checked against the resolved
+// leaves rather than the requested meta type, because the same `metaType` value
+// drives both a list ("show the Tables tab") and a leaf ("show this table").
+// `isLoading` is part of the condition so the chrome never flashes the list
+// header while a detail request is still in flight.
+const isLeafDetailView = computed(() => {
+  return (
+    leafTable.value != null ||
+    leafView.value != null ||
+    leafMaterializedView.value != null ||
+    leafFunction.value != null ||
+    leafProcedure.value != null ||
+    leafSequence.value != null ||
+    leafManualSQL.value != null ||
+    externalDatasetDetail.value != null
+  );
+});
+
+const showListChrome = computed(
+  () => !isLeafDetailView.value && !isLoading.value
+);
 
 const currentGuid = computed(() => {
   const guidParam = route.params.guid;

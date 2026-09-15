@@ -50,57 +50,57 @@
 
     <Card>
       <CardContent class="pt-6">
-        <div v-if="isLoading" class="flex justify-center p-8">
-          <AppLoading />
-        </div>
-        <div v-else-if="filteredRuns.length === 0" class="p-8 text-center text-muted-foreground">
-          <Files class="mx-auto mb-4 h-12 w-12 text-muted-foreground/50" />
-          <p>{{ t("openlineageSettings.noRuns") }}</p>
-        </div>
-        <Table v-else>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{{ t("openlineageSettings.eventTime") }}</TableHead>
-              <TableHead>{{ t("openlineage.eventType") }}</TableHead>
-              <TableHead>{{ t("openlineageSettings.jobName") }}</TableHead>
-              <TableHead>{{ t("openlineageSettings.namespace") }}</TableHead>
-              <TableHead>{{ t("openlineageSettings.runId") }}</TableHead>
-              <TableHead>{{ t("openlineageSettings.producer") }}</TableHead>
-              <TableHead>{{ t("openlineageSettings.sourceLabel") }}</TableHead>
-              <TableHead>{{ t("openlineage.hasLineage") }}</TableHead>
-              <TableHead>{{ t("openlineageSettings.inputCount") }}</TableHead>
-              <TableHead>{{ t("openlineageSettings.outputCount") }}</TableHead>
-              <TableHead class="sticky right-0 z-10 bg-background text-right">{{ t("openlineageSettings.actions") }}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow v-for="run in filteredRuns" :key="run.guid">
-              <TableCell>{{ formatTimestamp(run.eventTime) }}</TableCell>
-              <TableCell>
-                <Badge variant="outline">{{ run.eventType || "-" }}</Badge>
-              </TableCell>
-              <TableCell>{{ run.jobName }}</TableCell>
-              <TableCell class="font-mono text-sm">{{ run.jobNamespace }}</TableCell>
-              <TableCell class="font-mono text-sm"><ExpandableText :text="run.runId" /></TableCell>
-              <TableCell class="max-w-48">
-                <ExpandableText :text="run.producer" />
-              </TableCell>
-              <TableCell>{{ run.source || "-" }}</TableCell>
-              <TableCell>
-                <Badge :variant="run.hasLineage ? 'success' : 'secondary'">
-                  {{ run.hasLineage ? t("openlineage.yes") : t("openlineage.no") }}
-                </Badge>
-              </TableCell>
-              <TableCell>{{ run.inputCount }}</TableCell>
-              <TableCell>{{ run.outputCount }}</TableCell>
-              <TableCell class="sticky right-0 bg-background text-right">
-                <Button variant="ghost" size="sm" @click="openDetail(run.guid)">
-                  {{ t("openlineageSettings.viewRun") }}
-                </Button>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+        <PageState :loading="isLoading">
+          <EmptyState
+            v-if="filteredRuns.length === 0"
+            :icon="Files"
+            :title="t('openlineageSettings.noRuns')"
+          />
+          <Table v-else>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{{ t("openlineageSettings.eventTime") }}</TableHead>
+                <TableHead>{{ t("openlineage.eventType") }}</TableHead>
+                <TableHead>{{ t("openlineageSettings.jobName") }}</TableHead>
+                <TableHead>{{ t("openlineageSettings.namespace") }}</TableHead>
+                <TableHead>{{ t("openlineageSettings.runId") }}</TableHead>
+                <TableHead>{{ t("openlineageSettings.producer") }}</TableHead>
+                <TableHead>{{ t("openlineageSettings.sourceLabel") }}</TableHead>
+                <TableHead>{{ t("openlineage.hasLineage") }}</TableHead>
+                <TableHead>{{ t("openlineageSettings.inputCount") }}</TableHead>
+                <TableHead>{{ t("openlineageSettings.outputCount") }}</TableHead>
+                <TableHead class="sticky right-0 z-10 bg-background text-right">{{ t("openlineageSettings.actions") }}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow v-for="run in filteredRuns" :key="run.guid">
+                <TableCell>{{ formatTimestamp(run.eventTime) }}</TableCell>
+                <TableCell>
+                  <Badge variant="outline">{{ run.eventType || "-" }}</Badge>
+                </TableCell>
+                <TableCell>{{ run.jobName }}</TableCell>
+                <TableCell class="font-mono text-sm">{{ run.jobNamespace }}</TableCell>
+                <TableCell class="font-mono text-sm"><ExpandableText :text="run.runId" /></TableCell>
+                <TableCell class="max-w-48">
+                  <ExpandableText :text="run.producer" />
+                </TableCell>
+                <TableCell>{{ run.source || "-" }}</TableCell>
+                <TableCell>
+                  <Badge :variant="run.hasLineage ? 'success' : 'secondary'">
+                    {{ run.hasLineage ? t("openlineage.yes") : t("openlineage.no") }}
+                  </Badge>
+                </TableCell>
+                <TableCell>{{ run.inputCount }}</TableCell>
+                <TableCell>{{ run.outputCount }}</TableCell>
+                <TableCell class="sticky right-0 bg-background text-right">
+                  <Button variant="ghost" size="sm" @click="openDetail(run.guid)">
+                    {{ t("openlineageSettings.viewRun") }}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </PageState>
       </CardContent>
     </Card>
   </div>
@@ -115,7 +115,8 @@ import { useRoute, useRouter } from "vue-router";
 import { listOpenLineageRuns } from "@/api/openlineage";
 import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
 import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
-import AppLoading from "@/components/common/AppLoading.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import PageState from "@/components/common/PageState.vue";
 import ExpandableText from "@/components/metadata/ExpandableText.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Badge } from "@/components/ui/badge";

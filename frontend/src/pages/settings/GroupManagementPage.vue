@@ -1,106 +1,94 @@
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight">
-          {{ t("iam.groups.pageTitle") }}
-        </h1>
-        <p class="text-muted-foreground mt-1">
-          {{ t("iam.groups.pageDescription") }}
-        </p>
-      </div>
-      <Button
-        v-if="canCreate"
-        @click="openCreate"
-      >
-        <Plus class="h-4 w-4 mr-2" />
-        {{ t("iam.groups.create") }}
-      </Button>
-    </div>
+    <PageHeader
+      :title="t('iam.groups.pageTitle')"
+      :description="t('iam.groups.pageDescription')"
+    >
+      <template #actions>
+        <Button
+          v-if="canCreate"
+          @click="openCreate"
+        >
+          <Plus class="h-4 w-4 mr-2" />
+          {{ t("iam.groups.create") }}
+        </Button>
+      </template>
+    </PageHeader>
 
     <Card>
-      <div
-        v-if="isLoading"
-        class="p-8 flex justify-center"
+      <PageState
+        :loading="isLoading"
+        :error="error"
       >
-        <AppLoading />
-      </div>
-      <div
-        v-else-if="error"
-        class="p-8 text-center text-destructive"
-      >
-        {{ error }}
-      </div>
-      <div
-        v-else-if="groups.length === 0"
-        class="p-8 text-center text-muted-foreground"
-      >
-        {{ t("iam.groups.noGroups") }}
-      </div>
-      <Table v-else>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{{ t("iam.groups.titleLabel") }}</TableHead>
-            <TableHead>{{ t("iam.groups.nameLabel") }}</TableHead>
-            <TableHead>{{ t("iam.groups.membersLabel") }}</TableHead>
-            <TableHead class="text-right">
-              {{ t("common.edit") }}
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow
-            v-for="group in groups"
-            :key="group.name"
-          >
-            <TableCell>
-              <div class="font-medium">{{ group.title || group.name }}</div>
-              <div
-                v-if="group.description"
-                class="text-sm text-muted-foreground"
-              >
-                {{ group.description }}
-              </div>
-            </TableCell>
-            <TableCell class="font-mono text-sm">{{ group.name }}</TableCell>
-            <TableCell>
-              <div class="flex flex-wrap gap-2">
-                <Badge
-                  v-for="member in group.members"
-                  :key="member.member"
-                  variant="secondary"
-                >
-                  {{ userLabel(member.member) }}
-                </Badge>
-                <span
-                  v-if="group.members.length === 0"
+        <EmptyState
+          v-if="groups.length === 0"
+          :title="t('iam.groups.noGroups')"
+        />
+        <Table v-else>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{{ t("iam.groups.titleLabel") }}</TableHead>
+              <TableHead>{{ t("iam.groups.nameLabel") }}</TableHead>
+              <TableHead>{{ t("iam.groups.membersLabel") }}</TableHead>
+              <TableHead class="text-right">
+                {{ t("common.edit") }}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow
+              v-for="group in groups"
+              :key="group.name"
+            >
+              <TableCell>
+                <div class="font-medium">{{ group.title || group.name }}</div>
+                <div
+                  v-if="group.description"
                   class="text-sm text-muted-foreground"
                 >
-                  {{ t("iam.groups.noMembers") }}
-                </span>
-              </div>
-            </TableCell>
-            <TableCell class="text-right space-x-2">
-              <Button
-                v-if="canUpdate"
-                variant="ghost"
-                size="sm"
-                @click="openEdit(group)"
-              >
-                <Pencil class="h-4 w-4" />
-              </Button>
-              <Button
-                v-if="canDelete"
-                variant="ghost"
-                size="sm"
-                @click="openDelete(group)"
-              >
-                <Trash2 class="h-4 w-4 text-destructive" />
-              </Button>
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
+                  {{ group.description }}
+                </div>
+              </TableCell>
+              <TableCell class="font-mono text-sm">{{ group.name }}</TableCell>
+              <TableCell>
+                <div class="flex flex-wrap gap-2">
+                  <Badge
+                    v-for="member in group.members"
+                    :key="member.member"
+                    variant="secondary"
+                  >
+                    {{ userLabel(member.member) }}
+                  </Badge>
+                  <span
+                    v-if="group.members.length === 0"
+                    class="text-sm text-muted-foreground"
+                  >
+                    {{ t("iam.groups.noMembers") }}
+                  </span>
+                </div>
+              </TableCell>
+              <TableCell class="text-right space-x-2">
+                <Button
+                  v-if="canUpdate"
+                  variant="ghost"
+                  size="sm"
+                  @click="openEdit(group)"
+                >
+                  <Pencil class="h-4 w-4" />
+                </Button>
+                <Button
+                  v-if="canDelete"
+                  variant="ghost"
+                  size="sm"
+                  @click="openDelete(group)"
+                >
+                  <Trash2 class="h-4 w-4 text-destructive" />
+                </Button>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </PageState>
     </Card>
 
     <AppModal
@@ -220,8 +208,10 @@ import { useI18n } from "vue-i18n";
 import { createGroup, deleteGroup, listGroups, updateGroup } from "@/api/group";
 import { listUsers } from "@/api/user";
 import AppInput from "@/components/common/AppInput.vue";
-import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import PageState from "@/components/common/PageState.vue";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";

@@ -1,12 +1,28 @@
 <template>
 	<div class="space-y-3">
-		<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-			<div>
-				<div class="text-sm font-medium">{{ titleText }}</div>
-				<div class="text-sm text-muted-foreground">
-					{{ t("metadataBrowser.historyDescription") }}
-				</div>
+		<div class="flex flex-wrap items-center justify-between gap-2">
+			<!-- The parent detail view already labels this panel "History", so
+			     this only switches the view. A second History tab here used to
+			     stack two tab rows with the same label. -->
+			<div class="inline-flex rounded-md border bg-muted/30 p-0.5">
+				<button
+					type="button"
+					class="rounded px-3 py-1 text-sm font-medium transition-colors"
+					:class="activeTab === 'history' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+					@click="activeTab = 'history'"
+				>
+					{{ t("metadataBrowser.historyTimeline") }}
+				</button>
+				<button
+					type="button"
+					class="rounded px-3 py-1 text-sm font-medium transition-colors"
+					:class="activeTab === 'diff' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+					@click="activeTab = 'diff'"
+				>
+					{{ t("metadataBrowser.versionDiffTab") }}
+				</button>
 			</div>
+
 			<Button
 				v-if="activeTab === 'history'"
 				variant="outline"
@@ -15,23 +31,6 @@
 				@click="refreshHistory"
 			>
 				{{ t("metadataBrowser.refreshHistory") }}
-			</Button>
-		</div>
-
-		<div class="flex gap-2 border-b pb-2">
-			<Button
-				:variant="activeTab === 'history' ? 'default' : 'outline'"
-				size="sm"
-				@click="activeTab = 'history'"
-			>
-				{{ t("metadataBrowser.historyTab") }}
-			</Button>
-			<Button
-				:variant="activeTab === 'diff' ? 'default' : 'outline'"
-				size="sm"
-				@click="activeTab = 'diff'"
-			>
-				{{ t("metadataBrowser.versionDiffTab") }}
 			</Button>
 		</div>
 
@@ -329,11 +328,9 @@ const props = withDefaults(
   defineProps<{
     guid: string;
     metaType: MetaType;
-    title?: string;
     pageSize?: number;
   }>(),
   {
-    title: "",
     pageSize: 20,
   }
 );
@@ -351,10 +348,6 @@ const isLoadingDetail = ref(false);
 const loadingEventKey = ref("");
 const listError = ref<string | null>(null);
 const detailError = ref<string | null>(null);
-
-const titleText = computed(
-  () => props.title || t("metadataBrowser.historyTitle")
-);
 
 const selectedEntry = computed(() => {
   return (

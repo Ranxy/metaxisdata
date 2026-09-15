@@ -1,108 +1,96 @@
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight">
-          {{ t("iam.roles.pageTitle") }}
-        </h1>
-        <p class="text-muted-foreground mt-1">
-          {{ t("iam.roles.pageDescription") }}
-        </p>
-      </div>
-      <Button
-        v-if="canCreate"
-        @click="openCreate"
-      >
-        <Plus class="h-4 w-4 mr-2" />
-        {{ t("iam.roles.create") }}
-      </Button>
-    </div>
+    <PageHeader
+      :title="t('iam.roles.pageTitle')"
+      :description="t('iam.roles.pageDescription')"
+    >
+      <template #actions>
+        <Button
+          v-if="canCreate"
+          @click="openCreate"
+        >
+          <Plus class="h-4 w-4 mr-2" />
+          {{ t("iam.roles.create") }}
+        </Button>
+      </template>
+    </PageHeader>
 
     <Card>
-      <div
-        v-if="isLoading"
-        class="p-8 flex justify-center"
+      <PageState
+        :loading="isLoading"
+        :error="error"
       >
-        <AppLoading />
-      </div>
-      <div
-        v-else-if="error"
-        class="p-8 text-center text-destructive"
-      >
-        {{ error }}
-      </div>
-      <div
-        v-else-if="roles.length === 0"
-        class="p-8 text-center text-muted-foreground"
-      >
-        {{ t("iam.roles.noRoles") }}
-      </div>
-      <Table v-else>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{{ t("iam.roles.titleLabel") }}</TableHead>
-            <TableHead>{{ t("iam.roles.nameLabel") }}</TableHead>
-            <TableHead>{{ t("iam.roles.typeLabel") }}</TableHead>
-            <TableHead>{{ t("iam.roles.permissionsLabel") }}</TableHead>
-            <TableHead class="text-right">
-              {{ t("common.edit") }}
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow
-            v-for="role in roles"
-            :key="role.name"
-          >
-            <TableCell>
-              <div class="font-medium">{{ role.title || role.name }}</div>
-              <div
-                v-if="role.description"
-                class="text-sm text-muted-foreground"
-              >
-                {{ role.description }}
-              </div>
-            </TableCell>
-            <TableCell class="font-mono text-sm">{{ role.name }}</TableCell>
-            <TableCell>
-              <Badge :variant="role.predefined ? 'secondary' : 'default'">
-                {{
-                  role.predefined
-                    ? t("iam.roles.predefined")
-                    : t("iam.roles.custom")
-                }}
-              </Badge>
-            </TableCell>
-            <TableCell>{{ role.permissions.length }}</TableCell>
-            <TableCell class="text-right space-x-2">
-              <Button
-                v-if="canUpdate"
-                variant="ghost"
-                size="sm"
-                :disabled="role.predefined"
-                :title="
-                  role.predefined ? t('iam.roles.predefinedReadonly') : ''
-                "
-                @click="openEdit(role)"
-              >
-                <Pencil class="h-4 w-4" />
-              </Button>
-              <Button
-                v-if="canDelete"
-                variant="ghost"
-                size="sm"
-                :disabled="role.predefined"
-                :title="
-                  role.predefined ? t('iam.roles.predefinedReadonly') : ''
-                "
-                @click="openDelete(role)"
-              >
-                <Trash2 class="h-4 w-4 text-destructive" />
-              </Button>
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
+        <EmptyState
+          v-if="roles.length === 0"
+          :title="t('iam.roles.noRoles')"
+        />
+        <Table v-else>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{{ t("iam.roles.titleLabel") }}</TableHead>
+              <TableHead>{{ t("iam.roles.nameLabel") }}</TableHead>
+              <TableHead>{{ t("iam.roles.typeLabel") }}</TableHead>
+              <TableHead>{{ t("iam.roles.permissionsLabel") }}</TableHead>
+              <TableHead class="text-right">
+                {{ t("common.edit") }}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow
+              v-for="role in roles"
+              :key="role.name"
+            >
+              <TableCell>
+                <div class="font-medium">{{ role.title || role.name }}</div>
+                <div
+                  v-if="role.description"
+                  class="text-sm text-muted-foreground"
+                >
+                  {{ role.description }}
+                </div>
+              </TableCell>
+              <TableCell class="font-mono text-sm">{{ role.name }}</TableCell>
+              <TableCell>
+                <Badge :variant="role.predefined ? 'secondary' : 'default'">
+                  {{
+                    role.predefined
+                      ? t("iam.roles.predefined")
+                      : t("iam.roles.custom")
+                  }}
+                </Badge>
+              </TableCell>
+              <TableCell>{{ role.permissions.length }}</TableCell>
+              <TableCell class="text-right space-x-2">
+                <Button
+                  v-if="canUpdate"
+                  variant="ghost"
+                  size="sm"
+                  :disabled="role.predefined"
+                  :title="
+                    role.predefined ? t('iam.roles.predefinedReadonly') : ''
+                  "
+                  @click="openEdit(role)"
+                >
+                  <Pencil class="h-4 w-4" />
+                </Button>
+                <Button
+                  v-if="canDelete"
+                  variant="ghost"
+                  size="sm"
+                  :disabled="role.predefined"
+                  :title="
+                    role.predefined ? t('iam.roles.predefinedReadonly') : ''
+                  "
+                  @click="openDelete(role)"
+                >
+                  <Trash2 class="h-4 w-4 text-destructive" />
+                </Button>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </PageState>
     </Card>
 
     <AppModal
@@ -239,8 +227,10 @@ import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { createRole, deleteRole, listRoles, updateRole } from "@/api/role";
 import AppInput from "@/components/common/AppInput.vue";
-import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import PageState from "@/components/common/PageState.vue";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";

@@ -1,12 +1,10 @@
 <template>
   <div>
-    <div
+    <EmptyState
       v-if="manualSQLRows.length === 0"
-      class="p-8 text-center text-muted-foreground"
-    >
-      <FileCode2 class="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-      <p>{{ t("metadataBrowser.noManualSqls") }}</p>
-    </div>
+      :icon="FileCode2"
+      :title="t('metadataBrowser.noManualSqls')"
+    />
 
     <Table v-else>
       <TableHeader>
@@ -48,6 +46,7 @@
 import { FileCode2 } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import EmptyState from "@/components/common/EmptyState.vue";
 import {
   Table,
   TableBody,

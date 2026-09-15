@@ -1,15 +1,15 @@
 <template>
   <div class="space-y-4">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div class="flex items-center gap-3">
-        <h1 class="text-2xl font-bold tracking-tight">
-          {{ t("lineageGraph.title") }}
-        </h1>
-        <Badge variant="outline" class="max-w-64 truncate">
+    <PageHeader :title="t('lineageGraph.title')">
+      <template #title-extra>
+        <Badge
+          variant="outline"
+          class="max-w-64 truncate"
+        >
           {{ focusAssetLabel }}
         </Badge>
-      </div>
-      <div class="flex items-center gap-2">
+      </template>
+      <template #actions>
         <Select v-model="expandDepth">
           <SelectTrigger class="w-28">
             <SelectValue :placeholder="t('lineageGraph.expandDepth')" />
@@ -32,8 +32,8 @@
           <ArrowLeft class="size-4 mr-1" />
           {{ t("lineageGraph.backToMetadata") }}
         </Button>
-      </div>
-    </div>
+      </template>
+    </PageHeader>
 
     <Card v-if="openLineageSources.length > 0">
       <CardContent class="pt-6 space-y-3">
@@ -236,6 +236,7 @@ import "@vue-flow/minimap/dist/style.css";
 import { ArrowLeft, Maximize2, RotateCcw } from "lucide-vue-next";
 import { getLineage } from "@/api/lineage";
 import AppLoading from "@/components/common/AppLoading.vue";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import type { LineageNodeData } from "@/components/lineage/LineageNode.vue";
 import LineageNode from "@/components/lineage/LineageNode.vue";
 import { Badge } from "@/components/ui/badge";

@@ -2,7 +2,7 @@
   <div class="space-y-4">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <div class="text-sm font-medium">{{ t("metadataBrowser.versionDiffTitle") }}</div>
+        <h2 class="text-sm font-medium">{{ t("metadataBrowser.versionDiffTitle") }}</h2>
         <div class="text-sm text-muted-foreground">
           {{ t("metadataBrowser.versionDiffDescription") }}
         </div>
@@ -61,13 +61,13 @@
 
     <div v-if="result" class="space-y-4">
       <div class="rounded-lg border bg-card p-4">
-        <div class="text-sm font-medium mb-2">{{ t("metadataBrowser.diffSummary") }}</div>
+        <h2 class="text-sm font-medium mb-2">{{ t("metadataBrowser.diffSummary") }}</h2>
         <pre class="text-sm whitespace-pre-wrap text-muted-foreground">{{ result.diffSummary }}</pre>
       </div>
 
       <div v-if="result.ddl" class="rounded-lg border bg-card p-4">
         <div class="flex items-center justify-between mb-2">
-          <div class="text-sm font-medium">{{ t("metadataBrowser.migrationDdl") }}</div>
+          <h2 class="text-sm font-medium">{{ t("metadataBrowser.migrationDdl") }}</h2>
           <Button variant="outline" size="sm" @click="copyDdl">
             {{ copied ? t("metadataBrowser.copied") : t("metadataBrowser.copyDdl") }}
           </Button>
