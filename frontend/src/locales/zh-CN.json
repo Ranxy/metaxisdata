@@ -108,6 +108,29 @@
     "syncing": "同步中...",
     "title": "数据库管理"
   },
+  "deviceLogin": {
+    "approve": "批准",
+    "client": "客户端",
+    "codeCompareHint": "请与客户端显示的验证码核对",
+    "codeLabel": "验证码",
+    "codePlaceholder": "XXXX-XXXX",
+    "continue": "继续",
+    "deny": "拒绝",
+    "description": "确认某个命令行客户端可以以你的身份访问。",
+    "expiresAt": "过期时间",
+    "outcome": {
+      "approved": "已批准。可以回到客户端,它会自动完成登录。",
+      "denied": "已拒绝。客户端已收到被拒绝的结果。",
+      "expired": "该请求已过期。请重新执行登录命令获取新的验证码。"
+    },
+    "prefilledHint": "这段验证码来自链接。请确认它与发起请求的客户端显示的验证码一致;如果不是你本人发起的,请拒绝。",
+    "requestIp": "请求来源",
+    "requestedAt": "发起时间",
+    "startOver": "输入其他验证码",
+    "title": "授权设备登录",
+    "unknown": "未知",
+    "unknownClient": "未知客户端"
+  },
   "environment": {
     "cancel": "取消",
     "create": "创建",
