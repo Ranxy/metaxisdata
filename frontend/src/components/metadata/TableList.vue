@@ -1,12 +1,10 @@
 <template>
   <div>
-    <div
+    <EmptyState
       v-if="tableRows.length === 0"
-      class="p-8 text-center text-muted-foreground"
-    >
-      <Table2 class="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-      <p>{{ t("metadataBrowser.noTables") }}</p>
-    </div>
+      :icon="Table2"
+      :title="t('metadataBrowser.noTables')"
+    />
 
     <Table v-else>
       <TableHeader>
@@ -69,6 +67,7 @@
 import { Table2 } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import EmptyState from "@/components/common/EmptyState.vue";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,

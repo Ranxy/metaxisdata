@@ -1,20 +1,16 @@
 <template>
   <div class="space-y-4">
-    <!-- Page Header -->
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight">
-          {{ t("instanceManagement.title") }}
-        </h1>
-      </div>
-      <Button
-        v-if="canCreate"
-        @click="openCreateModal"
-      >
-        <Plus class="h-4 w-4 mr-2" />
-        {{ t("instanceManagement.addInstance") }}
-      </Button>
-    </div>
+    <PageHeader :title="t('instanceManagement.title')">
+      <template #actions>
+        <Button
+          v-if="canCreate"
+          @click="openCreateModal"
+        >
+          <Plus class="h-4 w-4 mr-2" />
+          {{ t("instanceManagement.addInstance") }}
+        </Button>
+      </template>
+    </PageHeader>
 
     <!-- Search Bar -->
     <div class="flex items-center gap-4">
@@ -33,112 +29,99 @@
 
     <!-- Instances Table -->
     <Card>
-      <!-- Loading State -->
-      <div
-        v-if="isLoading"
-        class="p-8 flex justify-center"
+      <PageState
+        :loading="isLoading"
+        :error="error"
       >
-        <AppLoading />
-      </div>
+        <!-- Empty State -->
+        <EmptyState
+          v-if="activeInstances.length === 0"
+          :icon="Database"
+          :title="t('instanceManagement.noInstances')"
+        />
 
-      <!-- Error State -->
-      <div
-        v-else-if="error"
-        class="p-8 text-center text-destructive"
-      >
-        {{ error }}
-      </div>
-
-      <!-- Empty State -->
-      <div
-        v-else-if="activeInstances.length === 0"
-        class="p-8 text-center text-muted-foreground"
-      >
-        <Database class="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-        <p>{{ t("instanceManagement.noInstances") }}</p>
-      </div>
-
-      <!-- Instances List -->
-      <Table v-else>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{{ t("instanceManagement.instance") }}</TableHead>
-            <TableHead>{{ t("instanceManagement.engine") }}</TableHead>
-            <TableHead>{{ t("instanceManagement.host") }}</TableHead>
-            <TableHead>{{ t("instanceManagement.environment") }}</TableHead>
-            <TableHead>{{ t("instanceManagement.status") }}</TableHead>
-            <TableHead>{{ t("instanceManagement.lastSync") }}</TableHead>
-            <TableHead class="text-right">
-              {{ t("instanceManagement.actions") }}
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow
-            v-for="instance in activeInstances"
-            :key="instance.name"
-            class="cursor-pointer hover:bg-muted/50"
-            @click="navigateToInstanceDetail(instance)"
-          >
-            <TableCell>
-              <div class="flex items-center">
-                <div
-                  class="w-10 h-10 rounded-full flex items-center justify-center"
-                  :class="getEngineBgClass(instance.engine)"
-                >
-                  <span
-                    class="font-semibold text-sm"
-                    :class="getEngineTextClass(instance.engine)"
+        <!-- Instances List -->
+        <Table v-else>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{{ t("instanceManagement.instance") }}</TableHead>
+              <TableHead>{{ t("instanceManagement.engine") }}</TableHead>
+              <TableHead>{{ t("instanceManagement.host") }}</TableHead>
+              <TableHead>{{ t("instanceManagement.environment") }}</TableHead>
+              <TableHead>{{ t("instanceManagement.status") }}</TableHead>
+              <TableHead>{{ t("instanceManagement.lastSync") }}</TableHead>
+              <TableHead class="text-right">
+                {{ t("instanceManagement.actions") }}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow
+              v-for="instance in activeInstances"
+              :key="instance.name"
+              class="cursor-pointer hover:bg-muted/50"
+              @click="navigateToInstanceDetail(instance)"
+            >
+              <TableCell>
+                <div class="flex items-center">
+                  <div
+                    class="w-10 h-10 rounded-full flex items-center justify-center"
+                    :class="getEngineBgClass(instance.engine)"
                   >
-                    {{ getEngineIcon(instance.engine) }}
-                  </span>
-                </div>
-                <div class="ml-4">
-                  <div class="font-medium">
-                    {{ instance.title || "-" }}
+                    <span
+                      class="font-semibold text-sm"
+                      :class="getEngineTextClass(instance.engine)"
+                    >
+                      {{ getEngineIcon(instance.engine) }}
+                    </span>
                   </div>
-                  <div class="text-sm text-muted-foreground">
-                    {{ getInstanceId(instance.name) }}
+                  <div class="ml-4">
+                    <div class="font-medium">
+                      {{ instance.title || "-" }}
+                    </div>
+                    <div class="text-sm text-muted-foreground">
+                      {{ getInstanceId(instance.name) }}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </TableCell>
-            <TableCell>
-              <Badge
-                variant="secondary"
-                :class="getEngineBadgeClass(instance.engine)"
-              >
-                {{ getEngineLabel(instance.engine) }}
-              </Badge>
-            </TableCell>
-            <TableCell class="text-muted-foreground">
-              {{ getHostInfo(instance) }}
-            </TableCell>
-            <TableCell class="text-muted-foreground">
-              {{ getEnvironmentLabel(instance.environment) }}
-            </TableCell>
-            <TableCell>
-              <Badge :variant="instance.activation ? 'success' : 'secondary'">
-                {{ instance.activation ? t("instanceManagement.active") : t("instanceManagement.inactive") }}
-              </Badge>
-            </TableCell>
-            <TableCell class="text-muted-foreground">
-              {{ formatLastSync(instance.lastSyncTime) }}
-            </TableCell>
-            <TableCell class="text-right">
-              <Button
-                v-if="canDelete"
-                variant="ghost"
-                size="icon"
-                :title="t('common.delete')"
-                @click.stop="confirmDelete(instance)"
-              >
-                <Trash2 class="h-4 w-4 text-muted-foreground hover:text-destructive" />
-              </Button>
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
+              </TableCell>
+              <TableCell>
+                <Badge
+                  variant="secondary"
+                  :class="getEngineBadgeClass(instance.engine)"
+                >
+                  {{ getEngineLabel(instance.engine) }}
+                </Badge>
+              </TableCell>
+              <TableCell class="text-muted-foreground">
+                {{ getHostInfo(instance) }}
+              </TableCell>
+              <TableCell class="text-muted-foreground">
+                {{ getEnvironmentLabel(instance.environment) }}
+              </TableCell>
+              <TableCell>
+                <Badge :variant="instance.activation ? 'success' : 'secondary'">
+                  {{ instance.activation ? t("instanceManagement.active") : t("instanceManagement.inactive") }}
+                </Badge>
+              </TableCell>
+              <TableCell class="text-muted-foreground">
+                {{ formatLastSync(instance.lastSyncTime) }}
+              </TableCell>
+              <TableCell class="text-right">
+                <Button
+                  v-if="canDelete"
+                  variant="ghost"
+                  size="icon"
+                  :title="t('common.delete')"
+                  @click.stop="confirmDelete(instance)"
+                >
+                  <Trash2 class="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                </Button>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </PageState>
     </Card>
 
     <!-- Deleted Instances (Recycle Bin) -->
@@ -165,80 +148,72 @@
         </CollapsibleTrigger>
 
         <CollapsibleContent>
-          <!-- Loading State -->
-          <div
-            v-if="isLoadingDeleted"
-            class="p-6 flex justify-center"
-          >
-            <AppLoading />
-          </div>
+          <PageState :loading="isLoadingDeleted">
+            <!-- Empty State -->
+            <EmptyState
+              v-if="deletedInstances.length === 0"
+              :icon="RotateCcw"
+              :title="t('instanceManagement.noDeletedInstances')"
+            />
 
-          <!-- Empty State -->
-          <div
-            v-else-if="deletedInstances.length === 0"
-            class="p-8 text-center text-muted-foreground"
-          >
-            <RotateCcw class="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-            <p>{{ t("instanceManagement.noDeletedInstances") }}</p>
-          </div>
-
-          <!-- Deleted Instances List -->
-          <Table v-else>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{{ t("instanceManagement.instance") }}</TableHead>
-                <TableHead>{{ t("instanceManagement.engine") }}</TableHead>
-                <TableHead>{{ t("instanceManagement.host") }}</TableHead>
-                <TableHead class="text-right">
-                  {{ t("instanceManagement.actions") }}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow
-                v-for="instance in deletedInstances"
-                :key="instance.name"
-                class="opacity-60"
-              >
-                <TableCell>
-                  <div class="flex items-center">
-                    <div class="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                      <span class="text-muted-foreground font-semibold text-sm">
-                        {{ getEngineIcon(instance.engine) }}
-                      </span>
-                    </div>
-                    <div class="ml-4">
-                      <div class="font-medium text-muted-foreground">
-                        {{ instance.title || "-" }}
+            <!-- Deleted Instances List -->
+            <Table v-else>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{{ t("instanceManagement.instance") }}</TableHead>
+                  <TableHead>{{ t("instanceManagement.engine") }}</TableHead>
+                  <TableHead>{{ t("instanceManagement.host") }}</TableHead>
+                  <TableHead class="text-right">
+                    {{ t("instanceManagement.actions") }}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow
+                  v-for="instance in deletedInstances"
+                  :key="instance.name"
+                  class="opacity-60"
+                >
+                  <TableCell>
+                    <div class="flex items-center">
+                      <div class="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                        <span class="text-muted-foreground font-semibold text-sm">
+                          {{ getEngineIcon(instance.engine) }}
+                        </span>
                       </div>
-                      <div class="text-sm text-muted-foreground/70">
-                        {{ getInstanceId(instance.name) }}
+                      <div class="ml-4">
+                        <div class="font-medium text-muted-foreground">
+                          {{ instance.title || "-" }}
+                        </div>
+                        <div class="text-sm text-muted-foreground/70">
+                          {{ getInstanceId(instance.name) }}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant="secondary">
-                    {{ getEngineLabel(instance.engine) }}
-                  </Badge>
-                </TableCell>
-                <TableCell class="text-muted-foreground">
-                  {{ getHostInfo(instance) }}
-                </TableCell>
-                <TableCell class="text-right">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    :disabled="restoringInstance === instance.name"
-                    @click="restoreInstance(instance)"
-                  >
-                    <RotateCcw class="h-4 w-4 mr-1" />
-                    {{ t("instanceManagement.restore") }}
-                  </Button>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">
+                      {{ getEngineLabel(instance.engine) }}
+                    </Badge>
+                  </TableCell>
+                  <TableCell class="text-muted-foreground">
+                    {{ getHostInfo(instance) }}
+                  </TableCell>
+                  <TableCell class="text-right">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      :disabled="restoringInstance === instance.name"
+                      @click="restoreInstance(instance)"
+                    >
+                      <RotateCcw class="h-4 w-4 mr-1" />
+                      {{ t("instanceManagement.restore") }}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </PageState>
         </CollapsibleContent>
       </Card>
     </Collapsible>
@@ -590,9 +565,11 @@ import {
   undeleteInstance,
 } from "@/api/instance";
 import AppInput from "@/components/common/AppInput.vue";
-import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
 import EnvironmentSelect from "@/components/common/EnvironmentSelect.vue";
+import PageState from "@/components/common/PageState.vue";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -1145,18 +1122,3 @@ onMounted(() => {
   void environmentStore.ensureLoaded();
 });
 </script>
-
-<style scoped>
-.slide-enter-active,
-.slide-leave-active {
-  transition: all 0.3s ease;
-  max-height: 1000px;
-  overflow: hidden;
-}
-
-.slide-enter-from,
-.slide-leave-to {
-  max-height: 0;
-  opacity: 0;
-}
-</style>

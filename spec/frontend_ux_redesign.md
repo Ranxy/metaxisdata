@@ -159,6 +159,24 @@ Phase 0 与 Phase 1 已实现，实测结果（1440×900）：
 
 用户反馈折叠后"展开侧栏"图标与其它图标不对齐。实测：侧栏中线在 x=32，品牌方块与所有导航图标都在 **31.5**，而折叠/展开按钮在 **39**，偏右 7.5px。根因是展开态用来把按钮推到右侧的 `ml-auto`：rail 模式下这一行变成 `flex-col`，而**在列向 flex 容器里 auto 外边距会吸收剩余空间并覆盖 `items-center`**，于是按钮被顶到右缘。修复：`ml-auto` 改为仅非 rail 时生效（`rail ? '' : 'ml-auto'`）；同时把 rail 下的按钮图标从 16px 提到 20px，与导航图标同尺寸。修复后四个中心点全部为 31.5，`marginLeft` 计算值 0px；展开态（`marginLeft` 仍为 auto、图标 16px）与移动端抽屉（行向 + auto）行为均未变。
 
+**Implementation Status — Phase 2 (done)**
+
+| Step | 内容 | 状态 |
+| --- | --- | --- |
+| 6 | `OpenLineageOverviewPage` 填充真实数据 | 完成 |
+| 7 | `GeneralSettingsPage` 合并分组表单 | 完成 |
+| 8 | `PageState` / `EmptyState` 铺开 + 死代码清理 | 完成 |
+| 3 | `PageHeader` 全站铺开 | 完成 |
+| — | 全局 ⌘K 命令面板 | **未做**（见 Further Considerations） |
+
+**6. OpenLineage Overview — 从"整页导航"变成真实总览。** 原页面的 4 张卡片全部是跳转按钮，100% 重复侧栏且零数据。现在只用已有 RPC（`ListOpenLineageRuns` / `ListOpenLineageTasks` / `ListOpenLineageDatasets`，均为 `event_time DESC`）在客户端聚合成四张指标卡（Jobs / Datasets / 最近 Runs / 最近事件）+ 最近 Runs 表（10 行，含事件类型状态徽章）+ 最近活跃作业表（5 行），并各自链到完整目录。**没有新增后端 RPC**——这是当时把该页推迟到 Phase 2 的主要未知项，实测现有 RPC 足够。零数据时退化为一个接入引导空态（这正是该页原先的全部内容）。两种状态均已实测：空态走真实 dev 库（无 OL 数据）；有数据态通过临时 stub 三个 RPC 响应验证（未污染数据库）。指标口径保持诚实：卡片标注为"可见"数量而非总数，因为列表 RPC 只返回 `next_page_token` 而无数值总数。
+
+**7. GeneralSettings — 一个表单、一个 loader、一次保存。** 三个独立 Save 按钮分别提交同一资源的不同字段掩码，已合并为一次 `updateWorkspaceProfileSetting`（7 个字段的并集掩码）。加载合并为一个 `PageState`；Save 收敛到 sticky 页脚并新增未保存提示。实测：保存按钮 3 → **1**，scrollHeight 1446 → **1323**，滚动 423px 后 Save 仍固定在视口底部（top=824），改动任一字段即出现"有未保存的更改"。Debug mode 刻意不并入：它走独立 RPC 且立即生效。Profile 列表单独失败不再拖垮整页（调用方可能没有 `llm.profiles.list`），降级为卡片内提示。
+
+**8 + 3. 原语铺开与死代码。** `PageHeader` 覆盖全部 15 个路由页（含原先无标题的 `/settings/llm-providers`，它是唯一连 h1 都没有的页面）；h1 字号全站统一为 20px（原 24px），操作按钮位置统一。`PageState`/`EmptyState` 替换了 13 个页面 + 10 个列表组件里复制粘贴的 loading/error/empty 块。死代码清理：`InstanceManagementPage` 与 `UserManagementPage` 各有一整块未被引用的 `.slide-*` scoped CSS（后者是执行时新发现的）；`DatabaseManagementPage` 单子元素 `justify-between`；`MetadataList` 未使用的 `currentGuid` prop；`getEngineBadgeVariant` 空转参数；实例名在 title 缺失时的重复渲染。
+
+**顺带修掉一个同类的路由缺陷。** Phase 2 梳理时发现 `/openlineage/overview` 是唯一没有 `contentWidth: "full"` 的 OpenLineage 非重定向路由——即"落地页比它链向的每一页都窄"，与用户先前报告的设置页漂移是同一类问题。已把 `/openlineage` 改为带 children 的父路由并让标志只在父级声明一次，与其他 6 个子页彻底同步（实测全部 `capped=false`）。至此全站只有 `/` 仍是受限宽度的页面。
+
 **Further Considerations**
 
 1. 品牌名是否走 i18n。目前 `MetaxisData` 硬编码在 `AppHeader`，移入侧栏顶部时可一并纳入 locale catalog；但产品名通常不翻译，建议保持硬编码并在 i18n 检查脚本中显式豁免，避免产生 `brand.name` 这类无意义键。

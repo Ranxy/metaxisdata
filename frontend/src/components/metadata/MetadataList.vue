@@ -26,7 +26,6 @@ import ViewList from "./ViewList.vue";
 const props = defineProps<{
   metaType: MetaType;
   items: StoredMetadata[];
-  currentGuid: string;
   isMysql: boolean;
 }>();
 

@@ -1,15 +1,10 @@
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight">
-          {{ t("iam.policy.pageTitle") }}
-        </h1>
-        <p class="text-muted-foreground mt-1">
-          {{ t("iam.policy.pageDescription") }}
-        </p>
-      </div>
-      <div class="space-x-2">
+    <PageHeader
+      :title="t('iam.policy.pageTitle')"
+      :description="t('iam.policy.pageDescription')"
+    >
+      <template #actions>
         <Button
           variant="outline"
           :disabled="isLoading || isSaving"
@@ -24,103 +19,94 @@
         >
           {{ t("common.save") }}
         </Button>
-      </div>
-    </div>
+      </template>
+    </PageHeader>
 
     <Card>
-      <div
-        v-if="isLoading"
-        class="p-8 flex justify-center"
+      <PageState
+        :loading="isLoading"
+        :error="error"
       >
-        <AppLoading />
-      </div>
-      <div
-        v-else-if="error"
-        class="p-8 text-center text-destructive"
-      >
-        {{ error }}
-      </div>
-      <div
-        v-else-if="bindings.length === 0"
-        class="p-8 text-center text-muted-foreground"
-      >
-        {{ t("iam.policy.noBindings") }}
-      </div>
-      <Table v-else>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{{ t("iam.policy.role") }}</TableHead>
-            <TableHead>{{ t("iam.policy.members") }}</TableHead>
-            <TableHead
-              v-if="canSet"
-              class="text-right"
+        <EmptyState
+          v-if="bindings.length === 0"
+          :title="t('iam.policy.noBindings')"
+        />
+        <Table v-else>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{{ t("iam.policy.role") }}</TableHead>
+              <TableHead>{{ t("iam.policy.members") }}</TableHead>
+              <TableHead
+                v-if="canSet"
+                class="text-right"
+              >
+                {{ t("common.edit") }}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow
+              v-for="(binding, index) in bindings"
+              :key="binding.role"
             >
-              {{ t("common.edit") }}
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow
-            v-for="(binding, index) in bindings"
-            :key="binding.role"
-          >
-            <TableCell>
-              <div class="font-medium">
-                {{ roleTitle(binding.role) }}
-              </div>
-              <div class="font-mono text-xs text-muted-foreground">
-                {{ binding.role }}
-              </div>
-            </TableCell>
-            <TableCell>
-              <div class="flex flex-wrap gap-2">
-                <Badge
-                  v-for="member in binding.members"
-                  :key="member"
-                  variant="secondary"
-                  class="gap-1"
-                >
-                  <span>{{ memberLabel(member) }}</span>
-                  <button
-                    v-if="canSet"
-                    type="button"
-                    class="text-muted-foreground hover:text-destructive"
-                    :title="t('iam.policy.removeMember')"
-                    @click="removeMember(index, member)"
+              <TableCell>
+                <div class="font-medium">
+                  {{ roleTitle(binding.role) }}
+                </div>
+                <div class="font-mono text-xs text-muted-foreground">
+                  {{ binding.role }}
+                </div>
+              </TableCell>
+              <TableCell>
+                <div class="flex flex-wrap gap-2">
+                  <Badge
+                    v-for="member in binding.members"
+                    :key="member"
+                    variant="secondary"
+                    class="gap-1"
                   >
-                    ×
-                  </button>
-                </Badge>
-                <span
-                  v-if="binding.members.length === 0"
-                  class="text-sm text-muted-foreground"
+                    <span>{{ memberLabel(member) }}</span>
+                    <button
+                      v-if="canSet"
+                      type="button"
+                      class="text-muted-foreground hover:text-destructive"
+                      :title="t('iam.policy.removeMember')"
+                      @click="removeMember(index, member)"
+                    >
+                      ×
+                    </button>
+                  </Badge>
+                  <span
+                    v-if="binding.members.length === 0"
+                    class="text-sm text-muted-foreground"
+                  >
+                    {{ t("iam.policy.noMembers") }}
+                  </span>
+                </div>
+              </TableCell>
+              <TableCell
+                v-if="canSet"
+                class="text-right space-x-2"
+              >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  @click="openAddMember(index)"
                 >
-                  {{ t("iam.policy.noMembers") }}
-                </span>
-              </div>
-            </TableCell>
-            <TableCell
-              v-if="canSet"
-              class="text-right space-x-2"
-            >
-              <Button
-                variant="ghost"
-                size="sm"
-                @click="openAddMember(index)"
-              >
-                <Plus class="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                @click="removeBinding(index)"
-              >
-                <Trash2 class="h-4 w-4 text-destructive" />
-              </Button>
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
+                  <Plus class="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  @click="removeBinding(index)"
+                >
+                  <Trash2 class="h-4 w-4 text-destructive" />
+                </Button>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </PageState>
       <div
         v-if="canSet && !isLoading && !error"
         class="p-4 border-t"
@@ -268,8 +254,10 @@ import { listGroups } from "@/api/group";
 import { getWorkspaceIamPolicy, setWorkspaceIamPolicy } from "@/api/iam";
 import { listRoles } from "@/api/role";
 import { listUsers } from "@/api/user";
-import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import PageState from "@/components/common/PageState.vue";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";

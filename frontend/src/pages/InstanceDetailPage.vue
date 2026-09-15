@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-4">
     <!-- Page Header -->
-    <div class="flex items-center gap-4">
+    <div class="flex items-center gap-3">
       <Button
         variant="ghost"
         size="icon"
@@ -9,18 +9,20 @@
       >
         <ArrowLeft class="h-5 w-5" />
       </Button>
-      <div class="flex-1">
-        <h1 class="text-2xl font-bold tracking-tight">
-          {{ instance?.title || instanceId }}
-        </h1>
-      </div>
-      <Button
-        v-if="instance"
-        @click="openEditModal"
+      <PageHeader
+        :title="instance?.title || instanceId"
+        class="min-w-0 flex-1"
       >
-        <Pencil class="h-4 w-4 mr-2" />
-        {{ t("instanceDetail.editInstance") }}
-      </Button>
+        <template #actions>
+          <Button
+            v-if="instance"
+            @click="openEditModal"
+          >
+            <Pencil class="h-4 w-4 mr-2" />
+            {{ t("instanceDetail.editInstance") }}
+          </Button>
+        </template>
+      </PageHeader>
     </div>
 
     <!-- Instance Info Card -->
@@ -524,6 +526,7 @@ import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
 import EnvironmentSelect from "@/components/common/EnvironmentSelect.vue";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

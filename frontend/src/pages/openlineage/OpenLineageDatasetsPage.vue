@@ -50,92 +50,89 @@
 
     <Card>
       <CardContent class="pt-6">
-        <div v-if="isLoading" class="p-8 flex justify-center">
-          <AppLoading />
-        </div>
-        <div
-          v-else-if="filteredDatasets.length === 0"
-          class="p-8 text-center text-muted-foreground"
-        >
-          <Database class="mx-auto mb-4 h-12 w-12 text-muted-foreground/50" />
-          <p>{{ t("openlineage.noDatasets") }}</p>
-        </div>
-        <Table v-else>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{{ t("openlineageSettings.namespace") }}</TableHead>
-              <TableHead>{{ t("openlineage.datasetName") }}</TableHead>
-              <TableHead>{{ t("openlineage.datasetType") }}</TableHead>
-              <TableHead>{{ t("openlineage.resolvedTarget") }}</TableHead>
-              <TableHead>{{ t("openlineage.lastSeen") }}</TableHead>
-              <TableHead>{{ t("openlineage.sourceJobsCount") }}</TableHead>
-              <TableHead>{{ t("openlineage.targetJobsCount") }}</TableHead>
-              <TableHead>{{ t("openlineage.supportsColumnLineage") }}</TableHead>
-              <TableHead>{{ t("openlineage.scope") }}</TableHead>
-              <TableHead class="text-right">{{ t("openlineageSettings.actions") }}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow v-for="dataset in filteredDatasets" :key="datasetRowKey(dataset)">
-              <TableCell class="font-mono text-sm">{{ dataset.namespace }}</TableCell>
-              <TableCell>
-                <button
-                  class="text-left font-medium text-primary hover:underline"
-                  type="button"
-                  @click="openDatasetDetail(dataset)"
-                >
-                  {{ dataset.name }}
-                </button>
-              </TableCell>
-              <TableCell>{{ dataset.datasetType || "-" }}</TableCell>
-              <TableCell>
-                <span v-if="dataset.resolvedTarget" class="font-mono text-sm">
-                  {{ dataset.resolvedTarget }}
-                </span>
-                <span v-else class="text-muted-foreground">-</span>
-              </TableCell>
-              <TableCell>{{ formatTimestamp(dataset.lastSeen) }}</TableCell>
-              <TableCell>{{ dataset.sourceJobCount }}</TableCell>
-              <TableCell>{{ dataset.targetJobCount }}</TableCell>
-              <TableCell>
-                <Badge :variant="dataset.supportsColumnLineage ? 'success' : 'secondary'">
-                  {{ dataset.supportsColumnLineage ? t("openlineage.yes") : t("openlineage.no") }}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <Badge :variant="dataset.internal ? 'default' : 'outline'">
-                  {{ dataset.internal ? t("openlineage.internal") : t("openlineage.external") }}
-                </Badge>
-              </TableCell>
-              <TableCell class="text-right">
-                <div class="flex justify-end gap-2">
-                  <Button variant="ghost" size="sm" @click="openDatasetDetail(dataset)">
-                    {{ t("openlineageSettings.viewDetail") }}
-                  </Button>
-                  <Button variant="ghost" size="sm" @click="openGraph(dataset)">
-                    {{ t("openlineage.openGraph") }}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    :disabled="!dataset.supportsColumnLineage"
-                    @click="openColumnLineage(dataset)"
+        <PageState :loading="isLoading">
+          <EmptyState
+            v-if="filteredDatasets.length === 0"
+            :icon="Database"
+            :title="t('openlineage.noDatasets')"
+          />
+          <Table v-else>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{{ t("openlineageSettings.namespace") }}</TableHead>
+                <TableHead>{{ t("openlineage.datasetName") }}</TableHead>
+                <TableHead>{{ t("openlineage.datasetType") }}</TableHead>
+                <TableHead>{{ t("openlineage.resolvedTarget") }}</TableHead>
+                <TableHead>{{ t("openlineage.lastSeen") }}</TableHead>
+                <TableHead>{{ t("openlineage.sourceJobsCount") }}</TableHead>
+                <TableHead>{{ t("openlineage.targetJobsCount") }}</TableHead>
+                <TableHead>{{ t("openlineage.supportsColumnLineage") }}</TableHead>
+                <TableHead>{{ t("openlineage.scope") }}</TableHead>
+                <TableHead class="text-right">{{ t("openlineageSettings.actions") }}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow v-for="dataset in filteredDatasets" :key="datasetRowKey(dataset)">
+                <TableCell class="font-mono text-sm">{{ dataset.namespace }}</TableCell>
+                <TableCell>
+                  <button
+                    class="text-left font-medium text-primary hover:underline"
+                    type="button"
+                    @click="openDatasetDetail(dataset)"
                   >
-                    {{ t("openlineage.openColumnLineage") }}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    :disabled="!dataset.internal"
-                    @click="openMetadata(dataset)"
-                  >
-                    {{ t("openlineage.openMetadata") }}
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+                    {{ dataset.name }}
+                  </button>
+                </TableCell>
+                <TableCell>{{ dataset.datasetType || "-" }}</TableCell>
+                <TableCell>
+                  <span v-if="dataset.resolvedTarget" class="font-mono text-sm">
+                    {{ dataset.resolvedTarget }}
+                  </span>
+                  <span v-else class="text-muted-foreground">-</span>
+                </TableCell>
+                <TableCell>{{ formatTimestamp(dataset.lastSeen) }}</TableCell>
+                <TableCell>{{ dataset.sourceJobCount }}</TableCell>
+                <TableCell>{{ dataset.targetJobCount }}</TableCell>
+                <TableCell>
+                  <Badge :variant="dataset.supportsColumnLineage ? 'success' : 'secondary'">
+                    {{ dataset.supportsColumnLineage ? t("openlineage.yes") : t("openlineage.no") }}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge :variant="dataset.internal ? 'default' : 'outline'">
+                    {{ dataset.internal ? t("openlineage.internal") : t("openlineage.external") }}
+                  </Badge>
+                </TableCell>
+                <TableCell class="text-right">
+                  <div class="flex justify-end gap-2">
+                    <Button variant="ghost" size="sm" @click="openDatasetDetail(dataset)">
+                      {{ t("openlineageSettings.viewDetail") }}
+                    </Button>
+                    <Button variant="ghost" size="sm" @click="openGraph(dataset)">
+                      {{ t("openlineage.openGraph") }}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      :disabled="!dataset.supportsColumnLineage"
+                      @click="openColumnLineage(dataset)"
+                    >
+                      {{ t("openlineage.openColumnLineage") }}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      :disabled="!dataset.internal"
+                      @click="openMetadata(dataset)"
+                    >
+                      {{ t("openlineage.openMetadata") }}
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </PageState>
       </CardContent>
     </Card>
 
@@ -155,7 +152,8 @@ import { useRoute, useRouter } from "vue-router";
 import { listOpenLineageDatasets } from "@/api/openlineage";
 import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
 import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
-import AppLoading from "@/components/common/AppLoading.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import PageState from "@/components/common/PageState.vue";
 import OpenLineageDatasetDetailDrawer from "@/components/openlineage/OpenLineageDatasetDetailDrawer.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Badge } from "@/components/ui/badge";

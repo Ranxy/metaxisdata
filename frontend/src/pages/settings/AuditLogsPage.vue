@@ -1,12 +1,7 @@
 <template>
   <div class="space-y-4">
-    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight">
-          {{ t("auditLogs.title") }}
-        </h1>
-      </div>
-      <div class="flex items-center gap-2">
+    <PageHeader :title="t('auditLogs.title')">
+      <template #actions>
         <Button :disabled="isLoading || isExporting" variant="outline" @click="exportCsv">
           <Download class="mr-2 h-4 w-4" :class="{ 'animate-pulse': isExporting }" />
           {{ isExporting ? t("auditLogs.exportingCsv") : t("auditLogs.exportCsv") }}
@@ -15,8 +10,8 @@
           <RefreshCcw class="mr-2 h-4 w-4" :class="{ 'animate-spin': isLoading }" />
           {{ t("auditLogs.refresh") }}
         </Button>
-      </div>
-    </div>
+      </template>
+    </PageHeader>
 
     <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
       <div class="space-y-3">
@@ -270,88 +265,86 @@
         </div>
       </CardHeader>
       <CardContent class="space-y-4">
-        <div v-if="isLoading" class="p-8 flex justify-center">
-          <AppLoading />
-        </div>
+        <PageState
+          :loading="isLoading"
+          :error="error"
+        >
+          <EmptyState
+            v-if="logs.length === 0"
+            :icon="ClipboardList"
+            :title="t('auditLogs.emptyTitle')"
+            :description="t('auditLogs.emptyDescription')"
+          />
 
-        <div v-else-if="error" class="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-          {{ error }}
-        </div>
-
-        <div v-else-if="logs.length === 0" class="p-10 text-center text-muted-foreground">
-          <ClipboardList class="mx-auto mb-4 h-12 w-12 text-muted-foreground/50" />
-          <p class="text-base font-medium">{{ t("auditLogs.emptyTitle") }}</p>
-          <p class="mt-1 text-sm">{{ t("auditLogs.emptyDescription") }}</p>
-        </div>
-
-        <Table v-else class="min-w-[88rem]">
-          <TableHeader>
-            <TableRow>
-              <TableHead class="w-[11rem] whitespace-nowrap">{{ t("auditLogs.time") }}</TableHead>
-              <TableHead class="w-[6rem] whitespace-nowrap">{{ t("auditLogs.severity") }}</TableHead>
-              <TableHead class="min-w-[20rem] whitespace-nowrap">{{ t("auditLogs.method") }}</TableHead>
-              <TableHead class="min-w-[15rem] whitespace-nowrap">{{ t("auditLogs.resource") }}</TableHead>
-              <TableHead class="min-w-[13rem] whitespace-nowrap">{{ t("auditLogs.user") }}</TableHead>
-              <TableHead class="w-[8rem] whitespace-nowrap">{{ t("auditLogs.status") }}</TableHead>
-              <TableHead class="min-w-[16rem] whitespace-nowrap">{{ t("auditLogs.requestMeta") }}</TableHead>
-              <TableHead class="w-[6rem] whitespace-nowrap text-right">{{ t("auditLogs.actions") }}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow v-for="log in logs" :key="log.name">
-              <TableCell class="whitespace-nowrap text-muted-foreground">
-                {{ formatTimestamp(log.createTime) }}
-              </TableCell>
-              <TableCell class="whitespace-nowrap">
-                <Badge :variant="getSeverityVariant(log.severity)" class="min-w-[3.5rem] justify-center whitespace-nowrap">
-                  {{ getSeverityLabel(log.severity) }}
-                </Badge>
-              </TableCell>
-              <TableCell class="max-w-[22rem]">
-                <ExpandableText
-                  :text="log.method"
-                  :dialog-title="t('auditLogs.method')"
-                  text-class="font-mono text-xs"
-                />
-              </TableCell>
-              <TableCell class="max-w-[18rem]">
-                <ExpandableText
-                  :text="getAuditIdentityDisplay(log.resource)"
-                  :dialog-title="t('auditLogs.resource')"
-                  text-class="text-xs"
-                />
-              </TableCell>
-              <TableCell class="max-w-[16rem]">
-                <ExpandableText
-                  :text="getAuditIdentityDisplay(log.user)"
-                  :dialog-title="t('auditLogs.user')"
-                  text-class="text-xs"
-                />
-              </TableCell>
-              <TableCell class="whitespace-nowrap">
-                <div class="space-y-1">
-                  <div class="font-medium">{{ getStatusLabel(log) }}</div>
-                  <div class="text-xs text-muted-foreground">
-                    {{ t("auditLogs.latency", { value: String(log.latencyMs) }) }}
+          <Table v-else class="min-w-[88rem]">
+            <TableHeader>
+              <TableRow>
+                <TableHead class="w-[11rem] whitespace-nowrap">{{ t("auditLogs.time") }}</TableHead>
+                <TableHead class="w-[6rem] whitespace-nowrap">{{ t("auditLogs.severity") }}</TableHead>
+                <TableHead class="min-w-[20rem] whitespace-nowrap">{{ t("auditLogs.method") }}</TableHead>
+                <TableHead class="min-w-[15rem] whitespace-nowrap">{{ t("auditLogs.resource") }}</TableHead>
+                <TableHead class="min-w-[13rem] whitespace-nowrap">{{ t("auditLogs.user") }}</TableHead>
+                <TableHead class="w-[8rem] whitespace-nowrap">{{ t("auditLogs.status") }}</TableHead>
+                <TableHead class="min-w-[16rem] whitespace-nowrap">{{ t("auditLogs.requestMeta") }}</TableHead>
+                <TableHead class="w-[6rem] whitespace-nowrap text-right">{{ t("auditLogs.actions") }}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow v-for="log in logs" :key="log.name">
+                <TableCell class="whitespace-nowrap text-muted-foreground">
+                  {{ formatTimestamp(log.createTime) }}
+                </TableCell>
+                <TableCell class="whitespace-nowrap">
+                  <Badge :variant="getSeverityVariant(log.severity)" class="min-w-[3.5rem] justify-center whitespace-nowrap">
+                    {{ getSeverityLabel(log.severity) }}
+                  </Badge>
+                </TableCell>
+                <TableCell class="max-w-[22rem]">
+                  <ExpandableText
+                    :text="log.method"
+                    :dialog-title="t('auditLogs.method')"
+                    text-class="font-mono text-xs"
+                  />
+                </TableCell>
+                <TableCell class="max-w-[18rem]">
+                  <ExpandableText
+                    :text="getAuditIdentityDisplay(log.resource)"
+                    :dialog-title="t('auditLogs.resource')"
+                    text-class="text-xs"
+                  />
+                </TableCell>
+                <TableCell class="max-w-[16rem]">
+                  <ExpandableText
+                    :text="getAuditIdentityDisplay(log.user)"
+                    :dialog-title="t('auditLogs.user')"
+                    text-class="text-xs"
+                  />
+                </TableCell>
+                <TableCell class="whitespace-nowrap">
+                  <div class="space-y-1">
+                    <div class="font-medium">{{ getStatusLabel(log) }}</div>
+                    <div class="text-xs text-muted-foreground">
+                      {{ t("auditLogs.latency", { value: String(log.latencyMs) }) }}
+                    </div>
                   </div>
-                </div>
-              </TableCell>
-              <TableCell class="max-w-[16rem] text-xs text-muted-foreground">
-                <div>{{ log.requestMetadata?.ip || '-' }}</div>
-                <ExpandableText
-                  :text="log.requestMetadata?.userAgent || '-'"
-                  :dialog-title="t('auditLogs.userAgent')"
-                  text-class="block max-w-[14rem] truncate"
-                />
-              </TableCell>
-              <TableCell class="text-right">
-                <Button variant="ghost" size="sm" @click="openDetails(log)">
-                  {{ t("common.details") }}
-                </Button>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+                </TableCell>
+                <TableCell class="max-w-[16rem] text-xs text-muted-foreground">
+                  <div>{{ log.requestMetadata?.ip || '-' }}</div>
+                  <ExpandableText
+                    :text="log.requestMetadata?.userAgent || '-'"
+                    :dialog-title="t('auditLogs.userAgent')"
+                    text-class="block max-w-[14rem] truncate"
+                  />
+                </TableCell>
+                <TableCell class="text-right">
+                  <Button variant="ghost" size="sm" @click="openDetails(log)">
+                    {{ t("common.details") }}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </PageState>
 
         <div class="flex items-center justify-between border-t pt-4">
           <div class="text-sm text-muted-foreground">
@@ -466,8 +459,10 @@ import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { listAuditLogs } from "@/api/audit";
 import { batchGetUsers } from "@/api/user";
-import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import PageState from "@/components/common/PageState.vue";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import ExpandableText from "@/components/metadata/ExpandableText.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

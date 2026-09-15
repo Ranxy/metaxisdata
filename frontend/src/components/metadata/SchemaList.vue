@@ -1,12 +1,10 @@
 <template>
   <div>
-    <div
+    <EmptyState
       v-if="schemaRows.length === 0"
-      class="p-8 text-center text-muted-foreground"
-    >
-      <Folder class="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-      <p>{{ t("metadataBrowser.noSchemas") }}</p>
-    </div>
+      :icon="Folder"
+      :title="t('metadataBrowser.noSchemas')"
+    />
 
     <Table v-else>
       <TableHeader>
@@ -37,6 +35,7 @@
 import { Folder } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import EmptyState from "@/components/common/EmptyState.vue";
 import {
   Table,
   TableBody,

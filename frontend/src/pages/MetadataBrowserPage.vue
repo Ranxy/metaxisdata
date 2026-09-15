@@ -430,7 +430,6 @@
               v-if="activeGroup"
               :meta-type="activeGroup.metaType"
               :items="activeGroup.list"
-              :current-guid="currentGuid"
               :is-mysql="isMySQLInstance"
               @select="handleSelectMetadata"
             />

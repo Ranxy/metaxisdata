@@ -1,8 +1,9 @@
 <template>
-  <div class="flex flex-col gap-3 h-full min-h-0">
-    <div class="flex items-center gap-2 shrink-0">
-      <h1 class="text-2xl font-bold tracking-tight">{{ t("explainSQL.title") }}</h1>
-    </div>
+  <div class="flex h-full min-h-0 flex-col gap-3">
+    <PageHeader
+      :title="t('explainSQL.title')"
+      class="shrink-0"
+    />
 
     <div class="grid grid-cols-[380px_minmax(0,1fr)] min-h-0 flex-1 border border-border rounded-lg overflow-hidden">
       <!-- Left panel -->
@@ -303,6 +304,7 @@ import { explainSQL } from "@/api/explain";
 import { listInstances } from "@/api/instance";
 import { listProfiles } from "@/api/llm";
 import { getWorkspaceProfileSetting } from "@/api/setting";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
 import MonacoEditor from "@/components/monaco-editor/MonacoEditor.vue";
 import Badge from "@/components/ui/badge/Badge.vue";

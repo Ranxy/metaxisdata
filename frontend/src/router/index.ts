@@ -152,80 +152,59 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
+    // The section carries the shared flags once so no child can drift out of
+    // step: `/openlineage/overview` used to be the only route here without
+    // `contentWidth: "full"`, which made the landing page render narrower than
+    // every page it links to.
     path: "/openlineage",
     redirect: { name: "OpenLineageOverview" },
-    meta: { requiresAuth: true, layout: "default" },
-  },
-  {
-    path: "/openlineage/overview",
-    name: "OpenLineageOverview",
-    component: () => import("@/pages/openlineage/OpenLineageOverviewPage.vue"),
-    meta: { requiresAuth: true, layout: "default" },
-  },
-  {
-    path: "/openlineage/jobs",
-    name: "OpenLineageTasks",
-    alias: ["/openlineage/tasks"],
-    component: () => import("@/pages/openlineage/OpenLineageRunsPage.vue"),
-    meta: {
-      requiresAuth: true,
-      layout: "default",
-      contentWidth: "full",
-    },
-  },
-  {
-    path: "/openlineage/jobs/:guid(.+)",
-    name: "OpenLineageTaskDetail",
-    alias: ["/openlineage/tasks/:guid(.+)"],
-    component: () =>
-      import("@/pages/openlineage/OpenLineageTaskDetailPage.vue"),
-    meta: {
-      requiresAuth: true,
-      layout: "default",
-      contentWidth: "full",
-    },
-  },
-  {
-    path: "/openlineage/datasets",
-    name: "OpenLineageDatasets",
-    component: () => import("@/pages/openlineage/OpenLineageDatasetsPage.vue"),
-    meta: {
-      requiresAuth: true,
-      layout: "default",
-      contentWidth: "full",
-    },
-  },
-  {
-    path: "/openlineage/events",
-    name: "OpenLineageEvents",
-    component: () => import("@/pages/openlineage/OpenLineageEventsPage.vue"),
-    meta: {
-      requiresAuth: true,
-      layout: "default",
-      contentWidth: "full",
-    },
-  },
-  {
-    path: "/openlineage/events/:guid(.+)",
-    name: "OpenLineageRunDetail",
-    alias: ["/openlineage/runs/:guid(.+)"],
-    component: () => import("@/pages/openlineage/OpenLineageRunDetailPage.vue"),
-    meta: {
-      requiresAuth: true,
-      layout: "default",
-      contentWidth: "full",
-    },
-  },
-  {
-    path: "/openlineage/column-lineage/:guid(.+)",
-    name: "OpenLineageColumnLineage",
-    component: () =>
-      import("@/pages/openlineage/OpenLineageColumnLineagePage.vue"),
-    meta: {
-      requiresAuth: true,
-      layout: "default",
-      contentWidth: "full",
-    },
+    meta: { requiresAuth: true, layout: "default", contentWidth: "full" },
+    children: [
+      {
+        path: "overview",
+        name: "OpenLineageOverview",
+        component: () =>
+          import("@/pages/openlineage/OpenLineageOverviewPage.vue"),
+      },
+      {
+        path: "jobs",
+        name: "OpenLineageTasks",
+        alias: ["tasks"],
+        component: () => import("@/pages/openlineage/OpenLineageRunsPage.vue"),
+      },
+      {
+        path: "jobs/:guid(.+)",
+        name: "OpenLineageTaskDetail",
+        alias: ["tasks/:guid(.+)"],
+        component: () =>
+          import("@/pages/openlineage/OpenLineageTaskDetailPage.vue"),
+      },
+      {
+        path: "datasets",
+        name: "OpenLineageDatasets",
+        component: () =>
+          import("@/pages/openlineage/OpenLineageDatasetsPage.vue"),
+      },
+      {
+        path: "events",
+        name: "OpenLineageEvents",
+        component: () =>
+          import("@/pages/openlineage/OpenLineageEventsPage.vue"),
+      },
+      {
+        path: "events/:guid(.+)",
+        name: "OpenLineageRunDetail",
+        alias: ["runs/:guid(.+)"],
+        component: () =>
+          import("@/pages/openlineage/OpenLineageRunDetailPage.vue"),
+      },
+      {
+        path: "column-lineage/:guid(.+)",
+        name: "OpenLineageColumnLineage",
+        component: () =>
+          import("@/pages/openlineage/OpenLineageColumnLineagePage.vue"),
+      },
+    ],
   },
   {
     path: "/metadata",
