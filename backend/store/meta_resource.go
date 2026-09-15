@@ -38,6 +38,10 @@ type MetaGUIDKey struct {
 type FindMetaRegistryResourceMessage struct {
 	GUID       *string
 	GUIDPrefix *string
+	// GUIDs is the batch form of GUID: it restricts the lookup to a set of
+	// known GUIDs. An empty but non-nil slice matches nothing, so a caller that
+	// collected no GUIDs cannot accidentally read the whole table.
+	GUIDs      *[]string
 	ObjectType *storepb.MetaType
 	Limit      *int
 	Offset     *int
@@ -347,6 +351,13 @@ func buildMetaRegistryWhereClause(tableName string, find *FindMetaRegistryResour
 	}
 	if v := find.GUIDPrefix; v != nil {
 		where, args = appendGUIDSubtreeCondition(where, args, tableName+".guid", *v)
+	}
+	if v := find.GUIDs; v != nil {
+		if len(*v) == 0 {
+			where = append(where, "FALSE")
+		} else {
+			where, args = append(where, fmt.Sprintf("%s.guid = ANY($%d)", tableName, len(args)+1)), append(args, pq.Array(*v))
+		}
 	}
 	if v := find.ObjectType; v != nil {
 		where, args = append(where, fmt.Sprintf("%s.object_type = $%d", tableName, len(args)+1)), append(args, *v)

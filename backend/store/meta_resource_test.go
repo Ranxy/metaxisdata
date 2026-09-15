@@ -19,6 +19,23 @@ func TestAppendGUIDSubtreeConditionEscapesLikeWildcards(t *testing.T) {
 	require.Equal(t, `inst;db\_1\%prod`+common.MetaGUIDSplit+`%`, args[1])
 }
 
+// The batch GUID filter is what lets a caller resolve the object types of many
+// known GUIDs in one query. An empty set must match nothing rather than falling
+// through to the whole table.
+func TestBuildMetaRegistryWhereClauseBatchesGUIDs(t *testing.T) {
+	t.Parallel()
+
+	guids := []string{"1;db1;;t1", "1;db1;;t2"}
+	where, args := buildMetaRegistryWhereClause("r", &FindMetaRegistryResourceMessage{GUIDs: &guids})
+	require.Equal(t, []string{"TRUE", "r.guid = ANY($1)"}, where)
+	require.Len(t, args, 1)
+
+	empty := []string{}
+	where, args = buildMetaRegistryWhereClause("r", &FindMetaRegistryResourceMessage{GUIDs: &empty})
+	require.Equal(t, []string{"TRUE", "FALSE"}, where)
+	require.Empty(t, args)
+}
+
 func TestGetNextLevelObjectTypeIncludesManualSQLUnderSchema(t *testing.T) {
 	t.Parallel()
 

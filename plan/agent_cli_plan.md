@@ -66,7 +66,7 @@ CLI 放在**仓库根目录的 `cli/`**(与 `backend/`、`frontend/` 同级),仍
 4. **没有 CLI 代码**:仓库根目前只有 `backend/`(server)与 `frontend/`(SPA)两个可交付物。
 5. **ACL 守卫测试必须同步**:`backend/api/v1/acl_interceptor_test.go` 的 `unannotatedMethods` 是"无 permission 注解 RPC"的**唯一白名单**,新 RPC 缺注解就必须登记,否则 `TestEveryMethodIsPermissionGated` 失败。4 个 device RPC(`CreateDeviceLogin`/`ExchangeDeviceLogin` 匿名、`GetDeviceLogin`/`ApproveDeviceLogin` 已认证但无 permission)都要登记。
 6. **审计脱敏名单缺 `deviceCode`**:`isSensitiveAuditField` 按 `password`/`token`/`secret`/`credential`/… 子串匹配,而审计拦截器同时落 request 与 **response**。`CreateDeviceLoginResponse.deviceCode` 是轮询密钥,当前不会被脱敏 → 明文进永久审计日志。
-7. **裸 SQL 的 target 是合成对象**:分析器的 `resultTableName = "__result__"`(`IsTemp=true`)。runner 能拿到真实 target 是因为它先把定义包装成 `CREATE VIEW <name> AS <definition>`;`AnalyzeSQL` 直接喂原始 SQL,因此**裸 SELECT 会产出 `__result__` 这个不存在的表**。
+7. **裸 SQL 的 target 是合成对象**:分析器的 `resultTableName = "__result__"`(`IsTemp=true`)。runner 能拿到真实 target 是因为它先把定义包装成 `CREATE VIEW <name> AS <definition>`;`AnalyzeSQL` 直接喂原始 SQL,因此**裸 SELECT 会产出 `__result__` 这个不存在的表**。而且 `CREATE VIEW`/`CTAS` 会**同时**产出合成 target 边与真实 target 边,必须去重(见下方 AnalyzeSQL 实现步骤 3)。
 8. **`column_lineage` 没有单对象边数上限**:`store.ListColumnLineage` 只做 `LIMIT $n`;5000 只是 API 层对 `page_size` 的钳制,不是数据不变量。BFS 每个节点必须自己翻页/封顶。
 9. **GUID 无法从 API 直接拿到,而 scope 必须是精确 GUID**:`Instance`/`Database`/`StoredMetadata` 都**没有 `guid` 字段**(只有 `ManualSQL.guid` 是先例),`SearchMetadata` 是唯一能拿到子对象 GUID 的读接口。用户要往自己的 `AGENTS.md` 里写 scope 就必须能**从 CLI 输出里复制到精确的 GUID**;而 GUID 的形态依引擎而变(MySQL 家族 database 是 `<instanceID>;<database>` / schema 段为空,PostgreSQL 是 `<instanceID>;<database>;<schema>`),靠人手拼或让 agent 推断都会出错。
 10. **`ListMetadata` 返回的 `StoredMetadata` 没有 GUID**:`meta list` 列出 table/view/schema 时拿不到子对象的 GUID,agent 无法把 `meta list` 的结果喂给 `meta get`/`ddl`/`lineage`。这是需求 1 链路里的一个硬洞。
@@ -447,6 +447,7 @@ message AnalyzeSQLRelation {
 3. 对每条 relation 补全缺省的 instance/database/schema(照抄 runner 的补全逻辑,抽公共函数),构造 source GUID;target 侧:
    - `rel.IsTemp == true` 或 `rel.Target.Table.Name == "__result__"` → **`target_guid` 留空**,`target_column` 保留输出别名,`is_temp=true`;不写 warning;
    - 否则构造 target GUID,`is_temp=false`;
+   - **实测补充(实现时发现)**:`CREATE VIEW` / `CREATE TABLE AS` 的分析结果里,合成 target 的边和真实 target 的边**同时存在**(分析器先为它包裹的 SELECT 产出 `__result__` 边,再产出真实目标边)。因此规则细化为:**只要该语句存在真实 target,就丢弃全部 `is_temp` 边**——它们与真实目标重复;只有裸 SELECT(没有真实 target)才保留 `is_temp` 边,因为那是调用者唯一能看到输出列的信息。这也正是 runner 的行为(`if rel.IsTemp { continue }`)。
 4. 对 distinct guid 批量查 `GetMetaRegistry` 填 `source_type`/`target_type`,未命中则记入该 scope 的 `warnings`(如 `table "1;db2;t1" not found in metadata registry`);
 5. `ErrorEngineNotSupported` → 该 scope 的 relations 为空 + `engine MSSQL has no lineage analyzer` warning(**不是**请求级错误:多 scope 里可能只有部分引擎不受支持);解析失败 → 该 scope 的 relations 为空 + 错误文案 warning;
 6. 请求级错误(整个请求失败)只在:scope 数量/长度/`sql_text` 非法,或**所有 scope 都以同一原因失败**时返回 `CodeInvalidArgument`/`CodeFailedPrecondition`。这样 `--scope all` 不会因为其中一个引擎不支持而全盘失败;MySQL 分析器要求恰好一条语句、PG 支持多语句的差异,在 CLI 文档与 scope 级 `warnings` 中体现。
