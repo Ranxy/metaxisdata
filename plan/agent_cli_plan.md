@@ -48,6 +48,12 @@
 >   a create happens at capacity, which the limiter keeps rare.
 > - `cli/cmd` keeps its resolved invocation in package state, which is why its
 >   tests exercise pure helpers rather than running commands.
+>
+> **Added after the review:** `mxd skill install` / `mxd skill show`. The
+> agent-facing skill is embedded in the binary from `cli/skill/SKILL.md` and
+> written into the agent runtime's skill directory, because a user who installs
+> the binary has no checkout to read it from. The embedded file is the only
+> copy, so there is exactly one thing to edit and nothing to keep in sync.
 
 ## TL;DR
 
@@ -599,6 +605,9 @@ mxd meta ddl <guid> [--type]                        # GetSchemaString
 
 mxd lineage sql [--scope <name|guid|all>]... [--file a.sql|-] [--depth N] [--include-temp]  # AnalyzeSQL(+可选接 GetLineageGraph)
 mxd lineage graph <guid> [--depth N] [--direction up|down|both] [--column c]  # GetLineageGraph
+mxd skill install [--dir <path>]   # 把内置的 agent skill 写到 ~/.agents/skills
+mxd skill show                     # 同一份内容按 JSON 输出
+
 mxd version
 ```
 
@@ -761,7 +770,7 @@ $ mxd lineage sql --file etl.sql
 | proto | `proto/v1/v1/auth_service.proto`、`proto/v1/v1/lineage_service.proto`、`proto/v1/v1/database_service.proto`(`Database.guid`、`StoredMetadata.guid`)+ 三处生成产物 |
 | 后端 | `backend/component/state/device_login.go`(新)、`backend/api/v1/auth_service_device_login.go`(新)、`backend/api/v1/lineage_service_analyze.go`(新)、`backend/api/v1/lineage_service_graph.go`(新)、`backend/api/v1/auth_service.go`(共享 helper 微调)、`backend/api/v1/database_service.go` + `database_convert.go` + `database_metadata.go`(填 guid)、**`backend/api/v1/acl_interceptor_test.go`(device RPC 登记白名单)**、**`backend/api/v1/audit.go` + `audit_test.go`(脱敏 `deviceCode`)** |
 | 前端 | `frontend/src/router/index.ts`、`frontend/src/pages/DeviceLoginPage.vue`(新)、`frontend/src/api/device-login.ts`(新)、`frontend/src/api/client.ts`、`frontend/src/locales/{en-US,zh-CN}.json` |
-| CLI | `cli/**`(新,与 `backend/`、`frontend/` 同级)、`Makefile`、`.golangci.yaml`(`depguard` 边界规则) |
+| CLI | `cli/**`(新,与 `backend/`、`frontend/` 同级)、`cli/skill/SKILL.md`(随二进制发布的 agent skill)、`Makefile`、`.golangci.yaml`(`depguard` 边界规则) |
 | 文档 | `AGENTS.md`(Project Architecture + Security and deployment posture + scope 约定)、`cli/README.md`(用法与 scope 约定) |
 
 **不需要改**:数据库 schema(无 migration)、IAM 权限目录与预置角色基线(device RPC 走无注解白名单,不改 `permission.json`)、`grpc_routes.go` 的注册代码、`buf.gen.yaml`、平台 Environment 相关的一切。

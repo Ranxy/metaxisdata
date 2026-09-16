@@ -132,6 +132,7 @@ go to stderr. Analysis scopes are read from ` + env.ScopesEnv + `, never stored.
 		newDatabaseCmd(),
 		newMetaCmd(),
 		newLineageCmd(),
+		newSkillCmd(),
 		newVersionCmd(),
 	)
 	return root
@@ -225,6 +226,9 @@ func resolve(cmd *cobra.Command) (*app, error) {
 var noConfigCommands = map[string]bool{
 	"version":    true,
 	"completion": true,
+	// Installing the skill is often the first thing a machine does, before it
+	// has been given a server or a token.
+	"skill": true,
 }
 
 // connect builds the clients, refusing an invocation that has no address yet.

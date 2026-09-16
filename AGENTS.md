@@ -40,7 +40,7 @@ Feature design documents live in `spec/` (product/UX specs) and `plan/` (impleme
 | `backend/runner/` | Background runners: `lineageanalyzer`, `schemasync`, `maintenance` |
 | `backend/migrator/` | Embedded, versioned schema migrations (`migration/LATEST.sql` + incrementals) and the startup migrator |
 | `backend/generated-go/` | Generated protobuf/Connect/Gateway code — never hand-edit |
-| `cli/` | The `mxd` command line client. A client of the API, never a part of the server: `depguard` in `.golangci.yaml` stops it from importing anything under `backend/` except `backend/generated-go` |
+| `cli/` | The `mxd` command line client. A client of the API, never a part of the server: `depguard` in `.golangci.yaml` stops it from importing anything under `backend/` except `backend/generated-go`. `cli/skill/SKILL.md` is the agent skill it embeds and installs with `mxd skill install` |
 | `frontend/src/` | Vue 3 + TypeScript SPA (Vite, Pinia, vue-router, Tailwind, shadcn-vue) |
 | `proto/v1/`, `proto/store/` | Public ConnectRPC service definitions and database row shapes |
 | `spec/`, `plan/` | Feature specs and implementation plans |

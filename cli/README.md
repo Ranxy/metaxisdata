@@ -106,8 +106,30 @@ mxd meta ddl <guid> [--type]
 mxd lineage sql [--scope <name|guid|all>]... --file <path|-> [--depth N] [--include-temp]
 mxd lineage graph <guid> [--depth N] [--direction up|down|both] [--column <name>]
 
+mxd skill install [--dir <path>]
+mxd skill show
+
 mxd version
 ```
+
+### Teaching your agent
+
+`mxd` carries an agent skill and installs it for you:
+
+```console
+$ mxd skill install
+{"changed": true, "name": "mxd-cli", "path": "/home/u/.agents/skills/mxd-cli/SKILL.md"}
+```
+
+The skill is embedded in the binary, so a machine that has `mxd` needs no
+checkout to give its agent the same instructions. It lands in
+`~/.agents/skills/mxd-cli/SKILL.md`, where the agent runtime discovers it;
+`--dir` targets another location, such as `~/.claude/skills` or a project's own
+`.agents/skills`. An existing file is replaced, so re-running it after an
+upgrade is how a machine picks up new wording.
+
+`mxd skill show` prints the same document as JSON, for a harness that would
+rather capture it than read it from a file.
 
 `mxd config show` is the way to answer "which configuration is this process
 actually using": it reports every effective value together with the layer it
