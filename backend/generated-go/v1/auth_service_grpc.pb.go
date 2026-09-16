@@ -20,9 +20,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AuthService_Login_FullMethodName          = "/metaxisdata.v1.AuthService/Login"
-	AuthService_Logout_FullMethodName         = "/metaxisdata.v1.AuthService/Logout"
-	AuthService_CreateSSOState_FullMethodName = "/metaxisdata.v1.AuthService/CreateSSOState"
+	AuthService_Login_FullMethodName               = "/metaxisdata.v1.AuthService/Login"
+	AuthService_Logout_FullMethodName              = "/metaxisdata.v1.AuthService/Logout"
+	AuthService_CreateSSOState_FullMethodName      = "/metaxisdata.v1.AuthService/CreateSSOState"
+	AuthService_CreateDeviceLogin_FullMethodName   = "/metaxisdata.v1.AuthService/CreateDeviceLogin"
+	AuthService_GetDeviceLogin_FullMethodName      = "/metaxisdata.v1.AuthService/GetDeviceLogin"
+	AuthService_ApproveDeviceLogin_FullMethodName  = "/metaxisdata.v1.AuthService/ApproveDeviceLogin"
+	AuthService_ExchangeDeviceLogin_FullMethodName = "/metaxisdata.v1.AuthService/ExchangeDeviceLogin"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -40,6 +44,24 @@ type AuthServiceClient interface {
 	// victim's browser and bind the victim's session to the attacker's identity.
 	// Permissions required: None
 	CreateSSOState(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*CreateSSOStateResponse, error)
+	// CreateDeviceLogin starts a device login (RFC 8628 style). The caller gets a
+	// polling secret plus a short human-readable code; a signed-in user approves
+	// the request from the web confirmation page and the CLI then exchanges the
+	// secret for an access token bound to that user.
+	// Permissions required: None
+	CreateDeviceLogin(ctx context.Context, in *CreateDeviceLoginRequest, opts ...grpc.CallOption) (*CreateDeviceLoginResponse, error)
+	// GetDeviceLogin returns one pending device login so the confirmation page can
+	// show what is being approved.
+	// Permissions required: None
+	GetDeviceLogin(ctx context.Context, in *GetDeviceLoginRequest, opts ...grpc.CallOption) (*DeviceLogin, error)
+	// ApproveDeviceLogin approves or denies a pending device login. The approver
+	// becomes the identity the access token is issued for.
+	// Permissions required: None
+	ApproveDeviceLogin(ctx context.Context, in *ApproveDeviceLoginRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// ExchangeDeviceLogin polls a device login. An approved request is consumed
+	// and answered with the token; every other state is reported as-is.
+	// Permissions required: None
+	ExchangeDeviceLogin(ctx context.Context, in *ExchangeDeviceLoginRequest, opts ...grpc.CallOption) (*ExchangeDeviceLoginResponse, error)
 }
 
 type authServiceClient struct {
@@ -80,6 +102,46 @@ func (c *authServiceClient) CreateSSOState(ctx context.Context, in *emptypb.Empt
 	return out, nil
 }
 
+func (c *authServiceClient) CreateDeviceLogin(ctx context.Context, in *CreateDeviceLoginRequest, opts ...grpc.CallOption) (*CreateDeviceLoginResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateDeviceLoginResponse)
+	err := c.cc.Invoke(ctx, AuthService_CreateDeviceLogin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) GetDeviceLogin(ctx context.Context, in *GetDeviceLoginRequest, opts ...grpc.CallOption) (*DeviceLogin, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeviceLogin)
+	err := c.cc.Invoke(ctx, AuthService_GetDeviceLogin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) ApproveDeviceLogin(ctx context.Context, in *ApproveDeviceLoginRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, AuthService_ApproveDeviceLogin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) ExchangeDeviceLogin(ctx context.Context, in *ExchangeDeviceLoginRequest, opts ...grpc.CallOption) (*ExchangeDeviceLoginResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExchangeDeviceLoginResponse)
+	err := c.cc.Invoke(ctx, AuthService_ExchangeDeviceLogin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuthServiceServer is the server API for AuthService service.
 // All implementations must embed UnimplementedAuthServiceServer
 // for forward compatibility.
@@ -95,6 +157,24 @@ type AuthServiceServer interface {
 	// victim's browser and bind the victim's session to the attacker's identity.
 	// Permissions required: None
 	CreateSSOState(context.Context, *emptypb.Empty) (*CreateSSOStateResponse, error)
+	// CreateDeviceLogin starts a device login (RFC 8628 style). The caller gets a
+	// polling secret plus a short human-readable code; a signed-in user approves
+	// the request from the web confirmation page and the CLI then exchanges the
+	// secret for an access token bound to that user.
+	// Permissions required: None
+	CreateDeviceLogin(context.Context, *CreateDeviceLoginRequest) (*CreateDeviceLoginResponse, error)
+	// GetDeviceLogin returns one pending device login so the confirmation page can
+	// show what is being approved.
+	// Permissions required: None
+	GetDeviceLogin(context.Context, *GetDeviceLoginRequest) (*DeviceLogin, error)
+	// ApproveDeviceLogin approves or denies a pending device login. The approver
+	// becomes the identity the access token is issued for.
+	// Permissions required: None
+	ApproveDeviceLogin(context.Context, *ApproveDeviceLoginRequest) (*emptypb.Empty, error)
+	// ExchangeDeviceLogin polls a device login. An approved request is consumed
+	// and answered with the token; every other state is reported as-is.
+	// Permissions required: None
+	ExchangeDeviceLogin(context.Context, *ExchangeDeviceLoginRequest) (*ExchangeDeviceLoginResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
 
@@ -113,6 +193,18 @@ func (UnimplementedAuthServiceServer) Logout(context.Context, *LogoutRequest) (*
 }
 func (UnimplementedAuthServiceServer) CreateSSOState(context.Context, *emptypb.Empty) (*CreateSSOStateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateSSOState not implemented")
+}
+func (UnimplementedAuthServiceServer) CreateDeviceLogin(context.Context, *CreateDeviceLoginRequest) (*CreateDeviceLoginResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateDeviceLogin not implemented")
+}
+func (UnimplementedAuthServiceServer) GetDeviceLogin(context.Context, *GetDeviceLoginRequest) (*DeviceLogin, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDeviceLogin not implemented")
+}
+func (UnimplementedAuthServiceServer) ApproveDeviceLogin(context.Context, *ApproveDeviceLoginRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method ApproveDeviceLogin not implemented")
+}
+func (UnimplementedAuthServiceServer) ExchangeDeviceLogin(context.Context, *ExchangeDeviceLoginRequest) (*ExchangeDeviceLoginResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExchangeDeviceLogin not implemented")
 }
 func (UnimplementedAuthServiceServer) mustEmbedUnimplementedAuthServiceServer() {}
 func (UnimplementedAuthServiceServer) testEmbeddedByValue()                     {}
@@ -189,6 +281,78 @@ func _AuthService_CreateSSOState_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_CreateDeviceLogin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateDeviceLoginRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).CreateDeviceLogin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_CreateDeviceLogin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).CreateDeviceLogin(ctx, req.(*CreateDeviceLoginRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_GetDeviceLogin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDeviceLoginRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).GetDeviceLogin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_GetDeviceLogin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).GetDeviceLogin(ctx, req.(*GetDeviceLoginRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_ApproveDeviceLogin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApproveDeviceLoginRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).ApproveDeviceLogin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_ApproveDeviceLogin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).ApproveDeviceLogin(ctx, req.(*ApproveDeviceLoginRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_ExchangeDeviceLogin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExchangeDeviceLoginRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).ExchangeDeviceLogin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_ExchangeDeviceLogin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).ExchangeDeviceLogin(ctx, req.(*ExchangeDeviceLoginRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuthService_ServiceDesc is the grpc.ServiceDesc for AuthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -207,6 +371,22 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateSSOState",
 			Handler:    _AuthService_CreateSSOState_Handler,
+		},
+		{
+			MethodName: "CreateDeviceLogin",
+			Handler:    _AuthService_CreateDeviceLogin_Handler,
+		},
+		{
+			MethodName: "GetDeviceLogin",
+			Handler:    _AuthService_GetDeviceLogin_Handler,
+		},
+		{
+			MethodName: "ApproveDeviceLogin",
+			Handler:    _AuthService_ApproveDeviceLogin_Handler,
+		},
+		{
+			MethodName: "ExchangeDeviceLogin",
+			Handler:    _AuthService_ExchangeDeviceLogin_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

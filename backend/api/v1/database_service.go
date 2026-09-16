@@ -196,7 +196,7 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 					continue
 				}
 				tp := v1pb.MetaType(meta.ObjectType)
-				metaMessage := convertStoredMetadataMessage(meta.Metadata)
+				metaMessage := convertMetaRegistryResource(meta)
 				typesStoredMetadataMap[tp] = append(typesStoredMetadataMap[tp], metaMessage)
 			}
 
@@ -229,7 +229,7 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 				continue
 			}
 			tp := v1pb.MetaType(meta.ObjectType)
-			metaMessage := convertStoredMetadataMessage(meta.Metadata)
+			metaMessage := convertMetaRegistryResource(meta)
 			typesStoredMetadataMap[tp] = append(typesStoredMetadataMap[tp], metaMessage)
 		}
 
@@ -285,7 +285,7 @@ func (s *DatabaseService) GetMetadata(ctx context.Context, req *connect.Request[
 	}
 
 	response := &v1pb.GetMetadataResponse{
-		Metadata: convertStoredMetadataMessage(meta.Metadata),
+		Metadata: convertMetaRegistryResource(meta),
 	}
 
 	return connect.NewResponse(response), nil
@@ -346,7 +346,7 @@ func (s *DatabaseService) SearchMetadata(ctx context.Context, req *connect.Reque
 		response.Results = append(response.Results, &v1pb.SearchMetadataResult{
 			Guid:     meta.GUID,
 			MetaType: v1pb.MetaType(meta.ObjectType),
-			Metadata: convertStoredMetadataMessage(meta.Metadata),
+			Metadata: convertMetaRegistryResource(meta),
 		})
 	}
 
@@ -403,6 +403,7 @@ func convertToDatabase(database *store.DatabaseMessage, instance *store.Instance
 	instanceResource := convertInstanceMessageToInstanceResource(instance)
 	return &v1pb.Database{
 		Name:                 common.FormatDatabase(database.InstanceID, database.DatabaseName),
+		Guid:                 common.BuildMetaGUID(database.InstanceID, database.DatabaseName),
 		State:                convertDeletedToState(database.Deleted),
 		SuccessfulSyncTime:   database.Metadata.GetLastSyncTime(),
 		Environment:          environment,
@@ -412,4 +413,16 @@ func convertToDatabase(database *store.DatabaseMessage, instance *store.Instance
 		InstanceResource:     instanceResource,
 		Drifted:              database.Metadata.GetDrifted(),
 	}
+}
+
+// convertMetaRegistryResource renders a registry row and tags the metadata with
+// the GUID the row is addressed by, so a client can feed a ListMetadata result
+// straight into GetMetadata, GetSchemaString or the lineage methods instead of
+// synthesising the GUID itself.
+func convertMetaRegistryResource(meta *store.MetaRegistryResource) *v1pb.StoredMetadata {
+	converted := convertStoredMetadataMessage(meta.Metadata)
+	if converted != nil {
+		converted.Guid = meta.GUID
+	}
+	return converted
 }

@@ -21,6 +21,8 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	LineageService_GetLineage_FullMethodName           = "/metaxisdata.v1.LineageService/GetLineage"
 	LineageService_GetLineageForContext_FullMethodName = "/metaxisdata.v1.LineageService/GetLineageForContext"
+	LineageService_AnalyzeSQL_FullMethodName           = "/metaxisdata.v1.LineageService/AnalyzeSQL"
+	LineageService_GetLineageGraph_FullMethodName      = "/metaxisdata.v1.LineageService/GetLineageGraph"
 )
 
 // LineageServiceClient is the client API for LineageService service.
@@ -34,6 +36,15 @@ type LineageServiceClient interface {
 	GetLineage(ctx context.Context, in *GetLineageRequest, opts ...grpc.CallOption) (*GetLineageResponse, error)
 	// GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).
 	GetLineageForContext(ctx context.Context, in *GetLineageForContextRequest, opts ...grpc.CallOption) (*GetLineageForContextResponse, error)
+	// AnalyzeSQL parses an arbitrary SQL statement and returns its column-level
+	// relations, resolved against one or more analysis scopes. The analysis is
+	// stateless: nothing is persisted and no lineage runner is triggered, so the
+	// result describes this statement only and is not part of the stored graph.
+	AnalyzeSQL(ctx context.Context, in *AnalyzeSQLRequest, opts ...grpc.CallOption) (*AnalyzeSQLResponse, error)
+	// GetLineageGraph returns the multi-level lineage graph around one metadata
+	// object in a single call, instead of expanding it one hop at a time with
+	// GetLineage.
+	GetLineageGraph(ctx context.Context, in *GetLineageGraphRequest, opts ...grpc.CallOption) (*GetLineageGraphResponse, error)
 }
 
 type lineageServiceClient struct {
@@ -64,6 +75,26 @@ func (c *lineageServiceClient) GetLineageForContext(ctx context.Context, in *Get
 	return out, nil
 }
 
+func (c *lineageServiceClient) AnalyzeSQL(ctx context.Context, in *AnalyzeSQLRequest, opts ...grpc.CallOption) (*AnalyzeSQLResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AnalyzeSQLResponse)
+	err := c.cc.Invoke(ctx, LineageService_AnalyzeSQL_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lineageServiceClient) GetLineageGraph(ctx context.Context, in *GetLineageGraphRequest, opts ...grpc.CallOption) (*GetLineageGraphResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetLineageGraphResponse)
+	err := c.cc.Invoke(ctx, LineageService_GetLineageGraph_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LineageServiceServer is the server API for LineageService service.
 // All implementations must embed UnimplementedLineageServiceServer
 // for forward compatibility.
@@ -75,6 +106,15 @@ type LineageServiceServer interface {
 	GetLineage(context.Context, *GetLineageRequest) (*GetLineageResponse, error)
 	// GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).
 	GetLineageForContext(context.Context, *GetLineageForContextRequest) (*GetLineageForContextResponse, error)
+	// AnalyzeSQL parses an arbitrary SQL statement and returns its column-level
+	// relations, resolved against one or more analysis scopes. The analysis is
+	// stateless: nothing is persisted and no lineage runner is triggered, so the
+	// result describes this statement only and is not part of the stored graph.
+	AnalyzeSQL(context.Context, *AnalyzeSQLRequest) (*AnalyzeSQLResponse, error)
+	// GetLineageGraph returns the multi-level lineage graph around one metadata
+	// object in a single call, instead of expanding it one hop at a time with
+	// GetLineage.
+	GetLineageGraph(context.Context, *GetLineageGraphRequest) (*GetLineageGraphResponse, error)
 	mustEmbedUnimplementedLineageServiceServer()
 }
 
@@ -90,6 +130,12 @@ func (UnimplementedLineageServiceServer) GetLineage(context.Context, *GetLineage
 }
 func (UnimplementedLineageServiceServer) GetLineageForContext(context.Context, *GetLineageForContextRequest) (*GetLineageForContextResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetLineageForContext not implemented")
+}
+func (UnimplementedLineageServiceServer) AnalyzeSQL(context.Context, *AnalyzeSQLRequest) (*AnalyzeSQLResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AnalyzeSQL not implemented")
+}
+func (UnimplementedLineageServiceServer) GetLineageGraph(context.Context, *GetLineageGraphRequest) (*GetLineageGraphResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetLineageGraph not implemented")
 }
 func (UnimplementedLineageServiceServer) mustEmbedUnimplementedLineageServiceServer() {}
 func (UnimplementedLineageServiceServer) testEmbeddedByValue()                        {}
@@ -148,6 +194,42 @@ func _LineageService_GetLineageForContext_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LineageService_AnalyzeSQL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AnalyzeSQLRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LineageServiceServer).AnalyzeSQL(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LineageService_AnalyzeSQL_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LineageServiceServer).AnalyzeSQL(ctx, req.(*AnalyzeSQLRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LineageService_GetLineageGraph_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetLineageGraphRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LineageServiceServer).GetLineageGraph(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LineageService_GetLineageGraph_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LineageServiceServer).GetLineageGraph(ctx, req.(*GetLineageGraphRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LineageService_ServiceDesc is the grpc.ServiceDesc for LineageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -162,6 +244,14 @@ var LineageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetLineageForContext",
 			Handler:    _LineageService_GetLineageForContext_Handler,
+		},
+		{
+			MethodName: "AnalyzeSQL",
+			Handler:    _LineageService_AnalyzeSQL_Handler,
+		},
+		{
+			MethodName: "GetLineageGraph",
+			Handler:    _LineageService_GetLineageGraph_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

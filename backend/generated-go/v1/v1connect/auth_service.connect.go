@@ -41,6 +41,18 @@ const (
 	// AuthServiceCreateSSOStateProcedure is the fully-qualified name of the AuthService's
 	// CreateSSOState RPC.
 	AuthServiceCreateSSOStateProcedure = "/metaxisdata.v1.AuthService/CreateSSOState"
+	// AuthServiceCreateDeviceLoginProcedure is the fully-qualified name of the AuthService's
+	// CreateDeviceLogin RPC.
+	AuthServiceCreateDeviceLoginProcedure = "/metaxisdata.v1.AuthService/CreateDeviceLogin"
+	// AuthServiceGetDeviceLoginProcedure is the fully-qualified name of the AuthService's
+	// GetDeviceLogin RPC.
+	AuthServiceGetDeviceLoginProcedure = "/metaxisdata.v1.AuthService/GetDeviceLogin"
+	// AuthServiceApproveDeviceLoginProcedure is the fully-qualified name of the AuthService's
+	// ApproveDeviceLogin RPC.
+	AuthServiceApproveDeviceLoginProcedure = "/metaxisdata.v1.AuthService/ApproveDeviceLogin"
+	// AuthServiceExchangeDeviceLoginProcedure is the fully-qualified name of the AuthService's
+	// ExchangeDeviceLogin RPC.
+	AuthServiceExchangeDeviceLoginProcedure = "/metaxisdata.v1.AuthService/ExchangeDeviceLogin"
 )
 
 // AuthServiceClient is a client for the metaxisdata.v1.AuthService service.
@@ -56,6 +68,24 @@ type AuthServiceClient interface {
 	// victim's browser and bind the victim's session to the attacker's identity.
 	// Permissions required: None
 	CreateSSOState(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.CreateSSOStateResponse], error)
+	// CreateDeviceLogin starts a device login (RFC 8628 style). The caller gets a
+	// polling secret plus a short human-readable code; a signed-in user approves
+	// the request from the web confirmation page and the CLI then exchanges the
+	// secret for an access token bound to that user.
+	// Permissions required: None
+	CreateDeviceLogin(context.Context, *connect.Request[v1.CreateDeviceLoginRequest]) (*connect.Response[v1.CreateDeviceLoginResponse], error)
+	// GetDeviceLogin returns one pending device login so the confirmation page can
+	// show what is being approved.
+	// Permissions required: None
+	GetDeviceLogin(context.Context, *connect.Request[v1.GetDeviceLoginRequest]) (*connect.Response[v1.DeviceLogin], error)
+	// ApproveDeviceLogin approves or denies a pending device login. The approver
+	// becomes the identity the access token is issued for.
+	// Permissions required: None
+	ApproveDeviceLogin(context.Context, *connect.Request[v1.ApproveDeviceLoginRequest]) (*connect.Response[emptypb.Empty], error)
+	// ExchangeDeviceLogin polls a device login. An approved request is consumed
+	// and answered with the token; every other state is reported as-is.
+	// Permissions required: None
+	ExchangeDeviceLogin(context.Context, *connect.Request[v1.ExchangeDeviceLoginRequest]) (*connect.Response[v1.ExchangeDeviceLoginResponse], error)
 }
 
 // NewAuthServiceClient constructs a client for the metaxisdata.v1.AuthService service. By default,
@@ -87,14 +117,42 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(authServiceMethods.ByName("CreateSSOState")),
 			connect.WithClientOptions(opts...),
 		),
+		createDeviceLogin: connect.NewClient[v1.CreateDeviceLoginRequest, v1.CreateDeviceLoginResponse](
+			httpClient,
+			baseURL+AuthServiceCreateDeviceLoginProcedure,
+			connect.WithSchema(authServiceMethods.ByName("CreateDeviceLogin")),
+			connect.WithClientOptions(opts...),
+		),
+		getDeviceLogin: connect.NewClient[v1.GetDeviceLoginRequest, v1.DeviceLogin](
+			httpClient,
+			baseURL+AuthServiceGetDeviceLoginProcedure,
+			connect.WithSchema(authServiceMethods.ByName("GetDeviceLogin")),
+			connect.WithClientOptions(opts...),
+		),
+		approveDeviceLogin: connect.NewClient[v1.ApproveDeviceLoginRequest, emptypb.Empty](
+			httpClient,
+			baseURL+AuthServiceApproveDeviceLoginProcedure,
+			connect.WithSchema(authServiceMethods.ByName("ApproveDeviceLogin")),
+			connect.WithClientOptions(opts...),
+		),
+		exchangeDeviceLogin: connect.NewClient[v1.ExchangeDeviceLoginRequest, v1.ExchangeDeviceLoginResponse](
+			httpClient,
+			baseURL+AuthServiceExchangeDeviceLoginProcedure,
+			connect.WithSchema(authServiceMethods.ByName("ExchangeDeviceLogin")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // authServiceClient implements AuthServiceClient.
 type authServiceClient struct {
-	login          *connect.Client[v1.LoginRequest, v1.LoginResponse]
-	logout         *connect.Client[v1.LogoutRequest, emptypb.Empty]
-	createSSOState *connect.Client[emptypb.Empty, v1.CreateSSOStateResponse]
+	login               *connect.Client[v1.LoginRequest, v1.LoginResponse]
+	logout              *connect.Client[v1.LogoutRequest, emptypb.Empty]
+	createSSOState      *connect.Client[emptypb.Empty, v1.CreateSSOStateResponse]
+	createDeviceLogin   *connect.Client[v1.CreateDeviceLoginRequest, v1.CreateDeviceLoginResponse]
+	getDeviceLogin      *connect.Client[v1.GetDeviceLoginRequest, v1.DeviceLogin]
+	approveDeviceLogin  *connect.Client[v1.ApproveDeviceLoginRequest, emptypb.Empty]
+	exchangeDeviceLogin *connect.Client[v1.ExchangeDeviceLoginRequest, v1.ExchangeDeviceLoginResponse]
 }
 
 // Login calls metaxisdata.v1.AuthService.Login.
@@ -112,6 +170,26 @@ func (c *authServiceClient) CreateSSOState(ctx context.Context, req *connect.Req
 	return c.createSSOState.CallUnary(ctx, req)
 }
 
+// CreateDeviceLogin calls metaxisdata.v1.AuthService.CreateDeviceLogin.
+func (c *authServiceClient) CreateDeviceLogin(ctx context.Context, req *connect.Request[v1.CreateDeviceLoginRequest]) (*connect.Response[v1.CreateDeviceLoginResponse], error) {
+	return c.createDeviceLogin.CallUnary(ctx, req)
+}
+
+// GetDeviceLogin calls metaxisdata.v1.AuthService.GetDeviceLogin.
+func (c *authServiceClient) GetDeviceLogin(ctx context.Context, req *connect.Request[v1.GetDeviceLoginRequest]) (*connect.Response[v1.DeviceLogin], error) {
+	return c.getDeviceLogin.CallUnary(ctx, req)
+}
+
+// ApproveDeviceLogin calls metaxisdata.v1.AuthService.ApproveDeviceLogin.
+func (c *authServiceClient) ApproveDeviceLogin(ctx context.Context, req *connect.Request[v1.ApproveDeviceLoginRequest]) (*connect.Response[emptypb.Empty], error) {
+	return c.approveDeviceLogin.CallUnary(ctx, req)
+}
+
+// ExchangeDeviceLogin calls metaxisdata.v1.AuthService.ExchangeDeviceLogin.
+func (c *authServiceClient) ExchangeDeviceLogin(ctx context.Context, req *connect.Request[v1.ExchangeDeviceLoginRequest]) (*connect.Response[v1.ExchangeDeviceLoginResponse], error) {
+	return c.exchangeDeviceLogin.CallUnary(ctx, req)
+}
+
 // AuthServiceHandler is an implementation of the metaxisdata.v1.AuthService service.
 type AuthServiceHandler interface {
 	// Permissions required: None
@@ -125,6 +203,24 @@ type AuthServiceHandler interface {
 	// victim's browser and bind the victim's session to the attacker's identity.
 	// Permissions required: None
 	CreateSSOState(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.CreateSSOStateResponse], error)
+	// CreateDeviceLogin starts a device login (RFC 8628 style). The caller gets a
+	// polling secret plus a short human-readable code; a signed-in user approves
+	// the request from the web confirmation page and the CLI then exchanges the
+	// secret for an access token bound to that user.
+	// Permissions required: None
+	CreateDeviceLogin(context.Context, *connect.Request[v1.CreateDeviceLoginRequest]) (*connect.Response[v1.CreateDeviceLoginResponse], error)
+	// GetDeviceLogin returns one pending device login so the confirmation page can
+	// show what is being approved.
+	// Permissions required: None
+	GetDeviceLogin(context.Context, *connect.Request[v1.GetDeviceLoginRequest]) (*connect.Response[v1.DeviceLogin], error)
+	// ApproveDeviceLogin approves or denies a pending device login. The approver
+	// becomes the identity the access token is issued for.
+	// Permissions required: None
+	ApproveDeviceLogin(context.Context, *connect.Request[v1.ApproveDeviceLoginRequest]) (*connect.Response[emptypb.Empty], error)
+	// ExchangeDeviceLogin polls a device login. An approved request is consumed
+	// and answered with the token; every other state is reported as-is.
+	// Permissions required: None
+	ExchangeDeviceLogin(context.Context, *connect.Request[v1.ExchangeDeviceLoginRequest]) (*connect.Response[v1.ExchangeDeviceLoginResponse], error)
 }
 
 // NewAuthServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -152,6 +248,30 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(authServiceMethods.ByName("CreateSSOState")),
 		connect.WithHandlerOptions(opts...),
 	)
+	authServiceCreateDeviceLoginHandler := connect.NewUnaryHandler(
+		AuthServiceCreateDeviceLoginProcedure,
+		svc.CreateDeviceLogin,
+		connect.WithSchema(authServiceMethods.ByName("CreateDeviceLogin")),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceGetDeviceLoginHandler := connect.NewUnaryHandler(
+		AuthServiceGetDeviceLoginProcedure,
+		svc.GetDeviceLogin,
+		connect.WithSchema(authServiceMethods.ByName("GetDeviceLogin")),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceApproveDeviceLoginHandler := connect.NewUnaryHandler(
+		AuthServiceApproveDeviceLoginProcedure,
+		svc.ApproveDeviceLogin,
+		connect.WithSchema(authServiceMethods.ByName("ApproveDeviceLogin")),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceExchangeDeviceLoginHandler := connect.NewUnaryHandler(
+		AuthServiceExchangeDeviceLoginProcedure,
+		svc.ExchangeDeviceLogin,
+		connect.WithSchema(authServiceMethods.ByName("ExchangeDeviceLogin")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.AuthService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AuthServiceLoginProcedure:
@@ -160,6 +280,14 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 			authServiceLogoutHandler.ServeHTTP(w, r)
 		case AuthServiceCreateSSOStateProcedure:
 			authServiceCreateSSOStateHandler.ServeHTTP(w, r)
+		case AuthServiceCreateDeviceLoginProcedure:
+			authServiceCreateDeviceLoginHandler.ServeHTTP(w, r)
+		case AuthServiceGetDeviceLoginProcedure:
+			authServiceGetDeviceLoginHandler.ServeHTTP(w, r)
+		case AuthServiceApproveDeviceLoginProcedure:
+			authServiceApproveDeviceLoginHandler.ServeHTTP(w, r)
+		case AuthServiceExchangeDeviceLoginProcedure:
+			authServiceExchangeDeviceLoginHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -179,4 +307,20 @@ func (UnimplementedAuthServiceHandler) Logout(context.Context, *connect.Request[
 
 func (UnimplementedAuthServiceHandler) CreateSSOState(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.CreateSSOStateResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.AuthService.CreateSSOState is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) CreateDeviceLogin(context.Context, *connect.Request[v1.CreateDeviceLoginRequest]) (*connect.Response[v1.CreateDeviceLoginResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.AuthService.CreateDeviceLogin is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) GetDeviceLogin(context.Context, *connect.Request[v1.GetDeviceLoginRequest]) (*connect.Response[v1.DeviceLogin], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.AuthService.GetDeviceLogin is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) ApproveDeviceLogin(context.Context, *connect.Request[v1.ApproveDeviceLoginRequest]) (*connect.Response[emptypb.Empty], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.AuthService.ApproveDeviceLogin is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) ExchangeDeviceLogin(context.Context, *connect.Request[v1.ExchangeDeviceLoginRequest]) (*connect.Response[v1.ExchangeDeviceLoginResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.AuthService.ExchangeDeviceLogin is not implemented"))
 }

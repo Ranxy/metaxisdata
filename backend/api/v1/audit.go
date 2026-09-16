@@ -232,7 +232,11 @@ func isSensitiveAuditField(key string) bool {
 		// These are bare field names of credential-bearing messages, so a
 		// substring match would not catch them.
 		"key", "sslkey", "sslcert", "sshprivatekey",
-		"passwd", "pwd", "bearer", "jwt", "session":
+		"passwd", "pwd", "bearer", "jwt", "session",
+		// The device login polling secret. CreateDeviceLogin returns it, and it
+		// must not end up in an audit record where it could be replayed while
+		// the approval is still open.
+		"devicecode", "device_code":
 		return true
 	}
 	for _, marker := range []string{"password", "token", "secret", "credential", "servicekey", "apikey", "api_key", "accesskey", "privatekey", "private_key"} {

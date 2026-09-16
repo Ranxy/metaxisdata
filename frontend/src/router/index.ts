@@ -247,6 +247,12 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
+    path: "/device",
+    name: "DeviceLogin",
+    component: () => import("@/pages/DeviceLoginPage.vue"),
+    meta: { requiresAuth: true, layout: "default" },
+  },
+  {
     path: "/:pathMatch(.*)*",
     name: "NotFound",
     component: () => import("@/pages/NotFoundPage.vue"),

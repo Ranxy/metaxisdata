@@ -39,6 +39,12 @@ const (
 	// LineageServiceGetLineageForContextProcedure is the fully-qualified name of the LineageService's
 	// GetLineageForContext RPC.
 	LineageServiceGetLineageForContextProcedure = "/metaxisdata.v1.LineageService/GetLineageForContext"
+	// LineageServiceAnalyzeSQLProcedure is the fully-qualified name of the LineageService's AnalyzeSQL
+	// RPC.
+	LineageServiceAnalyzeSQLProcedure = "/metaxisdata.v1.LineageService/AnalyzeSQL"
+	// LineageServiceGetLineageGraphProcedure is the fully-qualified name of the LineageService's
+	// GetLineageGraph RPC.
+	LineageServiceGetLineageGraphProcedure = "/metaxisdata.v1.LineageService/GetLineageGraph"
 )
 
 // LineageServiceClient is a client for the metaxisdata.v1.LineageService service.
@@ -50,6 +56,15 @@ type LineageServiceClient interface {
 	GetLineage(context.Context, *connect.Request[v1.GetLineageRequest]) (*connect.Response[v1.GetLineageResponse], error)
 	// GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).
 	GetLineageForContext(context.Context, *connect.Request[v1.GetLineageForContextRequest]) (*connect.Response[v1.GetLineageForContextResponse], error)
+	// AnalyzeSQL parses an arbitrary SQL statement and returns its column-level
+	// relations, resolved against one or more analysis scopes. The analysis is
+	// stateless: nothing is persisted and no lineage runner is triggered, so the
+	// result describes this statement only and is not part of the stored graph.
+	AnalyzeSQL(context.Context, *connect.Request[v1.AnalyzeSQLRequest]) (*connect.Response[v1.AnalyzeSQLResponse], error)
+	// GetLineageGraph returns the multi-level lineage graph around one metadata
+	// object in a single call, instead of expanding it one hop at a time with
+	// GetLineage.
+	GetLineageGraph(context.Context, *connect.Request[v1.GetLineageGraphRequest]) (*connect.Response[v1.GetLineageGraphResponse], error)
 }
 
 // NewLineageServiceClient constructs a client for the metaxisdata.v1.LineageService service. By
@@ -75,6 +90,18 @@ func NewLineageServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(lineageServiceMethods.ByName("GetLineageForContext")),
 			connect.WithClientOptions(opts...),
 		),
+		analyzeSQL: connect.NewClient[v1.AnalyzeSQLRequest, v1.AnalyzeSQLResponse](
+			httpClient,
+			baseURL+LineageServiceAnalyzeSQLProcedure,
+			connect.WithSchema(lineageServiceMethods.ByName("AnalyzeSQL")),
+			connect.WithClientOptions(opts...),
+		),
+		getLineageGraph: connect.NewClient[v1.GetLineageGraphRequest, v1.GetLineageGraphResponse](
+			httpClient,
+			baseURL+LineageServiceGetLineageGraphProcedure,
+			connect.WithSchema(lineageServiceMethods.ByName("GetLineageGraph")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -82,6 +109,8 @@ func NewLineageServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 type lineageServiceClient struct {
 	getLineage           *connect.Client[v1.GetLineageRequest, v1.GetLineageResponse]
 	getLineageForContext *connect.Client[v1.GetLineageForContextRequest, v1.GetLineageForContextResponse]
+	analyzeSQL           *connect.Client[v1.AnalyzeSQLRequest, v1.AnalyzeSQLResponse]
+	getLineageGraph      *connect.Client[v1.GetLineageGraphRequest, v1.GetLineageGraphResponse]
 }
 
 // GetLineage calls metaxisdata.v1.LineageService.GetLineage.
@@ -94,6 +123,16 @@ func (c *lineageServiceClient) GetLineageForContext(ctx context.Context, req *co
 	return c.getLineageForContext.CallUnary(ctx, req)
 }
 
+// AnalyzeSQL calls metaxisdata.v1.LineageService.AnalyzeSQL.
+func (c *lineageServiceClient) AnalyzeSQL(ctx context.Context, req *connect.Request[v1.AnalyzeSQLRequest]) (*connect.Response[v1.AnalyzeSQLResponse], error) {
+	return c.analyzeSQL.CallUnary(ctx, req)
+}
+
+// GetLineageGraph calls metaxisdata.v1.LineageService.GetLineageGraph.
+func (c *lineageServiceClient) GetLineageGraph(ctx context.Context, req *connect.Request[v1.GetLineageGraphRequest]) (*connect.Response[v1.GetLineageGraphResponse], error) {
+	return c.getLineageGraph.CallUnary(ctx, req)
+}
+
 // LineageServiceHandler is an implementation of the metaxisdata.v1.LineageService service.
 type LineageServiceHandler interface {
 	// GetLineage returns the lineage relations for the given metadata.
@@ -103,6 +142,15 @@ type LineageServiceHandler interface {
 	GetLineage(context.Context, *connect.Request[v1.GetLineageRequest]) (*connect.Response[v1.GetLineageResponse], error)
 	// GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).
 	GetLineageForContext(context.Context, *connect.Request[v1.GetLineageForContextRequest]) (*connect.Response[v1.GetLineageForContextResponse], error)
+	// AnalyzeSQL parses an arbitrary SQL statement and returns its column-level
+	// relations, resolved against one or more analysis scopes. The analysis is
+	// stateless: nothing is persisted and no lineage runner is triggered, so the
+	// result describes this statement only and is not part of the stored graph.
+	AnalyzeSQL(context.Context, *connect.Request[v1.AnalyzeSQLRequest]) (*connect.Response[v1.AnalyzeSQLResponse], error)
+	// GetLineageGraph returns the multi-level lineage graph around one metadata
+	// object in a single call, instead of expanding it one hop at a time with
+	// GetLineage.
+	GetLineageGraph(context.Context, *connect.Request[v1.GetLineageGraphRequest]) (*connect.Response[v1.GetLineageGraphResponse], error)
 }
 
 // NewLineageServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -124,12 +172,28 @@ func NewLineageServiceHandler(svc LineageServiceHandler, opts ...connect.Handler
 		connect.WithSchema(lineageServiceMethods.ByName("GetLineageForContext")),
 		connect.WithHandlerOptions(opts...),
 	)
+	lineageServiceAnalyzeSQLHandler := connect.NewUnaryHandler(
+		LineageServiceAnalyzeSQLProcedure,
+		svc.AnalyzeSQL,
+		connect.WithSchema(lineageServiceMethods.ByName("AnalyzeSQL")),
+		connect.WithHandlerOptions(opts...),
+	)
+	lineageServiceGetLineageGraphHandler := connect.NewUnaryHandler(
+		LineageServiceGetLineageGraphProcedure,
+		svc.GetLineageGraph,
+		connect.WithSchema(lineageServiceMethods.ByName("GetLineageGraph")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.LineageService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case LineageServiceGetLineageProcedure:
 			lineageServiceGetLineageHandler.ServeHTTP(w, r)
 		case LineageServiceGetLineageForContextProcedure:
 			lineageServiceGetLineageForContextHandler.ServeHTTP(w, r)
+		case LineageServiceAnalyzeSQLProcedure:
+			lineageServiceAnalyzeSQLHandler.ServeHTTP(w, r)
+		case LineageServiceGetLineageGraphProcedure:
+			lineageServiceGetLineageGraphHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -145,4 +209,12 @@ func (UnimplementedLineageServiceHandler) GetLineage(context.Context, *connect.R
 
 func (UnimplementedLineageServiceHandler) GetLineageForContext(context.Context, *connect.Request[v1.GetLineageForContextRequest]) (*connect.Response[v1.GetLineageForContextResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.LineageService.GetLineageForContext is not implemented"))
+}
+
+func (UnimplementedLineageServiceHandler) AnalyzeSQL(context.Context, *connect.Request[v1.AnalyzeSQLRequest]) (*connect.Response[v1.AnalyzeSQLResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.LineageService.AnalyzeSQL is not implemented"))
+}
+
+func (UnimplementedLineageServiceHandler) GetLineageGraph(context.Context, *connect.Request[v1.GetLineageGraphRequest]) (*connect.Response[v1.GetLineageGraphResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.LineageService.GetLineageGraph is not implemented"))
 }

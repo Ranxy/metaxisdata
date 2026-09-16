@@ -77,13 +77,33 @@ func TestMarshalAuditMessageRedactsSecrets(t *testing.T) {
 	}
 }
 
+// deviceCode is the polling secret returned by CreateDeviceLogin. The audit
+// interceptor records responses too, so it has to be redacted; userCode is what
+// the user types and stays readable.
+func TestMarshalAuditMessageRedactsTheDeviceLoginSecret(t *testing.T) {
+	t.Parallel()
+
+	structured, raw, err := marshalAuditMessage(&v1pb.CreateDeviceLoginResponse{
+		DeviceCode:              "polling-secret",
+		UserCode:                "7Q2X-9M4K",
+		VerificationUri:         "https://mx.example.com/device",
+		VerificationUriComplete: "https://mx.example.com/device?user_code=7Q2X-9M4K",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, structured)
+
+	require.Equal(t, redactedValue, raw["deviceCode"])
+	require.Equal(t, "7Q2X-9M4K", raw["userCode"])
+	require.Equal(t, "https://mx.example.com/device", raw["verificationUri"])
+}
+
 func TestIsSensitiveAuditField(t *testing.T) {
 	t.Parallel()
 
-	for _, field := range []string{"key", "sslKey", "sslCert", "passwd", "pwd", "bearer", "jwt", "session", "password", "apiKey", "accessKeyId", "sshPrivateKey"} {
+	for _, field := range []string{"key", "sslKey", "sslCert", "passwd", "pwd", "bearer", "jwt", "session", "password", "apiKey", "accessKeyId", "sshPrivateKey", "deviceCode", "device_code"} {
 		require.True(t, isSensitiveAuditField(field), "expected %q to be redacted", field)
 	}
-	for _, field := range []string{"email", "name", "host", "port", "description"} {
+	for _, field := range []string{"email", "name", "host", "port", "description", "userCode"} {
 		require.False(t, isSensitiveAuditField(field), "expected %q to be kept", field)
 	}
 }

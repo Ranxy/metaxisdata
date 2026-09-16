@@ -25,6 +25,26 @@ service LineageService {
     option (google.api.http) = {get: "/v1/lineages:context"};
     option (metaxisdata.v1.permission) = "metaxisdata.lineage.get";
   }
+
+  // AnalyzeSQL parses an arbitrary SQL statement and returns its column-level
+  // relations, resolved against one or more analysis scopes. The analysis is
+  // stateless: nothing is persisted and no lineage runner is triggered, so the
+  // result describes this statement only and is not part of the stored graph.
+  rpc AnalyzeSQL(AnalyzeSQLRequest) returns (AnalyzeSQLResponse) {
+    option (google.api.http) = {
+      post: "/v1/lineages:analyzeSql"
+      body: "*"
+    };
+    option (metaxisdata.v1.permission) = "metaxisdata.lineage.get";
+  }
+
+  // GetLineageGraph returns the multi-level lineage graph around one metadata
+  // object in a single call, instead of expanding it one hop at a time with
+  // GetLineage.
+  rpc GetLineageGraph(GetLineageGraphRequest) returns (GetLineageGraphResponse) {
+    option (google.api.http) = {get: "/v1/lineages:graph"};
+    option (metaxisdata.v1.permission) = "metaxisdata.lineage.get";
+  }
 }
 
 enum LineageType {
@@ -153,4 +173,137 @@ message GetLineageForContextResponse {
   // A token, which can be sent as `page_token` to retrieve the next page.
   // If this field is omitted, there are no subsequent pages.
   string next_page_token = 2;
+}
+
+// AnalysisScope is one resolution context for a SQL statement: a named database
+// (MySQL family) or schema (PostgreSQL-like). `name` is an opaque
+// caller-supplied label that is echoed back so results can be attributed; the
+// server attaches no meaning to it.
+message AnalysisScope {
+  string name = 1;
+
+  // The metadata GUID of the database or schema the statement is resolved
+  // against, e.g. "instance_1;db2" or "instance_1;db2;public". It only supplies
+  // the default instance/database/schema for unqualified names; the existence
+  // of the database or schema is not validated.
+  string guid = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message AnalyzeSQLRequest {
+  // The scopes to resolve the statement against, at most 10. The statement is
+  // analyzed once per scope, independently: the scopes may live on different
+  // instances and even different engines, and their results are not merged.
+  // Selecting several scopes does not discover cross-scope relations that are
+  // absent from the metadata.
+  repeated AnalysisScope scopes = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.field_behavior) = NON_EMPTY_DEFAULT
+  ];
+
+  // The SQL statement to analyze.
+  string sql_text = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message AnalyzeSQLResponse {
+  // One result per requested scope, in the same order.
+  repeated AnalyzeSQLResult results = 1;
+
+  // Warnings that apply to the request as a whole.
+  repeated string warnings = 2;
+}
+
+message AnalyzeSQLResult {
+  // The scope name from the request, echoed back.
+  string scope_name = 1;
+
+  string scope_guid = 2;
+
+  repeated AnalyzeSQLRelation relations = 3;
+
+  // Warnings that only affect this scope, such as an engine without a lineage
+  // analyzer. They never fail the whole request.
+  repeated string warnings = 4;
+}
+
+message AnalyzeSQLRelation {
+  // The table-level GUID of the source column, with instance/database/schema
+  // filled in from the scope. It is reported even when the object is not in the
+  // metadata registry.
+  string source_guid = 1;
+
+  string source_column = 2;
+
+  // TABLE/VIEW/... when the object is found in the metadata registry.
+  MetaType source_type = 3;
+
+  // Empty when the target is a synthetic object that only exists inside the
+  // statement (the result of a bare SELECT, a CTE, a subquery). In that case
+  // target_column is the output alias of the query and is_temp is true.
+  string target_guid = 4;
+
+  string target_column = 5;
+
+  MetaType target_type = 6;
+
+  RelationType relation_type = 7;
+
+  repeated Transformation transformations = 8;
+
+  bool is_temp = 9;
+}
+
+message GetLineageGraphRequest {
+  // The global unique id for metadata
+  // table: "instance_1;db2;schema3;table4"
+  string guid = 1 [(google.api.field_behavior) = REQUIRED];
+
+  MetaType meta_type = 2;
+
+  // Which direction to walk: SOURCE looks upstream only, TARGET downstream
+  // only, and leaving it unset walks both.
+  LineageType lineage_type = 3;
+
+  // How many hops to expand, 1 to 10. Defaults to 3.
+  int32 depth = 4;
+}
+
+message GetLineageGraphResponse {
+  string root_guid = 1;
+
+  // The table-, view- and dataset-level objects in the graph.
+  repeated LineageNode nodes = 2;
+
+  // The column-level edges between those objects.
+  repeated LineageRelation edges = 3;
+
+  // Metadata for external datasets referenced in the edges.
+  repeated ExternalDatasetInfo external_datasets = 4;
+
+  // The number of hops actually expanded.
+  int32 depth_reached = 5;
+
+  // Whether a node, edge or time budget stopped the expansion early.
+  bool truncated = 6;
+}
+
+// LineageNode is one object in the multi-level graph. Only column-level edges
+// are stored, so the table-level relations are the collapse of those edges: an
+// object whose definition yields no column-level relation at all (for example a
+// bare `SELECT count(*)`, or an object that was never synced) does not appear.
+message LineageNode {
+  string guid = 1;
+
+  MetaType meta_type = 2;
+
+  // The object name; the dataset name for an external dataset.
+  string name = 3;
+
+  string database = 4;
+
+  string schema = 5;
+
+  string instance_id = 6;
+
+  // Hops from the root: negative upstream, positive downstream.
+  int32 distance = 7;
 }

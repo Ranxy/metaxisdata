@@ -323,7 +323,35 @@
             <ul>
               
                 <li>
+                  <a href="#metaxisdata.v1.ApproveDeviceLoginRequest"><span class="badge">M</span>ApproveDeviceLoginRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateDeviceLoginRequest"><span class="badge">M</span>CreateDeviceLoginRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateDeviceLoginResponse"><span class="badge">M</span>CreateDeviceLoginResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.CreateSSOStateResponse"><span class="badge">M</span>CreateSSOStateResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DeviceLogin"><span class="badge">M</span>DeviceLogin</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ExchangeDeviceLoginRequest"><span class="badge">M</span>ExchangeDeviceLoginRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ExchangeDeviceLoginResponse"><span class="badge">M</span>ExchangeDeviceLoginResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetDeviceLoginRequest"><span class="badge">M</span>GetDeviceLoginRequest</a>
                 </li>
               
                 <li>
@@ -346,6 +374,10 @@
                   <a href="#metaxisdata.v1.OAuth2IdentityProviderContext"><span class="badge">M</span>OAuth2IdentityProviderContext</a>
                 </li>
               
+              
+                <li>
+                  <a href="#metaxisdata.v1.DeviceLoginState"><span class="badge">E</span>DeviceLoginState</a>
+                </li>
               
               
               
@@ -956,6 +988,26 @@
             <ul>
               
                 <li>
+                  <a href="#metaxisdata.v1.AnalysisScope"><span class="badge">M</span>AnalysisScope</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.AnalyzeSQLRelation"><span class="badge">M</span>AnalyzeSQLRelation</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.AnalyzeSQLRequest"><span class="badge">M</span>AnalyzeSQLRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.AnalyzeSQLResponse"><span class="badge">M</span>AnalyzeSQLResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.AnalyzeSQLResult"><span class="badge">M</span>AnalyzeSQLResult</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ExternalDatasetInfo"><span class="badge">M</span>ExternalDatasetInfo</a>
                 </li>
               
@@ -968,11 +1020,23 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetLineageGraphRequest"><span class="badge">M</span>GetLineageGraphRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetLineageGraphResponse"><span class="badge">M</span>GetLineageGraphResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetLineageRequest"><span class="badge">M</span>GetLineageRequest</a>
                 </li>
               
                 <li>
                   <a href="#metaxisdata.v1.GetLineageResponse"><span class="badge">M</span>GetLineageResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.LineageNode"><span class="badge">M</span>LineageNode</a>
                 </li>
               
                 <li>
@@ -2442,6 +2506,132 @@ The last remaining workspace admin cannot be deleted.</p></td>
       <p></p>
 
       
+        <h3 id="metaxisdata.v1.ApproveDeviceLoginRequest">ApproveDeviceLoginRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: deviceLogins/{user_code} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>approve</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CreateDeviceLoginRequest">CreateDeviceLoginRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>client_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A human-readable client name for the confirmation page, e.g. &#34;mxd&#34;. It is
+display only and never trusted. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>client_version</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CreateDeviceLoginResponse">CreateDeviceLoginResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>device_code</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The polling secret. Only the client that created the request holds it, and
+it never appears in a URL or in an audit record. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>user_code</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The human-readable code the user types on the confirmation page, in
+Crockford base32 with an &#34;XXXX-XXXX&#34; layout. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>verification_uri</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The bare confirmation address, `{external_url}/device`. Empty when the
+workspace has no external URL configured. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>verification_uri_complete</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The confirmation address with the code prefilled. Clients should only use
+it when the user explicitly asked to skip typing the code. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expires_in</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Lifetime of this request in seconds. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>interval</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The minimum polling interval in seconds. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.CreateSSOStateResponse">CreateSSOStateResponse</h3>
         <p></p>
 
@@ -2457,6 +2647,189 @@ The last remaining workspace admin cannot be deleted.</p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DeviceLogin">DeviceLogin</h3>
+        <p>DeviceLogin is a pending or resolved device authorization request. Its</p><p>resource name is derived from the human-readable code so the confirmation</p><p>page needs nothing else.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: deviceLogins/{user_code} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#metaxisdata.v1.DeviceLoginState">DeviceLoginState</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>user_code</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expire_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>client_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>client_version</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>request_ip</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The source address the request came from, as the server sees it (it
+follows the trusted-proxy rules). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>request_user_agent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>approved_by</td>
+                  <td><a href="#metaxisdata.v1.User">User</a></td>
+                  <td></td>
+                  <td><p>The user who approved the request, once it is approved. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ExchangeDeviceLoginRequest">ExchangeDeviceLoginRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>device_code</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ExchangeDeviceLoginResponse">ExchangeDeviceLoginResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#metaxisdata.v1.DeviceLoginState">DeviceLoginState</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The access token, returned only when the request was approved. The device
+login is consumed at the same time, so a second exchange finds nothing. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expires_in</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>The remaining lifetime of the token in seconds. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>user</td>
+                  <td><a href="#metaxisdata.v1.User">User</a></td>
+                  <td></td>
+                  <td><p>The user who approved the request. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetDeviceLoginRequest">GetDeviceLoginRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The name of the device login to read.
+Format: deviceLogins/{user_code} </p></td>
                 </tr>
               
             </tbody>
@@ -2633,6 +3006,47 @@ identity provider. Optional; providers that do not use PKCE ignore it. </p></td>
       
 
       
+        <h3 id="metaxisdata.v1.DeviceLoginState">DeviceLoginState</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>DEVICE_LOGIN_STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>PENDING</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>APPROVED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DENIED</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>EXPIRED</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
 
       
 
@@ -2668,6 +3082,44 @@ before redirecting to the identity provider, pass it back to the provider
 and then send it with the login request; the server consumes it there.
 Without it an attacker can complete an authorization-code flow in a
 victim&#39;s browser and bind the victim&#39;s session to the attacker&#39;s identity.
+Permissions required: None</p></td>
+              </tr>
+            
+              <tr>
+                <td>CreateDeviceLogin</td>
+                <td><a href="#metaxisdata.v1.CreateDeviceLoginRequest">CreateDeviceLoginRequest</a></td>
+                <td><a href="#metaxisdata.v1.CreateDeviceLoginResponse">CreateDeviceLoginResponse</a></td>
+                <td><p>CreateDeviceLogin starts a device login (RFC 8628 style). The caller gets a
+polling secret plus a short human-readable code; a signed-in user approves
+the request from the web confirmation page and the CLI then exchanges the
+secret for an access token bound to that user.
+Permissions required: None</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetDeviceLogin</td>
+                <td><a href="#metaxisdata.v1.GetDeviceLoginRequest">GetDeviceLoginRequest</a></td>
+                <td><a href="#metaxisdata.v1.DeviceLogin">DeviceLogin</a></td>
+                <td><p>GetDeviceLogin returns one pending device login so the confirmation page can
+show what is being approved.
+Permissions required: None</p></td>
+              </tr>
+            
+              <tr>
+                <td>ApproveDeviceLogin</td>
+                <td><a href="#metaxisdata.v1.ApproveDeviceLoginRequest">ApproveDeviceLoginRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>ApproveDeviceLogin approves or denies a pending device login. The approver
+becomes the identity the access token is issued for.
+Permissions required: None</p></td>
+              </tr>
+            
+              <tr>
+                <td>ExchangeDeviceLogin</td>
+                <td><a href="#metaxisdata.v1.ExchangeDeviceLoginRequest">ExchangeDeviceLoginRequest</a></td>
+                <td><a href="#metaxisdata.v1.ExchangeDeviceLoginResponse">ExchangeDeviceLoginResponse</a></td>
+                <td><p>ExchangeDeviceLogin polls a device login. An approved request is consumed
+and answered with the token; every other state is reported as-is.
 Permissions required: None</p></td>
               </tr>
             
@@ -2715,6 +3167,46 @@ Permissions required: None</p></td>
                 <td>CreateSSOState</td>
                 <td>POST</td>
                 <td>/v1/auth/ssoState</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateDeviceLogin</td>
+                <td>POST</td>
+                <td>/v1/auth/deviceLogins</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetDeviceLogin</td>
+                <td>GET</td>
+                <td>/v1/{name=deviceLogins/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ApproveDeviceLogin</td>
+                <td>POST</td>
+                <td>/v1/{name=deviceLogins/*}:approve</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ExchangeDeviceLogin</td>
+                <td>POST</td>
+                <td>/v1/auth/deviceLogins:exchange</td>
                 <td>*</td>
               </tr>
               
@@ -4335,6 +4827,14 @@ https://cloud.google.com/resource-manager/docs/tags/tags-overview. </p></td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
                   <td><p>The schema is drifted from the source of truth. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The globally unique metadata GUID of the database, e.g. &#34;instance_1;db2&#34;.
+It can be used directly as an analysis scope for AnalyzeSQL. </p></td>
                 </tr>
               
             </tbody>
@@ -7487,6 +7987,15 @@ If this field is omitted, there are no subsequent pages. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The globally unique metadata GUID of this object, e.g.
+&#34;instance_1;db2;schema3;table4&#34;. It is what ListMetadata results are
+addressed by in GetMetadata, GetSchemaString and the lineage methods. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -9919,6 +10428,236 @@ binding applies only while the condition evaluates to true. </p></td>
       <p></p>
 
       
+        <h3 id="metaxisdata.v1.AnalysisScope">AnalysisScope</h3>
+        <p>AnalysisScope is one resolution context for a SQL statement: a named database</p><p>(MySQL family) or schema (PostgreSQL-like). `name` is an opaque</p><p>caller-supplied label that is echoed back so results can be attributed; the</p><p>server attaches no meaning to it.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The metadata GUID of the database or schema the statement is resolved
+against, e.g. &#34;instance_1;db2&#34; or &#34;instance_1;db2;public&#34;. It only supplies
+the default instance/database/schema for unqualified names; the existence
+of the database or schema is not validated. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.AnalyzeSQLRelation">AnalyzeSQLRelation</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>source_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The table-level GUID of the source column, with instance/database/schema
+filled in from the scope. It is reported even when the object is not in the
+metadata registry. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>source_column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>source_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p>TABLE/VIEW/... when the object is found in the metadata registry. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Empty when the target is a synthetic object that only exists inside the
+statement (the result of a bare SELECT, a CTE, a subquery). In that case
+target_column is the output alias of the query and is_temp is true. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>relation_type</td>
+                  <td><a href="#metaxisdata.v1.RelationType">RelationType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>transformations</td>
+                  <td><a href="#metaxisdata.v1.Transformation">Transformation</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>is_temp</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.AnalyzeSQLRequest">AnalyzeSQLRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>scopes</td>
+                  <td><a href="#metaxisdata.v1.AnalysisScope">AnalysisScope</a></td>
+                  <td>repeated</td>
+                  <td><p>The scopes to resolve the statement against, at most 10. The statement is
+analyzed once per scope, independently: the scopes may live on different
+instances and even different engines, and their results are not merged.
+Selecting several scopes does not discover cross-scope relations that are
+absent from the metadata. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sql_text</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The SQL statement to analyze. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.AnalyzeSQLResponse">AnalyzeSQLResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>results</td>
+                  <td><a href="#metaxisdata.v1.AnalyzeSQLResult">AnalyzeSQLResult</a></td>
+                  <td>repeated</td>
+                  <td><p>One result per requested scope, in the same order. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>warnings</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Warnings that apply to the request as a whole. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.AnalyzeSQLResult">AnalyzeSQLResult</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>scope_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The scope name from the request, echoed back. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>scope_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>relations</td>
+                  <td><a href="#metaxisdata.v1.AnalyzeSQLRelation">AnalyzeSQLRelation</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>warnings</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Warnings that only affect this scope, such as an engine without a lineage
+analyzer. They never fail the whole request. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.ExternalDatasetInfo">ExternalDatasetInfo</h3>
         <p>ExternalDatasetInfo provides metadata for a dataset outside of managed instances.</p>
 
@@ -10049,6 +10788,112 @@ If this field is omitted, there are no subsequent pages. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetLineageGraphRequest">GetLineageGraphRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The global unique id for metadata
+table: &#34;instance_1;db2;schema3;table4&#34; </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>lineage_type</td>
+                  <td><a href="#metaxisdata.v1.LineageType">LineageType</a></td>
+                  <td></td>
+                  <td><p>Which direction to walk: SOURCE looks upstream only, TARGET downstream
+only, and leaving it unset walks both. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>depth</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many hops to expand, 1 to 10. Defaults to 3. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetLineageGraphResponse">GetLineageGraphResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>root_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>nodes</td>
+                  <td><a href="#metaxisdata.v1.LineageNode">LineageNode</a></td>
+                  <td>repeated</td>
+                  <td><p>The table-, view- and dataset-level objects in the graph. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>edges</td>
+                  <td><a href="#metaxisdata.v1.LineageRelation">LineageRelation</a></td>
+                  <td>repeated</td>
+                  <td><p>The column-level edges between those objects. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>external_datasets</td>
+                  <td><a href="#metaxisdata.v1.ExternalDatasetInfo">ExternalDatasetInfo</a></td>
+                  <td>repeated</td>
+                  <td><p>Metadata for external datasets referenced in the edges. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>depth_reached</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The number of hops actually expanded. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>truncated</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether a node, edge or time budget stopped the expansion early. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetLineageRequest">GetLineageRequest</h3>
         <p></p>
 
@@ -10147,6 +10992,72 @@ the call that provided the page token. </p></td>
                   <td></td>
                   <td><p>A token, which can be sent as `page_token` to retrieve the next page.
 If this field is omitted, there are no subsequent pages. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.LineageNode">LineageNode</h3>
+        <p>LineageNode is one object in the multi-level graph. Only column-level edges</p><p>are stored, so the table-level relations are the collapse of those edges: an</p><p>object whose definition yields no column-level relation at all (for example a</p><p>bare `SELECT count(*)`, or an object that was never synced) does not appear.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The object name; the dataset name for an external dataset. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>distance</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Hops from the root: negative upstream, positive downstream. </p></td>
                 </tr>
               
             </tbody>
@@ -10427,6 +11338,25 @@ If lineage_type is not specified, both source and target lineage will be returne
                 <td><p>GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).</p></td>
               </tr>
             
+              <tr>
+                <td>AnalyzeSQL</td>
+                <td><a href="#metaxisdata.v1.AnalyzeSQLRequest">AnalyzeSQLRequest</a></td>
+                <td><a href="#metaxisdata.v1.AnalyzeSQLResponse">AnalyzeSQLResponse</a></td>
+                <td><p>AnalyzeSQL parses an arbitrary SQL statement and returns its column-level
+relations, resolved against one or more analysis scopes. The analysis is
+stateless: nothing is persisted and no lineage runner is triggered, so the
+result describes this statement only and is not part of the stored graph.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetLineageGraph</td>
+                <td><a href="#metaxisdata.v1.GetLineageGraphRequest">GetLineageGraphRequest</a></td>
+                <td><a href="#metaxisdata.v1.GetLineageGraphResponse">GetLineageGraphResponse</a></td>
+                <td><p>GetLineageGraph returns the multi-level lineage graph around one metadata
+object in a single call, instead of expanding it one hop at a time with
+GetLineage.</p></td>
+              </tr>
+            
           </tbody>
         </table>
 
@@ -10461,6 +11391,26 @@ If lineage_type is not specified, both source and target lineage will be returne
                 <td>GetLineageForContext</td>
                 <td>GET</td>
                 <td>/v1/lineages:context</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>AnalyzeSQL</td>
+                <td>POST</td>
+                <td>/v1/lineages:analyzeSql</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetLineageGraph</td>
+                <td>GET</td>
+                <td>/v1/lineages:graph</td>
                 <td></td>
               </tr>
               

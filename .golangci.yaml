@@ -9,6 +9,7 @@ run:
 linters:
   enable:
     - bodyclose
+    - depguard
     - exhaustive
     - forbidigo
     - gocritic
@@ -22,6 +23,25 @@ linters:
     - unparam
     - unused
   settings:
+    depguard:
+      rules:
+        # The CLI is a client of the API, not part of the server. Same module,
+        # so nothing but this rule stops it from importing the server's innards
+        # and dragging the drivers, the store and the runners into a binary that
+        # agents install on their own machines.
+        cli:
+          files:
+            - "**/cli/**"
+          allow:
+            - $gostd
+            - github.com/pkg/errors
+            - github.com/spf13/cobra
+            - connectrpc.com/connect
+            - google.golang.org/protobuf
+            - github.com/Ranxy/metaxisdata/backend/generated-go
+            # The CLI's own packages, and the assertion library its tests use.
+            - github.com/Ranxy/metaxisdata/cli
+            - github.com/stretchr/testify
     exhaustive:
       explicit-exhaustive-switch: true
     forbidigo:
@@ -91,6 +111,12 @@ linters:
         - name: identical-switch-branches
           disabled: true
         - name: identical-ifelseif-branches
+          disabled: true
+        # backend/common is a deliberate, consistent name across the server, and
+        # renaming it would touch every package that imports it. Enabling
+        # depguard made this package-level rule start firing on it, so it is
+        # turned off rather than worked around file by file.
+        - name: package-naming
           disabled: true
         - name: comment-spacings
           arguments:

@@ -291,28 +291,11 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	guidLookupSet := make(map[string]struct{})
 	var lineages []*store.ColumnLineage
 	for _, rel := range relations {
-		// Fill missing source GUID parts from analysis context.
-		sourceID := rel.Source.Table
-		if sourceID.InstanceID == "" {
-			sourceID.InstanceID = instanceID
-		}
-		if sourceID.Database == "" {
-			sourceID.Database = database
-		}
-		if sourceID.Schema == "" {
-			sourceID.Schema = schema
-		}
-
-		targetID := rel.Target.Table
-		if targetID.InstanceID == "" {
-			targetID.InstanceID = instanceID
-		}
-		if targetID.Database == "" {
-			targetID.Database = database
-		}
-		if targetID.Schema == "" {
-			targetID.Schema = schema
-		}
+		// A statement only names an object down to database/schema level, so the
+		// rest comes from the analysis context. AnalyzeSQL resolves its scopes
+		// through the same helper.
+		sourceID := ac.Complete(rel.Source.Table)
+		targetID := ac.Complete(rel.Target.Table)
 
 		if rel.Transformation == nil {
 			rel.Transformation = make([]model.Transformation, 0)

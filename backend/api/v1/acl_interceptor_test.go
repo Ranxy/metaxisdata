@@ -113,12 +113,16 @@ func TestACLInterceptorAuthorize(t *testing.T) {
 // cannot be expressed as one permission. Every other method must be gated,
 // reads included, so this allowlist is the only way to add an unguarded RPC.
 var unannotatedMethods = map[string]bool{
-	"metaxisdata.v1.AuthService.Login":          true,
-	"metaxisdata.v1.AuthService.Logout":         true,
-	"metaxisdata.v1.AuthService.CreateSSOState": true,
-	"metaxisdata.v1.UserService.GetCurrentUser": true,
-	"metaxisdata.v1.UserService.CreateUser":     true,
-	"metaxisdata.v1.UserService.UpdateUser":     true,
+	"metaxisdata.v1.AuthService.Login":               true,
+	"metaxisdata.v1.AuthService.Logout":              true,
+	"metaxisdata.v1.AuthService.CreateSSOState":      true,
+	"metaxisdata.v1.AuthService.CreateDeviceLogin":   true,
+	"metaxisdata.v1.AuthService.GetDeviceLogin":      true,
+	"metaxisdata.v1.AuthService.ApproveDeviceLogin":  true,
+	"metaxisdata.v1.AuthService.ExchangeDeviceLogin": true,
+	"metaxisdata.v1.UserService.GetCurrentUser":      true,
+	"metaxisdata.v1.UserService.CreateUser":          true,
+	"metaxisdata.v1.UserService.UpdateUser":          true,
 }
 
 // TestEveryMethodIsPermissionGated is the read-path guard the authorization

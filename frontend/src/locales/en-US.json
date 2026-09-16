@@ -108,6 +108,30 @@
     "syncing": "Syncing...",
     "title": "Database Management"
   },
+  "deviceLogin": {
+    "approve": "Approve",
+    "client": "Client",
+    "codeCompareHint": "Compare this code with the one shown in the client",
+    "codeLabel": "Code",
+    "codePlaceholder": "XXXX-XXXX",
+    "continue": "Continue",
+    "deny": "Deny",
+    "description": "Confirm a command line client has permission to act as you.",
+    "expiresAt": "Expires at",
+    "outcome": {
+      "approved": "Approved. You can return to the client; it will finish signing in on its own.",
+      "denied": "Denied. The client was told the request was refused.",
+      "expired": "This request has expired. Run the sign-in command again to get a new code."
+    },
+    "prefilledHint": "This code came from a link. Check that it matches the one shown by the client that asked for access, and decline if you did not start it.",
+    "requestIp": "Requested from",
+    "requestedAt": "Requested at",
+    "startOver": "Enter another code",
+    "title": "Authorize a device",
+    "unexpectedState": "The server returned a state this page does not understand. Enter the code again.",
+    "unknown": "Unknown",
+    "unknownClient": "Unknown client"
+  },
   "environment": {
     "cancel": "Cancel",
     "create": "Create",

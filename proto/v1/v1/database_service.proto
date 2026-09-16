@@ -165,6 +165,10 @@ message Database {
   // The schema is drifted from the source of truth.
   bool drifted = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
 
+  // The globally unique metadata GUID of the database, e.g. "instance_1;db2".
+  // It can be used directly as an analysis scope for AnalyzeSQL.
+  string guid = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+
   reserved 5;
   reserved "project";
 }
@@ -660,6 +664,11 @@ message StoredMetadata {
     ManualSQLMetadata manual_sql_metadata = 15;
     ColumnMetadata column_metadata = 16;
   }
+
+  // The globally unique metadata GUID of this object, e.g.
+  // "instance_1;db2;schema3;table4". It is what ListMetadata results are
+  // addressed by in GetMetadata, GetSchemaString and the lineage methods.
+  string guid = 17 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   reserved 9, 11, 12;
   reserved "package_metadata", "stream_metadata", "task_metadata";

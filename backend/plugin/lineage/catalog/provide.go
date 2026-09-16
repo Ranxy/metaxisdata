@@ -31,6 +31,24 @@ func GetAnalysisContext(ctx context.Context) (AnalysisContext, bool) {
 	return v, ok
 }
 
+// Complete fills the missing parts of an identifier from the context. A SQL
+// statement only ever names an object down to database/schema level, so the
+// instance — and, for unqualified names, the database and schema — can only
+// come from here. Both the lineage runner and the stateless AnalyzeSQL path use
+// this, which is what keeps their results identical.
+func (ac AnalysisContext) Complete(id model.ObjectIdentifier) model.ObjectIdentifier {
+	if id.InstanceID == "" {
+		id.InstanceID = ac.InstanceID
+	}
+	if id.Database == "" {
+		id.Database = ac.Database
+	}
+	if id.Schema == "" {
+		id.Schema = ac.Schema
+	}
+	return id
+}
+
 type Provide interface {
 	GetTable(ctx context.Context, id model.ObjectIdentifier) (*TableMeta, error)
 }

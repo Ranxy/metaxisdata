@@ -38,6 +38,64 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/auth/deviceLogins:
+        post:
+            tags:
+                - AuthService
+            description: |-
+                CreateDeviceLogin starts a device login (RFC 8628 style). The caller gets a
+                 polling secret plus a short human-readable code; a signed-in user approves
+                 the request from the web confirmation page and the CLI then exchanges the
+                 secret for an access token bound to that user.
+                 Permissions required: None
+            operationId: AuthService_CreateDeviceLogin
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateDeviceLoginRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CreateDeviceLoginResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/auth/deviceLogins:exchange:
+        post:
+            tags:
+                - AuthService
+            description: |-
+                ExchangeDeviceLogin polls a device login. An approved request is consumed
+                 and answered with the token; every other state is reported as-is.
+                 Permissions required: None
+            operationId: AuthService_ExchangeDeviceLogin
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExchangeDeviceLoginRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExchangeDeviceLoginResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/auth/login:
         post:
             tags:
@@ -190,6 +248,67 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ListDatabasesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/deviceLogins/{deviceLogin}:
+        get:
+            tags:
+                - AuthService
+            description: |-
+                GetDeviceLogin returns one pending device login so the confirmation page can
+                 show what is being approved.
+                 Permissions required: None
+            operationId: AuthService_GetDeviceLogin
+            parameters:
+                - name: deviceLogin
+                  in: path
+                  description: The deviceLogin id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DeviceLogin'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/deviceLogins/{deviceLogin}:approve:
+        post:
+            tags:
+                - AuthService
+            description: |-
+                ApproveDeviceLogin approves or denies a pending device login. The approver
+                 becomes the identity the access token is issued for.
+                 Permissions required: None
+            operationId: AuthService_ApproveDeviceLogin
+            parameters:
+                - name: deviceLogin
+                  in: path
+                  description: The deviceLogin id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ApproveDeviceLoginRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content: {}
                 default:
                     description: Default error response
                     content:
@@ -1350,6 +1469,35 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/lineages:analyzeSql:
+        post:
+            tags:
+                - LineageService
+            description: |-
+                AnalyzeSQL parses an arbitrary SQL statement and returns its column-level
+                 relations, resolved against one or more analysis scopes. The analysis is
+                 stateless: nothing is persisted and no lineage runner is triggered, so the
+                 result describes this statement only and is not part of the stored graph.
+            operationId: LineageService_AnalyzeSQL
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AnalyzeSQLRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AnalyzeSQLResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/lineages:context:
         get:
             tags:
@@ -1414,6 +1562,77 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/GetLineageForContextResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/lineages:graph:
+        get:
+            tags:
+                - LineageService
+            description: |-
+                GetLineageGraph returns the multi-level lineage graph around one metadata
+                 object in a single call, instead of expanding it one hop at a time with
+                 GetLineage.
+            operationId: LineageService_GetLineageGraph
+            parameters:
+                - name: guid
+                  in: query
+                  description: |-
+                    The global unique id for metadata
+                     table: "instance_1;db2;schema3;table4"
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                - name: lineageType
+                  in: query
+                  description: |-
+                    Which direction to walk: SOURCE looks upstream only, TARGET downstream
+                     only, and leaving it unset walks both.
+                  schema:
+                    enum:
+                        - LINEAGE_TYPE_UNSPECIFIED
+                        - SOURCE
+                        - TARGET
+                    type: string
+                    format: enum
+                - name: depth
+                  in: query
+                  description: How many hops to expand, 1 to 10. Defaults to 3.
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetLineageGraphResponse'
                 default:
                     description: Default error response
                     content:
@@ -2867,6 +3086,161 @@ components:
                         The OpenLineage namespace this key may write to. Empty means the key is
                          unscoped and may submit events for any namespace. Ingestion rejects an
                          event whose job or dataset namespace differs from the scope.
+        AnalysisScope:
+            required:
+                - guid
+            type: object
+            properties:
+                name:
+                    type: string
+                guid:
+                    type: string
+                    description: |-
+                        The metadata GUID of the database or schema the statement is resolved
+                         against, e.g. "instance_1;db2" or "instance_1;db2;public". It only supplies
+                         the default instance/database/schema for unqualified names; the existence
+                         of the database or schema is not validated.
+            description: |-
+                AnalysisScope is one resolution context for a SQL statement: a named database
+                 (MySQL family) or schema (PostgreSQL-like). `name` is an opaque
+                 caller-supplied label that is echoed back so results can be attributed; the
+                 server attaches no meaning to it.
+        AnalyzeSQLRelation:
+            type: object
+            properties:
+                sourceGuid:
+                    type: string
+                    description: |-
+                        The table-level GUID of the source column, with instance/database/schema
+                         filled in from the scope. It is reported even when the object is not in the
+                         metadata registry.
+                sourceColumn:
+                    type: string
+                sourceType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    description: TABLE/VIEW/... when the object is found in the metadata registry.
+                    format: enum
+                targetGuid:
+                    type: string
+                    description: |-
+                        Empty when the target is a synthetic object that only exists inside the
+                         statement (the result of a bare SELECT, a CTE, a subquery). In that case
+                         target_column is the output alias of the query and is_temp is true.
+                targetColumn:
+                    type: string
+                targetType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                relationType:
+                    enum:
+                        - RELATION_TYPE_UNSPECIFIED
+                        - DIRECT
+                        - INDIRECT
+                    type: string
+                    format: enum
+                transformations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Transformation'
+                isTemp:
+                    type: boolean
+        AnalyzeSQLRequest:
+            required:
+                - scopes
+                - sqlText
+            type: object
+            properties:
+                scopes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AnalysisScope'
+                    description: |-
+                        The scopes to resolve the statement against, at most 10. The statement is
+                         analyzed once per scope, independently: the scopes may live on different
+                         instances and even different engines, and their results are not merged.
+                         Selecting several scopes does not discover cross-scope relations that are
+                         absent from the metadata.
+                sqlText:
+                    type: string
+                    description: The SQL statement to analyze.
+        AnalyzeSQLResponse:
+            type: object
+            properties:
+                results:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AnalyzeSQLResult'
+                    description: One result per requested scope, in the same order.
+                warnings:
+                    type: array
+                    items:
+                        type: string
+                    description: Warnings that apply to the request as a whole.
+        AnalyzeSQLResult:
+            type: object
+            properties:
+                scopeName:
+                    type: string
+                    description: The scope name from the request, echoed back.
+                scopeGuid:
+                    type: string
+                relations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AnalyzeSQLRelation'
+                warnings:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        Warnings that only affect this scope, such as an engine without a lineage
+                         analyzer. They never fail the whole request.
+        ApproveDeviceLoginRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: deviceLogins/{user_code}'
+                approve:
+                    type: boolean
         AuditLog:
             type: object
             properties:
@@ -3168,6 +3542,47 @@ components:
                     description: The plain-text API key. Only returned once at creation time.
                 apiKey:
                     $ref: '#/components/schemas/APIKey'
+        CreateDeviceLoginRequest:
+            type: object
+            properties:
+                clientName:
+                    type: string
+                    description: |-
+                        A human-readable client name for the confirmation page, e.g. "mxd". It is
+                         display only and never trusted.
+                clientVersion:
+                    type: string
+        CreateDeviceLoginResponse:
+            type: object
+            properties:
+                deviceCode:
+                    type: string
+                    description: |-
+                        The polling secret. Only the client that created the request holds it, and
+                         it never appears in a URL or in an audit record.
+                userCode:
+                    type: string
+                    description: |-
+                        The human-readable code the user types on the confirmation page, in
+                         Crockford base32 with an "XXXX-XXXX" layout.
+                verificationUri:
+                    type: string
+                    description: |-
+                        The bare confirmation address, `{external_url}/device`. Empty when the
+                         workspace has no external URL configured.
+                verificationUriComplete:
+                    type: string
+                    description: |-
+                        The confirmation address with the code prefilled. Clients should only use
+                         it when the user explicitly asked to skip typing the code.
+                expiresIn:
+                    type: integer
+                    description: Lifetime of this request in seconds.
+                    format: int32
+                interval:
+                    type: integer
+                    description: The minimum polling interval in seconds.
+                    format: int32
         CreateSSOStateResponse:
             type: object
             properties:
@@ -3301,6 +3716,12 @@ components:
                     readOnly: true
                     type: boolean
                     description: The schema is drifted from the source of truth.
+                guid:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        The globally unique metadata GUID of the database, e.g. "instance_1;db2".
+                         It can be used directly as an analysis scope for AnalyzeSQL.
         DatabaseSchemaMetadata:
             type: object
             properties:
@@ -3360,6 +3781,48 @@ components:
                 table:
                     type: string
                     description: The table is the name of a reference table.
+        DeviceLogin:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: deviceLogins/{user_code}'
+                state:
+                    enum:
+                        - DEVICE_LOGIN_STATE_UNSPECIFIED
+                        - PENDING
+                        - APPROVED
+                        - DENIED
+                        - EXPIRED
+                    type: string
+                    format: enum
+                userCode:
+                    type: string
+                createTime:
+                    type: string
+                    format: date-time
+                expireTime:
+                    type: string
+                    format: date-time
+                clientName:
+                    type: string
+                clientVersion:
+                    type: string
+                requestIp:
+                    type: string
+                    description: |-
+                        The source address the request came from, as the server sees it (it
+                         follows the trusted-proxy rules).
+                requestUserAgent:
+                    type: string
+                approvedBy:
+                    allOf:
+                        - $ref: '#/components/schemas/User'
+                    description: The user who approved the request, once it is approved.
+            description: |-
+                DeviceLogin is a pending or resolved device authorization request. Its
+                 resource name is derived from the human-readable code so the confirmation
+                 page needs nothing else.
         DiffMetadataResponse:
             type: object
             properties:
@@ -3494,6 +3957,37 @@ components:
             description: |-
                 EventTriggerMetadata is the metadata for PostgreSQL event triggers.
                  Event triggers are database-level objects that fire on DDL events.
+        ExchangeDeviceLoginRequest:
+            required:
+                - deviceCode
+            type: object
+            properties:
+                deviceCode:
+                    type: string
+        ExchangeDeviceLoginResponse:
+            type: object
+            properties:
+                state:
+                    enum:
+                        - DEVICE_LOGIN_STATE_UNSPECIFIED
+                        - PENDING
+                        - APPROVED
+                        - DENIED
+                        - EXPIRED
+                    type: string
+                    format: enum
+                token:
+                    type: string
+                    description: |-
+                        The access token, returned only when the request was approved. The device
+                         login is consumed at the same time, so a second exchange finds nothing.
+                expiresIn:
+                    type: string
+                    description: The remaining lifetime of the token in seconds.
+                user:
+                    allOf:
+                        - $ref: '#/components/schemas/User'
+                    description: The user who approved the request.
         ExcludeConstraintMetadata:
             type: object
             properties:
@@ -3790,6 +4284,33 @@ components:
                     description: |-
                         A token, which can be sent as `page_token` to retrieve the next page.
                          If this field is omitted, there are no subsequent pages.
+        GetLineageGraphResponse:
+            type: object
+            properties:
+                rootGuid:
+                    type: string
+                nodes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LineageNode'
+                    description: The table-, view- and dataset-level objects in the graph.
+                edges:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LineageRelation'
+                    description: The column-level edges between those objects.
+                externalDatasets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ExternalDatasetInfo'
+                    description: Metadata for external datasets referenced in the edges.
+                depthReached:
+                    type: integer
+                    description: The number of hops actually expanded.
+                    format: int32
+                truncated:
+                    type: boolean
+                    description: Whether a node, edge or time budget stopped the expansion early.
         GetLineageResponse:
             type: object
             properties:
@@ -4064,6 +4585,50 @@ components:
                     description: |-
                         The environment resource.
                          Format: environments/prod where prod is the environment resource ID.
+        LineageNode:
+            type: object
+            properties:
+                guid:
+                    type: string
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                name:
+                    type: string
+                    description: The object name; the dataset name for an external dataset.
+                database:
+                    type: string
+                schema:
+                    type: string
+                instanceId:
+                    type: string
+                distance:
+                    type: integer
+                    description: 'Hops from the root: negative upstream, positive downstream.'
+                    format: int32
+            description: |-
+                LineageNode is one object in the multi-level graph. Only column-level edges
+                 are stored, so the table-level relations are the collapse of those edges: an
+                 object whose definition yields no column-level relation at all (for example a
+                 bare `SELECT count(*)`, or an object that was never synced) does not appear.
         LineageRelation:
             type: object
             properties:
@@ -5368,6 +5933,13 @@ components:
                     $ref: '#/components/schemas/ManualSQLMetadata'
                 columnMetadata:
                     $ref: '#/components/schemas/ColumnMetadata'
+                guid:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        The globally unique metadata GUID of this object, e.g.
+                         "instance_1;db2;schema3;table4". It is what ListMetadata results are
+                         addressed by in GetMetadata, GetSchemaString and the lineage methods.
             description: |-
                 StoredMetadata is the v1 view of one meta_registry_resource row.
 

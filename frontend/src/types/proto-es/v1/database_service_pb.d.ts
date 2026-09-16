@@ -115,6 +115,14 @@ export declare type Database = Message<"metaxisdata.v1.Database"> & {
    * @generated from field: bool drifted = 12;
    */
   drifted: boolean;
+
+  /**
+   * The globally unique metadata GUID of the database, e.g. "instance_1;db2".
+   * It can be used directly as an analysis scope for AnalyzeSQL.
+   *
+   * @generated from field: string guid = 11;
+   */
+  guid: string;
 };
 
 /**
@@ -1382,6 +1390,15 @@ export declare type StoredMetadata = Message<"metaxisdata.v1.StoredMetadata"> & 
     value: ColumnMetadata;
     case: "columnMetadata";
   } | { case: undefined; value?: undefined };
+
+  /**
+   * The globally unique metadata GUID of this object, e.g.
+   * "instance_1;db2;schema3;table4". It is what ListMetadata results are
+   * addressed by in GetMetadata, GetSchemaString and the lineage methods.
+   *
+   * @generated from field: string guid = 17;
+   */
+  guid: string;
 };
 
 /**
