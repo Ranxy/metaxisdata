@@ -133,6 +133,18 @@ func TestRunReportsDeniedAndExpired(t *testing.T) {
 
 // The TTL is the server's deadline, and the loop has to respect it even if the
 // server never reports the expiry itself.
+// A request the server no longer has is not "not found": the only recovery is a
+// new login, and that is what the caller reports.
+func TestRunReportsAConsumedSession(t *testing.T) {
+	t.Parallel()
+
+	api := newFake(v1pb.DeviceLoginState_PENDING)
+	api.exchangeErr = connect.NewError(connect.CodeNotFound, errors.New("device login not found"))
+
+	_, err := Run(context.Background(), api, func(string, ...any) {}, noWait())
+	require.ErrorIs(t, err, ErrSessionGone)
+}
+
 func TestRunGivesUpAtTheDeadline(t *testing.T) {
 	t.Parallel()
 

@@ -34,6 +34,10 @@ The server address is saved **with** the token, because a token is issued by one
 server; later commands do not need `--server` again. `mxd auth logout` revokes
 the token and keeps the address.
 
+`--login-timeout` (default 10m) bounds the wait for that approval. It is
+separate from `--timeout` (default 30s), which bounds a single request: the
+approval waits for a person, not for a server.
+
 To keep several identities on one machine, point each one at its own file:
 
 ```console
@@ -84,7 +88,7 @@ $ mxd meta list '1;shop;' --type SCHEMA   # each row carries "guid", e.g. "1;sho
 ## Commands
 
 ```console
-mxd auth login [--server <url>] [--no-browser] [--no-prefill-url]
+mxd auth login [--server <url>] [--no-browser] [--no-prefill-url] [--login-timeout 10m]
 mxd auth status
 mxd auth logout
 
@@ -177,12 +181,17 @@ data and a caller never has to tell "missing" from "empty".
 | Code | Meaning | What to do |
 | --- | --- | --- |
 | 0 | Success | — |
-| 1 | Bad input: flags, an empty statement, `server_required`, `scope_required` | Fix the invocation; the error carries a `hint` |
-| 2 | Not authenticated: the token is missing, expired or revoked, or the device login session is gone | `mxd auth login` |
+| 1 | Bad input: flags, an empty statement, `server_required`, `scope_required`, `config_invalid` | Fix the invocation; the error carries a `hint` |
+| 2 | Not authenticated: the token is missing, expired or revoked, or the device login session is gone or was denied | `mxd auth login` |
 | 3 | Not found | Check the GUID |
 | 4 | Permission denied | Ask an administrator |
-| 5 | Server error | Retry, then check the server logs |
-| 6 | Timeout or cancellation | Retry, or raise `--timeout` |
+| 5 | Could not complete: `unavailable` (the server was not reachable), `resource_exhausted`, or a server fault | Retry, then check that the server is running and read its logs |
+| 6 | Timeout or cancellation, local or remote, including `--login-timeout` running out | Retry, or raise `--timeout` / `--login-timeout` |
+
+The error envelope also carries a `code` string, which is finer grained than the
+exit status: `server_required`, `scope_required` and `config_invalid` all exit 1
+but name different fixes, and a server that is not reachable reports
+`unavailable` rather than the `internal` a fault of its own would give.
 
 ## Notes
 

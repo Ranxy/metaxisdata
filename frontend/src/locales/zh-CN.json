@@ -128,6 +128,7 @@
     "requestedAt": "发起时间",
     "startOver": "输入其他验证码",
     "title": "授权设备登录",
+    "unexpectedState": "服务端返回了本页无法识别的状态。请重新输入验证码。",
     "unknown": "未知",
     "unknownClient": "未知客户端"
   },

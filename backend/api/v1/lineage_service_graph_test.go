@@ -23,10 +23,11 @@ type fakeGraph struct {
 	err map[string]error
 }
 
-// fetcher mirrors what the service does: the direction is applied here, not by
-// the traversal.
+// fetcher mirrors what the service does: the direction and the budget are
+// applied here, not by the traversal, and it returns at most budget+1 so the
+// traversal can tell "no more edges" from "the ceiling cut it short".
 func (g *fakeGraph) fetcher(includeSource, includeTarget bool) lineageGraphFetcher {
-	return func(_ context.Context, guid string) ([]*store.ColumnLineage, error) {
+	return func(_ context.Context, guid string, budget int) ([]*store.ColumnLineage, error) {
 		if g.fetched == nil {
 			g.fetched = map[string]int{}
 		}
@@ -36,6 +37,9 @@ func (g *fakeGraph) fetcher(includeSource, includeTarget bool) lineageGraphFetch
 		}
 		var found []*store.ColumnLineage
 		for _, edge := range g.edges {
+			if len(found) >= budget+1 {
+				break
+			}
 			// Upstream: the object is the target of the edge.
 			if includeSource && edge.TargetGUID == guid {
 				found = append(found, edge)
@@ -80,7 +84,7 @@ func TestBuildLineageGraphWalksBothDirections(t *testing.T) {
 		lineageGraphLimits{nodes: 100, edges: 100}, graph.fetcher(true, true))
 	require.NoError(t, err)
 	require.False(t, truncated)
-	require.Equal(t, int32(3), depthReached)
+	require.Equal(t, int32(2), depthReached, "the deepest node is two hops from the root")
 	require.Len(t, edges, 3)
 	require.Equal(t, map[string]int32{"a": 0, "d": -1, "b": 1, "c": 2}, graphGUIDs(nodes))
 }
@@ -118,7 +122,7 @@ func TestBuildLineageGraphStopsAtTheRequestedDepth(t *testing.T) {
 		lineageGraphLimits{nodes: 100, edges: 100}, graph.fetcher(false, true))
 	require.NoError(t, err)
 	require.False(t, truncated, "stopping at the requested depth is not truncation")
-	require.Equal(t, int32(2), depthReached)
+	require.Equal(t, int32(2), depthReached, "the requested depth was reached")
 	require.Equal(t, map[string]int32{"a": 0, "b": 1, "c": 2}, graphGUIDs(nodes))
 	require.Len(t, edges, 2)
 }
@@ -141,6 +145,37 @@ func TestBuildLineageGraphTerminatesOnCyclesAndDeduplicatesEdges(t *testing.T) {
 	require.Len(t, edges, 2, "each edge is reported once")
 	require.Equal(t, 1, graph.fetched["a"])
 	require.Equal(t, 1, graph.fetched["b"])
+}
+
+// A root with nothing attached has reached no depth at all; reporting 1 would
+// claim the graph has a level it does not.
+func TestBuildLineageGraphReportsZeroDepthForAnIsolatedRoot(t *testing.T) {
+	t.Parallel()
+
+	graph := &fakeGraph{}
+	nodes, edges, depthReached, truncated, err := buildLineageGraph(context.Background(), "a", 5,
+		lineageGraphLimits{nodes: 100, edges: 100}, graph.fetcher(true, true))
+
+	require.NoError(t, err)
+	require.False(t, truncated)
+	require.Len(t, nodes, 1)
+	require.Empty(t, edges)
+	require.Zero(t, depthReached)
+}
+
+// A self edge is not lineage: recording it would add a row that connects
+// nothing.
+func TestBuildLineageGraphDropsSelfEdges(t *testing.T) {
+	t.Parallel()
+
+	graph := &fakeGraph{edges: []*store.ColumnLineage{edge(1, "a", "a"), edge(2, "a", "b")}}
+	nodes, edges, _, _, err := buildLineageGraph(context.Background(), "a", 5,
+		lineageGraphLimits{nodes: 100, edges: 100}, graph.fetcher(true, true))
+
+	require.NoError(t, err)
+	require.Len(t, nodes, 2)
+	require.Len(t, edges, 1)
+	require.Equal(t, "b", edges[0].TargetGUID)
 }
 
 func TestBuildLineageGraphTruncatesOnTheNodeCeiling(t *testing.T) {

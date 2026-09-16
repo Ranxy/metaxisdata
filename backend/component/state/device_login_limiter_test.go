@@ -11,7 +11,7 @@ import (
 func TestDeviceLoginLimiterBoundsOneSource(t *testing.T) {
 	t.Parallel()
 
-	limiter := newDeviceLoginLimiter()
+	limiter := newDeviceLoginCreateLimiter()
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
 	for i := range deviceLoginSourceLimit {
@@ -26,7 +26,7 @@ func TestDeviceLoginLimiterBoundsOneSource(t *testing.T) {
 func TestDeviceLoginLimiterRefusedRequestsDoNotExtendTheWindow(t *testing.T) {
 	t.Parallel()
 
-	limiter := newDeviceLoginLimiter()
+	limiter := newDeviceLoginCreateLimiter()
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
 	for range deviceLoginSourceLimit {
@@ -42,7 +42,7 @@ func TestDeviceLoginLimiterRefusedRequestsDoNotExtendTheWindow(t *testing.T) {
 func TestDeviceLoginLimiterCapsTheEndpointOverall(t *testing.T) {
 	t.Parallel()
 
-	limiter := newDeviceLoginLimiter()
+	limiter := newDeviceLoginCreateLimiter()
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
 	// One request each, so the per-source bucket is never the reason.
@@ -62,7 +62,7 @@ func TestDeviceLoginLimiterCapsTheEndpointOverall(t *testing.T) {
 func TestDeviceLoginLimiterPrunesAtCapacity(t *testing.T) {
 	t.Parallel()
 
-	limiter := newDeviceLoginLimiter()
+	limiter := newDeviceLoginCreateLimiter()
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	for i := range deviceLoginLimiterCapacity {
 		// Distinct times make the oldest entry deterministic.
@@ -77,4 +77,18 @@ func TestDeviceLoginLimiterPrunesAtCapacity(t *testing.T) {
 	require.Len(t, limiter.sources, deviceLoginLimiterCapacity, "the ceiling holds")
 	require.NotContains(t, limiter.sources, "198.51.100.0", "the oldest entry is evicted")
 	require.Contains(t, limiter.sources, "192.0.2.1")
+}
+
+// The lookup budget is per caller, so one account cannot spend another's.
+func TestDeviceLoginLookupLimiterIsPerCaller(t *testing.T) {
+	t.Parallel()
+
+	limiter := newDeviceLoginLookupLimiter()
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	for range deviceLoginLookupLimit {
+		require.True(t, limiter.Allow("user:42", now))
+	}
+	require.False(t, limiter.Allow("user:42", now), "the caller's budget is spent")
+	require.True(t, limiter.Allow("user:7", now), "another caller has its own budget")
 }

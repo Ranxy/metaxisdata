@@ -4,6 +4,7 @@
 package output
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -201,6 +202,18 @@ func CodeOf(err error) string {
 	if err == nil {
 		return ""
 	}
+	// An error from the command layer may name its own code, which is how a
+	// situation the Connect codes do not describe (a device login that has to be
+	// restarted) gets a code of its own.
+	var coded interface{ Code() string }
+	if errors.As(err, &coded) {
+		return coded.Code()
+	}
+	// A local deadline or cancellation is not a Connect error, and reporting it
+	// as an internal failure would hide the one thing worth knowing.
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return "timeout"
+	}
 	var connectErr *connect.Error
 	if !errors.As(err, &connectErr) {
 		return "internal"
@@ -220,6 +233,12 @@ func CodeOf(err error) string {
 		return "resource_exhausted"
 	case connect.CodeAlreadyExists:
 		return "already_exists"
+	case connect.CodeUnavailable:
+		// The server could not be reached, which is worth telling apart from a
+		// server that answered with a fault of its own.
+		return "unavailable"
+	case connect.CodeUnimplemented:
+		return "unimplemented"
 	default:
 		return "internal"
 	}

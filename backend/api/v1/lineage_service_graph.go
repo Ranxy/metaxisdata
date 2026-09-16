@@ -63,8 +63,8 @@ func (s *LineageService) GetLineageGraph(ctx context.Context, req *connect.Reque
 	root := req.Msg.GetGuid()
 	nodes, edges, depthReached, truncated, err := buildLineageGraph(fetchCtx, root, depth,
 		lineageGraphLimits{nodes: maxLineageGraphNodes, edges: maxLineageGraphEdges},
-		func(ctx context.Context, guid string) ([]*store.ColumnLineage, error) {
-			return s.fetchNodeEdges(ctx, guid, includeSource, includeTarget)
+		func(ctx context.Context, guid string, remaining int) ([]*store.ColumnLineage, error) {
+			return s.fetchNodeEdges(ctx, guid, includeSource, includeTarget, remaining)
 		})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to expand the lineage graph of %q", root))
@@ -101,14 +101,25 @@ type lineageGraphNode struct {
 }
 
 // lineageGraphFetcher returns the column lineage edges that touch guid, in the
-// directions the caller asked for. It is a parameter so the traversal can be
-// tested without a database.
-type lineageGraphFetcher func(ctx context.Context, guid string) ([]*store.ColumnLineage, error)
+// directions the caller asked for, and stops after at most budget+1 of them.
+//
+// The budget is passed in because a single object can have an unbounded number
+// of edges — the store pages them, it does not cap them — so a fetcher that
+// always read the whole list would let one hub pull hundreds of thousands of
+// rows into memory before the traversal ever checked its ceiling. The extra one
+// is the same probe the paging helpers use: it is what tells the traversal that
+// the ceiling cut the read short rather than the object simply having that many
+// edges.
+type lineageGraphFetcher func(ctx context.Context, guid string, budget int) ([]*store.ColumnLineage, error)
 
 // buildLineageGraph walks the graph breadth first from root. It reports the
 // nodes and edges it may have collected plus whether a ceiling or the context
 // cut the walk short. A cancelled or expired context is a truncation, not an
 // error: the caller asked for a bounded picture and that is what it gets.
+//
+// depthReached is the largest distance a node was discovered at, which is what
+// "how deep does this graph go" means to a caller. A root with no edges reports
+// 0 rather than 1.
 func buildLineageGraph(ctx context.Context, root string, depth int, limits lineageGraphLimits, fetch lineageGraphFetcher) ([]*lineageGraphNode, []*store.ColumnLineage, int32, bool, error) {
 	nodes := []*lineageGraphNode{{guid: root}}
 	edges := make([]*store.ColumnLineage, 0)
@@ -125,7 +136,7 @@ func buildLineageGraph(ctx context.Context, root string, depth int, limits linea
 				return nodes, edges, depthReached, true, nil //nolint:nilerr // an exhausted budget is reported as truncation
 			}
 
-			fetched, err := fetch(ctx, node.guid)
+			fetched, err := fetch(ctx, node.guid, limits.edges-len(edges))
 			if err != nil {
 				// A read that fails because the budget ran out is a truncation,
 				// not a failure: the caller asked for a bounded picture and a
@@ -137,6 +148,21 @@ func buildLineageGraph(ctx context.Context, root string, depth int, limits linea
 			}
 
 			for _, edge := range fetched {
+				// An edge only says which object is on the other end; which
+				// direction that is depends on where the walk came from. A self
+				// edge has no other end, so it is dropped rather than recorded:
+				// it would add a row to the result and nothing to the graph.
+				var peer string
+				var distance int32
+				switch {
+				case edge.TargetGUID == node.guid && edge.SourceGUID != node.guid:
+					peer, distance = edge.SourceGUID, node.distance-1
+				case edge.SourceGUID == node.guid && edge.TargetGUID != node.guid:
+					peer, distance = edge.TargetGUID, node.distance+1
+				default:
+					continue
+				}
+
 				if len(edges) >= limits.edges {
 					return nodes, edges, depthReached, true, nil
 				}
@@ -148,19 +174,6 @@ func buildLineageGraph(ctx context.Context, root string, depth int, limits linea
 				}
 				edges = append(edges, edge)
 
-				// An edge only says which object is on the other end; which
-				// direction that is depends on where the walk came from.
-				var peer string
-				var distance int32
-				switch {
-				case edge.TargetGUID == node.guid && edge.SourceGUID != node.guid:
-					peer, distance = edge.SourceGUID, node.distance-1
-				case edge.SourceGUID == node.guid && edge.TargetGUID != node.guid:
-					peer, distance = edge.TargetGUID, node.distance+1
-				default:
-					// A self edge adds nothing to the graph.
-					continue
-				}
 				if _, ok := visited[peer]; ok {
 					continue
 				}
@@ -172,6 +185,12 @@ func buildLineageGraph(ctx context.Context, root string, depth int, limits linea
 				nodes = append(nodes, discovered)
 				next = append(next, discovered)
 			}
+		}
+		if len(next) == 0 {
+			// Nothing was discovered, so the walk reached this level but did not
+			// expand it: reporting it would claim a depth the graph does not
+			// have.
+			break
 		}
 		frontier = next
 		depthReached = int32(level + 1)
@@ -193,18 +212,22 @@ func columnLineageKey(edge *store.ColumnLineage) string {
 // fetchNodeEdges walks every page of one object's column lineage in the
 // requested directions. The store puts no ceiling on how many edges a single
 // object may have, so the traversal's own limits are what bounds the work.
-func (s *LineageService) fetchNodeEdges(ctx context.Context, guid string, includeSource, includeTarget bool) ([]*store.ColumnLineage, error) {
+func (s *LineageService) fetchNodeEdges(ctx context.Context, guid string, includeSource, includeTarget bool, budget int) ([]*store.ColumnLineage, error) {
+	if budget < 0 {
+		return nil, nil
+	}
+	probe := budget + 1
 	var edges []*store.ColumnLineage
 	if includeSource {
 		// Upstream means the object is the target of the edge.
-		found, err := s.listAllColumnLineage(ctx, &store.FindColumnLineageMessage{TargetGUID: &guid})
+		found, err := s.listColumnLineage(ctx, &store.FindColumnLineageMessage{TargetGUID: &guid}, probe)
 		if err != nil {
 			return nil, err
 		}
 		edges = append(edges, found...)
 	}
-	if includeTarget {
-		found, err := s.listAllColumnLineage(ctx, &store.FindColumnLineageMessage{SourceGUID: &guid})
+	if includeTarget && len(edges) < probe {
+		found, err := s.listColumnLineage(ctx, &store.FindColumnLineageMessage{SourceGUID: &guid}, probe-len(edges))
 		if err != nil {
 			return nil, err
 		}
@@ -213,13 +236,14 @@ func (s *LineageService) fetchNodeEdges(ctx context.Context, guid string, includ
 	return edges, nil
 }
 
-// listAllColumnLineage pages through one column lineage filter. It mirrors what
-// the web client already does in TypeScript, so both see the same graph.
-func (s *LineageService) listAllColumnLineage(ctx context.Context, find *store.FindColumnLineageMessage) ([]*store.ColumnLineage, error) {
+// listColumnLineage pages through one column lineage filter, stopping once it
+// has at most budget edges. It mirrors what the web client already does in
+// TypeScript, so both see the same graph.
+func (s *LineageService) listColumnLineage(ctx context.Context, find *store.FindColumnLineageMessage, budget int) ([]*store.ColumnLineage, error) {
 	var all []*store.ColumnLineage
 	offset := 0
-	for {
-		limit := maxLineagePageSize
+	for len(all) < budget {
+		limit := min(maxLineagePageSize, budget-len(all))
 		probe := limit + 1
 		page, err := s.store.ListColumnLineage(ctx, &store.FindColumnLineageMessage{
 			MetaGUID:     find.MetaGUID,
@@ -240,6 +264,7 @@ func (s *LineageService) listAllColumnLineage(ctx context.Context, find *store.F
 		all = append(all, page[:limit]...)
 		offset += limit
 	}
+	return all, nil
 }
 
 // enrichLineageGraph renders the nodes and collects the external dataset

@@ -69,6 +69,11 @@ var ErrDenied = errors.New("the device login was denied")
 // ErrExpired is a request that ran out of time before it was approved.
 var ErrExpired = errors.New("the device login expired")
 
+// ErrSessionGone is a request the server no longer has: it was consumed by an
+// earlier exchange, evicted, or lost with the process that held it. The only
+// recovery is a new login, which is what the caller reports it as.
+var ErrSessionGone = errors.New("the device login is no longer available")
+
 // devicePagePath is the confirmation page inside the web application.
 const devicePagePath = "/device"
 
@@ -176,6 +181,9 @@ func Run(ctx context.Context, api DeviceLoginClient, progress Progress, opts Opt
 				// The server asked us to slow down; honour it and keep waiting.
 				interval += time.Second
 				continue
+			}
+			if connect.CodeOf(err) == connect.CodeNotFound {
+				return nil, ErrSessionGone
 			}
 			return nil, err
 		}

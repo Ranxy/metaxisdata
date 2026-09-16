@@ -135,7 +135,7 @@ import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { AlertCircle } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { approveDeviceLogin, getDeviceLogin } from "@/api/device-login";
 import AppButton from "@/components/common/AppButton.vue";
 import AppInput from "@/components/common/AppInput.vue";
@@ -153,6 +153,7 @@ type Outcome = "approved" | "denied" | "expired";
 
 const { t, locale } = useI18n();
 const route = useRoute();
+const router = useRouter();
 
 const step = ref<Step>("input");
 const outcome = ref<Outcome>("approved");
@@ -193,7 +194,13 @@ async function loadDeviceLogin() {
       return;
     }
     // The request was already settled (or expired) before this page saw it.
-    outcome.value = outcomeFor(login.state);
+    const settled = outcomeFor(login.state);
+    if (!settled) {
+      errorMessage.value = t("deviceLogin.unexpectedState");
+      step.value = "input";
+      return;
+    }
+    outcome.value = settled;
     step.value = "done";
   } catch (error) {
     errorMessage.value = extractErrorMessage(error);
@@ -216,7 +223,11 @@ async function decide(approve: boolean) {
   }
 }
 
-function outcomeFor(state: DeviceLoginState): Outcome {
+// outcomeFor maps a settled state onto its message. An unrecognised state
+// returns undefined rather than being folded into one of them: guessing would
+// tell the user their request was denied when the page simply did not
+// understand the answer.
+function outcomeFor(state: DeviceLoginState): Outcome | undefined {
   switch (state) {
     case DeviceLoginState.APPROVED:
       return "approved";
@@ -225,7 +236,7 @@ function outcomeFor(state: DeviceLoginState): Outcome {
     case DeviceLoginState.EXPIRED:
       return "expired";
     default:
-      return "denied";
+      return undefined;
   }
 }
 
@@ -235,6 +246,14 @@ function startOver() {
   userCodeInput.value = "";
   errorMessage.value = "";
   prefilled.value = false;
+
+  // The code in the URL belongs to the request that was just settled. Leaving
+  // it there would make a refresh prefill a code that no longer works.
+  if (route.query.user_code !== undefined) {
+    const query = { ...route.query };
+    delete query.user_code;
+    void router.replace({ query });
+  }
 }
 
 onMounted(async () => {

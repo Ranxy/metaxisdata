@@ -228,10 +228,21 @@ func (s *LineageService) resolveAnalyzeSQLTypes(ctx context.Context, lookups map
 	for _, meta := range metas {
 		types[meta.GUID] = v1pb.MetaType(meta.ObjectType)
 	}
+
+	// One line for all of them: a statement that touches a dozen unsynced
+	// objects would otherwise bury the result it did produce under a dozen
+	// near-identical warnings.
+	var missing []string
 	for _, guid := range guids {
 		if _, ok := types[guid]; !ok {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("table %q not found in the metadata registry", guid))
+			missing = append(missing, guid)
 		}
+	}
+	if len(missing) > 0 {
+		slices.Sort(missing)
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("%d object(s) referenced by this statement are not in the metadata registry: %s",
+				len(missing), strings.Join(missing, ", ")))
 	}
 	return types
 }

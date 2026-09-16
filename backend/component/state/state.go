@@ -32,6 +32,10 @@ type State struct {
 	DeviceLoginStore *DeviceLoginStore
 	// DeviceLoginLimiter throttles CreateDeviceLogin per source address.
 	DeviceLoginLimiter *DeviceLoginLimiter
+	// DeviceLoginLookupLimiter throttles GetDeviceLogin and ApproveDeviceLogin
+	// per caller, so holding an account does not buy unlimited guesses at
+	// someone else's user code.
+	DeviceLoginLookupLimiter *DeviceLoginLimiter
 }
 
 func New() (*State, error) {
@@ -49,7 +53,8 @@ func New() (*State, error) {
 		LoginLimiter:                   newLoginLimiter(),
 		SSOStateCache:                  ssoStateCache,
 		DeviceLoginStore:               newDeviceLoginStore(),
-		DeviceLoginLimiter:             newDeviceLoginLimiter(),
+		DeviceLoginLimiter:             newDeviceLoginCreateLimiter(),
+		DeviceLoginLookupLimiter:       newDeviceLoginLookupLimiter(),
 	}, nil
 }
 

@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -22,7 +23,7 @@ func TestExitCode(t *testing.T) {
 		{name: "usage", err: Usage("bad flag"), want: ExitUsage},
 		{name: "usage with a specific code", err: Usage("no scope").WithCode("scope_required"), want: ExitUsage},
 		{name: "wrapped usage", err: errors.Join(errors.New("context"), Usage("bad flag")), want: ExitUsage},
-		{name: "device session gone", err: ErrDeviceSessionExpired, want: ExitUnauthenticated},
+		{name: "device session gone", err: DeviceSessionExpired("no longer available"), want: ExitUnauthenticated},
 		{name: "unauthenticated", err: connect.NewError(connect.CodeUnauthenticated, errors.New("nope")), want: ExitUnauthenticated},
 		{name: "permission denied", err: connect.NewError(connect.CodePermissionDenied, errors.New("nope")), want: ExitPermissionDenied},
 		{name: "not found", err: connect.NewError(connect.CodeNotFound, errors.New("nope")), want: ExitNotFound},
@@ -31,6 +32,11 @@ func TestExitCode(t *testing.T) {
 		{name: "deadline", err: connect.NewError(connect.CodeDeadlineExceeded, errors.New("nope")), want: ExitTimeout},
 		{name: "internal", err: connect.NewError(connect.CodeInternal, errors.New("nope")), want: ExitServerError},
 		{name: "not a connect error", err: errors.New("boom"), want: ExitServerError},
+		// A local deadline or cancellation never becomes a Connect error, and
+		// reporting it as a server failure would hide the one useful fact.
+		{name: "local deadline", err: context.DeadlineExceeded, want: ExitTimeout},
+		{name: "wrapped local deadline", err: fmt.Errorf("gave up waiting: %w", context.DeadlineExceeded), want: ExitTimeout},
+		{name: "cancelled", err: context.Canceled, want: ExitTimeout},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -52,11 +58,37 @@ func TestNormalizeServer(t *testing.T) {
 	}
 
 	// A missing address has its own code, because it names the one command that
-	// fixes it.
+	// fixes it, and both the builder and the command layer must report it the
+	// same way.
 	_, err = normalizeServer("")
 	var usage *UsageError
 	require.ErrorAs(t, err, &usage)
-	require.Equal(t, "server_required", usage.Code)
+	require.Equal(t, CodeServerRequired, usage.Code)
+	require.ErrorAs(t, ServerRequired(), &usage)
+	require.Equal(t, CodeServerRequired, usage.Code)
+}
+
+// What is validated is what is used: an address that passes the checks must be
+// the one the clients are built from.
+func TestNormalizeServerReturnsTheValidatedForm(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ given, want string }{
+		{"https://mx.example.com", "https://mx.example.com"},
+		{"https://mx.example.com/", "https://mx.example.com"},
+		{"HTTPS://mx.example.com", "https://mx.example.com"},
+		{"https://mx.example.com/prefix/", "https://mx.example.com/prefix"},
+	} {
+		got, err := normalizeServer(tc.given)
+		require.NoError(t, err, "address %q", tc.given)
+		require.Equal(t, tc.want, got, "address %q", tc.given)
+	}
+
+	// A base URL cannot carry credentials, a query or a fragment.
+	for _, given := range []string{"https://user:pass@mx.example.com", "https://mx.example.com?a=1", "https://mx.example.com#f"} {
+		_, err := normalizeServer(given)
+		require.Error(t, err, "address %q must be rejected", given)
+	}
 }
 
 // The token has to reach the wire as a bearer credential: that is what exempts

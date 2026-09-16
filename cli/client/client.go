@@ -3,6 +3,7 @@
 package client
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -49,8 +50,14 @@ func ExitCode(err error) int {
 	if errors.As(err, &usage) {
 		return ExitUsage
 	}
-	if errors.Is(err, ErrDeviceSessionExpired) {
+	var expired *SessionExpiredError
+	if errors.As(err, &expired) {
 		return ExitUnauthenticated
+	}
+	// A local deadline or cancellation never becomes a Connect error, so it has
+	// to be recognised here or it would be reported as a server failure.
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return ExitTimeout
 	}
 
 	var connectErr *connect.Error
@@ -95,9 +102,27 @@ func Usage(format string, args ...any) *UsageError {
 	return &UsageError{Code: CodeInvalidArgument, Message: fmt.Sprintf(format, args...)}
 }
 
-// CodeInvalidArgument is the code of a usage problem without a more specific
-// recovery.
-const CodeInvalidArgument = "invalid_argument"
+// Error codes with a recovery of their own.
+const (
+	// CodeInvalidArgument is a usage problem without a more specific recovery.
+	CodeInvalidArgument = "invalid_argument"
+	// CodeServerRequired means no server address is configured yet. It names
+	// the one command that fixes it, so it gets its own code.
+	CodeServerRequired = "server_required"
+	// CodeDeviceSessionExpired means the device login has to be started again.
+	CodeDeviceSessionExpired = "device_session_expired"
+)
+
+// ServerRequired is the error for an invocation that has no server address.
+//
+// It is defined once because two paths need it: building the clients, and the
+// command layer's own check before it gets that far. Two copies had already
+// drifted, so one of them reported a different code than the other.
+func ServerRequired() *UsageError {
+	return Usage("no server address configured").
+		WithCode(CodeServerRequired).
+		WithHint("run `mxd auth login --server https://mx.example.com` once; the address is saved for later commands")
+}
 
 // WithHint attaches an actionable next step.
 func (e *UsageError) WithHint(format string, args ...any) *UsageError {
@@ -111,10 +136,26 @@ func (e *UsageError) WithCode(code string) *UsageError {
 	return e
 }
 
-// ErrDeviceSessionExpired marks a device login that is gone (expired, denied or
-// already exchanged). It is reported as an authentication problem, because the
-// only recovery is to start a new login.
-var ErrDeviceSessionExpired = errors.New("device login session expired")
+// SessionExpiredError is a device login that is gone: expired, denied, or no
+// longer held by the server. It is reported as an authentication problem,
+// because the only recovery is to start a new login.
+//
+// It carries both the exit status and the code string, so the two cannot
+// disagree, and its message is the reason that applies to the path that
+// produced it.
+type SessionExpiredError struct {
+	Reason string
+}
+
+func (e *SessionExpiredError) Error() string { return e.Reason }
+
+// Code is the value an agent branches on. It is deliberately not one of the
+// Connect codes: a consumed or denied request is a different situation from a
+// rejected token, even though both end in the same recovery.
+func (*SessionExpiredError) Code() string { return CodeDeviceSessionExpired }
+
+// DeviceSessionExpired builds the error for a login that has to be restarted.
+func DeviceSessionExpired(reason string) error { return &SessionExpiredError{Reason: reason} }
 
 // Options are the transport settings resolved from flags and the environment.
 type Options struct {
@@ -169,13 +210,12 @@ func New(server string, options Options) (*Client, error) {
 	}, nil
 }
 
-// normalizeServer validates and normalizes the address, so a user can paste one
-// with or without a trailing slash.
+// normalizeServer validates the address and returns the form the clients are
+// built from, so what is checked is what is used. A trailing slash is dropped
+// because the Connect paths already start with one.
 func normalizeServer(server string) (string, error) {
 	if server == "" {
-		return "", Usage("no server address configured").
-			WithCode("server_required").
-			WithHint("run `mxd auth login --server https://mx.example.com` once; the address is saved for later commands")
+		return "", ServerRequired()
 	}
 	parsed, err := url.Parse(server)
 	if err != nil {
@@ -187,7 +227,15 @@ func normalizeServer(server string) (string, error) {
 	if parsed.Host == "" {
 		return "", Usage("server address %q has no host", server)
 	}
-	return strings.TrimSuffix(server, "/"), nil
+	if parsed.User != nil {
+		return "", Usage("server address %q must not carry credentials", server)
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", Usage("server address %q must not carry a query or fragment", server)
+	}
+	// A path is kept: the server may be mounted under a prefix. The scheme is
+	// lower-cased, so HTTP:// is accepted like any other spelling.
+	return parsed.Scheme + "://" + parsed.Host + strings.TrimSuffix(parsed.Path, "/"), nil
 }
 
 // newTransport wraps the default transport so every request carries the token.

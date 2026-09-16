@@ -3,7 +3,9 @@ package v1
 import (
 	"context"
 	"log/slog"
-	"net/url"
+	"net/http"
+	neturl "net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,11 +25,26 @@ import (
 const (
 	// deviceLoginNamePrefix is the resource name prefix of a device login.
 	deviceLoginNamePrefix = "deviceLogins/"
+	// devicePagePath is the confirmation page inside the web application.
+	devicePagePath = "/device"
+	// maxDeviceLoginClientFieldBytes bounds the display-only client fields.
+	// They come from an anonymous caller and are held for the request's whole
+	// lifetime, so an unbounded value would let one caller decide how much
+	// memory the server keeps: with the endpoint's rate limit, a 100 MB name
+	// would be tens of gigabytes resident.
+	maxDeviceLoginClientFieldBytes = 100
 )
 
 // CreateDeviceLogin starts a device login. It is anonymous by design, so it is
 // throttled per source address rather than per user.
 func (s *AuthService) CreateDeviceLogin(ctx context.Context, req *connect.Request[v1pb.CreateDeviceLoginRequest]) (*connect.Response[v1pb.CreateDeviceLoginResponse], error) {
+	if err := validateDeviceLoginClientField("client_name", req.Msg.GetClientName()); err != nil {
+		return nil, err
+	}
+	if err := validateDeviceLoginClientField("client_version", req.Msg.GetClientVersion()); err != nil {
+		return nil, err
+	}
+
 	metadata := buildRequestMetadata(req.Header(), req.Peer().Addr, s.profile.TrustedProxies)
 	now := time.Now()
 	if !s.stateCfg.DeviceLoginLimiter.Allow(metadata.GetIp(), now) {
@@ -59,7 +76,8 @@ func (s *AuthService) CreateDeviceLogin(ctx context.Context, req *connect.Reques
 	}
 	if verificationURI != "" {
 		response.VerificationUri = verificationURI
-		response.VerificationUriComplete = verificationURI + "?user_code=" + url.QueryEscape(login.UserCode)
+		// The address was rebuilt without a query, so appending one is safe.
+		response.VerificationUriComplete = verificationURI + "?user_code=" + neturl.QueryEscape(login.UserCode)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -70,6 +88,9 @@ func (s *AuthService) GetDeviceLogin(ctx context.Context, req *connect.Request[v
 	userCode, err := parseDeviceLoginName(req.Msg.GetName())
 	if err != nil {
 		return nil, err
+	}
+	if !s.stateCfg.DeviceLoginLookupLimiter.Allow(deviceLoginCallerKey(ctx, req.Header(), req.Peer().Addr, s.profile.TrustedProxies), time.Now()) {
+		return nil, connect.NewError(connect.CodeResourceExhausted, errors.New("too many device login lookups, try again later"))
 	}
 
 	login, err := s.stateCfg.DeviceLoginStore.GetByUserCode(userCode, time.Now())
@@ -97,6 +118,9 @@ func (s *AuthService) ApproveDeviceLogin(ctx context.Context, req *connect.Reque
 	}
 	if err := s.validateDeviceLoginApprover(ctx, approver); err != nil {
 		return nil, err
+	}
+	if !s.stateCfg.DeviceLoginLookupLimiter.Allow(deviceLoginCallerKey(ctx, req.Header(), req.Peer().Addr, s.profile.TrustedProxies), time.Now()) {
+		return nil, connect.NewError(connect.CodeResourceExhausted, errors.New("too many device login lookups, try again later"))
 	}
 
 	if _, err := s.stateCfg.DeviceLoginStore.Approve(userCode, approver.ID, req.Msg.GetApprove(), time.Now()); err != nil {
@@ -137,18 +161,35 @@ func (s *AuthService) ExchangeDeviceLogin(ctx context.Context, req *connect.Requ
 }
 
 // deviceLoginVerificationURI is the bare confirmation page address. It is empty
-// when the workspace has no external URL configured, in which case the client
-// falls back to the address it already knows.
+// when the workspace has no usable external URL, in which case the client falls
+// back to the address it is already talking to.
+//
+// The setting is a frontend address an administrator typed, so it is parsed and
+// rebuilt rather than concatenated: a value that carries a query, a fragment or
+// a trailing path would otherwise produce a broken link. A value that cannot be
+// parsed at all is reported as "no address" rather than as an error, because
+// failing the login over an unrelated frontend setting would leave a workspace
+// unable to sign anyone in.
 func (s *AuthService) deviceLoginVerificationURI(ctx context.Context) (string, error) {
 	setting, err := s.store.GetWorkspaceGeneralSetting(ctx)
 	if err != nil {
 		return "", connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to find workspace setting"))
 	}
-	externalURL := strings.TrimSuffix(setting.GetExternalUrl(), "/")
-	if externalURL == "" {
+	raw := strings.TrimSpace(setting.GetExternalUrl())
+	if raw == "" {
 		return "", nil
 	}
-	return externalURL + "/device", nil
+
+	parsed, err := neturl.Parse(raw)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		// Falling back is deliberate: an unparseable frontend setting must not
+		// stop a workspace from signing anyone in.
+		slog.Warn("ignoring the workspace external URL: it cannot be parsed as an absolute address", slog.String("external_url", raw))
+		return "", nil //nolint:nilerr // a bad setting falls back to the client's own address
+	}
+	parsed.RawQuery, parsed.Fragment = "", ""
+	parsed.Path = strings.TrimSuffix(parsed.Path, "/") + devicePagePath
+	return parsed.String(), nil
 }
 
 // issueDeviceLoginToken mints the access token for the user who approved the
@@ -257,6 +298,28 @@ func deviceLoginStoreError(err error) error {
 	default:
 		return connect.NewError(connect.CodeInternal, err)
 	}
+}
+
+// validateDeviceLoginClientField rejects a display-only field that is longer
+// than the server is willing to hold. It is a clear error rather than a silent
+// truncation, because a client that sends one is malformed and a clipped label
+// would only be confusing.
+func validateDeviceLoginClientField(name, value string) error {
+	if len(value) > maxDeviceLoginClientFieldBytes {
+		return connect.NewError(connect.CodeInvalidArgument,
+			errors.Errorf("%s must be at most %d bytes, got %d", name, maxDeviceLoginClientFieldBytes, len(value)))
+	}
+	return nil
+}
+
+// deviceLoginCallerKey identifies who to count a lookup against. The two
+// endpoints are authenticated, so the user is the right bucket; the source
+// address is the fallback for a request the auth layer let through without one.
+func deviceLoginCallerKey(ctx context.Context, header http.Header, peerAddr string, trustedProxies []string) string {
+	if user, ok := GetUserFromContext(ctx); ok && user != nil {
+		return "user:" + strconv.Itoa(user.ID)
+	}
+	return "ip:" + buildRequestMetadata(header, peerAddr, trustedProxies).GetIp()
 }
 
 // parseDeviceLoginName reads the user code out of "deviceLogins/{user_code}".

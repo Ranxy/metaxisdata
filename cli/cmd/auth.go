@@ -25,7 +25,15 @@ var authLoginFlags struct {
 	noBrowser      bool
 	noPrefillURL   bool
 	serviceAccount string
+	// loginTimeout bounds the wait for the approval, which is a person clicking
+	// a page. It is separate from --timeout, which bounds one request: sharing
+	// them meant a login had to be confirmed within the request timeout.
+	loginTimeout time.Duration
 }
+
+// defaultLoginTimeout is how long the flow waits for someone to approve the
+// request. It matches the request's own lifetime on the server.
+const defaultLoginTimeout = 10 * time.Minute
 
 func newAuthCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -51,6 +59,7 @@ first time: the address is saved, so later commands do not need it.`,
 	cmd.Flags().BoolVar(&authLoginFlags.noBrowser, "no-browser", false, "do not try to open a browser")
 	cmd.Flags().BoolVar(&authLoginFlags.noPrefillURL, "no-prefill-url", false, "print the confirmation URL without the code, so it has to be typed on the page")
 	cmd.Flags().StringVar(&authLoginFlags.serviceAccount, "service-account", "", "sign in as a service account using "+env.ServiceKeyEnv)
+	cmd.Flags().DurationVar(&authLoginFlags.loginTimeout, "login-timeout", defaultLoginTimeout, "how long to wait for the approval in the browser")
 	return cmd
 }
 
@@ -72,7 +81,7 @@ func runAuthLogin(cmd *cobra.Command, _ []string) error {
 	result, err := authflow.Run(cmd.Context(), connection.Auth, current.out.Progress, authflow.Options{
 		ClientName:    "mxd",
 		ClientVersion: version,
-		Timeout:       flags.timeout,
+		Timeout:       authLoginFlags.loginTimeout,
 		BareURL:       authLoginFlags.noPrefillURL,
 		NoBrowser:     authLoginFlags.noBrowser,
 		// The workspace may have no external URL, in which case the server
@@ -83,9 +92,11 @@ func runAuthLogin(cmd *cobra.Command, _ []string) error {
 	})
 	switch {
 	case errors.Is(err, authflow.ErrDenied):
-		return errors.Wrap(client.ErrDeviceSessionExpired, "the request was denied in the browser")
+		return client.DeviceSessionExpired("the request was denied in the browser")
 	case errors.Is(err, authflow.ErrExpired):
-		return errors.Wrap(client.ErrDeviceSessionExpired, "the request was not approved in time")
+		return client.DeviceSessionExpired("the request was not approved in time")
+	case errors.Is(err, authflow.ErrSessionGone):
+		return client.DeviceSessionExpired("the request is no longer available")
 	case err != nil:
 		return err
 	}

@@ -2,15 +2,27 @@ package v1
 
 import (
 	"context"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
+	"github.com/Ranxy/metaxisdata/backend/config"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
+
+func mustState(t *testing.T) *state.State {
+	t.Helper()
+	stateCfg, err := state.New()
+	require.NoError(t, err)
+	return stateCfg
+}
 
 // These cover the parts of the device login surface that do not need a
 // database: the code format, the resource-name parsing, the state mapping and
@@ -87,7 +99,7 @@ func TestGetDeviceLoginReturnsAPendingRequest(t *testing.T) {
 
 	stateCfg, err := state.New()
 	require.NoError(t, err)
-	svc := &AuthService{stateCfg: stateCfg}
+	svc := &AuthService{stateCfg: stateCfg, profile: &config.Profile{}}
 
 	now := time.Now()
 	created, err := stateCfg.DeviceLoginStore.Create(state.DeviceLogin{
@@ -122,7 +134,7 @@ func TestGetDeviceLoginRejectsUnknownCodes(t *testing.T) {
 
 	stateCfg, err := state.New()
 	require.NoError(t, err)
-	svc := &AuthService{stateCfg: stateCfg}
+	svc := &AuthService{stateCfg: stateCfg, profile: &config.Profile{}}
 	ctx := context.Background()
 
 	_, err = svc.GetDeviceLogin(ctx, connect.NewRequest(&v1pb.GetDeviceLoginRequest{
@@ -144,7 +156,7 @@ func TestExchangeDeviceLoginRequiresADeviceCode(t *testing.T) {
 
 	stateCfg, err := state.New()
 	require.NoError(t, err)
-	svc := &AuthService{stateCfg: stateCfg}
+	svc := &AuthService{stateCfg: stateCfg, profile: &config.Profile{}}
 
 	_, err = svc.ExchangeDeviceLogin(context.Background(), connect.NewRequest(&v1pb.ExchangeDeviceLoginRequest{}))
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
@@ -157,7 +169,7 @@ func TestExchangeDeviceLoginReportsPendingAndThrottles(t *testing.T) {
 
 	stateCfg, err := state.New()
 	require.NoError(t, err)
-	svc := &AuthService{stateCfg: stateCfg}
+	svc := &AuthService{stateCfg: stateCfg, profile: &config.Profile{}}
 	ctx := context.Background()
 
 	created, err := stateCfg.DeviceLoginStore.Create(state.DeviceLogin{
@@ -193,4 +205,45 @@ func TestApproveDeviceLoginRequiresACaller(t *testing.T) {
 		Approve: true,
 	}))
 	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+}
+
+// The client fields are display only and come from an anonymous caller, so a
+// value the server would keep for the request's whole lifetime is refused
+// rather than stored. Refusing happens before any store access, which is what
+// makes this testable without a database.
+func TestCreateDeviceLoginRejectsOversizedClientFields(t *testing.T) {
+	t.Parallel()
+
+	svc := &AuthService{stateCfg: mustState(t), profile: &config.Profile{}}
+	ctx := context.Background()
+
+	tooLong := strings.Repeat("a", maxDeviceLoginClientFieldBytes+1)
+	for _, request := range []*v1pb.CreateDeviceLoginRequest{
+		{ClientName: tooLong},
+		{ClientName: "mxd", ClientVersion: tooLong},
+	} {
+		_, err := svc.CreateDeviceLogin(ctx, connect.NewRequest(request))
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	}
+}
+
+func TestValidateDeviceLoginClientField(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, validateDeviceLoginClientField("client_name", ""))
+	require.NoError(t, validateDeviceLoginClientField("client_name", strings.Repeat("a", maxDeviceLoginClientFieldBytes)))
+	require.Error(t, validateDeviceLoginClientField("client_name", strings.Repeat("a", maxDeviceLoginClientFieldBytes+1)))
+}
+
+// A lookup is counted against the signed-in caller, so one account's hammering
+// cannot spend another's budget. The source address is only the fallback for a
+// request that reached the handler without a user.
+func TestDeviceLoginCallerKeyPrefersTheUser(t *testing.T) {
+	t.Parallel()
+
+	signedIn := context.WithValue(context.Background(), common.UserContextKey, &store.UserMessage{ID: 42})
+	require.Equal(t, "user:42", deviceLoginCallerKey(signedIn, http.Header{}, "203.0.113.7:1234", nil))
+
+	anonymous := context.WithValue(context.Background(), common.AuthContextKey, &common.AuthContext{})
+	require.Equal(t, "ip:203.0.113.7", deviceLoginCallerKey(anonymous, http.Header{}, "203.0.113.7:1234", nil))
 }

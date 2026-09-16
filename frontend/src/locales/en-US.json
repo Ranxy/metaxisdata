@@ -128,6 +128,7 @@
     "requestedAt": "Requested at",
     "startOver": "Enter another code",
     "title": "Authorize a device",
+    "unexpectedState": "The server returned a state this page does not understand. Enter the code again.",
     "unknown": "Unknown",
     "unknownClient": "Unknown client"
   },

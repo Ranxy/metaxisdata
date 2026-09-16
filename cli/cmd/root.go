@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -79,7 +80,7 @@ func writeError(err error) {
 
 	payload := output.Error{Code: output.CodeOf(err), Message: err.Error()}
 	var usage *client.UsageError
-	if ok := asUsageError(err, &usage); ok {
+	if errors.As(err, &usage) {
 		payload.Code = usage.Code
 		payload.Hint = usage.Hint
 	}
@@ -101,8 +102,8 @@ Every command writes exactly one JSON document to stdout; progress and errors
 go to stderr. Analysis scopes are read from ` + env.ScopesEnv + `, never stored.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
-			resolved, err := resolve()
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			resolved, err := resolve(cmd)
 			if err != nil {
 				return err
 			}
@@ -112,7 +113,7 @@ go to stderr. Analysis scopes are read from ` + env.ScopesEnv + `, never stored.
 	}
 
 	persistent := root.PersistentFlags()
-	persistent.StringVar(&flags.server, "server", "", "server address; saved by `auth login`, so later commands do not need it")
+	persistent.StringVar(&flags.server, "server", "", "server address; saved by 'auth login', so later commands do not need it")
 	persistent.StringVar(&flags.token, "token", "", "bearer token to use instead of the stored one")
 	persistent.StringArrayVar(&flags.scopes, "scope", nil, "analysis scope to use: a configured name, a GUID, or all")
 	persistent.StringVar(&flags.config, "config", "", "credentials file to use instead of the default")
@@ -140,22 +141,31 @@ go to stderr. Analysis scopes are read from ` + env.ScopesEnv + `, never stored.
 // invocation's settings. The precedence is flags, then the environment, then
 // the credentials file; a value that is still missing is only refused by the
 // command that actually needs it.
-func resolve() (*app, error) {
+func resolve(cmd *cobra.Command) (*app, error) {
 	format, err := output.ParseFormat(flags.format)
 	if err != nil {
 		return nil, client.Usage("%v", err)
+	}
+
+	// A command that only needs the output format must keep working when the
+	// credentials file is missing or corrupt: `mxd version` is the first thing
+	// anyone runs on a broken installation.
+	if noConfigCommands[cmd.Name()] {
+		return &app{out: output.New(format), maxItems: flags.maxItems, pageSize: flags.pageSize}, nil
 	}
 
 	configPath := flags.config
 	if configPath == "" {
 		configPath, err = config.Path()
 		if err != nil {
-			return nil, err
+			return nil, client.Usage("%v", err).WithCode("config_invalid")
 		}
 	}
 	credentials, err := config.Load(configPath)
 	if err != nil {
-		return nil, err
+		// A local file the caller can fix, so it is reported as their input
+		// rather than as a server failure.
+		return nil, client.Usage("%v", err).WithCode("config_invalid")
 	}
 
 	resolved := &app{
@@ -209,6 +219,14 @@ func resolve() (*app, error) {
 	return resolved, nil
 }
 
+// noConfigCommands do not read the credentials file, so a broken one cannot stop
+// them. Only commands that never look at it belong here: `config show` reports
+// what the file says, so it has to fail loudly when the file is unreadable.
+var noConfigCommands = map[string]bool{
+	"version":    true,
+	"completion": true,
+}
+
 // connect builds the clients, refusing an invocation that has no address yet.
 func (a *app) connect() (*client.Client, error) {
 	if a.connection != nil {
@@ -227,27 +245,9 @@ func (a *app) connect() (*client.Client, error) {
 // send the request somewhere nobody asked for.
 func (a *app) requireServer() (string, error) {
 	if a.server == "" {
-		return "", client.Usage("no server address configured").
-			WithHint("run `mxd auth login --server https://mx.example.com` once; the address is saved for later commands")
+		return "", client.ServerRequired()
 	}
 	return a.server, nil
-}
-
-// asUsageError is errors.As for the CLI's own error type, kept here so the
-// output package does not have to know about the client package.
-func asUsageError(err error, target **client.UsageError) bool {
-	for err != nil {
-		if usage, ok := err.(*client.UsageError); ok {
-			*target = usage
-			return true
-		}
-		unwrapper, ok := err.(interface{ Unwrap() error })
-		if !ok {
-			return false
-		}
-		err = unwrapper.Unwrap()
-	}
-	return false
 }
 
 // newVersionCmd reports the CLI version.

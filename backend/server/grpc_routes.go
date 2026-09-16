@@ -31,6 +31,11 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
+// maxAuthServiceRequestBytes caps what an AuthService request may carry. The
+// service holds credentials and the short device login fields, and two of its
+// endpoints are anonymous, so the general body limit is far too generous here.
+const maxAuthServiceRequestBytes = 64 << 10
+
 func configureGrpcRouters(
 	ctx context.Context,
 	e *echo.Echo,
@@ -107,7 +112,11 @@ func configureGrpcRouters(
 
 	userPath, userHandler := v1connect.NewUserServiceHandler(userService, handlerOpts)
 	connectHandlers[userPath] = userHandler
-	authPath, authHandler := v1connect.NewAuthServiceHandler(authService, handlerOpts)
+	// AuthService carries only credentials and the short device login fields,
+	// and two of its endpoints are anonymous. The general body limit is far too
+	// generous for it: an unauthenticated caller could otherwise make the server
+	// buffer a huge request per call.
+	authPath, authHandler := v1connect.NewAuthServiceHandler(authService, handlerOpts, connect.WithReadMaxBytes(maxAuthServiceRequestBytes))
 	connectHandlers[authPath] = authHandler
 	auditLogPath, auditLogHandler := v1connect.NewAuditLogServiceHandler(auditLogService, handlerOpts)
 	connectHandlers[auditLogPath] = auditLogHandler

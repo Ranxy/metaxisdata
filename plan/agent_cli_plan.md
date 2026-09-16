@@ -27,7 +27,27 @@
 >   `catalog.AnalysisContext.Complete` instead of being copied into the API
 >   layer, so the runner and `AnalyzeSQL` provably agree.
 > - `GetLineageGraph` bounds the walk with a wall-clock budget as well as the
->   node and edge ceilings, and reports an exhausted budget as truncation.
+>   node and edge ceilings, and reports an exhausted budget as truncation. The
+>   edge ceiling is enforced *inside* the per-object read (the fetcher is given
+>   the remaining budget and probes one past it), because reading an object's
+>   whole edge list first would let one hub pull the table into memory.
+> - `auth login` has its own `--login-timeout` (10m) instead of reusing
+>   `--timeout`, which bounds a single request. Sharing them meant a login had
+>   to be confirmed within 30 seconds.
+> - `depth_reached` is the deepest distance a node was discovered at, so an
+>   isolated root reports 0.
+>
+> **Reviewed but deliberately not done** (recorded so the next reader does not
+> re-litigate them):
+>
+> - `AnalyzeSQL` runs its scopes serially. At ten scopes the cost is a handful
+>   of small queries and a CPU-bound parse each; concurrency would trade that
+>   for a shared failure mode.
+> - `DeviceLoginStore.pruneLocked` scans the map instead of keeping an insertion
+>   order. The ceiling is ten thousand entries and the scan only walks them when
+>   a create happens at capacity, which the limiter keeps rare.
+> - `cli/cmd` keeps its resolved invocation in package state, which is why its
+>   tests exercise pure helpers rather than running commands.
 
 ## TL;DR
 

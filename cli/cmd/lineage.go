@@ -58,7 +58,7 @@ scope.`,
 		RunE: runLineageSQL,
 	}
 	cmd.Flags().StringVar(&lineageFlags.file, "file", "", "read the statement from this file, or - for stdin")
-	cmd.Flags().Int32Var(&lineageFlags.depth, "depth", 0, "also expand each resolved target this many levels (1-9)")
+	cmd.Flags().Int32Var(&lineageFlags.depth, "depth", 0, "also expand each resolved target this many levels (0-10)")
 	cmd.Flags().BoolVar(&lineageFlags.includeTemp, "include-temp", false, "also report temporary relations, whose target only exists inside the statement")
 	return cmd
 }
@@ -69,6 +69,10 @@ func runLineageSQL(cmd *cobra.Command, _ []string) error {
 			WithCode("scope_required").
 			WithHint("set %s, for example %s='dev=<guid>'; the GUIDs come from `mxd database list` or `mxd meta list --type SCHEMA`. Which scopes a project uses is a per-project decision, so keep it in your own project docs",
 				env.ScopesEnv, env.ScopesEnv)
+	}
+
+	if lineageFlags.depth < 0 || lineageFlags.depth > maxGraphDepth {
+		return client.Usage("--depth must be between 0 and %d", maxGraphDepth)
 	}
 
 	sqlText, err := readSQL(lineageFlags.file)
@@ -201,13 +205,17 @@ func runLineageSQL(cmd *cobra.Command, _ []string) error {
 	return current.out.Envelope(envelope, rows)
 }
 
+// maxGraphDepth is the deepest expansion GetLineageGraph accepts. A larger
+// request would be refused by the server, so it is refused here with a message
+// that names the flag.
+const maxGraphDepth = 10
+
 // expandScope walks the graph from every real target the statement produced,
 // and reports each scope's graph on its own so the environments stay distinct.
+// depth is the number of levels to expand beyond the statement's own relations,
+// which is why it is passed through unchanged.
 func expandScope(ctx context.Context, connection *client.Client, analyzed *v1pb.AnalyzeSQLResult, depth int32) ([]*v1pb.GetLineageGraphResponse, error) {
 	graphDepth := depth
-	if graphDepth > 10 {
-		graphDepth = 10
-	}
 
 	var graphs []*v1pb.GetLineageGraphResponse
 	seen := map[string]bool{}
@@ -258,6 +266,9 @@ appear.`,
 			depth := lineageFlags.depth
 			if depth <= 0 {
 				depth = 3
+			}
+			if depth > maxGraphDepth {
+				return client.Usage("--depth must be between 1 and %d", maxGraphDepth)
 			}
 
 			response, err := connection.Lineage.GetLineageGraph(cmd.Context(), connect.NewRequest(&v1pb.GetLineageGraphRequest{
