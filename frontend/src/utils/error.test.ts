@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest";
 import { extractErrorMessage } from "./error";
 
 describe("extractErrorMessage", () => {
-  it("returns the message of a ConnectError", () => {
-    // ConnectError.message carries a "[code] " prefix; callers display it as-is.
+  it("returns the message of a ConnectError without the code prefix", () => {
+    // ConnectError.message carries a "[code] " prefix; this text is shown to
+    // users, so the server's own wording is returned instead.
     expect(extractErrorMessage(new ConnectError("instance not found"))).toBe(
-      "[unknown] instance not found"
+      "instance not found"
     );
     expect(extractErrorMessage(new ConnectError("nope", Code.Internal))).toBe(
-      "[internal] nope"
+      "nope"
     );
   });
 

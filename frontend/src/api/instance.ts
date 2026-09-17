@@ -47,6 +47,8 @@ export interface CreateInstanceInput {
   dataSources: DataSourceInput[];
   instanceId?: string;
   syncIntervalSeconds?: number;
+  /** Test the data source connections on the server without creating anything. */
+  validateOnly?: boolean;
 }
 
 export async function listInstances(options?: {
@@ -104,6 +106,7 @@ export async function createInstance(input: CreateInstanceInput) {
   const request = create(CreateInstanceRequestSchema, {
     instance,
     instanceId: input.instanceId ?? "",
+    validateOnly: input.validateOnly ?? false,
   });
 
   return await instanceClient.createInstance(request);
@@ -138,10 +141,15 @@ export interface DataSourcePatch {
   database?: string;
 }
 
-/** createDataSource adds a read-only data source to an instance. */
+/**
+ * createDataSource adds a read-only data source to an instance. With
+ * validateOnly the server only tests the connection and stores nothing, which
+ * is how a data source that does not exist yet is tested.
+ */
 export async function createDataSource(
   parent: string,
-  dataSource: Omit<DataSourceInput, "id"> & { id?: string }
+  dataSource: Omit<DataSourceInput, "id"> & { id?: string },
+  options?: { validateOnly?: boolean }
 ) {
   const request = create(CreateDataSourceRequestSchema, {
     parent,
@@ -154,6 +162,7 @@ export async function createDataSource(
       port: dataSource.port,
       database: dataSource.database ?? "",
     }),
+    validateOnly: options?.validateOnly ?? false,
   });
   return await instanceClient.createDataSource(request);
 }
@@ -162,15 +171,21 @@ export async function createDataSource(
  * updateDataSource writes exactly the fields named in updateMask. Fields left
  * out keep their stored value, which is how an edit that does not carry a
  * password avoids clearing one.
+ *
+ * With validateOnly the server only tests the resulting connection and stores
+ * nothing. An empty mask therefore tests the stored connection as-is, which is
+ * what an untouched data source needs.
  */
 export async function updateDataSource(
   name: string,
   patch: DataSourcePatch,
-  updateMask: string[]
+  updateMask: string[],
+  options?: { validateOnly?: boolean }
 ) {
   const request = create(UpdateDataSourceRequestSchema, {
     dataSource: create(DataSourceSchema, { name, ...patch }),
     updateMask: create(FieldMaskSchema, { paths: updateMask }),
+    validateOnly: options?.validateOnly ?? false,
   });
   return await instanceClient.updateDataSource(request);
 }

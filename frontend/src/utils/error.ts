@@ -5,7 +5,10 @@ import { ConnectError } from "@connectrpc/connect";
  */
 export function extractErrorMessage(error: unknown): string {
   if (error instanceof ConnectError) {
-    return error.message;
+    // `message` is prefixed with the Connect code (`[invalid_argument] ...`),
+    // which is developer noise wherever this text reaches a user — a toast, an
+    // inline alert. `rawMessage` is the server's own wording.
+    return error.rawMessage || error.message;
   }
   if (error instanceof Error) {
     return error.message;

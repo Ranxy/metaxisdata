@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"errors"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -103,6 +104,24 @@ func TestPatchDataSourceWritesEverySupportedField(t *testing.T) {
 	require.Equal(t, "new-private-key", stored.GetSshPrivateKey())
 	require.True(t, stored.GetUseSsl())
 	require.Equal(t, map[string]string{"timeout": "9s"}, stored.GetExtraConnectionParameters())
+}
+
+// A failed test connection must name the data source and carry the driver's own
+// cause; the earlier "invalid datasource ADMIN" told the user nothing.
+func TestDataSourceConnectionErrorKeepsCause(t *testing.T) {
+	t.Parallel()
+
+	err := dataSourceConnectionError(
+		&storepb.DataSource{Id: "admin", Type: storepb.DataSourceType_ADMIN},
+		errors.New("dial tcp 10.0.0.1:3306: connect: connection refused"),
+	)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	require.ErrorContains(t, err, `"admin"`)
+	require.ErrorContains(t, err, "connection refused")
+
+	// A data source whose ID is not known yet falls back to its type.
+	err = dataSourceConnectionError(&storepb.DataSource{Type: storepb.DataSourceType_READ_ONLY}, errors.New("boom"))
+	require.ErrorContains(t, err, "read_only")
 }
 
 func TestPatchDataSourceRejectsUnknownMaskPaths(t *testing.T) {

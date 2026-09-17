@@ -15,6 +15,13 @@ func convertInstanceMessage(instance *store.InstanceMessage) *v1pb.Instance {
 	engine := convertToEngine(instance.Metadata.GetEngine())
 	dataSources := convertDataSources(instance.ResourceID, instance.Metadata.GetDataSources())
 
+	// The environment is optional; formatting an empty ID would otherwise render
+	// the dangling "environments/" prefix.
+	environment := ""
+	if instance.EnvironmentID != "" {
+		environment = common.FormatEnvironment(instance.EnvironmentID)
+	}
+
 	return &v1pb.Instance{
 		Name:               common.FormatInstance(instance.ResourceID),
 		Title:              instance.Metadata.GetTitle(),
@@ -23,7 +30,7 @@ func convertInstanceMessage(instance *store.InstanceMessage) *v1pb.Instance {
 		ExternalLink:       instance.Metadata.GetExternalLink(),
 		DataSources:        dataSources,
 		State:              convertDeletedToState(instance.Deleted),
-		Environment:        common.FormatEnvironment(instance.EnvironmentID),
+		Environment:        environment,
 		Activation:         instance.Metadata.GetActivation(),
 		SyncInterval:       instance.Metadata.GetSyncInterval(),
 		MaximumConnections: instance.Metadata.GetMaximumConnections(),
@@ -37,9 +44,15 @@ func convertInstanceToInstanceMessage(instanceID string, instance *v1pb.Instance
 	if err != nil {
 		return nil, err
 	}
-	environmentID, err := common.GetEnvironmentID(instance.Environment)
-	if err != nil {
-		return nil, err
+	// `environment` is OPTIONAL, so leaving it unset is a valid request. Parsing
+	// it unconditionally rejected every environment-less create with an opaque
+	// `invalid request ""` before the caller got a chance to check it.
+	environmentID := ""
+	if instance.Environment != "" {
+		environmentID, err = common.GetEnvironmentID(instance.Environment)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &store.InstanceMessage{

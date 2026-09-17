@@ -530,12 +530,24 @@
       <template #footer>
         <Button
           variant="outline"
+          class="sm:mr-auto"
+          :disabled="isCreating || isTestingConnection"
+          @click="handleTestConnection"
+        >
+          <Loader2
+            v-if="isTestingConnection"
+            class="h-4 w-4 mr-2 animate-spin"
+          />
+          {{ isTestingConnection ? t("instanceManagement.testing") : t("instanceManagement.testConnection") }}
+        </Button>
+        <Button
+          variant="outline"
           @click="showCreateModal = false"
         >
           {{ t("common.cancel") }}
         </Button>
         <Button
-          :disabled="isCreating"
+          :disabled="isCreating || isTestingConnection"
           @click="handleCreateInstance"
         >
           {{ t("common.confirm") }}
@@ -550,6 +562,7 @@ import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import {
   ChevronDown,
   Database,
+  Loader2,
   Plus,
   RotateCcw,
   Search,
@@ -558,6 +571,7 @@ import {
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import type { CreateInstanceInput } from "@/api/instance";
 import {
   createInstance,
   deleteInstance,
@@ -621,6 +635,7 @@ const canDelete = computed(() =>
 const isLoading = ref(false);
 const isLoadingDeleted = ref(false);
 const isCreating = ref(false);
+const isTestingConnection = ref(false);
 const isDeleting = ref(false);
 const restoringInstance = ref<string | null>(null);
 const error = ref<string | null>(null);
@@ -989,40 +1004,66 @@ function validateDataSource(
   return valid;
 }
 
-function validateCreateForm(): boolean {
-  let valid = true;
-
-  // Reset admin data source errors
+function resetDataSourceErrors() {
   createFormErrors.value.adminDataSource = createEmptyDataSourceErrors();
-
-  // Reset read-only data source errors
   createFormErrors.value.readOnlyDataSources =
     createForm.value.readOnlyDataSources.map(() =>
       createEmptyDataSourceErrors()
     );
+}
 
+function validateInstanceId(): boolean {
+  const instanceId = createForm.value.instanceId.trim();
+  if (!instanceId) {
+    createFormErrors.value.instanceId = t(
+      "instanceManagement.instanceIdRequired"
+    );
+    return false;
+  }
+  // Must match ^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$.
+  if (!/^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/.test(instanceId)) {
+    createFormErrors.value.instanceId = t(
+      "instanceManagement.instanceIdInvalid"
+    );
+    return false;
+  }
+  return true;
+}
+
+function validateDataSources(): boolean {
+  let valid = validateDataSource(
+    createForm.value.adminDataSource,
+    createFormErrors.value.adminDataSource
+  );
+  for (let i = 0; i < createForm.value.readOnlyDataSources.length; i++) {
+    if (
+      !validateDataSource(
+        createForm.value.readOnlyDataSources[i],
+        createFormErrors.value.readOnlyDataSources[i]
+      )
+    ) {
+      valid = false;
+    }
+  }
+  return valid;
+}
+
+function validateCreateForm(): boolean {
   // Reset basic field errors
   createFormErrors.value.title = "";
   createFormErrors.value.instanceId = "";
   createFormErrors.value.engine = "";
   createFormErrors.value.environment = "";
+  resetDataSourceErrors();
+
+  let valid = true;
 
   if (!createForm.value.title.trim()) {
     createFormErrors.value.title = t("instanceManagement.titleRequired");
     valid = false;
   }
 
-  // Validate instanceId: required and must match pattern ^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$
-  const instanceIdPattern = /^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/;
-  if (!createForm.value.instanceId.trim()) {
-    createFormErrors.value.instanceId = t(
-      "instanceManagement.instanceIdRequired"
-    );
-    valid = false;
-  } else if (!instanceIdPattern.test(createForm.value.instanceId.trim())) {
-    createFormErrors.value.instanceId = t(
-      "instanceManagement.instanceIdInvalid"
-    );
+  if (!validateInstanceId()) {
     valid = false;
   }
 
@@ -1038,29 +1079,75 @@ function validateCreateForm(): boolean {
     valid = false;
   }
 
-  // Validate admin data source
-  if (
-    !validateDataSource(
-      createForm.value.adminDataSource,
-      createFormErrors.value.adminDataSource
-    )
-  ) {
+  if (!validateDataSources()) {
     valid = false;
   }
 
-  // Validate read-only data sources
-  for (let i = 0; i < createForm.value.readOnlyDataSources.length; i++) {
-    if (
-      !validateDataSource(
-        createForm.value.readOnlyDataSources[i],
-        createFormErrors.value.readOnlyDataSources[i]
-      )
-    ) {
-      valid = false;
-    }
+  return valid;
+}
+
+/**
+ * A test connection only dials the server with what the server validates before
+ * connecting — a well-formed instance ID, an engine and complete data sources.
+ * The title and environment describe the stored instance, so they stay optional.
+ */
+function validateTestConnectionForm(): boolean {
+  createFormErrors.value.instanceId = "";
+  createFormErrors.value.engine = "";
+  resetDataSourceErrors();
+
+  let valid = validateInstanceId();
+
+  if (!createForm.value.engine) {
+    createFormErrors.value.engine = t("instanceManagement.engineRequired");
+    valid = false;
+  }
+
+  if (!validateDataSources()) {
+    valid = false;
   }
 
   return valid;
+}
+
+function formDataSources(): CreateInstanceInput["dataSources"] {
+  return [
+    // Build data sources array: admin first, then read-only nodes
+    {
+      id: createForm.value.adminDataSource.id.trim(),
+      type: DataSourceType.ADMIN,
+      host: createForm.value.adminDataSource.host.trim(),
+      port: createForm.value.adminDataSource.port.trim(),
+      username: createForm.value.adminDataSource.username.trim(),
+      password: createForm.value.adminDataSource.password,
+      database: createForm.value.adminDataSource.database.trim(),
+    },
+    ...createForm.value.readOnlyDataSources.map((ds) => ({
+      id: ds.id.trim(),
+      type: DataSourceType.READ_ONLY,
+      host: ds.host.trim(),
+      port: ds.port.trim(),
+      username: ds.username.trim(),
+      password: ds.password,
+      database: ds.database.trim(),
+    })),
+  ];
+}
+
+function createInstanceInput(validateOnly: boolean): CreateInstanceInput {
+  // The picker already carries the full "environments/{id}" resource name.
+  return {
+    title: createForm.value.title.trim(),
+    engine: Number(createForm.value.engine) as Engine,
+    environment: createForm.value.environment.trim(),
+    activation: createForm.value.activation,
+    dataSources: formDataSources(),
+    instanceId: createForm.value.instanceId.trim(),
+    syncIntervalSeconds: createForm.value.enableSync
+      ? (Number(createForm.value.syncIntervalMinutes) || 0) * 60
+      : undefined,
+    validateOnly,
+  };
 }
 
 async function handleCreateInstance() {
@@ -1068,42 +1155,7 @@ async function handleCreateInstance() {
 
   isCreating.value = true;
   try {
-    // The picker already carries the full "environments/{id}" resource name.
-    const environment = createForm.value.environment.trim();
-
-    // Build data sources array: admin first, then read-only nodes
-    const dataSources = [
-      {
-        id: createForm.value.adminDataSource.id.trim(),
-        type: DataSourceType.ADMIN,
-        host: createForm.value.adminDataSource.host.trim(),
-        port: createForm.value.adminDataSource.port.trim(),
-        username: createForm.value.adminDataSource.username.trim(),
-        password: createForm.value.adminDataSource.password,
-        database: createForm.value.adminDataSource.database.trim(),
-      },
-      ...createForm.value.readOnlyDataSources.map((ds) => ({
-        id: ds.id.trim(),
-        type: DataSourceType.READ_ONLY,
-        host: ds.host.trim(),
-        port: ds.port.trim(),
-        username: ds.username.trim(),
-        password: ds.password,
-        database: ds.database.trim(),
-      })),
-    ];
-
-    await createInstance({
-      title: createForm.value.title.trim(),
-      engine: Number(createForm.value.engine) as Engine,
-      environment,
-      activation: createForm.value.activation,
-      dataSources,
-      instanceId: createForm.value.instanceId.trim(),
-      syncIntervalSeconds: createForm.value.enableSync
-        ? (Number(createForm.value.syncIntervalMinutes) || 0) * 60
-        : undefined,
-    });
+    await createInstance(createInstanceInput(false));
 
     showCreateModal.value = false;
     showSuccess(t("instanceManagement.createSuccess"));
@@ -1112,6 +1164,26 @@ async function handleCreateInstance() {
     handleError(e, t("instanceManagement.createError"));
   } finally {
     isCreating.value = false;
+  }
+}
+
+/**
+ * Test Connection runs the same server-side check as creation with
+ * `validate_only`, so it pings every data source in the form and stores
+ * nothing. The server reports why a connection failed, and that message is
+ * surfaced to the user as-is.
+ */
+async function handleTestConnection() {
+  if (!validateTestConnectionForm()) return;
+
+  isTestingConnection.value = true;
+  try {
+    await createInstance(createInstanceInput(true));
+    showSuccess(t("instanceManagement.testConnectionSuccess"));
+  } catch (e) {
+    handleError(e, t("instanceManagement.testConnectionError"));
+  } finally {
+    isTestingConnection.value = false;
   }
 }
 
