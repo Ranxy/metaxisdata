@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
@@ -126,28 +127,7 @@ func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Reque
 	// Test connection.
 	if req.Msg.ValidateOnly {
 		for _, ds := range instanceMessage.Metadata.GetDataSources() {
-			err := func() error {
-				driver, err := s.dbFactory.GetDataSourceDriver(
-					ctx, instanceMessage, ds,
-					db.ConnectionContext{
-						ReadOnly: ds.GetType() == storepb.DataSourceType_READ_ONLY,
-					},
-				)
-				if err != nil {
-					// Driver construction dials SSH before returning, so the raw
-					// error can contain the resolved internal host:port. Log it
-					// and echo only the data source type.
-					slog.Error("failed to build the data source driver", "type", ds.GetType().String(), log.WithError(err))
-					return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid datasource %s", ds.GetType()))
-				}
-				defer driver.Close(ctx)
-				if err := driver.Ping(ctx); err != nil {
-					slog.Error("failed to connect to the data source", "type", ds.GetType().String(), log.WithError(err))
-					return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid datasource %s", ds.GetType()))
-				}
-				return nil
-			}()
-			if err != nil {
+			if err := s.pingDataSource(ctx, instanceMessage, ds); err != nil {
 				return nil, err
 			}
 		}
@@ -614,26 +594,44 @@ func (s *InstanceService) DeleteDataSource(ctx context.Context, req *connect.Req
 }
 
 // pingDataSource verifies that the server can actually connect with dataSource.
+// It backs the UI's test connection action, so the returned error keeps the
+// driver's own explanation — bad credentials, refused connection, TLS failure —
+// because that reason is the point of the call. The caller is an authenticated
+// instance admin who supplied the connection info, and the full error is logged
+// as well.
 func (s *InstanceService) pingDataSource(ctx context.Context, instance *store.InstanceMessage, dataSource *storepb.DataSource) error {
 	driver, err := s.dbFactory.GetDataSourceDriver(
 		ctx, instance, dataSource,
 		db.ConnectionContext{ReadOnly: dataSource.GetType() == storepb.DataSourceType_READ_ONLY},
 	)
 	if err != nil {
-		// See the validate_only branch: the driver-construction error carries the
-		// resolved host and port, so it stays in the log.
 		slog.Error("failed to build the data source driver", "instance", instance.ResourceID, "type", dataSource.GetType().String(), log.WithError(err))
-		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid datasource %s", dataSource.GetType()))
+		return dataSourceConnectionError(dataSource, err)
 	}
 	defer driver.Close(ctx)
 	if err := driver.Ping(ctx); err != nil {
-		// The raw driver error contains the resolved host and port. That is
-		// useful in the server log but not something to hand back to a caller,
-		// so only the data source type is echoed.
 		slog.Error("failed to connect to the data source", "instance", instance.ResourceID, "type", dataSource.GetType().String(), log.WithError(err))
-		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid datasource %s", dataSource.GetType()))
+		return dataSourceConnectionError(dataSource, err)
 	}
 	return nil
+}
+
+// dataSourceConnectionError names the data source that failed a test connection
+// and carries the underlying driver cause, so the user can tell a wrong
+// password from an unreachable host or a TLS problem.
+//
+// Echoing the driver's own error is deliberate. Testing a connection requires
+// instance or data-source write permission (workspaceAdmin by default), and the
+// caller supplied the host, port and credentials, so the resolved address in the
+// message is not a secret from them. Reducing every failure to
+// "invalid datasource <type>", as this once did, left the test connection action
+// with nothing to report.
+func dataSourceConnectionError(dataSource *storepb.DataSource, err error) error {
+	name := dataSource.GetId()
+	if name == "" {
+		name = strings.ToLower(dataSource.GetType().String())
+	}
+	return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("failed to connect to data source %q: %v", name, err))
 }
 
 func getInstanceMessage(ctx context.Context, stores *store.Store, name string) (*store.InstanceMessage, error) {

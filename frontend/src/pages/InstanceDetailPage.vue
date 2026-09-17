@@ -481,13 +481,26 @@
       </form>
       <template #footer>
         <Button
+          v-if="editForm.editDataSources"
+          variant="outline"
+          class="sm:mr-auto"
+          :disabled="isUpdating || isTestingConnection"
+          @click="handleTestConnection"
+        >
+          <Loader2
+            v-if="isTestingConnection"
+            class="h-4 w-4 mr-2 animate-spin"
+          />
+          {{ isTestingConnection ? t("instanceManagement.testing") : t("instanceManagement.testConnection") }}
+        </Button>
+        <Button
           variant="outline"
           @click="showEditModal = false"
         >
           {{ t("common.cancel") }}
         </Button>
         <Button
-          :disabled="isUpdating"
+          :disabled="isUpdating || isTestingConnection"
           @click="handleUpdateInstance"
         >
           {{ t("common.confirm") }}
@@ -545,7 +558,10 @@ import { useEnvironmentStore } from "@/store/modules/environment";
 import { useToastStore } from "@/store/modules/toast";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
-import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
+import type {
+  DataSource,
+  Instance,
+} from "@/types/proto-es/v1/instance_service_pb";
 import {
   DataSourceType,
   InstanceSchema,
@@ -571,6 +587,7 @@ const syncingDatabases = ref<Record<string, boolean>>({});
 // Edit state
 const showEditModal = ref(false);
 const isUpdating = ref(false);
+const isTestingConnection = ref(false);
 
 interface EditDataSourceForm {
   /** The resource name; empty for a data source that does not exist yet. */
@@ -778,6 +795,55 @@ async function handleUpdateInstance() {
   }
 }
 
+/** One editable data source and the type it is stored with. */
+interface DataSourceEntry {
+  form: EditDataSourceForm;
+  type: DataSourceType;
+}
+
+function editDataSourceEntries(): DataSourceEntry[] {
+  return [
+    { form: editForm.value.adminDataSource, type: DataSourceType.ADMIN },
+    ...editForm.value.readOnlyDataSources.map((form) => ({
+      form,
+      type: DataSourceType.READ_ONLY,
+    })),
+  ];
+}
+
+interface DataSourceFormPatch {
+  username: string;
+  host: string;
+  port: string;
+  database: string;
+}
+
+function dataSourcePatch(form: EditDataSourceForm): DataSourceFormPatch {
+  return {
+    username: form.username.trim(),
+    host: form.host.trim(),
+    port: form.port.trim(),
+    database: form.database.trim(),
+  };
+}
+
+/** The fields that differ from the stored data source; empty means no write. */
+function changedDataSourceFields(
+  before: DataSource,
+  patch: DataSourceFormPatch,
+  password: string
+): string[] {
+  const updateMask: string[] = [];
+  if (before.host !== patch.host) updateMask.push("host");
+  if (before.port !== patch.port) updateMask.push("port");
+  if (before.username !== patch.username) updateMask.push("username");
+  if ((before.database ?? "") !== patch.database) updateMask.push("database");
+  // Reads never return the password: a non-empty one replaces it, an empty
+  // one means "unchanged".
+  if (password) updateMask.push("password");
+  return updateMask;
+}
+
 /**
  * applyDataSourceChanges turns the edited form into Create/Update/Delete calls.
  * A form entry without a name is new; a stored data source that is no longer in
@@ -788,24 +854,9 @@ async function applyDataSourceChanges(instanceName: string) {
   if (!instance.value) return;
 
   const stored = new Map(instance.value.dataSources.map((ds) => [ds.name, ds]));
-  const entries: {
-    form: EditDataSourceForm;
-    type: DataSourceType;
-  }[] = [
-    { form: editForm.value.adminDataSource, type: DataSourceType.ADMIN },
-    ...editForm.value.readOnlyDataSources.map((form) => ({
-      form,
-      type: DataSourceType.READ_ONLY,
-    })),
-  ];
 
-  for (const { form, type } of entries) {
-    const patch = {
-      username: form.username.trim(),
-      host: form.host.trim(),
-      port: form.port.trim(),
-      database: form.database.trim(),
-    };
+  for (const { form, type } of editDataSourceEntries()) {
+    const patch = dataSourcePatch(form);
 
     if (!form.name) {
       // The server only creates read-only data sources here; the admin
@@ -824,14 +875,7 @@ async function applyDataSourceChanges(instanceName: string) {
     stored.delete(form.name);
     if (!before) continue;
 
-    const updateMask: string[] = [];
-    if (before.host !== patch.host) updateMask.push("host");
-    if (before.port !== patch.port) updateMask.push("port");
-    if (before.username !== patch.username) updateMask.push("username");
-    if ((before.database ?? "") !== patch.database) updateMask.push("database");
-    // Reads never return the password: a non-empty one replaces it, an empty
-    // one means "unchanged".
-    if (form.password) updateMask.push("password");
+    const updateMask = changedDataSourceFields(before, patch, form.password);
     if (updateMask.length === 0) continue;
 
     await updateDataSource(
@@ -844,6 +888,75 @@ async function applyDataSourceChanges(instanceName: string) {
   for (const name of stored.keys()) {
     await deleteDataSource(name);
   }
+}
+
+/**
+ * Test Connection validates every data source in the form with `validate_only`:
+ * an existing data source is tested through an update with only its changed
+ * fields (an empty mask tests the stored connection as-is), and a new one
+ * through a create. Nothing is written, and the server's reason for a failure is
+ * surfaced to the user.
+ */
+async function handleTestConnection() {
+  if (!instance.value || !validateTestConnectionForm()) return;
+
+  isTestingConnection.value = true;
+  try {
+    for (const { form, type } of editDataSourceEntries()) {
+      const patch = dataSourcePatch(form);
+
+      if (!form.name) {
+        await createDataSource(
+          instance.value.name,
+          { type, ...patch, password: form.password },
+          { validateOnly: true }
+        );
+        continue;
+      }
+
+      const before = instance.value.dataSources.find(
+        (ds) => ds.name === form.name
+      );
+      if (!before) continue;
+
+      await updateDataSource(
+        form.name,
+        { ...patch, password: form.password },
+        changedDataSourceFields(before, patch, form.password),
+        { validateOnly: true }
+      );
+    }
+    showSuccess(t("instanceManagement.testConnectionSuccess"));
+  } catch (e) {
+    handleError(e, t("instanceManagement.testConnectionError"));
+  } finally {
+    isTestingConnection.value = false;
+  }
+}
+
+// A test connection only dials the data sources, so it validates their fields
+// rather than the instance-level title and environment.
+function validateTestConnectionForm(): boolean {
+  editFormErrors.value.adminHost = "";
+  editFormErrors.value.adminPort = "";
+  editFormErrors.value.adminUsername = "";
+
+  let valid = true;
+  if (!editForm.value.adminDataSource.host.trim()) {
+    editFormErrors.value.adminHost = t("instanceManagement.hostRequired");
+    valid = false;
+  }
+  if (!editForm.value.adminDataSource.port.trim()) {
+    editFormErrors.value.adminPort = t("instanceManagement.portRequired");
+    valid = false;
+  }
+  if (!editForm.value.adminDataSource.username.trim()) {
+    editFormErrors.value.adminUsername = t(
+      "instanceManagement.usernameRequired"
+    );
+    valid = false;
+  }
+  return valid;
 }
 
 function isDatabaseSyncing(name: string): boolean {
