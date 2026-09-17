@@ -10,6 +10,10 @@ interface AuthState {
   error: string | null;
   // Set when the server issued a token restricted to a forced password reset.
   requireResetPassword: boolean;
+  // Whether `user` came from GetCurrentUser, the only call that resolves the
+  // effective permissions. The login response carries the user without them, so
+  // permission-gated UI must wait for the profile to be loaded.
+  permissionsLoaded: boolean;
 }
 
 export const useAuthStore = defineStore("auth", {
@@ -19,6 +23,7 @@ export const useAuthStore = defineStore("auth", {
     isLoading: false,
     error: null,
     requireResetPassword: false,
+    permissionsLoaded: false,
   }),
 
   getters: {
@@ -40,6 +45,9 @@ export const useAuthStore = defineStore("auth", {
         this.user = response.user ?? null;
         this.isAuthenticated = true;
         this.requireResetPassword = response.requireResetPassword;
+        // The login response has no permissions; ensurePermissionsLoaded()
+        // resolves them once the caller enters an authenticated page.
+        this.permissionsLoaded = false;
         return response;
       } catch (err) {
         this.error = err instanceof Error ? err.message : "Login failed";
@@ -71,6 +79,7 @@ export const useAuthStore = defineStore("auth", {
         this.isAuthenticated = false;
         this.error = null;
         this.requireResetPassword = false;
+        this.permissionsLoaded = false;
       }
     },
 
@@ -80,12 +89,27 @@ export const useAuthStore = defineStore("auth", {
         this.user = await userApi.getCurrentUser();
         this.isAuthenticated = true;
         this.requireResetPassword = false;
+        this.permissionsLoaded = true;
       } catch {
         this.user = null;
         this.isAuthenticated = false;
+        this.permissionsLoaded = false;
       } finally {
         this.isLoading = false;
       }
+    },
+
+    // Loads the permission-bearing profile at most once per session. Safe to
+    // call before every navigation: a fresh session fetches, a just-finished
+    // login fetches because its response had no permissions, and later
+    // navigations are no-ops. A forced password reset is left alone: its
+    // restricted token cannot call GetCurrentUser, and the pending user has to
+    // stay in place for the password change.
+    async ensurePermissionsLoaded() {
+      if (this.permissionsLoaded || this.requireResetPassword) {
+        return;
+      }
+      await this.fetchCurrentUser();
     },
 
     clearError() {

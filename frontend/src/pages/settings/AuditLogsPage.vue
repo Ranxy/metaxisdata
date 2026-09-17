@@ -17,7 +17,7 @@
       <div class="space-y-3">
         <div ref="searchBarRef" class="relative">
           <div
-            class="flex min-h-11 w-full flex-wrap items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors hover:border-ring focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+            class="flex min-h-11 w-full flex-wrap items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors hover:border-ring"
           >
             <button
               type="button"

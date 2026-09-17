@@ -72,8 +72,11 @@
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Badge :variant="getEngineBadgeVariant()">
-                    {{ getEngineLabel(database.instanceResource?.engine) }}
+                  <Badge
+                    variant="secondary"
+                    :class="engineBadgeClass(database.instanceResource?.engine)"
+                  >
+                    {{ engineLabel(database.instanceResource?.engine) }}
                   </Badge>
                 </TableCell>
                 <TableCell>
@@ -192,9 +195,10 @@ import TableRow from "@/components/ui/table/TableRow.vue";
 import { useAuthStore } from "@/store/modules/auth";
 import { useEnvironmentStore } from "@/store/modules/environment";
 import { useToastStore } from "@/store/modules/toast";
-import { Engine, State } from "@/types/proto-es/v1/common_pb";
+import { State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
+import { engineBadgeClass, engineLabel } from "@/utils/engine";
 import { environmentColorHex } from "@/utils/environment";
 
 const { t, locale } = useI18n();
@@ -343,16 +347,6 @@ function getDatabaseName(fullName: string): string {
 function getInstanceName(fullName: string): string {
   const parts = fullName.split("/");
   return parts.length >= 2 ? parts[1] : "";
-}
-
-function getEngineLabel(engine?: Engine): string {
-  if (!engine) return "Unknown";
-  const option = engineOptions.value.find((e) => e.value === Engine[engine]);
-  return option?.label || Engine[engine];
-}
-
-function getEngineBadgeVariant(): "default" | "secondary" | "outline" {
-  return "secondary";
 }
 
 function getEnvironmentLabel(environment: string): string {

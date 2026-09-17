@@ -47,9 +47,12 @@
             <p class="text-sm text-muted-foreground">
               {{ t("instanceManagement.engine") }}
             </p>
-            <p class="font-medium">
-              {{ getEngineLabel(instance.engine) }}
-            </p>
+            <Badge
+              variant="secondary"
+              :class="engineBadgeClass(instance.engine)"
+            >
+              {{ engineLabel(instance.engine) }}
+            </Badge>
           </div>
           <div>
             <p class="text-sm text-muted-foreground">
@@ -556,7 +559,7 @@ import {
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { useEnvironmentStore } from "@/store/modules/environment";
 import { useToastStore } from "@/store/modules/toast";
-import { Engine, State } from "@/types/proto-es/v1/common_pb";
+import { State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
 import type {
   DataSource,
@@ -566,6 +569,7 @@ import {
   DataSourceType,
   InstanceSchema,
 } from "@/types/proto-es/v1/instance_service_pb";
+import { engineBadgeClass, engineLabel } from "@/utils/engine";
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -1020,21 +1024,6 @@ function getHostInfo(instance: Instance): string {
     return `${adminDataSource.host}${port}`;
   }
   return "-";
-}
-
-function getEngineLabel(engine: Engine): string {
-  const engineLabels: Record<number, string> = {
-    [Engine.ENGINE_UNSPECIFIED]: "Unknown",
-    [Engine.MYSQL]: "MySQL",
-    [Engine.POSTGRES]: "PostgreSQL",
-    [Engine.TIDB]: "TiDB",
-    [Engine.MARIADB]: "MariaDB",
-    [Engine.OCEANBASE]: "OceanBase",
-    [Engine.STARROCKS]: "StarRocks",
-    [Engine.DORIS]: "Doris",
-    [Engine.MSSQL]: "SQL Server",
-  };
-  return engineLabels[engine] || "Unknown";
 }
 
 function getStateLabel(state: State): string {

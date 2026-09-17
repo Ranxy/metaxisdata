@@ -232,7 +232,10 @@
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary">
+                      <Badge
+                        variant="secondary"
+                        :class="engineBadgeClass(instance.engine)"
+                      >
                         {{ engineLabel(instance.engine) }}
                       </Badge>
                     </TableCell>
@@ -455,8 +458,8 @@ import {
 import { useDashboard } from "@/composables/dashboard";
 import { useAuthStore } from "@/store/modules/auth";
 import { useEnvironmentStore } from "@/store/modules/environment";
-import { Engine } from "@/types/proto-es/v1/common_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
+import { engineBadgeClass, engineLabel } from "@/utils/engine";
 
 const { t, locale } = useI18n();
 const router = useRouter();
@@ -737,21 +740,6 @@ const quickActions = computed(() => {
 
 function instanceId(name: string): string {
   return name.replace("instances/", "");
-}
-
-function engineLabel(engine: Engine): string {
-  const labels: Record<number, string> = {
-    [Engine.ENGINE_UNSPECIFIED]: "Unknown",
-    [Engine.MYSQL]: "MySQL",
-    [Engine.POSTGRES]: "PostgreSQL",
-    [Engine.TIDB]: "TiDB",
-    [Engine.MARIADB]: "MariaDB",
-    [Engine.OCEANBASE]: "OceanBase",
-    [Engine.STARROCKS]: "StarRocks",
-    [Engine.DORIS]: "Doris",
-    [Engine.MSSQL]: "SQL Server",
-  };
-  return labels[engine] || "Unknown";
 }
 
 function environmentLabel(environment: string): string {

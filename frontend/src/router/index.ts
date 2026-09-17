@@ -268,13 +268,13 @@ const router = createRouter({
 router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore();
 
-  // Try to fetch current user if not authenticated and route requires auth
-  if (!authStore.isAuthenticated && to.meta.requiresAuth !== false) {
-    try {
-      await authStore.fetchCurrentUser();
-    } catch {
-      // Ignore errors, will redirect to login below
-    }
+  // An authenticated page may only render once the permission-bearing profile
+  // is loaded: the sidebar and the dashboard hide everything they cannot match
+  // a permission for. Without this a fresh session — and the moment right after
+  // login, whose response carries the user without permissions — shows an
+  // almost empty app until the next full page load.
+  if (to.meta.requiresAuth !== false) {
+    await authStore.ensurePermissionsLoaded();
   }
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
