@@ -1420,7 +1420,7 @@ Measured with catalog `a{id}`:
 | `WITH d AS (SELECT id, x FROM b) SELECT id FROM a JOIN d …` | `a.id` only | `a.id` and `b.id` |
 | `… WHERE EXISTS (SELECT 1 FROM (SELECT id, y FROM b) d WHERE amount > 1)` | no edge | `orders.amount` as a `FILTER` influence |
 | `SELECT x FROM a JOIN (SELECT * FROM b) d …`, with `b{id,x}` | `a.x` | `b.x` |
-| the same without `b` in the catalog | `a.x` | no edge: the star cannot be named |
+| the same without `b` in the catalog | `a.x` | `b.* → __result__.x` (§10.13) |
 
 1. **An undescribed relation is preferred over one the catalog ruled out.** If no
    described relation owns the name, the only relation that can still provide it
@@ -1440,7 +1440,8 @@ Decisions:
   not expand, and an output without a name, both leave the list incomplete, and
   the relation keeps the fallback rather than being ruled out on partial
   information. Treating the known subset as complete would drop or misattribute
-  every column the star hides.
+  every column the star hides. The wildcard entry in the relation's lineage still
+  answers a name the list does not carry (§10.13).
 - **The names come from the analyzer, not from the lineage alone.** A column with
   no source (`SELECT 1 AS one`) contributes no lineage edge, so lineage targets
   are not a column list by themselves; the declared list or the output names are.
@@ -1466,3 +1467,56 @@ fails three per engine — the unexpanded-wildcard case among them, because name
 order then invents `a.x`. `gofmt`, `golangci-lint`, `go test ./...`, the build and
 the real-server integration suite are green; MariaDB and TiDB remain pure
 regenerations (21-line diffs).
+
+### 10.13 The wildcard lineage entry answers any column
+
+§10.12 left one shape with no edge at all: a body that never expanded its star
+(`SELECT * FROM b`) left its temporary relation undescribed, and tracing a
+reference through it matched nothing — the match required the requested column to
+be the *target* of a lineage entry, while the entry the body does carry is
+`b.* → d.*`.
+
+`model.AnsweringLineage` now selects the entries that answer a reference: an entry
+whose target names the column, or, when none does, the entries whose target is the
+wildcard — a body that never expanded its star forwards every column of its
+source. The column behind the wildcard stays unknown; the source table does not.
+A `*` request still takes the whole lineage, which is how a wildcard expands.
+
+| shape | before | after |
+| --- | --- | --- |
+| `SELECT x FROM a JOIN (SELECT * FROM b) d ON a.id = d.id`, catalog `a{id}` | no edge | `b.* → __result__.x`, and the `ON` clause's `d.id` gains `b.* → __result__` |
+| `WITH c AS (SELECT * FROM t) SELECT a FROM c` | no edge | `t.* → __result__.a` |
+| the same written `SELECT c.a FROM c` | no edge | `t.* → __result__.a` |
+| a derived body over `b JOIN c`, star unexpanded | — | one edge per source, `b.*` and `c.*` |
+| a derived body `SELECT id, * FROM b` | — | the named entry answers `id`, the wildcard answers anything else |
+
+Decisions:
+
+- **A named entry wins over the wildcard.** It is the precise answer, so the
+  wildcard only answers when the lineage names nothing; otherwise a mixed body
+  would report the same fact twice.
+- **The relation stays undescribed.** Forwarding is not knowing the column list,
+  so a wildcard body still leaves the relation in the fallback rather than making
+  it a confirmed owner (§10.12), and two relations nobody describes are still
+  resolved by name order (§10.2).
+- **The marker has one definition.** `model.WildcardColumn` is what every
+  analyzer's `wildcardColumn` now refers to, because the marker stopped being an
+  analyzer-only convention: the model reads it too.
+
+Implementation: `model.AnsweringLineage` replaces the inline
+`columnName != wildcardColumn && edge.Target.Name != columnName` test in every
+lineage walk — `traceThroughTableLineage` and `appendFlattenedLineage` in the
+MySQL family, and the three equivalents in PostgreSQL and StarRocks — so both the
+lookup and the construction-time flattening forward a wildcard.
+
+Corpus: each `TestUnqualifiedResolution_Table` suite's unexpanded-wildcard case now
+asserts the forwarded edge (renamed `an unexpanded wildcard body forwards the
+column`) and gained `a nested temporary relation forwards a wildcard column`,
+which exercises the construction-time path. The shared MySQL-family corpus is 173
+cases, PostgreSQL 131, StarRocks 120.
+
+Negative-checked: restricting the selector to named targets fails the model test
+and two cases per engine, and always including the wildcard fails the
+named-preference test. `gofmt`, `golangci-lint`, `go test ./...`, the build and the
+real-server integration suite are green; MariaDB and TiDB remain pure regenerations
+(21-line diffs).
