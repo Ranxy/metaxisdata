@@ -282,7 +282,15 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 			return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash,
 				fmt.Sprintf("engine %s has no lineage analyzer; analysis skipped", engine))
 		}
-		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to analyze lineage")
+		// Analysis itself does no failing I/O: the analyzers are pure functions of
+		// (engine, statement) and consult the catalog on a best-effort basis that
+		// never turns a lookup error into an analysis error. A statement they
+		// cannot represent therefore fails identically on every retry, so it is
+		// recorded as analyzed at the current hash instead of being re-queued
+		// forever by the hourly scan.
+		slog.Warn("Lineage analysis failed on an unsupported statement",
+			slog.String("guid", metaGUID), slog.String("engine", engine.String()), log.WithError(err))
+		return markAnalysisFailed(ctx, a.store, metaGUID, metaType, res.MetaHash, err)
 	}
 
 	// Convert relations to ColumnLineage rows and collect GUIDs whose meta types
@@ -473,4 +481,17 @@ func markAnalyzed(ctx context.Context, s *store.Store, metaGUID string, metaType
 		v.ErrorMessage = &errorMessage
 	}
 	return s.UpsertColumnLineageVersion(ctx, v)
+}
+
+// markAnalysisFailed records a statement the analyzer cannot represent. The
+// current hash is stored with the error message so the hourly scan stops
+// re-queueing an unchanged definition (a metadata change clears the stored hash
+// comparison and retries), and any lineage a previous definition left behind is
+// dropped because it describes SQL the object no longer has.
+func markAnalysisFailed(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, metaHash []byte, cause error) error {
+	if err := s.BatchReplaceColumnLineage(ctx, metaGUID, metaType, nil); err != nil {
+		return storeError(ctx, s, metaGUID, metaType, err, "failed to clear column lineage")
+	}
+	return markAnalyzed(ctx, s, metaGUID, metaType, metaHash,
+		fmt.Sprintf("lineage analysis failed: %v", cause))
 }

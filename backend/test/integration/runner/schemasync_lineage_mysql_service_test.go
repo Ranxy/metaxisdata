@@ -141,6 +141,52 @@ CREATE TABLE IF NOT EXISTS manual_sql_summary (
 	require.NotEmpty(t, relations)
 }
 
+// An unsupported statement is a permanent failure, not a transient one: the
+// runner records the error together with the current metadata hash so the hourly
+// scan stops re-queueing the object, and drops any lineage left by a previous
+// definition.
+func TestMySQLManualSQLUnsupportedStatementRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, _, _, databaseName := setupMySQLServiceDatabase(t)
+
+	manual := env.CreateManualSQL(ctx, t, databaseName, "unsupported-cte-dml", &v1pb.ManualSQL{
+		Title:   "Unsupported CTE-prefixed DML",
+		SqlText: "WITH recent AS (SELECT id FROM users) INSERT INTO manual_sql_summary (user_id) SELECT id FROM recent",
+	})
+	manualGUID := manual.GetGuid()
+	manualType := storepb.MetaType_MANUAL_SQL
+
+	require.Eventually(t, func() bool {
+		version, err := env.Store.GetColumnLineageVersion(ctx, manualGUID, manualType)
+		if err != nil || version == nil || version.ErrorMessage == nil || *version.ErrorMessage == "" {
+			return false
+		}
+		if len(version.MetaHash) == 0 {
+			return false
+		}
+		lineages, err := env.Store.ListColumnLineage(ctx, &store.FindColumnLineageMessage{MetaGUID: &manualGUID, MetaType: &manualType})
+		return err == nil && len(lineages) == 0
+	}, 30*time.Second, time.Second)
+
+	// The stored hash is the object's current digest, so an unchanged definition
+	// is not queued again by the hourly scan.
+	version, err := env.Store.GetColumnLineageVersion(ctx, manualGUID, manualType)
+	require.NoError(t, err)
+	require.NotNil(t, version)
+	digests, err := env.Store.ListMetaRegistryResourceDigest(ctx, &store.FindMetaRegistryResourceMessage{ObjectType: &manualType})
+	require.NoError(t, err)
+	var currentHash []byte
+	for _, digest := range digests {
+		if digest.GUID == manualGUID {
+			currentHash = digest.MetaHash
+			break
+		}
+	}
+	require.NotEmpty(t, currentHash, "the manual SQL digest must exist")
+	require.Equal(t, currentHash, version.MetaHash)
+}
+
 func TestMySQLSyncInstanceMarksDroppedDatabaseDeletedRealServerIntegration(t *testing.T) {
 	t.Parallel()
 
