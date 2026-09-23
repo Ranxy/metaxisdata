@@ -15,6 +15,15 @@ cases:
           to_field: name
           is_temp: false
           relation_type: direct
+        - from_table: users
+          from_field: age
+          to_table: tmp_users
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: FILTER
     - name: INSERT SELECT with explicit columns
       sql: INSERT INTO tmp_users (user_id, user_name) SELECT id, name FROM users
       expected_edges:
@@ -58,6 +67,24 @@ cases:
               group_keys:
                 - "u.id"
                 - "u.name"
+        - from_table: users
+          from_field: id
+          to_table: summary
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+        - from_table: orders
+          from_field: user_id
+          to_table: summary
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
     - name: INSERT SELECT with parenthesized join tree
       sql: INSERT INTO order_summary (`order_id`, `customer_name`, `total_amount`) SELECT `o`.`id`,`c`.`name`,sum(`oi`.`amount`) AS `total_amount` FROM (((`orders` `o` JOIN `customers` `c` ON((`o`.`customer_id` = `c`.`id`)))) LEFT JOIN `order_items` `oi` ON((`o`.`id` = `oi`.`order_id`))) GROUP BY `o`.`id`,`c`.`name`
       expected_edges:
@@ -86,3 +113,39 @@ cases:
               group_keys:
                 - "`o`.`id`"
                 - "`c`.`name`"
+        - from_table: orders
+          from_field: customer_id
+          to_table: order_summary
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+        - from_table: customers
+          from_field: id
+          to_table: order_summary
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+        - from_table: orders
+          from_field: id
+          to_table: order_summary
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+        - from_table: order_items
+          from_field: order_id
+          to_table: order_summary
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN

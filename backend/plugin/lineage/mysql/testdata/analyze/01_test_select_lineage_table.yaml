@@ -75,6 +75,15 @@ cases:
           to_field: name
           relation_type: direct
           is_temp: true
+        - from_table: users
+          from_field: age
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
     - name: select star without catalog
       sql: SELECT * FROM users
       expected_edges:
@@ -129,3 +138,39 @@ cases:
               group_keys:
                 - "`o`.`id`"
                 - "`c`.`name`"
+        - from_table: orders
+          from_field: customer_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: customers
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: orders
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: order_items
+          from_field: order_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN

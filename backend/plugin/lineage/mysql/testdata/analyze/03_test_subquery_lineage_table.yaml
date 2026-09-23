@@ -58,3 +58,21 @@ cases:
               function_name: SUM
               group_keys:
                 - "user_id"
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: user_orders
+          from_field: user_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN

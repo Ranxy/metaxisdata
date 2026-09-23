@@ -1,5 +1,8 @@
 name: TestDeleteLineage_Table
 cases:
+    # DELETE is the one statement whose WHERE is recorded, because it is the whole
+    # effect of the statement: the columns decide which rows stop existing, so the
+    # edge names the synthetic `__deletion__` target rather than an empty one.
     - name: simple DELETE
       sql: DELETE FROM users WHERE status = 'inactive' AND last_login < DATE_SUB(NOW(), INTERVAL 1 YEAR)
       expected_edges:

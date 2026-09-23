@@ -33,6 +33,24 @@ cases:
           to_field: "n"
           relation_type: direct
           is_temp: true
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
     - name: partition selection
       sql: SELECT name FROM employees PARTITION (p0, p1)
       expected_edges:

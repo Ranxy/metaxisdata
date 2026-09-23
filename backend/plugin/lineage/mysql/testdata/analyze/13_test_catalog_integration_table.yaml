@@ -57,6 +57,24 @@ cases:
           to_field: total
           relation_type: direct
           is_temp: true
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
     - name: SELECT * in subquery with catalog
       sql: SELECT * FROM (SELECT * FROM users WHERE status = 'active') AS active_users
       catalog:
@@ -91,6 +109,15 @@ cases:
           to_field: status
           relation_type: direct
           is_temp: true
+        - from_table: users
+          from_field: status
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
     - name: SELECT * in CTE with catalog
       sql: |-
         WITH active_users AS (SELECT * FROM users WHERE status = 'active')
@@ -127,3 +154,12 @@ cases:
           to_field: status
           relation_type: direct
           is_temp: true
+        - from_table: users
+          from_field: status
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER

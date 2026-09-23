@@ -1,0 +1,285 @@
+name: TestPredicateInfluence_Table
+cases:
+    # A predicate decides which rows a statement produces without its value
+    # reaching any output column, so it is an influence on the target rows: the
+    # edge carries no target column and a FILTER or JOIN transformation. This is
+    # OpenLineage's INDIRECT relation, whose FILTER / JOIN subtypes name exactly
+    # these two clauses.
+    - name: a where predicate influences the rows the statement produces
+      sql: SELECT o.total FROM orders o WHERE o.status = 'paid'
+      expected_edges:
+        - from_table: orders
+          from_field: total
+          to_table: __result__
+          to_field: total
+          relation_type: direct
+          is_temp: true
+        - from_table: orders
+          from_field: status
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: o.status='paid'
+
+    - name: a join condition is a join influence
+      sql: CREATE VIEW v AS SELECT a.x FROM t1 a JOIN t2 b ON a.id = b.id
+      expected_edges:
+        - from_table: t1
+          from_field: x
+          to_table: v
+          to_field: x
+          relation_type: direct
+          is_temp: false
+        - from_table: t1
+          from_field: id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: a.id=b.id
+        - from_table: t2
+          from_field: id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: a.id=b.id
+
+    # A column used by two clauses is one predicate, so it keeps one edge. The
+    # join is collected before the filter, so it names the relation type; the
+    # row-level influence is the same either way.
+    - name: a column that both joins and filters keeps one edge
+      sql: CREATE VIEW v AS SELECT a.x FROM t1 a JOIN t2 b ON a.id = b.id WHERE a.id > 0
+      expected_edges:
+        - from_table: t1
+          from_field: x
+          to_table: v
+          to_field: x
+          relation_type: direct
+          is_temp: false
+        - from_table: t1
+          from_field: id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+        - from_table: t2
+          from_field: id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+
+    # HAVING filters the groups, so the columns it names influence the rows.
+    - name: having filters the groups
+      sql: CREATE VIEW v AS SELECT a.x FROM t1 a GROUP BY a.x HAVING SUM(a.y) > 100
+      expected_edges:
+        - from_table: t1
+          from_field: x
+          to_table: v
+          to_field: x
+          relation_type: direct
+          is_temp: false
+        - from_table: t1
+          from_field: y
+          to_table: v
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: SUM(a.y)>100
+
+    # HAVING may name a select alias, which is not a column of any relation. The
+    # influence belongs to the sources of that output column, so the edge points
+    # at the aggregate's own table rather than inventing a column name.
+    - name: having on a select alias influences the aggregate source
+      sql: CREATE VIEW v AS SELECT o.user_id, COUNT(*) AS c FROM orders o GROUP BY o.user_id HAVING c > 1
+      expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: v
+          to_field: user_id
+          relation_type: direct
+          is_temp: false
+        - from_table: orders
+          from_field: '*'
+          to_table: v
+          to_field: c
+          relation_type: group
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              group_keys:
+                - o.user_id
+        - from_table: orders
+          from_field: '*'
+          to_table: v
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: c>1
+
+    # USING names one column that is a join key of both sides.
+    - name: using names the join key of both sides
+      sql: CREATE VIEW v AS SELECT a.name, d.dept_id FROM employees a JOIN departments d USING (dept_id)
+      expected_edges:
+        - from_table: employees
+          from_field: name
+          to_table: v
+          to_field: name
+          relation_type: direct
+          is_temp: false
+        - from_table: departments
+          from_field: dept_id
+          to_table: v
+          to_field: dept_id
+          relation_type: direct
+          is_temp: false
+        - from_table: employees
+          from_field: dept_id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: USING(dept_id)
+        - from_table: departments
+          from_field: dept_id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: USING(dept_id)
+
+    # A predicate over a query-local relation is traced to the base column
+    # behind it, because the derived table has no stored relation of its own.
+    - name: a predicate over a derived table is attributed to its base table
+      sql: CREATE VIEW v AS SELECT d.a FROM (SELECT a, b FROM t) d WHERE d.b > 0
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: v
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_table: t
+          from_field: b
+          to_table: v
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: FILTER
+
+    # The same column can be a value source and a predicate for the same target
+    # table: the two edges differ by their target column, not by their source.
+    - name: a predicate column that is also a value source keeps both edges
+      sql: CREATE VIEW v AS SELECT a.f FROM t1 a WHERE a.f > 0
+      expected_edges:
+        - from_table: t1
+          from_field: f
+          to_table: v
+          to_field: f
+          relation_type: direct
+          is_temp: false
+        - from_table: t1
+          from_field: f
+          to_table: v
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: FILTER
+
+    - name: a constant predicate records no influence
+      sql: CREATE VIEW v AS SELECT a.x FROM t1 a WHERE 1 = 1
+      expected_edges:
+        - from_table: t1
+          from_field: x
+          to_table: v
+          to_field: x
+          relation_type: direct
+          is_temp: false
+
+    # ORDER BY and LIMIT are deliberately out of scope: they change row order and
+    # truncation, not the dependency a column-lineage edge records.
+    - name: order by and limit record no influence
+      sql: CREATE VIEW v AS SELECT a.x FROM t1 a ORDER BY a.y LIMIT 5
+      expected_edges:
+        - from_table: t1
+          from_field: x
+          to_table: v
+          to_field: x
+          relation_type: direct
+          is_temp: false
+
+    - name: a qualified predicate keeps its database
+      sql: CREATE VIEW v AS SELECT db1.t.a FROM db1.t WHERE db1.t.f > 0
+      expected_edges:
+        - from_database: db1
+          from_table: t
+          from_field: a
+          to_table: v
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_database: db1
+          from_table: t
+          from_field: f
+          to_table: v
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: FILTER
+
+    - name: an insert select records the influence on the target table
+      sql: INSERT INTO summary SELECT o.total FROM orders o WHERE o.status = 'paid'
+      expected_edges:
+        - from_table: orders
+          from_field: total
+          to_table: summary
+          to_field: total
+          relation_type: direct
+          is_temp: false
+        - from_table: orders
+          from_field: status
+          to_table: summary
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: o.status='paid'

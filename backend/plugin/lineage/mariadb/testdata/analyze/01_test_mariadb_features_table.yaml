@@ -33,6 +33,15 @@ cases:
           to_field: salary
           relation_type: direct
           is_temp: true
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
     - name: system time all with alias
       sql: SELECT e.id, e.salary FROM employees FOR SYSTEM_TIME ALL AS e
       expected_edges:
@@ -90,6 +99,24 @@ cases:
           to_field: salary
           relation_type: direct
           is_temp: true
+        - from_table: employees
+          from_field: department_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: departments
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
     - name: derived table with temporal inner
       sql: SELECT x.a FROM (SELECT e.id AS a FROM employees FOR SYSTEM_TIME AS OF TIMESTAMP '2024-01-01 00:00:00' AS e) AS x
       expected_edges:

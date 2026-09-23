@@ -75,6 +75,30 @@ type Analyzer struct {
 	// Track temporary table names (derived tables, CTEs) to filter intermediate
 	// results.
 	tempTables map[string]struct{}
+	// predicates accumulates the columns every row-set predicate of the statement
+	// depends on. Which object the statement produces is only known once the
+	// whole tree has been walked, so the edges are emitted by whichever emitter
+	// runs last.
+	predicates []predicateInfluence
+}
+
+// predicateInfluence is one column a WHERE, HAVING or ON predicate depends on,
+// together with the clause that makes it an influence.
+type predicateInfluence struct {
+	// key is the real relation the column resolved to. It is zero when the
+	// predicate is over a query-local relation, whose lineage is traced instead.
+	key       predicateKey
+	relation  *scope.TableRef
+	column    string
+	transform model.Transformation
+}
+
+// predicateKey identifies a predicate column, so a column used by several
+// clauses collapses to the one edge the deduplication keeps.
+type predicateKey struct {
+	database string
+	table    string
+	column   string
 }
 
 // columnEdgeKey identifies a lineage edge for deduplication without allocating
@@ -414,7 +438,14 @@ func (a *Analyzer) processQuerySpecification(stmt *nodes.SelectStmt) {
 		return
 	}
 	a.processFromClause(stmt.From)
+	// A WHERE or HAVING predicate decides which rows the query emits without its
+	// value reaching any output column, so it is recorded as an influence on the
+	// statement's target rows rather than on a column.
+	a.collectPredicates(stmt.Where, sp, model.NewFilterTransformation(a.exprTextOf(stmt.Where)), false)
 	a.processSelectItemList(stmt.TargetList, sp, a.groupByKeys(stmt.GroupBy))
+	// HAVING is the one clause that may name a select-list alias, so it resolves
+	// one before falling back to the scope.
+	a.collectPredicates(stmt.Having, sp, model.NewFilterTransformation(a.exprTextOf(stmt.Having)), true)
 	a.generateEdges(sp)
 }
 
@@ -635,7 +666,124 @@ func setOpTransformation(setOp nodes.SetOperation) (model.Transformation, bool) 
 func (a *Analyzer) processFromClause(from []nodes.TableExpr) {
 	for _, te := range from {
 		a.processTableExpr(te)
+		// The relations have to be in scope before a join condition's columns
+		// can be resolved.
+		a.collectJoinPredicates(te)
 	}
+}
+
+// collectJoinPredicates records the columns a join condition depends on. ON is
+// recorded from its expression; USING names the shared column, which is a join
+// key of every relation the two sides introduce.
+func (a *Analyzer) collectJoinPredicates(te nodes.TableExpr) {
+	join, ok := te.(*nodes.JoinClause)
+	if !ok {
+		return
+	}
+	a.collectJoinPredicates(join.Left)
+	a.collectJoinPredicates(join.Right)
+
+	sp := a.currentScope()
+	if on, ok := join.Condition.(*nodes.OnCondition); ok {
+		a.collectPredicates(on.Expr, sp, model.NewJoinTransformation(a.exprTextOf(on)), false)
+		return
+	}
+	if using, ok := join.Condition.(*nodes.UsingCondition); ok {
+		transform := model.NewJoinTransformation(a.exprTextOf(using))
+		for _, side := range []nodes.TableExpr{join.Left, join.Right} {
+			for _, ref := range joinSideRefs(side) {
+				for _, column := range using.Columns {
+					a.recordPredicate(sp, scope.ColumnRef{Schema: ref.Schema, Table: ref.Table, Column: column}, transform, false)
+				}
+			}
+		}
+	}
+}
+
+// joinSideRefs returns the relation a join operand introduces, addressed the way
+// a SQL reference addresses it: its alias when it has one, otherwise its name.
+func joinSideRefs(te nodes.TableExpr) []scope.ColumnRef {
+	switch t := te.(type) {
+	case *nodes.TableRef:
+		name := t.Alias
+		if name == "" {
+			name = t.Name
+		}
+		return []scope.ColumnRef{{Schema: t.Schema, Table: name}}
+	case *nodes.JoinClause:
+		return append(joinSideRefs(t.Left), joinSideRefs(t.Right)...)
+	default:
+		// A derived table's columns are traced, not addressed by name here.
+		return nil
+	}
+}
+
+// collectPredicates resolves every column a predicate depends on and records it
+// as an influence on the statement's target rows. resolveAliases is set for a
+// clause that may name a select-list alias, as HAVING does.
+func (a *Analyzer) collectPredicates(expr nodes.ExprNode, sp *scope.Scope, transform model.Transformation, resolveAliases bool) {
+	if expr == nil {
+		return
+	}
+	for _, ref := range a.collectExprColumns(expr, sp) {
+		a.recordPredicate(sp, ref, transform, resolveAliases)
+	}
+}
+
+// recordPredicate resolves one predicate column. An unresolvable column is
+// dropped, the same way an unresolvable source column is, so a predicate never
+// invents a relation.
+func (a *Analyzer) recordPredicate(sp *scope.Scope, ref scope.ColumnRef, transform model.Transformation, resolveAliases bool) {
+	// A select-list alias is not a column of any relation. The clause influences
+	// the rows the aggregate behind the alias produced, so the influence belongs
+	// to that output column's own sources.
+	if resolveAliases && ref.Table == "" && ref.Column != "" {
+		for _, output := range sp.GetOutputColumns() {
+			if output.Alias != ref.Column {
+				continue
+			}
+			for _, source := range output.SourceColumns {
+				a.recordPredicate(sp, source, transform, false)
+			}
+			return
+		}
+	}
+
+	resolved, relation, err := sp.ResolveColumnRef(ref)
+	if err != nil {
+		return
+	}
+	influence := predicateInfluence{transform: transform}
+	if relation != nil && (relation.IsCTE || relation.IsSubquery) {
+		influence.relation = relation
+		influence.column = resolved.Column
+	} else {
+		influence.key = predicateKey{database: resolved.Schema, table: resolved.Table, column: resolved.Column}
+	}
+	a.predicates = append(a.predicates, influence)
+}
+
+// emitPredicateInfluences adds one edge per predicate column to the rows the
+// statement produces. The target column is empty: a predicate decides which rows
+// are emitted, not the value of any one column.
+func (a *Analyzer) emitPredicateInfluences(targetSchema, targetTable string) {
+	if len(a.predicates) == 0 {
+		return
+	}
+	isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
+	for _, influence := range a.predicates {
+		if influence.relation != nil {
+			a.traceThroughTableLineage(influence.relation, influence.column, targetSchema, targetTable, "", []model.Transformation{influence.transform})
+			continue
+		}
+		a.addRelation(scope.NewLineageEdge(
+			influence.key.database, influence.key.table, influence.key.column,
+			targetSchema, targetTable, "",
+			[]model.Transformation{influence.transform},
+			isTemp,
+		))
+	}
+	a.predicates = nil
 }
 
 // processTableExpr processes a table reference, join or derived table.
@@ -867,6 +1015,7 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 	for _, outputCol := range sp.GetOutputColumns() {
 		a.emitSources(sp, outputCol.SourceColumns, "", resultTableName, outputCol.Alias, outputCol.Transform)
 	}
+	a.emitPredicateInfluences("", resultTableName)
 }
 
 // generateEdgesForDataModification maps SELECT output columns onto the target
@@ -885,6 +1034,7 @@ func (a *Analyzer) generateEdgesForDataModification(targetSchema, targetTable st
 		}
 		a.emitSources(sp, outputCol.SourceColumns, targetSchema, targetTable, targetColName, outputCol.Transform)
 	}
+	a.emitPredicateInfluences(targetSchema, targetTable)
 }
 
 // emitSources resolves source columns and adds one relation per source.
@@ -1109,6 +1259,7 @@ func (a *Analyzer) processCreateTable(stmt *nodes.CreateTableStmt) {
 	for _, outputCol := range sp.GetOutputColumns() {
 		a.emitSources(sp, outputCol.SourceColumns, targetSchema, targetTable, outputCol.Alias, outputCol.Transform)
 	}
+	a.emitPredicateInfluences(targetSchema, targetTable)
 }
 
 // processCreateView processes CREATE VIEW.
@@ -1133,6 +1284,7 @@ func (a *Analyzer) processCreateView(stmt *nodes.CreateViewStmt) {
 		}
 		a.emitSources(sp, outputCol.SourceColumns, targetSchema, targetView, targetColName, outputCol.Transform)
 	}
+	a.emitPredicateInfluences(targetSchema, targetView)
 }
 
 // ---------------------------------------------------------------------------

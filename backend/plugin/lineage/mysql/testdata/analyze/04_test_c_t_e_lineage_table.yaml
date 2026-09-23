@@ -19,6 +19,15 @@ cases:
           to_field: name
           relation_type: direct
           is_temp: true
+        - from_table: users
+          from_field: status
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
     - name: multiple CTEs
       sql: "WITH \n\t\t\t          active_users AS (\n\t\t\t              SELECT id, name FROM users WHERE status = 'active'\n\t\t\t          ),\n\t\t\t          user_orders AS (\n\t\t\t              SELECT user_id, COUNT(*) AS order_count FROM orders GROUP BY user_id\n\t\t\t          )\n\t\t\t      SELECT au.id, au.name, uo.order_count\n\t\t\t      FROM active_users au\n\t\t\t      LEFT JOIN user_orders uo ON au.id = uo.user_id"
       expected_edges:
@@ -46,3 +55,30 @@ cases:
               function_name: COUNT
               group_keys:
                 - "user_id"
+        - from_table: users
+          from_field: status
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN

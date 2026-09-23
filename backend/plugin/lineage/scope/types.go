@@ -163,7 +163,11 @@ func determineRelationType(transform []model.Transformation) model.RelationType 
 		return model.RelationTypeExcept
 	case model.OperationAggregate:
 		return model.RelationTypeGroup
+	case model.OperationJoin:
+		return model.RelationTypeJoin
 	default:
+		// A FILTER (WHERE / HAVING) and every value transformation influence the
+		// output indirectly, which is what the API reports for all of them.
 		return model.RelationTypeIndirect
 	}
 }

@@ -179,6 +179,22 @@ func TestValidateExpectedEdgesChecksTransformations(t *testing.T) {
 	require.False(t, ft.failed, "a matching transformation must pass")
 }
 
+// An omitted column name matches anything, while a written one is exact — the
+// distinction a row-level influence edge (empty target column) depends on.
+func TestEdgeMatchesFieldSet(t *testing.T) {
+	rowLevel := model.ColumnRelation{
+		Source: model.Column{Table: model.ObjectIdentifier{Name: "orders"}, Name: "status"},
+		Target: model.Column{Table: model.ObjectIdentifier{Name: "summary"}},
+	}
+
+	require.True(t, EdgeMatches(rowLevel, ExpectedEdge{FromTable: "orders"}),
+		"an omitted to_field must not be checked")
+	require.False(t, EdgeMatches(rowLevel, ExpectedEdge{FromTable: "orders", ToFieldSet: true, ToField: "status"}))
+	require.True(t, EdgeMatches(rowLevel, ExpectedEdge{FromTable: "orders", ToFieldSet: true}))
+	require.False(t, EdgeMatches(rowLevel, ExpectedEdge{FromTable: "orders", FromFieldSet: true, FromField: "other"}))
+	require.True(t, EdgeMatches(rowLevel, ExpectedEdge{FromTable: "orders", FromFieldSet: true, FromField: "status"}))
+}
+
 func TestTransformationMatches(t *testing.T) {
 	transform := model.NewWindowTransformation("SUM", "SUM(x)OVER()", []string{"a"}, []string{"b"})
 	require.True(t, TransformationMatches(transform, ExpectedTransformation{Operation: "WINDOW", FunctionName: "SUM"}))

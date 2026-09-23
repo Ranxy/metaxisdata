@@ -69,6 +69,26 @@ cases:
           to_field: d
           relation_type: direct
           is_temp: true
+        - from_database: db1
+          from_table: t
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_database: db2
+          from_table: t
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
 
     # The negative half of the same decision: a schemas: entry does not become a
     # database one. Without this case the harness bug was invisible, because a

@@ -24,6 +24,18 @@ const (
 	OperationOperator OperationType = "OPERATOR"
 	// OperationCase represents a CASE expression.
 	OperationCase OperationType = "CASE"
+	// OperationFilter represents a predicate that decides which rows a statement
+	// produces without its value flowing into any output column (WHERE, HAVING).
+	OperationFilter OperationType = "FILTER"
+	// OperationJoin represents a join condition.
+	OperationJoin OperationType = "JOIN"
+	// OperationGroupBy represents a grouping that decides which rows are
+	// aggregated together. The SQL analyzers record it as AGGREGATE group keys;
+	// this value carries OpenLineage's INDIRECT/GROUP_BY subtype.
+	OperationGroupBy OperationType = "GROUP_BY"
+	// OperationSort represents an ordering of the output rows. The SQL analyzers
+	// do not produce it yet; it carries OpenLineage's INDIRECT/SORT subtype.
+	OperationSort OperationType = "SORT"
 )
 
 // Transformation represents a data transformation operation in the lineage.
@@ -54,8 +66,27 @@ type Transformation struct {
 	// "ADDITION", "SUBTRACTION", "EQUALS".
 	OpType string `json:"op_type,omitempty"`
 
-	// Condition is the WHERE condition expression (for DELETE operation).
+	// Condition is the predicate text a row-set operation carries: the DELETE
+	// condition, or the WHERE / HAVING / ON expression of a FILTER or JOIN
+	// influence edge.
 	Condition string `json:"condition,omitempty"`
+}
+
+// NewFilterTransformation creates a Transformation for a predicate that selects
+// which rows a statement produces.
+func NewFilterTransformation(condition string) Transformation {
+	return Transformation{
+		Operation: OperationFilter,
+		Condition: condition,
+	}
+}
+
+// NewJoinTransformation creates a Transformation for a join condition.
+func NewJoinTransformation(condition string) Transformation {
+	return Transformation{
+		Operation: OperationJoin,
+		Condition: condition,
+	}
 }
 
 // NewDeleteTransformation creates a Transformation for DELETE operations.

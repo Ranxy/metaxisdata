@@ -19,19 +19,24 @@ import (
 )
 
 // ExpectedEdge defines the expected lineage edge for testing.
-// This structure allows for flexible matching - nil fields are not validated.
+// This structure allows for flexible matching - unset fields are not validated.
+// FieldSet records that a column name was written, so `to_field:` with an empty
+// value can assert "this edge has no target column" (a row-level influence)
+// instead of meaning "any target column".
 type ExpectedEdge struct {
 	// Source column information
 	FromDatabase string
 	FromSchema   string
 	FromTable    string
 	FromField    string
+	FromFieldSet bool
 
 	// Target column information
 	ToDatabase string
 	ToSchema   string
 	ToTable    string
 	ToField    string
+	ToFieldSet bool
 
 	// Optional: expected relation type (nil = not checked)
 	RelationType *model.RelationType
@@ -129,15 +134,15 @@ type yamlCatalog struct {
 }
 
 type yamlExpectedEdge struct {
-	FromDatabase string `yaml:"from_database,omitempty"`
-	FromSchema   string `yaml:"from_schema,omitempty"`
-	FromTable    string `yaml:"from_table,omitempty"`
-	FromField    string `yaml:"from_field,omitempty"`
+	FromDatabase string  `yaml:"from_database,omitempty"`
+	FromSchema   string  `yaml:"from_schema,omitempty"`
+	FromTable    string  `yaml:"from_table,omitempty"`
+	FromField    *string `yaml:"from_field,omitempty"`
 
-	ToDatabase string `yaml:"to_database,omitempty"`
-	ToSchema   string `yaml:"to_schema,omitempty"`
-	ToTable    string `yaml:"to_table,omitempty"`
-	ToField    string `yaml:"to_field,omitempty"`
+	ToDatabase string  `yaml:"to_database,omitempty"`
+	ToSchema   string  `yaml:"to_schema,omitempty"`
+	ToTable    string  `yaml:"to_table,omitempty"`
+	ToField    *string `yaml:"to_field,omitempty"`
 
 	RelationType    *string              `yaml:"relation_type,omitempty"`
 	HasTransform    *bool                `yaml:"has_transform,omitempty"`
@@ -299,6 +304,11 @@ func RequireFullEdgeAnnotations(t *testing.T, dir string) {
 
 				require.NotNilf(t, edge.RelationType, "%s: relation_type is not asserted", where)
 				require.NotNilf(t, edge.IsTemp, "%s: is_temp is not asserted", where)
+				// An omitted column name would match any column, which is how a
+				// row-level edge with an empty target column silently stops being
+				// checked. Every expectation states both ends.
+				require.Truef(t, edge.FromFieldSet, "%s: from_field is not asserted", where)
+				require.Truef(t, edge.ToFieldSet, "%s: to_field is not asserted", where)
 
 				// A relation type is derived from the transformation list, so an
 				// edge carries a transformation exactly when it is not direct.
@@ -410,13 +420,22 @@ func (e *yamlExpectedEdge) toExpectedEdge() (ExpectedEdge, error) {
 		FromDatabase: e.FromDatabase,
 		FromSchema:   e.FromSchema,
 		FromTable:    e.FromTable,
-		FromField:    e.FromField,
 		ToDatabase:   e.ToDatabase,
 		ToSchema:     e.ToSchema,
 		ToTable:      e.ToTable,
-		ToField:      e.ToField,
 		HasTransform: e.HasTransform,
 		IsTemp:       e.IsTemp,
+	}
+
+	// A written column name is an exact assertion, including the empty one a
+	// row-level influence edge carries.
+	if e.FromField != nil {
+		edge.FromField = *e.FromField
+		edge.FromFieldSet = true
+	}
+	if e.ToField != nil {
+		edge.ToField = *e.ToField
+		edge.ToFieldSet = true
 	}
 
 	for _, rawTransform := range e.Transformations {
@@ -663,7 +682,11 @@ func EdgeMatches(rel model.ColumnRelation, exp ExpectedEdge) bool {
 	if exp.FromTable != "" && rel.Source.Table.Name != exp.FromTable {
 		return false
 	}
-	if exp.FromField != "" && rel.Source.Name != exp.FromField {
+	if exp.FromFieldSet {
+		if rel.Source.Name != exp.FromField {
+			return false
+		}
+	} else if exp.FromField != "" && rel.Source.Name != exp.FromField {
 		return false
 	}
 
@@ -677,7 +700,11 @@ func EdgeMatches(rel model.ColumnRelation, exp ExpectedEdge) bool {
 	if exp.ToTable != "" && rel.Target.Table.Name != exp.ToTable {
 		return false
 	}
-	if exp.ToField != "" && rel.Target.Name != exp.ToField {
+	if exp.ToFieldSet {
+		if rel.Target.Name != exp.ToField {
+			return false
+		}
+	} else if exp.ToField != "" && rel.Target.Name != exp.ToField {
 		return false
 	}
 

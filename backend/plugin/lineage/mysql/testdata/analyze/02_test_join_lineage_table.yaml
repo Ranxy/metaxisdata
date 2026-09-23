@@ -27,6 +27,24 @@ cases:
           to_field: total
           relation_type: direct
           is_temp: true
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
 
     # NATURAL JOIN has no written ON clause: the joined column is implicit and
     # never referenced, so it contributes no source. Only the projection does.
@@ -55,6 +73,24 @@ cases:
           to_field: dept_id
           relation_type: direct
           is_temp: true
+        - from_table: employees
+          from_field: dept_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: departments
+          from_field: dept_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
 
     # A USING column is coalesced, so an unqualified reference to it names no
     # single relation. The analyzer keeps its deterministic rule: the first
@@ -69,3 +105,21 @@ cases:
           to_field: dept_id
           relation_type: direct
           is_temp: true
+        - from_table: employees
+          from_field: dept_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: departments
+          from_field: dept_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN

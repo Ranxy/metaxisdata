@@ -1,5 +1,10 @@
 name: TestUpdateLineage_Table
 cases:
+    # An UPDATE's WHERE decides which rows are written of the table it already
+    # targets, so it records no row-level influence edge: that shape describes a
+    # statement's effect, and only DELETE models it (as `__deletion__`). Predicate
+    # influence edges are recorded for SELECT-based statements only.
+    #
     # A constant assignment names no source column, but the row is still
     # rewritten, so the relation is recorded against the whole table.
     - name: UPDATE with literal values

@@ -15,6 +15,15 @@ cases:
           to_field: name
           relation_type: direct
           is_temp: false
+        - from_table: users
+          from_field: age
+          to_table: tmp_users
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: FILTER
     - name: REPLACE SELECT with explicit columns
       sql: REPLACE INTO tmp_users (user_id, user_name) SELECT id, name FROM users
       expected_edges:
@@ -58,3 +67,21 @@ cases:
               group_keys:
                 - "u.id"
                 - "u.name"
+        - from_table: users
+          from_field: id
+          to_table: summary
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+        - from_table: orders
+          from_field: user_id
+          to_table: summary
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
