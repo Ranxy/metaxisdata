@@ -92,9 +92,11 @@ func inferColumnAlias(exprText string) string {
 	return exprText
 }
 
-// normalizeExpressionText removes spaces from expression text for consistency.
+// normalizeExpressionText collapses whitespace runs in expression text. Spaces
+// inside a string literal are content, so they are only collapsed, never
+// removed.
 func normalizeExpressionText(text string) string {
-	return strings.ReplaceAll(text, " ", "")
+	return strings.Join(strings.Fields(text), " ")
 }
 
 // ---------------------------------------------------------------------------

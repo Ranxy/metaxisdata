@@ -278,13 +278,15 @@ cases:
           relation_type: direct
           is_temp: false
 
+    # A quoted identifier is a plain projection, and the inferred output column
+    # is the unquoted name the engine exposes for it.
     - name: quoted identifiers with operator characters are direct
       sql: SELECT `created-at`, `case_id`, `we(ird)` FROM t
       expected_edges:
         - from_table: t
           from_field: created-at
           to_table: __result__
-          to_field: "`created-at`"
+          to_field: created-at
           relation_type: direct
           has_transform: false
           is_temp: true
@@ -298,10 +300,54 @@ cases:
         - from_table: t
           from_field: we(ird)
           to_table: __result__
-          to_field: "`we(ird)`"
+          to_field: we(ird)
           relation_type: direct
           has_transform: false
           is_temp: true
+
+    # An unaliased expression column is named by the engine from the expression
+    # source text, spaces included, so the stored target column matches the
+    # column the view exposes.
+    - name: unaliased expression keeps the engine column name
+      sql: CREATE VIEW v AS SELECT x - 1, CONCAT(name, ' x'), COUNT(*) FROM t
+      expected_edges:
+        - from_table: t
+          from_field: x
+          to_table: v
+          to_field: x - 1
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+        - from_table: t
+          from_field: name
+          to_table: v
+          to_field: CONCAT(name, ' x')
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+        - from_table: t
+          from_field: '*'
+          to_table: v
+          to_field: COUNT(*)
+          relation_type: group
+          has_transform: true
+          is_temp: false
+
+    # The recorded DELETE condition is expression text: a string literal keeps
+    # its spaces.
+    - name: DELETE condition keeps literal spaces
+      sql: DELETE FROM t WHERE name = 'John Doe'
+      expected_edges:
+        - from_table: t
+          from_field: name
+          to_table: t
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: name='John Doe'
 
     - name: single table DELETE resolves its source table
       sql: DELETE FROM users WHERE status = 'inactive'

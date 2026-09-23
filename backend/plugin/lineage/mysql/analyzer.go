@@ -258,23 +258,32 @@ func locFieldIndex(t reflect.Type) (int, bool) {
 	return idx, idx >= 0
 }
 
-// exprTextOf reconstructs a node's source text with inter-token whitespace
-// removed. omni anchors the Loc of infix nodes at the operator rather than at
-// the node start, so the span is widened to the earliest child offset first
-// (docs/omni_upstream_defects.md item 1).
-func (a *Analyzer) exprTextOf(n nodes.Node) string {
+// exprSpan returns the source span of a node, widening an infix node's span to
+// the earliest child offset because omni anchors its Loc at the operator
+// (docs/omni_upstream_defects.md item 1). ok is false when the span is unusable.
+func (a *Analyzer) exprSpan(n nodes.Node) (start, end int, ok bool) {
 	if n == nil {
-		return ""
+		return 0, 0, false
 	}
 	loc := nodeLoc(n)
 	if loc.Start < 0 || loc.End > len(a.sql) || loc.Start >= loc.End {
-		return ""
+		return 0, 0, false
 	}
-	start := loc.Start
+	start = loc.Start
 	if isInfixNode(n) {
 		if earliest := earliestStart(n); earliest >= 0 && earliest < start {
 			start = earliest
 		}
+	}
+	return start, loc.End, true
+}
+
+// exprTextOf reconstructs a node's source text with inter-token whitespace
+// removed.
+func (a *Analyzer) exprTextOf(n nodes.Node) string {
+	start, end, ok := a.exprSpan(n)
+	if !ok {
+		return ""
 	}
 	// Tokens are in source order, so the first token inside the span is found by
 	// binary search instead of scanning from the start of the statement.
@@ -284,17 +293,27 @@ func (a *Analyzer) exprTextOf(n nodes.Node) string {
 	var b strings.Builder
 	for i := from; i < len(a.tokens); i++ {
 		t := a.tokens[i]
-		if t.Loc >= loc.End {
+		if t.Loc >= end {
 			break
 		}
-		if t.End <= loc.End {
+		if t.End <= end {
 			_, _ = b.WriteString(a.sql[t.Loc:t.End])
 		}
 	}
 	if b.Len() == 0 {
-		return strings.TrimSpace(a.sql[start:loc.End])
+		return strings.TrimSpace(a.sql[start:end])
 	}
 	return b.String()
+}
+
+// exprSourceText returns a node's raw source text, preserving the spacing the
+// engine uses when it names an unaliased expression output column.
+func (a *Analyzer) exprSourceText(n nodes.Node) string {
+	start, end, ok := a.exprSpan(n)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(a.sql[start:end])
 }
 
 // isInfixNode reports whether omni anchors the node's Loc at its operator.
@@ -758,7 +777,7 @@ func (a *Analyzer) processSelectExpr(expr nodes.ExprNode, alias string, sp *scop
 	}
 	exprText := a.exprTextOf(expr)
 	if alias == "" {
-		alias = inferColumnAlias(exprText)
+		alias = a.inferredColumnAlias(expr, exprText)
 	}
 	sourceColumns := a.collectExprColumns(expr, sp)
 	isDerived := !isPlainColumnRef(expr)
@@ -1198,7 +1217,7 @@ func (a *Analyzer) processDeleteStatement(stmt *nodes.DeleteStmt) {
 		return
 	}
 	conditionColumns := a.collectExprColumns(stmt.Where, sp)
-	whereText := normalizeExpressionText(a.exprTextOf(stmt.Where))
+	whereText := a.exprTextOf(stmt.Where)
 
 	for _, targetTable := range targetTables {
 		actualTargetTable := targetTable
@@ -1632,11 +1651,6 @@ func combineTransformations(base, additional []model.Transformation) []model.Tra
 // Identifier helpers
 // ---------------------------------------------------------------------------
 
-// normalizeExpressionText removes spaces from expression text for consistency.
-func normalizeExpressionText(text string) string {
-	return strings.ReplaceAll(text, " ", "")
-}
-
 // normalizeIdentifier strips surrounding backticks or double quotes.
 func normalizeIdentifier(text string) string {
 	text = strings.TrimSpace(text)
@@ -1659,6 +1673,36 @@ func splitQualifiedIdentifier(fullText string) []string {
 		parts[i] = normalizeIdentifier(part)
 	}
 	return parts
+}
+
+// inferredColumnAlias returns the output column name an unaliased select
+// expression gets. A bare (possibly parenthesized) column reference contributes
+// its own unquoted name, and anything else contributes the expression's raw
+// source text: that is how the engine names such a column, so the stored target
+// column matches the column the view actually exposes.
+func (a *Analyzer) inferredColumnAlias(expr nodes.ExprNode, exprText string) string {
+	if name := plainColumnName(expr); name != "" {
+		return name
+	}
+	if source := a.exprSourceText(expr); source != "" {
+		return source
+	}
+	return inferColumnAlias(exprText)
+}
+
+// plainColumnName returns the column name of a bare column reference, unwrapping
+// parentheses. It returns "" for anything else, including a star.
+func plainColumnName(expr nodes.ExprNode) string {
+	switch x := expr.(type) {
+	case *nodes.ColumnRef:
+		if !x.Star {
+			return x.Column
+		}
+	case *nodes.ParenExpr:
+		return plainColumnName(x.Expr)
+	default:
+	}
+	return ""
 }
 
 // inferColumnAlias infers an alias from an expression text. A plain (possibly
