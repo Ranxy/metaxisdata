@@ -162,6 +162,8 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 		a.processCreateTable(stmt)
 	case *nodes.CreateViewStmt:
 		a.processCreateView(stmt)
+	case *nodes.AlterViewStmt:
+		a.processAlterView(stmt)
 	case *nodes.UpdateStmt:
 		if a.rejectLeadingWith("UPDATE") {
 			break
@@ -433,10 +435,6 @@ func (a *Analyzer) processSelectStatement(stmt *nodes.SelectStmt) {
 // processQuerySpecification processes FROM, the SELECT list, then emits edges.
 func (a *Analyzer) processQuerySpecification(stmt *nodes.SelectStmt) {
 	sp := a.currentScope()
-	if len(stmt.TargetList) == 0 && len(stmt.From) == 0 {
-		a.errors = append(a.errors, "query form with no select list and no FROM is not supported")
-		return
-	}
 	a.processFromClause(stmt.From)
 	// A WHERE or HAVING predicate decides which rows the query emits without its
 	// value reaching any output column, so it is recorded as an influence on the
@@ -1284,16 +1282,35 @@ func (a *Analyzer) processCreateTable(stmt *nodes.CreateTableStmt) {
 
 // processCreateView processes CREATE VIEW.
 func (a *Analyzer) processCreateView(stmt *nodes.CreateViewStmt) {
-	if stmt == nil || stmt.Name == nil || stmt.Select == nil {
+	if stmt == nil {
 		return
 	}
-	targetView := stmt.Name.Name
-	targetSchema := stmt.Name.Schema
-	explicitColumnNames := stmt.Columns
+	a.processViewBody(stmt.Name, stmt.Columns, stmt.Select)
+}
+
+// processAlterView processes ALTER VIEW, which replaces the view's definition and
+// therefore produces the same lineage as the CREATE it stands in for. The runner
+// wraps a stored view definition as CREATE VIEW, so an ALTER reaches the analyzer
+// only as a MANUAL_SQL statement; it used to be dispatched nowhere and produced no
+// lineage at all.
+func (a *Analyzer) processAlterView(stmt *nodes.AlterViewStmt) {
+	if stmt == nil {
+		return
+	}
+	a.processViewBody(stmt.Name, stmt.Columns, stmt.Select)
+}
+
+// processViewBody emits the lineage of a view definition onto the view it defines.
+func (a *Analyzer) processViewBody(name *nodes.TableRef, explicitColumnNames []string, query *nodes.SelectStmt) {
+	if name == nil || query == nil {
+		return
+	}
+	targetView := name.Name
+	targetSchema := name.Schema
 
 	previous := a.realTarget
 	a.realTarget = true
-	a.processSelectStatement(stmt.Select)
+	a.processSelectStatement(query)
 	a.realTarget = previous
 
 	sp := a.currentScope()

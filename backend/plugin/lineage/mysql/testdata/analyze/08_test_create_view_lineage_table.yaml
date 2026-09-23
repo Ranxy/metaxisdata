@@ -347,3 +347,33 @@ cases:
           is_temp: false
           transformations:
             - operation: JOIN
+
+    # ALTER VIEW replaces the view's definition, so its lineage is the CREATE's.
+    # A stored definition is wrapped as CREATE VIEW by the runner, so an ALTER
+    # reaches the analyzer only as a MANUAL_SQL statement — and it used to be
+    # dispatched nowhere, which produced no lineage at all.
+    - name: ALTER VIEW with an explicit column list
+      sql: ALTER VIEW v (a) AS SELECT id FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: v
+          to_field: a
+          relation_type: direct
+          is_temp: false
+
+    - name: ALTER VIEW keeps the query's own column names
+      sql: ALTER VIEW v AS SELECT id, name AS user_name FROM users
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: users
+          from_field: name
+          to_table: v
+          to_field: user_name
+          relation_type: direct
+          is_temp: false
