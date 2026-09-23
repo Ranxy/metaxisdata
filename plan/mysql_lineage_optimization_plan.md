@@ -913,6 +913,11 @@ changing one is a deliberate, visible corpus change.
   read), and whether `WHERE` / join `ON` / `ORDER BY` / `HAVING` columns should
   be recorded as influences remains undecided.
 - The public API still collapses relation types to DIRECT/INDIRECT.
+- A database-qualified column reference is resolved by table name alone and the
+  scope keys relations by bare name, so a join between same-named tables in two
+  databases can attribute a column to the wrong database (§10.6). Related and
+  undecided: what an unqualified reference should do when two databases could
+  satisfy it.
 - Materialized views still have no output-column list in the store proto, so a
   wildcard over an MV falls back to `*`.
 - The three MySQL-family analyzers remain copies kept in sync by regeneration;
@@ -1018,3 +1023,45 @@ for MySQL, MariaDB and TiDB. PostgreSQL (258 edges: 29% relation type, 21%
 is_temp) and StarRocks (180 edges: 75% / 74%) are not wired yet, so their corpora
 still accept a field change silently — the guard can be enabled there once those
 corpora are annotated the same way.
+
+### 10.6 Third MySQL pass: edge identity across databases
+
+Completing the annotations exposed a defect the corpus could not see, because no
+case joined two same-named tables from different databases.
+
+**Fixed — the dedup key ignored the database.** `addRelation` built its
+`columnEdgeKey` from `Table.Schema`, but a MySQL-family relation stores its SQL
+qualifier in `Table.Database` (`NewLineageEdge` never sets `Schema`), so every
+key's database was empty. Two edges that differed only by database collided and
+the second was dropped:
+
+```sql
+SELECT a.id, b.id FROM db1.t a JOIN db2.t b ON a.id = b.id  -- produced 1 edge, not 2
+```
+
+The key now reads `Table.Database`. Pinned by
+`17/aliased same-name tables in two databases keep both edges` and
+`17/the same qualified column twice is one edge`, the latter keeping the
+"identical edge is still deduplicated" half honest.
+
+**Still open — a qualified reference is resolved by table name only.**
+`scope.ResolveColumn`'s qualified branch calls `FindTable(colRef.Table)` and then
+reports *the found table's* qualifier; `colRef.Schema` is never compared. The
+scope also keys its table map by the bare table name (or alias), so when two
+relations share a name the later registration overwrites the earlier one. The
+result is a silently wrong source, not a dropped edge:
+
+```sql
+SELECT db1.t.a FROM db1.t JOIN db2.t ON db1.t.id = db2.t.id
+-- stored edge: db2.t.a -> __result__.a   (the SQL asked for db1.t.a)
+```
+
+A single qualified table (`SELECT db1.t.a FROM db1.t`) is correct, and the
+aliased form above is correct because the aliases give the two relations
+distinct keys — only same-name relations without aliases collide. Fixing it means
+keying a qualified relation by qualifier plus name and matching the qualifier on
+lookup, which changes the shared table map for all five dialects. It also raises
+a product question this plan has not answered: when an *unqualified* reference
+(`t.id`) can match two databases, should the edge be dropped, or resolved to one
+of them deterministically? That decision belongs with the §10.2 open items, so
+the fix is deliberately not bundled with the dedup key change.

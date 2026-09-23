@@ -1775,11 +1775,15 @@ func (a *Analyzer) addRelation(relation model.ColumnRelation) {
 	if a.isTempTable(relation.Target.Table.Name) && relation.Target.Table.Name != resultTableName {
 		return
 	}
+	// The qualifier of a MySQL-family name is its database, which NewLineageEdge
+	// stores in Database; Schema is never populated. Reading Schema here left
+	// every key's database empty, so two edges that differed only by database
+	// collided and the second was dropped.
 	key := columnEdgeKey{
-		sourceDatabase: relation.Source.Table.Schema,
+		sourceDatabase: relation.Source.Table.Database,
 		sourceTable:    relation.Source.Table.Name,
 		sourceColumn:   relation.Source.Name,
-		targetDatabase: relation.Target.Table.Schema,
+		targetDatabase: relation.Target.Table.Database,
 		targetTable:    relation.Target.Table.Name,
 		targetColumn:   relation.Target.Name,
 	}
