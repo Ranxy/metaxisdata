@@ -906,15 +906,16 @@ changing one is a deliberate, visible corpus change.
    expression contributes its raw source text with the original spacing
    (`x - 1`, not `x-1`), so the stored target column matches the column the
    view exposes.
-8. An expression subquery is classified as `PROJECT` in PostgreSQL but from the
-   first function call inside the subquery in the MySQL family; the edge sources
-   agree, the transformation does not.
+8. An expression subquery is classified as `PROJECT` in every engine: the
+   subquery's aggregate belongs to the subquery's own query specification, so the
+   enclosing select item or assignment is a projection of it. The MySQL family
+   agreed only from §10.9.
 
 ### 10.2 Still open after remediation
 
-- `Transformation.GroupKeys` is still never populated (GROUP BY keys are not
-  read), and whether `WHERE` / join `ON` / `ORDER BY` / `HAVING` columns should
-  be recorded as influences remains undecided.
+- Whether `WHERE` / join `ON` / `ORDER BY` / `HAVING` columns should be recorded
+  as influences remains undecided. `Transformation.GroupKeys` is populated for
+  the MySQL family as of §10.9, and is still empty for PostgreSQL and StarRocks.
 - The public API still collapses relation types to DIRECT/INDIRECT.
 - An unqualified reference that several same-named relations satisfy is still
   resolved rather than dropped: catalog metadata decides when it is complete,
@@ -1016,8 +1017,8 @@ now asserts:
 The whitespace-normalized `expression` text is still asserted only where it
 already was: it is an internal rendering, and freezing it on every edge would
 make the corpus churn on any formatting change. `arguments` carries the same
-reconstructed text, and `group_keys` is never populated (§10.2), so neither is
-asserted.
+reconstructed text, so it is not asserted. `group_keys` became assertable, and
+required on every `AGGREGATE`, in §10.9.
 
 `testutil.RequireFullEdgeAnnotations` makes the bar enforceable instead of a
 one-off cleanup. It fails a case whose expectation leaves `relation_type` or
@@ -1160,3 +1161,62 @@ unchanged under MySQL, MariaDB and TiDB.
 Corpus state: the shared MySQL-family corpus is now 128 cases (`02` gained three
 join cases, `19` adds three database-catalog cases), all matched exactly and
 fully annotated.
+
+### 10.9 Fifth MySQL pass: GROUP BY keys
+
+`Transformation.GroupKeys` was plumbed end to end from the start — the model
+field, the `column_lineage.transformation` JSONB payload, the API proto's
+`repeated string group_keys = 5`, and a detail row the frontend already renders —
+and was always empty, because its one producer passed `nil`. This pass fills it.
+No proto change, no migration and no frontend change were needed.
+
+Decisions:
+
+- **What is stored** — the written text of each GROUP BY item, rendered the way
+  `PartitionBy` and `OrderBy` already are: inter-token whitespace removed, source
+  order kept, duplicates kept, case preserved. A positional key stays `"1"` and
+  an alias stays the alias, because that is what the query wrote; resolving them
+  would need select-list and catalog work for a field whose contract is "what the
+  query grouped by".
+- **Where it is attached** — on every transformation of a select item that
+  contains a group aggregate. The outermost node is often not the aggregate:
+  `SUM(o.total) + 1` is an `OPERATOR` and `CASE WHEN SUM(x) …` is a `CASE`, so an
+  AGGREGATE-only rule would silently drop the keys for the commonest reporting
+  shapes. An item with no group aggregate records nothing, so the field never
+  claims a column was aggregated when it was only projected.
+- **Window functions are excluded** — a windowed aggregate is governed by its
+  `OVER` clause, so `SELECT SUM(x) OVER (…) … GROUP BY y` records no keys.
+- **The subquery boundary is part of the rule** — `firstFuncCall` no longer
+  descends into a `SubqueryExpr`, and the aggregate check stops there too.
+  Without it the enclosing query's keys would be stamped on an inner subquery's
+  aggregate. This also closes §10.1 item 8: an expression subquery is now
+  `PROJECT` in the MySQL family, as it already was in PostgreSQL, so the `09`
+  and `16/scalar_subquery` expectations move from `group`/`AGGREGATE` to
+  `indirect`/`PROJECT`.
+- **Deliberately not recorded** — `WITH ROLLUP` (the field is a key list, and the
+  flag adds subtotal rows rather than keys); the grouping of a
+  grouped-but-non-aggregating output column (`SELECT o.user_id … GROUP BY
+  o.user_id` leaves `o.user_id` direct, because giving it a transformation would
+  break the direct ⟺ no-transformation invariant the corpus enforces); and the
+  grouping of a nested query whose transformation `subquerySources` discards
+  (it surfaces where the inner transformation is what reaches the edge, as in
+  `SELECT d.n FROM (SELECT x, COUNT(*) AS n FROM t GROUP BY x) d`).
+
+Harness: `group_keys` is a pointer in the YAML, so `group_keys: []` is an
+assertion rather than an omission, and `TransformationMatches` checks it whenever
+it was written. `RequireFullEdgeAnnotations` now requires every `AGGREGATE`
+transformation to assert it. A wrapper hides the aggregate from the guard, so the
+`OPERATOR` and `CASE` shapes assert their keys in the corpus instead.
+
+Corpus: `20_test_group_by_keys_table` adds 13 cases (one and several keys,
+positional and alias keys, an expression key, an operator and a `CASE` wrapping
+an aggregate, `COUNT(DISTINCT …)`, a windowed aggregate, no `GROUP BY`, a scalar
+subquery, a nested query's own grouping, `WITH ROLLUP`), and the 16 pre-existing
+`AGGREGATE` expectations now assert their keys. The shared corpus is 141 cases.
+
+Negative-checked: disabling the attachment fails 33 cases, restoring traversal
+into a subquery fails the three subquery cases, dropping one AGGREGATE's
+`group_keys` fails the annotation guard, and reverting the empty-list match fails
+`TestTransformationMatchesGroupKeys`. `gofmt`, `golangci-lint`, `go test ./...`,
+the build and the real-server integration suite are green; the MariaDB and TiDB
+copies remain pure regenerations of the MySQL analyzer.
