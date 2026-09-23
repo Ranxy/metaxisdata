@@ -1,15 +1,21 @@
 name: TestUpdateLineage_Table
 cases:
     - name: UPDATE with literal values
+      exact_edges: true
       sql: UPDATE users SET email = 'new@email.com', updated_at = NOW() WHERE id = 1
       expected_edges:
-        - to_table: users
+        - from_table: users
+          from_field: '*'
+          to_table: users
           to_field: email
           has_transform: true
-        - to_table: users
+        - from_table: users
+          from_field: '*'
+          to_table: users
           to_field: updated_at
           has_transform: true
     - name: UPDATE with column reference
+      exact_edges: true
       sql: UPDATE users SET new_email = old_email, full_name = first_name || ' ' || last_name
       expected_edges:
         - from_table: users
@@ -27,6 +33,7 @@ cases:
           to_field: full_name
           has_transform: true
     - name: UPDATE with FROM clause
+      exact_edges: true
       sql: "UPDATE orders \n\t\t\t      SET user_name = u.name, discount = orders.total * 0.1\n\t\t\t      FROM users u\n\t\t\t      WHERE orders.user_id = u.id"
       expected_edges:
         - from_table: users
@@ -39,12 +46,15 @@ cases:
           to_field: discount
           has_transform: true
     - name: UPDATE with subquery
+      # Blocked: postgresql does not analyze an expression subquery in its own scope yet (plan 2.3)
+      subset: true
       sql: "UPDATE users \n\t\t\t      SET total_orders = (SELECT COUNT(*) FROM orders WHERE orders.user_id = users.id)"
       expected_edges:
         - to_table: users
           to_field: total_orders
           has_transform: true
     - name: UPDATE with CTE
+      exact_edges: true
       sql: |-
         WITH high_value_users AS (
         			          SELECT user_id FROM orders GROUP BY user_id HAVING SUM(total) > 1000
@@ -53,6 +63,8 @@ cases:
         			      FROM high_value_users hvu
         			      WHERE users.id = hvu.user_id
       expected_edges:
-        - to_table: users
+        - from_table: users
+          from_field: '*'
+          to_table: users
           to_field: status
           has_transform: true

@@ -1,34 +1,51 @@
 name: TestDeleteLineage_Table
 cases:
     - name: simple DELETE
+      exact_edges: true
       sql: DELETE FROM users WHERE status = 'inactive' AND last_login < NOW() - INTERVAL '1 year'
       expected_edges:
-        - from_field: status
+        - from_table: users
+          from_field: status
           to_table: users
           to_field: __deletion__
           has_transform: true
-        - from_field: last_login
+        - from_table: users
+          from_field: last_login
           to_table: users
           to_field: __deletion__
           has_transform: true
     - name: DELETE with USING clause
+      exact_edges: true
       sql: |-
         DELETE FROM orders
         			      USING users u
         			      WHERE orders.user_id = u.id AND u.status = 'deleted'
       expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: orders
+          to_field: __deletion__
+          has_transform: true
+        - from_table: users
+          from_field: id
+          to_table: orders
+          to_field: __deletion__
+          has_transform: true
         - from_table: users
           from_field: status
           to_table: orders
           to_field: __deletion__
           has_transform: true
     - name: DELETE with subquery
+      # Blocked: postgresql resolves the subquery's columns in the outer scope (plan 2.3)
+      subset: true
       sql: "DELETE FROM users \n\t\t\t      WHERE id IN (SELECT user_id FROM orders WHERE status = 'cancelled' GROUP BY user_id HAVING COUNT(*) > 5)"
       expected_edges:
         - to_table: users
           to_field: __deletion__
           has_transform: true
     - name: DELETE with CTE
+      exact_edges: true
       sql: |-
         WITH inactive_users AS (
         			          SELECT id FROM users WHERE last_login < NOW() - INTERVAL '2 years'
@@ -37,15 +54,22 @@ cases:
         			      USING inactive_users iu
         			      WHERE user_sessions.user_id = iu.id
       expected_edges:
+        - from_table: user_sessions
+          from_field: user_id
+          to_table: user_sessions
+          to_field: __deletion__
+          has_transform: true
         - from_table: users
           from_field: id
           to_table: user_sessions
           to_field: __deletion__
           has_transform: true
     - name: DELETE with RETURNING
+      exact_edges: true
       sql: DELETE FROM logs WHERE created_at < '2020-01-01' RETURNING id, message
       expected_edges:
-        - from_field: created_at
+        - from_table: logs
+          from_field: created_at
           to_table: logs
           to_field: __deletion__
           has_transform: true

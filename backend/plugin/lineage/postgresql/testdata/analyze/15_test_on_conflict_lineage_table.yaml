@@ -1,6 +1,7 @@
 name: TestOnConflictLineage_Table
 cases:
     - name: INSERT ON CONFLICT DO NOTHING
+      exact_edges: true
       sql: |-
         INSERT INTO users (id, name, email)
         			      SELECT id, name, email FROM pending_users
@@ -19,6 +20,7 @@ cases:
           to_table: users
           to_field: email
     - name: INSERT ON CONFLICT DO UPDATE
+      exact_edges: true
       sql: "INSERT INTO users (id, name, email)\n\t\t\t      SELECT id, name, email FROM pending_users\n\t\t\t      ON CONFLICT (id) DO UPDATE SET \n\t\t\t          name = EXCLUDED.name,\n\t\t\t          email = EXCLUDED.email"
       expected_edges:
         - from_table: pending_users
@@ -34,6 +36,7 @@ cases:
           to_table: users
           to_field: email
     - name: INSERT ON CONFLICT with expression update
+      exact_edges: true
       sql: |-
         INSERT INTO inventory (product_id, quantity)
         			      SELECT product_id, quantity FROM shipment
@@ -48,3 +51,9 @@ cases:
           from_field: quantity
           to_table: inventory
           to_field: quantity
+        - from_table: inventory
+          from_field: quantity
+          to_table: inventory
+          to_field: quantity
+          relation_type: indirect
+          has_transform: true

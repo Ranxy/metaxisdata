@@ -1,6 +1,7 @@
 name: TestCaseExpressionLineage_Table
 cases:
     - name: simple CASE expression
+      exact_edges: true
       sql: |-
         SELECT id,
         			        CASE status
@@ -20,6 +21,7 @@ cases:
           to_field: status_text
           has_transform: true
     - name: searched CASE expression
+      exact_edges: true
       sql: "SELECT id,\n\t\t\t        CASE \n\t\t\t            WHEN age < 18 THEN 'minor'\n\t\t\t            WHEN age >= 18 AND age < 65 THEN 'adult'\n\t\t\t            ELSE 'senior'\n\t\t\t        END AS age_group\n\t\t\t      FROM users"
       expected_edges:
         - from_table: users
@@ -32,6 +34,7 @@ cases:
           to_field: age_group
           has_transform: true
     - name: CASE with multiple column references
+      exact_edges: true
       sql: "SELECT id,\n\t\t\t        CASE \n\t\t\t            WHEN status = 'active' AND balance > 0 THEN 'good'\n\t\t\t            WHEN status = 'active' AND balance <= 0 THEN 'warning'\n\t\t\t            ELSE 'inactive'\n\t\t\t        END AS account_status\n\t\t\t      FROM accounts"
       expected_edges:
         - from_table: accounts

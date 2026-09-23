@@ -7,6 +7,7 @@ name: TestParenthesizedJoinLineage_Table
 # are listed in knownLegacyDefects (parity_test.go / postgresqlantlr helper).
 cases:
     - name: parenthesized join tree
+      exact_edges: true
       sql: SELECT u.id, o.amount FROM (users u JOIN orders o ON u.id = o.user_id)
       expected_edges:
         - from_table: users
@@ -18,6 +19,7 @@ cases:
           to_table: __result__
           to_field: amount
     - name: doubly parenthesized join tree
+      exact_edges: true
       sql: SELECT u.id, o.amount FROM ((users u JOIN orders o ON u.id = o.user_id))
       expected_edges:
         - from_table: users
@@ -29,6 +31,7 @@ cases:
           to_table: __result__
           to_field: amount
     - name: parenthesized left join
+      exact_edges: true
       sql: SELECT u.id, o.amount FROM (users u LEFT JOIN orders o ON u.id = o.user_id)
       expected_edges:
         - from_table: users
@@ -40,6 +43,7 @@ cases:
           to_table: __result__
           to_field: amount
     - name: parenthesized join wrapped as a view (pg_get_viewdef shape)
+      exact_edges: true
       sql: CREATE VIEW v AS SELECT u.id, o.amount FROM (users u JOIN orders o ON u.id = o.user_id)
       expected_edges:
         - from_table: users
@@ -61,6 +65,7 @@ cases:
           to_field: amount
           is_temp: false
     - name: parenthesized join joined further
+      exact_edges: true
       sql: SELECT u.id, p.val FROM (users u JOIN orders o ON u.id = o.user_id) JOIN products p ON p.id = o.product_id
       expected_edges:
         - from_table: users

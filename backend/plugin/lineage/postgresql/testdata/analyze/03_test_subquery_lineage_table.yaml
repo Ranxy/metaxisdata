@@ -1,6 +1,7 @@
 name: TestSubqueryLineage_Table
 cases:
     - name: subquery in FROM clause
+      exact_edges: true
       sql: |-
         SELECT sub.id, sub.total_orders
         			      FROM (SELECT user_id AS id, COUNT(*) AS total_orders FROM orders GROUP BY user_id) AS sub
@@ -10,10 +11,12 @@ cases:
           to_table: __result__
           to_field: id
         - from_table: orders
+          from_field: '*'
           to_table: __result__
           to_field: total_orders
           has_transform: true
     - name: nested subquery filters intermediate lineage
+      exact_edges: true
       sql: |-
         SELECT foo.user_id, foo.total_amount
         			      FROM (
@@ -40,6 +43,8 @@ cases:
           to_table: __result__
           to_field: total_amount
     - name: correlated subquery in SELECT
+      # Blocked: postgresql does not analyze an expression subquery in its own scope yet (plan 2.3)
+      subset: true
       sql: "SELECT u.id, u.name, \n\t\t\t          (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS order_count\n\t\t\t      FROM users u"
       expected_edges:
         - from_table: users
@@ -51,6 +56,7 @@ cases:
           to_table: __result__
           to_field: name
     - name: subquery in WHERE EXISTS
+      exact_edges: true
       sql: |-
         SELECT u.id, u.name
         			      FROM users u
