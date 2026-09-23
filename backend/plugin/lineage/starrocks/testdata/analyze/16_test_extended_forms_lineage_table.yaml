@@ -16,6 +16,14 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: ROW_NUMBER
+              expression: ROW_NUMBER()OVER(PARTITIONBYdepartment_idORDERBYsalary)
+              partition_by:
+                - department_id
+              order_by:
+                - salary
         - from_table: employees
           from_field: salary
           to_table: __result__
@@ -23,6 +31,14 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: ROW_NUMBER
+              expression: ROW_NUMBER()OVER(PARTITIONBYdepartment_idORDERBYsalary)
+              partition_by:
+                - department_id
+              order_by:
+                - salary
     - name: window_aggregate_over
       sql: SELECT product_id, SUM(amount) OVER (PARTITION BY product_id ORDER BY sale_date) AS running_total FROM sales
       expected_edges:
@@ -39,6 +55,11 @@ cases:
           relation_type: group
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(amount)OVER(PARTITIONBYproduct_idORDERBYsale_date)
+              group_keys: []
         - from_table: sales
           from_field: product_id
           to_table: __result__
@@ -46,6 +67,11 @@ cases:
           relation_type: group
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(amount)OVER(PARTITIONBYproduct_idORDERBYsale_date)
+              group_keys: []
         - from_table: sales
           from_field: sale_date
           to_table: __result__
@@ -53,6 +79,11 @@ cases:
           relation_type: group
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(amount)OVER(PARTITIONBYproduct_idORDERBYsale_date)
+              group_keys: []
     - name: case_expression
       sql: SELECT CASE WHEN salary > 100 THEN 'hi' ELSE name END AS band FROM employees
       expected_edges:
@@ -63,6 +94,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: CASE
+              expression: CASEWHENsalary>100THEN'hi'ELSEnameEND
         - from_table: employees
           from_field: name
           to_table: __result__
@@ -70,16 +104,26 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: CASE
+              expression: CASEWHENsalary>100THEN'hi'ELSEnameEND
     - name: coalesce
       sql: SELECT COALESCE(name, 'unknown') AS n FROM employees
       expected_edges:
         - from_table: employees
           from_field: name
           to_table: __result__
-          to_field: "n"
+          to_field: n
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: COALESCE
+              expression: COALESCE(name,'unknown')
+              arguments:
+                - name
+                - '''unknown'''
     - name: group_concat
       sql: SELECT department_id, GROUP_CONCAT(name) AS names FROM employees GROUP BY department_id
       expected_edges:
@@ -96,6 +140,12 @@ cases:
           relation_type: group
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: GROUP_CONCAT
+              expression: GROUP_CONCAT(name)
+              group_keys:
+                - department_id
     - name: count_distinct
       sql: SELECT COUNT(DISTINCT department_id) AS c FROM employees
       expected_edges:
@@ -106,6 +156,11 @@ cases:
           relation_type: group
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(DISTINCTdepartment_id)
+              group_keys: []
     - name: star_join_with_aliases
       sql: SELECT * FROM employees e JOIN departments d ON e.department_id = d.id
       expected_edges:
@@ -121,6 +176,24 @@ cases:
           to_field: '*'
           relation_type: direct
           is_temp: true
+        - from_table: employees
+          from_field: department_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: e.department_id=d.id
+        - from_table: departments
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: e.department_id=d.id
     - name: table_star_with_alias
       sql: SELECT e.*, d.name FROM employees e JOIN departments d ON e.department_id = d.id
       expected_edges:
@@ -136,6 +209,24 @@ cases:
           to_field: name
           relation_type: direct
           is_temp: true
+        - from_table: employees
+          from_field: department_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: e.department_id=d.id
+        - from_table: departments
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: e.department_id=d.id
     - name: count_star_with_alias
       sql: SELECT COUNT(*) AS c FROM employees e
       expected_edges:
@@ -146,6 +237,11 @@ cases:
           relation_type: group
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
+              group_keys: []
     - name: comma_join
       sql: SELECT e.name, d.name AS dn FROM employees e, departments d WHERE e.department_id = d.id
       expected_edges:
@@ -161,6 +257,24 @@ cases:
           to_field: dn
           relation_type: direct
           is_temp: true
+        - from_table: employees
+          from_field: department_id
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: e.department_id=d.id
+        - from_table: departments
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: e.department_id=d.id
     - name: scalar_subquery
       sql: SELECT (SELECT MAX(salary) FROM employees) AS m FROM departments
       expected_edges:
@@ -171,6 +285,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: (SELECTMAX(salary)FROMemployees)
     - name: scalar_subquery_alongside_outer_columns
       sql: SELECT id, (SELECT COUNT(*) FROM orders) AS c FROM users
       expected_edges:
@@ -187,6 +304,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: (SELECTCOUNT(*)FROMorders)
     - name: set_operation_nested_in_derived_table
       sql: SELECT u.id FROM (SELECT id FROM t1 UNION ALL SELECT id FROM t2) u
       expected_edges:
@@ -196,12 +316,16 @@ cases:
           to_field: id
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: t2
           from_field: id
           to_table: __result__
           to_field: id
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
     - name: set_operation_nested_in_cte
       sql: WITH c AS (SELECT id FROM t1 UNION ALL SELECT id FROM t2) SELECT id FROM c
       expected_edges:
@@ -211,12 +335,16 @@ cases:
           to_field: id
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: t2
           from_field: id
           to_table: __result__
           to_field: id
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
     - name: cte_star_with_alias
       sql: WITH c AS (SELECT id, name FROM users) SELECT x.* FROM c x
       expected_edges:
@@ -232,8 +360,6 @@ cases:
           to_field: name
           relation_type: direct
           is_temp: true
-    # A source-less expression depends on a relation's rows only when it is a
-    # table-wide aggregate; a literal or NOW() must not invent a dependency.
     - name: constant expression has no lineage
       sql: SELECT '2020-01-01' AS s FROM t
       expected_edges: []
@@ -250,15 +376,6 @@ cases:
           relation_type: direct
           has_transform: false
           is_temp: true
-    # The GROUP BY keys a group aggregate was computed under are recorded on the
-    # transformation, in source order. A select item without an aggregate records
-    # none, a windowed aggregate follows its OVER clause instead, and an aggregate
-    # inside a subquery is grouped by that subquery's own GROUP BY.
-    #
-    # StarRocks classifies an expression by the first function call it contains, so
-    # a windowed aggregate or an operator-wrapped one is reported as AGGREGATE
-    # where the MySQL family and PostgreSQL report WINDOW and OPERATOR. That is a
-    # separate known difference (§10.2); these cases assert the keys only.
     - name: group keys are recorded on the aggregate
       sql: SELECT department, COUNT(*) AS emp_count FROM employees GROUP BY department
       expected_edges:
@@ -277,9 +394,10 @@ cases:
           is_temp: true
           transformations:
             - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
               group_keys:
                 - department
-
     - name: several group keys keep their written order
       sql: SELECT department, category, COUNT(*) AS n FROM products GROUP BY department, category
       expected_edges:
@@ -304,10 +422,11 @@ cases:
           is_temp: true
           transformations:
             - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
               group_keys:
                 - department
                 - category
-
     - name: an aggregate expression carries its keys
       sql: SELECT SUM(price) + 1 AS top_price FROM products GROUP BY department
       expected_edges:
@@ -315,12 +434,15 @@ cases:
           from_field: price
           to_table: __result__
           to_field: top_price
+          relation_type: group
           has_transform: true
           is_temp: true
           transformations:
-            - group_keys:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(price)+1
+              group_keys:
                 - department
-
     - name: a windowed aggregate records no keys
       sql: SELECT SUM(price) OVER (PARTITION BY department) AS running FROM products GROUP BY department, price
       expected_edges:
@@ -328,19 +450,26 @@ cases:
           from_field: price
           to_table: __result__
           to_field: running
+          relation_type: group
           has_transform: true
           is_temp: true
           transformations:
-            - group_keys: []
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(price)OVER(PARTITIONBYdepartment)
+              group_keys: []
         - from_table: products
           from_field: department
           to_table: __result__
           to_field: running
+          relation_type: group
           has_transform: true
           is_temp: true
           transformations:
-            - group_keys: []
-
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(price)OVER(PARTITIONBYdepartment)
+              group_keys: []
     - name: an aggregate inside a subquery records no keys
       sql: SELECT (SELECT COUNT(*) FROM orders) AS n FROM users GROUP BY users.id
       expected_edges:
@@ -353,4 +482,5 @@ cases:
           is_temp: true
           transformations:
             - operation: PROJECT
+              expression: (SELECTCOUNT(*)FROMorders)
               group_keys: []

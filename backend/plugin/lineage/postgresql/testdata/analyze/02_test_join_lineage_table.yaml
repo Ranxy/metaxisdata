@@ -7,18 +7,44 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
+          is_temp: true
         - from_table: orders
           from_field: order_id
           to_table: __result__
           to_field: order_id
+          relation_type: direct
+          is_temp: true
         - from_table: orders
           from_field: total
           to_table: __result__
           to_field: total
+          relation_type: direct
+          is_temp: true
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
     - name: left outer join
       sql: |-
         SELECT u.id, u.name, o.order_id
@@ -29,14 +55,38 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
+          is_temp: true
         - from_table: orders
           from_field: order_id
           to_table: __result__
           to_field: order_id
+          relation_type: direct
+          is_temp: true
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
     - name: multiple joins
       sql: |-
         SELECT u.name, o.order_id, p.product_name
@@ -48,14 +98,56 @@ cases:
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
+          is_temp: true
         - from_table: orders
           from_field: order_id
           to_table: __result__
           to_field: order_id
+          relation_type: direct
+          is_temp: true
         - from_table: products
           from_field: product_name
           to_table: __result__
           to_field: product_name
+          relation_type: direct
+          is_temp: true
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
+        - from_table: orders
+          from_field: product_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: o.product_id = p.id
+        - from_table: products
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: o.product_id = p.id
     - name: cross join
       sql: |-
         SELECT u.name, d.department_name
@@ -66,10 +158,14 @@ cases:
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
+          is_temp: true
         - from_table: departments
           from_field: department_name
           to_table: __result__
           to_field: department_name
+          relation_type: direct
+          is_temp: true
     - name: natural join
       sql: |-
         SELECT id, name, department_id
@@ -80,11 +176,17 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: user_departments
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
+          is_temp: true
         - from_table: user_departments
           from_field: department_id
           to_table: __result__
           to_field: department_id
+          relation_type: direct
+          is_temp: true

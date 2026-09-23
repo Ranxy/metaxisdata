@@ -7,11 +7,13 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
           is_temp: true
         - from_table: users
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
           is_temp: true
     - name: select with column aliases
       sql: SELECT users.id AS user_id, users.name AS user_name FROM users
@@ -20,10 +22,14 @@ cases:
           from_field: id
           to_table: __result__
           to_field: user_id
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: name
           to_table: __result__
           to_field: user_name
+          relation_type: direct
+          is_temp: true
     - name: select with expression (|| operator)
       sql: SELECT id, first_name || ' ' || last_name AS full_name FROM users
       expected_edges:
@@ -31,18 +37,30 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: first_name
           to_table: __result__
           to_field: full_name
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: first_name || ' ' || last_name
+              op_type: '||'
         - from_table: users
           from_field: last_name
           to_table: __result__
           to_field: full_name
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: first_name || ' ' || last_name
+              op_type: '||'
     - name: select with CONCAT function
       sql: SELECT id, CONCAT(first_name, ' ', last_name) AS full_name FROM users
       expected_edges:
@@ -50,17 +68,39 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
           has_transform: false
+          is_temp: true
         - from_table: users
           from_field: first_name
           to_table: __result__
           to_field: full_name
+          relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: concat
+              expression: CONCAT(first_name, ' ', last_name)
+              arguments:
+                - first_name
+                - ''' '''
+                - last_name
         - from_table: users
           from_field: last_name
           to_table: __result__
           to_field: full_name
+          relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: concat
+              expression: CONCAT(first_name, ' ', last_name)
+              arguments:
+                - first_name
+                - ''' '''
+                - last_name
     - name: select with WHERE clause
       sql: SELECT id, name FROM users WHERE age > 30
       expected_edges:
@@ -68,10 +108,23 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
+          is_temp: true
+        - from_table: users
+          from_field: age
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: age > 30
     - name: select star without catalog
       sql: SELECT * FROM users
       expected_edges:
@@ -79,6 +132,8 @@ cases:
           from_field: '*'
           to_table: __result__
           to_field: '*'
+          relation_type: direct
+          is_temp: true
     - name: select with qualified table name (schema.table)
       sql: SELECT mydb.users.id, mydb.users.name FROM mydb.users
       expected_edges:
@@ -87,11 +142,15 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_schema: mydb
           from_table: users
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
+          is_temp: true
     - name: select with table alias
       sql: SELECT u.id, u.name FROM users AS u
       expected_edges:
@@ -99,10 +158,14 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
+          is_temp: true
     - name: select with COALESCE function
       sql: SELECT id, COALESCE(nickname, name) AS display_name FROM users
       expected_edges:
@@ -110,16 +173,36 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: nickname
           to_table: __result__
           to_field: display_name
+          relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: COALESCE
+              expression: COALESCE(nickname, name)
+              arguments:
+                - nickname
+                - name
         - from_table: users
           from_field: name
           to_table: __result__
           to_field: display_name
+          relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: COALESCE
+              expression: COALESCE(nickname, name)
+              arguments:
+                - nickname
+                - name
     - name: select with CAST expression
       sql: SELECT id, CAST(created_at AS DATE) AS create_date FROM users
       expected_edges:
@@ -127,11 +210,21 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: created_at
           to_table: __result__
           to_field: create_date
+          relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: CAST
+              expression: CAST(created_at AS DATE)
+              arguments:
+                - created_at
     - name: select with PostgreSQL type cast (::)
       sql: SELECT id, created_at::date AS create_date FROM users
       expected_edges:
@@ -139,14 +232,21 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: created_at
           to_table: __result__
           to_field: create_date
           relation_type: indirect
           has_transform: true
-    # An aliased wildcard resolves through the scope key (the alias) while the
-    # edge keeps the real relation name.
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: CAST
+              expression: created_at::date
+              arguments:
+                - created_at
     - name: select star over aliased relations without catalog
       sql: SELECT * FROM employees e JOIN departments d ON e.id = d.department_id
       expected_edges:
@@ -162,6 +262,24 @@ cases:
           to_field: '*'
           relation_type: direct
           is_temp: true
+        - from_table: employees
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: e.id = d.department_id
+        - from_table: departments
+          from_field: department_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: e.id = d.department_id
     - name: select table star over an aliased relation
       sql: SELECT e.*, d.name FROM employees e JOIN departments d ON e.department_id = d.id
       expected_edges:
@@ -177,3 +295,21 @@ cases:
           to_field: name
           relation_type: direct
           is_temp: true
+        - from_table: employees
+          from_field: department_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: e.department_id = d.id
+        - from_table: departments
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: e.department_id = d.id

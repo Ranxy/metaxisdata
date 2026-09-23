@@ -11,26 +11,30 @@ cases:
           is_temp: true
           transformations:
             - operation: UNION
-        - from_table: employees
-          from_field: name
-          to_table: __result__
-          to_field: name
-          relation_type: union
-          is_temp: true
         - from_table: contractors
           from_field: id
           to_table: __result__
           to_field: id
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: contractors
           from_field: name
           to_table: __result__
           to_field: name
           relation_type: union
           is_temp: true
-    # The output columns of a set operation are named by its first arm, so the
-    # second arm's differently named column maps onto uid too.
+          transformations:
+            - operation: UNION
     - name: UNION ALL with differing aliases
       sql: SELECT user_id AS uid, amount FROM sales UNION ALL SELECT user_id, amount FROM refunds
       expected_edges:
@@ -42,28 +46,50 @@ cases:
           is_temp: true
           transformations:
             - operation: UNION
-        - from_table: sales
-          from_field: amount
-          to_table: __result__
-          to_field: amount
-          relation_type: union
-          is_temp: true
         - from_table: refunds
           from_field: user_id
           to_table: __result__
           to_field: uid
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: sales
+          from_field: amount
+          to_table: __result__
+          to_field: amount
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: refunds
           from_field: amount
           to_table: __result__
           to_field: amount
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
     - name: three-way UNION
       sql: SELECT id, name FROM employees UNION SELECT id, name FROM contractors UNION SELECT id, name FROM vendors
       expected_edges:
         - from_table: employees
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: contractors
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: vendors
           from_field: id
           to_table: __result__
           to_field: id
@@ -77,30 +103,24 @@ cases:
           to_field: name
           relation_type: union
           is_temp: true
-        - from_table: contractors
-          from_field: id
-          to_table: __result__
-          to_field: id
-          relation_type: union
-          is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: contractors
           from_field: name
           to_table: __result__
           to_field: name
           relation_type: union
           is_temp: true
-        - from_table: vendors
-          from_field: id
-          to_table: __result__
-          to_field: id
-          relation_type: union
-          is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: vendors
           from_field: name
           to_table: __result__
           to_field: name
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
     - name: parenthesized arms
       sql: (SELECT id FROM t1) UNION ALL (SELECT id FROM t2)
       expected_edges:
@@ -118,10 +138,20 @@ cases:
           to_field: id
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
     - name: UNION with a CTE arm
       sql: WITH recent AS (SELECT id, amount FROM orders) SELECT id, amount FROM recent UNION ALL SELECT id, amount FROM archive
       expected_edges:
         - from_table: orders
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: archive
           from_field: id
           to_table: __result__
           to_field: id
@@ -135,18 +165,16 @@ cases:
           to_field: amount
           relation_type: union
           is_temp: true
-        - from_table: archive
-          from_field: id
-          to_table: __result__
-          to_field: id
-          relation_type: union
-          is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: archive
           from_field: amount
           to_table: __result__
           to_field: amount
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
     - name: INTERSECT keeps every arm
       sql: SELECT id FROM a INTERSECT SELECT id FROM b
       expected_edges:
@@ -164,6 +192,8 @@ cases:
           to_field: id
           relation_type: intersect
           is_temp: true
+          transformations:
+            - operation: INTERSECT
     - name: EXCEPT keeps every arm
       sql: SELECT id FROM a EXCEPT SELECT id FROM b
       expected_edges:
@@ -181,3 +211,5 @@ cases:
           to_field: id
           relation_type: except
           is_temp: true
+          transformations:
+            - operation: EXCEPT

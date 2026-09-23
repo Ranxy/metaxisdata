@@ -31,7 +31,24 @@ cases:
           to_field: id
           relation_type: direct
           is_temp: true
-
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = b.id
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = b.id
     - name: without metadata the scope keeps one relation by name
       sql: SELECT id FROM a JOIN b ON a.id = b.id
       expected_edges:
@@ -41,7 +58,24 @@ cases:
           to_field: id
           relation_type: direct
           is_temp: true
-
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = b.id
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = b.id
     - name: same-named relations in two schemas each contribute the column
       sql: SELECT id FROM s1.t JOIN s2.t ON s1.t.id = s2.t.id
       catalog:
@@ -69,7 +103,26 @@ cases:
           to_field: id
           relation_type: direct
           is_temp: true
-
+        - from_schema: s1
+          from_table: t
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: s1.t.id = s2.t.id
+        - from_schema: s2
+          from_table: t
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: s1.t.id = s2.t.id
     - name: a coalesced USING column comes from both sides
       sql: SELECT dept_id FROM employees e JOIN departments d USING (dept_id)
       catalog:
@@ -93,7 +146,24 @@ cases:
           to_field: dept_id
           relation_type: direct
           is_temp: true
-
+        - from_table: employees
+          from_field: dept_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: USING (dept_id)
+        - from_table: departments
+          from_field: dept_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: USING (dept_id)
     - name: a coalesced NATURAL JOIN column comes from both sides
       sql: SELECT id FROM a NATURAL JOIN b
       catalog:
@@ -117,7 +187,6 @@ cases:
           to_field: id
           relation_type: direct
           is_temp: true
-
     - name: a CTE body keeps both owners of a coalesced column
       sql: WITH c AS (SELECT dept_id FROM employees e JOIN departments d USING (dept_id)) SELECT dept_id FROM c
       catalog:
@@ -141,9 +210,24 @@ cases:
           to_field: dept_id
           relation_type: direct
           is_temp: true
-
-    # The enclosing scope provides the name, so the subquery's own relation does
-    # not: before the search walked outward this was attributed to `customers`.
+        - from_table: employees
+          from_field: dept_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: USING (dept_id)
+        - from_table: departments
+          from_field: dept_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: USING (dept_id)
     - name: a correlated subquery select item resolves in the enclosing scope
       sql: SELECT (SELECT amount FROM customers c) AS owner FROM orders o
       catalog:
@@ -164,7 +248,7 @@ cases:
           is_temp: true
           transformations:
             - operation: PROJECT
-
+              expression: (SELECT amount FROM customers c)
     - name: without metadata the inner relation keeps the reference
       sql: SELECT (SELECT amount FROM customers c) AS owner FROM orders o
       expected_edges:
@@ -177,14 +261,7 @@ cases:
           is_temp: true
           transformations:
             - operation: PROJECT
-
-    # A relation whose columns are unknown cannot be ruled out either, so it
-    # answers for a name no described relation owns. A derived table is described
-    # as soon as the analyzer could name all of its columns, which needs no
-    # catalog: its own output list is enough. An unexpanded wildcard leaves the
-    # list incomplete, so the relation stays undescribed — but the wildcard entry
-    # in its lineage still answers any name, because it forwards every column of
-    # its source.
+              expression: (SELECT amount FROM customers c)
     - name: a relation with no snapshot answers for the name
       sql: SELECT x FROM a JOIN u ON a.id = u.id
       catalog:
@@ -198,7 +275,24 @@ cases:
           to_field: x
           relation_type: direct
           is_temp: true
-
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = u.id
+        - from_table: u
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = u.id
     - name: a derived table answers through its own lineage
       sql: SELECT x FROM a JOIN (SELECT id, x FROM b) d ON a.id = d.id
       catalog:
@@ -212,7 +306,24 @@ cases:
           to_field: x
           relation_type: direct
           is_temp: true
-
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = d.id
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = d.id
     - name: a name a base table and a derived table both own is reported from both
       sql: SELECT id FROM a JOIN (SELECT id, x FROM b) d ON a.id = d.id
       catalog:
@@ -232,7 +343,24 @@ cases:
           to_field: id
           relation_type: direct
           is_temp: true
-
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = d.id
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = d.id
     - name: a CTE is a described relation too
       sql: WITH d AS (SELECT id, x FROM b) SELECT id FROM a JOIN d ON a.id = d.id
       catalog:
@@ -252,7 +380,24 @@ cases:
           to_field: id
           relation_type: direct
           is_temp: true
-
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = d.id
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = d.id
     - name: a correlated subquery select item reaches past a derived table
       sql: SELECT (SELECT amount FROM (SELECT id, y FROM b) d) AS owner FROM orders o
       expected_edges:
@@ -265,7 +410,7 @@ cases:
           is_temp: true
           transformations:
             - operation: PROJECT
-
+              expression: (SELECT amount FROM (SELECT id, y FROM b) d)
     - name: an expanded wildcard body describes the derived table
       sql: SELECT x FROM a JOIN (SELECT * FROM b) d ON a.id = d.id
       catalog:
@@ -282,11 +427,24 @@ cases:
           to_field: x
           relation_type: direct
           is_temp: true
-
-    # The derived relation cannot name every column it exposes, so it stays
-    # undescribed and the fallback picks it. Its wildcard lineage entry answers
-    # the name anyway: the column behind the wildcard is unknown, the source table
-    # is not, so the edge names `b` instead of inventing a column of `a`.
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = d.id
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = d.id
     - name: an unexpanded wildcard body forwards the column
       sql: SELECT x FROM a JOIN (SELECT * FROM b) d ON a.id = d.id
       catalog:
@@ -300,10 +458,24 @@ cases:
           to_field: x
           relation_type: direct
           is_temp: true
-
-    # The flat path is not the only one that meets a wildcard: a temporary
-    # relation built out of another one flattens the nested wildcard at
-    # construction time, and that path answers an unnamed column the same way.
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = d.id
+        - from_table: b
+          from_field: '*'
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id = d.id
     - name: a nested temporary relation forwards a wildcard column
       sql: SELECT x FROM (SELECT x FROM (SELECT * FROM t) inner_d) outer_d
       expected_edges:

@@ -1,0 +1,399 @@
+name: TestPredicateInfluence_Table
+cases:
+    # A predicate decides which rows a statement produces without its value
+    # reaching any output column, so it is an influence on the target rows: the
+    # edge carries no target column and a FILTER or JOIN transformation. This is
+    # OpenLineage's INDIRECT relation, whose FILTER / JOIN subtypes name exactly
+    # these two clauses.
+    - name: a where predicate influences the rows the statement produces
+      sql: SELECT o.total FROM orders o WHERE o.status = 'paid'
+      expected_edges:
+        - from_table: orders
+          from_field: total
+          to_table: __result__
+          to_field: total
+          relation_type: direct
+          is_temp: true
+        - from_table: orders
+          from_field: status
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: o.status='paid'
+    - name: a join condition is a join influence
+      sql: CREATE VIEW v AS SELECT a.x FROM t1 a JOIN t2 b ON a.id = b.id
+      expected_edges:
+        - from_table: t1
+          from_field: x
+          to_table: v
+          to_field: x
+          relation_type: direct
+          is_temp: false
+        - from_table: t1
+          from_field: id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: a.id=b.id
+        - from_table: t2
+          from_field: id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: a.id=b.id
+    - name: a column that both joins and filters keeps one edge
+      sql: CREATE VIEW v AS SELECT a.x FROM t1 a JOIN t2 b ON a.id = b.id WHERE a.id > 0
+      expected_edges:
+        - from_table: t1
+          from_field: x
+          to_table: v
+          to_field: x
+          relation_type: direct
+          is_temp: false
+        - from_table: t1
+          from_field: id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: a.id=b.id
+        - from_table: t2
+          from_field: id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: a.id=b.id
+    - name: having filters the groups
+      sql: CREATE VIEW v AS SELECT a.x FROM t1 a GROUP BY a.x HAVING SUM(a.y) > 100
+      expected_edges:
+        - from_table: t1
+          from_field: x
+          to_table: v
+          to_field: x
+          relation_type: direct
+          is_temp: false
+        - from_table: t1
+          from_field: y
+          to_table: v
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: SUM(a.y)>100
+    - name: having on a select alias influences the aggregate source
+      sql: CREATE VIEW v AS SELECT o.user_id, COUNT(*) AS c FROM orders o GROUP BY o.user_id HAVING c > 1
+      expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: v
+          to_field: user_id
+          relation_type: direct
+          is_temp: false
+        - from_table: orders
+          from_field: '*'
+          to_table: v
+          to_field: c
+          relation_type: group
+          is_temp: false
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
+              group_keys:
+                - o.user_id
+        - from_table: orders
+          from_field: '*'
+          to_table: v
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: c>1
+    - name: using names the join key of both sides
+      sql: CREATE VIEW v AS SELECT a.name, d.dept_id FROM employees a JOIN departments d USING (dept_id)
+      expected_edges:
+        - from_table: employees
+          from_field: name
+          to_table: v
+          to_field: name
+          relation_type: direct
+          is_temp: false
+        - from_table: departments
+          from_field: dept_id
+          to_table: v
+          to_field: dept_id
+          relation_type: direct
+          is_temp: false
+        - from_table: employees
+          from_field: dept_id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: USING(dept_id)
+        - from_table: departments
+          from_field: dept_id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: USING(dept_id)
+    - name: a natural join records no influence
+      sql: SELECT id FROM a NATURAL JOIN b
+      catalog:
+        tables:
+            a:
+                - id
+                - x
+            b:
+                - id
+                - y
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+    - name: a predicate over a derived table is attributed to its base table
+      sql: CREATE VIEW v AS SELECT d.a FROM (SELECT a, b FROM t) d WHERE d.b > 0
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: v
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_table: t
+          from_field: b
+          to_table: v
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: d.b>0
+    - name: a predicate inside a CTE body reaches the statement target
+      sql: CREATE VIEW v AS WITH c AS (SELECT id, amount FROM orders WHERE status = 'paid') SELECT id FROM c
+      expected_edges:
+        - from_table: orders
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: orders
+          from_field: status
+          to_table: v
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: status='paid'
+    - name: a predicate in a set operation arm reaches the merged result
+      sql: SELECT id FROM a WHERE x > 0 UNION ALL SELECT id FROM b WHERE y > 0
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: a
+          from_field: x
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: x>0
+        - from_table: b
+          from_field: y
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: y>0
+    - name: an exists subquery contributes its predicate columns
+      sql: SELECT x FROM a WHERE EXISTS (SELECT 1 FROM b WHERE b.y = a.y)
+      expected_edges:
+        - from_table: a
+          from_field: x
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+        - from_table: b
+          from_field: y
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: b.y=a.y
+        - from_table: a
+          from_field: y
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: b.y=a.y
+    - name: a predicate column that is also a value source keeps both edges
+      sql: CREATE VIEW v AS SELECT a.f FROM t1 a WHERE a.f > 0
+      expected_edges:
+        - from_table: t1
+          from_field: f
+          to_table: v
+          to_field: f
+          relation_type: direct
+          is_temp: false
+        - from_table: t1
+          from_field: f
+          to_table: v
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: a.f>0
+    - name: a constant predicate records no influence
+      sql: CREATE VIEW v AS SELECT a.x FROM t1 a WHERE 1 = 1
+      expected_edges:
+        - from_table: t1
+          from_field: x
+          to_table: v
+          to_field: x
+          relation_type: direct
+          is_temp: false
+    - name: order by and limit record no influence
+      sql: CREATE VIEW v AS SELECT a.x FROM t1 a ORDER BY a.y LIMIT 5
+      expected_edges:
+        - from_table: t1
+          from_field: x
+          to_table: v
+          to_field: x
+          relation_type: direct
+          is_temp: false
+    - name: a qualified predicate keeps its database
+      sql: CREATE VIEW v AS SELECT db1.t.a FROM db1.t WHERE db1.t.f > 0
+      catalog:
+        databases:
+            db1:
+                t:
+                    - a
+                    - f
+      expected_edges:
+        - from_database: db1
+          from_table: t
+          from_field: a
+          to_table: v
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_database: db1
+          from_table: t
+          from_field: f
+          to_table: v
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: db1.t.f>0
+    - name: an insert select records the influence on the target table
+      sql: INSERT INTO summary SELECT o.total FROM orders o WHERE o.status = 'paid'
+      expected_edges:
+        - from_table: orders
+          from_field: total
+          to_table: summary
+          to_field: total
+          relation_type: direct
+          is_temp: false
+        - from_table: orders
+          from_field: status
+          to_table: summary
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: o.status='paid'
+    - name: a create table as select records the influence on the created table
+      sql: CREATE TABLE t2 AS SELECT o.total FROM orders o WHERE o.status = 'paid'
+      expected_edges:
+        - from_table: orders
+          from_field: total
+          to_table: t2
+          to_field: total
+          relation_type: direct
+          is_temp: false
+        - from_table: orders
+          from_field: status
+          to_table: t2
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: o.status='paid'
+    - name: a materialized view records the influence on the created object
+      sql: CREATE MATERIALIZED VIEW mv AS SELECT o.total FROM orders o WHERE o.status = 'paid'
+      expected_edges:
+        - from_table: orders
+          from_field: total
+          to_table: mv
+          to_field: total
+          relation_type: direct
+          is_temp: false
+        - from_table: orders
+          from_field: status
+          to_table: mv
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: o.status='paid'

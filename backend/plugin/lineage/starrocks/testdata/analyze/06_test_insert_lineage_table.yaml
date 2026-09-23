@@ -77,6 +77,12 @@ cases:
           relation_type: group
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
+              group_keys:
+                - user_id
     - name: INSERT SELECT with a star
       sql: INSERT INTO t2 SELECT * FROM users u
       expected_edges:
@@ -110,9 +116,13 @@ cases:
           to_field: id
           relation_type: union
           is_temp: false
+          transformations:
+            - operation: UNION
         - from_table: t3
           from_field: id
           to_table: t2
           to_field: id
           relation_type: union
           is_temp: false
+          transformations:
+            - operation: UNION

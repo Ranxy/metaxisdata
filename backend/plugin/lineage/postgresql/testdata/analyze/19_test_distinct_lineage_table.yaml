@@ -7,6 +7,8 @@ cases:
           from_field: category
           to_table: __result__
           to_field: category
+          relation_type: direct
+          is_temp: true
     - name: SELECT DISTINCT ON (PostgreSQL specific)
       sql: |-
         SELECT DISTINCT ON (user_id) user_id, order_id, total
@@ -17,11 +19,17 @@ cases:
           from_field: user_id
           to_table: __result__
           to_field: user_id
+          relation_type: direct
+          is_temp: true
         - from_table: orders
           from_field: order_id
           to_table: __result__
           to_field: order_id
+          relation_type: direct
+          is_temp: true
         - from_table: orders
           from_field: total
           to_table: __result__
           to_field: total
+          relation_type: direct
+          is_temp: true

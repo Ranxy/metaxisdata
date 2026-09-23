@@ -7,10 +7,23 @@ cases:
           from_field: id
           to_table: new_users
           to_field: id
+          relation_type: direct
+          is_temp: false
         - from_table: users
           from_field: name
           to_table: new_users
           to_field: name
+          relation_type: direct
+          is_temp: false
+        - from_table: users
+          from_field: age
+          to_table: new_users
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: age > 30
     - name: CREATE TABLE AS SELECT with JOIN
       sql: "CREATE TABLE user_stats AS \n\t\t\t      SELECT u.id, u.name, COUNT(o.id) AS order_count, SUM(o.total) AS total_spent\n\t\t\t      FROM users u \n\t\t\t      LEFT JOIN orders o ON u.id = o.user_id \n\t\t\t      GROUP BY u.id, u.name"
       expected_edges:
@@ -18,22 +31,60 @@ cases:
           from_field: id
           to_table: user_stats
           to_field: id
+          relation_type: direct
+          is_temp: false
         - from_table: users
           from_field: name
           to_table: user_stats
           to_field: name
+          relation_type: direct
+          is_temp: false
         - from_table: orders
           from_field: id
           to_table: user_stats
           to_field: order_count
           relation_type: group
           has_transform: true
+          is_temp: false
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(o.id)
+              group_keys:
+                - u.id
+                - u.name
         - from_table: orders
           from_field: total
           to_table: user_stats
           to_field: total_spent
           relation_type: group
           has_transform: true
+          is_temp: false
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(o.total)
+              group_keys:
+                - u.id
+                - u.name
+        - from_table: users
+          from_field: id
+          to_table: user_stats
+          to_field: ""
+          relation_type: join
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
+        - from_table: orders
+          from_field: user_id
+          to_table: user_stats
+          to_field: ""
+          relation_type: join
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
     - name: CREATE TEMP TABLE AS SELECT
       sql: CREATE TEMP TABLE tmp_active_users AS SELECT id, name FROM users WHERE status = 'active'
       expected_edges:
@@ -41,10 +92,23 @@ cases:
           from_field: id
           to_table: tmp_active_users
           to_field: id
+          relation_type: direct
+          is_temp: false
         - from_table: users
           from_field: name
           to_table: tmp_active_users
           to_field: name
+          relation_type: direct
+          is_temp: false
+        - from_table: users
+          from_field: status
+          to_table: tmp_active_users
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: status = 'active'
     - name: CREATE TABLE AS SELECT with schema
       sql: CREATE TABLE myschema.new_users AS SELECT id, name FROM public.users
       expected_edges:
@@ -54,9 +118,13 @@ cases:
           to_schema: myschema
           to_table: new_users
           to_field: id
+          relation_type: direct
+          is_temp: false
         - from_schema: public
           from_table: users
           from_field: name
           to_schema: myschema
           to_table: new_users
           to_field: name
+          relation_type: direct
+          is_temp: false

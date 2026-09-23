@@ -12,18 +12,29 @@ cases:
           to_field: id
           relation_type: direct
           has_transform: false
+          is_temp: true
         - from_table: t
           from_field: a
           to_table: __result__
           to_field: is_equal
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: a = b
+              op_type: =
         - from_table: t
           from_field: b
           to_table: __result__
           to_field: is_equal
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: a = b
+              op_type: =
     - name: concatenation operator is indirect
       sql: SELECT first_name || ' ' || last_name AS full_name FROM t
       expected_edges:
@@ -33,12 +44,22 @@ cases:
           to_field: full_name
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: first_name || ' ' || last_name
+              op_type: '||'
         - from_table: t
           from_field: last_name
           to_table: __result__
           to_field: full_name
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: first_name || ' ' || last_name
+              op_type: '||'
     - name: postgres cast syntax is indirect
       sql: SELECT created_at::date AS create_date FROM t
       expected_edges:
@@ -48,6 +69,13 @@ cases:
           to_field: create_date
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: CAST
+              expression: created_at::date
+              arguments:
+                - created_at
     - name: cast function is indirect
       sql: SELECT CAST(created_at AS date) AS create_date FROM t
       expected_edges:
@@ -57,6 +85,13 @@ cases:
           to_field: create_date
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: CAST
+              expression: CAST(created_at AS date)
+              arguments:
+                - created_at
     - name: null test is indirect
       sql: SELECT a IS NULL AS is_null FROM t
       expected_edges:
@@ -66,6 +101,11 @@ cases:
           to_field: is_null
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: a IS NULL
+              op_type: IS NULL
     - name: coalesce is indirect
       sql: SELECT COALESCE(a, b) AS c FROM t
       expected_edges:
@@ -75,12 +115,28 @@ cases:
           to_field: c
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: COALESCE
+              expression: COALESCE(a, b)
+              arguments:
+                - a
+                - b
         - from_table: t
           from_field: b
           to_table: __result__
           to_field: c
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: COALESCE
+              expression: COALESCE(a, b)
+              arguments:
+                - a
+                - b
     - name: greatest is indirect
       sql: SELECT GREATEST(a, b) AS g FROM t
       expected_edges:
@@ -90,12 +146,28 @@ cases:
           to_field: g
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: GREATEST
+              expression: GREATEST(a, b)
+              arguments:
+                - a
+                - b
         - from_table: t
           from_field: b
           to_table: __result__
           to_field: g
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: GREATEST
+              expression: GREATEST(a, b)
+              arguments:
+                - a
+                - b
     - name: scalar function is indirect
       sql: SELECT lower(name) AS lowered FROM t
       expected_edges:
@@ -105,6 +177,13 @@ cases:
           to_field: lowered
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: lower
+              expression: lower(name)
+              arguments:
+                - name
     - name: windowed aggregate is a window not a group
       sql: SELECT SUM(x) OVER (PARTITION BY a ORDER BY b) AS running_total FROM t
       expected_edges:
@@ -114,18 +193,45 @@ cases:
           to_field: running_total
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              expression: SUM(x) OVER (PARTITION BY a ORDER BY b)
+              partition_by:
+                - a
+              order_by:
+                - b
         - from_table: t
           from_field: a
           to_table: __result__
           to_field: running_total
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              expression: SUM(x) OVER (PARTITION BY a ORDER BY b)
+              partition_by:
+                - a
+              order_by:
+                - b
         - from_table: t
           from_field: b
           to_table: __result__
           to_field: running_total
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              expression: SUM(x) OVER (PARTITION BY a ORDER BY b)
+              partition_by:
+                - a
+              order_by:
+                - b
     - name: case expression is indirect
       sql: SELECT CASE WHEN a > 1 THEN 1 ELSE 2 END AS bucket FROM t
       expected_edges:
@@ -135,6 +241,10 @@ cases:
           to_field: bucket
           relation_type: indirect
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: CASE
+              expression: CASE WHEN a > 1 THEN 1 ELSE 2 END
     - name: aggregate without a column keeps the wildcard fallback
       sql: SELECT pg_catalog.count(*) AS c FROM t
       expected_edges:
@@ -144,3 +254,9 @@ cases:
           to_field: c
           relation_type: group
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: pg_catalog.count(*)
+              group_keys: []

@@ -61,6 +61,12 @@ cases:
           relation_type: group
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(a.amount)
+              group_keys:
+                - a.id
     - name: CREATE VIEW with a CTE body
       sql: CREATE VIEW v AS WITH c AS (SELECT id, name FROM users) SELECT c.id, c.name FROM c
       expected_edges:
@@ -85,12 +91,16 @@ cases:
           to_field: id
           relation_type: union
           is_temp: false
+          transformations:
+            - operation: UNION
         - from_table: t2
           from_field: id
           to_table: v
           to_field: id
           relation_type: union
           is_temp: false
+          transformations:
+            - operation: UNION
     - name: CREATE VIEW with a parenthesized body
       sql: CREATE VIEW v AS (SELECT id FROM t1)
       expected_edges:
@@ -119,12 +129,16 @@ cases:
           to_field: id
           relation_type: union
           is_temp: false
+          transformations:
+            - operation: UNION
         - from_table: t2
           from_field: id
           to_table: v
           to_field: id
           relation_type: union
           is_temp: false
+          transformations:
+            - operation: UNION
     - name: SHOW CREATE VIEW output pasted as manual SQL
       sql: CREATE VIEW v (a, b) SECURITY NONE AS SELECT id, name FROM users
       expected_edges:
@@ -156,6 +170,14 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: WINDOW
+              function_name: ROW_NUMBER
+              expression: ROW_NUMBER()OVER(PARTITIONBYtagORDERBYid)
+              partition_by:
+                - tag
+              order_by:
+                - id
         - from_table: events
           from_field: id
           to_table: v
@@ -163,6 +185,14 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: WINDOW
+              function_name: ROW_NUMBER
+              expression: ROW_NUMBER()OVER(PARTITIONBYtagORDERBYid)
+              partition_by:
+                - tag
+              order_by:
+                - id
     - name: CREATE VIEW over a cross-database source
       sql: CREATE VIEW v AS SELECT raw.id, raw.name FROM raw_data.users raw
       expected_edges:
@@ -196,6 +226,12 @@ cases:
           relation_type: group
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(amount)
+              group_keys:
+                - user_id
     - name: CREATE VIEW with star over a join
       sql: CREATE VIEW v AS SELECT * FROM employees e JOIN departments d ON e.department_id = d.id
       expected_edges:
@@ -211,3 +247,21 @@ cases:
           to_field: '*'
           relation_type: direct
           is_temp: false
+        - from_table: employees
+          from_field: department_id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: e.department_id=d.id
+        - from_table: departments
+          from_field: id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: e.department_id=d.id

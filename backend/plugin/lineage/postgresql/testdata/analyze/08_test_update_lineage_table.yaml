@@ -7,12 +7,23 @@ cases:
           from_field: '*'
           to_table: users
           to_field: email
+          relation_type: indirect
           has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: '''new@email.com'''
         - from_table: users
           from_field: '*'
           to_table: users
           to_field: updated_at
+          relation_type: indirect
           has_transform: true
+          is_temp: false
+          transformations:
+            - operation: FUNCTION
+              function_name: now
+              expression: NOW()
     - name: UPDATE with column reference
       sql: UPDATE users SET new_email = old_email, full_name = first_name || ' ' || last_name
       expected_edges:
@@ -20,16 +31,33 @@ cases:
           from_field: old_email
           to_table: users
           to_field: new_email
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: old_email
         - from_table: users
           from_field: first_name
           to_table: users
           to_field: full_name
+          relation_type: indirect
           has_transform: true
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              expression: first_name || ' ' || last_name
+              op_type: '||'
         - from_table: users
           from_field: last_name
           to_table: users
           to_field: full_name
+          relation_type: indirect
           has_transform: true
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              expression: first_name || ' ' || last_name
+              op_type: '||'
     - name: UPDATE with FROM clause
       sql: "UPDATE orders \n\t\t\t      SET user_name = u.name, discount = orders.total * 0.1\n\t\t\t      FROM users u\n\t\t\t      WHERE orders.user_id = u.id"
       expected_edges:
@@ -37,11 +65,22 @@ cases:
           from_field: name
           to_table: orders
           to_field: user_name
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: u.name
         - from_table: orders
           from_field: total
           to_table: orders
           to_field: discount
+          relation_type: indirect
           has_transform: true
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              expression: orders.total * 0.1
+              op_type: '*'
     - name: UPDATE with subquery
       sql: "UPDATE users \n\t\t\t      SET total_orders = (SELECT COUNT(*) FROM orders WHERE orders.user_id = users.id)"
       expected_edges:
@@ -51,6 +90,10 @@ cases:
           to_field: total_orders
           relation_type: indirect
           has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: (SELECT COUNT(*) FROM orders WHERE orders.user_id = users.id)
     - name: UPDATE with CTE
       sql: |-
         WITH high_value_users AS (
@@ -64,4 +107,9 @@ cases:
           from_field: '*'
           to_table: users
           to_field: status
+          relation_type: indirect
           has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: '''premium'''

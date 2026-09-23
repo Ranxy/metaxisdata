@@ -7,11 +7,21 @@ cases:
           from_field: user_id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: orders
           from_field: '*'
           to_table: __result__
           to_field: total_orders
+          relation_type: group
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
+              group_keys:
+                - user_id
     - name: nested subquery filters intermediate lineage
       sql: SELECT foo.user_id, foo.total_amount FROM (SELECT user_id, total_amount FROM (SELECT user_id, SUM(amount) AS total_amount FROM orders GROUP BY user_id) sub) foo
       expected_edges:
@@ -19,11 +29,21 @@ cases:
           from_field: user_id
           to_table: __result__
           to_field: user_id
+          relation_type: direct
+          is_temp: true
         - from_table: orders
           from_field: amount
           to_table: __result__
           to_field: total_amount
+          relation_type: group
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(amount)
+              group_keys:
+                - user_id
     - name: joined derived tables
       sql: SELECT foo.user_id, foo.total_amount, bar.order_count FROM (SELECT user_id, SUM(amount) AS total_amount FROM orders GROUP BY user_id) foo JOIN (SELECT user_id, COUNT(*) AS order_count FROM user_orders GROUP BY user_id) bar ON foo.user_id = bar.user_id
       expected_edges:
@@ -31,15 +51,51 @@ cases:
           from_field: user_id
           to_table: __result__
           to_field: user_id
+          relation_type: direct
+          is_temp: true
         - from_table: orders
           from_field: amount
           to_table: __result__
           to_field: total_amount
+          relation_type: group
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(amount)
+              group_keys:
+                - user_id
         - from_table: user_orders
           from_field: '*'
           to_table: __result__
           to_field: order_count
+          relation_type: group
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
+              group_keys:
+                - user_id
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: foo.user_id=bar.user_id
+        - from_table: user_orders
+          from_field: user_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: foo.user_id=bar.user_id
     - name: derived table wildcard
       sql: SELECT s.* FROM (SELECT id, name FROM users) s
       expected_edges:
@@ -47,10 +103,14 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
+          is_temp: true
     - name: derived table with qualified database
       sql: SELECT s.id FROM (SELECT id FROM analytics.events) s
       expected_edges:
@@ -59,3 +119,5 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true

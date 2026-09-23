@@ -9,14 +9,20 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: employees
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
+          is_temp: true
         - from_table: employees
           from_field: salary
           to_table: __result__
           to_field: salary
+          relation_type: direct
+          is_temp: true
         - from_table: employees
           from_field: department
           to_table: __result__
@@ -27,8 +33,11 @@ cases:
           transformations:
             - operation: WINDOW
               function_name: ROW_NUMBER
-              partition_by: [department]
-              order_by: [salary]
+              expression: ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary DESC)
+              partition_by:
+                - department
+              order_by:
+                - salary
         - from_table: employees
           from_field: salary
           to_table: __result__
@@ -36,6 +45,14 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: ROW_NUMBER
+              expression: ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary DESC)
+              partition_by:
+                - department
+              order_by:
+                - salary
     - name: multiple window functions
       sql: "SELECT \n\t\t\t        product_id,\n\t\t\t        sale_date,\n\t\t\t        amount,\n\t\t\t        SUM(amount) OVER (PARTITION BY product_id ORDER BY sale_date) AS running_total,\n\t\t\t        AVG(amount) OVER (PARTITION BY product_id) AS avg_amount\n\t\t\t      FROM sales"
       expected_edges:
@@ -43,14 +60,20 @@ cases:
           from_field: product_id
           to_table: __result__
           to_field: product_id
+          relation_type: direct
+          is_temp: true
         - from_table: sales
           from_field: sale_date
           to_table: __result__
           to_field: sale_date
+          relation_type: direct
+          is_temp: true
         - from_table: sales
           from_field: amount
           to_table: __result__
           to_field: amount
+          relation_type: direct
+          is_temp: true
         - from_table: sales
           from_field: amount
           to_table: __result__
@@ -61,8 +84,11 @@ cases:
           transformations:
             - operation: WINDOW
               function_name: SUM
-              partition_by: [product_id]
-              order_by: [sale_date]
+              expression: SUM(amount) OVER (PARTITION BY product_id ORDER BY sale_date)
+              partition_by:
+                - product_id
+              order_by:
+                - sale_date
         - from_table: sales
           from_field: product_id
           to_table: __result__
@@ -70,6 +96,14 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              expression: SUM(amount) OVER (PARTITION BY product_id ORDER BY sale_date)
+              partition_by:
+                - product_id
+              order_by:
+                - sale_date
         - from_table: sales
           from_field: sale_date
           to_table: __result__
@@ -77,6 +111,14 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              expression: SUM(amount) OVER (PARTITION BY product_id ORDER BY sale_date)
+              partition_by:
+                - product_id
+              order_by:
+                - sale_date
         - from_table: sales
           from_field: amount
           to_table: __result__
@@ -87,7 +129,9 @@ cases:
           transformations:
             - operation: WINDOW
               function_name: AVG
-              partition_by: [product_id]
+              expression: AVG(amount) OVER (PARTITION BY product_id)
+              partition_by:
+                - product_id
         - from_table: sales
           from_field: product_id
           to_table: __result__
@@ -95,6 +139,12 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: AVG
+              expression: AVG(amount) OVER (PARTITION BY product_id)
+              partition_by:
+                - product_id
     - name: LEAD and LAG functions
       sql: "SELECT \n\t\t\t        id,\n\t\t\t        sale_date,\n\t\t\t        amount,\n\t\t\t        LAG(amount) OVER (ORDER BY sale_date) AS prev_amount,\n\t\t\t        LEAD(amount) OVER (ORDER BY sale_date) AS next_amount\n\t\t\t      FROM sales"
       expected_edges:
@@ -102,14 +152,20 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: sales
           from_field: sale_date
           to_table: __result__
           to_field: sale_date
+          relation_type: direct
+          is_temp: true
         - from_table: sales
           from_field: amount
           to_table: __result__
           to_field: amount
+          relation_type: direct
+          is_temp: true
         - from_table: sales
           from_field: amount
           to_table: __result__
@@ -120,7 +176,9 @@ cases:
           transformations:
             - operation: WINDOW
               function_name: LAG
-              order_by: [sale_date]
+              expression: LAG(amount) OVER (ORDER BY sale_date)
+              order_by:
+                - sale_date
         - from_table: sales
           from_field: sale_date
           to_table: __result__
@@ -128,6 +186,12 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: LAG
+              expression: LAG(amount) OVER (ORDER BY sale_date)
+              order_by:
+                - sale_date
         - from_table: sales
           from_field: amount
           to_table: __result__
@@ -138,7 +202,9 @@ cases:
           transformations:
             - operation: WINDOW
               function_name: LEAD
-              order_by: [sale_date]
+              expression: LEAD(amount) OVER (ORDER BY sale_date)
+              order_by:
+                - sale_date
         - from_table: sales
           from_field: sale_date
           to_table: __result__
@@ -146,6 +212,12 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: LEAD
+              expression: LEAD(amount) OVER (ORDER BY sale_date)
+              order_by:
+                - sale_date
     - name: RANK and DENSE_RANK functions
       sql: "SELECT \n\t\t\t        name,\n\t\t\t        score,\n\t\t\t        RANK() OVER (ORDER BY score DESC) AS rank,\n\t\t\t        DENSE_RANK() OVER (ORDER BY score DESC) AS dense_rank\n\t\t\t      FROM students"
       expected_edges:
@@ -153,10 +225,14 @@ cases:
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
+          is_temp: true
         - from_table: students
           from_field: score
           to_table: __result__
           to_field: score
+          relation_type: direct
+          is_temp: true
         - from_table: students
           from_field: score
           to_table: __result__
@@ -167,7 +243,9 @@ cases:
           transformations:
             - operation: WINDOW
               function_name: RANK
-              order_by: [score]
+              expression: RANK() OVER (ORDER BY score DESC)
+              order_by:
+                - score
         - from_table: students
           from_field: score
           to_table: __result__
@@ -178,4 +256,6 @@ cases:
           transformations:
             - operation: WINDOW
               function_name: DENSE_RANK
-              order_by: [score]
+              expression: DENSE_RANK() OVER (ORDER BY score DESC)
+              order_by:
+                - score

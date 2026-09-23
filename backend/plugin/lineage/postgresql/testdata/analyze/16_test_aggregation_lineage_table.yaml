@@ -7,12 +7,21 @@ cases:
           from_field: department
           to_table: __result__
           to_field: department
+          relation_type: direct
+          is_temp: true
         - from_table: employees
           from_field: '*'
           to_table: __result__
           to_field: emp_count
           relation_type: group
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
+              group_keys:
+                - department
     - name: GROUP BY with multiple aggregates
       sql: "SELECT \n\t\t\t        category,\n\t\t\t        COUNT(*) AS product_count,\n\t\t\t        AVG(price) AS avg_price,\n\t\t\t        MAX(price) AS max_price,\n\t\t\t        MIN(price) AS min_price\n\t\t\t      FROM products\n\t\t\t      GROUP BY category"
       expected_edges:
@@ -20,30 +29,60 @@ cases:
           from_field: category
           to_table: __result__
           to_field: category
+          relation_type: direct
+          is_temp: true
         - from_table: products
           from_field: '*'
           to_table: __result__
           to_field: product_count
           relation_type: group
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
+              group_keys:
+                - category
         - from_table: products
           from_field: price
           to_table: __result__
           to_field: avg_price
           relation_type: group
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: AVG
+              expression: AVG(price)
+              group_keys:
+                - category
         - from_table: products
           from_field: price
           to_table: __result__
           to_field: max_price
           relation_type: group
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: MAX
+              expression: MAX(price)
+              group_keys:
+                - category
         - from_table: products
           from_field: price
           to_table: __result__
           to_field: min_price
           relation_type: group
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: MIN
+              expression: MIN(price)
+              group_keys:
+                - category
     - name: GROUP BY with HAVING
       sql: |-
         SELECT user_id, SUM(amount) AS total
@@ -55,11 +94,30 @@ cases:
           from_field: user_id
           to_table: __result__
           to_field: user_id
+          relation_type: direct
+          is_temp: true
         - from_table: orders
           from_field: amount
           to_table: __result__
           to_field: total
+          relation_type: group
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(amount)
+              group_keys:
+                - user_id
+        - from_table: orders
+          from_field: amount
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: SUM(amount) > 1000
     - name: PostgreSQL STRING_AGG function
       sql: SELECT department, STRING_AGG(name, ', ' ORDER BY name) AS employees FROM staff GROUP BY department
       expected_edges:
@@ -67,11 +125,21 @@ cases:
           from_field: department
           to_table: __result__
           to_field: department
+          relation_type: direct
+          is_temp: true
         - from_table: staff
           from_field: name
           to_table: __result__
           to_field: employees
+          relation_type: group
           has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: STRING_AGG
+              expression: STRING_AGG(name, ', ' ORDER BY name)
+              group_keys:
+                - department
     - name: PostgreSQL ARRAY_AGG function
       sql: SELECT user_id, ARRAY_AGG(order_id) AS order_ids FROM orders GROUP BY user_id
       expected_edges:
@@ -79,15 +147,21 @@ cases:
           from_field: user_id
           to_table: __result__
           to_field: user_id
+          relation_type: direct
+          is_temp: true
         - from_table: orders
           from_field: order_id
           to_table: __result__
           to_field: order_ids
+          relation_type: group
           has_transform: true
-    # The GROUP BY keys a group aggregate was computed under are recorded on the
-    # transformation, in source order. A select item without an aggregate records
-    # none, a windowed aggregate follows its OVER clause instead, and an aggregate
-    # inside a subquery is grouped by that subquery's own GROUP BY.
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: ARRAY_AGG
+              expression: ARRAY_AGG(order_id)
+              group_keys:
+                - user_id
     - name: group keys are recorded on the aggregate
       sql: SELECT department, COUNT(*) AS emp_count FROM employees GROUP BY department
       expected_edges:
@@ -107,9 +181,9 @@ cases:
           transformations:
             - operation: AGGREGATE
               function_name: COUNT
+              expression: COUNT(*)
               group_keys:
                 - department
-
     - name: several group keys keep their source order
       sql: SELECT department, category, COUNT(*) AS n FROM products GROUP BY department, category
       expected_edges:
@@ -135,10 +209,10 @@ cases:
           transformations:
             - operation: AGGREGATE
               function_name: COUNT
+              expression: COUNT(*)
               group_keys:
                 - department
                 - category
-
     - name: an operator wrapped aggregate carries its keys
       sql: SELECT MAX(price) + 1 AS top_price FROM products GROUP BY department
       expected_edges:
@@ -151,9 +225,10 @@ cases:
           is_temp: true
           transformations:
             - operation: OPERATOR
+              expression: MAX(price) + 1
+              op_type: +
               group_keys:
                 - department
-
     - name: a windowed aggregate records no keys
       sql: SELECT SUM(price) OVER (PARTITION BY department) AS running FROM products GROUP BY department, price
       expected_edges:
@@ -167,7 +242,10 @@ cases:
           transformations:
             - operation: WINDOW
               function_name: SUM
+              expression: SUM(price) OVER (PARTITION BY department)
               group_keys: []
+              partition_by:
+                - department
         - from_table: products
           from_field: department
           to_table: __result__
@@ -178,8 +256,10 @@ cases:
           transformations:
             - operation: WINDOW
               function_name: SUM
+              expression: SUM(price) OVER (PARTITION BY department)
               group_keys: []
-
+              partition_by:
+                - department
     - name: an aggregate inside a subquery records no keys
       sql: SELECT (SELECT COUNT(*) FROM orders) AS n FROM users GROUP BY users.id
       expected_edges:
@@ -192,4 +272,5 @@ cases:
           is_temp: true
           transformations:
             - operation: PROJECT
+              expression: (SELECT COUNT(*) FROM orders)
               group_keys: []

@@ -11,10 +11,32 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: orders
           from_field: amount
           to_table: __result__
           to_field: amount
+          relation_type: direct
+          is_temp: true
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
     - name: doubly parenthesized join tree
       sql: SELECT u.id, o.amount FROM ((users u JOIN orders o ON u.id = o.user_id))
       expected_edges:
@@ -22,10 +44,32 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: orders
           from_field: amount
           to_table: __result__
           to_field: amount
+          relation_type: direct
+          is_temp: true
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
     - name: parenthesized left join
       sql: SELECT u.id, o.amount FROM (users u LEFT JOIN orders o ON u.id = o.user_id)
       expected_edges:
@@ -33,10 +77,32 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: orders
           from_field: amount
           to_table: __result__
           to_field: amount
+          relation_type: direct
+          is_temp: true
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
     - name: parenthesized join wrapped as a view (pg_get_viewdef shape)
       sql: CREATE VIEW v AS SELECT u.id, o.amount FROM (users u JOIN orders o ON u.id = o.user_id)
       expected_edges:
@@ -44,12 +110,32 @@ cases:
           from_field: id
           to_table: v
           to_field: id
+          relation_type: direct
           is_temp: false
         - from_table: orders
           from_field: amount
           to_table: v
           to_field: amount
+          relation_type: direct
           is_temp: false
+        - from_table: users
+          from_field: id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
+        - from_table: orders
+          from_field: user_id
+          to_table: v
+          to_field: ""
+          relation_type: join
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
     - name: parenthesized join joined further
       sql: SELECT u.id, p.val FROM (users u JOIN orders o ON u.id = o.user_id) JOIN products p ON p.id = o.product_id
       expected_edges:
@@ -57,7 +143,47 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: products
           from_field: val
           to_table: __result__
           to_field: val
+          relation_type: direct
+          is_temp: true
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
+        - from_table: products
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: p.id = o.product_id
+        - from_table: orders
+          from_field: product_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: p.id = o.product_id

@@ -18,6 +18,26 @@ cases:
           from_field: z
           to_table: __result__
           to_field: z
+          relation_type: direct
+          is_temp: true
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id=b.id
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id=b.id
     - name: unqualified column disambiguated inside a CTE
       sql: WITH c AS (SELECT z FROM a JOIN b ON a.id = b.id) SELECT z FROM c
       catalog:
@@ -34,6 +54,26 @@ cases:
           from_field: z
           to_table: __result__
           to_field: z
+          relation_type: direct
+          is_temp: true
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id=b.id
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id=b.id
     - name: unqualified column disambiguated inside a derived table
       sql: SELECT s.z FROM (SELECT z FROM a JOIN b ON a.id = b.id) s
       catalog:
@@ -50,6 +90,26 @@ cases:
           from_field: z
           to_table: __result__
           to_field: z
+          relation_type: direct
+          is_temp: true
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id=b.id
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id=b.id
     - name: unknown column is not attributed to an arbitrary relation
       sql: SELECT z FROM a JOIN b ON a.id = b.id
       catalog:
@@ -60,4 +120,22 @@ cases:
             b:
                 - id
                 - y
-      expected_edges: []
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id=b.id
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: a.id=b.id

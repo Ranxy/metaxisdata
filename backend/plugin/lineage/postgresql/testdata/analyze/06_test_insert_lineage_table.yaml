@@ -7,12 +7,23 @@ cases:
           from_field: id
           to_table: tmp_users
           to_field: id
+          relation_type: direct
           is_temp: false
         - from_table: users
           from_field: name
           to_table: tmp_users
           to_field: name
+          relation_type: direct
           is_temp: false
+        - from_table: users
+          from_field: age
+          to_table: tmp_users
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: age > 30
     - name: INSERT SELECT with explicit columns
       sql: INSERT INTO tmp_users (user_id, user_name) SELECT id, name FROM users
       expected_edges:
@@ -20,10 +31,14 @@ cases:
           from_field: id
           to_table: tmp_users
           to_field: user_id
+          relation_type: direct
+          is_temp: false
         - from_table: users
           from_field: name
           to_table: tmp_users
           to_field: user_name
+          relation_type: direct
+          is_temp: false
     - name: INSERT SELECT with JOIN
       sql: "INSERT INTO summary \n\t\t\t      SELECT u.id, u.name, COUNT(o.id) AS order_count \n\t\t\t      FROM users u \n\t\t\t      JOIN orders o ON u.id = o.user_id \n\t\t\t      GROUP BY u.id, u.name"
       expected_edges:
@@ -31,15 +46,46 @@ cases:
           from_field: id
           to_table: summary
           to_field: id
+          relation_type: direct
+          is_temp: false
         - from_table: users
           from_field: name
           to_table: summary
           to_field: name
+          relation_type: direct
+          is_temp: false
         - from_table: orders
           from_field: id
           to_table: summary
           to_field: order_count
+          relation_type: group
           has_transform: true
+          is_temp: false
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(o.id)
+              group_keys:
+                - u.id
+                - u.name
+        - from_table: users
+          from_field: id
+          to_table: summary
+          to_field: ""
+          relation_type: join
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
+        - from_table: orders
+          from_field: user_id
+          to_table: summary
+          to_field: ""
+          relation_type: join
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: u.id = o.user_id
     - name: INSERT with CTE
       sql: |-
         WITH active_users AS (
@@ -51,12 +97,23 @@ cases:
           from_field: id
           to_table: user_backup
           to_field: id
+          relation_type: direct
           is_temp: false
         - from_table: users
           from_field: name
           to_table: user_backup
           to_field: name
+          relation_type: direct
           is_temp: false
+        - from_table: users
+          from_field: status
+          to_table: user_backup
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: status = 'active'
     - name: INSERT with CTE explicit column names
       sql: |-
         WITH active_users (user_id, user_name) AS (
@@ -69,10 +126,23 @@ cases:
           from_field: id
           to_table: user_backup
           to_field: id
+          relation_type: direct
+          is_temp: false
         - from_table: users
           from_field: name
           to_table: user_backup
           to_field: name
+          relation_type: direct
+          is_temp: false
+        - from_table: users
+          from_field: status
+          to_table: user_backup
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: status = 'active'
     - name: INSERT with RETURNING clause
       sql: |-
         INSERT INTO users (name, email)
@@ -83,7 +153,11 @@ cases:
           from_field: name
           to_table: users
           to_field: name
+          relation_type: direct
+          is_temp: false
         - from_table: pending_users
           from_field: email
           to_table: users
           to_field: email
+          relation_type: direct
+          is_temp: false
