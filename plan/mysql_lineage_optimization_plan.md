@@ -866,6 +866,7 @@ work, in order:
 | `89a6984` | An unaliased output column is named the way the engine names it, so a view's target column matches; the recorded DELETE condition no longer loses spaces inside a string literal (§10.4). |
 | `1dd0d87` | Every MySQL-family expectation asserts `relation_type`, `is_temp` and each transformation's operation, and `RequireFullEdgeAnnotations` makes that bar a test rather than a convention (§10.5). |
 | `f5802d3` | A MySQL-family edge is identified by its database instead of its never-populated schema, so a cross-database join no longer loses an edge (§10.6). |
+| `dc68314` | A relation is identified by its qualifier plus its name in the shared scope, so a qualified reference, a `*` expansion and a CTE each see the relation they mean; all three analyzer families updated together (§10.7). |
 
 Corpus state: **347 cases across the five dialects, all matched exactly, with
 no expectation that can match an arbitrary source or target and no `subset`
