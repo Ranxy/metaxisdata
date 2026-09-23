@@ -1997,3 +1997,19 @@ foreign table and expands `SELECT * FROM public.foreign_users` in manual SQL to
 a superuser, so the case skips rather than fails where that is unavailable.
 Negative-checked by removing the branch: the unit case fails, and the integration
 case fails after its lineage wait. §10.2's "ours" list is empty now.
+
+**The metadata browser grew the surface those columns needed.** It had no
+`ExternalTableList`, so the schema tab's external-table group fell through
+`MetadataList`'s dispatcher to the *database* list and rendered nothing, and it
+had no detail component, so selecting one landed on the empty state; the tab strip
+had no label for the type either and showed "Other". External tables now have a
+list (name, external server, external database, column count), a detail page with
+the column list and the lineage section, the tab label, the leaf hint in the URL
+(`?metaType=EXTERNAL_TABLE`, without which the page never asked for the object)
+and search-result routing. The history tab needed a backend counterpart: the
+history diff had no `EXTERNAL_TABLE` case, so it reported "no changes detected"
+for every version of an external table. It now reports the external server and
+database it points at plus a column group, like a table. Covered by
+`ExternalTableList.test.ts`, `ExternalTableMetadataDetail.test.ts`,
+`MetadataList.test.ts` (the dispatcher, which fails with the branch removed) and
+`TestExternalTableHistoryChangeGroups`.
