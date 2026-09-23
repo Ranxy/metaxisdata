@@ -1,0 +1,41 @@
+name: TestCopyLineage_Table
+cases:
+    # COPY ... FROM loads a file into a table, the shape MySQL's LOAD DATA and
+    # StarRocks' COPY INTO record as a file source. The file's columns are
+    # positional, so a declared column list maps them one by one, and no list
+    # means the whole table — the same rule the MySQL analyzer applies.
+    - name: copy from without a column list fills the whole table
+      sql: COPY employees FROM STDIN
+      expected_edges:
+        - from_table: __file__
+          from_field: '*'
+          to_table: employees
+          to_field: '*'
+          relation_type: direct
+          is_temp: false
+
+    - name: copy from with a column list maps the file columns positionally
+      sql: COPY employees (id, name) FROM 'employees.csv'
+      expected_edges:
+        - from_table: __file__
+          from_field: col1
+          to_table: employees
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: __file__
+          from_field: col2
+          to_table: employees
+          to_field: name
+          relation_type: direct
+          is_temp: false
+
+    # COPY ... TO reads a table or a query out, so no lineage flows into an
+    # object the registry holds.
+    - name: copy to records nothing
+      sql: COPY employees TO STDOUT
+      expected_edges: []
+
+    - name: copy of a query to a file records nothing
+      sql: COPY (SELECT id FROM employees) TO STDOUT
+      expected_edges: []

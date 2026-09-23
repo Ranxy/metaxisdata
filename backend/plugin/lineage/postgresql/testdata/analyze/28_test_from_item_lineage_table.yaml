@@ -1,0 +1,30 @@
+name: TestFromItemLineage_Table
+cases:
+    # TABLESAMPLE wraps a relation: the sample decides which rows are read, not
+    # which relation they come from. Leaving the wrapper unhandled dropped the
+    # relation, and the whole statement produced no edges.
+    - name: a sampled relation is still the source
+      sql: SELECT x FROM t TABLESAMPLE BERNOULLI (10)
+      expected_edges:
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+
+    - name: a sampled relation with a repeatable seed is still the source
+      sql: SELECT x FROM t TABLESAMPLE SYSTEM (10) REPEATABLE (1)
+      expected_edges:
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+
+    # A function in FROM produces rows of its own and names no stored relation,
+    # so a column it exposes is not lineage.
+    - name: a function in from has no lineage
+      sql: SELECT n FROM generate_series(1, 10) AS g(n)
+      expected_edges: []

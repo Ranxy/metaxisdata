@@ -34,9 +34,13 @@ const (
 	wildcardColumn    = model.WildcardColumn
 	// excludedRelationName is PostgreSQL's ON CONFLICT pseudo-relation holding
 	// the proposed row. It is not a metadata-registry object, so edges sourced
-	// from it can never resolve; the real lineage is already emitted from the
-	// INSERT source.
+	// from it can never resolve; its column resolves to the INSERT's own source
+	// instead (see processAssignments).
 	excludedRelationName = "excluded"
+	// fileSourceName is the source marker a data-loading statement's edges carry,
+	// shared with the MySQL family and StarRocks so `COPY`, `LOAD DATA` and
+	// `COPY INTO` name their file the same way.
+	fileSourceName = "__file__"
 )
 
 // PostgreSQL aggregate functions. Window detection is structural (FuncCall.Over),
@@ -111,6 +115,15 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 		if stmt.Empty() {
 			continue
 		}
+		// Each statement is analyzed from clean per-statement state; only the edges
+		// and the error list are shared. A CTE, a temporary-relation name and a
+		// pending predicate all belong to the statement that introduced them, and
+		// carrying them over made a later statement's real table look temporary (so
+		// its edges were dropped) and attributed an UPDATE's subquery predicate to
+		// the next SELECT's result.
+		a.scopeStack = []*scope.Scope{scope.NewScope(nil)}
+		a.tempTables = make(map[string]struct{})
+		a.predicates = nil
 		a.processStmt(stmt.AST)
 	}
 
@@ -136,9 +149,49 @@ func (a *Analyzer) processStmt(node pgast.Node) {
 		a.processViewStmt(stmt)
 	case *pgast.CreateTableAsStmt:
 		a.processCreateTableAsStmt(stmt)
+	case *pgast.CopyStmt:
+		a.processCopyStmt(stmt)
+	case *pgast.MergeStmt:
+		// MERGE carries column lineage this analyzer does not model yet. Failing
+		// loudly keeps it from being read as a statement with none, which is what
+		// the StarRocks analyzer does for the same statement.
+		a.errors = append(a.errors, "MERGE analysis is not implemented yet")
 	default:
-		// Unsupported statement kinds produce no lineage.
-		// analyzer which silently ignored them.
+		// Statement kinds that carry no lineage are ignored, as in the MySQL
+		// analyzer.
+	}
+}
+
+// processCopyStmt processes COPY. `COPY <table> FROM ...` loads a file into a
+// table, the shape MySQL's LOAD DATA and StarRocks' COPY INTO record as a file
+// source; `COPY ... TO` reads a table or a query out, which is not lineage. The
+// file's columns are positional, so a declared column list maps them one by one
+// and no list means the whole table.
+func (a *Analyzer) processCopyStmt(stmt *pgast.CopyStmt) {
+	if stmt == nil || !stmt.IsFrom || stmt.Relation == nil {
+		return
+	}
+	targetSchema := stmt.Relation.Schemaname
+	targetTable := stmt.Relation.Relname
+	isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
+
+	targetColumns := stringList(stmt.Attlist)
+	if len(targetColumns) == 0 {
+		a.addRelation(NewLineageEdge(
+			"", fileSourceName, wildcardColumn,
+			targetSchema, targetTable, wildcardColumn,
+			nil,
+			isTemp,
+		))
+		return
+	}
+	for i, column := range targetColumns {
+		a.addRelation(NewLineageEdge(
+			"", fileSourceName, fmt.Sprintf("col%d", i+1),
+			targetSchema, targetTable, column,
+			nil,
+			isTemp,
+		))
 	}
 }
 
@@ -418,9 +471,17 @@ func (a *Analyzer) processTableExpr(node pgast.Node) {
 	case *pgast.JoinExpr:
 		a.processTableExpr(tableExpr.Larg)
 		a.processTableExpr(tableExpr.Rarg)
+	case *pgast.RangeTableSample:
+		// TABLESAMPLE wraps a relation: the sample changes which rows are read,
+		// not which relation they come from, so the relation is processed as if the
+		// clause were not there. Leaving it unhandled dropped the relation and the
+		// whole statement produced no edges.
+		a.processTableExpr(tableExpr.Relation)
+	case *pgast.RangeFunction:
+		// A function in FROM produces rows of its own and names no stored relation,
+		// so there is nothing to resolve.
 	default:
-		// RangeFunction/RangeTableSample and other FROM items were ignored by
-		// this analyzer as well.
+		// Other FROM items were ignored by this analyzer as well.
 	}
 }
 
@@ -818,8 +879,27 @@ func (a *Analyzer) processInsertStmt(stmt *pgast.InsertStmt) {
 	a.generateEdgesForDataModification(targetSchema, targetTable, targetColumns)
 
 	if stmt.OnConflictClause != nil {
-		a.processOnConflict(stmt.OnConflictClause, stmt.Relation)
+		a.processOnConflict(stmt.OnConflictClause, stmt.Relation, insertSourceMap(a.currentScope(), targetColumns))
 	}
+}
+
+// insertSourceMap maps each written target column to the sources the INSERT
+// writes into it, resolved in the scope the query ran in. EXCLUDED.col names the
+// value the insert proposed for col, so the conflict clause resolves through this
+// map the way MySQL's VALUES(col) does.
+func insertSourceMap(sp *scope.Scope, targetColumns []string) map[string][]scope.ColumnRef {
+	out := make(map[string][]scope.ColumnRef)
+	for i, col := range resolveOutputColumns(sp, sp.GetOutputColumns()) {
+		if len(targetColumns) > 0 && i >= len(targetColumns) {
+			break
+		}
+		name := col.Alias
+		if i < len(targetColumns) {
+			name = targetColumns[i]
+		}
+		out[name] = append(out[name], col.SourceColumns...)
+	}
+	return out
 }
 
 // processOnConflict processes an ON CONFLICT DO UPDATE SET list. The clause is
@@ -829,7 +909,7 @@ func (a *Analyzer) processInsertStmt(stmt *pgast.InsertStmt) {
 // what lets the target resolve at all, so `SET quantity = inventory.quantity + …`
 // records the self-reference instead of being dropped or attributed to the
 // INSERT source.
-func (a *Analyzer) processOnConflict(onConflict *pgast.OnConflictClause, target *pgast.RangeVar) {
+func (a *Analyzer) processOnConflict(onConflict *pgast.OnConflictClause, target *pgast.RangeVar, insertSources map[string][]scope.ColumnRef) {
 	if onConflict == nil || onConflict.TargetList == nil {
 		return
 	}
@@ -842,7 +922,7 @@ func (a *Analyzer) processOnConflict(onConflict *pgast.OnConflictClause, target 
 
 	a.pushScope()
 	a.addTargetRelation(target)
-	a.processOnConflictSetList(onConflict.TargetList, targetSchema, targetTable)
+	a.processAssignments(onConflict.TargetList, targetSchema, targetTable, insertSources)
 	a.popScope()
 }
 
@@ -875,19 +955,14 @@ func (a *Analyzer) processUpdateStmt(stmt *pgast.UpdateStmt) {
 
 // processSetClauseList processes UPDATE SET assignment targets.
 func (a *Analyzer) processSetClauseList(assignments *pgast.List, targetSchema, targetTable string) {
-	a.processAssignments(assignments, targetSchema, targetTable, false)
+	a.processAssignments(assignments, targetSchema, targetTable, nil)
 }
 
-// processOnConflictSetList processes ON CONFLICT DO UPDATE SET assignment
-// targets, dropping columns sourced from the EXCLUDED pseudo-relation (see
-// excludedRelationName).
-func (a *Analyzer) processOnConflictSetList(assignments *pgast.List, targetSchema, targetTable string) {
-	a.processAssignments(assignments, targetSchema, targetTable, true)
-}
-
-// processAssignments resolves assignment targets. When skipExcluded is set,
-// source columns qualified by the EXCLUDED pseudo-relation are dropped.
-func (a *Analyzer) processAssignments(assignments *pgast.List, targetSchema, targetTable string, skipExcluded bool) {
+// processAssignments resolves assignment targets. When insertSources is set, a
+// source column qualified by the EXCLUDED pseudo-relation is replaced by the
+// sources the INSERT writes to that column, because EXCLUDED names the row the
+// insert proposed; the pseudo-relation itself can never resolve.
+func (a *Analyzer) processAssignments(assignments *pgast.List, targetSchema, targetTable string, insertSources map[string][]scope.ColumnRef) {
 	if assignments == nil {
 		return
 	}
@@ -904,8 +979,19 @@ func (a *Analyzer) processAssignments(assignments *pgast.List, targetSchema, tar
 
 		var sourceColumns []scope.ColumnRef
 		var transformInfo []model.Transformation
-		if rt.Val != nil {
+		switch val := rt.Val.(type) {
+		case nil:
+		case *pgast.MultiAssignRef:
+			// `SET (a, b) = (SELECT x, y FROM s)` gives one ResTarget per target
+			// column, each naming its own column of the same row expression, so the
+			// columns map positionally. Reading the row's merged sources instead
+			// would attribute every source to every target.
+			sourceColumns = a.multiAssignSources(val, currentScope)
+		default:
 			sourceColumns = a.extractColumnsFromNode(rt.Val, currentScope)
+			if insertSources != nil {
+				sourceColumns = replaceExcluded(sourceColumns, insertSources)
+			}
 			if transform, ok := a.classifyExpression(rt.Val); ok {
 				transformInfo = []model.Transformation{transform}
 			}
@@ -920,10 +1006,6 @@ func (a *Analyzer) processAssignments(assignments *pgast.List, targetSchema, tar
 		}
 
 		for _, sourceCol := range sourceColumns {
-			if skipExcluded && strings.EqualFold(sourceCol.Table, excludedRelationName) {
-				continue
-			}
-
 			resolutions, err := currentScope.ResolveColumnRefs(sourceCol)
 			if err != nil {
 				continue
@@ -940,6 +1022,51 @@ func (a *Analyzer) processAssignments(assignments *pgast.List, targetSchema, tar
 			}
 		}
 	}
+}
+
+// replaceExcluded replaces a reference to the EXCLUDED pseudo-relation with the
+// sources the INSERT writes to that column. A reference to a column the insert
+// does not write (a literal, or a column outside its target list) contributes
+// nothing.
+func replaceExcluded(refs []scope.ColumnRef, insertSources map[string][]scope.ColumnRef) []scope.ColumnRef {
+	out := make([]scope.ColumnRef, 0, len(refs))
+	for _, ref := range refs {
+		if !strings.EqualFold(ref.Table, excludedRelationName) {
+			out = append(out, ref)
+			continue
+		}
+		out = append(out, insertSources[ref.Column]...)
+	}
+	return out
+}
+
+// multiAssignSources returns the sources of one column of a multi-column
+// assignment's row expression. The expression is analyzed in its own scope, like
+// any other subquery, and its output columns keep their order so the assignment's
+// column number selects one.
+func (a *Analyzer) multiAssignSources(ref *pgast.MultiAssignRef, sp *scope.Scope) []scope.ColumnRef {
+	sub, ok := ref.Source.(*pgast.SubLink)
+	if !ok {
+		return nil
+	}
+	sel, ok := sub.Subselect.(*pgast.SelectStmt)
+	if !ok {
+		return nil
+	}
+
+	a.scopeStack = append(a.scopeStack, scope.NewScope(sp))
+	a.processSelectStmt(sel)
+	subScope := a.popScope()
+	if subScope == nil {
+		return nil
+	}
+
+	columns := resolveOutputColumns(subScope, subScope.GetOutputColumns())
+	index := ref.Colno - 1
+	if index < 0 || index >= len(columns) {
+		return nil
+	}
+	return columns[index].SourceColumns
 }
 
 // processDeleteStmt processes a DELETE statement.

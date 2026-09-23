@@ -1,0 +1,48 @@
+name: TestStatementLineage_Table
+cases:
+    # MERGE carries column lineage this analyzer does not model, and a parseable
+    # statement must never produce an empty result silently: it fails loudly, as
+    # the StarRocks analyzer already does for the same statement.
+    - name: merge fails loudly
+      sql: MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET a = s.a
+      expect_error: true
+      expected_edges: []
+
+    # One SQL text can hold several statements, and each is analyzed on its own.
+    # The predicate accumulator and the scope are per statement: an UPDATE whose
+    # subquery has a WHERE never emits that WHERE, and a CTE is query-local, so
+    # neither may reach the next statement.
+    - name: a where inside an update subquery does not leak into the next statement
+      sql: UPDATE t SET a = (SELECT y FROM s WHERE s.z > 1); SELECT x FROM u
+      expected_edges:
+        - from_table: s
+          from_field: y
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: (SELECT y FROM s WHERE s.z > 1)
+        - from_table: u
+          from_field: x
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+
+    - name: a cte does not leak into the next statement
+      sql: WITH c AS (SELECT x FROM s) SELECT x FROM c; SELECT y FROM c
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+        - from_table: c
+          from_field: y
+          to_table: __result__
+          to_field: y
+          relation_type: direct
+          is_temp: true

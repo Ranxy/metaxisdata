@@ -1,0 +1,37 @@
+name: TestMultiColumnAssignment_Table
+cases:
+    # `SET (a, b) = (SELECT x, y FROM s)` gives one target element per column,
+    # each naming its own column of the same row expression, so the mapping is
+    # positional. Reading the row's merged sources attributed every source to
+    # every target.
+    - name: a multi column assignment maps its columns positionally
+      sql: UPDATE t SET (a, b) = (SELECT x, y FROM s)
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_table: s
+          from_field: y
+          to_table: t
+          to_field: b
+          relation_type: direct
+          is_temp: false
+
+    - name: a correlated multi column assignment maps positionally too
+      sql: UPDATE t SET (a, b) = (SELECT x, y FROM s WHERE s.id = t.id)
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_table: s
+          from_field: y
+          to_table: t
+          to_field: b
+          relation_type: direct
+          is_temp: false

@@ -112,3 +112,40 @@ cases:
             - operation: OPERATOR
               expression: inventory.quantity + EXCLUDED.quantity
               op_type: +
+
+    # EXCLUDED names the row the INSERT proposed, so its column is the value the
+    # insert writes to that column — the relationship MySQL's VALUES(col) has. It
+    # is substituted with the insert's own sources instead of being dropped.
+    - name: an excluded column resolves to the insert source
+      sql: INSERT INTO inventory (product_id, quantity) SELECT product_id, quantity FROM shipment ON CONFLICT (product_id) DO UPDATE SET note = EXCLUDED.quantity
+      catalog:
+        tables:
+            inventory:
+                - product_id
+                - quantity
+                - note
+            shipment:
+                - product_id
+                - quantity
+      expected_edges:
+        - from_table: shipment
+          from_field: product_id
+          to_table: inventory
+          to_field: product_id
+          relation_type: direct
+          is_temp: false
+        - from_table: shipment
+          from_field: quantity
+          to_table: inventory
+          to_field: quantity
+          relation_type: direct
+          is_temp: false
+        - from_table: shipment
+          from_field: quantity
+          to_table: inventory
+          to_field: note
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: EXCLUDED.quantity
