@@ -118,3 +118,35 @@ cases:
           to_field: user_name
           relation_type: direct
           is_temp: true
+
+    # A recursive CTE is analyzed like any other: the anchor arm's columns are the
+    # sources, and the self-reference in the recursive arm is query-local, so it
+    # contributes nothing of its own. Verified on MySQL 8.3 that the statement is
+    # legal.
+    - name: recursive CTE keeps the anchor arm's sources
+      sql: WITH RECURSIVE tree AS (SELECT id, parent_id FROM nodes WHERE parent_id IS NULL UNION ALL SELECT n.id, n.parent_id FROM nodes n JOIN tree t ON n.parent_id = t.id) SELECT id FROM tree
+      expected_edges:
+        - from_table: nodes
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: nodes
+          from_field: parent_id
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+
+    # The value comes from the literal 1 and the recursive arm only reads the CTE's
+    # own column, so the recursion has no source column to point at.
+    - name: a recursion over a literal has no source column
+      sql: WITH RECURSIVE counter AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM counter WHERE n < 5) SELECT n FROM counter
+      expected_edges: []
