@@ -8,6 +8,10 @@ const (
 	OperationDelete OperationType = "DELETE"
 	// OperationUnion represents a UNION operation.
 	OperationUnion OperationType = "UNION"
+	// OperationIntersect represents an INTERSECT operation.
+	OperationIntersect OperationType = "INTERSECT"
+	// OperationExcept represents an EXCEPT operation.
+	OperationExcept OperationType = "EXCEPT"
 	// OperationProject represents a projection (simple column reference or expression).
 	OperationProject OperationType = "PROJECT"
 	// OperationFunction represents a function call.
@@ -46,7 +50,8 @@ type Transformation struct {
 	// OrderBy contains ORDER BY columns (for WINDOW operation).
 	OrderBy []string `json:"order_by,omitempty"`
 
-	// OpType is the operator type like "+", "-", "=" (for OPERATOR operation).
+	// OpType is the operator kind for an OPERATOR transformation, e.g.
+	// "ADDITION", "SUBTRACTION", "EQUALS".
 	OpType string `json:"op_type,omitempty"`
 
 	// Condition is the WHERE condition expression (for DELETE operation).
@@ -65,6 +70,20 @@ func NewDeleteTransformation(condition string) Transformation {
 func NewUnionTransformation() Transformation {
 	return Transformation{
 		Operation: OperationUnion,
+	}
+}
+
+// NewIntersectTransformation creates a Transformation for INTERSECT operations.
+func NewIntersectTransformation() Transformation {
+	return Transformation{
+		Operation: OperationIntersect,
+	}
+}
+
+// NewExceptTransformation creates a Transformation for EXCEPT operations.
+func NewExceptTransformation() Transformation {
+	return Transformation{
+		Operation: OperationExcept,
 	}
 }
 

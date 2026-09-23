@@ -1,0 +1,425 @@
+name: TestRegressionLineage_Table
+# Regression cases for the defects tracked in
+# plan/mysql_lineage_optimization_plan.md. Cases that list every produced edge
+# set exact_edges so an unexpected extra edge fails too.
+cases:
+    - name: aliased star without catalog
+      sql: SELECT * FROM employees e JOIN departments d ON e.id = d.department_id
+      exact_edges: true
+      expected_edges:
+        - from_table: employees
+          from_field: "*"
+          to_table: __result__
+          to_field: "*"
+          relation_type: direct
+          is_temp: true
+        - from_table: departments
+          from_field: "*"
+          to_table: __result__
+          to_field: "*"
+          relation_type: direct
+          is_temp: true
+
+    - name: aliased table star with catalog
+      sql: SELECT e.*, d.* FROM employees e JOIN departments d ON e.id = d.department_id
+      catalog:
+        tables:
+          employees: [id, name, department_id]
+          departments: [id, name]
+      exact_edges: true
+      expected_edges:
+        - from_table: employees
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true
+        - from_table: employees
+          from_field: department_id
+          to_table: __result__
+          to_field: department_id
+          relation_type: direct
+          is_temp: true
+        - from_table: departments
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: departments
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true
+
+    - name: unqualified column disambiguated by catalog
+      sql: SELECT y FROM a JOIN b ON a.id = b.id
+      catalog:
+        tables:
+          a: [id, x]
+          b: [id, y]
+      exact_edges: true
+      expected_edges:
+        - from_table: b
+          from_field: y
+          to_table: __result__
+          to_field: y
+          relation_type: direct
+          is_temp: true
+
+    - name: unknown column is not attributed to an arbitrary table
+      sql: SELECT z FROM a JOIN b ON a.id = b.id
+      catalog:
+        tables:
+          a: [id, x]
+          b: [id, y]
+      expected_edges: []
+
+    - name: TABLE statement
+      sql: TABLE employees
+      exact_edges: true
+      expected_edges:
+        - from_table: employees
+          from_field: "*"
+          to_table: __result__
+          to_field: "*"
+          relation_type: direct
+          is_temp: true
+
+    - name: VALUES statement has no lineage
+      sql: VALUES ROW(1,2)
+      expected_edges: []
+
+    - name: constant expression has no lineage
+      sql: SELECT '2020-01-01' AS s FROM t
+      expected_edges: []
+
+    - name: volatile expression has no lineage
+      sql: SELECT DATE_SUB(NOW(), INTERVAL 1 YEAR) AS d FROM t
+      expected_edges: []
+
+    - name: INTERSECT relation type
+      sql: SELECT a.id FROM a INTERSECT SELECT b.id FROM b
+      exact_edges: true
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: intersect
+          is_temp: true
+          transformations:
+            - operation: INTERSECT
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: intersect
+          is_temp: true
+          transformations:
+            - operation: INTERSECT
+
+    - name: EXCEPT relation type
+      sql: SELECT a.id FROM a EXCEPT SELECT b.id FROM b
+      exact_edges: true
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: except
+          is_temp: true
+          transformations:
+            - operation: EXCEPT
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: except
+          is_temp: true
+          transformations:
+            - operation: EXCEPT
+
+    - name: view over a union keeps every arm
+      sql: CREATE VIEW v AS SELECT a.id FROM a UNION SELECT b.id FROM b
+      exact_edges: true
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: union
+          is_temp: false
+          transformations:
+            - operation: UNION
+        - from_table: b
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: union
+          is_temp: false
+
+    - name: derived table over a union keeps every arm
+      sql: SELECT s.id FROM (SELECT a.id FROM a UNION SELECT b.id FROM b) s
+      exact_edges: true
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+
+    - name: CTE over a union keeps every arm
+      sql: WITH c AS (SELECT a.id FROM a UNION SELECT b.id FROM b) SELECT c.id FROM c
+      exact_edges: true
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+
+    - name: INSERT SELECT over a union keeps every arm
+      sql: INSERT INTO dst (id) SELECT a.id FROM a UNION SELECT b.id FROM b
+      exact_edges: true
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: dst
+          to_field: id
+          relation_type: union
+          is_temp: false
+        - from_table: b
+          from_field: id
+          to_table: dst
+          to_field: id
+          relation_type: union
+          is_temp: false
+
+    - name: correlated scalar subquery
+      sql: SELECT e.name, (SELECT d.name FROM departments d WHERE d.id = e.department_id) AS dn FROM employees e
+      exact_edges: true
+      expected_edges:
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true
+        - from_table: departments
+          from_field: name
+          to_table: __result__
+          to_field: dn
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+
+    - name: insert column list overflow is dropped
+      sql: INSERT INTO d (a, b) SELECT id, name, extra FROM a
+      exact_edges: true
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: d
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_table: a
+          from_field: name
+          to_table: d
+          to_field: b
+          relation_type: direct
+          is_temp: false
+
+    - name: quoted identifiers with operator characters are direct
+      sql: SELECT `created-at`, `case_id`, `we(ird)` FROM t
+      exact_edges: true
+      expected_edges:
+        - from_table: t
+          from_field: created-at
+          to_table: __result__
+          to_field: "`created-at`"
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+        - from_table: t
+          from_field: case_id
+          to_table: __result__
+          to_field: case_id
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+        - from_table: t
+          from_field: we(ird)
+          to_table: __result__
+          to_field: "`we(ird)`"
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+
+    - name: single table DELETE resolves its source table
+      sql: DELETE FROM users WHERE status = 'inactive'
+      exact_edges: true
+      expected_edges:
+        - from_table: users
+          from_field: status
+          to_table: users
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: status='inactive'
+
+    - name: DELETE WHERE subquery keeps the subquery source
+      sql: DELETE FROM users WHERE id IN (SELECT user_id FROM orders WHERE status = 'cancelled')
+      exact_edges: true
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: users
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+        - from_table: orders
+          from_field: user_id
+          to_table: users
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+
+    - name: INSERT TABLE source
+      sql: INSERT INTO d (a) TABLE s
+      exact_edges: true
+      expected_edges:
+        - from_table: s
+          from_field: "*"
+          to_table: d
+          to_field: a
+          relation_type: direct
+          is_temp: false
+
+    - name: INSERT SET constants have no lineage
+      sql: INSERT INTO d SET a = 1
+      expected_edges: []
+
+    - name: leading WITH before INSERT is rejected
+      sql: WITH c AS (SELECT id FROM a) INSERT INTO d (id) SELECT id FROM c
+      expect_error: true
+
+    - name: leading WITH before UPDATE is rejected
+      sql: WITH c AS (SELECT id FROM a) UPDATE d SET x = 1
+      expect_error: true
+
+    - name: arithmetic expression keeps its operand text
+      sql: SELECT x - 1 AS v FROM t
+      exact_edges: true
+      expected_edges:
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: v
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              op_type: SUBTRACTION
+              expression: x-1
+
+    - name: function name containing OVER is still a function
+      sql: SELECT cover(x) AS c FROM a
+      exact_edges: true
+      expected_edges:
+        - from_table: a
+          from_field: x
+          to_table: __result__
+          to_field: c
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: COVER
+
+    - name: unknown window function is a window
+      sql: SELECT my_udf(x) OVER () AS a FROM t
+      exact_edges: true
+      expected_edges:
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: a
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: MY_UDF
+
+    - name: windowed aggregate is a window with clauses
+      sql: SELECT SUM(x) OVER (PARTITION BY y ORDER BY z) AS s FROM t
+      exact_edges: true
+      expected_edges:
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: s
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              partition_by: [y]
+              order_by: [z]
+        - from_table: t
+          from_field: y
+          to_table: __result__
+          to_field: s
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+        - from_table: t
+          from_field: z
+          to_table: __result__
+          to_field: s
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+
+    - name: UPDATE constant assignment records the table
+      sql: UPDATE t SET x = 1
+      exact_edges: true
+      expected_edges:
+        - from_table: t
+          from_field: "*"
+          to_table: t
+          to_field: x
+          relation_type: indirect
+          has_transform: true
+          is_temp: false

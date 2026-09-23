@@ -67,7 +67,7 @@ type Analyzer struct {
 }
 
 func Analyze(ctx context.Context, sql string) ([]model.ColumnRelation, error) {
-	analyzer := NewAnalyzer(ctx, sql, lineage.CatelogProvide)
+	analyzer := NewAnalyzer(ctx, sql, lineage.GetCatalogProvide())
 	return analyzer.AnalyzeRelations()
 }
 
@@ -351,10 +351,9 @@ func (a *Analyzer) processCTE(cte *pgast.CommonTableExpr) {
 	}
 
 	a.currentScope().AddCTE(&scope.CTEDefinition{
-		Name:          cteName,
-		Columns:       columns,
-		DefiningScope: a.currentScope(),
-		Lineage:       lineage,
+		Name:    cteName,
+		Columns: columns,
+		Lineage: lineage,
 	})
 }
 
@@ -408,7 +407,6 @@ func (a *Analyzer) processRangeVar(rangeVar *pgast.RangeVar) {
 			Alias:      alias,
 			IsSubquery: false,
 			IsCTE:      true,
-			Columns:    cte.Columns,
 			Lineage:    cte.Lineage,
 		})
 		return
@@ -420,7 +418,6 @@ func (a *Analyzer) processRangeVar(rangeVar *pgast.RangeVar) {
 		Alias:      alias,
 		IsSubquery: false,
 		IsCTE:      false,
-		Columns:    []string{},
 	})
 }
 
@@ -441,7 +438,6 @@ func (a *Analyzer) addTargetRelation(rangeVar *pgast.RangeVar) {
 		Alias:      alias,
 		IsSubquery: false,
 		IsCTE:      false,
-		Columns:    []string{},
 	})
 }
 
@@ -466,7 +462,6 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 	a.processSelectStmt(query)
 	subqueryScope := a.popScope()
 
-	columns := make([]string, 0)
 	lineage := make([]model.ColumnRelation, 0)
 
 	for _, col := range subqueryScope.GetOutputColumns() {
@@ -474,7 +469,6 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 		if colName == "" {
 			colName = "column"
 		}
-		columns = append(columns, colName)
 
 		for _, sourceCol := range col.SourceColumns {
 			resolved, err := subqueryScope.ResolveColumn(sourceCol)
@@ -505,7 +499,6 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 		Alias:      alias,
 		IsSubquery: true,
 		IsCTE:      false,
-		Columns:    columns,
 		Lineage:    lineage,
 	})
 }
@@ -548,7 +541,6 @@ func (a *Analyzer) processResTarget(rt *pgast.ResTarget, sp *scope.Scope) {
 			colRef := a.columnRefFromFields(cr.Fields)
 			sp.AddOutputColumn(scope.OutputColumn{
 				Alias:         colRef.Column,
-				Expression:    a.exprTextOf(rt.Val),
 				SourceColumns: []scope.ColumnRef{colRef},
 				IsDerived:     false,
 			})
@@ -570,7 +562,6 @@ func (a *Analyzer) processStar(sp *scope.Scope) {
 
 		sp.AddOutputColumn(scope.OutputColumn{
 			Alias:         wildcardColumn,
-			Expression:    wildcardColumn,
 			SourceColumns: []scope.ColumnRef{{Schema: tableRef.Schema, Table: tableRef.Table, Column: wildcardColumn}},
 			IsDerived:     false,
 		})
@@ -583,7 +574,6 @@ func (a *Analyzer) processTableStar(cr *pgast.ColumnRef, sp *scope.Scope) {
 	if tableRef, ok := sp.FindTable(colRef.Table); ok {
 		sp.AddOutputColumn(scope.OutputColumn{
 			Alias:         wildcardColumn,
-			Expression:    colRef.Table + "." + wildcardColumn,
 			SourceColumns: []scope.ColumnRef{{Schema: tableRef.Schema, Table: tableRef.Table, Column: wildcardColumn}},
 			IsDerived:     false,
 		})
@@ -617,7 +607,6 @@ func (a *Analyzer) processExpressionTarget(rt *pgast.ResTarget, sp *scope.Scope)
 
 	outputCol := scope.OutputColumn{
 		Alias:         alias,
-		Expression:    exprText,
 		SourceColumns: sourceColumns,
 		IsDerived:     isDerived,
 	}
@@ -1107,7 +1096,6 @@ func (a *Analyzer) flattenTempSourceLineage(sp *scope.Scope, resolved *scope.Col
 			Alias:      cte.Name,
 			IsSubquery: false,
 			IsCTE:      true,
-			Columns:    cte.Columns,
 			Lineage:    cte.Lineage,
 		}
 		a.appendFlattenedLineage(lineage, sp, tempRef, resolved.Column, targetTable, targetColumn, transform)
@@ -1249,8 +1237,7 @@ func (a *Analyzer) expandWildcardWithCatalog(tableRef *scope.TableRef, sp *scope
 
 	for _, colMeta := range tableMeta.Columns {
 		outputCol := scope.OutputColumn{
-			Alias:      colMeta.Name,
-			Expression: tableRef.Table + "." + colMeta.Name,
+			Alias: colMeta.Name,
 			SourceColumns: []scope.ColumnRef{{
 				Schema: tableRef.Schema,
 				Table:  tableRef.Table,

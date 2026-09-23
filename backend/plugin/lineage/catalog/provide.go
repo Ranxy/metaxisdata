@@ -76,15 +76,7 @@ type provideImpl struct {
 func (p *provideImpl) GetTable(ctx context.Context, id model.ObjectIdentifier) (*TableMeta, error) {
 	// Fill missing parts from AnalysisContext so unqualified names resolve correctly.
 	if ac, ok := GetAnalysisContext(ctx); ok {
-		if id.InstanceID == "" {
-			id.InstanceID = ac.InstanceID
-		}
-		if id.Database == "" {
-			id.Database = ac.Database
-		}
-		if id.Schema == "" {
-			id.Schema = ac.Schema
-		}
+		id = ac.Complete(id)
 	}
 
 	guid := id.GUID()
@@ -101,7 +93,6 @@ func (p *provideImpl) GetTable(ctx context.Context, id model.ObjectIdentifier) (
 	}
 	switch res.ObjectType {
 	case storepb.MetaType_TABLE:
-
 		for _, col := range res.Metadata.GetTableMetadata().Columns {
 			tableMeta.Columns = append(tableMeta.Columns, ColumnMeta{
 				Name:     col.Name,
@@ -119,17 +110,12 @@ func (p *provideImpl) GetTable(ctx context.Context, id model.ObjectIdentifier) (
 			})
 		}
 		return tableMeta, nil
-
 	case storepb.MetaType_MATERIALIZED_VIEW:
-		// todo: fill real type and nullable info
-		for _, col := range res.Metadata.GetMaterializedViewMetadata().DependencyColumns {
-			tableMeta.Columns = append(tableMeta.Columns, ColumnMeta{
-				Name:     col.Column,
-				Type:     "",
-				Nullable: false,
-			})
-		}
-		return tableMeta, nil
+		// MaterializedViewMetadata stores its dependency (source) columns, not its
+		// own output columns, so there is no column list to expand a wildcard
+		// against. Reporting no metadata makes the caller fall back to a wildcard
+		// edge instead of inventing columns that do not exist on the view.
+		return nil, nil
 	default:
 		return nil, nil
 	}

@@ -74,7 +74,7 @@ type Analyzer struct {
 
 // Analyze parses a single StarRocks statement and returns its column relations.
 func Analyze(ctx context.Context, sql string) ([]model.ColumnRelation, error) {
-	return NewAnalyzer(ctx, sql, lineage.CatelogProvide).AnalyzeRelations()
+	return NewAnalyzer(ctx, sql, lineage.GetCatalogProvide()).AnalyzeRelations()
 }
 
 // NewAnalyzer creates a StarRocks lineage analyzer for a single statement.
@@ -260,7 +260,6 @@ func (a *Analyzer) processSingleTableRef(ref *nodes.TableRef) {
 				Table:   table,
 				Alias:   alias,
 				IsCTE:   true,
-				Columns: cte.Columns,
 				Lineage: cte.Lineage,
 			})
 			return
@@ -280,10 +279,9 @@ func (a *Analyzer) addBaseTable(name *nodes.ObjectName, alias string) {
 		alias = table
 	}
 	a.currentScope().AddTable(&scope.TableRef{
-		Schema:  schema,
-		Table:   table,
-		Alias:   alias,
-		Columns: []string{},
+		Schema: schema,
+		Table:  table,
+		Alias:  alias,
 	})
 }
 
@@ -304,12 +302,11 @@ func (a *Analyzer) processDerivedTable(ref *nodes.TableRef) {
 		return
 	}
 
-	columns, lineage := a.tempTableShape(subqueryScope, alias)
+	lineage := a.tempTableLineage(subqueryScope, alias)
 	a.currentScope().AddTable(&scope.TableRef{
 		Table:      alias,
 		Alias:      alias,
 		IsSubquery: true,
-		Columns:    columns,
 		Lineage:    lineage,
 	})
 }
@@ -333,17 +330,15 @@ func (a *Analyzer) analyzeRawQueryScope(raw string, what string) *scope.Scope {
 	return subScope
 }
 
-// tempTableShape builds the column list and base-table lineage a temporary
-// table (a CTE or derived table) exposes under targetName.
-func (a *Analyzer) tempTableShape(sp *scope.Scope, targetName string) ([]string, []model.ColumnRelation) {
-	columns := make([]string, 0)
+// tempTableLineage builds the base-table lineage a temporary table (a CTE or
+// derived table) exposes under targetName.
+func (a *Analyzer) tempTableLineage(sp *scope.Scope, targetName string) []model.ColumnRelation {
 	lineage := make([]model.ColumnRelation, 0)
 	for _, col := range sp.GetOutputColumns() {
 		colName := col.Alias
 		if colName == "" {
 			colName = "column"
 		}
-		columns = append(columns, colName)
 		for _, sourceCol := range col.SourceColumns {
 			resolved, err := sp.ResolveColumn(sourceCol)
 			if err != nil {
@@ -360,7 +355,7 @@ func (a *Analyzer) tempTableShape(sp *scope.Scope, targetName string) ([]string,
 			))
 		}
 	}
-	return columns, lineage
+	return lineage
 }
 
 // ---------------------------------------------------------------------------
@@ -703,7 +698,6 @@ func (a *Analyzer) processStar(sp *scope.Scope, except []string) {
 		}
 		sp.AddOutputColumn(scope.OutputColumn{
 			Alias:         wildcardColumn,
-			Expression:    wildcardColumn,
 			SourceColumns: []scope.ColumnRef{wildcardSourceRef(tableRef)},
 		})
 	}
@@ -726,7 +720,6 @@ func (a *Analyzer) processTableWildcard(item *nodes.SelectItem, sp *scope.Scope)
 	}
 	sp.AddOutputColumn(scope.OutputColumn{
 		Alias:         wildcardColumn,
-		Expression:    tableName + "." + wildcardColumn,
 		SourceColumns: []scope.ColumnRef{wildcardSourceRef(tableRef)},
 	})
 }
@@ -775,7 +768,6 @@ func (a *Analyzer) processSelectExpr(expr nodes.Node, alias string, aliased bool
 
 	outputCol := scope.OutputColumn{
 		Alias:         alias,
-		Expression:    exprText,
 		SourceColumns: sourceColumns,
 		IsDerived:     isDerived,
 	}
@@ -815,7 +807,7 @@ func (a *Analyzer) expressionSubquerySources(expr nodes.Node) []scope.ColumnRef 
 			continue
 		}
 		synthetic := fmt.Sprintf("__subquery_%d__", i)
-		_, lineage := a.tempTableShape(subScope, synthetic)
+		lineage := a.tempTableLineage(subScope, synthetic)
 		for _, edge := range lineage {
 			refs = append(refs, scope.ColumnRef{
 				Schema:   edge.Source.Table.Database,
@@ -899,8 +891,7 @@ func (a *Analyzer) expandWildcardWithCatalog(tableRef *scope.TableRef, sp *scope
 			continue
 		}
 		sp.AddOutputColumn(scope.OutputColumn{
-			Alias:      colMeta.Name,
-			Expression: tableRef.Table + "." + colMeta.Name,
+			Alias: colMeta.Name,
 			SourceColumns: []scope.ColumnRef{{
 				Schema: tableRef.Schema,
 				Table:  tableRef.Table,
@@ -1025,10 +1016,9 @@ func (a *Analyzer) processCTE(cte *nodes.CTE) {
 	}
 
 	a.currentScope().AddCTE(&scope.CTEDefinition{
-		Name:          cteName,
-		Columns:       cte.Columns,
-		DefiningScope: a.currentScope(),
-		Lineage:       lineage,
+		Name:    cteName,
+		Columns: cte.Columns,
+		Lineage: lineage,
 	})
 }
 
@@ -1226,7 +1216,6 @@ func (a *Analyzer) flattenTempSourceLineage(sp *scope.Scope, resolved *scope.Col
 			Table:   cte.Name,
 			Alias:   cte.Name,
 			IsCTE:   true,
-			Columns: cte.Columns,
 			Lineage: cte.Lineage,
 		}
 		a.appendFlattenedLineage(lineage, sp, tempRef, resolved.Column, targetTable, targetColumn, transform)

@@ -72,8 +72,7 @@ func TestScope_AddOutputColumn(t *testing.T) {
 	scope := NewScope(nil)
 
 	col := OutputColumn{
-		Alias:      "user_id",
-		Expression: "users.id",
+		Alias: "user_id",
 		SourceColumns: []ColumnRef{
 			{Schema: "mydb", Table: "users", Column: "id"},
 		},
@@ -287,7 +286,6 @@ func TestScope_ResolveColumn_Subquery(t *testing.T) {
 		Table:      "sq",
 		Alias:      "sq",
 		IsSubquery: true,
-		Columns:    []string{"id", "total"},
 	}
 	scope.AddTable(subquery)
 

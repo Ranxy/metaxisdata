@@ -163,11 +163,10 @@ func (s *LineageService) buildAnalyzeSQLResult(ctx context.Context, analysisCont
 // with a single batched lookup.
 func buildAnalyzeSQLRelations(analysisContext catalog.AnalysisContext, relations []model.ColumnRelation) ([]*v1pb.AnalyzeSQLRelation, []analyzeSQLRelationGUIDs) {
 	// A statement that writes somewhere real also reports the synthetic result
-	// of its own SELECT: the analyzers emit "__result__" edges alongside the
-	// real target for CREATE VIEW / CREATE TABLE AS. Those duplicate what the
-	// real target already says and are dropped. For a bare SELECT there is no
-	// real target and they are the only information there is, so they are kept —
-	// that is how a caller sees the query's output columns.
+	// of its own SELECT for analyzers that emit it. Those duplicate what the real
+	// target already says and are dropped. For a bare SELECT there is no real
+	// target and they are the only information there is, so they are kept — that
+	// is how a caller sees the query's output columns.
 	hasRealTarget := slices.ContainsFunc(relations, func(relation model.ColumnRelation) bool {
 		return !relation.IsTemp && relation.Target.Table.Name != tempResultTable
 	})

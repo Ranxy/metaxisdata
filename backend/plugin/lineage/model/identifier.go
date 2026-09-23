@@ -13,18 +13,18 @@ type ObjectIdentifier struct {
 	Name       string
 }
 
-// nolint:revive
+// FullName returns the object's dotted name, omitting empty qualifiers.
 func (o ObjectIdentifier) FullName() string {
 	sb := strings.Builder{}
 	if o.Database != "" {
-		sb.WriteString(o.Database)
-		sb.WriteByte('.')
+		_, _ = sb.WriteString(o.Database)
+		_ = sb.WriteByte('.')
 	}
 	if o.Schema != "" {
-		sb.WriteString(o.Schema)
-		sb.WriteByte('.')
+		_, _ = sb.WriteString(o.Schema)
+		_ = sb.WriteByte('.')
 	}
-	sb.WriteString(o.Name)
+	_, _ = sb.WriteString(o.Name)
 	return sb.String()
 }
 

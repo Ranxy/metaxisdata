@@ -89,6 +89,23 @@ func BenchmarkAnalyzeShapes(b *testing.B) {
 	}
 }
 
+// BenchmarkAnalyzeColumnScaling grows the SELECT list to show how analysis cost
+// scales with the number of expressions in one statement, which is the shape
+// that dominates wide view definitions.
+func BenchmarkAnalyzeColumnScaling(b *testing.B) {
+	for _, n := range []int{1, 10, 100, 500, 1000} {
+		sql := buildWideSelect(n)
+		b.Run(fmt.Sprintf("cols_%d", n), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := NewAnalyzer(context.Background(), sql, nil).AnalyzeRelations(); err != nil {
+					b.Fatalf("cols %d: %v", n, err)
+				}
+			}
+		})
+	}
+}
+
 // BenchmarkAnalyzeWildcardWithCatalog measures SELECT * expansion against a
 // 100-column catalog, the production path where the metadata store is consulted.
 func BenchmarkAnalyzeWildcardWithCatalog(b *testing.B) {
@@ -149,6 +166,10 @@ func loadCorpusBenchCases(b *testing.B) []benchCase {
 			b.Fatalf("load %s: %v", file, err)
 		}
 		for _, tc := range suite.Cases {
+			// Cases that assert an analysis error are not analyzable input.
+			if tc.ExpectError {
+				continue
+			}
 			cases = append(cases, benchCase{Name: benchCaseName(tc.Name), SQL: tc.SQL})
 		}
 	}

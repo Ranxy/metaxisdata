@@ -40,6 +40,23 @@ type ExpectedEdge struct {
 
 	// Optional: whether target is temporary (nil = not checked)
 	IsTemp *bool
+
+	// Optional: expected transformations. Each entry must match one of the
+	// relation's transformations on every field it sets (nil = not checked).
+	Transformations []ExpectedTransformation
+}
+
+// ExpectedTransformation matches a transformation on the fields it sets.
+type ExpectedTransformation struct {
+	Operation    string
+	FunctionName string
+	Expression   string
+	OpType       string
+	Condition    string
+	Arguments    []string
+	GroupKeys    []string
+	PartitionBy  []string
+	OrderBy      []string
 }
 
 // LineageTestCase defines a test case for lineage analysis.
@@ -54,17 +71,15 @@ type LineageTestCase struct {
 	Catalog catalog.Provide
 
 	// Expected edges. When nil, only checks that analysis succeeds without error.
-	// When empty slice, expects no edges.
+	// When an empty (non-nil) slice, expects no edges at all.
 	ExpectedEdges []ExpectedEdge
+
+	// ExactEdges makes ExpectedEdges exhaustive: every produced edge must match a
+	// distinct expected edge, so an unexpected extra edge fails the case.
+	ExactEdges bool
 
 	// ExpectError indicates the test expects an analysis error
 	ExpectError bool
-
-	// MinEdges specifies minimum expected edges count (used when ExpectedEdges is nil)
-	MinEdges *int
-
-	// SkipEdgeValidation skips detailed edge matching but ensures MinEdges is satisfied
-	SkipEdgeValidation bool
 
 	// Debug enables verbose output for debugging
 	Debug bool
@@ -82,14 +97,13 @@ type yamlLineageTestSuite struct {
 }
 
 type yamlLineageTestCase struct {
-	Name               string              `yaml:"name"`
-	SQL                string              `yaml:"sql"`
-	Catalog            *yamlCatalog        `yaml:"catalog,omitempty"`
-	ExpectedEdges      *[]yamlExpectedEdge `yaml:"expected_edges,omitempty"`
-	ExpectError        bool                `yaml:"expect_error,omitempty"`
-	MinEdges           *int                `yaml:"min_edges,omitempty"`
-	SkipEdgeValidation bool                `yaml:"skip_edge_validation,omitempty"`
-	Debug              bool                `yaml:"debug,omitempty"`
+	Name          string              `yaml:"name"`
+	SQL           string              `yaml:"sql"`
+	Catalog       *yamlCatalog        `yaml:"catalog,omitempty"`
+	ExpectedEdges *[]yamlExpectedEdge `yaml:"expected_edges,omitempty"`
+	ExactEdges    bool                `yaml:"exact_edges,omitempty"`
+	ExpectError   bool                `yaml:"expect_error,omitempty"`
+	Debug         bool                `yaml:"debug,omitempty"`
 }
 
 type yamlCatalog struct {
@@ -108,9 +122,22 @@ type yamlExpectedEdge struct {
 	ToTable    string `yaml:"to_table,omitempty"`
 	ToField    string `yaml:"to_field,omitempty"`
 
-	RelationType *string `yaml:"relation_type,omitempty"`
-	HasTransform *bool   `yaml:"has_transform,omitempty"`
-	IsTemp       *bool   `yaml:"is_temp,omitempty"`
+	RelationType    *string              `yaml:"relation_type,omitempty"`
+	HasTransform    *bool                `yaml:"has_transform,omitempty"`
+	IsTemp          *bool                `yaml:"is_temp,omitempty"`
+	Transformations []yamlTransformation `yaml:"transformations,omitempty"`
+}
+
+type yamlTransformation struct {
+	Operation    string   `yaml:"operation,omitempty"`
+	FunctionName string   `yaml:"function_name,omitempty"`
+	Expression   string   `yaml:"expression,omitempty"`
+	OpType       string   `yaml:"op_type,omitempty"`
+	Condition    string   `yaml:"condition,omitempty"`
+	Arguments    []string `yaml:"arguments,omitempty"`
+	GroupKeys    []string `yaml:"group_keys,omitempty"`
+	PartitionBy  []string `yaml:"partition_by,omitempty"`
+	OrderBy      []string `yaml:"order_by,omitempty"`
 }
 
 // AnalyzeFunc is the function signature for analyzing SQL and returning relations.
@@ -224,31 +251,23 @@ func RunLineageTest(t *testing.T, tc LineageTestCase, analyzeFn AnalyzeFunc) {
 		}
 	}
 
-	// Check minimum edges count
-	if tc.MinEdges != nil {
-		require.GreaterOrEqual(t, len(relations), *tc.MinEdges,
-			"Expected at least %d edges, got %d", *tc.MinEdges, len(relations))
-	}
-
-	// Skip detailed validation if requested
-	if tc.SkipEdgeValidation {
-		return
-	}
-
-	// Validate expected edges
+	// An explicitly empty expectation means the statement must produce no edges.
 	if tc.ExpectedEdges != nil {
-		ValidateExpectedEdges(t, relations, tc.ExpectedEdges)
+		if tc.ExactEdges {
+			ValidateExactEdges(t, relations, tc.ExpectedEdges)
+		} else {
+			ValidateExpectedEdges(t, relations, tc.ExpectedEdges)
+		}
 	}
 }
 
 func (c *yamlLineageTestCase) toLineageTestCase() (LineageTestCase, error) {
 	tc := LineageTestCase{
-		Name:               c.Name,
-		SQL:                c.SQL,
-		ExpectError:        c.ExpectError,
-		MinEdges:           c.MinEdges,
-		SkipEdgeValidation: c.SkipEdgeValidation,
-		Debug:              c.Debug,
+		Name:        c.Name,
+		SQL:         c.SQL,
+		ExpectError: c.ExpectError,
+		ExactEdges:  c.ExactEdges,
+		Debug:       c.Debug,
 	}
 
 	if c.Catalog != nil {
@@ -299,6 +318,10 @@ func (e *yamlExpectedEdge) toExpectedEdge() (ExpectedEdge, error) {
 		ToField:      e.ToField,
 		HasTransform: e.HasTransform,
 		IsTemp:       e.IsTemp,
+	}
+
+	for _, rawTransform := range e.Transformations {
+		edge.Transformations = append(edge.Transformations, ExpectedTransformation(rawTransform))
 	}
 
 	if e.RelationType != nil {
@@ -354,36 +377,28 @@ func addCatalogTable(cat *catalog.MemoryCatalogProvide, id model.ObjectIdentifie
 	})
 }
 
+// testingT is the subset of testing.TB the validators need, so a stub can be
+// used to assert that a validator fails.
+type testingT interface {
+	require.TestingT
+	Helper()
+}
+
 // ValidateExpectedEdges checks that all expected edges are found in the results.
-func ValidateExpectedEdges(t *testing.T, relations []model.ColumnRelation, expected []ExpectedEdge) {
+func ValidateExpectedEdges(t testingT, relations []model.ColumnRelation, expected []ExpectedEdge) {
 	t.Helper()
+
+	if len(expected) == 0 {
+		require.Empty(t, relations, "Expected no edges, got:\n%s", FormatRelations(relations))
+		return
+	}
 
 	for _, exp := range expected {
 		found := false
 		for _, rel := range relations {
 			if EdgeMatches(rel, exp) {
 				found = true
-
-				// Validate optional fields
-				if exp.RelationType != nil {
-					require.Equal(t, *exp.RelationType, rel.RelationType,
-						"Relation type mismatch for edge %s.%s -> %s.%s",
-						exp.FromTable, exp.FromField, exp.ToTable, exp.ToField)
-				}
-
-				if exp.HasTransform != nil {
-					hasTransform := len(rel.Transformation) > 0
-					require.Equal(t, *exp.HasTransform, hasTransform,
-						"Transform expectation mismatch for edge %s.%s -> %s.%s: expected HasTransform=%v, got %v",
-						exp.FromTable, exp.FromField, exp.ToTable, exp.ToField, *exp.HasTransform, hasTransform)
-				}
-
-				if exp.IsTemp != nil {
-					require.Equal(t, *exp.IsTemp, rel.IsTemp,
-						"IsTemp mismatch for edge %s.%s -> %s.%s",
-						exp.FromTable, exp.FromField, exp.ToTable, exp.ToField)
-				}
-
+				validateEdgeFields(t, rel, exp)
 				break
 			}
 		}
@@ -394,6 +409,117 @@ func ValidateExpectedEdges(t *testing.T, relations []model.ColumnRelation, expec
 			exp.ToDatabase, exp.ToSchema, exp.ToTable, exp.ToField,
 			FormatRelations(relations))
 	}
+}
+
+// ValidateExactEdges checks that the produced edges are exactly the expected
+// ones: every expectation matches a distinct produced edge and no produced edge
+// is left unmatched.
+func ValidateExactEdges(t testingT, relations []model.ColumnRelation, expected []ExpectedEdge) {
+	t.Helper()
+
+	require.Len(t, relations, len(expected),
+		"Edge count mismatch\nExpected edges: %s\nAvailable edges: %s",
+		formatExpectedEdges(expected), FormatRelations(relations))
+
+	used := make([]bool, len(relations))
+	for _, exp := range expected {
+		matched := -1
+		for i, rel := range relations {
+			if used[i] || !EdgeMatches(rel, exp) {
+				continue
+			}
+			matched = i
+			break
+		}
+		require.NotEqual(t, -1, matched,
+			"Expected edge not found: %s.%s.%s.%s -> %s.%s.%s.%s\nAvailable edges: %s",
+			exp.FromDatabase, exp.FromSchema, exp.FromTable, exp.FromField,
+			exp.ToDatabase, exp.ToSchema, exp.ToTable, exp.ToField,
+			FormatRelations(relations))
+		used[matched] = true
+		validateEdgeFields(t, relations[matched], exp)
+	}
+}
+
+// validateEdgeFields checks the optional relation fields of a matched edge.
+func validateEdgeFields(t testingT, rel model.ColumnRelation, exp ExpectedEdge) {
+	t.Helper()
+
+	if exp.RelationType != nil {
+		require.Equal(t, *exp.RelationType, rel.RelationType,
+			"Relation type mismatch for edge %s.%s -> %s.%s",
+			exp.FromTable, exp.FromField, exp.ToTable, exp.ToField)
+	}
+
+	if exp.HasTransform != nil {
+		hasTransform := len(rel.Transformation) > 0
+		require.Equal(t, *exp.HasTransform, hasTransform,
+			"Transform expectation mismatch for edge %s.%s -> %s.%s: expected HasTransform=%v, got %v",
+			exp.FromTable, exp.FromField, exp.ToTable, exp.ToField, *exp.HasTransform, hasTransform)
+	}
+
+	if exp.IsTemp != nil {
+		require.Equal(t, *exp.IsTemp, rel.IsTemp,
+			"IsTemp mismatch for edge %s.%s -> %s.%s",
+			exp.FromTable, exp.FromField, exp.ToTable, exp.ToField)
+	}
+
+	for _, expTransform := range exp.Transformations {
+		found := false
+		for _, transform := range rel.Transformation {
+			if TransformationMatches(transform, expTransform) {
+				found = true
+				break
+			}
+		}
+		require.True(t, found,
+			"Expected transformation %+v not found for edge %s.%s -> %s.%s; got %+v",
+			expTransform, exp.FromTable, exp.FromField, exp.ToTable, exp.ToField, rel.Transformation)
+	}
+}
+
+// TransformationMatches checks a transformation against the fields an expected
+// transformation sets.
+func TransformationMatches(transform model.Transformation, exp ExpectedTransformation) bool {
+	if exp.Operation != "" && transform.Operation != model.OperationType(exp.Operation) {
+		return false
+	}
+	if exp.FunctionName != "" && transform.FunctionName != exp.FunctionName {
+		return false
+	}
+	if exp.Expression != "" && transform.Expression != exp.Expression {
+		return false
+	}
+	if exp.OpType != "" && transform.OpType != exp.OpType {
+		return false
+	}
+	if exp.Condition != "" && transform.Condition != exp.Condition {
+		return false
+	}
+	if len(exp.Arguments) > 0 && !slices.Equal(transform.Arguments, exp.Arguments) {
+		return false
+	}
+	if len(exp.GroupKeys) > 0 && !slices.Equal(transform.GroupKeys, exp.GroupKeys) {
+		return false
+	}
+	if len(exp.PartitionBy) > 0 && !slices.Equal(transform.PartitionBy, exp.PartitionBy) {
+		return false
+	}
+	if len(exp.OrderBy) > 0 && !slices.Equal(transform.OrderBy, exp.OrderBy) {
+		return false
+	}
+	return true
+}
+
+// formatExpectedEdges renders expected edges for failure messages.
+func formatExpectedEdges(expected []ExpectedEdge) string {
+	result := "\n"
+	for _, e := range expected {
+		result += fmt.Sprintf("  %s.%s.%s.%s -> %s.%s.%s.%s\n",
+			e.FromDatabase, e.FromSchema, e.FromTable, e.FromField,
+			e.ToDatabase, e.ToSchema, e.ToTable, e.ToField)
+	}
+	return result
 }
 
 // EdgeMatches checks if a relation matches the expected edge pattern.

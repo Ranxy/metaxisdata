@@ -87,12 +87,18 @@ Recorded divergences from the legacy analyzer:
 1. **`WITH ... DELETE ...` loses the CTE.** omni's `DeleteStmt` has no CTE field,
    so the `WITH` clause is dropped at parse time and the legacy trace-through-CTE
    behavior cannot be reproduced. Affects `MANUAL_SQL` only; view bodies are
-   always SELECT.
+   always SELECT. Superseded by
+   `plan/mysql_lineage_optimization_plan.md` §2.10: the analyzer now detects a
+   leading `WITH` on INSERT/UPDATE/DELETE and returns an explicit analysis error
+   rather than resolving the CTE name as a base table.
 2. **Unqualified columns ambiguous across FROM relations resolve
    nondeterministically.** The shared `scope` package iterates a map, so
    `... JOIN ... USING (id)` plus an unqualified shared column name can pick
-   either relation. This is a pre-existing bug in `scope`, identical in both
-   implementations, and out of scope for the parser migration.
+   either relation. Superseded by
+   `plan/mysql_lineage_optimization_plan.md` §2.4: the MySQL-family analyzers now
+   consult catalog metadata to pick the table that owns the column (and drop the
+   reference when no table does); the shared resolver keeps its deterministic
+   sorted-first rule as the metadata-free fallback.
 3. Transformation *content* may differ where the omni AST is more precise than
    the legacy ANTLR tree (notably window functions: legacy emitted `PROJECT`
    because its function detector missed the window grammar context; omni emits

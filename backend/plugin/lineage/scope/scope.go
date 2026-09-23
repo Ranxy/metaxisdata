@@ -122,10 +122,10 @@ func (s *Scope) ResolveColumn(colRef ColumnRef) (*ColumnRef, error) {
 	//
 	// The walk is sorted by key rather than ranging the map directly: a map walk
 	// picks an arbitrary relation when the column name is ambiguous across FROM
-	// relations, which made the resolved source (and therefore the emitted
-	// lineage edge) nondeterministic for NATURAL JOIN and similar shapes. Both
-	// the legacy and omni analyzers share this resolver, so sorting keeps them
-	// identical and the product's output stable.
+	// relations, which would make the resolved source (and therefore the emitted
+	// lineage edge) nondeterministic for NATURAL JOIN and similar shapes. Sorting
+	// keeps the product's output stable. Analyzers that have column metadata
+	// disambiguate before calling this fallback.
 	tableKeys := make([]string, 0, len(s.tables))
 	for key := range s.tables {
 		tableKeys = append(tableKeys, key)

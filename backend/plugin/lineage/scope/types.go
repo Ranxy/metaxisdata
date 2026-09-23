@@ -23,8 +23,6 @@ type TableRef struct {
 	// For subqueries and CTEs
 	IsSubquery bool
 	IsCTE      bool
-	// Columns available from this table source
-	Columns []string
 	// Lineage edges for subqueries (how output columns relate to source tables)
 	Lineage []model.ColumnRelation
 }
@@ -33,16 +31,13 @@ type TableRef struct {
 type CTEDefinition struct {
 	Name    string
 	Columns []string
-	// The scope in which this CTE was defined
-	DefiningScope *Scope
 	// Lineage edges within the CTE
 	Lineage []model.ColumnRelation
 }
 
 // OutputColumn represents a column in the SELECT output.
 type OutputColumn struct {
-	Alias      string // The alias given to this column (AS clause)
-	Expression string // The expression text
+	Alias string // The alias given to this column (AS clause)
 	// Source columns that this output depends on
 	SourceColumns []ColumnRef
 	// Whether this is a derived/transformed column
@@ -50,8 +45,7 @@ type OutputColumn struct {
 	Transform []model.Transformation
 }
 
-// NewLineageEdge creates a new LineageEdge (ColumnRelation) from field-edge parameters.
-// This helper is used during the migration from FieldEdge to ColumnRelation.
+// NewLineageEdge creates a ColumnRelation from field-edge parameters.
 func NewLineageEdge(fromSchema, fromTable, fromField, toSchema, toTable, toField string, transform []model.Transformation, isTemp bool) model.ColumnRelation {
 	// Determine relation type based on transformation
 	relType := determineRelationType(transform)
@@ -84,22 +78,20 @@ func determineRelationType(transform []model.Transformation) model.RelationType 
 	if len(transform) == 0 {
 		return model.RelationTypeDirect
 	}
-
-	// Check transformation content to determine type
-	for _, t := range transform {
-		switch t.Operation {
-		case model.OperationDelete:
-			return model.RelationTypeIndirect
-		case model.OperationUnion:
-			return model.RelationTypeUnion
-		case model.OperationAggregate:
-			return model.RelationTypeGroup
-		default:
-			// For other operations, it's indirect
-			return model.RelationTypeIndirect
-		}
+	// The first transformation is the outermost operation, so it decides the
+	// relation type.
+	switch transform[0].Operation {
+	case model.OperationDelete:
+		return model.RelationTypeIndirect
+	case model.OperationUnion:
+		return model.RelationTypeUnion
+	case model.OperationIntersect:
+		return model.RelationTypeIntersect
+	case model.OperationExcept:
+		return model.RelationTypeExcept
+	case model.OperationAggregate:
+		return model.RelationTypeGroup
+	default:
+		return model.RelationTypeIndirect
 	}
-
-	// Default to indirect if there's any transformation
-	return model.RelationTypeIndirect
 }

@@ -18,12 +18,23 @@ var (
 )
 
 var (
-	mux            sync.Mutex
-	CatelogProvide catalog.Provide
+	mux sync.RWMutex
+	// CatalogProvide is the process-wide catalog used by the registered
+	// analyzers. It is set once at startup by InitCatalogProvide.
+	CatalogProvide catalog.Provide
 )
 
 func InitCatalogProvide(store *store.Store) {
-	CatelogProvide = catalog.NewCatalogProvide(store)
+	mux.Lock()
+	defer mux.Unlock()
+	CatalogProvide = catalog.NewCatalogProvide(store)
+}
+
+// GetCatalogProvide returns the process-wide catalog provider.
+func GetCatalogProvide() catalog.Provide {
+	mux.RLock()
+	defer mux.RUnlock()
+	return CatalogProvide
 }
 
 type analyze func(ctx context.Context, sql string) ([]model.ColumnRelation, error)
@@ -40,7 +51,9 @@ func RegisterAnalyzeRelation(engine storepb.Engine, f analyze) {
 }
 
 func GetAnalyzeRelation(ctx context.Context, engine storepb.Engine, sql string) ([]model.ColumnRelation, error) {
+	mux.RLock()
 	f, ok := getAnalyzes[engine]
+	mux.RUnlock()
 	if !ok {
 		return nil, ErrorEngineNotSupported
 	}
