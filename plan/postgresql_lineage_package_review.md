@@ -38,6 +38,41 @@
 
 ---
 
+## 0b. 第二批（P1）实施状态：已落地
+
+第二批 5 项已全部处理，全仓 build/test/lint 通过。
+
+| 项 | 状态 | 落地内容 |
+| --- | --- | --- |
+| **P1-4 / P1-5** 谓词归属 | ✅ 已修复 / 已决策 | `a.predicates` 由"语句级扁平队列"改为 `map[*scope.Scope][]predicateInfluence` + `map[*scope.CTEDefinition][]...`；谓词归属到产生它的 scope，并由**消费该 scope 行集的一方继承**（派生表/表达式子查询 → 外层查询；CTE → 引用它的查询；集合运算分支 → 合并结果）。未被引用的 CTE 的谓词随之丢弃。`emitPredicateInfluences` 改为按 scope 发射。**UPDATE 是否产出影响边：决定维持跨方言既定规则（仅 SELECT 类语句记录谓词影响，只有 DELETE 另有 `__deletion__`），并在 `processUpdateStmt` 上写明这是有意丢弃而非半成品** |
+| **P1-3** 命名窗口 | ✅ 已修复 | 新增 `namedWindows`（按查询的 WINDOW 子句建立索引）与 `namedWindowDefinitions`（跟随 `WINDOW w2 AS (w1 …)` 链、带环保护）；`windowClauses` 与列收集都会展开 `OVER w`。顺带补齐命名窗口的**帧边界**列（`ROWS BETWEEN z PRECEDING`），使命名与内联两种写法产出完全一致的列与变换 |
+| **P1-7** MERGE 连带失败 | ✅ 已修复 | 新增 `lineage.UnsupportedStatementError`；`AnalyzeRelations` 返回**已算出的边 + 该错误**（解析错误仍是硬失败、无部分结果）；runner 识别该类型后**保留血缘**并把缺口写进 `error_message`（`markAnalyzed` 而非 `markAnalysisFailed`） |
+| **P1-2 / P1-1** 目标列命名 | ✅ 已修复 | CTAS 的 `Into.ColNames` 不再只对 MATVIEW 生效；`inferColumnAlias` 改为按 **PostgreSQL 实际命名规则**（对 16 实测 33 个表达式）：函数→函数名、cast→被 cast 表达式名否则目标类型名、`CASE`/`COALESCE`/`GREATEST`/`LEAST`/`NULLIF`/`ARRAY`/`ROW`/`GROUPING`/SQL 值函数→各自名字、其余→`?column?`；标量子查询取首列名 |
+| **P1-6 / P1-8** 边身份与 DML 输出 | ✅ 已修复 | 去重键改为结构体 `edgeKey`（含变换的规范渲染，并用标识符值本身而非 `.` 拼接，避免含点标识符碰撞）；`SELECT … INTO` 建模为写入目标表；DML 的 `RETURNING` 列注册为语句输出，**数据修改型 CTE 因此能把返回列传给读取它的查询**（原先整条链断掉） |
+
+**第二批过程中发现并修复的两个附带缺陷**（都是被掩盖/新暴露的，不修就是"修一个露一个"）：
+
+1. **ON CONFLICT 子句的作用域错绑**。原实现让冲突子句的作用域以语句作用域为父，于是 `SET quantity = shipment.quantity` 会解析到 INSERT 的 SELECT 关系上；旧去重键恰好把它与合法边合并，**把错误藏住了**。改为**脱离父作用域**（只含目标表 + EXCLUDED）。真实 PostgreSQL 16 实测：`SET quantity = shipment.quantity` 与 `SET b = c.y`（语句级 CTE）都报 `missing FROM-clause entry`，而 `SET b = EXCLUDED.b + t.b` 合法 —— 与修复后行为一致。
+2. **`SELECT … INTO` 根本没走到目标分支**。omni 把 `SELECT … INTO` 解析成带 `IntoClause` 的普通 `SelectStmt`，而原代码只在 `CreateTableAsStmt.IsSelectInto` 上判断，那条分支实际不可达。现在 `processSelectStmt` 直接分派 INTO，并与 CTAS/MATVIEW 共用同一个目标发射路径（`emitOutputColumnsToTarget`，同时消除了三处重复代码）。
+
+**新增语料**
+
+- `34_test_predicate_attribution_table.yaml`（P1-4，7 例）
+- `35_test_named_window_lineage_table.yaml`（P1-3，4 例）
+- `36_test_output_target_lineage_table.yaml`（P1-2/P1-1/P1-8，8 例）
+- `37_test_edge_identity_lineage_table.yaml`（P1-6，1 例）
+- 更新既有语料 4 处：`15_test_on_conflict`、`25_test_predicate_influence`（用例名从 "keeps one edge" 改为 "carries both influences"）、`26_test_assignment_resolution`、`32_test_assignment_temp_source`；新增 Go 测试 `TestUnsupportedStatementKeepsOtherStatements`
+- `29_test_statement_lineage` 的 MERGE 用例改名并注明新的部分成功语义
+
+**已知残留（记录在案，非本次范围）**
+
+- ON CONFLICT 子句内**子查询**引用语句级 CTE（`SET b = (SELECT max(y) FROM c)`，PostgreSQL 接受）目前解析不到该 CTE，会把它当普通表 → 可能产出一条指向不存在关系的边。忠实建模需要在"冲突子句作用域"与"嵌套查询作用域"之间加一层只暴露 CTE 的中间作用域，`scope` 现有 API 表达不了。
+- 顶层 DML 的 `RETURNING` 不再产出 `__result__` 边（有意决策：返回行是面向客户端的结果，语句的血缘是它执行的写入）。数据修改型 CTE 的情形已完整建模。
+
+**第二批之后仍待处理**：§5 的 P2（13 项）、§6 的 D1/D3/D5、§7 剩余测试缺口。
+
+---
+
 ## 1. 结论摘要
 
 | 级别 | 数量 | 说明 |
@@ -200,7 +235,7 @@ SELECT a FROM t1 UNION     SELECT a FROM t2   →  {UNION}
 
 ## 4. P1 中等问题
 
-### P1-1　`inferColumnAlias` 没有实现 PostgreSQL 的输出列命名规则（影响 MANUAL_SQL）
+### P1-1　`inferColumnAlias` 没有实现 PostgreSQL 的输出列命名规则（影响 MANUAL_SQL）　— ✅ 已在第二批修复（见 §0b）
 
 **位置**：`expr.go:510-518`
 
@@ -217,7 +252,7 @@ SELECT a FROM t1 UNION     SELECT a FROM t2   →  {UNION}
 
 **注**：MySQL 的 `inferredColumnAlias` 有明确注释说"表达式原文就是引擎给的名字"——这在 MySQL 下成立，**复制到 PostgreSQL 就不成立了**。属于跨方言移植时未适配的典型。
 
-### P1-2　CTAS 的显式列名列表被忽略（`Into.ColNames` 只在 MATVIEW 生效）
+### P1-2　CTAS 的显式列名列表被忽略（`Into.ColNames` 只在 MATVIEW 生效）　— ✅ 已在第二批修复（见 §0b）
 
 **位置**：`analyzer.go:1202-1211`，注释写"Only a materialized view honors an explicit column list here"
 
@@ -228,7 +263,7 @@ CREATE TABLE dst (p, q) AS SELECT a, d FROM s2;   -- 实测列名为 p, q
 ```
 分析器输出目标列为 `dst.a`、`dst.d`。虽然 `runner` 不分析 TABLE 对象，MANUAL_SQL 仍会命中。
 
-### P1-3　命名窗口（`WINDOW w AS (...)` + `OVER w`）丢失窗口子句与其中依赖的列
+### P1-3　命名窗口（`WINDOW w AS (...)` + `OVER w`）丢失窗口子句与其中依赖的列　— ✅ 已在第二批修复（见 §0b）
 
 **位置**：`expr.go:389-407`（`windowClauses` 只处理 `WindowDef` 的 `PartitionClause`/`OrderClause`，不处理 `Refname`）；`SelectStmt.WindowClause` 全程未被处理
 
@@ -241,7 +276,7 @@ SELECT sum(x) OVER w AS s FROM t WINDOW w AS (PARTITION BY y ORDER BY z)
 
 **生产可达**：实测 `pg_get_viewdef` **原样保留** `WINDOW w AS (PARTITION BY y ORDER BY z)`，所以同步视图会命中此缺陷。
 
-### P1-4　未 emit 的作用域里的谓词会泄漏到外层输出
+### P1-4　未 emit 的作用域里的谓词会泄漏到外层输出　— ✅ 已在第二批修复（见 §0b）
 
 **位置**：`predicate.go:90-97`（`collectPredicates`）、`predicate.go:137-155`（`emitPredicateInfluences`）
 
@@ -256,7 +291,7 @@ WITH unused AS (SELECT id FROM t WHERE x = 1) SELECT 1 AS one
 
 **反向问题**：`UPDATE` 里的谓词被收集后**永远无人 emit**（见 P1-5），直接沉默丢弃。
 
-### P1-5　`UPDATE ... WHERE` / `UPDATE ... FROM ... WHERE` 不产生任何行级影响边（与 DELETE/SELECT 不对称）
+### P1-5　`UPDATE ... WHERE` / `UPDATE ... FROM ... WHERE` 不产生任何行级影响边（与 DELETE/SELECT 不对称）　— ✅ 已在第二批决策并写明（见 §0b）
 
 **位置**：`analyzer.go:930-954`（`processUpdateStmt` 从不调用 `emitPredicateInfluences`）
 
@@ -271,7 +306,7 @@ UPDATE t SET a = s.x FROM s WHERE t.id = s.id AND s.flag = 1
 
 **这条是"文档化决策"而非纯疏忽**：MySQL 语料 `09_test_update_lineage_table.yaml` 头部明确写"Predicate influence edges are recorded for SELECT-based statements only. … only DELETE models it"。但它是一个**容易踩坑的不对称规则**，且 `processUpdateStmt` 收集了谓词却无人消费，属于"半成品"状态。建议要么明确补齐 `__update__` 风格的标记，要么在代码里显式丢弃并注释，别让它悬着。
 
-### P1-6　去重键忽略变换，导致第二条不同的变换被静默丢弃
+### P1-6　去重键忽略变换，导致第二条不同的变换被静默丢弃　— ✅ 已在第二批修复（见 §0b）
 
 **位置**：`analyzer.go:1502-1505`
 
@@ -283,7 +318,7 @@ signature := fmt.Sprintf("%s.%s.%s->%s.%s.%s", src.Schema, src.Name, src.Column,
 - 同一列同时作为投影源和谓词源且目标列相同时，第二个 `FILTER` 条件（含不同 `Condition` 文本）会丢；
 - 键用 `.` 拼接，带点的引用标识符（`"a.b".c`）理论上可构造碰撞。
 
-### P1-7　MERGE 失败会连带丢弃同一语句串里其它合法语句的结果
+### P1-7　MERGE 失败会连带丢弃同一语句串里其它合法语句的结果　— ✅ 已在第二批修复（见 §0b）
 
 **位置**：`analyzer.go:154-158`（`a.errors`），`analyzer.go:130-132`（有 error 就整体 `return nil`）
 
@@ -296,7 +331,7 @@ SELECT a FROM t1; MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE S
 
 "fail loudly" 本身是既定决策（与 StarRocks 一致），但**失败半径**（丢弃同一输入中其他语句的边）未被评估。建议至少保留能算的语句的边，仅在 `error_message` 中标注未支持语句。
 
-### P1-8　`SELECT ... INTO` 与 `RETURNING` 未建模
+### P1-8　`SELECT ... INTO` 与 `RETURNING` 未建模　— ✅ 已在第二批修复（见 §0b）
 
 - `analyzer.go:1192-1197`：`IsSelectInto` 被当作裸 SELECT，目标是 `__result__` 而非新建的表（注释说明是有意为之，但对 MANUAL_SQL 意味着目标丢失）。
 - 各 DML 的 `ReturningList` 全程未处理：`INSERT ... RETURNING`、`DELETE ... RETURNING` 里被读出的列不构成源。
