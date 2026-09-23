@@ -275,6 +275,40 @@ func FindLineageTestSuites(dir string) ([]string, error) {
 	return paths, nil
 }
 
+// requireNoValuelessEdgeKey rejects an `expected_edges:` key written with no value
+// at all. It unmarshals to a nil slice, which the loader reads the same way it
+// reads an omitted key — "this case asserts nothing" — rather than the emptiness
+// the author meant. `expected_edges: []` is the written form that asserts zero
+// edges, so the accidental one is refused here: no other check can see it,
+// including the nil skip in RequireFullEdgeAnnotations.
+func requireNoValuelessEdgeKey(t *testing.T, suitePath string) {
+	t.Helper()
+
+	content, err := os.ReadFile(suitePath)
+	require.NoError(t, err)
+
+	var doc yaml.Node
+	require.NoError(t, yaml.Unmarshal(content, &doc))
+
+	var walk func(node *yaml.Node)
+	walk = func(node *yaml.Node) {
+		if node.Kind == yaml.MappingNode {
+			for i := 0; i+1 < len(node.Content); i += 2 {
+				key, value := node.Content[i], node.Content[i+1]
+				if key.Value == "expected_edges" && value.Kind == yaml.ScalarNode && value.Tag == "!!null" {
+					require.Failf(t, "expected_edges written with no value",
+						"%s line %d: write `expected_edges: []` to assert that no edge is produced, or omit the key to skip the comparison",
+						filepath.Base(suitePath), key.Line)
+				}
+			}
+		}
+		for _, child := range node.Content {
+			walk(child)
+		}
+	}
+	walk(&doc)
+}
+
 // RequireFullEdgeAnnotations fails when an expectation leaves a user-visible
 // relation field unasserted. An omitted field in an expectation is a wildcard,
 // so a case widens instead of narrows when it leaves fields out; this keeps
@@ -290,6 +324,8 @@ func RequireFullEdgeAnnotations(t *testing.T, dir string) {
 	require.NotEmpty(t, suitePaths, "no YAML lineage test suites found in %s", dir)
 
 	for _, suitePath := range suitePaths {
+		requireNoValuelessEdgeKey(t, suitePath)
+
 		suite, err := LoadLineageTestSuiteFromYAML(suitePath)
 		require.NoError(t, err)
 
