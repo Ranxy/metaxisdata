@@ -52,38 +52,50 @@ cases:
           from_field: amount
           to_table: __result__
           to_field: running_total
-          relation_type: group
+          relation_type: indirect
           has_transform: true
           is_temp: true
           transformations:
-            - operation: AGGREGATE
+            - operation: WINDOW
               function_name: SUM
               expression: SUM(amount)OVER(PARTITIONBYproduct_idORDERBYsale_date)
               group_keys: []
+              partition_by:
+                - product_id
+              order_by:
+                - sale_date
         - from_table: sales
           from_field: product_id
           to_table: __result__
           to_field: running_total
-          relation_type: group
+          relation_type: indirect
           has_transform: true
           is_temp: true
           transformations:
-            - operation: AGGREGATE
+            - operation: WINDOW
               function_name: SUM
               expression: SUM(amount)OVER(PARTITIONBYproduct_idORDERBYsale_date)
               group_keys: []
+              partition_by:
+                - product_id
+              order_by:
+                - sale_date
         - from_table: sales
           from_field: sale_date
           to_table: __result__
           to_field: running_total
-          relation_type: group
+          relation_type: indirect
           has_transform: true
           is_temp: true
           transformations:
-            - operation: AGGREGATE
+            - operation: WINDOW
               function_name: SUM
               expression: SUM(amount)OVER(PARTITIONBYproduct_idORDERBYsale_date)
               group_keys: []
+              partition_by:
+                - product_id
+              order_by:
+                - sale_date
     - name: case_expression
       sql: SELECT CASE WHEN salary > 100 THEN 'hi' ELSE name END AS band FROM employees
       expected_edges:
@@ -434,13 +446,13 @@ cases:
           from_field: price
           to_table: __result__
           to_field: top_price
-          relation_type: group
+          relation_type: indirect
           has_transform: true
           is_temp: true
           transformations:
-            - operation: AGGREGATE
-              function_name: SUM
+            - operation: OPERATOR
               expression: SUM(price)+1
+              op_type: ADDITION
               group_keys:
                 - department
     - name: a windowed aggregate records no keys
@@ -450,26 +462,30 @@ cases:
           from_field: price
           to_table: __result__
           to_field: running
-          relation_type: group
+          relation_type: indirect
           has_transform: true
           is_temp: true
           transformations:
-            - operation: AGGREGATE
+            - operation: WINDOW
               function_name: SUM
               expression: SUM(price)OVER(PARTITIONBYdepartment)
               group_keys: []
+              partition_by:
+                - department
         - from_table: products
           from_field: department
           to_table: __result__
           to_field: running
-          relation_type: group
+          relation_type: indirect
           has_transform: true
           is_temp: true
           transformations:
-            - operation: AGGREGATE
+            - operation: WINDOW
               function_name: SUM
               expression: SUM(price)OVER(PARTITIONBYdepartment)
               group_keys: []
+              partition_by:
+                - department
     - name: an aggregate inside a subquery records no keys
       sql: SELECT (SELECT COUNT(*) FROM orders) AS n FROM users GROUP BY users.id
       expected_edges:

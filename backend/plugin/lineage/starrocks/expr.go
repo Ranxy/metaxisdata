@@ -203,29 +203,151 @@ func containsGroupAggregate(expr nodes.Node) bool {
 }
 
 // analyzeExpressionOperator identifies the operation kind of an expression and
-// returns its transformation metadata.
+// returns its transformation metadata. What the expression *is* decides it: a
+// CASE or an operator at the outermost node first, then the first function call
+// it contains — checked for OVER before the aggregate name set, because a call
+// with one is a window function whatever its name. Classifying by the first call
+// alone reported `SUM(x) + 1` as an aggregate and `SUM(x) OVER (…)` as an
+// aggregate rather than a window, which is the order the MySQL analyzer uses.
 func (a *Analyzer) analyzeExpressionOperator(expr nodes.Node) []model.Transformation {
 	if expr == nil {
 		return nil
 	}
 	exprText := a.exprTextOf(expr)
 
-	if aggInfo, ok := a.detectAggregateFunction(expr, exprText); ok {
-		return []model.Transformation{aggInfo}
+	top := unwrapParens(expr)
+	if _, ok := top.(*nodes.CaseExpr); ok {
+		return []model.Transformation{createCaseOperatorInfo(exprText)}
 	}
-	if windowInfo, ok := a.detectWindowFunction(expr, exprText); ok {
-		return []model.Transformation{windowInfo}
-	}
-	if funcInfo, ok := a.detectFunctionCall(expr, exprText); ok {
-		return []model.Transformation{funcInfo}
-	}
-	if caseInfo, ok := detectCaseExpression(exprText); ok {
-		return []model.Transformation{caseInfo}
-	}
-	if opInfo, ok := detectOperatorExpression(exprText); ok {
+	if opInfo, ok := a.detectInfixOperator(top); ok {
 		return []model.Transformation{opInfo}
 	}
+	if fc := firstFuncCall(expr); fc != nil {
+		name := strings.ToUpper(funcCallName(fc))
+		if fc.Over != nil {
+			partitionBy, orderBy := a.extractWindowClauses(fc)
+			return []model.Transformation{createWindowOperatorInfo(name, exprText, partitionBy, orderBy)}
+		}
+		if aggregateFunctions[name] {
+			return []model.Transformation{createAggregateOperatorInfo(name, exprText, nil)}
+		}
+		if funcCallName(fc) == "" {
+			return []model.Transformation{model.NewProjectTransformation(exprText)}
+		}
+		args := make([]string, 0, len(fc.Args))
+		for _, arg := range fc.Args {
+			args = append(args, a.exprTextOf(arg))
+		}
+		return []model.Transformation{createFunctionOperatorInfo(funcCallName(fc), exprText, args)}
+	}
 	return []model.Transformation{model.NewProjectTransformation(exprText)}
+}
+
+// unwrapParens removes redundant parentheses around an expression.
+func unwrapParens(expr nodes.Node) nodes.Node {
+	for {
+		p, ok := expr.(*nodes.ParenExpr)
+		if !ok || p.Expr == nil {
+			return expr
+		}
+		expr = p.Expr
+	}
+}
+
+// detectInfixOperator reports the operator transformation of the outermost
+// operator expression, read from the AST rather than from the text: an operator
+// character inside a string literal or a quoted identifier must not decide it.
+func (a *Analyzer) detectInfixOperator(expr nodes.Node) (model.Transformation, bool) {
+	switch x := expr.(type) {
+	case *nodes.BinaryExpr:
+		if name, ok := binaryOperatorName(x.Op); ok {
+			return createOperatorExprInfo(name, a.exprTextOf(x)), true
+		}
+	case *nodes.UnaryExpr:
+		if name, ok := unaryOperatorName(x.Op); ok {
+			return createOperatorExprInfo(name, a.exprTextOf(x)), true
+		}
+	case *nodes.BetweenExpr:
+		return createOperatorExprInfo("BETWEEN", a.exprTextOf(x)), true
+	case *nodes.InExpr:
+		return createOperatorExprInfo("IN", a.exprTextOf(x)), true
+	case *nodes.LikeExpr:
+		return createOperatorExprInfo("LIKE", a.exprTextOf(x)), true
+	default:
+		return model.Transformation{}, false
+	}
+	return model.Transformation{}, false
+}
+
+// binaryOperatorName maps a StarRocks binary operator to the recorded operator
+// type: the same vocabulary the other analyzers record, so the engines agree on
+// what an operator edge says.
+func binaryOperatorName(op nodes.BinaryOp) (string, bool) {
+	switch op {
+	case nodes.BinAdd:
+		return "ADDITION", true
+	case nodes.BinSub:
+		return "SUBTRACTION", true
+	case nodes.BinMul:
+		return "MULTIPLICATION", true
+	case nodes.BinDiv:
+		return "DIVISION", true
+	case nodes.BinMod:
+		return "MODULO", true
+	case nodes.BinIntDiv:
+		return "INTEGER_DIVISION", true
+	case nodes.BinEq:
+		return "EQUALS", true
+	case nodes.BinNe:
+		return "NOT_EQUALS", true
+	case nodes.BinLt:
+		return "LESS_THAN", true
+	case nodes.BinGt:
+		return "GREATER_THAN", true
+	case nodes.BinLe:
+		return "LESS_OR_EQUAL", true
+	case nodes.BinGe:
+		return "GREATER_OR_EQUAL", true
+	case nodes.BinNullSafeEq:
+		return "NULL_SAFE_EQUALS", true
+	case nodes.BinAnd:
+		return "LOGICAL_AND", true
+	case nodes.BinOr:
+		return "LOGICAL_OR", true
+	case nodes.BinXor:
+		return "LOGICAL_XOR", true
+	case nodes.BinBitAnd:
+		return "BIT_AND", true
+	case nodes.BinBitOr:
+		return "BIT_OR", true
+	case nodes.BinBitXor:
+		return "BIT_XOR", true
+	case nodes.BinShiftLeft:
+		return "SHIFT_LEFT", true
+	case nodes.BinShiftRight:
+		return "SHIFT_RIGHT", true
+	default:
+		return "", false
+	}
+}
+
+// unaryOperatorName maps a StarRocks unary operator to the recorded operator
+// type.
+func unaryOperatorName(op nodes.UnaryOp) (string, bool) {
+	switch op {
+	case nodes.UnaryMinus:
+		return "NEGATION", true
+	case nodes.UnaryPlus:
+		return "UNARY_PLUS", true
+	case nodes.UnaryNot:
+		return "NOT", true
+	case nodes.UnaryBitNot:
+		return "BIT_NOT", true
+	case nodes.UnaryBinary:
+		return "BINARY", true
+	default:
+		return "", false
+	}
 }
 
 // firstFuncCall returns the first function call in pre-order.
@@ -260,89 +382,6 @@ var aggregateFunctions = map[string]bool{
 	"COUNT": true, "SUM": true, "AVG": true, "MAX": true, "MIN": true,
 	"GROUP_CONCAT": true, "STD": true, "STDDEV": true, "STDDEV_POP": true,
 	"STDDEV_SAMP": true, "VAR_POP": true, "VAR_SAMP": true, "VARIANCE": true,
-}
-
-// Common window functions.
-var windowFunctions = map[string]bool{
-	"ROW_NUMBER": true, "RANK": true, "DENSE_RANK": true, "NTILE": true,
-	"LEAD": true, "LAG": true, "FIRST_VALUE": true, "LAST_VALUE": true,
-	"NTH_VALUE": true, "CUME_DIST": true, "PERCENT_RANK": true,
-}
-
-// detectAggregateFunction checks whether an expression is an aggregate call.
-func (*Analyzer) detectAggregateFunction(expr nodes.Node, exprText string) (model.Transformation, bool) {
-	name := strings.ToUpper(funcCallName(firstFuncCall(expr)))
-	if name != "" && aggregateFunctions[name] {
-		return createAggregateOperatorInfo(name, exprText, nil), true
-	}
-	return model.Transformation{}, false
-}
-
-// detectWindowFunction checks whether an expression is a window function call.
-func (a *Analyzer) detectWindowFunction(expr nodes.Node, exprText string) (model.Transformation, bool) {
-	fc := firstFuncCall(expr)
-	if fc == nil || fc.Over == nil {
-		return model.Transformation{}, false
-	}
-	name := strings.ToUpper(funcCallName(fc))
-	if windowFunctions[name] || aggregateFunctions[name] {
-		partitionBy, orderBy := a.extractWindowClauses(fc)
-		return createWindowOperatorInfo(name, exprText, partitionBy, orderBy), true
-	}
-	return model.Transformation{}, false
-}
-
-// detectFunctionCall checks whether an expression is a scalar function call.
-func (a *Analyzer) detectFunctionCall(expr nodes.Node, exprText string) (model.Transformation, bool) {
-	if strings.Contains(strings.ToUpper(exprText), "OVER") {
-		return model.Transformation{}, false
-	}
-	fc := firstFuncCall(expr)
-	name := funcCallName(fc)
-	if name == "" {
-		return model.Transformation{}, false
-	}
-	args := make([]string, 0, len(fc.Args))
-	for _, arg := range fc.Args {
-		args = append(args, a.exprTextOf(arg))
-	}
-	return createFunctionOperatorInfo(name, exprText, args), true
-}
-
-// detectCaseExpression checks whether an expression is a CASE expression.
-func detectCaseExpression(exprText string) (model.Transformation, bool) {
-	upper := strings.ToUpper(exprText)
-	if strings.Contains(upper, "CASE") && strings.Contains(upper, "WHEN") {
-		return createCaseOperatorInfo(exprText), true
-	}
-	return model.Transformation{}, false
-}
-
-// detectOperatorExpression checks whether an expression uses arithmetic or
-// comparison operators.
-func detectOperatorExpression(exprText string) (model.Transformation, bool) {
-	if strings.Contains(exprText, "+") {
-		return createOperatorExprInfo("ADDITION", exprText), true
-	}
-	if strings.Contains(exprText, "-") && !strings.HasPrefix(exprText, "-") {
-		return createOperatorExprInfo("SUBTRACTION", exprText), true
-	}
-	if strings.Contains(exprText, "*") && !strings.Contains(exprText, "COUNT(*)") {
-		return createOperatorExprInfo("MULTIPLICATION", exprText), true
-	}
-	if strings.Contains(exprText, "/") {
-		return createOperatorExprInfo("DIVISION", exprText), true
-	}
-	if strings.Contains(exprText, "=") && !strings.Contains(exprText, "!=") && !strings.Contains(exprText, ">=") && !strings.Contains(exprText, "<=") {
-		return createOperatorExprInfo("EQUALS", exprText), true
-	}
-	if strings.Contains(exprText, ">") && !strings.Contains(exprText, ">=") {
-		return createOperatorExprInfo("GREATER_THAN", exprText), true
-	}
-	if strings.Contains(exprText, "<") && !strings.Contains(exprText, "<=") && !strings.Contains(exprText, "<>") {
-		return createOperatorExprInfo("LESS_THAN", exprText), true
-	}
-	return model.Transformation{}, false
 }
 
 // extractWindowClauses extracts PARTITION BY and ORDER BY from a window call.
