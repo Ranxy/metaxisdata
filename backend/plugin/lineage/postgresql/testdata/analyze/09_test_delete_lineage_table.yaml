@@ -123,4 +123,10 @@ cases:
           is_temp: false
           transformations:
             - operation: DELETE
-              condition: created_at < '2020-01-01'
+              condition: created_at < '2020-01-01'    # A predicate column that names no relation in scope is dropped, like every
+    # other unresolvable source. Falling back to the unresolved reference produced
+    # an edge whose source table was empty, which named a relation that does not
+    # exist.
+    - name: an unresolvable delete predicate records nothing
+      sql: DELETE FROM t WHERE u.x = 1
+      expected_edges: []

@@ -119,13 +119,13 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 		if stmt.Empty() {
 			continue
 		}
-		// Each statement is analyzed from clean per-statement state; only the edges
-		// and the error list are shared. A relation in scope and a pending
-		// influence both belong to the statement that introduced them; carrying
-		// them over attributed an UPDATE's subquery predicate to the next SELECT's
-		// result.
-		a.scopeStack = []*scope.Scope{scope.NewScope(nil)}
-		a.influences.Reset()
+		// A cancelled analysis yields no result rather than a partial one: the
+		// caller re-runs the whole object, and a truncated edge set would be
+		// persisted as if it were complete.
+		if err := a.ctx.Err(); err != nil {
+			return nil, errors.Wrap(err, "analysis cancelled")
+		}
+		a.resetStatement()
 		a.processStmt(stmt.AST)
 	}
 
@@ -136,6 +136,16 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	}
 
 	return a.edges.Edges(), nil
+}
+
+// resetStatement clears the state that belongs to one statement. Only the edges
+// and the error list span the input. A relation in scope and a pending influence
+// both belong to the statement that introduced them; carrying them over
+// attributed an UPDATE's subquery predicate to the next SELECT's result.
+func (a *Analyzer) resetStatement() {
+	a.scopeStack = []*scope.Scope{scope.NewScope(nil)}
+	a.influences.Reset()
+	a.namedWindows = nil
 }
 
 // processStmt dispatches one parsed statement.
@@ -428,6 +438,11 @@ func (a *Analyzer) processCTE(cte *pgast.CommonTableExpr, recursive bool) {
 		a.influences.BindCTE(definition, cteScope)
 
 		outputColumns := cteScope.GetOutputColumns()
+		// A declared column list renames the body's outputs positionally, and only
+		// when its arity matches the body: a mismatch is a statement PostgreSQL
+		// rejects. The definition keeps the validated form, so a reference to the
+		// CTE resolves columns against names the body really exposes.
+		definition.Columns = exposedColumnNames(columns, outputColumns)
 		useExplicitColumns := len(columns) > 0 && len(columns) == len(outputColumns)
 
 		// Build lineage for each output column. When the CTE declares an explicit
@@ -477,6 +492,9 @@ func (a *Analyzer) processFromClause(from *pgast.List) {
 		return
 	}
 	for _, item := range from.Items {
+		if a.ctx.Err() != nil {
+			return
+		}
 		a.processTableExpr(item)
 		// The relations have to be in scope before a join condition's columns
 		// can be resolved.
@@ -502,11 +520,125 @@ func (a *Analyzer) processTableExpr(node pgast.Node) {
 		// whole statement produced no edges.
 		a.processTableExpr(tableExpr.Relation)
 	case *pgast.RangeFunction:
-		// A function in FROM produces rows of its own and names no stored relation,
-		// so there is nothing to resolve.
+		a.processRangeFunction(tableExpr)
 	default:
 		// Other FROM items were ignored by this analyzer as well.
 	}
+}
+
+// processRangeFunction registers a set-returning function in FROM as a
+// query-local relation. The function names no stored relation, but it produces
+// its rows from its arguments, so each output column comes from the columns the
+// argument expression reads: `SELECT * FROM t, LATERAL unnest(t.arr) u` reports
+// `t.arr`, which used to be dropped with the whole function.
+func (a *Analyzer) processRangeFunction(fn *pgast.RangeFunction) {
+	if fn == nil {
+		return
+	}
+
+	alias := ""
+	var declared []string
+	if fn.Alias != nil {
+		alias = fn.Alias.Aliasname
+		declared = stringList(fn.Alias.Colnames)
+	}
+	if alias == "" {
+		// An unaliased function is addressed by its own name.
+		alias = rangeFunctionName(fn)
+		if alias == "" {
+			return
+		}
+	}
+
+	sp := a.currentScope()
+	var (
+		columns []string
+		lineage = make([]model.ColumnRelation, 0)
+	)
+	for i, item := range fn.Functions.Items {
+		call := rangeFunctionCall(item)
+		if call == nil {
+			continue
+		}
+		column := rangeFunctionOutputName(call, declared, i)
+		columns = append(columns, column)
+		for _, argument := range call.Args.Items {
+			for _, ref := range a.extractColumnsFromNode(argument, sp) {
+				resolutions, err := sp.ResolveColumnRefs(ref)
+				if err != nil {
+					continue
+				}
+				for _, res := range resolutions {
+					if a.flattenTempSourceLineage(sp, res.Relation, res.Ref.Column, alias, column, nil, &lineage) {
+						continue
+					}
+					lineage = append(lineage, scope.NewSchemaLineageEdge(
+						res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+						"", alias, column,
+						nil,
+						true,
+					))
+				}
+			}
+		}
+	}
+	// WITH ORDINALITY adds a row number of its own, which no column produces.
+	// A declared column list already names it.
+	if fn.Ordinality && len(declared) <= len(columns) {
+		columns = append(columns, "ordinality")
+	}
+
+	tableRef := &scope.TableRef{
+		Table:      alias,
+		Alias:      alias,
+		IsSubquery: true,
+		Lineage:    lineage,
+	}
+	attachTempColumnLookup(tableRef, columns)
+	sp.AddTable(tableRef)
+}
+
+// rangeFunctionCall extracts the call from one entry of a RangeFunction's list.
+// omni wraps each entry in a one-element list, and a ROWS FROM entry holds a
+// call as well.
+func rangeFunctionCall(item pgast.Node) *pgast.FuncCall {
+	switch t := item.(type) {
+	case *pgast.FuncCall:
+		return t
+	case *pgast.List:
+		if len(t.Items) == 1 {
+			if call, ok := t.Items[0].(*pgast.FuncCall); ok {
+				return call
+			}
+		}
+	default:
+		// A ROWS FROM entry of any other shape names no call to trace.
+	}
+	return nil
+}
+
+// rangeFunctionName is the name an unaliased function in FROM is addressed by.
+func rangeFunctionName(fn *pgast.RangeFunction) string {
+	for _, item := range fn.Functions.Items {
+		if call := rangeFunctionCall(item); call != nil {
+			if names := stringList(call.Funcname); len(names) > 0 {
+				return names[len(names)-1]
+			}
+		}
+	}
+	return ""
+}
+
+// rangeFunctionOutputName names one output column of a function in FROM: the
+// declared column list renames it positionally, otherwise the function names it.
+func rangeFunctionOutputName(call *pgast.FuncCall, declared []string, index int) string {
+	if index < len(declared) {
+		return declared[index]
+	}
+	if names := stringList(call.Funcname); len(names) > 0 {
+		return names[len(names)-1]
+	}
+	return ""
 }
 
 // processRangeVar registers a plain relation (or CTE reference) in the scope.
@@ -738,6 +870,9 @@ func (a *Analyzer) processTargetList(targets *pgast.List, sp *scope.Scope, group
 		return
 	}
 	for _, item := range targets.Items {
+		if a.ctx.Err() != nil {
+			return
+		}
 		rt, ok := item.(*pgast.ResTarget)
 		if !ok {
 			continue
@@ -1182,7 +1317,7 @@ func (a *Analyzer) processDeleteStmt(stmt *pgast.DeleteStmt) {
 		for _, condCol := range conditionColumns {
 			resolutions, err := sp.ResolveColumnRefs(condCol)
 			if err != nil {
-				resolutions = []scope.ResolvedColumn{{Ref: condCol}}
+				continue
 			}
 
 			transform := []model.Transformation{
@@ -1348,6 +1483,12 @@ func (a *Analyzer) generateEdgesForDataModification(targetSchema, targetTable st
 	outputColumns := sp.GetOutputColumns()
 
 	for i, outputCol := range outputColumns {
+		// The column list declares exactly which targets the query fills;
+		// PostgreSQL rejects a query that produces more columns than the list, so
+		// an extra output has no target and must not be given one.
+		if len(targetColumns) > 0 && i >= len(targetColumns) {
+			break
+		}
 		targetColName := outputCol.Alias
 		if i < len(targetColumns) {
 			targetColName = targetColumns[i]

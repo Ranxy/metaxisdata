@@ -160,4 +160,16 @@ cases:
           to_table: users
           to_field: email
           relation_type: direct
+          is_temp: false    # A column list declares exactly which target columns the query fills, so an
+    # output beyond the list has no target. PostgreSQL rejects the statement, and
+    # inferring a target for the extra column invented an edge to a column the
+    # statement never writes.
+    - name: an output beyond the declared column list has no target
+      sql: INSERT INTO dst (a) SELECT x, y FROM src
+      expected_edges:
+        - from_table: src
+          from_field: x
+          to_table: dst
+          to_field: a
+          relation_type: direct
           is_temp: false

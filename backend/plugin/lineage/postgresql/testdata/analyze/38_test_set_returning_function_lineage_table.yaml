@@ -1,0 +1,59 @@
+name: TestSetReturningFunctionLineage_Table
+cases:
+    # A function in FROM names no stored relation, but it produces its rows from
+    # its arguments, so the relation it introduces forwards those columns. The
+    # whole FROM item used to be ignored and the statement reported nothing.
+    - name: a set-returning function forwards its argument's columns
+      sql: SELECT u.x FROM t, LATERAL unnest(t.arr) AS u(x)
+      expected_edges:
+        - from_table: t
+          from_field: arr
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+    - name: a wildcard over a set-returning function keeps its output name
+      sql: SELECT * FROM t, LATERAL unnest(t.arr) u
+      expected_edges:
+        - from_table: t
+          from_field: '*'
+          to_table: __result__
+          to_field: '*'
+          relation_type: direct
+          is_temp: true
+        - from_table: t
+          from_field: arr
+          to_table: __result__
+          to_field: unnest
+          relation_type: direct
+          is_temp: true
+    # ROWS FROM produces one output column per function, in order.
+    - name: ROWS FROM names one output column per function
+      sql: SELECT r.x, r.y FROM t, ROWS FROM (unnest(t.a), unnest(t.b)) AS r(x, y)
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+        - from_table: t
+          from_field: b
+          to_table: __result__
+          to_field: y
+          relation_type: direct
+          is_temp: true
+    # WITH ORDINALITY adds a row number of its own, which no column produces.
+    - name: WITH ORDINALITY adds a column with no source
+      sql: SELECT u.x, u.ord FROM t, unnest(t.arr) WITH ORDINALITY AS u(x, ord)
+      expected_edges:
+        - from_table: t
+          from_field: arr
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+    # Arguments that read no column produce no source either.
+    - name: a function over constants has no source column
+      sql: SELECT g.n FROM generate_series(1, 10) AS g(n)
+      expected_edges: []

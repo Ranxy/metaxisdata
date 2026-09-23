@@ -1,5 +1,7 @@
 package model
 
+import "strings"
+
 type Column struct {
 	Table ObjectIdentifier
 	Name  string
@@ -29,13 +31,17 @@ const ResultTableName = "__result__"
 // WildcardColumn do, because a body that never expanded its star forwards every
 // column of its sources — the column behind the wildcard is unknown, the source
 // table is not. An empty result means the lineage says nothing about the name.
+//
+// Names are compared case-insensitively, the way the scope resolver compares
+// them: a MySQL-family identifier is case-insensitive, so a reference may spell
+// a column differently from the alias the lineage recorded.
 func AnsweringLineage(lineage []ColumnRelation, column string) []ColumnRelation {
 	if column == WildcardColumn {
 		return lineage
 	}
 	var named, forwarded []ColumnRelation
 	for _, edge := range lineage {
-		if edge.Target.Name == column {
+		if strings.EqualFold(edge.Target.Name, column) {
 			named = append(named, edge)
 			continue
 		}

@@ -8,10 +8,10 @@ type ColumnRef struct {
 	Table  string
 	Column string
 	// Resolved marks a reference that was already resolved against the scope it
-	// originated in. The StarRocks analyzer sets it when it merges
-	// set-operation arms or flattens an expression subquery, where the resolved
-	// table lives in a sibling scope that a later lookup cannot see. Every
-	// other analyzer leaves it false and is unaffected.
+	// originated in, so a later lookup does not bind it to a different relation
+	// that happens to share the name. Every analyzer sets it where the resolved
+	// table lives in a scope a later lookup cannot see: a set-operation arm, a
+	// flattened expression subquery, an expanded wildcard.
 	Resolved bool
 }
 
