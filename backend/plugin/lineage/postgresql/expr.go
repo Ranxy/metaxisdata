@@ -299,6 +299,44 @@ func (a *Analyzer) classifyExpression(node pgast.Node) (model.Transformation, bo
 	}
 }
 
+// groupByKeys renders the GROUP BY items of a query specification in source
+// order, the way this analyzer renders PARTITION BY and ORDER BY. A positional
+// key stays "1" and an alias stays the alias, because that is what the query
+// wrote. GROUP BY DISTINCT has no representation here; the flag is not part of a
+// key list.
+func (a *Analyzer) groupByKeys(items *pgast.List) []string {
+	if items == nil || len(items.Items) == 0 {
+		return nil
+	}
+	return a.nodeTexts(items)
+}
+
+// containsGroupAggregate reports whether the expression contains an aggregate
+// call that GROUP BY governs, i.e. one without an OVER clause. A windowed
+// aggregate follows its OVER clause instead. Traversal stops at a subquery: an
+// aggregate inside one is grouped by that query's own GROUP BY, never by the
+// enclosing statement's.
+func containsGroupAggregate(node pgast.Node) bool {
+	found := false
+	if node == nil {
+		return false
+	}
+	pgast.Inspect(node, func(n pgast.Node) bool {
+		if found {
+			return false
+		}
+		if _, ok := n.(*pgast.SubLink); ok {
+			return false
+		}
+		if fc, ok := n.(*pgast.FuncCall); ok && fc.Over == nil && aggregateFunctions[strings.ToUpper(funcName(fc))] {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
 // classifyFuncCall classifies a function call. A window clause wins over the
 // aggregate name set: a windowed aggregate is a window, not a group-by aggregate.
 func (a *Analyzer) classifyFuncCall(fc *pgast.FuncCall, exprText string) model.Transformation {

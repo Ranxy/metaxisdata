@@ -160,6 +160,48 @@ func containsAggregateCall(expr nodes.Node) bool {
 	return found
 }
 
+// groupByKeys renders the GROUP BY items of a query specification in source
+// order, the way this analyzer renders PARTITION BY and ORDER BY. A positional
+// key stays "1" and an alias stays the alias, because that is what the query
+// wrote. GROUP BY ... WITH ROLLUP has no representation here; the flag is not
+// part of a key list.
+func (a *Analyzer) groupByKeys(items []nodes.Node) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(items))
+	for _, item := range items {
+		keys = append(keys, a.exprTextOf(item))
+	}
+	return keys
+}
+
+// containsGroupAggregate reports whether the expression contains an aggregate
+// call that GROUP BY governs, i.e. one without an OVER clause. A windowed
+// aggregate follows its OVER clause instead. Traversal stops at a subquery: an
+// aggregate inside one is grouped by that query's own GROUP BY, never by the
+// enclosing statement's.
+func containsGroupAggregate(expr nodes.Node) bool {
+	if expr == nil {
+		return false
+	}
+	found := false
+	nodes.Inspect(expr, func(n nodes.Node) bool {
+		if found {
+			return false
+		}
+		if _, ok := n.(*nodes.SubqueryExpr); ok {
+			return false
+		}
+		if fc, ok := n.(*nodes.FuncCallExpr); ok && fc.Over == nil && aggregateFunctions[strings.ToUpper(funcCallName(fc))] {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
 // analyzeExpressionOperator identifies the operation kind of an expression and
 // returns its transformation metadata.
 func (a *Analyzer) analyzeExpressionOperator(expr nodes.Node) []model.Transformation {

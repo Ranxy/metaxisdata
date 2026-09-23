@@ -170,7 +170,7 @@ func (a *Analyzer) processSelectCore(stmt *pgast.SelectStmt) {
 	}
 
 	if stmt.TargetList != nil {
-		a.processTargetList(stmt.TargetList, sp)
+		a.processTargetList(stmt.TargetList, sp, a.groupByKeys(stmt.GroupClause))
 	}
 
 	a.generateEdges(sp)
@@ -622,7 +622,7 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 // ---------------------------------------------------------------------------
 
 // processTargetList processes the SELECT target list.
-func (a *Analyzer) processTargetList(targets *pgast.List, sp *scope.Scope) {
+func (a *Analyzer) processTargetList(targets *pgast.List, sp *scope.Scope, groupKeys []string) {
 	if targets == nil {
 		return
 	}
@@ -631,12 +631,12 @@ func (a *Analyzer) processTargetList(targets *pgast.List, sp *scope.Scope) {
 		if !ok {
 			continue
 		}
-		a.processResTarget(rt, sp)
+		a.processResTarget(rt, sp, groupKeys)
 	}
 }
 
 // processResTarget processes one target element.
-func (a *Analyzer) processResTarget(rt *pgast.ResTarget, sp *scope.Scope) {
+func (a *Analyzer) processResTarget(rt *pgast.ResTarget, sp *scope.Scope, groupKeys []string) {
 	if rt == nil {
 		return
 	}
@@ -662,7 +662,7 @@ func (a *Analyzer) processResTarget(rt *pgast.ResTarget, sp *scope.Scope) {
 		}
 	}
 
-	a.processExpressionTarget(rt, sp)
+	a.processExpressionTarget(rt, sp, groupKeys)
 }
 
 // processStar expands `SELECT *` against every table in scope.
@@ -715,7 +715,7 @@ func wildcardSourceRef(tableRef *scope.TableRef) scope.ColumnRef {
 
 // processExpressionTarget processes an expression/aliased target element
 // (an aliased or derived projection).
-func (a *Analyzer) processExpressionTarget(rt *pgast.ResTarget, sp *scope.Scope) {
+func (a *Analyzer) processExpressionTarget(rt *pgast.ResTarget, sp *scope.Scope, groupKeys []string) {
 	exprText := a.exprTextOf(rt.Val)
 	alias := rt.Name
 	if alias == "" {
@@ -742,6 +742,12 @@ func (a *Analyzer) processExpressionTarget(rt *pgast.ResTarget, sp *scope.Scope)
 
 	if isDerived {
 		if transform, ok := a.classifyExpression(rt.Val); ok {
+			// The keys are attached to every transformation of a select item that
+			// contains a group aggregate, so the field never claims a column was
+			// aggregated when it was only projected.
+			if len(groupKeys) > 0 && containsGroupAggregate(rt.Val) {
+				transform.GroupKeys = groupKeys
+			}
 			outputCol.Transform = []model.Transformation{transform}
 		}
 	}

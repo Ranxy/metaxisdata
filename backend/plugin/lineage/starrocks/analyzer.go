@@ -212,7 +212,7 @@ func (a *Analyzer) processQueryNode(node nodes.Node) {
 func (a *Analyzer) processQuerySpecification(stmt *nodes.SelectStmt) {
 	sp := a.currentScope()
 	a.processFromClause(stmt.From)
-	a.processSelectItemList(stmt.Items, sp)
+	a.processSelectItemList(stmt.Items, sp, a.groupByKeys(stmt.GroupBy))
 	a.generateEdges(sp)
 }
 
@@ -765,7 +765,7 @@ func (a *Analyzer) processLoadStatement(stmt *nodes.LoadDataStmt) {
 // ---------------------------------------------------------------------------
 
 // processSelectItemList processes the SELECT item list.
-func (a *Analyzer) processSelectItemList(items []*nodes.SelectItem, sp *scope.Scope) {
+func (a *Analyzer) processSelectItemList(items []*nodes.SelectItem, sp *scope.Scope, groupKeys []string) {
 	for _, item := range items {
 		if item == nil {
 			continue
@@ -776,7 +776,7 @@ func (a *Analyzer) processSelectItemList(items []*nodes.SelectItem, sp *scope.Sc
 		case item.Star:
 			a.processTableWildcard(item, sp)
 		default:
-			a.processSelectExpr(item.Expr, item.Alias, item.Aliased, sp)
+			a.processSelectExpr(item.Expr, item.Alias, item.Aliased, sp, groupKeys)
 		}
 	}
 }
@@ -842,7 +842,7 @@ func wildcardSourceRef(tableRef *scope.TableRef) scope.ColumnRef {
 // processSelectExpr turns one select expression into an output column. aliased
 // records whether the SQL carried an explicit alias, so an explicit empty alias
 // is not replaced by an inferred one.
-func (a *Analyzer) processSelectExpr(expr nodes.Node, alias string, aliased bool, sp *scope.Scope) {
+func (a *Analyzer) processSelectExpr(expr nodes.Node, alias string, aliased bool, sp *scope.Scope, groupKeys []string) {
 	if expr == nil {
 		return
 	}
@@ -871,6 +871,14 @@ func (a *Analyzer) processSelectExpr(expr nodes.Node, alias string, aliased bool
 	}
 	if isDerived {
 		outputCol.Transform = a.analyzeExpressionOperator(expr)
+		// The keys are attached to every transformation of a select item that
+		// contains a group aggregate, so the field never claims a column was
+		// aggregated when it was only projected.
+		if len(groupKeys) > 0 && containsGroupAggregate(expr) {
+			for i := range outputCol.Transform {
+				outputCol.Transform[i].GroupKeys = groupKeys
+			}
+		}
 	}
 	sp.AddOutputColumn(outputCol)
 }

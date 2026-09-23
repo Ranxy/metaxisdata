@@ -84,3 +84,112 @@ cases:
           to_table: __result__
           to_field: order_ids
           has_transform: true
+    # The GROUP BY keys a group aggregate was computed under are recorded on the
+    # transformation, in source order. A select item without an aggregate records
+    # none, a windowed aggregate follows its OVER clause instead, and an aggregate
+    # inside a subquery is grouped by that subquery's own GROUP BY.
+    - name: group keys are recorded on the aggregate
+      sql: SELECT department, COUNT(*) AS emp_count FROM employees GROUP BY department
+      expected_edges:
+        - from_table: employees
+          from_field: department
+          to_table: __result__
+          to_field: department
+          relation_type: direct
+          is_temp: true
+        - from_table: employees
+          from_field: '*'
+          to_table: __result__
+          to_field: emp_count
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              group_keys:
+                - department
+
+    - name: several group keys keep their source order
+      sql: SELECT department, category, COUNT(*) AS n FROM products GROUP BY department, category
+      expected_edges:
+        - from_table: products
+          from_field: department
+          to_table: __result__
+          to_field: department
+          relation_type: direct
+          is_temp: true
+        - from_table: products
+          from_field: category
+          to_table: __result__
+          to_field: category
+          relation_type: direct
+          is_temp: true
+        - from_table: products
+          from_field: '*'
+          to_table: __result__
+          to_field: n
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              group_keys:
+                - department
+                - category
+
+    - name: an operator wrapped aggregate carries its keys
+      sql: SELECT MAX(price) + 1 AS top_price FROM products GROUP BY department
+      expected_edges:
+        - from_table: products
+          from_field: price
+          to_table: __result__
+          to_field: top_price
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              group_keys:
+                - department
+
+    - name: a windowed aggregate records no keys
+      sql: SELECT SUM(price) OVER (PARTITION BY department) AS running FROM products GROUP BY department, price
+      expected_edges:
+        - from_table: products
+          from_field: price
+          to_table: __result__
+          to_field: running
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              group_keys: []
+        - from_table: products
+          from_field: department
+          to_table: __result__
+          to_field: running
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              group_keys: []
+
+    - name: an aggregate inside a subquery records no keys
+      sql: SELECT (SELECT COUNT(*) FROM orders) AS n FROM users GROUP BY users.id
+      expected_edges:
+        - from_table: orders
+          from_field: '*'
+          to_table: __result__
+          to_field: n
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              group_keys: []
