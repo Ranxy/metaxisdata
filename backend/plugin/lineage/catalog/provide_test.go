@@ -31,6 +31,16 @@ func TestOutputColumns(t *testing.T) {
 			known: true,
 		},
 		{
+			name: "foreign table",
+			meta: &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ExternalTableMetadata{ExternalTableMetadata: &storepb.ExternalTableMetadata{
+				Name:                 "ft",
+				ExternalDatabaseName: "remote",
+				Columns:              []*storepb.ColumnMetadata{column("a")},
+			}}},
+			want:  []ColumnMeta{{Name: "a", Type: "text", Nullable: true}},
+			known: true,
+		},
+		{
 			name: "view",
 			meta: &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ViewMetadata{ViewMetadata: &storepb.ViewMetadata{
 				Name:    "v",

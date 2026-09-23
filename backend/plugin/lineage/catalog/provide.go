@@ -95,16 +95,18 @@ func (p *provideImpl) GetTable(ctx context.Context, id model.ObjectIdentifier) (
 }
 
 // outputColumns returns the columns a registered relation exposes to a
-// wildcard. Tables, views and materialized views all keep their column list
-// inside their own metadata and have no COLUMN registry rows. The second return
-// value reports whether the object type has a column list at all; a type without
-// one must stay unknown so that callers fall back to a bulk wildcard edge
-// instead of expanding to nothing.
+// wildcard. Tables, foreign tables, views and materialized views all keep their
+// column list inside their own metadata and have no COLUMN registry rows. The
+// second return value reports whether the object type has a column list at all;
+// a type without one must stay unknown so that callers fall back to a bulk
+// wildcard edge instead of expanding to nothing.
 func outputColumns(meta *storepb.StoredMetadata) ([]ColumnMeta, bool) {
 	var stored []*storepb.ColumnMetadata
 	switch {
 	case meta.GetTableMetadata() != nil:
 		stored = meta.GetTableMetadata().GetColumns()
+	case meta.GetExternalTableMetadata() != nil:
+		stored = meta.GetExternalTableMetadata().GetColumns()
 	case meta.GetViewMetadata() != nil:
 		stored = meta.GetViewMetadata().GetColumns()
 	case meta.GetMaterializedViewMetadata() != nil:

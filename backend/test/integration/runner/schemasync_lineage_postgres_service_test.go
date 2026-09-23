@@ -78,6 +78,43 @@ FROM public.users u;
 	require.NotEmpty(t, relations)
 }
 
+// A foreign table's columns are ordinary catalog rows in
+// INFORMATION_SCHEMA.COLUMNS (relkind 'f'), so the sync always collected them;
+// only the catalog's wildcard expansion did not report them.
+func TestPostgresForeignTableWildcardRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, sourceDatabase, databaseName := setupPostgresServiceDatabase(t)
+	// file_fdw is a contrib module and installing it needs a superuser, so an
+	// external-service deployment may not be able to provide this shape.
+	if err := env.ExecPostgres(ctx, sourceDatabase, `
+CREATE EXTENSION IF NOT EXISTS file_fdw;
+CREATE SERVER IF NOT EXISTS integration_file_fdw FOREIGN DATA WRAPPER file_fdw;
+CREATE FOREIGN TABLE IF NOT EXISTS public.foreign_users (
+  user_id INT,
+  user_name TEXT
+) SERVER integration_file_fdw OPTIONS (filename '/nonexistent.csv', format 'csv');
+`); err != nil {
+		t.Skipf("file_fdw foreign table is unavailable: %v", err)
+	}
+	env.SyncDatabase(ctx, t, databaseName)
+
+	guidPrefix := fmt.Sprintf("%s;%s", instanceID, sourceDatabase)
+	foreignGUID := waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_EXTERNAL_TABLE, "foreign_users")
+	foreignMeta := waitForMetaRegistry(ctx, t, env, foreignGUID, storepb.MetaType_EXTERNAL_TABLE)
+	require.Len(t, foreignMeta.Metadata.GetExternalTableMetadata().GetColumns(), 2)
+
+	manual := env.CreateManualSQL(ctx, t, databaseName, "select-foreign-users", &v1pb.ManualSQL{
+		Title:   "Select Foreign Users",
+		SqlText: "SELECT * FROM public.foreign_users",
+	})
+	relations := env.WaitForContextLineage(ctx, t, manual.GetGuid(), v1pb.MetaType_MANUAL_SQL, func(relations []*v1pb.LineageRelation) bool {
+		return hasAPILineageEdge(relations, foreignGUID, "user_id", manual.GetGuid(), "user_id") &&
+			hasAPILineageEdge(relations, foreignGUID, "user_name", manual.GetGuid(), "user_name")
+	})
+	require.NotEmpty(t, relations)
+}
+
 func TestPostgresLineageUpdatesAfterViewChangeRealServerIntegration(t *testing.T) {
 	t.Parallel()
 
