@@ -1,7 +1,12 @@
 # Plan: MySQL lineage analyzer — correctness, coverage, performance and debt remediation
 
-> **Status: implemented**, except for the items listed under "Still open" in the
-> Outcome section. The audit below is kept as the rationale of record.
+> **Status: implemented and remediated.** The implementation is commit
+> `a90e1e2`. A review of it found that several "shipped" rows below were true
+> only for the MySQL family, and that the test harness could not detect the
+> difference; the follow-up commits fixed those, migrated every dialect corpus
+> to exact matching and aligned PostgreSQL and StarRocks. See §10 for the
+> remediation, the decisions the corpus now freezes, and what is still open.
+> The audit below is kept as the rationale of record.
 >
 > This document is the output of a read-only audit of
 > `backend/plugin/lineage/mysql` and the shared `scope` / `model` / `catalog` /
@@ -83,7 +88,7 @@ import paths and the registered engine. Upstream omni was not touched.
 | §2.10 leading `WITH` DML | An explicit analysis error instead of a phantom table. |
 | §2.11 insert overflow | Output columns beyond the insert column list are dropped. |
 | §2.12 remainder | `TABLE t` emits a wildcard edge; `VALUES` and `INSERT ... SET` are correctly no-ops; `INSERT ... TABLE t` is handled; infix expression spans are widened to the earliest child offset, which also fixes the recorded expression text, inferred aliases and operator kind. |
-| Performance | `exprTextOf` binary-searches the token stream; `nodeLoc` caches the Loc field index; edge dedup uses a struct key; catalog lookups are memoized per analysis; classification is one walk. Overhead over parse is now roughly constant (6.1× at 100 columns, 6.2× at 1000) instead of growing 6.5×→8.3×, and absolute overhead at 1000 columns fell from 2.80 ms to 1.97 ms. `BenchmarkAnalyzeColumnScaling` added. |
+| Performance | `exprTextOf` binary-searches the token stream; `nodeLoc` caches the Loc field index; edge dedup uses a struct key; catalog lookups are memoized per analysis; classification is one walk. Overhead over parse is now roughly constant (6.1× at 100 columns, 6.2× at 1000) instead of growing 6.5×→8.3×, and absolute overhead at 1000 columns fell from 2.80 ms to 1.97 ms. `BenchmarkAnalyzeColumnScaling` added. These are the audit's first measurements; §10.3 records the same benchmark before and after the follow-up work. |
 | Test harness | `exact_edges: true` exhaustiveness, `expected_edges: []` now asserts zero edges, and `transformations:` asserts operation/function/expression/op_type/condition/arguments/group_keys/partition_by/order_by. Validator unit tests (including "a wrong expectation fails") added; `MinEdges`/`SkipEdgeValidation` removed. |
 | Tests | New `17_test_regression_lineage_table.yaml` (26 cases) and engine-registration tests for MYSQL/MARIADB/TIDB. |
 | Debt | Removed `OutputColumn.Expression`, `TableRef.Columns` and `CTEDefinition.DefiningScope`; `Analyzer.errors` is now used for unrepresentable shapes; `determineRelationType` is a direct switch; `CatelogProvide` → `CatalogProvide` + `GetCatalogProvide` under an `RWMutex`; `catalog.provideImpl` reuses `AnalysisContext.Complete`; materialized-view lookups report no metadata instead of dependency columns; stale "legacy ANTLR"/migration comments, the bare `nolint:revive`, the empty testdata directories and the unused `unparam`-visible helpers were cleaned up. |
@@ -825,7 +830,9 @@ behavior changes.
   because the metahash-based skip does not re-analyze unchanged SQL.
   `scope.ColumnRef.Resolved`-style behavior in §2.4 was implemented inside the
   MySQL-family analyzers rather than the shared resolver, so PostgreSQL and
-  StarRocks are unaffected.
+  StarRocks are unaffected. **Superseded by §10:** the rule now lives in
+  `scope.ResolveColumn` and every dialect inherits it, so the follow-up changes
+  do alter PostgreSQL and StarRocks output.
 - **`scope` is shared.** Removing the dead `scope` fields did touch PostgreSQL
   and StarRocks, but their analyzers were left behaviorally unchanged and their
   corpora still pass. A future change to `scope.ResolveColumn` itself would
@@ -837,3 +844,95 @@ behavior changes.
   changing the lineage proto/store schema except where Phase 3 explicitly says
   so; rewriting the analyzers around omni's `catalog.Query` IR (rejected by the
   migration plan for good reasons); adding new engines.
+
+## 10. Follow-up remediation
+
+A review of `a90e1e2` found that several Outcome rows were true only for the
+MySQL family, that the harness could not detect the difference, and that the
+new "explicit error" policy had not been wired to the runner. The follow-up
+work, in order:
+
+| Commit | Change |
+| --- | --- |
+| `b101bab` | A deterministic analysis error now records the current hash, so the hourly scan stops re-queueing a statement the analyzer cannot represent, and the object's stale lineage is cleared. Before, `storeError` wrote a NULL hash and the object was re-analyzed (and re-failed) forever. |
+| `92b8e99` | Catalog-backed column disambiguation moved into `scope.ResolveColumn`, carried by a lazy `ColumnLookup` on the table reference. The CTE, derived-table and expression-subquery paths and the PostgreSQL/StarRocks analyzers now disambiguate identically; before, the same query inside a CTE bound to a different table. |
+| `7a37e45` | The harness rejects unknown YAML keys (`KnownFields`) and compares `transformations` exactly instead of by containment. |
+| `bc0ffa0`, `ad81bd2`, `9718b87` | Every dialect corpus migrated to exact matching; expectations the migration exposed were re-derived from SQL semantics. |
+| `6665f61` | Exact matching became the default; `exact_edges` was removed and `subset: true` is the escape hatch. |
+| `2498533` | PostgreSQL: `realTarget` suppresses the duplicate `__result__` edges (§2.9); an expression subquery is analyzed in its own scope (§2.3); set-operation arms are merged and emitted once with a UNION/INTERSECT/EXCEPT relation type, and INTERSECT keeps both arms (§2.2); aliased wildcards and the table-wide fallback resolve, and `table.*` expands with catalog metadata (§2.1). |
+| `c8960e0` | StarRocks: the same set-operation handling (§2.2); the source-less wildcard fallback is gated on a real aggregate and "derived" is decided from the AST, so a constant or a quoted identifier containing an operator character no longer fabricates a `table.*` edge (§2.6). |
+| `6e64894` | Regression cases for the shapes this plan promised but the corpus never covered. |
+
+Corpus state: **347 cases across the five dialects, all matched exactly, with
+no expectation that can match an arbitrary source or target and no `subset`
+case.** `go test ./...`, `golangci-lint run` and the real-server integration
+suite are green.
+
+### 10.1 Decisions the corpus now freezes
+
+These are product decisions rather than consequences of a fix. Each is asserted
+by the corpus and inlined as a comment in the cases that depend on it, so
+changing one is a deliberate, visible corpus change.
+
+1. A window function's `PARTITION BY` and `ORDER BY` columns are sources of the
+   windowed output column, with relation type `indirect`.
+2. A source-less aggregate (`COUNT(*)`) depends on the whole relation
+   (`table.*`); a literal, `NOW()`, or a cast of a constant depends on no column
+   and records no edge.
+3. `UPDATE t SET col = <constant>` records `table.* -> t.col`: the row is
+   rewritten even though no column is read.
+4. A set-operation edge carries `union` / `intersect` / `except` as its relation
+   type and transformation, and the output columns are named by the first arm.
+   `convertRelationType` (`backend/api/v1/lineage_service.go`) still maps every
+   non-`DIRECT` value to `INDIRECT`, so the richer value is analyzer-internal
+   until the proto is widened.
+5. Unqualified-column disambiguation needs metadata for *every* relation in
+   scope. One relation without metadata drops the whole scope back to the
+   deterministic key-order rule; a single-relation scope keeps that rule even
+   when its metadata lacks the column, so stale metadata cannot drop a real
+   column.
+6. Identifier case is preserved verbatim in the MySQL family (`A.ID` stays
+   `A.ID`).
+7. A quoted identifier keeps its quotes in the inferred output column name, so
+   `` `created-at` `` yields a target column literally named `` `created-at` ``.
+8. An expression subquery is classified as `PROJECT` in PostgreSQL but from the
+   first function call inside the subquery in the MySQL family; the edge sources
+   agree, the transformation does not.
+
+### 10.2 Still open after remediation
+
+- `Transformation.GroupKeys` is still never populated (GROUP BY keys are not
+  read), and whether `WHERE` / join `ON` / `ORDER BY` / `HAVING` columns should
+  be recorded as influences remains undecided.
+- The public API still collapses relation types to DIRECT/INDIRECT.
+- Materialized views still have no output-column list in the store proto, so a
+  wildcard over an MV falls back to `*`.
+- The three MySQL-family analyzers remain copies kept in sync by regeneration;
+  the parser-independent core was not extracted.
+- `scope.GetTables` / `GetCTEs` still return the internal maps, and
+  `SetOutputColumn` still no-ops silently on an out-of-range index.
+- The `schemas:` catalog key is only meaningful for PostgreSQL: the MySQL
+  family addresses a SQL qualifier as the database, so a `schemas:` entry never
+  matches there.
+- MySQL `NATURAL JOIN` / `USING` is covered only by the MariaDB dialect corpus.
+- `normalizeExpressionText`, the `map[string]bool` function-name sets and
+  `parseRelationType`'s `join` / `unknown` cases are cosmetic leftovers.
+- The plan's own first-measurement performance figures were taken with a
+  throwaway probe; the committed benchmark is the reference (see §10.3).
+
+### 10.3 Committed-benchmark measurements
+
+`BenchmarkAnalyzeColumnScaling` / `BenchmarkAnalyzeShapes`, same machine, `-benchmem`,
+`NewAnalyzer` + `AnalyzeRelations` per iteration:
+
+| Columns | before `a90e1e2` (HEAD at the time) | after `a90e1e2` | after the follow-up |
+| --- | --- | --- | --- |
+| 1 | 4.76 µs / 43 allocs | 6.44 µs / 41 allocs | 5.36 µs / 40 allocs |
+| 10 | 25.9 µs / 203 | 29.7 µs / 174 | 28.4 µs / 164 |
+| 100 | 237 µs / 1661 | 239 µs / 1362 | 242 µs / 1262 |
+| 500 | 1353 µs / 8076 | 1175 µs / 6576 | 1136 µs / 6076 |
+| 1000 | 3267 µs / 16091 | 2406 µs / 13087 | 2383 µs / 12087 |
+
+The quadratic term is gone (100→1000 grows 13.8× before, 10.1× after), allocation
+counts fall ~19% at scale, and the follow-up work removed a per-call key sort.
+Small column counts pay a few hundred nanoseconds for the extra scope checks.

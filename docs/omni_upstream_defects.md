@@ -20,10 +20,10 @@ module file was modified. Build note for anyone reproducing this: the default
 `~/.cache/go-build` may be read-only in this environment; use
 `GOCACHE=/tmp/gocache-probe`.
 
-The analyzer consumes `Loc` in two ways — `exprText` reconstructs expression text
-by concatenating the tokens whose spans fall inside `[Loc.Start, Loc.End)`
-(`backend/plugin/lineage/mysql/analyzer.go:166-184`) and `nodeLoc` reads the
-`Loc` field by reflection (`:138-161`). Both are affected by items 1 and 2.
+The analyzer consumes `Loc` in two ways — `exprTextOf` reconstructs expression
+text by concatenating the tokens whose spans fall inside `[Loc.Start, Loc.End)`
+(`backend/plugin/lineage/mysql/analyzer.go:265`) and `nodeLoc` reads the `Loc`
+field by reflection (`:219`). Both are affected by items 1 and 2.
 
 ## 1. Infix nodes set `Loc.Start` to the operator, not the node start
 
@@ -76,9 +76,11 @@ asserts exact statement spans.
 - `SELECT d.t.x + d.t.y AS v` → `Expression: "+d.t.y"`; `IN (1,2)` →
   `"IN(1,2)"`; `x * (y + 1)` → `"*(d.t.y+1)"`; `UPDATE t SET a = a.x - 1` →
   `"-1"`.
-- `detectOperatorExpression` is misled by the truncated text: `"-1"` starts with
-  `-`, so its SUBTRACTION branch (`!strings.HasPrefix(text, "-")`) is skipped and
-  `a.x - 1` becomes `PROJECT`, while the `+` form yields `OPERATOR`.
+- The text-based operator detector the analyzer used at the time was misled by the
+  truncated text: `"-1"` starts with `-`, so its SUBTRACTION branch
+  (`!strings.HasPrefix(text, "-")`) was skipped and `a.x - 1` became `PROJECT`,
+  while the `+` form yielded `OPERATOR`. The analyzer now decides the operator
+  from `BinaryExpr.Op`/`UnaryExpr.Op` (`detectInfixOperator`).
 - Column *edges* are unaffected: `collectColumns` walks the AST, so `t.x -> v.v`
   is still emitted. This is corrupt expression text, corrupt inferred aliases and
   wrong transformation kinds — not missing edges.
