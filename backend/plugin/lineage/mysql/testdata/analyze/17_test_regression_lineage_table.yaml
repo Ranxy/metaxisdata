@@ -440,3 +440,74 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+
+    # A subquery nested in an operator expression contributes its own sources
+    # alongside the enclosing expression's columns.
+    - name: scalar subquery inside an operator expression
+      sql: SELECT x + (SELECT MAX(y) FROM t2) AS v FROM t
+      expected_edges:
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: v
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              op_type: ADDITION
+        - from_table: t2
+          from_field: y
+          to_table: __result__
+          to_field: v
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+
+    - name: CREATE TABLE AS SELECT over a union keeps every arm
+      sql: CREATE TABLE d AS SELECT id FROM a UNION SELECT id FROM b
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: d
+          to_field: id
+          relation_type: union
+          is_temp: false
+          transformations:
+            - operation: UNION
+        - from_table: b
+          from_field: id
+          to_table: d
+          to_field: id
+          relation_type: union
+          is_temp: false
+
+    - name: leading WITH before DELETE is rejected
+      sql: WITH c AS (SELECT id FROM a) DELETE FROM dst WHERE id IN (SELECT id FROM c)
+      expect_error: true
+
+    - name: DELETE without WHERE has no lineage
+      sql: DELETE FROM t
+      expected_edges: []
+
+    - name: a CTE shadows a base table of the same name
+      sql: WITH employees AS (SELECT id FROM real_employees) SELECT id FROM employees
+      expected_edges:
+        - from_table: real_employees
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+
+    # Case is preserved verbatim; whether identifiers should be folded is a
+    # product decision, so this pins the current behavior.
+    - name: identifier case is preserved
+      sql: SELECT A.ID FROM A
+      expected_edges:
+        - from_table: A
+          from_field: ID
+          to_table: __result__
+          to_field: ID
+          relation_type: direct
+          is_temp: true
