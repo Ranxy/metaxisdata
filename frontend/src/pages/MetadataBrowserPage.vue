@@ -358,6 +358,15 @@
           </CardContent>
         </template>
 
+        <template v-else-if="isExternalTableDetailView && leafExternalTable">
+          <CardContent class="p-0">
+            <ExternalTableMetadataDetail
+              :table="leafExternalTable"
+              :guid="currentGuid"
+            />
+          </CardContent>
+        </template>
+
         <template v-else-if="isViewDetailView && leafView">
           <CardContent class="p-0">
             <ViewMetadataDetail
@@ -483,6 +492,9 @@ import MetadataTabNav from "@/components/metadata/MetadataTabNav.vue";
 const ExternalDatasetMetadataDetail = defineAsyncComponent(
   () => import("@/components/metadata/ExternalDatasetMetadataDetail.vue")
 );
+const ExternalTableMetadataDetail = defineAsyncComponent(
+  () => import("@/components/metadata/ExternalTableMetadataDetail.vue")
+);
 const FunctionMetadataDetail = defineAsyncComponent(
   () => import("@/components/metadata/FunctionMetadataDetail.vue")
 );
@@ -523,6 +535,7 @@ import {
 } from "@/components/ui/popover";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import {
+  type ExternalTableMetadata,
   type FunctionMetadata,
   type ManualSQLMetadata,
   type MaterializedViewMetadata,
@@ -675,6 +688,7 @@ const selectedNextPageToken = computed(() => {
 const currentInstanceEngine = ref<Engine | null>(null);
 
 const leafTable = ref<TableMetadata | null>(null);
+const leafExternalTable = ref<ExternalTableMetadata | null>(null);
 const leafView = ref<ViewMetadata | null>(null);
 const leafMaterializedView = ref<MaterializedViewMetadata | null>(null);
 const leafFunction = ref<FunctionMetadata | null>(null);
@@ -702,6 +716,13 @@ const selectedColumnName = computed(() => getQueryString("column"));
 const isTableDetailView = computed(() => {
   return (
     requestedLeafMetaType.value === MetaType.TABLE || leafTable.value != null
+  );
+});
+
+const isExternalTableDetailView = computed(() => {
+  return (
+    requestedLeafMetaType.value === MetaType.EXTERNAL_TABLE ||
+    leafExternalTable.value != null
   );
 });
 
@@ -771,6 +792,7 @@ const isExternalDatasetDetailView = computed(() => {
 const isLeafDetailView = computed(() => {
   return (
     leafTable.value != null ||
+    leafExternalTable.value != null ||
     leafView.value != null ||
     leafMaterializedView.value != null ||
     leafFunction.value != null ||
@@ -916,6 +938,7 @@ async function fetchMetadataGroups() {
   isLoading.value = true;
   error.value = null;
   leafTable.value = null;
+  leafExternalTable.value = null;
   leafView.value = null;
   leafMaterializedView.value = null;
   leafFunction.value = null;
@@ -962,6 +985,18 @@ async function fetchMetadataGroups() {
           });
           if (detail.metadata?.type?.case === "tableMetadata") {
             leafTable.value = detail.metadata.type.value;
+            return;
+          }
+          if (!explicitLeaf) return;
+        }
+
+        if (preferred === MetaType.EXTERNAL_TABLE) {
+          const detail = await getMetadata({
+            guid: currentGuid.value,
+            metaType: MetaType.EXTERNAL_TABLE,
+          });
+          if (detail.metadata?.type?.case === "externalTableMetadata") {
+            leafExternalTable.value = detail.metadata.type.value;
             return;
           }
           if (!explicitLeaf) return;
@@ -1037,6 +1072,17 @@ async function fetchMetadataGroups() {
           return;
         }
 
+        const externalTableDetail = await getMetadata({
+          guid: currentGuid.value,
+          metaType: MetaType.EXTERNAL_TABLE,
+        });
+        if (
+          externalTableDetail.metadata?.type?.case === "externalTableMetadata"
+        ) {
+          leafExternalTable.value = externalTableDetail.metadata.type.value;
+          return;
+        }
+
         const viewDetail = await getMetadata({
           guid: currentGuid.value,
           metaType: MetaType.VIEW,
@@ -1096,6 +1142,7 @@ async function fetchSequenceDetail() {
   isLoading.value = true;
   error.value = null;
   leafTable.value = null;
+  leafExternalTable.value = null;
   leafView.value = null;
   leafMaterializedView.value = null;
   leafFunction.value = null;
@@ -1132,6 +1179,7 @@ async function fetchManualSQLDetail() {
   isLoading.value = true;
   error.value = null;
   leafTable.value = null;
+  leafExternalTable.value = null;
   leafView.value = null;
   leafMaterializedView.value = null;
   leafFunction.value = null;
@@ -1168,6 +1216,7 @@ async function fetchProcedureDetail() {
   isLoading.value = true;
   error.value = null;
   leafTable.value = null;
+  leafExternalTable.value = null;
   leafView.value = null;
   leafMaterializedView.value = null;
   leafFunction.value = null;
@@ -1203,6 +1252,7 @@ async function fetchFunctionDetail() {
   isLoading.value = true;
   error.value = null;
   leafTable.value = null;
+  leafExternalTable.value = null;
   leafView.value = null;
   leafMaterializedView.value = null;
   leafFunction.value = null;
@@ -1238,6 +1288,7 @@ async function fetchMaterializedViewDetail() {
   isLoading.value = true;
   error.value = null;
   leafTable.value = null;
+  leafExternalTable.value = null;
   leafView.value = null;
   leafMaterializedView.value = null;
   metadataGroups.value = [];
@@ -1270,6 +1321,7 @@ async function fetchTableDetail() {
   isLoading.value = true;
   error.value = null;
   leafTable.value = null;
+  leafExternalTable.value = null;
   leafView.value = null;
   metadataGroups.value = [];
   nextPageTokenByMetaType.clear();
@@ -1297,10 +1349,48 @@ async function fetchTableDetail() {
   }
 }
 
+async function fetchExternalTableDetail() {
+  isLoading.value = true;
+  error.value = null;
+  leafTable.value = null;
+  leafExternalTable.value = null;
+  leafView.value = null;
+  leafMaterializedView.value = null;
+  leafFunction.value = null;
+  leafProcedure.value = null;
+  leafSequence.value = null;
+  leafManualSQL.value = null;
+  metadataGroups.value = [];
+  nextPageTokenByMetaType.clear();
+  activeMetaType.value = null;
+  selectedMetaType.value = null;
+
+  try {
+    await fetchCurrentInstanceEngineIfNeeded();
+
+    const detail = await getMetadata({
+      guid: currentGuid.value,
+      metaType: MetaType.EXTERNAL_TABLE,
+    });
+
+    if (detail.metadata?.type?.case !== "externalTableMetadata") {
+      throw new Error("unexpected metadata type");
+    }
+
+    leafExternalTable.value = detail.metadata.type.value;
+  } catch (e) {
+    const msg = extractErrorMessage(e);
+    error.value = msg || t("metadataBrowser.fetchError");
+  } finally {
+    isLoading.value = false;
+  }
+}
+
 async function fetchViewDetail() {
   isLoading.value = true;
   error.value = null;
   leafTable.value = null;
+  leafExternalTable.value = null;
   leafView.value = null;
   metadataGroups.value = [];
   nextPageTokenByMetaType.clear();
@@ -1500,6 +1590,7 @@ function handleSelectMetadata(item: StoredMetadata, metaType: MetaType) {
 
   const query =
     metaType === MetaType.TABLE ||
+    metaType === MetaType.EXTERNAL_TABLE ||
     metaType === MetaType.VIEW ||
     metaType === MetaType.MATERIALIZED_VIEW ||
     metaType === MetaType.FUNCTION ||
@@ -1538,6 +1629,7 @@ watch(
     nextPageTokenByMetaType.clear();
     currentInstanceEngine.value = null;
     leafTable.value = null;
+    leafExternalTable.value = null;
     leafView.value = null;
     leafMaterializedView.value = null;
     leafFunction.value = null;
@@ -1554,6 +1646,8 @@ watch(
     } else {
       if (requestedLeafMetaType.value === MetaType.TABLE) {
         await fetchTableDetail();
+      } else if (requestedLeafMetaType.value === MetaType.EXTERNAL_TABLE) {
+        await fetchExternalTableDetail();
       } else if (requestedLeafMetaType.value === MetaType.VIEW) {
         await fetchViewDetail();
       } else if (requestedLeafMetaType.value === MetaType.MATERIALIZED_VIEW) {
@@ -1626,6 +1720,7 @@ async function performSearch(query: string) {
 
 const leafMetaTypes = new Set<MetaType>([
   MetaType.TABLE,
+  MetaType.EXTERNAL_TABLE,
   MetaType.VIEW,
   MetaType.MATERIALIZED_VIEW,
   MetaType.FUNCTION,

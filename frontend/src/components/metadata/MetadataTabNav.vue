@@ -81,6 +81,7 @@ function getMetaTypeLabel(type: MetaType): string {
     [MetaType.DATABASE]: t("metadataBrowser.databases"),
     [MetaType.SCHEMA]: t("metadataBrowser.schemas"),
     [MetaType.TABLE]: t("metadataBrowser.tables"),
+    [MetaType.EXTERNAL_TABLE]: t("metadataBrowser.externalTables"),
     [MetaType.VIEW]: t("metadataBrowser.views"),
     [MetaType.MATERIALIZED_VIEW]: t("metadataBrowser.materializedViews"),
     [MetaType.FUNCTION]: t("metadataBrowser.functions"),
