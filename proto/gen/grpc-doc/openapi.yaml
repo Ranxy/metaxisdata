@@ -5059,10 +5059,10 @@ components:
                     items:
                         $ref: '#/components/schemas/DependencyColumn'
                     description: The list of dependency columns of the view.
-                triggers:
+                columns:
                     type: array
                     items:
-                        $ref: '#/components/schemas/TriggerMetadata'
+                        $ref: '#/components/schemas/ColumnMetadata'
                     description: The ordered list of columns in the materialized view.
                 indexes:
                     type: array

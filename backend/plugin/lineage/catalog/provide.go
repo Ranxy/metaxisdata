@@ -87,36 +87,44 @@ func (p *provideImpl) GetTable(ctx context.Context, id model.ObjectIdentifier) (
 	if res == nil {
 		return nil, nil
 	}
-	tableMeta := &TableMeta{
-		ID:      id,
-		Columns: []ColumnMeta{},
-	}
-	switch res.ObjectType {
-	case storepb.MetaType_TABLE:
-		for _, col := range res.Metadata.GetTableMetadata().Columns {
-			tableMeta.Columns = append(tableMeta.Columns, ColumnMeta{
-				Name:     col.Name,
-				Type:     col.Type,
-				Nullable: col.Nullable,
-			})
-		}
-		return tableMeta, nil
-	case storepb.MetaType_VIEW:
-		for _, col := range res.Metadata.GetViewMetadata().Columns {
-			tableMeta.Columns = append(tableMeta.Columns, ColumnMeta{
-				Name:     col.Name,
-				Type:     col.Type,
-				Nullable: col.Nullable,
-			})
-		}
-		return tableMeta, nil
-	case storepb.MetaType_MATERIALIZED_VIEW:
-		// MaterializedViewMetadata stores its dependency (source) columns, not its
-		// own output columns, so there is no column list to expand a wildcard
-		// against. Reporting no metadata makes the caller fall back to a wildcard
-		// edge instead of inventing columns that do not exist on the view.
+	columns, known := outputColumns(res.Metadata)
+	if !known {
 		return nil, nil
+	}
+	return &TableMeta{ID: id, Columns: columns}, nil
+}
+
+// outputColumns returns the columns a registered relation exposes to a
+// wildcard. Tables, views and materialized views all keep their column list
+// inside their own metadata and have no COLUMN registry rows. The second return
+// value reports whether the object type has a column list at all; a type without
+// one must stay unknown so that callers fall back to a bulk wildcard edge
+// instead of expanding to nothing.
+func outputColumns(meta *storepb.StoredMetadata) ([]ColumnMeta, bool) {
+	var stored []*storepb.ColumnMetadata
+	switch {
+	case meta.GetTableMetadata() != nil:
+		stored = meta.GetTableMetadata().GetColumns()
+	case meta.GetViewMetadata() != nil:
+		stored = meta.GetViewMetadata().GetColumns()
+	case meta.GetMaterializedViewMetadata() != nil:
+		// A materialized view synced before its own column list was synced has
+		// no columns stored. Treat that as unknown, not as empty, so an
+		// instance that has not re-synced yet keeps the wildcard fallback.
+		if len(meta.GetMaterializedViewMetadata().GetColumns()) == 0 {
+			return nil, false
+		}
+		stored = meta.GetMaterializedViewMetadata().GetColumns()
 	default:
-		return nil, nil
+		return nil, false
 	}
+	columns := make([]ColumnMeta, 0, len(stored))
+	for _, column := range stored {
+		columns = append(columns, ColumnMeta{
+			Name:     column.GetName(),
+			Type:     column.GetType(),
+			Nullable: column.GetNullable(),
+		})
+	}
+	return columns, true
 }

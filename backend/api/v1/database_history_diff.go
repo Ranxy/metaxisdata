@@ -443,11 +443,11 @@ func viewTriggers(view *v1pb.ViewMetadata) []*v1pb.TriggerMetadata {
 	return view.GetTriggers()
 }
 
-func materializedViewTriggers(view *v1pb.MaterializedViewMetadata) []*v1pb.TriggerMetadata {
+func materializedViewColumns(view *v1pb.MaterializedViewMetadata) []*v1pb.ColumnMetadata {
 	if view == nil {
 		return nil
 	}
-	return view.GetTriggers()
+	return view.GetColumns()
 }
 
 func viewRules(view *v1pb.ViewMetadata) []*v1pb.RuleMetadata {

@@ -815,7 +815,7 @@ MaterializedViewMetadata is the metadata for materialized views.
 | definition | [string](#string) |  | The definition is the definition of a view. |
 | comment | [string](#string) |  | The comment is the comment of a view. |
 | dependency_columns | [DependencyColumn](#metaxisdata-store-DependencyColumn) | repeated | The list of dependency columns of the view. |
-| triggers | [TriggerMetadata](#metaxisdata-store-TriggerMetadata) | repeated | The ordered list of columns in the materialized view. |
+| columns | [ColumnMetadata](#metaxisdata-store-ColumnMetadata) | repeated | The ordered list of columns in the materialized view. |
 | indexes | [IndexMetadata](#metaxisdata-store-IndexMetadata) | repeated | The list of indexes in the materialized view. |
 | skip_dump | [bool](#bool) |  |  |
 

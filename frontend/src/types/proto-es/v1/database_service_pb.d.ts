@@ -2669,9 +2669,9 @@ export declare type MaterializedViewMetadata = Message<"metaxisdata.v1.Materiali
   /**
    * The ordered list of columns in the materialized view.
    *
-   * @generated from field: repeated metaxisdata.v1.TriggerMetadata triggers = 5;
+   * @generated from field: repeated metaxisdata.v1.ColumnMetadata columns = 5;
    */
-  triggers: TriggerMetadata[];
+  columns: ColumnMetadata[];
 
   /**
    * The list of indexes in the materialized view.

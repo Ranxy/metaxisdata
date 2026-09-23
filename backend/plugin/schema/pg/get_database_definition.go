@@ -79,15 +79,6 @@ func GetMaterializedViewDefinition(schema string, view *storepb.MaterializedView
 	if err := writeMaterializedView(&buf, schema, view); err != nil {
 		return "", err
 	}
-	// Construct triggers.
-	for _, trigger := range view.Triggers {
-		if trigger.SkipDump {
-			continue
-		}
-		if err := writeTrigger(&buf, schema, view.Name, trigger); err != nil {
-			return "", err
-		}
-	}
 	return buf.String(), nil
 }
 

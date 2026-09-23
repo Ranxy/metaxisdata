@@ -326,6 +326,9 @@ func (d *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchemaMetad
 		if isMaterializedView(tableType, key, materializedViewMap) {
 			materializedView := materializedViewMap[key]
 			materializedView.Comment = comment
+			// A materialized view is a real table here, so its output columns
+			// came back with every other table's in information_schema.columns.
+			materializedView.Columns = columnMap[key]
 			schemaMetadata.MaterializedViews = append(schemaMetadata.MaterializedViews, materializedView)
 			continue
 		}

@@ -5045,7 +5045,7 @@ type MaterializedViewMetadata struct {
 	// The list of dependency columns of the view.
 	DependencyColumns []*DependencyColumn `protobuf:"bytes,4,rep,name=dependency_columns,json=dependencyColumns,proto3" json:"dependency_columns,omitempty"`
 	// The ordered list of columns in the materialized view.
-	Triggers []*TriggerMetadata `protobuf:"bytes,5,rep,name=triggers,proto3" json:"triggers,omitempty"`
+	Columns []*ColumnMetadata `protobuf:"bytes,5,rep,name=columns,proto3" json:"columns,omitempty"`
 	// The list of indexes in the materialized view.
 	Indexes       []*IndexMetadata `protobuf:"bytes,6,rep,name=indexes,proto3" json:"indexes,omitempty"`
 	SkipDump      bool             `protobuf:"varint,7,opt,name=skip_dump,json=skipDump,proto3" json:"skip_dump,omitempty"`
@@ -5111,9 +5111,9 @@ func (x *MaterializedViewMetadata) GetDependencyColumns() []*DependencyColumn {
 	return nil
 }
 
-func (x *MaterializedViewMetadata) GetTriggers() []*TriggerMetadata {
+func (x *MaterializedViewMetadata) GetColumns() []*ColumnMetadata {
 	if x != nil {
-		return x.Triggers
+		return x.Columns
 	}
 	return nil
 }
@@ -6944,15 +6944,15 @@ const file_v1_database_service_proto_rawDesc = "" +
 	"\x10DependencyColumn\x12\x16\n" +
 	"\x06schema\x18\x01 \x01(\tR\x06schema\x12\x14\n" +
 	"\x05table\x18\x02 \x01(\tR\x05table\x12\x16\n" +
-	"\x06column\x18\x03 \x01(\tR\x06column\"\xcc\x02\n" +
+	"\x06column\x18\x03 \x01(\tR\x06column\"\xc9\x02\n" +
 	"\x18MaterializedViewMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
 	"\n" +
 	"definition\x18\x02 \x01(\tR\n" +
 	"definition\x12\x18\n" +
 	"\acomment\x18\x03 \x01(\tR\acomment\x12O\n" +
-	"\x12dependency_columns\x18\x04 \x03(\v2 .metaxisdata.v1.DependencyColumnR\x11dependencyColumns\x12;\n" +
-	"\btriggers\x18\x05 \x03(\v2\x1f.metaxisdata.v1.TriggerMetadataR\btriggers\x127\n" +
+	"\x12dependency_columns\x18\x04 \x03(\v2 .metaxisdata.v1.DependencyColumnR\x11dependencyColumns\x128\n" +
+	"\acolumns\x18\x05 \x03(\v2\x1e.metaxisdata.v1.ColumnMetadataR\acolumns\x127\n" +
 	"\aindexes\x18\x06 \x03(\v2\x1d.metaxisdata.v1.IndexMetadataR\aindexes\x12\x1b\n" +
 	"\tskip_dump\x18\a \x01(\bR\bskipDump\"?\n" +
 	"\x0fDependencyTable\x12\x16\n" +
@@ -7345,7 +7345,7 @@ var file_v1_database_service_proto_depIdxs = []int32{
 	48,  // 97: metaxisdata.v1.ViewMetadata.triggers:type_name -> metaxisdata.v1.TriggerMetadata
 	49,  // 98: metaxisdata.v1.ViewMetadata.rules:type_name -> metaxisdata.v1.RuleMetadata
 	58,  // 99: metaxisdata.v1.MaterializedViewMetadata.dependency_columns:type_name -> metaxisdata.v1.DependencyColumn
-	48,  // 100: metaxisdata.v1.MaterializedViewMetadata.triggers:type_name -> metaxisdata.v1.TriggerMetadata
+	55,  // 100: metaxisdata.v1.MaterializedViewMetadata.columns:type_name -> metaxisdata.v1.ColumnMetadata
 	63,  // 101: metaxisdata.v1.MaterializedViewMetadata.indexes:type_name -> metaxisdata.v1.IndexMetadata
 	60,  // 102: metaxisdata.v1.FunctionMetadata.dependency_tables:type_name -> metaxisdata.v1.DependencyTable
 	64,  // 103: metaxisdata.v1.IndexMetadata.spatial_config:type_name -> metaxisdata.v1.SpatialIndexConfig

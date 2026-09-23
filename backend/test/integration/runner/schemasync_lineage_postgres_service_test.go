@@ -41,6 +41,43 @@ func TestPostgresSchemaSyncAndLineageRealServerIntegration(t *testing.T) {
 	require.NotEmpty(t, relations)
 }
 
+// A materialized view's output columns are absent from INFORMATION_SCHEMA.COLUMNS,
+// so the sync reads them from the catalog, and a wildcard over the view expands
+// to them during lineage analysis. PostgreSQL re-deparses a view's stored
+// definition with any wildcard already expanded, so the wildcard that reaches
+// the analyzer is the one a user wrote in manual SQL.
+func TestPostgresMaterializedViewColumnsRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, sourceDatabase, databaseName := setupPostgresServiceDatabase(t)
+	require.NoError(t, env.ExecPostgres(ctx, sourceDatabase, `
+DROP MATERIALIZED VIEW IF EXISTS public.user_mv;
+CREATE MATERIALIZED VIEW public.user_mv AS
+SELECT u.id AS user_id, u.name AS user_name
+FROM public.users u;
+`))
+	env.SyncDatabase(ctx, t, databaseName)
+
+	guidPrefix := fmt.Sprintf("%s;%s", instanceID, sourceDatabase)
+	mvGUID := waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_MATERIALIZED_VIEW, "user_mv")
+	mvMeta := waitForMetaRegistry(ctx, t, env, mvGUID, storepb.MetaType_MATERIALIZED_VIEW)
+	columns := []string{}
+	for _, column := range mvMeta.Metadata.GetMaterializedViewMetadata().GetColumns() {
+		columns = append(columns, column.GetName())
+	}
+	require.Equal(t, []string{"user_id", "user_name"}, columns)
+
+	manual := env.CreateManualSQL(ctx, t, databaseName, "select-user-mv", &v1pb.ManualSQL{
+		Title:   "Select User MV",
+		SqlText: "SELECT * FROM public.user_mv",
+	})
+	relations := env.WaitForContextLineage(ctx, t, manual.GetGuid(), v1pb.MetaType_MANUAL_SQL, func(relations []*v1pb.LineageRelation) bool {
+		return hasAPILineageEdge(relations, mvGUID, "user_id", manual.GetGuid(), "user_id") &&
+			hasAPILineageEdge(relations, mvGUID, "user_name", manual.GetGuid(), "user_name")
+	})
+	require.NotEmpty(t, relations)
+}
+
 func TestPostgresLineageUpdatesAfterViewChangeRealServerIntegration(t *testing.T) {
 	t.Parallel()
 

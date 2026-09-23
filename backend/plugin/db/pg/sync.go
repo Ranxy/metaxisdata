@@ -106,6 +106,10 @@ func (d *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchemaMetad
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get columns from database %q", d.databaseName)
 	}
+	materializedViewColumnMap, err := getMaterializedViewColumns(txn)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get materialized view columns from database %q", d.databaseName)
+	}
 	var indexInheritanceMap map[db.IndexKey]*db.IndexKey
 	if isAtLeastPG10 {
 		indexInheritanceMap, err = getIndexInheritance(txn)
@@ -148,7 +152,7 @@ func (d *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchemaMetad
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get rules from database %q", d.databaseName)
 	}
-	materializedViewMap, materializedViewOidMap, err := getMaterializedViews(txn, indexMap, triggerMap, extensionDepend)
+	materializedViewMap, materializedViewOidMap, err := getMaterializedViews(txn, materializedViewColumnMap, indexMap, extensionDepend)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get materialized views from database %q", d.databaseName)
 	}
@@ -879,6 +883,61 @@ func getTableColumns(txn *sql.Tx) (map[db.TableKey][]*storepb.ColumnMetadata, er
 	return columnsMap, nil
 }
 
+// Materialized view columns are absent from INFORMATION_SCHEMA.COLUMNS: that
+// view reports relkind r/v/f/p only, so a matview (relkind m) is missing there
+// even though its columns are ordinary catalog entries. Read them from the
+// catalog directly. format_type spells the type with its modifier
+// (numeric(10,2), character varying(64)), the same shape the other snapshots
+// produce.
+var listMaterializedViewColumnQuery = `
+SELECT
+	n.nspname,
+	c.relname,
+	a.attname,
+	format_type(a.atttypid, a.atttypmod),
+	a.attnum,
+	pg_get_expr(ad.adbin, ad.adrelid),
+	NOT a.attnotnull,
+	col_description(c.oid, a.attnum)
+FROM pg_catalog.pg_attribute a
+	JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+	JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+	LEFT JOIN pg_catalog.pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+WHERE c.relkind = 'm'
+	AND a.attnum > 0
+	AND NOT a.attisdropped` + fmt.Sprintf(`
+	AND n.nspname NOT IN (%s)
+	AND n.nspname NOT LIKE 'pg_temp%%'
+	AND n.nspname NOT LIKE 'pg_toast%%'
+ORDER BY n.nspname, c.relname, a.attnum;`, SystemSchemaWhereClause)
+
+// getMaterializedViewColumns gets the output columns of every materialized view.
+func getMaterializedViewColumns(txn *sql.Tx) (map[db.TableKey][]*storepb.ColumnMetadata, error) {
+	columnsMap := make(map[db.TableKey][]*storepb.ColumnMetadata)
+	rows, err := txn.Query(listMaterializedViewColumnQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		column := &storepb.ColumnMetadata{}
+		var schemaName, tableName string
+		var defaultStr, comment sql.NullString
+		if err := rows.Scan(&schemaName, &tableName, &column.Name, &column.Type, &column.Position, &defaultStr, &column.Nullable, &comment); err != nil {
+			return nil, err
+		}
+		column.Default = defaultStr.String
+		column.Comment = comment.String
+
+		key := db.TableKey{Schema: schemaName, Table: tableName}
+		columnsMap[key] = append(columnsMap[key], column)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return columnsMap, nil
+}
+
 var listMaterializedViewQuery = `
 SELECT pc.oid, schemaname, matviewname, definition, obj_description(format('%s.%s', quote_ident(schemaname), quote_ident(matviewname))::regclass)
 FROM pg_catalog.pg_matviews
@@ -888,7 +947,7 @@ WHERE schemaname NOT IN (%s)
   AND schemaname NOT LIKE 'pg_toast%%'
 ORDER BY schemaname, matviewname;`, SystemSchemaWhereClause)
 
-func getMaterializedViews(txn *sql.Tx, indexMap map[db.TableKey][]*storepb.IndexMetadata, triggerMap map[db.TableKey][]*storepb.TriggerMetadata, extensionDepend map[int]bool) (map[string][]*storepb.MaterializedViewMetadata, map[int]*db.TableKey, error) {
+func getMaterializedViews(txn *sql.Tx, columnMap map[db.TableKey][]*storepb.ColumnMetadata, indexMap map[db.TableKey][]*storepb.IndexMetadata, extensionDepend map[int]bool) (map[string][]*storepb.MaterializedViewMetadata, map[int]*db.TableKey, error) {
 	matviewMap := make(map[string][]*storepb.MaterializedViewMetadata)
 	materializedViewOidMap := make(map[int]*db.TableKey)
 
@@ -922,8 +981,8 @@ func getMaterializedViews(txn *sql.Tx, indexMap map[db.TableKey][]*storepb.Index
 			matview.Comment = comment.String
 		}
 		viewKey := db.TableKey{Schema: schemaName, Table: matview.Name}
+		matview.Columns = columnMap[viewKey]
 		matview.Indexes = indexMap[viewKey]
-		matview.Triggers = triggerMap[viewKey]
 
 		matviewMap[schemaName] = append(matviewMap[schemaName], matview)
 		materializedViewOidMap[oid] = &viewKey

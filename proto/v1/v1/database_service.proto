@@ -1186,7 +1186,7 @@ message MaterializedViewMetadata {
   repeated DependencyColumn dependency_columns = 4;
 
   // The ordered list of columns in the materialized view.
-  repeated TriggerMetadata triggers = 5;
+  repeated ColumnMetadata columns = 5;
 
   // The list of indexes in the materialized view.
   repeated IndexMetadata indexes = 6;

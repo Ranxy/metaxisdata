@@ -150,10 +150,10 @@ func buildMaterializedViewHistoryChangeGroups(before, after *store.MetaRegistryH
 			})
 		}
 	}
-	if group := diffIndexGroupFromList(indexMetadataList(beforeView), indexMetadataList(afterView)); group != nil {
+	if group := diffColumnGroupFromList(materializedViewColumns(beforeView), materializedViewColumns(afterView)); group != nil {
 		groups = append(groups, group)
 	}
-	if group := diffTriggerGroup(materializedViewTriggers(beforeView), materializedViewTriggers(afterView)); group != nil {
+	if group := diffIndexGroupFromList(indexMetadataList(beforeView), indexMetadataList(afterView)); group != nil {
 		groups = append(groups, group)
 	}
 	return groups
