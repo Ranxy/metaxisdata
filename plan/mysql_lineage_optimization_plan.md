@@ -913,53 +913,54 @@ changing one is a deliberate, visible corpus change.
 
 ### 10.2 Still open after remediation
 
-- Predicate influences are recorded for SELECT-based statements only (§10.10).
-  `ORDER BY` — and `DISTINCT` / `LIMIT`, which also decide which rows survive —
-  is not recorded, `GROUP BY` has payload keys but no edge, and the `WHERE` of
-  `UPDATE` / `DELETE` is not recorded either. `Transformation.GroupKeys` is
-  populated for the MySQL family as of §10.9, and is still empty for PostgreSQL
-  and StarRocks.
-- The public API reports every relation type the model holds (§10.14); the
-  `unknown` kind stays unreachable because no producer emits it.
-- An unqualified reference that several relations satisfy is reported once per
-  relation the catalog confirms owns it, and the search reaches the enclosing
-  scope when the current one is known not to provide the name (§10.11). A name no
-  described relation owns goes to the first relation whose columns are unknown,
-  which for two such relations — two tables that were never synced — is still the
-  scope's name order (§10.12).
-- Materialized views still have no output-column list in the store proto, so a
-  wildcard over an MV falls back to `*`.
-- The three MySQL-family analyzers remain copies kept in sync by regeneration;
-  the parser-independent core was not extracted.
-- `SetOutputColumn` still no-ops silently on an out-of-range index.
-  (`scope.GetTables` / `GetCTEs` were replaced by the ordered `Tables()` /
-  `CTEs()` in §10.7.)
-- The `schemas:` catalog key is only meaningful for PostgreSQL, and the harness
-  had no database-qualified form at all, so a MySQL-family catalog entry could
-  not express a qualifier: a case written with `schemas:` silently fell back to
-  `*`. `databases:` now registers one and `19_test_database_catalog_table`
-  covers the qualified wildcard (§10.8).
-- MySQL `NATURAL JOIN` / `USING` is covered by the shared corpus as well as the
-  MariaDB dialect corpus (§10.8).
-- A temporary relation's column list is honoured positionally in every engine
-  that can parse it (§10.14). StarRocks cannot parse a derived table's alias list
-  at all, which is an omni gap rather than an analyzer decision.
-- An unaliased expression column is named differently by the remaining
-  dialects: PostgreSQL calls it `?column?` (verified against a live PostgreSQL
-  16) while the analyzer stores the expression text, and StarRocks has not been
-  checked against a live server. Only the MySQL-family naming was corrected
-  (§10.4); the stored target column does not match the engine's column for
-  those two engines.
-- The `map[string]bool` function-name sets are cosmetic leftovers.
-  `parseRelationType`'s `join` case became live in §10.10; its `unknown` case is
-  still dead.
-- The plan's own first-measurement performance figures were taken with a
-  throwaway probe; the committed benchmark is the reference (see §10.3).
+Not ours to fix:
+
+- StarRocks cannot parse a derived table's alias list (`(SELECT …) AS d (x)`), so
+  the rename §10.14 added cannot apply there. An omni StarRocks parser gap.
+- The MariaDB parser stops at two levels of parenthesized join nesting — the shape
+  mysqldump emits for a view — where the MySQL parser accepts any depth. An omni
+  gap, recorded in `knownParserGaps` with a test that fails once it is fixed.
+
+Ours, and the largest item left:
+
+- PostgreSQL and StarRocks carry neither `Transformation.GroupKeys` (§10.9) nor
+  predicate influences (§10.10), and their corpora are not wired to
+  `RequireFullEdgeAnnotations`, so an expectation there can silently stop asserting
+  a field. Extending both engines is the next pass.
+
+Decided, and deliberately not defects:
+
+- `ORDER BY` / `DISTINCT` / `LIMIT` are not recorded, `GROUP BY` carries keys but
+  no edge, and an `UPDATE` / `DELETE` `WHERE` is not recorded (§10.10). The API
+  reports every relation type the model holds, but no producer emits
+  `RELATION_TYPE_UNKNOWN` (§10.14).
+- An unqualified name no described relation owns goes to the first relation whose
+  columns are unknown; for two relations that were never synced that is still the
+  scope's name order (§10.12). Two undescribed relations are out of scope by
+  decision.
+- A materialized view has no output-column list in the store proto, so a wildcard
+  over one falls back to `*`. Closing that needs a proto field plus a sync per
+  engine, and it is a StarRocks/PostgreSQL shape today.
+- Several statements in one MANUAL_SQL text are rejected: they have no single
+  result shape, and their `__result__` columns would collide on one object.
+- `JSON_TABLE`'s argument columns are not recorded: a function in FROM would need
+  per-function semantics for the columns it produces.
+- An unaliased expression column keeps its expression text rather than the name
+  PostgreSQL gives it (`?column?`), which is useless as a target column (§10.14).
+- `SetOutputColumn` has one caller, and that caller's index comes from the same
+  scope's output columns, so its out-of-range guard cannot fire (§10.15). The
+  parser-independent core behind the three MySQL-family copies was not extracted;
+  §10.15 adds a test that keeps the copies honest instead.
+- The `map[string]bool` aggregate set is deliberate: the omni AST carries no "is
+  aggregate" flag, so a name set is required, and it reads better at its three
+  membership tests than the `map[string]struct{}` form would.
 
 ### 10.3 Committed-benchmark measurements
 
 `BenchmarkAnalyzeColumnScaling` / `BenchmarkAnalyzeShapes`, same machine, `-benchmem`,
-`NewAnalyzer` + `AnalyzeRelations` per iteration:
+`NewAnalyzer` + `AnalyzeRelations` per iteration. The audit's own first
+measurements were taken with a throwaway probe; what is committed here is the
+reference.
 
 | Columns | before `a90e1e2` (HEAD at the time) | after `a90e1e2` | after the follow-up |
 | --- | --- | --- | --- |
@@ -1581,3 +1582,41 @@ PostgreSQL; collapsing the API conversion fails its test; and restoring a
 `gofmt`, `golangci-lint`, `go test ./...`, the build and the real-server
 integration suite are green, as are Biome, ESLint, the i18n audit, `vue-tsc` and
 the frontend tests; MariaDB and TiDB remain pure regenerations (21-line diffs).
+
+### 10.15 Tenth pass: the items that were ours to close
+
+An audit of what §10.2 still listed, with each item either closed or recorded as
+decided.
+
+Closed:
+
+- **`ALTER VIEW` is analyzed.** The MySQL family dispatched it nowhere, so
+  `ALTER VIEW v AS SELECT …` produced no lineage at all, even though MySQL accepts
+  it and it replaces the view's definition. Verified on 8.3 that the column-list
+  form is legal and renames the column: `ALTER VIEW v (order_ref) AS SELECT id FROM
+  orders` leaves the view with one column called `order_ref`. `processViewBody` now
+  backs both CREATE and ALTER and the shared corpus pins both forms. It matters for
+  MANUAL_SQL only, because the runner wraps a stored definition as `CREATE VIEW`.
+- **A recursive CTE is right, and now pinned.** The audit called `WITH RECURSIVE`
+  unhandled; measuring showed the opposite for a recursion that has a source: the
+  anchor arm's columns are reported and the self-reference contributes nothing,
+  because it is query-local. The shape that yields no edge —
+  `SELECT 1 AS n UNION ALL SELECT n + 1 FROM counter WHERE n < 5` — is correct: the
+  value comes from the literal. Two cases pin both, the second with
+  `expected_edges: []`.
+- **The three copies have a parity test.** `TestDialectCopiesStayInSync` asserts
+  that everything from the `Analyzer` type onward is byte-identical in the MySQL,
+  MariaDB and TiDB analyzers, so a hand-edit to one copy cannot drift from the
+  others. That is what keeps the 21-line prologue diff the regeneration produces
+  honest.
+- **The unreachable error branch is gone.** `processQuerySpecification` refused a
+  "query form with no select list and no FROM"; `SELECT`, `SELECT FROM t` and
+  `SELECT FROM` are all parse errors, so it could never fire.
+
+Corpus: the shared MySQL-family corpus gained four cases — `ALTER VIEW` with and
+without a column list (`08`), and two recursive CTEs (`04`) — for 181 cases.
+
+Negative-checked: removing the `ALTER VIEW` dispatch fails its two cases, and a
+hand-edit to the MariaDB copy fails the parity test with the regeneration message.
+`gofmt`, `golangci-lint`, `go test ./...`, the build and the real-server
+integration suite are green; MariaDB and TiDB remain pure regenerations.
