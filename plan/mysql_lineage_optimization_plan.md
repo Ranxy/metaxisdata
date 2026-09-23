@@ -923,10 +923,19 @@ Not ours to fix:
 
 Ours, and the largest item left:
 
-- PostgreSQL and StarRocks carry neither `Transformation.GroupKeys` (§10.9) nor
-  predicate influences (§10.10), and their corpora are not wired to
-  `RequireFullEdgeAnnotations`, so an expectation there can silently stop asserting
-  a field. Extending both engines is the next pass.
+- PostgreSQL and StarRocks carry no predicate influences (§10.10): their `WHERE`,
+  `HAVING` and join conditions still produce no row-level edge. Porting it changes
+  the expectation of 66 PostgreSQL cases and a similar number of StarRocks ones,
+  so it is its own pass, and the corpus annotation below belongs with it because
+  it rewrites the same expectations.
+- Neither corpus is wired to `RequireFullEdgeAnnotations`, so an expectation there
+  can silently stop asserting a field. PostgreSQL is 29% annotated on relation
+  type and 21% on `is_temp`, StarRocks 75% / 74%.
+- StarRocks classifies an expression by the first function call it contains, so
+  `SUM(x) OVER (…)` is reported as `AGGREGATE` where the MySQL family and
+  PostgreSQL report `WINDOW`, and `SUM(x) + 1` as `AGGREGATE` where they report
+  `OPERATOR`. The GROUP BY keys still follow §10.9 (§10.16), but the operation and
+  the window's `partition_by` / `order_by` differ.
 
 Decided, and deliberately not defects:
 
@@ -1620,3 +1629,39 @@ Negative-checked: removing the `ALTER VIEW` dispatch fails its two cases, and a
 hand-edit to the MariaDB copy fails the parity test with the regeneration message.
 `gofmt`, `golangci-lint`, `go test ./...`, the build and the real-server
 integration suite are green; MariaDB and TiDB remain pure regenerations.
+
+### 10.16 Eleventh pass: GROUP BY keys in PostgreSQL and StarRocks
+
+`Transformation.GroupKeys` was filled for the MySQL family in §10.9 and stayed
+empty in the other two engines. It is filled for both now, with the same five
+decisions:
+
+- **What is stored** — the written text of each GROUP BY item, in source order,
+  duplicates and case kept. A positional key stays `"1"` and an alias stays the
+  alias. PostgreSQL renders the text the way it renders `PARTITION BY` and
+  `ORDER BY` (source text kept); StarRocks renders it without inter-token
+  whitespace, the way the MySQL family does.
+- **Where it is attached** — on every transformation of a select item that
+  contains a group aggregate, so `MAX(price) + 1` carries the keys even though its
+  outermost node is an operator. An item with no group aggregate records nothing.
+- **Window functions are excluded** — a windowed aggregate is governed by its
+  `OVER` clause. PostgreSQL classifies `SUM(x) OVER (…)` as `WINDOW` and records
+  no keys; StarRocks classifies it as `AGGREGATE` (see §10.2) and still records no
+  keys.
+- **The subquery boundary is part of the rule** — an aggregate inside an
+  expression subquery belongs to that subquery's own `GROUP BY`. PostgreSQL's walk
+  stops at a `SubLink`; StarRocks' walker never descends into an expression
+  subquery's body at all, because omni keeps it as raw text there, so its stop is
+  belt-and-braces.
+- **`GROUP BY DISTINCT`** (PostgreSQL) and **`WITH ROLLUP`** (StarRocks, the
+  MySQL family) are not represented: the flag adds rows rather than keys.
+
+Corpus: PostgreSQL gained five cases (`16`, 133 → 138) and StarRocks five (`16`,
+120 → 125). The StarRocks cases for a windowed aggregate and an aggregate
+expression assert only the keys, so a later fix to that engine's classification
+does not have to touch them.
+
+Negative-checked: dropping the attachment fails three cases per engine, and
+dropping the exclusion rules fails both PostgreSQL exclusion cases and the
+StarRocks window case — the StarRocks subquery case cannot exercise the guard,
+because its walker already stops at the subquery.
