@@ -21,6 +21,8 @@ cases:
           transformations:
             - operation: AGGREGATE
               function_name: COUNT
+              group_keys:
+                - "user_id"
     - name: nested subquery filters intermediate lineage
       sql: |-
         SELECT foo.user_id, foo.total_amount
@@ -54,3 +56,5 @@ cases:
           transformations:
             - operation: AGGREGATE
               function_name: SUM
+              group_keys:
+                - "user_id"

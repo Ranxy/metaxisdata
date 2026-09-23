@@ -212,6 +212,9 @@ cases:
           to_field: "n"
           relation_type: direct
           is_temp: true
+    # A scalar subquery is a projection in the enclosing query; the MAX belongs to
+    # the subquery's own specification, which is why the source is still
+    # employees.salary while the relation type is indirect.
     - name: scalar_subquery
       sql: SELECT (SELECT MAX(salary) FROM employees) AS m FROM departments
       expected_edges:
@@ -219,12 +222,11 @@ cases:
           from_field: salary
           to_table: __result__
           to_field: m
-          relation_type: group
+          relation_type: indirect
           has_transform: true
           is_temp: true
           transformations:
-            - operation: AGGREGATE
-              function_name: MAX
+            - operation: PROJECT
     - name: case_expression
       sql: SELECT CASE WHEN salary > 100 THEN 'hi' ELSE name END AS band FROM employees
       expected_edges:
@@ -278,6 +280,8 @@ cases:
           transformations:
             - operation: AGGREGATE
               function_name: GROUP_CONCAT
+              group_keys:
+                - "department_id"
     - name: count_distinct
       sql: SELECT COUNT(DISTINCT department_id) AS c FROM employees
       expected_edges:
@@ -291,6 +295,7 @@ cases:
           transformations:
             - operation: AGGREGATE
               function_name: COUNT
+              group_keys: []
     - name: star_join
       sql: SELECT * FROM employees e JOIN departments d ON e.department_id = d.id
       expected_edges:

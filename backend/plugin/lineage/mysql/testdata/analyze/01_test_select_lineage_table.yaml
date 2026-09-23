@@ -126,3 +126,6 @@ cases:
           transformations:
             - operation: AGGREGATE
               function_name: SUM
+              group_keys:
+                - "`o`.`id`"
+                - "`c`.`name`"

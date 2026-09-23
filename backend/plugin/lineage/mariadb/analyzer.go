@@ -414,8 +414,24 @@ func (a *Analyzer) processQuerySpecification(stmt *nodes.SelectStmt) {
 		return
 	}
 	a.processFromClause(stmt.From)
-	a.processSelectItemList(stmt.TargetList, sp)
+	a.processSelectItemList(stmt.TargetList, sp, a.groupByKeys(stmt.GroupBy))
 	a.generateEdges(sp)
+}
+
+// groupByKeys renders the GROUP BY items of a query specification in source
+// order, the same way PartitionBy and OrderBy are rendered. A positional key
+// stays "1" and an alias stays the alias, because that is what the query wrote.
+// GROUP BY ... WITH ROLLUP has no representation here; the flag is not part of a
+// key list.
+func (a *Analyzer) groupByKeys(items []nodes.ExprNode) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(items))
+	for _, item := range items {
+		keys = append(keys, a.exprTextOf(item))
+	}
+	return keys
 }
 
 // processTableStmt processes a TABLE statement, which is a whole-table select.
@@ -721,22 +737,24 @@ func (a *Analyzer) processDerivedTable(sub *nodes.SubqueryExpr) {
 // SELECT list
 // ---------------------------------------------------------------------------
 
-// processSelectItemList processes the SELECT item list.
-func (a *Analyzer) processSelectItemList(items []nodes.ExprNode, sp *scope.Scope) {
+// processSelectItemList processes the SELECT item list. groupKeys are the GROUP
+// BY keys of the query specification these items belong to; they are recorded on
+// the transformations of the items that aggregate.
+func (a *Analyzer) processSelectItemList(items []nodes.ExprNode, sp *scope.Scope, groupKeys []string) {
 	for _, item := range items {
 		switch it := item.(type) {
 		case *nodes.StarExpr:
 			a.processStar(sp)
 		case *nodes.ResTarget:
-			a.processSelectExpr(it.Val, it.Name, sp)
+			a.processSelectExpr(it.Val, it.Name, sp, groupKeys)
 		case *nodes.ColumnRef:
 			if it.Star {
 				a.processTableWildcard(it, sp)
 				continue
 			}
-			a.processSelectExpr(it, "", sp)
+			a.processSelectExpr(it, "", sp, groupKeys)
 		default:
-			a.processSelectExpr(item, "", sp)
+			a.processSelectExpr(item, "", sp, groupKeys)
 		}
 	}
 }
@@ -788,7 +806,7 @@ func wildcardSourceRef(tableRef *scope.TableRef) scope.ColumnRef {
 }
 
 // processSelectExpr turns one select expression into an output column.
-func (a *Analyzer) processSelectExpr(expr nodes.ExprNode, alias string, sp *scope.Scope) {
+func (a *Analyzer) processSelectExpr(expr nodes.ExprNode, alias string, sp *scope.Scope, groupKeys []string) {
 	if expr == nil {
 		return
 	}
@@ -816,6 +834,17 @@ func (a *Analyzer) processSelectExpr(expr nodes.ExprNode, alias string, sp *scop
 	}
 	if isDerived {
 		outputCol.Transform = a.analyzeExpressionOperator(expr)
+		// The GROUP BY keys describe how an aggregate in this select item was
+		// computed, so they ride on every transformation the item produced: the
+		// outermost node is often not the aggregate itself, since SUM(x) + 1 is
+		// an operator and a CASE or a function can wrap one too. An expression
+		// with no group aggregate of its own records nothing, which also keeps a
+		// windowed aggregate's OVER clause from being confused with GROUP BY.
+		if len(groupKeys) > 0 && containsGroupAggregate(expr) {
+			for i := range outputCol.Transform {
+				outputCol.Transform[i].GroupKeys = groupKeys
+			}
+		}
 	}
 	sp.AddOutputColumn(outputCol)
 }
@@ -1448,7 +1477,36 @@ func containsAggregateCall(expr nodes.ExprNode) bool {
 	return found
 }
 
-// firstFuncCall returns the first function call in pre-order.
+// containsGroupAggregate reports whether the expression contains an aggregate
+// call that GROUP BY governs, i.e. one without an OVER clause. A windowed
+// aggregate follows its OVER clause instead. Traversal stops at a subquery: an
+// aggregate inside one is grouped by that query's own GROUP BY, never by the
+// enclosing statement's.
+func containsGroupAggregate(expr nodes.ExprNode) bool {
+	found := false
+	if expr == nil {
+		return false
+	}
+	nodes.Inspect(expr, func(n nodes.Node) bool {
+		if found {
+			return false
+		}
+		if _, ok := n.(*nodes.SubqueryExpr); ok {
+			return false
+		}
+		if x, ok := n.(*nodes.FuncCallExpr); ok && x.Over == nil && x.Name != "" && aggregateFunctions[strings.ToUpper(x.Name)] {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// firstFuncCall returns the first function call in pre-order that belongs to
+// this expression. A call inside a subquery belongs to that subquery, so a
+// scalar subquery is classified as the projection it is here rather than by the
+// innermost call of its body.
 func firstFuncCall(expr nodes.ExprNode) *nodes.FuncCallExpr {
 	var found *nodes.FuncCallExpr
 	if expr == nil {
@@ -1456,6 +1514,9 @@ func firstFuncCall(expr nodes.ExprNode) *nodes.FuncCallExpr {
 	}
 	nodes.Inspect(expr, func(n nodes.Node) bool {
 		if found != nil {
+			return false
+		}
+		if _, ok := n.(*nodes.SubqueryExpr); ok {
 			return false
 		}
 		if fc, ok := n.(*nodes.FuncCallExpr); ok {

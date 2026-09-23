@@ -1,0 +1,297 @@
+name: TestGroupByKeys_Table
+cases:
+    # A transformation records the GROUP BY keys of the query specification it
+    # was computed in, as written: inter-token whitespace is removed, order and
+    # duplicates are kept, and case is preserved. A key that is a position or an
+    # alias stays a position or an alias, because that is what the query wrote.
+    - name: one key rides on the aggregate
+      sql: SELECT o.user_id, COUNT(*) AS c FROM orders o GROUP BY o.user_id
+      expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: user_id
+          relation_type: direct
+          is_temp: true
+        - from_table: orders
+          from_field: '*'
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              group_keys:
+                - o.user_id
+
+    - name: several keys keep their written order
+      sql: SELECT o.user_id, o.status, COUNT(*) AS c FROM orders o GROUP BY o.user_id, o.status
+      expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: user_id
+          relation_type: direct
+          is_temp: true
+        - from_table: orders
+          from_field: status
+          to_table: __result__
+          to_field: status
+          relation_type: direct
+          is_temp: true
+        - from_table: orders
+          from_field: '*'
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              group_keys:
+                - o.user_id
+                - o.status
+
+    - name: a positional key stays a position
+      sql: SELECT o.user_id, COUNT(*) AS c FROM orders o GROUP BY 1
+      expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: user_id
+          relation_type: direct
+          is_temp: true
+        - from_table: orders
+          from_field: '*'
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              group_keys:
+                - "1"
+
+    - name: an alias key stays an alias
+      sql: SELECT o.user_id AS uid, COUNT(*) AS c FROM orders o GROUP BY uid
+      expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: uid
+          relation_type: direct
+          is_temp: true
+        - from_table: orders
+          from_field: '*'
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              group_keys:
+                - uid
+
+    # The key is the written expression, not a resolved column. A select item that
+    # does not aggregate records no keys even though the query is grouped, so the
+    # field never claims a column was aggregated when it was only projected.
+    - name: an expression key keeps its text
+      sql: SELECT UPPER(o.status) AS s, COUNT(*) AS c FROM orders o GROUP BY UPPER(o.status)
+      expected_edges:
+        - from_table: orders
+          from_field: status
+          to_table: __result__
+          to_field: s
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: UPPER
+              group_keys: []
+        - from_table: orders
+          from_field: '*'
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              group_keys:
+                - UPPER(o.status)
+
+    # The outermost node of SUM(o.total) + 1 is the operator, so there is no
+    # AGGREGATE entry to carry the grouping; every transformation of a select item
+    # that aggregates records it.
+    - name: an operator wrapping an aggregate carries its grouping
+      sql: SELECT SUM(o.total) + 1 AS s FROM orders o GROUP BY o.user_id
+      expected_edges:
+        - from_table: orders
+          from_field: total
+          to_table: __result__
+          to_field: s
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              op_type: ADDITION
+              group_keys:
+                - o.user_id
+
+    - name: a case wrapping an aggregate carries its grouping
+      sql: SELECT CASE WHEN SUM(o.total) > 1 THEN 1 ELSE 0 END AS f FROM orders o GROUP BY o.user_id
+      expected_edges:
+        - from_table: orders
+          from_field: total
+          to_table: __result__
+          to_field: f
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: CASE
+              group_keys:
+                - o.user_id
+
+    - name: count distinct is an aggregate
+      sql: SELECT COUNT(DISTINCT o.total) AS c FROM orders o GROUP BY o.user_id
+      expected_edges:
+        - from_table: orders
+          from_field: total
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              group_keys:
+                - o.user_id
+
+    # A windowed aggregate is governed by its OVER clause, never by GROUP BY, so it
+    # records no keys even though the query is grouped.
+    - name: a window function is not governed by group by
+      sql: SELECT o.status, SUM(o.total) OVER (PARTITION BY o.user_id) AS w FROM orders o GROUP BY o.status
+      expected_edges:
+        - from_table: orders
+          from_field: status
+          to_table: __result__
+          to_field: status
+          relation_type: direct
+          is_temp: true
+        - from_table: orders
+          from_field: total
+          to_table: __result__
+          to_field: w
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              partition_by:
+                - o.user_id
+              group_keys: []
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: w
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              partition_by:
+                - o.user_id
+              group_keys: []
+
+    - name: an aggregate without group by records no keys
+      sql: SELECT COUNT(*) AS c FROM orders o
+      expected_edges:
+        - from_table: orders
+          from_field: '*'
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              group_keys: []
+
+    # The aggregate belongs to the subquery, whose GROUP BY is empty, so the
+    # enclosing grouping must not reach it. This is why the subquery boundary is
+    # part of the rule and not an implementation detail.
+    - name: a scalar subquery does not take the enclosing grouping
+      sql: SELECT o.user_id, (SELECT COUNT(*) FROM users u) AS c FROM orders o GROUP BY o.user_id
+      expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: user_id
+          relation_type: direct
+          is_temp: true
+        - from_table: users
+          from_field: '*'
+          to_table: __result__
+          to_field: c
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              group_keys: []
+
+    # A nested query's own keys ride on the transformation that belongs to it.
+    - name: a nested query keeps its own grouping
+      sql: SELECT d.n FROM (SELECT x, COUNT(*) AS n FROM t GROUP BY x) AS d
+      expected_edges:
+        - from_table: t
+          from_field: '*'
+          to_table: __result__
+          to_field: n
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              group_keys:
+                - x
+
+    # WITH ROLLUP adds subtotal rows; it does not add or change a key, and the
+    # field has no place to represent the flag.
+    - name: with rollup keeps its keys unchanged
+      sql: SELECT o.user_id, COUNT(*) AS c FROM orders o GROUP BY o.user_id WITH ROLLUP
+      expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: user_id
+          relation_type: direct
+          is_temp: true
+        - from_table: orders
+          from_field: '*'
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              group_keys:
+                - o.user_id

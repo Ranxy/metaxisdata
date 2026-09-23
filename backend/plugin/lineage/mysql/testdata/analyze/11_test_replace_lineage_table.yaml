@@ -55,3 +55,6 @@ cases:
           transformations:
             - operation: AGGREGATE
               function_name: COUNT
+              group_keys:
+                - "u.id"
+                - "u.name"

@@ -76,6 +76,9 @@ cases:
           transformations:
             - operation: OPERATOR
               op_type: MULTIPLICATION
+    # The right-hand side is a scalar subquery, so the assignment is a projection
+    # here; the aggregate belongs to the subquery's own query specification. This
+    # matches PostgreSQL, which classifies an expression subquery as PROJECT.
     - name: UPDATE with subquery
       sql: "UPDATE users \n\t\t\t      SET total_orders = (SELECT COUNT(*) FROM orders WHERE orders.user_id = users.id)"
       expected_edges:
@@ -84,8 +87,7 @@ cases:
           to_table: users
           to_field: total_orders
           has_transform: true
-          relation_type: group
+          relation_type: indirect
           is_temp: false
           transformations:
-            - operation: AGGREGATE
-              function_name: COUNT
+            - operation: PROJECT

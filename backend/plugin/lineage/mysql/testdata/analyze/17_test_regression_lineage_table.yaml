@@ -358,6 +358,7 @@ cases:
             - operation: AGGREGATE
               function_name: COUNT
 
+              group_keys: []
     # The recorded DELETE condition is expression text: a string literal keeps
     # its spaces.
     - name: DELETE condition keeps literal spaces

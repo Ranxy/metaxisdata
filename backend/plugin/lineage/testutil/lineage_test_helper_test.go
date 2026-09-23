@@ -45,6 +45,7 @@ cases:
         transformations:
           - operation: PROJECT
             expression: id
+            group_keys: []
   - name: keeps optional edge assertions absent
     sql: SELECT 1
     expect_error: true
@@ -76,6 +77,8 @@ cases:
 	require.Len(t, edge.Transformations, 1)
 	require.Equal(t, "PROJECT", edge.Transformations[0].Operation)
 	require.Equal(t, "id", edge.Transformations[0].Expression)
+	require.True(t, edge.Transformations[0].GroupKeysSet, "a written group_keys, even empty, is an assertion")
+	require.Empty(t, edge.Transformations[0].GroupKeys)
 
 	usersTable, err := first.Catalog.GetTable(context.Background(), model.ObjectIdentifier{Name: "users"})
 	require.NoError(t, err)
@@ -182,6 +185,22 @@ func TestTransformationMatches(t *testing.T) {
 	require.True(t, TransformationMatches(transform, ExpectedTransformation{PartitionBy: []string{"a"}, OrderBy: []string{"b"}}))
 	require.False(t, TransformationMatches(transform, ExpectedTransformation{PartitionBy: []string{"z"}}))
 	require.False(t, TransformationMatches(transform, ExpectedTransformation{FunctionName: "AVG"}))
+}
+
+// An omitted group_keys asserts nothing, while a written one is exact — that
+// distinction is the whole reason the field is a pointer in the YAML.
+func TestTransformationMatchesGroupKeys(t *testing.T) {
+	grouped := model.NewAggregateTransformation("COUNT", "COUNT(*)", []string{"a", "b"})
+	ungrouped := model.NewAggregateTransformation("COUNT", "COUNT(*)", nil)
+
+	require.True(t, TransformationMatches(grouped, ExpectedTransformation{Operation: "AGGREGATE"}),
+		"an absent group_keys must not be checked")
+	require.False(t, TransformationMatches(grouped, ExpectedTransformation{Operation: "AGGREGATE", GroupKeysSet: true}),
+		"group_keys: [] must reject a transformation that carries keys")
+	require.True(t, TransformationMatches(ungrouped, ExpectedTransformation{Operation: "AGGREGATE", GroupKeysSet: true}))
+	require.True(t, TransformationMatches(grouped, ExpectedTransformation{GroupKeys: []string{"a", "b"}, GroupKeysSet: true}))
+	require.False(t, TransformationMatches(grouped, ExpectedTransformation{GroupKeys: []string{"a"}, GroupKeysSet: true}),
+		"the key order is part of the assertion")
 }
 
 func testRelation(fromField, toField string) model.ColumnRelation {

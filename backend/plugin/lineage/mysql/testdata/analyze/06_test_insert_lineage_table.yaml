@@ -55,6 +55,9 @@ cases:
           transformations:
             - operation: AGGREGATE
               function_name: COUNT
+              group_keys:
+                - "u.id"
+                - "u.name"
     - name: INSERT SELECT with parenthesized join tree
       sql: INSERT INTO order_summary (`order_id`, `customer_name`, `total_amount`) SELECT `o`.`id`,`c`.`name`,sum(`oi`.`amount`) AS `total_amount` FROM (((`orders` `o` JOIN `customers` `c` ON((`o`.`customer_id` = `c`.`id`)))) LEFT JOIN `order_items` `oi` ON((`o`.`id` = `oi`.`order_id`))) GROUP BY `o`.`id`,`c`.`name`
       expected_edges:
@@ -80,3 +83,6 @@ cases:
           transformations:
             - operation: AGGREGATE
               function_name: SUM
+              group_keys:
+                - "`o`.`id`"
+                - "`c`.`name`"

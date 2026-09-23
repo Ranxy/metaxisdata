@@ -94,6 +94,8 @@ cases:
           transformations:
             - operation: AGGREGATE
               function_name: COUNT
+              group_keys:
+                - "`p`.`id`"
     - name: CREATE VIEW with deeply nested parenthesized join tree
       sql: CREATE VIEW `order_rollup` AS select `o`.`id` AS `order_id`,`c`.`name` AS `customer_name`,sum(`oi`.`amount`) AS `total_amount` from (((`orders` `o` join `customers` `c` on((`o`.`customer_id` = `c`.`id`)))) left join `order_items` `oi` on((`o`.`id` = `oi`.`order_id`))) group by `o`.`id`,`c`.`name`
       expected_edges:
@@ -119,6 +121,9 @@ cases:
           transformations:
             - operation: AGGREGATE
               function_name: SUM
+              group_keys:
+                - "`o`.`id`"
+                - "`c`.`name`"
     - name: CREATE VIEW with parenthesized right join
       sql: CREATE VIEW `shipment_status_view` AS select `o`.`id` AS `order_id`,`s`.`shipped_at` AS `shipped_at`,`s`.`status` AS `shipping_status` from ((`orders` `o` right join `shipments` `s` on((`o`.`id` = `s`.`order_id`)))) where (`s`.`status` <> 'cancelled')
       expected_edges:

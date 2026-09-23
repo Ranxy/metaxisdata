@@ -53,7 +53,10 @@ type ExpectedEdge struct {
 	SubsetTransformations bool
 }
 
-// ExpectedTransformation matches a transformation on the fields it sets.
+// ExpectedTransformation matches a transformation on the fields it sets. A field
+// left out of the YAML is not asserted at all; GroupKeysSet records that
+// `group_keys:` was written, so `group_keys: []` can assert "this transformation
+// carries none" instead of meaning "do not check".
 type ExpectedTransformation struct {
 	Operation    string
 	FunctionName string
@@ -62,6 +65,7 @@ type ExpectedTransformation struct {
 	Condition    string
 	Arguments    []string
 	GroupKeys    []string
+	GroupKeysSet bool
 	PartitionBy  []string
 	OrderBy      []string
 }
@@ -142,15 +146,36 @@ type yamlExpectedEdge struct {
 }
 
 type yamlTransformation struct {
-	Operation    string   `yaml:"operation,omitempty"`
-	FunctionName string   `yaml:"function_name,omitempty"`
-	Expression   string   `yaml:"expression,omitempty"`
-	OpType       string   `yaml:"op_type,omitempty"`
-	Condition    string   `yaml:"condition,omitempty"`
-	Arguments    []string `yaml:"arguments,omitempty"`
-	GroupKeys    []string `yaml:"group_keys,omitempty"`
-	PartitionBy  []string `yaml:"partition_by,omitempty"`
-	OrderBy      []string `yaml:"order_by,omitempty"`
+	Operation    string    `yaml:"operation,omitempty"`
+	FunctionName string    `yaml:"function_name,omitempty"`
+	Expression   string    `yaml:"expression,omitempty"`
+	OpType       string    `yaml:"op_type,omitempty"`
+	Condition    string    `yaml:"condition,omitempty"`
+	Arguments    []string  `yaml:"arguments,omitempty"`
+	GroupKeys    *[]string `yaml:"group_keys,omitempty"`
+	PartitionBy  []string  `yaml:"partition_by,omitempty"`
+	OrderBy      []string  `yaml:"order_by,omitempty"`
+}
+
+// toExpectedTransformation keeps the written-form distinction for group_keys: a
+// pointer that yaml allocated means the key was written, so an empty list is an
+// assertion rather than an omission.
+func (t yamlTransformation) toExpectedTransformation() ExpectedTransformation {
+	exp := ExpectedTransformation{
+		Operation:    t.Operation,
+		FunctionName: t.FunctionName,
+		Expression:   t.Expression,
+		OpType:       t.OpType,
+		Condition:    t.Condition,
+		Arguments:    t.Arguments,
+		PartitionBy:  t.PartitionBy,
+		OrderBy:      t.OrderBy,
+	}
+	if t.GroupKeys != nil {
+		exp.GroupKeys = *t.GroupKeys
+		exp.GroupKeysSet = true
+	}
+	return exp
 }
 
 // AnalyzeFunc is the function signature for analyzing SQL and returning relations.
@@ -284,6 +309,13 @@ func RequireFullEdgeAnnotations(t *testing.T, dir string) {
 
 				for _, transform := range edge.Transformations {
 					require.NotEmptyf(t, transform.Operation, "%s: a transformation does not assert operation", where)
+					// GROUP BY keys are the one field a wrapper hides: an aggregate
+					// under an operator or a CASE produces no AGGREGATE entry, so a
+					// case has to state the keys it expects. An AGGREGATE entry is
+					// the shape where they are always known, hence required.
+					if transform.Operation == string(model.OperationAggregate) {
+						require.Truef(t, transform.GroupKeysSet, "%s: an AGGREGATE transformation does not assert group_keys", where)
+					}
 				}
 			}
 		}
@@ -388,7 +420,7 @@ func (e *yamlExpectedEdge) toExpectedEdge() (ExpectedEdge, error) {
 	}
 
 	for _, rawTransform := range e.Transformations {
-		edge.Transformations = append(edge.Transformations, ExpectedTransformation(rawTransform))
+		edge.Transformations = append(edge.Transformations, rawTransform.toExpectedTransformation())
 	}
 
 	if e.RelationType != nil {
@@ -595,7 +627,7 @@ func TransformationMatches(transform model.Transformation, exp ExpectedTransform
 	if len(exp.Arguments) > 0 && !slices.Equal(transform.Arguments, exp.Arguments) {
 		return false
 	}
-	if len(exp.GroupKeys) > 0 && !slices.Equal(transform.GroupKeys, exp.GroupKeys) {
+	if exp.GroupKeysSet && !slices.Equal(transform.GroupKeys, exp.GroupKeys) {
 		return false
 	}
 	if len(exp.PartitionBy) > 0 && !slices.Equal(transform.PartitionBy, exp.PartitionBy) {

@@ -40,6 +40,9 @@ cases:
           transformations:
             - operation: AGGREGATE
               function_name: COUNT
+              group_keys:
+                - "u.id"
+                - "u.name"
         - from_table: orders
           from_field: total
           to_table: user_stats
@@ -50,6 +53,9 @@ cases:
           transformations:
             - operation: AGGREGATE
               function_name: SUM
+              group_keys:
+                - "u.id"
+                - "u.name"
     - name: CREATE TEMPORARY TABLE AS SELECT
       sql: CREATE TEMPORARY TABLE tmp_active_users AS SELECT id, name FROM users WHERE status = 'active'
       expected_edges:
@@ -90,3 +96,6 @@ cases:
           transformations:
             - operation: AGGREGATE
               function_name: SUM
+              group_keys:
+                - "`o`.`id`"
+                - "`c`.`name`"
