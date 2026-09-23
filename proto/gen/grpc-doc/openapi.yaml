@@ -3172,6 +3172,12 @@ components:
                         - RELATION_TYPE_UNSPECIFIED
                         - DIRECT
                         - INDIRECT
+                        - JOIN
+                        - GROUP
+                        - UNION
+                        - INTERSECT
+                        - EXCEPT
+                        - UNKNOWN
                     type: string
                     format: enum
                 transformations:
@@ -4712,6 +4718,12 @@ components:
                         - RELATION_TYPE_UNSPECIFIED
                         - DIRECT
                         - INDIRECT
+                        - JOIN
+                        - GROUP
+                        - UNION
+                        - INTERSECT
+                        - EXCEPT
+                        - UNKNOWN
                     type: string
                     format: enum
                 transformations:

@@ -3913,6 +3913,12 @@ column, derived from the view&#39;s SQL.
 | RELATION_TYPE_UNSPECIFIED | 0 |  |
 | DIRECT | 1 | DIRECT means the source column is directly used in the target column without transformation. For example: select source_column as target_column from table. |
 | INDIRECT | 2 | INDIRECT means the source column is used in the target column with transformation. For example: select concat(source_column, &#39;abc&#39;) as target_column |
+| JOIN | 3 | JOIN means the source column is a join key: it decides which rows the target receives without its value reaching the target column. The target column is empty, because the influence is on the rows rather than on one column. |
+| GROUP | 4 | GROUP means the source column was aggregated into the target column. For example: select count(source_column) as target_column from table |
+| UNION | 5 | UNION, INTERSECT and EXCEPT mean the source column is one arm of the set operation that produced the target column. |
+| INTERSECT | 6 |  |
+| EXCEPT | 7 |  |
+| UNKNOWN | 8 | UNKNOWN is carried so a stored relation of an unrecognized kind round-trips. No analyzer produces it. |
 
 
  

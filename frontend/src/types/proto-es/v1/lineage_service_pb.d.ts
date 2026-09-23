@@ -741,6 +741,44 @@ export enum RelationType {
    * @generated from enum value: INDIRECT = 2;
    */
   INDIRECT = 2,
+
+  /**
+   * JOIN means the source column is a join key: it decides which rows the target receives without its value reaching the target column. The target column is empty, because the influence is on the rows rather than on one column.
+   *
+   * @generated from enum value: JOIN = 3;
+   */
+  JOIN = 3,
+
+  /**
+   * GROUP means the source column was aggregated into the target column. For example: select count(source_column) as target_column from table
+   *
+   * @generated from enum value: GROUP = 4;
+   */
+  GROUP = 4,
+
+  /**
+   * UNION, INTERSECT and EXCEPT mean the source column is one arm of the set operation that produced the target column.
+   *
+   * @generated from enum value: UNION = 5;
+   */
+  UNION = 5,
+
+  /**
+   * @generated from enum value: INTERSECT = 6;
+   */
+  INTERSECT = 6,
+
+  /**
+   * @generated from enum value: EXCEPT = 7;
+   */
+  EXCEPT = 7,
+
+  /**
+   * UNKNOWN is carried so a stored relation of an unrecognized kind round-trips. No analyzer produces it.
+   *
+   * @generated from enum value: UNKNOWN = 8;
+   */
+  UNKNOWN = 8,
 }
 
 /**

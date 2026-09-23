@@ -305,11 +305,29 @@ func convertTransformations(transformations []model.Transformation) []*v1pb.Tran
 	return result
 }
 
+// convertRelationType reports the stored relation type as it is. Collapsing every
+// non-direct relation to INDIRECT would hide what the analyzers now distinguish —
+// a join key, an aggregation and a set operation are different relations between
+// a source column and its target.
 func convertRelationType(relationType model.RelationType) v1pb.RelationType {
 	switch relationType {
 	case model.RelationTypeDirect:
 		return v1pb.RelationType_DIRECT
-	default:
+	case model.RelationTypeIndirect:
 		return v1pb.RelationType_INDIRECT
+	case model.RelationTypeJoin:
+		return v1pb.RelationType_JOIN
+	case model.RelationTypeGroup:
+		return v1pb.RelationType_GROUP
+	case model.RelationTypeUnion:
+		return v1pb.RelationType_UNION
+	case model.RelationTypeIntersect:
+		return v1pb.RelationType_INTERSECT
+	case model.RelationTypeExcept:
+		return v1pb.RelationType_EXCEPT
+	case model.RelationTypeUnknown:
+		return v1pb.RelationType_UNKNOWN
+	default:
+		return v1pb.RelationType_RELATION_TYPE_UNSPECIFIED
 	}
 }

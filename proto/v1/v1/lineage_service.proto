@@ -59,6 +59,16 @@ enum RelationType {
   DIRECT = 1;
   // INDIRECT means the source column is used in the target column with transformation. For example: select concat(source_column, 'abc') as target_column
   INDIRECT = 2;
+  // JOIN means the source column is a join key: it decides which rows the target receives without its value reaching the target column. The target column is empty, because the influence is on the rows rather than on one column.
+  JOIN = 3;
+  // GROUP means the source column was aggregated into the target column. For example: select count(source_column) as target_column from table
+  GROUP = 4;
+  // UNION, INTERSECT and EXCEPT mean the source column is one arm of the set operation that produced the target column.
+  UNION = 5;
+  INTERSECT = 6;
+  EXCEPT = 7;
+  // UNKNOWN is carried so a stored relation of an unrecognized kind round-trips. No analyzer produces it.
+  UNKNOWN = 8;
 }
 
 message LineageRelation {

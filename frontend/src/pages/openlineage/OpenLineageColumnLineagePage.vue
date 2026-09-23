@@ -175,12 +175,12 @@ import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { relationTypeKey } from "@/lib/relationType";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type {
   LineageRelation,
   Transformation,
 } from "@/types/proto-es/v1/lineage_service_pb";
-import { RelationType } from "@/types/proto-es/v1/lineage_service_pb";
 import { extractErrorMessage } from "@/utils/error";
 
 const OPENLINEAGE_META_TYPE = 100;
@@ -461,13 +461,7 @@ function formatTransformation(
 }
 
 function formatRelationType(relationType: number): string {
-  switch (relationType) {
-    case RelationType.DIRECT:
-      return "DIRECT";
-    case RelationType.INDIRECT:
-      return "INDIRECT";
-    default:
-      return "";
-  }
+  const key = relationTypeKey(relationType);
+  return key ? t(key) : "";
 }
 </script>

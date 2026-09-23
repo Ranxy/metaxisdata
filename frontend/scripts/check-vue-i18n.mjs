@@ -39,7 +39,11 @@ const LOCALES = ["en-US", "zh-CN"];
 // unused-key check. Matched with String.startsWith, so an entry ending in "."
 // is a prefix family (matches every key under it) and an entry without a
 // trailing "." matches itself (and anything that starts with it).
-export const DYNAMIC_PREFIXES = [];
+export const DYNAMIC_PREFIXES = [
+  // relationTypeKey() in src/lib/relationType.ts maps a stored lineage relation
+  // type to its label key, which the checker cannot follow.
+  "metadataBrowser.relation",
+];
 
 // t("key") / t('key') / $t("key") / te("key") / tm("key").
 const CALL_RE = /(?<![A-Za-z0-9_$])(?:\$t|te|tm|t)\(\s*["']([^"']+)["']/g;

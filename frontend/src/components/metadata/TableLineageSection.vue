@@ -155,6 +155,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { relationTypeKey } from "@/lib/relationType";
 import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   type ExternalDatasetInfo,
@@ -358,12 +359,10 @@ function buildDisplayRelation(options: {
   relatedColumn: string;
   relatedMetaType: MetaType;
 }): DisplayRelation {
-  const relationTypeLabel =
-    options.relation.relationType === RelationType.DIRECT
-      ? t("metadataBrowser.relationDirect")
-      : options.relation.relationType === RelationType.INDIRECT
-        ? t("metadataBrowser.relationIndirect")
-        : String(options.relation.relationType);
+  const relationTypeLabelKey = relationTypeKey(options.relation.relationType);
+  const relationTypeLabel = relationTypeLabelKey
+    ? t(relationTypeLabelKey)
+    : String(options.relation.relationType);
 
   const externalDataset = externalDatasetMap.value.get(options.relatedGuid);
   const relatedObject = formatGuidForDisplay(

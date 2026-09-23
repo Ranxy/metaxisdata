@@ -80,6 +80,16 @@ const (
 	RelationType_DIRECT RelationType = 1
 	// INDIRECT means the source column is used in the target column with transformation. For example: select concat(source_column, 'abc') as target_column
 	RelationType_INDIRECT RelationType = 2
+	// JOIN means the source column is a join key: it decides which rows the target receives without its value reaching the target column. The target column is empty, because the influence is on the rows rather than on one column.
+	RelationType_JOIN RelationType = 3
+	// GROUP means the source column was aggregated into the target column. For example: select count(source_column) as target_column from table
+	RelationType_GROUP RelationType = 4
+	// UNION, INTERSECT and EXCEPT mean the source column is one arm of the set operation that produced the target column.
+	RelationType_UNION     RelationType = 5
+	RelationType_INTERSECT RelationType = 6
+	RelationType_EXCEPT    RelationType = 7
+	// UNKNOWN is carried so a stored relation of an unrecognized kind round-trips. No analyzer produces it.
+	RelationType_UNKNOWN RelationType = 8
 )
 
 // Enum value maps for RelationType.
@@ -88,11 +98,23 @@ var (
 		0: "RELATION_TYPE_UNSPECIFIED",
 		1: "DIRECT",
 		2: "INDIRECT",
+		3: "JOIN",
+		4: "GROUP",
+		5: "UNION",
+		6: "INTERSECT",
+		7: "EXCEPT",
+		8: "UNKNOWN",
 	}
 	RelationType_value = map[string]int32{
 		"RELATION_TYPE_UNSPECIFIED": 0,
 		"DIRECT":                    1,
 		"INDIRECT":                  2,
+		"JOIN":                      3,
+		"GROUP":                     4,
+		"UNION":                     5,
+		"INTERSECT":                 6,
+		"EXCEPT":                    7,
+		"UNKNOWN":                   8,
 	}
 )
 
@@ -1479,12 +1501,19 @@ const file_v1_lineage_service_proto_rawDesc = "" +
 	"\n" +
 	"\x06SOURCE\x10\x01\x12\n" +
 	"\n" +
-	"\x06TARGET\x10\x02*G\n" +
+	"\x06TARGET\x10\x02*\x8f\x01\n" +
 	"\fRelationType\x12\x1d\n" +
 	"\x19RELATION_TYPE_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +
 	"\x06DIRECT\x10\x01\x12\f\n" +
-	"\bINDIRECT\x10\x022\xf5\x04\n" +
+	"\bINDIRECT\x10\x02\x12\b\n" +
+	"\x04JOIN\x10\x03\x12\t\n" +
+	"\x05GROUP\x10\x04\x12\t\n" +
+	"\x05UNION\x10\x05\x12\r\n" +
+	"\tINTERSECT\x10\x06\x12\n" +
+	"\n" +
+	"\x06EXCEPT\x10\a\x12\v\n" +
+	"\aUNKNOWN\x10\b2\xf5\x04\n" +
 	"\x0eLineageService\x12\x84\x01\n" +
 	"\n" +
 	"GetLineage\x12!.metaxisdata.v1.GetLineageRequest\x1a\".metaxisdata.v1.GetLineageResponse\"/\x8a\xea0\x17metaxisdata.lineage.get\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/lineages\x12\xaa\x01\n" +
