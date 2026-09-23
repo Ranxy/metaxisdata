@@ -27,3 +27,45 @@ cases:
           to_field: total
           relation_type: direct
           is_temp: true
+
+    # NATURAL JOIN has no written ON clause: the joined column is implicit and
+    # never referenced, so it contributes no source. Only the projection does.
+    - name: natural join
+      sql: SELECT e.name FROM employees e NATURAL JOIN departments d
+      expected_edges:
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true
+
+    - name: join using an explicit shared column
+      sql: SELECT e.name, d.dept_id FROM employees e JOIN departments d USING (dept_id)
+      expected_edges:
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true
+        - from_table: departments
+          from_field: dept_id
+          to_table: __result__
+          to_field: dept_id
+          relation_type: direct
+          is_temp: true
+
+    # A USING column is coalesced, so an unqualified reference to it names no
+    # single relation. The analyzer keeps its deterministic rule: the first
+    # relation in scope by name, which is `departments` here. Pinned so that
+    # changing the unqualified-ambiguity policy has to change this case.
+    - name: an unqualified USING column resolves to the first relation by name
+      sql: SELECT dept_id FROM employees e JOIN departments d USING (dept_id)
+      expected_edges:
+        - from_table: departments
+          from_field: dept_id
+          to_table: __result__
+          to_field: dept_id
+          relation_type: direct
+          is_temp: true

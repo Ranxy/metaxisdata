@@ -30,6 +30,10 @@ cases:
         public:
           orders:
             - order_id
+      databases:
+        db1:
+          events:
+            - event_id
     expected_edges:
       - from_table: users
         from_field: id
@@ -84,6 +88,18 @@ cases:
 	require.NotNil(t, ordersTable)
 	require.Len(t, ordersTable.Columns, 1)
 	require.Equal(t, "order_id", ordersTable.Columns[0].Name)
+
+	// A database-qualified entry is reachable the way the MySQL family addresses
+	// a SQL qualifier, and is not visible under the schemas: form.
+	eventsTable, err := first.Catalog.GetTable(context.Background(), model.ObjectIdentifier{Database: "db1", Name: "events"})
+	require.NoError(t, err)
+	require.NotNil(t, eventsTable)
+	require.Len(t, eventsTable.Columns, 1)
+	require.Equal(t, "event_id", eventsTable.Columns[0].Name)
+
+	missingTable, err := first.Catalog.GetTable(context.Background(), model.ObjectIdentifier{Schema: "db1", Name: "events"})
+	require.NoError(t, err)
+	require.Nil(t, missingTable)
 
 	second := suite.Cases[1]
 	require.True(t, second.ExpectError)

@@ -112,9 +112,16 @@ type yamlLineageTestCase struct {
 	ExpectError   bool                `yaml:"expect_error,omitempty"`
 }
 
+// yamlCatalog describes the metadata an analyzer may consult. tables: registers
+// an unqualified relation by name; schemas: registers a schema-qualified one for
+// PostgreSQL; databases: registers a database-qualified one for the MySQL family
+// and StarRocks, which address a SQL qualifier as the database. An analyzer only
+// matches the form its engine uses, so a schemas: entry is invisible to a MySQL
+// analyzer and vice versa.
 type yamlCatalog struct {
-	Tables  map[string][]string            `yaml:"tables,omitempty"`
-	Schemas map[string]map[string][]string `yaml:"schemas,omitempty"`
+	Tables    map[string][]string            `yaml:"tables,omitempty"`
+	Schemas   map[string]map[string][]string `yaml:"schemas,omitempty"`
+	Databases map[string]map[string][]string `yaml:"databases,omitempty"`
 }
 
 type yamlExpectedEdge struct {
@@ -355,6 +362,11 @@ func (c *yamlCatalog) toCatalog() catalog.Provide {
 	for schemaName, tables := range c.Schemas {
 		for tableName, columns := range tables {
 			addCatalogTable(cat, model.ObjectIdentifier{Schema: schemaName, Name: tableName}, columns)
+		}
+	}
+	for databaseName, tables := range c.Databases {
+		for tableName, columns := range tables {
+			addCatalogTable(cat, model.ObjectIdentifier{Database: databaseName, Name: tableName}, columns)
 		}
 	}
 
