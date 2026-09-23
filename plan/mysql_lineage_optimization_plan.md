@@ -926,10 +926,13 @@ changing one is a deliberate, visible corpus change.
   the parser-independent core was not extracted.
 - `scope.GetTables` / `GetCTEs` still return the internal maps, and
   `SetOutputColumn` still no-ops silently on an out-of-range index.
-- The `schemas:` catalog key is only meaningful for PostgreSQL: the MySQL
-  family addresses a SQL qualifier as the database, so a `schemas:` entry never
-  matches there.
-- MySQL `NATURAL JOIN` / `USING` is covered only by the MariaDB dialect corpus.
+- The `schemas:` catalog key is only meaningful for PostgreSQL, and the harness
+  had no database-qualified form at all, so a MySQL-family catalog entry could
+  not express a qualifier: a case written with `schemas:` silently fell back to
+  `*`. `databases:` now registers one and `19_test_database_catalog_table`
+  covers the qualified wildcard (§10.8).
+- MySQL `NATURAL JOIN` / `USING` is covered by the shared corpus as well as the
+  MariaDB dialect corpus (§10.8).
 - An unaliased expression column is named differently by the remaining
   dialects: PostgreSQL calls it `?column?` (verified against a live PostgreSQL
   16) while the analyzer stores the expression text, and StarRocks has not been
@@ -1117,3 +1120,43 @@ drop the edge instead is the §10.2 open item.
 2130 µs / 12086 allocs against 2383 µs / 12087 before it (same machine). Scopes
 hold a handful of relations, so the linear scans the slice introduced cost the
 same as the map lookups they replaced.
+
+### 10.8 Fourth MySQL pass: catalog fidelity and join coverage
+
+Two test-only gaps, with no analyzer behavior change; the shared corpus runs
+unchanged under MySQL, MariaDB and TiDB.
+
+1. **The harness could not express a database-qualified catalog entry.** A
+   `schemas:` entry registers `ObjectIdentifier{Schema: ...}`, while the MySQL
+   family looks a relation up as `{Database: tableRef.Schema, Name: ...}`
+   (`mysql/analyzer.go`), so a `schemas:` entry never matched. The consequence
+   was worse than a missing test: a MySQL case written with `schemas:` did not
+   fail, it silently fell back to `db1.t.*`, which the corpus accepted — so the
+   whole qualified-wildcard path (`processTableWildcard` →
+   `expandWildcardWithCatalog`) had zero coverage.
+
+   `yamlCatalog` now also accepts `databases:`, registering
+   `{Database: name, Name: table}`. The two forms stay deliberately distinct:
+   `schemas:` addresses PostgreSQL, `databases:` addresses the MySQL family and
+   StarRocks, and an entry in the wrong form is a visible failure rather than a
+   silent fallback. The new suite `19_test_database_catalog_table` covers a
+   qualified star expanding from a `databases:` entry, a cross-database join
+   expanding two same-named tables from their own databases, and a negative case
+   pinning that a `schemas:` entry is not visible to a MySQL analyzer.
+   `TestLoadLineageTestSuiteFromYAML` asserts both the new lookup and the
+   negative. Negative-checked by dropping the `databases:` registration: both
+   positive cases and the loader test fail.
+
+2. **`NATURAL JOIN` / `USING` existed only in the MariaDB dialect corpus**, even
+   though both are MySQL grammar. The shared corpus now covers them (`02`): a
+   natural join contributes only its projection, because the implicit join
+   column is never written; `JOIN ... USING (col)` with explicit qualifiers
+   resolves each side; and an unqualified `USING` column, which is coalesced and
+   names no single relation, resolves by the deterministic
+   first-relation-by-name rule. That last case is pinned on purpose, so changing
+   the unqualified-ambiguity policy (§10.2) has to change this case. The
+   pre-existing MariaDB dialect case is left in place.
+
+Corpus state: the shared MySQL-family corpus is now 128 cases (`02` gained three
+join cases, `19` adds three database-catalog cases), all matched exactly and
+fully annotated.
