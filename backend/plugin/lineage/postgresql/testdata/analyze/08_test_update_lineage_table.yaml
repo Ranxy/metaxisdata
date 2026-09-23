@@ -1,7 +1,6 @@
 name: TestUpdateLineage_Table
 cases:
     - name: UPDATE with literal values
-      exact_edges: true
       sql: UPDATE users SET email = 'new@email.com', updated_at = NOW() WHERE id = 1
       expected_edges:
         - from_table: users
@@ -15,7 +14,6 @@ cases:
           to_field: updated_at
           has_transform: true
     - name: UPDATE with column reference
-      exact_edges: true
       sql: UPDATE users SET new_email = old_email, full_name = first_name || ' ' || last_name
       expected_edges:
         - from_table: users
@@ -33,7 +31,6 @@ cases:
           to_field: full_name
           has_transform: true
     - name: UPDATE with FROM clause
-      exact_edges: true
       sql: "UPDATE orders \n\t\t\t      SET user_name = u.name, discount = orders.total * 0.1\n\t\t\t      FROM users u\n\t\t\t      WHERE orders.user_id = u.id"
       expected_edges:
         - from_table: users
@@ -54,7 +51,6 @@ cases:
           to_field: total_orders
           has_transform: true
     - name: UPDATE with CTE
-      exact_edges: true
       sql: |-
         WITH high_value_users AS (
         			          SELECT user_id FROM orders GROUP BY user_id HAVING SUM(total) > 1000

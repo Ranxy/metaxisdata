@@ -3,7 +3,6 @@ cases:
     # A constant assignment names no source column, but the row is still
     # rewritten, so the relation is recorded against the whole table.
     - name: UPDATE with literal values
-      exact_edges: true
       sql: UPDATE users SET email = 'new@email.com', updated_at = NOW() WHERE id = 1
       expected_edges:
         - from_table: users
@@ -17,7 +16,6 @@ cases:
           to_field: updated_at
           has_transform: true
     - name: UPDATE with column reference
-      exact_edges: true
       sql: UPDATE users SET new_email = old_email, full_name = CONCAT(first_name, ' ', last_name)
       expected_edges:
         - from_table: users
@@ -35,7 +33,6 @@ cases:
           to_field: full_name
           has_transform: true
     - name: UPDATE with JOIN
-      exact_edges: true
       sql: "UPDATE orders o \n\t\t\t      JOIN users u ON o.user_id = u.id \n\t\t\t      SET o.user_name = u.name, o.discount = o.total * 0.1"
       expected_edges:
         - from_table: users
@@ -48,7 +45,6 @@ cases:
           to_field: discount
           has_transform: true
     - name: UPDATE with subquery
-      exact_edges: true
       sql: "UPDATE users \n\t\t\t      SET total_orders = (SELECT COUNT(*) FROM orders WHERE orders.user_id = users.id)"
       expected_edges:
         - from_table: orders

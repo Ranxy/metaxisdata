@@ -1,7 +1,6 @@
 name: TestInsertLineage_Table
 cases:
     - name: INSERT SELECT
-      exact_edges: true
       sql: INSERT INTO tmp_users SELECT id, name FROM users WHERE age > 30
       expected_edges:
         - from_table: users
@@ -15,7 +14,6 @@ cases:
           to_field: name
           is_temp: false
     - name: INSERT SELECT with explicit columns
-      exact_edges: true
       sql: INSERT INTO tmp_users (user_id, user_name) SELECT id, name FROM users
       expected_edges:
         - from_table: users
@@ -27,7 +25,6 @@ cases:
           to_table: tmp_users
           to_field: user_name
     - name: INSERT SELECT with JOIN
-      exact_edges: true
       sql: "INSERT INTO summary \n\t\t\t      SELECT u.id, u.name, COUNT(o.id) AS order_count \n\t\t\t      FROM users u \n\t\t\t      JOIN orders o ON u.id = o.user_id \n\t\t\t      GROUP BY u.id, u.name"
       expected_edges:
         - from_table: users
@@ -44,7 +41,6 @@ cases:
           to_field: order_count
           has_transform: true
     - name: INSERT SELECT with parenthesized join tree
-      exact_edges: true
       sql: INSERT INTO order_summary (`order_id`, `customer_name`, `total_amount`) SELECT `o`.`id`,`c`.`name`,sum(`oi`.`amount`) AS `total_amount` FROM (((`orders` `o` JOIN `customers` `c` ON((`o`.`customer_id` = `c`.`id`)))) LEFT JOIN `order_items` `oi` ON((`o`.`id` = `oi`.`order_id`))) GROUP BY `o`.`id`,`c`.`name`
       expected_edges:
         - from_table: orders

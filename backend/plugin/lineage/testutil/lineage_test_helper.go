@@ -78,16 +78,14 @@ type LineageTestCase struct {
 	Catalog catalog.Provide
 
 	// Expected edges. When nil, only checks that analysis succeeds without error.
-	// When an empty (non-nil) slice, expects no edges at all.
+	// When an empty (non-nil) slice, expects no edges at all. They are compared
+	// exactly by default: every produced edge must match a distinct expected edge,
+	// so an unexpected extra edge fails.
 	ExpectedEdges []ExpectedEdge
 
-	// ExactEdges makes ExpectedEdges exhaustive: every produced edge must match a
-	// distinct expected edge, so an unexpected extra edge fails the case.
-	ExactEdges bool
-
 	// Subset declares the case deliberately partial: expectations are matched as
-	// subsets (it takes precedence over ExactEdges), which is the escape hatch a
-	// case uses when exact matching becomes the default.
+	// subsets instead, and transformation expectations only have to be contained.
+	// It is the escape hatch for a case that asserts part of a large result.
 	Subset bool
 
 	// ExpectError indicates the test expects an analysis error
@@ -113,7 +111,6 @@ type yamlLineageTestCase struct {
 	SQL           string              `yaml:"sql"`
 	Catalog       *yamlCatalog        `yaml:"catalog,omitempty"`
 	ExpectedEdges *[]yamlExpectedEdge `yaml:"expected_edges,omitempty"`
-	ExactEdges    bool                `yaml:"exact_edges,omitempty"`
 	Subset        bool                `yaml:"subset,omitempty"`
 	ExpectError   bool                `yaml:"expect_error,omitempty"`
 	Debug         bool                `yaml:"debug,omitempty"`
@@ -270,11 +267,12 @@ func RunLineageTest(t *testing.T, tc LineageTestCase, analyzeFn AnalyzeFunc) {
 	}
 
 	// An explicitly empty expectation means the statement must produce no edges.
+	// Matching is exact unless the case declares itself partial with Subset.
 	if tc.ExpectedEdges != nil {
-		if tc.ExactEdges && !tc.Subset {
-			ValidateExactEdges(t, relations, tc.ExpectedEdges)
-		} else {
+		if tc.Subset {
 			ValidateExpectedEdges(t, relations, tc.ExpectedEdges)
+		} else {
+			ValidateExactEdges(t, relations, tc.ExpectedEdges)
 		}
 	}
 }
@@ -284,7 +282,6 @@ func (c *yamlLineageTestCase) toLineageTestCase() (LineageTestCase, error) {
 		Name:        c.Name,
 		SQL:         c.SQL,
 		ExpectError: c.ExpectError,
-		ExactEdges:  c.ExactEdges,
 		Subset:      c.Subset,
 		Debug:       c.Debug,
 	}

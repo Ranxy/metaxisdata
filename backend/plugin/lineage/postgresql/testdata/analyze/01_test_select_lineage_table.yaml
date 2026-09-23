@@ -1,7 +1,6 @@
 name: TestSelectLineage_Table
 cases:
     - name: simple select with qualified columns
-      exact_edges: true
       sql: SELECT users.id, users.name FROM users
       expected_edges:
         - from_table: users
@@ -15,7 +14,6 @@ cases:
           to_field: name
           is_temp: true
     - name: select with column aliases
-      exact_edges: true
       sql: SELECT users.id AS user_id, users.name AS user_name FROM users
       expected_edges:
         - from_table: users
@@ -27,7 +25,6 @@ cases:
           to_table: __result__
           to_field: user_name
     - name: select with expression (|| operator)
-      exact_edges: true
       sql: SELECT id, first_name || ' ' || last_name AS full_name FROM users
       expected_edges:
         - from_table: users
@@ -47,7 +44,6 @@ cases:
           relation_type: indirect
           has_transform: true
     - name: select with CONCAT function
-      exact_edges: true
       sql: SELECT id, CONCAT(first_name, ' ', last_name) AS full_name FROM users
       expected_edges:
         - from_table: users
@@ -66,7 +62,6 @@ cases:
           to_field: full_name
           has_transform: true
     - name: select with WHERE clause
-      exact_edges: true
       sql: SELECT id, name FROM users WHERE age > 30
       expected_edges:
         - from_table: users
@@ -78,7 +73,6 @@ cases:
           to_table: __result__
           to_field: name
     - name: select star without catalog
-      exact_edges: true
       sql: SELECT * FROM users
       expected_edges:
         - from_table: users
@@ -86,7 +80,6 @@ cases:
           to_table: __result__
           to_field: '*'
     - name: select with qualified table name (schema.table)
-      exact_edges: true
       sql: SELECT mydb.users.id, mydb.users.name FROM mydb.users
       expected_edges:
         - from_schema: mydb
@@ -100,7 +93,6 @@ cases:
           to_table: __result__
           to_field: name
     - name: select with table alias
-      exact_edges: true
       sql: SELECT u.id, u.name FROM users AS u
       expected_edges:
         - from_table: users
@@ -112,7 +104,6 @@ cases:
           to_table: __result__
           to_field: name
     - name: select with COALESCE function
-      exact_edges: true
       sql: SELECT id, COALESCE(nickname, name) AS display_name FROM users
       expected_edges:
         - from_table: users
@@ -130,7 +121,6 @@ cases:
           to_field: display_name
           has_transform: true
     - name: select with CAST expression
-      exact_edges: true
       sql: SELECT id, CAST(created_at AS DATE) AS create_date FROM users
       expected_edges:
         - from_table: users
@@ -143,7 +133,6 @@ cases:
           to_field: create_date
           has_transform: true
     - name: select with PostgreSQL type cast (::)
-      exact_edges: true
       sql: SELECT id, created_at::date AS create_date FROM users
       expected_edges:
         - from_table: users

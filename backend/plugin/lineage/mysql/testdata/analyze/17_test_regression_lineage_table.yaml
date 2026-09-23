@@ -1,11 +1,10 @@
 name: TestRegressionLineage_Table
 # Regression cases for the defects tracked in
-# plan/mysql_lineage_optimization_plan.md. Cases that list every produced edge
-# set exact_edges so an unexpected extra edge fails too.
+# plan/mysql_lineage_optimization_plan.md. Edges are compared exactly, so an
+# unexpected extra edge fails the case.
 cases:
     - name: aliased star without catalog
       sql: SELECT * FROM employees e JOIN departments d ON e.id = d.department_id
-      exact_edges: true
       expected_edges:
         - from_table: employees
           from_field: "*"
@@ -26,7 +25,6 @@ cases:
         tables:
           employees: [id, name, department_id]
           departments: [id, name]
-      exact_edges: true
       expected_edges:
         - from_table: employees
           from_field: id
@@ -65,7 +63,6 @@ cases:
         tables:
           a: [id, x]
           b: [id, y]
-      exact_edges: true
       expected_edges:
         - from_table: b
           from_field: y
@@ -90,7 +87,6 @@ cases:
         tables:
           a: [id, x]
           b: [id, y, z]
-      exact_edges: true
       expected_edges:
         - from_table: b
           from_field: z
@@ -105,7 +101,6 @@ cases:
         tables:
           a: [id, x]
           b: [id, y, z]
-      exact_edges: true
       expected_edges:
         - from_table: b
           from_field: z
@@ -124,7 +119,6 @@ cases:
 
     - name: TABLE statement
       sql: TABLE employees
-      exact_edges: true
       expected_edges:
         - from_table: employees
           from_field: "*"
@@ -147,7 +141,6 @@ cases:
 
     - name: INTERSECT relation type
       sql: SELECT a.id FROM a INTERSECT SELECT b.id FROM b
-      exact_edges: true
       expected_edges:
         - from_table: a
           from_field: id
@@ -168,7 +161,6 @@ cases:
 
     - name: EXCEPT relation type
       sql: SELECT a.id FROM a EXCEPT SELECT b.id FROM b
-      exact_edges: true
       expected_edges:
         - from_table: a
           from_field: id
@@ -189,7 +181,6 @@ cases:
 
     - name: view over a union keeps every arm
       sql: CREATE VIEW v AS SELECT a.id FROM a UNION SELECT b.id FROM b
-      exact_edges: true
       expected_edges:
         - from_table: a
           from_field: id
@@ -208,7 +199,6 @@ cases:
 
     - name: derived table over a union keeps every arm
       sql: SELECT s.id FROM (SELECT a.id FROM a UNION SELECT b.id FROM b) s
-      exact_edges: true
       expected_edges:
         - from_table: a
           from_field: id
@@ -225,7 +215,6 @@ cases:
 
     - name: CTE over a union keeps every arm
       sql: WITH c AS (SELECT a.id FROM a UNION SELECT b.id FROM b) SELECT c.id FROM c
-      exact_edges: true
       expected_edges:
         - from_table: a
           from_field: id
@@ -242,7 +231,6 @@ cases:
 
     - name: INSERT SELECT over a union keeps every arm
       sql: INSERT INTO dst (id) SELECT a.id FROM a UNION SELECT b.id FROM b
-      exact_edges: true
       expected_edges:
         - from_table: a
           from_field: id
@@ -259,7 +247,6 @@ cases:
 
     - name: correlated scalar subquery
       sql: SELECT e.name, (SELECT d.name FROM departments d WHERE d.id = e.department_id) AS dn FROM employees e
-      exact_edges: true
       expected_edges:
         - from_table: employees
           from_field: name
@@ -277,7 +264,6 @@ cases:
 
     - name: insert column list overflow is dropped
       sql: INSERT INTO d (a, b) SELECT id, name, extra FROM a
-      exact_edges: true
       expected_edges:
         - from_table: a
           from_field: id
@@ -294,7 +280,6 @@ cases:
 
     - name: quoted identifiers with operator characters are direct
       sql: SELECT `created-at`, `case_id`, `we(ird)` FROM t
-      exact_edges: true
       expected_edges:
         - from_table: t
           from_field: created-at
@@ -320,7 +305,6 @@ cases:
 
     - name: single table DELETE resolves its source table
       sql: DELETE FROM users WHERE status = 'inactive'
-      exact_edges: true
       expected_edges:
         - from_table: users
           from_field: status
@@ -335,7 +319,6 @@ cases:
 
     - name: DELETE WHERE subquery keeps the subquery source
       sql: DELETE FROM users WHERE id IN (SELECT user_id FROM orders WHERE status = 'cancelled')
-      exact_edges: true
       expected_edges:
         - from_table: users
           from_field: id
@@ -354,7 +337,6 @@ cases:
 
     - name: INSERT TABLE source
       sql: INSERT INTO d (a) TABLE s
-      exact_edges: true
       expected_edges:
         - from_table: s
           from_field: "*"
@@ -377,7 +359,6 @@ cases:
 
     - name: arithmetic expression keeps its operand text
       sql: SELECT x - 1 AS v FROM t
-      exact_edges: true
       expected_edges:
         - from_table: t
           from_field: x
@@ -393,7 +374,6 @@ cases:
 
     - name: function name containing OVER is still a function
       sql: SELECT cover(x) AS c FROM a
-      exact_edges: true
       expected_edges:
         - from_table: a
           from_field: x
@@ -408,7 +388,6 @@ cases:
 
     - name: unknown window function is a window
       sql: SELECT my_udf(x) OVER () AS a FROM t
-      exact_edges: true
       expected_edges:
         - from_table: t
           from_field: x
@@ -423,7 +402,6 @@ cases:
 
     - name: windowed aggregate is a window with clauses
       sql: SELECT SUM(x) OVER (PARTITION BY y ORDER BY z) AS s FROM t
-      exact_edges: true
       expected_edges:
         - from_table: t
           from_field: x
@@ -454,7 +432,6 @@ cases:
 
     - name: UPDATE constant assignment records the table
       sql: UPDATE t SET x = 1
-      exact_edges: true
       expected_edges:
         - from_table: t
           from_field: "*"

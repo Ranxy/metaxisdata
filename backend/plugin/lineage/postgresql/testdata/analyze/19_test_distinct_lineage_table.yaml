@@ -1,7 +1,6 @@
 name: TestDistinctLineage_Table
 cases:
     - name: SELECT DISTINCT
-      exact_edges: true
       sql: SELECT DISTINCT category FROM products
       expected_edges:
         - from_table: products
@@ -9,7 +8,6 @@ cases:
           to_table: __result__
           to_field: category
     - name: SELECT DISTINCT ON (PostgreSQL specific)
-      exact_edges: true
       sql: |-
         SELECT DISTINCT ON (user_id) user_id, order_id, total
         			      FROM orders

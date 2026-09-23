@@ -1,7 +1,6 @@
 name: TestJoinLineage_Table
 cases:
     - name: inner join
-      exact_edges: true
       sql: "SELECT u.id, u.name, o.order_id, o.total \n\t\t\t      FROM users u \n\t\t\t      JOIN orders o ON u.id = o.user_id"
       expected_edges:
         - from_table: users
@@ -21,7 +20,6 @@ cases:
           to_table: __result__
           to_field: total
     - name: left outer join
-      exact_edges: true
       sql: |-
         SELECT u.id, u.name, o.order_id
         			      FROM users u
@@ -40,7 +38,6 @@ cases:
           to_table: __result__
           to_field: order_id
     - name: multiple joins
-      exact_edges: true
       sql: |-
         SELECT u.name, o.order_id, p.product_name
         			      FROM users u
@@ -60,7 +57,6 @@ cases:
           to_table: __result__
           to_field: product_name
     - name: cross join
-      exact_edges: true
       sql: |-
         SELECT u.name, d.department_name
         			      FROM users u
@@ -75,7 +71,6 @@ cases:
           to_table: __result__
           to_field: department_name
     - name: natural join
-      exact_edges: true
       sql: |-
         SELECT id, name, department_id
         			      FROM users

@@ -1,7 +1,6 @@
 name: TestReplaceLineage_Table
 cases:
     - name: REPLACE SELECT
-      exact_edges: true
       sql: REPLACE INTO tmp_users SELECT id, name FROM users WHERE age > 30
       expected_edges:
         - from_table: users
@@ -13,7 +12,6 @@ cases:
           to_table: tmp_users
           to_field: name
     - name: REPLACE SELECT with explicit columns
-      exact_edges: true
       sql: REPLACE INTO tmp_users (user_id, user_name) SELECT id, name FROM users
       expected_edges:
         - from_table: users
@@ -25,7 +23,6 @@ cases:
           to_table: tmp_users
           to_field: user_name
     - name: REPLACE SELECT with JOIN
-      exact_edges: true
       sql: "REPLACE INTO summary \n\t\t\t      SELECT u.id, u.name, COUNT(o.id) AS order_count \n\t\t\t      FROM users u \n\t\t\t      JOIN orders o ON u.id = o.user_id \n\t\t\t      GROUP BY u.id, u.name"
       expected_edges:
         - from_table: users

@@ -1,7 +1,6 @@
 name: TestCreateViewLineage_Table
 cases:
     - name: CREATE VIEW with quoted identifiers
-      exact_edges: true
       sql: CREATE VIEW `ods_temp_view1` AS SELECT `src_users`.`id` AS `user_id`, `src_users`.`name` FROM `src_users`
       expected_edges:
         - from_table: src_users
@@ -13,7 +12,6 @@ cases:
           to_table: ods_temp_view1
           to_field: name
     - name: CREATE VIEW with parenthesized join tree
-      exact_edges: true
       sql: CREATE VIEW `popular_posts` AS select `p`.`id` AS `id`,`p`.`user_id` AS `user_id`,`p`.`title` AS `title`,`p`.`content` AS `content`,`p`.`status` AS `status`,`p`.`created_at` AS `created_at`,`p`.`published_at` AS `published_at`,`p`.`view_count` AS `view_count`,`p`.`likes` AS `likes`,`p`.`metadata` AS `metadata`,`u`.`username` AS `username`,count(`c`.`id`) AS `comment_count` from ((`posts` `p` join `users` `u` on((`p`.`user_id` = `u`.`id`))) left join `comments` `c` on((`p`.`id` = `c`.`post_id`))) where (`p`.`status` = 'published') group by `p`.`id` having (`comment_count` > 0) order by `p`.`likes` desc,`comment_count` desc
       expected_edges:
         - from_table: posts
@@ -78,7 +76,6 @@ cases:
           has_transform: true
           is_temp: false
     - name: CREATE VIEW with deeply nested parenthesized join tree
-      exact_edges: true
       sql: CREATE VIEW `order_rollup` AS select `o`.`id` AS `order_id`,`c`.`name` AS `customer_name`,sum(`oi`.`amount`) AS `total_amount` from (((`orders` `o` join `customers` `c` on((`o`.`customer_id` = `c`.`id`)))) left join `order_items` `oi` on((`o`.`id` = `oi`.`order_id`))) group by `o`.`id`,`c`.`name`
       expected_edges:
         - from_table: orders
@@ -98,7 +95,6 @@ cases:
           has_transform: true
           is_temp: false
     - name: CREATE VIEW with parenthesized right join
-      exact_edges: true
       sql: CREATE VIEW `shipment_status_view` AS select `o`.`id` AS `order_id`,`s`.`shipped_at` AS `shipped_at`,`s`.`status` AS `shipping_status` from ((`orders` `o` right join `shipments` `s` on((`o`.`id` = `s`.`order_id`)))) where (`s`.`status` <> 'cancelled')
       expected_edges:
         - from_table: orders
@@ -117,7 +113,6 @@ cases:
           to_field: shipping_status
           is_temp: false
     - name: CREATE VIEW referencing cross-database tables
-      exact_edges: true
       sql: CREATE OR REPLACE VIEW `v_customer_orders` AS select `c`.`customer_id` AS `customer_id`,`c`.`full_name` AS `customer_name`,`c`.`email` AS `customer_email`,`o`.`order_id` AS `order_id`,`o`.`order_date` AS `order_date`,`r`.`region_name` AS `region_name` from ((`raw_data`.`customers` `c` join `raw_data`.`orders` `o` on((`o`.`customer_id` = `c`.`customer_id`))) left join `raw_data`.`regions` `r` on((`r`.`region_id` = `c`.`region_id`)))
       expected_edges:
         - from_database: raw_data

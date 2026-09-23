@@ -1,7 +1,6 @@
 name: TestCopyLoadLineage_Table
 cases:
     - name: COPY INTO a table
-      exact_edges: true
       sql: COPY INTO t1 FROM 's3://bucket/data'
       expected_edges:
         - from_table: __file__
@@ -11,7 +10,6 @@ cases:
           relation_type: direct
           is_temp: false
     - name: LOAD without a column list
-      exact_edges: true
       sql: LOAD LABEL l1 (DATA INFILE('s3://bucket/f.csv') INTO TABLE t1)
       expected_edges:
         - from_table: __file__
@@ -21,7 +19,6 @@ cases:
           relation_type: direct
           is_temp: false
     - name: LOAD with a column list
-      exact_edges: true
       sql: LOAD LABEL l1 (DATA INFILE('s3://bucket/f.csv') INTO TABLE t1 COLUMNS (a, b))
       expected_edges:
         - from_table: __file__
@@ -37,7 +34,6 @@ cases:
           relation_type: direct
           is_temp: false
     - name: LOAD into a database-qualified table
-      exact_edges: true
       sql: LOAD LABEL l1 (DATA INFILE('s3://bucket/f.csv') INTO TABLE db1.t1 COLUMNS (a))
       expected_edges:
         - from_table: __file__

@@ -1,7 +1,6 @@
 name: TestUnionLineage_Table
 cases:
     - name: simple UNION
-      exact_edges: true
       sql: "SELECT id, name FROM employees \n\t\t\t      UNION \n\t\t\t      SELECT id, name FROM contractors"
       expected_edges:
         - from_table: employees
@@ -31,7 +30,6 @@ cases:
           relation_type: union
           is_temp: true
     - name: UNION ALL
-      exact_edges: true
       sql: "SELECT user_id, amount FROM sales \n\t\t\t      UNION ALL \n\t\t\t      SELECT user_id, amount FROM refunds"
       expected_edges:
         - from_table: sales
@@ -61,7 +59,6 @@ cases:
           relation_type: union
           is_temp: true
     - name: multiple UNION
-      exact_edges: true
       sql: "SELECT id, name FROM employees \n\t\t\t      UNION \n\t\t\t      SELECT id, name FROM contractors\n\t\t\t      UNION\n\t\t\t      SELECT id, name FROM vendors"
       expected_edges:
         - from_table: employees

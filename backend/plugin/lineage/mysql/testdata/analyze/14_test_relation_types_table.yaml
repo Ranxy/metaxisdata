@@ -1,7 +1,6 @@
 name: TestRelationTypes_Table
 cases:
     - name: direct relation type
-      exact_edges: true
       sql: SELECT id, name FROM users
       expected_edges:
         - from_table: users
@@ -15,7 +14,6 @@ cases:
           to_field: name
           relation_type: direct
     - name: indirect relation type (expression)
-      exact_edges: true
       sql: SELECT id, UPPER(name) AS name_upper FROM users
       expected_edges:
         - from_table: users

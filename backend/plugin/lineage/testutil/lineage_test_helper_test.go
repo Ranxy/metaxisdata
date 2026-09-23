@@ -30,7 +30,6 @@ cases:
         public:
           orders:
             - order_id
-    exact_edges: true
     expected_edges:
       - from_table: users
         from_field: id
@@ -58,7 +57,6 @@ cases:
 	require.Equal(t, "loads catalog and edge metadata", first.Name)
 	require.Equal(t, "SELECT id FROM users\n", first.SQL)
 	require.NotNil(t, first.Catalog)
-	require.True(t, first.ExactEdges)
 	require.True(t, first.Debug)
 	require.Len(t, first.ExpectedEdges, 1)
 
@@ -187,9 +185,9 @@ func TestLoadLineageTestSuiteRejectsUnknownKey(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(suitePath, []byte(`name: typo
 cases:
-  - name: misspelled exact_edges
+  - name: misspelled subset
     sql: SELECT 1
-    exact_edge: true
+    subsets: true
     expected_edges: []
 `), 0o600))
 
@@ -197,15 +195,14 @@ cases:
 	require.Error(t, err, "a misspelled key must be rejected instead of silently ignored")
 }
 
-// subset takes precedence over exact_edges, so a deliberately partial case keeps
-// passing once exact matching becomes the default.
+// Matching is exact by default, so `subset: true` is what keeps a deliberately
+// partial case passing.
 func TestRunLineageTestHonorsSubset(t *testing.T) {
 	tempDir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "subset.yaml"), []byte(`name: subset
 cases:
   - name: subset tolerates an extra edge
     sql: SELECT 1
-    exact_edges: true
     subset: true
     expected_edges:
       - from_table: users

@@ -1,7 +1,6 @@
 name: TestDeleteLineage_Table
 cases:
     - name: simple DELETE
-      exact_edges: true
       sql: DELETE FROM users WHERE status = 'inactive' AND last_login < NOW() - INTERVAL '1 year'
       expected_edges:
         - from_table: users
@@ -15,7 +14,6 @@ cases:
           to_field: __deletion__
           has_transform: true
     - name: DELETE with USING clause
-      exact_edges: true
       sql: |-
         DELETE FROM orders
         			      USING users u
@@ -45,7 +43,6 @@ cases:
           to_field: __deletion__
           has_transform: true
     - name: DELETE with CTE
-      exact_edges: true
       sql: |-
         WITH inactive_users AS (
         			          SELECT id FROM users WHERE last_login < NOW() - INTERVAL '2 years'
@@ -65,7 +62,6 @@ cases:
           to_field: __deletion__
           has_transform: true
     - name: DELETE with RETURNING
-      exact_edges: true
       sql: DELETE FROM logs WHERE created_at < '2020-01-01' RETURNING id, message
       expected_edges:
         - from_table: logs

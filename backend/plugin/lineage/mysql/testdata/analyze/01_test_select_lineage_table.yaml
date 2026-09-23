@@ -1,7 +1,6 @@
 name: TestSelectLineage_Table
 cases:
     - name: simple select with qualified columns
-      exact_edges: true
       sql: SELECT users.id, users.name FROM users
       expected_edges:
         - from_table: users
@@ -15,7 +14,6 @@ cases:
           to_field: name
           is_temp: true
     - name: select with column aliases
-      exact_edges: true
       sql: SELECT users.id AS user_id, users.name AS user_name FROM users
       expected_edges:
         - from_table: users
@@ -27,7 +25,6 @@ cases:
           to_table: __result__
           to_field: user_name
     - name: select with expression (CONCAT)
-      exact_edges: true
       sql: SELECT id, CONCAT(first_name, ' ', last_name) AS full_name FROM users
       expected_edges:
         - from_table: users
@@ -46,7 +43,6 @@ cases:
           to_field: full_name
           has_transform: true
     - name: select with WHERE clause
-      exact_edges: true
       sql: SELECT id, name FROM users WHERE age > 30
       expected_edges:
         - from_table: users
@@ -58,7 +54,6 @@ cases:
           to_table: __result__
           to_field: name
     - name: select star without catalog
-      exact_edges: true
       sql: SELECT * FROM users
       expected_edges:
         - from_table: users
@@ -66,7 +61,6 @@ cases:
           to_table: __result__
           to_field: '*'
     - name: select with qualified table name (schema.table)
-      exact_edges: true
       sql: SELECT mydb.users.id, mydb.users.name FROM mydb.users
       expected_edges:
         - from_database: mydb
@@ -80,7 +74,6 @@ cases:
           to_table: __result__
           to_field: name
     - name: select with parenthesized join tree
-      exact_edges: true
       sql: SELECT `o`.`id` AS `order_id`,`c`.`name` AS `customer_name`,sum(`oi`.`amount`) AS `total_amount` FROM (((`orders` `o` JOIN `customers` `c` ON((`o`.`customer_id` = `c`.`id`)))) LEFT JOIN `order_items` `oi` ON((`o`.`id` = `oi`.`order_id`))) GROUP BY `o`.`id`,`c`.`name`
       expected_edges:
         - from_table: orders

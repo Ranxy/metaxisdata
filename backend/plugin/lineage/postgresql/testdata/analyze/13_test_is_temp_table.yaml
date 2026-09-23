@@ -1,7 +1,6 @@
 name: TestIsTemp_Table
 cases:
     - name: SELECT produces temporary result
-      exact_edges: true
       sql: SELECT id, name FROM users
       expected_edges:
         - from_table: users
@@ -15,7 +14,6 @@ cases:
           to_field: name
           is_temp: true
     - name: INSERT targets real table
-      exact_edges: true
       sql: INSERT INTO orders (order_id, user_id) SELECT id, user_id FROM temp_orders
       expected_edges:
         - from_table: temp_orders
@@ -29,7 +27,6 @@ cases:
           to_field: user_id
           is_temp: false
     - name: UPDATE targets real table
-      exact_edges: true
       sql: UPDATE products SET price = price * 1.1 WHERE category = 'electronics'
       expected_edges:
         - from_table: products
@@ -40,7 +37,6 @@ cases:
           has_transform: true
           is_temp: false
     - name: DELETE targets real table
-      exact_edges: true
       sql: DELETE FROM logs WHERE created_at < '2020-01-01'
       expected_edges:
         - from_table: logs

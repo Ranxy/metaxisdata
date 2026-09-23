@@ -3,7 +3,6 @@ cases:
     # A window function depends on its arguments, its PARTITION BY keys and its
     # ORDER BY keys, so all three are recorded as sources of the output column.
     - name: ROW_NUMBER window function
-      exact_edges: true
       sql: "SELECT \n\t\t\t        id, \n\t\t\t        name, \n\t\t\t        salary,\n\t\t\t        ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary DESC) AS rank_in_dept\n\t\t\t      FROM employees"
       expected_edges:
         - from_table: employees
@@ -38,7 +37,6 @@ cases:
           has_transform: true
           is_temp: true
     - name: multiple window functions
-      exact_edges: true
       sql: "SELECT \n\t\t\t        product_id,\n\t\t\t        sale_date,\n\t\t\t        amount,\n\t\t\t        SUM(amount) OVER (PARTITION BY product_id ORDER BY sale_date) AS running_total,\n\t\t\t        AVG(amount) OVER (PARTITION BY product_id) AS avg_amount\n\t\t\t      FROM sales"
       expected_edges:
         - from_table: sales
