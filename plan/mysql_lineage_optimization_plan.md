@@ -921,16 +921,8 @@ Not ours to fix:
   mysqldump emits for a view — where the MySQL parser accepts any depth. An omni
   gap, recorded in `knownParserGaps` with a test that fails once it is fixed.
 
-Ours, and the largest item left:
+Ours:
 
-- PostgreSQL and StarRocks carry no predicate influences (§10.10): their `WHERE`,
-  `HAVING` and join conditions still produce no row-level edge. Porting it changes
-  the expectation of 66 PostgreSQL cases and a similar number of StarRocks ones,
-  so it is its own pass, and the corpus annotation below belongs with it because
-  it rewrites the same expectations.
-- Neither corpus is wired to `RequireFullEdgeAnnotations`, so an expectation there
-  can silently stop asserting a field. PostgreSQL is 29% annotated on relation
-  type and 21% on `is_temp`, StarRocks 75% / 74%.
 - StarRocks classifies an expression by the first function call it contains, so
   `SUM(x) OVER (…)` is reported as `AGGREGATE` where the MySQL family and
   PostgreSQL report `WINDOW`, and `SUM(x) + 1` as `AGGREGATE` where they report
@@ -1665,3 +1657,91 @@ Negative-checked: dropping the attachment fails three cases per engine, and
 dropping the exclusion rules fails both PostgreSQL exclusion cases and the
 StarRocks window case — the StarRocks subquery case cannot exercise the guard,
 because its walker already stops at the subquery.
+
+### 10.17 Twelfth pass: predicate influences in PostgreSQL and StarRocks
+
+§10.10 recorded `WHERE`, `HAVING` and join `ON` as a row-level influence for the
+MySQL family; the other two analyzers produced nothing for any of them. They now
+do, with the same shape: the predicate column as the source, the statement's
+target object as the target, an **empty target column**, and a `FILTER` or `JOIN`
+transformation. Every decision §10.10 fixed is the MySQL one; nothing new was
+decided, and reproducing them was the work.
+
+What the port had to reproduce, and did:
+
+- Predicates accumulate on the analyzer and are emitted by whichever emitter runs
+  last, so a filter inside a CTE, a derived table, a scalar subquery or a
+  set-operation arm is attributed to the statement's real target rather than to a
+  temporary one.
+- `HAVING` resolves a select-list alias to that output column's own sources, so
+  `HAVING c > 1` over `COUNT(*) AS c` records the aggregate behind the alias
+  instead of inventing a column no relation has.
+- `JOIN` is collected before `FILTER`, so a column used by both clauses keeps the
+  one `JOIN` edge; a predicate column that is also a value source keeps both
+  edges, because they differ by target column.
+- `USING (col)` names a key of both sides. `NATURAL JOIN` records nothing: which
+  columns it coalesces is a catalog question omni answers for neither engine, and
+  the MySQL analyzer behaves identically.
+- A predicate over a query-local relation is traced to its base table through the
+  existing temporary-lineage path.
+- `ORDER BY`, `DISTINCT` and `LIMIT` stay out of scope, and an `UPDATE` / `DELETE`
+  `WHERE` stays unrecorded (§10.10).
+
+Three differences are worth recording:
+
+1. **A StarRocks subquery operand is raw text.** omni models a scalar / `IN` /
+   `EXISTS` subquery as a leaf, so a walk over the predicate reaches nothing
+   inside it. The collector calls `expressionSubquerySources` — the helper a
+   select item already uses — which re-parses the body in its own scope; that
+   analysis also records the subquery's own `WHERE` as an influence. Without the
+   call, `WHERE o.status IN (SELECT status FROM st)` recorded only `o.status`, and
+   `WHERE EXISTS (…)` recorded nothing at all.
+2. **PostgreSQL's private relation-type rule is gone.** Its `determineRelationType`
+   never learned about `JOIN` and mapped it to `Indirect`, so a join influence
+   would have been the only `JOIN`-transformation edge in the product reporting
+   the wrong type. `NewLineageEdge` now uses the shared `model.RelationTypeOf`
+   (§10.14), which is what makes the join relation type reachable from this path
+   as well as from ingestion.
+3. **`USING` is rendered from the parsed column list, not from a source slice.**
+   The obvious slice — from the right operand's end to the end of the join — is
+   wrong for a nested join tree, because that operand's location ends inside its
+   own parentheses, so the slice starts at `) USING (id)`. Both analyzers
+   therefore render the clause from the columns they parsed, in the idiom each
+   already uses for a list: PostgreSQL joins them with `, `
+   (`USING (dept_id)`), StarRocks without whitespace (`USING(dept_id)`).
+
+Corpus and annotations were done in one pass, because they rewrite the same files:
+
+- 98 PostgreSQL and 63 StarRocks expectations gained a row-level influence edge.
+  Two invariants were machine-checked over the diff: every expectation that was
+  already produced is still produced, and **no appended edge had a non-empty
+  target column**. The pass therefore added influences and changed nothing else.
+- `25_test_predicate_influence_table` (PostgreSQL) and `22` (StarRocks) add 18
+  cases each, one per decision above, including the three shapes that must record
+  nothing (`NATURAL JOIN`, a constant predicate, `ORDER BY` with `LIMIT`).
+- Both corpora are now fully annotated and wired to `RequireFullEdgeAnnotations`.
+  PostgreSQL gained 182 `relation_type`, 204 `is_temp`, 87 transformation blocks
+  and 17 aggregate `group_keys`; StarRocks 48, 46, 76 and 24. `from_field` and
+  `to_field` were already written on every expectation, so the `to_field: ""` a
+  row-level edge depends on never had to be added — and `RequireFullEdgeAnnotations`
+  now keeps it that way.
+- Annotation only fills in what was left out, and a key-loss check over the diff
+  enforced it. That check found the one assertion the guard does not require: the
+  deliberate `group_keys: []` on a WINDOW and on a PROJECT transformation, which
+  states "this aggregate carries none" (§10.16). Regenerating the expectations
+  wholesale would have dropped both.
+- Two cases that asserted `expected_edges: []` — `SELECT z FROM a JOIN b ON …`
+  with a catalog that describes neither side as owning `z` — now assert the two
+  join influences of their own condition, with a comment saying why the projection
+  still has no edge.
+
+Negative-checked. Disabling emission fails 68 PostgreSQL and 47 StarRocks cases,
+and those sets are exactly the cases whose expectations carry a `FILTER` or `JOIN`
+edge. Emitting a non-empty target column fails the same 68 / 47, which is what
+proves `to_field: ""` is asserted rather than omitted. Dropping join predicates
+fails 40 / 32; dropping `USING` 3 each; dropping the `HAVING` alias resolution 1
+each; dropping the StarRocks subquery sources 1; making the shared rule collapse
+`JOIN` to `indirect` 40 / 32 and 51 MySQL; restoring PostgreSQL's private rule the
+same 40; and removing one `is_temp` or one `relation_type` line fails the
+annotation guard that this pass wired. `gofmt`, `golangci-lint`, `go test ./...`,
+the build and the real-server integration suite are green.
