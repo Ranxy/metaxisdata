@@ -11,8 +11,7 @@ import (
 
 // exprText returns the exact source slice for a node span, trimmed. omni's Loc is
 // a byte range absolute into the parsed SQL and may include trailing whitespace,
-// so trimming reproduces the legacy ANTLR
-// tokens.GetTextFromInterval(...) output (source text, inner whitespace kept).
+// so trimming yields the exact source slice (source text, inner whitespace kept).
 func (a *Analyzer) exprText(loc pgast.Loc) string {
 	if loc.Start < 0 || loc.End < 0 || loc.End > len(a.sql) || loc.Start >= loc.End {
 		return ""
@@ -40,7 +39,7 @@ func (a *Analyzer) nodeTexts(list *pgast.List) []string {
 // columnRefFromFields converts a ColumnRef's field list into the scope column
 // reference the algorithm layer expects. The trailing name is the column, the
 // preceding name is the table qualifier, and any schema qualifier is discarded,
-// matching the legacy extractColumnRef behavior. A trailing A_Star becomes the
+// so a schema-qualified reference keeps only its column and table. A trailing A_Star becomes the
 // wildcard column.
 func (*Analyzer) columnRefFromFields(fields *pgast.List) scope.ColumnRef {
 	names := stringList(fields)

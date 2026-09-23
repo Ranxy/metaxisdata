@@ -2,9 +2,7 @@ name: TestParenthesizedJoinLineage_Table
 # pg_get_viewdef renders a join tree in parentheses, e.g.
 #   SELECT u.id FROM (users u JOIN orders o ON ((u.id = o.user_id)))
 # which is exactly the shape the lineage runner feeds back for a stored view.
-# The legacy ANTLR analyzer silently produced zero edges for these; the
-# omni-backed analyzer resolves them. These cases pin the corrected behavior and
-# are listed in knownLegacyDefects (parity_test.go / postgresqlantlr helper).
+# These cases pin the behavior for that shape.
 cases:
     - name: parenthesized join tree
       sql: SELECT u.id, o.amount FROM (users u JOIN orders o ON u.id = o.user_id)

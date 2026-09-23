@@ -94,7 +94,7 @@ func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide
 //
 // Parse errors are a hard failure: no partial result is returned. Every
 // well-formed statement in a multi-statement input is analyzed in order on the
-// shared analyzer state, matching the legacy stmtmulti behavior (notably for
+// shared analyzer state, so a multi-statement script is not treated as one query (notably for
 // MANUAL_SQL).
 func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	stmts, err := omnipg.Parse(a.sql)
@@ -132,7 +132,7 @@ func (a *Analyzer) processStmt(node pgast.Node) {
 	case *pgast.CreateTableAsStmt:
 		a.processCreateTableAsStmt(stmt)
 	default:
-		// Unsupported statement kinds produce no lineage, matching the legacy
+		// Unsupported statement kinds produce no lineage.
 		// analyzer which silently ignored them.
 	}
 }
@@ -176,22 +176,21 @@ func (a *Analyzer) processSelectCore(stmt *pgast.SelectStmt) {
 	a.generateEdges(sp)
 }
 
-// flattenSetOpArms flattens a UNION/EXCEPT tree into its operands, left to
-// right. INTERSECT binds tighter and is left as one operand so the legacy
-// "first primary only" behavior can be preserved.
+// flattenSetOpArms flattens a UNION/INTERSECT/EXCEPT tree into its leaf SELECTs
+// in order, so every arm of every set operation contributes lineage.
 func flattenSetOpArms(stmt *pgast.SelectStmt) []*pgast.SelectStmt {
 	if stmt == nil {
 		return nil
 	}
-	if stmt.Op == pgast.SETOP_UNION || stmt.Op == pgast.SETOP_EXCEPT {
+	if stmt.Op != pgast.SETOP_NONE {
 		return append(flattenSetOpArms(stmt.Larg), flattenSetOpArms(stmt.Rarg)...)
 	}
 	return []*pgast.SelectStmt{stmt}
 }
 
-// processSetOperation processes UNION/INTERSECT/EXCEPT, mirroring the legacy
-// scope juggling: the first operand is processed in the base scope, every later
-// operand in a temporary scope parented to the base scope's parent.
+// processSetOperation processes UNION/INTERSECT/EXCEPT: the first operand is
+// analyzed in the base scope, every later operand in a temporary scope parented
+// to the base scope's parent.
 func (a *Analyzer) processSetOperation(stmt *pgast.SelectStmt) {
 	arms := flattenSetOpArms(stmt)
 	baseScope := a.currentScope()
@@ -222,21 +221,13 @@ func (a *Analyzer) processSetOperation(stmt *pgast.SelectStmt) {
 	a.generateEdges(baseScope)
 }
 
-// processSetOpArm processes a single set-operation operand. An INTERSECT group
-// keeps the legacy behavior of inspecting only its first primary.
+// processSetOpArm processes a single set-operation operand.
 func (a *Analyzer) processSetOpArm(arm *pgast.SelectStmt) {
 	previous := a.inSetOpArm
 	a.inSetOpArm = true
 	defer func() { a.inSetOpArm = previous }()
 
-	for arm != nil && arm.Op == pgast.SETOP_INTERSECT {
-		arm = arm.Larg
-	}
 	if arm == nil {
-		return
-	}
-	if arm.Op == pgast.SETOP_UNION || arm.Op == pgast.SETOP_EXCEPT {
-		a.processSetOperation(arm)
 		return
 	}
 	if arm.WithClause != nil {
@@ -407,7 +398,7 @@ func (a *Analyzer) processTableExpr(node pgast.Node) {
 		a.processTableExpr(tableExpr.Rarg)
 	default:
 		// RangeFunction/RangeTableSample and other FROM items were ignored by
-		// the legacy analyzer as well.
+		// this analyzer as well.
 	}
 }
 
@@ -475,8 +466,7 @@ func (a *Analyzer) attachColumnLookup(tableRef *scope.TableRef) {
 }
 
 // addTargetRelation registers a data-modification target relation in the scope.
-// Unlike processRangeVar it does not resolve CTEs, matching the legacy
-// processRelationExprOptAlias.
+// Unlike processRangeVar it does not resolve CTEs.
 func (a *Analyzer) addTargetRelation(rangeVar *pgast.RangeVar) {
 	if rangeVar == nil {
 		return
@@ -592,7 +582,7 @@ func (a *Analyzer) processResTarget(rt *pgast.ResTarget, sp *scope.Scope) {
 			return
 		}
 		if rt.Name == "" {
-			// Bare column reference: legacy Target_columnref.
+			// A bare column reference is a direct projection.
 			colRef := a.columnRefFromFields(cr.Fields)
 			sp.AddOutputColumn(scope.OutputColumn{
 				Alias:         colRef.Column,
@@ -655,7 +645,7 @@ func wildcardSourceRef(tableRef *scope.TableRef) scope.ColumnRef {
 }
 
 // processExpressionTarget processes an expression/aliased target element
-// (legacy Target_label).
+// (an aliased or derived projection).
 func (a *Analyzer) processExpressionTarget(rt *pgast.ResTarget, sp *scope.Scope) {
 	exprText := a.exprTextOf(rt.Val)
 	alias := rt.Name
@@ -954,7 +944,8 @@ func (a *Analyzer) processViewStmt(stmt *pgast.ViewStmt) {
 }
 
 // processCreateTableAsStmt processes CREATE TABLE AS, CREATE MATERIALIZED VIEW and
-// SELECT INTO. SELECT INTO behaves like a SELECT (legacy parity).
+// SELECT INTO. SELECT INTO is analyzed as a bare SELECT: its target object is
+// not resolved, so the query's output columns are reported against the result.
 func (a *Analyzer) processCreateTableAsStmt(stmt *pgast.CreateTableAsStmt) {
 	if stmt == nil {
 		return
@@ -975,7 +966,7 @@ func (a *Analyzer) processCreateTableAsStmt(stmt *pgast.CreateTableAsStmt) {
 			targetTable = stmt.Into.Rel.Relname
 			targetSchema = stmt.Into.Rel.Schemaname
 		}
-		// Only the legacy materialized-view path honored an explicit column list.
+		// Only a materialized view honors an explicit column list here.
 		if stmt.Objtype == pgast.OBJECT_MATVIEW {
 			explicitColumnNames = stringList(stmt.Into.ColNames)
 		}
