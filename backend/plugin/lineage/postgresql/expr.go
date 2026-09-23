@@ -93,6 +93,23 @@ func (a *Analyzer) extractColumnsFromNode(node pgast.Node, sp *scope.Scope) []sc
 				subqueries = append(subqueries, sel)
 			}
 			return false // the subselect is analyzed as a unit below
+		case *pgast.FuncCall:
+			// `OVER w` keeps the whole window definition — PARTITION BY, ORDER BY
+			// and the frame bounds — in the statement's WINDOW clause, which the
+			// walk over this expression cannot reach. The columns those clauses
+			// name decide the window as much as the aggregate's own arguments do.
+			if windowDef, ok := x.Over.(*pgast.WindowDef); ok {
+				for _, named := range a.namedWindowDefinitions(windowDef) {
+					columns = append(columns, a.windowClauseColumns(named.PartitionClause, sp, false)...)
+					columns = append(columns, a.windowClauseColumns(named.OrderClause, sp, true)...)
+					if named.StartOffset != nil {
+						columns = append(columns, a.extractColumnsFromNode(named.StartOffset, sp)...)
+					}
+					if named.EndOffset != nil {
+						columns = append(columns, a.extractColumnsFromNode(named.EndOffset, sp)...)
+					}
+				}
+			}
 		case *pgast.ColumnRef:
 			colRef := a.columnRefFromFields(x.Fields)
 			if colRef.Column != "" && colRef.Column != wildcardColumn {
@@ -122,6 +139,9 @@ func (a *Analyzer) subquerySources(sel *pgast.SelectStmt, sp *scope.Scope) []sco
 	if subScope == nil {
 		return nil
 	}
+	// The subquery's rows decide the value the enclosing expression reads, so the
+	// predicates that shaped them belong to that expression's query.
+	a.inheritPredicates(subScope, sp)
 	var out []scope.ColumnRef
 	for _, col := range a.resolveOutputColumns(subScope, subScope.GetOutputColumns()) {
 		out = append(out, scope.Refs(col.Sources)...)
@@ -391,23 +411,102 @@ func (a *Analyzer) funcArgTexts(fc *pgast.FuncCall) []string {
 	return args
 }
 
+// maxNamedWindowChain bounds the walk over a chain of named windows. PostgreSQL
+// rejects a cycle, so the bound only keeps a malformed tree from looping.
+const maxNamedWindowChain = 16
+
+// namedWindowsOf indexes a query's WINDOW clause by the name each definition is
+// referenced by.
+func namedWindowsOf(list *pgast.List) map[string]*pgast.WindowDef {
+	if list == nil || len(list.Items) == 0 {
+		return nil
+	}
+	out := make(map[string]*pgast.WindowDef, len(list.Items))
+	for _, item := range list.Items {
+		if def, ok := item.(*pgast.WindowDef); ok && def.Name != "" {
+			out[def.Name] = def
+		}
+	}
+	return out
+}
+
+// namedWindowDefinitions returns the window definitions a use of a window
+// reaches by name, in the order it reaches them. A use names the definition it
+// refers to, and PostgreSQL lets one named window be defined over another
+// (`WINDOW w2 AS (w1 ORDER BY x)`), so the chain is followed. The definition the
+// use itself carries is never returned: the walk over the expression already
+// reaches its own clauses.
+func (a *Analyzer) namedWindowDefinitions(use *pgast.WindowDef) []*pgast.WindowDef {
+	if use == nil || len(a.namedWindows) == 0 {
+		return nil
+	}
+	// `OVER w` names the definition in Name; `OVER (w PARTITION BY x)` refers to
+	// it through Refname and adds clauses of its own.
+	name := use.Refname
+	if name == "" {
+		name = use.Name
+	}
+	var out []*pgast.WindowDef
+	seen := make(map[string]struct{})
+	for depth := 0; name != "" && depth < maxNamedWindowChain; depth++ {
+		if _, ok := seen[name]; ok {
+			break
+		}
+		seen[name] = struct{}{}
+		def, ok := a.namedWindows[name]
+		if !ok || def == nil {
+			break
+		}
+		out = append(out, def)
+		name = def.Refname
+	}
+	return out
+}
+
+// windowClauseColumns collects the columns one window clause depends on. orderBy
+// unwraps the SortBy wrapper the ORDER BY list uses.
+func (a *Analyzer) windowClauseColumns(list *pgast.List, sp *scope.Scope, orderBy bool) []scope.ColumnRef {
+	if list == nil {
+		return nil
+	}
+	var out []scope.ColumnRef
+	for _, item := range list.Items {
+		expr := item
+		if orderBy {
+			sortBy, ok := item.(*pgast.SortBy)
+			if !ok {
+				continue
+			}
+			expr = sortBy.Node
+		}
+		out = append(out, a.extractColumnsFromNode(expr, sp)...)
+	}
+	return out
+}
+
 // windowClauses extracts PARTITION BY and ORDER BY expressions from a window
-// definition. Sort direction is deliberately dropped, matching the MySQL
-// analyzer's extractWindowClauses.
+// definition, following a `OVER w` reference into the WINDOW clause that defines
+// it. Sort direction is deliberately dropped, matching the MySQL analyzer's
+// extractWindowClauses.
 func (a *Analyzer) windowClauses(over pgast.Node) (partitionBy, orderBy []string) {
 	windowDef, ok := over.(*pgast.WindowDef)
 	if !ok || windowDef == nil {
 		return nil, nil
 	}
-	if windowDef.PartitionClause != nil {
-		for _, expr := range windowDef.PartitionClause.Items {
-			partitionBy = append(partitionBy, a.exprTextOf(expr))
+	// The clauses the use carries itself come first, then the named definitions
+	// it is defined over.
+	definitions := append([]*pgast.WindowDef{windowDef}, a.namedWindowDefinitions(windowDef)...)
+	for _, def := range definitions {
+		if def.PartitionClause != nil {
+			for _, expr := range def.PartitionClause.Items {
+				partitionBy = append(partitionBy, a.exprTextOf(expr))
+			}
 		}
-	}
-	if windowDef.OrderClause != nil {
-		for _, item := range windowDef.OrderClause.Items {
-			if sortBy, ok := item.(*pgast.SortBy); ok {
-				orderBy = append(orderBy, a.exprTextOf(sortBy.Node))
+		if def.OrderClause != nil {
+			for _, item := range def.OrderClause.Items {
+				if sortBy, ok := item.(*pgast.SortBy); ok {
+					orderBy = append(orderBy, a.exprTextOf(sortBy.Node))
+				}
 			}
 		}
 	}
@@ -515,12 +614,156 @@ func booleanTestToken(testType pgast.BoolTestType) string {
 	}
 }
 
-// inferColumnAlias infers a column alias from an expression text.
-// For qualified column references (e.g., table.column), returns just the column name.
-func (*Analyzer) inferColumnAlias(exprText string) string {
-	if strings.Contains(exprText, ".") && !strings.Contains(exprText, "(") {
-		parts := strings.Split(exprText, ".")
-		return parts[len(parts)-1]
+// unaliasedColumnName is the name PostgreSQL gives an output column whose
+// expression it cannot name.
+const unaliasedColumnName = "?column?"
+
+// maxColumnNameDepth bounds the walk into a nested subquery when naming an
+// unaliased target. A statement cannot nest deeper than the parser allows, so
+// the bound only keeps a malformed tree from looping.
+const maxColumnNameDepth = 16
+
+// inferColumnAlias returns the name PostgreSQL gives an unaliased target
+// expression, so a stored target column matches the column the object actually
+// exposes. A view's definition is stored with those names written out by
+// pg_get_viewdef, but a manually entered statement is not, and the expression
+// text this used to return (`count(*)`, `a + b`) is not a column name at all.
+//
+// The rules, verified against PostgreSQL 16: a column reference is named by the
+// column, a function call by its unqualified function name, a cast by whatever
+// the cast names and otherwise by its target type, and CASE, COALESCE,
+// GREATEST/LEAST, NULLIF, ARRAY[...], ROW(...) and the SQL value functions by
+// their own names. Anything PostgreSQL does not name — a constant, a parameter,
+// an operator — becomes "?column?".
+func (a *Analyzer) inferColumnAlias(node pgast.Node) string {
+	if name := a.columnNameOf(node, 0); name != "" {
+		return name
 	}
-	return exprText
+	return unaliasedColumnName
+}
+
+// columnNameOf returns the name PostgreSQL derives from an expression, or "" when
+// it derives none. A cast is the one node that uses the empty answer: it falls
+// back to its target type's name.
+func (a *Analyzer) columnNameOf(node pgast.Node, depth int) string {
+	if node == nil || depth > maxColumnNameDepth {
+		return ""
+	}
+	switch n := node.(type) {
+	case *pgast.ColumnRef:
+		return a.columnRefFromFields(n.Fields).Column
+	case *pgast.FuncCall:
+		return funcName(n)
+	case *pgast.TypeCast:
+		if name := a.columnNameOf(n.Arg, depth+1); name != "" {
+			return name
+		}
+		return typeNameOf(n.TypeName)
+	case *pgast.CollateClause:
+		// `a COLLATE "C"` is named after the expression it collates.
+		return a.columnNameOf(n.Arg, depth+1)
+	case *pgast.A_Indirection:
+		// A subscript or a field selection is named after its base: `arr[1]` is
+		// `arr`.
+		return a.columnNameOf(n.Arg, depth+1)
+	case *pgast.SubLink:
+		// A scalar subquery takes the name of its first output column. An output
+		// column the subquery cannot name makes the whole expression "?column?"
+		// rather than falling through to an enclosing cast's type name, which is
+		// what PostgreSQL reports for `(SELECT 1)::int`.
+		inner := a.subqueryFirstName(n, depth)
+		if inner != "" {
+			return inner
+		}
+		return unaliasedColumnName
+	case *pgast.CaseExpr:
+		return "case"
+	case *pgast.CoalesceExpr:
+		return "coalesce"
+	case *pgast.MinMaxExpr:
+		if n.Op == pgast.IS_GREATEST {
+			return "greatest"
+		}
+		return "least"
+	case *pgast.NullIfExpr:
+		return "nullif"
+	case *pgast.A_Expr:
+		if n.Kind == pgast.AEXPR_NULLIF {
+			return "nullif"
+		}
+	case *pgast.A_ArrayExpr:
+		return "array"
+	case *pgast.RowExpr:
+		return "row"
+	case *pgast.GroupingFunc:
+		return "grouping"
+	case *pgast.SQLValueFunction:
+		return sqlValueFunctionName(n.Op)
+	default:
+		// A constant, a parameter, an operator, a test: PostgreSQL derives no
+		// name from them.
+	}
+	return ""
+}
+
+// subqueryFirstName returns the name of a scalar subquery's first output column,
+// which is the name the subquery itself gives it.
+func (a *Analyzer) subqueryFirstName(sub *pgast.SubLink, depth int) string {
+	sel, ok := sub.Subselect.(*pgast.SelectStmt)
+	if !ok || sel.TargetList == nil || len(sel.TargetList.Items) == 0 {
+		return ""
+	}
+	rt, ok := sel.TargetList.Items[0].(*pgast.ResTarget)
+	if !ok {
+		return ""
+	}
+	if rt.Name != "" {
+		return rt.Name
+	}
+	// The target's own expression decides; "" means the subquery cannot name it.
+	return a.columnNameOf(rt.Val, depth+1)
+}
+
+// typeNameOf returns the unqualified name of a cast's target type.
+func typeNameOf(typeName *pgast.TypeName) string {
+	if typeName == nil {
+		return ""
+	}
+	names := stringList(typeName.Names)
+	if len(names) == 0 {
+		return ""
+	}
+	return names[len(names)-1]
+}
+
+// sqlValueFunctionName returns the name PostgreSQL gives a SQL value function
+// (`CURRENT_DATE`, `USER`, …). A precision-carrying spelling shares the name of
+// the plain one, as PostgreSQL reports it.
+func sqlValueFunctionName(op pgast.SVFOp) string {
+	switch op {
+	case pgast.SVFOP_CURRENT_DATE:
+		return "current_date"
+	case pgast.SVFOP_CURRENT_TIME, pgast.SVFOP_CURRENT_TIME_N:
+		return "current_time"
+	case pgast.SVFOP_CURRENT_TIMESTAMP, pgast.SVFOP_CURRENT_TIMESTAMP_N:
+		return "current_timestamp"
+	case pgast.SVFOP_LOCALTIME, pgast.SVFOP_LOCALTIME_N:
+		return "localtime"
+	case pgast.SVFOP_LOCALTIMESTAMP, pgast.SVFOP_LOCALTIMESTAMP_N:
+		return "localtimestamp"
+	case pgast.SVFOP_CURRENT_ROLE:
+		return "current_role"
+	case pgast.SVFOP_CURRENT_USER:
+		return "current_user"
+	case pgast.SVFOP_USER:
+		return "user"
+	case pgast.SVFOP_SESSION_USER:
+		return "session_user"
+	case pgast.SVFOP_CURRENT_CATALOG:
+		return "current_catalog"
+	case pgast.SVFOP_CURRENT_SCHEMA:
+		return "current_schema"
+	default:
+		return ""
+	}
 }

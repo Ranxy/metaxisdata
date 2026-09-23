@@ -1,0 +1,222 @@
+name: TestOutputTarget_Table
+cases:
+    # An object that names its columns renames the query's output positionally,
+    # which is what the created object's synced column list holds. Only a
+    # materialized view honoured the list; CREATE TABLE ... (columns) AS ignored
+    # it and recorded the query's own names.
+    - name: a create table as honours its column list
+      sql: "CREATE TABLE dst (p, q) AS SELECT a, b FROM src"
+      expected_edges:
+        - from_table: src
+          from_field: "a"
+          to_table: dst
+          to_field: "p"
+          relation_type: direct
+          is_temp: false
+        - from_table: src
+          from_field: "b"
+          to_table: dst
+          to_field: "q"
+          relation_type: direct
+          is_temp: false
+    # SELECT ... INTO creates the table it names, so the edges reach that table.
+    # It was read as a bare SELECT, which reported the query's columns against
+    # __result__ and lost the object the statement creates.
+    - name: a select into writes the named table
+      sql: "SELECT a, b INTO newtab FROM t"
+      expected_edges:
+        - from_table: t
+          from_field: "a"
+          to_table: newtab
+          to_field: "a"
+          relation_type: direct
+          is_temp: false
+        - from_table: t
+          from_field: "b"
+          to_table: newtab
+          to_field: "b"
+          relation_type: direct
+          is_temp: false
+    # A data-modifying statement in WITH returns its RETURNING rows to the query
+    # that reads it. The list was never read, so the CTE described no columns and
+    # the INSERT that consumed it recorded nothing at all.
+    - name: a delete returning feeds the query that reads it
+      sql: "WITH moved AS (DELETE FROM products WHERE d < '2020' RETURNING id, name) INSERT INTO log (id, name) SELECT id, name FROM moved"
+      expected_edges:
+        - from_table: products
+          from_field: "d"
+          to_table: products
+          to_field: "__deletion__"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: "d < '2020'"
+        - from_table: products
+          from_field: "id"
+          to_table: log
+          to_field: "id"
+          relation_type: direct
+          is_temp: false
+        - from_table: products
+          from_field: "name"
+          to_table: log
+          to_field: "name"
+          relation_type: direct
+          is_temp: false
+    - name: a delete returning star feeds the query that reads it
+      sql: "WITH moved AS (DELETE FROM products RETURNING *) INSERT INTO log SELECT * FROM moved"
+      expected_edges:
+        - from_table: products
+          from_field: "*"
+          to_table: log
+          to_field: "*"
+          relation_type: direct
+          is_temp: false
+    - name: an insert returning feeds the query that reads it
+      sql: "WITH src AS (INSERT INTO products (name) VALUES ('x') RETURNING id) INSERT INTO log (id) SELECT id FROM src"
+      expected_edges:
+        - from_table: products
+          from_field: "id"
+          to_table: log
+          to_field: "id"
+          relation_type: direct
+          is_temp: false
+    - name: an update returning feeds the query that reads it
+      sql: "WITH upd AS (UPDATE products SET name = 'y' RETURNING id, name) INSERT INTO log (id, name) SELECT id, name FROM upd"
+      expected_edges:
+        - from_table: products
+          from_field: "*"
+          to_table: products
+          to_field: "name"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: "'y'"
+        - from_table: products
+          from_field: "id"
+          to_table: log
+          to_field: "id"
+          relation_type: direct
+          is_temp: false
+        - from_table: products
+          from_field: "name"
+          to_table: log
+          to_field: "name"
+          relation_type: direct
+          is_temp: false
+    # An output column with no name of its own is named the way PostgreSQL names
+    # it, which is what the created object's synced column list holds. The
+    # analyzer used to report the expression's source text, which is not a column
+    # name at all (`count(*)`, `aa + bb`); pg_get_viewdef writes the real names
+    # out, so this only changes a manually entered statement. Verified against
+    # PostgreSQL 16, CASE included.
+    - name: an unaliased expression is named as PostgreSQL names it
+      sql: "CREATE TABLE dst AS SELECT count(*), aa + bb, ts::date, CURRENT_DATE FROM t"
+      expected_edges:
+        - from_table: t
+          from_field: "*"
+          to_table: dst
+          to_field: "count"
+          relation_type: group
+          is_temp: false
+          transformations:
+            - operation: AGGREGATE
+              function_name: "COUNT"
+              expression: "count(*)"
+              group_keys: []
+        - from_table: t
+          from_field: "aa"
+          to_table: dst
+          to_field: "?column?"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              op_type: "+"
+              expression: "aa + bb"
+        - from_table: t
+          from_field: "bb"
+          to_table: dst
+          to_field: "?column?"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              op_type: "+"
+              expression: "aa + bb"
+        - from_table: t
+          from_field: "ts"
+          to_table: dst
+          to_field: "ts"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FUNCTION
+              function_name: "CAST"
+              expression: "ts::date"
+              arguments: ["ts"]
+    - name: a named expression node keeps its own name
+      sql: "CREATE VIEW v AS SELECT count(*), aa + bb, ts::date, CASE WHEN aa > 1 THEN bb END FROM t"
+      expected_edges:
+        - from_table: t
+          from_field: "*"
+          to_table: v
+          to_field: "count"
+          relation_type: group
+          is_temp: false
+          transformations:
+            - operation: AGGREGATE
+              function_name: "COUNT"
+              expression: "count(*)"
+              group_keys: []
+        - from_table: t
+          from_field: "aa"
+          to_table: v
+          to_field: "?column?"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              op_type: "+"
+              expression: "aa + bb"
+        - from_table: t
+          from_field: "bb"
+          to_table: v
+          to_field: "?column?"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              op_type: "+"
+              expression: "aa + bb"
+        - from_table: t
+          from_field: "ts"
+          to_table: v
+          to_field: "ts"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FUNCTION
+              function_name: "CAST"
+              expression: "ts::date"
+              arguments: ["ts"]
+        - from_table: t
+          from_field: "aa"
+          to_table: v
+          to_field: "case"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: CASE
+              expression: "CASE WHEN aa > 1 THEN bb END"
+        - from_table: t
+          from_field: "bb"
+          to_table: v
+          to_field: "case"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: CASE
+              expression: "CASE WHEN aa > 1 THEN bb END"

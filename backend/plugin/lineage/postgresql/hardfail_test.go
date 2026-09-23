@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/testutil"
 )
@@ -22,6 +23,22 @@ func TestHardFailOnUnparseableSQL(t *testing.T) {
 		require.Error(t, err, "expected a hard failure for %q", sql)
 		require.Nil(t, relations, "expected no partial result for %q", sql)
 	}
+}
+
+// TestUnsupportedStatementKeepsOtherStatements pins what a parsed statement the
+// analyzer cannot model does to the rest of the input. It used to fail the whole
+// text, so one MERGE beside a SELECT discarded the SELECT's lineage and the
+// runner then cleared the object's stored lineage; the edges are now kept and the
+// gap is reported instead.
+func TestUnsupportedStatementKeepsOtherStatements(t *testing.T) {
+	const sql = "SELECT a FROM t1; MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET a = s.a"
+	relations, err := analyzeSQL(sql, nil)
+
+	var unsupported *lineage.UnsupportedStatementError
+	require.ErrorAs(t, err, &unsupported, "a MERGE has to be reported, not silently skipped")
+	require.Contains(t, unsupported.Error(), "MERGE")
+	require.True(t, hasResultEdge(relations, "t1", "a", "a"),
+		"the other statement's edge must survive: %s", testutil.FormatRelations(relations))
 }
 
 // TestMultiStatementAnalyzed pins the decided multi-statement policy. Unlike the

@@ -112,6 +112,19 @@ cases:
             - operation: OPERATOR
               expression: inventory.quantity + EXCLUDED.quantity
               op_type: +
+        # The same expression also reads the proposed quantity (EXCLUDED), whose
+        # source is the insert's SELECT — a different derivation of the target
+        # column, kept beside the self-reference instead of collapsed with it.
+        - from_table: shipment
+          from_field: quantity
+          to_table: inventory
+          to_field: quantity
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              expression: inventory.quantity + EXCLUDED.quantity
+              op_type: +
 
     # EXCLUDED names the row the INSERT proposed, so its column is the value the
     # insert writes to that column — the relationship MySQL's VALUES(col) has. It

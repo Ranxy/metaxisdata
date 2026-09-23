@@ -1,9 +1,11 @@
 name: TestStatementLineage_Table
 cases:
     # MERGE carries column lineage this analyzer does not model, and a parseable
-    # statement must never produce an empty result silently: it fails loudly, as
-    # the StarRocks analyzer already does for the same statement.
-    - name: merge fails loudly
+    # statement must never produce an empty result silently. It is reported as an
+    # unsupported statement, which keeps the gap visible without discarding the
+    # edges the statements around it produced; the Go test that asserts those
+    # edges survive is TestUnsupportedStatementKeepsOtherStatements.
+    - name: merge is reported as unsupported
       sql: MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET a = s.a
       expect_error: true
       expected_edges: []

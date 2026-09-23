@@ -58,8 +58,9 @@ type Analyzer struct {
 	scopeStack []*scope.Scope
 	// Collected column relations
 	edges []model.ColumnRelation
-	// Map for efficient edge deduplication (key: edge signature)
-	edgeSet map[string]struct{}
+	// Map for efficient edge deduplication, keyed by the edge's identity rather
+	// than by a rendering of it.
+	edgeSet map[edgeKey]struct{}
 	// Errors encountered during analysis
 	errors []string
 	// Optional catalog provider for wildcard expansion and metadata lookup
@@ -71,11 +72,19 @@ type Analyzer struct {
 	// inSetOpArm is set while analyzing one arm of a set operation, so only the
 	// merged set-operation result emits edges.
 	inSetOpArm bool
-	// predicates accumulates the columns every row-set predicate of the statement
-	// depends on. Which object the statement produces is only known once the
-	// whole tree has been walked, so the edges are emitted by whichever emitter
-	// runs last.
-	predicates []predicateInfluence
+	// predicates holds the row-set influences collected while a scope was
+	// current. They belong to the rows that scope produces and are inherited by
+	// whatever consumes them, so a scope whose rows reach no output cannot
+	// influence the statement.
+	predicates map[*scope.Scope][]predicateInfluence
+	// ctePredicates holds the influences a CTE body produced, against the
+	// definition they belong to, until a query references that CTE. A CTE that
+	// is never referenced keeps them, and they are dropped with the statement.
+	ctePredicates map[*scope.CTEDefinition][]predicateInfluence
+	// namedWindows maps the WINDOW clause in effect to its definitions. A window
+	// used as `OVER w` keeps its PARTITION BY and ORDER BY there, where the walk
+	// over the expression cannot reach them.
+	namedWindows map[string]*pgast.WindowDef
 }
 
 func Analyze(ctx context.Context, sql string) ([]model.ColumnRelation, error) {
@@ -86,22 +95,27 @@ func Analyze(ctx context.Context, sql string) ([]model.ColumnRelation, error) {
 // NewAnalyzer creates a new PostgreSQL lineage analyzer.
 func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide) *Analyzer {
 	return &Analyzer{
-		ctx:        ctx,
-		sql:        sql,
-		scopeStack: []*scope.Scope{scope.NewScope(nil)}, // Root scope
-		edges:      make([]model.ColumnRelation, 0),
-		edgeSet:    make(map[string]struct{}),
-		errors:     make([]string, 0),
-		catalog:    catalogProvide,
+		ctx:           ctx,
+		sql:           sql,
+		scopeStack:    []*scope.Scope{scope.NewScope(nil)}, // Root scope
+		edges:         make([]model.ColumnRelation, 0),
+		edgeSet:       make(map[edgeKey]struct{}),
+		errors:        make([]string, 0),
+		catalog:       catalogProvide,
+		predicates:    make(map[*scope.Scope][]predicateInfluence),
+		ctePredicates: make(map[*scope.CTEDefinition][]predicateInfluence),
 	}
 }
 
 // AnalyzeRelations parses the SQL and returns column relations.
 //
-// Parse errors are a hard failure: no partial result is returned. Every
-// well-formed statement in a multi-statement input is analyzed in order on the
-// shared analyzer state, so a multi-statement script is not treated as one query (notably for
-// MANUAL_SQL).
+// Parse errors are a hard failure: no partial result is returned. A statement
+// that parses but that the analyzer cannot model (MERGE) is not: the statements
+// around it are analyzed, their edges are returned, and the gap is reported as
+// an UnsupportedStatementError so a caller records it without discarding the
+// lineage that was found. Every well-formed statement in a multi-statement input
+// is analyzed in order on the shared analyzer state, so a multi-statement script
+// is not treated as one query (notably for MANUAL_SQL).
 func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	stmts, err := omnipg.Parse(a.sql)
 	if err != nil {
@@ -114,16 +128,19 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 		}
 		// Each statement is analyzed from clean per-statement state; only the edges
 		// and the error list are shared. A relation in scope and a pending
-		// predicate both belong to the statement that introduced them; carrying
+		// influence both belong to the statement that introduced them; carrying
 		// them over attributed an UPDATE's subquery predicate to the next SELECT's
 		// result.
 		a.scopeStack = []*scope.Scope{scope.NewScope(nil)}
-		a.predicates = nil
+		a.predicates = make(map[*scope.Scope][]predicateInfluence)
+		a.ctePredicates = make(map[*scope.CTEDefinition][]predicateInfluence)
 		a.processStmt(stmt.AST)
 	}
 
 	if len(a.errors) > 0 {
-		return nil, errors.Errorf("analysis errors: %s", strings.Join(a.errors, "; "))
+		return a.edges, &lineage.UnsupportedStatementError{
+			Message: errors.Errorf("analysis errors: %s", strings.Join(a.errors, "; ")).Error(),
+		}
 	}
 
 	return a.edges, nil
@@ -194,13 +211,23 @@ func (a *Analyzer) processCopyStmt(stmt *pgast.CopyStmt) {
 // SELECT
 // ---------------------------------------------------------------------------
 
-// processSelectStmt processes a SELECT, handling its WITH clause and set
-// operations before the leaf SELECT core.
+// processSelectStmt processes a SELECT. A SELECT ... INTO names the object it
+// creates, so it is dispatched to the same target path as CREATE TABLE AS; any
+// other SELECT is a query whose result is the statement's.
 func (a *Analyzer) processSelectStmt(stmt *pgast.SelectStmt) {
 	if stmt == nil {
 		return
 	}
+	if stmt.IntoClause != nil {
+		a.processQueryToTarget(stmt, stmt.IntoClause)
+		return
+	}
+	a.processSelectQuery(stmt)
+}
 
+// processSelectQuery processes a SELECT that produces a query result, handling
+// its WITH clause and set operations before the leaf SELECT core.
+func (a *Analyzer) processSelectQuery(stmt *pgast.SelectStmt) {
 	if stmt.WithClause != nil {
 		a.processWithClause(stmt.WithClause)
 	}
@@ -217,6 +244,12 @@ func (a *Analyzer) processSelectStmt(stmt *pgast.SelectStmt) {
 // the resulting edges.
 func (a *Analyzer) processSelectCore(stmt *pgast.SelectStmt) {
 	sp := a.currentScope()
+
+	// A window written as `OVER w` names a definition in this query's WINDOW
+	// clause, so the definitions have to be in reach while its clauses are read.
+	previousWindows := a.namedWindows
+	a.namedWindows = namedWindowsOf(stmt.WindowClause)
+	defer func() { a.namedWindows = previousWindows }()
 
 	if stmt.FromClause != nil {
 		a.processFromClause(stmt.FromClause)
@@ -304,6 +337,9 @@ func (a *Analyzer) processSetOperation(stmt *pgast.SelectStmt) {
 		a.scopeStack[len(a.scopeStack)-1] = tempScope
 		a.processSetOpArm(arm.stmt)
 		a.scopeStack[len(a.scopeStack)-1] = originalScope
+		// The arm's rows are part of the merged result, so its predicates reach
+		// the operation's output.
+		a.inheritPredicates(tempScope, baseScope)
 
 		allOutputColumns = append(allOutputColumns, a.resolveOutputColumns(tempScope, tempScope.GetOutputColumns()))
 	}
@@ -438,12 +474,17 @@ func (a *Analyzer) processCTE(cte *pgast.CommonTableExpr, recursive bool) {
 
 	cteName := cte.Ctename
 	columns := stringList(cte.Aliascolnames)
+	definition := &scope.CTEDefinition{Name: cteName, Columns: columns}
 
-	var lineage []model.ColumnRelation
 	if cte.Ctequery != nil {
 		a.pushScope()
 		a.processPreparableStmt(cte.Ctequery)
 		cteScope := a.popScope()
+
+		// The body's influences belong to the CTE's rows, so they are held
+		// against the definition and reach the statement only if it references
+		// the CTE. An unreferenced CTE filters rows nobody reads.
+		a.bindCTEPredicates(definition, cteScope)
 
 		outputColumns := cteScope.GetOutputColumns()
 		useExplicitColumns := len(columns) > 0 && len(columns) == len(outputColumns)
@@ -474,11 +515,11 @@ func (a *Analyzer) processCTE(cte *pgast.CommonTableExpr, recursive bool) {
 					if recursive && strings.EqualFold(res.Ref.Table, cteName) {
 						continue
 					}
-					if a.flattenTempSourceLineage(cteScope, res.Relation, res.Ref.Column, cteName, targetColumn, source.Transform, &lineage) {
+					if a.flattenTempSourceLineage(cteScope, res.Relation, res.Ref.Column, cteName, targetColumn, source.Transform, &definition.Lineage) {
 						continue
 					}
 
-					lineage = append(lineage, NewLineageEdge(
+					definition.Lineage = append(definition.Lineage, NewLineageEdge(
 						res.Ref.Schema,
 						res.Ref.Table,
 						res.Ref.Column,
@@ -493,11 +534,7 @@ func (a *Analyzer) processCTE(cte *pgast.CommonTableExpr, recursive bool) {
 		}
 	}
 
-	a.currentScope().AddCTE(&scope.CTEDefinition{
-		Name:    cteName,
-		Columns: columns,
-		Lineage: lineage,
-	})
+	a.currentScope().AddCTE(definition)
 }
 
 // ---------------------------------------------------------------------------
@@ -558,6 +595,9 @@ func (a *Analyzer) processRangeVar(rangeVar *pgast.RangeVar) {
 	// always names a real relation: `s1.t` must not be mistaken for a CTE named t.
 	if rangeVar.Schemaname == "" {
 		if cte, ok := a.currentScope().FindCTE(tableName); ok {
+			// Reading the CTE's rows carries the predicates that shaped them into
+			// this query.
+			a.inheritCTEPredicates(a.currentScope(), cte)
 			tableRef := &scope.TableRef{
 				Schema:     "",
 				Table:      tableName,
@@ -708,6 +748,9 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 	a.pushScope()
 	a.processSelectStmt(query)
 	subqueryScope := a.popScope()
+	// The derived table's rows feed the query that reads it, so the predicates
+	// that shaped them reach that query's output.
+	a.inheritPredicates(subqueryScope, a.currentScope())
 
 	lineage := make([]model.ColumnRelation, 0)
 
@@ -854,10 +897,9 @@ func wildcardSourceRef(tableRef *scope.TableRef) scope.ColumnRef {
 // processExpressionTarget processes an expression/aliased target element
 // (an aliased or derived projection).
 func (a *Analyzer) processExpressionTarget(rt *pgast.ResTarget, sp *scope.Scope, groupKeys []string) {
-	exprText := a.exprTextOf(rt.Val)
 	alias := rt.Name
 	if alias == "" {
-		alias = a.inferColumnAlias(exprText)
+		alias = a.inferColumnAlias(rt.Val)
 	}
 
 	sourceColumns := a.extractColumnsFromNode(rt.Val, sp)
@@ -937,6 +979,10 @@ func (a *Analyzer) processInsertStmt(stmt *pgast.InsertStmt) {
 	if stmt.OnConflictClause != nil {
 		a.processOnConflict(stmt.OnConflictClause, stmt.Relation, a.insertSourceMap(a.currentScope(), targetColumns))
 	}
+
+	// Recorded after the insert's own edges: the returned columns are the
+	// statement's output, not another set of source columns for the target.
+	a.processReturning(stmt.ReturningList, stmt.Relation)
 }
 
 // insertSourceMap maps each written target column to the sources the INSERT
@@ -960,11 +1006,13 @@ func (a *Analyzer) insertSourceMap(sp *scope.Scope, targetColumns []string) map[
 
 // processOnConflict processes an ON CONFLICT DO UPDATE SET list. The clause is
 // analyzed in the scope PostgreSQL gives it: the target relation and the
-// EXCLUDED pseudo-relation, not the SELECT's relations — a reference to one of
-// those is "missing FROM-clause entry" (verified on 16.5). Its own scope is also
-// what lets the target resolve at all, so `SET quantity = inventory.quantity + …`
-// records the self-reference instead of being dropped or attributed to the
-// INSERT source.
+// EXCLUDED pseudo-relation, and nothing else. A reference to one of the SELECT's
+// relations is "missing FROM-clause entry" (verified on 16.5), so the scope is
+// deliberately detached from the statement's rather than parented to it:
+// resolving through the parent would attribute the reference to a relation the
+// clause cannot name. Its own scope is also what lets the target resolve at all,
+// so `SET quantity = inventory.quantity + …` records the self-reference instead
+// of being dropped or attributed to the INSERT source.
 func (a *Analyzer) processOnConflict(onConflict *pgast.OnConflictClause, target *pgast.RangeVar, insertSources map[string][]scope.ColumnRef) {
 	if onConflict == nil || onConflict.TargetList == nil {
 		return
@@ -976,13 +1024,22 @@ func (a *Analyzer) processOnConflict(onConflict *pgast.OnConflictClause, target 
 		targetTable = target.Relname
 	}
 
-	a.pushScope()
+	a.scopeStack = append(a.scopeStack, scope.NewScope(nil))
 	a.addTargetRelation(target)
 	a.processAssignments(onConflict.TargetList, targetSchema, targetTable, insertSources)
 	a.popScope()
 }
 
 // processUpdateStmt processes an UPDATE statement.
+//
+// The statement records the columns each assignment reads, but not the WHERE and
+// FROM predicates that decide which rows are written. That is the shared
+// MySQL-family rule — predicate influence edges describe a SELECT-based
+// statement's row set, and only DELETE models a modification's row set, as
+// `__deletion__` — so no emitter runs for this statement's influences and the
+// ones its clauses collect are deliberately dropped with the statement. The
+// clauses are still walked because their subqueries can carry lineage of their
+// own.
 func (a *Analyzer) processUpdateStmt(stmt *pgast.UpdateStmt) {
 	if stmt == nil {
 		return
@@ -1006,6 +1063,35 @@ func (a *Analyzer) processUpdateStmt(stmt *pgast.UpdateStmt) {
 
 	if stmt.TargetList != nil {
 		a.processSetClauseList(stmt.TargetList, targetSchema, targetTable)
+	}
+
+	a.processReturning(stmt.ReturningList, stmt.Relation)
+}
+
+// processReturning records the columns a data-modifying statement returns as the
+// statement's output, which is what a data-modifying CTE hands to the query that
+// reads it (`WITH moved AS (DELETE ... RETURNING *) INSERT ... SELECT * FROM
+// moved`). The expressions read the target relation's own row, so they are
+// resolved in a scope holding just that relation, and the resulting references
+// are marked resolved before they leave it.
+//
+// A top-level data-modifying statement emits no result edges from them: the rows
+// it returns are a client-facing result, and the lineage it records is the write
+// it performs (and, for DELETE, the rows that write removes).
+func (a *Analyzer) processReturning(returning *pgast.List, target *pgast.RangeVar) {
+	if returning == nil || target == nil {
+		return
+	}
+
+	a.pushScope()
+	a.addTargetRelation(target)
+	returningScope := a.currentScope()
+	a.processTargetList(returning, returningScope, nil)
+	columns := a.resolveOutputColumns(returningScope, returningScope.GetOutputColumns())
+	a.popScope()
+
+	for _, column := range columns {
+		a.currentScope().AddOutputColumn(column)
 	}
 }
 
@@ -1124,6 +1210,9 @@ func (a *Analyzer) multiAssignSources(ref *pgast.MultiAssignRef, sp *scope.Scope
 	if subScope == nil {
 		return nil
 	}
+	// The row expression's rows decide the value written, so its predicates
+	// belong to the query that writes it.
+	a.inheritPredicates(subScope, sp)
 
 	columns := a.resolveOutputColumns(subScope, subScope.GetOutputColumns())
 	index := ref.Colno - 1
@@ -1185,6 +1274,8 @@ func (a *Analyzer) processDeleteStmt(stmt *pgast.DeleteStmt) {
 			}
 		}
 	}
+
+	a.processReturning(stmt.ReturningList, stmt.Relation)
 }
 
 // ---------------------------------------------------------------------------
@@ -1209,82 +1300,21 @@ func (a *Analyzer) processViewStmt(stmt *pgast.ViewStmt) {
 	if sel, ok := stmt.Query.(*pgast.SelectStmt); ok {
 		previous := a.realTarget
 		a.realTarget = true
-		a.processSelectStmt(sel)
+		a.processSelectQuery(sel)
 		a.realTarget = previous
 	}
 
-	sp := a.currentScope()
-	outputColumns := sp.GetOutputColumns()
-
-	for i, outputCol := range outputColumns {
-		targetColName := outputCol.Alias
-		if i < len(explicitColumnNames) {
-			targetColName = explicitColumnNames[i]
-		}
-
-		for _, source := range outputCol.Sources {
-			resolutions, err := sp.ResolveColumnRefs(source.Ref)
-			if err != nil {
-				continue
-			}
-			isTemp := targetView == resultTableName
-			for _, res := range resolutions {
-				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
-					a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, targetSchema, targetView, targetColName, source.Transform)
-					continue
-				}
-				a.addRelation(NewLineageEdge(
-					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
-					targetSchema, targetView, targetColName,
-					source.Transform,
-					isTemp,
-				))
-			}
-		}
-	}
-	a.emitPredicateInfluences(targetSchema, targetView)
+	a.emitOutputColumnsToTarget(targetSchema, targetView, explicitColumnNames)
 }
 
-// processCreateTableAsStmt processes CREATE TABLE AS, CREATE MATERIALIZED VIEW and
-// SELECT INTO. SELECT INTO is analyzed as a bare SELECT: its target object is
-// not resolved, so the query's output columns are reported against the result.
-func (a *Analyzer) processCreateTableAsStmt(stmt *pgast.CreateTableAsStmt) {
-	if stmt == nil {
-		return
-	}
-
-	if stmt.IsSelectInto {
-		if sel, ok := stmt.Query.(*pgast.SelectStmt); ok {
-			a.processSelectStmt(sel)
-		}
-		return
-	}
-
-	targetTable := ""
-	targetSchema := ""
-	var explicitColumnNames []string
-	if stmt.Into != nil {
-		if stmt.Into.Rel != nil {
-			targetTable = stmt.Into.Rel.Relname
-			targetSchema = stmt.Into.Rel.Schemaname
-		}
-		// Only a materialized view honors an explicit column list here.
-		if stmt.Objtype == pgast.OBJECT_MATVIEW {
-			explicitColumnNames = stringList(stmt.Into.ColNames)
-		}
-	}
-
-	if sel, ok := stmt.Query.(*pgast.SelectStmt); ok {
-		previous := a.realTarget
-		a.realTarget = true
-		a.processSelectStmt(sel)
-		a.realTarget = previous
-	}
-
+// emitOutputColumnsToTarget maps the current scope's output columns onto the
+// columns of the object the statement creates, positionally. The current scope's
+// own predicates are emitted against the same object, because they decided which
+// rows reached it.
+func (a *Analyzer) emitOutputColumnsToTarget(targetSchema, targetTable string, explicitColumnNames []string) {
 	sp := a.currentScope()
-	outputColumns := sp.GetOutputColumns()
 
-	for i, outputCol := range outputColumns {
+	for i, outputCol := range sp.GetOutputColumns() {
 		targetColName := outputCol.Alias
 		if i < len(explicitColumnNames) {
 			targetColName = explicitColumnNames[i]
@@ -1310,7 +1340,53 @@ func (a *Analyzer) processCreateTableAsStmt(stmt *pgast.CreateTableAsStmt) {
 			}
 		}
 	}
-	a.emitPredicateInfluences(targetSchema, targetTable)
+	a.emitPredicateInfluences(sp, targetSchema, targetTable)
+}
+
+// processCreateTableAsStmt processes CREATE TABLE AS, CREATE MATERIALIZED VIEW and
+// SELECT INTO. All three write the query's output into the object they name; the
+// SELECT INTO spelling reaches the analyzer as a plain SelectStmt with an INTO
+// clause and is dispatched from processSelectStmt.
+func (a *Analyzer) processCreateTableAsStmt(stmt *pgast.CreateTableAsStmt) {
+	if stmt == nil {
+		return
+	}
+
+	if stmt.Into == nil || stmt.Into.Rel == nil {
+		// No target to write into, so the query's result is the statement's.
+		if sel, ok := stmt.Query.(*pgast.SelectStmt); ok {
+			a.processSelectQuery(sel)
+		}
+		return
+	}
+
+	a.processQueryToTarget(stmt.Query, stmt.Into)
+}
+
+// processQueryToTarget analyzes a query whose output is written into the object
+// an INTO clause names: CREATE TABLE AS, CREATE MATERIALIZED VIEW and
+// SELECT ... INTO. A column list on the clause renames the query's output
+// positionally, which is what the created object's synced column list holds.
+func (a *Analyzer) processQueryToTarget(query pgast.Node, into *pgast.IntoClause) {
+	targetTable := ""
+	targetSchema := ""
+	var explicitColumnNames []string
+	if into != nil {
+		if into.Rel != nil {
+			targetTable = into.Rel.Relname
+			targetSchema = into.Rel.Schemaname
+		}
+		explicitColumnNames = stringList(into.ColNames)
+	}
+
+	if sel, ok := query.(*pgast.SelectStmt); ok {
+		previous := a.realTarget
+		a.realTarget = true
+		a.processSelectQuery(sel)
+		a.realTarget = previous
+	}
+
+	a.emitOutputColumnsToTarget(targetSchema, targetTable, explicitColumnNames)
 }
 
 // ---------------------------------------------------------------------------
@@ -1333,7 +1409,7 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 			a.generateEdgeFromSource(sp, source.Ref, "", resultTableName, outputCol.Alias, source.Transform)
 		}
 	}
-	a.emitPredicateInfluences("", resultTableName)
+	a.emitPredicateInfluences(sp, "", resultTableName)
 }
 
 // generateEdgesForDataModification generates lineage edges for data modification statements (INSERT, UPDATE, DELETE).
@@ -1351,7 +1427,7 @@ func (a *Analyzer) generateEdgesForDataModification(targetSchema, targetTable st
 			a.generateEdgeFromSource(sp, source.Ref, targetSchema, targetTable, targetColName, source.Transform)
 		}
 	}
-	a.emitPredicateInfluences(targetSchema, targetTable)
+	a.emitPredicateInfluences(sp, targetSchema, targetTable)
 }
 
 // generateEdgeFromSource generates a lineage edge from a source column to a target.
@@ -1547,21 +1623,69 @@ func (a *Analyzer) currentScope() *scope.Scope {
 // Edge management
 // ---------------------------------------------------------------------------
 
+// edgeKey identifies an edge for deduplication. The endpoints alone are not
+// enough: one column can reach the same target column through two different
+// expressions (`SELECT x + 1 AS a, x + 2 AS a FROM t`), and a column can both be
+// projected into a target and decide which rows reach it. The identifiers are
+// kept as values rather than joined into a string, so a name containing the
+// separator cannot collide with another one.
+type edgeKey struct {
+	source      model.ObjectIdentifier
+	sourceField string
+	target      model.ObjectIdentifier
+	targetField string
+	transform   string
+}
+
+// edgeFieldSeparator and edgeListSeparator separate the parts of a rendered
+// transformation list. They are control bytes no SQL text carries.
+const (
+	edgeFieldSeparator = "\x1f"
+	edgeListSeparator  = "\x1e"
+)
+
+// transformationKey renders a transformation list into a comparable string, in a
+// fixed field order, so two lists that describe the same operations compare equal
+// and any difference in a field compares unequal.
+func transformationKey(transform []model.Transformation) string {
+	if len(transform) == 0 {
+		return ""
+	}
+	fields := make([]string, 0, len(transform)*9)
+	for _, t := range transform {
+		fields = append(fields,
+			string(t.Operation),
+			t.FunctionName,
+			t.OpType,
+			t.Expression,
+			t.Condition,
+			strings.Join(t.Arguments, edgeListSeparator),
+			strings.Join(t.GroupKeys, edgeListSeparator),
+			strings.Join(t.PartitionBy, edgeListSeparator),
+			strings.Join(t.OrderBy, edgeListSeparator),
+		)
+	}
+	return strings.Join(fields, edgeFieldSeparator)
+}
+
 // addRelation adds a column relation to the lineage graph with deduplication.
 // A query-local relation (a CTE or a derived table) is never an endpoint here:
 // every path that resolves one traces through its own lineage first, so the edge
 // already names the stored relation the column came from.
 func (a *Analyzer) addRelation(relation model.ColumnRelation) {
-	// Create a unique signature for deduplication
-	signature := fmt.Sprintf("%s.%s.%s->%s.%s.%s",
-		relation.Source.Table.Schema, relation.Source.Table.Name, relation.Source.Name,
-		relation.Target.Table.Schema, relation.Target.Table.Name, relation.Target.Name)
+	key := edgeKey{
+		source:      relation.Source.Table,
+		sourceField: relation.Source.Name,
+		target:      relation.Target.Table,
+		targetField: relation.Target.Name,
+		transform:   transformationKey(relation.Transformation),
+	}
 
-	if _, exists := a.edgeSet[signature]; exists {
+	if _, exists := a.edgeSet[key]; exists {
 		return
 	}
 
-	a.edgeSet[signature] = struct{}{}
+	a.edgeSet[key] = struct{}{}
 	a.edges = append(a.edges, relation)
 }
 

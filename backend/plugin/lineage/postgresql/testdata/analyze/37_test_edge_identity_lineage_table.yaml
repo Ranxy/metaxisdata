@@ -1,0 +1,32 @@
+name: TestEdgeIdentity_Table
+cases:
+    # Deduplication compared the endpoints alone, so a second derivation of the
+    # same target column was dropped as a duplicate of the first. A select list
+    # can name one output column twice with different expressions, and a column
+    # can both be projected into a target and decide which rows reach it; both
+    # derivations are real lineage and are now kept. (The join/filter pair is
+    # pinned in 25_test_predicate_influence_table.yaml, and the ON CONFLICT
+    # rewrite in 15_test_on_conflict_lineage_table.yaml.)
+    - name: two expressions into one output column keep both
+      sql: "SELECT x + 1 AS a, x + 2 AS a FROM t"
+      expected_edges:
+        - from_table: t
+          from_field: "x"
+          to_table: __result__
+          to_field: "a"
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              op_type: "+"
+              expression: "x + 1"
+        - from_table: t
+          from_field: "x"
+          to_table: __result__
+          to_field: "a"
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              op_type: "+"
+              expression: "x + 2"

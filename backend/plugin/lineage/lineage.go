@@ -17,6 +17,20 @@ var (
 	ErrorEngineNotSupported = errors.New("engine not supported")
 )
 
+// UnsupportedStatementError reports SQL that parsed but contains a statement the
+// analyzer cannot model. The relations returned alongside it are the ones the
+// other statements produced: they describe real lineage and a caller is expected
+// to keep them, while the message keeps the gap visible instead of letting the
+// unmodelled statement read as one with no lineage. A parse error is not this:
+// unparseable input yields no result at all.
+type UnsupportedStatementError struct {
+	Message string
+}
+
+func (e *UnsupportedStatementError) Error() string {
+	return e.Message
+}
+
 var (
 	mux sync.RWMutex
 	// CatalogProvide is the process-wide catalog used by the registered

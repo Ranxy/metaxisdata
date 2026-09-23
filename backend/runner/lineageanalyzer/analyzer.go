@@ -272,16 +272,23 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	ac := catalog.AnalysisContext{InstanceID: instanceID, Database: database, Schema: schema}
 	analysisCtx := catalog.WithAnalysisContext(ctx, ac)
 	relations, err := lineage.GetAnalyzeRelation(analysisCtx, engine, wrappedSQL)
-	if err != nil {
-		if errors.Is(err, lineage.ErrorEngineNotSupported) {
-			// No analyzer is registered for this engine. Record the skip together
-			// with the current hash so the hourly scan stops re-queueing the
-			// object, and keep the reason visible in error_message.
-			slog.Warn("Lineage analysis skipped: the engine has no lineage analyzer",
-				slog.String("guid", metaGUID), slog.String("engine", engine.String()))
-			return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash,
-				fmt.Sprintf("engine %s has no lineage analyzer; analysis skipped", engine))
-		}
+
+	// A statement the analyzer cannot model does not condemn the statements
+	// around it: the analyzer returns the edges it did find together with the
+	// gap, so the lineage is stored and the gap is recorded beside it.
+	var unsupported *lineage.UnsupportedStatementError
+	switch {
+	case err == nil:
+	case errors.As(err, &unsupported):
+	case errors.Is(err, lineage.ErrorEngineNotSupported):
+		// No analyzer is registered for this engine. Record the skip together
+		// with the current hash so the hourly scan stops re-queueing the
+		// object, and keep the reason visible in error_message.
+		slog.Warn("Lineage analysis skipped: the engine has no lineage analyzer",
+			slog.String("guid", metaGUID), slog.String("engine", engine.String()))
+		return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash,
+			fmt.Sprintf("engine %s has no lineage analyzer; analysis skipped", engine))
+	default:
 		// Analysis itself does no failing I/O: the analyzers are pure functions of
 		// (engine, statement) and consult the catalog on a best-effort basis that
 		// never turns a lookup error into an analysis error. A statement they
@@ -291,6 +298,13 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		slog.Warn("Lineage analysis failed on an unsupported statement",
 			slog.String("guid", metaGUID), slog.String("engine", engine.String()), log.WithError(err))
 		return markAnalysisFailed(ctx, a.store, metaGUID, metaType, res.MetaHash, err)
+	}
+
+	// What a partial analysis could not model is stored on the version row
+	// alongside the lineage written below.
+	partialMessage := ""
+	if unsupported != nil {
+		partialMessage = unsupported.Message
 	}
 
 	// Convert relations to ColumnLineage rows and collect GUIDs whose meta types
@@ -393,7 +407,7 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to replace column lineage")
 	}
 
-	return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash, "")
+	return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash, partialMessage)
 }
 
 // buildSQL extracts the object definition and wraps it as needed for lineage parsing.

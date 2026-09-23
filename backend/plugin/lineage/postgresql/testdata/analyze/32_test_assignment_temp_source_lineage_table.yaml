@@ -29,7 +29,45 @@ cases:
           transformations:
             - operation: PROJECT
               expression: "q.x"
-    - name: an on-conflict assignment sourced from a CTE is traced through it
+    # EXCLUDED names the row the insert proposed, so it resolves to the insert's
+    # own source — here a CTE, which has to be traced through its lineage.
+    - name: an on-conflict assignment through EXCLUDED is traced to the insert's source
+      sql: "WITH c AS (SELECT y FROM s) INSERT INTO t (b) SELECT y FROM c ON CONFLICT (b) DO UPDATE SET b = EXCLUDED.b + t.b"
+      expected_edges:
+        - from_table: s
+          from_field: "y"
+          to_table: t
+          to_field: "b"
+          relation_type: direct
+          is_temp: false
+        # The conflict clause rewrites the column from the proposed value, whose
+        # source is the insert's SELECT through the CTE.
+        - from_table: s
+          from_field: "y"
+          to_table: t
+          to_field: "b"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              expression: "EXCLUDED.b + t.b"
+              op_type: "+"
+        # ... and from the target's own value.
+        - from_table: t
+          from_field: "b"
+          to_table: t
+          to_field: "b"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              expression: "EXCLUDED.b + t.b"
+              op_type: "+"
+
+    # The conflict clause has no FROM-clause entry of its own, so naming the
+    # statement's CTE there is "missing FROM-clause entry for table c" (verified
+    # on 16). Reading it as the CTE would record a source the clause cannot name.
+    - name: a conflict clause cannot name the statement's CTE
       sql: "WITH c AS (SELECT y FROM s) INSERT INTO t (b) SELECT y FROM c ON CONFLICT (b) DO UPDATE SET b = c.y"
       expected_edges:
         - from_table: s

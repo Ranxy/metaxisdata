@@ -127,19 +127,69 @@ func (a *Analyzer) recordPredicate(sp *scope.Scope, ref scope.ColumnRef, transfo
 		} else {
 			influence.key = predicateKey{database: res.Ref.Schema, table: res.Ref.Table, column: res.Ref.Column}
 		}
-		a.predicates = append(a.predicates, influence)
+		a.addPredicate(sp, influence)
 	}
 }
 
-// emitPredicateInfluences adds one edge per predicate column to the rows the
-// statement produces. The target column is empty: a predicate decides which rows
-// are emitted, not the value of any one column.
-func (a *Analyzer) emitPredicateInfluences(targetSchema, targetTable string) {
-	if len(a.predicates) == 0 {
+// addPredicate records one influence against the scope whose rows it decides.
+func (a *Analyzer) addPredicate(sp *scope.Scope, influence predicateInfluence) {
+	if sp == nil {
 		return
 	}
+	a.predicates[sp] = append(a.predicates[sp], influence)
+}
+
+// inheritPredicates moves the influences collected in from into to. A construct
+// that consumes from's rows carries the predicates that shaped them, so a
+// derived table or an expression subquery passes its WHERE to the query that
+// reads it. A scope whose rows are never consumed keeps its influences instead:
+// they are dropped with the statement rather than attributed to a result they
+// do not reach, which is what an unreferenced CTE is.
+func (a *Analyzer) inheritPredicates(from, to *scope.Scope) {
+	if from == nil || to == nil || from == to {
+		return
+	}
+	if influences := a.predicates[from]; len(influences) > 0 {
+		a.predicates[to] = append(a.predicates[to], influences...)
+	}
+	delete(a.predicates, from)
+}
+
+// bindCTEPredicates holds the influences a CTE body produced against the
+// definition they belong to. They reach the query only if it references the CTE.
+func (a *Analyzer) bindCTEPredicates(cte *scope.CTEDefinition, from *scope.Scope) {
+	if cte == nil || from == nil {
+		return
+	}
+	if influences := a.predicates[from]; len(influences) > 0 {
+		a.ctePredicates[cte] = append(a.ctePredicates[cte], influences...)
+	}
+	delete(a.predicates, from)
+}
+
+// inheritCTEPredicates hands a referenced CTE's influences to the scope that
+// reads it. The entry is kept rather than moved because one CTE can be
+// referenced from several places, and the emitted edges are deduplicated anyway.
+func (a *Analyzer) inheritCTEPredicates(sp *scope.Scope, cte *scope.CTEDefinition) {
+	if sp == nil || cte == nil {
+		return
+	}
+	if influences := a.ctePredicates[cte]; len(influences) > 0 {
+		a.predicates[sp] = append(a.predicates[sp], influences...)
+	}
+}
+
+// emitPredicateInfluences adds one edge per predicate column of sp to the rows
+// the statement produces. The target column is empty: a predicate decides which
+// rows are emitted, not the value of any one column.
+func (a *Analyzer) emitPredicateInfluences(sp *scope.Scope, targetSchema, targetTable string) {
+	influences := a.predicates[sp]
+	if len(influences) == 0 {
+		return
+	}
+	delete(a.predicates, sp)
 	isTemp := targetTable == resultTableName
-	for _, influence := range a.predicates {
+	for _, influence := range influences {
 		if influence.relation != nil {
 			a.traceThroughTableLineageToTarget(influence.relation, influence.column, targetSchema, targetTable, "", []model.Transformation{influence.transform})
 			continue
@@ -151,5 +201,4 @@ func (a *Analyzer) emitPredicateInfluences(targetSchema, targetTable string) {
 			isTemp,
 		))
 	}
-	a.predicates = nil
 }
