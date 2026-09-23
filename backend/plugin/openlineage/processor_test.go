@@ -131,7 +131,7 @@ func TestMapTransformations(t *testing.T) {
 			},
 			wantLen: 1,
 			wantFirst: &model.Transformation{
-				Operation:  model.OperationProject,
+				Operation:  model.OperationSort,
 				Expression: "ORDER BY id",
 			},
 		},
@@ -172,7 +172,11 @@ func TestMapOperationType(t *testing.T) {
 		{"DIRECT/AGGREGATION", "DIRECT", "AGGREGATION", model.OperationAggregate},
 		{"DIRECT/TRANSFORMATION", "DIRECT", "TRANSFORMATION", model.OperationFunction},
 		{"DIRECT/other", "DIRECT", "CUSTOM", model.OperationFunction},
-		{"INDIRECT", "INDIRECT", "SORT", model.OperationProject},
+		{"INDIRECT/JOIN", "INDIRECT", "JOIN", model.OperationJoin},
+		{"INDIRECT/GROUP_BY", "INDIRECT", "GROUP_BY", model.OperationGroupBy},
+		{"INDIRECT/FILTER", "INDIRECT", "FILTER", model.OperationFilter},
+		{"INDIRECT/SORT", "INDIRECT", "SORT", model.OperationSort},
+		{"INDIRECT/other", "INDIRECT", "CUSTOM", model.OperationProject},
 		{"unknown type", "UNKNOWN", "X", model.OperationProject},
 	}
 
@@ -320,6 +324,26 @@ func TestTableLevelLineageDetection(t *testing.T) {
 		len(event.Outputs[0].Facets.ColumnLineage.Fields) > 0
 	assert.False(t, hasColumnLineage, "should not have column lineage")
 	assert.True(t, len(event.Inputs) > 0, "should have inputs for table-level lineage")
+}
+
+func TestDatasetReferenceLineageKeepsFieldAndIndirectKind(t *testing.T) {
+	meta := lineageMeta{GUID: "openlineage:task:default:etl_dag.transform_orders", Type: storepb.MetaType_OPENLINEAGE}
+	source := &ResolvedDataset{GUID: "prod;warehouse;staging;orders", MetaType: storepb.MetaType_TABLE}
+	target := &ResolvedDataset{GUID: "prod;warehouse;marts;summary", MetaType: storepb.MetaType_VIEW}
+
+	// A dataset-level reference names the field that influences the whole output.
+	// Dropping the field, as the processor used to, lost the filter column and
+	// recorded an indirect relation as direct.
+	lineage := datasetReferenceLineage(meta, source, target, ColumnLineageDatasetReference{
+		Namespace: "prod", Name: "staging.orders", Field: "status",
+		Transformations: []OLTransform{{Type: "INDIRECT", Subtype: "FILTER"}},
+	})
+
+	require.Equal(t, "status", lineage.SourceColumn)
+	require.Empty(t, lineage.TargetColumn, "an influence on the rows reaches no single column")
+	require.Equal(t, model.RelationTypeIndirect, lineage.RelationType)
+	require.Len(t, lineage.Transformation, 1)
+	require.Equal(t, model.OperationFilter, lineage.Transformation[0].Operation)
 }
 
 func TestDatasetLevelLineageDetection(t *testing.T) {

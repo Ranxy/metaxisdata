@@ -133,7 +133,10 @@ func (p *Processor) processOutputDataset(ctx context.Context, output *Dataset, m
 		}
 	}
 
-	// Process dataset-level lineage references (table-level within column lineage facet).
+	// Process dataset-level lineage references: a field that influences the whole
+	// output (a filter, join, grouping or sort) rather than one column. The field
+	// is the real source column, and the target column stays empty, because the
+	// influence is on the rows the dataset produces, not on any single column.
 	for _, dsRef := range output.Facets.ColumnLineage.Dataset {
 		sourceResolved, err := p.resolver.ResolveDataset(ctx, dsRef.Namespace, dsRef.Name)
 		if err != nil {
@@ -145,10 +148,22 @@ func (p *Processor) processOutputDataset(ctx context.Context, output *Dataset, m
 			continue
 		}
 
-		lineages = append(lineages, buildColumnLineage(meta, sourceResolved, targetResolved, "", "", model.RelationTypeDirect, []model.Transformation{}))
+		lineages = append(lineages, datasetReferenceLineage(meta, sourceResolved, targetResolved, dsRef))
 	}
 
 	return lineages, nil
+}
+
+// datasetReferenceLineage builds the edge for a dataset-level column lineage
+// reference. Such a reference names a field that influences the whole output — a
+// filter, join, grouping or sort — so the field is the source column and the
+// target column stays empty, because no single output column is derived from it.
+func datasetReferenceLineage(meta lineageMeta, sourceResolved, targetResolved *ResolvedDataset, ref ColumnLineageDatasetReference) *store.ColumnLineage {
+	return buildColumnLineage(
+		meta, sourceResolved, targetResolved,
+		ref.Field, "",
+		mapRelationType(ref.Transformations), mapTransformations(ref.Transformations),
+	)
 }
 
 func (p *Processor) processSchemaInferredLineage(ctx context.Context, inputs []Dataset, output *Dataset, meta lineageMeta) ([]*store.ColumnLineage, bool, error) {
@@ -342,7 +357,21 @@ func mapOperationType(olType, olSubtype string) model.OperationType {
 			return model.OperationFunction
 		}
 	case "INDIRECT":
-		return model.OperationProject
+		// An indirect field influences the output without its value reaching it,
+		// and the subtype names how. Keeping it means an ingested filter, join,
+		// grouping or sort edge carries the same operation a SQL analyzer records.
+		switch olSubtype {
+		case "JOIN":
+			return model.OperationJoin
+		case "GROUP_BY":
+			return model.OperationGroupBy
+		case "FILTER":
+			return model.OperationFilter
+		case "SORT":
+			return model.OperationSort
+		default:
+			return model.OperationProject
+		}
 	default:
 		return model.OperationProject
 	}
