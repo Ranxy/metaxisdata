@@ -126,10 +126,9 @@ func (p *Processor) processOutputDataset(ctx context.Context, output *Dataset, m
 				continue
 			}
 
-			relationType := mapRelationType(input.Transformations)
 			transformation := mapTransformations(input.Transformations)
 
-			lineages = append(lineages, buildColumnLineage(meta, sourceResolved, targetResolved, input.Field, outputColumn, relationType, transformation))
+			lineages = append(lineages, buildColumnLineage(meta, sourceResolved, targetResolved, input.Field, outputColumn, transformation))
 		}
 	}
 
@@ -162,7 +161,7 @@ func datasetReferenceLineage(meta lineageMeta, sourceResolved, targetResolved *R
 	return buildColumnLineage(
 		meta, sourceResolved, targetResolved,
 		ref.Field, "",
-		mapRelationType(ref.Transformations), mapTransformations(ref.Transformations),
+		mapTransformations(ref.Transformations),
 	)
 }
 
@@ -189,7 +188,6 @@ func (p *Processor) processSchemaInferredLineage(ctx context.Context, inputs []D
 			targetResolved,
 			name,
 			name,
-			model.RelationTypeDirect,
 			[]model.Transformation{},
 		))
 	}
@@ -261,7 +259,7 @@ func (p *Processor) processTableLevelLineage(ctx context.Context, inputs []Datas
 			continue
 		}
 
-		lineages = append(lineages, buildColumnLineage(meta, sourceResolved, targetResolved, "", "", model.RelationTypeDirect, []model.Transformation{}))
+		lineages = append(lineages, buildColumnLineage(meta, sourceResolved, targetResolved, "", "", []model.Transformation{}))
 	}
 
 	return lineages, nil
@@ -274,13 +272,16 @@ func buildLineageMeta(persistedRun *store.OpenLineageRunMessage) lineageMeta {
 	}
 }
 
+// buildColumnLineage builds a stored column-lineage row. The relation type is
+// derived from the transformations by the rule every producer shares, so an
+// ingested join or aggregation is stored as a join or an aggregation rather than
+// as an undifferentiated indirect edge.
 func buildColumnLineage(
 	meta lineageMeta,
 	sourceResolved *ResolvedDataset,
 	targetResolved *ResolvedDataset,
 	sourceColumn string,
 	targetColumn string,
-	relationType model.RelationType,
 	transformation []model.Transformation,
 ) *store.ColumnLineage {
 	return &store.ColumnLineage{
@@ -292,34 +293,9 @@ func buildColumnLineage(
 		TargetGUID:     targetResolved.GUID,
 		TargetColumn:   targetColumn,
 		TargetType:     targetResolved.MetaType,
-		RelationType:   relationType,
+		RelationType:   model.RelationTypeOf(transformation),
 		Transformation: transformation,
 	}
-}
-
-// mapRelationType converts OpenLineage transformation types to our internal RelationType.
-func mapRelationType(transforms []OLTransform) model.RelationType {
-	if len(transforms) == 0 {
-		return model.RelationTypeDirect
-	}
-	for _, t := range transforms {
-		switch t.Type {
-		case "DIRECT":
-			switch t.Subtype {
-			case "IDENTITY":
-				return model.RelationTypeDirect
-			case "TRANSFORMATION", "AGGREGATION":
-				return model.RelationTypeIndirect
-			default:
-				return model.RelationTypeDirect
-			}
-		case "INDIRECT":
-			return model.RelationTypeIndirect
-		default:
-			return model.RelationTypeDirect
-		}
-	}
-	return model.RelationTypeDirect
 }
 
 // mapTransformations converts OpenLineage transforms to our internal Transformation model.
@@ -330,6 +306,13 @@ func mapTransformations(transforms []OLTransform) []model.Transformation {
 
 	result := make([]model.Transformation, 0, len(transforms))
 	for _, t := range transforms {
+		if t.Type == "DIRECT" && t.Subtype == "IDENTITY" {
+			// An identity facet says the value is the source value, which is what
+			// a direct edge without a transformation already means. Keeping a
+			// PROJECT here would store a direct relation that carries a
+			// transformation, which no other producer does.
+			continue
+		}
 		op := mapOperationType(t.Type, t.Subtype)
 
 		desc := t.Description

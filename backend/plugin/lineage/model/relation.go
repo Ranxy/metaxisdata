@@ -56,3 +56,32 @@ const (
 	RelationTypeExcept
 	RelationTypeUnknown
 )
+
+// RelationTypeOf infers the relation type of an edge from its transformations,
+// which is the one rule every producer shares: a SQL analyzer, the OpenLineage
+// ingestion and the wildcard expansion all describe an edge by the operations it
+// carries. An edge with no transformation is direct, and an edge with several is
+// described by the outermost one, which comes first.
+func RelationTypeOf(transform []Transformation) RelationType {
+	if len(transform) == 0 {
+		return RelationTypeDirect
+	}
+	switch transform[0].Operation {
+	case OperationDelete:
+		return RelationTypeIndirect
+	case OperationUnion:
+		return RelationTypeUnion
+	case OperationIntersect:
+		return RelationTypeIntersect
+	case OperationExcept:
+		return RelationTypeExcept
+	case OperationAggregate:
+		return RelationTypeGroup
+	case OperationJoin:
+		return RelationTypeJoin
+	default:
+		// A FILTER (WHERE / HAVING), a WINDOW, a SORT, a PROJECT and every value
+		// transformation influence the output indirectly.
+		return RelationTypeIndirect
+	}
+}

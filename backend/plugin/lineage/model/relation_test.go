@@ -49,3 +49,25 @@ func TestAnsweringLineage_NothingAnswers(t *testing.T) {
 	require.Empty(t, AnsweringLineage(lineage, "x"))
 	require.Empty(t, AnsweringLineage(nil, "x"))
 }
+
+// Every producer derives a relation type with this one rule, so an ingested join
+// and a SQL join are the same relation.
+func TestRelationTypeOf(t *testing.T) {
+	operation := func(op OperationType) []Transformation {
+		return []Transformation{{Operation: op}}
+	}
+
+	require.Equal(t, RelationTypeDirect, RelationTypeOf(nil), "no transformation is a direct relation")
+	require.Equal(t, RelationTypeGroup, RelationTypeOf(operation(OperationAggregate)))
+	require.Equal(t, RelationTypeJoin, RelationTypeOf(operation(OperationJoin)))
+	require.Equal(t, RelationTypeUnion, RelationTypeOf(operation(OperationUnion)))
+	require.Equal(t, RelationTypeIntersect, RelationTypeOf(operation(OperationIntersect)))
+	require.Equal(t, RelationTypeExcept, RelationTypeOf(operation(OperationExcept)))
+	require.Equal(t, RelationTypeIndirect, RelationTypeOf(operation(OperationDelete)))
+	require.Equal(t, RelationTypeIndirect, RelationTypeOf(operation(OperationFilter)))
+	require.Equal(t, RelationTypeIndirect, RelationTypeOf(operation(OperationProject)))
+
+	// The first transformation is the outermost operation, so it decides.
+	outermost := []Transformation{{Operation: OperationAggregate}, {Operation: OperationJoin}}
+	require.Equal(t, RelationTypeGroup, RelationTypeOf(outermost))
+}

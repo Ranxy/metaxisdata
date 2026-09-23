@@ -11,7 +11,14 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-func TestMapRelationType(t *testing.T) {
+// ingestedRelationType is what a stored edge now carries: the processor derives
+// the relation type from the transformations by the same rule a SQL analyzer uses,
+// so an ingested aggregation is a grouping and an ingested join is a join.
+func ingestedRelationType(transforms []OLTransform) model.RelationType {
+	return model.RelationTypeOf(mapTransformations(transforms))
+}
+
+func TestIngestedRelationType(t *testing.T) {
 	tests := []struct {
 		name       string
 		transforms []OLTransform
@@ -37,38 +44,52 @@ func TestMapRelationType(t *testing.T) {
 			want: model.RelationTypeIndirect,
 		},
 		{
-			name: "DIRECT/AGGREGATION -> indirect",
+			name: "DIRECT/AGGREGATION -> group",
 			transforms: []OLTransform{
 				{Type: "DIRECT", Subtype: "AGGREGATION"},
+			},
+			want: model.RelationTypeGroup,
+		},
+		{
+			name: "INDIRECT/JOIN -> join",
+			transforms: []OLTransform{
+				{Type: "INDIRECT", Subtype: "JOIN"},
+			},
+			want: model.RelationTypeJoin,
+		},
+		{
+			name: "INDIRECT/FILTER -> indirect",
+			transforms: []OLTransform{
+				{Type: "INDIRECT", Subtype: "FILTER"},
 			},
 			want: model.RelationTypeIndirect,
 		},
 		{
-			name: "INDIRECT -> indirect",
+			name: "INDIRECT/SORT -> indirect",
 			transforms: []OLTransform{
 				{Type: "INDIRECT", Subtype: "SORT"},
 			},
 			want: model.RelationTypeIndirect,
 		},
 		{
-			name: "unknown type -> direct",
+			name: "unknown type -> indirect",
 			transforms: []OLTransform{
 				{Type: "UNKNOWN", Subtype: ""},
 			},
-			want: model.RelationTypeDirect,
+			want: model.RelationTypeIndirect,
 		},
 		{
-			name: "DIRECT with unknown subtype -> direct",
+			name: "DIRECT with unknown subtype -> indirect",
 			transforms: []OLTransform{
 				{Type: "DIRECT", Subtype: "CUSTOM_SUBTYPE"},
 			},
-			want: model.RelationTypeDirect,
+			want: model.RelationTypeIndirect,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := mapRelationType(tt.transforms)
+			got := ingestedRelationType(tt.transforms)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -92,15 +113,14 @@ func TestMapTransformations(t *testing.T) {
 			wantLen:    0,
 		},
 		{
+			// An identity facet is a direct edge, and a direct edge carries no
+			// transformation: keeping a PROJECT here would store a relation type
+			// and a transformation list that disagree.
 			name: "identity transform",
 			transforms: []OLTransform{
 				{Type: "DIRECT", Subtype: "IDENTITY"},
 			},
-			wantLen: 1,
-			wantFirst: &model.Transformation{
-				Operation:  model.OperationProject,
-				Expression: "DIRECT/IDENTITY",
-			},
+			wantLen: 0,
 		},
 		{
 			name: "transformation with description",
@@ -141,7 +161,7 @@ func TestMapTransformations(t *testing.T) {
 				{Type: "DIRECT", Subtype: "IDENTITY"},
 				{Type: "DIRECT", Subtype: "TRANSFORMATION", Description: "CAST(x AS INT)"},
 			},
-			wantLen: 2,
+			wantLen: 1,
 		},
 	}
 
@@ -206,19 +226,18 @@ func TestParseAndMapEndToEnd(t *testing.T) {
 	assert.Equal(t, model.OperationFunction, transforms1[0].Operation)
 	assert.Equal(t, "DATEDIFF(minute, order_placed_on, order_delivered_on)", transforms1[0].Expression)
 
-	relType1 := mapRelationType(deliveryTime.InputFields[0].Transformations)
+	relType1 := ingestedRelationType(deliveryTime.InputFields[0].Transformations)
 	assert.Equal(t, model.RelationTypeIndirect, relType1)
 
 	// Verify identity mapping for order_id
 	orderID := output.Facets.ColumnLineage.Fields["order_id"]
 	require.Len(t, orderID.InputFields, 1)
 
-	relType2 := mapRelationType(orderID.InputFields[0].Transformations)
+	relType2 := ingestedRelationType(orderID.InputFields[0].Transformations)
 	assert.Equal(t, model.RelationTypeDirect, relType2)
 
 	transforms2 := mapTransformations(orderID.InputFields[0].Transformations)
-	require.Len(t, transforms2, 1)
-	assert.Equal(t, model.OperationProject, transforms2[0].Operation)
+	require.Empty(t, transforms2, "an identity facet carries no transformation")
 }
 
 func TestParseAndMapCrossInstance(t *testing.T) {
@@ -234,8 +253,8 @@ func TestParseAndMapCrossInstance(t *testing.T) {
 	require.Len(t, totalAmount.InputFields, 2)
 
 	for _, input := range totalAmount.InputFields {
-		relType := mapRelationType(input.Transformations)
-		assert.Equal(t, model.RelationTypeIndirect, relType, "AGGREGATION should map to Indirect")
+		relType := ingestedRelationType(input.Transformations)
+		assert.Equal(t, model.RelationTypeGroup, relType, "AGGREGATION should map to Group")
 
 		transforms := mapTransformations(input.Transformations)
 		require.Len(t, transforms, 1)
@@ -246,13 +265,13 @@ func TestParseAndMapCrossInstance(t *testing.T) {
 	// item_id: IDENTITY
 	itemID := output.Facets.ColumnLineage.Fields["item_id"]
 	require.Len(t, itemID.InputFields, 1)
-	relType := mapRelationType(itemID.InputFields[0].Transformations)
+	relType := ingestedRelationType(itemID.InputFields[0].Transformations)
 	assert.Equal(t, model.RelationTypeDirect, relType)
 
 	// event_id: TRANSFORMATION
 	eventID := output.Facets.ColumnLineage.Fields["event_id"]
 	require.Len(t, eventID.InputFields, 1)
-	relType = mapRelationType(eventID.InputFields[0].Transformations)
+	relType = ingestedRelationType(eventID.InputFields[0].Transformations)
 	assert.Equal(t, model.RelationTypeIndirect, relType)
 }
 
@@ -267,7 +286,7 @@ func TestParseAndMapAirflowPostgres(t *testing.T) {
 	// customer_name: IDENTITY from customers
 	customerName := output.Facets.ColumnLineage.Fields["customer_name"]
 	require.Len(t, customerName.InputFields, 1)
-	relType := mapRelationType(customerName.InputFields[0].Transformations)
+	relType := ingestedRelationType(customerName.InputFields[0].Transformations)
 	assert.Equal(t, model.RelationTypeDirect, relType)
 
 	// total_amount: AGGREGATION
@@ -297,7 +316,7 @@ func TestParseAndMapAirflowBigQuery(t *testing.T) {
 	// sale_date: TRANSFORMATION from sale_time
 	saleDate := output.Facets.ColumnLineage.Fields["sale_date"]
 	require.Len(t, saleDate.InputFields, 1)
-	relType := mapRelationType(saleDate.InputFields[0].Transformations)
+	relType := ingestedRelationType(saleDate.InputFields[0].Transformations)
 	assert.Equal(t, model.RelationTypeIndirect, relType)
 
 	transforms := mapTransformations(saleDate.InputFields[0].Transformations)
@@ -344,6 +363,15 @@ func TestDatasetReferenceLineageKeepsFieldAndIndirectKind(t *testing.T) {
 	require.Equal(t, model.RelationTypeIndirect, lineage.RelationType)
 	require.Len(t, lineage.Transformation, 1)
 	require.Equal(t, model.OperationFilter, lineage.Transformation[0].Operation)
+
+	// A join key is a join, the same relation type a SQL analyzer records for an
+	// ON or USING column.
+	join := datasetReferenceLineage(meta, source, target, ColumnLineageDatasetReference{
+		Namespace: "prod", Name: "staging.orders", Field: "customer_id",
+		Transformations: []OLTransform{{Type: "INDIRECT", Subtype: "JOIN"}},
+	})
+	require.Equal(t, model.RelationTypeJoin, join.RelationType)
+	require.Equal(t, model.OperationJoin, join.Transformation[0].Operation)
 }
 
 func TestDatasetLevelLineageDetection(t *testing.T) {
@@ -421,7 +449,6 @@ func TestBuildColumnLineageKeepsFlowOnSourceAndTarget(t *testing.T) {
 		target,
 		"order_id",
 		"order_id",
-		model.RelationTypeDirect,
 		[]model.Transformation{},
 	)
 

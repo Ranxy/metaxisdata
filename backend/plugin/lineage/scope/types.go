@@ -129,7 +129,7 @@ type OutputColumn struct {
 // NewLineageEdge creates a ColumnRelation from field-edge parameters.
 func NewLineageEdge(fromSchema, fromTable, fromField, toSchema, toTable, toField string, transform []model.Transformation, isTemp bool) model.ColumnRelation {
 	// Determine relation type based on transformation
-	relType := determineRelationType(transform)
+	relType := model.RelationTypeOf(transform)
 
 	// For MySQL, the schema qualifier in SQL is actually the database name,
 	// so map it to ObjectIdentifier.Database instead of Schema.
@@ -151,32 +151,5 @@ func NewLineageEdge(fromSchema, fromTable, fromField, toSchema, toTable, toField
 		Transformation: transform,
 		RelationType:   relType,
 		IsTemp:         isTemp,
-	}
-}
-
-// determineRelationType infers the relation type from transformation info.
-func determineRelationType(transform []model.Transformation) model.RelationType {
-	if len(transform) == 0 {
-		return model.RelationTypeDirect
-	}
-	// The first transformation is the outermost operation, so it decides the
-	// relation type.
-	switch transform[0].Operation {
-	case model.OperationDelete:
-		return model.RelationTypeIndirect
-	case model.OperationUnion:
-		return model.RelationTypeUnion
-	case model.OperationIntersect:
-		return model.RelationTypeIntersect
-	case model.OperationExcept:
-		return model.RelationTypeExcept
-	case model.OperationAggregate:
-		return model.RelationTypeGroup
-	case model.OperationJoin:
-		return model.RelationTypeJoin
-	default:
-		// A FILTER (WHERE / HAVING) and every value transformation influence the
-		// output indirectly, which is what the API reports for all of them.
-		return model.RelationTypeIndirect
 	}
 }
