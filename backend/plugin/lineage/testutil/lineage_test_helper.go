@@ -90,9 +90,6 @@ type LineageTestCase struct {
 
 	// ExpectError indicates the test expects an analysis error
 	ExpectError bool
-
-	// Debug enables verbose output for debugging
-	Debug bool
 }
 
 // LineageTestSuite defines a named group of lineage test cases loaded from YAML.
@@ -113,7 +110,6 @@ type yamlLineageTestCase struct {
 	ExpectedEdges *[]yamlExpectedEdge `yaml:"expected_edges,omitempty"`
 	Subset        bool                `yaml:"subset,omitempty"`
 	ExpectError   bool                `yaml:"expect_error,omitempty"`
-	Debug         bool                `yaml:"debug,omitempty"`
 }
 
 type yamlCatalog struct {
@@ -255,17 +251,6 @@ func RunLineageTest(t *testing.T, tc LineageTestCase, analyzeFn AnalyzeFunc) {
 	}
 	require.NoError(t, err, "Failed to analyze SQL: %s", tc.SQL)
 
-	// Debug output
-	if tc.Debug {
-		fmt.Printf("\n%s edges (%d):\n", tc.Name, len(relations))
-		for _, r := range relations {
-			fmt.Printf("  %s -> %s (type: %v, isTemp: %v, transform: %v)\n",
-				r.Source.Table.FullName()+"."+r.Source.Name,
-				r.Target.Table.FullName()+"."+r.Target.Name,
-				r.RelationType, r.IsTemp, r.Transformation != nil)
-		}
-	}
-
 	// An explicitly empty expectation means the statement must produce no edges.
 	// Matching is exact unless the case declares itself partial with Subset.
 	if tc.ExpectedEdges != nil {
@@ -283,7 +268,6 @@ func (c *yamlLineageTestCase) toLineageTestCase() (LineageTestCase, error) {
 		SQL:         c.SQL,
 		ExpectError: c.ExpectError,
 		Subset:      c.Subset,
-		Debug:       c.Debug,
 	}
 
 	if c.Catalog != nil {

@@ -19,3 +19,14 @@ func TestRegistersEngine(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, relations)
 }
+
+// An engine with no analyzer must report the shared sentinel, so the runner can
+// record a per-object skip instead of a failure.
+func TestUnsupportedEngineIsNotRegistered(t *testing.T) {
+	t.Parallel()
+
+	for _, engine := range []storepb.Engine{storepb.Engine_DORIS, storepb.Engine_OCEANBASE} {
+		_, err := lineage.GetAnalyzeRelation(context.TODO(), engine, "SELECT id FROM t")
+		require.ErrorIs(t, err, lineage.ErrorEngineNotSupported, "engine %s", engine)
+	}
+}

@@ -41,7 +41,6 @@ cases:
         transformations:
           - operation: PROJECT
             expression: id
-    debug: true
   - name: keeps optional edge assertions absent
     sql: SELECT 1
     expect_error: true
@@ -57,7 +56,6 @@ cases:
 	require.Equal(t, "loads catalog and edge metadata", first.Name)
 	require.Equal(t, "SELECT id FROM users\n", first.SQL)
 	require.NotNil(t, first.Catalog)
-	require.True(t, first.Debug)
 	require.Len(t, first.ExpectedEdges, 1)
 
 	edge := first.ExpectedEdges[0]
