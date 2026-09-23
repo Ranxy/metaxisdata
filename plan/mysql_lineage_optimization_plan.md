@@ -923,67 +923,35 @@ Not ours to fix:
 
 Ours, by priority:
 
-1. **An update assignment's source column that cannot be resolved is written as an
-   edge with no source table, instead of being dropped.** Four analyzers fall back
-   to the unresolved reference at seven sites — `mysql/analyzer.go:1195` and
-   `:1380`, the MariaDB and TiDB copies of both, `postgresql/analyzer.go:915` and
-   `starrocks/analyzer.go:656` — where every other path drops it. Reachable
-   without a typo:
-   - MySQL family `UPDATE t1 JOIN t2 ON t1.id = t2.id SET a = nosuchcol` →
-     `"".nosuchcol → t1.a`
-   - MySQL family `INSERT INTO t (a) VALUES (1) ON DUPLICATE KEY UPDATE a = a + 1`
-     → `"".a → t.a`, because the target table is not in scope for the clause
-   - PostgreSQL `INSERT … ON CONFLICT (a) DO UPDATE SET a = nosuchcol` →
-     `"".nosuchcol → t.a`
-   - StarRocks `UPDATE t SET a = nosuchcol FROM s WHERE t.id = s.id` →
-     `"".nosuchcol → t.a`
-
-   The runner turns that into a GUID built from an empty name
-   (`backend/runner/lineageanalyzer/analyzer.go:305`), finds no source type for it
-   and stores a `column_lineage` row pointing at an object no registry entry owns.
-   The fix is the policy every other site already follows: drop it.
-2. **An `UPDATE`'s SET target is resolved through the scope instead of being bound
-   to the statement's target relation**, so a statement with more than one relation
-   can write the edge onto the wrong table — a phantom:
-   - StarRocks `UPDATE t SET a = s.x FROM s WHERE t.id = s.id` → `s.x → s.a`
-     (should be `t.a`); `UPDATE z SET a = s.x FROM s` loses `z` entirely and writes
-     `s.x → s.a`
-   - MySQL family `UPDATE t1 AS x JOIN t2 ON x.id = t2.id SET a = t2.a` →
-     `t2.a → t2.a` (should be `t1.a`)
-
-   PostgreSQL is correct here, because it takes the target column from the
-   `ResTarget` name and knows its target relation. The corpus never covers a
-   multi-relation `UPDATE` with an unqualified SET target: StarRocks' one `FROM`
-   case (`09`:44) passes because its catalog makes the SET column unambiguous.
-3. **StarRocks classifies an expression by the first function call it contains**, so
+1. **StarRocks classifies an expression by the first function call it contains**, so
    `SUM(x) OVER (…)` is reported as `AGGREGATE` where the MySQL family and
    PostgreSQL report `WINDOW`, and `SUM(x) + 1` as `AGGREGATE` where they report
    `OPERATOR`. The GROUP BY keys still follow §10.9 (§10.16), but the operation and
    the window's `partition_by` / `order_by` differ.
-4. **PostgreSQL `MERGE` is silently ignored** — 0 edges and no error — where
+2. **PostgreSQL `MERGE` is silently ignored** — 0 edges and no error — where
    StarRocks reports an explicit "not implemented yet". A parseable statement must
    never produce an empty result silently, which is the policy that analyzer states
    for itself. (StarRocks `MERGE` is the same gap, failing loudly by decision.)
-5. **PostgreSQL `UPDATE t SET (a, b) = (SELECT x, y FROM s)` becomes a cross
+3. **PostgreSQL `UPDATE t SET (a, b) = (SELECT x, y FROM s)` becomes a cross
    product**: four edges (`s.x` and `s.y` to each of `t.a` and `t.b`) instead of the
    two positional ones, because the AST's `MultiAssignRef` is not handled.
-6. **PostgreSQL drops a `FROM` item it does not model**, so
+4. **PostgreSQL drops a `FROM` item it does not model**, so
    `SELECT x FROM t TABLESAMPLE BERNOULLI (10)` yields no edges at all: the
    relation is lost, not merely the columns. `RangeTableSample` — and
    `RangeFunction` — fall into `processTableExpr`'s `default`. A function in FROM
    genuinely has no stored relation; a table sample wraps one.
-7. **PostgreSQL `COPY t FROM …` records nothing**, where MySQL `LOAD DATA`
+5. **PostgreSQL `COPY t FROM …` records nothing**, where MySQL `LOAD DATA`
    (`__file__.* → t.*`) and StarRocks `COPY INTO` / `LOAD` record a file-source
    edge. The same data-loading statement has lineage in two engines and none in the
    third.
-8. **A materialized view has no output-column list in the store proto**, so a
+6. **A materialized view has no output-column list in the store proto**, so a
    wildcard over one falls back to `*`. Closing that needs a proto field plus a
    sync per engine, and it is a StarRocks/PostgreSQL shape today.
    `MaterializedViewMetadata.triggers` still carries the copy-pasted "ordered list
    of columns in the materialized view" comment over a `TriggerMetadata` field that
    §5.3 flagged, and the MV branch of `catalog/provide.go` reports no metadata on
    purpose rather than expanding dependency columns.
-9. **`ON CONFLICT … EXCLUDED.col` is dropped** rather than resolved to the INSERT's
+7. **`ON CONFLICT … EXCLUDED.col` is dropped** rather than resolved to the INSERT's
    source column (PG-FU-5 in `plan/postgresql_omni_parser_migration_plan.md`). The
    INSERT-source edge already covers the common case.
 
@@ -1800,3 +1768,92 @@ each; dropping the StarRocks subquery sources 1; making the shared rule collapse
 same 40; and removing one `is_temp` or one `relation_type` line fails the
 annotation guard that this pass wired. `gofmt`, `golangci-lint`, `go test ./...`,
 the build and the real-server integration suite are green.
+
+### 10.18 Thirteenth pass: update-assignment resolution
+
+§10.2's first two items were one defect seen from two sides: an assignment's source
+column and its target column were both being *guessed* from the scope instead of
+being resolved for what they are. Both are fixed in all four analyzers, with the
+semantics pinned on live engines first (MySQL 8.3.0, PostgreSQL 16.5, StarRocks
+4.1).
+
+**The target is a column of the updated table.** StarRocks now takes it from the
+statement, because it does not accept a qualified target at all (`UPDATE t SET s.a
+= …` is a syntax error on 4.1) and resolving the name picked whichever relation the
+FROM clause introduced:
+
+| shape | before | after |
+| --- | --- | --- |
+| `UPDATE t SET a = s.x FROM s WHERE t.id = s.id` | `s.x → s.a` | `s.x → t.a` |
+| `UPDATE t AS tt SET a = s.x FROM s WHERE tt.id = s.id` | `s.x → s.a` | `s.x → t.a` |
+| `UPDATE z SET a = s.x FROM s` | `s.x → s.a` (z lost) | `s.x → z.a` |
+
+The MySQL family keeps resolving a *qualified* target, because a multi-table UPDATE
+legitimately sets columns of two tables (`UPDATE t1 JOIN t2 … SET t1.a = t2.a,
+t2.x = t1.x`). What it no longer does is pick an owner for an unqualified name that
+several relations own: MySQL rejects that statement itself (error 1052, verified on
+8.3.0), so the assignment is skipped rather than writing the value into every owner.
+PostgreSQL needed neither change — it takes the target column from the `ResTarget`
+name and knows its target relation.
+
+**An unresolvable source is dropped, not emitted tableless.** Seven sites fell back
+to the unresolved reference, which stored a `column_lineage` row whose source GUID
+named no object (the runner completes the identifier, finds no meta type for it and
+writes the row anyway):
+
+| shape | before | after |
+| --- | --- | --- |
+| MySQL family `UPDATE t1 JOIN t2 ON … SET t1.a = nosuchcol` | `"".nosuchcol → t1.a` | no edge |
+| MySQL family `INSERT … ON DUPLICATE KEY UPDATE a = nosuchcol` | `"".nosuchcol → t.a` | no edge |
+| PostgreSQL `UPDATE t SET a = nosuchcol FROM s` | `"".nosuchcol → t.a` | no edge |
+| StarRocks `UPDATE t SET a = nosuchcol FROM s` | `"".nosuchcol → t.a` | no edge |
+
+The single-relation fallback of §10.1 item 5 is untouched: a scope holding one
+relation still answers for a name its metadata does not describe, so
+`UPDATE t SET a = nosuchcol` records `t.nosuchcol` rather than nothing. What no
+longer happens is a fallback when *no* scope can resolve the name at all.
+
+**Two upsert clauses needed their own scope.** The fixes only work because each is
+now modelled as the scope the engine gives it:
+
+- MySQL's `ON DUPLICATE KEY UPDATE` scope contains the target table: `a = a + 1`
+  reads the target's column, and the statement is ambiguous (error 1052) when the
+  INSERT's table owns the name too — both verified on 8.3.0.
+- PostgreSQL's `ON CONFLICT DO UPDATE` scope contains the target relation and
+  `EXCLUDED`, but *not* the INSERT query's relations: `SET quantity =
+  shipment.quantity` over `… FROM shipment` fails with "missing FROM-clause entry"
+  on 16.5, so that edge is not lineage and is dropped rather than fabricated from
+  the insert source.
+
+Registering the target had one consequence worth recording. `VALUES(col)` means the
+value the INSERT would have written, so the insert-source map is resolved **in the
+query's own scope, before the clause's scope gains the target**. Without that, an
+unqualified source both tables own was attributed to the target instead of the
+source — a regression this change introduced and the TiDB dialect corpus caught
+(its `insert odku values` case runs without a catalog). The new
+`values keeps the insert source when the target owns the name too` case pins it.
+
+Corpus: one suite per analyzer family — `23_test_assignment_resolution_table` (MySQL
+family, 9 cases, shared by MariaDB and TiDB), `26` (PostgreSQL, 5 cases) and `23`
+(StarRocks, 6 cases). Every existing expectation is unchanged, which is the point:
+the fixes only reach shapes no valid statement covers, plus the phantom-target cases
+the corpus never had.
+
+**One harness hole was closed on the way.** A case whose `expected_edges:` key is
+written with no value at all unmarshals to a nil slice, which the loader reads the
+same way it reads an omitted key — "assert nothing" — and that is exactly what
+`RequireFullEdgeAnnotations` skips. Four cases of this pass were written that way
+and asserted nothing until a negative check exposed it. That function now parses
+each suite as a YAML node tree and rejects a valueless `expected_edges` key, so
+`expected_edges: []` is the only way to assert emptiness.
+
+Negative-checked, each mutation against the case that should catch it: restoring
+either MySQL source fallback fails 1 case each; reverting the SET-target strictness
+1; rejecting a *qualified* target instead (over-strict) 4, two of them existing;
+not registering the ODKU target 4; leaving the insert-source map unresolved 1;
+resolving the StarRocks target through the scope 3; restoring its source fallback 1;
+analyzing the PostgreSQL conflict clause in the root scope 2, one existing; dropping
+every assignment source 10 (PostgreSQL) and 9 (StarRocks); and a valueless
+`expected_edges` key now fails the corpus guard. `gofmt`, `golangci-lint`,
+`go test ./...`, the build and the real-server integration suite are green; MariaDB
+and TiDB remain pure regenerations of the MySQL analyzer.
