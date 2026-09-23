@@ -82,3 +82,39 @@ cases:
           is_temp: true
           transformations:
             - operation: JOIN
+
+    # A CTE column list renames the body's output positionally: the CTE exposes
+    # `user_id`, so that is the name both the lineage and the scope resolver use.
+    # Without the rename the CTE owns `id` instead and a reference to `user_id`
+    # resolves to nothing.
+    - name: CTE with an explicit column list
+      sql: WITH user_summary (user_id, user_name) AS (SELECT id, name FROM users) SELECT user_id, user_name FROM user_summary
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: user_id
+          relation_type: direct
+          is_temp: true
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: user_name
+          relation_type: direct
+          is_temp: true
+
+    - name: CTE with an explicit column list referenced through an alias
+      sql: WITH user_summary (user_id, user_name) AS (SELECT id, name FROM users) SELECT us.user_id, us.user_name FROM user_summary us
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: user_id
+          relation_type: direct
+          is_temp: true
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: user_name
+          relation_type: direct
+          is_temp: true

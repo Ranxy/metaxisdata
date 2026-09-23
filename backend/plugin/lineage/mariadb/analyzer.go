@@ -503,19 +503,22 @@ func (a *Analyzer) processCTE(cte *nodes.CommonTableExpr) {
 		a.processSelectStatement(cte.Select)
 		cteScope := a.popScope()
 
-		for _, outputCol := range cteScope.GetOutputColumns() {
+		outputColumns := cteScope.GetOutputColumns()
+		names := exposedColumnNames(cte.Columns, outputColumns)
+		for i, outputCol := range outputColumns {
+			targetName := names[i]
 			for _, sourceCol := range outputCol.SourceColumns {
 				resolutions, err := cteScope.ResolveColumnRefs(sourceCol)
 				if err != nil {
 					continue
 				}
 				for _, res := range resolutions {
-					if a.flattenTempSourceLineage(cteScope, res.Relation, res.Ref.Column, cteName, outputCol.Alias, outputCol.Transform, &cteLineage) {
+					if a.flattenTempSourceLineage(cteScope, res.Relation, res.Ref.Column, cteName, targetName, outputCol.Transform, &cteLineage) {
 						continue
 					}
 					cteLineage = append(cteLineage, scope.NewLineageEdge(
 						res.Ref.Schema, res.Ref.Table, res.Ref.Column,
-						"", cteName, outputCol.Alias,
+						"", cteName, targetName,
 						outputCol.Transform,
 						true, // CTE is temporary
 					))
@@ -860,9 +863,11 @@ func (a *Analyzer) processDerivedTable(sub *nodes.SubqueryExpr) {
 	a.processSelectStatement(sub.Select)
 	subqueryScope := a.popScope()
 
+	outputColumns := subqueryScope.GetOutputColumns()
+	names := exposedColumnNames(sub.Columns, outputColumns)
 	derivedLineage := make([]model.ColumnRelation, 0)
-	for _, col := range subqueryScope.GetOutputColumns() {
-		colName := col.Alias
+	for i, col := range outputColumns {
+		colName := names[i]
 		if colName == "" {
 			colName = "column"
 		}
@@ -891,7 +896,7 @@ func (a *Analyzer) processDerivedTable(sub *nodes.SubqueryExpr) {
 		IsSubquery: true,
 		Lineage:    derivedLineage,
 	}
-	attachTempColumnLookup(tableRef, outputColumnAliases(subqueryScope.GetOutputColumns()))
+	attachTempColumnLookup(tableRef, names)
 	a.currentScope().AddTable(tableRef)
 }
 
@@ -2065,9 +2070,16 @@ func tempColumnNames(declared []string, lineage []model.ColumnRelation) []string
 	return names
 }
 
-// outputColumnAliases lists the names a query's output exposes, which is the
-// column list a derived table offers to the statement that selects from it.
-func outputColumnAliases(cols []scope.OutputColumn) []string {
+// exposedColumnNames lists the names a temporary relation exposes, in the order
+// the relation offers them. A declared list — a CTE's `WITH c (a, b)` or a
+// derived table's `AS d (a, b)` — renames the body's output positionally, so both
+// the relation's own lineage and the columns the scope resolves against have to
+// use the renamed names. The list is honoured only when its arity matches the
+// body, because a mismatch is a statement MySQL rejects.
+func exposedColumnNames(declared []string, cols []scope.OutputColumn) []string {
+	if len(declared) > 0 && len(declared) == len(cols) {
+		return declared
+	}
 	names := make([]string, 0, len(cols))
 	for _, col := range cols {
 		names = append(names, col.Alias)

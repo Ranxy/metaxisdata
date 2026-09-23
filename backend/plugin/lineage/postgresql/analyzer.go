@@ -482,9 +482,16 @@ func tempColumnNames(declared []string, lineage []model.ColumnRelation) []string
 	return names
 }
 
-// outputColumnAliases lists the names a query's output exposes, which is the
-// column list a derived table offers to the statement that selects from it.
-func outputColumnAliases(cols []scope.OutputColumn) []string {
+// exposedColumnNames lists the names a temporary relation exposes, in the order
+// the relation offers them. A declared list — a CTE's `WITH c (a, b)` or a
+// derived table's `AS d (a, b)` — renames the body's output positionally, so both
+// the relation's own lineage and the columns the scope resolves against have to
+// use the renamed names. The list is honoured only when its arity matches the
+// body, because a mismatch is a statement PostgreSQL rejects.
+func exposedColumnNames(declared []string, cols []scope.OutputColumn) []string {
+	if len(declared) > 0 && len(declared) == len(cols) {
+		return declared
+	}
 	names := make([]string, 0, len(cols))
 	for _, col := range cols {
 		names = append(names, col.Alias)
@@ -548,8 +555,10 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 	}
 
 	alias := ""
+	var declaredColumns []string
 	if sub.Alias != nil {
 		alias = sub.Alias.Aliasname
+		declaredColumns = stringList(sub.Alias.Colnames)
 	}
 	a.markTempTable(alias)
 
@@ -564,8 +573,10 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 
 	lineage := make([]model.ColumnRelation, 0)
 
-	for _, col := range subqueryScope.GetOutputColumns() {
-		colName := col.Alias
+	outputColumns := subqueryScope.GetOutputColumns()
+	names := exposedColumnNames(declaredColumns, outputColumns)
+	for i, col := range outputColumns {
+		colName := names[i]
 		if colName == "" {
 			colName = "column"
 		}
@@ -602,7 +613,7 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 		IsCTE:      false,
 		Lineage:    lineage,
 	}
-	attachTempColumnLookup(tableRef, outputColumnAliases(subqueryScope.GetOutputColumns()))
+	attachTempColumnLookup(tableRef, names)
 	a.currentScope().AddTable(tableRef)
 }
 

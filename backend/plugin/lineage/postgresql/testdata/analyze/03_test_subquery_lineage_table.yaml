@@ -74,3 +74,25 @@ cases:
           from_field: name
           to_table: __result__
           to_field: name
+
+    # A derived table's alias list renames the body's output positionally, so the
+    # reference and the lineage both name the column the derived table exposes.
+    - name: derived table with a column alias list
+      sql: SELECT user_name FROM (SELECT name FROM users) AS d (user_name)
+      expected_edges:
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: user_name
+          relation_type: direct
+          is_temp: true
+
+    - name: derived table column alias list referenced through the alias
+      sql: SELECT d.user_name FROM (SELECT name FROM users) AS d (user_name)
+      expected_edges:
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: user_name
+          relation_type: direct
+          is_temp: true
