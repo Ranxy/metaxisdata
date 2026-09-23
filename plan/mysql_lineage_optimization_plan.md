@@ -926,12 +926,9 @@ Not ours to fix:
 
 Ours:
 
-- **The catalog expands a wildcard for a table, a view and a materialized view,
-  but not for an external table**, whose `ExternalTableMetadata` carries a column
-  list all the same (a PostgreSQL foreign table is the shape that reaches it), so
-  a wildcard over one still falls back to `*`. The dispatch is a single branch in
-  `catalog/provide.go` now; it is left out of §10.20 to keep that change to the
-  materialized-view item it closes.
+- Nothing. The list §10.2 held through the fourteenth pass — the
+  materialized-view output columns (§10.20) and the external-table sibling that
+  the audit for it turned up (§10.21) — is closed.
 
 Decided, and deliberately not defects:
 
@@ -1976,8 +1973,27 @@ keeps the `*` fallback instead of expanding to nothing.
 Negative-checked: the materialized-view case in `catalog/provide_test.go` fails
 when the branch is removed, the integration case fails the same way end to end,
 and the live StarRocks and Doris probes report no columns when the attachment is
-removed. New coverage is `catalog/provide_test.go` (six cases) and
+removed. New coverage is `catalog/provide_test.go` and
 `TestPostgresMaterializedViewColumnsRealServerIntegration` (the synced column
 list plus a manual-SQL wildcard expanded through it). `gofmt`, `golangci-lint`,
 `go test ./...`, the build, the frontend checks and the real-server integration
 suite are green; MariaDB and TiDB are untouched.
+
+### 10.21 Sixteenth pass: the foreign table sibling
+
+§10.20 left one sibling open: the catalog expanded a wildcard for a table, a view
+and a materialized view, but not for an external table, whose
+`ExternalTableMetadata` carries a column list all the same. PostgreSQL is the only
+engine that produces one — a foreign table — and it reads its columns through the
+same `INFORMATION_SCHEMA.COLUMNS` query as a table, since `relkind 'f'` was always
+in that view's filter. The columns were synced and simply not reported. The
+dispatch covers every object type that keeps its columns inside its own metadata
+now, and `catalog/provide_test.go` asserts each of them.
+
+Verified live and end to end:
+`TestPostgresForeignTableWildcardRealServerIntegration` creates a `file_fdw`
+foreign table and expands `SELECT * FROM public.foreign_users` in manual SQL to
+`user_id` and `user_name`. `file_fdw` is a contrib module and installing it needs
+a superuser, so the case skips rather than fails where that is unavailable.
+Negative-checked by removing the branch: the unit case fails, and the integration
+case fails after its lineage wait. §10.2's "ours" list is empty now.
