@@ -450,6 +450,13 @@ func materializedViewColumns(view *v1pb.MaterializedViewMetadata) []*v1pb.Column
 	return view.GetColumns()
 }
 
+func externalTableColumns(table *v1pb.ExternalTableMetadata) []*v1pb.ColumnMetadata {
+	if table == nil {
+		return nil
+	}
+	return table.GetColumns()
+}
+
 func viewRules(view *v1pb.ViewMetadata) []*v1pb.RuleMetadata {
 	if view == nil {
 		return nil

@@ -17,6 +17,8 @@ func buildMetadataHistoryChangeGroups(metaType v1pb.MetaType, before, after *sto
 		return buildColumnHistoryChangeGroups(before, after, operation)
 	case v1pb.MetaType_VIEW:
 		return buildViewHistoryChangeGroups(before, after, operation)
+	case v1pb.MetaType_EXTERNAL_TABLE:
+		return buildExternalTableHistoryChangeGroups(before, after, operation)
 	case v1pb.MetaType_MATERIALIZED_VIEW:
 		return buildMaterializedViewHistoryChangeGroups(before, after, operation)
 	case v1pb.MetaType_MANUAL_SQL:
@@ -154,6 +156,33 @@ func buildMaterializedViewHistoryChangeGroups(before, after *store.MetaRegistryH
 		groups = append(groups, group)
 	}
 	if group := diffIndexGroupFromList(indexMetadataList(beforeView), indexMetadataList(afterView)); group != nil {
+		groups = append(groups, group)
+	}
+	return groups
+}
+
+func buildExternalTableHistoryChangeGroups(before, after *store.MetaRegistryHistory, operation v1pb.MetadataHistoryOperation) []*v1pb.MetadataHistoryChangeGroup {
+	beforeMeta := convertStoredMetadataMessage(historyMetadata(before))
+	afterMeta := convertStoredMetadataMessage(historyMetadata(after))
+	beforeTable := (*v1pb.ExternalTableMetadata)(nil)
+	afterTable := (*v1pb.ExternalTableMetadata)(nil)
+	if beforeMeta != nil {
+		beforeTable = beforeMeta.GetExternalTableMetadata()
+	}
+	if afterMeta != nil {
+		afterTable = afterMeta.GetExternalTableMetadata()
+	}
+
+	var groups []*v1pb.MetadataHistoryChangeGroup
+	if operation == v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_UPDATED && beforeTable != nil && afterTable != nil {
+		if fields := compareExternalTableSelfFields(beforeTable, afterTable); len(fields) > 0 {
+			groups = append(groups, &v1pb.MetadataHistoryChangeGroup{
+				Section: v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_SELF,
+				Changes: []*v1pb.MetadataHistoryChangeItem{newSelfChangeItem(fields)},
+			})
+		}
+	}
+	if group := diffColumnGroupFromList(externalTableColumns(beforeTable), externalTableColumns(afterTable)); group != nil {
 		groups = append(groups, group)
 	}
 	return groups
@@ -366,6 +395,13 @@ func compareTableSelfFields(before, after *v1pb.TableMetadata) []*v1pb.MetadataF
 	appendStringFieldChange(&changes, "create_options", "create options", before.GetCreateOptions(), after.GetCreateOptions())
 	appendStringFieldChange(&changes, "primary_key_type", "primary key type", before.GetPrimaryKeyType(), after.GetPrimaryKeyType())
 	appendStringFieldChange(&changes, "sharding_info", "sharding info", before.GetShardingInfo(), after.GetShardingInfo())
+	return changes
+}
+
+func compareExternalTableSelfFields(before, after *v1pb.ExternalTableMetadata) []*v1pb.MetadataFieldChange {
+	changes := []*v1pb.MetadataFieldChange{}
+	appendStringFieldChange(&changes, "external_server_name", "external server", before.GetExternalServerName(), after.GetExternalServerName())
+	appendStringFieldChange(&changes, "external_database_name", "external database", before.GetExternalDatabaseName(), after.GetExternalDatabaseName())
 	return changes
 }
 
