@@ -303,27 +303,26 @@ func TestScope_ResolveColumn_MetadataRejectsUnknownColumn(t *testing.T) {
 	require.Nil(t, resolved)
 }
 
-// Incomplete metadata keeps the deterministic ordering rule instead of guessing.
-func TestScope_ResolveColumn_PartialMetadataFallsBack(t *testing.T) {
+// A relation whose columns are unknown is the only one that can still own a name
+// no described relation owns, so it answers before one the catalog confirms does
+// not — including a temporary relation, which is why an unqualified name over a
+// derived table reaches that table's own lineage.
+func TestScope_ResolveColumn_UndescribedRelationAnswers(t *testing.T) {
 	scope := NewScope(nil)
 	scope.AddTable(tableWithColumns("a", []string{"id"}))
 	scope.AddTable(&TableRef{Table: "b", Alias: "b"})
 
 	resolved, err := scope.ResolveColumn(ColumnRef{Column: "z"})
 	require.NoError(t, err)
-	require.Equal(t, "a", resolved.Table)
-}
+	require.Equal(t, "b", resolved.Table)
 
-// A temporary relation has no catalog columns, so its presence keeps the
-// ordering rule; the deterministic key order then picks the first relation.
-func TestScope_ResolveColumn_TemporaryRelationFallsBack(t *testing.T) {
-	scope := NewScope(nil)
-	scope.AddTable(tableWithColumns("a", []string{"id"}))
-	scope.AddTable(&TableRef{Table: "c", Alias: "c", IsCTE: true})
+	derived := NewScope(nil)
+	derived.AddTable(tableWithColumns("a", []string{"id"}))
+	derived.AddTable(&TableRef{Table: "d", Alias: "d", IsSubquery: true})
 
-	resolved, err := scope.ResolveColumn(ColumnRef{Column: "id"})
+	resolved, err = derived.ResolveColumn(ColumnRef{Column: "z"})
 	require.NoError(t, err)
-	require.Equal(t, "a", resolved.Table)
+	require.Equal(t, "d", resolved.Table)
 }
 
 // A single relation keeps the ordering rule: there is nothing to disambiguate,
@@ -402,14 +401,14 @@ func TestScope_ResolveColumn_AmbiguousDoesNotReachOutward(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "customers", resolved.Table)
 
-	// Undecidable: a relation whose columns are unknown may own the name, so the
-	// deterministic name order answers instead of the enclosing scope.
+	// Undecidable: a relation whose columns are unknown may own the name, so it
+	// answers here rather than the enclosing scope.
 	undecidable := NewScope(outer)
 	undecidable.AddTable(tableWithColumns("customers", []string{"id"}))
 	undecidable.AddTable(&TableRef{Table: "zarchive", Alias: "zarchive"})
 	resolved, err = undecidable.ResolveColumn(ColumnRef{Column: "amount"})
 	require.NoError(t, err)
-	require.Equal(t, "customers", resolved.Table)
+	require.Equal(t, "zarchive", resolved.Table)
 }
 
 // A relation the catalog confirms owns the name is preferred over a temporary

@@ -197,9 +197,10 @@ type resolution struct {
 	// columns holds one entry per relation in scope that owns the name, in the
 	// scope's name order. Several entries mean more than one relation exposes it.
 	columns []ResolvedColumn
-	// undecidable reports that a relation in scope has unknown columns, so a
-	// scope with no owner cannot be ruled out as the one that provides the name.
-	undecidable bool
+	// unknown holds the relations whose columns are not described, in the scope's
+	// name order. A name no described relation owns can only come from one of
+	// them, so one of them answers instead of the search reaching outward.
+	unknown []*TableRef
 }
 
 // resolveUnqualified resolves a column that names no qualifier. The search walks
@@ -209,21 +210,19 @@ type resolution struct {
 //
 // Catalog metadata decides whether a scope provides the name. It is consulted
 // only for base tables and trusted in both directions: a relation that owns the
-// column becomes an answer, and a scope whose relations are all known and none
-// of which owns the column is skipped in favour of the enclosing one. When a
-// relation's columns are unknown the scope cannot be ruled out, so the innermost
-// relation by name answers instead of the search reaching outward — the
-// deterministic rule a metadata-less scope has always had.
+// column becomes an answer, and a scope whose relations are all described and
+// none of which owns the column is skipped in favour of the enclosing one.
 //
-// Only a scope that is skipped as definitively absent lets the search continue.
-// An ambiguous name does not: an enclosing scope cannot resolve a name this one
-// already found, and neither does an undecidable one, whose relations are the
-// only plausible owners.
+// A relation whose columns are unknown cannot be ruled out, so it answers a name
+// no described relation owns — and it is preferred over a relation the catalog
+// confirms does *not* own the name, because only the undescribed one can still
+// provide it. A scope with no undescribed relation and no owner is the one case
+// that lets the search continue.
 func (s *Scope) resolveUnqualified(colRef ColumnRef) ([]ResolvedColumn, error) {
-	// fallback is the innermost scope holding exactly one relation. A name
-	// nothing owns still has to be attributed somewhere, and a single candidate
-	// is not a guess. It is dropped once a scope offers several candidates, so
-	// the rule keeps its "only when there is no choice" meaning.
+	// fallback is the innermost scope holding exactly one relation. A name that
+	// no relation owns still has to be attributed somewhere, and a single
+	// candidate is not a guess. It is dropped once a scope offers several
+	// candidates, so the rule keeps its "only when there is no choice" meaning.
 	var (
 		fallback       *TableRef
 		hasAlternative bool
@@ -241,8 +240,8 @@ func (s *Scope) resolveUnqualified(colRef ColumnRef) ([]ResolvedColumn, error) {
 		if len(res.columns) > 0 {
 			return res.columns, nil
 		}
-		if res.undecidable && len(candidates) > 0 {
-			return columnsOf(candidates[:1], colRef.Column), nil
+		if len(res.unknown) > 0 {
+			return columnsOf(res.unknown[:1], colRef.Column), nil
 		}
 		// An empty scope still describes the CTEs declared in it, which are the
 		// only relations an unqualified name can address there.
@@ -267,16 +266,14 @@ func (s *Scope) resolveUnqualified(colRef ColumnRef) ([]ResolvedColumn, error) {
 // described, so a relation the catalog confirms owns the name is preferred over
 // a temporary relation that might also own it.
 func (s *Scope) resolveInScope(colRef ColumnRef) resolution {
-	var owners []*TableRef
-	undecidable := false
+	var (
+		owners  []*TableRef
+		unknown []*TableRef
+	)
 	for _, ref := range s.sortedRelations() {
-		if ref.IsSubquery || ref.IsCTE {
-			undecidable = true
-			continue
-		}
 		names := ref.ColumnNames()
 		if names == nil {
-			undecidable = true
+			unknown = append(unknown, ref)
 			continue
 		}
 		for _, name := range names {
@@ -286,7 +283,7 @@ func (s *Scope) resolveInScope(colRef ColumnRef) resolution {
 			}
 		}
 	}
-	return resolution{columns: columnsOf(owners, colRef.Column), undecidable: undecidable}
+	return resolution{columns: columnsOf(owners, colRef.Column), unknown: unknown}
 }
 
 // columnsOf describes the relations that own a column, the shape every

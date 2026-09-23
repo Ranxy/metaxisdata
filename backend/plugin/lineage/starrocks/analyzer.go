@@ -259,12 +259,14 @@ func (a *Analyzer) processSingleTableRef(ref *nodes.TableRef) {
 	}
 	if schema == "" {
 		if cte, ok := a.currentScope().FindCTE(table); ok {
-			a.currentScope().AddTable(&scope.TableRef{
+			tableRef := &scope.TableRef{
 				Table:   table,
 				Alias:   alias,
 				IsCTE:   true,
 				Lineage: cte.Lineage,
-			})
+			}
+			attachTempColumnLookup(tableRef, cte.Columns)
+			a.currentScope().AddTable(tableRef)
 			return
 		}
 	}
@@ -318,6 +320,54 @@ func (a *Analyzer) attachColumnLookup(tableRef *scope.TableRef) {
 	})
 }
 
+// attachTempColumnLookup lets the scope resolver treat a CTE or derived table as
+// a relation whose columns are known, so an unqualified name it owns resolves
+// through its own lineage instead of being guessed from name order. declared is
+// the CTE's column list when the query wrote one, or the names the query's output
+// exposes; a nil list falls back to the targets the lineage carries.
+func attachTempColumnLookup(tableRef *scope.TableRef, declared []string) {
+	if names := tempColumnNames(declared, tableRef.Lineage); names != nil {
+		tableRef.SetColumnLookup(func() []string { return names })
+	}
+}
+
+// tempColumnNames reports the columns a temporary relation exposes, or nil when
+// one of them cannot be named. A wildcard the catalog did not expand, and an
+// output without a name, both leave the list incomplete; an incomplete list is
+// reported as unknown so the resolver keeps its fallback for the relation.
+func tempColumnNames(declared []string, lineage []model.ColumnRelation) []string {
+	names := declared
+	if len(names) == 0 {
+		seen := make(map[string]struct{}, len(lineage))
+		for _, edge := range lineage {
+			if _, ok := seen[edge.Target.Name]; ok {
+				continue
+			}
+			seen[edge.Target.Name] = struct{}{}
+			names = append(names, edge.Target.Name)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	for _, name := range names {
+		if name == "" || name == wildcardColumn {
+			return nil
+		}
+	}
+	return names
+}
+
+// outputColumnAliases lists the names a query's output exposes, which is the
+// column list a derived table offers to the statement that selects from it.
+func outputColumnAliases(cols []scope.OutputColumn) []string {
+	names := make([]string, 0, len(cols))
+	for _, col := range cols {
+		names = append(names, col.Alias)
+	}
+	return names
+}
+
 // processDerivedTable processes a derived table (a subquery in FROM). omni
 // keeps the subquery body as raw text, so it is re-parsed with a matching
 // source pushed; the alias is registered as a temporary table carrying the
@@ -336,12 +386,14 @@ func (a *Analyzer) processDerivedTable(ref *nodes.TableRef) {
 	}
 
 	lineage := a.tempTableLineage(subqueryScope, alias)
-	a.currentScope().AddTable(&scope.TableRef{
+	tableRef := &scope.TableRef{
 		Table:      alias,
 		Alias:      alias,
 		IsSubquery: true,
 		Lineage:    lineage,
-	})
+	}
+	attachTempColumnLookup(tableRef, outputColumnAliases(subqueryScope.GetOutputColumns()))
+	a.currentScope().AddTable(tableRef)
 }
 
 // analyzeRawQueryScope parses and analyzes a query body that omni exposes only

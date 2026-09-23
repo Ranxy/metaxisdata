@@ -525,3 +525,224 @@ cases:
           is_temp: true
           transformations:
             - operation: FILTER
+
+    # A relation whose columns are unknown cannot be ruled out either, so it
+    # answers for a name no described relation owns — and a derived table or CTE
+    # is such a relation only when the analyzer could name all of its columns. An
+    # unexpanded wildcard leaves it undescribed, which keeps the fallback rather
+    # than ruling it out on incomplete information.
+    - name: a relation with no snapshot answers for the name
+      sql: SELECT x FROM a JOIN u ON a.id = u.id
+      catalog:
+        tables:
+            a:
+                - id
+      expected_edges:
+        - from_table: u
+          from_field: x
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: u
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+
+    - name: a derived table answers through its own lineage
+      sql: SELECT x FROM a JOIN (SELECT id, x FROM b) d ON a.id = d.id
+      catalog:
+        tables:
+            a:
+                - id
+      expected_edges:
+        - from_table: b
+          from_field: x
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+
+    - name: a name a base table and a derived table both own is reported from both
+      sql: SELECT id FROM a JOIN (SELECT id, x FROM b) d ON a.id = d.id
+      catalog:
+        tables:
+            a:
+                - id
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+
+    - name: a CTE is a described relation too
+      sql: WITH d AS (SELECT id, x FROM b) SELECT id FROM a JOIN d ON a.id = d.id
+      catalog:
+        tables:
+            a:
+                - id
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+
+    - name: a correlated reference resolves past a derived table
+      sql: SELECT o.id FROM orders o WHERE EXISTS (SELECT 1 FROM (SELECT id, y FROM b) d WHERE amount > 1)
+      catalog:
+        tables:
+            orders:
+                - id
+                - amount
+      expected_edges:
+        - from_table: orders
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: orders
+          from_field: amount
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+
+    - name: an expanded wildcard body describes the derived table
+      sql: SELECT x FROM a JOIN (SELECT * FROM b) d ON a.id = d.id
+      catalog:
+        tables:
+            a:
+                - id
+            b:
+                - id
+                - x
+      expected_edges:
+        - from_table: b
+          from_field: x
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+
+    - name: an unexpanded wildcard body leaves the derived table undescribed
+      sql: SELECT x FROM a JOIN (SELECT * FROM b) d ON a.id = d.id
+      catalog:
+        tables:
+            a:
+                - id
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
