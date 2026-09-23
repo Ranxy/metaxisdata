@@ -922,10 +922,10 @@ changing one is a deliberate, visible corpus change.
 - The public API still collapses relation types to DIRECT/INDIRECT.
 - An unqualified reference that several relations satisfy is reported once per
   relation the catalog confirms owns it, and the search reaches the enclosing
-  scope when the current one is known not to provide the name (§10.11). A
-  relation whose columns are unknown still falls back to the scope's name order,
-  so a table that has never been synced can be attributed a column it does not
-  own.
+  scope when the current one is known not to provide the name (§10.11). A name no
+  described relation owns goes to the first relation whose columns are unknown,
+  which for two such relations — two tables that were never synced — is still the
+  scope's name order (§10.12).
 - Materialized views still have no output-column list in the store proto, so a
   wildcard over an MV falls back to `*`.
 - The three MySQL-family analyzers remain copies kept in sync by regeneration;
@@ -1399,3 +1399,70 @@ suites; disabling the outward walk fails 3 shared, 1 PostgreSQL and 2 StarRocks
 cases; and so does emitting one owner in their funnels. `gofmt`, `golangci-lint`, `go test ./...`, the build and
 the real-server integration suite are green; the MariaDB and TiDB copies remain
 pure regenerations (21-line diffs).
+
+### 10.12 Eighth pass: undescribed relations and temporary-table columns
+
+§10.11 left one case open: a relation the catalog does not describe made its
+scope undecidable, and the scope then fell back to its name order, which could
+attribute a name to a relation the catalog confirms does *not* own it. Measuring
+that fallback found the second half — a CTE or derived table was *always*
+undescribed, so a name it owned went to a base table by name order instead of
+through the temporary table's own lineage.
+
+Two changes, both in the shared resolver plus one registration site per analyzer.
+Measured with catalog `a{id}`:
+
+| shape | before | after |
+| --- | --- | --- |
+| `SELECT x FROM a JOIN u ON a.id = u.id` (`u` unsynced) | `a.x` | `u.x` |
+| `SELECT x FROM a JOIN (SELECT id, x FROM b) d ON a.id = d.id` | `a.x` | `b.x`, through `d` |
+| `SELECT id FROM a JOIN (SELECT id, x FROM b) d ON a.id = d.id` | `a.id` only | `a.id` **and** `b.id` |
+| `WITH d AS (SELECT id, x FROM b) SELECT id FROM a JOIN d …` | `a.id` only | `a.id` and `b.id` |
+| `… WHERE EXISTS (SELECT 1 FROM (SELECT id, y FROM b) d WHERE amount > 1)` | no edge | `orders.amount` as a `FILTER` influence |
+| `SELECT x FROM a JOIN (SELECT * FROM b) d …`, with `b{id,x}` | `a.x` | `b.x` |
+| the same without `b` in the catalog | `a.x` | no edge: the star cannot be named |
+
+1. **An undescribed relation is preferred over one the catalog ruled out.** If no
+   described relation owns the name, the only relation that can still provide it
+   is one whose columns are unknown, so the first such relation in name order
+   answers. Before, name order could pick a relation already known not to own it.
+2. **A temporary relation exposes the columns it names.** The analyzer attaches a
+   column list to the `TableRef` it registers for a CTE or derived table: the
+   declared list (`WITH d (a, b)`) when the query wrote one, otherwise the names
+   the body's output exposes. The resolver then treats it like any described
+   relation — it can own the name, and it can be *ruled out*, which is what lets a
+   correlated reference past a derived table reach the enclosing query. No catalog
+   is needed for this: a derived table's own output list is known from its SQL.
+
+Decisions:
+
+- **An incomplete column list is reported as unknown.** A wildcard the catalog did
+  not expand, and an output without a name, both leave the list incomplete, and
+  the relation keeps the fallback rather than being ruled out on partial
+  information. Treating the known subset as complete would drop or misattribute
+  every column the star hides.
+- **The names come from the analyzer, not from the lineage alone.** A column with
+  no source (`SELECT 1 AS one`) contributes no lineage edge, so lineage targets
+  are not a column list by themselves; the declared list or the output names are.
+- **Two relations nobody describes are still a guess.** The rule only decides
+  between an undescribed relation and one the catalog ruled out; §10.2 keeps the
+  residual case honest.
+
+Implementation: `scope`'s `resolution` carries the undescribed relations instead
+of an `undecidable` flag, `resolveInScope` no longer special-cases a temporary
+relation (its column list decides), and each analyzer gained
+`attachTempColumnLookup`, `tempColumnNames` and `outputColumnAliases`. No proto,
+store, API or frontend change.
+
+Corpus: each `TestUnqualifiedResolution_Table` suite gained seven cases — a
+relation with no snapshot, a derived table answering through its lineage, a name
+a base table and a derived table both own, a CTE, a correlated reference past a
+derived table, an expanded wildcard body, and an unexpanded one asserting zero
+edges. The shared MySQL-family corpus is 172 cases, PostgreSQL 130, StarRocks 119.
+
+Negative-checked: restoring the name-order fallback fails two scope unit tests and
+two corpus cases per engine, and making temporary relations undescribed again
+fails three per engine — the unexpanded-wildcard case among them, because name
+order then invents `a.x`. `gofmt`, `golangci-lint`, `go test ./...`, the build and
+the real-server integration suite are green; MariaDB and TiDB remain pure
+regenerations (21-line diffs).
