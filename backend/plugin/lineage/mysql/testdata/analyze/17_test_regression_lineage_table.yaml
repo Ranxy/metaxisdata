@@ -196,6 +196,8 @@ cases:
           to_field: id
           relation_type: union
           is_temp: false
+          transformations:
+            - operation: UNION
 
     - name: derived table over a union keeps every arm
       sql: SELECT s.id FROM (SELECT a.id FROM a UNION SELECT b.id FROM b) s
@@ -206,12 +208,16 @@ cases:
           to_field: id
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: b
           from_field: id
           to_table: __result__
           to_field: id
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
 
     - name: CTE over a union keeps every arm
       sql: WITH c AS (SELECT a.id FROM a UNION SELECT b.id FROM b) SELECT c.id FROM c
@@ -222,12 +228,16 @@ cases:
           to_field: id
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: b
           from_field: id
           to_table: __result__
           to_field: id
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
 
     - name: INSERT SELECT over a union keeps every arm
       sql: INSERT INTO dst (id) SELECT a.id FROM a UNION SELECT b.id FROM b
@@ -238,12 +248,16 @@ cases:
           to_field: id
           relation_type: union
           is_temp: false
+          transformations:
+            - operation: UNION
         - from_table: b
           from_field: id
           to_table: dst
           to_field: id
           relation_type: union
           is_temp: false
+          transformations:
+            - operation: UNION
 
     - name: correlated scalar subquery
       sql: SELECT e.name, (SELECT d.name FROM departments d WHERE d.id = e.department_id) AS dn FROM employees e
@@ -261,6 +275,8 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: PROJECT
 
     - name: insert column list overflow is dropped
       sql: INSERT INTO d (a, b) SELECT id, name, extra FROM a
@@ -318,6 +334,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: OPERATOR
+              op_type: SUBTRACTION
         - from_table: t
           from_field: name
           to_table: v
@@ -325,6 +344,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: FUNCTION
+              function_name: CONCAT
         - from_table: t
           from_field: '*'
           to_table: v
@@ -332,6 +354,9 @@ cases:
           relation_type: group
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
 
     # The recorded DELETE condition is expression text: a string literal keeps
     # its spaces.
@@ -373,6 +398,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: "idIN(SELECTuser_idFROMordersWHEREstatus='cancelled')"
         - from_table: orders
           from_field: user_id
           to_table: users
@@ -380,6 +408,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: "idIN(SELECTuser_idFROMordersWHEREstatus='cancelled')"
 
     - name: INSERT TABLE source
       sql: INSERT INTO d (a) TABLE s
@@ -468,6 +499,11 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              partition_by: [y]
+              order_by: [z]
         - from_table: t
           from_field: z
           to_table: __result__
@@ -475,6 +511,11 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              partition_by: [y]
+              order_by: [z]
 
     - name: UPDATE constant assignment records the table
       sql: UPDATE t SET x = 1
@@ -486,6 +527,8 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: PROJECT
 
     # A subquery nested in an operator expression contributes its own sources
     # alongside the enclosing expression's columns.
@@ -509,6 +552,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: OPERATOR
+              op_type: ADDITION
 
     - name: CREATE TABLE AS SELECT over a union keeps every arm
       sql: CREATE TABLE d AS SELECT id FROM a UNION SELECT id FROM b
@@ -527,6 +573,8 @@ cases:
           to_field: id
           relation_type: union
           is_temp: false
+          transformations:
+            - operation: UNION
 
     - name: leading WITH before DELETE is rejected
       sql: WITH c AS (SELECT id FROM a) DELETE FROM dst WHERE id IN (SELECT id FROM c)

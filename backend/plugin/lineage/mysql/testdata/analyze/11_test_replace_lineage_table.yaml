@@ -7,10 +7,14 @@ cases:
           from_field: id
           to_table: tmp_users
           to_field: id
+          relation_type: direct
+          is_temp: false
         - from_table: users
           from_field: name
           to_table: tmp_users
           to_field: name
+          relation_type: direct
+          is_temp: false
     - name: REPLACE SELECT with explicit columns
       sql: REPLACE INTO tmp_users (user_id, user_name) SELECT id, name FROM users
       expected_edges:
@@ -18,10 +22,14 @@ cases:
           from_field: id
           to_table: tmp_users
           to_field: user_id
+          relation_type: direct
+          is_temp: false
         - from_table: users
           from_field: name
           to_table: tmp_users
           to_field: user_name
+          relation_type: direct
+          is_temp: false
     - name: REPLACE SELECT with JOIN
       sql: "REPLACE INTO summary \n\t\t\t      SELECT u.id, u.name, COUNT(o.id) AS order_count \n\t\t\t      FROM users u \n\t\t\t      JOIN orders o ON u.id = o.user_id \n\t\t\t      GROUP BY u.id, u.name"
       expected_edges:
@@ -29,12 +37,21 @@ cases:
           from_field: id
           to_table: summary
           to_field: id
+          relation_type: direct
+          is_temp: false
         - from_table: users
           from_field: name
           to_table: summary
           to_field: name
+          relation_type: direct
+          is_temp: false
         - from_table: orders
           from_field: id
           to_table: summary
           to_field: order_count
           has_transform: true
+          relation_type: group
+          is_temp: false
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT

@@ -10,11 +10,20 @@ cases:
           to_table: users
           to_field: email
           has_transform: true
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
         - from_table: users
           from_field: '*'
           to_table: users
           to_field: updated_at
           has_transform: true
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FUNCTION
+              function_name: NOW
     - name: UPDATE with column reference
       sql: UPDATE users SET new_email = old_email, full_name = CONCAT(first_name, ' ', last_name)
       expected_edges:
@@ -22,16 +31,30 @@ cases:
           from_field: old_email
           to_table: users
           to_field: new_email
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
         - from_table: users
           from_field: first_name
           to_table: users
           to_field: full_name
           has_transform: true
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FUNCTION
+              function_name: CONCAT
         - from_table: users
           from_field: last_name
           to_table: users
           to_field: full_name
           has_transform: true
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FUNCTION
+              function_name: CONCAT
     - name: UPDATE with JOIN
       sql: "UPDATE orders o \n\t\t\t      JOIN users u ON o.user_id = u.id \n\t\t\t      SET o.user_name = u.name, o.discount = o.total * 0.1"
       expected_edges:
@@ -39,11 +62,20 @@ cases:
           from_field: name
           to_table: orders
           to_field: user_name
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
         - from_table: orders
           from_field: total
           to_table: orders
           to_field: discount
           has_transform: true
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              op_type: MULTIPLICATION
     - name: UPDATE with subquery
       sql: "UPDATE users \n\t\t\t      SET total_orders = (SELECT COUNT(*) FROM orders WHERE orders.user_id = users.id)"
       expected_edges:
@@ -52,3 +84,8 @@ cases:
           to_table: users
           to_field: total_orders
           has_transform: true
+          relation_type: group
+          is_temp: false
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT

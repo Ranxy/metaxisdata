@@ -8,11 +8,13 @@ cases:
           to_table: __result__
           to_field: id
           is_temp: true
+          relation_type: direct
         - from_table: users
           from_field: name
           to_table: __result__
           to_field: name
           is_temp: true
+          relation_type: direct
     - name: INSERT targets real table
       sql: INSERT INTO orders (order_id, user_id) SELECT id, user_id FROM temp_orders
       expected_edges:
@@ -21,11 +23,13 @@ cases:
           to_table: orders
           to_field: order_id
           is_temp: false
+          relation_type: direct
         - from_table: temp_orders
           from_field: user_id
           to_table: orders
           to_field: user_id
           is_temp: false
+          relation_type: direct
     - name: UPDATE targets real table
       sql: UPDATE products SET price = price * 1.1 WHERE category = 'electronics'
       expected_edges:
@@ -51,6 +55,7 @@ cases:
           is_temp: false
           transformations:
             - operation: DELETE
+              condition: "created_at<'2020-01-01'"
     - name: CREATE TABLE AS SELECT targets real table
       sql: CREATE TABLE summary AS SELECT category, COUNT(*) as cnt FROM products GROUP BY category
       expected_edges:
@@ -59,6 +64,7 @@ cases:
           to_table: summary
           to_field: category
           is_temp: false
+          relation_type: direct
         - from_table: products
           from_field: '*'
           to_table: summary

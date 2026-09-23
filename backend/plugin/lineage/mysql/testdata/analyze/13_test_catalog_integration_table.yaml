@@ -13,14 +13,20 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: email
           to_table: __result__
           to_field: email
+          relation_type: direct
+          is_temp: true
     - name: table.* with catalog
       sql: SELECT users.*, orders.total FROM users JOIN orders ON users.id = orders.user_id
       catalog:
@@ -37,14 +43,20 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
+          is_temp: true
         - from_table: orders
           from_field: total
           to_table: __result__
           to_field: total
+          relation_type: direct
+          is_temp: true
     - name: SELECT * in subquery with catalog
       sql: SELECT * FROM (SELECT * FROM users WHERE status = 'active') AS active_users
       catalog:
@@ -59,18 +71,26 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: email
           to_table: __result__
           to_field: email
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: status
           to_table: __result__
           to_field: status
+          relation_type: direct
+          is_temp: true
     - name: SELECT * in CTE with catalog
       sql: |-
         WITH active_users AS (SELECT * FROM users WHERE status = 'active')
@@ -87,15 +107,23 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: name
           to_table: __result__
           to_field: name
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: email
           to_table: __result__
           to_field: email
+          relation_type: direct
+          is_temp: true
         - from_table: users
           from_field: status
           to_table: __result__
           to_field: status
+          relation_type: direct
+          is_temp: true

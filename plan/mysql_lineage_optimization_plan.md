@@ -867,8 +867,10 @@ work, in order:
 
 Corpus state: **347 cases across the five dialects, all matched exactly, with
 no expectation that can match an arbitrary source or target and no `subset`
-case.** `go test ./...`, `golangci-lint run` and the real-server integration
-suite are green.
+case.** The MySQL family additionally asserts `relation_type` and `is_temp` on
+every edge and the operation of every transformation, enforced by a test rather
+than by convention (§10.5). `go test ./...`, `golangci-lint run` and the
+real-server integration suite are green.
 
 ### 10.1 Decisions the corpus now freezes
 
@@ -985,3 +987,34 @@ Checked and *not* MySQL defects, so nobody re-investigates them:
   exposes for that expression.
 - Identifier case, `NATURAL JOIN` coverage and the `schemas:` catalog key are
   recorded above as decisions or open items, not defects.
+
+### 10.5 Field-level assertion completion
+
+Exact matching pins *which* edges exist but not their other fields: an
+expectation that omits `relation_type` accepts any value, so a relation-type
+regression was invisible on 115 of the 244 shared edges. Every expectation in the
+three MySQL-family corpora (the shared corpus runs under MySQL, MariaDB and TiDB)
+now asserts:
+
+- `relation_type` on every edge — was 53% of the 244 shared edges; the MariaDB
+  and TiDB dialect corpora were already complete.
+- `is_temp` on every edge — was 66%.
+- `operation`, plus the non-empty `function_name`, `op_type`, `condition`,
+  `partition_by` and `order_by`, on every transformation — was 28 of the 107
+  transformation entries in the shared corpus, all 107 now.
+
+The whitespace-normalized `expression` text is still asserted only where it
+already was: it is an internal rendering, and freezing it on every edge would
+make the corpus churn on any formatting change. `arguments` carries the same
+reconstructed text, and `group_keys` is never populated (§10.2), so neither is
+asserted.
+
+`testutil.RequireFullEdgeAnnotations` makes the bar enforceable instead of a
+one-off cleanup. It fails a case whose expectation leaves `relation_type` or
+`is_temp` unasserted, whose relation type and transformation coverage disagree
+(a direct edge carries no transformation, any other type carries at least one),
+or whose transformation omits `operation`. `TestCorpusIsFullyAnnotated` calls it
+for MySQL, MariaDB and TiDB. PostgreSQL (258 edges: 29% relation type, 21%
+is_temp) and StarRocks (180 edges: 75% / 74%) are not wired yet, so their corpora
+still accept a field change silently — the guard can be enabled there once those
+corpora are annotated the same way.

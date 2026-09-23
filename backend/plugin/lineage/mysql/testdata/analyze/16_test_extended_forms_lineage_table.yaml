@@ -10,6 +10,11 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: ROW_NUMBER
+              partition_by: [department_id]
+              order_by: [salary]
         - from_table: employees
           from_field: name
           to_table: __result__
@@ -23,6 +28,11 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: ROW_NUMBER
+              partition_by: [department_id]
+              order_by: [salary]
     - name: window_aggregate_over
       sql: SELECT product_id, SUM(amount) OVER (PARTITION BY product_id ORDER BY sale_date) AS running_total FROM sales
       expected_edges:
@@ -54,6 +64,8 @@ cases:
           transformations:
             - operation: WINDOW
               function_name: SUM
+              partition_by: [product_id]
+              order_by: [sale_date]
         - from_table: sales
           from_field: sale_date
           to_table: __result__
@@ -64,6 +76,8 @@ cases:
           transformations:
             - operation: WINDOW
               function_name: SUM
+              partition_by: [product_id]
+              order_by: [sale_date]
     - name: union_three_arms
       sql: SELECT id, name FROM employees UNION SELECT id, name FROM contractors UNION SELECT id, name FROM vendors
       expected_edges:
@@ -73,36 +87,48 @@ cases:
           to_field: id
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: contractors
           from_field: name
           to_table: __result__
           to_field: name
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: employees
           from_field: id
           to_table: __result__
           to_field: id
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: employees
           from_field: name
           to_table: __result__
           to_field: name
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: vendors
           from_field: id
           to_table: __result__
           to_field: id
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: vendors
           from_field: name
           to_table: __result__
           to_field: name
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
     - name: union_all
       sql: SELECT user_id, amount FROM sales UNION ALL SELECT user_id, amount FROM refunds
       expected_edges:
@@ -112,24 +138,32 @@ cases:
           to_field: amount
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: refunds
           from_field: user_id
           to_table: __result__
           to_field: user_id
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: sales
           from_field: amount
           to_table: __result__
           to_field: amount
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
         - from_table: sales
           from_field: user_id
           to_table: __result__
           to_field: user_id
           relation_type: union
           is_temp: true
+          transformations:
+            - operation: UNION
     - name: cte_chain
       sql: WITH a AS (SELECT id, name FROM employees), b AS (SELECT name FROM a) SELECT name FROM b
       expected_edges:
@@ -188,6 +222,9 @@ cases:
           relation_type: group
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: MAX
     - name: case_expression
       sql: SELECT CASE WHEN salary > 100 THEN 'hi' ELSE name END AS band FROM employees
       expected_edges:
@@ -198,6 +235,8 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: CASE
         - from_table: employees
           from_field: salary
           to_table: __result__
@@ -205,6 +244,8 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: CASE
     - name: coalesce
       sql: SELECT COALESCE(name, 'unknown') AS n FROM employees
       expected_edges:
@@ -215,6 +256,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: COALESCE
     - name: group_concat
       sql: SELECT department_id, GROUP_CONCAT(name) AS names FROM employees GROUP BY department_id
       expected_edges:
@@ -231,6 +275,9 @@ cases:
           relation_type: group
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: GROUP_CONCAT
     - name: count_distinct
       sql: SELECT COUNT(DISTINCT department_id) AS c FROM employees
       expected_edges:
@@ -241,6 +288,9 @@ cases:
           relation_type: group
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
     - name: star_join
       sql: SELECT * FROM employees e JOIN departments d ON e.department_id = d.id
       expected_edges:
@@ -311,6 +361,8 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: PROJECT
     - name: delete_multi
       sql: DELETE e FROM employees e JOIN departments d ON e.department_id = d.id WHERE d.name = 'x'
       expected_edges:
@@ -321,6 +373,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: "d.name='x'"
     - name: load_data_columns
       sql: LOAD DATA INFILE 'a.csv' INTO TABLE employees FIELDS TERMINATED BY ',' (id, name)
       expected_edges:
@@ -346,6 +401,8 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: PROJECT
         - from_table: __file__
           from_field: col1
           to_table: employees

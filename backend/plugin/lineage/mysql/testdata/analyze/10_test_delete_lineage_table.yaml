@@ -12,6 +12,7 @@ cases:
           is_temp: false
           transformations:
             - operation: DELETE
+              condition: "status='inactive'ANDlast_login<DATE_SUB(NOW(),INTERVAL1YEAR)"
         - from_table: users
           from_field: last_login
           to_table: users
@@ -19,6 +20,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: "status='inactive'ANDlast_login<DATE_SUB(NOW(),INTERVAL1YEAR)"
     - name: DELETE with JOIN
       sql: |-
         DELETE o FROM orders o
@@ -34,6 +38,7 @@ cases:
           is_temp: false
           transformations:
             - operation: DELETE
+              condition: "u.status='deleted'"
     - name: DELETE with subquery
       sql: "DELETE FROM users \n\t\t\t      WHERE id IN (SELECT user_id FROM orders WHERE status = 'cancelled' GROUP BY user_id HAVING COUNT(*) > 5)"
       expected_edges:
@@ -46,6 +51,7 @@ cases:
           is_temp: false
           transformations:
             - operation: DELETE
+              condition: "idIN(SELECTuser_idFROMordersWHEREstatus='cancelled'GROUPBYuser_idHAVINGCOUNT(*)>5)"
         - from_table: orders
           from_field: user_id
           to_table: users
@@ -53,3 +59,6 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: "idIN(SELECTuser_idFROMordersWHEREstatus='cancelled'GROUPBYuser_idHAVINGCOUNT(*)>5)"

@@ -133,6 +133,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: "employees.id=1"
     - name: update for portion of
       sql: UPDATE employees FOR PORTION OF emp_period FROM '2020-01-01' TO '2021-01-01' SET salary = salary + 1
       expected_edges:
@@ -143,6 +146,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: OPERATOR
+              op_type: ADDITION
     - name: delete for portion of
       sql: DELETE FROM employees FOR PORTION OF emp_period FROM '2020-01-01' TO '2021-01-01' WHERE employees.id = 1
       expected_edges:
@@ -153,6 +159,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: "employees.id=1"
     - name: create or replace view
       sql: CREATE OR REPLACE VIEW v AS SELECT id, name FROM employees
       expected_edges:
@@ -177,12 +186,16 @@ cases:
           to_field: id
           relation_type: intersect
           is_temp: true
+          transformations:
+            - operation: INTERSECT
         - from_table: b
           from_field: id
           to_table: __result__
           to_field: id
           relation_type: intersect
           is_temp: true
+          transformations:
+            - operation: INTERSECT
     - name: except
       sql: SELECT id FROM a EXCEPT SELECT id FROM b
       expected_edges:
@@ -192,12 +205,16 @@ cases:
           to_field: id
           relation_type: except
           is_temp: true
+          transformations:
+            - operation: EXCEPT
         - from_table: b
           from_field: id
           to_table: __result__
           to_field: id
           relation_type: except
           is_temp: true
+          transformations:
+            - operation: EXCEPT
     - name: sequence expression
       sql: SELECT id, NEXT VALUE FOR seq AS n FROM employees
       expected_edges:
@@ -217,6 +234,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: JSON_EXTRACT
     - name: natural join qualified
       sql: SELECT e.name FROM employees e NATURAL JOIN departments d
       expected_edges:

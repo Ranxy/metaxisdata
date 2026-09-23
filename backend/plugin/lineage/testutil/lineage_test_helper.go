@@ -198,17 +198,8 @@ func RunLineageTestSuitesFromYAMLDir(t *testing.T, dir string, analyzeFn Analyze
 func RunLineageTestSuitesFromYAMLDirSkipping(t *testing.T, dir string, analyzeFn AnalyzeFunc, skip map[string]bool) {
 	t.Helper()
 
-	entries, err := os.ReadDir(dir)
+	suitePaths, err := FindLineageTestSuites(dir)
 	require.NoError(t, err)
-
-	suitePaths := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yaml" {
-			continue
-		}
-		suitePaths = append(suitePaths, filepath.Join(dir, entry.Name()))
-	}
-	slices.Sort(suitePaths)
 	require.NotEmpty(t, suitePaths, "no YAML lineage test suites found in %s", dir)
 
 	for _, suitePath := range suitePaths {
@@ -226,6 +217,69 @@ func RunLineageTestSuitesFromYAMLDirSkipping(t *testing.T, dir string, analyzeFn
 		t.Run(suite.Name, func(t *testing.T) {
 			RunLineageTests(t, cases, analyzeFn)
 		})
+	}
+}
+
+// FindLineageTestSuites returns the YAML suite paths in a directory, sorted.
+func FindLineageTestSuites(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read lineage test suite directory %q: %w", dir, err)
+	}
+
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yaml" {
+			continue
+		}
+		paths = append(paths, filepath.Join(dir, entry.Name()))
+	}
+	slices.Sort(paths)
+	return paths, nil
+}
+
+// RequireFullEdgeAnnotations fails when an expectation leaves a user-visible
+// relation field unasserted. An omitted field in an expectation is a wildcard,
+// so a case widens instead of narrows when it leaves fields out; this keeps
+// every case pinning what a consumer reads: the relation type, whether the
+// target is a real table, and the operation of every transformation on the edge.
+//
+// It is a check over the YAML alone and needs no analyzer.
+func RequireFullEdgeAnnotations(t *testing.T, dir string) {
+	t.Helper()
+
+	suitePaths, err := FindLineageTestSuites(dir)
+	require.NoError(t, err)
+	require.NotEmpty(t, suitePaths, "no YAML lineage test suites found in %s", dir)
+
+	for _, suitePath := range suitePaths {
+		suite, err := LoadLineageTestSuiteFromYAML(suitePath)
+		require.NoError(t, err)
+
+		for _, tc := range suite.Cases {
+			if tc.ExpectError || tc.ExpectedEdges == nil {
+				continue
+			}
+			for i, edge := range tc.ExpectedEdges {
+				where := fmt.Sprintf("%s / case %q edge %d (%s.%s -> %s.%s)",
+					filepath.Base(suitePath), tc.Name, i,
+					edge.FromTable, edge.FromField, edge.ToTable, edge.ToField)
+
+				require.NotNilf(t, edge.RelationType, "%s: relation_type is not asserted", where)
+				require.NotNilf(t, edge.IsTemp, "%s: is_temp is not asserted", where)
+
+				// A relation type is derived from the transformation list, so an
+				// edge carries a transformation exactly when it is not direct.
+				// Both halves of that have to be stated.
+				hasTransformation := len(edge.Transformations) > 0
+				require.Equalf(t, *edge.RelationType != model.RelationTypeDirect, hasTransformation,
+					"%s: relation type %v and transformation coverage disagree", where, *edge.RelationType)
+
+				for _, transform := range edge.Transformations {
+					require.NotEmptyf(t, transform.Operation, "%s: a transformation does not assert operation", where)
+				}
+			}
+		}
 	}
 }
 

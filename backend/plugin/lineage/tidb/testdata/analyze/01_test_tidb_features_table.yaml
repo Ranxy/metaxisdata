@@ -118,6 +118,9 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: "t2.x=1"
     - name: multi table update
       sql: UPDATE t1 JOIN t2 ON t1.id = t2.id SET t1.x = t2.y WHERE t2.z = 1
       expected_edges:
@@ -128,6 +131,8 @@ cases:
           relation_type: indirect
           has_transform: true
           is_temp: false
+          transformations:
+            - operation: PROJECT
     - name: intersect
       sql: SELECT id FROM a INTERSECT SELECT id FROM b
       expected_edges:
@@ -137,12 +142,16 @@ cases:
           to_field: id
           relation_type: intersect
           is_temp: true
+          transformations:
+            - operation: INTERSECT
         - from_table: b
           from_field: id
           to_table: __result__
           to_field: id
           relation_type: intersect
           is_temp: true
+          transformations:
+            - operation: INTERSECT
     - name: except
       sql: SELECT id FROM a EXCEPT SELECT id FROM b
       expected_edges:
@@ -152,12 +161,16 @@ cases:
           to_field: id
           relation_type: except
           is_temp: true
+          transformations:
+            - operation: EXCEPT
         - from_table: b
           from_field: id
           to_table: __result__
           to_field: id
           relation_type: except
           is_temp: true
+          transformations:
+            - operation: EXCEPT
     - name: create or replace view
       sql: CREATE OR REPLACE VIEW v AS SELECT id, name FROM employees
       expected_edges:
