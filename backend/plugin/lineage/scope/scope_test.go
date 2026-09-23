@@ -11,8 +11,8 @@ func TestNewScope(t *testing.T) {
 	require.NotNil(t, scope)
 	require.Nil(t, scope.Parent())
 	require.Empty(t, scope.GetOutputColumns())
-	require.Empty(t, scope.GetTables())
-	require.Empty(t, scope.GetCTEs())
+	require.Empty(t, scope.Tables())
+	require.Empty(t, scope.CTEs())
 }
 
 func TestScope_AddTable(t *testing.T) {
@@ -84,6 +84,87 @@ func TestScope_AddOutputColumn(t *testing.T) {
 	outputs := scope.GetOutputColumns()
 	require.Len(t, outputs, 1)
 	require.Equal(t, col, outputs[0])
+}
+
+// Two relations can carry the same name when they come from different
+// qualifiers. Both stay addressable, and a qualified reference picks the one its
+// qualifier names instead of whichever was registered last.
+func TestScope_SameNameDifferentQualifier(t *testing.T) {
+	scope := NewScope(nil)
+	db1 := &TableRef{Schema: "db1", Table: "t", Alias: "t"}
+	db2 := &TableRef{Schema: "db2", Table: "t", Alias: "t"}
+	scope.AddTable(db1)
+	scope.AddTable(db2)
+
+	require.Len(t, scope.Tables(), 2, "both relations have to stay in scope")
+
+	resolved, err := scope.ResolveColumn(ColumnRef{Schema: "db1", Table: "t", Column: "a"})
+	require.NoError(t, err)
+	require.Equal(t, "db1", resolved.Schema)
+	require.Equal(t, "t", resolved.Table)
+	require.Equal(t, "a", resolved.Column)
+
+	resolved, err = scope.ResolveColumn(ColumnRef{Schema: "db2", Table: "t", Column: "b"})
+	require.NoError(t, err)
+	require.Equal(t, "db2", resolved.Schema)
+
+	// A qualifier no relation carries must not silently bind to one of them.
+	_, err = scope.ResolveColumn(ColumnRef{Schema: "other", Table: "t", Column: "a"})
+	require.ErrorContains(t, err, "table not found")
+}
+
+// Registering the same address twice stays idempotent, so a repeated
+// registration replaces the earlier reference instead of duplicating it.
+func TestScope_AddTable_SameAddressReplaces(t *testing.T) {
+	scope := NewScope(nil)
+	scope.AddTable(&TableRef{Schema: "db", Table: "t", Alias: "t"})
+	replacement := &TableRef{Schema: "db", Table: "t", Alias: "t"}
+	scope.AddTable(replacement)
+
+	require.Len(t, scope.Tables(), 1)
+	found, ok := scope.FindRelation(RelationKey{Qualifier: "db", Name: "t"})
+	require.True(t, ok)
+	require.Same(t, replacement, found)
+}
+
+// A reference may qualify a relation that its FROM clause left unqualified: the
+// analyzer does not know which database that clause resolves in, so any
+// qualifier is accepted for it.
+func TestScope_QualifiedReferenceMatchesUnqualifiedRelation(t *testing.T) {
+	scope := NewScope(nil)
+	scope.AddTable(&TableRef{Table: "users", Alias: "users"})
+
+	resolved, err := scope.ResolveColumn(ColumnRef{Schema: "mydb", Table: "users", Column: "id"})
+	require.NoError(t, err)
+	require.Equal(t, "id", resolved.Column)
+}
+
+// ResolveColumnRef hands back the relation, so a caller does not have to look the
+// name up again and guess.
+func TestScope_ResolveColumnRef_ReturnsRelation(t *testing.T) {
+	scope := NewScope(nil)
+	table := &TableRef{Schema: "db1", Table: "t", Alias: "t"}
+	scope.AddTable(table)
+
+	resolved, ref, err := scope.ResolveColumnRef(ColumnRef{Schema: "db1", Table: "t", Column: "a"})
+	require.NoError(t, err)
+	require.Same(t, table, ref)
+	require.Equal(t, "a", resolved.Column)
+}
+
+// A CTE that exists only as a definition is still presented as the relation a
+// reference resolved to, so the caller handles it like any other temporary
+// relation.
+func TestScope_ResolveColumnRef_CTEDefinition(t *testing.T) {
+	scope := NewScope(nil)
+	scope.AddCTE(&CTEDefinition{Name: "c", Columns: []string{"id"}})
+
+	resolved, ref, err := scope.ResolveColumnRef(ColumnRef{Table: "c", Column: "id"})
+	require.NoError(t, err)
+	require.NotNil(t, ref)
+	require.True(t, ref.IsCTE)
+	require.Equal(t, "c", ref.Table)
+	require.Equal(t, "id", resolved.Column)
 }
 
 func TestScope_FindTable_InParentScope(t *testing.T) {

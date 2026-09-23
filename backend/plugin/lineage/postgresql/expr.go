@@ -38,16 +38,21 @@ func (a *Analyzer) nodeTexts(list *pgast.List) []string {
 
 // columnRefFromFields converts a ColumnRef's field list into the scope column
 // reference the algorithm layer expects. The trailing name is the column, the
-// preceding name is the table qualifier, and any schema qualifier is discarded,
-// so a schema-qualified reference keeps only its column and table. A trailing A_Star becomes the
-// wildcard column.
+// name before it is the table qualifier, and a further name before that is the
+// schema qualifier, which the resolver needs to tell two same-named relations
+// apart (s1.t from s2.t). A trailing A_Star becomes the wildcard column.
 func (*Analyzer) columnRefFromFields(fields *pgast.List) scope.ColumnRef {
 	names := stringList(fields)
 
 	ref := scope.ColumnRef{}
 	if fieldsContainStar(fields) {
 		ref.Column = wildcardColumn
-		if len(names) > 0 {
+		switch len(names) {
+		case 0:
+		case 1:
+			ref.Table = names[0]
+		default:
+			ref.Schema = names[len(names)-2]
 			ref.Table = names[len(names)-1]
 		}
 		return ref
@@ -58,8 +63,11 @@ func (*Analyzer) columnRefFromFields(fields *pgast.List) scope.ColumnRef {
 	case 1:
 		ref.Column = names[0]
 	default:
-		ref.Table = names[len(names)-2]
 		ref.Column = names[len(names)-1]
+		ref.Table = names[len(names)-2]
+		if len(names) >= 3 {
+			ref.Schema = names[len(names)-3]
+		}
 	}
 	return ref
 }

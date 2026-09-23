@@ -915,11 +915,10 @@ changing one is a deliberate, visible corpus change.
   read), and whether `WHERE` / join `ON` / `ORDER BY` / `HAVING` columns should
   be recorded as influences remains undecided.
 - The public API still collapses relation types to DIRECT/INDIRECT.
-- A database-qualified column reference is resolved by table name alone and the
-  scope keys relations by bare name, so a join between same-named tables in two
-  databases can attribute a column to the wrong database (§10.6). Related and
-  undecided: what an unqualified reference should do when two databases could
-  satisfy it.
+- An unqualified reference that several same-named relations satisfy is still
+  resolved rather than dropped: catalog metadata decides when it is complete,
+  otherwise the first relation by name. Whether it should drop the edge instead
+  is undecided (§10.7).
 - Materialized views still have no output-column list in the store proto, so a
   wildcard over an MV falls back to `*`.
 - The three MySQL-family analyzers remain copies kept in sync by regeneration;
@@ -1046,24 +1045,74 @@ The key now reads `Table.Database`. Pinned by
 `17/the same qualified column twice is one edge`, the latter keeping the
 "identical edge is still deduplicated" half honest.
 
-**Still open — a qualified reference is resolved by table name only.**
-`scope.ResolveColumn`'s qualified branch calls `FindTable(colRef.Table)` and then
-reports *the found table's* qualifier; `colRef.Schema` is never compared. The
-scope also keys its table map by the bare table name (or alias), so when two
-relations share a name the later registration overwrites the earlier one. The
-result is a silently wrong source, not a dropped edge:
+**Fixed in §10.7 — a qualified reference was resolved by table name only.**
+`scope.ResolveColumn`'s qualified branch called `FindTable(colRef.Table)` and then
+reported *the found table's* qualifier; `colRef.Schema` was never compared. The
+scope also keyed its table map by the bare table name (or alias), so when two
+relations shared a name the later registration overwrote the earlier one. The
+result was a silently wrong source, not a dropped edge:
 
 ```sql
 SELECT db1.t.a FROM db1.t JOIN db2.t ON db1.t.id = db2.t.id
 -- stored edge: db2.t.a -> __result__.a   (the SQL asked for db1.t.a)
 ```
 
-A single qualified table (`SELECT db1.t.a FROM db1.t`) is correct, and the
-aliased form above is correct because the aliases give the two relations
-distinct keys — only same-name relations without aliases collide. Fixing it means
-keying a qualified relation by qualifier plus name and matching the qualifier on
-lookup, which changes the shared table map for all five dialects. It also raises
-a product question this plan has not answered: when an *unqualified* reference
-(`t.id`) can match two databases, should the edge be dropped, or resolved to one
-of them deterministically? That decision belongs with the §10.2 open items, so
-the fix is deliberately not bundled with the dedup key change.
+The aliased form above was correct because the aliases gave the two relations
+distinct keys; only same-name relations without aliases collided. Fixing it meant
+giving a relation an identity of qualifier plus name, which the shared `scope`
+package now does for all three analyzer families.
+
+### 10.7 Relation identity across qualifiers
+
+The §10.6 open item is fixed. Its root cause was that a relation had no identity
+beyond the name a query used, so a name-keyed fix would have cured only the first
+of four symptoms. `scope` now models the identity explicitly:
+
+- `RelationKey{Qualifier, Name}` is the database (MySQL family, StarRocks) or
+  schema (PostgreSQL) plus the alias, or the table name when there is none.
+- `Scope` holds relations in a slice, so same-named relations from different
+  qualifiers coexist instead of overwriting each other; `AddTable` replaces only
+  an identical key, which keeps a repeated registration idempotent.
+- `FindRelation(key)` matches the key exactly first, then accepts a relation
+  registered without a qualifier — the analyzer does not know which database an
+  unqualified FROM clause resolves in, so a qualified reference to it stays
+  resolvable.
+- `Tables()` / `CTEs()` return ordered slices instead of the internal map, so
+  every relation in scope is expanded and no order depends on map iteration.
+- `ResolveColumnRef` also returns the relation a reference resolved to, so the
+  ~25 "is the source a query-local relation?" call sites stop looking the name up
+  again and guessing; `scope.RelationKeyOf` maps a stored endpoint back to its
+  key for the temp-table checks.
+- The reference side keeps its qualifier where it used to drop it: the MySQL
+  family's `collectExprColumns` and `collectUpsertSources`, and PostgreSQL's
+  `columnRefFromFields`, which discarded a schema qualifier by design before.
+- A CTE is query-local and is never qualified, so a CTE is bound only when the
+  reference carries no qualifier, and the temp-table filters treat only an
+  unqualified endpoint as query-local.
+
+Four consequences, each verified by probe before and after, and identical in all
+three families:
+
+| Consequence | Before | After |
+| --- | --- | --- |
+| wrong source | `SELECT db1.t.a FROM db1.t JOIN db2.t …` gives `db2.t.a` | `db1.t.a` |
+| dropped edge | `SELECT a.id, b.id FROM db1.t a JOIN db2.t b …` gives 1 edge | 2 edges |
+| a star expands one relation | `SELECT * FROM db1.t JOIN db2.t …` gives 1 edge | 2 edges |
+| a CTE captures a real table | `WITH t AS (…) SELECT db1.t.name FROM db1.t` gives 0 edges | 1 edge |
+
+Pinned by a fully annotated `TestRelationIdentity_Table` suite added to each
+family: `18` (shared by MySQL, MariaDB and TiDB), `23` PostgreSQL and `20`
+StarRocks. Negative-checked by dropping the qualifier from `TableRef.Key()`: five
+cases per dialect fail, and the CTE case is carried by the separate
+CTE-binding rule.
+
+Deferred, and deliberately unchanged: an *unqualified* reference that several
+same-named relations could satisfy still resolves rather than drops — catalog
+metadata decides when it is complete, otherwise the first relation by name with
+the qualifier as tie-break, so the choice is deterministic. Whether it should
+drop the edge instead is the §10.2 open item.
+
+`BenchmarkAnalyzeColumnScaling` is unchanged by the rewrite: 1000 columns
+2130 µs / 12086 allocs against 2383 µs / 12087 before it (same machine). Scopes
+hold a handful of relations, so the linear scans the slice introduced cost the
+same as the map lookups they replaced.

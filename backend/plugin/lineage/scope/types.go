@@ -15,6 +15,53 @@ type ColumnRef struct {
 	Resolved bool
 }
 
+// RelationKey identifies a relation inside a scope. Qualifier is the database
+// (MySQL family, StarRocks) or schema (PostgreSQL) the relation was named with,
+// and is empty when the query does not name one. Name is the alias when the
+// relation has one, otherwise its table name: the name a SQL reference uses.
+type RelationKey struct {
+	Qualifier string
+	Name      string
+}
+
+// Key returns the key a SQL reference addresses the relation by.
+func (r *TableRef) Key() RelationKey {
+	return RelationKey{Qualifier: r.Schema, Name: r.addressName()}
+}
+
+// addressName is the name a SQL reference uses for the relation: its alias when
+// it has one, otherwise its table name.
+func (r *TableRef) addressName() string {
+	if r.Alias != "" {
+		return r.Alias
+	}
+	return r.Table
+}
+
+// addresses reports whether a reference with this key can name the relation. The
+// name has to be the relation's alias, or its table name when it has no alias; a
+// reference qualifier has to agree with the relation's own, except that a
+// relation registered without a qualifier accepts any, because the analyzer does
+// not know which database or schema an unqualified FROM clause resolves in.
+func (r *TableRef) addresses(key RelationKey) bool {
+	if key.Name != r.addressName() {
+		return false
+	}
+	return key.Qualifier == "" || r.Schema == "" || key.Qualifier == r.Schema
+}
+
+// RelationKeyOf builds the key of a relation endpoint recorded on an edge. The
+// qualifier is whichever of the identifier's database or schema is set: the
+// MySQL family and StarRocks record a SQL qualifier as a database, PostgreSQL as
+// a schema.
+func RelationKeyOf(id model.ObjectIdentifier) RelationKey {
+	qualifier := id.Database
+	if qualifier == "" {
+		qualifier = id.Schema
+	}
+	return RelationKey{Qualifier: qualifier, Name: id.Name}
+}
+
 // ColumnLookup reports the column names a relation exposes. A nil result means
 // the metadata is unavailable, and the resolver keeps its deterministic ordering
 // rule for that relation.

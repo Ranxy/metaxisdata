@@ -1,0 +1,132 @@
+name: TestRelationIdentity_Table
+cases:
+    # A qualifier is part of a relation's identity. Two databases can hold a
+    # table of the same name, and each keeps its own source: resolving `db1.t`
+    # by table name alone would attribute its columns to `db2.t`.
+    - name: same-name tables in two databases are told apart by the qualifier
+      sql: SELECT db1.t.a, db2.t.b FROM db1.t JOIN db2.t ON db1.t.id = db2.t.id
+      expected_edges:
+        - from_database: db1
+          from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          is_temp: true
+        - from_database: db2
+          from_table: t
+          from_field: b
+          to_table: __result__
+          to_field: b
+          relation_type: direct
+          is_temp: true
+
+    - name: a qualified projection keeps the qualifier it was written with
+      sql: SELECT db1.t.a FROM db1.t JOIN db2.t ON db1.t.id = db2.t.id
+      expected_edges:
+        - from_database: db1
+          from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          is_temp: true
+
+    - name: aliased same-name tables in two databases keep both edges
+      sql: SELECT a.id, b.id FROM db1.t a JOIN db2.t b ON a.id = b.id
+      expected_edges:
+        - from_database: db1
+          from_table: t
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_database: db2
+          from_table: t
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+
+    # Every relation in scope is expanded, not only the one a name-keyed scope
+    # would have kept.
+    - name: an unqualified star expands every same-name relation
+      sql: SELECT * FROM db1.t JOIN db2.t ON db1.t.id = db2.t.id
+      expected_edges:
+        - from_database: db1
+          from_table: t
+          from_field: '*'
+          to_table: __result__
+          to_field: '*'
+          relation_type: direct
+          is_temp: true
+        - from_database: db2
+          from_table: t
+          from_field: '*'
+          to_table: __result__
+          to_field: '*'
+          relation_type: direct
+          is_temp: true
+
+    - name: a qualified star names the database it was written with
+      sql: SELECT db1.t.*, db2.t.* FROM db1.t JOIN db2.t ON db1.t.id = db2.t.id
+      expected_edges:
+        - from_database: db1
+          from_table: t
+          from_field: '*'
+          to_table: __result__
+          to_field: '*'
+          relation_type: direct
+          is_temp: true
+        - from_database: db2
+          from_table: t
+          from_field: '*'
+          to_table: __result__
+          to_field: '*'
+          relation_type: direct
+          is_temp: true
+
+    # The same column reached twice through different qualifiers is still one
+    # edge, so the identity above does not turn deduplication off.
+    - name: the same qualified column twice is one edge
+      sql: SELECT t.id, db1.t.id FROM db1.t
+      expected_edges:
+        - from_database: db1
+          from_table: t
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+
+    # A CTE is query-local and is never qualified, so one named t must neither
+    # capture a real db1.t nor be filtered out as if it were that table.
+    - name: a CTE does not capture a qualified table of the same name
+      sql: WITH t AS (SELECT id FROM src) SELECT db1.t.name FROM db1.t
+      expected_edges:
+        - from_database: db1
+          from_table: t
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true
+
+    - name: a CTE and a same-named qualified table both contribute
+      sql: WITH t AS (SELECT id FROM src) SELECT db1.t.name, t.id FROM db1.t JOIN t ON t.id = db1.t.id
+      expected_edges:
+        - from_database: db1
+          from_table: t
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true
+        - from_table: src
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true

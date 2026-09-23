@@ -373,11 +373,11 @@ func (a *Analyzer) tempTableLineage(sp *scope.Scope, targetName string) []model.
 			colName = "column"
 		}
 		for _, sourceCol := range col.SourceColumns {
-			resolved, err := sp.ResolveColumn(sourceCol)
+			resolved, relation, err := sp.ResolveColumnRef(sourceCol)
 			if err != nil {
 				continue
 			}
-			if a.flattenTempSourceLineage(sp, resolved, targetName, colName, col.Transform, &lineage) {
+			if a.flattenTempSourceLineage(sp, relation, resolved.Column, targetName, colName, col.Transform, &lineage) {
 				continue
 			}
 			lineage = append(lineage, scope.NewLineageEdge(
@@ -457,15 +457,15 @@ func (a *Analyzer) generateEdgesForTarget(sp *scope.Scope, targetSchema, targetT
 			targetColName = targetColumns[i]
 		}
 		for _, sourceCol := range outputCol.SourceColumns {
-			resolved, err := sp.ResolveColumn(sourceCol)
+			resolved, targetRelation, err := sp.ResolveColumnRef(sourceCol)
 			if err != nil {
 				continue
 			}
-			if tableRef, ok := sp.FindTable(resolved.Table); ok && (tableRef.IsCTE || tableRef.IsSubquery) {
-				a.traceThroughTableLineageToTarget(tableRef, resolved.Column, targetSchema, targetTable, targetColName, outputCol.Transform)
+			if targetRelation != nil && (targetRelation.IsCTE || targetRelation.IsSubquery) {
+				a.traceThroughTableLineageToTarget(targetRelation, resolved.Column, targetSchema, targetTable, targetColName, outputCol.Transform)
 				continue
 			}
-			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetTable)
+			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
 			a.addRelation(scope.NewLineageEdge(
 				resolved.Schema, resolved.Table, resolved.Column,
 				targetSchema, targetTable, targetColName,
@@ -579,7 +579,7 @@ func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment) {
 			if err != nil {
 				resolvedSource = &sourceCol
 			}
-			isTemp := resolved.Table == resultTableName || a.isTableTempInCurrentScope(resolved.Table)
+			isTemp := resolved.Table == resultTableName || a.isTableTempInCurrentScope(resolved.Schema, resolved.Table)
 			a.addRelation(scope.NewLineageEdge(
 				resolvedSource.Schema, resolvedSource.Table, resolvedSource.Column,
 				resolved.Schema, resolved.Table, resolved.Column,
@@ -626,15 +626,15 @@ func (a *Analyzer) processDeleteStatement(stmt *nodes.DeleteStmt) {
 	transform := []model.Transformation{model.NewDeleteTransformation(normalizeExpressionText(a.exprTextOf(stmt.Where)))}
 
 	for _, condCol := range conditionColumns {
-		resolved, err := sp.ResolveColumn(condCol)
+		resolved, condRelation, err := sp.ResolveColumnRef(condCol)
 		if err != nil {
 			resolved = &condCol
 		}
-		if tableRef, ok := sp.FindTable(resolved.Table); ok && (tableRef.IsCTE || tableRef.IsSubquery) {
-			a.traceThroughTableLineageToTarget(tableRef, resolved.Column, schema, table, deletionFieldName, transform)
+		if condRelation != nil && (condRelation.IsCTE || condRelation.IsSubquery) {
+			a.traceThroughTableLineageToTarget(condRelation, resolved.Column, schema, table, deletionFieldName, transform)
 			continue
 		}
-		isTemp := table == resultTableName || a.isTableTempInCurrentScope(table)
+		isTemp := table == resultTableName || a.isTableTempInCurrentScope(schema, table)
 		a.addRelation(scope.NewLineageEdge(
 			resolved.Schema, resolved.Table, resolved.Column,
 			schema, table, deletionFieldName,
@@ -654,7 +654,7 @@ func (a *Analyzer) processCopyInto(stmt *nodes.CopyIntoStmt) {
 	if !ok {
 		return
 	}
-	isTemp := a.isTableTempInCurrentScope(table)
+	isTemp := a.isTableTempInCurrentScope(schema, table)
 	a.addRelation(scope.NewLineageEdge(
 		"", fileSourceMarker, wildcardColumn,
 		schema, table, wildcardColumn,
@@ -679,7 +679,7 @@ func (a *Analyzer) processLoadStatement(stmt *nodes.LoadDataStmt) {
 		if !ok {
 			continue
 		}
-		isTemp := a.isTableTempInCurrentScope(table)
+		isTemp := a.isTableTempInCurrentScope(schema, table)
 		if len(desc.ColumnList) == 0 {
 			a.addRelation(scope.NewLineageEdge(
 				"", fileSourceMarker, wildcardColumn,
@@ -723,7 +723,7 @@ func (a *Analyzer) processSelectItemList(items []*nodes.SelectItem, sp *scope.Sc
 
 // processStar expands SELECT * against every table in scope.
 func (a *Analyzer) processStar(sp *scope.Scope, except []string) {
-	for _, tableRef := range sp.GetTables() {
+	for _, tableRef := range sp.Tables() {
 		if a.catalog != nil && !tableRef.IsSubquery && !tableRef.IsCTE {
 			if a.expandWildcardWithCatalog(tableRef, sp, except) {
 				continue
@@ -741,8 +741,11 @@ func (a *Analyzer) processTableWildcard(item *nodes.SelectItem, sp *scope.Scope)
 	if item.TableName == nil || len(item.TableName.Parts) == 0 {
 		return
 	}
-	tableName := item.TableName.Parts[len(item.TableName.Parts)-1]
-	tableRef, ok := sp.FindTable(tableName)
+	schema, tableName, ok := tableRefFromObjectName(item.TableName)
+	if !ok {
+		return
+	}
+	tableRef, ok := sp.FindRelation(scope.RelationKey{Qualifier: schema, Name: tableName})
 	if !ok {
 		return
 	}
@@ -796,7 +799,7 @@ func (a *Analyzer) processSelectExpr(expr nodes.Node, alias string, aliased bool
 	// expression (a literal, NOW(), a cast of a constant) depends on no column
 	// at all and must not invent a dependency.
 	if isDerived && len(sourceColumns) == 0 && containsAggregateCall(expr) {
-		for _, tableRef := range sp.GetTables() {
+		for _, tableRef := range sp.Tables() {
 			sourceColumns = append(sourceColumns, wildcardSourceRef(tableRef))
 		}
 	}
@@ -869,12 +872,12 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 	}
 	for _, outputCol := range sp.GetOutputColumns() {
 		for _, sourceCol := range outputCol.SourceColumns {
-			resolved, err := sp.ResolveColumn(sourceCol)
+			resolved, sourceRelation, err := sp.ResolveColumnRef(sourceCol)
 			if err != nil {
 				continue
 			}
-			if tableRef, ok := sp.FindTable(resolved.Table); ok && (tableRef.IsCTE || tableRef.IsSubquery) {
-				a.traceThroughTableLineage(tableRef, resolved.Column, outputCol.Alias, outputCol.Transform)
+			if sourceRelation != nil && (sourceRelation.IsCTE || sourceRelation.IsSubquery) {
+				a.traceThroughTableLineage(sourceRelation, resolved.Column, outputCol.Alias, outputCol.Transform)
 				continue
 			}
 			a.addRelation(scope.NewLineageEdge(
@@ -890,15 +893,17 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 // addRelation adds a column relation, skipping temp-table endpoints and
 // duplicate signatures.
 func (a *Analyzer) addRelation(relation model.ColumnRelation) {
-	if a.isTempTable(relation.Source.Table.Name) {
+	if a.isTempRelation(relation.Source.Table) {
 		return
 	}
-	if a.isTempTable(relation.Target.Table.Name) && relation.Target.Table.Name != resultTableName {
+	if a.isTempRelation(relation.Target.Table) && relation.Target.Table.Name != resultTableName {
 		return
 	}
+	// The qualifier of a StarRocks relation is its database, which
+	// scope.NewLineageEdge records in Database; Schema is never populated.
 	signature := fmt.Sprintf("%s.%s.%s->%s.%s.%s",
-		relation.Source.Table.Schema, relation.Source.Table.Name, relation.Source.Name,
-		relation.Target.Table.Schema, relation.Target.Table.Name, relation.Target.Name)
+		relation.Source.Table.Database, relation.Source.Table.Name, relation.Source.Name,
+		relation.Target.Table.Database, relation.Target.Table.Name, relation.Target.Name)
 	if _, exists := a.edgeSet[signature]; exists {
 		return
 	}
@@ -977,15 +982,24 @@ func (a *Analyzer) markTempTable(name string) {
 	a.tempTables[name] = struct{}{}
 }
 
-// isTempTable checks whether a table name was marked as temporary.
-func (a *Analyzer) isTempTable(name string) bool {
-	_, ok := a.tempTables[name]
+// isTempRelation reports whether an endpoint names a query-local relation (a CTE
+// or a derived table). Those are never qualified, so a qualified reference to a
+// real table of the same name is not one.
+func (a *Analyzer) isTempRelation(id model.ObjectIdentifier) bool {
+	key := scope.RelationKeyOf(id)
+	if key.Qualifier != "" {
+		return false
+	}
+	_, ok := a.tempTables[key.Name]
 	return ok
 }
 
-// isTableTempInCurrentScope reports whether a table name is a CTE or derived
-// table visible from any scope on the stack.
-func (a *Analyzer) isTableTempInCurrentScope(tableName string) bool {
+// isTableTempInCurrentScope reports whether a relation is a CTE or derived table
+// visible from any scope on the stack. A qualified relation is a real one.
+func (a *Analyzer) isTableTempInCurrentScope(qualifier, tableName string) bool {
+	if qualifier != "" {
+		return false
+	}
 	for _, sp := range a.scopeStack {
 		if _, ok := sp.FindCTE(tableName); ok {
 			return true
@@ -1034,11 +1048,11 @@ func (a *Analyzer) processCTE(cte *nodes.CTE) {
 				targetName = cte.Columns[i]
 			}
 			for _, sourceCol := range outputCol.SourceColumns {
-				resolved, err := cteScope.ResolveColumn(sourceCol)
+				resolved, relation, err := cteScope.ResolveColumnRef(sourceCol)
 				if err != nil {
 					continue
 				}
-				if a.flattenTempSourceLineage(cteScope, resolved, cteName, targetName, outputCol.Transform, &lineage) {
+				if a.flattenTempSourceLineage(cteScope, relation, resolved.Column, cteName, targetName, outputCol.Transform, &lineage) {
 					continue
 				}
 				lineage = append(lineage, scope.NewLineageEdge(
@@ -1102,7 +1116,7 @@ func (a *Analyzer) processSetOperation(stmt *nodes.SetOpStmt) {
 			continue
 		}
 		tempScope := scope.NewScope(baseScope.Parent())
-		for _, cte := range baseScope.GetCTEs() {
+		for _, cte := range baseScope.CTEs() {
 			tempScope.AddCTE(cte)
 		}
 		originalScope := a.currentScope()
@@ -1225,7 +1239,7 @@ func (a *Analyzer) traceThroughTableLineageToTarget(tableRef *scope.TableRef, co
 		if columnName == wildcardColumn && targetColumn == wildcardColumn {
 			actualTargetColumn = edge.Target.Name
 		}
-		isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetTable)
+		isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
 		a.addRelation(scope.NewLineageEdge(
 			edge.Source.Table.Database, edge.Source.Table.Name, edge.Source.Name,
 			targetSchema, targetTable, actualTargetColumn,
@@ -1247,7 +1261,7 @@ func (a *Analyzer) appendFlattenedLineage(lineage *[]model.ColumnRelation, sp *s
 		}
 		combinedTransform := combineTransformations(edge.Transformation, transform)
 		sourceTableName := edge.Source.Table.Name
-		if nestedRef, ok := sp.FindTable(sourceTableName); ok && (nestedRef.IsCTE || nestedRef.IsSubquery) {
+		if nestedRef, ok := sp.FindRelation(scope.RelationKeyOf(edge.Source.Table)); ok && (nestedRef.IsCTE || nestedRef.IsSubquery) {
 			a.appendFlattenedLineage(lineage, sp, nestedRef, edge.Source.Name, targetTable, actualTarget, combinedTransform)
 			continue
 		}
@@ -1262,23 +1276,10 @@ func (a *Analyzer) appendFlattenedLineage(lineage *[]model.ColumnRelation, sp *s
 
 // flattenTempSourceLineage resolves a column from a temporary table into base
 // table lineage. It reports whether the source was handled.
-func (a *Analyzer) flattenTempSourceLineage(sp *scope.Scope, resolved *scope.ColumnRef, targetTable string, targetColumn string, transform []model.Transformation, lineage *[]model.ColumnRelation) bool {
-	if resolved == nil {
+func (a *Analyzer) flattenTempSourceLineage(sp *scope.Scope, relation *scope.TableRef, columnName, targetTable string, targetColumn string, transform []model.Transformation, lineage *[]model.ColumnRelation) bool {
+	if relation == nil || (!relation.IsSubquery && !relation.IsCTE) {
 		return false
 	}
-	if tableRef, ok := sp.FindTable(resolved.Table); ok && (tableRef.IsSubquery || tableRef.IsCTE) {
-		a.appendFlattenedLineage(lineage, sp, tableRef, resolved.Column, targetTable, targetColumn, transform)
-		return true
-	}
-	if cte, ok := sp.FindCTE(resolved.Table); ok {
-		tempRef := &scope.TableRef{
-			Table:   cte.Name,
-			Alias:   cte.Name,
-			IsCTE:   true,
-			Lineage: cte.Lineage,
-		}
-		a.appendFlattenedLineage(lineage, sp, tempRef, resolved.Column, targetTable, targetColumn, transform)
-		return true
-	}
-	return false
+	a.appendFlattenedLineage(lineage, sp, relation, columnName, targetTable, targetColumn, transform)
+	return true
 }
