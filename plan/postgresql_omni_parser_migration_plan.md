@@ -63,6 +63,10 @@ legacy text-based expression detection and emits `nil, nil` window
 **"Follow-ups"**; it is intentionally out of scope here so cutover can be
 byte-identical, and must not be lost when this plan is archived.
 
+> **PG-FU-1 has since landed** (`plan/postgresql_expression_transformation_plan.md`),
+> so the deferral paragraphs below describe the migration as it was performed, not
+> the current state.
+
 ## Outcome
 
 Landed:
@@ -251,7 +255,8 @@ A second probe dumped the AST for representative statements. Confirmed:
   structured upgrade is written down so it is not forgotten.)* The upgrade is
   **not** part of this migration and is tracked as a mandatory follow-up in
   **"Follow-ups" → PG-FU-1**; this plan must not be marked "done" without that
-  section still present in the document.
+  section still present in the document. *(Since satisfied: PG-FU-1 landed in
+  `plan/postgresql_expression_transformation_plan.md`.)*
 - **Unsupported-but-parsed statement kinds are a no-op**, matching legacy.
 - **Pin omni to the existing commit** `v0.0.0-20260912023254-4574e69bb9f1`;
   no `go.mod`/`go.sum` change is expected for the migration itself.
@@ -271,6 +276,7 @@ A second probe dumped the AST for representative statements. Confirmed:
   text/function-name scanning is preserved to guarantee transformation-content
   parity; upgrading it to structured `FuncCall`/`WindowDef`/`CaseExpr` analysis
   is **deferred and tracked**, not dropped — see **"Follow-ups" → PG-FU-1**.
+  *(Since landed: the scanners are gone and detection is structural.)*
 
 ## Current coupling (measured)
 
@@ -701,7 +707,7 @@ dropped by a later decision.
 | **PG-FU-1** | Replace text/function-name scanning in `analyzeExpressionOperator` / `isExpressionDerived` with structured AST detection: `FuncCall{Name, Args, AggDistinct, AggStar, Over}` (incl. window `WindowDef.PartitionClause`/`OrderClause`), `*ast.CaseExpr`, `*ast.CoalesceExpr`, `A_Expr{Kind, Name}` for operators. | It deliberately **changes `Transformation` content** (window `PartitionBy`/`OrderBy` become non-nil; function names/args become structured), which would break the byte-identical parity goal this migration is built on. The parity harness is removed at Phase 5, so this must be a separate change validated against the golden corpus + a sweep. | **LANDED.** `plan/postgresql_expression_transformation_plan.md` (implemented; marker `TODO(PG-FU-1)` removed). |
 | **PG-FU-2** | Feed the DML/set-op/window-preserving walker back upstream to `github.com/bytebase/omni` as a production PostgreSQL `analysis` package, shrinking the in-repo walker. | Out of scope for a parity migration; depends on upstream appetite (raised in `plan/mysql_omni_parser_migration_plan.md` as well). | Upstream contribution / separate plan. |
 | **PG-FU-3** | If the Phase 4 sweep shows any real mixed-case-unquoted `MANUAL_SQL` divergence from omni's case folding, decide whether to document-only or add a normalization layer. | Expected to be a non-issue for synced views/matviews (definitions come from `pg_get_viewdef`), which is why it is accepted rather than fixed now. | **RESOLVED (document-only; no normalization layer).** Analysis showed omni's folding is exactly PostgreSQL's `pg_catalog` form, so the analyzer-derived source GUID matches the registry GUID — the legacy source-case behavior was the broken one. Guards: `backend/plugin/lineage/postgresql/identifier_case_test.go` + the mixed-case MANUAL_SQL integration test. Rationale: Appendix C item 3. |
-| **PG-FU-5** | Resolve `ON CONFLICT … EXCLUDED.col` to the INSERT source column instead of dropping the edge. | This change drops the unresolvable `EXCLUDED`-sourced edge (see "Defects fixed" item 3); the genuinely correct target would be the INSERT's source column, which needs the insert source scope threaded into the conflict clause. The INSERT-source edge already covers the common case. | Follow-up against `backend/plugin/lineage/postgresql/analyzer.go`. |
+| **PG-FU-5** | Resolve `ON CONFLICT … EXCLUDED.col` to the INSERT source column instead of dropping the edge. | This change drops the unresolvable `EXCLUDED`-sourced edge (see "Defects fixed" item 3); the genuinely correct target would be the INSERT's source column, which needs the insert source scope threaded into the conflict clause. The INSERT-source edge already covers the common case. | **LANDED.** `processOnConflict` builds the conflict clause's own scope and maps `EXCLUDED.col` through `insertSourceMap`; `onconflict_test.go` and the corpus pin it. |
 
 ## Appendix A — Probe methodology (how the numbers were produced)
 

@@ -73,6 +73,55 @@
 
 ---
 
+## 0c. 第三批（技术债 + P2 + 基准 + UNION ALL）实施状态：已落地
+
+第三批覆盖 §10 的第 9～12 项，加上 §5 的 P2 批量清理与 §7 的注册测试缺口。落地为六个提交：
+
+```
+df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
+91b9143 test(lineage): give the analyzer an allocation budget and share the benchmarks
+1fad8df fix(lineage): clear the low-risk findings from the PostgreSQL review
+4e50f61 fix(lineage): fix the defects the sibling dialects kept after PostgreSQL
+4dbf876 refactor(lineage): sink the dialect-neutral lineage algorithm
+（本文件与 plan/lineage_transformation_model.md 的提交）
+```
+
+| 项 | 状态 | 落地内容 |
+| --- | --- | --- |
+| **D1** 方言无关算法下沉 | ✅ 已落地 | 新增 `lineage/algorithm`：`EdgeSet`（边身份＝两端标识符值 + 逐字段比较的变换列表）、`Influences`（按 scope 归属的影响）、`MergeSetOpColumns` + `ArmChain`（集合运算按分支合并、保留运算链）、`TraceThroughTableLineage*` / `FlattenTempSources*`（查询局部关系展开）。`model.CombineTransformations`、`model.SameTransformations`、`model.ResultTableName`、`scope.NewSchemaLineageEdge`、`scope.SetOutputColumns` 收拢原先各写一份的逻辑；benchmark 夹具与驱动下沉 `testutil`。PostgreSQL 迁入后**输出逐字节不变**（见下方验证） |
+| **D1 连带：兄弟方言同类缺陷** | ✅ 已修复 | 实测确认 MySQL/TiDB/MariaDB/StarRocks 至今仍带着 P0-1、P0-2、P1-4、P1-6、P0-4 五类缺陷，随之下沉一并修复（`tempTables`/`markTempTable`/`isTempRelation`/`isTableTempInCurrentScope` 全部删除，目标永远不是查询局部关系） |
+| **D3** Transformation 模型决策 | ✅ 已决策 | 新增 `plan/lineage_transformation_model.md`：变换随源走（`scope.ColumnSource`）、一条派生一条边且变换参与身份、列表有序且首项为最外层、集合运算用 `All` 位；并明确模型**不**表达什么（递归不动点、表达式结构、SORT/GROUP_BY 生产者、按列分组） |
+| **P0-4 残留**：`UNION ALL` | ✅ 已修复（含 proto 与前端） | `Transformation.All` + `proto/v1` 字段 10 + API 映射 + 前端 `UNION ALL` 展示与「重复行 ALL/DISTINCT」明细 + 语料支持 `all:` 断言并钉住两种写法与混合链（`INTERSECT ALL`/`EXCEPT ALL` 同样覆盖） |
+| **D5** 基准预算 | ✅ 已落地 | `TestAnalyzeAllocationBudget`：8 个形状 + 全语料一条**分配次数**预算（约 50% 余量）。用次数而非时间：时间预算在忙的 CI 上失败、在闲的机器上通过，是不会被信任的检测器；语料总量那条是通用回归网（每边多一次分配就会抬升总量） |
+| **P2** 13 项 | ✅ 11 项已处理，2 项决策保留 | P2-1/2/3/5/6/7/9/10/11/12/13 见 §5 表格的 ✅；P2-4 与 P2-8 见下方「第三批的决策保留」 |
+| **§7** 测试缺口 | ✅ 已补 | 新增 `postgresql/registration_test.go`（引擎注册 + 未注册引擎哨兵）；语料新增 `38_test_set_returning_function`、`24_test_query_local_name`（兄弟方言，含 StarRocks 副本 `23_`）、`all:` 系列用例 |
+| **§8** 文档漂移 | ✅ 已同步 | PG-FU-1/PG-FU-5 标注 LANDED；本包 doc comment 交叉引用表达式 plan 与模型 plan；`scope/types.go` 注释重写；`analyzer.go` 那句"只有物化视图采纳列名列表"已在第二批删除 |
+
+### 第三批发现（原报告没有的）
+
+1. **原 §10 第 9 条「把 dupl 加进 `.golangci.yaml`」的前提不成立。** 实测 golangci-lint 的 `dupl` **只在同一个包内两两比较**：`mysql`/`tidb`/`mariadb` 三份逐字节相同的 2000 行它一声不响，PG↔StarRocks 的 `predicate.go` 也看不到；全仓启用后只有 16 处发现，全部落在 `plugin/schema`、`plugin/db/pg`、`store/role.go` 等无关包，lineage 包 **0 处**。因此本批**不启用 dupl**，改用仓库内的跨包哨兵测试 `backend/plugin/lineage/shared_analysis_test.go`：它解析各方言包的非测试文件，断言 `edgeKey`/`EdgeSet`/`Influences`/`predicateInfluence`/`mergeUnionOutputColumns`/`combineTransformations`/`isTempRelation`/`markTempTable` 等**不再出现在方言包里**，同时断言 `algorithm` 仍导出这些机制（哨兵本身做过反向验证：临时加回一个 `markTempTable` 会使其失败）。
+2. **兄弟方言的缺陷是实测出来的，不是推断的。** `WITH orders AS (SELECT user_id, total FROM orders …) SELECT … FROM orders` 在 MySQL 家族与 StarRocks 都返回 **0 条边**（P0-1 同级）；`WITH unused AS (SELECT id FROM t WHERE x=1) SELECT 1` 伪造 `t.x → __result__`（P1-4）；`SELECT x+1 AS a, x+2 AS a FROM t` 只留第一条（P1-6）；`A UNION B INTERSECT C` 三条全标 UNION（P0-4）；`UPDATE t JOIN (SELECT x FROM s) q … SET t.a = q.x` 指向不存在的 `q`（P0-2）。这些已随本批修复，并由新增语料钉住。
+3. **递归 CTE 的自引用判定从"比名字"改成"注册自身 CTE"。** 原实现（第一批）按 `res.Ref.Table == cteName` 丢弃自引用，只覆盖**源**列，且会连一个真正同名的基础表一起丢掉；而 `WITH RECURSIVE tree AS (… JOIN tree t ON n.parent_id = t.id)` 的 **JOIN 谓词**仍会产出一条指向 CTE 的边。现在递归 CTE 在自己的 body 作用域里以空 lineage 注册自身，于是源与谓词都自然落空。PostgreSQL 的语料与探针输出在此改动前后完全一致。
+4. **`RangeFunction`（P2-5）不是清理而是补功能，本批实现了。** `SELECT u.x FROM t, LATERAL unnest(t.arr) AS u(x)` 原先 0 条边，现在报 `t.arr → __result__.x`；`ROWS FROM` 每个函数一列、`WITH ORDINALITY` 增加一列无源的列、参数不含列（如 `generate_series(1,10)`）则不产生边。
+
+### 第三批的决策保留
+
+- **P2-4 / P2-8（没有诊断通道）**：按用户决策，本轮**不动**「部分血缘 vs 完整血缘」的区分，仅记录。因此 `SELECT unknown_alias.* FROM t` 仍静默返回 0 条边，`if err != nil { continue }` 仍静默丢弃。要做需要先决定诊断落点（复用 `UnsupportedStatementError` 写进 `column_lineage_version.error_message`，还是新增 Warnings 概念并落库），属独立一轮。
+- **ON CONFLICT 子句内子查询引用语句级 CTE**（第二批残留）仍未建模；`scope` 现有 API 表达不了"只暴露 CTE 的中间作用域"。
+- **顶层 DML 的 `RETURNING` 不产出 `__result__` 边**：仍是有意决策。
+- **UPDATE 不产出谓词影响边**：跨方言既定规则，已在代码注释中写明是有意丢弃。
+
+### 验证方式
+
+先把修复前的完整输出抓成快照（5 个方言 × 57 条 review 探针 × 全部语料，5645 行），每批之后逐行 diff：
+
+- 第一批下沉（`4dbf876`）后：**全文件逐字节相同**。
+- 兄弟方言修复（`4e50f61`）后：PostgreSQL 两个 section **仍逐字节相同**；MySQL 家族与 StarRocks 的差异逐条核对，全部是 P0-1/P0-2/P1-4/P1-6/P0-4 的修复或由此新增的正确边（`orders.*`、`t.a` 谓词、`r.id` 递归 JOIN 影响、`x+1`/`x+2` 两条、集合运算链）。
+- P2 批（`1fad8df`）后：除新增语料用例本身外**无任何输出变化**（说明 EqualFold、删除回退、INSERT arity、CTE 列名规范化、ctx 检查都不改变既有行为）。
+- 全仓 `go build ./...`、`go test ./...`、`golangci-lint`（0 issues）、前端 `biome`/`eslint`/`vue-tsc`/`vitest`（85 例）均通过；`go test -bench` 冒烟运行确认基准夹具搬迁无碍。
+
+---
+
 ## 1. 结论摘要
 
 | 级别 | 数量 | 说明 |
@@ -342,19 +391,19 @@ SELECT a FROM t1; MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE S
 
 | ID | 位置 | 问题 |
 | --- | --- | --- |
-| P2-1 | `analyzer.go:544-565` | `tempColumnNames` 采纳声明的列名列表时**不校验 arity**，与 `exposedColumnNames`（校验）和 `processCTE`（校验）不一致 |
-| P2-2 | `analyzer.go:1099-1103` | `processDeleteStmt` 解析失败时回退成未解析的 `condCol`，可能产出源表为空的边；与"未解析的源一律丢弃"的既定规则相悖 |
-| P2-3 | `analyzer.go:1280-1284` | `INSERT INTO t (a) SELECT x, y FROM s`（PG 会拒绝的非法 SQL）会外推出目标列 `t.y`，而不是止于声明列表 |
-| P2-4 | `analyzer.go:768-784` | `processTableStar` 找不到限定符对应的关系时静默 return：`SELECT unknown_alias.* FROM t` 产出 0 条边，既无 wildcard 兜底也无诊断 |
-| P2-5 | `analyzer.go:480-482` | `RangeFunction` 被忽略：`SELECT * FROM unnest(t.arr) u` 产出 0 条边，`t.arr` 丢失 |
-| P2-6 | `analyzer.go:1570-1578` | `combineTransformations` 用 `append(base, additional...)` 不复制。当前各生产者恰好返回 cap==len 所以不可达，但一旦有人返回带余量的 slice，就会写坏被多条边共享的底层数组——**潜在别名污染** |
-| P2-7 | `model/relation.go:33` vs `scope/scope.go:280` | 列名匹配一处用 `==`（`AnsweringLineage`），一处用 `strings.EqualFold`（`resolveInScope`），大小写策略不统一 |
-| P2-8 | 全局 | **没有诊断通道**：所有 `if err != nil { continue }`（解析失败的列、`ResolveColumnRefs` 失败）都静默丢弃，"部分血缘"与"完整血缘"从外部无法区分；`a.errors` 除了 MERGE 从不被写入 |
-| P2-9 | `analyzer.go:108-135` | 分析过程不检查 `ctx` 取消；`a.ctx` 仅用于 catalog 查询。超大 SQL 无法中断 |
-| P2-10 | `analyzer.go:124-128` | 逐语句重置的状态是手工枚举的（`scopeStack`/`tempTables`/`predicates`）。当前正确，但新增字段时极易漏掉（历史上就出过 CTE 名字/谓词跨语句泄漏，见 118-126 行注释） |
-| P2-11 | `analyzer.go:1548` | `NewLineageEdge` 被导出但**无包外调用者**（`grep` 确认），按仓库导出规则应改为非导出 |
-| P2-12 | `scope/types.go:6-16` | `ColumnRef.Resolved` 的注释写"StarRocks 设置它，其它分析器一律保持 false"——**已过时**：PostgreSQL 在 `resolveOutputColumns`（`expr.go:136-159`）、`wildcardSourceRef`（`analyzer.go:789-796`）、`expandWildcardWithCatalog`（`analyzer.go:1531-1538`）都会设置它 |
-| P2-13 | `analyze_test_helper.go` | 文件名**没有 `_test.go` 后缀**，会被编译进生产包并引入 `testing` + `testutil`（mysql/starrocks 同样问题）。属仓库级模式，建议一并收拾 |
+| P2-1 ✅ | `analyzer.go:544-565` | `tempColumnNames` 采纳声明的列名列表时**不校验 arity**，与 `exposedColumnNames`（校验）和 `processCTE`（校验）不一致 |
+| P2-2 ✅ | `analyzer.go:1099-1103` | `processDeleteStmt` 解析失败时回退成未解析的 `condCol`，可能产出源表为空的边；与"未解析的源一律丢弃"的既定规则相悖 |
+| P2-3 ✅ | `analyzer.go:1280-1284` | `INSERT INTO t (a) SELECT x, y FROM s`（PG 会拒绝的非法 SQL）会外推出目标列 `t.y`，而不是止于声明列表 |
+| P2-4 ⏸ | `analyzer.go:768-784` | `processTableStar` 找不到限定符对应的关系时静默 return：`SELECT unknown_alias.* FROM t` 产出 0 条边，既无 wildcard 兜底也无诊断 |
+| P2-5 ✅ | `analyzer.go:480-482` | `RangeFunction` 被忽略：`SELECT * FROM unnest(t.arr) u` 产出 0 条边，`t.arr` 丢失 |
+| P2-6 ✅ | `analyzer.go:1570-1578` | `combineTransformations` 用 `append(base, additional...)` 不复制。当前各生产者恰好返回 cap==len 所以不可达，但一旦有人返回带余量的 slice，就会写坏被多条边共享的底层数组——**潜在别名污染** |
+| P2-7 ✅ | `model/relation.go:33` vs `scope/scope.go:280` | 列名匹配一处用 `==`（`AnsweringLineage`），一处用 `strings.EqualFold`（`resolveInScope`），大小写策略不统一 |
+| P2-8 ⏸ | 全局 | **没有诊断通道**：所有 `if err != nil { continue }`（解析失败的列、`ResolveColumnRefs` 失败）都静默丢弃，"部分血缘"与"完整血缘"从外部无法区分；`a.errors` 除了 MERGE 从不被写入 |
+| P2-9 ✅ | `analyzer.go:108-135` | 分析过程不检查 `ctx` 取消；`a.ctx` 仅用于 catalog 查询。超大 SQL 无法中断 |
+| P2-10 ✅ | `analyzer.go:124-128` | 逐语句重置的状态是手工枚举的（`scopeStack`/`tempTables`/`predicates`）。当前正确，但新增字段时极易漏掉（历史上就出过 CTE 名字/谓词跨语句泄漏，见 118-126 行注释） |
+| P2-11 ✅ | `analyzer.go:1548` | `NewLineageEdge` 被导出但**无包外调用者**（`grep` 确认），按仓库导出规则应改为非导出 |
+| P2-12 ✅ | `scope/types.go:6-16` | `ColumnRef.Resolved` 的注释写"StarRocks 设置它，其它分析器一律保持 false"——**已过时**：PostgreSQL 在 `resolveOutputColumns`（`expr.go:136-159`）、`wildcardSourceRef`（`analyzer.go:789-796`）、`expandWildcardWithCatalog`（`analyzer.go:1531-1538`）都会设置它 |
+| P2-13 ✅ | `analyze_test_helper.go` | 文件名**没有 `_test.go` 后缀**，会被编译进生产包并引入 `testing` + `testutil`（mysql/starrocks 同样问题）。属仓库级模式，建议一并收拾 |
 
 ---
 
@@ -367,6 +416,7 @@ SELECT a FROM t1; MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE S
 - 同名重复函数（PG ∩ MySQL ∩ StarRocks）：`combineTransformations`、`resolveOutputColumns`、`flattenSetOpArms`、`setOpTransformation`、`tempColumnNames`、`exposedColumnNames`、`attachTempColumnLookup`、`containsGroupAggregate`、`wildcardSourceRef`、`normalizeExpressionText`、`joinSideRefs`、`usingClauseText`、`insertSourceMap`，以及整套 benchmark 夹具（`buildWideSelect` / `buildDeepSubquery` / `buildManyJoins` / `loadCorpusBenchCases` / `BenchmarkAnalyze*`）。
 - **后果已经在本次 review 中体现**：P0-2（赋值未展开 temp 源）和 P0-3（集合运算变换归并）都是"同一逻辑写三份、只在其中一份演进"的典型症状。
 - `dupl` **未启用**（`.golangci.yaml` 的 `enable` 列表里没有），所以 lint 是 0 issues，重复无人拦。
+  **更正（第三批实测）**：启用 `dupl` 也拦不住这里的重复——它只在**同一个包内**两两比较，而 `mysql`/`tidb`/`mariadb`、PG↔StarRocks 都是跨包。见 §0c 发现 1。
 - **建议**：把与方言无关的部分（谓词影响、temp 展开、集合运算归并、边去重、benchmark 夹具、语料加载）下沉到 `lineage/` 下的公共层，方言侧只保留一个薄 AST 适配器。收益不只是行数，更是**修复不会只落在一种方言上**。
 
 ### D2　两套"临时关系"判定并存（P0-1 的结构性根因）
@@ -405,7 +455,7 @@ SELECT a FROM t1; MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE S
 | 10 | 未具名表达式的目标列名 | P1-1 |
 | 11 | MERGE 与同串合法语句混用 | P1-7 |
 
-另外：`mysql`/`starrocks` 都有 `registration_test.go` 断言引擎注册，**postgresql 包没有**（只靠 `init()` 与集成测试间接验证）。集成测试 `backend/test/integration/runner/schemasync_lineage_postgres_service_test.go` 有 9 个用例，覆盖 schema sync → lineage 端到端、物化视图列、外部表通配、视图变更后更新、视图删除后清理、MANUAL_SQL、列元数据历史等——**质量不错，但都是"链路通"级别，不校验具体边集合**，因此上面 11 个缺口它一个也抓不到。
+另外：`mysql`/`starrocks` 都有 `registration_test.go` 断言引擎注册，**postgresql 包没有**（只靠 `init()` 与集成测试间接验证）。✅ 第三批已补 `postgresql/registration_test.go`（注册 + 未注册引擎哨兵）。集成测试 `backend/test/integration/runner/schemasync_lineage_postgres_service_test.go` 有 9 个用例，覆盖 schema sync → lineage 端到端、物化视图列、外部表通配、视图变更后更新、视图删除后清理、MANUAL_SQL、列元数据历史等——**质量不错，但都是"链路通"级别，不校验具体边集合**，因此上面 11 个缺口它一个也抓不到。
 
 ---
 
@@ -450,12 +500,12 @@ SELECT a FROM t1; MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE S
 7. **P1-2 / P1-1**：CTAS 列名列表；`inferColumnAlias` 按 PG 规则（函数→函数名、cast→内层列名、其它→`?column?`）——**注意这是 MANUAL_SQL 专用**，改前先确认不会破坏现有语料里刻意保留的 MySQL 式行为。
 8. **P1-6 / P1-8**：去重键加入变换维度；`RETURNING` / `SELECT INTO` 目标建模。
 
-**第三批（债）**
+**第三批（债）— ✅ 已落地（见 §0c）**
 
-9. **D1**：启动"方言无关算法下沉"重构（建议先只下沉 `predicate.go` + 集合运算归并 + benchmark 夹具，小步走）；同时把 `dupl` 加进 `.golangci.yaml` 防止回潮。
-10. **D3**：`Transformation` 与按列聚合的模型冲突做一次显式设计决策并写入 `plan/`。
-11. **P2 批量清理** + 文档漂移修正（§8）。
-12. **D5**：给基准加阈值（可放进 CI，用 `-benchtime` 小样本 + `benchstat` 阈值）。
+9. **D1** ✅：算法下沉比建议更进一步——不只 `predicate.go`/集合运算归并/benchmark 夹具，连边身份、查询局部关系展开、`SetOutputColumn` 语义一并收拢，兄弟方言同步迁入并修掉同类缺陷。~~同时把 `dupl` 加进 `.golangci.yaml`~~ → **该建议作废**：实测 `dupl` 只做包内比较，看不见本次真正的跨包重复；改为 `backend/plugin/lineage/shared_analysis_test.go` 的跨包哨兵测试（详见 §0c 发现 1）。
+10. **D3** ✅：`plan/lineage_transformation_model.md`，并据此补上 `Transformation.All`（含 proto/前端，关掉 P0-4 的 ALL 残留）。
+11. **P2 批量清理** ✅ + 文档漂移修正（§8）✅：11 项修复、2 项按决策保留（P2-4/P2-8，见 §0c）。
+12. **D5** ✅：改为**分配次数**预算而非 `benchstat` 时间基线——次数与机器无关，语料总量那条能抓住"每边多一次分配"的回归；时间阈值在忙的 CI 上不可靠，`benchstat` 基线还需要一套基线产物与 CI 步骤。
 
 ---
 

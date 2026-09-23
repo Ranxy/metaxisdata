@@ -4,6 +4,12 @@
 // and typed AST (see plan/postgresql_omni_parser_migration_plan.md). It replaced
 // the legacy ANTLR implementation, which was parity-verified against this one
 // over the golden corpus and then removed.
+//
+// Expression classification is structural (see
+// plan/postgresql_expression_transformation_plan.md), and the analysis mechanism
+// this package shares with the other dialects lives in
+// backend/plugin/lineage/algorithm (see plan/lineage_transformation_model.md for
+// what a Transformation does and does not express).
 package postgresql
 
 import (
