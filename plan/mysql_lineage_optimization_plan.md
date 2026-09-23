@@ -99,9 +99,9 @@ Verification: `go test ./... -count=1` green, `golangci-lint run
 **Still open:** this list was superseded by §10.2, which is the live one. Both
 items it originally deferred are implemented — `GROUP BY` keys (§10.9, §10.16)
 and `WHERE` / `ON` influence recording (§10.10, §10.17) — the API reports every
-relation type the model holds (§10.14), and the materialized-view column list,
-the three mysql-family copies and `scope.Tables` / `CTEs` (which now return a
-clone) are recorded there.
+relation type the model holds (§10.14), and the materialized-view column list
+(§10.20), the three mysql-family copies and `scope.Tables` / `CTEs` (which now
+return a clone) are recorded there.
 
 ## 1. Method and baseline
 
@@ -785,7 +785,10 @@ behavior changes.
   for MVs (`proto/store/store/database.proto:522`, and its `triggers` field
   carries a copy-pasted "ordered list of columns" comment), so wildcard
   expansion over an MV can only use dependency columns. Either add MV output
-  columns to the sync/store/proto or document the limitation.
+  columns to the sync/store/proto or document the limitation. Closed in §10.20:
+  the proto carries the list, the sync fills it on PostgreSQL, StarRocks and
+  Doris, and the copy-pasted comment is gone along with the dead `triggers`
+  field it described.
 
 ### Phase 4 — Debt and duplication
 
@@ -923,13 +926,12 @@ Not ours to fix:
 
 Ours:
 
-- **A materialized view has no output-column list in the store proto**, so a
-  wildcard over one falls back to `*`. Closing that needs a proto field plus a sync
-  per engine, and it is a StarRocks/PostgreSQL shape today.
-  `MaterializedViewMetadata.triggers` still carries the copy-pasted "ordered list
-  of columns in the materialized view" comment over a `TriggerMetadata` field that
-  §5.3 flagged, and the MV branch of `catalog/provide.go` reports no metadata on
-  purpose rather than expanding dependency columns.
+- **The catalog expands a wildcard for a table, a view and a materialized view,
+  but not for an external table**, whose `ExternalTableMetadata` carries a column
+  list all the same (a PostgreSQL foreign table is the shape that reaches it), so
+  a wildcard over one still falls back to `*`. The dispatch is a single branch in
+  `catalog/provide.go` now; it is left out of §10.20 to keep that change to the
+  materialized-view item it closes.
 
 Decided, and deliberately not defects:
 
@@ -1915,3 +1917,67 @@ the `GREATER_OR_EQUAL` mapping 1; removing the PostgreSQL `MERGE` error fails 1,
 `EXCLUDED` substitution 1, and the per-statement reset 2. `gofmt`,
 `golangci-lint`, `go test ./...`, the build and the real-server integration suite
 are green; MariaDB and TiDB are untouched.
+
+### 10.20 Fifteenth pass: the materialized-view column list
+
+This was the last item §10.2 called ours. It needed a proto field and a sync per
+engine, so the first step was to establish what each engine can actually report.
+
+| engine | materialized views synced | output column list |
+| --- | --- | --- |
+| MySQL / MariaDB / TiDB | no such object | nothing to sync |
+| MSSQL | none | nothing to sync |
+| PostgreSQL | `pg_matviews`: definition, comment, indexes, dependency columns | available, but **not** through `INFORMATION_SCHEMA.COLUMNS` |
+| StarRocks | `information_schema.materialized_views` | available, and already in hand |
+| Doris | `mv_infos()` | available, and already in hand |
+
+PostgreSQL's `information_schema.columns` is defined with
+`relkind IN ('r','v','f','p')`, so a materialized view (`relkind = 'm'`) is
+absent from it even though its columns are ordinary catalog rows — on 16.5 a
+materialized view created next to a table appears in `pg_class` and not in the
+view. Its columns now come from `pg_attribute` / `pg_attrdef` with `format_type`
+and `col_description`, keyed like every other relation. `format_type` renders the
+modifier (`numeric(10,2)`, `character varying(64)`), so the spelling matches what
+the other snapshots produce.
+
+StarRocks and Doris were cheaper than expected: an asynchronous materialized view
+is a real table there — StarRocks reports it in `information_schema.tables` with
+`TABLE_TYPE='VIEW'`, Doris with `BASE TABLE`, and both list its columns in
+`information_schema.columns` beside every table's — so the column list was
+already built in the same map and was being dropped one branch later. Attaching
+it is one line. Verified live against StarRocks 4.1.4 and Doris 4.1.4, with the
+attached line removed as the negative check: `sr_mv → [k, sv]` and
+`dr_mv → [k, sv]`, both empty without it.
+
+**The proto field was reused, not added.** `MaterializedViewMetadata.triggers`
+carried the copy-pasted "ordered list of columns in the materialized view"
+comment over a `TriggerMetadata` field (§5.3) that no engine can populate:
+PostgreSQL refuses a trigger on a materialized view outright (`relation "mvtest"
+cannot have triggers`), and StarRocks and Doris carry no trigger metadata for one.
+Field 5 is therefore `repeated ColumnMetadata columns` — the number `ViewMetadata`
+already uses — in both the store and the public proto. The dead `triggers` field
+left the PostgreSQL dump path, the history diff (which now reports a column
+group for a materialized view) and the metadata browser, which shows the column
+list instead of a trigger table that could never have a row.
+
+**What the list is worth depends on the engine's stored definition.** PostgreSQL
+re-deparses a view's definition when it stores it, so `CREATE VIEW v AS SELECT *
+FROM mv` is stored with the columns written out and no wildcard reaches the
+analyzer at all. The wildcard that does reach it is the one a user wrote: manual
+SQL, or any `AnalyzeSQL` text. StarRocks keeps the original text — a view over
+`a2probe.sr_base` is still stored as `SELECT * FROM a2probe.sr_base` — so there
+the list expands the wildcard in a view over a materialized view too. The
+integration case drives the PostgreSQL manual-SQL path for that reason.
+
+The catalog treats a materialized view with **no** stored columns as unknown
+rather than as empty, so an instance that has not re-synced since the upgrade
+keeps the `*` fallback instead of expanding to nothing.
+
+Negative-checked: the materialized-view case in `catalog/provide_test.go` fails
+when the branch is removed, the integration case fails the same way end to end,
+and the live StarRocks and Doris probes report no columns when the attachment is
+removed. New coverage is `catalog/provide_test.go` (six cases) and
+`TestPostgresMaterializedViewColumnsRealServerIntegration` (the synced column
+list plus a manual-SQL wildcard expanded through it). `gofmt`, `golangci-lint`,
+`go test ./...`, the build, the frontend checks and the real-server integration
+suite are green; MariaDB and TiDB are untouched.
