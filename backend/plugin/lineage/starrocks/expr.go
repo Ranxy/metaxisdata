@@ -120,17 +120,42 @@ func collectColumns(expr nodes.Node) []scope.ColumnRef {
 	return columns
 }
 
-// isExpressionDerivedText reports whether an expression text implies a
-// transformation.
-func isExpressionDerivedText(text string) bool {
-	upperText := strings.ToUpper(text)
-	return strings.Contains(text, "(") ||
-		strings.Contains(text, "+") ||
-		strings.Contains(text, "-") ||
-		strings.Contains(text, "*") ||
-		strings.Contains(text, "/") ||
-		strings.Contains(upperText, "CASE") ||
-		strings.Contains(upperText, "WHEN")
+// isPlainColumnRef reports whether an expression is a bare (possibly
+// parenthesized) column reference and therefore a direct projection rather than
+// a transformation. Deciding it from the AST keeps a quoted identifier that
+// contains an operator character — `created-at` — from being mistaken for an
+// expression.
+func isPlainColumnRef(expr nodes.Node) bool {
+	switch x := expr.(type) {
+	case *nodes.ColumnRef:
+		return true
+	case *nodes.ParenExpr:
+		return isPlainColumnRef(x.Expr)
+	default:
+		return false
+	}
+}
+
+// containsAggregateCall reports whether an expression contains an aggregate
+// function call and therefore depends on the rows of its FROM relations even
+// when it names no column, as COUNT(*) does. A constant or a NOW() has no such
+// dependency and must not invent one.
+func containsAggregateCall(expr nodes.Node) bool {
+	if expr == nil {
+		return false
+	}
+	found := false
+	nodes.Inspect(expr, func(n nodes.Node) bool {
+		if found {
+			return false
+		}
+		if fc, ok := n.(*nodes.FuncCallExpr); ok && aggregateFunctions[strings.ToUpper(funcCallName(fc))] {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }
 
 // analyzeExpressionOperator identifies the operation kind of an expression and

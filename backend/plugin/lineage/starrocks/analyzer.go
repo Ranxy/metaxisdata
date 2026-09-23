@@ -70,6 +70,9 @@ type Analyzer struct {
 	// TABLE ... AS, INSERT ... SELECT) is analyzed. Those columns must not also
 	// be emitted against __result__.
 	inTargetContext bool
+	// inSetOpArm is set while analyzing one arm of a set operation, so only the
+	// merged set-operation result emits edges.
+	inSetOpArm bool
 }
 
 // Analyze parses a single StarRocks statement and returns its column relations.
@@ -786,11 +789,13 @@ func (a *Analyzer) processSelectExpr(expr nodes.Node, alias string, aliased bool
 	}
 	sourceColumns := collectColumns(expr)
 	sourceColumns = append(sourceColumns, a.expressionSubquerySources(expr)...)
-	isDerived := isExpressionDerivedText(exprText)
+	isDerived := !isPlainColumnRef(expr)
 
-	// A derived expression with no column reference (for example COUNT(*))
-	// contributes a synthetic reference to every table in scope.
-	if isDerived && len(sourceColumns) == 0 {
+	// A table-wide aggregate such as COUNT(*) depends on the rows of every
+	// relation in scope even though it names no column. Any other source-less
+	// expression (a literal, NOW(), a cast of a constant) depends on no column
+	// at all and must not invent a dependency.
+	if isDerived && len(sourceColumns) == 0 && containsAggregateCall(expr) {
 		for _, tableRef := range sp.GetTables() {
 			sourceColumns = append(sourceColumns, wildcardSourceRef(tableRef))
 		}
@@ -855,10 +860,11 @@ func (a *Analyzer) expressionSubquerySources(expr nodes.Node) []scope.ColumnRef 
 // ---------------------------------------------------------------------------
 
 // generateEdges creates ColumnRelation objects from the scope's output columns.
-// Only the root query emits edges to the final result, and a DDL body does not
-// (its columns are mapped onto the created object instead).
+// Only the root query emits edges to the final result; a DDL body does not (its
+// columns are mapped onto the created object instead) and neither does a set
+// operation arm (the merged operation emits them once).
 func (a *Analyzer) generateEdges(sp *scope.Scope) {
-	if a.inTargetContext || sp == nil || sp.Parent() != nil {
+	if a.inTargetContext || a.inSetOpArm || sp == nil || sp.Parent() != nil {
 		return
 	}
 	for _, outputCol := range sp.GetOutputColumns() {
@@ -1076,9 +1082,10 @@ func flattenSetOpArms(node nodes.Node) []*nodes.SelectStmt {
 
 // processSetOperation handles UNION/INTERSECT/EXCEPT by processing every arm
 // and merging their output columns positionally. Each arm is analyzed in its
-// own scope so one arm's FROM relations cannot leak into the next; arms at the
-// root emit their own edges, and a set operation nested in a CTE or derived
-// table contributes the merged columns to its parent instead.
+// own scope so one arm's FROM relations cannot leak into the next, and only the
+// merged operation emits result edges, so the set-operation relation type is
+// recorded once. A set operation nested in a CTE or derived table contributes
+// the merged columns to its parent instead.
 func (a *Analyzer) processSetOperation(stmt *nodes.SetOpStmt) {
 	arms := flattenSetOpArms(stmt)
 	if len(arms) == 0 {
@@ -1090,7 +1097,7 @@ func (a *Analyzer) processSetOperation(stmt *nodes.SetOpStmt) {
 
 	for i, arm := range arms {
 		if i == 0 {
-			a.processSelectStatement(arm)
+			a.processSetOpArm(arm)
 			allOutputColumns = append(allOutputColumns, resolveOutputColumns(baseScope, baseScope.GetOutputColumns()))
 			continue
 		}
@@ -1100,12 +1107,22 @@ func (a *Analyzer) processSetOperation(stmt *nodes.SetOpStmt) {
 		}
 		originalScope := a.currentScope()
 		a.scopeStack[len(a.scopeStack)-1] = tempScope
-		a.processSelectStatement(arm)
+		a.processSetOpArm(arm)
 		a.scopeStack[len(a.scopeStack)-1] = originalScope
 		allOutputColumns = append(allOutputColumns, resolveOutputColumns(tempScope, tempScope.GetOutputColumns()))
 	}
 
-	mergeUnionOutputColumns(baseScope, allOutputColumns)
+	mergeUnionOutputColumns(baseScope, allOutputColumns, stmt.Op)
+	a.generateEdges(baseScope)
+}
+
+// processSetOpArm processes one leaf arm of a set operation, suppressing the
+// arm's own result edges so the merged operation emits them once.
+func (a *Analyzer) processSetOpArm(arm *nodes.SelectStmt) {
+	previous := a.inSetOpArm
+	a.inSetOpArm = true
+	a.processSelectStatement(arm)
+	a.inSetOpArm = previous
 }
 
 // resolveOutputColumns resolves each output column's source references against
@@ -1134,30 +1151,42 @@ func resolveOutputColumns(sp *scope.Scope, cols []scope.OutputColumn) []scope.Ou
 }
 
 // mergeUnionOutputColumns merges output columns from multiple set-operation
-// arms positionally.
-func mergeUnionOutputColumns(baseScope *scope.Scope, allOutputColumns [][]scope.OutputColumn) {
+// arms positionally and records the set operation as the leading transformation
+// of every merged column, which is what makes the relation type union/
+// intersect/except instead of direct.
+func mergeUnionOutputColumns(baseScope *scope.Scope, allOutputColumns [][]scope.OutputColumn, setOp nodes.SetOperator) {
 	if len(allOutputColumns) == 0 || len(allOutputColumns[0]) == 0 {
 		return
 	}
+	transform, hasTransform := setOpTransformation(setOp)
 	firstQueryOutputs := allOutputColumns[0]
 	for colIdx := 0; colIdx < len(firstQueryOutputs); colIdx++ {
 		firstCol := firstQueryOutputs[colIdx]
 		var mergedSources []scope.ColumnRef
-		var hasDerivedTransform bool
 		for queryIdx := 0; queryIdx < len(allOutputColumns); queryIdx++ {
 			if colIdx < len(allOutputColumns[queryIdx]) {
-				queryCol := allOutputColumns[queryIdx][colIdx]
-				mergedSources = append(mergedSources, queryCol.SourceColumns...)
-				if queryCol.IsDerived {
-					hasDerivedTransform = true
-				}
+				mergedSources = append(mergedSources, allOutputColumns[queryIdx][colIdx].SourceColumns...)
 			}
 		}
 		firstCol.SourceColumns = mergedSources
-		if hasDerivedTransform && firstCol.Transform == nil {
-			firstCol.Transform = []model.Transformation{model.NewUnionTransformation()}
+		if hasTransform {
+			firstCol.Transform = append([]model.Transformation{transform}, firstCol.Transform...)
 		}
 		baseScope.SetOutputColumn(colIdx, firstCol)
+	}
+}
+
+// setOpTransformation maps a StarRocks set operator to its transformation.
+func setOpTransformation(setOp nodes.SetOperator) (model.Transformation, bool) {
+	switch setOp {
+	case nodes.SetUnion:
+		return model.NewUnionTransformation(), true
+	case nodes.SetIntersect:
+		return model.NewIntersectTransformation(), true
+	case nodes.SetExcept:
+		return model.NewExceptTransformation(), true
+	default:
+		return model.Transformation{}, false
 	}
 }
 

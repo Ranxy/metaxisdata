@@ -194,13 +194,13 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
-          relation_type: direct
+          relation_type: union
           is_temp: true
         - from_table: t2
           from_field: id
           to_table: __result__
           to_field: id
-          relation_type: direct
+          relation_type: union
           is_temp: true
     - name: set_operation_nested_in_cte
       sql: WITH c AS (SELECT id FROM t1 UNION ALL SELECT id FROM t2) SELECT id FROM c
@@ -209,13 +209,13 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
-          relation_type: direct
+          relation_type: union
           is_temp: true
         - from_table: t2
           from_field: id
           to_table: __result__
           to_field: id
-          relation_type: direct
+          relation_type: union
           is_temp: true
     - name: cte_star_with_alias
       sql: WITH c AS (SELECT id, name FROM users) SELECT x.* FROM c x
@@ -231,4 +231,22 @@ cases:
           to_table: __result__
           to_field: name
           relation_type: direct
+          is_temp: true
+    # A source-less expression depends on a relation's rows only when it is a
+    # table-wide aggregate; a literal or NOW() must not invent a dependency.
+    - name: constant expression has no lineage
+      sql: SELECT '2020-01-01' AS s FROM t
+      expected_edges: []
+    - name: volatile expression has no lineage
+      sql: SELECT DATE_SUB(NOW(), INTERVAL 1 YEAR) AS d FROM t
+      expected_edges: []
+    - name: quoted identifier with an operator character is direct
+      sql: SELECT `created-at` FROM t
+      expected_edges:
+        - from_table: t
+          from_field: created-at
+          to_table: __result__
+          to_field: '`created-at`'
+          relation_type: direct
+          has_transform: false
           is_temp: true

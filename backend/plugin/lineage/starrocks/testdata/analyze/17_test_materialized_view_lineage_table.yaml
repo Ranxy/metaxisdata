@@ -71,13 +71,13 @@ cases:
           from_field: id
           to_table: mv
           to_field: id
-          relation_type: direct
+          relation_type: union
           is_temp: false
         - from_table: t2
           from_field: id
           to_table: mv
           to_field: id
-          relation_type: direct
+          relation_type: union
           is_temp: false
     - name: CREATE MATERIALIZED VIEW with star over a join
       sql: CREATE MATERIALIZED VIEW mv AS SELECT e.*, d.name FROM employees e JOIN departments d ON e.department_id = d.id

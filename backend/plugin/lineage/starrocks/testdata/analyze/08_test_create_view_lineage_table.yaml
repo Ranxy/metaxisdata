@@ -83,13 +83,13 @@ cases:
           from_field: id
           to_table: v
           to_field: id
-          relation_type: direct
+          relation_type: union
           is_temp: false
         - from_table: t2
           from_field: id
           to_table: v
           to_field: id
-          relation_type: direct
+          relation_type: union
           is_temp: false
     - name: CREATE VIEW with a parenthesized body
       sql: CREATE VIEW v AS (SELECT id FROM t1)
@@ -117,13 +117,13 @@ cases:
           from_field: id
           to_table: v
           to_field: id
-          relation_type: direct
+          relation_type: union
           is_temp: false
         - from_table: t2
           from_field: id
           to_table: v
           to_field: id
-          relation_type: direct
+          relation_type: union
           is_temp: false
     - name: SHOW CREATE VIEW output pasted as manual SQL
       sql: CREATE VIEW v (a, b) SECURITY NONE AS SELECT id, name FROM users

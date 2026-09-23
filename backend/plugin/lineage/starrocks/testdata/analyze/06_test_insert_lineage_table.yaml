@@ -108,11 +108,11 @@ cases:
           from_field: id
           to_table: t2
           to_field: id
-          relation_type: direct
+          relation_type: union
           is_temp: false
         - from_table: t3
           from_field: id
           to_table: t2
           to_field: id
-          relation_type: direct
+          relation_type: union
           is_temp: false
