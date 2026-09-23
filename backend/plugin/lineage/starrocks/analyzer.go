@@ -278,10 +278,40 @@ func (a *Analyzer) addBaseTable(name *nodes.ObjectName, alias string) {
 	if alias == "" {
 		alias = table
 	}
-	a.currentScope().AddTable(&scope.TableRef{
+	tableRef := &scope.TableRef{
 		Schema: schema,
 		Table:  table,
 		Alias:  alias,
+	}
+	a.attachColumnLookup(tableRef)
+	a.currentScope().AddTable(tableRef)
+}
+
+// attachColumnLookup lets the scope resolver disambiguate an unqualified column
+// with catalog metadata for this base table, wherever the reference is resolved:
+// the statement itself, a CTE body, a derived table or an expression subquery.
+func (a *Analyzer) attachColumnLookup(tableRef *scope.TableRef) {
+	if a.catalog == nil {
+		return
+	}
+	var (
+		names  []string
+		loaded bool
+	)
+	tableRef.SetColumnLookup(func() []string {
+		if loaded {
+			return names
+		}
+		loaded = true
+		meta, err := a.catalog.GetTable(a.ctx, model.ObjectIdentifier{Database: tableRef.Schema, Name: tableRef.Table})
+		if err != nil || meta == nil {
+			return nil
+		}
+		names = make([]string, 0, len(meta.Columns))
+		for _, col := range meta.Columns {
+			names = append(names, col.Name)
+		}
+		return names
 	})
 }
 

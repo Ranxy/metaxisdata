@@ -394,11 +394,13 @@ func (a *Analyzer) processTableStmt(stmt *nodes.TableStmt) {
 		return
 	}
 	sp := a.currentScope()
-	sp.AddTable(&scope.TableRef{
+	tableRef := &scope.TableRef{
 		Schema: stmt.Table.Schema,
 		Table:  stmt.Table.Name,
 		Alias:  stmt.Table.Alias,
-	})
+	}
+	a.attachColumnLookup(tableRef)
+	sp.AddTable(tableRef)
 	a.processStar(sp)
 	a.generateEdges(sp)
 }
@@ -629,11 +631,13 @@ func (a *Analyzer) processSingleTableRef(ref *nodes.TableRef) {
 	if alias == "" {
 		alias = tableName
 	}
-	a.currentScope().AddTable(&scope.TableRef{
+	tableRef := &scope.TableRef{
 		Schema: ref.Schema,
 		Table:  tableName,
 		Alias:  alias,
-	})
+	}
+	a.attachColumnLookup(tableRef)
+	a.currentScope().AddTable(tableRef)
 }
 
 // processDerivedTable processes a derived table (subquery in FROM).
@@ -820,7 +824,7 @@ func (a *Analyzer) generateEdgesForDataModification(targetSchema, targetTable st
 // emitSources resolves source columns and adds one relation per source.
 func (a *Analyzer) emitSources(sp *scope.Scope, sourceColumns []scope.ColumnRef, targetSchema, targetTable, targetColumn string, transform []model.Transformation) {
 	for _, sourceCol := range sourceColumns {
-		resolved, err := a.resolveColumn(sp, sourceCol)
+		resolved, err := sp.ResolveColumn(sourceCol)
 		if err != nil {
 			continue
 		}
@@ -941,7 +945,9 @@ func (a *Analyzer) processInsertStatement(stmt *nodes.InsertStmt) {
 		if alias == "" {
 			alias = tr.Name
 		}
-		a.currentScope().AddTable(&scope.TableRef{Schema: tr.Schema, Table: tr.Name, Alias: alias})
+		tableRef := &scope.TableRef{Schema: tr.Schema, Table: tr.Name, Alias: alias}
+		a.attachColumnLookup(tableRef)
+		a.currentScope().AddTable(tableRef)
 		a.processStar(a.currentScope())
 	default:
 		// INSERT ... VALUES and INSERT ... SET carry literal rows only: the
@@ -970,7 +976,7 @@ func (a *Analyzer) processInsertUpdateList(assignments []*nodes.Assignment, targ
 		}
 		transform := a.analyzeExpressionOperator(elem.Value)
 		for _, sourceCol := range sourceColumns {
-			resolved, err := a.resolveColumn(sp, sourceCol)
+			resolved, err := sp.ResolveColumn(sourceCol)
 			if err != nil {
 				resolved = &sourceCol
 			}
@@ -1105,7 +1111,7 @@ func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment) {
 			continue
 		}
 		targetCol := scope.ColumnRef{Table: elem.Column.Table, Column: elem.Column.Column}
-		resolved, err := a.resolveColumn(sp, targetCol)
+		resolved, err := sp.ResolveColumn(targetCol)
 		if err != nil {
 			continue
 		}
@@ -1132,7 +1138,7 @@ func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment) {
 		}
 
 		for _, sourceCol := range sourceColumns {
-			resolvedSource, err := a.resolveColumn(sp, sourceCol)
+			resolvedSource, err := sp.ResolveColumn(sourceCol)
 			if err != nil {
 				resolvedSource = &sourceCol
 			}
@@ -1203,7 +1209,7 @@ func (a *Analyzer) processDeleteStatement(stmt *nodes.DeleteStmt) {
 			actualTargetTable = *foundTable
 		}
 		for _, condCol := range conditionColumns {
-			resolved, err := a.resolveColumn(sp, condCol)
+			resolved, err := sp.ResolveColumn(condCol)
 			if err != nil {
 				resolved = &condCol
 			}
@@ -1739,52 +1745,30 @@ func (a *Analyzer) addRelation(relation model.ColumnRelation) {
 	a.edges = append(a.edges, relation)
 }
 
-// resolveColumn resolves a column reference, preferring catalog metadata to
-// disambiguate an unqualified name across several tables. Without metadata the
-// shared scope resolver's deterministic first-table rule is used.
-func (a *Analyzer) resolveColumn(sp *scope.Scope, colRef scope.ColumnRef) (*scope.ColumnRef, error) {
-	if sp == nil {
-		return nil, errors.New("no scope")
+// attachColumnLookup lets the scope resolver disambiguate an unqualified column
+// with catalog metadata for this base table, wherever the reference is resolved:
+// the statement itself, a CTE body, a derived table or an expression subquery.
+func (a *Analyzer) attachColumnLookup(tableRef *scope.TableRef) {
+	if a.catalog == nil {
+		return
 	}
-	if colRef.Resolved {
-		return &colRef, nil
-	}
-	if colRef.Table != "" || a.catalog == nil {
-		return sp.ResolveColumn(colRef)
-	}
-	tables := sp.GetTables()
-	if len(tables) <= 1 {
-		return sp.ResolveColumn(colRef)
-	}
-	keys := make([]string, 0, len(tables))
-	for key := range tables {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
-
-	allMetadata := true
-	for _, key := range keys {
-		tableRef := tables[key]
-		if tableRef.IsSubquery || tableRef.IsCTE {
-			// A temporary source's columns are described by its lineage, which the
-			// shared resolver already handles; do not second-guess it here.
-			return sp.ResolveColumn(colRef)
+	var (
+		names  []string
+		loaded bool
+	)
+	tableRef.SetColumnLookup(func() []string {
+		if loaded {
+			return names
 		}
-		meta := a.catalogTable(tableRef)
-		if meta == nil {
-			allMetadata = false
-			continue
-		}
-		for _, col := range meta.Columns {
-			if strings.EqualFold(col.Name, colRef.Column) {
-				return &scope.ColumnRef{Schema: tableRef.Schema, Table: tableRef.Table, Column: colRef.Column}, nil
+		loaded = true
+		if meta := a.catalogTable(tableRef); meta != nil {
+			names = make([]string, 0, len(meta.Columns))
+			for _, col := range meta.Columns {
+				names = append(names, col.Name)
 			}
 		}
-	}
-	if allMetadata {
-		return nil, errors.Errorf("column %q not found in any table in scope", colRef.Column)
-	}
-	return sp.ResolveColumn(colRef)
+		return names
+	})
 }
 
 // catalogTable looks up a base table's metadata once per analysis.

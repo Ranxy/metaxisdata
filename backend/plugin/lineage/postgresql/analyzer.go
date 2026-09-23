@@ -412,12 +412,42 @@ func (a *Analyzer) processRangeVar(rangeVar *pgast.RangeVar) {
 		return
 	}
 
-	a.currentScope().AddTable(&scope.TableRef{
+	tableRef := &scope.TableRef{
 		Schema:     rangeVar.Schemaname,
 		Table:      tableName,
 		Alias:      alias,
 		IsSubquery: false,
 		IsCTE:      false,
+	}
+	a.attachColumnLookup(tableRef)
+	a.currentScope().AddTable(tableRef)
+}
+
+// attachColumnLookup lets the scope resolver disambiguate an unqualified column
+// with catalog metadata for this base table, wherever the reference is resolved:
+// the statement itself, a CTE body, a derived table or an expression subquery.
+func (a *Analyzer) attachColumnLookup(tableRef *scope.TableRef) {
+	if a.catalog == nil {
+		return
+	}
+	var (
+		names  []string
+		loaded bool
+	)
+	tableRef.SetColumnLookup(func() []string {
+		if loaded {
+			return names
+		}
+		loaded = true
+		meta, err := a.catalog.GetTable(a.ctx, model.ObjectIdentifier{Schema: tableRef.Schema, Name: tableRef.Table})
+		if err != nil || meta == nil {
+			return nil
+		}
+		names = make([]string, 0, len(meta.Columns))
+		for _, col := range meta.Columns {
+			names = append(names, col.Name)
+		}
+		return names
 	})
 }
 
@@ -432,13 +462,15 @@ func (a *Analyzer) addTargetRelation(rangeVar *pgast.RangeVar) {
 	if rangeVar.Alias != nil {
 		alias = rangeVar.Alias.Aliasname
 	}
-	a.currentScope().AddTable(&scope.TableRef{
+	tableRef := &scope.TableRef{
 		Schema:     rangeVar.Schemaname,
 		Table:      rangeVar.Relname,
 		Alias:      alias,
 		IsSubquery: false,
 		IsCTE:      false,
-	})
+	}
+	a.attachColumnLookup(tableRef)
+	a.currentScope().AddTable(tableRef)
 }
 
 // processRangeSubselect processes a derived table (subquery in FROM).

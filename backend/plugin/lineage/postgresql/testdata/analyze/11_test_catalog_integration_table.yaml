@@ -89,3 +89,50 @@ cases:
         - from_table: users
           from_field: status
           to_table: __result__
+    # The scope resolver disambiguates an unqualified column from catalog
+    # metadata in every scope, including a CTE body.
+    - name: unqualified column disambiguated by catalog
+      sql: SELECT z FROM a JOIN b ON a.id = b.id
+      catalog:
+        tables:
+            a:
+                - id
+                - x
+            b:
+                - id
+                - y
+                - z
+      exact_edges: true
+      expected_edges:
+        - from_table: b
+          from_field: z
+          to_table: __result__
+          to_field: z
+    - name: unqualified column disambiguated inside a CTE
+      sql: WITH c AS (SELECT z FROM a JOIN b ON a.id = b.id) SELECT z FROM c
+      catalog:
+        tables:
+            a:
+                - id
+                - x
+            b:
+                - id
+                - y
+                - z
+      exact_edges: true
+      expected_edges:
+        - from_table: b
+          from_field: z
+          to_table: __result__
+          to_field: z
+    - name: unknown column is not attributed to an arbitrary relation
+      sql: SELECT z FROM a JOIN b ON a.id = b.id
+      catalog:
+        tables:
+            a:
+                - id
+                - x
+            b:
+                - id
+                - y
+      expected_edges: []

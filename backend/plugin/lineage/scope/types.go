@@ -15,6 +15,11 @@ type ColumnRef struct {
 	Resolved bool
 }
 
+// ColumnLookup reports the column names a relation exposes. A nil result means
+// the metadata is unavailable, and the resolver keeps its deterministic ordering
+// rule for that relation.
+type ColumnLookup func() []string
+
 // TableRef represents a table or table-like source (subquery, CTE).
 type TableRef struct {
 	Schema string
@@ -25,6 +30,26 @@ type TableRef struct {
 	IsCTE      bool
 	// Lineage edges for subqueries (how output columns relate to source tables)
 	Lineage []model.ColumnRelation
+	// columnLookup, when set, reports this base table's column names from the
+	// catalog. It is consulted lazily, only when an unqualified column has to be
+	// disambiguated across several relations.
+	columnLookup ColumnLookup
+}
+
+// SetColumnLookup attaches the catalog column lookup for this relation. Analyzers
+// set it when they register a base table, so every scope — including the CTE,
+// derived-table and subquery scopes the analyzers resolve in — disambiguates an
+// unqualified column the same way.
+func (r *TableRef) SetColumnLookup(lookup ColumnLookup) {
+	r.columnLookup = lookup
+}
+
+// ColumnNames returns the relation's column names, or nil when they are unknown.
+func (r *TableRef) ColumnNames() []string {
+	if r == nil || r.columnLookup == nil {
+		return nil
+	}
+	return r.columnLookup()
 }
 
 // CTEDefinition represents a Common Table Expression.

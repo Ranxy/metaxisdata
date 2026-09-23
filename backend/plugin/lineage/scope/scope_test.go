@@ -197,6 +197,71 @@ func TestScope_ResolveColumn_Unqualified_MultipleTablesAmbiguous(t *testing.T) {
 	require.Contains(t, []string{"users", "orders"}, resolved.Table)
 }
 
+// Catalog metadata disambiguates an unqualified column across several relations:
+// the relation that owns the column wins instead of the first one in key order.
+func TestScope_ResolveColumn_MetadataDisambiguates(t *testing.T) {
+	scope := NewScope(nil)
+	scope.AddTable(tableWithColumns("a", []string{"id", "x"}))
+	scope.AddTable(tableWithColumns("b", []string{"id", "y"}))
+
+	resolved, err := scope.ResolveColumn(ColumnRef{Column: "y"})
+	require.NoError(t, err)
+	require.Equal(t, "b", resolved.Table)
+	require.Equal(t, "y", resolved.Column)
+}
+
+// A column no relation owns is unresolvable: it must not be attributed to an
+// arbitrary relation.
+func TestScope_ResolveColumn_MetadataRejectsUnknownColumn(t *testing.T) {
+	scope := NewScope(nil)
+	scope.AddTable(tableWithColumns("a", []string{"id"}))
+	scope.AddTable(tableWithColumns("b", []string{"id"}))
+
+	resolved, err := scope.ResolveColumn(ColumnRef{Column: "nope"})
+	require.Error(t, err)
+	require.Nil(t, resolved)
+}
+
+// Incomplete metadata keeps the deterministic ordering rule instead of guessing.
+func TestScope_ResolveColumn_PartialMetadataFallsBack(t *testing.T) {
+	scope := NewScope(nil)
+	scope.AddTable(tableWithColumns("a", []string{"id"}))
+	scope.AddTable(&TableRef{Table: "b", Alias: "b"})
+
+	resolved, err := scope.ResolveColumn(ColumnRef{Column: "z"})
+	require.NoError(t, err)
+	require.Equal(t, "a", resolved.Table)
+}
+
+// A temporary relation has no catalog columns, so its presence keeps the
+// ordering rule; the deterministic key order then picks the first relation.
+func TestScope_ResolveColumn_TemporaryRelationFallsBack(t *testing.T) {
+	scope := NewScope(nil)
+	scope.AddTable(tableWithColumns("a", []string{"id"}))
+	scope.AddTable(&TableRef{Table: "c", Alias: "c", IsCTE: true})
+
+	resolved, err := scope.ResolveColumn(ColumnRef{Column: "id"})
+	require.NoError(t, err)
+	require.Equal(t, "a", resolved.Table)
+}
+
+// A single relation keeps the ordering rule: there is nothing to disambiguate,
+// and stale metadata must not drop a column that does exist.
+func TestScope_ResolveColumn_SingleTableKeepsFallback(t *testing.T) {
+	scope := NewScope(nil)
+	scope.AddTable(tableWithColumns("a", []string{"id"}))
+
+	resolved, err := scope.ResolveColumn(ColumnRef{Column: "not_in_metadata"})
+	require.NoError(t, err)
+	require.Equal(t, "a", resolved.Table)
+}
+
+func tableWithColumns(name string, columns []string) *TableRef {
+	ref := &TableRef{Table: name, Alias: name}
+	ref.SetColumnLookup(func() []string { return columns })
+	return ref
+}
+
 func TestScope_ResolveColumn_NotFound(t *testing.T) {
 	scope := NewScope(nil)
 

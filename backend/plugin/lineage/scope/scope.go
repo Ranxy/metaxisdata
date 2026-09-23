@@ -2,6 +2,7 @@ package scope
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -123,16 +124,27 @@ func (s *Scope) ResolveColumn(colRef ColumnRef) (*ColumnRef, error) {
 	// The walk is sorted by key rather than ranging the map directly: a map walk
 	// picks an arbitrary relation when the column name is ambiguous across FROM
 	// relations, which would make the resolved source (and therefore the emitted
-	// lineage edge) nondeterministic for NATURAL JOIN and similar shapes. Sorting
-	// keeps the product's output stable. Analyzers that have column metadata
-	// disambiguate before calling this fallback.
+	// lineage edge) nondeterministic for NATURAL JOIN and similar shapes.
 	tableKeys := make([]string, 0, len(s.tables))
 	for key := range s.tables {
 		tableKeys = append(tableKeys, key)
 	}
 	slices.Sort(tableKeys)
-	for _, key := range tableKeys {
-		ref := s.tables[key]
+
+	// With several relations in scope, catalog metadata decides: the relation
+	// that actually owns the column wins instead of the alphabetically first one.
+	// The rule is skipped whenever any relation lacks metadata, so the ordering
+	// rule below stays the deterministic fallback for the metadata-less case.
+	if len(tableKeys) > 1 {
+		if resolved, decided, err := s.resolveByColumnMetadata(tableKeys, colRef); decided {
+			return resolved, err
+		}
+	}
+
+	// Fall back to the first relation in key order, which also covers a single
+	// relation and every scope whose metadata is unavailable.
+	if len(tableKeys) > 0 {
+		ref := s.tables[tableKeys[0]]
 		return &ColumnRef{
 			Schema: ref.Schema,
 			Table:  ref.Table,
@@ -160,6 +172,38 @@ func (s *Scope) ResolveColumn(colRef ColumnRef) (*ColumnRef, error) {
 		return s.parent.ResolveColumn(colRef)
 	}
 	return nil, errors.Errorf("column not found: %s", colRef.Column)
+}
+
+// resolveByColumnMetadata picks the relation that owns an unqualified column
+// from catalog metadata. decided is false when metadata is incomplete for at
+// least one relation, in which case the caller falls back to its ordering rule.
+// When every relation has metadata and none owns the column, the reference is
+// unresolvable: an error is returned so the caller drops the edge instead of
+// attributing it to an arbitrary table.
+func (s *Scope) resolveByColumnMetadata(keys []string, colRef ColumnRef) (*ColumnRef, bool, error) {
+	allKnown := true
+	for _, key := range keys {
+		ref := s.tables[key]
+		if ref.IsSubquery || ref.IsCTE {
+			// A temporary relation's columns are described by its lineage, which
+			// the caller resolves separately; do not second-guess it here.
+			return nil, false, nil
+		}
+		names := ref.ColumnNames()
+		if names == nil {
+			allKnown = false
+			continue
+		}
+		for _, name := range names {
+			if strings.EqualFold(name, colRef.Column) {
+				return &ColumnRef{Schema: ref.Schema, Table: ref.Table, Column: colRef.Column}, true, nil
+			}
+		}
+	}
+	if allKnown {
+		return nil, true, errors.Errorf("column %q not found in any table in scope", colRef.Column)
+	}
+	return nil, false, nil
 }
 
 // GetOutputColumns returns the output columns of this scope.

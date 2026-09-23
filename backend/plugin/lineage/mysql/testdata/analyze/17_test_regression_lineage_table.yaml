@@ -82,6 +82,46 @@ cases:
           b: [id, y]
       expected_edges: []
 
+    # The disambiguation runs inside whatever scope the reference is collected in,
+    # so a CTE body and a derived table resolve exactly like the statement above.
+    - name: catalog disambiguation inside a CTE body
+      sql: WITH c AS (SELECT z FROM a JOIN b ON a.id = b.id) SELECT z FROM c
+      catalog:
+        tables:
+          a: [id, x]
+          b: [id, y, z]
+      exact_edges: true
+      expected_edges:
+        - from_table: b
+          from_field: z
+          to_table: __result__
+          to_field: z
+          relation_type: direct
+          is_temp: true
+
+    - name: catalog disambiguation inside a derived table
+      sql: SELECT s.z FROM (SELECT z FROM a JOIN b ON a.id = b.id) s
+      catalog:
+        tables:
+          a: [id, x]
+          b: [id, y, z]
+      exact_edges: true
+      expected_edges:
+        - from_table: b
+          from_field: z
+          to_table: __result__
+          to_field: z
+          relation_type: direct
+          is_temp: true
+
+    - name: unknown column inside a CTE is not attributed
+      sql: WITH c AS (SELECT nope FROM a JOIN b ON a.id = b.id) SELECT nope FROM c
+      catalog:
+        tables:
+          a: [id, x]
+          b: [id, y]
+      expected_edges: []
+
     - name: TABLE statement
       sql: TABLE employees
       exact_edges: true
