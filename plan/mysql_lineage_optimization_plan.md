@@ -919,7 +919,8 @@ changing one is a deliberate, visible corpus change.
   `UPDATE` / `DELETE` is not recorded either. `Transformation.GroupKeys` is
   populated for the MySQL family as of §10.9, and is still empty for PostgreSQL
   and StarRocks.
-- The public API still collapses relation types to DIRECT/INDIRECT.
+- The public API reports every relation type the model holds (§10.14); the
+  `unknown` kind stays unreachable because no producer emits it.
 - An unqualified reference that several relations satisfy is reported once per
   relation the catalog confirms owns it, and the search reaches the enclosing
   scope when the current one is known not to provide the name (§10.11). A name no
@@ -940,6 +941,9 @@ changing one is a deliberate, visible corpus change.
   covers the qualified wildcard (§10.8).
 - MySQL `NATURAL JOIN` / `USING` is covered by the shared corpus as well as the
   MariaDB dialect corpus (§10.8).
+- A temporary relation's column list is honoured positionally in every engine
+  that can parse it (§10.14). StarRocks cannot parse a derived table's alias list
+  at all, which is an omni gap rather than an analyzer decision.
 - An unaliased expression column is named differently by the remaining
   dialects: PostgreSQL calls it `?column?` (verified against a live PostgreSQL
   16) while the analyzer stores the expression text, and StarRocks has not been
@@ -1520,3 +1524,60 @@ and two cases per engine, and always including the wildcard fails the
 named-preference test. `gofmt`, `golangci-lint`, `go test ./...`, the build and the
 real-server integration suite are green; MariaDB and TiDB remain pure regenerations
 (21-line diffs).
+
+### 10.14 Ninth pass: column lists, the API relation type and one ingestion rule
+
+Three gaps an audit of the MySQL family turned up, each measured before the fix.
+
+**A temporary relation's column list was ignored.** `WITH c (a) AS (SELECT name
+FROM t)` and `(SELECT name FROM t) AS d (x)` produced *no edge at all*: the
+relation was registered under the body's output names, so a reference to the
+exposed name found nothing and the lineage target carried the body's name.
+
+| shape | before | after |
+| --- | --- | --- |
+| `WITH c (a) AS (SELECT name FROM users) SELECT a FROM c` | no edge | `users.name → __result__.a` |
+| the same written `SELECT c.a FROM c` | no edge | `users.name → __result__.a` |
+| `SELECT x FROM (SELECT name FROM users) AS d (x)` | no edge | `users.name → __result__.x` |
+| `SELECT d.x FROM (SELECT name FROM users) AS d (x)` | no edge | `users.name → __result__.x` |
+| `SELECT p, q FROM (SELECT id, name FROM users) AS d (p, q)` | no edge | `users.id → p`, `users.name → q` |
+| `WITH c (name) AS (SELECT name FROM users) SELECT name FROM c` | worked | unchanged |
+| `WITH c (a) AS (SELECT name FROM users) SELECT name FROM c` | no edge | still no edge: `c` does not expose `name` |
+
+`exposedColumnNames` renames a temporary relation's output positionally when the
+declared list's arity matches, and both the lineage target and the column list the
+scope resolves against are built from it. PostgreSQL already renamed a CTE's
+columns and was missing only the derived list; StarRocks renames the CTE list and
+**cannot parse** a derived table's alias list, which is an omni gap, so only the
+MySQL family and PostgreSQL changed.
+
+**The API collapsed the relation type.** `convertRelationType` reported every
+non-direct relation as `INDIRECT`, so the `JOIN`, `GROUP`, `UNION`, `INTERSECT`
+and `EXCEPT` edges the analyzers record were indistinguishable through the API.
+The enum now carries `JOIN = 3` through `UNKNOWN = 8` — the model's own numbering,
+so the stored value and the wire value agree — the conversion is total, and the
+frontend labels all of them from one helper (`frontend/src/lib/relationType.ts`,
+`metadataBrowser.relation*`). The OpenLineage column page's literal
+`DIRECT`/`INDIRECT` badges use the same labels now, so they are translated too.
+
+**The ingestion derived the relation type by a second rule.** `mapRelationType`
+returned only `Direct`/`Indirect`, so an ingested `INDIRECT/JOIN` facet was stored
+as `INDIRECT` and a `DIRECT/AGGREGATION` as `INDIRECT`, while a SQL analyzer stores
+`Join` and `Group` for the same semantics. The rule now lives once, in
+`model.RelationTypeOf`, and both sides use it: `scope.NewLineageEdge` and the
+ingestion's `buildColumnLineage`, which no longer takes a relation type at all
+because the transformations already decide it. One consequence is deliberate — an
+`IDENTITY` facet is a direct edge, so it carries **no** transformation, which is
+the invariant the SQL side keeps and `RequireFullEdgeAnnotations` enforces.
+
+Corpus: the shared MySQL-family corpus gained four cases (`04` a CTE list with and
+without an alias reference, `03` a derived alias list likewise) for 177 cases, and
+PostgreSQL gained the two derived ones for 133. StarRocks is unchanged.
+
+Negative-checked: dropping the CTE rename fails its two shared cases; neutralising
+`exposedColumnNames` fails the two derived cases in the MySQL family and in
+PostgreSQL; collapsing the API conversion fails its test; and restoring a
+`PROJECT` transformation for an identity facet fails five ingestion tests.
+`gofmt`, `golangci-lint`, `go test ./...`, the build and the real-server
+integration suite are green, as are Biome, ESLint, the i18n audit, `vue-tsc` and
+the frontend tests; MariaDB and TiDB remain pure regenerations (21-line diffs).
