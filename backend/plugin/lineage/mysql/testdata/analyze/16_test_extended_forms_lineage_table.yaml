@@ -1,6 +1,7 @@
 name: TestExtendedFormsLineage_Table
 cases:
     - name: window_row_number
+      exact_edges: true
       sql: SELECT name, ROW_NUMBER() OVER (PARTITION BY department_id ORDER BY salary) AS rn FROM employees
       expected_edges:
         - from_table: employees
@@ -66,6 +67,7 @@ cases:
             - operation: WINDOW
               function_name: SUM
     - name: union_three_arms
+      exact_edges: true
       sql: SELECT id, name FROM employees UNION SELECT id, name FROM contractors UNION SELECT id, name FROM vendors
       expected_edges:
         - from_table: contractors
@@ -105,6 +107,7 @@ cases:
           relation_type: union
           is_temp: true
     - name: union_all
+      exact_edges: true
       sql: SELECT user_id, amount FROM sales UNION ALL SELECT user_id, amount FROM refunds
       expected_edges:
         - from_table: refunds
@@ -132,6 +135,7 @@ cases:
           relation_type: union
           is_temp: true
     - name: cte_chain
+      exact_edges: true
       sql: WITH a AS (SELECT id, name FROM employees), b AS (SELECT name FROM a) SELECT name FROM b
       expected_edges:
         - from_table: employees
@@ -141,6 +145,7 @@ cases:
           relation_type: direct
           is_temp: true
     - name: cte_join
+      exact_edges: true
       sql: WITH d AS (SELECT id, name FROM departments) SELECT e.name, d.name AS dept FROM employees e JOIN d ON e.department_id = d.id
       expected_edges:
         - from_table: departments
@@ -156,6 +161,7 @@ cases:
           relation_type: direct
           is_temp: true
     - name: derived_table
+      exact_edges: true
       sql: SELECT s.n FROM (SELECT name AS n FROM employees) s
       expected_edges:
         - from_table: employees
@@ -165,6 +171,7 @@ cases:
           relation_type: direct
           is_temp: true
     - name: derived_join
+      exact_edges: true
       sql: SELECT s.n, d.name AS dn FROM (SELECT e.name AS n, e.department_id AS did FROM employees e) s JOIN departments d ON s.did = d.id
       expected_edges:
         - from_table: departments
@@ -180,6 +187,7 @@ cases:
           relation_type: direct
           is_temp: true
     - name: scalar_subquery
+      exact_edges: true
       sql: SELECT (SELECT MAX(salary) FROM employees) AS m FROM departments
       expected_edges:
         - from_table: employees
@@ -190,6 +198,7 @@ cases:
           has_transform: true
           is_temp: true
     - name: case_expression
+      exact_edges: true
       sql: SELECT CASE WHEN salary > 100 THEN 'hi' ELSE name END AS band FROM employees
       expected_edges:
         - from_table: employees
@@ -207,6 +216,7 @@ cases:
           has_transform: true
           is_temp: true
     - name: coalesce
+      exact_edges: true
       sql: SELECT COALESCE(name, 'unknown') AS n FROM employees
       expected_edges:
         - from_table: employees
@@ -217,6 +227,7 @@ cases:
           has_transform: true
           is_temp: true
     - name: group_concat
+      exact_edges: true
       sql: SELECT department_id, GROUP_CONCAT(name) AS names FROM employees GROUP BY department_id
       expected_edges:
         - from_table: employees
@@ -233,6 +244,7 @@ cases:
           has_transform: true
           is_temp: true
     - name: count_distinct
+      exact_edges: true
       sql: SELECT COUNT(DISTINCT department_id) AS c FROM employees
       expected_edges:
         - from_table: employees
@@ -259,8 +271,15 @@ cases:
           relation_type: direct
           is_temp: true
     - name: table_star
+      exact_edges: true
       sql: SELECT e.*, d.name FROM employees e JOIN departments d ON e.department_id = d.id
       expected_edges:
+        - from_table: employees
+          from_field: "*"
+          to_table: __result__
+          to_field: "*"
+          relation_type: direct
+          is_temp: true
         - from_table: departments
           from_field: name
           to_table: __result__
@@ -268,6 +287,7 @@ cases:
           relation_type: direct
           is_temp: true
     - name: comma_join
+      exact_edges: true
       sql: SELECT e.name, d.name AS dn FROM employees e, departments d WHERE e.department_id = d.id
       expected_edges:
         - from_table: departments
@@ -283,6 +303,7 @@ cases:
           relation_type: direct
           is_temp: true
     - name: insert_odku
+      exact_edges: true
       sql: INSERT INTO t2 (a, b) SELECT id, name FROM employees ON DUPLICATE KEY UPDATE b = VALUES(b)
       expected_edges:
         - from_table: employees
@@ -298,6 +319,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: update_join
+      exact_edges: true
       sql: UPDATE employees e JOIN departments d ON e.department_id = d.id SET e.salary = d.budget WHERE d.name = 'eng'
       expected_edges:
         - from_table: departments
@@ -308,6 +330,7 @@ cases:
           has_transform: true
           is_temp: false
     - name: delete_multi
+      exact_edges: true
       sql: DELETE e FROM employees e JOIN departments d ON e.department_id = d.id WHERE d.name = 'x'
       expected_edges:
         - from_table: departments
@@ -318,6 +341,7 @@ cases:
           has_transform: true
           is_temp: false
     - name: load_data_columns
+      exact_edges: true
       sql: LOAD DATA INFILE 'a.csv' INTO TABLE employees FIELDS TERMINATED BY ',' (id, name)
       expected_edges:
         - from_table: __file__
@@ -333,6 +357,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: load_data_set
+      exact_edges: true
       sql: LOAD DATA INFILE 'a.csv' INTO TABLE employees FIELDS TERMINATED BY ',' (id, @name) SET name = @name
       expected_edges:
         - from_table: __file__
@@ -349,6 +374,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: qualified_columns
+      exact_edges: true
       sql: SELECT testdb.employees.name FROM testdb.employees
       expected_edges:
         - from_database: testdb

@@ -1,6 +1,7 @@
 name: TestCTELineage_Table
 cases:
     - name: simple CTE
+      exact_edges: true
       sql: |-
         WITH active_users AS (
         			          SELECT id, name FROM users WHERE status = 'active'
@@ -16,6 +17,7 @@ cases:
           to_table: __result__
           to_field: name
     - name: multiple CTEs
+      exact_edges: true
       sql: "WITH \n\t\t\t          active_users AS (\n\t\t\t              SELECT id, name FROM users WHERE status = 'active'\n\t\t\t          ),\n\t\t\t          user_orders AS (\n\t\t\t              SELECT user_id, COUNT(*) AS order_count FROM orders GROUP BY user_id\n\t\t\t          )\n\t\t\t      SELECT au.id, au.name, uo.order_count\n\t\t\t      FROM active_users au\n\t\t\t      LEFT JOIN user_orders uo ON au.id = uo.user_id"
       expected_edges:
         - from_table: users
@@ -27,6 +29,7 @@ cases:
           to_table: __result__
           to_field: name
         - from_table: orders
+          from_field: '*'
           to_table: __result__
           to_field: order_count
           has_transform: true

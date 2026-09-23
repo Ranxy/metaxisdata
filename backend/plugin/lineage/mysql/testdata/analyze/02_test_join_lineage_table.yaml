@@ -1,6 +1,7 @@
 name: TestJoinLineage_Table
 cases:
     - name: inner join
+      exact_edges: true
       sql: "SELECT u.id, u.name, o.order_id, o.total \n\t\t\t      FROM users u \n\t\t\t      JOIN orders o ON u.id = o.user_id"
       expected_edges:
         - from_table: users

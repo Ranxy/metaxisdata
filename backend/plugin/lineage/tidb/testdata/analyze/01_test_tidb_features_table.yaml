@@ -1,6 +1,7 @@
 name: TestTiDBFeaturesLineage_Table
 cases:
     - name: read from storage hint
+      exact_edges: true
       sql: SELECT /*+ READ_FROM_STORAGE(TIFLASH[e]) */ e.name FROM employees e
       expected_edges:
         - from_table: employees
@@ -10,6 +11,7 @@ cases:
           relation_type: direct
           is_temp: true
     - name: set var hint
+      exact_edges: true
       sql: SELECT /*+ SET_VAR(tidb_distsql_scan_concurrency=1) */ name FROM employees
       expected_edges:
         - from_table: employees
@@ -19,6 +21,7 @@ cases:
           relation_type: direct
           is_temp: true
     - name: hash join hint
+      exact_edges: true
       sql: SELECT /*+ HASH_JOIN(a, b) */ a.id, b.name AS n FROM a JOIN b ON a.id = b.id
       expected_edges:
         - from_table: a
@@ -34,6 +37,7 @@ cases:
           relation_type: direct
           is_temp: true
     - name: partition selection
+      exact_edges: true
       sql: SELECT name FROM employees PARTITION (p0, p1)
       expected_edges:
         - from_table: employees
@@ -43,6 +47,7 @@ cases:
           relation_type: direct
           is_temp: true
     - name: insert ignore select
+      exact_edges: true
       sql: INSERT IGNORE INTO dst (a) SELECT id FROM src
       expected_edges:
         - from_table: src
@@ -52,6 +57,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: replace select
+      exact_edges: true
       sql: REPLACE INTO dst (a, b) SELECT id, name FROM src
       expected_edges:
         - from_table: src
@@ -67,6 +73,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: insert odku values
+      exact_edges: true
       sql: INSERT INTO dst (a, b) SELECT id, name FROM src ON DUPLICATE KEY UPDATE b = VALUES(b)
       expected_edges:
         - from_table: src
@@ -82,6 +89,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: select for update
+      exact_edges: true
       sql: SELECT name FROM employees FOR UPDATE
       expected_edges:
         - from_table: employees
@@ -91,6 +99,7 @@ cases:
           relation_type: direct
           is_temp: true
     - name: select lock in share mode
+      exact_edges: true
       sql: SELECT name FROM employees LOCK IN SHARE MODE
       expected_edges:
         - from_table: employees
@@ -100,6 +109,7 @@ cases:
           relation_type: direct
           is_temp: true
     - name: insert select star
+      exact_edges: true
       sql: INSERT INTO dst SELECT * FROM src
       expected_edges:
         - from_table: src
@@ -109,6 +119,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: multi table delete
+      exact_edges: true
       sql: DELETE t1 FROM t1 JOIN t2 ON t1.id = t2.id WHERE t2.x = 1
       expected_edges:
         - from_table: t2
@@ -119,6 +130,7 @@ cases:
           has_transform: true
           is_temp: false
     - name: multi table update
+      exact_edges: true
       sql: UPDATE t1 JOIN t2 ON t1.id = t2.id SET t1.x = t2.y WHERE t2.z = 1
       expected_edges:
         - from_table: t2
@@ -129,6 +141,7 @@ cases:
           has_transform: true
           is_temp: false
     - name: intersect
+      exact_edges: true
       sql: SELECT id FROM a INTERSECT SELECT id FROM b
       expected_edges:
         - from_table: a
@@ -144,6 +157,7 @@ cases:
           relation_type: intersect
           is_temp: true
     - name: except
+      exact_edges: true
       sql: SELECT id FROM a EXCEPT SELECT id FROM b
       expected_edges:
         - from_table: a
@@ -159,6 +173,7 @@ cases:
           relation_type: except
           is_temp: true
     - name: create or replace view
+      exact_edges: true
       sql: CREATE OR REPLACE VIEW v AS SELECT id, name FROM employees
       expected_edges:
         - from_table: employees

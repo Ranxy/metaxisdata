@@ -1,6 +1,7 @@
 name: TestCatalogIntegration_Table
 cases:
     - name: SELECT * with catalog
+      exact_edges: true
       sql: SELECT * FROM users
       catalog:
         tables:
@@ -22,6 +23,7 @@ cases:
           to_table: __result__
           to_field: email
     - name: table.* with catalog
+      exact_edges: true
       sql: SELECT users.*, orders.total FROM users JOIN orders ON users.id = orders.user_id
       catalog:
         tables:
@@ -46,6 +48,7 @@ cases:
           to_table: __result__
           to_field: total
     - name: SELECT * in subquery with catalog
+      exact_edges: true
       sql: SELECT * FROM (SELECT * FROM users WHERE status = 'active') AS active_users
       catalog:
         tables:
@@ -72,6 +75,7 @@ cases:
           to_table: __result__
           to_field: status
     - name: SELECT * in CTE with catalog
+      exact_edges: true
       sql: |-
         WITH active_users AS (SELECT * FROM users WHERE status = 'active')
         			      SELECT * FROM active_users
@@ -86,12 +90,16 @@ cases:
         - from_table: users
           from_field: id
           to_table: __result__
+          to_field: id
         - from_table: users
           from_field: name
           to_table: __result__
+          to_field: name
         - from_table: users
           from_field: email
           to_table: __result__
+          to_field: email
         - from_table: users
           from_field: status
           to_table: __result__
+          to_field: status
