@@ -69,6 +69,11 @@ type Analyzer struct {
 	inSetOpArm bool
 	// Track temporary table names (CTEs, subqueries) to filter intermediate results
 	tempTables map[string]struct{}
+	// predicates accumulates the columns every row-set predicate of the statement
+	// depends on. Which object the statement produces is only known once the
+	// whole tree has been walked, so the edges are emitted by whichever emitter
+	// runs last.
+	predicates []predicateInfluence
 }
 
 func Analyze(ctx context.Context, sql string) ([]model.ColumnRelation, error) {
@@ -169,8 +174,21 @@ func (a *Analyzer) processSelectCore(stmt *pgast.SelectStmt) {
 		a.processFromClause(stmt.FromClause)
 	}
 
+	// A WHERE or HAVING predicate decides which rows the query emits without its
+	// value reaching any output column, so it is recorded as an influence on the
+	// statement's target rows rather than on a column.
+	if stmt.WhereClause != nil {
+		a.collectPredicates(stmt.WhereClause, sp, model.NewFilterTransformation(a.exprTextOf(stmt.WhereClause)), false)
+	}
+
 	if stmt.TargetList != nil {
 		a.processTargetList(stmt.TargetList, sp, a.groupByKeys(stmt.GroupClause))
+	}
+
+	// HAVING is the one clause that may name a select-list alias, so it resolves
+	// one before falling back to the scope.
+	if stmt.HavingClause != nil {
+		a.collectPredicates(stmt.HavingClause, sp, model.NewFilterTransformation(a.exprTextOf(stmt.HavingClause)), true)
 	}
 
 	a.generateEdges(sp)
@@ -383,6 +401,9 @@ func (a *Analyzer) processFromClause(from *pgast.List) {
 	}
 	for _, item := range from.Items {
 		a.processTableExpr(item)
+		// The relations have to be in scope before a join condition's columns
+		// can be resolved.
+		a.collectJoinPredicates(item)
 	}
 }
 
@@ -1016,6 +1037,7 @@ func (a *Analyzer) processViewStmt(stmt *pgast.ViewStmt) {
 			}
 		}
 	}
+	a.emitPredicateInfluences(targetSchema, targetView)
 }
 
 // processCreateTableAsStmt processes CREATE TABLE AS, CREATE MATERIALIZED VIEW and
@@ -1083,6 +1105,7 @@ func (a *Analyzer) processCreateTableAsStmt(stmt *pgast.CreateTableAsStmt) {
 			}
 		}
 	}
+	a.emitPredicateInfluences(targetSchema, targetTable)
 }
 
 // ---------------------------------------------------------------------------
@@ -1105,6 +1128,7 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 			a.generateEdgeFromSource(sp, sourceCol, "", resultTableName, outputCol.Alias, outputCol.Transform)
 		}
 	}
+	a.emitPredicateInfluences("", resultTableName)
 }
 
 // generateEdgesForDataModification generates lineage edges for data modification statements (INSERT, UPDATE, DELETE).
@@ -1122,6 +1146,7 @@ func (a *Analyzer) generateEdgesForDataModification(targetSchema, targetTable st
 			a.generateEdgeFromSource(sp, sourceCol, targetSchema, targetTable, targetColName, outputCol.Transform)
 		}
 	}
+	a.emitPredicateInfluences(targetSchema, targetTable)
 }
 
 // generateEdgeFromSource generates a lineage edge from a source column to a target.
@@ -1380,8 +1405,6 @@ func (a *Analyzer) expandWildcardWithCatalog(tableRef *scope.TableRef, sp *scope
 
 // NewLineageEdge creates a new LineageEdge from field-edge parameters.
 func NewLineageEdge(fromSchema, fromTable, fromField, toSchema, toTable, toField string, transform []model.Transformation, isTemp bool) model.ColumnRelation {
-	relType := determineRelationType(transform)
-
 	return model.ColumnRelation{
 		Source: model.Column{
 			Table: model.ObjectIdentifier{
@@ -1398,31 +1421,8 @@ func NewLineageEdge(fromSchema, fromTable, fromField, toSchema, toTable, toField
 			Name: toField,
 		},
 		Transformation: transform,
-		RelationType:   relType,
+		RelationType:   model.RelationTypeOf(transform),
 		IsTemp:         isTemp,
-	}
-}
-
-func determineRelationType(transform []model.Transformation) model.RelationType {
-	if len(transform) == 0 {
-		return model.RelationTypeDirect
-	}
-
-	// The first transformation is the outermost operation, so it decides the
-	// relation type.
-	switch transform[0].Operation {
-	case model.OperationDelete:
-		return model.RelationTypeIndirect
-	case model.OperationUnion:
-		return model.RelationTypeUnion
-	case model.OperationIntersect:
-		return model.RelationTypeIntersect
-	case model.OperationExcept:
-		return model.RelationTypeExcept
-	case model.OperationAggregate:
-		return model.RelationTypeGroup
-	default:
-		return model.RelationTypeIndirect
 	}
 }
 

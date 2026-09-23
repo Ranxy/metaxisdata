@@ -73,6 +73,11 @@ type Analyzer struct {
 	// inSetOpArm is set while analyzing one arm of a set operation, so only the
 	// merged set-operation result emits edges.
 	inSetOpArm bool
+	// predicates accumulates the columns every row-set predicate of the statement
+	// depends on. Which object the statement produces is only known once the
+	// whole tree has been walked, so the edges are emitted by whichever emitter
+	// runs last.
+	predicates []predicateInfluence
 }
 
 // Analyze parses a single StarRocks statement and returns its column relations.
@@ -212,7 +217,18 @@ func (a *Analyzer) processQueryNode(node nodes.Node) {
 func (a *Analyzer) processQuerySpecification(stmt *nodes.SelectStmt) {
 	sp := a.currentScope()
 	a.processFromClause(stmt.From)
+	// A WHERE or HAVING predicate decides which rows the query emits without its
+	// value reaching any output column, so it is recorded as an influence on the
+	// statement's target rows rather than on a column.
+	if stmt.Where != nil {
+		a.collectPredicates(stmt.Where, sp, model.NewFilterTransformation(a.exprTextOf(stmt.Where)), false)
+	}
 	a.processSelectItemList(stmt.Items, sp, a.groupByKeys(stmt.GroupBy))
+	// HAVING is the one clause that may name a select-list alias, so it resolves
+	// one before falling back to the scope.
+	if stmt.Having != nil {
+		a.collectPredicates(stmt.Having, sp, model.NewFilterTransformation(a.exprTextOf(stmt.Having)), true)
+	}
 	a.generateEdges(sp)
 }
 
@@ -224,6 +240,9 @@ func (a *Analyzer) processQuerySpecification(stmt *nodes.SelectStmt) {
 func (a *Analyzer) processFromClause(from []nodes.Node) {
 	for _, te := range from {
 		a.processTableExpr(te)
+		// The relations have to be in scope before a join condition's columns
+		// can be resolved.
+		a.collectJoinPredicates(te)
 	}
 }
 
@@ -530,6 +549,7 @@ func (a *Analyzer) generateEdgesForTarget(sp *scope.Scope, targetSchema, targetT
 			}
 		}
 	}
+	a.emitPredicateInfluences(targetSchema, targetTable)
 }
 
 // viewColumnNames extracts the declared column names of a view or materialized
@@ -958,6 +978,7 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 			}
 		}
 	}
+	a.emitPredicateInfluences("", resultTableName)
 }
 
 // addRelation adds a column relation, skipping temp-table endpoints and
