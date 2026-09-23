@@ -55,10 +55,11 @@ cases:
             - operation: JOIN
               condition: a.id=b.id
 
-    # A column used by two clauses is one predicate, so it keeps one edge. The
-    # join is collected before the filter, so it names the relation type; the
-    # row-level influence is the same either way.
-    - name: a column that both joins and filters keeps one edge
+    # The column decides the rows twice, as a join key and as a filter, so it
+    # carries both influences. Keeping only the first was an artifact of a
+    # deduplication key that compared endpoints without the transformation, which
+    # also hid a genuinely different derivation of the same target column.
+    - name: a column that both joins and filters carries both influences
       sql: CREATE VIEW v AS SELECT a.x FROM t1 a JOIN t2 b ON a.id = b.id WHERE a.id > 0
       expected_edges:
         - from_table: t1
@@ -76,6 +77,7 @@ cases:
           is_temp: false
           transformations:
             - operation: JOIN
+              condition: a.id=b.id
         - from_table: t2
           from_field: id
           to_table: v
@@ -85,8 +87,16 @@ cases:
           is_temp: false
           transformations:
             - operation: JOIN
-
-    # HAVING filters the groups, so the columns it names influence the rows.
+              condition: a.id=b.id
+        - from_table: t1
+          from_field: id
+          to_table: v
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: a.id>0
     - name: having filters the groups
       sql: CREATE VIEW v AS SELECT a.x FROM t1 a GROUP BY a.x HAVING SUM(a.y) > 100
       expected_edges:

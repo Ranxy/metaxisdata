@@ -145,6 +145,17 @@ cases:
           transformations:
             - operation: FILTER
 
+        - from_table: nodes
+          from_field: parent_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: n.parent_id=t.id
+
     # The value comes from the literal 1 and the recursive arm only reads the CTE's
     # own column, so the recursion has no source column to point at.
     - name: a recursion over a literal has no source column

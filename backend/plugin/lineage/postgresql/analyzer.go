@@ -411,6 +411,14 @@ func (a *Analyzer) processCTE(cte *pgast.CommonTableExpr, recursive bool) {
 
 	if cte.Ctequery != nil {
 		a.pushScope()
+		if recursive {
+			// In a recursive CTE the name refers to the rows the CTE has produced
+			// so far, not to a stored relation. Registering it with no lineage —
+			// the fixpoint is not modelled — makes every reference to it inside
+			// its own body opaque, so neither a source nor a predicate resolves to
+			// a base table that merely shares the name.
+			a.currentScope().AddCTE(&scope.CTEDefinition{Name: cteName, Columns: columns})
+		}
 		a.processPreparableStmt(cte.Ctequery)
 		cteScope := a.popScope()
 
@@ -437,17 +445,6 @@ func (a *Analyzer) processCTE(cte *pgast.CommonTableExpr, recursive bool) {
 					continue
 				}
 				for _, res := range resolutions {
-					// WITH RECURSIVE lets a CTE name its own output. The name is not
-					// registered until this body has been walked (PostgreSQL hides it
-					// from a non-recursive CTE the same way), so the reference resolved
-					// to a base relation the CTE is being defined over; an edge from it
-					// would name the CTE, which is not a registry object. PostgreSQL
-					// folds the recursion into a fixpoint, this analyzer does not, so
-					// the recursive arm's own contribution is dropped rather than
-					// reported as a relation that does not exist.
-					if recursive && strings.EqualFold(res.Ref.Table, cteName) {
-						continue
-					}
 					if a.flattenTempSourceLineage(cteScope, res.Relation, res.Ref.Column, cteName, targetColumn, source.Transform, &definition.Lineage) {
 						continue
 					}
@@ -1400,134 +1397,30 @@ func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName
 	if a.realTarget {
 		return
 	}
-
-	for _, edge := range model.AnsweringLineage(tableRef.Lineage, columnName) {
-		actualOutput := outputAlias
-		// For wildcard expansion, use the actual column name from the edge
-		if columnName == wildcardColumn && outputAlias == wildcardColumn {
-			actualOutput = edge.Target.Name
-		}
-
-		combinedTransform := model.CombineTransformations(edge.Transformation, transform)
-
-		resultRelation := scope.NewSchemaLineageEdge(
-			edge.Source.Table.Schema,
-			edge.Source.Table.Name,
-			edge.Source.Name,
-			"",
-			resultTableName,
-			actualOutput,
-			combinedTransform,
-			true,
-		)
-
-		a.addRelation(resultRelation)
-	}
+	algorithm.TraceThroughTableLineage(scope.NewSchemaLineageEdge, a.addRelation, tableRef, columnName, outputAlias, transform)
 }
 
 // traceThroughTableLineageToTarget traces lineage through a temporary table to a specific target table.
 func (a *Analyzer) traceThroughTableLineageToTarget(tableRef *scope.TableRef, columnName string, targetSchema string, targetTable string, targetColumn string, transform []model.Transformation) {
-	for _, edge := range model.AnsweringLineage(tableRef.Lineage, columnName) {
-		actualTargetColumn := targetColumn
-		// For wildcard expansion, use the actual column name from the edge
-		if columnName == wildcardColumn && targetColumn == wildcardColumn {
-			actualTargetColumn = edge.Target.Name
-		}
-
-		combinedTransform := model.CombineTransformations(edge.Transformation, transform)
-		isTemp := targetTable == resultTableName
-
-		resultRelation := scope.NewSchemaLineageEdge(
-			edge.Source.Table.Schema,
-			edge.Source.Table.Name,
-			edge.Source.Name,
-			targetSchema,
-			targetTable,
-			actualTargetColumn,
-			combinedTransform,
-			isTemp,
-		)
-
-		a.addRelation(resultRelation)
-	}
+	algorithm.TraceThroughTableLineageToTarget(scope.NewSchemaLineageEdge, a.addRelation, tableRef, columnName, targetSchema, targetTable, targetColumn, transform)
 }
 
 // flattenTempSourceLineage flattens lineage edges when the source is a temporary table.
 // Returns true if the source was a temporary table and was handled.
-func (a *Analyzer) flattenTempSourceLineage(sp *scope.Scope, relation *scope.TableRef, columnName, targetTable string, targetColumn string, transform []model.Transformation, lineage *[]model.ColumnRelation) bool {
-	if relation == nil || (!relation.IsSubquery && !relation.IsCTE) {
-		return false
-	}
-	a.appendFlattenedLineage(lineage, sp, relation, columnName, targetTable, targetColumn, transform)
-	return true
+func (*Analyzer) flattenTempSourceLineage(sp *scope.Scope, relation *scope.TableRef, columnName, targetTable string, targetColumn string, transform []model.Transformation, lineage *[]model.ColumnRelation) bool {
+	return algorithm.FlattenTempSourceLineage(scope.NewSchemaLineageEdge, sp, relation, columnName, targetTable, targetColumn, transform, lineage)
 }
 
-func (a *Analyzer) appendFlattenedLineage(lineage *[]model.ColumnRelation, sp *scope.Scope, tableRef *scope.TableRef, columnName string, targetTable string, targetColumn string, transform []model.Transformation) {
-	for _, edge := range model.AnsweringLineage(tableRef.Lineage, columnName) {
-		actualTarget := targetColumn
-		if columnName == wildcardColumn && targetColumn == wildcardColumn {
-			actualTarget = edge.Target.Name
-		}
-
-		combinedTransform := model.CombineTransformations(edge.Transformation, transform)
-		sourceTableName := edge.Source.Table.Name
-
-		if nestedRef, ok := sp.FindRelation(scope.RelationKeyOf(edge.Source.Table)); ok && (nestedRef.IsCTE || nestedRef.IsSubquery) {
-			a.appendFlattenedLineage(lineage, sp, nestedRef, edge.Source.Name, targetTable, targetColumn, combinedTransform)
-			continue
-		}
-
-		*lineage = append(*lineage, scope.NewSchemaLineageEdge(
-			edge.Source.Table.Schema,
-			sourceTableName,
-			edge.Source.Name,
-			"",
-			targetTable,
-			actualTarget,
-			combinedTransform,
-			true,
-		))
-	}
+// flattenTempSources replaces a source that resolved to a query-local relation
+// with the stored relations that relation's own lineage came from.
+func (*Analyzer) flattenTempSources(sp *scope.Scope, ref scope.ColumnRef, relation *scope.TableRef, transform []model.Transformation) []scope.ColumnSource {
+	return algorithm.FlattenTempSources(sp, ref, relation, transform)
 }
 
 // ---------------------------------------------------------------------------
 // Scope management
 // ---------------------------------------------------------------------------
 
-// flattenTempSources replaces a source that resolved to a query-local relation
-// with the stored relations that relation's own lineage came from, combining the
-// transformations along the way. A query-local relation's name is an alias that
-// exists only in the scope the query wrote it in, so a reference carried into an
-// enclosing scope must not keep it: resolving the alias again there can bind to
-// an unrelated real relation that happens to share the name.
-func (a *Analyzer) flattenTempSources(sp *scope.Scope, ref scope.ColumnRef, relation *scope.TableRef, transform []model.Transformation) []scope.ColumnSource {
-	if relation == nil || (!relation.IsCTE && !relation.IsSubquery) {
-		return []scope.ColumnSource{{Ref: ref, Transform: transform}}
-	}
-
-	var out []scope.ColumnSource
-	for _, edge := range model.AnsweringLineage(relation.Lineage, ref.Column) {
-		combinedTransform := model.CombineTransformations(edge.Transformation, transform)
-		nested, ok := sp.FindRelation(scope.RelationKeyOf(edge.Source.Table))
-		if ok && (nested.IsCTE || nested.IsSubquery) {
-			nestedRef := scope.ColumnRef{Schema: edge.Source.Table.Schema, Table: edge.Source.Table.Name, Column: edge.Source.Name}
-			out = append(out, a.flattenTempSources(sp, nestedRef, nested, combinedTransform)...)
-			continue
-		}
-		out = append(out, scope.ColumnSource{
-			Ref: scope.ColumnRef{
-				Schema:   edge.Source.Table.Schema,
-				Table:    edge.Source.Table.Name,
-				Column:   edge.Source.Name,
-				Resolved: true,
-			},
-			Transform: combinedTransform,
-		})
-	}
-	return out
-}
-
-// pushScope creates and pushes a new child scope onto the scope stack.
 func (a *Analyzer) pushScope() {
 	parent := a.currentScope()
 	newScope := scope.NewScope(parent)

@@ -99,6 +99,21 @@ cases:
           to_field: b
           relation_type: direct
           is_temp: false
+        # The upsert clause derives the same column a second way, from the value
+        # the insert proposed, so the two derivations are two edges.
+        - from_table: src
+          from_field: name
+          to_table: dst
+          to_field: b
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: FUNCTION
+              function_name: VALUES
+              expression: VALUES(b)
+              arguments:
+                - b
     - name: select for update
       sql: SELECT name FROM employees FOR UPDATE
       expected_edges:

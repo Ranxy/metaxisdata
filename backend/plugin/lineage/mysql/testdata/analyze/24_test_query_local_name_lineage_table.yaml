@@ -1,0 +1,132 @@
+name: TestQueryLocalNameLineage_Table
+cases:
+    # A CTE or derived-table alias is query-local, but a name is not: a real
+    # relation that shares one keeps its own lineage. Filtering an edge because
+    # its endpoint matched a query-local name threw the real relation's lineage
+    # away, and a non-recursive CTE's name is not visible inside its own body, so
+    # the reference there really is the base table.
+    - name: a CTE that shares a real table's name keeps the real table's lineage
+      sql: WITH orders AS (SELECT user_id, total FROM orders WHERE total > 100) SELECT user_id, total FROM orders
+      expected_edges:
+        - from_table: orders
+          from_field: user_id
+          to_table: __result__
+          to_field: user_id
+          relation_type: direct
+          is_temp: true
+        - from_table: orders
+          from_field: total
+          to_table: __result__
+          to_field: total
+          relation_type: direct
+          is_temp: true
+        # The CTE's own filter shapes the rows the query reads.
+        - from_table: orders
+          from_field: total
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: total>100
+    - name: a derived table that shares a real table's name does not erase it
+      sql: SELECT * FROM t WHERE a IN (SELECT x FROM (SELECT y AS x FROM s) t)
+      expected_edges:
+        - from_table: t
+          from_field: '*'
+          to_table: __result__
+          to_field: '*'
+          relation_type: direct
+          is_temp: true
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: aIN(SELECTxFROM(SELECTyASxFROMs)t)
+        - from_table: s
+          from_field: y
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: aIN(SELECTxFROM(SELECTyASxFROMs)t)
+
+    # An influence belongs to the rows the scope produced. A CTE nobody
+    # references filters rows nothing reads, so it reaches no result.
+    - name: an unreferenced CTE's filter reaches no result
+      sql: WITH unused AS (SELECT id FROM t WHERE x = 1) SELECT 1 AS one
+      expected_edges: []
+
+    # INTERSECT binds tighter than UNION, so the inner operation has to travel
+    # with the arm that went through it.
+    - name: a nested set operation records the inner operation
+      sql: SELECT a FROM t1 UNION SELECT b FROM t2 INTERSECT SELECT c FROM t3
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: t2
+          from_field: b
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+            - operation: INTERSECT
+        - from_table: t3
+          from_field: c
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+            - operation: INTERSECT
+
+    # Two expressions can derive the same target column, and each derivation is
+    # its own edge. Comparing the endpoints alone kept the first and dropped the
+    # second.
+    - name: two expressions reaching one column are two derivations
+      sql: SELECT x + 1 AS a, x + 2 AS a FROM t
+      expected_edges:
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: a
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: x+1
+              op_type: ADDITION
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: a
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: x+2
+              op_type: ADDITION

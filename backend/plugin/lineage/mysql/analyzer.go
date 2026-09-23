@@ -22,6 +22,7 @@ import (
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/algorithm"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/scope"
@@ -32,7 +33,7 @@ import (
 
 // Constants for special table/column markers.
 const (
-	resultTableName   = "__result__"
+	resultTableName   = model.ResultTableName
 	deletionFieldName = "__deletion__"
 	wildcardColumn    = model.WildcardColumn
 	fileSourceMarker  = "__file__" // Special marker for LOAD DATA source
@@ -54,9 +55,7 @@ type Analyzer struct {
 	// Current scope stack
 	scopeStack []*scope.Scope
 	// Collected column relations
-	edges []model.ColumnRelation
-	// Map for efficient edge deduplication (key: edge signature)
-	edgeSet map[columnEdgeKey]struct{}
+	edges *algorithm.EdgeSet
 	// Errors encountered during analysis. A statement shape the analyzer cannot
 	// represent is recorded here so the caller records an explicit failure
 	// instead of silently returning empty lineage.
@@ -73,44 +72,11 @@ type Analyzer struct {
 	// inSetOpArm is set while analyzing one arm of a set operation, so only the
 	// merged set-operation result emits edges.
 	inSetOpArm bool
-	// Track temporary table names (derived tables, CTEs) to filter intermediate
-	// results.
-	tempTables map[string]struct{}
-	// predicates accumulates the columns every row-set predicate of the statement
-	// depends on. Which object the statement produces is only known once the
-	// whole tree has been walked, so the edges are emitted by whichever emitter
-	// runs last.
-	predicates []predicateInfluence
-}
-
-// predicateInfluence is one column a WHERE, HAVING or ON predicate depends on,
-// together with the clause that makes it an influence.
-type predicateInfluence struct {
-	// key is the real relation the column resolved to. It is zero when the
-	// predicate is over a query-local relation, whose lineage is traced instead.
-	key       predicateKey
-	relation  *scope.TableRef
-	column    string
-	transform model.Transformation
-}
-
-// predicateKey identifies a predicate column, so a column used by several
-// clauses collapses to the one edge the deduplication keeps.
-type predicateKey struct {
-	database string
-	table    string
-	column   string
-}
-
-// columnEdgeKey identifies a lineage edge for deduplication without allocating
-// a formatted signature per edge.
-type columnEdgeKey struct {
-	sourceDatabase string
-	sourceTable    string
-	sourceColumn   string
-	targetDatabase string
-	targetTable    string
-	targetColumn   string
+	// influences holds the row-set influences collected while a scope was
+	// current. They belong to the rows that scope produces and are inherited by
+	// whatever consumes them, so a scope whose rows reach no output cannot
+	// influence the statement's result.
+	influences *algorithm.Influences
 }
 
 // Analyze parses a single MySQL statement and returns its column relations.
@@ -125,12 +91,11 @@ func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide
 		sql:        sql,
 		tokens:     mysqlparser.Tokenize(sql),
 		scopeStack: []*scope.Scope{scope.NewScope(nil)}, // Root scope
-		edges:      make([]model.ColumnRelation, 0),
-		edgeSet:    make(map[columnEdgeKey]struct{}),
+		edges:      algorithm.NewEdgeSet(),
 		errors:     make([]string, 0),
 		catalog:    catalogProvide,
 		tableCache: make(map[model.ObjectIdentifier]*catalog.TableMeta),
-		tempTables: make(map[string]struct{}),
+		influences: algorithm.NewInfluences(),
 	}
 }
 
@@ -185,7 +150,7 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	if len(a.errors) > 0 {
 		return nil, errors.Errorf("analysis errors: %s", strings.Join(a.errors, "; "))
 	}
-	return a.edges, nil
+	return a.edges.Edges(), nil
 }
 
 // rejectLeadingWith reports whether a DML statement is prefixed with a WITH
@@ -369,48 +334,6 @@ func earliestStart(n nodes.Node) int {
 }
 
 // ---------------------------------------------------------------------------
-// Temporary table tracking
-// ---------------------------------------------------------------------------
-
-// isTableTempInCurrentScope checks if a table is a CTE or subquery. A relation
-// named with a qualifier is a real table: a CTE or a derived table is
-// query-local and is never qualified.
-func (a *Analyzer) isTableTempInCurrentScope(qualifier, tableName string) bool {
-	if qualifier != "" {
-		return false
-	}
-	for _, sp := range a.scopeStack {
-		if _, ok := sp.FindCTE(tableName); ok {
-			return true
-		}
-		if tableRef, ok := sp.FindTable(tableName); ok {
-			return tableRef.IsSubquery || tableRef.IsCTE
-		}
-	}
-	return false
-}
-
-// markTempTable records a temporary table name (CTE or subquery) for filtering intermediate edges.
-func (a *Analyzer) markTempTable(name string) {
-	if name == "" {
-		return
-	}
-	a.tempTables[name] = struct{}{}
-}
-
-// isTempRelation reports whether an endpoint names a query-local relation (a CTE
-// or a derived table). Those are never qualified, so a qualified reference to a
-// real table of the same name is not one.
-func (a *Analyzer) isTempRelation(id model.ObjectIdentifier) bool {
-	key := scope.RelationKeyOf(id)
-	if key.Qualifier != "" {
-		return false
-	}
-	_, ok := a.tempTables[key.Name]
-	return ok
-}
-
-// ---------------------------------------------------------------------------
 // SELECT
 // ---------------------------------------------------------------------------
 
@@ -494,13 +417,26 @@ func (a *Analyzer) processCTE(cte *nodes.CommonTableExpr) {
 		return
 	}
 	cteName := cte.Name
-	a.markTempTable(cteName)
+	definition := &scope.CTEDefinition{Name: cteName, Columns: cte.Columns}
 
 	var cteLineage []model.ColumnRelation
 	if cte.Select != nil {
 		a.pushScope()
+		if cte.Recursive {
+			// In a recursive CTE the name refers to the rows the CTE has produced
+			// so far, not to a stored relation. Registering it with no lineage —
+			// the fixpoint is not modelled — makes every reference to it inside
+			// its own body opaque, so neither a source nor a predicate resolves to
+			// a base table that merely shares the name.
+			a.currentScope().AddCTE(definition)
+		}
 		a.processSelectStatement(cte.Select)
 		cteScope := a.popScope()
+
+		// The body's influences belong to the CTE's rows, so they are held
+		// against the definition and reach the statement only if it references
+		// the CTE. An unreferenced CTE filters rows nobody reads.
+		a.influences.BindCTE(definition, cteScope)
 
 		outputColumns := cteScope.GetOutputColumns()
 		names := exposedColumnNames(cte.Columns, outputColumns)
@@ -526,28 +462,35 @@ func (a *Analyzer) processCTE(cte *nodes.CommonTableExpr) {
 		}
 	}
 
-	a.currentScope().AddCTE(&scope.CTEDefinition{
-		Name:    cteName,
-		Columns: cte.Columns,
-		Lineage: cteLineage,
-	})
+	definition.Lineage = cteLineage
+	a.currentScope().AddCTE(definition)
+}
+
+// setOpArm is one leaf SELECT of a set-operation tree together with the chain of
+// set-operation transformations that combine it into the statement's result,
+// outermost first, so a nested operation is not labelled with only the outermost
+// one.
+type setOpArm struct {
+	stmt  *nodes.SelectStmt
+	chain []model.Transformation
 }
 
 // flattenSetOpArms flattens a set-operation tree into its leaf SELECTs in order.
-func flattenSetOpArms(stmt *nodes.SelectStmt) []*nodes.SelectStmt {
+func flattenSetOpArms(stmt *nodes.SelectStmt, chain []model.Transformation) []setOpArm {
 	if stmt == nil {
 		return nil
 	}
 	if stmt.SetOp != nodes.SetOpNone {
-		var out []*nodes.SelectStmt
-		out = append(out, flattenSetOpArms(stmt.Left)...)
-		out = append(out, flattenSetOpArms(stmt.Right)...)
-		return out
+		inner := chain
+		if transform, ok := setOpTransformation(stmt.SetOp); ok {
+			inner = algorithm.ArmChain(chain, transform)
+		}
+		return append(flattenSetOpArms(stmt.Left, inner), flattenSetOpArms(stmt.Right, inner)...)
 	}
 	if stmt.ParenSource != nil {
-		return flattenSetOpArms(stmt.ParenSource)
+		return flattenSetOpArms(stmt.ParenSource, chain)
 	}
-	return []*nodes.SelectStmt{stmt}
+	return []setOpArm{{stmt: stmt, chain: chain}}
 }
 
 // processSetOperation handles UNION/INTERSECT/EXCEPT by processing every arm in
@@ -556,19 +499,22 @@ func flattenSetOpArms(stmt *nodes.SelectStmt) []*nodes.SelectStmt {
 // resolved, because the arm scope is gone by the time the enclosing CTE,
 // derived table or statement resolves the merged columns.
 func (a *Analyzer) processSetOperation(stmt *nodes.SelectStmt) {
-	arms := flattenSetOpArms(stmt)
+	arms := flattenSetOpArms(stmt, nil)
 	if len(arms) == 0 {
 		return
 	}
-	setOp := stmt.SetOp
 
 	baseScope := a.currentScope()
-	var allOutputColumns [][]scope.OutputColumn
+	var (
+		allOutputColumns [][]scope.OutputColumn
+		armTransforms    [][]model.Transformation
+	)
 
 	for i, arm := range arms {
+		armTransforms = append(armTransforms, arm.chain)
 		if i == 0 {
-			a.processSetOpArm(arm)
-			allOutputColumns = append(allOutputColumns, resolveOutputColumns(baseScope, baseScope.GetOutputColumns()))
+			a.processSetOpArm(arm.stmt)
+			allOutputColumns = append(allOutputColumns, a.resolveOutputColumns(baseScope, baseScope.GetOutputColumns()))
 			continue
 		}
 		tempScope := scope.NewScope(baseScope.Parent())
@@ -577,12 +523,15 @@ func (a *Analyzer) processSetOperation(stmt *nodes.SelectStmt) {
 		}
 		originalScope := a.currentScope()
 		a.scopeStack[len(a.scopeStack)-1] = tempScope
-		a.processSetOpArm(arm)
+		a.processSetOpArm(arm.stmt)
 		a.scopeStack[len(a.scopeStack)-1] = originalScope
-		allOutputColumns = append(allOutputColumns, resolveOutputColumns(tempScope, tempScope.GetOutputColumns()))
+		// The arm's rows are part of the merged result, so its predicates reach
+		// the operation's output.
+		a.influences.Inherit(tempScope, baseScope)
+		allOutputColumns = append(allOutputColumns, a.resolveOutputColumns(tempScope, tempScope.GetOutputColumns()))
 	}
 
-	mergeSetOpOutputColumns(baseScope, allOutputColumns, setOp)
+	algorithm.MergeSetOpColumns(baseScope, allOutputColumns, armTransforms)
 	// A set operation nested in a CTE or derived table contributes its merged
 	// columns to the parent; only a root-level operation emits result edges.
 	a.generateEdges(baseScope)
@@ -598,10 +547,11 @@ func (a *Analyzer) processSetOpArm(arm *nodes.SelectStmt) {
 }
 
 // resolveOutputColumns resolves each output column's source references against
-// the scope the arm was analyzed in and marks them resolved. Without this, an
+// the scope the arm was analyzed in, marking them resolved and replacing a
+// query-local relation with the stored relations behind it. Without this, an
 // arm's reference would be resolved again in the enclosing scope, where the
 // arm's tables no longer exist, and the arm's lineage would be silently dropped.
-func resolveOutputColumns(sp *scope.Scope, cols []scope.OutputColumn) []scope.OutputColumn {
+func (*Analyzer) resolveOutputColumns(sp *scope.Scope, cols []scope.OutputColumn) []scope.OutputColumn {
 	out := make([]scope.OutputColumn, len(cols))
 	copy(out, cols)
 	for i := range out {
@@ -616,6 +566,10 @@ func resolveOutputColumns(sp *scope.Scope, cols []scope.OutputColumn) []scope.Ou
 				continue
 			}
 			for _, res := range resolutions {
+				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
+					resolved = append(resolved, algorithm.FlattenTempSources(sp, res.Ref, res.Relation, source.Transform)...)
+					continue
+				}
 				columnRef := res.Ref
 				columnRef.Resolved = true
 				resolved = append(resolved, scope.ColumnSource{Ref: columnRef, Transform: source.Transform})
@@ -624,36 +578,6 @@ func resolveOutputColumns(sp *scope.Scope, cols []scope.OutputColumn) []scope.Ou
 		out[i].Sources = resolved
 	}
 	return out
-}
-
-// mergeSetOpOutputColumns merges output columns from multiple set-operation arms
-// positionally and records the set operation as the leading transformation of
-// each arm's own sources. The transformation stays attached to the source it
-// came from: one transformation for the whole merged column would attribute the
-// first arm's expression to every other arm's sources.
-func mergeSetOpOutputColumns(baseScope *scope.Scope, allOutputColumns [][]scope.OutputColumn, setOp nodes.SetOperation) {
-	if len(allOutputColumns) == 0 || len(allOutputColumns[0]) == 0 {
-		return
-	}
-	transform, hasTransform := setOpTransformation(setOp)
-	firstQueryOutputs := allOutputColumns[0]
-	for colIdx := 0; colIdx < len(firstQueryOutputs); colIdx++ {
-		firstCol := firstQueryOutputs[colIdx]
-		var mergedSources []scope.ColumnSource
-		for queryIdx := 0; queryIdx < len(allOutputColumns); queryIdx++ {
-			if colIdx >= len(allOutputColumns[queryIdx]) {
-				continue
-			}
-			for _, source := range allOutputColumns[queryIdx][colIdx].Sources {
-				if hasTransform {
-					source.Transform = append([]model.Transformation{transform}, source.Transform...)
-				}
-				mergedSources = append(mergedSources, source)
-			}
-		}
-		firstCol.Sources = mergedSources
-		baseScope.SetOutputColumn(colIdx, firstCol)
-	}
 }
 
 // setOpTransformation maps a set operation to its transformation.
@@ -707,7 +631,7 @@ func (a *Analyzer) collectJoinPredicates(te nodes.TableExpr) {
 		for _, side := range []nodes.TableExpr{join.Left, join.Right} {
 			for _, ref := range joinSideRefs(side) {
 				for _, column := range using.Columns {
-					a.recordPredicate(sp, scope.ColumnRef{Schema: ref.Schema, Table: ref.Table, Column: column}, transform, false)
+					a.influences.Resolve(sp, scope.ColumnRef{Schema: ref.Schema, Table: ref.Table, Column: column}, transform, false)
 				}
 			}
 		}
@@ -733,73 +657,26 @@ func joinSideRefs(te nodes.TableExpr) []scope.ColumnRef {
 }
 
 // collectPredicates resolves every column a predicate depends on and records it
-// as an influence on the statement's target rows. resolveAliases is set for a
-// clause that may name a select-list alias, as HAVING does.
+// as an influence on the rows the current scope produces. resolveAliases is set
+// for a clause that may name a select-list alias, as HAVING does.
 func (a *Analyzer) collectPredicates(expr nodes.ExprNode, sp *scope.Scope, transform model.Transformation, resolveAliases bool) {
 	if expr == nil {
 		return
 	}
 	for _, ref := range a.collectExprColumns(expr, sp) {
-		a.recordPredicate(sp, ref, transform, resolveAliases)
+		a.influences.Resolve(sp, ref, transform, resolveAliases)
 	}
 }
 
-// recordPredicate resolves one predicate column. An unresolvable column is
-// dropped, the same way an unresolvable source column is, so a predicate never
-// invents a relation.
-func (a *Analyzer) recordPredicate(sp *scope.Scope, ref scope.ColumnRef, transform model.Transformation, resolveAliases bool) {
-	// A select-list alias is not a column of any relation. The clause influences
-	// the rows the aggregate behind the alias produced, so the influence belongs
-	// to that output column's own sources.
-	if resolveAliases && ref.Table == "" && ref.Column != "" {
-		for _, output := range sp.GetOutputColumns() {
-			if output.Alias != ref.Column {
-				continue
-			}
-			for _, source := range output.Sources {
-				a.recordPredicate(sp, source.Ref, transform, false)
-			}
-			return
-		}
-	}
-
-	resolutions, err := sp.ResolveColumnRefs(ref)
-	if err != nil {
-		return
-	}
-	for _, res := range resolutions {
-		influence := predicateInfluence{transform: transform}
-		if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
-			influence.relation = res.Relation
-			influence.column = res.Ref.Column
-		} else {
-			influence.key = predicateKey{database: res.Ref.Schema, table: res.Ref.Table, column: res.Ref.Column}
-		}
-		a.predicates = append(a.predicates, influence)
-	}
-}
-
-// emitPredicateInfluences adds one edge per predicate column to the rows the
-// statement produces. The target column is empty: a predicate decides which rows
-// are emitted, not the value of any one column.
-func (a *Analyzer) emitPredicateInfluences(targetSchema, targetTable string) {
-	if len(a.predicates) == 0 {
-		return
-	}
-	isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
-	for _, influence := range a.predicates {
-		if influence.relation != nil {
-			a.traceThroughTableLineage(influence.relation, influence.column, targetSchema, targetTable, "", []model.Transformation{influence.transform})
-			continue
-		}
-		a.addRelation(scope.NewLineageEdge(
-			influence.key.database, influence.key.table, influence.key.column,
-			targetSchema, targetTable, "",
-			[]model.Transformation{influence.transform},
-			isTemp,
-		))
-	}
-	a.predicates = nil
+// emitPredicateInfluences adds one edge per predicate column of sp to the rows
+// the statement produces. The target column is empty: a predicate decides which
+// rows are emitted, not the value of any one column.
+func (a *Analyzer) emitPredicateInfluences(sp *scope.Scope, targetSchema, targetTable string) {
+	a.influences.Emit(sp, targetSchema, targetTable, targetTable == resultTableName, algorithm.Emitter{
+		Trace:   a.traceThroughTableLineage,
+		AddEdge: a.addRelation,
+		NewEdge: scope.NewLineageEdge,
+	})
 }
 
 // processTableExpr processes a table reference, join or derived table.
@@ -840,6 +717,8 @@ func (a *Analyzer) processSingleTableRef(ref *nodes.TableRef) {
 			}
 			attachTempColumnLookup(tableRef, cte.Columns)
 			a.currentScope().AddTable(tableRef)
+			// Reading the CTE's rows carries the predicates that shaped them.
+			a.influences.InheritCTE(a.currentScope(), cte)
 			return
 		}
 	}
@@ -862,11 +741,13 @@ func (a *Analyzer) processDerivedTable(sub *nodes.SubqueryExpr) {
 		return
 	}
 	alias := sub.Alias
-	a.markTempTable(alias)
 
 	a.pushScope()
 	a.processSelectStatement(sub.Select)
 	subqueryScope := a.popScope()
+	// The derived table's rows are part of the enclosing query's rows, so the
+	// predicates that shaped them reach its output.
+	a.influences.Inherit(subqueryScope, a.currentScope())
 
 	outputColumns := subqueryScope.GetOutputColumns()
 	names := exposedColumnNames(sub.Columns, outputColumns)
@@ -1040,7 +921,7 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 	for _, outputCol := range sp.GetOutputColumns() {
 		a.emitSources(sp, outputCol.Sources, "", resultTableName, outputCol.Alias)
 	}
-	a.emitPredicateInfluences("", resultTableName)
+	a.emitPredicateInfluences(sp, "", resultTableName)
 }
 
 // generateEdgesForDataModification maps SELECT output columns onto the target
@@ -1059,7 +940,7 @@ func (a *Analyzer) generateEdgesForDataModification(targetSchema, targetTable st
 		}
 		a.emitSources(sp, outputCol.Sources, targetSchema, targetTable, targetColName)
 	}
-	a.emitPredicateInfluences(targetSchema, targetTable)
+	a.emitPredicateInfluences(sp, targetSchema, targetTable)
 }
 
 // emitSources resolves source columns and adds one relation per source. An
@@ -1079,7 +960,7 @@ func (a *Analyzer) emitSources(sp *scope.Scope, sources []scope.ColumnSource, ta
 				a.traceThroughTableLineage(res.Relation, res.Ref.Column, targetSchema, targetTable, targetColumn, source.Transform)
 				continue
 			}
-			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
+			isTemp := targetTable == resultTableName
 			a.addRelation(scope.NewLineageEdge(
 				res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 				targetSchema, targetTable, targetColumn,
@@ -1092,52 +973,14 @@ func (a *Analyzer) emitSources(sp *scope.Scope, sources []scope.ColumnSource, ta
 
 // traceThroughTableLineage traces lineage through a CTE or subquery to a target.
 func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName string, targetSchema, targetTable, targetColumn string, transform []model.Transformation) {
-	for _, edge := range model.AnsweringLineage(tableRef.Lineage, columnName) {
-		actualTarget := targetColumn
-		if columnName == wildcardColumn && targetColumn == wildcardColumn {
-			actualTarget = edge.Target.Name
-		}
-		isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
-		a.addRelation(scope.NewLineageEdge(
-			edge.Source.Table.Database, edge.Source.Table.Name, edge.Source.Name,
-			targetSchema, targetTable, actualTarget,
-			combineTransformations(edge.Transformation, transform),
-			isTemp,
-		))
-	}
+	algorithm.TraceThroughTableLineageToTarget(scope.NewLineageEdge, a.addRelation, tableRef, columnName, targetSchema, targetTable, targetColumn, transform)
 }
 
 // flattenTempSourceLineage expands a source column that belongs to a query-local
 // relation into the base-table lineage behind it. It reports whether the source
 // was query-local and has been handled.
-func (a *Analyzer) flattenTempSourceLineage(sp *scope.Scope, relation *scope.TableRef, columnName, targetTable, targetColumn string, transform []model.Transformation, lineage *[]model.ColumnRelation) bool {
-	if relation == nil || (!relation.IsSubquery && !relation.IsCTE) {
-		return false
-	}
-	a.appendFlattenedLineage(lineage, sp, relation, columnName, targetTable, targetColumn, transform)
-	return true
-}
-
-// appendFlattenedLineage traces through nested temporary tables to real tables.
-func (a *Analyzer) appendFlattenedLineage(lineage *[]model.ColumnRelation, sp *scope.Scope, tableRef *scope.TableRef, columnName, targetTable, targetColumn string, transform []model.Transformation) {
-	for _, edge := range model.AnsweringLineage(tableRef.Lineage, columnName) {
-		actualTarget := targetColumn
-		if columnName == wildcardColumn && targetColumn == wildcardColumn {
-			actualTarget = edge.Target.Name
-		}
-		combinedTransform := combineTransformations(edge.Transformation, transform)
-		sourceTableName := edge.Source.Table.Name
-		if nestedRef, ok := sp.FindRelation(scope.RelationKeyOf(edge.Source.Table)); ok && (nestedRef.IsCTE || nestedRef.IsSubquery) {
-			a.appendFlattenedLineage(lineage, sp, nestedRef, edge.Source.Name, targetTable, actualTarget, combinedTransform)
-			continue
-		}
-		*lineage = append(*lineage, scope.NewLineageEdge(
-			edge.Source.Table.Database, sourceTableName, edge.Source.Name,
-			"", targetTable, actualTarget,
-			combinedTransform,
-			true,
-		))
-	}
+func (*Analyzer) flattenTempSourceLineage(sp *scope.Scope, relation *scope.TableRef, columnName, targetTable, targetColumn string, transform []model.Transformation, lineage *[]model.ColumnRelation) bool {
+	return algorithm.FlattenTempSourceLineage(scope.NewLineageEdge, sp, relation, columnName, targetTable, targetColumn, transform, lineage)
 }
 
 // ---------------------------------------------------------------------------
@@ -1210,8 +1053,14 @@ func (a *Analyzer) processInsertUpdateList(assignments []*nodes.Assignment, targ
 			if err != nil {
 				continue
 			}
-			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
+			isTemp := targetTable == resultTableName
 			for _, res := range resolutions {
+				// A derived table contributes the lineage of its own columns:
+				// there is no stored relation to point an edge at.
+				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
+					a.traceThroughTableLineage(res.Relation, res.Ref.Column, targetSchema, targetTable, elem.Column.Column, transform)
+					continue
+				}
 				a.addRelation(scope.NewLineageEdge(
 					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 					targetSchema, targetTable, elem.Column.Column,
@@ -1316,7 +1165,7 @@ func (a *Analyzer) processCreateTable(stmt *nodes.CreateTableStmt) {
 	for _, outputCol := range sp.GetOutputColumns() {
 		a.emitSources(sp, outputCol.Sources, targetSchema, targetTable, outputCol.Alias)
 	}
-	a.emitPredicateInfluences(targetSchema, targetTable)
+	a.emitPredicateInfluences(sp, targetSchema, targetTable)
 }
 
 // processCreateView processes CREATE VIEW.
@@ -1360,7 +1209,7 @@ func (a *Analyzer) processViewBody(name *nodes.TableRef, explicitColumnNames []s
 		}
 		a.emitSources(sp, outputCol.Sources, targetSchema, targetView, targetColName)
 	}
-	a.emitPredicateInfluences(targetSchema, targetView)
+	a.emitPredicateInfluences(sp, targetSchema, targetView)
 }
 
 // ---------------------------------------------------------------------------
@@ -1425,8 +1274,14 @@ func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment) {
 			if err != nil {
 				continue
 			}
-			isTemp := resolved.Table == resultTableName || a.isTableTempInCurrentScope(resolved.Schema, resolved.Table)
+			isTemp := resolved.Table == resultTableName
 			for _, res := range resolutions {
+				// A CTE or derived table contributes the lineage of its own
+				// columns: there is no stored relation to point an edge at.
+				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
+					a.traceThroughTableLineage(res.Relation, res.Ref.Column, resolved.Schema, resolved.Table, resolved.Column, transform)
+					continue
+				}
 				a.addRelation(scope.NewLineageEdge(
 					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 					resolved.Schema, resolved.Table, resolved.Column,
@@ -1501,7 +1356,7 @@ func (a *Analyzer) processDeleteStatement(stmt *nodes.DeleteStmt) {
 			transform := []model.Transformation{
 				model.NewDeleteTransformation(whereText),
 			}
-			isTemp := actualTargetTable.Table == resultTableName || a.isTableTempInCurrentScope(actualTargetTable.Schema, actualTargetTable.Table)
+			isTemp := actualTargetTable.Table == resultTableName
 			for _, res := range resolutions {
 				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
 					a.traceThroughTableLineage(res.Relation, res.Ref.Column, actualTargetTable.Schema, actualTargetTable.Table, deletionFieldName, transform)
@@ -1536,7 +1391,7 @@ func (a *Analyzer) processLoadStatement(stmt *nodes.LoadDataStmt) {
 		a.processLoadDataSetClause(stmt.SetList, targetSchema, targetTable, targetColumns, sourceFile)
 	}
 
-	isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
+	isTemp := targetTable == resultTableName
 	if len(targetColumns) == 0 {
 		a.addRelation(scope.NewLineageEdge(
 			"", sourceFile, wildcardColumn,
@@ -1582,7 +1437,7 @@ func (a *Analyzer) processLoadDataSetClause(assignments []*nodes.Assignment, tar
 			// A column the file provides wins over any table that happens to
 			// share its name; an unresolvable one is a file source too.
 			isFromFile := slices.Contains(loadedColumns, sourceCol.Column)
-			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
+			isTemp := targetTable == resultTableName
 			if !isFromFile {
 				if resolutions, err := sp.ResolveColumnRefs(sourceCol); err == nil {
 					for _, res := range resolutions {
@@ -1672,8 +1527,11 @@ func (a *Analyzer) subquerySources(sel *nodes.SelectStmt, sp *scope.Scope) []sco
 	if subScope == nil {
 		return nil
 	}
+	// The subquery's rows decide which rows the enclosing expression sees, so its
+	// influences belong to the enclosing scope.
+	a.influences.Inherit(subScope, sp)
 	var out []scope.ColumnRef
-	for _, col := range resolveOutputColumns(subScope, subScope.GetOutputColumns()) {
+	for _, col := range a.resolveOutputColumns(subScope, subScope.GetOutputColumns()) {
 		out = append(out, scope.Refs(col.Sources)...)
 	}
 	return out
@@ -1935,20 +1793,6 @@ func (a *Analyzer) extractWindowClauses(fc *nodes.FuncCallExpr) (partitionBy []s
 // Transformation builders
 // ---------------------------------------------------------------------------
 
-// combineTransformations merges two transformation chains.
-func combineTransformations(base, additional []model.Transformation) []model.Transformation {
-	if len(base) == 0 {
-		return additional
-	}
-	if len(additional) == 0 {
-		return base
-	}
-	combined := make([]model.Transformation, len(base)+len(additional))
-	copy(combined, base)
-	copy(combined[len(base):], additional)
-	return combined
-}
-
 // ---------------------------------------------------------------------------
 // Identifier helpers
 // ---------------------------------------------------------------------------
@@ -2069,31 +1913,12 @@ func (a *Analyzer) currentScope() *scope.Scope {
 	return a.scopeStack[len(a.scopeStack)-1]
 }
 
-// addRelation adds a column relation, avoiding duplicates.
+// addRelation adds a column relation, dropping exact duplicates. A query-local
+// relation (a CTE or a derived table) is never an endpoint here: every path that
+// resolves one traces through its own lineage first, so the edge already names
+// the stored relation the column came from.
 func (a *Analyzer) addRelation(relation model.ColumnRelation) {
-	if a.isTempRelation(relation.Source.Table) {
-		return
-	}
-	if a.isTempRelation(relation.Target.Table) && relation.Target.Table.Name != resultTableName {
-		return
-	}
-	// The qualifier of a MySQL-family name is its database, which NewLineageEdge
-	// stores in Database; Schema is never populated. Reading Schema here left
-	// every key's database empty, so two edges that differed only by database
-	// collided and the second was dropped.
-	key := columnEdgeKey{
-		sourceDatabase: relation.Source.Table.Database,
-		sourceTable:    relation.Source.Table.Name,
-		sourceColumn:   relation.Source.Name,
-		targetDatabase: relation.Target.Table.Database,
-		targetTable:    relation.Target.Table.Name,
-		targetColumn:   relation.Target.Name,
-	}
-	if _, exists := a.edgeSet[key]; exists {
-		return
-	}
-	a.edgeSet[key] = struct{}{}
-	a.edges = append(a.edges, relation)
+	a.edges.Add(relation)
 }
 
 // attachTempColumnLookup lets the scope resolver treat a CTE or derived table as

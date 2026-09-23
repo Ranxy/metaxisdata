@@ -446,6 +446,19 @@ cases:
           to_field: b
           relation_type: direct
           is_temp: false
+        - from_table: employees
+          from_field: name
+          to_table: t2
+          to_field: b
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: FUNCTION
+              function_name: VALUES
+              expression: VALUES(b)
+              arguments:
+                - b
     - name: update_join
       sql: UPDATE employees e JOIN departments d ON e.department_id = d.id SET e.salary = d.budget WHERE d.name = 'eng'
       expected_edges:

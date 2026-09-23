@@ -96,3 +96,19 @@ cases:
           is_temp: false
           transformations:
             - operation: PROJECT
+    # A derived table in the join is query-local, so the assignment's source is
+    # the stored relation behind it. Emitting the alias named a table that does
+    # not exist.
+    - name: UPDATE with a derived table source
+      sql: UPDATE t JOIN (SELECT x, id FROM s) q ON t.id = q.id SET t.a = q.x
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: q.x

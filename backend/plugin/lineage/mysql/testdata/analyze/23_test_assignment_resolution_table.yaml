@@ -190,6 +190,19 @@ cases:
           to_field: b
           relation_type: direct
           is_temp: false
+        - from_table: s
+          from_field: a
+          to_table: t
+          to_field: b
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: FUNCTION
+              function_name: VALUES
+              expression: VALUES(b)
+              arguments:
+                - b
 
     # The upsert clause drops an unresolvable source the same way: the edge used
     # to be written with an empty source table.

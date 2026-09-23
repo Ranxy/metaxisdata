@@ -146,6 +146,16 @@ cases:
           is_temp: true
           transformations:
             - operation: JOIN
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: c.id=a.id
 
     - name: same-named relations in two databases each contribute the column
       sql: SELECT id FROM db1.t JOIN db2.t ON db1.t.id = db2.t.id
@@ -397,6 +407,15 @@ cases:
             - operation: FILTER
         - from_table: orders
           from_field: amount
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+        - from_table: customers
+          from_field: id
           to_table: __result__
           to_field: ""
           relation_type: indirect

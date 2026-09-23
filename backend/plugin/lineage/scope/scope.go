@@ -352,13 +352,6 @@ func (s *Scope) Parent() *Scope {
 	return s.parent
 }
 
-// SetOutputColumn updates an output column at a specific index.
-func (s *Scope) SetOutputColumn(index int, col OutputColumn) {
-	if index >= 0 && index < len(s.outputColumns) {
-		s.outputColumns[index] = col
-	}
-}
-
 // SetOutputColumns replaces every output column of this scope. A merge that
 // produces the whole list uses it so a shorter list cannot silently leave a
 // column behind.

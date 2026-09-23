@@ -3,30 +3,12 @@ package starrocks
 import (
 	"strings"
 
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/algorithm"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/scope"
 
 	nodes "github.com/bytebase/omni/starrocks/ast"
 )
-
-// predicateInfluence is one column a WHERE, HAVING or ON predicate depends on,
-// together with the clause that makes it an influence.
-type predicateInfluence struct {
-	// key is the real relation the column resolved to. It is zero when the
-	// predicate is over a query-local relation, whose lineage is traced instead.
-	key       predicateKey
-	relation  *scope.TableRef
-	column    string
-	transform model.Transformation
-}
-
-// predicateKey identifies a predicate column, so a column used by several
-// clauses collapses to the one edge the deduplication keeps.
-type predicateKey struct {
-	database string
-	table    string
-	column   string
-}
 
 // collectJoinPredicates records the columns a join condition depends on. ON is
 // recorded from its expression; USING names the shared column, which is a join
@@ -51,7 +33,7 @@ func (a *Analyzer) collectJoinPredicates(te nodes.Node) {
 		for _, side := range []nodes.Node{join.Left, join.Right} {
 			for _, ref := range joinSideRefs(side) {
 				for _, column := range join.Using {
-					a.recordPredicate(sp, scope.ColumnRef{Schema: ref.Schema, Table: ref.Table, Column: column}, transform, false)
+					a.influences.Resolve(sp, scope.ColumnRef{Schema: ref.Schema, Table: ref.Table, Column: column}, transform, false)
 				}
 			}
 		}
@@ -91,77 +73,30 @@ func joinSideRefs(te nodes.Node) []scope.ColumnRef {
 }
 
 // collectPredicates resolves every column a predicate depends on and records it
-// as an influence on the statement's target rows. resolveAliases is set for a
-// clause that may name a select-list alias, as HAVING does.
+// as an influence on the rows the current scope produces. resolveAliases is set
+// for a clause that may name a select-list alias, as HAVING does.
 //
 // A subquery operand is a leaf carrying only raw text here, so its own columns
 // are reached through expressionSubquerySources; the same call analyzes the
-// subquery, which records the predicates of its own WHERE as influences too.
+// subquery, whose own predicates become influences of the rows it contributes.
 func (a *Analyzer) collectPredicates(expr nodes.Node, sp *scope.Scope, transform model.Transformation, resolveAliases bool) {
 	if expr == nil {
 		return
 	}
 	refs := collectColumns(expr)
-	refs = append(refs, a.expressionSubquerySources(expr)...)
+	refs = append(refs, a.expressionSubquerySources(expr, sp)...)
 	for _, ref := range refs {
-		a.recordPredicate(sp, ref, transform, resolveAliases)
+		a.influences.Resolve(sp, ref, transform, resolveAliases)
 	}
 }
 
-// recordPredicate resolves one predicate column. An unresolvable column is
-// dropped, the same way an unresolvable source column is, so a predicate never
-// invents a relation.
-func (a *Analyzer) recordPredicate(sp *scope.Scope, ref scope.ColumnRef, transform model.Transformation, resolveAliases bool) {
-	// A select-list alias is not a column of any relation. The clause influences
-	// the rows the aggregate behind the alias produced, so the influence belongs
-	// to that output column's own sources.
-	if resolveAliases && ref.Table == "" && ref.Column != "" {
-		for _, output := range sp.GetOutputColumns() {
-			if output.Alias != ref.Column {
-				continue
-			}
-			for _, source := range output.Sources {
-				a.recordPredicate(sp, source.Ref, transform, false)
-			}
-			return
-		}
-	}
-
-	resolutions, err := sp.ResolveColumnRefs(ref)
-	if err != nil {
-		return
-	}
-	for _, res := range resolutions {
-		influence := predicateInfluence{transform: transform}
-		if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
-			influence.relation = res.Relation
-			influence.column = res.Ref.Column
-		} else {
-			influence.key = predicateKey{database: res.Ref.Schema, table: res.Ref.Table, column: res.Ref.Column}
-		}
-		a.predicates = append(a.predicates, influence)
-	}
-}
-
-// emitPredicateInfluences adds one edge per predicate column to the rows the
-// statement produces. The target column is empty: a predicate decides which rows
-// are emitted, not the value of any one column.
-func (a *Analyzer) emitPredicateInfluences(targetSchema, targetTable string) {
-	if len(a.predicates) == 0 {
-		return
-	}
-	isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
-	for _, influence := range a.predicates {
-		if influence.relation != nil {
-			a.traceThroughTableLineageToTarget(influence.relation, influence.column, targetSchema, targetTable, "", []model.Transformation{influence.transform})
-			continue
-		}
-		a.addRelation(scope.NewLineageEdge(
-			influence.key.database, influence.key.table, influence.key.column,
-			targetSchema, targetTable, "",
-			[]model.Transformation{influence.transform},
-			isTemp,
-		))
-	}
-	a.predicates = nil
+// emitPredicateInfluences adds one edge per predicate column of sp to the rows
+// the statement produces. The target column is empty: a predicate decides which
+// rows are emitted, not the value of any one column.
+func (a *Analyzer) emitPredicateInfluences(sp *scope.Scope, targetSchema, targetTable string) {
+	a.influences.Emit(sp, targetSchema, targetTable, targetTable == resultTableName, algorithm.Emitter{
+		Trace:   a.traceThroughTableLineageToTarget,
+		AddEdge: a.addRelation,
+		NewEdge: scope.NewLineageEdge,
+	})
 }

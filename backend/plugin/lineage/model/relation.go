@@ -18,6 +18,11 @@ type ColumnRelation struct {
 // entry with this target forwards every column of its source.
 const WildcardColumn = "*"
 
+// ResultTableName is the synthetic table every statement's own result rows are
+// recorded against. An edge targeting it is temporary by definition: it names no
+// stored object.
+const ResultTableName = "__result__"
+
 // AnsweringLineage returns the entries of a temporary relation's lineage that
 // answer a reference to column, in their original order. An entry whose target
 // names the column answers it; when none does, the entries whose target is
