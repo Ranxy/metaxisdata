@@ -862,6 +862,8 @@ work, in order:
 | `2498533` | PostgreSQL: `realTarget` suppresses the duplicate `__result__` edges (§2.9); an expression subquery is analyzed in its own scope (§2.3); set-operation arms are merged and emitted once with a UNION/INTERSECT/EXCEPT relation type, and INTERSECT keeps both arms (§2.2); aliased wildcards and the table-wide fallback resolve, and `table.*` expands with catalog metadata (§2.1). |
 | `c8960e0` | StarRocks: the same set-operation handling (§2.2); the source-less wildcard fallback is gated on a real aggregate and "derived" is decided from the AST, so a constant or a quoted identifier containing an operator character no longer fabricates a `table.*` edge (§2.6). |
 | `6e64894` | Regression cases for the shapes this plan promised but the corpus never covered. |
+| `ee3d7da`, `ebc6871` | PostgreSQL keeps both INTERSECT arms; the harness drops its dead `debug` flag, the MariaDB/TiDB registration tests gain the unsupported-engine negative, and `knownParserGaps` is pinned by a test. |
+| `89a6984` | An unaliased output column is named the way the engine names it, so a view's target column matches; the recorded DELETE condition no longer loses spaces inside a string literal (§10.4). |
 
 Corpus state: **347 cases across the five dialects, all matched exactly, with
 no expectation that can match an arbitrary source or target and no `subset`
@@ -893,8 +895,12 @@ changing one is a deliberate, visible corpus change.
    column.
 6. Identifier case is preserved verbatim in the MySQL family (`A.ID` stays
    `A.ID`).
-7. A quoted identifier keeps its quotes in the inferred output column name, so
-   `` `created-at` `` yields a target column literally named `` `created-at` ``.
+7. An unaliased output column is named the way the engine names it: a quoted
+   identifier contributes its unquoted name (`` `created-at` `` gives
+   `created-at`, verified against a live MySQL 8.4 view), and any other
+   expression contributes its raw source text with the original spacing
+   (`x - 1`, not `x-1`), so the stored target column matches the column the
+   view exposes.
 8. An expression subquery is classified as `PROJECT` in PostgreSQL but from the
    first function call inside the subquery in the MySQL family; the edge sources
    agree, the transformation does not.
@@ -915,8 +921,14 @@ changing one is a deliberate, visible corpus change.
   family addresses a SQL qualifier as the database, so a `schemas:` entry never
   matches there.
 - MySQL `NATURAL JOIN` / `USING` is covered only by the MariaDB dialect corpus.
-- `normalizeExpressionText`, the `map[string]bool` function-name sets and
-  `parseRelationType`'s `join` / `unknown` cases are cosmetic leftovers.
+- An unaliased expression column is named differently by the remaining
+  dialects: PostgreSQL calls it `?column?` (verified against a live PostgreSQL
+  16) while the analyzer stores the expression text, and StarRocks has not been
+  checked against a live server. Only the MySQL-family naming was corrected
+  (§10.4); the stored target column does not match the engine's column for
+  those two engines.
+- The `map[string]bool` function-name sets and `parseRelationType`'s `join` /
+  `unknown` cases are cosmetic leftovers.
 - The plan's own first-measurement performance figures were taken with a
   throwaway probe; the committed benchmark is the reference (see §10.3).
 
@@ -936,3 +948,40 @@ changing one is a deliberate, visible corpus change.
 The quadratic term is gone (100→1000 grows 13.8× before, 10.1× after), allocation
 counts fall ~19% at scale, and the follow-up work removed a per-call key sort.
 Small column counts pay a few hundred nanoseconds for the extra scope checks.
+
+### 10.4 Second MySQL pass: output column naming and condition text
+
+A re-check against a live MySQL 8.4 (`CREATE VIEW` then
+`information_schema.columns`) found two remaining MySQL defects, both in the
+MySQL family:
+
+1. **An unaliased output column was named from the token-concatenated text, not
+   the way the engine names it.** `SELECT x - 1` stored `x-1` where MySQL exposes
+   `x - 1`; `CONCAT('a', 'b')` stored `CONCAT('a','b')` where MySQL exposes
+   `CONCAT('a', 'b')`; `` `created-at` `` stored a column literally named
+   `` `created-at` `` where MySQL exposes `created-at`. The stored
+   `column_lineage.target_column` therefore never matched the view's real column
+   and the edge could not join to what schema sync recorded. The alias now comes
+   from the AST column name for a bare column reference and from the raw source
+   span for anything else. Verified column by column against the live server:
+   `x - 1`, `CONCAT('a','b')` (no-ops, so no edge), `created-at`, `case_id`,
+   `COUNT(*)` all match.
+
+2. **`normalizeExpressionText` removed spaces inside string literals.**
+   `DELETE FROM t WHERE name = 'John Doe'` recorded the condition as
+   `name='JohnDoe'`. The token concatenation is already whitespace-free, so the
+   MySQL family now uses the reconstructed text directly and StarRocks collapses
+   whitespace instead of deleting it; a literal keeps its content.
+
+Both are pinned by corpus cases (`17/unaliased expression keeps the engine
+column name`, `17/DELETE condition keeps literal spaces`, and the updated
+`17/quoted identifiers with operator characters are direct`).
+
+Checked and *not* MySQL defects, so nobody re-investigates them:
+
+- `SELECT CONCAT('a','b') FROM t` produces no edge. The column depends on no
+  table column, which is the §2.6 decision, not a missing source.
+- `SELECT COUNT(*) FROM t` names its output `COUNT(*)`, which is what MySQL
+  exposes for that expression.
+- Identifier case, `NATURAL JOIN` coverage and the `schemas:` catalog key are
+  recorded above as decisions or open items, not defects.
