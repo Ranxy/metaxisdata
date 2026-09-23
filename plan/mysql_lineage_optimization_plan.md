@@ -79,7 +79,7 @@ import paths and the registered engine. Upstream omni was not touched.
 | §2.1 aliased wildcard | Wildcard source refs are marked `Resolved` (the StarRocks pattern), so `SELECT *` / `t.*` over an aliased table resolves. Aliased-star cases added with and without catalog. |
 | §2.2 set-op arms | `resolveOutputColumns` ported from StarRocks: each arm resolves its sources in its own scope, and the operation emits once at the root. `mergeSetOpOutputColumns` always records the set operation, `determineRelationType` maps it, and `OperationIntersect`/`OperationExcept` (+ relation types) were added. |
 | §2.3 subqueries | `collectExprColumns` no longer descends into subqueries; `SubqueryExpr`, `InExpr.Select` and `ExistsExpr.Select` are analyzed in a pushed scope and their output sources merged as resolved. `scalar_subquery` corrected; correlated-subquery case added. |
-| §2.4 unqualified columns | `Analyzer.resolveColumn` uses memoized catalog metadata to pick the table that has the column when several base tables are in scope and all have metadata; otherwise the shared deterministic rule is kept. Cases added for disambiguation and for dropping an unknown column. |
+| §2.4 unqualified columns | `Analyzer.resolveColumn` uses memoized catalog metadata to pick the table that has the column when several base tables are in scope and all have metadata; otherwise the shared deterministic rule is kept. Cases added for disambiguation and for dropping an unknown column. §10.11 later made the rule plural — every relation the catalog confirms owns the name is reported — and gave the search its enclosing scope. |
 | §2.5 single-table DELETE | The target table is registered before resolving, so WHERE columns carry a real source table. |
 | §2.6 classification | AST-based: `isPlainColumnRef` for direct projections, `BinaryExpr.Op`/`UnaryExpr.Op` for operators, `CaseExpr` for CASE, and the synthetic wildcard source is gated on a real aggregate call. Constant/`NOW()` expressions now emit no edges; quoted identifiers with operator characters stay direct. |
 | §2.7 window/function | `fc.Over != nil` is checked before the name sets; the `"OVER"` substring test is gone. `SUM(x) OVER (...)` is WINDOW, `cover(x)` is FUNCTION, `my_udf(x) OVER ()` is WINDOW. |
@@ -920,10 +920,12 @@ changing one is a deliberate, visible corpus change.
   populated for the MySQL family as of §10.9, and is still empty for PostgreSQL
   and StarRocks.
 - The public API still collapses relation types to DIRECT/INDIRECT.
-- An unqualified reference that several same-named relations satisfy is still
-  resolved rather than dropped: catalog metadata decides when it is complete,
-  otherwise the first relation by name. Whether it should drop the edge instead
-  is undecided (§10.7).
+- An unqualified reference that several relations satisfy is reported once per
+  relation the catalog confirms owns it, and the search reaches the enclosing
+  scope when the current one is known not to provide the name (§10.11). A
+  relation whose columns are unknown still falls back to the scope's name order,
+  so a table that has never been synced can be attributed a column it does not
+  own.
 - Materialized views still have no output-column list in the store proto, so a
   wildcard over an MV falls back to `*`.
 - The three MySQL-family analyzers remain copies kept in sync by regeneration;
@@ -1116,11 +1118,12 @@ StarRocks. Negative-checked by dropping the qualifier from `TableRef.Key()`: fiv
 cases per dialect fail, and the CTE case is carried by the separate
 CTE-binding rule.
 
-Deferred, and deliberately unchanged: an *unqualified* reference that several
-same-named relations could satisfy still resolves rather than drops — catalog
-metadata decides when it is complete, otherwise the first relation by name with
-the qualifier as tie-break, so the choice is deterministic. Whether it should
-drop the edge instead is the §10.2 open item.
+Deferred here and resolved in §10.11: an *unqualified* reference that several
+relations could satisfy resolved to the first relation by name (the qualifier as
+tie-break) instead of reporting every owner, and the enclosing scope was
+unreachable whenever the current scope had any relation at all. §10.11 replaced
+both with an innermost-out search that reports every relation the catalog
+confirms owns the name.
 
 `BenchmarkAnalyzeColumnScaling` is unchanged by the rewrite: 1000 columns
 2130 µs / 12086 allocs against 2383 µs / 12087 before it (same machine). Scopes
@@ -1159,9 +1162,10 @@ unchanged under MySQL, MariaDB and TiDB.
    column is never written; `JOIN ... USING (col)` with explicit qualifiers
    resolves each side; and an unqualified `USING` column, which is coalesced and
    names no single relation, resolves by the deterministic
-   first-relation-by-name rule. That last case is pinned on purpose, so changing
-   the unqualified-ambiguity policy (§10.2) has to change this case. The
-   pre-existing MariaDB dialect case is left in place.
+   first-relation-by-name rule. That last case pins the metadata-less fallback
+   rather than the ambiguity policy: without a catalog the scope cannot tell
+   which relation owns the name, so the deterministic rule stands, and §10.11
+   leaves it unchanged. The pre-existing MariaDB dialect case is left in place.
 
 Corpus state: the shared MySQL-family corpus is now 128 cases (`02` gained three
 join cases, `19` adds three database-catalog cases), all matched exactly and
@@ -1317,3 +1321,81 @@ the alias case and the `08` view, disabling `USING` fails three cases, and
 dropping the ingested field again fails the new ingestion test. `gofmt`,
 `golangci-lint`, `go test ./...`, the build and the real-server integration suite
 are green; the MariaDB and TiDB copies remain pure regenerations.
+
+### 10.11 Seventh MySQL pass: unqualified reference resolution
+
+An unqualified name belongs to the innermost scope that provides it, and a scope
+provides it when catalog metadata says so. The resolver violated both halves, and
+the two defects were measured before and after against a live MySQL 8.3.0.
+
+**Fixed — the enclosing scope was unreachable.** `Scope.ResolveColumnRef`'s
+parent lookup ran only when the current scope had no relations at all, so a
+correlated reference was resolved locally instead. Two faces:
+
+```sql
+SELECT o.id FROM orders o
+WHERE EXISTS (SELECT 1 FROM customers c WHERE c.id = o.id AND amount > 100)
+-- stored: customers.amount   (a column that does not exist)
+-- MySQL:  orders.amount      (verified: the query runs and reads the outer column)
+```
+
+With two inner relations and complete metadata the name was not found in either,
+which returned an error and **dropped the edge entirely**. Both shapes now record
+`orders.amount` as a `FILTER` influence.
+
+**Fixed — several owners were a guess.** `resolveByColumnMetadata` returned the
+first relation that owned the name, so a name several relations own — which for
+legal SQL means a coalesced `USING` / `NATURAL JOIN` column, whose value is
+`COALESCE(left, right)` — reported one side only.
+
+The engine's own answers bound the policy. `USING` and `NATURAL JOIN` coalesce
+and are legal; `SELECT id FROM a JOIN b ON a.id = b.id` and
+`SELECT id FROM db1.t JOIN db2.t ON …` both fail with error 1052 (`SELECT *` over
+the same join is legal) — verified on 8.3.0. A view therefore never reaches the
+analyzer in that shape; the statement is still analyzable as `MANUAL_SQL`, where
+reporting both candidates is strictly more informative than picking one.
+
+Decisions:
+
+- **Every relation the catalog confirms owns the name is reported**, one edge
+  each, in the scope's name order. A coalesced join column is now right on both
+  sides, which is the case the policy exists for.
+- **The search is innermost-out and metadata-gated.** A scope is left for the
+  enclosing one only when every relation in it has columns and none owns the
+  name; an ambiguous or metadata-less scope answers locally, because an enclosing
+  scope cannot resolve a name the current one may own.
+- **Metadata is never used to rule out a lone candidate.** When no scope owns the
+  name, the innermost scope holding exactly one relation keeps it, because a
+  catalog snapshot can lag a schema change. The rule is dropped as soon as a
+  scope offers several candidates, so it keeps its "only when there is no choice"
+  meaning.
+- **A temporary relation no longer short-circuits the scan.** A relation the
+  catalog confirms owns the name wins over a CTE or derived table that merely
+  might; that is a fact rather than a guess.
+- **The policy covers every engine and every source-column site** — a projection,
+  a CTE or derived body, a set-operation arm, a predicate influence, an
+  assignment source, a `DELETE` condition, a `LOAD DATA SET` source. A resolved
+  *target* column stays singular: it names one column of the row being written.
+
+Implementation: `scope.ResolvedColumn` pairs a reference with the relation that
+owns it; `Scope.ResolveColumnRefs` returns one per owner and `ResolveColumnRef`
+reports the first of them, so the sites that must choose one — an `UPDATE`
+assignment's left-hand side, a view's declared column name — keep their
+signature. `resolveUnqualified` walks the scope chain, `resolveInScope`
+classifies a single scope, and the old metadata helper is gone. No proto, store,
+API or frontend change: the extra edges are ordinary `ColumnRelation`s.
+
+Corpus: `22_test_unqualified_resolution_table` adds 12 cases to the shared
+MySQL-family corpus — several owners, three owners, the metadata-less fallback,
+two databases, `USING`, `NATURAL JOIN`, a CTE body, three correlated shapes, a
+name no scope owns, and the metadata-less correlated case — for 165 shared cases.
+PostgreSQL adds 8 (`24`) and StarRocks 9 (`21`). The `02` case that pinned the
+old first-relation-by-name rule keeps its expectation, because without metadata
+the rule is unchanged, and its comment now says which decision it documents.
+
+Negative-checked: emitting only the first owner fails 5 shared cases; doing the
+same in the CTE and derived builders fails the CTE case in all three engine
+suites; disabling the outward walk fails 3 shared, 1 PostgreSQL and 2 StarRocks
+cases; and so does emitting one owner in their funnels. `gofmt`, `golangci-lint`, `go test ./...`, the build and
+the real-server integration suite are green; the MariaDB and TiDB copies remain
+pure regenerations (21-line diffs).
