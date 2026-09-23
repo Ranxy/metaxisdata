@@ -921,39 +921,15 @@ Not ours to fix:
   (`hive_catalog.db.tbl`) is dropped because the registry has no catalog
   dimension.
 
-Ours, by priority:
+Ours:
 
-1. **StarRocks classifies an expression by the first function call it contains**, so
-   `SUM(x) OVER (…)` is reported as `AGGREGATE` where the MySQL family and
-   PostgreSQL report `WINDOW`, and `SUM(x) + 1` as `AGGREGATE` where they report
-   `OPERATOR`. The GROUP BY keys still follow §10.9 (§10.16), but the operation and
-   the window's `partition_by` / `order_by` differ.
-2. **PostgreSQL `MERGE` is silently ignored** — 0 edges and no error — where
-   StarRocks reports an explicit "not implemented yet". A parseable statement must
-   never produce an empty result silently, which is the policy that analyzer states
-   for itself. (StarRocks `MERGE` is the same gap, failing loudly by decision.)
-3. **PostgreSQL `UPDATE t SET (a, b) = (SELECT x, y FROM s)` becomes a cross
-   product**: four edges (`s.x` and `s.y` to each of `t.a` and `t.b`) instead of the
-   two positional ones, because the AST's `MultiAssignRef` is not handled.
-4. **PostgreSQL drops a `FROM` item it does not model**, so
-   `SELECT x FROM t TABLESAMPLE BERNOULLI (10)` yields no edges at all: the
-   relation is lost, not merely the columns. `RangeTableSample` — and
-   `RangeFunction` — fall into `processTableExpr`'s `default`. A function in FROM
-   genuinely has no stored relation; a table sample wraps one.
-5. **PostgreSQL `COPY t FROM …` records nothing**, where MySQL `LOAD DATA`
-   (`__file__.* → t.*`) and StarRocks `COPY INTO` / `LOAD` record a file-source
-   edge. The same data-loading statement has lineage in two engines and none in the
-   third.
-6. **A materialized view has no output-column list in the store proto**, so a
-   wildcard over one falls back to `*`. Closing that needs a proto field plus a
-   sync per engine, and it is a StarRocks/PostgreSQL shape today.
-   `MaterializedViewMetadata.triggers` still carries the copy-pasted "ordered list
-   of columns in the materialized view" comment over a `TriggerMetadata` field that
-   §5.3 flagged, and the MV branch of `catalog/provide.go` reports no metadata on
-   purpose rather than expanding dependency columns.
-7. **`ON CONFLICT … EXCLUDED.col` is dropped** rather than resolved to the INSERT's
-   source column (PG-FU-5 in `plan/postgresql_omni_parser_migration_plan.md`). The
-   INSERT-source edge already covers the common case.
+- **A materialized view has no output-column list in the store proto**, so a
+  wildcard over one falls back to `*`. Closing that needs a proto field plus a sync
+  per engine, and it is a StarRocks/PostgreSQL shape today.
+  `MaterializedViewMetadata.triggers` still carries the copy-pasted "ordered list
+  of columns in the materialized view" comment over a `TriggerMetadata` field that
+  §5.3 flagged, and the MV branch of `catalog/provide.go` reports no metadata on
+  purpose rather than expanding dependency columns.
 
 Decided, and deliberately not defects:
 
@@ -1661,11 +1637,10 @@ decisions:
   outermost node is an operator. An item with no group aggregate records nothing.
 - **Window functions are excluded** — a windowed aggregate is governed by its
   `OVER` clause. PostgreSQL classifies `SUM(x) OVER (…)` as `WINDOW` and records
-  no keys; StarRocks classifies it as `AGGREGATE` (see §10.2) and still records no
-  keys.
+  no keys; StarRocks agreed only from §10.19, which also fixed its classification.
 - **The subquery boundary is part of the rule** — an aggregate inside an
   expression subquery belongs to that subquery's own `GROUP BY`. PostgreSQL's walk
-  stops at a `SubLink`; StarRocks' walker never descends into an expression
+  stops at a `SubLink`; at the time StarRocks' walker never descended into an expression
   subquery's body at all, because omni keeps it as raw text there, so its stop is
   belt-and-braces.
 - **`GROUP BY DISTINCT`** (PostgreSQL) and **`WITH ROLLUP`** (StarRocks, the
@@ -1857,3 +1832,86 @@ every assignment source 10 (PostgreSQL) and 9 (StarRocks); and a valueless
 `expected_edges` key now fails the corpus guard. `gofmt`, `golangci-lint`,
 `go test ./...`, the build and the real-server integration suite are green; MariaDB
 and TiDB remain pure regenerations of the MySQL analyzer.
+
+### 10.19 Fourteenth pass: the remaining small gaps
+
+§10.2 held six small items besides the materialized-view column list. All six are
+closed, with the PostgreSQL semantics verified against 16.5 first.
+
+**StarRocks classified an expression by the first function call it contains**
+(§10.2 item 1). It now decides by what the expression *is* — a CASE or an operator
+at the outermost node first, then the first function call, with `OVER` checked
+before the aggregate name set — which is the order the MySQL analyzer already used:
+
+| expression | before | after |
+| --- | --- | --- |
+| `SUM(price) OVER (PARTITION BY …)` | `AGGREGATE` + `group` | `WINDOW` + `indirect`, with `partition_by` / `order_by` |
+| `SUM(price) + 1` | `AGGREGATE` + `group` | `OPERATOR` + `indirect`, `op_type: ADDITION` |
+| `SUM(price) > 100` | `AGGREGATE` | `OPERATOR`, `GREATER_THAN` |
+| `amount >= 10` | `PROJECT` | `OPERATOR`, `GREATER_OR_EQUAL` |
+| `amount <> 0` | `PROJECT` | `OPERATOR`, `NOT_EQUALS` |
+| `amount > 0 AND quantity > 0` | `PROJECT` | `OPERATOR`, `LOGICAL_AND` |
+| `-amount` | `PROJECT` | `OPERATOR`, `NEGATION` |
+
+The operator and CASE tests are read from the AST now, replacing a text scan that
+looked for operator characters in a fixed order — which is why `>=`, `<>`, `AND`
+and a unary minus were never recognized, and why a quoted identifier containing a
+hyphen was at risk. The operator vocabulary is the MySQL analyzer's, so the engines
+name an operator the same way. The GROUP BY keys follow §10.9 as before, and the
+decision "a windowed aggregate records no keys" (§10.16) is now backed by the
+classification rather than working around it.
+
+**PostgreSQL gaps**, each with the shape that motivates it:
+
+- **`MERGE` failed silently** — 0 edges and no error — where StarRocks reports an
+  explicit "not implemented yet". It now fails loudly, per this analyzer's own
+  policy that a parseable statement must never look like one with no lineage.
+- **A sampled relation was dropped.** `SELECT x FROM t TABLESAMPLE BERNOULLI (10)`
+  produced no edges at all, because `RangeTableSample` fell into
+  `processTableExpr`'s default and the relation was never registered. The wrapper is
+  now unwrapped — the sample decides which rows are read, not which relation they
+  come from. A function in FROM genuinely has no stored relation and stays
+  unregistered, now explicitly.
+- **`COPY … FROM` recorded nothing.** MySQL's `LOAD DATA` and StarRocks' `COPY
+  INTO` both record a file source; PostgreSQL now does too, with the same rule: a
+  declared column list maps the file's columns one by one
+  (`__file__.col1 → t.a`) and no list means the whole table (`__file__.* → t.*`).
+  `COPY … TO` reads out and records nothing.
+- **A multi-column assignment became a cross product.**
+  `UPDATE t SET (a, b) = (SELECT x, y FROM s)` gave four edges — each of `s.x` and
+  `s.y` to each of `t.a` and `t.b` — because the row expression's sources were
+  merged. The AST gives one `ResTarget` per target column, each a `MultiAssignRef`
+  naming its own column of the same row, so the columns now map positionally.
+- **`EXCLUDED.col` was dropped** (PG-FU-5). `EXCLUDED` names the row the INSERT
+  proposed, so its column is the value the insert writes to that column — the
+  relationship MySQL's `VALUES(col)` has. It resolves through an insert-source map
+  instead of being dropped. The map is resolved in the query's own scope, before
+  the clause's scope gains the target, for the reason §10.18 recorded.
+
+**A new defect was found on the way: PostgreSQL carried per-statement state across
+statements.** One SQL text may hold several statements, and each is analyzed on its
+own — but the scope, the temporary-relation set and the predicate accumulator were
+not reset between them, so:
+
+| input | before | after |
+| --- | --- | --- |
+| `UPDATE t SET a = (SELECT y FROM s WHERE s.z > 1); SELECT x FROM u` | `s.z → __result__.` — a predicate of the UPDATE attributed to the next SELECT | no such edge |
+| `WITH c AS (SELECT x FROM s) SELECT x FROM c; SELECT y FROM c` | no edge for the second statement: `c` was still a CTE, so the real table's edge was dropped | `c.y → __result__.y` |
+
+Every statement now starts with a fresh scope, temporary-relation set and predicate
+accumulator; only the edges and the error list are shared.
+
+Corpus: `24_test_expression_classification_table` (StarRocks, 9 cases) and, for
+PostgreSQL, `27_test_copy_lineage_table` (4), `28_test_from_item_lineage_table`
+(3), `29_test_statement_lineage_table` (3, one of them an expected error) and
+`30_test_multi_column_assignment_lineage_table` (2), plus one case for `EXCLUDED`
+in `26`. StarRocks' three windowed-aggregate cases in `16` were rewritten by the
+classification change; nothing else in any corpus changed.
+
+Negative-checked, each mutation against the case that should catch it: turning the
+`OVER` check off fails 6 StarRocks cases (four existing), the AST CASE check 1, and
+the `GREATER_OR_EQUAL` mapping 1; removing the PostgreSQL `MERGE` error fails 1, the
+`COPY` handler 2, the `TABLESAMPLE` unwrap 2, the positional assignment 2, the
+`EXCLUDED` substitution 1, and the per-statement reset 2. `gofmt`,
+`golangci-lint`, `go test ./...`, the build and the real-server integration suite
+are green; MariaDB and TiDB are untouched.
