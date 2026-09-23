@@ -1,5 +1,7 @@
 package model
 
+import "slices"
+
 // OperationType represents the type of transformation operation.
 type OperationType string
 
@@ -172,4 +174,53 @@ func NewCaseTransformation(expression string) Transformation {
 		Operation:  OperationCase,
 		Expression: expression,
 	}
+}
+
+// CombineTransformations joins an edge's own transformations with the ones a
+// consumer adds on top of them, returning a list the caller owns.
+//
+// Neither argument is written to and the result never shares an array with
+// either. Appending to the first argument instead returns a list backed by the
+// array the argument already had, and a later append into the combined list then
+// overwrites the transformations of every other edge built from the same base.
+func CombineTransformations(base, additional []Transformation) []Transformation {
+	switch {
+	case len(base) == 0:
+		return append([]Transformation(nil), additional...)
+	case len(additional) == 0:
+		return append([]Transformation(nil), base...)
+	}
+	out := make([]Transformation, 0, len(base)+len(additional))
+	out = append(out, base...)
+	return append(out, additional...)
+}
+
+// Equal reports whether two transformations describe the same operation with the
+// same fields, field by field.
+func (t Transformation) Equal(other Transformation) bool {
+	return t.Operation == other.Operation &&
+		t.Expression == other.Expression &&
+		t.FunctionName == other.FunctionName &&
+		t.OpType == other.OpType &&
+		t.Condition == other.Condition &&
+		slices.Equal(t.Arguments, other.Arguments) &&
+		slices.Equal(t.GroupKeys, other.GroupKeys) &&
+		slices.Equal(t.PartitionBy, other.PartitionBy) &&
+		slices.Equal(t.OrderBy, other.OrderBy)
+}
+
+// SameTransformations reports whether two transformation lists are equal in
+// order and content. It is how an edge's identity is decided: two edges that
+// connect the same columns are the same edge only when the same operations
+// produced both.
+func SameTransformations(a, b []Transformation) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !a[i].Equal(b[i]) {
+			return false
+		}
+	}
+	return true
 }

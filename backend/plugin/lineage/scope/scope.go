@@ -358,3 +358,10 @@ func (s *Scope) SetOutputColumn(index int, col OutputColumn) {
 		s.outputColumns[index] = col
 	}
 }
+
+// SetOutputColumns replaces every output column of this scope. A merge that
+// produces the whole list uses it so a shorter list cannot silently leave a
+// column behind.
+func (s *Scope) SetOutputColumns(cols []OutputColumn) {
+	s.outputColumns = cols
+}

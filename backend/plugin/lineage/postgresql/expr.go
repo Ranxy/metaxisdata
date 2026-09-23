@@ -141,7 +141,7 @@ func (a *Analyzer) subquerySources(sel *pgast.SelectStmt, sp *scope.Scope) []sco
 	}
 	// The subquery's rows decide the value the enclosing expression reads, so the
 	// predicates that shaped them belong to that expression's query.
-	a.inheritPredicates(subScope, sp)
+	a.influences.Inherit(subScope, sp)
 	var out []scope.ColumnRef
 	for _, col := range a.resolveOutputColumns(subScope, subScope.GetOutputColumns()) {
 		out = append(out, scope.Refs(col.Sources)...)

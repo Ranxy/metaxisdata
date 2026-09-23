@@ -172,30 +172,40 @@ func (c *OutputColumn) SetTransform(transform []model.Transformation) {
 	}
 }
 
-// NewLineageEdge creates a ColumnRelation from field-edge parameters.
-func NewLineageEdge(fromSchema, fromTable, fromField, toSchema, toTable, toField string, transform []model.Transformation, isTemp bool) model.ColumnRelation {
-	// Determine relation type based on transformation
-	relType := model.RelationTypeOf(transform)
+// NewLineageEdge creates a ColumnRelation from field-edge parameters, recording
+// the qualifier of each endpoint as a database name. That is what a MySQL-family
+// or StarRocks reference names; PostgreSQL names a schema and uses
+// NewSchemaLineageEdge.
+func NewLineageEdge(fromQualifier, fromTable, fromField, toQualifier, toTable, toField string, transform []model.Transformation, isTemp bool) model.ColumnRelation {
+	return buildLineageEdge(fromQualifier, fromTable, fromField, toQualifier, toTable, toField, transform, isTemp, false)
+}
 
-	// For MySQL, the schema qualifier in SQL is actually the database name,
-	// so map it to ObjectIdentifier.Database instead of Schema.
+// NewSchemaLineageEdge is NewLineageEdge with the qualifier recorded as a schema
+// name. The distinction is not cosmetic: database and schema are separate fields
+// of an object identifier, so an edge built with the wrong one names a different
+// object than the analyzer resolved.
+func NewSchemaLineageEdge(fromQualifier, fromTable, fromField, toQualifier, toTable, toField string, transform []model.Transformation, isTemp bool) model.ColumnRelation {
+	return buildLineageEdge(fromQualifier, fromTable, fromField, toQualifier, toTable, toField, transform, isTemp, true)
+}
+
+func buildLineageEdge(fromQualifier, fromTable, fromField, toQualifier, toTable, toField string, transform []model.Transformation, isTemp, qualifierIsSchema bool) model.ColumnRelation {
+	identifier := func(qualifier, name string) model.ObjectIdentifier {
+		if qualifierIsSchema {
+			return model.ObjectIdentifier{Schema: qualifier, Name: name}
+		}
+		return model.ObjectIdentifier{Database: qualifier, Name: name}
+	}
 	return model.ColumnRelation{
 		Source: model.Column{
-			Table: model.ObjectIdentifier{
-				Database: fromSchema,
-				Name:     fromTable,
-			},
-			Name: fromField,
+			Table: identifier(fromQualifier, fromTable),
+			Name:  fromField,
 		},
 		Target: model.Column{
-			Table: model.ObjectIdentifier{
-				Database: toSchema,
-				Name:     toTable,
-			},
-			Name: toField,
+			Table: identifier(toQualifier, toTable),
+			Name:  toField,
 		},
 		Transformation: transform,
-		RelationType:   relType,
+		RelationType:   model.RelationTypeOf(transform),
 		IsTemp:         isTemp,
 	}
 }
