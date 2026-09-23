@@ -15,6 +15,15 @@ type ColumnRef struct {
 	Resolved bool
 }
 
+// ResolvedColumn is a column reference together with the relation that owns it.
+// An unqualified name yields one per relation in scope that exposes it, which is
+// more than one when several relations share the name — the shape a coalesced
+// USING or NATURAL JOIN column has, where every owner really is a source.
+type ResolvedColumn struct {
+	Ref      ColumnRef
+	Relation *TableRef
+}
+
 // RelationKey identifies a relation inside a scope. Qualifier is the database
 // (MySQL family, StarRocks) or schema (PostgreSQL) the relation was named with,
 // and is empty when the query does not name one. Name is the alias when the

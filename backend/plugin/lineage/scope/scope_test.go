@@ -343,6 +343,102 @@ func tableWithColumns(name string, columns []string) *TableRef {
 	return ref
 }
 
+// Several relations owning the name is not a guess to make: every one of them is
+// a real source, which is what a coalesced USING or NATURAL JOIN column looks
+// like.
+func TestScope_ResolveColumnRefs_ReturnsEveryOwner(t *testing.T) {
+	scope := NewScope(nil)
+	scope.AddTable(tableWithColumns("a", []string{"id", "x"}))
+	scope.AddTable(tableWithColumns("b", []string{"id", "y"}))
+
+	resolved, err := scope.ResolveColumnRefs(ColumnRef{Column: "id"})
+	require.NoError(t, err)
+	require.Len(t, resolved, 2)
+	require.Equal(t, "a", resolved[0].Ref.Table)
+	require.Equal(t, "b", resolved[1].Ref.Table)
+	require.Same(t, scope.Tables()[0], resolved[0].Relation)
+	require.Same(t, scope.Tables()[1], resolved[1].Relation)
+
+	// The singular accessor reports the first of them.
+	first, err := scope.ResolveColumn(ColumnRef{Column: "id"})
+	require.NoError(t, err)
+	require.Equal(t, "a", first.Table)
+}
+
+// A scope whose relations are all known and none of which owns the name does not
+// provide it, so the search continues in the enclosing scope: this is what makes
+// a correlated reference to an outer column resolve instead of being dropped or
+// attributed to an unrelated inner table.
+func TestScope_ResolveColumn_CorrelatedOuterReference(t *testing.T) {
+	outer := NewScope(nil)
+	outer.AddTable(tableWithColumns("orders", []string{"id", "amount"}))
+	inner := NewScope(outer)
+	inner.AddTable(tableWithColumns("customers", []string{"id", "name"}))
+
+	resolved, err := inner.ResolveColumn(ColumnRef{Column: "amount"})
+	require.NoError(t, err)
+	require.Equal(t, "orders", resolved.Table)
+	require.Equal(t, "amount", resolved.Column)
+
+	// A name the enclosing scope does not own either is not invented: the single
+	// inner relation keeps it, because a lone candidate is not a guess.
+	resolved, err = inner.ResolveColumn(ColumnRef{Column: "nosuch"})
+	require.NoError(t, err)
+	require.Equal(t, "customers", resolved.Table)
+}
+
+// The search reaches outward only when the current scope is known not to provide
+// the name. An ambiguous or an undecidable scope answers locally even when an
+// enclosing scope owns the name.
+func TestScope_ResolveColumn_AmbiguousDoesNotReachOutward(t *testing.T) {
+	outer := NewScope(nil)
+	outer.AddTable(tableWithColumns("orders", []string{"id", "amount"}))
+	inner := NewScope(outer)
+	inner.AddTable(tableWithColumns("customers", []string{"id", "amount"}))
+	inner.AddTable(tableWithColumns("regions", []string{"id", "amount"}))
+
+	// Ambiguous: the enclosing scope's `amount` is not the answer.
+	resolved, err := inner.ResolveColumn(ColumnRef{Column: "amount"})
+	require.NoError(t, err)
+	require.Equal(t, "customers", resolved.Table)
+
+	// Undecidable: a relation whose columns are unknown may own the name, so the
+	// deterministic name order answers instead of the enclosing scope.
+	undecidable := NewScope(outer)
+	undecidable.AddTable(tableWithColumns("customers", []string{"id"}))
+	undecidable.AddTable(&TableRef{Table: "zarchive", Alias: "zarchive"})
+	resolved, err = undecidable.ResolveColumn(ColumnRef{Column: "amount"})
+	require.NoError(t, err)
+	require.Equal(t, "customers", resolved.Table)
+}
+
+// A relation the catalog confirms owns the name is preferred over a temporary
+// relation that might also own it: the confirmed owner is a fact, the temporary
+// relation's columns are not described here at all.
+func TestScope_ResolveColumn_ConfirmedOwnerBeatsTemporary(t *testing.T) {
+	scope := NewScope(nil)
+	scope.AddTable(&TableRef{Table: "aaa", Alias: "aaa", IsCTE: true})
+	scope.AddTable(tableWithColumns("zzz", []string{"id"}))
+
+	resolved, err := scope.ResolveColumn(ColumnRef{Column: "id"})
+	require.NoError(t, err)
+	require.Equal(t, "zzz", resolved.Table)
+}
+
+// A qualified reference has exactly one resolution however many relations share
+// the name.
+func TestScope_ResolveColumnRefs_QualifiedIsSingle(t *testing.T) {
+	scope := NewScope(nil)
+	scope.AddTable(&TableRef{Schema: "db1", Table: "t", Alias: "t"})
+	scope.AddTable(&TableRef{Schema: "db2", Table: "t", Alias: "t"})
+
+	resolved, err := scope.ResolveColumnRefs(ColumnRef{Schema: "db2", Table: "t", Column: "id"})
+	require.NoError(t, err)
+	require.Len(t, resolved, 1)
+	require.Equal(t, "db2", resolved[0].Ref.Schema)
+	require.Equal(t, "db2", resolved[0].Relation.Schema)
+}
+
 func TestScope_ResolveColumn_NotFound(t *testing.T) {
 	scope := NewScope(nil)
 

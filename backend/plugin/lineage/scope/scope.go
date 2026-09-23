@@ -129,11 +129,26 @@ func (s *Scope) ResolveColumn(colRef ColumnRef) (*ColumnRef, error) {
 
 // ResolveColumnRef is ResolveColumn plus the relation the reference resolved to,
 // so a caller can tell a base table from a query-local one without looking the
-// name up again and guessing. A CTE that is in scope only as a definition is
-// presented as the relation it describes. The relation is nil when this scope
-// cannot identify it, which happens for a reference that was already resolved
-// against a scope this one does not share.
+// name up again and guessing. It reports the first of ResolveColumnRefs'
+// resolutions, which is the only one for every reference except an unqualified
+// name that several relations in scope own. A CTE that is in scope only as a
+// definition is presented as the relation it describes. The relation is nil when
+// this scope cannot identify it, which happens for a reference that was already
+// resolved against a scope this one does not share.
 func (s *Scope) ResolveColumnRef(colRef ColumnRef) (*ColumnRef, *TableRef, error) {
+	resolved, err := s.ResolveColumnRefs(colRef)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &resolved[0].Ref, resolved[0].Relation, nil
+}
+
+// ResolveColumnRefs resolves a column reference to every relation in scope that
+// owns it, in the scope's name order. A qualified reference and one that was
+// already resolved elsewhere have exactly one resolution; an unqualified name
+// has one per owning relation, which is how a coalesced USING or NATURAL JOIN
+// column reports both sides.
+func (s *Scope) ResolveColumnRefs(colRef ColumnRef) ([]ResolvedColumn, error) {
 	// A reference already resolved against the scope it came from is returned
 	// unchanged: a later lookup happens in a sibling scope that deliberately
 	// does not contain the table it resolved to. The relation is reported when
@@ -141,9 +156,9 @@ func (s *Scope) ResolveColumnRef(colRef ColumnRef) (*ColumnRef, *TableRef, error
 	// be traced even then.
 	if colRef.Resolved {
 		if ref, ok := s.FindRelation(RelationKey{Qualifier: colRef.Schema, Name: colRef.Table}); ok {
-			return &colRef, ref, nil
+			return []ResolvedColumn{{Ref: colRef, Relation: ref}}, nil
 		}
-		return &colRef, nil, nil
+		return []ResolvedColumn{{Ref: colRef}}, nil
 	}
 
 	// If qualified, the qualifier has to agree with the relation it addresses;
@@ -155,67 +170,139 @@ func (s *Scope) ResolveColumnRef(colRef ColumnRef) (*ColumnRef, *TableRef, error
 			if ref.IsCTE || ref.IsSubquery {
 				tableName = ref.addressName()
 			}
-			return &ColumnRef{
-				Schema: ref.Schema,
-				Table:  tableName,
-				Column: colRef.Column,
-			}, ref, nil
+			return []ResolvedColumn{{
+				Ref: ColumnRef{
+					Schema: ref.Schema,
+					Table:  tableName,
+					Column: colRef.Column,
+				},
+				Relation: ref,
+			}}, nil
 		}
 		// A CTE that is not registered as a relation still describes its columns.
 		if cte, ok := s.FindCTE(colRef.Table); ok {
-			return &ColumnRef{
-				Schema: "",
-				Table:  cte.Name,
-				Column: colRef.Column,
-			}, cteTableRef(cte), nil
+			return []ResolvedColumn{{
+				Ref:      ColumnRef{Table: cte.Name, Column: colRef.Column},
+				Relation: cteTableRef(cte),
+			}}, nil
 		}
-		return nil, nil, errors.Errorf("table not found: %s", colRef.Table)
+		return nil, errors.Errorf("table not found: %s", colRef.Table)
 	}
 
-	// Unqualified column - search relations in scope.
-	//
-	// The candidates are ordered by name rather than read in registration order:
-	// an unqualified name that several relations could satisfy would otherwise
-	// pick a relation by how the FROM clause happened to be written, which makes
-	// the emitted edge nondeterministic for NATURAL JOIN and similar shapes.
-	candidates := s.sortedRelations()
+	return s.resolveUnqualified(colRef)
+}
 
-	// With several relations in scope, catalog metadata decides: the relation
-	// that actually owns the column wins instead of the first one by name. The
-	// rule is skipped whenever any relation lacks metadata, so the ordering rule
-	// below stays the deterministic fallback for the metadata-less case.
-	if len(candidates) > 1 {
-		if resolved, ref, decided, err := resolveByColumnMetadata(candidates, colRef); decided {
-			return resolved, ref, err
+// resolution is what one scope can say about an unqualified column.
+type resolution struct {
+	// columns holds one entry per relation in scope that owns the name, in the
+	// scope's name order. Several entries mean more than one relation exposes it.
+	columns []ResolvedColumn
+	// undecidable reports that a relation in scope has unknown columns, so a
+	// scope with no owner cannot be ruled out as the one that provides the name.
+	undecidable bool
+}
+
+// resolveUnqualified resolves a column that names no qualifier. The search walks
+// outward from this scope, because an unqualified name belongs to the innermost
+// scope that provides it: a correlated reference inside a subquery has to reach
+// the enclosing query when the subquery's own relations do not own the name.
+//
+// Catalog metadata decides whether a scope provides the name. It is consulted
+// only for base tables and trusted in both directions: a relation that owns the
+// column becomes an answer, and a scope whose relations are all known and none
+// of which owns the column is skipped in favour of the enclosing one. When a
+// relation's columns are unknown the scope cannot be ruled out, so the innermost
+// relation by name answers instead of the search reaching outward — the
+// deterministic rule a metadata-less scope has always had.
+//
+// Only a scope that is skipped as definitively absent lets the search continue.
+// An ambiguous name does not: an enclosing scope cannot resolve a name this one
+// already found, and neither does an undecidable one, whose relations are the
+// only plausible owners.
+func (s *Scope) resolveUnqualified(colRef ColumnRef) ([]ResolvedColumn, error) {
+	// fallback is the innermost scope holding exactly one relation. A name
+	// nothing owns still has to be attributed somewhere, and a single candidate
+	// is not a guess. It is dropped once a scope offers several candidates, so
+	// the rule keeps its "only when there is no choice" meaning.
+	var (
+		fallback       *TableRef
+		hasAlternative bool
+	)
+	for cur := s; cur != nil; cur = cur.parent {
+		candidates := cur.sortedRelations()
+		if fallback == nil && !hasAlternative && len(candidates) == 1 {
+			fallback = candidates[0]
+		}
+		if len(candidates) > 1 {
+			hasAlternative = true
+		}
+
+		res := cur.resolveInScope(colRef)
+		if len(res.columns) > 0 {
+			return res.columns, nil
+		}
+		if res.undecidable && len(candidates) > 0 {
+			return columnsOf(candidates[:1], colRef.Column), nil
+		}
+		// An empty scope still describes the CTEs declared in it, which are the
+		// only relations an unqualified name can address there.
+		if len(candidates) == 0 {
+			if ctes := cur.sortedCTEs(); len(ctes) > 0 {
+				cte := ctes[0]
+				return []ResolvedColumn{{
+					Ref:      ColumnRef{Table: cte.Name, Column: colRef.Column},
+					Relation: cteTableRef(cte),
+				}}, nil
+			}
 		}
 	}
-
-	// Fall back to the first relation by name, which also covers a single
-	// relation and every scope whose metadata is unavailable.
-	if len(candidates) > 0 {
-		ref := candidates[0]
-		return &ColumnRef{
-			Schema: ref.Schema,
-			Table:  ref.Table,
-			Column: colRef.Column,
-		}, ref, nil
+	if fallback != nil {
+		return columnsOf([]*TableRef{fallback}, colRef.Column), nil
 	}
+	return nil, errors.Errorf("column not found: %s", colRef.Column)
+}
 
-	// Also check CTEs (also ordered for determinism).
-	if ctes := s.sortedCTEs(); len(ctes) > 0 {
-		cte := ctes[0]
-		return &ColumnRef{
-			Schema: "",
-			Table:  cte.Name,
-			Column: colRef.Column,
-		}, cteTableRef(cte), nil
+// resolveInScope classifies an unqualified column against this scope's own
+// relations. Every relation is inspected even when one of them cannot be
+// described, so a relation the catalog confirms owns the name is preferred over
+// a temporary relation that might also own it.
+func (s *Scope) resolveInScope(colRef ColumnRef) resolution {
+	var owners []*TableRef
+	undecidable := false
+	for _, ref := range s.sortedRelations() {
+		if ref.IsSubquery || ref.IsCTE {
+			undecidable = true
+			continue
+		}
+		names := ref.ColumnNames()
+		if names == nil {
+			undecidable = true
+			continue
+		}
+		for _, name := range names {
+			if strings.EqualFold(name, colRef.Column) {
+				owners = append(owners, ref)
+				break
+			}
+		}
 	}
+	return resolution{columns: columnsOf(owners, colRef.Column), undecidable: undecidable}
+}
 
-	// Try parent scope
-	if s.parent != nil {
-		return s.parent.ResolveColumnRef(colRef)
+// columnsOf describes the relations that own a column, the shape every
+// resolution of a base table takes.
+func columnsOf(refs []*TableRef, column string) []ResolvedColumn {
+	if len(refs) == 0 {
+		return nil
 	}
-	return nil, nil, errors.Errorf("column not found: %s", colRef.Column)
+	out := make([]ResolvedColumn, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, ResolvedColumn{
+			Ref:      ColumnRef{Schema: ref.Schema, Table: ref.Table, Column: column},
+			Relation: ref,
+		})
+	}
+	return out
 }
 
 // sortedRelations orders the scope's relations by the name a reference uses and
@@ -256,37 +343,6 @@ func cteTableRef(cte *CTEDefinition) *TableRef {
 		IsCTE:   true,
 		Lineage: cte.Lineage,
 	}
-}
-
-// resolveByColumnMetadata picks the relation that owns an unqualified column
-// from catalog metadata. decided is false when metadata is incomplete for at
-// least one relation, in which case the caller falls back to its ordering rule.
-// When every relation has metadata and none owns the column, the reference is
-// unresolvable: an error is returned so the caller drops the edge instead of
-// attributing it to an arbitrary table.
-func resolveByColumnMetadata(refs []*TableRef, colRef ColumnRef) (*ColumnRef, *TableRef, bool, error) {
-	allKnown := true
-	for _, ref := range refs {
-		if ref.IsSubquery || ref.IsCTE {
-			// A temporary relation's columns are described by its lineage, which
-			// the caller resolves separately; do not second-guess it here.
-			return nil, nil, false, nil
-		}
-		names := ref.ColumnNames()
-		if names == nil {
-			allKnown = false
-			continue
-		}
-		for _, name := range names {
-			if strings.EqualFold(name, colRef.Column) {
-				return &ColumnRef{Schema: ref.Schema, Table: ref.Table, Column: colRef.Column}, ref, true, nil
-			}
-		}
-	}
-	if allKnown {
-		return nil, nil, true, errors.Errorf("column %q not found in any table in scope", colRef.Column)
-	}
-	return nil, nil, false, nil
 }
 
 // GetOutputColumns returns the output columns of this scope.

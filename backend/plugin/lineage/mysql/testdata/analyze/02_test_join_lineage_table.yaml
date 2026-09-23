@@ -93,9 +93,11 @@ cases:
             - operation: JOIN
 
     # A USING column is coalesced, so an unqualified reference to it names no
-    # single relation. The analyzer keeps its deterministic rule: the first
-    # relation in scope by name, which is `departments` here. Pinned so that
-    # changing the unqualified-ambiguity policy has to change this case.
+    # single relation. Without a catalog the scope cannot tell which relation
+    # owns the name, so it keeps its deterministic rule: the first relation in
+    # scope by name, which is `departments` here. With metadata both sides are
+    # reported instead (22_test_unqualified_resolution_table), so this case
+    # documents the metadata-less fallback rather than an undecided policy.
     - name: an unqualified USING column resolves to the first relation by name
       sql: SELECT dept_id FROM employees e JOIN departments d USING (dept_id)
       expected_edges:

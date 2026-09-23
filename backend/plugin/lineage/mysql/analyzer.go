@@ -506,19 +506,21 @@ func (a *Analyzer) processCTE(cte *nodes.CommonTableExpr) {
 
 		for _, outputCol := range cteScope.GetOutputColumns() {
 			for _, sourceCol := range outputCol.SourceColumns {
-				resolved, relation, err := cteScope.ResolveColumnRef(sourceCol)
+				resolutions, err := cteScope.ResolveColumnRefs(sourceCol)
 				if err != nil {
 					continue
 				}
-				if a.flattenTempSourceLineage(cteScope, relation, resolved.Column, cteName, outputCol.Alias, outputCol.Transform, &cteLineage) {
-					continue
+				for _, res := range resolutions {
+					if a.flattenTempSourceLineage(cteScope, res.Relation, res.Ref.Column, cteName, outputCol.Alias, outputCol.Transform, &cteLineage) {
+						continue
+					}
+					cteLineage = append(cteLineage, scope.NewLineageEdge(
+						res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+						"", cteName, outputCol.Alias,
+						outputCol.Transform,
+						true, // CTE is temporary
+					))
 				}
-				cteLineage = append(cteLineage, scope.NewLineageEdge(
-					resolved.Schema, resolved.Table, resolved.Column,
-					"", cteName, outputCol.Alias,
-					outputCol.Transform,
-					true, // CTE is temporary
-				))
 			}
 		}
 	}
@@ -607,11 +609,15 @@ func resolveOutputColumns(sp *scope.Scope, cols []scope.OutputColumn) []scope.Ou
 		}
 		resolved := make([]scope.ColumnRef, 0, len(out[i].SourceColumns))
 		for _, ref := range out[i].SourceColumns {
-			if r, err := sp.ResolveColumn(ref); err == nil {
-				r.Resolved = true
-				resolved = append(resolved, *r)
-			} else {
+			resolutions, err := sp.ResolveColumnRefs(ref)
+			if err != nil {
 				resolved = append(resolved, ref)
+				continue
+			}
+			for _, res := range resolutions {
+				columnRef := res.Ref
+				columnRef.Resolved = true
+				resolved = append(resolved, columnRef)
 			}
 		}
 		out[i].SourceColumns = resolved
@@ -750,18 +756,20 @@ func (a *Analyzer) recordPredicate(sp *scope.Scope, ref scope.ColumnRef, transfo
 		}
 	}
 
-	resolved, relation, err := sp.ResolveColumnRef(ref)
+	resolutions, err := sp.ResolveColumnRefs(ref)
 	if err != nil {
 		return
 	}
-	influence := predicateInfluence{transform: transform}
-	if relation != nil && (relation.IsCTE || relation.IsSubquery) {
-		influence.relation = relation
-		influence.column = resolved.Column
-	} else {
-		influence.key = predicateKey{database: resolved.Schema, table: resolved.Table, column: resolved.Column}
+	for _, res := range resolutions {
+		influence := predicateInfluence{transform: transform}
+		if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
+			influence.relation = res.Relation
+			influence.column = res.Ref.Column
+		} else {
+			influence.key = predicateKey{database: res.Ref.Schema, table: res.Ref.Table, column: res.Ref.Column}
+		}
+		a.predicates = append(a.predicates, influence)
 	}
-	a.predicates = append(a.predicates, influence)
 }
 
 // emitPredicateInfluences adds one edge per predicate column to the rows the
@@ -858,19 +866,21 @@ func (a *Analyzer) processDerivedTable(sub *nodes.SubqueryExpr) {
 			colName = "column"
 		}
 		for _, sourceCol := range col.SourceColumns {
-			resolved, relation, err := subqueryScope.ResolveColumnRef(sourceCol)
+			resolutions, err := subqueryScope.ResolveColumnRefs(sourceCol)
 			if err != nil {
 				continue
 			}
-			if a.flattenTempSourceLineage(subqueryScope, relation, resolved.Column, alias, colName, col.Transform, &derivedLineage) {
-				continue
+			for _, res := range resolutions {
+				if a.flattenTempSourceLineage(subqueryScope, res.Relation, res.Ref.Column, alias, colName, col.Transform, &derivedLineage) {
+					continue
+				}
+				derivedLineage = append(derivedLineage, scope.NewLineageEdge(
+					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+					"", alias, colName,
+					col.Transform,
+					true, // Subquery is temporary
+				))
 			}
-			derivedLineage = append(derivedLineage, scope.NewLineageEdge(
-				resolved.Schema, resolved.Table, resolved.Column,
-				"", alias, colName,
-				col.Transform,
-				true, // Subquery is temporary
-			))
 		}
 	}
 
@@ -1038,26 +1048,31 @@ func (a *Analyzer) generateEdgesForDataModification(targetSchema, targetTable st
 	a.emitPredicateInfluences(targetSchema, targetTable)
 }
 
-// emitSources resolves source columns and adds one relation per source.
+// emitSources resolves source columns and adds one relation per source. An
+// unqualified name that several relations in scope own contributes one relation
+// per owner: each of them really is a source of the value, which is what a
+// coalesced USING or NATURAL JOIN column looks like.
 func (a *Analyzer) emitSources(sp *scope.Scope, sourceColumns []scope.ColumnRef, targetSchema, targetTable, targetColumn string, transform []model.Transformation) {
 	for _, sourceCol := range sourceColumns {
-		resolved, sourceRelation, err := sp.ResolveColumnRef(sourceCol)
+		resolutions, err := sp.ResolveColumnRefs(sourceCol)
 		if err != nil {
 			continue
 		}
-		// A CTE or derived table contributes the lineage of its own columns:
-		// there is no stored relation to point an edge at.
-		if sourceRelation != nil && (sourceRelation.IsCTE || sourceRelation.IsSubquery) {
-			a.traceThroughTableLineage(sourceRelation, resolved.Column, targetSchema, targetTable, targetColumn, transform)
-			continue
+		for _, res := range resolutions {
+			// A CTE or derived table contributes the lineage of its own columns:
+			// there is no stored relation to point an edge at.
+			if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
+				a.traceThroughTableLineage(res.Relation, res.Ref.Column, targetSchema, targetTable, targetColumn, transform)
+				continue
+			}
+			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
+			a.addRelation(scope.NewLineageEdge(
+				res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+				targetSchema, targetTable, targetColumn,
+				transform,
+				isTemp,
+			))
 		}
-		isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
-		a.addRelation(scope.NewLineageEdge(
-			resolved.Schema, resolved.Table, resolved.Column,
-			targetSchema, targetTable, targetColumn,
-			transform,
-			isTemp,
-		))
 	}
 }
 
@@ -1174,17 +1189,19 @@ func (a *Analyzer) processInsertUpdateList(assignments []*nodes.Assignment, targ
 		}
 		transform := a.analyzeExpressionOperator(elem.Value)
 		for _, sourceCol := range sourceColumns {
-			resolved, err := sp.ResolveColumn(sourceCol)
+			resolutions, err := sp.ResolveColumnRefs(sourceCol)
 			if err != nil {
-				resolved = &sourceCol
+				resolutions = []scope.ResolvedColumn{{Ref: sourceCol}}
 			}
 			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
-			a.addRelation(scope.NewLineageEdge(
-				resolved.Schema, resolved.Table, resolved.Column,
-				targetSchema, targetTable, elem.Column.Column,
-				transform,
-				isTemp,
-			))
+			for _, res := range resolutions {
+				a.addRelation(scope.NewLineageEdge(
+					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+					targetSchema, targetTable, elem.Column.Column,
+					transform,
+					isTemp,
+				))
+			}
 		}
 	}
 }
@@ -1338,17 +1355,19 @@ func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment) {
 		}
 
 		for _, sourceCol := range sourceColumns {
-			resolvedSource, err := sp.ResolveColumn(sourceCol)
+			resolutions, err := sp.ResolveColumnRefs(sourceCol)
 			if err != nil {
-				resolvedSource = &sourceCol
+				resolutions = []scope.ResolvedColumn{{Ref: sourceCol}}
 			}
 			isTemp := resolved.Table == resultTableName || a.isTableTempInCurrentScope(resolved.Schema, resolved.Table)
-			a.addRelation(scope.NewLineageEdge(
-				resolvedSource.Schema, resolvedSource.Table, resolvedSource.Column,
-				resolved.Schema, resolved.Table, resolved.Column,
-				transform,
-				isTemp,
-			))
+			for _, res := range resolutions {
+				a.addRelation(scope.NewLineageEdge(
+					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+					resolved.Schema, resolved.Table, resolved.Column,
+					transform,
+					isTemp,
+				))
+			}
 		}
 	}
 }
@@ -1409,24 +1428,26 @@ func (a *Analyzer) processDeleteStatement(stmt *nodes.DeleteStmt) {
 			actualTargetTable = *foundTable
 		}
 		for _, condCol := range conditionColumns {
-			resolved, condRelation, err := sp.ResolveColumnRef(condCol)
+			resolutions, err := sp.ResolveColumnRefs(condCol)
 			if err != nil {
-				resolved = &condCol
+				resolutions = []scope.ResolvedColumn{{Ref: condCol}}
 			}
 			transform := []model.Transformation{
 				model.NewDeleteTransformation(whereText),
 			}
-			if condRelation != nil && (condRelation.IsCTE || condRelation.IsSubquery) {
-				a.traceThroughTableLineage(condRelation, resolved.Column, actualTargetTable.Schema, actualTargetTable.Table, deletionFieldName, transform)
-				continue
-			}
 			isTemp := actualTargetTable.Table == resultTableName || a.isTableTempInCurrentScope(actualTargetTable.Schema, actualTargetTable.Table)
-			a.addRelation(scope.NewLineageEdge(
-				resolved.Schema, resolved.Table, resolved.Column,
-				actualTargetTable.Schema, actualTargetTable.Table, deletionFieldName,
-				transform,
-				isTemp,
-			))
+			for _, res := range resolutions {
+				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
+					a.traceThroughTableLineage(res.Relation, res.Ref.Column, actualTargetTable.Schema, actualTargetTable.Table, deletionFieldName, transform)
+					continue
+				}
+				a.addRelation(scope.NewLineageEdge(
+					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+					actualTargetTable.Schema, actualTargetTable.Table, deletionFieldName,
+					transform,
+					isTemp,
+				))
+			}
 		}
 	}
 }
@@ -1492,22 +1513,25 @@ func (a *Analyzer) processLoadDataSetClause(assignments []*nodes.Assignment, tar
 		}
 
 		for _, sourceCol := range sourceColumns {
+			// A column the file provides wins over any table that happens to
+			// share its name; an unresolvable one is a file source too.
 			isFromFile := slices.Contains(loadedColumns, sourceCol.Column)
-			var fromSchema, fromTable, fromField string
-			if isFromFile {
-				fromTable = sourceFile
-				fromField = sourceCol.Column
-			} else if resolved, err := sp.ResolveColumn(sourceCol); err != nil {
-				fromTable = sourceFile
-				fromField = sourceCol.Column
-			} else {
-				fromSchema = resolved.Schema
-				fromTable = resolved.Table
-				fromField = resolved.Column
-			}
 			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
+			if !isFromFile {
+				if resolutions, err := sp.ResolveColumnRefs(sourceCol); err == nil {
+					for _, res := range resolutions {
+						a.addRelation(scope.NewLineageEdge(
+							res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+							targetSchema, targetTable, targetCol.Column,
+							transform,
+							isTemp,
+						))
+					}
+					continue
+				}
+			}
 			a.addRelation(scope.NewLineageEdge(
-				fromSchema, fromTable, fromField,
+				"", sourceFile, sourceCol.Column,
 				targetSchema, targetTable, targetCol.Column,
 				transform,
 				isTemp,

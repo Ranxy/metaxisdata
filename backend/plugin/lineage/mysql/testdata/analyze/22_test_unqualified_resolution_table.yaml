@@ -1,0 +1,527 @@
+name: TestUnqualifiedResolution_Table
+cases:
+    # An unqualified name is resolved in the innermost scope that provides it,
+    # and a scope provides it when catalog metadata says so. Two decisions are
+    # pinned here.
+    #
+    # Several relations owning the name is not a guess to make: every one of them
+    # is a real source, which is what a coalesced USING or NATURAL JOIN column
+    # looks like. A name no catalog describes keeps the scope's deterministic
+    # name order instead, so an unsynced table never loses its lineage to an
+    # enclosing scope.
+    #
+    # MySQL itself rejects an unqualified column two relations own (error 1052,
+    # verified on 8.3.0), so a view can never reach the analyzer in that shape;
+    # a coalesced join column is the shape that is legal and has to be right. The
+    # statement is still analyzed as a MANUAL_SQL input, where reporting every
+    # owner is strictly more informative than picking one.
+    #
+    # A scope whose relations are all known and none of which owns the name does
+    # not provide it, so the search continues outward. That is what makes a
+    # correlated reference to an enclosing query's column resolve instead of
+    # being dropped or attributed to an unrelated inner table.
+    - name: every relation that owns the column is reported
+      sql: SELECT id FROM a JOIN b ON a.id = b.id
+      catalog:
+        tables:
+            a:
+                - id
+                - x
+            b:
+                - id
+                - y
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+
+    - name: without metadata the scope keeps one relation by name
+      sql: SELECT id FROM a JOIN b ON a.id = b.id
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+
+    - name: three relations sharing the column are all reported
+      sql: SELECT id FROM a JOIN b ON a.id = b.id JOIN c ON c.id = a.id
+      catalog:
+        tables:
+            a:
+                - id
+            b:
+                - id
+            c:
+                - id
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: c
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: c
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+
+    - name: same-named relations in two databases each contribute the column
+      sql: SELECT id FROM db1.t JOIN db2.t ON db1.t.id = db2.t.id
+      catalog:
+        databases:
+            db1:
+                t:
+                    - id
+                    - x
+            db2:
+                t:
+                    - id
+                    - y
+      expected_edges:
+        - from_database: db1
+          from_table: t
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_database: db2
+          from_table: t
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_database: db1
+          from_table: t
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_database: db2
+          from_table: t
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+
+    - name: a coalesced USING column comes from both sides
+      sql: SELECT dept_id FROM employees e JOIN departments d USING (dept_id)
+      catalog:
+        tables:
+            departments:
+                - dept_id
+                - dname
+            employees:
+                - name
+                - dept_id
+      expected_edges:
+        - from_table: departments
+          from_field: dept_id
+          to_table: __result__
+          to_field: dept_id
+          relation_type: direct
+          is_temp: true
+        - from_table: employees
+          from_field: dept_id
+          to_table: __result__
+          to_field: dept_id
+          relation_type: direct
+          is_temp: true
+        - from_table: employees
+          from_field: dept_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: departments
+          from_field: dept_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+
+    - name: a coalesced NATURAL JOIN column comes from both sides
+      sql: SELECT id FROM a NATURAL JOIN b
+      catalog:
+        tables:
+            a:
+                - id
+                - x
+            b:
+                - id
+                - y
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+
+    - name: a CTE body keeps both owners of a coalesced column
+      sql: WITH c AS (SELECT dept_id FROM employees e JOIN departments d USING (dept_id)) SELECT dept_id FROM c
+      catalog:
+        tables:
+            departments:
+                - dept_id
+                - dname
+            employees:
+                - name
+                - dept_id
+      expected_edges:
+        - from_table: departments
+          from_field: dept_id
+          to_table: __result__
+          to_field: dept_id
+          relation_type: direct
+          is_temp: true
+        - from_table: employees
+          from_field: dept_id
+          to_table: __result__
+          to_field: dept_id
+          relation_type: direct
+          is_temp: true
+        - from_table: employees
+          from_field: dept_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: departments
+          from_field: dept_id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+
+    - name: a correlated reference resolves in the enclosing scope
+      sql: SELECT o.id FROM orders o WHERE EXISTS (SELECT 1 FROM customers c WHERE c.id = o.id AND amount > 100)
+      catalog:
+        tables:
+            customers:
+                - id
+                - name
+            orders:
+                - id
+                - amount
+      expected_edges:
+        - from_table: orders
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: customers
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+        - from_table: orders
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+        - from_table: orders
+          from_field: amount
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+
+    - name: a correlated reference resolves past several inner relations
+      sql: SELECT o.id FROM orders o WHERE EXISTS (SELECT 1 FROM customers c JOIN regions r ON c.id = r.id WHERE c.id = o.id AND amount > 100)
+      catalog:
+        tables:
+            customers:
+                - id
+                - name
+            orders:
+                - id
+                - amount
+            regions:
+                - id
+                - rname
+      expected_edges:
+        - from_table: orders
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: customers
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: regions
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+        - from_table: orders
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+        - from_table: orders
+          from_field: amount
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+
+    - name: a correlated reference in a select item resolves outward
+      sql: SELECT (SELECT c.name FROM customers c WHERE c.id = amount) AS owner FROM orders
+      catalog:
+        tables:
+            customers:
+                - id
+                - name
+            orders:
+                - id
+                - amount
+      expected_edges:
+        - from_table: customers
+          from_field: name
+          to_table: __result__
+          to_field: owner
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+        - from_table: customers
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+        - from_table: orders
+          from_field: amount
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+
+    - name: a name no scope owns stays with the only relation in scope
+      sql: SELECT c.id FROM customers c WHERE EXISTS (SELECT 1 FROM regions r WHERE r.id = c.id AND nosuch > 1)
+      catalog:
+        tables:
+            customers:
+                - id
+                - name
+            regions:
+                - id
+                - rname
+      expected_edges:
+        - from_table: customers
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: regions
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+        - from_table: customers
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+        - from_table: regions
+          from_field: nosuch
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+
+    - name: without metadata an inner reference stays in its own scope
+      sql: SELECT o.id FROM orders o WHERE EXISTS (SELECT 1 FROM customers c WHERE c.id = o.id AND amount > 100)
+      expected_edges:
+        - from_table: orders
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: customers
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+        - from_table: orders
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+        - from_table: customers
+          from_field: amount
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER

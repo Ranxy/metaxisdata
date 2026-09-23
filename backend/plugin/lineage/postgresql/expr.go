@@ -142,11 +142,15 @@ func resolveOutputColumns(sp *scope.Scope, cols []scope.OutputColumn) []scope.Ou
 		}
 		resolved := make([]scope.ColumnRef, 0, len(out[i].SourceColumns))
 		for _, ref := range out[i].SourceColumns {
-			if r, err := sp.ResolveColumn(ref); err == nil {
-				r.Resolved = true
-				resolved = append(resolved, *r)
-			} else {
+			resolutions, err := sp.ResolveColumnRefs(ref)
+			if err != nil {
 				resolved = append(resolved, ref)
+				continue
+			}
+			for _, res := range resolutions {
+				columnRef := res.Ref
+				columnRef.Resolved = true
+				resolved = append(resolved, columnRef)
 			}
 		}
 		out[i].SourceColumns = resolved
