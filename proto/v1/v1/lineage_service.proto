@@ -108,6 +108,9 @@ message Transformation {
   string op_type = 8;
   // The WHERE condition (DELETE).
   string condition = 9;
+  // Whether a set operation keeps duplicate rows: true for UNION ALL, INTERSECT
+  // ALL and EXCEPT ALL, false for their plain forms (UNION, INTERSECT, EXCEPT).
+  bool all = 10;
 }
 
 message GetLineageRequest {

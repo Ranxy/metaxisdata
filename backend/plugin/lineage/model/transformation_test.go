@@ -13,7 +13,7 @@ func TestCombineTransformationsDoesNotShareItsArgumentsArrays(t *testing.T) {
 	t.Parallel()
 
 	base := make([]Transformation, 1, 4)
-	base[0] = NewUnionTransformation()
+	base[0] = NewUnionTransformation(false)
 
 	first := CombineTransformations(base, []Transformation{NewProjectTransformation("a")})
 	second := CombineTransformations(base, []Transformation{NewProjectTransformation("b")})
@@ -38,4 +38,19 @@ func TestCombineTransformationsHandlesAnEmptySide(t *testing.T) {
 	combined := CombineTransformations(nil, project)
 	_ = append(combined, NewCaseTransformation("c"))
 	require.Len(t, project, 1)
+}
+
+// A set operation's ALL flag is part of the transformation, so UNION and UNION
+// ALL are different transformations and, since a transformation is part of an
+// edge's identity, different edges.
+func TestSetOperationsDistinguishAll(t *testing.T) {
+	t.Parallel()
+
+	require.False(t, NewUnionTransformation(false).Equal(NewUnionTransformation(true)))
+	require.True(t, NewUnionTransformation(true).Equal(NewUnionTransformation(true)))
+	require.False(t, NewIntersectTransformation(false).Equal(NewIntersectTransformation(true)))
+	require.False(t, NewExceptTransformation(false).Equal(NewExceptTransformation(true)))
+	require.False(t, SameTransformations(
+		[]Transformation{NewUnionTransformation(false)},
+		[]Transformation{NewUnionTransformation(true)}))
 }

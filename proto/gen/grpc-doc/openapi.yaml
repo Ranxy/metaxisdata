@@ -6222,6 +6222,11 @@ components:
                 condition:
                     type: string
                     description: The WHERE condition (DELETE).
+                all:
+                    type: boolean
+                    description: |-
+                        Whether a set operation keeps duplicate rows: true for UNION ALL, INTERSECT
+                         ALL and EXCEPT ALL, false for their plain forms (UNION, INTERSECT, EXCEPT).
             description: |-
                 Transformation describes one step of how a source column becomes a target
                  column, derived from the view's SQL.

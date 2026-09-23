@@ -299,7 +299,10 @@ type Transformation struct {
 	// The operator type, e.g. "+", "=" (OPERATOR).
 	OpType string `protobuf:"bytes,8,opt,name=op_type,json=opType,proto3" json:"op_type,omitempty"`
 	// The WHERE condition (DELETE).
-	Condition     string `protobuf:"bytes,9,opt,name=condition,proto3" json:"condition,omitempty"`
+	Condition string `protobuf:"bytes,9,opt,name=condition,proto3" json:"condition,omitempty"`
+	// Whether a set operation keeps duplicate rows: true for UNION ALL, INTERSECT
+	// ALL and EXCEPT ALL, false for their plain forms (UNION, INTERSECT, EXCEPT).
+	All           bool `protobuf:"varint,10,opt,name=all,proto3" json:"all,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -395,6 +398,13 @@ func (x *Transformation) GetCondition() string {
 		return x.Condition
 	}
 	return ""
+}
+
+func (x *Transformation) GetAll() bool {
+	if x != nil {
+		return x.All
+	}
+	return false
 }
 
 type GetLineageRequest struct {
@@ -1405,7 +1415,7 @@ const file_v1_lineage_service_proto_rawDesc = "" +
 	" \x01(\x0e2\x1c.metaxisdata.v1.RelationTypeR\frelationType\x12H\n" +
 	"\x0ftransformations\x18\v \x03(\v2\x1e.metaxisdata.v1.TransformationR\x0ftransformations\x129\n" +
 	"\n" +
-	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xa5\x02\n" +
+	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xb7\x02\n" +
 	"\x0eTransformation\x12\x1c\n" +
 	"\toperation\x18\x01 \x01(\tR\toperation\x12\x1e\n" +
 	"\n" +
@@ -1418,7 +1428,9 @@ const file_v1_lineage_service_proto_rawDesc = "" +
 	"\fpartition_by\x18\x06 \x03(\tR\vpartitionBy\x12\x19\n" +
 	"\border_by\x18\a \x03(\tR\aorderBy\x12\x17\n" +
 	"\aop_type\x18\b \x01(\tR\x06opType\x12\x1c\n" +
-	"\tcondition\x18\t \x01(\tR\tcondition\"\xdf\x01\n" +
+	"\tcondition\x18\t \x01(\tR\tcondition\x12\x10\n" +
+	"\x03all\x18\n" +
+	" \x01(\bR\x03all\"\xdf\x01\n" +
 	"\x11GetLineageRequest\x12\x17\n" +
 	"\x04guid\x18\x01 \x01(\tB\x03\xe0A\x02R\x04guid\x125\n" +
 	"\tmeta_type\x18\x02 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12>\n" +

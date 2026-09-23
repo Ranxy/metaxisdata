@@ -482,7 +482,7 @@ func flattenSetOpArms(stmt *nodes.SelectStmt, chain []model.Transformation) []se
 	}
 	if stmt.SetOp != nodes.SetOpNone {
 		inner := chain
-		if transform, ok := setOpTransformation(stmt.SetOp); ok {
+		if transform, ok := setOpTransformation(stmt.SetOp, stmt.SetAll); ok {
 			inner = algorithm.ArmChain(chain, transform)
 		}
 		return append(flattenSetOpArms(stmt.Left, inner), flattenSetOpArms(stmt.Right, inner)...)
@@ -581,14 +581,14 @@ func (*Analyzer) resolveOutputColumns(sp *scope.Scope, cols []scope.OutputColumn
 }
 
 // setOpTransformation maps a set operation to its transformation.
-func setOpTransformation(setOp nodes.SetOperation) (model.Transformation, bool) {
+func setOpTransformation(setOp nodes.SetOperation, all bool) (model.Transformation, bool) {
 	switch setOp {
 	case nodes.SetOpUnion:
-		return model.NewUnionTransformation(), true
+		return model.NewUnionTransformation(all), true
 	case nodes.SetOpIntersect:
-		return model.NewIntersectTransformation(), true
+		return model.NewIntersectTransformation(all), true
 	case nodes.SetOpExcept:
-		return model.NewExceptTransformation(), true
+		return model.NewExceptTransformation(all), true
 	case nodes.SetOpNone:
 		return model.Transformation{}, false
 	default:

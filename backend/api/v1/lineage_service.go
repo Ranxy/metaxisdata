@@ -300,6 +300,7 @@ func convertTransformations(transformations []model.Transformation) []*v1pb.Tran
 			OrderBy:      transformation.OrderBy,
 			OpType:       transformation.OpType,
 			Condition:    transformation.Condition,
+			All:          transformation.All,
 		})
 	}
 	return result

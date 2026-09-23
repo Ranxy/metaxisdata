@@ -73,6 +73,8 @@ type ExpectedTransformation struct {
 	GroupKeysSet bool
 	PartitionBy  []string
 	OrderBy      []string
+	All          bool
+	AllSet       bool
 }
 
 // LineageTestCase defines a test case for lineage analysis.
@@ -160,11 +162,13 @@ type yamlTransformation struct {
 	GroupKeys    *[]string `yaml:"group_keys,omitempty"`
 	PartitionBy  []string  `yaml:"partition_by,omitempty"`
 	OrderBy      []string  `yaml:"order_by,omitempty"`
+	All          *bool     `yaml:"all,omitempty"`
 }
 
-// toExpectedTransformation keeps the written-form distinction for group_keys: a
-// pointer that yaml allocated means the key was written, so an empty list is an
-// assertion rather than an omission.
+// toExpectedTransformation keeps the written-form distinction for group_keys and
+// all: a pointer that yaml allocated means the key was written, so `group_keys:
+// []` asserts "this transformation carries none" and `all: false` asserts the
+// operation removes duplicate rows, instead of either meaning "do not check".
 func (t yamlTransformation) toExpectedTransformation() ExpectedTransformation {
 	exp := ExpectedTransformation{
 		Operation:    t.Operation,
@@ -179,6 +183,10 @@ func (t yamlTransformation) toExpectedTransformation() ExpectedTransformation {
 	if t.GroupKeys != nil {
 		exp.GroupKeys = *t.GroupKeys
 		exp.GroupKeysSet = true
+	}
+	if t.All != nil {
+		exp.All = *t.All
+		exp.AllSet = true
 	}
 	return exp
 }
@@ -683,6 +691,9 @@ func TransformationMatches(transform model.Transformation, exp ExpectedTransform
 		return false
 	}
 	if exp.GroupKeysSet && !slices.Equal(transform.GroupKeys, exp.GroupKeys) {
+		return false
+	}
+	if exp.AllSet && transform.All != exp.All {
 		return false
 	}
 	if len(exp.PartitionBy) > 0 && !slices.Equal(transform.PartitionBy, exp.PartitionBy) {

@@ -3882,6 +3882,7 @@ column, derived from the view&#39;s SQL.
 | order_by | [string](#string) | repeated | The ORDER BY columns (WINDOW). |
 | op_type | [string](#string) |  | The operator type, e.g. &#34;&#43;&#34;, &#34;=&#34; (OPERATOR). |
 | condition | [string](#string) |  | The WHERE condition (DELETE). |
+| all | [bool](#bool) |  | Whether a set operation keeps duplicate rows: true for UNION ALL, INTERSECT ALL and EXCEPT ALL, false for their plain forms (UNION, INTERSECT, EXCEPT). |
 
 
 

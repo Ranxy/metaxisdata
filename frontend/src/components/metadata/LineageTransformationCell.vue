@@ -96,6 +96,10 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
+// The transformation kinds that describe a set operation, whose duplicate-row
+// behaviour the `all` flag records.
+const SET_OPERATIONS = new Set(["UNION", "INTERSECT", "EXCEPT"]);
+
 const detailOpen = ref(false);
 
 const parsedItems = computed(() => props.transformations ?? []);
@@ -111,7 +115,13 @@ const dialogTitle = computed(
 );
 
 function buildSummary(item: Transformation): string {
-  const operation = item.operation || t("metadataBrowser.unknown");
+  // A set operation that keeps duplicate rows says so. UNION and UNION ALL are
+  // different transformations, not two spellings of one, and the same holds for
+  // INTERSECT / EXCEPT against their ALL forms.
+  const operation =
+    item.all && SET_OPERATIONS.has(item.operation)
+      ? `${item.operation} ALL`
+      : item.operation || t("metadataBrowser.unknown");
 
   switch (item.operation) {
     case "FUNCTION":
@@ -168,6 +178,15 @@ function buildTransformationDetails(
   appendListDetail(details, t("metadataBrowser.orderBy"), item.orderBy);
   appendDetail(details, t("metadataBrowser.operatorType"), item.opType);
   appendDetail(details, t("metadataBrowser.condition"), item.condition);
+  // A set operation's duplicate-row behaviour is a keyword rather than prose: the
+  // ALL the SQL was written with, or the DISTINCT it defaults to.
+  if (SET_OPERATIONS.has(item.operation)) {
+    appendDetail(
+      details,
+      t("metadataBrowser.duplicateRows"),
+      item.all ? "ALL" : "DISTINCT"
+    );
+  }
 
   if (details.length === 0) {
     details.push({
@@ -211,6 +230,7 @@ function buildTransformationKey(item: Transformation, index: number): string {
     item.opType,
     item.expression,
     item.condition,
+    String(item.all),
     String(index),
   ].join(":");
 }

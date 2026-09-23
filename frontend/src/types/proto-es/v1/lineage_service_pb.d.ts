@@ -153,6 +153,14 @@ export declare type Transformation = Message<"metaxisdata.v1.Transformation"> & 
    * @generated from field: string condition = 9;
    */
   condition: string;
+
+  /**
+   * Whether a set operation keeps duplicate rows: true for UNION ALL, INTERSECT
+   * ALL and EXCEPT ALL, false for their plain forms (UNION, INTERSECT, EXCEPT).
+   *
+   * @generated from field: bool all = 10;
+   */
+  all: boolean;
 };
 
 /**

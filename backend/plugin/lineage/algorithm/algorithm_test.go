@@ -275,7 +275,7 @@ func TestMergeSetOpColumnsKeepsEachArmsOwnExpression(t *testing.T) {
 	})
 
 	// The base scope holds the first arm's columns: the arm is analyzed there.
-	union := model.NewUnionTransformation()
+	union := model.NewUnionTransformation(false)
 	for _, column := range addArm.GetOutputColumns() {
 		base.AddOutputColumn(column)
 	}
@@ -310,7 +310,7 @@ func TestMergeSetOpColumnsIgnoresArmsThatExposeFewerColumns(t *testing.T) {
 	}
 	MergeSetOpColumns(base,
 		[][]scope.OutputColumn{wide.GetOutputColumns(), narrow.GetOutputColumns()},
-		[][]model.Transformation{{model.NewUnionTransformation()}, {model.NewUnionTransformation()}},
+		[][]model.Transformation{{model.NewUnionTransformation(false)}, {model.NewUnionTransformation(false)}},
 	)
 
 	merged := base.GetOutputColumns()
@@ -322,9 +322,9 @@ func TestMergeSetOpColumnsIgnoresArmsThatExposeFewerColumns(t *testing.T) {
 func TestArmChainKeepsNestedOperationsOutermostFirst(t *testing.T) {
 	t.Parallel()
 
-	union := model.NewUnionTransformation()
-	intersect := model.NewIntersectTransformation()
-	except := model.NewExceptTransformation()
+	union := model.NewUnionTransformation(false)
+	intersect := model.NewIntersectTransformation(false)
+	except := model.NewExceptTransformation(false)
 
 	require.Len(t, ArmChain(nil, union), 1)
 	// A left-deep tree repeats the same operation, and one union of three arms

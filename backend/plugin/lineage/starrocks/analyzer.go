@@ -1170,7 +1170,7 @@ func flattenSetOpArms(node nodes.Node, chain []model.Transformation) []setOpArm 
 		return flattenSetOpArms(n.Sel, chain)
 	case *nodes.SetOpStmt:
 		inner := chain
-		if transform, ok := setOpTransformation(n.Op); ok {
+		if transform, ok := setOpTransformation(n.Op, n.All); ok {
 			inner = algorithm.ArmChain(chain, transform)
 		}
 		return append(flattenSetOpArms(n.Left, inner), flattenSetOpArms(n.Right, inner)...)
@@ -1270,14 +1270,14 @@ func (*Analyzer) resolveOutputColumns(sp *scope.Scope, cols []scope.OutputColumn
 }
 
 // setOpTransformation maps a StarRocks set operator to its transformation.
-func setOpTransformation(setOp nodes.SetOperator) (model.Transformation, bool) {
+func setOpTransformation(setOp nodes.SetOperator, all bool) (model.Transformation, bool) {
 	switch setOp {
 	case nodes.SetUnion:
-		return model.NewUnionTransformation(), true
+		return model.NewUnionTransformation(all), true
 	case nodes.SetIntersect:
-		return model.NewIntersectTransformation(), true
+		return model.NewIntersectTransformation(all), true
 	case nodes.SetExcept:
-		return model.NewExceptTransformation(), true
+		return model.NewExceptTransformation(all), true
 	default:
 		return model.Transformation{}, false
 	}

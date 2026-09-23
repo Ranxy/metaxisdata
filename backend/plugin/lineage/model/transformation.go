@@ -72,6 +72,12 @@ type Transformation struct {
 	// condition, or the WHERE / HAVING / ON expression of a FILTER or JOIN
 	// influence edge.
 	Condition string `json:"condition,omitempty"`
+
+	// All records that a set operation keeps duplicate rows instead of removing
+	// them, which is the difference between UNION ALL and UNION (and between
+	// INTERSECT ALL / EXCEPT ALL and their plain forms). It is meaningful for
+	// the set-operation kinds only.
+	All bool `json:"all,omitempty"`
 }
 
 // NewFilterTransformation creates a Transformation for a predicate that selects
@@ -99,24 +105,30 @@ func NewDeleteTransformation(condition string) Transformation {
 	}
 }
 
-// NewUnionTransformation creates a Transformation for UNION operations.
-func NewUnionTransformation() Transformation {
+// NewUnionTransformation creates a Transformation for a UNION, or for a UNION ALL
+// when all is set.
+func NewUnionTransformation(all bool) Transformation {
 	return Transformation{
 		Operation: OperationUnion,
+		All:       all,
 	}
 }
 
-// NewIntersectTransformation creates a Transformation for INTERSECT operations.
-func NewIntersectTransformation() Transformation {
+// NewIntersectTransformation creates a Transformation for an INTERSECT, or for an
+// INTERSECT ALL when all is set.
+func NewIntersectTransformation(all bool) Transformation {
 	return Transformation{
 		Operation: OperationIntersect,
+		All:       all,
 	}
 }
 
-// NewExceptTransformation creates a Transformation for EXCEPT operations.
-func NewExceptTransformation() Transformation {
+// NewExceptTransformation creates a Transformation for an EXCEPT, or for an
+// EXCEPT ALL when all is set.
+func NewExceptTransformation(all bool) Transformation {
 	return Transformation{
 		Operation: OperationExcept,
+		All:       all,
 	}
 }
 
@@ -199,6 +211,7 @@ func CombineTransformations(base, additional []Transformation) []Transformation 
 // same fields, field by field.
 func (t Transformation) Equal(other Transformation) bool {
 	return t.Operation == other.Operation &&
+		t.All == other.All &&
 		t.Expression == other.Expression &&
 		t.FunctionName == other.FunctionName &&
 		t.OpType == other.OpType &&

@@ -686,6 +686,7 @@
     "done": "确定",
     "downstream": "下游",
     "downstreamRelations": "下游关系",
+    "duplicateRows": "重复行",
     "empty": "暂无数据",
     "engine": "引擎",
     "expression": "表达式",

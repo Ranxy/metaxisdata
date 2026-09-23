@@ -301,7 +301,7 @@ func flattenSetOpArms(stmt *pgast.SelectStmt, chain []model.Transformation) []se
 	// stmt.Op combines the two subtrees, so it is inner to everything already on
 	// the chain and is appended after it.
 	inner := chain
-	if transform, ok := setOpTransformation(stmt.Op); ok {
+	if transform, ok := setOpTransformation(stmt.Op, stmt.All); ok {
 		inner = algorithm.ArmChain(chain, transform)
 	}
 	return append(flattenSetOpArms(stmt.Larg, inner), flattenSetOpArms(stmt.Rarg, inner)...)
@@ -363,14 +363,14 @@ func (a *Analyzer) processSetOpArm(arm *pgast.SelectStmt) {
 }
 
 // setOpTransformation maps a PostgreSQL set-operation kind to its transformation.
-func setOpTransformation(setOp pgast.SetOperation) (model.Transformation, bool) {
+func setOpTransformation(setOp pgast.SetOperation, all bool) (model.Transformation, bool) {
 	switch setOp {
 	case pgast.SETOP_UNION:
-		return model.NewUnionTransformation(), true
+		return model.NewUnionTransformation(all), true
 	case pgast.SETOP_INTERSECT:
-		return model.NewIntersectTransformation(), true
+		return model.NewIntersectTransformation(all), true
 	case pgast.SETOP_EXCEPT:
-		return model.NewExceptTransformation(), true
+		return model.NewExceptTransformation(all), true
 	default:
 		return model.Transformation{}, false
 	}

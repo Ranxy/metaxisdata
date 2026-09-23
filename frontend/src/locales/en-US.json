@@ -686,6 +686,7 @@
     "done": "Done",
     "downstream": "Downstream",
     "downstreamRelations": "Downstream Relations",
+    "duplicateRows": "Duplicate rows",
     "empty": "No data",
     "engine": "Engine",
     "expression": "Expression",

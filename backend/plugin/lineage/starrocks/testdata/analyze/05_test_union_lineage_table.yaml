@@ -263,3 +263,104 @@ cases:
             - operation: OPERATOR
               op_type: ADDITION
               expression: "b+2"
+    # UNION ALL keeps duplicate rows where UNION removes them, and PG's INTERSECT
+    # ALL / EXCEPT ALL have the same pair. The flag is part of the transformation,
+    # so the two spellings are different lineage metadata rather than the same one
+    # written twice.
+    - name: UNION ALL keeps duplicate rows
+      sql: SELECT a FROM t1 UNION ALL SELECT a FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+        - from_table: t2
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+    - name: UNION removes duplicate rows
+      sql: SELECT a FROM t1 UNION SELECT a FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: false
+        - from_table: t2
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: false
+    - name: each operation in a chain carries its own ALL flag
+      sql: SELECT a FROM t1 UNION ALL SELECT b FROM t2 INTERSECT ALL SELECT c FROM t3
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+        - from_table: t2
+          from_field: b
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+            - operation: INTERSECT
+              all: true
+        - from_table: t3
+          from_field: c
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+            - operation: INTERSECT
+              all: true
+    - name: EXCEPT ALL keeps duplicate rows
+      sql: SELECT a FROM t1 EXCEPT ALL SELECT a FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: except
+          is_temp: true
+          transformations:
+            - operation: EXCEPT
+              all: true
+        - from_table: t2
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: except
+          is_temp: true
+          transformations:
+            - operation: EXCEPT
+              all: true
