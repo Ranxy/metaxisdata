@@ -1,0 +1,72 @@
+name: TestRelationShadowing_Table
+cases:
+    # A CTE or a derived table alias is query-local, and the analyzer tracked
+    # those names in one statement-wide set. A real relation that happened to
+    # share a name with one was then read as the temporary relation itself, and
+    # every edge to and from it was dropped, which emptied the statement's
+    # lineage. A temporary relation is now recognized from what a reference
+    # resolved to, so a same-named real relation keeps its own edges.
+    - name: a CTE named after the table it reads keeps the real table's edges
+      sql: "WITH orders AS (SELECT user_id, total FROM orders WHERE total > 100) SELECT user_id, total FROM orders"
+      expected_edges:
+        - from_table: orders
+          from_field: "user_id"
+          to_table: __result__
+          to_field: "user_id"
+          relation_type: direct
+          is_temp: true
+        - from_table: orders
+          from_field: "total"
+          to_table: __result__
+          to_field: "total"
+          relation_type: direct
+          is_temp: true
+        - from_table: orders
+          from_field: "total"
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: "total > 100"
+    # The subquery's derived table is aliased `t`, the same name as the outer
+    # real relation. The predicate's inner reference names the relation the value
+    # came from (`s.y`); keeping the derived table's alias would resolve it again
+    # in the enclosing scope and bind it to the unrelated same-named table.
+    - name: a derived table alias shadowing a real relation keeps the real relation's edges
+      sql: "SELECT * FROM t WHERE a IN (SELECT x FROM (SELECT y AS x FROM s) t)"
+      expected_edges:
+        - from_table: t
+          from_field: "*"
+          to_table: __result__
+          to_field: "*"
+          relation_type: direct
+          is_temp: true
+        - from_table: t
+          from_field: "a"
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: "a IN (SELECT x FROM (SELECT y AS x FROM s) t)"
+        - from_table: s
+          from_field: "y"
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: "a IN (SELECT x FROM (SELECT y AS x FROM s) t)"
+    - name: an insert target that shares its name with a CTE is still a real target
+      sql: "WITH t AS (SELECT id FROM s) INSERT INTO t (a) SELECT id FROM t"
+      expected_edges:
+        - from_table: s
+          from_field: "id"
+          to_table: t
+          to_field: "a"
+          relation_type: direct
+          is_temp: false

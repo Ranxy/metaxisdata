@@ -108,8 +108,8 @@ func (a *Analyzer) recordPredicate(sp *scope.Scope, ref scope.ColumnRef, transfo
 			if output.Alias != ref.Column {
 				continue
 			}
-			for _, source := range output.SourceColumns {
-				a.recordPredicate(sp, source, transform, false)
+			for _, source := range output.Sources {
+				a.recordPredicate(sp, source.Ref, transform, false)
 			}
 			return
 		}
@@ -138,7 +138,7 @@ func (a *Analyzer) emitPredicateInfluences(targetSchema, targetTable string) {
 	if len(a.predicates) == 0 {
 		return
 	}
-	isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
+	isTemp := targetTable == resultTableName
 	for _, influence := range a.predicates {
 		if influence.relation != nil {
 			a.traceThroughTableLineageToTarget(influence.relation, influence.column, targetSchema, targetTable, "", []model.Transformation{influence.transform})

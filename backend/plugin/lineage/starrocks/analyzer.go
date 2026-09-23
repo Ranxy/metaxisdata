@@ -443,19 +443,19 @@ func (a *Analyzer) tempTableLineage(sp *scope.Scope, targetName string) []model.
 		if colName == "" {
 			colName = "column"
 		}
-		for _, sourceCol := range col.SourceColumns {
-			resolutions, err := sp.ResolveColumnRefs(sourceCol)
+		for _, source := range col.Sources {
+			resolutions, err := sp.ResolveColumnRefs(source.Ref)
 			if err != nil {
 				continue
 			}
 			for _, res := range resolutions {
-				if a.flattenTempSourceLineage(sp, res.Relation, res.Ref.Column, targetName, colName, col.Transform, &lineage) {
+				if a.flattenTempSourceLineage(sp, res.Relation, res.Ref.Column, targetName, colName, source.Transform, &lineage) {
 					continue
 				}
 				lineage = append(lineage, scope.NewLineageEdge(
 					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 					"", targetName, colName,
-					col.Transform,
+					source.Transform,
 					true, // the temporary table is not a real object
 				))
 			}
@@ -529,21 +529,21 @@ func (a *Analyzer) generateEdgesForTarget(sp *scope.Scope, targetSchema, targetT
 		if i < len(targetColumns) {
 			targetColName = targetColumns[i]
 		}
-		for _, sourceCol := range outputCol.SourceColumns {
-			resolutions, err := sp.ResolveColumnRefs(sourceCol)
+		for _, source := range outputCol.Sources {
+			resolutions, err := sp.ResolveColumnRefs(source.Ref)
 			if err != nil {
 				continue
 			}
 			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
 			for _, res := range resolutions {
 				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
-					a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, targetSchema, targetTable, targetColName, outputCol.Transform)
+					a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, targetSchema, targetTable, targetColName, source.Transform)
 					continue
 				}
 				a.addRelation(scope.NewLineageEdge(
 					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 					targetSchema, targetTable, targetColName,
-					outputCol.Transform,
+					source.Transform,
 					isTemp,
 				))
 			}
@@ -821,8 +821,8 @@ func (a *Analyzer) processStar(sp *scope.Scope, except []string) {
 			}
 		}
 		sp.AddOutputColumn(scope.OutputColumn{
-			Alias:         wildcardColumn,
-			SourceColumns: []scope.ColumnRef{wildcardSourceRef(tableRef)},
+			Alias:   wildcardColumn,
+			Sources: scope.NewColumnSources([]scope.ColumnRef{wildcardSourceRef(tableRef)}, nil),
 		})
 	}
 }
@@ -846,8 +846,8 @@ func (a *Analyzer) processTableWildcard(item *nodes.SelectItem, sp *scope.Scope)
 		}
 	}
 	sp.AddOutputColumn(scope.OutputColumn{
-		Alias:         wildcardColumn,
-		SourceColumns: []scope.ColumnRef{wildcardSourceRef(tableRef)},
+		Alias:   wildcardColumn,
+		Sources: scope.NewColumnSources([]scope.ColumnRef{wildcardSourceRef(tableRef)}, nil),
 	})
 }
 
@@ -896,20 +896,21 @@ func (a *Analyzer) processSelectExpr(expr nodes.Node, alias string, aliased bool
 	}
 
 	outputCol := scope.OutputColumn{
-		Alias:         alias,
-		SourceColumns: sourceColumns,
-		IsDerived:     isDerived,
+		Alias:     alias,
+		Sources:   scope.NewColumnSources(sourceColumns, nil),
+		IsDerived: isDerived,
 	}
 	if isDerived {
-		outputCol.Transform = a.analyzeExpressionOperator(expr)
+		transform := a.analyzeExpressionOperator(expr)
 		// The keys are attached to every transformation of a select item that
 		// contains a group aggregate, so the field never claims a column was
 		// aggregated when it was only projected.
 		if len(groupKeys) > 0 && containsGroupAggregate(expr) {
-			for i := range outputCol.Transform {
-				outputCol.Transform[i].GroupKeys = groupKeys
+			for i := range transform {
+				transform[i].GroupKeys = groupKeys
 			}
 		}
+		outputCol.SetTransform(transform)
 	}
 	sp.AddOutputColumn(outputCol)
 }
@@ -970,20 +971,20 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 		return
 	}
 	for _, outputCol := range sp.GetOutputColumns() {
-		for _, sourceCol := range outputCol.SourceColumns {
-			resolutions, err := sp.ResolveColumnRefs(sourceCol)
+		for _, source := range outputCol.Sources {
+			resolutions, err := sp.ResolveColumnRefs(source.Ref)
 			if err != nil {
 				continue
 			}
 			for _, res := range resolutions {
 				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
-					a.traceThroughTableLineage(res.Relation, res.Ref.Column, outputCol.Alias, outputCol.Transform)
+					a.traceThroughTableLineage(res.Relation, res.Ref.Column, outputCol.Alias, source.Transform)
 					continue
 				}
 				a.addRelation(scope.NewLineageEdge(
 					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 					"", resultTableName, outputCol.Alias,
-					outputCol.Transform,
+					source.Transform,
 					true, // __result__ is always temporary
 				))
 			}
@@ -1035,14 +1036,14 @@ func (a *Analyzer) expandWildcardWithCatalog(tableRef *scope.TableRef, sp *scope
 		}
 		sp.AddOutputColumn(scope.OutputColumn{
 			Alias: colMeta.Name,
-			SourceColumns: []scope.ColumnRef{{
+			Sources: scope.NewColumnSources([]scope.ColumnRef{{
 				Schema: tableRef.Schema,
 				Table:  tableRef.Table,
 				Column: colMeta.Name,
 				// The catalog identified the real column, so the reference must
 				// not be rebound by name (which fails for an aliased relation).
 				Resolved: true,
-			}},
+			}}, nil),
 		})
 	}
 	return true
@@ -1149,19 +1150,19 @@ func (a *Analyzer) processCTE(cte *nodes.CTE) {
 			if i < len(cte.Columns) {
 				targetName = cte.Columns[i]
 			}
-			for _, sourceCol := range outputCol.SourceColumns {
-				resolutions, err := cteScope.ResolveColumnRefs(sourceCol)
+			for _, source := range outputCol.Sources {
+				resolutions, err := cteScope.ResolveColumnRefs(source.Ref)
 				if err != nil {
 					continue
 				}
 				for _, res := range resolutions {
-					if a.flattenTempSourceLineage(cteScope, res.Relation, res.Ref.Column, cteName, targetName, outputCol.Transform, &lineage) {
+					if a.flattenTempSourceLineage(cteScope, res.Relation, res.Ref.Column, cteName, targetName, source.Transform, &lineage) {
 						continue
 					}
 					lineage = append(lineage, scope.NewLineageEdge(
 						res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 						"", cteName, targetName,
-						outputCol.Transform,
+						source.Transform,
 						true, // a CTE is temporary
 					))
 				}
@@ -1254,20 +1255,20 @@ func resolveOutputColumns(sp *scope.Scope, cols []scope.OutputColumn) []scope.Ou
 	out := make([]scope.OutputColumn, len(cols))
 	copy(out, cols)
 	for i := range out {
-		resolved := make([]scope.ColumnRef, 0, len(out[i].SourceColumns))
-		for _, ref := range out[i].SourceColumns {
-			resolutions, err := sp.ResolveColumnRefs(ref)
+		resolved := make([]scope.ColumnSource, 0, len(out[i].Sources))
+		for _, source := range out[i].Sources {
+			resolutions, err := sp.ResolveColumnRefs(source.Ref)
 			if err != nil {
-				resolved = append(resolved, ref)
+				resolved = append(resolved, source)
 				continue
 			}
 			for _, res := range resolutions {
 				columnRef := res.Ref
 				columnRef.Resolved = true
-				resolved = append(resolved, columnRef)
+				resolved = append(resolved, scope.ColumnSource{Ref: columnRef, Transform: source.Transform})
 			}
 		}
-		out[i].SourceColumns = resolved
+		out[i].Sources = resolved
 	}
 	return out
 }
@@ -1284,16 +1285,19 @@ func mergeUnionOutputColumns(baseScope *scope.Scope, allOutputColumns [][]scope.
 	firstQueryOutputs := allOutputColumns[0]
 	for colIdx := 0; colIdx < len(firstQueryOutputs); colIdx++ {
 		firstCol := firstQueryOutputs[colIdx]
-		var mergedSources []scope.ColumnRef
+		var mergedSources []scope.ColumnSource
 		for queryIdx := 0; queryIdx < len(allOutputColumns); queryIdx++ {
-			if colIdx < len(allOutputColumns[queryIdx]) {
-				mergedSources = append(mergedSources, allOutputColumns[queryIdx][colIdx].SourceColumns...)
+			if colIdx >= len(allOutputColumns[queryIdx]) {
+				continue
+			}
+			for _, source := range allOutputColumns[queryIdx][colIdx].Sources {
+				if hasTransform {
+					source.Transform = append([]model.Transformation{transform}, source.Transform...)
+				}
+				mergedSources = append(mergedSources, source)
 			}
 		}
-		firstCol.SourceColumns = mergedSources
-		if hasTransform {
-			firstCol.Transform = append([]model.Transformation{transform}, firstCol.Transform...)
-		}
+		firstCol.Sources = mergedSources
 		baseScope.SetOutputColumn(colIdx, firstCol)
 	}
 }

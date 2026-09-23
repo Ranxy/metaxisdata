@@ -121,3 +121,54 @@ cases:
           is_temp: true
           transformations:
             - operation: UNION
+    # A set operation merges its arms' output columns positionally, and each arm
+    # computes the merged column its own way. The transformation has to travel
+    # with the source it came from: one transformation for the whole merged
+    # column attributed the first arm's expression to every other arm's sources.
+    - name: each union arm keeps its own expression
+      sql: "SELECT a + 1 AS x FROM t1 UNION ALL SELECT b + 2 AS x FROM t2"
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: x
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+            - operation: OPERATOR
+              op_type: ADDITION
+              expression: "a+1"
+        - from_table: t2
+          from_field: b
+          to_table: __result__
+          to_field: x
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+            - operation: OPERATOR
+              op_type: ADDITION
+              expression: "b+2"
+    - name: a direct arm does not erase a later arm's expression
+      sql: "SELECT a AS x FROM t1 UNION SELECT b + 2 AS x FROM t2"
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: x
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: t2
+          from_field: b
+          to_table: __result__
+          to_field: x
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+            - operation: OPERATOR
+              op_type: ADDITION
+              expression: "b+2"

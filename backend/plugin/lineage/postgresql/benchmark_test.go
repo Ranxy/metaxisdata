@@ -149,6 +149,12 @@ func loadCorpusBenchCases(b *testing.B) []benchCase {
 			b.Fatalf("load %s: %v", file, err)
 		}
 		for _, tc := range suite.Cases {
+			// An error case never reaches the walk this benchmark measures: it
+			// stops at the statement the analyzer rejects. Including it aborted
+			// the whole benchmark instead of measuring the rest.
+			if tc.ExpectError {
+				continue
+			}
 			cases = append(cases, benchCase{Name: benchCaseName(tc.Name), SQL: tc.SQL})
 		}
 	}

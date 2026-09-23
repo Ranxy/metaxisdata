@@ -1,0 +1,103 @@
+name: TestSetOperationTransformation_Table
+cases:
+    # A set operation merges its arms' output columns positionally, and each arm
+    # computes the merged column its own way. The transformation has to travel
+    # with the source it came from: one transformation for the whole merged
+    # column attributed the first arm's expression to every other arm's sources,
+    # which is lineage the query does not have.
+    - name: each union arm keeps its own expression
+      sql: "SELECT a + 1 AS x FROM t1 UNION ALL SELECT b + 2 AS x FROM t2"
+      expected_edges:
+        - from_table: t1
+          from_field: "a"
+          to_table: __result__
+          to_field: "x"
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+            - operation: OPERATOR
+              op_type: "+"
+              expression: "a + 1"
+        - from_table: t2
+          from_field: "b"
+          to_table: __result__
+          to_field: "x"
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+            - operation: OPERATOR
+              op_type: "+"
+              expression: "b + 2"
+    - name: a direct arm does not erase a later arm's expression
+      sql: "SELECT a AS x FROM t1 UNION SELECT b + 2 AS x FROM t2"
+      expected_edges:
+        - from_table: t1
+          from_field: "a"
+          to_table: __result__
+          to_field: "x"
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: t2
+          from_field: "b"
+          to_table: __result__
+          to_field: "x"
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+            - operation: OPERATOR
+              op_type: "+"
+              expression: "b + 2"
+    # INTERSECT binds tighter than UNION, so `t1 UNION t2 INTERSECT t3` groups as
+    # `t1 UNION (t2 INTERSECT t3)`. The outer operation stays first because that
+    # is the one the edge's relation type is described by, and the inner one is
+    # recorded too rather than being dropped with the flattened tree.
+    - name: intersect binds tighter than union and is recorded on its arms
+      sql: "SELECT a FROM t1 UNION SELECT b FROM t2 INTERSECT SELECT c FROM t3"
+      expected_edges:
+        - from_table: t1
+          from_field: "a"
+          to_table: __result__
+          to_field: "a"
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: t2
+          from_field: "b"
+          to_table: __result__
+          to_field: "a"
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+            - operation: INTERSECT
+        - from_table: t3
+          from_field: "c"
+          to_table: __result__
+          to_field: "a"
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+            - operation: INTERSECT
+    # A recursive CTE names its own output. That self-reference resolves to the
+    # relation the CTE is being defined over, and an edge from it would name the
+    # CTE, which is not a registry object. PostgreSQL folds the recursion into a
+    # fixpoint; this analyzer does not, so the recursive arm contributes nothing
+    # rather than a relation that does not exist.
+    - name: a recursive self reference is not reported as a relation
+      sql: "WITH RECURSIVE r AS (SELECT id FROM base UNION ALL SELECT id FROM r) SELECT id FROM r"
+      expected_edges:
+        - from_table: base
+          from_field: "id"
+          to_table: __result__
+          to_field: "id"
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION

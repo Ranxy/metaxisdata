@@ -71,8 +71,6 @@ type Analyzer struct {
 	// inSetOpArm is set while analyzing one arm of a set operation, so only the
 	// merged set-operation result emits edges.
 	inSetOpArm bool
-	// Track temporary table names (CTEs, subqueries) to filter intermediate results
-	tempTables map[string]struct{}
 	// predicates accumulates the columns every row-set predicate of the statement
 	// depends on. Which object the statement produces is only known once the
 	// whole tree has been walked, so the edges are emitted by whichever emitter
@@ -95,7 +93,6 @@ func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide
 		edgeSet:    make(map[string]struct{}),
 		errors:     make([]string, 0),
 		catalog:    catalogProvide,
-		tempTables: make(map[string]struct{}),
 	}
 }
 
@@ -116,13 +113,11 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 			continue
 		}
 		// Each statement is analyzed from clean per-statement state; only the edges
-		// and the error list are shared. A CTE, a temporary-relation name and a
-		// pending predicate all belong to the statement that introduced them, and
-		// carrying them over made a later statement's real table look temporary (so
-		// its edges were dropped) and attributed an UPDATE's subquery predicate to
-		// the next SELECT's result.
+		// and the error list are shared. A relation in scope and a pending
+		// predicate both belong to the statement that introduced them; carrying
+		// them over attributed an UPDATE's subquery predicate to the next SELECT's
+		// result.
 		a.scopeStack = []*scope.Scope{scope.NewScope(nil)}
-		a.tempTables = make(map[string]struct{})
 		a.predicates = nil
 		a.processStmt(stmt.AST)
 	}
@@ -173,7 +168,7 @@ func (a *Analyzer) processCopyStmt(stmt *pgast.CopyStmt) {
 	}
 	targetSchema := stmt.Relation.Schemaname
 	targetTable := stmt.Relation.Relname
-	isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
+	isTemp := targetTable == resultTableName
 
 	targetColumns := stringList(stmt.Attlist)
 	if len(targetColumns) == 0 {
@@ -247,30 +242,56 @@ func (a *Analyzer) processSelectCore(stmt *pgast.SelectStmt) {
 	a.generateEdges(sp)
 }
 
+// setOpArm is one leaf SELECT of a set-operation tree together with the chain of
+// set operations that combine it into the statement's result, outermost first.
+// The chain is kept because PostgreSQL's set operations do not all bind equally:
+// INTERSECT binds tighter than UNION and EXCEPT, so `a UNION b INTERSECT c`
+// groups as `a UNION (b INTERSECT c)`. Flattening the tree without the chain
+// would label every arm with the outermost operation and lose the inner one.
+type setOpArm struct {
+	stmt  *pgast.SelectStmt
+	chain []pgast.SetOperation
+}
+
 // flattenSetOpArms flattens a UNION/INTERSECT/EXCEPT tree into its leaf SELECTs
 // in order, so every arm of every set operation contributes lineage.
-func flattenSetOpArms(stmt *pgast.SelectStmt) []*pgast.SelectStmt {
+func flattenSetOpArms(stmt *pgast.SelectStmt, chain []pgast.SetOperation) []setOpArm {
 	if stmt == nil {
 		return nil
 	}
-	if stmt.Op != pgast.SETOP_NONE {
-		return append(flattenSetOpArms(stmt.Larg), flattenSetOpArms(stmt.Rarg)...)
+	if stmt.Op == pgast.SETOP_NONE {
+		return []setOpArm{{stmt: stmt, chain: chain}}
 	}
-	return []*pgast.SelectStmt{stmt}
+	// stmt.Op combines the two subtrees, so it is inner to everything already on
+	// the chain and is appended after it. A left-deep tree repeats the same
+	// operation (`a UNION b UNION c` nests as `(a UNION b) UNION c`), and that
+	// repetition describes one union of three arms rather than a stack of them,
+	// so a step already on the end of the chain is not recorded twice.
+	inner := chain
+	if len(inner) == 0 || inner[len(inner)-1] != stmt.Op {
+		inner = make([]pgast.SetOperation, 0, len(chain)+1)
+		inner = append(inner, chain...)
+		inner = append(inner, stmt.Op)
+	}
+	return append(flattenSetOpArms(stmt.Larg, inner), flattenSetOpArms(stmt.Rarg, inner)...)
 }
 
 // processSetOperation processes UNION/INTERSECT/EXCEPT: the first operand is
 // analyzed in the base scope, every later operand in a temporary scope parented
 // to the base scope's parent.
 func (a *Analyzer) processSetOperation(stmt *pgast.SelectStmt) {
-	arms := flattenSetOpArms(stmt)
+	arms := flattenSetOpArms(stmt, nil)
 	baseScope := a.currentScope()
-	var allOutputColumns [][]scope.OutputColumn
+	var (
+		allOutputColumns [][]scope.OutputColumn
+		armTransforms    [][]model.Transformation
+	)
 
 	for i, arm := range arms {
+		armTransforms = append(armTransforms, setOpChainTransformations(arm.chain))
 		if i == 0 {
-			a.processSetOpArm(arm)
-			allOutputColumns = append(allOutputColumns, resolveOutputColumns(baseScope, baseScope.GetOutputColumns()))
+			a.processSetOpArm(arm.stmt)
+			allOutputColumns = append(allOutputColumns, a.resolveOutputColumns(baseScope, baseScope.GetOutputColumns()))
 			continue
 		}
 
@@ -281,13 +302,13 @@ func (a *Analyzer) processSetOperation(stmt *pgast.SelectStmt) {
 
 		originalScope := a.currentScope()
 		a.scopeStack[len(a.scopeStack)-1] = tempScope
-		a.processSetOpArm(arm)
+		a.processSetOpArm(arm.stmt)
 		a.scopeStack[len(a.scopeStack)-1] = originalScope
 
-		allOutputColumns = append(allOutputColumns, resolveOutputColumns(tempScope, tempScope.GetOutputColumns()))
+		allOutputColumns = append(allOutputColumns, a.resolveOutputColumns(tempScope, tempScope.GetOutputColumns()))
 	}
 
-	a.mergeUnionOutputColumns(baseScope, allOutputColumns, stmt.Op)
+	a.mergeSetOpOutputColumns(baseScope, allOutputColumns, armTransforms)
 	// An arm does not emit result edges on its own; the merged operation does.
 	a.generateEdges(baseScope)
 }
@@ -307,34 +328,59 @@ func (a *Analyzer) processSetOpArm(arm *pgast.SelectStmt) {
 	a.processSelectCore(arm)
 }
 
-// mergeUnionOutputColumns merges output columns from multiple set-operation arms
-// positionally and records the set operation as the leading transformation of
-// every merged column, which is what makes the relation type union/intersect/
-// except instead of direct.
-func (*Analyzer) mergeUnionOutputColumns(baseScope *scope.Scope, allOutputColumns [][]scope.OutputColumn, setOp pgast.SetOperation) {
+// mergeSetOpOutputColumns merges output columns from multiple set-operation arms
+// positionally and records the set operations that produced each arm as the
+// leading transformations of that arm's sources, which is what makes the
+// relation type union/intersect/except instead of direct. The transformations
+// stay attached to the source they came from: one transformation for the whole
+// merged column would attribute the first arm's expression to every other arm's
+// sources, which is lineage the query does not have.
+func (*Analyzer) mergeSetOpOutputColumns(baseScope *scope.Scope, allOutputColumns [][]scope.OutputColumn, armTransforms [][]model.Transformation) {
 	if len(allOutputColumns) == 0 || len(allOutputColumns[0]) == 0 {
 		return
 	}
 
-	transform, hasTransform := setOpTransformation(setOp)
 	firstQueryOutputs := allOutputColumns[0]
 
 	for colIdx := 0; colIdx < len(firstQueryOutputs); colIdx++ {
 		firstCol := firstQueryOutputs[colIdx]
 
-		var mergedSources []scope.ColumnRef
+		var mergedSources []scope.ColumnSource
 		for queryIdx := 0; queryIdx < len(allOutputColumns); queryIdx++ {
-			if colIdx < len(allOutputColumns[queryIdx]) {
-				mergedSources = append(mergedSources, allOutputColumns[queryIdx][colIdx].SourceColumns...)
+			if colIdx >= len(allOutputColumns[queryIdx]) {
+				continue
+			}
+			var armTransform []model.Transformation
+			if queryIdx < len(armTransforms) {
+				armTransform = armTransforms[queryIdx]
+			}
+			for _, source := range allOutputColumns[queryIdx][colIdx].Sources {
+				source.Transform = combineTransformations(armTransform, source.Transform)
+				mergedSources = append(mergedSources, source)
 			}
 		}
 
-		firstCol.SourceColumns = mergedSources
-		if hasTransform {
-			firstCol.Transform = append([]model.Transformation{transform}, firstCol.Transform...)
-		}
+		firstCol.Sources = mergedSources
 		baseScope.SetOutputColumn(colIdx, firstCol)
 	}
+}
+
+// setOpChainTransformations maps the set operations that combine one arm into
+// the result, outermost first, to their transformations. The outermost operation
+// comes first because that is the one model.RelationTypeOf describes the edge by.
+func setOpChainTransformations(chain []pgast.SetOperation) []model.Transformation {
+	if len(chain) == 0 {
+		return nil
+	}
+	out := make([]model.Transformation, 0, len(chain))
+	for _, setOp := range chain {
+		transform, ok := setOpTransformation(setOp)
+		if !ok {
+			continue
+		}
+		out = append(out, transform)
+	}
+	return out
 }
 
 // setOpTransformation maps a PostgreSQL set-operation kind to its transformation.
@@ -362,7 +408,7 @@ func (a *Analyzer) processWithClause(withClause *pgast.WithClause) {
 	}
 	for _, item := range withClause.Ctes.Items {
 		if cte, ok := item.(*pgast.CommonTableExpr); ok {
-			a.processCTE(cte)
+			a.processCTE(cte, withClause.Recursive)
 		}
 	}
 }
@@ -382,15 +428,15 @@ func (a *Analyzer) processPreparableStmt(node pgast.Node) {
 	}
 }
 
-// processCTE processes a single Common Table Expression (CTE).
-func (a *Analyzer) processCTE(cte *pgast.CommonTableExpr) {
+// processCTE processes a single Common Table Expression (CTE). recursive is the
+// WITH clause's RECURSIVE flag, which is what makes a reference to the CTE's own
+// name inside its body a self-reference rather than a same-named base table.
+func (a *Analyzer) processCTE(cte *pgast.CommonTableExpr, recursive bool) {
 	if cte == nil {
 		return
 	}
 
 	cteName := cte.Ctename
-	a.markTempTable(cteName)
-
 	columns := stringList(cte.Aliascolnames)
 
 	var lineage []model.ColumnRelation
@@ -411,13 +457,24 @@ func (a *Analyzer) processCTE(cte *pgast.CommonTableExpr) {
 				targetColumn = columns[i]
 			}
 
-			for _, sourceCol := range outputCol.SourceColumns {
-				resolutions, err := cteScope.ResolveColumnRefs(sourceCol)
+			for _, source := range outputCol.Sources {
+				resolutions, err := cteScope.ResolveColumnRefs(source.Ref)
 				if err != nil {
 					continue
 				}
 				for _, res := range resolutions {
-					if a.flattenTempSourceLineage(cteScope, res.Relation, res.Ref.Column, cteName, targetColumn, outputCol.Transform, &lineage) {
+					// WITH RECURSIVE lets a CTE name its own output. The name is not
+					// registered until this body has been walked (PostgreSQL hides it
+					// from a non-recursive CTE the same way), so the reference resolved
+					// to a base relation the CTE is being defined over; an edge from it
+					// would name the CTE, which is not a registry object. PostgreSQL
+					// folds the recursion into a fixpoint, this analyzer does not, so
+					// the recursive arm's own contribution is dropped rather than
+					// reported as a relation that does not exist.
+					if recursive && strings.EqualFold(res.Ref.Table, cteName) {
+						continue
+					}
+					if a.flattenTempSourceLineage(cteScope, res.Relation, res.Ref.Column, cteName, targetColumn, source.Transform, &lineage) {
 						continue
 					}
 
@@ -428,7 +485,7 @@ func (a *Analyzer) processCTE(cte *pgast.CommonTableExpr) {
 						"",
 						cteName,
 						targetColumn,
-						outputCol.Transform,
+						source.Transform,
 						true,
 					))
 				}
@@ -642,7 +699,6 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 		alias = sub.Alias.Aliasname
 		declaredColumns = stringList(sub.Alias.Colnames)
 	}
-	a.markTempTable(alias)
 
 	query, ok := sub.Subquery.(*pgast.SelectStmt)
 	if !ok {
@@ -663,13 +719,13 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 			colName = "column"
 		}
 
-		for _, sourceCol := range col.SourceColumns {
-			resolutions, err := subqueryScope.ResolveColumnRefs(sourceCol)
+		for _, source := range col.Sources {
+			resolutions, err := subqueryScope.ResolveColumnRefs(source.Ref)
 			if err != nil {
 				continue
 			}
 			for _, res := range resolutions {
-				if a.flattenTempSourceLineage(subqueryScope, res.Relation, res.Ref.Column, alias, colName, col.Transform, &lineage) {
+				if a.flattenTempSourceLineage(subqueryScope, res.Relation, res.Ref.Column, alias, colName, source.Transform, &lineage) {
 					continue
 				}
 
@@ -680,7 +736,7 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 					"",
 					alias,
 					colName,
-					col.Transform,
+					source.Transform,
 					true,
 				))
 			}
@@ -736,9 +792,9 @@ func (a *Analyzer) processResTarget(rt *pgast.ResTarget, sp *scope.Scope, groupK
 			// A bare column reference is a direct projection.
 			colRef := a.columnRefFromFields(cr.Fields)
 			sp.AddOutputColumn(scope.OutputColumn{
-				Alias:         colRef.Column,
-				SourceColumns: []scope.ColumnRef{colRef},
-				IsDerived:     false,
+				Alias:     colRef.Column,
+				Sources:   scope.NewColumnSources([]scope.ColumnRef{colRef}, nil),
+				IsDerived: false,
 			})
 			return
 		}
@@ -757,9 +813,9 @@ func (a *Analyzer) processStar(sp *scope.Scope) {
 		}
 
 		sp.AddOutputColumn(scope.OutputColumn{
-			Alias:         wildcardColumn,
-			SourceColumns: []scope.ColumnRef{wildcardSourceRef(tableRef)},
-			IsDerived:     false,
+			Alias:     wildcardColumn,
+			Sources:   scope.NewColumnSources([]scope.ColumnRef{wildcardSourceRef(tableRef)}, nil),
+			IsDerived: false,
 		})
 	}
 }
@@ -777,9 +833,9 @@ func (a *Analyzer) processTableStar(cr *pgast.ColumnRef, sp *scope.Scope) {
 		}
 	}
 	sp.AddOutputColumn(scope.OutputColumn{
-		Alias:         wildcardColumn,
-		SourceColumns: []scope.ColumnRef{wildcardSourceRef(tableRef)},
-		IsDerived:     false,
+		Alias:     wildcardColumn,
+		Sources:   scope.NewColumnSources([]scope.ColumnRef{wildcardSourceRef(tableRef)}, nil),
+		IsDerived: false,
 	})
 }
 
@@ -817,9 +873,9 @@ func (a *Analyzer) processExpressionTarget(rt *pgast.ResTarget, sp *scope.Scope,
 	}
 
 	outputCol := scope.OutputColumn{
-		Alias:         alias,
-		SourceColumns: sourceColumns,
-		IsDerived:     isDerived,
+		Alias:     alias,
+		Sources:   scope.NewColumnSources(sourceColumns, nil),
+		IsDerived: isDerived,
 	}
 
 	if isDerived {
@@ -830,7 +886,7 @@ func (a *Analyzer) processExpressionTarget(rt *pgast.ResTarget, sp *scope.Scope,
 			if len(groupKeys) > 0 && containsGroupAggregate(rt.Val) {
 				transform.GroupKeys = groupKeys
 			}
-			outputCol.Transform = []model.Transformation{transform}
+			outputCol.SetTransform([]model.Transformation{transform})
 		}
 	}
 
@@ -879,7 +935,7 @@ func (a *Analyzer) processInsertStmt(stmt *pgast.InsertStmt) {
 	a.generateEdgesForDataModification(targetSchema, targetTable, targetColumns)
 
 	if stmt.OnConflictClause != nil {
-		a.processOnConflict(stmt.OnConflictClause, stmt.Relation, insertSourceMap(a.currentScope(), targetColumns))
+		a.processOnConflict(stmt.OnConflictClause, stmt.Relation, a.insertSourceMap(a.currentScope(), targetColumns))
 	}
 }
 
@@ -887,9 +943,9 @@ func (a *Analyzer) processInsertStmt(stmt *pgast.InsertStmt) {
 // writes into it, resolved in the scope the query ran in. EXCLUDED.col names the
 // value the insert proposed for col, so the conflict clause resolves through this
 // map the way MySQL's VALUES(col) does.
-func insertSourceMap(sp *scope.Scope, targetColumns []string) map[string][]scope.ColumnRef {
+func (a *Analyzer) insertSourceMap(sp *scope.Scope, targetColumns []string) map[string][]scope.ColumnRef {
 	out := make(map[string][]scope.ColumnRef)
-	for i, col := range resolveOutputColumns(sp, sp.GetOutputColumns()) {
+	for i, col := range a.resolveOutputColumns(sp, sp.GetOutputColumns()) {
 		if len(targetColumns) > 0 && i >= len(targetColumns) {
 			break
 		}
@@ -897,7 +953,7 @@ func insertSourceMap(sp *scope.Scope, targetColumns []string) map[string][]scope
 		if i < len(targetColumns) {
 			name = targetColumns[i]
 		}
-		out[name] = append(out[name], col.SourceColumns...)
+		out[name] = append(out[name], scope.Refs(col.Sources)...)
 	}
 	return out
 }
@@ -1011,8 +1067,16 @@ func (a *Analyzer) processAssignments(assignments *pgast.List, targetSchema, tar
 				continue
 			}
 
-			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
+			isTemp := targetTable == resultTableName
 			for _, res := range resolutions {
+				// A CTE or derived table contributes the lineage of its own columns:
+				// there is no stored relation to point an edge at, so the assignment
+				// has to be traced through it the way every other emitter traces a
+				// temporary source.
+				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
+					a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, targetSchema, targetTable, targetColumn, transformInfo)
+					continue
+				}
 				a.addRelation(NewLineageEdge(
 					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 					targetSchema, targetTable, targetColumn,
@@ -1061,12 +1125,12 @@ func (a *Analyzer) multiAssignSources(ref *pgast.MultiAssignRef, sp *scope.Scope
 		return nil
 	}
 
-	columns := resolveOutputColumns(subScope, subScope.GetOutputColumns())
+	columns := a.resolveOutputColumns(subScope, subScope.GetOutputColumns())
 	index := ref.Colno - 1
 	if index < 0 || index >= len(columns) {
 		return nil
 	}
-	return columns[index].SourceColumns
+	return scope.Refs(columns[index].Sources)
 }
 
 // processDeleteStmt processes a DELETE statement.
@@ -1106,7 +1170,7 @@ func (a *Analyzer) processDeleteStmt(stmt *pgast.DeleteStmt) {
 				model.NewDeleteTransformation(conditionText),
 			}
 
-			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
+			isTemp := targetTable == resultTableName
 			for _, res := range resolutions {
 				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
 					a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, targetSchema, targetTable, deletionFieldName, transform)
@@ -1158,21 +1222,21 @@ func (a *Analyzer) processViewStmt(stmt *pgast.ViewStmt) {
 			targetColName = explicitColumnNames[i]
 		}
 
-		for _, sourceCol := range outputCol.SourceColumns {
-			resolutions, err := sp.ResolveColumnRefs(sourceCol)
+		for _, source := range outputCol.Sources {
+			resolutions, err := sp.ResolveColumnRefs(source.Ref)
 			if err != nil {
 				continue
 			}
-			isTemp := targetView == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetView)
+			isTemp := targetView == resultTableName
 			for _, res := range resolutions {
 				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
-					a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, targetSchema, targetView, targetColName, outputCol.Transform)
+					a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, targetSchema, targetView, targetColName, source.Transform)
 					continue
 				}
 				a.addRelation(NewLineageEdge(
 					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 					targetSchema, targetView, targetColName,
-					outputCol.Transform,
+					source.Transform,
 					isTemp,
 				))
 			}
@@ -1226,21 +1290,21 @@ func (a *Analyzer) processCreateTableAsStmt(stmt *pgast.CreateTableAsStmt) {
 			targetColName = explicitColumnNames[i]
 		}
 
-		for _, sourceCol := range outputCol.SourceColumns {
-			resolutions, err := sp.ResolveColumnRefs(sourceCol)
+		for _, source := range outputCol.Sources {
+			resolutions, err := sp.ResolveColumnRefs(source.Ref)
 			if err != nil {
 				continue
 			}
-			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
+			isTemp := targetTable == resultTableName
 			for _, res := range resolutions {
 				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
-					a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, targetSchema, targetTable, targetColName, outputCol.Transform)
+					a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, targetSchema, targetTable, targetColName, source.Transform)
 					continue
 				}
 				a.addRelation(NewLineageEdge(
 					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 					targetSchema, targetTable, targetColName,
-					outputCol.Transform,
+					source.Transform,
 					isTemp,
 				))
 			}
@@ -1265,8 +1329,8 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 	}
 
 	for _, outputCol := range sp.GetOutputColumns() {
-		for _, sourceCol := range outputCol.SourceColumns {
-			a.generateEdgeFromSource(sp, sourceCol, "", resultTableName, outputCol.Alias, outputCol.Transform)
+		for _, source := range outputCol.Sources {
+			a.generateEdgeFromSource(sp, source.Ref, "", resultTableName, outputCol.Alias, source.Transform)
 		}
 	}
 	a.emitPredicateInfluences("", resultTableName)
@@ -1283,8 +1347,8 @@ func (a *Analyzer) generateEdgesForDataModification(targetSchema, targetTable st
 			targetColName = targetColumns[i]
 		}
 
-		for _, sourceCol := range outputCol.SourceColumns {
-			a.generateEdgeFromSource(sp, sourceCol, targetSchema, targetTable, targetColName, outputCol.Transform)
+		for _, source := range outputCol.Sources {
+			a.generateEdgeFromSource(sp, source.Ref, targetSchema, targetTable, targetColName, source.Transform)
 		}
 	}
 	a.emitPredicateInfluences(targetSchema, targetTable)
@@ -1311,7 +1375,7 @@ func (a *Analyzer) generateEdgeFromSource(sp *scope.Scope, sourceCol scope.Colum
 		}
 
 		// Create direct relation from source to target
-		isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
+		isTemp := targetTable == resultTableName
 		relation := NewLineageEdge(
 			res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 			targetSchema, targetTable, targetColName,
@@ -1362,7 +1426,7 @@ func (a *Analyzer) traceThroughTableLineageToTarget(tableRef *scope.TableRef, co
 		}
 
 		combinedTransform := combineTransformations(edge.Transformation, transform)
-		isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
+		isTemp := targetTable == resultTableName
 
 		resultRelation := NewLineageEdge(
 			edge.Source.Table.Schema,
@@ -1421,6 +1485,39 @@ func (a *Analyzer) appendFlattenedLineage(lineage *[]model.ColumnRelation, sp *s
 // Scope management
 // ---------------------------------------------------------------------------
 
+// flattenTempSources replaces a source that resolved to a query-local relation
+// with the stored relations that relation's own lineage came from, combining the
+// transformations along the way. A query-local relation's name is an alias that
+// exists only in the scope the query wrote it in, so a reference carried into an
+// enclosing scope must not keep it: resolving the alias again there can bind to
+// an unrelated real relation that happens to share the name.
+func (a *Analyzer) flattenTempSources(sp *scope.Scope, ref scope.ColumnRef, relation *scope.TableRef, transform []model.Transformation) []scope.ColumnSource {
+	if relation == nil || (!relation.IsCTE && !relation.IsSubquery) {
+		return []scope.ColumnSource{{Ref: ref, Transform: transform}}
+	}
+
+	var out []scope.ColumnSource
+	for _, edge := range model.AnsweringLineage(relation.Lineage, ref.Column) {
+		combinedTransform := combineTransformations(edge.Transformation, transform)
+		nested, ok := sp.FindRelation(scope.RelationKeyOf(edge.Source.Table))
+		if ok && (nested.IsCTE || nested.IsSubquery) {
+			nestedRef := scope.ColumnRef{Schema: edge.Source.Table.Schema, Table: edge.Source.Table.Name, Column: edge.Source.Name}
+			out = append(out, a.flattenTempSources(sp, nestedRef, nested, combinedTransform)...)
+			continue
+		}
+		out = append(out, scope.ColumnSource{
+			Ref: scope.ColumnRef{
+				Schema:   edge.Source.Table.Schema,
+				Table:    edge.Source.Table.Name,
+				Column:   edge.Source.Name,
+				Resolved: true,
+			},
+			Transform: combinedTransform,
+		})
+	}
+	return out
+}
+
 // pushScope creates and pushes a new child scope onto the scope stack.
 func (a *Analyzer) pushScope() {
 	parent := a.currentScope()
@@ -1446,59 +1543,15 @@ func (a *Analyzer) currentScope() *scope.Scope {
 	return a.scopeStack[len(a.scopeStack)-1]
 }
 
-// markTempTable marks a table name as temporary (CTE or subquery alias).
-func (a *Analyzer) markTempTable(name string) {
-	if name == "" {
-		return
-	}
-	a.tempTables[name] = struct{}{}
-}
-
-// isTempRelation reports whether an endpoint names a query-local relation (a CTE
-// or a derived table). Those are never qualified, so a qualified reference to a
-// real relation of the same name is not one.
-func (a *Analyzer) isTempRelation(id model.ObjectIdentifier) bool {
-	key := scope.RelationKeyOf(id)
-	if key.Qualifier != "" {
-		return false
-	}
-	_, ok := a.tempTables[key.Name]
-	return ok
-}
-
-// isTableTempInCurrentScope checks if a relation is a temporary table (CTE or
-// subquery) in any scope. A qualified relation is a real one.
-func (a *Analyzer) isTableTempInCurrentScope(qualifier, tableName string) bool {
-	if qualifier != "" {
-		return false
-	}
-	for _, sp := range a.scopeStack {
-		if _, ok := sp.FindCTE(tableName); ok {
-			return true
-		}
-		if tableRef, ok := sp.FindTable(tableName); ok {
-			return tableRef.IsSubquery || tableRef.IsCTE
-		}
-	}
-	return false
-}
-
 // ---------------------------------------------------------------------------
 // Edge management
 // ---------------------------------------------------------------------------
 
 // addRelation adds a column relation to the lineage graph with deduplication.
-// Filters out edges where source or target is a temporary table (except __result__).
+// A query-local relation (a CTE or a derived table) is never an endpoint here:
+// every path that resolves one traces through its own lineage first, so the edge
+// already names the stored relation the column came from.
 func (a *Analyzer) addRelation(relation model.ColumnRelation) {
-	// Skip if source is a temporary table
-	if a.isTempRelation(relation.Source.Table) {
-		return
-	}
-	// Skip if target is a temporary table (except for the result table)
-	if a.isTempRelation(relation.Target.Table) && relation.Target.Table.Name != resultTableName {
-		return
-	}
-
 	// Create a unique signature for deduplication
 	signature := fmt.Sprintf("%s.%s.%s->%s.%s.%s",
 		relation.Source.Table.Schema, relation.Source.Table.Name, relation.Source.Name,
@@ -1526,19 +1579,18 @@ func (a *Analyzer) expandWildcardWithCatalog(tableRef *scope.TableRef, sp *scope
 	}
 
 	for _, colMeta := range tableMeta.Columns {
-		outputCol := scope.OutputColumn{
+		sp.AddOutputColumn(scope.OutputColumn{
 			Alias: colMeta.Name,
-			SourceColumns: []scope.ColumnRef{{
+			Sources: scope.NewColumnSources([]scope.ColumnRef{{
 				Schema: tableRef.Schema,
 				Table:  tableRef.Table,
 				Column: colMeta.Name,
 				// The catalog identified the real column, so the reference must not
 				// be rebound by name (which fails for an aliased relation).
 				Resolved: true,
-			}},
+			}}, nil),
 			IsDerived: false,
-		}
-		sp.AddOutputColumn(outputCol)
+		})
 	}
 
 	return true

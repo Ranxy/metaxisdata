@@ -120,8 +120,8 @@ func (a *Analyzer) recordPredicate(sp *scope.Scope, ref scope.ColumnRef, transfo
 			if output.Alias != ref.Column {
 				continue
 			}
-			for _, source := range output.SourceColumns {
-				a.recordPredicate(sp, source, transform, false)
+			for _, source := range output.Sources {
+				a.recordPredicate(sp, source.Ref, transform, false)
 			}
 			return
 		}

@@ -1,0 +1,40 @@
+name: TestAssignmentTempSource_Table
+cases:
+    # An assignment's source that resolves to a CTE or a derived table has to be
+    # traced through that relation's own lineage, the way every other emitter
+    # traces one. Reading the reference as a base table wrote an edge to the
+    # temporary relation, which was then discarded, so the statement reported no
+    # lineage at all.
+    - name: an update assignment sourced from a CTE is traced through it
+      sql: "WITH c AS (SELECT x FROM s) UPDATE t SET a = c.x FROM c WHERE t.id = c.id"
+      expected_edges:
+        - from_table: s
+          from_field: "x"
+          to_table: t
+          to_field: "a"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: "c.x"
+    - name: an update assignment sourced from a derived table is traced through it
+      sql: "UPDATE t SET a = q.x FROM (SELECT x FROM s) q WHERE t.id = q.id"
+      expected_edges:
+        - from_table: s
+          from_field: "x"
+          to_table: t
+          to_field: "a"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: "q.x"
+    - name: an on-conflict assignment sourced from a CTE is traced through it
+      sql: "WITH c AS (SELECT y FROM s) INSERT INTO t (b) SELECT y FROM c ON CONFLICT (b) DO UPDATE SET b = c.y"
+      expected_edges:
+        - from_table: s
+          from_field: "y"
+          to_table: t
+          to_field: "b"
+          relation_type: direct
+          is_temp: false

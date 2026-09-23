@@ -73,8 +73,8 @@ func TestScope_AddOutputColumn(t *testing.T) {
 
 	col := OutputColumn{
 		Alias: "user_id",
-		SourceColumns: []ColumnRef{
-			{Schema: "mydb", Table: "users", Column: "id"},
+		Sources: []ColumnSource{
+			{Ref: ColumnRef{Schema: "mydb", Table: "users", Column: "id"}},
 		},
 		IsDerived: false,
 	}

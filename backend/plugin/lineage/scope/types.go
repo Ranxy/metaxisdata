@@ -116,14 +116,60 @@ type CTEDefinition struct {
 	Lineage []model.ColumnRelation
 }
 
+// ColumnSource is a source column of an output column together with the
+// transformations that produced the output from it. The transformation travels
+// with the source rather than with the output column because a set operation
+// merges arms that compute the same output column in different ways: one
+// transformation for the whole column would attribute the first arm's expression
+// to every other arm's sources, which is lineage that does not exist.
+type ColumnSource struct {
+	Ref       ColumnRef
+	Transform []model.Transformation
+}
+
+// NewColumnSources pairs every reference with the same transformation, the shape
+// an output column built from a single expression has.
+func NewColumnSources(refs []ColumnRef, transform []model.Transformation) []ColumnSource {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make([]ColumnSource, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, ColumnSource{Ref: ref, Transform: transform})
+	}
+	return out
+}
+
+// Refs returns the source references without their transformations, for the
+// callers that only need to resolve or count them.
+func Refs(sources []ColumnSource) []ColumnRef {
+	if len(sources) == 0 {
+		return nil
+	}
+	out := make([]ColumnRef, 0, len(sources))
+	for _, source := range sources {
+		out = append(out, source.Ref)
+	}
+	return out
+}
+
 // OutputColumn represents a column in the SELECT output.
 type OutputColumn struct {
 	Alias string // The alias given to this column (AS clause)
-	// Source columns that this output depends on
-	SourceColumns []ColumnRef
+	// Sources are the columns this output depends on, each carrying the
+	// transformation that produced it.
+	Sources []ColumnSource
 	// Whether this is a derived/transformed column
 	IsDerived bool
-	Transform []model.Transformation
+}
+
+// SetTransform gives every source the same transformation list, the shape an
+// output column built from a single expression has. The list is shared rather
+// than copied, so callers must treat it as read-only afterwards.
+func (c *OutputColumn) SetTransform(transform []model.Transformation) {
+	for i := range c.Sources {
+		c.Sources[i].Transform = transform
+	}
 }
 
 // NewLineageEdge creates a ColumnRelation from field-edge parameters.

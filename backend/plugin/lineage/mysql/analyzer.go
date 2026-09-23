@@ -506,19 +506,19 @@ func (a *Analyzer) processCTE(cte *nodes.CommonTableExpr) {
 		names := exposedColumnNames(cte.Columns, outputColumns)
 		for i, outputCol := range outputColumns {
 			targetName := names[i]
-			for _, sourceCol := range outputCol.SourceColumns {
-				resolutions, err := cteScope.ResolveColumnRefs(sourceCol)
+			for _, source := range outputCol.Sources {
+				resolutions, err := cteScope.ResolveColumnRefs(source.Ref)
 				if err != nil {
 					continue
 				}
 				for _, res := range resolutions {
-					if a.flattenTempSourceLineage(cteScope, res.Relation, res.Ref.Column, cteName, targetName, outputCol.Transform, &cteLineage) {
+					if a.flattenTempSourceLineage(cteScope, res.Relation, res.Ref.Column, cteName, targetName, source.Transform, &cteLineage) {
 						continue
 					}
 					cteLineage = append(cteLineage, scope.NewLineageEdge(
 						res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 						"", cteName, targetName,
-						outputCol.Transform,
+						source.Transform,
 						true, // CTE is temporary
 					))
 				}
@@ -605,47 +605,53 @@ func resolveOutputColumns(sp *scope.Scope, cols []scope.OutputColumn) []scope.Ou
 	out := make([]scope.OutputColumn, len(cols))
 	copy(out, cols)
 	for i := range out {
-		if len(out[i].SourceColumns) == 0 {
+		if len(out[i].Sources) == 0 {
 			continue
 		}
-		resolved := make([]scope.ColumnRef, 0, len(out[i].SourceColumns))
-		for _, ref := range out[i].SourceColumns {
-			resolutions, err := sp.ResolveColumnRefs(ref)
+		resolved := make([]scope.ColumnSource, 0, len(out[i].Sources))
+		for _, source := range out[i].Sources {
+			resolutions, err := sp.ResolveColumnRefs(source.Ref)
 			if err != nil {
-				resolved = append(resolved, ref)
+				resolved = append(resolved, source)
 				continue
 			}
 			for _, res := range resolutions {
 				columnRef := res.Ref
 				columnRef.Resolved = true
-				resolved = append(resolved, columnRef)
+				resolved = append(resolved, scope.ColumnSource{Ref: columnRef, Transform: source.Transform})
 			}
 		}
-		out[i].SourceColumns = resolved
+		out[i].Sources = resolved
 	}
 	return out
 }
 
 // mergeSetOpOutputColumns merges output columns from multiple set-operation arms
 // positionally and records the set operation as the leading transformation of
-// every merged column.
+// each arm's own sources. The transformation stays attached to the source it
+// came from: one transformation for the whole merged column would attribute the
+// first arm's expression to every other arm's sources.
 func mergeSetOpOutputColumns(baseScope *scope.Scope, allOutputColumns [][]scope.OutputColumn, setOp nodes.SetOperation) {
 	if len(allOutputColumns) == 0 || len(allOutputColumns[0]) == 0 {
 		return
 	}
+	transform, hasTransform := setOpTransformation(setOp)
 	firstQueryOutputs := allOutputColumns[0]
 	for colIdx := 0; colIdx < len(firstQueryOutputs); colIdx++ {
 		firstCol := firstQueryOutputs[colIdx]
-		var mergedSources []scope.ColumnRef
+		var mergedSources []scope.ColumnSource
 		for queryIdx := 0; queryIdx < len(allOutputColumns); queryIdx++ {
-			if colIdx < len(allOutputColumns[queryIdx]) {
-				mergedSources = append(mergedSources, allOutputColumns[queryIdx][colIdx].SourceColumns...)
+			if colIdx >= len(allOutputColumns[queryIdx]) {
+				continue
+			}
+			for _, source := range allOutputColumns[queryIdx][colIdx].Sources {
+				if hasTransform {
+					source.Transform = append([]model.Transformation{transform}, source.Transform...)
+				}
+				mergedSources = append(mergedSources, source)
 			}
 		}
-		firstCol.SourceColumns = mergedSources
-		if transform, ok := setOpTransformation(setOp); ok {
-			firstCol.Transform = append([]model.Transformation{transform}, firstCol.Transform...)
-		}
+		firstCol.Sources = mergedSources
 		baseScope.SetOutputColumn(colIdx, firstCol)
 	}
 }
@@ -750,8 +756,8 @@ func (a *Analyzer) recordPredicate(sp *scope.Scope, ref scope.ColumnRef, transfo
 			if output.Alias != ref.Column {
 				continue
 			}
-			for _, source := range output.SourceColumns {
-				a.recordPredicate(sp, source, transform, false)
+			for _, source := range output.Sources {
+				a.recordPredicate(sp, source.Ref, transform, false)
 			}
 			return
 		}
@@ -870,19 +876,19 @@ func (a *Analyzer) processDerivedTable(sub *nodes.SubqueryExpr) {
 		if colName == "" {
 			colName = "column"
 		}
-		for _, sourceCol := range col.SourceColumns {
-			resolutions, err := subqueryScope.ResolveColumnRefs(sourceCol)
+		for _, source := range col.Sources {
+			resolutions, err := subqueryScope.ResolveColumnRefs(source.Ref)
 			if err != nil {
 				continue
 			}
 			for _, res := range resolutions {
-				if a.flattenTempSourceLineage(subqueryScope, res.Relation, res.Ref.Column, alias, colName, col.Transform, &derivedLineage) {
+				if a.flattenTempSourceLineage(subqueryScope, res.Relation, res.Ref.Column, alias, colName, source.Transform, &derivedLineage) {
 					continue
 				}
 				derivedLineage = append(derivedLineage, scope.NewLineageEdge(
 					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 					"", alias, colName,
-					col.Transform,
+					source.Transform,
 					true, // Subquery is temporary
 				))
 			}
@@ -935,8 +941,8 @@ func (a *Analyzer) processStar(sp *scope.Scope) {
 			}
 		}
 		sp.AddOutputColumn(scope.OutputColumn{
-			Alias:         wildcardColumn,
-			SourceColumns: []scope.ColumnRef{wildcardSourceRef(tableRef)},
+			Alias:   wildcardColumn,
+			Sources: scope.NewColumnSources([]scope.ColumnRef{wildcardSourceRef(tableRef)}, nil),
 		})
 	}
 }
@@ -954,8 +960,8 @@ func (a *Analyzer) processTableWildcard(cr *nodes.ColumnRef, sp *scope.Scope) {
 		}
 	}
 	sp.AddOutputColumn(scope.OutputColumn{
-		Alias:         wildcardColumn,
-		SourceColumns: []scope.ColumnRef{wildcardSourceRef(tableRef)},
+		Alias:   wildcardColumn,
+		Sources: scope.NewColumnSources([]scope.ColumnRef{wildcardSourceRef(tableRef)}, nil),
 	})
 }
 
@@ -994,12 +1000,12 @@ func (a *Analyzer) processSelectExpr(expr nodes.ExprNode, alias string, sp *scop
 	}
 
 	outputCol := scope.OutputColumn{
-		Alias:         alias,
-		SourceColumns: sourceColumns,
-		IsDerived:     isDerived,
+		Alias:     alias,
+		Sources:   scope.NewColumnSources(sourceColumns, nil),
+		IsDerived: isDerived,
 	}
 	if isDerived {
-		outputCol.Transform = a.analyzeExpressionOperator(expr)
+		transform := a.analyzeExpressionOperator(expr)
 		// The GROUP BY keys describe how an aggregate in this select item was
 		// computed, so they ride on every transformation the item produced: the
 		// outermost node is often not the aggregate itself, since SUM(x) + 1 is
@@ -1007,10 +1013,11 @@ func (a *Analyzer) processSelectExpr(expr nodes.ExprNode, alias string, sp *scop
 		// with no group aggregate of its own records nothing, which also keeps a
 		// windowed aggregate's OVER clause from being confused with GROUP BY.
 		if len(groupKeys) > 0 && containsGroupAggregate(expr) {
-			for i := range outputCol.Transform {
-				outputCol.Transform[i].GroupKeys = groupKeys
+			for i := range transform {
+				transform[i].GroupKeys = groupKeys
 			}
 		}
+		outputCol.SetTransform(transform)
 	}
 	sp.AddOutputColumn(outputCol)
 }
@@ -1031,7 +1038,7 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 	}
 
 	for _, outputCol := range sp.GetOutputColumns() {
-		a.emitSources(sp, outputCol.SourceColumns, "", resultTableName, outputCol.Alias, outputCol.Transform)
+		a.emitSources(sp, outputCol.Sources, "", resultTableName, outputCol.Alias)
 	}
 	a.emitPredicateInfluences("", resultTableName)
 }
@@ -1050,7 +1057,7 @@ func (a *Analyzer) generateEdgesForDataModification(targetSchema, targetTable st
 		if i < len(targetColumns) {
 			targetColName = targetColumns[i]
 		}
-		a.emitSources(sp, outputCol.SourceColumns, targetSchema, targetTable, targetColName, outputCol.Transform)
+		a.emitSources(sp, outputCol.Sources, targetSchema, targetTable, targetColName)
 	}
 	a.emitPredicateInfluences(targetSchema, targetTable)
 }
@@ -1059,9 +1066,9 @@ func (a *Analyzer) generateEdgesForDataModification(targetSchema, targetTable st
 // unqualified name that several relations in scope own contributes one relation
 // per owner: each of them really is a source of the value, which is what a
 // coalesced USING or NATURAL JOIN column looks like.
-func (a *Analyzer) emitSources(sp *scope.Scope, sourceColumns []scope.ColumnRef, targetSchema, targetTable, targetColumn string, transform []model.Transformation) {
-	for _, sourceCol := range sourceColumns {
-		resolutions, err := sp.ResolveColumnRefs(sourceCol)
+func (a *Analyzer) emitSources(sp *scope.Scope, sources []scope.ColumnSource, targetSchema, targetTable, targetColumn string) {
+	for _, source := range sources {
+		resolutions, err := sp.ResolveColumnRefs(source.Ref)
 		if err != nil {
 			continue
 		}
@@ -1069,14 +1076,14 @@ func (a *Analyzer) emitSources(sp *scope.Scope, sourceColumns []scope.ColumnRef,
 			// A CTE or derived table contributes the lineage of its own columns:
 			// there is no stored relation to point an edge at.
 			if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
-				a.traceThroughTableLineage(res.Relation, res.Ref.Column, targetSchema, targetTable, targetColumn, transform)
+				a.traceThroughTableLineage(res.Relation, res.Ref.Column, targetSchema, targetTable, targetColumn, source.Transform)
 				continue
 			}
 			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
 			a.addRelation(scope.NewLineageEdge(
 				res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 				targetSchema, targetTable, targetColumn,
-				transform,
+				source.Transform,
 				isTemp,
 			))
 		}
@@ -1232,7 +1239,7 @@ func insertSourceMap(sp *scope.Scope, targetColumns []string) map[string][]scope
 		if i < len(targetColumns) {
 			name = targetColumns[i]
 		}
-		out[name] = append(out[name], resolveWithin(sp, outputCol.SourceColumns)...)
+		out[name] = append(out[name], resolveWithin(sp, scope.Refs(outputCol.Sources))...)
 	}
 	return out
 }
@@ -1307,7 +1314,7 @@ func (a *Analyzer) processCreateTable(stmt *nodes.CreateTableStmt) {
 
 	sp := a.currentScope()
 	for _, outputCol := range sp.GetOutputColumns() {
-		a.emitSources(sp, outputCol.SourceColumns, targetSchema, targetTable, outputCol.Alias, outputCol.Transform)
+		a.emitSources(sp, outputCol.Sources, targetSchema, targetTable, outputCol.Alias)
 	}
 	a.emitPredicateInfluences(targetSchema, targetTable)
 }
@@ -1351,7 +1358,7 @@ func (a *Analyzer) processViewBody(name *nodes.TableRef, explicitColumnNames []s
 		if i < len(explicitColumnNames) {
 			targetColName = explicitColumnNames[i]
 		}
-		a.emitSources(sp, outputCol.SourceColumns, targetSchema, targetView, targetColName, outputCol.Transform)
+		a.emitSources(sp, outputCol.Sources, targetSchema, targetView, targetColName)
 	}
 	a.emitPredicateInfluences(targetSchema, targetView)
 }
@@ -1667,7 +1674,7 @@ func (a *Analyzer) subquerySources(sel *nodes.SelectStmt, sp *scope.Scope) []sco
 	}
 	var out []scope.ColumnRef
 	for _, col := range resolveOutputColumns(subScope, subScope.GetOutputColumns()) {
-		out = append(out, col.SourceColumns...)
+		out = append(out, scope.Refs(col.Sources)...)
 	}
 	return out
 }
@@ -2196,12 +2203,12 @@ func (a *Analyzer) expandWildcardWithCatalog(tableRef *scope.TableRef, sp *scope
 	for _, colMeta := range tableMeta.Columns {
 		sp.AddOutputColumn(scope.OutputColumn{
 			Alias: colMeta.Name,
-			SourceColumns: []scope.ColumnRef{{
+			Sources: scope.NewColumnSources([]scope.ColumnRef{{
 				Schema:   tableRef.Schema,
 				Table:    tableRef.Table,
 				Column:   colMeta.Name,
 				Resolved: true,
-			}},
+			}}, nil),
 		})
 	}
 	return true
