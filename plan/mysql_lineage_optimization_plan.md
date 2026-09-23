@@ -96,21 +96,12 @@ import paths and the registered engine. Upstream omni was not touched.
 Verification: `go test ./... -count=1` green, `golangci-lint run
 --allow-parallel-runners` reports 0 issues, `gofmt -l` clean.
 
-**Still open (deferred, not defects):**
-
-- `Transformation.GroupKeys` is still never populated (GROUP BY keys are not read).
-- Whether `WHERE` / join `ON` / `ORDER BY` / `GROUP BY` / `HAVING` columns should
-  be recorded as influences remains a product decision (Phase 3). Today only
-  DELETE's `WHERE` is, and a subquery's filter columns are deliberately excluded
-  to stay consistent with "a SELECT's WHERE is not lineage".
-- The public API collapses relation types to DIRECT/INDIRECT, so the newly
-  produced UNION/INTERSECT/EXCEPT/GROUP values are internal until the proto is
-  widened.
-- Materialized views still have no output-column list in the store proto, so a
-  wildcard over an MV falls back to `*`.
-- The three mysql-family analyzers remain copies kept in sync by regeneration;
-  the parser-independent core was not extracted (§5.1).
-- `scope.GetTables` / `GetCTEs` still return the internal maps (§5.4).
+**Still open:** this list was superseded by §10.2, which is the live one. Both
+items it originally deferred are implemented — `GROUP BY` keys (§10.9, §10.16)
+and `WHERE` / `ON` influence recording (§10.10, §10.17) — the API reports every
+relation type the model holds (§10.14), and the materialized-view column list,
+the three mysql-family copies and `scope.Tables` / `CTEs` (which now return a
+clone) are recorded there.
 
 ## 1. Method and baseline
 
@@ -890,13 +881,17 @@ changing one is a deliberate, visible corpus change.
    rewritten even though no column is read.
 4. A set-operation edge carries `union` / `intersect` / `except` as its relation
    type and transformation, and the output columns are named by the first arm.
-   `convertRelationType` (`backend/api/v1/lineage_service.go`) still maps every
-   non-`DIRECT` value to `INDIRECT`, so the richer value is analyzer-internal
-   until the proto is widened.
-5. Unqualified-column disambiguation needs metadata for *every* relation in
-   scope. One relation without metadata drops the whole scope back to the
-   deterministic key-order rule; a single-relation scope keeps that rule even
-   when its metadata lacks the column, so stale metadata cannot drop a real
+   `convertRelationType` (`backend/api/v1/lineage_service.go`) reports every value
+   the model holds (§10.14), so the relation type reaches the API and the frontend
+   instead of staying analyzer-internal.
+5. Unqualified-column disambiguation consults catalog metadata and is trusted in
+   both directions: every described relation that owns the name is reported
+   (a coalesced `USING` / `NATURAL JOIN` column names both sides, §10.11), a
+   scope whose relations are all described and none of which owns the name does
+   not provide it and the search continues outward (§10.11), and an undescribed
+   relation answers a name no described relation owns — preferred over one the
+   catalog ruled out (§10.12). A single-relation scope keeps the name-order rule
+   even when its metadata lacks the column, so stale metadata cannot drop a real
    column.
 6. Identifier case is preserved verbatim in the MySQL family (`A.ID` stays
    `A.ID`).
@@ -920,14 +915,77 @@ Not ours to fix:
 - The MariaDB parser stops at two levels of parenthesized join nesting — the shape
   mysqldump emits for a view — where the MySQL parser accepts any depth. An omni
   gap, recorded in `knownParserGaps` with a test that fails once it is fixed.
+- StarRocks `SELECT * REPLACE (…)`, `GROUP BY ALL` and
+  `CREATE VIEW … SECURITY NONE …` are parser gaps kept out of the corpus
+  (`plan/starrocks_lineage_plan.md` F4), and a cross-catalog reference
+  (`hive_catalog.db.tbl`) is dropped because the registry has no catalog
+  dimension.
 
-Ours:
+Ours, by priority:
 
-- StarRocks classifies an expression by the first function call it contains, so
-  `SUM(x) OVER (…)` is reported as `AGGREGATE` where the MySQL family and
-  PostgreSQL report `WINDOW`, and `SUM(x) + 1` as `AGGREGATE` where they report
-  `OPERATOR`. The GROUP BY keys still follow §10.9 (§10.16), but the operation and
-  the window's `partition_by` / `order_by` differ.
+1. **An update assignment's source column that cannot be resolved is written as an
+   edge with no source table, instead of being dropped.** Four analyzers fall back
+   to the unresolved reference at seven sites — `mysql/analyzer.go:1195` and
+   `:1380`, the MariaDB and TiDB copies of both, `postgresql/analyzer.go:915` and
+   `starrocks/analyzer.go:656` — where every other path drops it. Reachable
+   without a typo:
+   - MySQL family `UPDATE t1 JOIN t2 ON t1.id = t2.id SET a = nosuchcol` →
+     `"".nosuchcol → t1.a`
+   - MySQL family `INSERT INTO t (a) VALUES (1) ON DUPLICATE KEY UPDATE a = a + 1`
+     → `"".a → t.a`, because the target table is not in scope for the clause
+   - PostgreSQL `INSERT … ON CONFLICT (a) DO UPDATE SET a = nosuchcol` →
+     `"".nosuchcol → t.a`
+   - StarRocks `UPDATE t SET a = nosuchcol FROM s WHERE t.id = s.id` →
+     `"".nosuchcol → t.a`
+
+   The runner turns that into a GUID built from an empty name
+   (`backend/runner/lineageanalyzer/analyzer.go:305`), finds no source type for it
+   and stores a `column_lineage` row pointing at an object no registry entry owns.
+   The fix is the policy every other site already follows: drop it.
+2. **An `UPDATE`'s SET target is resolved through the scope instead of being bound
+   to the statement's target relation**, so a statement with more than one relation
+   can write the edge onto the wrong table — a phantom:
+   - StarRocks `UPDATE t SET a = s.x FROM s WHERE t.id = s.id` → `s.x → s.a`
+     (should be `t.a`); `UPDATE z SET a = s.x FROM s` loses `z` entirely and writes
+     `s.x → s.a`
+   - MySQL family `UPDATE t1 AS x JOIN t2 ON x.id = t2.id SET a = t2.a` →
+     `t2.a → t2.a` (should be `t1.a`)
+
+   PostgreSQL is correct here, because it takes the target column from the
+   `ResTarget` name and knows its target relation. The corpus never covers a
+   multi-relation `UPDATE` with an unqualified SET target: StarRocks' one `FROM`
+   case (`09`:44) passes because its catalog makes the SET column unambiguous.
+3. **StarRocks classifies an expression by the first function call it contains**, so
+   `SUM(x) OVER (…)` is reported as `AGGREGATE` where the MySQL family and
+   PostgreSQL report `WINDOW`, and `SUM(x) + 1` as `AGGREGATE` where they report
+   `OPERATOR`. The GROUP BY keys still follow §10.9 (§10.16), but the operation and
+   the window's `partition_by` / `order_by` differ.
+4. **PostgreSQL `MERGE` is silently ignored** — 0 edges and no error — where
+   StarRocks reports an explicit "not implemented yet". A parseable statement must
+   never produce an empty result silently, which is the policy that analyzer states
+   for itself. (StarRocks `MERGE` is the same gap, failing loudly by decision.)
+5. **PostgreSQL `UPDATE t SET (a, b) = (SELECT x, y FROM s)` becomes a cross
+   product**: four edges (`s.x` and `s.y` to each of `t.a` and `t.b`) instead of the
+   two positional ones, because the AST's `MultiAssignRef` is not handled.
+6. **PostgreSQL drops a `FROM` item it does not model**, so
+   `SELECT x FROM t TABLESAMPLE BERNOULLI (10)` yields no edges at all: the
+   relation is lost, not merely the columns. `RangeTableSample` — and
+   `RangeFunction` — fall into `processTableExpr`'s `default`. A function in FROM
+   genuinely has no stored relation; a table sample wraps one.
+7. **PostgreSQL `COPY t FROM …` records nothing**, where MySQL `LOAD DATA`
+   (`__file__.* → t.*`) and StarRocks `COPY INTO` / `LOAD` record a file-source
+   edge. The same data-loading statement has lineage in two engines and none in the
+   third.
+8. **A materialized view has no output-column list in the store proto**, so a
+   wildcard over one falls back to `*`. Closing that needs a proto field plus a
+   sync per engine, and it is a StarRocks/PostgreSQL shape today.
+   `MaterializedViewMetadata.triggers` still carries the copy-pasted "ordered list
+   of columns in the materialized view" comment over a `TriggerMetadata` field that
+   §5.3 flagged, and the MV branch of `catalog/provide.go` reports no metadata on
+   purpose rather than expanding dependency columns.
+9. **`ON CONFLICT … EXCLUDED.col` is dropped** rather than resolved to the INSERT's
+   source column (PG-FU-5 in `plan/postgresql_omni_parser_migration_plan.md`). The
+   INSERT-source edge already covers the common case.
 
 Decided, and deliberately not defects:
 
@@ -939,9 +997,6 @@ Decided, and deliberately not defects:
   columns are unknown; for two relations that were never synced that is still the
   scope's name order (§10.12). Two undescribed relations are out of scope by
   decision.
-- A materialized view has no output-column list in the store proto, so a wildcard
-  over one falls back to `*`. Closing that needs a proto field plus a sync per
-  engine, and it is a StarRocks/PostgreSQL shape today.
 - Several statements in one MANUAL_SQL text are rejected: they have no single
   result shape, and their `__result__` columns would collide on one object.
 - `JSON_TABLE`'s argument columns are not recorded: a function in FROM would need
