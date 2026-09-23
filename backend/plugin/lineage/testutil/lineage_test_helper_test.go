@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 )
 
@@ -176,4 +177,111 @@ func testRelation(fromField, toField string) model.ColumnRelation {
 		Source: model.Column{Table: model.ObjectIdentifier{Name: "users"}, Name: fromField},
 		Target: model.Column{Table: model.ObjectIdentifier{Name: "__result__"}, Name: toField},
 	}
+}
+
+// A misspelled key would otherwise be ignored, silently downgrading a case to
+// subset matching or turning an expectation field into a wildcard.
+func TestLoadLineageTestSuiteRejectsUnknownKey(t *testing.T) {
+	tempDir := t.TempDir()
+	suitePath := filepath.Join(tempDir, "typo.yaml")
+
+	require.NoError(t, os.WriteFile(suitePath, []byte(`name: typo
+cases:
+  - name: misspelled exact_edges
+    sql: SELECT 1
+    exact_edge: true
+    expected_edges: []
+`), 0o600))
+
+	_, err := LoadLineageTestSuiteFromYAML(suitePath)
+	require.Error(t, err, "a misspelled key must be rejected instead of silently ignored")
+}
+
+// subset takes precedence over exact_edges, so a deliberately partial case keeps
+// passing once exact matching becomes the default.
+func TestRunLineageTestHonorsSubset(t *testing.T) {
+	tempDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "subset.yaml"), []byte(`name: subset
+cases:
+  - name: subset tolerates an extra edge
+    sql: SELECT 1
+    exact_edges: true
+    subset: true
+    expected_edges:
+      - from_table: users
+        from_field: id
+        to_table: __result__
+        to_field: id
+`), 0o600))
+
+	suite, err := LoadLineageTestSuiteFromYAML(filepath.Join(tempDir, "subset.yaml"))
+	require.NoError(t, err)
+	require.True(t, suite.Cases[0].Subset)
+	require.True(t, suite.Cases[0].ExpectedEdges[0].SubsetTransformations,
+		"the case-level subset flag must relax transformation matching too")
+
+	analyze := func(_ string, _ catalog.Provide) ([]model.ColumnRelation, error) {
+		return []model.ColumnRelation{testRelation("id", "id"), testRelation("name", "name")}, nil
+	}
+	RunLineageTestSuitesFromYAMLDir(t, tempDir, analyze)
+}
+
+// Transformation expectations are exhaustive: an unlisted produced
+// transformation fails, and so does an expectation with no produced match.
+func TestValidateExactTransformations(t *testing.T) {
+	relation := testRelation("name", "upper_name")
+	relation.Transformation = []model.Transformation{
+		model.NewProjectTransformation("name"),
+		model.NewAggregateTransformation("SUM", "SUM(name)", nil),
+	}
+	base := ExpectedEdge{
+		FromTable: "users", FromField: "name", ToTable: "__result__", ToField: "upper_name",
+	}
+
+	exp := base
+	exp.Transformations = []ExpectedTransformation{{Operation: "PROJECT", Expression: "name"}}
+	ft := &fakeT{}
+	ValidateExpectedEdges(ft, []model.ColumnRelation{relation}, []ExpectedEdge{exp})
+	require.True(t, ft.failed, "an unlisted produced transformation must fail the exact comparison")
+
+	exp = base
+	exp.Transformations = []ExpectedTransformation{
+		{Operation: "PROJECT", Expression: "name"},
+		{Operation: "AGGREGATE", FunctionName: "SUM"},
+		{Operation: "WINDOW"},
+	}
+	ft = &fakeT{}
+	ValidateExpectedEdges(ft, []model.ColumnRelation{relation}, []ExpectedEdge{exp})
+	require.True(t, ft.failed, "an expectation with no produced match must fail")
+
+	exp = base
+	exp.Transformations = []ExpectedTransformation{
+		{Operation: "PROJECT", Expression: "name"},
+		{Operation: "AGGREGATE", FunctionName: "SUM"},
+	}
+	ft = &fakeT{}
+	ValidateExpectedEdges(ft, []model.ColumnRelation{relation}, []ExpectedEdge{exp})
+	require.False(t, ft.failed, "an exact transformation set must pass")
+
+	exp = base
+	exp.SubsetTransformations = true
+	exp.Transformations = []ExpectedTransformation{{Operation: "PROJECT", Expression: "name"}}
+	ft = &fakeT{}
+	ValidateExpectedEdges(ft, []model.ColumnRelation{relation}, []ExpectedEdge{exp})
+	require.False(t, ft.failed, "a subset expectation must ignore unlisted transformations")
+}
+
+// The missing-expectation path must report a failure, not index the match list
+// with -1 when the testing stub does not abort.
+func TestValidateExactEdgesReportsMissingExpectation(t *testing.T) {
+	relations := []model.ColumnRelation{testRelation("id", "id")}
+
+	ft := &fakeT{}
+	require.NotPanics(t, func() {
+		ValidateExactEdges(ft, relations, []ExpectedEdge{
+			{FromTable: "users", FromField: "id"},
+			{FromTable: "users", FromField: "missing"},
+		})
+	})
+	require.True(t, ft.failed)
 }

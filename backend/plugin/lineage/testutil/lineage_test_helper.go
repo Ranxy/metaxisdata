@@ -2,6 +2,7 @@
 package testutil
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,9 +42,15 @@ type ExpectedEdge struct {
 	// Optional: whether target is temporary (nil = not checked)
 	IsTemp *bool
 
-	// Optional: expected transformations. Each entry must match one of the
-	// relation's transformations on every field it sets (nil = not checked).
+	// Optional: expected transformations. Compared exactly — same count, each
+	// entry matching a distinct produced transformation — unless the case sets
+	// Subset, in which case each entry only has to match some transformation.
 	Transformations []ExpectedTransformation
+
+	// SubsetTransformations relaxes the transformation comparison to "each
+	// expected entry matches some produced transformation". It is derived from
+	// the case-level Subset flag.
+	SubsetTransformations bool
 }
 
 // ExpectedTransformation matches a transformation on the fields it sets.
@@ -78,6 +85,11 @@ type LineageTestCase struct {
 	// distinct expected edge, so an unexpected extra edge fails the case.
 	ExactEdges bool
 
+	// Subset declares the case deliberately partial: expectations are matched as
+	// subsets (it takes precedence over ExactEdges), which is the escape hatch a
+	// case uses when exact matching becomes the default.
+	Subset bool
+
 	// ExpectError indicates the test expects an analysis error
 	ExpectError bool
 
@@ -102,6 +114,7 @@ type yamlLineageTestCase struct {
 	Catalog       *yamlCatalog        `yaml:"catalog,omitempty"`
 	ExpectedEdges *[]yamlExpectedEdge `yaml:"expected_edges,omitempty"`
 	ExactEdges    bool                `yaml:"exact_edges,omitempty"`
+	Subset        bool                `yaml:"subset,omitempty"`
 	ExpectError   bool                `yaml:"expect_error,omitempty"`
 	Debug         bool                `yaml:"debug,omitempty"`
 }
@@ -151,7 +164,12 @@ func LoadLineageTestSuiteFromYAML(path string) (LineageTestSuite, error) {
 	}
 
 	var raw yamlLineageTestSuite
-	if err := yaml.Unmarshal(data, &raw); err != nil {
+	// KnownFields rejects a misspelled key instead of silently ignoring it: a typo
+	// in exact_edges would otherwise downgrade a case to subset matching, and one
+	// in a field of an expectation would turn it into a wildcard.
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&raw); err != nil {
 		return LineageTestSuite{}, fmt.Errorf("failed to unmarshal lineage test suite %q: %w", path, err)
 	}
 
@@ -253,7 +271,7 @@ func RunLineageTest(t *testing.T, tc LineageTestCase, analyzeFn AnalyzeFunc) {
 
 	// An explicitly empty expectation means the statement must produce no edges.
 	if tc.ExpectedEdges != nil {
-		if tc.ExactEdges {
+		if tc.ExactEdges && !tc.Subset {
 			ValidateExactEdges(t, relations, tc.ExpectedEdges)
 		} else {
 			ValidateExpectedEdges(t, relations, tc.ExpectedEdges)
@@ -267,6 +285,7 @@ func (c *yamlLineageTestCase) toLineageTestCase() (LineageTestCase, error) {
 		SQL:         c.SQL,
 		ExpectError: c.ExpectError,
 		ExactEdges:  c.ExactEdges,
+		Subset:      c.Subset,
 		Debug:       c.Debug,
 	}
 
@@ -281,6 +300,7 @@ func (c *yamlLineageTestCase) toLineageTestCase() (LineageTestCase, error) {
 			if err != nil {
 				return LineageTestCase{}, errors.Wrap(err, "failed to convert expected edge")
 			}
+			edge.SubsetTransformations = c.Subset
 			tc.ExpectedEdges = append(tc.ExpectedEdges, edge)
 		}
 	}
@@ -431,11 +451,14 @@ func ValidateExactEdges(t testingT, relations []model.ColumnRelation, expected [
 			matched = i
 			break
 		}
-		require.NotEqual(t, -1, matched,
-			"Expected edge not found: %s.%s.%s.%s -> %s.%s.%s.%s\nAvailable edges: %s",
-			exp.FromDatabase, exp.FromSchema, exp.FromTable, exp.FromField,
-			exp.ToDatabase, exp.ToSchema, exp.ToTable, exp.ToField,
-			FormatRelations(relations))
+		if matched < 0 {
+			require.Failf(t, "expected edge not found",
+				"Expected edge not found: %s.%s.%s.%s -> %s.%s.%s.%s\nAvailable edges: %s",
+				exp.FromDatabase, exp.FromSchema, exp.FromTable, exp.FromField,
+				exp.ToDatabase, exp.ToSchema, exp.ToTable, exp.ToField,
+				FormatRelations(relations))
+			return
+		}
 		used[matched] = true
 		validateEdgeFields(t, relations[matched], exp)
 	}
@@ -464,17 +487,43 @@ func validateEdgeFields(t testingT, rel model.ColumnRelation, exp ExpectedEdge) 
 			exp.FromTable, exp.FromField, exp.ToTable, exp.ToField)
 	}
 
+	if len(exp.Transformations) == 0 {
+		return
+	}
+
+	if exp.SubsetTransformations {
+		for _, expTransform := range exp.Transformations {
+			require.True(t,
+				slices.ContainsFunc(rel.Transformation, func(transform model.Transformation) bool {
+					return TransformationMatches(transform, expTransform)
+				}),
+				"Expected transformation %+v not found for edge %s.%s -> %s.%s; got %+v",
+				expTransform, exp.FromTable, exp.FromField, exp.ToTable, exp.ToField, rel.Transformation)
+		}
+		return
+	}
+
+	// Exact: the same number of transformations, each expectation matching a
+	// distinct produced one, so an unexpected extra transformation fails too.
+	require.Len(t, rel.Transformation, len(exp.Transformations),
+		"Transformation count mismatch for edge %s.%s -> %s.%s; got %+v",
+		exp.FromTable, exp.FromField, exp.ToTable, exp.ToField, rel.Transformation)
+	used := make([]bool, len(rel.Transformation))
 	for _, expTransform := range exp.Transformations {
-		found := false
-		for _, transform := range rel.Transformation {
-			if TransformationMatches(transform, expTransform) {
-				found = true
+		matched := -1
+		for i, transform := range rel.Transformation {
+			if !used[i] && TransformationMatches(transform, expTransform) {
+				matched = i
 				break
 			}
 		}
-		require.True(t, found,
-			"Expected transformation %+v not found for edge %s.%s -> %s.%s; got %+v",
-			expTransform, exp.FromTable, exp.FromField, exp.ToTable, exp.ToField, rel.Transformation)
+		if matched < 0 {
+			require.Failf(t, "expected transformation not found",
+				"Expected transformation %+v not found for edge %s.%s -> %s.%s; got %+v",
+				expTransform, exp.FromTable, exp.FromField, exp.ToTable, exp.ToField, rel.Transformation)
+			return
+		}
+		used[matched] = true
 	}
 }
 
