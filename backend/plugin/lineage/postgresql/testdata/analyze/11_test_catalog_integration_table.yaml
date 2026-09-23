@@ -34,9 +34,13 @@ cases:
                 - name
       expected_edges:
         - from_table: users
-          from_field: '*'
+          from_field: id
           to_table: __result__
-          to_field: '*'
+          to_field: id
+        - from_table: users
+          from_field: name
+          to_table: __result__
+          to_field: name
         - from_table: orders
           from_field: total
           to_table: __result__
@@ -140,3 +144,35 @@ cases:
                 - id
                 - y
       expected_edges: []
+    - name: aliased table star with catalog
+      sql: SELECT e.*, d.* FROM employees e JOIN departments d ON e.department_id = d.id
+      catalog:
+        tables:
+            employees:
+                - id
+                - name
+                - department_id
+            departments:
+                - id
+                - name
+      expected_edges:
+        - from_table: employees
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+        - from_table: employees
+          from_field: department_id
+          to_table: __result__
+          to_field: department_id
+        - from_table: departments
+          from_field: id
+          to_table: __result__
+          to_field: id
+        - from_table: departments
+          from_field: name
+          to_table: __result__
+          to_field: name

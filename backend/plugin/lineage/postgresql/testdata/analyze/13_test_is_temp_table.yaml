@@ -47,8 +47,6 @@ cases:
           has_transform: true
           is_temp: false
     - name: CREATE TABLE AS SELECT targets real table
-      # Blocked: postgresql still emits the duplicate __result__ edges (plan 2.9)
-      subset: true
       sql: CREATE TABLE summary AS SELECT category, COUNT(*) as cnt FROM products GROUP BY category
       expected_edges:
         - from_table: products

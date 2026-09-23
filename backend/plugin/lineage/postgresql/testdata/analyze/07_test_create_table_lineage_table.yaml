@@ -1,8 +1,6 @@
 name: TestCreateTableLineage_Table
 cases:
     - name: CREATE TABLE AS SELECT
-      # Blocked: postgresql still emits the duplicate __result__ edges (plan 2.9)
-      subset: true
       sql: CREATE TABLE new_users AS SELECT id, name FROM users WHERE age > 30
       expected_edges:
         - from_table: users
@@ -14,8 +12,6 @@ cases:
           to_table: new_users
           to_field: name
     - name: CREATE TABLE AS SELECT with JOIN
-      # Blocked: postgresql still emits the duplicate __result__ edges (plan 2.9)
-      subset: true
       sql: "CREATE TABLE user_stats AS \n\t\t\t      SELECT u.id, u.name, COUNT(o.id) AS order_count, SUM(o.total) AS total_spent\n\t\t\t      FROM users u \n\t\t\t      LEFT JOIN orders o ON u.id = o.user_id \n\t\t\t      GROUP BY u.id, u.name"
       expected_edges:
         - from_table: users
@@ -26,15 +22,19 @@ cases:
           from_field: name
           to_table: user_stats
           to_field: name
-        - to_table: user_stats
+        - from_table: orders
+          from_field: id
+          to_table: user_stats
           to_field: order_count
+          relation_type: group
           has_transform: true
-        - to_table: user_stats
+        - from_table: orders
+          from_field: total
+          to_table: user_stats
           to_field: total_spent
+          relation_type: group
           has_transform: true
     - name: CREATE TEMP TABLE AS SELECT
-      # Blocked: postgresql still emits the duplicate __result__ edges (plan 2.9)
-      subset: true
       sql: CREATE TEMP TABLE tmp_active_users AS SELECT id, name FROM users WHERE status = 'active'
       expected_edges:
         - from_table: users
@@ -46,8 +46,6 @@ cases:
           to_table: tmp_active_users
           to_field: name
     - name: CREATE TABLE AS SELECT with schema
-      # Blocked: postgresql still emits the duplicate __result__ edges (plan 2.9)
-      subset: true
       sql: CREATE TABLE myschema.new_users AS SELECT id, name FROM public.users
       expected_edges:
         - from_schema: public

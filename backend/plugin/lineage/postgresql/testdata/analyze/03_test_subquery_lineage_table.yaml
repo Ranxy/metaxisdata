@@ -40,9 +40,9 @@ cases:
           from_field: amount
           to_table: __result__
           to_field: total_amount
+    # The subquery is analyzed in its own scope: its output depends on the rows
+    # of orders, not on the enclosing query's columns.
     - name: correlated subquery in SELECT
-      # Blocked: postgresql does not analyze an expression subquery in its own scope yet (plan 2.3)
-      subset: true
       sql: "SELECT u.id, u.name, \n\t\t\t          (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS order_count\n\t\t\t      FROM users u"
       expected_edges:
         - from_table: users
@@ -53,6 +53,13 @@ cases:
           from_field: name
           to_table: __result__
           to_field: name
+        - from_table: orders
+          from_field: '*'
+          to_table: __result__
+          to_field: order_count
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
     - name: subquery in WHERE EXISTS
       sql: |-
         SELECT u.id, u.name

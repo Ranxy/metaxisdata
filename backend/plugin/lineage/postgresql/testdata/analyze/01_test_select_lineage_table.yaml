@@ -145,3 +145,35 @@ cases:
           to_field: create_date
           relation_type: indirect
           has_transform: true
+    # An aliased wildcard resolves through the scope key (the alias) while the
+    # edge keeps the real relation name.
+    - name: select star over aliased relations without catalog
+      sql: SELECT * FROM employees e JOIN departments d ON e.id = d.department_id
+      expected_edges:
+        - from_table: employees
+          from_field: '*'
+          to_table: __result__
+          to_field: '*'
+          relation_type: direct
+          is_temp: true
+        - from_table: departments
+          from_field: '*'
+          to_table: __result__
+          to_field: '*'
+          relation_type: direct
+          is_temp: true
+    - name: select table star over an aliased relation
+      sql: SELECT e.*, d.name FROM employees e JOIN departments d ON e.department_id = d.id
+      expected_edges:
+        - from_table: employees
+          from_field: '*'
+          to_table: __result__
+          to_field: '*'
+          relation_type: direct
+          is_temp: true
+        - from_table: departments
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          is_temp: true

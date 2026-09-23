@@ -43,12 +43,13 @@ cases:
           to_field: discount
           has_transform: true
     - name: UPDATE with subquery
-      # Blocked: postgresql does not analyze an expression subquery in its own scope yet (plan 2.3)
-      subset: true
       sql: "UPDATE users \n\t\t\t      SET total_orders = (SELECT COUNT(*) FROM orders WHERE orders.user_id = users.id)"
       expected_edges:
-        - to_table: users
+        - from_table: orders
+          from_field: '*'
+          to_table: users
           to_field: total_orders
+          relation_type: indirect
           has_transform: true
     - name: UPDATE with CTE
       sql: |-

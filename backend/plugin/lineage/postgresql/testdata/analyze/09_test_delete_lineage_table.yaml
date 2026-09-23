@@ -35,12 +35,19 @@ cases:
           to_field: __deletion__
           has_transform: true
     - name: DELETE with subquery
-      # Blocked: postgresql resolves the subquery's columns in the outer scope (plan 2.3)
-      subset: true
       sql: "DELETE FROM users \n\t\t\t      WHERE id IN (SELECT user_id FROM orders WHERE status = 'cancelled' GROUP BY user_id HAVING COUNT(*) > 5)"
       expected_edges:
-        - to_table: users
+        - from_table: users
+          from_field: id
+          to_table: users
           to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+        - from_table: orders
+          from_field: user_id
+          to_table: users
+          to_field: __deletion__
+          relation_type: indirect
           has_transform: true
     - name: DELETE with CTE
       sql: |-

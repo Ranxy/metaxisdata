@@ -44,14 +44,6 @@ cases:
       expected_edges:
         - from_table: users
           from_field: id
-          to_table: __result__
-          to_field: id
-        - from_table: orders
-          from_field: amount
-          to_table: __result__
-          to_field: amount
-        - from_table: users
-          from_field: id
           to_table: v
           to_field: id
           is_temp: false

@@ -65,25 +65,86 @@ func (*Analyzer) columnRefFromFields(fields *pgast.List) scope.ColumnRef {
 	return ref
 }
 
-// extractColumnsFromNode collects every column reference in an expression,
-// recursing through subqueries exactly as the legacy parse-tree walk did.
-func (a *Analyzer) extractColumnsFromNode(node pgast.Node) []scope.ColumnRef {
+// extractColumnsFromNode collects the column references an expression depends
+// on. A subquery is opaque here: its columns belong to its own scope and are
+// resolved by subquerySources, so they are not attributed to the relations of
+// the enclosing query. A SubLink's Testexpr still belongs to the enclosing
+// expression and is collected.
+func (a *Analyzer) extractColumnsFromNode(node pgast.Node, sp *scope.Scope) []scope.ColumnRef {
 	columns := make([]scope.ColumnRef, 0)
 	if node == nil {
 		return columns
 	}
+	var subqueries []*pgast.SelectStmt
 	pgast.Inspect(node, func(n pgast.Node) bool {
-		cr, ok := n.(*pgast.ColumnRef)
-		if !ok {
-			return true
-		}
-		colRef := a.columnRefFromFields(cr.Fields)
-		if colRef.Column != "" && colRef.Column != wildcardColumn {
-			columns = append(columns, colRef)
+		switch x := n.(type) {
+		case *pgast.SubLink:
+			if x.Testexpr != nil {
+				columns = append(columns, a.extractColumnsFromNode(x.Testexpr, sp)...)
+			}
+			if sel, ok := x.Subselect.(*pgast.SelectStmt); ok {
+				subqueries = append(subqueries, sel)
+			}
+			return false // the subselect is analyzed as a unit below
+		case *pgast.ColumnRef:
+			colRef := a.columnRefFromFields(x.Fields)
+			if colRef.Column != "" && colRef.Column != wildcardColumn {
+				columns = append(columns, colRef)
+			}
+		default:
+			// Other nodes are traversed for the column references they contain.
 		}
 		return true
 	})
+	for _, sel := range subqueries {
+		columns = append(columns, a.subquerySources(sel, sp)...)
+	}
 	return columns
+}
+
+// subquerySources analyzes a subquery in its own scope and returns the sources of
+// its output columns, resolved and marked so the enclosing scope can use them
+// without seeing the subquery's relations.
+func (a *Analyzer) subquerySources(sel *pgast.SelectStmt, sp *scope.Scope) []scope.ColumnRef {
+	if sel == nil {
+		return nil
+	}
+	a.scopeStack = append(a.scopeStack, scope.NewScope(sp))
+	a.processSelectStmt(sel)
+	subScope := a.popScope()
+	if subScope == nil {
+		return nil
+	}
+	var out []scope.ColumnRef
+	for _, col := range resolveOutputColumns(subScope, subScope.GetOutputColumns()) {
+		out = append(out, col.SourceColumns...)
+	}
+	return out
+}
+
+// resolveOutputColumns resolves each output column's source references against
+// the scope the column was collected in and marks them resolved. Without it a
+// later resolution in the enclosing scope would fail, because the subquery's
+// relations are not visible there, and the lineage would be dropped.
+func resolveOutputColumns(sp *scope.Scope, cols []scope.OutputColumn) []scope.OutputColumn {
+	out := make([]scope.OutputColumn, len(cols))
+	copy(out, cols)
+	for i := range out {
+		if len(out[i].SourceColumns) == 0 {
+			continue
+		}
+		resolved := make([]scope.ColumnRef, 0, len(out[i].SourceColumns))
+		for _, ref := range out[i].SourceColumns {
+			if r, err := sp.ResolveColumn(ref); err == nil {
+				r.Resolved = true
+				resolved = append(resolved, *r)
+			} else {
+				resolved = append(resolved, ref)
+			}
+		}
+		out[i].SourceColumns = resolved
+	}
+	return out
 }
 
 // isStarColumnRef reports whether a column reference is `*` or `table.*`.

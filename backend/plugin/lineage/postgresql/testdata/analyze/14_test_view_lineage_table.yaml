@@ -1,8 +1,6 @@
 name: TestViewLineage_Table
 cases:
     - name: simple CREATE VIEW
-      # Blocked: postgresql still emits the duplicate __result__ edges (plan 2.9)
-      subset: true
       sql: CREATE VIEW active_users AS SELECT id, name FROM users WHERE status = 'active'
       expected_edges:
         - from_table: users
@@ -14,8 +12,6 @@ cases:
           to_table: active_users
           to_field: name
     - name: CREATE VIEW with explicit columns
-      # Blocked: postgresql still emits the duplicate __result__ edges (plan 2.9)
-      subset: true
       sql: CREATE VIEW user_summary (user_id, user_name) AS SELECT id, name FROM users
       expected_edges:
         - from_table: users
@@ -27,8 +23,6 @@ cases:
           to_table: user_summary
           to_field: user_name
     - name: CREATE OR REPLACE VIEW
-      # Blocked: postgresql still emits the duplicate __result__ edges (plan 2.9)
-      subset: true
       sql: CREATE OR REPLACE VIEW user_details AS SELECT u.id, u.name, u.email FROM users u
       expected_edges:
         - from_table: users
@@ -44,8 +38,6 @@ cases:
           to_table: user_details
           to_field: email
     - name: CREATE VIEW with JOIN
-      # Blocked: postgresql still emits the duplicate __result__ edges (plan 2.9)
-      subset: true
       sql: "CREATE VIEW user_orders_view AS \n\t\t\t      SELECT u.id, u.name, COUNT(o.id) AS order_count\n\t\t\t      FROM users u\n\t\t\t      LEFT JOIN orders o ON u.id = o.user_id\n\t\t\t      GROUP BY u.id, u.name"
       expected_edges:
         - from_table: users
@@ -56,12 +48,13 @@ cases:
           from_field: name
           to_table: user_orders_view
           to_field: name
-        - to_table: user_orders_view
+        - from_table: orders
+          from_field: id
+          to_table: user_orders_view
           to_field: order_count
+          relation_type: group
           has_transform: true
     - name: CREATE VIEW with schema qualification
-      # Blocked: postgresql still emits the duplicate __result__ edges (plan 2.9)
-      subset: true
       sql: CREATE VIEW myschema.active_users AS SELECT id, name FROM public.users WHERE active = true
       expected_edges:
         - from_schema: public
