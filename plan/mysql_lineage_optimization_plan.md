@@ -913,9 +913,12 @@ changing one is a deliberate, visible corpus change.
 
 ### 10.2 Still open after remediation
 
-- Whether `WHERE` / join `ON` / `ORDER BY` / `HAVING` columns should be recorded
-  as influences remains undecided. `Transformation.GroupKeys` is populated for
-  the MySQL family as of §10.9, and is still empty for PostgreSQL and StarRocks.
+- Predicate influences are recorded for SELECT-based statements only (§10.10).
+  `ORDER BY` — and `DISTINCT` / `LIMIT`, which also decide which rows survive —
+  is not recorded, `GROUP BY` has payload keys but no edge, and the `WHERE` of
+  `UPDATE` / `DELETE` is not recorded either. `Transformation.GroupKeys` is
+  populated for the MySQL family as of §10.9, and is still empty for PostgreSQL
+  and StarRocks.
 - The public API still collapses relation types to DIRECT/INDIRECT.
 - An unqualified reference that several same-named relations satisfy is still
   resolved rather than dropped: catalog metadata decides when it is complete,
@@ -925,8 +928,9 @@ changing one is a deliberate, visible corpus change.
   wildcard over an MV falls back to `*`.
 - The three MySQL-family analyzers remain copies kept in sync by regeneration;
   the parser-independent core was not extracted.
-- `scope.GetTables` / `GetCTEs` still return the internal maps, and
-  `SetOutputColumn` still no-ops silently on an out-of-range index.
+- `SetOutputColumn` still no-ops silently on an out-of-range index.
+  (`scope.GetTables` / `GetCTEs` were replaced by the ordered `Tables()` /
+  `CTEs()` in §10.7.)
 - The `schemas:` catalog key is only meaningful for PostgreSQL, and the harness
   had no database-qualified form at all, so a MySQL-family catalog entry could
   not express a qualifier: a case written with `schemas:` silently fell back to
@@ -940,8 +944,9 @@ changing one is a deliberate, visible corpus change.
   checked against a live server. Only the MySQL-family naming was corrected
   (§10.4); the stored target column does not match the engine's column for
   those two engines.
-- The `map[string]bool` function-name sets and `parseRelationType`'s `join` /
-  `unknown` cases are cosmetic leftovers.
+- The `map[string]bool` function-name sets are cosmetic leftovers.
+  `parseRelationType`'s `join` case became live in §10.10; its `unknown` case is
+  still dead.
 - The plan's own first-measurement performance figures were taken with a
   throwaway probe; the committed benchmark is the reference (see §10.3).
 
@@ -1220,3 +1225,95 @@ into a subquery fails the three subquery cases, dropping one AGGREGATE's
 `TestTransformationMatchesGroupKeys`. `gofmt`, `golangci-lint`, `go test ./...`,
 the build and the real-server integration suite are green; the MariaDB and TiDB
 copies remain pure regenerations of the MySQL analyzer.
+
+### 10.10 Sixth MySQL pass: row-set predicate influences
+
+`WHERE`, `HAVING` and join `ON` decide which rows a statement produces without
+their value reaching any output column. The plan left open whether to record
+them; they are now recorded as a **row-level influence**: the predicate column is
+the source, the statement's target object is the target, and the **target column
+is empty**, because the influence is on the rows rather than on any one column.
+
+The vocabulary and the shape come from OpenLineage rather than being invented:
+its `INDIRECT` transformation type is defined as "the output column value is
+impacted by the value of `inputField`, but it is not derived from it", with the
+example `SELECT source AS result FROM TAB WHERE pred = true`, and its indirect
+subtypes are exactly `JOIN`, `GROUP_BY`, `FILTER` and `SORT`
+([spec](http://openlineage.io/docs/1.48.0/spec/facets/dataset-facets/column_lineage_facet/)).
+The ingestion path already consumed `INDIRECT` and the frontend already renders
+it, so the SQL analyzers were the only side not producing it.
+
+Decisions, and what they cost:
+
+- **Row-level target, not per-output-column.** Recording one edge per predicate
+  column per output column would grow the corpus 2× and the worst case 7×
+  (a 12-column, 7-predicate view: 12 edges → 96), duplicate one fact N times, and
+  add nothing to the table graph, which collapses column edges anyway. One edge
+  per predicate column costs 0.5×.
+- **The target column is empty**, matching how the ingestion already stored a
+  dataset-level reference, so no synthetic marker, no frontend change and no i18n
+  key were needed.
+- **`FILTER` / `JOIN` operations**, and `GROUP_BY` / `SORT` exist for the
+  subtypes ingestion can carry. `determineRelationType` maps `JOIN` to
+  `RelationTypeJoin`, which was a dead enum value until now and makes
+  `parseRelationType`'s `join` case live; `FILTER` stays indirect, as OpenLineage
+  types it. The API still collapses both to `INDIRECT` (§10.2), which is exactly
+  what OpenLineage reports.
+- **SELECT-based statements only.** An `UPDATE`'s `WHERE` decides which rows are
+  written of the table the statement already targets, so it would be a self-edge
+  of low value; `DELETE` keeps its `__deletion__` marker, which names the effect
+  rather than an influence. Both are asserted by the existing corpus.
+- **`ORDER BY` is not recorded**, nor `DISTINCT` / `LIMIT`. OpenLineage has a
+  `SORT` subtype, so this is a scope decision rather than a claim that ordering
+  has no effect; it is the one clause whose effect is row order and truncation
+  rather than which rows exist. `GROUP BY` keeps its payload keys (§10.9) with no
+  edge.
+
+Implementation notes:
+
+- Predicates are collected while the query tree is walked and emitted by
+  whichever emitter runs last, so a filter inside a CTE, a derived table, a
+  scalar subquery or a set-operation arm is attributed to the statement's real
+  target rather than to a temporary one.
+- `HAVING` is the one clause that may name a select-list alias. An unqualified
+  name that matches an output column resolves to that column's own sources, so
+  `HAVING comment_count > 0` over `count(c.id) AS comment_count` records
+  `comments.id` instead of inventing a `comments.comment_count` that does not
+  exist.
+- `JOIN ... USING (col)` names a key of both sides, resolved through each side's
+  relation; `ON` uses its expression.
+- A row-level influence over a query-local relation is traced to its base table
+  through the existing `traceThroughTableLineage` path.
+- A column used by two clauses is one predicate, so it keeps one edge: `JOIN` is
+  collected before `FILTER` and names the relation type.
+- `Transformation.Condition` is no longer DELETE-only; it carries the predicate
+  text of a `FILTER` or `JOIN` edge.
+
+Harness: `from_field` and `to_field` became pointer-backed, so a written name —
+including the empty one — is an exact assertion and an omitted one is still a
+wildcard. Every existing expectation already wrote both, so the change cost no
+corpus churn, and `RequireFullEdgeAnnotations` now requires both. Without it,
+`to_field: ""` would have silently stopped checking the very column this pass
+depends on.
+
+Ingestion (the same change on the other side): a dataset-level column-lineage
+reference now keeps its `field` as the source column, records the target column
+as empty, and derives its relation type from its transformations instead of
+hard-coding `DIRECT`. Before, the filter column was dropped and an indirect
+relation was stored as direct.
+
+Corpus: `21_test_predicate_influence_table` adds 12 cases (WHERE, `ON`, a column
+that both joins and filters, `HAVING`, `HAVING` on an alias, `USING`, a derived
+table predicate, a predicate that is also a value source, a constant predicate,
+`ORDER BY` / `LIMIT`, a qualified predicate, an `INSERT ... SELECT`), and the 98
+predicate edges the existing cases gained were added mechanically. The shared
+corpus is 153 cases with 111 row-level edges; MariaDB and TiDB gained four
+between them.
+
+Negative-checked: disabling predicate emission fails 33 cases, emitting a
+non-empty target column fails 9 of the 12 new cases (which is what proves
+`to_field: ""` asserts emptiness), disabling the `HAVING` alias resolution fails
+the alias case and the `08` view, disabling `USING` fails three cases, and
+dropping the ingested field again fails the new ingestion test. `gofmt`,
+`golangci-lint`, `go test ./...`, the build and the real-server integration suite
+are green; the MariaDB and TiDB copies remain pure regenerations.
