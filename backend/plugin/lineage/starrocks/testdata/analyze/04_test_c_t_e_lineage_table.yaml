@@ -1,6 +1,7 @@
 name: TestCTELineage_Table
 cases:
     - name: simple CTE
+      exact_edges: true
       sql: WITH active_users AS (SELECT id, name FROM users WHERE status = 'active') SELECT au.id, au.name FROM active_users au
       expected_edges:
         - from_table: users
@@ -12,6 +13,7 @@ cases:
           to_table: __result__
           to_field: name
     - name: multiple CTEs with join
+      exact_edges: true
       sql: WITH active_users AS (SELECT id, name FROM users WHERE status = 'active'), user_orders AS (SELECT user_id, COUNT(*) AS order_count FROM orders GROUP BY user_id) SELECT au.id, au.name, uo.order_count FROM active_users au LEFT JOIN user_orders uo ON au.id = uo.user_id
       expected_edges:
         - from_table: users
@@ -28,6 +30,7 @@ cases:
           to_field: order_count
           has_transform: true
     - name: chained CTEs
+      exact_edges: true
       sql: WITH base AS (SELECT id, amount FROM orders), agg AS (SELECT id, SUM(amount) AS total FROM base GROUP BY id) SELECT agg.id, agg.total FROM agg
       expected_edges:
         - from_table: orders
@@ -40,6 +43,7 @@ cases:
           to_field: total
           has_transform: true
     - name: CTE with explicit column aliases
+      exact_edges: true
       sql: WITH c (a, b) AS (SELECT id, name FROM users) SELECT c.a, c.b FROM c
       expected_edges:
         - from_table: users

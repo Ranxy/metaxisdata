@@ -1,6 +1,7 @@
 name: TestInsertLineage_Table
 cases:
     - name: INSERT SELECT
+      exact_edges: true
       sql: INSERT INTO t2 SELECT id, name FROM users
       expected_edges:
         - from_table: users
@@ -17,6 +18,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: INSERT SELECT with an explicit column list
+      exact_edges: true
       sql: INSERT INTO t2 (a, b) SELECT id, name FROM users
       expected_edges:
         - from_table: users
@@ -32,6 +34,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: INSERT OVERWRITE
+      exact_edges: true
       sql: INSERT OVERWRITE t2 SELECT id, name FROM users
       expected_edges:
         - from_table: users
@@ -47,6 +50,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: INSERT BY NAME
+      exact_edges: true
       sql: INSERT INTO t2 BY NAME SELECT id, name FROM users
       expected_edges:
         - from_table: users
@@ -62,6 +66,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: INSERT SELECT with an aggregate
+      exact_edges: true
       sql: INSERT INTO t2 SELECT user_id, COUNT(*) AS orders FROM sales GROUP BY user_id
       expected_edges:
         - from_table: sales
@@ -78,14 +83,17 @@ cases:
           has_transform: true
           is_temp: false
     - name: INSERT SELECT with a star
+      exact_edges: true
       sql: INSERT INTO t2 SELECT * FROM users u
       expected_edges:
         - from_table: users
           from_field: '*'
           to_table: t2
+          to_field: '*'
           relation_type: direct
           is_temp: false
     - name: INSERT SELECT with a CTE
+      exact_edges: true
       sql: INSERT INTO t2 WITH c AS (SELECT id, name FROM users) SELECT c.id, c.name FROM c
       expected_edges:
         - from_table: users
@@ -101,6 +109,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: INSERT SELECT with a set operation
+      exact_edges: true
       sql: INSERT INTO t2 SELECT id FROM t1 UNION ALL SELECT id FROM t3
       expected_edges:
         - from_table: t1

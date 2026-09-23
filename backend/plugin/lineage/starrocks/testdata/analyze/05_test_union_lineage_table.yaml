@@ -1,6 +1,9 @@
 name: TestUnionLineage_Table
+# starrocks keeps every arm but does not emit the set-operation relation type yet
+# (plan 2.2), so the type is deliberately not asserted in this file.
 cases:
     - name: simple UNION
+      exact_edges: true
       sql: SELECT id, name FROM employees UNION SELECT id, name FROM contractors
       expected_edges:
         - from_table: employees
@@ -20,6 +23,7 @@ cases:
           to_table: __result__
           to_field: name
     - name: UNION ALL with differing aliases
+      exact_edges: true
       sql: SELECT user_id AS uid, amount FROM sales UNION ALL SELECT user_id, amount FROM refunds
       expected_edges:
         - from_table: sales
@@ -34,16 +38,40 @@ cases:
           from_field: user_id
           to_table: __result__
           to_field: user_id
+        - from_table: refunds
+          from_field: amount
+          to_table: __result__
+          to_field: amount
     - name: three-way UNION
+      exact_edges: true
       sql: SELECT id, name FROM employees UNION SELECT id, name FROM contractors UNION SELECT id, name FROM vendors
       expected_edges:
         - from_table: employees
+          from_field: id
           to_table: __result__
+          to_field: id
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
         - from_table: contractors
+          from_field: id
           to_table: __result__
+          to_field: id
+        - from_table: contractors
+          from_field: name
+          to_table: __result__
+          to_field: name
         - from_table: vendors
+          from_field: id
           to_table: __result__
+          to_field: id
+        - from_table: vendors
+          from_field: name
+          to_table: __result__
+          to_field: name
     - name: parenthesized arms
+      exact_edges: true
       sql: (SELECT id FROM t1) UNION ALL (SELECT id FROM t2)
       expected_edges:
         - from_table: t1
@@ -55,6 +83,7 @@ cases:
           to_table: __result__
           to_field: id
     - name: UNION with a CTE arm
+      exact_edges: true
       sql: WITH recent AS (SELECT id, amount FROM orders) SELECT id, amount FROM recent UNION ALL SELECT id, amount FROM archive
       expected_edges:
         - from_table: orders
@@ -69,3 +98,7 @@ cases:
           from_field: id
           to_table: __result__
           to_field: id
+        - from_table: archive
+          from_field: amount
+          to_table: __result__
+          to_field: amount

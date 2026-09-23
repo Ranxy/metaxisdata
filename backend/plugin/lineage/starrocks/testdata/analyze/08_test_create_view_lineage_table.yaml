@@ -1,6 +1,7 @@
 name: TestCreateViewLineage_Table
 cases:
     - name: CREATE VIEW with aliased source
+      exact_edges: true
       sql: CREATE VIEW v AS SELECT a.id, a.name FROM users a
       expected_edges:
         - from_table: users
@@ -16,6 +17,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: CREATE VIEW with backticked identifiers
+      exact_edges: true
       sql: CREATE VIEW `v1` AS SELECT `a`.`id` AS `user_id`, `a`.`name` FROM `users` `a`
       expected_edges:
         - from_table: users
@@ -31,6 +33,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: CREATE VIEW with explicit column list
+      exact_edges: true
       sql: CREATE VIEW v (x, y) AS SELECT a.id, a.name FROM users a
       expected_edges:
         - from_table: users
@@ -46,6 +49,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: CREATE VIEW with an aggregate
+      exact_edges: true
       sql: CREATE VIEW v AS SELECT a.id, SUM(a.amount) AS total FROM orders a GROUP BY a.id
       expected_edges:
         - from_table: orders
@@ -62,6 +66,7 @@ cases:
           has_transform: true
           is_temp: false
     - name: CREATE VIEW with a CTE body
+      exact_edges: true
       sql: CREATE VIEW v AS WITH c AS (SELECT id, name FROM users) SELECT c.id, c.name FROM c
       expected_edges:
         - from_table: users
@@ -77,6 +82,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: CREATE VIEW with a UNION body
+      exact_edges: true
       sql: CREATE VIEW v AS SELECT id FROM t1 UNION ALL SELECT id FROM t2
       expected_edges:
         - from_table: t1
@@ -92,6 +98,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: CREATE VIEW with a parenthesized body
+      exact_edges: true
       sql: CREATE VIEW v AS (SELECT id FROM t1)
       expected_edges:
         - from_table: t1
@@ -101,6 +108,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: CREATE OR REPLACE VIEW with a database qualifier
+      exact_edges: true
       sql: CREATE OR REPLACE VIEW db1.v AS SELECT a.id FROM users a
       expected_edges:
         - from_table: users
@@ -111,6 +119,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: ALTER VIEW with a UNION body
+      exact_edges: true
       sql: ALTER VIEW v AS SELECT id FROM t1 UNION ALL SELECT id FROM t2
       expected_edges:
         - from_table: t1
@@ -126,6 +135,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: SHOW CREATE VIEW output pasted as manual SQL
+      exact_edges: true
       sql: CREATE VIEW v (a, b) SECURITY NONE AS SELECT id, name FROM users
       expected_edges:
         - from_table: users
@@ -141,6 +151,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: CREATE VIEW with a window function and QUALIFY
+      exact_edges: true
       sql: CREATE VIEW v AS SELECT id, ROW_NUMBER() OVER (PARTITION BY tag ORDER BY id) AS rn FROM events QUALIFY rn = 1
       expected_edges:
         - from_table: events
@@ -164,6 +175,7 @@ cases:
           has_transform: true
           is_temp: false
     - name: CREATE VIEW over a cross-database source
+      exact_edges: true
       sql: CREATE VIEW v AS SELECT raw.id, raw.name FROM raw_data.users raw
       expected_edges:
         - from_database: raw_data
@@ -181,6 +193,7 @@ cases:
           relation_type: direct
           is_temp: false
     - name: CREATE VIEW with a derived table
+      exact_edges: true
       sql: CREATE VIEW v AS SELECT s.id, s.total FROM (SELECT user_id AS id, SUM(amount) AS total FROM orders GROUP BY user_id) s
       expected_edges:
         - from_table: orders
@@ -197,15 +210,18 @@ cases:
           has_transform: true
           is_temp: false
     - name: CREATE VIEW with star over a join
+      exact_edges: true
       sql: CREATE VIEW v AS SELECT * FROM employees e JOIN departments d ON e.department_id = d.id
       expected_edges:
         - from_table: employees
           from_field: '*'
           to_table: v
+          to_field: '*'
           relation_type: direct
           is_temp: false
         - from_table: departments
           from_field: '*'
           to_table: v
+          to_field: '*'
           relation_type: direct
           is_temp: false

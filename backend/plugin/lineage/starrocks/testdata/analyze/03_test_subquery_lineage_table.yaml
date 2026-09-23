@@ -1,6 +1,7 @@
 name: TestSubqueryLineage_Table
 cases:
     - name: subquery in FROM clause
+      exact_edges: true
       sql: SELECT sub.id, sub.total_orders FROM (SELECT user_id AS id, COUNT(*) AS total_orders FROM orders GROUP BY user_id) AS sub
       expected_edges:
         - from_table: orders
@@ -13,6 +14,7 @@ cases:
           to_field: total_orders
           has_transform: true
     - name: nested subquery filters intermediate lineage
+      exact_edges: true
       sql: SELECT foo.user_id, foo.total_amount FROM (SELECT user_id, total_amount FROM (SELECT user_id, SUM(amount) AS total_amount FROM orders GROUP BY user_id) sub) foo
       expected_edges:
         - from_table: orders
@@ -25,6 +27,7 @@ cases:
           to_field: total_amount
           has_transform: true
     - name: joined derived tables
+      exact_edges: true
       sql: SELECT foo.user_id, foo.total_amount, bar.order_count FROM (SELECT user_id, SUM(amount) AS total_amount FROM orders GROUP BY user_id) foo JOIN (SELECT user_id, COUNT(*) AS order_count FROM user_orders GROUP BY user_id) bar ON foo.user_id = bar.user_id
       expected_edges:
         - from_table: orders
@@ -41,6 +44,7 @@ cases:
           to_field: order_count
           has_transform: true
     - name: derived table wildcard
+      exact_edges: true
       sql: SELECT s.* FROM (SELECT id, name FROM users) s
       expected_edges:
         - from_table: users
@@ -52,6 +56,7 @@ cases:
           to_table: __result__
           to_field: name
     - name: derived table with qualified database
+      exact_edges: true
       sql: SELECT s.id FROM (SELECT id FROM analytics.events) s
       expected_edges:
         - from_database: analytics
