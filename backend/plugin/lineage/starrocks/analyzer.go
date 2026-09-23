@@ -36,7 +36,7 @@ import (
 const (
 	resultTableName   = "__result__"
 	deletionFieldName = "__deletion__"
-	wildcardColumn    = "*"
+	wildcardColumn    = model.WildcardColumn
 	fileSourceMarker  = "__file__" // source marker for COPY INTO / LOAD
 )
 
@@ -1279,10 +1279,7 @@ func setOpTransformation(setOp nodes.SetOperator) (model.Transformation, bool) {
 // traceThroughTableLineage traces lineage through a CTE or derived table to the
 // final result.
 func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName string, outputAlias string, transform []model.Transformation) {
-	for _, edge := range tableRef.Lineage {
-		if columnName != wildcardColumn && edge.Target.Name != columnName {
-			continue
-		}
+	for _, edge := range model.AnsweringLineage(tableRef.Lineage, columnName) {
 		actualOutput := outputAlias
 		if columnName == wildcardColumn && outputAlias == wildcardColumn {
 			actualOutput = edge.Target.Name
@@ -1299,10 +1296,7 @@ func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName
 // traceThroughTableLineageToTarget traces lineage through a CTE or derived
 // table to a specific target column on a real object.
 func (a *Analyzer) traceThroughTableLineageToTarget(tableRef *scope.TableRef, columnName string, targetSchema string, targetTable string, targetColumn string, transform []model.Transformation) {
-	for _, edge := range tableRef.Lineage {
-		if columnName != wildcardColumn && edge.Target.Name != columnName {
-			continue
-		}
+	for _, edge := range model.AnsweringLineage(tableRef.Lineage, columnName) {
 		actualTargetColumn := targetColumn
 		if columnName == wildcardColumn && targetColumn == wildcardColumn {
 			actualTargetColumn = edge.Target.Name
@@ -1319,10 +1313,7 @@ func (a *Analyzer) traceThroughTableLineageToTarget(tableRef *scope.TableRef, co
 
 // appendFlattenedLineage traces through nested temporary tables to real tables.
 func (a *Analyzer) appendFlattenedLineage(lineage *[]model.ColumnRelation, sp *scope.Scope, tableRef *scope.TableRef, columnName string, targetTable string, targetColumn string, transform []model.Transformation) {
-	for _, edge := range tableRef.Lineage {
-		if columnName != wildcardColumn && edge.Target.Name != columnName {
-			continue
-		}
+	for _, edge := range model.AnsweringLineage(tableRef.Lineage, columnName) {
 		actualTarget := targetColumn
 		if columnName == wildcardColumn && targetColumn == wildcardColumn {
 			actualTarget = edge.Target.Name

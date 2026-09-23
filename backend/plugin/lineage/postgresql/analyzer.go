@@ -31,7 +31,7 @@ func init() {
 const (
 	resultTableName   = "__result__"
 	deletionFieldName = "__deletion__"
-	wildcardColumn    = "*"
+	wildcardColumn    = model.WildcardColumn
 	// excludedRelationName is PostgreSQL's ON CONFLICT pseudo-relation holding
 	// the proposed row. It is not a metadata-registry object, so edges sourced
 	// from it can never resolve; the real lineage is already emitted from the
@@ -1145,12 +1145,7 @@ func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName
 		return
 	}
 
-	for _, edge := range tableRef.Lineage {
-		// Skip if looking for specific column and doesn't match
-		if columnName != wildcardColumn && edge.Target.Name != columnName {
-			continue
-		}
-
+	for _, edge := range model.AnsweringLineage(tableRef.Lineage, columnName) {
 		actualOutput := outputAlias
 		// For wildcard expansion, use the actual column name from the edge
 		if columnName == wildcardColumn && outputAlias == wildcardColumn {
@@ -1176,12 +1171,7 @@ func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName
 
 // traceThroughTableLineageToTarget traces lineage through a temporary table to a specific target table.
 func (a *Analyzer) traceThroughTableLineageToTarget(tableRef *scope.TableRef, columnName string, targetSchema string, targetTable string, targetColumn string, transform []model.Transformation) {
-	for _, edge := range tableRef.Lineage {
-		// Skip if looking for specific column and doesn't match
-		if columnName != wildcardColumn && edge.Target.Name != columnName {
-			continue
-		}
-
+	for _, edge := range model.AnsweringLineage(tableRef.Lineage, columnName) {
 		actualTargetColumn := targetColumn
 		// For wildcard expansion, use the actual column name from the edge
 		if columnName == wildcardColumn && targetColumn == wildcardColumn {
@@ -1217,11 +1207,7 @@ func (a *Analyzer) flattenTempSourceLineage(sp *scope.Scope, relation *scope.Tab
 }
 
 func (a *Analyzer) appendFlattenedLineage(lineage *[]model.ColumnRelation, sp *scope.Scope, tableRef *scope.TableRef, columnName string, targetTable string, targetColumn string, transform []model.Transformation) {
-	for _, edge := range tableRef.Lineage {
-		if columnName != wildcardColumn && edge.Target.Name != columnName {
-			continue
-		}
-
+	for _, edge := range model.AnsweringLineage(tableRef.Lineage, columnName) {
 		actualTarget := targetColumn
 		if columnName == wildcardColumn && targetColumn == wildcardColumn {
 			actualTarget = edge.Target.Name

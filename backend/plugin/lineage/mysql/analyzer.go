@@ -34,7 +34,7 @@ import (
 const (
 	resultTableName   = "__result__"
 	deletionFieldName = "__deletion__"
-	wildcardColumn    = "*"
+	wildcardColumn    = model.WildcardColumn
 	fileSourceMarker  = "__file__" // Special marker for LOAD DATA source
 )
 
@@ -1082,10 +1082,7 @@ func (a *Analyzer) emitSources(sp *scope.Scope, sourceColumns []scope.ColumnRef,
 
 // traceThroughTableLineage traces lineage through a CTE or subquery to a target.
 func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName string, targetSchema, targetTable, targetColumn string, transform []model.Transformation) {
-	for _, edge := range tableRef.Lineage {
-		if columnName != wildcardColumn && edge.Target.Name != columnName {
-			continue
-		}
+	for _, edge := range model.AnsweringLineage(tableRef.Lineage, columnName) {
 		actualTarget := targetColumn
 		if columnName == wildcardColumn && targetColumn == wildcardColumn {
 			actualTarget = edge.Target.Name
@@ -1113,10 +1110,7 @@ func (a *Analyzer) flattenTempSourceLineage(sp *scope.Scope, relation *scope.Tab
 
 // appendFlattenedLineage traces through nested temporary tables to real tables.
 func (a *Analyzer) appendFlattenedLineage(lineage *[]model.ColumnRelation, sp *scope.Scope, tableRef *scope.TableRef, columnName, targetTable, targetColumn string, transform []model.Transformation) {
-	for _, edge := range tableRef.Lineage {
-		if columnName != wildcardColumn && edge.Target.Name != columnName {
-			continue
-		}
+	for _, edge := range model.AnsweringLineage(tableRef.Lineage, columnName) {
 		actualTarget := targetColumn
 		if columnName == wildcardColumn && targetColumn == wildcardColumn {
 			actualTarget = edge.Target.Name

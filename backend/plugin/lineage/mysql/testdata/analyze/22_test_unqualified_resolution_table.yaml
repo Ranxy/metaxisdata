@@ -529,8 +529,10 @@ cases:
     # A relation whose columns are unknown cannot be ruled out either, so it
     # answers for a name no described relation owns — and a derived table or CTE
     # is such a relation only when the analyzer could name all of its columns. An
-    # unexpanded wildcard leaves it undescribed, which keeps the fallback rather
-    # than ruling it out on incomplete information.
+    # unexpanded wildcard leaves the list incomplete, which keeps the fallback
+    # rather than ruling the relation out on partial information; the wildcard
+    # entry in its lineage still answers any name, because it forwards every
+    # column of its source.
     - name: a relation with no snapshot answers for the name
       sql: SELECT x FROM a JOIN u ON a.id = u.id
       catalog:
@@ -730,13 +732,24 @@ cases:
           transformations:
             - operation: JOIN
 
-    - name: an unexpanded wildcard body leaves the derived table undescribed
+    # The derived relation cannot name every column it exposes, so it stays
+    # undescribed and the fallback picks it. Its wildcard lineage entry answers
+    # the name anyway: the column behind the wildcard is unknown, the source table
+    # is not, so the edge names `b` instead of inventing a column of `a`. The same
+    # entry answers the ON clause's `d.id`, which had no edge at all before.
+    - name: an unexpanded wildcard body forwards the column
       sql: SELECT x FROM a JOIN (SELECT * FROM b) d ON a.id = d.id
       catalog:
         tables:
             a:
                 - id
       expected_edges:
+        - from_table: b
+          from_field: '*'
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
         - from_table: a
           from_field: id
           to_table: __result__
@@ -746,3 +759,25 @@ cases:
           is_temp: true
           transformations:
             - operation: JOIN
+        - from_table: b
+          from_field: '*'
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+
+    # The flat path is not the only one that meets a wildcard: a temporary
+    # relation built out of another one flattens the nested wildcard at
+    # construction time, and that path answers an unnamed column the same way.
+    - name: a nested temporary relation forwards a wildcard column
+      sql: SELECT x FROM (SELECT x FROM (SELECT * FROM t) inner_d) outer_d
+      expected_edges:
+        - from_table: t
+          from_field: '*'
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
