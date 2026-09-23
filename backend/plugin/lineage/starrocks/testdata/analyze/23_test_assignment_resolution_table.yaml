@@ -1,0 +1,115 @@
+name: TestAssignmentResolution_Table
+cases:
+    # Every assignment writes a column of the updated table: StarRocks does not
+    # accept a qualified SET target (`UPDATE t SET s.a = …` is a syntax error,
+    # verified on 4.1), so the target comes from the statement. Resolving the name
+    # against the scope instead picked whichever relation the FROM clause
+    # introduced, and wrote the edge onto that table — or lost the target
+    # entirely.
+    - name: the set target is the updated table, not a from relation
+      sql: UPDATE t SET a = s.x FROM s WHERE t.id = s.id
+      catalog:
+        tables:
+            t:
+                - id
+                - a
+            s:
+                - id
+                - a
+                - x
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: s.x
+
+    - name: an aliased target still writes the updated table
+      sql: UPDATE t AS tt SET a = s.x FROM s WHERE tt.id = s.id
+      catalog:
+        tables:
+            t:
+                - id
+                - a
+            s:
+                - id
+                - a
+                - x
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: s.x
+
+    - name: the target survives a from relation that sorts first
+      sql: UPDATE z SET a = s.x FROM s
+      catalog:
+        tables:
+            z:
+                - id
+                - a
+            s:
+                - id
+                - a
+                - x
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: z
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: s.x
+
+    # An assignment's source column that no relation owns is not lineage: it used
+    # to be emitted with an empty source table.
+    - name: an assignment source no relation owns records nothing
+      sql: UPDATE t SET a = nosuchcol FROM s WHERE t.id = s.id
+      catalog:
+        tables:
+            t:
+                - id
+                - a
+                - x
+            s:
+                - id
+                - x
+      expected_edges: []
+
+    - name: an assignment may read the row it writes
+      sql: UPDATE t SET a = a + 1
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              expression: a+1
+              op_type: ADDITION
+
+    - name: a constant assignment depends on the whole row
+      sql: UPDATE t SET a = 1
+      expected_edges:
+        - from_table: t
+          from_field: '*'
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: 1

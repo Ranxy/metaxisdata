@@ -1,0 +1,212 @@
+name: TestAssignmentResolution_Table
+cases:
+    # An assignment's source column that no relation owns is not lineage: the
+    # analyzer used to emit it with an empty source table, which stored a row
+    # whose source GUID named no object. Every other path drops it.
+    #
+    # A SET target is the other half. It has to name exactly one relation: MySQL
+    # rejects an unqualified column two relations own (error 1052, verified on
+    # 8.3.0), so writing the value into every owner would invent edges for tables
+    # the statement never updates. A qualified target names the relation it
+    # updates, which is what a multi-table UPDATE relies on.
+    - name: an unqualified set target two tables own records nothing
+      sql: UPDATE t1 JOIN t2 ON t1.id = t2.id SET a = t2.a
+      catalog:
+        tables:
+            t1:
+                - id
+                - a
+                - x
+            t2:
+                - id
+                - a
+                - x
+      expected_edges: []
+
+    - name: a qualified set target names the table it updates
+      sql: UPDATE t1 JOIN t2 ON t1.id = t2.id SET t1.a = t2.a
+      catalog:
+        tables:
+            t1:
+                - id
+                - a
+                - x
+            t2:
+                - id
+                - a
+                - x
+      expected_edges:
+        - from_table: t2
+          from_field: a
+          to_table: t1
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: t2.a
+
+    # A multi-table UPDATE may set a column of each joined table; the qualifier
+    # is what tells them apart, so both edges survive.
+    - name: a multi table update sets a column of each table
+      sql: UPDATE t1 JOIN t2 ON t1.id = t2.id SET t1.a = t2.a, t2.x = t1.x
+      catalog:
+        tables:
+            t1:
+                - id
+                - a
+                - x
+            t2:
+                - id
+                - a
+                - x
+      expected_edges:
+        - from_table: t2
+          from_field: a
+          to_table: t1
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: t2.a
+        - from_table: t1
+          from_field: x
+          to_table: t2
+          to_field: x
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: t1.x
+
+    - name: an unresolvable assignment source records nothing
+      sql: UPDATE t1 JOIN t2 ON t1.id = t2.id SET t1.a = nosuchcol
+      catalog:
+        tables:
+            t1:
+                - id
+                - a
+                - x
+            t2:
+                - id
+                - a
+                - x
+      expected_edges: []
+
+    # The clause's own scope contains the row being updated, so an unqualified or
+    # target-qualified column reads the target's value instead of resolving to no
+    # relation at all.
+    - name: an upsert self reference reads the target row
+      sql: INSERT INTO t (a) VALUES (1) ON DUPLICATE KEY UPDATE a = a + 1
+      catalog:
+        tables:
+            t:
+                - id
+                - a
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              expression: a+1
+              op_type: ADDITION
+
+    - name: an upsert qualified self reference reads the target row
+      sql: INSERT INTO t (a) VALUES (1) ON DUPLICATE KEY UPDATE a = t.a + 1
+      catalog:
+        tables:
+            t:
+                - id
+                - a
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              expression: t.a+1
+              op_type: ADDITION
+
+    - name: an upsert reads the target row beside the insert source
+      sql: INSERT INTO t (a) SELECT x FROM s ON DUPLICATE KEY UPDATE a = a + 1
+      catalog:
+        tables:
+            t:
+                - id
+                - a
+            s:
+                - id
+                - x
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_table: t
+          from_field: a
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              expression: a+1
+              op_type: ADDITION
+
+    # VALUES(col) means the value the insert would have written to col, so it is
+    # resolved in the query's own scope — not in the clause's, which now also
+    # holds the target table and would otherwise answer the name itself.
+    - name: values keeps the insert source when the target owns the name too
+      sql: INSERT INTO t (a, b) SELECT id, a FROM s ON DUPLICATE KEY UPDATE b = VALUES(b)
+      catalog:
+        tables:
+            t:
+                - id
+                - a
+                - b
+            s:
+                - id
+                - a
+      expected_edges:
+        - from_table: s
+          from_field: id
+          to_table: t
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_table: s
+          from_field: a
+          to_table: t
+          to_field: b
+          relation_type: direct
+          is_temp: false
+
+    # The upsert clause drops an unresolvable source the same way: the edge used
+    # to be written with an empty source table.
+    - name: an unresolvable upsert source records nothing
+      sql: INSERT INTO t (a) SELECT x FROM s ON DUPLICATE KEY UPDATE a = nosuchcol
+      catalog:
+        tables:
+            t:
+                - id
+                - a
+            s:
+                - id
+                - x
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: direct
+          is_temp: false

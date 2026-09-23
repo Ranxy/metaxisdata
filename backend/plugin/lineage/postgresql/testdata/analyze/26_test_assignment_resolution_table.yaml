@@ -1,0 +1,114 @@
+name: TestAssignmentResolution_Table
+cases:
+    # An assignment's source column that no relation owns is not lineage: the
+    # analyzer used to emit it with an empty source table, which stored a row
+    # whose source GUID named no object. Every other path drops it.
+    - name: an update assignment source no relation owns records nothing
+      sql: UPDATE t SET a = nosuchcol FROM s WHERE t.id = s.id
+      catalog:
+        tables:
+            t:
+                - id
+                - a
+            s:
+                - id
+                - x
+      expected_edges: []
+
+    - name: an update assignment resolves against the update's own relations
+      sql: UPDATE t SET a = s.x FROM s WHERE t.id = s.id
+      catalog:
+        tables:
+            t:
+                - id
+                - a
+            s:
+                - id
+                - x
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: s.x
+
+    - name: a constant assignment still depends on the row it rewrites
+      sql: UPDATE t SET a = 1
+      expected_edges:
+        - from_table: t
+          from_field: '*'
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: 1
+
+    # The conflict clause is analyzed in the scope PostgreSQL gives it: the target
+    # relation and EXCLUDED, not the insert query's relations. A reference to one
+    # of those is "missing FROM-clause entry" (verified on 16.5), so it is not
+    # lineage — the edge used to be fabricated from the INSERT source instead.
+    - name: the conflict clause does not see the insert query's relations
+      sql: INSERT INTO inventory (product_id, quantity) SELECT product_id, quantity FROM shipment ON CONFLICT (product_id) DO UPDATE SET quantity = shipment.quantity
+      catalog:
+        tables:
+            inventory:
+                - product_id
+                - quantity
+            shipment:
+                - product_id
+                - quantity
+      expected_edges:
+        - from_table: shipment
+          from_field: product_id
+          to_table: inventory
+          to_field: product_id
+          relation_type: direct
+          is_temp: false
+        - from_table: shipment
+          from_field: quantity
+          to_table: inventory
+          to_field: quantity
+          relation_type: direct
+          is_temp: false
+
+    # Its own scope is what lets the target resolve, so a self-reference is
+    # recorded rather than dropped.
+    - name: the conflict clause records a self reference
+      sql: INSERT INTO inventory (product_id, quantity) SELECT product_id, quantity FROM shipment ON CONFLICT (product_id) DO UPDATE SET quantity = inventory.quantity + EXCLUDED.quantity
+      catalog:
+        tables:
+            inventory:
+                - product_id
+                - quantity
+            shipment:
+                - product_id
+                - quantity
+      expected_edges:
+        - from_table: shipment
+          from_field: product_id
+          to_table: inventory
+          to_field: product_id
+          relation_type: direct
+          is_temp: false
+        - from_table: shipment
+          from_field: quantity
+          to_table: inventory
+          to_field: quantity
+          relation_type: direct
+          is_temp: false
+        - from_table: inventory
+          from_field: quantity
+          to_table: inventory
+          to_field: quantity
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              expression: inventory.quantity + EXCLUDED.quantity
+              op_type: +
