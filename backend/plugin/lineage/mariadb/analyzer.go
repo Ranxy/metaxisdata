@@ -1178,7 +1178,16 @@ func (a *Analyzer) processInsertStatement(stmt *nodes.InsertStmt) {
 // processInsertUpdateList processes the ON DUPLICATE KEY UPDATE clause.
 func (a *Analyzer) processInsertUpdateList(assignments []*nodes.Assignment, targetSchema, targetTable string, targetColumns []string) {
 	sp := a.currentScope()
+	// The VALUES(col) sources are resolved in the scope the INSERT's query ran in,
+	// which is what they mean, so the map is built before the clause's own scope
+	// gains the target table below.
 	insertSources := insertSourceMap(sp, targetColumns)
+	// The clause's own scope contains the target table, which is how MySQL
+	// resolves the row being updated: `a = a + 1` reads the target's own column,
+	// and the statement is rejected as ambiguous (error 1052, verified on 8.3.0)
+	// when the SELECT's table owns the name too. Registering it makes that
+	// resolution real instead of a guess.
+	a.processSingleTableRef(&nodes.TableRef{Schema: targetSchema, Name: targetTable, Alias: targetTable})
 	for _, elem := range assignments {
 		if elem == nil || elem.Column == nil || elem.Value == nil {
 			continue
@@ -1191,7 +1200,7 @@ func (a *Analyzer) processInsertUpdateList(assignments []*nodes.Assignment, targ
 		for _, sourceCol := range sourceColumns {
 			resolutions, err := sp.ResolveColumnRefs(sourceCol)
 			if err != nil {
-				resolutions = []scope.ResolvedColumn{{Ref: sourceCol}}
+				continue
 			}
 			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
 			for _, res := range resolutions {
@@ -1208,7 +1217,10 @@ func (a *Analyzer) processInsertUpdateList(assignments []*nodes.Assignment, targ
 
 // insertSourceMap maps each written target column to the sources the insert
 // writes into it, so VALUES(col) in an upsert can be traced to the inserted
-// value instead of being resolved as a column of the source tables.
+// value instead of being resolved as a column of the source tables. Each source
+// is resolved here, in the scope the INSERT's query ran in: the clause's own
+// scope also holds the target table, and an unqualified name both it and the
+// query own would otherwise be attributed to whichever comes first by name.
 func insertSourceMap(sp *scope.Scope, targetColumns []string) map[string][]scope.ColumnRef {
 	out := make(map[string][]scope.ColumnRef)
 	for i, outputCol := range sp.GetOutputColumns() {
@@ -1219,7 +1231,26 @@ func insertSourceMap(sp *scope.Scope, targetColumns []string) map[string][]scope
 		if i < len(targetColumns) {
 			name = targetColumns[i]
 		}
-		out[name] = append(out[name], outputCol.SourceColumns...)
+		out[name] = append(out[name], resolveWithin(sp, outputCol.SourceColumns)...)
+	}
+	return out
+}
+
+// resolveWithin resolves every reference against the scope it came from and marks
+// it resolved, so a later lookup in a scope that does not share it returns the
+// same column instead of guessing again. An unresolvable reference is dropped.
+func resolveWithin(sp *scope.Scope, refs []scope.ColumnRef) []scope.ColumnRef {
+	out := make([]scope.ColumnRef, 0, len(refs))
+	for _, ref := range refs {
+		resolutions, err := sp.ResolveColumnRefs(ref)
+		if err != nil {
+			continue
+		}
+		for _, res := range resolutions {
+			resolved := res.Ref
+			resolved.Resolved = true
+			out = append(out, resolved)
+		}
 	}
 	return out
 }
@@ -1347,10 +1378,18 @@ func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment) {
 			continue
 		}
 		targetCol := scope.ColumnRef{Schema: elem.Column.Schema, Table: elem.Column.Table, Column: elem.Column.Column}
-		resolved, err := sp.ResolveColumn(targetCol)
-		if err != nil {
+		// A SET target has to name exactly one relation. An unqualified name two
+		// relations own is one MySQL rejects (error 1052, verified on 8.3.0), so a
+		// statement that reaches here with several owners is not one MySQL would
+		// run; writing the value into every owner would invent edges for tables the
+		// statement never updates. A qualified target names the relation it
+		// updates, which is what a multi-table UPDATE setting columns of two tables
+		// relies on.
+		targets, err := sp.ResolveColumnRefs(targetCol)
+		if err != nil || len(targets) != 1 {
 			continue
 		}
+		resolved := targets[0].Ref
 
 		var sourceColumns []scope.ColumnRef
 		var transform []model.Transformation
@@ -1376,7 +1415,7 @@ func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment) {
 		for _, sourceCol := range sourceColumns {
 			resolutions, err := sp.ResolveColumnRefs(sourceCol)
 			if err != nil {
-				resolutions = []scope.ResolvedColumn{{Ref: sourceCol}}
+				continue
 			}
 			isTemp := resolved.Table == resultTableName || a.isTableTempInCurrentScope(resolved.Schema, resolved.Table)
 			for _, res := range resolutions {

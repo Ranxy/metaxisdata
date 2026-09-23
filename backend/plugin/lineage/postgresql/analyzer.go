@@ -818,18 +818,32 @@ func (a *Analyzer) processInsertStmt(stmt *pgast.InsertStmt) {
 	a.generateEdgesForDataModification(targetSchema, targetTable, targetColumns)
 
 	if stmt.OnConflictClause != nil {
-		a.processOnConflict(stmt.OnConflictClause, targetSchema, targetTable)
+		a.processOnConflict(stmt.OnConflictClause, stmt.Relation)
 	}
 }
 
-// processOnConflict processes an ON CONFLICT DO UPDATE SET list.
-func (a *Analyzer) processOnConflict(onConflict *pgast.OnConflictClause, targetSchema, targetTable string) {
-	if onConflict == nil {
+// processOnConflict processes an ON CONFLICT DO UPDATE SET list. The clause is
+// analyzed in the scope PostgreSQL gives it: the target relation and the
+// EXCLUDED pseudo-relation, not the SELECT's relations — a reference to one of
+// those is "missing FROM-clause entry" (verified on 16.5). Its own scope is also
+// what lets the target resolve at all, so `SET quantity = inventory.quantity + …`
+// records the self-reference instead of being dropped or attributed to the
+// INSERT source.
+func (a *Analyzer) processOnConflict(onConflict *pgast.OnConflictClause, target *pgast.RangeVar) {
+	if onConflict == nil || onConflict.TargetList == nil {
 		return
 	}
-	if onConflict.TargetList != nil {
-		a.processOnConflictSetList(onConflict.TargetList, targetSchema, targetTable)
+	targetSchema := ""
+	targetTable := ""
+	if target != nil {
+		targetSchema = target.Schemaname
+		targetTable = target.Relname
 	}
+
+	a.pushScope()
+	a.addTargetRelation(target)
+	a.processOnConflictSetList(onConflict.TargetList, targetSchema, targetTable)
+	a.popScope()
 }
 
 // processUpdateStmt processes an UPDATE statement.
@@ -912,7 +926,7 @@ func (a *Analyzer) processAssignments(assignments *pgast.List, targetSchema, tar
 
 			resolutions, err := currentScope.ResolveColumnRefs(sourceCol)
 			if err != nil {
-				resolutions = []scope.ResolvedColumn{{Ref: sourceCol}}
+				continue
 			}
 
 			isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)

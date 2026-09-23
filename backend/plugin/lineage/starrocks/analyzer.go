@@ -603,6 +603,10 @@ func (a *Analyzer) processUpdateStatement(stmt *nodes.UpdateStmt) {
 	if stmt == nil || stmt.Target == nil {
 		return
 	}
+	schema, table, ok := tableRefFromObjectName(stmt.Target)
+	if !ok {
+		return
+	}
 	if stmt.With != nil {
 		a.processCTEs(stmt.With.CTEs)
 	}
@@ -610,12 +614,17 @@ func (a *Analyzer) processUpdateStatement(stmt *nodes.UpdateStmt) {
 	for _, te := range stmt.From {
 		a.processTableExpr(te)
 	}
-	a.processUpdateList(stmt.Assignments)
+	a.processUpdateList(stmt.Assignments, schema, table)
 }
 
-// processUpdateList processes the SET clause of an UPDATE.
-func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment) {
+// processUpdateList processes the SET clause of an UPDATE. Every assignment
+// writes a column of the updated table: StarRocks does not accept a qualified SET
+// target (`UPDATE t SET s.a = …` is a syntax error, verified on 4.1), so the target
+// comes from the statement rather than from the scope — resolving the name would
+// pick whichever relation the FROM clause introduced.
+func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment, targetSchema, targetTable string) {
 	sp := a.currentScope()
+	isTemp := targetTable == resultTableName || a.isTableTempInCurrentScope(targetSchema, targetTable)
 	for _, elem := range assignments {
 		if elem == nil || elem.Column == nil {
 			continue
@@ -624,8 +633,11 @@ func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment) {
 		if !ok {
 			continue
 		}
-		resolved, err := sp.ResolveColumn(targetCol)
-		if err != nil {
+		// The assigned column still has to belong to a relation in scope:
+		// StarRocks rejects `UPDATE t SET nosuchcol = …` with "Column 'nosuchcol'
+		// cannot be resolved" (verified on 4.1). With the updated table registered
+		// that check is the scope's; the target itself is the statement's, below.
+		if _, err := sp.ResolveColumn(targetCol); err != nil {
 			continue
 		}
 
@@ -643,7 +655,7 @@ func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment) {
 		if len(sourceColumns) == 0 {
 			// A literal assignment still depends on the row it overwrites.
 			sourceColumns = []scope.ColumnRef{{
-				Schema: resolved.Schema, Table: resolved.Table, Column: wildcardColumn, Resolved: true,
+				Schema: targetSchema, Table: targetTable, Column: wildcardColumn, Resolved: true,
 			}}
 			if elem.Value != nil {
 				transformInfo = a.analyzeExpressionOperator(elem.Value)
@@ -653,13 +665,12 @@ func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment) {
 		for _, sourceCol := range sourceColumns {
 			resolutions, err := sp.ResolveColumnRefs(sourceCol)
 			if err != nil {
-				resolutions = []scope.ResolvedColumn{{Ref: sourceCol}}
+				continue
 			}
-			isTemp := resolved.Table == resultTableName || a.isTableTempInCurrentScope(resolved.Schema, resolved.Table)
 			for _, res := range resolutions {
 				a.addRelation(scope.NewLineageEdge(
 					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
-					resolved.Schema, resolved.Table, resolved.Column,
+					targetSchema, targetTable, targetCol.Column,
 					transformInfo,
 					isTemp,
 				))
