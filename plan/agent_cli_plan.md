@@ -513,7 +513,7 @@ message AnalyzeSQLRelation {
 
 **无状态**:不写 `column_lineage`,不触发 runner;与视图分析的血缘语义差异(后者落库、metahash 变更检测)在 proto 注释中写明。
 
-**单测注意**:分析器通过 `backend/server/ultimate.go` 的 blank import 注册到全局 map,`backend/api/v1` 包自身不 import 它们 → 该包的分析测试必须自行 blank import 目标引擎包,否则一律 `ErrorEngineNotSupported`;`lineage.CatelogProvide` 在单测里需要 `InitCatalogProvide` 或注入 `catalog.NewMemoryCatalogProvide()`(`SELECT *` 展开会调用它)。多 scope 单测要覆盖:同名表在两个 scope 下落成两个不同 GUID;一个 scope 引擎不支持而另一个成功;`results` 顺序与请求 `scopes` 顺序一致。
+**单测注意**:分析器通过 `backend/server/ultimate.go` 的 blank import 注册到全局 map,`backend/api/v1` 包自身不 import 它们 → 该包的分析测试必须自行 blank import 目标引擎包,否则一律 `ErrorEngineNotSupported`;`lineage.CatelogProvide` 在单测里需要 `InitCatalogProvide` 或注入 `testutil.NewMemoryCatalogProvide()`(`SELECT *` 展开会调用它)。多 scope 单测要覆盖:同名表在两个 scope 下落成两个不同 GUID;一个 scope 引擎不支持而另一个成功;`results` 顺序与请求 `scopes` 顺序一致。
 
 ### 2. `GetLineageGraph` — 需求 3:元数据的多层上下游
 

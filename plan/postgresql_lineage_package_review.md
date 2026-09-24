@@ -257,7 +257,7 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 | **共享层谓词 drop** | ✅ 已接入 | `Influences` 持有 `*Diagnostics`（`NewInfluences(notes)`），`Influence.Resolve` 解析失败即上报 `unresolved reference in a predicate: …`。谓词影响边缺失从此可解释 |
 | **三个方言族** | ✅ 已接入 | PostgreSQL 9 处 + MySQL 家族 10 处 + StarRocks 7 处（共 26 处）丢弃点全部上报；tidb/mariadb 由 mysql 重新生成（`copies_test.go` 钉住逐字节一致）。P2-4 的 wildcard 限定符三族都加了诊断 |
 | **兄弟方言的 P2-2 同类缺陷** | ✅ 顺带修复 | 实测 MySQL/TiDB/MariaDB/StarRocks 的 `DELETE … WHERE` 在条件列解析不到时会**回退成未解析引用**，产出 `u.x -> t.__deletion__`——一条指向语句从未命名过的关系的边（PG 早在第一批就修掉了）。现在丢弃 + 上报 |
-| **硬失败 vs 诊断** | ✅ 已区分 | 兄弟方言原有的"语句形状无法表示"（如 `WITH before INSERT`）保持**硬失败并丢弃全部边**，因为那种分析本身是错的；新增的诊断是**部分结果**：边保留 + 消息记录。两者同时出现时，诊断附在硬失败的消息里，信息不丢 |
+| **硬失败 vs 诊断** | ✅ 已区分 | 兄弟方言原有的"语句形状无法表示"（如 `WITH before INSERT`）保持**硬失败并丢弃全部边**，因为那种分析本身是错的；新增的诊断是**部分结果**：边保留 + 消息记录。两者同时出现时，诊断附在硬失败的消息里，信息不丢。（后续变更：架构评审第一期把 `WITH before INSERT` 也归入缺口——跳过该语句 + 记 `not modelled`，不再清血缘，见 `plan/lineage_package_architecture_review.md` §0） |
 | **错误类型语义** | ✅ 已更新 | `lineage.UnsupportedStatementError` 从"某条语句无法建模"扩为"**部分分析**：解析成功但有东西无法表示"，并要求分析器对每条记录分类 |
 | **语料的"部分分析"语义** | ✅ 新增 | `expect_error: true` + 非空 `expected_edges` = 断言报告了缺口**且**边仍精确匹配（原来 `expect_error` 会直接 return、不比对边）；`RequireFullEdgeAnnotations` 不再跳过这类用例；新增 `error_contains` 断言消息内容——只说"出了个错"不足以证明报的是对的那件事 |
 | **语料钉子** | ✅ 已补 | 13 条既有用例改为部分分析语义（PG 6 + MySQL 家族 5 + StarRocks 2，其中 MERGE 那条同时钉住 `not modelled:` 前缀）；新增 10 条：PG `39_test_diagnostics`（5 类子句）、MySQL（DELETE 条件、wildcard 限定符、谓词）、StarRocks（DELETE 条件、谓词） |
@@ -268,7 +268,7 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 1. **通道早就存在，只是没人往里写。** `AnalyzeRelations` 的契约里 `*UnsupportedStatementError` 已经是"边保留 + 消息记录"，`column_lineage_version.error_message` 也已存在（`markAnalyzed` 写入）。全仓只有 MERGE 与"引擎没有分析器"两处写入过。所以 P2-8 的修复**没有** schema / proto / API / 前端改动——这也是把它排在前面做的原因。
 2. **实测：开启诊断不改变任何一条边。** 用"新代码 + 旧语料"与旧代码做 5 方言全语料快照对比（3575 行）：**边逐行零变化**，差异只有新增的错误说明行，以及语料计数（MERGE 用例从"被夹具跳过"变成"参与"）。三个方言族的语料用精确边集合断言那 13 条改判用例，等于额外做了一次更强的边不变性校验。
 3. **兄弟方言还有一处 P0-1/P2-2 类的伪造边。** `DELETE FROM t WHERE u.x = 1` 在 MySQL/TiDB/MariaDB/StarRocks 上产出 `u.x -> t.__deletion__`（`u` 从未出现在语句里），而 PostgreSQL 早已丢弃。这是跨批"方言之间漂移"的又一例，随本批一并修复并加钉子。
-4. **"硬失败"和"诊断"必须分开。** MySQL 家族的 `rejectLeadingWith`（omni 丢弃 WITH 子句导致分析必然错）返回 `nil, error` 是对的——把这种形状降级成"部分结果"反而会把错误血缘存下来。新增的 `Diagnostics` 因此是独立累加器，两者共存时诊断随硬失败消息一起返回。
+4. **"硬失败"和"诊断"必须分开。** MySQL 家族的 `rejectLeadingWith`（omni 丢弃 WITH 子句导致分析必然错）返回 `nil, error` 是对的——把这种形状降级成"部分结果"反而会把错误血缘存下来。新增的 `Diagnostics` 因此是独立累加器，两者共存时诊断随硬失败消息一起返回。（后续变更：架构评审第一期改为"跳过该语句 + 记 `not modelled` 缺口"，仍然不产出任何错误血缘——降级的前提是分析器不再走进那段必然错的遍历；见 `plan/lineage_package_architecture_review.md` §0）
 
 ### 验证方式
 
@@ -894,7 +894,7 @@ docker run -d --name mxd-mariasem -e MARIADB_ROOT_PASSWORD=dev -e MARIADB_DATABA
 以下不是本仓库代码的缺陷，按要求仅记录在本文件中，**未向任何外部方反馈**：
 
 1. `github.com/bytebase/omni` 的 `pg/ast` 中，命名窗口 `WindowDef.Refname` 只携带窗口名、不携带被引用的窗口定义；`SelectStmt.WindowClause` 也不在 omni 提供的便捷访问器里。本仓库需要自己遍历 `WindowClause` 并在 `Refname` 上做一次解析（P1-3 的修复因此比内联窗口麻烦一点）。这是**依赖的 AST 表达力**问题，不是 bug。
-2. omni 的 MySQL 解析器**不支持 `WITH c AS (...) INSERT ...`**（WITH 写在 INSERT 之前）这种写法：分析器对它报 `WITH before INSERT is not supported: the parser drops the CTE, so its sources cannot be resolved`。MariaDB 11.8.9 对同一条 SQL 报 `ERROR 1064` 语法错误（MariaDB 的 CTE 要写在 `INSERT ... WITH ... SELECT` 里），所以本仓库的硬失败与引擎一致，**不是缺陷**，仅记录。
+2. omni 的 MySQL 解析器**接受但会丢弃 `WITH c AS (...) INSERT ...`**（WITH 写在 INSERT 之前）的 CTE：`InsertStmt`/`UpdateStmt`/`DeleteStmt` 不带 CTE 字段。分析器因此跳过该语句并报 `not modelled: WITH before INSERT: the parser drops the CTE, so its sources cannot be resolved`（第一期由硬失败改为缺口，见 `plan/lineage_package_architecture_review.md` §0），绝不把 CTE 名当成存储表。MariaDB 11.8.9 对同一条 SQL 直接报 `ERROR 1064` 语法错误（MariaDB 的 CTE 要写在 `INSERT ... WITH ... SELECT` 里），所以跳过不损失任何真实血缘，**不是缺陷**，仅记录。
 3. `plan/postgresql_omni_parser_migration_plan.md` 的 **PG-FU-2** 已经提出"把 DML/集合运算/窗口保留的 walker 回馈上游 omni"，本次 review 的 P0-2/P0-3 恰好是支持该方向的额外证据——若上游能提供生产级 `analysis` 包，本仓库三份分析器（D1）可显著收缩。是否需要推进属产品决策，本次不推动。
 5. 第十批（A3–A10 修复）实测又记录三条，都写在 `docs/omni_upstream_defects.md` 里：omni 的 TiDB AST `SelectStmt` **没有 VALUES 原语字段**且 TiDB 解析器拒绝 `FROM (VALUES ROW(1)) v`；omni 的 MariaDB AST `InsertStmt` **没有 `RowAlias`/`ColAliases` 字段**（MariaDB 引擎也没有该语法）；omni 的 MariaDB 解析器接受 `VALUES ROW(…)` 而 MariaDB 11.8.9 引擎拒绝、反之 MariaDB 的 `VALUES (1),(2)` 解析器不接受。
 
