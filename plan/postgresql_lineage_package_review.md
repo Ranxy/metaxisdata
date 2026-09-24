@@ -106,7 +106,7 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 
 ### 第三批的决策保留
 
-- **P2-4 / P2-8（没有诊断通道）**：按用户决策，本轮**不动**「部分血缘 vs 完整血缘」的区分，仅记录。因此 `SELECT unknown_alias.* FROM t` 仍静默返回 0 条边，`if err != nil { continue }` 仍静默丢弃。要做需要先决定诊断落点（复用 `UnsupportedStatementError` 写进 `column_lineage_version.error_message`，还是新增 Warnings 概念并落库），属独立一轮。
+- ~~**P2-4 / P2-8（没有诊断通道）**：按用户决策，本轮不动，仅记录。~~ → **已在第七批落地**（见 §0g）：诊断落点确定为复用 `UnsupportedStatementError` → `column_lineage_version.error_message`，不新增 Warnings 概念，因此**不需要 schema/proto/API 改动**。
 - ~~**ON CONFLICT 子句内子查询引用语句级 CTE**（第二批残留）仍未建模~~ → **已在第四批修复**（见 §0d），并顺带修掉 MySQL 家族 upsert 值里的子查询丢血缘。
 - **顶层 DML 的 `RETURNING` 不产出 `__result__` 边**：仍是有意决策。
 - **UPDATE 不产出谓词影响边**：跨方言既定规则，已在代码注释中写明是有意丢弃。
@@ -223,6 +223,42 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 同批确认**无问题**、以免以后重复怀疑的形状：`DISTINCT` / `DISTINCT ON`（与既有语料一致：只算投影，不算行集影响）、`TABLESAMPLE`、`FOR UPDATE`、`WITH RECURSIVE ... SEARCH/CYCLE`、`= ANY (SELECT ...)`（两侧 FILTER 都在）、`ARRAY(SELECT ...)`、`ROW(...)`、`COLLATE`、`greatest(...)`、窗口帧 `ROWS BETWEEN`、`unnest`、`count(*) FILTER (WHERE ...)`。
 
 **审计方法**（可复现）：临时在包内加一个 `_test.go`，对每个形状打印边集合与变换；对照 `pgast` 节点的字段清单逐项检查分析器是否读取；可疑形状用真实引擎确认它合法且可执行。**建议后续把这张"字段 × 是否读取"的对照表补全并归档**，作为收口"某个 clause 没被读"这类缺陷的系统手段。
+
+---
+
+## 0g. 第七批（诊断通道）实施状态：已落地
+
+第七批处理 §5 的两项决策保留：**P2-4**（wildcard 限定符解析不到时静默返回）与 **P2-8**（没有诊断通道，部分血缘与完整血缘从外部无法区分），并把同类丢弃点在三个方言族内一并覆盖。用户选择的范围：三方言族一起、包含共享层的谓词 drop、并给语料加"部分分析"语义；P2-4 只加诊断不加兜底；消息逐条、去重、带上限。
+
+```
+56544f1 feat(lineage): report what an analysis could not represent
+（本文件的提交）
+```
+
+| 项 | 状态 | 落地内容 |
+| --- | --- | --- |
+| **诊断载体** | ✅ 新增 | `backend/plugin/lineage/algorithm/diagnostics.go`：`Diagnostics` 按**成因分类**（`not modelled:` 形状未建模 / `unresolved reference in <子句>:` 引用解析不到 / `ambiguous reference in <子句>:` 单值位置无法在多个 owner 中选），逐条去重、上限 10 条，超出写 `N more not listed`。nil 接收者安全，所以只想要边的调用者可以传 nil |
+| **共享层谓词 drop** | ✅ 已接入 | `Influences` 持有 `*Diagnostics`（`NewInfluences(notes)`），`Influence.Resolve` 解析失败即上报 `unresolved reference in a predicate: …`。谓词影响边缺失从此可解释 |
+| **三个方言族** | ✅ 已接入 | PostgreSQL 9 处 + MySQL 家族 10 处 + StarRocks 7 处（共 26 处）丢弃点全部上报；tidb/mariadb 由 mysql 重新生成（`copies_test.go` 钉住逐字节一致）。P2-4 的 wildcard 限定符三族都加了诊断 |
+| **兄弟方言的 P2-2 同类缺陷** | ✅ 顺带修复 | 实测 MySQL/TiDB/MariaDB/StarRocks 的 `DELETE … WHERE` 在条件列解析不到时会**回退成未解析引用**，产出 `u.x -> t.__deletion__`——一条指向语句从未命名过的关系的边（PG 早在第一批就修掉了）。现在丢弃 + 上报 |
+| **硬失败 vs 诊断** | ✅ 已区分 | 兄弟方言原有的"语句形状无法表示"（如 `WITH before INSERT`）保持**硬失败并丢弃全部边**，因为那种分析本身是错的；新增的诊断是**部分结果**：边保留 + 消息记录。两者同时出现时，诊断附在硬失败的消息里，信息不丢 |
+| **错误类型语义** | ✅ 已更新 | `lineage.UnsupportedStatementError` 从"某条语句无法建模"扩为"**部分分析**：解析成功但有东西无法表示"，并要求分析器对每条记录分类 |
+| **语料的"部分分析"语义** | ✅ 新增 | `expect_error: true` + 非空 `expected_edges` = 断言报告了缺口**且**边仍精确匹配（原来 `expect_error` 会直接 return、不比对边）；`RequireFullEdgeAnnotations` 不再跳过这类用例；新增 `error_contains` 断言消息内容——只说"出了个错"不足以证明报的是对的那件事 |
+| **语料钉子** | ✅ 已补 | 13 条既有用例改为部分分析语义（PG 6 + MySQL 家族 5 + StarRocks 2，其中 MERGE 那条同时钉住 `not modelled:` 前缀）；新增 10 条：PG `39_test_diagnostics`（5 类子句）、MySQL（DELETE 条件、wildcard 限定符、谓词）、StarRocks（DELETE 条件、谓词） |
+| **基准夹具** | ✅ 已适配 | `LoadCorpusBenchCases` 现在只跳过"只断言失败"的用例，部分分析用例（有边）留在语料里；`IsPartialAnalysis` 让基准与分配预算把"预期的部分结果"当正常结果，其它错误仍然失败。PG 全语料分配次数 25785 / 预算 34000 |
+
+### 第七批发现
+
+1. **通道早就存在，只是没人往里写。** `AnalyzeRelations` 的契约里 `*UnsupportedStatementError` 已经是"边保留 + 消息记录"，`column_lineage_version.error_message` 也已存在（`markAnalyzed` 写入）。全仓只有 MERGE 与"引擎没有分析器"两处写入过。所以 P2-8 的修复**没有** schema / proto / API / 前端改动——这也是把它排在前面做的原因。
+2. **实测：开启诊断不改变任何一条边。** 用"新代码 + 旧语料"与旧代码做 5 方言全语料快照对比（3575 行）：**边逐行零变化**，差异只有新增的错误说明行，以及语料计数（MERGE 用例从"被夹具跳过"变成"参与"）。三个方言族的语料用精确边集合断言那 13 条改判用例，等于额外做了一次更强的边不变性校验。
+3. **兄弟方言还有一处 P0-1/P2-2 类的伪造边。** `DELETE FROM t WHERE u.x = 1` 在 MySQL/TiDB/MariaDB/StarRocks 上产出 `u.x -> t.__deletion__`（`u` 从未出现在语句里），而 PostgreSQL 早已丢弃。这是跨批"方言之间漂移"的又一例，随本批一并修复并加钉子。
+4. **"硬失败"和"诊断"必须分开。** MySQL 家族的 `rejectLeadingWith`（omni 丢弃 WITH 子句导致分析必然错）返回 `nil, error` 是对的——把这种形状降级成"部分结果"反而会把错误血缘存下来。新增的 `Diagnostics` 因此是独立累加器，两者共存时诊断随硬失败消息一起返回。
+
+### 验证方式
+
+- **负向校验**：把 5 个分析器回退到修复前（保留新语料与 harness），13 条改判用例 + 10 条新用例**全部失败**（老代码既不报错，也还产出那条伪造的 DELETE 边）。
+- **边不变性**：见发现 2。
+- `go build ./...`、`go test ./...`、`golangci-lint run ./backend/...`（0 issues）全绿；`tidb`/`mariadb` 与 `mysql` 的逐字节一致由 `copies_test.go` 保证。
 
 ---
 
@@ -498,11 +534,11 @@ SELECT a FROM t1; MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE S
 | P2-1 ✅ | `analyzer.go:544-565` | `tempColumnNames` 采纳声明的列名列表时**不校验 arity**，与 `exposedColumnNames`（校验）和 `processCTE`（校验）不一致 |
 | P2-2 ✅ | `analyzer.go:1099-1103` | `processDeleteStmt` 解析失败时回退成未解析的 `condCol`，可能产出源表为空的边；与"未解析的源一律丢弃"的既定规则相悖 |
 | P2-3 ✅ | `analyzer.go:1280-1284` | `INSERT INTO t (a) SELECT x, y FROM s`（PG 会拒绝的非法 SQL）会外推出目标列 `t.y`，而不是止于声明列表 |
-| P2-4 ⏸ | `analyzer.go:768-784` | `processTableStar` 找不到限定符对应的关系时静默 return：`SELECT unknown_alias.* FROM t` 产出 0 条边，既无 wildcard 兜底也无诊断 |
+| P2-4 ✅ | `analyzer.go:768-784` | `processTableStar` 找不到限定符对应的关系时静默 return：`SELECT unknown_alias.* FROM t` 产出 0 条边。**已在第七批修复**：只加诊断、不加兜底（PG 本身报 `missing FROM-clause entry`，发明一条 wildcard 边等于伪造血缘）。见 §0g |
 | P2-5 ✅ | `analyzer.go:480-482` | `RangeFunction` 被忽略：`SELECT * FROM unnest(t.arr) u` 产出 0 条边，`t.arr` 丢失 |
 | P2-6 ✅ | `analyzer.go:1570-1578` | `combineTransformations` 用 `append(base, additional...)` 不复制。当前各生产者恰好返回 cap==len 所以不可达，但一旦有人返回带余量的 slice，就会写坏被多条边共享的底层数组——**潜在别名污染** |
 | P2-7 ✅ | `model/relation.go:33` vs `scope/scope.go:280` | 列名匹配一处用 `==`（`AnsweringLineage`），一处用 `strings.EqualFold`（`resolveInScope`），大小写策略不统一 |
-| P2-8 ⏸ | 全局 | **没有诊断通道**：所有 `if err != nil { continue }`（解析失败的列、`ResolveColumnRefs` 失败）都静默丢弃，"部分血缘"与"完整血缘"从外部无法区分；`a.errors` 除了 MERGE 从不被写入 |
+| P2-8 ✅ | 全局 | **没有诊断通道**：所有 `if err != nil { continue }`（解析失败的列、`ResolveColumnRefs` 失败）都静默丢弃。**已在第七批修复**：新增 `algorithm.Diagnostics`，三个方言族共 20 余处丢弃点全部上报，通道沿用既有的 `UnsupportedStatementError` → `column_lineage_version.error_message`（无需改 schema/proto/API）。见 §0g |
 | P2-9 ✅ | `analyzer.go:108-135` | 分析过程不检查 `ctx` 取消；`a.ctx` 仅用于 catalog 查询。超大 SQL 无法中断 |
 | P2-10 ✅ | `analyzer.go:124-128` | 逐语句重置的状态是手工枚举的（`scopeStack`/`tempTables`/`predicates`）。当前正确，但新增字段时极易漏掉（历史上就出过 CTE 名字/谓词跨语句泄漏，见 118-126 行注释） |
 | P2-11 ✅ | `analyzer.go:1548` | `NewLineageEdge` 被导出但**无包外调用者**（`grep` 确认），按仓库导出规则应改为非导出 |
@@ -622,6 +658,10 @@ SELECT a FROM t1; MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE S
 **第六批前置（AST 字段覆盖审计）— 发现已记录（见 §0f）**
 
 15. **A1 `ValuesLists` / A2 `GroupingSet` / A3 `RangeTableFunc`**：三条结构字段缺口，均已用真实 PostgreSQL 16 验证并记录；A1、A2 判定为"建议修"，A3 建议只记录。完整对照表待补。
+
+**第七批（诊断通道）— ✅ 已落地（见 §0g）**
+
+16. **P2-4 / P2-8** ✅：诊断通道复用既有 `UnsupportedStatementError`（无 schema/proto/API 改动）；三方言族 26 处丢弃点上报；顺带修掉兄弟方言的 P2-2 伪造 DELETE 边；语料新增"部分分析"语义与 `error_contains`。
 
 ---
 
