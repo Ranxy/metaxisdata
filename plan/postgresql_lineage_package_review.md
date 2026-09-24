@@ -147,13 +147,13 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 3. **MySQL 家族的 ODKU 子句能命名语句关系，但不能用限定符命名 CTE。** MariaDB 11.8.9 实测：`ON DUPLICATE KEY UPDATE a = stage.a` **接受**（与 PG 相反，所以 MySQL 分析器用语句作用域是对的，不要照搬 PG 的脱离写法）；`a = c.a` 报 `ERROR 1054 (42S22) Unknown column 'c.a' in 'UPDATE'`；`a = (SELECT a FROM c)` **接受**（所以它的子查询也该读到 CTE）。
 4. **MySQL 家族 upsert 值的子查询血缘被整条丢弃，且子查询内的列会被错误归属。** `ON DUPLICATE KEY UPDATE a = (SELECT max(x) FROM other)` 修复前**零边**（同一个分析器的 `UPDATE ... SET t.a = (SELECT max(x) FROM other)` 产出 `other.x -> t.a`——同一份代码里自相矛盾）；`a = (a IN (SELECT x FROM other))` 修复前产出 `stage.x -> t.a`，把子查询里的 `x` 归属到外层关系上；`a = (EXISTS (SELECT 1 FROM other WHERE other.id = stage.id))` 修复前产出 `stage.id -> t.a`。修复后子查询按自己的作用域展开（`other.x`），EXISTS 那条不再产出——与 `collectExprColumns`（UPDATE 路径）的既有规则一致：**子查询的过滤列不是血缘**。
 5. **PG 冲突子句的 `OnConflictClause.WhereClause`（DO UPDATE 的 WHERE）根本没有被遍历。** 但冲突子句作用域没有 emitter，而 DML 谓词影响边又是既定不产出，遍历在现有策略下不产生任何边；为不留不可测的死代码，本轮不遍历，仅记录。
-6. **RETURNING 有两个层次的问题，本批原先只看到了一层；后续复查把两层都测清了。**
+6. **RETURNING 有两个层次的问题，本批原先只看到了一层；后续复查把两层都测清了。两层均已修复（见 §0e）。**
 
    **6a（结构错误，合法 SQL 可达）**：`processReturning` 把 RETURNING 的列**追加**到当前作用域的 output columns 上，而这个列表正是「本查询对外暴露的列」——对 data-modifying CTE 来说就是该 CTE 的列。于是 `INSERT ... SELECT ... RETURNING id` 的 CTE 暴露的是「SELECT 的列 + RETURNING 的列」，列名撞车时把 INSERT 的源列算成 CTE 返回的列。实测：`WITH ins AS (INSERT INTO t (id, a) SELECT id, a FROM stage RETURNING id) SELECT id FROM ins` 产出 `stage.id -> __result__.id` **和** `t.id -> __result__.id`；而 PG 16.15 里该 CTE 只有一列 `id`（`SELECT a FROM ins` 报 `column "a" does not exist`），正确只有后者。`SELECT * FROM ins` 更明显：本仓库 4 条边，PG 只返回 1 列。可达性：data-modifying CTE 不能出现在视图里（`WITH` 里的数据修改语句必须在顶层），来源只有 MANUAL_SQL——但它是**合法 SQL**，PG 会执行。修法极小：`processReturning` 用 `SetOutputColumns` **替换**而不是追加，没有 RETURNING 时置空（PG 拒绝引用没有 RETURNING 的 data-modifying CTE）。
 
    **6b（作用域越权，只影响非法 SQL）**：RETURNING 的作用域是语句作用域的子作用域。PG 的规则**按语句种类不同**（16.15 实测）：`INSERT ... SELECT ... RETURNING stage.a` 与 `INSERT ... ON CONFLICT ... RETURNING excluded.a` 都报 `missing FROM-clause entry`（EXCLUDED 只在冲突子句自己的表达式里可见），但 `UPDATE ... FROM stage ... RETURNING stage.id` 与 `DELETE ... USING stage ... RETURNING stage.id` **都被接受**。所以"把 RETURNING 作用域脱离父作用域"这个做法**是错的**：实测脱离后上面那条 UPDATE 的合法边 `stage.id -> __result__.id` 会消失（回归）。正确的模型是「语句自己的关系」——INSERT 只有目标表（它的 SELECT 是嵌套查询层级），UPDATE/DELETE 是目标 + FROM/USING 关系。而且单靠脱离**无效**：`resolveOutputColumns` 在解析失败时原样保留引用，交给后面能看到更多关系的作用域（CTE 的 lineage 构建）二次绑定；实测「脱离」与「不脱离」输出逐字节一致。要让失败成为终局必须改 `resolveOutputColumns` 的失败策略——实测改成严格丢弃后 **5 个方言 3542 行语料零变化**，即没有任何一条现有语料依赖这条推迟解析。
 
-   **两层的可选修法（待决策）**：R1 = 6a 的 `SetOutputColumns` 替换（一行，实测语料零变化，且 9 个 RETURNING 形状里 5 条假边消失、UPDATE/DELETE 的合法边与 `RETURNING (SELECT y FROM c)` 都不受影响）；R1′ = R1 + 无 RETURNING 时置空；R2 = 6b：仅在 INSERT 上脱离（保留 definitions 链接）+ 把 `resolveOutputColumns` 的失败改成终局丢弃——实测组合后只剩的那条非法 SQL 边也消失、UPDATE/DELETE 不受影响、语料仍全绿，代价是要按语句种类分派作用域构造并决定严格丢弃是否全局；R2 也可以再进一步，把 INSERT 的 SELECT 放进自己的嵌套作用域（结构性对齐 PG，但要改 INSERT 的边生成与影响 emit，面最大）。若两者都做，严格丢弃应当"丢弃 + 上报"，也就是说它与 §0c 保留的 P2-4/P2-8 诊断通道是同一件事的两半。MySQL 家族不涉及此项：MariaDB 11.8.9 不允许 data-modifying CTE（实测 `ERR 1064`），其分析器也完全不读 `Returning`。
+   **两层的可选修法（已决策：用户选 R1′ + R2-ii，已落地，见 §0e）**：R1 = 6a 的 `SetOutputColumns` 替换（一行，实测语料零变化，且 9 个 RETURNING 形状里 5 条假边消失、UPDATE/DELETE 的合法边与 `RETURNING (SELECT y FROM c)` 都不受影响）；R1′ = R1 + 无 RETURNING 时置空；R2 = 6b：仅在 INSERT 上脱离（保留 definitions 链接）+ 把 `resolveOutputColumns` 的失败改成终局丢弃——实测组合后只剩的那条非法 SQL 边也消失、UPDATE/DELETE 不受影响、语料仍全绿，代价是要按语句种类分派作用域构造并决定严格丢弃是否全局；R2 也可以再进一步，把 INSERT 的 SELECT 放进自己的嵌套作用域（结构性对齐 PG，但要改 INSERT 的边生成与影响 emit，面最大）。若两者都做，严格丢弃应当"丢弃 + 上报"，也就是说它与 §0c 保留的 P2-4/P2-8 诊断通道是同一件事的两半。MySQL 家族不涉及此项：MariaDB 11.8.9 不允许 data-modifying CTE（实测 `ERR 1064`），其分析器也完全不读 `Returning`。 **落地结果**：R2-ii 把 INSERT 的源挪进自己的查询层级之后，6b 的假边自然消失，`resolveOutputColumns` 的严格丢弃**不再需要**——失败引用已没有可以二次绑定的作用域。
 7. **upsert 常量赋值的建模不对称（新发现，未修）**：PG `ON CONFLICT ... DO UPDATE SET b = 'x'` 产出 `t.* -> t.b`；MySQL `ON DUPLICATE KEY UPDATE a = 1` 产出**零边**（`len(sourceColumns) == 0` 即 `continue`），而 MySQL 自己的 `UPDATE t SET a = 1` 产出 `t.* -> t.a`。三者都是"整行被重写"，只有 MySQL 的 upsert 沉默。需要先决定常量写入是否值得一条 `t.*` 边，再决定是否对齐。
 
 ### 验证方式
@@ -163,6 +163,38 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 - **探针 diff**：14 条 PG 形状 + 11 条 MySQL 形状 before/after 逐条核对，变化只有"假表 → 真实源"与 MySQL 侧子查询归属的修正；`SET b = c.y`、`(SELECT x FROM other)`（普通表）、`a = a + VALUES(a)`、`VALUES(a) + (SELECT ...)` 的值部分、`REPLACE INTO`、集合运算语料均为**不变**。
 - **引擎实测**：PostgreSQL 16.15（附录 B）、MariaDB 11.8.9（附录 B2）；两个容器均为一次性，用完删除。
 - `go build ./...`、`go test ./...`、`golangci-lint run ./backend/...`（0 issues）全绿。不涉及 proto 与前端。
+
+---
+
+## 0e. 第五批（RETURNING 的结构对齐）实施状态：已落地
+
+第五批处理 §0d 发现 6 的两层：6a（data-modifying CTE 暴露的列被 INSERT 的源列污染）与 6b（RETURNING 能命名 INSERT 的 SELECT 关系）。用户选择**结构性对齐**而不是"脱离作用域 + 严格丢弃"的补丁式方案。
+
+```
+0f4c847 fix(lineage): analyze an insert's source as the subquery it is
+（本文件的提交）
+```
+
+| 项 | 状态 | 落地内容 |
+| --- | --- | --- |
+| **R2-ii：INSERT 的源是一个查询层级** | ✅ 已落地 | `processInsertSource` 把 INSERT 的 SELECT/VALUES/TABLE 源推进自己的作用域再弹出；`generateEdgesForDataModification` 与 `insertSourceMap` 改为接收该作用域，不再读 `currentScope()`。语句作用域因此只剩「语句自己的关系」——INSERT 为空，UPDATE/DELETE 是目标 + FROM/USING。PostgreSQL 正是这样分析的（INSERT 的源是子查询），于是冲突子句与 RETURNING 都自然看不到源关系 |
+| **R1′：RETURNING 暴露的列 = RETURNING 列表** | ✅ 已落地 | `processReturning` 用 `SetOutputColumns(columns)` **替换**而非追加；没有 RETURNING 时置空（PG 拒绝引用这样的 CTE） |
+| 语料 | ✅ 已补 | `36_test_output_target` +7 例：只暴露返回列（含 `SELECT *` 读法）、不能命名源关系、无 RETURNING 不暴露列、UPDATE/DELETE 的 RETURNING 仍能命名自己的 FROM/USING 关系（回归护栏）、链式 data-modifying CTE 读到的是前一个返回的列 |
+| 注释 | ✅ 已同步 | `processOnConflict` 的"为什么仍要脱离"改写：源关系已结构上不可见，脱离现在只为「CTE 名不能当限定符」这一条服务；`generateEdgesForDataModification` 的文档改为「INSERT 的写边」并说明为何接收源作用域 |
+
+### 第五批发现
+
+1. **结构性对齐之后，那条共享解析策略的改动不再需要。** §0d 里的 R2 方案（脱离 + 把 `resolveOutputColumns` 的失败改成终局丢弃）实测可行，但把 INSERT 的源挪进嵌套作用域之后，`RETURNING stage.id` 解析失败留下的引用**再也没有可以二次绑定的作用域**（语句作用域已无源关系），那条非法 SQL 的边自然消失——不必去改 5 个方言共享的策略。实测 13 条 RETURNING 形状全部与 PostgreSQL 一致。
+2. **两个假边源的成因不同，必须分开修。** 6a 的假边来自「暴露列列表被污染」（SELECT 的列被当成 CTE 的返回列），6b 的假边来自「RETURNING 能命名源关系」。实测只做 R1′ 时 `RETURNING stage.id` 仍产出 `stage.id -> __result__.id`；只做 R2-ii 而不做 R1′ 时 6a 的污染仍在。两者都修才是现在的结果。
+3. **链式 data-modifying CTE 的源从"写入的源"变成"返回的列"，这是 PG 语义而不是回归。** `WITH a1 AS (INSERT INTO t (id) SELECT id FROM stage RETURNING id), a2 AS (INSERT INTO t2 (id) SELECT id FROM a1 RETURNING id) SELECT id FROM a2` 里 `a1.id` 读到的是目标表自己的列，所以 `t2.id` 的源是 `t.id`；修复前 `a1` 暴露了被污染的列，同一条 `t2.id` 被同时算成 `stage.id` 与 `t.id`（多一条假边）。语料已按正确语义钉住。
+4. **INSERT 的谓词影响边不受影响**：影响本来就绑定在源查询的作用域上，本次只是把 emit 的作用域从语句作用域换成源作用域。实测 37 条 INSERT/DML 形状（含 `WHERE`/JOIN/`IN (SELECT …)`/CTE/集合运算/聚合/`VALUES`/`DEFAULT VALUES`/`TABLE`/arity 不匹配/子查询源/多语句脚本/`ON CONFLICT` 各变体/`UPDATE`/`DELETE`）before/after 逐条核对，除假边消失与源被改正外无变化。
+
+### 验证方式
+
+- **快照**：5 个方言 3542 行语料 before/after **逐字节一致**，说明本次改动不改任何既有语料行为——被修的是语料没覆盖到的形状。
+- **形状探针**：13 条 RETURNING 形状 + 37 条 INSERT/DML 形状 before/after 逐条核对，变化只有假边消失与源被改正；无新增、无回归。
+- **新语料负向校验**：7 条新用例里 5 条在修复前失败；另 2 条（UPDATE/DELETE 的 RETURNING 命名自己关系）是回归护栏，修复前后都应通过。
+- `go build ./...`、`go test ./...`、`golangci-lint run ./backend/...`（0 issues）全绿。仍不涉及 proto/前端；MySQL 家族与 StarRocks 不受影响（不建模 RETURNING，MariaDB 也不允许 data-modifying CTE）。
 
 ---
 
@@ -554,6 +586,10 @@ SELECT a FROM t1; MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE S
 **第四批（§0c 残留的第一条）— ✅ 已落地（见 §0d）**
 
 13. **ON CONFLICT 子句的作用域** ✅：不是"加一层中间作用域"，而是把 `scope` 的「关系」与「CTE 定义」两个命名空间分开（`NewScopeWithDefinitions`）；顺带用同一链接替掉集合运算分支的 CTE 拷贝 workaround（并删除 `Scope.CTEs()`），并修掉 MySQL 家族 upsert 值里子查询血缘被整条丢弃、子查询内列被错误归属的缺陷。常量 upsert 的建模不对称（§0d 发现 7）、PG 冲突子句的 `WHERE` 未遍历（发现 5）、RETURNING 的失败引用会被二次绑定（发现 6）、CTE 限定符的宽松路径（发现 2）四项按决策/依赖记录在案，未修。
+
+**第五批（RETURNING 的结构对齐）— ✅ 已落地（见 §0e）**
+
+14. **RETURNING 的两层问题** ✅：INSERT 的源改为自己的查询层级（`processInsertSource`），RETURNING 暴露的列改为 `SetOutputColumns` 替换。选结构性对齐而不是补丁，结果是共享解析策略不必改动，且 6a/6b 一次解决。
 
 ---
 
