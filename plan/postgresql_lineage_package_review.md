@@ -66,7 +66,7 @@
 
 **已知残留（记录在案，非本次范围）**
 
-- ON CONFLICT 子句内**子查询**引用语句级 CTE（`SET b = (SELECT max(y) FROM c)`，PostgreSQL 接受）目前解析不到该 CTE，会把它当普通表 → 可能产出一条指向不存在关系的边。忠实建模需要在"冲突子句作用域"与"嵌套查询作用域"之间加一层只暴露 CTE 的中间作用域，`scope` 现有 API 表达不了。
+- ~~ON CONFLICT 子句内**子查询**引用语句级 CTE~~ → **已在第四批修复**（见 §0d）。原判断"需要一层只暴露 CTE 的中间作用域"方向对了一半：缺的不是一层新作用域，而是把「关系」与「CTE 定义」两个命名空间分开（`NewScopeWithDefinitions`）。危害也比当时记的更重——不是丢边，而是把 CTE 名注册成基表、产出指向不存在关系的边。
 - 顶层 DML 的 `RETURNING` 不再产出 `__result__` 边（有意决策：返回行是面向客户端的结果，语句的血缘是它执行的写入）。数据修改型 CTE 的情形已完整建模。
 
 **第二批之后仍待处理**：§5 的 P2（13 项）、§6 的 D1/D3/D5、§7 剩余测试缺口。
@@ -107,7 +107,7 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 ### 第三批的决策保留
 
 - **P2-4 / P2-8（没有诊断通道）**：按用户决策，本轮**不动**「部分血缘 vs 完整血缘」的区分，仅记录。因此 `SELECT unknown_alias.* FROM t` 仍静默返回 0 条边，`if err != nil { continue }` 仍静默丢弃。要做需要先决定诊断落点（复用 `UnsupportedStatementError` 写进 `column_lineage_version.error_message`，还是新增 Warnings 概念并落库），属独立一轮。
-- **ON CONFLICT 子句内子查询引用语句级 CTE**（第二批残留）仍未建模；`scope` 现有 API 表达不了"只暴露 CTE 的中间作用域"。
+- ~~**ON CONFLICT 子句内子查询引用语句级 CTE**（第二批残留）仍未建模~~ → **已在第四批修复**（见 §0d），并顺带修掉 MySQL 家族 upsert 值里的子查询丢血缘。
 - **顶层 DML 的 `RETURNING` 不产出 `__result__` 边**：仍是有意决策。
 - **UPDATE 不产出谓词影响边**：跨方言既定规则，已在代码注释中写明是有意丢弃。
 
@@ -119,6 +119,44 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 - 兄弟方言修复（`4e50f61`）后：PostgreSQL 两个 section **仍逐字节相同**；MySQL 家族与 StarRocks 的差异逐条核对，全部是 P0-1/P0-2/P1-4/P1-6/P0-4 的修复或由此新增的正确边（`orders.*`、`t.a` 谓词、`r.id` 递归 JOIN 影响、`x+1`/`x+2` 两条、集合运算链）。
 - P2 批（`1fad8df`）后：除新增语料用例本身外**无任何输出变化**（说明 EqualFold、删除回退、INSERT arity、CTE 列名规范化、ctx 检查都不改变既有行为）。
 - 全仓 `go build ./...`、`go test ./...`、`golangci-lint`（0 issues）、前端 `biome`/`eslint`/`vue-tsc`/`vitest`（85 例）均通过；`go test -bench` 冒烟运行确认基准夹具搬迁无碍。
+
+---
+
+## 0d. 第四批（upsert 子句的作用域与来源收集）实施状态：已落地
+
+第四批处理 §0c 残留清单的第一条：**ON CONFLICT 子句内的子查询读不到语句级 CTE**。顺带按用户决策并入两项同类收尾（集合运算分支的 CTE 拷贝 workaround、MySQL 家族 upsert 值里的子查询血缘）。
+
+```
+755ca35 fix(lineage): read a statement's CTEs from inside an upsert clause
+（本文件的提交）
+```
+
+| 项 | 状态 | 落地内容 |
+| --- | --- | --- |
+| **ON CONFLICT 子句内子查询引用语句级 CTE** | ✅ 已修复 | `scope` 新增「定义来源」这一维：`Scope.definitions` + `NewScopeWithDefinitions(parent, definitions)`。`FindCTE`（FROM 路径）穿透 definitions，`findCTEQualifier`（列限定符路径）不穿透——这正是 PostgreSQL 的非对称规则。`processOnConflict` 改用 `NewScopeWithDefinitions(nil, a.currentScope())`：关系仍完全断开（保住第一批"冲突子句不能命名 SELECT 的关系"的决策），CTE 定义可达 |
+| **集合运算分支的 CTE 拷贝 workaround** | ✅ 已按新链接统一 | 5 个方言的 `scope.NewScope(baseScope.Parent())` + `for _, cte := range baseScope.CTEs() { tempScope.AddCTE(cte) }` 改为 `scope.NewScopeWithDefinitions(baseScope.Parent(), baseScope)`；`Scope.CTEs()` 随之删除（它只为这份拷贝而存在）。快照实测 5 方言逐字节一致 |
+| **MySQL 家族：upsert 值里的子查询丢血缘** | ✅ 已修复 | 删掉自由函数 `collectUpsertSources`（其中 `case *nodes.SubqueryExpr: return false` 把子查询整个跳过），与 `collectExprColumns` 合并为 `collectExpressionSources(expr, sp, upsertValues)`：`VALUES(col)` 走 `insertSources`，子查询按自己的作用域展开。tidb/mariadb 为从 mysql 重新生成（`copies_test.go` 钉住逐字节一致） |
+| 语料 | ✅ 已补 | PG `32_test_assignment_temp_source` +4 例（基本形、重复读不重复计影响、数据修改型 CTE 内的兄弟 CTE、声明的列名列表）；MySQL `23_test_assignment_resolution` +3 例（子查询取数、子查询读语句级 CTE、子查询内列归属），后三条在 tidb/mariadb 通过 `sharedCorpusDir()` 各跑一遍 |
+| 单测 | ✅ 已补 | `scope/scope_test.go` 的 `TestScopeWithDefinitions`：嵌套 FROM 可达定义 / 限定符不可达 / 语句关系不可见 / 以语句为 parent 时关系照旧可见 |
+| 文档 | ✅ 已同步 | 本条残留改为 LANDED；附录 B / B2 记录真实引擎实测；附录 C 记录 omni 的 MySQL 解析限制 |
+
+### 第四批发现（原报告与 §0c 都没有的）
+
+1. **PG 的规则是两个方向的，原记录只写了一半。** 16.15 实测：`ON CONFLICT (b) DO UPDATE SET b = c.y`（直接限定符）报 `missing FROM-clause entry for table "c"`（原语料已钉住）；而 `SET b = (SELECT y FROM c)` **执行成功**——子句本身不能命名 CTE，但子句里的子查询是独立查询层级，它的 FROM 可以。根因不是"缺一层中间作用域"，而是 `NewScope(nil)` 把 CTE 定义与语句关系一起切断了；切断的后果不是丢边而是**退化**：`processRangeVar` 找不到 CTE 就注册成基表，产出指向不存在关系的边（实测 `c.y -> t.b`、`c.m -> t.b`、`c.* -> t.b`、`SELECT * FROM c` 的 `c.*`）。**假边比缺边更危险**，因为它会被持久化成一个指向不存在关系的血缘。
+2. **PG 里 CTE 只能由 FROM 命名，任何层级都不能作为列限定符。** `WITH c AS (...) SELECT c.a FROM stage`、`SELECT (SELECT c.a) FROM stage`、`ON CONFLICT ... SET a = (SELECT c.a)` 在 16.15 全部报 `missing FROM-clause entry for table "c"`。本仓库 `ResolveColumnRefs` 有一条"CTE 未注册为关系时仍按定义解析"的宽松路径，因此这些**非法**形状在本仓库能解析出血缘（超集）。按用户决策**保持现状**（实测收紧后全语料仍全绿，只有 2 个 `scope` 单测钉住它），记录为已知偏差。
+3. **MySQL 家族的 ODKU 子句能命名语句关系，但不能用限定符命名 CTE。** MariaDB 11.8.9 实测：`ON DUPLICATE KEY UPDATE a = stage.a` **接受**（与 PG 相反，所以 MySQL 分析器用语句作用域是对的，不要照搬 PG 的脱离写法）；`a = c.a` 报 `ERROR 1054 (42S22) Unknown column 'c.a' in 'UPDATE'`；`a = (SELECT a FROM c)` **接受**（所以它的子查询也该读到 CTE）。
+4. **MySQL 家族 upsert 值的子查询血缘被整条丢弃，且子查询内的列会被错误归属。** `ON DUPLICATE KEY UPDATE a = (SELECT max(x) FROM other)` 修复前**零边**（同一个分析器的 `UPDATE ... SET t.a = (SELECT max(x) FROM other)` 产出 `other.x -> t.a`——同一份代码里自相矛盾）；`a = (a IN (SELECT x FROM other))` 修复前产出 `stage.x -> t.a`，把子查询里的 `x` 归属到外层关系上；`a = (EXISTS (SELECT 1 FROM other WHERE other.id = stage.id))` 修复前产出 `stage.id -> t.a`。修复后子查询按自己的作用域展开（`other.x`），EXISTS 那条不再产出——与 `collectExprColumns`（UPDATE 路径）的既有规则一致：**子查询的过滤列不是血缘**。
+5. **PG 冲突子句的 `OnConflictClause.WhereClause`（DO UPDATE 的 WHERE）根本没有被遍历。** 但冲突子句作用域没有 emitter，而 DML 谓词影响边又是既定不产出，遍历在现有策略下不产生任何边；为不留不可测的死代码，本轮不遍历，仅记录。
+6. **PG 的 RETURNING 作用域仍是语句作用域的子作用域**，所以 `RETURNING stage.a`（PG 拒绝）仍能解析。但实测把它改成脱离式**解决不了**：`resolveOutputColumns` 在解析失败时原样保留引用，该引用随后会在 CTE 作用域被二次绑定——`WITH ins AS (INSERT ... SELECT ... FROM stage RETURNING stage.a) SELECT a FROM ins` 仍产出 `stage.a -> __result__.a`（改与不改输出逐字节一致）。要修得先决定 `resolveOutputColumns` 的失败策略（失败即丢弃，还是标记为不可再解析），属独立一轮。
+7. **upsert 常量赋值的建模不对称（新发现，未修）**：PG `ON CONFLICT ... DO UPDATE SET b = 'x'` 产出 `t.* -> t.b`；MySQL `ON DUPLICATE KEY UPDATE a = 1` 产出**零边**（`len(sourceColumns) == 0` 即 `continue`），而 MySQL 自己的 `UPDATE t SET a = 1` 产出 `t.* -> t.a`。三者都是"整行被重写"，只有 MySQL 的 upsert 沉默。需要先决定常量写入是否值得一条 `t.*` 边，再决定是否对齐。
+
+### 验证方式
+
+- **快照**：用 `ZZ_DUMP_OUT` 导出 5 个方言的全部语料（2108 行、含变换/is_temp/relation_type），分步 diff。ON CONFLICT 修复后**逐字节一致**；集合运算统一后**逐字节一致**；MySQL ODKU 修复后**逐字节一致**；新增 7 条语料后 diff **只包含这 7 条**（PG +4 例 219、MySQL +3 例 202）。
+- **新语料负向校验**：把 7 个代码文件整体回退到修复前（保留新语料），4 条 PG 新用例与 3 条 MySQL 新用例**全部失败**。
+- **探针 diff**：14 条 PG 形状 + 11 条 MySQL 形状 before/after 逐条核对，变化只有"假表 → 真实源"与 MySQL 侧子查询归属的修正；`SET b = c.y`、`(SELECT x FROM other)`（普通表）、`a = a + VALUES(a)`、`VALUES(a) + (SELECT ...)` 的值部分、`REPLACE INTO`、集合运算语料均为**不变**。
+- **引擎实测**：PostgreSQL 16.15（附录 B）、MariaDB 11.8.9（附录 B2）；两个容器均为一次性，用完删除。
+- `go build ./...`、`go test ./...`、`golangci-lint run ./backend/...`（0 issues）全绿。不涉及 proto 与前端。
 
 ---
 
@@ -507,6 +545,10 @@ SELECT a FROM t1; MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE S
 11. **P2 批量清理** ✅ + 文档漂移修正（§8）✅：11 项修复、2 项按决策保留（P2-4/P2-8，见 §0c）。
 12. **D5** ✅：改为**分配次数**预算而非 `benchstat` 时间基线——次数与机器无关，语料总量那条能抓住"每边多一次分配"的回归；时间阈值在忙的 CI 上不可靠，`benchstat` 基线还需要一套基线产物与 CI 步骤。
 
+**第四批（§0c 残留的第一条）— ✅ 已落地（见 §0d）**
+
+13. **ON CONFLICT 子句的作用域** ✅：不是"加一层中间作用域"，而是把 `scope` 的「关系」与「CTE 定义」两个命名空间分开（`NewScopeWithDefinitions`）；顺带用同一链接替掉集合运算分支的 CTE 拷贝 workaround（并删除 `Scope.CTEs()`），并修掉 MySQL 家族 upsert 值里子查询血缘被整条丢弃、子查询内列被错误归属的缺陷。常量 upsert 的建模不对称（§0d 发现 7）、PG 冲突子句的 `WHERE` 未遍历（发现 5）、RETURNING 的失败引用会被二次绑定（发现 6）、CTE 限定符的宽松路径（发现 2）四项按决策/依赖记录在案，未修。
+
 ---
 
 ## 附录 A：复现方法
@@ -569,6 +611,32 @@ docker run -d --name pg-review -e POSTGRES_PASSWORD=review -p 55432:5432 postgre
 | `CREATE TABLE dst (p, q) AS SELECT a, d FROM s2;` | `information_schema.columns` 列名为 **p, q** → 证实 P1-2 |
 | `CREATE TABLE dst2 AS SELECT a + d, count(*) FROM s2 GROUP BY a + d;` | 列名为 `?column?`, `count` → 佐证 P1-1 |
 | `pg_get_viewdef` 其中 `CREATE VIEW vw AS SELECT sum(a) OVER w FROM wt WINDOW w AS (PARTITION BY y ORDER BY z)` | 定义**原样保留** `WINDOW w AS (...)` → 证实 P1-3 对同步视图可达 |
+| `WITH c AS (SELECT y FROM s) INSERT INTO t (b) SELECT 1 ON CONFLICT (b) DO UPDATE SET b = (SELECT y FROM c)` | **执行成功** → 冲突子句内**子查询的 FROM 可以**命名语句级 CTE（第四批发现 1） |
+| `... ON CONFLICT (b) DO UPDATE SET b = c.y`（同上，直接限定符） | `ERROR: missing FROM-clause entry for table "c"` → 冲突子句**本身不能**命名 CTE（第四批发现 1） |
+| `... ON CONFLICT (b) DO UPDATE SET b = (SELECT c.a)` | `ERROR: missing FROM-clause entry for table "c"` → 限定符在任何层级都不能命名 CTE（第四批发现 2） |
+| `WITH c AS (...) SELECT c.a FROM stage` / `SELECT (SELECT c.a) FROM stage` | 均报 `missing FROM-clause entry for table "c"` → 同上（第四批发现 2） |
+| `INSERT INTO t (id, a) SELECT id, a FROM stage ON CONFLICT (id) DO UPDATE SET a = (SELECT stage.a)` | `ERROR: missing FROM-clause entry for table "stage"` → INSERT 的 SELECT 关系在冲突子句内（含子查询）不可见 |
+| `INSERT INTO t (id, a) SELECT id, a FROM stage RETURNING stage.a` / `RETURNING (SELECT stage.a)` | 均报 `missing FROM-clause entry for table "stage"` → RETURNING 也不可见（但本仓库仍能解析，见 §0d 发现 6） |
+| `WITH c AS (SELECT id, a FROM src), ins AS (INSERT INTO t (id, a) SELECT 1, 1 ON CONFLICT (id) DO UPDATE SET a = (SELECT a FROM c) RETURNING *) SELECT * FROM ins` | **执行成功** → 数据修改型 CTE 内的冲突子句同样读得到兄弟 CTE（第四批语料第 3 例） |
+| `... ON CONFLICT (id) DO UPDATE SET a = 1 WHERE (SELECT count(*) FROM c) > 0` | **执行成功** → DO UPDATE 的 WHERE 里也可以有读 CTE 的子查询（本仓库未遍历，见 §0d 发现 5） |
+| `... ON CONFLICT (id) WHERE t.id IN (SELECT id FROM c) DO UPDATE SET a = 1` | **报错**（索引推断谓词不允许子查询）→ 该 `InferClause.WhereClause` 不遍历是对的 |
+| `... ON CONFLICT (id) DO UPDATE SET a = (SELECT excluded.a)` / `(SELECT t.a)` / `(SELECT max(x.a) FROM src x WHERE x.id = t.id)` | 均**执行成功** → 子查询内 `EXCLUDED` 与目标关系可按相关引用读到 |
+
+## 附录 B2：真实 MariaDB 11.8.9 验证记录
+
+```bash
+docker run -d --name mxd-mariasem -e MARIADB_ROOT_PASSWORD=dev -e MARIADB_DATABASE=sem -p 53306:3306 mariadb:11
+```
+
+以下结论由该实例实测得出（容器为一次性，用完删除）：
+
+| 校验点 | 结果 |
+| --- | --- |
+| `INSERT INTO t (id, a) SELECT id, a FROM stage ON DUPLICATE KEY UPDATE a = stage.a` | **执行成功** → MySQL 家族的 ODKU 子句能命名 INSERT 的 SELECT 关系（与 PostgreSQL 相反；所以 MySQL 分析器用语句作用域是对的） |
+| `INSERT INTO t (id, a) WITH c AS (SELECT id, a FROM src) SELECT id, a FROM stage ON DUPLICATE KEY UPDATE a = c.a` | `ERROR 1054 (42S22): Unknown column 'c.a' in 'UPDATE'` → 限定符不能命名 CTE（与 PG 同向） |
+| `INSERT INTO t (id, a) WITH c AS (SELECT id, a FROM src) SELECT id, a FROM stage ON DUPLICATE KEY UPDATE a = (SELECT a FROM c)` | **执行成功** → 子查询的 FROM 可以命名 CTE（与 PG 同向），而修复前的分析器对这条产出**零边** |
+| `... ON DUPLICATE KEY UPDATE a = (SELECT stage.a)` / `(SELECT t.a)` | 均**执行成功** → 子查询内可按相关引用读到语句关系与目标关系 |
+| `WITH c AS (...) INSERT INTO t ...`（WITH 在 INSERT 之前） | `ERROR 1064 (42000)` 语法错误 → omni 的 MySQL 解析器对同形状报错是**正确**的（见附录 C 第 3 条） |
 
 ---
 
@@ -577,4 +645,5 @@ docker run -d --name pg-review -e POSTGRES_PASSWORD=review -p 55432:5432 postgre
 以下不是本仓库代码的缺陷，按要求仅记录在本文件中，**未向任何外部方反馈**：
 
 1. `github.com/bytebase/omni` 的 `pg/ast` 中，命名窗口 `WindowDef.Refname` 只携带窗口名、不携带被引用的窗口定义；`SelectStmt.WindowClause` 也不在 omni 提供的便捷访问器里。本仓库需要自己遍历 `WindowClause` 并在 `Refname` 上做一次解析（P1-3 的修复因此比内联窗口麻烦一点）。这是**依赖的 AST 表达力**问题，不是 bug。
-2. `plan/postgresql_omni_parser_migration_plan.md` 的 **PG-FU-2** 已经提出"把 DML/集合运算/窗口保留的 walker 回馈上游 omni"，本次 review 的 P0-2/P0-3 恰好是支持该方向的额外证据——若上游能提供生产级 `analysis` 包，本仓库三份分析器（D1）可显著收缩。是否需要推进属产品决策，本次不推动。
+2. omni 的 MySQL 解析器**不支持 `WITH c AS (...) INSERT ...`**（WITH 写在 INSERT 之前）这种写法：分析器对它报 `WITH before INSERT is not supported: the parser drops the CTE, so its sources cannot be resolved`。MariaDB 11.8.9 对同一条 SQL 报 `ERROR 1064` 语法错误（MariaDB 的 CTE 要写在 `INSERT ... WITH ... SELECT` 里），所以本仓库的硬失败与引擎一致，**不是缺陷**，仅记录。
+3. `plan/postgresql_omni_parser_migration_plan.md` 的 **PG-FU-2** 已经提出"把 DML/集合运算/窗口保留的 walker 回馈上游 omni"，本次 review 的 P0-2/P0-3 恰好是支持该方向的额外证据——若上游能提供生产级 `analysis` 包，本仓库三份分析器（D1）可显著收缩。是否需要推进属产品决策，本次不推动。
