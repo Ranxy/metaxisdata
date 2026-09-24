@@ -110,3 +110,37 @@ cases:
             - operation: OPERATOR
               expression: inventory.quantity + EXCLUDED.quantity
               op_type: +
+
+    # A DO UPDATE's WHERE decides which conflicting rows are rewritten — an
+    # UPDATE's row set — and this analyzer records no modification's row-set
+    # conditions as lineage (an UPDATE's own WHERE is dropped for the same reason).
+    # The clause is not analyzed at all: neither its target-column predicate nor
+    # the audit subquery behind it contributes an edge, so this statement's edges
+    # are exactly the ones the same statement without the WHERE would produce.
+    # PostgreSQL 16.15 runs the form and lets the clause name the target relation,
+    # EXCLUDED and a subquery, so the shape is pinned here: changing the decision
+    # has to be a deliberate diff rather than a silent one.
+    - name: an on-conflict where clause contributes no lineage
+      sql: "INSERT INTO inventory (product_id, quantity) SELECT product_id, quantity FROM shipment ON CONFLICT (product_id) DO UPDATE SET quantity = EXCLUDED.quantity WHERE inventory.updated_at < now() AND (SELECT count(*) FROM audit) > 0"
+      expected_edges:
+        - from_table: shipment
+          from_field: product_id
+          to_table: inventory
+          to_field: product_id
+          relation_type: direct
+          is_temp: false
+        - from_table: shipment
+          from_field: quantity
+          to_table: inventory
+          to_field: quantity
+          relation_type: direct
+          is_temp: false
+        - from_table: shipment
+          from_field: quantity
+          to_table: inventory
+          to_field: quantity
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: EXCLUDED.quantity
