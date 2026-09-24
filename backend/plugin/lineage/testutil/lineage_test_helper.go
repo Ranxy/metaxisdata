@@ -463,7 +463,7 @@ func (c *yamlCatalog) toCatalog() catalog.Provide {
 		return nil
 	}
 
-	cat := catalog.NewMemoryCatalogProvide()
+	cat := NewMemoryCatalogProvide()
 	for tableName, columns := range c.Tables {
 		addCatalogTable(cat, model.ObjectIdentifier{Name: tableName}, columns)
 	}
@@ -549,7 +549,7 @@ func parseRelationType(name string) (model.RelationType, error) {
 	}
 }
 
-func addCatalogTable(cat *catalog.MemoryCatalogProvide, id model.ObjectIdentifier, columns []string) {
+func addCatalogTable(cat *MemoryCatalogProvide, id model.ObjectIdentifier, columns []string) {
 	metaColumns := make([]catalog.ColumnMeta, len(columns))
 	for idx, columnName := range columns {
 		metaColumns[idx] = catalog.ColumnMeta{Name: columnName}

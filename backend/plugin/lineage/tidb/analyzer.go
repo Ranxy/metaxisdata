@@ -33,7 +33,7 @@ import (
 
 // Constants for special table/column markers.
 const (
-	resultTableName   = "__result__"
+	resultTableName   = model.ResultTableName
 	deletionFieldName = "__deletion__"
 	wildcardColumn    = model.WildcardColumn
 	fileSourceMarker  = "__file__" // Special marker for LOAD DATA source
@@ -42,7 +42,7 @@ const (
 func init() {
 	// Only this dialect is claimed here; the other MySQL-family engines register
 	// their own analyzers in their own packages.
-	lineage.RegisterAnalyzeRelation(storepb.Engine_TIDB, Analyze)
+	lineage.RegisterAnalyzeRelation(storepb.Engine_TIDB, Analyze, splitStatements)
 }
 
 // valuesQueryPrimary returns the VALUES query primary of a select statement. This
@@ -71,15 +71,10 @@ type Analyzer struct {
 	scopeStack []*scope.Scope
 	// Collected column relations
 	edges *algorithm.EdgeSet
-	// Errors encountered during analysis. A statement shape the analyzer cannot
-	// represent is recorded here so the caller records an explicit failure
-	// instead of silently returning empty lineage.
-	errors []string
-	// Optional catalog provider for wildcard expansion and metadata lookup
-	catalog catalog.Provide
-	// Per-analysis catalog memo, keyed by the identifier the catalog is queried
-	// with. A nil entry records a miss so a table is looked up at most once.
-	tableCache map[model.ObjectIdentifier]*catalog.TableMeta
+	// Optional catalog for wildcard expansion and metadata lookup, memoized for
+	// the whole analysis so a relation named twice is read once. It is nil when no
+	// provider was configured, which is why every use is guarded.
+	catalog *catalog.Cache
 	// realTarget is set while analyzing the query of a statement that writes to a
 	// real object (INSERT/REPLACE/CREATE TABLE AS/CREATE VIEW), so the query
 	// result edges are not emitted alongside the real target edges.
@@ -108,6 +103,21 @@ func Analyze(ctx context.Context, sql string) ([]model.ColumnRelation, error) {
 	return NewAnalyzer(ctx, sql, lineage.GetCatalogProvide()).AnalyzeRelations()
 }
 
+// splitStatements splits a script into its individual statements, dropping the
+// ones that carry no SQL. The root package feeds them to Analyze one at a time:
+// this analyzer is defined for exactly one statement.
+func splitStatements(sql string) []string {
+	segments := mysqlparser.Split(sql)
+	statements := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		if segment.Empty() {
+			continue
+		}
+		statements = append(statements, segment.Text)
+	}
+	return statements
+}
+
 // NewAnalyzer creates a new MySQL lineage analyzer.
 func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide) *Analyzer {
 	diagnostics := algorithm.NewDiagnostics()
@@ -117,9 +127,7 @@ func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide
 		tokens:      mysqlparser.Tokenize(sql),
 		scopeStack:  []*scope.Scope{scope.NewScope(nil)}, // Root scope
 		edges:       algorithm.NewEdgeSet(),
-		errors:      make([]string, 0),
-		catalog:     catalogProvide,
-		tableCache:  make(map[model.ObjectIdentifier]*catalog.TableMeta),
+		catalog:     catalog.NewCache(catalogProvide),
 		influences:  algorithm.NewInfluences(diagnostics),
 		diagnostics: diagnostics,
 	}
@@ -129,8 +137,9 @@ func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide
 //
 // Parsing is strict: a statement omni cannot parse is an error, never a partial
 // result. Multi-statement input is rejected because the analyzer is defined for
-// exactly one statement. A statement shape the analyzer cannot represent is also
-// an error, so a parseable statement never silently produces empty lineage.
+// exactly one statement; the caller splits a script and analyzes it statement by
+// statement. A statement shape the analyzer cannot represent is reported as a gap
+// beside the edges it found, never as a silent empty result.
 func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	list, err := mysqlparser.Parse(a.sql)
 	if err != nil {
@@ -148,8 +157,9 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	case *nodes.ValuesStmt:
 		a.processValuesStatement(stmt)
 	case *nodes.InsertStmt:
-		a.rejectLeadingWith("INSERT")
-		a.processInsertStatement(stmt)
+		if !a.skipLeadingWith("INSERT") {
+			a.processInsertStatement(stmt)
+		}
 	case *nodes.CreateTableStmt:
 		a.processCreateTable(stmt)
 	case *nodes.CreateViewStmt:
@@ -157,15 +167,13 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	case *nodes.AlterViewStmt:
 		a.processAlterView(stmt)
 	case *nodes.UpdateStmt:
-		if a.rejectLeadingWith("UPDATE") {
-			break
+		if !a.skipLeadingWith("UPDATE") {
+			a.processUpdateStatement(stmt)
 		}
-		a.processUpdateStatement(stmt)
 	case *nodes.DeleteStmt:
-		if a.rejectLeadingWith("DELETE") {
-			break
+		if !a.skipLeadingWith("DELETE") {
+			a.processDeleteStatement(stmt)
 		}
-		a.processDeleteStatement(stmt)
 	case *nodes.LoadDataStmt:
 		a.processLoadStatement(stmt)
 	default:
@@ -173,13 +181,10 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 		// are ignored; there is nothing to resolve.
 	}
 
-	// A statement the analyzer cannot represent fails whole: its analysis would
-	// be wrong, so the edges are discarded. What it merely could not resolve is
-	// different — those edges are real, and the notes are returned beside them so
-	// the gap is visible instead of the edges being thrown away.
-	if len(a.errors) > 0 {
-		return nil, errors.Errorf("analysis errors: %s", strings.Join(a.diagnostics.AppendTo(a.errors), "; "))
-	}
+	// What the analysis could not represent is reported beside the edges it did
+	// find: a statement shape it does not model, and a reference that resolved to
+	// nothing. A parse error is the only thing that fails an analysis whole, and it
+	// has already returned above.
 	if messages := a.diagnostics.Messages(); len(messages) > 0 {
 		return a.edges.Edges(), &lineage.UnsupportedStatementError{
 			Message: errors.Errorf("analysis errors: %s", strings.Join(messages, "; ")).Error(),
@@ -188,17 +193,17 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	return a.edges.Edges(), nil
 }
 
-// rejectLeadingWith reports whether a DML statement is prefixed with a WITH
-// clause. omni parses such statements but its InsertStmt/UpdateStmt/DeleteStmt
-// carry no CTEs, so the WITH clause is dropped and the CTE name would be treated
-// as a real table. The statement shape is unrepresentable, so it is an error
-// (see docs/omni_upstream_defects.md).
-func (a *Analyzer) rejectLeadingWith(statement string) bool {
+// skipLeadingWith reports whether a DML statement is prefixed with a WITH clause,
+// and records the gap when it is. omni parses such statements but its
+// InsertStmt/UpdateStmt/DeleteStmt carry no CTEs, so the WITH clause is dropped and
+// the CTE name would be treated as a real table — a wrong edge is worse than a
+// reported gap, so the statement is not analyzed. The note is what keeps the skip
+// from reading as "this statement has no lineage" (see docs/omni_upstream_defects.md).
+func (a *Analyzer) skipLeadingWith(statement string) bool {
 	if !hasLeadingWith(a.sql) {
 		return false
 	}
-	a.errors = append(a.errors,
-		fmt.Sprintf("WITH before %s is not supported: the parser drops the CTE, so its sources cannot be resolved", statement))
+	a.diagnostics.NotModelled(fmt.Sprintf("WITH before %s: the parser drops the CTE, so its sources cannot be resolved", statement))
 	return true
 }
 
@@ -2327,20 +2332,21 @@ func (a *Analyzer) attachColumnLookup(tableRef *scope.TableRef) {
 	})
 }
 
-// catalogTable looks up a base table's metadata once per analysis.
+// catalogTable looks up a base table's metadata, reading the catalog at most once
+// per analysis. A lookup that fails leaves the relation's columns unknown — the
+// analysis falls back to a wildcard edge — so the failure is reported as a gap:
+// swallowing it made a catalog outage produce a result indistinguishable from a
+// complete one.
 func (a *Analyzer) catalogTable(tableRef *scope.TableRef) *catalog.TableMeta {
 	if a.catalog == nil {
 		return nil
 	}
 	id := model.ObjectIdentifier{Database: tableRef.Schema, Name: tableRef.Table}
-	if meta, ok := a.tableCache[id]; ok {
-		return meta
-	}
 	meta, err := a.catalog.GetTable(a.ctx, id)
 	if err != nil {
-		meta = nil
+		a.diagnostics.CatalogUnavailable(id.FullName(), err)
+		return nil
 	}
-	a.tableCache[id] = meta
 	return meta
 }
 

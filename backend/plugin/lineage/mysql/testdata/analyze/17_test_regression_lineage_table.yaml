@@ -600,13 +600,21 @@ cases:
       sql: INSERT INTO d SET a = 1
       expected_edges: []
 
-    - name: leading WITH before INSERT is rejected
+    # omni parses the statement but drops the WITH clause, so the CTE name would be
+    # read as a stored table. The statement is skipped and the gap is reported
+    # rather than failing the analysis whole, so the edges the other statements of
+    # a script produced survive it.
+    - name: leading WITH before INSERT is a reported gap
       sql: WITH c AS (SELECT id FROM a) INSERT INTO d (id) SELECT id FROM c
       expect_error: true
+      error_contains: "not modelled: WITH before INSERT"
+      expected_edges: []
 
-    - name: leading WITH before UPDATE is rejected
+    - name: leading WITH before UPDATE is a reported gap
       sql: WITH c AS (SELECT id FROM a) UPDATE d SET x = 1
       expect_error: true
+      error_contains: "not modelled: WITH before UPDATE"
+      expected_edges: []
 
     - name: arithmetic expression keeps its operand text
       sql: SELECT x - 1 AS v FROM t
@@ -750,9 +758,11 @@ cases:
           transformations:
             - operation: UNION
 
-    - name: leading WITH before DELETE is rejected
+    - name: leading WITH before DELETE is a reported gap
       sql: WITH c AS (SELECT id FROM a) DELETE FROM dst WHERE id IN (SELECT id FROM c)
       expect_error: true
+      error_contains: "not modelled: WITH before DELETE"
+      expected_edges: []
 
     - name: DELETE without WHERE has no lineage
       sql: DELETE FROM t

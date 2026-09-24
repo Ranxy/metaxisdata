@@ -141,10 +141,12 @@ CREATE TABLE IF NOT EXISTS manual_sql_summary (
 	require.NotEmpty(t, relations)
 }
 
-// An unsupported statement is a permanent failure, not a transient one: the
-// runner records the error together with the current metadata hash so the hourly
-// scan stops re-queueing the object, and drops any lineage left by a previous
-// definition.
+// A statement the analyzer cannot model is a permanent gap, not a transient
+// failure: the runner records the gap together with the current metadata hash so
+// the hourly scan stops re-queueing the object, keeps no edge the skipped
+// statement would have contributed, and leaves the gap visible on the version.
+// The shape here is a DML statement prefixed with WITH, whose CTE omni drops, so
+// analyzing it would name a stored table that does not exist.
 func TestMySQLManualSQLUnsupportedStatementRealServerIntegration(t *testing.T) {
 	t.Parallel()
 
@@ -169,11 +171,15 @@ func TestMySQLManualSQLUnsupportedStatementRealServerIntegration(t *testing.T) {
 		return err == nil && len(lineages) == 0
 	}, 30*time.Second, time.Second)
 
-	// The stored hash is the object's current digest, so an unchanged definition
-	// is not queued again by the hourly scan.
+	// The object is not queued again, so the stored hash is the object's current
+	// digest. The version carries the gap the analysis reported, which is what makes
+	// the missing lineage readable as "the analyzer does not model this statement"
+	// rather than as a statement that has none.
 	version, err := env.Store.GetColumnLineageVersion(ctx, manualGUID, manualType)
 	require.NoError(t, err)
 	require.NotNil(t, version)
+	require.NotNil(t, version.ErrorMessage)
+	require.Contains(t, *version.ErrorMessage, "not modelled: WITH before INSERT")
 	digests, err := env.Store.ListMetaRegistryResourceDigest(ctx, &store.FindMetaRegistryResourceMessage{ObjectType: &manualType})
 	require.NoError(t, err)
 	var currentHash []byte

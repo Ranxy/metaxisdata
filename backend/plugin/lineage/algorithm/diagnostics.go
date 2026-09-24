@@ -57,6 +57,14 @@ func (d *Diagnostics) UnresolvedQualifier(clause, qualifier string) {
 	d.add("unresolved reference in " + clause + ": " + qualifier)
 }
 
+// CatalogUnavailable reports a metadata lookup that failed. The analysis carries
+// on with the relation's columns unknown, which is what makes a wildcard fall back
+// to a bulk edge, so the note is what keeps a catalog outage from reading as a
+// complete analysis: the edges of a degraded result and of a good one look alike.
+func (d *Diagnostics) CatalogUnavailable(relation string, err error) {
+	d.add("catalog lookup failed for " + relation + ": " + err.Error())
+}
+
 // refName names a reference the way the SQL writes it, leaving out the qualifier
 // when the reference has none.
 func refName(table, column string) string {

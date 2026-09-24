@@ -31,12 +31,27 @@ import (
 )
 
 func init() {
-	lineage.RegisterAnalyzeRelation(storepb.Engine_POSTGRES, Analyze)
+	lineage.RegisterAnalyzeRelation(storepb.Engine_POSTGRES, Analyze, splitStatements)
+}
+
+// splitStatements splits a script into its individual statements, dropping the
+// ones that carry no SQL. The root package feeds them to Analyze one at a time:
+// this analyzer is defined for exactly one statement.
+func splitStatements(sql string) []string {
+	segments := omnipg.Split(sql)
+	statements := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		if segment.Empty() {
+			continue
+		}
+		statements = append(statements, segment.Text)
+	}
+	return statements
 }
 
 // Constants for special table/column markers
 const (
-	resultTableName   = "__result__"
+	resultTableName   = model.ResultTableName
 	deletionFieldName = "__deletion__"
 	wildcardColumn    = model.WildcardColumn
 	// excludedRelationName is PostgreSQL's ON CONFLICT pseudo-relation holding
@@ -71,8 +86,10 @@ type Analyzer struct {
 	// non-empty store turns the result into a partial one that says what is
 	// missing.
 	diagnostics *algorithm.Diagnostics
-	// Optional catalog provider for wildcard expansion and metadata lookup
-	catalog catalog.Provide
+	// Optional catalog for wildcard expansion and metadata lookup, memoized for
+	// the whole analysis so a relation named twice is read once. It is nil when no
+	// provider was configured, which is why every use is guarded.
+	catalog *catalog.Cache
 	// realTarget is set while analyzing the query of a statement that writes to a
 	// real object (INSERT, CREATE VIEW, CREATE TABLE AS, CREATE MATERIALIZED
 	// VIEW), so the query result edges are not emitted alongside the real target.
@@ -105,7 +122,7 @@ func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide
 		scopeStack:  []*scope.Scope{scope.NewScope(nil)}, // Root scope
 		edges:       algorithm.NewEdgeSet(),
 		diagnostics: diagnostics,
-		catalog:     catalogProvide,
+		catalog:     catalog.NewCache(catalogProvide),
 		influences:  algorithm.NewInfluences(diagnostics),
 	}
 }
@@ -113,31 +130,38 @@ func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide
 // AnalyzeRelations parses the SQL and returns column relations.
 //
 // Parse errors are a hard failure: no partial result is returned. A statement
-// that parses but that the analyzer cannot model (MERGE) is not: the statements
-// around it are analyzed, their edges are returned, and the gap is reported as
-// an UnsupportedStatementError so a caller records it without discarding the
-// lineage that was found. Every well-formed statement in a multi-statement input
-// is analyzed in order on the shared analyzer state, so a multi-statement script
-// is not treated as one query (notably for MANUAL_SQL).
+// that parses but that the analyzer cannot model (MERGE) is not one — it is
+// reported as a gap beside the edges found, so a caller records it without
+// discarding real lineage.
+//
+// The analyzer is defined for exactly one statement: the caller splits a script
+// and feeds the statements in one at a time. A shared analyzer state across
+// statements made an unqualified column in a later statement resolve against an
+// earlier statement's relations, and the engines disagreed about whether a
+// multi-statement script was accepted at all.
 func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	stmts, err := omnipg.Parse(a.sql)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse PostgreSQL SQL")
 	}
 
+	only, count := pgast.Node(nil), 0
 	for _, stmt := range stmts {
 		if stmt.Empty() {
 			continue
 		}
-		// A cancelled analysis yields no result rather than a partial one: the
-		// caller re-runs the whole object, and a truncated edge set would be
-		// persisted as if it were complete.
-		if err := a.ctx.Err(); err != nil {
-			return nil, errors.Wrap(err, "analysis cancelled")
-		}
-		a.resetStatement()
-		a.processStmt(stmt.AST)
+		only, count = stmt.AST, count+1
 	}
+	if count != 1 {
+		return nil, errors.Errorf("expected exactly 1 statement, got %d", count)
+	}
+	// A cancelled analysis yields no result rather than a partial one: the caller
+	// re-runs the whole object, and a truncated edge set would be persisted as if
+	// it were complete.
+	if err := a.ctx.Err(); err != nil {
+		return nil, errors.Wrap(err, "analysis cancelled")
+	}
+	a.processStmt(only)
 
 	// What the analysis could not represent is reported beside the edges it did
 	// find: the caller stores both, so a gap never reads as "no lineage here".
@@ -148,16 +172,6 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	}
 
 	return a.edges.Edges(), nil
-}
-
-// resetStatement clears the state that belongs to one statement. Only the edges
-// and the error list span the input. A relation in scope and a pending influence
-// both belong to the statement that introduced them; carrying them over
-// attributed an UPDATE's subquery predicate to the next SELECT's result.
-func (a *Analyzer) resetStatement() {
-	a.scopeStack = []*scope.Scope{scope.NewScope(nil)}
-	a.influences.Reset()
-	a.namedWindows = nil
 }
 
 // processStmt dispatches one parsed statement.
@@ -873,8 +887,8 @@ func (a *Analyzer) attachColumnLookup(tableRef *scope.TableRef) {
 			return names
 		}
 		loaded = true
-		meta, err := a.catalog.GetTable(a.ctx, model.ObjectIdentifier{Schema: tableRef.Schema, Name: tableRef.Table})
-		if err != nil || meta == nil {
+		meta := a.catalogTable(tableRef)
+		if meta == nil {
 			return nil
 		}
 		names = make([]string, 0, len(meta.Columns))
@@ -883,6 +897,24 @@ func (a *Analyzer) attachColumnLookup(tableRef *scope.TableRef) {
 		}
 		return names
 	})
+}
+
+// catalogTable looks up a base table's metadata, reading the catalog at most once
+// per analysis. A lookup that fails leaves the relation's columns unknown — the
+// analysis falls back to a wildcard edge — so the failure is reported as a gap:
+// swallowing it made a catalog outage produce a result indistinguishable from a
+// complete one.
+func (a *Analyzer) catalogTable(tableRef *scope.TableRef) *catalog.TableMeta {
+	if a.catalog == nil {
+		return nil
+	}
+	id := model.ObjectIdentifier{Schema: tableRef.Schema, Name: tableRef.Table}
+	meta, err := a.catalog.GetTable(a.ctx, id)
+	if err != nil {
+		a.diagnostics.CatalogUnavailable(id.FullName(), err)
+		return nil
+	}
+	return meta
 }
 
 // addTargetRelation registers a data-modification target relation in the scope.
@@ -1808,13 +1840,8 @@ func (a *Analyzer) addRelation(relation model.ColumnRelation) {
 // expandWildcardWithCatalog expands a SELECT * using the catalog metadata.
 // Returns true if expansion was successful.
 func (a *Analyzer) expandWildcardWithCatalog(tableRef *scope.TableRef, sp *scope.Scope) bool {
-	tableID := model.ObjectIdentifier{
-		Schema: tableRef.Schema,
-		Name:   tableRef.Table,
-	}
-
-	tableMeta, err := a.catalog.GetTable(a.ctx, tableID)
-	if err != nil || tableMeta == nil {
+	tableMeta := a.catalogTable(tableRef)
+	if tableMeta == nil {
 		return false
 	}
 

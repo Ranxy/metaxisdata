@@ -58,13 +58,6 @@ func NewInfluences(notes *Diagnostics) *Influences {
 	}
 }
 
-// Reset forgets every influence. Influences belong to the statement that
-// collected them, never to the next one.
-func (s *Influences) Reset() {
-	s.byScope = make(map[*scope.Scope][]Influence)
-	s.byCTE = make(map[*scope.CTEDefinition][]Influence)
-}
-
 // Add records one influence against the scope whose rows it decides.
 func (s *Influences) Add(sp *scope.Scope, influence Influence) {
 	if sp == nil {

@@ -28,7 +28,7 @@ const (
 	// tempResultTable is the synthetic target the analyzers report for a query
 	// whose result is not written anywhere. It never exists in the metadata
 	// registry, so it must not be turned into a GUID.
-	tempResultTable = "__result__"
+	tempResultTable = model.ResultTableName
 )
 
 // AnalyzeSQL parses a statement and resolves it against each requested scope.

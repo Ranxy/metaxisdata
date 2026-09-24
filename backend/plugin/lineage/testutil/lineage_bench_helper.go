@@ -151,7 +151,7 @@ func BenchmarkWildcardCatalog(b *testing.B, analyze AnalyzeFunc) {
 	for i := range columns {
 		columns[i] = catalog.ColumnMeta{Name: fmt.Sprintf("c%d", i)}
 	}
-	provide := catalog.NewMemoryCatalogProvide()
+	provide := NewMemoryCatalogProvide()
 	provide.AddTable(&catalog.TableMeta{
 		ID:      model.ObjectIdentifier{Name: "t"},
 		Columns: columns,

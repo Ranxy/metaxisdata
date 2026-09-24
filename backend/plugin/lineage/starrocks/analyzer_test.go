@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/scope"
 
 	nodes "github.com/bytebase/omni/starrocks/ast"
@@ -105,17 +106,20 @@ func TestInferredColumnAlias(t *testing.T) {
 	}
 }
 
-// TestUnimplementedStatementsFailLoudly pins that a shape this phase does not
-// handle yet is an explicit error, never a wrong or partial lineage. Narrow
-// this list as the corresponding phases land.
-func TestUnimplementedStatementsFailLoudly(t *testing.T) {
+// TestUnmodelledStatementsAreGaps pins that a statement shape this phase does not
+// handle yet is reported as a gap beside the edges, never as a wrong result and
+// never as a silent empty one. Narrow this list as the corresponding phases land.
+func TestUnmodelledStatementsAreGaps(t *testing.T) {
 	t.Parallel()
 
 	for _, sql := range []string{
 		"MERGE INTO t1 USING t2 ON t1.id = t2.id WHEN MATCHED THEN UPDATE SET t1.name = t2.tag",
 	} {
 		relations, err := analyzeSQL(sql, nil)
-		require.Error(t, err, "expected an explicit failure for %q", sql)
-		require.Nil(t, relations, "expected no partial result for %q", sql)
+
+		var unsupported *lineage.UnsupportedStatementError
+		require.ErrorAs(t, err, &unsupported, "expected a reported gap for %q", sql)
+		require.Contains(t, unsupported.Error(), "not modelled")
+		require.Empty(t, relations, "expected no edges for %q", sql)
 	}
 }

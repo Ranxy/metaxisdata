@@ -273,9 +273,9 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	analysisCtx := catalog.WithAnalysisContext(ctx, ac)
 	relations, err := lineage.GetAnalyzeRelation(analysisCtx, engine, wrappedSQL)
 
-	// A statement the analyzer cannot model does not condemn the statements
-	// around it: the analyzer returns the edges it did find together with the
-	// gap, so the lineage is stored and the gap is recorded beside it.
+	// What an analysis could not represent does not condemn the rest of it: the
+	// analyzers return the edges they did find together with the gap, so the
+	// lineage is stored and the gap is recorded beside it.
 	var unsupported *lineage.UnsupportedStatementError
 	switch {
 	case err == nil:
@@ -289,12 +289,12 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash,
 			fmt.Sprintf("engine %s has no lineage analyzer; analysis skipped", engine))
 	default:
-		// Analysis itself does no failing I/O: the analyzers are pure functions of
-		// (engine, statement) and consult the catalog on a best-effort basis that
-		// never turns a lookup error into an analysis error. A statement they
-		// cannot represent therefore fails identically on every retry, so it is
-		// recorded as analyzed at the current hash instead of being re-queued
-		// forever by the hourly scan.
+		// A parse error is deterministic — the text does not change between
+		// retries — so the object is recorded as analyzed at the current hash
+		// instead of being re-queued forever by the hourly scan. The analyzers do
+		// no other failing I/O: a catalog lookup that fails degrades one relation's
+		// columns to a wildcard and is reported as a gap on the version row, which
+		// is what keeps a degraded analysis distinguishable from a complete one.
 		slog.Warn("Lineage analysis failed on an unsupported statement",
 			slog.String("guid", metaGUID), slog.String("engine", engine.String()), log.WithError(err))
 		return markAnalysisFailed(ctx, a.store, metaGUID, metaType, res.MetaHash, err)
@@ -497,11 +497,12 @@ func markAnalyzed(ctx context.Context, s *store.Store, metaGUID string, metaType
 	return s.UpsertColumnLineageVersion(ctx, v)
 }
 
-// markAnalysisFailed records a statement the analyzer cannot represent. The
-// current hash is stored with the error message so the hourly scan stops
-// re-queueing an unchanged definition (a metadata change clears the stored hash
-// comparison and retries), and any lineage a previous definition left behind is
-// dropped because it describes SQL the object no longer has.
+// markAnalysisFailed records SQL the analyzer could not parse. The current hash is
+// stored with the error message so the hourly scan stops re-queueing an unchanged
+// definition (a metadata change clears the stored hash comparison and retries),
+// and any lineage a previous definition left behind is dropped because it
+// describes SQL the object no longer has. A gap the analysis reported instead of a
+// failure takes the partial path above and keeps its edges.
 func markAnalysisFailed(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, metaHash []byte, cause error) error {
 	if err := s.BatchReplaceColumnLineage(ctx, metaGUID, metaType, nil); err != nil {
 		return storeError(ctx, s, metaGUID, metaType, err, "failed to clear column lineage")

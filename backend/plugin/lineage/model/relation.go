@@ -12,7 +12,11 @@ type ColumnRelation struct {
 	Target         Column
 	Transformation []Transformation
 	RelationType   RelationType
-	IsTemp         bool // if the target table is not a real table
+	// IsTemp reports whether the target is the statement's own result rather than
+	// a stored object. A target is temporary exactly when it names
+	// ResultTableName, so the flag is derived from the target and not a second
+	// source of truth.
+	IsTemp bool
 }
 
 // WildcardColumn is the column marker a lineage edge carries when the column

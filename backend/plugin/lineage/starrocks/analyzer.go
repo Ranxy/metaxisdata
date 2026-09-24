@@ -11,8 +11,9 @@
 // resolving to lineage.ErrorEngineNotSupported, which the runner records as a
 // deliberate per-object skip; see plan/starrocks_lineage_plan.md.
 //
-// A statement kind the analyzer cannot model yet (MERGE) returns an explicit
-// error instead of a partial or empty result.
+// A statement kind the analyzer cannot model yet (MERGE) is reported as a gap
+// beside the edges the other statements produced, so a coverage gap never
+// discards real lineage.
 package starrocks
 
 import (
@@ -42,7 +43,22 @@ const (
 )
 
 func init() {
-	lineage.RegisterAnalyzeRelation(storepb.Engine_STARROCKS, Analyze)
+	lineage.RegisterAnalyzeRelation(storepb.Engine_STARROCKS, Analyze, splitStatements)
+}
+
+// splitStatements splits a script into its individual statements, dropping the
+// ones that carry no SQL. The root package feeds them to Analyze one at a time:
+// this analyzer is defined for exactly one statement.
+func splitStatements(sql string) []string {
+	segments := starrocksparser.Split(sql)
+	statements := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		if segment.Empty() {
+			continue
+		}
+		statements = append(statements, segment.Text)
+	}
+	return statements
 }
 
 // Analyzer performs direct lineage analysis on one StarRocks statement.
@@ -56,15 +72,19 @@ type Analyzer struct {
 	scopeStack []*scope.Scope
 	// edges is the accumulated, deduplicated lineage.
 	edges *algorithm.EdgeSet
-	// errors collects analysis failures. A non-empty list fails the whole
-	// analysis: a partial result is never returned.
+	// errors collects analysis failures that condemn the whole statement, such as
+	// a query body omni exposes only as text failing to parse. A shape the
+	// analyzer does not model is not one of them: that is a diagnostics gap.
 	errors []string
 	// diagnostics collects what the analysis could not represent: a reference that
-	// resolved to nothing, and a clause whose target it could not choose. They turn
-	// the result into a partial one that says what is missing.
+	// resolved to nothing, a clause whose target it could not choose, and a
+	// statement shape it does not model. They turn the result into a partial one
+	// that says what is missing.
 	diagnostics *algorithm.Diagnostics
-	// catalog optionally expands wildcards and resolves metadata.
-	catalog catalog.Provide
+	// Optional catalog for wildcard expansion and metadata lookup, memoized for
+	// the whole analysis so a relation named twice is read once. It is nil when no
+	// provider was configured, which is why every use is guarded.
+	catalog *catalog.Cache
 	// inTargetContext is set while the query body of a statement that maps its
 	// output columns onto an explicit object (CREATE VIEW / MATERIALIZED VIEW /
 	// TABLE ... AS, INSERT ... SELECT) is analyzed. Those columns must not also
@@ -95,7 +115,7 @@ func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide
 		scopeStack:  []*scope.Scope{scope.NewScope(nil)}, // root scope
 		edges:       algorithm.NewEdgeSet(),
 		errors:      make([]string, 0),
-		catalog:     catalogProvide,
+		catalog:     catalog.NewCache(catalogProvide),
 		influences:  algorithm.NewInfluences(diagnostics),
 		diagnostics: diagnostics,
 	}
@@ -105,7 +125,8 @@ func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide
 //
 // Parsing is strict: a statement omni cannot parse is an error, never a partial
 // result. Multi-statement input is rejected because the analyzer is defined for
-// exactly one statement.
+// exactly one statement; the caller splits a script and analyzes it statement by
+// statement.
 func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	if segments := starrocksparser.Split(a.sql); len(segments) != 1 {
 		return nil, errors.Errorf("expected exactly 1 statement, got %d", len(segments))
@@ -132,9 +153,9 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 }
 
 // partialOrComplete returns the edges with what could not be represented beside
-// them. A statement the analyzer cannot represent at all fails whole — its
-// analysis would be wrong, so the edges are discarded — while a reference it
-// merely could not resolve keeps them and is reported.
+// them. A statement the analyzer cannot analyze at all fails whole — its analysis
+// would be wrong, so the edges are discarded — while a shape it does not model and
+// a reference it could not resolve keep them and are reported instead.
 func (a *Analyzer) partialOrComplete() ([]model.ColumnRelation, error) {
 	if len(a.errors) > 0 {
 		return nil, errors.Errorf("analysis errors: %s", strings.Join(a.diagnostics.AppendTo(a.errors), "; "))
@@ -175,20 +196,15 @@ func (a *Analyzer) dispatch(stmt nodes.Node) {
 	case *nodes.LoadDataStmt:
 		a.processLoadStatement(s)
 	case *nodes.MergeStmt:
-		// MERGE carries column lineage this analyzer does not model yet;
-		// failing loudly keeps it from looking like a statement with none.
-		a.unsupported("MERGE")
+		// MERGE carries column lineage this analyzer does not model yet. A gap is
+		// reported instead of failing the statement, so the edges of the
+		// statements around it survive — which is what the PostgreSQL analyzer
+		// does for the same statement.
+		a.diagnostics.NotModelled("MERGE")
 	default:
 		// Statement kinds that carry no lineage are ignored, as in the MySQL
 		// analyzer.
 	}
-}
-
-// unsupported records a statement kind this phase cannot analyze yet. It is an
-// error rather than a silent empty result, so an unimplemented shape is never
-// mistaken for "this statement has no lineage".
-func (a *Analyzer) unsupported(what string) {
-	a.errors = append(a.errors, fmt.Sprintf("%s analysis is not implemented yet", what))
 }
 
 // ---------------------------------------------------------------------------
@@ -219,7 +235,9 @@ func (a *Analyzer) processQueryNode(node nodes.Node) {
 	case *nodes.ParenSelect:
 		a.processQueryNode(n.Sel)
 	default:
-		a.unsupported("query expression")
+		// A query expression this analyzer does not model is a gap rather than a
+		// failure: the rest of the statement may still have resolvable lineage.
+		a.diagnostics.NotModelled("query expression")
 	}
 }
 
@@ -413,8 +431,8 @@ func (a *Analyzer) attachColumnLookup(tableRef *scope.TableRef) {
 			return names
 		}
 		loaded = true
-		meta, err := a.catalog.GetTable(a.ctx, model.ObjectIdentifier{Database: tableRef.Schema, Name: tableRef.Table})
-		if err != nil || meta == nil {
+		meta := a.catalogTable(tableRef)
+		if meta == nil {
 			return nil
 		}
 		names = make([]string, 0, len(meta.Columns))
@@ -423,6 +441,24 @@ func (a *Analyzer) attachColumnLookup(tableRef *scope.TableRef) {
 		}
 		return names
 	})
+}
+
+// catalogTable looks up a base table's metadata, reading the catalog at most once
+// per analysis. A lookup that fails leaves the relation's columns unknown — the
+// analysis falls back to a wildcard edge — so the failure is reported as a gap:
+// swallowing it made a catalog outage produce a result indistinguishable from a
+// complete one.
+func (a *Analyzer) catalogTable(tableRef *scope.TableRef) *catalog.TableMeta {
+	if a.catalog == nil {
+		return nil
+	}
+	id := model.ObjectIdentifier{Database: tableRef.Schema, Name: tableRef.Table}
+	meta, err := a.catalog.GetTable(a.ctx, id)
+	if err != nil {
+		a.diagnostics.CatalogUnavailable(id.FullName(), err)
+		return nil
+	}
+	return meta
 }
 
 // attachTempColumnLookup lets the scope resolver treat a CTE or derived table as
@@ -1148,12 +1184,8 @@ func (a *Analyzer) addRelation(relation model.ColumnRelation) {
 // any column named in except. It reports false when no metadata is available so
 // the caller falls back to a bulk wildcard edge.
 func (a *Analyzer) expandWildcardWithCatalog(tableRef *scope.TableRef, sp *scope.Scope, except []string) bool {
-	tableID := model.ObjectIdentifier{
-		Database: tableRef.Schema,
-		Name:     tableRef.Table,
-	}
-	tableMeta, err := a.catalog.GetTable(a.ctx, tableID)
-	if err != nil || tableMeta == nil {
+	tableMeta := a.catalogTable(tableRef)
+	if tableMeta == nil {
 		return false
 	}
 	excluded := make(map[string]struct{}, len(except))
