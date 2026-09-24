@@ -11,6 +11,13 @@ import (
 // Scopes are nested (e.g., subquery inside a main query).
 type Scope struct {
 	parent *Scope
+	// definitions, when set, is the scope whose CTE definitions this one resolves
+	// while resolving none of its relations. A clause can read a statement's CTEs
+	// without being able to name the relations its query selects from, and the
+	// two namespaces have to be reachable separately: a subquery written inside
+	// ON CONFLICT resolves `FROM c` against the statement's CTEs, while `c.x`
+	// beside it stays unresolved. See NewScopeWithDefinitions.
+	definitions *Scope
 	// Relations available in this scope, in registration order. They are a slice
 	// rather than a map keyed by name because two relations can carry the same
 	// name when they come from different qualifiers (db1.t and db2.t), and both
@@ -30,6 +37,17 @@ func NewScope(parent *Scope) *Scope {
 		ctes:          make(map[string]*CTEDefinition),
 		outputColumns: make([]OutputColumn, 0),
 	}
+}
+
+// NewScopeWithDefinitions creates a scope that resolves the CTE definitions of
+// definitions while resolving the relations of parent. The two namespaces are
+// usually reached through the same link, which is why NewScope is the ordinary
+// constructor; a clause that may read a query's CTEs but not the relations that
+// query reads from needs them separated.
+func NewScopeWithDefinitions(parent, definitions *Scope) *Scope {
+	s := NewScope(parent)
+	s.definitions = definitions
+	return s
 }
 
 // AddTable adds a table reference to the current scope. Registering the same
@@ -84,15 +102,39 @@ func (s *Scope) FindTable(name string) (*TableRef, bool) {
 	return s.FindRelation(RelationKey{Name: name})
 }
 
-// FindCTE looks up a CTE by name in the current scope and parent scopes.
+// FindCTE looks up a CTE definition a FROM clause names: this scope's own
+// definitions, the definitions this scope reads, and then their parent chain.
+// A CTE is named from a FROM clause and nowhere else, which is why the query
+// resolution path uses findCTEQualifier instead.
 func (s *Scope) FindCTE(name string) (*CTEDefinition, bool) {
 	// Check current scope
 	if cte, ok := s.ctes[name]; ok {
 		return cte, true
 	}
+	// A scope that reads another scope's definitions does not also read its
+	// parent's: the definitions source already reaches everything that scope sees.
+	if s.definitions != nil {
+		return s.definitions.FindCTE(name)
+	}
 	// Check parent scope
 	if s.parent != nil {
 		return s.parent.FindCTE(name)
+	}
+	return nil, false
+}
+
+// findCTEQualifier resolves a CTE named by a column qualifier rather than by a
+// FROM entry. Unlike FindCTE it does not cross into the definitions a scope only
+// reads: a clause that reads a query's definitions can name the CTE in a nested
+// FROM list but not as a qualifier, which is what PostgreSQL enforces there
+// ("missing FROM-clause entry for table c", verified on 16.15). A qualifier
+// reaches exactly the parent chain.
+func (s *Scope) findCTEQualifier(name string) (*CTEDefinition, bool) {
+	if cte, ok := s.ctes[name]; ok {
+		return cte, true
+	}
+	if s.parent != nil {
+		return s.parent.findCTEQualifier(name)
 	}
 	return nil, false
 }
@@ -102,22 +144,6 @@ func (s *Scope) FindCTE(name string) (*CTEDefinition, bool) {
 // and db2.t.
 func (s *Scope) Tables() []*TableRef {
 	return slices.Clone(s.relations)
-}
-
-// CTEs returns the scope's CTE definitions in name order, without the parent
-// scope's.
-func (s *Scope) CTEs() []*CTEDefinition {
-	keys := make([]string, 0, len(s.ctes))
-	for key := range s.ctes {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
-
-	out := make([]*CTEDefinition, 0, len(keys))
-	for _, key := range keys {
-		out = append(out, s.ctes[key])
-	}
-	return out
 }
 
 // ResolveColumn resolves a column reference to its source table.
@@ -180,7 +206,7 @@ func (s *Scope) ResolveColumnRefs(colRef ColumnRef) ([]ResolvedColumn, error) {
 			}}, nil
 		}
 		// A CTE that is not registered as a relation still describes its columns.
-		if cte, ok := s.FindCTE(colRef.Table); ok {
+		if cte, ok := s.findCTEQualifier(colRef.Table); ok {
 			return []ResolvedColumn{{
 				Ref:      ColumnRef{Table: cte.Name, Column: colRef.Column},
 				Relation: cteTableRef(cte),

@@ -223,3 +223,73 @@ cases:
           to_field: a
           relation_type: direct
           is_temp: false
+
+    # A subquery in an upsert value is a query level of its own, so what it selects
+    # is a source of the rewritten column. The clause collected only the plain
+    # column references around it, so the subquery's own read was dropped.
+    - name: an upsert value's subquery records what it selects
+      sql: INSERT INTO t (a) SELECT x FROM s ON DUPLICATE KEY UPDATE a = (SELECT max(y) FROM other)
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_table: other
+          from_field: y
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+
+    # The subquery resolves a CTE the statement declared, and the edge names the
+    # relation that CTE reads rather than the CTE itself.
+    - name: an upsert value's subquery reads a statement CTE through its lineage
+      sql: INSERT INTO t (a) WITH c AS (SELECT y FROM src) SELECT x FROM s ON DUPLICATE KEY UPDATE a = (SELECT y FROM c)
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_table: src
+          from_field: y
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+
+    # Columns inside the subquery belong to the subquery's relations: reading them
+    # as plain references of the clause attributed them to the first relation the
+    # resolver could find, which named a table the subquery never reads.
+    - name: columns inside an upsert value's subquery keep the subquery's relation
+      sql: INSERT INTO t (a) SELECT x FROM s ON DUPLICATE KEY UPDATE a = (s.x IN (SELECT y FROM other))
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: direct
+          is_temp: false
+        - from_table: s
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+        - from_table: other
+          from_field: y
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: OPERATOR

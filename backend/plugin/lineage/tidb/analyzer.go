@@ -516,10 +516,10 @@ func (a *Analyzer) processSetOperation(stmt *nodes.SelectStmt) {
 			allOutputColumns = append(allOutputColumns, a.resolveOutputColumns(baseScope, baseScope.GetOutputColumns()))
 			continue
 		}
-		tempScope := scope.NewScope(baseScope.Parent())
-		for _, cte := range baseScope.CTEs() {
-			tempScope.AddCTE(cte)
-		}
+		// The arm starts a relation namespace of its own — the first arm's
+		// relations are not visible in it — while still reading the CTEs the
+		// statement declared.
+		tempScope := scope.NewScopeWithDefinitions(baseScope.Parent(), baseScope)
 		originalScope := a.currentScope()
 		a.scopeStack[len(a.scopeStack)-1] = tempScope
 		a.processSetOpArm(arm.stmt)
@@ -1042,7 +1042,7 @@ func (a *Analyzer) processInsertUpdateList(assignments []*nodes.Assignment, targ
 		if elem == nil || elem.Column == nil || elem.Value == nil {
 			continue
 		}
-		sourceColumns := collectUpsertSources(elem.Value, insertSources)
+		sourceColumns := a.collectUpsertSources(elem.Value, sp, insertSources)
 		if len(sourceColumns) == 0 {
 			continue
 		}
@@ -1111,36 +1111,16 @@ func resolveWithin(sp *scope.Scope, refs []scope.ColumnRef) []scope.ColumnRef {
 	return out
 }
 
-// collectUpsertSources collects the sources of an upsert assignment value,
-// replacing VALUES(col) with the sources the insert writes to col.
-func collectUpsertSources(expr nodes.ExprNode, insertSources map[string][]scope.ColumnRef) []scope.ColumnRef {
-	out := make([]scope.ColumnRef, 0)
-	if expr == nil {
-		return out
-	}
-	nodes.Inspect(expr, func(n nodes.Node) bool {
-		switch x := n.(type) {
-		case *nodes.FuncCallExpr:
-			if strings.EqualFold(x.Name, "VALUES") {
-				for _, arg := range x.Args {
-					if cr, ok := arg.(*nodes.ColumnRef); ok && cr.Column != "" {
-						out = append(out, insertSources[cr.Column]...)
-					}
-				}
-				return false
-			}
-		case *nodes.SubqueryExpr:
-			return false
-		case *nodes.ColumnRef:
-			if x.Column != "" {
-				out = append(out, scope.ColumnRef{Schema: x.Schema, Table: x.Table, Column: x.Column})
-			}
-		default:
-			// Other nodes are traversed for the column references they contain.
-		}
-		return true
-	})
-	return out
+// collectUpsertSources collects the sources of an upsert assignment value.
+// VALUES(col) names the value the insert proposed for col rather than a column of
+// any relation in scope, so it maps through insertSources instead of the scope;
+// every other reference, subqueries included, is collected the way any other
+// expression's sources are. Reading the value's subqueries as plain columns of
+// the enclosing scope used to attribute their columns to whichever relation the
+// fallback picked — `a = (b IN (SELECT x FROM other))` recorded `stage.x` — and
+// dropped what the subquery really reads.
+func (a *Analyzer) collectUpsertSources(expr nodes.ExprNode, sp *scope.Scope, insertSources map[string][]scope.ColumnRef) []scope.ColumnRef {
+	return a.collectExpressionSources(expr, sp, insertSources)
 }
 
 // ---------------------------------------------------------------------------
@@ -1470,6 +1450,13 @@ func (a *Analyzer) processLoadDataSetClause(assignments []*nodes.Assignment, tar
 // enclosing FROM relations. A subquery's filter columns are not included, which
 // matches the rule that a SELECT's WHERE clause is not lineage.
 func (a *Analyzer) collectExprColumns(expr nodes.ExprNode, sp *scope.Scope) []scope.ColumnRef {
+	return a.collectExpressionSources(expr, sp, nil)
+}
+
+// collectExpressionSources is collectExprColumns with an optional upsert
+// mapping: when upsertValues is set, VALUES(col) reports the sources the insert
+// proposed for col rather than a column of a relation in scope.
+func (a *Analyzer) collectExpressionSources(expr nodes.ExprNode, sp *scope.Scope, upsertValues map[string][]scope.ColumnRef) []scope.ColumnRef {
 	columns := make([]scope.ColumnRef, 0)
 	if expr == nil {
 		return columns
@@ -1477,6 +1464,17 @@ func (a *Analyzer) collectExprColumns(expr nodes.ExprNode, sp *scope.Scope) []sc
 	var subqueries []*nodes.SelectStmt
 	nodes.Inspect(expr, func(n nodes.Node) bool {
 		switch x := n.(type) {
+		case *nodes.FuncCallExpr:
+			// VALUES(col) only means anything in an upsert, and there it names the
+			// proposed row rather than anything the scope can resolve.
+			if upsertValues != nil && strings.EqualFold(x.Name, "VALUES") {
+				for _, arg := range x.Args {
+					if cr, ok := arg.(*nodes.ColumnRef); ok && cr.Column != "" {
+						columns = append(columns, upsertValues[cr.Column]...)
+					}
+				}
+				return false
+			}
 		case *nodes.SubqueryExpr:
 			if x.Select != nil {
 				subqueries = append(subqueries, x.Select)
@@ -1485,9 +1483,9 @@ func (a *Analyzer) collectExprColumns(expr nodes.ExprNode, sp *scope.Scope) []sc
 		case *nodes.InExpr:
 			// The value list and the left operand are ordinary columns; only the
 			// subquery operand is a scope of its own.
-			columns = append(columns, a.collectExprColumns(x.Expr, sp)...)
+			columns = append(columns, a.collectExpressionSources(x.Expr, sp, upsertValues)...)
 			for _, item := range x.List {
-				columns = append(columns, a.collectExprColumns(item, sp)...)
+				columns = append(columns, a.collectExpressionSources(item, sp, upsertValues)...)
 			}
 			if x.Select != nil {
 				subqueries = append(subqueries, x.Select)

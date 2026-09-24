@@ -314,8 +314,9 @@ func flattenSetOpArms(stmt *pgast.SelectStmt, chain []model.Transformation) []se
 }
 
 // processSetOperation processes UNION/INTERSECT/EXCEPT: the first operand is
-// analyzed in the base scope, every later operand in a temporary scope parented
-// to the base scope's parent.
+// analyzed in the base scope, every later operand in a temporary scope that
+// resolves no relation of the base scope's but still reads the CTEs the
+// statement declared.
 func (a *Analyzer) processSetOperation(stmt *pgast.SelectStmt) {
 	arms := flattenSetOpArms(stmt, nil)
 	baseScope := a.currentScope()
@@ -332,10 +333,10 @@ func (a *Analyzer) processSetOperation(stmt *pgast.SelectStmt) {
 			continue
 		}
 
-		tempScope := scope.NewScope(baseScope.Parent())
-		for _, cte := range baseScope.CTEs() {
-			tempScope.AddCTE(cte)
-		}
+		// The arm starts a relation namespace of its own — the first arm's
+		// relations are not visible in it — while still reading the CTEs the
+		// statement declared.
+		tempScope := scope.NewScopeWithDefinitions(baseScope.Parent(), baseScope)
 
 		originalScope := a.currentScope()
 		a.scopeStack[len(a.scopeStack)-1] = tempScope
@@ -1084,6 +1085,14 @@ func (a *Analyzer) insertSourceMap(sp *scope.Scope, targetColumns []string) map[
 // clause cannot name. Its own scope is also what lets the target resolve at all,
 // so `SET quantity = inventory.quantity + …` records the self-reference instead
 // of being dropped or attributed to the INSERT source.
+//
+// The statement's CTE definitions stay reachable even though its relations do
+// not. A subquery written in the clause is a query level of its own, so its FROM
+// clause resolves against them exactly as it would anywhere else — `ON CONFLICT
+// (id) DO UPDATE SET a = (SELECT a FROM c)` reads c's lineage through the CTE,
+// which is what PostgreSQL executes (verified on 16.15). Without the definitions
+// link the name fell through to the base-table branch and the edge named a table
+// `c` that does not exist.
 func (a *Analyzer) processOnConflict(onConflict *pgast.OnConflictClause, target *pgast.RangeVar, insertSources map[string][]scope.ColumnRef) {
 	if onConflict == nil || onConflict.TargetList == nil {
 		return
@@ -1095,7 +1104,7 @@ func (a *Analyzer) processOnConflict(onConflict *pgast.OnConflictClause, target 
 		targetTable = target.Relname
 	}
 
-	a.scopeStack = append(a.scopeStack, scope.NewScope(nil))
+	a.scopeStack = append(a.scopeStack, scope.NewScopeWithDefinitions(nil, a.currentScope()))
 	a.addTargetRelation(target)
 	a.processAssignments(onConflict.TargetList, targetSchema, targetTable, insertSources)
 	a.popScope()

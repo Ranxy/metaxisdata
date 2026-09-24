@@ -67,6 +67,8 @@ cases:
     # The conflict clause has no FROM-clause entry of its own, so naming the
     # statement's CTE there is "missing FROM-clause entry for table c" (verified
     # on 16). Reading it as the CTE would record a source the clause cannot name.
+    # The cases below are the other half of that rule: a subquery written in the
+    # clause is a query level of its own, so there a FROM list does name the CTE.
     - name: a conflict clause cannot name the statement's CTE
       sql: "WITH c AS (SELECT y FROM s) INSERT INTO t (b) SELECT y FROM c ON CONFLICT (b) DO UPDATE SET b = c.y"
       expected_edges:
@@ -76,3 +78,83 @@ cases:
           to_field: "b"
           relation_type: direct
           is_temp: false
+
+    # PostgreSQL accepts and runs this form (verified on 16.15): the subquery's own
+    # FROM list resolves c against the statement's CTEs, exactly as it would in any
+    # other nested query. Reading the name as a base table recorded an edge to a
+    # table `c` that does not exist, instead of tracing the CTE's lineage.
+    - name: a conflict clause subquery reads the statement's CTE
+      sql: "WITH c AS (SELECT y FROM s) INSERT INTO t (b) SELECT 1 ON CONFLICT (b) DO UPDATE SET b = (SELECT y FROM c)"
+      expected_edges:
+        - from_table: s
+          from_field: "y"
+          to_table: t
+          to_field: "b"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: "(SELECT y FROM c)"
+
+    # Reading the same CTE twice — once as the insert's source and once in the
+    # conflict clause — does not record the CTE's predicate twice. The filter
+    # belongs to the rows the statement writes, and the clause re-reads those rows
+    # rather than filtering them again.
+    - name: re-reading a CTE in the conflict clause does not duplicate its influence
+      sql: "WITH c AS (SELECT y FROM s WHERE y > 5) INSERT INTO t (b) SELECT y FROM c ON CONFLICT (b) DO UPDATE SET b = (SELECT y FROM c)"
+      expected_edges:
+        - from_table: s
+          from_field: "y"
+          to_table: t
+          to_field: "b"
+          relation_type: direct
+          is_temp: false
+        - from_table: s
+          from_field: "y"
+          to_table: t
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: y > 5
+        - from_table: s
+          from_field: "y"
+          to_table: t
+          to_field: "b"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: "(SELECT y FROM c)"
+
+    # The definitions a clause reads are those of the statement it belongs to, so a
+    # data-modifying CTE's conflict clause reads the CTEs declared beside it one
+    # level up, not only the ones it declares itself.
+    - name: a conflict clause inside a data-modifying CTE reads the sibling CTE
+      sql: "WITH c AS (SELECT y, z FROM s), ins AS (INSERT INTO t (b) SELECT 1 ON CONFLICT (b) DO UPDATE SET b = (SELECT z FROM c)) SELECT b FROM ins"
+      expected_edges:
+        - from_table: s
+          from_field: "z"
+          to_table: t
+          to_field: "b"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: "(SELECT z FROM c)"
+
+    # A declared column list renames the CTE's outputs positionally, and the clause
+    # resolves against the renamed form.
+    - name: a conflict clause subquery reads a CTE's declared column list
+      sql: "WITH c (m) AS (SELECT y FROM s) INSERT INTO t (b) SELECT 1 ON CONFLICT (b) DO UPDATE SET b = (SELECT m FROM c)"
+      expected_edges:
+        - from_table: s
+          from_field: "y"
+          to_table: t
+          to_field: "b"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: "(SELECT m FROM c)"

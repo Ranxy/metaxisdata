@@ -1204,10 +1204,10 @@ func (a *Analyzer) processSetOperation(stmt *nodes.SetOpStmt) {
 			allOutputColumns = append(allOutputColumns, a.resolveOutputColumns(baseScope, baseScope.GetOutputColumns()))
 			continue
 		}
-		tempScope := scope.NewScope(baseScope.Parent())
-		for _, cte := range baseScope.CTEs() {
-			tempScope.AddCTE(cte)
-		}
+		// The arm starts a relation namespace of its own — the first arm's
+		// relations are not visible in it — while still reading the CTEs the
+		// statement declared.
+		tempScope := scope.NewScopeWithDefinitions(baseScope.Parent(), baseScope)
 		originalScope := a.currentScope()
 		a.scopeStack[len(a.scopeStack)-1] = tempScope
 		a.processSetOpArm(arm.stmt)

@@ -12,7 +12,8 @@ func TestNewScope(t *testing.T) {
 	require.Nil(t, scope.Parent())
 	require.Empty(t, scope.GetOutputColumns())
 	require.Empty(t, scope.Tables())
-	require.Empty(t, scope.CTEs())
+	_, ok := scope.FindCTE("missing")
+	require.False(t, ok)
 }
 
 func TestScope_AddTable(t *testing.T) {
@@ -200,6 +201,40 @@ func TestScope_FindCTE_InParentScope(t *testing.T) {
 	found, ok := child.FindCTE("parent_cte")
 	require.True(t, ok)
 	require.Equal(t, cte, found)
+}
+
+// TestScopeWithDefinitions separates the two namespaces: a clause reads the CTEs
+// of the query it belongs to while resolving none of that query's relations. A
+// column qualifier is not a way to name a CTE anywhere, so it stays unresolved
+// even though the FROM path reaches the definition.
+func TestScopeWithDefinitions(t *testing.T) {
+	statement := NewScope(nil)
+	statement.AddTable(&TableRef{Table: "s"})
+	statement.AddCTE(&CTEDefinition{Name: "c", Columns: []string{"y"}})
+
+	clause := NewScopeWithDefinitions(nil, statement)
+	// The query's relation is out of reach ...
+	_, ok := clause.FindRelation(RelationKey{Name: "s"})
+	require.False(t, ok)
+	// ... while its CTE is, for a FROM list to name.
+	_, ok = clause.FindCTE("c")
+	require.True(t, ok)
+	// A qualifier never names a CTE, at this level ...
+	_, err := clause.ResolveColumn(ColumnRef{Table: "c", Column: "y"})
+	require.Error(t, err)
+
+	// ... nor at a query level nested inside it, which reaches the definitions
+	// through the clause rather than through its own parent.
+	nested := NewScope(clause)
+	_, ok = nested.FindCTE("c")
+	require.True(t, ok)
+	_, err = nested.ResolveColumn(ColumnRef{Table: "c", Column: "y"})
+	require.Error(t, err)
+
+	// The same constructor with the query as the parent keeps its relations.
+	related := NewScopeWithDefinitions(statement, nil)
+	_, ok = related.FindRelation(RelationKey{Name: "s"})
+	require.True(t, ok)
 }
 
 func TestScope_ResolveColumn_Qualified(t *testing.T) {
