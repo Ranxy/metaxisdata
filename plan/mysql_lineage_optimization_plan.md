@@ -1607,7 +1607,10 @@ Closed:
   that everything from the `Analyzer` type onward is byte-identical in the MySQL,
   MariaDB and TiDB analyzers, so a hand-edit to one copy cannot drift from the
   others. That is what keeps the 21-line prologue diff the regeneration produces
-  honest.
+  honest. (Superseded: the architecture review's second phase replaced the copies
+  with generated bodies and the detector with a generation-time freshness test —
+  `backend/plugin/lineage/mysql/gen`, `TestGeneratedBodiesAreFresh`. See
+  `plan/lineage_mysql_family_generation_plan.md`.)
 - **The unreachable error branch is gone.** `processQuerySpecification` refused a
   "query form with no select list and no FROM"; `SELECT`, `SELECT FROM t` and
   `SELECT FROM` are all parse errors, so it could never fire.

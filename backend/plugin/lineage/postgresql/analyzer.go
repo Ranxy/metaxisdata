@@ -355,7 +355,7 @@ func (a *Analyzer) processSetOperation(stmt *pgast.SelectStmt) {
 		armTransforms = append(armTransforms, arm.chain)
 		if i == 0 {
 			a.processSetOpArm(arm.stmt)
-			allOutputColumns = append(allOutputColumns, a.resolveOutputColumns(baseScope, baseScope.GetOutputColumns()))
+			allOutputColumns = append(allOutputColumns, algorithm.ResolveOutputColumns(baseScope, baseScope.GetOutputColumns()))
 			continue
 		}
 
@@ -372,7 +372,7 @@ func (a *Analyzer) processSetOperation(stmt *pgast.SelectStmt) {
 		// the operation's output.
 		a.influences.Inherit(tempScope, baseScope)
 
-		allOutputColumns = append(allOutputColumns, a.resolveOutputColumns(tempScope, tempScope.GetOutputColumns()))
+		allOutputColumns = append(allOutputColumns, algorithm.ResolveOutputColumns(tempScope, tempScope.GetOutputColumns()))
 	}
 
 	algorithm.MergeSetOpColumns(baseScope, allOutputColumns, armTransforms)
@@ -475,7 +475,7 @@ func (a *Analyzer) processCTE(cte *pgast.CommonTableExpr, recursive bool) {
 		// when its arity matches the body: a mismatch is a statement PostgreSQL
 		// rejects. The definition keeps the validated form, so a reference to the
 		// CTE resolves columns against names the body really exposes.
-		definition.Columns = exposedColumnNames(columns, outputColumns)
+		definition.Columns = scope.ExposedColumnNames(columns, outputColumns)
 		useExplicitColumns := len(columns) > 0 && len(columns) == len(outputColumns)
 
 		// Build lineage for each output column. When the CTE declares an explicit
@@ -631,7 +631,7 @@ func (a *Analyzer) processRangeFunction(fn *pgast.RangeFunction) {
 		IsSubquery: true,
 		Lineage:    lineage,
 	}
-	attachTempColumnLookup(tableRef, columns)
+	scope.AttachTempColumnLookup(tableRef, columns)
 	sp.AddTable(tableRef)
 }
 
@@ -725,7 +725,7 @@ func (a *Analyzer) processRangeTableFunc(fn *pgast.RangeTableFunc) {
 		IsSubquery: true,
 		Lineage:    lineage,
 	}
-	attachTempColumnLookup(tableRef, names)
+	scope.AttachTempColumnLookup(tableRef, names)
 	sp.AddTable(tableRef)
 }
 
@@ -799,7 +799,7 @@ func (a *Analyzer) processRangeVar(rangeVar *pgast.RangeVar) {
 				IsCTE:      true,
 				Lineage:    cte.Lineage,
 			}
-			attachTempColumnLookup(tableRef, cte.Columns)
+			scope.AttachTempColumnLookup(tableRef, cte.Columns)
 			a.currentScope().AddTable(tableRef)
 			return
 		}
@@ -814,61 +814,6 @@ func (a *Analyzer) processRangeVar(rangeVar *pgast.RangeVar) {
 	}
 	a.attachColumnLookup(tableRef)
 	a.currentScope().AddTable(tableRef)
-}
-
-// attachTempColumnLookup lets the scope resolver treat a CTE or derived table as
-// a relation whose columns are known, so an unqualified name it owns resolves
-// through its own lineage instead of being guessed from name order. declared is
-// the CTE's column list when the query wrote one, or the names the query's output
-// exposes; a nil list falls back to the targets the lineage carries.
-func attachTempColumnLookup(tableRef *scope.TableRef, declared []string) {
-	if names := tempColumnNames(declared, tableRef.Lineage); names != nil {
-		tableRef.SetColumnLookup(func() []string { return names })
-	}
-}
-
-// tempColumnNames reports the columns a temporary relation exposes, or nil when
-// one of them cannot be named. A wildcard the catalog did not expand, and an
-// output without a name, both leave the list incomplete; an incomplete list is
-// reported as unknown so the resolver keeps its fallback for the relation.
-func tempColumnNames(declared []string, lineage []model.ColumnRelation) []string {
-	names := declared
-	if len(names) == 0 {
-		seen := make(map[string]struct{}, len(lineage))
-		for _, edge := range lineage {
-			if _, ok := seen[edge.Target.Name]; ok {
-				continue
-			}
-			seen[edge.Target.Name] = struct{}{}
-			names = append(names, edge.Target.Name)
-		}
-	}
-	if len(names) == 0 {
-		return nil
-	}
-	for _, name := range names {
-		if name == "" || name == wildcardColumn {
-			return nil
-		}
-	}
-	return names
-}
-
-// exposedColumnNames lists the names a temporary relation exposes, in the order
-// the relation offers them. A declared list — a CTE's `WITH c (a, b)` or a
-// derived table's `AS d (a, b)` — renames the body's output positionally, so both
-// the relation's own lineage and the columns the scope resolves against have to
-// use the renamed names. The list is honoured only when its arity matches the
-// body, because a mismatch is a statement PostgreSQL rejects.
-func exposedColumnNames(declared []string, cols []scope.OutputColumn) []string {
-	if len(declared) > 0 && len(declared) == len(cols) {
-		return declared
-	}
-	names := make([]string, 0, len(cols))
-	for _, col := range cols {
-		names = append(names, col.Alias)
-	}
-	return names
 }
 
 // attachColumnLookup lets the scope resolver disambiguate an unqualified column
@@ -966,7 +911,7 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 	lineage := make([]model.ColumnRelation, 0)
 
 	outputColumns := subqueryScope.GetOutputColumns()
-	names := exposedColumnNames(declaredColumns, outputColumns)
+	names := scope.ExposedColumnNames(declaredColumns, outputColumns)
 	for i, col := range outputColumns {
 		colName := names[i]
 		if colName == "" {
@@ -1006,7 +951,7 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 		IsCTE:      false,
 		Lineage:    lineage,
 	}
-	attachTempColumnLookup(tableRef, names)
+	scope.AttachTempColumnLookup(tableRef, names)
 	a.currentScope().AddTable(tableRef)
 }
 
@@ -1111,7 +1056,7 @@ func (a *Analyzer) processStar(sp *scope.Scope) {
 
 		sp.AddOutputColumn(scope.OutputColumn{
 			Alias:     wildcardColumn,
-			Sources:   scope.NewColumnSources([]scope.ColumnRef{wildcardSourceRef(tableRef)}, nil),
+			Sources:   scope.NewColumnSources([]scope.ColumnRef{scope.WildcardSourceRef(tableRef)}, nil),
 			IsDerived: false,
 		})
 	}
@@ -1135,21 +1080,9 @@ func (a *Analyzer) processTableStar(cr *pgast.ColumnRef, sp *scope.Scope) {
 	}
 	sp.AddOutputColumn(scope.OutputColumn{
 		Alias:     wildcardColumn,
-		Sources:   scope.NewColumnSources([]scope.ColumnRef{wildcardSourceRef(tableRef)}, nil),
+		Sources:   scope.NewColumnSources([]scope.ColumnRef{scope.WildcardSourceRef(tableRef)}, nil),
 		IsDerived: false,
 	})
-}
-
-// wildcardSourceRef builds the source reference for a wildcard. It is marked
-// resolved because the scope is keyed by alias while the reference carries the
-// real table name, so resolving it again by name would fail and drop the edge.
-func wildcardSourceRef(tableRef *scope.TableRef) scope.ColumnRef {
-	return scope.ColumnRef{
-		Schema:   tableRef.Schema,
-		Table:    tableRef.Table,
-		Column:   wildcardColumn,
-		Resolved: true,
-	}
 }
 
 // processExpressionTarget processes an expression/aliased target element
@@ -1168,7 +1101,7 @@ func (a *Analyzer) processExpressionTarget(rt *pgast.ResTarget, sp *scope.Scope,
 	// source table, so they must not fabricate a `table.*` edge.
 	if isDerived && len(sourceColumns) == 0 && isTableWideExpression(rt.Val) {
 		for _, tableRef := range sp.Tables() {
-			sourceColumns = append(sourceColumns, wildcardSourceRef(tableRef))
+			sourceColumns = append(sourceColumns, scope.WildcardSourceRef(tableRef))
 		}
 	}
 
@@ -1260,9 +1193,9 @@ func (a *Analyzer) processInsertSource(stmt *pgast.InsertStmt) *scope.Scope {
 // writes into it, resolved in the scope the query ran in. EXCLUDED.col names the
 // value the insert proposed for col, so the conflict clause resolves through this
 // map the way MySQL's VALUES(col) does.
-func (a *Analyzer) insertSourceMap(sp *scope.Scope, targetColumns []string) map[string][]scope.ColumnRef {
+func (*Analyzer) insertSourceMap(sp *scope.Scope, targetColumns []string) map[string][]scope.ColumnRef {
 	out := make(map[string][]scope.ColumnRef)
-	for i, col := range a.resolveOutputColumns(sp, sp.GetOutputColumns()) {
+	for i, col := range algorithm.ResolveOutputColumns(sp, sp.GetOutputColumns()) {
 		if len(targetColumns) > 0 && i >= len(targetColumns) {
 			break
 		}
@@ -1386,7 +1319,7 @@ func (a *Analyzer) processReturning(returning *pgast.List, target *pgast.RangeVa
 	a.addTargetRelation(target)
 	returningScope := a.currentScope()
 	a.processTargetList(returning, returningScope, nil)
-	columns := a.resolveOutputColumns(returningScope, returningScope.GetOutputColumns())
+	columns := algorithm.ResolveOutputColumns(returningScope, returningScope.GetOutputColumns())
 	a.popScope()
 
 	a.currentScope().SetOutputColumns(columns)
@@ -1512,7 +1445,7 @@ func (a *Analyzer) multiAssignSources(ref *pgast.MultiAssignRef, sp *scope.Scope
 	// belong to the query that writes it.
 	a.influences.Inherit(subScope, sp)
 
-	columns := a.resolveOutputColumns(subScope, subScope.GetOutputColumns())
+	columns := algorithm.ResolveOutputColumns(subScope, subScope.GetOutputColumns())
 	index := ref.Colno - 1
 	if index < 0 || index >= len(columns) {
 		return nil
@@ -1789,12 +1722,6 @@ func (a *Analyzer) traceThroughTableLineageToTarget(tableRef *scope.TableRef, co
 // Returns true if the source was a temporary table and was handled.
 func (*Analyzer) flattenTempSourceLineage(sp *scope.Scope, relation *scope.TableRef, columnName, targetTable string, targetColumn string, transform []model.Transformation, lineage *[]model.ColumnRelation) bool {
 	return algorithm.FlattenTempSourceLineage(scope.NewSchemaLineageEdge, sp, relation, columnName, targetTable, targetColumn, transform, lineage)
-}
-
-// flattenTempSources replaces a source that resolved to a query-local relation
-// with the stored relations that relation's own lineage came from.
-func (*Analyzer) flattenTempSources(sp *scope.Scope, ref scope.ColumnRef, relation *scope.TableRef, transform []model.Transformation) []scope.ColumnSource {
-	return algorithm.FlattenTempSources(sp, ref, relation, transform)
 }
 
 // ---------------------------------------------------------------------------

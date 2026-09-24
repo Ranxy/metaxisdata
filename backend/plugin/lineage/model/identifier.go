@@ -32,6 +32,24 @@ func (o ObjectIdentifier) GUID() string {
 	return common.BuildMetaGUID(o.InstanceID, o.Database, o.Schema, o.Name)
 }
 
+// NormalizeIdentifier returns an identifier's text with its quoting removed: a
+// name written `a` or "a" names the same object as a, and a doubled quote inside
+// it is one quote. Text that is not a quoted identifier comes back with its
+// surrounding space trimmed and nothing else changed.
+func NormalizeIdentifier(text string) string {
+	text = strings.TrimSpace(text)
+	if len(text) < 2 {
+		return text
+	}
+	quote := text[0]
+	if (quote != '`' && quote != '"') || text[len(text)-1] != quote {
+		return text
+	}
+	inner := text[1 : len(text)-1]
+	escapedQuote := strings.Repeat(string(quote), 2)
+	return strings.ReplaceAll(inner, escapedQuote, string(quote))
+}
+
 func StrToObjectIdentifier(s string) ObjectIdentifier {
 	list := strings.Split(s, ".")
 	switch len(list) {

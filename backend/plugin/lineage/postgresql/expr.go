@@ -5,6 +5,7 @@ import (
 
 	pgast "github.com/bytebase/omni/pg/ast"
 
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/algorithm"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/scope"
 )
@@ -143,45 +144,8 @@ func (a *Analyzer) subquerySources(sel *pgast.SelectStmt, sp *scope.Scope) []sco
 	// predicates that shaped them belong to that expression's query.
 	a.influences.Inherit(subScope, sp)
 	var out []scope.ColumnRef
-	for _, col := range a.resolveOutputColumns(subScope, subScope.GetOutputColumns()) {
+	for _, col := range algorithm.ResolveOutputColumns(subScope, subScope.GetOutputColumns()) {
 		out = append(out, scope.Refs(col.Sources)...)
-	}
-	return out
-}
-
-// resolveOutputColumns resolves each output column's source references against
-// the scope the column was collected in and marks them resolved. Without it a
-// later resolution in the enclosing scope would fail, because the subquery's
-// relations are not visible there, and the lineage would be dropped. Each
-// source keeps the transformation that produced it, and a source that resolved
-// to a query-local relation is flattened into the stored relations its lineage
-// came from, so the reference never carries an alias into a scope that does not
-// define it.
-func (a *Analyzer) resolveOutputColumns(sp *scope.Scope, cols []scope.OutputColumn) []scope.OutputColumn {
-	out := make([]scope.OutputColumn, len(cols))
-	copy(out, cols)
-	for i := range out {
-		if len(out[i].Sources) == 0 {
-			continue
-		}
-		resolved := make([]scope.ColumnSource, 0, len(out[i].Sources))
-		for _, source := range out[i].Sources {
-			resolutions, err := sp.ResolveColumnRefs(source.Ref)
-			if err != nil {
-				resolved = append(resolved, source)
-				continue
-			}
-			for _, res := range resolutions {
-				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
-					resolved = append(resolved, a.flattenTempSources(sp, res.Ref, res.Relation, source.Transform)...)
-					continue
-				}
-				columnRef := res.Ref
-				columnRef.Resolved = true
-				resolved = append(resolved, scope.ColumnSource{Ref: columnRef, Transform: source.Transform})
-			}
-		}
-		out[i].Sources = resolved
 	}
 	return out
 }

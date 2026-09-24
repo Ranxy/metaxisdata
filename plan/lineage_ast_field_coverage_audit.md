@@ -4,7 +4,7 @@
 
 > **修复状态（第十批，`3161563`）**：下面列出的 7 条缺口（A4–A10）连同此前只记录的 A3 已全部修复，语料钉子 30 例、改判 2 处既有期望、改名 1 例；本文件 §1–§7 的记录保持原样（它们描述的是修复前的状态），**§9 之后新增的"修复状态"一节**给出每一项落在哪一处。仍属未修的只有 §8 的待决 1（StarRocks `LoadDataDesc.SetExpr/Where`）与待决 3/4 两处口径选择。
 
-审计对象：`backend/plugin/lineage/{postgresql,mysql,starrocks}` 三个分析器族（`tidb`/`mariadb` 与 `mysql` 逐字节同源，见 `mysql/copies_test.go`，不重复列出）与 `{scope,algorithm,model,catalog}` 共享层；被审的 AST 是 `github.com/bytebase/omni`（pin `v0.0.0-20260912023254-4574e69bb9f1`）的 `pg/ast`、`mysql/ast`、`starrocks/ast`。
+审计对象：`backend/plugin/lineage/{postgresql,mysql,starrocks}` 三个分析器族（`tidb`/`mariadb` 与 `mysql` 逐字节同源——第二期起由 `mysql/gen` 从 `mysql/analyzer.go` 生成，见 `plan/lineage_mysql_family_generation_plan.md`——不重复列出）与 `{scope,algorithm,model,catalog}` 共享层；被审的 AST 是 `github.com/bytebase/omni`（pin `v0.0.0-20260912023254-4574e69bb9f1`）的 `pg/ast`、`mysql/ast`、`starrocks/ast`。
 
 ---
 

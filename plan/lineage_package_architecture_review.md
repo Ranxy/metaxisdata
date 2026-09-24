@@ -7,7 +7,9 @@
 
 ---
 
-## 0. 第一期实施状态:已落地
+## 0. 实施状态
+
+### 第一期:已落地
 
 §4 第一期的三项已全部落地并通过验证。§3/§4 保留原始发现(作为问题记录与验收标准),此处只记结果。
 
@@ -36,7 +38,18 @@
 3. PostgreSQL 分析器拒绝多语句输入;多语句能力由根包统一提供,且不再跨语句共享 scope(此前 `SELECT t1.a FROM t1; SELECT t2.b FROM t2` 的注解说共享 root scope,代码实际已按语句 reset,现已由结构保证)。
 4. catalog 查询失败不再静默降级:`runner` 存下边并把缺口写进 version 行,`AnalyzeSQL` 则按既有策略把"带缺口的分析"映射为请求错误(`InvalidArgument` + 消息,关系被丢弃)——这条映射早于本期(PG MERGE 等缺口一直如此),把缺口渲染为响应 `warnings` 而不是错误,需要第三期的结构化 diagnostics;`ExplainSQL` 路径不受影响(它记录错误后继续使用已得到的边)。
 
-**仍待处理**:T1/T2(第二期,见 `plan/lineage_mysql_family_generation_plan.md`)、T5 的 omni 依赖策略与 T6 的全局可变状态、T7 的哨兵单点定义(第三期)。
+**仍待处理**:T5 的 omni 依赖策略与 T6 的全局可变状态、T7 的哨兵单点定义(第三期)。
+
+### 第二期:已落地(T1 偿还,T2 审计并部分下沉)
+
+实施细节与验收见 `plan/lineage_mysql_family_generation_plan.md`(含 Part 2 的"函数 × 方言 × 处置"清单附录)。§1–§3 保留本期改动**之前**的快照,以下为本期结果。
+
+| 项 | 状态 | 结果 |
+| --- | --- | --- |
+| **T1 三份字节级拷贝** | ✅ 已偿还 | `mysql/analyzer.go` 成为唯一可编辑正文(哨兵 `// == MYSQL-FAMILY SHARED BODY ==` 之下);`tidb`/`mariadb` 拆为手写 `dialect.go`(各 ~50 行)+ 生成物 `analyzer_body_gen.go`(各 2,220 行)。新增 `mysql/gen`(`//go:generate go run ./gen`,支持 `-check`,含 import 映射表与接缝自检)。**漂移在生成期被消灭,不再靠事后检测**;`TestDialectCopiesStayInSync` 与 `copies_test.go` 删除,由 `TestGeneratedBodiesAreFresh` / `TestGeneratedBodiesCopyTheSourceVerbatim` 接替。可编辑代码面 7,112 → 2,728 行(↓62%),MySQL 家族正文在全仓库只剩一份 |
+| **T2 StarRocks/PG 漂移** | ✅ 已审计,6 项已下沉 | 机械筛出 26 个签名不含方言 AST 类型的候选,逐个以正文哈希分类(附录 A)。下沉 `tempColumnNames`/`attachTempColumnLookup`/`exposedColumnNames`/`wildcardSourceRef`(→ `scope`)、`normalizeIdentifier`(→ `model`)、`resolveOutputColumns`(→ `algorithm`);`shared_analysis_test.go` 的清单扩为**多包 + 双向**(`requiredSharedDeclarations` 变 `包 → 名单`,`forbiddenDeclarations` 增 6 个方言侧旧名)。分叉项按"只下沉可证等价"保留在方言本地并附证据:其中 2 条经查证是**方言事实而非漂移**(starrocks 的 `* EXCEPT`、pg 的 `Schema` 级目录标识符),1 条是**应保留的方言改进**(starrocks 的 CTE 列重命名映射),1 条(starrocks 的 query-local wildcard 规则)在常见形态下不可观测、但无法证明处处等价,2 条(`flattenTempSourceLineage` 的 7/8 参差、`generateEdges` 家族)留待下一轮 |
+
+**本期有意引入的差异**:零行为变更——生成前后三份正文逐字节相同,全部 golden 语料用例数与结果不变(机器证明,复核命令见生成计划附录 B)。
 
 ---
 
@@ -105,7 +118,9 @@ runner/lineageanalyzer (周期扫描 + 退避重试) / api/v1 LineageService(无
 
 ## 3. 技术债务清单(按严重性排序)
 
-### T1【最重】MySQL 家族三份字节级拷贝:7,094 行中 ~4,700 行是重复
+### T1【最重,第二期已偿还】MySQL 家族三份字节级拷贝:7,094 行中 ~4,700 行是重复
+
+> **第二期结果**:`mysql/analyzer.go` 已是唯一可编辑正文,`tidb`/`mariadb` 的正文为 `go generate` 产物,漂移在生成期被消灭;可编辑面 7,112 → 2,728 行。见 §0 第二期与 `plan/lineage_mysql_family_generation_plan.md`。以下为改动前的原始量化。
 
 量化事实:`mysql/analyzer.go`、`tidb/analyzer.go`、`mariadb/analyzer.go` 三者均 ~2,365 行;两两 `diff` 只有 **48–49 行**(包名、两行 omni import、注册引擎、`valuesQueryPrimary`/`rowAliasNames` 两个方言钩子)。从第 64 行的 `// Analyzer performs...` 标记行起,**正文被 `TestDialectCopiesStayInSync` 强制要求逐字节相同**;102/112 个函数完全同名同体。
 
@@ -115,7 +130,9 @@ runner/lineageanalyzer (周期扫描 + 退避重试) / api/v1 LineageService(无
 2. **守门测试防止漂移,但也锁死了形态**:`TestDialectCopiesStayInSync` 让任何"只改一个方言"的局部优化变得不可能——要么改全体,要么破坏测试。这是把债务制度化,而不是消除它。
 3. **编译与测试的三倍开销**:三份 82KB 源码进同一份二进制,全量测试把相同的 225 例语料跑三遍。
 
-### T2 StarRocks 是"移植"而非拷贝——无人看守的第四种变体
+### T2【第二期已审计,6 项已下沉】StarRocks 是"移植"而非拷贝——无人看守的第四种变体
+
+> **第二期结果**:26 个签名不含方言 AST 类型的同名函数已逐个分类(生成计划附录 A),其中 6 项经"逐字节相同/语义等价"证明后下沉 `scope`/`model`/`algorithm`,并登记进 `shared_analysis_test.go` 的多包双向清单;4 条经查证属**真方言特性或方言改进**而非漂移。语句遍历骨架仍按计划留给第三期。以下为改动前的原始发现。
 
 `starrocks/analyzer.go` 头注释自称 "a port rather than a dialect copy"。它与 mysql **共享 66 个同名函数**(占 mysql 函数数的 59%),PG 也有 50 个。这些函数**不受** `TestDialectCopiesStayInSync` 约束,只靠共享语料兜底行为漂移,而语料只能发现"行为差异",发现不了"机制实现逐渐分叉"。git 历史已经演示过后果:`4e50f61 fix(lineage): fix the defects the sibling dialects kept after PostgreSQL`——PG 修好的缺陷在兄弟方言里继续存在。`algorithm` 包把"机制"收编了,但**语句遍历骨架**(CTE/INSERT/UPDATE/DELETE 的处理流程)仍然一式四份。
 
@@ -189,14 +206,14 @@ runner/lineageanalyzer (周期扫描 + 退避重试) / api/v1 LineageService(无
 2. catalog 错误/降级进入 diagnostics——堵住 T4 的静默不准。
 3. 模型层卫生:修正 `IsTemp` 注释;PG 换用 `model.ResultTableName`;`memory_test_provide.go` 改名 `_test.go` 或移到 `testutil`;给 mysql/starrocks 补分配预算。
 
-### 第二期(T1/T2,真正的债务)
+### 第二期(T1/T2,真正的债务)✅ 已落地
 
-> **实施计划已展开为独立文档:`plan/lineage_mysql_family_generation_plan.md`。**
+> **实施计划已展开为独立文档:`plan/lineage_mysql_family_generation_plan.md`(含实施结果、验收记录与 Part 2 的审计附录)。**
 
 给 MySQL 家族三份拷贝做减法。诚实的评估:**完整的 AST 适配接口层(~100 个访问器)成本高**,不建议一步到位。务实路径:
 
-- 首选:把 `mysql/analyzer.go` 变成**单一真相源 + `go generate` 生成另两份**(已有的 `valuesQueryPrimary`/`rowAliasNames` 钩子正好就是变异点,提成头部模板参数即可)。源码树里只剩一份可编辑文件,copies 测试改成校验"生成物新鲜度"。这一步消灭"人肉同步",且不需要抽象 omni AST。
-- StarRocks 次之:把 66 个同名函数中与 AST 无关的部分(语句骨架状态机、emit/edge 流程)继续下沉 `algorithm`,方言侧只留 AST 遍历。
+- ✅ 首选:把 `mysql/analyzer.go` 变成**单一真相源 + `go generate` 生成另两份**(已有的 `valuesQueryPrimary`/`rowAliasNames` 钩子正好就是变异点,提成头部模板参数即可)。源码树里只剩一份可编辑文件,copies 测试改成校验"生成物新鲜度"。这一步消灭"人肉同步",且不需要抽象 omni AST。落地形态:哨兵行切分 + 手写方言头 + 生成正文,`mysql/gen` 兼做接缝自检。
+- ✅ StarRocks 次之:把 66 个同名函数中与 AST 无关的部分(语句骨架状态机、emit/edge 流程)继续下沉 `algorithm`,方言侧只留 AST 遍历。落地结果比预期保守——真正可证等价的是 6 个"关系暴露了哪些列 + 输出列解析"类机制,**emit/edge 流程因绑定各分析器的接收者状态(`realTarget`/`inSetOpArm`/`emitSources`)未动**;这条留给第三期的"共享分析器状态"。
 
 ### 第三期(结构性)
 
@@ -214,8 +231,8 @@ runner/lineageanalyzer (周期扫描 + 退避重试) / api/v1 LineageService(无
 
 ## 附录:复核入口
 
-- 三方重复度:`diff backend/plugin/lineage/{mysql,mariadb}/analyzer.go | wc -l` → 49;`{mysql,tidb}` → 48
-- 字节级正文同步守卫:`backend/plugin/lineage/mysql/copies_test.go`(`TestDialectCopiesStayInSync`)
+- 三方重复度(第二期之前):`diff backend/plugin/lineage/{mysql,mariadb}/analyzer.go | wc -l` → 49;`{mysql,tidb}` → 48。第二期后这两个文件已不存在,家族正文只剩 `mysql/analyzer.go` 一份,复核改用生成计划附录 B 的 diff 命令
+- 字节级正文守卫:**原** `backend/plugin/lineage/mysql/copies_test.go`(`TestDialectCopiesStayInSync`);**第二期后**为 `backend/plugin/lineage/mysql/gen`(`TestGeneratedBodiesAreFresh` / `TestGeneratedBodiesCopyTheSourceVerbatim`,生成期消灭漂移而非事后检测)
 - 跨方言同名函数统计:mysql∩tidb=102/112,mysql∩mariadb=102/112,mysql∩starrocks=66/112,mysql∩postgresql=50/112,pg∩starrocks=42
 - 共享机制守门:`backend/plugin/lineage/shared_analysis_test.go`(`TestSharedAnalysisStaysShared`)
 - 既有相关文档:`plan/postgresql_lineage_package_review.md`(P0/P1 批次已全部落地,D1/D3 即本文 T1/哨兵模型的前身)、`plan/mysql_family_dialect_lineage_plan.md`(拷贝决策的原始理由)、`docs/omni_upstream_defects.md`(上游缺陷登记与不修改政策)、`plan/lineage_ast_field_coverage_audit.md`

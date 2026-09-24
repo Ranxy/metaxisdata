@@ -30,6 +30,13 @@ separate parser and AST per dialect:
   package clause, the two omni import paths, and the registered engine. The
   traversal is source-compatible because every AST difference is an addition or
   removal of fields the analyzer does not read (verified type by type).
+  **Update (architecture review, second phase):** the decision holds in substance —
+  the three ASTs still cannot be parameterised without an adapter layer — but the
+  copies are now *produced* instead of maintained by hand. `mysql/analyzer.go` is
+  the single editable copy, the traversal below its `MYSQL-FAMILY SHARED BODY`
+  sentinel is generated into `tidb|mariadb/analyzer_body_gen.go`, and the two
+  dialects keep only their header in `dialect.go`. See
+  `plan/lineage_mysql_family_generation_plan.md`.
 - **The shared golden corpus is the sync guard.** All three packages run the same
   statements from `backend/plugin/lineage/mysql/testdata/analyze/` (73 cases).
   Behavioral drift between the dialects fails a test rather than a code review.

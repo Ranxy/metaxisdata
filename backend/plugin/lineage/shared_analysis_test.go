@@ -36,29 +36,53 @@ var forbiddenDeclarations = []string{
 	"isTempRelation",
 	"markTempTable",
 	"isTableTempInCurrentScope",
+	"tempColumnNames",
+	"attachTempColumnLookup",
+	"exposedColumnNames",
+	"resolveOutputColumns",
+	"normalizeIdentifier",
+	"wildcardSourceRef",
 }
 
-// requiredSharedDeclarations are the mechanisms every dialect builds on. A
-// dialect dropping one of them means the behavior it encodes was dropped too.
-var requiredSharedDeclarations = []string{
-	"EdgeSet",
-	"Influences",
-	"MergeSetOpColumns",
-	"ArmChain",
-	"FlattenTempSources",
-	"FlattenTempSourceLineage",
-	"TraceThroughTableLineage",
-	"TraceThroughTableLineageToTarget",
+// requiredSharedDeclarations are the mechanisms every dialect builds on, by the
+// package that owns them. A shared package dropping one of them means the
+// behavior it encodes was dropped too.
+var requiredSharedDeclarations = map[string][]string{
+	"algorithm": {
+		"EdgeSet",
+		"Influences",
+		"MergeSetOpColumns",
+		"ArmChain",
+		"FlattenTempSources",
+		"FlattenTempSourceLineage",
+		"TraceThroughTableLineage",
+		"TraceThroughTableLineageToTarget",
+		"ResolveOutputColumns",
+	},
+	// What a relation exposes to name-based resolution: the columns of a
+	// query-local relation, the list a CTE or derived table declares, and the
+	// reference a wildcard contributes.
+	"scope": {
+		"TempColumnNames",
+		"AttachTempColumnLookup",
+		"ExposedColumnNames",
+		"WildcardSourceRef",
+	},
+	"model": {
+		"NormalizeIdentifier",
+	},
 }
 
 // TestSharedAnalysisStaysShared keeps the dialect-neutral analysis in one place.
 func TestSharedAnalysisStaysShared(t *testing.T) {
 	t.Parallel()
 
-	algorithm := declarations(t, "algorithm")
-	for _, name := range requiredSharedDeclarations {
-		if !algorithm[name] {
-			t.Errorf("algorithm no longer declares %s; the dialects build on it", name)
+	for pkg, names := range requiredSharedDeclarations {
+		declared := declarations(t, pkg)
+		for _, name := range names {
+			if !declared[name] {
+				t.Errorf("%s no longer declares %s; the dialects build on it", pkg, name)
+			}
 		}
 	}
 

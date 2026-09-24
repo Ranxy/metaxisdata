@@ -56,21 +56,6 @@ func tableRefFromObjectName(name *nodes.ObjectName) (schema, table string, ok bo
 	}
 }
 
-// normalizeIdentifier strips surrounding backticks or double quotes.
-func normalizeIdentifier(text string) string {
-	text = strings.TrimSpace(text)
-	if len(text) < 2 {
-		return text
-	}
-	quote := text[0]
-	if (quote != '`' && quote != '"') || text[len(text)-1] != quote {
-		return text
-	}
-	inner := text[1 : len(text)-1]
-	escapedQuote := strings.Repeat(string(quote), 2)
-	return strings.ReplaceAll(inner, escapedQuote, string(quote))
-}
-
 // inferredColumnAlias names an unaliased select item the way StarRocks reports it.
 // A column reference contributes its own name, however it was qualified (`t.a` is
 // the column a); every other expression contributes its source text. The choice is
@@ -80,7 +65,7 @@ func normalizeIdentifier(text string) string {
 // used to come out as `bEND`, `xISNULL` and `b]`.
 func inferredColumnAlias(expr nodes.Node, exprText string) string {
 	if cr, ok := expr.(*nodes.ColumnRef); ok && cr.Name != nil && len(cr.Name.Parts) > 0 {
-		return normalizeIdentifier(cr.Name.Parts[len(cr.Name.Parts)-1])
+		return model.NormalizeIdentifier(cr.Name.Parts[len(cr.Name.Parts)-1])
 	}
 	return exprText
 }

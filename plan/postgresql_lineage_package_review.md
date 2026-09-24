@@ -135,7 +135,7 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 | --- | --- | --- |
 | **ON CONFLICT 子句内子查询引用语句级 CTE** | ✅ 已修复 | `scope` 新增「定义来源」这一维：`Scope.definitions` + `NewScopeWithDefinitions(parent, definitions)`。`FindCTE`（FROM 路径）穿透 definitions，`findCTEQualifier`（列限定符路径）不穿透——这正是 PostgreSQL 的非对称规则。`processOnConflict` 改用 `NewScopeWithDefinitions(nil, a.currentScope())`：关系仍完全断开（保住第一批"冲突子句不能命名 SELECT 的关系"的决策），CTE 定义可达 |
 | **集合运算分支的 CTE 拷贝 workaround** | ✅ 已按新链接统一 | 5 个方言的 `scope.NewScope(baseScope.Parent())` + `for _, cte := range baseScope.CTEs() { tempScope.AddCTE(cte) }` 改为 `scope.NewScopeWithDefinitions(baseScope.Parent(), baseScope)`；`Scope.CTEs()` 随之删除（它只为这份拷贝而存在）。快照实测 5 方言逐字节一致 |
-| **MySQL 家族：upsert 值里的子查询丢血缘** | ✅ 已修复 | 删掉自由函数 `collectUpsertSources`（其中 `case *nodes.SubqueryExpr: return false` 把子查询整个跳过），与 `collectExprColumns` 合并为 `collectExpressionSources(expr, sp, upsertValues)`：`VALUES(col)` 走 `insertSources`，子查询按自己的作用域展开。tidb/mariadb 为从 mysql 重新生成（`copies_test.go` 钉住逐字节一致） |
+| **MySQL 家族：upsert 值里的子查询丢血缘** | ✅ 已修复 | 删掉自由函数 `collectUpsertSources`（其中 `case *nodes.SubqueryExpr: return false` 把子查询整个跳过），与 `collectExprColumns` 合并为 `collectExpressionSources(expr, sp, upsertValues)`：`VALUES(col)` 走 `insertSources`，子查询按自己的作用域展开。tidb/mariadb 为从 mysql 重新生成（当时由 `copies_test.go` 钉住逐字节一致；第二期起改由 `backend/plugin/lineage/mysql/gen` 的 `TestGeneratedBodiesAreFresh` 在生成期保证，见 `plan/lineage_mysql_family_generation_plan.md`） |
 | 语料 | ✅ 已补 | PG `32_test_assignment_temp_source` +4 例（基本形、重复读不重复计影响、数据修改型 CTE 内的兄弟 CTE、声明的列名列表）；MySQL `23_test_assignment_resolution` +3 例（子查询取数、子查询读语句级 CTE、子查询内列归属），后三条在 tidb/mariadb 通过 `sharedCorpusDir()` 各跑一遍 |
 | 单测 | ✅ 已补 | `scope/scope_test.go` 的 `TestScopeWithDefinitions`：嵌套 FROM 可达定义 / 限定符不可达 / 语句关系不可见 / 以语句为 parent 时关系照旧可见 |
 | 文档 | ✅ 已同步 | 本条残留改为 LANDED；附录 B / B2 记录真实引擎实测；附录 C 记录 omni 的 MySQL 解析限制 |
@@ -255,7 +255,7 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 | --- | --- | --- |
 | **诊断载体** | ✅ 新增 | `backend/plugin/lineage/algorithm/diagnostics.go`：`Diagnostics` 按**成因分类**（`not modelled:` 形状未建模 / `unresolved reference in <子句>:` 引用解析不到 / `ambiguous reference in <子句>:` 单值位置无法在多个 owner 中选），逐条去重、上限 10 条，超出写 `N more not listed`。nil 接收者安全，所以只想要边的调用者可以传 nil |
 | **共享层谓词 drop** | ✅ 已接入 | `Influences` 持有 `*Diagnostics`（`NewInfluences(notes)`），`Influence.Resolve` 解析失败即上报 `unresolved reference in a predicate: …`。谓词影响边缺失从此可解释 |
-| **三个方言族** | ✅ 已接入 | PostgreSQL 9 处 + MySQL 家族 10 处 + StarRocks 7 处（共 26 处）丢弃点全部上报；tidb/mariadb 由 mysql 重新生成（`copies_test.go` 钉住逐字节一致）。P2-4 的 wildcard 限定符三族都加了诊断 |
+| **三个方言族** | ✅ 已接入 | PostgreSQL 9 处 + MySQL 家族 10 处 + StarRocks 7 处（共 26 处）丢弃点全部上报；tidb/mariadb 由 mysql 重新生成（当时由 `copies_test.go` 钉住逐字节一致；第二期起改由 `backend/plugin/lineage/mysql/gen` 在生成期保证）。P2-4 的 wildcard 限定符三族都加了诊断 |
 | **兄弟方言的 P2-2 同类缺陷** | ✅ 顺带修复 | 实测 MySQL/TiDB/MariaDB/StarRocks 的 `DELETE … WHERE` 在条件列解析不到时会**回退成未解析引用**，产出 `u.x -> t.__deletion__`——一条指向语句从未命名过的关系的边（PG 早在第一批就修掉了）。现在丢弃 + 上报 |
 | **硬失败 vs 诊断** | ✅ 已区分 | 兄弟方言原有的"语句形状无法表示"（如 `WITH before INSERT`）保持**硬失败并丢弃全部边**，因为那种分析本身是错的；新增的诊断是**部分结果**：边保留 + 消息记录。两者同时出现时，诊断附在硬失败的消息里，信息不丢。（后续变更：架构评审第一期把 `WITH before INSERT` 也归入缺口——跳过该语句 + 记 `not modelled`，不再清血缘，见 `plan/lineage_package_architecture_review.md` §0） |
 | **错误类型语义** | ✅ 已更新 | `lineage.UnsupportedStatementError` 从"某条语句无法建模"扩为"**部分分析**：解析成功但有东西无法表示"，并要求分析器对每条记录分类 |
@@ -274,7 +274,7 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 
 - **负向校验**：把 5 个分析器回退到修复前（保留新语料与 harness），13 条改判用例 + 10 条新用例**全部失败**（老代码既不报错，也还产出那条伪造的 DELETE 边）。
 - **边不变性**：见发现 2。
-- `go build ./...`、`go test ./...`、`golangci-lint run ./backend/...`（0 issues）全绿；`tidb`/`mariadb` 与 `mysql` 的逐字节一致由 `copies_test.go` 保证。
+- `go build ./...`、`go test ./...`、`golangci-lint run ./backend/...`（0 issues）全绿；`tidb`/`mariadb` 与 `mysql` 的逐字节一致当时由 `copies_test.go` 保证（第二期起改为生成期保证：`backend/plugin/lineage/mysql/gen` 的 `TestGeneratedBodiesAreFresh` / `TestGeneratedBodiesCopyTheSourceVerbatim`）。
 
 ---
 
