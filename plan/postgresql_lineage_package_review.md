@@ -210,6 +210,22 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 
 ---
 
+## 0f. AST 字段覆盖审计发现（待决策）
+
+第五批之后做了一次结构字段覆盖审计：把 omni 的语句/查询节点字段与"分析器是否读取"对照，用 40 余个形状在真实 PostgreSQL 16 上验证。表达式层面是安全的（`extractColumnsFromNode` 用 `pgast.Inspect` 泛走，任何表达式节点里的列都会被找到），风险集中在**结构性字段**——跨批发现的 P2-4/P2-5、冲突子句的 WHERE、RETURNING 的两层都属于这个模式。本轮审计新发现三条，**均未修复**：
+
+| # | 字段 | 现象 | 实测 | 判定 |
+| --- | --- | --- | --- | --- |
+| **A1** | `SelectStmt.ValuesLists`（从未读取） | `INSERT INTO t (a) VALUES ((SELECT max(x) FROM other))` **零边** | PG 16 实测 `INSERT 0 1`（真的把 `other.x` 写进 `t.a`）；同样影响 `INSERT ... VALUES (1), ((SELECT ...))`、`SELECT * FROM (VALUES ((SELECT ...))) v(a)`、`INSERT ... SELECT v.a FROM (VALUES ((SELECT ...))) v(a)`；5 方言语料里 `VALUES ((` **零覆盖** | **建议修**：与 P0-2 同类，合法 SQL 上整条源静默丢失 |
+| **A2** | `GroupingSet.Content`（`groupByKeys` 只做 `nodeTexts`） | `GROUP BY ROLLUP (t.a, t.b)` / `CUBE` / `GROUPING SETS (...)` → `group_keys: [""]` —— **一个空字符串键** | 普通 `GROUP BY t.a, t.b` 正常给出 `[t.a t.b]`；组集形态给出 `[""]`（`%#v` 确证，不是空列表） | **建议修**：错误元数据，且语料严格注解会把这个空键固定下来 |
+| **A3** | `RangeTableFunc`（XMLTABLE） | `SELECT * FROM t, XMLTABLE('/a' PASSING t.doc COLUMNS x int PATH 'x') q` 丢掉 `t.doc` | 同族 `unnest(t.arr)` 正常给出 `t.arr -> __result__.x`（P2-5 已实现） | **建议只记录**：XMLTABLE 在同步视图里极罕见 |
+
+同批确认**无问题**、以免以后重复怀疑的形状：`DISTINCT` / `DISTINCT ON`（与既有语料一致：只算投影，不算行集影响）、`TABLESAMPLE`、`FOR UPDATE`、`WITH RECURSIVE ... SEARCH/CYCLE`、`= ANY (SELECT ...)`（两侧 FILTER 都在）、`ARRAY(SELECT ...)`、`ROW(...)`、`COLLATE`、`greatest(...)`、窗口帧 `ROWS BETWEEN`、`unnest`、`count(*) FILTER (WHERE ...)`。
+
+**审计方法**（可复现）：临时在包内加一个 `_test.go`，对每个形状打印边集合与变换；对照 `pgast` 节点的字段清单逐项检查分析器是否读取；可疑形状用真实引擎确认它合法且可执行。**建议后续把这张"字段 × 是否读取"的对照表补全并归档**，作为收口"某个 clause 没被读"这类缺陷的系统手段。
+
+---
+
 ## 1. 结论摘要
 
 | 级别 | 数量 | 说明 |
@@ -602,6 +618,10 @@ SELECT a FROM t1; MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE S
 **第五批（RETURNING 的结构对齐）— ✅ 已落地（见 §0e）**
 
 14. **RETURNING 的两层问题** ✅：INSERT 的源改为自己的查询层级（`processInsertSource`），RETURNING 暴露的列改为 `SetOutputColumns` 替换。选结构性对齐而不是补丁，结果是共享解析策略不必改动，且 6a/6b 一次解决。
+
+**第六批前置（AST 字段覆盖审计）— 发现已记录（见 §0f）**
+
+15. **A1 `ValuesLists` / A2 `GroupingSet` / A3 `RangeTableFunc`**：三条结构字段缺口，均已用真实 PostgreSQL 16 验证并记录；A1、A2 判定为"建议修"，A3 建议只记录。完整对照表待补。
 
 ---
 
