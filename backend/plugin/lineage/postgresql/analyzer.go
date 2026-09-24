@@ -1037,24 +1037,37 @@ func (a *Analyzer) processInsertStmt(stmt *pgast.InsertStmt) {
 		}
 	}
 
-	if stmt.SelectStmt != nil {
-		previous := a.realTarget
-		a.realTarget = true
-		if sel, ok := stmt.SelectStmt.(*pgast.SelectStmt); ok {
-			a.processSelectStmt(sel)
-		}
-		a.realTarget = previous
-	}
+	sourceScope := a.processInsertSource(stmt)
 
-	a.generateEdgesForDataModification(targetSchema, targetTable, targetColumns)
+	a.generateEdgesForDataModification(sourceScope, targetSchema, targetTable, targetColumns)
 
 	if stmt.OnConflictClause != nil {
-		a.processOnConflict(stmt.OnConflictClause, stmt.Relation, a.insertSourceMap(a.currentScope(), targetColumns))
+		a.processOnConflict(stmt.OnConflictClause, stmt.Relation, a.insertSourceMap(sourceScope, targetColumns))
 	}
 
 	// Recorded after the insert's own edges: the returned columns are the
 	// statement's output, not another set of source columns for the target.
 	a.processReturning(stmt.ReturningList, stmt.Relation)
+}
+
+// processInsertSource analyzes the query an insert writes from in a scope of its
+// own and returns that scope. PostgreSQL analyzes the query as a subquery of the
+// INSERT, so its relations belong to a query level of their own: they are the
+// sources of the write, and neither the RETURNING list nor the conflict clause
+// can name them (verified on 16.15). Leaving them in the statement's scope is what
+// used to leak them into both clauses. A statement with no source query (DEFAULT
+// VALUES) still gets a scope, which is simply empty. The scope is returned rather
+// than left on the stack because the write's edges and its insert-source map are
+// both read from it, while the clauses that follow belong to the statement's own.
+func (a *Analyzer) processInsertSource(stmt *pgast.InsertStmt) *scope.Scope {
+	previous := a.realTarget
+	a.realTarget = true
+	a.pushScope()
+	if sel, ok := stmt.SelectStmt.(*pgast.SelectStmt); ok {
+		a.processSelectStmt(sel)
+	}
+	a.realTarget = previous
+	return a.popScope()
 }
 
 // insertSourceMap maps each written target column to the sources the INSERT
@@ -1078,21 +1091,26 @@ func (a *Analyzer) insertSourceMap(sp *scope.Scope, targetColumns []string) map[
 
 // processOnConflict processes an ON CONFLICT DO UPDATE SET list. The clause is
 // analyzed in the scope PostgreSQL gives it: the target relation and the
-// EXCLUDED pseudo-relation, and nothing else. A reference to one of the SELECT's
-// relations is "missing FROM-clause entry" (verified on 16.5), so the scope is
-// deliberately detached from the statement's rather than parented to it:
-// resolving through the parent would attribute the reference to a relation the
-// clause cannot name. Its own scope is also what lets the target resolve at all,
-// so `SET quantity = inventory.quantity + …` records the self-reference instead
-// of being dropped or attributed to the INSERT source.
+// EXCLUDED pseudo-relation, and nothing else. Its own scope is what lets the
+// target resolve at all, so `SET quantity = inventory.quantity + …` records the
+// self-reference instead of being dropped or attributed to the INSERT source. A
+// reference to one of the relations the query writes from is "missing FROM-clause
+// entry" (verified on 16.15); those relations are no longer in the statement's
+// scope at all (see processInsertSource), so that part is now structural.
 //
-// The statement's CTE definitions stay reachable even though its relations do
-// not. A subquery written in the clause is a query level of its own, so its FROM
-// clause resolves against them exactly as it would anywhere else — `ON CONFLICT
-// (id) DO UPDATE SET a = (SELECT a FROM c)` reads c's lineage through the CTE,
-// which is what PostgreSQL executes (verified on 16.15). Without the definitions
-// link the name fell through to the base-table branch and the edge named a table
-// `c` that does not exist.
+// The scope is still detached from the statement's rather than parented to it, and
+// for a reason of its own: a CTE name is not a usable qualifier anywhere in
+// PostgreSQL, and the parent chain is the path that resolves one (see
+// scope.findCTEQualifier). `SET b = c.y` must stay unresolved while a subquery in
+// the clause still reads c from its own FROM list.
+//
+// The statement's CTE definitions therefore stay reachable even though its
+// relations do not. A subquery written in the clause is a query level of its own,
+// so its FROM clause resolves against them exactly as it would anywhere else —
+// `ON CONFLICT (id) DO UPDATE SET a = (SELECT a FROM c)` reads c's lineage through
+// the CTE, which is what PostgreSQL executes (verified on 16.15). Without the
+// definitions link the name fell through to the base-table branch and the edge
+// named a table `c` that does not exist.
 func (a *Analyzer) processOnConflict(onConflict *pgast.OnConflictClause, target *pgast.RangeVar, insertSources map[string][]scope.ColumnRef) {
 	if onConflict == nil || onConflict.TargetList == nil {
 		return
@@ -1153,13 +1171,28 @@ func (a *Analyzer) processUpdateStmt(stmt *pgast.UpdateStmt) {
 // reads it (`WITH moved AS (DELETE ... RETURNING *) INSERT ... SELECT * FROM
 // moved`). The expressions read the target relation's own row, so they are
 // resolved in a scope holding just that relation, and the resulting references
-// are marked resolved before they leave it.
+// are marked resolved before they leave it. An insert's source is a query level of
+// its own (see processInsertSource), so the clause cannot name its relations either
+// — which is what PostgreSQL enforces.
+//
+// The returned columns replace the scope's output columns rather than joining
+// them: they are the statement's whole output, while the columns the query it
+// writes from produced are its input. Appending them made a data-modifying CTE
+// expose the INSERT's own source columns beside the returned ones, so a name the
+// two shared was attributed to a table the CTE never returns from. A statement
+// without RETURNING exposes nothing, which is what PostgreSQL requires:
+// referencing such a CTE is "WITH query ... does not have a RETURNING clause"
+// (verified on 16.15).
 //
 // A top-level data-modifying statement emits no result edges from them: the rows
 // it returns are a client-facing result, and the lineage it records is the write
 // it performs (and, for DELETE, the rows that write removes).
 func (a *Analyzer) processReturning(returning *pgast.List, target *pgast.RangeVar) {
-	if returning == nil || target == nil {
+	if target == nil {
+		return
+	}
+	if returning == nil {
+		a.currentScope().SetOutputColumns(nil)
 		return
 	}
 
@@ -1170,9 +1203,7 @@ func (a *Analyzer) processReturning(returning *pgast.List, target *pgast.RangeVa
 	columns := a.resolveOutputColumns(returningScope, returningScope.GetOutputColumns())
 	a.popScope()
 
-	for _, column := range columns {
-		a.currentScope().AddOutputColumn(column)
-	}
+	a.currentScope().SetOutputColumns(columns)
 }
 
 // processSetClauseList processes UPDATE SET assignment targets.
@@ -1492,10 +1523,13 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 	a.emitPredicateInfluences(sp, "", resultTableName)
 }
 
-// generateEdgesForDataModification generates lineage edges for data modification statements (INSERT, UPDATE, DELETE).
-func (a *Analyzer) generateEdgesForDataModification(targetSchema, targetTable string, targetColumns []string) {
-	sp := a.currentScope()
-	outputColumns := sp.GetOutputColumns()
+// generateEdgesForDataModification generates lineage edges for an INSERT: the
+// columns the query it writes from produced, written into the target positionally.
+// That query's scope is passed in because it is not the statement's: an insert's
+// source is analyzed as a subquery, so both the sources and the row predicates are
+// read from the scope that query ran in.
+func (a *Analyzer) generateEdgesForDataModification(sourceScope *scope.Scope, targetSchema, targetTable string, targetColumns []string) {
+	outputColumns := sourceScope.GetOutputColumns()
 
 	for i, outputCol := range outputColumns {
 		// The column list declares exactly which targets the query fills;
@@ -1510,10 +1544,10 @@ func (a *Analyzer) generateEdgesForDataModification(targetSchema, targetTable st
 		}
 
 		for _, source := range outputCol.Sources {
-			a.generateEdgeFromSource(sp, source.Ref, targetSchema, targetTable, targetColName, source.Transform)
+			a.generateEdgeFromSource(sourceScope, source.Ref, targetSchema, targetTable, targetColName, source.Transform)
 		}
 	}
-	a.emitPredicateInfluences(sp, targetSchema, targetTable)
+	a.emitPredicateInfluences(sourceScope, targetSchema, targetTable)
 }
 
 // generateEdgeFromSource generates a lineage edge from a source column to a target.

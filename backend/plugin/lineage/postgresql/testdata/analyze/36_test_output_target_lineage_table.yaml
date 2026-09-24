@@ -220,3 +220,167 @@ cases:
           transformations:
             - operation: CASE
               expression: "CASE WHEN aa > 1 THEN bb END"
+
+    # The row an insert writes comes from a query level of its own, so the CTE it
+    # forms exposes the RETURNING list and nothing else: the columns the query read
+    # are the write's input, not the rows it returns. PostgreSQL agrees — a name the
+    # two share exists only once in the CTE (verified on 16.15). Appending the two
+    # lists attributed the shared name to the source table as well, which named a
+    # table the CTE never returns from.
+    - name: an insert returning exposes only the returned columns
+      sql: "WITH ins AS (INSERT INTO t (id, a) SELECT id, a FROM stage RETURNING id) SELECT id FROM ins"
+      expected_edges:
+        - from_table: stage
+          from_field: "id"
+          to_table: t
+          to_field: "id"
+          relation_type: direct
+          is_temp: false
+        - from_table: stage
+          from_field: "a"
+          to_table: t
+          to_field: "a"
+          relation_type: direct
+          is_temp: false
+        - from_table: t
+          from_field: "id"
+          to_table: __result__
+          to_field: "id"
+          relation_type: direct
+          is_temp: true
+
+    # Reading the CTE with a star reads exactly that one column.
+    - name: an insert returning star reads the returned columns only
+      sql: "WITH ins AS (INSERT INTO t (id, a) SELECT id, a FROM stage RETURNING id) SELECT * FROM ins"
+      expected_edges:
+        - from_table: stage
+          from_field: "id"
+          to_table: t
+          to_field: "id"
+          relation_type: direct
+          is_temp: false
+        - from_table: stage
+          from_field: "a"
+          to_table: t
+          to_field: "a"
+          relation_type: direct
+          is_temp: false
+        - from_table: t
+          from_field: "id"
+          to_table: __result__
+          to_field: "id"
+          relation_type: direct
+          is_temp: true
+
+    # The clause reads the target relation's own row, so naming the query it writes
+    # from is "missing FROM-clause entry for table stage" (verified on 16.15) and
+    # records no lineage.
+    - name: a returning clause cannot name the query the insert writes from
+      sql: "WITH ins AS (INSERT INTO t (id, a) SELECT id, a FROM stage RETURNING stage.id) SELECT id FROM ins"
+      expected_edges:
+        - from_table: stage
+          from_field: "id"
+          to_table: t
+          to_field: "id"
+          relation_type: direct
+          is_temp: false
+        - from_table: stage
+          from_field: "a"
+          to_table: t
+          to_field: "a"
+          relation_type: direct
+          is_temp: false
+
+    # Without RETURNING the statement forms no rows, and PostgreSQL refuses to read
+    # such a CTE at all ("WITH query ins does not have a RETURNING clause"), so it
+    # exposes no columns to read.
+    - name: a data-modifying cte without a returning clause exposes no columns
+      sql: "WITH ins AS (INSERT INTO t (id, a) SELECT id, a FROM stage) SELECT * FROM ins"
+      expected_edges:
+        - from_table: stage
+          from_field: "id"
+          to_table: t
+          to_field: "id"
+          relation_type: direct
+          is_temp: false
+        - from_table: stage
+          from_field: "a"
+          to_table: t
+          to_field: "a"
+          relation_type: direct
+          is_temp: false
+
+    # The relations an update or a delete reads from are its own, not a nested
+    # query's, so its RETURNING list may name them (verified on 16.15). A scope
+    # that refused them would drop this lineage.
+    - name: a returning clause names the relations an update reads from
+      sql: "WITH ins AS (UPDATE t SET a = stage.a FROM stage RETURNING stage.id) SELECT id FROM ins"
+      expected_edges:
+        - from_table: stage
+          from_field: "a"
+          to_table: t
+          to_field: "a"
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: "stage.a"
+        - from_table: stage
+          from_field: "id"
+          to_table: __result__
+          to_field: "id"
+          relation_type: direct
+          is_temp: true
+
+    - name: a returning clause names the relations a delete reads from
+      sql: "WITH ins AS (DELETE FROM t USING stage WHERE t.id = stage.id RETURNING stage.id) SELECT id FROM ins"
+      expected_edges:
+        - from_table: t
+          from_field: "id"
+          to_table: t
+          to_field: __deletion__
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: t.id = stage.id
+        - from_table: stage
+          from_field: "id"
+          to_table: t
+          to_field: __deletion__
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: t.id = stage.id
+        - from_table: stage
+          from_field: "id"
+          to_table: __result__
+          to_field: "id"
+          relation_type: direct
+          is_temp: true
+
+    # One data-modifying CTE reads the row another one returned, so the second
+    # insert's source is the first one's returned column — the target's own column —
+    # and not the column the first insert read.
+    - name: a chained data-modifying cte reads the row the first one returned
+      sql: "WITH a1 AS (INSERT INTO t (id) SELECT id FROM stage RETURNING id), a2 AS (INSERT INTO t2 (id) SELECT id FROM a1 RETURNING id) SELECT id FROM a2"
+      expected_edges:
+        - from_table: stage
+          from_field: "id"
+          to_table: t
+          to_field: "id"
+          relation_type: direct
+          is_temp: false
+        - from_table: t
+          from_field: "id"
+          to_table: t2
+          to_field: "id"
+          relation_type: direct
+          is_temp: false
+        - from_table: t2
+          from_field: "id"
+          to_table: __result__
+          to_field: "id"
+          relation_type: direct
+          is_temp: true
