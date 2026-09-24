@@ -127,6 +127,8 @@ cases:
 
     - name: unknown column is not attributed to an arbitrary table
       sql: SELECT z FROM a JOIN b ON a.id = b.id
+      expect_error: true
+      error_contains: "unresolved reference in an output column: z"
       catalog:
         tables:
           a: [id, x]
@@ -219,6 +221,8 @@ cases:
 
     - name: unknown column inside a CTE is not attributed
       sql: WITH c AS (SELECT nope FROM a JOIN b ON a.id = b.id) SELECT nope FROM c
+      expect_error: true
+      error_contains: "unresolved reference in a CTE body: nope"
       catalog:
         tables:
           a: [id, x]
@@ -804,3 +808,11 @@ cases:
           to_field: id
           relation_type: direct
           is_temp: true
+
+    # A wildcard whose qualifier names no relation has no source to expand. The
+    # empty result is reported rather than left to read as a complete one.
+    - name: a wildcard whose qualifier names no relation is reported
+      sql: SELECT unknown_alias.* FROM t
+      expect_error: true
+      error_contains: "unresolved reference in a wildcard qualifier: unknown_alias"
+      expected_edges: []

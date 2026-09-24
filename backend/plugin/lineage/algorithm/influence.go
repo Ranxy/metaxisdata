@@ -41,13 +41,20 @@ type PredicateKey struct {
 type Influences struct {
 	byScope map[*scope.Scope][]Influence
 	byCTE   map[*scope.CTEDefinition][]Influence
+	// notes, when set, receives every predicate column that resolved to nothing.
+	// A predicate that cannot be attributed is dropped, and without a note the
+	// missing influence edge would read as one the SQL never had.
+	notes *Diagnostics
 }
 
-// NewInfluences creates an empty influence store.
-func NewInfluences() *Influences {
+// NewInfluences creates an empty influence store. A nil notes store drops
+// unresolvable predicate columns silently, which is what a caller that only wants
+// the edges asks for.
+func NewInfluences(notes *Diagnostics) *Influences {
 	return &Influences{
 		byScope: make(map[*scope.Scope][]Influence),
 		byCTE:   make(map[*scope.CTEDefinition][]Influence),
+		notes:   notes,
 	}
 }
 
@@ -169,6 +176,7 @@ func (s *Influences) Resolve(sp *scope.Scope, ref scope.ColumnRef, transform mod
 
 	resolutions, err := sp.ResolveColumnRefs(ref)
 	if err != nil {
+		s.notes.Unresolved("a predicate", ref)
 		return
 	}
 	for _, res := range resolutions {

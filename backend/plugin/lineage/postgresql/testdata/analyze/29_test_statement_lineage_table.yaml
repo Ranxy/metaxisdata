@@ -8,6 +8,7 @@ cases:
     - name: merge is reported as unsupported
       sql: MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET a = s.a
       expect_error: true
+      error_contains: "not modelled: MERGE"
       expected_edges: []
 
     # One SQL text can hold several statements, and each is analyzed on its own.

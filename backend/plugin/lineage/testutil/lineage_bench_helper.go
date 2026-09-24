@@ -1,14 +1,29 @@
 package testutil
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 )
+
+// IsPartialAnalysis reports whether an error is the one a partial analysis
+// returns: the analyzer kept the edges it found and reported what it could not
+// represent. A benchmark runs corpus cases that expect an error beside their
+// edges, so it treats that error as the case's documented outcome while any other
+// error still fails it.
+func IsPartialAnalysis(err error) bool {
+	if err == nil {
+		return true
+	}
+	var partial *lineage.UnsupportedStatementError
+	return errors.As(err, &partial)
+}
 
 // BenchCase is one statement a benchmark measures.
 type BenchCase struct {
@@ -35,7 +50,7 @@ func LoadCorpusBenchCases(tb testing.TB, dir string) []BenchCase {
 			tb.Fatalf("load %s: %v", file, err)
 		}
 		for _, tc := range suite.Cases {
-			if tc.ExpectError {
+			if tc.ExpectError && tc.ExpectedEdges == nil {
 				continue
 			}
 			cases = append(cases, BenchCase{Name: BenchCaseName(tc.Name), SQL: tc.SQL})
@@ -61,7 +76,7 @@ func BenchmarkCorpusAnalysis(b *testing.B, dir string, analyze AnalyzeFunc) {
 	b.ReportAllocs()
 	for b.Loop() {
 		for _, c := range cases {
-			if _, err := analyze(c.SQL, nil); err != nil {
+			if _, err := analyze(c.SQL, nil); !IsPartialAnalysis(err) {
 				b.Fatalf("case %q: %v", c.Name, err)
 			}
 		}
@@ -76,7 +91,7 @@ func BenchmarkCaseAnalysis(b *testing.B, dir string, analyze AnalyzeFunc) {
 		b.Run(c.Name, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				if _, err := analyze(c.SQL, nil); err != nil {
+				if _, err := analyze(c.SQL, nil); !IsPartialAnalysis(err) {
 					b.Fatalf("case %q: %v", c.Name, err)
 				}
 			}

@@ -237,6 +237,8 @@ cases:
               condition: a.id = b.id
     - name: unknown column is not attributed to an arbitrary relation
       sql: SELECT z FROM a JOIN b ON a.id = b.id
+      expect_error: true
+      error_contains: "unresolved reference in an output column: z"
       catalog:
         tables:
             a:

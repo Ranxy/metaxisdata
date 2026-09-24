@@ -99,8 +99,17 @@ type LineageTestCase struct {
 	// It is the escape hatch for a case that asserts part of a large result.
 	Subset bool
 
-	// ExpectError indicates the test expects an analysis error
+	// ExpectError expects the analysis to report an error. Together with a nil
+	// ExpectedEdges it asserts a hard failure — nothing usable came back. Together
+	// with edges it asserts a *partial* analysis: the analyzer reported what it
+	// could not represent and still produced these edges, which is the contract
+	// UnsupportedStatementError carries.
 	ExpectError bool
+
+	// ErrorContains, when set, must appear in the reported error. A partial
+	// analysis is only useful if it says what it dropped, so the cases that pin
+	// one assert the message and not merely that some error occurred.
+	ErrorContains string
 }
 
 // LineageTestSuite defines a named group of lineage test cases loaded from YAML.
@@ -121,6 +130,7 @@ type yamlLineageTestCase struct {
 	ExpectedEdges *[]yamlExpectedEdge `yaml:"expected_edges,omitempty"`
 	Subset        bool                `yaml:"subset,omitempty"`
 	ExpectError   bool                `yaml:"expect_error,omitempty"`
+	ErrorContains string              `yaml:"error_contains,omitempty"`
 }
 
 // yamlCatalog describes the metadata an analyzer may consult. tables: registers
@@ -338,7 +348,9 @@ func RequireFullEdgeAnnotations(t *testing.T, dir string) {
 		require.NoError(t, err)
 
 		for _, tc := range suite.Cases {
-			if tc.ExpectError || tc.ExpectedEdges == nil {
+			// A case with no edges asserts nothing about them; a partial case
+			// (expect_error with edges) asserts them and is checked like any other.
+			if tc.ExpectedEdges == nil {
 				continue
 			}
 			for i, edge := range tc.ExpectedEdges {
@@ -391,12 +403,21 @@ func RunLineageTest(t *testing.T, tc LineageTestCase, analyzeFn AnalyzeFunc) {
 
 	relations, err := analyzeFn(tc.SQL, tc.Catalog)
 
-	// Handle expected errors
 	if tc.ExpectError {
 		require.Error(t, err, "Expected analysis to fail for SQL: %s", tc.SQL)
-		return
+		if tc.ErrorContains != "" {
+			require.Contains(t, err.Error(), tc.ErrorContains,
+				"the reported error does not say what was dropped for SQL: %s", tc.SQL)
+		}
+		// Naming edges turns the case into a partial analysis: the error says what
+		// could not be represented and the edges below are the ones that could.
+		// Without them the case only asserts that the analysis failed.
+		if tc.ExpectedEdges == nil {
+			return
+		}
+	} else {
+		require.NoError(t, err, "Failed to analyze SQL: %s", tc.SQL)
 	}
-	require.NoError(t, err, "Failed to analyze SQL: %s", tc.SQL)
 
 	// An explicitly empty expectation means the statement must produce no edges.
 	// Matching is exact unless the case declares itself partial with Subset.
@@ -411,10 +432,11 @@ func RunLineageTest(t *testing.T, tc LineageTestCase, analyzeFn AnalyzeFunc) {
 
 func (c *yamlLineageTestCase) toLineageTestCase() (LineageTestCase, error) {
 	tc := LineageTestCase{
-		Name:        c.Name,
-		SQL:         c.SQL,
-		ExpectError: c.ExpectError,
-		Subset:      c.Subset,
+		Name:          c.Name,
+		SQL:           c.SQL,
+		ExpectError:   c.ExpectError,
+		ErrorContains: c.ErrorContains,
+		Subset:        c.Subset,
 	}
 
 	if c.Catalog != nil {

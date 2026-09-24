@@ -62,3 +62,12 @@ cases:
           transformations:
             - operation: DELETE
               condition: idIN(SELECTidFROMt2WHEREtag='x')
+
+    # A condition column that resolves to nothing used to fall back to the
+    # reference itself, which emitted an edge from a relation the statement never
+    # names. PostgreSQL already dropped it; this now does too, and says so.
+    - name: an unresolvable delete condition records nothing and is reported
+      sql: DELETE FROM t WHERE u.x = 1
+      expect_error: true
+      error_contains: "unresolved reference in a DELETE condition: u.x"
+      expected_edges: []

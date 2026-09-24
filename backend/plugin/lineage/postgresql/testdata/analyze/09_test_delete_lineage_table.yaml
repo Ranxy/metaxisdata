@@ -129,4 +129,6 @@ cases:
     # exist.
     - name: an unresolvable delete predicate records nothing
       sql: DELETE FROM t WHERE u.x = 1
+      expect_error: true
+      error_contains: "unresolved reference in a DELETE condition: u.x"
       expected_edges: []

@@ -410,3 +410,17 @@ cases:
           transformations:
             - operation: FILTER
               condition: o.status='paid'
+
+    # A predicate column that resolves to nothing drops the influence it would
+    # have produced; the note distinguishes that from a predicate the SQL never had.
+    - name: an unresolvable predicate column is reported
+      sql: SELECT p.total FROM payments p WHERE u.x = 1
+      expect_error: true
+      error_contains: "unresolved reference in a predicate: u.x"
+      expected_edges:
+        - from_table: payments
+          from_field: total
+          to_table: __result__
+          to_field: total
+          relation_type: direct
+          is_temp: true

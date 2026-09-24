@@ -5,6 +5,8 @@ cases:
     # whose source GUID named no object. Every other path drops it.
     - name: an update assignment source no relation owns records nothing
       sql: UPDATE t SET a = nosuchcol FROM s WHERE t.id = s.id
+      expect_error: true
+      error_contains: "unresolved reference in an assignment: nosuchcol"
       catalog:
         tables:
             t:
@@ -55,6 +57,8 @@ cases:
     # lineage — the edge used to be fabricated from the INSERT source instead.
     - name: the conflict clause does not see the insert query's relations
       sql: INSERT INTO inventory (product_id, quantity) SELECT product_id, quantity FROM shipment ON CONFLICT (product_id) DO UPDATE SET quantity = shipment.quantity
+      expect_error: true
+      error_contains: "unresolved reference in an assignment: shipment.quantity"
       catalog:
         tables:
             inventory:

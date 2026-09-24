@@ -10,6 +10,8 @@ cases:
     # the statement never updates. A qualified target names the relation it
     # updates, which is what a multi-table UPDATE relies on.
     - name: an unqualified set target two tables own records nothing
+      expect_error: true
+      error_contains: "ambiguous reference in an assignment target: a"
       sql: UPDATE t1 JOIN t2 ON t1.id = t2.id SET a = t2.a
       catalog:
         tables:
@@ -81,6 +83,8 @@ cases:
               expression: t1.x
 
     - name: an unresolvable assignment source records nothing
+      expect_error: true
+      error_contains: "unresolved reference in an assignment: nosuchcol"
       sql: UPDATE t1 JOIN t2 ON t1.id = t2.id SET t1.a = nosuchcol
       catalog:
         tables:
@@ -207,6 +211,8 @@ cases:
     # The upsert clause drops an unresolvable source the same way: the edge used
     # to be written with an empty source table.
     - name: an unresolvable upsert source records nothing
+      expect_error: true
+      error_contains: "unresolved reference in an upsert assignment: nosuchcol"
       sql: INSERT INTO t (a) SELECT x FROM s ON DUPLICATE KEY UPDATE a = nosuchcol
       catalog:
         tables:

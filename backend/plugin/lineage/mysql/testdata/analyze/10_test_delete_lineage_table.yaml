@@ -65,3 +65,13 @@ cases:
           transformations:
             - operation: DELETE
               condition: "idIN(SELECTuser_idFROMordersWHEREstatus='cancelled'GROUPBYuser_idHAVINGCOUNT(*)>5)"
+
+    # A condition column that resolves to nothing used to fall back to the
+    # reference itself, which emitted `u.x -> t.__deletion__` for a relation the
+    # statement never names. PostgreSQL already dropped it; this now does too, and
+    # says so instead of returning a silently empty result.
+    - name: an unresolvable delete condition records nothing and is reported
+      sql: DELETE FROM t WHERE u.x = 1
+      expect_error: true
+      error_contains: "unresolved reference in a DELETE condition: u.x"
+      expected_edges: []

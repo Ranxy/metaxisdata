@@ -126,7 +126,7 @@ func TestInfluencesBelongToTheScopeWhoseRowsTheyDecide(t *testing.T) {
 	other := scope.NewScope(nil)
 	tableInScope(other, "u", "y")
 
-	influences := NewInfluences()
+	influences := NewInfluences(nil)
 	influences.Resolve(rows, scope.ColumnRef{Table: "t", Column: "x"}, model.NewFilterTransformation("x = 1"), false)
 
 	// The other scope's rows are what the statement emits, so the influence
@@ -148,7 +148,7 @@ func TestInheritMovesInfluencesSoTheyEmitOnce(t *testing.T) {
 	to := scope.NewScope(nil)
 	tableInScope(to, "u", "y")
 
-	influences := NewInfluences()
+	influences := NewInfluences(nil)
 	influences.Resolve(from, scope.ColumnRef{Table: "t", Column: "x"}, model.NewFilterTransformation("x = 1"), false)
 	influences.Inherit(from, to)
 	influences.Inherit(from, to)
@@ -179,7 +179,7 @@ func TestBindCTEKeepsInfluencesForEveryReference(t *testing.T) {
 	tableInScope(body, "t", "x")
 	cte := &scope.CTEDefinition{Name: "c"}
 
-	influences := NewInfluences()
+	influences := NewInfluences(nil)
 	influences.Resolve(body, scope.ColumnRef{Table: "t", Column: "x"}, model.NewFilterTransformation("x = 1"), false)
 	influences.BindCTE(cte, body)
 
@@ -211,7 +211,7 @@ func TestEmitTracesAQueryLocalRelation(t *testing.T) {
 	cte.SetColumnLookup(func() []string { return []string{"x"} })
 	sp.AddTable(cte)
 
-	influences := NewInfluences()
+	influences := NewInfluences(nil)
 	influences.Resolve(sp, scope.ColumnRef{Table: "c", Column: "x"}, model.NewFilterTransformation("x = 1"), false)
 
 	var traced int
@@ -242,7 +242,7 @@ func TestResolveAttributesASelectListAliasToItsOwnSources(t *testing.T) {
 		Sources: scope.NewColumnSources([]scope.ColumnRef{{Table: "t", Column: "x"}}, nil),
 	})
 
-	influences := NewInfluences()
+	influences := NewInfluences(nil)
 	influences.Resolve(sp, scope.ColumnRef{Column: "total"}, model.NewFilterTransformation("total > 1"), true)
 
 	var edges []model.ColumnRelation

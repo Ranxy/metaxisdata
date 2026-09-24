@@ -59,6 +59,10 @@ type Analyzer struct {
 	// errors collects analysis failures. A non-empty list fails the whole
 	// analysis: a partial result is never returned.
 	errors []string
+	// diagnostics collects what the analysis could not represent: a reference that
+	// resolved to nothing, and a clause whose target it could not choose. They turn
+	// the result into a partial one that says what is missing.
+	diagnostics *algorithm.Diagnostics
 	// catalog optionally expands wildcards and resolves metadata.
 	catalog catalog.Provide
 	// inTargetContext is set while the query body of a statement that maps its
@@ -83,15 +87,17 @@ func Analyze(ctx context.Context, sql string) ([]model.ColumnRelation, error) {
 
 // NewAnalyzer creates a StarRocks lineage analyzer for a single statement.
 func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide) *Analyzer {
+	diagnostics := algorithm.NewDiagnostics()
 	return &Analyzer{
-		ctx:        ctx,
-		sql:        sql,
-		sources:    []source{newSource(sql)},
-		scopeStack: []*scope.Scope{scope.NewScope(nil)}, // root scope
-		edges:      algorithm.NewEdgeSet(),
-		errors:     make([]string, 0),
-		catalog:    catalogProvide,
-		influences: algorithm.NewInfluences(),
+		ctx:         ctx,
+		sql:         sql,
+		sources:     []source{newSource(sql)},
+		scopeStack:  []*scope.Scope{scope.NewScope(nil)}, // root scope
+		edges:       algorithm.NewEdgeSet(),
+		errors:      make([]string, 0),
+		catalog:     catalogProvide,
+		influences:  algorithm.NewInfluences(diagnostics),
+		diagnostics: diagnostics,
 	}
 }
 
@@ -112,10 +118,7 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 		// extracted query instead; anything else is still a hard failure.
 		if ddl, ok := extractViewDDL(a.sql); ok {
 			a.processViewDDL(ddl)
-			if len(a.errors) > 0 {
-				return nil, errors.Errorf("analysis errors: %s", strings.Join(a.errors, "; "))
-			}
-			return a.edges.Edges(), nil
+			return a.partialOrComplete()
 		}
 		return nil, errors.Wrap(&errs[0], "failed to parse StarRocks SQL")
 	}
@@ -125,8 +128,21 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 
 	a.dispatch(file.Stmts[0])
 
+	return a.partialOrComplete()
+}
+
+// partialOrComplete returns the edges with what could not be represented beside
+// them. A statement the analyzer cannot represent at all fails whole — its
+// analysis would be wrong, so the edges are discarded — while a reference it
+// merely could not resolve keeps them and is reported.
+func (a *Analyzer) partialOrComplete() ([]model.ColumnRelation, error) {
 	if len(a.errors) > 0 {
-		return nil, errors.Errorf("analysis errors: %s", strings.Join(a.errors, "; "))
+		return nil, errors.Errorf("analysis errors: %s", strings.Join(a.diagnostics.AppendTo(a.errors), "; "))
+	}
+	if messages := a.diagnostics.Messages(); len(messages) > 0 {
+		return a.edges.Edges(), &lineage.UnsupportedStatementError{
+			Message: errors.Errorf("analysis errors: %s", strings.Join(messages, "; ")).Error(),
+		}
 	}
 	return a.edges.Edges(), nil
 }
@@ -445,6 +461,7 @@ func (a *Analyzer) tempTableLineage(sp *scope.Scope, targetName string) []model.
 		for _, source := range col.Sources {
 			resolutions, err := sp.ResolveColumnRefs(source.Ref)
 			if err != nil {
+				a.diagnostics.Unresolved("a temporary relation", source.Ref)
 				continue
 			}
 			for _, res := range resolutions {
@@ -531,6 +548,7 @@ func (a *Analyzer) generateEdgesForTarget(sp *scope.Scope, targetSchema, targetT
 		for _, source := range outputCol.Sources {
 			resolutions, err := sp.ResolveColumnRefs(source.Ref)
 			if err != nil {
+				a.diagnostics.Unresolved("an output target", source.Ref)
 				continue
 			}
 			isTemp := targetTable == resultTableName
@@ -664,6 +682,7 @@ func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment, targetSche
 		for _, sourceCol := range sourceColumns {
 			resolutions, err := sp.ResolveColumnRefs(sourceCol)
 			if err != nil {
+				a.diagnostics.Unresolved("an assignment", sourceCol)
 				continue
 			}
 			for _, res := range resolutions {
@@ -718,9 +737,13 @@ func (a *Analyzer) processDeleteStatement(stmt *nodes.DeleteStmt) {
 	transform := []model.Transformation{model.NewDeleteTransformation(normalizeExpressionText(a.exprTextOf(stmt.Where)))}
 
 	for _, condCol := range conditionColumns {
+		// An unresolvable condition column used to fall back to the reference
+		// itself, which emitted an edge from a relation the statement never names.
+		// PostgreSQL drops it (P2-2); so does this now.
 		resolutions, err := sp.ResolveColumnRefs(condCol)
 		if err != nil {
-			resolutions = []scope.ResolvedColumn{{Ref: condCol}}
+			a.diagnostics.Unresolved("a DELETE condition", condCol)
+			continue
 		}
 		isTemp := table == resultTableName
 		for _, res := range resolutions {
@@ -841,6 +864,9 @@ func (a *Analyzer) processTableWildcard(item *nodes.SelectItem, sp *scope.Scope)
 	}
 	tableRef, ok := sp.FindRelation(scope.RelationKey{Qualifier: schema, Name: tableName})
 	if !ok {
+		// A wildcard whose qualifier names no relation has no source to expand;
+		// the note is what keeps the empty result from reading as a complete one.
+		a.diagnostics.UnresolvedQualifier("a wildcard qualifier", tableName)
 		return
 	}
 	if a.catalog != nil && !tableRef.IsSubquery && !tableRef.IsCTE {
@@ -980,6 +1006,7 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 		for _, source := range outputCol.Sources {
 			resolutions, err := sp.ResolveColumnRefs(source.Ref)
 			if err != nil {
+				a.diagnostics.Unresolved("an output column", source.Ref)
 				continue
 			}
 			for _, res := range resolutions {
@@ -1126,6 +1153,7 @@ func (a *Analyzer) processCTE(cte *nodes.CTE, recursive bool) {
 			for _, source := range outputCol.Sources {
 				resolutions, err := cteScope.ResolveColumnRefs(source.Ref)
 				if err != nil {
+					a.diagnostics.Unresolved("a CTE body", source.Ref)
 					continue
 				}
 				for _, res := range resolutions {

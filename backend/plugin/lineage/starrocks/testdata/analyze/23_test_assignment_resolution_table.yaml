@@ -76,6 +76,8 @@ cases:
     # to be emitted with an empty source table.
     - name: an assignment source no relation owns records nothing
       sql: UPDATE t SET a = nosuchcol FROM s WHERE t.id = s.id
+      expect_error: true
+      error_contains: "unresolved reference in an assignment: nosuchcol"
       catalog:
         tables:
             t:

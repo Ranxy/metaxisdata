@@ -277,6 +277,8 @@ cases:
     # records no lineage.
     - name: a returning clause cannot name the query the insert writes from
       sql: "WITH ins AS (INSERT INTO t (id, a) SELECT id, a FROM stage RETURNING stage.id) SELECT id FROM ins"
+      expect_error: true
+      error_contains: "unresolved reference in a CTE body: stage.id"
       expected_edges:
         - from_table: stage
           from_field: "id"

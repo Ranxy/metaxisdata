@@ -71,6 +71,8 @@ cases:
     # clause is a query level of its own, so there a FROM list does name the CTE.
     - name: a conflict clause cannot name the statement's CTE
       sql: "WITH c AS (SELECT y FROM s) INSERT INTO t (b) SELECT y FROM c ON CONFLICT (b) DO UPDATE SET b = c.y"
+      expect_error: true
+      error_contains: "unresolved reference in an assignment: c.y"
       expected_edges:
         - from_table: s
           from_field: "y"

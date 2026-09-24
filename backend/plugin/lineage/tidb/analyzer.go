@@ -76,6 +76,10 @@ type Analyzer struct {
 	// whatever consumes them, so a scope whose rows reach no output cannot
 	// influence the statement's result.
 	influences *algorithm.Influences
+	// diagnostics collects what the analysis could not represent: a reference
+	// that resolved to nothing, and a clause whose target it could not choose.
+	// They turn the result into a partial one that says what is missing.
+	diagnostics *algorithm.Diagnostics
 }
 
 // Analyze parses a single MySQL statement and returns its column relations.
@@ -85,16 +89,18 @@ func Analyze(ctx context.Context, sql string) ([]model.ColumnRelation, error) {
 
 // NewAnalyzer creates a new MySQL lineage analyzer.
 func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide) *Analyzer {
+	diagnostics := algorithm.NewDiagnostics()
 	return &Analyzer{
-		ctx:        ctx,
-		sql:        sql,
-		tokens:     mysqlparser.Tokenize(sql),
-		scopeStack: []*scope.Scope{scope.NewScope(nil)}, // Root scope
-		edges:      algorithm.NewEdgeSet(),
-		errors:     make([]string, 0),
-		catalog:    catalogProvide,
-		tableCache: make(map[model.ObjectIdentifier]*catalog.TableMeta),
-		influences: algorithm.NewInfluences(),
+		ctx:         ctx,
+		sql:         sql,
+		tokens:      mysqlparser.Tokenize(sql),
+		scopeStack:  []*scope.Scope{scope.NewScope(nil)}, // Root scope
+		edges:       algorithm.NewEdgeSet(),
+		errors:      make([]string, 0),
+		catalog:     catalogProvide,
+		tableCache:  make(map[model.ObjectIdentifier]*catalog.TableMeta),
+		influences:  algorithm.NewInfluences(diagnostics),
+		diagnostics: diagnostics,
 	}
 }
 
@@ -146,8 +152,17 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 		// are ignored; there is nothing to resolve.
 	}
 
+	// A statement the analyzer cannot represent fails whole: its analysis would
+	// be wrong, so the edges are discarded. What it merely could not resolve is
+	// different — those edges are real, and the notes are returned beside them so
+	// the gap is visible instead of the edges being thrown away.
 	if len(a.errors) > 0 {
-		return nil, errors.Errorf("analysis errors: %s", strings.Join(a.errors, "; "))
+		return nil, errors.Errorf("analysis errors: %s", strings.Join(a.diagnostics.AppendTo(a.errors), "; "))
+	}
+	if messages := a.diagnostics.Messages(); len(messages) > 0 {
+		return a.edges.Edges(), &lineage.UnsupportedStatementError{
+			Message: errors.Errorf("analysis errors: %s", strings.Join(messages, "; ")).Error(),
+		}
 	}
 	return a.edges.Edges(), nil
 }
@@ -444,6 +459,7 @@ func (a *Analyzer) processCTE(cte *nodes.CommonTableExpr) {
 			for _, source := range outputCol.Sources {
 				resolutions, err := cteScope.ResolveColumnRefs(source.Ref)
 				if err != nil {
+					a.diagnostics.Unresolved("a CTE body", source.Ref)
 					continue
 				}
 				for _, res := range resolutions {
@@ -759,6 +775,7 @@ func (a *Analyzer) processDerivedTable(sub *nodes.SubqueryExpr) {
 		for _, source := range col.Sources {
 			resolutions, err := subqueryScope.ResolveColumnRefs(source.Ref)
 			if err != nil {
+				a.diagnostics.Unresolved("a derived table", source.Ref)
 				continue
 			}
 			for _, res := range resolutions {
@@ -832,6 +849,9 @@ func (a *Analyzer) processStar(sp *scope.Scope) {
 func (a *Analyzer) processTableWildcard(cr *nodes.ColumnRef, sp *scope.Scope) {
 	tableRef, ok := sp.FindRelation(scope.RelationKey{Qualifier: cr.Schema, Name: cr.Table})
 	if !ok {
+		// A wildcard whose qualifier names no relation has no source to expand;
+		// the note is what keeps the empty result from reading as a complete one.
+		a.diagnostics.UnresolvedQualifier("a wildcard qualifier", cr.Table)
 		return
 	}
 	if a.catalog != nil && !tableRef.IsSubquery && !tableRef.IsCTE {
@@ -950,6 +970,7 @@ func (a *Analyzer) emitSources(sp *scope.Scope, sources []scope.ColumnSource, ta
 	for _, source := range sources {
 		resolutions, err := sp.ResolveColumnRefs(source.Ref)
 		if err != nil {
+			a.diagnostics.Unresolved("an output column", source.Ref)
 			continue
 		}
 		for _, res := range resolutions {
@@ -1031,7 +1052,7 @@ func (a *Analyzer) processInsertUpdateList(assignments []*nodes.Assignment, targ
 	// The VALUES(col) sources are resolved in the scope the INSERT's query ran in,
 	// which is what they mean, so the map is built before the clause's own scope
 	// gains the target table below.
-	insertSources := insertSourceMap(sp, targetColumns)
+	insertSources := a.insertSourceMap(sp, targetColumns)
 	// The clause's own scope contains the target table, which is how MySQL
 	// resolves the row being updated: `a = a + 1` reads the target's own column,
 	// and the statement is rejected as ambiguous (error 1052, verified on 8.3.0)
@@ -1050,6 +1071,7 @@ func (a *Analyzer) processInsertUpdateList(assignments []*nodes.Assignment, targ
 		for _, sourceCol := range sourceColumns {
 			resolutions, err := sp.ResolveColumnRefs(sourceCol)
 			if err != nil {
+				a.diagnostics.Unresolved("an upsert assignment", sourceCol)
 				continue
 			}
 			isTemp := targetTable == resultTableName
@@ -1077,7 +1099,7 @@ func (a *Analyzer) processInsertUpdateList(assignments []*nodes.Assignment, targ
 // is resolved here, in the scope the INSERT's query ran in: the clause's own
 // scope also holds the target table, and an unqualified name both it and the
 // query own would otherwise be attributed to whichever comes first by name.
-func insertSourceMap(sp *scope.Scope, targetColumns []string) map[string][]scope.ColumnRef {
+func (a *Analyzer) insertSourceMap(sp *scope.Scope, targetColumns []string) map[string][]scope.ColumnRef {
 	out := make(map[string][]scope.ColumnRef)
 	for i, outputCol := range sp.GetOutputColumns() {
 		if len(targetColumns) > 0 && i >= len(targetColumns) {
@@ -1087,19 +1109,22 @@ func insertSourceMap(sp *scope.Scope, targetColumns []string) map[string][]scope
 		if i < len(targetColumns) {
 			name = targetColumns[i]
 		}
-		out[name] = append(out[name], resolveWithin(sp, scope.Refs(outputCol.Sources))...)
+		out[name] = append(out[name], a.resolveWithin(sp, scope.Refs(outputCol.Sources))...)
 	}
 	return out
 }
 
 // resolveWithin resolves every reference against the scope it came from and marks
 // it resolved, so a later lookup in a scope that does not share it returns the
-// same column instead of guessing again. An unresolvable reference is dropped.
-func resolveWithin(sp *scope.Scope, refs []scope.ColumnRef) []scope.ColumnRef {
+// same column instead of guessing again. An unresolvable reference is dropped and
+// reported: it is one of the sources the insert writes, and losing it silently
+// would make the upsert map look complete.
+func (a *Analyzer) resolveWithin(sp *scope.Scope, refs []scope.ColumnRef) []scope.ColumnRef {
 	out := make([]scope.ColumnRef, 0, len(refs))
 	for _, ref := range refs {
 		resolutions, err := sp.ResolveColumnRefs(ref)
 		if err != nil {
+			a.diagnostics.Unresolved("an insert source", ref)
 			continue
 		}
 		for _, res := range resolutions {
@@ -1222,7 +1247,15 @@ func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment) {
 		// updates, which is what a multi-table UPDATE setting columns of two tables
 		// relies on.
 		targets, err := sp.ResolveColumnRefs(targetCol)
-		if err != nil || len(targets) != 1 {
+		if err != nil {
+			a.diagnostics.Unresolved("an assignment target", targetCol)
+			continue
+		}
+		if len(targets) != 1 {
+			// MySQL rejects a SET target two relations own (error 1052), so the
+			// assignment has no target to write; writing it into every owner would
+			// invent edges for tables the statement never updates.
+			a.diagnostics.Ambiguous("an assignment target", targetCol)
 			continue
 		}
 		resolved := targets[0].Ref
@@ -1251,6 +1284,7 @@ func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment) {
 		for _, sourceCol := range sourceColumns {
 			resolutions, err := sp.ResolveColumnRefs(sourceCol)
 			if err != nil {
+				a.diagnostics.Unresolved("an assignment", sourceCol)
 				continue
 			}
 			isTemp := resolved.Table == resultTableName
@@ -1328,9 +1362,13 @@ func (a *Analyzer) processDeleteStatement(stmt *nodes.DeleteStmt) {
 			actualTargetTable = *foundTable
 		}
 		for _, condCol := range conditionColumns {
+			// An unresolvable condition column used to fall back to the reference
+			// itself, which emitted an edge from a relation the statement never
+			// names. PostgreSQL drops it (P2-2); so does this now.
 			resolutions, err := sp.ResolveColumnRefs(condCol)
 			if err != nil {
-				resolutions = []scope.ResolvedColumn{{Ref: condCol}}
+				a.diagnostics.Unresolved("a DELETE condition", condCol)
+				continue
 			}
 			transform := []model.Transformation{
 				model.NewDeleteTransformation(whereText),

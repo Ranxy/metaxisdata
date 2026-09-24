@@ -1,0 +1,57 @@
+name: TestDiagnostics_Table
+cases:
+    # A dropped reference is reported beside the edges that were found, so a
+    # partial analysis never reads as a complete one. Each case names the clause
+    # the reference was written in, and the edges it still produced are asserted
+    # exactly: the note explains a missing edge, it never excuses a wrong one.
+    # PostgreSQL rejects most of these shapes outright, so the note is the only
+    # thing a reader can act on.
+    - name: a wildcard whose qualifier names no relation is reported
+      sql: SELECT unknown_alias.* FROM t
+      expect_error: true
+      error_contains: "unresolved reference in a wildcard qualifier: unknown_alias"
+      expected_edges: []
+
+    # A predicate column that resolves to nothing drops the row-set influence it
+    # would have produced; the projected column is unaffected.
+    - name: an unresolvable predicate column is reported
+      sql: SELECT a FROM t WHERE u.x = 1
+      expect_error: true
+      error_contains: "unresolved reference in a predicate: u.x"
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          is_temp: true
+
+    # A view's column that no relation owns produces no edge, and the note says
+    # which reference was dropped.
+    - name: an unresolvable view column is reported
+      sql: CREATE VIEW v AS SELECT u.y FROM t
+      expect_error: true
+      error_contains: "unresolved reference in an output target: u.y"
+      expected_edges: []
+
+    # The same through a derived table, which resolves its columns against its own
+    # scope before the enclosing query reads them.
+    - name: an unresolvable derived table column is reported
+      sql: CREATE VIEW v AS SELECT d.x FROM (SELECT u.y AS x FROM t) d
+      expect_error: true
+      error_contains: "unresolved reference in a derived table: u.y"
+      expected_edges: []
+
+    # A range function whose argument names no relation still contributes its
+    # output column; the argument is what could not be resolved.
+    - name: an unresolvable range function argument is reported
+      sql: SELECT * FROM t, unnest(u.arr) AS x(a)
+      expect_error: true
+      error_contains: "unresolved reference in a range function argument: u.arr"
+      expected_edges:
+        - from_table: t
+          from_field: "*"
+          to_table: __result__
+          to_field: "*"
+          relation_type: direct
+          is_temp: true

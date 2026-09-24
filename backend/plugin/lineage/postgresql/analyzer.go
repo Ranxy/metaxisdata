@@ -66,8 +66,11 @@ type Analyzer struct {
 	// edges collects the distinct column relations the analyzed statements
 	// produced.
 	edges *algorithm.EdgeSet
-	// Errors encountered during analysis
-	errors []string
+	// diagnostics collects what the analysis could not represent: a statement
+	// shape it does not model, and a reference that resolved to nothing. A
+	// non-empty store turns the result into a partial one that says what is
+	// missing.
+	diagnostics *algorithm.Diagnostics
 	// Optional catalog provider for wildcard expansion and metadata lookup
 	catalog catalog.Provide
 	// realTarget is set while analyzing the query of a statement that writes to a
@@ -95,14 +98,15 @@ func Analyze(ctx context.Context, sql string) ([]model.ColumnRelation, error) {
 
 // NewAnalyzer creates a new PostgreSQL lineage analyzer.
 func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide) *Analyzer {
+	diagnostics := algorithm.NewDiagnostics()
 	return &Analyzer{
-		ctx:        ctx,
-		sql:        sql,
-		scopeStack: []*scope.Scope{scope.NewScope(nil)}, // Root scope
-		edges:      algorithm.NewEdgeSet(),
-		errors:     make([]string, 0),
-		catalog:    catalogProvide,
-		influences: algorithm.NewInfluences(),
+		ctx:         ctx,
+		sql:         sql,
+		scopeStack:  []*scope.Scope{scope.NewScope(nil)}, // Root scope
+		edges:       algorithm.NewEdgeSet(),
+		diagnostics: diagnostics,
+		catalog:     catalogProvide,
+		influences:  algorithm.NewInfluences(diagnostics),
 	}
 }
 
@@ -135,9 +139,11 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 		a.processStmt(stmt.AST)
 	}
 
-	if len(a.errors) > 0 {
+	// What the analysis could not represent is reported beside the edges it did
+	// find: the caller stores both, so a gap never reads as "no lineage here".
+	if messages := a.diagnostics.Messages(); len(messages) > 0 {
 		return a.edges.Edges(), &lineage.UnsupportedStatementError{
-			Message: errors.Errorf("analysis errors: %s", strings.Join(a.errors, "; ")).Error(),
+			Message: errors.Errorf("analysis errors: %s", strings.Join(messages, "; ")).Error(),
 		}
 	}
 
@@ -175,7 +181,7 @@ func (a *Analyzer) processStmt(node pgast.Node) {
 		// MERGE carries column lineage this analyzer does not model yet. Failing
 		// loudly keeps it from being read as a statement with none, which is what
 		// the StarRocks analyzer does for the same statement.
-		a.errors = append(a.errors, "MERGE analysis is not implemented yet")
+		a.diagnostics.NotModelled("MERGE")
 	default:
 		// Statement kinds that carry no lineage are ignored, as in the MySQL
 		// analyzer.
@@ -464,6 +470,7 @@ func (a *Analyzer) processCTE(cte *pgast.CommonTableExpr, recursive bool) {
 			for _, source := range outputCol.Sources {
 				resolutions, err := cteScope.ResolveColumnRefs(source.Ref)
 				if err != nil {
+					a.diagnostics.Unresolved("a CTE body", source.Ref)
 					continue
 				}
 				for _, res := range resolutions {
@@ -573,6 +580,7 @@ func (a *Analyzer) processRangeFunction(fn *pgast.RangeFunction) {
 			for _, ref := range a.extractColumnsFromNode(argument, sp) {
 				resolutions, err := sp.ResolveColumnRefs(ref)
 				if err != nil {
+					a.diagnostics.Unresolved("a range function argument", ref)
 					continue
 				}
 				for _, res := range resolutions {
@@ -834,6 +842,7 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 		for _, source := range col.Sources {
 			resolutions, err := subqueryScope.ResolveColumnRefs(source.Ref)
 			if err != nil {
+				a.diagnostics.Unresolved("a derived table", source.Ref)
 				continue
 			}
 			for _, res := range resolutions {
@@ -940,6 +949,10 @@ func (a *Analyzer) processTableStar(cr *pgast.ColumnRef, sp *scope.Scope) {
 	colRef := a.columnRefFromFields(cr.Fields)
 	tableRef, ok := sp.FindRelation(scope.RelationKey{Qualifier: colRef.Schema, Name: colRef.Table})
 	if !ok {
+		// PostgreSQL rejects a wildcard whose qualifier names no relation
+		// ("missing FROM-clause entry"), so there is no source to expand; the note
+		// is what keeps the empty result from reading as a complete one.
+		a.diagnostics.UnresolvedQualifier("a wildcard qualifier", colRef.Table)
 		return
 	}
 	if a.catalog != nil && !tableRef.IsSubquery && !tableRef.IsCTE {
@@ -1261,6 +1274,7 @@ func (a *Analyzer) processAssignments(assignments *pgast.List, targetSchema, tar
 		for _, sourceCol := range sourceColumns {
 			resolutions, err := currentScope.ResolveColumnRefs(sourceCol)
 			if err != nil {
+				a.diagnostics.Unresolved("an assignment", sourceCol)
 				continue
 			}
 
@@ -1363,6 +1377,7 @@ func (a *Analyzer) processDeleteStmt(stmt *pgast.DeleteStmt) {
 		for _, condCol := range conditionColumns {
 			resolutions, err := sp.ResolveColumnRefs(condCol)
 			if err != nil {
+				a.diagnostics.Unresolved("a DELETE condition", condCol)
 				continue
 			}
 
@@ -1434,6 +1449,7 @@ func (a *Analyzer) emitOutputColumnsToTarget(targetSchema, targetTable string, e
 		for _, source := range outputCol.Sources {
 			resolutions, err := sp.ResolveColumnRefs(source.Ref)
 			if err != nil {
+				a.diagnostics.Unresolved("an output target", source.Ref)
 				continue
 			}
 			isTemp := targetTable == resultTableName
@@ -1555,6 +1571,7 @@ func (a *Analyzer) generateEdgesForDataModification(sourceScope *scope.Scope, ta
 func (a *Analyzer) generateEdgeFromSource(sp *scope.Scope, sourceCol scope.ColumnRef, targetSchema, targetTable, targetColName string, transform []model.Transformation) {
 	resolutions, err := sp.ResolveColumnRefs(sourceCol)
 	if err != nil {
+		a.diagnostics.Unresolved("an output column", sourceCol)
 		return
 	}
 

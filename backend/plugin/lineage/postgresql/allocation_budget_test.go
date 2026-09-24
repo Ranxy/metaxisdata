@@ -61,7 +61,9 @@ func TestAnalyzeAllocationBudget(t *testing.T) {
 		cases := testutil.LoadCorpusBenchCases(t, testdataPath("analyze"))
 		allocs := testing.AllocsPerRun(5, func() {
 			for _, c := range cases {
-				if _, err := NewAnalyzer(context.Background(), c.SQL, nil).AnalyzeRelations(); err != nil {
+				// A corpus case that reports a gap beside its edges is measured
+				// like any other; only an unexpected error fails.
+				if _, err := NewAnalyzer(context.Background(), c.SQL, nil).AnalyzeRelations(); !testutil.IsPartialAnalysis(err) {
 					t.Fatalf("analyze %q: %v", c.Name, err)
 				}
 			}
