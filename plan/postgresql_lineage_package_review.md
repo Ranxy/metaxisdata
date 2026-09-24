@@ -224,6 +224,22 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 
 **审计方法**（可复现）：临时在包内加一个 `_test.go`，对每个形状打印边集合与变换；对照 `pgast` 节点的字段清单逐项检查分析器是否读取；可疑形状用真实引擎确认它合法且可执行。**建议后续把这张"字段 × 是否读取"的对照表补全并归档**，作为收口"某个 clause 没被读"这类缺陷的系统手段。
 
+### §0f 续：完整对照表已归档（第九批，发现已记录，未修）
+
+对照表已补全并归档到 [`plan/lineage_ast_field_coverage_audit.md`](./lineage_ast_field_coverage_audit.md)：5 个 AST 包共 1077 个结构类型，分析器触及的类型逐字段核对（PG 41 + MySQL 家族 28×3 + StarRocks 32 个类型，三方言族共 626 行判定）；「读取」维度由 `go/types` 精确归属到声明字段的类型（不是按字段名 grep），「泛走」维度由 omni 的 walker 机械提取。**PG 一侧没有新缺口**（134 个未读字段全部是位置/内部、泛走、语法修饰、已验证或已决策），新发现的 7 条全部落在 MySQL 家族与 StarRocks：
+
+| # | 方言 | 字段 | 现象 | 实测 |
+| --- | --- | --- | --- | --- |
+| **A4** | MySQL 家族 | `InsertStmt.SetList` | `INSERT INTO t SET a = (SELECT MAX(x) FROM other)` 静默**零边**（同分析器的 `UPDATE … SET a = (SELECT …)` 有边） | MySQL 8.3 与 MariaDB 11.8.9 均执行成功并写入 7 |
+| **A5** | MySQL 家族 | `ValuesStmt.Rows`、`SelectStmt.ValuesSource` | `VALUES ROW((SELECT …))` 与 `SELECT * FROM (VALUES ROW((SELECT …))) v(a)` 静默**零边** | MySQL 8.3 分别返回 7 与 1,7；MariaDB 不支持 `ROW()` 形态（omni 接受、引擎拒绝），其 `VALUES ((SELECT …))` 形态 omni 又解析不了 |
+| **A7** | MySQL 家族 | `SelectStmt.WindowClause` | `OVER w` + `WINDOW w AS (PARTITION BY t.b)` 静默**零边**（内联 `OVER (…)` 有边） | MySQL 8.3 与 MariaDB 11.8.9 均执行成功；**这是 PG P1-3 的兄弟方言缺口**（PG 已有语料 `35_test_named_window`） |
+| **A6** | StarRocks | `SelectStmt.Qualify` | `QUALIFY ROW_NUMBER() OVER (PARTITION BY t.b) = 1` 不产出任何影响边（同分析器 WHERE/HAVING 都产出） | StarRocks 2.5+ 文档特性（只接受 ROW_NUMBER/RANK/DENSE_RANK） |
+| **A8** | MySQL 家族 | `InsertStmt.RowAlias`、`ColAliases` | `VALUES (…) AS new ON DUPLICATE KEY UPDATE b = new.a` 解析不到（**有诊断**，非静默） | MySQL 8.0.19+ 语法，8.3 实测可执行 |
+| **A9** | StarRocks | `inferColumnAlias`（本仓库启发式，非 AST 字段） | 未取别名的复杂表达式派生列名被截断：`CASE … ELSE t.b END` → `bEND`、`t.x IS NULL` → `xISNULL`、`[t.a, t.b]` → `b]` | 与 PG P1-1 同类（目标列名错误），语料只钉了 `AS band` 形态 |
+| **A10** | MySQL 家族 | `JsonTableExpr`（FROM 项） | `FROM t, JSON_TABLE(t.doc, …) AS jt` 不注册 `jt`：显式引用有诊断，**星号展开静默漏列** | MySQL 8.0.4+ 语法；与 PG 的 A3（XMLTABLE）同类 |
+
+这 7 条按"发现先记录"的约定**只记录、未修，也未加语料钉子**（给缺陷钉 `expected_edges` 会把现状固化成预期；A4/A5 的语料目前只钉了常量形态）。修法与建议顺序见审计文档 §5/§8；其中 A4/A5 可以直接复用第八批为 A1 写的 `processValuesRows`，A7 可以复用第二批在 PG 上写的 `namedWindows`。
+
 ---
 
 ## 0g. 第七批（诊断通道）实施状态：已落地
@@ -302,6 +318,8 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 | **P2 低风险/健壮性** | 13 | 边界处理、防御性缺陷、注释漂移、可见性等 |
 | **技术债** | 5 项 | 三份近重复分析器、双份"临时表"判定、Transformation 模型表达力不足等 |
 | **测试缺口** | 11 个方向 | 语料未覆盖上述大部分缺陷（语料机制本身很优秀，是覆盖范围问题） |
+
+另有 **§0f 续**记录的 7 条兄弟方言缺口（A4–A10：MySQL 家族 5 条、StarRocks 2 条，按"发现先记录"未修），以及完整对照表 [`plan/lineage_ast_field_coverage_audit.md`](./lineage_ast_field_coverage_audit.md)（5 个 AST 包 × 626 行判定）。
 
 **最需要立即处理的 4 件事：**
 
@@ -698,6 +716,10 @@ SELECT a FROM t1; MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE S
 
 17. **A1 `ValuesLists`** ✅（三方言族）与 **A2 `GroupingSet`** ✅（PG）：VALUES 行的子查询源不再丢失，组集键不再退化成空字符串键。A3（`RangeTableFunc`）与 StarRocks 的 FROM-VALUES 残余按决策只记录。
 
+**第九批（AST 字段覆盖审计归档）— 发现已记录（见 §0f 续）**
+
+18. **A4–A10**：完整对照表已归档到 [`plan/lineage_ast_field_coverage_audit.md`](./lineage_ast_field_coverage_audit.md)。PG 无新缺口；新发现 7 条全在兄弟方言：**A4** `InsertStmt.SetList`、**A5** `ValuesStmt.Rows`+`SelectStmt.ValuesSource`、**A7** `SelectStmt.WindowClause`（PG P1-3 的兄弟方言缺口）三条**静默丢边**；**A6** StarRocks `SelectStmt.Qualify`（谓词影响丢失）；**A8** 行别名（有诊断）；**A9** StarRocks 派生列名截断；**A10** MySQL `JSON_TABLE` FROM 项。修法方向与顺序见该文档 §5/§8。未改代码、未加语料钉子。
+
 ---
 
 ## 附录 A：复现方法
@@ -803,3 +825,4 @@ docker run -d --name mxd-mariasem -e MARIADB_ROOT_PASSWORD=dev -e MARIADB_DATABA
 1. `github.com/bytebase/omni` 的 `pg/ast` 中，命名窗口 `WindowDef.Refname` 只携带窗口名、不携带被引用的窗口定义；`SelectStmt.WindowClause` 也不在 omni 提供的便捷访问器里。本仓库需要自己遍历 `WindowClause` 并在 `Refname` 上做一次解析（P1-3 的修复因此比内联窗口麻烦一点）。这是**依赖的 AST 表达力**问题，不是 bug。
 2. omni 的 MySQL 解析器**不支持 `WITH c AS (...) INSERT ...`**（WITH 写在 INSERT 之前）这种写法：分析器对它报 `WITH before INSERT is not supported: the parser drops the CTE, so its sources cannot be resolved`。MariaDB 11.8.9 对同一条 SQL 报 `ERROR 1064` 语法错误（MariaDB 的 CTE 要写在 `INSERT ... WITH ... SELECT` 里），所以本仓库的硬失败与引擎一致，**不是缺陷**，仅记录。
 3. `plan/postgresql_omni_parser_migration_plan.md` 的 **PG-FU-2** 已经提出"把 DML/集合运算/窗口保留的 walker 回馈上游 omni"，本次 review 的 P0-2/P0-3 恰好是支持该方向的额外证据——若上游能提供生产级 `analysis` 包，本仓库三份分析器（D1）可显著收缩。是否需要推进属产品决策，本次不推动。
+4. 第九批（AST 字段覆盖审计）又记录三条：omni 的 StarRocks 语法不接受 `TABLE t UNION ALL TABLE s` 与 `GROUP BY a WITH ROLLUP`（StarRocks 用 `GROUP BY ROLLUP(a)`）；omni 的 StarRocks AST **没有 `SelectStmt.WindowClause` 字段**（命名窗口只有 `WindowSpec.Name` 引用、没有定义处，对照 PG 的 `SelectStmt.WindowClause` + `WindowDef.Refname`）；omni 的 MySQL 系解析器接受 `VALUES ROW(…)`（MariaDB 引擎拒绝）却不接受 MariaDB 的 `VALUES (1),(2)` / `FROM (VALUES (1),(2)) v(a)`。详见 [`plan/lineage_ast_field_coverage_audit.md`](./lineage_ast_field_coverage_audit.md) §9。
