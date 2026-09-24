@@ -154,6 +154,8 @@ cases:
           to_field: b
           relation_type: direct
           is_temp: false
+    # QUALIFY filters the rows the window function produces, so its window's
+    # columns influence which rows the view emits. The clause was not read at all.
     - name: CREATE VIEW with a window function and QUALIFY
       sql: CREATE VIEW v AS SELECT id, ROW_NUMBER() OVER (PARTITION BY tag ORDER BY id) AS rn FROM events QUALIFY rn = 1
       expected_edges:
@@ -193,6 +195,24 @@ cases:
                 - tag
               order_by:
                 - id
+        - from_table: events
+          from_field: tag
+          to_table: v
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: rn=1
+        - from_table: events
+          from_field: id
+          to_table: v
+          to_field: ""
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FILTER
+              condition: rn=1
     - name: CREATE VIEW over a cross-database source
       sql: CREATE VIEW v AS SELECT raw.id, raw.name FROM raw_data.users raw
       expected_edges:

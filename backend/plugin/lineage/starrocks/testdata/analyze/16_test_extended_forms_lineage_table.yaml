@@ -378,13 +378,17 @@ cases:
     - name: volatile expression has no lineage
       sql: SELECT DATE_SUB(NOW(), INTERVAL 1 YEAR) AS d FROM t
       expected_edges: []
+    # The engine names an unaliased output column after the column itself, so a
+    # quoted identifier contributes its bare name. The quoting used to survive
+    # because the name was inferred from the expression text, which the MySQL
+    # analyzer has always read as `created-at` for the same statement.
     - name: quoted identifier with an operator character is direct
       sql: SELECT `created-at` FROM t
       expected_edges:
         - from_table: t
           from_field: created-at
           to_table: __result__
-          to_field: '`created-at`'
+          to_field: created-at
           relation_type: direct
           has_transform: false
           is_temp: true

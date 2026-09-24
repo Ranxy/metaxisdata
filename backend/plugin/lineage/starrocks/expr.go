@@ -71,23 +71,16 @@ func normalizeIdentifier(text string) string {
 	return strings.ReplaceAll(inner, escapedQuote, string(quote))
 }
 
-// splitQualifiedIdentifier splits a dotted identifier into normalized parts.
-func splitQualifiedIdentifier(fullText string) []string {
-	parts := strings.Split(fullText, ".")
-	for i, part := range parts {
-		parts[i] = normalizeIdentifier(part)
-	}
-	return parts
-}
-
-// inferColumnAlias infers an alias from an expression text.
-func inferColumnAlias(exprText string) string {
-	if strings.Contains(exprText, ".") && !strings.Contains(exprText, "(") {
-		parts := splitQualifiedIdentifier(exprText)
-		return parts[len(parts)-1]
-	}
-	if !strings.ContainsAny(exprText, "() +-*/%<>=,!?") {
-		return normalizeIdentifier(exprText)
+// inferredColumnAlias names an unaliased select item the way StarRocks reports it.
+// A column reference contributes its own name, however it was qualified (`t.a` is
+// the column a); every other expression contributes its source text. The choice is
+// made on the node, never on the text: an expression that merely contains a dot —
+// a CASE whose ELSE names t.b, an IS NULL test — is not a qualified identifier
+// even when its concatenated text happens to look like one, which is how the name
+// used to come out as `bEND`, `xISNULL` and `b]`.
+func inferredColumnAlias(expr nodes.Node, exprText string) string {
+	if cr, ok := expr.(*nodes.ColumnRef); ok && cr.Name != nil && len(cr.Name.Parts) > 0 {
+		return normalizeIdentifier(cr.Name.Parts[len(cr.Name.Parts)-1])
 	}
 	return exprText
 }

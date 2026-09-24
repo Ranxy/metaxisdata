@@ -527,3 +527,53 @@ cases:
           to_field: name
           relation_type: direct
           is_temp: true
+    # JSON_TABLE is a FROM item rather than an expression, so it has to be handled
+    # structurally: the relation it introduces declares its columns in the COLUMNS
+    # clause and builds every value out of the document expression. Unhandled, the
+    # relation was never registered — an explicit reference to it was reported as
+    # unresolved and a wildcard silently dropped its column.
+    - name: a JSON_TABLE column is extracted from its document expression
+      sql: "SELECT jt.x FROM t, JSON_TABLE(t.doc, '$[*]' COLUMNS (x INT PATH '$.x')) AS jt"
+      expected_edges:
+        - from_table: t
+          from_field: doc
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+    - name: a wildcard over JSON_TABLE expands its declared columns
+      sql: "SELECT * FROM t, JSON_TABLE(t.doc, '$[*]' COLUMNS (x INT PATH '$.x')) AS jt"
+      expected_edges:
+        - from_table: t
+          from_field: "*"
+          to_table: __result__
+          to_field: "*"
+          relation_type: direct
+          is_temp: true
+        - from_table: t
+          from_field: doc
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+    - name: JSON_TABLE declares one column per COLUMNS entry
+      sql: "SELECT * FROM t, JSON_TABLE(t.doc, '$[*]' COLUMNS (x INT PATH '$.x', y INT PATH '$.y')) AS jt"
+      expected_edges:
+        - from_table: t
+          from_field: "*"
+          to_table: __result__
+          to_field: "*"
+          relation_type: direct
+          is_temp: true
+        - from_table: t
+          from_field: doc
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+        - from_table: t
+          from_field: doc
+          to_table: __result__
+          to_field: y
+          relation_type: direct
+          is_temp: true

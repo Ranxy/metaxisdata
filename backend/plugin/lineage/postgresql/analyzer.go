@@ -541,6 +541,8 @@ func (a *Analyzer) processTableExpr(node pgast.Node) {
 		a.processTableExpr(tableExpr.Relation)
 	case *pgast.RangeFunction:
 		a.processRangeFunction(tableExpr)
+	case *pgast.RangeTableFunc:
+		a.processRangeTableFunc(tableExpr)
 	default:
 		// Other FROM items were ignored by this analyzer as well.
 	}
@@ -616,6 +618,100 @@ func (a *Analyzer) processRangeFunction(fn *pgast.RangeFunction) {
 		Lineage:    lineage,
 	}
 	attachTempColumnLookup(tableRef, columns)
+	sp.AddTable(tableRef)
+}
+
+// processRangeTableFunc registers XMLTABLE in FROM as a query-local relation. Its
+// columns are the ones its COLUMNS clause declares, and every extracted value comes
+// out of the document expression the PASSING clause names, so that expression's
+// columns are the source of each of them: `SELECT * FROM t, XMLTABLE('/a' PASSING
+// t.doc COLUMNS x int PATH 'x') q` reports `t.doc`. The whole FROM item used to be
+// ignored, which dropped the relation and the source with it.
+func (a *Analyzer) processRangeTableFunc(fn *pgast.RangeTableFunc) {
+	if fn == nil {
+		return
+	}
+
+	alias := ""
+	var declared []string
+	if fn.Alias != nil {
+		alias = fn.Alias.Aliasname
+		declared = stringList(fn.Alias.Colnames)
+	}
+	if alias == "" {
+		// An unaliased XMLTABLE is addressed by its own name.
+		alias = "xmltable"
+	}
+
+	type funcColumn struct {
+		name       string
+		ordinality bool
+	}
+	sp := a.currentScope()
+	columns := make([]funcColumn, 0)
+	// The row expression and each column's PATH and DEFAULT expressions may read a
+	// column too; the document expression decides the value of every extracted
+	// column, so it is a source of each of them.
+	sourceNodes := []pgast.Node{fn.Docexpr, fn.Rowexpr}
+	if fn.Columns != nil {
+		for i, item := range fn.Columns.Items {
+			col, ok := item.(*pgast.RangeTableFuncCol)
+			if !ok {
+				continue
+			}
+			name := col.Colname
+			if i < len(declared) && declared[i] != "" {
+				name = declared[i]
+			}
+			columns = append(columns, funcColumn{name: name, ordinality: col.ForOrdinality})
+			if !col.ForOrdinality {
+				sourceNodes = append(sourceNodes, col.Colexpr, col.Coldefexpr)
+			}
+		}
+	}
+
+	lineage := make([]model.ColumnRelation, 0)
+	for _, column := range columns {
+		// FOR ORDINALITY numbers the rows of the document and reads no column.
+		if column.ordinality {
+			continue
+		}
+		for _, node := range sourceNodes {
+			if node == nil {
+				continue
+			}
+			for _, ref := range a.extractColumnsFromNode(node, sp) {
+				resolutions, err := sp.ResolveColumnRefs(ref)
+				if err != nil {
+					a.diagnostics.Unresolved("an XMLTABLE expression", ref)
+					continue
+				}
+				for _, res := range resolutions {
+					if a.flattenTempSourceLineage(sp, res.Relation, res.Ref.Column, alias, column.name, nil, &lineage) {
+						continue
+					}
+					lineage = append(lineage, scope.NewSchemaLineageEdge(
+						res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+						"", alias, column.name,
+						nil,
+						true,
+					))
+				}
+			}
+		}
+	}
+
+	names := make([]string, 0, len(columns))
+	for _, column := range columns {
+		names = append(names, column.name)
+	}
+	tableRef := &scope.TableRef{
+		Table:      alias,
+		Alias:      alias,
+		IsSubquery: true,
+		Lineage:    lineage,
+	}
+	attachTempColumnLookup(tableRef, names)
 	sp.AddTable(tableRef)
 }
 

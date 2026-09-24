@@ -45,6 +45,22 @@ func init() {
 	lineage.RegisterAnalyzeRelation(storepb.Engine_TIDB, Analyze)
 }
 
+// valuesQueryPrimary returns the VALUES query primary of a select statement. This
+// dialect's AST has no field for the form — omni models a VALUES row set only as a
+// standalone statement here — so a `VALUES` primary in a derived table or a set
+// operation stays unrepresentable. See docs/omni_upstream_defects.md.
+func valuesQueryPrimary(*nodes.SelectStmt) *nodes.ValuesStmt {
+	return nil
+}
+
+// rowAliasNames returns the row alias an INSERT's VALUES row declares together
+// with its optional column list (`INSERT ... VALUES (...) AS new(a) ...`), which
+// an upsert assignment may then use to name the proposed row. Both are empty when
+// the statement declares none.
+func rowAliasNames(stmt *nodes.InsertStmt) (string, []string) {
+	return stmt.RowAlias, stmt.ColAliases
+}
+
 // Analyzer performs direct lineage analysis on MySQL queries.
 type Analyzer struct {
 	ctx context.Context
@@ -80,6 +96,11 @@ type Analyzer struct {
 	// that resolved to nothing, and a clause whose target it could not choose.
 	// They turn the result into a partial one that says what is missing.
 	diagnostics *algorithm.Diagnostics
+	// namedWindows maps the WINDOW clause in effect to its definitions. A window
+	// function may name the window it uses (`OVER w`) instead of spelling its
+	// clauses out, and the definition is a sibling of the select list rather than
+	// a child of the expression, so the walk over the expression cannot reach it.
+	namedWindows map[string]*nodes.WindowDef
 }
 
 // Analyze parses a single MySQL statement and returns its column relations.
@@ -125,7 +146,7 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	case *nodes.TableStmt:
 		a.processTableStmt(stmt)
 	case *nodes.ValuesStmt:
-		// A VALUES statement carries only literals; it has no lineage.
+		a.processValuesStatement(stmt)
 	case *nodes.InsertStmt:
 		a.rejectLeadingWith("INSERT")
 		a.processInsertStatement(stmt)
@@ -373,6 +394,16 @@ func (a *Analyzer) processSelectStatement(stmt *nodes.SelectStmt) {
 // processQuerySpecification processes FROM, the SELECT list, then emits edges.
 func (a *Analyzer) processQuerySpecification(stmt *nodes.SelectStmt) {
 	sp := a.currentScope()
+	if values := valuesQueryPrimary(stmt); values != nil {
+		// A VALUES query primary (`SELECT * FROM (VALUES ROW(1)) v`) has rows in
+		// place of a select list, and those rows are the query's output.
+		a.processValuesRows(values.Rows)
+		a.generateEdges(sp)
+		return
+	}
+	previousWindows := a.namedWindows
+	a.namedWindows = namedWindowsOf(stmt.WindowClause)
+	defer func() { a.namedWindows = previousWindows }()
 	a.processFromClause(stmt.From)
 	// A WHERE or HAVING predicate decides which rows the query emits without its
 	// value reaching any output column, so it is recorded as an influence on the
@@ -694,7 +725,8 @@ func (a *Analyzer) emitPredicateInfluences(sp *scope.Scope, targetSchema, target
 	})
 }
 
-// processTableExpr processes a table reference, join or derived table.
+// processTableExpr processes a table reference, join, derived table or table
+// function.
 func (a *Analyzer) processTableExpr(te nodes.TableExpr) {
 	switch t := te.(type) {
 	case *nodes.TableRef:
@@ -704,9 +736,76 @@ func (a *Analyzer) processTableExpr(te nodes.TableExpr) {
 		a.processTableExpr(t.Right)
 	case *nodes.SubqueryExpr:
 		a.processDerivedTable(t)
+	case *nodes.JsonTableExpr:
+		a.processJSONTable(t)
 	default:
 		// Function-in-FROM and other table expressions carry no lineage.
 	}
+}
+
+// processJsonTable registers JSON_TABLE in FROM as a query-local relation. Its
+// columns are the ones the COLUMNS clause declares and every value is extracted
+// from the JSON document expression, so the columns that expression reads are the
+// source of each of them: `SELECT * FROM t, JSON_TABLE(t.doc, '$[*]' COLUMNS (x
+// INT PATH '$.x')) jt` reports `t.doc`.
+func (a *Analyzer) processJSONTable(jt *nodes.JsonTableExpr) {
+	if jt == nil {
+		return
+	}
+	alias := jt.Alias
+	if alias == "" {
+		alias = "json_table"
+	}
+	sp := a.currentScope()
+	columns := jsonTableColumnNames(jt.Columns)
+	var sources []scope.ColumnRef
+	if jt.Expr != nil {
+		sources = a.collectExprColumns(jt.Expr, sp)
+	}
+	lineage := make([]model.ColumnRelation, 0, len(columns)*len(sources))
+	for _, column := range columns {
+		for _, ref := range sources {
+			resolutions, err := sp.ResolveColumnRefs(ref)
+			if err != nil {
+				a.diagnostics.Unresolved("a JSON_TABLE document expression", ref)
+				continue
+			}
+			for _, res := range resolutions {
+				if a.flattenTempSourceLineage(sp, res.Relation, res.Ref.Column, alias, column, nil, &lineage) {
+					continue
+				}
+				lineage = append(lineage, scope.NewLineageEdge(
+					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+					"", alias, column,
+					nil,
+					true, // the table function is not a stored object
+				))
+			}
+		}
+	}
+
+	tableRef := &scope.TableRef{
+		Table:      alias,
+		Alias:      alias,
+		IsSubquery: true,
+		Lineage:    lineage,
+	}
+	attachTempColumnLookup(tableRef, columns)
+	sp.AddTable(tableRef)
+}
+
+// jsonTableColumnNames collects the names a COLUMNS clause declares, including the
+// ones a NESTED PATH contributes.
+func jsonTableColumnNames(columns []*nodes.JsonTableColumn) []string {
+	out := make([]string, 0, len(columns))
+	for _, col := range columns {
+		if col == nil || col.Name == "" {
+			continue
+		}
+		out = append(out, col.Name)
+		out = append(out, jsonTableColumnNames(col.NestedCols)...)
+	}
+	return out
 }
 
 // processSingleTableRef adds a base table or CTE reference to the current scope.
@@ -1046,15 +1145,54 @@ func (a *Analyzer) processInsertStatement(stmt *nodes.InsertStmt) {
 		// merge column by column; a row of literals contributes nothing, which is
 		// why `INSERT INTO t VALUES (1, 2)` still records no source.
 		a.processValuesRows(stmt.Values)
+	case len(stmt.SetList) > 0:
+		// `INSERT ... SET col = expr` is the other assignment form. Each
+		// assignment names the column it writes, so the value's sources belong to
+		// that column rather than to a position; a value that is a subquery is a
+		// source, a constant is not.
+		a.processSetList(stmt.SetList)
 	default:
-		// INSERT ... SET assigns literals; there is no source to resolve.
+		// A shape with nothing to resolve, such as DEFAULT VALUES.
 	}
 
 	a.generateEdgesForDataModification(targetSchema, targetTable, targetColumns)
 
 	if !stmt.IsReplace && len(stmt.OnDuplicateKey) > 0 {
-		a.processInsertUpdateList(stmt.OnDuplicateKey, targetSchema, targetTable, targetColumns)
+		a.processInsertUpdateList(stmt, targetSchema, targetTable, targetColumns)
 	}
+}
+
+// processValuesStatement processes a standalone VALUES statement. Its rows are the
+// statement's output, so a value that reads a subquery becomes lineage of the
+// column that row produces.
+func (a *Analyzer) processValuesStatement(stmt *nodes.ValuesStmt) {
+	if stmt == nil {
+		return
+	}
+	a.processValuesRows(stmt.Rows)
+	a.generateEdges(a.currentScope())
+}
+
+// processSetList records what each assignment of an `INSERT ... SET` writes, the
+// same way a VALUES row does: the assignment names its target column, and the
+// value expression may hold a subquery that reads another relation.
+func (a *Analyzer) processSetList(assignments []*nodes.Assignment) {
+	sp := a.currentScope()
+	if sp == nil {
+		return
+	}
+	columns := make([]scope.OutputColumn, 0, len(assignments))
+	for _, elem := range assignments {
+		if elem == nil || elem.Column == nil || elem.Column.Column == "" {
+			continue
+		}
+		if elem.Value == nil {
+			columns = append(columns, scope.OutputColumn{Alias: elem.Column.Column})
+			continue
+		}
+		columns = append(columns, a.outputColumnFor(elem.Value, elem.Column.Column, sp, nil))
+	}
+	sp.SetOutputColumns(columns)
 }
 
 // processValuesRows records what each VALUES row writes into each column of the row
@@ -1072,7 +1210,9 @@ func (a *Analyzer) processValuesRows(rows [][]nodes.ExprNode) {
 	var columns []scope.OutputColumn
 	for _, row := range rows {
 		for len(columns) < len(row) {
-			columns = append(columns, scope.OutputColumn{Alias: fmt.Sprintf("column%d", len(columns)+1)})
+			// MySQL names an unnamed VALUES column column_0, column_1, …; the
+			// target's column list decides whenever the statement writes one.
+			columns = append(columns, scope.OutputColumn{Alias: fmt.Sprintf("column_%d", len(columns))})
 		}
 		for i, expr := range row {
 			built := a.outputColumnFor(expr, columns[i].Alias, sp, nil)
@@ -1084,19 +1224,19 @@ func (a *Analyzer) processValuesRows(rows [][]nodes.ExprNode) {
 }
 
 // processInsertUpdateList processes the ON DUPLICATE KEY UPDATE clause.
-func (a *Analyzer) processInsertUpdateList(assignments []*nodes.Assignment, targetSchema, targetTable string, targetColumns []string) {
+func (a *Analyzer) processInsertUpdateList(stmt *nodes.InsertStmt, targetSchema, targetTable string, targetColumns []string) {
 	sp := a.currentScope()
-	// The VALUES(col) sources are resolved in the scope the INSERT's query ran in,
-	// which is what they mean, so the map is built before the clause's own scope
-	// gains the target table below.
-	insertSources := a.insertSourceMap(sp, targetColumns)
+	// The VALUES(col) and row-alias sources are resolved in the scope the INSERT's
+	// query ran in, which is what they mean, so the map is built before the
+	// clause's own scope gains the target table below.
+	insertSources := a.insertSourceMap(stmt, sp, targetColumns)
 	// The clause's own scope contains the target table, which is how MySQL
 	// resolves the row being updated: `a = a + 1` reads the target's own column,
 	// and the statement is rejected as ambiguous (error 1052, verified on 8.3.0)
 	// when the SELECT's table owns the name too. Registering it makes that
 	// resolution real instead of a guess.
 	a.processSingleTableRef(&nodes.TableRef{Schema: targetSchema, Name: targetTable, Alias: targetTable})
-	for _, elem := range assignments {
+	for _, elem := range stmt.OnDuplicateKey {
 		if elem == nil || elem.Column == nil || elem.Value == nil {
 			continue
 		}
@@ -1130,14 +1270,20 @@ func (a *Analyzer) processInsertUpdateList(assignments []*nodes.Assignment, targ
 	}
 }
 
-// insertSourceMap maps each written target column to the sources the insert
-// writes into it, so VALUES(col) in an upsert can be traced to the inserted
-// value instead of being resolved as a column of the source tables. Each source
-// is resolved here, in the scope the INSERT's query ran in: the clause's own
-// scope also holds the target table, and an unqualified name both it and the
-// query own would otherwise be attributed to whichever comes first by name.
-func (a *Analyzer) insertSourceMap(sp *scope.Scope, targetColumns []string) map[string][]scope.ColumnRef {
+// insertSourceMap maps every name an upsert assignment can use for the value the
+// insert proposed onto the sources of that value. `VALUES(col)` names the target
+// column, and a MySQL 8.0.19 row alias (`AS new`, `AS new(a, b) ON DUPLICATE KEY
+// UPDATE b = new.a`) names the proposed row and its own column list. Both are keys
+// of one map, looked up by the name the assignment wrote, because both mean "the
+// value this insert proposed" rather than a column of a relation in scope.
+//
+// Each source is resolved here, in the scope the INSERT's query ran in: the
+// clause's own scope also holds the target table, and an unqualified name both it
+// and the query own would otherwise be attributed to whichever comes first by name.
+func (a *Analyzer) insertSourceMap(stmt *nodes.InsertStmt, sp *scope.Scope, targetColumns []string) map[string][]scope.ColumnRef {
 	out := make(map[string][]scope.ColumnRef)
+	rowAliasName, aliasColumns := rowAliasNames(stmt)
+	rowAlias := strings.ToLower(rowAliasName)
 	for i, outputCol := range sp.GetOutputColumns() {
 		if len(targetColumns) > 0 && i >= len(targetColumns) {
 			break
@@ -1146,9 +1292,29 @@ func (a *Analyzer) insertSourceMap(sp *scope.Scope, targetColumns []string) map[
 		if i < len(targetColumns) {
 			name = targetColumns[i]
 		}
-		out[name] = append(out[name], a.resolveWithin(sp, scope.Refs(outputCol.Sources))...)
+		sources := a.resolveWithin(sp, scope.Refs(outputCol.Sources))
+		out[strings.ToLower(name)] = append(out[strings.ToLower(name)], sources...)
+		if rowAlias == "" || name == "" {
+			continue
+		}
+		aliasColumn := name
+		if i < len(aliasColumns) && aliasColumns[i] != "" {
+			aliasColumn = aliasColumns[i]
+		}
+		key := rowAlias + "." + strings.ToLower(aliasColumn)
+		out[key] = append(out[key], sources...)
 	}
 	return out
+}
+
+// proposedValueKey is the key an upsert assignment's column reference is looked up
+// by: a row-alias reference is qualified (`new.a`), a VALUES(col) reference is not.
+func proposedValueKey(table, column string) string {
+	column = strings.ToLower(column)
+	if table == "" {
+		return column
+	}
+	return strings.ToLower(table) + "." + column
 }
 
 // resolveWithin resolves every reference against the scope it came from and marks
@@ -1545,10 +1711,32 @@ func (a *Analyzer) collectExpressionSources(expr nodes.ExprNode, sp *scope.Scope
 			if upsertValues != nil && strings.EqualFold(x.Name, "VALUES") {
 				for _, arg := range x.Args {
 					if cr, ok := arg.(*nodes.ColumnRef); ok && cr.Column != "" {
-						columns = append(columns, upsertValues[cr.Column]...)
+						columns = append(columns, upsertValues[proposedValueKey("", cr.Column)]...)
 					}
 				}
 				return false
+			}
+			// `OVER w` keeps the whole window definition — PARTITION BY, ORDER BY
+			// and the frame bounds — in the statement's WINDOW clause, which the
+			// walk over this expression cannot reach. The columns those clauses
+			// name decide the window as much as the function's own arguments do.
+			for _, def := range a.namedWindowDefinitions(x.Over) {
+				for _, expr := range def.PartitionBy {
+					columns = append(columns, a.collectExpressionSources(expr, sp, upsertValues)...)
+				}
+				for _, item := range def.OrderBy {
+					if item != nil && item.Expr != nil {
+						columns = append(columns, a.collectExpressionSources(item.Expr, sp, upsertValues)...)
+					}
+				}
+				if frame := def.Frame; frame != nil {
+					if frame.Start != nil {
+						columns = append(columns, a.collectExpressionSources(frame.Start.Offset, sp, upsertValues)...)
+					}
+					if frame.End != nil {
+						columns = append(columns, a.collectExpressionSources(frame.End.Offset, sp, upsertValues)...)
+					}
+				}
 			}
 		case *nodes.SubqueryExpr:
 			if x.Select != nil {
@@ -1572,6 +1760,15 @@ func (a *Analyzer) collectExpressionSources(expr nodes.ExprNode, sp *scope.Scope
 			}
 			return false
 		case *nodes.ColumnRef:
+			// A row alias names the proposed row, so a qualified reference to it is
+			// the value the insert wrote for that column rather than a column of
+			// any relation in scope.
+			if upsertValues != nil && x.Table != "" {
+				if sources, ok := upsertValues[proposedValueKey(x.Table, x.Column)]; ok {
+					columns = append(columns, sources...)
+					return true
+				}
+			}
 			if x.Column != "" {
 				columns = append(columns, scope.ColumnRef{Schema: x.Schema, Table: x.Table, Column: x.Column})
 			}
@@ -1845,20 +2042,76 @@ func unaryOperatorName(op nodes.UnaryOp) (string, bool) {
 	}
 }
 
-// extractWindowClauses extracts PARTITION BY and ORDER BY from a window function.
+// extractWindowClauses extracts PARTITION BY and ORDER BY from a window function,
+// following an `OVER w` reference into the WINDOW clause that defines it. The
+// clauses the use carries itself come first, then the named definitions it is
+// defined over.
 func (a *Analyzer) extractWindowClauses(fc *nodes.FuncCallExpr) (partitionBy []string, orderBy []string) {
 	if fc == nil || fc.Over == nil {
 		return nil, nil
 	}
-	for _, expr := range fc.Over.PartitionBy {
-		partitionBy = append(partitionBy, a.exprTextOf(expr))
-	}
-	for _, item := range fc.Over.OrderBy {
-		if item != nil && item.Expr != nil {
-			orderBy = append(orderBy, a.exprTextOf(item.Expr))
+	definitions := append([]*nodes.WindowDef{fc.Over}, a.namedWindowDefinitions(fc.Over)...)
+	for _, def := range definitions {
+		for _, expr := range def.PartitionBy {
+			partitionBy = append(partitionBy, a.exprTextOf(expr))
+		}
+		for _, item := range def.OrderBy {
+			if item != nil && item.Expr != nil {
+				orderBy = append(orderBy, a.exprTextOf(item.Expr))
+			}
 		}
 	}
 	return partitionBy, orderBy
+}
+
+// maxNamedWindowChain bounds the walk over a chain of named windows. MySQL rejects
+// a cycle, so the bound only keeps a malformed tree from looping.
+const maxNamedWindowChain = 16
+
+// namedWindowsOf indexes a query's WINDOW clause by the name each definition is
+// referenced by.
+func namedWindowsOf(list []*nodes.WindowDef) map[string]*nodes.WindowDef {
+	if len(list) == 0 {
+		return nil
+	}
+	out := make(map[string]*nodes.WindowDef, len(list))
+	for _, def := range list {
+		if def != nil && def.Name != "" {
+			out[strings.ToLower(def.Name)] = def
+		}
+	}
+	return out
+}
+
+// namedWindowDefinitions returns the window definitions a use of a window reaches
+// by name, in the order it reaches them. MySQL lets one named window be defined
+// over another (`WINDOW w2 AS (w1 ORDER BY x)`), so the chain is followed. The
+// definition the use itself carries is never returned: the walk over the
+// expression already reaches its own clauses.
+func (a *Analyzer) namedWindowDefinitions(use *nodes.WindowDef) []*nodes.WindowDef {
+	if use == nil || len(a.namedWindows) == 0 {
+		return nil
+	}
+	name := use.RefName
+	if name == "" {
+		name = use.Name
+	}
+	var out []*nodes.WindowDef
+	seen := make(map[string]struct{})
+	for depth := 0; name != "" && depth < maxNamedWindowChain; depth++ {
+		key := strings.ToLower(name)
+		if _, ok := seen[key]; ok {
+			break
+		}
+		seen[key] = struct{}{}
+		def, ok := a.namedWindows[key]
+		if !ok || def == nil {
+			break
+		}
+		out = append(out, def)
+		name = def.RefName
+	}
+	return out
 }
 
 // ---------------------------------------------------------------------------

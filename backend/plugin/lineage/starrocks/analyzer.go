@@ -240,6 +240,17 @@ func (a *Analyzer) processQuerySpecification(stmt *nodes.SelectStmt) {
 	if stmt.Having != nil {
 		a.collectPredicates(stmt.Having, sp, model.NewFilterTransformation(a.exprTextOf(stmt.Having)), true)
 	}
+	// QUALIFY filters the rows a window function produces, after HAVING and before
+	// DISTINCT, so its window's partition and order columns decide which rows the
+	// query emits without their values reaching any output column. It is a
+	// predicate like WHERE, and it used to be dropped whole. A select-list alias is
+	// resolved the way HAVING resolves one: StarRocks accepts only a window function
+	// in QUALIFY and rejects the alias form (verified on 4.1), so this only decides
+	// what an invalid statement is read as, and the alias's own sources are a truer
+	// answer than the single-relation fallback's invented column.
+	if stmt.Qualify != nil {
+		a.collectPredicates(stmt.Qualify, sp, model.NewFilterTransformation(a.exprTextOf(stmt.Qualify)), true)
+	}
 	a.generateEdges(sp)
 }
 
@@ -265,9 +276,71 @@ func (a *Analyzer) processTableExpr(te nodes.Node) {
 	case *nodes.JoinClause:
 		a.processTableExpr(t.Left)
 		a.processTableExpr(t.Right)
+	case *nodes.TableFunctionRef:
+		a.processTableFunction(t)
 	default:
-		// Inline tables and table functions reference no physical table.
+		// Inline tables reference no physical table.
 	}
+}
+
+// processTableFunction registers a table function in FROM as a query-local
+// relation. The function names no stored relation, but it builds its rows from its
+// arguments, so the columns the call reads are the source of its columns:
+// `SELECT * FROM t, unnest(t.arr) AS u(a)` reports `t.arr`, which used to be
+// dropped with the whole function.
+func (a *Analyzer) processTableFunction(fn *nodes.TableFunctionRef) {
+	if fn == nil || fn.Call == nil {
+		return
+	}
+	alias := fn.Alias
+	if alias == "" {
+		// An unaliased function is addressed by its own name.
+		alias = funcCallName(fn.Call)
+		if alias == "" {
+			return
+		}
+	}
+	sp := a.currentScope()
+	columns := fn.ColumnAliases
+	if len(columns) == 0 {
+		// A table function with no column list exposes the column its own name
+		// gives it, which is how `SELECT u.unnest FROM t, unnest(t.arr) u` reads.
+		columns = []string{funcCallName(fn.Call)}
+	}
+	var sources []scope.ColumnRef
+	for _, argument := range fn.Call.Args {
+		sources = append(sources, collectColumns(argument)...)
+	}
+	lineage := make([]model.ColumnRelation, 0, len(columns)*len(sources))
+	for _, column := range columns {
+		for _, ref := range sources {
+			resolutions, err := sp.ResolveColumnRefs(ref)
+			if err != nil {
+				a.diagnostics.Unresolved("a table function argument", ref)
+				continue
+			}
+			for _, res := range resolutions {
+				if a.flattenTempSourceLineage(sp, res.Relation, res.Ref.Column, alias, column, nil, &lineage) {
+					continue
+				}
+				lineage = append(lineage, scope.NewLineageEdge(
+					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+					"", alias, column,
+					nil,
+					true, // the table function is not a stored object
+				))
+			}
+		}
+	}
+
+	tableRef := &scope.TableRef{
+		Table:      alias,
+		Alias:      alias,
+		IsSubquery: true,
+		Lineage:    lineage,
+	}
+	attachTempColumnLookup(tableRef, columns)
+	sp.AddTable(tableRef)
 }
 
 // processSingleTableRef adds a base table reference to the current scope.
@@ -631,7 +704,9 @@ func (a *Analyzer) processValuesRows(rows [][]nodes.Node) {
 	var columns []scope.OutputColumn
 	for _, row := range rows {
 		for len(columns) < len(row) {
-			columns = append(columns, scope.OutputColumn{Alias: fmt.Sprintf("column%d", len(columns)+1)})
+			// StarRocks names an unnamed VALUES column column_0, column_1, …; the
+			// target's column list decides wherever the statement writes one.
+			columns = append(columns, scope.OutputColumn{Alias: fmt.Sprintf("column_%d", len(columns))})
 		}
 		for i, expr := range row {
 			built := a.outputColumnFor(expr, columns[i].Alias, true, sp, nil)
@@ -943,7 +1018,7 @@ func (a *Analyzer) processSelectExpr(expr nodes.Node, alias string, aliased bool
 func (a *Analyzer) outputColumnFor(expr nodes.Node, alias string, aliased bool, sp *scope.Scope, groupKeys []string) scope.OutputColumn {
 	exprText := a.exprTextOf(expr)
 	if !aliased && alias == "" {
-		alias = inferColumnAlias(exprText)
+		alias = inferredColumnAlias(expr, exprText)
 	}
 	sourceColumns := collectColumns(expr)
 	sourceColumns = append(sourceColumns, a.expressionSubquerySources(expr, sp)...)

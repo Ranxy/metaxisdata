@@ -57,3 +57,67 @@ cases:
     - name: a function over constants has no source column
       sql: SELECT g.n FROM generate_series(1, 10) AS g(n)
       expected_edges: []
+    # XMLTABLE is a FROM item too, and every column its COLUMNS clause declares is
+    # extracted out of the document expression the PASSING clause names. The whole
+    # item used to be ignored, so a wildcard dropped the column and an explicit
+    # reference to the alias was reported as unresolved.
+    - name: XMLTABLE forwards the document expression's columns
+      sql: SELECT q.x FROM t, XMLTABLE('/a' PASSING t.doc COLUMNS x int PATH 'x') q
+      expected_edges:
+        - from_table: t
+          from_field: doc
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+    - name: a wildcard over XMLTABLE keeps its output name
+      sql: SELECT * FROM t, XMLTABLE('/a' PASSING t.doc COLUMNS x int PATH 'x') q
+      expected_edges:
+        - from_table: t
+          from_field: "*"
+          to_table: __result__
+          to_field: "*"
+          relation_type: direct
+          is_temp: true
+        - from_table: t
+          from_field: doc
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true
+    - name: XMLTABLE declares one output column per COLUMNS entry
+      sql: SELECT * FROM t, XMLTABLE('/a' PASSING t.doc COLUMNS x int PATH 'x', y text) AS q(m, n)
+      expected_edges:
+        - from_table: t
+          from_field: "*"
+          to_table: __result__
+          to_field: "*"
+          relation_type: direct
+          is_temp: true
+        - from_table: t
+          from_field: doc
+          to_table: __result__
+          to_field: m
+          relation_type: direct
+          is_temp: true
+        - from_table: t
+          from_field: doc
+          to_table: __result__
+          to_field: n
+          relation_type: direct
+          is_temp: true
+    # FOR ORDINALITY numbers the rows of the document and reads no column, so it
+    # contributes no source of its own...
+    - name: an ordinality column reads no source column
+      sql: SELECT q.ord FROM t, XMLTABLE('/a' PASSING t.doc COLUMNS ord FOR ORDINALITY) q
+      expected_edges: []
+    # ...and it does not take the source away from the column beside it.
+    - name: a column beside an ordinality column keeps its source
+      sql: SELECT q.x FROM t, XMLTABLE('/a' PASSING t.doc COLUMNS ord FOR ORDINALITY, x int PATH 'x') q
+      expected_edges:
+        - from_table: t
+          from_field: doc
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          is_temp: true

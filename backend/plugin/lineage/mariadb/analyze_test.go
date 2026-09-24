@@ -17,6 +17,9 @@ var knownParserGaps = map[string]bool{
 	"INSERT SELECT with parenthesized join tree":             true,
 	"CREATE TABLE AS SELECT with parenthesized join tree":    true,
 	"CREATE VIEW with deeply nested parenthesized join tree": true,
+	// A row alias in INSERT ... VALUES ... ON DUPLICATE KEY UPDATE is MySQL
+	// 8.0.19 syntax; MariaDB has no such form, so its parser rejects it.
+	"an upsert assignment reads the proposed value through its row alias": true,
 }
 
 // TestAnalyzeYAML runs the shared MySQL-family golden corpus through the MariaDB

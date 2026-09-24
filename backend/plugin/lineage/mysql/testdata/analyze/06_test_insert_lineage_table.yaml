@@ -179,3 +179,85 @@ cases:
     - name: an insert values list of literals records nothing
       sql: INSERT INTO t (a, b) VALUES (1, 2)
       expected_edges: []
+
+    # `INSERT ... SET col = expr` is the other assignment form, and only its value
+    # expression can carry lineage: the assignment names the column it writes, so a
+    # subquery in the value is a source of that column. The clause was read as
+    # "assigns literals", which made a valid statement record nothing.
+    - name: an insert set assignment reads a subquery
+      sql: INSERT INTO t SET a = (SELECT MAX(x) FROM other)
+      expected_edges:
+        - from_table: other
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+    - name: an insert set assignment with a mixed value list
+      sql: INSERT INTO t SET a = (SELECT MAX(x) FROM other), b = 2
+      expected_edges:
+        - from_table: other
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+    - name: REPLACE with a subquery in its set clause
+      sql: REPLACE INTO t SET a = (SELECT MAX(x) FROM other)
+      expected_edges:
+        - from_table: other
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+    - name: an insert set assignment of a constant records nothing
+      sql: INSERT INTO t SET a = 1
+      expected_edges: []
+    # A row alias names the proposed row, so an upsert assignment may write the
+    # value the insert read instead of a column of a relation in scope.
+    - name: an upsert assignment reads the proposed value through its row alias
+      sql: INSERT INTO t (a) VALUES ((SELECT MAX(x) FROM other)) AS new ON DUPLICATE KEY UPDATE b = new.a
+      expected_edges:
+        - from_table: other
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+        - from_table: other
+          from_field: x
+          to_table: t
+          to_field: b
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+    - name: an upsert assignment reads VALUES() of a subquery value
+      sql: INSERT INTO t (a) VALUES ((SELECT MAX(x) FROM other)) ON DUPLICATE KEY UPDATE b = VALUES(a)
+      expected_edges:
+        - from_table: other
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+        - from_table: other
+          from_field: x
+          to_table: t
+          to_field: b
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: FUNCTION
+              function_name: VALUES

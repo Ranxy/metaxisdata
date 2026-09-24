@@ -79,13 +79,30 @@ func TestExprTextReconstruction(t *testing.T) {
 	require.Equal(t, "a.id+1", a.exprTextOf(stmt.Items[0].Expr))
 }
 
-func TestInferColumnAlias(t *testing.T) {
+// TestInferredColumnAlias pins the name an unaliased select item gets. Only a real
+// column reference is shortened to its column name; an expression that merely
+// contains a dot keeps its whole text.
+func TestInferredColumnAlias(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "id", inferColumnAlias("users.id"))
-	require.Equal(t, "id", inferColumnAlias("`users`.`id`"))
-	require.Equal(t, "id", inferColumnAlias("id"))
-	require.Equal(t, "COUNT(*)", inferColumnAlias("COUNT(*)"))
+	for _, tc := range []struct{ sql, want string }{
+		{"SELECT users.id FROM users", "id"},
+		{"SELECT `users`.`id` FROM users", "id"},
+		{"SELECT id FROM users", "id"},
+		{"SELECT COUNT(*) FROM users", "COUNT(*)"},
+		{"SELECT t.a + 1 FROM t", "t.a+1"},
+		{"SELECT CASE WHEN x > 0 THEN a ELSE t.b END FROM t", "CASEWHENx>0THENaELSEt.bEND"},
+		{"SELECT t.x IS NULL FROM t", "t.xISNULL"},
+		{"SELECT [t.a, t.b] FROM t", "[t.a,t.b]"},
+	} {
+		a := NewAnalyzer(context.TODO(), tc.sql, nil)
+		file, errs := starrocksparser.Parse(tc.sql)
+		require.Empty(t, errs)
+		stmt, ok := file.Stmts[0].(*nodes.SelectStmt)
+		require.True(t, ok)
+		expr := stmt.Items[0].Expr
+		require.Equal(t, tc.want, inferredColumnAlias(expr, a.exprTextOf(expr)), tc.sql)
+	}
 }
 
 // TestUnimplementedStatementsFailLoudly pins that a shape this phase does not

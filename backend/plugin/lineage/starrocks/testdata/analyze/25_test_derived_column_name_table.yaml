@@ -1,0 +1,115 @@
+name: TestDerivedColumnName_Table
+# The name an unaliased select item gets. A column reference contributes its own
+# column name; an expression contributes its source text. The name used to be
+# inferred from the text alone, so any expression that contained a dot without
+# parentheses was cut at its last dot: `CASE ... ELSE t.b END` came out as `bEND`,
+# `t.x IS NULL` as `xISNULL` and `[t.a, t.b]` as `b]`. The engine names such a
+# column after the expression, so every one of these was wrong.
+cases:
+    - name: a plain column reference keeps its column name
+      sql: SELECT t.a FROM t
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          is_temp: true
+    - name: a case expression keeps its whole text
+      sql: SELECT CASE WHEN t.x > 0 THEN t.a ELSE t.b END FROM t
+      expected_edges:
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: CASEWHENt.x>0THENt.aELSEt.bEND
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: CASE
+              expression: CASEWHENt.x>0THENt.aELSEt.bEND
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: CASEWHENt.x>0THENt.aELSEt.bEND
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: CASE
+              expression: CASEWHENt.x>0THENt.aELSEt.bEND
+        - from_table: t
+          from_field: b
+          to_table: __result__
+          to_field: CASEWHENt.x>0THENt.aELSEt.bEND
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: CASE
+              expression: CASEWHENt.x>0THENt.aELSEt.bEND
+    - name: an IS NULL test keeps its whole text
+      sql: SELECT t.x IS NULL FROM t
+      expected_edges:
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: t.xISNULL
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: t.xISNULL
+    - name: an array literal keeps its whole text
+      sql: SELECT [t.a, t.b] FROM t
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: "[t.a,t.b]"
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: "[t.a,t.b]"
+        - from_table: t
+          from_field: b
+          to_table: __result__
+          to_field: "[t.a,t.b]"
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: "[t.a,t.b]"
+    - name: an operator expression keeps the qualified operand
+      sql: SELECT t.a + 1 FROM t
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: t.a+1
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: t.a+1
+              op_type: ADDITION
+    - name: a function keeps its call text
+      sql: SELECT upper(t.a) FROM t
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: upper(t.a)
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: upper
+              expression: upper(t.a)
+              arguments: [t.a]

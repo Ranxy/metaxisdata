@@ -126,3 +126,134 @@ cases:
             - operation: WINDOW
               function_name: AVG
               partition_by: [product_id]
+    # `OVER w` keeps the whole window definition — PARTITION BY, ORDER BY and the
+    # frame bounds — in the statement's WINDOW clause, which the walk over the
+    # expression cannot reach. Only the function's own arguments were recorded, so
+    # the columns that decide the window were missing from the lineage and the
+    # transformation carried no partition or order detail. MySQL spells the clause
+    # the same way PostgreSQL does.
+    - name: a named window contributes its partition and order columns
+      sql: SELECT SUM(x) OVER w AS s FROM t WINDOW w AS (PARTITION BY y ORDER BY z)
+      expected_edges:
+        - from_table: t
+          from_field: y
+          to_table: __result__
+          to_field: s
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              expression: SUM(x)OVERw
+              partition_by: [y]
+              order_by: [z]
+        - from_table: t
+          from_field: z
+          to_table: __result__
+          to_field: s
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              expression: SUM(x)OVERw
+              partition_by: [y]
+              order_by: [z]
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: s
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              expression: SUM(x)OVERw
+              partition_by: [y]
+              order_by: [z]
+    # MySQL lets one named window be defined over another, so the chain is
+    # followed: w2 orders by z and inherits w1's PARTITION BY.
+    - name: a window defined over another window follows the chain
+      sql: SELECT SUM(x) OVER w2 AS s FROM t WINDOW w2 AS (w1 ORDER BY z), w1 AS (PARTITION BY y)
+      expected_edges:
+        - from_table: t
+          from_field: z
+          to_table: __result__
+          to_field: s
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              expression: SUM(x)OVERw2
+              partition_by: [y]
+              order_by: [z]
+        - from_table: t
+          from_field: y
+          to_table: __result__
+          to_field: s
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              expression: SUM(x)OVERw2
+              partition_by: [y]
+              order_by: [z]
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: s
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              expression: SUM(x)OVERw2
+              partition_by: [y]
+              order_by: [z]
+    - name: an inline window is unchanged by the named window support
+      sql: SELECT SUM(x) OVER (PARTITION BY y ORDER BY z) AS s FROM t
+      expected_edges:
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: s
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              partition_by: [y]
+              order_by: [z]
+        - from_table: t
+          from_field: y
+          to_table: __result__
+          to_field: s
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              partition_by: [y]
+              order_by: [z]
+        - from_table: t
+          from_field: z
+          to_table: __result__
+          to_field: s
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              partition_by: [y]
+              order_by: [z]

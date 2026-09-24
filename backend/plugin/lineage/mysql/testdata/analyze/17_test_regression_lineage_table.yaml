@@ -257,9 +257,34 @@ cases:
           relation_type: direct
           is_temp: true
 
-    - name: VALUES statement has no lineage
+    - name: a VALUES statement of literals records nothing
       sql: VALUES ROW(1,2)
       expected_edges: []
+    # A VALUES row can hold a subquery, and the row it produces is the statement's
+    # output, so what that subquery reads is lineage of the column. The statement
+    # was skipped as "only literals", which made a valid statement record nothing.
+    - name: a VALUES statement reads a subquery row
+      sql: VALUES ROW((SELECT MAX(x) FROM other))
+      expected_edges:
+        - from_table: other
+          from_field: x
+          to_table: __result__
+          to_field: column_0
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+    - name: a derived table of VALUES rows reads a subquery row
+      sql: SELECT * FROM (VALUES ROW(1), ROW((SELECT MAX(x) FROM other))) v(a)
+      expected_edges:
+        - from_table: other
+          from_field: x
+          to_table: __result__
+          to_field: a
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: PROJECT
 
     - name: constant expression has no lineage
       sql: SELECT '2020-01-01' AS s FROM t
