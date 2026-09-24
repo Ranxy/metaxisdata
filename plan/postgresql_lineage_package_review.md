@@ -146,7 +146,18 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 2. **PG 里 CTE 只能由 FROM 命名，任何层级都不能作为列限定符。** `WITH c AS (...) SELECT c.a FROM stage`、`SELECT (SELECT c.a) FROM stage`、`ON CONFLICT ... SET a = (SELECT c.a)` 在 16.15 全部报 `missing FROM-clause entry for table "c"`。本仓库 `ResolveColumnRefs` 有一条"CTE 未注册为关系时仍按定义解析"的宽松路径，因此这些**非法**形状在本仓库能解析出血缘（超集）。按用户决策**保持现状**（实测收紧后全语料仍全绿，只有 2 个 `scope` 单测钉住它），记录为已知偏差。
 3. **MySQL 家族的 ODKU 子句能命名语句关系，但不能用限定符命名 CTE。** MariaDB 11.8.9 实测：`ON DUPLICATE KEY UPDATE a = stage.a` **接受**（与 PG 相反，所以 MySQL 分析器用语句作用域是对的，不要照搬 PG 的脱离写法）；`a = c.a` 报 `ERROR 1054 (42S22) Unknown column 'c.a' in 'UPDATE'`；`a = (SELECT a FROM c)` **接受**（所以它的子查询也该读到 CTE）。
 4. **MySQL 家族 upsert 值的子查询血缘被整条丢弃，且子查询内的列会被错误归属。** `ON DUPLICATE KEY UPDATE a = (SELECT max(x) FROM other)` 修复前**零边**（同一个分析器的 `UPDATE ... SET t.a = (SELECT max(x) FROM other)` 产出 `other.x -> t.a`——同一份代码里自相矛盾）；`a = (a IN (SELECT x FROM other))` 修复前产出 `stage.x -> t.a`，把子查询里的 `x` 归属到外层关系上；`a = (EXISTS (SELECT 1 FROM other WHERE other.id = stage.id))` 修复前产出 `stage.id -> t.a`。修复后子查询按自己的作用域展开（`other.x`），EXISTS 那条不再产出——与 `collectExprColumns`（UPDATE 路径）的既有规则一致：**子查询的过滤列不是血缘**。
-5. **PG 冲突子句的 `OnConflictClause.WhereClause`（DO UPDATE 的 WHERE）根本没有被遍历。** 但冲突子句作用域没有 emitter，而 DML 谓词影响边又是既定不产出，遍历在现有策略下不产生任何边；为不留不可测的死代码，本轮不遍历，仅记录。
+5. **冲突子句的 `OnConflictClause.WhereClause`（DO UPDATE 的 WHERE）没有被遍历** —— 后续复查把它从"技术现象"厘清成"策略适用点"，并决定保持不建模。
+
+   **事实三层**。① omni 正确解析它：`OnConflictClause.WhereClause` 是 `*ast.A_Expr`，且与 `Infer.WhereClause`（索引谓词）区分清楚，所以这是我们的选择而不是依赖缺口。② 只"走一遍并收集"（不 emit）实测与现状**逐字节一致**（15 个形状 + 5 方言语料）：冲突子句作用域没有 emitter，`emitPredicateInfluences` 只在根作用域与 INSERT 的源作用域被调用，而后者已经跑完；所以"遍历不产出边"成立，但原因是策略而非巧合。③ 真正的问题是它属于哪一类行集：
+
+   | 语句 | 决定行集的谓词 | 现状（实测） |
+   | --- | --- | --- |
+   | `INSERT ... SELECT ... WHERE`（源查询谓词） | ✅ 建模 | `stage.flag -> t.` + FILTER |
+   | `DELETE ... WHERE` | ✅ 建模 | `t.flag -> t.__deletion__` + DELETE |
+   | `UPDATE ... WHERE`（含 FROM/JOIN 条件） | ❌ 不建模 | 只出 SET 的边（P1-5，跨方言既定） |
+   | `INSERT ... ON CONFLICT DO UPDATE ... WHERE` | ❌ 不建模 | 只出 SET 的边 |
+
+   **决策（保持不建模 + 语料钉住）**：该子句是**一个 UPDATE 的行集**，按 P1-5 不建模，与 `UPDATE ... WHERE` 同一规则。`15_test_on_conflict` 新增一条用例断言"带 WHERE 与不带 WHERE 的边逐条相同"（含目标列谓词与一个读 `audit` 的子查询），把现状变成有意为之；实测把该子句改成会 emit（把它当作 INSERT 的源谓词那样发 `-> t.` + FILTER）时这条用例会失败，说明钉子有效。**考虑过但未采纳的两条路**：C 把它作为目标行集影响发出来（PG-only，实测 +9 条边），代价是 `-> t.` 这个边形状同时表示"插入选中的行"与"冲突时改写的行"，且 upsert 建模而 UPDATE 不建模更不一致；D 重开 P1-5 让 DML 行集规则统一（UPDATE 的 WHERE/JOIN 一起建模，跨方言、改既有语料，`Transformation.operation` 是字符串故不需改 proto，但前端 `LineageTransformationCell.vue` 的 switch 默认分支走 `expression` 而 DELETE 用 `condition`，要加一个 case）——留作独立议题。
 6. **RETURNING 有两个层次的问题，本批原先只看到了一层；后续复查把两层都测清了。两层均已修复（见 §0e）。**
 
    **6a（结构错误，合法 SQL 可达）**：`processReturning` 把 RETURNING 的列**追加**到当前作用域的 output columns 上，而这个列表正是「本查询对外暴露的列」——对 data-modifying CTE 来说就是该 CTE 的列。于是 `INSERT ... SELECT ... RETURNING id` 的 CTE 暴露的是「SELECT 的列 + RETURNING 的列」，列名撞车时把 INSERT 的源列算成 CTE 返回的列。实测：`WITH ins AS (INSERT INTO t (id, a) SELECT id, a FROM stage RETURNING id) SELECT id FROM ins` 产出 `stage.id -> __result__.id` **和** `t.id -> __result__.id`；而 PG 16.15 里该 CTE 只有一列 `id`（`SELECT a FROM ins` 报 `column "a" does not exist`），正确只有后者。`SELECT * FROM ins` 更明显：本仓库 4 条边，PG 只返回 1 列。可达性：data-modifying CTE 不能出现在视图里（`WITH` 里的数据修改语句必须在顶层），来源只有 MANUAL_SQL——但它是**合法 SQL**，PG 会执行。修法极小：`processReturning` 用 `SetOutputColumns` **替换**而不是追加，没有 RETURNING 时置空（PG 拒绝引用没有 RETURNING 的 data-modifying CTE）。
@@ -180,6 +191,7 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 | **R2-ii：INSERT 的源是一个查询层级** | ✅ 已落地 | `processInsertSource` 把 INSERT 的 SELECT/VALUES/TABLE 源推进自己的作用域再弹出；`generateEdgesForDataModification` 与 `insertSourceMap` 改为接收该作用域，不再读 `currentScope()`。语句作用域因此只剩「语句自己的关系」——INSERT 为空，UPDATE/DELETE 是目标 + FROM/USING。PostgreSQL 正是这样分析的（INSERT 的源是子查询），于是冲突子句与 RETURNING 都自然看不到源关系 |
 | **R1′：RETURNING 暴露的列 = RETURNING 列表** | ✅ 已落地 | `processReturning` 用 `SetOutputColumns(columns)` **替换**而非追加；没有 RETURNING 时置空（PG 拒绝引用这样的 CTE） |
 | 语料 | ✅ 已补 | `36_test_output_target` +7 例：只暴露返回列（含 `SELECT *` 读法）、不能命名源关系、无 RETURNING 不暴露列、UPDATE/DELETE 的 RETURNING 仍能命名自己的 FROM/USING 关系（回归护栏）、链式 data-modifying CTE 读到的是前一个返回的列 |
+| 冲突子句的 WHERE（§0d 发现 5） | ✅ 已决策保留 | 不建模——它是 UPDATE 的行集，按 P1-5 处理；`15_test_on_conflict` 补一条钉子，断言带 WHERE 与不带 WHERE 的边逐条相同（改决策必须是一次显式 diff） |
 | 注释 | ✅ 已同步 | `processOnConflict` 的"为什么仍要脱离"改写：源关系已结构上不可见，脱离现在只为「CTE 名不能当限定符」这一条服务；`generateEdgesForDataModification` 的文档改为「INSERT 的写边」并说明为何接收源作用域 |
 
 ### 第五批发现
