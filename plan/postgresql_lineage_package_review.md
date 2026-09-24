@@ -147,7 +147,13 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 3. **MySQL 家族的 ODKU 子句能命名语句关系，但不能用限定符命名 CTE。** MariaDB 11.8.9 实测：`ON DUPLICATE KEY UPDATE a = stage.a` **接受**（与 PG 相反，所以 MySQL 分析器用语句作用域是对的，不要照搬 PG 的脱离写法）；`a = c.a` 报 `ERROR 1054 (42S22) Unknown column 'c.a' in 'UPDATE'`；`a = (SELECT a FROM c)` **接受**（所以它的子查询也该读到 CTE）。
 4. **MySQL 家族 upsert 值的子查询血缘被整条丢弃，且子查询内的列会被错误归属。** `ON DUPLICATE KEY UPDATE a = (SELECT max(x) FROM other)` 修复前**零边**（同一个分析器的 `UPDATE ... SET t.a = (SELECT max(x) FROM other)` 产出 `other.x -> t.a`——同一份代码里自相矛盾）；`a = (a IN (SELECT x FROM other))` 修复前产出 `stage.x -> t.a`，把子查询里的 `x` 归属到外层关系上；`a = (EXISTS (SELECT 1 FROM other WHERE other.id = stage.id))` 修复前产出 `stage.id -> t.a`。修复后子查询按自己的作用域展开（`other.x`），EXISTS 那条不再产出——与 `collectExprColumns`（UPDATE 路径）的既有规则一致：**子查询的过滤列不是血缘**。
 5. **PG 冲突子句的 `OnConflictClause.WhereClause`（DO UPDATE 的 WHERE）根本没有被遍历。** 但冲突子句作用域没有 emitter，而 DML 谓词影响边又是既定不产出，遍历在现有策略下不产生任何边；为不留不可测的死代码，本轮不遍历，仅记录。
-6. **PG 的 RETURNING 作用域仍是语句作用域的子作用域**，所以 `RETURNING stage.a`（PG 拒绝）仍能解析。但实测把它改成脱离式**解决不了**：`resolveOutputColumns` 在解析失败时原样保留引用，该引用随后会在 CTE 作用域被二次绑定——`WITH ins AS (INSERT ... SELECT ... FROM stage RETURNING stage.a) SELECT a FROM ins` 仍产出 `stage.a -> __result__.a`（改与不改输出逐字节一致）。要修得先决定 `resolveOutputColumns` 的失败策略（失败即丢弃，还是标记为不可再解析），属独立一轮。
+6. **RETURNING 有两个层次的问题，本批原先只看到了一层；后续复查把两层都测清了。**
+
+   **6a（结构错误，合法 SQL 可达）**：`processReturning` 把 RETURNING 的列**追加**到当前作用域的 output columns 上，而这个列表正是「本查询对外暴露的列」——对 data-modifying CTE 来说就是该 CTE 的列。于是 `INSERT ... SELECT ... RETURNING id` 的 CTE 暴露的是「SELECT 的列 + RETURNING 的列」，列名撞车时把 INSERT 的源列算成 CTE 返回的列。实测：`WITH ins AS (INSERT INTO t (id, a) SELECT id, a FROM stage RETURNING id) SELECT id FROM ins` 产出 `stage.id -> __result__.id` **和** `t.id -> __result__.id`；而 PG 16.15 里该 CTE 只有一列 `id`（`SELECT a FROM ins` 报 `column "a" does not exist`），正确只有后者。`SELECT * FROM ins` 更明显：本仓库 4 条边，PG 只返回 1 列。可达性：data-modifying CTE 不能出现在视图里（`WITH` 里的数据修改语句必须在顶层），来源只有 MANUAL_SQL——但它是**合法 SQL**，PG 会执行。修法极小：`processReturning` 用 `SetOutputColumns` **替换**而不是追加，没有 RETURNING 时置空（PG 拒绝引用没有 RETURNING 的 data-modifying CTE）。
+
+   **6b（作用域越权，只影响非法 SQL）**：RETURNING 的作用域是语句作用域的子作用域。PG 的规则**按语句种类不同**（16.15 实测）：`INSERT ... SELECT ... RETURNING stage.a` 与 `INSERT ... ON CONFLICT ... RETURNING excluded.a` 都报 `missing FROM-clause entry`（EXCLUDED 只在冲突子句自己的表达式里可见），但 `UPDATE ... FROM stage ... RETURNING stage.id` 与 `DELETE ... USING stage ... RETURNING stage.id` **都被接受**。所以"把 RETURNING 作用域脱离父作用域"这个做法**是错的**：实测脱离后上面那条 UPDATE 的合法边 `stage.id -> __result__.id` 会消失（回归）。正确的模型是「语句自己的关系」——INSERT 只有目标表（它的 SELECT 是嵌套查询层级），UPDATE/DELETE 是目标 + FROM/USING 关系。而且单靠脱离**无效**：`resolveOutputColumns` 在解析失败时原样保留引用，交给后面能看到更多关系的作用域（CTE 的 lineage 构建）二次绑定；实测「脱离」与「不脱离」输出逐字节一致。要让失败成为终局必须改 `resolveOutputColumns` 的失败策略——实测改成严格丢弃后 **5 个方言 3542 行语料零变化**，即没有任何一条现有语料依赖这条推迟解析。
+
+   **两层的可选修法（待决策）**：R1 = 6a 的 `SetOutputColumns` 替换（一行，实测语料零变化，且 9 个 RETURNING 形状里 5 条假边消失、UPDATE/DELETE 的合法边与 `RETURNING (SELECT y FROM c)` 都不受影响）；R1′ = R1 + 无 RETURNING 时置空；R2 = 6b：仅在 INSERT 上脱离（保留 definitions 链接）+ 把 `resolveOutputColumns` 的失败改成终局丢弃——实测组合后只剩的那条非法 SQL 边也消失、UPDATE/DELETE 不受影响、语料仍全绿，代价是要按语句种类分派作用域构造并决定严格丢弃是否全局；R2 也可以再进一步，把 INSERT 的 SELECT 放进自己的嵌套作用域（结构性对齐 PG，但要改 INSERT 的边生成与影响 emit，面最大）。若两者都做，严格丢弃应当"丢弃 + 上报"，也就是说它与 §0c 保留的 P2-4/P2-8 诊断通道是同一件事的两半。MySQL 家族不涉及此项：MariaDB 11.8.9 不允许 data-modifying CTE（实测 `ERR 1064`），其分析器也完全不读 `Returning`。
 7. **upsert 常量赋值的建模不对称（新发现，未修）**：PG `ON CONFLICT ... DO UPDATE SET b = 'x'` 产出 `t.* -> t.b`；MySQL `ON DUPLICATE KEY UPDATE a = 1` 产出**零边**（`len(sourceColumns) == 0` 即 `continue`），而 MySQL 自己的 `UPDATE t SET a = 1` 产出 `t.* -> t.a`。三者都是"整行被重写"，只有 MySQL 的 upsert 沉默。需要先决定常量写入是否值得一条 `t.*` 边，再决定是否对齐。
 
 ### 验证方式
@@ -621,6 +627,11 @@ docker run -d --name pg-review -e POSTGRES_PASSWORD=review -p 55432:5432 postgre
 | `... ON CONFLICT (id) DO UPDATE SET a = 1 WHERE (SELECT count(*) FROM c) > 0` | **执行成功** → DO UPDATE 的 WHERE 里也可以有读 CTE 的子查询（本仓库未遍历，见 §0d 发现 5） |
 | `... ON CONFLICT (id) WHERE t.id IN (SELECT id FROM c) DO UPDATE SET a = 1` | **报错**（索引推断谓词不允许子查询）→ 该 `InferClause.WhereClause` 不遍历是对的 |
 | `... ON CONFLICT (id) DO UPDATE SET a = (SELECT excluded.a)` / `(SELECT t.a)` / `(SELECT max(x.a) FROM src x WHERE x.id = t.id)` | 均**执行成功** → 子查询内 `EXCLUDED` 与目标关系可按相关引用读到 |
+| `UPDATE t SET a = 5 FROM stage WHERE t.id = stage.id RETURNING stage.id` | **执行成功** → UPDATE 的 RETURNING **可以**命名 `FROM` 关系（与 INSERT 相反，见 §0d 发现 6b） |
+| `DELETE FROM t USING stage WHERE t.id = stage.id RETURNING stage.id` | **执行成功** → DELETE 的 RETURNING **可以**命名 `USING` 关系 |
+| `INSERT ... ON CONFLICT (id) DO NOTHING RETURNING excluded.a` | `ERROR: missing FROM-clause entry for table "excluded"` → EXCLUDED 只在冲突子句自己的表达式里可见，RETURNING 里不可见 |
+| `WITH ins AS (INSERT INTO t (id, a) SELECT id, a FROM stage RETURNING id) SELECT a FROM ins` | `ERROR: column "a" does not exist` → data-modifying CTE 只暴露 RETURNING 的列（6a 的判据） |
+| `WITH ins AS (INSERT ... ON CONFLICT DO NOTHING) SELECT * FROM ins` | `ERROR: WITH query "ins" does not have a RETURNING clause` → 没有 RETURNING 的 data-modifying CTE 不可引用（6a 的 R1′ 判据） |
 
 ## 附录 B2：真实 MariaDB 11.8.9 验证记录
 
@@ -637,6 +648,8 @@ docker run -d --name mxd-mariasem -e MARIADB_ROOT_PASSWORD=dev -e MARIADB_DATABA
 | `INSERT INTO t (id, a) WITH c AS (SELECT id, a FROM src) SELECT id, a FROM stage ON DUPLICATE KEY UPDATE a = (SELECT a FROM c)` | **执行成功** → 子查询的 FROM 可以命名 CTE（与 PG 同向），而修复前的分析器对这条产出**零边** |
 | `... ON DUPLICATE KEY UPDATE a = (SELECT stage.a)` / `(SELECT t.a)` | 均**执行成功** → 子查询内可按相关引用读到语句关系与目标关系 |
 | `WITH c AS (...) INSERT INTO t ...`（WITH 在 INSERT 之前） | `ERROR 1064 (42000)` 语法错误 → omni 的 MySQL 解析器对同形状报错是**正确**的（见附录 C 第 3 条） |
+| `INSERT INTO t (id, a) SELECT id, a FROM stage RETURNING id` / `... ON DUPLICATE KEY UPDATE a = VALUES(a) RETURNING id, a` / `DELETE FROM t WHERE id = 1 RETURNING id` | 均**执行成功** → MariaDB 支持 RETURNING；本仓库 MySQL 家族分析器不读 `Returning`（与「顶层 DML 的 RETURNING 不产出 `__result__` 边」的既定决策一致） |
+| `WITH ins AS (INSERT INTO t (id, a) SELECT id, a FROM stage RETURNING id) SELECT * FROM ins` | `ERROR 1064 (42000)` 语法错误 → **MariaDB 不允许 data-modifying CTE**，所以 §0d 发现 6a 那类缺陷在 MySQL 家族不存在 |
 
 ---
 
