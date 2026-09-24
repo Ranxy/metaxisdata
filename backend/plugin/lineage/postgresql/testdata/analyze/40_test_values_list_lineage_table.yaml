@@ -1,0 +1,120 @@
+name: TestValuesList_Table
+cases:
+    # A VALUES list is the query's whole row source, and each row is one derivation
+    # of the same columns. The list was never read, so a row holding a subquery
+    # contributed nothing at all: the statement wrote other.x into t.a and reported
+    # no lineage. A row of literals still contributes nothing, which is why the
+    # common `VALUES (1, 2)` stays edge-free.
+    - name: a values row reads a subquery
+      sql: INSERT INTO t (a) VALUES ((SELECT max(x) FROM other))
+      expected_edges:
+        - from_table: other
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: "(SELECT max(x) FROM other)"
+
+    # The rows merge column by column, so a literal row beside a subquery row takes
+    # nothing away from it.
+    - name: a values list merges its rows column by column
+      sql: INSERT INTO t (a, b) VALUES (1, 2), (3, (SELECT max(x) FROM other))
+      expected_edges:
+        - from_table: other
+          from_field: x
+          to_table: t
+          to_field: b
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: "(SELECT max(x) FROM other)"
+
+    # A list of literals has no source column, so it records no edge — the same
+    # result it had before, and the reason the fix touches nothing else.
+    - name: a values list of literals records nothing
+      sql: INSERT INTO t (a, b) VALUES (1, 2), (3, 4)
+      expected_edges: []
+
+    - name: a values list read through a derived table keeps its sources
+      sql: INSERT INTO t (a) SELECT v.a FROM (VALUES ((SELECT max(x) FROM other))) v(a)
+      expected_edges:
+        - from_table: other
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: "(SELECT max(x) FROM other)"
+
+    # The columns of a bare VALUES list are the ones PostgreSQL names positionally.
+    - name: a bare values list names its columns positionally
+      sql: VALUES ((SELECT max(x) FROM other))
+      expected_edges:
+        - from_table: other
+          from_field: x
+          to_table: __result__
+          to_field: column1
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: "(SELECT max(x) FROM other)"
+
+    # As a set-operation arm it contributes its sources to the merged column, under
+    # the operation's own transformation chain.
+    - name: a values arm contributes to a set operation
+      sql: VALUES (1) UNION ALL SELECT max(x) FROM other
+      expected_edges:
+        - from_table: other
+          from_field: x
+          to_table: __result__
+          to_field: column1
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+            - operation: AGGREGATE
+              function_name: MAX
+              expression: "max(x)"
+              group_keys: []
+
+    # A row's subquery resolves a CTE through the CTE's own lineage.
+    - name: a values row reads a statement CTE through its lineage
+      sql: WITH c AS (SELECT y FROM s) INSERT INTO t (a) VALUES ((SELECT y FROM c))
+      expected_edges:
+        - from_table: s
+          from_field: "y"
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: "(SELECT y FROM c)"
+
+    # The write edge and the returned column both survive in a data-modifying CTE.
+    - name: a values row feeds a data-modifying cte
+      sql: WITH ins AS (INSERT INTO t (a) VALUES ((SELECT max(x) FROM other)) RETURNING a) SELECT a FROM ins
+      expected_edges:
+        - from_table: other
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: "(SELECT max(x) FROM other)"
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          is_temp: true

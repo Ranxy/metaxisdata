@@ -883,6 +883,13 @@ func (a *Analyzer) processSelectExpr(expr nodes.ExprNode, alias string, sp *scop
 	if expr == nil {
 		return
 	}
+	sp.AddOutputColumn(a.outputColumnFor(expr, alias, sp, groupKeys))
+}
+
+// outputColumnFor builds the output column one expression produces. It is separate
+// from processSelectExpr because a VALUES row needs the column without adding it:
+// several rows derive the same column and have to merge into it.
+func (a *Analyzer) outputColumnFor(expr nodes.ExprNode, alias string, sp *scope.Scope, groupKeys []string) scope.OutputColumn {
 	exprText := a.exprTextOf(expr)
 	if alias == "" {
 		alias = a.inferredColumnAlias(expr, exprText)
@@ -920,7 +927,7 @@ func (a *Analyzer) processSelectExpr(expr nodes.ExprNode, alias string, sp *scop
 		}
 		outputCol.SetTransform(transform)
 	}
-	sp.AddOutputColumn(outputCol)
+	return outputCol
 }
 
 // ---------------------------------------------------------------------------
@@ -1034,10 +1041,14 @@ func (a *Analyzer) processInsertStatement(stmt *nodes.InsertStmt) {
 		a.attachColumnLookup(tableRef)
 		a.currentScope().AddTable(tableRef)
 		a.processStar(a.currentScope())
+	case len(stmt.Values) > 0:
+		// A VALUES row can hold a subquery, and what it selects is a source of the
+		// column it is written into. Each row derives the same columns, so they
+		// merge column by column; a row of literals contributes nothing, which is
+		// why `INSERT INTO t VALUES (1, 2)` still records no source.
+		a.processValuesRows(stmt.Values)
 	default:
-		// INSERT ... VALUES and INSERT ... SET carry literal rows only: the
-		// column list of the target still describes the write, but there is no
-		// source to resolve.
+		// INSERT ... SET assigns literals; there is no source to resolve.
 	}
 
 	a.generateEdgesForDataModification(targetSchema, targetTable, targetColumns)
@@ -1045,6 +1056,32 @@ func (a *Analyzer) processInsertStatement(stmt *nodes.InsertStmt) {
 	if !stmt.IsReplace && len(stmt.OnDuplicateKey) > 0 {
 		a.processInsertUpdateList(stmt.OnDuplicateKey, targetSchema, targetTable, targetColumns)
 	}
+}
+
+// processValuesRows records what each VALUES row writes into each column of the row
+// it produces, which generateEdgesForDataModification then maps onto the target's
+// columns. A row's subquery resolves in the statement's own scope, so a CTE or a
+// derived table it reads is traced through its lineage like any other source.
+//
+// The column names are positional because MySQL gives a VALUES column none; the
+// target's column list decides wherever the statement writes one.
+func (a *Analyzer) processValuesRows(rows [][]nodes.ExprNode) {
+	sp := a.currentScope()
+	if sp == nil {
+		return
+	}
+	var columns []scope.OutputColumn
+	for _, row := range rows {
+		for len(columns) < len(row) {
+			columns = append(columns, scope.OutputColumn{Alias: fmt.Sprintf("column%d", len(columns)+1)})
+		}
+		for i, expr := range row {
+			built := a.outputColumnFor(expr, columns[i].Alias, sp, nil)
+			columns[i].Sources = append(columns[i].Sources, built.Sources...)
+			columns[i].IsDerived = columns[i].IsDerived || built.IsDerived
+		}
+	}
+	sp.SetOutputColumns(columns)
 }
 
 // processInsertUpdateList processes the ON DUPLICATE KEY UPDATE clause.

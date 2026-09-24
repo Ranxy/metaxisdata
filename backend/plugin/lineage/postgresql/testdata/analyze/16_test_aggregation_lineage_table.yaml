@@ -274,3 +274,105 @@ cases:
             - operation: PROJECT
               expression: (SELECT COUNT(*) FROM orders)
               group_keys: []
+
+    # A grouping set is a set of groupings rather than one list, and the model has
+    # no way to say that, so the aggregate names every column the clause groups by.
+    # Rendering the grouping-set node itself produced one empty key, and a
+    # single-column element kept the parentheses of its syntax.
+    - name: a rollup groups by every column it names
+      sql: SELECT COUNT(*) AS c FROM products GROUP BY ROLLUP (category, price)
+      expected_edges:
+        - from_table: products
+          from_field: "*"
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
+              group_keys:
+                - category
+                - price
+    - name: a cube groups by every column it names
+      sql: SELECT COUNT(*) AS c FROM products GROUP BY CUBE (category, price)
+      expected_edges:
+        - from_table: products
+          from_field: "*"
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
+              group_keys:
+                - category
+                - price
+    - name: grouping sets group by every column they name
+      sql: SELECT COUNT(*) AS c FROM products GROUP BY GROUPING SETS ((category), (price, name))
+      expected_edges:
+        - from_table: products
+          from_field: "*"
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
+              group_keys:
+                - category
+                - price
+                - name
+    - name: grouping sets nest a rollup
+      sql: SELECT COUNT(*) AS c FROM products GROUP BY GROUPING SETS ((category), ROLLUP(price, name))
+      expected_edges:
+        - from_table: products
+          from_field: "*"
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
+              group_keys:
+                - category
+                - price
+                - name
+    - name: a mixed group by names the columns of both forms
+      sql: SELECT COUNT(*) AS c FROM products GROUP BY category, ROLLUP (price, name)
+      expected_edges:
+        - from_table: products
+          from_field: "*"
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
+              group_keys:
+                - category
+                - price
+                - name
+    - name: an empty grouping set names no column
+      sql: SELECT COUNT(*) AS c FROM products GROUP BY ()
+      expected_edges:
+        - from_table: products
+          from_field: "*"
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
+              group_keys: []

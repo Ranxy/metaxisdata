@@ -276,6 +276,12 @@ func (a *Analyzer) processSelectCore(stmt *pgast.SelectStmt) {
 		a.collectPredicates(stmt.WhereClause, sp, model.NewFilterTransformation(a.exprTextOf(stmt.WhereClause)), false)
 	}
 
+	// A VALUES list is the query's whole row source: it has no FROM clause and no
+	// target list, and every row derives the same columns.
+	if stmt.ValuesLists != nil {
+		a.processValuesLists(stmt.ValuesLists, sp)
+	}
+
 	if stmt.TargetList != nil {
 		a.processTargetList(stmt.TargetList, sp, a.groupByKeys(stmt.GroupClause))
 	}
@@ -879,6 +885,45 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 // ---------------------------------------------------------------------------
 // Target list
 // ---------------------------------------------------------------------------
+
+// processValuesLists records what a VALUES list writes into each column of the row
+// it produces. Every row is one derivation of the same columns, so the sources of
+// each row's nth expression merge into the nth column, the way a set operation
+// merges its arms. PostgreSQL groups the rows this way too: it evaluates each row
+// and returns them together.
+//
+// The common `VALUES (1, 2)` is all literals and so records nothing, which is what
+// it did before. A row holding a subquery is the shape that used to be dropped
+// whole: `INSERT INTO t (a) VALUES ((SELECT max(x) FROM other))` wrote other.x into
+// t.a and reported no lineage at all.
+func (a *Analyzer) processValuesLists(lists *pgast.List, sp *scope.Scope) {
+	var columns []scope.OutputColumn
+	for _, row := range lists.Items {
+		items, ok := row.(*pgast.List)
+		if !ok || items == nil {
+			continue
+		}
+		// PostgreSQL requires every row to have the same arity; the widest one
+		// defines the shape here so no source is dropped if one does not.
+		for len(columns) < len(items.Items) {
+			// The name PostgreSQL gives an unnamed VALUES column is positional.
+			columns = append(columns, scope.OutputColumn{Alias: fmt.Sprintf("column%d", len(columns)+1)})
+		}
+		for i, item := range items.Items {
+			var transform []model.Transformation
+			if classification, ok := a.classifyExpression(item); ok {
+				transform = []model.Transformation{classification}
+			}
+			sources := scope.NewColumnSources(a.extractColumnsFromNode(item, sp), transform)
+			if len(sources) == 0 {
+				continue
+			}
+			columns[i].Sources = append(columns[i].Sources, sources...)
+			columns[i].IsDerived = isExpressionDerived(item)
+		}
+	}
+	sp.SetOutputColumns(columns)
+}
 
 // processTargetList processes the SELECT target list.
 func (a *Analyzer) processTargetList(targets *pgast.List, sp *scope.Scope, groupKeys []string) {

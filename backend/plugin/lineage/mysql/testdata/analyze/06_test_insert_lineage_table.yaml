@@ -149,3 +149,33 @@ cases:
           is_temp: false
           transformations:
             - operation: JOIN
+
+    # A VALUES row can hold a subquery, and what it selects is a source of the
+    # column it is written into. The clause read only literal rows, so the
+    # statement wrote the value and reported no lineage at all. Rows merge column
+    # by column, so a literal row beside the subquery takes nothing away.
+    - name: an insert values row reads a subquery
+      sql: INSERT INTO t (a) VALUES ((SELECT MAX(x) FROM other))
+      expected_edges:
+        - from_table: other
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+    - name: an insert values list merges its rows column by column
+      sql: INSERT INTO t (a, b) VALUES (1, 2), (3, (SELECT MAX(x) FROM other))
+      expected_edges:
+        - from_table: other
+          from_field: x
+          to_table: t
+          to_field: b
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+    - name: an insert values list of literals records nothing
+      sql: INSERT INTO t (a, b) VALUES (1, 2)
+      expected_edges: []

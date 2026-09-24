@@ -609,9 +609,37 @@ func (a *Analyzer) processInsertStatement(stmt *nodes.InsertStmt) {
 		a.inTargetContext = true
 		a.processQueryNode(stmt.Query)
 		a.inTargetContext = false
+	} else if len(stmt.Values) > 0 {
+		// A VALUES row can hold a subquery, and what it selects is a source of the
+		// column it is written into. Each row derives the same columns, so they
+		// merge column by column; a row of literals contributes nothing.
+		a.processValuesRows(stmt.Values)
 	}
 
 	a.generateEdgesForTarget(a.currentScope(), schema, table, targetColumns)
+}
+
+// processValuesRows records what each VALUES row writes into each column of the row
+// it produces, which generateEdgesForTarget then maps onto the target's columns. A
+// row's subquery resolves in the statement's own scope, so a CTE or a derived table
+// it reads is traced through its lineage like any other source.
+func (a *Analyzer) processValuesRows(rows [][]nodes.Node) {
+	sp := a.currentScope()
+	if sp == nil {
+		return
+	}
+	var columns []scope.OutputColumn
+	for _, row := range rows {
+		for len(columns) < len(row) {
+			columns = append(columns, scope.OutputColumn{Alias: fmt.Sprintf("column%d", len(columns)+1)})
+		}
+		for i, expr := range row {
+			built := a.outputColumnFor(expr, columns[i].Alias, true, sp, nil)
+			columns[i].Sources = append(columns[i].Sources, built.Sources...)
+			columns[i].IsDerived = columns[i].IsDerived || built.IsDerived
+		}
+	}
+	sp.SetOutputColumns(columns)
 }
 
 // processUpdateStatement processes UPDATE ... SET. The target table is also a
@@ -906,6 +934,13 @@ func (a *Analyzer) processSelectExpr(expr nodes.Node, alias string, aliased bool
 	if expr == nil {
 		return
 	}
+	sp.AddOutputColumn(a.outputColumnFor(expr, alias, aliased, sp, groupKeys))
+}
+
+// outputColumnFor builds the output column one expression produces. It is separate
+// from processSelectExpr because a VALUES row needs the column without adding it:
+// several rows derive the same column and have to merge into it.
+func (a *Analyzer) outputColumnFor(expr nodes.Node, alias string, aliased bool, sp *scope.Scope, groupKeys []string) scope.OutputColumn {
 	exprText := a.exprTextOf(expr)
 	if !aliased && alias == "" {
 		alias = inferColumnAlias(exprText)
@@ -941,7 +976,7 @@ func (a *Analyzer) processSelectExpr(expr nodes.Node, alias string, aliased bool
 		}
 		outputCol.SetTransform(transform)
 	}
-	sp.AddOutputColumn(outputCol)
+	return outputCol
 }
 
 // expressionSubquerySources analyzes the subqueries embedded in a select

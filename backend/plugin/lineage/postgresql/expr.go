@@ -336,7 +336,53 @@ func (a *Analyzer) groupByKeys(items *pgast.List) []string {
 	if items == nil || len(items.Items) == 0 {
 		return nil
 	}
-	return a.nodeTexts(items)
+	out := make([]string, 0, len(items.Items))
+	for _, item := range items.Items {
+		out = append(out, a.groupingKeyTexts(item)...)
+	}
+	return out
+}
+
+// groupingKeyTexts names the columns one GROUP BY item groups by. A grouping set —
+// ROLLUP, CUBE or GROUPING SETS — is a set of groupings rather than one list, and
+// the model has no way to say that, so the item names every column it groups by:
+// the part a consumer of the lineage can act on, and the same names a plain
+// `GROUP BY a, b` would give. Rendering the grouping-set node itself yielded one
+// empty key, because such a node carries no text of its own.
+func (a *Analyzer) groupingKeyTexts(node pgast.Node) []string {
+	switch n := node.(type) {
+	case *pgast.GroupingSet:
+		if n == nil || n.Content == nil {
+			// `GROUP BY ()` groups every row together and names no column.
+			return nil
+		}
+		out := make([]string, 0, len(n.Content.Items))
+		for _, item := range n.Content.Items {
+			out = append(out, a.groupingKeyTexts(item)...)
+		}
+		return out
+	case *pgast.RowExpr:
+		// One parenthesized grouping set: `GROUPING SETS ((a, b), ...)` keeps its
+		// columns in a row expression.
+		if n == nil || n.Args == nil {
+			return nil
+		}
+		out := make([]string, 0, len(n.Args.Items))
+		for _, item := range n.Args.Items {
+			out = append(out, a.groupingKeyTexts(item)...)
+		}
+		return out
+	case *pgast.ColumnRef:
+		// A column names itself. Its source text carries the parentheses of the
+		// single-column grouping set it was written in, `GROUPING SETS ((a), ...)`,
+		// which is not part of the name.
+		if n == nil {
+			return nil
+		}
+		return []string{strings.Join(stringList(n.Fields), ".")}
+	default:
+		return []string{a.exprTextOf(node)}
+	}
 }
 
 // containsGroupAggregate reports whether the expression contains an aggregate
