@@ -233,3 +233,70 @@ child offset, `isInfixNode` identifies the affected node types, and
 `analyzeExpressionOperator` decides the operation kind from `BinaryExpr.Op`,
 `UnaryExpr.Op` or the `CaseExpr` node rather than from a substring. This file
 remains the record of the upstream defect itself, which is still unfixed.
+
+## 9. MySQL-family dialect copies: AST gaps and a grammar/engine mismatch
+
+Found while fixing the A4–A10 findings of the AST field coverage audit
+(`plan/lineage_ast_field_coverage_audit.md`, `plan/postgresql_lineage_package_review.md`
+§0i). None of these is a defect in the MySQL parser; they are the reason the shared
+traversal needs a per-dialect accessor, and they are recorded here so the next
+reader does not mistake an accessor for dead weight.
+
+### 9.1 TiDB: `SelectStmt` has no VALUES query primary
+
+`omni/tidb/ast.SelectStmt` has no field for a VALUES query primary, and
+`omni/tidb/parser` rejects the shape outright:
+
+| SQL | `omni/mysql` | `omni/tidb` | MySQL 8.3 | TiDB |
+| --- | --- | --- | --- | --- |
+| `VALUES ROW((SELECT MAX(x) FROM other))` | parses | parses | executes | not checked |
+| `SELECT * FROM (VALUES ROW(1), ROW((SELECT MAX(x) FROM other))) v(a)` | parses | `expected identifier (line 1, column 16)` | executes | not checked |
+
+Consequence: the MySQL-family analyzer reads a VALUES query primary through
+`valuesQueryPrimary(stmt)`, which returns `stmt.ValuesSource` for mysql/mariadb and
+`nil` for tidb (the helper is declared in each dialect's own header, before the
+shared body marker). The TiDB copy lists the statement in `knownParserGaps`
+(`backend/plugin/lineage/tidb/analyze_test.go`), so the shared corpus stays honest
+instead of being narrowed.
+
+### 9.2 MariaDB: `InsertStmt` has no row alias
+
+`omni/mariadb/ast.InsertStmt` has no `RowAlias`/`ColAliases` field and
+`omni/mariadb/parser` rejects the syntax — correctly, because MariaDB has no row
+alias form (it is MySQL 8.0.19 syntax; `INSERT … VALUES (…) AS new ON DUPLICATE KEY
+UPDATE b = new.a` executes on MySQL 8.3 and is a syntax error on MariaDB 11.8.9).
+The analyzer reads the form through `rowAliasNames(stmt)` (real accessor for
+mysql/tidb, empty for mariadb) and the shared corpus case is listed in
+`backend/plugin/lineage/mariadb/analyze_test.go`'s `knownParserGaps`.
+
+### 9.3 MariaDB parser and MariaDB engine disagree about `VALUES`
+
+| SQL | omni/mariadb | MariaDB 11.8.9 engine |
+| --- | --- | --- |
+| `VALUES ROW(1), ROW(2)` | parses | `ERROR 1064` (no `ROW()` form) |
+| `VALUES (1), (2)` | `unexpected token` | executes |
+| `SELECT * FROM (VALUES ((SELECT MAX(x) FROM other))) v(a)` | `unexpected token` | executes |
+
+So the MariaDB grammar accepts a form the engine rejects and rejects the form the
+engine accepts. The analyzer's behavior follows the parser: `VALUES ROW(…)` is
+analyzed (and, for the subquery rows, produces lineage) while the MariaDB spelling
+hard-fails. Neither outcome is a silent wrong answer, but the mismatch means the
+mariadb dialect's reachable syntax is not what a MariaDB user would write. Worth
+re-checking if the parser is ever aligned with the engine.
+
+### 9.4 StarRocks: no `SelectStmt.WindowClause`, and an engine-rejected inline table
+
+Two observations from the same batch, recorded for completeness:
+
+- `omni/starrocks/ast.SelectStmt` has no `WindowClause` field. A named window has
+  only `WindowSpec.Name` (the reference) and no definition site, so `OVER w` cannot
+  be resolved in the StarRocks dialect at all — unlike PostgreSQL's
+  `SelectStmt.WindowClause` + `WindowDef.Refname`. The MySQL-family dialects do
+  have the field, and the analyzer now follows it.
+- StarRocks 4.1 rejects an inline table whose row holds a subquery
+  (`SELECT * FROM (VALUES ((SELECT MAX(x) FROM other))) v(a)` →
+  `Required field 'node_type' was not present!`, a planner internal error), so the
+  "FROM-side VALUES" residual recorded in the audit is an engine limitation rather
+  than dropped lineage. Literal rows (`FROM (VALUES (1,2)) v(a)`) execute and name
+  their columns `column_0`, `column_1` — the same 0-based placeholders the MySQL
+  engines use.

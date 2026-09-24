@@ -2,6 +2,8 @@
 
 本文件是 [PostgreSQL 血缘包 review 记录](./postgresql_lineage_package_review.md) §0f 那条建议的落地：把「**AST 字段 × 分析器是否读取**」补全并归档，作为收口「某个 clause 没被读」这类缺陷的系统手段。review 记录负责「发现了什么、怎么修」，本文件负责「覆盖到什么程度、还有哪些字段没人读、哪些不读是有意的」。
 
+> **修复状态（第十批，`3161563`）**：下面列出的 7 条缺口（A4–A10）连同此前只记录的 A3 已全部修复，语料钉子 30 例、改判 2 处既有期望、改名 1 例；本文件 §1–§7 的记录保持原样（它们描述的是修复前的状态），**§9 之后新增的"修复状态"一节**给出每一项落在哪一处。仍属未修的只有 §8 的待决 1（StarRocks `LoadDataDesc.SetExpr/Where`）与待决 3/4 两处口径选择。
+
 审计对象：`backend/plugin/lineage/{postgresql,mysql,starrocks}` 三个分析器族（`tidb`/`mariadb` 与 `mysql` 逐字节同源，见 `mysql/copies_test.go`，不重复列出）与 `{scope,algorithm,model,catalog}` 共享层；被审的 AST 是 `github.com/bytebase/omni`（pin `v0.0.0-20260912023254-4574e69bb9f1`）的 `pg/ast`、`mysql/ast`、`starrocks/ast`。
 
 ---
@@ -72,7 +74,7 @@
 | **A7** | MySQL 家族 | `SelectStmt.WindowClause` | `SELECT row_number() OVER w AS r FROM t WINDOW w AS (PARTITION BY t.b)` → **零边**（内联 `OVER (PARTITION BY t.b)` 有 `t.b -> __result__.r`） | MySQL 8.3 与 MariaDB 11.8.9 均执行成功；PG 第二批已修 P1-3 并有语料 `35_test_named_window` |
 | **A8** | MySQL 家族 | `InsertStmt.RowAlias`、`ColAliases` | 行别名 `VALUES (…) AS new ON DUPLICATE KEY UPDATE b = new.a` 解析不到，ODKU 那条边丢失 | MySQL 8.0.19+ 语法，8.3 实测可执行；**已有诊断**（`unresolved reference in an upsert assignment: new.a`），所以不是静默丢失 |
 | **A9** | StarRocks | `inferColumnAlias`（非 AST 字段，由本审计发现） | 未取别名的复杂表达式派生列名被截断：`CASE … ELSE t.b END` → `bEND`、`t.x IS NULL` → `xISNULL`、`[t.a, t.b]` → `b]` | `starrocks/expr.go` 的启发式把「含点且不含括号」的表达式当成限定标识符取末段；MySQL 给的是完整表达式文本、PG 按自己的命名规则 |
-| A3 | PG | `RangeTableFunc`（XMLTABLE） | `PASSING t.doc` 丢掉 | 第八批按决策只记录（类型完全未触及） |
+| A3 | PG | `RangeTableFunc`（XMLTABLE） | `PASSING t.doc` 丢掉 | 第八批按决策只记录；**第十批已修**（XMLTABLE 注册为查询内关系，文档列名 + `PASSING` 文档表达式为源）|
 
 ---
 
@@ -978,6 +980,31 @@ docker rm -f mxd-astaudit mxd-astaudit-mysql
 审计产物（`audit.json`、探针、临时容器）在本文件归档后已删除；`git status` 干净。
 
 ---
+
+---
+
+## 修复状态（第十批，`3161563`）
+
+每一项落在哪里，便于把这张表和代码对上：
+
+| # | 修法 | 代码位置 | 语料钉子 |
+| --- | --- | --- | --- |
+| **A4** | `INSERT ... SET` 的赋值值表达式按赋值列名成为输出列，走 INSERT 既有的发射路径 | mysql/tidb/mariadb `processSetList` | `06_test_insert` 三条 + 常量一条 |
+| **A5** | 独立 VALUES 语句与 VALUES 查询原语都产出行的源；无名列占位改 `column_0` | `processValuesStatement`、`processQuerySpecification`、`processValuesRows` | `17_test_regression` 两条（TiDB 解析器拒绝派生表形态，进其 `knownParserGaps`）|
+| **A7** | 移植 PG 的 `namedWindows`/`namedWindowDefinitions`，列收集与变换元数据都展开 `OVER w` | `namedWindowsOf`、`namedWindowDefinitions`、`extractWindowClauses` | `12_test_window_function` 两条 + 内联回归一条 |
+| **A8** | `VALUES(col)` 与行别名共用一张按名字索引的表 | `upsertSourceMap`、`proposedValueKey` | `06_test_insert` 两条（MariaDB 无该语法，进其 `knownParserGaps`）|
+| **A3** | `RangeTableFunc` 注册为查询内关系：COLUMNS 声明列、`PASSING` 文档表达式为源、`FOR ORDINALITY` 无源 | postgresql `processRangeTableFunc` | `38_test_set_returning_function` 五条 |
+| **A10** | `JsonTableExpr` 同样注册，含 NESTED PATH 列 | mysql 家族 `processJSONTable`、`jsonTableColumnNames` | `16_test_extended_forms` 三条 |
+| **A6** | QUALIFY 接入谓词影响路径（与 WHERE/HAVING 同路），并像 HAVING 一样解析别名 | starrocks `processQuerySpecification` | `22_test_predicate_influence` 两条 + QUALIFY 视图用例补 2 条边 |
+| **A9** | 列名判定改为基于 AST；顺带把引号列名对齐 mysql 语料 | starrocks `inferredColumnAlias` | 新建 `25_test_derived_column_name` 六例 |
+| §8 待决 2 | StarRocks `TableFunctionRef` 实测为缺口（`u.a` 未解析、星号静默漏列）并一并修 | starrocks `processTableFunction` | `23_test_query_local_name` 三条 |
+| §3 表内 `!` 行 | A4/A5/A6/A7/A8 的行已随之消解；表内其余 `!` 标记描述的是**修复前**状态 | — | — |
+
+**仍按决策保留**：§8 待决 1（`LoadDataDesc.SetExpr/Where` 以原始文本保存、未回解析）、待决 3（QUALIFY 的建模形状已定为行级谓词影响，但"是否也解析别名"保留为容差）、待决 4（A9 不改表达式文本的空格约定，语料 `expression:` 的既有约定因此不变）。
+
+**新增的 omni 观察**（仅内部记录，未对外反馈，明细在 `docs/omni_upstream_defects.md`）：TiDB 的 `SelectStmt` 缺 VALUES 原语字段；MariaDB 的 `InsertStmt` 缺 `RowAlias`/`ColAliases` 字段；MariaDB 解析器与 MariaDB 引擎在 `VALUES` 语法上互不覆盖。
+
+**另附一条引擎证据**：StarRocks 的 FROM 侧 VALUES（`InlineTable`）带子查询被 StarRocks 4.1 直接拒绝（规划器内部错误），字面量形态无源——所以本文件 §6 记的"StarRocks FROM-VALUES 残余"**不是分析器丢边**，而是引擎不支持的形状。
 
 ## 附录 A：抽取器源码
 

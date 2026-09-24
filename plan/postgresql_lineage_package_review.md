@@ -224,7 +224,7 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 
 **审计方法**（可复现）：临时在包内加一个 `_test.go`，对每个形状打印边集合与变换；对照 `pgast` 节点的字段清单逐项检查分析器是否读取；可疑形状用真实引擎确认它合法且可执行。**建议后续把这张"字段 × 是否读取"的对照表补全并归档**，作为收口"某个 clause 没被读"这类缺陷的系统手段。
 
-### §0f 续：完整对照表已归档（第九批，发现已记录，未修）
+### §0f 续：完整对照表已归档（第九批记录；第十批已修，见 §0i）
 
 对照表已补全并归档到 [`plan/lineage_ast_field_coverage_audit.md`](./lineage_ast_field_coverage_audit.md)：5 个 AST 包共 1077 个结构类型，分析器触及的类型逐字段核对（PG 41 + MySQL 家族 28×3 + StarRocks 32 个类型，三方言族共 626 行判定）；「读取」维度由 `go/types` 精确归属到声明字段的类型（不是按字段名 grep），「泛走」维度由 omni 的 walker 机械提取。**PG 一侧没有新缺口**（134 个未读字段全部是位置/内部、泛走、语法修饰、已验证或已决策），新发现的 7 条全部落在 MySQL 家族与 StarRocks：
 
@@ -238,7 +238,7 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 | **A9** | StarRocks | `inferColumnAlias`（本仓库启发式，非 AST 字段） | 未取别名的复杂表达式派生列名被截断：`CASE … ELSE t.b END` → `bEND`、`t.x IS NULL` → `xISNULL`、`[t.a, t.b]` → `b]` | 与 PG P1-1 同类（目标列名错误），语料只钉了 `AS band` 形态 |
 | **A10** | MySQL 家族 | `JsonTableExpr`（FROM 项） | `FROM t, JSON_TABLE(t.doc, …) AS jt` 不注册 `jt`：显式引用有诊断，**星号展开静默漏列** | MySQL 8.0.4+ 语法；与 PG 的 A3（XMLTABLE）同类 |
 
-这 7 条按"发现先记录"的约定**只记录、未修，也未加语料钉子**（给缺陷钉 `expected_edges` 会把现状固化成预期；A4/A5 的语料目前只钉了常量形态）。修法与建议顺序见审计文档 §5/§8；其中 A4/A5 可以直接复用第八批为 A1 写的 `processValuesRows`，A7 可以复用第二批在 PG 上写的 `namedWindows`。
+这 7 条先按"发现先记录"的约定只记录（未加语料钉子，避免把现状固化成预期），**已在第十批全部修复并补上语料钉子**（含此前按决策只记录的 A3，以及审计文档 §8 待决 2 的 StarRocks 表函数）：见 §0i。修法与建议顺序见审计文档 §5/§8；A4/A5 复用了第八批为 A1 写的 `processValuesRows`，A7 复用了第二批在 PG 上写的 `namedWindows`。
 
 ---
 
@@ -309,6 +309,64 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 
 ---
 
+## 0i. 第十批（A3–A10 修复）实施状态：已落地
+
+第十批把 §0f 续与审计文档记录的 7 条缺口全部修掉（含此前按决策只记录的 A3），并按决策确定了两处口径：**A6 QUALIFY 按行级谓词影响建模**、**A9 只修截断、不改表达式文本的空格约定**；A3 与 A10 一起做（FROM 项里的表函数）。顺带把审计文档 §8 待决 2 的 StarRocks 表函数从"未验证"变成实测缺口并一并修掉。
+
+```
+3161563 fix(lineage): read every clause the field audit found unread
+（本文件的提交）
+```
+
+| 项 | 状态 | 落地内容 |
+| --- | --- | --- |
+| **A4 `InsertStmt.SetList`** | ✅ 三方言族 | 新增 `processSetList`：每个赋值把值表达式的源写成**按赋值列名命名**的输出列，再由 INSERT 既有的发射路径映射到目标列；常量赋值仍零边（与 VALUES 字面量行一致）。原 `default` 分支注释"INSERT ... SET assigns literals"是未验证的假设 |
+| **A5 `ValuesStmt.Rows` / `SelectStmt.ValuesSource`** | ✅ 三方言族（TiDB 受限） | 独立 VALUES 语句接 `processValuesStatement`（行→输出列→`__result__`）；`processQuerySpecification` 增加 VALUES 原语分支（派生表形态）。无名列占位改为引擎的 `column_0`（MySQL 8.3 与 StarRocks 4.1 实测表头一致）|
+| **A7 `SelectStmt.WindowClause`** | ✅ 三方言族 | 移植 PG 第二批的 `namedWindows`/`namedWindowDefinitions`：跟随 `WINDOW w2 AS (w1 …)` 链、带环保护与 `maxNamedWindowChain`；列收集与 `extractWindowClauses`（变换的 `partition_by`/`order_by` 元数据）都展开 `OVER w` |
+| **A8 `InsertStmt.RowAlias` / `ColAliases`** | ✅ mysql / tidb | `insertSourceMap` 改为 `upsertSourceMap`：`VALUES(col)` 与 `new.a` 用同一张表、按赋值写下的名字查（键统一小写）；解析不到的仍然诊断（不再有 `unresolved reference in an upsert assignment: new.a`）|
+| **A3 `RangeTableFunc`（XMLTABLE）** | ✅ PG | 新增 `processRangeTableFunc`：列来自 COLUMNS 声明、`PASSING` 文档表达式是每列的源、`FOR ORDINALITY` 列无源、别名列名表覆盖列名 |
+| **A10 `JsonTableExpr`（JSON_TABLE）** | ✅ 三方言族 | `processTableExpr` 增加分支 + `processJsonTable`：COLUMNS（含 NESTED PATH）声明列，`Expr` 是每列的源；星号展开从此包含该列（原先静默漏列）|
+| **A6 `SelectStmt.Qualify`** | ✅ StarRocks | 作为行级谓词影响接入（与 WHERE/HAVING/JOIN 同一路径），并像 HAVING 一样解析 select 别名 |
+| **A9 `inferColumnAlias`** | ✅ StarRocks | 判定改为**基于 AST**：只有真正的列引用才取列名，其余一律用表达式文本。顺带对齐：带引号标识符的目标列名不再保留反引号（与 mysql 语料 `created-at` 一致）|
+| **StarRocks 表函数** `TableFunctionRef` | ✅ 顺带修复 | `FROM t, unnest(t.arr) AS u(a)` 注册为查询内关系：列名取别名列名表，无别名列名表时取函数名（引擎实测 `u.unnest`），参数里的列是源 |
+
+### 跨方言 AST 差异：两个方言访问器
+
+共享体（`analyzer.go` 标记行之后）必须逐字节一致，而三个方言的 AST 并不同构，所以差异被声明在各自的**头部**（标记之前，本来就是各方言自己的部分），共享体只调用访问器：
+
+| 访问器 | mysql / mariadb | tidb | 原因 |
+| --- | --- | --- | --- |
+| `valuesQueryPrimary(stmt)` | 返回 `stmt.ValuesSource` | 返回 `nil` | TiDB 的 `SelectStmt` 没有 VALUES 原语字段，且其解析器直接拒绝 `FROM (VALUES ROW(1)) v`（`knownParserGaps` 记录）|
+| `rowAliasNames(stmt)` | 返回 `stmt.RowAlias, stmt.ColAliases` | 同 mysql | **MariaDB 没有行别名**：AST 无字段、解析器拒绝（`knownParserGaps` 记录）|
+
+### 语料（新增 30 例；另改判 2 处既有期望、改名 1 例）
+
+- PG：`38_test_set_returning_function` 新增 5 例（XMLTABLE 的显式引用/星号/别名列名表/ORDINALITY 两例）
+- MySQL 家族（`tidb`/`mariadb` 经共享语料同时覆盖）：`06_test_insert` 新增 6 例（INSERT SET 三条、常量、行别名、`VALUES()` 回归护栏），`17_test_regression` 新增 2 例（VALUES 语句、派生表 VALUES，原"VALUES 语句无血缘"用例改名），`12_test_window_function` 新增 3 例（命名窗口、窗口链、内联窗口回归护栏），`16_test_extended_forms` 新增 3 例（JSON_TABLE 显式/星号/多列）
+- StarRocks：`22_test_predicate_influence` 新增 2 例（QUALIFY、QUALIFY 别名），`23_test_query_local_name` 新增 3 例（表函数显式/无别名列名表/星号），新建 `25_test_derived_column_name`（6 例派生列名），另更新 2 处既有用例（`08_test_create_view` 的 QUALIFY 视图用例补 2 条 FILTER 边；`16_test_extended_forms` 的引号标识符列名去引号）
+
+### 第十批发现
+
+1. **两个方言的 AST 真的缺字段，不是分析器漏读。** TiDB 的 `SelectStmt` 没有 VALUES 原语字段、MariaDB 的 `InsertStmt` 没有行别名字段，两边的解析器也直接拒绝对应语法——所以这两处不是"没读"，是"读不到"。用方言访问器表达它，比在共享体里塞类型断言或反射干净。
+2. **`VALUES()` 那条用例修复前后都通过**，它是 `upsertSourceMap` 重构的回归护栏而不是新缺陷的钉子；同理 StarRocks 的"普通列名""函数文本"两例也是护栏（旧实现本来就对）。
+3. **StarRocks 里 FROM 侧 VALUES（`InlineTable`）不需要修**：实测 `SELECT * FROM (VALUES ((SELECT …))) v(a)` 被 StarRocks 4.1 直接拒绝（`Required field 'node_type' was not present!`，引擎规划器内部错误），字面量形态本来就没有源。第八批把它记成"残余"时缺的正是这条引擎证据，现在补齐：**是引擎不支持的形状，不是分析器丢了边**。
+4. **QUALIFY 不能解析 select 别名**：StarRocks 4.1 实测 `QUALIFY rn = 1`（rn 是 select 别名）报语法错误（`Can't support result other than column`）。我们仍然按 HAVING 的方式解析别名，因为这**只影响非法 SQL 的读法**，而单一关系回退会把影响边记到一个可能不存在的列上（`t.rn`），别名自身的源（`t.b`）是更真实的答案。语料把这条容差钉住并写明理由。
+5. **引号列名的对齐是一次顺带的方言一致化**：`SELECT \`created-at\` FROM t` 在 StarRocks 上原先产出 `` `created-at` ``（带反引号），MySQL 语料一直是 `created-at`。A9 改成基于 AST 取列名后两者一致；这是本轮**唯一**改动的既有期望之一。
+6. **列名占位符统一为 `column_0`**：MySQL 8.3 与 StarRocks 4.1 实测都叫 `column_0`/`column_1`（0 基），PG 叫 `column1`（1 基）。MySQL 家族与 StarRocks 的占位名随之统一。
+
+### 验证方式
+
+- **负向校验**：把 7 个分析器文件 stash（保留全部新语料）后，**PG 5 条 + MySQL 家族 11 条 + StarRocks 11 条**新用例失败；三条护栏用例（`VALUES()` upsert、普通列名、函数文本）两边都通过。
+- **既有语料零改动**：除上面第 5 条与 QUALIFY 视图用例这两处**有意**改判外，所有既有用例的期望一字未动且全部通过——等价于一次逐用例的边不变性校验。
+- **真实引擎实测**（一次性容器，用完即删）：
+  - **PostgreSQL 16.15**：`XMLTABLE` 的 `q.x` 取值来自 xml 列、星号形态、`FOR ORDINALITY`、`AS q(m, n)` 别名列名表、`PASSING` 的类型要求（必须是 `xml` 而不是 `text`）、无 `t` 时报 `missing FROM-clause entry for table "t"`（与我们的诊断一致）
+  - **MySQL 8.3.0**：JSON_TABLE 的 `jt.x`/星号/`FOR ORDINALITY`/NESTED PATH、`INSERT … SET a = (SELECT …)`、`VALUES ROW((SELECT …))` 与派生表形态（表头 `column_0`）、命名窗口、行别名（`AS new`）、INSERT … SET 读目标表会被 1093 拒绝
+  - **MariaDB 11.8.9**：`INSERT … SET a = (SELECT …)`、命名窗口；`VALUES ROW(…)` 被引擎拒绝（omni 接受）
+  - **StarRocks 4.1**：QUALIFY 过滤生效（`PARTITION BY`/`ORDER BY` 列决定留存行）、QUALIFY 别名报语法错、`unnest(t.arr) AS u(a)`/星号/无别名列名表（列名 `unnest`）、FROM 侧 VALUES 带子查询被引擎拒绝
+- `go build ./...`、`go test ./...`、`golangci-lint run ./backend/...`（0 issues）全绿；`make test-integration-smoke` 四个包通过（首跑遇到与上一批同款的容器拆除竞态 `SQLSTATE 57P01`，重跑全绿）。
+
+---
+
 ## 1. 结论摘要
 
 | 级别 | 数量 | 说明 |
@@ -319,7 +377,7 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 | **技术债** | 5 项 | 三份近重复分析器、双份"临时表"判定、Transformation 模型表达力不足等 |
 | **测试缺口** | 11 个方向 | 语料未覆盖上述大部分缺陷（语料机制本身很优秀，是覆盖范围问题） |
 
-另有 **§0f 续**记录的 7 条兄弟方言缺口（A4–A10：MySQL 家族 5 条、StarRocks 2 条，按"发现先记录"未修），以及完整对照表 [`plan/lineage_ast_field_coverage_audit.md`](./lineage_ast_field_coverage_audit.md)（5 个 AST 包 × 626 行判定）。
+另有 **§0f 续**记录的 7 条兄弟方言缺口（A4–A10：MySQL 家族 5 条、StarRocks 2 条）与完整对照表 [`plan/lineage_ast_field_coverage_audit.md`](./lineage_ast_field_coverage_audit.md)（5 个 AST 包 × 626 行判定）；这 7 条**已在第十批全部修复**（含只记录的 A3 与 StarRocks 表函数），见 §0i。
 
 **最需要立即处理的 4 件事：**
 
@@ -720,6 +778,10 @@ SELECT a FROM t1; MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE S
 
 18. **A4–A10**：完整对照表已归档到 [`plan/lineage_ast_field_coverage_audit.md`](./lineage_ast_field_coverage_audit.md)。PG 无新缺口；新发现 7 条全在兄弟方言：**A4** `InsertStmt.SetList`、**A5** `ValuesStmt.Rows`+`SelectStmt.ValuesSource`、**A7** `SelectStmt.WindowClause`（PG P1-3 的兄弟方言缺口）三条**静默丢边**；**A6** StarRocks `SelectStmt.Qualify`（谓词影响丢失）；**A8** 行别名（有诊断）；**A9** StarRocks 派生列名截断；**A10** MySQL `JSON_TABLE` FROM 项。修法方向与顺序见该文档 §5/§8。未改代码、未加语料钉子。
 
+**第十批（A3–A10 修复）— ✅ 已落地（见 §0i）**
+
+19. **A3–A10** ✅：7 条缺口全部修复（含此前只记录的 A3），并按审计文档 §5/§8 的顺序：A4/A5（复用 A1 的 `processValuesRows`）→ A7（复用 PG 的 `namedWindows`）→ A8 → A3 + A10（FROM 项表函数，顺带修 StarRocks 的 `unnest` 表函数）→ A6 → A9。语料新增 30 例（另改判 2 处既有期望、改名 1 例）；TiDB 与 MariaDB 的 AST 缺字段用方言访问器表达、解析器缺口进各自的 skip list。审计文档 §8 的待决 2（StarRocks 表函数）由实测转为缺口并修复；待决 1（`LoadDataDesc.SetExpr/Where`）与待决 3/4 仍按决策记录。
+
 ---
 
 ## 附录 A：复现方法
@@ -797,6 +859,12 @@ docker run -d --name pg-review -e POSTGRES_PASSWORD=review -p 55432:5432 postgre
 | `INSERT ... ON CONFLICT (id) DO NOTHING RETURNING excluded.a` | `ERROR: missing FROM-clause entry for table "excluded"` → EXCLUDED 只在冲突子句自己的表达式里可见，RETURNING 里不可见 |
 | `WITH ins AS (INSERT INTO t (id, a) SELECT id, a FROM stage RETURNING id) SELECT a FROM ins` | `ERROR: column "a" does not exist` → data-modifying CTE 只暴露 RETURNING 的列（6a 的判据） |
 | `WITH ins AS (INSERT ... ON CONFLICT DO NOTHING) SELECT * FROM ins` | `ERROR: WITH query "ins" does not have a RETURNING clause` → 没有 RETURNING 的 data-modifying CTE 不可引用（6a 的 R1′ 判据） |
+| `SELECT q.x FROM t, XMLTABLE('/a' PASSING t.doc COLUMNS x int PATH 'x') q`（`doc` 为 `xml` 列） | 返回文档里的 11/22 → XMLTABLE 的列确实来自 `PASSING` 的文档表达式（A3）|
+| `SELECT * FROM t, XMLTABLE(...) q` | 列是 `id, doc, x`（x 来自 doc）→ 星号展开包含该列（A3）|
+| `SELECT q.ord, q.x FROM t, XMLTABLE('/a' PASSING t.doc COLUMNS ord FOR ORDINALITY, x int PATH 'x') q` | `ord` 返回行号 1/1（无列来源）、`x` 仍来自 doc（A3）|
+| `... AS q(m, n)`（别名列名表） | 列名被重命名为 m/n → 别名列名表覆盖 COLUMNS 里的名字（A3）|
+| `PASSING t.doc` 而 `doc` 是 `text` | `ERROR: argument of XMLTABLE must be type xml, not type text` → 引擎要求 xml 类型（记录用）|
+| `SELECT * FROM XMLTABLE('/a' PASSING t.doc ...) q`（FROM 里没有 t） | `ERROR: missing FROM-clause entry for table "t"` → 与我们的 `unresolved reference in an XMLTABLE expression` 诊断一致 |
 
 ## 附录 B2：真实 MariaDB 11.8.9 验证记录
 
@@ -815,6 +883,9 @@ docker run -d --name mxd-mariasem -e MARIADB_ROOT_PASSWORD=dev -e MARIADB_DATABA
 | `WITH c AS (...) INSERT INTO t ...`（WITH 在 INSERT 之前） | `ERROR 1064 (42000)` 语法错误 → omni 的 MySQL 解析器对同形状报错是**正确**的（见附录 C 第 3 条） |
 | `INSERT INTO t (id, a) SELECT id, a FROM stage RETURNING id` / `... ON DUPLICATE KEY UPDATE a = VALUES(a) RETURNING id, a` / `DELETE FROM t WHERE id = 1 RETURNING id` | 均**执行成功** → MariaDB 支持 RETURNING；本仓库 MySQL 家族分析器不读 `Returning`（与「顶层 DML 的 RETURNING 不产出 `__result__` 边」的既定决策一致） |
 | `WITH ins AS (INSERT INTO t (id, a) SELECT id, a FROM stage RETURNING id) SELECT * FROM ins` | `ERROR 1064 (42000)` 语法错误 → **MariaDB 不允许 data-modifying CTE**，所以 §0d 发现 6a 那类缺陷在 MySQL 家族不存在 |
+| `INSERT INTO n SET a = (SELECT MAX(x) FROM other)` | **执行成功**并写入 7 → INSERT … SET 的值可以是子查询（A4）|
+| `SELECT ROW_NUMBER() OVER w AS r FROM n WINDOW w AS (PARTITION BY b)` | **执行成功** → 命名窗口合法（A7）|
+| `SELECT * FROM (VALUES ROW(1), ROW(2)) v(a)` / `VALUES ROW(1)` | `ERROR 1064` → MariaDB 不支持 `ROW()` 形态，而 omni 的 MariaDB 解析器接受它（附录 C 第 5 条）|
 
 ---
 
@@ -825,4 +896,6 @@ docker run -d --name mxd-mariasem -e MARIADB_ROOT_PASSWORD=dev -e MARIADB_DATABA
 1. `github.com/bytebase/omni` 的 `pg/ast` 中，命名窗口 `WindowDef.Refname` 只携带窗口名、不携带被引用的窗口定义；`SelectStmt.WindowClause` 也不在 omni 提供的便捷访问器里。本仓库需要自己遍历 `WindowClause` 并在 `Refname` 上做一次解析（P1-3 的修复因此比内联窗口麻烦一点）。这是**依赖的 AST 表达力**问题，不是 bug。
 2. omni 的 MySQL 解析器**不支持 `WITH c AS (...) INSERT ...`**（WITH 写在 INSERT 之前）这种写法：分析器对它报 `WITH before INSERT is not supported: the parser drops the CTE, so its sources cannot be resolved`。MariaDB 11.8.9 对同一条 SQL 报 `ERROR 1064` 语法错误（MariaDB 的 CTE 要写在 `INSERT ... WITH ... SELECT` 里），所以本仓库的硬失败与引擎一致，**不是缺陷**，仅记录。
 3. `plan/postgresql_omni_parser_migration_plan.md` 的 **PG-FU-2** 已经提出"把 DML/集合运算/窗口保留的 walker 回馈上游 omni"，本次 review 的 P0-2/P0-3 恰好是支持该方向的额外证据——若上游能提供生产级 `analysis` 包，本仓库三份分析器（D1）可显著收缩。是否需要推进属产品决策，本次不推动。
+5. 第十批（A3–A10 修复）实测又记录三条，都写在 `docs/omni_upstream_defects.md` 里：omni 的 TiDB AST `SelectStmt` **没有 VALUES 原语字段**且 TiDB 解析器拒绝 `FROM (VALUES ROW(1)) v`；omni 的 MariaDB AST `InsertStmt` **没有 `RowAlias`/`ColAliases` 字段**（MariaDB 引擎也没有该语法）；omni 的 MariaDB 解析器接受 `VALUES ROW(…)` 而 MariaDB 11.8.9 引擎拒绝、反之 MariaDB 的 `VALUES (1),(2)` 解析器不接受。
+
 4. 第九批（AST 字段覆盖审计）又记录三条：omni 的 StarRocks 语法不接受 `TABLE t UNION ALL TABLE s` 与 `GROUP BY a WITH ROLLUP`（StarRocks 用 `GROUP BY ROLLUP(a)`）；omni 的 StarRocks AST **没有 `SelectStmt.WindowClause` 字段**（命名窗口只有 `WindowSpec.Name` 引用、没有定义处，对照 PG 的 `SelectStmt.WindowClause` + `WindowDef.Refname`）；omni 的 MySQL 系解析器接受 `VALUES ROW(…)`（MariaDB 引擎拒绝）却不接受 MariaDB 的 `VALUES (1),(2)` / `FROM (VALUES (1),(2)) v(a)`。详见 [`plan/lineage_ast_field_coverage_audit.md`](./lineage_ast_field_coverage_audit.md) §9。
