@@ -212,12 +212,12 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 
 ## 0f. AST 字段覆盖审计发现（待决策）
 
-第五批之后做了一次结构字段覆盖审计：把 omni 的语句/查询节点字段与"分析器是否读取"对照，用 40 余个形状在真实 PostgreSQL 16 上验证。表达式层面是安全的（`extractColumnsFromNode` 用 `pgast.Inspect` 泛走，任何表达式节点里的列都会被找到），风险集中在**结构性字段**——跨批发现的 P2-4/P2-5、冲突子句的 WHERE、RETURNING 的两层都属于这个模式。本轮审计新发现三条，**均未修复**：
+第五批之后做了一次结构字段覆盖审计：把 omni 的语句/查询节点字段与"分析器是否读取"对照，用 40 余个形状在真实 PostgreSQL 16 上验证。表达式层面是安全的（`extractColumnsFromNode` 用 `pgast.Inspect` 泛走，任何表达式节点里的列都会被找到），风险集中在**结构性字段**——跨批发现的 P2-4/P2-5、冲突子句的 WHERE、RETURNING 的两层都属于这个模式。本轮审计新发现三条：**A1/A2 已在第八批修复（见 §0h）**，A3 按决策只记录。
 
 | # | 字段 | 现象 | 实测 | 判定 |
 | --- | --- | --- | --- | --- |
-| **A1** | `SelectStmt.ValuesLists`（从未读取） | `INSERT INTO t (a) VALUES ((SELECT max(x) FROM other))` **零边** | PG 16 实测 `INSERT 0 1`（真的把 `other.x` 写进 `t.a`）；同样影响 `INSERT ... VALUES (1), ((SELECT ...))`、`SELECT * FROM (VALUES ((SELECT ...))) v(a)`、`INSERT ... SELECT v.a FROM (VALUES ((SELECT ...))) v(a)`；5 方言语料里 `VALUES ((` **零覆盖** | **建议修**：与 P0-2 同类，合法 SQL 上整条源静默丢失 |
-| **A2** | `GroupingSet.Content`（`groupByKeys` 只做 `nodeTexts`） | `GROUP BY ROLLUP (t.a, t.b)` / `CUBE` / `GROUPING SETS (...)` → `group_keys: [""]` —— **一个空字符串键** | 普通 `GROUP BY t.a, t.b` 正常给出 `[t.a t.b]`；组集形态给出 `[""]`（`%#v` 确证，不是空列表） | **建议修**：错误元数据，且语料严格注解会把这个空键固定下来 |
+| **A1 ✅** | `SelectStmt.ValuesLists`（从未读取） | `INSERT INTO t (a) VALUES ((SELECT max(x) FROM other))` **零边** | PG 16 实测 `INSERT 0 1`（真的把 `other.x` 写进 `t.a`）；同样影响 `INSERT ... VALUES (1), ((SELECT ...))`、`SELECT * FROM (VALUES ((SELECT ...))) v(a)`、`INSERT ... SELECT v.a FROM (VALUES ((SELECT ...))) v(a)`；5 方言语料里 `VALUES ((` **零覆盖** | **已在第八批修复**（三方言族）|
+| **A2 ✅** | `GroupingSet.Content`（`groupByKeys` 只做 `nodeTexts`） | `GROUP BY ROLLUP (t.a, t.b)` / `CUBE` / `GROUPING SETS (...)` → `group_keys: [""]` —— **一个空字符串键** | 普通 `GROUP BY t.a, t.b` 正常给出 `[t.a t.b]`；组集形态给出 `[""]`（`%#v` 确证，不是空列表） | **已在第八批修复**（PG；兄弟方言实测不是同一个 bug，见 §0h）|
 | **A3** | `RangeTableFunc`（XMLTABLE） | `SELECT * FROM t, XMLTABLE('/a' PASSING t.doc COLUMNS x int PATH 'x') q` 丢掉 `t.doc` | 同族 `unnest(t.arr)` 正常给出 `t.arr -> __result__.x`（P2-5 已实现） | **建议只记录**：XMLTABLE 在同步视图里极罕见 |
 
 同批确认**无问题**、以免以后重复怀疑的形状：`DISTINCT` / `DISTINCT ON`（与既有语料一致：只算投影，不算行集影响）、`TABLESAMPLE`、`FOR UPDATE`、`WITH RECURSIVE ... SEARCH/CYCLE`、`= ANY (SELECT ...)`（两侧 FILTER 都在）、`ARRAY(SELECT ...)`、`ROW(...)`、`COLLATE`、`greatest(...)`、窗口帧 `ROWS BETWEEN`、`unnest`、`count(*) FILTER (WHERE ...)`。
@@ -259,6 +259,37 @@ df064aa feat(lineage): distinguish a set operation that keeps duplicate rows
 - **负向校验**：把 5 个分析器回退到修复前（保留新语料与 harness），13 条改判用例 + 10 条新用例**全部失败**（老代码既不报错，也还产出那条伪造的 DELETE 边）。
 - **边不变性**：见发现 2。
 - `go build ./...`、`go test ./...`、`golangci-lint run ./backend/...`（0 issues）全绿；`tidb`/`mariadb` 与 `mysql` 的逐字节一致由 `copies_test.go` 保证。
+
+---
+
+## 0h. 第八批（A1/A2：VALUES 列表与组集键）实施状态：已落地
+
+第八批处理 §0f 的两条"建议修"：**A1** `SelectStmt.ValuesLists` 从未被读取（`INSERT ... VALUES ((SELECT ...))` 零边），**A2** `GroupingSet` 未被 `groupByKeys` 处理（`GROUP BY ROLLUP/CUBE/GROUPING SETS` 的 `group_keys` 是一个空字符串键）。
+
+```
+4512041 fix(lineage): read a values list and a grouping set
+（本文件的提交）
+```
+
+| 项 | 状态 | 落地内容 |
+| --- | --- | --- |
+| **A1 VALUES 列表的源** | ✅ 已修复（三方言族） | PG 新增 `processValuesLists`、MySQL 家族与 StarRocks 新增 `processValuesRows`：把每个 VALUES 行第 n 个表达式按列合并进第 n 个输出列（与集合运算合并分支同一思路），表达式自身的分类成为该源的变换。PG 的无名列按 `columnN` 命名（PG 自己的规则），MySQL 家族按位置命名并让目标列名列表覆盖 |
+| **A2 组集键** | ✅ 已修复（PG） | `groupByKeys` 改为逐项展开：`GroupingSet` 递归其 `Content`（`GROUPING SETS` 里的一元组在 AST 中是裸 `ColumnRef`，其源文本带括号，改由字段拼名）、`RowExpr` 递归其 `Args`、`GROUP BY ()` 得空列表；普通列与非列表达式仍走原文本渲染 |
+| **兄弟方言** | ✅ A1 已修，A2 记录 | 实测 MySQL/TiDB/MariaDB 与 StarRocks 的 `INSERT ... VALUES ((SELECT ...))` 同样零边 → 一并修复（MariaDB 11.8.9 实测该语句**可执行**）。A2 在 MySQL 家族**不是同一个 bug**：`GROUP BY ROLLUP(a,b)` 与 `GROUPING SETS` 在 MariaDB 分别报 1630/1064（非法 SQL），而合法的 `GROUP BY … WITH ROLLUP` 本来就给出正确的列名键；StarRocks 支持这些语法，但把整个构造渲染成一个键（`GROUPINGSETS((a),(b,c))`）——记为残余 |
+| 语料 | ✅ 已补 | PG 新增 `40_test_values_list_lineage_table.yaml`（8 例：单行子查询、多行按列合并、纯字面量零边、派生表、裸 VALUES 的 `columnN`、集合运算分支、CTE 源、数据修改型 CTE）+ 聚合语料 6 例组集键；MySQL 家族与 StarRocks 的 `06_test_insert` 各 3 例（前者经 `sharedCorpusDir()` 同时覆盖 tidb/mariadb） |
+
+### 第八批发现
+
+1. **A1 的成因是"字段没读"，不是"读不懂"**：`SelectStmt.ValuesLists` 是 PG 的独立字段（行是 `*List` 套 `*List`），MySQL 家族是 `InsertStmt.Values [][]ExprNode`、StarRocks 是 `[][]Node`，三个 AST 一直都带着它。
+2. **纯字面量的 VALUES 仍然零边**，所以最常见写法不受影响；边不变性实测证实了这一点（见验证）。
+3. **A2 在兄弟方言不是同一个 bug**：MariaDB 11.8.9 实测 `GROUP BY ROLLUP(a, b)` 报 `ERROR 1630 FUNCTION x.ROLLUP does not exist`、`GROUP BY GROUPING SETS (...)` 报 `ERROR 1064`，而 `GROUP BY a WITH ROLLUP` 可执行且键为 `[a]`（正确）。所以只有 StarRocks 需要后续处理。
+4. **残余**：StarRocks 的 `SELECT * FROM (VALUES ((SELECT ...))) v(a)` 仍零边——它的 FROM 里的 VALUES 源走另一条路径（与 A1 的 INSERT 路径无关），记为残余；另外 `OutputColumn.IsDerived` 被所有方言写入却**从未被读取**（本轮顺手确认，未动）。
+
+### 验证方式
+
+- **边不变性**：新代码 + 旧语料 vs 旧代码做 5 方言全语料快照 diff，只有**用例计数表头**变化，**0 条边被改动或删除**——A1 只为"含子查询的 VALUES 行"新增边，A2 只改元数据。
+- **负向校验**：把 6 个分析器文件回退（保留新语料），PG 的 7 条与兄弟方言的 2 条新用例失败；纯字面量那条两边都通过，它钉的正是"不变"。
+- `go build ./...`、`go test ./...`、`golangci-lint run ./backend/...`（0 issues）全绿。
 
 ---
 
@@ -662,6 +693,10 @@ SELECT a FROM t1; MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE S
 **第七批（诊断通道）— ✅ 已落地（见 §0g）**
 
 16. **P2-4 / P2-8** ✅：诊断通道复用既有 `UnsupportedStatementError`（无 schema/proto/API 改动）；三方言族 26 处丢弃点上报；顺带修掉兄弟方言的 P2-2 伪造 DELETE 边；语料新增"部分分析"语义与 `error_contains`。
+
+**第八批（A1/A2）— ✅ 已落地（见 §0h）**
+
+17. **A1 `ValuesLists`** ✅（三方言族）与 **A2 `GroupingSet`** ✅（PG）：VALUES 行的子查询源不再丢失，组集键不再退化成空字符串键。A3（`RangeTableFunc`）与 StarRocks 的 FROM-VALUES 残余按决策只记录。
 
 ---
 
