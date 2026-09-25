@@ -145,26 +145,19 @@ func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	driver, err := s.dbFactory.GetAdminDatabaseDriver(ctx, instance, nil /* database */, db.ConnectionContext{})
-	if err != nil {
-		// The instance row is stored; only the initial discovery is skipped. The
-		// error used to be dropped with no trace at all.
-		slog.Warn("Failed to open an admin driver for the new instance; skipping the initial sync",
+	// The initial discovery is best-effort: SyncInstance opens the one admin
+	// driver, counted by the per-instance limiter. Opening one here only to test
+	// reachability would hold a second, unmetered connection for the whole sync,
+	// which is exactly what the limit exists to bound.
+	if updatedInstance, _, _, err := s.schemaSyncer.SyncInstance(ctx, instance); err != nil {
+		slog.Warn("Failed to sync instance",
 			slog.String("instance", instance.ResourceID),
 			log.WithError(err))
 	} else {
-		defer driver.Close(ctx)
-		updatedInstance, _, _, err := s.schemaSyncer.SyncInstance(ctx, instance)
-		if err != nil {
-			slog.Warn("Failed to sync instance",
-				slog.String("instance", instance.ResourceID),
-				log.WithError(err))
-		} else {
-			instance = updatedInstance
-		}
-		// Sync all databases in the instance asynchronously.
-		s.schemaSyncer.SyncAllDatabases(ctx, instance)
+		instance = updatedInstance
 	}
+	// Sync all databases in the instance asynchronously.
+	s.schemaSyncer.SyncAllDatabases(ctx, instance)
 
 	result := convertInstanceMessage(instance)
 	return connect.NewResponse(result), nil
@@ -597,6 +590,11 @@ func (s *InstanceService) DeleteDataSource(ctx context.Context, req *connect.Req
 // because that reason is the point of the call. The caller is an authenticated
 // instance admin who supplied the connection info, and the full error is logged
 // as well.
+//
+// The connection deliberately does not go through the schema sync per-instance
+// limiter: it is one short-lived connection the user asked for, not a periodic
+// sync that can pile up, and refusing it because a sync holds the slots would
+// fail the test with a reason unrelated to what it tests.
 func (s *InstanceService) pingDataSource(ctx context.Context, instance *store.InstanceMessage, dataSource *storepb.DataSource) error {
 	driver, err := s.dbFactory.GetDataSourceDriver(
 		ctx, instance, dataSource,
