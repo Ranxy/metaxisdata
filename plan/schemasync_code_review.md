@@ -11,6 +11,8 @@
 
 ### 1.【中-高】元数据写事务横跨网络抓取，行锁被长时间持有
 
+> **已修复**：`SyncDatabaseSchema` 现在把 digest 读取、`bmc.prepare()` 纯计算 diff、DDL 抓取与 DDL diff 全部放在 `BeginTx` 之前，事务内只剩纯写（元数据 → DDL 子集 → 血缘删除）。`batchMetaCreate` 拆为 `prepare()`/`write()`，`syncObjectDefinitions` 拆为 `prepareObjectDefinitions()`/`objectDefinitionBatch.write()`。
+
 `SyncDatabaseSchema`（syncer.go:415）的执行顺序是：
 
 ```
@@ -96,7 +98,7 @@ api/v1/instance_service.go:148-167 先开一个 admin driver 只为 fail-fast，
 
 ## 四、建议的处理优先级
 
-1. **先做 #1（事务内挪出网络抓取）**——改动小、收益明确，是真正的生产隐患
+1. ~~**先做 #1（事务内挪出网络抓取）**——改动小、收益明确，是真正的生产隐患~~ 已完成
 2. **#2（白名单语义）**需要先决定产品语义：白名单到底是"同步范围"还是"可见范围"？然后统一三条入口
 3. #3、#4 花十几行就能补上防护
 4. 其余属于顺手清理，可在下一次动这个包时一起做

@@ -439,12 +439,6 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to sync database schema for database %q", database.DatabaseName)
 	}
 
-	tx, err := s.store.GetDB().BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
 	databaseGUID := buildGUID(database.InstanceID, database.DatabaseName)
 
 	// Only the GUID, object type and meta hash are needed to diff the snapshot
@@ -540,20 +534,40 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		}
 	}
 
-	err = bmc.Run(ctx, s.store, tx)
+	// The diff is pure computation and the DDL fetch below is up to one network
+	// round trip per object; both run before the transaction is opened so the row
+	// locks on meta_registry_resource are held only for the writes instead of
+	// across the whole snapshot's round trips.
+	if err := bmc.prepare(); err != nil {
+		return errors.Wrapf(err, "failed to diff metadata for database %q", database.DatabaseName)
+	}
+
+	// deadlineCtx is used for the driver round trips so a hung target cannot
+	// outlive the sync deadline. Engines without the capability are skipped.
+	var definitions *objectDefinitionBatch
+	if reader, ok := driver.(db.ObjectDefinitionReader); ok {
+		definitions, err = prepareObjectDefinitions(deadlineCtx, s.store, reader, bmc)
+		if err != nil {
+			return errors.Wrapf(err, "failed to sync object definitions for database %q", database.DatabaseName)
+		}
+	}
+
+	// From here on the transaction only writes: the metadata rows first, then the
+	// DDL rows, which are a strict subset of them, then the lineage rows of the
+	// deleted objects. A rolled-back sync therefore cannot leave a definition
+	// behind that its metadata row does not have.
+	tx, err := s.store.GetDB().BeginTx(ctx, nil)
 	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := bmc.write(ctx, s.store, tx); err != nil {
 		return errors.Wrapf(err, "failed to batch store metadata for database %q", database.DatabaseName)
 	}
 
-	// The engine's own DDL is captured for the objects in this snapshot and
-	// written in the same transaction as their metadata, so a rolled-back sync
-	// cannot leave a definition behind that its metadata row does not have.
-	// deadlineCtx is used for the driver round trips so a hung target cannot
-	// outlive the sync deadline. Engines without the capability are skipped.
-	if reader, ok := driver.(db.ObjectDefinitionReader); ok {
-		if err := syncObjectDefinitions(deadlineCtx, s.store, tx, reader, bmc); err != nil {
-			return errors.Wrapf(err, "failed to sync object definitions for database %q", database.DatabaseName)
-		}
+	if err := definitions.write(ctx, s.store, tx); err != nil {
+		return errors.Wrapf(err, "failed to sync object definitions for database %q", database.DatabaseName)
 	}
 
 	logSchemaSyncDeletion(common.FormatDatabase(database.InstanceID, database.DatabaseName), bmc.deletes)
@@ -614,8 +628,8 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 type batchMetaCreate struct {
 	exist    []*store.MetaRegistryResource
 	guidList []*store.CreateMetaRegistryResourceMessage
-	updates  []*store.CreateMetaRegistryResourceMessage // populated after Run()
-	deletes  []*store.MetaRegistryResource              // populated after Run()
+	updates  []*store.CreateMetaRegistryResourceMessage // populated by prepare()
+	deletes  []*store.MetaRegistryResource              // populated by prepare()
 }
 
 func (b *batchMetaCreate) StoreMetaResource(_ context.Context, prefixName string, objectType storepb.MetaType, data *storepb.StoredMetadata) error {
@@ -643,26 +657,33 @@ func (b *batchMetaCreate) add(guid string, mt storepb.MetaType, data *storepb.St
 	b.guidList = append(b.guidList, registry)
 }
 
-func (b *batchMetaCreate) Run(ctx context.Context, s *store.Store, tx *sql.Tx) error {
+// prepare computes the diff between the snapshot and the stored rows. It is
+// pure computation and must run before the write transaction is opened, so no
+// row lock is held while the target instance is queried.
+func (b *batchMetaCreate) prepare() error {
 	updates, deletes, err := b.diff()
 	if err != nil {
 		return errors.Wrap(err, "batchMetaCreateRunDiff")
 	}
+	b.updates = updates
+	b.deletes = deletes
+	return nil
+}
+
+// write persists a prepared diff inside the caller's transaction.
+func (b *batchMetaCreate) write(ctx context.Context, s *store.Store, tx *sql.Tx) error {
 	observedAt := time.Now().UTC()
 
-	if len(deletes) > 0 {
-		if err := s.BatchDeleteMetaRegistryAt(ctx, tx, deletes, observedAt); err != nil {
+	if len(b.deletes) > 0 {
+		if err := s.BatchDeleteMetaRegistryAt(ctx, tx, b.deletes, observedAt); err != nil {
 			return errors.Wrap(err, "BatchDeleteMetaRegistryResourceByID")
 		}
 	}
-	if len(updates) > 0 {
-		_, err := s.BatchCreateMetaRegistryResourceAt(ctx, tx, updates, observedAt)
-		if err != nil {
+	if len(b.updates) > 0 {
+		if _, err := s.BatchCreateMetaRegistryResourceAt(ctx, tx, b.updates, observedAt); err != nil {
 			return errors.Wrap(err, "BatchCreateMetaRegistryResource")
 		}
 	}
-	b.updates = updates
-	b.deletes = deletes
 	return nil
 }
 

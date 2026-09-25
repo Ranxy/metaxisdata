@@ -157,6 +157,35 @@ func TestBatchMetaCreateDiff(t *testing.T) {
 	require.Equal(t, buildGUID("inst", "db", "public", "legacy"), deletes[0].GUID)
 }
 
+// The write transaction must not compute anything: prepare() computes the diff
+// and populates the update/delete sets, and write() only persists them. Moving
+// the diff back inside the transaction would put it back across the snapshot's
+// network round trips.
+func TestBatchMetaCreatePreparePopulatesDiff(t *testing.T) {
+	t.Parallel()
+
+	unchangedMeta := buildTableMeta("orders", "id")
+	_, unchangedHash, err := store.CalcStoreMetaHash(unchangedMeta)
+	require.NoError(t, err)
+
+	batch := &batchMetaCreate{
+		exist: []*store.MetaRegistryResource{
+			{GUID: buildGUID("inst", "db", "public", "orders"), ObjectType: storepb.MetaType_TABLE, MetaHash: unchangedHash},
+			{GUID: buildGUID("inst", "db", "public", "legacy"), ObjectType: storepb.MetaType_TABLE, MetaHash: []byte("legacy-hash")},
+		},
+		guidList: []*store.CreateMetaRegistryResourceMessage{
+			{MetaRegistryResource: store.MetaRegistryResource{GUID: buildGUID("inst", "db", "public", "orders"), ObjectType: storepb.MetaType_TABLE, Metadata: unchangedMeta}},
+			{MetaRegistryResource: store.MetaRegistryResource{GUID: buildGUID("inst", "db", "public", "products"), ObjectType: storepb.MetaType_TABLE, Metadata: buildTableMeta("products", "id")}},
+		},
+	}
+
+	require.NoError(t, batch.prepare())
+	require.Len(t, batch.updates, 1)
+	require.Equal(t, buildGUID("inst", "db", "public", "products"), batch.updates[0].GUID)
+	require.Len(t, batch.deletes, 1)
+	require.Equal(t, buildGUID("inst", "db", "public", "legacy"), batch.deletes[0].GUID)
+}
+
 func TestGetOrDefaultSyncInterval(t *testing.T) {
 	t.Parallel()
 

@@ -32,15 +32,25 @@ const (
 	fullDefinitionObjectLimit = 2000
 )
 
-// syncObjectDefinitions captures the engine's own DDL for the objects in the
-// current snapshot and writes it inside the caller's transaction, so a
-// rolled-back sync cannot leave a definition behind that its metadata row does
-// not have. It is a no-op for engines that do not implement
+// objectDefinitionBatch is the DDL write set computed before the metadata
+// transaction is opened: the definitions are fetched over the network, and that
+// must not happen while the transaction holds row locks.
+type objectDefinitionBatch struct {
+	upserts   []*store.CreateMetaRegistrySchemaMessage
+	deletes   []store.MetaGUIDKey
+	unchanged int
+	failed    int
+}
+
+// prepareObjectDefinitions captures the engine's own DDL for the objects in the
+// current snapshot and computes the rows to write. It runs before the caller's
+// transaction because the fetch issues up to one network round trip per object.
+// It returns a nil batch for engines that do not implement
 // db.ObjectDefinitionReader.
-func syncObjectDefinitions(ctx context.Context, s *store.Store, tx *sql.Tx, reader db.ObjectDefinitionReader, bmc *batchMetaCreate) error {
+func prepareObjectDefinitions(ctx context.Context, s *store.Store, reader db.ObjectDefinitionReader, bmc *batchMetaCreate) (*objectDefinitionBatch, error) {
 	candidates := bmc.definitionCandidates()
 	if len(candidates) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// The stored hashes are read first so the freshly fetched definitions can be
@@ -48,7 +58,7 @@ func syncObjectDefinitions(ctx context.Context, s *store.Store, tx *sql.Tx, read
 	// shipping every definition back would be pure waste when nothing changed.
 	existing, err := s.ListMetaRegistrySchemaHashes(ctx, registryKeys(candidates))
 	if err != nil {
-		return errors.Wrap(err, "failed to list stored object definitions")
+		return nil, errors.Wrap(err, "failed to list stored object definitions")
 	}
 
 	fetched, failed := fetchObjectDefinitions(ctx, reader, candidates)
@@ -60,17 +70,27 @@ func syncObjectDefinitions(ctx context.Context, s *store.Store, tx *sql.Tx, read
 		slog.Warn("Failed to fetch some object definitions at this sync",
 			slog.Int("failed", failed), slog.Int("total", len(candidates)))
 	}
-	if err := s.BatchUpsertMetaRegistrySchema(ctx, tx, upserts); err != nil {
+	return &objectDefinitionBatch{upserts: upserts, deletes: deletes, unchanged: unchanged, failed: failed}, nil
+}
+
+// write persists the fetched definitions inside the caller's transaction, after
+// their metadata rows so the DDL rows stay a strict subset of them. It is a
+// no-op when the engine has no definitions to fetch.
+func (b *objectDefinitionBatch) write(ctx context.Context, s *store.Store, tx *sql.Tx) error {
+	if b == nil {
+		return nil
+	}
+	if err := s.BatchUpsertMetaRegistrySchema(ctx, tx, b.upserts); err != nil {
 		return errors.Wrap(err, "failed to upsert object definitions")
 	}
-	if err := s.BatchDeleteMetaRegistrySchema(ctx, tx, deletes); err != nil {
+	if err := s.BatchDeleteMetaRegistrySchema(ctx, tx, b.deletes); err != nil {
 		return errors.Wrap(err, "failed to delete object definitions")
 	}
 	slog.Debug("Synced object definitions",
-		slog.Int("changed", len(upserts)),
-		slog.Int("unchanged", unchanged),
-		slog.Int("deleted", len(deletes)),
-		slog.Int("failed", failed))
+		slog.Int("changed", len(b.upserts)),
+		slog.Int("unchanged", b.unchanged),
+		slog.Int("deleted", len(b.deletes)),
+		slog.Int("failed", b.failed))
 	return nil
 }
 
