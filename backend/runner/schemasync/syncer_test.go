@@ -404,3 +404,75 @@ func TestSyncDatabaseSchemaJoinerReturnsItsOwnCancellation(t *testing.T) {
 	cancel()
 	require.ErrorIs(t, syncer.SyncDatabaseSchema(ctx, database), context.Canceled)
 }
+
+// The backoff ladder of a failed database sync: fast early retries that grow to
+// the instance scan's cadence.
+func TestDatabaseSyncRetryBackoff(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, time.Minute, databaseSyncRetryBackoff(1))
+	require.Equal(t, 5*time.Minute, databaseSyncRetryBackoff(2))
+	require.Equal(t, instanceSyncInterval, databaseSyncRetryBackoff(maxDatabaseSyncRetries))
+}
+
+// A failed database stays queued with a growing delay instead of waiting for the
+// next instance scan, a fresh enqueue supersedes that delay, and the last
+// attempt hands the database back to the scan.
+func TestScheduleRetryBacksOffAndGivesUp(t *testing.T) {
+	t.Parallel()
+
+	syncer := &Syncer{}
+	database := &store.DatabaseMessage{InstanceID: "inst-1", DatabaseName: "db1"}
+	key := database.String()
+
+	// The checker drains the entry before syncing it.
+	syncer.databaseSyncMap.Delete(key)
+	syncer.scheduleRetry(database)
+	require.Equal(t, 1, mustDatabaseRetry(t, syncer, key).attempts)
+	require.Equal(t, 1, countDatabaseSyncMapItems(&syncer.databaseSyncMap), "a failed database must stay queued")
+
+	syncer.scheduleRetry(database)
+	require.Equal(t, 2, mustDatabaseRetry(t, syncer, key).attempts)
+
+	// A fresh enqueue supersedes the pending backoff.
+	syncer.enqueueDatabase(database)
+	_, ok := syncer.databaseSyncRetryMap.Load(key)
+	require.False(t, ok)
+
+	// The retry cap leaves the database to the next instance scan instead of
+	// backing off forever: the checker drains the entry before each attempt and
+	// the last failure does not re-queue it.
+	for range maxDatabaseSyncRetries + 1 {
+		syncer.databaseSyncMap.Delete(key)
+		syncer.scheduleRetry(database)
+	}
+	_, ok = syncer.databaseSyncRetryMap.Load(key)
+	require.False(t, ok)
+	require.Equal(t, 0, countDatabaseSyncMapItems(&syncer.databaseSyncMap))
+}
+
+// The checker must skip a queued database until its backoff elapses.
+func TestRetryDueHonorsBackoff(t *testing.T) {
+	t.Parallel()
+
+	syncer := &Syncer{}
+	database := &store.DatabaseMessage{InstanceID: "inst-1", DatabaseName: "db1"}
+	key := database.String()
+	require.True(t, syncer.retryDue(key, time.Now()), "a database that never failed is due")
+
+	syncer.scheduleRetry(database)
+	require.False(t, syncer.retryDue(key, time.Now()), "a failed database must not be retried before its backoff")
+	require.True(t, syncer.retryDue(key, time.Now().Add(databaseSyncRetryBackoff(1)+time.Second)))
+
+	syncer.enqueueDatabase(database)
+	require.True(t, syncer.retryDue(key, time.Now()), "a fresh enqueue clears the backoff")
+}
+
+func mustDatabaseRetry(t *testing.T, syncer *Syncer, key string) databaseRetry {
+	t.Helper()
+	v, ok := syncer.databaseSyncRetryMap.Load(key)
+	require.True(t, ok)
+	entry, ok := v.(databaseRetry)
+	require.True(t, ok)
+	return entry
+}

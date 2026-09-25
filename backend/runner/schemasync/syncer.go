@@ -33,6 +33,9 @@ const (
 	// defaultSyncInterval means never sync.
 	defaultSyncInterval = 0 * time.Second
 	MaximumOutstanding  = 100
+	// maxDatabaseSyncRetries bounds one database's backoff retries before it is
+	// left to the next instance-level scan.
+	maxDatabaseSyncRetries = 3
 )
 
 // NewSyncer creates a schema syncer.
@@ -52,6 +55,10 @@ type Syncer struct {
 	stateCfg        *state.State
 	lineageAnalyzer *lineageanalyzer.Analyzer
 	databaseSyncMap sync.Map // map[string]*store.DatabaseMessage
+	// databaseSyncRetryMap holds the backoff of a database whose sync failed:
+	// the database stays queued and the checker skips it until nextAt, so a
+	// transient failure does not wait for the next instance-level scan.
+	databaseSyncRetryMap sync.Map // map[string]databaseRetry
 	// databaseSyncGate serializes the schema sync of one database. The queue
 	// above is drained on dequeue, so it is not an in-flight guard by itself,
 	// and the API path calls SyncDatabaseSchema directly.
@@ -102,6 +109,70 @@ func (g *databaseSyncGate) finish(key string, call *databaseSyncCall, err error)
 	close(call.done)
 }
 
+// databaseRetry is the backoff state of a failed database schema sync.
+type databaseRetry struct {
+	attempts int
+	nextAt   time.Time
+}
+
+// databaseSyncRetryBackoff returns the delay before the next attempt. The last
+// step equals instanceSyncInterval: past it the 15-minute instance scan is the
+// retry.
+func databaseSyncRetryBackoff(attempts int) time.Duration {
+	switch attempts {
+	case 1:
+		return time.Minute
+	case 2:
+		return 5 * time.Minute
+	default:
+		return instanceSyncInterval
+	}
+}
+
+// enqueueDatabase queues a database for the checker. A fresh request (an API
+// full sync or the periodic scan) supersedes any pending backoff.
+func (s *Syncer) enqueueDatabase(database *store.DatabaseMessage) {
+	key := database.String()
+	s.databaseSyncRetryMap.Delete(key)
+	s.databaseSyncMap.Store(key, database)
+}
+
+// scheduleRetry re-queues a failed database with a bounded backoff; the checker
+// skips it until nextAt. After the last attempt the database is left to the next
+// instance-level scan instead of backing off forever.
+func (s *Syncer) scheduleRetry(database *store.DatabaseMessage) {
+	key := database.String()
+	attempts := 1
+	if v, ok := s.databaseSyncRetryMap.Load(key); ok {
+		if entry, ok := v.(databaseRetry); ok {
+			attempts = entry.attempts + 1
+		}
+	}
+	if attempts > maxDatabaseSyncRetries {
+		s.databaseSyncRetryMap.Delete(key)
+		slog.Warn("Database schema sync gave up after repeated failures; waiting for the next instance scan",
+			slog.String("instance", database.InstanceID),
+			slog.String("database", database.DatabaseName))
+		return
+	}
+	s.databaseSyncRetryMap.Store(key, databaseRetry{attempts: attempts, nextAt: time.Now().Add(databaseSyncRetryBackoff(attempts))})
+	s.databaseSyncMap.Store(key, database)
+}
+
+// retryDue reports whether a queued database may be synced at now. A database
+// whose sync failed stays queued but is skipped until its backoff elapses.
+func (s *Syncer) retryDue(key any, now time.Time) bool {
+	v, ok := s.databaseSyncRetryMap.Load(key)
+	if !ok {
+		return true
+	}
+	entry, ok := v.(databaseRetry)
+	if !ok {
+		return true
+	}
+	return !now.Before(entry.nextAt)
+}
+
 // Run will run the schema syncer once.
 func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -140,6 +211,7 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 				for _, instance := range instances {
 					instanceMap[instance.ResourceID] = instance
 				}
+				now := time.Now()
 				dbwp := pool.New().WithMaxGoroutines(MaximumOutstanding)
 				s.databaseSyncMap.Range(func(key, value any) bool {
 					database, ok := value.(*store.DatabaseMessage)
@@ -153,7 +225,14 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 						// The instance is gone (or not visible any more); drop the
 						// entry instead of retrying and logging it every tick
 						// forever.
+						s.databaseSyncRetryMap.Delete(key)
 						s.databaseSyncMap.Delete(key)
+						return true
+					}
+
+					// A failed database stays queued but is skipped until its
+					// backoff elapses, so a tick does not retry it immediately.
+					if !s.retryDue(key, now) {
 						return true
 					}
 
@@ -172,13 +251,16 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 									slog.String("instance", database.InstanceID),
 									slog.String("database", database.DatabaseName),
 									log.WithError(err))
+								s.scheduleRetry(database)
 							}
 						}()
 						slog.Debug("Sync database schema", slog.String("instance", database.InstanceID), slog.String("database", database.DatabaseName))
 						if err := s.SyncDatabaseSchema(ctx, database); err != nil {
 							if errors.Is(err, errInstanceConnectionsExhausted) {
 								// The per-instance limiter is saturated; keep the
-								// database queued and retry on a later tick.
+								// database queued and retry on a later tick. This is
+								// contention, not a failed sync, so it does not
+								// advance the backoff.
 								s.databaseSyncMap.Store(database.String(), database)
 								return
 							}
@@ -186,7 +268,10 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 								slog.String("instance", database.InstanceID),
 								slog.String("databaseName", database.DatabaseName),
 								log.WithError(err))
+							s.scheduleRetry(database)
+							return
 						}
+						s.databaseSyncRetryMap.Delete(database.String())
 					})
 					return true
 				})
@@ -257,7 +342,7 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 			continue
 		}
 
-		s.databaseSyncMap.Store(database.String(), database)
+		s.enqueueDatabase(database)
 	}
 }
 
@@ -278,7 +363,7 @@ func (s *Syncer) SyncAllDatabases(ctx context.Context, instance *store.InstanceM
 		if database.Deleted {
 			continue
 		}
-		s.databaseSyncMap.Store(database.String(), database)
+		s.enqueueDatabase(database)
 	}
 }
 
@@ -286,7 +371,7 @@ func (s *Syncer) SyncDatabaseAsync(database *store.DatabaseMessage) {
 	if database == nil || database.Deleted {
 		return
 	}
-	s.databaseSyncMap.Store(database.String(), database)
+	s.enqueueDatabase(database)
 }
 
 func (s *Syncer) SyncDatabasesAsync(databases []*store.DatabaseMessage) {
