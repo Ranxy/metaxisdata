@@ -602,14 +602,6 @@ export declare type Instance = Message<"metaxisdata.v1.Instance"> & {
   maximumConnections: number;
 
   /**
-   * Enable sync for following databases.
-   * Default empty, means sync all schemas & databases.
-   *
-   * @generated from field: repeated string sync_databases = 15;
-   */
-  syncDatabases: string[];
-
-  /**
    * The last time the instance was synced.
    *
    * @generated from field: google.protobuf.Timestamp last_sync_time = 16;

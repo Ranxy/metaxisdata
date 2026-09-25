@@ -25,10 +25,6 @@ message Instance {
   // The default is 10 if the value is unset or zero.
   int32 maximum_connections = 8;
 
-  // Enable sync for the following databases.
-  // Default empty, means sync all schemas & databases.
-  repeated string sync_databases = 9;
-
   // The lower_case_table_names config for MySQL instances.
   // It is used to determine whether the table names and database names are case sensitive.
   int32 mysql_lower_case_table_names = 10;

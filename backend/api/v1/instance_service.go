@@ -265,8 +265,6 @@ func (s *InstanceService) UpdateInstance(ctx context.Context, req *connect.Reque
 			patch.Metadata.SyncInterval = req.Msg.Instance.SyncInterval
 		case "maximum_connections":
 			patch.Metadata.MaximumConnections = req.Msg.Instance.MaximumConnections
-		case "sync_databases":
-			patch.Metadata.SyncDatabases = req.Msg.Instance.SyncDatabases
 		default:
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf(`unsupported update_mask "%s"`, path))
 		}

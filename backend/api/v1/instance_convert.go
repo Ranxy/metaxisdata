@@ -34,7 +34,6 @@ func convertInstanceMessage(instance *store.InstanceMessage) *v1pb.Instance {
 		Activation:         instance.Metadata.GetActivation(),
 		SyncInterval:       instance.Metadata.GetSyncInterval(),
 		MaximumConnections: instance.Metadata.GetMaximumConnections(),
-		SyncDatabases:      instance.Metadata.GetSyncDatabases(),
 		LastSyncTime:       instance.Metadata.GetLastSyncTime(),
 	}
 }
@@ -66,7 +65,6 @@ func convertInstanceToInstanceMessage(instanceID string, instance *v1pb.Instance
 			DataSources:        datasources,
 			SyncInterval:       instance.GetSyncInterval(),
 			MaximumConnections: instance.GetMaximumConnections(),
-			SyncDatabases:      instance.GetSyncDatabases(),
 		},
 	}, nil
 }

@@ -1133,9 +1133,6 @@ type Instance struct {
 	// The maximum number of connections.
 	// The default is 10 if the value is unset or zero.
 	MaximumConnections int32 `protobuf:"varint,14,opt,name=maximum_connections,json=maximumConnections,proto3" json:"maximum_connections,omitempty"`
-	// Enable sync for following databases.
-	// Default empty, means sync all schemas & databases.
-	SyncDatabases []string `protobuf:"bytes,15,rep,name=sync_databases,json=syncDatabases,proto3" json:"sync_databases,omitempty"`
 	// The last time the instance was synced.
 	LastSyncTime  *timestamppb.Timestamp `protobuf:"bytes,16,opt,name=last_sync_time,json=lastSyncTime,proto3" json:"last_sync_time,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1247,13 +1244,6 @@ func (x *Instance) GetMaximumConnections() int32 {
 		return x.MaximumConnections
 	}
 	return 0
-}
-
-func (x *Instance) GetSyncDatabases() []string {
-	if x != nil {
-		return x.SyncDatabases
-	}
-	return nil
 }
 
 func (x *Instance) GetLastSyncTime() *timestamppb.Timestamp {
@@ -1614,7 +1604,7 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	"\rvalidate_only\x18\x03 \x01(\bR\fvalidateOnly\"M\n" +
 	"\x17DeleteDataSourceRequest\x122\n" +
 	"\x04name\x18\x01 \x01(\tB\x1e\xe0A\x02\xfaA\x18\n" +
-	"\x16metaxisdata/DataSourceR\x04name\"\xf8\x04\n" +
+	"\x16metaxisdata/DataSourceR\x04name\"\xd1\x04\n" +
 	"\bInstance\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12+\n" +
 	"\x05state\x18\x03 \x01(\x0e2\x15.metaxisdata.v1.StateR\x05state\x12\x14\n" +
@@ -1629,8 +1619,7 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	" \x01(\bR\n" +
 	"activation\x12>\n" +
 	"\rsync_interval\x18\r \x01(\v2\x19.google.protobuf.DurationR\fsyncInterval\x12/\n" +
-	"\x13maximum_connections\x18\x0e \x01(\x05R\x12maximumConnections\x12%\n" +
-	"\x0esync_databases\x18\x0f \x03(\tR\rsyncDatabases\x12E\n" +
+	"\x13maximum_connections\x18\x0e \x01(\x05R\x12maximumConnections\x12E\n" +
 	"\x0elast_sync_time\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\flastSyncTime:/\xeaA,\n" +
 	"\x14metaxisdata/Instance\x12\x14instances/{instance}\"\xc4\t\n" +
 	"\n" +

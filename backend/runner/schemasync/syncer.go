@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
-	"slices"
 	"sync"
 	"time"
 
@@ -305,21 +304,6 @@ func (s *Syncer) GetInstanceMeta(ctx context.Context, instance *store.InstanceMe
 }
 
 // SyncInstance syncs the schema for all databases in an instance.
-// filterSyncedDatabases applies the instance's sync_databases allowlist. An
-// empty allowlist means every database in the snapshot is synced.
-func filterSyncedDatabases(databases []*storepb.DatabaseSchemaMetadata, syncDatabases []string) []*storepb.DatabaseSchemaMetadata {
-	if len(syncDatabases) == 0 {
-		return databases
-	}
-	filtered := make([]*storepb.DatabaseSchemaMetadata, 0, len(databases))
-	for _, database := range databases {
-		if slices.Contains(syncDatabases, database.Name) {
-			filtered = append(filtered, database)
-		}
-	}
-	return filtered
-}
-
 func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessage) (*store.InstanceMessage, []*storepb.DatabaseSchemaMetadata, []*store.DatabaseMessage, error) {
 	instanceMeta, err := s.GetInstanceMeta(ctx, instance)
 	if err != nil {
@@ -349,7 +333,6 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 		return nil, nil, nil, errors.Wrapf(err, "failed to sync database for instance: %s. Failed to find database list", instance.ResourceID)
 	}
 	var newDatabases []*store.DatabaseMessage
-	filteredDatabaseMetadatas := filterSyncedDatabases(instanceMeta.Databases, instance.Metadata.GetSyncDatabases())
 
 	// Index the stored databases once: the loop below used a linear scan per
 	// snapshot entry, which is quadratic for an instance with many databases.
@@ -358,7 +341,7 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 		storedByName[database.DatabaseName] = database
 	}
 
-	for _, databaseMetadata := range filteredDatabaseMetadatas {
+	for _, databaseMetadata := range instanceMeta.Databases {
 		if _, ok := storedByName[databaseMetadata.Name]; ok {
 			continue
 		}
@@ -378,8 +361,8 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 	// snapshot is privilege-filtered on some engines (MySQL's information_schema
 	// only lists what the connecting user may see) and an incomplete
 	// instanceMeta.Databases would stop their sync, so log what disappears.
-	snapshotNames := make(map[string]struct{}, len(filteredDatabaseMetadatas))
-	for _, databaseMetadata := range filteredDatabaseMetadatas {
+	snapshotNames := make(map[string]struct{}, len(instanceMeta.Databases))
+	for _, databaseMetadata := range instanceMeta.Databases {
 		snapshotNames[databaseMetadata.Name] = struct{}{}
 	}
 	var missingDatabases []string
@@ -405,10 +388,7 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 		}
 	}
 
-	// Report only the databases the sync_databases filter selected: returning
-	// the whole snapshot told the caller it had synced databases that were
-	// deliberately skipped.
-	return updatedInstance, filteredDatabaseMetadatas, newDatabases, nil
+	return updatedInstance, instanceMeta.Databases, newDatabases, nil
 }
 
 // SyncDatabaseSchema will sync the schema for a database.

@@ -86,9 +86,6 @@ type Instance struct {
 	// The maximum number of connections.
 	// The default is 10 if the value is unset or zero.
 	MaximumConnections int32 `protobuf:"varint,8,opt,name=maximum_connections,json=maximumConnections,proto3" json:"maximum_connections,omitempty"`
-	// Enable sync for the following databases.
-	// Default empty, means sync all schemas & databases.
-	SyncDatabases []string `protobuf:"bytes,9,rep,name=sync_databases,json=syncDatabases,proto3" json:"sync_databases,omitempty"`
 	// The lower_case_table_names config for MySQL instances.
 	// It is used to determine whether the table names and database names are case sensitive.
 	MysqlLowerCaseTableNames int32                  `protobuf:"varint,10,opt,name=mysql_lower_case_table_names,json=mysqlLowerCaseTableNames,proto3" json:"mysql_lower_case_table_names,omitempty"`
@@ -181,13 +178,6 @@ func (x *Instance) GetMaximumConnections() int32 {
 		return x.MaximumConnections
 	}
 	return 0
-}
-
-func (x *Instance) GetSyncDatabases() []string {
-	if x != nil {
-		return x.SyncDatabases
-	}
-	return nil
 }
 
 func (x *Instance) GetMysqlLowerCaseTableNames() int32 {
@@ -450,7 +440,7 @@ var File_store_instance_proto protoreflect.FileDescriptor
 
 const file_store_instance_proto_rawDesc = "" +
 	"\n" +
-	"\x14store/instance.proto\x12\x11metaxisdata.store\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x12store/common.proto\"\xa9\x04\n" +
+	"\x14store/instance.proto\x12\x11metaxisdata.store\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x12store/common.proto\"\x82\x04\n" +
 	"\bInstance\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x121\n" +
 	"\x06engine\x18\x02 \x01(\x0e2\x19.metaxisdata.store.EngineR\x06engine\x12\x1e\n" +
@@ -461,8 +451,7 @@ const file_store_instance_proto_rawDesc = "" +
 	"\rexternal_link\x18\x05 \x01(\tR\fexternalLink\x12@\n" +
 	"\fdata_sources\x18\x06 \x03(\v2\x1d.metaxisdata.store.DataSourceR\vdataSources\x12>\n" +
 	"\rsync_interval\x18\a \x01(\v2\x19.google.protobuf.DurationR\fsyncInterval\x12/\n" +
-	"\x13maximum_connections\x18\b \x01(\x05R\x12maximumConnections\x12%\n" +
-	"\x0esync_databases\x18\t \x03(\tR\rsyncDatabases\x12>\n" +
+	"\x13maximum_connections\x18\b \x01(\x05R\x12maximumConnections\x12>\n" +
 	"\x1cmysql_lower_case_table_names\x18\n" +
 	" \x01(\x05R\x18mysqlLowerCaseTableNames\x12@\n" +
 	"\x0elast_sync_time\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\flastSyncTimeJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eR\x05rolesR\x06labels\"\x90\f\n" +

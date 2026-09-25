@@ -29,6 +29,8 @@ BeginTx (L442) → 读 digest (L453，独立只读 tx) → bmc.Run (L543，批�
 
 ### 2.【中】`sync_databases` 白名单与软删除耦合，语义有坑且路径间不一致
 
+> **已修复（决策：删除该字段）**：git 考古确认 `sync_databases` 是初始导入（root commit `e390a28`）就带来的继承字段，产品面（前端 / CLI / spec）从无读写入口，本地部署 4 个实例全部为空。已整体删除：后端移除 `filterSyncedDatabases` 与 `SyncInstance` 的过滤（软删改用完整快照）、`UpdateInstance` 的 `sync_databases` mask 分支、`instance_convert` 的两处透传；proto 两处字段（store 9 / v1 15）直接删除并重新生成。项目未上线，无需 reserved，也无需处理历史 JSONB 数据（`ProtojsonUnmarshaler` 是 `DiscardUnknown: true`）。删除后语义为"目标快照是 source of truth，不在快照里才软删"，三条入口的差异随之消失。
+
 软删除集合来自**过滤后**的快照（syncer.go:381-390）：
 
 ```go
@@ -99,7 +101,7 @@ api/v1/instance_service.go:148-167 先开一个 admin driver 只为 fail-fast，
 ## 四、建议的处理优先级
 
 1. ~~**先做 #1（事务内挪出网络抓取）**——改动小、收益明确，是真正的生产隐患~~ 已完成
-2. **#2（白名单语义）**需要先决定产品语义：白名单到底是"同步范围"还是"可见范围"？然后统一三条入口
+2. ~~**#2（白名单语义）**需要先决定产品语义：白名单到底是"同步范围"还是"可见范围"？然后统一三条入口~~ 已完成：字段整体删除，软删改用完整快照
 3. #3、#4 花十几行就能补上防护
 4. 其余属于顺手清理，可在下一次动这个包时一起做
 
