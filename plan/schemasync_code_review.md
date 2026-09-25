@@ -76,9 +76,17 @@ syncer.go:598-609 在成功提交后无条件写 `Deleted: proto.Bool(false)`。
 
 ### 5.【低】失败重试延迟大、无退避
 
+> **已修复（决策：对齐 `lineageanalyzer` 的有界退避范式）**：新增 `databaseSyncRetryMap`（`map[string]databaseRetry{attempts, nextAt}`）与 `databaseSyncRetryBackoff`（1m / 5m / 15m，`maxDatabaseSyncRetries=3`）。失败的库不再从队列消失：它留在 `databaseSyncMap` 里，checker 每 10s tick 用 `retryDue` 判定并跳过未到期项，到期后重新尝试（`syncer.go` 的 `scheduleRetry` / `retryDue` / `enqueueDatabase`）。连接耗尽仍然沿用"下一 tick 立刻重试且不计一次失败"（那是争用不是失败），`NotFound` 隐藏路径仍是成功、不重试。超过 3 次后交回实例扫描（15 分钟）兜底——`LastSyncTime` 只在成功时推进，所以永久失败的库仍会被 `trySyncAll` 重新入队。显式入队（`SyncAllDatabases` / `SyncDatabasesAsync` / `trySyncAll` 周期扫描）统一走 `enqueueDatabase()` 并清掉退避状态，语义是"新的入队请求覆盖退避"，与 `QueueAnalysis` 一致；实例消失时同时清掉退避状态，避免状态泄漏。
+>
+> 实测（hermetic 单测）：`TestDatabaseSyncRetryBackoff` 钉住 1m/5m/15m 阶梯；`TestScheduleRetryBacksOffAndGivesUp` 验证失败后仍在队列、attempts 递增、`enqueueDatabase` 清除退避、超上限后不入队（交回实例扫描）；`TestRetryDueHonorsBackoff` 验证到期前跳过、到期后可跑。集成 smoke 套件（含并发合并那条）全绿。
+
 只有连接耗尽会重新入队（syncer.go:132-137）；其余错误的库要等 15 分钟 tick 且 interval 到期才被重新排队。作为周期任务可接受，但刚失败的库很可能立刻再失败，建议简单退避。
 
 ### 6.【低】CreateInstance 双开 driver 且绕过限流
+
+> **已修复（决策：删掉外层 driver，初始发现只走 `SyncInstance` 的计数连接）**：`CreateInstance` 不再自己开 admin driver；初始发现直接交给 `SyncInstance`，它内部经 `acquireInstanceConnection` 开唯一的、被限流器计数的连接。删掉不损失任何语义：`GetInstanceMeta` 里是**参数完全相同**的 `GetAdminDatabaseDriver(ctx, instance, nil, db.ConnectionContext{})`，任何"开不出来"的失败都在 `SyncInstance` 内以同样方式发生并落到同一条 Warn 日志。评审原文说外层"只为 fail-fast"，实际更糟——`defer driver.Close(ctx)` 虽然写在 else 分支，但 defer 直到 RPC 返回才执行，所以外层连接会**横跨整个 `SyncInstance`** 持续打开：`maximum_connections=1` 时同一实例上同时有 2 条连接而只有 1 条计数，限流意图被击穿。
+>
+> 可达性核验：修复后 `CreateInstance` 自身不再出现任何 driver 打开点（`grep GetAdminDatabaseDriver` 只剩 `syncer.go:417/570` 两处，均在 `acquireInstanceConnection` 之后），且构建 / `go test ./backend/runner/schemasync/... ./backend/api/v1/...` / 集成 smoke 套件（含 `maximum_connections=1` 的并发合并用例）全绿。附带发现（决策：**有意保持现状，不需修复**）：`pingDataSource`（`instance_service.go`，validate-only 与"测试连接"RPC 都走它）同样在限流器之外开 driver。这是用户主动触发的单次连通性探测——调用频率低（人工点"测试连接"、创建前的 validate）、每次只是一条随即关闭的短连接，与后台周期性、可并发堆积的同步负载不同；而把它纳入限流器会产生一个更差的失败模式：同步占满额度时用户的"测试连接"会因"连接数超限"失败，报出的原因与它要验证的东西无关。故记录为有意的设计决定，`pingDataSource` 上加了注释避免后人当 bug 修掉（收口本身也需要把 `Syncer` 的限流器暴露到 API 层）。
 
 api/v1/instance_service.go:148-167 先开一个 admin driver 只为 fail-fast，随后 `SyncInstance` 内部又开一个。外层那个**不受实例连接限流器计数**，绕过了 "every driver path goes through the limiter" 的设计意图。
 
@@ -117,7 +125,8 @@ api/v1/instance_service.go:148-167 先开一个 admin driver 只为 fail-fast，
 1. ~~**先做 #1（事务内挪出网络抓取）**——改动小、收益明确，是真正的生产隐患~~ 已完成
 2. ~~**#2（白名单语义）**需要先决定产品语义：白名单到底是"同步范围"还是"可见范围"？然后统一三条入口~~ 已完成：字段整体删除，软删改用完整快照
 3. ~~#3、#4 花十几行就能补上防护~~ 已完成：#3 用进程内 singleflight（等待并复用 owner 结果）；#4 改成"隐藏可由任何缺席观测触发、显示只能由实例枚举触发"，并给 PG/MySQL/StarRocks 的 driver 补上"库不存在"的错误归类
-4. 其余属于顺手清理，可在下一次动这个包时一起做
+4. ~~**#5、#6**~~ 已完成：#5 用 `databaseSyncRetryMap` 做 1m/5m/15m 有界退避（超 3 次交回实例扫描兜底）；#6 删掉 `CreateInstance` 的外层 driver，初始发现只走 `SyncInstance` 的计数连接。**#7（API 同步路径最长挂 15 分钟）仍未处理。**
+5. 其余属于顺手清理，可在下一次动这个包时一起做
 
 ## 附：正面观察
 
