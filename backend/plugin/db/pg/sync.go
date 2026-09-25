@@ -57,8 +57,15 @@ func (d *Driver) SyncInstance(ctx context.Context) (*db.InstanceMetadata, error)
 	}, nil
 }
 
-// SyncDBSchema syncs a single database schema.
-func (d *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchemaMetadata, error) {
+// SyncDBSchema syncs a single database schema. A database the target no longer
+// has is reported as common.NotFound, which is what tells a caller mirroring the
+// target's inventory apart from a permission or connectivity failure.
+func (d *Driver) SyncDBSchema(ctx context.Context) (metadata *storepb.DatabaseSchemaMetadata, err error) {
+	defer func() {
+		if err != nil {
+			err = databaseNotExistError(d.databaseName, err)
+		}
+	}()
 	// Query db info
 	databases, err := d.getDatabases(ctx)
 	if err != nil {

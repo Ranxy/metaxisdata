@@ -47,6 +47,12 @@ snapshotNames := ... filteredDatabaseMetadatas ...         // 以此判定"missi
 
 ### 3.【中】同一数据库可被并发同步
 
+> **已修复（决策：合并复用，而不是拒绝或串行重跑）**：`SyncDatabaseSchema` 现在用进程内的 `databaseSyncGate` 串行化每个库：第一个调用者拥有本次同步，后来者等待并**复用其结果**（包括错误），等待者自己的 context 取消时立即返回 `ctx.Err()`，panic 也会唤醒等待者且不会被当成成功；`finish()` 先摘除条目再 close，所以同步结束后的新调用一定会跑一次新的同步。选"等待复用"而不是"拒绝并让调用方重试"或"等它结束后自己再跑一次"，是因为 `SyncDatabase` 是**同步** RPC：前端 `await` 它并在该行显示 "Syncing..."（`frontend/src/pages/InstanceDetailPage.vue:987-997`、`DatabaseManagementPage.vue:322-341`），而 Sync All 走 `SyncInstance` + 入队（异步，文案是 "Triggered sync for all databases"）。因此 API 层与 checker 都无需改动，checker 原有的"实例连接耗尽则重新入队"逻辑照旧（owner 若被限流器拒绝，等待者复用同一错误并同样重排队）。
+>
+> 实测（把实例 `maximum_connections` 设为 1，同时发 4 个同库 `SyncDatabase`）：修复前其中一个被实例限流器拒绝（`already has 1 outstanding connections: instance connection limit reached`，证明多个同步确实同时进入了 `SyncDatabaseSchema`），修复后 4 个全部成功——只有一个真正跑同步并持有连接。
+>
+> 残留：门闩是进程内的，多副本部署仍可能跨进程并发（当前部署姿态是单副本；跨副本需要 DB 级 advisory lock 或给 delete 加哈希 CAS）。
+
 checker 是"出队即删"（syncer.go:113），而 API 的 `SyncDatabase`（api/v1/database_service.go:43）直接同步调用 `SyncDatabaseSchema`——**没有 per-database 的 in-flight 去重**。同一数据库可能一个被 checker 跑、一个被 API 跑：
 
 - digest 读取与写入跨事务非原子，两边都基于旧视图做 diff；
@@ -55,6 +61,14 @@ checker 是"出队即删"（syncer.go:113），而 API 的 `SyncDatabase`（api/
 建议：加 per-database 的 sync.Map 去重（类似限流器）。
 
 ### 4.【低-中】`SyncDatabaseSchema` 不检查 `Deleted`，成功路径无条件复活
+
+> **已修复（决策：`deleted` 是单向权威）**：评审原先的建议（入口判 `database.Deleted` 就短路）被否决。理由是队列条目携带的 `Deleted` 是**入队那一刻**的历史值（`SyncAllDatabases`/`SyncDatabasesAsync`/`trySyncAll` 入队，checker 可能十个 tick 之后才取走），判它命中不了真正的窗口；而"发现已删就跳过整轮同步"又违反"本地是目标实例的镜像、这一轮读到什么就写什么"。
+>
+> 最终语义：**`deleted=true` 可以由任何"目标说这个库没了"的观测写入**——实例清单缺名（原有），或单库同步被目标告知 `database does not exist`（新增）；**`deleted=false` 只能由实例枚举写入**（清单里重新出现该库 → `SyncInstance` 的 `CreateDatabaseDefault`，`syncer.go:344-358`）。一次"读到了某个库的内容"不是一次实例枚举，所以成功路径不再写 `Deleted`（删掉 `syncer.go:595` 那一行），flap 在结构上不可能。
+>
+> 实现新增点：driver 把引擎自己的"库不存在"错误归类为 `common.NotFound`（PG `3D000`、MySQL/StarRocks `ER_BAD_DB_ERROR` 1049；MySQL 1044/PG 42501 是"权限不足"，明确不归类），`SyncDatabaseSchema` 据此隐藏该行并记 Warn 日志、该次同步按成功返回（本地已与目标一致）。MSSQL 的 DSN 带 `database=`，库不存在与"登录无权打开该库"都返回 4060，无法可靠区分，故不归类（保守：保持可见，等实例枚举）。
+>
+> 实测：目标库 DROP 后单库同步，修复前报 `internal: ... FATAL: database "..." does not exist (SQLSTATE 3D000)` / `Error 1049 (42000): Unknown database '...'` 且行保持 `deleted=false`（幽灵库最长 15 分钟才消失）；修复后行立即 `deleted=true` 且 RPC 成功。可达性核验：PG 的实例清单来自 `pg_database`（任何登录可见），MySQL 用"仅表级授权"的用户实测 `information_schema.SCHEMATA` 仍列出该库、带库名连接与查询也成功——即"清单看不到但能读"在支持的两个引擎上不可达，评审原文担心的 flap 需要"清单漏列却不报错"的异常快照才可能发生；删掉那一行是为了让"显示"只有一个作者，而不是在修一个正在抖的 bug。
 
 syncer.go:598-609 在成功提交后无条件写 `Deleted: proto.Bool(false)`。排队中的条目若刚被 `SyncInstance` 标记软删（快照抖动、权限变更），这次同步会把它**复活**，下一轮实例同步又标记删除——产生 flap。
 
@@ -102,7 +116,7 @@ api/v1/instance_service.go:148-167 先开一个 admin driver 只为 fail-fast，
 
 1. ~~**先做 #1（事务内挪出网络抓取）**——改动小、收益明确，是真正的生产隐患~~ 已完成
 2. ~~**#2（白名单语义）**需要先决定产品语义：白名单到底是"同步范围"还是"可见范围"？然后统一三条入口~~ 已完成：字段整体删除，软删改用完整快照
-3. #3、#4 花十几行就能补上防护
+3. ~~#3、#4 花十几行就能补上防护~~ 已完成：#3 用进程内 singleflight（等待并复用 owner 结果）；#4 改成"隐藏可由任何缺席观测触发、显示只能由实例枚举触发"，并给 PG/MySQL/StarRocks 的 driver 补上"库不存在"的错误归类
 4. 其余属于顺手清理，可在下一次动这个包时一起做
 
 ## 附：正面观察

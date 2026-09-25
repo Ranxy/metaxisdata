@@ -584,6 +584,27 @@ func (e *ServiceEnv) SyncDatabase(ctx context.Context, t *testing.T, databaseNam
 	return database
 }
 
+// SyncDatabaseRaw calls SyncDatabase and returns its error instead of failing
+// the test, for scenarios that drive the failure paths.
+func (e *ServiceEnv) SyncDatabaseRaw(ctx context.Context, databaseName string) error {
+	_, err := e.databaseClient.SyncDatabase(ctx, authorizedRequest(e.token, &v1pb.SyncDatabaseRequest{Name: databaseName}))
+	return err
+}
+
+// SetInstanceMaximumConnections caps how many connections the instance may have
+// outstanding, so a test can make two overlapping syncs of one database prove
+// they serialize rather than each opening their own.
+func (e *ServiceEnv) SetInstanceMaximumConnections(ctx context.Context, instanceName string, maximum int32) error {
+	_, err := e.instanceClient.UpdateInstance(ctx, authorizedRequest(e.token, &v1pb.UpdateInstanceRequest{
+		Instance: &v1pb.Instance{
+			Name:               instanceName,
+			MaximumConnections: maximum,
+		},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"maximum_connections"}},
+	}))
+	return err
+}
+
 // WaitForContextLineage waits until the lineage API returns the expected context relations.
 func (e *ServiceEnv) WaitForContextLineage(ctx context.Context, t *testing.T, guid string, metaType v1pb.MetaType, predicate func([]*v1pb.LineageRelation) bool) []*v1pb.LineageRelation {
 	t.Helper()

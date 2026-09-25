@@ -169,8 +169,15 @@ func utf8ToISO88591(utf8Str string) (string, error) {
 	return isoBytes, nil
 }
 
-// SyncDBSchema syncs a single database schema.
-func (d *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchemaMetadata, error) {
+// SyncDBSchema syncs a single database schema. A database the target no longer
+// has is reported as common.NotFound, which is what tells a caller mirroring the
+// target's inventory apart from a permission or connectivity failure.
+func (d *Driver) SyncDBSchema(ctx context.Context) (metadata *storepb.DatabaseSchemaMetadata, err error) {
+	defer func() {
+		if err != nil {
+			err = databaseNotExistError(d.databaseName, err)
+		}
+	}()
 	schemaMetadata := &storepb.SchemaMetadata{
 		Name: "",
 	}

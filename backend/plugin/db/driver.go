@@ -118,7 +118,10 @@ type Driver interface {
 	// Sync schema
 	// SyncInstance syncs the instance metadata.
 	SyncInstance(ctx context.Context) (*InstanceMetadata, error)
-	// SyncDBSchema syncs a single database schema.
+	// SyncDBSchema syncs a single database schema. A database the target no
+	// longer has must be reported as common.NotFound (not as a plain error), so a
+	// caller can mirror the target's inventory instead of guessing from the
+	// message; every other failure keeps its own error.
 	SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchemaMetadata, error)
 }
 

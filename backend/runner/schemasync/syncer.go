@@ -52,6 +52,54 @@ type Syncer struct {
 	stateCfg        *state.State
 	lineageAnalyzer *lineageanalyzer.Analyzer
 	databaseSyncMap sync.Map // map[string]*store.DatabaseMessage
+	// databaseSyncGate serializes the schema sync of one database. The queue
+	// above is drained on dequeue, so it is not an in-flight guard by itself,
+	// and the API path calls SyncDatabaseSchema directly.
+	databaseSyncGate databaseSyncGate
+}
+
+// databaseSyncGate makes one schema sync per database run at a time inside the
+// process. Two concurrent syncs would each diff the digest they read before
+// either writes, so the later commit can delete a row the other just created or
+// deadlock against it. A caller that arrives while a sync is running waits for
+// it and reuses its outcome instead of starting a second sync.
+type databaseSyncGate struct {
+	mu       sync.Mutex
+	inFlight map[string]*databaseSyncCall
+}
+
+// databaseSyncCall is one database's running sync: done is closed when the
+// owner published err.
+type databaseSyncCall struct {
+	done chan struct{}
+	err  error
+}
+
+// acquire returns the call that owns the sync for key, or the call to wait on
+// when another caller already owns it.
+func (g *databaseSyncGate) acquire(key string) (call *databaseSyncCall, owner bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.inFlight == nil {
+		g.inFlight = map[string]*databaseSyncCall{}
+	}
+	if existing, ok := g.inFlight[key]; ok {
+		return existing, false
+	}
+	call = &databaseSyncCall{done: make(chan struct{})}
+	g.inFlight[key] = call
+	return call, true
+}
+
+// finish publishes the owner's result and releases the waiters. The entry is
+// removed before done is closed, so a caller arriving after this point starts a
+// fresh sync instead of reusing a finished one.
+func (g *databaseSyncGate) finish(key string, call *databaseSyncCall, err error) {
+	g.mu.Lock()
+	call.err = err
+	delete(g.inFlight, key)
+	g.mu.Unlock()
+	close(call.done)
 }
 
 // Run will run the schema syncer once.
@@ -392,7 +440,35 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 }
 
 // SyncDatabaseSchema will sync the schema for a database.
-func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.DatabaseMessage) error {
+//
+// Two callers can ask for the same database at once (the periodic checker and
+// the API both call this function), so the sync is serialized per database: a
+// caller that arrives while one is running waits for it and reuses its result.
+func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.DatabaseMessage) (err error) {
+	if database == nil {
+		return nil
+	}
+
+	key := database.String()
+	call, owner := s.databaseSyncGate.acquire(key)
+	if !owner {
+		select {
+		case <-call.done:
+			return call.err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			// The waiters must be released, and a panic is not a success they may
+			// reuse.
+			s.databaseSyncGate.finish(key, call, errors.Errorf("database schema sync panicked: %v", r))
+			panic(r)
+		}
+		s.databaseSyncGate.finish(key, call, err)
+	}()
+
 	instance, err := s.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &database.InstanceID})
 	if err != nil {
 		return errors.Wrapf(err, "failed to get instance %q", database.InstanceID)
@@ -416,6 +492,16 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	defer cancelFunc()
 	databaseMetadata, err := driver.SyncDBSchema(deadlineCtx)
 	if err != nil {
+		// The target no longer has this database. Every further sync of the row
+		// would fail the same way, so mirror the deletion here instead of leaving
+		// a database the target does not have visible until the next instance
+		// enumeration notices. Only that enumeration can show the row again.
+		if common.ErrorCode(err) == common.NotFound {
+			if hideErr := s.markDatabaseDeleted(ctx, database, err); hideErr != nil {
+				return errors.Wrapf(hideErr, "failed to hide database %q the target no longer has", database.DatabaseName)
+			}
+			return nil
+		}
 		return errors.Wrapf(err, "failed to sync database schema for database %q", database.DatabaseName)
 	}
 
@@ -589,10 +675,17 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	// LastSyncTime is recorded only after the metadata transaction committed.
 	// Writing it first would mark the database as synced even when the commit
 	// failed, skipping it for a whole sync interval.
+	//
+	// The deleted flag is deliberately not written here. A database becomes
+	// visible again only when the instance enumeration lists it (SyncInstance
+	// creates or revives the row), because only the enumeration answers "which
+	// databases does the instance have"; a single-database read is not that
+	// answer. Writing it here would let a sync of a database that a partial
+	// instance snapshot just hid resurrect it, and the next snapshot would hide
+	// it again.
 	if _, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
 		InstanceID:   database.InstanceID,
 		DatabaseName: database.DatabaseName,
-		Deleted:      proto.Bool(false),
 		MetadataUpdates: []func(*storepb.DatabaseMetadata){
 			func(md *storepb.DatabaseMetadata) {
 				md.LastSyncTime = timestamppb.Now()
@@ -602,6 +695,26 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to update database %q for instance %q", database.DatabaseName, database.InstanceID)
 	}
 
+	return nil
+}
+
+// markDatabaseDeleted hides a database the target reports it no longer has, and
+// records the driver error that established it. The metadata rows are kept: they
+// are the history of what the database held, and the instance enumeration
+// revives the row if the name reappears in a snapshot.
+func (s *Syncer) markDatabaseDeleted(ctx context.Context, database *store.DatabaseMessage, cause error) error {
+	deleted := true
+	if _, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
+		InstanceID:   database.InstanceID,
+		DatabaseName: database.DatabaseName,
+		Deleted:      &deleted,
+	}); err != nil {
+		return err
+	}
+	slog.Warn("Hiding a database the target no longer has",
+		slog.String("instance", database.InstanceID),
+		slog.String("database", database.DatabaseName),
+		log.WithError(cause))
 	return nil
 }
 

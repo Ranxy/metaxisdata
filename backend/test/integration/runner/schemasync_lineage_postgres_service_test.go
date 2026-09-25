@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -331,6 +332,89 @@ WHERE datname = '%s' AND pid <> pg_backend_pid();
 		}
 		return dropped.Deleted
 	}, 15*time.Second, 500*time.Millisecond)
+}
+
+// A per-database sync is an observation that the database is gone: the target
+// answers "database does not exist", so the row must be hidden right away rather
+// than staying visible (with a failing sync) until the next instance enumeration.
+func TestPostgresPerDatabaseSyncHidesDroppedDatabaseRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, sourceDatabase, databaseName := setupPostgresServiceDatabase(t)
+	env.SyncDatabase(ctx, t, databaseName)
+
+	require.NoError(t, env.ExecPostgres(ctx, "postgres", fmt.Sprintf(`
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = '%s' AND pid <> pg_backend_pid();
+`, quotePostgresStringLiteral(sourceDatabase))))
+	require.NoError(t, env.ExecPostgres(ctx, "postgres", fmt.Sprintf("DROP DATABASE IF EXISTS %s;", quotePostgresIdentifier(sourceDatabase))))
+
+	require.NoError(t, env.SyncDatabaseRaw(ctx, databaseName))
+
+	row, err := env.Store.GetDatabase(ctx, &store.FindDatabaseMessage{InstanceID: &instanceID, DatabaseName: &sourceDatabase, ShowDeleted: true})
+	require.NoError(t, err)
+	require.NotNil(t, row)
+	require.True(t, row.Deleted, "a database the target no longer has must not stay visible")
+}
+
+// A queued entry that outlives the instance sync which hid its database must not
+// show the row again: only an instance enumeration decides visibility, and no
+// enumeration runs inside this window.
+func TestPostgresDeletedDatabaseIsNotShownByASyncRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, sourceDatabase, _ := setupPostgresServiceDatabase(t)
+	instance, err := env.GetInstance(ctx, common.FormatInstance(instanceID))
+	require.NoError(t, err)
+
+	// Queue every database of the instance, then hide the row immediately: the
+	// queued entry still carries Deleted=false, so the checker picks it up on its
+	// next tick and syncs a database the registry says is gone.
+	env.SyncInstance(ctx, t, instance.GetName(), true)
+	deleted := true
+	_, err = env.Store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
+		InstanceID:   instanceID,
+		DatabaseName: sourceDatabase,
+		Deleted:      &deleted,
+	})
+	require.NoError(t, err)
+
+	require.Never(t, func() bool {
+		row, err := env.Store.GetDatabase(context.Background(), &store.FindDatabaseMessage{InstanceID: &instanceID, DatabaseName: &sourceDatabase, ShowDeleted: true})
+		return err == nil && row != nil && !row.Deleted
+	}, 15*time.Second, 500*time.Millisecond)
+}
+
+// Two syncs of one database must not run at once: with a single outstanding
+// connection allowed, both requests can only succeed if one waits for the other
+// instead of opening its own.
+func TestPostgresConcurrentDatabaseSyncCoalescesRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, _, databaseName := setupPostgresServiceDatabase(t)
+
+	// CreateInstance queues every database, and the checker drains that queue
+	// within a tick; let it finish so no periodic sync competes below.
+	time.Sleep(11 * time.Second)
+	require.NoError(t, env.SetInstanceMaximumConnections(ctx, common.FormatInstance(instanceID), 1))
+
+	const callers = 4
+	start := make(chan struct{})
+	errs := make([]error, callers)
+	var wg sync.WaitGroup
+	for i := range errs {
+		wg.Go(func() {
+			<-start
+			errs[i] = env.SyncDatabaseRaw(ctx, databaseName)
+		})
+	}
+	close(start)
+	wg.Wait()
+
+	for i, err := range errs {
+		require.NoErrorf(t, err, "concurrent sync %d must reuse the running sync's result", i)
+	}
 }
 
 func setupPostgresServiceDatabase(t *testing.T) (*integrationenv.ServiceEnv, context.Context, string, string, string) {

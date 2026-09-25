@@ -225,6 +225,25 @@ CREATE TABLE IF NOT EXISTS t1 (id INT PRIMARY KEY);
 	}, 15*time.Second, 500*time.Millisecond)
 }
 
+// A per-database sync is an observation that the database is gone: the target
+// answers ER_BAD_DB_ERROR, so the row must be hidden right away rather than
+// staying visible (with a failing sync) until the next instance enumeration.
+func TestMySQLPerDatabaseSyncHidesDroppedDatabaseRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, sourceDatabase, databaseName := setupMySQLServiceDatabase(t)
+	env.SyncDatabase(ctx, t, databaseName)
+
+	require.NoError(t, env.ExecMySQL(ctx, fmt.Sprintf("DROP DATABASE IF EXISTS %s;", quoteMySQLIdentifier(sourceDatabase))))
+
+	require.NoError(t, env.SyncDatabaseRaw(ctx, databaseName))
+
+	row, err := env.Store.GetDatabase(ctx, &store.FindDatabaseMessage{InstanceID: &instanceID, DatabaseName: &sourceDatabase, ShowDeleted: true})
+	require.NoError(t, err)
+	require.NotNil(t, row)
+	require.True(t, row.Deleted, "a database the target no longer has must not stay visible")
+}
+
 func setupMySQLServiceDatabase(t *testing.T) (*integrationenv.ServiceEnv, context.Context, string, string, string) {
 	t.Helper()
 

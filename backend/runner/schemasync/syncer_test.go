@@ -2,6 +2,7 @@ package schemasync
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -327,4 +328,79 @@ func countDatabaseSyncMapItems(m *sync.Map) int {
 		return true
 	})
 	return count
+}
+
+// One sync per database at a time: a second caller joins the running one instead
+// of starting a sync that would diff the same digest and interleave its writes.
+func TestDatabaseSyncGateSerializesOneDatabase(t *testing.T) {
+	t.Parallel()
+
+	gate := &databaseSyncGate{}
+	owner, ok := gate.acquire("inst-1;db1")
+	require.True(t, ok, "the first caller owns the database's sync")
+
+	joiner, ok := gate.acquire("inst-1;db1")
+	require.False(t, ok, "the second caller must not own the same database's sync")
+	require.Same(t, owner, joiner)
+
+	other, ok := gate.acquire("inst-1;db2")
+	require.True(t, ok, "another database is unaffected")
+
+	gate.finish("inst-1;db1", owner, errors.New("sync failed"))
+	select {
+	case <-joiner.done:
+	default:
+		t.Fatal("finish must release the waiters")
+	}
+	require.EqualError(t, joiner.err, "sync failed")
+
+	fresh, ok := gate.acquire("inst-1;db1")
+	require.True(t, ok, "a finished sync must not be reused")
+	require.NotSame(t, owner, fresh)
+
+	gate.finish("inst-1;db1", fresh, nil)
+	gate.finish("inst-1;db2", other, nil)
+}
+
+// A nil database is nothing to sync; the store being nil proves the check runs
+// before anything dereferences the message.
+func TestSyncDatabaseSchemaIgnoresNilDatabase(t *testing.T) {
+	t.Parallel()
+
+	syncer := &Syncer{}
+	require.NoError(t, syncer.SyncDatabaseSchema(context.Background(), nil))
+}
+
+// A joiner reuses the running sync's outcome, including its error, without
+// touching the store itself.
+func TestSyncDatabaseSchemaJoinerReusesTheOwnerResult(t *testing.T) {
+	t.Parallel()
+
+	syncer := &Syncer{}
+	database := &store.DatabaseMessage{InstanceID: "inst-1", DatabaseName: "db1"}
+	call, owner := syncer.databaseSyncGate.acquire(database.String())
+	require.True(t, owner)
+
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		syncer.databaseSyncGate.finish(database.String(), call, errors.New("owner failed"))
+	}()
+
+	require.EqualError(t, syncer.SyncDatabaseSchema(context.Background(), database), "owner failed")
+}
+
+// A caller that is waiting on a running sync returns its own cancellation
+// instead of staying pinned to the owner.
+func TestSyncDatabaseSchemaJoinerReturnsItsOwnCancellation(t *testing.T) {
+	t.Parallel()
+
+	syncer := &Syncer{}
+	database := &store.DatabaseMessage{InstanceID: "inst-1", DatabaseName: "db1"}
+	call, owner := syncer.databaseSyncGate.acquire(database.String())
+	require.True(t, owner)
+	defer syncer.databaseSyncGate.finish(database.String(), call, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	require.ErrorIs(t, syncer.SyncDatabaseSchema(ctx, database), context.Canceled)
 }
