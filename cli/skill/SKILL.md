@@ -94,7 +94,7 @@ stdout is **exactly one JSON document**; progress, warnings and errors go to
 - Lists page themselves; `"truncated": true` plus `"nextPageToken"` means the
   cap (`--max-items`, default 1000) was reached.
 - `lineage sql` always groups by scope, even for one scope:
-  `{"results": [{"scopeName", "scopeGuid", "relations", "graphs", "warnings"}]}`.
+  `{"results": [{"scopeName", "scopeGuid", "relations", "graphs", "warnings", "diagnostics"}]}`.
 
 ### Temporary relations
 
@@ -111,6 +111,29 @@ bare `SELECT`. Then the entry says so, rather than looking empty:
 If the question is "which tables does this query read", that answer is already
 in the relations; if it is "where do these output columns come from", re-run
 with `--include-temp` — the `targetColumn` is then the output alias.
+
+### Partial analyses
+
+A statement the analyzer cannot fully represent still returns the relations it
+did resolve. `diagnostics` says what it could not, one entry per gap, so a gap
+never reads as "this statement has no lineage"; `omittedDiagnosticCount` appears
+when the server's bound dropped some:
+
+```json
+{"scopeName": "dev", "scopeGuid": "1;shop",
+ "relations": [{"sourceGuid": "1;shop;;orders", "targetGuid": "1;shop;;daily", "...": "..."}],
+ "diagnostics": [{"category": "DIAGNOSTIC_CATEGORY_NOT_MODELLED",
+                  "subject": "MERGE", "reference": "", "detail": ""}],
+ "warnings": []}
+```
+
+`category` is one of `DIAGNOSTIC_CATEGORY_NOT_MODELLED` (the analyzer does not
+model this shape yet — a coverage gap), `DIAGNOSTIC_CATEGORY_UNRESOLVED_REFERENCE`
+(the SQL names something the analyzer cannot see; `reference` is the identifier
+as written), `DIAGNOSTIC_CATEGORY_AMBIGUOUS_REFERENCE` (an unqualified name
+several relations own) or `DIAGNOSTIC_CATEGORY_CATALOG_UNAVAILABLE` (a metadata
+lookup failed, so the relation's columns are unknown and its edges are degraded).
+A statement that does not parse is not a partial analysis: it fails the scope.
 
 ### What the graph is
 

@@ -11,17 +11,15 @@ import (
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/engines"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/testutil"
-
-	// Every engine registers its analyzer and its statement splitter from its own
-	// init function.
-	_ "github.com/Ranxy/metaxisdata/backend/plugin/lineage/mariadb"
-	_ "github.com/Ranxy/metaxisdata/backend/plugin/lineage/mysql"
-	_ "github.com/Ranxy/metaxisdata/backend/plugin/lineage/postgresql"
-	_ "github.com/Ranxy/metaxisdata/backend/plugin/lineage/starrocks"
-	_ "github.com/Ranxy/metaxisdata/backend/plugin/lineage/tidb"
 )
+
+// analyzer is the root package over the engines this build supports: the dialects
+// export their registrations and the process assembles them, which is what the
+// tests here exercise. A nil catalog is enough for the statements they use.
+var analyzer = lineage.NewAnalyzer(nil, engines.Registrations()...)
 
 // scriptEngines are the engines that register a splitter, so every one of them has
 // to agree on what a multi-statement script means.
@@ -44,7 +42,7 @@ func TestScriptStatementsStayIndependent(t *testing.T) {
 		t.Run(engine.String(), func(t *testing.T) {
 			t.Parallel()
 
-			relations, err := lineage.GetAnalyzeRelation(context.Background(), engine,
+			relations, err := analyzer.Analyze(context.Background(), engine,
 				"SELECT a FROM t1; SELECT b FROM t2")
 			require.NoError(t, err)
 			require.True(t, hasScriptEdge(relations, "t1", "a", model.ResultTableName, "a"),
@@ -69,7 +67,7 @@ func TestScriptStatementsDoNotShareScope(t *testing.T) {
 
 			// The UPDATE's subquery WHERE decides which rows the subquery yields,
 			// and it used to be attributed to the next statement's result.
-			relations, err := lineage.GetAnalyzeRelation(context.Background(), engine,
+			relations, err := analyzer.Analyze(context.Background(), engine,
 				"UPDATE t SET a = (SELECT y FROM s WHERE s.z > 1); SELECT x FROM u")
 			require.NoError(t, err)
 			require.True(t, hasScriptEdge(relations, "s", "y", "t", "a"),
@@ -83,7 +81,7 @@ func TestScriptStatementsDoNotShareScope(t *testing.T) {
 
 			// The second statement names `c`, which only the first statement
 			// declared, so it is a stored relation the second statement reads.
-			relations, err = lineage.GetAnalyzeRelation(context.Background(), engine,
+			relations, err = analyzer.Analyze(context.Background(), engine,
 				"WITH c AS (SELECT x FROM s) SELECT x FROM c; SELECT y FROM c")
 			require.NoError(t, err)
 			require.True(t, hasScriptEdge(relations, "s", "x", model.ResultTableName, "x"),
@@ -119,7 +117,7 @@ func TestUnmodelledStatementIsAGapBesideTheOthers(t *testing.T) {
 		t.Run(tc.engine.String(), func(t *testing.T) {
 			t.Parallel()
 
-			relations, err := lineage.GetAnalyzeRelation(context.Background(), tc.engine,
+			relations, err := analyzer.Analyze(context.Background(), tc.engine,
 				"SELECT a FROM t1; "+tc.merge)
 
 			var unsupported *lineage.UnsupportedStatementError
@@ -142,12 +140,36 @@ func TestScriptParseErrorFailsWhole(t *testing.T) {
 		t.Run(engine.String(), func(t *testing.T) {
 			t.Parallel()
 
-			relations, err := lineage.GetAnalyzeRelation(context.Background(), engine,
+			relations, err := analyzer.Analyze(context.Background(), engine,
 				"SELECT a FROM t1; THIS IS NOT SQL")
 			require.Error(t, err)
 			require.Nil(t, relations)
 		})
 	}
+}
+
+// TestPartialAnalysisReportsStructuredDiagnostics pins that a partial analysis
+// says what is missing as data and not only as prose: the API layer maps the
+// categories onto its own enum, so a caller can act on the cause instead of
+// parsing the server's sentence. The rendered text stays the contract the corpus
+// and the stored version message rely on.
+func TestPartialAnalysisReportsStructuredDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	relations, err := analyzer.Analyze(context.Background(), storepb.Engine_MYSQL,
+		"SELECT id FROM a; WITH c AS (SELECT id FROM a) DELETE FROM dst WHERE id IN (SELECT id FROM c)")
+	require.True(t, hasScriptEdge(relations, "a", "id", model.ResultTableName, "id"),
+		"the other statement's edge must survive: %s", testutil.FormatRelations(relations))
+
+	var unsupported *lineage.UnsupportedStatementError
+	require.ErrorAs(t, err, &unsupported)
+	require.Len(t, unsupported.Diagnostics, 1)
+	require.Equal(t, model.DiagnosticNotModelled, unsupported.Diagnostics[0].Category)
+	require.Equal(t, "WITH before DELETE", unsupported.Diagnostics[0].Subject)
+	require.Zero(t, unsupported.Diagnostics[0].Reference)
+	require.Contains(t, unsupported.Diagnostics[0].Detail, "drops the CTE")
+	require.Zero(t, unsupported.Omitted)
+	require.Contains(t, unsupported.Error(), "not modelled: WITH before DELETE")
 }
 
 // hasScriptEdge reports whether an edge connects the two named columns.

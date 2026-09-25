@@ -13,12 +13,16 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/testutil"
 )
 
-// The package registers its engine through the shared seam, so the lineage
-// runner and Explain SQL resolve it without an engine-specific branch.
+// thisEngine is this dialect's registration on its own. The process assembles the
+// whole set; a test here only pins which engine this package claims, which is what
+// keeps the runner and Explain SQL from needing an engine-specific branch.
+var thisEngine = lineage.NewAnalyzer(nil, Registration())
+
+// The package's Registration binds MARIADB.
 func TestRegistersEngine(t *testing.T) {
 	t.Parallel()
 
-	relations, err := lineage.GetAnalyzeRelation(context.TODO(), storepb.Engine_MARIADB, "SELECT a.id FROM users a")
+	relations, err := thisEngine.Analyze(context.TODO(), storepb.Engine_MARIADB, "SELECT a.id FROM users a")
 	require.NoError(t, err)
 	require.NotEmpty(t, relations)
 }
@@ -29,7 +33,7 @@ func TestUnsupportedEngineIsNotRegistered(t *testing.T) {
 	t.Parallel()
 
 	for _, engine := range []storepb.Engine{storepb.Engine_DORIS, storepb.Engine_OCEANBASE} {
-		_, err := lineage.GetAnalyzeRelation(context.TODO(), engine, "SELECT id FROM t")
+		_, err := thisEngine.Analyze(context.TODO(), engine, "SELECT id FROM t")
 		require.ErrorIs(t, err, lineage.ErrorEngineNotSupported, "engine %s", engine)
 	}
 }

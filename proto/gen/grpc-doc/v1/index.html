@@ -992,6 +992,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.AnalyzeSQLDiagnostic"><span class="badge">M</span>AnalyzeSQLDiagnostic</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.AnalyzeSQLRelation"><span class="badge">M</span>AnalyzeSQLRelation</a>
                 </li>
               
@@ -1047,6 +1051,10 @@
                   <a href="#metaxisdata.v1.Transformation"><span class="badge">M</span>Transformation</a>
                 </li>
               
+              
+                <li>
+                  <a href="#metaxisdata.v1.DiagnosticCategory"><span class="badge">E</span>DiagnosticCategory</a>
+                </li>
               
                 <li>
                   <a href="#metaxisdata.v1.LineageType"><span class="badge">E</span>LineageType</a>
@@ -10462,6 +10470,55 @@ of the database or schema is not validated. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.AnalyzeSQLDiagnostic">AnalyzeSQLDiagnostic</h3>
+        <p>AnalyzeSQLDiagnostic is one thing an analysis could not represent.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>category</td>
+                  <td><a href="#metaxisdata.v1.DiagnosticCategory">DiagnosticCategory</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>subject</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>What the diagnostic is about, the way the analyzer names it: the statement
+or clause shape it does not model (&#34;MERGE&#34;, &#34;WITH before INSERT&#34;), or the
+clause a reference was written in (&#34;a CTE body&#34;). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>reference</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The identifier a reference diagnostic could not resolve, written the way the
+SQL writes it (&#34;t.c&#34;, &#34;t&#34;, &#34;c&#34;). Empty when the diagnostic is about a shape. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>detail</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The cause, for a diagnostic that needs one: the parser defect behind a
+skipped clause, or the catalog error behind a degraded lookup. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.AnalyzeSQLRelation">AnalyzeSQLRelation</h3>
         <p></p>
 
@@ -10649,6 +10706,24 @@ absent from the metadata. </p></td>
                   <td>repeated</td>
                   <td><p>Warnings that only affect this scope, such as an engine without a lineage
 analyzer. They never fail the whole request. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>diagnostics</td>
+                  <td><a href="#metaxisdata.v1.AnalyzeSQLDiagnostic">AnalyzeSQLDiagnostic</a></td>
+                  <td>repeated</td>
+                  <td><p>What the analysis could not represent. relations is everything it did
+resolve; a diagnostic says why an edge may be missing, which the relations
+alone cannot say. An analyzer that cannot parse the statement is not
+reported here: that fails the scope instead. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>omitted_diagnostic_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many diagnostics the server&#39;s per-analysis bound left out, so a caller
+can tell a complete list from a truncated one. </p></td>
                 </tr>
               
             </tbody>
@@ -11258,6 +11333,49 @@ ALL and EXCEPT ALL, false for their plain forms (UNION, INTERSECT, EXCEPT). </p>
         
       
 
+      
+        <h3 id="metaxisdata.v1.DiagnosticCategory">DiagnosticCategory</h3>
+        <p>DiagnosticCategory classifies what an analysis could not represent. The</p><p>categories call for different action: a shape the analyzer does not model is a</p><p>coverage gap in the analyzer, while a reference that does not resolve is</p><p>usually the SQL naming something the analyzer cannot see.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>DIAGNOSTIC_CATEGORY_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DIAGNOSTIC_CATEGORY_NOT_MODELLED</td>
+                <td>1</td>
+                <td><p>A statement or clause shape the analyzer does not model yet.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DIAGNOSTIC_CATEGORY_UNRESOLVED_REFERENCE</td>
+                <td>2</td>
+                <td><p>A reference that resolved to nothing.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DIAGNOSTIC_CATEGORY_AMBIGUOUS_REFERENCE</td>
+                <td>3</td>
+                <td><p>A reference a single-valued position could not choose between, which is an
+unqualified name several relations in scope own.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DIAGNOSTIC_CATEGORY_CATALOG_UNAVAILABLE</td>
+                <td>4</td>
+                <td><p>A metadata lookup that failed. The analysis carried on with the relation&#39;s
+columns unknown, so its edges are degraded rather than complete.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
       
         <h3 id="metaxisdata.v1.LineageType">LineageType</h3>
         <p></p>

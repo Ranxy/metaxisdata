@@ -145,6 +145,71 @@ func (RelationType) EnumDescriptor() ([]byte, []int) {
 	return file_v1_lineage_service_proto_rawDescGZIP(), []int{1}
 }
 
+// DiagnosticCategory classifies what an analysis could not represent. The
+// categories call for different action: a shape the analyzer does not model is a
+// coverage gap in the analyzer, while a reference that does not resolve is
+// usually the SQL naming something the analyzer cannot see.
+type DiagnosticCategory int32
+
+const (
+	DiagnosticCategory_DIAGNOSTIC_CATEGORY_UNSPECIFIED DiagnosticCategory = 0
+	// A statement or clause shape the analyzer does not model yet.
+	DiagnosticCategory_DIAGNOSTIC_CATEGORY_NOT_MODELLED DiagnosticCategory = 1
+	// A reference that resolved to nothing.
+	DiagnosticCategory_DIAGNOSTIC_CATEGORY_UNRESOLVED_REFERENCE DiagnosticCategory = 2
+	// A reference a single-valued position could not choose between, which is an
+	// unqualified name several relations in scope own.
+	DiagnosticCategory_DIAGNOSTIC_CATEGORY_AMBIGUOUS_REFERENCE DiagnosticCategory = 3
+	// A metadata lookup that failed. The analysis carried on with the relation's
+	// columns unknown, so its edges are degraded rather than complete.
+	DiagnosticCategory_DIAGNOSTIC_CATEGORY_CATALOG_UNAVAILABLE DiagnosticCategory = 4
+)
+
+// Enum value maps for DiagnosticCategory.
+var (
+	DiagnosticCategory_name = map[int32]string{
+		0: "DIAGNOSTIC_CATEGORY_UNSPECIFIED",
+		1: "DIAGNOSTIC_CATEGORY_NOT_MODELLED",
+		2: "DIAGNOSTIC_CATEGORY_UNRESOLVED_REFERENCE",
+		3: "DIAGNOSTIC_CATEGORY_AMBIGUOUS_REFERENCE",
+		4: "DIAGNOSTIC_CATEGORY_CATALOG_UNAVAILABLE",
+	}
+	DiagnosticCategory_value = map[string]int32{
+		"DIAGNOSTIC_CATEGORY_UNSPECIFIED":          0,
+		"DIAGNOSTIC_CATEGORY_NOT_MODELLED":         1,
+		"DIAGNOSTIC_CATEGORY_UNRESOLVED_REFERENCE": 2,
+		"DIAGNOSTIC_CATEGORY_AMBIGUOUS_REFERENCE":  3,
+		"DIAGNOSTIC_CATEGORY_CATALOG_UNAVAILABLE":  4,
+	}
+)
+
+func (x DiagnosticCategory) Enum() *DiagnosticCategory {
+	p := new(DiagnosticCategory)
+	*p = x
+	return p
+}
+
+func (x DiagnosticCategory) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DiagnosticCategory) Descriptor() protoreflect.EnumDescriptor {
+	return file_v1_lineage_service_proto_enumTypes[2].Descriptor()
+}
+
+func (DiagnosticCategory) Type() protoreflect.EnumType {
+	return &file_v1_lineage_service_proto_enumTypes[2]
+}
+
+func (x DiagnosticCategory) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DiagnosticCategory.Descriptor instead.
+func (DiagnosticCategory) EnumDescriptor() ([]byte, []int) {
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{2}
+}
+
 type LineageRelation struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Id              int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -954,9 +1019,17 @@ type AnalyzeSQLResult struct {
 	Relations []*AnalyzeSQLRelation `protobuf:"bytes,3,rep,name=relations,proto3" json:"relations,omitempty"`
 	// Warnings that only affect this scope, such as an engine without a lineage
 	// analyzer. They never fail the whole request.
-	Warnings      []string `protobuf:"bytes,4,rep,name=warnings,proto3" json:"warnings,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Warnings []string `protobuf:"bytes,4,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	// What the analysis could not represent. relations is everything it did
+	// resolve; a diagnostic says why an edge may be missing, which the relations
+	// alone cannot say. An analyzer that cannot parse the statement is not
+	// reported here: that fails the scope instead.
+	Diagnostics []*AnalyzeSQLDiagnostic `protobuf:"bytes,5,rep,name=diagnostics,proto3" json:"diagnostics,omitempty"`
+	// How many diagnostics the server's per-analysis bound left out, so a caller
+	// can tell a complete list from a truncated one.
+	OmittedDiagnosticCount int32 `protobuf:"varint,6,opt,name=omitted_diagnostic_count,json=omittedDiagnosticCount,proto3" json:"omitted_diagnostic_count,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *AnalyzeSQLResult) Reset() {
@@ -1017,6 +1090,96 @@ func (x *AnalyzeSQLResult) GetWarnings() []string {
 	return nil
 }
 
+func (x *AnalyzeSQLResult) GetDiagnostics() []*AnalyzeSQLDiagnostic {
+	if x != nil {
+		return x.Diagnostics
+	}
+	return nil
+}
+
+func (x *AnalyzeSQLResult) GetOmittedDiagnosticCount() int32 {
+	if x != nil {
+		return x.OmittedDiagnosticCount
+	}
+	return 0
+}
+
+// AnalyzeSQLDiagnostic is one thing an analysis could not represent.
+type AnalyzeSQLDiagnostic struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Category DiagnosticCategory     `protobuf:"varint,1,opt,name=category,proto3,enum=metaxisdata.v1.DiagnosticCategory" json:"category,omitempty"`
+	// What the diagnostic is about, the way the analyzer names it: the statement
+	// or clause shape it does not model ("MERGE", "WITH before INSERT"), or the
+	// clause a reference was written in ("a CTE body").
+	Subject string `protobuf:"bytes,2,opt,name=subject,proto3" json:"subject,omitempty"`
+	// The identifier a reference diagnostic could not resolve, written the way the
+	// SQL writes it ("t.c", "t", "c"). Empty when the diagnostic is about a shape.
+	Reference string `protobuf:"bytes,3,opt,name=reference,proto3" json:"reference,omitempty"`
+	// The cause, for a diagnostic that needs one: the parser defect behind a
+	// skipped clause, or the catalog error behind a degraded lookup.
+	Detail        string `protobuf:"bytes,4,opt,name=detail,proto3" json:"detail,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AnalyzeSQLDiagnostic) Reset() {
+	*x = AnalyzeSQLDiagnostic{}
+	mi := &file_v1_lineage_service_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnalyzeSQLDiagnostic) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnalyzeSQLDiagnostic) ProtoMessage() {}
+
+func (x *AnalyzeSQLDiagnostic) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_lineage_service_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnalyzeSQLDiagnostic.ProtoReflect.Descriptor instead.
+func (*AnalyzeSQLDiagnostic) Descriptor() ([]byte, []int) {
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *AnalyzeSQLDiagnostic) GetCategory() DiagnosticCategory {
+	if x != nil {
+		return x.Category
+	}
+	return DiagnosticCategory_DIAGNOSTIC_CATEGORY_UNSPECIFIED
+}
+
+func (x *AnalyzeSQLDiagnostic) GetSubject() string {
+	if x != nil {
+		return x.Subject
+	}
+	return ""
+}
+
+func (x *AnalyzeSQLDiagnostic) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
+}
+
+func (x *AnalyzeSQLDiagnostic) GetDetail() string {
+	if x != nil {
+		return x.Detail
+	}
+	return ""
+}
+
 type AnalyzeSQLRelation struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The table-level GUID of the source column, with instance/database/schema
@@ -1041,7 +1204,7 @@ type AnalyzeSQLRelation struct {
 
 func (x *AnalyzeSQLRelation) Reset() {
 	*x = AnalyzeSQLRelation{}
-	mi := &file_v1_lineage_service_proto_msgTypes[11]
+	mi := &file_v1_lineage_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1053,7 +1216,7 @@ func (x *AnalyzeSQLRelation) String() string {
 func (*AnalyzeSQLRelation) ProtoMessage() {}
 
 func (x *AnalyzeSQLRelation) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_lineage_service_proto_msgTypes[11]
+	mi := &file_v1_lineage_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1066,7 +1229,7 @@ func (x *AnalyzeSQLRelation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnalyzeSQLRelation.ProtoReflect.Descriptor instead.
 func (*AnalyzeSQLRelation) Descriptor() ([]byte, []int) {
-	return file_v1_lineage_service_proto_rawDescGZIP(), []int{11}
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *AnalyzeSQLRelation) GetSourceGuid() string {
@@ -1149,7 +1312,7 @@ type GetLineageGraphRequest struct {
 
 func (x *GetLineageGraphRequest) Reset() {
 	*x = GetLineageGraphRequest{}
-	mi := &file_v1_lineage_service_proto_msgTypes[12]
+	mi := &file_v1_lineage_service_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1161,7 +1324,7 @@ func (x *GetLineageGraphRequest) String() string {
 func (*GetLineageGraphRequest) ProtoMessage() {}
 
 func (x *GetLineageGraphRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_lineage_service_proto_msgTypes[12]
+	mi := &file_v1_lineage_service_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1174,7 +1337,7 @@ func (x *GetLineageGraphRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLineageGraphRequest.ProtoReflect.Descriptor instead.
 func (*GetLineageGraphRequest) Descriptor() ([]byte, []int) {
-	return file_v1_lineage_service_proto_rawDescGZIP(), []int{12}
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetLineageGraphRequest) GetGuid() string {
@@ -1224,7 +1387,7 @@ type GetLineageGraphResponse struct {
 
 func (x *GetLineageGraphResponse) Reset() {
 	*x = GetLineageGraphResponse{}
-	mi := &file_v1_lineage_service_proto_msgTypes[13]
+	mi := &file_v1_lineage_service_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1236,7 +1399,7 @@ func (x *GetLineageGraphResponse) String() string {
 func (*GetLineageGraphResponse) ProtoMessage() {}
 
 func (x *GetLineageGraphResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_lineage_service_proto_msgTypes[13]
+	mi := &file_v1_lineage_service_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1249,7 +1412,7 @@ func (x *GetLineageGraphResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLineageGraphResponse.ProtoReflect.Descriptor instead.
 func (*GetLineageGraphResponse) Descriptor() ([]byte, []int) {
-	return file_v1_lineage_service_proto_rawDescGZIP(), []int{13}
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetLineageGraphResponse) GetRootGuid() string {
@@ -1315,7 +1478,7 @@ type LineageNode struct {
 
 func (x *LineageNode) Reset() {
 	*x = LineageNode{}
-	mi := &file_v1_lineage_service_proto_msgTypes[14]
+	mi := &file_v1_lineage_service_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1327,7 +1490,7 @@ func (x *LineageNode) String() string {
 func (*LineageNode) ProtoMessage() {}
 
 func (x *LineageNode) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_lineage_service_proto_msgTypes[14]
+	mi := &file_v1_lineage_service_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1340,7 +1503,7 @@ func (x *LineageNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LineageNode.ProtoReflect.Descriptor instead.
 func (*LineageNode) Descriptor() ([]byte, []int) {
-	return file_v1_lineage_service_proto_rawDescGZIP(), []int{14}
+	return file_v1_lineage_service_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *LineageNode) GetGuid() string {
@@ -1465,14 +1628,21 @@ const file_v1_lineage_service_proto_rawDesc = "" +
 	"\bsql_text\x18\x02 \x01(\tB\x03\xe0A\x02R\asqlText\"l\n" +
 	"\x12AnalyzeSQLResponse\x12:\n" +
 	"\aresults\x18\x01 \x03(\v2 .metaxisdata.v1.AnalyzeSQLResultR\aresults\x12\x1a\n" +
-	"\bwarnings\x18\x02 \x03(\tR\bwarnings\"\xae\x01\n" +
+	"\bwarnings\x18\x02 \x03(\tR\bwarnings\"\xb0\x02\n" +
 	"\x10AnalyzeSQLResult\x12\x1d\n" +
 	"\n" +
 	"scope_name\x18\x01 \x01(\tR\tscopeName\x12\x1d\n" +
 	"\n" +
 	"scope_guid\x18\x02 \x01(\tR\tscopeGuid\x12@\n" +
 	"\trelations\x18\x03 \x03(\v2\".metaxisdata.v1.AnalyzeSQLRelationR\trelations\x12\x1a\n" +
-	"\bwarnings\x18\x04 \x03(\tR\bwarnings\"\xbc\x03\n" +
+	"\bwarnings\x18\x04 \x03(\tR\bwarnings\x12F\n" +
+	"\vdiagnostics\x18\x05 \x03(\v2$.metaxisdata.v1.AnalyzeSQLDiagnosticR\vdiagnostics\x128\n" +
+	"\x18omitted_diagnostic_count\x18\x06 \x01(\x05R\x16omittedDiagnosticCount\"\xa6\x01\n" +
+	"\x14AnalyzeSQLDiagnostic\x12>\n" +
+	"\bcategory\x18\x01 \x01(\x0e2\".metaxisdata.v1.DiagnosticCategoryR\bcategory\x12\x18\n" +
+	"\asubject\x18\x02 \x01(\tR\asubject\x12\x1c\n" +
+	"\treference\x18\x03 \x01(\tR\treference\x12\x16\n" +
+	"\x06detail\x18\x04 \x01(\tR\x06detail\"\xbc\x03\n" +
 	"\x12AnalyzeSQLRelation\x12\x1f\n" +
 	"\vsource_guid\x18\x01 \x01(\tR\n" +
 	"sourceGuid\x12#\n" +
@@ -1525,7 +1695,13 @@ const file_v1_lineage_service_proto_rawDesc = "" +
 	"\tINTERSECT\x10\x06\x12\n" +
 	"\n" +
 	"\x06EXCEPT\x10\a\x12\v\n" +
-	"\aUNKNOWN\x10\b2\xf5\x04\n" +
+	"\aUNKNOWN\x10\b*\xe7\x01\n" +
+	"\x12DiagnosticCategory\x12#\n" +
+	"\x1fDIAGNOSTIC_CATEGORY_UNSPECIFIED\x10\x00\x12$\n" +
+	" DIAGNOSTIC_CATEGORY_NOT_MODELLED\x10\x01\x12,\n" +
+	"(DIAGNOSTIC_CATEGORY_UNRESOLVED_REFERENCE\x10\x02\x12+\n" +
+	"'DIAGNOSTIC_CATEGORY_AMBIGUOUS_REFERENCE\x10\x03\x12+\n" +
+	"'DIAGNOSTIC_CATEGORY_CATALOG_UNAVAILABLE\x10\x042\xf5\x04\n" +
 	"\x0eLineageService\x12\x84\x01\n" +
 	"\n" +
 	"GetLineage\x12!.metaxisdata.v1.GetLineageRequest\x1a\".metaxisdata.v1.GetLineageResponse\"/\x8a\xea0\x17metaxisdata.lineage.get\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/lineages\x12\xaa\x01\n" +
@@ -1546,69 +1722,73 @@ func file_v1_lineage_service_proto_rawDescGZIP() []byte {
 	return file_v1_lineage_service_proto_rawDescData
 }
 
-var file_v1_lineage_service_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_v1_lineage_service_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_v1_lineage_service_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_v1_lineage_service_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_v1_lineage_service_proto_goTypes = []any{
 	(LineageType)(0),                     // 0: metaxisdata.v1.LineageType
 	(RelationType)(0),                    // 1: metaxisdata.v1.RelationType
-	(*LineageRelation)(nil),              // 2: metaxisdata.v1.LineageRelation
-	(*Transformation)(nil),               // 3: metaxisdata.v1.Transformation
-	(*GetLineageRequest)(nil),            // 4: metaxisdata.v1.GetLineageRequest
-	(*GetLineageResponse)(nil),           // 5: metaxisdata.v1.GetLineageResponse
-	(*ExternalDatasetInfo)(nil),          // 6: metaxisdata.v1.ExternalDatasetInfo
-	(*GetLineageForContextRequest)(nil),  // 7: metaxisdata.v1.GetLineageForContextRequest
-	(*GetLineageForContextResponse)(nil), // 8: metaxisdata.v1.GetLineageForContextResponse
-	(*AnalysisScope)(nil),                // 9: metaxisdata.v1.AnalysisScope
-	(*AnalyzeSQLRequest)(nil),            // 10: metaxisdata.v1.AnalyzeSQLRequest
-	(*AnalyzeSQLResponse)(nil),           // 11: metaxisdata.v1.AnalyzeSQLResponse
-	(*AnalyzeSQLResult)(nil),             // 12: metaxisdata.v1.AnalyzeSQLResult
-	(*AnalyzeSQLRelation)(nil),           // 13: metaxisdata.v1.AnalyzeSQLRelation
-	(*GetLineageGraphRequest)(nil),       // 14: metaxisdata.v1.GetLineageGraphRequest
-	(*GetLineageGraphResponse)(nil),      // 15: metaxisdata.v1.GetLineageGraphResponse
-	(*LineageNode)(nil),                  // 16: metaxisdata.v1.LineageNode
-	(MetaType)(0),                        // 17: metaxisdata.v1.MetaType
-	(*timestamppb.Timestamp)(nil),        // 18: google.protobuf.Timestamp
+	(DiagnosticCategory)(0),              // 2: metaxisdata.v1.DiagnosticCategory
+	(*LineageRelation)(nil),              // 3: metaxisdata.v1.LineageRelation
+	(*Transformation)(nil),               // 4: metaxisdata.v1.Transformation
+	(*GetLineageRequest)(nil),            // 5: metaxisdata.v1.GetLineageRequest
+	(*GetLineageResponse)(nil),           // 6: metaxisdata.v1.GetLineageResponse
+	(*ExternalDatasetInfo)(nil),          // 7: metaxisdata.v1.ExternalDatasetInfo
+	(*GetLineageForContextRequest)(nil),  // 8: metaxisdata.v1.GetLineageForContextRequest
+	(*GetLineageForContextResponse)(nil), // 9: metaxisdata.v1.GetLineageForContextResponse
+	(*AnalysisScope)(nil),                // 10: metaxisdata.v1.AnalysisScope
+	(*AnalyzeSQLRequest)(nil),            // 11: metaxisdata.v1.AnalyzeSQLRequest
+	(*AnalyzeSQLResponse)(nil),           // 12: metaxisdata.v1.AnalyzeSQLResponse
+	(*AnalyzeSQLResult)(nil),             // 13: metaxisdata.v1.AnalyzeSQLResult
+	(*AnalyzeSQLDiagnostic)(nil),         // 14: metaxisdata.v1.AnalyzeSQLDiagnostic
+	(*AnalyzeSQLRelation)(nil),           // 15: metaxisdata.v1.AnalyzeSQLRelation
+	(*GetLineageGraphRequest)(nil),       // 16: metaxisdata.v1.GetLineageGraphRequest
+	(*GetLineageGraphResponse)(nil),      // 17: metaxisdata.v1.GetLineageGraphResponse
+	(*LineageNode)(nil),                  // 18: metaxisdata.v1.LineageNode
+	(MetaType)(0),                        // 19: metaxisdata.v1.MetaType
+	(*timestamppb.Timestamp)(nil),        // 20: google.protobuf.Timestamp
 }
 var file_v1_lineage_service_proto_depIdxs = []int32{
-	17, // 0: metaxisdata.v1.LineageRelation.meta_type:type_name -> metaxisdata.v1.MetaType
-	17, // 1: metaxisdata.v1.LineageRelation.source_type:type_name -> metaxisdata.v1.MetaType
-	17, // 2: metaxisdata.v1.LineageRelation.target_type:type_name -> metaxisdata.v1.MetaType
+	19, // 0: metaxisdata.v1.LineageRelation.meta_type:type_name -> metaxisdata.v1.MetaType
+	19, // 1: metaxisdata.v1.LineageRelation.source_type:type_name -> metaxisdata.v1.MetaType
+	19, // 2: metaxisdata.v1.LineageRelation.target_type:type_name -> metaxisdata.v1.MetaType
 	1,  // 3: metaxisdata.v1.LineageRelation.relation_type:type_name -> metaxisdata.v1.RelationType
-	3,  // 4: metaxisdata.v1.LineageRelation.transformations:type_name -> metaxisdata.v1.Transformation
-	18, // 5: metaxisdata.v1.LineageRelation.updated_at:type_name -> google.protobuf.Timestamp
-	17, // 6: metaxisdata.v1.GetLineageRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	4,  // 4: metaxisdata.v1.LineageRelation.transformations:type_name -> metaxisdata.v1.Transformation
+	20, // 5: metaxisdata.v1.LineageRelation.updated_at:type_name -> google.protobuf.Timestamp
+	19, // 6: metaxisdata.v1.GetLineageRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	0,  // 7: metaxisdata.v1.GetLineageRequest.lineage_type:type_name -> metaxisdata.v1.LineageType
-	2,  // 8: metaxisdata.v1.GetLineageResponse.relations_source:type_name -> metaxisdata.v1.LineageRelation
-	2,  // 9: metaxisdata.v1.GetLineageResponse.relations_target:type_name -> metaxisdata.v1.LineageRelation
-	6,  // 10: metaxisdata.v1.GetLineageResponse.external_datasets:type_name -> metaxisdata.v1.ExternalDatasetInfo
-	17, // 11: metaxisdata.v1.GetLineageForContextRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	2,  // 12: metaxisdata.v1.GetLineageForContextResponse.relations:type_name -> metaxisdata.v1.LineageRelation
-	9,  // 13: metaxisdata.v1.AnalyzeSQLRequest.scopes:type_name -> metaxisdata.v1.AnalysisScope
-	12, // 14: metaxisdata.v1.AnalyzeSQLResponse.results:type_name -> metaxisdata.v1.AnalyzeSQLResult
-	13, // 15: metaxisdata.v1.AnalyzeSQLResult.relations:type_name -> metaxisdata.v1.AnalyzeSQLRelation
-	17, // 16: metaxisdata.v1.AnalyzeSQLRelation.source_type:type_name -> metaxisdata.v1.MetaType
-	17, // 17: metaxisdata.v1.AnalyzeSQLRelation.target_type:type_name -> metaxisdata.v1.MetaType
-	1,  // 18: metaxisdata.v1.AnalyzeSQLRelation.relation_type:type_name -> metaxisdata.v1.RelationType
-	3,  // 19: metaxisdata.v1.AnalyzeSQLRelation.transformations:type_name -> metaxisdata.v1.Transformation
-	17, // 20: metaxisdata.v1.GetLineageGraphRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	0,  // 21: metaxisdata.v1.GetLineageGraphRequest.lineage_type:type_name -> metaxisdata.v1.LineageType
-	16, // 22: metaxisdata.v1.GetLineageGraphResponse.nodes:type_name -> metaxisdata.v1.LineageNode
-	2,  // 23: metaxisdata.v1.GetLineageGraphResponse.edges:type_name -> metaxisdata.v1.LineageRelation
-	6,  // 24: metaxisdata.v1.GetLineageGraphResponse.external_datasets:type_name -> metaxisdata.v1.ExternalDatasetInfo
-	17, // 25: metaxisdata.v1.LineageNode.meta_type:type_name -> metaxisdata.v1.MetaType
-	4,  // 26: metaxisdata.v1.LineageService.GetLineage:input_type -> metaxisdata.v1.GetLineageRequest
-	7,  // 27: metaxisdata.v1.LineageService.GetLineageForContext:input_type -> metaxisdata.v1.GetLineageForContextRequest
-	10, // 28: metaxisdata.v1.LineageService.AnalyzeSQL:input_type -> metaxisdata.v1.AnalyzeSQLRequest
-	14, // 29: metaxisdata.v1.LineageService.GetLineageGraph:input_type -> metaxisdata.v1.GetLineageGraphRequest
-	5,  // 30: metaxisdata.v1.LineageService.GetLineage:output_type -> metaxisdata.v1.GetLineageResponse
-	8,  // 31: metaxisdata.v1.LineageService.GetLineageForContext:output_type -> metaxisdata.v1.GetLineageForContextResponse
-	11, // 32: metaxisdata.v1.LineageService.AnalyzeSQL:output_type -> metaxisdata.v1.AnalyzeSQLResponse
-	15, // 33: metaxisdata.v1.LineageService.GetLineageGraph:output_type -> metaxisdata.v1.GetLineageGraphResponse
-	30, // [30:34] is the sub-list for method output_type
-	26, // [26:30] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	3,  // 8: metaxisdata.v1.GetLineageResponse.relations_source:type_name -> metaxisdata.v1.LineageRelation
+	3,  // 9: metaxisdata.v1.GetLineageResponse.relations_target:type_name -> metaxisdata.v1.LineageRelation
+	7,  // 10: metaxisdata.v1.GetLineageResponse.external_datasets:type_name -> metaxisdata.v1.ExternalDatasetInfo
+	19, // 11: metaxisdata.v1.GetLineageForContextRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	3,  // 12: metaxisdata.v1.GetLineageForContextResponse.relations:type_name -> metaxisdata.v1.LineageRelation
+	10, // 13: metaxisdata.v1.AnalyzeSQLRequest.scopes:type_name -> metaxisdata.v1.AnalysisScope
+	13, // 14: metaxisdata.v1.AnalyzeSQLResponse.results:type_name -> metaxisdata.v1.AnalyzeSQLResult
+	15, // 15: metaxisdata.v1.AnalyzeSQLResult.relations:type_name -> metaxisdata.v1.AnalyzeSQLRelation
+	14, // 16: metaxisdata.v1.AnalyzeSQLResult.diagnostics:type_name -> metaxisdata.v1.AnalyzeSQLDiagnostic
+	2,  // 17: metaxisdata.v1.AnalyzeSQLDiagnostic.category:type_name -> metaxisdata.v1.DiagnosticCategory
+	19, // 18: metaxisdata.v1.AnalyzeSQLRelation.source_type:type_name -> metaxisdata.v1.MetaType
+	19, // 19: metaxisdata.v1.AnalyzeSQLRelation.target_type:type_name -> metaxisdata.v1.MetaType
+	1,  // 20: metaxisdata.v1.AnalyzeSQLRelation.relation_type:type_name -> metaxisdata.v1.RelationType
+	4,  // 21: metaxisdata.v1.AnalyzeSQLRelation.transformations:type_name -> metaxisdata.v1.Transformation
+	19, // 22: metaxisdata.v1.GetLineageGraphRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	0,  // 23: metaxisdata.v1.GetLineageGraphRequest.lineage_type:type_name -> metaxisdata.v1.LineageType
+	18, // 24: metaxisdata.v1.GetLineageGraphResponse.nodes:type_name -> metaxisdata.v1.LineageNode
+	3,  // 25: metaxisdata.v1.GetLineageGraphResponse.edges:type_name -> metaxisdata.v1.LineageRelation
+	7,  // 26: metaxisdata.v1.GetLineageGraphResponse.external_datasets:type_name -> metaxisdata.v1.ExternalDatasetInfo
+	19, // 27: metaxisdata.v1.LineageNode.meta_type:type_name -> metaxisdata.v1.MetaType
+	5,  // 28: metaxisdata.v1.LineageService.GetLineage:input_type -> metaxisdata.v1.GetLineageRequest
+	8,  // 29: metaxisdata.v1.LineageService.GetLineageForContext:input_type -> metaxisdata.v1.GetLineageForContextRequest
+	11, // 30: metaxisdata.v1.LineageService.AnalyzeSQL:input_type -> metaxisdata.v1.AnalyzeSQLRequest
+	16, // 31: metaxisdata.v1.LineageService.GetLineageGraph:input_type -> metaxisdata.v1.GetLineageGraphRequest
+	6,  // 32: metaxisdata.v1.LineageService.GetLineage:output_type -> metaxisdata.v1.GetLineageResponse
+	9,  // 33: metaxisdata.v1.LineageService.GetLineageForContext:output_type -> metaxisdata.v1.GetLineageForContextResponse
+	12, // 34: metaxisdata.v1.LineageService.AnalyzeSQL:output_type -> metaxisdata.v1.AnalyzeSQLResponse
+	17, // 35: metaxisdata.v1.LineageService.GetLineageGraph:output_type -> metaxisdata.v1.GetLineageGraphResponse
+	32, // [32:36] is the sub-list for method output_type
+	28, // [28:32] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_v1_lineage_service_proto_init() }
@@ -1623,8 +1803,8 @@ func file_v1_lineage_service_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_lineage_service_proto_rawDesc), len(file_v1_lineage_service_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   15,
+			NumEnums:      3,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

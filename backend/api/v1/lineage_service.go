@@ -10,6 +10,7 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -19,12 +20,15 @@ import (
 type LineageService struct {
 	v1connect.UnimplementedLineageServiceHandler
 	store *store.Store
+	// lineage resolves AnalyzeSQL against the analyzers the process assembled.
+	lineage *lineage.Analyzer
 }
 
 // NewLineageService creates a new LineageService.
-func NewLineageService(store *store.Store) *LineageService {
+func NewLineageService(store *store.Store, lineageAnalyzer *lineage.Analyzer) *LineageService {
 	return &LineageService{
-		store: store,
+		store:   store,
+		lineage: lineageAnalyzer,
 	}
 }
 

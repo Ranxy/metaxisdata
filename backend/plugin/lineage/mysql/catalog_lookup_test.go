@@ -41,4 +41,11 @@ func TestCatalogFailureIsReportedAsAGap(t *testing.T) {
 	require.ErrorAs(t, err, &unsupported)
 	require.Contains(t, unsupported.Error(), "catalog lookup failed for t: connection reset")
 	require.NotEmpty(t, relations, "the wildcard fallback edge is still produced")
+
+	// The gap is classified, not merely described: a caller has to be able to
+	// tell a degraded result from one the SQL simply does not describe.
+	require.Len(t, unsupported.Diagnostics, 1)
+	require.Equal(t, model.DiagnosticCatalogUnavailable, unsupported.Diagnostics[0].Category)
+	require.Equal(t, "t", unsupported.Diagnostics[0].Reference)
+	require.Equal(t, "connection reset", unsupported.Diagnostics[0].Detail)
 }

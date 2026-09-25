@@ -16,7 +16,6 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	_ "github.com/Ranxy/metaxisdata/backend/plugin/db/mysql"
-	_ "github.com/Ranxy/metaxisdata/backend/plugin/lineage/mysql"
 	"github.com/Ranxy/metaxisdata/backend/store"
 	integrationenv "github.com/Ranxy/metaxisdata/backend/test/integration/env"
 )

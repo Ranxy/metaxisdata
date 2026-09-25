@@ -52,6 +52,11 @@ are duplicates of the real target, and for one that writes nowhere they describe
 the query's own output columns. A scope left with nothing to show says so rather
 than looking empty.
 
+A statement the analyzer cannot fully represent still returns the relations it
+did resolve, together with diagnostics for what it could not: a statement shape
+it does not model, or a reference that resolved to nothing. A parse error fails
+the scope instead.
+
 With --depth the resolved targets are expanded into a multi-level graph, one per
 scope.`,
 		Args: cobra.NoArgs,
@@ -92,12 +97,17 @@ func runLineageSQL(cmd *cobra.Command, _ []string) error {
 	// batches and merged, so "--scope all" keeps working.
 	const maxScopesPerRequest = 10
 	type scopeResult struct {
-		scopeName  string
-		scopeGUID  string
-		relations  []*v1pb.AnalyzeSQLRelation
-		graphs     []*v1pb.GetLineageGraphResponse
-		warnings   []string
-		hiddenTemp int
+		scopeName string
+		scopeGUID string
+		relations []*v1pb.AnalyzeSQLRelation
+		graphs    []*v1pb.GetLineageGraphResponse
+		warnings  []string
+		// diagnostics are the gaps the analysis reported: what it could not
+		// represent, beside the relations it did resolve. Leaving them out of
+		// the output would make a partial analysis read as a complete one.
+		diagnostics        []*v1pb.AnalyzeSQLDiagnostic
+		omittedDiagnostics int32
+		hiddenTemp         int
 	}
 
 	var results []scopeResult
@@ -124,11 +134,13 @@ func runLineageSQL(cmd *cobra.Command, _ []string) error {
 			relations, hiddenTemp := visibleRelations(analyzed.GetRelations(), lineageFlags.includeTemp)
 
 			result := scopeResult{
-				scopeName:  analyzed.GetScopeName(),
-				scopeGUID:  analyzed.GetScopeGuid(),
-				relations:  relations,
-				hiddenTemp: hiddenTemp,
-				warnings:   slices.Clone(analyzed.GetWarnings()),
+				scopeName:          analyzed.GetScopeName(),
+				scopeGUID:          analyzed.GetScopeGuid(),
+				relations:          relations,
+				hiddenTemp:         hiddenTemp,
+				warnings:           slices.Clone(analyzed.GetWarnings()),
+				diagnostics:        analyzed.GetDiagnostics(),
+				omittedDiagnostics: analyzed.GetOmittedDiagnosticCount(),
 			}
 			if hiddenTemp > 0 && len(relations) == 0 {
 				// Everything was hidden, so staying quiet would read as "this
@@ -158,11 +170,19 @@ func runLineageSQL(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
+		diagnosticsJSON, err := output.ProtoValues(result.diagnostics)
+		if err != nil {
+			return err
+		}
 		entry := map[string]any{
-			"scopeName": result.scopeName,
-			"scopeGuid": result.scopeGUID,
-			"relations": relationsJSON,
-			"warnings":  output.EnsureSlice(result.warnings),
+			"scopeName":   result.scopeName,
+			"scopeGuid":   result.scopeGUID,
+			"relations":   relationsJSON,
+			"warnings":    output.EnsureSlice(result.warnings),
+			"diagnostics": diagnosticsJSON,
+		}
+		if result.omittedDiagnostics > 0 {
+			entry["omittedDiagnosticCount"] = result.omittedDiagnostics
 		}
 		if result.hiddenTemp > 0 {
 			entry["tempRelationsHidden"] = result.hiddenTemp
@@ -189,11 +209,17 @@ func runLineageSQL(cmd *cobra.Command, _ []string) error {
 	}
 
 	if current.out.Format() == output.FormatTable {
-		// A table has nowhere to carry warnings, and "no rows" would read as
-		// "no lineage", so they are printed instead of dropped.
+		// A table has nowhere to carry warnings or diagnostics, and "no rows"
+		// would read as "no lineage", so they are printed instead of dropped.
 		for _, result := range results {
 			for _, warning := range result.warnings {
 				current.out.Progress("%s: %s", result.scopeName, warning)
+			}
+			for _, diagnostic := range result.diagnostics {
+				current.out.Progress("%s: %s", result.scopeName, diagnosticText(diagnostic))
+			}
+			if result.omittedDiagnostics > 0 {
+				current.out.Progress("%s: %d more diagnostics not listed", result.scopeName, result.omittedDiagnostics)
 			}
 		}
 	}
@@ -203,6 +229,28 @@ func runLineageSQL(cmd *cobra.Command, _ []string) error {
 		"warnings": output.EnsureSlice(requestWarnings),
 	}
 	return current.out.Envelope(envelope, rows)
+}
+
+// diagnosticText renders one diagnostic the way the analyzers phrase it, so a CLI
+// report and the lineage version message the server stores read the same. The CLI
+// cannot call the analyzer's own formatter: it is a client of the API and imports
+// nothing under backend/ except the generated code.
+func diagnosticText(diagnostic *v1pb.AnalyzeSQLDiagnostic) string {
+	switch diagnostic.GetCategory() {
+	case v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_NOT_MODELLED:
+		if diagnostic.GetDetail() != "" {
+			return fmt.Sprintf("not modelled: %s: %s", diagnostic.GetSubject(), diagnostic.GetDetail())
+		}
+		return "not modelled: " + diagnostic.GetSubject()
+	case v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_UNRESOLVED_REFERENCE:
+		return fmt.Sprintf("unresolved reference in %s: %s", diagnostic.GetSubject(), diagnostic.GetReference())
+	case v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_AMBIGUOUS_REFERENCE:
+		return fmt.Sprintf("ambiguous reference in %s: %s", diagnostic.GetSubject(), diagnostic.GetReference())
+	case v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_CATALOG_UNAVAILABLE:
+		return fmt.Sprintf("catalog lookup failed for %s: %s", diagnostic.GetReference(), diagnostic.GetDetail())
+	default:
+		return "unclassified diagnostic"
+	}
 }
 
 // maxGraphDepth is the deepest expansion GetLineageGraph accepts. A larger

@@ -9,12 +9,14 @@ import (
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
-
-	// The analyzers register themselves in an init function, and the API package
-	// does not import them (the server does, in backend/server/ultimate.go), so
-	// a test that exercises analysis has to pull the engine in itself.
-	_ "github.com/Ranxy/metaxisdata/backend/plugin/lineage/mysql"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/mysql"
 )
+
+// mysqlEngine is the API's own assembly of the one engine these cases analyze
+// with. The server assembles the full set; the conversion under test only needs
+// the engine whose statements it feeds.
+var mysqlEngine = lineage.NewAnalyzer(nil, mysql.Registration())
 
 func TestAnalyzeSQLScopeContextReadsTheSegmentCount(t *testing.T) {
 	t.Parallel()
@@ -165,10 +167,35 @@ func TestBuildAnalyzeSQLRelationsKeepsExplicitQualifiers(t *testing.T) {
 // parsing.
 func analyzeMySQL(t *testing.T, analysisContext catalog.AnalysisContext, sql string) []*v1pb.AnalyzeSQLRelation {
 	t.Helper()
-	analyzed, err := lineage.GetAnalyzeRelation(catalog.WithAnalysisContext(t.Context(), analysisContext), storepb.Engine_MYSQL, sql)
+	analyzed, err := mysqlEngine.Analyze(catalog.WithAnalysisContext(t.Context(), analysisContext), storepb.Engine_MYSQL, sql)
 	require.NoError(t, err)
 
 	converted, guids := buildAnalyzeSQLRelations(analysisContext, analyzed)
 	require.Len(t, guids, len(converted))
 	return converted
+}
+
+// TestConvertAnalyzeSQLDiagnostics pins the mapping a caller reads: each
+// analyzer category becomes the API's own, and a category this build does not
+// know is reported as unspecified rather than guessed at. The fields travel
+// unchanged, so a caller can point at the reference the analyzer named.
+func TestConvertAnalyzeSQLDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	converted := convertAnalyzeSQLDiagnostics([]model.Diagnostic{
+		{Category: model.DiagnosticNotModelled, Subject: "MERGE"},
+		{Category: model.DiagnosticUnresolved, Subject: "a CTE body", Reference: "stage.id"},
+		{Category: model.DiagnosticAmbiguous, Subject: "an assignment target", Reference: "a"},
+		{Category: model.DiagnosticCatalogUnavailable, Reference: "t", Detail: "connection reset"},
+	})
+	require.Equal(t, []*v1pb.AnalyzeSQLDiagnostic{
+		{Category: v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_NOT_MODELLED, Subject: "MERGE"},
+		{Category: v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_UNRESOLVED_REFERENCE, Subject: "a CTE body", Reference: "stage.id"},
+		{Category: v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_AMBIGUOUS_REFERENCE, Subject: "an assignment target", Reference: "a"},
+		{Category: v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_CATALOG_UNAVAILABLE, Reference: "t", Detail: "connection reset"},
+	}, converted)
+
+	require.Nil(t, convertAnalyzeSQLDiagnostics(nil), "a complete analysis reports no diagnostics")
+	require.Equal(t, v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_UNSPECIFIED,
+		convertAnalyzeSQLDiagnosticCategory(model.DiagnosticCategory(0)))
 }

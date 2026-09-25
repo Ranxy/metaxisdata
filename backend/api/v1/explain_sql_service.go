@@ -33,11 +33,15 @@ type ExplainSQLService struct {
 	v1connect.UnimplementedExplainSQLServiceHandler
 	store    *store.Store
 	registry *llm.Registry
+	// lineage resolves the statement's relations against the analyzers the
+	// process assembled, so the schema context is built the same way AnalyzeSQL
+	// builds its answer.
+	lineage *lineage.Analyzer
 }
 
 // NewExplainSQLService creates a new ExplainSQLService.
-func NewExplainSQLService(st *store.Store, registry *llm.Registry) *ExplainSQLService {
-	return &ExplainSQLService{store: st, registry: registry}
+func NewExplainSQLService(st *store.Store, registry *llm.Registry, lineageAnalyzer *lineage.Analyzer) *ExplainSQLService {
+	return &ExplainSQLService{store: st, registry: registry, lineage: lineageAnalyzer}
 }
 
 // ExplainSQL explains SQL using LLM.
@@ -368,7 +372,7 @@ func (s *ExplainSQLService) buildContextFromSQL(ctx context.Context, scopePrefix
 	// A relation that cannot be analyzed (unsupported SQL, no registered
 	// analyzer) is not a store failure: log it and continue with an empty
 	// context.
-	relations, err := lineage.GetAnalyzeRelation(ctx, engine, sqlText)
+	relations, err := s.lineage.Analyze(ctx, engine, sqlText)
 	if err != nil {
 		slog.Debug("Failed to analyze SQL relations; continuing without schema context", log.WithError(err))
 	}

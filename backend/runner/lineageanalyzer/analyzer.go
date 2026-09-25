@@ -37,7 +37,12 @@ type analyzeKey struct {
 
 // Analyzer is the column-level lineage analysis runner.
 type Analyzer struct {
-	store      *store.Store
+	store *store.Store
+	// lineage resolves a statement against the analyzers the process assembled.
+	// The runner does not build or own them: which engines exist is a startup
+	// decision, and a runner that looked them up from package state could
+	// disagree with the AnalyzeSQL handler about what is registered.
+	lineage    *lineage.Analyzer
 	analyzeMap sync.Map // map[analyzeKey]struct{}
 	// retryMap tracks how many times a failed analysis was retried and when it
 	// is due again, so a transient failure does not wait for the hourly scan.
@@ -66,10 +71,12 @@ func analysisRetryBackoff(attempts int) time.Duration {
 	}
 }
 
-// NewAnalyzer creates a new lineage Analyzer.
-func NewAnalyzer(stores *store.Store) *Analyzer {
+// NewAnalyzer creates a new lineage Analyzer that resolves statements through
+// lineage, the process's assembled set of engine analyzers.
+func NewAnalyzer(stores *store.Store, lineageAnalyzer *lineage.Analyzer) *Analyzer {
 	return &Analyzer{
-		store: stores,
+		store:   stores,
+		lineage: lineageAnalyzer,
 	}
 }
 
@@ -271,7 +278,7 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	// Run lineage analysis with context so unqualified names resolve correctly.
 	ac := catalog.AnalysisContext{InstanceID: instanceID, Database: database, Schema: schema}
 	analysisCtx := catalog.WithAnalysisContext(ctx, ac)
-	relations, err := lineage.GetAnalyzeRelation(analysisCtx, engine, wrappedSQL)
+	relations, err := a.lineage.Analyze(analysisCtx, engine, wrappedSQL)
 
 	// What an analysis could not represent does not condemn the rest of it: the
 	// analyzers return the edges they did find together with the gap, so the
@@ -304,7 +311,7 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	// alongside the lineage written below.
 	partialMessage := ""
 	if unsupported != nil {
-		partialMessage = unsupported.Message
+		partialMessage = unsupported.Error()
 	}
 
 	// Convert relations to ColumnLineage rows and collect GUIDs whose meta types

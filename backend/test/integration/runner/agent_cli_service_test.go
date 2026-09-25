@@ -234,6 +234,28 @@ func TestAnalyzeSQLRealServerIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("a partial analysis keeps its relations and reports diagnostics", func(t *testing.T) {
+		// omni drops the CTE of a leading WITH on a DML statement, so the MySQL
+		// analyzer reports the gap and keeps the other statement's edges. The
+		// response has to carry both: reporting the scope as failed would throw
+		// away real lineage over a coverage gap.
+		response, err := client.lineage.AnalyzeSQL(ctx, connect.NewRequest(&v1pb.AnalyzeSQLRequest{
+			Scopes:  []*v1pb.AnalysisScope{scope},
+			SqlText: "SELECT name FROM users; WITH recent AS (SELECT name FROM users) DELETE FROM orders WHERE name IN (SELECT name FROM recent)",
+		}))
+		require.NoError(t, err, "a gap is reported beside the relations, not raised instead of them")
+
+		result := response.Msg.GetResults()[0]
+		require.NotEmpty(t, result.GetRelations())
+		require.Len(t, result.GetDiagnostics(), 1)
+
+		diagnostic := result.GetDiagnostics()[0]
+		require.Equal(t, v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_NOT_MODELLED, diagnostic.GetCategory())
+		require.Equal(t, "WITH before DELETE", diagnostic.GetSubject())
+		require.Empty(t, diagnostic.GetReference())
+		require.Zero(t, result.GetOmittedDiagnosticCount())
+	})
+
 	t.Run("one scope may fail while the request succeeds", func(t *testing.T) {
 		response, err := client.lineage.AnalyzeSQL(ctx, connect.NewRequest(&v1pb.AnalyzeSQLRequest{
 			Scopes: []*v1pb.AnalysisScope{

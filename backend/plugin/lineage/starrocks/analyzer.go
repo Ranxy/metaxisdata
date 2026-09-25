@@ -37,19 +37,29 @@ import (
 // Special table/column markers shared with the other analyzers.
 const (
 	resultTableName   = model.ResultTableName
-	deletionFieldName = "__deletion__"
+	deletionFieldName = model.DeletionColumnName
 	wildcardColumn    = model.WildcardColumn
-	fileSourceMarker  = "__file__" // source marker for COPY INTO / LOAD
+	fileSourceMarker  = model.FileSourceName
 )
 
-func init() {
-	lineage.RegisterAnalyzeRelation(storepb.Engine_STARROCKS, Analyze, splitStatements)
+// Registration binds StarRocks to the analyzer this package provides. The process
+// assembles the registered engines where it is built, so this package does not
+// register itself into package state.
+//
+// Doris is deliberately unsupported: the runner records a per-object skip for it
+// rather than analyzing Doris SQL with the StarRocks grammar.
+func Registration() lineage.EngineRegistration {
+	return lineage.EngineRegistration{
+		Engine:  storepb.Engine_STARROCKS,
+		Analyze: Analyze,
+		Split:   SplitStatements,
+	}
 }
 
-// splitStatements splits a script into its individual statements, dropping the
-// ones that carry no SQL. The root package feeds them to Analyze one at a time:
-// this analyzer is defined for exactly one statement.
-func splitStatements(sql string) []string {
+// SplitStatements splits a script into its individual statements, dropping the
+// ones that carry no SQL. The caller feeds them to Analyze one at a time: this
+// analyzer is defined for exactly one statement.
+func SplitStatements(sql string) []string {
 	segments := starrocksparser.Split(sql)
 	statements := make([]string, 0, len(segments))
 	for _, segment := range segments {
@@ -101,8 +111,8 @@ type Analyzer struct {
 }
 
 // Analyze parses a single StarRocks statement and returns its column relations.
-func Analyze(ctx context.Context, sql string) ([]model.ColumnRelation, error) {
-	return NewAnalyzer(ctx, sql, lineage.GetCatalogProvide()).AnalyzeRelations()
+func Analyze(ctx context.Context, sql string, cat catalog.Provide) ([]model.ColumnRelation, error) {
+	return NewAnalyzer(ctx, sql, cat).AnalyzeRelations()
 }
 
 // NewAnalyzer creates a StarRocks lineage analyzer for a single statement.
@@ -160,10 +170,8 @@ func (a *Analyzer) partialOrComplete() ([]model.ColumnRelation, error) {
 	if len(a.errors) > 0 {
 		return nil, errors.Errorf("analysis errors: %s", strings.Join(a.diagnostics.AppendTo(a.errors), "; "))
 	}
-	if messages := a.diagnostics.Messages(); len(messages) > 0 {
-		return a.edges.Edges(), &lineage.UnsupportedStatementError{
-			Message: errors.Errorf("analysis errors: %s", strings.Join(messages, "; ")).Error(),
-		}
+	if notes, omitted := a.diagnostics.Notes(); len(notes) > 0 {
+		return a.edges.Edges(), &lineage.UnsupportedStatementError{Diagnostics: notes, Omitted: omitted}
 	}
 	return a.edges.Edges(), nil
 }
@@ -200,7 +208,7 @@ func (a *Analyzer) dispatch(stmt nodes.Node) {
 		// reported instead of failing the statement, so the edges of the
 		// statements around it survive — which is what the PostgreSQL analyzer
 		// does for the same statement.
-		a.diagnostics.NotModelled("MERGE")
+		a.diagnostics.NotModelled("MERGE", "")
 	default:
 		// Statement kinds that carry no lineage are ignored, as in the MySQL
 		// analyzer.
@@ -237,7 +245,7 @@ func (a *Analyzer) processQueryNode(node nodes.Node) {
 	default:
 		// A query expression this analyzer does not model is a gap rather than a
 		// failure: the rest of the statement may still have resolvable lineage.
-		a.diagnostics.NotModelled("query expression")
+		a.diagnostics.NotModelled("query expression", "")
 	}
 }
 

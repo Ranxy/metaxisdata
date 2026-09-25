@@ -38,7 +38,7 @@
 3. PostgreSQL 分析器拒绝多语句输入;多语句能力由根包统一提供,且不再跨语句共享 scope(此前 `SELECT t1.a FROM t1; SELECT t2.b FROM t2` 的注解说共享 root scope,代码实际已按语句 reset,现已由结构保证)。
 4. catalog 查询失败不再静默降级:`runner` 存下边并把缺口写进 version 行,`AnalyzeSQL` 则按既有策略把"带缺口的分析"映射为请求错误(`InvalidArgument` + 消息,关系被丢弃)——这条映射早于本期(PG MERGE 等缺口一直如此),把缺口渲染为响应 `warnings` 而不是错误,需要第三期的结构化 diagnostics;`ExplainSQL` 路径不受影响(它记录错误后继续使用已得到的边)。
 
-**仍待处理**:T5 的 omni 依赖策略与 T6 的全局可变状态、T7 的哨兵单点定义(第三期)。
+**仍待处理**:T5 的 omni 依赖策略与 T6 的全局可变状态、T7 的哨兵单点定义(第三期,后两项已由第三期落地,见下)。
 
 ### 第二期:已落地(T1 偿还,T2 审计并部分下沉)
 
@@ -50,6 +50,27 @@
 | **T2 StarRocks/PG 漂移** | ✅ 已审计,6 项已下沉 | 机械筛出 26 个签名不含方言 AST 类型的候选,逐个以正文哈希分类(附录 A)。下沉 `tempColumnNames`/`attachTempColumnLookup`/`exposedColumnNames`/`wildcardSourceRef`(→ `scope`)、`normalizeIdentifier`(→ `model`)、`resolveOutputColumns`(→ `algorithm`);`shared_analysis_test.go` 的清单扩为**多包 + 双向**(`requiredSharedDeclarations` 变 `包 → 名单`,`forbiddenDeclarations` 增 6 个方言侧旧名)。分叉项按"只下沉可证等价"保留在方言本地并附证据:其中 2 条经查证是**方言事实而非漂移**(starrocks 的 `* EXCEPT`、pg 的 `Schema` 级目录标识符),1 条是**应保留的方言改进**(starrocks 的 CTE 列重命名映射),1 条(starrocks 的 query-local wildcard 规则)在常见形态下不可观测、但无法证明处处等价,2 条(`flattenTempSourceLineage` 的 7/8 参差、`generateEdges` 家族)留待下一轮 |
 
 **本期有意引入的差异**:零行为变更——生成前后三份正文逐字节相同,全部 golden 语料用例数与结果不变(机器证明,复核命令见生成计划附录 B)。
+
+### 第三期:已落地(T6 编译期装配、T4 结构化 diagnostics、T7 哨兵单点)
+
+实施细节与验收见 `plan/lineage_analyzer_wiring_plan.md`。**本期按范围约定不含 T5(omni 依赖策略)**,它仍是唯一未决策的一条。§1–§3 保留改动**之前**的快照,以下为本期结果。
+
+| 项 | 状态 | 结果 |
+| --- | --- | --- |
+| **T6 全局可变状态** | ✅ 已消除 | 根包不再持有任何包级可变量:`RegisterAnalyzeRelation` / `getAnalyzes` / `getSplits` / `CatalogProvide` / `InitCatalogProvide` / `GetCatalogProvide` 与根包 `mux` 全部删除。方言各自导出 `Registration() lineage.EngineRegistration`,新包 `backend/plugin/lineage/engines` 在编译期列全五个引擎;`server.New` 构造 `lineage.NewAnalyzer(catalog, engines.Registrations()...)` 并把同一个值显式交给 runner、`LineageService` 与 `ExplainSQLService`。`Analyze(ctx, engine, sql, catalog)` 取代 `GetAnalyzeRelation`,根包不再 import `backend/store`,`backend/server/ultimate.go` 的 lineage blank import 删除 |
+| **T4 缺口只能当字符串** | ✅ 已结构化 | `UnsupportedStatementError` 改为 `{Diagnostics []model.Diagnostic, Omitted int}`(分类枚举 + subject + reference + detail),`algorithm.Diagnostics` 存结构体、`Notes()` 同时给出被上限截掉的条数;渲染集中在 `model`,**错误文本与改造前逐字相同** |
+| **T4 遗留:AnalyzeSQL 把缺口当失败** | ✅ 已修正 | 第一期 §0 记录的那条映射(把带缺口的分析判为 `InvalidArgument` 并丢边)改为:保留 relations,缺口作为 `AnalyzeSQLResult.diagnostics` 返回,`omitted_diagnostic_count` 报告截断条数。CLI 的 `lineage sql` 渲染同措辞的诊断;这是本期唯一的行为变化 |
+| **T7 哨兵单点定义** | ✅ 已收敛 | `__deletion__`/`__file__` 收敛到 `model.DeletionColumnName`/`model.FileSourceName`,`__result__`/`*` 原有的方言别名指向同一常量;`grep`(排除测试)确认仓库里只剩 `model/relation.go` 三处字面量 |
+
+**新增/修改的测试**
+
+- 新增 `backend/plugin/lineage/engines/engines_test.go`:五个引擎各自可分析、注册唯一且 `Analyze`/`Split` 两半齐全、OceanBase/Doris/MSSQL 报 `ErrorEngineNotSupported`、重复注册 panic
+- 新增 `model/diagnostic_test.go`(四类措辞 + `N more not listed`)与 `cli/cmd/lineage_test.go` 的 `TestDiagnosticTextMatchesTheAnalyzersWording`(客户端渲染与服务器同措辞)
+- 根包 `lineage_test.go` 改为用 `engines.Registrations()` 构造 analyzer(不再靠 blank import),并新增 `TestPartialAnalysisReportsStructuredDiagnostics`
+- 五个方言的 `registration_test.go` 改为断言各自的 `Registration()`;`mysql/catalog_lookup_test.go` 增加"catalog 失败被分类为 `CatalogUnavailable`"断言;`api/v1` 增加 `TestConvertAnalyzeSQLDiagnostics`
+- 集成测试 `TestAnalyzeSQLRealServerIntegration` 增子用例"部分分析保留边并报告 diagnostics"(不再返回 `InvalidArgument`)
+
+**仍待处理**:T5 的 omni 依赖策略(fork/vendor/上游反馈至少放开一个,或建立带验收门槛的升级流程)。
 
 ---
 
@@ -235,4 +256,7 @@ runner/lineageanalyzer (周期扫描 + 退避重试) / api/v1 LineageService(无
 - 字节级正文守卫:**原** `backend/plugin/lineage/mysql/copies_test.go`(`TestDialectCopiesStayInSync`);**第二期后**为 `backend/plugin/lineage/mysql/gen`(`TestGeneratedBodiesAreFresh` / `TestGeneratedBodiesCopyTheSourceVerbatim`,生成期消灭漂移而非事后检测)
 - 跨方言同名函数统计:mysql∩tidb=102/112,mysql∩mariadb=102/112,mysql∩starrocks=66/112,mysql∩postgresql=50/112,pg∩starrocks=42
 - 共享机制守门:`backend/plugin/lineage/shared_analysis_test.go`(`TestSharedAnalysisStaysShared`)
-- 既有相关文档:`plan/postgresql_lineage_package_review.md`(P0/P1 批次已全部落地,D1/D3 即本文 T1/哨兵模型的前身)、`plan/mysql_family_dialect_lineage_plan.md`(拷贝决策的原始理由)、`docs/omni_upstream_defects.md`(上游缺陷登记与不修改政策)、`plan/lineage_ast_field_coverage_audit.md`
+- 引擎装配(第三期):`go test ./backend/plugin/lineage/engines/`——五个引擎齐备、注册唯一且两半接缝齐全、未注册引擎报 `ErrorEngineNotSupported`、重复注册 panic。根包已无包级可变状态,复核 `grep -n "RegisterAnalyzeRelation\|InitCatalogProvide\|GetCatalogProvide" -r backend/` 应无输出(Go 代码)
+- 缺口结构化(第三期):`go test ./backend/plugin/lineage/model/ -run TestDiagnostic` 与 `go test ./cli/cmd/ -run TestDiagnosticText`(服务端与 CLI 同措辞);真实服务器验收见 `make test-integration` 的 `TestAnalyzeSQLRealServerIntegration/a_partial_analysis_keeps_its_relations_and_reports_diagnostics`
+- 哨兵单点:`grep -rn '"__deletion__"\|"__file__"\|"__result__"' --include=*.go backend/ cli/` 排除测试后只剩 `model/relation.go`
+- 既有相关文档:`plan/postgresql_lineage_package_review.md`(P0/P1 批次已全部落地,D1/D3 即本文 T1/哨兵模型的前身)、`plan/mysql_family_dialect_lineage_plan.md`(拷贝决策的原始理由)、`plan/lineage_analyzer_wiring_plan.md`(第三期实施展开)、`docs/omni_upstream_defects.md`(上游缺陷登记与不修改政策)、`plan/lineage_ast_field_coverage_audit.md`

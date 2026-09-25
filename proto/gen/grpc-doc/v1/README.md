@@ -214,6 +214,7 @@
   
 - [v1/lineage_service.proto](#v1_lineage_service-proto)
     - [AnalysisScope](#metaxisdata-v1-AnalysisScope)
+    - [AnalyzeSQLDiagnostic](#metaxisdata-v1-AnalyzeSQLDiagnostic)
     - [AnalyzeSQLRelation](#metaxisdata-v1-AnalyzeSQLRelation)
     - [AnalyzeSQLRequest](#metaxisdata-v1-AnalyzeSQLRequest)
     - [AnalyzeSQLResponse](#metaxisdata-v1-AnalyzeSQLResponse)
@@ -229,6 +230,7 @@
     - [LineageRelation](#metaxisdata-v1-LineageRelation)
     - [Transformation](#metaxisdata-v1-Transformation)
   
+    - [DiagnosticCategory](#metaxisdata-v1-DiagnosticCategory)
     - [LineageType](#metaxisdata-v1-LineageType)
     - [RelationType](#metaxisdata-v1-RelationType)
   
@@ -3610,6 +3612,24 @@ server attaches no meaning to it.
 
 
 
+<a name="metaxisdata-v1-AnalyzeSQLDiagnostic"></a>
+
+### AnalyzeSQLDiagnostic
+AnalyzeSQLDiagnostic is one thing an analysis could not represent.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| category | [DiagnosticCategory](#metaxisdata-v1-DiagnosticCategory) |  |  |
+| subject | [string](#string) |  | What the diagnostic is about, the way the analyzer names it: the statement or clause shape it does not model (&#34;MERGE&#34;, &#34;WITH before INSERT&#34;), or the clause a reference was written in (&#34;a CTE body&#34;). |
+| reference | [string](#string) |  | The identifier a reference diagnostic could not resolve, written the way the SQL writes it (&#34;t.c&#34;, &#34;t&#34;, &#34;c&#34;). Empty when the diagnostic is about a shape. |
+| detail | [string](#string) |  | The cause, for a diagnostic that needs one: the parser defect behind a skipped clause, or the catalog error behind a degraded lookup. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-AnalyzeSQLRelation"></a>
 
 ### AnalyzeSQLRelation
@@ -3677,6 +3697,8 @@ server attaches no meaning to it.
 | scope_guid | [string](#string) |  |  |
 | relations | [AnalyzeSQLRelation](#metaxisdata-v1-AnalyzeSQLRelation) | repeated |  |
 | warnings | [string](#string) | repeated | Warnings that only affect this scope, such as an engine without a lineage analyzer. They never fail the whole request. |
+| diagnostics | [AnalyzeSQLDiagnostic](#metaxisdata-v1-AnalyzeSQLDiagnostic) | repeated | What the analysis could not represent. relations is everything it did resolve; a diagnostic says why an edge may be missing, which the relations alone cannot say. An analyzer that cannot parse the statement is not reported here: that fails the scope instead. |
+| omitted_diagnostic_count | [int32](#int32) |  | How many diagnostics the server&#39;s per-analysis bound left out, so a caller can tell a complete list from a truncated one. |
 
 
 
@@ -3889,6 +3911,24 @@ column, derived from the view&#39;s SQL.
 
 
  
+
+
+<a name="metaxisdata-v1-DiagnosticCategory"></a>
+
+### DiagnosticCategory
+DiagnosticCategory classifies what an analysis could not represent. The
+categories call for different action: a shape the analyzer does not model is a
+coverage gap in the analyzer, while a reference that does not resolve is
+usually the SQL naming something the analyzer cannot see.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| DIAGNOSTIC_CATEGORY_UNSPECIFIED | 0 |  |
+| DIAGNOSTIC_CATEGORY_NOT_MODELLED | 1 | A statement or clause shape the analyzer does not model yet. |
+| DIAGNOSTIC_CATEGORY_UNRESOLVED_REFERENCE | 2 | A reference that resolved to nothing. |
+| DIAGNOSTIC_CATEGORY_AMBIGUOUS_REFERENCE | 3 | A reference a single-valued position could not choose between, which is an unqualified name several relations in scope own. |
+| DIAGNOSTIC_CATEGORY_CATALOG_UNAVAILABLE | 4 | A metadata lookup that failed. The analysis carried on with the relation&#39;s columns unknown, so its edges are degraded rather than complete. |
+
 
 
 <a name="metaxisdata-v1-LineageType"></a>

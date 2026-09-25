@@ -30,14 +30,21 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/scope"
 )
 
-func init() {
-	lineage.RegisterAnalyzeRelation(storepb.Engine_POSTGRES, Analyze, splitStatements)
+// Registration binds PostgreSQL to the analyzer this package provides. The
+// process assembles the registered engines where it is built, so this package
+// does not register itself into package state.
+func Registration() lineage.EngineRegistration {
+	return lineage.EngineRegistration{
+		Engine:  storepb.Engine_POSTGRES,
+		Analyze: Analyze,
+		Split:   SplitStatements,
+	}
 }
 
-// splitStatements splits a script into its individual statements, dropping the
-// ones that carry no SQL. The root package feeds them to Analyze one at a time:
-// this analyzer is defined for exactly one statement.
-func splitStatements(sql string) []string {
+// SplitStatements splits a script into its individual statements, dropping the
+// ones that carry no SQL. The caller feeds them to Analyze one at a time: this
+// analyzer is defined for exactly one statement.
+func SplitStatements(sql string) []string {
 	segments := omnipg.Split(sql)
 	statements := make([]string, 0, len(segments))
 	for _, segment := range segments {
@@ -52,7 +59,7 @@ func splitStatements(sql string) []string {
 // Constants for special table/column markers
 const (
 	resultTableName   = model.ResultTableName
-	deletionFieldName = "__deletion__"
+	deletionFieldName = model.DeletionColumnName
 	wildcardColumn    = model.WildcardColumn
 	// excludedRelationName is PostgreSQL's ON CONFLICT pseudo-relation holding
 	// the proposed row. It is not a metadata-registry object, so edges sourced
@@ -62,7 +69,7 @@ const (
 	// fileSourceName is the source marker a data-loading statement's edges carry,
 	// shared with the MySQL family and StarRocks so `COPY`, `LOAD DATA` and
 	// `COPY INTO` name their file the same way.
-	fileSourceName = "__file__"
+	fileSourceName = model.FileSourceName
 )
 
 // PostgreSQL aggregate functions. Window detection is structural (FuncCall.Over),
@@ -108,9 +115,8 @@ type Analyzer struct {
 	namedWindows map[string]*pgast.WindowDef
 }
 
-func Analyze(ctx context.Context, sql string) ([]model.ColumnRelation, error) {
-	analyzer := NewAnalyzer(ctx, sql, lineage.GetCatalogProvide())
-	return analyzer.AnalyzeRelations()
+func Analyze(ctx context.Context, sql string, cat catalog.Provide) ([]model.ColumnRelation, error) {
+	return NewAnalyzer(ctx, sql, cat).AnalyzeRelations()
 }
 
 // NewAnalyzer creates a new PostgreSQL lineage analyzer.
@@ -165,10 +171,8 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 
 	// What the analysis could not represent is reported beside the edges it did
 	// find: the caller stores both, so a gap never reads as "no lineage here".
-	if messages := a.diagnostics.Messages(); len(messages) > 0 {
-		return a.edges.Edges(), &lineage.UnsupportedStatementError{
-			Message: errors.Errorf("analysis errors: %s", strings.Join(messages, "; ")).Error(),
-		}
+	if notes, omitted := a.diagnostics.Notes(); len(notes) > 0 {
+		return a.edges.Edges(), &lineage.UnsupportedStatementError{Diagnostics: notes, Omitted: omitted}
 	}
 
 	return a.edges.Edges(), nil
@@ -192,10 +196,10 @@ func (a *Analyzer) processStmt(node pgast.Node) {
 	case *pgast.CopyStmt:
 		a.processCopyStmt(stmt)
 	case *pgast.MergeStmt:
-		// MERGE carries column lineage this analyzer does not model yet. Failing
-		// loudly keeps it from being read as a statement with none, which is what
-		// the StarRocks analyzer does for the same statement.
-		a.diagnostics.NotModelled("MERGE")
+		// MERGE carries column lineage this analyzer does not model yet. Recording
+		// it as a gap keeps it from being read as a statement with none, which is
+		// what the StarRocks analyzer does for the same statement.
+		a.diagnostics.NotModelled("MERGE", "")
 	default:
 		// Statement kinds that carry no lineage are ignored, as in the MySQL
 		// analyzer.

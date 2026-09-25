@@ -29,6 +29,17 @@ const WildcardColumn = "*"
 // stored object.
 const ResultTableName = "__result__"
 
+// DeletionColumnName is the target column a statement that removes rows records
+// its edges against: `source.x -> target.__deletion__` says the value of source.x
+// decides which rows the target loses, without pretending the target read a
+// column of its own.
+const DeletionColumnName = "__deletion__"
+
+// FileSourceName is the source table a data-loading statement names the file it
+// reads: LOAD DATA, COPY and COPY INTO all record their edges as
+// `__file__ -> target`, so a file source reads the same however it was loaded.
+const FileSourceName = "__file__"
+
 // AnsweringLineage returns the entries of a temporary relation's lineage that
 // answer a reference to column, in their original order. An entry whose target
 // names the column answers it; when none does, the entries whose target is

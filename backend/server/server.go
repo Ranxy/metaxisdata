@@ -19,6 +19,8 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/migrator"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/engines"
 	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
 	"github.com/Ranxy/metaxisdata/backend/runner/maintenance"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
@@ -92,9 +94,13 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 
 	dbFactory := dbfactory.New(stores)
 
-	lineage.InitCatalogProvide(stores)
+	// Which engines have an analyzer is a compile-time list, so the process builds
+	// the lineage analyzer once and hands the same value to every consumer. It is
+	// no longer package state an init function fills in, which is what kept a test
+	// and the server from agreeing on what was registered.
+	lineageEngines := lineage.NewAnalyzer(catalog.NewCatalogProvide(stores), engines.Registrations()...)
 
-	s.lineageAnalyzer = lineageanalyzer.NewAnalyzer(stores)
+	s.lineageAnalyzer = lineageanalyzer.NewAnalyzer(stores, lineageEngines)
 
 	stateCfg, err := state.New()
 	if err != nil {
@@ -119,7 +125,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// Configure echo server.
 	s.echoServer = echo.New()
 
-	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.llmRegistry); err != nil {
+	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.llmRegistry, lineageEngines); err != nil {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")
 	}
 

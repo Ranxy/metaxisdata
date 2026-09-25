@@ -236,6 +236,52 @@ message AnalyzeSQLResult {
   // Warnings that only affect this scope, such as an engine without a lineage
   // analyzer. They never fail the whole request.
   repeated string warnings = 4;
+
+  // What the analysis could not represent. relations is everything it did
+  // resolve; a diagnostic says why an edge may be missing, which the relations
+  // alone cannot say. An analyzer that cannot parse the statement is not
+  // reported here: that fails the scope instead.
+  repeated AnalyzeSQLDiagnostic diagnostics = 5;
+
+  // How many diagnostics the server's per-analysis bound left out, so a caller
+  // can tell a complete list from a truncated one.
+  int32 omitted_diagnostic_count = 6;
+}
+
+// AnalyzeSQLDiagnostic is one thing an analysis could not represent.
+message AnalyzeSQLDiagnostic {
+  DiagnosticCategory category = 1;
+
+  // What the diagnostic is about, the way the analyzer names it: the statement
+  // or clause shape it does not model ("MERGE", "WITH before INSERT"), or the
+  // clause a reference was written in ("a CTE body").
+  string subject = 2;
+
+  // The identifier a reference diagnostic could not resolve, written the way the
+  // SQL writes it ("t.c", "t", "c"). Empty when the diagnostic is about a shape.
+  string reference = 3;
+
+  // The cause, for a diagnostic that needs one: the parser defect behind a
+  // skipped clause, or the catalog error behind a degraded lookup.
+  string detail = 4;
+}
+
+// DiagnosticCategory classifies what an analysis could not represent. The
+// categories call for different action: a shape the analyzer does not model is a
+// coverage gap in the analyzer, while a reference that does not resolve is
+// usually the SQL naming something the analyzer cannot see.
+enum DiagnosticCategory {
+  DIAGNOSTIC_CATEGORY_UNSPECIFIED = 0;
+  // A statement or clause shape the analyzer does not model yet.
+  DIAGNOSTIC_CATEGORY_NOT_MODELLED = 1;
+  // A reference that resolved to nothing.
+  DIAGNOSTIC_CATEGORY_UNRESOLVED_REFERENCE = 2;
+  // A reference a single-valued position could not choose between, which is an
+  // unqualified name several relations in scope own.
+  DIAGNOSTIC_CATEGORY_AMBIGUOUS_REFERENCE = 3;
+  // A metadata lookup that failed. The analysis carried on with the relation's
+  // columns unknown, so its edges are degraded rather than complete.
+  DIAGNOSTIC_CATEGORY_CATALOG_UNAVAILABLE = 4;
 }
 
 message AnalyzeSQLRelation {

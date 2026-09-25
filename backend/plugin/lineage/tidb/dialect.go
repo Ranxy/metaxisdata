@@ -22,15 +22,20 @@ import (
 // Constants for special table/column markers.
 const (
 	resultTableName   = model.ResultTableName
-	deletionFieldName = "__deletion__"
+	deletionFieldName = model.DeletionColumnName
 	wildcardColumn    = model.WildcardColumn
-	fileSourceMarker  = "__file__" // Special marker for LOAD DATA source
+	fileSourceMarker  = model.FileSourceName
 )
 
-func init() {
-	// Only this dialect is claimed here; the other MySQL-family engines register
-	// their own analyzers in their own packages.
-	lineage.RegisterAnalyzeRelation(storepb.Engine_TIDB, Analyze, splitStatements)
+// Registration binds TiDB to the analyzer this package provides. The process
+// assembles the registered engines where it is built, so this package does not
+// register itself into package state.
+func Registration() lineage.EngineRegistration {
+	return lineage.EngineRegistration{
+		Engine:  storepb.Engine_TIDB,
+		Analyze: Analyze,
+		Split:   SplitStatements,
+	}
 }
 
 // valuesQueryPrimary returns the VALUES query primary of a select statement. This

@@ -115,15 +115,62 @@ func (s *LineageService) analyzeSQLScope(ctx context.Context, scope *v1pb.Analys
 	}
 	engine := instance.Metadata.GetEngine()
 
-	relations, err := lineage.GetAnalyzeRelation(catalog.WithAnalysisContext(ctx, analysisContext), engine, sqlText)
-	if err != nil {
-		if errors.Is(err, lineage.ErrorEngineNotSupported) {
-			return fail(connect.CodeFailedPrecondition, "engine %s has no lineage analyzer", engine)
-		}
+	relations, err := s.lineage.Analyze(catalog.WithAnalysisContext(ctx, analysisContext), engine, sqlText)
+
+	// A partial analysis is not a failed scope. The analyzer returns the relations
+	// it did resolve together with diagnostics for what it could not represent,
+	// and a caller that only got a sentence had no choice but to report the whole
+	// scope as an invalid argument — which threw away real lineage over a gap.
+	var unsupported *lineage.UnsupportedStatementError
+	switch {
+	case err == nil:
+	case errors.As(err, &unsupported):
+		result.Diagnostics = convertAnalyzeSQLDiagnostics(unsupported.Diagnostics)
+		result.OmittedDiagnosticCount = int32(unsupported.Omitted)
+	case errors.Is(err, lineage.ErrorEngineNotSupported):
+		return fail(connect.CodeFailedPrecondition, "engine %s has no lineage analyzer", engine)
+	default:
 		return fail(connect.CodeInvalidArgument, "failed to analyze the SQL statement: %v", err)
 	}
 
 	return s.buildAnalyzeSQLResult(ctx, analysisContext, relations, result), nil
+}
+
+// convertAnalyzeSQLDiagnostics reports what an analysis could not represent as
+// data rather than as the analyzer's prose, so a caller can act on the category
+// and point at the reference.
+func convertAnalyzeSQLDiagnostics(diagnostics []model.Diagnostic) []*v1pb.AnalyzeSQLDiagnostic {
+	if len(diagnostics) == 0 {
+		return nil
+	}
+	converted := make([]*v1pb.AnalyzeSQLDiagnostic, 0, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		converted = append(converted, &v1pb.AnalyzeSQLDiagnostic{
+			Category:  convertAnalyzeSQLDiagnosticCategory(diagnostic.Category),
+			Subject:   diagnostic.Subject,
+			Reference: diagnostic.Reference,
+			Detail:    diagnostic.Detail,
+		})
+	}
+	return converted
+}
+
+// convertAnalyzeSQLDiagnosticCategory maps the analyzer's classification onto the
+// API's. An unrecognized category becomes UNSPECIFIED rather than a guess: every
+// diagnostic's own fields still describe it.
+func convertAnalyzeSQLDiagnosticCategory(category model.DiagnosticCategory) v1pb.DiagnosticCategory {
+	switch category {
+	case model.DiagnosticNotModelled:
+		return v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_NOT_MODELLED
+	case model.DiagnosticUnresolved:
+		return v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_UNRESOLVED_REFERENCE
+	case model.DiagnosticAmbiguous:
+		return v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_AMBIGUOUS_REFERENCE
+	case model.DiagnosticCatalogUnavailable:
+		return v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_CATALOG_UNAVAILABLE
+	default:
+		return v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_UNSPECIFIED
+	}
 }
 
 // analyzeSQLRelationGUIDs is the pair of GUIDs one relation resolved to. The

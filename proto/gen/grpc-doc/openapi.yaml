@@ -3105,6 +3105,35 @@ components:
                  (MySQL family) or schema (PostgreSQL-like). `name` is an opaque
                  caller-supplied label that is echoed back so results can be attributed; the
                  server attaches no meaning to it.
+        AnalyzeSQLDiagnostic:
+            type: object
+            properties:
+                category:
+                    enum:
+                        - DIAGNOSTIC_CATEGORY_UNSPECIFIED
+                        - DIAGNOSTIC_CATEGORY_NOT_MODELLED
+                        - DIAGNOSTIC_CATEGORY_UNRESOLVED_REFERENCE
+                        - DIAGNOSTIC_CATEGORY_AMBIGUOUS_REFERENCE
+                        - DIAGNOSTIC_CATEGORY_CATALOG_UNAVAILABLE
+                    type: string
+                    format: enum
+                subject:
+                    type: string
+                    description: |-
+                        What the diagnostic is about, the way the analyzer names it: the statement
+                         or clause shape it does not model ("MERGE", "WITH before INSERT"), or the
+                         clause a reference was written in ("a CTE body").
+                reference:
+                    type: string
+                    description: |-
+                        The identifier a reference diagnostic could not resolve, written the way the
+                         SQL writes it ("t.c", "t", "c"). Empty when the diagnostic is about a shape.
+                detail:
+                    type: string
+                    description: |-
+                        The cause, for a diagnostic that needs one: the parser defect behind a
+                         skipped clause, or the catalog error behind a degraded lookup.
+            description: AnalyzeSQLDiagnostic is one thing an analysis could not represent.
         AnalyzeSQLRelation:
             type: object
             properties:
@@ -3237,6 +3266,21 @@ components:
                     description: |-
                         Warnings that only affect this scope, such as an engine without a lineage
                          analyzer. They never fail the whole request.
+                diagnostics:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AnalyzeSQLDiagnostic'
+                    description: |-
+                        What the analysis could not represent. relations is everything it did
+                         resolve; a diagnostic says why an edge may be missing, which the relations
+                         alone cannot say. An analyzer that cannot parse the statement is not
+                         reported here: that fails the scope instead.
+                omittedDiagnosticCount:
+                    type: integer
+                    description: |-
+                        How many diagnostics the server's per-analysis bound left out, so a caller
+                         can tell a complete list from a truncated one.
+                    format: int32
         ApproveDeviceLoginRequest:
             required:
                 - name

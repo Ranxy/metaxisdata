@@ -483,6 +483,24 @@ export declare type AnalyzeSQLResult = Message<"metaxisdata.v1.AnalyzeSQLResult"
    * @generated from field: repeated string warnings = 4;
    */
   warnings: string[];
+
+  /**
+   * What the analysis could not represent. relations is everything it did
+   * resolve; a diagnostic says why an edge may be missing, which the relations
+   * alone cannot say. An analyzer that cannot parse the statement is not
+   * reported here: that fails the scope instead.
+   *
+   * @generated from field: repeated metaxisdata.v1.AnalyzeSQLDiagnostic diagnostics = 5;
+   */
+  diagnostics: AnalyzeSQLDiagnostic[];
+
+  /**
+   * How many diagnostics the server's per-analysis bound left out, so a caller
+   * can tell a complete list from a truncated one.
+   *
+   * @generated from field: int32 omitted_diagnostic_count = 6;
+   */
+  omittedDiagnosticCount: number;
 };
 
 /**
@@ -490,6 +508,49 @@ export declare type AnalyzeSQLResult = Message<"metaxisdata.v1.AnalyzeSQLResult"
  * Use `create(AnalyzeSQLResultSchema)` to create a new message.
  */
 export declare const AnalyzeSQLResultSchema: GenMessage<AnalyzeSQLResult>;
+
+/**
+ * AnalyzeSQLDiagnostic is one thing an analysis could not represent.
+ *
+ * @generated from message metaxisdata.v1.AnalyzeSQLDiagnostic
+ */
+export declare type AnalyzeSQLDiagnostic = Message<"metaxisdata.v1.AnalyzeSQLDiagnostic"> & {
+  /**
+   * @generated from field: metaxisdata.v1.DiagnosticCategory category = 1;
+   */
+  category: DiagnosticCategory;
+
+  /**
+   * What the diagnostic is about, the way the analyzer names it: the statement
+   * or clause shape it does not model ("MERGE", "WITH before INSERT"), or the
+   * clause a reference was written in ("a CTE body").
+   *
+   * @generated from field: string subject = 2;
+   */
+  subject: string;
+
+  /**
+   * The identifier a reference diagnostic could not resolve, written the way the
+   * SQL writes it ("t.c", "t", "c"). Empty when the diagnostic is about a shape.
+   *
+   * @generated from field: string reference = 3;
+   */
+  reference: string;
+
+  /**
+   * The cause, for a diagnostic that needs one: the parser defect behind a
+   * skipped clause, or the catalog error behind a degraded lookup.
+   *
+   * @generated from field: string detail = 4;
+   */
+  detail: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.AnalyzeSQLDiagnostic.
+ * Use `create(AnalyzeSQLDiagnosticSchema)` to create a new message.
+ */
+export declare const AnalyzeSQLDiagnosticSchema: GenMessage<AnalyzeSQLDiagnostic>;
 
 /**
  * @generated from message metaxisdata.v1.AnalyzeSQLRelation
@@ -793,6 +854,56 @@ export enum RelationType {
  * Describes the enum metaxisdata.v1.RelationType.
  */
 export declare const RelationTypeSchema: GenEnum<RelationType>;
+
+/**
+ * DiagnosticCategory classifies what an analysis could not represent. The
+ * categories call for different action: a shape the analyzer does not model is a
+ * coverage gap in the analyzer, while a reference that does not resolve is
+ * usually the SQL naming something the analyzer cannot see.
+ *
+ * @generated from enum metaxisdata.v1.DiagnosticCategory
+ */
+export enum DiagnosticCategory {
+  /**
+   * @generated from enum value: DIAGNOSTIC_CATEGORY_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * A statement or clause shape the analyzer does not model yet.
+   *
+   * @generated from enum value: DIAGNOSTIC_CATEGORY_NOT_MODELLED = 1;
+   */
+  NOT_MODELLED = 1,
+
+  /**
+   * A reference that resolved to nothing.
+   *
+   * @generated from enum value: DIAGNOSTIC_CATEGORY_UNRESOLVED_REFERENCE = 2;
+   */
+  UNRESOLVED_REFERENCE = 2,
+
+  /**
+   * A reference a single-valued position could not choose between, which is an
+   * unqualified name several relations in scope own.
+   *
+   * @generated from enum value: DIAGNOSTIC_CATEGORY_AMBIGUOUS_REFERENCE = 3;
+   */
+  AMBIGUOUS_REFERENCE = 3,
+
+  /**
+   * A metadata lookup that failed. The analysis carried on with the relation's
+   * columns unknown, so its edges are degraded rather than complete.
+   *
+   * @generated from enum value: DIAGNOSTIC_CATEGORY_CATALOG_UNAVAILABLE = 4;
+   */
+  CATALOG_UNAVAILABLE = 4,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.DiagnosticCategory.
+ */
+export declare const DiagnosticCategorySchema: GenEnum<DiagnosticCategory>;
 
 /**
  * @generated from service metaxisdata.v1.LineageService

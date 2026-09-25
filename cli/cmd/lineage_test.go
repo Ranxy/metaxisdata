@@ -54,3 +54,71 @@ func TestVisibleRelationsOnAnEmptyScope(t *testing.T) {
 	require.Empty(t, visible)
 	require.Zero(t, hidden)
 }
+
+// The CLI renders a diagnostic itself, because it is an API client and may not
+// import the analyzer's formatter. The rendering has to match what the server
+// records on the lineage version, or the same gap would read two ways.
+func TestDiagnosticTextMatchesTheAnalyzersWording(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		diagnostic *v1pb.AnalyzeSQLDiagnostic
+		want       string
+	}{
+		{
+			name: "a statement shape the analyzer does not model",
+			diagnostic: &v1pb.AnalyzeSQLDiagnostic{
+				Category: v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_NOT_MODELLED,
+				Subject:  "MERGE",
+			},
+			want: "not modelled: MERGE",
+		},
+		{
+			name: "a shape with the parser defect behind it",
+			diagnostic: &v1pb.AnalyzeSQLDiagnostic{
+				Category: v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_NOT_MODELLED,
+				Subject:  "WITH before INSERT",
+				Detail:   "the parser drops the CTE",
+			},
+			want: "not modelled: WITH before INSERT: the parser drops the CTE",
+		},
+		{
+			name: "a reference that resolved to nothing",
+			diagnostic: &v1pb.AnalyzeSQLDiagnostic{
+				Category:  v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_UNRESOLVED_REFERENCE,
+				Subject:   "a CTE body",
+				Reference: "stage.id",
+			},
+			want: "unresolved reference in a CTE body: stage.id",
+		},
+		{
+			name: "a reference several relations own",
+			diagnostic: &v1pb.AnalyzeSQLDiagnostic{
+				Category:  v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_AMBIGUOUS_REFERENCE,
+				Subject:   "an assignment target",
+				Reference: "a",
+			},
+			want: "ambiguous reference in an assignment target: a",
+		},
+		{
+			name: "a catalog lookup that failed",
+			diagnostic: &v1pb.AnalyzeSQLDiagnostic{
+				Category:  v1pb.DiagnosticCategory_DIAGNOSTIC_CATEGORY_CATALOG_UNAVAILABLE,
+				Reference: "t",
+				Detail:    "connection reset",
+			},
+			want: "catalog lookup failed for t: connection reset",
+		},
+		{
+			name:       "a category this build does not know",
+			diagnostic: &v1pb.AnalyzeSQLDiagnostic{},
+			want:       "unclassified diagnostic",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, diagnosticText(tc.diagnostic))
+		})
+	}
+}

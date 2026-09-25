@@ -27,6 +27,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/config"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -46,6 +47,7 @@ func configureGrpcRouters(
 	dbFactory *dbfactory.DBFactory,
 	schemaSync *schemasync.Syncer,
 	llmRegistry *llmcomp.Registry,
+	lineageAnalyzer *lineage.Analyzer,
 ) error {
 	// Note: the gateway response modifier takes the token duration on server startup. If the value is changed,
 	// the user has to restart the server to take the latest value.
@@ -72,10 +74,10 @@ func configureGrpcRouters(
 	auditLogService := apiv1.NewAuditLogService(stores)
 	instanceService := apiv1.NewInstanceService(stores, dbFactory, schemaSync)
 	databaseService := apiv1.NewDatabaseService(stores, schemaSync)
-	lineageService := apiv1.NewLineageService(stores)
+	lineageService := apiv1.NewLineageService(stores, lineageAnalyzer)
 	openLineageService := apiv1.NewOpenLineageService(stores)
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
-	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry)
+	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry, lineageAnalyzer)
 	settingService := apiv1.NewSettingService(stores, profile)
 	environmentService := apiv1.NewEnvironmentService(stores)
 	roleService := apiv1.NewRoleService(stores)

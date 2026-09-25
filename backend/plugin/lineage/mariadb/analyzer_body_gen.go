@@ -64,14 +64,14 @@ type Analyzer struct {
 }
 
 // Analyze parses a single MySQL statement and returns its column relations.
-func Analyze(ctx context.Context, sql string) ([]model.ColumnRelation, error) {
-	return NewAnalyzer(ctx, sql, lineage.GetCatalogProvide()).AnalyzeRelations()
+func Analyze(ctx context.Context, sql string, cat catalog.Provide) ([]model.ColumnRelation, error) {
+	return NewAnalyzer(ctx, sql, cat).AnalyzeRelations()
 }
 
-// splitStatements splits a script into its individual statements, dropping the
-// ones that carry no SQL. The root package feeds them to Analyze one at a time:
-// this analyzer is defined for exactly one statement.
-func splitStatements(sql string) []string {
+// SplitStatements splits a script into its individual statements, dropping the
+// ones that carry no SQL. The caller feeds them to Analyze one at a time: this
+// analyzer is defined for exactly one statement.
+func SplitStatements(sql string) []string {
 	segments := mysqlparser.Split(sql)
 	statements := make([]string, 0, len(segments))
 	for _, segment := range segments {
@@ -150,10 +150,8 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	// find: a statement shape it does not model, and a reference that resolved to
 	// nothing. A parse error is the only thing that fails an analysis whole, and it
 	// has already returned above.
-	if messages := a.diagnostics.Messages(); len(messages) > 0 {
-		return a.edges.Edges(), &lineage.UnsupportedStatementError{
-			Message: errors.Errorf("analysis errors: %s", strings.Join(messages, "; ")).Error(),
-		}
+	if notes, omitted := a.diagnostics.Notes(); len(notes) > 0 {
+		return a.edges.Edges(), &lineage.UnsupportedStatementError{Diagnostics: notes, Omitted: omitted}
 	}
 	return a.edges.Edges(), nil
 }
@@ -168,7 +166,8 @@ func (a *Analyzer) skipLeadingWith(statement string) bool {
 	if !hasLeadingWith(a.sql) {
 		return false
 	}
-	a.diagnostics.NotModelled(fmt.Sprintf("WITH before %s: the parser drops the CTE, so its sources cannot be resolved", statement))
+	a.diagnostics.NotModelled("WITH before "+statement,
+		"the parser drops the CTE, so its sources cannot be resolved")
 	return true
 }
 
