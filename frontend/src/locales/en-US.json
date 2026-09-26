@@ -269,10 +269,10 @@
   "home": {
     "actionAuditLogsDescription": "Inspect the workspace audit trail",
     "actionExplainSQLDescription": "Explain SQL with an LLM",
-    "actionLLMDescription": "Manage the model providers behind Explain SQL",
+    "actionLLMDescription": "Model providers for Explain SQL",
     "actionManualSQLDescription": "Maintain hand-written SQL for lineage",
     "actionMetadataDescription": "Browse instances, databases and tables",
-    "actionOpenLineageDescription": "Configure namespace mappings and ingestion keys",
+    "actionOpenLineageDescription": "Namespace mappings and ingestion keys",
     "actionUsersDescription": "Manage members, roles and access",
     "attentionDescription": "These instances or databases may not be syncing as expected.",
     "attentionTitle": "Needs attention",
