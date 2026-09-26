@@ -258,13 +258,13 @@ function buildMenuItems(): MenuItem[] {
     },
     {
       key: "datasource",
-      label: t("menu.datasource"),
+      label: t("menu.data"),
       path: "#",
       icon: Database,
       children: [
         {
           key: "connections",
-          label: t("menu.connections"),
+          label: t("menu.instances"),
           path: "/instances",
           icon: Server,
           permission: "metaxisdata.instances.list",

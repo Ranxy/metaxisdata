@@ -70,7 +70,7 @@ describe("AppSidebar", () => {
   it("shows only the top-level entries while every section is closed", async () => {
     const { wrapper } = await mountSidebar();
 
-    expect(wrapper.text()).toContain("Data Sources");
+    expect(wrapper.text()).toContain("Data");
     expect(wrapper.text()).toContain("OpenLineage");
     expect(wrapper.text()).toContain("Settings");
     // Section children stay hidden until the section or a route opens them.
@@ -88,7 +88,7 @@ describe("AppSidebar", () => {
 
     expect(wrapper.text()).toContain("Metadata Browser");
 
-    await sectionTrigger(wrapper, "Data Sources").trigger("click");
+    await sectionTrigger(wrapper, "Data").trigger("click");
     await wrapper.vm.$nextTick();
 
     expect(appStore.collapsedSections).toContain("datasource");
@@ -97,7 +97,7 @@ describe("AppSidebar", () => {
       { collapsedSections: ["datasource"] }
     );
 
-    await sectionTrigger(wrapper, "Data Sources").trigger("click");
+    await sectionTrigger(wrapper, "Data").trigger("click");
     await wrapper.vm.$nextTick();
 
     expect(appStore.collapsedSections).not.toContain("datasource");

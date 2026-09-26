@@ -151,7 +151,7 @@ describe("HomePage", () => {
     const wrapper = await mountHome();
 
     expect(wrapper.text()).toContain("Get started");
-    expect(wrapper.text()).toContain("Connect a data source");
+    expect(wrapper.text()).toContain("Connect an instance");
     // No problems to report and no OpenLineage evidence yet.
     expect(wrapper.text()).not.toContain("Needs attention");
     expect(wrapper.text()).toContain("No OpenLineage runs found");

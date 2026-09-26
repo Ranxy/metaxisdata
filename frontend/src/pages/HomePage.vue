@@ -154,9 +154,9 @@
         <Card class="xl:col-span-2">
           <CardHeader class="flex flex-row items-center justify-between space-y-0">
             <div class="space-y-1.5">
-              <CardTitle>{{ t("home.dataSourcesTitle") }}</CardTitle>
+              <CardTitle>{{ t("home.instancesTitle") }}</CardTitle>
               <CardDescription>
-                {{ t("home.dataSourcesDescription") }}
+                {{ t("home.instancesDescription") }}
               </CardDescription>
             </div>
             <Button
@@ -180,7 +180,7 @@
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{{ t("home.columnDataSource") }}</TableHead>
+                    <TableHead>{{ t("home.columnInstance") }}</TableHead>
                     <TableHead>{{ t("instanceManagement.engine") }}</TableHead>
                     <TableHead>
                       {{ t("instanceManagement.environment") }}
@@ -590,9 +590,9 @@ const stats = computed(() => {
   if (canViewInstances.value) {
     items.push({
       key: "instances",
-      label: t("home.statDataSources"),
+      label: t("home.statInstances"),
       value: countLabel(summary.instanceCount, instancesTruncated.value),
-      hint: t("home.statDataSourcesHint", {
+      hint: t("home.statInstancesHint", {
         count: summary.activeInstanceCount,
       }),
       icon: Database,
