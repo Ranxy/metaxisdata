@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"log/slog"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
@@ -242,10 +243,29 @@ func (s *LineageService) getLineageMeta(ctx context.Context, guid string, metaTy
 		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to get meta registry %q: %v", guid, err))
 	}
 	if meta == nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("meta registry %q not found", guid))
+		// A lineage edge can name a relation the registry does not have: the writer
+		// has not synced its schema yet, or the reference is to an object the sync
+		// excludes. The edge is real either way, so the node is reported as an
+		// unresolved relation of the type the edge claims instead of failing the
+		// whole request. Reconciling those edges once the relation does appear is
+		// the revalidation pass's job; until then the node simply carries no
+		// metadata.
+		slog.Debug("lineage node has no metadata registry entry", "guid", guid, "objectType", metaType.String())
+		return lineageNodeWithMissingMeta(guid, metaType), nil
 	}
 
 	return meta, nil
+}
+
+// lineageNodeWithMissingMeta is the node a lineage edge's endpoint is reported as
+// when the metadata registry has no row for it. The type the edge claims is kept
+// so the graph can still group and render the node, and no metadata is invented.
+func lineageNodeWithMissingMeta(guid string, metaType v1pb.MetaType) *store.MetaRegistryResource {
+	objectType := storepb.MetaType_TABLE
+	if metaType != v1pb.MetaType_UNSPECIFIED {
+		objectType = storepb.MetaType(metaType)
+	}
+	return &store.MetaRegistryResource{GUID: guid, ObjectType: objectType}
 }
 
 func shouldIncludeSource(lineageType v1pb.LineageType) bool {
