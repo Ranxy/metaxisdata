@@ -373,7 +373,7 @@ async function handleDebugToggle(checked: boolean | "indeterminate") {
     showSuccess(t("generalSettings.saveSuccess"));
   } catch (e) {
     debugEnabled.value = previous;
-    handleError(e, t("generalSettings.saveError"));
+    handleError(e, "generalSettings.saveError");
   } finally {
     isDebugSaving.value = false;
   }
@@ -408,7 +408,7 @@ async function handleSave() {
     savedSnapshot.value = snapshot();
     showSuccess(t("generalSettings.saveSuccess"));
   } catch (e) {
-    handleError(e, t("generalSettings.saveError"));
+    handleError(e, "generalSettings.saveError");
   } finally {
     isSaving.value = false;
   }

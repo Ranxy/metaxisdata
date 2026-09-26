@@ -615,6 +615,7 @@ import { useEnvironmentStore } from "@/store/modules/environment";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import { DataSourceType } from "@/types/proto-es/v1/instance_service_pb";
+import { formatDateTime } from "@/utils/datetime";
 import {
   engineBadgeClass,
   engineBgClass,
@@ -769,19 +770,7 @@ function getHostInfo(instance: Instance): string {
 }
 
 function formatLastSync(timestamp: Timestamp | undefined): string {
-  if (!timestamp?.seconds) return "-";
-  const d = new Date(Number(timestamp.seconds) * 1000);
-  const formatter = new Intl.DateTimeFormat(locale.value, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-
-  return formatter.format(d);
+  return formatDateTime(timestamp, locale.value, { seconds: true });
 }
 async function fetchInstances() {
   isLoading.value = true;
@@ -844,7 +833,7 @@ async function handleDeleteInstance() {
     showSuccess(t("instanceManagement.deleteSuccess"));
     await Promise.all([fetchInstances(), fetchDeletedInstances()]);
   } catch (e) {
-    handleError(e, t("instanceManagement.deleteError"));
+    handleError(e, "instanceManagement.deleteError");
   } finally {
     isDeleting.value = false;
   }
@@ -857,7 +846,7 @@ async function restoreInstance(instance: Instance) {
     showSuccess(t("instanceManagement.restoreSuccess"));
     await Promise.all([fetchInstances(), fetchDeletedInstances()]);
   } catch (e) {
-    handleError(e, t("instanceManagement.restoreError"));
+    handleError(e, "instanceManagement.restoreError");
   } finally {
     restoringInstance.value = null;
   }
@@ -1096,7 +1085,7 @@ async function handleCreateInstance() {
     showSuccess(t("instanceManagement.createSuccess"));
     await fetchInstances();
   } catch (e) {
-    handleError(e, t("instanceManagement.createError"));
+    handleError(e, "instanceManagement.createError");
   } finally {
     isCreating.value = false;
   }
@@ -1116,7 +1105,7 @@ async function handleTestConnection() {
     await createInstance(createInstanceInput(true));
     showSuccess(t("instanceManagement.testConnectionSuccess"));
   } catch (e) {
-    handleError(e, t("instanceManagement.testConnectionError"));
+    handleError(e, "instanceManagement.testConnectionError");
   } finally {
     isTestingConnection.value = false;
   }

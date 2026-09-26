@@ -7,13 +7,6 @@ export interface AggregatedOpenLineageDataset extends OpenLineageDatasetRef {
   runCount: number;
 }
 
-export function toGuidPath(guid: string): string {
-  return guid
-    .split(";")
-    .map((segment) => (segment === "" ? "~" : encodeURIComponent(segment)))
-    .join("/");
-}
-
 type OpenLineagePayloadLike = {
   rawPayload: string;
 };

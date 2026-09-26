@@ -432,6 +432,7 @@ import { useErrorHandler } from "@/composables/useErrorHandler";
 import { useAuthStore } from "@/store/modules/auth";
 import { State } from "@/types/proto-es/v1/common_pb";
 import { type User, UserType } from "@/types/proto-es/v1/user_service_pb";
+import { formatDateTime } from "@/utils/datetime";
 
 const { t, locale } = useI18n();
 const authStore = useAuthStore();
@@ -560,19 +561,7 @@ function getUserTypeLabel(userType: UserType): string {
 }
 
 function formatLastLogin(timestamp: Timestamp | undefined): string {
-  if (!timestamp?.seconds) return "-";
-  const d = new Date(Number(timestamp.seconds) * 1000);
-  const formatter = new Intl.DateTimeFormat(locale.value, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-
-  return formatter.format(d);
+  return formatDateTime(timestamp, locale.value, { seconds: true });
 }
 
 async function fetchUsers() {
@@ -752,7 +741,7 @@ async function handleCreateUser() {
     showSuccess(t("userManagement.createSuccess"));
     await fetchUsers();
   } catch (e) {
-    handleError(e, t("userManagement.createError"));
+    handleError(e, "userManagement.createError");
   } finally {
     isCreating.value = false;
   }
@@ -785,7 +774,7 @@ async function handleUpdateUser() {
     showSuccess(t("userManagement.updateSuccess"));
     await fetchUsers();
   } catch (e) {
-    handleError(e, t("userManagement.updateError"));
+    handleError(e, "userManagement.updateError");
   } finally {
     isUpdating.value = false;
   }
@@ -802,7 +791,7 @@ async function handleDeleteUser() {
     showSuccess(t("userManagement.deleteSuccess"));
     await Promise.all([fetchUsers(), fetchDeletedUsers()]);
   } catch (e) {
-    handleError(e, t("userManagement.deleteError"));
+    handleError(e, "userManagement.deleteError");
   } finally {
     isDeleting.value = false;
   }
@@ -815,7 +804,7 @@ async function restoreUser(user: User) {
     showSuccess(t("userManagement.restoreSuccess"));
     await Promise.all([fetchUsers(), fetchDeletedUsers()]);
   } catch (e) {
-    handleError(e, t("userManagement.restoreError"));
+    handleError(e, "userManagement.restoreError");
   } finally {
     restoringUser.value = null;
   }

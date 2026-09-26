@@ -439,7 +439,6 @@
               v-if="activeGroup"
               :meta-type="activeGroup.metaType"
               :items="activeGroup.list"
-              :is-mysql="isMySQLInstance"
               @select="handleSelectMetadata"
             />
             <EmptyState
@@ -550,6 +549,7 @@ import {
 } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import { extractErrorMessage } from "@/utils/error";
+import { guidSegmentsToRouteParams, routeParamToGuid } from "@/utils/guid";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -807,18 +807,7 @@ const showListChrome = computed(
   () => !isLeafDetailView.value && !isLoading.value
 );
 
-const currentGuid = computed(() => {
-  const guidParam = route.params.guid;
-  if (!guidParam) return "";
-
-  const guidStr = Array.isArray(guidParam) ? guidParam.join("/") : guidParam;
-  const segments = guidStr
-    .split("/")
-    .map((s) => decodeURIComponent(s))
-    .map((s) => (s === "~" ? "" : s));
-
-  return segments.join(";");
-});
+const currentGuid = computed(() => routeParamToGuid(route.params.guid));
 
 const isRootPath = computed(() => !currentGuid.value);
 
@@ -1485,12 +1474,6 @@ async function loadMoreMetadata() {
   }
 }
 
-function toGuidPath(segments: string[]): string {
-  return segments
-    .map((s) => (s === "" ? "~" : encodeURIComponent(s)))
-    .join("/");
-}
-
 function handleNavigate(guidIndex: number) {
   if (guidIndex < 0) {
     router.push({ name: "MetadataBrowser" });
@@ -1500,7 +1483,7 @@ function handleNavigate(guidIndex: number) {
   const segments = guidSegments.value.slice(0, guidIndex + 1);
   router.push({
     name: "MetadataDetail",
-    params: { guid: toGuidPath(segments) },
+    params: { guid: guidSegmentsToRouteParams(segments) },
   });
 }
 
@@ -1509,7 +1492,7 @@ function handleSelectInstance(instance: Instance) {
   currentInstanceEngine.value = instance.engine;
   router.push({
     name: "MetadataDetail",
-    params: { guid: toGuidPath([instanceId]) },
+    params: { guid: guidSegmentsToRouteParams([instanceId]) },
   });
 }
 
@@ -1546,7 +1529,7 @@ function handleSelectMetadata(item: StoredMetadata, metaType: MetaType) {
 
     router.push({
       name: "MetadataDetail",
-      params: { guid: toGuidPath(segments) },
+      params: { guid: guidSegmentsToRouteParams(segments) },
       query: { metaType: String(MetaType.MANUAL_SQL) },
     });
     return;
@@ -1602,7 +1585,7 @@ function handleSelectMetadata(item: StoredMetadata, metaType: MetaType) {
 
   router.push({
     name: "MetadataDetail",
-    params: { guid: toGuidPath(newSegments) },
+    params: { guid: guidSegmentsToRouteParams(newSegments) },
     query,
   });
 }
@@ -1743,7 +1726,7 @@ function handleSelectSearchResult(result: SearchMetadataResult) {
 
     router.push({
       name: "MetadataDetail",
-      params: { guid: toGuidPath(segments.slice(0, -1)) },
+      params: { guid: guidSegmentsToRouteParams(segments.slice(0, -1)) },
       query: {
         metaType: String(MetaType.TABLE),
         column: columnName,
@@ -1759,7 +1742,7 @@ function handleSelectSearchResult(result: SearchMetadataResult) {
 
   router.push({
     name: "MetadataDetail",
-    params: { guid: toGuidPath(segments) },
+    params: { guid: guidSegmentsToRouteParams(segments) },
     query,
   });
 }

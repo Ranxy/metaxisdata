@@ -181,7 +181,9 @@ import type {
   LineageRelation,
   Transformation,
 } from "@/types/proto-es/v1/lineage_service_pb";
+import { formatDateTime } from "@/utils/datetime";
 import { extractErrorMessage } from "@/utils/error";
+import { guidToRouteParams, routeParamToGuid } from "@/utils/guid";
 
 const OPENLINEAGE_META_TYPE = 100;
 
@@ -192,7 +194,7 @@ type RunSummary = {
   updatedAtLabel: string;
 };
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
 
@@ -201,16 +203,7 @@ const evidenceError = ref("");
 const upstreamRelations = ref<LineageRelation[]>([]);
 const downstreamRelations = ref<LineageRelation[]>([]);
 
-const currentGuid = computed(() => {
-  const guidParam = route.params.guid;
-  if (!guidParam) return "";
-  const guidStr = Array.isArray(guidParam) ? guidParam.join("/") : guidParam;
-  return guidStr
-    .split("/")
-    .map((segment) => decodeURIComponent(segment))
-    .map((segment) => (segment === "~" ? "" : segment))
-    .join(";");
-});
+const currentGuid = computed(() => routeParamToGuid(route.params.guid));
 
 const currentMetaType = computed(() => {
   const raw = Array.isArray(route.query.metaType)
@@ -362,7 +355,7 @@ watch(
 function openTableLineage() {
   router.push({
     name: "LineageGraph",
-    params: { guid: toGuidPath(currentGuid.value) },
+    params: { guid: guidToRouteParams(currentGuid.value) },
     query: {
       metaType: String(currentMetaType.value),
       from: route.fullPath,
@@ -409,16 +402,7 @@ function formatOpenLineageRunLabel(guid: string): string {
 }
 
 function formatTimestamp(ts: Timestamp | undefined): string {
-  if (!ts?.seconds) return "-";
-  const date = new Date(Number(ts.seconds) * 1000);
-  return new Intl.DateTimeFormat("default", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
+  return formatDateTime(ts, locale.value);
 }
 
 function compareTimestamps(
@@ -431,13 +415,6 @@ function compareTimestamps(
     return 0;
   }
   return leftSeconds > rightSeconds ? 1 : -1;
-}
-
-function toGuidPath(guid: string): string {
-  return guid
-    .split(";")
-    .map((segment) => (segment === "" ? "~" : encodeURIComponent(segment)))
-    .join("/");
 }
 
 function formatGuidLabel(guid: string): string {

@@ -478,7 +478,7 @@ async function handleSave() {
     // A rejected write (etag conflict, unknown role, last-admin guard) leaves
     // the local draft in place; the operator can reload after reading the
     // message. handleError already reports the server's message.
-    handleError(err, t("iam.policy.saveFailed"));
+    handleError(err, "iam.policy.saveFailed");
   } finally {
     isSaving.value = false;
   }

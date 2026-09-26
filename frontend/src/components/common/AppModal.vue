@@ -38,15 +38,11 @@ interface Props {
   modelValue: boolean;
   title?: string;
   size?: "sm" | "md" | "lg" | "xl";
-  closable?: boolean;
-  closeOnBackdrop?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   title: "",
   size: "md",
-  closable: true,
-  closeOnBackdrop: true,
 });
 
 const emit = defineEmits<{

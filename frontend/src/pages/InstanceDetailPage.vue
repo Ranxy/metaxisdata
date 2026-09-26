@@ -569,6 +569,7 @@ import {
   DataSourceType,
   InstanceSchema,
 } from "@/types/proto-es/v1/instance_service_pb";
+import { formatDateTime } from "@/utils/datetime";
 import { engineBadgeClass, engineLabel } from "@/utils/engine";
 
 const { t, locale } = useI18n();
@@ -793,7 +794,7 @@ async function handleUpdateInstance() {
     showSuccess(t("instanceDetail.updateSuccess"));
     await fetchInstance();
   } catch (e) {
-    handleError(e, t("instanceDetail.updateError"));
+    handleError(e, "instanceDetail.updateError");
   } finally {
     isUpdating.value = false;
   }
@@ -932,7 +933,7 @@ async function handleTestConnection() {
     }
     showSuccess(t("instanceManagement.testConnectionSuccess"));
   } catch (e) {
-    handleError(e, t("instanceManagement.testConnectionError"));
+    handleError(e, "instanceManagement.testConnectionError");
   } finally {
     isTestingConnection.value = false;
   }
@@ -976,7 +977,7 @@ async function handleSyncAllDatabases() {
     toastStore.success(t("instanceDetail.syncAllSuccess"));
     await Promise.all([fetchInstance(), fetchDatabases()]);
   } catch (e) {
-    handleError(e, t("instanceDetail.syncAllError"));
+    handleError(e, "instanceDetail.syncAllError");
   } finally {
     isSyncingAllDatabases.value = false;
   }
@@ -993,7 +994,7 @@ async function handleSyncSingleDatabase(name: string) {
     toastStore.success(t("instanceDetail.syncSingleSuccess"));
     await fetchDatabases();
   } catch (e) {
-    handleError(e, t("instanceDetail.syncSingleError"));
+    handleError(e, "instanceDetail.syncSingleError");
   } finally {
     const nextSyncingDatabases = { ...syncingDatabases.value };
     delete nextSyncingDatabases[name];
@@ -1036,19 +1037,7 @@ function getStateLabel(state: State): string {
 }
 
 function formatLastSync(timestamp: Timestamp | undefined): string {
-  if (!timestamp?.seconds) return "-";
-  const d = new Date(Number(timestamp.seconds) * 1000);
-  const formatter = new Intl.DateTimeFormat(locale.value, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-
-  return formatter.format(d);
+  return formatDateTime(timestamp, locale.value, { seconds: true });
 }
 
 async function fetchInstance() {
@@ -1064,12 +1053,12 @@ async function fetchInstance() {
     } else {
       handleError(
         new Error("Instance not found"),
-        t("instanceDetail.fetchInstanceError")
+        "instanceDetail.fetchInstanceError"
       );
       router.push({ name: "InstanceManagement" });
     }
   } catch (e) {
-    handleError(e, t("instanceDetail.fetchInstanceError"));
+    handleError(e, "instanceDetail.fetchInstanceError");
     router.push({ name: "InstanceManagement" });
   } finally {
     isLoadingInstance.value = false;

@@ -199,7 +199,9 @@ const routes: RouteRecordRaw[] = [
           import("@/pages/openlineage/OpenLineageRunDetailPage.vue"),
       },
       {
-        path: "column-lineage/:guid(.+)",
+        // Repeated so every GUID segment keeps its own path segment: a name
+        // containing `/` survives, which a single `(.+)` param cannot do.
+        path: "column-lineage/:guid+",
         name: "OpenLineageColumnLineage",
         component: () =>
           import("@/pages/openlineage/OpenLineageColumnLineagePage.vue"),
@@ -227,7 +229,10 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
-    path: "/metadata/:guid(.+)",
+    // Repeated for the same reason as `column-lineage/:guid+` above: the GUID is
+    // pushed as one param array element per segment, so nothing has to be
+    // re-split (and a `/` inside a name is preserved).
+    path: "/metadata/:guid+",
     name: "MetadataDetail",
     component: () => import("@/pages/MetadataBrowserPage.vue"),
     meta: {
@@ -237,7 +242,7 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
-    path: "/lineage/:guid(.+)",
+    path: "/lineage/:guid+",
     name: "LineageGraph",
     component: () => import("@/pages/LineageGraphPage.vue"),
     meta: {

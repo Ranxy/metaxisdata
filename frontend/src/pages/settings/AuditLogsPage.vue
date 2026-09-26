@@ -492,6 +492,7 @@ import {
   AuditLogSeverity,
 } from "@/types/proto-es/v1/audit_log_service_pb";
 import type { User } from "@/types/proto-es/v1/user_service_pb";
+import { formatDate, formatDateTime } from "@/utils/datetime";
 
 type AuditFilterType = "resource" | "actor" | "method" | "level";
 type SeverityValue = "INFO" | "WARNING" | "ERROR";
@@ -909,34 +910,11 @@ function toRFC3339(value: CalendarDateLike, bound: "start" | "end"): string {
 
 function formatDateValue(value: CalendarDateLike): string {
   const dateValue = getDateValueString(value);
-  if (!dateValue) {
-    return "";
-  }
-  const date = new Date(`${dateValue}T00:00:00.000`);
-  if (Number.isNaN(date.getTime())) {
-    return dateValue;
-  }
-  return new Intl.DateTimeFormat(locale.value, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+  return dateValue ? formatDate(dateValue, locale.value, dateValue) : "";
 }
 
 function formatTimestamp(ts: Timestamp | undefined): string {
-  if (!ts?.seconds) return "-";
-  const milliseconds =
-    Number(ts.seconds) * 1000 + Number(ts.nanos ?? 0) / 1_000_000;
-  const date = new Date(milliseconds);
-  return new Intl.DateTimeFormat(locale.value, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(date);
+  return formatDateTime(ts, locale.value, { seconds: true });
 }
 
 function formatJson(value: unknown): string {

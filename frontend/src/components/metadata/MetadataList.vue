@@ -2,7 +2,6 @@
   <component
     :is="listComponent"
     :items="items"
-    :is-mysql="isMysql"
     @select="(item: StoredMetadata) => emit('select', item, metaType)"
   />
 </template>
@@ -27,7 +26,6 @@ import ViewList from "./ViewList.vue";
 const props = defineProps<{
   metaType: MetaType;
   items: StoredMetadata[];
-  isMysql: boolean;
 }>();
 
 const emit = defineEmits<{

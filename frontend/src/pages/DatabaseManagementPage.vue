@@ -198,6 +198,7 @@ import { useToastStore } from "@/store/modules/toast";
 import { State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
+import { formatDateTime } from "@/utils/datetime";
 import { engineBadgeClass, engineLabel } from "@/utils/engine";
 import { environmentColorHex } from "@/utils/environment";
 
@@ -383,19 +384,7 @@ function getStateBadgeVariant(
 }
 
 function formatLastSync(timestamp: Timestamp | undefined): string {
-  if (!timestamp?.seconds) return "-";
-  const d = new Date(Number(timestamp.seconds) * 1000);
-  const formatter = new Intl.DateTimeFormat(locale.value, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-
-  return formatter.format(d);
+  return formatDateTime(timestamp, locale.value, { seconds: true });
 }
 
 onMounted(async () => {

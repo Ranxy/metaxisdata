@@ -283,7 +283,7 @@
           variant="ghost"
           size="sm"
           :class="currentLocale === item.value ? 'text-primary font-medium' : 'text-muted-foreground'"
-          @click="changeLocale(item.value)"
+          @click="appStore.setLocale(item.value)"
         >
           {{ item.label }}
         </Button>
@@ -315,11 +315,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import type { AppLocale } from "@/locales";
 import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
 import { extractErrorMessage } from "@/utils/error";
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
@@ -358,17 +359,12 @@ const resetForm = ref({
   confirmPassword: "",
 });
 
-const locales = [
+const locales: Array<{ value: AppLocale; label: string }> = [
   { value: "zh-CN", label: "简体中文" },
   { value: "en-US", label: "English" },
 ];
 
 const currentLocale = computed(() => appStore.locale);
-
-function changeLocale(newLocale: string) {
-  appStore.setLocale(newLocale);
-  locale.value = newLocale as "zh-CN" | "en-US";
-}
 
 function switchToRegister() {
   isRegisterMode.value = true;

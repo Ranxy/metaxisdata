@@ -289,6 +289,8 @@ import type {
   OpenLineageRun,
   OpenLineageTask,
 } from "@/types/proto-es/v1/openlineage_service_pb";
+import { formatDateTime } from "@/utils/datetime";
+import { guidToRouteParams } from "@/utils/guid";
 
 const route = useRoute();
 const router = useRouter();
@@ -331,16 +333,7 @@ const relatedOutputDatasets = computed(() => {
 });
 
 function formatTimestamp(ts: Timestamp | undefined): string {
-  if (!ts?.seconds) return "-";
-  const date = new Date(Number(ts.seconds) * 1000);
-  return new Intl.DateTimeFormat(locale.value, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
+  return formatDateTime(ts, locale.value);
 }
 
 function formatJobRef(namespace: string, name: string): string {
@@ -375,7 +368,7 @@ function openGraph() {
 
   router.push({
     name: "LineageGraph",
-    params: { guid: task.value.guid },
+    params: { guid: guidToRouteParams(task.value.guid) },
     query: {
       metaType: "100",
       from: route.fullPath,

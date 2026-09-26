@@ -92,6 +92,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { MetadataHistoryTimelineEntry } from "@/types/proto-es/v1/database_service_pb";
+import { formatDateTime } from "@/utils/datetime";
 import { extractErrorMessage } from "@/utils/error";
 
 const props = defineProps<{
@@ -128,18 +129,10 @@ function fallbackEntrySummary(entry: MetadataHistoryTimelineEntry): string {
 }
 
 function formatTimestamp(timestamp?: Timestamp): string {
-  if (!timestamp) return "";
-  const ms =
-    Number(timestamp.seconds ?? 0) * 1000 +
-    Math.floor((timestamp.nanos ?? 0) / 1_000_000);
-  if (!Number.isFinite(ms) || ms <= 0) return "";
-  return new Intl.DateTimeFormat(locale.value, {
-    year: "numeric",
+  return formatDateTime(timestamp, locale.value, {
     month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(ms));
+    fallback: "",
+  });
 }
 
 async function runDiff() {

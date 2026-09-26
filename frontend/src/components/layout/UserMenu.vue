@@ -62,7 +62,7 @@
           <DropdownMenuItem
             v-for="item in locales"
             :key="item.value"
-            @click="changeLocale(item.value)"
+            @click="appStore.setLocale(item.value)"
           >
             <span class="flex-1">{{ item.label }}</span>
             <Check
@@ -139,10 +139,11 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { AppLocale } from "@/locales";
 import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 const router = useRouter();
 const appStore = useAppStore();
 const authStore = useAuthStore();
@@ -151,7 +152,7 @@ const userName = computed(() => authStore.userName || "User");
 const userEmail = computed(() => authStore.userEmail || "");
 const userInitial = computed(() => userName.value.charAt(0).toUpperCase());
 
-const locales = [
+const locales: Array<{ value: AppLocale; label: string }> = [
   { value: "zh-CN", label: "简体中文" },
   { value: "en-US", label: "English" },
 ];
@@ -168,11 +169,6 @@ const currentThemeIcon = computed(
   () =>
     themes.value.find((item) => item.value === appStore.theme)?.icon ?? Monitor
 );
-
-function changeLocale(newLocale: string) {
-  appStore.setLocale(newLocale);
-  locale.value = newLocale as "zh-CN" | "en-US";
-}
 
 async function handleLogout() {
   await authStore.logout();

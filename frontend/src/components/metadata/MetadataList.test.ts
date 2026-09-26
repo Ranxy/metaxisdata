@@ -32,7 +32,6 @@ describe("MetadataList", () => {
       props: {
         metaType: MetaType.EXTERNAL_TABLE,
         items: [externalTable("foreign_users", "remote_server")],
-        isMysql: false,
       },
       global: { plugins: [i18n] },
     });

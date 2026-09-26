@@ -252,6 +252,7 @@ import {
   LlmProviderModelSchema,
   type LlmProviderProfile,
 } from "@/types/proto-es/v1/llm_service_pb";
+import { extractErrorMessage } from "@/utils/error";
 
 // ---- static builtin catalog (mirrors backend builtinDefinitions) ----
 interface BuiltinDef {
@@ -493,8 +494,8 @@ async function fetchModels() {
     );
     showSuccess("llmProvider.modelsFetched");
   } catch (e) {
-    fetchedError.value =
-      handleError(e, "llmProvider.fetchModelsError") ?? String(e);
+    handleError(e, "llmProvider.fetchModelsError");
+    fetchedError.value = extractErrorMessage(e);
   } finally {
     isFetchingModels.value = false;
   }

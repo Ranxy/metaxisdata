@@ -146,6 +146,7 @@ import {
   type DeviceLogin,
   DeviceLoginState,
 } from "@/types/proto-es/v1/auth_service_pb";
+import { formatDateTime } from "@/utils/datetime";
 import { extractErrorMessage } from "@/utils/error";
 
 type Step = "input" | "confirm" | "done";
@@ -171,14 +172,10 @@ const clientDescription = computed(() => {
 });
 
 function formatTime(value?: Timestamp): string {
-  if (!value) return t("deviceLogin.unknown");
-  const milliseconds =
-    Number(value.seconds ?? 0) * 1000 +
-    Math.floor((value.nanos ?? 0) / 1_000_000);
-  if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
-    return t("deviceLogin.unknown");
-  }
-  return new Date(milliseconds).toLocaleString(locale.value);
+  return formatDateTime(value, locale.value, {
+    seconds: true,
+    fallback: t("deviceLogin.unknown"),
+  });
 }
 
 async function loadDeviceLogin() {

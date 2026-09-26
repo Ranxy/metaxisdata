@@ -44,7 +44,7 @@
           v-if="guid"
           variant="outline"
           size="sm"
-          @click="$router.push({ path: `/explain-sql/${guid}`, query: { metaType: MetaType.TABLE } })"
+          @click="$router.push({ name: 'ExplainSQLWithGuid', params: { guid: guidToRouteParams(guid ?? '') }, query: { metaType: MetaType.TABLE } })"
         >
           <Sparkles class="mr-1 h-3.5 w-3.5" />
           {{ t("explainSQL.explain") }}
@@ -293,6 +293,7 @@ import {
   MetaType,
   type TableMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
+import { guidToRouteParams } from "@/utils/guid";
 import ExpandableText from "./ExpandableText.vue";
 import SchemaDefinitionDialog from "./SchemaDefinitionDialog.vue";
 

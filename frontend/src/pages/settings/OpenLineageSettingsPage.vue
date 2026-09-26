@@ -458,6 +458,7 @@ import type {
   APIKey,
   NamespaceMapping,
 } from "@/types/proto-es/v1/openlineage_service_pb";
+import { formatDateTime } from "@/utils/datetime";
 
 const { t, locale } = useI18n();
 const { handleError, showSuccess } = useErrorHandler();
@@ -507,16 +508,7 @@ function getInstanceTitle(resourceId: string): string {
 }
 
 function formatTimestamp(ts: Timestamp | undefined): string {
-  if (!ts?.seconds) return "-";
-  const d = new Date(Number(ts.seconds) * 1000);
-  return new Intl.DateTimeFormat(locale.value, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(d);
+  return formatDateTime(ts, locale.value);
 }
 
 // Fetch data

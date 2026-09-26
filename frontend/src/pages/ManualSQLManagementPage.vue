@@ -405,6 +405,8 @@ import type {
   ManualSQL,
   MetaType,
 } from "@/types/proto-es/v1/database_service_pb";
+import { formatDateTime } from "@/utils/datetime";
+import { guidToRouteParams } from "@/utils/guid";
 
 const { t, locale } = useI18n();
 const router = useRouter();
@@ -539,16 +541,7 @@ function formatAttributes(attributes: Record<string, string>): string {
 }
 
 function formatTimestamp(ts: Timestamp | undefined): string {
-  if (!ts) {
-    return "-";
-  }
-  return new Intl.DateTimeFormat(locale.value, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(Number(ts.seconds) * 1000));
+  return formatDateTime(ts, locale.value);
 }
 
 function formatDatabaseOption(database: Database): string {
@@ -575,13 +568,6 @@ function extractManualSqlParent(name: string): string {
 
 function buildDatabaseGuid(name: string): string {
   return `${extractInstanceId(name)};${extractDatabaseName(name)}`;
-}
-
-function guidToRoutePath(guid: string): string {
-  return guid
-    .split(";")
-    .map((segment) => (segment === "" ? "~" : encodeURIComponent(segment)))
-    .join("/");
 }
 
 function resetForm() {
@@ -880,7 +866,7 @@ async function handleDelete() {
 function openMetadata(guid: string) {
   router.push({
     name: "MetadataDetail",
-    params: { guid: guidToRoutePath(guid) },
+    params: { guid: guidToRouteParams(guid) },
     query: { metaType: "18" },
   });
 }
@@ -888,7 +874,7 @@ function openMetadata(guid: string) {
 function openLineage(guid: string) {
   router.push({
     name: "LineageGraph",
-    params: { guid: guidToRoutePath(guid) },
+    params: { guid: guidToRouteParams(guid) },
     query: { metaType: "18" },
   });
 }

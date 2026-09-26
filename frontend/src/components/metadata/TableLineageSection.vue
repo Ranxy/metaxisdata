@@ -164,6 +164,7 @@ import {
   type Transformation,
 } from "@/types/proto-es/v1/lineage_service_pb";
 import { extractErrorMessage } from "@/utils/error";
+import { guidToRouteParams } from "@/utils/guid";
 
 type DisplayRelation = {
   currentColumn: string;
@@ -203,13 +204,9 @@ const lineageGraphRoute = computed(() => {
     metaType: String(props.metaType),
   };
 
-  const guidPath = props.guid
-    .split(";")
-    .map((s) => (s === "" ? "~" : encodeURIComponent(s)))
-    .join("/");
   return {
     name: "LineageGraph",
-    params: { guid: guidPath },
+    params: { guid: guidToRouteParams(props.guid) },
     query,
   };
 });
@@ -463,16 +460,9 @@ function buildMetadataRoute(
 
   return {
     name: "MetadataDetail",
-    params: { guid: toGuidPath(guid) },
+    params: { guid: guidToRouteParams(guid) },
     query,
   };
-}
-
-function toGuidPath(guid: string): string {
-  return guid
-    .split(";")
-    .map((segment) => (segment === "" ? "~" : encodeURIComponent(segment)))
-    .join("/");
 }
 
 function formatGuidForDisplay(

@@ -51,7 +51,6 @@ import type {
 
 const props = defineProps<{
   items: StoredMetadata[];
-  isMysql: boolean;
 }>();
 
 defineEmits<{

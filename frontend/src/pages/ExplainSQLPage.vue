@@ -298,7 +298,7 @@ import {
 import MarkdownRender from "markstream-vue";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRoute } from "vue-router";
+import { type RouteLocationRaw, useRoute } from "vue-router";
 import { getSchemaString, listMetadata, searchMetadata } from "@/api/database";
 import { explainSQL } from "@/api/explain";
 import { listInstances } from "@/api/instance";
@@ -319,9 +319,11 @@ import {
 } from "@/components/ui/select";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type { ExplainSQLProgress } from "@/types/proto-es/v1/explain_sql_service_pb";
+import { formatDateTime } from "@/utils/datetime";
+import { guidToRouteParams, routeParamToGuid } from "@/utils/guid";
 import { isProviderAllowed } from "@/utils/llmProvider";
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const route = useRoute();
 
 // ---- types ----
@@ -527,11 +529,16 @@ const canExplain = computed(() => {
 
 const resultFromCache = computed(() => !!explainMeta.value?.fromCache);
 
-const metadataBrowserUrl = computed(() => {
+const metadataBrowserUrl = computed<RouteLocationRaw>(() => {
   const m = selectedMeta.value;
-  if (!m) return "";
-  const parts = m.guid.split(";").map((p) => p || "~");
-  return `/metadata/${parts.join("/")}?metaType=${m.metaType}`;
+  // The link only renders with a selection; the browser root is the safe target
+  // for the unreachable branch.
+  if (!m) return { name: "MetadataBrowser" };
+  return {
+    name: "MetadataDetail",
+    params: { guid: guidToRouteParams(m.guid) },
+    query: { metaType: String(m.metaType) },
+  };
 });
 
 // ---- lifecycle ----
@@ -539,7 +546,7 @@ onMounted(async () => {
   loadScopeInstances();
   loadProviders();
   document.addEventListener("mousedown", handleClickOutside);
-  const guidFromRoute = getGuidFromRoute();
+  const guidFromRoute = routeParamToGuid(route.params.guid);
   if (guidFromRoute) {
     const metaTypeFromQuery = Number(route.query.metaType) || 0;
     await loadMetaByGuid(guidFromRoute, metaTypeFromQuery as MetaType);
@@ -575,12 +582,6 @@ async function loadProviders() {
     // A failed lookup leaves the server-side default provider in place.
     providerOptions.value = [];
   }
-}
-
-function getGuidFromRoute(): string {
-  const g = route.params.guid;
-  if (Array.isArray(g)) return g.join("/");
-  return (g as string) ?? "";
 }
 
 async function loadMetaByGuid(guid: string, metaType: MetaType) {
@@ -691,9 +692,7 @@ function formatToolOutputShort(output: string): string {
 }
 
 function formatCacheTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString();
+  return formatDateTime(iso, locale.value, { seconds: true, fallback: iso });
 }
 
 async function loadScopeInstances() {

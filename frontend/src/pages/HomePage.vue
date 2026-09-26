@@ -9,7 +9,7 @@
           v-if="lastUpdated"
           class="hidden text-xs text-muted-foreground sm:inline"
         >
-          {{ t("home.refreshedAt", { time: formatClock(lastUpdated) }) }}
+          {{ t("home.refreshedAt", { time: formatTime(lastUpdated, locale, "") }) }}
         </span>
         <Button
           variant="outline"
@@ -246,7 +246,7 @@
                       {{ databasesPerInstance[instanceId(instance.name)] ?? 0 }}
                     </TableCell>
                     <TableCell class="whitespace-nowrap text-muted-foreground">
-                      {{ formatTimestamp(instance.lastSyncTime) }}
+                      {{ formatDateTime(instance.lastSyncTime, locale) }}
                     </TableCell>
                     <TableCell>
                       <Badge :variant="instance.activation ? 'success' : 'secondary'">
@@ -368,9 +368,9 @@
               >
                 <TableCell
                   class="whitespace-nowrap text-muted-foreground"
-                  :title="formatTimestamp(run.eventTime)"
+                  :title="formatDateTime(run.eventTime, locale)"
                 >
-                  {{ formatRelativeTime(run.eventTime) }}
+                  {{ formatRelativeTime(run.eventTime, locale) }}
                 </TableCell>
                 <TableCell>
                   <Badge :variant="eventVariant(run.eventType)">
@@ -408,7 +408,6 @@
 </template>
 
 <script setup lang="ts">
-import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import {
   Activity,
   AlertTriangle,
@@ -459,6 +458,11 @@ import { useDashboard } from "@/composables/dashboard";
 import { useAuthStore } from "@/store/modules/auth";
 import { useEnvironmentStore } from "@/store/modules/environment";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
+import {
+  formatDateTime,
+  formatRelativeTime,
+  formatTime,
+} from "@/utils/datetime";
 import { engineBadgeClass, engineLabel } from "@/utils/engine";
 
 const { t, locale } = useI18n();
@@ -747,55 +751,6 @@ function environmentLabel(environment: string): string {
     return "-";
   }
   return environmentStore.titleOf(environment);
-}
-
-function formatTimestamp(timestamp: Timestamp | undefined): string {
-  if (!timestamp?.seconds) {
-    return "-";
-  }
-  return new Intl.DateTimeFormat(locale.value, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(Number(timestamp.seconds) * 1000));
-}
-
-function formatRelativeTime(timestamp: Timestamp | undefined): string {
-  if (!timestamp?.seconds) {
-    return "-";
-  }
-  const diffMs = Number(timestamp.seconds) * 1000 - Date.now();
-  const formatter = new Intl.RelativeTimeFormat(locale.value, {
-    numeric: "auto",
-  });
-  const units: [Intl.RelativeTimeFormatUnit, number][] = [
-    ["year", 365 * 24 * 60 * 60 * 1000],
-    ["month", 30 * 24 * 60 * 60 * 1000],
-    ["day", 24 * 60 * 60 * 1000],
-    ["hour", 60 * 60 * 1000],
-    ["minute", 60 * 1000],
-    ["second", 1000],
-  ];
-  for (const [unit, unitMs] of units) {
-    if (Math.abs(diffMs) >= unitMs || unit === "second") {
-      return formatter.format(Math.round(diffMs / unitMs), unit);
-    }
-  }
-  return formatter.format(0, "second");
-}
-
-function formatClock(date: Date | null): string {
-  if (!date) {
-    return "";
-  }
-  return new Intl.DateTimeFormat(locale.value, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
 }
 
 function eventVariant(

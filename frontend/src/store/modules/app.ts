@@ -1,4 +1,10 @@
 import { defineStore } from "pinia";
+import {
+  type AppLocale,
+  applyLocale,
+  DEFAULT_LOCALE,
+  isAppLocale,
+} from "@/locales";
 
 type Theme = "light" | "dark" | "system";
 
@@ -6,7 +12,7 @@ interface AppState {
   sidebarCollapsed: boolean;
   /** Keys of the sidebar sections the user collapsed. */
   collapsedSections: string[];
-  locale: string;
+  locale: AppLocale;
   theme: Theme;
   /** Transient: the below-`lg` navigation drawer. Never persisted. */
   mobileNavOpen: boolean;
@@ -27,6 +33,9 @@ function loadState(): Partial<AppState> {
       // A hand-edited or stale payload must not break the sidebar.
       if (!Array.isArray(parsed.collapsedSections)) {
         delete parsed.collapsedSections;
+      }
+      if (!isAppLocale(parsed.locale)) {
+        delete parsed.locale;
       }
       delete parsed.mobileNavOpen;
       return parsed;
@@ -91,7 +100,7 @@ export const useAppStore = defineStore("app", {
   state: (): AppState => ({
     sidebarCollapsed: false,
     collapsedSections: [...DEFAULT_COLLAPSED_SECTIONS],
-    locale: "zh-CN",
+    locale: DEFAULT_LOCALE,
     theme: "system",
     mobileNavOpen: false,
     ...loadState(),
@@ -114,9 +123,10 @@ export const useAppStore = defineStore("app", {
       saveState(this.$state);
     },
 
-    setLocale(locale: string) {
+    setLocale(locale: AppLocale) {
       this.locale = locale;
       saveState(this.$state);
+      applyLocale(locale);
     },
 
     setTheme(theme: Theme) {

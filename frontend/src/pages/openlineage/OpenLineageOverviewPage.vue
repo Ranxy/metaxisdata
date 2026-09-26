@@ -286,6 +286,7 @@ import type {
   OpenLineageRun,
   OpenLineageTask,
 } from "@/types/proto-es/v1/openlineage_service_pb";
+import { formatDateTime } from "@/utils/datetime";
 import { extractErrorMessage } from "@/utils/error";
 
 // Enough to describe the workspace's recent state without paging; every table
@@ -295,7 +296,7 @@ const JOB_LIMIT = 40;
 const DATASET_LIMIT = 40;
 const ACTIVE_JOB_LIMIT = 5;
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const router = useRouter();
 
 const isLoading = ref(false);
@@ -342,17 +343,7 @@ const lastEventHint = computed(() => {
 const activeTasks = computed(() => tasks.value.slice(0, ACTIVE_JOB_LIMIT));
 
 function formatTimestamp(value?: Timestamp): string {
-  if (!value) {
-    return "-";
-  }
-  return new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(Number(value.seconds) * 1000));
+  return formatDateTime(value, locale.value);
 }
 
 function statusVariant(

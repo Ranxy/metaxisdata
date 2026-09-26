@@ -322,6 +322,7 @@ import {
   type MetadataHistoryTimelineEntry,
   type MetaType,
 } from "@/types/proto-es/v1/database_service_pb";
+import { formatDateTime } from "@/utils/datetime";
 import { extractErrorMessage } from "@/utils/error";
 
 const props = withDefaults(
@@ -549,23 +550,11 @@ function formatSectionChange(
 }
 
 function formatTimestamp(timestamp?: Timestamp): string {
-  if (!timestamp) {
-    return "";
-  }
-  const milliseconds =
-    Number(timestamp.seconds ?? 0) * 1000 +
-    Math.floor((timestamp.nanos ?? 0) / 1_000_000);
-  if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
-    return "";
-  }
-  return new Intl.DateTimeFormat(locale.value, {
-    year: "numeric",
+  return formatDateTime(timestamp, locale.value, {
     month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(new Date(milliseconds));
+    seconds: true,
+    fallback: "",
+  });
 }
 
 function formatFieldValue(value: string): string {

@@ -52,7 +52,6 @@ const props = defineProps<Props>();
 
 const emit = defineEmits<{
   (e: "update:filters", filters: ActiveFilter[]): void;
-  (e: "search", query: string): void;
 }>();
 
 const { t } = useI18n();

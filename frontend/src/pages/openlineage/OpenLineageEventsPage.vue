@@ -134,6 +134,7 @@ import {
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import type { OpenLineageRun } from "@/types/proto-es/v1/openlineage_service_pb";
+import { formatDateTime } from "@/utils/datetime";
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -246,16 +247,7 @@ const namespaceCount = computed(() => {
 });
 
 function formatTimestamp(ts: Timestamp | undefined): string {
-  if (!ts?.seconds) return "-";
-  const date = new Date(Number(ts.seconds) * 1000);
-  return new Intl.DateTimeFormat(locale.value, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
+  return formatDateTime(ts, locale.value);
 }
 
 function openDetail(guid: string) {

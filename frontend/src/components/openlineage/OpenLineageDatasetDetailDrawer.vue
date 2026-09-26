@@ -229,12 +229,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { toGuidPath } from "@/lib/openlineage";
 import type {
   OpenLineageDatasetDetailResource,
   OpenLineageDatasetResource,
 } from "@/types/proto-es/v1/openlineage_service_pb";
+import { formatDateTime } from "@/utils/datetime";
 import { extractErrorMessage } from "@/utils/error";
+import { guidToRouteParams } from "@/utils/guid";
 
 const props = defineProps<{
   modelValue: boolean;
@@ -288,16 +289,7 @@ function handleOpenChange(open: boolean) {
 }
 
 function formatTimestamp(ts: Timestamp | undefined): string {
-  if (!ts?.seconds) return "-";
-  const date = new Date(Number(ts.seconds) * 1000);
-  return new Intl.DateTimeFormat(locale.value, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
+  return formatDateTime(ts, locale.value);
 }
 
 function formatList(items: string[]): string {
@@ -311,7 +303,7 @@ function openGraph() {
 
   router.push({
     name: "LineageGraph",
-    params: { guid: detail.value.dataset.guid },
+    params: { guid: guidToRouteParams(detail.value.dataset.guid) },
     query: {
       metaType: String(detail.value.dataset.resolvedMetaType),
       from: route.fullPath,
@@ -326,7 +318,7 @@ function openMetadata() {
 
   router.push({
     name: "MetadataDetail",
-    params: { guid: toGuidPath(detail.value.dataset.guid) },
+    params: { guid: guidToRouteParams(detail.value.dataset.guid) },
     query: {
       metaType: String(detail.value.dataset.resolvedMetaType),
       from: route.fullPath,
@@ -365,7 +357,7 @@ function openColumnLineage(columnName: string) {
 
   router.push({
     name: "OpenLineageColumnLineage",
-    params: { guid: toGuidPath(detail.value.dataset.guid) },
+    params: { guid: guidToRouteParams(detail.value.dataset.guid) },
     query: {
       metaType: String(detail.value.dataset.resolvedMetaType),
       column: columnName,
