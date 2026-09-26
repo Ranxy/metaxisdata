@@ -573,9 +573,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
+import { notify } from "@/lib/notify";
 import { useEnvironmentStore } from "@/store/modules/environment";
 import { useInstanceStore } from "@/store/modules/instance";
-import { useToastStore } from "@/store/modules/toast";
 import { State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
 import type {
@@ -593,7 +593,6 @@ const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const { formatError, handleError, showSuccess } = useErrorHandler();
-const toastStore = useToastStore();
 const environmentStore = useEnvironmentStore();
 const instanceStore = useInstanceStore();
 
@@ -994,7 +993,7 @@ async function handleSyncAllDatabases() {
   isSyncingAllDatabases.value = true;
   try {
     await syncInstance(instance.value.name, true);
-    toastStore.success(t("instanceDetail.syncAllSuccess"));
+    notify.success(t("instanceDetail.syncAllSuccess"));
     await Promise.all([fetchInstance(), fetchDatabases()]);
   } catch (e) {
     handleError(e, "instanceDetail.syncAllError");
@@ -1011,7 +1010,7 @@ async function handleSyncSingleDatabase(name: string) {
 
   try {
     await syncDatabase(name);
-    toastStore.success(t("instanceDetail.syncSingleSuccess"));
+    notify.success(t("instanceDetail.syncSingleSuccess"));
     await fetchDatabases();
   } catch (e) {
     handleError(e, "instanceDetail.syncSingleError");

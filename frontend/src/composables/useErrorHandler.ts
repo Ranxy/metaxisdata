@@ -1,11 +1,11 @@
 import { useI18n } from "vue-i18n";
-import { useToastStore } from "@/store/modules/toast";
+import { notify } from "@/lib/notify";
 import { errorText } from "@/utils/error";
 
 /**
- * Turns an error into the sentence a page renders inline — no toast store, so a
- * component that only displays an error does not need Pinia (or a toast that the
- * page already shows in place).
+ * Turns an error into the sentence a page renders inline — no toast, so a
+ * component that only displays an error does not fire one the page already shows
+ * in place.
  *
  * `errorText` decides between the server's own wording and a code-to-i18n
  * sentence; pages should reach for it instead of reading `error.message`, so the
@@ -29,7 +29,6 @@ export function useErrorMessage() {
 export function useErrorHandler() {
   const { t } = useI18n();
   const { formatError } = useErrorMessage();
-  const toast = useToastStore();
 
   /**
    * Handle an error and show a toast notification.
@@ -42,7 +41,7 @@ export function useErrorHandler() {
   function handleError(error: unknown, fallbackKey?: string): string {
     console.error("Error:", error);
     const message = formatError(error, fallbackKey);
-    toast.error(message);
+    notify.error(message);
     return message;
   }
 
@@ -51,7 +50,7 @@ export function useErrorHandler() {
    * @param messageKey - i18n key for the message
    */
   function showSuccess(messageKey: string) {
-    toast.success(t(messageKey));
+    notify.success(t(messageKey));
   }
 
   /**
@@ -59,7 +58,7 @@ export function useErrorHandler() {
    * @param messageKey - i18n key for the message
    */
   function showError(messageKey: string) {
-    toast.error(t(messageKey));
+    notify.error(t(messageKey));
   }
 
   /**
@@ -67,7 +66,7 @@ export function useErrorHandler() {
    * @param messageKey - i18n key for the message
    */
   function showWarning(messageKey: string) {
-    toast.warning(t(messageKey));
+    notify.warning(t(messageKey));
   }
 
   /**
@@ -75,7 +74,7 @@ export function useErrorHandler() {
    * @param messageKey - i18n key for the message
    */
   function showInfo(messageKey: string) {
-    toast.info(t(messageKey));
+    notify.info(t(messageKey));
   }
 
   return {

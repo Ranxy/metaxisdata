@@ -382,7 +382,7 @@ import {
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
-import { useToastStore } from "@/store/modules/toast";
+import { notify } from "@/lib/notify";
 import {
   type Database,
   type ManualSQL,
@@ -394,7 +394,6 @@ import { guidToRouteParams } from "@/utils/guid";
 const { t, locale } = useI18n();
 const { formatError, handleError } = useErrorHandler();
 const router = useRouter();
-const toastStore = useToastStore();
 const GLOBAL_MANUAL_SQL_PARENT = "instances/-/databases/-";
 
 const databases = ref<Database[]>([]);
@@ -788,14 +787,14 @@ async function handleSave() {
           guid: editingItem.value.guid,
         },
       });
-      toastStore.success(t("manualSqlManagement.updateSuccess"));
+      notify.success(t("manualSqlManagement.updateSuccess"));
     } else {
       await createManualSQL({
         parent: form.parent,
         manualSqlId: form.manualSqlId.trim(),
         manualSql: payload,
       });
-      toastStore.success(t("manualSqlManagement.createSuccess"));
+      notify.success(t("manualSqlManagement.createSuccess"));
     }
 
     const createdParent = form.parent;
@@ -821,7 +820,7 @@ async function handleDelete() {
   isDeleting.value = true;
   try {
     await deleteManualSQL(deletingItem.value.name);
-    toastStore.success(t("manualSqlManagement.deleteSuccess"));
+    notify.success(t("manualSqlManagement.deleteSuccess"));
     showDeleteModal.value = false;
     deletingItem.value = null;
     await refreshManualSQLPage();

@@ -193,10 +193,10 @@ import TableHeader from "@/components/ui/table/TableHeader.vue";
 import TableRow from "@/components/ui/table/TableRow.vue";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
+import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import { useEnvironmentStore } from "@/store/modules/environment";
 import { useInstanceStore } from "@/store/modules/instance";
-import { useToastStore } from "@/store/modules/toast";
 import { State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
 import { formatDateTime } from "@/utils/datetime";
@@ -208,7 +208,6 @@ const { handleError } = useErrorHandler();
 const authStore = useAuthStore();
 const environmentStore = useEnvironmentStore();
 const instanceStore = useInstanceStore();
-const toastStore = useToastStore();
 
 // Syncing a database rewrites its stored schema, so it needs the sync
 // permission; browsing the list only needs databases.list.
@@ -300,7 +299,7 @@ async function handleSyncDatabase(name: string) {
 
   try {
     await syncDatabase(name);
-    toastStore.success(t("databaseManagement.syncSuccess"));
+    notify.success(t("databaseManagement.syncSuccess"));
     await refreshDatabasePage();
   } catch (e: unknown) {
     handleError(e, "databaseManagement.syncError");
