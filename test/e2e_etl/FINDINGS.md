@@ -21,7 +21,7 @@ phantoms, 0 analyzer errors.
 
 ## Fix status
 
-F1, F2, F3 and F4 are fixed in this repository; F5 is upstream and untouched.
+F1, F2, F3, F4 and F6 are fixed in this repository; F5 is upstream and untouched.
 Each fix carries hermetic unit coverage, and all four were re-verified on this
 chain after rebuilding and restarting the server (see "Post-fix verification"
 below).
@@ -33,6 +33,7 @@ below).
 | F3 | fixed (signal added) | `processor.go` `warnMissingSQLLineage`, run-detail alert in `frontend/src/pages/openlineage/OpenLineageRunDetailPage.vue` |
 | F4 | fixed (table columns) | `backend/plugin/openlineage/lineage_validation.go` |
 | F5 | upstream | Airflow's SQL extractor cannot parse `REFRESH MATERIALIZED VIEW` |
+| F6 | fixed | `backend/store/openlineage_task.go` (found while verifying F1–F4) |
 
 `verify_chain.sql` section 4 must list only the two CTE aliases, and section 5
 must return the table's real columns and nothing else.
@@ -228,6 +229,39 @@ materialized view's lineage comes from the definition analyzer, but it does add
 a failing statement to every run that refreshes an MV.
 
 ---
+
+## F6 — the task list crashed on a task whose latest run was gone
+
+**Symptom.** `OpenLineageService/ListOpenLineageTasks` answered `internal: failed
+to list openlineage tasks: failed to scan openlineage task: sql: Scan error on
+column index 21, name "event_type": converting NULL to string is unsupported`, so
+one stale row took the whole Tasks page down.
+
+**Root cause.** `backend/store/openlineage_task.go` reads a task's latest-run
+fields through `LEFT JOIN openlineage_run AS latest_run`. When that run is missing
+the join yields NULL for `latest_run.event_type` and `latest_run.raw_payload`, and
+`event_type` was scanned into a plain `string`. The other two LEFT JOINs in the
+store already scan through `sql.NullString` or `COALESCE`; this one did not.
+
+**How the row got there.** The writers keep `latest_run_guid` valid, and the
+retention path repairs it: `DeleteOpenLineageRunsBefore` calls
+`reconcileOpenLineageTask`, which rebuilds the aggregate from the surviving runs or
+deletes the task when none are left. The two rows in this database came from this
+investigation's own cleanup, which deleted probe runs with SQL and left their task
+summaries behind. Any out-of-band partial delete — manual SQL, a restored
+snapshot, imported rows — reproduces it, and the read path should not depend on
+that being impossible.
+
+**Fixed.** The joined columns are scanned as nullable. A task whose latest run is
+gone is returned without latest-run detail (guid, run id, event type and payload
+cleared; the stored counters and timestamps kept) and logged as
+`openlineage task points at a run that no longer exists`. The stale rows in this
+database were removed the way the retention reconcile removes a task with no runs
+left.
+
+Guard: `TestOpenLineageTaskListSurvivesAPrunedLatestRunRealServerIntegration`
+drives the real server, deletes a run out of band and requires the listing to keep
+working. It fails with the scan error above without the fix, and passes with it.
 
 ## Post-fix verification
 

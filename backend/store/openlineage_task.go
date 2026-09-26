@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -480,6 +481,10 @@ func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTa
 	for rows.Next() {
 		var msg OpenLineageTaskMessage
 		var latestEventTime sql.NullTime
+		// The latest run is joined, not stored: a task whose latest run was
+		// pruned (or removed out of band) leaves the join empty, so its columns
+		// have to be scanned as nullable ones.
+		var latestEventType sql.NullString
 		var latestRawPayload []byte
 		if err := rows.Scan(
 			&msg.ID,
@@ -503,7 +508,7 @@ func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTa
 			&msg.LineageRunCount,
 			&msg.CreatedAt,
 			&msg.UpdatedAt,
-			&msg.LatestEventType,
+			&latestEventType,
 		); err != nil {
 			return nil, errors.Wrap(err, "failed to scan openlineage task")
 		}
@@ -511,7 +516,23 @@ func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTa
 			t := latestEventTime.Time
 			msg.LatestEventTime = &t
 		}
-		msg.LatestRawPayload = latestRawPayload
+		if !latestEventType.Valid {
+			// Reporting the stored pointers would make the task reference a run
+			// the API cannot serve, so the row is returned as a task with no
+			// resolvable latest run. Reading does not repair the row: the next
+			// ingest or retention reconcile recomputes it.
+			slog.Warn("openlineage task points at a run that no longer exists",
+				"taskGUID", msg.GUID,
+				"jobNamespace", msg.JobNamespace,
+				"jobName", msg.JobName,
+				"latestRunGUID", msg.LatestRunGUID,
+			)
+			msg.LatestRunGUID = ""
+			msg.LatestRunID = ""
+		} else {
+			msg.LatestEventType = latestEventType.String
+			msg.LatestRawPayload = latestRawPayload
+		}
 		result = append(result, &msg)
 	}
 	if err := rows.Err(); err != nil {
