@@ -40,12 +40,16 @@
             autocomplete="off"
             required
           />
-          <AppButton
+          <Button
             type="submit"
-            :loading="isLoading"
+            :disabled="isLoading"
           >
+            <Loader2
+              v-if="isLoading"
+              class="mr-2 h-4 w-4 animate-spin"
+            />
             {{ t("deviceLogin.continue") }}
-          </AppButton>
+          </Button>
         </form>
 
         <!-- Step 2: show exactly what is being approved. -->
@@ -88,19 +92,23 @@
           </div>
 
           <div class="flex gap-2">
-            <AppButton
-              :loading="isLoading"
+            <Button
+              :disabled="isLoading"
               @click="decide(true)"
             >
+              <Loader2
+                v-if="isLoading"
+                class="mr-2 h-4 w-4 animate-spin"
+              />
               {{ t("deviceLogin.approve") }}
-            </AppButton>
-            <AppButton
+            </Button>
+            <Button
               variant="secondary"
               :disabled="isLoading"
               @click="decide(false)"
             >
               {{ t("deviceLogin.deny") }}
-            </AppButton>
+            </Button>
           </div>
         </template>
 
@@ -118,12 +126,12 @@
           <p v-else>
             {{ t("deviceLogin.outcome.expired") }}
           </p>
-          <AppButton
+          <Button
             variant="secondary"
             @click="startOver"
           >
             {{ t("deviceLogin.startOver") }}
-          </AppButton>
+          </Button>
         </div>
       </CardContent>
     </Card>
@@ -132,15 +140,15 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { AlertCircle } from "lucide-vue-next";
+import { AlertCircle, Loader2 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { approveDeviceLogin, getDeviceLogin } from "@/api/device-login";
-import AppButton from "@/components/common/AppButton.vue";
 import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import {

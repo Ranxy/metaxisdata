@@ -220,28 +220,29 @@
               required
             />
             <div>
-              <label class="text-sm font-medium leading-none">
+              <label
+                id="mapping-instance-label"
+                class="text-sm font-medium leading-none"
+              >
                 {{ t("openlineageSettings.instanceResourceId") }}
               </label>
-              <select
-                v-model="mappingForm.instanceResourceId"
-                class="mt-1.5 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                required
-              >
-                <option
-                  value=""
-                  disabled
+              <Select v-model="mappingForm.instanceResourceId">
+                <SelectTrigger
+                  aria-labelledby="mapping-instance-label"
+                  class="mt-1.5 w-full"
                 >
-                  {{ t("openlineageSettings.instanceResourceIdPlaceholder") }}
-                </option>
-                <option
-                  v-for="inst in instanceStore.active"
-                  :key="inst.name"
-                  :value="extractResourceId(inst.name)"
-                >
-                  {{ inst.title || inst.name }}
-                </option>
-              </select>
+                  <SelectValue :placeholder="t('openlineageSettings.instanceResourceIdPlaceholder')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="inst in instanceStore.active"
+                    :key="inst.name"
+                    :value="extractResourceId(inst.name)"
+                  >
+                    {{ inst.title || inst.name }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <AppInput
               v-model="mappingForm.databaseName"
@@ -455,6 +456,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,

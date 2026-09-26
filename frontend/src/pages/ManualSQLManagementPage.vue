@@ -163,23 +163,23 @@
           <div class="grid gap-4 md:grid-cols-2">
             <div class="space-y-2">
               <Label for="manual-sql-form-database">{{ t("manualSqlManagement.database") }}</Label>
-              <select
-                id="manual-sql-form-database"
+              <Select
                 v-model="form.parent"
-                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 :disabled="isEditing"
               >
-                <option value="">
-                  {{ t("manualSqlManagement.selectDatabase") }}
-                </option>
-                <option
-                  v-for="database in availableDatabases"
-                  :key="database.name"
-                  :value="database.name"
-                >
-                  {{ formatDatabaseOption(database) }}
-                </option>
-              </select>
+                <SelectTrigger id="manual-sql-form-database">
+                  <SelectValue :placeholder="t('manualSqlManagement.selectDatabase')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="database in availableDatabases"
+                    :key="database.name"
+                    :value="database.name"
+                  >
+                    {{ formatDatabaseOption(database) }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
               <p
                 v-if="formErrors.parent"
                 class="text-sm text-destructive"
@@ -189,23 +189,26 @@
             </div>
             <div class="space-y-2">
               <Label for="manual-sql-form-schema">{{ t("manualSqlManagement.schema") }}</Label>
-              <select
-                id="manual-sql-form-schema"
-                v-model="form.schemaName"
-                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              <Select
+                v-model="schemaSelection"
                 :disabled="!form.parent || isLoadingSchemas"
               >
-                <option value="">
-                  {{ t("manualSqlManagement.optionalSchema") }}
-                </option>
-                <option
-                  v-for="schemaName in schemaOptions"
-                  :key="schemaName"
-                  :value="schemaName"
-                >
-                  {{ schemaName }}
-                </option>
-              </select>
+                <SelectTrigger id="manual-sql-form-schema">
+                  <SelectValue :placeholder="t('manualSqlManagement.optionalSchema')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem :value="DEFAULT_SCHEMA_VALUE">
+                    {{ t("manualSqlManagement.optionalSchema") }}
+                  </SelectItem>
+                  <SelectItem
+                    v-for="schemaName in schemaOptions"
+                    :key="schemaName"
+                    :value="schemaName"
+                  >
+                    {{ schemaName }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
               <p class="text-xs text-muted-foreground">
                 {{ isLoadingSchemas ? t("manualSqlManagement.loadingSchemas") : t("manualSqlManagement.schemaSelectHint") }}
               </p>
@@ -382,6 +385,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -420,6 +430,19 @@ const showDeleteModal = ref(false);
 const editingItem = ref<ManualSQL | null>(null);
 const deletingItem = ref<ManualSQL | null>(null);
 const schemaOptions = ref<string[]>([]);
+
+/**
+ * Radix's Select refuses an empty-string item value, so the "default schema"
+ * entry carries this sentinel and the empty string the form actually stores.
+ */
+const DEFAULT_SCHEMA_VALUE = "__default__";
+
+const schemaSelection = computed({
+  get: () => (form.schemaName === "" ? DEFAULT_SCHEMA_VALUE : form.schemaName),
+  set: (value: string) => {
+    form.schemaName = value === DEFAULT_SCHEMA_VALUE ? "" : value;
+  },
+});
 const isLoadingSchemas = ref(false);
 const isCheckingManualSqlId = ref(false);
 const manualSqlIdConflict = ref("");

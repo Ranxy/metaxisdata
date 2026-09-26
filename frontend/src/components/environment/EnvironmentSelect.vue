@@ -131,22 +131,25 @@
         >
           {{ t("environment.cancel") }}
         </Button>
-        <AppButton
-          :loading="creating"
+        <Button
+          :disabled="creating"
           @click="submitCreate"
         >
+          <Loader2
+            v-if="creating"
+            class="mr-2 h-4 w-4 animate-spin"
+          />
           {{ t("environment.create") }}
-        </AppButton>
+        </Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>
 </template>
 
 <script setup lang="ts">
-import { Check, ChevronDown, Plus } from "lucide-vue-next";
+import { Check, ChevronDown, Loader2, Plus } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import AppButton from "@/components/common/AppButton.vue";
 import AppInput from "@/components/common/AppInput.vue";
 import { Button } from "@/components/ui/button";
 import {

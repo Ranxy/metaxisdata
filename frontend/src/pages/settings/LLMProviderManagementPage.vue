@@ -83,19 +83,24 @@
           <!-- Provider Type -->
           <div class="space-y-2">
             <Label>{{ t("llmProvider.providerType") }}</Label>
-            <select
-              v-model="formData.providerType"
+            <Select
+              :model-value="String(formData.providerType)"
               :disabled="!!editingProfile"
-              class="w-full bg-input-surface border border-border rounded-lg py-[7px] px-3 text-sm text-text outline-none focus:border-accent disabled:opacity-60"
+              @update:model-value="setProviderType"
             >
-              <option
-                v-for="d in BUILTIN_DEFS"
-                :key="d.id"
-                :value="d.enum"
-              >
-                {{ builtinLabel(d, t) }}
-              </option>
-            </select>
+              <SelectTrigger class="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="d in BUILTIN_DEFS"
+                  :key="d.id"
+                  :value="String(d.enum)"
+                >
+                  {{ builtinLabel(d, t) }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <!-- Title -->
@@ -245,6 +250,13 @@ import Badge from "@/components/ui/badge/Badge.vue";
 import Button from "@/components/ui/button/Button.vue";
 import Checkbox from "@/components/ui/checkbox/Checkbox.vue";
 import Label from "@/components/ui/label/Label.vue";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import Separator from "@/components/ui/separator/Separator.vue";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import {
@@ -413,6 +425,11 @@ function autoTitle(p: LlmProviderProfile): string {
   const models = p.models.filter((m) => m.enabled).map((m) => m.name);
   if (models.length === 0) return label;
   return `${label} — ${models.slice(0, 2).join(", ")}${models.length > 2 ? ` +${models.length - 2}` : ""}`;
+}
+
+/** Radix hands back a string; the form stores the enum. */
+function setProviderType(value: unknown) {
+  formData.providerType = Number(value) as LLMProviderType;
 }
 
 function providerLabel(type: LLMProviderType): string {

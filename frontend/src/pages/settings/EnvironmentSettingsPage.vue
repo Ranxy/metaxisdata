@@ -5,14 +5,14 @@
       :description="t('environmentSettings.description')"
     >
       <template #actions>
-        <AppButton
+        <Button
           v-if="canUpdate"
           :disabled="isLoading"
           @click="startCreate"
         >
           <Plus class="mr-2 h-4 w-4" />
           {{ t("environmentSettings.add") }}
-        </AppButton>
+        </Button>
       </template>
     </PageHeader>
 
@@ -145,12 +145,16 @@
           >
             {{ t("common.cancel") }}
           </Button>
-          <AppButton
-            :loading="isSaving"
+          <Button
+            :disabled="isSaving"
             @click="save"
           >
+            <Loader2
+              v-if="isSaving"
+              class="mr-2 h-4 w-4 animate-spin"
+            />
             {{ t("common.save") }}
-          </AppButton>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -171,11 +175,10 @@
 
 <script setup lang="ts">
 import { create } from "@bufbuild/protobuf";
-import { Pencil, Plus, Trash2 } from "lucide-vue-next";
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { environmentId } from "@/api/environment";
-import AppButton from "@/components/common/AppButton.vue";
 import AppInput from "@/components/common/AppInput.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
