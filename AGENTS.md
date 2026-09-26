@@ -63,6 +63,24 @@ Feature design documents live in `spec/` (product/UX specs) and `plan/` (impleme
 
 - `backend/store/` maps database tables to Go. Store unit tests are hermetic — they need no live database. When a query's shape is itself the invariant (scoping predicates, GUID-subtree escaping, history mutations), add a guard test in the same package (see `backend/store/meta_resource_test.go` for the pattern).
 
+### Frontend Module Boundaries
+
+Where a new frontend module belongs follows from what it depends on, not from its size. From the bottom up:
+
+| Path | Holds | May import |
+| --- | --- | --- |
+| `frontend/src/utils/` | Pure helpers over plain values and proto messages: encodings, formatting, parsing, domain catalogs (`guid`, `datetime`, `metaType`, `error`, `csv`, `dateRange`). No Vue, no Pinia, no `@/api`. | proto types, other `utils/` |
+| `frontend/src/lib/` | Domain logic without view state: the lineage graph engine, the client-side permission mirror, the OpenLineage payload aggregator, `notify` (the one toast entry point), `cn`. | `utils/`, proto types |
+| `frontend/src/composables/` | Anything that owns a `ref`, a lifecycle hook or a request: `usePagedFetch`, `useDashboard`, `useErrorHandler`. | `api/`, `lib/`, `utils/`, stores |
+| `frontend/src/api/` | One module per ConnectRPC service: request building, `listAll` paging, transport errors. No rendering, no cached state. | `lib/`, `utils/`, proto types |
+| `frontend/src/store/modules/` | Pinia stores shared across pages (app, auth, instance and environment caches). | `api/`, `utils/`, proto types |
+| `frontend/src/components/` | `ui/` is unmodified shadcn-vue; `<feature>/` holds feature components built from it; `common/` holds the cross-feature ones. | anything below |
+| `frontend/src/pages/` | Route-level views. They compose; reusable logic belongs in a layer below. | anything below |
+
+The rule of thumb: once a helper grows a `ref`, imports `@/api`, or calls `useI18n()`, it has outgrown `utils/`. When domain logic needs no reactivity, keep it in `lib/` — `lib/lineageGraph.ts` and `utils/dateRange.ts` are pure functions precisely so they can be unit tested without mounting anything.
+
+`utils/`, `lib/` and `composables/` are also the coverage-guarded layer: `frontend/vitest.config.ts` sets per-file thresholds (95% lines/functions/statements, 85% branches) and scopes `coverage.include` to those three directories, so a new file there with no test fails the run at 0% instead of being absent from the report. Components and pages are outside the thresholds deliberately — test a concrete interaction, not a percentage.
+
 ## Testing
 
 The default Go suite is hermetic: `go test ./...` needs no PostgreSQL, MySQL, or Docker.
@@ -82,7 +100,7 @@ External-service env vars:
 
 In both modes the harness performs readiness checks, runs the schema migrator (`backend/migrator`), and seeds the MySQL fixture schema. Partial env config fails fast rather than silently mixing modes. The external PostgreSQL database is only recreated when its name is the derived `{INTEGRATION_POSTGRES_DB}_{scope}_integration` one — the configured base database is never dropped. `make test-integration` and `make test-integration-smoke` also run `./backend/migrator/...`, which covers fresh install, incremental upgrade and legacy adoption. Full details: `backend/test/integration/README.md`.
 
-Frontend tests are Vitest with jsdom (`frontend/vitest.config.ts`), colocated with source as `*.test.ts(x)`.
+Frontend tests are Vitest with jsdom (`frontend/vitest.config.ts`), colocated with source as `*.test.ts(x)`; tests for the `frontend/scripts/*.mjs` tooling run in the node environment. Coverage is scoped to the shared layer with per-file thresholds — see "Frontend Module Boundaries".
 
 ## Development Workflow
 
@@ -186,6 +204,15 @@ pnpm --dir frontend type-check
 pnpm --dir frontend test
 pnpm --dir frontend test run
 pnpm --dir frontend test:coverage
+
+# CI forms: coverage + the json reports the metrics below read, and a type
+# check that also reports its peak heap, file count and build time
+pnpm --dir frontend test:ci
+pnpm --dir frontend type-check:diagnostics
+
+# Render this machine's metrics block (tests, shared-layer coverage, type-check
+# heap, dist size); CI appends the same block to the run summary
+pnpm --dir frontend metrics
 
 # Production build
 pnpm --dir frontend build

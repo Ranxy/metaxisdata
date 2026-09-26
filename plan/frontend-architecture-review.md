@@ -238,7 +238,7 @@ dist/assets/css.worker/html.worker/json.worker/editor.worker …
 
 ## 6. 技术债务清单(汇总)
 
-> **状态(2026-09-26):下表 5 条 P0、5 条 P1 与 5 条 P2 已全部完成并验证,落地内容见 §6.1 / §6.2(monaco 体积实测见 §6.3)与 §6.4;仅 P3 尚未开始。**
+> **状态(2026-09-26):下表 5 条 P0、5 条 P1、5 条 P2 与 1 条 P3 已全部完成并验证,落地内容见 §6.1 / §6.2(monaco 体积实测见 §6.3)、§6.4 与 §6.5。**
 
 | 优先级 | 债务 | 位置/证据 | 预估工作量 |
 |--------|------|-----------|-----------|
@@ -420,6 +420,34 @@ dist/assets/css.worker/html.worker/json.worker/editor.worker …
 
 > **P2 之外的顺手修补**:§4 清单剩余项(4-6 MetaType 断言、4-7 EnvironmentColorKey、4-8 `ref<any>`、4-10 手拼 Timestamp)在第 2 个提交里一并完成;`api/database.ts` 的 diff 时间戳改用 `timestampFromDate`。
 
+### 6.5 P3 修复记录(已完成)
+
+实施者补写。第三条 P3(防倒退)拆成 4 个提交(补测试 → 阈值 → CI 观察项 → 文档),同样只动前端与 CI。`src` 测试文件 35 → 40,用例 211 → 263;共享层覆盖从"只有被 import 过的文件"变成**显式圈定并可判定**的 99.16% 行 / 95.6% 分支 / 100% 函数。
+
+P3 触碰的运行时代码只有三处(`dashboard.resourceID`、`usePagedFetch.goPrevious`、删掉的两个死导出),因此浏览器验证只覆盖它们真正影响的界面(Chrome + CDP,dev 环境 + 真实 cookie 会话):dashboard 的 Environment 列经共享 store 解析出 **Prod / stag / Test**,存储的 id 在环境表里不存在时按设计原样回退(**dev**);Databases 列 1 / 11 / 3 / 16;审计日志页 Next 后首行变化、Previous 后回到第一页同一行且 Previous 重新禁用;全程 **0 条 console 错误**。CI 侧无法本地跑 GitHub Actions,改为逐件在本地执行:YAML 结构、`test:ci`(产出 json 结果与覆盖摘要)、`type-check:diagnostics`、`frontend-metrics.mjs`(含 18 例单测)。
+
+> **① 先补共享层缺口,再定阈值(决策:测试只为真实行为写,不为凑数字写)**
+>
+> 四个共享模块此前**完全没有测试**:`lib/openlineage.ts`(132 行的 payload 解析与跨 run 聚合——因为没有测试 import 它,它此前根本不进覆盖率报告)、`lib/notify.ts`(toast 时长与 severity 路由,模块存在的唯一理由)、`composables/useErrorHandler.ts`(全应用错误文案的唯一入口,29 个调用点)、`store/modules/environment.ts`(39% 行)。另有五处只差错误分支:`csv.downloadCsv`(DOM 下载副作用)、`auditLogsCsv`(status/requestMetadata 缺失、时间戳不可表示)、`metaType`(只在列表行出现的 6 种类型)、`dashboard`(分区失败与无权限短路)、`usePagedFetch`(scope dispose、裸 abort、非 abort 的 DOMException)。
+>
+> 顺带发现并修掉三处:① `pages/HomePage.test.ts` mock 的是 `listEnvironments`,而 dashboard 走共享 store 的 `listAllEnvironments` —— 环境加载在**每个** HomePage 测试里都抛错、只落在 stderr 而测试照样绿;现在 mock 真实调用点并断言解析出的标题。② `lib/permissions.ts` 的 `isKnownPermission` 与 `uniquePermissions` 自 IAM 提交起就没有任何调用点(只有测试引用),按死代码删除,而不是给死代码补测试。③ 两处不可达分支:`dashboard.resourceID` 的 `?? name`(`split` 不可能返回空数组)改为 `slice(lastIndexOf("/") + 1)`;`usePagedFetch.goPrevious` 改为先 pop 再判 `undefined`,替掉"先判长度、再 `?? ""`"。
+
+> **② 阈值(决策:守护共享层、per-file,而不是一条全局平均线)**
+>
+> `vitest.config.ts` 的 `coverage.include` 只圈 `src/{utils,lib,composables}`,阈值 **per-file**:lines/functions/statements 95、branches 85。不做全局平均的三个理由:① 不写 `include` 时报告只含"被测试 import 过"的文件,`lib/openlineage.ts` 连一行都不出现,等于根本没守护;② 全局平均必然被 100+ 组件/页面拖到 52%,单个模块下滑几个点根本看不出来;③ 写死 `include` 后,新加的共享模块即使没有任何测试 import 也会以 0% 出现在报告里并直接失败。
+>
+> 组件/页面有意不设阈值(原文的"逐步扩到高价值交互"是持续项,不是一条线);`utils/i18n.ts` 只有类型、没有运行时代码,单列 exclude 以免长期挂一个 0%。**双向验证过**:临时塞一个无测试的 `src/utils/threshold-probe.ts`,`pnpm test:coverage` 退出码 1 并逐项报 `Coverage for lines (0%) does not meet ... threshold (95%) for src/utils/threshold-probe.ts`;删掉后退出码 0。
+
+> **③ CI 观察项(决策:只报告不卡门,写进 Step Summary)**
+>
+> 新增 `scripts/frontend-metrics.mjs`(18 例单测),只读其它步骤已经产出的文件,渲染一个 markdown 块:vitest 的 json reporter(`test:ci` 写到 coverage 摘要旁边)给出文件数/用例数/失败数;`coverage-summary.json` 给出共享层三项百分比;`vue-tsc --build --force --extendedDiagnostics` 给出**峰值堆**、文件数与构建耗时(CI 里 `tee` 到文件后解析,`set -o pipefail` 保证 tee 不会掩盖 type-check 失败);`dist/` 给出总体积与最大的 3 个 chunk(去掉 Vite 的 content hash,让两次构建的比较对人可读)。块同时写 `$GITHUB_STEP_SUMMARY` 与日志,任何输入缺失都渲染 "not measured" 而不是失败——所以这一步可以 `if: always()`。它们是观察项不是预算:阈值只存在于 `vitest.config.ts`,CI 步骤注释也这么写。
+>
+> 本地实测(开发机):`40 files · 261 tests · 261 passed` / `99.16% lines · 95.6% branches · 100% functions` / `839.8 MB peak heap · 1808 files · 12.68s` / `6.0 MB · 132 files`。
+
+> **④ 文档(决策:约定写进 AGENTS.md,而不是留在本 review 里)**
+>
+> AGENTS.md 新增 "Frontend Module Boundaries":`utils/`(纯函数,不碰 Vue/Pinia/`@/api`)、`lib/`(无视图状态的领域逻辑)、`composables/`(拥有 ref/生命周期/请求)、`api/`、`store/modules/`、`components/`、`pages/` 各自"放什么"与"可以 import 什么",并给出判据——一旦一个 helper 长出 `ref`、import `@/api` 或调用 `useI18n()`,它就已经不是 `utils/`;不需要响应式的领域逻辑留在 `lib/`,才能不挂载组件就单测。同节写明覆盖率的守护范围与阈值;"Testing" 与 Frontend 命令清单补上 `test:ci`、`type-check:diagnostics`、`metrics`。
+
 ## 7. 改进路线图建议
 
 **第一步:止血(P0,约 2 天)** — ~~不碰架构,只收敛契约与死代码:`utils/guid.ts`(含编解码测试)→ 替换 4+3 处实现并修掉 ExplainSQL 的解析 bug;`utils/datetime.ts`;清死代码;修错误处理误用。~~ **已完成,见 §6.1。** 与原文的差异:GUID 部分没有止步于"收敛为单一工具",而是同时把 4 条路由改成重复参数,否则含 `/` 的名字仍然无法往返;locale 默认值从 `zh-CN` 统一为 `en-US`(`locales/index.ts` 与 `app.ts` 原先不一致)。
@@ -428,7 +456,7 @@ dist/assets/css.worker/html.worker/json.worker/editor.worker …
 
 **第三步:拆巨人(P2,约 2 周)** — ~~`MetadataBrowserPage`、`LineageGraphPage`、`AuditLogsPage` 按 §3.3 方案拆分;筛选条收敛;App*→ui/ 迁移;toast 简化。~~ **已完成,见 §6.4。** 与原文的差异:① MetadataBrowser 的 leaf 类型不再"并行探测或让后端返回 hint",而是确认了应用内链接**总是**带 `?metaType=`,于是删掉整条探测路径(无 hint 即按列表渲染);② 原文的 `useLineageGraph`/`useDateRangePicker` 落成了**纯函数模块**(`lib/lineageGraph.ts`、`utils/dateRange.ts`)加一个日期区间组件,而不是有状态 composable——图布局与 CSV/日期纯函数因此可以直接单测(新增 23 例);③ 筛选条收敛后 AuditLogs 的日期区间+事件类型面板保留(交互形态差异大),`AdvancedSearchBar` 增加 cascade/input/tags 三类 kind;④ metadata List/Detail 按"务实抽共享件"收敛(页签条、列区块、格式化),没有做配置驱动的通用 List/Detail 组件。
 
-**第四步:防倒退(P3,持续)** — `vitest.config.ts` 加 coverage 阈值;把"`pnpm type-check` 内存"、"dist 体积"、"测试数"做成 CI 观察项;在 AGENTS.md 写清 `utils/` vs `lib/` 的分界标准(当前靠惯例,新代码归属靠猜)。
+**第四步:防倒退(P3,持续)** — ~~`vitest.config.ts` 加 coverage 阈值;把"`pnpm type-check` 内存"、"dist 体积"、"测试数"做成 CI 观察项;在 AGENTS.md 写清 `utils/` vs `lib/` 的分界标准(当前靠惯例,新代码归属靠猜)。~~ **已完成,见 §6.5。** 与原文的差异:① 阈值不是一条全局线,而是把 `coverage.include` 限定在 `utils/lib/composables` 并按文件判定(95/95/95、分支 85)——不限定范围的话,未被任何测试 import 的模块压根不进报告,"防倒退"是空的;② 观察项落成一个可单测的脚本,顺带把 type-check 的文件数与耗时、dist 最大的 chunk 一并纳入;③ 分界标准写进 AGENTS.md 的 "Frontend Module Boundaries",覆盖 `utils/` 到 `pages/` 的完整分层,而不只是 `utils/` vs `lib/`。
 
 ---
 
