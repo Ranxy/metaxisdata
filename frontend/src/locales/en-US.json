@@ -267,10 +267,10 @@
   },
   "home": {
     "actionAuditLogsDescription": "Inspect the workspace audit trail",
-    "actionExplainSQLDescription": "Explain SQL with an LLM, scoped to selected metadata",
+    "actionExplainSQLDescription": "Explain SQL with an LLM",
     "actionLLMDescription": "Manage the model providers behind Explain SQL",
-    "actionManualSQLDescription": "Maintain hand-written SQL that feeds lineage analysis",
-    "actionMetadataDescription": "Browse instances, databases, schemas, tables and columns",
+    "actionManualSQLDescription": "Maintain hand-written SQL for lineage",
+    "actionMetadataDescription": "Browse instances, databases and tables",
     "actionOpenLineageDescription": "Configure namespace mappings and ingestion keys",
     "actionUsersDescription": "Manage members, roles and access",
     "attentionDescription": "These data sources or databases may not be syncing as expected.",

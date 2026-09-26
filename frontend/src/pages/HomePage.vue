@@ -188,15 +188,11 @@
             </Button>
           </CardHeader>
           <CardContent>
-            <div
+            <EmptyState
               v-if="instances.length === 0"
-              class="p-8 text-center text-muted-foreground"
-            >
-              <Database class="mx-auto mb-4 h-10 w-10 text-muted-foreground/50" />
-              <p class="text-sm">
-                {{ t("instanceManagement.noInstances") }}
-              </p>
-            </div>
+              :icon="Database"
+              :title="t('instanceManagement.noInstances')"
+            />
             <template v-else>
               <Table>
                 <TableHeader>
@@ -239,8 +235,8 @@
                         {{ engineLabel(instance.engine) }}
                       </Badge>
                     </TableCell>
-                    <TableCell class="text-muted-foreground">
-                      {{ environmentLabel(instance.environment) }}
+                    <TableCell>
+                      <EnvironmentLabel :environment="instance.environment" />
                     </TableCell>
                     <TableCell class="text-right">
                       {{ databasesPerInstance[instanceId(instance.name)] ?? 0 }}
@@ -297,7 +293,7 @@
                 <p class="truncate text-sm font-medium">
                   {{ action.label }}
                 </p>
-                <p class="truncate text-xs text-muted-foreground">
+                <p class="text-xs text-muted-foreground">
                   {{ action.description }}
                 </p>
               </div>
@@ -328,25 +324,21 @@
           </Button>
         </CardHeader>
         <CardContent>
-          <div
+          <EmptyState
             v-if="recentRuns.length === 0"
-            class="p-8 text-center text-muted-foreground"
+            :icon="Activity"
+            :title="t('openlineageSettings.noRuns')"
           >
-            <Activity class="mx-auto mb-4 h-10 w-10 text-muted-foreground/50" />
-            <p class="text-sm">
-              {{ t("openlineageSettings.noRuns") }}
-            </p>
             <Button
               variant="outline"
               size="sm"
-              class="mt-4"
               asChild
             >
               <RouterLink :to="{ name: 'OpenLineageSettings' }">
                 {{ t("openlineage.ingestionSettings") }}
               </RouterLink>
             </Button>
-          </div>
+          </EmptyState>
           <Table v-else>
             <TableHeader>
               <TableRow>
@@ -435,6 +427,8 @@ import {
   useRouter,
 } from "vue-router";
 import AppLoading from "@/components/common/AppLoading.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import EnvironmentLabel from "@/components/common/EnvironmentLabel.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -744,13 +738,6 @@ const quickActions = computed(() => {
 
 function instanceId(name: string): string {
   return name.replace("instances/", "");
-}
-
-function environmentLabel(environment: string): string {
-  if (!environment) {
-    return "-";
-  }
-  return environmentStore.titleOf(environment);
 }
 
 function eventVariant(
