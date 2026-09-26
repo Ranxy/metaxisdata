@@ -131,13 +131,25 @@ jobs:
       - name: Check i18n catalogs
         run: pnpm --dir frontend i18n
 
+      # --extendedDiagnostics prints the aggregate peak heap beside the timing,
+      # which the metrics step below reads back out of the tee'd file.
       - name: Type check
-        run: pnpm --dir frontend type-check
+        run: |
+          set -o pipefail
+          pnpm --dir frontend type-check:diagnostics | tee "$RUNNER_TEMP/typecheck.txt"
 
       # Fails on the shared layer's per-file coverage thresholds (lines and
-      # functions 95%, branches 85%) — see frontend/vitest.config.ts.
+      # functions 95%, branches 85%) — see frontend/vitest.config.ts. The json
+      # report beside the coverage summary feeds the metrics step.
       - name: Test with coverage
-        run: pnpm --dir frontend test:coverage
+        run: pnpm --dir frontend test:ci
 
       - name: Build
         run: pnpm --dir frontend build
+
+      # Observation, not a gate: type-check heap, bundle size, test count and
+      # the shared layer's coverage, appended to this run's summary so drift is
+      # visible next to the run.
+      - name: Report frontend metrics
+        if: always()
+        run: node frontend/scripts/frontend-metrics.mjs --typecheck "$RUNNER_TEMP/typecheck.txt"

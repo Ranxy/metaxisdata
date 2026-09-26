@@ -8,15 +8,18 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "lint:ci": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --max-warnings=0",
     "type-check": "export NODE_OPTIONS=--max_old_space_size=8000 && vue-tsc --build --force",
+    "type-check:diagnostics": "export NODE_OPTIONS=--max_old_space_size=8000 && vue-tsc --build --force --extendedDiagnostics",
     "test": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:ci": "vitest run --coverage --reporter=default --reporter=json --outputFile=coverage/vitest-results.json",
     "i18n": "node scripts/check-vue-i18n.mjs && node scripts/sort_i18n_keys.mjs --check",
     "i18n:sort": "node scripts/sort_i18n_keys.mjs",
     "biome:format": "biome format --write .",
     "biome:lint": "biome lint --write .",
     "biome:check": "biome check --write .",
     "biome:ci": "biome ci .",
-    "audit:ui": "node scripts/audit-ui-layout.mjs"
+    "audit:ui": "node scripts/audit-ui-layout.mjs",
+    "metrics": "node scripts/frontend-metrics.mjs"
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.5.2",
