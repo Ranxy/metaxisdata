@@ -54,87 +54,17 @@
 
     <!-- One tab row for the whole detail view. History used to stack a second
          tab row on top of this one. -->
-    <div class="flex flex-wrap items-center gap-1 border-b">
-      <button
-        v-for="tab in tabs"
-        :key="tab.key"
-        type="button"
-        class="-mb-px border-b-2 px-3 py-2 text-sm transition-colors"
-        :class="
-          activeTab === tab.key
-            ? 'border-primary font-medium text-foreground'
-            : 'border-transparent text-muted-foreground hover:text-foreground'
-        "
-        @click="activeTab = tab.key"
-      >
-        {{ tab.label }}
-        <span
-          v-if="tab.count !== undefined"
-          class="ml-1.5 text-xs text-muted-foreground"
-        >
-          {{ tab.count }}
-        </span>
-      </button>
-    </div>
+    <MetadataTabGroup
+      v-model="activeTab"
+      :tabs="tabs"
+    />
 
     <template v-if="activeTab === 'columns'">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <Input
-          v-model="columnSearch"
-          class="h-8 w-56"
-          :placeholder="t('metadataBrowser.searchColumnsPlaceholder')"
-        />
-        <Badge variant="outline">
-          {{ filteredColumns.length }} / {{ table.columns.length }}
-          {{ t("metadataBrowser.columnsCount") }}
-        </Badge>
-      </div>
-
-      <Table v-if="filteredColumns.length > 0">
-        <TableHeader>
-          <TableRow>
-            <TableHead>{{ t("metadataBrowser.columnName") }}</TableHead>
-            <TableHead>{{ t("metadataBrowser.columnType") }}</TableHead>
-            <TableHead>{{ t("metadataBrowser.nullable") }}</TableHead>
-            <TableHead>{{ t("metadataBrowser.defaultValue") }}</TableHead>
-            <TableHead>{{ t("metadataBrowser.comment") }}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow
-            v-for="col in filteredColumns"
-            :key="`${col.position}:${col.name}`"
-            :ref="(el) => setColumnRowRef(col.name, el)"
-            :class="{ 'bg-accent/50': selectedColumnName === col.name }"
-          >
-            <TableCell class="font-medium">{{ col.name }}</TableCell>
-            <TableCell class="text-muted-foreground">{{ col.type || "-" }}</TableCell>
-            <TableCell>
-              <Badge
-                :variant="col.nullable ? 'secondary' : 'success'"
-                class="whitespace-nowrap"
-              >
-                {{ col.nullable ? t("metadataBrowser.yes") : t("metadataBrowser.no") }}
-              </Badge>
-            </TableCell>
-            <TableCell class="text-muted-foreground">{{ col.default || "-" }}</TableCell>
-            <TableCell class="max-w-md text-muted-foreground">
-              <ExpandableText
-                :text="col.userComment || col.comment"
-                :item-name="col.name"
-                :dialog-title="t('metadataBrowser.comment')"
-              />
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-
-      <div
-        v-else
-        class="text-sm text-muted-foreground"
-      >
-        {{ columnSearch ? t("metadataBrowser.noMatchedColumns") : t("metadataBrowser.noColumns") }}
-      </div>
+      <MetadataColumnsSection
+        :columns="table.columns"
+        :selected-column-name="selectedColumnName"
+        :row-ref="setColumnRowRef"
+      />
     </template>
 
     <template v-else-if="activeTab === 'indexes'">
@@ -278,7 +208,6 @@ import MetadataHistorySection from "@/components/metadata/MetadataHistorySection
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -289,12 +218,14 @@ import {
 } from "@/components/ui/table";
 import { Engine } from "@/types/proto-es/v1/common_pb";
 import {
-  type ColumnMetadata,
   MetaType,
   type TableMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
+import { formatBytes, formatNumber } from "@/utils/format";
 import { guidToRouteParams } from "@/utils/guid";
 import ExpandableText from "./ExpandableText.vue";
+import MetadataColumnsSection from "./MetadataColumnsSection.vue";
+import MetadataTabGroup from "./MetadataTabGroup.vue";
 import SchemaDefinitionDialog from "./SchemaDefinitionDialog.vue";
 
 const props = defineProps<{
@@ -316,7 +247,6 @@ type DetailTab =
   | "history";
 
 const activeTab = ref<DetailTab>("columns");
-const columnSearch = ref("");
 const columnRowRefs = new Map<string, Element>();
 
 const selectedColumnName = computed(
@@ -327,55 +257,46 @@ const selectedColumnName = computed(
 // Indexes, lineage and history used to be stacked below it, which pushed the
 // first column row past three quarters of the viewport.
 const tabs = computed(() => {
-  const list: Array<{ key: DetailTab; label: string; count?: number }> = [
+  const list: Array<{ value: DetailTab; label: string; count?: number }> = [
     {
-      key: "columns",
+      value: "columns",
       label: t("metadataBrowser.columns"),
       count: props.table.columns.length,
     },
     {
-      key: "indexes",
+      value: "indexes",
       label: t("metadataBrowser.indexes"),
       count: props.table.indexes.length,
     },
   ];
   if (props.guid) {
-    list.push({ key: "lineage", label: t("metadataBrowser.lineage") });
+    list.push({ value: "lineage", label: t("metadataBrowser.lineage") });
   }
   if (props.table.foreignKeys.length > 0) {
     list.push({
-      key: "foreignKeys",
+      value: "foreignKeys",
       label: t("metadataBrowser.foreignKeys"),
       count: props.table.foreignKeys.length,
     });
   }
   if (props.table.checkConstraints.length > 0) {
     list.push({
-      key: "checkConstraints",
+      value: "checkConstraints",
       label: t("metadataBrowser.checkConstraints"),
       count: props.table.checkConstraints.length,
     });
   }
   if (props.table.partitions.length > 0) {
     list.push({
-      key: "partitions",
+      value: "partitions",
       label: t("metadataBrowser.partitions"),
       count: props.table.partitions.length,
     });
   }
   if (props.guid) {
-    list.push({ key: "history", label: t("metadataBrowser.historyTitle") });
+    list.push({ value: "history", label: t("metadataBrowser.historyTitle") });
   }
   return list;
-});
-
-const filteredColumns = computed((): ColumnMetadata[] => {
-  const q = columnSearch.value.trim().toLowerCase();
-  if (!q) return props.table.columns;
-  return props.table.columns.filter((c) => {
-    const comment = (c.userComment || c.comment || "").toLowerCase();
-    return c.name.toLowerCase().includes(q) || comment.includes(q);
-  });
 });
 
 function setColumnRowRef(
@@ -487,19 +408,4 @@ const metaLine = computed(() => {
     " · "
   );
 });
-
-function formatNumber(value: bigint): string {
-  return new Intl.NumberFormat().format(Number(value));
-}
-
-function formatBytes(bytes: bigint): string {
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let size = Number(bytes);
-  let unitIndex = 0;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex++;
-  }
-  return `${size.toFixed(1)} ${units[unitIndex]}`;
-}
 </script>

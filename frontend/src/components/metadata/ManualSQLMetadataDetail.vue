@@ -42,27 +42,11 @@
       </div>
     </div>
 
-    <div
+    <MetadataTabGroup
       v-if="guid"
-      class="inline-flex rounded-lg border bg-muted/30 p-1"
-    >
-      <button
-        type="button"
-        class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
-        :class="activeTab === 'details' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
-        @click="activeTab = 'details'"
-      >
-        {{ t("metadataBrowser.manualSqlDetail") }}
-      </button>
-      <button
-        type="button"
-        class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
-        :class="activeTab === 'history' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
-        @click="activeTab = 'history'"
-      >
-        {{ t("metadataBrowser.historyTitle") }}
-      </button>
-    </div>
+      v-model="activeTab"
+      :tabs="tabs"
+    />
 
     <template v-if="!guid || activeTab === 'details'">
     <div class="space-y-2">
@@ -140,6 +124,7 @@ import { Sparkles } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import MetadataHistorySection from "@/components/metadata/MetadataHistorySection.vue";
+import MetadataTabGroup from "@/components/metadata/MetadataTabGroup.vue";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -159,6 +144,11 @@ const props = defineProps<{
 const { t } = useI18n();
 
 const activeTab = ref<"details" | "history">("details");
+
+const tabs = computed(() => [
+  { value: "details" as const, label: t("metadataBrowser.manualSqlDetail") },
+  { value: "history" as const, label: t("metadataBrowser.historyTitle") },
+]);
 const displayTitle = computed(
   () => props.manualSql.title || props.manualSql.name
 );

@@ -25,27 +25,11 @@
       </div>
     </div>
 
-    <div
+    <MetadataTabGroup
       v-if="guid"
-      class="inline-flex rounded-lg border bg-muted/30 p-1"
-    >
-      <button
-        type="button"
-        class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
-        :class="activeTab === 'details' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
-        @click="activeTab = 'details'"
-      >
-        {{ t("metadataBrowser.externalTableDetail") }}
-      </button>
-      <button
-        type="button"
-        class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
-        :class="activeTab === 'history' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
-        @click="activeTab = 'history'"
-      >
-        {{ t("metadataBrowser.historyTitle") }}
-      </button>
-    </div>
+      v-model="activeTab"
+      :tabs="tabs"
+    />
 
     <template v-if="!guid || activeTab === 'details'">
     <TableLineageSection
@@ -55,66 +39,7 @@
       :title="t('metadataBrowser.relatedLineageAnalysis')"
     />
 
-    <div class="space-y-2">
-      <div class="flex items-center justify-between">
-        <h2 class="text-sm font-medium">{{ t("metadataBrowser.columns") }}</h2>
-        <div class="flex items-center gap-2">
-          <Input
-            v-model="columnSearch"
-            class="h-9 w-64"
-            :placeholder="t('metadataBrowser.searchColumnsPlaceholder')"
-          />
-          <Badge variant="outline">
-            {{ filteredColumns.length }} / {{ table.columns.length }}
-            {{ t("metadataBrowser.columnsCount") }}
-          </Badge>
-        </div>
-      </div>
-
-      <Table v-if="filteredColumns.length > 0">
-        <TableHeader>
-          <TableRow>
-            <TableHead>{{ t("metadataBrowser.columnName") }}</TableHead>
-            <TableHead>{{ t("metadataBrowser.columnType") }}</TableHead>
-            <TableHead>{{ t("metadataBrowser.nullable") }}</TableHead>
-            <TableHead>{{ t("metadataBrowser.defaultValue") }}</TableHead>
-            <TableHead>{{ t("metadataBrowser.comment") }}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow
-            v-for="col in filteredColumns"
-            :key="`${col.position}:${col.name}`"
-          >
-            <TableCell class="font-medium">{{ col.name }}</TableCell>
-            <TableCell class="text-muted-foreground">{{ col.type || "-" }}</TableCell>
-            <TableCell>
-              <Badge
-                :variant="col.nullable ? 'secondary' : 'success'"
-                class="whitespace-nowrap"
-              >
-                {{ col.nullable ? t("metadataBrowser.yes") : t("metadataBrowser.no") }}
-              </Badge>
-            </TableCell>
-            <TableCell class="text-muted-foreground">{{ col.default || "-" }}</TableCell>
-            <TableCell class="text-muted-foreground max-w-md">
-              <ExpandableText
-                :text="col.userComment || col.comment"
-                :item-name="col.name"
-                :dialog-title="t('metadataBrowser.comment')"
-              />
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-
-      <div
-        v-else
-        class="text-sm text-muted-foreground"
-      >
-        {{ columnSearch ? t("metadataBrowser.noMatchedColumns") : t("metadataBrowser.noColumns") }}
-      </div>
-    </div>
+    <MetadataColumnsSection :columns="table.columns" />
     </template>
 
     <MetadataHistorySection
@@ -129,24 +54,15 @@
 import { Plug } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import MetadataColumnsSection from "@/components/metadata/MetadataColumnsSection.vue";
 import MetadataHistorySection from "@/components/metadata/MetadataHistorySection.vue";
+import MetadataTabGroup from "@/components/metadata/MetadataTabGroup.vue";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  type ColumnMetadata,
   type ExternalTableMetadata,
   MetaType,
 } from "@/types/proto-es/v1/database_service_pb";
-import ExpandableText from "./ExpandableText.vue";
 
 const props = defineProps<{
   table: ExternalTableMetadata;
@@ -156,13 +72,14 @@ const props = defineProps<{
 const { t } = useI18n();
 
 const activeTab = ref<"details" | "history">("details");
-const columnSearch = ref("");
 
-const filteredColumns = computed((): ColumnMetadata[] => {
-  const q = columnSearch.value.trim().toLowerCase();
-  if (!q) return props.table.columns;
-  return props.table.columns.filter((c) => c.name.toLowerCase().includes(q));
-});
+const tabs = computed(() => [
+  {
+    value: "details" as const,
+    label: t("metadataBrowser.externalTableDetail"),
+  },
+  { value: "history" as const, label: t("metadataBrowser.historyTitle") },
+]);
 
 const summaryLine = computed(() => {
   return `${props.table.columns.length} ${t("metadataBrowser.columns")}`;

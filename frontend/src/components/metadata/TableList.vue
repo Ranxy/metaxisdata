@@ -81,6 +81,7 @@ import type {
   StoredMetadata,
   TableMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
+import { formatBytes, formatNumber } from "@/utils/format";
 import ExpandableText from "./ExpandableText.vue";
 
 const props = defineProps<{
@@ -102,19 +103,4 @@ const tableRows = computed(() => {
   }
   return rows;
 });
-
-function formatNumber(value: bigint): string {
-  return new Intl.NumberFormat().format(Number(value));
-}
-
-function formatBytes(bytes: bigint): string {
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let size = Number(bytes);
-  let unitIndex = 0;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex++;
-  }
-  return `${size.toFixed(1)} ${units[unitIndex]}`;
-}
 </script>
