@@ -79,7 +79,7 @@
               {{ t("instanceManagement.environment") }}
             </p>
             <p class="font-medium">
-              {{ getEnvironmentLabel(instance.environment) }}
+              <EnvironmentLabel :environment="instance.environment" />
             </p>
           </div>
           <div>
@@ -185,8 +185,10 @@
                 </div>
               </div>
             </TableCell>
-            <TableCell class="text-muted-foreground">
-              {{ getEnvironmentLabel(database.effectiveEnvironment) }}
+            <TableCell>
+              <EnvironmentLabel
+                :environment="database.effectiveEnvironment"
+              />
             </TableCell>
             <TableCell class="text-muted-foreground">
               {{ database.schemaVersion || "-" }}
@@ -195,9 +197,7 @@
               {{ formatLastSync(database.successfulSyncTime) }}
             </TableCell>
             <TableCell>
-              <Badge
-                :variant="database.state === State.ACTIVE ? 'success' : 'secondary'"
-              >
+              <Badge :variant="stateBadgeVariant(database.state)">
                 {{ getStateLabel(database.state) }}
               </Badge>
             </TableCell>
@@ -558,6 +558,7 @@ import {
   updateInstance,
 } from "@/api/instance";
 import AppLoading from "@/components/common/AppLoading.vue";
+import EnvironmentLabel from "@/components/common/EnvironmentLabel.vue";
 import EnvironmentSelect from "@/components/environment/EnvironmentSelect.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
@@ -597,6 +598,7 @@ import {
 } from "@/types/proto-es/v1/instance_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { engineBadgeClass, engineLabel } from "@/utils/engine";
+import { stateBadgeVariant } from "@/utils/state";
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -1039,11 +1041,6 @@ function getDatabaseName(name: string): string {
   // Format: instances/{instance}/databases/{database} -> return database
   const parts = name.split("/");
   return parts[parts.length - 1] || name;
-}
-
-function getEnvironmentLabel(environment: string): string {
-  if (!environment) return "-";
-  return environmentStore.titleOf(environment);
 }
 
 function getHostInfo(instance: Instance): string {

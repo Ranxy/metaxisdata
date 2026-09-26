@@ -95,8 +95,8 @@
               <TableCell class="text-muted-foreground">
                 {{ getHostInfo(instance) }}
               </TableCell>
-              <TableCell class="text-muted-foreground">
-                {{ getEnvironmentLabel(instance.environment) }}
+              <TableCell>
+                <EnvironmentLabel :environment="instance.environment" />
               </TableCell>
               <TableCell>
                 <Badge :variant="instance.activation ? 'success' : 'secondary'">
@@ -554,6 +554,7 @@ import type { CreateInstanceInput } from "@/api/instance";
 import { createInstance } from "@/api/instance";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
+import EnvironmentLabel from "@/components/common/EnvironmentLabel.vue";
 import PageState from "@/components/common/PageState.vue";
 import EnvironmentSelect from "@/components/environment/EnvironmentSelect.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -746,11 +747,6 @@ function getInstanceId(name: string): string {
 function navigateToInstanceDetail(instance: Instance) {
   const instanceId = getInstanceId(instance.name);
   router.push({ name: "InstanceDetail", params: { instanceId } });
-}
-
-function getEnvironmentLabel(environment: string): string {
-  if (!environment) return "-";
-  return environmentStore.titleOf(environment);
 }
 
 function getHostInfo(instance: Instance): string {
