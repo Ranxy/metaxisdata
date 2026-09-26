@@ -36,63 +36,27 @@
         v-else
         class="space-y-4"
       >
-        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Card>
-            <CardContent class="space-y-1 px-3 py-2">
-              <div class="text-sm text-muted-foreground">
-                {{ t("openlineage.jobs") }}
-              </div>
-              <div class="text-2xl font-semibold">
-                {{ tasks.length }}
-              </div>
-              <div class="text-xs text-muted-foreground">
-                {{ lineageReadyCount }} {{ t("openlineage.lineageReady") }}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent class="space-y-1 px-3 py-2">
-              <div class="text-sm text-muted-foreground">
-                {{ t("openlineage.datasets") }}
-              </div>
-              <div class="text-2xl font-semibold">
-                {{ datasets.length }}
-              </div>
-              <div class="text-xs text-muted-foreground">
-                {{ internalCount }} {{ t("openlineage.internal") }} ·
-                {{ externalCount }} {{ t("openlineage.external") }}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent class="space-y-1 px-3 py-2">
-              <div class="text-sm text-muted-foreground">
-                {{ t("openlineage.recentRuns") }}
-              </div>
-              <div class="text-2xl font-semibold">
-                {{ runs.length }}
-              </div>
-              <div class="text-xs text-muted-foreground">
-                {{ lineageRunCount }} {{ t("openlineage.lineageEvents") }}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent class="space-y-1 px-3 py-2">
-              <div class="text-sm text-muted-foreground">
-                {{ t("openlineage.lastEvent") }}
-              </div>
-              <div class="truncate text-2xl font-semibold">
-                {{ lastEventLabel }}
-              </div>
-              <div class="truncate text-xs text-muted-foreground">
-                {{ lastEventHint }}
-              </div>
-            </CardContent>
-          </Card>
+        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            :label="t('openlineage.jobs')"
+            :value="tasks.length"
+            :hint="`${lineageReadyCount} ${t('openlineage.lineageReady')}`"
+          />
+          <StatCard
+            :label="t('openlineage.datasets')"
+            :value="datasets.length"
+            :hint="`${internalCount} ${t('openlineage.internal')} · ${externalCount} ${t('openlineage.external')}`"
+          />
+          <StatCard
+            :label="t('openlineage.recentRuns')"
+            :value="runs.length"
+            :hint="`${lineageRunCount} ${t('openlineage.lineageEvents')}`"
+          />
+          <StatCard
+            :label="t('openlineage.lastEvent')"
+            :value="lastEventLabel"
+            :hint="lastEventHint"
+          />
         </div>
 
         <Card>
@@ -263,6 +227,7 @@ import {
 } from "@/api/openlineage";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
+import StatCard from "@/components/common/StatCard.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

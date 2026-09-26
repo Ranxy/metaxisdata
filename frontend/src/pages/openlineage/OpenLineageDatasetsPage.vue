@@ -5,25 +5,19 @@
       :description="t('openlineage.datasetsDescription')"
     />
 
-    <div class="grid gap-3 md:grid-cols-3">
-      <Card>
-        <CardContent class="flex items-center justify-between px-3 py-2">
-          <span class="text-sm text-muted-foreground">{{ t("openlineage.visibleDatasets") }}</span>
-          <span class="text-xl font-semibold">{{ filteredDatasets.length }}</span>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent class="flex items-center justify-between px-3 py-2">
-          <span class="text-sm text-muted-foreground">{{ t("openlineage.internalDatasets") }}</span>
-          <span class="text-xl font-semibold">{{ internalDatasetCount }}</span>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent class="flex items-center justify-between px-3 py-2">
-          <span class="text-sm text-muted-foreground">{{ t("openlineage.columnLineageDatasets") }}</span>
-          <span class="text-xl font-semibold">{{ columnLineageDatasetCount }}</span>
-        </CardContent>
-      </Card>
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <StatCard
+        :label="t('openlineage.visibleDatasets')"
+        :value="filteredDatasets.length"
+      />
+      <StatCard
+        :label="t('openlineage.internalDatasets')"
+        :value="internalDatasetCount"
+      />
+      <StatCard
+        :label="t('openlineage.columnLineageDatasets')"
+        :value="columnLineageDatasetCount"
+      />
     </div>
 
     <div class="flex flex-wrap items-center gap-3">
@@ -154,6 +148,7 @@ import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
 import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
+import StatCard from "@/components/common/StatCard.vue";
 import OpenLineageDatasetDetailDrawer from "@/components/openlineage/OpenLineageDatasetDetailDrawer.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Badge } from "@/components/ui/badge";

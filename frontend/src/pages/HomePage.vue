@@ -138,32 +138,15 @@
         v-if="stats.length > 0"
         class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
       >
-        <RouterLink
+        <StatCard
           v-for="stat in stats"
           :key="stat.key"
+          :label="stat.label"
+          :value="stat.value"
+          :hint="stat.hint"
+          :icon="stat.icon"
           :to="stat.to"
-          class="group"
-        >
-          <Card class="h-full transition-shadow group-hover:shadow-md">
-            <CardContent class="p-5">
-              <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-muted-foreground">
-                  {{ stat.label }}
-                </span>
-                <component
-                  :is="stat.icon"
-                  class="h-4 w-4 text-muted-foreground"
-                />
-              </div>
-              <p class="mt-2 text-3xl font-bold">
-                {{ stat.value }}
-              </p>
-              <p class="mt-1 text-xs text-muted-foreground">
-                {{ stat.hint }}
-              </p>
-            </CardContent>
-          </Card>
-        </RouterLink>
+        />
       </div>
 
       <div class="grid gap-6 xl:grid-cols-3">
@@ -429,6 +412,7 @@ import {
 import AppLoading from "@/components/common/AppLoading.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import EnvironmentLabel from "@/components/common/EnvironmentLabel.vue";
+import StatCard from "@/components/common/StatCard.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";

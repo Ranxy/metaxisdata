@@ -5,25 +5,19 @@
       :description="t('openlineage.jobsDescription')"
     />
 
-    <div class="grid gap-3 md:grid-cols-3">
-      <Card>
-        <CardContent class="flex items-center justify-between px-3 py-2">
-          <span class="text-sm text-muted-foreground">{{ t("openlineage.visibleJobs") }}</span>
-          <span class="text-xl font-semibold">{{ filteredTasks.length }}</span>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent class="flex items-center justify-between px-3 py-2">
-          <span class="text-sm text-muted-foreground">{{ t("openlineage.lineageReadyJobs") }}</span>
-          <span class="text-xl font-semibold">{{ lineageReadyCount }}</span>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent class="flex items-center justify-between px-3 py-2">
-          <span class="text-sm text-muted-foreground">{{ t("openlineage.activeNamespaces") }}</span>
-          <span class="text-xl font-semibold">{{ namespaceCount }}</span>
-        </CardContent>
-      </Card>
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <StatCard
+        :label="t('openlineage.visibleJobs')"
+        :value="filteredTasks.length"
+      />
+      <StatCard
+        :label="t('openlineage.lineageReadyJobs')"
+        :value="lineageReadyCount"
+      />
+      <StatCard
+        :label="t('openlineage.activeNamespaces')"
+        :value="namespaceCount"
+      />
     </div>
 
     <div class="flex flex-wrap items-center gap-3">
@@ -123,6 +117,7 @@ import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
 import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
+import StatCard from "@/components/common/StatCard.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
