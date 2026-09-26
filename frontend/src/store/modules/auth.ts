@@ -90,10 +90,15 @@ export const useAuthStore = defineStore("auth", {
      * The server rejected the session: forget the user and remember that this was
      * an expiry rather than a deliberate sign-out, so the login form can say so.
      * Called by the transport interceptor and by a rejected GetCurrentUser.
+     *
+     * Only a session we believed in can expire. A visitor who never signed in
+     * gets the same `Unauthenticated` from the first GetCurrentUser, and telling
+     * them on the login page that their session expired is simply untrue — it is
+     * the single most common way to arrive at that page.
      */
     handleUnauthenticated() {
+      this.sessionExpired = this.isAuthenticated;
       this.clearSession();
-      this.sessionExpired = true;
     },
 
     async logout() {

@@ -156,8 +156,21 @@ describe("clearSession", () => {
     expect(store.permissionsLoaded).toBe(false);
   });
 
-  it("remembers that the server rejected the session", async () => {
+  it("does not call the rejection of a session that never existed an expiry", async () => {
     const store = useAuthStore();
+
+    store.handleUnauthenticated();
+
+    expect(store.isAuthenticated).toBe(false);
+    // The first GetCurrentUser of a visitor with no cookie answers the same way,
+    // and the login page must not claim that a session expired.
+    expect(store.sessionExpired).toBe(false);
+  });
+
+  it("remembers that the server rejected a session the app believed in", async () => {
+    mocks.login.mockResolvedValue(loginResponse(false));
+    const store = useAuthStore();
+    await store.login("dev@example.com", "pw");
 
     store.handleUnauthenticated();
 
@@ -168,7 +181,9 @@ describe("clearSession", () => {
   it("clears the expiry flag on the next successful login", async () => {
     mocks.login.mockResolvedValue(loginResponse(false));
     const store = useAuthStore();
+    await store.login("dev@example.com", "pw");
     store.handleUnauthenticated();
+    expect(store.sessionExpired).toBe(true);
 
     await store.login("dev@example.com", "pw");
 

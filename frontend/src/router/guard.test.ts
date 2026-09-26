@@ -47,8 +47,12 @@ describe("router auth guard", () => {
   });
 
   it("explains an expired session instead of showing a bare form", async () => {
-    // GetCurrentUser is the first call a booted app makes, so it is where an
-    // expired cookie is usually discovered.
+    // GetCurrentUser is where an expired cookie is discovered, but only a
+    // session the app already believed in can expire — so arrive signed in.
+    const authStore = useAuthStore();
+    authStore.user = create(UserSchema, { name: "users/1" });
+    authStore.isAuthenticated = true;
+    authStore.permissionsLoaded = false;
     mocks.getCurrentUser.mockRejectedValue(
       new ConnectError("no cookie", Code.Unauthenticated)
     );
@@ -64,6 +68,20 @@ describe("router auth guard", () => {
   });
 
   it("does not claim an expiry for a visitor who never signed in", async () => {
+    // The same Unauthenticated the previous test uses, but with no session
+    // behind it: landing on /login must not say a session expired.
+    mocks.getCurrentUser.mockRejectedValue(
+      new ConnectError("no cookie", Code.Unauthenticated)
+    );
+
+    await router.push("/databases");
+
+    expect(useAuthStore().sessionExpired).toBe(false);
+    expect(router.currentRoute.value.name).toBe("Login");
+    expect(router.currentRoute.value.query).not.toHaveProperty("expired");
+  });
+
+  it("does not claim an expiry when the profile call itself failed", async () => {
     mocks.getCurrentUser.mockRejectedValue(
       new ConnectError("upstream down", Code.Unavailable)
     );
