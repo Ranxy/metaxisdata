@@ -12,16 +12,10 @@
       </template>
     </PageHeader>
 
-    <ManualSQLFilterBar
-      :database-options="databaseFilterOptions"
-      :selected-database="selectedParent"
-      :search-query="searchQuery"
-      :schema-filter="schemaFilter"
-      :tags-filter="tagsFilterInput"
-      @update:selected-database="selectedParent = $event"
-      @update:search-query="searchQuery = $event"
-      @update:schema-filter="schemaFilter = $event"
-      @update:tags-filter="tagsFilterInput = $event"
+    <AdvancedSearchBar
+      :filter-categories="filterCategories"
+      :search-placeholder="t('manualSqlManagement.searchPlaceholder')"
+      @update:filters="handleFiltersUpdate"
     />
 
     <Card>
@@ -366,9 +360,12 @@ import {
   searchManualSQL,
   updateManualSQL,
 } from "@/api/database";
+import AdvancedSearchBar, {
+  type ActiveFilter,
+  type FilterCategory,
+} from "@/components/common/AdvancedSearchBar.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
-import ManualSQLFilterBar from "@/components/common/ManualSQLFilterBar.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
@@ -479,6 +476,45 @@ const databaseFilterOptions = computed(() =>
     label: formatDatabaseOption(database),
   }))
 );
+
+/**
+ * The three filter dimensions this page offers. The filter bar owns their UI; the
+ * page only maps the emitted pills back onto the request parameters.
+ */
+const filterCategories = computed<FilterCategory[]>(() => [
+  {
+    type: "database",
+    label: t("manualSqlManagement.databaseFilter"),
+    icon: "🗄️",
+    options: databaseFilterOptions.value,
+  },
+  {
+    type: "schema",
+    label: t("manualSqlManagement.schemaFilter"),
+    icon: "#",
+    kind: "input",
+    placeholder: t("manualSqlManagement.schemaPlaceholder"),
+  },
+  {
+    type: "tags",
+    label: t("manualSqlManagement.tagsFilter"),
+    icon: "🏷️",
+    kind: "tags",
+    placeholder: t("manualSqlManagement.tagsPlaceholder"),
+    hint: t("manualSqlManagement.tagsHint"),
+    note: t("manualSqlManagement.tagsInputHint"),
+  },
+]);
+
+function handleFiltersUpdate(filters: ActiveFilter[]) {
+  const valueOf = (type: string) =>
+    filters.find((filter) => filter.type === type)?.value ?? "";
+  selectedParent.value = valueOf("database");
+  searchQuery.value = valueOf("name");
+  schemaFilter.value = valueOf("schema");
+  const tags = filters.find((filter) => filter.type === "tags")?.value;
+  tagsFilterInput.value = tags ? tags.split(",") : [];
+}
 
 function parseTagList(value: string): string[] {
   return value

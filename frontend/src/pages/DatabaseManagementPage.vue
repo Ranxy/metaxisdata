@@ -6,6 +6,7 @@
     <AdvancedSearchBar
       :instances="instanceStore.active"
       :engine-options="engineOptions"
+      :search-placeholder="t('databaseManagement.searchPlaceholder')"
       @update:filters="handleFiltersUpdate"
     />
 
