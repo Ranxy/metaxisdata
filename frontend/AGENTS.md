@@ -41,7 +41,7 @@ After any frontend change, run the gate in this order — exact commands below:
 
 ```bash
 pnpm --dir frontend i                 # install dependencies
-pnpm --dir frontend dev               # dev server; http://localhost:3000, proxies /v1 and /metaxisdata.v1 to localhost:8080
+pnpm --dir frontend dev               # dev server; http://localhost:3000, proxies /v1 and /metaxisdata.v1 to localhost:8083
 
 pnpm --dir frontend biome:check       # format + lint + organize imports (src/, excluding generated src/types/proto-es/)
 pnpm --dir frontend lint              # ESLint (Vue + i18n rules), applies --fix

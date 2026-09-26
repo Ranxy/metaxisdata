@@ -59,8 +59,8 @@ go build -ldflags "-w -s" -p=16 -tags release -o ./build/metaxisdata ./backend/b
 # Dev build: dev profile, wide-open CORS. Local development only.
 go build -ldflags "-w -s" -p=16 -o ./build/metaxisdata ./backend/bin/server/main.go
 
-# Run the server (requires PG_URL; port 8080 matches the frontend vite proxy)
-PG_URL='postgres://dev:dev@localhost:5432/metaxisdata?sslmode=disable' go run ./backend/bin/server/main.go --port 8080 --debug
+# Run the server (requires PG_URL; port 8083 matches the frontend vite proxy)
+PG_URL='postgres://dev:dev@localhost:5432/metaxisdata?sslmode=disable' go run ./backend/bin/server/main.go --port 8083 --debug
 
 # A single test, or several
 go test -v -count=1 github.com/Ranxy/metaxisdata/backend/store -run ^TestFunctionName$

@@ -67,7 +67,7 @@ func Execute() error {
 }
 
 func init() {
-	rootCmd.PersistentFlags().IntVar(&flags.port, "port", 8080, "port where server runs. Default to 80")
+	rootCmd.PersistentFlags().IntVar(&flags.port, "port", 8083, "port where server runs. Default to 8083")
 	rootCmd.PersistentFlags().BoolVar(&flags.enableJSONLogging, "enable-json-logging", false, "enable output logs in json format")
 	rootCmd.PersistentFlags().BoolVar(&flags.debug, "debug", false, "whether to enable debug level logging")
 	rootCmd.PersistentFlags().StringVar(&flags.corsAllowOrigins, "cors-allow-origins", "", "comma-separated browser origins allowed to call the API with credentials; empty disables CORS")
