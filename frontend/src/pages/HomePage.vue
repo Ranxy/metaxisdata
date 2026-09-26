@@ -9,7 +9,7 @@
           v-if="lastUpdated"
           class="hidden text-xs text-muted-foreground sm:inline"
         >
-          {{ t("home.refreshedAt", { time: formatTime(lastUpdated, locale, "") }) }}
+          {{ t("home.refreshedAt", { time: formatTime(lastUpdated, locale) }) }}
         </span>
         <Button
           variant="outline"

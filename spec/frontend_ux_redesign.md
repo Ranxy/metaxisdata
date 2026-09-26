@@ -187,7 +187,7 @@ Phase 0 与 Phase 1 已实现，实测结果（1440×900）：
 | 9 | 设计令牌与标题语义 | 完成 |
 | 10 | 可复跑的验收脚手架 | 完成 |
 
-**10. 验收脚手架（`frontend/scripts/audit-ui-layout.mjs`，`pnpm --dir frontend audit:ui`）。** 用 CDP 直连浏览器（依赖 Node 内置 `WebSocket`/`fetch`，**不引入 puppeteer/playwright**）对 12 条关键路由量取：表格顶部 Y、首条数据行 Y、h1 数量、嵌套滚动容器数、横向溢出、heading 是否跳级、console 错误数，并按预算判定。退出码 0 / 1 / 2 分别是"全部达标 / 有路由越界 / 无法运行（无浏览器或缺会话）"。三种路径均已实测：正常 12/12 通过；把某条预算收紧到 100 后正确报 FAIL 且退出 1；用全新浏览器 profile（无会话）运行时识别出 `/login` 重定向、只跑第一条就中止并退出 2。
+**10. 验收脚手架（`frontend/scripts/audit-ui-layout.mjs`，`pnpm --dir frontend audit:ui`）。** 用 CDP 直连浏览器（依赖 Node 内置 `WebSocket`/`fetch`，**不引入 puppeteer/playwright**）对 12 条关键路由量取：表格顶部 Y、首条数据行 Y、h1 数量、嵌套滚动容器数、**表格单元格裁切数**、横向溢出、heading 是否跳级、console 错误数，并按预算判定。退出码 0 / 1 / 2 分别是"全部达标 / 有路由越界 / 无法运行（无浏览器或缺会话）"。三种路径均已实测：正常 12/12 通过；把某条预算收紧到 100 后正确报 FAIL 且退出 1；用全新浏览器 profile（无会话）运行时识别出 `/login` 重定向、只跑第一条就中止并退出 2。
 
 设计上的两个要点：一是**测量前先等锚点稳定**（连续 3 次采样位置不变）而不是固定 sleep，否则会采到页面尚未安定时的中间态；二是所有等待都有上界，`Page.loadEventFired` 若不来不会把整个审计挂死。
 
@@ -196,6 +196,26 @@ Phase 0 与 Phase 1 已实现，实测结果（1440×900）：
 **9b. 一个被脚手架立刻抓到的既有缺陷。** 加了"heading 不得跳级"检查后，4 条路由立刻报 `h1 → h3`。根因是 `CardTitle` 沿用了上游 shadcn 的 `<h3>`，而本应用的层级是「页面 h1 → 卡片分区」，没有中间那一级。已把 `CardTitle` 改为 `<h2>`（并在组件里注明为何偏离上游）。
 
 **9c. 间距与硬编码尺寸。** 11 个页面根容器从 `space-y-6` 统一为 `space-y-4`（HomePage 的表格顶部因此从 349 降到 333）。魔法像素值换成 Tailwind 令牌：`min-h-[42px]`/`min-h-[46px]` → `min-h-11`（三个筛选栏此前各不相同），`max-h-[400px]` → `max-h-96`，`w-[220px]` → `w-56`，三个工作台栅格 `380px`/`260px`/`140px` → `24rem`/`16rem`/`9rem`。**栅格本身保留"固定侧栏 + `minmax(0,1fr)` 自适应内容"的形态**——它已经是自适应的，改动的意义是把魔法像素变成可读的设计令牌，而不是把它重构成堆叠布局（那会伤害工作台的使用体验）。
+
+**Follow-up fix — 审计日志表格与详情弹窗 (done)**
+
+用户报告 `/settings/audit-logs` 及其详情"样式不太对"。实测把问题定位到宽度预算，而不是配色或间距：
+
+1. **八列塞进 839px。** 设置 section 的阅读列上限是 860px，但本页有 `settingsContentWidth: "full"`，所以真正的约束来自导航栏：1440 视口下 `main` 内容宽 1121，减去 `md:w-52` 导航（208）与间距后页面列 889，卡片内表格只剩 **839px**。`table-fixed` 的百分比在这个宽度下必然出错：`Severity` 列 6% = 50px，而表头文字要 65px，于是表头**压到相邻的 Method 表头上**（截图里是 `SeverityMethod`），同时把表格撑宽 15px、出现一条水平滚动条；窗口一窄，百分比继续等比缩小，所有列一起被裁切（1024 视口下 152 个单元格的内容溢出自己的格子）。
+2. **详情弹窗把 JSON 塞进三列。** `lg:grid-cols-3` 在 `max-w-4xl` 里每列只有约 275px，`"lastChangePasswordTime"` 这类键名被迫折行，请求体几乎不可读；同时弹窗**完全没有**列表里有的延迟、IP、User Agent，关闭按钮还叫 Cancel。
+3. **首屏就写着 "1 active filters"。** 默认日期范围（最近一个月）被计入了 active filter，而它同时又在搜索框里重复渲染成一个 `created:` 胶囊——和右边的日期选择器说的是同一件事。
+
+修复：
+
+- **八列收敛为六列**：严重级别折进 Event 列，作为方法名前的 16px 指示位——**INFO 只显示一个灰点**，WARNING / ERROR 才显示徽章（与本仓库"强调少数派"的既有约定一致：普通成员 / 服务账号、内部 / 外部节点都是这个做法）。这样 50 行里不再有 50 个 `Info` 徽章，告警反而跳出来；actor 移到方法名下方一行，Request Metadata（IP + UA）保留独立列。
+- **列宽改用「固定 px + 一个自动列」而不是百分比**：`table-fixed` 下给 Time/Resource/Status/Source/Actions 各一个 `w-*` 令牌，Event 不设宽度，于是它**独占其余全部像素**。百分比做不到这件事——能在 1280 下不裁切的百分比，在 1440 下必然饿死方法名列。实测 1440：表格 839px 正好放下、完整的 `/metaxisdata.v1.AuthService/Login` 全部可见、0 裁切；1280：679px 放下、**无横向滚动**、0 裁切；1024：落到 `min-w-[42rem]` 地板（672px）并在表格自己的容器里横向滚动（表格外的 `main` 不溢出）。`table-auto` 路线试过并放弃：`nowrap` 单元格会把整段文本计入列的最小宽度，一条超长 User Agent 就把表格撑到 1852px，这正是上一版改用 `table-fixed` 的原因。
+- **失败状态在列表里只说结果**：`16 the email or password is not valid` 放不进任何一列，列表显示 `16 Failed`，完整措辞在 tooltip、详情弹窗与 CSV（CSV 一直是 code / message 分列）。
+- **详情弹窗重排**：`max-w-5xl` + 字段定义列表（Time / Severity / Status / Latency / Method / User / Resource）+ 一个 Request Metadata 面板（IP 地址 / User Agent），随后 Request / Response / Service Data **各自整行铺开**（JSON 不再折行），空的负载退化为一行 `-` 而不是一个空灰块；关闭按钮改为 Close，并补上 `DialogDescription`（此前 radix 每次都报 "Missing Description"）。
+- **工具条**：筛选框固定 `h-11` 单行（胶囊移到下方独立一行，长筛选列表不会再把它顶成两行）、去掉与日期选择器重复的 `created:` 胶囊、"N filter(s) active" 只统计真正的筛选条件、Scope 移到 `lg:` 以上的右上角、删除页脚与卡片描述重复的 `pageStatus` 计数文案。日期列拆成"日期 / 时间"两行以省宽度，`utils/datetime.ts` 的 `formatTime` 因此新增 `seconds` 选项（审计需要秒）。
+
+**脚手架同时补齐了这个缺陷漏检的原因**：新增 `clippedTableCells`（`scrollWidth > clientWidth` 的 `th`/`td` 数量）作为失败条件——上一版在 1440 下有 **152 个**这样的单元格和 1 个被裁切的表头，而审计当时是 12/12 通过。另外把 `nestedScrollers` 收紧为"`overflow-y` 为 auto/scroll 的盒子"：`sr-only` 与 `truncate` 都是 1px 的 `overflow:hidden` 裁剪盒，按旧口径会被误判成嵌套滚动容器（本次新增的可访问性标签就让该指标从 0 跳到 48）。
+
+实测：表格顶部 Y 261 → **233**（预算 290），裁切单元格 152 → **0**，`audit:ui` 12/12。
 
 **Further Considerations**
 

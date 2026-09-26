@@ -18,6 +18,12 @@ export interface DateTimeFormatOptions {
   fallback?: string;
 }
 
+export interface TimeFormatOptions {
+  seconds?: boolean;
+  /** Returned when the value is missing or unparsable. Defaults to an empty string. */
+  fallback?: string;
+}
+
 const DEFAULT_FALLBACK = "-";
 
 /**
@@ -98,19 +104,20 @@ export function formatDate(
   }).format(date);
 }
 
-/** `14:30`, 24-hour, in the given locale. */
+/** `14:30` (`14:30:05` with `seconds`), 24-hour, in the given locale. */
 export function formatTime(
   value: DateTimeInput,
   locale: string,
-  fallback = ""
+  options: TimeFormatOptions = {}
 ): string {
   const date = parseDateValue(value);
   if (!date) {
-    return fallback;
+    return options.fallback ?? "";
   }
   return new Intl.DateTimeFormat(locale, {
     hour: "2-digit",
     minute: "2-digit",
+    ...(options.seconds ? { second: "2-digit" } : {}),
     hour12: false,
   }).format(date);
 }

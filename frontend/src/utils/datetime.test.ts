@@ -65,8 +65,18 @@ describe("formatTime", () => {
     expect(formatTime(new Date(2025, 8, 25, 9, 5), "en-US")).toBe("09:05");
   });
 
+  it("adds seconds when asked", () => {
+    expect(
+      formatTime(new Date(2025, 8, 25, 9, 5, 7), "en-US", { seconds: true })
+    ).toBe("09:05:07");
+  });
+
   it("defaults to an empty string when there is no value", () => {
     expect(formatTime(null, "en-US")).toBe("");
+  });
+
+  it("returns the given fallback for a missing value", () => {
+    expect(formatTime(undefined, "en-US", { fallback: "-" })).toBe("-");
   });
 });
 

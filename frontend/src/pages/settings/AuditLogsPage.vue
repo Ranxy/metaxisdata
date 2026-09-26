@@ -13,11 +13,14 @@
       </template>
     </PageHeader>
 
-    <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
-      <div class="space-y-3">
-        <div ref="searchBarRef" class="relative">
+    <div class="space-y-3">
+      <!-- The filter box is one line by design: chips live on their own row
+           below, so a long filter list cannot push the input onto a second
+           line and grow the chrome above the table. -->
+      <div class="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div ref="searchBarRef" class="relative min-w-0 flex-1">
           <div
-            class="flex min-h-11 w-full flex-wrap items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors hover:border-ring"
+            class="flex h-11 w-full items-center gap-2 rounded-md border border-input bg-background px-3 text-sm transition-colors hover:border-ring focus-within:border-ring"
           >
             <button
               type="button"
@@ -28,47 +31,16 @@
               <span class="font-medium">{{ t("auditLogs.filter") }}</span>
             </button>
 
-            <Badge
-              v-for="filter in activeFilters"
-              :key="filter.id"
-              variant="secondary"
-              class="flex items-center gap-1 px-2 py-1"
-            >
-              <span class="text-xs font-medium">{{ filter.label }}:</span>
-              <span class="text-xs">{{ filter.displayValue }}</span>
-              <button
-                type="button"
-                class="ml-1 rounded-full transition-colors hover:bg-secondary-foreground/20"
-                :aria-label="t('common.removeFilter')"
-                @click.stop="removeFilter(filter.id)"
-              >
-                <X class="h-3 w-3" />
-              </button>
-            </Badge>
-
-            <Badge
-              v-if="dateRangeChip"
-              variant="secondary"
-              class="flex items-center gap-1 px-2 py-1"
-            >
-              <span class="text-xs font-medium">{{ t("auditLogs.created") }}:</span>
-              <span class="text-xs">{{ dateRangeChip }}</span>
-              <button
-                type="button"
-                class="ml-1 rounded-full transition-colors hover:bg-secondary-foreground/20"
-                :aria-label="t('auditLogs.clearDateRange')"
-                @click.stop="clearDateRange"
-              >
-                <X class="h-3 w-3" />
-              </button>
-            </Badge>
+            <span class="h-5 w-px shrink-0 bg-border" aria-hidden="true" />
 
             <input
+              id="audit-log-search"
               ref="searchInputRef"
               v-model="searchQuery"
+              name="audit-log-search"
               type="text"
               :placeholder="searchPlaceholder"
-              class="min-w-[180px] flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+              class="min-w-0 flex-1 bg-transparent outline-hidden placeholder:text-muted-foreground"
               @focus="openSearchPanel"
               @keydown.enter.prevent="handleSearchEnter"
               @keydown.esc.prevent="resetSearchDraft"
@@ -135,34 +107,51 @@
           </div>
         </div>
 
-        <div v-if="hasActiveSearch" class="flex items-center justify-between text-xs text-muted-foreground">
-          <span>
-            {{ t("auditLogs.filterActive", { count: activeFilters.length + (dateRangeChip ? 1 : 0) }) }}
-          </span>
-          <Button variant="ghost" size="sm" class="h-auto p-0 text-xs hover:underline" @click="clearAllFilters">
-            {{ t("auditLogs.clearFilters") }}
-          </Button>
+        <div class="shrink-0">
+          <AuditLogsDateRangePicker
+            v-model="dateRange"
+            @apply="refreshLogs"
+          />
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-2 xl:justify-end">
-        <AuditLogsDateRangePicker
-          v-model="dateRange"
-          @apply="refreshLogs"
-        />
+      <div v-if="activeFilters.length > 0" class="flex flex-wrap items-center gap-2">
+        <span class="text-xs text-muted-foreground">
+          {{ t("auditLogs.filterActive", { count: activeFilters.length }) }}
+        </span>
+        <Badge
+          v-for="filter in activeFilters"
+          :key="filter.id"
+          variant="secondary"
+          class="flex items-center gap-1 px-2 py-1"
+        >
+          <span class="text-xs font-medium">{{ filter.label }}:</span>
+          <span class="text-xs">{{ filter.displayValue }}</span>
+          <button
+            type="button"
+            class="ml-1 rounded-full transition-colors hover:bg-secondary-foreground/20"
+            :aria-label="t('common.removeFilter')"
+            @click.stop="removeFilter(filter.id)"
+          >
+            <X class="h-3 w-3" />
+          </button>
+        </Badge>
+        <Button variant="ghost" size="sm" class="h-auto p-0 text-xs hover:underline" @click="clearAllFilters">
+          {{ t("auditLogs.clearFilters") }}
+        </Button>
       </div>
     </div>
 
     <Card>
       <CardHeader>
-        <div class="flex items-center justify-between gap-4">
-          <div>
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0">
             <CardTitle>{{ t("auditLogs.entries") }}</CardTitle>
             <CardDescription>
               {{ t("auditLogs.entriesDescription", { count: logs.length }) }}
             </CardDescription>
           </div>
-          <div class="text-sm text-muted-foreground">
+          <div class="hidden shrink-0 whitespace-nowrap pt-1 text-xs text-muted-foreground lg:block">
             {{ t("auditLogs.parentScope") }}: <span class="font-mono">workspaces/-</span>
           </div>
         </div>
@@ -179,72 +168,96 @@
             :description="t('auditLogs.emptyDescription')"
           />
 
-          <!-- `table-fixed` plus percentage columns is what keeps this table
-               inside the viewport: auto layout sized it to its longest RPC name
-               (1712px), which hid half the columns behind a horizontal
-               scrollbar. Long values now truncate and expand in a popover. -->
+          <!-- `table-fixed`, a pixel width per column, and one column left
+               auto: the Event column then takes every pixel the others do not
+               need — at 1440 the full RPC name fits — while the fixed columns
+               keep exactly the width their content needs at any viewport.
+               Percentages cannot do both; auto layout cannot do it at all,
+               because a `nowrap` cell contributes its whole text to the
+               column's minimum and one long user agent stretched the table past
+               1800px. `min-w-[42rem]` is the point where the fixed columns stop
+               leaving Event room to say anything; below it the wrapper scrolls
+               instead of collapsing the columns into each other. -->
           <Table
             v-else
-            class="table-fixed"
+            class="table-fixed min-w-[42rem]"
           >
             <TableHeader>
               <TableRow>
-                <TableHead class="w-[13%] whitespace-nowrap">{{ t("auditLogs.time") }}</TableHead>
-                <TableHead class="w-[6%] whitespace-nowrap">{{ t("auditLogs.severity") }}</TableHead>
-                <TableHead class="w-[25%] whitespace-nowrap">{{ t("auditLogs.method") }}</TableHead>
-                <TableHead class="w-[12%] whitespace-nowrap">{{ t("auditLogs.resource") }}</TableHead>
-                <TableHead class="w-[12%] whitespace-nowrap">{{ t("auditLogs.user") }}</TableHead>
-                <TableHead class="w-[8%] whitespace-nowrap">{{ t("auditLogs.status") }}</TableHead>
-                <TableHead class="w-[16%] whitespace-nowrap">{{ t("auditLogs.requestMeta") }}</TableHead>
-                <TableHead class="w-[8%] whitespace-nowrap text-right">{{ t("auditLogs.actions") }}</TableHead>
+                <TableHead class="w-27 whitespace-nowrap">{{ t("auditLogs.time") }}</TableHead>
+                <TableHead class="whitespace-nowrap">{{ t("auditLogs.event") }}</TableHead>
+                <TableHead class="w-25 whitespace-nowrap">{{ t("auditLogs.resource") }}</TableHead>
+                <TableHead class="w-26 whitespace-nowrap">{{ t("auditLogs.status") }}</TableHead>
+                <TableHead class="w-25 whitespace-nowrap">{{ t("auditLogs.source") }}</TableHead>
+                <TableHead class="w-26 whitespace-nowrap text-right">{{ t("auditLogs.actions") }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               <TableRow v-for="log in logs" :key="log.name">
-                <TableCell class="whitespace-nowrap text-muted-foreground">
-                  {{ formatTimestamp(log.createTime) }}
-                </TableCell>
-                <TableCell class="whitespace-nowrap">
-                  <Badge :variant="getSeverityVariant(log.severity)" class="min-w-[3.5rem] justify-center whitespace-nowrap">
-                    {{ getSeverityLabel(log.severity) }}
-                  </Badge>
+                <TableCell>
+                  <div class="text-xs text-muted-foreground">{{ formatLogDate(log.createTime) }}</div>
+                  <div class="text-sm tabular-nums">{{ formatLogTime(log.createTime) }}</div>
                 </TableCell>
                 <TableCell>
-                  <ExpandableText
-                    :text="log.method"
-                    :dialog-title="t('auditLogs.method')"
-                    text-class="font-mono text-xs"
-                  />
-                </TableCell>
-                <TableCell>
-                  <ExpandableText
-                    :text="getAuditIdentityDisplay(log.resource)"
-                    :dialog-title="t('auditLogs.resource')"
-                    text-class="text-xs"
-                  />
-                </TableCell>
-                <TableCell>
-                  <ExpandableText
-                    :text="getAuditIdentityDisplay(log.user)"
-                    :dialog-title="t('auditLogs.user')"
-                    text-class="text-xs"
-                  />
-                </TableCell>
-                <TableCell>
-                  <div class="space-y-1">
-                    <div class="font-medium">{{ getStatusLabel(log) }}</div>
-                    <div class="text-xs text-muted-foreground">
-                      {{ t("auditLogs.latency", { value: String(log.latencyMs) }) }}
-                    </div>
+                  <!-- The indicator slot keeps every method on the same x even
+                       though only the notable severities carry a label: an
+                       audit trail is mostly INFO, and a badge on every line
+                       buries the warnings it exists to surface. -->
+                  <div class="flex min-w-0 items-center gap-2">
+                    <Badge
+                      v-if="isSeverityNoteworthy(log.severity)"
+                      :variant="getSeverityVariant(log.severity)"
+                      class="shrink-0"
+                    >
+                      {{ getSeverityLabel(log.severity) }}
+                    </Badge>
+                    <span
+                      v-else
+                      class="flex w-4 shrink-0 items-center justify-center"
+                      :title="getSeverityLabel(log.severity)"
+                    >
+                      <span class="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" aria-hidden="true" />
+                      <span class="sr-only">{{ getSeverityLabel(log.severity) }}</span>
+                    </span>
+                    <span class="truncate font-mono text-xs" :title="log.method">{{ log.method }}</span>
+                  </div>
+                  <div
+                    v-if="log.user"
+                    class="mt-1 flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
+                  >
+                    <UserRound class="h-3 w-3 shrink-0" />
+                    <span class="truncate" :title="getAuditIdentityDisplay(log.user)">
+                      {{ getAuditIdentityDisplay(log.user) }}
+                    </span>
                   </div>
                 </TableCell>
-                <TableCell class="text-xs text-muted-foreground">
-                  <div class="truncate">{{ log.requestMetadata?.ip || '-' }}</div>
-                  <ExpandableText
-                    :text="log.requestMetadata?.userAgent || '-'"
-                    :dialog-title="t('auditLogs.userAgent')"
-                    text-class="text-xs"
-                  />
+                <TableCell>
+                  <div class="truncate text-xs" :title="getAuditIdentityDisplay(log.resource)">
+                    {{ getAuditIdentityDisplay(log.resource) }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    :variant="getStatusVariant(log)"
+                    :title="getStatusLabel(log)"
+                    class="max-w-full"
+                  >
+                    <span class="truncate">{{ getStatusShortLabel(log) }}</span>
+                  </Badge>
+                  <div class="mt-1 text-xs tabular-nums text-muted-foreground">
+                    {{ t("auditLogs.latency", { value: String(log.latencyMs) }) }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div class="truncate font-mono text-xs" :title="log.requestMetadata?.ip">
+                    {{ log.requestMetadata?.ip || "-" }}
+                  </div>
+                  <div
+                    class="truncate text-xs text-muted-foreground"
+                    :title="log.requestMetadata?.userAgent"
+                  >
+                    {{ log.requestMetadata?.userAgent || "-" }}
+                  </div>
                 </TableCell>
                 <TableCell class="text-right">
                   <Button variant="ghost" size="sm" @click="openDetails(log)">
@@ -256,87 +269,95 @@
           </Table>
         </PageState>
 
-        <div class="flex items-center justify-between border-t pt-4">
-          <div class="text-sm text-muted-foreground">
-            {{ t("auditLogs.pageStatus", { count: logs.length }) }}
-          </div>
-          <div class="flex items-center gap-2">
-            <Button variant="outline" :disabled="!previousPageTokens || isLoading" @click="goToPreviousPage">
-              {{ t("common.previous") }}
-            </Button>
-            <Button variant="outline" :disabled="!nextPageToken || isLoading" @click="goToNextPage">
-              {{ t("common.next") }}
-            </Button>
-          </div>
+        <div class="flex items-center justify-end gap-2 border-t pt-4">
+          <Button variant="outline" :disabled="!previousPageTokens || isLoading" @click="goToPreviousPage">
+            {{ t("common.previous") }}
+          </Button>
+          <Button variant="outline" :disabled="!nextPageToken || isLoading" @click="goToNextPage">
+            {{ t("common.next") }}
+          </Button>
         </div>
       </CardContent>
     </Card>
 
     <Dialog v-model:open="showDetails">
-      <DialogContent class="max-w-4xl">
+      <DialogContent class="max-w-5xl">
         <DialogHeader>
           <DialogTitle>{{ t("auditLogs.detailTitle") }}</DialogTitle>
+          <DialogDescription>{{ t("auditLogs.detailDescription") }}</DialogDescription>
         </DialogHeader>
 
-        <div v-if="selectedLog" class="space-y-6">
-          <div class="grid gap-4 md:grid-cols-2">
-            <div>
-              <div class="text-sm text-muted-foreground">{{ t("auditLogs.time") }}</div>
-              <div>{{ formatTimestamp(selectedLog.createTime) }}</div>
+        <div v-if="selectedLog" class="space-y-5">
+          <dl class="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="space-y-1">
+              <dt class="text-xs font-medium text-muted-foreground">{{ t("auditLogs.time") }}</dt>
+              <dd class="text-sm">{{ formatTimestamp(selectedLog.createTime) }}</dd>
             </div>
-            <div>
-              <div class="text-sm text-muted-foreground">{{ t("auditLogs.severity") }}</div>
-              <div><Badge :variant="getSeverityVariant(selectedLog.severity)">{{ getSeverityLabel(selectedLog.severity) }}</Badge></div>
+            <div class="space-y-1">
+              <dt class="text-xs font-medium text-muted-foreground">{{ t("auditLogs.severity") }}</dt>
+              <dd>
+                <Badge :variant="getSeverityVariant(selectedLog.severity)">
+                  {{ getSeverityLabel(selectedLog.severity) }}
+                </Badge>
+              </dd>
             </div>
-            <div>
-              <div class="text-sm text-muted-foreground">{{ t("auditLogs.method") }}</div>
-              <div class="font-mono text-xs break-all">{{ selectedLog.method }}</div>
+            <div class="space-y-1">
+              <dt class="text-xs font-medium text-muted-foreground">{{ t("auditLogs.status") }}</dt>
+              <dd>
+                <Badge :variant="getStatusVariant(selectedLog)">
+                  {{ getStatusLabel(selectedLog) }}
+                </Badge>
+              </dd>
             </div>
-            <div>
-              <div class="text-sm text-muted-foreground">{{ t("auditLogs.resource") }}</div>
-              <div class="text-xs break-all">{{ getAuditIdentityDisplay(selectedLog.resource) }}</div>
+            <div class="space-y-1">
+              <dt class="text-xs font-medium text-muted-foreground">{{ t("auditLogs.latencyLabel") }}</dt>
+              <dd class="text-sm tabular-nums">
+                {{ t("auditLogs.latency", { value: String(selectedLog.latencyMs) }) }}
+              </dd>
             </div>
-            <div>
-              <div class="text-sm text-muted-foreground">{{ t("auditLogs.user") }}</div>
-              <div class="text-xs break-all">{{ getAuditIdentityDisplay(selectedLog.user) }}</div>
+            <div class="space-y-1 sm:col-span-2 lg:col-span-4">
+              <dt class="text-xs font-medium text-muted-foreground">{{ t("auditLogs.method") }}</dt>
+              <dd class="font-mono text-xs break-all">{{ selectedLog.method }}</dd>
             </div>
-            <div>
-              <div class="text-sm text-muted-foreground">{{ t("auditLogs.status") }}</div>
-              <div>{{ getStatusLabel(selectedLog) }}</div>
+            <div class="space-y-1 sm:col-span-2">
+              <dt class="text-xs font-medium text-muted-foreground">{{ t("auditLogs.user") }}</dt>
+              <dd class="text-sm break-all">{{ getAuditIdentityDisplay(selectedLog.user) }}</dd>
             </div>
-          </div>
+            <div class="space-y-1 sm:col-span-2">
+              <dt class="text-xs font-medium text-muted-foreground">{{ t("auditLogs.resource") }}</dt>
+              <dd class="text-sm break-all">{{ getAuditIdentityDisplay(selectedLog.resource) }}</dd>
+            </div>
+            <div class="space-y-1 sm:col-span-2 lg:col-span-4">
+              <dt class="text-xs font-medium text-muted-foreground">{{ t("auditLogs.requestMeta") }}</dt>
+              <dd class="grid gap-x-6 gap-y-3 rounded-md border bg-muted/30 p-3 sm:grid-cols-2">
+                <div class="space-y-0.5">
+                  <div class="text-xs text-muted-foreground">{{ t("auditLogs.ipAddress") }}</div>
+                  <div class="font-mono text-sm">{{ selectedLog.requestMetadata?.ip || "-" }}</div>
+                </div>
+                <div class="min-w-0 space-y-0.5">
+                  <div class="text-xs text-muted-foreground">{{ t("auditLogs.userAgent") }}</div>
+                  <div class="text-xs break-all">{{ selectedLog.requestMetadata?.userAgent || "-" }}</div>
+                </div>
+              </dd>
+            </div>
+          </dl>
 
-          <div class="grid gap-4 lg:grid-cols-3">
-            <Card>
-              <CardHeader>
-                <CardTitle class="text-base">{{ t("auditLogs.request") }}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <pre class="max-h-96 overflow-auto rounded-md bg-muted p-4 text-xs leading-6">{{ formatJson(selectedLog.request) }}</pre>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle class="text-base">{{ t("auditLogs.response") }}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <pre class="max-h-96 overflow-auto rounded-md bg-muted p-4 text-xs leading-6">{{ formatJson(selectedLog.response) }}</pre>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle class="text-base">{{ t("auditLogs.serviceData") }}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <pre class="max-h-96 overflow-auto rounded-md bg-muted p-4 text-xs leading-6">{{ formatJson(selectedLog.serviceData) }}</pre>
-              </CardContent>
-            </Card>
+          <!-- Full-width sections, not a three-column grid: JSON wrapped
+               mid-token at a third of the dialog and could not be read. -->
+          <div
+            v-for="section in payloadSections"
+            :key="section.title"
+            class="space-y-2"
+          >
+            <h3 class="text-sm font-medium">{{ section.title }}</h3>
+            <p v-if="isEmptyJson(section.value)" class="text-sm text-muted-foreground">-</p>
+            <pre v-else class="max-h-80 overflow-auto rounded-md bg-muted p-4 text-xs leading-5">{{ formatJson(section.value) }}</pre>
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="outline" @click="showDetails = false">
-            {{ t("common.cancel") }}
+            {{ t("common.close") }}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -352,6 +373,7 @@ import {
   Download,
   Filter,
   RefreshCcw,
+  UserRound,
   X,
 } from "lucide-vue-next";
 import type { DateRange } from "radix-vue";
@@ -364,7 +386,6 @@ import AuditLogsDateRangePicker from "@/components/audit/AuditLogsDateRangePicke
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
-import ExpandableText from "@/components/metadata/ExpandableText.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -377,6 +398,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -398,16 +420,13 @@ import {
 import type { User } from "@/types/proto-es/v1/user_service_pb";
 import { auditLogsCsvFilename, buildAuditCsv } from "@/utils/auditLogsCsv";
 import { downloadCsv } from "@/utils/csv";
-import {
-  dateRangeBound,
-  defaultDateRange,
-  emptyDateRange,
-  formatDateRangeChip,
-} from "@/utils/dateRange";
-import { formatDateTime } from "@/utils/datetime";
+import { dateRangeBound, defaultDateRange } from "@/utils/dateRange";
+import { formatDate, formatDateTime, formatTime } from "@/utils/datetime";
 
 type AuditFilterType = "resource" | "actor" | "method" | "level";
 type SeverityValue = "INFO" | "WARNING" | "ERROR";
+type BadgeVariant = "secondary" | "warning" | "destructive" | "outline";
+type StatusVariant = "success" | "secondary" | "destructive";
 
 interface AuditFilter {
   id: string;
@@ -505,14 +524,6 @@ const searchPlaceholder = computed(() => {
   return t("auditLogs.advancedSearchPlaceholder");
 });
 
-const hasActiveSearch = computed(
-  () => activeFilters.value.length > 0 || Boolean(dateRangeChip.value)
-);
-
-const dateRangeChip = computed(() =>
-  formatDateRangeChip(dateRange.value, locale.value)
-);
-
 const filterExpression = computed(() => {
   const clauses: string[] = [];
   for (const filter of activeFilters.value) {
@@ -539,6 +550,12 @@ const filterExpression = computed(() => {
   }
   return clauses.join(" && ");
 });
+
+const payloadSections = computed(() => [
+  { title: t("auditLogs.request"), value: selectedLog.value?.request },
+  { title: t("auditLogs.response"), value: selectedLog.value?.response },
+  { title: t("auditLogs.serviceData"), value: selectedLog.value?.serviceData },
+]);
 
 onClickOutside(searchBarRef, () => {
   showSearchPanel.value = false;
@@ -680,14 +697,8 @@ function removeFilter(id: string) {
   void refreshLogs();
 }
 
-function clearDateRange() {
-  dateRange.value = emptyDateRange();
-  void refreshLogs();
-}
-
 function clearAllFilters() {
   activeFilters.value = [];
-  dateRange.value = emptyDateRange();
   resetSearchDraft();
   void refreshLogs();
 }
@@ -696,15 +707,26 @@ function formatTimestamp(ts: Timestamp | undefined): string {
   return formatDateTime(ts, locale.value, { seconds: true });
 }
 
-function formatJson(value: unknown): string {
-  if (
+/** The list splits the timestamp so the column fits a narrow window: the date
+ *  above, the time of day (which is what an audit trail is scanned by) below. */
+function formatLogDate(ts: Timestamp | undefined): string {
+  return formatDate(ts, locale.value);
+}
+
+function formatLogTime(ts: Timestamp | undefined): string {
+  return formatTime(ts, locale.value, { seconds: true });
+}
+
+function isEmptyJson(value: unknown): boolean {
+  return (
     !value ||
     (typeof value === "object" &&
       Object.keys(value as Record<string, unknown>).length === 0)
-  ) {
-    return "-";
-  }
-  return JSON.stringify(value, null, 2);
+  );
+}
+
+function formatJson(value: unknown): string {
+  return isEmptyJson(value) ? "-" : JSON.stringify(value, null, 2);
 }
 
 function getSeverityLabel(severity: AuditLogSeverity): string {
@@ -720,31 +742,68 @@ function getSeverityLabel(severity: AuditLogSeverity): string {
   }
 }
 
-function getSeverityVariant(
-  severity: AuditLogSeverity
-): "default" | "secondary" | "destructive" | "outline" {
+function getSeverityVariant(severity: AuditLogSeverity): BadgeVariant {
   switch (severity) {
     case AuditLogSeverity.INFO:
       return "secondary";
     case AuditLogSeverity.WARNING:
-      return "outline";
+      return "warning";
     case AuditLogSeverity.ERROR:
       return "destructive";
     default:
-      return "default";
+      return "outline";
   }
 }
 
+/** A call that carried no error code and no message beyond "ok" succeeded. */
+function isSuccessStatus(log: AuditLog): boolean {
+  if (!log.status || log.status.code) {
+    return false;
+  }
+  const message = log.status.message?.trim();
+  return !message || /^(ok|success)$/i.test(message);
+}
+
+/** The full outcome, including the server's explanation. */
 function getStatusLabel(log: AuditLog): string {
-  const message = log.status?.message?.trim();
-  const isSuccessMessage = !message || /^(ok|success)$/i.test(message);
-  if (!log.status || (!log.status.code && !message)) {
+  if (!log.status || (!log.status.code && !log.status.message?.trim())) {
     return t("auditLogs.statusUnknown");
   }
-  if (!log.status.code) {
-    return isSuccessMessage ? t("auditLogs.statusSuccess") : message;
+  if (isSuccessStatus(log)) {
+    return t("auditLogs.statusSuccess");
   }
-  return `${log.status.code} ${message || t("auditLogs.statusFailed")}`;
+  if (!log.status.code) {
+    return log.status.message?.trim() ?? "";
+  }
+  return `${log.status.code} ${log.status.message?.trim() || t("auditLogs.statusFailed")}`;
+}
+
+/** What the list column can actually show: an error message such as "16 the
+ *  caller does not have permission" leaves room for nothing else, so the row
+ *  carries the code and the tooltip and the dialog carry the wording. */
+function getStatusShortLabel(log: AuditLog): string {
+  if (!log.status || (!log.status.code && !log.status.message?.trim())) {
+    return t("auditLogs.statusUnknown");
+  }
+  if (isSuccessStatus(log)) {
+    return t("auditLogs.statusSuccess");
+  }
+  if (!log.status.code) {
+    return log.status.message?.trim() ?? "";
+  }
+  return `${log.status.code} ${t("auditLogs.statusFailed")}`;
+}
+
+function getStatusVariant(log: AuditLog): StatusVariant {
+  if (!log.status || (!log.status.code && !log.status.message?.trim())) {
+    return "secondary";
+  }
+  return isSuccessStatus(log) ? "success" : "destructive";
+}
+
+/** INFO is the default outcome of an audited call; the rest deserve a label. */
+function isSeverityNoteworthy(severity: AuditLogSeverity): boolean {
+  return severity !== AuditLogSeverity.INFO;
 }
 
 function formatAuditUserDisplay(user: User): string {
