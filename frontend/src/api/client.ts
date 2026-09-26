@@ -14,11 +14,13 @@ import { OpenLineageService } from "@/types/proto-es/v1/openlineage_service_pb";
 import { RoleService } from "@/types/proto-es/v1/role_service_pb";
 import { SettingService } from "@/types/proto-es/v1/setting_service_pb";
 import { UserService } from "@/types/proto-es/v1/user_service_pb";
+import { sessionInterceptor } from "./session";
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL || "";
 
 const transport = createConnectTransport({
   baseUrl,
+  interceptors: [sessionInterceptor],
   fetch: (input, init) => fetch(input, { ...init, credentials: "include" }),
 });
 

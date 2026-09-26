@@ -1,13 +1,18 @@
+import { Code } from "@connectrpc/connect";
 import { defineStore } from "pinia";
 import * as authApi from "@/api/auth";
 import * as userApi from "@/api/user";
 import type { User } from "@/types/proto-es/v1/user_service_pb";
+import { errorCode } from "@/utils/error";
+
+// The in-flight GetCurrentUser, kept outside the store: a promise is not state,
+// and two navigations in the same tick must share one request.
+let inFlightProfile: Promise<void> | undefined;
 
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  error: string | null;
   // Set when the server issued a token restricted to a forced password reset.
   requireResetPassword: boolean;
   // Whether `user` came from GetCurrentUser, the only call that resolves the
@@ -21,7 +26,6 @@ export const useAuthStore = defineStore("auth", {
     user: null,
     isAuthenticated: false,
     isLoading: false,
-    error: null,
     requireResetPassword: false,
     permissionsLoaded: false,
   }),
@@ -39,7 +43,6 @@ export const useAuthStore = defineStore("auth", {
   actions: {
     async login(email: string, password: string) {
       this.isLoading = true;
-      this.error = null;
       try {
         const response = await authApi.login(email, password);
         this.user = response.user ?? null;
@@ -49,9 +52,6 @@ export const useAuthStore = defineStore("auth", {
         // resolves them once the caller enters an authenticated page.
         this.permissionsLoaded = false;
         return response;
-      } catch (err) {
-        this.error = err instanceof Error ? err.message : "Login failed";
-        throw err;
       } finally {
         this.isLoading = false;
       }
@@ -71,15 +71,21 @@ export const useAuthStore = defineStore("auth", {
       this.requireResetPassword = false;
     },
 
+    // Drops everything the session carried. Called by logout, by the global
+    // Unauthenticated interceptor, and when GetCurrentUser reports the cookie is
+    // gone — one definition so no call site can forget a field.
+    clearSession() {
+      this.user = null;
+      this.isAuthenticated = false;
+      this.requireResetPassword = false;
+      this.permissionsLoaded = false;
+    },
+
     async logout() {
       try {
         await authApi.logout();
       } finally {
-        this.user = null;
-        this.isAuthenticated = false;
-        this.error = null;
-        this.requireResetPassword = false;
-        this.permissionsLoaded = false;
+        this.clearSession();
       }
     },
 
@@ -90,10 +96,14 @@ export const useAuthStore = defineStore("auth", {
         this.isAuthenticated = true;
         this.requireResetPassword = false;
         this.permissionsLoaded = true;
-      } catch {
-        this.user = null;
-        this.isAuthenticated = false;
-        this.permissionsLoaded = false;
+      } catch (error) {
+        // Only the server rejecting the session ends it. A network blip or a 5xx
+        // must not look like a logout: the router sends an unauthenticated user
+        // to the login page, and losing a valid cookie to one failed request
+        // would do exactly that on the next navigation.
+        if (errorCode(error) === Code.Unauthenticated) {
+          this.clearSession();
+        }
       } finally {
         this.isLoading = false;
       }
@@ -109,11 +119,16 @@ export const useAuthStore = defineStore("auth", {
       if (this.permissionsLoaded || this.requireResetPassword) {
         return;
       }
-      await this.fetchCurrentUser();
-    },
-
-    clearError() {
-      this.error = null;
+      // Two navigations can land in the same tick right after login; both would
+      // otherwise fire GetCurrentUser. The second waits on the first's promise.
+      if (inFlightProfile) {
+        await inFlightProfile;
+        return;
+      }
+      inFlightProfile = this.fetchCurrentUser().finally(() => {
+        inFlightProfile = undefined;
+      });
+      await inFlightProfile;
     },
   },
 });

@@ -156,34 +156,17 @@
       </template>
     </AppModal>
 
-    <AppModal
+    <ConfirmDeleteDialog
       v-model="showDeleteModal"
       :title="t('environmentSettings.deleteTitle')"
-      size="sm"
-    >
-      <p>
-        {{
-          t("environmentSettings.deleteConfirm", {
-            name: deleting ? environmentTitle(deleting) : "",
-          })
-        }}
-      </p>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showDeleteModal = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <AppButton
-          variant="danger"
-          :loading="isDeleting"
-          @click="confirmDelete"
-        >
-          {{ t("common.delete") }}
-        </AppButton>
-      </template>
-    </AppModal>
+      :message="
+        t('environmentSettings.deleteConfirm', {
+          name: deleting ? environmentTitle(deleting) : '',
+        })
+      "
+      :loading="isDeleting"
+      @confirm="confirmDelete"
+    />
   </div>
 </template>
 
@@ -196,6 +179,7 @@ import { environmentId } from "@/api/environment";
 import AppButton from "@/components/common/AppButton.vue";
 import AppInput from "@/components/common/AppInput.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -227,7 +211,7 @@ import {
 const { t } = useI18n();
 const authStore = useAuthStore();
 const environmentStore = useEnvironmentStore();
-const { handleError, showSuccess } = useErrorHandler();
+const { formatError, handleError, showSuccess } = useErrorHandler();
 
 const canUpdate = computed(() =>
   authStore.hasPermission("metaxisdata.settings.update")
@@ -306,8 +290,7 @@ async function save() {
     }
     showEditModal.value = false;
   } catch (error) {
-    formError.value =
-      error instanceof Error ? error.message : t("error.unknown");
+    formError.value = formatError(error);
   } finally {
     isSaving.value = false;
   }

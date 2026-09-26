@@ -57,8 +57,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { useErrorMessage } from "@/composables/useErrorHandler";
 import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
-import { extractErrorMessage } from "@/utils/error";
 
 interface Props {
   guid: string;
@@ -69,6 +69,7 @@ interface Props {
 const props = defineProps<Props>();
 
 const { t } = useI18n();
+const { formatError } = useErrorMessage();
 
 const isOpen = ref(false);
 const isLoading = ref(false);
@@ -87,7 +88,7 @@ async function fetchSchema() {
     });
     schemaContent.value = response.schema;
   } catch (e) {
-    error.value = extractErrorMessage(e);
+    error.value = formatError(e);
   } finally {
     isLoading.value = false;
   }

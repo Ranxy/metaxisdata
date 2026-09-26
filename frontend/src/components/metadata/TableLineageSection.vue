@@ -155,6 +155,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useErrorMessage } from "@/composables/useErrorHandler";
 import { relationTypeKey } from "@/lib/relationType";
 import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
@@ -163,7 +164,6 @@ import {
   RelationType,
   type Transformation,
 } from "@/types/proto-es/v1/lineage_service_pb";
-import { extractErrorMessage } from "@/utils/error";
 import { guidToRouteParams } from "@/utils/guid";
 
 type DisplayRelation = {
@@ -197,6 +197,7 @@ const props = withDefaults(
 );
 
 const { t } = useI18n();
+const { formatError } = useErrorMessage();
 
 const lineageGraphRoute = computed(() => {
   const query: LocationQueryRaw = {
@@ -338,8 +339,7 @@ watch(
       upstreamRelations.value = [];
       downstreamRelations.value = [];
       externalDatasets.value = [];
-      const message = extractErrorMessage(e);
-      error.value = message || t("metadataBrowser.lineageFetchError");
+      error.value = formatError(e, "metadataBrowser.lineageFetchError");
     } finally {
       isLoading.value = false;
     }

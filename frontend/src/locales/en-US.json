@@ -170,6 +170,21 @@
     "usageColumn": "Usage"
   },
   "error": {
+    "aborted": "The request was interrupted, please try again.",
+    "alreadyExists": "That resource already exists.",
+    "canceled": "The request was cancelled.",
+    "dataLoss": "A data integrity check failed, please contact an administrator.",
+    "deadlineExceeded": "The server took too long to respond.",
+    "failedPrecondition": "The current state does not allow that operation.",
+    "internal": "The server hit an internal error.",
+    "invalidArgument": "The server rejected the request parameters.",
+    "notFound": "That resource no longer exists.",
+    "outOfRange": "The request is outside the allowed range.",
+    "permissionDenied": "You do not have permission to do that.",
+    "resourceExhausted": "The server is out of capacity, please retry later.",
+    "sessionExpired": "Your session has expired, please sign in again.",
+    "unavailable": "The service is temporarily unavailable, please retry.",
+    "unimplemented": "That feature is not available on this server.",
     "unknown": "An unknown error occurred. Please try again later"
   },
   "explainSQL": {

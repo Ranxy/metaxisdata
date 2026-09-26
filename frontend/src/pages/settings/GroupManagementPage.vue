@@ -173,30 +173,15 @@
       </template>
     </AppModal>
 
-    <AppModal
+    <ConfirmDeleteDialog
       v-model="showDeleteConfirm"
-      size="sm"
       :title="t('iam.groups.deleteTitle')"
-    >
-      <p class="text-sm">
-        {{ t("iam.groups.deleteConfirm", { name: deletingGroup?.name ?? "" }) }}
-      </p>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showDeleteConfirm = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          variant="destructive"
-          :disabled="isDeleting"
-          @click="handleDelete"
-        >
-          {{ t("common.delete") }}
-        </Button>
-      </template>
-    </AppModal>
+      :message="
+        t('iam.groups.deleteConfirm', { name: deletingGroup?.name ?? '' })
+      "
+      :loading="isDeleting"
+      @confirm="handleDelete"
+    />
   </div>
 </template>
 
@@ -206,9 +191,10 @@ import { Pencil, Plus, Trash2 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { createGroup, deleteGroup, listGroups, updateGroup } from "@/api/group";
-import { listUsers } from "@/api/user";
+import { listAllUsers } from "@/api/user";
 import AppInput from "@/components/common/AppInput.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -236,7 +222,7 @@ import type { User } from "@/types/proto-es/v1/user_service_pb";
 
 const { t } = useI18n();
 const authStore = useAuthStore();
-const { handleError, showSuccess } = useErrorHandler();
+const { formatError, handleError, showSuccess } = useErrorHandler();
 
 const canCreate = computed(() =>
   authStore.hasPermission("metaxisdata.groups.create")
@@ -286,14 +272,14 @@ async function loadGroups() {
   isLoading.value = true;
   error.value = null;
   try {
-    const [groupResponse, userResponse] = await Promise.all([
+    const [groupResponse, allUsers] = await Promise.all([
       listGroups(),
-      listUsers({ pageSize: 1000 }),
+      listAllUsers(),
     ]);
     groups.value = groupResponse.groups;
-    users.value = userResponse.users;
+    users.value = allUsers;
   } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err);
+    error.value = formatError(err);
   } finally {
     isLoading.value = false;
   }

@@ -37,6 +37,17 @@
       </CardContent>
     </Card>
 
+    <Card v-else-if="instanceError">
+      <CardHeader>
+        <CardTitle>{{ t("instanceDetail.instanceInfo") }}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div class="p-8 text-center text-destructive">
+          {{ instanceError }}
+        </div>
+      </CardContent>
+    </Card>
+
     <Card v-else-if="instance">
       <CardHeader>
         <CardTitle>{{ t("instanceDetail.instanceInfo") }}</CardTitle>
@@ -533,7 +544,6 @@ import {
   createDataSource,
   dataSourceId,
   deleteDataSource,
-  listInstances,
   syncInstance,
   updateDataSource,
   updateInstance,
@@ -541,7 +551,7 @@ import {
 import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
-import EnvironmentSelect from "@/components/common/EnvironmentSelect.vue";
+import EnvironmentSelect from "@/components/environment/EnvironmentSelect.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -558,6 +568,7 @@ import {
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { useEnvironmentStore } from "@/store/modules/environment";
+import { useInstanceStore } from "@/store/modules/instance";
 import { useToastStore } from "@/store/modules/toast";
 import { State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
@@ -575,16 +586,19 @@ import { engineBadgeClass, engineLabel } from "@/utils/engine";
 const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
-const { handleError, showSuccess } = useErrorHandler();
+const { formatError, handleError, showSuccess } = useErrorHandler();
 const toastStore = useToastStore();
 const environmentStore = useEnvironmentStore();
+const instanceStore = useInstanceStore();
 
 // State
 const instanceId = computed(() => route.params.instanceId as string);
-const instance = ref<Instance | null>(null);
+const instanceName = computed(() => `instances/${instanceId.value}`);
+const instance = computed(() => instanceStore.byName(instanceName.value));
 const databases = ref<DatabaseType[]>([]);
 const isLoadingInstance = ref(false);
 const isLoadingDatabases = ref(false);
+const instanceError = ref<string | null>(null);
 const databaseError = ref<string | null>(null);
 const isSyncingAllDatabases = ref(false);
 const syncingDatabases = ref<Record<string, boolean>>({});
@@ -1043,14 +1057,9 @@ function formatLastSync(timestamp: Timestamp | undefined): string {
 async function fetchInstance() {
   isLoadingInstance.value = true;
   try {
-    const response = await listInstances({
-      pageSize: 100,
-      showDeleted: false,
-      filter: `resource_id == "${instanceId.value}"`,
-    });
-    if (response.instances.length > 0) {
-      instance.value = response.instances[0];
-    } else {
+    await instanceStore.fetch(true);
+    if (!instance.value) {
+      // The fetch succeeded and the instance is not in it, so it is gone.
       handleError(
         new Error("Instance not found"),
         "instanceDetail.fetchInstanceError"
@@ -1058,8 +1067,9 @@ async function fetchInstance() {
       router.push({ name: "InstanceManagement" });
     }
   } catch (e) {
-    handleError(e, "instanceDetail.fetchInstanceError");
-    router.push({ name: "InstanceManagement" });
+    // A failed request is not a missing instance: report it instead of
+    // pretending the object was deleted and sending the user away.
+    instanceError.value = formatError(e, "instanceDetail.fetchInstanceError");
   } finally {
     isLoadingInstance.value = false;
   }

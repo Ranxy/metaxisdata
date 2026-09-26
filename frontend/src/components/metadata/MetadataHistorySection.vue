@@ -312,6 +312,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useErrorMessage } from "@/composables/useErrorHandler";
 import {
   type MetadataHistoryChangeItem,
   type MetadataHistoryChildSnapshot,
@@ -323,7 +324,6 @@ import {
   type MetaType,
 } from "@/types/proto-es/v1/database_service_pb";
 import { formatDateTime } from "@/utils/datetime";
-import { extractErrorMessage } from "@/utils/error";
 
 const props = withDefaults(
   defineProps<{
@@ -337,6 +337,7 @@ const props = withDefaults(
 );
 
 const { t, locale } = useI18n();
+const { formatError } = useErrorMessage();
 
 const activeTab = ref("history");
 const entries = ref<MetadataHistoryTimelineEntry[]>([]);
@@ -414,8 +415,7 @@ async function loadHistory(reset: boolean) {
       await selectEntry(response.entries[0]);
     }
   } catch (error) {
-    listError.value =
-      extractErrorMessage(error) || t("metadataBrowser.historyFetchError");
+    listError.value = formatError(error, "metadataBrowser.historyFetchError");
   } finally {
     loadingRef.value = false;
   }
@@ -448,8 +448,10 @@ async function selectEntry(entry: MetadataHistoryTimelineEntry) {
     });
     eventCache.set(key, event);
   } catch (error) {
-    detailError.value =
-      extractErrorMessage(error) || t("metadataBrowser.historyEventFetchError");
+    detailError.value = formatError(
+      error,
+      "metadataBrowser.historyEventFetchError"
+    );
   } finally {
     isLoadingDetail.value = false;
     loadingEventKey.value = "";

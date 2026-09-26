@@ -9,6 +9,7 @@ import {
   UpdateEnvironmentRequestSchema,
 } from "@/types/proto-es/v1/environment_service_pb";
 import { environmentClient } from "./client";
+import { listAll } from "./list";
 
 const ENVIRONMENT_PREFIX = "environments/";
 
@@ -34,6 +35,17 @@ export async function listEnvironments(options?: {
     pageToken: options?.pageToken ?? "",
   });
   return await environmentClient.listEnvironments(request);
+}
+
+/** Every environment, across all pages. */
+export async function listAllEnvironments(): Promise<Environment[]> {
+  return await listAll(async (pageToken) => {
+    const response = await listEnvironments({ pageSize: 100, pageToken });
+    return {
+      items: response.environments,
+      nextPageToken: response.nextPageToken,
+    };
+  });
 }
 
 /**

@@ -142,17 +142,18 @@ import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent } from "@/components/ui/card";
+import { useErrorMessage } from "@/composables/useErrorHandler";
 import {
   type DeviceLogin,
   DeviceLoginState,
 } from "@/types/proto-es/v1/auth_service_pb";
 import { formatDateTime } from "@/utils/datetime";
-import { extractErrorMessage } from "@/utils/error";
 
 type Step = "input" | "confirm" | "done";
 type Outcome = "approved" | "denied" | "expired";
 
 const { t, locale } = useI18n();
+const { formatError } = useErrorMessage();
 const route = useRoute();
 const router = useRouter();
 
@@ -200,7 +201,7 @@ async function loadDeviceLogin() {
     outcome.value = settled;
     step.value = "done";
   } catch (error) {
-    errorMessage.value = extractErrorMessage(error);
+    errorMessage.value = formatError(error);
   } finally {
     isLoading.value = false;
   }
@@ -214,7 +215,7 @@ async function decide(approve: boolean) {
     outcome.value = approve ? "approved" : "denied";
     step.value = "done";
   } catch (error) {
-    errorMessage.value = extractErrorMessage(error);
+    errorMessage.value = formatError(error);
   } finally {
     isLoading.value = false;
   }

@@ -18,7 +18,6 @@
         <AppInput
           v-model="searchQuery"
           :placeholder="t('userManagement.searchPlaceholder')"
-          @update:model-value="debouncedSearch"
         >
           <template #suffix>
             <Search class="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -158,7 +157,7 @@
         </CollapsibleTrigger>
 
         <CollapsibleContent>
-          <PageState :loading="isLoadingDeleted">
+          <PageState :loading="isLoading">
             <!-- Empty State -->
             <EmptyState
               v-if="deletedUsers.length === 0"
@@ -351,38 +350,14 @@
     </AppModal>
 
     <!-- Delete Confirmation Modal -->
-    <AppModal
+    <ConfirmDeleteDialog
       v-model="showDeleteModal"
       :title="t('userManagement.deleteUser')"
-      size="sm"
-    >
-      <div class="text-center">
-        <div class="w-12 h-12 mx-auto mb-4 rounded-full bg-destructive/10 flex items-center justify-center">
-          <Trash2 class="h-6 w-6 text-destructive" />
-        </div>
-        <p>
-          {{ t("userManagement.deleteConfirmMessage") }}
-        </p>
-        <p class="text-sm text-muted-foreground mt-2">
-          <strong>{{ userToDelete?.email }}</strong>
-        </p>
-      </div>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showDeleteModal = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          variant="destructive"
-          :disabled="isDeleting"
-          @click="handleDeleteUser"
-        >
-          {{ t("common.delete") }}
-        </Button>
-      </template>
-    </AppModal>
+      :message="t('userManagement.deleteConfirmMessage')"
+      :item-name="userToDelete?.email"
+      :loading="isDeleting"
+      @confirm="handleDeleteUser"
+    />
   </div>
 </template>
 
@@ -397,17 +372,18 @@ import {
   Trash2,
   Users,
 } from "lucide-vue-next";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   createUser,
   deleteUser,
-  listUsers,
+  listAllUsers,
   undeleteUser,
   updateUser,
 } from "@/api/user";
 import AppInput from "@/components/common/AppInput.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -441,11 +417,10 @@ const authStore = useAuthStore();
 const canCreateUser = computed(() =>
   authStore.hasPermission("metaxisdata.users.create")
 );
-const { handleError, showSuccess } = useErrorHandler();
+const { formatError, handleError, showSuccess } = useErrorHandler();
 
 // State
 const isLoading = ref(false);
-const isLoadingDeleted = ref(false);
 const isCreating = ref(false);
 const isUpdating = ref(false);
 const isDeleting = ref(false);
@@ -453,8 +428,7 @@ const restoringUser = ref<string | null>(null);
 const error = ref<string | null>(null);
 const searchQuery = ref("");
 const showRecycleBin = ref(false);
-const users = ref<User[]>([]);
-const deletedUsers = ref<User[]>([]);
+const allUsers = ref<User[]>([]);
 
 // Modals
 const showCreateModal = ref(false);
@@ -495,9 +469,24 @@ const editFormErrors = ref({
 });
 
 // Computed
+// One walked fetch feeds both lists and the search runs locally, so a filtered
+// page can no longer silently drop the users past the first page.
 const activeUsers = computed(() => {
-  return users.value.filter((u) => u.state !== State.DELETED);
+  const query = searchQuery.value.trim().toLowerCase();
+  const active = allUsers.value.filter((u) => u.state !== State.DELETED);
+  if (!query) {
+    return active;
+  }
+  return active.filter(
+    (user) =>
+      user.email.toLowerCase().includes(query) ||
+      (user.title ?? "").toLowerCase().includes(query)
+  );
 });
+
+const deletedUsers = computed(() =>
+  allUsers.value.filter((u) => u.state === State.DELETED)
+);
 
 // Changing your own password requires proving you know the current one.
 const isEditingSelf = computed(
@@ -568,46 +557,15 @@ async function fetchUsers() {
   isLoading.value = true;
   error.value = null;
   try {
-    const response = await listUsers({
-      pageSize: 100,
-      showDeleted: false,
-      filter: searchQuery.value
-        ? `email.matches("${searchQuery.value}") || name.matches("${searchQuery.value}")`
-        : "",
-    });
-    users.value = response.users;
+    // One walked fetch serves both lists; the filter runs locally so a filtered
+    // page cannot silently drop the users past the first page.
+    const all = await listAllUsers({ showDeleted: true });
+    allUsers.value = all;
   } catch (e) {
-    error.value = t("userManagement.fetchError");
-    console.error("Failed to fetch users:", e);
+    error.value = formatError(e, "userManagement.fetchError");
   } finally {
     isLoading.value = false;
   }
-}
-
-async function fetchDeletedUsers() {
-  isLoadingDeleted.value = true;
-  try {
-    const response = await listUsers({
-      pageSize: 100,
-      showDeleted: true,
-      filter: 'state == "DELETED"',
-    });
-    deletedUsers.value = response.users.filter(
-      (u) => u.state === State.DELETED
-    );
-  } catch (e) {
-    console.error("Failed to fetch deleted users:", e);
-  } finally {
-    isLoadingDeleted.value = false;
-  }
-}
-
-let searchTimeout: ReturnType<typeof setTimeout> | null = null;
-function debouncedSearch() {
-  if (searchTimeout) clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => {
-    fetchUsers();
-  }, 300);
 }
 
 function openCreateModal() {
@@ -789,7 +747,7 @@ async function handleDeleteUser() {
     showDeleteModal.value = false;
     userToDelete.value = null;
     showSuccess(t("userManagement.deleteSuccess"));
-    await Promise.all([fetchUsers(), fetchDeletedUsers()]);
+    await fetchUsers();
   } catch (e) {
     handleError(e, "userManagement.deleteError");
   } finally {
@@ -802,7 +760,7 @@ async function restoreUser(user: User) {
   try {
     await undeleteUser(user.name);
     showSuccess(t("userManagement.restoreSuccess"));
-    await Promise.all([fetchUsers(), fetchDeletedUsers()]);
+    await fetchUsers();
   } catch (e) {
     handleError(e, "userManagement.restoreError");
   } finally {
@@ -812,12 +770,6 @@ async function restoreUser(user: User) {
 
 // Lifecycle
 onMounted(() => {
-  fetchUsers();
-});
-
-watch(showRecycleBin, (isOpen) => {
-  if (isOpen && deletedUsers.value.length === 0) {
-    fetchDeletedUsers();
-  }
+  void fetchUsers();
 });
 </script>

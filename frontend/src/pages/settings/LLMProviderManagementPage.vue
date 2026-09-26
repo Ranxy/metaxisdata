@@ -252,7 +252,6 @@ import {
   LlmProviderModelSchema,
   type LlmProviderProfile,
 } from "@/types/proto-es/v1/llm_service_pb";
-import { extractErrorMessage } from "@/utils/error";
 
 // ---- static builtin catalog (mirrors backend builtinDefinitions) ----
 interface BuiltinDef {
@@ -299,7 +298,7 @@ function getBuiltinByEnum(e: LLMProviderType): BuiltinDef | undefined {
 }
 
 const { t } = useI18n();
-const { handleError, showSuccess } = useErrorHandler();
+const { formatError, handleError, showSuccess } = useErrorHandler();
 
 // ---- state ----
 const profiles = ref<LlmProviderProfile[]>([]);
@@ -495,7 +494,7 @@ async function fetchModels() {
     showSuccess("llmProvider.modelsFetched");
   } catch (e) {
     handleError(e, "llmProvider.fetchModelsError");
-    fetchedError.value = extractErrorMessage(e);
+    fetchedError.value = formatError(e);
   } finally {
     isFetchingModels.value = false;
   }

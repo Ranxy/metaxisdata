@@ -194,30 +194,15 @@
       </template>
     </AppModal>
 
-    <AppModal
+    <ConfirmDeleteDialog
       v-model="showDeleteConfirm"
-      size="sm"
       :title="t('iam.roles.deleteTitle')"
-    >
-      <p class="text-sm">
-        {{ t("iam.roles.deleteConfirm", { name: deletingRole?.name ?? "" }) }}
-      </p>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showDeleteConfirm = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          variant="destructive"
-          :disabled="isDeleting"
-          @click="handleDelete"
-        >
-          {{ t("common.delete") }}
-        </Button>
-      </template>
-    </AppModal>
+      :message="
+        t('iam.roles.deleteConfirm', { name: deletingRole?.name ?? '' })
+      "
+      :loading="isDeleting"
+      @confirm="handleDelete"
+    />
   </div>
 </template>
 
@@ -228,6 +213,7 @@ import { useI18n } from "vue-i18n";
 import { createRole, deleteRole, listRoles, updateRole } from "@/api/role";
 import AppInput from "@/components/common/AppInput.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -251,7 +237,7 @@ import type { Role } from "@/types/proto-es/v1/role_service_pb";
 
 const { t } = useI18n();
 const authStore = useAuthStore();
-const { handleError, showSuccess } = useErrorHandler();
+const { formatError, handleError, showSuccess } = useErrorHandler();
 
 const canCreate = computed(() =>
   authStore.hasPermission("metaxisdata.roles.create")
@@ -291,7 +277,7 @@ async function loadRoles() {
     const response = await listRoles();
     roles.value = response.roles;
   } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err);
+    error.value = formatError(err);
   } finally {
     isLoading.value = false;
   }

@@ -315,16 +315,17 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { useErrorHandler } from "@/composables/useErrorHandler";
 import type { AppLocale } from "@/locales";
 import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
-import { extractErrorMessage } from "@/utils/error";
 
 const { t } = useI18n();
 const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
 const appStore = useAppStore();
+const { formatError } = useErrorHandler();
 
 // Mode toggle
 const isRegisterMode = ref(false);
@@ -403,9 +404,7 @@ async function handleLogin() {
     const redirect = route.query.redirect as string;
     router.push(redirect || { name: "Home" });
   } catch (error) {
-    // Show the actual error message from the server
-    const message = extractErrorMessage(error);
-    errorMessage.value = message || t("login.loginFailed");
+    errorMessage.value = formatError(error, "login.loginFailed");
     console.error("Login error:", error);
   }
 }
@@ -440,8 +439,7 @@ async function handleResetPassword() {
     const redirect = route.query.redirect as string;
     router.push(redirect || { name: "Home" });
   } catch (error) {
-    const message = extractErrorMessage(error);
-    errorMessage.value = message || t("resetPassword.failed");
+    errorMessage.value = formatError(error, "resetPassword.failed");
     console.error("Password reset error:", error);
   } finally {
     isResetting.value = false;
@@ -501,9 +499,7 @@ async function handleRegister() {
       switchToLogin();
     }, REGISTRATION_SUCCESS_DELAY);
   } catch (error) {
-    // Show the actual error message from the server
-    const message = extractErrorMessage(error);
-    errorMessage.value = message || t("register.registerFailed");
+    errorMessage.value = formatError(error, "register.registerFailed");
     console.error("Register error:", error);
   } finally {
     isRegistering.value = false;
@@ -511,6 +507,9 @@ async function handleRegister() {
 }
 
 onMounted(async () => {
+  if (route.query.expired === "1") {
+    errorMessage.value = t("error.sessionExpired");
+  }
   try {
     const setting = await getWorkspaceProfileSetting();
     allowSignup.value = !setting.disallowSignup;

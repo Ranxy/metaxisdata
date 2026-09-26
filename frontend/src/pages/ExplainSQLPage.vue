@@ -301,7 +301,6 @@ import { useI18n } from "vue-i18n";
 import { type RouteLocationRaw, useRoute } from "vue-router";
 import { getSchemaString, listMetadata, searchMetadata } from "@/api/database";
 import { explainSQL } from "@/api/explain";
-import { listInstances } from "@/api/instance";
 import { listProfiles } from "@/api/llm";
 import { getWorkspaceProfileSetting } from "@/api/setting";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -317,6 +316,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useInstanceStore } from "@/store/modules/instance";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type { ExplainSQLProgress } from "@/types/proto-es/v1/explain_sql_service_pb";
 import { formatDateTime } from "@/utils/datetime";
@@ -325,6 +325,7 @@ import { isProviderAllowed } from "@/utils/llmProvider";
 
 const { t, locale } = useI18n();
 const route = useRoute();
+const instanceStore = useInstanceStore();
 
 // ---- types ----
 interface SearchItem {
@@ -697,10 +698,10 @@ function formatCacheTime(iso: string): string {
 
 async function loadScopeInstances() {
   try {
-    const resp = await listInstances({ pageSize: 100 });
-    scopeInstances.value = (resp.instances ?? []).map((inst) => ({
-      id: inst.name.replace("instances/", ""),
-      title: inst.title || inst.name.replace("instances/", ""),
+    await instanceStore.ensureLoaded();
+    scopeInstances.value = instanceStore.active.map((instance) => ({
+      id: instance.name.replace("instances/", ""),
+      title: instance.title || instance.name.replace("instances/", ""),
     }));
   } catch {
     scopeInstances.value = [];

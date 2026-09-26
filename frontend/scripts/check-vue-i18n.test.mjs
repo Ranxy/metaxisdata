@@ -56,6 +56,7 @@ describe("collectKeysFromSource", () => {
       showSuccess("a.five");
       handleError(err, "a.six");
       handleError(err, t("a.seven"));
+      formatError(err, "a.eleven");
       const props = { titleKey: "a.eight" };
       const cond = flag ? t("a.nine") : t("a.ten");
     `;
@@ -71,6 +72,7 @@ describe("collectKeysFromSource", () => {
       "a.eight",
       "a.nine",
       "a.ten",
+      "a.eleven",
     ];
     for (const key of expected) {
       expect(keys.has(key), `expected ${key} to be collected`).toBe(true);

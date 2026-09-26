@@ -238,7 +238,7 @@
                 {{ t("openlineageSettings.instanceResourceIdPlaceholder") }}
               </option>
               <option
-                v-for="inst in instances"
+                v-for="inst in instanceStore.active"
                 :key="inst.name"
                 :value="extractResourceId(inst.name)"
               >
@@ -421,7 +421,6 @@ import {
 import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
-import { listInstances } from "@/api/instance";
 import {
   createAPIKey,
   createNamespaceMapping,
@@ -453,7 +452,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
-import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
+import { useInstanceStore } from "@/store/modules/instance";
 import type {
   APIKey,
   NamespaceMapping,
@@ -463,6 +462,7 @@ import { formatDateTime } from "@/utils/datetime";
 const { t, locale } = useI18n();
 const { handleError, showSuccess } = useErrorHandler();
 const router = useRouter();
+const instanceStore = useInstanceStore();
 
 // State
 const isLoadingMappings = ref(false);
@@ -474,7 +474,6 @@ const isRevokingKey = ref(false);
 
 const mappings = ref<NamespaceMapping[]>([]);
 const apiKeys = ref<APIKey[]>([]);
-const instances = ref<Instance[]>([]);
 
 // Mapping modals
 const showMappingModal = ref(false);
@@ -501,10 +500,7 @@ function extractResourceId(name: string): string {
 }
 
 function getInstanceTitle(resourceId: string): string {
-  const inst = instances.value.find(
-    (i) => extractResourceId(i.name) === resourceId
-  );
-  return inst?.title || resourceId;
+  return instanceStore.titleOf(resourceId);
 }
 
 function formatTimestamp(ts: Timestamp | undefined): string {
@@ -538,8 +534,7 @@ async function fetchAPIKeys() {
 
 async function fetchInstances() {
   try {
-    const resp = await listInstances({ pageSize: 100 });
-    instances.value = resp.instances;
+    await instanceStore.ensureLoaded();
   } catch (e) {
     handleError(e);
   }

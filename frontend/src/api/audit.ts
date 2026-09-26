@@ -7,6 +7,7 @@ export async function listAuditLogs(options?: {
   pageSize?: number;
   pageToken?: string;
   filter?: string;
+  signal?: AbortSignal;
 }) {
   const request = create(ListAuditLogsRequestSchema, {
     parent: options?.parent ?? "workspaces/-",
@@ -14,5 +15,7 @@ export async function listAuditLogs(options?: {
     pageToken: options?.pageToken ?? "",
     filter: options?.filter ?? "",
   });
-  return await auditLogClient.listAuditLogs(request);
+  return await auditLogClient.listAuditLogs(request, {
+    signal: options?.signal,
+  });
 }

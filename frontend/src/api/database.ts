@@ -30,6 +30,7 @@ export async function listDatabases(options: {
   pageToken?: string;
   filter?: string;
   showDeleted?: boolean;
+  signal?: AbortSignal;
 }) {
   const request = create(ListDatabasesRequestSchema, {
     parent: options.parent,
@@ -38,7 +39,9 @@ export async function listDatabases(options: {
     filter: options.filter ?? "",
     showDeleted: options.showDeleted ?? false,
   });
-  return await databaseClient.listDatabases(request);
+  return await databaseClient.listDatabases(request, {
+    signal: options.signal,
+  });
 }
 
 /**
@@ -185,6 +188,7 @@ export async function listManualSQL(options: {
   schemaName?: string;
   tags?: string[];
   showDeleted?: boolean;
+  signal?: AbortSignal;
 }) {
   const request = create(ListManualSQLsRequestSchema, {
     parent: options.parent,
@@ -194,7 +198,9 @@ export async function listManualSQL(options: {
     tags: options.tags ?? [],
     showDeleted: options.showDeleted ?? false,
   });
-  return await databaseClient.listManualSQLs(request);
+  return await databaseClient.listManualSQLs(request, {
+    signal: options.signal,
+  });
 }
 
 export async function searchManualSQL(options: {
@@ -204,6 +210,7 @@ export async function searchManualSQL(options: {
   pageToken?: string;
   schemaName?: string;
   tags?: string[];
+  signal?: AbortSignal;
 }) {
   const request = create(SearchManualSQLRequestSchema, {
     parent: options.parent,
@@ -213,7 +220,9 @@ export async function searchManualSQL(options: {
     schemaName: options.schemaName ?? "",
     tags: options.tags ?? [],
   });
-  return await databaseClient.searchManualSQL(request);
+  return await databaseClient.searchManualSQL(request, {
+    signal: options.signal,
+  });
 }
 
 export async function updateManualSQL(options: {

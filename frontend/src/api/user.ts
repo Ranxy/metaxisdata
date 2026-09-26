@@ -1,4 +1,5 @@
 import { create } from "@bufbuild/protobuf";
+import type { User } from "@/types/proto-es/v1/user_service_pb";
 import {
   BatchGetUsersRequestSchema,
   CreateUserRequestSchema,
@@ -11,6 +12,7 @@ import {
   UserType,
 } from "@/types/proto-es/v1/user_service_pb";
 import { userClient } from "./client";
+import { listAll } from "./list";
 
 export async function getCurrentUser() {
   return await userClient.getCurrentUser({});
@@ -29,6 +31,24 @@ export async function listUsers(options?: {
     filter: options?.filter ?? "",
   });
   return await userClient.listUsers(request);
+}
+
+/**
+ * Every user the caller may see, across all pages. The user list and the member
+ * pickers render the whole workspace, so a first-page-only fetch would hide the
+ * rest of an estate larger than one page.
+ */
+export async function listAllUsers(options?: {
+  showDeleted?: boolean;
+}): Promise<User[]> {
+  return await listAll(async (pageToken) => {
+    const response = await listUsers({
+      pageSize: 100,
+      pageToken,
+      showDeleted: options?.showDeleted,
+    });
+    return { items: response.users, nextPageToken: response.nextPageToken };
+  });
 }
 
 export async function getUser(name: string) {

@@ -18,8 +18,9 @@
 //   - titleKey/descriptionKey/messageKey/labelKey/keypath string literals in
 //     data objects, props and <i18n-t keypath="…">
 //   - t(cond ? "a" : "b") ternary literals
-//   - handleError(err, "key") and showSuccess("key") / showError / showWarning
-//     / showInfo key literals in src/composables/useErrorHandler.ts
+//   - handleError(err, "key") / formatError(err, "key") and showSuccess("key") /
+//     showError / showWarning / showInfo key literals in
+//     src/composables/useErrorHandler.ts
 // Anything else (template-literal or variable keys) must be listed in
 // DYNAMIC_PREFIXES below with a pointer to the caller.
 //
@@ -43,6 +44,11 @@ export const DYNAMIC_PREFIXES = [
   // relationTypeKey() in src/lib/relationType.ts maps a stored lineage relation
   // type to its label key, which the checker cannot follow.
   "metadataBrowser.relation",
+  // CODE_MESSAGE_KEYS in src/utils/error.ts maps every Connect status code to an
+  // "error.*" sentence. The table is exhaustive by type (Record<Code, …>) and its
+  // values are checked against the locale schema at compile time, so a stray key
+  // here cannot go unnoticed the way a typo in a t("…") call would.
+  "error.",
 ];
 
 // t("key") / t('key') / $t("key") / te("key") / tm("key").
@@ -53,9 +59,11 @@ const TERNARY_RE = /(?<![A-Za-z0-9_$])t\([^)]*\?\s*["']([^"']+)["']\s*:\s*["']([
 // and props, translated later via t(variable).
 const KEY_PROP_RE =
   /\b(titleKey|descriptionKey|messageKey|labelKey|keypath)\s*[:=]\s*["']([^"']+)["']/g;
-// handleError(err, "key") in composables/useErrorHandler.ts — the second
-// argument is an i18n key used when the error carries no message.
-const HANDLE_ERROR_RE = /\bhandleError\(\s*[^,()\n]+,\s*["']([^"']+)["']/g;
+// handleError(err, "key") / formatError(err, "key") in
+// composables/useErrorHandler.ts — the second argument is an i18n key used when
+// the error carries no Connect code.
+const HANDLE_ERROR_RE =
+  /\b(?:handleError|formatError)\(\s*[^,()\n]+,\s*["']([^"']+)["']/g;
 // showSuccess("key") and friends in composables/useErrorHandler.ts.
 const TOAST_RE = /\bshow(?:Success|Error|Warning|Info)\(\s*["']([^"']+)["']/g;
 // v-t="'key'" directive.

@@ -175,6 +175,7 @@ import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useErrorMessage } from "@/composables/useErrorHandler";
 import { relationTypeKey } from "@/lib/relationType";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type {
@@ -182,7 +183,6 @@ import type {
   Transformation,
 } from "@/types/proto-es/v1/lineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
-import { extractErrorMessage } from "@/utils/error";
 import { guidToRouteParams, routeParamToGuid } from "@/utils/guid";
 
 const OPENLINEAGE_META_TYPE = 100;
@@ -195,6 +195,7 @@ type RunSummary = {
 };
 
 const { t, locale } = useI18n();
+const { formatError } = useErrorMessage();
 const route = useRoute();
 const router = useRouter();
 
@@ -343,8 +344,10 @@ watch(
     } catch (error) {
       upstreamRelations.value = [];
       downstreamRelations.value = [];
-      evidenceError.value =
-        extractErrorMessage(error) || t("metadataBrowser.lineageFetchError");
+      evidenceError.value = formatError(
+        error,
+        "metadataBrowser.lineageFetchError"
+      );
     } finally {
       isEvidenceLoading.value = false;
     }

@@ -229,12 +229,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useErrorMessage } from "@/composables/useErrorHandler";
 import type {
   OpenLineageDatasetDetailResource,
   OpenLineageDatasetResource,
 } from "@/types/proto-es/v1/openlineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
-import { extractErrorMessage } from "@/utils/error";
 import { guidToRouteParams } from "@/utils/guid";
 
 const props = defineProps<{
@@ -247,6 +247,7 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
+const { formatError } = useErrorMessage();
 const route = useRoute();
 const router = useRouter();
 
@@ -276,7 +277,7 @@ watch(
       detail.value = await getOpenLineageDataset(guid);
     } catch (error) {
       detail.value = null;
-      errorMessage.value = extractErrorMessage(error);
+      errorMessage.value = formatError(error);
     } finally {
       isLoading.value = false;
     }

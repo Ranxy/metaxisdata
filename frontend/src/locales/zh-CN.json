@@ -170,6 +170,21 @@
     "usageColumn": "使用情况"
   },
   "error": {
+    "aborted": "请求已中断,请重试。",
+    "alreadyExists": "该资源已存在。",
+    "canceled": "请求已取消。",
+    "dataLoss": "数据完整性校验失败,请联系管理员。",
+    "deadlineExceeded": "服务器响应超时。",
+    "failedPrecondition": "当前状态不允许该操作。",
+    "internal": "服务器内部错误。",
+    "invalidArgument": "请求参数不合法。",
+    "notFound": "该资源不存在。",
+    "outOfRange": "请求超出允许范围。",
+    "permissionDenied": "没有执行该操作的权限。",
+    "resourceExhausted": "资源配额已用尽,请稍后重试。",
+    "sessionExpired": "登录已过期,请重新登录。",
+    "unavailable": "服务暂时不可用,请稍后重试。",
+    "unimplemented": "该功能尚未实现。",
     "unknown": "发生未知错误，请稍后重试"
   },
   "explainSQL": {

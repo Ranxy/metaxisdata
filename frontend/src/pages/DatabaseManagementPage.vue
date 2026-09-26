@@ -4,7 +4,7 @@
 
     <!-- Advanced Search Bar -->
     <AdvancedSearchBar
-      :instances="instances"
+      :instances="instanceStore.active"
       :engine-options="engineOptions"
       @update:filters="handleFiltersUpdate"
     />
@@ -177,7 +177,6 @@ import { Database, Loader2 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { listDatabases, syncDatabase } from "@/api/database";
-import { listInstances } from "@/api/instance";
 import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
 import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
@@ -192,19 +191,23 @@ import TableCell from "@/components/ui/table/TableCell.vue";
 import TableHead from "@/components/ui/table/TableHead.vue";
 import TableHeader from "@/components/ui/table/TableHeader.vue";
 import TableRow from "@/components/ui/table/TableRow.vue";
+import { useErrorHandler } from "@/composables/useErrorHandler";
+import { usePagedFetch } from "@/composables/usePagedFetch";
 import { useAuthStore } from "@/store/modules/auth";
 import { useEnvironmentStore } from "@/store/modules/environment";
+import { useInstanceStore } from "@/store/modules/instance";
 import { useToastStore } from "@/store/modules/toast";
 import { State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
-import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { engineBadgeClass, engineLabel } from "@/utils/engine";
 import { environmentColorHex } from "@/utils/environment";
 
 const { t, locale } = useI18n();
+const { handleError } = useErrorHandler();
 const authStore = useAuthStore();
 const environmentStore = useEnvironmentStore();
+const instanceStore = useInstanceStore();
 const toastStore = useToastStore();
 
 // Syncing a database rewrites its stored schema, so it needs the sync
@@ -213,13 +216,7 @@ const canSync = computed(() =>
   authStore.hasPermission("metaxisdata.databases.sync")
 );
 
-const isLoading = ref(false);
 const error = ref("");
-const databases = ref<DatabaseType[]>([]);
-const instances = ref<Instance[]>([]);
-const currentPageToken = ref("");
-const nextPageToken = ref("");
-const previousPageTokens = ref<string[]>([]);
 const syncingDatabases = ref<Record<string, boolean>>({});
 
 const currentFilters = ref<ActiveFilter[]>([]);
@@ -239,25 +236,26 @@ const engineOptions = computed(() => [
   { value: "SQLITE", label: "SQLite" },
 ]);
 
-const hasNextPage = computed(() => !!nextPageToken.value);
-const hasPreviousPage = computed(() => previousPageTokens.value.length > 0);
-
 function escapeCelValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 function handleFiltersUpdate(filters: ActiveFilter[]) {
   currentFilters.value = filters;
-  previousPageTokens.value = [];
-  fetchDatabases();
+  void resetDatabasePage();
 }
 
-async function fetchDatabases(pageToken = "") {
-  isLoading.value = true;
-  error.value = "";
-  currentPageToken.value = pageToken;
-
-  try {
+const {
+  items: databases,
+  isLoading,
+  hasNext: hasNextPage,
+  hasPrevious: hasPreviousPage,
+  reset: resetDatabasePage,
+  refresh: refreshDatabasePage,
+  goNext: goToNextPage,
+  goPrevious: goToPreviousPage,
+} = usePagedFetch<DatabaseType>({
+  fetchPage: async (pageToken, signal) => {
     const filterParts: string[] = [];
 
     for (const filter of currentFilters.value) {
@@ -280,41 +278,15 @@ async function fetchDatabases(pageToken = "") {
       pageToken,
       filter: filterString,
       showDeleted: false,
+      signal,
     });
 
-    databases.value = response.databases;
-    nextPageToken.value = response.nextPageToken;
-  } catch (e: unknown) {
-    const errorMessage = e instanceof Error ? e.message : String(e);
-    error.value = errorMessage || t("databaseManagement.fetchError");
-    toastStore.error(error.value);
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-async function fetchInstances() {
-  try {
-    const response = await listInstances({ pageSize: 1000 });
-    instances.value = response.instances;
-  } catch (e: unknown) {
-    console.error("Failed to fetch instances:", e);
-  }
-}
-
-function goToNextPage() {
-  if (nextPageToken.value) {
-    previousPageTokens.value.push(currentPageToken.value);
-    fetchDatabases(nextPageToken.value);
-  }
-}
-
-function goToPreviousPage() {
-  if (previousPageTokens.value.length > 0) {
-    const token = previousPageTokens.value.pop() || "";
-    fetchDatabases(token);
-  }
-}
+    return { items: response.databases, nextPageToken: response.nextPageToken };
+  },
+  onError: (e) => {
+    error.value = handleError(e, "databaseManagement.fetchError");
+  },
+});
 
 function isDatabaseSyncing(name: string): boolean {
   return !!syncingDatabases.value[name];
@@ -329,10 +301,9 @@ async function handleSyncDatabase(name: string) {
   try {
     await syncDatabase(name);
     toastStore.success(t("databaseManagement.syncSuccess"));
-    await fetchDatabases(currentPageToken.value);
+    await refreshDatabasePage();
   } catch (e: unknown) {
-    const errorMessage = e instanceof Error ? e.message : String(e);
-    toastStore.error(errorMessage || t("databaseManagement.syncError"));
+    handleError(e, "databaseManagement.syncError");
   } finally {
     const nextSyncingDatabases = { ...syncingDatabases.value };
     delete nextSyncingDatabases[name];
@@ -389,8 +360,8 @@ function formatLastSync(timestamp: Timestamp | undefined): string {
 
 onMounted(async () => {
   await Promise.all([
-    fetchInstances(),
-    fetchDatabases(),
+    instanceStore.ensureLoaded(),
+    resetDatabasePage(),
     environmentStore.ensureLoaded(),
   ]);
 });

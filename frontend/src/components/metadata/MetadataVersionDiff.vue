@@ -91,9 +91,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useErrorMessage } from "@/composables/useErrorHandler";
 import type { MetadataHistoryTimelineEntry } from "@/types/proto-es/v1/database_service_pb";
 import { formatDateTime } from "@/utils/datetime";
-import { extractErrorMessage } from "@/utils/error";
 
 const props = defineProps<{
   guid: string;
@@ -101,6 +101,7 @@ const props = defineProps<{
 }>();
 
 const { t, locale } = useI18n();
+const { formatError } = useErrorMessage();
 
 const sourceEntryKey = ref("");
 const targetEntryKey = ref("");
@@ -163,7 +164,7 @@ async function runDiff() {
       ddl: response.ddl,
     };
   } catch (e) {
-    error.value = extractErrorMessage(e) || t("metadataBrowser.diffError");
+    error.value = formatError(e, "metadataBrowser.diffError");
   } finally {
     isLoading.value = false;
   }

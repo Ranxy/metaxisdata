@@ -53,8 +53,9 @@ export const useEnvironmentStore = defineStore("environment", {
       }
       this.loading = true;
       try {
-        const response = await environmentApi.listEnvironments();
-        this.environments = response.environments;
+        // Walked, not one page: a workspace with more environments than a page
+        // would otherwise lose the tail of every picker and filter.
+        this.environments = await environmentApi.listAllEnvironments();
         this.loaded = true;
       } finally {
         this.loading = false;

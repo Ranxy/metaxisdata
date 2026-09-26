@@ -122,7 +122,7 @@
           </Table>
 
           <div
-            v-if="nextPageToken || previousPageTokens.length > 0"
+            v-if="nextPageToken || previousPageTokens"
             class="flex items-center justify-between border-t p-4"
           >
             <div class="text-sm text-muted-foreground">
@@ -132,7 +132,7 @@
               <Button
                 variant="outline"
                 size="sm"
-                :disabled="previousPageTokens.length === 0"
+                :disabled="!previousPageTokens"
                 @click="goToPreviousPage"
               >
                 {{ t("common.previous") }}
@@ -322,36 +322,14 @@
       </template>
     </AppModal>
 
-    <AppModal
+    <ConfirmDeleteDialog
       v-model="showDeleteModal"
       :title="t('manualSqlManagement.deleteTitle')"
-      size="sm"
-    >
-      <div class="space-y-3 text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
-          <Trash2 class="h-6 w-6 text-destructive" />
-        </div>
-        <p>{{ t("manualSqlManagement.deleteConfirm") }}</p>
-        <p class="text-sm text-muted-foreground">
-          {{ deletingItem?.title || deletingItem?.name }}
-        </p>
-      </div>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showDeleteModal = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          variant="destructive"
-          :disabled="isDeleting"
-          @click="handleDelete"
-        >
-          {{ t("common.delete") }}
-        </Button>
-      </template>
-    </AppModal>
+      :message="t('manualSqlManagement.deleteConfirm')"
+      :item-name="deletingItem?.title || deletingItem?.name"
+      :loading="isDeleting"
+      @confirm="handleDelete"
+    />
   </div>
 </template>
 
@@ -382,6 +360,7 @@ import {
 } from "@/api/database";
 import AppInput from "@/components/common/AppInput.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import ManualSQLFilterBar from "@/components/common/ManualSQLFilterBar.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -399,6 +378,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useErrorHandler } from "@/composables/useErrorHandler";
+import { usePagedFetch } from "@/composables/usePagedFetch";
 import { useToastStore } from "@/store/modules/toast";
 import type {
   Database,
@@ -409,23 +390,21 @@ import { formatDateTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
 
 const { t, locale } = useI18n();
+const { formatError, handleError } = useErrorHandler();
 const router = useRouter();
 const toastStore = useToastStore();
 const GLOBAL_MANUAL_SQL_PARENT = "instances/-/databases/-";
 
 const databases = ref<Database[]>([]);
-const manualSqls = ref<ManualSQL[]>([]);
+
 const selectedParent = ref("");
 const searchQuery = ref("");
 const schemaFilter = ref("");
 const tagsFilterInput = ref<string[]>([]);
-const isLoading = ref(false);
+
 const isSaving = ref(false);
 const isDeleting = ref(false);
 const error = ref("");
-const nextPageToken = ref("");
-const currentPageToken = ref("");
-const previousPageTokens = ref<string[]>([]);
 const showFormModal = ref(false);
 const showDeleteModal = ref(false);
 const editingItem = ref<ManualSQL | null>(null);
@@ -668,8 +647,7 @@ async function fetchSchemas(parent: string) {
   } catch (e: unknown) {
     if (currentSequence === schemaLoadSequence) {
       schemaOptions.value = [];
-      const message = e instanceof Error ? e.message : String(e);
-      toastStore.error(message || t("manualSqlManagement.fetchSchemasError"));
+      handleError(e, "manualSqlManagement.fetchSchemasError");
     }
   } finally {
     if (currentSequence === schemaLoadSequence) {
@@ -713,9 +691,10 @@ async function checkManualSqlIdConflict() {
       manualSqlIdConflict.value = "";
       return;
     }
-    const message = e instanceof Error ? e.message : String(e);
-    manualSqlIdConflict.value =
-      message || t("manualSqlManagement.idCheckError");
+    manualSqlIdConflict.value = formatError(
+      e,
+      "manualSqlManagement.idCheckError"
+    );
   } finally {
     if (currentSequence === manualSqlIdCheckSequence) {
       isCheckingManualSqlId.value = false;
@@ -732,17 +711,21 @@ async function fetchDatabases() {
     });
     databases.value = response.databases;
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : String(e);
-    toastStore.error(message || t("manualSqlManagement.fetchDatabasesError"));
+    handleError(e, "manualSqlManagement.fetchDatabasesError");
   }
 }
 
-async function fetchManualSQL(pageToken = "") {
-  isLoading.value = true;
-  error.value = "";
-  currentPageToken.value = pageToken;
-
-  try {
+const {
+  items: manualSqls,
+  isLoading,
+  hasNext: nextPageToken,
+  hasPrevious: previousPageTokens,
+  reset: resetManualSQLPage,
+  refresh: refreshManualSQLPage,
+  goNext: goToNextPage,
+  goPrevious: goToPreviousPage,
+} = usePagedFetch<ManualSQL>({
+  fetchPage: async (pageToken, signal) => {
     const parent = selectedParent.value || GLOBAL_MANUAL_SQL_PARENT;
     const tags = [...tagsFilterInput.value];
     const schemaName = schemaFilter.value.trim();
@@ -756,6 +739,7 @@ async function fetchManualSQL(pageToken = "") {
           pageToken,
           schemaName,
           tags,
+          signal,
         })
       : await listManualSQL({
           parent,
@@ -763,34 +747,18 @@ async function fetchManualSQL(pageToken = "") {
           pageToken,
           schemaName,
           tags,
+          signal,
         });
 
-    manualSqls.value = response.manualSqls;
-    nextPageToken.value = response.nextPageToken;
-  } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : String(e);
-    error.value = message || t("manualSqlManagement.fetchError");
-    toastStore.error(error.value);
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-function goToNextPage() {
-  if (!nextPageToken.value) {
-    return;
-  }
-  previousPageTokens.value.push(currentPageToken.value);
-  fetchManualSQL(nextPageToken.value);
-}
-
-function goToPreviousPage() {
-  if (previousPageTokens.value.length === 0) {
-    return;
-  }
-  const token = previousPageTokens.value.pop() || "";
-  fetchManualSQL(token);
-}
+    return {
+      items: response.manualSqls,
+      nextPageToken: response.nextPageToken,
+    };
+  },
+  onError: (e) => {
+    error.value = handleError(e, "manualSqlManagement.fetchError");
+  },
+});
 
 async function handleSave() {
   if (!validateForm() || isCheckingManualSqlId.value) {
@@ -832,13 +800,13 @@ async function handleSave() {
     showFormModal.value = false;
     resetForm();
     if (createdParent && selectedParent.value !== createdParent) {
-      previousPageTokens.value = [];
+      // The scope watch reloads the first page of the new parent.
       selectedParent.value = createdParent;
+    } else {
+      await refreshManualSQLPage();
     }
-    await fetchManualSQL(currentPageToken.value);
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : String(e);
-    toastStore.error(message || t("manualSqlManagement.saveError"));
+    handleError(e, "manualSqlManagement.saveError");
   } finally {
     isSaving.value = false;
   }
@@ -854,10 +822,9 @@ async function handleDelete() {
     toastStore.success(t("manualSqlManagement.deleteSuccess"));
     showDeleteModal.value = false;
     deletingItem.value = null;
-    await fetchManualSQL(currentPageToken.value);
+    await refreshManualSQLPage();
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : String(e);
-    toastStore.error(message || t("manualSqlManagement.deleteError"));
+    handleError(e, "manualSqlManagement.deleteError");
   } finally {
     isDeleting.value = false;
   }
@@ -884,19 +851,16 @@ watch(selectedParent, () => {
     clearTimeout(filterChangeTimer);
     filterChangeTimer = null;
   }
-  previousPageTokens.value = [];
-  fetchManualSQL();
+  void resetManualSQLPage();
 });
 
 watch([searchQuery, schemaFilter, tagsFilterInput], () => {
-  previousPageTokens.value = [];
-
   if (filterChangeTimer) {
     clearTimeout(filterChangeTimer);
   }
 
   filterChangeTimer = setTimeout(() => {
-    fetchManualSQL();
+    void resetManualSQLPage();
     filterChangeTimer = null;
   }, 250);
 });
@@ -942,7 +906,7 @@ watch(
 
 onMounted(async () => {
   await fetchDatabases();
-  await fetchManualSQL();
+  await resetManualSQLPage();
 });
 
 onBeforeUnmount(() => {

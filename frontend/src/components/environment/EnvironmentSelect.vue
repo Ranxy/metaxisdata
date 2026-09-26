@@ -161,11 +161,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useErrorMessage } from "@/composables/useErrorHandler";
 import { useAuthStore } from "@/store/modules/auth";
 import { useEnvironmentStore } from "@/store/modules/environment";
 import type { Environment } from "@/types/proto-es/v1/environment_service_pb";
 import { environmentColorHex } from "@/utils/environment";
-import { extractErrorMessage } from "@/utils/error";
 
 interface Props {
   modelValue?: string;
@@ -193,6 +193,7 @@ const emit = defineEmits<{
 const CREATE_VALUE = "__create_environment__";
 
 const { t } = useI18n();
+const { formatError } = useErrorMessage();
 const authStore = useAuthStore();
 const environmentStore = useEnvironmentStore();
 
@@ -298,7 +299,7 @@ async function submitCreate() {
     query.value = "";
     emit("update:modelValue", created.name);
   } catch (error) {
-    createError.value = extractErrorMessage(error);
+    createError.value = formatError(error);
   } finally {
     creating.value = false;
   }

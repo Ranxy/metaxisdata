@@ -6,7 +6,7 @@
           <Download class="mr-2 h-4 w-4" :class="{ 'animate-pulse': isExporting }" />
           {{ isExporting ? t("auditLogs.exportingCsv") : t("auditLogs.exportCsv") }}
         </Button>
-        <Button :disabled="isLoading || isExporting" @click="refreshLogs">
+        <Button :disabled="isLoading || isExporting" @click="refresh">
           <RefreshCcw class="mr-2 h-4 w-4" :class="{ 'animate-spin': isLoading }" />
           {{ t("auditLogs.refresh") }}
         </Button>
@@ -351,7 +351,7 @@
             {{ t("auditLogs.pageStatus", { count: logs.length }) }}
           </div>
           <div class="flex items-center gap-2">
-            <Button variant="outline" :disabled="previousPageTokens.length === 0 || isLoading" @click="goToPreviousPage">
+            <Button variant="outline" :disabled="!previousPageTokens || isLoading" @click="goToPreviousPage">
               {{ t("common.previous") }}
             </Button>
             <Button variant="outline" :disabled="!nextPageToken || isLoading" @click="goToNextPage">
@@ -458,6 +458,7 @@ import {
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { listAuditLogs } from "@/api/audit";
+import { listAll } from "@/api/list";
 import { batchGetUsers } from "@/api/user";
 import AppModal from "@/components/common/AppModal.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
@@ -487,6 +488,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
+import { usePagedFetch } from "@/composables/usePagedFetch";
 import {
   type AuditLog,
   AuditLogSeverity,
@@ -528,13 +530,8 @@ const WORKSPACE_PARENT = "workspaces/-";
 const { t, locale } = useI18n();
 const { handleError } = useErrorHandler();
 
-const logs = ref<AuditLog[]>([]);
-const isLoading = ref(false);
 const isExporting = ref(false);
 const error = ref("");
-const nextPageToken = ref("");
-const currentPageToken = ref("");
-const previousPageTokens = ref<string[]>([]);
 const showDetails = ref(false);
 const selectedLog = ref<AuditLog | null>(null);
 const auditUserDisplayMap = ref<Record<string, string>>({});
@@ -752,18 +749,16 @@ function applyTextFilter() {
     return;
   }
   addOrReplaceFilter(selectedFilterType.value, value);
-  previousPageTokens.value = [];
   resetSearchDraft();
-  fetchLogs();
+  void refreshLogs();
 }
 
 function applyLevelFilter(value: SeverityValue) {
   const label =
     severityOptions.value.find((item) => item.value === value)?.label || value;
   addOrReplaceFilter("level", value, label);
-  previousPageTokens.value = [];
   resetSearchDraft();
-  fetchLogs();
+  void refreshLogs();
 }
 
 function parseInlineFilter() {
@@ -800,9 +795,8 @@ function parseInlineFilter() {
   }
 
   addOrReplaceFilter(mapped, value);
-  previousPageTokens.value = [];
   resetSearchDraft();
-  fetchLogs();
+  void refreshLogs();
   return true;
 }
 
@@ -825,16 +819,14 @@ function removeFilter(id: string) {
   activeFilters.value = activeFilters.value.filter(
     (filter) => filter.id !== id
   );
-  previousPageTokens.value = [];
-  fetchLogs();
+  void refreshLogs();
 }
 
 function clearDateRange() {
   dateRange.value = emptyDateRange();
   draftDateRange.value = emptyDateRange();
   showDateRangePicker.value = false;
-  previousPageTokens.value = [];
-  fetchLogs();
+  void refreshLogs();
 }
 
 function resetDraftDateRange() {
@@ -848,17 +840,15 @@ function applyDraftDateRange() {
     return;
   }
   dateRange.value = nextRange;
-  previousPageTokens.value = [];
-  fetchLogs();
+  void refreshLogs();
 }
 
 function clearAllFilters() {
   activeFilters.value = [];
   dateRange.value = emptyDateRange();
   draftDateRange.value = emptyDateRange();
-  previousPageTokens.value = [];
   resetSearchDraft();
-  fetchLogs();
+  void refreshLogs();
 }
 
 function emptyDateRange(): CalendarRangeValue {
@@ -1120,21 +1110,17 @@ async function hydrateAuditUserDisplay(logEntries: AuditLog[]) {
 }
 
 async function fetchAuditLogsForExport(): Promise<AuditLog[]> {
-  const exportedLogs: AuditLog[] = [];
-  let pageToken = "";
-
-  do {
+  // The same walk the pager uses, with a bigger page: it also stops on a token
+  // that does not advance, which the old do/while export did not.
+  return await listAll(async (pageToken) => {
     const response = await listAuditLogs({
       parent: WORKSPACE_PARENT,
       pageSize: 1000,
       pageToken,
       filter: filterExpression.value,
     });
-    exportedLogs.push(...response.auditLogs);
-    pageToken = response.nextPageToken;
-  } while (pageToken);
-
-  return exportedLogs;
+    return { items: response.auditLogs, nextPageToken: response.nextPageToken };
+  });
 }
 
 async function exportCsv() {
@@ -1150,50 +1136,34 @@ async function exportCsv() {
   }
 }
 
-async function fetchLogs(pageToken = "") {
-  isLoading.value = true;
-  error.value = "";
-  currentPageToken.value = pageToken;
-  try {
+const {
+  items: logs,
+  isLoading,
+  hasNext: nextPageToken,
+  hasPrevious: previousPageTokens,
+  reset: refreshLogs,
+  refresh,
+  goNext: goToNextPage,
+  goPrevious: goToPreviousPage,
+} = usePagedFetch<AuditLog>({
+  fetchPage: async (pageToken, signal) => {
+    error.value = "";
     const response = await listAuditLogs({
       parent: WORKSPACE_PARENT,
       pageSize: 50,
       pageToken,
       filter: filterExpression.value,
+      signal,
     });
-    logs.value = response.auditLogs;
-    void hydrateAuditUserDisplay(response.auditLogs);
-    nextPageToken.value = response.nextPageToken;
-  } catch (err) {
-    logs.value = [];
-    nextPageToken.value = "";
-    error.value = err instanceof Error ? err.message : String(err);
-    handleError(err, "auditLogs.fetchError");
-  } finally {
-    isLoading.value = false;
-  }
-}
+    return { items: response.auditLogs, nextPageToken: response.nextPageToken };
+  },
+  onError: (err) => {
+    error.value = handleError(err, "auditLogs.fetchError");
+  },
+});
 
-function refreshLogs() {
-  previousPageTokens.value = [];
-  fetchLogs();
-}
-
-function goToNextPage() {
-  if (!nextPageToken.value) {
-    return;
-  }
-  previousPageTokens.value.push(currentPageToken.value);
-  fetchLogs(nextPageToken.value);
-}
-
-function goToPreviousPage() {
-  if (previousPageTokens.value.length === 0) {
-    return;
-  }
-  const token = previousPageTokens.value.pop() || "";
-  fetchLogs(token);
-}
+// The actor display map is filled per page, not per row render.
+watch(logs, (page) => void hydrateAuditUserDisplay(page));
 
 function openDetails(log: AuditLog) {
   selectedLog.value = log;
@@ -1201,6 +1171,6 @@ function openDetails(log: AuditLog) {
 }
 
 onMounted(() => {
-  fetchLogs();
+  void refreshLogs();
 });
 </script>

@@ -1,4 +1,5 @@
 import { create } from "@bufbuild/protobuf";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
@@ -80,8 +81,10 @@ describe("ensurePermissionsLoaded", () => {
     expect(store.permissionsLoaded).toBe(false);
   });
 
-  it("clears the session when the profile cannot be loaded", async () => {
-    mocks.getCurrentUser.mockRejectedValue(new Error("unauthenticated"));
+  it("clears the session when the server rejects the cookie", async () => {
+    mocks.getCurrentUser.mockRejectedValue(
+      new ConnectError("no cookie", Code.Unauthenticated)
+    );
 
     const store = useAuthStore();
     await store.ensurePermissionsLoaded();
@@ -95,5 +98,73 @@ describe("ensurePermissionsLoaded", () => {
     );
     await store.ensurePermissionsLoaded();
     expect(store.permissionsLoaded).toBe(true);
+  });
+
+  it("keeps a valid session when the request fails for another reason", async () => {
+    const store = useAuthStore();
+    store.user = create(UserSchema, { name: "users/1" });
+    store.isAuthenticated = true;
+    mocks.getCurrentUser.mockRejectedValue(
+      new ConnectError("upstream down", Code.Unavailable)
+    );
+
+    await store.ensurePermissionsLoaded();
+
+    // A 5xx or a dropped connection is not a logout: the next navigation retries
+    // with the same cookie instead of bouncing the user to the login page.
+    expect(store.isAuthenticated).toBe(true);
+    expect(store.user?.name).toBe("users/1");
+    expect(store.permissionsLoaded).toBe(false);
+  });
+
+  it("shares one request between two navigations in the same tick", async () => {
+    let resolveProfile: (user: unknown) => void = () => {};
+    mocks.getCurrentUser.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveProfile = resolve;
+        })
+    );
+
+    const store = useAuthStore();
+    const first = store.ensurePermissionsLoaded();
+    const second = store.ensurePermissionsLoaded();
+    resolveProfile(create(UserSchema, { name: "users/1" }));
+    await Promise.all([first, second]);
+
+    expect(mocks.getCurrentUser).toHaveBeenCalledTimes(1);
+    expect(store.permissionsLoaded).toBe(true);
+  });
+});
+
+describe("clearSession", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setActivePinia(createPinia());
+  });
+
+  it("drops the user, the reset flag and the loaded permissions together", async () => {
+    mocks.login.mockResolvedValue(loginResponse(true));
+
+    const store = useAuthStore();
+    await store.login("dev@example.com", "pw");
+    store.clearSession();
+
+    expect(store.user).toBeNull();
+    expect(store.isAuthenticated).toBe(false);
+    expect(store.requireResetPassword).toBe(false);
+    expect(store.permissionsLoaded).toBe(false);
+  });
+
+  it("is what a failed logout leaves behind", async () => {
+    mocks.login.mockResolvedValue(loginResponse(false));
+    mocks.logout.mockRejectedValue(new Error("network"));
+
+    const store = useAuthStore();
+    await store.login("dev@example.com", "pw");
+    await expect(store.logout()).rejects.toThrow("network");
+
+    expect(store.isAuthenticated).toBe(false);
+    expect(store.user).toBeNull();
   });
 });

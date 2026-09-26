@@ -281,13 +281,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useErrorMessage } from "@/composables/useErrorHandler";
 import type {
   OpenLineageDatasetResource,
   OpenLineageRun,
   OpenLineageTask,
 } from "@/types/proto-es/v1/openlineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
-import { extractErrorMessage } from "@/utils/error";
 
 // Enough to describe the workspace's recent state without paging; every table
 // links into the full directory for anything deeper.
@@ -297,6 +297,7 @@ const DATASET_LIMIT = 40;
 const ACTIVE_JOB_LIMIT = 5;
 
 const { t, locale } = useI18n();
+const { formatError } = useErrorMessage();
 const router = useRouter();
 
 const isLoading = ref(false);
@@ -391,7 +392,7 @@ async function load() {
     tasks.value = taskResponse.tasks;
     datasets.value = datasetResponse.datasets;
   } catch (e) {
-    error.value = extractErrorMessage(e) || t("openlineage.overviewFetchError");
+    error.value = formatError(e, "openlineage.overviewFetchError");
   } finally {
     isLoading.value = false;
   }

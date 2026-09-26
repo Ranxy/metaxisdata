@@ -18,7 +18,6 @@
         <AppInput
           v-model="searchQuery"
           :placeholder="t('instanceManagement.searchPlaceholder')"
-          @update:model-value="debouncedSearch"
         >
           <template #suffix>
             <Search class="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -148,7 +147,7 @@
         </CollapsibleTrigger>
 
         <CollapsibleContent>
-          <PageState :loading="isLoadingDeleted">
+          <PageState :loading="isLoading">
             <!-- Empty State -->
             <EmptyState
               v-if="deletedInstances.length === 0"
@@ -219,38 +218,14 @@
     </Collapsible>
 
     <!-- Delete Confirmation Modal -->
-    <AppModal
+    <ConfirmDeleteDialog
       v-model="showDeleteModal"
       :title="t('instanceManagement.deleteInstance')"
-      size="sm"
-    >
-      <div class="text-center">
-        <div class="w-12 h-12 mx-auto mb-4 rounded-full bg-destructive/10 flex items-center justify-center">
-          <Trash2 class="h-6 w-6 text-destructive" />
-        </div>
-        <p>
-          {{ t("instanceManagement.deleteConfirmMessage") }}
-        </p>
-        <p class="text-sm text-muted-foreground mt-2">
-          <strong>{{ instanceToDelete?.title || instanceToDelete?.name }}</strong>
-        </p>
-      </div>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showDeleteModal = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          variant="destructive"
-          :disabled="isDeleting"
-          @click="handleDeleteInstance"
-        >
-          {{ t("common.delete") }}
-        </Button>
-      </template>
-    </AppModal>
+      :message="t('instanceManagement.deleteConfirmMessage')"
+      :item-name="instanceToDelete?.title || instanceToDelete?.name"
+      :loading="isDeleting"
+      @confirm="handleDeleteInstance"
+    />
 
     <!-- Create Instance Modal -->
     <AppModal
@@ -572,17 +547,13 @@ import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import type { CreateInstanceInput } from "@/api/instance";
-import {
-  createInstance,
-  deleteInstance,
-  listInstances,
-  undeleteInstance,
-} from "@/api/instance";
+import { createInstance } from "@/api/instance";
 import AppInput from "@/components/common/AppInput.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
-import EnvironmentSelect from "@/components/common/EnvironmentSelect.vue";
 import PageState from "@/components/common/PageState.vue";
+import EnvironmentSelect from "@/components/environment/EnvironmentSelect.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -612,7 +583,8 @@ import {
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { useAuthStore } from "@/store/modules/auth";
 import { useEnvironmentStore } from "@/store/modules/environment";
-import { Engine, State } from "@/types/proto-es/v1/common_pb";
+import { useInstanceStore } from "@/store/modules/instance";
+import { Engine } from "@/types/proto-es/v1/common_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import { DataSourceType } from "@/types/proto-es/v1/instance_service_pb";
 import { formatDateTime } from "@/utils/datetime";
@@ -628,7 +600,8 @@ const { t, locale } = useI18n();
 const router = useRouter();
 const authStore = useAuthStore();
 const environmentStore = useEnvironmentStore();
-const { handleError, showSuccess } = useErrorHandler();
+const instanceStore = useInstanceStore();
+const { formatError, handleError, showSuccess } = useErrorHandler();
 
 // Instances and their data sources are administered by holders of the
 // instance write permissions; members keep read-only access.
@@ -640,8 +613,7 @@ const canDelete = computed(() =>
 );
 
 // State
-const isLoading = ref(false);
-const isLoadingDeleted = ref(false);
+const isLoading = computed(() => instanceStore.loading);
 const isCreating = ref(false);
 const isTestingConnection = ref(false);
 const isDeleting = ref(false);
@@ -649,8 +621,7 @@ const restoringInstance = ref<string | null>(null);
 const error = ref<string | null>(null);
 const searchQuery = ref("");
 const showRecycleBin = ref(false);
-const instances = ref<Instance[]>([]);
-const deletedInstances = ref<Instance[]>([]);
+const deletedInstances = computed(() => instanceStore.deleted);
 
 // Modals
 const showCreateModal = ref(false);
@@ -740,8 +711,20 @@ function removeReadOnlyDataSource(index: number) {
 }
 
 // Computed
+// The server used to run the title/name filter, which meant a filtered page
+// could silently drop rows; the whole (walked) estate is cached now, so the
+// match runs locally over every instance.
 const activeInstances = computed(() => {
-  return instances.value.filter((i) => i.state !== State.DELETED);
+  const query = searchQuery.value.trim().toLowerCase();
+  const active = instanceStore.active;
+  if (!query) {
+    return active;
+  }
+  return active.filter(
+    (instance) =>
+      instance.title.toLowerCase().includes(query) ||
+      instance.name.toLowerCase().includes(query)
+  );
 });
 
 // Methods
@@ -772,49 +755,13 @@ function getHostInfo(instance: Instance): string {
 function formatLastSync(timestamp: Timestamp | undefined): string {
   return formatDateTime(timestamp, locale.value, { seconds: true });
 }
-async function fetchInstances() {
-  isLoading.value = true;
+async function loadInstances() {
   error.value = null;
   try {
-    const response = await listInstances({
-      pageSize: 100,
-      showDeleted: false,
-      filter: searchQuery.value
-        ? `title.matches("${searchQuery.value}") || name.matches("${searchQuery.value}")`
-        : "",
-    });
-    instances.value = response.instances;
+    await instanceStore.fetch(true);
   } catch (e) {
-    error.value = t("instanceManagement.fetchError");
-    console.error("Failed to fetch instances:", e);
-  } finally {
-    isLoading.value = false;
+    error.value = formatError(e, "instanceManagement.fetchError");
   }
-}
-
-async function fetchDeletedInstances() {
-  isLoadingDeleted.value = true;
-  try {
-    const response = await listInstances({
-      pageSize: 100,
-      showDeleted: true,
-    });
-    deletedInstances.value = response.instances.filter(
-      (i) => i.state === State.DELETED
-    );
-  } catch (e) {
-    console.error("Failed to fetch deleted instances:", e);
-  } finally {
-    isLoadingDeleted.value = false;
-  }
-}
-
-let searchTimeout: ReturnType<typeof setTimeout> | null = null;
-function debouncedSearch() {
-  if (searchTimeout) clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => {
-    fetchInstances();
-  }, 300);
 }
 
 function confirmDelete(instance: Instance) {
@@ -827,11 +774,10 @@ async function handleDeleteInstance() {
 
   isDeleting.value = true;
   try {
-    await deleteInstance(instanceToDelete.value.name);
+    await instanceStore.remove(instanceToDelete.value.name);
     showDeleteModal.value = false;
     instanceToDelete.value = null;
     showSuccess(t("instanceManagement.deleteSuccess"));
-    await Promise.all([fetchInstances(), fetchDeletedInstances()]);
   } catch (e) {
     handleError(e, "instanceManagement.deleteError");
   } finally {
@@ -842,9 +788,8 @@ async function handleDeleteInstance() {
 async function restoreInstance(instance: Instance) {
   restoringInstance.value = instance.name;
   try {
-    await undeleteInstance(instance.name);
+    await instanceStore.restore(instance.name);
     showSuccess(t("instanceManagement.restoreSuccess"));
-    await Promise.all([fetchInstances(), fetchDeletedInstances()]);
   } catch (e) {
     handleError(e, "instanceManagement.restoreError");
   } finally {
@@ -1079,11 +1024,10 @@ async function handleCreateInstance() {
 
   isCreating.value = true;
   try {
-    await createInstance(createInstanceInput(false));
+    await instanceStore.create(createInstanceInput(false));
 
     showCreateModal.value = false;
     showSuccess(t("instanceManagement.createSuccess"));
-    await fetchInstances();
   } catch (e) {
     handleError(e, "instanceManagement.createError");
   } finally {
@@ -1113,8 +1057,7 @@ async function handleTestConnection() {
 
 // Lifecycle
 onMounted(() => {
-  fetchInstances();
-  fetchDeletedInstances();
+  void loadInstances();
   void environmentStore.ensureLoaded();
 });
 </script>

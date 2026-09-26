@@ -229,11 +229,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { useAuthStore } from "@/store/modules/auth";
-import { extractErrorMessage } from "@/utils/error";
 
 const { t } = useI18n();
 const authStore = useAuthStore();
-const { handleError, showSuccess } = useErrorHandler();
+const { formatError, handleError, showSuccess } = useErrorHandler();
 
 // The setting is readable by every member (the login page reads it too), but
 // only metaxisdata.settings.update may change it.
@@ -350,7 +349,7 @@ async function load() {
     await Promise.all([fetchSetting(), fetchDebugConfig()]);
     savedSnapshot.value = snapshot();
   } catch (e) {
-    error.value = extractErrorMessage(e) || t("generalSettings.loadError");
+    error.value = formatError(e, "generalSettings.loadError");
   } finally {
     isLoading.value = false;
   }
@@ -358,8 +357,7 @@ async function load() {
   try {
     await fetchProfiles();
   } catch (e) {
-    profilesError.value =
-      extractErrorMessage(e) || t("generalSettings.loadError");
+    profilesError.value = formatError(e, "generalSettings.loadError");
   }
 }
 

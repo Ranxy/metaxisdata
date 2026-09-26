@@ -477,7 +477,7 @@ import {
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { getMetadata, listMetadata, searchMetadata } from "@/api/database";
-import { getInstance, listInstances } from "@/api/instance";
+import { getInstance } from "@/api/instance";
 import AppLoading from "@/components/common/AppLoading.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -532,7 +532,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Engine, State } from "@/types/proto-es/v1/common_pb";
+import { useErrorMessage } from "@/composables/useErrorHandler";
+import { useInstanceStore } from "@/store/modules/instance";
+import { Engine } from "@/types/proto-es/v1/common_pb";
 import {
   type ExternalTableMetadata,
   type FunctionMetadata,
@@ -548,15 +550,16 @@ import {
   type ViewMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
-import { extractErrorMessage } from "@/utils/error";
 import { guidSegmentsToRouteParams, routeParamToGuid } from "@/utils/guid";
 
 const { t } = useI18n();
+const { formatError } = useErrorMessage();
 const route = useRoute();
 const router = useRouter();
+const instanceStore = useInstanceStore();
 
 const isLoading = ref(false);
-const isLoadingInstances = ref(false);
+const isLoadingInstances = computed(() => instanceStore.loading);
 const isLoadingMore = ref(false);
 const error = ref<string | null>(null);
 
@@ -670,7 +673,7 @@ const filteredScopeSchemas = computed(() => {
   return scopeStepSchemas.value.filter((s) => s.toLowerCase().includes(q));
 });
 
-const instances = ref<Instance[]>([]);
+const instances = computed(() => instanceStore.active);
 const metadataGroups = ref<MetadataResponse_Metadata[]>([]);
 
 const activeMetaType = ref<MetaType | null>(null);
@@ -895,19 +898,11 @@ function getQueryString(key: string): string {
 }
 
 async function fetchInstances() {
-  isLoadingInstances.value = true;
   error.value = null;
-
   try {
-    const response = await listInstances({ pageSize: 100 });
-    instances.value = response.instances.filter(
-      (i) => i.state !== State.DELETED
-    );
+    await instanceStore.fetch(true);
   } catch (e) {
-    const msg = extractErrorMessage(e);
-    error.value = msg || t("metadataBrowser.fetchError");
-  } finally {
-    isLoadingInstances.value = false;
+    error.value = formatError(e, "metadataBrowser.fetchError");
   }
 }
 
@@ -1120,8 +1115,7 @@ async function fetchMetadataGroups() {
       }
     }
   } catch (e) {
-    const msg = extractErrorMessage(e);
-    error.value = msg || t("metadataBrowser.fetchError");
+    error.value = formatError(e, "metadataBrowser.fetchError");
   } finally {
     isLoading.value = false;
   }
@@ -1157,8 +1151,7 @@ async function fetchSequenceDetail() {
 
     leafSequence.value = detail.metadata.type.value;
   } catch (e) {
-    const msg = extractErrorMessage(e);
-    error.value = msg || t("metadataBrowser.fetchError");
+    error.value = formatError(e, "metadataBrowser.fetchError");
   } finally {
     isLoading.value = false;
   }
@@ -1194,8 +1187,7 @@ async function fetchManualSQLDetail() {
 
     leafManualSQL.value = detail.metadata.type.value;
   } catch (e) {
-    const msg = extractErrorMessage(e);
-    error.value = msg || t("metadataBrowser.fetchError");
+    error.value = formatError(e, "metadataBrowser.fetchError");
   } finally {
     isLoading.value = false;
   }
@@ -1230,8 +1222,7 @@ async function fetchProcedureDetail() {
 
     leafProcedure.value = detail.metadata.type.value;
   } catch (e) {
-    const msg = extractErrorMessage(e);
-    error.value = msg || t("metadataBrowser.fetchError");
+    error.value = formatError(e, "metadataBrowser.fetchError");
   } finally {
     isLoading.value = false;
   }
@@ -1266,8 +1257,7 @@ async function fetchFunctionDetail() {
 
     leafFunction.value = detail.metadata.type.value;
   } catch (e) {
-    const msg = extractErrorMessage(e);
-    error.value = msg || t("metadataBrowser.fetchError");
+    error.value = formatError(e, "metadataBrowser.fetchError");
   } finally {
     isLoading.value = false;
   }
@@ -1299,8 +1289,7 @@ async function fetchMaterializedViewDetail() {
 
     leafMaterializedView.value = detail.metadata.type.value;
   } catch (e) {
-    const msg = extractErrorMessage(e);
-    error.value = msg || t("metadataBrowser.fetchError");
+    error.value = formatError(e, "metadataBrowser.fetchError");
   } finally {
     isLoading.value = false;
   }
@@ -1331,8 +1320,7 @@ async function fetchTableDetail() {
 
     leafTable.value = detail.metadata.type.value;
   } catch (e) {
-    const msg = extractErrorMessage(e);
-    error.value = msg || t("metadataBrowser.fetchError");
+    error.value = formatError(e, "metadataBrowser.fetchError");
   } finally {
     isLoading.value = false;
   }
@@ -1368,8 +1356,7 @@ async function fetchExternalTableDetail() {
 
     leafExternalTable.value = detail.metadata.type.value;
   } catch (e) {
-    const msg = extractErrorMessage(e);
-    error.value = msg || t("metadataBrowser.fetchError");
+    error.value = formatError(e, "metadataBrowser.fetchError");
   } finally {
     isLoading.value = false;
   }
@@ -1400,8 +1387,7 @@ async function fetchViewDetail() {
 
     leafView.value = detail.metadata.type.value;
   } catch (e) {
-    const msg = extractErrorMessage(e);
-    error.value = msg || t("metadataBrowser.fetchError");
+    error.value = formatError(e, "metadataBrowser.fetchError");
   } finally {
     isLoading.value = false;
   }
@@ -1433,8 +1419,7 @@ async function fetchMetaTypeFirstPage(metaType: MetaType) {
     nextPageTokenByMetaType.set(metaType, returned?.nextPageToken ?? "");
     selectedMetaType.value = metaType;
   } catch (e) {
-    const msg = extractErrorMessage(e);
-    error.value = msg || t("metadataBrowser.fetchError");
+    error.value = formatError(e, "metadataBrowser.fetchError");
   } finally {
     isLoading.value = false;
   }

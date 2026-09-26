@@ -253,7 +253,7 @@ import { useI18n } from "vue-i18n";
 import { listGroups } from "@/api/group";
 import { getWorkspaceIamPolicy, setWorkspaceIamPolicy } from "@/api/iam";
 import { listRoles } from "@/api/role";
-import { listUsers } from "@/api/user";
+import { listAllUsers } from "@/api/user";
 import AppModal from "@/components/common/AppModal.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -292,7 +292,7 @@ type MemberType = "user" | "group" | "allUsers";
 
 const { t } = useI18n();
 const authStore = useAuthStore();
-const { handleError, showSuccess } = useErrorHandler();
+const { formatError, handleError, showSuccess } = useErrorHandler();
 
 const canSet = computed(() =>
   authStore.hasPermission("metaxisdata.iam.setPolicy")
@@ -376,11 +376,11 @@ async function loadPolicy() {
   isLoading.value = true;
   error.value = null;
   try {
-    const [policyResponse, roleResponse, userResponse, groupResponse] =
+    const [policyResponse, roleResponse, allUsers, groupResponse] =
       await Promise.all([
         getWorkspaceIamPolicy(),
         listRoles(),
-        listUsers(),
+        listAllUsers(),
         listGroups(),
       ]);
     etag.value = policyResponse.etag;
@@ -390,11 +390,11 @@ async function loadPolicy() {
         members: [...binding.members],
       })) ?? [];
     roles.value = roleResponse.roles;
-    users.value = userResponse.users;
+    users.value = allUsers;
     groups.value = groupResponse.groups;
     dirty.value = false;
   } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err);
+    error.value = formatError(err);
   } finally {
     isLoading.value = false;
   }

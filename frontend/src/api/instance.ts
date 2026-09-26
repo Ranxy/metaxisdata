@@ -18,6 +18,7 @@ import {
   UpdateInstanceRequestSchema,
 } from "@/types/proto-es/v1/instance_service_pb";
 import { instanceClient } from "./client";
+import { listAll } from "./list";
 
 /** The ID of a data source, the last segment of its resource name. */
 export function dataSourceId(name: string): string {
@@ -64,6 +65,24 @@ export async function listInstances(options?: {
     filter: options?.filter ?? "",
   });
   return await instanceClient.listInstances(request);
+}
+
+/**
+ * Every instance the caller may see, across all pages. The instance lists render
+ * the whole estate and the server caps a page at 100, so a first-page-only fetch
+ * would silently hide the rest.
+ */
+export async function listAllInstances(options?: {
+  showDeleted?: boolean;
+}): Promise<Instance[]> {
+  return await listAll(async (pageToken) => {
+    const response = await listInstances({
+      pageSize: 100,
+      pageToken,
+      showDeleted: options?.showDeleted,
+    });
+    return { items: response.instances, nextPageToken: response.nextPageToken };
+  });
 }
 
 export async function getInstance(name: string) {
