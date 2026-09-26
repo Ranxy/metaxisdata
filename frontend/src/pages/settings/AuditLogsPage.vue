@@ -146,109 +146,10 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-2 xl:justify-end">
-        <Popover v-model:open="showDateRangePicker">
-          <PopoverTrigger as-child>
-            <Button
-              variant="outline"
-              class="min-h-11 min-w-[18rem] justify-between gap-3 px-3 text-left font-normal shadow-sm"
-            >
-              <span class="flex min-w-0 items-center gap-2">
-                <CalendarRange class="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span
-                  class="truncate"
-                  :class="dateRangeChip ? 'text-foreground' : 'text-muted-foreground'"
-                >
-                  {{ dateRangeButtonLabel }}
-                </span>
-              </span>
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="end" class="w-auto p-0">
-            <div class="space-y-4 p-4">
-              <div class="space-y-1">
-                <div class="text-sm font-medium">{{ t("auditLogs.created") }}</div>
-                <div class="text-xs text-muted-foreground">
-                  {{ draftDateRangeChip || t("auditLogs.selectDateRangeHint") }}
-                </div>
-              </div>
-
-              <RangeCalendarRoot
-                v-model="draftDateRange"
-                :locale="locale"
-                :number-of-months="2"
-                fixed-weeks
-                initial-focus
-                class="rounded-md border p-3"
-              >
-                <template #default="{ grid, weekDays }">
-                  <RangeCalendarHeader class="mb-4 flex items-center justify-between">
-                    <RangeCalendarPrev class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input bg-background transition-colors hover:bg-accent hover:text-accent-foreground">
-                      <ChevronLeft class="h-4 w-4" />
-                    </RangeCalendarPrev>
-                    <RangeCalendarHeading class="text-sm font-medium" />
-                    <RangeCalendarNext class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input bg-background transition-colors hover:bg-accent hover:text-accent-foreground">
-                      <ChevronRight class="h-4 w-4" />
-                    </RangeCalendarNext>
-                  </RangeCalendarHeader>
-
-                  <div class="flex flex-col gap-4 sm:flex-row sm:gap-6">
-                    <RangeCalendarGrid
-                      v-for="month in grid"
-                      :key="month.value.toString()"
-                      class="select-none space-y-1"
-                    >
-                      <RangeCalendarGridHead>
-                        <RangeCalendarGridRow class="mb-1 flex">
-                          <RangeCalendarHeadCell
-                            v-for="day in weekDays"
-                            :key="day"
-                            class="w-9 rounded-md text-xs font-normal text-muted-foreground"
-                          >
-                            {{ day }}
-                          </RangeCalendarHeadCell>
-                        </RangeCalendarGridRow>
-                      </RangeCalendarGridHead>
-                      <RangeCalendarGridBody class="space-y-1">
-                        <RangeCalendarGridRow
-                          v-for="(weekDates, weekIndex) in month.rows"
-                          :key="`${month.value.toString()}-${weekIndex}`"
-                          class="flex"
-                        >
-                          <RangeCalendarCell
-                            v-for="weekDate in weekDates"
-                            :key="weekDate.toString()"
-                            :date="weekDate"
-                            class="relative h-9 w-9 p-0 text-center text-sm focus-within:relative focus-within:z-20 [&:has([data-highlighted])]:bg-accent/50 [&:has([data-selection-end])]:rounded-r-md [&:has([data-selection-start])]:rounded-l-md"
-                          >
-                            <RangeCalendarCellTrigger
-                              :day="weekDate"
-                              :month="month.value"
-                              class="flex h-9 w-9 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-sm font-normal outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:ring-2 focus:ring-ring focus:ring-offset-2 data-[disabled]:pointer-events-none data-[disabled]:opacity-30 data-[highlighted]:bg-accent/80 data-[outside-view]:text-muted-foreground/30 data-[selected]:bg-primary data-[selected]:text-primary-foreground data-[selection-end]:bg-primary data-[selection-end]:text-primary-foreground data-[selection-start]:bg-primary data-[selection-start]:text-primary-foreground data-[today]:border-border"
-                            />
-                          </RangeCalendarCell>
-                        </RangeCalendarGridRow>
-                      </RangeCalendarGridBody>
-                    </RangeCalendarGrid>
-                  </div>
-                </template>
-              </RangeCalendarRoot>
-
-              <div class="flex items-center justify-between border-t pt-3">
-                <Button variant="ghost" size="sm" @click="resetDraftDateRange">
-                  {{ t("auditLogs.clearDateRange") }}
-                </Button>
-                <div class="flex items-center gap-2">
-                  <Button variant="ghost" size="sm" @click="showDateRangePicker = false">
-                    {{ t("common.cancel") }}
-                  </Button>
-                  <Button size="sm" @click="applyDraftDateRange">
-                    {{ t("auditLogs.applyDateRange") }}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </PopoverContent>
-        </Popover>
+        <AuditLogsDateRangePicker
+          v-model="dateRange"
+          @apply="refreshLogs"
+        />
       </div>
     </div>
 
@@ -438,38 +339,21 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { getLocalTimeZone, today } from "@internationalized/date";
 import { onClickOutside } from "@vueuse/core";
 import {
-  CalendarRange,
-  ChevronLeft,
-  ChevronRight,
   ClipboardList,
   Download,
   Filter,
   RefreshCcw,
   X,
 } from "lucide-vue-next";
-import {
-  type DateRange,
-  RangeCalendarCell,
-  RangeCalendarCellTrigger,
-  RangeCalendarGrid,
-  RangeCalendarGridBody,
-  RangeCalendarGridHead,
-  RangeCalendarGridRow,
-  RangeCalendarHeadCell,
-  RangeCalendarHeader,
-  RangeCalendarHeading,
-  RangeCalendarNext,
-  RangeCalendarPrev,
-  RangeCalendarRoot,
-} from "radix-vue";
+import type { DateRange } from "radix-vue";
 import { computed, nextTick, onMounted, ref, shallowRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { listAuditLogs } from "@/api/audit";
 import { listAll } from "@/api/list";
 import { batchGetUsers } from "@/api/user";
+import AuditLogsDateRangePicker from "@/components/audit/AuditLogsDateRangePicker.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -491,11 +375,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
   Table,
   TableBody,
   TableCell,
@@ -510,7 +389,13 @@ import {
   AuditLogSeverity,
 } from "@/types/proto-es/v1/audit_log_service_pb";
 import type { User } from "@/types/proto-es/v1/user_service_pb";
-import { formatDate, formatDateTime } from "@/utils/datetime";
+import {
+  dateRangeBound,
+  defaultDateRange,
+  emptyDateRange,
+  formatDateRangeChip,
+} from "@/utils/dateRange";
+import { formatDateTime } from "@/utils/datetime";
 
 type AuditFilterType = "resource" | "actor" | "method" | "level";
 type SeverityValue = "INFO" | "WARNING" | "ERROR";
@@ -530,9 +415,6 @@ interface FilterTypeOption {
   placeholder: string;
 }
 
-/** Only `toString()` is used, which every calendar date value provides. */
-type CalendarDateLike = { toString(): string } | undefined;
-
 const WORKSPACE_PARENT = "workspaces/-";
 
 const { t, locale } = useI18n();
@@ -548,12 +430,10 @@ const activeFilters = ref<AuditFilter[]>([]);
 const searchQuery = ref("");
 const selectedFilterType = ref<AuditFilterType | null>(null);
 const showSearchPanel = ref(false);
-const showDateRangePicker = ref(false);
 // shallowRef, not ref: Vue's deep unwrap rewrites the date classes into
 // structural look-alikes, which radix's own DateRange (and its calendar) no
 // longer accepts.
-const dateRange = shallowRef<DateRange>(createDefaultDateRange());
-const draftDateRange = shallowRef<DateRange>(createDefaultDateRange());
+const dateRange = shallowRef<DateRange>(defaultDateRange());
 const pendingAuditUsers = new Set<string>();
 
 const searchBarRef = ref<HTMLElement | null>(null);
@@ -620,45 +500,9 @@ const hasActiveSearch = computed(
   () => activeFilters.value.length > 0 || Boolean(dateRangeChip.value)
 );
 
-const dateRangeButtonLabel = computed(
-  () => dateRangeChip.value || t("auditLogs.selectDateRange")
+const dateRangeChip = computed(() =>
+  formatDateRangeChip(dateRange.value, locale.value)
 );
-
-const dateRangeChip = computed(() => {
-  if (!dateRange.value.start && !dateRange.value.end) {
-    return "";
-  }
-  const from = formatDateValue(dateRange.value.start);
-  const to = formatDateValue(dateRange.value.end);
-  if (from && to) {
-    return `${from} - ${to}`;
-  }
-  if (from) {
-    return `>= ${from}`;
-  }
-  if (to) {
-    return `<= ${to}`;
-  }
-  return "";
-});
-
-const draftDateRangeChip = computed(() => {
-  if (!draftDateRange.value.start && !draftDateRange.value.end) {
-    return "";
-  }
-  const from = formatDateValue(draftDateRange.value.start);
-  const to = formatDateValue(draftDateRange.value.end);
-  if (from && to) {
-    return `${from} - ${to}`;
-  }
-  if (from) {
-    return `>= ${from}`;
-  }
-  if (to) {
-    return `<= ${to}`;
-  }
-  return "";
-});
 
 const filterExpression = computed(() => {
   const clauses: string[] = [];
@@ -676,21 +520,15 @@ const filterExpression = computed(() => {
       clauses.push(`severity == ${JSON.stringify(filter.value)}`);
     }
   }
-  const from = toRFC3339(dateRange.value.start, "start");
+  const from = dateRangeBound(dateRange.value.start, "start");
   if (from) {
     clauses.push(`create_time >= ${JSON.stringify(from)}`);
   }
-  const to = toRFC3339(dateRange.value.end, "end");
+  const to = dateRangeBound(dateRange.value.end, "end");
   if (to) {
     clauses.push(`create_time <= ${JSON.stringify(to)}`);
   }
   return clauses.join(" && ");
-});
-
-watch(showDateRangePicker, (open) => {
-  if (open) {
-    draftDateRange.value = cloneDateRange(dateRange.value);
-  }
 });
 
 onClickOutside(searchBarRef, () => {
@@ -835,80 +673,14 @@ function removeFilter(id: string) {
 
 function clearDateRange() {
   dateRange.value = emptyDateRange();
-  draftDateRange.value = emptyDateRange();
-  showDateRangePicker.value = false;
-  void refreshLogs();
-}
-
-function resetDraftDateRange() {
-  draftDateRange.value = emptyDateRange();
-}
-
-function applyDraftDateRange() {
-  const nextRange = cloneDateRange(draftDateRange.value);
-  showDateRangePicker.value = false;
-  if (isSameDateRange(dateRange.value, nextRange)) {
-    return;
-  }
-  dateRange.value = nextRange;
   void refreshLogs();
 }
 
 function clearAllFilters() {
   activeFilters.value = [];
   dateRange.value = emptyDateRange();
-  draftDateRange.value = emptyDateRange();
   resetSearchDraft();
   void refreshLogs();
-}
-
-function emptyDateRange(): DateRange {
-  return { start: undefined, end: undefined };
-}
-
-function createDefaultDateRange(): DateRange {
-  const end = today(getLocalTimeZone());
-  const start = end.subtract({ months: 1 });
-  return { start, end };
-}
-
-function cloneDateRange(value: DateRange): DateRange {
-  return {
-    start: value.start,
-    end: value.end,
-  };
-}
-
-function isSameDateRange(left: DateRange, right: DateRange): boolean {
-  return (
-    getDateValueString(left.start) === getDateValueString(right.start) &&
-    getDateValueString(left.end) === getDateValueString(right.end)
-  );
-}
-
-function getDateValueString(value: CalendarDateLike): string {
-  if (!value) {
-    return "";
-  }
-  return value.toString();
-}
-
-function toRFC3339(value: CalendarDateLike, bound: "start" | "end"): string {
-  const dateValue = getDateValueString(value);
-  if (!dateValue) {
-    return "";
-  }
-  const timeSuffix = bound === "start" ? "T00:00:00.000" : "T23:59:59.999";
-  const date = new Date(`${dateValue}${timeSuffix}`);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  return date.toISOString();
-}
-
-function formatDateValue(value: CalendarDateLike): string {
-  const dateValue = getDateValueString(value);
-  return dateValue ? formatDate(dateValue, locale.value, dateValue) : "";
 }
 
 function formatTimestamp(ts: Timestamp | undefined): string {
