@@ -864,6 +864,30 @@ func (a *Analyzer) processSelectItemList(items []nodes.ExprNode, sp *scope.Scope
 
 // processStar expands SELECT * against every table in scope. Every relation is
 // expanded, so two same-named tables from different databases each contribute.
+// queryLocalWildcardSourceRef builds the source reference for the rows of one
+// FROM relation that a `*` or a table-wide aggregate reads.
+//
+// A base table is already fully identified here, so the reference is marked
+// resolved: looking it up again by name would fail whenever the relation has an
+// alias, which silently produced no lineage at all for `SELECT * FROM t x`.
+//
+// A CTE or derived table is different. Its name is an alias the statement
+// invented, and its rows are known only through its own lineage, so the reference
+// stays unresolved for the scope resolver to find by its scope key - which is
+// what attaches the relation and lets the temp-table trace flatten it. Marking it
+// resolved instead made COUNT(*) over a CTE emit an edge naming the CTE, which is
+// not a stored relation at all. StarRocks and PostgreSQL carry the same rule.
+func queryLocalWildcardSourceRef(tableRef *scope.TableRef) scope.ColumnRef {
+	if tableRef.IsSubquery || tableRef.IsCTE {
+		key := tableRef.Alias
+		if key == "" {
+			key = tableRef.Table
+		}
+		return scope.ColumnRef{Table: key, Column: wildcardColumn}
+	}
+	return scope.ColumnRef{Schema: tableRef.Schema, Table: tableRef.Table, Column: wildcardColumn, Resolved: true}
+}
+
 func (a *Analyzer) processStar(sp *scope.Scope) {
 	for _, tableRef := range sp.Tables() {
 		if a.catalog != nil && !tableRef.IsSubquery && !tableRef.IsCTE {
@@ -873,7 +897,7 @@ func (a *Analyzer) processStar(sp *scope.Scope) {
 		}
 		sp.AddOutputColumn(scope.OutputColumn{
 			Alias:   wildcardColumn,
-			Sources: scope.NewColumnSources([]scope.ColumnRef{scope.WildcardSourceRef(tableRef)}, nil),
+			Sources: scope.NewColumnSources([]scope.ColumnRef{queryLocalWildcardSourceRef(tableRef)}, nil),
 		})
 	}
 }
@@ -895,7 +919,7 @@ func (a *Analyzer) processTableWildcard(cr *nodes.ColumnRef, sp *scope.Scope) {
 	}
 	sp.AddOutputColumn(scope.OutputColumn{
 		Alias:   wildcardColumn,
-		Sources: scope.NewColumnSources([]scope.ColumnRef{scope.WildcardSourceRef(tableRef)}, nil),
+		Sources: scope.NewColumnSources([]scope.ColumnRef{queryLocalWildcardSourceRef(tableRef)}, nil),
 	})
 }
 
@@ -924,7 +948,7 @@ func (a *Analyzer) outputColumnFor(expr nodes.ExprNode, alias string, sp *scope.
 	// must not invent a dependency.
 	if isDerived && len(sourceColumns) == 0 && containsAggregateCall(expr) {
 		for _, tableRef := range sp.Tables() {
-			sourceColumns = append(sourceColumns, scope.WildcardSourceRef(tableRef))
+			sourceColumns = append(sourceColumns, queryLocalWildcardSourceRef(tableRef))
 		}
 	}
 

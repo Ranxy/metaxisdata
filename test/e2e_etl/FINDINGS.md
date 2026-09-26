@@ -36,7 +36,7 @@ below).
 | F5 | upstream | Airflow's SQL extractor cannot parse `REFRESH MATERIALIZED VIEW` |
 | F6 | fixed | `backend/store/openlineage_task.go` (found while verifying F1–F4) |
 | F7 | fixed | `backend/plugin/openlineage/sql_facet_lineage.go` — SQL-facet events are analyzed, not believed |
-| F8 | fixed | `backend/plugin/lineage/postgresql` `queryLocalWildcardSourceRef` (ported from StarRocks) |
+| F8 | fixed | `queryLocalWildcardSourceRef` in PostgreSQL **and** the MySQL family (StarRocks already had it) |
 
 `verify_chain.sql` section 4 must list only the two CTE aliases, and section 5
 must return the table's real columns and nothing else.
@@ -360,11 +360,23 @@ table keeps the resolved reference — looking it up again by name would fail fo
 aliased relation — while a CTE or derived table stays resolvable, so `COUNT(*)` over
 a CTE flattens to the columns the CTE read.
 
-**Verification.** `TestWildcardAggregateOverACTEDoesNotNameTheCTE` is the fixture's
-statement with a stub catalog; it fails without the fix ("Should not be: base") and
-passes with it. On the rebuilt chain `verify_chain.sql` section 4 is now **empty**,
-section 6 is empty, and the two provenance claims and the five-hop chain are
-unchanged. The PG analyzer corpus (40 files) passes unchanged.
+**The MySQL family had it too.** The same three sites in the shared MySQL-family
+body (`backend/plugin/lineage/mysql/analyzer.go`, which TiDB and MariaDB are
+generated from) used `scope.WildcardSourceRef`. Probed with the same statement
+shape, MySQL emitted `base.* -> summary.total` (temp=false) before the port. The
+rule now lives in all three dialects — PostgreSQL, the MySQL family, and StarRocks,
+which had it from the start — and TiDB/MariaDB were regenerated from the shared
+body. So the defect was never engine-specific: it was the MySQL family's original
+rule, and the two dialects that fixed it (StarRocks here, PostgreSQL now) are the
+ones that carry the correction.
+
+**Verification.** `TestWildcardAggregateOverACTEDoesNotNameTheCTE` exists in both the
+PostgreSQL and MySQL packages, using the fixture's statement shape with a stub
+catalog; each fails without its fix ("Should not be: base") and passes with it. On
+the rebuilt chain `verify_chain.sql` sections 4 and 6 are **empty**, the two
+provenance claims and the five-hop chain are unchanged, and the analyzer corpora of
+all five dialects pass. The fixture's own MySQL views do not use `COUNT(*)` over a
+CTE, so that side is guarded hermetically rather than by this chain.
 
 ## Post-fix verification
 
