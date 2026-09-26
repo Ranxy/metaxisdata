@@ -103,6 +103,7 @@
                     <Button
                       variant="ghost"
                       size="icon"
+                      :aria-label="t('common.edit')"
                       @click="openEditModal(item)"
                     >
                       <Pencil class="h-4 w-4" />
@@ -111,6 +112,7 @@
                       variant="ghost"
                       size="icon"
                       class="text-destructive"
+                      :aria-label="t('common.delete')"
                       @click="openDeleteModal(item)"
                     >
                       <Trash2 class="h-4 w-4" />

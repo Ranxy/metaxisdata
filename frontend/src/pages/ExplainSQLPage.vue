@@ -138,6 +138,7 @@
               >
                 <button
                   class="text-muted-foreground hover:text-foreground shrink-0"
+                  :aria-label="t('common.back')"
                   @click="scopeStep = scopeStep === 'schema' ? 'database' : 'instance'"
                 >
                   <ArrowLeft class="h-3.5 w-3.5" />
@@ -322,6 +323,7 @@ import type { ExplainSQLProgress } from "@/types/proto-es/v1/explain_sql_service
 import { formatDateTime } from "@/utils/datetime";
 import { guidToRouteParams, routeParamToGuid } from "@/utils/guid";
 import { isProviderAllowed } from "@/utils/llmProvider";
+import { metaTypeLabel } from "@/utils/metaType";
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -346,9 +348,7 @@ interface SelectedMeta {
 }
 
 // ---- state ----
-const sourceMode = ref<"metadata" | "custom">(
-  route.params.guid ? "metadata" : "metadata"
-);
+const sourceMode = ref<"metadata" | "custom">("metadata");
 const customSQL = ref("");
 
 // Scope for custom SQL
@@ -593,7 +593,7 @@ async function loadMetaByGuid(guid: string, metaType: MetaType) {
   selectedMeta.value = {
     guid,
     name,
-    type: metaTypeLabel(metaType),
+    type: metaTypeLabel(metaType, t),
     path,
     sqlPreview: "",
     metaType,
@@ -639,15 +639,17 @@ async function doSearch(q: string) {
   try {
     const resp = await searchMetadata({ searchStr: q });
     const items: SearchItem[] = [];
-    for (const r of (resp as any).results ?? []) {
+    for (const r of resp.results) {
       const guid = r.guid ?? "";
       const parts = guid.split(";");
       items.push({
         guid,
-        name: r.name ?? parts[parts.length - 1] ?? guid,
-        type: metaTypeLabel(r.metaType as MetaType),
+        // SearchMetadataResult carries no name; the last GUID segment is the
+        // object's own name.
+        name: parts[parts.length - 1] ?? guid,
+        type: metaTypeLabel(r.metaType, t),
         path: parts.join(" / "),
-        metaType: r.metaType as MetaType,
+        metaType: r.metaType,
       });
     }
     searchResults.value = items;
@@ -656,23 +658,6 @@ async function doSearch(q: string) {
   } finally {
     metaSearching.value = false;
   }
-}
-
-function metaTypeLabel(t: MetaType): string {
-  const labels: Record<number, string> = {
-    0: "UNSPECIFIED",
-    1: "INSTANCE",
-    2: "DATABASE",
-    3: "SCHEMA",
-    4: "TABLE",
-    5: "VIEW",
-    6: "MATERIALIZED_VIEW",
-    7: "COLUMN",
-    10: "PROCEDURE",
-    11: "FUNCTION",
-    18: "MANUAL_SQL",
-  };
-  return labels[t as number] ?? `TYPE_${t}`;
 }
 
 function formatToolArgsShort(jsonArgs: string): string {

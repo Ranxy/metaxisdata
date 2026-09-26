@@ -1,5 +1,6 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import type { MessageSchema } from "@/locales";
+import type { Translate } from "./i18n";
 
 /** Every `error.*` key the locale files define; a typo here fails the build. */
 type ErrorMessageKey = LeafKeys<MessageSchema["error"], "error.">;
@@ -86,9 +87,6 @@ export function errorMessageKey(code: Code): ErrorMessageKey {
 export function prefersServerMessage(code: Code): boolean {
   return SPECIFIC_CODES.has(code);
 }
-
-/** A vue-i18n lookup, narrowed to the one shape this module needs. */
-export type Translate = (key: string) => string;
 
 /**
  * The text to put in front of a user for `error`.

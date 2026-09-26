@@ -23,7 +23,7 @@
         {{ data.label }}
       </span>
       <Badge v-if="isExternal" variant="outline" class="text-[10px] px-1 py-0 ml-auto shrink-0 border-amber-400 text-amber-600">
-        External
+        {{ t("openlineage.external") }}
       </Badge>
     </div>
 

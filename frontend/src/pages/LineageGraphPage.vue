@@ -258,6 +258,7 @@ import { LineageType } from "@/types/proto-es/v1/lineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { extractErrorMessage } from "@/utils/error";
 import { guidToRouteParams, routeParamToGuid } from "@/utils/guid";
+import { metaTypeLabel } from "@/utils/metaType";
 
 const EXTERNAL_PREFIX = "external:";
 
@@ -384,6 +385,11 @@ const selectedNodeSummary = computed(() => {
   }
 
   const externalInfo = externalDatasetMap.value.get(selectedNodeGuid.value);
+  // The type is resolved from the lineage relations (or the route), never
+  // guessed from the number of GUID segments: a MySQL schema is an empty
+  // segment, so the segment count does not name the type.
+  const metaTypeValue =
+    guidMetaTypeMap.value.get(selectedNodeGuid.value) ?? currentMetaType.value;
 
   return {
     guid: selectedNodeGuid.value,
@@ -391,10 +397,8 @@ const selectedNodeSummary = computed(() => {
     shortPath: formatGuidShort(selectedNodeGuid.value),
     isRoot: selectedNodeGuid.value === currentGuid.value,
     isExternal: isExternalGuid(selectedNodeGuid.value),
-    metaTypeValue:
-      guidMetaTypeMap.value.get(selectedNodeGuid.value) ??
-      currentMetaType.value,
-    metaTypeLabel: formatMetaTypeLabel(selectedNodeGuid.value),
+    metaTypeValue,
+    metaTypeLabel: metaTypeLabel(metaTypeValue, t),
     upstreamCount: lineageData?.upstream.length ?? 0,
     downstreamCount: lineageData?.downstream.length ?? 0,
     columns: collectColumnsForGuid(selectedNodeGuid.value),
@@ -554,28 +558,6 @@ function compareTimestamps(
     return 0;
   }
   return leftSeconds > rightSeconds ? 1 : -1;
-}
-
-function formatMetaTypeLabel(guid: string): string {
-  const metaType = guidToMetaType(guid);
-  switch (metaType) {
-    case "materialized_view":
-      return "Materialized View";
-    case "view":
-      return "View";
-    case "table":
-      return "Table";
-    case "schema":
-      return "Schema";
-    case "database":
-      return "Database";
-    case "instance":
-      return "Instance";
-    case "external":
-      return "External Dataset";
-    default:
-      return metaType;
-  }
 }
 
 function setSelectedNode(guid: string | null) {

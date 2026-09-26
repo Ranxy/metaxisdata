@@ -21,6 +21,7 @@ const createMonacoEditor = vi.hoisted(() => vi.fn());
 
 vi.mock("./editor", () => ({ createMonacoEditor }));
 
+import { i18n } from "@/locales";
 import { useAppStore } from "@/store/modules/app";
 import MonacoEditor from "./MonacoEditor.vue";
 
@@ -37,7 +38,7 @@ function fakeEditor() {
 function mountEditor(pinia: ReturnType<typeof createPinia>) {
   return mount(MonacoEditor, {
     props: { content: "select 1" },
-    global: { plugins: [pinia] },
+    global: { plugins: [pinia, i18n] },
   });
 }
 

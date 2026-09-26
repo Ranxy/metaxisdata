@@ -10,7 +10,7 @@
         class="h-9"
         @click="handleSelect(g.metaType)"
       >
-        <span>{{ getMetaTypeLabel(g.metaType) }}</span>
+        <span>{{ metaTypeLabel(g.metaType, t) }}</span>
       </Button>
     </div>
 
@@ -29,7 +29,7 @@
             :key="g.metaType"
             :value="String(g.metaType)"
           >
-            {{ getMetaTypeLabel(g.metaType) }}
+            {{ metaTypeLabel(g.metaType, t) }}
           </SelectItem>
         </SelectContent>
       </Select>
@@ -52,6 +52,7 @@ import {
   type MetadataResponse_Metadata,
   MetaType,
 } from "@/types/proto-es/v1/database_service_pb";
+import { metaTypeLabel } from "@/utils/metaType";
 
 const { t } = useI18n();
 
@@ -73,22 +74,5 @@ function handleSelect(metaType: MetaType) {
   // Clicking the current (last) level is a no-op.
   if (metaType === activeResolved.value) return;
   emit("select", metaType);
-}
-
-function getMetaTypeLabel(type: MetaType): string {
-  const labels: Partial<Record<MetaType, string>> = {
-    [MetaType.INSTANCE]: t("metadataBrowser.instances"),
-    [MetaType.DATABASE]: t("metadataBrowser.databases"),
-    [MetaType.SCHEMA]: t("metadataBrowser.schemas"),
-    [MetaType.TABLE]: t("metadataBrowser.tables"),
-    [MetaType.EXTERNAL_TABLE]: t("metadataBrowser.externalTables"),
-    [MetaType.VIEW]: t("metadataBrowser.views"),
-    [MetaType.MATERIALIZED_VIEW]: t("metadataBrowser.materializedViews"),
-    [MetaType.FUNCTION]: t("metadataBrowser.functions"),
-    [MetaType.PROCEDURE]: t("metadataBrowser.procedures"),
-    [MetaType.SEQUENCE]: t("metadataBrowser.sequences"),
-    [MetaType.MANUAL_SQL]: t("metadataBrowser.manualSqls"),
-  };
-  return labels[type] || t("metadataBrowser.other");
 }
 </script>

@@ -445,6 +445,7 @@
                 variant="ghost"
                 size="icon"
                 class="text-destructive hover:text-destructive"
+                :aria-label="t('instanceManagement.removeDataSource')"
                 @click="removeReadOnlyDataSource(index)"
               >
                 <Trash2 class="h-4 w-4" />
@@ -744,7 +745,9 @@ function getEnvironmentLabel(environment: string): string {
 }
 
 function getHostInfo(instance: Instance): string {
-  const adminDataSource = instance.dataSources.find((ds) => ds.type === 1); // ADMIN type
+  const adminDataSource = instance.dataSources.find(
+    (ds) => ds.type === DataSourceType.ADMIN
+  );
   if (adminDataSource) {
     const port = adminDataSource.port ? `:${adminDataSource.port}` : "";
     return `${adminDataSource.host}${port}`;

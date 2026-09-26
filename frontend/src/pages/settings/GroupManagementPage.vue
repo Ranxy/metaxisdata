@@ -72,6 +72,7 @@
                   v-if="canUpdate"
                   variant="ghost"
                   size="sm"
+                  :aria-label="t('common.edit')"
                   @click="openEdit(group)"
                 >
                   <Pencil class="h-4 w-4" />
@@ -80,6 +81,7 @@
                   v-if="canDelete"
                   variant="ghost"
                   size="sm"
+                  :aria-label="t('common.delete')"
                   @click="openDelete(group)"
                 >
                   <Trash2 class="h-4 w-4 text-destructive" />

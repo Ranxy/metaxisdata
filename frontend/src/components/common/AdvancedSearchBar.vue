@@ -248,6 +248,7 @@ watch(searchQuery, () => {
         <button
           type="button"
           class="ml-1 rounded-full hover:bg-secondary-foreground/20 transition-colors"
+          :aria-label="t('common.removeFilter')"
           @click="removeFilter(filter.id)"
         >
           <X class="h-3 w-3" />
@@ -312,6 +313,7 @@ watch(searchQuery, () => {
                 variant="ghost"
                 size="sm"
                 class="h-8 px-2"
+                :aria-label="t('common.back')"
                 @click="backToFilterTypes"
               >
                 <ChevronDown class="h-4 w-4 rotate-90" />
@@ -346,6 +348,7 @@ watch(searchQuery, () => {
                 variant="ghost"
                 size="sm"
                 class="h-8 px-2"
+                :aria-label="t('common.back')"
                 @click="backToFilterTypes"
               >
                 <ChevronDown class="h-4 w-4 rotate-90" />
@@ -380,6 +383,7 @@ watch(searchQuery, () => {
                 variant="ghost"
                 size="sm"
                 class="h-8 px-2"
+                :aria-label="t('common.back')"
                 @click="backToFilterTypes"
               >
                 <ChevronDown class="h-4 w-4 rotate-90" />
@@ -414,6 +418,7 @@ watch(searchQuery, () => {
                 variant="ghost"
                 size="sm"
                 class="h-8 px-2"
+                :aria-label="t('common.back')"
                 @click="backToFilterTypes"
               >
                 <ChevronDown class="h-4 w-4 rotate-90" />

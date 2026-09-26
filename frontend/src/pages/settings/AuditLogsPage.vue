@@ -39,6 +39,7 @@
               <button
                 type="button"
                 class="ml-1 rounded-full transition-colors hover:bg-secondary-foreground/20"
+                :aria-label="t('common.removeFilter')"
                 @click.stop="removeFilter(filter.id)"
               >
                 <X class="h-3 w-3" />
@@ -55,6 +56,7 @@
               <button
                 type="button"
                 class="ml-1 rounded-full transition-colors hover:bg-secondary-foreground/20"
+                :aria-label="t('auditLogs.clearDateRange')"
                 @click.stop="clearDateRange"
               >
                 <X class="h-3 w-3" />

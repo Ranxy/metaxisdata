@@ -4,7 +4,7 @@
 			v-if="!ready"
 			class="absolute inset-0 flex items-center justify-center"
 		>
-			<span class="text-gray-500">Loading editor...</span>
+			<span class="text-gray-500">{{ t("common.loading") }}</span>
 		</div>
 	</div>
 </template>
@@ -21,6 +21,7 @@ import {
   toRef,
   watch,
 } from "vue";
+import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/store/modules/app";
 import {
   useContent,
@@ -64,6 +65,7 @@ const monacoRef = shallowRef<MonacoModule>();
 const ready = ref(false);
 
 const appStore = useAppStore();
+const { t } = useI18n();
 // Monaco has one global theme. "system" resolves through the same media query
 // the app store watches, so the editor follows an OS theme change too.
 const preferredDark = usePreferredDark();

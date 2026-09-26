@@ -36,6 +36,7 @@
           <button
             type="button"
             class="ml-1 rounded-full hover:bg-secondary-foreground/20 transition-colors"
+            :aria-label="t('common.removeFilter')"
             @click="removeScopeFilter"
           >
             <X class="h-3 w-3" />
@@ -47,10 +48,11 @@
           class="flex items-center gap-1 px-2 py-1"
         >
           <span class="text-xs font-medium">{{ t("metadataBrowser.typeFilter") }}:</span>
-          <span class="text-xs">{{ getMetaTypeLabel(typeFilter) }}</span>
+          <span class="text-xs">{{ metaTypeLabel(typeFilter, t) }}</span>
           <button
             type="button"
             class="ml-1 rounded-full hover:bg-secondary-foreground/20 transition-colors"
+            :aria-label="t('common.removeFilter')"
             @click="removeTypeFilter"
           >
             <X class="h-3 w-3" />
@@ -70,6 +72,7 @@
           v-if="searchQuery"
           type="button"
           class="ml-2 rounded-full p-0.5 hover:bg-secondary transition-colors"
+          :aria-label="t('common.clearSearch')"
           @click="clearSearch"
         >
           <X class="h-3.5 w-3.5 text-muted-foreground" />
@@ -123,6 +126,7 @@
                   variant="ghost"
                   size="sm"
                   class="h-8 px-2"
+                  :aria-label="t('common.back')"
                   @click="handleScopeBack"
                 >
                   <ChevronDown class="h-4 w-4 rotate-90" />
@@ -239,6 +243,7 @@
                   variant="ghost"
                   size="sm"
                   class="h-8 px-2"
+                  :aria-label="t('common.back')"
                   @click="backToFilterTypes"
                 >
                   <ChevronDown class="h-4 w-4 rotate-90" />
@@ -258,7 +263,7 @@
                     :value="String(mt)"
                     @select="handleSelectTypeFilter(mt)"
                   >
-                    {{ getMetaTypeLabel(mt) }}
+                    {{ metaTypeLabel(mt, t) }}
                   </CommandItem>
                 </CommandGroup>
               </CommandList>
@@ -304,7 +309,7 @@
               variant="outline"
               class="shrink-0 text-xs"
             >
-              {{ getMetaTypeLabel(result.metaType) }}
+              {{ metaTypeLabel(result.metaType, t) }}
             </Badge>
             <div class="min-w-0 flex-1">
               <div class="font-medium truncate">
@@ -551,6 +556,7 @@ import {
 } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import { guidSegmentsToRouteParams, routeParamToGuid } from "@/utils/guid";
+import { metaTypeLabel } from "@/utils/metaType";
 
 const { t } = useI18n();
 const { formatError } = useErrorMessage();
@@ -645,7 +651,7 @@ const filteredMetaTypes = computed(() => {
   if (!filterSearchQuery.value) return searchableMetaTypes;
   const q = filterSearchQuery.value.toLowerCase();
   return searchableMetaTypes.filter((mt) =>
-    getMetaTypeLabel(mt).toLowerCase().includes(q)
+    metaTypeLabel(mt, t).toLowerCase().includes(q)
   );
 });
 
@@ -1637,23 +1643,6 @@ watch(
 );
 
 // Search logic
-function getMetaTypeLabel(type: MetaType): string {
-  const labels: Partial<Record<MetaType, string>> = {
-    [MetaType.DATABASE]: t("metadataBrowser.databases"),
-    [MetaType.SCHEMA]: t("metadataBrowser.schemas"),
-    [MetaType.TABLE]: t("metadataBrowser.tables"),
-    [MetaType.COLUMN]: t("metadataBrowser.columns"),
-    [MetaType.EXTERNAL_TABLE]: t("metadataBrowser.externalTables"),
-    [MetaType.VIEW]: t("metadataBrowser.views"),
-    [MetaType.MATERIALIZED_VIEW]: t("metadataBrowser.materializedViews"),
-    [MetaType.FUNCTION]: t("metadataBrowser.functions"),
-    [MetaType.PROCEDURE]: t("metadataBrowser.procedures"),
-    [MetaType.SEQUENCE]: t("metadataBrowser.sequences"),
-    [MetaType.MANUAL_SQL]: t("metadataBrowser.manualSqls"),
-  };
-  return labels[type] || t("metadataBrowser.other");
-}
-
 function getSearchResultName(result: SearchMetadataResult): string {
   if (result.metadata) {
     return getMetadataName(result.metadata);

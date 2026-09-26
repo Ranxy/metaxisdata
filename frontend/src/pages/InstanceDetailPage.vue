@@ -5,6 +5,7 @@
       <Button
         variant="ghost"
         size="icon"
+        :aria-label="t('common.back')"
         @click="goBack"
       >
         <ArrowLeft class="h-5 w-5" />
@@ -332,7 +333,11 @@
             >
               <div class="flex items-center gap-2">
                 <Badge variant="secondary">
-                  {{ ds.type === 1 ? "ADMIN" : "READ_ONLY" }}
+                  {{
+                    ds.type === DataSourceType.ADMIN
+                      ? t("instanceManagement.dataSourceAdmin")
+                      : t("instanceManagement.dataSourceReadOnly")
+                  }}
                 </Badge>
                 <span class="font-medium">{{ dataSourceId(ds.name) }}</span>
               </div>
@@ -448,6 +453,7 @@
                   variant="ghost"
                   size="icon"
                   class="text-destructive hover:text-destructive"
+                  :aria-label="t('instanceManagement.removeDataSource')"
                   @click="removeEditReadOnlyDataSource(index)"
                 >
                   <Trash2 class="h-4 w-4" />
@@ -1033,7 +1039,9 @@ function getEnvironmentLabel(environment: string): string {
 }
 
 function getHostInfo(instance: Instance): string {
-  const adminDataSource = instance.dataSources.find((ds) => ds.type === 1); // ADMIN type
+  const adminDataSource = instance.dataSources.find(
+    (ds) => ds.type === DataSourceType.ADMIN
+  );
   if (adminDataSource) {
     const port = adminDataSource.port ? `:${adminDataSource.port}` : "";
     return `${adminDataSource.host}${port}`;
@@ -1047,7 +1055,7 @@ function getStateLabel(state: State): string {
     [State.ACTIVE]: t("instanceDetail.stateActive"),
     [State.DELETED]: t("instanceDetail.stateDeleted"),
   };
-  return stateLabels[state] || "Unknown";
+  return stateLabels[state] || t("instanceDetail.stateUnknown");
 }
 
 function formatLastSync(timestamp: Timestamp | undefined): string {

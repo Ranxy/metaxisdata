@@ -93,7 +93,7 @@
                 :key="d.id"
                 :value="d.enum"
               >
-                {{ d.label }}
+                {{ builtinLabel(d, t) }}
               </option>
             </select>
           </div>
@@ -252,12 +252,11 @@ import {
   LlmProviderModelSchema,
   type LlmProviderProfile,
 } from "@/types/proto-es/v1/llm_service_pb";
+import type { Translate } from "@/utils/i18n";
 
 // ---- static builtin catalog (mirrors backend builtinDefinitions) ----
 interface BuiltinDef {
   id: string;
-  label: string;
-  description: string;
   defaultBaseUrl: string;
   enum: LLMProviderType;
 }
@@ -265,29 +264,21 @@ interface BuiltinDef {
 const BUILTIN_DEFS: BuiltinDef[] = [
   {
     id: "openai",
-    label: "OpenAI",
-    description: "OpenAI GPT models.",
     defaultBaseUrl: "https://api.openai.com",
     enum: LLMProviderType.LLM_PROVIDER_TYPE_OPENAI,
   },
   {
     id: "deepseek",
-    label: "DeepSeek",
-    description: "DeepSeek AI models.",
     defaultBaseUrl: "https://api.deepseek.com",
     enum: LLMProviderType.LLM_PROVIDER_TYPE_DEEPSEEK,
   },
   {
     id: "openrouter",
-    label: "OpenRouter",
-    description: "OpenRouter aggregates hundreds of models.",
     defaultBaseUrl: "https://openrouter.ai/api",
     enum: LLMProviderType.LLM_PROVIDER_TYPE_OPENROUTER,
   },
   {
     id: "custom",
-    label: "Custom",
-    description: "OpenAI-compatible endpoint.",
     defaultBaseUrl: "",
     enum: LLMProviderType.LLM_PROVIDER_TYPE_CUSTOM,
   },
@@ -295,6 +286,24 @@ const BUILTIN_DEFS: BuiltinDef[] = [
 
 function getBuiltinByEnum(e: LLMProviderType): BuiltinDef | undefined {
   return BUILTIN_DEFS.find((d) => d.enum === e);
+}
+
+/**
+ * The provider's display name. Brand names read the same in every locale, but
+ * they are catalogued like any other display text so a translator can see them
+ * and so "Custom" is not the one English word left in the UI.
+ */
+function builtinLabel(def: BuiltinDef, t: Translate): string {
+  switch (def.id) {
+    case "openai":
+      return t("llmProvider.builtinOpenai");
+    case "deepseek":
+      return t("llmProvider.builtinDeepseek");
+    case "openrouter":
+      return t("llmProvider.builtinOpenrouter");
+    default:
+      return t("llmProvider.builtinCustom");
+  }
 }
 
 const { t } = useI18n();
@@ -339,7 +348,7 @@ const filteredProfiles = computed(() => {
   return profiles.value.filter(
     (p) =>
       p.title.toLowerCase().includes(q) ||
-      (getBuiltinByEnum(p.type)?.label ?? "").toLowerCase().includes(q) ||
+      providerLabel(p.type).toLowerCase().includes(q) ||
       p.models.some((m) => m.name.toLowerCase().includes(q))
   );
 });
@@ -358,7 +367,7 @@ const canSave = computed(
 
 const autoTitlePreview = computed(() => {
   const def = getBuiltinByEnum(formData.providerType);
-  const label = def?.label ?? "";
+  const label = def ? builtinLabel(def, t) : "";
   const models = formData.enabledModels;
   if (models.length === 0) return label;
   return `${label} — ${models.slice(0, 3).join(", ")}${models.length > 3 ? "..." : ""}`;
@@ -400,14 +409,15 @@ function profileDisplayTitle(p: LlmProviderProfile): string {
 
 function autoTitle(p: LlmProviderProfile): string {
   const def = getBuiltinByEnum(p.type);
-  const label = def?.label ?? "";
+  const label = def ? builtinLabel(def, t) : "";
   const models = p.models.filter((m) => m.enabled).map((m) => m.name);
   if (models.length === 0) return label;
   return `${label} — ${models.slice(0, 2).join(", ")}${models.length > 2 ? ` +${models.length - 2}` : ""}`;
 }
 
-function providerLabel(t: LLMProviderType): string {
-  return getBuiltinByEnum(t)?.label ?? "Unknown";
+function providerLabel(type: LLMProviderType): string {
+  const def = getBuiltinByEnum(type);
+  return def ? builtinLabel(def, t) : t("llmProvider.providerUnknown");
 }
 
 function enabledCount(p: LlmProviderProfile): number {

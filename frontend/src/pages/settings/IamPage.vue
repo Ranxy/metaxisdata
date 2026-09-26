@@ -91,6 +91,7 @@
                 <Button
                   variant="ghost"
                   size="sm"
+                  :aria-label="t('iam.policy.addMember')"
                   @click="openAddMember(index)"
                 >
                   <Plus class="h-4 w-4" />
@@ -98,6 +99,7 @@
                 <Button
                   variant="ghost"
                   size="sm"
+                  :aria-label="t('iam.policy.removeMember')"
                   @click="removeBinding(index)"
                 >
                   <Trash2 class="h-4 w-4 text-destructive" />
