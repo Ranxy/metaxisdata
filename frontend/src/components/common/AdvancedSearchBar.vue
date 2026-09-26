@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ChevronDown, Plus, X } from "lucide-vue-next";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -183,6 +183,16 @@ const cascadeDisplay = computed(() =>
     .join(" > ")
 );
 
+/**
+ * Radix's combobox writes the picked item's label back into the search input, and
+ * that term is what this component filters options by — clearing it only on the
+ * next tick would leave the next cascade level filtered by the previous choice.
+ */
+async function clearOptionSearch() {
+  await nextTick();
+  filterSearchQuery.value = "";
+}
+
 function matches(query: string, options: FilterOption[]): FilterOption[] {
   const q = query.trim().toLowerCase();
   if (!q) return options;
@@ -363,11 +373,11 @@ async function pickCascadeOption(option: FilterOption) {
   if (!level) return;
   cascadePicked.value = { ...cascadePicked.value, [level.key]: option.value };
   cascadeLabels.value = { ...cascadeLabels.value, [level.key]: option.label };
-  filterSearchQuery.value = "";
 
   if (cascadeLevelIndex.value < cascadeLevels.value.length - 1) {
     cascadeLevelIndex.value += 1;
     await loadCascadeLevel();
+    await clearOptionSearch();
   }
 }
 
@@ -401,6 +411,10 @@ function applyCascade() {
   if (values.length === 0) return;
   addFilter(category.type, values.join(";"), cascadeDisplay.value);
 }
+
+watch(cascadeLevelIndex, () => {
+  void clearOptionSearch();
+});
 
 watch(searchQuery, () => {
   emitFilters();
@@ -437,7 +451,7 @@ watch(searchQuery, () => {
         ref="searchInputRef"
         v-model="searchQuery"
         type="text"
-        :placeholder="activeFilters.length === 0 ? (searchPlaceholder ?? t('databaseManagement.searchPlaceholder')) : ''"
+        :placeholder="searchPlaceholder ?? t('databaseManagement.searchPlaceholder')"
         class="flex-1 min-w-[120px] bg-transparent outline-hidden placeholder:text-muted-foreground"
       >
 
