@@ -21,8 +21,8 @@ phantoms, 0 analyzer errors.
 
 ## Fix status
 
-F1, F2, F3, F4, F6 and F7 are fixed in this repository; F5 is upstream and F8 is
-open (it was exposed by F7's fix).
+F1, F2, F3, F4, F6, F7 and F8 are fixed in this repository; F5 is upstream and
+untouched.
 Each fix carries hermetic unit coverage, and all four were re-verified on this
 chain after rebuilding and restarting the server (see "Post-fix verification"
 below).
@@ -36,7 +36,7 @@ below).
 | F5 | upstream | Airflow's SQL extractor cannot parse `REFRESH MATERIALIZED VIEW` |
 | F6 | fixed | `backend/store/openlineage_task.go` (found while verifying F1–F4) |
 | F7 | fixed | `backend/plugin/openlineage/sql_facet_lineage.go` — SQL-facet events are analyzed, not believed |
-| F8 | open | `backend/plugin/lineage/postgresql` — one CTE reference resolves as a table |
+| F8 | fixed | `backend/plugin/lineage/postgresql` `queryLocalWildcardSourceRef` (ported from StarRocks) |
 
 `verify_chain.sql` section 4 must list only the two CTE aliases, and section 5
 must return the table's real columns and nothing else.
@@ -303,7 +303,7 @@ without SQL (DataX and friends) keep the old path unchanged.
 | `dwd_order_fact.paid_amount` / `.refund_amount` source | `v_customer_360` ❌ | **`v_customer_payments`** ✅ |
 | `dwd_customer_360.paid_amount` / `.refund_amount` source | `v_customer_360` ✅ | `v_customer_360` ✅ |
 | Positional `_N` columns in ingested edges | 21+ | **0** |
-| CTE aliases stored as relations | `public.agg`, `public.line_agg` | **1 left, see F8** |
+| CTE aliases stored as relations | `public.agg`, `public.line_agg` | **0** (F8 fixed) |
 | Chain depth from `mysql e2e_ods.orders` | 5 | 5 |
 | Bogus target columns on the SQL-loaded tables | 0 | 0 |
 
@@ -336,10 +336,35 @@ its scope handling is now the visible one.
 event of that shape; F6's rule keeps unknown relations (they may be a table that
 has not synced yet), so it is kept and reported rather than dropped.
 
-**Not fixed here** — it is in the PG analyzer's scope handling
-(`backend/plugin/lineage/postgresql/analyzer.go`), not in the ingestion path this
-change covers: a CTE defined by the statement is not in scope while the select
-list's scalar subqueries are analyzed, so `base` falls through to a table lookup.
+**Root cause (the earlier "CTE out of scope" reading was wrong).** The CTE was
+found: its named columns resolved through it correctly, and the catalog was never
+asked about `base`. What failed is the *table-wide* expression branch. `COUNT(*)`
+has no source column of its own, so `processExpressionTarget` attributes it to
+every relation in scope with `scope.WildcardSourceRef`, which marks the reference
+**resolved**. A resolved reference is returned as-is by the resolver, so the
+relation is never attached to it and the existing "a CTE or derived table
+contributes its own columns' lineage" branch in `generateEdgeFromSource` cannot
+recognise it — the edge is written with the CTE's name as its source, and nothing
+marks it temporary, so it leaves the analyzer as a relation.
+
+StarRocks had already solved exactly this: its `queryLocalWildcardSourceRef` keeps
+the reference unresolved for a CTE or derived table, so the scope resolver finds it
+by its scope key and the temp-table trace flattens it. The PostgreSQL analyzer was
+still using the MySQL family's `scope.WildcardSourceRef` at all three sites where a
+`*` or a table-wide call reads a relation's rows.
+
+**Fixed.** Ported that rule
+(`backend/plugin/lineage/postgresql/analyzer.go` `queryLocalWildcardSourceRef`, used
+by `processStarTarget`, `processTableStar` and `processExpressionTarget`). A base
+table keeps the resolved reference — looking it up again by name would fail for an
+aliased relation — while a CTE or derived table stays resolvable, so `COUNT(*)` over
+a CTE flattens to the columns the CTE read.
+
+**Verification.** `TestWildcardAggregateOverACTEDoesNotNameTheCTE` is the fixture's
+statement with a stub catalog; it fails without the fix ("Should not be: base") and
+passes with it. On the rebuilt chain `verify_chain.sql` section 4 is now **empty**,
+section 6 is empty, and the two provenance claims and the five-hop chain are
+unchanged. The PG analyzer corpus (40 files) passes unchanged.
 
 ## Post-fix verification
 
@@ -392,8 +417,8 @@ They are counted and logged on every ingestion, and the server warns
    apart from a table created after the last schema sync, and dropping the latter
    would lose real lineage permanently, so they are kept, counted and logged;
    removing them needs deferred re-validation (check unresolved relations after the
-   next sync). After F7 the one left in the fixture is F8, an analyzer scope bug,
-   not an ingestion one.
+   next sync). The fixture no longer produces one: with F7 and F8 fixed, sections 4
+   and 6 of `verify_chain.sql` are empty.
 4. **One event carries the whole SQL script.** The extractor still merges every
    statement of a task into one input/output set and one facet. F7 makes that
    irrelevant for column lineage (the analyzer splits the script itself), but the

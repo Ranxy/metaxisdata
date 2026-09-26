@@ -1060,10 +1060,34 @@ func (a *Analyzer) processStar(sp *scope.Scope) {
 
 		sp.AddOutputColumn(scope.OutputColumn{
 			Alias:     wildcardColumn,
-			Sources:   scope.NewColumnSources([]scope.ColumnRef{scope.WildcardSourceRef(tableRef)}, nil),
+			Sources:   scope.NewColumnSources([]scope.ColumnRef{queryLocalWildcardSourceRef(tableRef)}, nil),
 			IsDerived: false,
 		})
 	}
+}
+
+// queryLocalWildcardSourceRef builds the source reference for the rows of one
+// FROM relation that a `*` or a table-wide call reads.
+//
+// A base table is already fully identified here, so the reference is marked
+// resolved: looking it up again by name would fail whenever the relation has an
+// alias, which silently produced no lineage at all for `SELECT * FROM t x`.
+//
+// A CTE or derived table is different. Its name is an alias the statement
+// invented, and its rows are known only through its own lineage, so the reference
+// stays unresolved for the scope resolver to find by its scope key - which is
+// what attaches the relation and lets the temp-table trace flatten it. Marking it
+// resolved instead made `COUNT(*)` over a CTE emit an edge naming the CTE, which
+// is not a stored relation at all.
+func queryLocalWildcardSourceRef(tableRef *scope.TableRef) scope.ColumnRef {
+	if tableRef.IsSubquery || tableRef.IsCTE {
+		key := tableRef.Alias
+		if key == "" {
+			key = tableRef.Table
+		}
+		return scope.ColumnRef{Table: key, Column: wildcardColumn}
+	}
+	return scope.ColumnRef{Schema: tableRef.Schema, Table: tableRef.Table, Column: wildcardColumn, Resolved: true}
 }
 
 // processTableStar expands `table.*` against a single relation in scope.
@@ -1084,7 +1108,7 @@ func (a *Analyzer) processTableStar(cr *pgast.ColumnRef, sp *scope.Scope) {
 	}
 	sp.AddOutputColumn(scope.OutputColumn{
 		Alias:     wildcardColumn,
-		Sources:   scope.NewColumnSources([]scope.ColumnRef{scope.WildcardSourceRef(tableRef)}, nil),
+		Sources:   scope.NewColumnSources([]scope.ColumnRef{queryLocalWildcardSourceRef(tableRef)}, nil),
 		IsDerived: false,
 	})
 }
@@ -1105,7 +1129,7 @@ func (a *Analyzer) processExpressionTarget(rt *pgast.ResTarget, sp *scope.Scope,
 	// source table, so they must not fabricate a `table.*` edge.
 	if isDerived && len(sourceColumns) == 0 && isTableWideExpression(rt.Val) {
 		for _, tableRef := range sp.Tables() {
-			sourceColumns = append(sourceColumns, scope.WildcardSourceRef(tableRef))
+			sourceColumns = append(sourceColumns, queryLocalWildcardSourceRef(tableRef))
 		}
 	}
 
