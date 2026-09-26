@@ -389,6 +389,8 @@ import {
   AuditLogSeverity,
 } from "@/types/proto-es/v1/audit_log_service_pb";
 import type { User } from "@/types/proto-es/v1/user_service_pb";
+import { auditLogsCsvFilename, buildAuditCsv } from "@/utils/auditLogsCsv";
+import { downloadCsv } from "@/utils/csv";
 import {
   dateRangeBound,
   defaultDateRange,
@@ -758,99 +760,6 @@ function getAuditIdentityDisplay(name: string): string {
   return auditUserDisplayMap.value[name] || name;
 }
 
-function formatTimestampForExport(ts: Timestamp | undefined): string {
-  if (!ts?.seconds) {
-    return "";
-  }
-  const milliseconds =
-    Number(ts.seconds) * 1000 + Number(ts.nanos ?? 0) / 1_000_000;
-  const date = new Date(milliseconds);
-  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
-}
-
-function formatValueForCsv(value: unknown): string {
-  if (value == null) {
-    return "";
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  return JSON.stringify(value);
-}
-
-function escapeCsvValue(value: unknown): string {
-  const normalized = String(value ?? "").replace(/\r\n?/g, "\n");
-  return `"${normalized.replace(/"/g, '""')}"`;
-}
-
-function buildAuditCsv(logEntries: AuditLog[]): string {
-  const headers = [
-    "createTime",
-    "parent",
-    "severity",
-    "method",
-    "resource",
-    "resourceIdentifier",
-    "user",
-    "userIdentifier",
-    "statusCode",
-    "statusMessage",
-    "latencyMs",
-    "ip",
-    "userAgent",
-    "request",
-    "response",
-    "serviceData",
-  ];
-  const rows = logEntries.map((log) => [
-    formatTimestampForExport(log.createTime),
-    log.parent,
-    getSeverityLabel(log.severity),
-    log.method,
-    getAuditIdentityDisplay(log.resource),
-    log.resource,
-    getAuditIdentityDisplay(log.user),
-    log.user,
-    log.status?.code ?? "",
-    log.status?.message ?? "",
-    log.latencyMs,
-    log.requestMetadata?.ip ?? "",
-    log.requestMetadata?.userAgent ?? "",
-    formatValueForCsv(log.request),
-    formatValueForCsv(log.response),
-    formatValueForCsv(log.serviceData),
-  ]);
-  return [headers, ...rows]
-    .map((row) => row.map((value) => escapeCsvValue(value)).join(","))
-    .join("\n");
-}
-
-function getAuditCsvFilename(): string {
-  const now = new Date();
-  const timestamp = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-    "-",
-    String(now.getHours()).padStart(2, "0"),
-    String(now.getMinutes()).padStart(2, "0"),
-    String(now.getSeconds()).padStart(2, "0"),
-  ].join("");
-  return `audit-logs-${timestamp}.csv`;
-}
-
-function downloadCsv(content: string, fileName: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
 async function hydrateAuditUserDisplay(logEntries: AuditLog[]) {
   const unresolvedNames = [
     ...new Set(
@@ -908,7 +817,13 @@ async function exportCsv() {
   try {
     const exportedLogs = await fetchAuditLogsForExport();
     await hydrateAuditUserDisplay(exportedLogs);
-    downloadCsv(buildAuditCsv(exportedLogs), getAuditCsvFilename());
+    downloadCsv(
+      buildAuditCsv(exportedLogs, {
+        severityLabel: getSeverityLabel,
+        identity: getAuditIdentityDisplay,
+      }),
+      auditLogsCsvFilename()
+    );
   } catch (err) {
     handleError(err, "auditLogs.exportError");
   } finally {
