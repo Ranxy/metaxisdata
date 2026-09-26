@@ -238,7 +238,7 @@ dist/assets/css.worker/html.worker/json.worker/editor.worker …
 
 ## 6. 技术债务清单(汇总)
 
-> **状态(2026-09-26):下表 5 条 P0 与 5 条 P1 已全部完成并验证,落地内容见 §6.1 / §6.2(monaco 体积实测见 §6.3);P2 及以下尚未开始。**
+> **状态(2026-09-26):下表 5 条 P0、5 条 P1 与 5 条 P2 已全部完成并验证,落地内容见 §6.1 / §6.2(monaco 体积实测见 §6.3)与 §6.4;仅 P3 尚未开始。**
 
 | 优先级 | 债务 | 位置/证据 | 预估工作量 |
 |--------|------|-----------|-----------|
@@ -360,13 +360,73 @@ dist/assets/css.worker/html.worker/json.worker/editor.worker …
 
 ---
 
+### 6.4 P2 修复记录(已完成)
+
+实施者补写。§6 的 5 条 P2 全部落地,拆成 13 个提交(先低风险后高风险,i18n → toast → App*→ui → AuditLogs 抽取 → 图引擎 → MetadataBrowser 拆分 → 筛选条收敛 → metadata 组件收敛)。同一套门禁通过:`src` 测试文件 29 → 35,用例 180 → 211(新增 dateRange 5、csv 5、auditLogsCsv 4、lineageGraph 9、metaType parse 2、format 3)。本轮同样只动前端。
+
+> **① i18n 破窗与 a11y(决策:类型标签单一来源 + 字面量 t() 以便审计追踪)**
+>
+> 新增 `utils/metaType.ts`(`metaTypeLabel`、`parseMetaType`)与 `utils/i18n.ts`(`Translate` 类型)。三份 MetaType→label 表(`MetadataTabNav`、`MetadataBrowserPage`、`ExplainSQLPage`)与 `LineageGraphPage` 按 GUID 段数猜类型的 `formatMetaTypeLabel` 全部删除——后者把每个 MySQL 对象都标错(空 schema 也是一个段)、有两个永不命中的分支、且无论语言都显示英文枚举名。标签改用**字面量 `t("…")` 而非 key 表**,因为 `scripts/check-vue-i18n.mjs` 与 ESLint 的 `no-unused-keys` 都只跟随 `t()` 调用,跟随不了 map 里的值。
+>
+> 顺带修掉:`ExplainSQLPage` 的 `(resp as any)` 掩盖了 `r.name` 这个 `SearchMetadataResult` 上不存在的字段(名字一直静默退回 GUID 末段)、`route.params.guid ? "metadata" : "metadata"` 死三元、局部 `metaTypeLabel(t)` 遮蔽 `useI18n` 的 `t`;`LLMProviderManagementPage` 的 provider 名进 locale 且删掉从未渲染的 `description`;`InstanceDetailPage` 的 `ds.type === 1` 改 `DataSourceType.ADMIN`、ADMIN/READ_ONLY 徽章进 i18n;`MonacoEditor` 的 "Loading editor..."、`LineageNode` 的 "External"、`ui/dialog` 的 sr-only "Close" 也一并进 locale。
+>
+> a11y:8 个文件里 20 个纯图标按钮补 `aria-label`(15 个新 key);新增 `parseMetaType` 做枚举成员校验(原先是 `as MetaType`,不存在的值会被渲染并回传服务端);`environmentColorKey` 改类型谓词(原先在 `includes` 校验**之前**断言);`AuditLogsPage` 的 `ref<any>` 换成 radix 自己的 `DateRange`(并发现必须用 `shallowRef`:Vue 的深解包会把日期类改写成结构化近似类型,radix 不再接受——这正是当初写 `any` 的原因)。
+>
+> 残留(有意):`utils/engine.ts` 的 `FALLBACK_STYLE.label = "Unknown"` 未动——引擎名是品牌名,唯一可翻译的 "Unknown" 只出现在 UNSPECIFIED 这一退化情况;`ManualSQLFilterBar` 的图标按钮没补 `aria-label`,因为该文件在 ⑦ 被删除。
+
+> **② toast 链路简化(决策:直接调用 vue-sonner,只保留时长策略)**
+>
+> Pinia toast store 的存在意义只是把每条 toast 交给 `AppToast` 的 deep-watch 再转发给 vue-sonner 然后删除——而 watcher 只看数组最后一项,同一 tick 的两条 toast 会丢一条;store 里的 `setTimeout` 自动移除是纯死代码(条目早已被删)。删除 `store/modules/toast.ts`,新增 `lib/notify.ts` 保留唯一值得保留的东西(错误 8s、其余 5s)并直接调用 vue-sonner;`AppToast.vue` 只剩带主题的 `<Toaster>`;`title` 参数也删了(无人传,`AppToast` 原本也丢弃它)。浏览器实测:连接测试失败的错误 toast 停留 **8.19s**。
+
+> **③ App*→ui/ 迁移(决策:混合——dialog/button/select 内联,AppInput 保留为一个 ui 原语)**
+>
+> - `AppModal` 16 处全部改为直接组合 `ui/dialog`,宽度契约(sm|md|lg|xl → max-w-sm|lg|2xl|4xl)显式写在调用点。手写的 `body.style.overflow` watch 删除——radix 的 `DialogOverlay` 本身就在跑一个**引用计数**的 `useBodyScrollLock`,这也修掉了旧行为:两个弹窗叠加时,关掉任一个都会把页面解锁,而在弹窗打开时离开页面会永久锁住 body。浏览器实测:叠加弹窗在最后一个关闭前 body 一直锁定,关闭后恢复。
+> - `AppButton` 8 处改 `ui/button`,spinner 由调用点显式写 `<Loader2 v-if="loading">`;原生 `<select>` 4 处改 `ui/select`。其中两个细节:radix 拒绝空字符串 item 值,所以"可选 schema"用哨兵项经 computed 映射回 `""`(否则选了 schema 就再也回不到"默认 schema");provider 类型是数字枚举,trigger 传 `String(enum)`、update 转回(实测选 DeepSeek 会带出 `https://api.deepseek.com`)。
+> - `AppInput` 70 处改为 `ui/form-field`。它仍是 Label+Input+错误/提示的组合,但修了接线:用 `useId()` 拿稳定 id(原来是每次渲染 `Math.random()`,label 关联在重渲染后失效)、错误/提示通过 `aria-describedby` 关联并设置 `aria-invalid`、`aria-required` 反映必填星号(故意不设原生 `required`,以免浏览器气泡取代应用文案);未声明的监听与属性(`@keyup.enter`、`autocomplete`)经 `inheritAttrs: false` + `v-bind="$attrs"` 仍然落到 input 上。浏览器实测:label↔input 关联、Add Instance 的字段错误(`aria-describedby` → "Instance title is required",填值后消失)、General Settings 的 hint、实例搜索框的 suffix 插槽、显式 id 优先。
+
+> **④ AuditLogsPage 抽取(决策:日期区间做成组件、CSV 拆成纯函数)**
+>
+> `components/audit/AuditLogsDateRangePicker.vue` 接管弹层、草稿、Clear/Cancel/Apply,并且只在区间真的变化时才 emit `apply`;页面只剩 `<... v-model="dateRange" @apply="refreshLogs" />`。`utils/dateRange.ts` 收敛纯函数(空/默认/克隆/比较、RFC 3339 日边界、胶囊文案)并带测试——原先重复两份的 `dateRangeChip`/`draftDateRangeChip` 合成一个 `formatDateRangeChip`。`utils/csv.ts` + `utils/auditLogsCsv.ts` 拆分 CSV:通用部分(单元格/转义/toCsv/文件名时间戳/下载)与审计列映射(两个展示函数作为 context 传入,保持纯函数)各带测试。
+>
+> 抽取过程中**暴露并修掉一个真实缺陷**:`latencyMs` 是 int64,protobuf 给的是 bigint,而 `JSON.stringify` 遇到 bigint 直接抛 "Do not know how to serialize a BigInt"。旧代码侥幸避开:它用 `String()` 打印所有单元格、只对嵌套的 request/response 做 JSON。新的 `csvCell` 打印 bigint/number/boolean、其余走 JSON,并有防回归测试。浏览器实测(修好后):导出一份 85 行(表头 + 84 条)文档,`createTime` 为 ISO-8601。AuditLogsPage 1184 → 873 行。
+
+> **⑤ 图引擎抽取(决策:纯函数模块而非有状态 composable)**
+>
+> `lib/lineageGraph.ts`(带 9 例测试)接管:`assignLayers`(从根 BFS,上游邻居一层向左、下游一层向右,不可达节点留在根层)、`layoutNodes`(层 → x,最左层为 0,按节点高度堆叠 y)、`nodeHeight`、`collectColumnEdgeIds` 与 `buildLineageEdges`(丢弃指向未知节点的边、去重、`DIRECT` 关系不加 "T" 标记、选中列时把无关边调暗——**包括选中的列一条都没匹配的情况**)。`rebuildGraph` 与 `updateGraphState` 原先各自复制一遍"列的边集合收集 + 双边构建"(约 90 行),节点数据字面量也有第三份;现在两者共用引擎,页面只保留自己的 reactivity、Vue Flow 接线与唯一的 `nodeDataFor`。LineageGraphPage 1307 → 1037 行。
+>
+> 浏览器实测两个图:Postgres `products` 表布局在 (0,0)/(280,0)/(280,140) 且 2 条边;MySQL `v_shipping_details` 视图把 4 张上游表放在根左侧一层(x 0 与 280、y 按 120+20 堆叠)、1 个下游视图在 560。选 `product_id` 两条边都高亮(宽 3),选无关的 `*` 一条变暗一条高亮;展开节点会发请求并把该方向标记为已加载;用方向键移动节点后再选列,位置保持不变;Reset 重新布局。
+
+> **⑥ MetadataBrowserPage 拆分(决策:路由 hint 是 leaf 的唯一信号,删除探测)**
+>
+> 原文建议"并行探测或后端 hint"。按你的要求先排查了"应用内的请求是否都带 `?metaType=`":**是**——列表→详情对八种 leaf 类型都带,搜索结果对 leaf 类型带,lineage / explain-sql / manual-sql / table-lineage / OpenLineage 的链接都带各自解析出的类型;不带 hint 的 push 只有 metadata 根、实例、面包屑祖先,而面包屑最后一项点击是 no-op,永远不会 push 它自己命名的对象。因此不再需要兼容"无 hint 的 leaf":手输或旧书签的无 hint leaf 现在渲染该对象的子列表(而不是串行试 7 种类型),hint 指错类型则直接显示注册表自己的 not-found,而不是静默走 7 次。
+>
+> `LEAF_LOADERS` 把每种 leaf 类型压成两行 loader(经 `getLeafValue`——唯一一处把 oneof case 名与消息类型绑定,并校验服务端确实返回了该类型);一个 `Leaf` 判别联合取代 8 个 ref 与 8 个 `isXxxDetailView` computed,模板按 `leaf?.metaType` 收窄,各详情组件仍拿到有类型的 prop;`fetchLeafDetail` 与 `fetchMetadataGroups` 共用 `resetViewState`。MetadataBrowserPage 1883 → 1475 行。
+>
+> 浏览器实测:hint 的 table 渲染详情(columns/indexes/lineage 页签)、schema 层渲染页签列表、无 hint 的 leaf 渲染子列表、错误 hint 显示错误卡片、列表点击与搜索结果都带 hint 且能渲染、manual SQL leaf(GUID 含编码过的 `/` 与空 schema `~`)渲染详情。
+
+> **⑦ 筛选条收敛(决策:一个组件四种 category,AuditLogs 面板保留)**
+>
+> `AdvancedSearchBar` 泛化为四种 category kind:`options`(静态或异步加载——内置的 instance/environment/engine 也变成普通 category,模板里四段几乎相同的 Command 块合成一段)、`input`(自由文本 + Apply)、`tags`(标签数组 + Apply)、`cascade`(按层推进,带返回按钮与显式 Apply)。ManualSQL 的 `ManualSQLFilterBar` 迁移后删除;MetadataBrowser 的 scope(级联异步)/type 也迁过来,页面自己只保留"对象搜索"这件不属于筛选的功能:搜索文本作为 `name` filter 抛出,页面把它防抖成 SearchMetadata 并在同一个 wrapper 里渲染结果下拉。AuditLogs 的日期区间 + 事件类型面板按你的选择保留。原来脆弱的 `target.closest(".relative")` click-outside 换成 `onClickOutside(ref)`。
+>
+> 迁移中修掉两处:① radix 的 combobox 会把选中项的 label 写回搜索框,而这个 term 正是组件用来过滤选项的,于是级联的下一层永远是空的("localmysql" 把所有数据库过滤掉了)——现在在层渲染完后清空;② 级联只在选中 schema 时才 apply,而 MySQL 根本没有 schema,所以 `instance;database` 这种 scope 永远无法应用——新的显式 Apply 允许在任意层级提交。另外搜索框的 placeholder 不再在有筛选胶囊时被清空(这个输入首先是搜索框)。
+>
+> 浏览器实测:数据库页仍是 Instance/Environment/Engine,选 `localmysql` 把 31 行收窄到 11 行并显示胶囊与 Clear filters;manual SQL 页的 Database/Schema/Tags 三种 kind 都能叠加胶囊,清除后列表恢复;metadata 页的级联列出 4 个实例与 11 个数据库、能在数据库层应用(MySQL)、type 筛选把 "customer" 的 31 条结果收窄到 3 张表、结果下拉可打开/点击导航/点击外部关闭。
+
+> **⑧ metadata 组件收敛(决策:务实抽共享件,不做配置驱动的通用组件)**
+>
+> `MetadataTabGroup`(泛型 tab 值,可选 count)取代四份逐字节相同的 details/history 页签条,以及 table detail 的带下划线变体(它的计数经由新的 `count` 保留);`MetadataColumnsSection` 接管 columns 的搜索框、计数徽章与表格(四个详情共用)——顺带**修掉一处真实漂移**:只有 table detail 的列搜索匹配 comment,所以同一个查询在别的详情里找不到该列,现在统一匹配 name 与 comment;`utils/format.ts` 的 `formatBytes`/`formatNumber`(bigint 友好,带测试)取代 TableList 与 TableMetadataDetail 的两份复制。table detail 的深链行为通过 props 保留:`selectedColumnName` 高亮行、`rowRef` 继续喂它的滚动映射。四个详情合计 1293 → 892 行(两个新共享件 145 行)。
+>
+> 浏览器实测:table detail 显示 Columns 30 / Indexes 6 / Lineage / Check Constraints 2 / History,切到 Indexes 列出 6 行,列搜索把 30 收窄到 2,`?column=price` 深链高亮该行,view / materialized view / manual SQL 详情的胶囊页签与列区块都正常。
+
+> **P2 之外的顺手修补**:§4 清单剩余项(4-6 MetaType 断言、4-7 EnvironmentColorKey、4-8 `ref<any>`、4-10 手拼 Timestamp)在第 2 个提交里一并完成;`api/database.ts` 的 diff 时间戳改用 `timestampFromDate`。
+
 ## 7. 改进路线图建议
 
 **第一步:止血(P0,约 2 天)** — ~~不碰架构,只收敛契约与死代码:`utils/guid.ts`(含编解码测试)→ 替换 4+3 处实现并修掉 ExplainSQL 的解析 bug;`utils/datetime.ts`;清死代码;修错误处理误用。~~ **已完成,见 §6.1。** 与原文的差异:GUID 部分没有止步于"收敛为单一工具",而是同时把 4 条路由改成重复参数,否则含 `/` 的名字仍然无法往返;locale 默认值从 `zh-CN` 统一为 `en-US`(`locales/index.ts` 与 `app.ts` 原先不一致)。
 
 **第二步:横向护栏(P1,约 1~1.5 周)** — ~~interceptor 全局 401;统一错误入口;`usePagedFetch` + `listAll` 落地并替换全部手写分页/截断拉取(**这一步直接消掉竞态与静默截断两类正确性问题**);`ConfirmDeleteDialog`;monaco 裁剪。~~ **已完成,见 §6.2 与 §6.3。** 与原文的差异:除了原文点名的 7 处截断,`UserManagementPage` 的用户列表(同样"pageSize 100 无分页")与成员选择器也一并修掉;错误文案按 code 分级(可操作类代码保留服务端原文),而不是一律替换成通用文案。
 
-**第三步:拆巨人(P2,约 2 周)** — `MetadataBrowserPage`、`LineageGraphPage`、`AuditLogsPage` 按 §3.3 方案拆分;筛选条收敛;App*→ui/ 迁移;toast 简化。每次拆分都先落 composable 测试。
+**第三步:拆巨人(P2,约 2 周)** — ~~`MetadataBrowserPage`、`LineageGraphPage`、`AuditLogsPage` 按 §3.3 方案拆分;筛选条收敛;App*→ui/ 迁移;toast 简化。~~ **已完成,见 §6.4。** 与原文的差异:① MetadataBrowser 的 leaf 类型不再"并行探测或让后端返回 hint",而是确认了应用内链接**总是**带 `?metaType=`,于是删掉整条探测路径(无 hint 即按列表渲染);② 原文的 `useLineageGraph`/`useDateRangePicker` 落成了**纯函数模块**(`lib/lineageGraph.ts`、`utils/dateRange.ts`)加一个日期区间组件,而不是有状态 composable——图布局与 CSV/日期纯函数因此可以直接单测(新增 23 例);③ 筛选条收敛后 AuditLogs 的日期区间+事件类型面板保留(交互形态差异大),`AdvancedSearchBar` 增加 cascade/input/tags 三类 kind;④ metadata List/Detail 按"务实抽共享件"收敛(页签条、列区块、格式化),没有做配置驱动的通用 List/Detail 组件。
 
 **第四步:防倒退(P3,持续)** — `vitest.config.ts` 加 coverage 阈值;把"`pnpm type-check` 内存"、"dist 体积"、"测试数"做成 CI 观察项;在 AGENTS.md 写清 `utils/` vs `lib/` 的分界标准(当前靠惯例,新代码归属靠猜)。
 
