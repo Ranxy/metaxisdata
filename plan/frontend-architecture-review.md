@@ -238,7 +238,7 @@ dist/assets/css.worker/html.worker/json.worker/editor.worker …
 
 ## 6. 技术债务清单(汇总)
 
-> **状态(2026-09-26):下表 5 条 P0 已全部完成并验证,落地内容见 §6.1;P1 及以下尚未开始。**
+> **状态(2026-09-26):下表 5 条 P0 与 5 条 P1 已全部完成并验证,落地内容见 §6.1 / §6.2(monaco 体积实测见 §6.3);P2 及以下尚未开始。**
 
 | 优先级 | 债务 | 位置/证据 | 预估工作量 |
 |--------|------|-----------|-----------|
@@ -295,13 +295,76 @@ dist/assets/css.worker/html.worker/json.worker/editor.worker …
 >
 > 配套:自研 `scripts/check-vue-i18n.mjs` 本就有 `HANDLE_ERROR_RE` 能识别 `handleError(err, "key")`,但 ESLint 的 `no-unused-keys` 看不到,故按该文件既有约定把 14 个 key 补进 `frontend/eslint.config.mjs` 的 `ignores`(注释仍写"via showSuccess / handleError composables")。
 
+### 6.2 P1 修复记录(已完成)
+
+实施者补写。§6 的 5 条 P1 全部落地,同一套门禁通过:`src` 测试 22 文件 / 126 例 → **29 文件 / 174 例**(新增 `listAll`、`usePagedFetch`、instance store、会话拦截器、错误映射、`ConfirmDeleteDialog`、monaco 裁剪的单测)。
+
+> **① 会话与错误处理(决策:transport 拦截器 + 回调注入;文案按 code 分级)**
+>
+> `api/session.ts` 给 ConnectRPC transport 挂一个 interceptor:非 `AuthService` 的请求收到 `Unauthenticated` 时调用注册的处理函数。`main.ts` 把它接到 `authStore.clearSession()` + 跳 `/login?expired=1`,登录页复用既有 Alert 显示 `error.sessionExpired`(书签式的重定向目标也保留)。`AuthService` 被豁免——密码错误同样是 `Unauthenticated`,那属于表单而不是会话登出。`fetchCurrentUser` 现在只在 `Code.Unauthenticated` 时清会话,5xx/断网不再被当成登出;`ensurePermissionsLoaded` 用模块级 in-flight promise 去重,同 tick 的两次导航只发一次 GetCurrentUser。
+>
+> 错误文案入口:新增 `errorText(error, t, fallbackKey)`(`utils/error.ts`)与 `useErrorMessage`(无 Pinia 的纯内联半)/ `useErrorHandler`(toast 半)。策略:可操作类代码(InvalidArgument / FailedPrecondition / NotFound / AlreadyExists / PermissionDenied / Unauthenticated)保留服务端原文("测试连接"失败的原因就在那里);其余代码(Internal / Unavailable / Unknown / DeadlineExceeded / …)统一用 `Record<Code, ErrorMessageKey>` 的中文句子;只有非 Connect 错误才落到调用方的 fallback key。该表的键类型由 locale 结构递归推导(`Leaves<MessageSchema["error"], "error.">`)——键写错、或 locale 删键,都会直接编译失败。
+>
+> 全仓原先并存的三种错误姿势(`handleError(e, t(key))` 之外,还有 `toastStore.error(e.message || t(key))` 与内联 `err instanceof Error ? …`)全部收敛到这两个入口(改动涉及 50 余处调用点);`extractErrorMessage` 只留给 console 诊断,并修掉它在服务端没给 message 时会退回 `[code]` 前缀的问题。另删除 auth store 里无人读取的 `error` 状态(最后一份手写 `err.message`)。
+>
+> 配套:`check-vue-i18n.mjs` 的 `HANDLE_ERROR_RE` 扩展为同时识别 `formatError(...)`(其测试同步扩了一条),并新增 `error.` 前缀豁免族;ESLint 的 `no-unused-keys` 无法追踪 handler 持有的 key,按文件既有约定把它们加进 `ignores`,注释说明存在性仍由自研脚本校验。
+
+> **② 分页与静默截断(决策:一个 `listAll` + 一个 `usePagedFetch`)**
+>
+> `api/list.ts` 的 `listAll(fetchPage)` 走完所有页,并在 token 不前进时停止;`listAllInstances` / `listAllEnvironments` / `listAllUsers` 三个 wrapper 取代了原先"只取第一页、不检查 nextPageToken"的调用。`composables/usePagedFetch.ts` 统一了三份逐字复制的 token-stack 手写分页(AuditLogs、ManualSQL、DatabaseManagement):items / isLoading / hasNext / hasPrevious + reset / refresh / goNext / goPrevious,内建序号戳(旧响应不能覆盖新状态)、AbortController(被取代的请求直接取消,api 层为此透传 `signal`)与 `onScopeDispose`(页面卸载即取消)。
+>
+> AuditLogs 的 CSV 导出改用 `listAll`,顺带获得 stuck-token 保护(原先的 do/while 没有);过滤器变更统一走 `reset()`(回第一页并清空历史),工具栏的"刷新"走 `refresh()`(留在当前页)。UserManagementPage 的列表也从"pageSize 100 且无分页 UI"改为走完所有页 + 本地搜索(超过 100 个用户原先静默丢行),Group/Iam 的成员选择器改用 `listAllUsers`。
+>
+> 有意保留:OpenLineage 的 tasks/datasets/runs、LLM profiles、metadata 列表(要么本身有分页 UI,要么是**故意**的单页摘要)——dashboard 的 `truncated` 标记是原文认可的正面范例,未动。
+
+> **③ instance store + EnvironmentSelect 归位(决策:比照 environment store,写动作一并收口)**
+>
+> `store/modules/instance.ts` 一次 `listAllInstances({ showDeleted: true })` 持有全部实例(含软删行),getters 提供 `active` / `deleted` / `byName` / `titleOf`(资源名或裸 id 都能解析),写动作(create/update/remove/restore/sync)内部刷新缓存。原先各自发起 ListInstances 的六个页面(InstanceManagement、DatabaseManagement、MetadataBrowser、ExplainSQL、OpenLineageSettings、InstanceDetail)全部改读 store;InstanceManagement 的搜索改为本地匹配(服务端过滤 + 首页截断正是丢行的来源)。
+>
+> InstanceDetailPage 不再用 `listInstances(filter)` 当 getInstance 用:列表**成功但不含该实例**才判定为已删除并跳走,请求失败改为页内报错(新增错误卡片),不再把网络错误伪装成"对象消失"。
+>
+> `EnvironmentSelect` 从 `components/common/` 移到 `components/environment/`(它直接读 auth/environment store 并内嵌环境创建弹窗,不是通用件),两个实例表单更新引用。
+
+> **④ ConfirmDeleteDialog(决策:统一外观,文案由 props 传入)**
+>
+> `components/common/ConfirmDeleteDialog.vue` 基于 `ui/dialog`(并带 `DialogDescription` 以满足 radix 的 a11y 要求)收敛 6 份逐字复制;原先三份有警示图标、三份没有,现在统一,`loading` 由调用方的 in-flight 状态驱动,取消/确认都通过 v-model 与 `confirm` 事件。6 个页面各减约 20 行,并新增一个 4 例的组件测试(标题/文案/目标名渲染、confirm 事件、取消关闭、loading 禁用)。
+
+> **⑤ monaco 打包裁剪 + 主题跟随**:见下节 §6.3(实测数据单列)。
+
+---
+
+## 6.3 monaco 裁剪实测
+
+**做法(决策:手工组合 ESM API,而不是引 `sql.contribution`)**:`components/monaco-editor/monaco.ts` 现在只 `import * as monaco from "monaco-editor/esm/vs/editor/editor.api"`,再按需 side-effect 引入 12 个 editor contribution(bracketMatching / clipboard / comment / contextmenu / cursorUndo / find / folding / hover / indentation / linesOperations / multicursor / wordOperations),SQL 由 `basic-languages/sql/sql.js` 的 `conf` + `language` 手工 `languages.register` / `setLanguageConfiguration` / `setMonarchTokensProvider` 注册。
+
+**为什么不用现成的 `sql.contribution`**:在 0.55.1 里它 import `basic-languages/_.contribution`,后者 side-effect 引入**全部** editor contribution(已在 node_modules 与上游核对)——用它等于把裁剪全部作废。实测:用 `sql.contribution` = 7.0 MB dist / 3.51 MB chunk;手工注册 = 6.4 MB / 2.94 MB。
+
+其余:`monaco-workers.ts` 只留 `editor.worker`(JSON worker 删除),`vite.config.ts` 的 `manualChunks` 固定分包移除,`Language` 类型收敛为 `"sql" | "plaintext"`(`types.ts`,仓库内没有任何调用点传 json/javascript)。monaco 0.55 的 ESM 入口无法被 TypeScript bundler 解析(它的 `./*` export target 没有扩展名),补了 `monaco-esm.d.ts` 声明垫片。同时修掉 §5.1 末尾的暗色主题问题:`MonacoEditor.vue` 用 app store 的 `theme` + vueuse 的 `usePreferredDark()` 解析出 `vs` / `vs-dark`,构造时传入并在变化时 `editor.setTheme()`,dark mode 与"跟随系统"都实时生效。
+
+**实测体积**(`NODE_OPTIONS=--max_old_space_size=8000 pnpm --dir frontend build`):
+
+| 指标 | 裁剪前 | 裁剪后 |
+|------|--------|--------|
+| `dist` 总计 | **17 MB**(实测;与 §1.2 / §5.1 记录一致) | **6.4 MB** |
+| monaco chunk | 3,773 kB(全语言,被 `manualChunks` 钉住) | 2,940 kB(editor core + 12 个 contribution + sql,随使用它的 chunk 走) |
+| `ts.worker-*.js` | 有(§5.1 记录 6.7 MB,本轮基线日志未留存) | 不再产出 |
+| `css.worker` / `html.worker` / `json.worker` | 有 | 不再产出 |
+| `tsMode` / `cssMode` / `htmlMode` / `jsonMode` / `lspLanguageFeatures` chunk | 有 | 不再产出 |
+| `editor.worker-*.js` | 有 | 240 kB(唯一保留的 worker) |
+
+**代价(有意接受)**:只剩 SQL 与 plaintext 两种语言;`json`/`css`/`html`/`typescript` 四个语言服务与它们的 worker、其余 81 个 basic-language(目录下 82 个,减去 sql)全部移除;`editor.all` 里未保留的其余 contribution 也一并去掉(suggest/自动补全、codeAction、codelens、rename、inlayHints、semanticTokens、smartSelect、snippet、stickyScroll、links、codeLens、parameterHints、formatDocument 等——格式化的"Format SQL"是应用自己用 `sql-formatter` 注册的 action,不依赖 monaco 的 `formatActions`)。**没有丢 `wordWrap`**:0.55.1 里它根本不是 contribution(`editor.action.toggleWordWrap` 在整个包里 0 次),`wordWrap: "on"` 由 editor core 选项(`common/config/editorOptions.js`)消费,`defaultEditorOptions()` 一直在传。
+
+**防倒退**:`components/monaco-editor/monaco.test.ts`(SQL 已注册、json/javascript/css/html 未注册、`editor.tokenize("SELECT 1","sql")` 有 token、`editor.create`/`setTheme` 可用)与 `MonacoEditor.test.ts`(暗色时构造选项带 `theme:"vs-dark"`、store 主题变化触发 `setTheme`)。
+
+**未能 headless 验证的**:真实浏览器里的高亮颜色、vs/vs-dark 视觉切换、find/右键菜单等 widget、自动布局与 worker 通信(jsdom 不渲染编辑器视图);构建层面已确认只 emit `editor.worker`。
+
 ---
 
 ## 7. 改进路线图建议
 
 **第一步:止血(P0,约 2 天)** — ~~不碰架构,只收敛契约与死代码:`utils/guid.ts`(含编解码测试)→ 替换 4+3 处实现并修掉 ExplainSQL 的解析 bug;`utils/datetime.ts`;清死代码;修错误处理误用。~~ **已完成,见 §6.1。** 与原文的差异:GUID 部分没有止步于"收敛为单一工具",而是同时把 4 条路由改成重复参数,否则含 `/` 的名字仍然无法往返;locale 默认值从 `zh-CN` 统一为 `en-US`(`locales/index.ts` 与 `app.ts` 原先不一致)。
 
-**第二步:横向护栏(P1,约 1~1.5 周)** — interceptor 全局 401;统一错误入口;`usePagedFetch` + `listAll` 落地并替换全部手写分页/截断拉取(**这一步直接消掉竞态与静默截断两类正确性问题**);`ConfirmDeleteDialog`;monaco 裁剪。
+**第二步:横向护栏(P1,约 1~1.5 周)** — ~~interceptor 全局 401;统一错误入口;`usePagedFetch` + `listAll` 落地并替换全部手写分页/截断拉取(**这一步直接消掉竞态与静默截断两类正确性问题**);`ConfirmDeleteDialog`;monaco 裁剪。~~ **已完成,见 §6.2 与 §6.3。** 与原文的差异:除了原文点名的 7 处截断,`UserManagementPage` 的用户列表(同样"pageSize 100 无分页")与成员选择器也一并修掉;错误文案按 code 分级(可操作类代码保留服务端原文),而不是一律替换成通用文案。
 
 **第三步:拆巨人(P2,约 2 周)** — `MetadataBrowserPage`、`LineageGraphPage`、`AuditLogsPage` 按 §3.3 方案拆分;筛选条收敛;App*→ui/ 迁移;toast 简化。每次拆分都先落 composable 测试。
 
