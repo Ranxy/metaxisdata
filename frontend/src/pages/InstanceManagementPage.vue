@@ -685,7 +685,7 @@ const createForm = ref({
   engine: "",
   environment: "",
   activation: true,
-  enableSync: false,
+  enableSync: true,
   syncIntervalMinutes: "15",
   adminDataSource: {
     id: "admin",
@@ -812,7 +812,7 @@ function openCreateModal() {
     engine: "",
     environment: "",
     activation: true,
-    enableSync: false,
+    enableSync: true,
     syncIntervalMinutes: "15",
     adminDataSource: {
       id: "admin",
