@@ -352,10 +352,10 @@
       </div>
 
       <div v-else>
-        <template v-if="isTableDetailView && leafTable">
+        <template v-if="leaf?.metaType === MetaType.TABLE">
           <CardContent class="p-0">
             <TableMetadataDetail
-              :table="leafTable"
+              :table="leaf.table"
               :instance-engine="currentInstanceEngine"
               :guid="currentGuid"
               :selected-column-name="selectedColumnName"
@@ -363,55 +363,55 @@
           </CardContent>
         </template>
 
-        <template v-else-if="isExternalTableDetailView && leafExternalTable">
+        <template v-else-if="leaf?.metaType === MetaType.EXTERNAL_TABLE">
           <CardContent class="p-0">
             <ExternalTableMetadataDetail
-              :table="leafExternalTable"
+              :table="leaf.table"
               :guid="currentGuid"
             />
           </CardContent>
         </template>
 
-        <template v-else-if="isViewDetailView && leafView">
+        <template v-else-if="leaf?.metaType === MetaType.VIEW">
           <CardContent class="p-0">
             <ViewMetadataDetail
-              :view="leafView"
+              :view="leaf.view"
               :guid="currentGuid"
             />
           </CardContent>
         </template>
 
-        <template v-else-if="isMaterializedViewDetailView && leafMaterializedView">
+        <template v-else-if="leaf?.metaType === MetaType.MATERIALIZED_VIEW">
           <CardContent class="p-0">
             <MaterializedViewMetadataDetail
-              :view="leafMaterializedView"
+              :view="leaf.view"
               :guid="currentGuid"
             />
           </CardContent>
         </template>
 
-        <template v-else-if="isFunctionDetailView && leafFunction">
+        <template v-else-if="leaf?.metaType === MetaType.FUNCTION">
           <CardContent class="p-0">
-            <FunctionMetadataDetail :fn="leafFunction" />
+            <FunctionMetadataDetail :fn="leaf.fn" />
           </CardContent>
         </template>
 
-        <template v-else-if="isProcedureDetailView && leafProcedure">
+        <template v-else-if="leaf?.metaType === MetaType.PROCEDURE">
           <CardContent class="p-0">
-            <ProcedureMetadataDetail :proc="leafProcedure" />
+            <ProcedureMetadataDetail :proc="leaf.proc" />
           </CardContent>
         </template>
 
-        <template v-else-if="isSequenceDetailView && leafSequence">
+        <template v-else-if="leaf?.metaType === MetaType.SEQUENCE">
           <CardContent class="p-0">
-            <SequenceMetadataDetail :seq="leafSequence" />
+            <SequenceMetadataDetail :seq="leaf.seq" />
           </CardContent>
         </template>
 
-        <template v-else-if="isManualSQLDetailView && leafManualSQL">
+        <template v-else-if="leaf?.metaType === MetaType.MANUAL_SQL">
           <CardContent class="p-0">
             <ManualSQLMetadataDetail
-              :manual-sql="leafManualSQL"
+              :manual-sql="leaf.manualSql"
               :guid="currentGuid"
             />
           </CardContent>
@@ -696,14 +696,105 @@ const selectedNextPageToken = computed(() => {
 
 const currentInstanceEngine = ref<Engine | null>(null);
 
-const leafTable = ref<TableMetadata | null>(null);
-const leafExternalTable = ref<ExternalTableMetadata | null>(null);
-const leafView = ref<ViewMetadata | null>(null);
-const leafMaterializedView = ref<MaterializedViewMetadata | null>(null);
-const leafFunction = ref<FunctionMetadata | null>(null);
-const leafProcedure = ref<ProcedureMetadata | null>(null);
-const leafSequence = ref<SequenceMetadata | null>(null);
-const leafManualSQL = ref<ManualSQLMetadata | null>(null);
+/**
+ * The object a leaf route resolved to. The union is discriminated by `metaType`
+ * so the template can hand each detail component a typed prop without casts, and
+ * `metaType` decides which loader and which component a route needs.
+ */
+type Leaf =
+  | { metaType: MetaType.TABLE; table: TableMetadata }
+  | { metaType: MetaType.EXTERNAL_TABLE; table: ExternalTableMetadata }
+  | { metaType: MetaType.VIEW; view: ViewMetadata }
+  | { metaType: MetaType.MATERIALIZED_VIEW; view: MaterializedViewMetadata }
+  | { metaType: MetaType.FUNCTION; fn: FunctionMetadata }
+  | { metaType: MetaType.PROCEDURE; proc: ProcedureMetadata }
+  | { metaType: MetaType.SEQUENCE; seq: SequenceMetadata }
+  | { metaType: MetaType.MANUAL_SQL; manualSql: ManualSQLMetadata };
+
+const leaf = ref<Leaf | null>(null);
+
+type LeafType = Leaf["metaType"];
+
+/** Each metadata oneof case name paired with the message it carries. */
+interface LeafValueMap {
+  tableMetadata: TableMetadata;
+  externalTableMetadata: ExternalTableMetadata;
+  viewMetadata: ViewMetadata;
+  materializedViewMetadata: MaterializedViewMetadata;
+  functionMetadata: FunctionMetadata;
+  procedureMetadata: ProcedureMetadata;
+  sequenceMetadata: SequenceMetadata;
+  manualSqlMetadata: ManualSQLMetadata;
+}
+
+/**
+ * One metadata read, narrowed to the type the route named. The single cast is
+ * what couples a oneof case name to its message; every loader is typed by it.
+ */
+async function getLeafValue<C extends keyof LeafValueMap>(
+  guid: string,
+  metaType: MetaType,
+  expected: C
+): Promise<LeafValueMap[C]> {
+  const detail = await getMetadata({ guid, metaType });
+  const type = detail.metadata?.type;
+  if (type?.case !== expected) {
+    throw new Error(`expected ${expected} for ${guid}`);
+  }
+  return type.value as LeafValueMap[C];
+}
+
+/** How each leaf type is fetched. A route without a hint never loads a leaf. */
+const LEAF_LOADERS: Record<LeafType, (guid: string) => Promise<Leaf>> = {
+  [MetaType.TABLE]: async (guid) => ({
+    metaType: MetaType.TABLE,
+    table: await getLeafValue(guid, MetaType.TABLE, "tableMetadata"),
+  }),
+  [MetaType.EXTERNAL_TABLE]: async (guid) => ({
+    metaType: MetaType.EXTERNAL_TABLE,
+    table: await getLeafValue(
+      guid,
+      MetaType.EXTERNAL_TABLE,
+      "externalTableMetadata"
+    ),
+  }),
+  [MetaType.VIEW]: async (guid) => ({
+    metaType: MetaType.VIEW,
+    view: await getLeafValue(guid, MetaType.VIEW, "viewMetadata"),
+  }),
+  [MetaType.MATERIALIZED_VIEW]: async (guid) => ({
+    metaType: MetaType.MATERIALIZED_VIEW,
+    view: await getLeafValue(
+      guid,
+      MetaType.MATERIALIZED_VIEW,
+      "materializedViewMetadata"
+    ),
+  }),
+  [MetaType.FUNCTION]: async (guid) => ({
+    metaType: MetaType.FUNCTION,
+    fn: await getLeafValue(guid, MetaType.FUNCTION, "functionMetadata"),
+  }),
+  [MetaType.PROCEDURE]: async (guid) => ({
+    metaType: MetaType.PROCEDURE,
+    proc: await getLeafValue(guid, MetaType.PROCEDURE, "procedureMetadata"),
+  }),
+  [MetaType.SEQUENCE]: async (guid) => ({
+    metaType: MetaType.SEQUENCE,
+    seq: await getLeafValue(guid, MetaType.SEQUENCE, "sequenceMetadata"),
+  }),
+  [MetaType.MANUAL_SQL]: async (guid) => ({
+    metaType: MetaType.MANUAL_SQL,
+    manualSql: await getLeafValue(
+      guid,
+      MetaType.MANUAL_SQL,
+      "manualSqlMetadata"
+    ),
+  }),
+};
+
+function isLeafType(metaType: MetaType | null): metaType is LeafType {
+  return metaType != null && metaType in LEAF_LOADERS;
+}
 
 type ExternalDatasetDetail = {
   name: string;
@@ -716,60 +807,6 @@ const requestedLeafMetaType = computed(() =>
 );
 
 const selectedColumnName = computed(() => getQueryString("column"));
-
-const isTableDetailView = computed(() => {
-  return (
-    requestedLeafMetaType.value === MetaType.TABLE || leafTable.value != null
-  );
-});
-
-const isExternalTableDetailView = computed(() => {
-  return (
-    requestedLeafMetaType.value === MetaType.EXTERNAL_TABLE ||
-    leafExternalTable.value != null
-  );
-});
-
-const isViewDetailView = computed(() => {
-  return (
-    requestedLeafMetaType.value === MetaType.VIEW || leafView.value != null
-  );
-});
-
-const isMaterializedViewDetailView = computed(() => {
-  return (
-    requestedLeafMetaType.value === MetaType.MATERIALIZED_VIEW ||
-    leafMaterializedView.value != null
-  );
-});
-
-const isFunctionDetailView = computed(() => {
-  return (
-    requestedLeafMetaType.value === MetaType.FUNCTION ||
-    leafFunction.value != null
-  );
-});
-
-const isProcedureDetailView = computed(() => {
-  return (
-    requestedLeafMetaType.value === MetaType.PROCEDURE ||
-    leafProcedure.value != null
-  );
-});
-
-const isSequenceDetailView = computed(() => {
-  return (
-    requestedLeafMetaType.value === MetaType.SEQUENCE ||
-    leafSequence.value != null
-  );
-});
-
-const isManualSQLDetailView = computed(() => {
-  return (
-    requestedLeafMetaType.value === MetaType.MANUAL_SQL ||
-    leafManualSQL.value != null
-  );
-});
 
 const externalDatasetDetail = computed<ExternalDatasetDetail | null>(() => {
   if (!currentGuid.value.startsWith("external:")) {
@@ -794,17 +831,7 @@ const isExternalDatasetDetailView = computed(() => {
 // `isLoading` is part of the condition so the chrome never flashes the list
 // header while a detail request is still in flight.
 const isLeafDetailView = computed(() => {
-  return (
-    leafTable.value != null ||
-    leafExternalTable.value != null ||
-    leafView.value != null ||
-    leafMaterializedView.value != null ||
-    leafFunction.value != null ||
-    leafProcedure.value != null ||
-    leafSequence.value != null ||
-    leafManualSQL.value != null ||
-    externalDatasetDetail.value != null
-  );
+  return leaf.value != null || externalDatasetDetail.value != null;
 });
 
 const showListChrome = computed(
@@ -919,16 +946,44 @@ async function fetchCurrentInstanceEngineIfNeeded() {
   }
 }
 
-async function fetchMetadataGroups() {
-  isLoading.value = true;
+/** Clears every trace of the previously shown view before a new fetch. */
+function resetViewState() {
+  leaf.value = null;
   error.value = null;
-  leafTable.value = null;
-  leafExternalTable.value = null;
-  leafView.value = null;
-  leafMaterializedView.value = null;
-  leafFunction.value = null;
-  leafProcedure.value = null;
-  leafSequence.value = null;
+  metadataGroups.value = [];
+  nextPageTokenByMetaType.clear();
+  activeMetaType.value = null;
+  selectedMetaType.value = null;
+}
+
+/**
+ * Loads the leaf object the route named with `?metaType`. A route without that
+ * hint is a list route by definition — the app's own links always carry the hint,
+ * so a leaf is never guessed by probing every type (that cost up to seven serial
+ * round trips).
+ */
+async function fetchLeafDetail(metaType: LeafType) {
+  resetViewState();
+  isLoading.value = true;
+  try {
+    await fetchCurrentInstanceEngineIfNeeded();
+    leaf.value = await LEAF_LOADERS[metaType](currentGuid.value);
+  } catch (e) {
+    error.value = formatError(e, "metadataBrowser.fetchError");
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+async function fetchMetadataGroups() {
+  const requestedLeaf = requestedLeafMetaType.value;
+  if (isLeafType(requestedLeaf)) {
+    await fetchLeafDetail(requestedLeaf);
+    return;
+  }
+
+  resetViewState();
+  isLoading.value = true;
 
   try {
     await fetchCurrentInstanceEngineIfNeeded();
@@ -940,7 +995,6 @@ async function fetchMetadataGroups() {
 
     metadataGroups.value = response.typesStoredMetadata;
 
-    nextPageTokenByMetaType.clear();
     for (const group of response.typesStoredMetadata) {
       nextPageTokenByMetaType.set(group.metaType, group.nextPageToken);
     }
@@ -949,444 +1003,11 @@ async function fetchMetadataGroups() {
       activeMetaType.value = response.typesStoredMetadata[0].metaType;
     }
 
-    // Enable pagination for the currently active tab immediately.
-    // The backend returns a nextPageToken per metaType in the initial response.
+    // Enable pagination for the currently active tab immediately: the backend
+    // returns a nextPageToken per metaType in the initial response.
     if (activeMetaType.value && !selectedMetaType.value) {
       selectedMetaType.value = activeMetaType.value;
     }
-
-    // If we are at a leaf object (e.g. table/view), ListMetadata may return
-    // non-empty children (columns).  When the caller explicitly requests a leaf
-    // type via ?metaType, still call GetMetadata so the detail view can render.
-    const explicitLeaf = requestedLeafMetaType.value != null;
-    if (response.typesStoredMetadata.length === 0 || explicitLeaf) {
-      try {
-        const preferred = requestedLeafMetaType.value;
-
-        if (preferred === MetaType.TABLE) {
-          const detail = await getMetadata({
-            guid: currentGuid.value,
-            metaType: MetaType.TABLE,
-          });
-          if (detail.metadata?.type?.case === "tableMetadata") {
-            leafTable.value = detail.metadata.type.value;
-            return;
-          }
-          if (!explicitLeaf) return;
-        }
-
-        if (preferred === MetaType.EXTERNAL_TABLE) {
-          const detail = await getMetadata({
-            guid: currentGuid.value,
-            metaType: MetaType.EXTERNAL_TABLE,
-          });
-          if (detail.metadata?.type?.case === "externalTableMetadata") {
-            leafExternalTable.value = detail.metadata.type.value;
-            return;
-          }
-          if (!explicitLeaf) return;
-        }
-
-        if (preferred === MetaType.VIEW) {
-          const detail = await getMetadata({
-            guid: currentGuid.value,
-            metaType: MetaType.VIEW,
-          });
-          if (detail.metadata?.type?.case === "viewMetadata") {
-            leafView.value = detail.metadata.type.value;
-            return;
-          }
-          if (!explicitLeaf) return;
-        }
-
-        if (preferred === MetaType.MATERIALIZED_VIEW) {
-          const detail = await getMetadata({
-            guid: currentGuid.value,
-            metaType: MetaType.MATERIALIZED_VIEW,
-          });
-          if (detail.metadata?.type?.case === "materializedViewMetadata") {
-            leafMaterializedView.value = detail.metadata.type.value;
-            return;
-          }
-          if (!explicitLeaf) return;
-        }
-
-        if (preferred === MetaType.FUNCTION) {
-          const detail = await getMetadata({
-            guid: currentGuid.value,
-            metaType: MetaType.FUNCTION,
-          });
-          if (detail.metadata?.type?.case === "functionMetadata") {
-            leafFunction.value = detail.metadata.type.value;
-            return;
-          }
-          if (!explicitLeaf) return;
-        }
-
-        if (preferred === MetaType.PROCEDURE) {
-          const detail = await getMetadata({
-            guid: currentGuid.value,
-            metaType: MetaType.PROCEDURE,
-          });
-          if (detail.metadata?.type?.case === "procedureMetadata") {
-            leafProcedure.value = detail.metadata.type.value;
-            return;
-          }
-          if (!explicitLeaf) return;
-        }
-
-        if (preferred === MetaType.SEQUENCE) {
-          const detail = await getMetadata({
-            guid: currentGuid.value,
-            metaType: MetaType.SEQUENCE,
-          });
-          if (detail.metadata?.type?.case === "sequenceMetadata") {
-            leafSequence.value = detail.metadata.type.value;
-            return;
-          }
-          if (!explicitLeaf) return;
-        }
-
-        // No hint from route: try common leaf types.
-        const tableDetail = await getMetadata({
-          guid: currentGuid.value,
-          metaType: MetaType.TABLE,
-        });
-        if (tableDetail.metadata?.type?.case === "tableMetadata") {
-          leafTable.value = tableDetail.metadata.type.value;
-          return;
-        }
-
-        const externalTableDetail = await getMetadata({
-          guid: currentGuid.value,
-          metaType: MetaType.EXTERNAL_TABLE,
-        });
-        if (
-          externalTableDetail.metadata?.type?.case === "externalTableMetadata"
-        ) {
-          leafExternalTable.value = externalTableDetail.metadata.type.value;
-          return;
-        }
-
-        const viewDetail = await getMetadata({
-          guid: currentGuid.value,
-          metaType: MetaType.VIEW,
-        });
-        if (viewDetail.metadata?.type?.case === "viewMetadata") {
-          leafView.value = viewDetail.metadata.type.value;
-          return;
-        }
-
-        const mvDetail = await getMetadata({
-          guid: currentGuid.value,
-          metaType: MetaType.MATERIALIZED_VIEW,
-        });
-        if (mvDetail.metadata?.type?.case === "materializedViewMetadata") {
-          leafMaterializedView.value = mvDetail.metadata.type.value;
-          return;
-        }
-
-        const fnDetail = await getMetadata({
-          guid: currentGuid.value,
-          metaType: MetaType.FUNCTION,
-        });
-        if (fnDetail.metadata?.type?.case === "functionMetadata") {
-          leafFunction.value = fnDetail.metadata.type.value;
-          return;
-        }
-
-        const procDetail = await getMetadata({
-          guid: currentGuid.value,
-          metaType: MetaType.PROCEDURE,
-        });
-        if (procDetail.metadata?.type?.case === "procedureMetadata") {
-          leafProcedure.value = procDetail.metadata.type.value;
-          return;
-        }
-
-        const seqDetail = await getMetadata({
-          guid: currentGuid.value,
-          metaType: MetaType.SEQUENCE,
-        });
-        if (seqDetail.metadata?.type?.case === "sequenceMetadata") {
-          leafSequence.value = seqDetail.metadata.type.value;
-        }
-      } catch {
-        // Ignore; keep empty state for unhandled leaf objects.
-      }
-    }
-  } catch (e) {
-    error.value = formatError(e, "metadataBrowser.fetchError");
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-async function fetchSequenceDetail() {
-  isLoading.value = true;
-  error.value = null;
-  leafTable.value = null;
-  leafExternalTable.value = null;
-  leafView.value = null;
-  leafMaterializedView.value = null;
-  leafFunction.value = null;
-  leafProcedure.value = null;
-  leafSequence.value = null;
-  leafManualSQL.value = null;
-  metadataGroups.value = [];
-  nextPageTokenByMetaType.clear();
-  activeMetaType.value = null;
-  selectedMetaType.value = null;
-
-  try {
-    await fetchCurrentInstanceEngineIfNeeded();
-
-    const detail = await getMetadata({
-      guid: currentGuid.value,
-      metaType: MetaType.SEQUENCE,
-    });
-
-    if (detail.metadata?.type?.case !== "sequenceMetadata") {
-      throw new Error("unexpected metadata type");
-    }
-
-    leafSequence.value = detail.metadata.type.value;
-  } catch (e) {
-    error.value = formatError(e, "metadataBrowser.fetchError");
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-async function fetchManualSQLDetail() {
-  isLoading.value = true;
-  error.value = null;
-  leafTable.value = null;
-  leafExternalTable.value = null;
-  leafView.value = null;
-  leafMaterializedView.value = null;
-  leafFunction.value = null;
-  leafProcedure.value = null;
-  leafSequence.value = null;
-  leafManualSQL.value = null;
-  metadataGroups.value = [];
-  nextPageTokenByMetaType.clear();
-  activeMetaType.value = null;
-  selectedMetaType.value = null;
-
-  try {
-    await fetchCurrentInstanceEngineIfNeeded();
-
-    const detail = await getMetadata({
-      guid: currentGuid.value,
-      metaType: MetaType.MANUAL_SQL,
-    });
-
-    if (detail.metadata?.type?.case !== "manualSqlMetadata") {
-      throw new Error("unexpected metadata type");
-    }
-
-    leafManualSQL.value = detail.metadata.type.value;
-  } catch (e) {
-    error.value = formatError(e, "metadataBrowser.fetchError");
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-async function fetchProcedureDetail() {
-  isLoading.value = true;
-  error.value = null;
-  leafTable.value = null;
-  leafExternalTable.value = null;
-  leafView.value = null;
-  leafMaterializedView.value = null;
-  leafFunction.value = null;
-  leafProcedure.value = null;
-  leafSequence.value = null;
-  metadataGroups.value = [];
-  nextPageTokenByMetaType.clear();
-  activeMetaType.value = null;
-  selectedMetaType.value = null;
-
-  try {
-    await fetchCurrentInstanceEngineIfNeeded();
-
-    const detail = await getMetadata({
-      guid: currentGuid.value,
-      metaType: MetaType.PROCEDURE,
-    });
-
-    if (detail.metadata?.type?.case !== "procedureMetadata") {
-      throw new Error("unexpected metadata type");
-    }
-
-    leafProcedure.value = detail.metadata.type.value;
-  } catch (e) {
-    error.value = formatError(e, "metadataBrowser.fetchError");
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-async function fetchFunctionDetail() {
-  isLoading.value = true;
-  error.value = null;
-  leafTable.value = null;
-  leafExternalTable.value = null;
-  leafView.value = null;
-  leafMaterializedView.value = null;
-  leafFunction.value = null;
-  leafProcedure.value = null;
-  leafSequence.value = null;
-  metadataGroups.value = [];
-  nextPageTokenByMetaType.clear();
-  activeMetaType.value = null;
-  selectedMetaType.value = null;
-
-  try {
-    await fetchCurrentInstanceEngineIfNeeded();
-
-    const detail = await getMetadata({
-      guid: currentGuid.value,
-      metaType: MetaType.FUNCTION,
-    });
-
-    if (detail.metadata?.type?.case !== "functionMetadata") {
-      throw new Error("unexpected metadata type");
-    }
-
-    leafFunction.value = detail.metadata.type.value;
-  } catch (e) {
-    error.value = formatError(e, "metadataBrowser.fetchError");
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-async function fetchMaterializedViewDetail() {
-  isLoading.value = true;
-  error.value = null;
-  leafTable.value = null;
-  leafExternalTable.value = null;
-  leafView.value = null;
-  leafMaterializedView.value = null;
-  metadataGroups.value = [];
-  nextPageTokenByMetaType.clear();
-  activeMetaType.value = null;
-  selectedMetaType.value = null;
-
-  try {
-    await fetchCurrentInstanceEngineIfNeeded();
-
-    const detail = await getMetadata({
-      guid: currentGuid.value,
-      metaType: MetaType.MATERIALIZED_VIEW,
-    });
-
-    if (detail.metadata?.type?.case !== "materializedViewMetadata") {
-      throw new Error("unexpected metadata type");
-    }
-
-    leafMaterializedView.value = detail.metadata.type.value;
-  } catch (e) {
-    error.value = formatError(e, "metadataBrowser.fetchError");
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-async function fetchTableDetail() {
-  isLoading.value = true;
-  error.value = null;
-  leafTable.value = null;
-  leafExternalTable.value = null;
-  leafView.value = null;
-  metadataGroups.value = [];
-  nextPageTokenByMetaType.clear();
-  activeMetaType.value = null;
-  selectedMetaType.value = null;
-
-  try {
-    await fetchCurrentInstanceEngineIfNeeded();
-
-    const detail = await getMetadata({
-      guid: currentGuid.value,
-      metaType: MetaType.TABLE,
-    });
-
-    if (detail.metadata?.type?.case !== "tableMetadata") {
-      throw new Error("unexpected metadata type");
-    }
-
-    leafTable.value = detail.metadata.type.value;
-  } catch (e) {
-    error.value = formatError(e, "metadataBrowser.fetchError");
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-async function fetchExternalTableDetail() {
-  isLoading.value = true;
-  error.value = null;
-  leafTable.value = null;
-  leafExternalTable.value = null;
-  leafView.value = null;
-  leafMaterializedView.value = null;
-  leafFunction.value = null;
-  leafProcedure.value = null;
-  leafSequence.value = null;
-  leafManualSQL.value = null;
-  metadataGroups.value = [];
-  nextPageTokenByMetaType.clear();
-  activeMetaType.value = null;
-  selectedMetaType.value = null;
-
-  try {
-    await fetchCurrentInstanceEngineIfNeeded();
-
-    const detail = await getMetadata({
-      guid: currentGuid.value,
-      metaType: MetaType.EXTERNAL_TABLE,
-    });
-
-    if (detail.metadata?.type?.case !== "externalTableMetadata") {
-      throw new Error("unexpected metadata type");
-    }
-
-    leafExternalTable.value = detail.metadata.type.value;
-  } catch (e) {
-    error.value = formatError(e, "metadataBrowser.fetchError");
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-async function fetchViewDetail() {
-  isLoading.value = true;
-  error.value = null;
-  leafTable.value = null;
-  leafExternalTable.value = null;
-  leafView.value = null;
-  metadataGroups.value = [];
-  nextPageTokenByMetaType.clear();
-  activeMetaType.value = null;
-  selectedMetaType.value = null;
-
-  try {
-    await fetchCurrentInstanceEngineIfNeeded();
-
-    const detail = await getMetadata({
-      guid: currentGuid.value,
-      metaType: MetaType.VIEW,
-    });
-
-    if (detail.metadata?.type?.case !== "viewMetadata") {
-      throw new Error("unexpected metadata type");
-    }
-
-    leafView.value = detail.metadata.type.value;
   } catch (e) {
     error.value = formatError(e, "metadataBrowser.fetchError");
   } finally {
@@ -1593,18 +1214,7 @@ watch(
     route.query.externalDatasetType,
   ],
   async () => {
-    activeMetaType.value = null;
-    selectedMetaType.value = null;
-    nextPageTokenByMetaType.clear();
     currentInstanceEngine.value = null;
-    leafTable.value = null;
-    leafExternalTable.value = null;
-    leafView.value = null;
-    leafMaterializedView.value = null;
-    leafFunction.value = null;
-    leafProcedure.value = null;
-    leafSequence.value = null;
-    leafManualSQL.value = null;
 
     if (isRootPath.value) {
       await fetchInstances();
@@ -1613,25 +1223,7 @@ watch(
       isLoading.value = false;
       metadataGroups.value = [];
     } else {
-      if (requestedLeafMetaType.value === MetaType.TABLE) {
-        await fetchTableDetail();
-      } else if (requestedLeafMetaType.value === MetaType.EXTERNAL_TABLE) {
-        await fetchExternalTableDetail();
-      } else if (requestedLeafMetaType.value === MetaType.VIEW) {
-        await fetchViewDetail();
-      } else if (requestedLeafMetaType.value === MetaType.MATERIALIZED_VIEW) {
-        await fetchMaterializedViewDetail();
-      } else if (requestedLeafMetaType.value === MetaType.FUNCTION) {
-        await fetchFunctionDetail();
-      } else if (requestedLeafMetaType.value === MetaType.PROCEDURE) {
-        await fetchProcedureDetail();
-      } else if (requestedLeafMetaType.value === MetaType.SEQUENCE) {
-        await fetchSequenceDetail();
-      } else if (requestedLeafMetaType.value === MetaType.MANUAL_SQL) {
-        await fetchManualSQLDetail();
-      } else {
-        await fetchMetadataGroups();
-      }
+      await fetchMetadataGroups();
     }
   },
   { immediate: true }
