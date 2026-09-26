@@ -29,6 +29,7 @@
       >
         <EmptyState
           v-if="bindings.length === 0"
+          :icon="KeyRound"
           :title="t('iam.policy.noBindings')"
         />
         <Table v-else>
@@ -253,7 +254,7 @@
 
 <script setup lang="ts">
 import { create } from "@bufbuild/protobuf";
-import { Plus, Trash2 } from "lucide-vue-next";
+import { KeyRound, Plus, Trash2 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { listGroups } from "@/api/group";

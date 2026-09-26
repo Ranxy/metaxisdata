@@ -28,6 +28,7 @@
         <PageState :loading="isLoading">
           <EmptyState
             v-if="environments.length === 0"
+            :icon="Globe"
             :title="t('environmentSettings.empty')"
           />
           <Table v-else>
@@ -175,7 +176,7 @@
 
 <script setup lang="ts">
 import { create } from "@bufbuild/protobuf";
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-vue-next";
+import { Globe, Loader2, Pencil, Plus, Trash2 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { environmentId } from "@/api/environment";

@@ -207,6 +207,7 @@
             />
             <EmptyState
               v-else
+              :icon="SearchX"
               :title="t('metadataBrowser.empty')"
             />
           </CardContent>
@@ -229,6 +230,7 @@
 
 <script setup lang="ts">
 import { onClickOutside } from "@vueuse/core";
+import { SearchX } from "lucide-vue-next";
 
 import {
   computed,

@@ -22,6 +22,7 @@
       >
         <EmptyState
           v-if="roles.length === 0"
+          :icon="Shield"
           :title="t('iam.roles.noRoles')"
         />
         <Table v-else>
@@ -210,7 +211,7 @@
 </template>
 
 <script setup lang="ts">
-import { Pencil, Plus, Trash2 } from "lucide-vue-next";
+import { Pencil, Plus, Shield, Trash2 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { createRole, deleteRole, listRoles, updateRole } from "@/api/role";

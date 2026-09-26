@@ -22,6 +22,7 @@
       >
         <EmptyState
           v-if="groups.length === 0"
+          :icon="Users"
           :title="t('iam.groups.noGroups')"
         />
         <Table v-else>
@@ -192,7 +193,7 @@
 
 <script setup lang="ts">
 import { create } from "@bufbuild/protobuf";
-import { Pencil, Plus, Trash2 } from "lucide-vue-next";
+import { Pencil, Plus, Trash2, Users } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { createGroup, deleteGroup, listGroups, updateGroup } from "@/api/group";
