@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -22,13 +23,18 @@ type lineageMeta struct {
 type Processor struct {
 	store    *store.Store
 	resolver *Resolver
+	// lineage is the process-wide statement analyzer. An event that carries SQL
+	// is analyzed with it instead of trusting the producer's run-level
+	// columnLineage facet.
+	lineage *lineage.Analyzer
 }
 
 // NewProcessor creates a new event processor.
-func NewProcessor(s *store.Store) *Processor {
+func NewProcessor(s *store.Store, lineageAnalyzer *lineage.Analyzer) *Processor {
 	return &Processor{
 		store:    s,
 		resolver: NewResolver(s),
+		lineage:  lineageAnalyzer,
 	}
 }
 
@@ -41,51 +47,19 @@ func (p *Processor) ProcessRunEvent(ctx context.Context, event *RunEvent, persis
 	}
 
 	meta := buildLineageMeta(persistedRun)
-	var lineages []*store.ColumnLineage
 
-	for _, output := range event.Outputs {
-		hasColumnLineage := output.Facets.ColumnLineage != nil && len(output.Facets.ColumnLineage.Fields) > 0
-		hasDatasetLineage := output.Facets.ColumnLineage != nil && len(output.Facets.ColumnLineage.Dataset) > 0
-		hasInputs := len(event.Inputs) > 0
-
-		if hasColumnLineage || hasDatasetLineage {
-			outputLineages, err := p.processOutputDataset(ctx, &output, meta)
-			if err != nil {
-				slog.Error("failed to process OpenLineage output dataset",
-					"namespace", output.Namespace,
-					"name", output.Name,
-					"error", err,
-				)
-				return errors.Wrapf(err, "failed to process output dataset %s/%s", output.Namespace, output.Name)
-			}
-			lineages = append(lineages, outputLineages...)
-		} else if hasInputs {
-			outputLineages, inferred, err := p.processSchemaInferredLineage(ctx, event.Inputs, &output, meta)
-			if err != nil {
-				slog.Error("failed to process schema-inferred lineage",
-					"namespace", output.Namespace,
-					"name", output.Name,
-					"error", err,
-				)
-				return errors.Wrapf(err, "failed to process schema-inferred lineage for %s/%s", output.Namespace, output.Name)
-			}
-			if inferred {
-				lineages = append(lineages, outputLineages...)
-				continue
-			}
-
-			// Table-level lineage: Airflow and other integrations may emit events
-			// with input/output datasets but without column-level detail.
-			outputLineages, err = p.processTableLevelLineage(ctx, event.Inputs, &output, meta)
-			if err != nil {
-				slog.Error("failed to process table-level lineage",
-					"namespace", output.Namespace,
-					"name", output.Name,
-					"error", err,
-				)
-				return errors.Wrapf(err, "failed to process table-level lineage for %s/%s", output.Namespace, output.Name)
-			}
-			lineages = append(lineages, outputLineages...)
+	var (
+		lineages []*store.ColumnLineage
+		err      error
+	)
+	switch {
+	case p.lineage != nil && hasSQLFacet(event):
+		if lineages, err = p.sqlFacetLineage(ctx, event, meta); err != nil {
+			return err
+		}
+	default:
+		if lineages, err = p.facetLineage(ctx, event, meta); err != nil {
+			return err
 		}
 	}
 
@@ -118,6 +92,105 @@ func (p *Processor) ProcessRunEvent(ctx context.Context, event *RunEvent, persis
 	return p.store.BatchReplaceColumnLineage(ctx, meta.GUID, meta.Type, kept)
 }
 
+// sqlFacetLineage derives lineage from the SQL an event carries, through the
+// statement-scoped analyzers. A producer that attached SQL also states its own
+// column lineage, and that facet is a run-level guess - one facet copied onto
+// every output, columns attributed by name across the whole input set - so it is
+// not used.
+//
+// When the SQL cannot be analyzed the run-level dependency is still real, so it
+// is kept as table-level edges instead of falling back to the guess.
+func (p *Processor) sqlFacetLineage(ctx context.Context, event *RunEvent, meta lineageMeta) ([]*store.ColumnLineage, error) {
+	if lineages, ok := p.analyzeEventSQL(ctx, event, meta); ok {
+		return lineages, nil
+	}
+
+	lineages, err := p.tableLevelLineage(ctx, event, meta)
+	if err != nil {
+		return nil, err
+	}
+	slog.Warn("stored table-level lineage because the event's SQL could not be analyzed",
+		"jobNamespace", event.Job.Namespace,
+		"jobName", event.Job.Name,
+		"runId", event.Run.RunID,
+		"edges", len(lineages),
+	)
+	return lineages, nil
+}
+
+// facetLineage derives lineage from the datasets and facets the producer
+// attached, which is the path for every event that carries no SQL of its own.
+func (p *Processor) facetLineage(ctx context.Context, event *RunEvent, meta lineageMeta) ([]*store.ColumnLineage, error) {
+	var lineages []*store.ColumnLineage
+
+	for _, output := range event.Outputs {
+		hasColumnLineage := output.Facets.ColumnLineage != nil && len(output.Facets.ColumnLineage.Fields) > 0
+		hasDatasetLineage := output.Facets.ColumnLineage != nil && len(output.Facets.ColumnLineage.Dataset) > 0
+		hasInputs := len(event.Inputs) > 0
+
+		if hasColumnLineage || hasDatasetLineage {
+			outputLineages, err := p.processOutputDataset(ctx, &output, meta)
+			if err != nil {
+				slog.Error("failed to process OpenLineage output dataset",
+					"namespace", output.Namespace,
+					"name", output.Name,
+					"error", err,
+				)
+				return nil, errors.Wrapf(err, "failed to process output dataset %s/%s", output.Namespace, output.Name)
+			}
+			lineages = append(lineages, outputLineages...)
+			continue
+		}
+
+		if !hasInputs {
+			continue
+		}
+
+		outputLineages, inferred, err := p.processSchemaInferredLineage(ctx, event.Inputs, &output, meta)
+		if err != nil {
+			slog.Error("failed to process schema-inferred lineage",
+				"namespace", output.Namespace,
+				"name", output.Name,
+				"error", err,
+			)
+			return nil, errors.Wrapf(err, "failed to process schema-inferred lineage for %s/%s", output.Namespace, output.Name)
+		}
+		if inferred {
+			lineages = append(lineages, outputLineages...)
+			continue
+		}
+
+		// Table-level lineage: Airflow and other integrations may emit events
+		// with input/output datasets but without column-level detail.
+		outputLineages, err = p.processTableLevelLineage(ctx, event.Inputs, &output, meta)
+		if err != nil {
+			slog.Error("failed to process table-level lineage",
+				"namespace", output.Namespace,
+				"name", output.Name,
+				"error", err,
+			)
+			return nil, errors.Wrapf(err, "failed to process table-level lineage for %s/%s", output.Namespace, output.Name)
+		}
+		lineages = append(lineages, outputLineages...)
+	}
+
+	return lineages, nil
+}
+
+// tableLevelLineage keeps the run-level dependencies an event states (it read
+// these datasets and wrote those) without asserting any column mapping.
+func (p *Processor) tableLevelLineage(ctx context.Context, event *RunEvent, meta lineageMeta) ([]*store.ColumnLineage, error) {
+	var lineages []*store.ColumnLineage
+	for i := range event.Outputs {
+		outputLineages, err := p.processTableLevelLineage(ctx, event.Inputs, &event.Outputs[i], meta)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to process table-level lineage for %s/%s", event.Outputs[i].Namespace, event.Outputs[i].Name)
+		}
+		lineages = append(lineages, outputLineages...)
+	}
+	return lineages, nil
+}
+
 // warnMissingSQLLineage reports an event whose producer attached an SQL facet
 // but no datasets at all. That is what a SQL extractor leaves behind when it
 // cannot resolve a statement - unqualified table names resolved against the
@@ -133,6 +206,12 @@ func warnMissingSQLLineage(event *RunEvent) {
 		"runId", event.Run.RunID,
 		"hint", "check whether the extracted statement qualifies its tables, since the extractor resolves unqualified names against one default schema",
 	)
+}
+
+// hasSQLFacet reports whether the event's producer attached SQL of its own.
+func hasSQLFacet(event *RunEvent) bool {
+	_, ok := event.Job.Facets["sql"]
+	return ok
 }
 
 // missingSQLLineage reports an event that asked for SQL lineage and produced no

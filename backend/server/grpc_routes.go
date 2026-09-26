@@ -230,7 +230,7 @@ func configureGrpcRouters(
 	}
 
 	// Register OpenLineage event ingestion HTTP handler (plain REST, not ConnectRPC).
-	olHandler := apiv1.NewOpenLineageHandler(stores, profile.TrustedProxies)
+	olHandler := apiv1.NewOpenLineageHandler(stores, profile.TrustedProxies, lineageAnalyzer)
 	olGroup := e.Group("/api/v1/lineage")
 	// Ingestion skips the Connect interceptor chain, so it carries its own rate
 	// limit and deadline: a valid key could otherwise drive unbounded concurrent

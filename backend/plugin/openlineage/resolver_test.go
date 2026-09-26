@@ -401,6 +401,35 @@ func TestBuildGUID(t *testing.T) {
 	}
 }
 
+// A dataset name splits the same way wherever it is read, so the GUID a
+// producer's name resolves to cannot disagree with the context its SQL is
+// analyzed in.
+func TestSplitDatasetName(t *testing.T) {
+	tests := []struct {
+		name       string
+		engine     storepb.Engine
+		dataset    string
+		wantDB     string
+		wantSchema string
+		wantTable  string
+	}{
+		{name: "mysql db.table", engine: storepb.Engine_MYSQL, dataset: "e2e_ods.orders", wantDB: "e2e_ods", wantTable: "orders"},
+		{name: "starrocks db.table", engine: storepb.Engine_STARROCKS, dataset: "e2e_ods.dwd_order_fact", wantDB: "e2e_ods", wantTable: "dwd_order_fact"},
+		{name: "pg schema.table", engine: storepb.Engine_POSTGRES, dataset: "public.orders", wantSchema: "public", wantTable: "orders"},
+		{name: "pg db.schema.table", engine: storepb.Engine_POSTGRES, dataset: "e2e.e2e_dwd.dwd_order_fact", wantDB: "e2e", wantSchema: "e2e_dwd", wantTable: "dwd_order_fact"},
+		{name: "bare table", engine: storepb.Engine_POSTGRES, dataset: "orders", wantTable: "orders"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			database, schema, table := splitDatasetName(tt.engine, tt.dataset)
+			assert.Equal(t, tt.wantDB, database)
+			assert.Equal(t, tt.wantSchema, schema)
+			assert.Equal(t, tt.wantTable, table)
+		})
+	}
+}
+
 func TestIsMySQLLike(t *testing.T) {
 	assert.True(t, isMySQLLike(storepb.Engine_MYSQL))
 	assert.True(t, isMySQLLike(storepb.Engine_TIDB))

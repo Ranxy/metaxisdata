@@ -21,7 +21,8 @@ phantoms, 0 analyzer errors.
 
 ## Fix status
 
-F1, F2, F3, F4 and F6 are fixed in this repository; F5 is upstream and untouched.
+F1, F2, F3, F4, F6 and F7 are fixed in this repository; F5 is upstream and F8 is
+open (it was exposed by F7's fix).
 Each fix carries hermetic unit coverage, and all four were re-verified on this
 chain after rebuilding and restarting the server (see "Post-fix verification"
 below).
@@ -34,6 +35,8 @@ below).
 | F4 | fixed (table columns) | `backend/plugin/openlineage/lineage_validation.go` |
 | F5 | upstream | Airflow's SQL extractor cannot parse `REFRESH MATERIALIZED VIEW` |
 | F6 | fixed | `backend/store/openlineage_task.go` (found while verifying F1–F4) |
+| F7 | fixed | `backend/plugin/openlineage/sql_facet_lineage.go` — SQL-facet events are analyzed, not believed |
+| F8 | open | `backend/plugin/lineage/postgresql` — one CTE reference resolves as a table |
 
 `verify_chain.sql` section 4 must list only the two CTE aliases, and section 5
 must return the table's real columns and nothing else.
@@ -263,6 +266,81 @@ Guard: `TestOpenLineageTaskListSurvivesAPrunedLatestRunRealServerIntegration`
 drives the real server, deletes a run out of band and requires the listing to keep
 working. It fails with the scan error above without the fix, and passes with it.
 
+## F7 — SQL-facet lineage now comes from our own analyzer
+
+**Why.** Everything F4 could not decide came from the same root: the producer's
+`columnLineage` facet is a *run-level guess*. Airflow's SQL extractor merges every
+statement of a task into one input/output set, attaches that one facet to every
+output, and attributes an output column by finding a same-named column anywhere in
+the inputs. With two inputs exposing `paid_amount` it stored
+`v_customer_360.paid_amount -> dwd_order_fact.paid_amount` while the statement
+reads `v_customer_payments.paid_amount` — plausible, wrong, and invisible to any
+existence check. The same facet also carried `_0…_12` positional placeholders and,
+separately, CTE aliases resolved as tables.
+
+**What changed.** `backend/plugin/openlineage/sql_facet_lineage.go`. When an event
+carries `job.facets.sql.query`, ingestion no longer reads the facet's column
+claims. It resolves the anchor dataset (first output, else first input) to an
+instance, takes that instance's engine and the anchor's database/schema as the
+analysis context, and runs the SQL through the process-wide statement analyzer
+(`lineage.Analyzer`, the same one that backs view definitions and manual SQL).
+The analyzer splits the script per statement, resolves CTEs, and answers with the
+columns each statement really reads. Those relations are mapped onto the run's own
+GUIDs and stored. A statement result (`__result__`) and a loading statement's file
+(`__file__`) name no stored object and are skipped.
+
+When the SQL cannot be analyzed at all — no analyzer for the engine, an
+unparseable script, or an anchor that belongs to no instance — ingestion stores
+only the run-level dependencies (inputs × outputs, no column claims) and warns.
+The facet's column claims are never used for an event that carries SQL. Events
+without SQL (DataX and friends) keep the old path unchanged.
+
+**Verification on the fixture** (rebuild, restart, `install.sh --bootstrap`,
+`run_chain.sh`, 4 DAGs green):
+
+| Check | Before F7 | After F7 |
+| --- | --- | --- |
+| `dwd_order_fact.paid_amount` / `.refund_amount` source | `v_customer_360` ❌ | **`v_customer_payments`** ✅ |
+| `dwd_customer_360.paid_amount` / `.refund_amount` source | `v_customer_360` ✅ | `v_customer_360` ✅ |
+| Positional `_N` columns in ingested edges | 21+ | **0** |
+| CTE aliases stored as relations | `public.agg`, `public.line_agg` | **1 left, see F8** |
+| Chain depth from `mysql e2e_ods.orders` | 5 | 5 |
+| Bogus target columns on the SQL-loaded tables | 0 | 0 |
+
+Guard: `TestOpenLineageSqlFacetUsesTheAnalysedSourceRealServerIntegration` drives
+the real server with an `INSERT … SELECT` over two views that both expose
+`amount`, states the *wrong* source in the facet, and requires the stored edge to
+name the view the SQL reads. It fails without the analyzer path and passes with it.
+
+## F8 — the PostgreSQL analyzer resolves one CTE reference as a table
+
+**Symptom.** After F7 the only unregistered lineage endpoint left in the fixture
+is `test-pg-1;e2e;e2e_ads;base`, from one edge:
+
+```
+test-pg-1;e2e;e2e_ads;base  *  ->  test-pg-1;e2e;e2e_ads;ads_customer_segment  customer_count   (AGGREGATE)
+```
+
+`base` is a CTE in `test/e2e_etl/pg/40_ads_load.sql` (`WITH base AS (…), agg AS (…)`),
+referenced from the nested `agg` CTE. The analyzer resolved it as a table in the
+default schema (the anchor's `e2e_ads`) with a wildcard column, so the edge points
+at a relation that does not exist. The CTE in `20_dwd_load.sql` does not do this,
+so the gap is specific to the nested/second CTE shape.
+
+**Why it surfaced now.** Before F7 this package stored the provider's relations,
+which had their own CTE artifacts; the analyzer's output was not what the
+OpenLineage path stored. F7 makes the analyzer authoritative for SQL events, so
+its scope handling is now the visible one.
+
+**Impact.** One phantom node and one table-level-style edge (source column `*`) per
+event of that shape; F6's rule keeps unknown relations (they may be a table that
+has not synced yet), so it is kept and reported rather than dropped.
+
+**Not fixed here** — it is in the PG analyzer's scope handling
+(`backend/plugin/lineage/postgresql/analyzer.go`), not in the ingestion path this
+change covers: a CTE defined by the statement is not in scope while the select
+list's scalar subqueries are analyzed, so `base` falls through to a table lookup.
+
 ## Post-fix verification
 
 Rebuilt, restarted the server on :8083, cleared the OpenLineage artifacts from
@@ -310,18 +388,17 @@ They are counted and logged on every ingestion, and the server warns
 2. **A degraded edge loses its column detail.** When one side of a mapping is
    unverifiable the whole mapping is, so the pair is stored without columns. The
    dependency stays visible; "which column fed which" does not.
-3. **A relation the registry does not know is still stored.** The CTE aliases
-   (`test-pg-1;e2e;public;line_agg`, `…;agg`) therefore remain as phantom source
-   nodes. They cannot be told apart from a table created after the last schema
-   sync, and dropping the latter would lose real lineage permanently. They are
-   counted and logged; removing them needs deferred re-validation (check
-   unresolved relations after the next sync) or an upstream extractor that
-   resolves CTEs.
-4. **One event carries the whole SQL script.** The Airflow extractor merges every
-   statement of a task into one input/output set, which is what creates the
-   cross-product in the first place. One operator per statement (or `sql=` as a
-   list) keeps outputs apart; that is a fixture-side mitigation, not a product
-   fix.
+3. **A relation the registry does not know is still stored.** They cannot be told
+   apart from a table created after the last schema sync, and dropping the latter
+   would lose real lineage permanently, so they are kept, counted and logged;
+   removing them needs deferred re-validation (check unresolved relations after the
+   next sync). After F7 the one left in the fixture is F8, an analyzer scope bug,
+   not an ingestion one.
+4. **One event carries the whole SQL script.** The extractor still merges every
+   statement of a task into one input/output set and one facet. F7 makes that
+   irrelevant for column lineage (the analyzer splits the script itself), but the
+   run record still reports one input/output set, and a producer that states its
+   lineage *without* SQL keeps the old facet semantics.
 5. **`REFRESH MATERIALIZED VIEW` stays unparseable** (F5) — upstream.
 
 ## Reproducing the checks

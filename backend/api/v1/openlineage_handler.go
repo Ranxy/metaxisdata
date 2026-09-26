@@ -17,6 +17,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common"
 	clog "github.com/Ranxy/metaxisdata/backend/common/log"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -38,10 +39,10 @@ type OpenLineageHandler struct {
 
 // NewOpenLineageHandler creates a new OpenLineageHandler. trustedProxies is the
 // list of peers whose forwarding headers the audit record may believe.
-func NewOpenLineageHandler(s *store.Store, trustedProxies []string) *OpenLineageHandler {
+func NewOpenLineageHandler(s *store.Store, trustedProxies []string, lineageAnalyzer *lineage.Analyzer) *OpenLineageHandler {
 	return &OpenLineageHandler{
 		store:          s,
-		processor:      openlineage.NewProcessor(s),
+		processor:      openlineage.NewProcessor(s, lineageAnalyzer),
 		trustedProxies: trustedProxies,
 	}
 }

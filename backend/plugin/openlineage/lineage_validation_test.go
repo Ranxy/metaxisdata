@@ -253,3 +253,26 @@ func TestFilterIngestedLineageLeavesViewColumnsAlone(t *testing.T) {
 	assert.Len(t, kept, 1)
 	assert.Equal(t, 0, report.degradedEdges)
 }
+
+// The registry lookup that validates the edges also knows each relation's object
+// type, so an ingested edge carries the same types an analyzed one does.
+func TestApplyObjectTypes(t *testing.T) {
+	view := "test-pg-1;e2e;e2e_dwd;v_order_base"
+	table := "test-pg-1;e2e;e2e_dwd;dwd_order_fact"
+	unknown := "test-pg-1;e2e;public;line_agg"
+	lineage := edge(view, "", table, "")
+	lineage.SourceType = storepb.MetaType_TABLE
+	lineage.TargetType = storepb.MetaType_TABLE
+
+	applyObjectTypes(lineage, map[string]storepb.MetaType{view: storepb.MetaType_VIEW})
+
+	assert.Equal(t, storepb.MetaType_VIEW, lineage.SourceType)
+	assert.Equal(t, storepb.MetaType_TABLE, lineage.TargetType, "an unknown relation keeps the type it had")
+
+	external := edge(FormatExternalGUID("s3://bucket", "raw/x"), "payload", unknown, "")
+	external.SourceType = storepb.MetaType_EXTERNAL_DATASET
+	external.TargetType = storepb.MetaType_TABLE
+	applyObjectTypes(external, map[string]storepb.MetaType{})
+	assert.Equal(t, storepb.MetaType_EXTERNAL_DATASET, external.SourceType, "an external dataset is not in the lookup")
+	assert.Equal(t, storepb.MetaType_TABLE, external.TargetType)
+}

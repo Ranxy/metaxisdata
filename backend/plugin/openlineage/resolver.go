@@ -318,30 +318,33 @@ func normalizePort(port string) string {
 }
 
 // buildGUID constructs an internal GUID from instance + dataset name.
-// Dataset name may be "database.schema.table", "schema.table", or "table".
 func buildGUID(instanceResourceID string, engine storepb.Engine, databaseOverride, datasetName string) string {
-	parts := strings.Split(datasetName, ".")
-
-	var database, schema, table string
-	switch len(parts) {
-	case 1:
-		table = parts[0]
-	case 2:
-		// For MySQL-like engines: db.table. For others: schema.table.
-		if isMySQLLike(engine) {
-			database, table = parts[0], parts[1]
-		} else {
-			schema, table = parts[0], parts[1]
-		}
-	default: // 3+
-		database, schema, table = parts[0], parts[1], strings.Join(parts[2:], ".")
-	}
-
+	database, schema, table := splitDatasetName(engine, datasetName)
 	if databaseOverride != "" {
 		database = databaseOverride
 	}
-
 	return common.BuildMetaGUID(instanceResourceID, database, schema, table)
+}
+
+// splitDatasetName splits a producer's dataset name into the parts a GUID is
+// built from. A name may be "database.schema.table", "schema.table" or "table",
+// and the two-part form means database.table on an engine that has no schema
+// segment to name. Every reader of a dataset name splits it here, so the GUID a
+// producer's name resolves to and the context its SQL is analyzed in cannot
+// disagree about which part is the database.
+func splitDatasetName(engine storepb.Engine, datasetName string) (database, schema, table string) {
+	parts := strings.Split(datasetName, ".")
+	switch len(parts) {
+	case 1:
+		return "", "", parts[0]
+	case 2:
+		if isMySQLLike(engine) {
+			return parts[0], "", parts[1]
+		}
+		return "", parts[0], parts[1]
+	default:
+		return parts[0], parts[1], strings.Join(parts[2:], ".")
+	}
 }
 
 // isMySQLLike reports whether the engine addresses objects as database.table

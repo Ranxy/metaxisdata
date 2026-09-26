@@ -133,6 +133,8 @@ func filterIngestedLineage(
 			report.degradedEdges++
 		}
 
+		applyObjectTypes(&adjusted, relations)
+
 		key := strings.Join([]string{adjusted.SourceGUID, adjusted.SourceColumn, adjusted.TargetGUID, adjusted.TargetColumn}, "\x00")
 		if _, duplicate := seen[key]; duplicate {
 			continue
@@ -143,6 +145,19 @@ func filterIngestedLineage(
 
 	report.keptEdges = len(kept)
 	return kept, report
+}
+
+// applyObjectTypes records the object type the registry reported for an
+// endpoint, so an ingested edge carries the same types an analyzed one does. A
+// relation the registry does not know - or an external dataset, which is not
+// looked up at all - keeps the type the resolver gave it.
+func applyObjectTypes(edge *store.ColumnLineage, relations map[string]storepb.MetaType) {
+	if objectType, ok := relations[edge.SourceGUID]; ok {
+		edge.SourceType = objectType
+	}
+	if objectType, ok := relations[edge.TargetGUID]; ok {
+		edge.TargetType = objectType
+	}
 }
 
 // columnClaimHolds reports whether the registry contradicts a column claim. A

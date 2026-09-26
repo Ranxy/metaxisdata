@@ -104,7 +104,10 @@ WHERE cl.target_guid = 'test-pg-1;e2e;e2e_dwd;dwd_order_fact'
 ORDER BY is_real_column, cl.target_column;
 
 \echo ''
-\echo '=== 6. edges whose source is a phantom CTE name'
+\echo '=== 6. edges whose source is a CTE that resolved as a relation (F8)'
+-- After F7 the ingested SQL is analyzed per statement, so CTEs resolve properly.
+-- What is left is an analyzer scope bug: a CTE referenced from a nested CTE
+-- resolves as a table in the default schema.
 SELECT DISTINCT source_guid, target_guid
 FROM column_lineage
 WHERE source_guid LIKE 'test-pg-1;e2e;public;%'
