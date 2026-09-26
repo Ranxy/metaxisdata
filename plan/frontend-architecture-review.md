@@ -238,6 +238,8 @@ dist/assets/css.worker/html.worker/json.worker/editor.worker …
 
 ## 6. 技术债务清单(汇总)
 
+> **状态(2026-09-26):下表 5 条 P0 已全部完成并验证,落地内容见 §6.1;P1 及以下尚未开始。**
+
 | 优先级 | 债务 | 位置/证据 | 预估工作量 |
 |--------|------|-----------|-----------|
 | P0 | GUID 编解码收敛(toGuidPath×4、解码×3、ExplainSQL 解析 bug、双重解码) | §3.6 表 | 0.5~1 天(含测试) |
@@ -257,11 +259,47 @@ dist/assets/css.worker/html.worker/json.worker/editor.worker …
 | P2 | i18n 破窗修复(硬编码英文簇、死分支、遮蔽) | §3.7 | 1 天 |
 | P3 | 共享层单测补齐 + coverage 阈值;组件测试逐步扩到高价值交互 | §5.3 | 持续 |
 
+### 6.1 P0 修复记录(已完成)
+
+实施者补写。5 条 P0 全部落地;每条的决策、证据与残留如下。全量门禁(`pnpm biome:check`、`pnpm lint`、`pnpm i18n`、`pnpm type-check`、`pnpm test run`)通过:`src` 测试文件 17 → 20(`scripts/` 的 2 个另计),用例 85 → 126(新增 guid 13、datetime 11、guidRoutes 13、app store locale 4)。本轮只动前端,未触碰 Go/proto。
+
+> **① GUID 编解码收敛(决策:单一工具 + 重复路由参数,废弃 `/`-join 字符串形态)**
+>
+> 新增 `frontend/src/utils/guid.ts`(`guidToRouteParams` / `guidSegmentsToRouteParams` / `routeParamToGuid`)与 `guid.test.ts`;删除 5 份本地复制(`MetadataBrowserPage`、`LineageGraphPage`、`ManualSQLManagementPage`、`OpenLineageColumnLineagePage`、`TableLineageSection`——最后一份是原文漏掉的),并移除 `lib/openlineage.ts` 的同名导出;全部 push 点改走共享工具。
+>
+> 关键决策:§3.6 的"收敛"不足以消掉正确性风险,因为 `:guid(.+)` 单个参数里 `/` 既可能是分隔符也可能是名字的一部分。故把 `/metadata/:guid+`、`/lineage/:guid+`、`openlineage/column-lineage/:guid+`(以及原本就是 `+` 的 `/explain-sql/:guid+`)统一改成**重复参数**,push 时传"一段一个数组元素"(`guidToRouteParams`),元素边界由 matcher 保证——含 `/` 或 `;` 的对象名因此能正确往返,这是原实现根本做不到的。
+>
+> 同时修掉 §4-3/§4-4:`ExplainSQLPage` 的第三套约定(`/`-join 后按 `;` split)改为同一编解码;6 个 metadata 详情页的 `/explain-sql/<;guid>` 链接改为 path 形态;对**路由参数**的 `decodeURIComponent` 二次解码全部删除(含 `%` 的名字不再抛 `URIError`)。`formatOpenLineageRunLabel` 里对 OpenLineage GUID 分段的解码不是路由参数解码,未动。
+>
+> 兼容性:`frontend/src/router/guidRoutes.test.ts` 用**真实路由表**(去掉守卫与页面组件)钉住契约,覆盖数组往返、含 `/` 名字、MySQL 空 schema `~`、含 `%` 名字,以及三种历史 URL 形态——手输 `;` URL、手输 `/` 形态、以及旧字符串 push 产生的单段 `%2F` URL(`/metadata/inst%2Fdb%2F~%2Ftbl`)全部仍可解析,书签不受影响。`openlineage:job/run` GUID 由服务端 `url.PathEscape` 逐段转义(`backend/plugin/openlineage/metadata.go:100-113`),其解码路径未改。
+>
+> 残留(有意的契约边界,已写进 `guid.ts` 注释):`:guid` 路径形态无法表达"名字里含 `/` 的单段 GUID";单段 GUID 只可能是实例 ID,而 OpenLineage GUID 的 `/` 在服务端已转义,故实际不可达。
+
+> **② `utils/datetime.ts` 收敛(决策:纯函数 + 显式 locale,顺带修字面 locale)**
+>
+> 新增 `frontend/src/utils/datetime.ts`(`formatDateTime` / `formatDate` / `formatTime` / `formatRelativeTime`,选项含 `month` / `seconds` / `fallback`)与 `datetime.test.ts`;21 个文件、23 处内联 `Intl.DateTimeFormat` / `toLocaleString` 全部替换,仓库内已无内联日期格式化(CSV 导出的 ISO 8601 输出按设计保留)。
+>
+> 顺带修掉的两个真实缺陷:`LineageGraphPage`、`OpenLineageColumnLineagePage` 的 `Intl.DateTimeFormat("default")` 与 `OpenLineageOverviewPage` 的 `undefined` 不再跟随 OS 语言,统一用 `locale.value`;`ManualSQLManagementPage` 在 `seconds` 缺失时会 `new Date(NaN)` 抛 `RangeError`(且该页与全站 12/24 小时制不一致),现统一为 24 小时并回落 `-`。
+
+> **③ 死代码清理**
+>
+> 删除 `AppDropdown.vue`(零引用)、`AppModal` 的 `closable` / `closeOnBackdrop`(声明但从未消费)、`isMysql` 整条链(`MetadataBrowserPage` → `MetadataList` → `SchemaList`,含测试)与 `AdvancedSearchBar` 的 `search` 死 emit。
+>
+> locale 收敛(决策:store 持有单一来源 + 默认值统一 en-US,理由与原文的"双源头"一致,见 §7 第一步注):`locales/index.ts` 的死导出 `setLocale` 改为被 store 调用的 `applyLocale`;`store/modules/app.ts` 的 `setLocale` 一处同时更新 state、localStorage 与 vue-i18n;`UserMenu.vue` / `LoginPage.vue` 两份重复 `changeLocale` 删除。`app.test.ts` 新增"挂载探针"用例,证明组件里 `useI18n()` 读到的 locale 会随 store 切换(这是"单一 action"能不能真的切换界面的证据)。
+
+> **④ 工程卫生**:删除 `frontend/package-lock.json`(npm 残留,`packageManager` 已声明 pnpm);移除 `components.json` 的 `@acme` 占位 registry。
+
+> **⑤ `handleError(e, t(key))` 双重翻译**
+>
+> 16 处调用点改为传 i18n key(InstanceDetail 6、InstanceManagement 4、UserManagement 4、GeneralSettings 2、Iam 1);`LLMProviderManagementPage.vue:497` 的 `handleError(...) ?? String(e)`(对 void 做空合并的死代码)改为 `extractErrorMessage(e)`。
+>
+> 配套:自研 `scripts/check-vue-i18n.mjs` 本就有 `HANDLE_ERROR_RE` 能识别 `handleError(err, "key")`,但 ESLint 的 `no-unused-keys` 看不到,故按该文件既有约定把 14 个 key 补进 `frontend/eslint.config.mjs` 的 `ignores`(注释仍写"via showSuccess / handleError composables")。
+
 ---
 
 ## 7. 改进路线图建议
 
-**第一步:止血(P0,约 2 天)** — 不碰架构,只收敛契约与死代码:`utils/guid.ts`(含编解码测试)→ 替换 4+3 处实现并修掉 ExplainSQL 的解析 bug;`utils/datetime.ts`;清死代码;修错误处理误用。
+**第一步:止血(P0,约 2 天)** — ~~不碰架构,只收敛契约与死代码:`utils/guid.ts`(含编解码测试)→ 替换 4+3 处实现并修掉 ExplainSQL 的解析 bug;`utils/datetime.ts`;清死代码;修错误处理误用。~~ **已完成,见 §6.1。** 与原文的差异:GUID 部分没有止步于"收敛为单一工具",而是同时把 4 条路由改成重复参数,否则含 `/` 的名字仍然无法往返;locale 默认值从 `zh-CN` 统一为 `en-US`(`locales/index.ts` 与 `app.ts` 原先不一致)。
 
 **第二步:横向护栏(P1,约 1~1.5 周)** — interceptor 全局 401;统一错误入口;`usePagedFetch` + `listAll` 落地并替换全部手写分页/截断拉取(**这一步直接消掉竞态与静默截断两类正确性问题**);`ConfirmDeleteDialog`;monaco 裁剪。
 
