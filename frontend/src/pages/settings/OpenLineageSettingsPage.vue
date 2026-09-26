@@ -1,28 +1,13 @@
 <template>
   <div class="space-y-4">
-    <PageHeader :title="t('openlineageSettings.title')" />
-
-    <Card>
-      <CardHeader>
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <CardTitle>{{ t("openlineage.title") }}</CardTitle>
-            <CardDescription>{{
-              t("openlineage.browseFromSettings")
-            }}</CardDescription>
-          </div>
-          <div class="flex items-center gap-2">
-            <Button size="sm" variant="outline" @click="router.push({ name: 'OpenLineageOverview' })">
-              {{ t("openlineage.openOverview") }}
-            </Button>
-            <Button size="sm" @click="router.push({ name: 'OpenLineageTasks' })">
-            <ScrollText class="h-4 w-4 mr-2" />
-              {{ t("openlineage.openJobs") }}
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-    </Card>
+    <!-- This page used to open with a card whose title repeated the h1 and whose
+         two buttons repeated the sidebar's OpenLineage group. The one useful
+         thing it carried — why this page is configuration-only — is now the
+         header's description. -->
+    <PageHeader
+      :title="t('openlineageSettings.title')"
+      :description="t('openlineage.browseFromSettings')"
+    />
 
     <!-- Namespace Mappings Section -->
     <Card>
@@ -416,18 +401,9 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import {
-  Copy,
-  KeyRound,
-  Network,
-  Pencil,
-  Plus,
-  ScrollText,
-  Trash2,
-} from "lucide-vue-next";
+import { Copy, KeyRound, Network, Pencil, Plus, Trash2 } from "lucide-vue-next";
 import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRouter } from "vue-router";
 import {
   createAPIKey,
   createNamespaceMapping,
@@ -481,7 +457,6 @@ import { formatDateTime } from "@/utils/datetime";
 
 const { t, locale } = useI18n();
 const { handleError, showSuccess } = useErrorHandler();
-const router = useRouter();
 const instanceStore = useInstanceStore();
 
 // State
