@@ -26,7 +26,10 @@
               <FileCode2 class="h-4 w-4 text-muted-foreground" />
               <span class="font-medium">{{ row.value.title || row.value.name }}</span>
             </div>
-            <div class="text-xs text-muted-foreground mt-1">
+            <div
+              v-if="showsIdentifier(row.value)"
+              class="text-xs text-muted-foreground mt-1"
+            >
               {{ row.value.name }}
             </div>
           </TableCell>
@@ -79,4 +82,13 @@ const manualSQLRows = computed(() => {
   }
   return rows;
 });
+
+/**
+ * The identifier under the title is only worth a line when the title above it
+ * says something else: the fallback title is the name itself, which used to
+ * render the same string twice.
+ */
+function showsIdentifier(value: ManualSQLMetadata): boolean {
+  return value.title !== "" && value.title !== value.name;
+}
 </script>

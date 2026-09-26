@@ -47,7 +47,12 @@
               >
                 <TableCell>
                   <div class="font-medium">{{ item.title || extractManualSqlId(item.name) }}</div>
-                  <div class="mt-1 text-xs text-muted-foreground">{{ extractManualSqlId(item.name) }}</div>
+                  <div
+                    v-if="showsIdentifier(item)"
+                    class="mt-1 text-xs text-muted-foreground"
+                  >
+                    {{ extractManualSqlId(item.name) }}
+                  </div>
                   <div
                     v-if="item.comment"
                     class="mt-2 line-clamp-2 max-w-xl text-xs text-muted-foreground"
@@ -608,6 +613,15 @@ function extractDatabaseName(name: string): string {
 
 function extractManualSqlId(name: string): string {
   return name.split("/").pop() || name;
+}
+
+/**
+ * The identifier under the title is only worth a line when the title above it
+ * says something else: without a title the heading already is the identifier,
+ * so rendering both printed the same string twice.
+ */
+function showsIdentifier(item: ManualSQL): boolean {
+  return item.title !== "" && item.title !== extractManualSqlId(item.name);
 }
 
 function extractManualSqlParent(name: string): string {
