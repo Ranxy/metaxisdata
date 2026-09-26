@@ -99,7 +99,7 @@
                 </TableCell>
                 <TableCell>
                   <Badge :variant="stateBadgeVariant(database.state)">
-                    {{ getStateLabel(database.state) }}
+                    {{ stateLabel(database.state, t) }}
                   </Badge>
                 </TableCell>
                 <TableCell class="w-36 text-right">
@@ -184,11 +184,10 @@ import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import { useEnvironmentStore } from "@/store/modules/environment";
 import { useInstanceStore } from "@/store/modules/instance";
-import { State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { engineBadgeClass, engineLabel } from "@/utils/engine";
-import { stateBadgeVariant } from "@/utils/state";
+import { stateBadgeVariant, stateLabel } from "@/utils/state";
 
 const { t, locale } = useI18n();
 const { handleError } = useErrorHandler();
@@ -305,17 +304,6 @@ function getDatabaseName(fullName: string): string {
 function getInstanceName(fullName: string): string {
   const parts = fullName.split("/");
   return parts.length >= 2 ? parts[1] : "";
-}
-
-function getStateLabel(state: State): string {
-  switch (state) {
-    case State.ACTIVE:
-      return t("databaseManagement.stateActive");
-    case State.DELETED:
-      return t("databaseManagement.stateDeleted");
-    default:
-      return t("databaseManagement.stateUnknown");
-  }
 }
 
 function formatLastSync(timestamp: Timestamp | undefined): string {

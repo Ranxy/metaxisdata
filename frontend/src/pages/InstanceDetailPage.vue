@@ -198,7 +198,7 @@
             </TableCell>
             <TableCell>
               <Badge :variant="stateBadgeVariant(database.state)">
-                {{ getStateLabel(database.state) }}
+                {{ stateLabel(database.state, t) }}
               </Badge>
             </TableCell>
             <TableCell class="w-36 text-right">
@@ -586,7 +586,6 @@ import { useErrorHandler } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useEnvironmentStore } from "@/store/modules/environment";
 import { useInstanceStore } from "@/store/modules/instance";
-import { State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
 import type {
   DataSource,
@@ -598,7 +597,7 @@ import {
 } from "@/types/proto-es/v1/instance_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { engineBadgeClass, engineLabel } from "@/utils/engine";
-import { stateBadgeVariant } from "@/utils/state";
+import { stateBadgeVariant, stateLabel } from "@/utils/state";
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -1052,15 +1051,6 @@ function getHostInfo(instance: Instance): string {
     return `${adminDataSource.host}${port}`;
   }
   return "-";
-}
-
-function getStateLabel(state: State): string {
-  const stateLabels: Record<number, string> = {
-    [State.STATE_UNSPECIFIED]: t("instanceDetail.stateUnspecified"),
-    [State.ACTIVE]: t("instanceDetail.stateActive"),
-    [State.DELETED]: t("instanceDetail.stateDeleted"),
-  };
-  return stateLabels[state] || t("instanceDetail.stateUnknown");
 }
 
 function formatLastSync(timestamp: Timestamp | undefined): string {
