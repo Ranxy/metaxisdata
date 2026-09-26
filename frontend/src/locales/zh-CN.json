@@ -60,6 +60,7 @@
     "waitingForValue": "请输入筛选值"
   },
   "common": {
+    "actions": "操作",
     "apply": "应用",
     "back": "返回",
     "cancel": "取消",

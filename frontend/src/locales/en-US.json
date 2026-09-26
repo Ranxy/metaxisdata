@@ -60,6 +60,7 @@
     "waitingForValue": "Type a value"
   },
   "common": {
+    "actions": "Actions",
     "apply": "Apply",
     "back": "Back",
     "cancel": "Cancel",

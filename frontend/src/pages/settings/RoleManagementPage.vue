@@ -31,8 +31,8 @@
               <TableHead>{{ t("iam.roles.nameLabel") }}</TableHead>
               <TableHead>{{ t("iam.roles.typeLabel") }}</TableHead>
               <TableHead>{{ t("iam.roles.permissionsLabel") }}</TableHead>
-              <TableHead class="text-right">
-                {{ t("common.edit") }}
+              <TableHead class="w-24 text-right">
+                {{ t("common.actions") }}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -61,11 +61,11 @@
                 </Badge>
               </TableCell>
               <TableCell>{{ role.permissions.length }}</TableCell>
-              <TableCell class="text-right space-x-2">
+              <TableCell class="space-x-1 text-right whitespace-nowrap">
                 <Button
                   v-if="canUpdate"
                   variant="ghost"
-                  size="sm"
+                  size="icon"
                   :disabled="role.predefined"
                   :title="
                     role.predefined ? t('iam.roles.predefinedReadonly') : ''
@@ -77,7 +77,7 @@
                 <Button
                   v-if="canDelete"
                   variant="ghost"
-                  size="sm"
+                  size="icon"
                   :disabled="role.predefined"
                   :title="
                     role.predefined ? t('iam.roles.predefinedReadonly') : ''
