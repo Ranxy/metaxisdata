@@ -3,8 +3,11 @@ package openlineage
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/url"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/pkg/errors"
 
@@ -33,6 +36,12 @@ type Resolver struct {
 
 	instances     []*store.InstanceMessage
 	instancesDone bool
+
+	// warnedNamespaces keeps the "did not match any instance" warning to one per
+	// namespace per resolver. Ingestion uses one long-lived resolver, so a
+	// recurring miss logs once instead of once per event.
+	warnedMu         sync.Mutex
+	warnedNamespaces map[string]struct{}
 }
 
 type previewKey struct {
@@ -42,7 +51,7 @@ type previewKey struct {
 
 // NewResolver creates a new Resolver.
 func NewResolver(s *store.Store) *Resolver {
-	return &Resolver{store: s}
+	return &Resolver{store: s, warnedNamespaces: make(map[string]struct{})}
 }
 
 // NewRequestScopedResolver creates a Resolver that memoizes lookups for the
@@ -50,9 +59,10 @@ func NewResolver(s *store.Store) *Resolver {
 // serve many resolutions and cached answers could go stale.
 func NewRequestScopedResolver(s *store.Store) *Resolver {
 	return &Resolver{
-		store:         s,
-		requestScoped: true,
-		previews:      make(map[previewKey]*ResolvedDataset),
+		store:            s,
+		requestScoped:    true,
+		previews:         make(map[previewKey]*ResolvedDataset),
+		warnedNamespaces: make(map[string]struct{}),
 	}
 }
 
@@ -70,11 +80,37 @@ func (r *Resolver) ResolveDataset(ctx context.Context, namespace, datasetName st
 		return resolved, nil
 	}
 
+	r.warnUnmatchedNamespace(namespace, datasetName)
+
 	if _, err := r.store.GetOrCreateExternalDataset(ctx, namespace, datasetName, datasetTypeFromNamespace(namespace)); err != nil {
 		return nil, errors.Wrap(err, "failed to get or create external dataset")
 	}
 
 	return resolved, nil
+}
+
+// warnUnmatchedNamespace reports, once per namespace, a dataset that fell
+// through to an external dataset. The common cause is an instance registered
+// with one spelling of an address and the producer using another - a host alias
+// or a different port - which used to leave no trace at all: the lineage simply
+// pointed at an external dataset that looked deliberate.
+func (r *Resolver) warnUnmatchedNamespace(namespace, datasetName string) {
+	r.warnedMu.Lock()
+	if _, seen := r.warnedNamespaces[namespace]; seen {
+		r.warnedMu.Unlock()
+		return
+	}
+	r.warnedNamespaces[namespace] = struct{}{}
+	r.warnedMu.Unlock()
+
+	host, port, _ := parseNamespace(namespace)
+	slog.Warn("OpenLineage dataset did not match any registered instance and was stored as an external dataset",
+		"namespace", namespace,
+		"dataset", datasetName,
+		"host", host,
+		"port", port,
+		"hint", "check the instance's data source host and port, or add a namespace mapping to associate them",
+	)
 }
 
 // ResolveDatasetPreview resolves an OpenLineage dataset without creating external-dataset rows.
@@ -245,14 +281,40 @@ func parseNamespace(namespace string) (host, port, database string) {
 
 // matchHostPort compares instance DataSource host:port with parsed namespace host:port.
 func matchHostPort(dsHost, dsPort, nsHost, nsPort string) bool {
-	if !strings.EqualFold(dsHost, nsHost) {
+	if normalizeHost(dsHost) != normalizeHost(nsHost) {
 		return false
 	}
 	if nsPort == "" {
 		// If namespace doesn't specify port, match any port.
 		return true
 	}
-	return dsPort == nsPort
+	return normalizePort(dsPort) == normalizePort(nsPort)
+}
+
+// normalizeHost folds the host spellings that name the same server onto one
+// token. Instances are registered by hand and producers build their namespaces
+// from JDBC URLs, so `localhost` and `127.0.0.1` (or `::1`) are routinely used
+// for the same database; comparing them literally turned every dataset of that
+// instance into an external dataset.
+func normalizeHost(host string) string {
+	h := strings.ToLower(strings.TrimSpace(host))
+	h = strings.TrimPrefix(strings.TrimSuffix(h, "]"), "[")
+	switch h {
+	case "localhost", "127.0.0.1", "::1", "0:0:0:0:0:0:0:1":
+		return "loopback"
+	default:
+		return h
+	}
+}
+
+// normalizePort compares ports numerically so an int-valued string with
+// whitespace or a leading zero still matches.
+func normalizePort(port string) string {
+	p := strings.TrimSpace(port)
+	if n, err := strconv.Atoi(p); err == nil {
+		return strconv.Itoa(n)
+	}
+	return p
 }
 
 // buildGUID constructs an internal GUID from instance + dataset name.
@@ -283,11 +345,18 @@ func buildGUID(instanceResourceID string, engine storepb.Engine, databaseOverrid
 }
 
 // isMySQLLike reports whether the engine addresses objects as database.table
-// (rather than schema.table). Every MySQL-compatible engine behaves that way,
-// OceanBase included.
+// (rather than schema.table). Every MySQL-wire engine behaves that way,
+// including OceanBase, StarRocks and Doris: a synced StarRocks table lives at
+// "<instance>;<database>;;<table>", so a two-part producer name is a database
+// and a table, never a schema and a table.
 func isMySQLLike(engine storepb.Engine) bool {
 	switch engine {
-	case storepb.Engine_MYSQL, storepb.Engine_TIDB, storepb.Engine_MARIADB, storepb.Engine_OCEANBASE:
+	case storepb.Engine_MYSQL,
+		storepb.Engine_TIDB,
+		storepb.Engine_MARIADB,
+		storepb.Engine_OCEANBASE,
+		storepb.Engine_STARROCKS,
+		storepb.Engine_DORIS:
 		return true
 	default:
 		return false

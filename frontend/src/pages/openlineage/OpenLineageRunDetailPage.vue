@@ -92,6 +92,11 @@
         </Card>
       </div>
 
+      <Alert v-if="unparsedSQL" variant="destructive">
+        <AlertTitle>{{ t("openlineage.unparsedSQLTitle") }}</AlertTitle>
+        <AlertDescription>{{ t("openlineage.unparsedSQLDescription") }}</AlertDescription>
+      </Alert>
+
       <Card>
         <CardHeader>
           <CardTitle>{{ t("openlineageSettings.runSummary") }}</CardTitle>
@@ -175,6 +180,7 @@ import { useRoute, useRouter } from "vue-router";
 import { getOpenLineageRun } from "@/api/openlineage";
 import AppLoading from "@/components/common/AppLoading.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -184,7 +190,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useErrorHandler } from "@/composables/useErrorHandler";
-import { extractOpenLineageDatasets } from "@/lib/openlineage";
+import {
+  extractOpenLineageDatasets,
+  hasOpenLineageUnparsedSQL,
+} from "@/lib/openlineage";
 import type { OpenLineageRun } from "@/types/proto-es/v1/openlineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
@@ -221,6 +230,12 @@ const inputDatasets = computed(() => {
 
 const outputDatasets = computed(() => {
   return relatedDatasets.value.outputs;
+});
+
+// An event that carries SQL but no dataset says "this run has no lineage"; the
+// producer meant to contribute some and the extractor dropped it all.
+const unparsedSQL = computed(() => {
+  return hasOpenLineageUnparsedSQL(run.value?.rawPayload ?? "");
 });
 
 function formatTimestamp(ts: Timestamp | undefined): string {

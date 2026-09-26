@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateOpenLineageDatasets,
   extractOpenLineageDatasets,
+  hasOpenLineageUnparsedSQL,
 } from "./openlineage";
 
 function payload(inputs: unknown, outputs: unknown): string {
@@ -135,5 +136,78 @@ describe("aggregateOpenLineageDatasets", () => {
       inputs: [],
       outputs: [],
     });
+  });
+});
+
+describe("hasOpenLineageUnparsedSQL", () => {
+  function payloadWithSQL(inputs: unknown, outputs: unknown): string {
+    return JSON.stringify({
+      job: {
+        namespace: "default",
+        name: "dag.task",
+        facets: { sql: { query: "select 1" } },
+      },
+      inputs,
+      outputs,
+    });
+  }
+
+  it("reports a SQL facet that produced no dataset", () => {
+    expect(hasOpenLineageUnparsedSQL(payloadWithSQL([], []))).toBe(true);
+  });
+
+  it("stays quiet once the SQL facet produced datasets", () => {
+    expect(
+      hasOpenLineageUnparsedSQL(
+        payloadWithSQL(
+          [
+            {
+              namespace: "postgres://localhost:5432",
+              name: "e2e.e2e_ods.orders",
+            },
+          ],
+          []
+        )
+      )
+    ).toBe(false);
+    expect(
+      hasOpenLineageUnparsedSQL(
+        payloadWithSQL(
+          [],
+          [
+            {
+              namespace: "postgres://localhost:5432",
+              name: "e2e.e2e_dwd.dwd_order_fact",
+            },
+          ]
+        )
+      )
+    ).toBe(false);
+  });
+
+  it("stays quiet for events without a SQL facet", () => {
+    const noSQLFacet = JSON.stringify({
+      job: {
+        namespace: "default",
+        name: "dag.task",
+        facets: { processing_engine: {} },
+      },
+      inputs: [],
+      outputs: [],
+    });
+    expect(hasOpenLineageUnparsedSQL(noSQLFacet)).toBe(false);
+  });
+
+  it("stays quiet for payloads it cannot read", () => {
+    for (const rawPayload of [
+      "",
+      "not json",
+      "null",
+      "[]",
+      "{}",
+      JSON.stringify({ job: "x" }),
+    ]) {
+      expect(hasOpenLineageUnparsedSQL(rawPayload)).toBe(false);
+    }
   });
 });

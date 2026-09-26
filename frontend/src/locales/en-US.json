@@ -986,6 +986,8 @@
     "targetJobsCount": "Target Jobs",
     "taskRelatedDatasetsDescription": "Aggregate the inputs and outputs observed across the recent persisted runs for this job.",
     "title": "OpenLineage",
+    "unparsedSQLDescription": "This event carries a SQL statement but no input or output dataset, so it contributes no lineage. The extractor resolves unqualified table names against one default schema, so statements that qualify their tables are extracted reliably.",
+    "unparsedSQLTitle": "No lineage could be extracted",
     "visibleDatasets": "Visible datasets",
     "visibleEvents": "Visible events",
     "visibleJobs": "Visible jobs",

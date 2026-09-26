@@ -212,6 +212,66 @@ func TestMatchHostPort(t *testing.T) {
 			nsPort: "5433",
 			want:   false,
 		},
+		{
+			// The instance is registered as localhost while the producer builds
+			// its namespace from a JDBC URL that says 127.0.0.1. Comparing the
+			// spellings literally turned every dataset of that instance into an
+			// external dataset.
+			name:   "localhost instance against a 127.0.0.1 namespace",
+			dsHost: "localhost",
+			dsPort: "5432",
+			nsHost: "127.0.0.1",
+			nsPort: "5432",
+			want:   true,
+		},
+		{
+			name:   "127.0.0.1 instance against a localhost namespace",
+			dsHost: "127.0.0.1",
+			dsPort: "9030",
+			nsHost: "localhost",
+			nsPort: "9030",
+			want:   true,
+		},
+		{
+			name:   "ipv6 loopback",
+			dsHost: "localhost",
+			dsPort: "5432",
+			nsHost: "::1",
+			nsPort: "5432",
+			want:   true,
+		},
+		{
+			name:   "bracketed ipv6 loopback in the data source",
+			dsHost: "[::1]",
+			dsPort: "5432",
+			nsHost: "127.0.0.1",
+			nsPort: "5432",
+			want:   true,
+		},
+		{
+			name:   "padded port",
+			dsHost: "myhost",
+			dsPort: " 5432 ",
+			nsHost: "myhost",
+			nsPort: "5432",
+			want:   true,
+		},
+		{
+			name:   "loopback aliases still respect the port",
+			dsHost: "localhost",
+			dsPort: "5432",
+			nsHost: "127.0.0.1",
+			nsPort: "5433",
+			want:   false,
+		},
+		{
+			name:   "loopback does not swallow a real host",
+			dsHost: "localhost",
+			dsPort: "5432",
+			nsHost: "db.internal",
+			nsPort: "5432",
+			want:   false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -288,6 +348,34 @@ func TestBuildGUID(t *testing.T) {
 			want:       "inst-3;testdb;;accounts",
 		},
 		{
+			// A synced StarRocks table lives at "<instance>;<database>;;<table>",
+			// so the two-part name a DataX StarRocks writer emits is db.table.
+			name:       "starrocks: db.table",
+			instanceID: "starrocks-dev-1",
+			engine:     storepb.Engine_STARROCKS,
+			dbOverride: "",
+			dataset:    "e2e_ods.dwd_order_fact",
+			want:       "starrocks-dev-1;e2e_ods;;dwd_order_fact",
+		},
+		{
+			name:       "doris: db.table",
+			instanceID: "doris-dev-1",
+			engine:     storepb.Engine_DORIS,
+			dbOverride: "",
+			dataset:    "e2e_ods.dwd_order_fact",
+			want:       "doris-dev-1;e2e_ods;;dwd_order_fact",
+		},
+		{
+			// The three-part form stays database.schema.table on any engine, so a
+			// producer that wants to be explicit still is.
+			name:       "starrocks: db.empty-schema.table",
+			instanceID: "starrocks-dev-1",
+			engine:     storepb.Engine_STARROCKS,
+			dbOverride: "",
+			dataset:    "e2e_ods..dwd_order_fact",
+			want:       "starrocks-dev-1;e2e_ods;;dwd_order_fact",
+		},
+		{
 			name:       "pg: schema.table no override",
 			instanceID: "inst-1",
 			engine:     storepb.Engine_POSTGRES,
@@ -318,6 +406,8 @@ func TestIsMySQLLike(t *testing.T) {
 	assert.True(t, isMySQLLike(storepb.Engine_TIDB))
 	assert.True(t, isMySQLLike(storepb.Engine_MARIADB))
 	assert.True(t, isMySQLLike(storepb.Engine_OCEANBASE))
+	assert.True(t, isMySQLLike(storepb.Engine_STARROCKS))
+	assert.True(t, isMySQLLike(storepb.Engine_DORIS))
 	assert.False(t, isMySQLLike(storepb.Engine_POSTGRES))
 	assert.False(t, isMySQLLike(storepb.Engine_ENGINE_UNSPECIFIED))
 }

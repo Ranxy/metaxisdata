@@ -88,6 +88,35 @@ export function extractOpenLineageDatasets(rawPayload: string): {
   };
 }
 
+/**
+ * Reports an event whose producer attached a SQL facet but no dataset at all.
+ *
+ * That is what a SQL extractor leaves behind when it cannot resolve the
+ * statement - the run records zero inputs and zero outputs, so the event looks
+ * like "this job has no lineage" instead of "the lineage was dropped".
+ */
+export function hasOpenLineageUnparsedSQL(rawPayload: string): boolean {
+  const payload = parseOpenLineagePayload(rawPayload);
+  if (!payload) {
+    return false;
+  }
+
+  const job = payload.job;
+  if (!job || typeof job !== "object") {
+    return false;
+  }
+
+  const facets = (job as Record<string, unknown>).facets;
+  if (!facets || typeof facets !== "object" || !("sql" in facets)) {
+    return false;
+  }
+
+  return (
+    normalizeDatasetList(payload.inputs).length === 0 &&
+    normalizeDatasetList(payload.outputs).length === 0
+  );
+}
+
 function aggregateDatasetList(
   runs: OpenLineagePayloadLike[],
   kind: "inputs" | "outputs"

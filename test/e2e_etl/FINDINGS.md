@@ -19,6 +19,24 @@ Row counts and every finding below reproduced byte-for-byte — same hop edge
 counts (5 / 8 / 44 / 5 / 4), same 5 phantom StarRocks GUIDs, same 2 CTE
 phantoms, 0 analyzer errors.
 
+## Fix status
+
+F1, F2, F3 and F4 are fixed in this repository; F5 is upstream and untouched.
+Each fix carries hermetic unit coverage, and all four were re-verified on this
+chain after rebuilding and restarting the server (see "Post-fix verification"
+below).
+
+| # | State | Where |
+| --- | --- | --- |
+| F1 | fixed | `backend/plugin/openlineage/resolver.go` `isMySQLLike` |
+| F2 | fixed | `resolver.go` `normalizeHost`/`normalizePort`, plus a warning on the external fallback |
+| F3 | fixed (signal added) | `processor.go` `warnMissingSQLLineage`, run-detail alert in `frontend/src/pages/openlineage/OpenLineageRunDetailPage.vue` |
+| F4 | fixed (table columns) | `backend/plugin/openlineage/lineage_validation.go` |
+| F5 | upstream | Airflow's SQL extractor cannot parse `REFRESH MATERIALIZED VIEW` |
+
+`verify_chain.sql` section 4 must list only the two CTE aliases, and section 5
+must return the table's real columns and nothing else.
+
 ---
 
 ## F1 — BLOCKER: the StarRocks side of the DataX hop resolves to non-existent GUIDs
@@ -60,12 +78,10 @@ name = "e2e_ods.dwd_order_fact"   -> target_guid = starrocks-dev-1;;e2e_ods;dwd_
 invisible from the metadata browser and from column-level provenance.
 `verify_chain.sql` section 4 lists them.
 
-**Suggested fix (one line + test).** Add `STARROCKS` (and `DORIS`, which has the
-same addressing model) to `isMySQLLike`. Alternatively, make the resolver treat
-"two-part name on a non-MySQL-like engine" as database.table when the instance's
-own synced GUIDs use an empty schema segment. Either way, a resolver that
-produces a GUID with no `meta_registry_resource` row should raise a diagnostic
-instead of silently storing the edge.
+**Fixed.** `isMySQLLike` now lists `STARROCKS` and `DORIS` alongside the MySQL
+family, so a two-part producer name is `database.table` for every MySQL-wire
+engine. Covered by `TestBuildGUID` (StarRocks two-part, Doris two-part, and the
+explicit `db..table` form) and `TestIsMySQLLike`.
 
 ---
 
@@ -94,11 +110,14 @@ duplicate-looking nodes, and column lineage for that hop is orphaned. This is
 the most likely failure a real user hits, because host naming is inconsistent
 between JDBC URLs, Airflow connections and the instance registration form.
 
-**Suggested fix.** Normalise loopback aliases (`localhost`, `127.0.0.1`, `::1`)
-and, when a namespace host resolves to no instance but is a known alias of a
-registered data source, log/emit a warning ("namespace postgres://127.0.0.1:5432
-did not match instance test-pg-1 (localhost:5432); add a namespace mapping to
-associate them").
+**Fixed.** `matchHostPort` runs both hosts through `normalizeHost`, which folds
+`localhost`, `127.0.0.1`, `::1` and the bracketed/expanded IPv6 loopback spelling
+onto one token, and through `normalizePort`, which compares ports numerically.
+The external fallback in `ResolveDataset` now logs one warning per namespace
+(`did not match any registered instance ... check the instance's data source host
+and port, or add a namespace mapping`), so the next mismatch is visible instead of
+silent. Covered by `TestMatchHostPort` (alias spellings, bracketed IPv6, padded
+port, aliases still respecting the port, and a real host not being swallowed).
 
 ---
 
@@ -125,11 +144,14 @@ emitted 4 inputs, 2 outputs, `has_lineage=t`, with `columnLineage` facets.
 lineage, and there is no signal anywhere in the product. The only surviving
 trace is a job facet (`sql.query`) on the run.
 
-**Suggested fix.** On the product side, surface events that carry a `sql` facet
-but no inputs/outputs as an "ingestion produced no lineage" diagnostic on the
-run detail page (the pieces already exist: `extractionError` is stored for
-F5-style failures, but an empty-but-present SQL facet is ignored). Document the
-schema-qualification requirement for SQL operators.
+**Fixed (signal only).** `warnMissingSQLLineage` logs a structured warning
+(`carries a SQL facet but no datasets, so no lineage could be extracted`) with
+the job, run and a hint about unqualified names, and the run detail page renders
+an alert whenever an event carries a SQL facet with zero datasets
+(`hasOpenLineageUnparsedSQL` in `frontend/src/lib/openlineage.ts`, i18n keys in
+both locales, 4 new cases in `openlineage.test.ts`). The extractor itself still
+belongs to the Airflow provider, and qualifying the tables remains the producer's
+job; the point is that the drop is no longer silent.
 
 ---
 
@@ -167,15 +189,34 @@ false ones, which is worse than table-level-only for a governance product: a
 "where does this column come from" answer through an `INSERT … SELECT` load
 cannot be trusted today.
 
-**Suggested fix.**
-1. Validate ingested `(target_guid, target_column)` against the registry and
-   store unknown columns as a diagnostic rather than an edge.
-2. Drop edges whose source is a name that resolves to no relation (the CTE
-   aliases) — currently the resolver happily fabricates
-   `test-pg-1;e2e;public;line_agg`.
-3. Consider emitting one OpenLineage event per statement (one operator per
-   statement, or `sql=` as a list) so the extractor cannot cross-contaminate
-   outputs; that is a fixture-side mitigation, not a product fix.
+**Fixed (the part the registry can prove).**
+`backend/plugin/openlineage/lineage_validation.go` checks every ingested edge
+before it is stored, using a digest-only batch lookup
+(`ListMetaRegistryResourceDigest`) so validation never loads metadata:
+
+- a column claim is dropped when its relation is a known **TABLE** and the column
+  it names is not one of that table's columns — that is where the positional
+  `_0…_12` placeholders and the cross-product columns came from;
+- the edge itself survives as a **table-level** edge (both columns blanked,
+  transformations cleared). The first version dropped the whole edge and that lost
+  a *true* dependency: the extractor reports `dwd_order_fact` reading
+  `v_customer_payments` only through the positional claim `_3`, so the pair
+  disappeared. A run that read a relation and wrote another one really did
+  depend on it, even when the column mapping cannot be trusted;
+- degraded duplicates collapse to one row per relation pair;
+- a relation the registry does not know yet is left intact and reported:
+  ingestion runs before the next schema sync, so dropping it would lose the
+  lineage of a table created minutes ago, and the event is only processed once;
+- external datasets are never judged by the registry;
+- views and materialized views keep their columns inside their own metadata
+  rather than as registry rows, so a claim against one is left alone;
+- every blanked claim and every unresolved relation is logged.
+
+Measured on the live metadata of this chain: 1 296 ingested edges in, 267
+unverifiable column claims blanked, 488 references to unresolved relations (the
+five phantom StarRocks GUIDs and the two CTE aliases) reported, and the
+`e2e` column-level edges left with **no** column that the target table does not
+have. Hermetic coverage: `lineage_validation_test.go` (9 cases).
 
 ---
 
@@ -187,6 +228,29 @@ materialized view's lineage comes from the definition analyzer, but it does add
 a failing statement to every run that refreshes an MV.
 
 ---
+
+## Post-fix verification
+
+Rebuilt, restarted the server on :8083, cleared the OpenLineage artifacts from
+the earlier runs, then `install.sh --bootstrap` + `run_chain.sh` again: 4 DAGs,
+26 tasks, all green.
+
+| Check | Before | After |
+| --- | --- | --- |
+| F1: PG → StarRocks edges on registered GUIDs | 0 of 5 (all phantom) | **5 of 5** |
+| F1: upstream walk from `starrocks-dev-1;e2e_ods;;mv_daily_sales.net_line_amount` | 0 rows | 4 hops back to `mysql-dev-1;e2e_ods;;order_items.line_amount` |
+| F1: deepest chain from `mysql e2e_ods.orders` | 3 hops, ending on phantom GUIDs | **5 hops**, ending on the real `starrocks-dev-1;e2e_ads;;v_sr_channel_region` / `…;v_sr_sales_band` / `…;mv_sr_region_daily` |
+| F1: unregistered lineage endpoints | 5 phantom StarRocks GUIDs + 2 CTE aliases | **2 CTE aliases only** |
+| F2: DAG-2 run with connection host `127.0.0.1` (instance `localhost`) | 152 external endpoints | **0 external, 55 internal edges** |
+| F4: column edges naming a column the target table lacks | 267 edges / 31 bogus columns on `dwd_customer_360` alone | **0** |
+| F4: `dwd_order_fact` real columns claimed | 27 of 48 | 27 of 27 (21 bogus claims gone) |
+| F4: PG-internal table pairs | 44 (including false cross-product pairs) | **44** — same coverage, but the pairs that only existed through bogus columns now carry no column mapping |
+| Analyzer failures on `e2e` objects | 0 | 0 |
+
+What is left, by design: the two CTE aliases
+(`test-pg-1;e2e;public;agg`, `…;line_agg`) still have four table-level edges.
+They are counted and logged on every ingestion, and the server warns
+(`ingested lineage referenced relations the metadata registry does not have`).
 
 ## What the run proved works
 
@@ -201,11 +265,38 @@ a failing statement to every run that refreshes an MV.
 | Data flow | 8 tables MySQL → PG; 2 000/300/1 921/1 921/38 rows in the PG layers; identical counts in StarRocks; SR views and async MV return 75 / 1 723 rows |
 | Relation typing | analyzer edges carry `AGGREGATE` (4) vs `DIRECT` (1) correctly, e.g. `v_order_line.line_amount → mv_daily_sales.net_line_amount` |
 
+## Remaining limitations
+
+1. **View and materialized-view column claims are not validated.** Only a TABLE
+   stores its columns as `meta_registry_resource` rows (12 TABLE objects hold
+   all 157 COLUMN rows of the `e2e` database); a view keeps its columns inside
+   its own `viewMetadata`. Validating those would mean loading and parsing that
+   metadata per event, and the analyser already produces precise view lineage, so
+   ingestion leaves them alone.
+2. **A degraded edge loses its column detail.** When one side of a mapping is
+   unverifiable the whole mapping is, so the pair is stored without columns. The
+   dependency stays visible; "which column fed which" does not.
+3. **A relation the registry does not know is still stored.** The CTE aliases
+   (`test-pg-1;e2e;public;line_agg`, `…;agg`) therefore remain as phantom source
+   nodes. They cannot be told apart from a table created after the last schema
+   sync, and dropping the latter would lose real lineage permanently. They are
+   counted and logged; removing them needs deferred re-validation (check
+   unresolved relations after the next sync) or an upstream extractor that
+   resolves CTEs.
+4. **One event carries the whole SQL script.** The Airflow extractor merges every
+   statement of a task into one input/output set, which is what creates the
+   cross-product in the first place. One operator per statement (or `sql=` as a
+   list) keeps outputs apart; that is a fixture-side mitigation, not a product
+   fix.
+5. **`REFRESH MATERIALIZED VIEW` stays unparseable** (F5) — upstream.
+
 ## Reproducing the checks
 
 ```bash
 PGPASSWORD=dev psql -h localhost -U dev -d metaxisdata -f verify_chain.sql
 ```
 
-Section 4 is the quickest regression gate: after fixing F1 it must return only
-the CTE phantoms (F4), and after fixing F4 it must return no rows.
+Section 4 is the quickest regression gate: it must list only the two CTE
+aliases, and section 5 must list the table's real columns and flag nothing as
+bogus. Both exercise the ingestion path, so the server has to be rebuilt and
+restarted after a change there.

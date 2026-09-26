@@ -90,18 +90,59 @@ func (p *Processor) ProcessRunEvent(ctx context.Context, event *RunEvent, persis
 	}
 
 	if len(lineages) == 0 {
+		warnMissingSQLLineage(event)
 		return nil
 	}
+
+	kept, report, err := p.validateIngestedLineage(ctx, lineages)
+	if err != nil {
+		slog.Error("failed to validate ingested OpenLineage lineage",
+			"jobNamespace", event.Job.Namespace,
+			"jobName", event.Job.Name,
+			"runId", event.Run.RunID,
+			"error", err,
+		)
+		return errors.Wrap(err, "failed to validate ingested lineage")
+	}
+	report.log(event)
 
 	slog.Info("storing OpenLineage lineage",
 		"metaGUID", meta.GUID,
 		"metaType", meta.Type,
 		"jobNamespace", event.Job.Namespace,
 		"jobName", event.Job.Name,
-		"edges", len(lineages),
+		"edges", len(kept),
+		"degradedEdges", report.degradedEdges,
 	)
 
-	return p.store.BatchReplaceColumnLineage(ctx, meta.GUID, meta.Type, lineages)
+	return p.store.BatchReplaceColumnLineage(ctx, meta.GUID, meta.Type, kept)
+}
+
+// warnMissingSQLLineage reports an event whose producer attached an SQL facet
+// but no datasets at all. That is what a SQL extractor leaves behind when it
+// cannot resolve a statement - unqualified table names resolved against the
+// wrong default schema is the common cause - and the run record shows only
+// "no lineage" without saying why.
+func warnMissingSQLLineage(event *RunEvent) {
+	if !missingSQLLineage(event) {
+		return
+	}
+	slog.Warn("OpenLineage event carries a SQL facet but no datasets, so no lineage could be extracted",
+		"jobNamespace", event.Job.Namespace,
+		"jobName", event.Job.Name,
+		"runId", event.Run.RunID,
+		"hint", "check whether the extracted statement qualifies its tables, since the extractor resolves unqualified names against one default schema",
+	)
+}
+
+// missingSQLLineage reports an event that asked for SQL lineage and produced no
+// dataset to derive any from.
+func missingSQLLineage(event *RunEvent) bool {
+	if len(event.Inputs) > 0 || len(event.Outputs) > 0 {
+		return false
+	}
+	_, ok := event.Job.Facets["sql"]
+	return ok
 }
 
 func (p *Processor) processOutputDataset(ctx context.Context, output *Dataset, meta lineageMeta) ([]*store.ColumnLineage, error) {

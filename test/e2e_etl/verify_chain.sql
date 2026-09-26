@@ -91,6 +91,8 @@ ORDER BY 1;
 
 \echo ''
 \echo '=== 5. target columns of PG e2e_dwd.dwd_order_fact that do not exist on the table'
+-- An empty target_column is a table-level edge (the ingested column mapping was
+-- unverifiable and was blanked), not a missing column, so it is excluded here.
 SELECT DISTINCT cl.target_column,
        EXISTS (
          SELECT 1 FROM meta_registry_resource m
@@ -98,6 +100,7 @@ SELECT DISTINCT cl.target_column,
        ) AS is_real_column
 FROM column_lineage cl
 WHERE cl.target_guid = 'test-pg-1;e2e;e2e_dwd;dwd_order_fact'
+  AND cl.target_column <> ''
 ORDER BY is_real_column, cl.target_column;
 
 \echo ''

@@ -56,9 +56,10 @@ rows and 1 921 daily-sales rows.
   `test-pg-1`, `starrocks-dev-1` (127.0.0.1:9030).
 - Airflow home `/home/ran/airflow` with the DataX OpenLineage provider
   (`airflow_provider_datax_openlineage`) and DataX at `/home/ran/source/datax`.
-- A `pg_e2e` Airflow connection pointing at PostgreSQL database `e2e`
-  (**the connection host must equal the instance's registered data source host** —
-  see FINDINGS F2), login `dev` / `dev`.
+- A `pg_e2e` Airflow connection pointing at PostgreSQL database `e2e`, login
+  `dev` / `dev`. Its host must be the instance's registered data source host;
+  the loopback spellings (`localhost`, `127.0.0.1`, `::1`) are interchangeable
+  since F2 was fixed, but any other spelling still needs a namespace mapping.
 
 ## Run
 

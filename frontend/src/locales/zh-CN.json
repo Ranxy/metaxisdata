@@ -986,6 +986,8 @@
     "targetJobsCount": "下游 Jobs 数",
     "taskRelatedDatasetsDescription": "这里聚合展示的是这个 Job 最近已持久化运行中出现过的输入输出数据集。",
     "title": "OpenLineage",
+    "unparsedSQLDescription": "该事件带有 SQL 语句，但没有输入或输出数据集，因此不会产生任何血缘。提取器只会用同一个默认 schema 解析未限定的表名，因此建议在语句中显式限定表名。",
+    "unparsedSQLTitle": "未能提取到血缘",
     "visibleDatasets": "当前 Datasets 数",
     "visibleEvents": "当前 Events 数",
     "visibleJobs": "当前 Jobs 数",
