@@ -10,6 +10,9 @@
  *                           row of real data
  *   - h1Count               exactly one page heading per route
  *   - nestedScrollers       pages must not nest their own scroll containers
+ *   - clippedTableCells     table cells narrower than their own content, which
+ *                           is what a column layout that has been squeezed too
+ *                           far looks like before it visibly breaks
  *   - consoleErrors         runtime errors seen while the route loaded
  *
  * It speaks the Chrome DevTools Protocol directly over the built-in WebSocket
@@ -86,9 +89,22 @@ const MEASURE = `(() => {
     headingLevels: [...main.querySelectorAll('h1, h2, h3, h4, h5, h6')].map((h) =>
       Number(h.tagName.slice(1))
     ),
-    nestedScrollers: [...main.querySelectorAll('*')].filter(
-      (el) => el.scrollHeight > el.clientHeight + 4
+    // A cell narrower than its own content is what a squashed table looks like
+    // before anything visibly breaks: headers collide and values lose their
+    // ellipsis. Truncating cells clip themselves, so they never count here.
+    clippedTableCells: [...main.querySelectorAll('table th, table td')].filter(
+      (el) => el.scrollWidth > el.clientWidth + 1
     ).length,
+    // Only a box the user can actually scroll counts: overflow:hidden clipping
+    // is how sr-only and truncate work, and neither hides content behind a
+    // scrollbar.
+    nestedScrollers: [...main.querySelectorAll('*')].filter((el) => {
+      const overflowY = getComputedStyle(el).overflowY;
+      return (
+        (overflowY === 'auto' || overflowY === 'scroll') &&
+        el.scrollHeight > el.clientHeight + 4
+      );
+    }).length,
     mainWidth: Math.round(main.getBoundingClientRect().width),
     scrollWidth: Math.round(main.scrollWidth),
     gutter: getComputedStyle(main).scrollbarGutter,
@@ -399,6 +415,11 @@ async function main() {
       if (measured.scrollWidth > measured.mainWidth + 1) {
         failures.push(
           `horizontal overflow: ${measured.scrollWidth} > ${measured.mainWidth}`
+        );
+      }
+      if (measured.clippedTableCells > 0) {
+        failures.push(
+          `${measured.clippedTableCells} table cell(s) narrower than their content`
         );
       }
     }
