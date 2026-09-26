@@ -156,6 +156,36 @@ describe("clearSession", () => {
     expect(store.permissionsLoaded).toBe(false);
   });
 
+  it("remembers that the server rejected the session", async () => {
+    const store = useAuthStore();
+
+    store.handleUnauthenticated();
+
+    expect(store.isAuthenticated).toBe(false);
+    expect(store.sessionExpired).toBe(true);
+  });
+
+  it("clears the expiry flag on the next successful login", async () => {
+    mocks.login.mockResolvedValue(loginResponse(false));
+    const store = useAuthStore();
+    store.handleUnauthenticated();
+
+    await store.login("dev@example.com", "pw");
+
+    expect(store.sessionExpired).toBe(false);
+  });
+
+  it("does not call a deliberate sign-out an expiry", async () => {
+    mocks.login.mockResolvedValue(loginResponse(false));
+    mocks.logout.mockResolvedValue(undefined);
+    const store = useAuthStore();
+    await store.login("dev@example.com", "pw");
+
+    await store.logout();
+
+    expect(store.sessionExpired).toBe(false);
+  });
+
   it("is what a failed logout leaves behind", async () => {
     mocks.login.mockResolvedValue(loginResponse(false));
     mocks.logout.mockRejectedValue(new Error("network"));

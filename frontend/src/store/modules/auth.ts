@@ -19,6 +19,9 @@ interface AuthState {
   // effective permissions. The login response carries the user without them, so
   // permission-gated UI must wait for the profile to be loaded.
   permissionsLoaded: boolean;
+  // The server rejected a session we believed in (as opposed to the user having
+  // never signed in). The guard reads it to explain the bounce on the login page.
+  sessionExpired: boolean;
 }
 
 export const useAuthStore = defineStore("auth", {
@@ -28,6 +31,7 @@ export const useAuthStore = defineStore("auth", {
     isLoading: false,
     requireResetPassword: false,
     permissionsLoaded: false,
+    sessionExpired: false,
   }),
 
   getters: {
@@ -51,6 +55,7 @@ export const useAuthStore = defineStore("auth", {
         // The login response has no permissions; ensurePermissionsLoaded()
         // resolves them once the caller enters an authenticated page.
         this.permissionsLoaded = false;
+        this.sessionExpired = false;
         return response;
       } finally {
         this.isLoading = false;
@@ -81,11 +86,22 @@ export const useAuthStore = defineStore("auth", {
       this.permissionsLoaded = false;
     },
 
+    /**
+     * The server rejected the session: forget the user and remember that this was
+     * an expiry rather than a deliberate sign-out, so the login form can say so.
+     * Called by the transport interceptor and by a rejected GetCurrentUser.
+     */
+    handleUnauthenticated() {
+      this.clearSession();
+      this.sessionExpired = true;
+    },
+
     async logout() {
       try {
         await authApi.logout();
       } finally {
         this.clearSession();
+        this.sessionExpired = false;
       }
     },
 
@@ -102,7 +118,7 @@ export const useAuthStore = defineStore("auth", {
         // to the login page, and losing a valid cookie to one failed request
         // would do exactly that on the next navigation.
         if (errorCode(error) === Code.Unauthenticated) {
-          this.clearSession();
+          this.handleUnauthenticated();
         }
       } finally {
         this.isLoading = false;

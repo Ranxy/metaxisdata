@@ -18,7 +18,7 @@ import "vue-sonner/style.css";
  * The redirect target is kept so the user lands back where they were.
  */
 function handleSessionExpired() {
-  useAuthStore().clearSession();
+  useAuthStore().handleUnauthenticated();
 
   const current = router.currentRoute.value;
   if (current.name === "Login") {

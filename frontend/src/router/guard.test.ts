@@ -1,4 +1,5 @@
 import { create } from "@bufbuild/protobuf";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import router from "@/router";
@@ -32,6 +33,45 @@ describe("router auth guard", () => {
         permissions: ["metaxisdata.instances.list"],
       })
     );
+  });
+
+  it("sends an unauthenticated visitor to the login page", async () => {
+    mocks.getCurrentUser.mockRejectedValue(
+      new ConnectError("no cookie", Code.Unauthenticated)
+    );
+
+    await router.push("/databases");
+
+    expect(useAuthStore().isAuthenticated).toBe(false);
+    expect(router.currentRoute.value.name).toBe("Login");
+  });
+
+  it("explains an expired session instead of showing a bare form", async () => {
+    // GetCurrentUser is the first call a booted app makes, so it is where an
+    // expired cookie is usually discovered.
+    mocks.getCurrentUser.mockRejectedValue(
+      new ConnectError("no cookie", Code.Unauthenticated)
+    );
+
+    await router.push("/databases");
+
+    expect(useAuthStore().sessionExpired).toBe(true);
+    expect(router.currentRoute.value.name).toBe("Login");
+    expect(router.currentRoute.value.query).toMatchObject({
+      expired: "1",
+      redirect: "/databases",
+    });
+  });
+
+  it("does not claim an expiry for a visitor who never signed in", async () => {
+    mocks.getCurrentUser.mockRejectedValue(
+      new ConnectError("upstream down", Code.Unavailable)
+    );
+
+    await router.push("/databases");
+
+    expect(router.currentRoute.value.name).toBe("Login");
+    expect(router.currentRoute.value.query).not.toHaveProperty("expired");
   });
 
   it("loads the permissions before entering a page right after login", async () => {

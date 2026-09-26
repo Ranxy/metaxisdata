@@ -283,7 +283,15 @@ router.beforeEach(async (to, _from, next) => {
   }
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    next({ name: "Login", query: { redirect: to.fullPath } });
+    next({
+      name: "Login",
+      query: {
+        redirect: to.fullPath,
+        // The server rejected the session, not the user's intent: say so on the
+        // form instead of showing a bare login page.
+        ...(authStore.sessionExpired ? { expired: "1" } : {}),
+      },
+    });
   } else if (authStore.requireResetPassword && to.name !== "Login") {
     // A forced password reset has to be completed first: the server only
     // accepts the password change from the token the login issued.

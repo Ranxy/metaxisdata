@@ -301,7 +301,7 @@ dist/assets/css.worker/html.worker/json.worker/editor.worker …
 
 > **① 会话与错误处理(决策:transport 拦截器 + 回调注入;文案按 code 分级)**
 >
-> `api/session.ts` 给 ConnectRPC transport 挂一个 interceptor:非 `AuthService` 的请求收到 `Unauthenticated` 时调用注册的处理函数。`main.ts` 把它接到 `authStore.clearSession()` + 跳 `/login?expired=1`,登录页复用既有 Alert 显示 `error.sessionExpired`(书签式的重定向目标也保留)。`AuthService` 被豁免——密码错误同样是 `Unauthenticated`,那属于表单而不是会话登出。`fetchCurrentUser` 现在只在 `Code.Unauthenticated` 时清会话,5xx/断网不再被当成登出;`ensurePermissionsLoaded` 用模块级 in-flight promise 去重,同 tick 的两次导航只发一次 GetCurrentUser。
+> `api/session.ts` 给 ConnectRPC transport 挂一个 interceptor:非 `AuthService` 的请求收到 `Unauthenticated` 时调用注册的处理函数。`main.ts` 把它接到 `authStore.handleUnauthenticated()`(清会话 + 记下“是服务端拒绝了会话”,与主动登出区分)+ 跳 `/login?expired=1`,登录页复用既有 Alert 显示 `error.sessionExpired`(重定向目标保留)。**这一条是真实浏览器验证补出来的**:boot 时的 401 由路由守卫重定向落地,守卫原先只带 `redirect`,拦截器那句 `expired=1` 会被覆盖——现在守卫在 `sessionExpired` 为真时把 `expired=1` 一并带上,登录/登出会清掉该标记。`AuthService` 被豁免——密码错误同样是 `Unauthenticated`,那属于表单而不是会话登出。`fetchCurrentUser` 现在只在 `Code.Unauthenticated` 时清会话,5xx/断网不再被当成登出;`ensurePermissionsLoaded` 用模块级 in-flight promise 去重,同 tick 的两次导航只发一次 GetCurrentUser。
 >
 > 错误文案入口:新增 `errorText(error, t, fallbackKey)`(`utils/error.ts`)与 `useErrorMessage`(无 Pinia 的纯内联半)/ `useErrorHandler`(toast 半)。策略:可操作类代码(InvalidArgument / FailedPrecondition / NotFound / AlreadyExists / PermissionDenied / Unauthenticated)保留服务端原文("测试连接"失败的原因就在那里);其余代码(Internal / Unavailable / Unknown / DeadlineExceeded / …)统一用 `Record<Code, ErrorMessageKey>` 的中文句子;只有非 Connect 错误才落到调用方的 fallback key。该表的键类型由 locale 结构递归推导(`Leaves<MessageSchema["error"], "error.">`)——键写错、或 locale 删键,都会直接编译失败。
 >
