@@ -37,6 +37,8 @@ below).
 | F6 | fixed | `backend/store/openlineage_task.go` (found while verifying F1–F4) |
 | F7 | fixed | `backend/plugin/openlineage/sql_facet_lineage.go` — SQL-facet events are analyzed, not believed |
 | F8 | fixed | `queryLocalWildcardSourceRef` in PostgreSQL **and** the MySQL family (StarRocks already had it) |
+| A | fixed | `backend/api/v1/lineage_service.go` — an unresolved node renders instead of answering `CodeNotFound` |
+| B | fixed | `RevalidateUnresolvedLineage` + `FindColumnLineageWithUnknownEndpoint`, run by the maintenance pass |
 
 `verify_chain.sql` section 4 must list only the two CTE aliases, and section 5
 must return the table's real columns and nothing else.
@@ -427,12 +429,26 @@ They are counted and logged on every ingestion, and the server warns
 2. **A degraded edge loses its column detail.** When one side of a mapping is
    unverifiable the whole mapping is, so the pair is stored without columns. The
    dependency stays visible; "which column fed which" does not.
-3. **A relation the registry does not know is still stored.** They cannot be told
-   apart from a table created after the last schema sync, and dropping the latter
-   would lose real lineage permanently, so they are kept, counted and logged;
-   removing them needs deferred re-validation (check unresolved relations after the
-   next sync). The fixture no longer produces one: with F7 and F8 fixed, sections 4
-   and 6 of `verify_chain.sql` are empty.
+3. **A relation the registry does not know is still stored - and now re-checked.**
+   Keeping it is deliberate: it cannot be told apart from a table created after the
+   last schema sync, and dropping it would lose real lineage permanently. What
+   changed is that it no longer stays unchecked or invisible:
+   - **(A)** the lineage graph reports such a node as an unresolved relation of the
+     type the edge claims (`lineageNodeWithMissingMeta`) instead of answering
+     `CodeNotFound`, so one pending endpoint cannot fail the whole request;
+   - **(B)** the maintenance pass re-runs the ingestion validation over the edges
+     whose endpoints are unknown (`FindColumnLineageWithUnknownEndpoint`): a column
+     the relation turns out not to have is blanked, the object types are filled, and
+     what is still unknown is counted and logged rather than kept silent.
+   Verified live against this database: a synthetic pending edge carrying one valid
+   and one invalid target column came back re-validated - the valid claim kept, the
+   invalid one degraded to a table-level edge - with its unknown relation counted
+   (`revalidated=2 objectsStillUnknown=1` out of 22 unknown-endpoint edges, the rest
+   being the analyzer's `information_schema` references, which B deliberately leaves
+   to the analyzer's own re-analysis).
+   The pass runs on the maintenance interval (6 h) and revalidates ingested edges
+   only. The fixture still produces no pending endpoint: with F7 and F8 fixed,
+   sections 4 and 6 of `verify_chain.sql` are empty.
 4. **One event carries the whole SQL script.** The extractor still merges every
    statement of a task into one input/output set and one facet. F7 makes that
    irrelevant for column lineage (the analyzer splits the script itself), but the

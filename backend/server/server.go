@@ -21,6 +21,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/engines"
+	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
 	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
 	"github.com/Ranxy/metaxisdata/backend/runner/maintenance"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
@@ -110,7 +111,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 
 	s.schemaSync = schemasync.NewSyncer(stores, dbFactory, stateCfg, s.lineageAnalyzer)
 
-	s.maintenance = maintenance.NewRunner(stores)
+	s.maintenance = maintenance.NewRunner(stores, openlineage.NewProcessor(stores, lineageEngines))
 
 	s.llmRegistry = llmcomp.NewRegistry(stores, profile)
 

@@ -24,13 +24,20 @@ const (
 )
 
 // Runner prunes data with a retention window.
+// LineageRevalidator re-checks ingested lineage whose endpoints the metadata
+// registry did not know when it was stored.
+type LineageRevalidator interface {
+	RevalidateUnresolvedLineage(ctx context.Context, limit int) (revalidated, stillUnknown int, err error)
+}
+
 type Runner struct {
-	store *store.Store
+	store       *store.Store
+	revalidator LineageRevalidator
 }
 
 // NewRunner creates a maintenance runner.
-func NewRunner(stores *store.Store) *Runner {
-	return &Runner{store: stores}
+func NewRunner(stores *store.Store, revalidator LineageRevalidator) *Runner {
+	return &Runner{store: stores, revalidator: revalidator}
 }
 
 // Run blocks until ctx is cancelled, then signals wg.Done().
@@ -64,6 +71,20 @@ func (r *Runner) runOnce(ctx context.Context) {
 		slog.Error("Failed to prune the LLM debug log", log.WithError(err))
 	} else if deleted > 0 {
 		slog.Info("Pruned expired LLM debug log entries", slog.Int64("count", deleted))
+	}
+
+	// Ingested lineage that named a relation the registry did not have is
+	// re-checked here: once the relation has been synced its columns can be
+	// validated, and what is still unknown is counted rather than kept silent.
+	// This runs before the retention window, which returns early when unset.
+	if r.revalidator != nil {
+		if revalidated, stillUnknown, err := r.revalidator.RevalidateUnresolvedLineage(ctx, 0); err != nil {
+			slog.Error("Failed to revalidate lineage with an unknown endpoint", log.WithError(err))
+		} else if revalidated > 0 || stillUnknown > 0 {
+			slog.Info("Revalidated lineage with an unknown endpoint",
+				slog.Int("edges", revalidated),
+				slog.Int("objectsStillUnknown", stillUnknown))
+		}
 	}
 
 	// OpenLineage runs are audit data and are kept forever unless an admin sets

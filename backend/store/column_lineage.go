@@ -125,6 +125,70 @@ func insertColumnLineage(ctx context.Context, tx *sql.Tx, metaGUID string, metaT
 }
 
 // ListColumnLineage returns column lineage edges matching the given filter.
+// scanColumnLineage reads one column lineage row. Both the filtered listing and
+// the revalidation scan select the same columns in the same order.
+func scanColumnLineage(rows *sql.Rows) (*ColumnLineage, error) {
+	var cl ColumnLineage
+	var transformRaw []byte
+	if err := rows.Scan(
+		&cl.ID,
+		&cl.MetaGUID,
+		&cl.MetaType,
+		&cl.SourceGUID,
+		&cl.SourceColumn,
+		&cl.SourceType,
+		&cl.TargetGUID,
+		&cl.TargetColumn,
+		&cl.TargetType,
+		&cl.RelationType,
+		&transformRaw,
+		&cl.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	if len(transformRaw) > 0 {
+		if err := json.Unmarshal(transformRaw, &cl.Transformation); err != nil {
+			return nil, errors.Wrap(err, "failed to unmarshal transformation")
+		}
+	}
+	return &cl, nil
+}
+
+// FindColumnLineageWithUnknownEndpoint returns the edges whose source or target
+// relation the metadata registry has no row for, oldest first. excludePrefix skips
+// the GUIDs that are meant to have no row - an external dataset never gets one -
+// and limit bounds what one revalidation pass reads.
+func (s *Store) FindColumnLineageWithUnknownEndpoint(ctx context.Context, excludePrefix string, limit int) ([]*ColumnLineage, error) {
+	rows, err := s.GetDB().QueryContext(ctx, `
+		SELECT id, meta_guid, meta_type, source_guid, source_column, source_type, target_guid, target_column, target_type, relation_type, transformation, updated_at
+		FROM column_lineage cl
+		WHERE cl.source_guid NOT LIKE $1
+		  AND cl.target_guid NOT LIKE $1
+		  AND (
+		    NOT EXISTS (SELECT 1 FROM meta_registry_resource m WHERE m.guid = cl.source_guid)
+		    OR NOT EXISTS (SELECT 1 FROM meta_registry_resource m WHERE m.guid = cl.target_guid)
+		  )
+		ORDER BY cl.updated_at, cl.id
+		LIMIT $2`, excludePrefix+"%", max(limit, 0))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to query column lineage with an unknown endpoint")
+	}
+	defer rows.Close()
+
+	var result []*ColumnLineage
+	for rows.Next() {
+		cl, err := scanColumnLineage(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, cl)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "rows iteration error")
+	}
+	return result, nil
+}
+
 func (s *Store) ListColumnLineage(ctx context.Context, find *FindColumnLineageMessage) ([]*ColumnLineage, error) {
 	where, args := []string{"TRUE"}, []any{}
 
@@ -176,30 +240,11 @@ func (s *Store) ListColumnLineage(ctx context.Context, find *FindColumnLineageMe
 
 	var result []*ColumnLineage
 	for rows.Next() {
-		var cl ColumnLineage
-		var transformRaw []byte
-		if err := rows.Scan(
-			&cl.ID,
-			&cl.MetaGUID,
-			&cl.MetaType,
-			&cl.SourceGUID,
-			&cl.SourceColumn,
-			&cl.SourceType,
-			&cl.TargetGUID,
-			&cl.TargetColumn,
-			&cl.TargetType,
-			&cl.RelationType,
-			&transformRaw,
-			&cl.UpdatedAt,
-		); err != nil {
+		cl, err := scanColumnLineage(rows)
+		if err != nil {
 			return nil, err
 		}
-		if len(transformRaw) > 0 {
-			if err := json.Unmarshal(transformRaw, &cl.Transformation); err != nil {
-				return nil, errors.Wrap(err, "failed to unmarshal transformation")
-			}
-		}
-		result = append(result, &cl)
+		result = append(result, cl)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
