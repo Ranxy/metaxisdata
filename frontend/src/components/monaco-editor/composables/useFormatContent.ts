@@ -1,6 +1,6 @@
-import type * as monaco from "monaco-editor";
 import type { Ref } from "vue";
 import { unref, watchEffect } from "vue";
+import type * as monaco from "../monaco";
 import type { MonacoModule, SQLDialect } from "../types";
 import { formatEditorContent, useTextModelLanguage } from "./common";
 

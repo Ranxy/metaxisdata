@@ -1,6 +1,6 @@
-import type * as monaco from "monaco-editor";
 import type { Ref } from "vue";
 import { watch } from "vue";
+import type * as monaco from "../monaco";
 import type {
   IStandaloneEditorConstructionOptions,
   MonacoModule,

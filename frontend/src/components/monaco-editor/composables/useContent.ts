@@ -1,5 +1,5 @@
-import type * as monaco from "monaco-editor";
 import { ref } from "vue";
+import type * as monaco from "../monaco";
 import type { MonacoModule } from "../types";
 
 export function useContent(

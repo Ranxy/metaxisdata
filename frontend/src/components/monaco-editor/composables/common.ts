@@ -1,6 +1,5 @@
-import type * as monaco from "monaco-editor";
-import { Range } from "monaco-editor";
 import { ref } from "vue";
+import * as monaco from "../monaco";
 import { formatSQL } from "../sqlFormatter";
 import type { SQLDialect } from "../types";
 
@@ -58,7 +57,7 @@ export function trySetContentWithUndo(
 
   editor.executeEdits(source, [
     {
-      range: new Range(1, 1, lineCount, lastLineLength + 1),
+      range: new monaco.Range(1, 1, lineCount, lastLineLength + 1),
       text: content,
       forceMoveMarkers: true,
     },

@@ -10,6 +10,7 @@
 </template>
 
 <script setup lang="ts">
+import { usePreferredDark } from "@vueuse/core";
 import {
   computed,
   nextTick,
@@ -20,6 +21,7 @@ import {
   toRef,
   watch,
 } from "vue";
+import { useAppStore } from "@/store/modules/app";
 import {
   useContent,
   useFormatContent,
@@ -61,6 +63,21 @@ const editorRef = shallowRef<IStandaloneCodeEditor>();
 const monacoRef = shallowRef<MonacoModule>();
 const ready = ref(false);
 
+const appStore = useAppStore();
+// Monaco has one global theme. "system" resolves through the same media query
+// the app store watches, so the editor follows an OS theme change too.
+const preferredDark = usePreferredDark();
+const monacoTheme = computed<"vs" | "vs-dark">(() =>
+  appStore.theme === "dark" ||
+  (appStore.theme === "system" && preferredDark.value)
+    ? "vs-dark"
+    : "vs"
+);
+
+watch(monacoTheme, (theme) => {
+  monacoRef.value?.editor.setTheme(theme);
+});
+
 const contentValue = computed({
   get() {
     return props.content;
@@ -87,6 +104,8 @@ onMounted(async () => {
         language: props.language,
         readOnly: props.readonly,
         ...props.options,
+        // Last so the app theme always wins over a caller-supplied option.
+        theme: monacoTheme.value,
       },
     });
 

@@ -1,4 +1,4 @@
-import type * as monaco from "monaco-editor";
+import type * as monaco from "./monaco";
 
 export type MonacoModule = typeof monaco;
 
@@ -8,7 +8,7 @@ export type IStandaloneEditorConstructionOptions =
 
 export type ITextModel = monaco.editor.ITextModel;
 
-export type Language = "sql" | "javascript" | "json" | "plaintext";
+export type Language = "sql" | "plaintext";
 
 export type SQLDialect =
   | "mysql"

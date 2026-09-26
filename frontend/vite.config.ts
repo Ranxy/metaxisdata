@@ -13,15 +13,6 @@ export default defineConfig({
       "@": resolve(__dirname, "src"),
     },
   },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          "monaco-editor": ["monaco-editor"],
-        },
-      },
-    },
-  },
   worker: {
     format: "es",
   },

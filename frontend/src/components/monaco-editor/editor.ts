@@ -1,5 +1,5 @@
-import type * as MonacoType from "monaco-editor";
 import { loadMonacoEditor } from "./lazy-editor";
+import type * as MonacoType from "./monaco";
 
 export interface CreateMonacoEditorResult {
   editor: MonacoType.editor.IStandaloneCodeEditor;
@@ -30,7 +30,7 @@ export async function createMonacoEditor(config: {
 
 export function defaultEditorOptions(): MonacoType.editor.IStandaloneEditorConstructionOptions {
   return {
-    theme: "vs",
+    // `theme` is left to the caller so the editor can follow the app theme.
     tabSize: 2,
     insertSpaces: true,
     autoClosingQuotes: "never",

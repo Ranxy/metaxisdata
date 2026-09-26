@@ -1,4 +1,4 @@
-import type * as monaco from "monaco-editor";
+import type * as monaco from "./monaco";
 
 import { ensureMonacoWorkers } from "./monaco-workers";
 
@@ -16,7 +16,7 @@ export async function loadMonacoEditor(): Promise<typeof monaco> {
 
   ensureMonacoWorkers();
 
-  loadPromise = import("monaco-editor").then((module) => {
+  loadPromise = import("./monaco").then((module) => {
     monacoModule = module;
     return module;
   });
