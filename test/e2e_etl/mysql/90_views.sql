@@ -1,6 +1,7 @@
 -- MySQL-side views: exercise the MySQL analyzer at the head of the chain.
 USE e2e_ods;
 
+DROP VIEW IF EXISTS v_region_order_stats;
 DROP VIEW IF EXISTS v_order_daily_region;
 DROP VIEW IF EXISTS v_customer_active;
 
@@ -42,3 +43,27 @@ JOIN customers c ON o.customer_id = c.customer_id
 JOIN regions r ON c.country = r.country
 WHERE o.status <> 'cancelled'
 GROUP BY o.order_date, r.region, o.channel;
+
+-- A nested CTE with a table-wide aggregate over the inner one. Its definition is
+-- the shape that used to make an analyzer name the CTE as a relation (F8): the
+-- edge must point at the columns of orders/customers, never at base/agg.
+CREATE VIEW v_region_order_stats AS
+WITH base AS (
+  SELECT o.order_id,
+         c.country,
+         o.net_amount
+  FROM orders o
+  JOIN customers c ON c.customer_id = o.customer_id
+  WHERE o.status <> 'cancelled'
+),
+agg AS (
+  SELECT b.country,
+         COUNT(*) AS order_count,
+         SUM(b.net_amount) AS net_amount
+  FROM base b
+  GROUP BY b.country
+)
+SELECT a.country,
+       a.order_count,
+       a.net_amount
+FROM agg a;

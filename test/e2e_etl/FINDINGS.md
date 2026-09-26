@@ -375,8 +375,10 @@ PostgreSQL and MySQL packages, using the fixture's statement shape with a stub
 catalog; each fails without its fix ("Should not be: base") and passes with it. On
 the rebuilt chain `verify_chain.sql` sections 4 and 6 are **empty**, the two
 provenance claims and the five-hop chain are unchanged, and the analyzer corpora of
-all five dialects pass. The fixture's own MySQL views do not use `COUNT(*)` over a
-CTE, so that side is guarded hermetically rather than by this chain.
+all five dialects pass. The fixture now covers that side on the chain too:
+`mysql/90_views.sql` defines `v_region_order_stats`, a nested CTE whose inner
+relation is aggregated with `COUNT(*)`, and `verify_chain.sql` section 8 lists its
+sources — `orders` and `customers`, never `base` or `agg`.
 
 ## Post-fix verification
 
@@ -409,7 +411,7 @@ They are counted and logged on every ingestion, and the server warns
 | PG analyzer | 6 views + 1 materialized view + 2 serving views analysed, **0 errors** — including `DISTINCT ON`, `GROUPING SETS`, `LATERAL … LIMIT`, `generate_series`, `FILTER` on aggregates *and* on window functions |
 | PG internal chain | `e2e_ods.* → v_order_base/v_order_line → v_customer_360 / mv_daily_sales → dwd_* / ads_*` walks correctly (44 table edges) |
 | StarRocks analyzer | 2 views + 1 async materialized view resolved against the *real* landed tables (4 edges) |
-| MySQL analyzer | 2 source views resolved |
+| MySQL analyzer | 3 source views resolved, one of them a nested CTE with `COUNT(*)` (F8's shape) |
 | OpenLineage ingestion | API key auth, rate-limit path, run/job/dataset persistence, 63 runs from 4 DAGs, `has_lineage` correct |
 | Data flow | 8 tables MySQL → PG; 2 000/300/1 921/1 921/38 rows in the PG layers; identical counts in StarRocks; SR views and async MV return 75 / 1 723 rows |
 | Relation typing | analyzer edges carry `AGGREGATE` (4) vs `DIRECT` (1) correctly, e.g. `v_order_line.line_amount → mv_daily_sales.net_line_amount` |

@@ -119,3 +119,12 @@ SELECT meta_guid, meta_type, error_message
 FROM column_lineage_version
 WHERE meta_guid LIKE '%e2e%' AND error_message IS NOT NULL
 ORDER BY 1;
+
+\echo ''
+\echo '=== 8. the MySQL view over a nested CTE with COUNT(*) (F8) names no CTE'
+-- Its definition is the shape that used to make an analyzer emit an edge whose
+-- source was the CTE (base/agg). Every source here must be a stored relation.
+SELECT DISTINCT cl.source_guid, cl.source_column, cl.target_column
+FROM column_lineage cl
+WHERE cl.meta_guid = 'mysql-dev-1;e2e_ods;;v_region_order_stats'
+ORDER BY 1, 2, 3;
