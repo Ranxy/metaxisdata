@@ -249,6 +249,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  assignLayers,
+  buildLineageEdges,
+  type ColumnFilter,
+  layoutNodes,
+  nodeHeight,
+} from "@/lib/lineageGraph";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type {
   ExternalDatasetInfo,
@@ -271,7 +278,6 @@ const route = useRoute();
 const router = useRouter();
 const { fitView, getNodes } = useVueFlow();
 
-const HORIZONTAL_GAP = 280;
 const OPENLINEAGE_META_TYPE = 100;
 
 type LineageDirection = "upstream" | "downstream";
@@ -507,6 +513,12 @@ function guidToMetaType(guid: string): string {
   return "table";
 }
 
+const columnFilter = computed<ColumnFilter | null>(() =>
+  selectedColumnGuid.value && selectedColumnName.value
+    ? { guid: selectedColumnGuid.value, column: selectedColumnName.value }
+    : null
+);
+
 function relationMatchesSelectedColumn(rel: LineageRelation): boolean {
   if (!selectedColumnGuid.value || !selectedColumnName.value) {
     return true;
@@ -740,20 +752,6 @@ async function fetchLineageForGuid(
   }
 }
 
-function collectRelatedGuids(guid: string): Set<string> {
-  const related = new Set<string>();
-  const data = nodeDataMap.value.get(guid);
-  if (!data) return related;
-
-  for (const rel of data.upstream) {
-    related.add(rel.sourceGuid);
-  }
-  for (const rel of data.downstream) {
-    related.add(rel.targetGuid);
-  }
-  return related;
-}
-
 // Collect unique columns for a given guid from all lineage relations
 function collectColumnsForGuid(guid: string): string[] {
   const columns = new Set<string>();
@@ -774,349 +772,67 @@ function collectColumnsForGuid(guid: string): string[] {
   return Array.from(columns).sort();
 }
 
+function nodeDataFor(guid: string): LineageNodeData {
+  const data = nodeDataMap.value.get(guid);
+  return {
+    guid,
+    label: formatGuidLabel(guid),
+    shortPath: formatGuidShort(guid),
+    isRoot: guid === currentGuid.value,
+    upstreamLoaded: data?.upstreamLoaded ?? false,
+    downstreamLoaded: data?.downstreamLoaded ?? false,
+    upstreamCount: data?.upstream.length ?? 0,
+    downstreamCount: data?.downstream.length ?? 0,
+    metaType: guidToMetaType(guid),
+    columns: collectColumnsForGuid(guid),
+    selectedColumn:
+      selectedColumnGuid.value === guid ? selectedColumnName.value : null,
+    highlightedColumns: highlightedColumnsMap.value.get(guid) ?? new Set(),
+  };
+}
+
+/** Rebuilds every node from scratch, which also re-runs the layer layout. */
 function rebuildGraph() {
+  const layers = assignLayers(currentGuid.value, nodeDataMap.value);
+  const positions = layoutNodes(layers, (guid) =>
+    nodeHeight(
+      collectColumnsForGuid(guid).length,
+      fieldsVisibleGuids.value.has(guid)
+    )
+  );
+
   const nodeMap = new Map<string, Node>();
-  const edgeList: Edge[] = [];
-  const edgeSet = new Set<string>();
-
-  // Collect all nodes and their relationships
-  const allGuids = new Set<string>([currentGuid.value]);
-  for (const [guid] of nodeDataMap.value) {
-    allGuids.add(guid);
-    const related = collectRelatedGuids(guid);
-    for (const r of related) allGuids.add(r);
-  }
-
-  // Build adjacency for layout
-  const upstreamOf = new Map<string, Set<string>>();
-  const downstreamOf = new Map<string, Set<string>>();
-
-  for (const [guid, data] of nodeDataMap.value) {
-    for (const rel of data.upstream) {
-      if (!upstreamOf.has(guid)) upstreamOf.set(guid, new Set());
-      upstreamOf.get(guid)!.add(rel.sourceGuid);
-    }
-    for (const rel of data.downstream) {
-      if (!downstreamOf.has(guid)) downstreamOf.set(guid, new Set());
-      downstreamOf.get(guid)!.add(rel.targetGuid);
-    }
-  }
-
-  // Assign layers via BFS from root
-  const layers = new Map<string, number>();
-  layers.set(currentGuid.value, 0);
-  const queue = [currentGuid.value];
-  let head = 0;
-
-  while (head < queue.length) {
-    const current = queue[head++];
-    const currentLayer = layers.get(current)!;
-
-    const ups = upstreamOf.get(current);
-    if (ups) {
-      for (const u of ups) {
-        if (!layers.has(u)) {
-          layers.set(u, currentLayer - 1);
-          queue.push(u);
-        }
-      }
-    }
-
-    const downs = downstreamOf.get(current);
-    if (downs) {
-      for (const d of downs) {
-        if (!layers.has(d)) {
-          layers.set(d, currentLayer + 1);
-          queue.push(d);
-        }
-      }
-    }
-  }
-
-  // For orphan guids that weren't reached by BFS
-  for (const guid of allGuids) {
-    if (!layers.has(guid)) {
-      layers.set(guid, 0);
-    }
-  }
-
-  // Group by layer
-  const layerGroups = new Map<number, string[]>();
-  for (const [guid, layer] of layers) {
-    if (!layerGroups.has(layer)) layerGroups.set(layer, []);
-    layerGroups.get(layer)!.push(guid);
-  }
-
-  // Find min layer for offset
-  const minLayer = Math.min(...layerGroups.keys());
-
-  // Layout nodes
-  for (const [layer, guids] of layerGroups) {
-    const x = (layer - minLayer) * HORIZONTAL_GAP;
-    let y = 0;
-    guids.forEach((guid) => {
-      const data = nodeDataMap.value.get(guid);
-      const nodeData: LineageNodeData = {
-        guid,
-        label: formatGuidLabel(guid),
-        shortPath: formatGuidShort(guid),
-        isRoot: guid === currentGuid.value,
-        upstreamLoaded: data?.upstreamLoaded ?? false,
-        downstreamLoaded: data?.downstreamLoaded ?? false,
-        upstreamCount: data?.upstream.length ?? 0,
-        downstreamCount: data?.downstream.length ?? 0,
-        metaType: guidToMetaType(guid),
-        columns: collectColumnsForGuid(guid),
-        selectedColumn:
-          selectedColumnGuid.value === guid ? selectedColumnName.value : null,
-        highlightedColumns: highlightedColumnsMap.value.get(guid) ?? new Set(),
-      };
-
-      nodeMap.set(guid, {
-        id: guid,
-        type: "lineage",
-        position: { x, y },
-        data: nodeData,
-      });
-
-      // Advance y by estimated node height to avoid overlapping
-      const BASE_NODE_HEIGHT = 120;
-      const COLUMN_ROW_HEIGHT = 24;
-      const MAX_FIELDS_HEIGHT = 200;
-      const GAP = 20;
-      let nodeHeight = BASE_NODE_HEIGHT;
-      if (fieldsVisibleGuids.value.has(guid)) {
-        const cols = nodeData.columns.length;
-        nodeHeight += Math.min(cols * COLUMN_ROW_HEIGHT, MAX_FIELDS_HEIGHT);
-      }
-      y += nodeHeight + GAP;
+  for (const [guid, position] of positions) {
+    nodeMap.set(guid, {
+      id: guid,
+      type: "lineage",
+      position,
+      data: nodeDataFor(guid),
     });
   }
 
-  // Check if a column is selected for edge filtering
-  const hasColumnFilter =
-    selectedColumnGuid.value !== null && selectedColumnName.value !== null;
-
-  // Build a set of edge ids that match the selected column's lineage
-  const columnEdgeIds = new Set<string>();
-  if (hasColumnFilter) {
-    for (const [guid, data] of nodeDataMap.value) {
-      for (const rel of data.upstream) {
-        if (
-          (rel.targetGuid === selectedColumnGuid.value &&
-            rel.targetColumn === selectedColumnName.value) ||
-          (rel.sourceGuid === selectedColumnGuid.value &&
-            rel.sourceColumn === selectedColumnName.value)
-        ) {
-          columnEdgeIds.add(`${rel.sourceGuid}->${guid}`);
-        }
-      }
-      for (const rel of data.downstream) {
-        if (
-          (rel.sourceGuid === selectedColumnGuid.value &&
-            rel.sourceColumn === selectedColumnName.value) ||
-          (rel.targetGuid === selectedColumnGuid.value &&
-            rel.targetColumn === selectedColumnName.value)
-        ) {
-          columnEdgeIds.add(`${guid}->${rel.targetGuid}`);
-        }
-      }
-    }
-  }
-
-  // Build edges
-  for (const [guid, data] of nodeDataMap.value) {
-    for (const rel of data.upstream) {
-      const edgeId = `${rel.sourceGuid}->${guid}`;
-      if (
-        !edgeSet.has(edgeId) &&
-        nodeMap.has(rel.sourceGuid) &&
-        nodeMap.has(guid)
-      ) {
-        edgeSet.add(edgeId);
-        const isHighlighted = hasColumnFilter && columnEdgeIds.has(edgeId);
-        const isDimmed = hasColumnFilter && !isHighlighted;
-        edgeList.push({
-          id: edgeId,
-          source: rel.sourceGuid,
-          target: guid,
-          animated: !isDimmed,
-          style: {
-            stroke: isDimmed
-              ? "hsl(var(--muted-foreground) / 0.2)"
-              : isHighlighted
-                ? "hsl(var(--primary))"
-                : "hsl(var(--primary) / 0.6)",
-            strokeWidth: isHighlighted ? 3 : 2,
-          },
-          label: rel.relationType === 1 ? "" : "T",
-          labelStyle: {
-            fontSize: "10px",
-            fill: "hsl(var(--muted-foreground))",
-          },
-        });
-      }
-    }
-    for (const rel of data.downstream) {
-      const edgeId = `${guid}->${rel.targetGuid}`;
-      if (
-        !edgeSet.has(edgeId) &&
-        nodeMap.has(guid) &&
-        nodeMap.has(rel.targetGuid)
-      ) {
-        edgeSet.add(edgeId);
-        const isHighlighted = hasColumnFilter && columnEdgeIds.has(edgeId);
-        const isDimmed = hasColumnFilter && !isHighlighted;
-        edgeList.push({
-          id: edgeId,
-          source: guid,
-          target: rel.targetGuid,
-          animated: !isDimmed,
-          style: {
-            stroke: isDimmed
-              ? "hsl(var(--muted-foreground) / 0.2)"
-              : isHighlighted
-                ? "hsl(var(--primary))"
-                : "hsl(var(--primary) / 0.6)",
-            strokeWidth: isHighlighted ? 3 : 2,
-          },
-          label: rel.relationType === 1 ? "" : "T",
-          labelStyle: {
-            fontSize: "10px",
-            fill: "hsl(var(--muted-foreground))",
-          },
-        });
-      }
-    }
-  }
-
   nodes.value = Array.from(nodeMap.values());
-  edges.value = edgeList;
+  edges.value = buildLineageEdges(nodeDataMap.value, {
+    validNodeIds: new Set(nodeMap.keys()),
+    columnFilter: columnFilter.value,
+  });
 }
 
-// Update only node data and edges without recalculating positions.
-// This preserves manually-dragged node positions.
+/** Refreshes node data and edges, keeping positions the user may have dragged. */
 function updateGraphState() {
-  // Build updated edges
-  const edgeList: Edge[] = [];
-  const edgeSet = new Set<string>();
-
-  const hasColumnFilter =
-    selectedColumnGuid.value !== null && selectedColumnName.value !== null;
-
-  const columnEdgeIds = new Set<string>();
-  if (hasColumnFilter) {
-    for (const [guid, data] of nodeDataMap.value) {
-      for (const rel of data.upstream) {
-        if (
-          (rel.targetGuid === selectedColumnGuid.value &&
-            rel.targetColumn === selectedColumnName.value) ||
-          (rel.sourceGuid === selectedColumnGuid.value &&
-            rel.sourceColumn === selectedColumnName.value)
-        ) {
-          columnEdgeIds.add(`${rel.sourceGuid}->${guid}`);
-        }
-      }
-      for (const rel of data.downstream) {
-        if (
-          (rel.sourceGuid === selectedColumnGuid.value &&
-            rel.sourceColumn === selectedColumnName.value) ||
-          (rel.targetGuid === selectedColumnGuid.value &&
-            rel.targetColumn === selectedColumnName.value)
-        ) {
-          columnEdgeIds.add(`${guid}->${rel.targetGuid}`);
-        }
-      }
-    }
-  }
-
-  for (const [guid, data] of nodeDataMap.value) {
-    for (const rel of data.upstream) {
-      const edgeId = `${rel.sourceGuid}->${guid}`;
-      if (!edgeSet.has(edgeId)) {
-        edgeSet.add(edgeId);
-        const isHighlighted = hasColumnFilter && columnEdgeIds.has(edgeId);
-        const isDimmed = hasColumnFilter && !isHighlighted;
-        edgeList.push({
-          id: edgeId,
-          source: rel.sourceGuid,
-          target: guid,
-          animated: !isDimmed,
-          style: {
-            stroke: isDimmed
-              ? "hsl(var(--muted-foreground) / 0.2)"
-              : isHighlighted
-                ? "hsl(var(--primary))"
-                : "hsl(var(--primary) / 0.6)",
-            strokeWidth: isHighlighted ? 3 : 2,
-          },
-          label: rel.relationType === 1 ? "" : "T",
-          labelStyle: {
-            fontSize: "10px",
-            fill: "hsl(var(--muted-foreground))",
-          },
-        });
-      }
-    }
-    for (const rel of data.downstream) {
-      const edgeId = `${guid}->${rel.targetGuid}`;
-      if (!edgeSet.has(edgeId)) {
-        edgeSet.add(edgeId);
-        const isHighlighted = hasColumnFilter && columnEdgeIds.has(edgeId);
-        const isDimmed = hasColumnFilter && !isHighlighted;
-        edgeList.push({
-          id: edgeId,
-          source: guid,
-          target: rel.targetGuid,
-          animated: !isDimmed,
-          style: {
-            stroke: isDimmed
-              ? "hsl(var(--muted-foreground) / 0.2)"
-              : isHighlighted
-                ? "hsl(var(--primary))"
-                : "hsl(var(--primary) / 0.6)",
-            strokeWidth: isHighlighted ? 3 : 2,
-          },
-          label: rel.relationType === 1 ? "" : "T",
-          labelStyle: {
-            fontSize: "10px",
-            fill: "hsl(var(--muted-foreground))",
-          },
-        });
-      }
-    }
-  }
-
-  edges.value = edgeList;
-
-  // Read current positions from VueFlow's internal store (reflects drag positions)
   const currentPositions = new Map<string, { x: number; y: number }>();
-  for (const n of getNodes.value) {
-    currentPositions.set(n.id, { ...n.position });
+  for (const node of getNodes.value) {
+    currentPositions.set(node.id, { ...node.position });
   }
 
-  // Update node data in-place, preserving positions
-  nodes.value = nodes.value.map((node) => {
-    const guid = node.id;
-    const lineageData = nodeDataMap.value.get(guid);
-    const nodeData: LineageNodeData = {
-      guid,
-      label: formatGuidLabel(guid),
-      shortPath: formatGuidShort(guid),
-      isRoot: guid === currentGuid.value,
-      upstreamLoaded: lineageData?.upstreamLoaded ?? false,
-      downstreamLoaded: lineageData?.downstreamLoaded ?? false,
-      upstreamCount: lineageData?.upstream.length ?? 0,
-      downstreamCount: lineageData?.downstream.length ?? 0,
-      metaType: guidToMetaType(guid),
-      columns: collectColumnsForGuid(guid),
-      selectedColumn:
-        selectedColumnGuid.value === guid ? selectedColumnName.value : null,
-      highlightedColumns: highlightedColumnsMap.value.get(guid) ?? new Set(),
-    };
-
-    const position = currentPositions.get(guid) ?? node.position;
-    return { ...node, position, data: nodeData };
+  nodes.value = nodes.value.map((node) => ({
+    ...node,
+    position: currentPositions.get(node.id) ?? node.position,
+    data: nodeDataFor(node.id),
+  }));
+  edges.value = buildLineageEdges(nodeDataMap.value, {
+    validNodeIds: new Set(nodes.value.map((node) => node.id)),
+    columnFilter: columnFilter.value,
   });
 }
 
