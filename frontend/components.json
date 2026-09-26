@@ -16,8 +16,5 @@
     "ui": "@/components/ui",
     "lib": "@/lib",
     "composables": "@/composables"
-  },
-  "registries": {
-      "@acme": "https://acme.com/r/{name}.json"
   }
 }
