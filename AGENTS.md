@@ -1,12 +1,24 @@
 # AGENTS.md
 
-This file provides guidance to AI coding assistants (Claude Code, Codex, Copilot) when working with code in this repository. `CLAUDE.md` is a symlink to this file — edit this one, never the symlink.
+Guidance for AI coding assistants (Claude Code, Codex, Copilot) working in this repository. `CLAUDE.md` is a symlink to this file — edit this one, never the symlink.
+
+This file is the router: it holds only rules that apply across the whole repository. Directory-specific detail lives in nested `AGENTS.md` files beside the code, which are loaded and scoped automatically. **Before changing code under a directory, read its nested file — its rules win over this one.**
+
+| Working in | Read first |
+| --- | --- |
+| `backend/` — Go server | [backend/AGENTS.md](backend/AGENTS.md) |
+| `backend/plugin/lineage/` — lineage analyzers | [backend/plugin/lineage/AGENTS.md](backend/plugin/lineage/AGENTS.md) |
+| `backend/migrator/` — schema and migrations | [backend/migrator/AGENTS.md](backend/migrator/AGENTS.md) |
+| `frontend/` — Vue 3 SPA | [frontend/AGENTS.md](frontend/AGENTS.md) |
+| `proto/` — ConnectRPC and store schemas | [proto/AGENTS.md](proto/AGENTS.md) |
+| `cli/` — the `mxd` client | [cli/AGENTS.md](cli/AGENTS.md) |
+| Behavior that looks like a bug | [docs/security-posture.md](docs/security-posture.md) |
 
 ## What Metaxisdata Is
 
 Metaxisdata is a self-hosted data governance and metadata platform. It connects to MySQL/TiDB and PostgreSQL instances, syncs their schema into a metadata registry, derives table- and column-level lineage (both from SQL definitions and from ingested OpenLineage events), and uses LLM-backed tools to explain SQL. A deployment is a single Go server binary backed by PostgreSQL; the frontend is a Vue 3 SPA that talks to the server over ConnectRPC.
 
-Product surface (frontend routes in `frontend/src/router/index.ts`, sidebar in `frontend/src/components/layout/AppSidebar.vue`):
+Product surface (routes in `frontend/src/router/index.ts`, sidebar in `frontend/src/components/layout/AppSidebar.vue`):
 
 - **Data** — instances, databases, metadata browser (instance → database → schema → table → column → manual SQL, with history), manual SQL management.
 - **Lineage** — table lineage graph and column-level lineage, analyzed from view/materialized-view SQL and from OpenLineage.
@@ -17,286 +29,46 @@ Product surface (frontend routes in `frontend/src/router/index.ts`, sidebar in `
 
 Feature design documents live in `spec/` (product/UX specs) and `plan/` (implementation plans). Read the matching doc before reworking one of these subsystems, and add one there for new subsystem-scale features.
 
-## Project Architecture
+## Cross-Directory Invariants
 
-### Services and Package Ownership
-
-| Path | Owns |
-| --- | --- |
-| `backend/bin/server/` | Server entrypoint and CLI flags/profile (`cmd/root.go`); requires `PG_URL` |
-| `backend/server/` | HTTP wiring: Echo middleware and routes, ConnectRPC handler registration and interceptors, pprof, graceful shutdown |
-| `backend/api/v1/` | ConnectRPC service implementations (`UserService`, `AuthService`, `InstanceService`, `DatabaseService`, `LineageService`, `OpenLineageService`, `LLMService`, `ExplainSQLService`, `AuditLogService`) plus the audit/debug interceptors |
-| `backend/api/auth/` | JWT issuance and verification, auth interceptor, token extraction from metadata/headers |
-| `backend/store/` | PostgreSQL store: table→message mapping, JSONB `protojson` columns, LRU caches, connection pool |
-| `backend/component/dbfactory/` | Builds a `db.Driver` from an instance's data source |
-| `backend/component/llm/` | LLM provider registry and the iterative agent loop (tools, events, messages) |
-| `backend/component/state/` | In-memory server state (token-expire cache, per-instance connection limiter) |
-| `backend/plugin/db/` | `db.Driver` interface and the MySQL-wire, PostgreSQL and MSSQL drivers (`mysql`, `pg`, `mssql`, `starrocks` — the last serving StarRocks and Doris) |
-| `backend/plugin/schema/` | Schema sync, diff, and migration-DDL generation (MySQL/PG/MSSQL; StarRocks/Doris are not registered) |
-| `backend/plugin/lineage/` | Table/column lineage analyzers, catalog, and scope resolution (MySQL/TiDB/MariaDB/PostgreSQL/StarRocks; Doris is not registered). Each dialect exports a `Registration`; the supported set is assembled explicitly in `backend/plugin/lineage/engines` and built into one `lineage.Analyzer` at startup — nothing self-registers from `init`, and a partial analysis reports structured `model.Diagnostic` gaps beside the edges it did find. The TiDB and MariaDB analyzers are generated: their traversal lives only in `mysql/analyzer.go` below its `MYSQL-FAMILY SHARED BODY` sentinel, and `tidb|mariadb/analyzer_body_gen.go` must be regenerated with `go generate ./backend/plugin/lineage/mysql` after editing it |
-| `backend/plugin/openlineage/` | OpenLineage event parsing, processing, resolution, and Airflow links |
-| `backend/plugin/idp/` | Identity providers (OAuth2/OIDC/LDAP) |
-| `backend/plugin/metric/` | Metric collection and reporting |
-| `backend/runner/` | Background runners: `lineageanalyzer`, `schemasync`, `maintenance` |
-| `backend/migrator/` | Embedded, versioned schema migrations (`migration/LATEST.sql` + incrementals) and the startup migrator |
-| `backend/generated-go/` | Generated protobuf/Connect/Gateway code — never hand-edit |
-| `cli/` | The `mxd` command line client. A client of the API, never a part of the server: `depguard` in `.golangci.yaml` stops it from importing anything under `backend/` except `backend/generated-go`. `cli/skill/SKILL.md` is the agent skill it embeds and installs with `mxd skill install` |
-| `frontend/src/` | Vue 3 + TypeScript SPA (Vite, Pinia, vue-router, Tailwind, shadcn-vue) |
-| `proto/v1/`, `proto/store/` | Public ConnectRPC service definitions and database row shapes |
-| `spec/`, `plan/` | Feature specs and implementation plans |
-
-### Protocol
-
-- `proto/v1/` defines the public ConnectRPC services (package `metaxisdata.v1`); `proto/store/` defines the row shapes stored in database JSONB columns.
-- `cd proto && buf generate` regenerates Go code into `backend/generated-go/`, frontend types into `frontend/src/types/proto-es/` (only `metaxisdata.v1`), and API docs into `proto/gen/grpc-doc/`. Generated output is committed but never hand-edited.
-- Commit the regenerated `backend/generated-go/`, `frontend/src/types/proto-es/`, and `proto/gen/grpc-doc/` output together with the proto change.
-
-### Database Schema and Migrations
-
-- `backend/migrator/` owns the metadata schema. `migration/LATEST.sql` is the cumulative schema at the newest version; `migration/{MAJOR.MINOR}/{NNNN}##{desc}.sql` are forward-only incremental migrations (the current version line is `0.1`, baseline version `0.1.0`).
-- `migrator.MigrateSchema` runs in-process on every server startup, before any subsystem reads the schema. Fresh installs apply `LATEST.sql`; existing deployments apply only the pending incrementals; a database that already has the schema but predates the framework is adopted at the baseline version. A session-level advisory lock serializes migrations across replicas.
-- `schema_migration_history` is the version ledger. Never write it from application code.
-- Consequence: every schema change must BOTH append the idempotent DDL to `migration/LATEST.sql` (fresh installs) AND add an incremental file under the current `{MAJOR.MINOR}` directory (existing deployments). Keep `backend/store` queries, `LATEST.sql`, and the incremental in sync in the same change. See `plan/schema_migration_plan.md`.
-- JSONB columns hold `protojson.Marshal` output of the `proto/store` message named in the column's SQL comment. When you add or remove proto fields, update the proto and the store together.
-
-### Store Layer
-
-- `backend/store/` maps database tables to Go. Store unit tests are hermetic — they need no live database. When a query's shape is itself the invariant (scoping predicates, GUID-subtree escaping, history mutations), add a guard test in the same package (see `backend/store/meta_resource_test.go` for the pattern).
-
-### Frontend Module Boundaries
-
-Where a new frontend module belongs follows from what it depends on, not from its size. From the bottom up:
-
-| Path | Holds | May import |
-| --- | --- | --- |
-| `frontend/src/utils/` | Pure helpers over plain values and proto messages: encodings, formatting, parsing, domain catalogs (`guid`, `datetime`, `metaType`, `error`, `csv`, `dateRange`). No Vue, no Pinia, no `@/api`. | proto types, other `utils/` |
-| `frontend/src/lib/` | Domain logic without view state: the lineage graph engine, the client-side permission mirror, the OpenLineage payload aggregator, `notify` (the one toast entry point), `cn`. | `utils/`, proto types |
-| `frontend/src/composables/` | Anything that owns a `ref`, a lifecycle hook or a request: `usePagedFetch`, `useDashboard`, `useErrorHandler`. | `api/`, `lib/`, `utils/`, stores |
-| `frontend/src/api/` | One module per ConnectRPC service: request building, `listAll` paging, transport errors. No rendering, no cached state. | `lib/`, `utils/`, proto types |
-| `frontend/src/store/modules/` | Pinia stores shared across pages (app, auth, instance and environment caches). | `api/`, `utils/`, proto types |
-| `frontend/src/components/` | `ui/` is unmodified shadcn-vue; `<feature>/` holds feature components built from it; `common/` holds the cross-feature ones. | anything below |
-| `frontend/src/pages/` | Route-level views. They compose; reusable logic belongs in a layer below. | anything below |
-
-The rule of thumb: once a helper grows a `ref`, imports `@/api`, or calls `useI18n()`, it has outgrown `utils/`. When domain logic needs no reactivity, keep it in `lib/` — `lib/lineageGraph.ts` and `utils/dateRange.ts` are pure functions precisely so they can be unit tested without mounting anything.
-
-`utils/`, `lib/` and `composables/` are also the coverage-guarded layer: `frontend/vitest.config.ts` sets per-file thresholds (95% lines/functions/statements, 85% branches) and scopes `coverage.include` to those three directories, so a new file there with no test fails the run at 0% instead of being absent from the report. Components and pages are outside the thresholds deliberately — test a concrete interaction, not a percentage.
-
-## Testing
-
-The default Go suite is hermetic: `go test ./...` needs no PostgreSQL, MySQL, or Docker.
-
-Integration suites are gated by the `integration` build tag and run the real server against real PostgreSQL + MySQL:
-
-| Mode | How | Notes |
-| --- | --- | --- |
-| Local (default) | `make test-integration` / `make test-integration-smoke` / `make test-integration-mysql` | Uses `testcontainers-go` to start PostgreSQL + MySQL; requires a working Docker daemon and skips (exit 0) when Docker is unavailable |
-| External services (CI) | Set the env vars below, then run the same targets | Connects to already-running services; only container creation is skipped |
-
-External-service env vars:
-
-- `INTEGRATION_POSTGRES_HOST`, `INTEGRATION_POSTGRES_PORT`, `INTEGRATION_POSTGRES_DB` (optional, defaults to `metaxisdata`)
-- `INTEGRATION_MYSQL_HOST`, `INTEGRATION_MYSQL_PORT`
-- optional credential overrides: `INTEGRATION_POSTGRES_USER`/`INTEGRATION_POSTGRES_PASSWORD`, `INTEGRATION_MYSQL_USER`/`INTEGRATION_MYSQL_PASSWORD`
-
-In both modes the harness performs readiness checks, runs the schema migrator (`backend/migrator`), and seeds the MySQL fixture schema. Partial env config fails fast rather than silently mixing modes. The external PostgreSQL database is only recreated when its name is the derived `{INTEGRATION_POSTGRES_DB}_{scope}_integration` one — the configured base database is never dropped. `make test-integration` and `make test-integration-smoke` also run `./backend/migrator/...`, which covers fresh install, incremental upgrade and legacy adoption. Full details: `backend/test/integration/README.md`.
-
-Frontend tests are Vitest with jsdom (`frontend/vitest.config.ts`), colocated with source as `*.test.ts(x)`; tests for the `frontend/scripts/*.mjs` tooling run in the node environment. Coverage is scoped to the shared layer with per-file thresholds — see "Frontend Module Boundaries".
-
-## Development Workflow
-
-**ALWAYS follow these steps after making code changes:**
-
-### Go Code Changes
-
-1. **Format**: Run `gofmt -w` on modified files
-2. **Lint**: Run `golangci-lint run --allow-parallel-runners` to catch issues
-   - **Important**: Run golangci-lint repeatedly until there are no issues. The linter has a max-issues limit and may not show all issues in a single run.
-3. **Auto-fix**: Use `golangci-lint run --fix --allow-parallel-runners` to fix issues automatically
-4. **Test**: Run relevant tests before committing, plus the integration suites when your change touches schema sync, lineage analysis, or server wiring (see Testing)
-5. **Build**: `go build -ldflags "-w -s" -p=16 -o ./build/metaxisdata ./backend/bin/server/main.go`
-6. **Tidy**: After changing Go dependencies, run `go mod tidy` to clean up `go.mod` and `go.sum`
-
-### Frontend Code Changes
-
-1. **Format + lint + imports** — Run `pnpm --dir frontend biome:check` (Biome over `src/`, excluding generated `src/types/proto-es/`) or `cd frontend && pnpm biome check --write <path>` for specific files
-2. **Lint** — Run `pnpm --dir frontend lint` (ESLint: Vue rules plus vue-i18n missing/unused key checks; the script already applies `--fix`)
-3. **i18n** — Run `pnpm --dir frontend i18n` (standalone missing/unused key, cross-locale and placeholder checks plus the catalog sort check). After editing `frontend/src/locales/*.json`, run `pnpm --dir frontend i18n:sort` to keep keys sorted
-4. **Type check** — Run `pnpm --dir frontend type-check`
-5. **Test** — Run `pnpm --dir frontend test run`
-
-### Proto Changes
-
-1. **Format**: Run `buf format -w proto`
-2. **Lint**: Run `buf lint proto`
-3. **Generate**: Run `cd proto && buf generate`
-4. Commit the regenerated `backend/generated-go/`, `frontend/src/types/proto-es/`, and `proto/gen/grpc-doc/` output together with the proto change
-
-## Build/Test Commands
-
-### Backend
-
-```bash
-# Build for deployment: `make build-release` (adds -tags release, which selects the prod profile)
-go build -ldflags "-w -s" -p=16 -tags release -o ./build/metaxisdata ./backend/bin/server/main.go
-
-# Build without the release tag: dev profile, wide-open CORS. Local development only.
-go build -ldflags "-w -s" -p=16 -o ./build/metaxisdata ./backend/bin/server/main.go
-
-# Start backend (requires PG_URL; default port 8080 matches the frontend vite proxy)
-PG_URL='postgres://dev:dev@localhost:5432/metaxisdata?sslmode=disable' go run ./backend/bin/server/main.go --port 8080 --debug
-
-# Run a single test
-go test -v -count=1 github.com/Ranxy/metaxisdata/backend/store -run ^TestFunctionName$
-
-# Run multiple tests
-go test -v -count=1 github.com/Ranxy/metaxisdata/backend/api/v1 -run ^(TestFunctionName|TestFunctionNameTwo)$
-
-# Lint
-golangci-lint run --allow-parallel-runners
-
-# Tidy after dependency changes
-go mod tidy
-```
-
-### Integration Tests
-
-```bash
-# All integration-tagged tests (real server + testcontainers by default)
-make test-integration-smoke
-
-# Real-server schemasync/lineage scenarios plus the migrator suite
-make test-integration
-
-# MySQL real-server scenarios only
-make test-integration-mysql
-
-# CI mode: use existing services instead of testcontainers
-INTEGRATION_POSTGRES_HOST=127.0.0.1 INTEGRATION_POSTGRES_PORT=5432 INTEGRATION_POSTGRES_DB=metaxisdata \
-INTEGRATION_MYSQL_HOST=127.0.0.1 INTEGRATION_MYSQL_PORT=3306 \
-make test-integration
-```
-
-### Frontend
-
-```bash
-# Install dependencies
-pnpm --dir frontend i
-
-# Dev server (http://localhost:3000; proxies /v1 and /metaxisdata.v1 to localhost:8080)
-pnpm --dir frontend dev
-
-# Format + lint + organize imports (Biome over src/)
-pnpm --dir frontend biome:check
-
-# Lint only (ESLint; Vue + i18n rules, applies --fix)
-pnpm --dir frontend lint
-
-# i18n audit (missing/unused keys, cross-locale parity, catalog sorting)
-pnpm --dir frontend i18n
-
-# Rewrite locale catalogs with recursively sorted keys
-pnpm --dir frontend i18n:sort
-
-# Type check
-pnpm --dir frontend type-check
-
-# Test (watch mode; use "test run" for a one-shot CI run)
-pnpm --dir frontend test
-pnpm --dir frontend test run
-pnpm --dir frontend test:coverage
-
-# CI forms: coverage + the json reports the metrics below read, and a type
-# check that also reports its peak heap, file count and build time
-pnpm --dir frontend test:ci
-pnpm --dir frontend type-check:diagnostics
-
-# Render this machine's metrics block (tests, shared-layer coverage, type-check
-# heap, dist size); CI appends the same block to the run summary
-pnpm --dir frontend metrics
-
-# Production build
-pnpm --dir frontend build
-```
-
-### Proto
-
-```bash
-# Format
-buf format -w proto
-
-# Lint
-buf lint proto
-
-# Generate
-cd proto && buf generate
-```
-
-### Database
-
-```bash
-# Connect to the PostgreSQL store
-psql -h localhost -p 5432 -U <user> -d metaxisdata -c "sql"
-```
+- **Never hand-edit generated code.** `backend/generated-go/`, `frontend/src/types/proto-es/` and `proto/gen/grpc-doc/` are buf output: regenerate with `cd proto && buf generate` and commit the result together with the proto change.
+- **A schema change is two files.** Append the idempotent DDL to `backend/migrator/migration/LATEST.sql` *and* add an incremental under the current version directory, keeping the `backend/store` queries in sync — see [backend/migrator/AGENTS.md](backend/migrator/AGENTS.md).
+- **JSONB columns hold `protojson.Marshal` output** of the `proto/store` message named in the column's SQL comment. Change the proto and the store together; `protojson` camelCases field names, so `enter_to_send` stores as `{"enterToSend": ...}`.
+- **When modifying multiple files, run the file modifications in parallel** whenever possible instead of processing them one at a time.
 
 ## Code Style
 
-- **General**: Follow Google style guides for all languages
-  - **Go**: https://google.github.io/styleguide/go/
-- **Conciseness**: Write clean, minimal code; fewer lines is better. Prioritize simplicity for effective and maintainable software.
-- **Comments**: Only include comments that are essential to understanding functionality or convey non-obvious information
-- **Go**: Use standard Go error handling with detailed error messages
-- **API and Proto**: Follow AIPs at https://google.aip.dev/general. When AIP and the proto guide conflict, AIP takes precedence. For example, use HELLO for enum names, not TYPE_HELLO.
-- **Naming**: Use American English, avoid plurals like "xxxList" for simplicity and to prevent singular/plural ambiguity stemming from poor design
-- **Git**: Follow conventional commit format
-- **Imports**: Use organized imports (sorted by the import path); goimports runs with the local prefix `github.com/Ranxy/metaxisdata`
-- **Formatting**: Use linting/formatting tools before committing
-- **Error Handling**: Be explicit but concise about error cases
-- **API Errors**: Errors returned from `backend/api/v1` and `backend/store` carry a `common.Code` — use `common.Errorf(code, ...)`, `common.Wrap(err, code)`, or `common.Wrapf(err, code, ...)` rather than bare `fmt.Errorf`, so Connect handlers can map them to status codes
-- **Go Resources**: Always use `defer` for resource cleanup like `rows.Close()` (sqlclosecheck)
-- **Go Defer**: Avoid using `defer` inside loops (revive) - use IIFE or scope properly
-- **Frontend**: Vue 3 + TypeScript. All user-facing display text goes through vue-i18n in `frontend/src/locales/{en-US,zh-CN}.json` — add the key to both locales, and note that ESLint enforces missing/unused keys. Keys are kept sorted: run `pnpm --dir frontend i18n:sort` after editing locale files. `frontend/scripts/check-vue-i18n.mjs` (part of `pnpm --dir frontend i18n`) additionally checks cross-locale key and `{name}` placeholder parity, and flags double-brace `{{name}}` placeholders, which vue-i18n renders literally. Indirect keys it cannot trace statically — template-literal or variable keys such as `t(messageKey)` — must be listed in its `DYNAMIC_PREFIXES`. Note vue-i18n uses single-brace `{name}` placeholders and pipe-separated plurals, unlike react-i18next. Prefer shared shadcn-vue primitives from `frontend/src/components/ui/` over hand-rolled markup. Call the API through the ConnectRPC clients in `frontend/src/api/client.ts`, not ad-hoc fetch.
+Applies everywhere; language-specific rules are in the nested files.
 
-## Common Go Lint Rules
+- Follow the Google style guides (Go: https://google.github.io/styleguide/go/). API and proto design follows AIPs (https://google.aip.dev/general), which win when they conflict with the proto guide — enum values use `HELLO`, not `TYPE_HELLO`.
+- Write clean, minimal code: fewer lines is better, and simplicity beats cleverness.
+- Comment only what is essential to understand functionality or is non-obvious.
+- Use American English. Avoid plural names like `xxxList`, which invite singular/plural ambiguity.
+- Use conventional commit messages (e.g. `fix(lineage): ...`).
+- Run the formatter and linter for the area you touched before committing; don't hand-format.
 
-Always follow these guidelines to avoid common linting errors:
+## Development Workflow
 
-- **Unused Parameters**: Prefix unused parameters with underscore (e.g., `func foo(_ *Bar)`)
-- **Modern Go Conventions**: Use `any` instead of `interface{}` (since Go 1.18)
-- **Confusing Naming**: Avoid similar names that differ only by capitalization
-- **Identical Branches**: Don't use if-else branches that contain identical code
-- **Unused Functions**: Mark unused functions with `// nolint:unused` comment if needed for future use
-- **Function Receivers**: Don't create unnecessary function receivers; use regular functions if receiver is unused
-- **Proper Import Ordering**: Maintain correct grouping and ordering of imports
-- **Consistency**: Keep function signatures, naming, and patterns consistent with existing code
-- **Export Rules**: Only export (capitalize) functions and types that need to be used outside the package
-- **Linting Command**: Always run `golangci-lint run --allow-parallel-runners` without appending filenames to avoid "function not defined" errors (functions are defined in other files within the package)
+After a code change, run that area's checks — each nested file lists the exact commands:
 
-Project-specific rules enforced by `.golangci.yaml`:
+| Area | Gate |
+| --- | --- |
+| Go | `gofmt`, `golangci-lint run --allow-parallel-runners` (repeat until clean), relevant tests, build — [backend/AGENTS.md](backend/AGENTS.md) |
+| Frontend | `biome:check`, `lint`, `i18n`, `type-check`, `test run` — [frontend/AGENTS.md](frontend/AGENTS.md) |
+| Proto | `buf format -w proto`, `buf lint proto`, `cd proto && buf generate` — [proto/AGENTS.md](proto/AGENTS.md) |
 
-- **forbidigo** rejects these outright:
-  - `ioutil.ReadDir` — use `os.ReadDir`
-  - `protojson.Unmarshal` — use the `common.ProtojsonUnmarshaler` wrapper (`protojson.Marshal` is still allowed)
-  - pre-1.21 `sort.*` helpers (`sort.Slice`, `sort.Strings`, `sort.Ints`, ...) — use the `slices` package
-- **exhaustive** runs with `explicit-exhaustive-switch: true` — enum switches must list every case explicitly, including a default when intended
-- **revive** runs with `enable-all-rules: true` minus a short disable list; conform to it rather than fighting it
+Go integration suites run the real server against PostgreSQL + MySQL behind the `integration` build tag: `make test-integration-smoke`, `make test-integration`, `make test-integration-mysql`. See [backend/test/integration/README.md](backend/test/integration/README.md).
 
-## Miscellaneous
+## Deliberate, Accepted Decisions (Not Bugs)
 
-- The database JSONB columns store JSON marshalled by `protojson.Marshal` in Go code. `protojson.Marshal` produces camelCased proto field names rather than the snake_case keys suggested by the SQL column names: a column whose `proto/store` field is `enter_to_send` stores `{"enterToSend": ...}`.
-- `frontend/src/types/proto-es/`, `backend/generated-go/`, and `proto/gen/grpc-doc/` are buf output — regenerate with `cd proto && buf generate`, never hand-edit.
-- The default Go build does not embed the frontend (`backend/server/server_frontend_not_embed.go` serves a placeholder page); run the frontend dev server or host the built `frontend/dist` separately. `make build-embed` builds the SPA and bundles it into the binary via the `embed_frontend` tag (`backend/server/server_frontend_embed.go`), which serves `frontend/dist` with an SPA fallback.
-- When modifying multiple files, run file modification tasks in parallel whenever possible, instead of processing them sequentially.
+These look like defects but were chosen knowingly. Read [docs/security-posture.md](docs/security-posture.md) before "fixing" any of them.
 
-## Security and deployment posture
-
-These are deliberate, accepted decisions — not open bugs. Read them before "fixing" the corresponding behavior.
-
-- **Authorization is workspace-scoped (single tenant).** There is no per-instance or per-database ownership: every authenticated `workspaceMember` can read all instances, databases, metadata, lineage and OpenLineage data (the read baseline in `backend/store/predefined_roles.go`); writes require `workspaceAdmin` or an explicit `permission` annotation. Introducing per-resource IAM would be a subsystem-level change.
-- **Stored credentials are obfuscated, not encrypted.** `common.Obfuscate`/`Unobfuscate` are a base64 XOR keyed by the database-stored `AUTH_SECRET`, which also signs JWTs. Anyone with database read access or a backup can recover every instance password, SSH/SSL key and LLM API key; the ciphertext is deterministic and unauthenticated. This is accepted for the self-hosted, single-database deployment.
-- **The CLI stores its credential in clear text.** `mxd` writes the bearer token it received from a device login to `~/.config/metaxisdata/config.json` (mode 0600) or to `$METAXISDATA_CONFIG`. The token is equivalent to a seven day session, and the CLI never prints it; hiding it from a local file was not worth a keychain dependency. The server address is saved beside it, because a token is issued by one server and remembering it next to another address would fail every later request.
-- **Analysis scopes live only in the process environment.** `mxd` reads `METAXISDATA_SCOPES` per invocation and never writes it anywhere. Several agents share a machine while serving different projects, and any remembered scope set would be silently overwritten by whichever agent ran last. Which scopes a project uses is a per-project decision the user keeps in their own project docs.
-- **Device login state is process-local.** `backend/component/state` holds the pending requests, so a client's create, approve and exchange must reach the same replica: run one replica, or put sticky routing in front. Approving reuses the approver's web session and does not re-evaluate the password policy — that policy only governs password sign-in, and applying it here would lock SSO-only users out of the CLI over a random password they never chose.
-- **gRPC reflection is anonymous.** The reflection handlers are registered without the authentication interceptor, so the registered service/message definitions are public; `/grpc.reflection` is deliberately absent from the authentication exemption list (`backend/api/auth/config.go`).
-- **Destructive schema sync is log-only.** When a synced snapshot no longer contains an object, the runner deletes it and records the GUIDs in `logSchemaSyncDeletion` (`backend/runner/schemasync/syncer.go`). There is deliberately no shrink threshold or confirmation flag: a MySQL `information_schema` only lists objects the connecting user may see, so a privilege change can empty a snapshot. Treat the deletion log as the only trace. A database row's `deleted` flag follows the same rule and is **single-directional**: hiding may be triggered by any observation that the target no longer has the database (a name missing from an instance snapshot, or a per-database sync whose driver reports `common.NotFound`), while showing it again is only done by the instance enumeration (`SyncInstance` → `CreateDatabaseDefault`, when the name reappears in a snapshot). A per-database sync therefore never clears the flag; a `deleted` database is kept with its metadata as history and is revived when a snapshot lists it again.
-- **`audit_log` and `meta_registry_resource_history` are kept forever.** `runner/maintenance` only prunes ExplainSQL cache rows, old LLM debug logs and OpenLineage runs (per `openlineage_retention_days`); the audit ledger and the metadata history are never pruned.
-- **Reverse-proxy contract.** Cookie-based writes trust `Origin`/`Sec-Fetch-Site` (`backend/server/csrf.go`) and audit records believe `X-Forwarded-For` only from peers listed in `--trusted-proxies` (`backend/api/v1/audit.go`). A deployment behind a proxy must normalize or strip those headers and list the proxy address, otherwise CSRF requests can look same-origin and audit IPs collapse to the proxy.
+- **Authorization is workspace-scoped (single tenant)** — every member reads everything; writes need `workspaceAdmin`.
+- **Stored credentials are obfuscated, not encrypted** — database read access recovers them all.
+- **The CLI stores its token in clear text** (mode 0600).
+- **Analysis scopes live only in the process environment** (`METAXISDATA_SCOPES`), never persisted.
+- **Device login state is process-local** — run one replica or add sticky routing.
+- **gRPC reflection is anonymous.**
+- **Destructive schema sync is log-only** — no shrink threshold or confirmation flag.
+- **`audit_log` and `meta_registry_resource_history` are kept forever.**
+- **Reverse-proxy contract** — cookie writes trust `Origin`/`Sec-Fetch-Site`; audit trusts `X-Forwarded-For` only from `--trusted-proxies`.
