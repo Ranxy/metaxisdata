@@ -1,0 +1,88 @@
+{
+  "job": {
+    "setting": {
+      "speed": {
+        "channel": 1
+      },
+      "errorLimit": {
+        "record": 0,
+        "percentage": 0.02
+      }
+    },
+    "content": [
+      {
+        "reader": {
+          "name": "mysqlreader",
+          "parameter": {
+            "username": "dev",
+            "password": "dev",
+            "column": [
+              "order_id",
+              "order_no",
+              "customer_id",
+              "sales_rep_id",
+              "order_ts",
+              "order_date",
+              "status",
+              "channel",
+              "currency",
+              "item_count",
+              "gross_amount",
+              "discount_amount",
+              "shipping_fee",
+              "tax_amount",
+              "net_amount",
+              "coupon_code"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": [
+                  "jdbc:mysql://127.0.0.1:4417/e2e_ods?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+                ],
+                "table": [
+                  "orders"
+                ]
+              }
+            ]
+          }
+        },
+        "writer": {
+          "name": "postgresqlwriter",
+          "parameter": {
+            "username": "dev",
+            "password": "dev",
+            "column": [
+              "order_id",
+              "order_no",
+              "customer_id",
+              "sales_rep_id",
+              "order_ts",
+              "order_date",
+              "status",
+              "channel",
+              "currency",
+              "item_count",
+              "gross_amount",
+              "discount_amount",
+              "shipping_fee",
+              "tax_amount",
+              "net_amount",
+              "coupon_code"
+            ],
+            "preSql": [
+              "delete from e2e_ods.orders"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": "jdbc:postgresql://localhost:5432/e2e",
+                "table": [
+                  "e2e_ods.orders"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

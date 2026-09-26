@@ -1,0 +1,74 @@
+{
+  "job": {
+    "setting": {
+      "speed": {
+        "channel": 1
+      },
+      "errorLimit": {
+        "record": 0,
+        "percentage": 0.02
+      }
+    },
+    "content": [
+      {
+        "reader": {
+          "name": "mysqlreader",
+          "parameter": {
+            "username": "dev",
+            "password": "dev",
+            "column": [
+              "payment_id",
+              "order_id",
+              "payment_ts",
+              "method",
+              "amount",
+              "fee",
+              "currency",
+              "status",
+              "gateway_ref"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": [
+                  "jdbc:mysql://127.0.0.1:4417/e2e_ods?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+                ],
+                "table": [
+                  "payments"
+                ]
+              }
+            ]
+          }
+        },
+        "writer": {
+          "name": "postgresqlwriter",
+          "parameter": {
+            "username": "dev",
+            "password": "dev",
+            "column": [
+              "payment_id",
+              "order_id",
+              "payment_ts",
+              "method",
+              "amount",
+              "fee",
+              "currency",
+              "status",
+              "gateway_ref"
+            ],
+            "preSql": [
+              "delete from e2e_ods.payments"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": "jdbc:postgresql://localhost:5432/e2e",
+                "table": [
+                  "e2e_ods.payments"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

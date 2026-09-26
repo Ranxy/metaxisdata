@@ -1,0 +1,70 @@
+{
+  "job": {
+    "setting": {
+      "speed": {
+        "channel": 1
+      },
+      "errorLimit": {
+        "record": 0,
+        "percentage": 0.02
+      }
+    },
+    "content": [
+      {
+        "reader": {
+          "name": "mysqlreader",
+          "parameter": {
+            "username": "dev",
+            "password": "dev",
+            "column": [
+              "refund_id",
+              "payment_id",
+              "order_id",
+              "refund_ts",
+              "amount",
+              "reason_code",
+              "status"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": [
+                  "jdbc:mysql://127.0.0.1:4417/e2e_ods?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+                ],
+                "table": [
+                  "refunds"
+                ]
+              }
+            ]
+          }
+        },
+        "writer": {
+          "name": "postgresqlwriter",
+          "parameter": {
+            "username": "dev",
+            "password": "dev",
+            "column": [
+              "refund_id",
+              "payment_id",
+              "order_id",
+              "refund_ts",
+              "amount",
+              "reason_code",
+              "status"
+            ],
+            "preSql": [
+              "delete from e2e_ods.refunds"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": "jdbc:postgresql://localhost:5432/e2e",
+                "table": [
+                  "e2e_ods.refunds"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

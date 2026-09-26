@@ -1,0 +1,78 @@
+{
+  "job": {
+    "setting": {
+      "speed": {
+        "channel": 1
+      },
+      "errorLimit": {
+        "record": 0,
+        "percentage": 0.02
+      }
+    },
+    "content": [
+      {
+        "reader": {
+          "name": "mysqlreader",
+          "parameter": {
+            "username": "dev",
+            "password": "dev",
+            "column": [
+              "product_id",
+              "sku",
+              "product_name",
+              "category",
+              "sub_category",
+              "brand",
+              "unit_price",
+              "unit_cost",
+              "weight_kg",
+              "is_active",
+              "launched_on"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": [
+                  "jdbc:mysql://127.0.0.1:4417/e2e_ods?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+                ],
+                "table": [
+                  "products"
+                ]
+              }
+            ]
+          }
+        },
+        "writer": {
+          "name": "postgresqlwriter",
+          "parameter": {
+            "username": "dev",
+            "password": "dev",
+            "column": [
+              "product_id",
+              "sku",
+              "product_name",
+              "category",
+              "sub_category",
+              "brand",
+              "unit_price",
+              "unit_cost",
+              "weight_kg",
+              "is_active",
+              "launched_on"
+            ],
+            "preSql": [
+              "delete from e2e_ods.products"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": "jdbc:postgresql://localhost:5432/e2e",
+                "table": [
+                  "e2e_ods.products"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

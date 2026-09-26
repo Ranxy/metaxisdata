@@ -1,0 +1,66 @@
+{
+  "job": {
+    "setting": {
+      "speed": {
+        "channel": 1
+      },
+      "errorLimit": {
+        "record": 0,
+        "percentage": 0.02
+      }
+    },
+    "content": [
+      {
+        "reader": {
+          "name": "mysqlreader",
+          "parameter": {
+            "username": "dev",
+            "password": "dev",
+            "column": [
+              "rep_id",
+              "rep_name",
+              "team",
+              "manager_id",
+              "hired_on"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": [
+                  "jdbc:mysql://127.0.0.1:4417/e2e_ods?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+                ],
+                "table": [
+                  "sales_reps"
+                ]
+              }
+            ]
+          }
+        },
+        "writer": {
+          "name": "postgresqlwriter",
+          "parameter": {
+            "username": "dev",
+            "password": "dev",
+            "column": [
+              "rep_id",
+              "rep_name",
+              "team",
+              "manager_id",
+              "hired_on"
+            ],
+            "preSql": [
+              "delete from e2e_ods.sales_reps"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": "jdbc:postgresql://localhost:5432/e2e",
+                "table": [
+                  "e2e_ods.sales_reps"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

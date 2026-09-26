@@ -1,0 +1,82 @@
+{
+  "job": {
+    "setting": {
+      "speed": {
+        "channel": 1
+      },
+      "errorLimit": {
+        "record": 0,
+        "percentage": 0.02
+      }
+    },
+    "content": [
+      {
+        "reader": {
+          "name": "postgresqlreader",
+          "parameter": {
+            "username": "dev",
+            "password": "dev",
+            "column": [
+              "sales_date",
+              "channel",
+              "region",
+              "currency",
+              "order_count",
+              "customer_count",
+              "units",
+              "gross_amount",
+              "discount_amount",
+              "net_line_amount",
+              "avg_line_amount"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": [
+                  "jdbc:postgresql://localhost:5432/e2e"
+                ],
+                "table": [
+                  "e2e_dwd.mv_daily_sales"
+                ]
+              }
+            ]
+          }
+        },
+        "writer": {
+          "name": "starrockswriter",
+          "parameter": {
+            "username": "root",
+            "password": "",
+            "column": [
+              "sales_date",
+              "channel",
+              "region",
+              "currency",
+              "order_count",
+              "customer_count",
+              "units",
+              "gross_amount",
+              "discount_amount",
+              "net_line_amount",
+              "avg_line_amount"
+            ],
+            "preSql": [
+              "truncate table e2e_ods.mv_daily_sales"
+            ],
+            "loadUrl": [
+              "127.0.0.1:8030"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": "jdbc:mysql://127.0.0.1:9030/e2e_ods",
+                "selectedDatabase": "e2e_ods",
+                "table": [
+                  "mv_daily_sales"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}
