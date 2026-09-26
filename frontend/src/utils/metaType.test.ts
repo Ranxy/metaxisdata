@@ -25,6 +25,23 @@ describe("metaTypeLabel", () => {
     );
   });
 
+  it("names the object kinds that only appear as list rows", () => {
+    expect(metaTypeLabel(MetaType.INDEX, t)).toBe("metadataBrowser.indexes");
+    expect(metaTypeLabel(MetaType.FOREIGN_KEY, t)).toBe(
+      "metadataBrowser.foreignKeys"
+    );
+    expect(metaTypeLabel(MetaType.FUNCTION, t)).toBe(
+      "metadataBrowser.functions"
+    );
+    expect(metaTypeLabel(MetaType.PROCEDURE, t)).toBe(
+      "metadataBrowser.procedures"
+    );
+    expect(metaTypeLabel(MetaType.SEQUENCE, t)).toBe(
+      "metadataBrowser.sequences"
+    );
+    expect(metaTypeLabel(MetaType.OPENLINEAGE, t)).toBe("openlineage.title");
+  });
+
   it("keeps an ingested dataset distinct from a declared external table", () => {
     expect(metaTypeLabel(MetaType.EXTERNAL_TABLE, t)).toBe(
       "metadataBrowser.externalTables"
@@ -60,5 +77,8 @@ describe("parseMetaType", () => {
     expect(parseMetaType(undefined)).toBeNull();
     expect(parseMetaType(null)).toBeNull();
     expect(parseMetaType([])).toBeNull();
+    expect(parseMetaType(["999"])).toBeNull();
+    expect(parseMetaType("4.5")).toBeNull();
+    expect(parseMetaType(true)).toBeNull();
   });
 });

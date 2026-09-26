@@ -7,6 +7,7 @@ import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import { Engine } from "@/types/proto-es/v1/common_pb";
 import { DatabaseSchema } from "@/types/proto-es/v1/database_service_pb";
+import { EnvironmentSchema } from "@/types/proto-es/v1/environment_service_pb";
 import {
   InstanceResourceSchema,
   InstanceSchema,
@@ -25,7 +26,7 @@ const mocks = vi.hoisted(() => ({
   listOpenLineageTasks: vi.fn(),
   listOpenLineageDatasets: vi.fn(),
   listOpenLineageRuns: vi.fn(),
-  listEnvironments: vi.fn(),
+  listAllEnvironments: vi.fn(),
 }));
 
 vi.mock("@/api/instance", () => ({ listInstances: mocks.listInstances }));
@@ -36,7 +37,9 @@ vi.mock("@/api/openlineage", () => ({
   listOpenLineageRuns: mocks.listOpenLineageRuns,
 }));
 vi.mock("@/api/environment", () => ({
-  listEnvironments: mocks.listEnvironments,
+  // The dashboard reads environments through the shared store, so the store's
+  // own api call is the one this test has to stand in for.
+  listAllEnvironments: mocks.listAllEnvironments,
   environmentId: (name: string) => name.replace("environments/", ""),
   environmentName: (id: string) => `environments/${id}`,
   createEnvironment: vi.fn(),
@@ -121,7 +124,7 @@ describe("HomePage", () => {
     setActivePinia(createPinia());
     useAuthStore().user = create(UserSchema, { permissions: PERMISSIONS });
 
-    mocks.listEnvironments.mockResolvedValue({ environments: [] });
+    mocks.listAllEnvironments.mockResolvedValue([]);
     mocks.listInstances.mockResolvedValue({
       instances: [],
       nextPageToken: "",
@@ -155,6 +158,12 @@ describe("HomePage", () => {
   });
 
   it("shows real counts, sync problems and recent activity", async () => {
+    mocks.listAllEnvironments.mockResolvedValue([
+      create(EnvironmentSchema, {
+        name: "environments/prod",
+        title: "Production",
+      }),
+    ]);
     mocks.listInstances.mockResolvedValue({
       instances: [
         create(InstanceSchema, {
@@ -221,6 +230,8 @@ describe("HomePage", () => {
     expect(text).toContain("1 drifted");
     expect(text).toContain("1 database(s) drifted from the source schema");
     expect(text).toContain("Prod");
+    // The environment came from the shared store, not the raw resource id.
+    expect(text).toContain("Production");
     expect(text).toContain("MySQL");
     expect(text).toContain("load_orders");
     expect(text).toContain("COMPLETE");

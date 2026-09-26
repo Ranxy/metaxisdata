@@ -1,5 +1,7 @@
 import { create } from "@bufbuild/protobuf";
-import { describe, expect, it } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useAuthStore } from "@/store/modules/auth";
 import {
   type Database,
   DatabaseSchema,
@@ -13,12 +15,30 @@ import {
   OpenLineageDatasetResourceSchema,
   OpenLineageTaskSchema,
 } from "@/types/proto-es/v1/openlineage_service_pb";
+import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import {
   countDatabasesByInstance,
   instanceIDOfDatabase,
   summarizeEstate,
   summarizeOpenLineage,
+  useDashboard,
 } from "./dashboard";
+
+const mocks = vi.hoisted(() => ({
+  listInstances: vi.fn(),
+  listDatabases: vi.fn(),
+  listOpenLineageTasks: vi.fn(),
+  listOpenLineageDatasets: vi.fn(),
+  listOpenLineageRuns: vi.fn(),
+}));
+
+vi.mock("@/api/instance", () => ({ listInstances: mocks.listInstances }));
+vi.mock("@/api/database", () => ({ listDatabases: mocks.listDatabases }));
+vi.mock("@/api/openlineage", () => ({
+  listOpenLineageTasks: mocks.listOpenLineageTasks,
+  listOpenLineageDatasets: mocks.listOpenLineageDatasets,
+  listOpenLineageRuns: mocks.listOpenLineageRuns,
+}));
 
 function instance(
   id: string,
@@ -103,6 +123,13 @@ describe("countDatabasesByInstance", () => {
     expect(instanceIDOfDatabase(withoutResource)).toBe("legacy");
     expect(countDatabasesByInstance([withoutResource])).toEqual({ legacy: 1 });
   });
+
+  it("ignores a database whose instance cannot be derived", () => {
+    const nameless = create(DatabaseSchema, { name: "no-slashes" });
+
+    expect(instanceIDOfDatabase(nameless)).toBe("");
+    expect(countDatabasesByInstance([nameless])).toEqual({});
+  });
 });
 
 describe("summarizeOpenLineage", () => {
@@ -153,5 +180,81 @@ describe("summarizeOpenLineage", () => {
       internalDatasetCount: 0,
       columnLineageDatasetCount: 0,
     });
+  });
+});
+
+const PERMISSIONS = [
+  "metaxisdata.instances.list",
+  "metaxisdata.databases.list",
+  "metaxisdata.openlineage.read",
+];
+
+/** A fresh store, so one test's permissions never leak into the next. */
+function grant(permissions: string[]) {
+  setActivePinia(createPinia());
+  useAuthStore().user = create(UserSchema, { permissions });
+}
+
+describe("useDashboard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.listInstances.mockResolvedValue({ instances: [], nextPageToken: "" });
+    mocks.listDatabases.mockResolvedValue({ databases: [], nextPageToken: "" });
+    mocks.listOpenLineageTasks.mockResolvedValue({
+      tasks: [],
+      nextPageToken: "",
+    });
+    mocks.listOpenLineageDatasets.mockResolvedValue({
+      datasets: [],
+      nextPageToken: "",
+    });
+    mocks.listOpenLineageRuns.mockResolvedValue({
+      runs: [],
+      nextPageToken: "",
+    });
+  });
+
+  it("loads every permitted section and stamps the load time", async () => {
+    grant(PERMISSIONS);
+    const dashboard = useDashboard();
+
+    await dashboard.load();
+
+    expect(dashboard.failedSections.value).toEqual([]);
+    expect(dashboard.isLoading.value).toBe(false);
+    expect(dashboard.lastUpdated.value).toBeInstanceOf(Date);
+    expect(mocks.listInstances).toHaveBeenCalledTimes(1);
+    expect(mocks.listDatabases).toHaveBeenCalledTimes(1);
+    expect(mocks.listOpenLineageTasks).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the sections that loaded and names the ones that failed", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    grant(PERMISSIONS);
+    mocks.listInstances.mockRejectedValue(new Error("no sources"));
+    mocks.listDatabases.mockRejectedValue(new Error("no databases"));
+    const dashboard = useDashboard();
+
+    await dashboard.load();
+
+    expect(dashboard.failedSections.value).toEqual(["instances", "databases"]);
+    expect(dashboard.lastUpdated.value).toBeInstanceOf(Date);
+    expect(mocks.listOpenLineageTasks).toHaveBeenCalledTimes(1);
+    consoleError.mockRestore();
+  });
+
+  it("asks for nothing the caller may not read", async () => {
+    grant([]);
+    const dashboard = useDashboard();
+
+    await dashboard.load();
+
+    expect(mocks.listInstances).not.toHaveBeenCalled();
+    expect(mocks.listDatabases).not.toHaveBeenCalled();
+    expect(mocks.listOpenLineageTasks).not.toHaveBeenCalled();
+    expect(dashboard.failedSections.value).toEqual([]);
+    expect(dashboard.isLoading.value).toBe(false);
   });
 });

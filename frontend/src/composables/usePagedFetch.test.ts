@@ -1,7 +1,8 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { describe, expect, it, vi } from "vitest";
+import { effectScope } from "vue";
 import type { ListPage } from "@/api/list";
-import { usePagedFetch } from "./usePagedFetch";
+import { type PagedFetch, usePagedFetch } from "./usePagedFetch";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -131,5 +132,57 @@ describe("usePagedFetch", () => {
 
     expect(onError).not.toHaveBeenCalled();
     expect(pager.items.value).toEqual(["b"]);
+  });
+
+  it("treats a bare abort signal as a cancellation and any other DOMException as a failure", async () => {
+    const onError = vi.fn();
+
+    const aborted = usePagedFetch<string>({
+      fetchPage: async () => {
+        throw new DOMException("cancelled", "AbortError");
+      },
+      onError,
+    });
+    await aborted.reset();
+    expect(onError).not.toHaveBeenCalled();
+
+    const failed = usePagedFetch<string>({
+      fetchPage: async () => {
+        throw new DOMException("boom", "NotSupportedError");
+      },
+      onError,
+    });
+    await failed.reset();
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts the request on the wire when its scope is disposed", async () => {
+    const pending = deferred<ListPage<string>>();
+    const signals: AbortSignal[] = [];
+    const fetchPage = vi.fn((_token: string, signal: AbortSignal) => {
+      signals.push(signal);
+      return pending.promise;
+    });
+
+    const scope = effectScope();
+    let pager!: PagedFetch<string>;
+    scope.run(() => {
+      pager = usePagedFetch<string>({ fetchPage });
+    });
+
+    const loading = pager.reset();
+    scope.stop();
+
+    expect(signals[0]?.aborted).toBe(true);
+    // The abandoned answer must not surface anywhere.
+    pending.resolve(page(["late"]));
+    await loading;
+  });
+
+  it("disposes a pager that never started a request", () => {
+    const scope = effectScope();
+    scope.run(() => usePagedFetch<string>({ fetchPage: vi.fn() }));
+
+    expect(() => scope.stop()).not.toThrow();
   });
 });

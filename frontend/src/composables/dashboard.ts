@@ -57,7 +57,7 @@ function hasTimestamp(timestamp: Timestamp | undefined): boolean {
 
 /** The last segment of a resource name. */
 function resourceID(name: string): string {
-  return name.split("/").pop() ?? name;
+  return name.slice(name.lastIndexOf("/") + 1);
 }
 
 /** The instance ID a database belongs to, from its embedded instance resource. */

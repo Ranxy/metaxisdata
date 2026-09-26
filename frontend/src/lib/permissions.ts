@@ -148,13 +148,3 @@ export function permissionSuffix(permission: string): string {
   const parts = permission.split(".");
   return parts.length > 2 ? parts.slice(2).join(".") : permission;
 }
-
-/** Whether a permission string is one this build knows about. */
-export function isKnownPermission(permission: string): boolean {
-  return ALL_PERMISSIONS.includes(permission);
-}
-
-/** Permission strings granted by a role, without duplicates. */
-export function uniquePermissions(permissions: string[]): string[] {
-  return [...new Set(permissions)];
-}

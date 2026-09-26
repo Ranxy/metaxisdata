@@ -4,7 +4,11 @@ import {
   type AuditLog,
   AuditLogSeverity,
 } from "@/types/proto-es/v1/audit_log_service_pb";
-import { auditLogsCsvFilename, buildAuditCsv } from "./auditLogsCsv";
+import {
+  auditLogsCsvFilename,
+  buildAuditCsv,
+  timestampForExport,
+} from "./auditLogsCsv";
 
 function log(overrides: Partial<AuditLog> = {}): AuditLog {
   return {
@@ -61,6 +65,38 @@ describe("buildAuditCsv", () => {
   it("serializes nested request data as JSON", () => {
     const csv = buildAuditCsv([log({ request: { pageSize: 50 } })], context);
     expect(csv).toContain('"{""pageSize"":50}"');
+  });
+
+  it("leaves absent optional columns empty and prints an int64", () => {
+    const csv = buildAuditCsv(
+      [
+        log({
+          createTime: undefined,
+          status: undefined,
+          latencyMs: 12n,
+          requestMetadata: undefined,
+          resource: "",
+          user: "",
+        }),
+      ],
+      context
+    );
+
+    expect(csv.split("\n")[1]).toBe(
+      '"","workspaces/-","Info","/v1/instances","","","","","","","12","","","","",""'
+    );
+  });
+});
+
+describe("timestampForExport", () => {
+  it("exports nothing for a missing or unrepresentable instant", () => {
+    expect(timestampForExport(undefined)).toBe("");
+    // Zero seconds is the proto's "unset" default, not 1970.
+    expect(timestampForExport({ seconds: 0n, nanos: 0 } as Timestamp)).toBe("");
+    // An absurd int64 overflows Date, which would otherwise render "Invalid Date".
+    expect(
+      timestampForExport({ seconds: 10n ** 30n, nanos: 0 } as Timestamp)
+    ).toBe("");
   });
 });
 

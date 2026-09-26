@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   ALL_PERMISSIONS,
-  isKnownPermission,
   PERMISSION_GROUPS,
   permissionSuffix,
 } from "./permissions";
@@ -45,16 +44,14 @@ describe("permission catalog mirror", () => {
     }
   });
 
-  it("recognises catalog entries and rejects unknown strings", () => {
-    expect(isKnownPermission("metaxisdata.iam.setPolicy")).toBe(true);
-    expect(isKnownPermission("metaxisdata.nope.nope")).toBe(false);
-    expect(isKnownPermission("")).toBe(false);
-  });
-
   it("derives the display suffix from the permission string", () => {
     expect(permissionSuffix("metaxisdata.instances.sync")).toBe("sync");
     expect(permissionSuffix("metaxisdata.llm.profiles.fetchModels")).toBe(
       "profiles.fetchModels"
+    );
+    // A string that is not a catalog entry is rendered as-is, not mangled.
+    expect(permissionSuffix("metaxisdata.instances")).toBe(
+      "metaxisdata.instances"
     );
   });
 });

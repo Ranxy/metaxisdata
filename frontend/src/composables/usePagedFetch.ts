@@ -120,10 +120,10 @@ export function usePagedFetch<T>(options: PagedFetchOptions<T>): PagedFetch<T> {
     },
 
     async goPrevious() {
-      if (previousPageTokens.value.length === 0) {
+      const token = previousPageTokens.value.pop();
+      if (token === undefined) {
         return;
       }
-      const token = previousPageTokens.value.pop() ?? "";
       await load(token);
     },
   };
