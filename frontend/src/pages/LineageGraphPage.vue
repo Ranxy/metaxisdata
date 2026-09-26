@@ -93,8 +93,11 @@
         </VueFlow>
       </Card>
 
-      <Card v-if="selectedNodeSummary" class="overflow-hidden xl:h-[calc(100vh-12rem)]">
-        <CardContent class="flex h-full flex-col p-0">
+      <!-- Always rendered: reserving a 24rem column only while a node happened
+           to be selected left a blank strip beside the graph on arrival and
+           shifted the canvas the moment anything was clicked. -->
+      <Card class="overflow-hidden xl:h-[calc(100vh-12rem)]">
+        <CardContent v-if="selectedNodeSummary" class="flex h-full flex-col p-0">
           <div class="flex items-start justify-between gap-3 border-b px-5 py-4">
             <div class="space-y-1">
               <div class="text-xs uppercase tracking-wide text-muted-foreground">
@@ -215,6 +218,12 @@
             </section>
           </div>
         </CardContent>
+        <CardContent v-else class="flex h-full items-center justify-center">
+          <EmptyState
+            :icon="MousePointerClick"
+            :title="t('lineageGraph.selectNodeHint')"
+          />
+        </CardContent>
       </Card>
     </div>
   </div>
@@ -233,9 +242,15 @@ import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
 import "@vue-flow/controls/dist/style.css";
 import "@vue-flow/minimap/dist/style.css";
-import { ArrowLeft, Maximize2, RotateCcw } from "lucide-vue-next";
+import {
+  ArrowLeft,
+  Maximize2,
+  MousePointerClick,
+  RotateCcw,
+} from "lucide-vue-next";
 import { getLineage } from "@/api/lineage";
 import AppLoading from "@/components/common/AppLoading.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import type { LineageNodeData } from "@/components/lineage/LineageNode.vue";
 import LineageNode from "@/components/lineage/LineageNode.vue";

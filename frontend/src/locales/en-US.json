@@ -520,6 +520,7 @@
     "relatedRunsFiltered": "Showing only persisted OpenLineage runs connected to the selected node and currently selected field.",
     "reset": "Reset",
     "rootNode": "Root node",
+    "selectNodeHint": "Select a node in the graph to see its details, related runs and column lineage.",
     "selectedField": "Selected field",
     "shortPath": "Path",
     "showFields": "Show fields",

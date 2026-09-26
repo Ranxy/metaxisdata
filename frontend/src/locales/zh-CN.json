@@ -520,6 +520,7 @@
     "relatedRunsFiltered": "当前仅显示与所选节点和当前选中字​​段相关的已持久化 OpenLineage runs。",
     "reset": "重置",
     "rootNode": "根节点",
+    "selectNodeHint": "在图中选择一个节点，查看它的详情、关联运行与字段血缘。",
     "selectedField": "当前字段",
     "shortPath": "路径",
     "showFields": "展示字段",
