@@ -184,6 +184,7 @@ import type {
 } from "@/types/proto-es/v1/lineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { guidToRouteParams, routeParamToGuid } from "@/utils/guid";
+import { parseMetaType } from "@/utils/metaType";
 
 const OPENLINEAGE_META_TYPE = 100;
 
@@ -206,13 +207,9 @@ const downstreamRelations = ref<LineageRelation[]>([]);
 
 const currentGuid = computed(() => routeParamToGuid(route.params.guid));
 
-const currentMetaType = computed(() => {
-  const raw = Array.isArray(route.query.metaType)
-    ? route.query.metaType[0]
-    : route.query.metaType;
-  const value = Number(raw);
-  return Number.isFinite(value) ? (value as MetaType) : MetaType.TABLE;
-});
+const currentMetaType = computed(
+  () => parseMetaType(route.query.metaType) ?? MetaType.TABLE
+);
 
 const selectedColumn = computed(() => {
   const raw = Array.isArray(route.query.column)

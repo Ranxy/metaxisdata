@@ -556,7 +556,7 @@ import {
 } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import { guidSegmentsToRouteParams, routeParamToGuid } from "@/utils/guid";
-import { metaTypeLabel } from "@/utils/metaType";
+import { metaTypeLabel, parseMetaType } from "@/utils/metaType";
 
 const { t } = useI18n();
 const { formatError } = useErrorMessage();
@@ -711,14 +711,9 @@ type ExternalDatasetDetail = {
   datasetType: string;
 };
 
-const requestedLeafMetaType = computed(() => {
-  const q = route.query.metaType;
-  if (!q) return null;
-  const raw = Array.isArray(q) ? q[0] : q;
-  const value = Number(raw);
-  if (!Number.isFinite(value)) return null;
-  return value as MetaType;
-});
+const requestedLeafMetaType = computed(() =>
+  parseMetaType(route.query.metaType)
+);
 
 const selectedColumnName = computed(() => getQueryString("column"));
 

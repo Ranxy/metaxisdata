@@ -258,7 +258,7 @@ import { LineageType } from "@/types/proto-es/v1/lineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { extractErrorMessage } from "@/utils/error";
 import { guidToRouteParams, routeParamToGuid } from "@/utils/guid";
-import { metaTypeLabel } from "@/utils/metaType";
+import { metaTypeLabel, parseMetaType } from "@/utils/metaType";
 
 const EXTERNAL_PREFIX = "external:";
 
@@ -332,14 +332,9 @@ const selectedNodeGuid = computed(() => {
 
 const currentGuid = computed(() => routeParamToGuid(route.params.guid));
 
-const currentMetaType = computed(() => {
-  const q = route.query.metaType;
-  if (!q) return MetaType.TABLE;
-  const raw = Array.isArray(q) ? q[0] : q;
-  const value = Number(raw);
-  if (!Number.isFinite(value)) return MetaType.TABLE;
-  return value as MetaType;
-});
+const currentMetaType = computed(
+  () => parseMetaType(route.query.metaType) ?? MetaType.TABLE
+);
 
 const openLineageSources = computed(() => {
   const sources = new Map<string, { guid: string; label: string }>();

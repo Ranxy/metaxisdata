@@ -323,7 +323,7 @@ import type { ExplainSQLProgress } from "@/types/proto-es/v1/explain_sql_service
 import { formatDateTime } from "@/utils/datetime";
 import { guidToRouteParams, routeParamToGuid } from "@/utils/guid";
 import { isProviderAllowed } from "@/utils/llmProvider";
-import { metaTypeLabel } from "@/utils/metaType";
+import { metaTypeLabel, parseMetaType } from "@/utils/metaType";
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -549,8 +549,10 @@ onMounted(async () => {
   document.addEventListener("mousedown", handleClickOutside);
   const guidFromRoute = routeParamToGuid(route.params.guid);
   if (guidFromRoute) {
-    const metaTypeFromQuery = Number(route.query.metaType) || 0;
-    await loadMetaByGuid(guidFromRoute, metaTypeFromQuery as MetaType);
+    await loadMetaByGuid(
+      guidFromRoute,
+      parseMetaType(route.query.metaType) ?? MetaType.UNSPECIFIED
+    );
   }
 });
 

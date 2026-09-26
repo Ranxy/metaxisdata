@@ -1,6 +1,6 @@
 import { create } from "@bufbuild/protobuf";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
+import { FieldMaskSchema, timestampFromDate } from "@bufbuild/protobuf/wkt";
 import {
   CreateManualSQLRequestSchema,
   DeleteManualSQLRequestSchema,
@@ -258,16 +258,10 @@ export async function diffMetadata(options: {
   const request = create(DiffMetadataRequestSchema, {
     guid: options.guid,
     sourceTime: options.sourceTime
-      ? {
-          seconds: BigInt(Math.floor(options.sourceTime.getTime() / 1000)),
-          nanos: 0,
-        }
+      ? timestampFromDate(options.sourceTime)
       : undefined,
     targetTime: options.targetTime
-      ? {
-          seconds: BigInt(Math.floor(options.targetTime.getTime() / 1000)),
-          nanos: 0,
-        }
+      ? timestampFromDate(options.targetTime)
       : undefined,
   });
   return await databaseClient.diffMetadata(request);

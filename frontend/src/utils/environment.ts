@@ -34,12 +34,15 @@ const ENVIRONMENT_COLOR_HEX: Record<EnvironmentColorKey, string> = {
  * The stored color, or a stable palette entry derived from the id when the
  * server left it empty (the two seeded environments have no color).
  */
+function isEnvironmentColorKey(value: string): value is EnvironmentColorKey {
+  return (ENVIRONMENT_COLOR_KEYS as readonly string[]).includes(value);
+}
+
 export function environmentColorKey(
   environment: Environment
 ): EnvironmentColorKey {
-  const color = environment.color as EnvironmentColorKey;
-  if (ENVIRONMENT_COLOR_KEYS.includes(color)) {
-    return color;
+  if (isEnvironmentColorKey(environment.color)) {
+    return environment.color;
   }
   return fallbackColor(environmentId(environment.name));
 }

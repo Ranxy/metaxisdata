@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
-import { metaTypeLabel } from "./metaType";
+import { metaTypeLabel, parseMetaType } from "./metaType";
 
 /** Stands in for vue-i18n, which the util only needs as a lookup. */
 const t = (key: string) => key;
@@ -38,5 +38,27 @@ describe("metaTypeLabel", () => {
     expect(metaTypeLabel(MetaType.UNSPECIFIED, t)).toBe(
       "metadataBrowser.other"
     );
+  });
+});
+
+describe("parseMetaType", () => {
+  it("accepts the numbers and strings a route can carry", () => {
+    expect(parseMetaType(4)).toBe(MetaType.TABLE);
+    expect(parseMetaType("4")).toBe(MetaType.TABLE);
+    expect(parseMetaType(["5", "4"])).toBe(MetaType.VIEW);
+    expect(parseMetaType("0")).toBe(MetaType.UNSPECIFIED);
+  });
+
+  it("rejects what the enum does not define", () => {
+    // 15 is the gap between SCHEMA (3) and EXTERNAL_TABLE (16); a cast used to
+    // let it through as a type the app then rendered and re-sent.
+    expect(parseMetaType(15)).toBeNull();
+    expect(parseMetaType("999")).toBeNull();
+    expect(parseMetaType("TABLE")).toBeNull();
+    expect(parseMetaType("")).toBeNull();
+    expect(parseMetaType(" ")).toBeNull();
+    expect(parseMetaType(undefined)).toBeNull();
+    expect(parseMetaType(null)).toBeNull();
+    expect(parseMetaType([])).toBeNull();
   });
 });

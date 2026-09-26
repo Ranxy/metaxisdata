@@ -444,6 +444,7 @@ import {
   X,
 } from "lucide-vue-next";
 import {
+  type DateRange,
   RangeCalendarCell,
   RangeCalendarCellTrigger,
   RangeCalendarGrid,
@@ -457,7 +458,7 @@ import {
   RangeCalendarPrev,
   RangeCalendarRoot,
 } from "radix-vue";
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, shallowRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { listAuditLogs } from "@/api/audit";
 import { listAll } from "@/api/list";
@@ -516,16 +517,8 @@ interface FilterTypeOption {
   placeholder: string;
 }
 
-type CalendarDateLike =
-  | {
-      toString(): string;
-    }
-  | undefined;
-
-interface CalendarRangeValue {
-  start: CalendarDateLike;
-  end: CalendarDateLike;
-}
+/** Only `toString()` is used, which every calendar date value provides. */
+type CalendarDateLike = { toString(): string } | undefined;
 
 const WORKSPACE_PARENT = "workspaces/-";
 
@@ -543,8 +536,11 @@ const searchQuery = ref("");
 const selectedFilterType = ref<AuditFilterType | null>(null);
 const showSearchPanel = ref(false);
 const showDateRangePicker = ref(false);
-const dateRange = ref<CalendarRangeValue>(createDefaultDateRange());
-const draftDateRange = ref<any>(createDefaultDateRange());
+// shallowRef, not ref: Vue's deep unwrap rewrites the date classes into
+// structural look-alikes, which radix's own DateRange (and its calendar) no
+// longer accepts.
+const dateRange = shallowRef<DateRange>(createDefaultDateRange());
+const draftDateRange = shallowRef<DateRange>(createDefaultDateRange());
 const pendingAuditUsers = new Set<string>();
 
 const searchBarRef = ref<HTMLElement | null>(null);
@@ -853,27 +849,24 @@ function clearAllFilters() {
   void refreshLogs();
 }
 
-function emptyDateRange(): CalendarRangeValue {
+function emptyDateRange(): DateRange {
   return { start: undefined, end: undefined };
 }
 
-function createDefaultDateRange(): CalendarRangeValue {
+function createDefaultDateRange(): DateRange {
   const end = today(getLocalTimeZone());
   const start = end.subtract({ months: 1 });
   return { start, end };
 }
 
-function cloneDateRange(value: CalendarRangeValue): CalendarRangeValue {
+function cloneDateRange(value: DateRange): DateRange {
   return {
     start: value.start,
     end: value.end,
   };
 }
 
-function isSameDateRange(
-  left: CalendarRangeValue,
-  right: CalendarRangeValue
-): boolean {
+function isSameDateRange(left: DateRange, right: DateRange): boolean {
   return (
     getDateValueString(left.start) === getDateValueString(right.start) &&
     getDateValueString(left.end) === getDateValueString(right.end)

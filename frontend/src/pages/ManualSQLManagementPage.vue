@@ -383,9 +383,9 @@ import {
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
 import { useToastStore } from "@/store/modules/toast";
-import type {
-  Database,
-  ManualSQL,
+import {
+  type Database,
+  type ManualSQL,
   MetaType,
 } from "@/types/proto-es/v1/database_service_pb";
 import { formatDateTime } from "@/utils/datetime";
@@ -627,7 +627,7 @@ async function fetchSchemas(parent: string) {
     const response = await listMetadata({
       parentGuid: buildDatabaseGuid(parent),
       pageSize: 500,
-      metaType: 3 as MetaType,
+      metaType: MetaType.SCHEMA,
     });
     if (currentSequence !== schemaLoadSequence) {
       return;
