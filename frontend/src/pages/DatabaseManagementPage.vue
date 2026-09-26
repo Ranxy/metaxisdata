@@ -81,24 +81,9 @@
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <span
-                    v-if="database.effectiveEnvironment"
-                    class="flex items-center gap-2"
-                  >
-                    <span
-                      class="h-2.5 w-2.5 shrink-0 rounded-full"
-                      :style="{
-                        backgroundColor: getEnvironmentColor(
-                          database.effectiveEnvironment
-                        ),
-                      }"
-                    />
-                    {{ getEnvironmentLabel(database.effectiveEnvironment) }}
-                  </span>
-                  <span
-                    v-else
-                    class="text-muted-foreground"
-                  >-</span>
+                  <EnvironmentLabel
+                    :environment="database.effectiveEnvironment"
+                  />
                 </TableCell>
                 <TableCell>
                   <div
@@ -113,7 +98,7 @@
                   >-</span>
                 </TableCell>
                 <TableCell>
-                  <Badge :variant="getStateBadgeVariant(database.state)">
+                  <Badge :variant="stateBadgeVariant(database.state)">
                     {{ getStateLabel(database.state) }}
                   </Badge>
                 </TableCell>
@@ -181,6 +166,7 @@ import { listDatabases, syncDatabase } from "@/api/database";
 import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
 import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
+import EnvironmentLabel from "@/components/common/EnvironmentLabel.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import Badge from "@/components/ui/badge/Badge.vue";
@@ -202,7 +188,7 @@ import { State } from "@/types/proto-es/v1/common_pb";
 import type { Database as DatabaseType } from "@/types/proto-es/v1/database_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { engineBadgeClass, engineLabel } from "@/utils/engine";
-import { environmentColorHex } from "@/utils/environment";
+import { stateBadgeVariant } from "@/utils/state";
 
 const { t, locale } = useI18n();
 const { handleError } = useErrorHandler();
@@ -321,15 +307,6 @@ function getInstanceName(fullName: string): string {
   return parts.length >= 2 ? parts[1] : "";
 }
 
-function getEnvironmentLabel(environment: string): string {
-  return environmentStore.titleOf(environment);
-}
-
-function getEnvironmentColor(environment: string): string {
-  const resolved = environmentStore.byName(environment);
-  return resolved ? environmentColorHex(resolved) : "var(--muted-foreground)";
-}
-
 function getStateLabel(state: State): string {
   switch (state) {
     case State.ACTIVE:
@@ -338,19 +315,6 @@ function getStateLabel(state: State): string {
       return t("databaseManagement.stateDeleted");
     default:
       return t("databaseManagement.stateUnknown");
-  }
-}
-
-function getStateBadgeVariant(
-  state: State
-): "default" | "secondary" | "destructive" | "outline" {
-  switch (state) {
-    case State.ACTIVE:
-      return "default";
-    case State.DELETED:
-      return "destructive";
-    default:
-      return "secondary";
   }
 }
 
