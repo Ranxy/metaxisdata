@@ -228,308 +228,311 @@
     />
 
     <!-- Create Instance Modal -->
-    <AppModal
-      v-model="showCreateModal"
-      :title="t('instanceManagement.addInstance')"
-      size="lg"
-    >
-      <form
-        class="space-y-6"
-        @submit.prevent="handleCreateInstance"
-      >
-        <!-- Basic Info Section -->
-        <div class="space-y-4">
-          <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            {{ t("instanceManagement.basicInfo") }}
-          </h3>
+    <Dialog v-model:open="showCreateModal">
+      <DialogContent class="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{{ t("instanceManagement.addInstance") }}</DialogTitle>
+        </DialogHeader>
 
-          <div class="grid grid-cols-2 gap-4">
-            <AppInput
-              v-model="createForm.title"
-              :label="t('instanceManagement.instanceTitle')"
-              :placeholder="t('instanceManagement.instanceTitlePlaceholder')"
-              required
-              :error="createFormErrors.title"
-            />
-            <AppInput
-              v-model="createForm.instanceId"
-              :label="t('instanceManagement.instanceId')"
-              :placeholder="t('instanceManagement.instanceIdPlaceholder')"
-              required
-              :error="createFormErrors.instanceId"
-            />
-          </div>
+        <form
+          class="space-y-6"
+          @submit.prevent="handleCreateInstance"
+        >
+          <!-- Basic Info Section -->
+          <div class="space-y-4">
+            <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              {{ t("instanceManagement.basicInfo") }}
+            </h3>
 
-          <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-2">
-              <Label>
-                {{ t("instanceManagement.engine") }} <span class="text-destructive">*</span>
-              </Label>
-              <Select v-model="createForm.engine">
-                <SelectTrigger>
-                  <SelectValue :placeholder="t('instanceManagement.selectEngine')" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem :value="String(Engine.MYSQL)">
-                    MySQL
-                  </SelectItem>
-                  <SelectItem :value="String(Engine.POSTGRES)">
-                    PostgreSQL
-                  </SelectItem>
-                  <SelectItem :value="String(Engine.MSSQL)">
-                    SQL Server
-                  </SelectItem>
-                  <SelectItem :value="String(Engine.STARROCKS)">
-                    StarRocks
-                  </SelectItem>
-                  <SelectItem :value="String(Engine.DORIS)">
-                    Doris
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <p
-                v-if="createFormErrors.engine"
-                class="text-sm text-destructive"
+            <div class="grid grid-cols-2 gap-4">
+              <AppInput
+                v-model="createForm.title"
+                :label="t('instanceManagement.instanceTitle')"
+                :placeholder="t('instanceManagement.instanceTitlePlaceholder')"
+                required
+                :error="createFormErrors.title"
+              />
+              <AppInput
+                v-model="createForm.instanceId"
+                :label="t('instanceManagement.instanceId')"
+                :placeholder="t('instanceManagement.instanceIdPlaceholder')"
+                required
+                :error="createFormErrors.instanceId"
+              />
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div class="space-y-2">
+                <Label>
+                  {{ t("instanceManagement.engine") }} <span class="text-destructive">*</span>
+                </Label>
+                <Select v-model="createForm.engine">
+                  <SelectTrigger>
+                    <SelectValue :placeholder="t('instanceManagement.selectEngine')" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem :value="String(Engine.MYSQL)">
+                      MySQL
+                    </SelectItem>
+                    <SelectItem :value="String(Engine.POSTGRES)">
+                      PostgreSQL
+                    </SelectItem>
+                    <SelectItem :value="String(Engine.MSSQL)">
+                      SQL Server
+                    </SelectItem>
+                    <SelectItem :value="String(Engine.STARROCKS)">
+                      StarRocks
+                    </SelectItem>
+                    <SelectItem :value="String(Engine.DORIS)">
+                      Doris
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p
+                  v-if="createFormErrors.engine"
+                  class="text-sm text-destructive"
+                >
+                  {{ createFormErrors.engine }}
+                </p>
+              </div>
+              <EnvironmentSelect
+                v-model="createForm.environment"
+                :label="t('instanceManagement.environment')"
+                :placeholder="t('instanceManagement.environmentPlaceholder')"
+                required
+                :error="createFormErrors.environment"
+              />
+            </div>
+
+            <div class="flex items-center gap-2">
+              <Checkbox
+                id="activation"
+                :checked="createForm.activation"
+                @update:checked="createForm.activation = $event"
+              />
+              <Label
+                for="activation"
+                class="text-sm cursor-pointer"
               >
-                {{ createFormErrors.engine }}
+                {{ t("instanceManagement.activateInstance") }}
+              </Label>
+            </div>
+
+            <!-- Sync Interval: toggle + minutes input -->
+            <div class="space-y-2">
+              <Label class="text-sm">{{ t("instanceManagement.syncInterval") }}</Label>
+              <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2">
+                  <Checkbox
+                    id="create-enable-sync"
+                    :checked="createForm.enableSync"
+                    @update:checked="onCreateSyncToggle"
+                  />
+                  <Label
+                    for="create-enable-sync"
+                    class="text-sm cursor-pointer"
+                  >
+                    {{ t("instanceManagement.enableSync") }}
+                  </Label>
+                </div>
+                <div class="flex items-center gap-2">
+                  <AppInput
+                    v-model="createForm.syncIntervalMinutes"
+                    type="number"
+                    :placeholder="t('instanceManagement.syncIntervalPlaceholder')"
+                    :disabled="!createForm.enableSync"
+                    class="w-32"
+                  />
+                  <span class="text-sm text-muted-foreground">{{ t("instanceManagement.syncIntervalMinutes") }}</span>
+                </div>
+              </div>
+              <p class="text-xs text-muted-foreground">
+                {{ t("instanceManagement.syncIntervalHint") }}
               </p>
             </div>
-            <EnvironmentSelect
-              v-model="createForm.environment"
-              :label="t('instanceManagement.environment')"
-              :placeholder="t('instanceManagement.environmentPlaceholder')"
-              required
-              :error="createFormErrors.environment"
-            />
           </div>
 
-          <div class="flex items-center gap-2">
-            <Checkbox
-              id="activation"
-              :checked="createForm.activation"
-              @update:checked="createForm.activation = $event"
-            />
-            <Label
-              for="activation"
-              class="text-sm cursor-pointer"
-            >
-              {{ t("instanceManagement.activateInstance") }}
-            </Label>
-          </div>
-
-          <!-- Sync Interval: toggle + minutes input -->
-          <div class="space-y-2">
-            <Label class="text-sm">{{ t("instanceManagement.syncInterval") }}</Label>
-            <div class="flex items-center gap-4">
-              <div class="flex items-center gap-2">
-                <Checkbox
-                  id="create-enable-sync"
-                  :checked="createForm.enableSync"
-                  @update:checked="onCreateSyncToggle"
-                />
-                <Label
-                  for="create-enable-sync"
-                  class="text-sm cursor-pointer"
-                >
-                  {{ t("instanceManagement.enableSync") }}
-                </Label>
-              </div>
-              <div class="flex items-center gap-2">
-                <AppInput
-                  v-model="createForm.syncIntervalMinutes"
-                  type="number"
-                  :placeholder="t('instanceManagement.syncIntervalPlaceholder')"
-                  :disabled="!createForm.enableSync"
-                  class="w-32"
-                />
-                <span class="text-sm text-muted-foreground">{{ t("instanceManagement.syncIntervalMinutes") }}</span>
-              </div>
-            </div>
-            <p class="text-xs text-muted-foreground">
-              {{ t("instanceManagement.syncIntervalHint") }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Admin Data Source Section (Required) -->
-        <div class="space-y-4">
-          <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            {{ t("instanceManagement.adminDataSource") }}
-          </h3>
-
-          <AppInput
-            v-model="createForm.adminDataSource.id"
-            :label="t('instanceManagement.dataSourceId')"
-            :placeholder="t('instanceManagement.dataSourceIdPlaceholder')"
-            required
-            :error="createFormErrors.adminDataSource.id"
-          />
-
-          <div class="grid grid-cols-2 gap-4">
-            <AppInput
-              v-model="createForm.adminDataSource.host"
-              :label="t('instanceManagement.host')"
-              :placeholder="t('instanceManagement.hostPlaceholder')"
-              required
-              :error="createFormErrors.adminDataSource.host"
-            />
-            <AppInput
-              v-model="createForm.adminDataSource.port"
-              :label="t('instanceManagement.port')"
-              :placeholder="t('instanceManagement.portPlaceholder')"
-              required
-              :error="createFormErrors.adminDataSource.port"
-            />
-          </div>
-
-          <div class="grid grid-cols-2 gap-4">
-            <AppInput
-              v-model="createForm.adminDataSource.username"
-              :label="t('instanceManagement.username')"
-              :placeholder="t('instanceManagement.usernamePlaceholder')"
-              required
-              :error="createFormErrors.adminDataSource.username"
-            />
-            <AppInput
-              v-model="createForm.adminDataSource.password"
-              type="password"
-              :label="t('instanceManagement.password')"
-              :placeholder="t('instanceManagement.passwordPlaceholder')"
-              required
-              :error="createFormErrors.adminDataSource.password"
-            />
-          </div>
-
-          <AppInput
-            v-model="createForm.adminDataSource.database"
-            :label="t('instanceManagement.database')"
-            :placeholder="t('instanceManagement.databasePlaceholder')"
-          />
-        </div>
-
-        <!-- Read-Only Data Sources Section (Optional) -->
-        <div class="space-y-4">
-          <div class="flex items-center justify-between">
+          <!-- Admin Data Source Section (Required) -->
+          <div class="space-y-4">
             <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-              {{ t("instanceManagement.readOnlyDataSources") }}
+              {{ t("instanceManagement.adminDataSource") }}
             </h3>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              @click="addReadOnlyDataSource"
-            >
-              <Plus class="h-4 w-4 mr-1" />
-              {{ t("instanceManagement.addReadOnlyNode") }}
-            </Button>
-          </div>
-
-          <div
-            v-if="createForm.readOnlyDataSources.length === 0"
-            class="text-sm text-muted-foreground italic"
-          >
-            {{ t("instanceManagement.noReadOnlyNodes") }}
-          </div>
-
-          <div
-            v-for="(ds, index) in createForm.readOnlyDataSources"
-            :key="index"
-            class="border rounded-lg p-4 space-y-4 relative"
-          >
-            <div class="flex items-center justify-between">
-              <span class="text-sm font-medium text-muted-foreground">
-                {{ t("instanceManagement.readOnlyNode") }} #{{ index + 1 }}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                class="text-destructive hover:text-destructive"
-                :aria-label="t('instanceManagement.removeDataSource')"
-                @click="removeReadOnlyDataSource(index)"
-              >
-                <Trash2 class="h-4 w-4" />
-              </Button>
-            </div>
 
             <AppInput
-              v-model="ds.id"
+              v-model="createForm.adminDataSource.id"
               :label="t('instanceManagement.dataSourceId')"
               :placeholder="t('instanceManagement.dataSourceIdPlaceholder')"
               required
-              :error="createFormErrors.readOnlyDataSources[index]?.id"
+              :error="createFormErrors.adminDataSource.id"
             />
 
             <div class="grid grid-cols-2 gap-4">
               <AppInput
-                v-model="ds.host"
+                v-model="createForm.adminDataSource.host"
                 :label="t('instanceManagement.host')"
                 :placeholder="t('instanceManagement.hostPlaceholder')"
                 required
-                :error="createFormErrors.readOnlyDataSources[index]?.host"
+                :error="createFormErrors.adminDataSource.host"
               />
               <AppInput
-                v-model="ds.port"
+                v-model="createForm.adminDataSource.port"
                 :label="t('instanceManagement.port')"
                 :placeholder="t('instanceManagement.portPlaceholder')"
                 required
-                :error="createFormErrors.readOnlyDataSources[index]?.port"
+                :error="createFormErrors.adminDataSource.port"
               />
             </div>
 
             <div class="grid grid-cols-2 gap-4">
               <AppInput
-                v-model="ds.username"
+                v-model="createForm.adminDataSource.username"
                 :label="t('instanceManagement.username')"
                 :placeholder="t('instanceManagement.usernamePlaceholder')"
                 required
-                :error="createFormErrors.readOnlyDataSources[index]?.username"
+                :error="createFormErrors.adminDataSource.username"
               />
               <AppInput
-                v-model="ds.password"
+                v-model="createForm.adminDataSource.password"
                 type="password"
                 :label="t('instanceManagement.password')"
                 :placeholder="t('instanceManagement.passwordPlaceholder')"
                 required
-                :error="createFormErrors.readOnlyDataSources[index]?.password"
+                :error="createFormErrors.adminDataSource.password"
               />
             </div>
 
             <AppInput
-              v-model="ds.database"
+              v-model="createForm.adminDataSource.database"
               :label="t('instanceManagement.database')"
               :placeholder="t('instanceManagement.databasePlaceholder')"
             />
           </div>
-        </div>
-      </form>
-      <template #footer>
-        <Button
-          variant="outline"
-          class="sm:mr-auto"
-          :disabled="isCreating || isTestingConnection"
-          @click="handleTestConnection"
-        >
-          <Loader2
-            v-if="isTestingConnection"
-            class="h-4 w-4 mr-2 animate-spin"
-          />
-          {{ isTestingConnection ? t("instanceManagement.testing") : t("instanceManagement.testConnection") }}
-        </Button>
-        <Button
-          variant="outline"
-          @click="showCreateModal = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          :disabled="isCreating || isTestingConnection"
-          @click="handleCreateInstance"
-        >
-          {{ t("common.confirm") }}
-        </Button>
-      </template>
-    </AppModal>
+
+          <!-- Read-Only Data Sources Section (Optional) -->
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                {{ t("instanceManagement.readOnlyDataSources") }}
+              </h3>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                @click="addReadOnlyDataSource"
+              >
+                <Plus class="h-4 w-4 mr-1" />
+                {{ t("instanceManagement.addReadOnlyNode") }}
+              </Button>
+            </div>
+
+            <div
+              v-if="createForm.readOnlyDataSources.length === 0"
+              class="text-sm text-muted-foreground italic"
+            >
+              {{ t("instanceManagement.noReadOnlyNodes") }}
+            </div>
+
+            <div
+              v-for="(ds, index) in createForm.readOnlyDataSources"
+              :key="index"
+              class="border rounded-lg p-4 space-y-4 relative"
+            >
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-medium text-muted-foreground">
+                  {{ t("instanceManagement.readOnlyNode") }} #{{ index + 1 }}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  class="text-destructive hover:text-destructive"
+                  :aria-label="t('instanceManagement.removeDataSource')"
+                  @click="removeReadOnlyDataSource(index)"
+                >
+                  <Trash2 class="h-4 w-4" />
+                </Button>
+              </div>
+
+              <AppInput
+                v-model="ds.id"
+                :label="t('instanceManagement.dataSourceId')"
+                :placeholder="t('instanceManagement.dataSourceIdPlaceholder')"
+                required
+                :error="createFormErrors.readOnlyDataSources[index]?.id"
+              />
+
+              <div class="grid grid-cols-2 gap-4">
+                <AppInput
+                  v-model="ds.host"
+                  :label="t('instanceManagement.host')"
+                  :placeholder="t('instanceManagement.hostPlaceholder')"
+                  required
+                  :error="createFormErrors.readOnlyDataSources[index]?.host"
+                />
+                <AppInput
+                  v-model="ds.port"
+                  :label="t('instanceManagement.port')"
+                  :placeholder="t('instanceManagement.portPlaceholder')"
+                  required
+                  :error="createFormErrors.readOnlyDataSources[index]?.port"
+                />
+              </div>
+
+              <div class="grid grid-cols-2 gap-4">
+                <AppInput
+                  v-model="ds.username"
+                  :label="t('instanceManagement.username')"
+                  :placeholder="t('instanceManagement.usernamePlaceholder')"
+                  required
+                  :error="createFormErrors.readOnlyDataSources[index]?.username"
+                />
+                <AppInput
+                  v-model="ds.password"
+                  type="password"
+                  :label="t('instanceManagement.password')"
+                  :placeholder="t('instanceManagement.passwordPlaceholder')"
+                  required
+                  :error="createFormErrors.readOnlyDataSources[index]?.password"
+                />
+              </div>
+
+              <AppInput
+                v-model="ds.database"
+                :label="t('instanceManagement.database')"
+                :placeholder="t('instanceManagement.databasePlaceholder')"
+              />
+            </div>
+          </div>
+        </form>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            class="sm:mr-auto"
+            :disabled="isCreating || isTestingConnection"
+            @click="handleTestConnection"
+          >
+            <Loader2
+              v-if="isTestingConnection"
+              class="h-4 w-4 mr-2 animate-spin"
+            />
+            {{ isTestingConnection ? t("instanceManagement.testing") : t("instanceManagement.testConnection") }}
+          </Button>
+          <Button
+            variant="outline"
+            @click="showCreateModal = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            :disabled="isCreating || isTestingConnection"
+            @click="handleCreateInstance"
+          >
+            {{ t("common.confirm") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
 
@@ -550,7 +553,6 @@ import { useRouter } from "vue-router";
 import type { CreateInstanceInput } from "@/api/instance";
 import { createInstance } from "@/api/instance";
 import AppInput from "@/components/common/AppInput.vue";
-import AppModal from "@/components/common/AppModal.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -565,6 +567,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
   Select,

@@ -93,106 +93,109 @@
       </PageState>
     </Card>
 
-    <AppModal
-      v-model="showEditor"
-      :title="editing ? t('iam.roles.edit') : t('iam.roles.create')"
-      size="xl"
-    >
-      <div class="space-y-4">
-        <div class="grid gap-1">
-          <Label for="role-name">{{ t("iam.roles.nameLabel") }}</Label>
-          <AppInput
-            id="role-name"
-            v-model="form.name"
-            :disabled="editing"
-            :placeholder="t('iam.roles.namePlaceholder')"
-          />
-          <p class="text-xs text-muted-foreground">
-            {{ t("iam.roles.nameHint") }}
-          </p>
-        </div>
-        <div class="grid gap-1">
-          <Label for="role-title">{{ t("iam.roles.titleLabel") }}</Label>
-          <AppInput
-            id="role-title"
-            v-model="form.title"
-          />
-        </div>
-        <div class="grid gap-1">
-          <Label for="role-description">
-            {{ t("iam.roles.descriptionLabel") }}
-          </Label>
-          <AppInput
-            id="role-description"
-            v-model="form.description"
-          />
-        </div>
+    <Dialog v-model:open="showEditor">
+      <DialogContent class="max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>{{ editing ? t("iam.roles.edit") : t("iam.roles.create") }}</DialogTitle>
+        </DialogHeader>
 
-        <div class="space-y-3">
-          <div class="flex items-center justify-between">
-            <Label>{{ t("iam.roles.permissionsLabel") }}</Label>
-            <div class="space-x-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                @click="selectAllPermissions"
-              >
-                {{ t("iam.roles.selectAll") }}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                @click="clearAllPermissions"
-              >
-                {{ t("iam.roles.clearAll") }}
-              </Button>
-            </div>
+        <div class="space-y-4">
+          <div class="grid gap-1">
+            <Label for="role-name">{{ t("iam.roles.nameLabel") }}</Label>
+            <AppInput
+              id="role-name"
+              v-model="form.name"
+              :disabled="editing"
+              :placeholder="t('iam.roles.namePlaceholder')"
+            />
+            <p class="text-xs text-muted-foreground">
+              {{ t("iam.roles.nameHint") }}
+            </p>
           </div>
-          <div
-            v-for="group in PERMISSION_GROUPS"
-            :key="group.resource"
-            class="rounded-md border p-3"
-          >
-            <div class="font-mono text-sm font-medium mb-2">
-              {{ group.resource }}
-            </div>
-            <div class="grid grid-cols-2 gap-2 md:grid-cols-3">
-              <div
-                v-for="permission in group.permissions"
-                :key="permission"
-                class="flex items-center gap-2"
-              >
-                <Checkbox
-                  :id="`perm-${permission}`"
-                  :checked="form.permissions.includes(permission)"
-                  @update:checked="togglePermission(permission, $event === true)"
-                />
-                <Label
-                  :for="`perm-${permission}`"
-                  class="font-mono text-xs cursor-pointer"
+          <div class="grid gap-1">
+            <Label for="role-title">{{ t("iam.roles.titleLabel") }}</Label>
+            <AppInput
+              id="role-title"
+              v-model="form.title"
+            />
+          </div>
+          <div class="grid gap-1">
+            <Label for="role-description">
+              {{ t("iam.roles.descriptionLabel") }}
+            </Label>
+            <AppInput
+              id="role-description"
+              v-model="form.description"
+            />
+          </div>
+
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <Label>{{ t("iam.roles.permissionsLabel") }}</Label>
+              <div class="space-x-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  @click="selectAllPermissions"
                 >
-                  {{ permissionSuffix(permission) }}
-                </Label>
+                  {{ t("iam.roles.selectAll") }}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  @click="clearAllPermissions"
+                >
+                  {{ t("iam.roles.clearAll") }}
+                </Button>
+              </div>
+            </div>
+            <div
+              v-for="group in PERMISSION_GROUPS"
+              :key="group.resource"
+              class="rounded-md border p-3"
+            >
+              <div class="font-mono text-sm font-medium mb-2">
+                {{ group.resource }}
+              </div>
+              <div class="grid grid-cols-2 gap-2 md:grid-cols-3">
+                <div
+                  v-for="permission in group.permissions"
+                  :key="permission"
+                  class="flex items-center gap-2"
+                >
+                  <Checkbox
+                    :id="`perm-${permission}`"
+                    :checked="form.permissions.includes(permission)"
+                    @update:checked="togglePermission(permission, $event === true)"
+                  />
+                  <Label
+                    :for="`perm-${permission}`"
+                    class="font-mono text-xs cursor-pointer"
+                  >
+                    {{ permissionSuffix(permission) }}
+                  </Label>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showEditor = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          :disabled="isSaving || !isFormValid"
-          @click="handleSave"
-        >
-          {{ t("common.save") }}
-        </Button>
-      </template>
-    </AppModal>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            @click="showEditor = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            :disabled="isSaving || !isFormValid"
+            @click="handleSave"
+          >
+            {{ t("common.save") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <ConfirmDeleteDialog
       v-model="showDeleteConfirm"
@@ -212,7 +215,6 @@ import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { createRole, deleteRole, listRoles, updateRole } from "@/api/role";
 import AppInput from "@/components/common/AppInput.vue";
-import AppModal from "@/components/common/AppModal.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -221,6 +223,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
   Table,

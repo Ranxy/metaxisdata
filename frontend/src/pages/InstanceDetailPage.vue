@@ -224,309 +224,312 @@
     </Card>
 
     <!-- Edit Instance Modal -->
-    <AppModal
-      v-model="showEditModal"
-      :title="t('instanceDetail.editInstance')"
-      size="lg"
-    >
-      <form
-        class="space-y-6"
-        @submit.prevent="handleUpdateInstance"
-      >
-        <!-- Basic Info Section -->
-        <div class="space-y-4">
-          <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            {{ t("instanceManagement.basicInfo") }}
-          </h3>
+    <Dialog v-model:open="showEditModal">
+      <DialogContent class="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{{ t("instanceDetail.editInstance") }}</DialogTitle>
+        </DialogHeader>
 
-          <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-2">
-              <Label class="text-sm text-muted-foreground">
-                {{ t("instanceManagement.instanceId") }}
-              </Label>
-              <p class="font-medium text-sm py-2">
-                {{ getInstanceIdFromName(instance?.name ?? "") }}
-              </p>
-            </div>
-            <AppInput
-              v-model="editForm.title"
-              :label="t('instanceManagement.instanceTitle')"
-              :placeholder="t('instanceManagement.instanceTitlePlaceholder')"
-              required
-              :error="editFormErrors.title"
-            />
-          </div>
-
-          <EnvironmentSelect
-            v-model="editForm.environment"
-            :label="t('instanceManagement.environment')"
-            :placeholder="t('instanceManagement.environmentPlaceholder')"
-            required
-            :error="editFormErrors.environment"
-          />
-
-          <div class="flex items-center gap-2">
-            <Checkbox
-              id="edit-activation"
-              :checked="editForm.activation"
-              @update:checked="editForm.activation = $event"
-            />
-            <Label
-              for="edit-activation"
-              class="text-sm cursor-pointer"
-            >
-              {{ t("instanceManagement.activateInstance") }}
-            </Label>
-          </div>
-
-          <!-- Sync Interval: toggle + minutes input -->
-          <div class="space-y-2">
-            <Label class="text-sm">{{ t("instanceManagement.syncInterval") }}</Label>
-            <div class="flex items-center gap-4">
-              <div class="flex items-center gap-2">
-                <Checkbox
-                  id="edit-enable-sync"
-                  :checked="editForm.enableSync"
-                  @update:checked="onEditSyncToggle"
-                />
-                <Label
-                  for="edit-enable-sync"
-                  class="text-sm cursor-pointer"
-                >
-                  {{ t("instanceManagement.enableSync") }}
-                </Label>
-              </div>
-              <div class="flex items-center gap-2">
-                <AppInput
-                  v-model="editForm.syncIntervalMinutes"
-                  type="number"
-                  :placeholder="t('instanceManagement.syncIntervalPlaceholder')"
-                  :disabled="!editForm.enableSync"
-                  class="w-32"
-                />
-                <span class="text-sm text-muted-foreground">{{ t("instanceManagement.syncIntervalMinutes") }}</span>
-              </div>
-            </div>
-            <p class="text-xs text-muted-foreground">
-              {{ t("instanceManagement.syncIntervalHint") }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Data Sources Section -->
-        <div class="space-y-4">
-          <div class="flex items-center justify-between">
+        <form
+          class="space-y-6"
+          @submit.prevent="handleUpdateInstance"
+        >
+          <!-- Basic Info Section -->
+          <div class="space-y-4">
             <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-              {{ t("instanceDetail.currentDataSources") }}
+              {{ t("instanceManagement.basicInfo") }}
             </h3>
-          </div>
 
-          <!-- Show current data source info read-only -->
-          <div
-            v-if="!editForm.editDataSources"
-            class="space-y-2"
-          >
-            <div
-              v-for="ds in instance?.dataSources ?? []"
-              :key="ds.name"
-              class="border rounded-lg p-3 text-sm space-y-1"
-            >
-              <div class="flex items-center gap-2">
-                <Badge variant="secondary">
-                  {{
-                    ds.type === DataSourceType.ADMIN
-                      ? t("instanceManagement.dataSourceAdmin")
-                      : t("instanceManagement.dataSourceReadOnly")
-                  }}
-                </Badge>
-                <span class="font-medium">{{ dataSourceId(ds.name) }}</span>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="space-y-2">
+                <Label class="text-sm text-muted-foreground">
+                  {{ t("instanceManagement.instanceId") }}
+                </Label>
+                <p class="font-medium text-sm py-2">
+                  {{ getInstanceIdFromName(instance?.name ?? "") }}
+                </p>
               </div>
-              <div class="text-muted-foreground">
-                {{ ds.host }}:{{ ds.port }} · {{ ds.username }} {{ ds.database ? `· ${ds.database}` : "" }}
-              </div>
-            </div>
-          </div>
-
-          <!-- Toggle to enable data source editing -->
-          <div class="flex items-center gap-2">
-            <Checkbox
-              id="edit-ds-toggle"
-              :checked="editForm.editDataSources"
-              @update:checked="onEditDataSourcesToggle"
-            />
-            <Label
-              for="edit-ds-toggle"
-              class="text-sm cursor-pointer"
-            >
-              {{ t("instanceDetail.updateDataSources") }}
-            </Label>
-          </div>
-          <p
-            v-if="!editForm.editDataSources"
-            class="text-xs text-muted-foreground"
-          >
-            {{ t("instanceDetail.updateDataSourcesHint") }}
-          </p>
-
-          <!-- Editable data source fields (only shown when toggle is on) -->
-          <template v-if="editForm.editDataSources">
-            <!-- Admin Data Source -->
-            <div class="space-y-4 border rounded-lg p-4">
-              <h4 class="text-sm font-semibold text-muted-foreground">
-                {{ t("instanceManagement.adminDataSource") }}
-              </h4>
-
-              <div class="grid grid-cols-2 gap-4">
-                <AppInput
-                  v-model="editForm.adminDataSource.host"
-                  :label="t('instanceManagement.host')"
-                  :placeholder="t('instanceManagement.hostPlaceholder')"
-                  required
-                  :error="editFormErrors.adminHost"
-                />
-                <AppInput
-                  v-model="editForm.adminDataSource.port"
-                  :label="t('instanceManagement.port')"
-                  :placeholder="t('instanceManagement.portPlaceholder')"
-                  required
-                  :error="editFormErrors.adminPort"
-                />
-              </div>
-
-              <div class="grid grid-cols-2 gap-4">
-                <AppInput
-                  v-model="editForm.adminDataSource.username"
-                  :label="t('instanceManagement.username')"
-                  :placeholder="t('instanceManagement.usernamePlaceholder')"
-                  required
-                  :error="editFormErrors.adminUsername"
-                />
-                <AppInput
-                  v-model="editForm.adminDataSource.password"
-                  type="password"
-                  :label="t('instanceManagement.password')"
-                  :placeholder="t('instanceManagement.passwordPlaceholder')"
-                />
-              </div>
-
               <AppInput
-                v-model="editForm.adminDataSource.database"
-                :label="t('instanceManagement.database')"
-                :placeholder="t('instanceManagement.databasePlaceholder')"
+                v-model="editForm.title"
+                :label="t('instanceManagement.instanceTitle')"
+                :placeholder="t('instanceManagement.instanceTitlePlaceholder')"
+                required
+                :error="editFormErrors.title"
               />
             </div>
 
-            <!-- Read-Only Data Sources -->
-            <div class="flex items-center justify-between">
-              <h4 class="text-sm font-semibold text-muted-foreground">
-                {{ t("instanceManagement.readOnlyDataSources") }}
-              </h4>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                @click="addEditReadOnlyDataSource"
+            <EnvironmentSelect
+              v-model="editForm.environment"
+              :label="t('instanceManagement.environment')"
+              :placeholder="t('instanceManagement.environmentPlaceholder')"
+              required
+              :error="editFormErrors.environment"
+            />
+
+            <div class="flex items-center gap-2">
+              <Checkbox
+                id="edit-activation"
+                :checked="editForm.activation"
+                @update:checked="editForm.activation = $event"
+              />
+              <Label
+                for="edit-activation"
+                class="text-sm cursor-pointer"
               >
-                <Plus class="h-4 w-4 mr-1" />
-                {{ t("instanceManagement.addReadOnlyNode") }}
-              </Button>
+                {{ t("instanceManagement.activateInstance") }}
+              </Label>
             </div>
 
-            <div
-              v-if="editForm.readOnlyDataSources.length === 0"
-              class="text-sm text-muted-foreground italic"
-            >
-              {{ t("instanceManagement.noReadOnlyNodes") }}
+            <!-- Sync Interval: toggle + minutes input -->
+            <div class="space-y-2">
+              <Label class="text-sm">{{ t("instanceManagement.syncInterval") }}</Label>
+              <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2">
+                  <Checkbox
+                    id="edit-enable-sync"
+                    :checked="editForm.enableSync"
+                    @update:checked="onEditSyncToggle"
+                  />
+                  <Label
+                    for="edit-enable-sync"
+                    class="text-sm cursor-pointer"
+                  >
+                    {{ t("instanceManagement.enableSync") }}
+                  </Label>
+                </div>
+                <div class="flex items-center gap-2">
+                  <AppInput
+                    v-model="editForm.syncIntervalMinutes"
+                    type="number"
+                    :placeholder="t('instanceManagement.syncIntervalPlaceholder')"
+                    :disabled="!editForm.enableSync"
+                    class="w-32"
+                  />
+                  <span class="text-sm text-muted-foreground">{{ t("instanceManagement.syncIntervalMinutes") }}</span>
+                </div>
+              </div>
+              <p class="text-xs text-muted-foreground">
+                {{ t("instanceManagement.syncIntervalHint") }}
+              </p>
+            </div>
+          </div>
+
+          <!-- Data Sources Section -->
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                {{ t("instanceDetail.currentDataSources") }}
+              </h3>
             </div>
 
+            <!-- Show current data source info read-only -->
             <div
-              v-for="(ds, index) in editForm.readOnlyDataSources"
-              :key="index"
-              class="border rounded-lg p-4 space-y-4 relative"
+              v-if="!editForm.editDataSources"
+              class="space-y-2"
             >
+              <div
+                v-for="ds in instance?.dataSources ?? []"
+                :key="ds.name"
+                class="border rounded-lg p-3 text-sm space-y-1"
+              >
+                <div class="flex items-center gap-2">
+                  <Badge variant="secondary">
+                    {{
+                      ds.type === DataSourceType.ADMIN
+                        ? t("instanceManagement.dataSourceAdmin")
+                        : t("instanceManagement.dataSourceReadOnly")
+                    }}
+                  </Badge>
+                  <span class="font-medium">{{ dataSourceId(ds.name) }}</span>
+                </div>
+                <div class="text-muted-foreground">
+                  {{ ds.host }}:{{ ds.port }} · {{ ds.username }} {{ ds.database ? `· ${ds.database}` : "" }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Toggle to enable data source editing -->
+            <div class="flex items-center gap-2">
+              <Checkbox
+                id="edit-ds-toggle"
+                :checked="editForm.editDataSources"
+                @update:checked="onEditDataSourcesToggle"
+              />
+              <Label
+                for="edit-ds-toggle"
+                class="text-sm cursor-pointer"
+              >
+                {{ t("instanceDetail.updateDataSources") }}
+              </Label>
+            </div>
+            <p
+              v-if="!editForm.editDataSources"
+              class="text-xs text-muted-foreground"
+            >
+              {{ t("instanceDetail.updateDataSourcesHint") }}
+            </p>
+
+            <!-- Editable data source fields (only shown when toggle is on) -->
+            <template v-if="editForm.editDataSources">
+              <!-- Admin Data Source -->
+              <div class="space-y-4 border rounded-lg p-4">
+                <h4 class="text-sm font-semibold text-muted-foreground">
+                  {{ t("instanceManagement.adminDataSource") }}
+                </h4>
+
+                <div class="grid grid-cols-2 gap-4">
+                  <AppInput
+                    v-model="editForm.adminDataSource.host"
+                    :label="t('instanceManagement.host')"
+                    :placeholder="t('instanceManagement.hostPlaceholder')"
+                    required
+                    :error="editFormErrors.adminHost"
+                  />
+                  <AppInput
+                    v-model="editForm.adminDataSource.port"
+                    :label="t('instanceManagement.port')"
+                    :placeholder="t('instanceManagement.portPlaceholder')"
+                    required
+                    :error="editFormErrors.adminPort"
+                  />
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                  <AppInput
+                    v-model="editForm.adminDataSource.username"
+                    :label="t('instanceManagement.username')"
+                    :placeholder="t('instanceManagement.usernamePlaceholder')"
+                    required
+                    :error="editFormErrors.adminUsername"
+                  />
+                  <AppInput
+                    v-model="editForm.adminDataSource.password"
+                    type="password"
+                    :label="t('instanceManagement.password')"
+                    :placeholder="t('instanceManagement.passwordPlaceholder')"
+                  />
+                </div>
+
+                <AppInput
+                  v-model="editForm.adminDataSource.database"
+                  :label="t('instanceManagement.database')"
+                  :placeholder="t('instanceManagement.databasePlaceholder')"
+                />
+              </div>
+
+              <!-- Read-Only Data Sources -->
               <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-muted-foreground">
-                  {{ t("instanceManagement.readOnlyNode") }} #{{ index + 1 }}
-                </span>
+                <h4 class="text-sm font-semibold text-muted-foreground">
+                  {{ t("instanceManagement.readOnlyDataSources") }}
+                </h4>
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
-                  class="text-destructive hover:text-destructive"
-                  :aria-label="t('instanceManagement.removeDataSource')"
-                  @click="removeEditReadOnlyDataSource(index)"
+                  size="sm"
+                  @click="addEditReadOnlyDataSource"
                 >
-                  <Trash2 class="h-4 w-4" />
+                  <Plus class="h-4 w-4 mr-1" />
+                  {{ t("instanceManagement.addReadOnlyNode") }}
                 </Button>
               </div>
 
-              <div class="grid grid-cols-2 gap-4">
-                <AppInput
-                  v-model="ds.host"
-                  :label="t('instanceManagement.host')"
-                  :placeholder="t('instanceManagement.hostPlaceholder')"
-                  required
-                />
-                <AppInput
-                  v-model="ds.port"
-                  :label="t('instanceManagement.port')"
-                  :placeholder="t('instanceManagement.portPlaceholder')"
-                  required
-                />
+              <div
+                v-if="editForm.readOnlyDataSources.length === 0"
+                class="text-sm text-muted-foreground italic"
+              >
+                {{ t("instanceManagement.noReadOnlyNodes") }}
               </div>
 
-              <div class="grid grid-cols-2 gap-4">
+              <div
+                v-for="(ds, index) in editForm.readOnlyDataSources"
+                :key="index"
+                class="border rounded-lg p-4 space-y-4 relative"
+              >
+                <div class="flex items-center justify-between">
+                  <span class="text-sm font-medium text-muted-foreground">
+                    {{ t("instanceManagement.readOnlyNode") }} #{{ index + 1 }}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    class="text-destructive hover:text-destructive"
+                    :aria-label="t('instanceManagement.removeDataSource')"
+                    @click="removeEditReadOnlyDataSource(index)"
+                  >
+                    <Trash2 class="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                  <AppInput
+                    v-model="ds.host"
+                    :label="t('instanceManagement.host')"
+                    :placeholder="t('instanceManagement.hostPlaceholder')"
+                    required
+                  />
+                  <AppInput
+                    v-model="ds.port"
+                    :label="t('instanceManagement.port')"
+                    :placeholder="t('instanceManagement.portPlaceholder')"
+                    required
+                  />
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                  <AppInput
+                    v-model="ds.username"
+                    :label="t('instanceManagement.username')"
+                    :placeholder="t('instanceManagement.usernamePlaceholder')"
+                    required
+                  />
+                  <AppInput
+                    v-model="ds.password"
+                    type="password"
+                    :label="t('instanceManagement.password')"
+                    :placeholder="t('instanceManagement.passwordPlaceholder')"
+                  />
+                </div>
+
                 <AppInput
-                  v-model="ds.username"
-                  :label="t('instanceManagement.username')"
-                  :placeholder="t('instanceManagement.usernamePlaceholder')"
-                  required
-                />
-                <AppInput
-                  v-model="ds.password"
-                  type="password"
-                  :label="t('instanceManagement.password')"
-                  :placeholder="t('instanceManagement.passwordPlaceholder')"
+                  v-model="ds.database"
+                  :label="t('instanceManagement.database')"
+                  :placeholder="t('instanceManagement.databasePlaceholder')"
                 />
               </div>
+            </template>
+          </div>
+        </form>
 
-              <AppInput
-                v-model="ds.database"
-                :label="t('instanceManagement.database')"
-                :placeholder="t('instanceManagement.databasePlaceholder')"
-              />
-            </div>
-          </template>
-        </div>
-      </form>
-      <template #footer>
-        <Button
-          v-if="editForm.editDataSources"
-          variant="outline"
-          class="sm:mr-auto"
-          :disabled="isUpdating || isTestingConnection"
-          @click="handleTestConnection"
-        >
-          <Loader2
-            v-if="isTestingConnection"
-            class="h-4 w-4 mr-2 animate-spin"
-          />
-          {{ isTestingConnection ? t("instanceManagement.testing") : t("instanceManagement.testConnection") }}
-        </Button>
-        <Button
-          variant="outline"
-          @click="showEditModal = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          :disabled="isUpdating || isTestingConnection"
-          @click="handleUpdateInstance"
-        >
-          {{ t("common.confirm") }}
-        </Button>
-      </template>
-    </AppModal>
+        <DialogFooter>
+          <Button
+            v-if="editForm.editDataSources"
+            variant="outline"
+            class="sm:mr-auto"
+            :disabled="isUpdating || isTestingConnection"
+            @click="handleTestConnection"
+          >
+            <Loader2
+              v-if="isTestingConnection"
+              class="h-4 w-4 mr-2 animate-spin"
+            />
+            {{ isTestingConnection ? t("instanceManagement.testing") : t("instanceManagement.testConnection") }}
+          </Button>
+          <Button
+            variant="outline"
+            @click="showEditModal = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            :disabled="isUpdating || isTestingConnection"
+            @click="handleUpdateInstance"
+          >
+            {{ t("common.confirm") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
 
@@ -556,13 +559,19 @@ import {
 } from "@/api/instance";
 import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
-import AppModal from "@/components/common/AppModal.vue";
 import EnvironmentSelect from "@/components/environment/EnvironmentSelect.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
   Table,

@@ -99,62 +99,61 @@
       </CardContent>
     </Card>
 
-    <AppModal
-      v-model="showEditModal"
-      :title="
-        editing
-          ? t('environmentSettings.editTitle')
-          : t('environmentSettings.createTitle')
-      "
-      size="sm"
-    >
-      <div class="space-y-4">
-        <AppInput
-          v-model="formTitle"
-          :label="t('environmentSettings.nameLabel')"
-          required
-          :error="formError"
-          @keyup.enter="save"
-        />
-        <p
-          v-if="editing"
-          class="text-sm text-muted-foreground"
-        >
-          {{ t("environmentSettings.idImmutableHint") }}
-        </p>
-        <div class="space-y-2">
-          <Label>{{ t("environmentSettings.colorLabel") }}</Label>
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="key in ENVIRONMENT_COLOR_KEYS"
-              :key="key"
-              type="button"
-              class="h-7 w-7 rounded-full border-2 transition-transform hover:scale-110"
-              :class="
-                formColor === key ? 'border-foreground' : 'border-transparent'
-              "
-              :style="{ backgroundColor: environmentColorHexByKey(key) }"
-              :title="key"
-              @click="formColor = key"
-            />
+    <Dialog v-model:open="showEditModal">
+      <DialogContent class="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{{ editing ? t("environmentSettings.editTitle") : t("environmentSettings.createTitle") }}</DialogTitle>
+        </DialogHeader>
+
+        <div class="space-y-4">
+          <AppInput
+            v-model="formTitle"
+            :label="t('environmentSettings.nameLabel')"
+            required
+            :error="formError"
+            @keyup.enter="save"
+          />
+          <p
+            v-if="editing"
+            class="text-sm text-muted-foreground"
+          >
+            {{ t("environmentSettings.idImmutableHint") }}
+          </p>
+          <div class="space-y-2">
+            <Label>{{ t("environmentSettings.colorLabel") }}</Label>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="key in ENVIRONMENT_COLOR_KEYS"
+                :key="key"
+                type="button"
+                class="h-7 w-7 rounded-full border-2 transition-transform hover:scale-110"
+                :class="
+                  formColor === key ? 'border-foreground' : 'border-transparent'
+                "
+                :style="{ backgroundColor: environmentColorHexByKey(key) }"
+                :title="key"
+                @click="formColor = key"
+              />
+            </div>
           </div>
         </div>
-      </div>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showEditModal = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <AppButton
-          :loading="isSaving"
-          @click="save"
-        >
-          {{ t("common.save") }}
-        </AppButton>
-      </template>
-    </AppModal>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            @click="showEditModal = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <AppButton
+            :loading="isSaving"
+            @click="save"
+          >
+            {{ t("common.save") }}
+          </AppButton>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <ConfirmDeleteDialog
       v-model="showDeleteModal"
@@ -178,7 +177,6 @@ import { useI18n } from "vue-i18n";
 import { environmentId } from "@/api/environment";
 import AppButton from "@/components/common/AppButton.vue";
 import AppInput from "@/components/common/AppInput.vue";
-import AppModal from "@/components/common/AppModal.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -186,6 +184,13 @@ import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
   Table,

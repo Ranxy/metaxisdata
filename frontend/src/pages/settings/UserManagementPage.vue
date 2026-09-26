@@ -228,126 +228,130 @@
     </Collapsible>
 
     <!-- Create User Modal -->
-    <AppModal
-      v-model="showCreateModal"
-      :title="t('userManagement.addUser')"
-      size="md"
-    >
-      <form @submit.prevent="handleCreateUser">
-        <div class="space-y-4">
-          <AppInput
-            v-model="createForm.email"
-            type="email"
-            :label="t('userManagement.email')"
-            :placeholder="t('userManagement.emailPlaceholder')"
-            required
-            :error="createFormErrors.email"
-          />
-          <AppInput
-            v-model="createForm.title"
-            :label="t('userManagement.userName')"
-            :placeholder="t('userManagement.userNamePlaceholder')"
-            required
-            :error="createFormErrors.title"
-          />
-          <AppInput
-            v-model="createForm.password"
-            type="password"
-            :label="t('userManagement.password')"
-            :placeholder="t('userManagement.passwordPlaceholder')"
-            required
-            :error="createFormErrors.password"
-          />
-          <AppInput
-            v-model="createForm.confirmPassword"
-            type="password"
-            :label="t('userManagement.confirmPassword')"
-            :placeholder="t('userManagement.confirmPasswordPlaceholder')"
-            required
-            :error="createFormErrors.confirmPassword"
-          />
-        </div>
-      </form>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showCreateModal = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          :disabled="isCreating"
-          @click="handleCreateUser"
-        >
-          {{ t("common.confirm") }}
-        </Button>
-      </template>
-    </AppModal>
+    <Dialog v-model:open="showCreateModal">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{{ t("userManagement.addUser") }}</DialogTitle>
+        </DialogHeader>
 
-    <!-- Edit User Modal -->
-    <AppModal
-      v-model="showEditModal"
-      :title="t('userManagement.editUser')"
-      size="md"
-    >
-      <form @submit.prevent="handleUpdateUser">
-        <div class="space-y-4">
-          <AppInput
-            v-model="editForm.email"
-            type="email"
-            :label="t('userManagement.email')"
-            :placeholder="t('userManagement.emailPlaceholder')"
-            required
-            :error="editFormErrors.email"
-          />
-          <AppInput
-            v-model="editForm.title"
-            :label="t('userManagement.userName')"
-            :placeholder="t('userManagement.userNamePlaceholder')"
-          />
-          <AppInput
-            v-model="editForm.phone"
-            :label="t('userManagement.phone')"
-            :placeholder="t('userManagement.phonePlaceholder')"
-            :error="editFormErrors.phone"
-          />
-          <div class="pt-4 border-t">
-            <p class="text-sm text-muted-foreground mb-3">
-              {{ t("userManagement.changePasswordHint") }}
-            </p>
+        <form @submit.prevent="handleCreateUser">
+          <div class="space-y-4">
             <AppInput
-              v-if="isEditingSelf"
-              v-model="editForm.currentPassword"
-              type="password"
-              :label="t('userManagement.currentPassword')"
-              :placeholder="t('userManagement.currentPasswordPlaceholder')"
-              :error="editFormErrors.currentPassword"
+              v-model="createForm.email"
+              type="email"
+              :label="t('userManagement.email')"
+              :placeholder="t('userManagement.emailPlaceholder')"
+              required
+              :error="createFormErrors.email"
             />
             <AppInput
-              v-model="editForm.password"
+              v-model="createForm.title"
+              :label="t('userManagement.userName')"
+              :placeholder="t('userManagement.userNamePlaceholder')"
+              required
+              :error="createFormErrors.title"
+            />
+            <AppInput
+              v-model="createForm.password"
               type="password"
-              :label="t('userManagement.newPassword')"
-              :placeholder="t('userManagement.newPasswordPlaceholder')"
-              :error="editFormErrors.password"
+              :label="t('userManagement.password')"
+              :placeholder="t('userManagement.passwordPlaceholder')"
+              required
+              :error="createFormErrors.password"
+            />
+            <AppInput
+              v-model="createForm.confirmPassword"
+              type="password"
+              :label="t('userManagement.confirmPassword')"
+              :placeholder="t('userManagement.confirmPasswordPlaceholder')"
+              required
+              :error="createFormErrors.confirmPassword"
             />
           </div>
-        </div>
-      </form>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showEditModal = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          :disabled="isUpdating"
-          @click="handleUpdateUser"
-        >
-          {{ t("common.save") }}
-        </Button>
-      </template>
-    </AppModal>
+        </form>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            @click="showCreateModal = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            :disabled="isCreating"
+            @click="handleCreateUser"
+          >
+            {{ t("common.confirm") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Edit User Modal -->
+    <Dialog v-model:open="showEditModal">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{{ t("userManagement.editUser") }}</DialogTitle>
+        </DialogHeader>
+
+        <form @submit.prevent="handleUpdateUser">
+          <div class="space-y-4">
+            <AppInput
+              v-model="editForm.email"
+              type="email"
+              :label="t('userManagement.email')"
+              :placeholder="t('userManagement.emailPlaceholder')"
+              required
+              :error="editFormErrors.email"
+            />
+            <AppInput
+              v-model="editForm.title"
+              :label="t('userManagement.userName')"
+              :placeholder="t('userManagement.userNamePlaceholder')"
+            />
+            <AppInput
+              v-model="editForm.phone"
+              :label="t('userManagement.phone')"
+              :placeholder="t('userManagement.phonePlaceholder')"
+              :error="editFormErrors.phone"
+            />
+            <div class="pt-4 border-t">
+              <p class="text-sm text-muted-foreground mb-3">
+                {{ t("userManagement.changePasswordHint") }}
+              </p>
+              <AppInput
+                v-if="isEditingSelf"
+                v-model="editForm.currentPassword"
+                type="password"
+                :label="t('userManagement.currentPassword')"
+                :placeholder="t('userManagement.currentPasswordPlaceholder')"
+                :error="editFormErrors.currentPassword"
+              />
+              <AppInput
+                v-model="editForm.password"
+                type="password"
+                :label="t('userManagement.newPassword')"
+                :placeholder="t('userManagement.newPasswordPlaceholder')"
+                :error="editFormErrors.password"
+              />
+            </div>
+          </div>
+        </form>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            @click="showEditModal = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            :disabled="isUpdating"
+            @click="handleUpdateUser"
+          >
+            {{ t("common.save") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <!-- Delete Confirmation Modal -->
     <ConfirmDeleteDialog
@@ -382,7 +386,6 @@ import {
   updateUser,
 } from "@/api/user";
 import AppInput from "@/components/common/AppInput.vue";
-import AppModal from "@/components/common/AppModal.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -396,6 +399,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,

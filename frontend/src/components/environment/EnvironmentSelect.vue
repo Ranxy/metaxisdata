@@ -104,39 +104,42 @@
     </p>
   </div>
 
-  <AppModal
-    v-model="createOpen"
-    :title="t('environment.createTitle')"
-    size="sm"
-  >
-    <div class="space-y-4">
-      <AppInput
-        v-model="newTitle"
-        :label="t('environment.nameLabel')"
-        :placeholder="t('environment.namePlaceholder')"
-        required
-        :error="createError"
-        @keyup.enter="submitCreate"
-      />
-      <p class="text-sm text-muted-foreground">
-        {{ t("environment.nameHint") }}
-      </p>
-    </div>
-    <template #footer>
-      <Button
-        variant="outline"
-        @click="createOpen = false"
-      >
-        {{ t("environment.cancel") }}
-      </Button>
-      <AppButton
-        :loading="creating"
-        @click="submitCreate"
-      >
-        {{ t("environment.create") }}
-      </AppButton>
-    </template>
-  </AppModal>
+  <Dialog v-model:open="createOpen">
+    <DialogContent class="max-w-sm">
+      <DialogHeader>
+        <DialogTitle>{{ t("environment.createTitle") }}</DialogTitle>
+      </DialogHeader>
+
+      <div class="space-y-4">
+        <AppInput
+          v-model="newTitle"
+          :label="t('environment.nameLabel')"
+          :placeholder="t('environment.namePlaceholder')"
+          required
+          :error="createError"
+          @keyup.enter="submitCreate"
+        />
+        <p class="text-sm text-muted-foreground">
+          {{ t("environment.nameHint") }}
+        </p>
+      </div>
+
+      <DialogFooter>
+        <Button
+          variant="outline"
+          @click="createOpen = false"
+        >
+          {{ t("environment.cancel") }}
+        </Button>
+        <AppButton
+          :loading="creating"
+          @click="submitCreate"
+        >
+          {{ t("environment.create") }}
+        </AppButton>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
@@ -145,7 +148,6 @@ import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import AppButton from "@/components/common/AppButton.vue";
 import AppInput from "@/components/common/AppInput.vue";
-import AppModal from "@/components/common/AppModal.vue";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -155,6 +157,13 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
   Popover,

@@ -205,205 +205,211 @@
     </Card>
 
     <!-- Create/Edit Mapping Modal -->
-    <AppModal
-      v-model="showMappingModal"
-      :title="
-        editingMapping
-          ? t('openlineageSettings.editMapping')
-          : t('openlineageSettings.addMapping')
-      "
-      size="md"
-    >
-      <form @submit.prevent="handleSaveMapping">
-        <div class="space-y-4">
-          <AppInput
-            v-model="mappingForm.namespace"
-            :label="t('openlineageSettings.namespace')"
-            :placeholder="t('openlineageSettings.namespacePlaceholder')"
-            required
-          />
-          <div>
-            <label class="text-sm font-medium leading-none">
-              {{ t("openlineageSettings.instanceResourceId") }}
-            </label>
-            <select
-              v-model="mappingForm.instanceResourceId"
-              class="mt-1.5 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    <Dialog v-model:open="showMappingModal">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{{ editingMapping ? t("openlineageSettings.editMapping") : t("openlineageSettings.addMapping") }}</DialogTitle>
+        </DialogHeader>
+
+        <form @submit.prevent="handleSaveMapping">
+          <div class="space-y-4">
+            <AppInput
+              v-model="mappingForm.namespace"
+              :label="t('openlineageSettings.namespace')"
+              :placeholder="t('openlineageSettings.namespacePlaceholder')"
               required
-            >
-              <option
-                value=""
-                disabled
+            />
+            <div>
+              <label class="text-sm font-medium leading-none">
+                {{ t("openlineageSettings.instanceResourceId") }}
+              </label>
+              <select
+                v-model="mappingForm.instanceResourceId"
+                class="mt-1.5 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                required
               >
-                {{ t("openlineageSettings.instanceResourceIdPlaceholder") }}
-              </option>
-              <option
-                v-for="inst in instanceStore.active"
-                :key="inst.name"
-                :value="extractResourceId(inst.name)"
-              >
-                {{ inst.title || inst.name }}
-              </option>
-            </select>
+                <option
+                  value=""
+                  disabled
+                >
+                  {{ t("openlineageSettings.instanceResourceIdPlaceholder") }}
+                </option>
+                <option
+                  v-for="inst in instanceStore.active"
+                  :key="inst.name"
+                  :value="extractResourceId(inst.name)"
+                >
+                  {{ inst.title || inst.name }}
+                </option>
+              </select>
+            </div>
+            <AppInput
+              v-model="mappingForm.databaseName"
+              :label="t('openlineageSettings.databaseName')"
+              :placeholder="t('openlineageSettings.databaseNamePlaceholder')"
+            />
           </div>
-          <AppInput
-            v-model="mappingForm.databaseName"
-            :label="t('openlineageSettings.databaseName')"
-            :placeholder="t('openlineageSettings.databaseNamePlaceholder')"
-          />
-        </div>
-      </form>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showMappingModal = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          :disabled="isSavingMapping"
-          @click="handleSaveMapping"
-        >
-          {{ t("common.save") }}
-        </Button>
-      </template>
-    </AppModal>
-
-    <!-- Delete Mapping Confirmation -->
-    <AppModal
-      v-model="showDeleteMappingModal"
-      :title="t('openlineageSettings.deleteMapping')"
-      size="sm"
-    >
-      <div class="text-center">
-        <div class="w-12 h-12 mx-auto mb-4 rounded-full bg-destructive/10 flex items-center justify-center">
-          <Trash2 class="h-6 w-6 text-destructive" />
-        </div>
-        <p>{{ t("openlineageSettings.deleteMappingConfirm") }}</p>
-        <p class="text-sm text-muted-foreground mt-2 font-mono">
-          {{ mappingToDelete?.namespace }}
-        </p>
-      </div>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showDeleteMappingModal = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          variant="destructive"
-          :disabled="isDeletingMapping"
-          @click="handleDeleteMapping"
-        >
-          {{ t("common.delete") }}
-        </Button>
-      </template>
-    </AppModal>
-
-    <!-- Create API Key Modal -->
-    <AppModal
-      v-model="showCreateKeyModal"
-      :title="t('openlineageSettings.createAPIKey')"
-      size="md"
-    >
-      <form @submit.prevent="handleCreateKey">
-        <div class="space-y-4">
-          <AppInput
-            v-model="keyForm.description"
-            :label="t('openlineageSettings.apiKeyDescription')"
-            :placeholder="
-              t('openlineageSettings.apiKeyDescriptionPlaceholder')
-            "
-            required
-          />
-          <AppInput
-            v-model="keyForm.scopeNamespace"
-            :label="t('openlineageSettings.keyScope')"
-            :placeholder="t('openlineageSettings.keyScopePlaceholder')"
-          />
-        </div>
-      </form>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showCreateKeyModal = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          :disabled="isCreatingKey"
-          @click="handleCreateKey"
-        >
-          {{ t("common.confirm") }}
-        </Button>
-      </template>
-    </AppModal>
-
-    <!-- Show Created Key Modal -->
-    <AppModal
-      v-model="showKeyResultModal"
-      :title="t('openlineageSettings.apiKeyLabel')"
-      size="md"
-    >
-      <div class="space-y-4">
-        <div class="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-4">
-          <p class="text-sm text-amber-800 dark:text-amber-200">
-            {{ t("openlineageSettings.apiKeyCreated") }}
-          </p>
-        </div>
-        <div class="flex items-center gap-2">
-          <code class="flex-1 rounded-md bg-muted p-3 text-sm font-mono break-all select-all">
-            {{ createdKeyValue }}
-          </code>
+        </form>
+        <DialogFooter>
           <Button
             variant="outline"
-            size="sm"
-            @click="copyKey"
+            @click="showMappingModal = false"
           >
-            <Copy class="h-4 w-4 mr-1" />
-            {{ copied ? t("openlineageSettings.copied") : t("openlineageSettings.copyKey") }}
+            {{ t("common.cancel") }}
           </Button>
+          <Button
+            :disabled="isSavingMapping"
+            @click="handleSaveMapping"
+          >
+            {{ t("common.save") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Delete Mapping Confirmation -->
+    <Dialog v-model:open="showDeleteMappingModal">
+      <DialogContent class="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{{ t("openlineageSettings.deleteMapping") }}</DialogTitle>
+        </DialogHeader>
+
+        <div class="text-center">
+          <div class="w-12 h-12 mx-auto mb-4 rounded-full bg-destructive/10 flex items-center justify-center">
+            <Trash2 class="h-6 w-6 text-destructive" />
+          </div>
+          <p>{{ t("openlineageSettings.deleteMappingConfirm") }}</p>
+          <p class="text-sm text-muted-foreground mt-2 font-mono">
+            {{ mappingToDelete?.namespace }}
+          </p>
         </div>
-      </div>
-      <template #footer>
-        <Button @click="showKeyResultModal = false">
-          {{ t("common.confirm") }}
-        </Button>
-      </template>
-    </AppModal>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            @click="showDeleteMappingModal = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            variant="destructive"
+            :disabled="isDeletingMapping"
+            @click="handleDeleteMapping"
+          >
+            {{ t("common.delete") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Create API Key Modal -->
+    <Dialog v-model:open="showCreateKeyModal">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{{ t("openlineageSettings.createAPIKey") }}</DialogTitle>
+        </DialogHeader>
+
+        <form @submit.prevent="handleCreateKey">
+          <div class="space-y-4">
+            <AppInput
+              v-model="keyForm.description"
+              :label="t('openlineageSettings.apiKeyDescription')"
+              :placeholder="
+                t('openlineageSettings.apiKeyDescriptionPlaceholder')
+              "
+              required
+            />
+            <AppInput
+              v-model="keyForm.scopeNamespace"
+              :label="t('openlineageSettings.keyScope')"
+              :placeholder="t('openlineageSettings.keyScopePlaceholder')"
+            />
+          </div>
+        </form>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            @click="showCreateKeyModal = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            :disabled="isCreatingKey"
+            @click="handleCreateKey"
+          >
+            {{ t("common.confirm") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Show Created Key Modal -->
+    <Dialog v-model:open="showKeyResultModal">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{{ t("openlineageSettings.apiKeyLabel") }}</DialogTitle>
+        </DialogHeader>
+
+        <div class="space-y-4">
+          <div class="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-4">
+            <p class="text-sm text-amber-800 dark:text-amber-200">
+              {{ t("openlineageSettings.apiKeyCreated") }}
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <code class="flex-1 rounded-md bg-muted p-3 text-sm font-mono break-all select-all">
+              {{ createdKeyValue }}
+            </code>
+            <Button
+              variant="outline"
+              size="sm"
+              @click="copyKey"
+            >
+              <Copy class="h-4 w-4 mr-1" />
+              {{ copied ? t("openlineageSettings.copied") : t("openlineageSettings.copyKey") }}
+            </Button>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button @click="showKeyResultModal = false">
+            {{ t("common.confirm") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <!-- Revoke Key Confirmation -->
-    <AppModal
-      v-model="showRevokeKeyModal"
-      :title="t('openlineageSettings.revokeAPIKey')"
-      size="sm"
-    >
-      <div class="text-center">
-        <div class="w-12 h-12 mx-auto mb-4 rounded-full bg-destructive/10 flex items-center justify-center">
-          <KeyRound class="h-6 w-6 text-destructive" />
+    <Dialog v-model:open="showRevokeKeyModal">
+      <DialogContent class="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{{ t("openlineageSettings.revokeAPIKey") }}</DialogTitle>
+        </DialogHeader>
+
+        <div class="text-center">
+          <div class="w-12 h-12 mx-auto mb-4 rounded-full bg-destructive/10 flex items-center justify-center">
+            <KeyRound class="h-6 w-6 text-destructive" />
+          </div>
+          <p>{{ t("openlineageSettings.revokeAPIKeyConfirm") }}</p>
+          <p class="text-sm text-muted-foreground mt-2">
+            {{ keyToRevoke?.description }}
+          </p>
         </div>
-        <p>{{ t("openlineageSettings.revokeAPIKeyConfirm") }}</p>
-        <p class="text-sm text-muted-foreground mt-2">
-          {{ keyToRevoke?.description }}
-        </p>
-      </div>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showRevokeKeyModal = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          variant="destructive"
-          :disabled="isRevokingKey"
-          @click="handleRevokeKey"
-        >
-          {{ t("openlineageSettings.revokeAPIKey") }}
-        </Button>
-      </template>
-    </AppModal>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            @click="showRevokeKeyModal = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            variant="destructive"
+            :disabled="isRevokingKey"
+            @click="handleRevokeKey"
+          >
+            {{ t("openlineageSettings.revokeAPIKey") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
 
@@ -431,7 +437,6 @@ import {
   updateNamespaceMapping,
 } from "@/api/openlineage";
 import AppInput from "@/components/common/AppInput.vue";
-import AppModal from "@/components/common/AppModal.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -443,6 +448,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,

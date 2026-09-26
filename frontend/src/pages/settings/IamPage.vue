@@ -123,127 +123,131 @@
       </div>
     </Card>
 
-    <AppModal
-      v-model="showAddMember"
-      :title="t('iam.policy.addMember')"
-      size="md"
-    >
-      <div class="space-y-4">
+    <Dialog v-model:open="showAddMember">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{{ t("iam.policy.addMember") }}</DialogTitle>
+        </DialogHeader>
+
+        <div class="space-y-4">
+          <div class="grid gap-1">
+            <Label>{{ t("iam.policy.memberType") }}</Label>
+            <Select v-model="memberType">
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="user">
+                  {{ t("iam.policy.memberTypeUser") }}
+                </SelectItem>
+                <SelectItem value="group">
+                  {{ t("iam.policy.memberTypeGroup") }}
+                </SelectItem>
+                <SelectItem value="allUsers">
+                  {{ t("iam.policy.memberTypeAllUsers") }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div
+            v-if="memberType === 'user'"
+            class="grid gap-1"
+          >
+            <Label>{{ t("iam.policy.user") }}</Label>
+            <Select v-model="selectedUser">
+              <SelectTrigger>
+                <SelectValue :placeholder="t('iam.policy.selectUser')" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="user in users"
+                  :key="user.name"
+                  :value="user.name"
+                >
+                  {{ user.email }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div
+            v-if="memberType === 'group'"
+            class="grid gap-1"
+          >
+            <Label>{{ t("iam.policy.group") }}</Label>
+            <Select v-model="selectedGroup">
+              <SelectTrigger>
+                <SelectValue :placeholder="t('iam.policy.selectGroup')" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="group in groups"
+                  :key="group.name"
+                  :value="group.name"
+                >
+                  {{ group.title || group.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            @click="showAddMember = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            :disabled="!selectedMember"
+            @click="handleAddMember"
+          >
+            {{ t("common.create") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="showAddBinding">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{{ t("iam.policy.addBinding") }}</DialogTitle>
+        </DialogHeader>
+
         <div class="grid gap-1">
-          <Label>{{ t("iam.policy.memberType") }}</Label>
-          <Select v-model="memberType">
+          <Label>{{ t("iam.policy.role") }}</Label>
+          <Select v-model="selectedRole">
             <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="user">
-                {{ t("iam.policy.memberTypeUser") }}
-              </SelectItem>
-              <SelectItem value="group">
-                {{ t("iam.policy.memberTypeGroup") }}
-              </SelectItem>
-              <SelectItem value="allUsers">
-                {{ t("iam.policy.memberTypeAllUsers") }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div
-          v-if="memberType === 'user'"
-          class="grid gap-1"
-        >
-          <Label>{{ t("iam.policy.user") }}</Label>
-          <Select v-model="selectedUser">
-            <SelectTrigger>
-              <SelectValue :placeholder="t('iam.policy.selectUser')" />
+              <SelectValue :placeholder="t('iam.policy.selectRole')" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem
-                v-for="user in users"
-                :key="user.name"
-                :value="user.name"
+                v-for="role in grantableRoles"
+                :key="role.name"
+                :value="role.name"
               >
-                {{ user.email }}
+                {{ role.title || role.name }}
               </SelectItem>
             </SelectContent>
           </Select>
         </div>
-
-        <div
-          v-if="memberType === 'group'"
-          class="grid gap-1"
-        >
-          <Label>{{ t("iam.policy.group") }}</Label>
-          <Select v-model="selectedGroup">
-            <SelectTrigger>
-              <SelectValue :placeholder="t('iam.policy.selectGroup')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem
-                v-for="group in groups"
-                :key="group.name"
-                :value="group.name"
-              >
-                {{ group.title || group.name }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showAddMember = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          :disabled="!selectedMember"
-          @click="handleAddMember"
-        >
-          {{ t("common.create") }}
-        </Button>
-      </template>
-    </AppModal>
-
-    <AppModal
-      v-model="showAddBinding"
-      :title="t('iam.policy.addBinding')"
-      size="md"
-    >
-      <div class="grid gap-1">
-        <Label>{{ t("iam.policy.role") }}</Label>
-        <Select v-model="selectedRole">
-          <SelectTrigger>
-            <SelectValue :placeholder="t('iam.policy.selectRole')" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem
-              v-for="role in grantableRoles"
-              :key="role.name"
-              :value="role.name"
-            >
-              {{ role.title || role.name }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showAddBinding = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          :disabled="!selectedRole"
-          @click="handleAddBinding"
-        >
-          {{ t("common.create") }}
-        </Button>
-      </template>
-    </AppModal>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            @click="showAddBinding = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            :disabled="!selectedRole"
+            @click="handleAddBinding"
+          >
+            {{ t("common.create") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
 
@@ -256,13 +260,19 @@ import { listGroups } from "@/api/group";
 import { getWorkspaceIamPolicy, setWorkspaceIamPolicy } from "@/api/iam";
 import { listRoles } from "@/api/role";
 import { listAllUsers } from "@/api/user";
-import AppModal from "@/components/common/AppModal.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
   Select,

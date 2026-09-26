@@ -93,87 +93,90 @@
       </PageState>
     </Card>
 
-    <AppModal
-      v-model="showEditor"
-      :title="editing ? t('iam.groups.edit') : t('iam.groups.create')"
-      size="lg"
-    >
-      <div class="space-y-4">
-        <div class="grid gap-1">
-          <Label for="group-name">{{ t("iam.groups.nameLabel") }}</Label>
-          <AppInput
-            id="group-name"
-            v-model="form.name"
-            :disabled="editing"
-            :placeholder="t('iam.groups.namePlaceholder')"
-          />
-          <p class="text-xs text-muted-foreground">
-            {{ t("iam.groups.nameHint") }}
-          </p>
-        </div>
-        <div class="grid gap-1">
-          <Label for="group-title">{{ t("iam.groups.titleLabel") }}</Label>
-          <AppInput
-            id="group-title"
-            v-model="form.title"
-          />
-        </div>
-        <div class="grid gap-1">
-          <Label for="group-description">
-            {{ t("iam.groups.descriptionLabel") }}
-          </Label>
-          <AppInput
-            id="group-description"
-            v-model="form.description"
-          />
-        </div>
-        <div class="space-y-2">
-          <Label>{{ t("iam.groups.membersLabel") }}</Label>
-          <div
-            v-if="users.length === 0"
-            class="text-sm text-muted-foreground"
-          >
-            {{ t("iam.groups.noUsers") }}
+    <Dialog v-model:open="showEditor">
+      <DialogContent class="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{{ editing ? t("iam.groups.edit") : t("iam.groups.create") }}</DialogTitle>
+        </DialogHeader>
+
+        <div class="space-y-4">
+          <div class="grid gap-1">
+            <Label for="group-name">{{ t("iam.groups.nameLabel") }}</Label>
+            <AppInput
+              id="group-name"
+              v-model="form.name"
+              :disabled="editing"
+              :placeholder="t('iam.groups.namePlaceholder')"
+            />
+            <p class="text-xs text-muted-foreground">
+              {{ t("iam.groups.nameHint") }}
+            </p>
           </div>
-          <div
-            v-else
-            class="max-h-64 overflow-y-auto rounded-md border p-3 grid gap-2 md:grid-cols-2"
-          >
+          <div class="grid gap-1">
+            <Label for="group-title">{{ t("iam.groups.titleLabel") }}</Label>
+            <AppInput
+              id="group-title"
+              v-model="form.title"
+            />
+          </div>
+          <div class="grid gap-1">
+            <Label for="group-description">
+              {{ t("iam.groups.descriptionLabel") }}
+            </Label>
+            <AppInput
+              id="group-description"
+              v-model="form.description"
+            />
+          </div>
+          <div class="space-y-2">
+            <Label>{{ t("iam.groups.membersLabel") }}</Label>
             <div
-              v-for="user in users"
-              :key="user.name"
-              class="flex items-center gap-2"
+              v-if="users.length === 0"
+              class="text-sm text-muted-foreground"
             >
-              <Checkbox
-                :id="`member-${user.name}`"
-                :checked="form.members.includes(user.name)"
-                @update:checked="toggleMember(user.name, $event === true)"
-              />
-              <Label
-                :for="`member-${user.name}`"
-                class="cursor-pointer text-sm"
+              {{ t("iam.groups.noUsers") }}
+            </div>
+            <div
+              v-else
+              class="max-h-64 overflow-y-auto rounded-md border p-3 grid gap-2 md:grid-cols-2"
+            >
+              <div
+                v-for="user in users"
+                :key="user.name"
+                class="flex items-center gap-2"
               >
-                {{ user.email }}
-              </Label>
+                <Checkbox
+                  :id="`member-${user.name}`"
+                  :checked="form.members.includes(user.name)"
+                  @update:checked="toggleMember(user.name, $event === true)"
+                />
+                <Label
+                  :for="`member-${user.name}`"
+                  class="cursor-pointer text-sm"
+                >
+                  {{ user.email }}
+                </Label>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showEditor = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          :disabled="isSaving || !isFormValid"
-          @click="handleSave"
-        >
-          {{ t("common.save") }}
-        </Button>
-      </template>
-    </AppModal>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            @click="showEditor = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            :disabled="isSaving || !isFormValid"
+            @click="handleSave"
+          >
+            {{ t("common.save") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <ConfirmDeleteDialog
       v-model="showDeleteConfirm"
@@ -195,7 +198,6 @@ import { useI18n } from "vue-i18n";
 import { createGroup, deleteGroup, listGroups, updateGroup } from "@/api/group";
 import { listAllUsers } from "@/api/user";
 import AppInput from "@/components/common/AppInput.vue";
-import AppModal from "@/components/common/AppModal.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -204,6 +206,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
   Table,

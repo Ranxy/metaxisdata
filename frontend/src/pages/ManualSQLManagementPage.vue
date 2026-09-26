@@ -153,176 +153,179 @@
       </PageState>
     </Card>
 
-    <AppModal
-      v-model="showFormModal"
-      :title="isEditing ? t('manualSqlManagement.editTitle') : t('manualSqlManagement.createTitle')"
-      size="xl"
-    >
-      <form @submit.prevent="handleSave">
-        <div class="grid gap-4 md:grid-cols-2">
-          <div class="space-y-2">
-            <Label for="manual-sql-form-database">{{ t("manualSqlManagement.database") }}</Label>
-            <select
-              id="manual-sql-form-database"
-              v-model="form.parent"
-              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              :disabled="isEditing"
-            >
-              <option value="">
-                {{ t("manualSqlManagement.selectDatabase") }}
-              </option>
-              <option
-                v-for="database in availableDatabases"
-                :key="database.name"
-                :value="database.name"
+    <Dialog v-model:open="showFormModal">
+      <DialogContent class="max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>{{ isEditing ? t("manualSqlManagement.editTitle") : t("manualSqlManagement.createTitle") }}</DialogTitle>
+        </DialogHeader>
+
+        <form @submit.prevent="handleSave">
+          <div class="grid gap-4 md:grid-cols-2">
+            <div class="space-y-2">
+              <Label for="manual-sql-form-database">{{ t("manualSqlManagement.database") }}</Label>
+              <select
+                id="manual-sql-form-database"
+                v-model="form.parent"
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                :disabled="isEditing"
               >
-                {{ formatDatabaseOption(database) }}
-              </option>
-            </select>
-            <p
-              v-if="formErrors.parent"
-              class="text-sm text-destructive"
-            >
-              {{ formErrors.parent }}
-            </p>
-          </div>
-          <div class="space-y-2">
-            <Label for="manual-sql-form-schema">{{ t("manualSqlManagement.schema") }}</Label>
-            <select
-              id="manual-sql-form-schema"
-              v-model="form.schemaName"
-              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              :disabled="!form.parent || isLoadingSchemas"
-            >
-              <option value="">
-                {{ t("manualSqlManagement.optionalSchema") }}
-              </option>
-              <option
-                v-for="schemaName in schemaOptions"
-                :key="schemaName"
-                :value="schemaName"
-              >
-                {{ schemaName }}
-              </option>
-            </select>
-            <p class="text-xs text-muted-foreground">
-              {{ isLoadingSchemas ? t("manualSqlManagement.loadingSchemas") : t("manualSqlManagement.schemaSelectHint") }}
-            </p>
-          </div>
-          <AppInput
-            v-model="form.manualSqlId"
-            :label="t('manualSqlManagement.id')"
-            :placeholder="t('manualSqlManagement.idPlaceholder')"
-            :disabled="isEditing"
-            :error="formErrors.manualSqlId"
-            required
-          />
-          <div class="space-y-2">
-            <Label>{{ t("manualSqlManagement.idStatus") }}</Label>
-            <div class="flex min-h-10 items-center rounded-md border border-dashed px-3 text-sm">
-              <span v-if="isEditing" class="text-muted-foreground">
-                {{ t("manualSqlManagement.idFixedOnEdit") }}
-              </span>
-              <span v-else-if="!form.parent.trim() || !form.manualSqlId.trim()" class="text-muted-foreground">
-                {{ t("manualSqlManagement.idIdle") }}
-              </span>
-              <span v-else-if="isCheckingManualSqlId" class="text-muted-foreground">
-                {{ t("manualSqlManagement.idChecking") }}
-              </span>
-              <span v-else-if="manualSqlIdConflict" class="text-destructive">
-                {{ manualSqlIdConflict }}
-              </span>
-              <span v-else class="text-emerald-600">
-                {{ t("manualSqlManagement.idAvailable") }}
-              </span>
-            </div>
-          </div>
-          <AppInput
-            v-model="form.title"
-            :label="t('manualSqlManagement.titleField')"
-            :placeholder="t('manualSqlManagement.titlePlaceholder')"
-          />
-          <AppInput
-            v-model="form.comment"
-            :label="t('manualSqlManagement.comment')"
-            :placeholder="t('manualSqlManagement.commentPlaceholder')"
-          />
-          <div class="space-y-2 md:col-span-2">
-            <Label for="manual-sql-form-tags">{{ t("manualSqlManagement.tags") }}</Label>
-            <div class="flex min-h-10 w-full flex-wrap items-center gap-2 rounded-md border border-input bg-background px-3 py-2">
-              <Badge
-                v-for="tag in form.tags"
-                :key="tag"
-                variant="secondary"
-                class="flex items-center gap-1"
-              >
-                <span>{{ tag }}</span>
-                <button
-                  type="button"
-                  class="rounded-full p-0.5 text-muted-foreground transition-colors hover:text-foreground"
-                  :aria-label="t('manualSqlManagement.removeTag', { tag })"
-                  @click="removeTag(tag)"
+                <option value="">
+                  {{ t("manualSqlManagement.selectDatabase") }}
+                </option>
+                <option
+                  v-for="database in availableDatabases"
+                  :key="database.name"
+                  :value="database.name"
                 >
-                  <X class="h-3 w-3" />
-                </button>
-              </Badge>
-              <Input
-                id="manual-sql-form-tags"
-                v-model="form.tagsDraft"
-                :placeholder="t('manualSqlManagement.tagsPlaceholder')"
-                class="h-auto min-w-40 flex-1 border-0 bg-transparent px-0 py-0 shadow-none focus-visible:shadow-none"
-                @keydown="handleTagInputKeydown"
-                @blur="commitTagDraft"
-              />
+                  {{ formatDatabaseOption(database) }}
+                </option>
+              </select>
+              <p
+                v-if="formErrors.parent"
+                class="text-sm text-destructive"
+              >
+                {{ formErrors.parent }}
+              </p>
             </div>
-            <p class="text-xs text-muted-foreground">
-              {{ t("manualSqlManagement.tagsInputHint") }}
-            </p>
-          </div>
-          <div class="space-y-2 md:col-span-2">
-            <Label for="manual-sql-form-attributes">{{ t("manualSqlManagement.attributes") }}</Label>
-            <textarea
-              id="manual-sql-form-attributes"
-              v-model="form.attributesInput"
-              class="min-h-28 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              :placeholder="t('manualSqlManagement.attributesPlaceholder')"
+            <div class="space-y-2">
+              <Label for="manual-sql-form-schema">{{ t("manualSqlManagement.schema") }}</Label>
+              <select
+                id="manual-sql-form-schema"
+                v-model="form.schemaName"
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                :disabled="!form.parent || isLoadingSchemas"
+              >
+                <option value="">
+                  {{ t("manualSqlManagement.optionalSchema") }}
+                </option>
+                <option
+                  v-for="schemaName in schemaOptions"
+                  :key="schemaName"
+                  :value="schemaName"
+                >
+                  {{ schemaName }}
+                </option>
+              </select>
+              <p class="text-xs text-muted-foreground">
+                {{ isLoadingSchemas ? t("manualSqlManagement.loadingSchemas") : t("manualSqlManagement.schemaSelectHint") }}
+              </p>
+            </div>
+            <AppInput
+              v-model="form.manualSqlId"
+              :label="t('manualSqlManagement.id')"
+              :placeholder="t('manualSqlManagement.idPlaceholder')"
+              :disabled="isEditing"
+              :error="formErrors.manualSqlId"
+              required
             />
-            <p class="text-xs text-muted-foreground">
-              {{ t("manualSqlManagement.attributesHint") }}
-            </p>
-          </div>
-          <div class="space-y-2 md:col-span-2">
-            <Label for="manual-sql-form-sql">{{ t("manualSqlManagement.sqlText") }}</Label>
-            <textarea
-              id="manual-sql-form-sql"
-              v-model="form.sqlText"
-              class="min-h-64 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
-              :placeholder="t('manualSqlManagement.sqlPlaceholder')"
+            <div class="space-y-2">
+              <Label>{{ t("manualSqlManagement.idStatus") }}</Label>
+              <div class="flex min-h-10 items-center rounded-md border border-dashed px-3 text-sm">
+                <span v-if="isEditing" class="text-muted-foreground">
+                  {{ t("manualSqlManagement.idFixedOnEdit") }}
+                </span>
+                <span v-else-if="!form.parent.trim() || !form.manualSqlId.trim()" class="text-muted-foreground">
+                  {{ t("manualSqlManagement.idIdle") }}
+                </span>
+                <span v-else-if="isCheckingManualSqlId" class="text-muted-foreground">
+                  {{ t("manualSqlManagement.idChecking") }}
+                </span>
+                <span v-else-if="manualSqlIdConflict" class="text-destructive">
+                  {{ manualSqlIdConflict }}
+                </span>
+                <span v-else class="text-emerald-600">
+                  {{ t("manualSqlManagement.idAvailable") }}
+                </span>
+              </div>
+            </div>
+            <AppInput
+              v-model="form.title"
+              :label="t('manualSqlManagement.titleField')"
+              :placeholder="t('manualSqlManagement.titlePlaceholder')"
             />
-            <p
-              v-if="formErrors.sqlText"
-              class="text-sm text-destructive"
-            >
-              {{ formErrors.sqlText }}
-            </p>
+            <AppInput
+              v-model="form.comment"
+              :label="t('manualSqlManagement.comment')"
+              :placeholder="t('manualSqlManagement.commentPlaceholder')"
+            />
+            <div class="space-y-2 md:col-span-2">
+              <Label for="manual-sql-form-tags">{{ t("manualSqlManagement.tags") }}</Label>
+              <div class="flex min-h-10 w-full flex-wrap items-center gap-2 rounded-md border border-input bg-background px-3 py-2">
+                <Badge
+                  v-for="tag in form.tags"
+                  :key="tag"
+                  variant="secondary"
+                  class="flex items-center gap-1"
+                >
+                  <span>{{ tag }}</span>
+                  <button
+                    type="button"
+                    class="rounded-full p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                    :aria-label="t('manualSqlManagement.removeTag', { tag })"
+                    @click="removeTag(tag)"
+                  >
+                    <X class="h-3 w-3" />
+                  </button>
+                </Badge>
+                <Input
+                  id="manual-sql-form-tags"
+                  v-model="form.tagsDraft"
+                  :placeholder="t('manualSqlManagement.tagsPlaceholder')"
+                  class="h-auto min-w-40 flex-1 border-0 bg-transparent px-0 py-0 shadow-none focus-visible:shadow-none"
+                  @keydown="handleTagInputKeydown"
+                  @blur="commitTagDraft"
+                />
+              </div>
+              <p class="text-xs text-muted-foreground">
+                {{ t("manualSqlManagement.tagsInputHint") }}
+              </p>
+            </div>
+            <div class="space-y-2 md:col-span-2">
+              <Label for="manual-sql-form-attributes">{{ t("manualSqlManagement.attributes") }}</Label>
+              <textarea
+                id="manual-sql-form-attributes"
+                v-model="form.attributesInput"
+                class="min-h-28 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                :placeholder="t('manualSqlManagement.attributesPlaceholder')"
+              />
+              <p class="text-xs text-muted-foreground">
+                {{ t("manualSqlManagement.attributesHint") }}
+              </p>
+            </div>
+            <div class="space-y-2 md:col-span-2">
+              <Label for="manual-sql-form-sql">{{ t("manualSqlManagement.sqlText") }}</Label>
+              <textarea
+                id="manual-sql-form-sql"
+                v-model="form.sqlText"
+                class="min-h-64 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
+                :placeholder="t('manualSqlManagement.sqlPlaceholder')"
+              />
+              <p
+                v-if="formErrors.sqlText"
+                class="text-sm text-destructive"
+              >
+                {{ formErrors.sqlText }}
+              </p>
+            </div>
           </div>
-        </div>
-      </form>
-      <template #footer>
-        <Button
-          variant="outline"
-          @click="showFormModal = false"
-        >
-          {{ t("common.cancel") }}
-        </Button>
-        <Button
-          :disabled="isSaving"
-          @click="handleSave"
-        >
-          {{ isEditing ? t("common.save") : t("common.create") }}
-        </Button>
-      </template>
-    </AppModal>
+        </form>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            @click="showFormModal = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            :disabled="isSaving"
+            @click="handleSave"
+          >
+            {{ isEditing ? t("common.save") : t("common.create") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <ConfirmDeleteDialog
       v-model="showDeleteModal"
@@ -361,7 +364,6 @@ import {
   updateManualSQL,
 } from "@/api/database";
 import AppInput from "@/components/common/AppInput.vue";
-import AppModal from "@/components/common/AppModal.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import ManualSQLFilterBar from "@/components/common/ManualSQLFilterBar.vue";
@@ -370,6 +372,13 @@ import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {

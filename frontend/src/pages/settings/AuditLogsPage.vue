@@ -364,68 +364,75 @@
       </CardContent>
     </Card>
 
-    <AppModal v-model="showDetails" :title="t('auditLogs.detailTitle')" size="xl">
-      <div v-if="selectedLog" class="space-y-6">
-        <div class="grid gap-4 md:grid-cols-2">
-          <div>
-            <div class="text-sm text-muted-foreground">{{ t("auditLogs.time") }}</div>
-            <div>{{ formatTimestamp(selectedLog.createTime) }}</div>
+    <Dialog v-model:open="showDetails">
+      <DialogContent class="max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>{{ t("auditLogs.detailTitle") }}</DialogTitle>
+        </DialogHeader>
+
+        <div v-if="selectedLog" class="space-y-6">
+          <div class="grid gap-4 md:grid-cols-2">
+            <div>
+              <div class="text-sm text-muted-foreground">{{ t("auditLogs.time") }}</div>
+              <div>{{ formatTimestamp(selectedLog.createTime) }}</div>
+            </div>
+            <div>
+              <div class="text-sm text-muted-foreground">{{ t("auditLogs.severity") }}</div>
+              <div><Badge :variant="getSeverityVariant(selectedLog.severity)">{{ getSeverityLabel(selectedLog.severity) }}</Badge></div>
+            </div>
+            <div>
+              <div class="text-sm text-muted-foreground">{{ t("auditLogs.method") }}</div>
+              <div class="font-mono text-xs break-all">{{ selectedLog.method }}</div>
+            </div>
+            <div>
+              <div class="text-sm text-muted-foreground">{{ t("auditLogs.resource") }}</div>
+              <div class="text-xs break-all">{{ getAuditIdentityDisplay(selectedLog.resource) }}</div>
+            </div>
+            <div>
+              <div class="text-sm text-muted-foreground">{{ t("auditLogs.user") }}</div>
+              <div class="text-xs break-all">{{ getAuditIdentityDisplay(selectedLog.user) }}</div>
+            </div>
+            <div>
+              <div class="text-sm text-muted-foreground">{{ t("auditLogs.status") }}</div>
+              <div>{{ getStatusLabel(selectedLog) }}</div>
+            </div>
           </div>
-          <div>
-            <div class="text-sm text-muted-foreground">{{ t("auditLogs.severity") }}</div>
-            <div><Badge :variant="getSeverityVariant(selectedLog.severity)">{{ getSeverityLabel(selectedLog.severity) }}</Badge></div>
-          </div>
-          <div>
-            <div class="text-sm text-muted-foreground">{{ t("auditLogs.method") }}</div>
-            <div class="font-mono text-xs break-all">{{ selectedLog.method }}</div>
-          </div>
-          <div>
-            <div class="text-sm text-muted-foreground">{{ t("auditLogs.resource") }}</div>
-            <div class="text-xs break-all">{{ getAuditIdentityDisplay(selectedLog.resource) }}</div>
-          </div>
-          <div>
-            <div class="text-sm text-muted-foreground">{{ t("auditLogs.user") }}</div>
-            <div class="text-xs break-all">{{ getAuditIdentityDisplay(selectedLog.user) }}</div>
-          </div>
-          <div>
-            <div class="text-sm text-muted-foreground">{{ t("auditLogs.status") }}</div>
-            <div>{{ getStatusLabel(selectedLog) }}</div>
+
+          <div class="grid gap-4 lg:grid-cols-3">
+            <Card>
+              <CardHeader>
+                <CardTitle class="text-base">{{ t("auditLogs.request") }}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <pre class="max-h-96 overflow-auto rounded-md bg-muted p-4 text-xs leading-6">{{ formatJson(selectedLog.request) }}</pre>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle class="text-base">{{ t("auditLogs.response") }}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <pre class="max-h-96 overflow-auto rounded-md bg-muted p-4 text-xs leading-6">{{ formatJson(selectedLog.response) }}</pre>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle class="text-base">{{ t("auditLogs.serviceData") }}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <pre class="max-h-96 overflow-auto rounded-md bg-muted p-4 text-xs leading-6">{{ formatJson(selectedLog.serviceData) }}</pre>
+              </CardContent>
+            </Card>
           </div>
         </div>
 
-        <div class="grid gap-4 lg:grid-cols-3">
-          <Card>
-            <CardHeader>
-              <CardTitle class="text-base">{{ t("auditLogs.request") }}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <pre class="max-h-96 overflow-auto rounded-md bg-muted p-4 text-xs leading-6">{{ formatJson(selectedLog.request) }}</pre>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle class="text-base">{{ t("auditLogs.response") }}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <pre class="max-h-96 overflow-auto rounded-md bg-muted p-4 text-xs leading-6">{{ formatJson(selectedLog.response) }}</pre>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle class="text-base">{{ t("auditLogs.serviceData") }}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <pre class="max-h-96 overflow-auto rounded-md bg-muted p-4 text-xs leading-6">{{ formatJson(selectedLog.serviceData) }}</pre>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-      <template #footer>
-        <Button variant="outline" @click="showDetails = false">
-          {{ t("common.cancel") }}
-        </Button>
-      </template>
-    </AppModal>
+        <DialogFooter>
+          <Button variant="outline" @click="showDetails = false">
+            {{ t("common.cancel") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
 
@@ -463,7 +470,6 @@ import { useI18n } from "vue-i18n";
 import { listAuditLogs } from "@/api/audit";
 import { listAll } from "@/api/list";
 import { batchGetUsers } from "@/api/user";
-import AppModal from "@/components/common/AppModal.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -477,6 +483,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Popover,
   PopoverContent,
