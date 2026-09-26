@@ -99,9 +99,10 @@
       </div>
 
       <div v-else-if="isRootPath">
-        <CardHeader>
-          <CardTitle>{{ t("metadataBrowser.instances") }}</CardTitle>
-        </CardHeader>
+        <!-- No card title here. It said "Database Instances" under an h1 that
+             says "Metadata Browser" — the same list under a second name — and
+             no deeper level of this hierarchy has one either. The table's own
+             column headers say what is listed. -->
         <InstanceList
           :instances="instances"
           :is-loading="isLoadingInstances"
@@ -285,7 +286,7 @@ import AdvancedSearchBar, {
   type FilterOption,
 } from "@/components/common/AdvancedSearchBar.vue";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { useInstanceStore } from "@/store/modules/instance";
 import { Engine } from "@/types/proto-es/v1/common_pb";
