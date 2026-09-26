@@ -69,10 +69,7 @@
                   </Avatar>
                   <div class="ml-4">
                     <div class="font-medium">
-                      {{ user.title || "-" }}
-                    </div>
-                    <div class="text-sm text-muted-foreground">
-                      {{ getUserId(user.name) }}
+                      {{ user.title || user.email }}
                     </div>
                   </div>
                 </div>
@@ -81,7 +78,10 @@
                 {{ user.email }}
               </TableCell>
               <TableCell>
-                <Badge :variant="user.userType === UserType.SERVICE_ACCOUNT ? 'secondary' : 'default'">
+                <!-- The emphasis goes on the notable case, as it does on the
+                     roles table: a service account is worth spotting, an
+                     ordinary member is the default row. -->
+                <Badge :variant="user.userType === UserType.SERVICE_ACCOUNT ? 'default' : 'secondary'">
                   {{ getUserTypeLabel(user.userType) }}
                 </Badge>
               </TableCell>
@@ -192,10 +192,7 @@
                       </Avatar>
                       <div class="ml-4">
                         <div class="font-medium text-muted-foreground">
-                          {{ user.title || "-" }}
-                        </div>
-                        <div class="text-sm text-muted-foreground/70">
-                          {{ getUserId(user.name) }}
+                          {{ user.title || user.email }}
                         </div>
                       </div>
                     </div>
@@ -511,11 +508,6 @@ function getInitials(name: string): string {
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }
   return name.substring(0, 2).toUpperCase();
-}
-
-function getUserId(name: string): string {
-  // Format: users/{id} -> return id
-  return name.replace("users/", "");
 }
 
 // Permission checks
