@@ -731,6 +731,7 @@
     "historyFetchError": "加载元数据历史失败",
     "historyField": "字段",
     "historyFieldChanges": "字段变更",
+    "historyFieldsChanged": "{fields} 已变更",
     "historyNotNull": "不可为空",
     "historyNullable": "可为空",
     "historyOperationCreated": "创建",

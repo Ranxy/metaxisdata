@@ -72,16 +72,13 @@
 					@click="selectEntry(entry)"
 				>
 					<div class="flex items-start justify-between gap-3">
-						<div class="space-y-1">
-							<div class="flex flex-wrap items-center gap-2">
-								<Badge :variant="operationVariant(entry.operation)">
-									{{ operationLabel(entry.operation) }}
-								</Badge>
-								<span class="text-xs text-muted-foreground">
-									{{ formatTimestamp(entry.eventTime) }}
-								</span>
-							</div>
-							<div class="font-medium leading-5">{{ entry.summary || fallbackEntrySummary(entry) }}</div>
+						<div class="flex flex-wrap items-center gap-2">
+							<Badge :variant="operationVariant(entry.operation)">
+								{{ operationLabel(entry.operation) }}
+							</Badge>
+							<span class="text-xs text-muted-foreground">
+								{{ formatTimestamp(entry.eventTime) }}
+							</span>
 						</div>
 						<div
 							v-if="isLoadingEntry(entry)"
@@ -90,6 +87,8 @@
 							{{ t("metadataBrowser.loadingHistoryEvent") }}
 						</div>
 					</div>
+					<!-- The section badges below are this entry's summary; a text
+					     line above them only said the same thing twice. -->
 					<div
 						v-if="entry.sectionChanges.length > 0"
 						class="mt-3 flex flex-wrap gap-1.5"
@@ -149,7 +148,7 @@
 								</span>
 							</div>
 							<div class="text-base font-semibold">
-								{{ selectedEntry.summary || fallbackEntrySummary(selectedEntry) }}
+								{{ entrySummary(selectedEntry) || operationLabel(selectedEntry.operation) }}
 							</div>
 						</div>
 					</div>
@@ -204,7 +203,7 @@
 														<span class="font-medium">{{ item.displayName || item.key || sectionLabel(item.section) }}</span>
 													</div>
 													<div class="text-sm text-muted-foreground">
-														{{ item.summary || fallbackItemSummary(item) }}
+														{{ itemSummary(item) }}
 													</div>
 												</div>
 											</div>
@@ -458,12 +457,30 @@ async function selectEntry(entry: MetadataHistoryTimelineEntry) {
   }
 }
 
-function fallbackEntrySummary(entry: MetadataHistoryTimelineEntry): string {
-  return operationLabel(entry.operation);
+/**
+ * The entry's one-line summary, rebuilt here from the section counts rather
+ * than read from the server's `summary`. That string is English prose composed
+ * for every locale, so a Chinese page printed it verbatim — and on the timeline
+ * card it repeated the badges underneath it word for word.
+ */
+function entrySummary(entry: MetadataHistoryTimelineEntry): string {
+  return entry.sectionChanges.map(formatSectionChange).join(", ");
 }
 
-function fallbackItemSummary(item: MetadataHistoryChangeItem): string {
-  return operationLabel(item.operation);
+/**
+ * The item's one-line summary, for the same reason: the field names are joined
+ * here so the "changed" around them can be translated.
+ */
+function itemSummary(item: MetadataHistoryChangeItem): string {
+  const fields = item.fieldChanges
+    .map((change) => change.displayName || change.field)
+    .filter((name) => name !== "");
+  if (fields.length === 0) {
+    return operationLabel(item.operation);
+  }
+  return t("metadataBrowser.historyFieldsChanged", {
+    fields: fields.join(", "),
+  });
 }
 
 function operationLabel(operation: MetadataHistoryOperation): string {
@@ -521,12 +538,19 @@ function sectionLabel(section: MetadataHistorySection): string {
   }
 }
 
+/** The section labels whose plural is not just the label plus an "s". */
+const IRREGULAR_PLURALS: Record<string, string> = { index: "indexes" };
+
 function pluralizeSection(label: string, count: number): string {
   if (locale.value.startsWith("zh")) {
     return label;
   }
   if (count === 1) {
     return label;
+  }
+  const irregular = IRREGULAR_PLURALS[label];
+  if (irregular) {
+    return irregular;
   }
   if (label.endsWith("y")) {
     return `${label.slice(0, -1)}ies`;

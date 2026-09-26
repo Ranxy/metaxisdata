@@ -731,6 +731,7 @@
     "historyFetchError": "Failed to load metadata history",
     "historyField": "Field",
     "historyFieldChanges": "Field Changes",
+    "historyFieldsChanged": "{fields} changed",
     "historyNotNull": "not null",
     "historyNullable": "nullable",
     "historyOperationCreated": "Created",
