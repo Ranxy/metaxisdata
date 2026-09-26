@@ -179,17 +179,24 @@
             :description="t('auditLogs.emptyDescription')"
           />
 
-          <Table v-else class="min-w-[88rem]">
+          <!-- `table-fixed` plus percentage columns is what keeps this table
+               inside the viewport: auto layout sized it to its longest RPC name
+               (1712px), which hid half the columns behind a horizontal
+               scrollbar. Long values now truncate and expand in a popover. -->
+          <Table
+            v-else
+            class="table-fixed"
+          >
             <TableHeader>
               <TableRow>
-                <TableHead class="w-[11rem] whitespace-nowrap">{{ t("auditLogs.time") }}</TableHead>
-                <TableHead class="w-[6rem] whitespace-nowrap">{{ t("auditLogs.severity") }}</TableHead>
-                <TableHead class="min-w-[20rem] whitespace-nowrap">{{ t("auditLogs.method") }}</TableHead>
-                <TableHead class="min-w-[15rem] whitespace-nowrap">{{ t("auditLogs.resource") }}</TableHead>
-                <TableHead class="min-w-[13rem] whitespace-nowrap">{{ t("auditLogs.user") }}</TableHead>
-                <TableHead class="w-[8rem] whitespace-nowrap">{{ t("auditLogs.status") }}</TableHead>
-                <TableHead class="min-w-[16rem] whitespace-nowrap">{{ t("auditLogs.requestMeta") }}</TableHead>
-                <TableHead class="w-[6rem] whitespace-nowrap text-right">{{ t("auditLogs.actions") }}</TableHead>
+                <TableHead class="w-[13%] whitespace-nowrap">{{ t("auditLogs.time") }}</TableHead>
+                <TableHead class="w-[6%] whitespace-nowrap">{{ t("auditLogs.severity") }}</TableHead>
+                <TableHead class="w-[25%] whitespace-nowrap">{{ t("auditLogs.method") }}</TableHead>
+                <TableHead class="w-[12%] whitespace-nowrap">{{ t("auditLogs.resource") }}</TableHead>
+                <TableHead class="w-[12%] whitespace-nowrap">{{ t("auditLogs.user") }}</TableHead>
+                <TableHead class="w-[8%] whitespace-nowrap">{{ t("auditLogs.status") }}</TableHead>
+                <TableHead class="w-[16%] whitespace-nowrap">{{ t("auditLogs.requestMeta") }}</TableHead>
+                <TableHead class="w-[8%] whitespace-nowrap text-right">{{ t("auditLogs.actions") }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -202,28 +209,28 @@
                     {{ getSeverityLabel(log.severity) }}
                   </Badge>
                 </TableCell>
-                <TableCell class="max-w-[22rem]">
+                <TableCell>
                   <ExpandableText
                     :text="log.method"
                     :dialog-title="t('auditLogs.method')"
                     text-class="font-mono text-xs"
                   />
                 </TableCell>
-                <TableCell class="max-w-[18rem]">
+                <TableCell>
                   <ExpandableText
                     :text="getAuditIdentityDisplay(log.resource)"
                     :dialog-title="t('auditLogs.resource')"
                     text-class="text-xs"
                   />
                 </TableCell>
-                <TableCell class="max-w-[16rem]">
+                <TableCell>
                   <ExpandableText
                     :text="getAuditIdentityDisplay(log.user)"
                     :dialog-title="t('auditLogs.user')"
                     text-class="text-xs"
                   />
                 </TableCell>
-                <TableCell class="whitespace-nowrap">
+                <TableCell>
                   <div class="space-y-1">
                     <div class="font-medium">{{ getStatusLabel(log) }}</div>
                     <div class="text-xs text-muted-foreground">
@@ -231,12 +238,12 @@
                     </div>
                   </div>
                 </TableCell>
-                <TableCell class="max-w-[16rem] text-xs text-muted-foreground">
-                  <div>{{ log.requestMetadata?.ip || '-' }}</div>
+                <TableCell class="text-xs text-muted-foreground">
+                  <div class="truncate">{{ log.requestMetadata?.ip || '-' }}</div>
                   <ExpandableText
                     :text="log.requestMetadata?.userAgent || '-'"
                     :dialog-title="t('auditLogs.userAgent')"
-                    text-class="block max-w-[14rem] truncate"
+                    text-class="text-xs"
                   />
                 </TableCell>
                 <TableCell class="text-right">

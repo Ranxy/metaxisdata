@@ -17,12 +17,27 @@
     <SettingsNav
       class="md:sticky md:top-0 md:w-52 md:shrink-0 md:self-start"
     />
-    <div class="flex min-h-0 w-full max-w-[860px] min-w-0 flex-1 flex-col">
+    <div
+      :class="[
+        'flex min-h-0 w-full min-w-0 flex-1 flex-col',
+        wide ? '' : 'max-w-[860px]',
+      ]"
+    >
       <router-view />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
+import { useRoute } from "vue-router";
 import SettingsNav from "@/components/layout/SettingsNav.vue";
+
+const route = useRoute();
+
+// A settings page that is one wide table opts out of the reading column with
+// `settingsContentWidth: "full"`: the cap is meant for forms, and it would push
+// a table's columns behind a horizontal scrollbar. Widening cannot move the
+// rail — that is pinned to the content edge, not to this column.
+const wide = computed(() => route.meta.settingsContentWidth === "full");
 </script>

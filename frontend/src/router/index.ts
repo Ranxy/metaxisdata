@@ -127,7 +127,14 @@ const routes: RouteRecordRaw[] = [
         path: "audit-logs",
         name: "AuditLogs",
         component: () => import("@/pages/settings/AuditLogsPage.vue"),
-        meta: { requiresAuth: true, layout: "default" },
+        // The audit table is eight columns of long RPC names; inside the
+        // section's reading column four of them fell behind a horizontal
+        // scrollbar, so this page takes the full content width instead.
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          settingsContentWidth: "full",
+        },
       },
     ],
   },
