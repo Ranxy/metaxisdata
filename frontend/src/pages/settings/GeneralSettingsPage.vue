@@ -69,7 +69,7 @@
               </div>
             </div>
 
-            <AppInput
+            <FormField
               v-model="domainsInput"
               :label="t('generalSettings.domains')"
               :placeholder="t('generalSettings.domainsPlaceholder')"
@@ -87,14 +87,14 @@
             }}</CardDescription>
           </CardHeader>
           <CardContent class="space-y-5">
-            <AppInput
+            <FormField
               v-model="externalUrl"
               :label="t('generalSettings.externalUrl')"
               :placeholder="t('generalSettings.externalUrlPlaceholder')"
               :hint="t('generalSettings.externalUrlHint')"
               :disabled="!canUpdate"
             />
-            <AppInput
+            <FormField
               v-model="retentionDaysInput"
               type="number"
               :label="t('generalSettings.retentionDays')"
@@ -214,7 +214,6 @@ import {
   updateDebugConfig,
   updateWorkspaceProfileSetting,
 } from "@/api/setting";
-import AppInput from "@/components/common/AppInput.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Button } from "@/components/ui/button";
@@ -226,6 +225,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { FormField } from "@/components/ui/form-field";
 import { Label } from "@/components/ui/label";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { useAuthStore } from "@/store/modules/auth";

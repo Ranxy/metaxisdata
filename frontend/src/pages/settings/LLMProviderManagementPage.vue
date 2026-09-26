@@ -8,14 +8,14 @@
     <!-- Top bar -->
     <div class="flex items-center gap-2 shrink-0">
       <div class="flex-1">
-        <AppInput
+        <FormField
           v-model="searchQuery"
           :placeholder="t('llmProvider.searchPlaceholder')"
         >
           <template #suffix>
             <Search class="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           </template>
-        </AppInput>
+        </FormField>
       </div>
       <Button @click="startCreate">
         <Plus class="h-4 w-4 mr-2" />
@@ -106,7 +106,7 @@
           <!-- Title -->
           <div class="space-y-2">
             <Label>{{ t("llmProvider.profileTitle") }}</Label>
-            <AppInput
+            <FormField
               v-model="formData.title"
               :placeholder="autoTitlePreview"
             />
@@ -115,7 +115,7 @@
           <!-- Base URL -->
           <div class="space-y-2">
             <Label>{{ t("llmProvider.baseUrl") }}</Label>
-            <AppInput
+            <FormField
               v-model="formData.baseUrl"
               :placeholder="t('llmProvider.baseUrlPlaceholder')"
             />
@@ -134,7 +134,7 @@
                 {{ t("llmProvider.getKey") }}
               </a>
             </div>
-            <AppInput
+            <FormField
               v-model="formData.apiKey"
               type="password"
               :placeholder="editingProfile?.maskedApiKey || t('llmProvider.apiKeyPlaceholder')"
@@ -244,11 +244,11 @@ import {
   listProfiles,
   updateProfile,
 } from "@/api/llm";
-import AppInput from "@/components/common/AppInput.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import Badge from "@/components/ui/badge/Badge.vue";
 import Button from "@/components/ui/button/Button.vue";
 import Checkbox from "@/components/ui/checkbox/Checkbox.vue";
+import { FormField } from "@/components/ui/form-field";
 import Label from "@/components/ui/label/Label.vue";
 import {
   Select,

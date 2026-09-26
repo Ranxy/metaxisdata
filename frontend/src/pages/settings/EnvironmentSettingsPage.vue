@@ -106,7 +106,7 @@
         </DialogHeader>
 
         <div class="space-y-4">
-          <AppInput
+          <FormField
             v-model="formTitle"
             :label="t('environmentSettings.nameLabel')"
             required
@@ -179,7 +179,6 @@ import { Loader2, Pencil, Plus, Trash2 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { environmentId } from "@/api/environment";
-import AppInput from "@/components/common/AppInput.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -194,6 +193,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FormField } from "@/components/ui/form-field";
 import { Label } from "@/components/ui/label";
 import {
   Table,

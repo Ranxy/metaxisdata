@@ -15,14 +15,14 @@
     <!-- Search Bar -->
     <div class="flex items-center gap-4">
       <div class="flex-1">
-        <AppInput
+        <FormField
           v-model="searchQuery"
           :placeholder="t('userManagement.searchPlaceholder')"
         >
           <template #suffix>
             <Search class="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           </template>
-        </AppInput>
+        </FormField>
       </div>
     </div>
 
@@ -236,7 +236,7 @@
 
         <form @submit.prevent="handleCreateUser">
           <div class="space-y-4">
-            <AppInput
+            <FormField
               v-model="createForm.email"
               type="email"
               :label="t('userManagement.email')"
@@ -244,14 +244,14 @@
               required
               :error="createFormErrors.email"
             />
-            <AppInput
+            <FormField
               v-model="createForm.title"
               :label="t('userManagement.userName')"
               :placeholder="t('userManagement.userNamePlaceholder')"
               required
               :error="createFormErrors.title"
             />
-            <AppInput
+            <FormField
               v-model="createForm.password"
               type="password"
               :label="t('userManagement.password')"
@@ -259,7 +259,7 @@
               required
               :error="createFormErrors.password"
             />
-            <AppInput
+            <FormField
               v-model="createForm.confirmPassword"
               type="password"
               :label="t('userManagement.confirmPassword')"
@@ -295,7 +295,7 @@
 
         <form @submit.prevent="handleUpdateUser">
           <div class="space-y-4">
-            <AppInput
+            <FormField
               v-model="editForm.email"
               type="email"
               :label="t('userManagement.email')"
@@ -303,12 +303,12 @@
               required
               :error="editFormErrors.email"
             />
-            <AppInput
+            <FormField
               v-model="editForm.title"
               :label="t('userManagement.userName')"
               :placeholder="t('userManagement.userNamePlaceholder')"
             />
-            <AppInput
+            <FormField
               v-model="editForm.phone"
               :label="t('userManagement.phone')"
               :placeholder="t('userManagement.phonePlaceholder')"
@@ -318,7 +318,7 @@
               <p class="text-sm text-muted-foreground mb-3">
                 {{ t("userManagement.changePasswordHint") }}
               </p>
-              <AppInput
+              <FormField
                 v-if="isEditingSelf"
                 v-model="editForm.currentPassword"
                 type="password"
@@ -326,7 +326,7 @@
                 :placeholder="t('userManagement.currentPasswordPlaceholder')"
                 :error="editFormErrors.currentPassword"
               />
-              <AppInput
+              <FormField
                 v-model="editForm.password"
                 type="password"
                 :label="t('userManagement.newPassword')"
@@ -385,7 +385,6 @@ import {
   undeleteUser,
   updateUser,
 } from "@/api/user";
-import AppInput from "@/components/common/AppInput.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -406,6 +405,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FormField } from "@/components/ui/form-field";
 import {
   Table,
   TableBody,

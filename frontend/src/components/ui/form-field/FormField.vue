@@ -2,7 +2,7 @@
   <div class="w-full space-y-2.5">
     <Label
       v-if="label"
-      :for="inputId"
+      :for="fieldId"
     >
       {{ label }}
       <span
@@ -12,30 +12,34 @@
     </Label>
     <div class="relative">
       <Input
-        :id="inputId"
+        :id="fieldId"
+        v-bind="$attrs"
         :type="type"
         :model-value="modelValue"
         :placeholder="placeholder"
         :disabled="disabled"
         :readonly="readonly"
+        :aria-required="required ? true : undefined"
+        :aria-invalid="error ? true : undefined"
+        :aria-describedby="describedBy"
         :class="[
           error ? 'border-destructive focus-visible:ring-destructive' : '',
-          props.class
+          props.class,
         ]"
         @update:model-value="handleInput"
-        @blur="$emit('blur', $event)"
-        @focus="$emit('focus', $event)"
       />
       <slot name="suffix" />
     </div>
     <p
       v-if="error"
+      :id="errorId"
       class="text-sm text-destructive"
     >
       {{ error }}
     </p>
     <p
       v-else-if="hint"
+      :id="hintId"
       class="text-sm text-muted-foreground"
     >
       {{ hint }}
@@ -44,9 +48,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, type HTMLAttributes } from "vue";
+import { computed, type HTMLAttributes, useId } from "vue";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+/**
+ * A label, an input and the message under it.
+ *
+ * The generated id is stable for the component's lifetime (it used to be a fresh
+ * `Math.random()` per render, which broke the label association), and the
+ * message is wired through `aria-describedby`, with `aria-invalid` set when the
+ * field is in error.
+ */
+defineOptions({ inheritAttrs: false });
 
 interface Props {
   modelValue?: string | number;
@@ -78,14 +92,20 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
-  blur: [event: FocusEvent];
-  focus: [event: FocusEvent];
 }>();
 
-const inputId = computed(
-  () => props.id || `input-${Math.random().toString(36).substring(2, 9)}`
-);
+const generatedId = useId();
+const fieldId = computed(() => props.id || `field-${generatedId}`);
+const errorId = computed(() => `${fieldId.value}-error`);
+const hintId = computed(() => `${fieldId.value}-hint`);
+const describedBy = computed(() => {
+  if (props.error) return errorId.value;
+  if (props.hint) return hintId.value;
+  return undefined;
+});
 
+// Numeric inputs keep the string form they have always had, so a `type="number"`
+// field's model stays a string.
 function handleInput(value: string | number) {
   emit("update:modelValue", String(value));
 }

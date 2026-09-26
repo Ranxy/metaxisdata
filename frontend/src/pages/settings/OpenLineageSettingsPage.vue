@@ -213,7 +213,7 @@
 
         <form @submit.prevent="handleSaveMapping">
           <div class="space-y-4">
-            <AppInput
+            <FormField
               v-model="mappingForm.namespace"
               :label="t('openlineageSettings.namespace')"
               :placeholder="t('openlineageSettings.namespacePlaceholder')"
@@ -244,7 +244,7 @@
                 </SelectContent>
               </Select>
             </div>
-            <AppInput
+            <FormField
               v-model="mappingForm.databaseName"
               :label="t('openlineageSettings.databaseName')"
               :placeholder="t('openlineageSettings.databaseNamePlaceholder')"
@@ -311,7 +311,7 @@
 
         <form @submit.prevent="handleCreateKey">
           <div class="space-y-4">
-            <AppInput
+            <FormField
               v-model="keyForm.description"
               :label="t('openlineageSettings.apiKeyDescription')"
               :placeholder="
@@ -319,7 +319,7 @@
               "
               required
             />
-            <AppInput
+            <FormField
               v-model="keyForm.scopeNamespace"
               :label="t('openlineageSettings.keyScope')"
               :placeholder="t('openlineageSettings.keyScopePlaceholder')"
@@ -437,7 +437,6 @@ import {
   revokeAPIKey,
   updateNamespaceMapping,
 } from "@/api/openlineage";
-import AppInput from "@/components/common/AppInput.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -456,6 +455,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FormField } from "@/components/ui/form-field";
 import {
   Select,
   SelectContent,

@@ -33,7 +33,7 @@
           class="space-y-4"
           @submit.prevent="loadDeviceLogin"
         >
-          <AppInput
+          <FormField
             v-model="userCodeInput"
             :label="t('deviceLogin.codeLabel')"
             :placeholder="t('deviceLogin.codePlaceholder')"
@@ -145,11 +145,11 @@ import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { approveDeviceLogin, getDeviceLogin } from "@/api/device-login";
-import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { FormField } from "@/components/ui/form-field";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import {
   type DeviceLogin,

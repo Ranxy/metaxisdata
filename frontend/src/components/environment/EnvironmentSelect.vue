@@ -111,7 +111,7 @@
       </DialogHeader>
 
       <div class="space-y-4">
-        <AppInput
+        <FormField
           v-model="newTitle"
           :label="t('environment.nameLabel')"
           :placeholder="t('environment.namePlaceholder')"
@@ -150,7 +150,6 @@
 import { Check, ChevronDown, Loader2, Plus } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import AppInput from "@/components/common/AppInput.vue";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -167,6 +166,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FormField } from "@/components/ui/form-field";
 import { Label } from "@/components/ui/label";
 import {
   Popover,

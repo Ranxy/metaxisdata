@@ -249,7 +249,7 @@
                   {{ getInstanceIdFromName(instance?.name ?? "") }}
                 </p>
               </div>
-              <AppInput
+              <FormField
                 v-model="editForm.title"
                 :label="t('instanceManagement.instanceTitle')"
                 :placeholder="t('instanceManagement.instanceTitlePlaceholder')"
@@ -298,7 +298,7 @@
                   </Label>
                 </div>
                 <div class="flex items-center gap-2">
-                  <AppInput
+                  <FormField
                     v-model="editForm.syncIntervalMinutes"
                     type="number"
                     :placeholder="t('instanceManagement.syncIntervalPlaceholder')"
@@ -378,14 +378,14 @@
                 </h4>
 
                 <div class="grid grid-cols-2 gap-4">
-                  <AppInput
+                  <FormField
                     v-model="editForm.adminDataSource.host"
                     :label="t('instanceManagement.host')"
                     :placeholder="t('instanceManagement.hostPlaceholder')"
                     required
                     :error="editFormErrors.adminHost"
                   />
-                  <AppInput
+                  <FormField
                     v-model="editForm.adminDataSource.port"
                     :label="t('instanceManagement.port')"
                     :placeholder="t('instanceManagement.portPlaceholder')"
@@ -395,14 +395,14 @@
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
-                  <AppInput
+                  <FormField
                     v-model="editForm.adminDataSource.username"
                     :label="t('instanceManagement.username')"
                     :placeholder="t('instanceManagement.usernamePlaceholder')"
                     required
                     :error="editFormErrors.adminUsername"
                   />
-                  <AppInput
+                  <FormField
                     v-model="editForm.adminDataSource.password"
                     type="password"
                     :label="t('instanceManagement.password')"
@@ -410,7 +410,7 @@
                   />
                 </div>
 
-                <AppInput
+                <FormField
                   v-model="editForm.adminDataSource.database"
                   :label="t('instanceManagement.database')"
                   :placeholder="t('instanceManagement.databasePlaceholder')"
@@ -462,13 +462,13 @@
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
-                  <AppInput
+                  <FormField
                     v-model="ds.host"
                     :label="t('instanceManagement.host')"
                     :placeholder="t('instanceManagement.hostPlaceholder')"
                     required
                   />
-                  <AppInput
+                  <FormField
                     v-model="ds.port"
                     :label="t('instanceManagement.port')"
                     :placeholder="t('instanceManagement.portPlaceholder')"
@@ -477,13 +477,13 @@
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
-                  <AppInput
+                  <FormField
                     v-model="ds.username"
                     :label="t('instanceManagement.username')"
                     :placeholder="t('instanceManagement.usernamePlaceholder')"
                     required
                   />
-                  <AppInput
+                  <FormField
                     v-model="ds.password"
                     type="password"
                     :label="t('instanceManagement.password')"
@@ -491,7 +491,7 @@
                   />
                 </div>
 
-                <AppInput
+                <FormField
                   v-model="ds.database"
                   :label="t('instanceManagement.database')"
                   :placeholder="t('instanceManagement.databasePlaceholder')"
@@ -557,7 +557,6 @@ import {
   updateDataSource,
   updateInstance,
 } from "@/api/instance";
-import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import EnvironmentSelect from "@/components/environment/EnvironmentSelect.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -572,6 +571,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FormField } from "@/components/ui/form-field";
 import { Label } from "@/components/ui/label";
 import {
   Table,

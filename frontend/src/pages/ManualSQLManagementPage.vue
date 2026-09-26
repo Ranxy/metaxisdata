@@ -213,7 +213,7 @@
                 {{ isLoadingSchemas ? t("manualSqlManagement.loadingSchemas") : t("manualSqlManagement.schemaSelectHint") }}
               </p>
             </div>
-            <AppInput
+            <FormField
               v-model="form.manualSqlId"
               :label="t('manualSqlManagement.id')"
               :placeholder="t('manualSqlManagement.idPlaceholder')"
@@ -241,12 +241,12 @@
                 </span>
               </div>
             </div>
-            <AppInput
+            <FormField
               v-model="form.title"
               :label="t('manualSqlManagement.titleField')"
               :placeholder="t('manualSqlManagement.titlePlaceholder')"
             />
-            <AppInput
+            <FormField
               v-model="form.comment"
               :label="t('manualSqlManagement.comment')"
               :placeholder="t('manualSqlManagement.commentPlaceholder')"
@@ -366,7 +366,6 @@ import {
   searchManualSQL,
   updateManualSQL,
 } from "@/api/database";
-import AppInput from "@/components/common/AppInput.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import ManualSQLFilterBar from "@/components/common/ManualSQLFilterBar.vue";
@@ -382,6 +381,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {

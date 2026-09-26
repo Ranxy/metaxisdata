@@ -102,7 +102,7 @@
         <div class="space-y-4">
           <div class="grid gap-1">
             <Label for="role-name">{{ t("iam.roles.nameLabel") }}</Label>
-            <AppInput
+            <FormField
               id="role-name"
               v-model="form.name"
               :disabled="editing"
@@ -114,7 +114,7 @@
           </div>
           <div class="grid gap-1">
             <Label for="role-title">{{ t("iam.roles.titleLabel") }}</Label>
-            <AppInput
+            <FormField
               id="role-title"
               v-model="form.title"
             />
@@ -123,7 +123,7 @@
             <Label for="role-description">
               {{ t("iam.roles.descriptionLabel") }}
             </Label>
-            <AppInput
+            <FormField
               id="role-description"
               v-model="form.description"
             />
@@ -214,7 +214,6 @@ import { Pencil, Plus, Trash2 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { createRole, deleteRole, listRoles, updateRole } from "@/api/role";
-import AppInput from "@/components/common/AppInput.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -230,6 +229,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FormField } from "@/components/ui/form-field";
 import { Label } from "@/components/ui/label";
 import {
   Table,

@@ -15,14 +15,14 @@
     <!-- Search Bar -->
     <div class="flex items-center gap-4">
       <div class="flex-1">
-        <AppInput
+        <FormField
           v-model="searchQuery"
           :placeholder="t('instanceManagement.searchPlaceholder')"
         >
           <template #suffix>
             <Search class="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           </template>
-        </AppInput>
+        </FormField>
       </div>
     </div>
 
@@ -245,14 +245,14 @@
             </h3>
 
             <div class="grid grid-cols-2 gap-4">
-              <AppInput
+              <FormField
                 v-model="createForm.title"
                 :label="t('instanceManagement.instanceTitle')"
                 :placeholder="t('instanceManagement.instanceTitlePlaceholder')"
                 required
                 :error="createFormErrors.title"
               />
-              <AppInput
+              <FormField
                 v-model="createForm.instanceId"
                 :label="t('instanceManagement.instanceId')"
                 :placeholder="t('instanceManagement.instanceIdPlaceholder')"
@@ -336,7 +336,7 @@
                   </Label>
                 </div>
                 <div class="flex items-center gap-2">
-                  <AppInput
+                  <FormField
                     v-model="createForm.syncIntervalMinutes"
                     type="number"
                     :placeholder="t('instanceManagement.syncIntervalPlaceholder')"
@@ -358,7 +358,7 @@
               {{ t("instanceManagement.adminDataSource") }}
             </h3>
 
-            <AppInput
+            <FormField
               v-model="createForm.adminDataSource.id"
               :label="t('instanceManagement.dataSourceId')"
               :placeholder="t('instanceManagement.dataSourceIdPlaceholder')"
@@ -367,14 +367,14 @@
             />
 
             <div class="grid grid-cols-2 gap-4">
-              <AppInput
+              <FormField
                 v-model="createForm.adminDataSource.host"
                 :label="t('instanceManagement.host')"
                 :placeholder="t('instanceManagement.hostPlaceholder')"
                 required
                 :error="createFormErrors.adminDataSource.host"
               />
-              <AppInput
+              <FormField
                 v-model="createForm.adminDataSource.port"
                 :label="t('instanceManagement.port')"
                 :placeholder="t('instanceManagement.portPlaceholder')"
@@ -384,14 +384,14 @@
             </div>
 
             <div class="grid grid-cols-2 gap-4">
-              <AppInput
+              <FormField
                 v-model="createForm.adminDataSource.username"
                 :label="t('instanceManagement.username')"
                 :placeholder="t('instanceManagement.usernamePlaceholder')"
                 required
                 :error="createFormErrors.adminDataSource.username"
               />
-              <AppInput
+              <FormField
                 v-model="createForm.adminDataSource.password"
                 type="password"
                 :label="t('instanceManagement.password')"
@@ -401,7 +401,7 @@
               />
             </div>
 
-            <AppInput
+            <FormField
               v-model="createForm.adminDataSource.database"
               :label="t('instanceManagement.database')"
               :placeholder="t('instanceManagement.databasePlaceholder')"
@@ -453,7 +453,7 @@
                 </Button>
               </div>
 
-              <AppInput
+              <FormField
                 v-model="ds.id"
                 :label="t('instanceManagement.dataSourceId')"
                 :placeholder="t('instanceManagement.dataSourceIdPlaceholder')"
@@ -462,14 +462,14 @@
               />
 
               <div class="grid grid-cols-2 gap-4">
-                <AppInput
+                <FormField
                   v-model="ds.host"
                   :label="t('instanceManagement.host')"
                   :placeholder="t('instanceManagement.hostPlaceholder')"
                   required
                   :error="createFormErrors.readOnlyDataSources[index]?.host"
                 />
-                <AppInput
+                <FormField
                   v-model="ds.port"
                   :label="t('instanceManagement.port')"
                   :placeholder="t('instanceManagement.portPlaceholder')"
@@ -479,14 +479,14 @@
               </div>
 
               <div class="grid grid-cols-2 gap-4">
-                <AppInput
+                <FormField
                   v-model="ds.username"
                   :label="t('instanceManagement.username')"
                   :placeholder="t('instanceManagement.usernamePlaceholder')"
                   required
                   :error="createFormErrors.readOnlyDataSources[index]?.username"
                 />
-                <AppInput
+                <FormField
                   v-model="ds.password"
                   type="password"
                   :label="t('instanceManagement.password')"
@@ -496,7 +496,7 @@
                 />
               </div>
 
-              <AppInput
+              <FormField
                 v-model="ds.database"
                 :label="t('instanceManagement.database')"
                 :placeholder="t('instanceManagement.databasePlaceholder')"
@@ -552,7 +552,6 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import type { CreateInstanceInput } from "@/api/instance";
 import { createInstance } from "@/api/instance";
-import AppInput from "@/components/common/AppInput.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -574,6 +573,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FormField } from "@/components/ui/form-field";
 import { Label } from "@/components/ui/label";
 import {
   Select,

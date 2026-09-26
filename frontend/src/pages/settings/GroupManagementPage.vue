@@ -102,7 +102,7 @@
         <div class="space-y-4">
           <div class="grid gap-1">
             <Label for="group-name">{{ t("iam.groups.nameLabel") }}</Label>
-            <AppInput
+            <FormField
               id="group-name"
               v-model="form.name"
               :disabled="editing"
@@ -114,7 +114,7 @@
           </div>
           <div class="grid gap-1">
             <Label for="group-title">{{ t("iam.groups.titleLabel") }}</Label>
-            <AppInput
+            <FormField
               id="group-title"
               v-model="form.title"
             />
@@ -123,7 +123,7 @@
             <Label for="group-description">
               {{ t("iam.groups.descriptionLabel") }}
             </Label>
-            <AppInput
+            <FormField
               id="group-description"
               v-model="form.description"
             />
@@ -197,7 +197,6 @@ import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { createGroup, deleteGroup, listGroups, updateGroup } from "@/api/group";
 import { listAllUsers } from "@/api/user";
-import AppInput from "@/components/common/AppInput.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -213,6 +212,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FormField } from "@/components/ui/form-field";
 import { Label } from "@/components/ui/label";
 import {
   Table,

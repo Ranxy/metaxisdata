@@ -40,7 +40,7 @@
               class="space-y-4"
               @submit.prevent="handleResetPassword"
             >
-              <AppInput
+              <FormField
                 v-model="resetForm.currentPassword"
                 type="password"
                 :label="t('resetPassword.currentPassword')"
@@ -48,7 +48,7 @@
                 required
               />
 
-              <AppInput
+              <FormField
                 v-model="resetForm.newPassword"
                 type="password"
                 :label="t('resetPassword.newPassword')"
@@ -56,7 +56,7 @@
                 required
               />
 
-              <AppInput
+              <FormField
                 v-model="resetForm.confirmPassword"
                 type="password"
                 :label="t('resetPassword.confirmPassword')"
@@ -111,7 +111,7 @@
               @submit.prevent="handleLogin"
             >
               <!-- Email Input -->
-              <AppInput
+              <FormField
                 v-model="loginForm.email"
                 type="text"
                 :label="t('login.email')"
@@ -120,7 +120,7 @@
               />
 
               <!-- Password Input -->
-              <AppInput
+              <FormField
                 v-model="loginForm.password"
                 type="password"
                 :label="t('login.password')"
@@ -211,7 +211,7 @@
               @submit.prevent="handleRegister"
             >
               <!-- Email Input -->
-              <AppInput
+              <FormField
                 v-model="registerForm.email"
                 type="email"
                 :label="t('login.email')"
@@ -220,7 +220,7 @@
               />
 
               <!-- Title (Username) Input -->
-              <AppInput
+              <FormField
                 v-model="registerForm.title"
                 type="text"
                 :label="t('register.title')"
@@ -228,7 +228,7 @@
               />
 
               <!-- Password Input -->
-              <AppInput
+              <FormField
                 v-model="registerForm.password"
                 type="password"
                 :label="t('login.password')"
@@ -237,7 +237,7 @@
               />
 
               <!-- Confirm Password Input -->
-              <AppInput
+              <FormField
                 v-model="registerForm.confirmPassword"
                 type="password"
                 :label="t('register.confirmPassword')"
@@ -305,7 +305,6 @@ import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { getWorkspaceProfileSetting } from "@/api/setting";
 import * as userApi from "@/api/user";
-import AppInput from "@/components/common/AppInput.vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -314,6 +313,7 @@ import {
   CardDescription,
   CardTitle,
 } from "@/components/ui/card";
+import { FormField } from "@/components/ui/form-field";
 import { Separator } from "@/components/ui/separator";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import type { AppLocale } from "@/locales";
