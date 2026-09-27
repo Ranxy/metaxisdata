@@ -117,6 +117,62 @@ export function hasOpenLineageUnparsedSQL(rawPayload: string): boolean {
   );
 }
 
+export interface OpenLineageExtractionError {
+  task: string;
+  message: string;
+}
+
+/**
+ * Returns the statements the producer's extractor could not parse.
+ *
+ * A SQL extractor answers a statement it cannot parse with an `extractionError`
+ * run facet instead of datasets, so the statement contributes no lineage and
+ * this facet is the only trace of it. A run can therefore look like a job with
+ * less lineage than its SQL really has.
+ */
+export function extractOpenLineageExtractionErrors(
+  rawPayload: string
+): OpenLineageExtractionError[] {
+  const payload = parseOpenLineagePayload(rawPayload);
+  const run = payload?.run;
+  if (!run || typeof run !== "object") {
+    return [];
+  }
+
+  const facets = (run as Record<string, unknown>).facets;
+  if (!facets || typeof facets !== "object") {
+    return [];
+  }
+
+  const facet = (facets as Record<string, unknown>).extractionError;
+  if (!facet || typeof facet !== "object") {
+    return [];
+  }
+
+  const errors = (facet as Record<string, unknown>).errors;
+  if (!Array.isArray(errors)) {
+    return [];
+  }
+
+  return errors
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const record = item as Record<string, unknown>;
+      const task = typeof record.task === "string" ? record.task : "";
+      const message =
+        typeof record.errorMessage === "string" ? record.errorMessage : "";
+      if (!task && !message) {
+        return null;
+      }
+
+      return { task, message };
+    })
+    .filter((error): error is OpenLineageExtractionError => error !== null);
+}
+
 function aggregateDatasetList(
   runs: OpenLineagePayloadLike[],
   kind: "inputs" | "outputs"

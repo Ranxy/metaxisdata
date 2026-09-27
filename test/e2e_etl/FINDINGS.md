@@ -21,11 +21,10 @@ phantoms, 0 analyzer errors.
 
 ## Fix status
 
-F1, F2, F3, F4, F6, F7 and F8 are fixed in this repository; F5 is upstream and
-untouched.
-Each fix carries hermetic unit coverage, and all four were re-verified on this
-chain after rebuilding and restarting the server (see "Post-fix verification"
-below).
+F1, F2, F3, F4, F6, F7 and F8 are fixed in this repository; F5 is upstream, and
+this repository now surfaces it instead of hiding it (see F5). Each fix carries
+hermetic unit coverage, and all four were re-verified on this chain after
+rebuilding and restarting the server (see "Post-fix verification" below).
 
 | # | State | Where |
 | --- | --- | --- |
@@ -33,7 +32,7 @@ below).
 | F2 | fixed | `resolver.go` `normalizeHost`/`normalizePort`, plus a warning on the external fallback |
 | F3 | fixed (signal added) | `processor.go` `warnMissingSQLLineage`, run-detail alert in `frontend/src/pages/openlineage/OpenLineageRunDetailPage.vue` |
 | F4 | fixed (table columns) | `backend/plugin/openlineage/lineage_validation.go` |
-| F5 | upstream | Airflow's SQL extractor cannot parse `REFRESH MATERIALIZED VIEW` |
+| F5 | upstream; signal added, parser upgraded | Airflow's SQL extractor cannot parse `REFRESH MATERIALIZED VIEW` or `CREATE MATERIALIZED VIEW … WITH DATA` |
 | F6 | fixed | `backend/store/openlineage_task.go` (found while verifying F1–F4) |
 | F7 | fixed | `backend/plugin/openlineage/sql_facet_lineage.go` — SQL-facet events are analyzed, not believed |
 | F8 | fixed | `queryLocalWildcardSourceRef` in PostgreSQL **and** the MySQL family (StarRocks already had it) |
@@ -226,12 +225,53 @@ have. Hermetic coverage: `lineage_validation_test.go` (9 cases).
 
 ---
 
-## F5 — LOW: `REFRESH MATERIALIZED VIEW` is unparseable
+## F5 — LOW: materialized-view statements are partly unparseable upstream
 
-The extractor records an `extractionError` run facet for that statement
-(`Expected: an SQL statement, found: REFRESH`). Harmless here because the
-materialized view's lineage comes from the definition analyzer, but it does add
-a failing statement to every run that refreshes an MV.
+The producer's SQL parser is not the database. The Airflow extractor feeds the
+same statement it executed to `openlineage-sql` (a compiled Rust extension) to
+derive the run's datasets, and that parser fails on three PostgreSQL
+materialized-view shapes, recording an `extractionError` run facet for each
+instead of lineage:
+
+| Statement | `openlineage-sql` 1.37.0 | 1.53.0 |
+| --- | --- | --- |
+| `DROP MATERIALIZED VIEW … CASCADE` | error | parses |
+| `CREATE MATERIALIZED VIEW … WITH DATA` | error | error (`Expected: end of statement, found: WITH`) |
+| `REFRESH MATERIALIZED VIEW …` | error | error (`Expected: an SQL statement, found: REFRESH`) |
+
+The database executes all three, so the task is green and nothing looks wrong in
+Airflow: only the lineage inference failed. `DROP MATERIALIZED VIEW` support
+landed in sqlparser-rs ([PR #1743](https://github.com/apache/datafusion-sqlparser-rs/pull/1743)),
+which is why 1.53.0 has it and 1.37.0 does not; `REFRESH` and `WITH DATA` have no
+upstream support.
+
+**Impact.** The failing statement contributes no dataset to the run, so the run
+reads as a job with less lineage than its SQL has. The lineage itself survives —
+a view or materialized view is analysed from its stored definition, and since F7
+the server analyses the SQL facet itself (our PostgreSQL analyzer handles all
+three shapes) — so what is missing is the run's own input/output set, and,
+before this change, any trace of why.
+
+**Fixed (signal).** `extractOpenLineageExtractionErrors` in
+`frontend/src/lib/openlineage.ts` reads `run.facets.extractionError.errors`, and
+`OpenLineageRunDetailPage.vue` renders each failed statement beside its reason.
+A run that carries parse errors shows that specific alert instead of only the
+generic `hasOpenLineageUnparsedSQL` one, which could not say why the lineage was
+missing. Covered by `openlineage.test.ts` (including the facet the extractor
+actually emits, captured from `openlineage_run.raw_payload`).
+
+**Upgraded.** The Airflow environment's `openlineage-{python,integration-common,sql}`
+moved from 1.37.0 to 1.53.0. They are released in lockstep and
+`integration-common` 1.37.0 pins the other two exactly, so they cannot be
+upgraded one at a time; the provider requires only `>=1.36.0`, and it imports
+unchanged against 1.53.0. Re-verified on this chain: `e2e_02_pg_transform.dwd_ddl`
+now records **1** extraction error instead of 2, the remaining one being
+`CREATE MATERIALIZED VIEW … WITH DATA`; `dwd_load` still records the `REFRESH`
+one.
+
+**Left as-is.** `CREATE MATERIALIZED VIEW … WITH DATA` and `REFRESH MATERIALIZED
+VIEW` stay unparseable upstream. `WITH DATA` is PostgreSQL's default, so dropping
+it from the fixture would be behaviour-preserving if that error is not wanted.
 
 ---
 
@@ -454,7 +494,9 @@ They are counted and logged on every ingestion, and the server warns
    irrelevant for column lineage (the analyzer splits the script itself), but the
    run record still reports one input/output set, and a producer that states its
    lineage *without* SQL keeps the old facet semantics.
-5. **`REFRESH MATERIALIZED VIEW` stays unparseable** (F5) — upstream.
+5. **Two materialized-view shapes stay unparseable** (F5) — `REFRESH
+   MATERIALIZED VIEW` and `CREATE MATERIALIZED VIEW … WITH DATA`, upstream. The
+   run detail page now names them instead of leaving the loss silent.
 
 ## Reproducing the checks
 

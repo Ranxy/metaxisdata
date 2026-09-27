@@ -92,7 +92,25 @@
         </Card>
       </div>
 
-      <Alert v-if="unparsedSQL" variant="destructive">
+      <Alert v-if="extractionErrors.length > 0" variant="destructive">
+        <AlertTitle>{{ t("openlineage.extractionErrorTitle") }}</AlertTitle>
+        <AlertDescription>
+          <p>{{ t("openlineage.extractionErrorDescription") }}</p>
+          <ul class="mt-3 space-y-3">
+            <li v-for="(error, index) in extractionErrors" :key="index">
+              <div>{{ error.message }}</div>
+              <code
+                v-if="error.task"
+                class="mt-1 block whitespace-pre-wrap break-all rounded-md bg-muted p-2 text-xs"
+              >
+                {{ error.task }}
+              </code>
+            </li>
+          </ul>
+        </AlertDescription>
+      </Alert>
+
+      <Alert v-else-if="unparsedSQL" variant="destructive">
         <AlertTitle>{{ t("openlineage.unparsedSQLTitle") }}</AlertTitle>
         <AlertDescription>{{ t("openlineage.unparsedSQLDescription") }}</AlertDescription>
       </Alert>
@@ -192,6 +210,7 @@ import {
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import {
   extractOpenLineageDatasets,
+  extractOpenLineageExtractionErrors,
   hasOpenLineageUnparsedSQL,
 } from "@/lib/openlineage";
 import type { OpenLineageRun } from "@/types/proto-es/v1/openlineage_service_pb";
@@ -236,6 +255,12 @@ const outputDatasets = computed(() => {
 // producer meant to contribute some and the extractor dropped it all.
 const unparsedSQL = computed(() => {
   return hasOpenLineageUnparsedSQL(run.value?.rawPayload ?? "");
+});
+
+// A statement the extractor could not parse contributes no lineage and leaves
+// only this run facet, so the run reads as if its SQL had less lineage.
+const extractionErrors = computed(() => {
+  return extractOpenLineageExtractionErrors(run.value?.rawPayload ?? "");
 });
 
 function formatTimestamp(ts: Timestamp | undefined): string {

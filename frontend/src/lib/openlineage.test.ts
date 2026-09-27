@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateOpenLineageDatasets,
   extractOpenLineageDatasets,
+  extractOpenLineageExtractionErrors,
   hasOpenLineageUnparsedSQL,
 } from "./openlineage";
 
@@ -208,6 +209,117 @@ describe("hasOpenLineageUnparsedSQL", () => {
       JSON.stringify({ job: "x" }),
     ]) {
       expect(hasOpenLineageUnparsedSQL(rawPayload)).toBe(false);
+    }
+  });
+});
+
+describe("extractOpenLineageExtractionErrors", () => {
+  function payloadWithExtractionError(errors: unknown): string {
+    return JSON.stringify({
+      run: { runId: "run-1", facets: { extractionError: { errors } } },
+      job: { namespace: "default", name: "dag.task" },
+    });
+  }
+
+  it("reads the statement and the reason the extractor could not parse it", () => {
+    expect(
+      extractOpenLineageExtractionErrors(
+        payloadWithExtractionError([
+          {
+            task: "REFRESH MATERIALIZED VIEW e2e_dwd.mv_daily_sales;",
+            taskNumber: 6,
+            errorMessage: "Expected: an SQL statement, found: REFRESH",
+          },
+          {
+            task: "DROP MATERIALIZED VIEW IF EXISTS x CASCADE;",
+            errorMessage: "Expected: MATERIALIZED after DROP",
+          },
+        ])
+      )
+    ).toEqual([
+      {
+        task: "REFRESH MATERIALIZED VIEW e2e_dwd.mv_daily_sales;",
+        message: "Expected: an SQL statement, found: REFRESH",
+      },
+      {
+        task: "DROP MATERIALIZED VIEW IF EXISTS x CASCADE;",
+        message: "Expected: MATERIALIZED after DROP",
+      },
+    ]);
+  });
+
+  it("keeps an entry that names only one side", () => {
+    expect(
+      extractOpenLineageExtractionErrors(
+        payloadWithExtractionError([{ errorMessage: "boom" }])
+      )
+    ).toEqual([{ task: "", message: "boom" }]);
+    expect(
+      extractOpenLineageExtractionErrors(
+        payloadWithExtractionError([{ task: "select 1" }])
+      )
+    ).toEqual([{ task: "select 1", message: "" }]);
+  });
+
+  it("drops entries that name neither a statement nor a reason", () => {
+    expect(
+      extractOpenLineageExtractionErrors(
+        payloadWithExtractionError([{}, "x", null, 7])
+      )
+    ).toEqual([]);
+  });
+
+  it("reads the facet the Airflow extractor actually emits", () => {
+    // Captured from openlineage_run.raw_payload for a task whose script held a
+    // REFRESH MATERIALIZED VIEW: the facet's own bookkeeping keys are ignored.
+    const stored = JSON.stringify({
+      run: {
+        runId: "0199a1f5-d2f6-7e58-9f19-3e02bff4e6be",
+        facets: {
+          extractionError: {
+            _producer:
+              "https://github.com/apache/airflow/tree/providers-openlineage/2.6.1",
+            _schemaURL:
+              "https://openlineage.io/spec/facets/1-1-2/ExtractionErrorRunFacet.json#/$defs/ExtractionErrorRunFacet",
+            totalTasks: 1,
+            failedTasks: 1,
+            errors: [
+              {
+                task: "REFRESH MATERIALIZED VIEW e2e_dwd.mv_daily_sales;",
+                taskNumber: 6,
+                errorMessage:
+                  "Expected: an SQL statement, found: REFRESH at Line: 1, Column: 1",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(extractOpenLineageExtractionErrors(stored)).toEqual([
+      {
+        task: "REFRESH MATERIALIZED VIEW e2e_dwd.mv_daily_sales;",
+        message:
+          "Expected: an SQL statement, found: REFRESH at Line: 1, Column: 1",
+      },
+    ]);
+  });
+
+  it("stays quiet without a readable extractionError facet", () => {
+    for (const rawPayload of [
+      "",
+      "not json",
+      "null",
+      "[]",
+      "{}",
+      JSON.stringify({ run: "x" }),
+      JSON.stringify({ run: {} }),
+      JSON.stringify({ run: { facets: "x" } }),
+      JSON.stringify({ run: { facets: {} } }),
+      JSON.stringify({ run: { facets: { extractionError: "x" } } }),
+      JSON.stringify({ run: { facets: { extractionError: { errors: "x" } } } }),
+    ]) {
+      expect(extractOpenLineageExtractionErrors(rawPayload)).toEqual([]);
     }
   });
 });

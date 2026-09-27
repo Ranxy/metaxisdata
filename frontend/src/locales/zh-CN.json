@@ -918,6 +918,8 @@
     "eventsDescription": "查看已持久化的 OpenLineage 运行记录、事件元数据和原始证据负载。",
     "external": "External",
     "externalOnly": "仅 external",
+    "extractionErrorDescription": "上游的 SQL 提取器无法解析以下语句，因此它们没有为这次运行产生任何血缘；这里记录的血缘仅来自其余语句。",
+    "extractionErrorTitle": "部分 SQL 语句无法解析",
     "fieldDescription": "说明",
     "fieldName": "字段",
     "fieldType": "类型",

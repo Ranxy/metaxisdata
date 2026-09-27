@@ -918,6 +918,8 @@
     "eventsDescription": "Inspect persisted OpenLineage runs, event metadata, and raw evidence payloads.",
     "external": "External",
     "externalOnly": "External only",
+    "extractionErrorDescription": "The producer's SQL extractor could not parse the statements below, so they contributed no lineage to this run. The lineage recorded here comes from the remaining statements only.",
+    "extractionErrorTitle": "Some SQL statements could not be parsed",
     "fieldDescription": "Description",
     "fieldName": "Field",
     "fieldType": "Type",
