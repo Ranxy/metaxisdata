@@ -43,14 +43,14 @@
 
     <div class="border-t px-3 py-1.5 flex items-center gap-2 flex-wrap">
       <button
-        v-if="!data.upstreamLoaded"
+        v-if="!data.upstreamExpanded"
         class="text-xs text-primary hover:underline cursor-pointer"
         @click.stop="$emit('expand', data.guid, 'upstream')"
       >
         {{ t("lineageGraph.expandUpstream") }}
       </button>
       <button
-        v-if="!data.downstreamLoaded"
+        v-if="!data.downstreamExpanded"
         class="text-xs text-primary hover:underline cursor-pointer"
         @click.stop="$emit('expand', data.guid, 'downstream')"
       >
@@ -98,8 +98,9 @@ export interface LineageNodeData {
   label: string;
   shortPath: string;
   isRoot: boolean;
-  upstreamLoaded: boolean;
-  downstreamLoaded: boolean;
+  /** Whether that direction's neighbours are already part of the graph. */
+  upstreamExpanded: boolean;
+  downstreamExpanded: boolean;
   upstreamCount: number;
   downstreamCount: number;
   metaType: string;

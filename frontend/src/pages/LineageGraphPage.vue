@@ -292,7 +292,11 @@ const nodes = ref<Node[]>([]);
 const edges = ref<Edge[]>([]);
 const initialLoading = ref(true);
 
-const expandedGuids = ref<Set<string>>(new Set());
+// Which (node, direction) pairs the user has drawn into the graph. This is
+// deliberately separate from `NodeLineageData`'s loaded flags, which only mean
+// the data was fetched: selecting a node fetches both directions for the detail
+// panel without expanding anything, so a loaded node is not an expanded one.
+const expandedDirections = ref<Set<string>>(new Set());
 const nodeDataMap = ref<Map<string, NodeLineageData>>(new Map());
 const expandDepth = ref("1");
 
@@ -307,7 +311,7 @@ const guidMetaTypeMap = ref<Map<string, MetaType>>(new Map());
 const externalDatasetMap = ref<Map<string, ExternalDatasetInfo>>(new Map());
 
 // Snapshot of initial state for reset
-let initialExpandedGuids = new Set<string>();
+let initialExpandedDirections = new Set<string>();
 let initialNodeDataMap = new Map<string, NodeLineageData>();
 
 // Field-level column selection state
@@ -320,7 +324,7 @@ const highlightedColumnsMap = ref<Map<string, Set<string>>>(new Map());
 const fieldsVisibleGuids = ref<Set<string>>(new Set());
 
 const hasExpandedBeyondRoot = computed(() => {
-  return expandedGuids.value.size > initialExpandedGuids.size;
+  return expandedDirections.value.size > initialExpandedDirections.size;
 });
 
 const selectedNodeGuid = computed(() => {
@@ -611,7 +615,8 @@ function getNodeLineageData(guid: string): NodeLineageData {
   return nodeDataMap.value.get(guid) ?? createEmptyNodeLineageData();
 }
 
-function isDirectionLoaded(
+/** Whether the requested directions are already in `nodeDataMap`. */
+function isDirectionFetched(
   data: NodeLineageData,
   lineageType: LineageType
 ): boolean {
@@ -625,6 +630,19 @@ function isDirectionLoaded(
   }
 }
 
+/** Whether the user has already drawn this direction's neighbours into the graph. */
+function isDirectionExpanded(
+  guid: string,
+  direction: LineageDirection
+): boolean {
+  return expandedDirections.value.has(expansionKey(guid, direction));
+}
+
+/** A GUID may contain `:`, so the direction is the prefix, not part of the key. */
+function expansionKey(guid: string, direction: LineageDirection): string {
+  return `${direction}:${guid}`;
+}
+
 function directionToLineageType(direction: LineageDirection): LineageType {
   return direction === "upstream" ? LineageType.SOURCE : LineageType.TARGET;
 }
@@ -634,7 +652,7 @@ async function fetchLineageForGuid(
   lineageType: LineageType = LineageType.LINEAGE_TYPE_UNSPECIFIED
 ): Promise<NodeLineageData> {
   const existingData = getNodeLineageData(guid);
-  if (isDirectionLoaded(existingData, lineageType)) {
+  if (isDirectionFetched(existingData, lineageType)) {
     return existingData;
   }
 
@@ -738,8 +756,8 @@ function nodeDataFor(guid: string): LineageNodeData {
     label: formatGuidLabel(guid),
     shortPath: formatGuidShort(guid),
     isRoot: guid === currentGuid.value,
-    upstreamLoaded: data?.upstreamLoaded ?? false,
-    downstreamLoaded: data?.downstreamLoaded ?? false,
+    upstreamExpanded: isDirectionExpanded(guid, "upstream"),
+    downstreamExpanded: isDirectionExpanded(guid, "downstream"),
     upstreamCount: data?.upstream.length ?? 0,
     downstreamCount: data?.downstream.length ?? 0,
     metaType: guidToMetaType(guid),
@@ -750,9 +768,31 @@ function nodeDataFor(guid: string): LineageNodeData {
   };
 }
 
+/**
+ * The relations the graph may draw: only directions the user has expanded.
+ * `nodeDataMap` also holds what selecting a node pre-fetched for the detail
+ * panel, and drawing that would add neighbours — and drop the expand
+ * affordance — for a node nobody asked to expand.
+ */
+function graphView(): Map<string, NodeLineageData> {
+  const view = new Map<string, NodeLineageData>();
+  for (const [guid, data] of nodeDataMap.value) {
+    view.set(guid, {
+      upstream: isDirectionExpanded(guid, "upstream") ? data.upstream : [],
+      downstream: isDirectionExpanded(guid, "downstream")
+        ? data.downstream
+        : [],
+      upstreamLoaded: data.upstreamLoaded,
+      downstreamLoaded: data.downstreamLoaded,
+    });
+  }
+  return view;
+}
+
 /** Rebuilds every node from scratch, which also re-runs the layer layout. */
 function rebuildGraph() {
-  const layers = assignLayers(currentGuid.value, nodeDataMap.value);
+  const view = graphView();
+  const layers = assignLayers(currentGuid.value, view);
   const positions = layoutNodes(layers, (guid) =>
     nodeHeight(
       collectColumnsForGuid(guid).length,
@@ -771,7 +811,7 @@ function rebuildGraph() {
   }
 
   nodes.value = Array.from(nodeMap.values());
-  edges.value = buildLineageEdges(nodeDataMap.value, {
+  edges.value = buildLineageEdges(view, {
     validNodeIds: new Set(nodeMap.keys()),
     columnFilter: columnFilter.value,
   });
@@ -789,7 +829,7 @@ function updateGraphState() {
     position: currentPositions.get(node.id) ?? node.position,
     data: nodeDataFor(node.id),
   }));
-  edges.value = buildLineageEdges(nodeDataMap.value, {
+  edges.value = buildLineageEdges(graphView(), {
     validNodeIds: new Set(nodes.value.map((node) => node.id)),
     columnFilter: columnFilter.value,
   });
@@ -814,6 +854,12 @@ async function handleSelectNode(guid: string) {
   // without expanding the graph (the user can do that via "Expand").
   if (guid !== currentGuid.value && !nodeDataMap.value.has(guid)) {
     await fetchLineageForGuid(guid);
+    // The fetch marks both directions as loaded but deliberately leaves the
+    // graph alone, so the node still renders the pre-fetch state. Refresh the
+    // node data (counts, and the expand affordances, which key off the
+    // expansion set rather than the fetch flags) without adding neighbours:
+    // `updateGraphState` only redraws edges between nodes that are on screen.
+    updateGraphState();
   }
 }
 
@@ -893,12 +939,13 @@ function parseExpandDepth(value: string): number {
  * each level before the next so the metadata type of every neighbour is known
  * by the time it is requested. The depth control is what bounds the walk; the
  * expansion is deduplicated across the whole walk, so a diamond in the graph
- * is fetched once.
+ * is fetched once. A node the detail panel already pre-fetched is a cache hit
+ * here, so the click only costs the redraw.
  */
 async function handleExpandNode(guid: string, direction: LineageDirection) {
-  const lineageType = directionToLineageType(direction);
-  if (isDirectionLoaded(getNodeLineageData(guid), lineageType)) return;
+  if (isDirectionExpanded(guid, direction)) return;
 
+  const lineageType = directionToLineageType(direction);
   const depth = parseExpandDepth(expandDepth.value);
   const revealed = new Set<string>();
   let frontier = [guid];
@@ -906,12 +953,11 @@ async function handleExpandNode(guid: string, direction: LineageDirection) {
   for (let level = 0; level < depth && frontier.length > 0; level++) {
     const pending = frontier.filter(
       (candidate) =>
-        !revealed.has(candidate) &&
-        !isDirectionLoaded(getNodeLineageData(candidate), lineageType)
+        !revealed.has(candidate) && !isDirectionExpanded(candidate, direction)
     );
     for (const candidate of pending) {
       revealed.add(candidate);
-      expandedGuids.value.add(candidate);
+      expandedDirections.value.add(expansionKey(candidate, direction));
     }
     if (pending.length === 0) {
       break;
@@ -968,7 +1014,7 @@ async function fitViewWhenMeasured() {
 
 function handleReset() {
   // Restore the initial snapshot
-  expandedGuids.value = new Set(initialExpandedGuids);
+  expandedDirections.value = new Set(initialExpandedDirections);
   nodeDataMap.value = new Map(
     Array.from(initialNodeDataMap.entries()).map(([k, v]) => [k, { ...v }])
   );
@@ -1006,7 +1052,7 @@ function handleBackToMetadata() {
 }
 
 function saveInitialSnapshot() {
-  initialExpandedGuids = new Set(expandedGuids.value);
+  initialExpandedDirections = new Set(expandedDirections.value);
   initialNodeDataMap = new Map(
     Array.from(nodeDataMap.value.entries()).map(([k, v]) => [k, { ...v }])
   );
@@ -1025,14 +1071,18 @@ async function initializeGraph() {
   if (!currentGuid.value) return;
 
   initialLoading.value = true;
-  expandedGuids.value.clear();
+  expandedDirections.value.clear();
   nodeDataMap.value.clear();
   guidMetaTypeMap.value.clear();
   selectedColumnGuid.value = null;
   selectedColumnName.value = null;
   highlightedColumnsMap.value.clear();
 
-  expandedGuids.value.add(currentGuid.value);
+  // The initial fetch draws the root's immediate neighbours, so both of its
+  // directions count as expanded — that is what hides its expand buttons and
+  // keeps "Reset" hidden until the user expands something else.
+  expandedDirections.value.add(expansionKey(currentGuid.value, "upstream"));
+  expandedDirections.value.add(expansionKey(currentGuid.value, "downstream"));
   guidMetaTypeMap.value.set(currentGuid.value, currentMetaType.value);
   await fetchLineageForGuid(currentGuid.value);
   rebuildGraph();
