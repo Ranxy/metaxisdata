@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-4">
+  <div class="flex min-h-0 flex-col gap-4 xl:h-full">
     <PageHeader :title="t('lineageGraph.title')">
       <template #title-extra>
         <Badge
@@ -35,36 +35,13 @@
       </template>
     </PageHeader>
 
-    <Card v-if="openLineageSources.length > 0">
-      <CardContent class="pt-6 space-y-3">
-        <div>
-          <h2 class="text-sm font-semibold tracking-tight">
-            {{ t("lineageGraph.openlineageSources") }}
-          </h2>
-          <p class="text-sm text-muted-foreground">
-            {{
-              selectedColumnGuid && selectedColumnName
-                ? t("lineageGraph.openlineageSourcesFiltered")
-                : t("lineageGraph.openlineageSourcesDescription")
-            }}
-          </p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <Button
-            v-for="source in openLineageSources"
-            :key="source.guid"
-            variant="outline"
-            size="sm"
-            @click="openOpenLineageRun(source.guid)"
-          >
-            {{ source.label }}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-
-    <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
-      <Card class="relative overflow-hidden" style="height: calc(100vh - 12rem)">
+    <!-- One row that fills the remaining viewport height at `xl` and up: the
+         graph and the detail column both scroll internally, so the page itself
+         never scrolls and the canvas keeps its full height whatever the header
+         or the selected node renders. Below `xl` the two cards stack and the
+         shell's scroll container does its usual job. -->
+    <div class="grid gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_24rem] xl:grid-rows-[minmax(0,1fr)]">
+      <Card class="relative min-h-0 h-[70vh] overflow-hidden xl:h-full">
         <div v-if="initialLoading" class="absolute inset-0 z-10 flex items-center justify-center bg-background/80">
           <AppLoading />
         </div>
@@ -96,7 +73,7 @@
       <!-- Always rendered: reserving a 24rem column only while a node happened
            to be selected left a blank strip beside the graph on arrival and
            shifted the canvas the moment anything was clicked. -->
-      <Card class="overflow-hidden xl:h-[calc(100vh-12rem)]">
+      <Card class="overflow-hidden xl:h-full xl:min-h-0">
         <CardContent v-if="selectedNodeSummary" class="flex h-full flex-col p-0">
           <div class="flex items-start justify-between gap-3 border-b px-5 py-4">
             <div class="space-y-1">
@@ -235,7 +212,7 @@ import { Background } from "@vue-flow/background";
 import { Controls } from "@vue-flow/controls";
 import { type Edge, type Node, useVueFlow, VueFlow } from "@vue-flow/core";
 import { MiniMap } from "@vue-flow/minimap";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import "@vue-flow/core/dist/style.css";
@@ -356,39 +333,6 @@ const currentGuid = computed(() => routeParamToGuid(route.params.guid));
 const currentMetaType = computed(
   () => parseMetaType(route.query.metaType) ?? MetaType.TABLE
 );
-
-const openLineageSources = computed(() => {
-  const sources = new Map<string, { guid: string; label: string }>();
-
-  for (const [guid, data] of nodeDataMap.value) {
-    for (const rel of [...data.upstream, ...data.downstream]) {
-      if (Number(rel.metaType) !== OPENLINEAGE_META_TYPE || !rel.metaGuid) {
-        continue;
-      }
-
-      if (
-        selectedColumnGuid.value &&
-        selectedColumnName.value &&
-        !relationMatchesSelectedColumn(rel)
-      ) {
-        continue;
-      }
-
-      if (!sources.has(rel.metaGuid)) {
-        sources.set(rel.metaGuid, {
-          guid: rel.metaGuid,
-          label: formatOpenLineageRunLabel(rel.metaGuid),
-        });
-      }
-    }
-
-    if (!nodeDataMap.value.has(guid)) {
-      continue;
-    }
-  }
-
-  return Array.from(sources.values());
-});
 
 const selectedNodeSummary = computed(() => {
   if (!selectedNodeGuid.value) {
@@ -884,6 +828,9 @@ function handleToggleFields(guid: string, visible: boolean) {
     fieldsVisibleGuids.value.delete(guid);
     clearColumnSelection();
   }
+  // The field list changes the node's height, so the column has to be stacked
+  // again: without this the grown node overlaps the one below it.
+  rebuildGraph();
 }
 
 function handleSelectColumn(guid: string, column: string) {
@@ -935,16 +882,88 @@ function handleSelectColumn(guid: string, column: string) {
   updateGraphState();
 }
 
+/** The depth control's value, clamped to the one-to-three levels it offers. */
+function parseExpandDepth(value: string): number {
+  const depth = Number.parseInt(value, 10);
+  return Number.isFinite(depth) && depth > 0 ? depth : 1;
+}
+
+/**
+ * Walks `depth` levels away from the clicked node in one direction, fetching
+ * each level before the next so the metadata type of every neighbour is known
+ * by the time it is requested. The depth control is what bounds the walk; the
+ * expansion is deduplicated across the whole walk, so a diamond in the graph
+ * is fetched once.
+ */
 async function handleExpandNode(guid: string, direction: LineageDirection) {
   const lineageType = directionToLineageType(direction);
   if (isDirectionLoaded(getNodeLineageData(guid), lineageType)) return;
 
-  expandedGuids.value.add(guid);
+  const depth = parseExpandDepth(expandDepth.value);
+  const revealed = new Set<string>();
+  let frontier = [guid];
 
-  await fetchLineageForGuid(guid, lineageType);
+  for (let level = 0; level < depth && frontier.length > 0; level++) {
+    const pending = frontier.filter(
+      (candidate) =>
+        !revealed.has(candidate) &&
+        !isDirectionLoaded(getNodeLineageData(candidate), lineageType)
+    );
+    for (const candidate of pending) {
+      revealed.add(candidate);
+      expandedGuids.value.add(candidate);
+    }
+    if (pending.length === 0) {
+      break;
+    }
+
+    const loaded = await Promise.all(
+      pending.map((candidate) => fetchLineageForGuid(candidate, lineageType))
+    );
+
+    const next = new Set<string>();
+    for (const data of loaded) {
+      const relations =
+        direction === "upstream" ? data.upstream : data.downstream;
+      for (const rel of relations) {
+        const neighbour =
+          direction === "upstream" ? rel.sourceGuid : rel.targetGuid;
+        if (neighbour) {
+          next.add(neighbour);
+        }
+      }
+    }
+    frontier = Array.from(next);
+  }
+
   rebuildGraph();
 
-  setTimeout(() => fitView({ duration: 300 }), 50);
+  if (revealed.size > 0) {
+    fitViewWhenMeasured();
+  }
+}
+
+/**
+ * Fits the graph once Vue Flow holds the expanded node set with every node
+ * measured. Both steps are asynchronous — the `nodes` prop is applied on a
+ * later tick, and the sizes come from a resize observer — so fitting any
+ * earlier frames the previous graph and leaves the new nodes off-screen.
+ * The `maxZoom` cap stops a click on a two-node graph from zooming past 1:1.
+ */
+async function fitViewWhenMeasured() {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    await nextTick();
+    const settled =
+      getNodes.value.length === nodes.value.length &&
+      getNodes.value.every(
+        (node) => node.dimensions.width > 0 && node.dimensions.height > 0
+      );
+    if (settled) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  fitView({ duration: 300, maxZoom: 1 });
 }
 
 function handleReset() {
