@@ -105,9 +105,9 @@ ORDER BY is_real_column, cl.target_column;
 
 \echo ''
 \echo '=== 6. edges whose source is a CTE that resolved as a relation (F8)'
--- After F7 the ingested SQL is analyzed per statement, so CTEs resolve properly.
--- What is left is an analyzer scope bug: a CTE referenced from a nested CTE
--- resolves as a table in the default schema.
+-- After F7 the ingested SQL is analyzed per statement, so CTEs resolve properly,
+-- and F8 ported the wildcard rule that kept a CTE reference resolvable. This
+-- section must be empty: a non-empty result is the defect coming back.
 SELECT DISTINCT source_guid, target_guid
 FROM column_lineage
 WHERE source_guid LIKE 'test-pg-1;e2e;public;%'
@@ -128,3 +128,52 @@ SELECT DISTINCT cl.source_guid, cl.source_column, cl.target_column
 FROM column_lineage cl
 WHERE cl.meta_guid = 'mysql-dev-1;e2e_ods;;v_region_order_stats'
 ORDER BY 1, 2, 3;
+
+-- Sections 9-13 measure what "Post-fix verification" in FINDINGS.md reports.
+-- Ingestion files each run's edges under that run's own meta row, so the same
+-- logical edge recurs once per run that produced it and every count below is
+-- DISTINCT; a raw row count would depend on how many chains have run against
+-- this database.
+
+\echo ''
+\echo '=== 9. distinct column edges for the e2e objects'
+SELECT count(*) AS distinct_edges FROM (
+  SELECT DISTINCT source_guid, source_column, target_guid, target_column
+  FROM column_lineage
+  WHERE source_guid LIKE '%e2e%' OR target_guid LIKE '%e2e%') x;
+
+\echo ''
+\echo '=== 10. analysed objects, by instance and type (17 = VIEW, 6 = MATERIALIZED VIEW)'
+SELECT split_part(meta_guid, ';', 1) AS instance, meta_type, count(*) AS objects
+FROM column_lineage_version
+WHERE meta_guid LIKE '%e2e%' AND meta_type <> 100
+GROUP BY 1, 2 ORDER BY 1, 2;
+
+\echo ''
+\echo '=== 11. column claims on a TABLE that name a column it does not have'
+-- Must be empty. A view keeps its columns in its own metadata rather than as
+-- registry rows, so only TABLE targets are judged here.
+SELECT cl.target_guid, cl.target_column, count(*) AS edges
+FROM column_lineage cl
+WHERE cl.target_column <> ''
+  AND EXISTS (SELECT 1 FROM meta_registry_resource t
+              WHERE t.guid = cl.target_guid AND t.object_type = 4)
+  AND NOT EXISTS (SELECT 1 FROM meta_registry_resource c
+                  WHERE c.guid = cl.target_guid || ';' || cl.target_column AND c.object_type = 7)
+GROUP BY 1, 2 ORDER BY 1, 2;
+
+\echo ''
+\echo '=== 12. positional placeholder columns and external endpoints'
+SELECT (SELECT count(*) FROM column_lineage
+        WHERE source_column ~ '^_[0-9]+$' OR target_column ~ '^_[0-9]+$') AS positional_columns,
+       (SELECT count(DISTINCT g) FROM (
+          SELECT source_guid AS g FROM column_lineage WHERE source_guid LIKE 'external:%'
+          UNION SELECT target_guid FROM column_lineage WHERE target_guid LIKE 'external:%') e) AS external_endpoints;
+
+\echo ''
+\echo '=== 13. OpenLineage runs per day'
+-- A single chain adds 30 runs (26 task runs + one DAG-level run per DAG); the
+-- chain itself spans one to two minutes, so count from its start rather than
+-- grouping by the minute.
+SELECT date_trunc('day', created_at) AS day, count(*) AS runs
+FROM openlineage_run GROUP BY 1 ORDER BY 1 DESC LIMIT 5;

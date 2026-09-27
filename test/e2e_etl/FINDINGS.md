@@ -15,16 +15,31 @@ part of the Airflow SQL path is not trustworthy (F3/F4).**
 
 Reproduction: the fixture was wiped with `install.sh --bootstrap` and the chain
 re-run through `run_chain.sh` afterwards (4 DAGs, 26 tasks, all green, 50 s).
-Row counts and every finding below reproduced byte-for-byte — same hop edge
-counts (5 / 8 / 44 / 5 / 4), same 5 phantom StarRocks GUIDs, same 2 CTE
+Row counts and every finding below reproduced byte-for-byte — same pre-fix hop
+edge counts (5 / 8 / 44 / 5 / 4), same 5 phantom StarRocks GUIDs, same 2 CTE
 phantoms, 0 analyzer errors.
+
+## How to read the numbers
+
+Everything above and in the findings below was measured on that first run, before
+any fix landed. The fixes changed what the chain stores, so several of those
+figures are deliberately superseded; **"Post-fix verification"** at the end holds
+the current ones and states the basis of each count. The two sections are a
+before and an after, not a contradiction.
+
+The basis matters because a count of stored rows also depends on how many chains
+have run against the database: ingestion files each run's edges under that run's
+own meta row, so the same logical edge appears once per run that produced it (this
+database has accumulated several chains). Every count here that must be stable is
+therefore a count of **distinct** relation pairs or distinct column edges, and
+says so.
 
 ## Fix status
 
 F1, F2, F3, F4, F6, F7 and F8 are fixed in this repository; F5 is upstream, and
 this repository now surfaces it instead of hiding it (see F5). Each fix carries
-hermetic unit coverage, and all four were re-verified on this chain after
-rebuilding and restarting the server (see "Post-fix verification" below).
+hermetic unit coverage, and every one was re-verified on this chain after the
+last backend change (see "Post-fix verification" below).
 
 | # | State | Where |
 | --- | --- | --- |
@@ -39,8 +54,9 @@ rebuilding and restarting the server (see "Post-fix verification" below).
 | A | fixed | `backend/api/v1/lineage_service.go` — an unresolved node renders instead of answering `CodeNotFound` |
 | B | fixed | `RevalidateUnresolvedLineage` + `FindColumnLineageWithUnknownEndpoint`, run by the maintenance pass |
 
-`verify_chain.sql` section 4 must list only the two CTE aliases, and section 5
-must return the table's real columns and nothing else.
+`verify_chain.sql` sections 4 and 6 must be **empty** — no lineage endpoint may be
+unregistered and no edge may be sourced from a CTE — and section 5 must list the
+table's real columns and flag nothing as bogus.
 
 ---
 
@@ -424,38 +440,68 @@ sources — `orders` and `customers`, never `base` or `agg`.
 
 ## Post-fix verification
 
-Rebuilt, restarted the server on :8083, cleared the OpenLineage artifacts from
-the earlier runs, then `install.sh --bootstrap` + `run_chain.sh` again: 4 DAGs,
-26 tasks, all green.
+Measured on a chain run after every fix above had landed (server from `0bfef8a`,
+`install.sh --bootstrap` + `run_chain.sh`): 4 DAGs, 26 task instances, all green.
+Distinct counts, per "How to read the numbers".
 
 | Check | Before | After |
 | --- | --- | --- |
 | F1: PG → StarRocks edges on registered GUIDs | 0 of 5 (all phantom) | **5 of 5** |
 | F1: upstream walk from `starrocks-dev-1;e2e_ods;;mv_daily_sales.net_line_amount` | 0 rows | 4 hops back to `mysql-dev-1;e2e_ods;;order_items.line_amount` |
 | F1: deepest chain from `mysql e2e_ods.orders` | 3 hops, ending on phantom GUIDs | **5 hops**, ending on the real `starrocks-dev-1;e2e_ads;;v_sr_channel_region` / `…;v_sr_sales_band` / `…;mv_sr_region_daily` |
-| F1: unregistered lineage endpoints | 5 phantom StarRocks GUIDs + 2 CTE aliases | **2 CTE aliases only** |
-| F2: DAG-2 run with connection host `127.0.0.1` (instance `localhost`) | 152 external endpoints | **0 external, 55 internal edges** |
+| F1: unregistered lineage endpoints (§4) | 5 phantom StarRocks GUIDs + 2 CTE aliases | **0** |
+| F1: edges sourced from a CTE-shaped relation (§6) | 2 CTE aliases, 4 table-level edges | **0** |
+| F2: endpoints that fall back to an external dataset | 152 edges / 12 external datasets | **0** |
 | F4: column edges naming a column the target table lacks | 267 edges / 31 bogus columns on `dwd_customer_360` alone | **0** |
-| F4: `dwd_order_fact` real columns claimed | 27 of 48 | 27 of 27 (21 bogus claims gone) |
-| F4: PG-internal table pairs | 44 (including false cross-product pairs) | **44** — same coverage, but the pairs that only existed through bogus columns now carry no column mapping |
-| Analyzer failures on `e2e` objects | 0 | 0 |
+| F4: `dwd_order_fact` target columns claimed | 48 claims, 21 of them bogus | **33 claims, all real** (the table has 34 columns) |
+| F4: positional `_N` placeholder columns | 21+ | **0** |
+| F4: PG-internal relation pairs | 44 (including false cross-product pairs) | **34** |
+| F8: MySQL-internal relation pairs | 5 | **7** |
+| Relation pairs per hop (§1) | mysql internal 5 · mysql → PG 8 · PG internal 44 · PG → StarRocks 5 · StarRocks internal 4 | mysql internal 7 · mysql → PG 8 · PG internal 34 · PG → StarRocks 5 · StarRocks internal 4 |
+| Analyzer failures on `e2e` objects (§7) | 0 | 0 |
+| Analysed objects | 18 | **19** — PostgreSQL 12 views + 1 materialized view, MySQL 3 views, StarRocks 2 views + 1 materialized view |
+| Distinct column edges for the `e2e` objects | 849 — basis not recorded | **540** |
+| OpenLineage runs per chain | 63 — basis not recorded | **30** — 26 task runs + one DAG-level run per DAG |
 
-What is left, by design: the two CTE aliases
-(`test-pg-1;e2e;public;agg`, `…;line_agg`) still have four table-level edges.
-They are counted and logged on every ingestion, and the server warns
-(`ingested lineage referenced relations the metadata registry does not have`).
+The pair counts moved in both directions, and only one movement is the fixture's
+own doing:
+
+- **PG-internal 44 → 34.** The 10 pairs that went away are the false cross-product
+  pairs F4 lists (`v_order_line → dwd_customer_360`, `mv_daily_sales →
+  ads_customer_segment`, …). F7 replaces the producer's run-level guess with the
+  analyzer's per-statement result, which never had them. What survives is the real
+  chain: `e2e_ods.*` → `v_order_base`/`v_order_line` → `v_customer_360` /
+  `mv_daily_sales` / `v_experimental_*` → `dwd_*` / `ads_*`.
+- **MySQL-internal 5 → 7** is the fixture's growth, not the analyzer's:
+  `mysql/90_views.sql` gained `v_region_order_stats` for F8's shape.
+
+The pre-fix 849 and 63 could not be reconstructed from what is stored: the basis
+of neither was recorded, and this database has accumulated several chains (it
+holds 1 183 raw / 540 distinct `e2e` edges and 115 run rows, of which 30 belong to
+the chain measured here). That is why the table records a basis for every number
+it does claim.
+
+Nothing is left unresolved: §4 and §6 are empty, no endpoint falls back to an
+external dataset, and §5 lists only columns the table has. The two F7 provenance
+claims hold (`dwd_order_fact.paid_amount` and `.refund_amount` come from
+`v_customer_payments`, and `v_customer_360`'s own from itself), relation typing is
+correct (`v_order_line.line_amount → mv_daily_sales.net_line_amount` is
+`AGGREGATE`, the DataX hop is `DIRECT`), and the data flow is unchanged: 8 tables
+MySQL → PG, 2 000 / 300 / 1 921 / 1 921 / 38 rows in the PG layers, the same
+counts in StarRocks, and the StarRocks views and async materialized view return
+75 / 24 454 / 1 723 rows.
 
 ## What the run proved works
 
 | Area | Evidence |
 | --- | --- |
 | MySQL → PG (DataX/OL) | 8 table edges; column edges inferred from the DataX schema facet, column-for-column |
-| PG analyzer | 6 views + 1 materialized view + 2 serving views analysed, **0 errors** — including `DISTINCT ON`, `GROUPING SETS`, `LATERAL … LIMIT`, `generate_series`, `FILTER` on aggregates *and* on window functions |
-| PG internal chain | `e2e_ods.* → v_order_base/v_order_line → v_customer_360 / mv_daily_sales → dwd_* / ads_*` walks correctly (44 table edges) |
-| StarRocks analyzer | 2 views + 1 async materialized view resolved against the *real* landed tables (4 edges) |
+| PG analyzer | 12 views + 1 materialized view analysed, **0 errors** — including `DISTINCT ON`, `GROUPING SETS`, `LATERAL … LIMIT`, `generate_series`, `FILTER` on aggregates *and* on window functions |
+| PG internal chain | `e2e_ods.* → v_order_base/v_order_line → v_customer_360 / mv_daily_sales → dwd_* / ads_*` walks correctly (34 relation pairs) |
+| StarRocks analyzer | 2 views + 1 async materialized view resolved against the *real* landed tables (4 pairs) |
 | MySQL analyzer | 3 source views resolved, one of them a nested CTE with `COUNT(*)` (F8's shape) |
-| OpenLineage ingestion | API key auth, rate-limit path, run/job/dataset persistence, 63 runs from 4 DAGs, `has_lineage` correct |
-| Data flow | 8 tables MySQL → PG; 2 000/300/1 921/1 921/38 rows in the PG layers; identical counts in StarRocks; SR views and async MV return 75 / 1 723 rows |
+| OpenLineage ingestion | API key auth, rate-limit path, run/job/dataset persistence, 30 runs per chain from 4 DAGs (26 task runs + 4 DAG-level), `has_lineage` correct |
+| Data flow | 8 tables MySQL → PG; 2 000/300/1 921/1 921/38 rows in the PG layers; identical counts in StarRocks; SR views and async MV return 75 / 24 454 / 1 723 rows |
 | Relation typing | analyzer edges carry `AGGREGATE` (4) vs `DIRECT` (1) correctly, e.g. `v_order_line.line_amount → mv_daily_sales.net_line_amount` |
 
 ## Remaining limitations
@@ -483,9 +529,9 @@ They are counted and logged on every ingestion, and the server warns
    Verified live against this database: a synthetic pending edge carrying one valid
    and one invalid target column came back re-validated - the valid claim kept, the
    invalid one degraded to a table-level edge - with its unknown relation counted
-   (`revalidated=2 objectsStillUnknown=1` out of 22 unknown-endpoint edges, the rest
-   being the analyzer's `information_schema` references, which B deliberately leaves
-   to the analyzer's own re-analysis).
+   (`revalidated=2 objectsStillUnknown=1` out of the 22 unknown-endpoint edges present
+   at that time; one remains today, an `information_schema` reference, which B
+   deliberately leaves to the analyzer's own re-analysis).
    The pass runs on the maintenance interval (6 h) and revalidates ingested edges
    only. The fixture still produces no pending endpoint: with F7 and F8 fixed,
    sections 4 and 6 of `verify_chain.sql` are empty.
@@ -504,7 +550,9 @@ They are counted and logged on every ingestion, and the server warns
 PGPASSWORD=dev psql -h localhost -U dev -d metaxisdata -f verify_chain.sql
 ```
 
-Section 4 is the quickest regression gate: it must list only the two CTE
-aliases, and section 5 must list the table's real columns and flag nothing as
-bogus. Both exercise the ingestion path, so the server has to be rebuilt and
-restarted after a change there.
+Sections 4 and 6 are the quickest regression gate: both must be empty, and section
+5 must list the table's real columns and flag nothing as bogus. All three exercise
+the ingestion path, so the server has to be rebuilt and restarted after a change
+there. Sections 9-13 produce the counts "Post-fix verification" reports: distinct
+`e2e` edges, analysed objects, bogus column claims anywhere, positional columns
+and external endpoints, and the run totals.
