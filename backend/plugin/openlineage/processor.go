@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/pkg/errors"
 
@@ -27,6 +28,11 @@ type Processor struct {
 	// is analyzed with it instead of trusting the producer's run-level
 	// columnLineage facet.
 	lineage *lineage.Analyzer
+	// revalidateMu serializes revalidation passes. The maintenance pass and the
+	// post-sync runner share one processor and can fire at once, and both replace
+	// an object's edges as a set, so overlapping passes would contend on the same
+	// rows to write the same result.
+	revalidateMu sync.Mutex
 }
 
 // NewProcessor creates a new event processor.

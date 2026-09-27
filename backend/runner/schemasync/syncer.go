@@ -39,22 +39,32 @@ const (
 )
 
 // NewSyncer creates a schema syncer.
-func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, lineageAnalyzer *lineageanalyzer.Analyzer) *Syncer {
+func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, lineageAnalyzer *lineageanalyzer.Analyzer, lineageRevalidator LineageRevalidator) *Syncer {
 	return &Syncer{
-		store:           stores,
-		dbFactory:       dbFactory,
-		stateCfg:        stateCfg,
-		lineageAnalyzer: lineageAnalyzer,
+		store:              stores,
+		dbFactory:          dbFactory,
+		stateCfg:           stateCfg,
+		lineageAnalyzer:    lineageAnalyzer,
+		lineageRevalidator: lineageRevalidator,
 	}
+}
+
+// LineageRevalidator is signalled when a schema sync has added or changed
+// metadata. Ingested lineage that named a relation the registry did not have is
+// re-checked then, as soon as the relation appears, instead of at the next
+// maintenance pass.
+type LineageRevalidator interface {
+	Trigger()
 }
 
 // Syncer is the schema syncer.
 type Syncer struct {
-	store           *store.Store
-	dbFactory       *dbfactory.DBFactory
-	stateCfg        *state.State
-	lineageAnalyzer *lineageanalyzer.Analyzer
-	databaseSyncMap sync.Map // map[string]*store.DatabaseMessage
+	store              *store.Store
+	dbFactory          *dbfactory.DBFactory
+	stateCfg           *state.State
+	lineageAnalyzer    *lineageanalyzer.Analyzer
+	lineageRevalidator LineageRevalidator
+	databaseSyncMap    sync.Map // map[string]*store.DatabaseMessage
 	// databaseSyncRetryMap holds the backoff of a database whose sync failed:
 	// the database stays queued and the checker skips it until nextAt, so a
 	// transient failure does not wait for the next instance-level scan.
@@ -755,6 +765,15 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 				s.lineageAnalyzer.QueueAnalysis(item.GUID, item.ObjectType)
 			}
 		}
+	}
+
+	// Metadata this sync added or changed can turn a relation an ingested edge
+	// named from unknown into known, which is the one thing that lets its column
+	// claims be checked. Signal that only when there is something new to check,
+	// so a sync that found no change does not schedule a pass over the same
+	// pending edges. The runner coalesces the signals of one sync round.
+	if s.lineageRevalidator != nil && len(bmc.updates) > 0 {
+		s.lineageRevalidator.Trigger()
 	}
 
 	// LastSyncTime is recorded only after the metadata transaction committed.

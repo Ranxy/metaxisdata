@@ -25,9 +25,11 @@ const (
 
 // Runner prunes data with a retention window.
 // LineageRevalidator re-checks ingested lineage whose endpoints the metadata
-// registry did not know when it was stored.
+// registry did not know when it was stored, and whose column claims a relation
+// that appeared later contradicts.
 type LineageRevalidator interface {
 	RevalidateUnresolvedLineage(ctx context.Context, limit int) (revalidated, stillUnknown int, err error)
+	RevalidateContradictedColumnClaims(ctx context.Context, limit int) (revalidated, stillUnknown int, err error)
 }
 
 type Runner struct {
@@ -84,6 +86,15 @@ func (r *Runner) runOnce(ctx context.Context) {
 			slog.Info("Revalidated lineage with an unknown endpoint",
 				slog.Int("edges", revalidated),
 				slog.Int("objectsStillUnknown", stillUnknown))
+		}
+
+		// A relation that has appeared since the pass above takes its edges out of
+		// that sweep - they no longer have an unknown endpoint - so the claims they
+		// could not be checked against are swept on their own.
+		if revalidated, _, err := r.revalidator.RevalidateContradictedColumnClaims(ctx, 0); err != nil {
+			slog.Error("Failed to revalidate lineage with a contradicted column claim", log.WithError(err))
+		} else if revalidated > 0 {
+			slog.Info("Revalidated lineage with a contradicted column claim", slog.Int("edges", revalidated))
 		}
 	}
 

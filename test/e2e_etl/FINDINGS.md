@@ -52,7 +52,7 @@ last backend change (see "Post-fix verification" below).
 | F7 | fixed | `backend/plugin/openlineage/sql_facet_lineage.go` — SQL-facet events are analyzed, not believed |
 | F8 | fixed | `queryLocalWildcardSourceRef` in PostgreSQL **and** the MySQL family (StarRocks already had it) |
 | A | fixed | `backend/api/v1/lineage_service.go` — an unresolved node renders instead of answering `CodeNotFound` |
-| B | fixed | `RevalidateUnresolvedLineage` + `FindColumnLineageWithUnknownEndpoint`, run by the maintenance pass |
+| B | fixed | `RevalidateUnresolvedLineage` + `FindColumnLineageWithUnknownEndpoint`, and `RevalidateContradictedColumnClaims` + `FindColumnLineageWithContradictedColumnClaim`; the maintenance pass runs both, and a schema sync signals `backend/runner/lineagevalidation` |
 
 `verify_chain.sql` sections 4 and 6 must be **empty** — no lineage endpoint may be
 unregistered and no edge may be sourced from a CTE — and section 5 must list the
@@ -522,19 +522,39 @@ counts in StarRocks, and the StarRocks views and async materialized view return
    - **(A)** the lineage graph reports such a node as an unresolved relation of the
      type the edge claims (`lineageNodeWithMissingMeta`) instead of answering
      `CodeNotFound`, so one pending endpoint cannot fail the whole request;
-   - **(B)** the maintenance pass re-runs the ingestion validation over the edges
-     whose endpoints are unknown (`FindColumnLineageWithUnknownEndpoint`): a column
-     the relation turns out not to have is blanked, the object types are filled, and
-     what is still unknown is counted and logged rather than kept silent.
+   - **(B)** two passes re-run the ingestion validation over ingested edges, and
+     they cover the two halves of the problem:
+     - `FindColumnLineageWithUnknownEndpoint` covers an edge whose endpoint is
+       *still* unknown: the object types are filled from the side that is known, a
+       claim against that side is blanked, and what is still unknown is counted and
+       logged rather than kept silent.
+     - `FindColumnLineageWithContradictedColumnClaim` covers the edge whose endpoint
+       *became* known. It names a column on a relation that is now a TABLE, and the
+       table has no such column. This is the only pass that can still fix such a
+       claim: the sync that registered the relation also took the edge out of the
+       sweep above, and until this pass existed the claim stayed wrong forever -
+       waiting for the maintenance interval did not help. It is what
+       `verify_chain.sql` section 11 asserts is empty.
+     Both replace a run's edge set as a set, so every edge of an affected run is
+     validated together.
+   - **(C)** a schema sync that added or changed metadata signals the
+     `lineagevalidation` runner, which coalesces the signals of one sync round and
+     runs the contradicted-claim pass. A claim is therefore fixed moments after the
+     relation appears, not at the next maintenance interval.
    Verified live against this database: a synthetic pending edge carrying one valid
    and one invalid target column came back re-validated - the valid claim kept, the
    invalid one degraded to a table-level edge - with its unknown relation counted
    (`revalidated=2 objectsStillUnknown=1` out of the 22 unknown-endpoint edges present
-   at that time; one remains today, an `information_schema` reference, which B
-   deliberately leaves to the analyzer's own re-analysis).
-   The pass runs on the maintenance interval (6 h) and revalidates ingested edges
-   only. The fixture still produces no pending endpoint: with F7 and F8 fixed,
-   sections 4 and 6 of `verify_chain.sql` are empty.
+   at that time; one remains today, an `information_schema` reference, which the
+   unknown-endpoint pass deliberately leaves to the analyzer's own re-analysis).
+   (C) is guarded by
+   `TestSchemaSyncRevalidatesIngestedLineageRealServerIntegration`, which drives the
+   real server through the sequence that exposed the gap: an edge against a table
+   that does not exist yet, then the table, then the sync. The ghost claim must be
+   gone inside the 45 s the test allows, where the maintenance interval is 6 h.
+   The maintenance pass runs both sweeps on its interval (6 h) and revalidates
+   ingested edges only. The fixture still produces no pending endpoint: with F7 and
+   F8 fixed, sections 4 and 6 of `verify_chain.sql` are empty.
 4. **One event carries the whole SQL script.** The extractor still merges every
    statement of a task into one input/output set and one facet. F7 makes that
    irrelevant for column lineage (the analyzer splits the script itself), but the

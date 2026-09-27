@@ -189,6 +189,59 @@ func (s *Store) FindColumnLineageWithUnknownEndpoint(ctx context.Context, exclud
 	return result, nil
 }
 
+// FindColumnLineageWithContradictedColumnClaim returns the ingested edges whose
+// column claim the registry now proves wrong: the edge names a column on a
+// relation that is a TABLE, and that table has no such column.
+//
+// Ingestion stores such a claim when the relation is not in the registry yet -
+// the table may have been created after the last schema sync - and it cannot
+// check it then. Once the relation appears the claim becomes checkable, but the
+// edge no longer has an unknown endpoint, so the sweep in
+// FindColumnLineageWithUnknownEndpoint can never see it again. This is the query
+// that finds it. The claim on a view or materialized view is left alone: those
+// keep their columns in their own metadata rather than as registry rows.
+func (s *Store) FindColumnLineageWithContradictedColumnClaim(ctx context.Context, excludePrefix string, limit int) ([]*ColumnLineage, error) {
+	rows, err := s.GetDB().QueryContext(ctx, `
+		SELECT id, meta_guid, meta_type, source_guid, source_column, source_type, target_guid, target_column, target_type, relation_type, transformation, updated_at
+		FROM column_lineage cl
+		WHERE cl.meta_type = $1
+		  AND cl.source_guid NOT LIKE $2
+		  AND cl.target_guid NOT LIKE $2
+		  AND (
+		    (cl.target_column <> ''
+		      AND EXISTS (SELECT 1 FROM meta_registry_resource t WHERE t.guid = cl.target_guid AND t.object_type = $3)
+		      AND NOT EXISTS (SELECT 1 FROM meta_registry_resource c WHERE c.guid = cl.target_guid || ';' || cl.target_column AND c.object_type = $4))
+		    OR
+		    (cl.source_column <> ''
+		      AND EXISTS (SELECT 1 FROM meta_registry_resource s WHERE s.guid = cl.source_guid AND s.object_type = $3)
+		      AND NOT EXISTS (SELECT 1 FROM meta_registry_resource c WHERE c.guid = cl.source_guid || ';' || cl.source_column AND c.object_type = $4))
+		  )
+		ORDER BY cl.updated_at, cl.id
+		LIMIT $5`,
+		storepb.MetaType_OPENLINEAGE,
+		excludePrefix+"%",
+		storepb.MetaType_TABLE,
+		storepb.MetaType_COLUMN,
+		max(limit, 0))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to query column lineage with a contradicted column claim")
+	}
+	defer rows.Close()
+
+	var result []*ColumnLineage
+	for rows.Next() {
+		cl, err := scanColumnLineage(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, cl)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "rows iteration error")
+	}
+	return result, nil
+}
+
 func (s *Store) ListColumnLineage(ctx context.Context, find *FindColumnLineageMessage) ([]*ColumnLineage, error) {
 	where, args := []string{"TRUE"}, []any{}
 

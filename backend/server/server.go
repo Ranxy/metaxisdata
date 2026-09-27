@@ -23,6 +23,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/engines"
 	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
 	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
+	"github.com/Ranxy/metaxisdata/backend/runner/lineagevalidation"
 	"github.com/Ranxy/metaxisdata/backend/runner/maintenance"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -51,6 +52,7 @@ type Server struct {
 	startedTS       int64
 	lineageAnalyzer *lineageanalyzer.Analyzer
 	schemaSync      *schemasync.Syncer
+	lineageValidate *lineagevalidation.Runner
 	maintenance     *maintenance.Runner
 	llmRegistry     *llmcomp.Registry
 	// PG server stoppers.
@@ -109,12 +111,15 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	}
 	s.stateCfg = stateCfg
 
-	s.schemaSync = schemasync.NewSyncer(stores, dbFactory, stateCfg, s.lineageAnalyzer)
+	// The maintenance pass and the post-sync runner revalidate the same ingested
+	// edges, so they share one processor and its lock.
+	ingestedLineage := openlineage.NewProcessor(stores, lineageEngines)
+	s.lineageValidate = lineagevalidation.NewRunner(ingestedLineage)
+	s.maintenance = maintenance.NewRunner(stores, ingestedLineage)
 
-	s.maintenance = maintenance.NewRunner(stores, openlineage.NewProcessor(stores, lineageEngines))
+	s.schemaSync = schemasync.NewSyncer(stores, dbFactory, stateCfg, s.lineageAnalyzer, s.lineageValidate)
 
 	s.llmRegistry = llmcomp.NewRegistry(stores, profile)
-
 	if err := s.initializeSetting(ctx); err != nil {
 		return nil, errors.Wrap(err, "failed to init config")
 	}
@@ -130,9 +135,10 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")
 	}
 
-	s.runnerWG.Add(3)
+	s.runnerWG.Add(4)
 	go s.lineageAnalyzer.Run(s.runnerCtx, &s.runnerWG)
 	go s.schemaSync.Run(s.runnerCtx, &s.runnerWG)
+	go s.lineageValidate.Run(s.runnerCtx, &s.runnerWG)
 	go s.maintenance.Run(s.runnerCtx, &s.runnerWG)
 
 	configureEchoRouters(s.echoServer, profile)
