@@ -4,6 +4,7 @@ package runner
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -50,7 +51,19 @@ CREATE VIEW public.facet_v_right AS SELECT id, amount FROM public.facet_right;
 	key, _, err := env.Store.CreateOpenLineageAPIKey(ctx, "integration-sql-facet", "integration-test", "")
 	require.NoError(t, err)
 
-	namespace := fmt.Sprintf("postgres://%s:%s", env.PostgresHost, env.PostgresPort)
+	// Auto-match answers the first instance registered on a host:port, and this
+	// environment registers one per test on the same server, so the assertions
+	// below would otherwise compare against whichever instance happened to be
+	// first. The mapping pins this test's own; it names no database, which the
+	// dataset names carry anyway.
+	namespace := fmt.Sprintf("postgres://%s:%s/%s", env.PostgresHost, env.PostgresPort, sourceDatabase)
+	mapping, err := env.Store.CreateNamespaceMapping(ctx, &store.NamespaceMappingMessage{
+		Namespace:          namespace,
+		InstanceResourceID: instanceID,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = env.Store.DeleteNamespaceMapping(context.Background(), mapping.ID) })
+
 	dataset := func(table string) map[string]any {
 		return map[string]any{"namespace": namespace, "name": fmt.Sprintf("%s.public.%s", sourceDatabase, table)}
 	}

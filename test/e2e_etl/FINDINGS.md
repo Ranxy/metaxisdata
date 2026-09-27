@@ -36,7 +36,7 @@ says so.
 
 ## Fix status
 
-F1, F2, F3, F4, F6, F7 and F8 are fixed in this repository; F5 is upstream, and
+F1, F2, F3, F4, F6, F7, F8 and F9 are fixed in this repository; F5 is upstream, and
 this repository now surfaces it instead of hiding it (see F5). Each fix carries
 hermetic unit coverage, and every one was re-verified on this chain after the
 last backend change (see "Post-fix verification" below).
@@ -51,6 +51,7 @@ last backend change (see "Post-fix verification" below).
 | F6 | fixed | `backend/store/openlineage_task.go` (found while verifying F1–F4) |
 | F7 | fixed | `backend/plugin/openlineage/sql_facet_lineage.go` — SQL-facet events are analyzed, not believed |
 | F8 | fixed | `queryLocalWildcardSourceRef` in PostgreSQL **and** the MySQL family (StarRocks already had it) |
+| F9 | fixed | `datasetDatabase` precedence in `backend/plugin/openlineage/resolver.go`, and the SQL path reads the database back from the resolved GUID in `sql_facet_lineage.go` |
 | A | fixed | `backend/api/v1/lineage_service.go` — an unresolved node renders instead of answering `CodeNotFound` |
 | B | fixed | `RevalidateUnresolvedLineage` + `FindColumnLineageWithUnknownEndpoint`, and `RevalidateContradictedColumnClaims` + `FindColumnLineageWithContradictedColumnClaim`; the maintenance pass runs both, and a schema sync signals `backend/runner/lineagevalidation` |
 
@@ -437,6 +438,75 @@ all five dialects pass. The fixture now covers that side on the chain too:
 `mysql/90_views.sql` defines `v_region_order_stats`, a nested CTE whose inner
 relation is aggregated with `COUNT(*)`, and `verify_chain.sql` section 8 lists its
 sources — `orders` and `customers`, never `base` or `agg`.
+
+## F9 — an ingested dataset resolves to the instance's default database
+
+**Symptom.** An event whose dataset names carry the database the datasets live in
+(`app1.public.orders`) resolved to the instance's *default* database instead, so
+the edge landed on a GUID the registry does not have. With the instance's data
+source naming `postgres` and the tables living in `it_app_<hash>`, the ingested
+edges were stored as `<instance>;postgres;public;<table>`, and ingestion warned
+that the relation was unknown on every event. No "stored as an external dataset"
+warning appeared: the resolver still answered `Internal: true`, so F2's signal
+could not fire and the wrong GUID was silent.
+
+**Root cause.** Three places can name the database, and `resolveByAutoMatch`
+(`backend/plugin/openlineage/resolver.go`) had the precedence inverted. It chose
+"the namespace path, else the instance's data source" and passed that to
+`buildGUID`, whose `databaseOverride` replaces the database `splitDatasetName` had
+read from the name. The name is the most specific evidence - one dataset, one
+database - while the instance's data source is a registration detail: an instance
+serves every database its schema sync enumerates, so its data source usually names
+the server's default database.
+
+**Impact.** Every ingested edge of such an event points at a relation that does not
+exist: phantom nodes in the graph, column claims that can never be checked, and
+`verify_chain.sql` section 4 lists them. Only a multi-database instance whose data
+source names a database other than the producer's hits it, which is why this chain
+never did - `test-pg-1`'s data source names `e2e`, the same database its datasets
+name.
+
+**The two ingestion paths disagreed.** The SQL-facet path (F7) took the database
+from the dataset name (`splitDatasetName(anchor.Name)`), while the facet path took
+it from the instance's data source, so one dataset name resolved two ways depending
+on whether the event carried SQL. The SQL path had the mirror-image gap: a name at
+`schema.table` - no database, the ordinary way to qualify in PostgreSQL - left the
+analysis context's database empty, and its relations became
+`<instance>;;public;<table>`, the same phantom class for the opposite reason.
+
+**Fixed.** `datasetDatabase` owns the precedence - the dataset name, then the
+namespace the producer sent, then the instance's data source - and every call site
+that decides a dataset's database now goes through one decision:
+
+- `resolveByAutoMatch` (the facet path) uses it directly;
+- the SQL path no longer re-derives the database from the raw name: it reads the
+  database and schema back from the GUID the resolver produced
+  (`databaseAndSchemaFromGUID`), so it acts on the same decision and the
+  `schema.table` form falls back the same way;
+- a namespace mapping keeps winning when it names a database, because that is an
+  administrator stating the answer, but a mapping that names only the instance
+  applies the same precedence instead of leaving the database empty.
+
+**Verification.** `TestDatasetDatabase` and `TestMappingDatabase` pin the
+precedence hermetically: the dataset name first, then the namespace, then the
+instance's data source, with a mapping's own database winning when it names one.
+`TestFacetLineageUsesTheDatasetNameDatabaseRealServerIntegration` posts a facet
+event whose namespace names no database and requires the stored edge to name the
+database its dataset name carries - the reported defect, since the instance's data
+source names the server's default.
+`TestOpenLineageSqlFacetUsesTheNamespaceDatabaseRealServerIntegration` drives a
+`schema.table` event whose namespace carries the database and requires the stored
+edges to name it, which is the SQL path's half. And
+`TestSchemaSyncRevalidatesIngestedLineageRealServerIntegration` pins its instance
+with a namespace mapping whose namespace names a decoy database, requires the
+dataset name to win over it, and then drives the sync that repairs the claim.
+
+The real-server tests assert the database through the trailing segments of the
+GUID, or pin the instance with a mapping. The harness registers one PostgreSQL
+instance per test and never deletes it, so several instances answer the same
+host:port and auto-match answers whichever was registered first. That is an
+environment artifact, not a product promise - a producer that needs one instance
+instead of another states it with a namespace mapping.
 
 ## Post-fix verification
 

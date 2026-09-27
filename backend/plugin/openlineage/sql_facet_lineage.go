@@ -127,8 +127,24 @@ func (p *Processor) analysisContextFor(ctx context.Context, anchor Dataset) (cat
 	}
 
 	engine := instance.Metadata.GetEngine()
-	database, schema, _ := splitDatasetName(engine, anchor.Name)
+	// The resolver already decided which database and schema the anchor belongs
+	// to, applying the name/namespace/data-source precedence. Reading them back
+	// from its GUID keeps this path and the facet path on the same decision;
+	// re-deriving them from the dataset name here is what let a statement and the
+	// same dataset without SQL land on different relations.
+	database, schema := databaseAndSchemaFromGUID(resolved.GUID)
 	return catalog.AnalysisContext{InstanceID: instanceID, Database: database, Schema: schema}, engine, true
+}
+
+// databaseAndSchemaFromGUID reads the parts a dataset GUID was built from. The
+// GUID is instance;database;schema;table for every engine, with the schema empty
+// on the engines that have none.
+func databaseAndSchemaFromGUID(guid string) (database, schema string) {
+	parts := common.SplitMetaGUID(guid)
+	if len(parts) < 4 {
+		return "", ""
+	}
+	return parts[1], parts[2]
 }
 
 // mapAnalyzedRelations converts the analyzer's relations into the edges the run

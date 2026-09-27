@@ -172,12 +172,25 @@ func (r *Resolver) resolveByManualMapping(ctx context.Context, namespace, datase
 		return nil, nil
 	}
 
-	guid := buildGUID(instance.ResourceID, instance.Metadata.GetEngine(), mapping.DatabaseName, datasetName)
+	database := mappingDatabase(instance.Metadata.GetEngine(), datasetName, namespace, mapping.DatabaseName)
+	guid := buildGUID(instance.ResourceID, instance.Metadata.GetEngine(), database, datasetName)
 	return &ResolvedDataset{
 		GUID:     guid,
 		MetaType: storepb.MetaType_TABLE,
 		Internal: true,
 	}, nil
+}
+
+// mappingDatabase returns the database a namespace mapping resolves a dataset to.
+// A mapping that names one has stated the answer, so it wins; a mapping that names
+// only the instance leaves the database to the same evidence auto-match uses, so a
+// dataset whose name carries no database still resolves to the namespace's.
+func mappingDatabase(engine storepb.Engine, datasetName, namespace, databaseFromMapping string) string {
+	if databaseFromMapping != "" {
+		return databaseFromMapping
+	}
+	_, _, databaseFromNamespace := parseNamespace(namespace)
+	return datasetDatabase(engine, datasetName, databaseFromNamespace, "")
 }
 
 func (r *Resolver) resolveByAutoMatch(ctx context.Context, namespace, datasetName string) (*ResolvedDataset, error) {
@@ -197,10 +210,7 @@ func (r *Resolver) resolveByAutoMatch(ctx context.Context, namespace, datasetNam
 		}
 		for _, ds := range inst.Metadata.GetDataSources() {
 			if matchHostPort(ds.GetHost(), ds.GetPort(), host, port) {
-				database := dbFromNS
-				if database == "" {
-					database = ds.GetDatabase()
-				}
+				database := datasetDatabase(inst.Metadata.GetEngine(), datasetName, dbFromNS, ds.GetDatabase())
 				guid := buildGUID(inst.ResourceID, inst.Metadata.GetEngine(), database, datasetName)
 				return &ResolvedDataset{
 					GUID:     guid,
@@ -212,6 +222,29 @@ func (r *Resolver) resolveByAutoMatch(ctx context.Context, namespace, datasetNam
 	}
 
 	return nil, nil
+}
+
+// datasetDatabase decides which database a dataset belongs to, from the three
+// places one can be named.
+//
+// The dataset name is the most specific evidence - one dataset, one database -
+// and it wins whenever it carries one ("db.schema.table" on PostgreSQL,
+// "db.table" on the MySQL-wire engines). A name that carries none
+// ("schema.table", "table") falls back to the namespace the producer sent, and
+// only then to the instance's own data source. That last one is a registration
+// detail rather than a statement about this dataset: an instance serves every
+// database its schema sync enumerates, so its data source usually names the
+// server's default database. Letting it outrank the name is how an ingested edge
+// came to point at a relation the registry does not have, silently, because the
+// resolver still answered "internal".
+func datasetDatabase(engine storepb.Engine, datasetName, databaseFromNamespace, databaseFromDataSource string) string {
+	if database, _, _ := splitDatasetName(engine, datasetName); database != "" {
+		return database
+	}
+	if databaseFromNamespace != "" {
+		return databaseFromNamespace
+	}
+	return databaseFromDataSource
 }
 
 // listInstances returns the instance list, memoized for the request when the

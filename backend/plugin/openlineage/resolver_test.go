@@ -430,6 +430,77 @@ func TestSplitDatasetName(t *testing.T) {
 	}
 }
 
+// The database a dataset belongs to comes from the most specific evidence: the
+// name itself, then the namespace the producer sent, then the instance's own data
+// source. The last one is a registration detail, and letting it outrank a name
+// that carries a database is what pointed ingested edges at relations the
+// registry does not have.
+func TestDatasetDatabase(t *testing.T) {
+	tests := []struct {
+		name           string
+		engine         storepb.Engine
+		dataset        string
+		fromNamespace  string
+		fromDataSource string
+		want           string
+	}{
+		{
+			name:   "pg: the name's database beats the data source",
+			engine: storepb.Engine_POSTGRES, dataset: "app1.public.orders",
+			fromDataSource: "postgres", want: "app1",
+		},
+		{
+			name:   "pg: the name's database beats the namespace path too",
+			engine: storepb.Engine_POSTGRES, dataset: "app1.public.orders",
+			fromNamespace: "app2", fromDataSource: "postgres", want: "app1",
+		},
+		{
+			name:   "pg: a name without a database takes the namespace path",
+			engine: storepb.Engine_POSTGRES, dataset: "public.orders",
+			fromNamespace: "app1", fromDataSource: "postgres", want: "app1",
+		},
+		{
+			name:   "pg: and the data source only when the namespace names none",
+			engine: storepb.Engine_POSTGRES, dataset: "public.orders",
+			fromDataSource: "postgres", want: "postgres",
+		},
+		{
+			name:   "mysql: db.table is the name's database",
+			engine: storepb.Engine_MYSQL, dataset: "orders.items",
+			fromNamespace: "other", fromDataSource: "postgres", want: "orders",
+		},
+		{
+			name:   "mysql: a bare table falls back to the data source",
+			engine: storepb.Engine_MYSQL, dataset: "items",
+			fromDataSource: "orders", want: "orders",
+		},
+		{
+			name:   "nothing names a database",
+			engine: storepb.Engine_POSTGRES, dataset: "orders", want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, datasetDatabase(tt.engine, tt.dataset, tt.fromNamespace, tt.fromDataSource))
+		})
+	}
+}
+
+// A namespace mapping states the answer when it names a database. When it names
+// only the instance, the database follows the same evidence as auto-match, so a
+// mapping does not turn a "schema.table" name into a relation with no database.
+func TestMappingDatabase(t *testing.T) {
+	assert.Equal(t, "pinned",
+		mappingDatabase(storepb.Engine_POSTGRES, "other.public.orders", "postgres://h:5432/fromns", "pinned"))
+	assert.Equal(t, "app1",
+		mappingDatabase(storepb.Engine_POSTGRES, "app1.public.orders", "postgres://h:5432/fromns", ""))
+	assert.Equal(t, "fromns",
+		mappingDatabase(storepb.Engine_POSTGRES, "public.orders", "postgres://h:5432/fromns", ""))
+	assert.Equal(t, "",
+		mappingDatabase(storepb.Engine_POSTGRES, "orders", "postgres://h:5432", ""))
+}
+
 func TestIsMySQLLike(t *testing.T) {
 	assert.True(t, isMySQLLike(storepb.Engine_MYSQL))
 	assert.True(t, isMySQLLike(storepb.Engine_TIDB))
