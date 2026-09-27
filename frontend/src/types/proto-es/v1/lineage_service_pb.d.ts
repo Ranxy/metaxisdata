@@ -300,6 +300,74 @@ export declare type ExternalDatasetInfo = Message<"metaxisdata.v1.ExternalDatase
 export declare const ExternalDatasetInfoSchema: GenMessage<ExternalDatasetInfo>;
 
 /**
+ * @generated from message metaxisdata.v1.GetLineageCountsRequest
+ */
+export declare type GetLineageCountsRequest = Message<"metaxisdata.v1.GetLineageCountsRequest"> & {
+  /**
+   * The metadata GUIDs to count for, at most 1000. A GUID the registry has no
+   * relations for is reported with zero counts rather than failing the batch.
+   *
+   * @generated from field: repeated string guids = 1;
+   */
+  guids: string[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetLineageCountsRequest.
+ * Use `create(GetLineageCountsRequestSchema)` to create a new message.
+ */
+export declare const GetLineageCountsRequestSchema: GenMessage<GetLineageCountsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetLineageCountsResponse
+ */
+export declare type GetLineageCountsResponse = Message<"metaxisdata.v1.GetLineageCountsResponse"> & {
+  /**
+   * One entry per distinct requested GUID, in the order first requested.
+   *
+   * @generated from field: repeated metaxisdata.v1.LineageCount counts = 1;
+   */
+  counts: LineageCount[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetLineageCountsResponse.
+ * Use `create(GetLineageCountsResponseSchema)` to create a new message.
+ */
+export declare const GetLineageCountsResponseSchema: GenMessage<GetLineageCountsResponse>;
+
+/**
+ * LineageCount is one object's degree in the stored graph, at table level: how
+ * many distinct objects its column-level relations connect it to. The count is
+ * of objects, not of relations, so two tables joined on five columns are one
+ * upstream object rather than five.
+ *
+ * @generated from message metaxisdata.v1.LineageCount
+ */
+export declare type LineageCount = Message<"metaxisdata.v1.LineageCount"> & {
+  /**
+   * @generated from field: string guid = 1;
+   */
+  guid: string;
+
+  /**
+   * @generated from field: int32 upstream_count = 2;
+   */
+  upstreamCount: number;
+
+  /**
+   * @generated from field: int32 downstream_count = 3;
+   */
+  downstreamCount: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.LineageCount.
+ * Use `create(LineageCountSchema)` to create a new message.
+ */
+export declare const LineageCountSchema: GenMessage<LineageCount>;
+
+/**
  * @generated from message metaxisdata.v1.GetLineageForContextRequest
  */
 export declare type GetLineageForContextRequest = Message<"metaxisdata.v1.GetLineageForContextRequest"> & {
@@ -921,6 +989,20 @@ export declare const LineageService: GenService<{
     methodKind: "unary";
     input: typeof GetLineageRequestSchema;
     output: typeof GetLineageResponseSchema;
+  },
+  /**
+   * GetLineageCounts returns how many distinct objects each requested object has
+   * upstream and downstream. A node's degree cannot be read off its neighbours'
+   * relations, so a graph that labels every node it draws would otherwise cost
+   * one GetLineage per node; this answers a whole set from two aggregates.
+   * Only the counts are returned, never the relations themselves.
+   *
+   * @generated from rpc metaxisdata.v1.LineageService.GetLineageCounts
+   */
+  getLineageCounts: {
+    methodKind: "unary";
+    input: typeof GetLineageCountsRequestSchema;
+    output: typeof GetLineageCountsResponseSchema;
   },
   /**
    * GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).

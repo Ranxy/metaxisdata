@@ -5,10 +5,21 @@ import type {
   LineageRelation,
 } from "@/types/proto-es/v1/lineage_service_pb";
 import {
+  GetLineageCountsRequestSchema,
   GetLineageRequestSchema,
   LineageType,
 } from "@/types/proto-es/v1/lineage_service_pb";
 import { lineageClient } from "./client";
+
+/** The server refuses a batch larger than this; see maxLineageCountGuids. */
+const LINEAGE_COUNT_BATCH = 200;
+
+/** One object's degree in the stored graph. */
+export type LineageCount = {
+  guid: string;
+  upstream: number;
+  downstream: number;
+};
 
 /** The whole lineage of one object, gathered across every page. */
 export type Lineage = {
@@ -62,4 +73,36 @@ export async function getLineage(options: {
     relationsTarget,
     externalDatasets: [...externalDatasets.values()],
   };
+}
+
+/**
+ * getLineageCounts returns the degree of each given object: how many distinct
+ * objects it is connected to, upstream and downstream.
+ *
+ * This is what labels a graph's nodes. A node's degree is not derivable from
+ * its neighbours, so asking one object at a time would mean downloading every
+ * relation of every node just to print two numbers; the server counts them in
+ * two aggregates instead. Batches are split so one call cannot exceed the
+ * server's ceiling, and every requested guid comes back, zero-filled.
+ */
+export async function getLineageCounts(
+  guids: string[]
+): Promise<Map<string, LineageCount>> {
+  const counts = new Map<string, LineageCount>();
+
+  for (let start = 0; start < guids.length; start += LINEAGE_COUNT_BATCH) {
+    const request = create(GetLineageCountsRequestSchema, {
+      guids: guids.slice(start, start + LINEAGE_COUNT_BATCH),
+    });
+    const response = await lineageClient.getLineageCounts(request);
+    for (const count of response.counts) {
+      counts.set(count.guid, {
+        guid: count.guid,
+        upstream: count.upstreamCount,
+        downstream: count.downstreamCount,
+      });
+    }
+  }
+
+  return counts;
 }

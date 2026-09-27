@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	LineageService_GetLineage_FullMethodName           = "/metaxisdata.v1.LineageService/GetLineage"
+	LineageService_GetLineageCounts_FullMethodName     = "/metaxisdata.v1.LineageService/GetLineageCounts"
 	LineageService_GetLineageForContext_FullMethodName = "/metaxisdata.v1.LineageService/GetLineageForContext"
 	LineageService_AnalyzeSQL_FullMethodName           = "/metaxisdata.v1.LineageService/AnalyzeSQL"
 	LineageService_GetLineageGraph_FullMethodName      = "/metaxisdata.v1.LineageService/GetLineageGraph"
@@ -34,6 +35,12 @@ type LineageServiceClient interface {
 	// depending on the lineage_type specified in the request.
 	// If lineage_type is not specified, both source and target lineage will be returned.
 	GetLineage(ctx context.Context, in *GetLineageRequest, opts ...grpc.CallOption) (*GetLineageResponse, error)
+	// GetLineageCounts returns how many distinct objects each requested object has
+	// upstream and downstream. A node's degree cannot be read off its neighbours'
+	// relations, so a graph that labels every node it draws would otherwise cost
+	// one GetLineage per node; this answers a whole set from two aggregates.
+	// Only the counts are returned, never the relations themselves.
+	GetLineageCounts(ctx context.Context, in *GetLineageCountsRequest, opts ...grpc.CallOption) (*GetLineageCountsResponse, error)
 	// GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).
 	GetLineageForContext(ctx context.Context, in *GetLineageForContextRequest, opts ...grpc.CallOption) (*GetLineageForContextResponse, error)
 	// AnalyzeSQL parses an arbitrary SQL statement and returns its column-level
@@ -59,6 +66,16 @@ func (c *lineageServiceClient) GetLineage(ctx context.Context, in *GetLineageReq
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetLineageResponse)
 	err := c.cc.Invoke(ctx, LineageService_GetLineage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lineageServiceClient) GetLineageCounts(ctx context.Context, in *GetLineageCountsRequest, opts ...grpc.CallOption) (*GetLineageCountsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetLineageCountsResponse)
+	err := c.cc.Invoke(ctx, LineageService_GetLineageCounts_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -104,6 +121,12 @@ type LineageServiceServer interface {
 	// depending on the lineage_type specified in the request.
 	// If lineage_type is not specified, both source and target lineage will be returned.
 	GetLineage(context.Context, *GetLineageRequest) (*GetLineageResponse, error)
+	// GetLineageCounts returns how many distinct objects each requested object has
+	// upstream and downstream. A node's degree cannot be read off its neighbours'
+	// relations, so a graph that labels every node it draws would otherwise cost
+	// one GetLineage per node; this answers a whole set from two aggregates.
+	// Only the counts are returned, never the relations themselves.
+	GetLineageCounts(context.Context, *GetLineageCountsRequest) (*GetLineageCountsResponse, error)
 	// GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).
 	GetLineageForContext(context.Context, *GetLineageForContextRequest) (*GetLineageForContextResponse, error)
 	// AnalyzeSQL parses an arbitrary SQL statement and returns its column-level
@@ -127,6 +150,9 @@ type UnimplementedLineageServiceServer struct{}
 
 func (UnimplementedLineageServiceServer) GetLineage(context.Context, *GetLineageRequest) (*GetLineageResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetLineage not implemented")
+}
+func (UnimplementedLineageServiceServer) GetLineageCounts(context.Context, *GetLineageCountsRequest) (*GetLineageCountsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetLineageCounts not implemented")
 }
 func (UnimplementedLineageServiceServer) GetLineageForContext(context.Context, *GetLineageForContextRequest) (*GetLineageForContextResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetLineageForContext not implemented")
@@ -172,6 +198,24 @@ func _LineageService_GetLineage_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(LineageServiceServer).GetLineage(ctx, req.(*GetLineageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LineageService_GetLineageCounts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetLineageCountsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LineageServiceServer).GetLineageCounts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LineageService_GetLineageCounts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LineageServiceServer).GetLineageCounts(ctx, req.(*GetLineageCountsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -240,6 +284,10 @@ var LineageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetLineage",
 			Handler:    _LineageService_GetLineage_Handler,
+		},
+		{
+			MethodName: "GetLineageCounts",
+			Handler:    _LineageService_GetLineageCounts_Handler,
 		},
 		{
 			MethodName: "GetLineageForContext",

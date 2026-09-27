@@ -1568,6 +1568,36 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/lineages:counts:
+        post:
+            tags:
+                - LineageService
+            description: |-
+                GetLineageCounts returns how many distinct objects each requested object has
+                 upstream and downstream. A node's degree cannot be read off its neighbours'
+                 relations, so a graph that labels every node it draws would otherwise cost
+                 one GetLineage per node; this answers a whole set from two aggregates.
+                 Only the counts are returned, never the relations themselves.
+            operationId: LineageService_GetLineageCounts
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetLineageCountsRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetLineageCountsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/lineages:graph:
         get:
             tags:
@@ -4321,6 +4351,26 @@ components:
                 enabled:
                     type: boolean
                     description: Whether runtime debug mode is currently enabled.
+        GetLineageCountsRequest:
+            required:
+                - guids
+            type: object
+            properties:
+                guids:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        The metadata GUIDs to count for, at most 1000. A GUID the registry has no
+                         relations for is reported with zero counts rather than failing the batch.
+        GetLineageCountsResponse:
+            type: object
+            properties:
+                counts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LineageCount'
+                    description: One entry per distinct requested GUID, in the order first requested.
         GetLineageForContextResponse:
             type: object
             properties:
@@ -4628,6 +4678,22 @@ components:
                     description: |-
                         The environment resource.
                          Format: environments/prod where prod is the environment resource ID.
+        LineageCount:
+            type: object
+            properties:
+                guid:
+                    type: string
+                upstreamCount:
+                    type: integer
+                    format: int32
+                downstreamCount:
+                    type: integer
+                    format: int32
+            description: |-
+                LineageCount is one object's degree in the stored graph, at table level: how
+                 many distinct objects its column-level relations connect it to. The count is
+                 of objects, not of relations, so two tables joined on five columns are one
+                 upstream object rather than five.
         LineageNode:
             type: object
             properties:

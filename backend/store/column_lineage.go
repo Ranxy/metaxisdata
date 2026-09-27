@@ -52,6 +52,13 @@ type ColumnLineageVersion struct {
 	ErrorMessage *string
 }
 
+// ColumnLineageCount is how many distinct objects one object is connected to,
+// at table level: the objects its column-level relations mention.
+type ColumnLineageCount struct {
+	Upstream   int32
+	Downstream int32
+}
+
 // BatchReplaceColumnLineage deletes any existing lineage edges for the given
 // object and inserts the new ones, all within a single transaction.
 func (s *Store) BatchReplaceColumnLineage(ctx context.Context, metaGUID string, metaType storepb.MetaType, lineages []*ColumnLineage) error {
@@ -303,6 +310,73 @@ func (s *Store) ListColumnLineage(ctx context.Context, find *FindColumnLineageMe
 		return nil, err
 	}
 	return result, nil
+}
+
+// CountColumnLineageByGUID returns the degree of every given object. Two
+// aggregates answer the whole batch: the incoming edges grouped by their target
+// give the upstream counts and the outgoing edges grouped by their source give
+// the downstream ones. The counts are of distinct objects, not of edges, so a
+// join on five columns counts once. A guid with no edges is absent from the
+// result rather than reported as zero.
+func (s *Store) CountColumnLineageByGUID(ctx context.Context, guids []string) (map[string]*ColumnLineageCount, error) {
+	counts := make(map[string]*ColumnLineageCount, len(guids))
+	if len(guids) == 0 {
+		return counts, nil
+	}
+
+	upstream, err := s.countColumnLineageBy(ctx, `
+		SELECT target_guid, COUNT(DISTINCT source_guid)
+		FROM column_lineage
+		WHERE target_guid = ANY($1)
+		GROUP BY target_guid`, guids)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to count upstream lineage")
+	}
+	for guid, count := range upstream {
+		counts[guid] = &ColumnLineageCount{Upstream: count}
+	}
+
+	downstream, err := s.countColumnLineageBy(ctx, `
+		SELECT source_guid, COUNT(DISTINCT target_guid)
+		FROM column_lineage
+		WHERE source_guid = ANY($1)
+		GROUP BY source_guid`, guids)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to count downstream lineage")
+	}
+	for guid, count := range downstream {
+		if existing, ok := counts[guid]; ok {
+			existing.Downstream = count
+			continue
+		}
+		counts[guid] = &ColumnLineageCount{Downstream: count}
+	}
+
+	return counts, nil
+}
+
+// countColumnLineageBy runs one grouped count and keys the result by the guid
+// the query groups on.
+func (s *Store) countColumnLineageBy(ctx context.Context, query string, guids []string) (map[string]int32, error) {
+	rows, err := s.GetDB().QueryContext(ctx, query, pq.Array(guids))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int32, len(guids))
+	for rows.Next() {
+		var guid string
+		var count int32
+		if err := rows.Scan(&guid, &count); err != nil {
+			return nil, err
+		}
+		counts[guid] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return counts, nil
 }
 
 // UpsertColumnLineageVersion inserts or updates the analysis version record for an object.

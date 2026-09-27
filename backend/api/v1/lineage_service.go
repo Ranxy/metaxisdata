@@ -38,6 +38,10 @@ func NewLineageService(store *store.Store, lineageAnalyzer *lineage.Analyzer) *L
 const (
 	defaultLineagePageSize = 500
 	maxLineagePageSize     = 5000
+	// maxLineageCountGuids bounds one counts batch. The caller is a graph
+	// labelling the nodes it draws, and the ceiling keeps a single request from
+	// becoming an unbounded guid list.
+	maxLineageCountGuids = 1000
 )
 
 // lineagePageOffset parses the page_size/page_token pair. Unlike the shared
@@ -133,6 +137,67 @@ func (s *LineageService) GetLineage(ctx context.Context, req *connect.Request[v1
 	}
 
 	return connect.NewResponse(response), nil
+}
+
+// GetLineageCounts returns how many distinct objects each requested object is
+// connected to. A node's degree cannot be read off its neighbours' relations,
+// so a graph that labels every node it draws would need one GetLineage per
+// node; two aggregates answer the whole set instead.
+//
+// A GUID with no relations is reported with zero counts rather than refused:
+// the caller is labelling objects it already has, and one that has no lineage
+// yet is a legitimate node. Unknown and blank GUIDs are treated the same way.
+func (s *LineageService) GetLineageCounts(ctx context.Context, req *connect.Request[v1pb.GetLineageCountsRequest]) (*connect.Response[v1pb.GetLineageCountsResponse], error) {
+	guids := distinctLineageCountGuids(req.Msg.GetGuids())
+	if len(guids) == 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("at least one guid is required"))
+	}
+	if len(guids) > maxLineageCountGuids {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("at most %d guids are allowed, got %d", maxLineageCountGuids, len(guids)))
+	}
+
+	counts, err := s.store.CountColumnLineageByGUID(ctx, guids)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to count lineage"))
+	}
+
+	return connect.NewResponse(&v1pb.GetLineageCountsResponse{
+		Counts: buildLineageCounts(guids, counts),
+	}), nil
+}
+
+// distinctLineageCountGuids drops blank and repeated GUIDs, keeping the order
+// the caller first asked for. The response mirrors that order, so a caller can
+// pair its request with the result position by position.
+func distinctLineageCountGuids(guids []string) []string {
+	seen := make(map[string]struct{}, len(guids))
+	distinct := make([]string, 0, len(guids))
+	for _, guid := range guids {
+		if guid == "" {
+			continue
+		}
+		if _, ok := seen[guid]; ok {
+			continue
+		}
+		seen[guid] = struct{}{}
+		distinct = append(distinct, guid)
+	}
+	return distinct
+}
+
+// buildLineageCounts reports one entry per requested GUID, in request order,
+// zero-filled when the store had nothing for it.
+func buildLineageCounts(guids []string, counts map[string]*store.ColumnLineageCount) []*v1pb.LineageCount {
+	result := make([]*v1pb.LineageCount, 0, len(guids))
+	for _, guid := range guids {
+		entry := &v1pb.LineageCount{Guid: guid}
+		if count, ok := counts[guid]; ok {
+			entry.UpstreamCount = count.Upstream
+			entry.DownstreamCount = count.Downstream
+		}
+		result = append(result, entry)
+	}
+	return result
 }
 
 // collectExternalDatasets finds all external GUIDs in the lineage response and fetches their metadata.

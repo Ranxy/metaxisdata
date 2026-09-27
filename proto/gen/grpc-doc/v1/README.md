@@ -220,12 +220,15 @@
     - [AnalyzeSQLResponse](#metaxisdata-v1-AnalyzeSQLResponse)
     - [AnalyzeSQLResult](#metaxisdata-v1-AnalyzeSQLResult)
     - [ExternalDatasetInfo](#metaxisdata-v1-ExternalDatasetInfo)
+    - [GetLineageCountsRequest](#metaxisdata-v1-GetLineageCountsRequest)
+    - [GetLineageCountsResponse](#metaxisdata-v1-GetLineageCountsResponse)
     - [GetLineageForContextRequest](#metaxisdata-v1-GetLineageForContextRequest)
     - [GetLineageForContextResponse](#metaxisdata-v1-GetLineageForContextResponse)
     - [GetLineageGraphRequest](#metaxisdata-v1-GetLineageGraphRequest)
     - [GetLineageGraphResponse](#metaxisdata-v1-GetLineageGraphResponse)
     - [GetLineageRequest](#metaxisdata-v1-GetLineageRequest)
     - [GetLineageResponse](#metaxisdata-v1-GetLineageResponse)
+    - [LineageCount](#metaxisdata-v1-LineageCount)
     - [LineageNode](#metaxisdata-v1-LineageNode)
     - [LineageRelation](#metaxisdata-v1-LineageRelation)
     - [Transformation](#metaxisdata-v1-Transformation)
@@ -3722,6 +3725,36 @@ ExternalDatasetInfo provides metadata for a dataset outside of managed instances
 
 
 
+<a name="metaxisdata-v1-GetLineageCountsRequest"></a>
+
+### GetLineageCountsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guids | [string](#string) | repeated | The metadata GUIDs to count for, at most 1000. A GUID the registry has no relations for is reported with zero counts rather than failing the batch. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetLineageCountsResponse"></a>
+
+### GetLineageCountsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| counts | [LineageCount](#metaxisdata-v1-LineageCount) | repeated | One entry per distinct requested GUID, in the order first requested. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetLineageForContextRequest"></a>
 
 ### GetLineageForContextRequest
@@ -3829,6 +3862,26 @@ When paginating, all other parameters provided to `GetLineage` must match the ca
 | relations_target | [LineageRelation](#metaxisdata-v1-LineageRelation) | repeated |  |
 | external_datasets | [ExternalDatasetInfo](#metaxisdata-v1-ExternalDatasetInfo) | repeated | Metadata for external datasets referenced in the lineage relations. |
 | next_page_token | [string](#string) |  | A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-LineageCount"></a>
+
+### LineageCount
+LineageCount is one object&#39;s degree in the stored graph, at table level: how
+many distinct objects its column-level relations connect it to. The count is
+of objects, not of relations, so two tables joined on five columns are one
+upstream object rather than five.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  |  |
+| upstream_count | [int32](#int32) |  |  |
+| downstream_count | [int32](#int32) |  |  |
 
 
 
@@ -3974,6 +4027,7 @@ usually the SQL naming something the analyzer cannot see.
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
 | GetLineage | [GetLineageRequest](#metaxisdata-v1-GetLineageRequest) | [GetLineageResponse](#metaxisdata-v1-GetLineageResponse) | GetLineage returns the lineage relations for the given metadata. The lineage relations can be either source lineage or target lineage, depending on the lineage_type specified in the request. If lineage_type is not specified, both source and target lineage will be returned. |
+| GetLineageCounts | [GetLineageCountsRequest](#metaxisdata-v1-GetLineageCountsRequest) | [GetLineageCountsResponse](#metaxisdata-v1-GetLineageCountsResponse) | GetLineageCounts returns how many distinct objects each requested object has upstream and downstream. A node&#39;s degree cannot be read off its neighbours&#39; relations, so a graph that labels every node it draws would otherwise cost one GetLineage per node; this answers a whole set from two aggregates. Only the counts are returned, never the relations themselves. |
 | GetLineageForContext | [GetLineageForContextRequest](#metaxisdata-v1-GetLineageForContextRequest) | [GetLineageForContextResponse](#metaxisdata-v1-GetLineageForContextResponse) | GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure). |
 | AnalyzeSQL | [AnalyzeSQLRequest](#metaxisdata-v1-AnalyzeSQLRequest) | [AnalyzeSQLResponse](#metaxisdata-v1-AnalyzeSQLResponse) | AnalyzeSQL parses an arbitrary SQL statement and returns its column-level relations, resolved against one or more analysis scopes. The analysis is stateless: nothing is persisted and no lineage runner is triggered, so the result describes this statement only and is not part of the stored graph. |
 | GetLineageGraph | [GetLineageGraphRequest](#metaxisdata-v1-GetLineageGraphRequest) | [GetLineageGraphResponse](#metaxisdata-v1-GetLineageGraphResponse) | GetLineageGraph returns the multi-level lineage graph around one metadata object in a single call, instead of expanding it one hop at a time with GetLineage. |

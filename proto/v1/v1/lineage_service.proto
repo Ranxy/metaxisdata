@@ -20,6 +20,19 @@ service LineageService {
     option (metaxisdata.v1.permission) = "metaxisdata.lineage.get";
   }
 
+  // GetLineageCounts returns how many distinct objects each requested object has
+  // upstream and downstream. A node's degree cannot be read off its neighbours'
+  // relations, so a graph that labels every node it draws would otherwise cost
+  // one GetLineage per node; this answers a whole set from two aggregates.
+  // Only the counts are returned, never the relations themselves.
+  rpc GetLineageCounts(GetLineageCountsRequest) returns (GetLineageCountsResponse) {
+    option (google.api.http) = {
+      post: "/v1/lineages:counts"
+      body: "*"
+    };
+    option (metaxisdata.v1.permission) = "metaxisdata.lineage.get";
+  }
+
   // GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure).
   rpc GetLineageForContext(GetLineageForContextRequest) returns (GetLineageForContextResponse) {
     option (google.api.http) = {get: "/v1/lineages:context"};
@@ -157,6 +170,30 @@ message ExternalDatasetInfo {
   string name = 3;
   // The dataset type, e.g. "s3", "kafka", "database".
   string dataset_type = 4;
+}
+
+message GetLineageCountsRequest {
+  // The metadata GUIDs to count for, at most 1000. A GUID the registry has no
+  // relations for is reported with zero counts rather than failing the batch.
+  repeated string guids = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.field_behavior) = NON_EMPTY_DEFAULT
+  ];
+}
+
+message GetLineageCountsResponse {
+  // One entry per distinct requested GUID, in the order first requested.
+  repeated LineageCount counts = 1;
+}
+
+// LineageCount is one object's degree in the stored graph, at table level: how
+// many distinct objects its column-level relations connect it to. The count is
+// of objects, not of relations, so two tables joined on five columns are one
+// upstream object rather than five.
+message LineageCount {
+  string guid = 1;
+  int32 upstream_count = 2;
+  int32 downstream_count = 3;
 }
 
 message GetLineageForContextRequest {

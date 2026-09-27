@@ -225,7 +225,7 @@ import {
   MousePointerClick,
   RotateCcw,
 } from "lucide-vue-next";
-import { getLineage } from "@/api/lineage";
+import { getLineage, getLineageCounts, type LineageCount } from "@/api/lineage";
 import AppLoading from "@/components/common/AppLoading.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -245,6 +245,7 @@ import {
   assignLayers,
   buildLineageEdges,
   type ColumnFilter,
+  distinctRelationCounts,
   layoutNodes,
   nodeHeight,
 } from "@/lib/lineageGraph";
@@ -298,6 +299,11 @@ const initialLoading = ref(true);
 // panel without expanding anything, so a loaded node is not an expanded one.
 const expandedDirections = ref<Set<string>>(new Set());
 const nodeDataMap = ref<Map<string, NodeLineageData>>(new Map());
+// Every visible node's degree, from the batched counts RPC: a node cannot be
+// labelled from its neighbours' relations, and fetching each node's relations
+// just to print two numbers downloads the whole graph. Kept apart from
+// `nodeDataMap`, which only holds the relations of expanded objects.
+const lineageCounts = ref<Map<string, LineageCount>>(new Map());
 const expandDepth = ref("1");
 
 const focusAssetLabel = computed(() => {
@@ -355,6 +361,8 @@ const selectedNodeSummary = computed(() => {
   const metaTypeValue =
     guidMetaTypeMap.value.get(selectedNodeGuid.value) ?? currentMetaType.value;
 
+  const counts = lineageCountFor(selectedNodeGuid.value);
+
   return {
     guid: selectedNodeGuid.value,
     label: formatGuidLabel(selectedNodeGuid.value),
@@ -363,8 +371,8 @@ const selectedNodeSummary = computed(() => {
     isExternal: isExternalGuid(selectedNodeGuid.value),
     metaTypeValue,
     metaTypeLabel: metaTypeLabel(metaTypeValue, t),
-    upstreamCount: lineageData?.upstream.length ?? 0,
-    downstreamCount: lineageData?.downstream.length ?? 0,
+    upstreamCount: counts.upstream,
+    downstreamCount: counts.downstream,
     columns: collectColumnsForGuid(selectedNodeGuid.value),
     externalNamespace: externalInfo?.namespace ?? "",
     externalDatasetType: externalInfo?.datasetType ?? "",
@@ -749,8 +757,24 @@ function collectColumnsForGuid(guid: string): string[] {
   return Array.from(columns).sort();
 }
 
+/**
+ * A node's degree: the batched count when the server has answered for it, and
+ * otherwise what its own relations say. The two agree, because both count the
+ * distinct objects at the far end of the node's column-level relations.
+ */
+function lineageCountFor(guid: string): {
+  upstream: number;
+  downstream: number;
+} {
+  const counted = lineageCounts.value.get(guid);
+  if (counted) {
+    return { upstream: counted.upstream, downstream: counted.downstream };
+  }
+  return distinctRelationCounts(getNodeLineageData(guid));
+}
+
 function nodeDataFor(guid: string): LineageNodeData {
-  const data = nodeDataMap.value.get(guid);
+  const counts = lineageCountFor(guid);
   return {
     guid,
     label: formatGuidLabel(guid),
@@ -758,8 +782,8 @@ function nodeDataFor(guid: string): LineageNodeData {
     isRoot: guid === currentGuid.value,
     upstreamExpanded: isDirectionExpanded(guid, "upstream"),
     downstreamExpanded: isDirectionExpanded(guid, "downstream"),
-    upstreamCount: data?.upstream.length ?? 0,
-    downstreamCount: data?.downstream.length ?? 0,
+    upstreamCount: counts.upstream,
+    downstreamCount: counts.downstream,
     metaType: guidToMetaType(guid),
     columns: collectColumnsForGuid(guid),
     selectedColumn:
@@ -815,6 +839,42 @@ function rebuildGraph() {
     validNodeIds: new Set(nodeMap.keys()),
     columnFilter: columnFilter.value,
   });
+
+  // The canvas changed, so the newly drawn nodes have no degree yet. Expanding
+  // the graph is the only way nodes appear, so this is where they are asked for.
+  ensureLineageCounts();
+}
+
+/**
+ * Labels every node on the canvas that has no degree yet. One click can reveal
+ * a whole layer, and the request is batched, so twenty new nodes still cost one
+ * call — the server answers from two aggregates rather than one GetLineage per
+ * node. A failure leaves those nodes unlabelled (their own relations, once
+ * expanded, still supply the number) rather than failing the redraw.
+ */
+async function ensureLineageCounts() {
+  const missing = nodes.value
+    .map((node) => node.id)
+    .filter((guid) => !lineageCounts.value.has(guid));
+  if (missing.length === 0) {
+    return;
+  }
+
+  let fetched: Map<string, LineageCount>;
+  try {
+    fetched = await getLineageCounts(missing);
+  } catch (e) {
+    console.error(
+      `Failed to load lineage counts for ${missing.length} nodes:`,
+      extractErrorMessage(e)
+    );
+    return;
+  }
+
+  for (const [guid, count] of fetched) {
+    lineageCounts.value.set(guid, count);
+  }
+  updateGraphState();
 }
 
 /** Refreshes node data and edges, keeping positions the user may have dragged. */
@@ -1073,6 +1133,7 @@ async function initializeGraph() {
   initialLoading.value = true;
   expandedDirections.value.clear();
   nodeDataMap.value.clear();
+  lineageCounts.value.clear();
   guidMetaTypeMap.value.clear();
   selectedColumnGuid.value = null;
   selectedColumnName.value = null;

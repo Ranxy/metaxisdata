@@ -7,6 +7,7 @@ import {
   assignLayers,
   buildLineageEdges,
   collectColumnEdgeIds,
+  distinctRelationCounts,
   layoutNodes,
   type NodeLineageData,
   nodeHeight,
@@ -156,5 +157,37 @@ describe("column filtering", () => {
       columnFilter: null,
     });
     expect(edges.map((edge) => edge.id)).toEqual(["a->b"]);
+  });
+});
+
+describe("distinctRelationCounts", () => {
+  it("counts objects, not relations, on both sides", () => {
+    const counts = distinctRelationCounts(
+      node(
+        [
+          rel({ sourceGuid: "a", targetGuid: "me", sourceColumn: "c1" }),
+          rel({ sourceGuid: "a", targetGuid: "me", sourceColumn: "c2" }),
+          rel({ sourceGuid: "b", targetGuid: "me", sourceColumn: "c3" }),
+        ],
+        [rel({ sourceGuid: "me", targetGuid: "d" })]
+      )
+    );
+
+    expect(counts).toEqual({ upstream: 2, downstream: 1 });
+  });
+
+  it("reports zero for a node with no relations", () => {
+    expect(distinctRelationCounts(node())).toEqual({
+      upstream: 0,
+      downstream: 0,
+    });
+  });
+
+  it("counts the far end of each direction", () => {
+    // A relation between two other objects says nothing about this node.
+    const counts = distinctRelationCounts(
+      node([rel({ sourceGuid: "x", targetGuid: "y" })], [])
+    );
+    expect(counts).toEqual({ upstream: 1, downstream: 0 });
   });
 });

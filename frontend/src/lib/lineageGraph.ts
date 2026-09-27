@@ -32,6 +32,23 @@ export interface NodePosition {
   y: number;
 }
 
+/**
+ * How many distinct objects one node is connected to, at table level: the
+ * objects its column-level relations name. A join on five columns is one
+ * upstream object rather than five, which is what the graph labels the node
+ * with — and what the server's counts RPC returns for a node whose relations
+ * have not been fetched.
+ */
+export function distinctRelationCounts(data: NodeLineageData): {
+  upstream: number;
+  downstream: number;
+} {
+  return {
+    upstream: new Set(data.upstream.map((rel) => rel.sourceGuid)).size,
+    downstream: new Set(data.downstream.map((rel) => rel.targetGuid)).size,
+  };
+}
+
 /** Horizontal distance between two layers. */
 export const LAYER_GAP_X = 280;
 

@@ -402,3 +402,56 @@ func TestGetLineageGraphRealServerIntegration(t *testing.T) {
 	}))
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
+
+// TestGetLineageCountsRealServerIntegration checks the aggregate a lineage graph
+// uses to label every node it draws. The counts must agree with the relations
+// GetLineage returns, and must count objects rather than edges.
+func TestGetLineageCountsRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, sourceDatabase, databaseName := setupMySQLServiceDatabase(t)
+	env.SyncDatabase(ctx, t, databaseName)
+
+	viewGUID := fmt.Sprintf("%s;%s;;user_order_view", instanceID, sourceDatabase)
+	usersGUID := fmt.Sprintf("%s;%s;;users", instanceID, sourceDatabase)
+	// Wait for the runner to have analyzed the view, so the counts have edges.
+	env.WaitForContextLineage(ctx, t, viewGUID, v1pb.MetaType_VIEW, func(relations []*v1pb.LineageRelation) bool {
+		return hasAPILineageEdge(relations, usersGUID, "name", viewGUID, "user_name")
+	})
+
+	client := newAPIClients(env, env.AdminToken())
+	unknownGUID := fmt.Sprintf("%s;%s;;no_such_table", instanceID, sourceDatabase)
+	response, err := client.lineage.GetLineageCounts(ctx, connect.NewRequest(&v1pb.GetLineageCountsRequest{
+		Guids: []string{viewGUID, usersGUID, unknownGUID, viewGUID},
+	}))
+	require.NoError(t, err)
+
+	counts := response.Msg.GetCounts()
+	require.Len(t, counts, 3, "one entry per distinct guid")
+	require.Equal(t, []string{viewGUID, usersGUID, unknownGUID}, []string{
+		counts[0].GetGuid(), counts[1].GetGuid(), counts[2].GetGuid(),
+	}, "the response keeps the order first requested")
+	require.Zero(t, counts[2].GetUpstreamCount(), "a guid with no lineage reports zero rather than failing the batch")
+	require.Zero(t, counts[2].GetDownstreamCount())
+
+	// The view's upstream count is the number of distinct objects its relations
+	// name, which is exactly what the graph labels the node with.
+	relations, err := client.lineage.GetLineage(ctx, connect.NewRequest(&v1pb.GetLineageRequest{
+		Guid:     viewGUID,
+		MetaType: v1pb.MetaType_VIEW,
+	}))
+	require.NoError(t, err)
+	upstream := map[string]struct{}{}
+	for _, rel := range relations.Msg.GetRelationsSource() {
+		upstream[rel.GetSourceGuid()] = struct{}{}
+	}
+	require.NotEmpty(t, upstream)
+	require.Equal(t, int32(len(upstream)), counts[0].GetUpstreamCount())
+
+	// The users table is upstream of the view, so its downstream count is not zero.
+	require.NotZero(t, counts[1].GetDownstreamCount())
+
+	// An empty list is refused rather than read as "count everything".
+	_, err = client.lineage.GetLineageCounts(ctx, connect.NewRequest(&v1pb.GetLineageCountsRequest{}))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}

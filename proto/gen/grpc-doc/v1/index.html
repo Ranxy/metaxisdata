@@ -1016,6 +1016,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetLineageCountsRequest"><span class="badge">M</span>GetLineageCountsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetLineageCountsResponse"><span class="badge">M</span>GetLineageCountsResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetLineageForContextRequest"><span class="badge">M</span>GetLineageForContextRequest</a>
                 </li>
               
@@ -1037,6 +1045,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.GetLineageResponse"><span class="badge">M</span>GetLineageResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.LineageCount"><span class="badge">M</span>LineageCount</a>
                 </li>
               
                 <li>
@@ -10770,6 +10782,55 @@ can tell a complete list from a truncated one. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetLineageCountsRequest">GetLineageCountsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guids</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The metadata GUIDs to count for, at most 1000. A GUID the registry has no
+relations for is reported with zero counts rather than failing the batch. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetLineageCountsResponse">GetLineageCountsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>counts</td>
+                  <td><a href="#metaxisdata.v1.LineageCount">LineageCount</a></td>
+                  <td>repeated</td>
+                  <td><p>One entry per distinct requested GUID, in the order first requested. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetLineageForContextRequest">GetLineageForContextRequest</h3>
         <p></p>
 
@@ -11059,6 +11120,44 @@ the call that provided the page token. </p></td>
                   <td></td>
                   <td><p>A token, which can be sent as `page_token` to retrieve the next page.
 If this field is omitted, there are no subsequent pages. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.LineageCount">LineageCount</h3>
+        <p>LineageCount is one object's degree in the stored graph, at table level: how</p><p>many distinct objects its column-level relations connect it to. The count is</p><p>of objects, not of relations, so two tables joined on five columns are one</p><p>upstream object rather than five.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>upstream_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>downstream_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>
@@ -11486,6 +11585,17 @@ If lineage_type is not specified, both source and target lineage will be returne
               </tr>
             
               <tr>
+                <td>GetLineageCounts</td>
+                <td><a href="#metaxisdata.v1.GetLineageCountsRequest">GetLineageCountsRequest</a></td>
+                <td><a href="#metaxisdata.v1.GetLineageCountsResponse">GetLineageCountsResponse</a></td>
+                <td><p>GetLineageCounts returns how many distinct objects each requested object has
+upstream and downstream. A node&#39;s degree cannot be read off its neighbours&#39;
+relations, so a graph that labels every node it draws would otherwise cost
+one GetLineage per node; this answers a whole set from two aggregates.
+Only the counts are returned, never the relations themselves.</p></td>
+              </tr>
+            
+              <tr>
                 <td>GetLineageForContext</td>
                 <td><a href="#metaxisdata.v1.GetLineageForContextRequest">GetLineageForContextRequest</a></td>
                 <td><a href="#metaxisdata.v1.GetLineageForContextResponse">GetLineageForContextResponse</a></td>
@@ -11536,6 +11646,16 @@ GetLineage.</p></td>
                 <td>GET</td>
                 <td>/v1/lineages</td>
                 <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetLineageCounts</td>
+                <td>POST</td>
+                <td>/v1/lineages:counts</td>
+                <td>*</td>
               </tr>
               
             
