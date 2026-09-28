@@ -3,8 +3,6 @@ package auth
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -47,6 +45,9 @@ type APIAuthInterceptor struct {
 	secret   string
 	stateCfg *state.State
 	profile  *config.Profile
+	// tokens applies the shared token rules, so the interceptor and the MCP
+	// resource server cannot drift apart.
+	tokens *TokenAuthenticator
 }
 
 // New returns a new API auth interceptor.
@@ -61,6 +62,7 @@ func New(
 		secret:   secret,
 		stateCfg: stateCfg,
 		profile:  profile,
+		tokens:   NewTokenAuthenticator(store, secret, stateCfg),
 	}
 }
 
@@ -179,81 +181,12 @@ type AccessTokenIdentity struct {
 	Restriction TokenRestriction
 }
 
-// VerifyAccessToken validates an access token's signature, algorithm, issuer,
-// audience and expiry. It performs no database lookup, so callers that need the
-// principal record must still load it.
-func VerifyAccessToken(accessTokenStr, secret string, mode common.ReleaseMode) (*AccessTokenIdentity, error) {
-	claims := &claimsMessage{}
-	if _, err := jwt.ParseWithClaims(accessTokenStr, claims, func(t *jwt.Token) (any, error) {
-		if kid, ok := t.Header["kid"].(string); ok {
-			if kid == keyID {
-				return []byte(secret), nil
-			}
-		}
-		return nil, errs.Errorf("unexpected access token kid=%v", t.Header["kid"])
-	},
-		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}),
-		jwt.WithIssuer(issuer),
-		jwt.WithExpirationRequired(),
-	); err != nil {
-		return nil, err
-	}
-	if !audienceContains(claims.Audience, fmt.Sprintf(AccessTokenAudienceFmt, mode)) {
-		return nil, errs.Errorf(
-			"invalid access token, audience mismatch, got %q, expected %q. you may send request to the wrong environment",
-			claims.Audience,
-			fmt.Sprintf(AccessTokenAudienceFmt, mode),
-		)
-	}
-	principalID, err := strconv.Atoi(claims.Subject)
-	if err != nil {
-		return nil, errs.Wrapf(err, "malformed ID %s in the access token", claims.Subject)
-	}
-	identity := &AccessTokenIdentity{UserID: principalID, Restriction: TokenRestriction(claims.Restriction)}
-	if claims.IssuedAtNanos != 0 {
-		identity.IssuedAt = time.Unix(0, claims.IssuedAtNanos)
-	} else if claims.IssuedAt != nil {
-		identity.IssuedAt = claims.IssuedAt.Time
-	}
-	return identity, nil
-}
-
-// authenticateConnect is a ConnectRPC-specific version that returns ConnectRPC errors.
+// authenticateConnect maps the shared token rules onto ConnectRPC errors.
 func (in *APIAuthInterceptor) authenticateConnect(ctx context.Context, accessTokenStr string) (*store.UserMessage, *AccessTokenIdentity, error) {
-	if accessTokenStr == "" {
-		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.New("access token not found"))
-	}
-	if _, ok := in.stateCfg.TokenExpireCache.Get(accessTokenStr); ok {
-		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.New("access token expired"))
-	}
-	identity, err := VerifyAccessToken(accessTokenStr, in.secret, in.profile.Mode)
+	user, identity, err := in.tokens.Resolve(ctx, accessTokenStr, AccessTokenAudience(in.profile.Mode))
 	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.New("access token expired"))
-		}
-		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.New("failed to parse claim"))
+		return nil, nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-
-	user, err := in.store.GetUserByID(ctx, identity.UserID)
-	if err != nil {
-		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("failed to find user ID %d in the access token", identity.UserID))
-	}
-	if user == nil {
-		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("user ID %d not exists in the access token", identity.UserID))
-	}
-	if user.MemberDeleted {
-		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("user ID %d has been deactivated by administrators", user.ID))
-	}
-	// A token minted before the last password change must not survive it. The
-	// comparison uses persisted state, so it holds across replicas. Both
-	// timestamps come from this process's clock and the iat claim carries
-	// sub-second precision, so the ordering is exact.
-	if lastChange := user.Profile.GetLastChangePasswordTime(); lastChange != nil {
-		if tokenPredatesPasswordChange(identity.IssuedAt, lastChange.AsTime()) {
-			return nil, nil, connect.NewError(connect.CodeUnauthenticated, errs.Errorf("access token of user ID %d was issued before the last password change", user.ID))
-		}
-	}
-
 	return user, identity, nil
 }
 
@@ -333,19 +266,19 @@ type claimsMessage struct {
 // accepts only for the RPCs allowed by restriction.
 func GenerateRestrictedAccessToken(userName string, userID int, mode common.ReleaseMode, secret string, tokenDuration time.Duration, restriction TokenRestriction) (string, error) {
 	expirationTime := time.Now().Add(tokenDuration)
-	return generateToken(userName, userID, fmt.Sprintf(AccessTokenAudienceFmt, mode), expirationTime, []byte(secret), restriction)
+	return generateToken(userName, userID, AccessTokenAudience(mode), expirationTime, []byte(secret), restriction)
 }
 
 // GenerateAPIToken generates an API token.
 func GenerateAPIToken(userName string, userID int, mode common.ReleaseMode, secret string) (string, error) {
 	expirationTime := time.Now().Add(apiTokenDuration)
-	return generateToken(userName, userID, fmt.Sprintf(AccessTokenAudienceFmt, mode), expirationTime, []byte(secret), "")
+	return generateToken(userName, userID, AccessTokenAudience(mode), expirationTime, []byte(secret), "")
 }
 
 // GenerateAccessToken generates an access token for web.
 func GenerateAccessToken(userName string, userID int, mode common.ReleaseMode, secret string, tokenDuration time.Duration) (string, error) {
 	expirationTime := time.Now().Add(tokenDuration)
-	return generateToken(userName, userID, fmt.Sprintf(AccessTokenAudienceFmt, mode), expirationTime, []byte(secret), "")
+	return generateToken(userName, userID, AccessTokenAudience(mode), expirationTime, []byte(secret), "")
 }
 
 // Pay attention to this function. It holds the main JWT token generation logic.

@@ -1,0 +1,143 @@
+package auth
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	errs "github.com/pkg/errors"
+
+	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/state"
+	"github.com/Ranxy/metaxisdata/backend/store"
+)
+
+// AccessTokenAudience returns the audience an access token minted for the user
+// API must carry in the given release mode.
+func AccessTokenAudience(mode common.ReleaseMode) string {
+	return fmt.Sprintf(AccessTokenAudienceFmt, mode)
+}
+
+// VerifyAccessToken validates an access token's signature, algorithm, issuer,
+// audience and expiry. It performs no database lookup, so callers that need the
+// principal record must still load it.
+func VerifyAccessToken(accessTokenStr, secret string, mode common.ReleaseMode) (*AccessTokenIdentity, error) {
+	return VerifyAccessTokenFor(accessTokenStr, secret, AccessTokenAudience(mode))
+}
+
+// VerifyAccessTokenFor is VerifyAccessToken with an explicit audience, for a
+// resource server whose tokens carry an audience of their own (the MCP endpoint
+// does). Audience checking stays inside the verifier on purpose: a caller that
+// verified a signature and then forgot the audience comparison would accept a
+// token minted for a different resource.
+func VerifyAccessTokenFor(accessTokenStr, secret, audience string) (*AccessTokenIdentity, error) {
+	claims := &claimsMessage{}
+	if _, err := jwt.ParseWithClaims(accessTokenStr, claims, func(t *jwt.Token) (any, error) {
+		if kid, ok := t.Header["kid"].(string); ok {
+			if kid == keyID {
+				return []byte(secret), nil
+			}
+		}
+		return nil, errs.Errorf("unexpected access token kid=%v", t.Header["kid"])
+	},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}),
+		jwt.WithIssuer(issuer),
+		jwt.WithExpirationRequired(),
+	); err != nil {
+		return nil, err
+	}
+	if !audienceContains(claims.Audience, audience) {
+		return nil, errs.Errorf(
+			"invalid access token, audience mismatch, got %q, expected %q. you may send request to the wrong environment",
+			claims.Audience,
+			audience,
+		)
+	}
+	principalID, err := strconv.Atoi(claims.Subject)
+	if err != nil {
+		return nil, errs.Wrapf(err, "malformed ID %s in the access token", claims.Subject)
+	}
+	identity := &AccessTokenIdentity{UserID: principalID, Restriction: TokenRestriction(claims.Restriction)}
+	if claims.IssuedAtNanos != 0 {
+		identity.IssuedAt = time.Unix(0, claims.IssuedAtNanos)
+	} else if claims.IssuedAt != nil {
+		identity.IssuedAt = claims.IssuedAt.Time
+	}
+	return identity, nil
+}
+
+// Token failures a TokenAuthenticator reports. They are plain errors rather
+// than ConnectRPC errors so that each entry point can map them onto its own
+// transport's error shape while applying the same rules.
+var (
+	// ErrTokenMissing means the request carried no bearer token.
+	ErrTokenMissing = errs.New("access token not found")
+	// ErrTokenRevoked means the token was revoked, or has expired.
+	ErrTokenRevoked = errs.New("access token expired")
+	// ErrTokenInvalid means the token did not verify for the expected audience.
+	ErrTokenInvalid = errs.New("failed to parse claim")
+)
+
+// TokenAuthenticator turns a bearer token into the user it was issued to.
+//
+// It exists so every entry point applies the same rules in the same order:
+// signature, algorithm, issuer, audience and expiry, then the revocation cache,
+// the principal lookup, deactivation, and the password-change cutoff. A second
+// entry point that only verified the signature would keep accepting tokens for
+// a user who has since been deactivated or had their password changed.
+type TokenAuthenticator struct {
+	store    *store.Store
+	secret   string
+	stateCfg *state.State
+}
+
+// NewTokenAuthenticator returns an authenticator backed by the given store.
+// stateCfg may be nil, in which case no revocation cache is consulted.
+func NewTokenAuthenticator(store *store.Store, secret string, stateCfg *state.State) *TokenAuthenticator {
+	return &TokenAuthenticator{store: store, secret: secret, stateCfg: stateCfg}
+}
+
+// Resolve validates accessTokenStr for the given audience and returns the
+// principal it belongs to. The returned error is one of the sentinel errors
+// above, or a descriptive error naming the user the token belongs to.
+func (a *TokenAuthenticator) Resolve(ctx context.Context, accessTokenStr, audience string) (*store.UserMessage, *AccessTokenIdentity, error) {
+	if accessTokenStr == "" {
+		return nil, nil, ErrTokenMissing
+	}
+	if a.stateCfg != nil {
+		if _, ok := a.stateCfg.TokenExpireCache.Get(accessTokenStr); ok {
+			return nil, nil, ErrTokenRevoked
+		}
+	}
+	identity, err := VerifyAccessTokenFor(accessTokenStr, a.secret, audience)
+	if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			return nil, nil, ErrTokenRevoked
+		}
+		return nil, nil, ErrTokenInvalid
+	}
+
+	user, err := a.store.GetUserByID(ctx, identity.UserID)
+	if err != nil {
+		return nil, nil, errs.Errorf("failed to find user ID %d in the access token", identity.UserID)
+	}
+	if user == nil {
+		return nil, nil, errs.Errorf("user ID %d not exists in the access token", identity.UserID)
+	}
+	if user.MemberDeleted {
+		return nil, nil, errs.Errorf("user ID %d has been deactivated by administrators", user.ID)
+	}
+	// A token minted before the last password change must not survive it. The
+	// comparison uses persisted state, so it holds across replicas. Both
+	// timestamps come from this process's clock and the iat claim carries
+	// sub-second precision, so the ordering is exact.
+	if lastChange := user.Profile.GetLastChangePasswordTime(); lastChange != nil {
+		if tokenPredatesPasswordChange(identity.IssuedAt, lastChange.AsTime()) {
+			return nil, nil, errs.Errorf("access token of user ID %d was issued before the last password change", user.ID)
+		}
+	}
+	return user, identity, nil
+}
