@@ -10,6 +10,12 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "composite": true,
+    // The config project is composite, so it must emit; the output goes under
+    // node_modules because a vite.config.js beside the source would shadow
+    // vite.config.ts — Vite resolves the .js first, and `pnpm dev` would then run
+    // a stale copy of the proxy and plugin configuration.
+    "outDir": "./node_modules/.tmp/tsconfig-node",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
