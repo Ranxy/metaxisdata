@@ -382,12 +382,15 @@ e.Any("/mcp*", echo.WrapHandler(auth.RequireBearerToken(verifyMCPToken, opts)(mc
 2. 把 audit 原语从 package `v1` 抽到共享包(例如 `backend/component/audit`),package v1 引用之;补 `code_verifier`/`client_secret`/`authorizationcode` 脱敏与测试。
 3. **已完成** —— 抽公共身份解析链:新增 `backend/api/auth/authenticator.go`:`TokenAuthenticator.Resolve(ctx, token, audience)` 按同一次序执行签名/算法/issuer/audience/过期 → 吊销 LRU → 用户存在 → 未停用 → 改密截断,并返回**普通错误**(不再是 Connect 错误),让 ConnectRPC 与 MCP 各自映射;`VerifyAccessTokenFor` 支持显式 audience;`APIAuthInterceptor.authenticateConnect` 缩成 4 行包装,错误码与文案不变。新增 `authenticator_test.go` 钉住三条:audience 隔离、过期映射为"已吊销"、缺令牌。
 
-### Phase 3 — OAuth AS(进行中)
+### Phase 3 — OAuth AS(已完成)
 
-1. **已完成** 令牌:audience 改为资源 URI 并携带 scope(`GenerateMCPAccessToken`);`AccessTokenIdentity` 暴露 `Scopes`/`ExpiresAt`;`TokenAuthenticator` 改用 `UserStore` 接口以便无库测试;`backend/mcp/auth.go` 的 `NewTokenVerifier` 按当前资源 audience 解析令牌,并把 principal 放进 `TokenInfo.Extra` 供工具层注入 ctx。
-2. **已完成** 端点标识与元数据:`backend/api/oauth/resource.go`(规范化)、`metadata.go`(PRM + AS metadata 文档)、`authorize.go`(精确重定向匹配 + loopback 端口放宽、S256-only PKCE、scope 校验)。
-3. **已完成** pending 授权请求/授权码 store(`backend/component/state/oauth_authorization_request.go`,12 个测试)。
-4. **待做** `oauth_client` 表 + store(子代理在跑)、`/oauth/authorize`+`/oauth/authorize/complete`+`/oauth/token`+`/oauth/register` 的 HTTP 端点、`OAuthService` 的两个 consent 方法、限流与审计接线。
+1. **令牌**:audience 是资源 URI 且携带 scope(`GenerateMCPAccessToken`);`AccessTokenIdentity` 暴露 `Scopes`/`ExpiresAt`;`TokenAuthenticator` 用 `UserStore` 接口以便无库测试;`backend/mcp/auth.go` 的 `NewTokenVerifier` 按当前资源 audience 解析令牌,principal 经 `TokenInfo.Extra` 传给工具层。
+2. **端点标识与元数据**:`backend/api/oauth/resource.go`(规范化)、`metadata.go`(PRM + AS metadata 文档 + `EndpointsFunc`/`WorkspaceEndpoints`)、`authorize.go`(精确重定向匹配 + loopback 端口放宽、S256-only PKCE、scope 校验)、`server.go`(会话解析/错误渲染)、`token.go`(授权码换令牌)。
+3. **HTTP 端点**:`GET /oauth/authorize`(先验 client + redirect_uri,再验参数,然后要求登录态,记录 pending 请求并 302 到确认页)、`GET /oauth/authorize/complete`(服务端生成授权码并 302 回客户端,码不过 RPC/前端)、`POST /oauth/token`(一次性兑换、校验 client/redirect_uri/PKCE/resource 后签发)、`POST /oauth/register`(RFC 7591,public client)。
+4. **存储**:pending 授权请求 + 授权码 store(`backend/component/state/oauth_authorization_request.go`,12 测试)、`oauth_client` 表 + store(`0011##oauth_client.sql`、`LATEST.sql`、`backend/store/oauth_client.go`)。
+5. **consent RPC**:`backend/api/v1/oauth_service.go`(读取用 caller 的 user id 限定,响应不含授权码;批准复用与 device login 同一个 `validateApprover`)。
+6. **接线**:`backend/server/grpc_routes.go` 挂 4 个协议端点 + 2 个元数据端点,`backend/server/oauth_endpoints.go` 给匿名端点加按 trusted-proxy 解析 IP 的限流与超时;`backend/api/oauth/audit.go` 给每个协议端点写一条审计行(severity 由状态码推出,actor/client 经 request context 传出;码与令牌永不入审计)。
+7. **未做(属后续阶段)**:`/mcp` 端点本身(Phase 4)、确认页(Phase 5)、端到端集成测试(Phase 6)。
 
 ### Phase 4 — MCP 资源服务器
 
