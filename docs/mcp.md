@@ -84,7 +84,7 @@ Three rules decide whether a call works:
   tool refuses to pick one and lists the databases that exist.
 - **A failure is a question to rephrase.** Every failure is one JSON object with a
   stable `code` (`invalid_argument`, `not_found`, `ambiguous`, `scope_required`,
-  `permission_denied`, `unauthenticated`, `unavailable`, `timeout`,
+  `unsupported`, `permission_denied`, `unauthenticated`, `unavailable`, `timeout`,
   `resource_exhausted`, `internal`), a `message`, usually a `hint`, and — for a
   name that was unknown or ambiguous — `details.candidates`.
 

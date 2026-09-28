@@ -360,6 +360,8 @@ func auditStatus(err error) (*storepb.AuditLogStatus, storepb.AuditLogSeverity) 
 		code, severity = connect.CodeNotFound, storepb.AuditLogSeverity_WARNING
 	case codeInvalidArgument, codeAmbiguous, codeScopeRequired, codeResourceExhausted:
 		code, severity = connect.CodeInvalidArgument, storepb.AuditLogSeverity_WARNING
+	case codeUnsupported:
+		code, severity = connect.CodeFailedPrecondition, storepb.AuditLogSeverity_WARNING
 	case codeUnauthenticated:
 		code, severity = connect.CodeUnauthenticated, storepb.AuditLogSeverity_WARNING
 	case codePermissionDenied:

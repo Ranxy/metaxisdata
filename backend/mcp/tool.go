@@ -483,6 +483,13 @@ func (s *Server) runGetMetadata(ctx context.Context, _ *store.UserMessage, raw j
 	if err != nil {
 		return nil, err
 	}
+	if metaType == v1pb.MetaType_UNSPECIFIED && args.Object.GUID != "" {
+		// The registry cannot infer an object's type from its GUID, and the RPC
+		// refuses without one. Saying that here is the difference between a model
+		// retrying the same call and one that fixes it.
+		return nil, newToolError(codeInvalidArgument, "meta_type is required when the reference is a bare guid",
+			"list_metadata and search_metadata return metaType with every object, or address the object by name instead")
+	}
 	object, err := s.resolveObject(ctx, args.Object, metaType)
 	if err != nil {
 		return nil, err
@@ -526,6 +533,10 @@ func (s *Server) runGetDDL(ctx context.Context, _ *store.UserMessage, raw json.R
 	metaType, err := parseMetaType(args.MetaType)
 	if err != nil {
 		return nil, err
+	}
+	if metaType == v1pb.MetaType_UNSPECIFIED && args.Object.GUID != "" {
+		return nil, newToolError(codeInvalidArgument, "meta_type is required when the reference is a bare guid",
+			"list_metadata and search_metadata return metaType with every object, or address the object by name instead")
 	}
 	object, err := s.resolveObject(ctx, args.Object, metaType)
 	if err != nil {

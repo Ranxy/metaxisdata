@@ -743,17 +743,19 @@ func requestFor(t *testing.T, user *store.UserMessage, name, args string) *mcpsd
 
 func TestToolErrorFromRPCMapsCodes(t *testing.T) {
 	t.Parallel()
-
 	cases := map[connect.Code]string{
-		connect.CodeNotFound:         codeNotFound,
-		connect.CodePermissionDenied: codePermissionDenied,
-		connect.CodeInvalidArgument:  codeInvalidArgument,
-		connect.CodeDeadlineExceeded: codeTimeout,
-		connect.CodeUnknown:          codeInternal,
+		connect.CodeNotFound:           codeNotFound,
+		connect.CodePermissionDenied:   codePermissionDenied,
+		connect.CodeInvalidArgument:    codeInvalidArgument,
+		connect.CodeFailedPrecondition: codeUnsupported,
+		connect.CodeDeadlineExceeded:   codeTimeout,
+		connect.CodeUnknown:            codeInternal,
 	}
 	for code, want := range cases {
 		require.Equal(t, want, toolErrorFromRPC(connect.NewError(code, errors.New("x"))).Code, "code %v", code)
 	}
+	require.Equal(t, codeUnsupported, toolErrorFromRPC(connect.NewError(connect.CodeFailedPrecondition, errors.New("no analyzer"))).Code,
+		"a capability the deployment lacks is not a bad argument")
 	require.Nil(t, toolErrorFromRPC(nil))
 }
 

@@ -89,6 +89,7 @@ Every failure is one JSON object with a stable `code`:
 | `not_found` | no object matches the reference | use `details.candidates`, or search first |
 | `ambiguous` | the name matches several objects | pick one from `details.candidates`, or pass its `guid` |
 | `scope_required` | `analyze_sql` has no scope | pass one; `details.databases` lists what exists |
+| `unsupported` | this deployment cannot answer that as asked — an engine with no lineage analyzer, for instance | try another scope or engine; the message says what is missing |
 | `permission_denied` | the caller lacks the permission | report it; another tool may answer part of the question |
 | `unauthenticated` | the client's authorization is gone | the client must authorize again |
 | `unavailable` | the server could not be reached | retry later; it is not a bad request |

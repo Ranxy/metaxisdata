@@ -24,6 +24,12 @@ const (
 	codeUnavailable       = "unavailable"
 	codeTimeout           = "timeout"
 	codeInternal          = "internal"
+	// codeUnsupported is the deployment's answer when the question is
+	// answerable in principle but not by this one: an engine with no lineage
+	// analyzer, a resource that has not been synced. It is neither a bad argument
+	// nor a transient fault, and telling a model to retry or to fix its arguments
+	// would send it in a circle.
+	codeUnsupported = "unsupported"
 )
 
 // toolError is the machine-readable failure a tool reports. It mirrors the CLI's
@@ -87,8 +93,12 @@ func toolErrorFromRPC(err error) *toolError {
 	switch connect.CodeOf(err) {
 	case connect.CodeNotFound:
 		return newToolError(codeNotFound, err.Error(), "search or list first to get a reference that exists")
-	case connect.CodeInvalidArgument, connect.CodeFailedPrecondition:
-		return newToolError(codeInvalidArgument, err.Error(), "fix the arguments and retry")
+	case connect.CodeInvalidArgument:
+		return newToolError(codeInvalidArgument, err.Error(), "the server refused the arguments; the message says which")
+	case connect.CodeFailedPrecondition:
+		// The arguments were fine; the deployment cannot answer this at all. An
+		// engine with no lineage analyzer is the case that happens in practice.
+		return newToolError(codeUnsupported, err.Error(), "this deployment cannot answer that as asked; the message says why")
 	case connect.CodePermissionDenied:
 		return newToolError(codePermissionDenied, err.Error(), "")
 	case connect.CodeUnauthenticated:
