@@ -64,8 +64,13 @@ const ROUTES = [
   { path: "/databases", name: "databases", tableTopMaxY: 160 },
   { path: "/manual-sql", name: "manual sql", tableTopMaxY: 160 },
   { path: "/explain-sql", name: "explain sql" },
-  { path: "/openlineage/overview", name: "openlineage overview" },
-  { path: "/openlineage/jobs", name: "openlineage jobs" },
+  // The OpenLineage directory pages. Their budgets are on `tableTopY` like the
+  // rest; what they were really failing was `overflowingTables`, which none of
+  // them could previously report because the audit did not look for it.
+  { path: "/openlineage/overview", name: "openlineage overview", tableTopMaxY: 400 },
+  { path: "/openlineage/jobs", name: "openlineage jobs", tableTopMaxY: 360 },
+  { path: "/openlineage/datasets", name: "openlineage datasets", tableTopMaxY: 400 },
+  { path: "/openlineage/events", name: "openlineage events", tableTopMaxY: 400 },
   { path: "/settings/general", name: "settings general" },
   { path: "/settings/audit-logs", name: "settings audit logs", tableTopMaxY: 290 },
   // Same failure as audit-logs above: seven columns of long values inside the
@@ -110,6 +115,19 @@ const MEASURE = `(() => {
     }).length,
     mainWidth: Math.round(main.getBoundingClientRect().width),
     scrollWidth: Math.round(main.scrollWidth),
+    // A table wide enough to overflow its own overflow-auto wrapper never
+    // reaches main.scrollWidth, and its cells are not narrower than their
+    // content either, so both checks above miss it: the columns on the right —
+    // often the row actions — simply sit behind a scrollbar nobody notices.
+    overflowingTables: [...main.querySelectorAll('table')]
+      .filter((table) => table.scrollWidth > table.parentElement.clientWidth + 1)
+      .map((table) => {
+        const hidden = table.scrollWidth - table.parentElement.clientWidth;
+        const headers = [...table.querySelectorAll('thead th')].map((th) =>
+          th.textContent.trim()
+        );
+        return { hidden: Math.round(hidden), headers: headers.join(' | ') };
+      }),
     gutter: getComputedStyle(main).scrollbarGutter,
   };
 })()`;
@@ -423,6 +441,11 @@ async function main() {
       if (measured.clippedTableCells > 0) {
         failures.push(
           `${measured.clippedTableCells} table cell(s) narrower than their content`
+        );
+      }
+      for (const table of measured.overflowingTables || []) {
+        failures.push(
+          `table hides ${table.hidden}px behind a horizontal scrollbar (${table.headers})`
         );
       }
     }

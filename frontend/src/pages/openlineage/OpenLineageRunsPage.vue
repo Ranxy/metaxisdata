@@ -10,9 +10,12 @@
         :label="t('openlineage.visibleJobs')"
         :value="filteredTasks.length"
       />
+      <!-- Not "lineage-ready jobs": the lineage toggle is on by default, so that
+           count is this one's twin until someone unchecks it. Total runs says
+           something the row count cannot. -->
       <StatCard
-        :label="t('openlineage.lineageReadyJobs')"
-        :value="lineageReadyCount"
+        :label="t('openlineage.runsTotal')"
+        :value="totalRunCount"
       />
       <StatCard
         :label="t('openlineage.activeNamespaces')"
@@ -50,52 +53,82 @@
             :icon="ScrollText"
             :title="t('openlineageSettings.noTasks')"
           />
-          <Table v-else>
+          <!-- Ten columns of long values overflowed the card by 315px. The
+               lineage count now shares the run-count cell, the coverage badge
+               is gone (it only restated that count), the row actions collapse
+               into a menu, and job type is left to the filter menu — it is a
+               low-cardinality constant in practice and cost a whole column.
+               `whitespace-nowrap` keeps Chinese labels from stacking one
+               character per line. -->
+          <Table
+            v-else
+            class="[&_th]:whitespace-nowrap"
+          >
             <TableHeader>
               <TableRow>
                 <TableHead>{{ t("openlineageSettings.namespace") }}</TableHead>
                 <TableHead>{{ t("openlineageSettings.jobName") }}</TableHead>
-                <TableHead>{{ t("openlineageSettings.jobType") }}</TableHead>
                 <TableHead>{{ t("openlineageSettings.integration") }}</TableHead>
                 <TableHead>{{ t("openlineageSettings.latestEventTime") }}</TableHead>
                 <TableHead>{{ t("openlineage.latestRunStatus") }}</TableHead>
-                <TableHead>{{ t("openlineage.coverage") }}</TableHead>
                 <TableHead>{{ t("openlineageSettings.runCount") }}</TableHead>
-                <TableHead>{{ t("openlineageSettings.lineageRunCount") }}</TableHead>
-                <TableHead class="text-right">{{ t("openlineageSettings.actions") }}</TableHead>
+                <TableHead class="sticky right-0 bg-background text-right">
+                  {{ t("openlineageSettings.actions") }}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               <TableRow v-for="task in filteredTasks" :key="task.guid">
                 <TableCell class="font-mono text-sm">{{ task.jobNamespace }}</TableCell>
-                <TableCell>{{ task.jobName }}</TableCell>
-                <TableCell>{{ task.jobType }}</TableCell>
+                <TableCell>
+                  <div
+                    class="max-w-64 truncate"
+                    :title="task.jobName"
+                  >
+                    {{ task.jobName }}
+                  </div>
+                </TableCell>
                 <TableCell>{{ task.integration || "-" }}</TableCell>
-                <TableCell>{{ formatTimestamp(task.latestEventTime) }}</TableCell>
+                <TableCell class="whitespace-nowrap">{{ formatTimestamp(task.latestEventTime) }}</TableCell>
                 <TableCell>
                   <Badge :variant="statusVariant(task.latestEventType)">
                     {{ task.latestEventType || "-" }}
                   </Badge>
                 </TableCell>
-                <TableCell>
-                  <Badge :variant="task.lineageRunCount > 0 ? 'success' : 'secondary'">
-                    {{ task.lineageRunCount > 0 ? t("openlineage.lineageReady") : t("openlineage.lineageMissing") }}
-                  </Badge>
+                <TableCell class="whitespace-nowrap">
+                  {{ task.runCount }}
+                  <span class="text-muted-foreground">
+                    / {{ task.lineageRunCount }} {{ t("openlineage.lineageEvents") }}
+                  </span>
                 </TableCell>
-                <TableCell>{{ task.runCount }}</TableCell>
-                <TableCell>{{ task.lineageRunCount }}</TableCell>
-                <TableCell class="text-right">
-                  <div class="flex justify-end gap-2">
-                    <Button variant="ghost" size="sm" @click="openGraph(task.guid)">
-                      {{ t("openlineage.openGraph") }}
-                    </Button>
-                    <Button variant="ghost" size="sm" @click="openEvents(task)">
-                      {{ t("openlineage.openEvents") }}
-                    </Button>
-                    <Button variant="ghost" size="sm" @click="openDetail(task.guid)">
-                      {{ t("openlineageSettings.viewDetail") }}
-                    </Button>
-                  </div>
+                <TableCell class="sticky right-0 bg-background text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger as-child>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="h-8 w-8"
+                        :title="t('openlineage.moreActions')"
+                        :aria-label="t('openlineage.moreActions')"
+                      >
+                        <MoreHorizontal class="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem @select="openGraph(task.guid)">
+                        <Network class="mr-2 h-4 w-4" />
+                        {{ t("openlineage.openGraph") }}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem @select="openEvents(task)">
+                        <Files class="mr-2 h-4 w-4" />
+                        {{ t("openlineage.openEvents") }}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem @select="openDetail(task.guid)">
+                        <ScrollText class="mr-2 h-4 w-4" />
+                        {{ t("openlineageSettings.viewDetail") }}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             </TableBody>
@@ -108,7 +141,7 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { ScrollText } from "lucide-vue-next";
+import { Files, MoreHorizontal, Network, ScrollText } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
@@ -123,6 +156,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import {
   Table,
@@ -233,8 +272,8 @@ const filteredTasks = computed(() => {
   });
 });
 
-const lineageReadyCount = computed(() => {
-  return filteredTasks.value.filter((task) => task.lineageRunCount > 0).length;
+const totalRunCount = computed(() => {
+  return filteredTasks.value.reduce((sum, task) => sum + task.runCount, 0);
 });
 
 const namespaceCount = computed(() => {

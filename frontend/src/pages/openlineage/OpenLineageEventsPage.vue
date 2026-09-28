@@ -10,9 +10,11 @@
         :label="t('openlineage.visibleEvents')"
         :value="filteredRuns.length"
       />
+      <!-- Not "lineage events": the lineage toggle is on by default, so that
+           count is this one's twin until someone unchecks it. -->
       <StatCard
-        :label="t('openlineage.lineageEvents')"
-        :value="lineageEventCount"
+        :label="t('openlineage.jobsCovered')"
+        :value="jobCount"
       />
       <StatCard
         :label="t('openlineage.activeNamespaces')"
@@ -50,45 +52,85 @@
             :icon="Files"
             :title="t('openlineageSettings.noRuns')"
           />
-          <Table v-else>
+          <!-- Eleven columns overflowed the card by 521px, and the sticky action
+               column was the only way to reach a row's action. The job's
+               namespace is now its second line, the producer URI stays in the
+               run detail (it is a constant per integration, and long), the two
+               dataset counts share a cell, the run id is capped — its popover
+               still shows the whole value — and the action is an icon. The
+               lineage badge is gone: the lineage toggle is on by default, so it
+               restated the filter rather than the row.
+               `whitespace-nowrap` keeps Chinese labels from stacking one
+               character per line. -->
+          <Table
+            v-else
+            class="[&_th]:whitespace-nowrap"
+          >
             <TableHeader>
               <TableRow>
                 <TableHead>{{ t("openlineageSettings.eventTime") }}</TableHead>
                 <TableHead>{{ t("openlineage.eventType") }}</TableHead>
                 <TableHead>{{ t("openlineageSettings.jobName") }}</TableHead>
-                <TableHead>{{ t("openlineageSettings.namespace") }}</TableHead>
                 <TableHead>{{ t("openlineageSettings.runId") }}</TableHead>
-                <TableHead>{{ t("openlineageSettings.producer") }}</TableHead>
                 <TableHead>{{ t("openlineageSettings.sourceLabel") }}</TableHead>
-                <TableHead>{{ t("openlineage.hasLineage") }}</TableHead>
-                <TableHead>{{ t("openlineageSettings.inputCount") }}</TableHead>
-                <TableHead>{{ t("openlineageSettings.outputCount") }}</TableHead>
-                <TableHead class="sticky right-0 z-10 bg-background text-right">{{ t("openlineageSettings.actions") }}</TableHead>
+                <TableHead>{{ t("openlineage.inputsOutputs") }}</TableHead>
+                <TableHead class="sticky right-0 bg-background text-right">
+                  {{ t("openlineageSettings.actions") }}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               <TableRow v-for="run in filteredRuns" :key="run.guid">
-                <TableCell>{{ formatTimestamp(run.eventTime) }}</TableCell>
+                <TableCell class="whitespace-nowrap">{{ formatTimestamp(run.eventTime) }}</TableCell>
                 <TableCell>
                   <Badge variant="outline">{{ run.eventType || "-" }}</Badge>
                 </TableCell>
-                <TableCell>{{ run.jobName }}</TableCell>
-                <TableCell class="font-mono text-sm">{{ run.jobNamespace }}</TableCell>
-                <TableCell class="font-mono text-sm"><ExpandableText :text="run.runId" /></TableCell>
-                <TableCell class="max-w-48">
-                  <ExpandableText :text="run.producer" />
-                </TableCell>
-                <TableCell>{{ run.source || "-" }}</TableCell>
                 <TableCell>
-                  <Badge :variant="run.hasLineage ? 'success' : 'secondary'">
-                    {{ run.hasLineage ? t("openlineage.yes") : t("openlineage.no") }}
-                  </Badge>
+                  <div
+                    class="max-w-64 truncate"
+                    :title="run.jobName"
+                  >
+                    {{ run.jobName }}
+                  </div>
+                  <div
+                    class="max-w-64 truncate font-mono text-xs text-muted-foreground"
+                    :title="run.jobNamespace"
+                  >
+                    {{ run.jobNamespace }}
+                  </div>
                 </TableCell>
-                <TableCell>{{ run.inputCount }}</TableCell>
-                <TableCell>{{ run.outputCount }}</TableCell>
+                <TableCell class="font-mono text-sm">
+                  <div class="max-w-32">
+                    <ExpandableText
+                      :text="run.runId"
+                      :dialog-title="t('openlineageSettings.runId')"
+                    />
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div
+                    class="max-w-32 truncate"
+                    :title="run.source"
+                  >
+                    {{ run.source || "-" }}
+                  </div>
+                </TableCell>
+                <TableCell
+                  class="whitespace-nowrap"
+                  :title="`${t('openlineage.inputs')} ${run.inputCount} · ${t('openlineage.outputs')} ${run.outputCount}`"
+                >
+                  {{ run.inputCount }} / {{ run.outputCount }}
+                </TableCell>
                 <TableCell class="sticky right-0 bg-background text-right">
-                  <Button variant="ghost" size="sm" @click="openDetail(run.guid)">
-                    {{ t("openlineageSettings.viewRun") }}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="h-8 w-8"
+                    :title="t('openlineageSettings.viewRun')"
+                    :aria-label="t('openlineageSettings.viewRun')"
+                    @click="openDetail(run.guid)"
+                  >
+                    <Eye class="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </TableCell>
               </TableRow>
@@ -102,7 +144,7 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { Files } from "lucide-vue-next";
+import { Eye, Files } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
@@ -231,9 +273,10 @@ const filteredRuns = computed(() => {
   });
 });
 
-const lineageEventCount = computed(
-  () => filteredRuns.value.filter((run) => run.hasLineage).length
-);
+const jobCount = computed(() => {
+  return new Set(filteredRuns.value.map((run) => run.jobName).filter(Boolean))
+    .size;
+});
 
 const namespaceCount = computed(() => {
   return new Set(

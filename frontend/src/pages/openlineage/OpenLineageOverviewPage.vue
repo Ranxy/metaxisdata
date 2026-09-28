@@ -80,7 +80,10 @@
             </RouterLink>
           </CardHeader>
           <CardContent class="p-0">
-            <Table>
+            <!-- `whitespace-nowrap` keeps Chinese column labels from stacking one
+                 character per line, and the caps keep a long integration or job
+                 name from widening the table past its card. -->
+            <Table class="[&_th]:whitespace-nowrap">
               <TableHeader>
                 <TableRow>
                   <TableHead>{{ t("openlineageSettings.latestEventTime") }}</TableHead>
@@ -88,8 +91,7 @@
                   <TableHead>{{ t("openlineageSettings.jobName") }}</TableHead>
                   <TableHead>{{ t("openlineageSettings.integration") }}</TableHead>
                   <TableHead>{{ t("openlineage.hasLineage") }}</TableHead>
-                  <TableHead>{{ t("openlineage.inputs") }}</TableHead>
-                  <TableHead>{{ t("openlineage.outputs") }}</TableHead>
+                  <TableHead>{{ t("openlineage.inputsOutputs") }}</TableHead>
                   <TableHead class="text-right">
                     {{ t("openlineageSettings.actions") }}
                   </TableHead>
@@ -120,22 +122,34 @@
                     </div>
                   </TableCell>
                   <TableCell class="text-muted-foreground">
-                    {{ run.integration || run.source || "-" }}
+                    <div
+                      class="max-w-32 truncate"
+                      :title="run.integration || run.source"
+                    >
+                      {{ run.integration || run.source || "-" }}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge :variant="run.hasLineage ? 'success' : 'secondary'">
                       {{ run.hasLineage ? t("openlineage.yes") : t("openlineage.no") }}
                     </Badge>
                   </TableCell>
-                  <TableCell>{{ run.inputCount }}</TableCell>
-                  <TableCell>{{ run.outputCount }}</TableCell>
+                  <TableCell
+                    class="whitespace-nowrap"
+                    :title="`${t('openlineage.inputs')} ${run.inputCount} · ${t('openlineage.outputs')} ${run.outputCount}`"
+                  >
+                    {{ run.inputCount }} / {{ run.outputCount }}
+                  </TableCell>
                   <TableCell class="text-right">
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="icon"
+                      class="h-8 w-8"
+                      :title="t('openlineageSettings.viewRun')"
+                      :aria-label="t('openlineageSettings.viewRun')"
                       @click="openRun(run.guid)"
                     >
-                      {{ t("openlineageSettings.viewRun") }}
+                      <Eye class="h-4 w-4 text-muted-foreground" />
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -165,7 +179,7 @@
             </RouterLink>
           </CardHeader>
           <CardContent class="p-0">
-            <Table>
+            <Table class="[&_th]:whitespace-nowrap">
               <TableHeader>
                 <TableRow>
                   <TableHead>{{ t("openlineageSettings.jobName") }}</TableHead>
@@ -207,7 +221,7 @@
                       {{ task.latestEventType || "-" }}
                     </Badge>
                   </TableCell>
-                  <TableCell>
+                  <TableCell class="whitespace-nowrap">
                     {{ task.runCount }}
                     <span class="text-muted-foreground">
                       / {{ task.lineageRunCount }} {{ t("openlineage.lineageEvents") }}
@@ -216,10 +230,13 @@
                   <TableCell class="text-right">
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="icon"
+                      class="h-8 w-8"
+                      :title="t('openlineageSettings.viewDetail')"
+                      :aria-label="t('openlineageSettings.viewDetail')"
                       @click="openJob(task.guid)"
                     >
-                      {{ t("openlineageSettings.viewDetail") }}
+                      <Eye class="h-4 w-4 text-muted-foreground" />
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -234,7 +251,7 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { ArrowRight, RadioTower } from "lucide-vue-next";
+import { ArrowRight, Eye, RadioTower } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRouter } from "vue-router";
@@ -270,7 +287,7 @@ import type {
   OpenLineageRun,
   OpenLineageTask,
 } from "@/types/proto-es/v1/openlineage_service_pb";
-import { formatDateTime } from "@/utils/datetime";
+import { formatDate, formatDateTime, formatTime } from "@/utils/datetime";
 
 // Enough to describe the workspace's recent state without paging; every table
 // links into the full directory for anything deeper.
@@ -308,20 +325,27 @@ const lineageRunCount = computed(
 // Runs arrive newest first, so the head is the most recent activity.
 const lastRun = computed(() => runs.value[0] ?? null);
 
+// The card's value is set at 3xl, where a full date-time breaks across two
+// lines, so the date is the value and the time joins the source underneath.
 const lastEventLabel = computed(() => {
   const run = lastRun.value;
   if (!run?.eventTime) {
     return t("openlineage.neverSeen");
   }
-  return formatTimestamp(run.eventTime);
+  return formatDate(run.eventTime, locale.value);
 });
 
 const lastEventHint = computed(() => {
   const run = lastRun.value;
-  if (!run) {
+  if (!run?.eventTime) {
     return "";
   }
-  return run.integration || run.source || run.jobName;
+  return [
+    formatTime(run.eventTime, locale.value),
+    run.integration || run.source || run.jobName,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 });
 
 const activeTasks = computed(() => tasks.value.slice(0, ACTIVE_JOB_LIMIT));

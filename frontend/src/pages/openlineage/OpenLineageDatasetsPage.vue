@@ -50,78 +50,98 @@
             :icon="Database"
             :title="t('openlineage.noDatasets')"
           />
-          <Table v-else>
+          <!-- Ten columns of long values overflowed the card by 740px — the four
+               action buttons alone took 524px of it. The namespace is now the
+               dataset's second line, resolved target and the column-lineage
+               badge live in the detail drawer, the two job counts share a cell
+               and the row actions collapse into a menu.
+               `whitespace-nowrap` keeps Chinese labels from stacking one
+               character per line. -->
+          <Table
+            v-else
+            class="[&_th]:whitespace-nowrap"
+          >
             <TableHeader>
               <TableRow>
-                <TableHead>{{ t("openlineageSettings.namespace") }}</TableHead>
                 <TableHead>{{ t("openlineage.datasetName") }}</TableHead>
                 <TableHead>{{ t("openlineage.datasetType") }}</TableHead>
-                <TableHead>{{ t("openlineage.resolvedTarget") }}</TableHead>
                 <TableHead>{{ t("openlineage.lastSeen") }}</TableHead>
-                <TableHead>{{ t("openlineage.sourceJobsCount") }}</TableHead>
-                <TableHead>{{ t("openlineage.targetJobsCount") }}</TableHead>
-                <TableHead>{{ t("openlineage.supportsColumnLineage") }}</TableHead>
+                <TableHead>{{ t("openlineage.sourceTargetJobs") }}</TableHead>
                 <TableHead>{{ t("openlineage.scope") }}</TableHead>
-                <TableHead class="text-right">{{ t("openlineageSettings.actions") }}</TableHead>
+                <TableHead class="sticky right-0 bg-background text-right">
+                  {{ t("openlineageSettings.actions") }}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               <TableRow v-for="dataset in filteredDatasets" :key="datasetRowKey(dataset)">
-                <TableCell class="font-mono text-sm">{{ dataset.namespace }}</TableCell>
                 <TableCell>
                   <button
-                    class="text-left font-medium text-primary hover:underline"
+                    class="block max-w-64 truncate text-left font-medium text-primary hover:underline"
                     type="button"
+                    :title="dataset.name"
                     @click="openDatasetDetail(dataset)"
                   >
                     {{ dataset.name }}
                   </button>
+                  <div
+                    class="max-w-64 truncate font-mono text-xs text-muted-foreground"
+                    :title="dataset.namespace"
+                  >
+                    {{ dataset.namespace }}
+                  </div>
                 </TableCell>
                 <TableCell>{{ dataset.datasetType || "-" }}</TableCell>
-                <TableCell>
-                  <span v-if="dataset.resolvedTarget" class="font-mono text-sm">
-                    {{ dataset.resolvedTarget }}
-                  </span>
-                  <span v-else class="text-muted-foreground">-</span>
-                </TableCell>
-                <TableCell>{{ formatTimestamp(dataset.lastSeen) }}</TableCell>
-                <TableCell>{{ dataset.sourceJobCount }}</TableCell>
-                <TableCell>{{ dataset.targetJobCount }}</TableCell>
-                <TableCell>
-                  <Badge :variant="dataset.supportsColumnLineage ? 'success' : 'secondary'">
-                    {{ dataset.supportsColumnLineage ? t("openlineage.yes") : t("openlineage.no") }}
-                  </Badge>
+                <TableCell class="whitespace-nowrap">{{ formatTimestamp(dataset.lastSeen) }}</TableCell>
+                <TableCell
+                  class="whitespace-nowrap"
+                  :title="`${t('openlineage.sourceJobsCount')} ${dataset.sourceJobCount} · ${t('openlineage.targetJobsCount')} ${dataset.targetJobCount}`"
+                >
+                  {{ dataset.sourceJobCount }} / {{ dataset.targetJobCount }}
                 </TableCell>
                 <TableCell>
                   <Badge :variant="dataset.internal ? 'default' : 'outline'">
                     {{ dataset.internal ? t("openlineage.internal") : t("openlineage.external") }}
                   </Badge>
                 </TableCell>
-                <TableCell class="text-right">
-                  <div class="flex justify-end gap-2">
-                    <Button variant="ghost" size="sm" @click="openDatasetDetail(dataset)">
-                      {{ t("openlineageSettings.viewDetail") }}
-                    </Button>
-                    <Button variant="ghost" size="sm" @click="openGraph(dataset)">
-                      {{ t("openlineage.openGraph") }}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      :disabled="!dataset.supportsColumnLineage"
-                      @click="openColumnLineage(dataset)"
-                    >
-                      {{ t("openlineage.openColumnLineage") }}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      :disabled="!dataset.internal"
-                      @click="openMetadata(dataset)"
-                    >
-                      {{ t("openlineage.openMetadata") }}
-                    </Button>
-                  </div>
+                <TableCell class="sticky right-0 bg-background text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger as-child>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="h-8 w-8"
+                        :title="t('openlineage.moreActions')"
+                        :aria-label="t('openlineage.moreActions')"
+                      >
+                        <MoreHorizontal class="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem @select="openDatasetDetail(dataset)">
+                        <Info class="mr-2 h-4 w-4" />
+                        {{ t("openlineageSettings.viewDetail") }}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem @select="openGraph(dataset)">
+                        <Network class="mr-2 h-4 w-4" />
+                        {{ t("openlineage.openGraph") }}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        :disabled="!dataset.supportsColumnLineage"
+                        @select="openColumnLineage(dataset)"
+                      >
+                        <GitBranch class="mr-2 h-4 w-4" />
+                        {{ t("openlineage.openColumnLineage") }}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        :disabled="!dataset.internal"
+                        @select="openMetadata(dataset)"
+                      >
+                        <Table2 class="mr-2 h-4 w-4" />
+                        {{ t("openlineage.openMetadata") }}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             </TableBody>
@@ -139,7 +159,14 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { Database } from "lucide-vue-next";
+import {
+  Database,
+  GitBranch,
+  Info,
+  MoreHorizontal,
+  Network,
+  Table2,
+} from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
@@ -155,6 +182,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import {
   Table,

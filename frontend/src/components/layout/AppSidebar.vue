@@ -300,28 +300,28 @@ function buildMenuItems(): MenuItem[] {
       children: [
         {
           key: "openlineageOverview",
-          label: t("menu.overview"),
+          label: t("openlineage.overview"),
           path: "/openlineage/overview",
           icon: LayoutDashboard,
           permission: "metaxisdata.openlineage.read",
         },
         {
           key: "openlineageJobs",
-          label: t("menu.jobs"),
+          label: t("openlineage.jobs"),
           path: "/openlineage/jobs",
           icon: Network,
           permission: "metaxisdata.openlineage.read",
         },
         {
           key: "openlineageDatasets",
-          label: t("menu.datasets"),
+          label: t("openlineage.datasets"),
           path: "/openlineage/datasets",
           icon: Database,
           permission: "metaxisdata.openlineage.read",
         },
         {
           key: "openlineageEvents",
-          label: t("menu.events"),
+          label: t("openlineage.events"),
           path: "/openlineage/events",
           icon: Files,
           permission: "metaxisdata.openlineage.read",
