@@ -45,6 +45,14 @@ export default defineConfig({
         target: "http://localhost:8083",
         changeOrigin: true,
       },
+      // The MCP endpoint, which a client reaches at the resource identifier the
+      // settings advertise — this origin. The Host is deliberately left alone:
+      // the endpoint is same-origin with the SPA in production, and rewriting it
+      // would make the standard library's cross-origin protection read a
+      // same-origin request as a cross-origin one.
+      "/mcp": {
+        target: "http://localhost:8083",
+      },
     },
   },
 });
