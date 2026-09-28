@@ -68,6 +68,9 @@ const ROUTES = [
   { path: "/openlineage/jobs", name: "openlineage jobs" },
   { path: "/settings/general", name: "settings general" },
   { path: "/settings/audit-logs", name: "settings audit logs", tableTopMaxY: 290 },
+  // Same failure as audit-logs above: seven columns of long values inside the
+  // section's reading column put the revoke action behind a scrollbar.
+  { path: "/settings/openlineage", name: "settings openlineage" },
 ];
 
 const MEASURE = `(() => {

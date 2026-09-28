@@ -1,19 +1,95 @@
 <template>
   <div class="space-y-4">
-    <!-- This page used to open with a card whose title repeated the h1 and whose
-         two buttons repeated the sidebar's OpenLineage group. The one useful
-         thing it carried — why this page is configuration-only — is now the
-         header's description. -->
     <PageHeader
       :title="t('openlineageSettings.title')"
-      :description="t('openlineage.browseFromSettings')"
+      :description="t('openlineageSettings.pageDescription')"
     />
+
+    <!-- The ingestion address. It comes from the configured external URL, so a
+         deployment behind a proxy advertises the address its producers reach. -->
+    <Card>
+      <CardHeader>
+        <CardTitle>{{ t("openlineageSettings.endpoint") }}</CardTitle>
+        <CardDescription>{{
+          t("openlineageSettings.endpointDescription")
+        }}</CardDescription>
+      </CardHeader>
+      <CardContent class="space-y-3">
+        <div class="flex items-center gap-2">
+          <code
+            class="min-w-0 flex-1 truncate rounded-md bg-muted px-3 py-2 font-mono text-sm"
+            :title="endpointUrl"
+          >
+            {{ endpointUrl }}
+          </code>
+          <Button
+            variant="outline"
+            size="sm"
+            class="shrink-0"
+            @click="copySnippet(endpointUrl, 'endpoint')"
+          >
+            <Check
+              v-if="copiedSnippet === 'endpoint'"
+              class="h-4 w-4 mr-1.5 text-green-600"
+            />
+            <Copy
+              v-else
+              class="h-4 w-4 mr-1.5"
+            />
+            {{
+              copiedSnippet === "endpoint"
+                ? t("common.copied")
+                : t("common.copy")
+            }}
+          </Button>
+        </div>
+
+        <!-- `pre-wrap`, not a horizontal scroller: a nested scroll container is
+             exactly what the layout audit forbids. -->
+        <div class="relative">
+          <pre
+            class="whitespace-pre-wrap break-all rounded-md border bg-muted/50 p-3 pr-12 font-mono text-xs leading-5"
+          >{{ curlSnippet }}</pre>
+          <Button
+            variant="ghost"
+            size="icon"
+            class="absolute right-1 top-1 h-8 w-8"
+            :title="t('common.copy')"
+            @click="copySnippet(curlSnippet, 'curl')"
+          >
+            <Check
+              v-if="copiedSnippet === 'curl'"
+              class="h-4 w-4 text-green-600"
+            />
+            <Copy
+              v-else
+              class="h-4 w-4 text-muted-foreground"
+            />
+          </Button>
+        </div>
+
+        <p
+          v-if="externalUrlMissing"
+          class="text-xs text-muted-foreground"
+        >
+          {{ t("openlineageSettings.endpointOriginFallback") }}
+          <router-link
+            class="font-medium text-primary underline underline-offset-4"
+            to="/settings/general"
+          >
+            {{ t("openlineageSettings.configureExternalUrl") }}
+          </router-link>
+        </p>
+      </CardContent>
+    </Card>
 
     <!-- Namespace Mappings Section -->
     <Card>
       <CardHeader>
-        <div class="flex items-center justify-between">
-          <div>
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <!-- `space-y-1.5` is repeated here because CardHeader only spaces its
+               direct children, and these two are nested one level down. -->
+          <div class="space-y-1.5">
             <CardTitle>{{
               t("openlineageSettings.namespaceMappings")
             }}</CardTitle>
@@ -23,6 +99,7 @@
           </div>
           <Button
             size="sm"
+            class="shrink-0"
             @click="openCreateMappingModal"
           >
             <Plus class="h-4 w-4 mr-2" />
@@ -36,20 +113,28 @@
             v-if="mappings.length === 0"
             :icon="Network"
             :title="t('openlineageSettings.noMappings')"
+            :description="t('openlineageSettings.noMappingsHint')"
           />
-          <Table v-else>
+          <!-- `table-fixed` with proportional columns: a namespace is a long
+               unbreakable URL and an instance title is free text, so auto
+               layout has no way to bound the table below its content width.
+               Fixed columns cannot overflow the card, whatever the values. -->
+          <Table
+            v-else
+            class="table-fixed"
+          >
             <TableHeader>
               <TableRow>
-                <TableHead>{{
+                <TableHead class="w-[42%]">{{
                   t("openlineageSettings.namespace")
                 }}</TableHead>
-                <TableHead>{{
+                <TableHead class="w-[24%]">{{
                   t("openlineageSettings.instanceResourceId")
                 }}</TableHead>
-                <TableHead>{{
+                <TableHead class="w-[18%]">{{
                   t("openlineageSettings.databaseName")
                 }}</TableHead>
-                <TableHead class="text-right">
+                <TableHead class="w-[16%] text-right">
                   {{ t("openlineageSettings.actions") }}
                 </TableHead>
               </TableRow>
@@ -59,14 +144,32 @@
                 v-for="m in mappings"
                 :key="m.name"
               >
-                <TableCell class="font-mono text-sm">
-                  {{ m.namespace }}
+                <!-- The ellipsis lives on a block inside the cell: `text-overflow`
+                     does not apply to a table cell, so `truncate` on the `<td>`
+                     would clip the value mid-character instead. -->
+                <TableCell>
+                  <div
+                    class="truncate font-mono text-sm"
+                    :title="m.namespace"
+                  >
+                    {{ m.namespace }}
+                  </div>
                 </TableCell>
                 <TableCell>
-                  {{ getInstanceTitle(m.instanceResourceId) }}
+                  <div
+                    class="truncate"
+                    :title="getInstanceTitle(m.instanceResourceId)"
+                  >
+                    {{ getInstanceTitle(m.instanceResourceId) }}
+                  </div>
                 </TableCell>
                 <TableCell class="text-muted-foreground">
-                  {{ m.databaseName || "-" }}
+                  <div
+                    class="truncate"
+                    :title="m.databaseName"
+                  >
+                    {{ m.databaseName || "-" }}
+                  </div>
                 </TableCell>
                 <TableCell class="text-right">
                   <div class="flex items-center justify-end gap-1">
@@ -98,8 +201,8 @@
     <!-- API Keys Section -->
     <Card>
       <CardHeader>
-        <div class="flex items-center justify-between">
-          <div>
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="space-y-1.5">
             <CardTitle>{{ t("openlineageSettings.apiKeys") }}</CardTitle>
             <CardDescription>{{
               t("openlineageSettings.apiKeysDescription")
@@ -107,6 +210,7 @@
           </div>
           <Button
             size="sm"
+            class="shrink-0"
             @click="openCreateKeyModal"
           >
             <Plus class="h-4 w-4 mr-2" />
@@ -120,71 +224,98 @@
             v-if="apiKeys.length === 0"
             :icon="KeyRound"
             :title="t('openlineageSettings.noAPIKeys')"
+            :description="t('openlineageSettings.noAPIKeysHint')"
           />
-          <Table v-else>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{{
-                  t("openlineageSettings.apiKeyDescription")
-                }}</TableHead>
-                <TableHead>{{
-                  t("openlineageSettings.maskedAPIKey")
-                }}</TableHead>
-                <TableHead>{{
-                  t("openlineageSettings.createdBy")
-                }}</TableHead>
-                <TableHead>{{
-                  t("openlineageSettings.createdAt")
-                }}</TableHead>
-                <TableHead>{{
-                  t("openlineageSettings.lastUsedAt")
-                }}</TableHead>
-                <TableHead>{{
-                  t("openlineageSettings.keyScope")
-                }}</TableHead>
-                <TableHead class="text-right">
-                  {{ t("openlineageSettings.actions") }}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow
-                v-for="key in apiKeys"
-                :key="key.name"
-                :class="{ 'opacity-60': key.revokedAt }"
-              >
-                <TableCell class="font-medium">
-                  {{ key.description }}
-                </TableCell>
-                <TableCell class="font-mono text-sm">
-                  {{ key.maskedKey || "-" }}
-                </TableCell>
-                <TableCell class="text-muted-foreground">
-                  {{ key.createdBy || "-" }}
-                </TableCell>
-                <TableCell class="text-muted-foreground">
-                  {{ formatTimestamp(key.createdAt) }}
-                </TableCell>
-                <TableCell class="text-muted-foreground">
-                  {{ formatTimestamp(key.lastUsedAt) }}
-                </TableCell>
-                <TableCell class="font-mono text-sm">
-                  {{ key.scopeNamespace || t("openlineageSettings.keyScopeAll") }}
-                </TableCell>
-                <TableCell class="text-right">
-                  <Button
-                    v-if="!key.revokedAt"
-                    variant="ghost"
-                    size="sm"
-                    class="text-destructive hover:text-destructive"
-                    @click="confirmRevokeKey(key)"
+          <!--
+            A row list, not a table: a real mask is 67 characters, and as a table
+            cell it widened the table to 1203px inside an 810px column, pushing
+            Namespace scope and the revoke action behind a horizontal scrollbar
+            (820px showed two of the seven columns).
+          -->
+          <ul
+            v-else
+            class="divide-y"
+          >
+            <li
+              v-for="key in apiKeys"
+              :key="key.name"
+              class="flex items-start justify-between gap-4 py-4 first:pt-0 last:pb-0"
+            >
+              <div class="min-w-0 space-y-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="truncate font-medium">{{ key.description }}</span>
+                  <Badge
+                    v-if="key.revokedAt"
+                    variant="secondary"
+                    class="shrink-0"
                   >
-                    {{ t("openlineageSettings.revokeAPIKey") }}
-                  </Button>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
+                    {{ t("openlineageSettings.revoked") }}
+                  </Badge>
+                </div>
+
+                <p
+                  v-if="key.maskedKey"
+                  class="truncate font-mono text-xs text-muted-foreground"
+                  :title="key.maskedKey"
+                >
+                  {{ compactMask(key.maskedKey) }}
+                </p>
+
+                <div
+                  class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
+                >
+                  <Badge
+                    variant="outline"
+                    class="shrink-0 font-normal"
+                  >
+                    {{ key.scopeNamespace || t("openlineageSettings.keyScopeAll") }}
+                  </Badge>
+                  <span>
+                    {{ t("openlineageSettings.createdBy") }}:
+                    {{ key.createdBy || "-" }}
+                  </span>
+                  <span>
+                    {{ t("openlineageSettings.createdAt") }}:
+                    {{ formatTimestamp(key.createdAt) }}
+                  </span>
+                  <span>
+                    {{ t("openlineageSettings.lastUsedAt") }}:
+                    {{
+                      key.lastUsedAt
+                        ? formatTimestamp(key.lastUsedAt)
+                        : t("openlineageSettings.neverUsed")
+                    }}
+                  </span>
+                  <span v-if="key.revokedAt">
+                    {{ t("openlineageSettings.revokedAt") }}:
+                    {{ formatTimestamp(key.revokedAt) }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- The revoked state keeps the action slot occupied so the row's
+                   affordance column stays aligned, and a `span` carries the
+                   tooltip because a disabled button does not receive the
+                   pointer events a native tooltip needs. -->
+              <span
+                v-if="key.revokedAt"
+                class="flex h-10 w-10 shrink-0 items-center justify-center text-muted-foreground/30"
+                :title="t('openlineageSettings.alreadyRevoked')"
+              >
+                <Ban class="h-4 w-4" />
+              </span>
+              <Button
+                v-else
+                variant="ghost"
+                size="icon"
+                class="shrink-0"
+                :title="t('openlineageSettings.revokeAPIKey')"
+                @click="confirmRevokeKey(key)"
+              >
+                <Ban class="h-4 w-4 text-muted-foreground hover:text-destructive" />
+              </Button>
+            </li>
+          </ul>
         </PageState>
       </CardContent>
     </Card>
@@ -198,23 +329,35 @@
 
         <form @submit.prevent="handleSaveMapping">
           <div class="space-y-4">
+            <!-- `update:model-value`, not `blur`: the message appears once the
+                 field has been changed, and a listener on the wrapper component
+                 is the one that reliably reaches the input inside. -->
             <FormField
               v-model="mappingForm.namespace"
               :label="t('openlineageSettings.namespace')"
               :placeholder="t('openlineageSettings.namespacePlaceholder')"
+              :error="mappingNamespaceError"
               required
+              @update:model-value="mappingNamespaceTouched = true"
             />
-            <div>
-              <label
+            <div class="w-full space-y-2.5">
+              <Label
                 id="mapping-instance-label"
-                class="text-sm font-medium leading-none"
+                for="mapping-instance"
               >
                 {{ t("openlineageSettings.instanceResourceId") }}
-              </label>
-              <Select v-model="mappingForm.instanceResourceId">
+                <span class="text-destructive">*</span>
+              </Label>
+              <Select
+                v-model="mappingForm.instanceResourceId"
+                @update:model-value="mappingInstanceTouched = true"
+              >
                 <SelectTrigger
+                  id="mapping-instance"
                   aria-labelledby="mapping-instance-label"
-                  class="mt-1.5 w-full"
+                  :aria-required="true"
+                  :aria-invalid="mappingInstanceError ? true : undefined"
+                  class="w-full"
                 >
                   <SelectValue :placeholder="t('openlineageSettings.instanceResourceIdPlaceholder')" />
                 </SelectTrigger>
@@ -228,11 +371,33 @@
                   </SelectItem>
                 </SelectContent>
               </Select>
+              <!-- An empty workspace leaves the required select with nothing to
+                   pick, which reads as a broken dialog: say why Save is off and
+                   where instances come from. -->
+              <p
+                v-if="instanceStore.active.length === 0"
+                class="text-sm text-muted-foreground"
+              >
+                {{ t("openlineageSettings.noInstancesAvailable") }}
+                <router-link
+                  class="font-medium text-primary underline underline-offset-4"
+                  to="/instances"
+                >
+                  {{ t("openlineageSettings.addInstance") }}
+                </router-link>
+              </p>
+              <p
+                v-else-if="mappingInstanceError"
+                class="text-sm text-destructive"
+              >
+                {{ mappingInstanceError }}
+              </p>
             </div>
             <FormField
               v-model="mappingForm.databaseName"
               :label="t('openlineageSettings.databaseName')"
               :placeholder="t('openlineageSettings.databaseNamePlaceholder')"
+              :hint="t('openlineageSettings.databaseNameHint')"
             />
           </div>
         </form>
@@ -244,7 +409,7 @@
             {{ t("common.cancel") }}
           </Button>
           <Button
-            :disabled="isSavingMapping"
+            :disabled="isSavingMapping || !canSaveMapping"
             @click="handleSaveMapping"
           >
             {{ t("common.save") }}
@@ -265,7 +430,7 @@
             <Trash2 class="h-6 w-6 text-destructive" />
           </div>
           <p>{{ t("openlineageSettings.deleteMappingConfirm") }}</p>
-          <p class="text-sm text-muted-foreground mt-2 font-mono">
+          <p class="text-sm text-muted-foreground mt-2 font-mono break-all">
             {{ mappingToDelete?.namespace }}
           </p>
         </div>
@@ -308,6 +473,7 @@
               v-model="keyForm.scopeNamespace"
               :label="t('openlineageSettings.keyScope')"
               :placeholder="t('openlineageSettings.keyScopePlaceholder')"
+              :hint="t('openlineageSettings.keyScopeHint')"
             />
           </div>
         </form>
@@ -319,7 +485,7 @@
             {{ t("common.cancel") }}
           </Button>
           <Button
-            :disabled="isCreatingKey"
+            :disabled="isCreatingKey || !keyForm.description.trim()"
             @click="handleCreateKey"
           >
             {{ t("common.confirm") }}
@@ -342,16 +508,17 @@
             </p>
           </div>
           <div class="flex items-center gap-2">
-            <code class="flex-1 rounded-md bg-muted p-3 text-sm font-mono break-all select-all">
+            <code class="flex-1 min-w-0 rounded-md bg-muted p-3 text-sm font-mono break-all select-all">
               {{ createdKeyValue }}
             </code>
             <Button
               variant="outline"
               size="sm"
+              class="shrink-0"
               @click="copyKey"
             >
               <Copy class="h-4 w-4 mr-1" />
-              {{ copied ? t("openlineageSettings.copied") : t("openlineageSettings.copyKey") }}
+              {{ copied ? t("common.copied") : t("common.copy") }}
             </Button>
           </div>
         </div>
@@ -375,7 +542,7 @@
             <KeyRound class="h-6 w-6 text-destructive" />
           </div>
           <p>{{ t("openlineageSettings.revokeAPIKeyConfirm") }}</p>
-          <p class="text-sm text-muted-foreground mt-2">
+          <p class="text-sm text-muted-foreground mt-2 break-all">
             {{ keyToRevoke?.description }}
           </p>
         </div>
@@ -401,8 +568,17 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { Copy, KeyRound, Network, Pencil, Plus, Trash2 } from "lucide-vue-next";
-import { onMounted, ref } from "vue";
+import {
+  Ban,
+  Check,
+  Copy,
+  KeyRound,
+  Network,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-vue-next";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   createAPIKey,
@@ -413,9 +589,11 @@ import {
   revokeAPIKey,
   updateNamespaceMapping,
 } from "@/api/openlineage";
+import { getWorkspaceProfileSetting } from "@/api/setting";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -432,6 +610,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { FormField } from "@/components/ui/form-field";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -480,6 +659,8 @@ const mappingForm = ref({
   instanceResourceId: "",
   databaseName: "",
 });
+const mappingNamespaceTouched = ref(false);
+const mappingInstanceTouched = ref(false);
 
 // API key modals
 const showCreateKeyModal = ref(false);
@@ -489,6 +670,40 @@ const keyToRevoke = ref<APIKey | null>(null);
 const keyForm = ref({ description: "", scopeNamespace: "" });
 const createdKeyValue = ref("");
 const copied = ref(false);
+
+// Ingestion endpoint
+const externalUrl = ref("");
+const copiedSnippet = ref("");
+
+const endpointBase = computed(() =>
+  (externalUrl.value || window.location.origin).replace(/\/+$/, "")
+);
+const endpointUrl = computed(() => `${endpointBase.value}/api/v1/lineage`);
+const externalUrlMissing = computed(() => !externalUrl.value);
+const curlSnippet = computed(() =>
+  [
+    `curl -X POST '${endpointUrl.value}' \\`,
+    "  -H 'Content-Type: application/json' \\",
+    "  -H 'Authorization: Bearer <API_KEY>' \\",
+    "  -d @event.json",
+  ].join("\n")
+);
+
+const mappingNamespaceError = computed(() =>
+  mappingNamespaceTouched.value && !mappingForm.value.namespace.trim()
+    ? t("openlineageSettings.namespaceRequired")
+    : ""
+);
+const mappingInstanceError = computed(() =>
+  mappingInstanceTouched.value && !mappingForm.value.instanceResourceId
+    ? t("openlineageSettings.instanceRequired")
+    : ""
+);
+const canSaveMapping = computed(
+  () =>
+    Boolean(mappingForm.value.namespace.trim()) &&
+    Boolean(mappingForm.value.instanceResourceId)
+);
 
 function extractResourceId(name: string): string {
   return name.replace("instances/", "");
@@ -500,6 +715,18 @@ function getInstanceTitle(resourceId: string): string {
 
 function formatTimestamp(ts: Timestamp | undefined): string {
   return formatDateTime(ts, locale.value);
+}
+
+/**
+ * The mask keeps eight leading and nine trailing characters of a 67-character
+ * key. Rows show the compact form and keep the full mask in the tooltip.
+ */
+function compactMask(masked: string): string {
+  const visible = 8 + 9;
+  if (masked.length <= visible + 1) {
+    return masked;
+  }
+  return `${masked.slice(0, 8)}…${masked.slice(-9)}`;
 }
 
 // Fetch data
@@ -535,6 +762,18 @@ async function fetchInstances() {
   }
 }
 
+// The endpoint address is supplementary: a member who may manage ingestion keys
+// does not necessarily hold the settings permission, so a failure to read the
+// external URL falls back to the browser origin instead of surfacing an error.
+async function fetchExternalUrl() {
+  try {
+    const setting = await getWorkspaceProfileSetting();
+    externalUrl.value = setting.externalUrl;
+  } catch {
+    externalUrl.value = "";
+  }
+}
+
 // Namespace mapping actions
 function openCreateMappingModal() {
   editingMapping.value = null;
@@ -543,6 +782,8 @@ function openCreateMappingModal() {
     instanceResourceId: "",
     databaseName: "",
   };
+  mappingNamespaceTouched.value = false;
+  mappingInstanceTouched.value = false;
   showMappingModal.value = true;
 }
 
@@ -553,6 +794,8 @@ function openEditMappingModal(m: NamespaceMapping) {
     instanceResourceId: m.instanceResourceId,
     databaseName: m.databaseName,
   };
+  mappingNamespaceTouched.value = false;
+  mappingInstanceTouched.value = false;
   showMappingModal.value = true;
 }
 
@@ -562,22 +805,20 @@ function confirmDeleteMapping(m: NamespaceMapping) {
 }
 
 async function handleSaveMapping() {
-  if (!mappingForm.value.namespace || !mappingForm.value.instanceResourceId)
-    return;
+  mappingNamespaceTouched.value = true;
+  mappingInstanceTouched.value = true;
+  if (!canSaveMapping.value) return;
   isSavingMapping.value = true;
   try {
+    const mapping = {
+      namespace: mappingForm.value.namespace.trim(),
+      instanceResourceId: mappingForm.value.instanceResourceId,
+      databaseName: mappingForm.value.databaseName.trim(),
+    };
     if (editingMapping.value) {
-      await updateNamespaceMapping(editingMapping.value.name, {
-        namespace: mappingForm.value.namespace,
-        instanceResourceId: mappingForm.value.instanceResourceId,
-        databaseName: mappingForm.value.databaseName,
-      });
+      await updateNamespaceMapping(editingMapping.value.name, mapping);
     } else {
-      await createNamespaceMapping({
-        namespace: mappingForm.value.namespace,
-        instanceResourceId: mappingForm.value.instanceResourceId,
-        databaseName: mappingForm.value.databaseName,
-      });
+      await createNamespaceMapping(mapping);
     }
     showMappingModal.value = false;
     await fetchMappings();
@@ -614,12 +855,12 @@ function confirmRevokeKey(key: APIKey) {
 }
 
 async function handleCreateKey() {
-  if (!keyForm.value.description) return;
+  if (!keyForm.value.description.trim()) return;
   isCreatingKey.value = true;
   try {
     const resp = await createAPIKey(
-      keyForm.value.description,
-      keyForm.value.scopeNamespace
+      keyForm.value.description.trim(),
+      keyForm.value.scopeNamespace.trim()
     );
     showCreateKeyModal.value = false;
     createdKeyValue.value = resp.key;
@@ -656,9 +897,20 @@ async function copyKey() {
   }, 2000);
 }
 
+async function copySnippet(text: string, id: string) {
+  await navigator.clipboard.writeText(text);
+  copiedSnippet.value = id;
+  setTimeout(() => {
+    if (copiedSnippet.value === id) {
+      copiedSnippet.value = "";
+    }
+  }, 2000);
+}
+
 onMounted(() => {
   fetchMappings();
   fetchAPIKeys();
   fetchInstances();
+  fetchExternalUrl();
 });
 </script>

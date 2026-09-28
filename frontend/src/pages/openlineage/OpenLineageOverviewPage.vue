@@ -108,8 +108,16 @@
                       {{ run.eventType || "-" }}
                     </Badge>
                   </TableCell>
-                  <TableCell class="max-w-64 truncate">
-                    {{ run.jobName }}
+                  <!-- The ellipsis lives on a block inside the cell:
+                       `text-overflow` does not apply to a table cell, so
+                       `truncate` on the `<td>` clipped values mid-character. -->
+                  <TableCell>
+                    <div
+                      class="max-w-64 truncate"
+                      :title="run.jobName"
+                    >
+                      {{ run.jobName }}
+                    </div>
                   </TableCell>
                   <TableCell class="text-muted-foreground">
                     {{ run.integration || run.source || "-" }}
@@ -175,11 +183,21 @@
                   v-for="task in activeTasks"
                   :key="task.guid"
                 >
-                  <TableCell class="max-w-64 truncate">
-                    {{ task.jobName }}
+                  <TableCell>
+                    <div
+                      class="max-w-64 truncate"
+                      :title="task.jobName"
+                    >
+                      {{ task.jobName }}
+                    </div>
                   </TableCell>
-                  <TableCell class="max-w-64 truncate font-mono text-sm text-muted-foreground">
-                    {{ task.jobNamespace }}
+                  <TableCell class="text-muted-foreground">
+                    <div
+                      class="max-w-64 truncate font-mono text-sm"
+                      :title="task.jobNamespace"
+                    >
+                      {{ task.jobNamespace }}
+                    </div>
                   </TableCell>
                   <TableCell class="whitespace-nowrap">
                     {{ formatTimestamp(task.latestEventTime) }}
