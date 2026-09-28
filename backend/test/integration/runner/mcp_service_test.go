@@ -218,6 +218,7 @@ func TestMCPAuthorizationAndToolsRealServerIntegration(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "access_denied", location.Query().Get("error"), "the client must stop waiting for a callback")
 		require.Equal(t, "state-1", location.Query().Get("state"))
+		require.Equal(t, env.BaseURL, location.Query().Get("iss"), "RFC 9207: the mix-up defence holds on the denial path too")
 	})
 
 	t.Run("a tool call leaves an audit row", func(t *testing.T) {
