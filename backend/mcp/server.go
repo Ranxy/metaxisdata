@@ -101,7 +101,6 @@ type Config struct {
 	// Endpoints resolves the deployment's MCP resource identifier per request and
 	// says whether the surface is enabled.
 	Endpoints oauth.EndpointsFunc
-	Version   string
 	// Now lets a test pin the clock the audit rows measure against.
 	Now func() time.Time
 }
@@ -125,7 +124,9 @@ func NewServer(config Config) *Server {
 	server := &Server{config: config}
 	server.audit = server.auditToolCall
 	server.sdk = mcpsdk.NewServer(
-		&mcpsdk.Implementation{Name: serverName, Version: config.Version},
+		// No version: this repository has no build version to report, and an empty
+		// string would be a claim about one.
+		&mcpsdk.Implementation{Name: serverName},
 		&mcpsdk.ServerOptions{
 			Instructions: instructions,
 			// The default capability set advertises the legacy logging feature,
@@ -377,6 +378,11 @@ func auditStatus(err error) (*storepb.AuditLogStatus, storepb.AuditLogSeverity) 
 // auditArguments renders a tool's arguments for the ledger. Sensitive field names
 // are redacted by the audit package; the arguments themselves are recorded because
 // "which question was asked" is the part of a tool call worth keeping.
+// maxAuditArgumentBytes bounds one string inside an audit row. A tool call may
+// carry a megabyte of SQL and the ledger is kept forever, so the row records what
+// was asked without becoming a second copy of the request.
+const maxAuditArgumentBytes = 8 << 10
+
 func auditArguments(raw json.RawMessage) *structpb.Struct {
 	if len(raw) == 0 {
 		return nil
@@ -385,11 +391,35 @@ func auditArguments(raw json.RawMessage) *structpb.Struct {
 	if err := json.Unmarshal(raw, &arguments); err != nil {
 		return nil
 	}
-	payload, err := structpb.NewStruct(map[string]any{"arguments": arguments})
+	payload, err := structpb.NewStruct(map[string]any{"arguments": truncateAuditValues(arguments)})
 	if err != nil {
 		return nil
 	}
 	return audit.SanitizeAuditStruct(payload)
+}
+
+// truncateAuditValues shortens every over-long string in place, wherever it sits
+// in the argument tree.
+func truncateAuditValues(value any) any {
+	switch typed := value.(type) {
+	case string:
+		if len(typed) > maxAuditArgumentBytes {
+			return typed[:maxAuditArgumentBytes] + "...(truncated)"
+		}
+		return typed
+	case []any:
+		for index := range typed {
+			typed[index] = truncateAuditValues(typed[index])
+		}
+		return typed
+	case map[string]any:
+		for key, child := range typed {
+			typed[key] = truncateAuditValues(child)
+		}
+		return typed
+	default:
+		return value
+	}
 }
 
 func requestHeaders(request *mcpsdk.CallToolRequest) http.Header {

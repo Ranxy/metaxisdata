@@ -143,6 +143,14 @@ func (s *Server) resolveInstance(ctx context.Context, value string) (string, err
 func (s *Server) resolveDatabase(ctx context.Context, instanceName, value string) (string, error) {
 	trimmed := strings.TrimSpace(value)
 	if strings.Contains(trimmed, ";") {
+		// A pasted GUID short-circuits the lookup, but it has to belong to the
+		// instance the caller named: otherwise the reference silently addresses an
+		// object in a different instance, which is the one thing the reference is
+		// supposed to make impossible.
+		if !guidBelongsToInstance(trimmed, instanceName) {
+			return "", newToolError(codeInvalidArgument, "the database guid does not belong to that instance",
+				"pass a database name, or a guid from list_databases of the instance you named")
+		}
 		return trimmed, nil
 	}
 	response, err := s.config.Databases.ListDatabases(ctx, connect.NewRequest(&v1pb.ListDatabasesRequest{
@@ -307,6 +315,13 @@ type scopeCandidate struct {
 	Instance string `json:"instance"`
 	Database string `json:"database"`
 	GUID     string `json:"guid"`
+}
+
+// guidBelongsToInstance reports whether a GUID's first segment is the instance's
+// own id, which is what keeps a guid from one instance from addressing another.
+func guidBelongsToInstance(guid, instanceName string) bool {
+	instanceID := strings.TrimPrefix(instanceName, instanceNamePrefix)
+	return instanceID != "" && strings.HasPrefix(guid, instanceID+";")
 }
 
 // underParent reports whether guid is a direct child of parent. Both are

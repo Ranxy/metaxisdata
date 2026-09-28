@@ -1,8 +1,9 @@
-// Package mcp will hold the MCP resource server: the tool table exposed on
-// /mcp, the adapters that keep its authentication and authorization identical
-// to the ConnectRPC path, and the guidance it publishes to clients.
+// Package mcp is the MCP resource server: the read-only tool table served on
+// /mcp, the adapters that make its authentication and authorization identical to
+// the ConnectRPC path, and the guidance it publishes to clients.
 //
-// Today it holds only the Phase 0 contract tests for the MCP Go SDK, which pin
-// the behaviors the design depends on. The design is in
-// plan/mcp_server_plan.md; the tests deliberately touch no Backend code.
+// The design is in plan/mcp_server_plan.md and the way a client uses it is in
+// docs/mcp.md. `sdk_contract_test.go` pins the SDK behaviours this package
+// depends on, `tool_guard_test.go` pins the invariant that a tool cannot require
+// less than the RPC it wraps, and `tool_test.go` pins what each tool answers.
 package mcp

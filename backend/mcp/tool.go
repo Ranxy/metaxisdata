@@ -159,6 +159,15 @@ func (s *Server) toolDefinitions() []toolDefinition {
 	}
 }
 
+// stringsOrEmpty keeps a list field a list. A nil slice marshals to null, and a
+// model reading null would have to tell "there are none" from "not reported".
+func stringsOrEmpty(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
+}
+
 // protoJSON renders one message the way the rest of the platform does —
 // lowerCamelCase field names, enums by name — but compactly and without the unset
 // fields the CLI emits, because a model reading a listing does not need a page of
@@ -597,7 +606,7 @@ func (s *Server) runAnalyzeSQL(ctx context.Context, _ *store.UserMessage, raw js
 
 	result := analyzeSQLResult{
 		Results:  make([]analyzeSQLScopeResult, 0, len(response.Msg.GetResults())),
-		Warnings: response.Msg.GetWarnings(),
+		Warnings: stringsOrEmpty(response.Msg.GetWarnings()),
 	}
 	for _, analyzed := range response.Msg.GetResults() {
 		relations, temporary, err := splitTemporaryRelations(analyzed.GetRelations())
@@ -615,12 +624,15 @@ func (s *Server) runAnalyzeSQL(ctx context.Context, _ *store.UserMessage, raw js
 			Temporary:   temporary,
 			Diagnostics: diagnostics,
 			Omitted:     analyzed.GetOmittedDiagnosticCount(),
-			Warnings:    analyzed.GetWarnings(),
+			Warnings:    stringsOrEmpty(analyzed.GetWarnings()),
 		}
 		if args.Depth > 0 {
-			graphs, err := s.expandTargets(ctx, analyzed, args.Depth)
+			graphs, warning, err := s.expandTargets(ctx, analyzed, args.Depth)
 			if err != nil {
 				return nil, err
+			}
+			if warning != "" {
+				scopeResult.Warnings = append(scopeResult.Warnings, warning)
 			}
 			if len(graphs) > 0 {
 				encoded, err := protoJSONValues(graphs)
@@ -660,10 +672,15 @@ func splitTemporaryRelations(relations []*v1pb.AnalyzeSQLRelation) (json.RawMess
 	return existing, temporary, nil
 }
 
+// maxExpandedTargets bounds the graph walks one analysis may trigger: a statement
+// can name thousands of targets and every walk is its own query.
+const maxExpandedTargets = 20
+
 // expandTargets walks the graph from each real target the statement produced. A
-// target the registry has no entry for cannot be expanded, and that is not a
-// reason to lose the analysis.
-func (s *Server) expandTargets(ctx context.Context, analyzed *v1pb.AnalyzeSQLResult, depth int32) ([]*v1pb.GetLineageGraphResponse, error) {
+// target the registry has no entry for cannot be expanded, and that is not a reason
+// to lose the analysis; neither is a statement with more targets than the budget,
+// which comes back with the first ones and a warning saying so.
+func (s *Server) expandTargets(ctx context.Context, analyzed *v1pb.AnalyzeSQLResult, depth int32) ([]*v1pb.GetLineageGraphResponse, string, error) {
 	var graphs []*v1pb.GetLineageGraphResponse
 	seen := map[string]bool{}
 	for _, relation := range analyzed.GetRelations() {
@@ -672,6 +689,9 @@ func (s *Server) expandTargets(ctx context.Context, analyzed *v1pb.AnalyzeSQLRes
 			continue
 		}
 		seen[target] = true
+		if len(graphs) >= maxExpandedTargets {
+			return graphs, fmt.Sprintf("only the first %d targets were expanded; ask per target for the rest", maxExpandedTargets), nil
+		}
 		response, err := s.config.Lineage.GetLineageGraph(ctx, connect.NewRequest(&v1pb.GetLineageGraphRequest{
 			Guid:  target,
 			Depth: depth,
@@ -680,11 +700,11 @@ func (s *Server) expandTargets(ctx context.Context, analyzed *v1pb.AnalyzeSQLRes
 			if connect.CodeOf(err) == connect.CodeNotFound {
 				continue
 			}
-			return nil, toolErrorFromRPC(err)
+			return nil, "", toolErrorFromRPC(err)
 		}
 		graphs = append(graphs, response.Msg)
 	}
-	return graphs, nil
+	return graphs, "", nil
 }
 
 // scopeLabel names a scope for attribution only; the guid is what resolves it.
@@ -793,7 +813,7 @@ func (s *Server) runWhoami(ctx context.Context, _ *store.UserMessage, _ json.Raw
 	}
 	return whoamiResult{
 		User:        whoamiUser{Email: response.Msg.GetEmail(), Name: response.Msg.GetTitle()},
-		Permissions: response.Msg.GetPermissions(),
+		Permissions: stringsOrEmpty(response.Msg.GetPermissions()),
 	}, nil
 }
 

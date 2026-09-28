@@ -42,8 +42,10 @@ func TestEveryToolMatchesItsRPC(t *testing.T) {
 	// readers; an empty configuration is enough to read what the tools declare.
 	server := NewServer(Config{})
 	seen := map[string]bool{}
+	var names []string
 	for _, definition := range server.toolDefinitions() {
 		require.NotEmpty(t, definition.Name)
+		names = append(names, definition.Name)
 		require.NotEmpty(t, definition.Description, "tool %s must describe what it answers", definition.Name)
 		require.NotEmpty(t, definition.RPC, "tool %s must name the RPC it wraps", definition.Name)
 		require.NotEmpty(t, definition.Schema, "tool %s must declare an input schema", definition.Name)
@@ -68,11 +70,29 @@ func TestEveryToolMatchesItsRPC(t *testing.T) {
 			definition.Name, definition.Permission)
 	}
 
+	// The surface itself is pinned: a tool added or removed on purpose has to be
+	// added or removed here in the same change, which is what makes the read-only
+	// promise reviewable instead of implied.
+	require.ElementsMatch(t, wantTools, names)
+
 	// An allowlist entry no tool uses any more is a guard that quietly stopped
 	// guarding: the method could be wrapped tomorrow without anyone noticing.
 	for method := range methodsWithoutAPermission {
 		require.True(t, seen[method], "%s is allowlisted but no tool wraps it", method)
 	}
+}
+
+// wantTools is the surface, written out.
+var wantTools = []string{
+	"analyze_sql",
+	"get_ddl",
+	"get_lineage_graph",
+	"get_metadata",
+	"list_databases",
+	"list_instances",
+	"list_metadata",
+	"search_metadata",
+	"whoami",
 }
 
 func lookupMethod(t *testing.T, fullName string) protoreflect.MethodDescriptor {
