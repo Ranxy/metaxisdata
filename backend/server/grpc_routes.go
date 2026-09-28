@@ -17,6 +17,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/api/auth"
+	"github.com/Ranxy/metaxisdata/backend/api/oauth"
 	apiv1 "github.com/Ranxy/metaxisdata/backend/api/v1"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/stacktrace"
@@ -83,6 +84,7 @@ func configureGrpcRouters(
 	roleService := apiv1.NewRoleService(stores)
 	groupService := apiv1.NewGroupService(stores)
 	iamService := apiv1.NewIamService(stores)
+	oauthService := apiv1.NewOAuthService(stores, profile, stateCfg)
 
 	onPanic := func(_ context.Context, s connect.Spec, _ http.Header, p any) error {
 		stack := stacktrace.TakeStacktrace(20 /* n */, 5 /* skip */)
@@ -144,6 +146,8 @@ func configureGrpcRouters(
 	connectHandlers[groupPath] = groupHandler
 	iamPath, iamHandler := v1connect.NewIamServiceHandler(iamService, handlerOpts)
 	connectHandlers[iamPath] = iamHandler
+	oauthPath, oauthHandler := v1connect.NewOAuthServiceHandler(oauthService, handlerOpts)
+	connectHandlers[oauthPath] = oauthHandler
 	// grpc reflection handlers.
 	reflector := grpcreflect.NewStaticReflector(
 		v1connect.AuthServiceName,
@@ -160,6 +164,7 @@ func configureGrpcRouters(
 		v1connect.RoleServiceName,
 		v1connect.GroupServiceName,
 		v1connect.IamServiceName,
+		v1connect.OAuthServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
 	connectHandlers[reflectPath] = reflectHandler
@@ -228,6 +233,9 @@ func configureGrpcRouters(
 	if err := v1pb.RegisterIamServiceHandler(ctx, mux, grpcConn); err != nil {
 		return err
 	}
+	if err := v1pb.RegisterOAuthServiceHandler(ctx, mux, grpcConn); err != nil {
+		return err
+	}
 
 	// Register OpenLineage event ingestion HTTP handler (plain REST, not ConnectRPC).
 	olHandler := apiv1.NewOpenLineageHandler(stores, profile.TrustedProxies, lineageAnalyzer)
@@ -237,6 +245,35 @@ func configureGrpcRouters(
 	// ingestion with no time bound.
 	olGroup.Use(openLineageIngestionMiddleware())
 	olHandler.RegisterRoutes(olGroup)
+
+	// The OAuth 2.1 authorization server behind the MCP endpoint. Its routes are
+	// plain HTTP because OAuth clients do not speak ConnectRPC, so they sit
+	// outside the interceptor chain and carry their own authentication, rate
+	// limits and error rendering. Everything they publish is disabled while
+	// mcp_enabled is off, and unusable until external_url is configured.
+	//
+	// This authenticator is a second instance of the same rules the interceptor
+	// uses, built from the same store, secret and state: it exists because the
+	// interceptor owns its own instance, and the rules themselves live in one
+	// place.
+	tokenAuthenticator := auth.NewTokenAuthenticator(stores, secret, stateCfg)
+	oauthServer := oauth.NewServer(oauth.ServerConfig{
+		Stores:         stores,
+		State:          stateCfg,
+		Tokens:         tokenAuthenticator,
+		Mode:           profile.Mode,
+		Secret:         secret,
+		TrustedProxies: profile.TrustedProxies,
+		Endpoints:      oauth.WorkspaceEndpoints(stores),
+	})
+	e.GET("/.well-known/oauth-protected-resource", echo.WrapHandler(oauth.ProtectedResourceHandler(stores)))
+	// RFC 9728 also defines the path-insertion form; clients try both.
+	e.GET("/.well-known/oauth-protected-resource/*", echo.WrapHandler(oauth.ProtectedResourceHandler(stores)))
+	e.GET("/.well-known/oauth-authorization-server", echo.WrapHandler(oauth.AuthServerMetadataHandler(stores)))
+	e.GET("/oauth/authorize", echo.WrapHandler(oauthServer.AuthorizeHandler()))
+	e.GET("/oauth/authorize/complete", echo.WrapHandler(oauthServer.CompletionHandler()))
+	e.POST("/oauth/token", echo.WrapHandler(oauthServer.TokenHandler()), oauthEndpointMiddleware(profile.TrustedProxies))
+	e.POST("/oauth/register", echo.WrapHandler(oauth.RegisterHandler(stores)), oauthEndpointMiddleware(profile.TrustedProxies))
 
 	e.Any("/v1/*", echo.WrapHandler(mux))
 
