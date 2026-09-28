@@ -147,7 +147,7 @@
 | 令牌 | 复用现有 JWT + 新 audience + `scope`;TTL 7 天;不发 refresh | 已确认;规范只 SHOULD 短时令牌;客户端遇 401 会自动重走授权。备选:短时 + 轮换 refresh(需落库与检测复用) |
 | OAuth scope | 单一粗粒度 `metaxisdata.mcp.read` | 真正的授权仍是平台 IAM;把 IAM 权限串当 scope 会造出第二套 ACL |
 | 开关 | `WorkspaceProfileSetting.mcp_enabled`,默认 **false**;关闭时整个 MCP/OAuth 面不发布 | 新攻击面应由管理员显式开启;JSONB 加字段无需 migration |
-| Audience 纪律 | 新增 MCP audience,`/mcp` 只认它;Connect 侧沿用现有用户 audience | 规范 MUST audience 绑定、MUST NOT passthrough;机制已在 `VerifyAccessToken` 里 |
+| Audience 纪律 | MCP 令牌的 `aud` 是**资源 URI**(`<external_url 规范化>/mcp`),`/mcp` 只认它;Connect 侧沿用现有 `mt.user.access.<mode>` 校验 | 规范 MUST audience 绑定、MUST NOT passthrough;机制已在 `VerifyAccessToken` 里,新增的只是第二个 audience 值;双向隔离由测试钉住(`backend/api/auth/authenticator_test.go`) |
 | 工具实现 | MCP 工具**进程内直接调用现有 handler 方法**(用 `connect.NewRequest` 传参),不再抽 service 函数;工具显式做 IAM 检查与审计 | 已核实这 9 个只读 handler 都**不依赖拦截器提供的 context**(不用 `requirePermission`、不读 `req.Header()`/`req.Peer()`,只有 `GetCurrentUser` 用 `GetUserFromContext`)。因此这比"抽函数"是更强的单一实现保证:同一份代码、零漂移风险,改动面也最小。代价:MCP 层要自己把用户放进 ctx(`common.UserContextKey`),并自己做权限与审计。备选:进程内 HTTP 回环 dispatch —— 隐藏跳转 + 重复审计,放弃 |
 | 权限一致性 | 守卫测试:工具权限串必须等于对应 RPC 注解值,且只引用只读 RPC | 复刻 `TestEveryMethodIsPermissionGated` 的思路 |
 | 输出契约 | 与 CLI 共享**语义**(字段名、enum 名、错误码词表),**不共享渲染选项** | 见"MCP 原生设计";省略空字段 + 紧凑 JSON + 投影 |
@@ -205,8 +205,8 @@ CLI 的很多取舍是为"单机、无状态、被脚本解析的进程"服务�
 
 | claim | 值 | 强制点 |
 | --- | --- | --- |
-| `aud` | 新常量,如 `mt.mcp.access.<mode>`(与 `mt.user.access.%s` :35 并列) | `/mcp` 用同一套 `audienceContains` 逻辑校验;`VerifyAccessToken` 只认用户 audience,所以 **MCP 令牌天然无法用于 ConnectRPC**(反之亦然) |
-| `scope` | `metaxisdata.mcp.read` | `RequireBearerTokenOptions.Scopes` 校验;不足 → 403 `insufficient_scope` |
+| `aud` | **MCP 资源的规范化 URI**(RFC 8707):PRM 的 `resource` 与 JWT 的 `aud` 由同一次 `external_url` 规范化产出 | `/mcp` 用同一套 audience 校验逻辑校验该值;`VerifyAccessToken` 只认用户 audience,所以 **MCP 令牌天然无法用于 ConnectRPC**(反之亦然)。**实现时修正**:不再用 `mt.mcp.access.<mode>` 这类常量(方案初稿的写法) —— 规范要求 audience 就是资源标识,而且这样 Phase 0 发现的"`MatchesResource` 只容忍尾部斜杠"才有意义 |
+| `scope` | `metaxisdata.mcp.read`(签发时由调用方传入) | RS 中间件 `RequireBearerTokenOptions.Scopes` 校验**令牌自带的 scope**(`TokenInfo.Scopes` 来自 `AccessTokenIdentity.Scopes`);不足 → 403 `insufficient_scope` |
 | `iss` | 保持 JWT 现有常量 `"metaxisdata"` | 注意与 AS metadata / RFC 9207 授权响应的 `iss`(= external_url)不是一回事 |
 | `sub` | 现有身份(`Subject = strconv.Itoa(userID)`) | `TokenInfo.UserID` |
 | `exp` | `GetTokenDuration`(7 天) | 中间件校验 + 小 `ClockSkew` |
@@ -382,13 +382,12 @@ e.Any("/mcp*", echo.WrapHandler(auth.RequireBearerToken(verifyMCPToken, opts)(mc
 2. 把 audit 原语从 package `v1` 抽到共享包(例如 `backend/component/audit`),package v1 引用之;补 `code_verifier`/`client_secret`/`authorizationcode` 脱敏与测试。
 3. **已完成** —— 抽公共身份解析链:新增 `backend/api/auth/authenticator.go`:`TokenAuthenticator.Resolve(ctx, token, audience)` 按同一次序执行签名/算法/issuer/audience/过期 → 吊销 LRU → 用户存在 → 未停用 → 改密截断,并返回**普通错误**(不再是 Connect 错误),让 ConnectRPC 与 MCP 各自映射;`VerifyAccessTokenFor` 支持显式 audience;`APIAuthInterceptor.authenticateConnect` 缩成 4 行包装,错误码与文案不变。新增 `authenticator_test.go` 钉住三条:audience 隔离、过期映射为"已吊销"、缺令牌。
 
-### Phase 3 — OAuth AS
+### Phase 3 — OAuth AS(进行中)
 
-1. 令牌:新增 MCP audience 常量与签发入口;`auth.TokenVerifier` 校验器产出 `auth.TokenInfo{UserID, Scopes, Expiration}`;补"两种令牌互不通用"测试。
-2. `oauth_client` 表 + store + migration(三处同改)+ DCR(校验 + 限流 + 审计)。
-3. pending 授权请求/授权码 store(TTL、一次性、PKCE 绑定、批准者绑定)+ `/oauth/authorize` + `/oauth/authorize/complete` + `/oauth/token`。
-4. PRM 与 AS metadata(全部走"从 `external_url` 规范化出 issuer/resource"的同一个函数,因为 `MatchesResource` 只容忍尾部斜杠);`external_url` 缺失/非 HTTPS(非 loopback)与开关关闭的失败路径。
-5. 单元测试:PKCE、redirect_uri 精确匹配与 loopback 端口、resource/audience、code 一次性、`complete` 的会话绑定、错误响应形态。
+1. **已完成** 令牌:audience 改为资源 URI 并携带 scope(`GenerateMCPAccessToken`);`AccessTokenIdentity` 暴露 `Scopes`/`ExpiresAt`;`TokenAuthenticator` 改用 `UserStore` 接口以便无库测试;`backend/mcp/auth.go` 的 `NewTokenVerifier` 按当前资源 audience 解析令牌,并把 principal 放进 `TokenInfo.Extra` 供工具层注入 ctx。
+2. **已完成** 端点标识与元数据:`backend/api/oauth/resource.go`(规范化)、`metadata.go`(PRM + AS metadata 文档)、`authorize.go`(精确重定向匹配 + loopback 端口放宽、S256-only PKCE、scope 校验)。
+3. **已完成** pending 授权请求/授权码 store(`backend/component/state/oauth_authorization_request.go`,12 个测试)。
+4. **待做** `oauth_client` 表 + store(子代理在跑)、`/oauth/authorize`+`/oauth/authorize/complete`+`/oauth/token`+`/oauth/register` 的 HTTP 端点、`OAuthService` 的两个 consent 方法、限流与审计接线。
 
 ### Phase 4 — MCP 资源服务器
 
@@ -456,7 +455,8 @@ e.Any("/mcp*", echo.WrapHandler(auth.RequireBearerToken(verifyMCPToken, opts)(mc
 | --- | --- |
 | 依赖 | `go.mod` / `go.sum`(MCP Go SDK **v1.8.0**) |
 | proto | `proto/v1/v1/oauth_service.proto`(新)、`proto/v1/v1/setting_service.proto`(开关)、`proto/store/store/setting.proto`(`mcp_enabled`)+ 三处生成产物 |
-| OAuth AS | `backend/api/oauth/`(新:metadata、authorize、complete、token、register、code 校验)、`backend/api/v1/oauth_service.go`(consent 2 个 RPC)、`backend/component/state/oauth_authorization_code.go` + `oauth_limiter.go`(新)、`backend/component/state/state.go`(注册) |
+| OAuth AS | `backend/api/oauth/`(**已存在**:`resource.go` 规范化 issuer/resource、`metadata.go` 两份元数据文档、`authorize.go` 的 PKCE/重定向/scope 安全核心)、`backend/api/v1/oauth_service.go`(consent 的 2 个 RPC,待写)、`backend/component/state/oauth_authorization_request.go`(**已存在**)、`oauth_limiter.go`(待写)、`backend/component/state/state.go`(已注册) |
+| 客户端注册表 | `backend/migrator/migration/0.1/0011##oauth_client.sql` + `LATEST.sql`(**已存在**)、`backend/store/oauth_client.go` + 测试(**已存在**) |
 | 令牌 | `backend/api/auth/auth.go`(MCP audience 常量与签发入口、抽公共身份解析链)、`backend/api/auth/auth_test.go` |
 | 迁移与 store | `backend/migrator/migration/LATEST.sql`、当前版本目录增量、`backend/store`(`oauth_client` 查询) |
 | MCP RS | `backend/mcp/`(新:server、工具表、`object_ref` 解析、投影渲染、审计、`guide.md`)、**已存在**:`backend/mcp/doc.go`、`backend/mcp/sdk_contract_test.go`(Phase 0 契约测试)、可选 `backend/mcp/AGENTS.md` |
