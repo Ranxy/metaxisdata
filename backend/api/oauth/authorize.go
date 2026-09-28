@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/Ranxy/metaxisdata/backend/component/state"
 )
 
 // MatchesRedirectURI reports whether the redirect_uri of an authorization request
@@ -114,6 +116,16 @@ func ParseScopeList(raw string) []string {
 	return fields
 }
 
+// redirectWith sends the user agent to an already validated redirect target with
+// the given query parameters.
+func redirectWith(w http.ResponseWriter, r *http.Request, target string, parameters url.Values) {
+	separator := "?"
+	if strings.Contains(target, "?") {
+		separator = "&"
+	}
+	http.Redirect(w, r, target+separator+parameters.Encode(), http.StatusFound)
+}
+
 // RedirectWithError sends the user agent back to the client with an RFC 6749
 // error, preserving the client's state. It is how the authorization endpoint
 // reports a failure that happened after a valid client_id and redirect_uri were
@@ -128,15 +140,182 @@ func RedirectWithError(w http.ResponseWriter, r *http.Request, redirectURI, clie
 	if clientState != "" {
 		parameters.Set("state", clientState)
 	}
-	target := redirectURI
-	if strings.Contains(target, "?") {
-		target += "&" + parameters.Encode()
-	} else {
-		target += "?" + parameters.Encode()
+	redirectWith(w, r, redirectURI, parameters)
+}
+
+// RedirectWithCode sends the user agent back to the client with the authorization
+// code, the client's opaque state and — per RFC 9207 — the issuer, which is what
+// lets a client detect a mix-up between authorization servers.
+func RedirectWithCode(w http.ResponseWriter, r *http.Request, redirectURI, code, clientState, issuer string) {
+	parameters := url.Values{"code": {code}, "iss": {issuer}}
+	if clientState != "" {
+		parameters.Set("state", clientState)
 	}
-	http.Redirect(w, r, target, http.StatusFound)
+	redirectWith(w, r, redirectURI, parameters)
 }
 
 // ErrRedirectURINotRegistered is returned when an authorization request names a
 // redirect URI the client did not register. The caller must not redirect.
 var ErrRedirectURINotRegistered = errors.New("the redirect_uri is not registered for this client")
+
+// authorizationRequest is a validated /oauth/authorize request.
+type authorizationRequest struct {
+	ClientID            string
+	RedirectURI         string
+	ClientState         string
+	Resource            string
+	Scopes              []string
+	CodeChallenge       string
+	CodeChallengeMethod string
+}
+
+// authorizationError is an RFC 6749 error the client has to be told about. It is
+// reported by redirecting whenever the redirect target is trusted.
+type authorizationError struct {
+	Code        string
+	Description string
+}
+
+func (e *authorizationError) Error() string { return e.Code + ": " + e.Description }
+
+// parseAuthorizationRequest validates everything about an authorization request
+// except the client and its redirect URI, which the handler checks first: until
+// those are known, answering with a redirect would be an open redirect, so the
+// handler has to know whether it may redirect at all.
+func parseAuthorizationRequest(query url.Values, clientID, redirectURI string, endpoints Endpoints) (authorizationRequest, error) {
+	request := authorizationRequest{
+		ClientID:            clientID,
+		RedirectURI:         redirectURI,
+		ClientState:         query.Get("state"),
+		Resource:            query.Get("resource"),
+		CodeChallenge:       query.Get("code_challenge"),
+		CodeChallengeMethod: query.Get("code_challenge_method"),
+	}
+	if query.Get("response_type") != "code" {
+		return authorizationRequest{}, &authorizationError{Code: "unsupported_response_type", Description: "only response_type=code is supported"}
+	}
+	// PKCE is mandatory and S256-only: without it, a public client's code would be
+	// redeemable by anyone who saw it leave the browser.
+	if request.CodeChallengeMethod != "S256" {
+		return authorizationRequest{}, &authorizationError{Code: "invalid_request", Description: "code_challenge_method must be S256"}
+	}
+	if request.CodeChallenge == "" {
+		return authorizationRequest{}, &authorizationError{Code: "invalid_request", Description: "code_challenge is required"}
+	}
+	// RFC 8707: the client names the resource it wants a token for, and it must
+	// be this deployment's. The comparison is exact because both sides come from
+	// the same canonicalisation; a difference means a different resource.
+	if request.Resource != endpoints.Resource {
+		return authorizationRequest{}, &authorizationError{Code: "invalid_request", Description: "resource must be " + endpoints.Resource}
+	}
+	scopes := ParseScopeList(query.Get("scope"))
+	if !RequestedScopesValid(scopes) {
+		return authorizationRequest{}, &authorizationError{Code: "invalid_scope", Description: "the only supported scope is " + MCPReadScope}
+	}
+	if len(scopes) == 0 {
+		// Asking for nothing means asking for what the metadata advertises.
+		scopes = []string{MCPReadScope}
+	}
+	request.Scopes = scopes
+	return request, nil
+}
+
+// AuthorizeHandler serves GET /oauth/authorize: it validates the request, makes
+// sure a signed-in user is present, records a pending authorization request and
+// sends the browser to the consent page.
+func (s *Server) AuthorizeHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		endpoints, ok := s.endpoints(w, r)
+		if !ok {
+			return
+		}
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			writeBrowserError(w, http.StatusMethodNotAllowed, "invalid_request", "the authorization endpoint is a GET")
+			return
+		}
+		query := r.URL.Query()
+		clientID := query.Get("client_id")
+		redirectURI := query.Get("redirect_uri")
+
+		// The client and its redirect URI come first: until both check out, any
+		// answer that redirects would be an open redirect.
+		client, err := s.config.Stores.GetOAuthClient(r.Context(), clientID)
+		if err != nil {
+			writeBrowserError(w, http.StatusInternalServerError, "server_error", "failed to load the client")
+			return
+		}
+		if client == nil || !MatchesRedirectURI(client.RedirectURIs, redirectURI) {
+			writeBrowserError(w, http.StatusBadRequest, "invalid_request", "unknown client_id, or a redirect_uri that is not registered for it")
+			return
+		}
+
+		request, err := parseAuthorizationRequest(query, clientID, redirectURI, endpoints)
+		if err != nil {
+			code, description := "server_error", ""
+			var authorizationErr *authorizationError
+			if errors.As(err, &authorizationErr) {
+				code, description = authorizationErr.Code, authorizationErr.Description
+			}
+			RedirectWithError(w, r, redirectURI, query.Get("state"), code, description)
+			return
+		}
+
+		user, err := s.sessionUser(r)
+		if err != nil {
+			// No usable session: the SPA signs the user in and returns here. This
+			// redirect goes to our own sign-in page, never to the client.
+			http.Redirect(w, r, signInURL(endpoints, r.URL.RequestURI()), http.StatusFound)
+			return
+		}
+
+		pending, err := s.config.State.OAuthAuthorizationRequestStore.Create(state.OAuthAuthorizationRequest{
+			ClientID:            clientID,
+			ClientName:          client.ClientName,
+			RedirectURI:         redirectURI,
+			Resource:            request.Resource,
+			Scopes:              request.Scopes,
+			CodeChallenge:       request.CodeChallenge,
+			CodeChallengeMethod: request.CodeChallengeMethod,
+			ClientState:         request.ClientState,
+			UserID:              user.ID,
+			RequestIP:           s.requestIP(r),
+		}, s.now())
+		if err != nil {
+			writeBrowserError(w, http.StatusServiceUnavailable, "temporarily_unavailable", "too many authorization requests are pending")
+			return
+		}
+		http.Redirect(w, r, consentURL(endpoints, pending.RequestID), http.StatusFound)
+	})
+}
+
+// CompletionHandler serves GET /oauth/authorize/complete. The consent page
+// navigates here after approval; the server mints the authorization code and
+// redirects it to the client, so the code never travels through an RPC response
+// or through page JavaScript.
+func (s *Server) CompletionHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		endpoints, ok := s.endpoints(w, r)
+		if !ok {
+			return
+		}
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			writeBrowserError(w, http.StatusMethodNotAllowed, "invalid_request", "the completion endpoint is a GET")
+			return
+		}
+		user, err := s.sessionUser(r)
+		if err != nil {
+			http.Redirect(w, r, signInURL(endpoints, r.URL.RequestURI()), http.StatusFound)
+			return
+		}
+		completed, err := s.config.State.OAuthAuthorizationRequestStore.Complete(r.URL.Query().Get("request_id"), user.ID, s.now())
+		if err != nil {
+			// The redirect target is only known once the store hands the finished
+			// request back, so this failure cannot be reported by redirecting.
+			writeBrowserError(w, http.StatusBadRequest, "invalid_request", "the authorization request was not approved, or is no longer valid")
+			return
+		}
+		RedirectWithCode(w, r, completed.RedirectURI, completed.Code, completed.ClientState, endpoints.Issuer)
+	})
+}

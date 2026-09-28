@@ -8,6 +8,24 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
+// EndpointsFunc reports the deployment's identifiers and whether the MCP surface
+// is enabled at all. Handlers take one instead of reaching for the settings
+// themselves, so a handler can be exercised without a database.
+type EndpointsFunc func(ctx context.Context) (Endpoints, bool, error)
+
+// WorkspaceEndpoints returns an EndpointsFunc backed by the workspace settings.
+// It is read per request, so turning the surface off, or moving the deployment
+// to another address, takes effect without a restart.
+func WorkspaceEndpoints(stores *store.Store) EndpointsFunc {
+	return func(ctx context.Context) (Endpoints, bool, error) {
+		resolution, err := ResolveEndpoints(ctx, stores)
+		if err != nil {
+			return Endpoints{}, false, err
+		}
+		return resolution.Endpoints, resolution.Enabled, nil
+	}
+}
+
 // Resolution is the outcome of reading the workspace settings for one request:
 // whether the MCP surface is served at all, and, when it is, the identifiers the
 // OAuth documents are built from.

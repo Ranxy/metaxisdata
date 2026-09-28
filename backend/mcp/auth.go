@@ -19,22 +19,9 @@ import (
 // IAM check runs against the same record.
 const userExtraKey = "metaxisdata.user"
 
-// EndpointsFunc reports the deployment's current MCP resource identifier and
-// whether the MCP surface is enabled at all. It is read per request, so turning
-// the surface off, or moving the deployment to another address, takes effect
-// without a restart.
-type EndpointsFunc func(ctx context.Context) (oauth.Endpoints, bool, error)
-
-// WorkspaceEndpoints returns an EndpointsFunc backed by the workspace settings.
-func WorkspaceEndpoints(stores *store.Store) EndpointsFunc {
-	return func(ctx context.Context) (oauth.Endpoints, bool, error) {
-		resolution, err := oauth.ResolveEndpoints(ctx, stores)
-		if err != nil {
-			return oauth.Endpoints{}, false, err
-		}
-		return resolution.Endpoints, resolution.Enabled, nil
-	}
-}
+// EndpointsFunc is the OAuth package's resolver type, aliased here because the
+// verifier is wired from the same place the protocol endpoints are.
+type EndpointsFunc = oauth.EndpointsFunc
 
 // NewTokenVerifier returns the bearer-token verifier for the MCP endpoint.
 //
