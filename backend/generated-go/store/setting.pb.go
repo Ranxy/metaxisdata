@@ -104,8 +104,12 @@ type WorkspaceProfileSetting struct {
 	// The LLM provider profiles ExplainSQL may use, as profile resource names.
 	// Empty means every enabled profile is allowed.
 	AllowedLlmProviderProfiles []string `protobuf:"bytes,15,rep,name=allowed_llm_provider_profiles,json=allowedLlmProviderProfiles,proto3" json:"allowed_llm_provider_profiles,omitempty"`
-	unknownFields              protoimpl.UnknownFields
-	sizeCache                  protoimpl.SizeCache
+	// Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
+	// Off by default: the surface is new, and enabling it requires a configured
+	// external_url, which is where its issuer and resource identifiers come from.
+	McpEnabled    bool `protobuf:"varint,16,opt,name=mcp_enabled,json=mcpEnabled,proto3" json:"mcp_enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WorkspaceProfileSetting) Reset() {
@@ -185,6 +189,13 @@ func (x *WorkspaceProfileSetting) GetAllowedLlmProviderProfiles() []string {
 		return x.AllowedLlmProviderProfiles
 	}
 	return nil
+}
+
+func (x *WorkspaceProfileSetting) GetMcpEnabled() bool {
+	if x != nil {
+		return x.McpEnabled
+	}
+	return false
 }
 
 type PasswordRestrictionSetting struct {
@@ -406,7 +417,7 @@ var File_store_setting_proto protoreflect.FileDescriptor
 
 const file_store_setting_proto_rawDesc = "" +
 	"\n" +
-	"\x13store/setting.proto\x12\x11metaxisdata.store\x1a\x1egoogle/protobuf/duration.proto\"\x8a\x04\n" +
+	"\x13store/setting.proto\x12\x11metaxisdata.store\x1a\x1egoogle/protobuf/duration.proto\"\xab\x04\n" +
 	"\x17WorkspaceProfileSetting\x12!\n" +
 	"\fexternal_url\x18\x01 \x01(\tR\vexternalUrl\x12'\n" +
 	"\x0fdisallow_signup\x18\x02 \x01(\bR\x0edisallowSignup\x12\x18\n" +
@@ -415,7 +426,9 @@ const file_store_setting_proto_rawDesc = "" +
 	" \x01(\bR\x15enforceIdentityDomain\x128\n" +
 	"\x18disallow_password_signin\x18\f \x01(\bR\x16disallowPasswordSignin\x12<\n" +
 	"\x1aopenlineage_retention_days\x18\x0e \x01(\x05R\x18openlineageRetentionDays\x12A\n" +
-	"\x1dallowed_llm_provider_profiles\x18\x0f \x03(\tR\x1aallowedLlmProviderProfilesJ\x04\b\x03\x10\x04J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\v\x10\fJ\x04\b\r\x10\x0eR\vrequire_2faR\x0etoken_durationR\fannouncementR\x17maximum_role_expirationR\x14database_change_modeR\x18enable_metric_collection\"\x9a\x03\n" +
+	"\x1dallowed_llm_provider_profiles\x18\x0f \x03(\tR\x1aallowedLlmProviderProfiles\x12\x1f\n" +
+	"\vmcp_enabled\x18\x10 \x01(\bR\n" +
+	"mcpEnabledJ\x04\b\x03\x10\x04J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\v\x10\fJ\x04\b\r\x10\x0eR\vrequire_2faR\x0etoken_durationR\fannouncementR\x17maximum_role_expirationR\x14database_change_modeR\x18enable_metric_collection\"\x9a\x03\n" +
 	"\x1aPasswordRestrictionSetting\x12\x1d\n" +
 	"\n" +
 	"min_length\x18\x01 \x01(\x05R\tminLength\x12%\n" +

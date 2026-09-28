@@ -255,6 +255,13 @@
   
     - [LLMService](#metaxisdata-v1-LLMService)
   
+- [v1/oauth_service.proto](#v1_oauth_service-proto)
+    - [ApproveOAuthAuthorizationRequestRequest](#metaxisdata-v1-ApproveOAuthAuthorizationRequestRequest)
+    - [GetOAuthAuthorizationRequestRequest](#metaxisdata-v1-GetOAuthAuthorizationRequestRequest)
+    - [OAuthAuthorizationRequest](#metaxisdata-v1-OAuthAuthorizationRequest)
+  
+    - [OAuthService](#metaxisdata-v1-OAuthService)
+  
 - [v1/openlineage_service.proto](#v1_openlineage_service-proto)
     - [APIKey](#metaxisdata-v1-APIKey)
     - [CreateAPIKeyRequest](#metaxisdata-v1-CreateAPIKeyRequest)
@@ -4249,6 +4256,93 @@ usually the SQL naming something the analyzer cannot see.
 
 
 
+<a name="v1_oauth_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/oauth_service.proto
+
+
+
+<a name="metaxisdata-v1-ApproveOAuthAuthorizationRequestRequest"></a>
+
+### ApproveOAuthAuthorizationRequestRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: oauthAuthorizationRequests/{request_id} |
+| approve | [bool](#bool) |  | approve records the decision; false denies the request. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetOAuthAuthorizationRequestRequest"></a>
+
+### GetOAuthAuthorizationRequestRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The name of the pending request. Format: oauthAuthorizationRequests/{request_id} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-OAuthAuthorizationRequest"></a>
+
+### OAuthAuthorizationRequest
+OAuthAuthorizationRequest is one pending OAuth 2.1 authorization request. It
+is display-only: the server trusts nothing the consent page sends back except
+the approve decision, and never exposes the authorization code, the PKCE
+challenge or the client&#39;s polling state here.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: oauthAuthorizationRequests/{request_id} |
+| client_name | [string](#string) |  | The client&#39;s self-reported name, as registered. It is not verified: it is shown so the user can tell clients apart, not relied upon. |
+| redirect_uri | [string](#string) |  | Where the authorization code will be delivered. Shown in full so the user can recognise a redirect they did not expect. |
+| resource | [string](#string) |  | The resource the client asked for, which must be this deployment&#39;s MCP endpoint. |
+| scopes | [string](#string) | repeated | The scopes the client asked for. |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| expire_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| request_ip | [string](#string) |  | The source address the request came from, as the server sees it (it follows the trusted-proxy rules). |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-OAuthService"></a>
+
+### OAuthService
+OAuthService serves the browser-facing half of the OAuth 2.1 authorization
+server. The protocol endpoints themselves -- /oauth/authorize,
+/oauth/authorize/complete, /oauth/token and /oauth/register -- are plain HTTP,
+because OAuth clients do not speak ConnectRPC; this service carries only what
+the SPA consent page needs.
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| GetOAuthAuthorizationRequest | [GetOAuthAuthorizationRequestRequest](#metaxisdata-v1-GetOAuthAuthorizationRequestRequest) | [OAuthAuthorizationRequest](#metaxisdata-v1-OAuthAuthorizationRequest) | GetOAuthAuthorizationRequest returns one pending authorization request so the consent page can show what is being approved. The caller must be signed in; the request carries no permission annotation, like the device login confirmation it mirrors. Permissions required: None |
+| ApproveOAuthAuthorizationRequest | [ApproveOAuthAuthorizationRequestRequest](#metaxisdata-v1-ApproveOAuthAuthorizationRequestRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | ApproveOAuthAuthorizationRequest records the signed-in user&#39;s decision. The approver becomes the identity the access token will be issued for. The browser then goes to /oauth/authorize/complete, which mints the authorization code and redirects it to the client, so the code never passes through an RPC response or through the page&#39;s own JavaScript. Permissions required: None |
+
+ 
+
+
+
 <a name="v1_openlineage_service-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
@@ -5082,6 +5176,7 @@ metaxisdata.roles.* permissions.
 | domains | [string](#string) | repeated | The email domains (for example &#34;example.com&#34;) whose users may sign up and sign in. Only enforced when enforce_identity_domain is on; an empty list disables the restriction. |
 | enforce_identity_domain | [bool](#bool) |  | Whether to restrict signup and signin to the domains above. |
 | allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles ExplainSQL may use, as profile resource names (&#34;llm-provider-profiles/{id}&#34;). Empty means every enabled profile is allowed. |
+| mcp_enabled | [bool](#bool) |  | Whether the MCP endpoint and its OAuth 2.1 authorization server are served. Off by default, and only usable once external_url is configured. |
 
 
 

@@ -47,6 +47,11 @@ message WorkspaceProfileSetting {
   // Empty means every enabled profile is allowed.
   repeated string allowed_llm_provider_profiles = 15;
 
+  // Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
+  // Off by default: the surface is new, and enabling it requires a configured
+  // external_url, which is where its issuer and resource identifiers come from.
+  bool mcp_enabled = 16;
+
   reserved 3, 6, 7, 8, 11, 13;
   reserved "require_2fa", "token_duration", "announcement", "maximum_role_expiration", "database_change_mode", "enable_metric_collection";
 }

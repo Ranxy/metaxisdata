@@ -69,6 +69,14 @@ export declare type WorkspaceProfileSetting = Message<"metaxisdata.v1.WorkspaceP
    * @generated from field: repeated string allowed_llm_provider_profiles = 7;
    */
   allowedLlmProviderProfiles: string[];
+
+  /**
+   * Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
+   * Off by default, and only usable once external_url is configured.
+   *
+   * @generated from field: bool mcp_enabled = 8;
+   */
+  mcpEnabled: boolean;
 };
 
 /**

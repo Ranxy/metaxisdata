@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package metaxisdata.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "v1/annotation.proto";
+
+option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
+
+// OAuthService serves the browser-facing half of the OAuth 2.1 authorization
+// server. The protocol endpoints themselves -- /oauth/authorize,
+// /oauth/authorize/complete, /oauth/token and /oauth/register -- are plain HTTP,
+// because OAuth clients do not speak ConnectRPC; this service carries only what
+// the SPA consent page needs.
+service OAuthService {
+  // GetOAuthAuthorizationRequest returns one pending authorization request so
+  // the consent page can show what is being approved. The caller must be signed
+  // in; the request carries no permission annotation, like the device login
+  // confirmation it mirrors.
+  // Permissions required: None
+  rpc GetOAuthAuthorizationRequest(GetOAuthAuthorizationRequestRequest) returns (OAuthAuthorizationRequest) {
+    option (google.api.http) = {get: "/v1/{name=oauthAuthorizationRequests/*}"};
+  }
+
+  // ApproveOAuthAuthorizationRequest records the signed-in user's decision. The
+  // approver becomes the identity the access token will be issued for. The
+  // browser then goes to /oauth/authorize/complete, which mints the
+  // authorization code and redirects it to the client, so the code never passes
+  // through an RPC response or through the page's own JavaScript.
+  // Permissions required: None
+  rpc ApproveOAuthAuthorizationRequest(ApproveOAuthAuthorizationRequestRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v1/{name=oauthAuthorizationRequests/*}:approve"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+  }
+}
+
+message GetOAuthAuthorizationRequestRequest {
+  // The name of the pending request.
+  // Format: oauthAuthorizationRequests/{request_id}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/OAuthAuthorizationRequest"}
+  ];
+}
+
+message ApproveOAuthAuthorizationRequestRequest {
+  // Format: oauthAuthorizationRequests/{request_id}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/OAuthAuthorizationRequest"}
+  ];
+
+  // approve records the decision; false denies the request.
+  bool approve = 2;
+}
+
+// OAuthAuthorizationRequest is one pending OAuth 2.1 authorization request. It
+// is display-only: the server trusts nothing the consent page sends back except
+// the approve decision, and never exposes the authorization code, the PKCE
+// challenge or the client's polling state here.
+message OAuthAuthorizationRequest {
+  option (google.api.resource) = {
+    type: "metaxisdata/OAuthAuthorizationRequest"
+    pattern: "oauthAuthorizationRequests/{oauth_authorization_request}"
+  };
+
+  // Format: oauthAuthorizationRequests/{request_id}
+  string name = 1;
+
+  // The client's self-reported name, as registered. It is not verified: it is
+  // shown so the user can tell clients apart, not relied upon.
+  string client_name = 2;
+
+  // Where the authorization code will be delivered. Shown in full so the user
+  // can recognise a redirect they did not expect.
+  string redirect_uri = 3;
+
+  // The resource the client asked for, which must be this deployment's MCP
+  // endpoint.
+  string resource = 4;
+
+  // The scopes the client asked for.
+  repeated string scopes = 5;
+
+  google.protobuf.Timestamp create_time = 6;
+
+  google.protobuf.Timestamp expire_time = 7;
+
+  // The source address the request came from, as the server sees it (it follows
+  // the trusted-proxy rules).
+  string request_ip = 8;
+}

@@ -1146,6 +1146,33 @@
         
           
           <li>
+            <a href="#v1%2foauth_service.proto">v1/oauth_service.proto</a>
+            <ul>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ApproveOAuthAuthorizationRequestRequest"><span class="badge">M</span>ApproveOAuthAuthorizationRequestRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetOAuthAuthorizationRequestRequest"><span class="badge">M</span>GetOAuthAuthorizationRequestRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.OAuthAuthorizationRequest"><span class="badge">M</span>OAuthAuthorizationRequest</a>
+                </li>
+              
+              
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.OAuthService"><span class="badge">S</span>OAuthService</a>
+                </li>
+              
+            </ul>
+          </li>
+        
+          
+          <li>
             <a href="#v1%2fopenlineage_service.proto">v1/openlineage_service.proto</a>
             <ul>
               
@@ -12232,6 +12259,226 @@ GetLineage.</p></td>
     
       
       <div class="file-heading">
+        <h2 id="v1/oauth_service.proto">v1/oauth_service.proto</h2><a href="#title">Top</a>
+      </div>
+      <p></p>
+
+      
+        <h3 id="metaxisdata.v1.ApproveOAuthAuthorizationRequestRequest">ApproveOAuthAuthorizationRequestRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: oauthAuthorizationRequests/{request_id} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>approve</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>approve records the decision; false denies the request. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetOAuthAuthorizationRequestRequest">GetOAuthAuthorizationRequestRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The name of the pending request.
+Format: oauthAuthorizationRequests/{request_id} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.OAuthAuthorizationRequest">OAuthAuthorizationRequest</h3>
+        <p>OAuthAuthorizationRequest is one pending OAuth 2.1 authorization request. It</p><p>is display-only: the server trusts nothing the consent page sends back except</p><p>the approve decision, and never exposes the authorization code, the PKCE</p><p>challenge or the client's polling state here.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: oauthAuthorizationRequests/{request_id} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>client_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The client&#39;s self-reported name, as registered. It is not verified: it is
+shown so the user can tell clients apart, not relied upon. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>redirect_uri</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Where the authorization code will be delivered. Shown in full so the user
+can recognise a redirect they did not expect. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>resource</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The resource the client asked for, which must be this deployment&#39;s MCP
+endpoint. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>scopes</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The scopes the client asked for. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expire_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>request_ip</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The source address the request came from, as the server sees it (it follows
+the trusted-proxy rules). </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+
+      
+
+      
+
+      
+        <h3 id="metaxisdata.v1.OAuthService">OAuthService</h3>
+        <p>OAuthService serves the browser-facing half of the OAuth 2.1 authorization</p><p>server. The protocol endpoints themselves -- /oauth/authorize,</p><p>/oauth/authorize/complete, /oauth/token and /oauth/register -- are plain HTTP,</p><p>because OAuth clients do not speak ConnectRPC; this service carries only what</p><p>the SPA consent page needs.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>GetOAuthAuthorizationRequest</td>
+                <td><a href="#metaxisdata.v1.GetOAuthAuthorizationRequestRequest">GetOAuthAuthorizationRequestRequest</a></td>
+                <td><a href="#metaxisdata.v1.OAuthAuthorizationRequest">OAuthAuthorizationRequest</a></td>
+                <td><p>GetOAuthAuthorizationRequest returns one pending authorization request so
+the consent page can show what is being approved. The caller must be signed
+in; the request carries no permission annotation, like the device login
+confirmation it mirrors.
+Permissions required: None</p></td>
+              </tr>
+            
+              <tr>
+                <td>ApproveOAuthAuthorizationRequest</td>
+                <td><a href="#metaxisdata.v1.ApproveOAuthAuthorizationRequestRequest">ApproveOAuthAuthorizationRequestRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>ApproveOAuthAuthorizationRequest records the signed-in user&#39;s decision. The
+approver becomes the identity the access token will be issued for. The
+browser then goes to /oauth/authorize/complete, which mints the
+authorization code and redirects it to the client, so the code never passes
+through an RPC response or through the page&#39;s own JavaScript.
+Permissions required: None</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+
+        
+          
+          
+          <h4>Methods with HTTP bindings</h4>
+          <table>
+            <thead>
+              <tr>
+                <td>Method Name</td>
+                <td>Method</td>
+                <td>Pattern</td>
+                <td>Body</td>
+              </tr>
+            </thead>
+            <tbody>
+            
+              
+              
+              <tr>
+                <td>GetOAuthAuthorizationRequest</td>
+                <td>GET</td>
+                <td>/v1/{name=oauthAuthorizationRequests/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ApproveOAuthAuthorizationRequest</td>
+                <td>POST</td>
+                <td>/v1/{name=oauthAuthorizationRequests/*}:approve</td>
+                <td>*</td>
+              </tr>
+              
+            
+            </tbody>
+          </table>
+          
+        
+    
+      
+      <div class="file-heading">
         <h2 id="v1/openlineage_service.proto">v1/openlineage_service.proto</h2><a href="#title">Top</a>
       </div>
       <p></p>
@@ -14555,6 +14802,14 @@ disables the restriction. </p></td>
                   <td><p>The LLM provider profiles ExplainSQL may use, as profile resource names
 (&#34;llm-provider-profiles/{id}&#34;). Empty means every enabled profile is
 allowed. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>mcp_enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
+Off by default, and only usable once external_url is configured. </p></td>
                 </tr>
               
             </tbody>

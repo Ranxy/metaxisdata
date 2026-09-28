@@ -1813,6 +1813,7 @@ roles have a row here.
 | disallow_password_signin | [bool](#bool) |  | Whether to disallow password signin. (Except workspace admins) |
 | openlineage_retention_days | [int32](#int32) |  | openlineage_retention_days bounds how long persisted OpenLineage runs are kept. Zero (the default) keeps them forever: they are audit data. |
 | allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles ExplainSQL may use, as profile resource names. Empty means every enabled profile is allowed. |
+| mcp_enabled | [bool](#bool) |  | Whether the MCP endpoint and its OAuth 2.1 authorization server are served. Off by default: the surface is new, and enabling it requires a configured external_url, which is where its issuer and resource identifiers come from. |
 
 
 

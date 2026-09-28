@@ -5423,6 +5423,15 @@ kept. Zero (the default) keeps them forever: they are audit data. </p></td>
 Empty means every enabled profile is allowed. </p></td>
                 </tr>
               
+                <tr>
+                  <td>mcp_enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
+Off by default: the surface is new, and enabling it requires a configured
+external_url, which is where its issuer and resource identifiers come from. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 

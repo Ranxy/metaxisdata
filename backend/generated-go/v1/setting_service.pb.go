@@ -45,8 +45,11 @@ type WorkspaceProfileSetting struct {
 	// ("llm-provider-profiles/{id}"). Empty means every enabled profile is
 	// allowed.
 	AllowedLlmProviderProfiles []string `protobuf:"bytes,7,rep,name=allowed_llm_provider_profiles,json=allowedLlmProviderProfiles,proto3" json:"allowed_llm_provider_profiles,omitempty"`
-	unknownFields              protoimpl.UnknownFields
-	sizeCache                  protoimpl.SizeCache
+	// Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
+	// Off by default, and only usable once external_url is configured.
+	McpEnabled    bool `protobuf:"varint,8,opt,name=mcp_enabled,json=mcpEnabled,proto3" json:"mcp_enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WorkspaceProfileSetting) Reset() {
@@ -126,6 +129,13 @@ func (x *WorkspaceProfileSetting) GetAllowedLlmProviderProfiles() []string {
 		return x.AllowedLlmProviderProfiles
 	}
 	return nil
+}
+
+func (x *WorkspaceProfileSetting) GetMcpEnabled() bool {
+	if x != nil {
+		return x.McpEnabled
+	}
+	return false
 }
 
 type GetWorkspaceProfileSettingRequest struct {
@@ -393,7 +403,7 @@ var File_v1_setting_service_proto protoreflect.FileDescriptor
 
 const file_v1_setting_service_proto_rawDesc = "" +
 	"\n" +
-	"\x18v1/setting_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a google/protobuf/field_mask.proto\x1a\x13v1/annotation.proto\"\xf2\x02\n" +
+	"\x18v1/setting_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a google/protobuf/field_mask.proto\x1a\x13v1/annotation.proto\"\x93\x03\n" +
 	"\x17WorkspaceProfileSetting\x12!\n" +
 	"\fexternal_url\x18\x01 \x01(\tR\vexternalUrl\x12'\n" +
 	"\x0fdisallow_signup\x18\x02 \x01(\bR\x0edisallowSignup\x128\n" +
@@ -401,7 +411,9 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\x1aopenlineage_retention_days\x18\x04 \x01(\x05R\x18openlineageRetentionDays\x12\x18\n" +
 	"\adomains\x18\x05 \x03(\tR\adomains\x126\n" +
 	"\x17enforce_identity_domain\x18\x06 \x01(\bR\x15enforceIdentityDomain\x12A\n" +
-	"\x1dallowed_llm_provider_profiles\x18\a \x03(\tR\x1aallowedLlmProviderProfiles\"#\n" +
+	"\x1dallowed_llm_provider_profiles\x18\a \x03(\tR\x1aallowedLlmProviderProfiles\x12\x1f\n" +
+	"\vmcp_enabled\x18\b \x01(\bR\n" +
+	"mcpEnabled\"#\n" +
 	"!GetWorkspaceProfileSettingRequest\"\xab\x01\n" +
 	"$UpdateWorkspaceProfileSettingRequest\x12F\n" +
 	"\asetting\x18\x01 \x01(\v2'.metaxisdata.v1.WorkspaceProfileSettingB\x03\xe0A\x02R\asetting\x12;\n" +
