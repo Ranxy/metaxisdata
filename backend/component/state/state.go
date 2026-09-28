@@ -36,6 +36,9 @@ type State struct {
 	// per caller, so holding an account does not buy unlimited guesses at
 	// someone else's user code.
 	DeviceLoginLookupLimiter *DeviceLoginLimiter
+	// OAuthAuthorizationRequestStore holds the pending OAuth 2.1 authorization
+	// requests and the single-use authorization codes minted from them.
+	OAuthAuthorizationRequestStore *OAuthAuthorizationRequestStore
 }
 
 func New() (*State, error) {
@@ -55,6 +58,7 @@ func New() (*State, error) {
 		DeviceLoginStore:               newDeviceLoginStore(),
 		DeviceLoginLimiter:             newDeviceLoginCreateLimiter(),
 		DeviceLoginLookupLimiter:       newDeviceLoginLookupLimiter(),
+		OAuthAuthorizationRequestStore: NewOAuthAuthorizationRequestStore(),
 	}, nil
 }
 
