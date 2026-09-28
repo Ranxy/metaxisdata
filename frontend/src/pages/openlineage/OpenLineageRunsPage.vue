@@ -6,13 +6,13 @@
     />
 
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <!-- Counted by the server across the whole registry: the table shows one
+           page at a time, so anything derived from the rows on screen would be a
+           summary of one page. -->
       <StatCard
-        :label="t('openlineage.visibleJobs')"
-        :value="filteredTasks.length"
+        :label="t('openlineage.jobsTotal')"
+        :value="totalJobCount"
       />
-      <!-- Not "lineage-ready jobs": the lineage toggle is on by default, so that
-           count is this one's twin until someone unchecks it. Total runs says
-           something the row count cannot. -->
       <StatCard
         :label="t('openlineage.runsTotal')"
         :value="totalRunCount"
@@ -49,7 +49,7 @@
       <CardContent class="pt-6">
         <PageState :loading="isLoading">
           <EmptyState
-            v-if="filteredTasks.length === 0"
+            v-if="tasks.length === 0"
             :icon="ScrollText"
             :title="t('openlineageSettings.noTasks')"
           />
@@ -83,7 +83,7 @@
                    name stays a real link, so the row has a visible affordance
                    and one keyboard stop. -->
               <TableRow
-                v-for="task in filteredTasks"
+                v-for="task in tasks"
                 :key="task.guid"
                 class="cursor-pointer"
                 @click="handleRowClick(task.guid)"
@@ -150,6 +150,15 @@
             </TableBody>
           </Table>
         </PageState>
+
+        <TablePager
+          v-model:page-size="pageSize"
+          :has-previous="hasPrevious"
+          :has-next="hasNext"
+          :disabled="isLoading"
+          @previous="goPrevious"
+          @next="goNext"
+        />
       </CardContent>
     </Card>
   </div>
@@ -161,12 +170,19 @@ import { Files, MoreHorizontal, Network, ScrollText } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
-import { listOpenLineageTasks } from "@/api/openlineage";
-import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
+import {
+  listOpenLineageFilterOptions,
+  listOpenLineageTasks,
+} from "@/api/openlineage";
+import type {
+  ActiveFilter,
+  FilterCategory,
+} from "@/components/common/AdvancedSearchBar.vue";
 import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import StatCard from "@/components/common/StatCard.vue";
+import TablePager from "@/components/common/TablePager.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -188,7 +204,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
-import type { OpenLineageTask } from "@/types/proto-es/v1/openlineage_service_pb";
+import { usePagedFetch } from "@/composables/usePagedFetch";
+import type {
+  ListOpenLineageFilterOptionsResponse,
+  OpenLineageFilterOption,
+  OpenLineageTask,
+} from "@/types/proto-es/v1/openlineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
 
@@ -197,105 +218,122 @@ const route = useRoute();
 const router = useRouter();
 const { handleError } = useErrorHandler();
 
-const isLoading = ref(false);
-const tasks = ref<OpenLineageTask[]>([]);
+const pageSize = ref(50);
 const activeFilters = ref<ActiveFilter[]>([]);
 const lineageOnly = ref(route.query.lineageOnly !== "false");
+const facets = ref<ListOpenLineageFilterOptionsResponse | null>(null);
 
-const namespaces = computed(() => {
-  return Array.from(
-    new Set(tasks.value.map((task) => task.jobNamespace).filter(Boolean))
-  ).sort((left, right) => left.localeCompare(right));
+function filterValue(type: string): string {
+  return (
+    activeFilters.value.find((filter) => filter.type === type)?.value ?? ""
+  );
+}
+
+// The filter menus read their values from the server: the table takes one page
+// at a time, so a menu built from the rows on screen would offer only the
+// namespaces that happen to be on that page. The summary cards read the same
+// answer, so it is fetched once and kept.
+async function loadFacets(): Promise<ListOpenLineageFilterOptionsResponse | null> {
+  if (!facets.value) {
+    try {
+      facets.value = await listOpenLineageFilterOptions();
+    } catch (error) {
+      // The menus and the summary cards are an enhancement; a failure must not
+      // take the table down with it. Nothing is cached, so the next menu open
+      // retries.
+      handleError(error);
+    }
+  }
+  return facets.value;
+}
+
+function asFilterOptions(values: OpenLineageFilterOption[]) {
+  return values.map((value) => ({ value: value.value, label: value.value }));
+}
+
+const filterCategories = computed<FilterCategory[]>(() => [
+  {
+    type: "namespace",
+    label: t("openlineageSettings.namespace"),
+    icon: "📦",
+    options: async () =>
+      asFilterOptions((await loadFacets())?.jobNamespaces ?? []),
+  },
+  {
+    type: "jobType",
+    label: t("openlineageSettings.jobType"),
+    icon: "⚙️",
+    options: async () => asFilterOptions((await loadFacets())?.jobTypes ?? []),
+  },
+]);
+
+const {
+  items: tasks,
+  isLoading,
+  hasNext,
+  hasPrevious,
+  reset,
+  goNext,
+  goPrevious,
+} = usePagedFetch<OpenLineageTask>({
+  fetchPage: async (pageToken, signal) => {
+    const response = await listOpenLineageTasks({
+      pageSize: pageSize.value,
+      pageToken,
+      search: filterValue("name"),
+      jobNamespace: filterValue("namespace"),
+      jobType: filterValue("jobType"),
+      lineageOnly: lineageOnly.value,
+      signal,
+    });
+    return { items: response.tasks, nextPageToken: response.nextPageToken };
+  },
+  onError: handleError,
 });
 
-const jobTypes = computed(() => {
-  return Array.from(
-    new Set(tasks.value.map((task) => task.jobType).filter(Boolean))
-  ).sort((left, right) => left.localeCompare(right));
-});
-
-const filterCategories = computed(() => {
-  return [
-    {
-      type: "namespace",
-      label: t("openlineageSettings.namespace"),
-      icon: "📦",
-      options: namespaces.value.map((ns) => ({ value: ns, label: ns })),
-    },
-    {
-      type: "jobType",
-      label: t("openlineageSettings.jobType"),
-      icon: "⚙️",
-      options: jobTypes.value.map((jt) => ({ value: jt, label: jt })),
-    },
-  ].filter((cat) => cat.options.length > 0);
-});
+const totalJobCount = computed(() => Number(facets.value?.totalJobs ?? 0));
+const totalRunCount = computed(() => Number(facets.value?.totalRuns ?? 0));
+const namespaceCount = computed(() =>
+  Number(facets.value?.totalJobNamespaces ?? 0)
+);
 
 function handleFiltersUpdate(filters: ActiveFilter[]) {
   activeFilters.value = filters;
   const nextQuery: Record<string, string> = {};
 
-  const nameFilter = filters.find((f) => f.type === "name");
+  const nameFilter = filters.find((filter) => filter.type === "name");
   if (nameFilter?.value) {
     nextQuery.search = nameFilter.value;
   }
-  const nsFilter = filters.find((f) => f.type === "namespace");
-  if (nsFilter?.value) {
-    nextQuery.namespace = nsFilter.value;
+  const namespaceFilter = filters.find((filter) => filter.type === "namespace");
+  if (namespaceFilter?.value) {
+    nextQuery.namespace = namespaceFilter.value;
   }
-  const jtFilter = filters.find((f) => f.type === "jobType");
-  if (jtFilter?.value) {
-    nextQuery.jobType = jtFilter.value;
+  const jobTypeFilter = filters.find((filter) => filter.type === "jobType");
+  if (jobTypeFilter?.value) {
+    nextQuery.jobType = jobTypeFilter.value;
   }
 
   router.replace({ query: nextQuery });
+  void reset();
 }
 
-const filteredTasks = computed(() => {
-  const nameFilter =
-    activeFilters.value.find((f) => f.type === "name")?.value ?? "";
-  const nsFilter =
-    activeFilters.value.find((f) => f.type === "namespace")?.value ?? "";
-  const jtFilter =
-    activeFilters.value.find((f) => f.type === "jobType")?.value ?? "";
+function resetFilters() {
+  activeFilters.value = [];
+  // Turning the toggle back on reloads through the watcher below; when it is
+  // already on, nothing else would, so the reload is asked for here.
+  const reloadHere = lineageOnly.value;
+  lineageOnly.value = true;
+  router.replace({ query: {} });
+  if (reloadHere) {
+    void reset();
+  }
+}
 
-  const query = nameFilter.toLowerCase();
-
-  return tasks.value.filter((task) => {
-    if (nsFilter && task.jobNamespace !== nsFilter) {
-      return false;
-    }
-    if (jtFilter && task.jobType !== jtFilter) {
-      return false;
-    }
-    if (lineageOnly.value && task.lineageRunCount <= 0) {
-      return false;
-    }
-    if (!query) {
-      return true;
-    }
-    const haystack = [
-      task.jobName,
-      task.jobNamespace,
-      task.jobType,
-      task.integration,
-      task.processingType,
-      task.latestRunId,
-    ]
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(query);
-  });
-});
-
-const totalRunCount = computed(() => {
-  return filteredTasks.value.reduce((sum, task) => sum + task.runCount, 0);
-});
-
-const namespaceCount = computed(() => {
-  return new Set(
-    filteredTasks.value.map((task) => task.jobNamespace).filter(Boolean)
-  ).size;
+// A filter, the lineage toggle and the page size each restart the walk at its
+// first page: a cursor belongs to the query that produced it.
+watch([lineageOnly, pageSize], () => {
+  void reset();
 });
 
 function formatTimestamp(ts: Timestamp | undefined): string {
@@ -360,39 +398,8 @@ function openEvents(task: OpenLineageTask) {
   });
 }
 
-function resetFilters() {
-  activeFilters.value = [];
-  lineageOnly.value = true;
-  router.replace({ query: {} });
-}
-
-watch([lineageOnly], () => {
-  const nextQuery = { ...route.query };
-  if (!lineageOnly.value) {
-    nextQuery.lineageOnly = "false";
-  } else {
-    delete nextQuery.lineageOnly;
-  }
-  router.replace({ query: nextQuery });
-});
-
-async function fetchTasks() {
-  isLoading.value = true;
-  try {
-    const response = await listOpenLineageTasks({
-      pageSize: 200,
-      jobType: "",
-      lineageOnly: false,
-    });
-    tasks.value = response.tasks;
-  } catch (error) {
-    handleError(error);
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-onMounted(() => {
-  fetchTasks();
+onMounted(async () => {
+  void reset();
+  void loadFacets();
 });
 </script>

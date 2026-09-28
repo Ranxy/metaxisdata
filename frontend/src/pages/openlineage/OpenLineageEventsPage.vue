@@ -6,15 +6,16 @@
     />
 
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <!-- Counted by the server across the whole registry: the table shows one
+           page at a time, so anything derived from the rows on screen would be a
+           summary of one page. -->
       <StatCard
-        :label="t('openlineage.visibleEvents')"
-        :value="filteredRuns.length"
+        :label="t('openlineage.eventsTotal')"
+        :value="totalEventCount"
       />
-      <!-- Not "lineage events": the lineage toggle is on by default, so that
-           count is this one's twin until someone unchecks it. -->
       <StatCard
         :label="t('openlineage.jobsCovered')"
-        :value="jobCount"
+        :value="totalJobCount"
       />
       <StatCard
         :label="t('openlineage.activeNamespaces')"
@@ -48,7 +49,7 @@
       <CardContent class="pt-6">
         <PageState :loading="isLoading">
           <EmptyState
-            v-if="filteredRuns.length === 0"
+            v-if="runs.length === 0"
             :icon="Files"
             :title="t('openlineageSettings.noRuns')"
           />
@@ -85,7 +86,7 @@
                    stays the labelled action, so the row is a convenience rather
                    than the only way in. -->
               <TableRow
-                v-for="run in filteredRuns"
+                v-for="run in runs"
                 :key="run.guid"
                 class="cursor-pointer"
                 @click="handleRowClick(run.guid)"
@@ -149,6 +150,15 @@
             </TableBody>
           </Table>
         </PageState>
+
+        <TablePager
+          v-model:page-size="pageSize"
+          :has-previous="hasPrevious"
+          :has-next="hasNext"
+          :disabled="isLoading"
+          @previous="goPrevious"
+          @next="goNext"
+        />
       </CardContent>
     </Card>
   </div>
@@ -160,12 +170,19 @@ import { Eye, Files } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
-import { listOpenLineageRuns } from "@/api/openlineage";
-import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
+import {
+  listOpenLineageFilterOptions,
+  listOpenLineageRuns,
+} from "@/api/openlineage";
+import type {
+  ActiveFilter,
+  FilterCategory,
+} from "@/components/common/AdvancedSearchBar.vue";
 import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import StatCard from "@/components/common/StatCard.vue";
+import TablePager from "@/components/common/TablePager.vue";
 import ExpandableText from "@/components/metadata/ExpandableText.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Badge } from "@/components/ui/badge";
@@ -182,7 +199,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
-import type { OpenLineageRun } from "@/types/proto-es/v1/openlineage_service_pb";
+import { usePagedFetch } from "@/composables/usePagedFetch";
+import type {
+  ListOpenLineageFilterOptionsResponse,
+  OpenLineageFilterOption,
+  OpenLineageRun,
+} from "@/types/proto-es/v1/openlineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 
 const { t, locale } = useI18n();
@@ -190,39 +212,85 @@ const route = useRoute();
 const router = useRouter();
 const { handleError } = useErrorHandler();
 
-const isLoading = ref(false);
-const runs = ref<OpenLineageRun[]>([]);
+const pageSize = ref(50);
 const activeFilters = ref<ActiveFilter[]>([]);
 const lineageOnly = ref(route.query.lineageOnly !== "false");
+const facets = ref<ListOpenLineageFilterOptionsResponse | null>(null);
 
-const namespaces = computed(() => {
-  return Array.from(
-    new Set(runs.value.map((run) => run.jobNamespace).filter(Boolean))
-  ).sort((left, right) => left.localeCompare(right));
+function filterValue(type: string): string {
+  return (
+    activeFilters.value.find((filter) => filter.type === type)?.value ?? ""
+  );
+}
+
+// The filter menus read their values from the server: the table takes one page
+// at a time, so a menu built from the rows on screen would offer only the
+// namespaces that happen to be on that page. The summary cards read the same
+// answer, so it is fetched once and kept.
+async function loadFacets(): Promise<ListOpenLineageFilterOptionsResponse | null> {
+  if (!facets.value) {
+    try {
+      facets.value = await listOpenLineageFilterOptions();
+    } catch (error) {
+      // The menus and the summary cards are an enhancement; a failure must not
+      // take the table down with it. Nothing is cached, so the next menu open
+      // retries.
+      handleError(error);
+    }
+  }
+  return facets.value;
+}
+
+function asFilterOptions(values: OpenLineageFilterOption[]) {
+  return values.map((value) => ({ value: value.value, label: value.value }));
+}
+
+const filterCategories = computed<FilterCategory[]>(() => [
+  {
+    type: "namespace",
+    label: t("openlineageSettings.namespace"),
+    icon: "📦",
+    options: async () =>
+      asFilterOptions((await loadFacets())?.jobNamespaces ?? []),
+  },
+  {
+    type: "eventType",
+    label: t("openlineage.eventType"),
+    icon: "🏷️",
+    options: async () =>
+      asFilterOptions((await loadFacets())?.eventTypes ?? []),
+  },
+]);
+
+const {
+  items: runs,
+  isLoading,
+  hasNext,
+  hasPrevious,
+  reset,
+  goNext,
+  goPrevious,
+} = usePagedFetch<OpenLineageRun>({
+  fetchPage: async (pageToken, signal) => {
+    const response = await listOpenLineageRuns({
+      pageSize: pageSize.value,
+      pageToken,
+      search: filterValue("name"),
+      jobNamespace: filterValue("namespace"),
+      eventType: filterValue("eventType"),
+      hasLineage: lineageOnly.value,
+      signal,
+    });
+    return { items: response.runs, nextPageToken: response.nextPageToken };
+  },
+  onError: handleError,
 });
 
-const eventTypes = computed(() => {
-  return Array.from(
-    new Set(runs.value.map((run) => run.eventType).filter(Boolean))
-  ).sort((left, right) => left.localeCompare(right));
-});
-
-const filterCategories = computed(() => {
-  return [
-    {
-      type: "namespace",
-      label: t("openlineageSettings.namespace"),
-      icon: "📦",
-      options: namespaces.value.map((ns) => ({ value: ns, label: ns })),
-    },
-    {
-      type: "eventType",
-      label: t("openlineage.eventType"),
-      icon: "🏷️",
-      options: eventTypes.value.map((et) => ({ value: et, label: et })),
-    },
-  ].filter((cat) => cat.options.length > 0);
-});
+const totalEventCount = computed(() => Number(facets.value?.totalRuns ?? 0));
+const totalJobCount = computed(() => Number(facets.value?.totalJobs ?? 0));
+const namespaceCount = computed(() =>
+  Number(facets.value?.totalJobNamespaces ?? 0)
+);
 
 function handleFiltersUpdate(filters: ActiveFilter[]) {
   activeFilters.value = filters;
@@ -231,69 +299,39 @@ function handleFiltersUpdate(filters: ActiveFilter[]) {
   if (route.query.from && typeof route.query.from === "string") {
     nextQuery.from = route.query.from;
   }
-  const nameFilter = filters.find((f) => f.type === "name");
+  const nameFilter = filters.find((filter) => filter.type === "name");
   if (nameFilter?.value) {
     nextQuery.search = nameFilter.value;
   }
-  const nsFilter = filters.find((f) => f.type === "namespace");
-  if (nsFilter?.value) {
-    nextQuery.namespace = nsFilter.value;
+  const namespaceFilter = filters.find((filter) => filter.type === "namespace");
+  if (namespaceFilter?.value) {
+    nextQuery.namespace = namespaceFilter.value;
   }
-  const etFilter = filters.find((f) => f.type === "eventType");
-  if (etFilter?.value) {
-    nextQuery.eventType = etFilter.value;
+  const eventTypeFilter = filters.find((filter) => filter.type === "eventType");
+  if (eventTypeFilter?.value) {
+    nextQuery.eventType = eventTypeFilter.value;
   }
 
   router.replace({ query: nextQuery });
-  fetchRuns();
+  void reset();
 }
 
-const filteredRuns = computed(() => {
-  const nameFilter =
-    activeFilters.value.find((f) => f.type === "name")?.value ?? "";
-  const nsFilter =
-    activeFilters.value.find((f) => f.type === "namespace")?.value ?? "";
-  const etFilter =
-    activeFilters.value.find((f) => f.type === "eventType")?.value ?? "";
+function resetFilters() {
+  activeFilters.value = [];
+  // Turning the toggle back on reloads through the watcher below; when it is
+  // already on, nothing else would, so the reload is asked for here.
+  const reloadHere = lineageOnly.value;
+  lineageOnly.value = true;
+  router.replace({ query: {} });
+  if (reloadHere) {
+    void reset();
+  }
+}
 
-  const query = nameFilter.toLowerCase();
-
-  return runs.value.filter((run) => {
-    if (nsFilter && run.jobNamespace !== nsFilter) {
-      return false;
-    }
-    if (etFilter && run.eventType !== etFilter) {
-      return false;
-    }
-    if (lineageOnly.value && !run.hasLineage) {
-      return false;
-    }
-    if (!query) {
-      return true;
-    }
-    const haystack = [
-      run.jobName,
-      run.jobNamespace,
-      run.runId,
-      run.eventType,
-      run.producer,
-      run.source,
-    ]
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(query);
-  });
-});
-
-const jobCount = computed(() => {
-  return new Set(filteredRuns.value.map((run) => run.jobName).filter(Boolean))
-    .size;
-});
-
-const namespaceCount = computed(() => {
-  return new Set(
-    filteredRuns.value.map((run) => run.jobNamespace).filter(Boolean)
-  ).size;
+// A filter, the lineage toggle and the page size each restart the walk at its
+// first page: a cursor belongs to the query that produced it.
+watch([lineageOnly, pageSize], () => {
+  void reset();
 });
 
 function formatTimestamp(ts: Timestamp | undefined): string {
@@ -320,43 +358,8 @@ function handleRowClick(guid: string) {
   openDetail(guid);
 }
 
-function resetFilters() {
-  activeFilters.value = [];
-  lineageOnly.value = true;
-  router.replace({ query: {} });
-  fetchRuns();
-}
-
-watch([lineageOnly], () => {
-  const nextQuery = { ...route.query };
-  if (!lineageOnly.value) {
-    nextQuery.lineageOnly = "false";
-  } else {
-    delete nextQuery.lineageOnly;
-  }
-  router.replace({ query: nextQuery });
-  fetchRuns();
-});
-
-async function fetchRuns() {
-  isLoading.value = true;
-  try {
-    const etFilter =
-      activeFilters.value.find((f) => f.type === "eventType")?.value ?? "";
-    const response = await listOpenLineageRuns({
-      pageSize: 200,
-      eventType: etFilter,
-      hasLineage: lineageOnly.value || undefined,
-    });
-    runs.value = response.runs;
-  } catch (error) {
-    handleError(error);
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-onMounted(() => {
-  fetchRuns();
+onMounted(async () => {
+  void reset();
+  void loadFacets();
 });
 </script>

@@ -10,6 +10,7 @@ import {
   ListAPIKeysRequestSchema,
   ListNamespaceMappingsRequestSchema,
   ListOpenLineageDatasetsRequestSchema,
+  ListOpenLineageFilterOptionsRequestSchema,
   ListOpenLineageRunsRequestSchema,
   ListOpenLineageTasksRequestSchema,
   NamespaceMappingSchema,
@@ -26,20 +27,25 @@ export async function listNamespaceMappings() {
 export async function listOpenLineageTasks(params?: {
   pageSize?: number;
   pageToken?: string;
+  search?: string;
   jobNamespace?: string;
   jobName?: string;
   jobType?: string;
   lineageOnly?: boolean;
+  signal?: AbortSignal;
 }) {
   const request = create(ListOpenLineageTasksRequestSchema, {
     pageSize: params?.pageSize ?? 100,
     pageToken: params?.pageToken ?? "",
+    search: params?.search ?? "",
     jobNamespace: params?.jobNamespace ?? "",
     jobName: params?.jobName ?? "",
     jobType: params?.jobType ?? "TASK",
     lineageOnly: params?.lineageOnly ?? true,
   });
-  return await openLineageClient.listOpenLineageTasks(request);
+  return await openLineageClient.listOpenLineageTasks(request, {
+    signal: params?.signal,
+  });
 }
 
 /** getOpenLineageTask reads one task by its guid (openlineage/tasks/{guid}). */
@@ -59,6 +65,7 @@ export async function listOpenLineageDatasets(params?: {
   source?: string;
   datasetScope?: number;
   columnLineageOnly?: boolean;
+  signal?: AbortSignal;
 }) {
   const request = create(ListOpenLineageDatasetsRequestSchema, {
     pageSize: params?.pageSize ?? 200,
@@ -70,7 +77,15 @@ export async function listOpenLineageDatasets(params?: {
     datasetScope: params?.datasetScope ?? 0,
     columnLineageOnly: params?.columnLineageOnly ?? false,
   });
-  return await openLineageClient.listOpenLineageDatasets(request);
+  return await openLineageClient.listOpenLineageDatasets(request, {
+    signal: params?.signal,
+  });
+}
+
+/** listOpenLineageFilterOptions reads the distinct values the filter menus offer. */
+export async function listOpenLineageFilterOptions() {
+  const request = create(ListOpenLineageFilterOptionsRequestSchema, {});
+  return await openLineageClient.listOpenLineageFilterOptions(request);
 }
 
 export async function getOpenLineageDataset(guid: string) {
@@ -81,16 +96,19 @@ export async function getOpenLineageDataset(guid: string) {
 export async function listOpenLineageRuns(params?: {
   pageSize?: number;
   pageToken?: string;
+  search?: string;
   jobNamespace?: string;
   jobName?: string;
   taskGuid?: string;
   jobType?: string;
   eventType?: string;
   hasLineage?: boolean;
+  signal?: AbortSignal;
 }) {
   const request = create(ListOpenLineageRunsRequestSchema, {
     pageSize: params?.pageSize ?? 100,
     pageToken: params?.pageToken ?? "",
+    search: params?.search ?? "",
     jobNamespace: params?.jobNamespace ?? "",
     jobName: params?.jobName ?? "",
     taskGuid: params?.taskGuid ?? "",
@@ -98,7 +116,9 @@ export async function listOpenLineageRuns(params?: {
     eventType: params?.eventType ?? "",
     hasLineage: params?.hasLineage ?? false,
   });
-  return await openLineageClient.listOpenLineageRuns(request);
+  return await openLineageClient.listOpenLineageRuns(request, {
+    signal: params?.signal,
+  });
 }
 
 /** getOpenLineageRun reads one run by its guid (openlineage/runs/{guid}). */

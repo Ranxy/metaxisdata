@@ -8,7 +8,7 @@
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <StatCard
         :label="t('openlineage.visibleDatasets')"
-        :value="filteredDatasets.length"
+        :value="datasets.length"
       />
       <StatCard
         :label="t('openlineage.internalDatasets')"
@@ -46,7 +46,7 @@
       <CardContent class="pt-6">
         <PageState :loading="isLoading">
           <EmptyState
-            v-if="filteredDatasets.length === 0"
+            v-if="datasets.length === 0"
             :icon="Database"
             :title="t('openlineage.noDatasets')"
           />
@@ -78,7 +78,7 @@
                    used to be clickable, and the drawer was also reachable by
                    opening the action menu and picking an item out of it. -->
               <TableRow
-                v-for="dataset in filteredDatasets"
+                v-for="dataset in datasets"
                 :key="datasetRowKey(dataset)"
                 class="cursor-pointer"
                 @click="handleRowClick(dataset)"
@@ -156,6 +156,15 @@
             </TableBody>
           </Table>
         </PageState>
+
+        <TablePager
+          v-model:page-size="pageSize"
+          :has-previous="hasPrevious"
+          :has-next="hasNext"
+          :disabled="isLoading"
+          @previous="goPrevious"
+          @next="goNext"
+        />
       </CardContent>
     </Card>
 
@@ -178,12 +187,19 @@ import {
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
-import { listOpenLineageDatasets } from "@/api/openlineage";
-import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
+import {
+  listOpenLineageDatasets,
+  listOpenLineageFilterOptions,
+} from "@/api/openlineage";
+import type {
+  ActiveFilter,
+  FilterCategory,
+} from "@/components/common/AdvancedSearchBar.vue";
 import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import StatCard from "@/components/common/StatCard.vue";
+import TablePager from "@/components/common/TablePager.vue";
 import OpenLineageDatasetDetailDrawer from "@/components/openlineage/OpenLineageDatasetDetailDrawer.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Badge } from "@/components/ui/badge";
@@ -206,7 +222,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
-import type { OpenLineageDatasetResource } from "@/types/proto-es/v1/openlineage_service_pb";
+import { usePagedFetch } from "@/composables/usePagedFetch";
+import {
+  type ListOpenLineageFilterOptionsResponse,
+  type OpenLineageDatasetResource,
+  OpenLineageDatasetScope,
+  type OpenLineageFilterOption,
+} from "@/types/proto-es/v1/openlineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
 
@@ -215,153 +237,164 @@ const route = useRoute();
 const router = useRouter();
 const { handleError } = useErrorHandler();
 
-const isLoading = ref(false);
-const datasets = ref<OpenLineageDatasetResource[]>([]);
-const selectedDataset = ref<OpenLineageDatasetResource | null>(null);
-const isDetailDrawerOpen = ref(false);
+const pageSize = ref(50);
 const activeFilters = ref<ActiveFilter[]>([]);
 const columnLineageOnly = ref(route.query.columnLineageOnly === "true");
+const selectedDataset = ref<OpenLineageDatasetResource | null>(null);
+const isDetailDrawerOpen = ref(false);
+const facets = ref<ListOpenLineageFilterOptionsResponse | null>(null);
 
-const namespaces = computed(() => {
-  return Array.from(
-    new Set(datasets.value.map((dataset) => dataset.namespace).filter(Boolean))
-  ).sort((left, right) => left.localeCompare(right));
+function filterValue(type: string): string {
+  return (
+    activeFilters.value.find((filter) => filter.type === type)?.value ?? ""
+  );
+}
+
+function scopeValue(): OpenLineageDatasetScope {
+  switch (filterValue("scope")) {
+    case "internal":
+      return OpenLineageDatasetScope.OPENLINEAGE_DATASET_SCOPE_INTERNAL;
+    case "external":
+      return OpenLineageDatasetScope.OPENLINEAGE_DATASET_SCOPE_EXTERNAL;
+    default:
+      return OpenLineageDatasetScope.OPENLINEAGE_DATASET_SCOPE_ALL;
+  }
+}
+
+// The server owns the dataset aggregate, so the filter menus ask it for the
+// values instead of reading them off the page of rows on screen.
+async function loadFacets(): Promise<ListOpenLineageFilterOptionsResponse | null> {
+  if (!facets.value) {
+    try {
+      facets.value = await listOpenLineageFilterOptions();
+    } catch (error) {
+      // The menus and the summary cards are an enhancement; a failure must not
+      // take the table down with it. Nothing is cached, so the next menu open
+      // retries.
+      handleError(error);
+    }
+  }
+  return facets.value;
+}
+
+function asFilterOptions(values: OpenLineageFilterOption[]) {
+  return values.map((value) => ({ value: value.value, label: value.value }));
+}
+
+const filterCategories = computed<FilterCategory[]>(() => [
+  {
+    type: "namespace",
+    label: t("openlineageSettings.namespace"),
+    icon: "📦",
+    options: async () =>
+      asFilterOptions((await loadFacets())?.datasetNamespaces ?? []),
+  },
+  {
+    type: "integration",
+    label: t("openlineageSettings.integration"),
+    icon: "🔌",
+    options: async () =>
+      asFilterOptions((await loadFacets())?.integrations ?? []),
+  },
+  {
+    type: "source",
+    label: t("openlineageSettings.sourceLabel"),
+    icon: "📡",
+    options: async () => asFilterOptions((await loadFacets())?.sources ?? []),
+  },
+  {
+    type: "scope",
+    label: t("openlineage.datasetScope"),
+    icon: "🏷️",
+    options: [
+      { value: "internal", label: t("openlineage.internalOnly") },
+      { value: "external", label: t("openlineage.externalOnly") },
+    ],
+  },
+]);
+
+const {
+  items: datasets,
+  isLoading,
+  hasNext,
+  hasPrevious,
+  reset,
+  goNext,
+  goPrevious,
+} = usePagedFetch<OpenLineageDatasetResource>({
+  fetchPage: async (pageToken, signal) => {
+    const response = await listOpenLineageDatasets({
+      pageSize: pageSize.value,
+      pageToken,
+      search: filterValue("name"),
+      namespace: filterValue("namespace"),
+      integration: filterValue("integration"),
+      source: filterValue("source"),
+      datasetScope: scopeValue(),
+      columnLineageOnly: columnLineageOnly.value,
+      signal,
+    });
+    return { items: response.datasets, nextPageToken: response.nextPageToken };
+  },
+  onError: handleError,
 });
 
-const integrations = computed(() => {
-  return Array.from(
-    new Set(
-      datasets.value.flatMap((dataset) => dataset.integrations).filter(Boolean)
-    )
-  ).sort((left, right) => left.localeCompare(right));
-});
-
-const sources = computed(() => {
-  return Array.from(
-    new Set(
-      datasets.value.flatMap((dataset) => dataset.sources).filter(Boolean)
-    )
-  ).sort((left, right) => left.localeCompare(right));
-});
-
-const filterCategories = computed(() => {
-  return [
-    {
-      type: "namespace",
-      label: t("openlineageSettings.namespace"),
-      icon: "📦",
-      options: namespaces.value.map((ns) => ({ value: ns, label: ns })),
-    },
-    {
-      type: "integration",
-      label: t("openlineageSettings.integration"),
-      icon: "🔌",
-      options: integrations.value.map((i) => ({ value: i, label: i })),
-    },
-    {
-      type: "source",
-      label: t("openlineageSettings.sourceLabel"),
-      icon: "📡",
-      options: sources.value.map((s) => ({ value: s, label: s })),
-    },
-    {
-      type: "scope",
-      label: t("openlineage.datasetScope"),
-      icon: "🏷️",
-      options: [
-        { value: "internal", label: t("openlineage.internalOnly") },
-        { value: "external", label: t("openlineage.externalOnly") },
-      ],
-    },
-  ].filter((cat) => cat.options.length > 0);
-});
+// These cards describe the rows on screen. The dataset aggregate is assembled on
+// the server from recent runs, so an exact registry-wide count would mean
+// resolving every dataset again; until there is an endpoint for it, the labels
+// say which page they count.
+const internalDatasetCount = computed(
+  () => datasets.value.filter((dataset) => dataset.internal).length
+);
+const columnLineageDatasetCount = computed(
+  () => datasets.value.filter((dataset) => dataset.supportsColumnLineage).length
+);
 
 function handleFiltersUpdate(filters: ActiveFilter[]) {
   activeFilters.value = filters;
   const nextQuery: Record<string, string> = {};
 
-  const nameFilter = filters.find((f) => f.type === "name");
+  const nameFilter = filters.find((filter) => filter.type === "name");
   if (nameFilter?.value) {
     nextQuery.search = nameFilter.value;
   }
-  const nsFilter = filters.find((f) => f.type === "namespace");
-  if (nsFilter?.value) {
-    nextQuery.namespace = nsFilter.value;
+  const namespaceFilter = filters.find((filter) => filter.type === "namespace");
+  if (namespaceFilter?.value) {
+    nextQuery.namespace = namespaceFilter.value;
   }
-  const intFilter = filters.find((f) => f.type === "integration");
-  if (intFilter?.value) {
-    nextQuery.integration = intFilter.value;
+  const integrationFilter = filters.find(
+    (filter) => filter.type === "integration"
+  );
+  if (integrationFilter?.value) {
+    nextQuery.integration = integrationFilter.value;
   }
-  const srcFilter = filters.find((f) => f.type === "source");
-  if (srcFilter?.value) {
-    nextQuery.source = srcFilter.value;
+  const sourceFilter = filters.find((filter) => filter.type === "source");
+  if (sourceFilter?.value) {
+    nextQuery.source = sourceFilter.value;
   }
-  const scopeFilter = filters.find((f) => f.type === "scope");
+  const scopeFilter = filters.find((filter) => filter.type === "scope");
   if (scopeFilter?.value) {
     nextQuery.scope = scopeFilter.value;
   }
 
   router.replace({ query: nextQuery });
+  void reset();
 }
 
-const filteredDatasets = computed(() => {
-  const nameFilter =
-    activeFilters.value.find((f) => f.type === "name")?.value ?? "";
-  const nsFilter =
-    activeFilters.value.find((f) => f.type === "namespace")?.value ?? "";
-  const intFilter =
-    activeFilters.value.find((f) => f.type === "integration")?.value ?? "";
-  const srcFilter =
-    activeFilters.value.find((f) => f.type === "source")?.value ?? "";
-  const scopeFilter =
-    activeFilters.value.find((f) => f.type === "scope")?.value ?? "";
+function resetFilters() {
+  activeFilters.value = [];
+  const reloadHere = !columnLineageOnly.value;
+  columnLineageOnly.value = false;
+  router.replace({ query: {} });
+  if (reloadHere) {
+    void reset();
+  }
+}
 
-  const query = nameFilter.toLowerCase();
-
-  return datasets.value.filter((dataset) => {
-    if (nsFilter && dataset.namespace !== nsFilter) {
-      return false;
-    }
-    if (intFilter && !dataset.integrations.includes(intFilter)) {
-      return false;
-    }
-    if (srcFilter && !dataset.sources.includes(srcFilter)) {
-      return false;
-    }
-    if (scopeFilter === "internal" && !dataset.internal) {
-      return false;
-    }
-    if (scopeFilter === "external" && dataset.internal) {
-      return false;
-    }
-    if (columnLineageOnly.value && !dataset.supportsColumnLineage) {
-      return false;
-    }
-    if (!query) {
-      return true;
-    }
-    const haystack = [
-      dataset.name,
-      dataset.namespace,
-      dataset.datasetType,
-      dataset.resolvedTarget,
-      dataset.integrations.join(" "),
-      dataset.sources.join(" "),
-    ]
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(query);
-  });
-});
-
-const internalDatasetCount = computed(() => {
-  return filteredDatasets.value.filter((dataset) => dataset.internal).length;
-});
-
-const columnLineageDatasetCount = computed(() => {
-  return filteredDatasets.value.filter(
-    (dataset) => dataset.supportsColumnLineage
-  ).length;
+// A filter, the column-lineage toggle and the page size each restart the walk at
+// its first page: a cursor belongs to the query that produced it.
+watch([columnLineageOnly, pageSize], () => {
+  void reset();
 });
 
 function formatTimestamp(ts: Timestamp | undefined): string {
@@ -426,39 +459,12 @@ function openColumnLineage(dataset: OpenLineageDatasetResource) {
   });
 }
 
-function resetFilters() {
-  activeFilters.value = [];
-  columnLineageOnly.value = false;
-  router.replace({ query: {} });
-}
-
 function datasetRowKey(dataset: OpenLineageDatasetResource): string {
   return `${dataset.namespace}\u0000${dataset.name}`;
 }
 
-watch([columnLineageOnly], () => {
-  const nextQuery = { ...route.query };
-  if (columnLineageOnly.value) {
-    nextQuery.columnLineageOnly = "true";
-  } else {
-    delete nextQuery.columnLineageOnly;
-  }
-  router.replace({ query: nextQuery });
-});
-
-async function fetchDatasets() {
-  isLoading.value = true;
-  try {
-    const response = await listOpenLineageDatasets({ pageSize: 500 });
-    datasets.value = response.datasets;
-  } catch (error) {
-    handleError(error);
-  } finally {
-    isLoading.value = false;
-  }
-}
-
 onMounted(() => {
-  fetchDatasets();
+  void reset();
+  void loadFacets();
 });
 </script>
