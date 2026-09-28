@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -60,7 +61,14 @@ func VerifyAccessTokenFor(accessTokenStr, secret, audience string) (*AccessToken
 	if err != nil {
 		return nil, errs.Wrapf(err, "malformed ID %s in the access token", claims.Subject)
 	}
-	identity := &AccessTokenIdentity{UserID: principalID, Restriction: TokenRestriction(claims.Restriction)}
+	identity := &AccessTokenIdentity{
+		UserID:      principalID,
+		Scopes:      strings.Fields(claims.Scope),
+		Restriction: TokenRestriction(claims.Restriction),
+	}
+	if claims.ExpiresAt != nil {
+		identity.ExpiresAt = claims.ExpiresAt.Time
+	}
 	if claims.IssuedAtNanos != 0 {
 		identity.IssuedAt = time.Unix(0, claims.IssuedAtNanos)
 	} else if claims.IssuedAt != nil {
@@ -81,6 +89,13 @@ var (
 	ErrTokenInvalid = errs.New("failed to parse claim")
 )
 
+// UserStore is the part of the user store a TokenAuthenticator needs. *store.Store
+// implements it; the interface exists so the token rules can be exercised without
+// a database.
+type UserStore interface {
+	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
+}
+
 // TokenAuthenticator turns a bearer token into the user it was issued to.
 //
 // It exists so every entry point applies the same rules in the same order:
@@ -89,15 +104,15 @@ var (
 // entry point that only verified the signature would keep accepting tokens for
 // a user who has since been deactivated or had their password changed.
 type TokenAuthenticator struct {
-	store    *store.Store
+	users    UserStore
 	secret   string
 	stateCfg *state.State
 }
 
-// NewTokenAuthenticator returns an authenticator backed by the given store.
+// NewTokenAuthenticator returns an authenticator backed by the given user store.
 // stateCfg may be nil, in which case no revocation cache is consulted.
-func NewTokenAuthenticator(store *store.Store, secret string, stateCfg *state.State) *TokenAuthenticator {
-	return &TokenAuthenticator{store: store, secret: secret, stateCfg: stateCfg}
+func NewTokenAuthenticator(users UserStore, secret string, stateCfg *state.State) *TokenAuthenticator {
+	return &TokenAuthenticator{users: users, secret: secret, stateCfg: stateCfg}
 }
 
 // Resolve validates accessTokenStr for the given audience and returns the
@@ -120,7 +135,7 @@ func (a *TokenAuthenticator) Resolve(ctx context.Context, accessTokenStr, audien
 		return nil, nil, ErrTokenInvalid
 	}
 
-	user, err := a.store.GetUserByID(ctx, identity.UserID)
+	user, err := a.users.GetUserByID(ctx, identity.UserID)
 	if err != nil {
 		return nil, nil, errs.Errorf("failed to find user ID %d in the access token", identity.UserID)
 	}

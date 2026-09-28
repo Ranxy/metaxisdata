@@ -175,8 +175,13 @@ func (r TokenRestriction) allows(procedure string) bool {
 
 // AccessTokenIdentity is the verified identity carried by an access token.
 type AccessTokenIdentity struct {
-	UserID   int
-	IssuedAt time.Time
+	UserID int
+	// ExpiresAt is the token's own expiry, so a resource server can hand it to
+	// its transport without parsing the token a second time.
+	ExpiresAt time.Time
+	IssuedAt  time.Time
+	// Scopes are the scopes the token was minted with.
+	Scopes []string
 	// Restriction is empty for a full-access token.
 	Restriction TokenRestriction
 }
@@ -253,6 +258,10 @@ func audienceContains(audience jwt.ClaimStrings, token string) bool {
 
 type claimsMessage struct {
 	Name string `json:"name"`
+	// Scope is the space-delimited OAuth scope set the token was minted with.
+	// User-API tokens carry none; an MCP token carries the one scope the MCP
+	// endpoint requires.
+	Scope string `json:"scope,omitempty"`
 	jwt.RegisteredClaims
 	// IssuedAtNanos mirrors iat with the precision jwt's NumericDate drops
 	// (TimePrecision defaults to one second), so a password change can be
@@ -266,23 +275,23 @@ type claimsMessage struct {
 // accepts only for the RPCs allowed by restriction.
 func GenerateRestrictedAccessToken(userName string, userID int, mode common.ReleaseMode, secret string, tokenDuration time.Duration, restriction TokenRestriction) (string, error) {
 	expirationTime := time.Now().Add(tokenDuration)
-	return generateToken(userName, userID, AccessTokenAudience(mode), expirationTime, []byte(secret), restriction)
+	return generateToken(userName, userID, AccessTokenAudience(mode), "", expirationTime, []byte(secret), restriction)
 }
 
 // GenerateAPIToken generates an API token.
 func GenerateAPIToken(userName string, userID int, mode common.ReleaseMode, secret string) (string, error) {
 	expirationTime := time.Now().Add(apiTokenDuration)
-	return generateToken(userName, userID, AccessTokenAudience(mode), expirationTime, []byte(secret), "")
+	return generateToken(userName, userID, AccessTokenAudience(mode), "", expirationTime, []byte(secret), "")
 }
 
 // GenerateAccessToken generates an access token for web.
 func GenerateAccessToken(userName string, userID int, mode common.ReleaseMode, secret string, tokenDuration time.Duration) (string, error) {
 	expirationTime := time.Now().Add(tokenDuration)
-	return generateToken(userName, userID, AccessTokenAudience(mode), expirationTime, []byte(secret), "")
+	return generateToken(userName, userID, AccessTokenAudience(mode), "", expirationTime, []byte(secret), "")
 }
 
 // Pay attention to this function. It holds the main JWT token generation logic.
-func generateToken(userName string, userID int, aud string, expirationTime time.Time, secret []byte, restriction TokenRestriction) (string, error) {
+func generateToken(userName string, userID int, aud, scope string, expirationTime time.Time, secret []byte, restriction TokenRestriction) (string, error) {
 	// The iat claim only has second granularity, so two logins in the same
 	// second would otherwise produce byte-identical tokens. Logout revokes a
 	// token by its string, so identical tokens would let one session's logout
@@ -294,7 +303,8 @@ func generateToken(userName string, userID int, aud string, expirationTime time.
 	now := time.Now()
 	// Create the JWT claims, which includes the username and expiry time.
 	claims := &claimsMessage{
-		Name: userName,
+		Name:  userName,
+		Scope: scope,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Audience: jwt.ClaimStrings{aud},
 			// In JWT, the expiry time is expressed as unix milliseconds.
