@@ -895,7 +895,7 @@
     "invalidLink": "This consent link is missing or malformed. Start the sign-in again from the client to get a new one.",
     "outcome": {
       "approved": "Approved. Returning you to the client, which will finish signing in on its own.",
-      "denied": "Denied. No access was granted, and the client cannot get a token; you can close this page.",
+      "denied": "Denied. Returning you to the client, which will be told that no access was granted.",
       "expired": "This request has expired or was already answered. Start the sign-in again from the client.",
       "notFound": "This request no longer exists. Start the sign-in again from the client.",
       "permissionDenied": "This request was started by another user. Only the person who started it can approve it."

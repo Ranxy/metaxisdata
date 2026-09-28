@@ -246,15 +246,15 @@ async function decide(approve: boolean) {
   isDeciding.value = true;
   try {
     await approveOAuthAuthorizationRequest(requestId.value, approve);
-    if (!approve) {
-      state.value = "denied";
-      return;
-    }
-    // The code is minted server-side and redirected straight to the client, so
-    // the page hands the browser to the completion endpoint instead of building
-    // a callback itself. A relative URL is correct: the SPA and the server share
-    // an origin in production, and the dev proxy forwards this path.
-    state.value = "approved";
+    // Both decisions hand the browser back to the server. Approval makes it mint
+    // the code and redirect it to the client; denial makes it tell the client that
+    // no access was granted, which is what stops the client waiting for a callback
+    // that would never come. The state below is what stays visible if the
+    // navigation itself is blocked.
+    //
+    // A relative URL is correct: the SPA and the server share an origin in
+    // production, and the dev proxy forwards this path.
+    state.value = approve ? "approved" : "denied";
     window.location.assign(
       "/oauth/authorize/complete?request_id=" +
         encodeURIComponent(requestId.value)
