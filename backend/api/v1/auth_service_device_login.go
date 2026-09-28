@@ -117,7 +117,7 @@ func (s *AuthService) ApproveDeviceLogin(ctx context.Context, req *connect.Reque
 	if err != nil {
 		return nil, err
 	}
-	if err := s.validateDeviceLoginApprover(ctx, approver); err != nil {
+	if err := validateApprover(ctx, s.store, approver); err != nil {
 		return nil, err
 	}
 	if !s.stateCfg.DeviceLoginLookupLimiter.Allow(deviceLoginCallerKey(ctx, req.Header(), req.Peer().Addr, s.profile.TrustedProxies), time.Now()) {
@@ -206,7 +206,7 @@ func (s *AuthService) issueDeviceLoginToken(ctx context.Context, login state.Dev
 	}
 	// The approval may be minutes old, so the account state is checked again
 	// before it is turned into a credential.
-	if err := s.validateDeviceLoginApprover(ctx, user); err != nil {
+	if err := validateApprover(ctx, s.store, user); err != nil {
 		return nil, "", err
 	}
 
@@ -224,8 +224,9 @@ func (s *AuthService) issueDeviceLoginToken(ctx context.Context, login state.Dev
 	return user, token, nil
 }
 
-// validateDeviceLoginApprover checks that the approver may still be turned into
-// a CLI credential.
+// validateApprover checks that a signed-in user may still be turned into a
+// credential: the CLI's token for a device login, the client's access token for
+// an OAuth consent. Both are the same rule, so they share one implementation.
 //
 // The workspace password policy is deliberately not re-evaluated here. It only
 // governs password sign-in, so applying it to whoever happens to hold a web
@@ -233,14 +234,14 @@ func (s *AuthService) issueDeviceLoginToken(ctx context.Context, login state.Dev
 // never chose. The bypass it guards against is already closed one layer down:
 // the auth interceptor refuses a token restricted to reset_password on this RPC
 // because only UpdateUser and Logout are allowed for it.
-func (s *AuthService) validateDeviceLoginApprover(ctx context.Context, approver *store.UserMessage) error {
+func validateApprover(ctx context.Context, stores *store.Store, approver *store.UserMessage) error {
 	if approver.Type != storepb.PrincipalType_END_USER {
-		return connect.NewError(connect.CodePermissionDenied, errors.Errorf("only an end user can approve a device login"))
+		return connect.NewError(connect.CodePermissionDenied, errors.Errorf("only an end user can approve a credential request"))
 	}
 	if approver.MemberDeleted {
 		return connect.NewError(connect.CodeUnauthenticated, errors.Errorf("user has been deactivated by administrators"))
 	}
-	return validateEmailWithDomains(ctx, s.store, approver.Email, false)
+	return validateEmailWithDomains(ctx, stores, approver.Email, false)
 }
 
 func (s *AuthService) convertDeviceLogin(ctx context.Context, login state.DeviceLogin) (*v1pb.DeviceLogin, error) {
