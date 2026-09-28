@@ -273,6 +273,11 @@ func (s *Server) dispatch(ctx context.Context, request *mcpsdk.CallToolRequest, 
 			return nil, permissionDenied(definition.Permission)
 		}
 	}
+	// The handlers a tool calls are the ConnectRPC ones, and they read the caller
+	// from the context (GetCurrentUser does). The interceptor puts it there on the
+	// RPC path; this is the same step for the tool path, and without it a handler
+	// answers as if nobody were signed in.
+	ctx = context.WithValue(ctx, common.UserContextKey, user)
 	payload, err := definition.Run(ctx, user, request.Params.Arguments)
 	s.auditToolCall(ctx, request, definition, user, err, started)
 	if err != nil {
