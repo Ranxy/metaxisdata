@@ -400,8 +400,19 @@ async function handleLogin() {
       return;
     }
 
-    // Redirect to the original destination or home
+    // Redirect to the original destination or home. The server sends a signed-out
+    // user here with the path it was asked for, and that path may not be an SPA
+    // route at all: the OAuth flow's /oauth/authorize is the one that matters, and
+    // the router would answer NotFound instead of resuming the authorization. A
+    // server path is loaded from the server; only a same-origin absolute path
+    // qualifies, so a redirect value cannot become an open redirect.
     const redirect = route.query.redirect as string;
+    const isServerPath =
+      redirect && redirect.startsWith("/") && !redirect.startsWith("//");
+    if (isServerPath && !router.resolve(redirect).matched.length) {
+      window.location.assign(redirect);
+      return;
+    }
     router.push(redirect || { name: "Home" });
   } catch (error) {
     errorMessage.value = formatError(error, "login.loginFailed");
