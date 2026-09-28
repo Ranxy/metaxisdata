@@ -392,7 +392,7 @@ e.Any("/mcp*", echo.WrapHandler(auth.RequireBearerToken(verifyMCPToken, opts)(mc
 6. **接线**:`backend/server/grpc_routes.go` 挂 4 个协议端点 + 2 个元数据端点,`backend/server/oauth_endpoints.go` 给匿名端点加按 trusted-proxy 解析 IP 的限流与超时;`backend/api/oauth/audit.go` 给每个协议端点写一条审计行(severity 由状态码推出,actor/client 经 request context 传出;码与令牌永不入审计)。
 7. **未做(属后续阶段)**:`/mcp` 端点本身(Phase 4)、确认页(Phase 5)、端到端集成测试(Phase 6)。
 
-### Phase 4 — MCP 资源服务器(进行中)
+### Phase 4 — MCP 资源服务器(已完成)
 
 1. **架构(已写)**:`backend/mcp/server.go` 定义 4 个 reader 接口(方法签名就是生成的 handler 签名,所以 `*apiv1.InstanceService` 等**结构化满足**,而测试可以换成假实现)、`PermissionChecker`、`Config`、`NewServer`(注册工具 + 指引 prompt)、`dispatch`(身份 → 权限 → 调用 → 审计的唯一入口)与 `Handler(tokens)`。
 2. **工具表(子代理实现中)**:`backend/mcp/ref.go`(objectRef 名字寻址 + 候选错误 + `storedMetadataName`)、`backend/mcp/tool.go`(9 个工具:list_instances / list_databases / search_metadata / list_metadata / get_metadata / get_ddl / analyze_sql / get_lineage_graph / whoami)、`guide.go` + `guide.md`(MCP prompt)。
@@ -404,22 +404,26 @@ e.Any("/mcp*", echo.WrapHandler(auth.RequireBearerToken(verifyMCPToken, opts)(mc
    - 传输选项:`Stateless: true`,`JSONResponse: true`(每个工具都是请求-响应,事件流只会多一条要测要超时的通道),`MaxRequestBodyBytes: 2 MiB`。
 7. **测试**:工具逻辑与寻址用假 reader 做 hermetic 测试(子代理);协议层与真实 HTTP 路径(401/403 挑战、`tools/list`、`tools/call`、开关 404)留给 Phase 6 集成测试。
 
-### Phase 5 — 前端
+### Phase 5 — 前端(已完成)
 
-1. `/oauth/consent` + `api/oauth.ts` + 路由 + i18n;`GeneralSettingsPage.vue` 的 `mcp_enabled` 开关。
-2. `biome:check` / `lint` / `i18n` / `type-check` / `test run` 全过。
+1. `/oauth/consent` + `api/oauth.ts` + 路由 + i18n;`GeneralSettingsPage.vue` 的 `mcp_enabled` 开关(经同一个 update 调用与 mask 提交)。页面加载不批准任何东西,批准后导航到服务端的 complete 端点,授权码从不经过页面;拒绝与各类失败态各自区分。
+2. `biome:check` / `lint` / `i18n` / `type-check` / `test run` 全过(288 个既有测试)。dev 代理补了 `/oauth` 与 `/.well-known`,并让 `/oauth/consent` 本身走 Vite 的 SPA 兜底(否则开发态打不开这个页面)。
+3. 环境注意:全局 pnpm 是 v11 而仓库 pin 10.24.0,裸 `pnpm` 会先被版本检查拦下,需走 corepack 缓存里的 pinned 二进制。
 
-### Phase 6 — 集成测试与文档
+### Phase 6 — 集成测试与文档(已完成)
 
-1. `backend/test/integration/runner/mcp_service_test.go`:真实 server 上跑完整 OAuth 授权码流程(SDK 的 `StreamableClientTransport` + `auth.AuthorizationCodeHandler`,consent 用管理员会话的 RPC 模拟点击),然后调工具断言;覆盖:无令牌 401、错误 audience 401、scope 不足 403、开关关闭 404、`analyze_sql` 名字寻址与多 scope 落位、分页续查。
-2. `docs/security-posture.md` 增补:MCP 令牌 audience 绑定、OAuth AS 姿态(DCR 开放注册 + 人工确认、无 refresh、无 `jwks_uri`、pending/授权码进程内)、无状态会话、逐次审计的量级与开关默认值。
-3. `AGENTS.md`:登记 `backend/mcp/AGENTS.md`(若有)与 Product surface 的 MCP 一节。
-4. `cli/skill/SKILL.md` 与 `cli/README.md`:加一句"若环境提供 metaxisdata 的 MCP 工具,优先用工具;否则用 `mxd`",并说明两者 scope 语义不同(MCP 用名字寻址)。
-5. `gofmt` + `golangci-lint run --allow-parallel-runners` 清零;`go build`;`make test-integration-smoke`。
+1. **集成测试**(`backend/test/integration/runner/mcp_service_test.go`,真实 server + Docker):发现文档 → DCR(非 loopback http 被拒)→ 浏览器流程(用管理员 bearer 驱动,因为协议端点也从该头读取会话)→ consent 读取/批准/二次批准被拒 → complete(带 RFC 9207 `iss`)→ token(一次性、错误 verifier 被拒)→ 用令牌开 `/mcp`(9 个工具、`whoami` 与 RPC 一致、`list_instances` 有答案)→ 拒绝路径回 `access_denied` → 工具调用落审计行 → 开关关闭后 404。
+2. **hermetic 套件**:`backend/mcp/tool_test.go`(工具逻辑,34 个测试合计)与 `sdk_contract_test.go`(SDK 行为契约)、`tool_guard_test.go`(工具↔RPC 权限一致且只读)。
+3. **文档**:`docs/security-posture.md`(5 条)、`AGENTS.md`(路由表 + 产品面 + 刻意决定清单)、`docs/mcp.md`(客户端指南)、`cli/skill/SKILL.md` + `cli/README.md`(优先用 MCP 工具)。
+4. **集成测试抓到两个真实缺陷并已修**:(a) `dispatch` 最初没有把已验证用户放进 context,于是读调用者的 handler(`whoami` → `GetCurrentUser`)会当成无人登录;(b) 用户拒绝后浏览器停在错误页,客户端永远等不到回调 —— `CompletionHandler` 现在回查请求并按 RFC 6749 回 `access_denied`。
 
 ---
 
 ## 测试与验收(DoD)
+
+> **覆盖对照**:1/2/3/9/10 → 集成套件(`mcp_service_test.go`);4 → `tool_guard_test.go`;5/6/7/8/12 → `tool_test.go`;11 → `sdk_contract_test.go`(协议版本)与集成套件(令牌互不通用)。
+>
+> **未自动覆盖,及原因**:多副本行为(需要第二个实例);`GET /mcp` 返回 405(无状态传输的既有行为,Phase 0 的契约测试已实测);匿名端点限流阈值被触发(按 IP 的令牌桶,套件不会打到阈值);`lineage_sql` 的 `depth` 多层级展开在真实数据上的形状(hermetic 套件用假 reader 覆盖了逻辑,真实数据形状依赖 fixture)。
 
 > 可照抄的模板:令牌 `backend/api/auth/auth_test.go`;store/限流 `backend/component/state/device_login_test.go` + `device_login_limiter_test.go`;RPC `backend/api/v1/auth_service_device_login_test.go`;端到端 `backend/test/integration/runner/agent_cli_service_test.go`(`TestDeviceLoginRealServerIntegration` :63 就是 authorize→approve→exchange 的骨架)。
 
