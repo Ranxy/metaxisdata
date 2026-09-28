@@ -13,6 +13,7 @@ This file is the router: it holds only rules that apply across the whole reposit
 | `frontend/` — Vue 3 SPA | [frontend/AGENTS.md](frontend/AGENTS.md) |
 | `proto/` — ConnectRPC and store schemas | [proto/AGENTS.md](proto/AGENTS.md) |
 | `cli/` — the `mxd` client | [cli/AGENTS.md](cli/AGENTS.md) |
+| Connecting an MCP client, and what the endpoint promises | [docs/mcp.md](docs/mcp.md) |
 | Behavior that looks like a bug | [docs/security-posture.md](docs/security-posture.md) |
 
 ## What Metaxisdata Is
