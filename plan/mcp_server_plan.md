@@ -419,6 +419,23 @@ e.Any("/mcp*", echo.WrapHandler(auth.RequireBearerToken(verifyMCPToken, opts)(mc
 
 ---
 
+## 实施与计划的偏差记录(review 后)
+
+计划里承诺、实施时改了或没做的几件事,连同理由记在这里,不再是"未声明的偏差":
+
+| 计划条目 | 实际 | 理由 |
+| --- | --- | --- |
+| 决策 #9:输出用 `outputSchema` + `structuredContent` | 只声明 InputSchema,输出只走 `structuredContent` | 结果里嵌的是 proto 消息的 protojson,手写一份 output schema 会成为第二个会漂移的真源;结构化结果本身是自描述的。将来若要做,应从 proto 生成。 |
+| 不变量 8:注册后按 client 计数 | 只按 IP 计数 | 匿名注册下 `client_id` 是调用方自报的,按它分桶等于给攻击者一把新钥匙;按地址限流才是有效上限。 |
+| 分页返回 `hasMore` | 只回 `nextPageToken` | token 非空即"还有",多一个字段没有信息量。 |
+| consent 页展示客户端名与版本 | 只展示客户端名 | RFC 7591 的客户端元数据没有版本字段(device login 有,因为那是 CLI 自己上报的)。 |
+| 审计记录 response 摘要 | 只记录 status(code + message) | 行里已写明结果;把模型看到的载荷再抄进永久账本等于双写。 |
+| 工具调用审计 | 现在**含被拒的调用** | 原实现只在 `Run` 之后写行,权限拒绝等早退路径没有行;拒绝恰恰是最该留痕的。 |
+| MCP 令牌可吊销 | 现在**可吊销** | 原 `Logout` 只认 user audience;改为按签发来源(签名/kid/issuer/expiry)校验,不带 audience。 |
+| 授权响应"含错误响应"带 `iss` | 现在**都带** | 原 `RedirectWithError` 漏了 RFC 9207 的 `iss`,而拒绝路径是客户端可能只看到的那次响应。 |
+
+review 修复的其余项:`authorization_code` 脱敏补齐(含 snake_case);工具参数按 8 KiB 截断;被禁用部署的 404 不再写账本;`/oauth/authorize` 与 `/oauth/authorize/complete` 纳入按地址限流;consent 拒绝后导航到 complete(客户端才收得到 `access_denied`);`external_url` 的重复 `/` 与 `:0443` 归一化;redirect URI 拒绝 userinfo;注册时重复 redirect_uri 去重;`last_used_at` 在兑换成功后更新;`resolveDatabase` 拒绝跨实例 GUID;`analyze_sql` 的图展开上限 20 并给 warning;列表型字段空值输出 `[]` 而非 `null`;MCP 实现不再广播空版本;守卫测试钉住工具集合。
+
 ## 测试与验收(DoD)
 
 > **覆盖对照**:1/2/3/9/10 → 集成套件(`mcp_service_test.go`);4 → `tool_guard_test.go`;5/6/7/8/12 → `tool_test.go`;11 → `sdk_contract_test.go`(协议版本)与集成套件(令牌互不通用)。

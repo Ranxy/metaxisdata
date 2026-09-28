@@ -96,8 +96,15 @@ when you need them.
 ## Operating it
 
 - **Every tool call is audited**, reads included: one `audit_log` row naming the
-  tool, the caller, the arguments (credential fields redacted) and the outcome.
-  The ledger is permanent, so expect the row count to follow model usage.
+  tool, the caller, the arguments (credential fields redacted, long values
+  truncated) and the outcome. A call refused for lack of permission leaves a row
+  too. The ledger is permanent, so expect the row count to follow model usage.
+- **A token can be revoked.** Presenting it to the user API's `Logout` (what
+  `mxd logout` sends) revokes it immediately, for `/mcp` as well as the API: the
+  server checks that it signed the token, not which audience it carries.
+- **The anonymous endpoints are rate-limited per address** — registration, the
+  token exchange, and the two browser steps — and a disabled deployment answers
+  `404` without writing a ledger row, so probes cost nothing to keep.
 - **Pending authorizations are process-local**, like device logins. An approval
   and its completion must reach the same replica: run one replica, or put sticky
   routing in front.
