@@ -270,10 +270,10 @@ func configureGrpcRouters(
 	// RFC 9728 also defines the path-insertion form; clients try both.
 	e.GET("/.well-known/oauth-protected-resource/*", echo.WrapHandler(oauth.ProtectedResourceHandler(stores)))
 	e.GET("/.well-known/oauth-authorization-server", echo.WrapHandler(oauth.AuthServerMetadataHandler(stores)))
-	e.GET("/oauth/authorize", echo.WrapHandler(oauthServer.AuthorizeHandler()))
-	e.GET("/oauth/authorize/complete", echo.WrapHandler(oauthServer.CompletionHandler()))
-	e.POST("/oauth/token", echo.WrapHandler(oauthServer.TokenHandler()), oauthEndpointMiddleware(profile.TrustedProxies))
-	e.POST("/oauth/register", echo.WrapHandler(oauth.RegisterHandler(stores)), oauthEndpointMiddleware(profile.TrustedProxies))
+	e.GET("/oauth/authorize", echo.WrapHandler(oauthServer.Audited(oauthServer.AuthorizeHandler())))
+	e.GET("/oauth/authorize/complete", echo.WrapHandler(oauthServer.Audited(oauthServer.CompletionHandler())))
+	e.POST("/oauth/token", echo.WrapHandler(oauthServer.Audited(oauthServer.TokenHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
+	e.POST("/oauth/register", echo.WrapHandler(oauthServer.Audited(oauth.RegisterHandler(stores))), oauthEndpointMiddleware(profile.TrustedProxies))
 
 	e.Any("/v1/*", echo.WrapHandler(mux))
 

@@ -122,6 +122,11 @@ func RegisterHandler(stores *store.Store) http.Handler {
 			writeRegistrationError(w, registrationErr)
 			return
 		}
+		recordAuditDetail(r, map[string]any{
+			"clientId":     response.ClientID,
+			"clientName":   response.ClientName,
+			"redirectUris": response.RedirectURIs,
+		})
 		writeRegistrationJSON(w, http.StatusCreated, response)
 	})
 }

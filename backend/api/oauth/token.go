@@ -87,6 +87,10 @@ func (s *Server) TokenHandler() http.Handler {
 			writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "the approving user no longer exists")
 			return
 		}
+		// The ledger records who received a credential and for which client; the
+		// token itself is never part of the row.
+		recordAuditActor(r, user.Email)
+		recordAuditDetail(r, map[string]any{"clientId": grant.ClientID, "resource": endpoints.Resource})
 		duration := auth.GetTokenDuration(r.Context(), s.config.Stores)
 		scope := grantedScope(grant.Scopes)
 		token, err := auth.GenerateMCPAccessToken(user.Name, user.ID, endpoints.Resource, scope, s.config.Secret, duration)
