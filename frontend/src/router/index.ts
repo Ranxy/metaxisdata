@@ -265,6 +265,14 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, layout: "default" },
   },
   {
+    // The OAuth authorization server redirects here, so the request id arrives
+    // in the query string and survives the sign-in round trip.
+    path: "/oauth/consent",
+    name: "OAuthConsent",
+    component: () => import("@/pages/OAuthConsentPage.vue"),
+    meta: { requiresAuth: true, layout: "default" },
+  },
+  {
     path: "/:pathMatch(.*)*",
     name: "NotFound",
     component: () => import("@/pages/NotFoundPage.vue"),

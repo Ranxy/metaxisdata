@@ -27,6 +27,24 @@ export default defineConfig({
         target: "http://localhost:8083",
         changeOrigin: true,
       },
+      // The OAuth flow reaches the browser as redirects, not as RPCs:
+      // /oauth/authorize sends it to the consent page, which then navigates to
+      // /oauth/authorize/complete, and a client reads its metadata from
+      // /.well-known before it starts. Those paths are same-origin in
+      // production, so the dev server has to forward them to the backend too.
+      // `/oauth/consent` is the exception: it is a page of this SPA, so it falls
+      // through to Vite's own SPA fallback instead of a backend that has no
+      // route for it.
+      "/oauth": {
+        target: "http://localhost:8083",
+        changeOrigin: true,
+        bypass: (req) =>
+          req.url?.startsWith("/oauth/consent") ? req.url : undefined,
+      },
+      "/.well-known": {
+        target: "http://localhost:8083",
+        changeOrigin: true,
+      },
     },
   },
 });

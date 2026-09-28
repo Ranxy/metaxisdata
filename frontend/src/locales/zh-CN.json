@@ -246,6 +246,8 @@
     "externalUrlHint": "该服务对外访问的基础地址，用于拼接 SSO 回调地址。",
     "externalUrlPlaceholder": "https://metaxisdata.example.com",
     "loadError": "加载设置失败",
+    "mcpEnabled": "启用 MCP 端点",
+    "mcpEnabledHint": "在上方 external URL 上提供只读的 MCP 端点，以及供客户端登录授权的 OAuth 2.1 授权服务器。需要先配置 external URL。",
     "readOnlyHint": "您没有修改工作区设置的权限。",
     "retentionDays": "OpenLineage 保留天数",
     "retentionDaysHint": "删除早于该天数的 OpenLineage run。0 表示永久保留。",
@@ -883,6 +885,30 @@
   "notFound": {
     "backHome": "返回首页",
     "title": "页面未找到"
+  },
+  "oauthConsent": {
+    "approve": "批准",
+    "client": "客户端",
+    "deny": "拒绝",
+    "description": "某个客户端正在请求以你的身份使用 MCP 端点。在你批准之前，不会授予任何权限。",
+    "expiresAt": "过期时间",
+    "invalidLink": "该授权链接缺失或格式不正确。请回到客户端重新发起登录以获取新链接。",
+    "outcome": {
+      "approved": "已批准。正在返回客户端，它会自动完成登录。",
+      "denied": "已拒绝。未授予任何权限，客户端无法获取令牌；可以关闭本页。",
+      "expired": "该请求已过期或已被处理。请回到客户端重新发起登录。",
+      "notFound": "该请求已不存在。请回到客户端重新发起登录。",
+      "permissionDenied": "该请求由其他用户发起，只有发起者本人可以批准。"
+    },
+    "redirectHint": "授权码将发送到以下地址",
+    "requestIp": "请求来源",
+    "requestedAt": "发起时间",
+    "resource": "MCP 端点",
+    "scopeMcpRead": "读取本工作区的元数据：实例、数据库、Schema、表、字段、血缘与 DDL。",
+    "scopesTitle": "申请的权限",
+    "title": "授权访问 MCP",
+    "unknown": "未知",
+    "unknownClient": "未知客户端"
   },
   "openlineage": {
     "activeNamespaces": "活跃 namespaces",

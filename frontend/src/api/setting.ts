@@ -22,6 +22,7 @@ export async function updateWorkspaceProfileSetting(
     domains?: string[];
     enforceIdentityDomain?: boolean;
     allowedLlmProviderProfiles?: string[];
+    mcpEnabled?: boolean;
   },
   updateMask: string[]
 ) {
@@ -34,6 +35,7 @@ export async function updateWorkspaceProfileSetting(
       domains: setting.domains ?? [],
       enforceIdentityDomain: setting.enforceIdentityDomain ?? false,
       allowedLlmProviderProfiles: setting.allowedLlmProviderProfiles ?? [],
+      mcpEnabled: setting.mcpEnabled ?? false,
     }),
     updateMask: { paths: updateMask },
   });

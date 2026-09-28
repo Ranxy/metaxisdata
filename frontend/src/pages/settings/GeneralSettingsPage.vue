@@ -94,6 +94,22 @@
               :hint="t('generalSettings.externalUrlHint')"
               :disabled="!canUpdate"
             />
+            <div class="flex items-start gap-3">
+              <Checkbox
+                id="mcp-enabled"
+                :checked="mcpEnabled"
+                :disabled="!canUpdate"
+                @update:checked="mcpEnabled = $event === true"
+              />
+              <div class="grid gap-1">
+                <Label for="mcp-enabled">{{
+                  t("generalSettings.mcpEnabled")
+                }}</Label>
+                <p class="text-sm text-muted-foreground">
+                  {{ t("generalSettings.mcpEnabledHint") }}
+                </p>
+              </div>
+            </div>
             <FormField
               v-model="retentionDaysInput"
               type="number"
@@ -259,6 +275,9 @@ const profilesError = ref<string | null>(null);
 
 const externalUrl = ref("");
 const retentionDaysInput = ref("0");
+// The MCP endpoint derives its issuer and resource identifiers from
+// external_url, so the server refuses to turn this on without one.
+const mcpEnabled = ref(false);
 
 // Empty is treated as 0 (keep forever); anything not a whole non-negative
 // number is rejected before the request is sent.
@@ -291,6 +310,7 @@ function snapshot(): string {
     domains: parseDomains(domainsInput.value),
     externalUrl: externalUrl.value.trim(),
     retentionDays: Number(retentionDaysInput.value),
+    mcpEnabled: mcpEnabled.value,
     allowedProfiles: [...allowedProfiles.value].sort(),
   });
 }
@@ -306,6 +326,7 @@ async function fetchSetting() {
   allowedProfiles.value = [...setting.allowedLlmProviderProfiles];
   externalUrl.value = setting.externalUrl;
   retentionDaysInput.value = String(setting.openlineageRetentionDays);
+  mcpEnabled.value = setting.mcpEnabled;
 }
 
 // Only profiles with at least one enabled model can be used by ExplainSQL, so
@@ -392,6 +413,7 @@ async function handleSave() {
         externalUrl: externalUrl.value.trim(),
         openlineageRetentionDays: Number(retentionDaysInput.value),
         allowedLlmProviderProfiles: allowedProfiles.value,
+        mcpEnabled: mcpEnabled.value,
       },
       [
         "disallow_signup",
@@ -401,6 +423,7 @@ async function handleSave() {
         "external_url",
         "openlineage_retention_days",
         "allowed_llm_provider_profiles",
+        "mcp_enabled",
       ]
     );
     savedSnapshot.value = snapshot();

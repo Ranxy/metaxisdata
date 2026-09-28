@@ -246,6 +246,8 @@
     "externalUrlHint": "The public base URL of this server, used to build SSO callback URLs.",
     "externalUrlPlaceholder": "https://metaxisdata.example.com",
     "loadError": "Failed to load settings",
+    "mcpEnabled": "Enable the MCP endpoint",
+    "mcpEnabledHint": "Serves a read-only MCP endpoint and the OAuth 2.1 authorization server its clients sign in against, at the external URL above. Requires the external URL to be set first.",
     "readOnlyHint": "You do not have permission to change the workspace settings.",
     "retentionDays": "OpenLineage retention (days)",
     "retentionDaysHint": "Delete persisted OpenLineage runs older than this many days. 0 keeps them forever.",
@@ -883,6 +885,30 @@
   "notFound": {
     "backHome": "Back to Home",
     "title": "Page Not Found"
+  },
+  "oauthConsent": {
+    "approve": "Approve",
+    "client": "Client",
+    "deny": "Deny",
+    "description": "A client is asking to use the MCP endpoint with your permissions. Nothing is shared until you approve.",
+    "expiresAt": "Expires at",
+    "invalidLink": "This consent link is missing or malformed. Start the sign-in again from the client to get a new one.",
+    "outcome": {
+      "approved": "Approved. Returning you to the client, which will finish signing in on its own.",
+      "denied": "Denied. No access was granted, and the client cannot get a token; you can close this page.",
+      "expired": "This request has expired or was already answered. Start the sign-in again from the client.",
+      "notFound": "This request no longer exists. Start the sign-in again from the client.",
+      "permissionDenied": "This request was started by another user. Only the person who started it can approve it."
+    },
+    "redirectHint": "The authorization code will be sent to this address",
+    "requestIp": "Requested from",
+    "requestedAt": "Requested at",
+    "resource": "MCP endpoint",
+    "scopeMcpRead": "Read this workspace's metadata: instances, databases, schemas, tables, columns, lineage and DDL.",
+    "scopesTitle": "Permissions requested",
+    "title": "Authorize MCP access",
+    "unknown": "Unknown",
+    "unknownClient": "Unknown client"
   },
   "openlineage": {
     "activeNamespaces": "Active namespaces",
