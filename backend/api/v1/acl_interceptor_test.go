@@ -120,9 +120,15 @@ var unannotatedMethods = map[string]bool{
 	"metaxisdata.v1.AuthService.GetDeviceLogin":      true,
 	"metaxisdata.v1.AuthService.ApproveDeviceLogin":  true,
 	"metaxisdata.v1.AuthService.ExchangeDeviceLogin": true,
-	"metaxisdata.v1.UserService.GetCurrentUser":      true,
-	"metaxisdata.v1.UserService.CreateUser":          true,
-	"metaxisdata.v1.UserService.UpdateUser":          true,
+	// The consent page is a self-service path: a signed-in user decides whether
+	// to grant a client access to their own identity, so no permission expresses
+	// it. The protocol endpoints (/oauth/*) are plain HTTP and never reach this
+	// interceptor at all.
+	"metaxisdata.v1.OAuthService.GetOAuthAuthorizationRequest":     true,
+	"metaxisdata.v1.OAuthService.ApproveOAuthAuthorizationRequest": true,
+	"metaxisdata.v1.UserService.GetCurrentUser":                    true,
+	"metaxisdata.v1.UserService.CreateUser":                        true,
+	"metaxisdata.v1.UserService.UpdateUser":                        true,
 }
 
 // TestEveryMethodIsPermissionGated is the read-path guard the authorization

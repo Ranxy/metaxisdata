@@ -78,9 +78,18 @@ func (s *SettingService) UpdateWorkspaceProfileSetting(ctx context.Context, requ
 				return nil, err
 			}
 			setting.AllowedLlmProviderProfiles = profiles
+		case "mcp_enabled":
+			setting.McpEnabled = request.Msg.Setting.McpEnabled
 		default:
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported update_mask %q", path))
 		}
+	}
+
+	// The MCP endpoint derives its issuer and resource identifiers from
+	// external_url, so it cannot be enabled without one. Checking after the loop
+	// makes the answer independent of the mask's field order.
+	if setting.McpEnabled && setting.ExternalUrl == "" {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("external_url must be configured before mcp_enabled can be turned on"))
 	}
 
 	payload, err := protojson.Marshal(setting)
@@ -105,6 +114,7 @@ func convertToWorkspaceProfileSetting(setting *storepb.WorkspaceProfileSetting) 
 		Domains:                    setting.GetDomains(),
 		EnforceIdentityDomain:      setting.GetEnforceIdentityDomain(),
 		AllowedLlmProviderProfiles: setting.GetAllowedLlmProviderProfiles(),
+		McpEnabled:                 setting.GetMcpEnabled(),
 	}
 }
 
