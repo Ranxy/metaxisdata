@@ -270,10 +270,13 @@ func (s *AuthService) Logout(ctx context.Context, req *connect.Request[v1pb.Logo
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	// Only a token this server actually issued may be revoked. Without this
-	// check an unauthenticated caller could flood the revocation cache with
-	// forged strings and evict genuine entries.
-	if _, err := auth.VerifyAccessToken(accessTokenStr, s.secret, s.profile.Mode); err != nil {
+	// Only a token this server actually issued may be revoked. Without this check
+	// an unauthenticated caller could flood the revocation cache with forged
+	// strings and evict genuine entries. The audience is deliberately not checked:
+	// an MCP token carries the MCP endpoint's resource identifier as its audience,
+	// and revoking one has to work, or a leaked MCP token would have no
+	// self-service remedy at all.
+	if _, err := auth.VerifyAccessTokenProvenance(accessTokenStr, s.secret); err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.Errorf("invalid access token"))
 	}
 	s.stateCfg.TokenExpireCache.Add(accessTokenStr, true)

@@ -89,6 +89,28 @@ func TestResolveAppliesTheUserRulesForTheMCPAudience(t *testing.T) {
 	require.NotErrorIs(t, err, ErrTokenInvalid, "the token itself is fine; the principal behind it is not")
 }
 
+// TestMCPTokensKeepARevocationPath pins the reason Logout checks provenance
+// rather than an audience: an MCP token's audience is the endpoint's resource
+// identifier, and it must still be revocable — while an unsigned string must not
+// be, or the revocation cache could be flooded with forgeries.
+func TestMCPTokensKeepARevocationPath(t *testing.T) {
+	t.Parallel()
+
+	mcpToken, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
+	require.NoError(t, err)
+	identity, err := VerifyAccessTokenProvenance(mcpToken, audienceTestSecret)
+	require.NoError(t, err)
+	require.Equal(t, 7, identity.UserID)
+
+	userToken, err := GenerateAccessToken("user@example.com", 7, common.ReleaseModeDev, audienceTestSecret, time.Hour)
+	require.NoError(t, err)
+	_, err = VerifyAccessTokenProvenance(userToken, audienceTestSecret)
+	require.NoError(t, err)
+
+	_, err = VerifyAccessTokenProvenance(mcpToken, "another-key-another-key-another")
+	require.Error(t, err, "a token this server did not sign must never reach the revocation cache")
+}
+
 func TestResolveReportsAnExpiredTokenAsRevoked(t *testing.T) {
 	t.Parallel()
 

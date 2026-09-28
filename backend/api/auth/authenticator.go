@@ -35,6 +35,39 @@ func VerifyAccessToken(accessTokenStr, secret string, mode common.ReleaseMode) (
 // verified a signature and then forgot the audience comparison would accept a
 // token minted for a different resource.
 func VerifyAccessTokenFor(accessTokenStr, secret, audience string) (*AccessTokenIdentity, error) {
+	claims, err := parseVerifiedClaims(accessTokenStr, secret)
+	if err != nil {
+		return nil, err
+	}
+	if !audienceContains(claims.Audience, audience) {
+		return nil, errs.Errorf(
+			"invalid access token, audience mismatch, got %q, expected %q. you may send request to the wrong environment",
+			claims.Audience,
+			audience,
+		)
+	}
+	return identityFromClaims(claims)
+}
+
+// VerifyAccessTokenProvenance validates that a token was issued by this server —
+// signature, key id, issuer and expiry — without requiring a particular audience.
+//
+// Logout needs it: an MCP token carries the endpoint's resource identifier as its
+// audience rather than the user API's, and it must still be revocable, or a leaked
+// MCP token has no self-service remedy at all. The signature is what stops a
+// caller from flooding the revocation cache with forged strings and evicting
+// genuine entries, so requiring an audience here would cost that protection
+// nothing and buy the only way to revoke an MCP token.
+func VerifyAccessTokenProvenance(accessTokenStr, secret string) (*AccessTokenIdentity, error) {
+	claims, err := parseVerifiedClaims(accessTokenStr, secret)
+	if err != nil {
+		return nil, err
+	}
+	return identityFromClaims(claims)
+}
+
+// parseVerifiedClaims checks everything about a token except its audience.
+func parseVerifiedClaims(accessTokenStr, secret string) (*claimsMessage, error) {
 	claims := &claimsMessage{}
 	if _, err := jwt.ParseWithClaims(accessTokenStr, claims, func(t *jwt.Token) (any, error) {
 		if kid, ok := t.Header["kid"].(string); ok {
@@ -50,13 +83,10 @@ func VerifyAccessTokenFor(accessTokenStr, secret, audience string) (*AccessToken
 	); err != nil {
 		return nil, err
 	}
-	if !audienceContains(claims.Audience, audience) {
-		return nil, errs.Errorf(
-			"invalid access token, audience mismatch, got %q, expected %q. you may send request to the wrong environment",
-			claims.Audience,
-			audience,
-		)
-	}
+	return claims, nil
+}
+
+func identityFromClaims(claims *claimsMessage) (*AccessTokenIdentity, error) {
 	principalID, err := strconv.Atoi(claims.Subject)
 	if err != nil {
 		return nil, errs.Wrapf(err, "malformed ID %s in the access token", claims.Subject)
