@@ -80,7 +80,16 @@
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableRow v-for="run in filteredRuns" :key="run.guid">
+              <!-- The whole row opens the run. The run id stays the copyable
+                   value it is (its popover shows all of it) and the eye button
+                   stays the labelled action, so the row is a convenience rather
+                   than the only way in. -->
+              <TableRow
+                v-for="run in filteredRuns"
+                :key="run.guid"
+                class="cursor-pointer"
+                @click="handleRowClick(run.guid)"
+              >
                 <TableCell class="whitespace-nowrap">{{ formatTimestamp(run.eventTime) }}</TableCell>
                 <TableCell>
                   <Badge variant="outline">{{ run.eventType || "-" }}</Badge>
@@ -121,7 +130,10 @@
                 >
                   {{ run.inputCount }} / {{ run.outputCount }}
                 </TableCell>
-                <TableCell class="sticky right-0 bg-background text-right">
+                <TableCell
+                  class="sticky right-0 bg-background text-right"
+                  @click.stop
+                >
                   <Button
                     variant="ghost"
                     size="icon"
@@ -294,6 +306,18 @@ function openDetail(guid: string) {
     params: { guid },
     query: { from: route.fullPath },
   });
+}
+
+/**
+ * A click anywhere in the row opens the run. A click that ends a text selection
+ * is someone copying an identifier out of the table, not asking to navigate, so
+ * it is left alone.
+ */
+function handleRowClick(guid: string) {
+  if (window.getSelection()?.toString()) {
+    return;
+  }
+  openDetail(guid);
 }
 
 function resetFilters() {

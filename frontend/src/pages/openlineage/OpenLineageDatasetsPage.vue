@@ -74,13 +74,21 @@
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableRow v-for="dataset in filteredDatasets" :key="datasetRowKey(dataset)">
+              <!-- The whole row opens the dataset detail drawer. Only the name
+                   used to be clickable, and the drawer was also reachable by
+                   opening the action menu and picking an item out of it. -->
+              <TableRow
+                v-for="dataset in filteredDatasets"
+                :key="datasetRowKey(dataset)"
+                class="cursor-pointer"
+                @click="handleRowClick(dataset)"
+              >
                 <TableCell>
                   <button
                     class="block max-w-64 truncate text-left font-medium text-primary hover:underline"
                     type="button"
                     :title="dataset.name"
-                    @click="openDatasetDetail(dataset)"
+                    @click.stop="openDatasetDetail(dataset)"
                   >
                     {{ dataset.name }}
                   </button>
@@ -104,7 +112,10 @@
                     {{ dataset.internal ? t("openlineage.internal") : t("openlineage.external") }}
                   </Badge>
                 </TableCell>
-                <TableCell class="sticky right-0 bg-background text-right">
+                <TableCell
+                  class="sticky right-0 bg-background text-right"
+                  @click.stop
+                >
                   <DropdownMenu>
                     <DropdownMenuTrigger as-child>
                       <Button
@@ -117,11 +128,9 @@
                         <MoreHorizontal class="h-4 w-4 text-muted-foreground" />
                       </Button>
                     </DropdownMenuTrigger>
+                    <!-- Detail is not listed: the row and the name already open
+                         it, so this menu is only the other destinations. -->
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem @select="openDatasetDetail(dataset)">
-                        <Info class="mr-2 h-4 w-4" />
-                        {{ t("openlineageSettings.viewDetail") }}
-                      </DropdownMenuItem>
                       <DropdownMenuItem @select="openGraph(dataset)">
                         <Network class="mr-2 h-4 w-4" />
                         {{ t("openlineage.openGraph") }}
@@ -162,7 +171,6 @@ import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import {
   Database,
   GitBranch,
-  Info,
   MoreHorizontal,
   Network,
   Table2,
@@ -374,6 +382,18 @@ function openGraph(dataset: OpenLineageDatasetResource) {
 function openDatasetDetail(dataset: OpenLineageDatasetResource) {
   selectedDataset.value = dataset;
   isDetailDrawerOpen.value = true;
+}
+
+/**
+ * A click anywhere in the row opens the detail drawer. A click that ends a text
+ * selection is someone copying an identifier out of the table, not asking to
+ * open anything, so it is left alone.
+ */
+function handleRowClick(dataset: OpenLineageDatasetResource) {
+  if (window.getSelection()?.toString()) {
+    return;
+  }
+  openDatasetDetail(dataset);
 }
 
 function openMetadata(dataset: OpenLineageDatasetResource) {

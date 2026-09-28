@@ -98,9 +98,15 @@
                 </TableRow>
               </TableHeader>
               <TableBody>
+                <!-- The whole row opens the run; the eye button stays the
+                     labelled action so the row is a shortcut, not the only way
+                     in. The job name belongs to the job, not to this run, so it
+                     is not the link here. -->
                 <TableRow
                   v-for="run in runs"
                   :key="run.guid"
+                  class="cursor-pointer"
+                  @click="handleRunRowClick(run.guid)"
                 >
                   <TableCell class="whitespace-nowrap">
                     {{ formatTimestamp(run.eventTime) }}
@@ -140,7 +146,10 @@
                   >
                     {{ run.inputCount }} / {{ run.outputCount }}
                   </TableCell>
-                  <TableCell class="text-right">
+                  <TableCell
+                    class="text-right"
+                    @click.stop
+                  >
                     <Button
                       variant="ghost"
                       size="icon"
@@ -193,17 +202,27 @@
                 </TableRow>
               </TableHeader>
               <TableBody>
+                <!-- Here the row's detail is the job the name belongs to, so the
+                     name is a real link and the row follows it. -->
                 <TableRow
                   v-for="task in activeTasks"
                   :key="task.guid"
+                  class="cursor-pointer"
+                  @click="handleJobRowClick(task.guid)"
                 >
                   <TableCell>
-                    <div
-                      class="max-w-64 truncate"
+                    <RouterLink
+                      class="block max-w-64 truncate font-medium text-primary hover:underline"
                       :title="task.jobName"
+                      :to="{
+                        name: 'OpenLineageTaskDetail',
+                        params: { guid: task.guid },
+                        query: { from: route.fullPath },
+                      }"
+                      @click.stop
                     >
                       {{ task.jobName }}
-                    </div>
+                    </RouterLink>
                   </TableCell>
                   <TableCell class="text-muted-foreground">
                     <div
@@ -227,7 +246,10 @@
                       / {{ task.lineageRunCount }} {{ t("openlineage.lineageEvents") }}
                     </span>
                   </TableCell>
-                  <TableCell class="text-right">
+                  <TableCell
+                    class="text-right"
+                    @click.stop
+                  >
                     <Button
                       variant="ghost"
                       size="icon"
@@ -254,7 +276,7 @@ import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { ArrowRight, Eye, RadioTower } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { RouterLink, useRouter } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   listOpenLineageDatasets,
   listOpenLineageRuns,
@@ -299,6 +321,7 @@ const ACTIVE_JOB_LIMIT = 5;
 const { t, locale } = useI18n();
 const { formatError } = useErrorMessage();
 const router = useRouter();
+const route = useRoute();
 
 const isLoading = ref(false);
 const error = ref<string | null>(null);
@@ -374,7 +397,7 @@ function openRun(guid: string) {
   router.push({
     name: "OpenLineageRunDetail",
     params: { guid },
-    query: { from: router.currentRoute.value.fullPath },
+    query: { from: route.fullPath },
   });
 }
 
@@ -382,8 +405,28 @@ function openJob(guid: string) {
   router.push({
     name: "OpenLineageTaskDetail",
     params: { guid },
-    query: { from: router.currentRoute.value.fullPath },
+    query: { from: route.fullPath },
   });
+}
+
+/**
+ * A click anywhere in the row opens its detail. A click that ends a text
+ * selection is someone copying an identifier out of the table, not asking to
+ * navigate, so it is left alone.
+ */
+function handleRowClick(open: () => void) {
+  if (window.getSelection()?.toString()) {
+    return;
+  }
+  open();
+}
+
+function handleRunRowClick(guid: string) {
+  handleRowClick(() => openRun(guid));
+}
+
+function handleJobRowClick(guid: string) {
+  handleRowClick(() => openJob(guid));
 }
 
 async function load() {

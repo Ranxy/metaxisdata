@@ -78,15 +78,30 @@
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableRow v-for="task in filteredTasks" :key="task.guid">
+              <!-- The whole row opens the job: reaching its detail used to mean
+                   opening the action menu and picking an item out of it. The
+                   name stays a real link, so the row has a visible affordance
+                   and one keyboard stop. -->
+              <TableRow
+                v-for="task in filteredTasks"
+                :key="task.guid"
+                class="cursor-pointer"
+                @click="handleRowClick(task.guid)"
+              >
                 <TableCell class="font-mono text-sm">{{ task.jobNamespace }}</TableCell>
                 <TableCell>
-                  <div
-                    class="max-w-64 truncate"
+                  <RouterLink
+                    class="block max-w-64 truncate font-medium text-primary hover:underline"
                     :title="task.jobName"
+                    :to="{
+                      name: 'OpenLineageTaskDetail',
+                      params: { guid: task.guid },
+                      query: { from: route.fullPath },
+                    }"
+                    @click.stop
                   >
                     {{ task.jobName }}
-                  </div>
+                  </RouterLink>
                 </TableCell>
                 <TableCell>{{ task.integration || "-" }}</TableCell>
                 <TableCell class="whitespace-nowrap">{{ formatTimestamp(task.latestEventTime) }}</TableCell>
@@ -101,7 +116,10 @@
                     / {{ task.lineageRunCount }} {{ t("openlineage.lineageEvents") }}
                   </span>
                 </TableCell>
-                <TableCell class="sticky right-0 bg-background text-right">
+                <TableCell
+                  class="sticky right-0 bg-background text-right"
+                  @click.stop
+                >
                   <DropdownMenu>
                     <DropdownMenuTrigger as-child>
                       <Button
@@ -114,6 +132,8 @@
                         <MoreHorizontal class="h-4 w-4 text-muted-foreground" />
                       </Button>
                     </DropdownMenuTrigger>
+                    <!-- Detail is not listed: the row and the name already open
+                         it, so this menu is only the other destinations. -->
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem @select="openGraph(task.guid)">
                         <Network class="mr-2 h-4 w-4" />
@@ -122,10 +142,6 @@
                       <DropdownMenuItem @select="openEvents(task)">
                         <Files class="mr-2 h-4 w-4" />
                         {{ t("openlineage.openEvents") }}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem @select="openDetail(task.guid)">
-                        <ScrollText class="mr-2 h-4 w-4" />
-                        {{ t("openlineageSettings.viewDetail") }}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -144,7 +160,7 @@ import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { Files, MoreHorizontal, Network, ScrollText } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRoute, useRouter } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import { listOpenLineageTasks } from "@/api/openlineage";
 import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
 import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
@@ -308,6 +324,18 @@ function openDetail(guid: string) {
     params: { guid },
     query: { from: route.fullPath },
   });
+}
+
+/**
+ * A click anywhere in the row opens the job. A click that ends a text selection
+ * is someone copying an identifier out of the table, not asking to navigate, so
+ * it is left alone.
+ */
+function handleRowClick(guid: string) {
+  if (window.getSelection()?.toString()) {
+    return;
+  }
+  openDetail(guid);
 }
 
 function openGraph(guid: string) {
