@@ -74,6 +74,11 @@ func ValidateRedirectURI(raw string) error {
 	if parsed.Fragment != "" {
 		return fmt.Errorf("redirect URI %q must not carry a fragment", raw)
 	}
+	if parsed.User != nil {
+		// A client that registered "https://user@host/cb" would be sent to a URL
+		// whose authority reads differently from the one an operator reviewed.
+		return fmt.Errorf("redirect URI %q must not carry credentials", raw)
+	}
 	if parsed.Scheme == "https" && parsed.Host != "" {
 		return nil
 	}
@@ -133,13 +138,20 @@ func redirectWith(w http.ResponseWriter, r *http.Request, target string, paramet
 // established; a failure before that must be rendered by the server instead,
 // because redirecting to an unvalidated URI is exactly the open redirect this
 // endpoint exists to avoid.
-func RedirectWithError(w http.ResponseWriter, r *http.Request, redirectURI, clientState, code, description string) {
+// RedirectWithError reports a failure to the client. The issuer travels with the
+// error exactly as it does with a code: RFC 9207's mix-up defence has to hold on
+// the path where a client is told no, which is a response it can reach without
+// ever seeing a successful one.
+func RedirectWithError(w http.ResponseWriter, r *http.Request, redirectURI, clientState, code, description, issuer string) {
 	parameters := url.Values{"error": {code}}
 	if description != "" {
 		parameters.Set("error_description", description)
 	}
 	if clientState != "" {
 		parameters.Set("state", clientState)
+	}
+	if issuer != "" {
+		parameters.Set("iss", issuer)
 	}
 	redirectWith(w, r, redirectURI, parameters)
 }
@@ -269,7 +281,7 @@ func (s *Server) AuthorizeHandler() http.Handler {
 			if errors.As(err, &authorizationErr) {
 				code, description = authorizationErr.Code, authorizationErr.Description
 			}
-			RedirectWithError(w, r, redirectURI, query.Get("state"), code, description)
+			RedirectWithError(w, r, redirectURI, query.Get("state"), code, description, endpoints.Issuer)
 			return
 		}
 
@@ -329,7 +341,7 @@ func (s *Server) CompletionHandler() http.Handler {
 			// tell the client, so it stops waiting for a callback that will never
 			// come. Anything else has no target to redirect to and is rendered here.
 			if denied := deniedRequest(requests, requestID, user.ID, s.now()); denied != nil {
-				RedirectWithError(w, r, denied.RedirectURI, denied.ClientState, "access_denied", "the request was denied")
+				RedirectWithError(w, r, denied.RedirectURI, denied.ClientState, "access_denied", "the request was denied", endpoints.Issuer)
 				return
 			}
 			writeBrowserError(w, http.StatusBadRequest, "invalid_request", "the authorization request was not approved, or is no longer valid")

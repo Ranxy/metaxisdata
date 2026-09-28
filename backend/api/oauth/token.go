@@ -1,10 +1,12 @@
 package oauth
 
 import (
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/Ranxy/metaxisdata/backend/api/auth"
+	clog "github.com/Ranxy/metaxisdata/backend/common/log"
 )
 
 // tokenRequest is a parsed /oauth/token request.
@@ -97,6 +99,12 @@ func (s *Server) TokenHandler() http.Handler {
 		if err != nil {
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "failed to issue the token")
 			return
+		}
+		// A client that has exchanged a code is in use, and last_used_at is what the
+		// planned "connected apps" page will read. Best effort: the token is valid
+		// whether or not the timestamp landed.
+		if err := s.config.Stores.TouchOAuthClient(r.Context(), grant.ClientID); err != nil {
+			slog.Warn("failed to record an OAuth client's last use", clog.WithError(err))
 		}
 		writeJSON(w, http.StatusOK, tokenResponse{
 			AccessToken: token,

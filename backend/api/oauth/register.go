@@ -150,10 +150,17 @@ func validateRegistrationRequest(request registrationRequest) (validatedRegistra
 			"redirect_uris must contain at most 10 URIs")
 	}
 	redirectURIs := make([]string, 0, len(request.RedirectURIs))
+	seen := map[string]bool{}
 	for _, redirectURI := range request.RedirectURIs {
 		if err := ValidateRedirectURI(redirectURI); err != nil {
 			return validatedRegistration{}, newRegistrationError(registrationCodeInvalidRedirectURI, err.Error())
 		}
+		// The same URI twice would put two identical entries in the consent page's
+		// redirect list, which reads like two destinations.
+		if seen[redirectURI] {
+			continue
+		}
+		seen[redirectURI] = true
 		redirectURIs = append(redirectURIs, redirectURI)
 	}
 

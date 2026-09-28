@@ -97,6 +97,8 @@ func TestValidateRedirectURI(t *testing.T) {
 		"com.example.app:/callback",
 		"https://app.example.com/callback#frag",
 		"https://*.example.com/callback",
+		"https://user@app.example.com/callback",
+		"https://user:pass@app.example.com/callback",
 	}
 	for _, uri := range invalid {
 		t.Run("invalid "+uri, func(t *testing.T) {

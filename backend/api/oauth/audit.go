@@ -82,7 +82,12 @@ func (s *Server) Audited(next http.Handler) http.Handler {
 		recorder := &auditRecorder{}
 		writer := &statusWriter{ResponseWriter: w}
 		next.ServeHTTP(writer, r.WithContext(context.WithValue(r.Context(), auditRecorderKey{}, recorder)))
-		s.writeAudit(r, writer.status, recorder, started)
+		// A 404 on these routes means the surface is switched off: nothing was
+		// registered, issued or decided, and a ledger that is never pruned must not
+		// grow a row per probe of a deployment that has the feature disabled.
+		if writer.status != http.StatusNotFound {
+			s.writeAudit(r, writer.status, recorder, started)
+		}
 	})
 }
 

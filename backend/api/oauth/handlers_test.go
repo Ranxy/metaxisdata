@@ -88,7 +88,7 @@ func TestRedirectsCarryWhatTheClientNeeds(t *testing.T) {
 		t.Parallel()
 
 		recorder := httptest.NewRecorder()
-		RedirectWithError(recorder, httptest.NewRequest(http.MethodGet, "/oauth/authorize", nil), registered, "client-state", "access_denied", "the user said no")
+		RedirectWithError(recorder, httptest.NewRequest(http.MethodGet, "/oauth/authorize", nil), registered, "client-state", "access_denied", "the user said no", "https://mx.example.com")
 
 		location, err := url.Parse(recorder.Header().Get("Location"))
 		require.NoError(t, err)
@@ -96,6 +96,7 @@ func TestRedirectsCarryWhatTheClientNeeds(t *testing.T) {
 		require.Equal(t, "access_denied", location.Query().Get("error"))
 		require.Equal(t, "the user said no", location.Query().Get("error_description"))
 		require.Equal(t, "client-state", location.Query().Get("state"))
+		require.Equal(t, "https://mx.example.com", location.Query().Get("iss"), "RFC 9207: the mix-up defence holds on the error path too")
 		require.Equal(t, "1", location.Query().Get("existing"), "an existing query must survive")
 	})
 

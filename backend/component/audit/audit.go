@@ -94,7 +94,7 @@ func SanitizeAuditStruct(payload *structpb.Struct) *structpb.Struct {
 func IsSensitiveAuditField(key string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(key))
 	switch normalized {
-	case "code", "authorization", "authorizationcode", "cookie", "idpcontext",
+	case "code", "authorization", "authorizationcode", "authorization_code", "cookie", "idpcontext",
 		// These are bare field names of credential-bearing messages, so a
 		// substring match would not catch them.
 		"key", "sslkey", "sslcert", "sshprivatekey",

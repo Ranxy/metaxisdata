@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -81,11 +82,18 @@ func CanonicalizeExternalURL(raw string) (Endpoints, error) {
 		return Endpoints{}, fmt.Errorf("external_url %q must use https unless it is a loopback address", raw)
 	}
 	port := parsed.Port()
+	if port != "" {
+		// A port written with leading zeros names the same endpoint as the plain
+		// form, and two spellings would be two issuers for one deployment.
+		if number, err := strconv.Atoi(port); err == nil {
+			port = strconv.Itoa(number)
+		}
+	}
 	if port != "" && !isDefaultPort(parsed.Scheme, port) {
 		host = net.JoinHostPort(host, port)
 	}
 
-	issuer := parsed.Scheme + "://" + host + strings.TrimSuffix(parsed.Path, "/")
+	issuer := parsed.Scheme + "://" + host + strings.TrimRight(parsed.Path, "/")
 	return Endpoints{Issuer: issuer, Resource: issuer + MCPResourcePath}, nil
 }
 

@@ -15,7 +15,7 @@ func TestSensitiveAuditFieldsAreRedacted(t *testing.T) {
 	for _, field := range []string{
 		"codeVerifier", "code_verifier",
 		"clientSecret", "client_secret",
-		"authorizationCode", "authorizationcode",
+		"authorizationCode", "authorizationcode", "authorization_code",
 		"deviceCode", "password",
 	} {
 		raw := map[string]any{

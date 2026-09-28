@@ -48,6 +48,13 @@ func TestValidateRegistrationRequest(t *testing.T) {
 			want:    validatedRegistration{RedirectURIs: []string{callback}},
 		},
 		{
+			// One destination listed twice is still one destination; storing it twice
+			// would make the consent page's redirect list read like two.
+			name:    "duplicate redirect uris collapse",
+			request: registrationRequest{RedirectURIs: []string{callback, callback, loopback}},
+			want:    validatedRegistration{RedirectURIs: []string{callback, loopback}},
+		},
+		{
 			name:    "ten redirect uris is the limit",
 			request: registrationRequest{RedirectURIs: tenRedirectURIs},
 			want:    validatedRegistration{RedirectURIs: tenRedirectURIs},

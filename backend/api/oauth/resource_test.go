@@ -24,6 +24,8 @@ func TestCanonicalizeExternalURL(t *testing.T) {
 		{name: "plain https", raw: testExternalURL, issuer: testExternalURL, resource: testResource},
 		{name: "trailing slash", raw: testExternalURL + "/", issuer: testExternalURL, resource: testResource},
 		{name: "default https port is dropped", raw: "https://mx.example.com:443", issuer: testExternalURL, resource: testResource},
+		{name: "a default port written with leading zeros is dropped", raw: "https://mx.example.com:0443", issuer: testExternalURL, resource: testResource},
+		{name: "repeated trailing slashes are dropped", raw: testExternalURL + "//", issuer: testExternalURL, resource: testResource},
 		{name: "explicit port is kept", raw: "https://mx.example.com:8443", issuer: "https://mx.example.com:8443", resource: "https://mx.example.com:8443/mcp"},
 		{name: "host case is lowered", raw: "https://MX.Example.COM", issuer: testExternalURL, resource: testResource},
 		{name: "a path prefix is kept", raw: "https://mx.example.com/mx", issuer: "https://mx.example.com/mx", resource: "https://mx.example.com/mx/mcp"},
