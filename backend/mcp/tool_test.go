@@ -679,6 +679,44 @@ func TestDispatchReturnsOnlyStructuredContentAndRendersErrorsInBand(t *testing.T
 	require.NotNil(t, result.StructuredContent)
 }
 
+// TestDispatchAuditsARefusedCall is the invariant the refusal paths used to skip:
+// a call the caller is not allowed to make is the one most worth recording, so the
+// row is written before the refusal is returned.
+func TestDispatchAuditsARefusedCall(t *testing.T) {
+	t.Parallel()
+
+	denied := &fakeChecker{allow: false}
+	server := newTestServer(t, &fakeReaders{listInstances: oneInstance()}, denied)
+	definition := toolByName(t, server, "list_instances")
+
+	type recorded struct {
+		failure error
+		user    *store.UserMessage
+	}
+	var rows []recorded
+	server.audit = func(_ context.Context, _ *mcpsdk.CallToolRequest, _ toolDefinition, user *store.UserMessage, failure error, _ time.Time) {
+		rows = append(rows, recorded{failure: failure, user: user})
+	}
+
+	_, err := server.dispatch(context.Background(), requestFor(t, testUser(), definition.Name, `{}`), definition)
+	require.Equal(t, codePermissionDenied, failureOf(t, err).Code)
+
+	require.Len(t, rows, 1, "a refused call must leave a row")
+	require.Equal(t, codePermissionDenied, failureOf(t, rows[0].failure).Code)
+	require.Equal(t, 7, rows[0].user.ID, "the row names who was refused")
+
+	// A call refused before the identity was resolved still leaves a row, with no
+	// actor: the endpoint was reached, and that is the fact worth keeping.
+	rows = nil
+	result, err := server.dispatch(context.Background(),
+		&mcpsdk.CallToolRequest{Params: &mcpsdk.CallToolParamsRaw{Name: definition.Name, Arguments: json.RawMessage(`{}`)}},
+		definition)
+	require.Nil(t, result)
+	require.Equal(t, codeUnauthenticated, failureOf(t, err).Code)
+	require.Len(t, rows, 1)
+	require.Nil(t, rows[0].user)
+}
+
 func TestErrorResultCarriesTheEnvelope(t *testing.T) {
 	t.Parallel()
 

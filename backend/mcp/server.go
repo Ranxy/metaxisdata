@@ -111,6 +111,10 @@ type Config struct {
 type Server struct {
 	config Config
 	sdk    *mcpsdk.Server
+	// audit writes one ledger row per call. It is a field rather than a method call
+	// so a test can observe the ledger without a database; NewServer points it at
+	// the store-backed writer.
+	audit func(ctx context.Context, request *mcpsdk.CallToolRequest, definition toolDefinition, user *store.UserMessage, failure error, started time.Time)
 }
 
 // NewServer builds the MCP server, registers its tools and its guide prompt.
@@ -119,6 +123,7 @@ func NewServer(config Config) *Server {
 		config.Now = time.Now
 	}
 	server := &Server{config: config}
+	server.audit = server.auditToolCall
 	server.sdk = mcpsdk.NewServer(
 		&mcpsdk.Implementation{Name: serverName, Version: config.Version},
 		&mcpsdk.ServerOptions{
@@ -252,13 +257,20 @@ func (s *Server) toolHandler(definition toolDefinition) mcpsdk.ToolHandler {
 	}
 }
 
-// dispatch is the one place a tool runs: identity, authorization, the call, and
-// the audit row. Keeping all four in a single function is what makes the
-// permission check impossible to forget in a tool.
+// dispatch is the one place a tool runs. The audit row is written on **every**
+// path, including the refusals: "who tried to read what" is exactly the event a
+// ledger exists for, and a refused call is the one worth keeping.
 func (s *Server) dispatch(ctx context.Context, request *mcpsdk.CallToolRequest, definition toolDefinition) (*mcpsdk.CallToolResult, error) {
 	started := s.config.Now()
-	user, ok := UserFromRequest(request)
-	if !ok {
+	user, _ := UserFromRequest(request)
+	result, err := s.invoke(ctx, request, definition, user)
+	s.audit(ctx, request, definition, user, err, started)
+	return result, err
+}
+
+// invoke is the part of a dispatch that can refuse before anything has run.
+func (s *Server) invoke(ctx context.Context, request *mcpsdk.CallToolRequest, definition toolDefinition, user *store.UserMessage) (*mcpsdk.CallToolResult, error) {
+	if user == nil {
 		return nil, newToolError(codeUnauthenticated, "the call carried no verified identity", "authorize the MCP client again")
 	}
 	if definition.Permission != "" {
@@ -279,7 +291,6 @@ func (s *Server) dispatch(ctx context.Context, request *mcpsdk.CallToolRequest, 
 	// answers as if nobody were signed in.
 	ctx = context.WithValue(ctx, common.UserContextKey, user)
 	payload, err := definition.Run(ctx, user, request.Params.Arguments)
-	s.auditToolCall(ctx, request, definition, user, err, started)
 	if err != nil {
 		return nil, err
 	}
@@ -307,11 +318,17 @@ func (s *Server) auditToolCall(ctx context.Context, request *mcpsdk.CallToolRequ
 		slog.Error("failed to resolve the workspace for an MCP audit log", clog.WithError(err))
 		return
 	}
+	// A call refused before the identity was resolved has no actor: the row still
+	// says that someone reached the endpoint and was turned away.
+	actor := ""
+	if user != nil {
+		actor = common.FormatUserUID(user.ID)
+	}
 	status, severity := auditStatus(failure)
 	entry := &storepb.AuditLog{
 		Parent:          common.FormatWorkspace(workspaceID),
 		Method:          "mcp/tools/call:" + definition.Name,
-		User:            common.FormatUserUID(user.ID),
+		User:            actor,
 		Severity:        severity,
 		Status:          status,
 		LatencyMs:       time.Since(started).Milliseconds(),
