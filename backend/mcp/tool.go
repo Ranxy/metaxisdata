@@ -347,8 +347,15 @@ func (s *Server) runSearchMetadata(ctx context.Context, _ *store.UserMessage, ra
 		request.MetaType = &metaType
 	}
 	// A scope narrows the search; without one it is a search across the workspace,
-	// which is what a caller who has only a name wants.
-	if strings.TrimSpace(args.Instance) != "" && strings.TrimSpace(args.Database) != "" {
+	// which is what a caller who has only a name wants. A partial scope is
+	// refused rather than ignored: silently searching everything would answer a
+	// narrower question than the caller asked.
+	scoped := strings.TrimSpace(args.Instance) != "" || strings.TrimSpace(args.Database) != "" || strings.TrimSpace(args.Schema) != ""
+	if scoped {
+		if strings.TrimSpace(args.Instance) == "" || strings.TrimSpace(args.Database) == "" {
+			return nil, newToolError(codeInvalidArgument, "a scoped search needs instance and database",
+				"search the whole workspace by leaving instance, database and schema out")
+		}
 		parentGUID, err := s.resolveScope(ctx, analysisScope{Instance: args.Instance, Database: args.Database, Schema: args.Schema})
 		if err != nil {
 			return nil, err
@@ -396,6 +403,12 @@ func (s *Server) runListMetadata(ctx context.Context, _ *store.UserMessage, raw 
 	metaType, err := parseMetaType(args.MetaType)
 	if err != nil {
 		return nil, err
+	}
+	if args.PageToken != "" && metaType == v1pb.MetaType_UNSPECIFIED {
+		// A listing that was not narrowed to one type carries one token per type,
+		// so a token without a type says nothing about where to continue.
+		return nil, newToolError(codeInvalidArgument, "page_token needs meta_type",
+			"a listing that was not narrowed to one type carries one token per type; name the type you are continuing")
 	}
 	pageSize, err := normalizePageSize(args.PageSize)
 	if err != nil {
