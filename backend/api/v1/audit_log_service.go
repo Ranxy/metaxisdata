@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
@@ -92,8 +93,8 @@ func convertToV1AuditLog(auditLog *storepb.AuditLog) *v1pb.AuditLog {
 		Resource:        auditLog.GetResource(),
 		User:            auditLog.GetUser(),
 		Severity:        convertAuditSeverity(auditLog.GetSeverity()),
-		Request:         sanitizeAuditStruct(auditLog.GetRequest()),
-		Response:        sanitizeAuditStruct(auditLog.GetResponse()),
+		Request:         audit.SanitizeAuditStruct(auditLog.GetRequest()),
+		Response:        audit.SanitizeAuditStruct(auditLog.GetResponse()),
 		Status:          convertAuditStatus(auditLog.GetStatus()),
 		LatencyMs:       auditLog.GetLatencyMs(),
 		ServiceData:     auditLog.GetServiceData(),

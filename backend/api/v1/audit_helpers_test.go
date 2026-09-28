@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -47,7 +48,7 @@ func TestResolveParentPrefersTheRequestThenTheResponse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.want, resolveParent(tt.defaultParent, tt.request, tt.response))
+			require.Equal(t, tt.want, audit.ResolveParent(tt.defaultParent, tt.request, tt.response))
 		})
 	}
 }
@@ -73,7 +74,7 @@ func TestResolveResourcePrefersTheResponseName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.want, resolveResource(tt.request, tt.response))
+			require.Equal(t, tt.want, audit.ResolveResource(tt.request, tt.response))
 		})
 	}
 }
@@ -81,18 +82,18 @@ func TestResolveResourcePrefersTheResponseName(t *testing.T) {
 func TestResolveActorPrefersTheAuthenticatedUser(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "", resolveActor(context.Background(), nil, nil))
-	require.Equal(t, "users/7", resolveActor(context.Background(), map[string]any{
+	require.Equal(t, "", audit.ResolveActor(context.Background(), nil, nil))
+	require.Equal(t, "users/7", audit.ResolveActor(context.Background(), map[string]any{
 		"user": map[string]any{"name": "users/7"},
 	}, nil))
-	require.Equal(t, "c@example.com", resolveActor(context.Background(), map[string]any{
+	require.Equal(t, "c@example.com", audit.ResolveActor(context.Background(), map[string]any{
 		"email": "c@example.com",
 	}, nil))
 
 	// The authenticated user must win over request/response fields, which a
 	// caller controls.
 	ctx := context.WithValue(context.Background(), common.UserContextKey, &store.UserMessage{ID: 42})
-	require.Equal(t, common.FormatUserUID(42), resolveActor(ctx, map[string]any{
+	require.Equal(t, common.FormatUserUID(42), audit.ResolveActor(ctx, map[string]any{
 		"user": map[string]any{"name": "users/999"},
 	}, map[string]any{"name": "users/998"}))
 }
@@ -100,7 +101,7 @@ func TestResolveActorPrefersTheAuthenticatedUser(t *testing.T) {
 func TestMapSeveritySeparatesClientAndServerErrors(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, storepb.AuditLogSeverity_INFO, mapSeverity(nil))
+	require.Equal(t, storepb.AuditLogSeverity_INFO, audit.MapSeverity(nil))
 	for _, code := range []connect.Code{
 		connect.CodeUnauthenticated,
 		connect.CodePermissionDenied,
@@ -108,7 +109,7 @@ func TestMapSeveritySeparatesClientAndServerErrors(t *testing.T) {
 		connect.CodeNotFound,
 		connect.CodeAlreadyExists,
 	} {
-		require.Equalf(t, storepb.AuditLogSeverity_WARNING, mapSeverity(connect.NewError(code, errors.New("nope"))), "code %v", code)
+		require.Equalf(t, storepb.AuditLogSeverity_WARNING, audit.MapSeverity(connect.NewError(code, errors.New("nope"))), "code %v", code)
 	}
 	for _, code := range []connect.Code{
 		connect.CodeInternal,
@@ -117,23 +118,23 @@ func TestMapSeveritySeparatesClientAndServerErrors(t *testing.T) {
 		connect.CodeDeadlineExceeded,
 		connect.CodeCanceled,
 	} {
-		require.Equalf(t, storepb.AuditLogSeverity_ERROR, mapSeverity(connect.NewError(code, errors.New("boom"))), "code %v", code)
+		require.Equalf(t, storepb.AuditLogSeverity_ERROR, audit.MapSeverity(connect.NewError(code, errors.New("boom"))), "code %v", code)
 	}
-	require.Equal(t, storepb.AuditLogSeverity_ERROR, mapSeverity(errors.New("plain error")))
+	require.Equal(t, storepb.AuditLogSeverity_ERROR, audit.MapSeverity(errors.New("plain error")))
 }
 
 func TestBuildAuditStatus(t *testing.T) {
 	t.Parallel()
 
-	ok := buildAuditStatus(nil)
+	ok := audit.BuildAuditStatus(nil)
 	require.Equal(t, "ok", ok.GetMessage())
 	require.Equal(t, int32(0), ok.GetCode())
 
-	connectStatus := buildAuditStatus(connect.NewError(connect.CodeNotFound, errors.New("instance not found")))
+	connectStatus := audit.BuildAuditStatus(connect.NewError(connect.CodeNotFound, errors.New("instance not found")))
 	require.Equal(t, int32(connect.CodeNotFound), connectStatus.GetCode())
 	require.Equal(t, "instance not found", connectStatus.GetMessage())
 
-	plainStatus := buildAuditStatus(errors.New("plain failure"))
+	plainStatus := audit.BuildAuditStatus(errors.New("plain failure"))
 	require.Equal(t, int32(connect.CodeUnknown), plainStatus.GetCode())
 	require.Equal(t, "plain failure", plainStatus.GetMessage())
 }
@@ -174,7 +175,7 @@ func TestBuildRequestMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			metadata := buildRequestMetadata(headerFromMap(tt.headers), tt.peerAddr, tt.trustedProxies)
+			metadata := audit.BuildRequestMetadata(headerFromMap(tt.headers), tt.peerAddr, tt.trustedProxies)
 			require.Equal(t, tt.wantIP, metadata.GetIp())
 			require.Equal(t, tt.wantAgent, metadata.GetUserAgent())
 		})
@@ -186,12 +187,12 @@ func TestBuildRequestMetadata(t *testing.T) {
 func TestIsTrustedProxy(t *testing.T) {
 	t.Parallel()
 
-	require.True(t, isTrustedProxy("10.0.0.1", []string{"10.0.0.1"}))
-	require.True(t, isTrustedProxy("10.0.0.7", []string{"10.0.0.0/24"}))
-	require.False(t, isTrustedProxy("10.0.1.7", []string{"10.0.0.0/24"}))
-	require.False(t, isTrustedProxy("10.0.0.1", nil))
-	require.False(t, isTrustedProxy("not-an-ip", []string{"10.0.0.0/24"}))
-	require.False(t, isTrustedProxy("10.0.0.1", []string{"", "10.0.0.0/33"}))
+	require.True(t, audit.IsTrustedProxy("10.0.0.1", []string{"10.0.0.1"}))
+	require.True(t, audit.IsTrustedProxy("10.0.0.7", []string{"10.0.0.0/24"}))
+	require.False(t, audit.IsTrustedProxy("10.0.1.7", []string{"10.0.0.0/24"}))
+	require.False(t, audit.IsTrustedProxy("10.0.0.1", nil))
+	require.False(t, audit.IsTrustedProxy("not-an-ip", []string{"10.0.0.0/24"}))
+	require.False(t, audit.IsTrustedProxy("10.0.0.1", []string{"", "10.0.0.0/33"}))
 }
 
 // Sanitizing a stored payload is what keeps pre-fix audit rows from handing
@@ -206,16 +207,16 @@ func TestSanitizeAuditStructRedactsHistoricalPayloads(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	sanitized := sanitizeAuditStruct(payload)
+	sanitized := audit.SanitizeAuditStruct(payload)
 	raw := sanitized.AsMap()
-	require.Equal(t, redactedValue, raw["key"])
-	require.Equal(t, redactedValue, raw["password"])
+	require.Equal(t, audit.RedactedValue, raw["key"])
+	require.Equal(t, audit.RedactedValue, raw["password"])
 	nested, ok := raw["nested"].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, redactedValue, nested["sslKey"])
+	require.Equal(t, audit.RedactedValue, nested["sslKey"])
 	require.Equal(t, "keep me", nested["title"])
 
-	require.Nil(t, sanitizeAuditStruct(nil))
+	require.Nil(t, audit.SanitizeAuditStruct(nil))
 }
 
 // headerFromMap builds a real http.Header: Set canonicalizes the keys the same
@@ -237,11 +238,11 @@ func TestGetNestedString(t *testing.T) {
 		"list":   []any{"a"},
 	}
 
-	require.Equal(t, "", getNestedString(nil, "parent"))
-	require.Equal(t, "instances/i1", getNestedString(raw, "parent"))
-	require.Equal(t, "users/1", getNestedString(raw, "user", "name"))
-	require.Equal(t, "", getNestedString(raw, "user", "count"))
-	require.Equal(t, "", getNestedString(raw, "user", "missing"))
-	require.Equal(t, "", getNestedString(raw, "list", "0"))
-	require.Equal(t, "", getNestedString(map[string]any{"user": "not-an-object"}, "user", "name"))
+	require.Equal(t, "", audit.GetNestedString(nil, "parent"))
+	require.Equal(t, "instances/i1", audit.GetNestedString(raw, "parent"))
+	require.Equal(t, "users/1", audit.GetNestedString(raw, "user", "name"))
+	require.Equal(t, "", audit.GetNestedString(raw, "user", "count"))
+	require.Equal(t, "", audit.GetNestedString(raw, "user", "missing"))
+	require.Equal(t, "", audit.GetNestedString(raw, "list", "0"))
+	require.Equal(t, "", audit.GetNestedString(map[string]any{"user": "not-an-object"}, "user", "name"))
 }

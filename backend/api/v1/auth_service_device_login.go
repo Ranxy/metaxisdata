@@ -16,6 +16,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/api/auth"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -45,7 +46,7 @@ func (s *AuthService) CreateDeviceLogin(ctx context.Context, req *connect.Reques
 		return nil, err
 	}
 
-	metadata := buildRequestMetadata(req.Header(), req.Peer().Addr, s.profile.TrustedProxies)
+	metadata := audit.BuildRequestMetadata(req.Header(), req.Peer().Addr, s.profile.TrustedProxies)
 	now := time.Now()
 	if !s.stateCfg.DeviceLoginLimiter.Allow(metadata.GetIp(), now) {
 		return nil, connect.NewError(connect.CodeResourceExhausted, errors.New("too many device login requests, try again later"))
@@ -319,7 +320,7 @@ func deviceLoginCallerKey(ctx context.Context, header http.Header, peerAddr stri
 	if user, ok := GetUserFromContext(ctx); ok && user != nil {
 		return "user:" + strconv.Itoa(user.ID)
 	}
-	return "ip:" + buildRequestMetadata(header, peerAddr, trustedProxies).GetIp()
+	return "ip:" + audit.BuildRequestMetadata(header, peerAddr, trustedProxies).GetIp()
 }
 
 // parseDeviceLoginName reads the user code out of "deviceLogins/{user_code}".

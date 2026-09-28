@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 )
 
@@ -23,11 +24,11 @@ func TestMarshalAuditMessageRedactsSensitiveFields(t *testing.T) {
 		},
 	}
 
-	structured, raw, err := marshalAuditMessage(message)
+	structured, raw, err := audit.MarshalAuditMessage(message)
 	require.NoError(t, err)
 	require.NotNil(t, structured)
-	require.Equal(t, redactedValue, structured.GetFields()["password"].GetStringValue())
-	require.Equal(t, redactedValue, getNestedString(raw, "idpContext"))
+	require.Equal(t, audit.RedactedValue, structured.GetFields()["password"].GetStringValue())
+	require.Equal(t, audit.RedactedValue, audit.GetNestedString(raw, "idpContext"))
 	require.Equal(t, "alice@example.com", structured.GetFields()["email"].GetStringValue())
 }
 
@@ -47,7 +48,7 @@ func TestMarshalAuditMessageRedactsSecrets(t *testing.T) {
 			name:    "create api key response",
 			message: &v1pb.CreateAPIKeyResponse{Key: "mt_ingestion_secret"},
 			assert: func(t *testing.T, raw map[string]any) {
-				require.Equal(t, redactedValue, raw["key"])
+				require.Equal(t, audit.RedactedValue, raw["key"])
 			},
 		},
 		{
@@ -59,9 +60,9 @@ func TestMarshalAuditMessageRedactsSecrets(t *testing.T) {
 				SshPrivateKey: "-----BEGIN OPENSSH PRIVATE KEY-----",
 			},
 			assert: func(t *testing.T, raw map[string]any) {
-				require.Equal(t, redactedValue, raw["sslCert"])
-				require.Equal(t, redactedValue, raw["sslKey"])
-				require.Equal(t, redactedValue, raw["sshPrivateKey"])
+				require.Equal(t, audit.RedactedValue, raw["sslCert"])
+				require.Equal(t, audit.RedactedValue, raw["sslKey"])
+				require.Equal(t, audit.RedactedValue, raw["sshPrivateKey"])
 			},
 		},
 	}
@@ -69,7 +70,7 @@ func TestMarshalAuditMessageRedactsSecrets(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			structured, raw, err := marshalAuditMessage(tc.message)
+			structured, raw, err := audit.MarshalAuditMessage(tc.message)
 			require.NoError(t, err)
 			require.NotNil(t, structured)
 			tc.assert(t, raw)
@@ -83,7 +84,7 @@ func TestMarshalAuditMessageRedactsSecrets(t *testing.T) {
 func TestMarshalAuditMessageRedactsTheDeviceLoginSecret(t *testing.T) {
 	t.Parallel()
 
-	structured, raw, err := marshalAuditMessage(&v1pb.CreateDeviceLoginResponse{
+	structured, raw, err := audit.MarshalAuditMessage(&v1pb.CreateDeviceLoginResponse{
 		DeviceCode:              "polling-secret",
 		UserCode:                "7Q2X-9M4K",
 		VerificationUri:         "https://mx.example.com/device",
@@ -92,7 +93,7 @@ func TestMarshalAuditMessageRedactsTheDeviceLoginSecret(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, structured)
 
-	require.Equal(t, redactedValue, raw["deviceCode"])
+	require.Equal(t, audit.RedactedValue, raw["deviceCode"])
 	require.Equal(t, "7Q2X-9M4K", raw["userCode"])
 	require.Equal(t, "https://mx.example.com/device", raw["verificationUri"])
 }
@@ -101,10 +102,10 @@ func TestIsSensitiveAuditField(t *testing.T) {
 	t.Parallel()
 
 	for _, field := range []string{"key", "sslKey", "sslCert", "passwd", "pwd", "bearer", "jwt", "session", "password", "apiKey", "accessKeyId", "sshPrivateKey", "deviceCode", "device_code"} {
-		require.True(t, isSensitiveAuditField(field), "expected %q to be redacted", field)
+		require.True(t, audit.IsSensitiveAuditField(field), "expected %q to be redacted", field)
 	}
 	for _, field := range []string{"email", "name", "host", "port", "description", "userCode"} {
-		require.False(t, isSensitiveAuditField(field), "expected %q to be kept", field)
+		require.False(t, audit.IsSensitiveAuditField(field), "expected %q to be kept", field)
 	}
 }
 

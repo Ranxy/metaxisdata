@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
 	"github.com/labstack/echo/v4"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	clog "github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
@@ -346,7 +346,7 @@ func ExtractIngestionKey(r *http.Request) string {
 // auditIngestion records one ingestion request. A failure to write the audit row
 // must not fail the ingestion itself, so it is only logged.
 func (h *OpenLineageHandler) auditIngestion(ctx context.Context, c echo.Context, key *store.OpenLineageAPIKeyMessage, started time.Time, status int) {
-	auditCtx, cancel := auditContext(ctx)
+	auditCtx, cancel := audit.Context(ctx)
 	defer cancel()
 
 	workspaceID, err := h.store.GetWorkspaceID(auditCtx)
@@ -360,38 +360,18 @@ func (h *OpenLineageHandler) auditIngestion(ctx context.Context, c echo.Context,
 		actor = common.FormatAPIKey(key.ID)
 	}
 
-	auditErr := auditErrorForHTTPStatus(status)
+	auditErr := audit.ErrorForHTTPStatus(status)
 	auditLog := &storepb.AuditLog{
 		Parent:          common.FormatWorkspace(workspaceID),
 		Method:          c.Request().URL.Path,
 		Resource:        common.FormatAPIKey(key.ID),
 		User:            actor,
-		Severity:        mapSeverity(auditErr),
-		Status:          buildAuditStatus(auditErr),
+		Severity:        audit.MapSeverity(auditErr),
+		Status:          audit.BuildAuditStatus(auditErr),
 		LatencyMs:       time.Since(started).Milliseconds(),
-		RequestMetadata: buildRequestMetadata(c.Request().Header, c.Request().RemoteAddr, h.trustedProxies),
+		RequestMetadata: audit.BuildRequestMetadata(c.Request().Header, c.Request().RemoteAddr, h.trustedProxies),
 	}
 	if _, createErr := h.store.CreateAuditLog(auditCtx, auditLog); createErr != nil {
 		slog.Error("failed to persist the ingestion audit log", clog.WithError(createErr))
 	}
-}
-
-// auditErrorForHTTPStatus maps an ingestion response status onto the error shape
-// mapSeverity/buildAuditStatus understand.
-func auditErrorForHTTPStatus(status int) error {
-	if status >= http.StatusOK && status < http.StatusMultipleChoices {
-		return nil
-	}
-	code := connect.CodeUnknown
-	switch {
-	case status == http.StatusUnauthorized, status == http.StatusForbidden:
-		code = connect.CodePermissionDenied
-	case status == http.StatusBadRequest, status == http.StatusRequestEntityTooLarge, status == http.StatusTooManyRequests:
-		code = connect.CodeInvalidArgument
-	case status >= http.StatusInternalServerError:
-		code = connect.CodeInternal
-	default:
-		// Other statuses (404, 409, …) keep the unknown-code default.
-	}
-	return connect.NewError(code, fmt.Errorf("ingestion request failed with status %d", status))
 }

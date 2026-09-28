@@ -12,6 +12,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
 )
@@ -130,17 +131,17 @@ func TestParseEventTime(t *testing.T) {
 func TestAuditErrorForHTTPStatus(t *testing.T) {
 	t.Parallel()
 
-	require.NoError(t, auditErrorForHTTPStatus(http.StatusOK))
-	require.NoError(t, auditErrorForHTTPStatus(http.StatusCreated))
+	require.NoError(t, audit.ErrorForHTTPStatus(http.StatusOK))
+	require.NoError(t, audit.ErrorForHTTPStatus(http.StatusCreated))
 
-	unauthorized := auditErrorForHTTPStatus(http.StatusUnauthorized)
+	unauthorized := audit.ErrorForHTTPStatus(http.StatusUnauthorized)
 	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(unauthorized))
-	require.Equal(t, storepb.AuditLogSeverity_WARNING, mapSeverity(unauthorized))
+	require.Equal(t, storepb.AuditLogSeverity_WARNING, audit.MapSeverity(unauthorized))
 
-	tooLarge := auditErrorForHTTPStatus(http.StatusRequestEntityTooLarge)
+	tooLarge := audit.ErrorForHTTPStatus(http.StatusRequestEntityTooLarge)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(tooLarge))
 
-	serverErr := auditErrorForHTTPStatus(http.StatusInternalServerError)
+	serverErr := audit.ErrorForHTTPStatus(http.StatusInternalServerError)
 	require.Equal(t, connect.CodeInternal, connect.CodeOf(serverErr))
-	require.Equal(t, storepb.AuditLogSeverity_ERROR, mapSeverity(serverErr))
+	require.Equal(t, storepb.AuditLogSeverity_ERROR, audit.MapSeverity(serverErr))
 }
