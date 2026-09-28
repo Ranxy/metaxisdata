@@ -611,6 +611,15 @@ export declare type ListOpenLineageTasksRequest = Message<"metaxisdata.v1.ListOp
   pageToken: string;
 
   /**
+   * Case-insensitive substring matched against the job's name, namespace, type,
+   * integration, processing type and latest run id. The equality filters below
+   * each narrow one dimension; this is the free-text box.
+   *
+   * @generated from field: string search = 7;
+   */
+  search: string;
+
+  /**
    * @generated from field: string job_namespace = 3;
    */
   jobNamespace: string;
@@ -780,6 +789,15 @@ export declare type ListOpenLineageRunsRequest = Message<"metaxisdata.v1.ListOpe
   pageToken: string;
 
   /**
+   * Case-insensitive substring matched against the run's job name, namespace,
+   * run id, event type, producer and source. The equality filters below each
+   * narrow one dimension; this is the free-text box.
+   *
+   * @generated from field: string search = 9;
+   */
+  search: string;
+
+  /**
    * @generated from field: string job_namespace = 3;
    */
   jobNamespace: string;
@@ -855,6 +873,112 @@ export declare type GetOpenLineageRunRequest = Message<"metaxisdata.v1.GetOpenLi
  * Use `create(GetOpenLineageRunRequestSchema)` to create a new message.
  */
 export declare const GetOpenLineageRunRequestSchema: GenMessage<GetOpenLineageRunRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListOpenLineageFilterOptionsRequest
+ */
+export declare type ListOpenLineageFilterOptionsRequest = Message<"metaxisdata.v1.ListOpenLineageFilterOptionsRequest"> & {
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListOpenLineageFilterOptionsRequest.
+ * Use `create(ListOpenLineageFilterOptionsRequestSchema)` to create a new message.
+ */
+export declare const ListOpenLineageFilterOptionsRequestSchema: GenMessage<ListOpenLineageFilterOptionsRequest>;
+
+/**
+ * One filterable value and how many records carry it. Each list is ordered by
+ * that count and capped, so the values a reader is most likely to want come
+ * first and the answer stays bounded.
+ *
+ * @generated from message metaxisdata.v1.OpenLineageFilterOption
+ */
+export declare type OpenLineageFilterOption = Message<"metaxisdata.v1.OpenLineageFilterOption"> & {
+  /**
+   * @generated from field: string value = 1;
+   */
+  value: string;
+
+  /**
+   * @generated from field: int64 count = 2;
+   */
+  count: bigint;
+};
+
+/**
+ * Describes the message metaxisdata.v1.OpenLineageFilterOption.
+ * Use `create(OpenLineageFilterOptionSchema)` to create a new message.
+ */
+export declare const OpenLineageFilterOptionSchema: GenMessage<OpenLineageFilterOption>;
+
+/**
+ * @generated from message metaxisdata.v1.ListOpenLineageFilterOptionsResponse
+ */
+export declare type ListOpenLineageFilterOptionsResponse = Message<"metaxisdata.v1.ListOpenLineageFilterOptionsResponse"> & {
+  /**
+   * Job namespaces, from the runs the Jobs and Events pages list.
+   *
+   * @generated from field: repeated metaxisdata.v1.OpenLineageFilterOption job_namespaces = 1;
+   */
+  jobNamespaces: OpenLineageFilterOption[];
+
+  /**
+   * Job types, from the aggregated jobs the Jobs page lists.
+   *
+   * @generated from field: repeated metaxisdata.v1.OpenLineageFilterOption job_types = 2;
+   */
+  jobTypes: OpenLineageFilterOption[];
+
+  /**
+   * Event types, from the runs the Events page lists.
+   *
+   * @generated from field: repeated metaxisdata.v1.OpenLineageFilterOption event_types = 3;
+   */
+  eventTypes: OpenLineageFilterOption[];
+
+  /**
+   * Dataset namespaces, integrations and sources, from the runs that carry the
+   * inputs and outputs the Datasets page aggregates.
+   *
+   * @generated from field: repeated metaxisdata.v1.OpenLineageFilterOption dataset_namespaces = 4;
+   */
+  datasetNamespaces: OpenLineageFilterOption[];
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.OpenLineageFilterOption integrations = 5;
+   */
+  integrations: OpenLineageFilterOption[];
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.OpenLineageFilterOption sources = 6;
+   */
+  sources: OpenLineageFilterOption[];
+
+  /**
+   * Totals across the whole registry, for the index pages' summary cards. They
+   * are counted rather than summed over the capped lists above, so a workspace
+   * with more namespaces than the cap still reports the truth.
+   *
+   * @generated from field: int64 total_runs = 7;
+   */
+  totalRuns: bigint;
+
+  /**
+   * @generated from field: int64 total_jobs = 8;
+   */
+  totalJobs: bigint;
+
+  /**
+   * @generated from field: int64 total_job_namespaces = 9;
+   */
+  totalJobNamespaces: bigint;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListOpenLineageFilterOptionsResponse.
+ * Use `create(ListOpenLineageFilterOptionsResponseSchema)` to create a new message.
+ */
+export declare const ListOpenLineageFilterOptionsResponseSchema: GenMessage<ListOpenLineageFilterOptionsResponse>;
 
 /**
  * @generated from message metaxisdata.v1.CreateNamespaceMappingRequest
@@ -1182,6 +1306,18 @@ export declare const OpenLineageService: GenService<{
     methodKind: "unary";
     input: typeof GetOpenLineageRunRequestSchema;
     output: typeof OpenLineageRunSchema;
+  },
+  /**
+   * Lists the distinct values the OpenLineage index pages offer in their filter
+   * menus. Those pages page their tables from the server, so a menu built from
+   * the rows on screen would only ever offer the values of the current page.
+   *
+   * @generated from rpc metaxisdata.v1.OpenLineageService.ListOpenLineageFilterOptions
+   */
+  listOpenLineageFilterOptions: {
+    methodKind: "unary";
+    input: typeof ListOpenLineageFilterOptionsRequestSchema;
+    output: typeof ListOpenLineageFilterOptionsResponseSchema;
   },
   /**
    * @generated from rpc metaxisdata.v1.OpenLineageService.CreateNamespaceMapping

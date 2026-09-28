@@ -48,8 +48,12 @@ type FindOpenLineageTaskMessage struct {
 	JobName      *string
 	JobType      *string
 	LineageOnly  *bool
-	Limit        *int
-	Offset       *int
+	// Search matches the lowercased substring anywhere in the fields the job
+	// list shows, mirroring the free-text box the page used to filter with in
+	// the browser.
+	Search *string
+	Limit  *int
+	Offset *int
 }
 
 // openLineageTaskState is a task's stored aggregate, read while its row is
@@ -437,6 +441,15 @@ func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTa
 	}
 	if v := find.LineageOnly; v != nil && *v {
 		where = append(where, "task.lineage_run_count > 0")
+	}
+	// POSITION rather than ILIKE so a search string is a literal substring: the
+	// browser filter this replaces treated % and _ as ordinary characters.
+	if v := find.Search; v != nil {
+		where = append(where, fmt.Sprintf(
+			`POSITION(lower($%d) IN lower(concat_ws(' ', task.job_name, task.job_namespace, task.job_type, task.integration, task.processing_type, task.latest_run_id))) > 0`,
+			len(args)+1,
+		))
+		args = append(args, *v)
 	}
 
 	query := `

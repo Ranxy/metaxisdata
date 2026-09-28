@@ -44,6 +44,14 @@ service OpenLineageService {
     option (metaxisdata.v1.permission) = "metaxisdata.openlineage.read";
   }
 
+  // Lists the distinct values the OpenLineage index pages offer in their filter
+  // menus. Those pages page their tables from the server, so a menu built from
+  // the rows on screen would only ever offer the values of the current page.
+  rpc ListOpenLineageFilterOptions(ListOpenLineageFilterOptionsRequest) returns (ListOpenLineageFilterOptionsResponse) {
+    option (google.api.http) = {get: "/v1/openlineage/filterOptions"};
+    option (metaxisdata.v1.permission) = "metaxisdata.openlineage.read";
+  }
+
   rpc CreateNamespaceMapping(CreateNamespaceMappingRequest) returns (NamespaceMapping) {
     option (google.api.http) = {
       post: "/v1/openlineage/namespaceMappings"
@@ -252,6 +260,10 @@ message OpenLineageDatasetDetailResource {
 message ListOpenLineageTasksRequest {
   int32 page_size = 1;
   string page_token = 2;
+  // Case-insensitive substring matched against the job's name, namespace, type,
+  // integration, processing type and latest run id. The equality filters below
+  // each narrow one dimension; this is the free-text box.
+  string search = 7;
   string job_namespace = 3;
   string job_name = 4;
   string job_type = 5;
@@ -295,6 +307,10 @@ message GetOpenLineageTaskRequest {
 message ListOpenLineageRunsRequest {
   int32 page_size = 1;
   string page_token = 2;
+  // Case-insensitive substring matched against the run's job name, namespace,
+  // run id, event type, producer and source. The equality filters below each
+  // narrow one dimension; this is the free-text box.
+  string search = 9;
   string job_namespace = 3;
   string job_name = 4;
   string task_guid = 5;
@@ -315,6 +331,37 @@ message GetOpenLineageRunRequest {
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference) = {type: "metaxisdata/OpenLineageRun"}
   ];
+}
+
+message ListOpenLineageFilterOptionsRequest {}
+
+// One filterable value and how many records carry it. Each list is ordered by
+// that count and capped, so the values a reader is most likely to want come
+// first and the answer stays bounded.
+message OpenLineageFilterOption {
+  string value = 1;
+  int64 count = 2;
+}
+
+message ListOpenLineageFilterOptionsResponse {
+  // Job namespaces, from the runs the Jobs and Events pages list.
+  repeated OpenLineageFilterOption job_namespaces = 1;
+  // Job types, from the aggregated jobs the Jobs page lists.
+  repeated OpenLineageFilterOption job_types = 2;
+  // Event types, from the runs the Events page lists.
+  repeated OpenLineageFilterOption event_types = 3;
+  // Dataset namespaces, integrations and sources, from the runs that carry the
+  // inputs and outputs the Datasets page aggregates.
+  repeated OpenLineageFilterOption dataset_namespaces = 4;
+  repeated OpenLineageFilterOption integrations = 5;
+  repeated OpenLineageFilterOption sources = 6;
+
+  // Totals across the whole registry, for the index pages' summary cards. They
+  // are counted rather than summed over the capped lists above, so a workspace
+  // with more namespaces than the cap still reports the truth.
+  int64 total_runs = 7;
+  int64 total_jobs = 8;
+  int64 total_job_namespaces = 9;
 }
 
 message CreateNamespaceMappingRequest {

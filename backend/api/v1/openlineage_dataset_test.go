@@ -138,6 +138,20 @@ func TestFilterOpenLineageDatasets(t *testing.T) {
 	})
 	require.Len(t, filtered, 1)
 	assert.Equal(t, "exports/orders_snapshot", filtered[0].Name)
+
+	// The search box advertises integrations and sources, so a term that only
+	// appears in one of them has to match.
+	filtered = filterOpenLineageDatasets(datasets, &v1pb.ListOpenLineageDatasetsRequest{
+		Search: "dbt",
+	})
+	require.Len(t, filtered, 1)
+	assert.Equal(t, "exports/orders_snapshot", filtered[0].Name)
+
+	filtered = filterOpenLineageDatasets(datasets, &v1pb.ListOpenLineageDatasetsRequest{
+		Search: "SCHEDULER",
+	})
+	require.Len(t, filtered, 1)
+	assert.Equal(t, "public.orders", filtered[0].Name)
 }
 
 func TestBuildOpenLineageDatasetDetail(t *testing.T) {

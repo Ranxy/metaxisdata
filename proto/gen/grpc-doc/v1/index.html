@@ -1233,6 +1233,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ListOpenLineageFilterOptionsRequest"><span class="badge">M</span>ListOpenLineageFilterOptionsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListOpenLineageFilterOptionsResponse"><span class="badge">M</span>ListOpenLineageFilterOptionsResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ListOpenLineageRunsRequest"><span class="badge">M</span>ListOpenLineageRunsRequest</a>
                 </li>
               
@@ -1270,6 +1278,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.OpenLineageDatasetRunResource"><span class="badge">M</span>OpenLineageDatasetRunResource</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.OpenLineageFilterOption"><span class="badge">M</span>OpenLineageFilterOption</a>
                 </li>
               
                 <li>
@@ -12912,6 +12924,96 @@ Format: openlineage/tasks/{task} </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.ListOpenLineageFilterOptionsRequest">ListOpenLineageFilterOptionsRequest</h3>
+        <p></p>
+
+        
+
+        
+      
+        <h3 id="metaxisdata.v1.ListOpenLineageFilterOptionsResponse">ListOpenLineageFilterOptionsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>job_namespaces</td>
+                  <td><a href="#metaxisdata.v1.OpenLineageFilterOption">OpenLineageFilterOption</a></td>
+                  <td>repeated</td>
+                  <td><p>Job namespaces, from the runs the Jobs and Events pages list. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>job_types</td>
+                  <td><a href="#metaxisdata.v1.OpenLineageFilterOption">OpenLineageFilterOption</a></td>
+                  <td>repeated</td>
+                  <td><p>Job types, from the aggregated jobs the Jobs page lists. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>event_types</td>
+                  <td><a href="#metaxisdata.v1.OpenLineageFilterOption">OpenLineageFilterOption</a></td>
+                  <td>repeated</td>
+                  <td><p>Event types, from the runs the Events page lists. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>dataset_namespaces</td>
+                  <td><a href="#metaxisdata.v1.OpenLineageFilterOption">OpenLineageFilterOption</a></td>
+                  <td>repeated</td>
+                  <td><p>Dataset namespaces, integrations and sources, from the runs that carry the
+inputs and outputs the Datasets page aggregates. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>integrations</td>
+                  <td><a href="#metaxisdata.v1.OpenLineageFilterOption">OpenLineageFilterOption</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sources</td>
+                  <td><a href="#metaxisdata.v1.OpenLineageFilterOption">OpenLineageFilterOption</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total_runs</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>Totals across the whole registry, for the index pages&#39; summary cards. They
+are counted rather than summed over the capped lists above, so a workspace
+with more namespaces than the cap still reports the truth. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total_jobs</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total_job_namespaces</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.ListOpenLineageRunsRequest">ListOpenLineageRunsRequest</h3>
         <p></p>
 
@@ -12934,6 +13036,15 @@ Format: openlineage/tasks/{task} </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>search</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Case-insensitive substring matched against the run&#39;s job name, namespace,
+run id, event type, producer and source. The equality filters below each
+narrow one dimension; this is the free-text box. </p></td>
                 </tr>
               
                 <tr>
@@ -13038,6 +13149,15 @@ Format: openlineage/tasks/{task} </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>search</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Case-insensitive substring matched against the job&#39;s name, namespace, type,
+integration, processing type and latest run id. The equality filters below
+each narrow one dimension; this is the free-text box. </p></td>
                 </tr>
               
                 <tr>
@@ -13527,6 +13647,37 @@ Format: openlineage/namespaceMappings/{namespace_mapping} </p></td>
                 <tr>
                   <td>writes_dataset</td>
                   <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.OpenLineageFilterOption">OpenLineageFilterOption</h3>
+        <p>One filterable value and how many records carry it. Each list is ordered by</p><p>that count and capped, so the values a reader is most likely to want come</p><p>first and the answer stays bounded.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>value</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>count</td>
+                  <td><a href="#int64">int64</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -14067,6 +14218,15 @@ are updated; `database_name` is always written so it can be cleared. </p></td>
               </tr>
             
               <tr>
+                <td>ListOpenLineageFilterOptions</td>
+                <td><a href="#metaxisdata.v1.ListOpenLineageFilterOptionsRequest">ListOpenLineageFilterOptionsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListOpenLineageFilterOptionsResponse">ListOpenLineageFilterOptionsResponse</a></td>
+                <td><p>Lists the distinct values the OpenLineage index pages offer in their filter
+menus. Those pages page their tables from the server, so a menu built from
+the rows on screen would only ever offer the values of the current page.</p></td>
+              </tr>
+            
+              <tr>
                 <td>CreateNamespaceMapping</td>
                 <td><a href="#metaxisdata.v1.CreateNamespaceMappingRequest">CreateNamespaceMappingRequest</a></td>
                 <td><a href="#metaxisdata.v1.NamespaceMapping">NamespaceMapping</a></td>
@@ -14189,6 +14349,16 @@ are updated; `database_name` is always written so it can be cleared. </p></td>
                 <td>GetOpenLineageRun</td>
                 <td>GET</td>
                 <td>/v1/{name=openlineage/runs/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListOpenLineageFilterOptions</td>
+                <td>GET</td>
+                <td>/v1/openlineage/filterOptions</td>
                 <td></td>
               </tr>
               

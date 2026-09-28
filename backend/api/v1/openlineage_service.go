@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"strings"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
@@ -56,6 +57,9 @@ func (s *OpenLineageService) ListOpenLineageTasks(ctx context.Context, req *conn
 	if req.Msg.GetLineageOnly() {
 		lineageOnly := true
 		find.LineageOnly = &lineageOnly
+	}
+	if search := strings.TrimSpace(req.Msg.GetSearch()); search != "" {
+		find.Search = &search
 	}
 
 	list, err := s.store.ListOpenLineageTask(ctx, find)
@@ -130,6 +134,9 @@ func (s *OpenLineageService) ListOpenLineageRuns(ctx context.Context, req *conne
 	if req.Msg.GetHasLineage() {
 		hasLineage := true
 		find.HasLineage = &hasLineage
+	}
+	if search := strings.TrimSpace(req.Msg.GetSearch()); search != "" {
+		find.Search = &search
 	}
 
 	list, err := s.store.ListOpenLineageRun(ctx, find)

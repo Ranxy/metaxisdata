@@ -52,6 +52,9 @@ const (
 	// OpenLineageServiceGetOpenLineageRunProcedure is the fully-qualified name of the
 	// OpenLineageService's GetOpenLineageRun RPC.
 	OpenLineageServiceGetOpenLineageRunProcedure = "/metaxisdata.v1.OpenLineageService/GetOpenLineageRun"
+	// OpenLineageServiceListOpenLineageFilterOptionsProcedure is the fully-qualified name of the
+	// OpenLineageService's ListOpenLineageFilterOptions RPC.
+	OpenLineageServiceListOpenLineageFilterOptionsProcedure = "/metaxisdata.v1.OpenLineageService/ListOpenLineageFilterOptions"
 	// OpenLineageServiceCreateNamespaceMappingProcedure is the fully-qualified name of the
 	// OpenLineageService's CreateNamespaceMapping RPC.
 	OpenLineageServiceCreateNamespaceMappingProcedure = "/metaxisdata.v1.OpenLineageService/CreateNamespaceMapping"
@@ -83,6 +86,10 @@ type OpenLineageServiceClient interface {
 	GetOpenLineageTask(context.Context, *connect.Request[v1.GetOpenLineageTaskRequest]) (*connect.Response[v1.OpenLineageTask], error)
 	ListOpenLineageRuns(context.Context, *connect.Request[v1.ListOpenLineageRunsRequest]) (*connect.Response[v1.ListOpenLineageRunsResponse], error)
 	GetOpenLineageRun(context.Context, *connect.Request[v1.GetOpenLineageRunRequest]) (*connect.Response[v1.OpenLineageRun], error)
+	// Lists the distinct values the OpenLineage index pages offer in their filter
+	// menus. Those pages page their tables from the server, so a menu built from
+	// the rows on screen would only ever offer the values of the current page.
+	ListOpenLineageFilterOptions(context.Context, *connect.Request[v1.ListOpenLineageFilterOptionsRequest]) (*connect.Response[v1.ListOpenLineageFilterOptionsResponse], error)
 	CreateNamespaceMapping(context.Context, *connect.Request[v1.CreateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMapping], error)
 	ListNamespaceMappings(context.Context, *connect.Request[v1.ListNamespaceMappingsRequest]) (*connect.Response[v1.ListNamespaceMappingsResponse], error)
 	UpdateNamespaceMapping(context.Context, *connect.Request[v1.UpdateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMapping], error)
@@ -139,6 +146,12 @@ func NewOpenLineageServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(openLineageServiceMethods.ByName("GetOpenLineageRun")),
 			connect.WithClientOptions(opts...),
 		),
+		listOpenLineageFilterOptions: connect.NewClient[v1.ListOpenLineageFilterOptionsRequest, v1.ListOpenLineageFilterOptionsResponse](
+			httpClient,
+			baseURL+OpenLineageServiceListOpenLineageFilterOptionsProcedure,
+			connect.WithSchema(openLineageServiceMethods.ByName("ListOpenLineageFilterOptions")),
+			connect.WithClientOptions(opts...),
+		),
 		createNamespaceMapping: connect.NewClient[v1.CreateNamespaceMappingRequest, v1.NamespaceMapping](
 			httpClient,
 			baseURL+OpenLineageServiceCreateNamespaceMappingProcedure,
@@ -186,19 +199,20 @@ func NewOpenLineageServiceClient(httpClient connect.HTTPClient, baseURL string, 
 
 // openLineageServiceClient implements OpenLineageServiceClient.
 type openLineageServiceClient struct {
-	listOpenLineageTasks    *connect.Client[v1.ListOpenLineageTasksRequest, v1.ListOpenLineageTasksResponse]
-	listOpenLineageDatasets *connect.Client[v1.ListOpenLineageDatasetsRequest, v1.ListOpenLineageDatasetsResponse]
-	getOpenLineageDataset   *connect.Client[v1.GetOpenLineageDatasetRequest, v1.OpenLineageDatasetDetailResource]
-	getOpenLineageTask      *connect.Client[v1.GetOpenLineageTaskRequest, v1.OpenLineageTask]
-	listOpenLineageRuns     *connect.Client[v1.ListOpenLineageRunsRequest, v1.ListOpenLineageRunsResponse]
-	getOpenLineageRun       *connect.Client[v1.GetOpenLineageRunRequest, v1.OpenLineageRun]
-	createNamespaceMapping  *connect.Client[v1.CreateNamespaceMappingRequest, v1.NamespaceMapping]
-	listNamespaceMappings   *connect.Client[v1.ListNamespaceMappingsRequest, v1.ListNamespaceMappingsResponse]
-	updateNamespaceMapping  *connect.Client[v1.UpdateNamespaceMappingRequest, v1.NamespaceMapping]
-	deleteNamespaceMapping  *connect.Client[v1.DeleteNamespaceMappingRequest, emptypb.Empty]
-	createAPIKey            *connect.Client[v1.CreateAPIKeyRequest, v1.CreateAPIKeyResponse]
-	listAPIKeys             *connect.Client[v1.ListAPIKeysRequest, v1.ListAPIKeysResponse]
-	revokeAPIKey            *connect.Client[v1.RevokeAPIKeyRequest, emptypb.Empty]
+	listOpenLineageTasks         *connect.Client[v1.ListOpenLineageTasksRequest, v1.ListOpenLineageTasksResponse]
+	listOpenLineageDatasets      *connect.Client[v1.ListOpenLineageDatasetsRequest, v1.ListOpenLineageDatasetsResponse]
+	getOpenLineageDataset        *connect.Client[v1.GetOpenLineageDatasetRequest, v1.OpenLineageDatasetDetailResource]
+	getOpenLineageTask           *connect.Client[v1.GetOpenLineageTaskRequest, v1.OpenLineageTask]
+	listOpenLineageRuns          *connect.Client[v1.ListOpenLineageRunsRequest, v1.ListOpenLineageRunsResponse]
+	getOpenLineageRun            *connect.Client[v1.GetOpenLineageRunRequest, v1.OpenLineageRun]
+	listOpenLineageFilterOptions *connect.Client[v1.ListOpenLineageFilterOptionsRequest, v1.ListOpenLineageFilterOptionsResponse]
+	createNamespaceMapping       *connect.Client[v1.CreateNamespaceMappingRequest, v1.NamespaceMapping]
+	listNamespaceMappings        *connect.Client[v1.ListNamespaceMappingsRequest, v1.ListNamespaceMappingsResponse]
+	updateNamespaceMapping       *connect.Client[v1.UpdateNamespaceMappingRequest, v1.NamespaceMapping]
+	deleteNamespaceMapping       *connect.Client[v1.DeleteNamespaceMappingRequest, emptypb.Empty]
+	createAPIKey                 *connect.Client[v1.CreateAPIKeyRequest, v1.CreateAPIKeyResponse]
+	listAPIKeys                  *connect.Client[v1.ListAPIKeysRequest, v1.ListAPIKeysResponse]
+	revokeAPIKey                 *connect.Client[v1.RevokeAPIKeyRequest, emptypb.Empty]
 }
 
 // ListOpenLineageTasks calls metaxisdata.v1.OpenLineageService.ListOpenLineageTasks.
@@ -229,6 +243,12 @@ func (c *openLineageServiceClient) ListOpenLineageRuns(ctx context.Context, req 
 // GetOpenLineageRun calls metaxisdata.v1.OpenLineageService.GetOpenLineageRun.
 func (c *openLineageServiceClient) GetOpenLineageRun(ctx context.Context, req *connect.Request[v1.GetOpenLineageRunRequest]) (*connect.Response[v1.OpenLineageRun], error) {
 	return c.getOpenLineageRun.CallUnary(ctx, req)
+}
+
+// ListOpenLineageFilterOptions calls
+// metaxisdata.v1.OpenLineageService.ListOpenLineageFilterOptions.
+func (c *openLineageServiceClient) ListOpenLineageFilterOptions(ctx context.Context, req *connect.Request[v1.ListOpenLineageFilterOptionsRequest]) (*connect.Response[v1.ListOpenLineageFilterOptionsResponse], error) {
+	return c.listOpenLineageFilterOptions.CallUnary(ctx, req)
 }
 
 // CreateNamespaceMapping calls metaxisdata.v1.OpenLineageService.CreateNamespaceMapping.
@@ -274,6 +294,10 @@ type OpenLineageServiceHandler interface {
 	GetOpenLineageTask(context.Context, *connect.Request[v1.GetOpenLineageTaskRequest]) (*connect.Response[v1.OpenLineageTask], error)
 	ListOpenLineageRuns(context.Context, *connect.Request[v1.ListOpenLineageRunsRequest]) (*connect.Response[v1.ListOpenLineageRunsResponse], error)
 	GetOpenLineageRun(context.Context, *connect.Request[v1.GetOpenLineageRunRequest]) (*connect.Response[v1.OpenLineageRun], error)
+	// Lists the distinct values the OpenLineage index pages offer in their filter
+	// menus. Those pages page their tables from the server, so a menu built from
+	// the rows on screen would only ever offer the values of the current page.
+	ListOpenLineageFilterOptions(context.Context, *connect.Request[v1.ListOpenLineageFilterOptionsRequest]) (*connect.Response[v1.ListOpenLineageFilterOptionsResponse], error)
 	CreateNamespaceMapping(context.Context, *connect.Request[v1.CreateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMapping], error)
 	ListNamespaceMappings(context.Context, *connect.Request[v1.ListNamespaceMappingsRequest]) (*connect.Response[v1.ListNamespaceMappingsResponse], error)
 	UpdateNamespaceMapping(context.Context, *connect.Request[v1.UpdateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMapping], error)
@@ -324,6 +348,12 @@ func NewOpenLineageServiceHandler(svc OpenLineageServiceHandler, opts ...connect
 		OpenLineageServiceGetOpenLineageRunProcedure,
 		svc.GetOpenLineageRun,
 		connect.WithSchema(openLineageServiceMethods.ByName("GetOpenLineageRun")),
+		connect.WithHandlerOptions(opts...),
+	)
+	openLineageServiceListOpenLineageFilterOptionsHandler := connect.NewUnaryHandler(
+		OpenLineageServiceListOpenLineageFilterOptionsProcedure,
+		svc.ListOpenLineageFilterOptions,
+		connect.WithSchema(openLineageServiceMethods.ByName("ListOpenLineageFilterOptions")),
 		connect.WithHandlerOptions(opts...),
 	)
 	openLineageServiceCreateNamespaceMappingHandler := connect.NewUnaryHandler(
@@ -382,6 +412,8 @@ func NewOpenLineageServiceHandler(svc OpenLineageServiceHandler, opts ...connect
 			openLineageServiceListOpenLineageRunsHandler.ServeHTTP(w, r)
 		case OpenLineageServiceGetOpenLineageRunProcedure:
 			openLineageServiceGetOpenLineageRunHandler.ServeHTTP(w, r)
+		case OpenLineageServiceListOpenLineageFilterOptionsProcedure:
+			openLineageServiceListOpenLineageFilterOptionsHandler.ServeHTTP(w, r)
 		case OpenLineageServiceCreateNamespaceMappingProcedure:
 			openLineageServiceCreateNamespaceMappingHandler.ServeHTTP(w, r)
 		case OpenLineageServiceListNamespaceMappingsProcedure:
@@ -427,6 +459,10 @@ func (UnimplementedOpenLineageServiceHandler) ListOpenLineageRuns(context.Contex
 
 func (UnimplementedOpenLineageServiceHandler) GetOpenLineageRun(context.Context, *connect.Request[v1.GetOpenLineageRunRequest]) (*connect.Response[v1.OpenLineageRun], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.OpenLineageService.GetOpenLineageRun is not implemented"))
+}
+
+func (UnimplementedOpenLineageServiceHandler) ListOpenLineageFilterOptions(context.Context, *connect.Request[v1.ListOpenLineageFilterOptionsRequest]) (*connect.Response[v1.ListOpenLineageFilterOptionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.OpenLineageService.ListOpenLineageFilterOptions is not implemented"))
 }
 
 func (UnimplementedOpenLineageServiceHandler) CreateNamespaceMapping(context.Context, *connect.Request[v1.CreateNamespaceMappingRequest]) (*connect.Response[v1.NamespaceMapping], error) {

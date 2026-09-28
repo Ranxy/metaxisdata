@@ -20,19 +20,20 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	OpenLineageService_ListOpenLineageTasks_FullMethodName    = "/metaxisdata.v1.OpenLineageService/ListOpenLineageTasks"
-	OpenLineageService_ListOpenLineageDatasets_FullMethodName = "/metaxisdata.v1.OpenLineageService/ListOpenLineageDatasets"
-	OpenLineageService_GetOpenLineageDataset_FullMethodName   = "/metaxisdata.v1.OpenLineageService/GetOpenLineageDataset"
-	OpenLineageService_GetOpenLineageTask_FullMethodName      = "/metaxisdata.v1.OpenLineageService/GetOpenLineageTask"
-	OpenLineageService_ListOpenLineageRuns_FullMethodName     = "/metaxisdata.v1.OpenLineageService/ListOpenLineageRuns"
-	OpenLineageService_GetOpenLineageRun_FullMethodName       = "/metaxisdata.v1.OpenLineageService/GetOpenLineageRun"
-	OpenLineageService_CreateNamespaceMapping_FullMethodName  = "/metaxisdata.v1.OpenLineageService/CreateNamespaceMapping"
-	OpenLineageService_ListNamespaceMappings_FullMethodName   = "/metaxisdata.v1.OpenLineageService/ListNamespaceMappings"
-	OpenLineageService_UpdateNamespaceMapping_FullMethodName  = "/metaxisdata.v1.OpenLineageService/UpdateNamespaceMapping"
-	OpenLineageService_DeleteNamespaceMapping_FullMethodName  = "/metaxisdata.v1.OpenLineageService/DeleteNamespaceMapping"
-	OpenLineageService_CreateAPIKey_FullMethodName            = "/metaxisdata.v1.OpenLineageService/CreateAPIKey"
-	OpenLineageService_ListAPIKeys_FullMethodName             = "/metaxisdata.v1.OpenLineageService/ListAPIKeys"
-	OpenLineageService_RevokeAPIKey_FullMethodName            = "/metaxisdata.v1.OpenLineageService/RevokeAPIKey"
+	OpenLineageService_ListOpenLineageTasks_FullMethodName         = "/metaxisdata.v1.OpenLineageService/ListOpenLineageTasks"
+	OpenLineageService_ListOpenLineageDatasets_FullMethodName      = "/metaxisdata.v1.OpenLineageService/ListOpenLineageDatasets"
+	OpenLineageService_GetOpenLineageDataset_FullMethodName        = "/metaxisdata.v1.OpenLineageService/GetOpenLineageDataset"
+	OpenLineageService_GetOpenLineageTask_FullMethodName           = "/metaxisdata.v1.OpenLineageService/GetOpenLineageTask"
+	OpenLineageService_ListOpenLineageRuns_FullMethodName          = "/metaxisdata.v1.OpenLineageService/ListOpenLineageRuns"
+	OpenLineageService_GetOpenLineageRun_FullMethodName            = "/metaxisdata.v1.OpenLineageService/GetOpenLineageRun"
+	OpenLineageService_ListOpenLineageFilterOptions_FullMethodName = "/metaxisdata.v1.OpenLineageService/ListOpenLineageFilterOptions"
+	OpenLineageService_CreateNamespaceMapping_FullMethodName       = "/metaxisdata.v1.OpenLineageService/CreateNamespaceMapping"
+	OpenLineageService_ListNamespaceMappings_FullMethodName        = "/metaxisdata.v1.OpenLineageService/ListNamespaceMappings"
+	OpenLineageService_UpdateNamespaceMapping_FullMethodName       = "/metaxisdata.v1.OpenLineageService/UpdateNamespaceMapping"
+	OpenLineageService_DeleteNamespaceMapping_FullMethodName       = "/metaxisdata.v1.OpenLineageService/DeleteNamespaceMapping"
+	OpenLineageService_CreateAPIKey_FullMethodName                 = "/metaxisdata.v1.OpenLineageService/CreateAPIKey"
+	OpenLineageService_ListAPIKeys_FullMethodName                  = "/metaxisdata.v1.OpenLineageService/ListAPIKeys"
+	OpenLineageService_RevokeAPIKey_FullMethodName                 = "/metaxisdata.v1.OpenLineageService/RevokeAPIKey"
 )
 
 // OpenLineageServiceClient is the client API for OpenLineageService service.
@@ -45,6 +46,10 @@ type OpenLineageServiceClient interface {
 	GetOpenLineageTask(ctx context.Context, in *GetOpenLineageTaskRequest, opts ...grpc.CallOption) (*OpenLineageTask, error)
 	ListOpenLineageRuns(ctx context.Context, in *ListOpenLineageRunsRequest, opts ...grpc.CallOption) (*ListOpenLineageRunsResponse, error)
 	GetOpenLineageRun(ctx context.Context, in *GetOpenLineageRunRequest, opts ...grpc.CallOption) (*OpenLineageRun, error)
+	// Lists the distinct values the OpenLineage index pages offer in their filter
+	// menus. Those pages page their tables from the server, so a menu built from
+	// the rows on screen would only ever offer the values of the current page.
+	ListOpenLineageFilterOptions(ctx context.Context, in *ListOpenLineageFilterOptionsRequest, opts ...grpc.CallOption) (*ListOpenLineageFilterOptionsResponse, error)
 	CreateNamespaceMapping(ctx context.Context, in *CreateNamespaceMappingRequest, opts ...grpc.CallOption) (*NamespaceMapping, error)
 	ListNamespaceMappings(ctx context.Context, in *ListNamespaceMappingsRequest, opts ...grpc.CallOption) (*ListNamespaceMappingsResponse, error)
 	UpdateNamespaceMapping(ctx context.Context, in *UpdateNamespaceMappingRequest, opts ...grpc.CallOption) (*NamespaceMapping, error)
@@ -116,6 +121,16 @@ func (c *openLineageServiceClient) GetOpenLineageRun(ctx context.Context, in *Ge
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(OpenLineageRun)
 	err := c.cc.Invoke(ctx, OpenLineageService_GetOpenLineageRun_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *openLineageServiceClient) ListOpenLineageFilterOptions(ctx context.Context, in *ListOpenLineageFilterOptionsRequest, opts ...grpc.CallOption) (*ListOpenLineageFilterOptionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListOpenLineageFilterOptionsResponse)
+	err := c.cc.Invoke(ctx, OpenLineageService_ListOpenLineageFilterOptions_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -202,6 +217,10 @@ type OpenLineageServiceServer interface {
 	GetOpenLineageTask(context.Context, *GetOpenLineageTaskRequest) (*OpenLineageTask, error)
 	ListOpenLineageRuns(context.Context, *ListOpenLineageRunsRequest) (*ListOpenLineageRunsResponse, error)
 	GetOpenLineageRun(context.Context, *GetOpenLineageRunRequest) (*OpenLineageRun, error)
+	// Lists the distinct values the OpenLineage index pages offer in their filter
+	// menus. Those pages page their tables from the server, so a menu built from
+	// the rows on screen would only ever offer the values of the current page.
+	ListOpenLineageFilterOptions(context.Context, *ListOpenLineageFilterOptionsRequest) (*ListOpenLineageFilterOptionsResponse, error)
 	CreateNamespaceMapping(context.Context, *CreateNamespaceMappingRequest) (*NamespaceMapping, error)
 	ListNamespaceMappings(context.Context, *ListNamespaceMappingsRequest) (*ListNamespaceMappingsResponse, error)
 	UpdateNamespaceMapping(context.Context, *UpdateNamespaceMappingRequest) (*NamespaceMapping, error)
@@ -236,6 +255,9 @@ func (UnimplementedOpenLineageServiceServer) ListOpenLineageRuns(context.Context
 }
 func (UnimplementedOpenLineageServiceServer) GetOpenLineageRun(context.Context, *GetOpenLineageRunRequest) (*OpenLineageRun, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetOpenLineageRun not implemented")
+}
+func (UnimplementedOpenLineageServiceServer) ListOpenLineageFilterOptions(context.Context, *ListOpenLineageFilterOptionsRequest) (*ListOpenLineageFilterOptionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListOpenLineageFilterOptions not implemented")
 }
 func (UnimplementedOpenLineageServiceServer) CreateNamespaceMapping(context.Context, *CreateNamespaceMappingRequest) (*NamespaceMapping, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateNamespaceMapping not implemented")
@@ -383,6 +405,24 @@ func _OpenLineageService_GetOpenLineageRun_Handler(srv interface{}, ctx context.
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(OpenLineageServiceServer).GetOpenLineageRun(ctx, req.(*GetOpenLineageRunRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OpenLineageService_ListOpenLineageFilterOptions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOpenLineageFilterOptionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OpenLineageServiceServer).ListOpenLineageFilterOptions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OpenLineageService_ListOpenLineageFilterOptions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OpenLineageServiceServer).ListOpenLineageFilterOptions(ctx, req.(*ListOpenLineageFilterOptionsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -543,6 +583,10 @@ var OpenLineageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetOpenLineageRun",
 			Handler:    _OpenLineageService_GetOpenLineageRun_Handler,
+		},
+		{
+			MethodName: "ListOpenLineageFilterOptions",
+			Handler:    _OpenLineageService_ListOpenLineageFilterOptions_Handler,
 		},
 		{
 			MethodName: "CreateNamespaceMapping",

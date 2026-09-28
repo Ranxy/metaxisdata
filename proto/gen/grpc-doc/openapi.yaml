@@ -2400,6 +2400,28 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/openlineage/filterOptions:
+        get:
+            tags:
+                - OpenLineageService
+            description: |-
+                Lists the distinct values the OpenLineage index pages offer in their filter
+                 menus. Those pages page their tables from the server, so a menu built from
+                 the rows on screen would only ever offer the values of the current page.
+            operationId: OpenLineageService_ListOpenLineageFilterOptions
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListOpenLineageFilterOptionsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/openlineage/namespaceMappings:
         get:
             tags:
@@ -2456,6 +2478,14 @@ paths:
                   in: query
                   schema:
                     type: string
+                - name: search
+                  in: query
+                  description: |-
+                    Case-insensitive substring matched against the run's job name, namespace,
+                     run id, event type, producer and source. The equality filters below each
+                     narrow one dimension; this is the free-text box.
+                  schema:
+                    type: string
                 - name: jobNamespace
                   in: query
                   schema:
@@ -2506,6 +2536,14 @@ paths:
                     format: int32
                 - name: pageToken
                   in: query
+                  schema:
+                    type: string
+                - name: search
+                  in: query
+                  description: |-
+                    Case-insensitive substring matched against the job's name, namespace, type,
+                     integration, processing type and latest run id. The equality filters below
+                     each narrow one dimension; this is the free-text box.
                   schema:
                     type: string
                 - name: jobNamespace
@@ -5020,6 +5058,49 @@ components:
                         $ref: '#/components/schemas/OpenLineageDatasetResource'
                 nextPageToken:
                     type: string
+        ListOpenLineageFilterOptionsResponse:
+            type: object
+            properties:
+                jobNamespaces:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OpenLineageFilterOption'
+                    description: Job namespaces, from the runs the Jobs and Events pages list.
+                jobTypes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OpenLineageFilterOption'
+                    description: Job types, from the aggregated jobs the Jobs page lists.
+                eventTypes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OpenLineageFilterOption'
+                    description: Event types, from the runs the Events page lists.
+                datasetNamespaces:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OpenLineageFilterOption'
+                    description: |-
+                        Dataset namespaces, integrations and sources, from the runs that carry the
+                         inputs and outputs the Datasets page aggregates.
+                integrations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OpenLineageFilterOption'
+                sources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OpenLineageFilterOption'
+                totalRuns:
+                    type: string
+                    description: |-
+                        Totals across the whole registry, for the index pages' summary cards. They
+                         are counted rather than summed over the capped lists above, so a workspace
+                         with more namespaces than the cap still reports the truth.
+                totalJobs:
+                    type: string
+                totalJobNamespaces:
+                    type: string
         ListOpenLineageRunsResponse:
             type: object
             properties:
@@ -5691,6 +5772,17 @@ components:
                     type: boolean
                 writesDataset:
                     type: boolean
+        OpenLineageFilterOption:
+            type: object
+            properties:
+                value:
+                    type: string
+                count:
+                    type: string
+            description: |-
+                One filterable value and how many records carry it. Each list is ordered by
+                 that count and capped, so the values a reader is most likely to want come
+                 first and the answer stays bounded.
         OpenLineageRun:
             type: object
             properties:

@@ -277,6 +277,8 @@
     - [ListNamespaceMappingsResponse](#metaxisdata-v1-ListNamespaceMappingsResponse)
     - [ListOpenLineageDatasetsRequest](#metaxisdata-v1-ListOpenLineageDatasetsRequest)
     - [ListOpenLineageDatasetsResponse](#metaxisdata-v1-ListOpenLineageDatasetsResponse)
+    - [ListOpenLineageFilterOptionsRequest](#metaxisdata-v1-ListOpenLineageFilterOptionsRequest)
+    - [ListOpenLineageFilterOptionsResponse](#metaxisdata-v1-ListOpenLineageFilterOptionsResponse)
     - [ListOpenLineageRunsRequest](#metaxisdata-v1-ListOpenLineageRunsRequest)
     - [ListOpenLineageRunsResponse](#metaxisdata-v1-ListOpenLineageRunsResponse)
     - [ListOpenLineageTasksRequest](#metaxisdata-v1-ListOpenLineageTasksRequest)
@@ -287,6 +289,7 @@
     - [OpenLineageDatasetJobResource](#metaxisdata-v1-OpenLineageDatasetJobResource)
     - [OpenLineageDatasetResource](#metaxisdata-v1-OpenLineageDatasetResource)
     - [OpenLineageDatasetRunResource](#metaxisdata-v1-OpenLineageDatasetRunResource)
+    - [OpenLineageFilterOption](#metaxisdata-v1-OpenLineageFilterOption)
     - [OpenLineageRun](#metaxisdata-v1-OpenLineageRun)
     - [OpenLineageTask](#metaxisdata-v1-OpenLineageTask)
     - [RevokeAPIKeyRequest](#metaxisdata-v1-RevokeAPIKeyRequest)
@@ -4567,6 +4570,39 @@ the SPA consent page needs.
 
 
 
+<a name="metaxisdata-v1-ListOpenLineageFilterOptionsRequest"></a>
+
+### ListOpenLineageFilterOptionsRequest
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListOpenLineageFilterOptionsResponse"></a>
+
+### ListOpenLineageFilterOptionsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| job_namespaces | [OpenLineageFilterOption](#metaxisdata-v1-OpenLineageFilterOption) | repeated | Job namespaces, from the runs the Jobs and Events pages list. |
+| job_types | [OpenLineageFilterOption](#metaxisdata-v1-OpenLineageFilterOption) | repeated | Job types, from the aggregated jobs the Jobs page lists. |
+| event_types | [OpenLineageFilterOption](#metaxisdata-v1-OpenLineageFilterOption) | repeated | Event types, from the runs the Events page lists. |
+| dataset_namespaces | [OpenLineageFilterOption](#metaxisdata-v1-OpenLineageFilterOption) | repeated | Dataset namespaces, integrations and sources, from the runs that carry the inputs and outputs the Datasets page aggregates. |
+| integrations | [OpenLineageFilterOption](#metaxisdata-v1-OpenLineageFilterOption) | repeated |  |
+| sources | [OpenLineageFilterOption](#metaxisdata-v1-OpenLineageFilterOption) | repeated |  |
+| total_runs | [int64](#int64) |  | Totals across the whole registry, for the index pages&#39; summary cards. They are counted rather than summed over the capped lists above, so a workspace with more namespaces than the cap still reports the truth. |
+| total_jobs | [int64](#int64) |  |  |
+| total_job_namespaces | [int64](#int64) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ListOpenLineageRunsRequest"></a>
 
 ### ListOpenLineageRunsRequest
@@ -4577,6 +4613,7 @@ the SPA consent page needs.
 | ----- | ---- | ----- | ----------- |
 | page_size | [int32](#int32) |  |  |
 | page_token | [string](#string) |  |  |
+| search | [string](#string) |  | Case-insensitive substring matched against the run&#39;s job name, namespace, run id, event type, producer and source. The equality filters below each narrow one dimension; this is the free-text box. |
 | job_namespace | [string](#string) |  |  |
 | job_name | [string](#string) |  |  |
 | task_guid | [string](#string) |  |  |
@@ -4615,6 +4652,7 @@ the SPA consent page needs.
 | ----- | ---- | ----- | ----------- |
 | page_size | [int32](#int32) |  |  |
 | page_token | [string](#string) |  |  |
+| search | [string](#string) |  | Case-insensitive substring matched against the job&#39;s name, namespace, type, integration, processing type and latest run id. The equality filters below each narrow one dimension; this is the free-text box. |
 | job_namespace | [string](#string) |  |  |
 | job_name | [string](#string) |  |  |
 | job_type | [string](#string) |  |  |
@@ -4772,6 +4810,24 @@ the SPA consent page needs.
 
 
 
+<a name="metaxisdata-v1-OpenLineageFilterOption"></a>
+
+### OpenLineageFilterOption
+One filterable value and how many records carry it. Each list is ordered by
+that count and capped, so the values a reader is most likely to want come
+first and the answer stays bounded.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| value | [string](#string) |  |  |
+| count | [int64](#int64) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-OpenLineageRun"></a>
 
 ### OpenLineageRun
@@ -4913,6 +4969,7 @@ the SPA consent page needs.
 | GetOpenLineageTask | [GetOpenLineageTaskRequest](#metaxisdata-v1-GetOpenLineageTaskRequest) | [OpenLineageTask](#metaxisdata-v1-OpenLineageTask) |  |
 | ListOpenLineageRuns | [ListOpenLineageRunsRequest](#metaxisdata-v1-ListOpenLineageRunsRequest) | [ListOpenLineageRunsResponse](#metaxisdata-v1-ListOpenLineageRunsResponse) |  |
 | GetOpenLineageRun | [GetOpenLineageRunRequest](#metaxisdata-v1-GetOpenLineageRunRequest) | [OpenLineageRun](#metaxisdata-v1-OpenLineageRun) |  |
+| ListOpenLineageFilterOptions | [ListOpenLineageFilterOptionsRequest](#metaxisdata-v1-ListOpenLineageFilterOptionsRequest) | [ListOpenLineageFilterOptionsResponse](#metaxisdata-v1-ListOpenLineageFilterOptionsResponse) | Lists the distinct values the OpenLineage index pages offer in their filter menus. Those pages page their tables from the server, so a menu built from the rows on screen would only ever offer the values of the current page. |
 | CreateNamespaceMapping | [CreateNamespaceMappingRequest](#metaxisdata-v1-CreateNamespaceMappingRequest) | [NamespaceMapping](#metaxisdata-v1-NamespaceMapping) |  |
 | ListNamespaceMappings | [ListNamespaceMappingsRequest](#metaxisdata-v1-ListNamespaceMappingsRequest) | [ListNamespaceMappingsResponse](#metaxisdata-v1-ListNamespaceMappingsResponse) |  |
 | UpdateNamespaceMapping | [UpdateNamespaceMappingRequest](#metaxisdata-v1-UpdateNamespaceMappingRequest) | [NamespaceMapping](#metaxisdata-v1-NamespaceMapping) |  |

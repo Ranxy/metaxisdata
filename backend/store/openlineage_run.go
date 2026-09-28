@@ -76,8 +76,12 @@ type FindOpenLineageRunMessage struct {
 	JobType      *string
 	EventType    *string
 	HasLineage   *bool
-	Limit        *int
-	Offset       *int
+	// Search matches the lowercased substring anywhere in the fields the run
+	// list shows, mirroring the free-text box the page used to filter with in
+	// the browser.
+	Search *string
+	Limit  *int
+	Offset *int
 }
 
 // UpsertOpenLineageRun persists a COMPLETE OpenLineage run and mirrors it into meta_registry_resource.
@@ -365,6 +369,15 @@ func (s *Store) ListOpenLineageRun(ctx context.Context, find *FindOpenLineageRun
 		} else {
 			where = append(where, "has_lineage = FALSE")
 		}
+	}
+	// POSITION rather than ILIKE so a search string is a literal substring: the
+	// browser filter this replaces treated % and _ as ordinary characters.
+	if v := find.Search; v != nil {
+		where = append(where, fmt.Sprintf(
+			`POSITION(lower($%d) IN lower(concat_ws(' ', job_name, job_namespace, run_id, event_type, producer, source))) > 0`,
+			len(args)+1,
+		))
+		args = append(args, *v)
 	}
 
 	query := `

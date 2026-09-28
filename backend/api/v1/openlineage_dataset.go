@@ -586,11 +586,16 @@ func filterOpenLineageDatasets(datasets []*openLineageDatasetAggregate, req *v1p
 		default:
 		}
 		if query != "" {
+			// The search box advertises integrations and sources, and the list
+			// shows both, so they belong in the haystack alongside the identity
+			// fields.
 			haystack := strings.ToLower(strings.Join([]string{
 				dataset.Name,
 				dataset.Namespace,
 				dataset.DatasetType,
 				dataset.ResolvedTarget,
+				strings.Join(dataset.Integrations, " "),
+				strings.Join(dataset.Sources, " "),
 			}, " "))
 			if !strings.Contains(haystack, query) {
 				continue
