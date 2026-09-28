@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 )
@@ -157,6 +158,17 @@ func RedirectWithCode(w http.ResponseWriter, r *http.Request, redirectURI, code,
 // ErrRedirectURINotRegistered is returned when an authorization request names a
 // redirect URI the client did not register. The caller must not redirect.
 var ErrRedirectURINotRegistered = errors.New("the redirect_uri is not registered for this client")
+
+// deniedRequest returns the request when the user denied it, which is what lets
+// the completion endpoint answer with the RFC 6749 `access_denied` error instead
+// of leaving the client waiting for a redirect.
+func deniedRequest(requests *state.OAuthAuthorizationRequestStore, requestID string, userID int, now time.Time) *state.OAuthAuthorizationRequest {
+	record, err := requests.Get(requestID, userID, now)
+	if err != nil || record.State != state.OAuthAuthorizationDenied {
+		return nil
+	}
+	return &record
+}
 
 // authorizationRequest is a validated /oauth/authorize request.
 type authorizationRequest struct {
@@ -309,10 +321,17 @@ func (s *Server) CompletionHandler() http.Handler {
 			http.Redirect(w, r, signInURL(endpoints, r.URL.RequestURI()), http.StatusFound)
 			return
 		}
-		completed, err := s.config.State.OAuthAuthorizationRequestStore.Complete(r.URL.Query().Get("request_id"), user.ID, s.now())
+		requestID := r.URL.Query().Get("request_id")
+		requests := s.config.State.OAuthAuthorizationRequestStore
+		completed, err := requests.Complete(requestID, user.ID, s.now())
 		if err != nil {
-			// The redirect target is only known once the store hands the finished
-			// request back, so this failure cannot be reported by redirecting.
+			// A denial is not a dead end: RFC 6749 has the authorization server
+			// tell the client, so it stops waiting for a callback that will never
+			// come. Anything else has no target to redirect to and is rendered here.
+			if denied := deniedRequest(requests, requestID, user.ID, s.now()); denied != nil {
+				RedirectWithError(w, r, denied.RedirectURI, denied.ClientState, "access_denied", "the request was denied")
+				return
+			}
 			writeBrowserError(w, http.StatusBadRequest, "invalid_request", "the authorization request was not approved, or is no longer valid")
 			return
 		}

@@ -48,6 +48,7 @@ type mcpClients struct {
 	oauth    v1connect.OAuthServiceClient
 	database v1connect.DatabaseServiceClient
 	user     v1connect.UserServiceClient
+	audit    v1connect.AuditLogServiceClient
 }
 
 func newMCPClients(env *integrationenv.ServiceEnv, token string) *mcpClients {
@@ -60,6 +61,7 @@ func newMCPClients(env *integrationenv.ServiceEnv, token string) *mcpClients {
 		oauth:    v1connect.NewOAuthServiceClient(httpClient, env.BaseURL),
 		database: v1connect.NewDatabaseServiceClient(httpClient, env.BaseURL),
 		user:     v1connect.NewUserServiceClient(httpClient, env.BaseURL),
+		audit:    v1connect.NewAuditLogServiceClient(httpClient, env.BaseURL),
 	}
 }
 
@@ -204,6 +206,34 @@ func TestMCPAuthorizationAndToolsRealServerIntegration(t *testing.T) {
 		instances, err := session.CallTool(ctx, &mcpsdk.CallToolParams{Name: "list_instances", Arguments: map[string]any{}})
 		require.NoError(t, err)
 		require.False(t, instances.IsError, "list_instances failed: %s", toolText(t, instances))
+	})
+
+	t.Run("a denied request tells the client", func(t *testing.T) {
+		deniedID := authorize(t, protocol, env.BaseURL, resource, clientID, adminToken, challenge)
+		denyRequest(ctx, t, admin, deniedID)
+
+		status, header, _ := rawRequest(t, protocol, http.MethodGet, env.BaseURL+"/oauth/authorize/complete?request_id="+url.QueryEscape(deniedID), adminToken, "", "", "")
+		require.Equal(t, http.StatusFound, status)
+		location, err := url.Parse(header.Get("Location"))
+		require.NoError(t, err)
+		require.Equal(t, "access_denied", location.Query().Get("error"), "the client must stop waiting for a callback")
+		require.Equal(t, "state-1", location.Query().Get("state"))
+	})
+
+	t.Run("a tool call leaves an audit row", func(t *testing.T) {
+		// The tools subtest ran a call; the permanent ledger is the only place
+		// that says so, and the ConnectRPC read baseline is not audited at all.
+		logs, err := admin.audit.ListAuditLogs(ctx, connect.NewRequest(&v1pb.ListAuditLogsRequest{
+			Parent:   "workspaces/-",
+			PageSize: 1000,
+		}))
+		require.NoError(t, err)
+
+		methods := map[string]bool{}
+		for _, entry := range logs.Msg.GetAuditLogs() {
+			methods[entry.GetMethod()] = true
+		}
+		require.True(t, methods["mcp/tools/call:whoami"], "the tool call must be in the ledger")
 	})
 
 	t.Run("turning the switch off closes the surface", func(t *testing.T) {
@@ -376,6 +406,17 @@ func approveRequest(ctx context.Context, t *testing.T, admin *mcpClients, reques
 	_, err := admin.oauth.ApproveOAuthAuthorizationRequest(ctx, connect.NewRequest(&v1pb.ApproveOAuthAuthorizationRequestRequest{
 		Name:    "oauthAuthorizationRequests/" + requestID,
 		Approve: true,
+	}))
+	require.NoError(t, err)
+}
+
+// denyRequest records the other decision.
+func denyRequest(ctx context.Context, t *testing.T, admin *mcpClients, requestID string) {
+	t.Helper()
+
+	_, err := admin.oauth.ApproveOAuthAuthorizationRequest(ctx, connect.NewRequest(&v1pb.ApproveOAuthAuthorizationRequestRequest{
+		Name:    "oauthAuthorizationRequests/" + requestID,
+		Approve: false,
 	}))
 	require.NoError(t, err)
 }
