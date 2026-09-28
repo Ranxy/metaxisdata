@@ -13,6 +13,25 @@ registry is what the lineage runner actually analyzed.
 flags. This skill is the agent-facing condensation: the rules that decide
 whether a call works, and the shapes to parse. `mxd skill show` prints it.
 
+## If your environment offers metaxisdata's MCP tools
+
+A deployment may also serve the same capabilities over the Model Context Protocol
+(`/mcp`), which an MCP-capable harness uses instead of shelling out. Prefer those
+tools when they are available; the three rules below still decide whether a call
+works, with two differences worth knowing:
+
+- **The scope is a tool argument.** `analyze_sql` takes
+  `scopes: [{instance, database, schema?}]` rather than reading
+  `METAXISDATA_SCOPES`. Omitting it is not guessed at: the tool answers with the
+  databases that exist so you can pick one.
+- **Objects are addressed by name.** The tools take
+  `{instance, database, schema?, name}` and resolve it server-side, so there is no
+  GUID to copy — though a `guid` from an earlier result still works.
+
+The error envelope (`code`, `message`, `hint`, and candidates for a name that was
+unknown or ambiguous) and the partial-analysis reporting are the same contract
+described below.
+
 ## The three rules that decide success
 
 ### 1. Signing in needs a human

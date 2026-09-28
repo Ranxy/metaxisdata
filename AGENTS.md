@@ -9,6 +9,7 @@ This file is the router: it holds only rules that apply across the whole reposit
 | `backend/` — Go server | [backend/AGENTS.md](backend/AGENTS.md) |
 | `backend/plugin/lineage/` — lineage analyzers | [backend/plugin/lineage/AGENTS.md](backend/plugin/lineage/AGENTS.md) |
 | `backend/migrator/` — schema and migrations | [backend/migrator/AGENTS.md](backend/migrator/AGENTS.md) |
+| `backend/mcp/` — the MCP resource server | [backend/mcp/AGENTS.md](backend/mcp/AGENTS.md) |
 | `frontend/` — Vue 3 SPA | [frontend/AGENTS.md](frontend/AGENTS.md) |
 | `proto/` — ConnectRPC and store schemas | [proto/AGENTS.md](proto/AGENTS.md) |
 | `cli/` — the `mxd` client | [cli/AGENTS.md](cli/AGENTS.md) |
@@ -24,8 +25,9 @@ Product surface (routes in `frontend/src/router/index.ts`, sidebar in `frontend/
 - **Lineage** — table lineage graph and column-level lineage, analyzed from view/materialized-view SQL and from OpenLineage.
 - **OpenLineage** — Overview / Jobs / Datasets / Events, namespace mapping, API keys, Airflow links.
 - **Explain SQL** — LLM-assisted SQL explanation scoped to selected metadata, with caching.
-- **Settings** — users, audit logs, LLM providers, OpenLineage ingestion.
+- **Settings** — users, audit logs, LLM providers, OpenLineage ingestion, and the `mcp_enabled` switch.
 - **Device** — the `/device` page approves a command line client's device login.
+- **MCP** — when `mcp_enabled` is on, `/mcp` serves the registry as read-only tools over the Model Context Protocol, and the same server is the OAuth 2.1 authorization server those clients register and authorize against (`/oauth/consent` is the page that records a user's decision).
 
 Feature design documents live in `spec/` (product/UX specs) and `plan/` (implementation plans). Read the matching doc before reworking one of these subsystems, and add one there for new subsystem-scale features.
 
@@ -71,4 +73,7 @@ These look like defects but were chosen knowingly. Read [docs/security-posture.m
 - **gRPC reflection is anonymous.**
 - **Destructive schema sync is log-only** — no shrink threshold or confirmation flag.
 - **`audit_log` and `meta_registry_resource_history` are kept forever.**
+- **The MCP surface is off by default and its tokens are bound to `/mcp`** — enabling it needs `external_url`, and changing that address invalidates outstanding MCP tokens.
+- **Every MCP tool call is audited, reads included** — a remote entry point a model drives, recorded in the permanent ledger.
+- **OAuth pending state is process-local and no refresh token is issued** — the same replica must see an approval and its completion, and an expired token means running the flow again.
 - **Reverse-proxy contract** — cookie writes trust `Origin`/`Sec-Fetch-Site`; audit trusts `X-Forwarded-For` only from `--trusted-proxies`.

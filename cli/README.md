@@ -131,6 +131,12 @@ upgrade is how a machine picks up new wording.
 `mxd skill show` prints the same document as JSON, for a harness that would
 rather capture it than read it from a file.
 
+The skill also covers the case where the deployment serves the same capabilities
+over the Model Context Protocol: an MCP-capable harness should use those tools
+instead of shelling out. The rules are the same, with the analysis scope passed as
+a tool argument rather than read from `METAXISDATA_SCOPES`, and objects addressed
+by name rather than by GUID.
+
 `mxd config show` is the way to answer "which configuration is this process
 actually using": it reports every effective value together with the layer it
 came from (`flag`, `env:...`, `file:...`, or `none`).
