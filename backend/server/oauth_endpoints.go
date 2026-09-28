@@ -40,7 +40,11 @@ func oauthEndpointMiddleware(trustedProxies []string) echo.MiddlewareFunc {
 			if ip := audit.BuildRequestMetadata(c.Request().Header, c.Request().RemoteAddr, trustedProxies).GetIp(); ip != "" {
 				return ip, nil
 			}
-			return c.RealIP(), nil
+			// net/http always fills RemoteAddr, so this is unreachable in practice;
+			// if it ever is reached, one shared bucket is the safe answer. Echo's
+			// RealIP would read X-Forwarded-For unconditionally, which is a header
+			// a caller can write.
+			return "unknown", nil
 		},
 		DenyHandler: func(c echo.Context, _ string, _ error) error {
 			return c.JSON(http.StatusTooManyRequests, map[string]string{

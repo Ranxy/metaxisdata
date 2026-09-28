@@ -271,8 +271,11 @@ func configureGrpcRouters(
 	// RFC 9728 also defines the path-insertion form; clients try both.
 	e.GET("/.well-known/oauth-protected-resource/*", echo.WrapHandler(oauth.ProtectedResourceHandler(stores)))
 	e.GET("/.well-known/oauth-authorization-server", echo.WrapHandler(oauth.AuthServerMetadataHandler(stores)))
-	e.GET("/oauth/authorize", echo.WrapHandler(oauthServer.Audited(oauthServer.AuthorizeHandler())))
-	e.GET("/oauth/authorize/complete", echo.WrapHandler(oauthServer.Audited(oauthServer.CompletionHandler())))
+	// The browser flow is anonymous by design (the user may not be signed in yet)
+	// and each request reads or writes the pending-request store, so it carries the
+	// same ceiling as the endpoints that mint credentials.
+	e.GET("/oauth/authorize", echo.WrapHandler(oauthServer.Audited(oauthServer.AuthorizeHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
+	e.GET("/oauth/authorize/complete", echo.WrapHandler(oauthServer.Audited(oauthServer.CompletionHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
 	e.POST("/oauth/token", echo.WrapHandler(oauthServer.Audited(oauthServer.TokenHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
 	e.POST("/oauth/register", echo.WrapHandler(oauthServer.Audited(oauth.RegisterHandler(stores))), oauthEndpointMiddleware(profile.TrustedProxies))
 
