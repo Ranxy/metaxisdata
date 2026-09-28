@@ -28,6 +28,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/config"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
+	"github.com/Ranxy/metaxisdata/backend/mcp"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -274,6 +275,26 @@ func configureGrpcRouters(
 	e.GET("/oauth/authorize/complete", echo.WrapHandler(oauthServer.Audited(oauthServer.CompletionHandler())))
 	e.POST("/oauth/token", echo.WrapHandler(oauthServer.Audited(oauthServer.TokenHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
 	e.POST("/oauth/register", echo.WrapHandler(oauthServer.Audited(oauth.RegisterHandler(stores))), oauthEndpointMiddleware(profile.TrustedProxies))
+
+	// The MCP endpoint itself. Stateless, so it keeps no session and works behind
+	// a load balancer, and wrapped in the standard library's cross-origin
+	// protection: the SDK applies none by default, and a page that can post here
+	// with a client's token would be a cross-site tool execution. The tools call
+	// the same service instances the ConnectRPC API mounts, so a tool and its RPC
+	// cannot answer differently.
+	mcpServer := mcp.NewServer(mcp.Config{
+		Instances:      instanceService,
+		Databases:      databaseService,
+		Lineage:        lineageService,
+		Principals:     userService,
+		Checker:        iamManager,
+		Stores:         stores,
+		TrustedProxies: profile.TrustedProxies,
+		Endpoints:      oauth.WorkspaceEndpoints(stores),
+	})
+	mcpHandler := http.NewCrossOriginProtection().Handler(mcpServer.Handler(tokenAuthenticator))
+	e.Any("/mcp", echo.WrapHandler(mcpHandler))
+	e.Any("/mcp/*", echo.WrapHandler(mcpHandler))
 
 	e.Any("/v1/*", echo.WrapHandler(mux))
 

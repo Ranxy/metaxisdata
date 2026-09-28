@@ -392,14 +392,17 @@ e.Any("/mcp*", echo.WrapHandler(auth.RequireBearerToken(verifyMCPToken, opts)(mc
 6. **接线**:`backend/server/grpc_routes.go` 挂 4 个协议端点 + 2 个元数据端点,`backend/server/oauth_endpoints.go` 给匿名端点加按 trusted-proxy 解析 IP 的限流与超时;`backend/api/oauth/audit.go` 给每个协议端点写一条审计行(severity 由状态码推出,actor/client 经 request context 传出;码与令牌永不入审计)。
 7. **未做(属后续阶段)**:`/mcp` 端点本身(Phase 4)、确认页(Phase 5)、端到端集成测试(Phase 6)。
 
-### Phase 4 — MCP 资源服务器
+### Phase 4 — MCP 资源服务器(进行中)
 
-1. `backend/mcp`:工具表(进程内调用 `backend/api/v1` 的 handler 方法)、`object_ref` 解析器(含候选错误)、投影渲染器、`ServerOptions.Instructions`、`guide.md` prompt。
-2. **工具用 raw handler + 只写 `StructuredContent`**(不设 `Content`);`ProtocolVersion < 2025-06-18` 时额外附一个紧凑文本副本(Phase 0 结论 #3/#6)。
-3. 权限适配 + 逐次审计 + 错误信封;守卫测试(工具↔RPC 权限一致、只读子集、投影字段稳定、**线上只有一份载荷**)。
-4. 挂载 `/mcp`(无状态 + `RequireBearerToken` + 标准库跨域保护包裹 + 开关 gate)。
-5. 工具单测:SDK `NewInMemoryTransports` 起真 server + 真 client,配 `httptest` 假后端,覆盖正常路径、分页、寻址歧义、`scope_required`(带候选)、`permission_denied`、401/403。
-6. 视客户端表现决定是否包一层补 `error="insufficient_scope"`(Phase 0 结论 #4)。
+1. **架构(已写)**:`backend/mcp/server.go` 定义 4 个 reader 接口(方法签名就是生成的 handler 签名,所以 `*apiv1.InstanceService` 等**结构化满足**,而测试可以换成假实现)、`PermissionChecker`、`Config`、`NewServer`(注册工具 + 指引 prompt)、`dispatch`(身份 → 权限 → 调用 → 审计的唯一入口)与 `Handler(tokens)`。
+2. **工具表(子代理实现中)**:`backend/mcp/ref.go`(objectRef 名字寻址 + 候选错误 + `storedMetadataName`)、`backend/mcp/tool.go`(9 个工具:list_instances / list_databases / search_metadata / list_metadata / get_metadata / get_ddl / analyze_sql / get_lineage_graph / whoami)、`guide.go` + `guide.md`(MCP prompt)。
+3. **只发一份载荷**:raw `Server.AddTool` + 显式 InputSchema,工具自己解析 `Arguments`;`dispatch` 只写 `StructuredContent`。**与计划的一个偏差**:不做"`ProtocolVersion < 2025-06-18` 时补文本副本"——现在没有低于该版本的客户端,而 Phase 0 已证明版本可读,真需要时是一行分支;这记在这里以免被当成遗漏。
+4. **错误与权限**:`backend/mcp/errors.go` 的错误信封(`code`/`message`/`hint`/`details` 沿用 CLI 词表 + `ambiguous`);`dispatch` 统一把工具错误渲染成 `isError` 结果;权限失败也是工具错误(模型应看到并转述),传输层失败才是 HTTP 401/403。
+5. **守卫测试(已写)**:`backend/mcp/tool_guard_test.go` 读每个工具的 `RPC` 字段,从 protoregistry 取该方法的 `permission` 注解并要求与工具声明**完全相等**、且必须落在只读权限白名单内;无注解方法(`GetCurrentUser`)单列白名单并要求其工具不带权限。它复刻了 `acl_interceptor_test.go` 的思路,让"MCP 是只读子集"成为可执行断言。
+6. **挂载(已写)**:`Handler(tokens)` 把工作区开关(关闭→404)、bearer 校验(无状态 + scope 校验 + 时钟偏移)与 streamable 传输组合起来;`grpc_routes.go` 用标准库 `http.NewCrossOriginProtection()` 包裹后挂到 `/mcp` 与 `/mcp/*`。
+   - **挑战头由我们补全**:SDK 的中间件在构造时只取一次 `resource_metadata` URL(而它来自可变的 `external_url`),且不写 RFC 6750 的 `error` 参数。所以中间件只加 `scope`,由 `challengeWriter` 在 401/403 上按**当前**设置写全 `Bearer resource_metadata="…", scope="…", error="invalid_token|insufficient_scope"`。这同时收掉了 Phase 0 结论 #4 记录的那处偏差。
+   - 传输选项:`Stateless: true`,`JSONResponse: true`(每个工具都是请求-响应,事件流只会多一条要测要超时的通道),`MaxRequestBodyBytes: 2 MiB`。
+7. **测试**:工具逻辑与寻址用假 reader 做 hermetic 测试(子代理);协议层与真实 HTTP 路径(401/403 挑战、`tools/list`、`tools/call`、开关 404)留给 Phase 6 集成测试。
 
 ### Phase 5 — 前端
 

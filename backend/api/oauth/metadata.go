@@ -8,6 +8,10 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
+// ProtectedResourcePath is where the RFC 9728 document is served. Clients also
+// try the path-insertion form, which the router mounts as well.
+const ProtectedResourcePath = "/.well-known/oauth-protected-resource"
+
 // EndpointsFunc reports the deployment's identifiers and whether the MCP surface
 // is enabled at all. Handlers take one instead of reaching for the settings
 // themselves, so a handler can be exercised without a database.

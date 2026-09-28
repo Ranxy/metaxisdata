@@ -19,6 +19,11 @@ import (
 // IAM check runs against the same record.
 const userExtraKey = "metaxisdata.user"
 
+// peerExtraKey carries the client address the verifier saw. The tool layer needs
+// it for the audit row, and the verifier is the only place that still holds the
+// HTTP request: by the time a tool runs, only RequestExtra survives.
+const peerExtraKey = "metaxisdata.peer"
+
 // EndpointsFunc is the OAuth package's resolver type, aliased here because the
 // verifier is wired from the same place the protocol endpoints are.
 type EndpointsFunc = oauth.EndpointsFunc
@@ -33,7 +38,7 @@ type EndpointsFunc = oauth.EndpointsFunc
 // else — which is exactly what a second, ad-hoc verification path would have
 // missed.
 func NewTokenVerifier(endpoints EndpointsFunc, tokens *auth.TokenAuthenticator) sdkauth.TokenVerifier {
-	return func(ctx context.Context, token string, _ *http.Request) (*sdkauth.TokenInfo, error) {
+	return func(ctx context.Context, token string, request *http.Request) (*sdkauth.TokenInfo, error) {
 		resolved, enabled, err := endpoints(ctx)
 		if err != nil || !enabled {
 			return nil, sdkauth.ErrInvalidToken
@@ -49,9 +54,38 @@ func NewTokenVerifier(endpoints EndpointsFunc, tokens *auth.TokenAuthenticator) 
 			UserID:     strconv.Itoa(user.ID),
 			Scopes:     identity.Scopes,
 			Expiration: identity.ExpiresAt,
-			Extra:      map[string]any{userExtraKey: user},
+			Extra: map[string]any{
+				userExtraKey: user,
+				peerExtraKey: requestPeerAddress(request),
+			},
 		}, nil
 	}
+}
+
+// requestPeerAddress is the address the request came from, or empty when the
+// transport did not carry one.
+func requestPeerAddress(request *http.Request) string {
+	if request == nil {
+		return ""
+	}
+	return request.RemoteAddr
+}
+
+// PeerAddress returns the client address the verifier saw for a tool call, which
+// is what the audit row resolves against the trusted-proxy rules.
+func PeerAddress(request *mcpsdk.CallToolRequest) string {
+	if request == nil {
+		return ""
+	}
+	extra := request.GetExtra()
+	if extra == nil || extra.TokenInfo == nil {
+		return ""
+	}
+	address, ok := extra.TokenInfo.Extra[peerExtraKey].(string)
+	if !ok {
+		return ""
+	}
+	return address
 }
 
 // UserFromTokenInfo returns the principal the verifier resolved, if any.
