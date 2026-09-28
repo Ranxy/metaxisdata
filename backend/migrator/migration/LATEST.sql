@@ -484,6 +484,34 @@ ALTER SEQUENCE llm_debug_log_id_seq RESTART WITH 101;
 CREATE INDEX idx_llm_debug_log_created_at ON llm_debug_log(created_at);
 
 
+-- oauth_client stores RFC 7591 dynamic client registrations for the MCP OAuth
+-- 2.1 authorization server. A registration is a governance object -- "which
+-- application has connected to this workspace" -- so it survives a restart,
+-- unlike the process-local pending authorization requests.
+--
+-- client_id is the unique public identifier; the surrogate id is internal. The
+-- column names follow the table conventions here: created_at, and last_used_at
+-- as in openlineage_api_key. token_endpoint_auth_method stores what the
+-- registration requested; only public clients ('none') are accepted today, and
+-- the endpoint rather than a CHECK constraint enforces that.
+--
+-- redirect_uris is a JSON array of strings. It is deliberately not bound to a
+-- proto/store message (see the column comment at the end of this file): there
+-- is no message for a bare string list, and the value is server-built like
+-- explain_sql_cache.explanation_json.
+CREATE TABLE IF NOT EXISTS oauth_client (
+    id BIGSERIAL PRIMARY KEY,
+    client_id TEXT NOT NULL,
+    client_name TEXT NOT NULL DEFAULT '',
+    redirect_uris JSONB NOT NULL,
+    token_endpoint_auth_method TEXT NOT NULL DEFAULT 'none',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_used_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_client_client_id ON oauth_client(client_id);
+
+
 -- schema_migration_history records every applied schema version, one row per
 -- migration (and one baseline row for a fresh install). It is the version
 -- ledger the migrator (backend/migrator) reads to decide which incremental
@@ -510,5 +538,6 @@ COMMENT ON COLUMN meta_registry_resource_history.metadata IS 'Stored as StoredMe
 COMMENT ON COLUMN audit_log.payload IS 'Stored as AuditLog (proto/store/store/audit_log.proto)';
 COMMENT ON COLUMN llm_provider_profile.metadata IS 'Stored as LlmProviderProfile (proto/store/store/llm.proto)';
 COMMENT ON COLUMN explain_sql_cache.explanation_json IS 'Server-built JSON ({summary, sections}); not a proto message.';
+COMMENT ON COLUMN oauth_client.redirect_uris IS 'Server-built JSON (array of strings); not a proto message.';
 COMMENT ON COLUMN openlineage_api_key.key_digest IS 'SHA-256 hex digest of the plaintext key for lookup; key_hash (bcrypt) decides acceptance.';
 COMMENT ON COLUMN openlineage_api_key.scope_namespace IS 'OpenLineage namespace this key is scoped to; empty means unrestricted.';
