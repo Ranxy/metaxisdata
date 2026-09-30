@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -158,25 +159,26 @@ func TestPostgresLineageDeletedWhenViewDroppedRealServerIntegration(t *testing.T
 	env.SyncDatabase(ctx, t, databaseName)
 
 	viewType := storepb.MetaType_VIEW
-	require.Eventually(t, func() bool {
+	var (
+		metaLeft    bool
+		lineageLeft int
+	)
+	dropped := assert.Eventually(t, func() bool {
 		meta, err := env.Store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &viewGUID, ObjectType: &viewType})
 		if err != nil {
 			return false
 		}
-		if meta != nil {
-			return false
-		}
+		metaLeft = meta != nil
 
 		lineages, err := env.Store.ListColumnLineage(ctx, &store.FindColumnLineageMessage{MetaGUID: &viewGUID, MetaType: &viewType})
 		if err != nil {
 			return false
 		}
-		if len(lineages) != 0 {
-			return false
-		}
+		lineageLeft = len(lineages)
 
-		return true
+		return !metaLeft && lineageLeft == 0
 	}, 20*time.Second, 500*time.Millisecond)
+	require.Truef(t, dropped, "the dropped view still has a meta row=%t and %d lineage rows", metaLeft, lineageLeft)
 
 	historical, err := env.Store.GetMetaRegistryAsOf(ctx, &store.FindMetaRegistryResourceMessage{GUID: &viewGUID, ObjectType: &viewType}, asOfBeforeDrop)
 	require.NoError(t, err)
@@ -438,6 +440,12 @@ WHERE datname = '%s' AND pid <> pg_backend_pid();
 
 	databaseName := common.FormatDatabase(instanceID, sourceDatabase)
 	_ = env.EnsureDatabaseVisible(ctx, t, instance.GetName(), sourceDatabase)
+	// Sync the fixture through the per-database call instead of leaving it to the
+	// instance-wide pass. That pass is a 10 second ticker that discovers every
+	// database on the shared server, and the per-instance limit of 10 connections
+	// makes it drop some of them until its next tick, so waiting for this
+	// database's objects races the rest of the suite.
+	env.SyncDatabase(ctx, t, databaseName)
 	return env, ctx, instanceID, sourceDatabase, databaseName
 }
 
@@ -508,10 +516,11 @@ func quotePostgresStringLiteral(name string) string {
 func waitForMetaGUIDByName(ctx context.Context, t *testing.T, env *integrationenv.ServiceEnv, guidPrefix string, metaType storepb.MetaType, name string) string {
 	t.Helper()
 
-	var guid string
-
-	var availableGUIDs []string
-	require.Eventually(t, func() bool {
+	var (
+		guid           string
+		availableGUIDs []string
+	)
+	found := assert.Eventually(t, func() bool {
 		availableGUIDs = availableGUIDs[:0]
 		resources, err := env.Store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{
 			GUIDPrefix: &guidPrefix,
@@ -528,7 +537,8 @@ func waitForMetaGUIDByName(ctx context.Context, t *testing.T, env *integrationen
 			}
 		}
 		return false
-	}, 15*time.Second, 500*time.Millisecond, "meta not found for prefix=%s type=%s name=%s available=%v", guidPrefix, metaType.String(), name, availableGUIDs)
+	}, 15*time.Second, 500*time.Millisecond)
+	require.Truef(t, found, "meta not found for prefix=%s type=%s name=%s available=%v", guidPrefix, metaType.String(), name, availableGUIDs)
 	return guid
 }
 

@@ -22,6 +22,7 @@ import (
 	// Register the MySQL driver for direct setup and mutation SQL used by the integration harness.
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -30,6 +31,7 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/migrator"
@@ -565,23 +567,85 @@ func (e *ServiceEnv) EnsureDatabaseVisible(ctx context.Context, t *testing.T, in
 	return database
 }
 
-// SyncDatabase syncs a single database and waits until the sync timestamp advances.
+// SyncDatabase syncs a single database and waits until a sync that the request
+// itself caused has landed.
+//
+// A schema sync is single-flight per database, so a request that arrives while
+// another sync of the same database is running is coalesced into it and returns
+// its result. That running sync may have written its timestamp before this
+// request was made, and - worse for a caller that just changed the schema - may
+// have read the schema before that change. Two rounds settle both: the second
+// request cannot be coalesced into the first round's sync, because the first
+// round only ends after the timestamp that proves it finished is visible.
 func (e *ServiceEnv) SyncDatabase(ctx context.Context, t *testing.T, databaseName string) *v1pb.Database {
 	t.Helper()
 
-	triggerTime := time.Now()
-	_, err := e.databaseClient.SyncDatabase(ctx, authorizedRequest(e.token, &v1pb.SyncDatabaseRequest{Name: databaseName}))
-	require.NoError(t, err)
+	var (
+		database *v1pb.Database
+		lastSync string
+		lastErr  error
+	)
+	for round := 1; round <= 2; round++ {
+		synced := assert.Eventually(t, func() bool {
+			triggerTime := time.Now()
+			if _, err := e.databaseClient.SyncDatabase(ctx, authorizedRequest(e.token, &v1pb.SyncDatabaseRequest{Name: databaseName})); err != nil {
+				lastErr = err
+				return false
+			}
+			lastErr = nil
 
-	var database *v1pb.Database
-	require.Eventually(t, func() bool {
-		database = e.getDatabaseByFullName(ctx, t, databaseName)
-		if database == nil || database.SuccessfulSyncTime == nil {
-			return false
+			database = e.getDatabaseByFullName(ctx, t, databaseName)
+			lastSync = "none"
+			if syncTime := database.GetSuccessfulSyncTime(); syncTime != nil {
+				lastSync = syncTime.AsTime().UTC().Format(time.RFC3339Nano)
+			}
+			if database == nil || database.SuccessfulSyncTime == nil {
+				return false
+			}
+			return !database.SuccessfulSyncTime.AsTime().Before(triggerTime)
+		}, databaseSyncTimeout, 500*time.Millisecond)
+		if !synced {
+			// Built here rather than handed to Eventuallyf: testify formats that
+			// message before the wait starts, so it would describe the state the
+			// wait began in instead of the one it gave up on.
+			require.Failf(t, "database never reported a sync",
+				"database %s never reported a sync after a request (round %d): lastErr=%v found=%t state=%s successfulSyncTime=%s stored=%s",
+				databaseName, round, lastErr, database != nil,
+				database.GetState().String(), lastSync, e.describeHiddenDatabase(ctx, databaseName))
 		}
-		return !database.SuccessfulSyncTime.AsTime().Before(triggerTime)
-	}, databaseSyncTimeout, 500*time.Millisecond)
+	}
 	return database
+}
+
+// describeHiddenDatabase separates the two reasons the list API can hide a
+// database row - the row itself is soft-deleted, or its instance is - from the
+// row being absent. A sync that timed out cannot tell those apart otherwise.
+func (e *ServiceEnv) describeHiddenDatabase(ctx context.Context, fullDatabaseName string) string {
+	instanceName, databaseName, err := splitDatabaseName(fullDatabaseName)
+	if err != nil {
+		return "unparsable name"
+	}
+	instanceID := strings.TrimPrefix(instanceName, "instances/")
+	rows, err := e.Store.ListDatabases(ctx, &store.FindDatabaseMessage{
+		InstanceID:   &instanceID,
+		DatabaseName: &databaseName,
+		ShowDeleted:  true,
+	})
+	if err != nil {
+		return "database read failed: " + err.Error()
+	}
+	if len(rows) == 0 {
+		return "no database row at all"
+	}
+	instance, err := e.Store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &instanceID, ShowDeleted: true})
+	switch {
+	case err != nil:
+		return fmt.Sprintf("database deleted=%t, instance read failed: %v", rows[0].Deleted, err)
+	case instance == nil:
+		return fmt.Sprintf("database deleted=%t, no instance row", rows[0].Deleted)
+	default:
+		return fmt.Sprintf("database deleted=%t, instance deleted=%t", rows[0].Deleted, instance.Deleted)
+	}
 }
 
 // SyncDatabaseRaw calls SyncDatabase and returns its error instead of failing
@@ -611,7 +675,7 @@ func (e *ServiceEnv) WaitForContextLineage(ctx context.Context, t *testing.T, gu
 
 	var relations []*v1pb.LineageRelation
 	var lastErr error
-	require.Eventuallyf(t, func() bool {
+	ready := assert.Eventually(t, func() bool {
 		list, err := e.fetchContextLineage(ctx, guid, metaType)
 		if err != nil {
 			lastErr = err
@@ -620,8 +684,44 @@ func (e *ServiceEnv) WaitForContextLineage(ctx context.Context, t *testing.T, gu
 		lastErr = nil
 		relations = list
 		return predicate(relations)
-	}, lineageWaitTimeout, time.Second, "lineage not ready for guid=%s metaType=%s lastErr=%v relations=%v", guid, metaType.String(), lastErr, relations)
+	}, lineageWaitTimeout, time.Second)
+	if !ready {
+		// The state is reported here, not through Eventuallyf's message: testify
+		// formats that one before the wait starts.
+		require.Failf(t, "lineage never became ready",
+			"guid=%s metaType=%s lastErr=%v relations=%v analysis=%s",
+			guid, metaType.String(), lastErr, relations, e.describeAnalysis(ctx, guid, metaType))
+	}
 	return relations
+}
+
+// describeAnalysis reports what the analyzer recorded for an object, so a wait
+// for its lineage can say whether the analysis never ran, failed, or ran and
+// produced nothing.
+func (e *ServiceEnv) describeAnalysis(ctx context.Context, guid string, metaType v1pb.MetaType) string {
+	storeType := storepb.MetaType(metaType)
+	version, err := e.Store.GetColumnLineageVersion(ctx, guid, storeType)
+	if err != nil {
+		return "version read failed: " + err.Error()
+	}
+	if version == nil {
+		return "never analyzed"
+	}
+	analysis := fmt.Sprintf("analyzed at %s", version.AnalyzedAt.UTC().Format(time.RFC3339Nano))
+	meta, err := e.Store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &guid, ObjectType: &storeType})
+	if err != nil {
+		analysis += fmt.Sprintf(", registry read failed: %v", err)
+	} else {
+		analysis += fmt.Sprintf(", analysis is current=%t", meta != nil && bytes.Equal(meta.MetaHash, version.MetaHash))
+	}
+	if version.ErrorMessage != nil {
+		analysis += ", error=" + *version.ErrorMessage
+	}
+	edges, err := e.Store.ListColumnLineage(ctx, &store.FindColumnLineageMessage{MetaGUID: &guid, MetaType: &storeType})
+	if err != nil {
+		return analysis + ", edge read failed: " + err.Error()
+	}
+	return fmt.Sprintf("%s, edges=%d", analysis, len(edges))
 }
 
 // fetchContextLineage reads every page, so a predicate always sees the whole list.
@@ -879,6 +979,12 @@ func startPostgresForEnv(ctx context.Context, env *TestEnv, metadataScope string
 			"POSTGRES_PASSWORD": "postgres",
 			"POSTGRES_DB":       db,
 		},
+		// The suite runs every instance in the package against this one server, and
+		// each instance enumerates and syncs every database it can see, at up to
+		// its own limit of 10 connections. The image's default of 100 is exhausted
+		// by a parallel run on a many-core machine, and the syncs then fail with
+		// "too many clients", leaving the objects a test waits for unregistered.
+		Cmd:          []string{"postgres", "-c", "max_connections=300"},
 		ExposedPorts: []string{"5432/tcp"},
 		WaitingFor: wait.ForListeningPort("5432/tcp").
 			WithStartupTimeout(90 * time.Second),

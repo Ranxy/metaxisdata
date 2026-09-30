@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -81,29 +82,35 @@ DROP VIEW IF EXISTS user_order_view;
 	env.SyncDatabase(ctx, t, databaseName)
 
 	viewType := storepb.MetaType_VIEW
-	require.Eventually(t, func() bool {
+	var (
+		metaLeft    bool
+		lineageLeft int
+		versionLeft bool
+	)
+	dropped := assert.Eventually(t, func() bool {
 		meta, err := env.Store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &viewGUID, ObjectType: &viewType})
 		if err != nil {
 			return false
 		}
-		if meta != nil {
-			return false
-		}
+		metaLeft = meta != nil
 
 		lineages, err := env.Store.ListColumnLineage(ctx, &store.FindColumnLineageMessage{MetaGUID: &viewGUID, MetaType: &viewType})
 		if err != nil {
 			return false
 		}
-		if len(lineages) != 0 {
-			return false
-		}
+		lineageLeft = len(lineages)
 
 		version, err := env.Store.GetColumnLineageVersion(ctx, viewGUID, viewType)
 		if err != nil {
 			return false
 		}
-		return version == nil
+		versionLeft = version != nil
+
+		return !metaLeft && lineageLeft == 0 && !versionLeft
 	}, 20*time.Second, 500*time.Millisecond)
+	require.Truef(t, dropped,
+		"the dropped view still has a meta row=%t, %d lineage rows and an analysis version=%t",
+		metaLeft, lineageLeft, versionLeft)
 }
 
 func TestMySQLManualSQLLineageRealServerIntegration(t *testing.T) {
@@ -260,6 +267,10 @@ func setupMySQLServiceDatabase(t *testing.T) (*integrationenv.ServiceEnv, contex
 
 	databaseName := common.FormatDatabase(instanceID, sourceDatabase)
 	_ = env.EnsureDatabaseVisible(ctx, t, instance.GetName(), sourceDatabase)
+	// See the PostgreSQL fixture: the instance-wide pass picks a new database up
+	// on a 10 second tick behind every other database on the shared server, so the
+	// fixture syncs itself here rather than waiting for its turn.
+	env.SyncDatabase(ctx, t, databaseName)
 	return env, ctx, instanceID, sourceDatabase, databaseName
 }
 
