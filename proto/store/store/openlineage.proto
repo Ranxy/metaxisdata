@@ -6,7 +6,14 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "generated-go/store";
 
-// OpenLineageRunSummary stores the normalized metadata for a persisted COMPLETE run.
+// OpenLineageRunSummary stores what one persisted OpenLineage run is: its
+// identity, the task it belongs to, and the state it was last seen in.
+//
+// What its payload yields about datasets (input_count, output_count,
+// has_lineage) and when the row was written (created_at, updated_at) are
+// deliberately absent. They are the run table's to hold. Keeping them here gave
+// one run's state more than one fingerprint, since updated_at moves on every
+// delivery.
 message OpenLineageRunSummary {
   string guid = 1;
   string task_guid = 2;
@@ -26,14 +33,19 @@ message OpenLineageRunSummary {
   string root_job_namespace = 16;
   string root_job_name = 17;
   string root_run_id = 18;
-  int32 input_count = 19;
-  int32 output_count = 20;
-  bool has_lineage = 21;
-  google.protobuf.Timestamp created_at = 22;
-  google.protobuf.Timestamp updated_at = 23;
+
+  reserved 19 to 23;
+  reserved "input_count", "output_count", "has_lineage", "created_at", "updated_at";
 }
 
-// OpenLineageTaskSummary stores the aggregated task/job-level view derived from persisted runs.
+// OpenLineageTaskSummary stores what an aggregated task/job is: its identity and
+// the job-level facets its runs report.
+//
+// Everything the task table derives from its runs - the latest run it saw and
+// the counters over them - is deliberately absent. Mirroring them made the
+// snapshot a second copy of the event stream, with a fingerprint that moved on
+// every ingested event instead of when the job changed. The read path joins the
+// run for those.
 message OpenLineageTaskSummary {
   string guid = 1;
   string job_namespace = 2;
@@ -45,16 +57,7 @@ message OpenLineageTaskSummary {
   string parent_job_name = 8;
   string root_job_namespace = 9;
   string root_job_name = 10;
-  string latest_run_guid = 11;
-  string latest_run_id = 12;
-  google.protobuf.Timestamp latest_event_time = 13;
-  string latest_producer = 14;
-  string latest_source = 15;
-  int32 run_count = 16;
-  int32 lineage_run_count = 17;
-  google.protobuf.Timestamp created_at = 18;
-  google.protobuf.Timestamp updated_at = 19;
-  // The event type of the latest run (START/COMPLETE/...), so the task snapshot
-  // carries the same information as the v1 OpenLineageTask.
-  string latest_event_type = 20;
+
+  reserved 11 to 20;
+  reserved "latest_run_guid", "latest_run_id", "latest_event_time", "latest_producer", "latest_source", "run_count", "lineage_run_count", "created_at", "updated_at", "latest_event_type";
 }

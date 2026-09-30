@@ -519,6 +519,10 @@ func (s *Store) ListOpenLineageRun(ctx context.Context, find *FindOpenLineageRun
 	return result, nil
 }
 
+// buildOpenLineageRunStoredMetadata builds the run's registry snapshot: what the
+// run is, not what its payload yielded. The counts and the row's timestamps stay
+// in the run table, so a redelivery of the same state fingerprints the same
+// instead of adding a registry version for a run that did not change.
 func buildOpenLineageRunStoredMetadata(run *OpenLineageRunMessage) *storepb.StoredMetadata {
 	summary := &storepb.OpenLineageRunSummary{
 		Guid:               run.GUID,
@@ -538,11 +542,6 @@ func buildOpenLineageRunStoredMetadata(run *OpenLineageRunMessage) *storepb.Stor
 		RootJobNamespace:   run.RootJobNamespace,
 		RootJobName:        run.RootJobName,
 		RootRunId:          run.RootRunID,
-		InputCount:         run.InputCount,
-		OutputCount:        run.OutputCount,
-		HasLineage:         run.HasLineage,
-		CreatedAt:          timestamppb.New(run.CreatedAt),
-		UpdatedAt:          timestamppb.New(run.UpdatedAt),
 	}
 	if run.EventTime != nil {
 		summary.EventTime = timestamppb.New(*run.EventTime)

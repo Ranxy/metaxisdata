@@ -972,7 +972,7 @@ identified by an opaque server-generated id. </p></td>
 
       
         <h3 id="metaxisdata.store.OpenLineageRunSummary">OpenLineageRunSummary</h3>
-        <p>OpenLineageRunSummary stores the normalized metadata for a persisted COMPLETE run.</p>
+        <p>OpenLineageRunSummary stores what one persisted OpenLineage run is: its</p><p>identity, the task it belongs to, and the state it was last seen in.</p><p>What its payload yields about datasets (input_count, output_count,</p><p>has_lineage) and when the row was written (created_at, updated_at) are</p><p>deliberately absent. They are the run table's to hold. Keeping them here gave</p><p>one run's state more than one fingerprint, since updated_at moves on every</p><p>delivery.</p>
 
         
           <table class="field-table">
@@ -1107,41 +1107,6 @@ identified by an opaque server-generated id. </p></td>
                   <td><p> </p></td>
                 </tr>
               
-                <tr>
-                  <td>input_count</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>output_count</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>has_lineage</td>
-                  <td><a href="#bool">bool</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>created_at</td>
-                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>updated_at</td>
-                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
             </tbody>
           </table>
 
@@ -1150,7 +1115,7 @@ identified by an opaque server-generated id. </p></td>
         
       
         <h3 id="metaxisdata.store.OpenLineageTaskSummary">OpenLineageTaskSummary</h3>
-        <p>OpenLineageTaskSummary stores the aggregated task/job-level view derived from persisted runs.</p>
+        <p>OpenLineageTaskSummary stores what an aggregated task/job is: its identity and</p><p>the job-level facets its runs report.</p><p>Everything the task table derives from its runs - the latest run it saw and</p><p>the counters over them - is deliberately absent. Mirroring them made the</p><p>snapshot a second copy of the event stream, with a fingerprint that moved on</p><p>every ingested event instead of when the job changed. The read path joins the</p><p>run for those.</p>
 
         
           <table class="field-table">
@@ -1227,77 +1192,6 @@ identified by an opaque server-generated id. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>latest_run_guid</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>latest_run_id</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>latest_event_time</td>
-                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>latest_producer</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>latest_source</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>run_count</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>lineage_run_count</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>created_at</td>
-                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>updated_at</td>
-                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>latest_event_type</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The event type of the latest run (START/COMPLETE/...), so the task snapshot
-carries the same information as the v1 OpenLineageTask. </p></td>
                 </tr>
               
             </tbody>

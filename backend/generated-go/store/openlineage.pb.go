@@ -22,7 +22,14 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// OpenLineageRunSummary stores the normalized metadata for a persisted COMPLETE run.
+// OpenLineageRunSummary stores what one persisted OpenLineage run is: its
+// identity, the task it belongs to, and the state it was last seen in.
+//
+// What its payload yields about datasets (input_count, output_count,
+// has_lineage) and when the row was written (created_at, updated_at) are
+// deliberately absent. They are the run table's to hold. Keeping them here gave
+// one run's state more than one fingerprint, since updated_at moves on every
+// delivery.
 type OpenLineageRunSummary struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	Guid               string                 `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
@@ -43,11 +50,6 @@ type OpenLineageRunSummary struct {
 	RootJobNamespace   string                 `protobuf:"bytes,16,opt,name=root_job_namespace,json=rootJobNamespace,proto3" json:"root_job_namespace,omitempty"`
 	RootJobName        string                 `protobuf:"bytes,17,opt,name=root_job_name,json=rootJobName,proto3" json:"root_job_name,omitempty"`
 	RootRunId          string                 `protobuf:"bytes,18,opt,name=root_run_id,json=rootRunId,proto3" json:"root_run_id,omitempty"`
-	InputCount         int32                  `protobuf:"varint,19,opt,name=input_count,json=inputCount,proto3" json:"input_count,omitempty"`
-	OutputCount        int32                  `protobuf:"varint,20,opt,name=output_count,json=outputCount,proto3" json:"output_count,omitempty"`
-	HasLineage         bool                   `protobuf:"varint,21,opt,name=has_lineage,json=hasLineage,proto3" json:"has_lineage,omitempty"`
-	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,22,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt          *timestamppb.Timestamp `protobuf:"bytes,23,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -208,42 +210,14 @@ func (x *OpenLineageRunSummary) GetRootRunId() string {
 	return ""
 }
 
-func (x *OpenLineageRunSummary) GetInputCount() int32 {
-	if x != nil {
-		return x.InputCount
-	}
-	return 0
-}
-
-func (x *OpenLineageRunSummary) GetOutputCount() int32 {
-	if x != nil {
-		return x.OutputCount
-	}
-	return 0
-}
-
-func (x *OpenLineageRunSummary) GetHasLineage() bool {
-	if x != nil {
-		return x.HasLineage
-	}
-	return false
-}
-
-func (x *OpenLineageRunSummary) GetCreatedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.CreatedAt
-	}
-	return nil
-}
-
-func (x *OpenLineageRunSummary) GetUpdatedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.UpdatedAt
-	}
-	return nil
-}
-
-// OpenLineageTaskSummary stores the aggregated task/job-level view derived from persisted runs.
+// OpenLineageTaskSummary stores what an aggregated task/job is: its identity and
+// the job-level facets its runs report.
+//
+// Everything the task table derives from its runs - the latest run it saw and
+// the counters over them - is deliberately absent. Mirroring them made the
+// snapshot a second copy of the event stream, with a fingerprint that moved on
+// every ingested event instead of when the job changed. The read path joins the
+// run for those.
 type OpenLineageTaskSummary struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	Guid               string                 `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
@@ -256,20 +230,8 @@ type OpenLineageTaskSummary struct {
 	ParentJobName      string                 `protobuf:"bytes,8,opt,name=parent_job_name,json=parentJobName,proto3" json:"parent_job_name,omitempty"`
 	RootJobNamespace   string                 `protobuf:"bytes,9,opt,name=root_job_namespace,json=rootJobNamespace,proto3" json:"root_job_namespace,omitempty"`
 	RootJobName        string                 `protobuf:"bytes,10,opt,name=root_job_name,json=rootJobName,proto3" json:"root_job_name,omitempty"`
-	LatestRunGuid      string                 `protobuf:"bytes,11,opt,name=latest_run_guid,json=latestRunGuid,proto3" json:"latest_run_guid,omitempty"`
-	LatestRunId        string                 `protobuf:"bytes,12,opt,name=latest_run_id,json=latestRunId,proto3" json:"latest_run_id,omitempty"`
-	LatestEventTime    *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=latest_event_time,json=latestEventTime,proto3" json:"latest_event_time,omitempty"`
-	LatestProducer     string                 `protobuf:"bytes,14,opt,name=latest_producer,json=latestProducer,proto3" json:"latest_producer,omitempty"`
-	LatestSource       string                 `protobuf:"bytes,15,opt,name=latest_source,json=latestSource,proto3" json:"latest_source,omitempty"`
-	RunCount           int32                  `protobuf:"varint,16,opt,name=run_count,json=runCount,proto3" json:"run_count,omitempty"`
-	LineageRunCount    int32                  `protobuf:"varint,17,opt,name=lineage_run_count,json=lineageRunCount,proto3" json:"lineage_run_count,omitempty"`
-	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,18,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt          *timestamppb.Timestamp `protobuf:"bytes,19,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	// The event type of the latest run (START/COMPLETE/...), so the task snapshot
-	// carries the same information as the v1 OpenLineageTask.
-	LatestEventType string `protobuf:"bytes,20,opt,name=latest_event_type,json=latestEventType,proto3" json:"latest_event_type,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *OpenLineageTaskSummary) Reset() {
@@ -372,81 +334,11 @@ func (x *OpenLineageTaskSummary) GetRootJobName() string {
 	return ""
 }
 
-func (x *OpenLineageTaskSummary) GetLatestRunGuid() string {
-	if x != nil {
-		return x.LatestRunGuid
-	}
-	return ""
-}
-
-func (x *OpenLineageTaskSummary) GetLatestRunId() string {
-	if x != nil {
-		return x.LatestRunId
-	}
-	return ""
-}
-
-func (x *OpenLineageTaskSummary) GetLatestEventTime() *timestamppb.Timestamp {
-	if x != nil {
-		return x.LatestEventTime
-	}
-	return nil
-}
-
-func (x *OpenLineageTaskSummary) GetLatestProducer() string {
-	if x != nil {
-		return x.LatestProducer
-	}
-	return ""
-}
-
-func (x *OpenLineageTaskSummary) GetLatestSource() string {
-	if x != nil {
-		return x.LatestSource
-	}
-	return ""
-}
-
-func (x *OpenLineageTaskSummary) GetRunCount() int32 {
-	if x != nil {
-		return x.RunCount
-	}
-	return 0
-}
-
-func (x *OpenLineageTaskSummary) GetLineageRunCount() int32 {
-	if x != nil {
-		return x.LineageRunCount
-	}
-	return 0
-}
-
-func (x *OpenLineageTaskSummary) GetCreatedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.CreatedAt
-	}
-	return nil
-}
-
-func (x *OpenLineageTaskSummary) GetUpdatedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.UpdatedAt
-	}
-	return nil
-}
-
-func (x *OpenLineageTaskSummary) GetLatestEventType() string {
-	if x != nil {
-		return x.LatestEventType
-	}
-	return ""
-}
-
 var File_store_openlineage_proto protoreflect.FileDescriptor
 
 const file_store_openlineage_proto_rawDesc = "" +
 	"\n" +
-	"\x17store/openlineage.proto\x12\x11metaxisdata.store\x1a\x1fgoogle/protobuf/timestamp.proto\"\xde\x06\n" +
+	"\x17store/openlineage.proto\x12\x11metaxisdata.store\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc9\x05\n" +
 	"\x15OpenLineageRunSummary\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x1b\n" +
 	"\ttask_guid\x18\x02 \x01(\tR\btaskGuid\x12\x15\n" +
@@ -468,16 +360,9 @@ const file_store_openlineage_proto_rawDesc = "" +
 	"\rparent_run_id\x18\x0f \x01(\tR\vparentRunId\x12,\n" +
 	"\x12root_job_namespace\x18\x10 \x01(\tR\x10rootJobNamespace\x12\"\n" +
 	"\rroot_job_name\x18\x11 \x01(\tR\vrootJobName\x12\x1e\n" +
-	"\vroot_run_id\x18\x12 \x01(\tR\trootRunId\x12\x1f\n" +
-	"\vinput_count\x18\x13 \x01(\x05R\n" +
-	"inputCount\x12!\n" +
-	"\foutput_count\x18\x14 \x01(\x05R\voutputCount\x12\x1f\n" +
-	"\vhas_lineage\x18\x15 \x01(\bR\n" +
-	"hasLineage\x129\n" +
-	"\n" +
-	"created_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
-	"\n" +
-	"updated_at\x18\x17 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xcb\x06\n" +
+	"\vroot_run_id\x18\x12 \x01(\tR\trootRunIdJ\x04\b\x13\x10\x18R\vinput_countR\foutput_countR\vhas_lineageR\n" +
+	"created_atR\n" +
+	"updated_at\"\xa0\x04\n" +
 	"\x16OpenLineageTaskSummary\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12#\n" +
 	"\rjob_namespace\x18\x02 \x01(\tR\fjobNamespace\x12\x19\n" +
@@ -489,19 +374,9 @@ const file_store_openlineage_proto_rawDesc = "" +
 	"\x0fparent_job_name\x18\b \x01(\tR\rparentJobName\x12,\n" +
 	"\x12root_job_namespace\x18\t \x01(\tR\x10rootJobNamespace\x12\"\n" +
 	"\rroot_job_name\x18\n" +
-	" \x01(\tR\vrootJobName\x12&\n" +
-	"\x0flatest_run_guid\x18\v \x01(\tR\rlatestRunGuid\x12\"\n" +
-	"\rlatest_run_id\x18\f \x01(\tR\vlatestRunId\x12F\n" +
-	"\x11latest_event_time\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\x0flatestEventTime\x12'\n" +
-	"\x0flatest_producer\x18\x0e \x01(\tR\x0elatestProducer\x12#\n" +
-	"\rlatest_source\x18\x0f \x01(\tR\flatestSource\x12\x1b\n" +
-	"\trun_count\x18\x10 \x01(\x05R\brunCount\x12*\n" +
-	"\x11lineage_run_count\x18\x11 \x01(\x05R\x0flineageRunCount\x129\n" +
-	"\n" +
-	"created_at\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
-	"\n" +
-	"updated_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12*\n" +
-	"\x11latest_event_type\x18\x14 \x01(\tR\x0flatestEventTypeB\x14Z\x12generated-go/storeb\x06proto3"
+	" \x01(\tR\vrootJobNameJ\x04\b\v\x10\x15R\x0flatest_run_guidR\rlatest_run_idR\x11latest_event_timeR\x0flatest_producerR\rlatest_sourceR\trun_countR\x11lineage_run_countR\n" +
+	"created_atR\n" +
+	"updated_atR\x11latest_event_typeB\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
 	file_store_openlineage_proto_rawDescOnce sync.Once
@@ -523,16 +398,11 @@ var file_store_openlineage_proto_goTypes = []any{
 }
 var file_store_openlineage_proto_depIdxs = []int32{
 	2, // 0: metaxisdata.store.OpenLineageRunSummary.event_time:type_name -> google.protobuf.Timestamp
-	2, // 1: metaxisdata.store.OpenLineageRunSummary.created_at:type_name -> google.protobuf.Timestamp
-	2, // 2: metaxisdata.store.OpenLineageRunSummary.updated_at:type_name -> google.protobuf.Timestamp
-	2, // 3: metaxisdata.store.OpenLineageTaskSummary.latest_event_time:type_name -> google.protobuf.Timestamp
-	2, // 4: metaxisdata.store.OpenLineageTaskSummary.created_at:type_name -> google.protobuf.Timestamp
-	2, // 5: metaxisdata.store.OpenLineageTaskSummary.updated_at:type_name -> google.protobuf.Timestamp
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	1, // [1:1] is the sub-list for method output_type
+	1, // [1:1] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_store_openlineage_proto_init() }

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -554,6 +553,10 @@ func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTa
 	return result, nil
 }
 
+// buildOpenLineageTaskStoredMetadata builds the job's registry snapshot: what the
+// job is, not what its runs did. The latest run and the counters stay in the task
+// table, where the read path already joins them, so a snapshot cannot mirror half
+// of a projection that only one writer happens to fill.
 func buildOpenLineageTaskStoredMetadata(task *OpenLineageTaskMessage) *storepb.StoredMetadata {
 	summary := &storepb.OpenLineageTaskSummary{
 		Guid:               task.GUID,
@@ -566,18 +569,6 @@ func buildOpenLineageTaskStoredMetadata(task *OpenLineageTaskMessage) *storepb.S
 		ParentJobName:      task.ParentJobName,
 		RootJobNamespace:   task.RootJobNamespace,
 		RootJobName:        task.RootJobName,
-		LatestRunGuid:      task.LatestRunGUID,
-		LatestRunId:        task.LatestRunID,
-		LatestProducer:     task.LatestProducer,
-		LatestSource:       task.LatestSource,
-		LatestEventType:    task.LatestEventType,
-		RunCount:           task.RunCount,
-		LineageRunCount:    task.LineageRunCount,
-		CreatedAt:          timestamppb.New(task.CreatedAt),
-		UpdatedAt:          timestamppb.New(task.UpdatedAt),
-	}
-	if task.LatestEventTime != nil {
-		summary.LatestEventTime = timestamppb.New(*task.LatestEventTime)
 	}
 
 	return &storepb.StoredMetadata{

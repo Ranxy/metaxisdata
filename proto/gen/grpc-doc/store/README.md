@@ -273,7 +273,14 @@ with metaxisdata.v1.Engine.
 <a name="metaxisdata-store-OpenLineageRunSummary"></a>
 
 ### OpenLineageRunSummary
-OpenLineageRunSummary stores the normalized metadata for a persisted COMPLETE run.
+OpenLineageRunSummary stores what one persisted OpenLineage run is: its
+identity, the task it belongs to, and the state it was last seen in.
+
+What its payload yields about datasets (input_count, output_count,
+has_lineage) and when the row was written (created_at, updated_at) are
+deliberately absent. They are the run table&#39;s to hold. Keeping them here gave
+one run&#39;s state more than one fingerprint, since updated_at moves on every
+delivery.
 
 
 | Field | Type | Label | Description |
@@ -296,11 +303,6 @@ OpenLineageRunSummary stores the normalized metadata for a persisted COMPLETE ru
 | root_job_namespace | [string](#string) |  |  |
 | root_job_name | [string](#string) |  |  |
 | root_run_id | [string](#string) |  |  |
-| input_count | [int32](#int32) |  |  |
-| output_count | [int32](#int32) |  |  |
-| has_lineage | [bool](#bool) |  |  |
-| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
 
 
@@ -310,7 +312,14 @@ OpenLineageRunSummary stores the normalized metadata for a persisted COMPLETE ru
 <a name="metaxisdata-store-OpenLineageTaskSummary"></a>
 
 ### OpenLineageTaskSummary
-OpenLineageTaskSummary stores the aggregated task/job-level view derived from persisted runs.
+OpenLineageTaskSummary stores what an aggregated task/job is: its identity and
+the job-level facets its runs report.
+
+Everything the task table derives from its runs - the latest run it saw and
+the counters over them - is deliberately absent. Mirroring them made the
+snapshot a second copy of the event stream, with a fingerprint that moved on
+every ingested event instead of when the job changed. The read path joins the
+run for those.
 
 
 | Field | Type | Label | Description |
@@ -325,16 +334,6 @@ OpenLineageTaskSummary stores the aggregated task/job-level view derived from pe
 | parent_job_name | [string](#string) |  |  |
 | root_job_namespace | [string](#string) |  |  |
 | root_job_name | [string](#string) |  |  |
-| latest_run_guid | [string](#string) |  |  |
-| latest_run_id | [string](#string) |  |  |
-| latest_event_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| latest_producer | [string](#string) |  |  |
-| latest_source | [string](#string) |  |  |
-| run_count | [int32](#int32) |  |  |
-| lineage_run_count | [int32](#int32) |  |  |
-| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| latest_event_type | [string](#string) |  | The event type of the latest run (START/COMPLETE/...), so the task snapshot carries the same information as the v1 OpenLineageTask. |
 
 
 
