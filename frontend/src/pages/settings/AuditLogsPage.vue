@@ -13,132 +13,19 @@
       </template>
     </PageHeader>
 
-    <div class="space-y-3">
-      <!-- The filter box is one line by design: chips live on their own row
-           below, so a long filter list cannot push the input onto a second
-           line and grow the chrome above the table. -->
-      <div class="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div ref="searchBarRef" class="relative min-w-0 flex-1">
-          <div
-            class="flex h-11 w-full items-center gap-2 rounded-md border border-input bg-background px-3 text-sm transition-colors hover:border-ring focus-within:border-ring"
-          >
-            <button
-              type="button"
-              class="flex shrink-0 items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
-              @click="toggleSearchPanel"
-            >
-              <Filter class="h-4 w-4" />
-              <span class="font-medium">{{ t("auditLogs.filter") }}</span>
-            </button>
+    <div class="flex items-start gap-3">
+      <AdvancedSearchBar
+        class="min-w-0 flex-1"
+        :filter-categories="filterCategories"
+        :search-placeholder="t('auditLogs.searchPlaceholder')"
+        @update:filters="handleFiltersUpdate"
+      />
 
-            <span class="h-5 w-px shrink-0 bg-border" aria-hidden="true" />
-
-            <input
-              id="audit-log-search"
-              ref="searchInputRef"
-              v-model="searchQuery"
-              name="audit-log-search"
-              type="text"
-              :placeholder="searchPlaceholder"
-              class="min-w-0 flex-1 bg-transparent outline-hidden placeholder:text-muted-foreground"
-              @focus="openSearchPanel"
-              @keydown.enter.prevent="handleSearchEnter"
-              @keydown.esc.prevent="resetSearchDraft"
-            >
-          </div>
-
-          <div
-            v-if="showSearchPanel"
-            class="absolute left-0 right-0 top-[calc(100%+8px)] z-20 overflow-hidden rounded-md border bg-popover shadow-md"
-          >
-            <div v-if="!selectedFilterType" class="max-h-80 overflow-auto py-2">
-              <button
-                v-for="filterType in filteredFilterTypes"
-                :key="filterType.type"
-                type="button"
-                class="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60"
-                @mousedown.prevent="selectFilterType(filterType.type)"
-              >
-                <div class="min-w-0 flex-1">
-                  <div class="font-medium text-primary">{{ filterType.label }}</div>
-                  <div class="text-sm text-muted-foreground">{{ filterType.description }}</div>
-                </div>
-              </button>
-              <div v-if="filteredFilterTypes.length === 0" class="px-4 py-6 text-sm text-muted-foreground">
-                {{ t("auditLogs.noFilterMatches") }}
-              </div>
-            </div>
-
-            <div v-else-if="selectedFilterType === 'level'" class="py-2">
-              <div class="border-b px-4 py-3 text-sm">
-                <div class="font-medium">{{ selectedFilterMeta?.label }}</div>
-                <div class="mt-1 text-muted-foreground">{{ selectedFilterMeta?.description }}</div>
-              </div>
-              <button
-                v-for="option in severityOptions"
-                :key="option.value"
-                type="button"
-                class="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-muted/60"
-                @mousedown.prevent="applyLevelFilter(option.value)"
-              >
-                <span>{{ option.label }}</span>
-                <span class="text-xs text-muted-foreground">{{ option.value }}</span>
-              </button>
-            </div>
-
-            <div v-else class="space-y-3 p-4">
-              <div>
-                <div class="font-medium">{{ selectedFilterMeta?.label }}</div>
-                <div class="mt-1 text-sm text-muted-foreground">{{ selectedFilterMeta?.description }}</div>
-              </div>
-              <div class="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                <span class="text-muted-foreground">{{ t("auditLogs.pendingFilter") }}</span>
-                <span class="font-medium">{{ searchQuery.trim() || t("auditLogs.waitingForValue") }}</span>
-              </div>
-              <div class="flex justify-end gap-2">
-                <Button variant="ghost" size="sm" @click="resetSearchDraft">
-                  {{ t("common.cancel") }}
-                </Button>
-                <Button size="sm" :disabled="!searchQuery.trim()" @click="applyTextFilter">
-                  {{ t("auditLogs.applyFilter") }}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="shrink-0">
-          <AuditLogsDateRangePicker
-            v-model="dateRange"
-            @apply="refreshLogs"
-          />
-        </div>
-      </div>
-
-      <div v-if="activeFilters.length > 0" class="flex flex-wrap items-center gap-2">
-        <span class="text-xs text-muted-foreground">
-          {{ t("auditLogs.filterActive", { count: activeFilters.length }) }}
-        </span>
-        <Badge
-          v-for="filter in activeFilters"
-          :key="filter.id"
-          variant="secondary"
-          class="flex items-center gap-1 px-2 py-1"
-        >
-          <span class="text-xs font-medium">{{ filter.label }}:</span>
-          <span class="text-xs">{{ filter.displayValue }}</span>
-          <button
-            type="button"
-            class="ml-1 rounded-full transition-colors hover:bg-secondary-foreground/20"
-            :aria-label="t('common.removeFilter')"
-            @click.stop="removeFilter(filter.id)"
-          >
-            <X class="h-3 w-3" />
-          </button>
-        </Badge>
-        <Button variant="ghost" size="sm" class="h-auto p-0 text-xs hover:underline" @click="clearAllFilters">
-          {{ t("auditLogs.clearFilters") }}
-        </Button>
+      <div class="shrink-0">
+        <AuditLogsDateRangePicker
+          v-model="dateRange"
+          @apply="refreshLogs"
+        />
       </div>
     </div>
 
@@ -367,22 +254,31 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { onClickOutside } from "@vueuse/core";
 import {
   ClipboardList,
   Download,
-  Filter,
   RefreshCcw,
   UserRound,
-  X,
 } from "lucide-vue-next";
 import type { DateRange } from "radix-vue";
-import { computed, nextTick, onMounted, ref, shallowRef, watch } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  watch,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import { listAuditLogs } from "@/api/audit";
 import { listAll } from "@/api/list";
-import { batchGetUsers } from "@/api/user";
+import { batchGetUsers, listAllUsers } from "@/api/user";
 import AuditLogsDateRangePicker from "@/components/audit/AuditLogsDateRangePicker.vue";
+import AdvancedSearchBar, {
+  type ActiveFilter,
+  type FilterCategory,
+  type FilterOption,
+} from "@/components/common/AdvancedSearchBar.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import TablePager from "@/components/common/TablePager.vue";
@@ -424,25 +320,9 @@ import { downloadCsv } from "@/utils/csv";
 import { dateRangeBound, defaultDateRange } from "@/utils/dateRange";
 import { formatDate, formatDateTime, formatTime } from "@/utils/datetime";
 
-type AuditFilterType = "resource" | "actor" | "method" | "level";
 type SeverityValue = "INFO" | "WARNING" | "ERROR";
 type BadgeVariant = "secondary" | "warning" | "destructive" | "outline";
 type StatusVariant = "success" | "secondary" | "destructive";
-
-interface AuditFilter {
-  id: string;
-  type: AuditFilterType;
-  label: string;
-  value: string;
-  displayValue: string;
-}
-
-interface FilterTypeOption {
-  type: AuditFilterType;
-  label: string;
-  description: string;
-  placeholder: string;
-}
 
 const WORKSPACE_PARENT = "workspaces/-";
 
@@ -455,92 +335,100 @@ const showDetails = ref(false);
 const selectedLog = ref<AuditLog | null>(null);
 const auditUserDisplayMap = ref<Record<string, string>>({});
 
-const activeFilters = ref<AuditFilter[]>([]);
-const searchQuery = ref("");
-const selectedFilterType = ref<AuditFilterType | null>(null);
-const showSearchPanel = ref(false);
+// Filter state, owned by AdvancedSearchBar and read back from its pills. The
+// search box is the method filter: it matches the event name as a substring, so
+// method is not a category of its own.
+const searchText = ref("");
+const resourceFilter = ref("");
+const actorFilter = ref("");
+const severityFilter = ref<SeverityValue | "">("");
 // shallowRef, not ref: Vue's deep unwrap rewrites the date classes into
 // structural look-alikes, which radix's own DateRange (and its calendar) no
 // longer accepts.
 const dateRange = shallowRef<DateRange>(defaultDateRange());
 const pendingAuditUsers = new Set<string>();
 
-const searchBarRef = ref<HTMLElement | null>(null);
-const searchInputRef = ref<HTMLInputElement | null>(null);
 const pageSize = ref(50);
 
-const filterTypes = computed<FilterTypeOption[]>(() => [
+const severityOptions = computed<FilterOption[]>(() => [
+  { value: "INFO", label: t("auditLogs.severityInfo") },
+  { value: "WARNING", label: t("auditLogs.severityWarning") },
+  { value: "ERROR", label: t("auditLogs.severityError") },
+]);
+
+// The workspace's users as actor options. The stored `user` is a resource name
+// such as `users/101`, so a picker is the only way to name an actor that
+// actually matches; a typed email or display name matches nothing.
+let actorOptionsPromise: Promise<FilterOption[]> | null = null;
+function loadActorOptions(): Promise<FilterOption[]> {
+  actorOptionsPromise ??= listAllUsers()
+    .then((users) =>
+      users
+        .filter((user) => !!user.name)
+        .map((user) => ({
+          value: user.name,
+          label: formatAuditUserDisplay(user),
+        }))
+    )
+    .catch((err: unknown) => {
+      actorOptionsPromise = null;
+      handleError(err, "auditLogs.fetchActorsError");
+      return [];
+    });
+  return actorOptionsPromise;
+}
+
+/** The filter dimensions this page offers. The bar owns their UI; the page only
+ *  maps the emitted pills back onto the CEL filter the API understands. */
+const filterCategories = computed<FilterCategory[]>(() => [
   {
     type: "resource",
     label: t("auditLogs.filterResource"),
-    description: t("auditLogs.filterResourceDescription"),
+    icon: "📦",
+    kind: "input",
     placeholder: t("auditLogs.resourcePlaceholder"),
   },
   {
     type: "actor",
     label: t("auditLogs.filterActor"),
-    description: t("auditLogs.filterActorDescription"),
-    placeholder: t("auditLogs.userPlaceholder"),
-  },
-  {
-    type: "method",
-    label: t("auditLogs.filterMethod"),
-    description: t("auditLogs.filterMethodDescription"),
-    placeholder: t("auditLogs.methodPlaceholder"),
+    icon: "👤",
+    options: loadActorOptions,
   },
   {
     type: "level",
     label: t("auditLogs.filterLevel"),
-    description: t("auditLogs.filterLevelDescription"),
-    placeholder: t("auditLogs.severityAll"),
+    icon: "🚦",
+    options: severityOptions.value,
   },
 ]);
 
-const severityOptions = computed(() => [
-  { value: "INFO" as const, label: t("auditLogs.severityInfo") },
-  { value: "WARNING" as const, label: t("auditLogs.severityWarning") },
-  { value: "ERROR" as const, label: t("auditLogs.severityError") },
-]);
-
-const filteredFilterTypes = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase();
-  if (!query) {
-    return filterTypes.value;
-  }
-  return filterTypes.value.filter(
-    (item) =>
-      item.label.toLowerCase().includes(query) ||
-      item.description.toLowerCase().includes(query) ||
-      item.type.toLowerCase().includes(query)
-  );
-});
-
-const selectedFilterMeta = computed(() =>
-  filterTypes.value.find((item) => item.type === selectedFilterType.value)
-);
-
-const searchPlaceholder = computed(() => {
-  if (selectedFilterMeta.value) {
-    return selectedFilterMeta.value.placeholder;
-  }
-  return t("auditLogs.advancedSearchPlaceholder");
-});
+function handleFiltersUpdate(filters: ActiveFilter[]) {
+  const valueOf = (type: string) =>
+    filters.find((filter) => filter.type === type)?.value ?? "";
+  // The search text is emitted as a `name` filter; it drives the method search.
+  searchText.value = valueOf("name");
+  resourceFilter.value = valueOf("resource");
+  actorFilter.value = valueOf("actor");
+  severityFilter.value = valueOf("level") as SeverityValue | "";
+}
 
 const filterExpression = computed(() => {
   const clauses: string[] = [];
-  for (const filter of activeFilters.value) {
-    if (!filter.value) {
-      continue;
-    }
-    if (filter.type === "resource") {
-      clauses.push(`resource == ${JSON.stringify(filter.value)}`);
-    } else if (filter.type === "actor") {
-      clauses.push(`user == ${JSON.stringify(filter.value)}`);
-    } else if (filter.type === "method") {
-      clauses.push(`method == ${JSON.stringify(filter.value)}`);
-    } else if (filter.type === "level") {
-      clauses.push(`severity == ${JSON.stringify(filter.value)}`);
-    }
+  const resource = resourceFilter.value.trim();
+  if (resource) {
+    clauses.push(`resource.matches(${JSON.stringify(resource)})`);
+  }
+  if (actorFilter.value) {
+    clauses.push(`user == ${JSON.stringify(actorFilter.value)}`);
+  }
+  // The search box is the method filter, and `matches` makes it a case-insensitive
+  // substring, so a reader can type `Login` instead of the full RPC name.
+  const method = searchText.value.trim();
+  if (method) {
+    clauses.push(`method.matches(${JSON.stringify(method)})`);
+  }
+  if (severityFilter.value) {
+    clauses.push(`severity == ${JSON.stringify(severityFilter.value)}`);
   }
   const from = dateRangeBound(dateRange.value.start, "start");
   if (from) {
@@ -558,152 +446,6 @@ const payloadSections = computed(() => [
   { title: t("auditLogs.response"), value: selectedLog.value?.response },
   { title: t("auditLogs.serviceData"), value: selectedLog.value?.serviceData },
 ]);
-
-onClickOutside(searchBarRef, () => {
-  showSearchPanel.value = false;
-  if (!selectedFilterType.value) {
-    searchQuery.value = "";
-  }
-});
-
-function generateUniqueId(): string {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function toggleSearchPanel() {
-  showSearchPanel.value = !showSearchPanel.value;
-  if (showSearchPanel.value) {
-    nextTick(() => searchInputRef.value?.focus());
-  } else {
-    resetSearchDraft();
-  }
-}
-
-function openSearchPanel() {
-  showSearchPanel.value = true;
-}
-
-function selectFilterType(type: AuditFilterType) {
-  selectedFilterType.value = type;
-  searchQuery.value = "";
-  showSearchPanel.value = true;
-  nextTick(() => searchInputRef.value?.focus());
-}
-
-function resetSearchDraft() {
-  selectedFilterType.value = null;
-  searchQuery.value = "";
-  showSearchPanel.value = false;
-}
-
-function addOrReplaceFilter(
-  type: AuditFilterType,
-  value: string,
-  displayValue = value
-) {
-  const filterMeta = filterTypes.value.find((item) => item.type === type);
-  activeFilters.value = activeFilters.value.filter(
-    (filter) => filter.type !== type
-  );
-  activeFilters.value.push({
-    id: generateUniqueId(),
-    type,
-    label: filterMeta?.label || type,
-    value,
-    displayValue,
-  });
-}
-
-function applyTextFilter() {
-  if (!selectedFilterType.value || selectedFilterType.value === "level") {
-    return;
-  }
-  const value = searchQuery.value.trim();
-  if (!value) {
-    return;
-  }
-  addOrReplaceFilter(selectedFilterType.value, value);
-  resetSearchDraft();
-  void refreshLogs();
-}
-
-function applyLevelFilter(value: SeverityValue) {
-  const label =
-    severityOptions.value.find((item) => item.value === value)?.label || value;
-  addOrReplaceFilter("level", value, label);
-  resetSearchDraft();
-  void refreshLogs();
-}
-
-function parseInlineFilter() {
-  const match = searchQuery.value.match(/^\s*([a-zA-Z_]+)\s*:\s*(.+)$/);
-  if (!match) {
-    return false;
-  }
-  const [, prefix, rawValue] = match;
-  const value = rawValue.trim();
-  if (!value) {
-    return false;
-  }
-
-  const typeMap: Record<string, AuditFilterType> = {
-    actor: "actor",
-    user: "actor",
-    resource: "resource",
-    method: "method",
-    level: "level",
-    severity: "level",
-  };
-  const mapped = typeMap[prefix.toLowerCase()];
-  if (!mapped) {
-    return false;
-  }
-
-  if (mapped === "level") {
-    const normalized = value.toUpperCase() as SeverityValue;
-    if (!severityOptions.value.some((item) => item.value === normalized)) {
-      return false;
-    }
-    applyLevelFilter(normalized);
-    return true;
-  }
-
-  addOrReplaceFilter(mapped, value);
-  resetSearchDraft();
-  void refreshLogs();
-  return true;
-}
-
-function handleSearchEnter() {
-  if (parseInlineFilter()) {
-    return;
-  }
-  if (selectedFilterType.value) {
-    if (selectedFilterType.value !== "level") {
-      applyTextFilter();
-    }
-    return;
-  }
-  if (filteredFilterTypes.value.length === 1) {
-    selectFilterType(filteredFilterTypes.value[0].type);
-  }
-}
-
-function removeFilter(id: string) {
-  activeFilters.value = activeFilters.value.filter(
-    (filter) => filter.id !== id
-  );
-  void refreshLogs();
-}
-
-function clearAllFilters() {
-  activeFilters.value = [];
-  resetSearchDraft();
-  void refreshLogs();
-}
 
 function formatTimestamp(ts: Timestamp | undefined): string {
   return formatDateTime(ts, locale.value, { seconds: true });
@@ -927,6 +669,25 @@ const {
 
 // A bigger page restarts the walk: a cursor belongs to the query that produced it.
 watch(pageSize, () => void refreshLogs());
+
+// The bar emits on every keystroke, so a filter change restarts the walk on a
+// short debounce rather than firing one request per character.
+let filterChangeTimer: ReturnType<typeof setTimeout> | null = null;
+watch([searchText, resourceFilter, actorFilter, severityFilter], () => {
+  if (filterChangeTimer) {
+    clearTimeout(filterChangeTimer);
+  }
+  filterChangeTimer = setTimeout(() => {
+    filterChangeTimer = null;
+    void refreshLogs();
+  }, 250);
+});
+
+onBeforeUnmount(() => {
+  if (filterChangeTimer) {
+    clearTimeout(filterChangeTimer);
+  }
+});
 
 // The actor display map is filled per page, not per row render.
 watch(logs, (page) => void hydrateAuditUserDisplay(page));

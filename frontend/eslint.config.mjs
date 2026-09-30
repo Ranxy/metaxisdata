@@ -81,6 +81,7 @@ export default [
             "environmentSettings.created",
             "environmentSettings.updated",
             "environmentSettings.deleted",
+            "auditLogs.fetchActorsError",
             "auditLogs.fetchError",
             "auditLogs.exportError",
             "generalSettings.saveError",
