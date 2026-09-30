@@ -353,9 +353,14 @@ func getListDatabaseFilter(filter string) (*store.ListResourceFilter, error) {
 }
 
 func parseAuditLogFilter(filter string) (*store.ListResourceFilter, error) {
-	fields := map[string]filterField{}
-	for _, name := range []string{"resource", "method", "user"} {
-		fields[name] = equalField(fmt.Sprintf("payload->>'%s'", name))
+	// `==` stays an exact match; `matches` is the case-insensitive substring
+	// behind the list's search box (which searches the event/method) and its
+	// resource pill, where typing a full RPC name or resource name is not
+	// reasonable. The actor filter picks a user resource name, so it is exact.
+	fields := map[string]filterField{
+		"resource": likeField("payload->>'resource'", true),
+		"method":   likeField("payload->>'method'", true),
+		"user":     equalField("payload->>'user'"),
 	}
 	fields["severity"] = enumField("payload->>'severity'", func(name string) (any, error) {
 		if _, ok := v1pb.AuditLogSeverity_value[name]; !ok {
