@@ -37,7 +37,16 @@ func openLineagePageClause(limit, offset *int, startIndex int) (string, []any) {
 	return clause, pageArgs
 }
 
-// OpenLineageRunMessage is the store representation of a persisted COMPLETE OpenLineage run.
+// openLineageEventComplete is the OpenLineage run state whose row is terminal. A
+// finished run carries the payload its lineage was derived from, so a later - or
+// redelivered - START or FAIL must not rewrite that row: the finish is the last
+// word on what the run did.
+const openLineageEventComplete = "COMPLETE"
+
+// OpenLineageRunMessage is the store representation of a persisted OpenLineage
+// run. One row holds one run's latest known state, so it is COMPLETE for a run
+// that finished and START or FAIL for one that is still going or never got
+// there.
 type OpenLineageRunMessage struct {
 	ID                 int64
 	GUID               string
@@ -84,7 +93,8 @@ type FindOpenLineageRunMessage struct {
 	Offset *int
 }
 
-// UpsertOpenLineageRun persists a COMPLETE OpenLineage run and mirrors it into meta_registry_resource.
+// UpsertOpenLineageRun persists one OpenLineage run and mirrors it into
+// meta_registry_resource.
 func (s *Store) UpsertOpenLineageRun(ctx context.Context, run *OpenLineageRunMessage) (*OpenLineageRunMessage, error) {
 	persisted, err := s.UpsertOpenLineageRuns(ctx, []*OpenLineageRunMessage{run})
 	if err != nil {
@@ -93,8 +103,9 @@ func (s *Store) UpsertOpenLineageRun(ctx context.Context, run *OpenLineageRunMes
 	return persisted[0], nil
 }
 
-// UpsertOpenLineageRuns persists several COMPLETE runs in a single transaction,
-// so ingesting a batch costs one transaction instead of one per event.
+// UpsertOpenLineageRuns persists several runs in a single transaction, so
+// ingesting a batch costs one transaction instead of one per event. A delivery
+// that a finished run refuses is reported as that finished run.
 func (s *Store) UpsertOpenLineageRuns(ctx context.Context, runs []*OpenLineageRunMessage) ([]*OpenLineageRunMessage, error) {
 	if len(runs) == 0 {
 		return nil, nil
@@ -110,6 +121,9 @@ func (s *Store) UpsertOpenLineageRuns(ctx context.Context, runs []*OpenLineageRu
 	// stays in the caller's order, which callers rely on to match a persisted run
 	// with its event.
 	persisted := make([]*OpenLineageRunMessage, len(runs))
+	// Runs a finished row refused. Their stored row is left untouched, so it is
+	// read back once the transaction is committed.
+	var refused []int
 	for _, index := range taskLockOrder(runs) {
 		run := runs[index]
 		// The task lock has to be taken before the previous run is read, so the
@@ -118,9 +132,13 @@ func (s *Store) UpsertOpenLineageRuns(ctx context.Context, runs []*OpenLineageRu
 		if err != nil {
 			return nil, err
 		}
-		previousHasLineage, existed, err := previousRunState(ctx, tx, run)
+		previous, err := previousRunState(ctx, tx, run)
 		if err != nil {
 			return nil, err
+		}
+		if previous.finished() && run.EventType != openLineageEventComplete {
+			refused = append(refused, index)
+			continue
 		}
 
 		runPersisted, err := upsertOpenLineageRunImpl(ctx, tx, run)
@@ -128,7 +146,7 @@ func (s *Store) UpsertOpenLineageRuns(ctx context.Context, runs []*OpenLineageRu
 			return nil, err
 		}
 
-		updatedTask, err := s.applyOpenLineageRun(ctx, tx, task, runPersisted, existed, previousHasLineage)
+		updatedTask, err := s.applyOpenLineageRun(ctx, tx, task, runPersisted, previous.Existed, previous.HasLineage)
 		if err != nil {
 			return nil, err
 		}
@@ -144,6 +162,25 @@ func (s *Store) UpsertOpenLineageRuns(ctx context.Context, runs []*OpenLineageRu
 
 	if err := tx.Commit(); err != nil {
 		return nil, errors.Wrap(err, "failed to commit transaction")
+	}
+
+	for _, index := range refused {
+		run := runs[index]
+		stored, err := s.GetOpenLineageRun(ctx, &FindOpenLineageRunMessage{
+			JobNamespace: &run.JobNamespace,
+			JobName:      &run.JobName,
+			JobType:      &run.JobType,
+			RunID:        &run.RunID,
+		})
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to read the run a finished run refused")
+		}
+		if stored == nil {
+			// Retention pruned the row between the commit and this read, so the
+			// delivery that lost is what stands for the identity again.
+			stored = run
+		}
+		persisted[index] = stored
 	}
 
 	return persisted, nil
@@ -163,22 +200,37 @@ func taskLockOrder(runs []*OpenLineageRunMessage) []int {
 	return order
 }
 
-// previousRunState reports the lineage flag of the run this one replaces, and
-// whether such a run already existed. It must be called while the task row is
-// locked.
-func previousRunState(ctx context.Context, tx *sql.Tx, run *OpenLineageRunMessage) (bool, bool, error) {
-	var hasLineage bool
+// previousRun is the stored state of the run a delivery replaces.
+type previousRun struct {
+	Existed    bool
+	HasLineage bool
+	EventType  string
+}
+
+// finished reports whether the stored run already reached its final state. A
+// finished run is terminal: no later delivery may rewrite its row, because the
+// row holds the payload its lineage came from.
+func (p previousRun) finished() bool {
+	return p.Existed && p.EventType == openLineageEventComplete
+}
+
+// previousRunState reports the lineage flag and state of the run this one
+// replaces, and whether such a run already existed. It must be called while the
+// task row is locked.
+func previousRunState(ctx context.Context, tx *sql.Tx, run *OpenLineageRunMessage) (previousRun, error) {
+	var previous previousRun
 	if err := tx.QueryRowContext(ctx, `
-		SELECT has_lineage
+		SELECT has_lineage, event_type
 		FROM openlineage_run
 		WHERE job_namespace = $1 AND job_name = $2 AND job_type = $3 AND run_id = $4
-	`, run.JobNamespace, run.JobName, run.JobType, run.RunID).Scan(&hasLineage); err != nil {
+	`, run.JobNamespace, run.JobName, run.JobType, run.RunID).Scan(&previous.HasLineage, &previous.EventType); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return false, false, nil
+			return previousRun{}, nil
 		}
-		return false, false, errors.Wrap(err, "failed to read the previous openlineage run")
+		return previousRun{}, errors.Wrap(err, "failed to read the previous openlineage run")
 	}
-	return hasLineage, true, nil
+	previous.Existed = true
+	return previous, nil
 }
 
 func upsertOpenLineageRunImpl(ctx context.Context, tx *sql.Tx, run *OpenLineageRunMessage) (*OpenLineageRunMessage, error) {

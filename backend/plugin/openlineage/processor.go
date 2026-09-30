@@ -44,11 +44,12 @@ func NewProcessor(s *store.Store, lineageAnalyzer *lineage.Analyzer) *Processor 
 	}
 }
 
-// ProcessRunEvent processes a single OpenLineage RunEvent.
-// Only COMPLETE events are processed since lineage is final at that point.
+// ProcessRunEvent derives lineage from a single OpenLineage RunEvent. The run is
+// already persisted whatever its state; only a COMPLETE event yields lineage,
+// because that is where the producer states what the run finally read and wrote.
 func (p *Processor) ProcessRunEvent(ctx context.Context, event *RunEvent, persistedRun *store.OpenLineageRunMessage) error {
 	if event.EventType != "COMPLETE" {
-		slog.Debug("skipping non-COMPLETE OpenLineage event", "eventType", event.EventType, "runId", event.Run.RunID)
+		slog.Debug("skipping lineage derivation for a non-COMPLETE OpenLineage event", "eventType", event.EventType, "runId", event.Run.RunID)
 		return nil
 	}
 

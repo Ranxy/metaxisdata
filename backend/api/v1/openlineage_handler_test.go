@@ -74,35 +74,38 @@ func TestReadBodyLimited(t *testing.T) {
 	require.True(t, tooLarge)
 }
 
-// A non-COMPLETE event carries no run to persist; only COMPLETE events are
-// written, and the batch writes them together.
+// Every run state is written into the run's one row, because a row is the run's
+// latest known state. A job that is still running or that failed is therefore
+// visible instead of leaving no trace at all.
 func TestRunMessageForEvent(t *testing.T) {
 	t.Parallel()
 
 	h := &OpenLineageHandler{}
 	event := &openlineage.RunEvent{
 		EventType: "START",
+		EventTime: "2024-01-02T03:04:05Z",
 		Job:       openlineage.Job{Namespace: "ns", Name: "job"},
 		Run:       openlineage.Run{RunID: "run-1"},
 		Inputs:    []openlineage.Dataset{{Namespace: "ns", Name: "in"}},
 		Outputs:   []openlineage.Dataset{{Namespace: "ns", Name: "out"}},
 	}
 
-	run, needsPersist := h.runMessageForEvent(event)
-	require.False(t, needsPersist, "a non-COMPLETE event is not persisted")
+	run := h.runMessageForEvent(event)
+	require.Equal(t, "START", run.EventType)
+	require.Equal(t, "run-1", run.RunID)
 	require.NotEmpty(t, run.GUID)
 	require.NotEmpty(t, run.TaskGUID)
-	require.Zero(t, run.InputCount)
-
-	event.EventType = "COMPLETE"
-	event.EventTime = "2024-01-02T03:04:05Z"
-	run, needsPersist = h.runMessageForEvent(event)
-	require.True(t, needsPersist)
-	require.Equal(t, "run-1", run.RunID)
 	require.Equal(t, int32(1), run.InputCount)
 	require.Equal(t, int32(1), run.OutputCount)
 	require.NotNil(t, run.EventTime)
 	require.Equal(t, "openlineage", run.Source)
+
+	// The states of one run share an identity, which is what lets them share a row.
+	startGUID := run.GUID
+	event.EventType = "COMPLETE"
+	run = h.runMessageForEvent(event)
+	require.Equal(t, "COMPLETE", run.EventType)
+	require.Equal(t, startGUID, run.GUID)
 }
 
 // Producers sometimes omit the timezone offset. Dropping such a timestamp stores

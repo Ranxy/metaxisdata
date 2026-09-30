@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -202,4 +203,121 @@ func TestOpenLineageBatchKeepsEventOrderRealServerIntegration(t *testing.T) {
 		return len(relations) > 0
 	})
 	require.NotEmpty(t, relations)
+}
+
+// One row holds one run's latest known state, and a finished run is terminal:
+// the payload its lineage came from has to survive a redelivered START, which a
+// producer retrying its post really sends. A run that fails is the other half of
+// this: Airflow reports a failed task as FAIL and never sends a COMPLETE, so
+// without these rows a failure leaves no trace in the product at all.
+func TestOpenLineageIngestionKeepsRunLifecycleRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env := sharedPostgresServiceEnvNoReset(t)
+	ctx := context.Background()
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+
+	key, _, err := env.Store.CreateOpenLineageAPIKey(ctx, "integration-lifecycle", "integration-test", "")
+	require.NoError(t, err)
+
+	// Unique per run: the shared env keeps its state across tests.
+	uniqueNano := time.Now().UnixNano()
+	namespace := fmt.Sprintf("lifecycle-ns-%d", uniqueNano)
+	jobName := fmt.Sprintf("lifecycle-job-%d", uniqueNano)
+	base := time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)
+
+	event := func(eventType, runID string, at time.Time, withDatasets bool) map[string]any {
+		built := map[string]any{
+			"eventType": eventType,
+			"eventTime": at.Format(time.RFC3339Nano),
+			"run":       map[string]any{"runId": runID},
+			"job":       map[string]any{"namespace": namespace, "name": jobName},
+			"producer":  "integration-test",
+		}
+		if withDatasets {
+			built["inputs"] = []map[string]any{{"namespace": namespace, "name": "lifecycle-in"}}
+			built["outputs"] = []map[string]any{{"namespace": namespace, "name": "lifecycle-out"}}
+		}
+		return built
+	}
+
+	post := func(t *testing.T, one map[string]any) {
+		t.Helper()
+		body, err := json.Marshal(one)
+		require.NoError(t, err)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, env.BaseURL+"/api/v1/lineage", bytes.NewReader(body))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+key)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+	}
+
+	run := func(t *testing.T, runID string) *store.OpenLineageRunMessage {
+		t.Helper()
+		ns, name, jobType := namespace, jobName, "UNSPECIFIED"
+		got, err := env.Store.GetOpenLineageRun(ctx, &store.FindOpenLineageRunMessage{
+			JobNamespace: &ns,
+			JobName:      &name,
+			JobType:      &jobType,
+			RunID:        &runID,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, got, "run %q left no row", runID)
+		return got
+	}
+
+	task := func(t *testing.T) *store.OpenLineageTaskMessage {
+		t.Helper()
+		ns, name, jobType := namespace, jobName, "UNSPECIFIED"
+		got, err := env.Store.GetOpenLineageTask(ctx, &store.FindOpenLineageTaskMessage{
+			JobNamespace: &ns,
+			JobName:      &name,
+			JobType:      &jobType,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		return got
+	}
+
+	startEvent := event("START", "run-1", base, false)
+	post(t, startEvent)
+	started := run(t, "run-1")
+	require.Equal(t, "START", started.EventType)
+	require.False(t, started.HasLineage)
+
+	post(t, event("COMPLETE", "run-1", base.Add(time.Minute), true))
+	finished := run(t, "run-1")
+	require.Equal(t, "COMPLETE", finished.EventType)
+	require.True(t, finished.HasLineage)
+	require.Equal(t, int32(1), finished.InputCount)
+
+	// A redelivered START must leave the finished run, and the payload its
+	// lineage was derived from, exactly as they were.
+	post(t, startEvent)
+	redelivered := run(t, "run-1")
+	require.Equal(t, "COMPLETE", redelivered.EventType)
+	require.True(t, redelivered.HasLineage)
+	require.Equal(t, int32(1), redelivered.InputCount)
+	// The payload is what lineage evidence is read from, so compare the parsed
+	// event rather than the stored text: JSONB rewrites the text it was given.
+	var payload openlineage.RunEvent
+	require.NoError(t, json.Unmarshal(redelivered.RawPayload, &payload))
+	require.Equal(t, "COMPLETE", payload.EventType)
+	require.Equal(t, finished.UpdatedAt, redelivered.UpdatedAt, "a refused delivery must not rewrite the row")
+
+	aggregate := task(t)
+	require.Equal(t, int32(1), aggregate.RunCount, "one run is one row however many states it reported")
+	require.Equal(t, "COMPLETE", aggregate.LatestEventType)
+
+	// A run that only ever failed is a task a directory can show.
+	post(t, event("FAIL", "run-2", base.Add(2*time.Minute), true))
+	failed := run(t, "run-2")
+	require.Equal(t, "FAIL", failed.EventType)
+	aggregate = task(t)
+	require.Equal(t, int32(2), aggregate.RunCount)
+	require.Equal(t, "run-2", aggregate.LatestRunID)
+	require.Equal(t, "FAIL", aggregate.LatestEventType)
 }

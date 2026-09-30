@@ -103,7 +103,7 @@ func (h *OpenLineageHandler) handleIngestion(c echo.Context, keyMessage *store.O
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "API key is not scoped to this OpenLineage namespace"})
 	}
 
-	persistedRun, err := h.persistEvent(c.Request().Context(), event)
+	persistedRun, err := h.store.UpsertOpenLineageRun(c.Request().Context(), h.runMessageForEvent(event))
 	if err != nil {
 		slog.Error("failed to persist OpenLineage event", "runId", event.Run.RunID, "error", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to persist event"})
@@ -158,22 +158,15 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, sco
 
 	ctx := c.Request().Context()
 	runs := make([]*store.OpenLineageRunMessage, len(events))
-	toPersist := make([]*store.OpenLineageRunMessage, 0, len(events))
-	persistIdx := make([]int, 0, len(events))
 	for i, event := range events {
-		run, needsPersist := h.runMessageForEvent(event)
-		runs[i] = run
-		if needsPersist {
-			toPersist = append(toPersist, run)
-			persistIdx = append(persistIdx, i)
-		}
+		runs[i] = h.runMessageForEvent(event)
 	}
 
 	// One transaction for the whole batch: a per-event transaction was the
 	// dominant cost of ingesting a batch.
-	persisted, err := h.store.UpsertOpenLineageRuns(ctx, toPersist)
+	persisted, err := h.store.UpsertOpenLineageRuns(ctx, runs)
 	if err != nil {
-		slog.Error("failed to persist batch events", "events", len(toPersist), "error", err)
+		slog.Error("failed to persist batch events", "events", len(runs), "error", err)
 		return c.JSON(http.StatusInternalServerError, map[string]any{
 			"status":    "error",
 			"error":     err.Error(),
@@ -181,9 +174,7 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, sco
 			"failed":    invalid + len(events),
 		})
 	}
-	for i, idx := range persistIdx {
-		runs[idx] = persisted[i]
-	}
+	runs = persisted
 
 	processed, failed := 0, 0
 	for i, event := range events {
@@ -256,9 +247,6 @@ func eventWithinScope(event *openlineage.RunEvent, scope string) bool {
 	return true
 }
 
-// runMessageForEvent derives the run for an event. Only a COMPLETE event is
-// written; anything else yields the identity the processor needs without a
-// database write, which is what the second result reports.
 // parseEventTime parses an OpenLineage eventTime. The spec requires an RFC3339
 // offset, but producers sometimes omit it; assuming UTC keeps the event's
 // ordering and retention behavior instead of storing a NULL that sorts last and
@@ -274,15 +262,13 @@ func parseEventTime(raw string) (time.Time, error) {
 	return parsed.UTC(), nil
 }
 
-func (*OpenLineageHandler) runMessageForEvent(event *openlineage.RunEvent) (*store.OpenLineageRunMessage, bool) {
+// runMessageForEvent derives the row an event writes. Every run state is stored,
+// because a row is the run's latest known state: a job that is still running or
+// that failed stays visible instead of leaving no trace at all, and the
+// event-type filter has more than one answer to offer. Lineage itself is still
+// only derived from a COMPLETE event, which is where it is final.
+func (*OpenLineageHandler) runMessageForEvent(event *openlineage.RunEvent) *store.OpenLineageRunMessage {
 	derived := openlineage.DeriveRunMetadata(event)
-	guid := openlineage.BuildOpenLineageRunGUID(event.Job.Namespace, event.Job.Name, derived.JobType, event.Run.RunID)
-	if event.EventType != "COMPLETE" {
-		return &store.OpenLineageRunMessage{
-			GUID:     guid,
-			TaskGUID: derived.TaskGUID,
-		}, false
-	}
 
 	var eventTime *time.Time
 	if raw := strings.TrimSpace(event.EventTime); raw != "" {
@@ -295,7 +281,7 @@ func (*OpenLineageHandler) runMessageForEvent(event *openlineage.RunEvent) (*sto
 	}
 
 	return &store.OpenLineageRunMessage{
-		GUID:               guid,
+		GUID:               openlineage.BuildOpenLineageRunGUID(event.Job.Namespace, event.Job.Name, derived.JobType, event.Run.RunID),
 		TaskGUID:           derived.TaskGUID,
 		RunID:              event.Run.RunID,
 		JobNamespace:       event.Job.Namespace,
@@ -317,15 +303,7 @@ func (*OpenLineageHandler) runMessageForEvent(event *openlineage.RunEvent) (*sto
 		OutputCount:        int32(len(event.Outputs)),
 		HasLineage:         derived.HasLineage,
 		RawPayload:         event.RawJSON,
-	}, true
-}
-
-func (h *OpenLineageHandler) persistEvent(ctx context.Context, event *openlineage.RunEvent) (*store.OpenLineageRunMessage, error) {
-	run, needsPersist := h.runMessageForEvent(event)
-	if !needsPersist {
-		return run, nil
 	}
-	return h.store.UpsertOpenLineageRun(ctx, run)
 }
 
 // ExtractIngestionKey returns the Bearer token of an ingestion request. The

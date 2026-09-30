@@ -311,7 +311,9 @@ CREATE INDEX idx_external_dataset_ns_name ON external_dataset(namespace, name);
 ALTER SEQUENCE external_dataset_id_seq RESTART WITH 101;
 
 
--- openlineage_run stores persisted COMPLETE OpenLineage runs and their raw payload.
+-- openlineage_run stores persisted OpenLineage runs and their raw payload. One
+-- row holds one run's latest known state: COMPLETE for a run that finished, and
+-- START or FAIL for one that is still going or never got there.
 CREATE TABLE openlineage_run (
     id BIGSERIAL PRIMARY KEY,
     guid TEXT COLLATE "C" NOT NULL,
