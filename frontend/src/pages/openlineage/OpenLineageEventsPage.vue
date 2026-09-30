@@ -93,7 +93,9 @@
               >
                 <TableCell class="whitespace-nowrap">{{ formatTimestamp(run.eventTime) }}</TableCell>
                 <TableCell>
-                  <Badge variant="outline">{{ run.eventType || "-" }}</Badge>
+                  <Badge :variant="openLineageStatusVariant(run.eventType)">
+                    {{ run.eventType || "-" }}
+                  </Badge>
                 </TableCell>
                 <TableCell>
                   <div
@@ -206,6 +208,7 @@ import type {
   OpenLineageRun,
 } from "@/types/proto-es/v1/openlineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
+import { openLineageStatusVariant } from "@/utils/openlineageStatus";
 
 const { t, locale } = useI18n();
 const route = useRoute();

@@ -112,7 +112,7 @@
                     {{ formatTimestamp(run.eventTime) }}
                   </TableCell>
                   <TableCell>
-                    <Badge :variant="statusVariant(run.eventType)">
+                    <Badge :variant="openLineageStatusVariant(run.eventType)">
                       {{ run.eventType || "-" }}
                     </Badge>
                   </TableCell>
@@ -236,7 +236,7 @@
                     {{ formatTimestamp(task.latestEventTime) }}
                   </TableCell>
                   <TableCell>
-                    <Badge :variant="statusVariant(task.latestEventType)">
+                    <Badge :variant="openLineageStatusVariant(task.latestEventType)">
                       {{ task.latestEventType || "-" }}
                     </Badge>
                   </TableCell>
@@ -310,6 +310,7 @@ import type {
   OpenLineageTask,
 } from "@/types/proto-es/v1/openlineage_service_pb";
 import { formatDate, formatDateTime, formatTime } from "@/utils/datetime";
+import { openLineageStatusVariant } from "@/utils/openlineageStatus";
 
 // Enough to describe the workspace's recent state without paging; every table
 // links into the full directory for anything deeper.
@@ -375,22 +376,6 @@ const activeTasks = computed(() => tasks.value.slice(0, ACTIVE_JOB_LIMIT));
 
 function formatTimestamp(value?: Timestamp): string {
   return formatDateTime(value, locale.value);
-}
-
-function statusVariant(
-  eventType: string
-): "success" | "destructive" | "secondary" | "outline" {
-  const normalized = (eventType ?? "").toUpperCase();
-  if (normalized === "COMPLETE") {
-    return "success";
-  }
-  if (normalized === "FAIL" || normalized === "FAILED") {
-    return "destructive";
-  }
-  if (normalized === "START" || normalized === "RUNNING") {
-    return "outline";
-  }
-  return "secondary";
 }
 
 function openRun(guid: string) {

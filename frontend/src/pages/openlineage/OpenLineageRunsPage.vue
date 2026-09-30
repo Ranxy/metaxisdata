@@ -106,7 +106,7 @@
                 <TableCell>{{ task.integration || "-" }}</TableCell>
                 <TableCell class="whitespace-nowrap">{{ formatTimestamp(task.latestEventTime) }}</TableCell>
                 <TableCell>
-                  <Badge :variant="statusVariant(task.latestEventType)">
+                  <Badge :variant="openLineageStatusVariant(task.latestEventType)">
                     {{ task.latestEventType || "-" }}
                   </Badge>
                 </TableCell>
@@ -212,6 +212,7 @@ import type {
 } from "@/types/proto-es/v1/openlineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
+import { openLineageStatusVariant } from "@/utils/openlineageStatus";
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -338,22 +339,6 @@ watch([lineageOnly, pageSize], () => {
 
 function formatTimestamp(ts: Timestamp | undefined): string {
   return formatDateTime(ts, locale.value);
-}
-
-function statusVariant(
-  eventType: string
-): "success" | "destructive" | "secondary" | "outline" {
-  const normalized = (eventType ?? "").toUpperCase();
-  if (normalized === "COMPLETE") {
-    return "success";
-  }
-  if (normalized === "FAIL" || normalized === "FAILED") {
-    return "destructive";
-  }
-  if (normalized === "START" || normalized === "RUNNING") {
-    return "outline";
-  }
-  return "secondary";
 }
 
 function openDetail(guid: string) {
