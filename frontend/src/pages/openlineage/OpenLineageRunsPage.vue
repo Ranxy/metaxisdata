@@ -25,8 +25,10 @@
 
     <div class="flex flex-wrap items-center gap-3">
       <AdvancedSearchBar
+        ref="searchBar"
         class="min-w-0 flex-1"
         :filter-categories="filterCategories"
+        :initial-filters="initialFilters"
         :search-placeholder="t('openlineage.searchJobsPlaceholder')"
         @update:filters="handleFiltersUpdate"
       />
@@ -220,9 +222,30 @@ const router = useRouter();
 const { handleError } = useErrorHandler();
 
 const pageSize = ref(50);
-const activeFilters = ref<ActiveFilter[]>([]);
 const lineageOnly = ref(route.query.lineageOnly !== "false");
 const facets = ref<ListOpenLineageFilterOptionsResponse | null>(null);
+const searchBar = ref<InstanceType<typeof AdvancedSearchBar> | null>(null);
+
+/**
+ * A reload or a shared link carries whatever the filters last wrote. Reading
+ * them back is what makes the URL the filter's home instead of a write-only log.
+ */
+function queryFilters(): ActiveFilter[] {
+  const spec: Array<[string, string, string]> = [
+    ["name", "search", t("common.filter.name")],
+    ["namespace", "namespace", t("openlineageSettings.namespace")],
+    ["jobType", "jobType", t("openlineageSettings.jobType")],
+  ];
+  return spec.flatMap(([type, key, label]) => {
+    const value = route.query[key];
+    return typeof value === "string" && value
+      ? [{ id: `query-${key}`, type, label, value, displayValue: value }]
+      : [];
+  });
+}
+
+const initialFilters = queryFilters();
+const activeFilters = ref<ActiveFilter[]>(initialFilters);
 
 function filterValue(type: string): string {
   return (
@@ -320,15 +343,10 @@ function handleFiltersUpdate(filters: ActiveFilter[]) {
 }
 
 function resetFilters() {
-  activeFilters.value = [];
-  // Turning the toggle back on reloads through the watcher below; when it is
-  // already on, nothing else would, so the reload is asked for here.
-  const reloadHere = lineageOnly.value;
+  // The bar owns the pills and the search box; clearing it emits an empty filter
+  // list, and that handler is what rewrites the URL and restarts the walk.
   lineageOnly.value = true;
-  router.replace({ query: {} });
-  if (reloadHere) {
-    void reset();
-  }
+  searchBar.value?.clear();
 }
 
 // A filter, the lineage toggle and the page size each restart the walk at its

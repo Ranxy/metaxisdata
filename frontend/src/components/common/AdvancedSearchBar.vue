@@ -64,6 +64,12 @@ interface Props {
   /** When provided, replaces the built-in instance/environment/engine filters. */
   filterCategories?: FilterCategory[];
   searchPlaceholder?: string;
+  /**
+   * Filters the page already has, e.g. ones it read back out of its URL. A
+   * `name` entry seeds the search box, which is where this component keeps free
+   * text; every other type becomes a pill.
+   */
+  initialFilters?: ActiveFilter[];
 }
 
 const props = defineProps<Props>();
@@ -92,6 +98,16 @@ const showFilterMenu = ref(false);
 const searchInputRef = ref<HTMLInputElement>();
 const filterSearchQuery = ref("");
 const categorySearchQuery = ref("");
+
+// Seeded once rather than watched: the page owns what its URL means, and a later
+// `update:filters` from here is what moves the two back into step.
+for (const filter of props.initialFilters ?? []) {
+  if (filter.type === "name") {
+    searchQuery.value = filter.value;
+  } else {
+    activeFilters.value.push({ ...filter });
+  }
+}
 
 const environmentOptions = computed<FilterOption[]>(() =>
   environmentStore.options.map((option) => ({
@@ -246,6 +262,9 @@ function clearAll() {
   searchQuery.value = "";
   emitFilters();
 }
+
+// A page's own "clear filters" button reaches the pills and the search box here.
+defineExpose({ clear: clearAll });
 
 function backToCategories() {
   selectedType.value = null;
