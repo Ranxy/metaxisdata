@@ -124,33 +124,14 @@
             </TableBody>
           </Table>
 
-          <!-- Pagination -->
-          <div
-            v-if="hasNextPage || hasPreviousPage"
-            class="border-t p-4 flex items-center justify-between"
-          >
-            <div class="text-sm text-muted-foreground">
-              {{ t("databaseManagement.showingResults", { total: databases.length }) }}
-            </div>
-            <div class="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                :disabled="!hasPreviousPage"
-                @click="goToPreviousPage"
-              >
-                {{ t("common.previous") }}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                :disabled="!hasNextPage"
-                @click="goToNextPage"
-              >
-                {{ t("common.next") }}
-              </Button>
-            </div>
-          </div>
+          <TablePager
+            v-model:page-size="pageSize"
+            :has-previous="hasPrevious"
+            :has-next="hasNext"
+            :disabled="isLoading"
+            @previous="goToPreviousPage"
+            @next="goToNextPage"
+          />
         </div>
       </PageState>
     </Card>
@@ -160,7 +141,7 @@
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { Database, Loader2 } from "lucide-vue-next";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { listDatabases, syncDatabase } from "@/api/database";
 import type { ActiveFilter } from "@/components/common/AdvancedSearchBar.vue";
@@ -168,6 +149,7 @@ import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import EnvironmentLabel from "@/components/common/EnvironmentLabel.vue";
 import PageState from "@/components/common/PageState.vue";
+import TablePager from "@/components/common/TablePager.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import Badge from "@/components/ui/badge/Badge.vue";
 import Button from "@/components/ui/button/Button.vue";
@@ -205,6 +187,7 @@ const error = ref("");
 const syncingDatabases = ref<Record<string, boolean>>({});
 
 const currentFilters = ref<ActiveFilter[]>([]);
+const pageSize = ref(50);
 
 const engineOptions = computed(() => [
   { value: "MYSQL", label: "MySQL" },
@@ -233,8 +216,8 @@ function handleFiltersUpdate(filters: ActiveFilter[]) {
 const {
   items: databases,
   isLoading,
-  hasNext: hasNextPage,
-  hasPrevious: hasPreviousPage,
+  hasNext,
+  hasPrevious,
   reset: resetDatabasePage,
   refresh: refreshDatabasePage,
   goNext: goToNextPage,
@@ -259,7 +242,7 @@ const {
 
     const response = await listDatabases({
       parent: "workspaces/-",
-      pageSize: 50,
+      pageSize: pageSize.value,
       pageToken,
       filter: filterString,
       showDeleted: false,
@@ -272,6 +255,9 @@ const {
     error.value = handleError(e, "databaseManagement.fetchError");
   },
 });
+
+// A bigger page restarts the walk: a cursor belongs to the query that produced it.
+watch(pageSize, () => void resetDatabasePage());
 
 function isDatabaseSyncing(name: string): boolean {
   return !!syncingDatabases.value[name];

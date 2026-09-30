@@ -269,14 +269,14 @@
           </Table>
         </PageState>
 
-        <div class="flex items-center justify-end gap-2 border-t pt-4">
-          <Button variant="outline" :disabled="!previousPageTokens || isLoading" @click="goToPreviousPage">
-            {{ t("common.previous") }}
-          </Button>
-          <Button variant="outline" :disabled="!nextPageToken || isLoading" @click="goToNextPage">
-            {{ t("common.next") }}
-          </Button>
-        </div>
+        <TablePager
+          v-model:page-size="pageSize"
+          :has-previous="hasPrevious"
+          :has-next="hasNext"
+          :disabled="isLoading"
+          @previous="goToPreviousPage"
+          @next="goToNextPage"
+        />
       </CardContent>
     </Card>
 
@@ -385,6 +385,7 @@ import { batchGetUsers } from "@/api/user";
 import AuditLogsDateRangePicker from "@/components/audit/AuditLogsDateRangePicker.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
+import TablePager from "@/components/common/TablePager.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -466,6 +467,7 @@ const pendingAuditUsers = new Set<string>();
 
 const searchBarRef = ref<HTMLElement | null>(null);
 const searchInputRef = ref<HTMLInputElement | null>(null);
+const pageSize = ref(50);
 
 const filterTypes = computed<FilterTypeOption[]>(() => [
   {
@@ -900,8 +902,8 @@ async function exportCsv() {
 const {
   items: logs,
   isLoading,
-  hasNext: nextPageToken,
-  hasPrevious: previousPageTokens,
+  hasNext,
+  hasPrevious,
   reset: refreshLogs,
   refresh,
   goNext: goToNextPage,
@@ -911,7 +913,7 @@ const {
     error.value = "";
     const response = await listAuditLogs({
       parent: WORKSPACE_PARENT,
-      pageSize: 50,
+      pageSize: pageSize.value,
       pageToken,
       filter: filterExpression.value,
       signal,
@@ -922,6 +924,9 @@ const {
     error.value = handleError(err, "auditLogs.fetchError");
   },
 });
+
+// A bigger page restarts the walk: a cursor belongs to the query that produced it.
+watch(pageSize, () => void refreshLogs());
 
 // The actor display map is filled per page, not per row render.
 watch(logs, (page) => void hydrateAuditUserDisplay(page));

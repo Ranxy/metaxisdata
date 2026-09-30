@@ -122,32 +122,14 @@
             </TableBody>
           </Table>
 
-          <div
-            v-if="nextPageToken || previousPageTokens"
-            class="flex items-center justify-between border-t p-4"
-          >
-            <div class="text-sm text-muted-foreground">
-              {{ t("manualSqlManagement.showingResults", { total: manualSqls.length }) }}
-            </div>
-            <div class="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                :disabled="!previousPageTokens"
-                @click="goToPreviousPage"
-              >
-                {{ t("common.previous") }}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                :disabled="!nextPageToken"
-                @click="goToNextPage"
-              >
-                {{ t("common.next") }}
-              </Button>
-            </div>
-          </div>
+          <TablePager
+            v-model:page-size="pageSize"
+            :has-previous="hasPrevious"
+            :has-next="hasNext"
+            :disabled="isLoading"
+            @previous="goToPreviousPage"
+            @next="goToNextPage"
+          />
         </div>
       </PageState>
     </Card>
@@ -372,6 +354,7 @@ import AdvancedSearchBar, {
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
+import TablePager from "@/components/common/TablePager.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -427,6 +410,7 @@ const tagsFilterInput = ref<string[]>([]);
 const isSaving = ref(false);
 const isDeleting = ref(false);
 const error = ref("");
+const pageSize = ref(50);
 const showFormModal = ref(false);
 const showDeleteModal = ref(false);
 const editingItem = ref<ManualSQL | null>(null);
@@ -801,8 +785,8 @@ async function fetchDatabases() {
 const {
   items: manualSqls,
   isLoading,
-  hasNext: nextPageToken,
-  hasPrevious: previousPageTokens,
+  hasNext,
+  hasPrevious,
   reset: resetManualSQLPage,
   refresh: refreshManualSQLPage,
   goNext: goToNextPage,
@@ -818,7 +802,7 @@ const {
       ? await searchManualSQL({
           parent,
           query,
-          pageSize: 50,
+          pageSize: pageSize.value,
           pageToken,
           schemaName,
           tags,
@@ -826,7 +810,7 @@ const {
         })
       : await listManualSQL({
           parent,
-          pageSize: 50,
+          pageSize: pageSize.value,
           pageToken,
           schemaName,
           tags,
@@ -842,6 +826,9 @@ const {
     error.value = handleError(e, "manualSqlManagement.fetchError");
   },
 });
+
+// A bigger page restarts the walk: a cursor belongs to the query that produced it.
+watch(pageSize, () => void resetManualSQLPage());
 
 async function handleSave() {
   if (!validateForm() || isCheckingManualSqlId.value) {
