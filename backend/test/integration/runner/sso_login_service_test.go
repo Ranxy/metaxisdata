@@ -21,6 +21,7 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
+	integrationenv "github.com/Ranxy/metaxisdata/backend/test/integration/env"
 )
 
 // fakeIdentityProvider is a stand-in for an OAuth2 identity provider: it hands
@@ -66,6 +67,78 @@ func (p *fakeIdentityProvider) setClaims(subject, email string) {
 	p.claims = map[string]any{"sub": subject, "email": email, "name": "SSO " + subject}
 }
 
+// ensureIntegrationExternalURL sets the workspace's external URL for the duration
+// of one test: the authorization-code exchange builds its redirect URL from it,
+// so the SSO flow cannot run without one.
+func ensureIntegrationExternalURL(ctx context.Context, t *testing.T, env *integrationenv.ServiceEnv, client v1connect.SettingServiceClient, adminToken string) {
+	t.Helper()
+
+	previous, err := client.GetWorkspaceProfileSetting(ctx, connect.NewRequest(&v1pb.GetWorkspaceProfileSettingRequest{}))
+	require.NoError(t, err)
+	if previous.Msg.GetExternalUrl() != "" {
+		return
+	}
+	_, err = client.UpdateWorkspaceProfileSetting(ctx, withToken(adminToken, &v1pb.UpdateWorkspaceProfileSettingRequest{
+		Setting:    &v1pb.WorkspaceProfileSetting{ExternalUrl: env.BaseURL},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"external_url"}},
+	}))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, restoreErr := client.UpdateWorkspaceProfileSetting(context.Background(), withToken(adminToken, &v1pb.UpdateWorkspaceProfileSettingRequest{
+			Setting:    &v1pb.WorkspaceProfileSetting{ExternalUrl: previous.Msg.GetExternalUrl()},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"external_url"}},
+		}))
+		require.NoError(t, restoreErr)
+	})
+}
+
+// registerIntegrationIdentityProvider writes an identity provider row pointing at
+// the stand-in provider. There is no API that configures one; the row is written
+// straight into the metadata database, exactly as an operator would.
+func registerIntegrationIdentityProvider(ctx context.Context, t *testing.T, env *integrationenv.ServiceEnv, provider *fakeIdentityProvider, resourceID string, mapping *storepb.FieldMapping) {
+	t.Helper()
+
+	config, err := protojson.Marshal(&storepb.OAuth2IdentityProviderConfig{
+		AuthUrl:      provider.srv.URL + "/authorize",
+		TokenUrl:     provider.srv.URL + "/token",
+		UserInfoUrl:  provider.srv.URL + "/userinfo",
+		ClientId:     "integration-client",
+		ClientSecret: "integration-secret",
+		FieldMapping: mapping,
+	})
+	require.NoError(t, err)
+	_, err = env.Store.GetDB().ExecContext(ctx,
+		`INSERT INTO idp (resource_id, name, domain, type, config) VALUES ($1, $2, $3, $4, $5)`,
+		resourceID, "Integration SSO", "example.com", storepb.IdentityProviderType_OAUTH2.String(), config)
+	require.NoError(t, err)
+}
+
+// loginViaIntegrationIdentityProvider runs one authorization-code flow: fetch a
+// single-use state, then log in as whoever the provider currently reports.
+func loginViaIntegrationIdentityProvider(ctx context.Context, t *testing.T, client v1connect.AuthServiceClient, idpResourceID string) (*v1pb.LoginResponse, error) {
+	t.Helper()
+
+	state, err := client.CreateSSOState(ctx, connect.NewRequest(&emptypb.Empty{}))
+	require.NoError(t, err)
+
+	resp, err := client.Login(ctx, connect.NewRequest(&v1pb.LoginRequest{
+		IdpName: "idps/" + idpResourceID,
+		IdpContext: &v1pb.IdentityProviderContext{
+			Context: &v1pb.IdentityProviderContext_Oauth2Context{
+				Oauth2Context: &v1pb.OAuth2IdentityProviderContext{
+					Code:         "fake-authorization-code",
+					State:        state.Msg.GetState(),
+					CodeVerifier: "fake-code-verifier",
+				},
+			},
+		},
+	}))
+	if err != nil {
+		return nil, err
+	}
+	return resp.Msg, nil
+}
+
 // TestSSOLoginBindsToTheIdentityProviderSubjectRealServerIntegration pins the
 // SSO half of H3 against a running server and a stand-in identity provider: a
 // login resolves against the provider-assigned subject the account is bound to,
@@ -82,72 +155,15 @@ func TestSSOLoginBindsToTheIdentityProviderSubjectRealServerIntegration(t *testi
 	authClient := v1connect.NewAuthServiceClient(httpClient, env.BaseURL)
 	settingClient := v1connect.NewSettingServiceClient(httpClient, env.BaseURL)
 
-	// The authorization-code exchange builds its redirect URL from the
-	// workspace's external URL, so it has to be set for the flow to run.
-	previous, err := settingClient.GetWorkspaceProfileSetting(ctx, connect.NewRequest(&v1pb.GetWorkspaceProfileSettingRequest{}))
-	require.NoError(t, err)
-	if previous.Msg.GetExternalUrl() == "" {
-		_, err = settingClient.UpdateWorkspaceProfileSetting(ctx, withToken(adminToken, &v1pb.UpdateWorkspaceProfileSettingRequest{
-			Setting:    &v1pb.WorkspaceProfileSetting{ExternalUrl: env.BaseURL},
-			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"external_url"}},
-		}))
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			_, restoreErr := settingClient.UpdateWorkspaceProfileSetting(context.Background(), withToken(adminToken, &v1pb.UpdateWorkspaceProfileSettingRequest{
-				Setting:    &v1pb.WorkspaceProfileSetting{ExternalUrl: previous.Msg.GetExternalUrl()},
-				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"external_url"}},
-			}))
-			require.NoError(t, restoreErr)
-		})
-	}
+	ensureIntegrationExternalURL(ctx, t, env, settingClient, adminToken)
 
-	// There is no API that configures an identity provider; the row is written
-	// straight into the metadata database, exactly as an operator would.
 	provider := newFakeIdentityProvider(t)
 	idpResourceID := fmt.Sprintf("sso-it-%d", time.Now().UnixNano())
-	config, err := protojson.Marshal(&storepb.OAuth2IdentityProviderConfig{
-		AuthUrl:      provider.srv.URL + "/authorize",
-		TokenUrl:     provider.srv.URL + "/token",
-		UserInfoUrl:  provider.srv.URL + "/userinfo",
-		ClientId:     "integration-client",
-		ClientSecret: "integration-secret",
-		FieldMapping: &storepb.FieldMapping{
-			Identifier:  "email",
-			Subject:     "sub",
-			DisplayName: "name",
-		},
+	registerIntegrationIdentityProvider(ctx, t, env, provider, idpResourceID, &storepb.FieldMapping{
+		Identifier:  "email",
+		Subject:     "sub",
+		DisplayName: "name",
 	})
-	require.NoError(t, err)
-	_, err = env.Store.GetDB().ExecContext(ctx,
-		`INSERT INTO idp (resource_id, name, domain, type, config) VALUES ($1, $2, $3, $4, $5)`,
-		idpResourceID, "Integration SSO", "example.com", storepb.IdentityProviderType_OAUTH2.String(), config)
-	require.NoError(t, err)
-
-	// loginAsProvider runs one authorization-code flow: fetch a single-use
-	// state, then log in as whoever the provider currently reports.
-	loginAsProvider := func(t *testing.T) (*v1pb.LoginResponse, error) {
-		t.Helper()
-
-		state, err := authClient.CreateSSOState(ctx, connect.NewRequest(&emptypb.Empty{}))
-		require.NoError(t, err)
-
-		resp, err := authClient.Login(ctx, connect.NewRequest(&v1pb.LoginRequest{
-			IdpName: "idps/" + idpResourceID,
-			IdpContext: &v1pb.IdentityProviderContext{
-				Context: &v1pb.IdentityProviderContext_Oauth2Context{
-					Oauth2Context: &v1pb.OAuth2IdentityProviderContext{
-						Code:         "fake-authorization-code",
-						State:        state.Msg.GetState(),
-						CodeVerifier: "fake-code-verifier",
-					},
-				},
-			},
-		}))
-		if err != nil {
-			return nil, err
-		}
-		return resp.Msg, nil
-	}
 
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	subject := "employee-" + suffix
@@ -157,7 +173,7 @@ func TestSSOLoginBindsToTheIdentityProviderSubjectRealServerIntegration(t *testi
 	t.Run("the first login creates an account bound to the subject", func(t *testing.T) {
 		provider.setClaims(subject, employeeEmail)
 
-		resp, err := loginAsProvider(t)
+		resp, err := loginViaIntegrationIdentityProvider(ctx, t, authClient, idpResourceID)
 		require.NoError(t, err)
 		require.NotEmpty(t, resp.GetToken())
 		require.Equal(t, employeeEmail, resp.GetUser().GetEmail())
@@ -186,7 +202,7 @@ func TestSSOLoginBindsToTheIdentityProviderSubjectRealServerIntegration(t *testi
 
 		// The provider now reports that address for a different subject.
 		provider.setClaims("real-employee-"+suffix, claimedEmail)
-		_, err = loginAsProvider(t)
+		_, err = loginViaIntegrationIdentityProvider(ctx, t, authClient, idpResourceID)
 		require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err), "unexpected error: %v", err)
 
 		var boundSubject string
@@ -213,13 +229,13 @@ func TestSSOLoginBindsToTheIdentityProviderSubjectRealServerIntegration(t *testi
 
 		freedSubject := "freed-employee-" + suffix
 		provider.setClaims(freedSubject, squattedEmail)
-		_, err = loginAsProvider(t)
+		_, err = loginViaIntegrationIdentityProvider(ctx, t, authClient, idpResourceID)
 		require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err), "the active account blocks the login")
 
 		_, err = userClient.DeleteUser(ctx, withToken(adminToken, &v1pb.DeleteUserRequest{Name: squatter.Msg.GetName()}))
 		require.NoError(t, err)
 
-		resp, err := loginAsProvider(t)
+		resp, err := loginViaIntegrationIdentityProvider(ctx, t, authClient, idpResourceID)
 		require.NoError(t, err, "the deleted account must not keep the address")
 		require.NotEqual(t, squatter.Msg.GetName(), resp.GetUser().GetName())
 
@@ -239,7 +255,7 @@ func TestSSOLoginBindsToTheIdentityProviderSubjectRealServerIntegration(t *testi
 
 		// The provider still reports the address the account was created with.
 		provider.setClaims(subject, employeeEmail)
-		resp, err := loginAsProvider(t)
+		resp, err := loginViaIntegrationIdentityProvider(ctx, t, authClient, idpResourceID)
 		require.NoError(t, err)
 		require.Equal(t, accountName, resp.GetUser().GetName(), "the same person gets the same account")
 		require.Equal(t, movedEmail, resp.GetUser().GetEmail(), "the stored address is the administrator's, not the claim")
@@ -250,7 +266,7 @@ func TestSSOLoginBindsToTheIdentityProviderSubjectRealServerIntegration(t *testi
 		require.NoError(t, err)
 
 		provider.setClaims(subject, employeeEmail)
-		_, err = loginAsProvider(t)
+		_, err = loginViaIntegrationIdentityProvider(ctx, t, authClient, idpResourceID)
 		require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err), "signing in must not undo a deactivation")
 	})
 }

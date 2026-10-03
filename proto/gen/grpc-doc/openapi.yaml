@@ -5231,6 +5231,15 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/User'
                     description: The user of successful login.
+                accountAdopted:
+                    type: boolean
+                    description: |-
+                        Set when this SSO login adopted an existing account that already carried the
+                         identity provider's address: the account's password was replaced with a
+                         random one and every session minted before that was retired, so the client
+                         has to tell the user to sign in through the identity provider from now on.
+                         Always false for a password login. The name avoids the audit redaction's
+                         "password" marker so the adoption is visible in the ledger.
         LogoutRequest:
             type: object
             properties: {}
@@ -6770,6 +6779,20 @@ components:
                         Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
                          Off by default: the surface is new, and enabling it requires a configured
                          external_url, which is where its issuer and resource identifiers come from.
+                allowSsoEmailIdentity:
+                    type: boolean
+                    description: |-
+                        Whether an SSO login may be identified by the identity provider's email
+                         claim instead of a stable subject, and may adopt an existing account with
+                         that address by binding it to the login and invalidating the account's
+                         password.
+
+                         Off by default. The email claim is mutable, so this is only sound when the
+                         provider verifies addresses (an unverified claim lets whoever can set it
+                         sign in as the account it names) and when the identity provider
+                         configuration itself is trusted, which it is because only an administrator
+                         can write it. With it on, field_mapping.subject becomes optional and falls
+                         back to the identifier claim.
 tags:
     - name: AuditLogService
     - name: AuthService

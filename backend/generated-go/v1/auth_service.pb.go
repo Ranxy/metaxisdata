@@ -343,9 +343,16 @@ type LoginResponse struct {
 	// restricted to changing the user's own password (and logging out).
 	RequireResetPassword bool `protobuf:"varint,3,opt,name=require_reset_password,json=requireResetPassword,proto3" json:"require_reset_password,omitempty"`
 	// The user of successful login.
-	User          *User `protobuf:"bytes,4,opt,name=user,proto3" json:"user,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	User *User `protobuf:"bytes,4,opt,name=user,proto3" json:"user,omitempty"`
+	// Set when this SSO login adopted an existing account that already carried the
+	// identity provider's address: the account's password was replaced with a
+	// random one and every session minted before that was retired, so the client
+	// has to tell the user to sign in through the identity provider from now on.
+	// Always false for a password login. The name avoids the audit redaction's
+	// "password" marker so the adoption is visible in the ledger.
+	AccountAdopted bool `protobuf:"varint,5,opt,name=account_adopted,json=accountAdopted,proto3" json:"account_adopted,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *LoginResponse) Reset() {
@@ -397,6 +404,13 @@ func (x *LoginResponse) GetUser() *User {
 		return x.User
 	}
 	return nil
+}
+
+func (x *LoginResponse) GetAccountAdopted() bool {
+	if x != nil {
+		return x.AccountAdopted
+	}
+	return false
 }
 
 type LogoutRequest struct {
@@ -941,11 +955,12 @@ const file_v1_auth_service_proto_rawDesc = "" +
 	"\x1dOAuth2IdentityProviderContext\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\x12#\n" +
-	"\rcode_verifier\x18\x03 \x01(\tR\fcodeVerifier\"\x85\x01\n" +
+	"\rcode_verifier\x18\x03 \x01(\tR\fcodeVerifier\"\xae\x01\n" +
 	"\rLoginResponse\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x124\n" +
 	"\x16require_reset_password\x18\x03 \x01(\bR\x14requireResetPassword\x12(\n" +
-	"\x04user\x18\x04 \x01(\v2\x14.metaxisdata.v1.UserR\x04user\"\x0f\n" +
+	"\x04user\x18\x04 \x01(\v2\x14.metaxisdata.v1.UserR\x04user\x12'\n" +
+	"\x0faccount_adopted\x18\x05 \x01(\bR\x0eaccountAdopted\"\x0f\n" +
 	"\rLogoutRequest\"b\n" +
 	"\x18CreateDeviceLoginRequest\x12\x1f\n" +
 	"\vclient_name\x18\x01 \x01(\tR\n" +

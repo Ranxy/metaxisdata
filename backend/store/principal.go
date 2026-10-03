@@ -549,3 +549,77 @@ func (s *Store) UpdateUser(ctx context.Context, currentUser *UserMessage, patch 
 	s.userEmailCache.Add(user.Email, user)
 	return user, nil
 }
+
+// AdoptUserForSSO binds an existing account to an identity provider subject and
+// invalidates the password it had, in one conditional statement. Stamping the
+// password change time is what retires the sessions the previous holder of the
+// account minted, so they lose the account along with its password.
+//
+// The row has to still be the end-user account at that address, active and
+// unbound, so a login cannot take over an account that was deleted, renamed or
+// claimed to a different subject while the login was being resolved. It reports
+// whether the adoption applied.
+func (s *Store) AdoptUserForSSO(ctx context.Context, currentUser *UserMessage, binding *IDPBinding, passwordHash string) (bool, error) {
+	if currentUser.ID == common.SystemBotID {
+		return false, errors.Errorf("cannot update system bot")
+	}
+	if binding.ResourceID == "" || binding.Subject == "" {
+		return false, errors.Errorf("an identity provider binding needs a resource id and a subject")
+	}
+
+	profile := proto.CloneOf(currentUser.Profile)
+	if profile == nil {
+		profile = &storepb.UserProfile{}
+	}
+	profile.LastChangePasswordTime = timestamppb.New(time.Now())
+	profileBytes, err := protojson.Marshal(profile)
+	if err != nil {
+		return false, err
+	}
+
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE principal
+		SET idp_resource_id = $1, idp_subject = $2, password_hash = $3, profile = $4
+		WHERE id = $5 AND deleted = FALSE AND idp_resource_id = '' AND type = $6 AND LOWER(email) = LOWER($7)`,
+		binding.ResourceID, binding.Subject, passwordHash, profileBytes, currentUser.ID,
+		storepb.PrincipalType_END_USER.String(), currentUser.Email)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return false, common.Errorf(common.Conflict, "the identity provider subject is already bound to another user")
+		}
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, nil
+	}
+
+	s.userIDCache.Remove(currentUser.ID)
+	s.userEmailCache.Remove(currentUser.Email)
+	return true, nil
+}
+
+// userProfileLastLoginKey is the JSONB key protojson produces for
+// UserProfile.last_login_time. RecordLastLogin writes that key directly, so a
+// rename of the proto field would silently stop recording logins.
+const userProfileLastLoginKey = "lastLoginTime"
+
+// RecordLastLogin stamps the last login time in the profile without rewriting the
+// rest of the column. A login used to write the whole profile back from the row it
+// had read, which could resurrect a stale copy of it — including the password
+// change time that retires sessions, the value an SSO adoption sets.
+func (s *Store) RecordLastLogin(ctx context.Context, user *UserMessage, at time.Time) error {
+	if _, err := s.GetDB().ExecContext(ctx, `
+		UPDATE principal
+		SET profile = jsonb_set(profile, ARRAY[$1], to_jsonb($2::text))
+		WHERE id = $3`,
+		userProfileLastLoginKey, at.UTC().Format(time.RFC3339Nano), user.ID); err != nil {
+		return err
+	}
+	s.userIDCache.Remove(user.ID)
+	s.userEmailCache.Remove(user.Email)
+	return nil
+}

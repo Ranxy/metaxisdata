@@ -82,39 +82,6 @@ func TestNewIdentityProvider(t *testing.T) {
 			},
 			containsErr: `the field "fieldMapping.identifier" is empty but required`,
 		},
-		{
-			// Without a subject an account could only be resolved by its
-			// mutable email claim, so a provider that maps none is refused.
-			name: "no field mapping subject",
-			config: &storepb.OAuth2IdentityProviderConfig{
-				ClientId:     "test-client-id",
-				ClientSecret: "test-client-secret",
-				AuthUrl:      "",
-				TokenUrl:     "https://example.com/token",
-				UserInfoUrl:  "https://example.com/api/user",
-				FieldMapping: &storepb.FieldMapping{
-					Identifier: "email",
-				},
-			},
-			containsErr: `the field "fieldMapping.subject" is empty but required`,
-		},
-		{
-			// A subject that is the identifier claim is the email address again,
-			// which is the value the account binding exists to replace.
-			name: "subject mapped onto the identifier claim",
-			config: &storepb.OAuth2IdentityProviderConfig{
-				ClientId:     "test-client-id",
-				ClientSecret: "test-client-secret",
-				AuthUrl:      "",
-				TokenUrl:     "https://example.com/token",
-				UserInfoUrl:  "https://example.com/api/user",
-				FieldMapping: &storepb.FieldMapping{
-					Identifier: "email",
-					Subject:    "email",
-				},
-			},
-			containsErr: `the field "fieldMapping.subject" has to name a stable claim distinct from "fieldMapping.identifier"`,
-		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

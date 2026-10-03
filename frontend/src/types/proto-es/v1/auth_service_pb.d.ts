@@ -152,6 +152,18 @@ export declare type LoginResponse = Message<"metaxisdata.v1.LoginResponse"> & {
    * @generated from field: metaxisdata.v1.User user = 4;
    */
   user?: User;
+
+  /**
+   * Set when this SSO login adopted an existing account that already carried the
+   * identity provider's address: the account's password was replaced with a
+   * random one and every session minted before that was retired, so the client
+   * has to tell the user to sign in through the identity provider from now on.
+   * Always false for a password login. The name avoids the audit redaction's
+   * "password" marker so the adoption is visible in the ledger.
+   *
+   * @generated from field: bool account_adopted = 5;
+   */
+  accountAdopted: boolean;
 };
 
 /**

@@ -76,6 +76,29 @@
               :hint="t('generalSettings.domainsHint')"
               :disabled="!canUpdate"
             />
+
+            <div class="flex items-start gap-3">
+              <Checkbox
+                id="allow-sso-email-identity"
+                :checked="allowSsoEmailIdentity"
+                :disabled="!canUpdate"
+                @update:checked="allowSsoEmailIdentity = $event === true"
+              />
+              <div class="grid gap-1">
+                <Label for="allow-sso-email-identity">{{
+                  t("generalSettings.allowSsoEmailIdentity")
+                }}</Label>
+                <p class="text-sm text-muted-foreground">
+                  {{ t("generalSettings.allowSsoEmailIdentityHint") }}
+                </p>
+                <p
+                  v-if="allowSsoEmailIdentity"
+                  class="text-sm text-destructive"
+                >
+                  {{ t("generalSettings.allowSsoEmailIdentityWarning") }}
+                </p>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -264,6 +287,9 @@ const disallowSignup = ref(false);
 const disallowPasswordSignin = ref(false);
 const enforceIdentityDomain = ref(false);
 const domainsInput = ref("");
+// The opt-in that lets an SSO login be identified by the provider's email
+// claim and adopt the account carrying it. Off by default.
+const allowSsoEmailIdentity = ref(false);
 
 // ExplainSQL may only use the provider profiles selected here. An empty list
 // means "every enabled profile is allowed".
@@ -308,6 +334,7 @@ function snapshot(): string {
     disallowPasswordSignin: disallowPasswordSignin.value,
     enforceIdentityDomain: enforceIdentityDomain.value,
     domains: parseDomains(domainsInput.value),
+    allowSsoEmailIdentity: allowSsoEmailIdentity.value,
     externalUrl: externalUrl.value.trim(),
     retentionDays: Number(retentionDaysInput.value),
     mcpEnabled: mcpEnabled.value,
@@ -323,6 +350,7 @@ async function fetchSetting() {
   disallowPasswordSignin.value = setting.disallowPasswordSignin;
   enforceIdentityDomain.value = setting.enforceIdentityDomain;
   domainsInput.value = setting.domains.join(", ");
+  allowSsoEmailIdentity.value = setting.allowSsoEmailIdentity;
   allowedProfiles.value = [...setting.allowedLlmProviderProfiles];
   externalUrl.value = setting.externalUrl;
   retentionDaysInput.value = String(setting.openlineageRetentionDays);
@@ -410,6 +438,7 @@ async function handleSave() {
         disallowPasswordSignin: disallowPasswordSignin.value,
         enforceIdentityDomain: enforceIdentityDomain.value,
         domains: parseDomains(domainsInput.value),
+        allowSsoEmailIdentity: allowSsoEmailIdentity.value,
         externalUrl: externalUrl.value.trim(),
         openlineageRetentionDays: Number(retentionDaysInput.value),
         allowedLlmProviderProfiles: allowedProfiles.value,
@@ -420,6 +449,7 @@ async function handleSave() {
         "disallow_password_signin",
         "enforce_identity_domain",
         "domains",
+        "allow_sso_email_identity",
         "external_url",
         "openlineage_retention_days",
         "allowed_llm_provider_profiles",

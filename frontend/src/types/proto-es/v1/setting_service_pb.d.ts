@@ -77,6 +77,21 @@ export declare type WorkspaceProfileSetting = Message<"metaxisdata.v1.WorkspaceP
    * @generated from field: bool mcp_enabled = 8;
    */
   mcpEnabled: boolean;
+
+  /**
+   * Whether an SSO login may be identified by the identity provider's email
+   * claim instead of a stable subject, and may adopt an existing account with
+   * that address — binding it to the login and invalidating its password.
+   *
+   * Off by default, and only sound when the provider verifies addresses and the
+   * (administrator-written) identity provider configuration is trusted. While it
+   * is on, field_mapping.subject is optional and falls back to the email claim,
+   * and an account created before SSO was set up can sign in again instead of
+   * being refused.
+   *
+   * @generated from field: bool allow_sso_email_identity = 9;
+   */
+  allowSsoEmailIdentity: boolean;
 };
 
 /**

@@ -52,6 +52,19 @@ message WorkspaceProfileSetting {
   // external_url, which is where its issuer and resource identifiers come from.
   bool mcp_enabled = 16;
 
+  // Whether an SSO login may be identified by the identity provider's email
+  // claim instead of a stable subject, and may adopt an existing account with
+  // that address by binding it to the login and invalidating the account's
+  // password.
+  //
+  // Off by default. The email claim is mutable, so this is only sound when the
+  // provider verifies addresses (an unverified claim lets whoever can set it
+  // sign in as the account it names) and when the identity provider
+  // configuration itself is trusted, which it is because only an administrator
+  // can write it. With it on, field_mapping.subject becomes optional and falls
+  // back to the identifier claim.
+  bool allow_sso_email_identity = 17;
+
   reserved 3, 6, 7, 8, 11, 13;
   reserved "require_2fa", "token_duration", "announcement", "maximum_role_expiration", "database_change_mode", "enable_metric_collection";
 }

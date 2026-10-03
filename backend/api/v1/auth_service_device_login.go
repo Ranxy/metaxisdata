@@ -215,11 +215,11 @@ func (s *AuthService) issueDeviceLoginToken(ctx context.Context, login state.Dev
 		return nil, "", connect.NewError(connect.CodeInternal, errors.New("failed to generate API access token"))
 	}
 
-	updatedUser, err := s.store.UpdateUser(ctx, user, &store.UpdateUserMessage{Profile: profileWithLastLogin(user.Profile)})
-	if err != nil {
+	// A targeted JSONB write, for the same reason as a password login: rewriting
+	// the whole profile from a row that may already be stale would resurrect the
+	// password change time and un-retire every session minted before it.
+	if err := s.store.RecordLastLogin(ctx, user, time.Now()); err != nil {
 		slog.Error("failed to update user profile", log.WithError(err), slog.Int("user_id", user.ID))
-	} else {
-		user = updatedUser
 	}
 	return user, token, nil
 }

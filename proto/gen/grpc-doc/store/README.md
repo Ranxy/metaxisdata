@@ -1278,7 +1278,9 @@ response and the mapped values only live for the duration of a login.
 | identifier | [string](#string) |  | Identifier is the field name of the unique identifier in 3rd-party idp user info. Required. |
 | display_name | [string](#string) |  | DisplayName is the field name of display name in 3rd-party idp user info. Optional. |
 | phone | [string](#string) |  | Phone is the field name of primary phone in 3rd-party idp user info. Optional. |
-| subject | [string](#string) |  | Subject is the field name of the provider-assigned subject in 3rd-party idp user info, such as the OIDC &#34;sub&#34; claim. Required: an account is bound to this value and a repeat login resolves against that binding, never against the identifier (email) claim, which is mutable. |
+| subject | [string](#string) |  | Subject is the field name of the provider-assigned subject in 3rd-party idp user info, such as the OIDC &#34;sub&#34; claim. An account is bound to this value and a repeat login resolves against that binding, never against the identifier (email) claim, which is mutable.
+
+Required unless the workspace has turned on the email-identity switch (allow_sso_email_identity), which accepts a provider that maps no subject and identifies its users by the address claim. |
 | groups | [string](#string) |  | Groups is the field name of groups in 3rd-party idp user info. Optional. Mainly used for OIDC: https://developer.okta.com/docs/guides/customize-tokens-groups-claim/main/ |
 
 
@@ -1815,6 +1817,9 @@ roles have a row here.
 | openlineage_retention_days | [int32](#int32) |  | openlineage_retention_days bounds how long persisted OpenLineage runs are kept. Zero (the default) keeps them forever: they are audit data. |
 | allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles ExplainSQL may use, as profile resource names. Empty means every enabled profile is allowed. |
 | mcp_enabled | [bool](#bool) |  | Whether the MCP endpoint and its OAuth 2.1 authorization server are served. Off by default: the surface is new, and enabling it requires a configured external_url, which is where its issuer and resource identifiers come from. |
+| allow_sso_email_identity | [bool](#bool) |  | Whether an SSO login may be identified by the identity provider&#39;s email claim instead of a stable subject, and may adopt an existing account with that address by binding it to the login and invalidating the account&#39;s password.
+
+Off by default. The email claim is mutable, so this is only sound when the provider verifies addresses (an unverified claim lets whoever can set it sign in as the account it names) and when the identity provider configuration itself is trusted, which it is because only an administrator can write it. With it on, field_mapping.subject becomes optional and falls back to the identifier claim. |
 
 
 

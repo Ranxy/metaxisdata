@@ -967,6 +967,7 @@ page needs nothing else.
 | token | [string](#string) |  | The access token. Empty for a web login, which carries the token in an HttpOnly cookie instead. |
 | require_reset_password | [bool](#bool) |  | Whether the workspace password policy requires the user to rotate their password before doing anything else. When true, the issued token is restricted to changing the user&#39;s own password (and logging out). |
 | user | [User](#metaxisdata-v1-User) |  | The user of successful login. |
+| account_adopted | [bool](#bool) |  | Set when this SSO login adopted an existing account that already carried the identity provider&#39;s address: the account&#39;s password was replaced with a random one and every session minted before that was retired, so the client has to tell the user to sign in through the identity provider from now on. Always false for a password login. The name avoids the audit redaction&#39;s &#34;password&#34; marker so the adoption is visible in the ledger. |
 
 
 
@@ -5234,6 +5235,9 @@ metaxisdata.roles.* permissions.
 | enforce_identity_domain | [bool](#bool) |  | Whether to restrict signup and signin to the domains above. |
 | allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles ExplainSQL may use, as profile resource names (&#34;llm-provider-profiles/{id}&#34;). Empty means every enabled profile is allowed. |
 | mcp_enabled | [bool](#bool) |  | Whether the MCP endpoint and its OAuth 2.1 authorization server are served. Off by default, and only usable once external_url is configured. |
+| allow_sso_email_identity | [bool](#bool) |  | Whether an SSO login may be identified by the identity provider&#39;s email claim instead of a stable subject, and may adopt an existing account with that address — binding it to the login and invalidating its password.
+
+Off by default, and only sound when the provider verifies addresses and the (administrator-written) identity provider configuration is trusted. While it is on, field_mapping.subject is optional and falls back to the email claim, and an account created before SSO was set up can sign in again instead of being refused. |
 
 
 

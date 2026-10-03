@@ -316,6 +316,7 @@ import {
 import { FormField } from "@/components/ui/form-field";
 import { Separator } from "@/components/ui/separator";
 import { useErrorHandler } from "@/composables/useErrorHandler";
+import { notify } from "@/lib/notify";
 import type { AppLocale } from "@/locales";
 import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
@@ -392,6 +393,14 @@ async function handleLogin() {
       loginForm.value.email,
       loginForm.value.password
     );
+
+    if (response.accountAdopted) {
+      // This sign-in took over the account from whoever held it: the password it
+      // had no longer works, and the only way in from now on is this identity
+      // provider. Tell them before they are redirected, or they will conclude
+      // their account was stolen the next time the password fails.
+      notify.warning(t("login.passwordInvalidated"));
+    }
 
     if (response.requireResetPassword) {
       // The server restricted the issued token to this password change, so stay

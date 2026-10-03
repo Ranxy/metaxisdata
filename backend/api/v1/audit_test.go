@@ -107,6 +107,12 @@ func TestIsSensitiveAuditField(t *testing.T) {
 	for _, field := range []string{"email", "name", "host", "port", "description", "userCode"} {
 		require.False(t, audit.IsSensitiveAuditField(field), "expected %q to be kept", field)
 	}
+	// The marker list redacts anything whose name contains "password" or
+	// "session", which is why the flag an adopted SSO login reports is named
+	// accountAdopted: renaming it after either of them would erase the takeover
+	// from the ledger.
+	require.False(t, audit.IsSensitiveAuditField("accountAdopted"))
+	require.True(t, audit.IsSensitiveAuditField("passwordInvalidated"), "the name a password-named flag would have had")
 }
 
 func TestIsNilConnectValue(t *testing.T) {

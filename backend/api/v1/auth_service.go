@@ -84,10 +84,15 @@ func (s *AuthService) Login(ctx context.Context, req *connect.Request[v1pb.Login
 	resp := connect.NewResponse(response)
 	var err error
 	if loginViaIDP {
-		loginUser, err = s.getOrCreateUserWithIDP(ctx, request)
+		var accountAdopted bool
+		loginUser, accountAdopted, err = s.getOrCreateUserWithIDP(ctx, request)
 		if err != nil {
 			return nil, err
 		}
+		// The client has to tell the user their password no longer works; the
+		// login that just adopted the account is the only moment we can reach
+		// them.
+		response.AccountAdopted = accountAdopted
 	} else {
 		throttleKey := loginThrottleKey(request.Email, req.Peer().Addr)
 		if s.stateCfg.LoginLimiter.Blocked(throttleKey, time.Now()) {
@@ -173,19 +178,37 @@ func (s *AuthService) Login(ctx context.Context, req *connect.Request[v1pb.Login
 		resp.Header().Add("Set-Cookie", cookie.String())
 	}
 
-	// Patch the profile instead of replacing the whole JSONB column: the cloned
-	// current profile keeps every other field, and the clone keeps this from
-	// mutating the entry the store caches.
-	updatedUser, err := s.store.UpdateUser(ctx, loginUser, &store.UpdateUserMessage{Profile: profileWithLastLogin(loginUser.Profile)})
-	if err != nil {
+	// Stamp the login time with a targeted JSONB write instead of rewriting the
+	// whole profile column: the row this request holds may already be stale, and
+	// a rewrite would undo the password change time an adopted account carries,
+	// which is what retires the previous holder's sessions.
+	if err := s.store.RecordLastLogin(ctx, loginUser, time.Now()); err != nil {
 		slog.Error("failed to update user profile", log.WithError(err), slog.Int("user_id", loginUser.ID))
-	} else {
-		loginUser = updatedUser
 	}
 
-	response.User = convertToUser(loginUser)
+	// The response reports the login this request just recorded. The profile is
+	// cloned so the entry the store caches is never mutated in place.
+	responseUser := *loginUser
+	responseUser.Profile = profileWithLastLogin(loginUser.Profile)
+	response.User = convertToUser(&responseUser)
 
 	return resp, nil
+}
+
+// randomPasswordHash hashes a password nobody ever learns. An account that signs
+// in through an identity provider still needs a hash in the column, and adopting
+// an account replaces the password its previous holder knew with exactly this, so
+// that password stops working along with the sessions it authorized.
+func randomPasswordHash() (string, error) {
+	password, err := common.RandomString(20)
+	if err != nil {
+		return "", errors.Errorf("failed to generate a random password")
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", errors.Errorf("failed to generate password hash")
+	}
+	return string(hash), nil
 }
 
 // profileWithLastLogin returns a copy of the current profile with
@@ -309,75 +332,86 @@ func (s *AuthService) getAndVerifyUser(ctx context.Context, request *v1pb.LoginR
 	return user, nil
 }
 
-func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.LoginRequest) (*store.UserMessage, error) {
+func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.LoginRequest) (*store.UserMessage, bool, error) {
 	idpID, err := common.GetIdentityProviderID(request.IdpName)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Wrapf(err, "failed to get identity provider ID"))
+		return nil, false, connect.NewError(connect.CodeInvalidArgument, errors.Wrapf(err, "failed to get identity provider ID"))
 	}
 	idp, err := s.store.GetIdentityProvider(ctx, &store.FindIdentityProviderMessage{
 		ResourceID: &idpID,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get identity provider"))
+		return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get identity provider"))
 	}
 	if idp == nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("identity provider not found"))
+		return nil, false, connect.NewError(connect.CodeNotFound, errors.Errorf("identity provider not found"))
 	}
 
 	setting, err := s.store.GetWorkspaceGeneralSetting(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get workspace setting"))
+		return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get workspace setting"))
 	}
+	// With the email-identity switch on, the address claim may stand in for the
+	// subject and a login may adopt the account that already carries it.
+	allowEmailIdentity := setting.GetAllowSsoEmailIdentity()
 
 	var userInfo *storepb.IdentityProviderUserInfo
 	switch idp.Type {
 	case storepb.IdentityProviderType_OAUTH2:
 		oauth2Context := request.IdpContext.GetOauth2Context()
 		if oauth2Context == nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("missing OAuth2 context"))
+			return nil, false, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("missing OAuth2 context"))
+		}
+		oauth2Config := idp.Config.GetOauth2Config()
+		if err := validateIDPSubjectMapping(oauth2Config.GetFieldMapping(), allowEmailIdentity); err != nil {
+			return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.Wrapf(err, "identity provider %q is misconfigured", idp.Title))
 		}
 		// The state binds the callback to the client that started the flow,
 		// which is what stops an attacker from completing a code exchange in
 		// someone else's browser (login CSRF / authorization code injection).
 		if !s.consumeSSOState(oauth2Context.State) {
-			return nil, connect.NewError(connect.CodePermissionDenied, errors.Errorf("invalid or expired OAuth2 state, request a new one first"))
+			return nil, false, connect.NewError(connect.CodePermissionDenied, errors.Errorf("invalid or expired OAuth2 state, request a new one first"))
 		}
-		oauth2IdentityProvider, err := oauth2.NewIdentityProvider(idp.Config.GetOauth2Config())
+		oauth2IdentityProvider, err := oauth2.NewIdentityProvider(oauth2Config)
 		if err != nil {
-			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.Wrapf(err, "failed to create new OAuth2 identity provider"))
+			return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.Wrapf(err, "failed to create new OAuth2 identity provider"))
 		}
 		if setting.ExternalUrl == "" {
-			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("external URL is not configured: set it in the workspace general settings"))
+			return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.New("external URL is not configured: set it in the workspace general settings"))
 		}
 		redirectURL := fmt.Sprintf("%s/oauth/callback", setting.ExternalUrl)
 		token, err := oauth2IdentityProvider.ExchangeToken(ctx, redirectURL, oauth2Context.Code, oauth2Context.CodeVerifier)
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to exchange token"))
+			return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to exchange token"))
 		}
 		userInfo, _, err = oauth2IdentityProvider.UserInfo(token)
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get user info"))
+			return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get user info"))
 		}
 	default:
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("identity provider type %s not supported", idp.Type.String()))
+		return nil, false, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("identity provider type %s not supported", idp.Type.String()))
 	}
 	if userInfo == nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("failed to get user info from identity provider %q", idp.Title))
+		return nil, false, connect.NewError(connect.CodeNotFound, errors.Errorf("failed to get user info from identity provider %q", idp.Title))
 	}
 	if userInfo.Identifier == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("missing identifier in user info from identity provider %q", idp.Title))
+		return nil, false, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("missing identifier in user info from identity provider %q", idp.Title))
 	}
-	// The subject is the identity an account is bound to. The identifier — the
-	// email claim — is mutable, so a login must never resolve against it: that
-	// is how a member who registered (or moved to) someone else's address took
-	// over the account the real owner signed in with.
-	if userInfo.Subject == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("missing subject in user info from identity provider %q", idp.Title))
+	// The subject is the identity the account is bound to. The identifier — the
+	// email claim — is mutable, so by default a login must never resolve against
+	// it: that is how a member who registered (or moved to) someone else's
+	// address took over the account the real owner signed in with. The workspace
+	// can accept the address as an identity instead, which is what
+	// allowEmailIdentity carries; the switch is administrator-set and the
+	// identity provider it applies to is administrator-configured.
+	subject, err := idpLoginSubject(idp.Config.GetOauth2Config().GetFieldMapping(), userInfo, allowEmailIdentity)
+	if err != nil {
+		return nil, false, connect.NewError(connect.CodeInvalidArgument, errors.Wrapf(err, "identity provider %q", idp.Title))
 	}
 
-	boundUser, err := s.store.GetUserByIDPBinding(ctx, &store.IDPBinding{ResourceID: idpID, Subject: userInfo.Subject})
+	boundUser, err := s.store.GetUserByIDPBinding(ctx, &store.IDPBinding{ResourceID: idpID, Subject: subject})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to find the user bound to identity provider %q", idp.Title))
+		return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to find the user bound to identity provider %q", idp.Title))
 	}
 	if boundUser != nil {
 		// A deactivated account stays deactivated: restoring it is an explicit
@@ -388,10 +422,10 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 			// Sync user groups with the identity provider.
 			// The userInfo.Groups is the groups that the user belongs to in the identity provider.
 			if err := s.syncUserGroups(ctx, boundUser, userInfo.Groups); err != nil {
-				return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to sync user groups"))
+				return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to sync user groups"))
 			}
 		}
-		return boundUser, nil
+		return boundUser, false, nil
 	}
 
 	// The userinfo's email comes from identity provider, it has to be converted to lower-case.
@@ -402,39 +436,79 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 		if domain != "" {
 			email = strings.ToLower(fmt.Sprintf("%s@%s", email, domain))
 		} else {
-			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Wrapf(err, "invalid email %q", userInfo.Identifier))
+			return nil, false, connect.NewError(connect.CodeInvalidArgument, errors.Wrapf(err, "invalid email %q", userInfo.Identifier))
 		}
 	}
 	// If the email is still invalid, we will return an error.
 	if err := validateEmailWithDomains(ctx, s.store, email, false); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	// No account carries this subject yet. Adopting an existing account by its
-	// email address would hand the identity provider's account to whoever owns
-	// that row — they still hold its password — so the login is refused and the
-	// address is left for an administrator to resolve.
-	//
 	// A deleted row is ignored: it cannot sign in, its address is free again
 	// (which is what the partial unique email index assumes), and refusing it
 	// would make the remedy — an administrator deletes the account that squats
 	// the address — impossible to carry out.
 	existedUser, err := s.store.GetActiveUserByEmail(ctx, email)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to find user by email %s", email))
+		return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to find user by email %s", email))
 	}
 	if existedUser != nil {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf("email %s already belongs to an active account that is not linked to identity provider %q; an administrator has to move that account's address, or delete it, before this login can create the account", email, idp.Title))
+		if !allowEmailIdentity {
+			return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf("email %s already belongs to an active account that is not linked to identity provider %q; an administrator has to move that account's address, or delete it, before this login can create the account", email, idp.Title))
+		}
+		// The workspace accepts the address as this person's identity, and the
+		// identity provider configuration that says so is administrator-written,
+		// so the login takes the account over instead of refusing it: the account
+		// is bound to the subject and its password is voided, which also retires
+		// whatever sessions the previous holder had.
+		if existedUser.Type != storepb.PrincipalType_END_USER {
+			return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf("email %s belongs to a %s, which cannot sign in through an identity provider", email, existedUser.Type.String()))
+		}
+		if existedUser.IDPResourceID != "" {
+			return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf("email %s is already linked to identity provider %q under another subject; an administrator has to delete that account before it can be linked again", email, idp.Title))
+		}
+		passwordHash, err := randomPasswordHash()
+		if err != nil {
+			return nil, false, connect.NewError(connect.CodeInternal, err)
+		}
+		adopted, err := s.store.AdoptUserForSSO(ctx, existedUser, &store.IDPBinding{ResourceID: idpID, Subject: subject}, passwordHash)
+		if err != nil {
+			if common.ErrorCode(err) == common.Conflict {
+				return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.Wrapf(err, "account %s changed while signing in; sign in again", email))
+			}
+			return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to adopt user %d for identity provider %q", existedUser.ID, idp.Title))
+		}
+		if !adopted {
+			// The account was deleted or linked to another subject while this
+			// login was being resolved; a second attempt resolves the new state.
+			return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf("account %s changed while signing in; sign in again", email))
+		}
+		slog.Warn("an SSO login adopted an existing account and invalidated its password",
+			slog.String("idp", idp.Title),
+			slog.Int("user_id", existedUser.ID),
+			slog.String("email", email))
+		// Re-read: the caller keeps the returned user, and the adoption just
+		// rewrote its profile, which is where the password change time lives.
+		if user, err := s.store.GetUserByID(ctx, existedUser.ID); err != nil {
+			return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to reload user %d after adopting it", existedUser.ID))
+		} else if user != nil {
+			existedUser = user
+		}
+		if userInfo.HasGroups {
+			if err := s.syncUserGroups(ctx, existedUser, userInfo.Groups); err != nil {
+				return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to sync user groups"))
+			}
+		}
+		return existedUser, true, nil
 	}
 
-	// Create new user from identity provider.
-	password, err := common.RandomString(20)
+	// Create new user from identity provider. The password exists so the column
+	// stays a valid hash and is never disclosed: the account signs in through the
+	// provider. It is generated here rather than up front so that a login that is
+	// refused costs no bcrypt work.
+	passwordHash, err := randomPasswordHash()
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate random password"))
-	}
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate password hash"))
+		return nil, false, connect.NewError(connect.CodeInternal, err)
 	}
 	newUser, err := s.store.CreateUser(ctx, &store.UserMessage{
 		Name:          userInfo.DisplayName,
@@ -442,20 +516,20 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 		Phone:         userInfo.Phone,
 		Type:          storepb.PrincipalType_END_USER,
 		IDPResourceID: idpID,
-		IDPSubject:    userInfo.Subject,
-		PasswordHash:  string(passwordHash),
+		IDPSubject:    subject,
+		PasswordHash:  passwordHash,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create user")
+		return nil, false, errors.Wrap(err, "failed to create user")
 	}
 	if userInfo.HasGroups {
 		// Sync user groups with the identity provider.
 		// The userInfo.Groups is the groups that the user belongs to in the identity provider.
 		if err := s.syncUserGroups(ctx, newUser, userInfo.Groups); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to sync user groups"))
+			return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to sync user groups"))
 		}
 	}
-	return newUser, nil
+	return newUser, false, nil
 }
 
 // syncUserGroups syncs the user groups with the given groups.

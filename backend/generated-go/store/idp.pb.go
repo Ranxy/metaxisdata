@@ -310,9 +310,13 @@ type FieldMapping struct {
 	// Phone is the field name of primary phone in 3rd-party idp user info. Optional.
 	Phone string `protobuf:"bytes,4,opt,name=phone,proto3" json:"phone,omitempty"`
 	// Subject is the field name of the provider-assigned subject in 3rd-party
-	// idp user info, such as the OIDC "sub" claim. Required: an account is bound
-	// to this value and a repeat login resolves against that binding, never
-	// against the identifier (email) claim, which is mutable.
+	// idp user info, such as the OIDC "sub" claim. An account is bound to this
+	// value and a repeat login resolves against that binding, never against the
+	// identifier (email) claim, which is mutable.
+	//
+	// Required unless the workspace has turned on the email-identity switch
+	// (allow_sso_email_identity), which accepts a provider that maps no subject
+	// and identifies its users by the address claim.
 	Subject string `protobuf:"bytes,6,opt,name=subject,proto3" json:"subject,omitempty"`
 	// Groups is the field name of groups in 3rd-party idp user info. Optional.
 	// Mainly used for OIDC: https://developer.okta.com/docs/guides/customize-tokens-groups-claim/main/

@@ -212,6 +212,9 @@
     "viewInBrowser": "View in Metadata Browser"
   },
   "generalSettings": {
+    "allowSsoEmailIdentity": "Allow SSO by email identity",
+    "allowSsoEmailIdentityHint": "Identifies an SSO login by the identity provider's email claim instead of a stable subject, so a provider that exposes no subject claim can be used. An existing account with that address is taken over by the login: it is bound to the provider and its password is invalidated, and so is every session opened with it.",
+    "allowSsoEmailIdentityWarning": "Only enable this when the identity provider verifies its email addresses: whoever can set an address there can sign in as the account it names.",
     "debugMode": "Enable runtime debug mode",
     "debugModeHint": "Switches server logging to debug level, turns on verbose request logs and /debug/pprof, and lets panic handlers return stack traces to clients. Turn it off again once you are done.",
     "debugSection": "Debug mode",
@@ -565,6 +568,7 @@
     "noAccount": "Don't have an account?",
     "or": "or",
     "password": "Password",
+    "passwordInvalidated": "This account now signs in through its identity provider: the password it had no longer works. Sign in through the identity provider from now on.",
     "passwordPlaceholder": "Enter your password",
     "signUp": "Sign Up",
     "sso": "SSO Sign In (Coming Soon)",

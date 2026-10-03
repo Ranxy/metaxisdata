@@ -4022,9 +4022,13 @@ Format: users/{userUID}. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>Subject is the field name of the provider-assigned subject in 3rd-party
-idp user info, such as the OIDC &#34;sub&#34; claim. Required: an account is bound
-to this value and a repeat login resolves against that binding, never
-against the identifier (email) claim, which is mutable. </p></td>
+idp user info, such as the OIDC &#34;sub&#34; claim. An account is bound to this
+value and a repeat login resolves against that binding, never against the
+identifier (email) claim, which is mutable.
+
+Required unless the workspace has turned on the email-identity switch
+(allow_sso_email_identity), which accepts a provider that maps no subject
+and identifies its users by the address claim. </p></td>
                 </tr>
               
                 <tr>
@@ -5343,6 +5347,23 @@ Empty means every enabled profile is allowed. </p></td>
                   <td><p>Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
 Off by default: the surface is new, and enabling it requires a configured
 external_url, which is where its issuer and resource identifiers come from. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>allow_sso_email_identity</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether an SSO login may be identified by the identity provider&#39;s email
+claim instead of a stable subject, and may adopt an existing account with
+that address by binding it to the login and invalidating the account&#39;s
+password.
+
+Off by default. The email claim is mutable, so this is only sound when the
+provider verifies addresses (an unverified claim lets whoever can set it
+sign in as the account it names) and when the identity provider
+configuration itself is trusted, which it is because only an administrator
+can write it. With it on, field_mapping.subject becomes optional and falls
+back to the identifier claim. </p></td>
                 </tr>
               
             </tbody>

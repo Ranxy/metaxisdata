@@ -80,6 +80,8 @@ func (s *SettingService) UpdateWorkspaceProfileSetting(ctx context.Context, requ
 			setting.AllowedLlmProviderProfiles = profiles
 		case "mcp_enabled":
 			setting.McpEnabled = request.Msg.Setting.McpEnabled
+		case "allow_sso_email_identity":
+			setting.AllowSsoEmailIdentity = request.Msg.Setting.AllowSsoEmailIdentity
 		default:
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported update_mask %q", path))
 		}
@@ -115,6 +117,7 @@ func convertToWorkspaceProfileSetting(setting *storepb.WorkspaceProfileSetting) 
 		EnforceIdentityDomain:      setting.GetEnforceIdentityDomain(),
 		AllowedLlmProviderProfiles: setting.GetAllowedLlmProviderProfiles(),
 		McpEnabled:                 setting.GetMcpEnabled(),
+		AllowSsoEmailIdentity:      setting.GetAllowSsoEmailIdentity(),
 	}
 }
 
