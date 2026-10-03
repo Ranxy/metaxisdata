@@ -682,7 +682,7 @@ func (d *Driver) getEventList(ctx context.Context, databaseName string) ([]*stor
 }
 
 func (d *Driver) getCreateEventStmt(ctx context.Context, databaseName string, name string) (string, error) {
-	query := fmt.Sprintf("SHOW CREATE EVENT `%s`.`%s`", databaseName, name)
+	query := "SHOW CREATE EVENT " + qualifiedIdentifier(databaseName, name)
 	rows, err := d.db.QueryContext(ctx, query)
 	if err != nil {
 		return "", util.FormatErrorWithQuery(err, query)
@@ -861,7 +861,7 @@ func (d *Driver) syncRoutines(ctx context.Context, databaseName string) ([]*stor
 }
 
 func (d *Driver) getCreateFunctionStmt(ctx context.Context, databaseName, functionName string) (string, error) {
-	query := fmt.Sprintf("SHOW CREATE FUNCTION `%s`.`%s`", databaseName, functionName)
+	query := "SHOW CREATE FUNCTION " + qualifiedIdentifier(databaseName, functionName)
 	rows, err := d.db.QueryContext(ctx, query)
 	if err != nil {
 		return "", util.FormatErrorWithQuery(err, query)
@@ -925,7 +925,7 @@ func (d *Driver) getCreateFunctionStmt(ctx context.Context, databaseName, functi
 }
 
 func (d *Driver) getCreateProcedureStmt(ctx context.Context, databaseName, functionName string) (string, error) {
-	query := fmt.Sprintf("SHOW CREATE PROCEDURE `%s`.`%s`", databaseName, functionName)
+	query := "SHOW CREATE PROCEDURE " + qualifiedIdentifier(databaseName, functionName)
 	rows, err := d.db.QueryContext(ctx, query)
 	if err != nil {
 		return "", util.FormatErrorWithQuery(err, query)
@@ -1053,7 +1053,7 @@ func IsCurrentTimestampLike(s string) bool {
 }
 
 func (d *Driver) reconcileViewDefinition(ctx context.Context, databaseName, viewName string) (string, error) {
-	query := fmt.Sprintf("SHOW CREATE VIEW `%s`.`%s`", databaseName, viewName)
+	query := "SHOW CREATE VIEW " + qualifiedIdentifier(databaseName, viewName)
 	var createStmt, unused string
 	if err := d.db.QueryRowContext(ctx, query).Scan(&unused, &createStmt, &unused, &unused); err != nil {
 		if noRows := errors.Is(err, sql.ErrNoRows); noRows {
@@ -1205,10 +1205,11 @@ func (d *Driver) listPartitionTables(ctx context.Context, databaseName string) (
 		if len(partitions) == 0 {
 			continue
 		}
-		showQuery := fmt.Sprintf("SHOW CREATE TABLE `%s`.`%s`", databaseName, tableKey.Table)
+		showQuery := "SHOW CREATE TABLE " + qualifiedIdentifier(databaseName, tableKey.Table)
 		showRows, err := d.db.QueryContext(ctx, showQuery)
 		if err != nil {
 			slog.Warn("failed to execute query", slog.String("query", showQuery), log.WithError(err))
+			continue
 		}
 		for showRows.Next() {
 			var tableName, createTable string

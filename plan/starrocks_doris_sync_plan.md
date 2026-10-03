@@ -44,8 +44,9 @@ branch is already correct, so it needed no change) and address objects as
 
 ### Connection (`starrocks.go`)
 
-DSN with `multiStatements=true`, `maxAllowedPacket=0`, `interpolateParams=true`;
-`tcp`/`unix` protocol, SSH dialer via `util.GetSSHClient`, TLS via
+DSN with `maxAllowedPacket=0`, `interpolateParams=true` (`multiStatements` stays
+off so a statement built from catalog names cannot run an injected second
+statement); `tcp`/`unix` protocol, SSH dialer via `util.GetSSHClient`, TLS via
 `util.GetTLSConfig`. `Driver{dbType, db, databaseName, sshClient, openCleanUp}` —
 same shape as `mysql.Driver`. `parseVersion` splits a MySQL-style version string and
 keeps the suffix (`5.7.22-log`, `10.4.7-MariaDB`, `5.6.29_ddm_3.0.1.7`).

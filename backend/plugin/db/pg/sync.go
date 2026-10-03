@@ -1078,11 +1078,10 @@ func getViews(txn *sql.Tx, columnMap map[db.TableKey][]*storepb.ColumnMetadata, 
 	return viewMap, viewOidMap, nil
 }
 
-// getViewDependencies gets the dependencies of a view.
-func getViewDependencies(txn *sql.Tx, schemaName, viewName string) ([]*storepb.DependencyColumn, error) {
-	var result []*storepb.DependencyColumn
-
-	query := fmt.Sprintf(`
+// viewDependenciesQuery lists the columns read by a view or materialized view.
+// The catalog supplies the schema and view names, so they are bound as
+// parameters instead of being interpolated into string literals.
+const viewDependenciesQuery = `
 		SELECT source_ns.nspname as source_schema,
 	  		source_table.relname as source_table,
 	  		pg_attribute.attname as column_name
@@ -1095,15 +1094,19 @@ func getViewDependencies(txn *sql.Tx, schemaName, viewName string) ([]*storepb.D
 	  		JOIN pg_namespace dependency_ns ON dependency_ns.oid = dependency_view.relnamespace
 	  		JOIN pg_namespace source_ns ON source_ns.oid = source_table.relnamespace
 	  	WHERE 
-	  		dependency_ns.nspname = '%s'
-	  		AND dependency_view.relname = '%s'
+	  		dependency_ns.nspname = $1
+	  		AND dependency_view.relname = $2
 	  		AND pg_attribute.attnum > 0
 	  		-- Only consider SELECT rules (view definitions), not INSERT/UPDATE/DELETE rules
 	  		AND pg_rewrite.ev_type = '1'
 	  	ORDER BY 1,2,3;
-	`, schemaName, viewName)
+	`
 
-	rows, err := txn.Query(query)
+// getViewDependencies gets the dependencies of a view.
+func getViewDependencies(txn *sql.Tx, schemaName, viewName string) ([]*storepb.DependencyColumn, error) {
+	var result []*storepb.DependencyColumn
+
+	rows, err := txn.Query(viewDependenciesQuery, schemaName, viewName)
 	if err != nil {
 		return nil, err
 	}

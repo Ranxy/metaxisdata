@@ -10,6 +10,7 @@ import (
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
+	dbmysql "github.com/Ranxy/metaxisdata/backend/plugin/db/mysql"
 )
 
 // errUnknownTable is MySQL's "Unknown table" error, raised when an object is
@@ -67,7 +68,7 @@ func (d *Driver) GetObjectDefinition(ctx context.Context, objectType storepb.Met
 // showCreateQuery builds the SHOW CREATE statement for an object type, reporting
 // false for types this engine has no definition for.
 func showCreateQuery(databaseName string, objectType storepb.MetaType, name string) (string, bool) {
-	qualified := quoteIdentifier(databaseName) + "." + quoteIdentifier(name)
+	qualified := dbmysql.QuoteIdentifier(databaseName) + "." + dbmysql.QuoteIdentifier(name)
 	switch objectType {
 	case storepb.MetaType_TABLE:
 		return "SHOW CREATE TABLE " + qualified, true
@@ -78,12 +79,6 @@ func showCreateQuery(databaseName string, objectType storepb.MetaType, name stri
 	default:
 		return "", false
 	}
-}
-
-// quoteIdentifier backtick-quotes a MySQL-wire identifier. Identifiers cannot be
-// bound as statement parameters, so an embedded backtick is escaped by doubling.
-func quoteIdentifier(name string) string {
-	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
 }
 
 // createColumnIndex locates the column holding the DDL. SHOW CREATE returns a

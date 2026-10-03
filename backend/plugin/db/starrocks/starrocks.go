@@ -71,7 +71,7 @@ func (d *Driver) Open(_ context.Context, dbType storepb.Engine, connCfg db.Conne
 	// interpolateParams makes the driver substitute placeholders on the client.
 	// StarRocks and Doris have no usable server-side prepared statements, so the
 	// sync queries rely on it.
-	params := []string{"multiStatements=true", "maxAllowedPacket=0", "interpolateParams=true"}
+	params := []string{"maxAllowedPacket=0", "interpolateParams=true"}
 	if err := dbmysql.ValidateExtraConnectionParameters(connCfg.DataSource.GetExtraConnectionParameters()); err != nil {
 		return nil, err
 	}

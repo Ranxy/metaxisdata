@@ -105,7 +105,9 @@ func (d *Driver) getMySQLConnection(connCfg db.ConnectionConfig) (string, error)
 		protocol = "unix"
 	}
 
-	params := []string{"multiStatements=true", "maxAllowedPacket=0"}
+	// multiStatements is deliberately off: it would let a statement built from
+	// target-catalog names run a second, injected statement.
+	params := []string{"maxAllowedPacket=0"}
 	if err := ValidateExtraConnectionParameters(connCfg.DataSource.GetExtraConnectionParameters()); err != nil {
 		return "", err
 	}

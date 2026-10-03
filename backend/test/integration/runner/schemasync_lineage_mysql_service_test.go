@@ -36,6 +36,39 @@ func TestMySQLSchemaSyncAndLineageRealServerIntegration(t *testing.T) {
 	require.NotEmpty(t, relations)
 }
 
+// The sync builds its SHOW CREATE statements from names read out of the
+// target's catalog, so such a name must be re-quoted on the way in: left bare, a
+// backtick in the name closes the identifier and the rest is parsed as SQL.
+func TestMySQLSyncEscapesCatalogIdentifiersRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, sourceDatabase, databaseName := setupMySQLServiceDatabase(t)
+
+	const (
+		oddTable = "od`d"
+		oddView  = "v`iew"
+	)
+	require.NoError(t, env.ExecMySQL(ctx, fmt.Sprintf(`
+USE %s;
+CREATE TABLE %s (id INT PRIMARY KEY) PARTITION BY HASH(id) PARTITIONS 4;
+CREATE VIEW %s AS SELECT id FROM %s;
+`, quoteMySQLIdentifier(sourceDatabase), quoteMySQLIdentifier(oddTable), quoteMySQLIdentifier(oddView), quoteMySQLIdentifier(oddTable))))
+
+	env.SyncDatabase(ctx, t, databaseName)
+
+	guidPrefix := fmt.Sprintf("%s;%s", instanceID, sourceDatabase)
+	tableGUID := waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_TABLE, oddTable)
+	waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_VIEW, oddView)
+
+	// The partition count only reaches the metadata through the SHOW CREATE TABLE
+	// built from this name, so it proves that statement ran against the table.
+	table := waitForMetaRegistry(ctx, t, env, tableGUID, storepb.MetaType_TABLE).Metadata.GetTableMetadata()
+	require.NotEmpty(t, table.GetPartitions())
+	for _, partition := range table.GetPartitions() {
+		require.Equal(t, "4", partition.GetUseDefault())
+	}
+}
+
 func TestMySQLLineageUpdatesAfterViewChangeRealServerIntegration(t *testing.T) {
 	t.Parallel()
 
