@@ -47,11 +47,13 @@
 - **修复**:登录校验 IdP 主体(存储 `idp_id+subject` 并比对),邮箱仅作展示;自助改邮箱要求当前密码;IdP 组匹配只用稳定标识,标题不参与。
 
 ### H4. MySQL 同步把目标库对象名裸拼进 `SHOW CREATE …`,叠加 `multiStatements=true` ⇒ 目标实例任意 SQL 执行
+- **状态**:**已修复**(2026-10-03,commit `8b3ded8`;修复内容与验证见 §10)。
 - **证据**:`backend/plugin/db/mysql/sync.go:1208`(`fmt.Sprintf("SHOW CREATE TABLE \`%s\`.\`%s\`", databaseName, tableKey.Table)`,反引号未转义;同型还有 :1056 视图、:928 存储过程、:864 函数、:685 事件);`backend/plugin/db/mysql/mysql.go:108`(`params := []string{"multiStatements=true", "maxAllowedPacket=0"}` 强制开启)。
 - **攻击场景**:databaseName/对象名全部来自被监控实例的 `information_schema`。MySQL 标识符可含反引号(`CREATE TABLE \`x\`\` ; DROP TABLE t; -- \``),插值后逃逸出标识符,`multiStatements=true` 使整串多语句执行。在目标库建一个恶意命名的表/视图/例程/事件,等定时同步跑一次,即可以平台登记的高权限同步账号在目标实例执行任意 SQL,无需与平台有任何交互。
 - **修复**:标识符转义(反引号→双反引号、拒 NUL)或参数化替代;从同步连接的 DSN 默认移除 `multiStatements`。
 
 ### H5. PostgreSQL `getViewDependencies` 用 `'%s'` 拼 schema/view 名 ⇒ 二次 SQL 注入读取目标库数据
+- **状态**:**已修复**(2026-10-03,commit `8b3ded8`;修复内容与验证见 §10)。
 - **证据**:`backend/plugin/db/pg/sync.go:1098-1101`(`WHERE dependency_ns.nspname = '%s' AND dependency_view.relname = '%s'` + `Sprintf(schemaName, viewName)` + 无参数 `txn.Query`)。
 - **攻击场景**:schemaName/viewName 来自目标库 `pg_views/pg_matviews`。PG 允许 `CREATE VIEW "x' UNION SELECT … --"`,注入后 `--` 注释掉剩余 WHERE,结果写入 `ViewMetadata.DependencyColumns`,经元数据接口回显给任何 `workspaceMember` ⇒ 持低权限目标库账号者借高权限同步账号读任意表数据(pgx 走扩展协议,多语句不可用,故为读取/盲注级)。
 - **修复**:改 `$1/$2` 参数化。
@@ -366,3 +368,30 @@
 | 配置/运维 | `backend/config/*`、`backend/bin/server/cmd/*`、限流全景、`backend/runner/maintenance`、CI/Makefile、go.mod 依赖面(`go list -deps` 实测) |
 
 **核实方法说明**:8 个领域子代理(模型 `deepseek-v4.1-flash`)产出发现后,主代理对全部高危与关键中危逐条读取其引用代码复核(约 45 处),全部属实;子代理的 3 项可执行验证(CLI 重定向外泄、MySQL DSN 参数覆盖、审计脱敏/XOR 已知明文恢复)与 2 项主动误报排除亦经代码层面确认。行号以当前工作区为准,后续提交可能使个别行号漂移,请以引用的代码片段定位。
+
+---
+
+## 10. 修复记录
+
+按时间追加。§1–§6 保留审查当时的原文,修复情况以各条目开头的状态指针和本节为准。
+
+### 2026-10-03 —— H4、H5 已修复(commit `8b3ded8`)
+
+**H4 MySQL 同步标识符注入**(`backend/plugin/db/mysql/`)
+
+- 新增 `identifier.go`:`QuoteIdentifier`(反引号加倍转义)、`qualifiedIdentifier`(拼接 `` `db`.`name` ``)。`sync.go` 中 5 处 `SHOW CREATE`(事件、函数、存储过程、视图、表)全部改为转义后拼接,不再把目录名直接填进反引号模板。
+- DSN 不再强制 `multiStatements=true`(`mysql.go`);StarRocks/Doris 同样移除(`starrocks/starrocks.go`),并复用同一 `QuoteIdentifier`(`starrocks/definition.go`),删掉包内重复实现。
+- 附带:`listPartitionTables` 在 `SHOW CREATE TABLE` 失败后原本继续对 nil `*sql.Rows` 调 `Next()`,会把同步 worker 打成 panic;现改为记录日志并跳过该表。
+
+**H5 PostgreSQL `getViewDependencies` 二次注入**(`backend/plugin/db/pg/sync.go`)
+
+- 查询提为包级常量 `viewDependenciesQuery`,`dependency_ns.nspname` / `dependency_view.relname` 的 `'%s'` 字面量改为 `$1`/`$2`,调用改为 `txn.Query(viewDependenciesQuery, schemaName, viewName)`。
+
+**回归测试**
+
+- 单元:`backend/plugin/db/mysql/identifier_test.go`(覆盖名字含反引号、库名含反引号,以及 `` x`; DROP TABLE t; -- `` 这样的注入样例)、`backend/plugin/db/pg/sync_test.go`(断言该查询使用 `$1`/`$2` 且不含 `%s`)。
+- 集成:`TestMySQLSyncEscapesCatalogIdentifiersRealServerIntegration` 在真实 MySQL 上建立名字含反引号的视图与 HASH 分区表,要求同步成功,并由转义后的 `SHOW CREATE TABLE` 产出分区数(`UseDefault`)。反向验证:将两处还原为漏洞写法后该测试确实失败(同步报 MySQL 1064,查询串为 `` SHOW CREATE VIEW `it_app_…`.`v`iew` ``),修复后通过。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`、release 构建、`make test-integration`(PostgreSQL + MySQL 真实服务 + migrator)全部通过。
+
+**仍未处理**:H4/H5 之外的发现(H1–H3、H6–H7、M/L/I/D 系列)按 §8 路线图待办。
