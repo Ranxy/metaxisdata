@@ -42,6 +42,7 @@
 - **修复**:注册默认 invite-only;开启时加审批/限流/告警;`disallow_signup` 作为显式安装选择而非空默认值。
 
 ### H3. SSO 身份仅按邮箱匹配 + 自助改邮箱无需当前密码:预占邮箱劫持账号
+- **状态**:**已修复**(2026-10-03,commit `bb4cb7e`;修复内容与验证见 §10)。修复方式与原建议有一处差异:改邮箱由"要求当前密码"改为"仅 `users.update` 持有者(管理员)可改",本人亦同——邮箱是账号在工作区外被识别的身份,属管理字段。
 - **证据**:`backend/api/v1/auth_service.go:386-405`(`GetUserByEmail(email)` 命中即登录,用户行不保存任何 IdP subject 绑定,且未校验 IdP 的 `email_verified`);`backend/api/v1/user_service.go:352-364`(自更新邮箱路径不要求 `current_password`,与 `password` 路径 373-380 的对照);`backend/api/v1/auth_service.go:449`(IdP 组按 `Email == group || Title == group` 匹配,可变标题参与)。
 - **攻击场景**:A(自助注册,依赖 H2 默认开启)把邮箱改为 `ceo@corp.com`(`enforce_identity_domain` 白名单内亦可);B 首次 SSO 登录被匹配进 A 的账号行,A 始终握有该行密码。管理员按邮箱给"该员工"授权后角色一并被 A 继承。组名/标题碰撞可造成角色误授。
 - **修复**:登录校验 IdP 主体(存储 `idp_id+subject` 并比对),邮箱仅作展示;自助改邮箱要求当前密码;IdP 组匹配只用稳定标识,标题不参与。
@@ -395,3 +396,37 @@
 **验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`、release 构建、`make test-integration`(PostgreSQL + MySQL 真实服务 + migrator)全部通过。
 
 **仍未处理**:H4/H5 之外的发现(H1–H3、H6–H7、M/L/I/D 系列)按 §8 路线图待办。
+
+### 2026-10-03 —— H3 已修复(commit `bb4cb7e`)
+
+**SSO 身份绑定 IdP subject**(`backend/api/v1/auth_service.go`、`backend/store/principal.go`、`backend/plugin/idp/oauth2/oauth2.go`)
+
+- `principal` 新增 `idp_resource_id` / `idp_subject` 两列与部分唯一索引(`WHERE idp_resource_id <> ''`),增量 `backend/migrator/migration/0.1/0012##principal_idp_binding.sql`;`FieldMapping` 与 `IdentityProviderUserInfo` 各增 `subject` 字段(`proto/store/store/idp.proto`,已 `buf format/lint/generate`),OAuth2 插件把配置的 subject claim 映射进 user info。
+- 登录先按 `(idp, subject)` 解析账号:命中即登录,邮箱 claim 只作展示——管理员在平台侧改了邮箱,同一个人下次 SSO 仍解析到同一账号。被停用的绑定账号只返回给登录入口由其按既有逻辑拒绝,不再自动 undelete,也不再改写其组关系。
+- 未命中绑定、而该邮箱已有**活跃**账号时拒绝登录(`FailedPrecondition`,提示管理员移走该账号的地址或删除它):既有行没有绑定,服务端无法区分"管理员预置"与"攻击者预占",因此一律不采纳。已软删除的行不参与判定(它不能登录,地址本就视为空闲,与部分唯一邮箱索引同一约定),因此"删掉占位账号"是真正可用的补救路径。
+- 首次登录创建账号时写入绑定;provider 配置缺 `fieldMapping.subject`、或 user info 里没有该 claim 时登录失败——没有稳定主体就只能退回可变的邮箱 claim,这正是漏洞的成因。插件构造时进一步拒绝 `fieldMapping.subject == fieldMapping.identifier`(把主体映射回邮箱 claim 等于没绑定)。
+- 顺带把同一函数内的两处已列问题一并收紧:SSO 登录不再自动 undelete 被停用账号(该分支随重写移除,与 M7 同源);IdP 组同步只按组资源标识匹配,可变标题不再参与角色授予(注:`FieldMapping.groups` 在 OAuth2 插件里当前没有映射进 user info,`HasGroups` 恒为 false,该路径今日不可达,属提前收紧)。
+- **升级注意**:已存在的 `idp` 行没有 `fieldMapping.subject`,升级后其 SSO 登录会以"缺少 subject 映射"失败;需要运维在 `idp.config` 里补上该字段(没有配置 IdP 的 API/UI,本来也只能改库),建议映射 OIDC 的 `sub`。
+
+**改邮箱改为管理员专属**(`backend/api/v1/user_service.go`、`frontend/src/pages/settings/UserManagementPage.vue`)
+
+- `UpdateUser` 的 `email` 路径无条件要求 `metaxisdata.users.update`(本人亦然),与 `password` 路径"改自己要当前密码"并列;成员仍可自助修改自己的 title/phone/password。
+- 前端编辑弹窗在无 `users.update` 时禁用邮箱输入框并给出提示,且不把 `email` 放进 update_mask(否则整个请求会被服务端拒绝)。
+- 该字段语义写入 `proto/v1/v1/user_service.proto` 注释与 `docs/security-posture.md`。
+
+**回归测试**
+
+- 单元:`backend/plugin/idp/oauth2/oauth2_test.go` 断言 subject 从独立 claim 映射(`identifier=email`、`subject=sub`),缺 `fieldMapping.subject` 时构造失败,`subject == identifier` 的退化配置也被拒绝。
+- 集成(真实服务器 + 假 OAuth2 IdP):`TestSSOLoginBindsToTheIdentityProviderSubjectRealServerIntegration` 在测试进程内起 token/userinfo 桩服务、直接向元数据库写入 `idp` 行,覆盖五条:首次登录建立绑定并被 `principal.idp_subject` 记录;他人预占的邮箱不被接管(`FailedPrecondition`,且该行绑定仍为空);管理员删除占位账号后地址释放、SSO 可建立新绑定;重复登录按绑定解析而非邮箱 claim(管理员改邮箱后仍是同一账号与同一 `users/{id}`);被停用账号不被 SSO 复活。
+- 集成:`TestUpdateUserEmailRequiresAdminRealServerIntegration` 覆盖成员改自己邮箱 403 且原邮箱仍可登录、成员仍可改自己 title、管理员可改他人邮箱(旧邮箱随即登录失败)、被授予 workspaceAdmin 后可改自己邮箱。
+- **反向验证**:临时删除 `UpdateUser` 的 email 权限检查、并让 SSO 重新按邮箱采纳既有账号后,上述两条用例确实失败(`an address taken by someone else is not handed over`、`a member cannot move their own address`);恢复修复后全部通过。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`、`make test-integration`(PostgreSQL + MySQL 真实服务 + migrator 全绿)、release/dev 构建;前端 `biome:check`、`lint`、`i18n`、`type-check`、`test run`(46 files / 304 tests 通过)。
+
+**残余(本轮未处理)**:
+
+1. IdP 的 `email_verified` 仍未校验(H3 证据中列出):主体绑定后邮箱不再决定账号归属,因此它不再构成接管路径;但当 provider 允许未验证的自选邮箱时,"管理员按邮箱给新账号授权"仍可能授给攻击者的新账号。补齐需要一个 claim 映射字段,而当前没有可配置 IdP 的 API/UI,故未在本轮加映射,记录备查。
+2. provider 侧的 `skip_tls_verify` 与"无条件信任 userinfo 返回的主体"叠加,能中间人的网络对手即可伪造任意 subject 接管已绑定账号(M22/D7 家族)。
+3. 没有"重新绑定"API:未绑定账号只能改地址或删除后由 SSO 新建,角色与历史不随之迁移。
+
+**仍未处理**:H1/H2/H6/H7 与 M/L/I/D 系列按 §8 路线图待办。
