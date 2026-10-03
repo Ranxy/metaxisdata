@@ -1135,6 +1135,7 @@
     "deleteUser": "删除用户",
     "editUser": "编辑用户",
     "email": "邮箱",
+    "emailAdminOnly": "只有工作区管理员可以修改邮箱地址",
     "emailInvalid": "请输入有效的邮箱地址",
     "emailPlaceholder": "请输入邮箱地址",
     "emailRequired": "邮箱不能为空",

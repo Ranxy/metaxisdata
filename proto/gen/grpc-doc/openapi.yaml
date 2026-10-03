@@ -3075,7 +3075,12 @@ paths:
         patch:
             tags:
                 - UserService
-            description: Only the user itself and the user with permission on the workspace can update the user.
+            description: |-
+                Only the user itself and the user with permission on the workspace can update the user.
+                 Changing an email address requires metaxisdata.users.update even for the
+                 caller's own account: the address is the identity a member is recognized by
+                 outside the workspace (and by single sign-on), so it is an administrative
+                 field, not a profile setting.
             operationId: UserService_UpdateUser
             parameters:
                 - name: user
@@ -6638,6 +6643,10 @@ components:
                     format: enum
                 email:
                     type: string
+                    description: |-
+                        The user's email address. It identifies the member to the outside world,
+                         so only a caller with metaxisdata.users.update may set it, on their own
+                         account or on someone else's.
                 title:
                     type: string
                 userType:

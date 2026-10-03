@@ -33,6 +33,18 @@ func NewIdentityProvider(config *storepb.OAuth2IdentityProviderConfig) (*Identit
 	if config.FieldMapping == nil {
 		return nil, errors.New(`the field "fieldMapping" is empty but required`)
 	}
+	// The subject is what an account is bound to, so it has to be a claim the
+	// provider assigns and the user cannot set to someone else's value. Without
+	// one a login could only be resolved by the mutable identifier (email)
+	// claim, which is what the binding exists to replace.
+	if config.FieldMapping.Subject == "" {
+		return nil, errors.Errorf(`the field "fieldMapping.subject" is empty but required: map a stable claim such as the OIDC "sub", not the email claim`)
+	}
+	// Mapping the subject onto the identifier claim would resolve a login
+	// against exactly the mutable value the binding exists to replace.
+	if config.FieldMapping.Subject == config.FieldMapping.Identifier {
+		return nil, errors.Errorf(`the field "fieldMapping.subject" has to name a stable claim distinct from "fieldMapping.identifier" (%q)`, config.FieldMapping.Identifier)
+	}
 	for v, field := range map[string]string{
 		config.ClientId:                "clientId",
 		config.ClientSecret:            "clientSecret",
@@ -127,6 +139,9 @@ func (p *IdentityProvider) UserInfo(token string) (*storepb.IdentityProviderUser
 	userInfo := &storepb.IdentityProviderUserInfo{}
 	if v, ok := idp.GetValueWithKey(claims, p.config.FieldMapping.Identifier).(string); ok {
 		userInfo.Identifier = v
+	}
+	if v, ok := idp.GetValueWithKey(claims, p.config.FieldMapping.Subject).(string); ok {
+		userInfo.Subject = v
 	}
 	if p.config.FieldMapping.DisplayName != "" {
 		if v, ok := idp.GetValueWithKey(claims, p.config.FieldMapping.DisplayName).(string); ok {

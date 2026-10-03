@@ -26,6 +26,11 @@ CREATE TABLE principal (
     email text NOT NULL,
     password_hash text NOT NULL,
     phone text NOT NULL DEFAULT '',
+    -- The identity provider subject this account signs in with, empty for
+    -- accounts that authenticate with a password. A repeat SSO login resolves
+    -- against this binding, never against the email column, which is mutable.
+    idp_resource_id text NOT NULL DEFAULT '',
+    idp_subject text NOT NULL DEFAULT '',
     -- Stored as UserProfile (proto/store/store/user.proto)
     profile jsonb NOT NULL DEFAULT '{}'
 );
@@ -34,6 +39,10 @@ CREATE TABLE principal (
 -- a concurrent duplicate registration; soft-deleted rows are excluded so a
 -- deleted account does not block reusing its address.
 CREATE UNIQUE INDEX idx_principal_unique_email ON principal (LOWER(email)) WHERE deleted = FALSE;
+
+-- One account per identity provider subject. Partial on the empty binding so
+-- the password accounts, which have no subject, do not collide with each other.
+CREATE UNIQUE INDEX idx_principal_unique_idp_subject ON principal (idp_resource_id, idp_subject) WHERE idp_resource_id <> '';
 
 -- Setting
 CREATE TABLE setting (

@@ -47,6 +47,7 @@ func TestNewIdentityProvider(t *testing.T) {
 				UserInfoUrl:  "https://example.com/api/user",
 				FieldMapping: &storepb.FieldMapping{
 					Identifier: "login",
+					Subject:    "sub",
 				},
 			},
 			containsErr: `the field "tokenUrl" is empty but required`,
@@ -61,6 +62,7 @@ func TestNewIdentityProvider(t *testing.T) {
 				UserInfoUrl:  "",
 				FieldMapping: &storepb.FieldMapping{
 					Identifier: "login",
+					Subject:    "sub",
 				},
 			},
 			containsErr: `the field "userInfoUrl" is empty but required`,
@@ -75,9 +77,43 @@ func TestNewIdentityProvider(t *testing.T) {
 				UserInfoUrl:  "https://example.com/api/user",
 				FieldMapping: &storepb.FieldMapping{
 					Identifier: "",
+					Subject:    "sub",
 				},
 			},
 			containsErr: `the field "fieldMapping.identifier" is empty but required`,
+		},
+		{
+			// Without a subject an account could only be resolved by its
+			// mutable email claim, so a provider that maps none is refused.
+			name: "no field mapping subject",
+			config: &storepb.OAuth2IdentityProviderConfig{
+				ClientId:     "test-client-id",
+				ClientSecret: "test-client-secret",
+				AuthUrl:      "",
+				TokenUrl:     "https://example.com/token",
+				UserInfoUrl:  "https://example.com/api/user",
+				FieldMapping: &storepb.FieldMapping{
+					Identifier: "email",
+				},
+			},
+			containsErr: `the field "fieldMapping.subject" is empty but required`,
+		},
+		{
+			// A subject that is the identifier claim is the email address again,
+			// which is the value the account binding exists to replace.
+			name: "subject mapped onto the identifier claim",
+			config: &storepb.OAuth2IdentityProviderConfig{
+				ClientId:     "test-client-id",
+				ClientSecret: "test-client-secret",
+				AuthUrl:      "",
+				TokenUrl:     "https://example.com/token",
+				UserInfoUrl:  "https://example.com/api/user",
+				FieldMapping: &storepb.FieldMapping{
+					Identifier: "email",
+					Subject:    "email",
+				},
+			},
+			containsErr: `the field "fieldMapping.subject" has to name a stable claim distinct from "fieldMapping.identifier"`,
 		},
 	}
 	for _, test := range tests {
@@ -158,7 +194,8 @@ func TestIdentityProvider(t *testing.T) {
 			TokenUrl:     fmt.Sprintf("%s/oauth2/token", s.URL),
 			UserInfoUrl:  fmt.Sprintf("%s/oauth2/userinfo", s.URL),
 			FieldMapping: &storepb.FieldMapping{
-				Identifier:  "sub",
+				Identifier:  "email",
+				Subject:     "sub",
 				DisplayName: "name",
 			},
 		},
@@ -174,7 +211,8 @@ func TestIdentityProvider(t *testing.T) {
 	require.NoError(t, err)
 
 	wantUserInfo := &storepb.IdentityProviderUserInfo{
-		Identifier:  testSubject,
+		Identifier:  testEmail,
+		Subject:     testSubject,
 		DisplayName: testName,
 	}
 	assert.Equal(t, wantUserInfo, userInfoResult)
@@ -209,7 +247,8 @@ func TestIdentityProvider_SelfSigned(t *testing.T) {
 				TokenUrl:     fmt.Sprintf("%s/oauth2/token", s.URL),
 				UserInfoUrl:  fmt.Sprintf("%s/oauth2/userinfo", s.URL),
 				FieldMapping: &storepb.FieldMapping{
-					Identifier:  "sub",
+					Identifier:  "email",
+					Subject:     "sub",
 					DisplayName: "name",
 				},
 			},
@@ -230,7 +269,8 @@ func TestIdentityProvider_SelfSigned(t *testing.T) {
 				TokenUrl:     fmt.Sprintf("%s/oauth2/token", s.URL),
 				UserInfoUrl:  fmt.Sprintf("%s/oauth2/userinfo", s.URL),
 				FieldMapping: &storepb.FieldMapping{
-					Identifier:  "sub",
+					Identifier:  "email",
+					Subject:     "sub",
 					DisplayName: "name",
 				},
 				SkipTlsVerify: true,
@@ -247,7 +287,8 @@ func TestIdentityProvider_SelfSigned(t *testing.T) {
 		require.NoError(t, err)
 
 		wantUserInfo := &storepb.IdentityProviderUserInfo{
-			Identifier:  testSubject,
+			Identifier:  testEmail,
+			Subject:     testSubject,
 			DisplayName: testName,
 		}
 		assert.Equal(t, wantUserInfo, userInfoResult)
@@ -281,7 +322,7 @@ func TestExchangeTokenSendsThePKCEVerifier(t *testing.T) {
 		ClientSecret: "secret",
 		TokenUrl:     srv.URL,
 		UserInfoUrl:  srv.URL,
-		FieldMapping: &storepb.FieldMapping{Identifier: "email"},
+		FieldMapping: &storepb.FieldMapping{Identifier: "email", Subject: "sub"},
 	})
 	require.NoError(t, err)
 

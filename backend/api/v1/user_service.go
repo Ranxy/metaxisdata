@@ -330,7 +330,8 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 	}
 
 	// Updating another user, including rotating their credentials, requires
-	// metaxisdata.users.update. A user may update themselves.
+	// metaxisdata.users.update. A user may update themselves; per-field rules
+	// (the email address) are applied below.
 	isSelf := callerUser.ID == user.ID
 	if !isSelf {
 		if err := requirePermission(ctx, s.iam, permission.UsersUpdate); err != nil {
@@ -351,6 +352,12 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 	for _, path := range request.Msg.UpdateMask.Paths {
 		switch path {
 		case "email":
+			// The address is how the account is recognized outside the
+			// workspace, so it is an administrative field: changing anyone's
+			// email, including your own, requires metaxisdata.users.update.
+			if err := requirePermission(ctx, s.iam, permission.UsersUpdate); err != nil {
+				return nil, err
+			}
 			if err := validateEmailWithDomains(ctx, s.store, request.Msg.User.Email, user.Type == storepb.PrincipalType_SERVICE_ACCOUNT); err != nil {
 				return nil, err
 			}

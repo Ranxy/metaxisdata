@@ -298,6 +298,8 @@
               :label="t('userManagement.email')"
               :placeholder="t('userManagement.emailPlaceholder')"
               required
+              :disabled="!canUpdateEmail"
+              :hint="canUpdateEmail ? '' : t('userManagement.emailAdminOnly')"
               :error="editFormErrors.email"
             />
             <FormField
@@ -423,6 +425,11 @@ const authStore = useAuthStore();
 // users.create / users.delete in addition to the existing self-service rules.
 const canCreateUser = computed(() =>
   authStore.hasPermission("metaxisdata.users.create")
+);
+// An email address is an administrative field: the server refuses to move one
+// — anyone's, including your own — without users.update.
+const canUpdateEmail = computed(() =>
+  authStore.hasPermission("metaxisdata.users.update")
 );
 const { formatError, handleError, showSuccess } = useErrorHandler();
 
@@ -712,13 +719,19 @@ async function handleUpdateUser() {
 
   isUpdating.value = true;
   try {
-    const updateFields: string[] = ["email", "title", "phone"];
+    // The address is only sent when the caller may move it; the server rejects
+    // the whole request otherwise.
+    const updateFields: string[] = ["title", "phone"];
     const userData: Partial<User> & { name: string } = {
       name: userToEdit.value.name,
-      email: editForm.value.email,
       title: editForm.value.title,
       phone: editForm.value.phone,
     };
+
+    if (canUpdateEmail.value) {
+      updateFields.push("email");
+      userData.email = editForm.value.email;
+    }
 
     if (editForm.value.password) {
       updateFields.push("password");

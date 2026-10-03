@@ -590,8 +590,11 @@ type User struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The name of the user.
 	// Format: users/{user}. {user} is a system-generated unique ID.
-	Name       string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	State      State    `protobuf:"varint,2,opt,name=state,proto3,enum=metaxisdata.v1.State" json:"state,omitempty"`
+	Name  string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	State State  `protobuf:"varint,2,opt,name=state,proto3,enum=metaxisdata.v1.State" json:"state,omitempty"`
+	// The user's email address. It identifies the member to the outside world,
+	// so only a caller with metaxisdata.users.update may set it, on their own
+	// account or on someone else's.
 	Email      string   `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
 	Title      string   `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
 	UserType   UserType `protobuf:"varint,5,opt,name=user_type,json=userType,proto3,enum=metaxisdata.v1.UserType" json:"user_type,omitempty"`

@@ -60,6 +60,12 @@ message FieldMapping {
   // Phone is the field name of primary phone in 3rd-party idp user info. Optional.
   string phone = 4;
 
+  // Subject is the field name of the provider-assigned subject in 3rd-party
+  // idp user info, such as the OIDC "sub" claim. Required: an account is bound
+  // to this value and a repeat login resolves against that binding, never
+  // against the identifier (email) claim, which is mutable.
+  string subject = 6;
+
   // Groups is the field name of groups in 3rd-party idp user info. Optional.
   // Mainly used for OIDC: https://developer.okta.com/docs/guides/customize-tokens-groups-claim/main/
   string groups = 5;
@@ -68,8 +74,13 @@ message FieldMapping {
 message IdentityProviderUserInfo {
   reserved 3;
 
-  // Identifier is the value of the unique identifier in 3rd-party idp user info.
+  // Identifier is the value of the unique identifier in 3rd-party idp user info,
+  // normally the email address. It names the account but does not identify it.
   string identifier = 1;
+
+  // Subject is the value of the provider-assigned subject in 3rd-party idp user
+  // info. It is the identity a login is bound to.
+  string subject = 7;
 
   // DisplayName is the value of display name in 3rd-party idp user info.
   string display_name = 2;

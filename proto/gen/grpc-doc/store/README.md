@@ -1278,6 +1278,7 @@ response and the mapped values only live for the duration of a login.
 | identifier | [string](#string) |  | Identifier is the field name of the unique identifier in 3rd-party idp user info. Required. |
 | display_name | [string](#string) |  | DisplayName is the field name of display name in 3rd-party idp user info. Optional. |
 | phone | [string](#string) |  | Phone is the field name of primary phone in 3rd-party idp user info. Optional. |
+| subject | [string](#string) |  | Subject is the field name of the provider-assigned subject in 3rd-party idp user info, such as the OIDC &#34;sub&#34; claim. Required: an account is bound to this value and a repeat login resolves against that binding, never against the identifier (email) claim, which is mutable. |
 | groups | [string](#string) |  | Groups is the field name of groups in 3rd-party idp user info. Optional. Mainly used for OIDC: https://developer.okta.com/docs/guides/customize-tokens-groups-claim/main/ |
 
 
@@ -1308,7 +1309,8 @@ response and the mapped values only live for the duration of a login.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| identifier | [string](#string) |  | Identifier is the value of the unique identifier in 3rd-party idp user info. |
+| identifier | [string](#string) |  | Identifier is the value of the unique identifier in 3rd-party idp user info, normally the email address. It names the account but does not identify it. |
+| subject | [string](#string) |  | Subject is the value of the provider-assigned subject in 3rd-party idp user info. It is the identity a login is bound to. |
 | display_name | [string](#string) |  | DisplayName is the value of display name in 3rd-party idp user info. |
 | phone | [string](#string) |  | Phone is the value of primary phone in 3rd-party idp user info. |
 | groups | [string](#string) | repeated | Groups is the value of groups in 3rd-party idp user info. Mainly used for OIDC: https://developer.okta.com/docs/guides/customize-tokens-groups-claim/main/ |

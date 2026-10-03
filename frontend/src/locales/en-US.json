@@ -1135,6 +1135,7 @@
     "deleteUser": "Delete User",
     "editUser": "Edit User",
     "email": "Email",
+    "emailAdminOnly": "Only a workspace admin can change an email address",
     "emailInvalid": "Please enter a valid email address",
     "emailPlaceholder": "Enter email address",
     "emailRequired": "Email is required",

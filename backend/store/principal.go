@@ -34,11 +34,19 @@ var systemBotUser = &UserMessage{
 type FindUserMessage struct {
 	ID          *int
 	Email       *string
+	IDPBinding  *IDPBinding
 	ShowDeleted bool
 	Type        *storepb.PrincipalType
 	Limit       *int
 	Offset      *int
 	Filter      *ListResourceFilter
+}
+
+// IDPBinding identifies the identity provider subject an account is bound to.
+// It is the identity an SSO login resolves against; the email is not.
+type IDPBinding struct {
+	ResourceID string
+	Subject    string
 }
 
 // UpdateUserMessage is the message to update a user.
@@ -63,6 +71,10 @@ type UserMessage struct {
 	Profile       *storepb.UserProfile
 	// Phone conforms E.164 format.
 	Phone string
+	// IDPResourceID and IDPSubject are the identity provider binding an SSO
+	// login resolves against; both are empty for password accounts.
+	IDPResourceID string
+	IDPSubject    string
 	// output only
 	CreatedAt time.Time
 	// The group email list
@@ -117,6 +129,22 @@ func (s *Store) GetUserByEmail(ctx context.Context, email string) (*UserMessage,
 		return v, nil
 	}
 	return s.getUser(ctx, &FindUserMessage{Email: &email, ShowDeleted: true})
+}
+
+// GetActiveUserByEmail gets a user by email that is still active, ignoring
+// soft-deleted rows. A deleted account is inert — it cannot sign in and its
+// address no longer belongs to it, which is what the partial unique email index
+// already assumes — so it must not keep that address out of a new account.
+func (s *Store) GetActiveUserByEmail(ctx context.Context, email string) (*UserMessage, error) {
+	return s.getUser(ctx, &FindUserMessage{Email: &email})
+}
+
+// GetUserByIDPBinding gets the user bound to an identity provider subject. The
+// binding is what an SSO login resolves against: a user who changed their email
+// at the provider keeps the same account, and nobody can claim it by taking the
+// address first.
+func (s *Store) GetUserByIDPBinding(ctx context.Context, binding *IDPBinding) (*UserMessage, error) {
+	return s.getUser(ctx, &FindUserMessage{IDPBinding: binding, ShowDeleted: true})
 }
 
 // userEmailCacheKey normalizes an email the same way listUserImpl does, so a
@@ -237,6 +265,10 @@ func listUserImpl(ctx context.Context, txn *sql.Tx, find *FindUserMessage) ([]*U
 			where, args = append(where, fmt.Sprintf("principal.email = $%d", len(args)+1)), append(args, strings.ToLower(*v))
 		}
 	}
+	if v := find.IDPBinding; v != nil {
+		where, args = append(where, fmt.Sprintf("principal.idp_resource_id = $%d", len(args)+1)), append(args, v.ResourceID)
+		where, args = append(where, fmt.Sprintf("principal.idp_subject = $%d", len(args)+1)), append(args, v.Subject)
+	}
 	if v := find.Type; v != nil {
 		where, args = append(where, fmt.Sprintf("principal.type = $%d", len(args)+1)), append(args, v.String())
 	}
@@ -265,6 +297,8 @@ func listUserImpl(ctx context.Context, txn *sql.Tx, find *FindUserMessage) ([]*U
 		principal.type,
 		principal.password_hash,
 		principal.phone,
+		principal.idp_resource_id,
+		principal.idp_subject,
 		principal.profile,
 		principal.created_at,
 		user_groups.groups
@@ -300,6 +334,8 @@ func listUserImpl(ctx context.Context, txn *sql.Tx, find *FindUserMessage) ([]*U
 			&typeString,
 			&userMessage.PasswordHash,
 			&userMessage.Phone,
+			&userMessage.IDPResourceID,
+			&userMessage.IDPSubject,
 			&profileBytes,
 			&userMessage.CreatedAt,
 			&groups,
@@ -375,8 +411,8 @@ func (s *Store) CreateUser(ctx context.Context, create *UserMessage) (*UserMessa
 		return nil, err
 	}
 
-	set := []string{"email", "name", "type", "password_hash", "phone", "profile"}
-	args := []any{create.Email, create.Name, create.Type.String(), create.PasswordHash, create.Phone, profileBytes}
+	set := []string{"email", "name", "type", "password_hash", "phone", "idp_resource_id", "idp_subject", "profile"}
+	args := []any{create.Email, create.Name, create.Type.String(), create.PasswordHash, create.Phone, create.IDPResourceID, create.IDPSubject, profileBytes}
 	placeholder := []string{}
 	for index := range set {
 		placeholder = append(placeholder, fmt.Sprintf("$%d", index+1))
@@ -393,7 +429,9 @@ func (s *Store) CreateUser(ctx context.Context, create *UserMessage) (*UserMessa
 		args...,
 	).Scan(&userID, &create.CreatedAt); err != nil {
 		if isUniqueViolation(err) {
-			return nil, common.Errorf(common.Conflict, "user with email %q already exists", create.Email)
+			// The address or the identity provider binding is taken; the caller
+			// pre-checks both, so reaching this is a race.
+			return nil, common.Errorf(common.Conflict, "user already exists")
 		}
 		return nil, err
 	}
@@ -414,14 +452,16 @@ func (s *Store) CreateUser(ctx context.Context, create *UserMessage) (*UserMessa
 	s.policyCache.Remove(getPolicyCacheKey(storepb.Policy_WORKSPACE, "", storepb.Policy_IAM))
 
 	user := &UserMessage{
-		ID:           userID,
-		Email:        create.Email,
-		Name:         create.Name,
-		Type:         create.Type,
-		PasswordHash: create.PasswordHash,
-		Phone:        create.Phone,
-		CreatedAt:    create.CreatedAt,
-		Profile:      create.Profile,
+		ID:            userID,
+		Email:         create.Email,
+		Name:          create.Name,
+		Type:          create.Type,
+		PasswordHash:  create.PasswordHash,
+		Phone:         create.Phone,
+		IDPResourceID: create.IDPResourceID,
+		IDPSubject:    create.IDPSubject,
+		CreatedAt:     create.CreatedAt,
+		Profile:       create.Profile,
 	}
 	s.userIDCache.Add(user.ID, user)
 	s.userEmailCache.Add(user.Email, user)

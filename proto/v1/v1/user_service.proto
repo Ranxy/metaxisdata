@@ -55,6 +55,10 @@ service UserService {
   }
 
   // Only the user itself and the user with permission on the workspace can update the user.
+  // Changing an email address requires metaxisdata.users.update even for the
+  // caller's own account: the address is the identity a member is recognized by
+  // outside the workspace (and by single sign-on), so it is an administrative
+  // field, not a profile setting.
   rpc UpdateUser(UpdateUserRequest) returns (User) {
     option (google.api.http) = {
       patch: "/v1/{user.name=users/*}"
@@ -213,6 +217,9 @@ message User {
 
   State state = 2;
 
+  // The user's email address. It identifies the member to the outside world,
+  // so only a caller with metaxisdata.users.update may set it, on their own
+  // account or on someone else's.
   string email = 3;
 
   string title = 4;

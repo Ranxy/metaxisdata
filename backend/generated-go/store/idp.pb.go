@@ -309,6 +309,11 @@ type FieldMapping struct {
 	DisplayName string `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	// Phone is the field name of primary phone in 3rd-party idp user info. Optional.
 	Phone string `protobuf:"bytes,4,opt,name=phone,proto3" json:"phone,omitempty"`
+	// Subject is the field name of the provider-assigned subject in 3rd-party
+	// idp user info, such as the OIDC "sub" claim. Required: an account is bound
+	// to this value and a repeat login resolves against that binding, never
+	// against the identifier (email) claim, which is mutable.
+	Subject string `protobuf:"bytes,6,opt,name=subject,proto3" json:"subject,omitempty"`
 	// Groups is the field name of groups in 3rd-party idp user info. Optional.
 	// Mainly used for OIDC: https://developer.okta.com/docs/guides/customize-tokens-groups-claim/main/
 	Groups        string `protobuf:"bytes,5,opt,name=groups,proto3" json:"groups,omitempty"`
@@ -367,6 +372,13 @@ func (x *FieldMapping) GetPhone() string {
 	return ""
 }
 
+func (x *FieldMapping) GetSubject() string {
+	if x != nil {
+		return x.Subject
+	}
+	return ""
+}
+
 func (x *FieldMapping) GetGroups() string {
 	if x != nil {
 		return x.Groups
@@ -376,8 +388,12 @@ func (x *FieldMapping) GetGroups() string {
 
 type IdentityProviderUserInfo struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Identifier is the value of the unique identifier in 3rd-party idp user info.
+	// Identifier is the value of the unique identifier in 3rd-party idp user info,
+	// normally the email address. It names the account but does not identify it.
 	Identifier string `protobuf:"bytes,1,opt,name=identifier,proto3" json:"identifier,omitempty"`
+	// Subject is the value of the provider-assigned subject in 3rd-party idp user
+	// info. It is the identity a login is bound to.
+	Subject string `protobuf:"bytes,7,opt,name=subject,proto3" json:"subject,omitempty"`
 	// DisplayName is the value of display name in 3rd-party idp user info.
 	DisplayName string `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	// Phone is the value of primary phone in 3rd-party idp user info.
@@ -423,6 +439,13 @@ func (*IdentityProviderUserInfo) Descriptor() ([]byte, []int) {
 func (x *IdentityProviderUserInfo) GetIdentifier() string {
 	if x != nil {
 		return x.Identifier
+	}
+	return ""
+}
+
+func (x *IdentityProviderUserInfo) GetSubject() string {
+	if x != nil {
+		return x.Subject
 	}
 	return ""
 }
@@ -473,18 +496,20 @@ const file_store_idp_proto_rawDesc = "" +
 	"\rfield_mapping\x18\a \x01(\v2\x1f.metaxisdata.store.FieldMappingR\ffieldMapping\x12&\n" +
 	"\x0fskip_tls_verify\x18\b \x01(\bR\rskipTlsVerify\x12A\n" +
 	"\n" +
-	"auth_style\x18\t \x01(\x0e2\".metaxisdata.store.OAuth2AuthStyleR\tauthStyle\"\x85\x01\n" +
+	"auth_style\x18\t \x01(\x0e2\".metaxisdata.store.OAuth2AuthStyleR\tauthStyle\"\x9f\x01\n" +
 	"\fFieldMapping\x12\x1e\n" +
 	"\n" +
 	"identifier\x18\x01 \x01(\tR\n" +
 	"identifier\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x14\n" +
-	"\x05phone\x18\x04 \x01(\tR\x05phone\x12\x16\n" +
-	"\x06groups\x18\x05 \x01(\tR\x06groupsJ\x04\b\x03\x10\x04\"\xb0\x01\n" +
+	"\x05phone\x18\x04 \x01(\tR\x05phone\x12\x18\n" +
+	"\asubject\x18\x06 \x01(\tR\asubject\x12\x16\n" +
+	"\x06groups\x18\x05 \x01(\tR\x06groupsJ\x04\b\x03\x10\x04\"\xca\x01\n" +
 	"\x18IdentityProviderUserInfo\x12\x1e\n" +
 	"\n" +
 	"identifier\x18\x01 \x01(\tR\n" +
-	"identifier\x12!\n" +
+	"identifier\x12\x18\n" +
+	"\asubject\x18\a \x01(\tR\asubject\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x14\n" +
 	"\x05phone\x18\x04 \x01(\tR\x05phone\x12\x16\n" +
 	"\x06groups\x18\x05 \x03(\tR\x06groups\x12\x1d\n" +

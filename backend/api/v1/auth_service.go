@@ -367,6 +367,33 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 	if userInfo.Identifier == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("missing identifier in user info from identity provider %q", idp.Title))
 	}
+	// The subject is the identity an account is bound to. The identifier — the
+	// email claim — is mutable, so a login must never resolve against it: that
+	// is how a member who registered (or moved to) someone else's address took
+	// over the account the real owner signed in with.
+	if userInfo.Subject == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("missing subject in user info from identity provider %q", idp.Title))
+	}
+
+	boundUser, err := s.store.GetUserByIDPBinding(ctx, &store.IDPBinding{ResourceID: idpID, Subject: userInfo.Subject})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to find the user bound to identity provider %q", idp.Title))
+	}
+	if boundUser != nil {
+		// A deactivated account stays deactivated: restoring it is an explicit
+		// administrative decision, not a side effect of signing in. Its groups
+		// are left alone too — the login above refuses it before any of this
+		// matters.
+		if !boundUser.MemberDeleted && userInfo.HasGroups {
+			// Sync user groups with the identity provider.
+			// The userInfo.Groups is the groups that the user belongs to in the identity provider.
+			if err := s.syncUserGroups(ctx, boundUser, userInfo.Groups); err != nil {
+				return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to sync user groups"))
+			}
+		}
+		return boundUser, nil
+	}
+
 	// The userinfo's email comes from identity provider, it has to be converted to lower-case.
 	email := strings.ToLower(userInfo.Identifier)
 	if err := validateEmail(email); err != nil {
@@ -383,26 +410,21 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 		return nil, err
 	}
 
-	user, err := s.store.GetUserByEmail(ctx, email)
+	// No account carries this subject yet. Adopting an existing account by its
+	// email address would hand the identity provider's account to whoever owns
+	// that row — they still hold its password — so the login is refused and the
+	// address is left for an administrator to resolve.
+	//
+	// A deleted row is ignored: it cannot sign in, its address is free again
+	// (which is what the partial unique email index assumes), and refusing it
+	// would make the remedy — an administrator deletes the account that squats
+	// the address — impossible to carry out.
+	existedUser, err := s.store.GetActiveUserByEmail(ctx, email)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to list users by email %s", email))
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to find user by email %s", email))
 	}
-	if user != nil {
-		if user.MemberDeleted {
-			// Undelete the user when login via SSO.
-			user, err = s.store.UpdateUser(ctx, user, &store.UpdateUserMessage{Delete: &undeletePatch})
-			if err != nil {
-				return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to undelete user"))
-			}
-		}
-		if userInfo.HasGroups {
-			// Sync user groups with the identity provider.
-			// The userInfo.Groups is the groups that the user belongs to in the identity provider.
-			if err := s.syncUserGroups(ctx, user, userInfo.Groups); err != nil {
-				return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to sync user groups"))
-			}
-		}
-		return user, nil
+	if existedUser != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf("email %s already belongs to an active account that is not linked to identity provider %q; an administrator has to move that account's address, or delete it, before this login can create the account", email, idp.Title))
 	}
 
 	// Create new user from identity provider.
@@ -415,11 +437,13 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate password hash"))
 	}
 	newUser, err := s.store.CreateUser(ctx, &store.UserMessage{
-		Name:         userInfo.DisplayName,
-		Email:        email,
-		Phone:        userInfo.Phone,
-		Type:         storepb.PrincipalType_END_USER,
-		PasswordHash: string(passwordHash),
+		Name:          userInfo.DisplayName,
+		Email:         email,
+		Phone:         userInfo.Phone,
+		Type:          storepb.PrincipalType_END_USER,
+		IDPResourceID: idpID,
+		IDPSubject:    userInfo.Subject,
+		PasswordHash:  string(passwordHash),
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create user")
@@ -446,7 +470,10 @@ func (s *AuthService) syncUserGroups(ctx context.Context, user *store.UserMessag
 	for _, groupMessage := range groupMessageList {
 		var isMember bool
 		for _, group := range groups {
-			if groupMessage.Email == group || groupMessage.Title == group {
+			// Only the group's resource identifier is matched. The title is a
+			// mutable label an admin can set to anything, so it must not decide
+			// who inherits the role the group carries.
+			if groupMessage.Email == group {
 				isMember = true
 				break
 			}

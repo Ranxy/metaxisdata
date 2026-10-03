@@ -72,6 +72,10 @@ type UserServiceClient interface {
 	// Create a user.
 	CreateUser(context.Context, *connect.Request[v1.CreateUserRequest]) (*connect.Response[v1.User], error)
 	// Only the user itself and the user with permission on the workspace can update the user.
+	// Changing an email address requires metaxisdata.users.update even for the
+	// caller's own account: the address is the identity a member is recognized by
+	// outside the workspace (and by single sign-on), so it is an administrative
+	// field, not a profile setting.
 	UpdateUser(context.Context, *connect.Request[v1.UpdateUserRequest]) (*connect.Response[v1.User], error)
 	// Only the user with permission on the workspace can delete the user.
 	// The last remaining workspace admin cannot be deleted.
@@ -211,6 +215,10 @@ type UserServiceHandler interface {
 	// Create a user.
 	CreateUser(context.Context, *connect.Request[v1.CreateUserRequest]) (*connect.Response[v1.User], error)
 	// Only the user itself and the user with permission on the workspace can update the user.
+	// Changing an email address requires metaxisdata.users.update even for the
+	// caller's own account: the address is the identity a member is recognized by
+	// outside the workspace (and by single sign-on), so it is an administrative
+	// field, not a profile setting.
 	UpdateUser(context.Context, *connect.Request[v1.UpdateUserRequest]) (*connect.Response[v1.User], error)
 	// Only the user with permission on the workspace can delete the user.
 	// The last remaining workspace admin cannot be deleted.

@@ -4018,6 +4018,16 @@ Format: users/{userUID}. </p></td>
                 </tr>
               
                 <tr>
+                  <td>subject</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Subject is the field name of the provider-assigned subject in 3rd-party
+idp user info, such as the OIDC &#34;sub&#34; claim. Required: an account is bound
+to this value and a repeat login resolves against that binding, never
+against the identifier (email) claim, which is mutable. </p></td>
+                </tr>
+              
+                <tr>
                   <td>groups</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
@@ -4070,7 +4080,16 @@ Mainly used for OIDC: https://developer.okta.com/docs/guides/customize-tokens-gr
                   <td>identifier</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>Identifier is the value of the unique identifier in 3rd-party idp user info. </p></td>
+                  <td><p>Identifier is the value of the unique identifier in 3rd-party idp user info,
+normally the email address. It names the account but does not identify it. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>subject</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Subject is the value of the provider-assigned subject in 3rd-party idp user
+info. It is the identity a login is bound to. </p></td>
                 </tr>
               
                 <tr>

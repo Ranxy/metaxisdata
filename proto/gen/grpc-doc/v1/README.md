@@ -703,7 +703,7 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | The name of the user. Format: users/{user}. {user} is a system-generated unique ID. |
 | state | [State](#metaxisdata-v1-State) |  |  |
-| email | [string](#string) |  |  |
+| email | [string](#string) |  | The user&#39;s email address. It identifies the member to the outside world, so only a caller with metaxisdata.users.update may set it, on their own account or on someone else&#39;s. |
 | title | [string](#string) |  |  |
 | user_type | [UserType](#metaxisdata-v1-UserType) |  |  |
 | password | [string](#string) |  |  |
@@ -766,7 +766,7 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 | GetCurrentUser | [.google.protobuf.Empty](#google-protobuf-Empty) | [User](#metaxisdata-v1-User) | Get the current authenticated user. Permissions required: None |
 | ListUsers | [ListUsersRequest](#metaxisdata-v1-ListUsersRequest) | [ListUsersResponse](#metaxisdata-v1-ListUsersResponse) | List all users. Requires metaxisdata.users.list. |
 | CreateUser | [CreateUserRequest](#metaxisdata-v1-CreateUserRequest) | [User](#metaxisdata-v1-User) | Create a user. |
-| UpdateUser | [UpdateUserRequest](#metaxisdata-v1-UpdateUserRequest) | [User](#metaxisdata-v1-User) | Only the user itself and the user with permission on the workspace can update the user. |
+| UpdateUser | [UpdateUserRequest](#metaxisdata-v1-UpdateUserRequest) | [User](#metaxisdata-v1-User) | Only the user itself and the user with permission on the workspace can update the user. Changing an email address requires metaxisdata.users.update even for the caller&#39;s own account: the address is the identity a member is recognized by outside the workspace (and by single sign-on), so it is an administrative field, not a profile setting. |
 | DeleteUser | [DeleteUserRequest](#metaxisdata-v1-DeleteUserRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Only the user with permission on the workspace can delete the user. The last remaining workspace admin cannot be deleted. |
 | UndeleteUser | [UndeleteUserRequest](#metaxisdata-v1-UndeleteUserRequest) | [User](#metaxisdata-v1-User) | Only the user with permission on the workspace can undelete the user. |
 
