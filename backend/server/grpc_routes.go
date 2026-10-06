@@ -347,10 +347,10 @@ func configureGrpcRouters(
 // gatewayPeerMiddleware stamps the outer request's peer address for the REST
 // gateway. The gateway answers /v1/* by dialing the server's own port, so the
 // Connect handler sees a loopback peer and would otherwise record every REST
-// request as 127.0.0.1. grpc-gateway appends that same outer address to
-// X-Forwarded-For; audit.ClientAddress only believes the stamp when it matches
-// the last forwarded entry, which proves the request came through the gateway.
-// The header is overwritten rather than appended, so a caller cannot supply it.
+// request as 127.0.0.1. The stamp carries a proof only this process can produce
+// (audit.StampGatewayPeer), because a caller that reaches the Connect handler
+// directly can send a stamp of its own; both headers are overwritten rather than
+// appended, so even the gateway path keeps only the value written here.
 func gatewayPeerMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		audit.StampGatewayPeer(r.Header, r.RemoteAddr)

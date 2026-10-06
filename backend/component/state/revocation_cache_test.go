@@ -1,6 +1,7 @@
 package state
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -72,4 +73,28 @@ func TestRevocationCacheDoesNotDowngradeARevocation(t *testing.T) {
 	revoked, fresh = cache.Lookup("other", now)
 	require.True(t, fresh)
 	require.True(t, revoked)
+}
+
+// The read inside Remember and the write must be one atomic step: the LRU's own
+// lock covers each call separately, so a Revoke landing between the read and the
+// write would otherwise be overwritten. Every iteration ends with the token
+// revoked, whatever the interleaving.
+func TestRevocationCacheConcurrentRevokeSurvivesAStaleRemember(t *testing.T) {
+	t.Parallel()
+
+	cache, err := newRevocationCache()
+	require.NoError(t, err)
+	now := time.Now()
+
+	for range 20000 {
+		cache.Remember("token", false, now)
+		var wg sync.WaitGroup
+		wg.Go(func() { cache.Revoke("token", now) })
+		wg.Go(func() { cache.Remember("token", false, now) })
+		wg.Wait()
+
+		revoked, fresh := cache.Lookup("token", now)
+		require.True(t, fresh)
+		require.True(t, revoked, "a concurrent revocation must not be lost")
+	}
 }

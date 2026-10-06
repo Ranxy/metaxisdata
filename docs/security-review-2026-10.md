@@ -649,13 +649,14 @@
 4. **M7 的账号水位线未做**:本次吊销按 jti,不做"停用/恢复水位线";路线图第 8 项仍待办。
 5. **限流计数仍是进程内**:`LoginLimiter`、`ThrottleInterceptor` 的预算都是进程本地(D2 家族),多副本下每个副本各有一份额度。
 6. **`revoked_token` 的增长由限流约束,而不只由 prune 约束**:每条记录的寿命是它所拒绝的 token 的寿命(默认 7 天);`Login` 计入限额后(`2193f91` 起已登录调用方不再豁免),单个来源最多每分钟多写 120 行、全局 300 行,稳态仍由维护任务清理。
+7. **没有 jti 的旧 token 无法登出**:jti 是 `976ebc5` 引入的(审计基线 `1eefc8f` 的祖先)。与当前构建共享 `AUTH_SECRET`、由更早构建签发的仍有效 token 没有 jti:`Resolve` 把它当作永不吊销,而 `Logout` 现在显式返回 `Internal`——即"可用但撤不掉",补救是轮换 `AUTH_SECRET` 或等其过期。当前代码没有不写 jti 的签发路径(`generateToken` 是唯一签发点且必写 `ID`)。
 
 **独立复核后的加固(commit `2193f91`)**
 
 主修复与首轮加固完成后,由独立子代理对 `1eefc8f..HEAD` 做了对抗式只读复核(读 connect-go v1.18.1 与 grpc-gateway v2.28.0 源码,以 `go test -overlay` 探针实测,未改动仓库文件),确认 M1 的右起解析、M3 的双计数、M4 的表持久化与 fail-closed、M5 的拦截器次序与"被拒不落账本"等核心目标无法绕过,同时指出以下问题,均已修复:
 
 1. **网关戳记在直连 Connect 路径上可伪造(中危,已实测)**:原实现把"戳记 == XFF 最后一段"当证明,但该证明只在 `/v1/*` 中间件存在的路径上成立;经同机反代直打 `/metaxisdata.v1.*` 的调用方可以让两者都等于自选值,从而自选审计 IP 与按源限流键。现改为 HMAC 证明(见上),密钥进程内生成、不外发,直连路径无法伪造。
-2. **吊销决策缓存可被并发陈旧读覆盖(低危,已实测)**:`Resolve` 先读表拿到"未吊销",期间 `Logout` 写入记录并 `Revoke` 缓存,随后 `Resolve` 的 `Remember(false)` 会覆盖它,使该 token 在下次读表前(≤30 秒)仍被接受。`Remember` 现在不会把已缓存的 `revoked=true` 降级;新增用例钉住。
+2. **吊销决策缓存可被并发陈旧读覆盖(低危,已实测)**:`Resolve` 先读表拿到"未吊销",期间 `Logout` 写入记录并 `Revoke` 缓存,随后 `Resolve` 的 `Remember(false)` 会覆盖它,使该 token 在下次读表前(≤30 秒)仍被接受。首轮修复给 `Remember` 加了"不降级已缓存 `revoked=true`"的判断,但第二轮的只读复核用并发探针证明该判断本身不是原子的(`hashicorp/golang-lru` 的 `Peek` 与 `Add` 各持一次内部锁,`Revoke` 可以落在两次调用之间),仍会丢吊销。现在 `RevocationCache` 用自己的互斥锁把"读取现有决定 + 写入新决定"做成一步,并加并发用例(2 万次 `Remember(false)` 与 `Revoke` 竞争后必须仍是已吊销)钉住。
 3. **空 jti 的 `Logout` 会谎报成功(低危,潜在)**:`RevokeToken` 对空 jti 直接返回 nil,而 `Resolve` 把空 jti 当作永不吊销。所有签发路径都会写 jti,所以只是约定而非强制;`Logout` 现在对空 jti 显式返回 `Internal`,不再出现"报成功但没有可生效的记录"。
 4. **已登录调用方可无限"登录 + 登出"增长吊销表(低危)**:拦截器原先豁免所有已登录调用方,持账号者可以绕过 `Login` 预算,以 bcrypt 速度持续写入寿命 7 天的记录。改为只有 `CreateUser` 豁免已登录调用方,`Login` 始终计额。
 5. **全信任链回退取最左段(低危,设计如此)**:复核确认 `forwardedClient` 在"每一跳都在 `--trusted-proxies` 内"时返回最左(最上游)地址;这与 M1 取法一致,只有在客户端地址本身落在信任 CIDR 内时才可能有影响,已在 `security-posture.md` 写明。

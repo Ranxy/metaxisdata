@@ -1,6 +1,7 @@
 package state
 
 import (
+	"sync"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -20,6 +21,10 @@ const (
 
 // RevocationCache remembers whether a token id has been revoked.
 type RevocationCache struct {
+	// mu makes a decision update atomic with the read it is based on: the LRU's
+	// own lock covers each Peek and each Add separately, which would let a
+	// concurrent Revoke slip between them and be overwritten by a stale answer.
+	mu      sync.Mutex
 	entries *lru.Cache[string, revocationDecision]
 }
 
@@ -51,6 +56,8 @@ func (c *RevocationCache) Lookup(tokenID string, now time.Time) (revoked, fresh 
 // before a concurrent logout can finish after it, and overwriting the entry
 // would serve the revoked token until the next read.
 func (c *RevocationCache) Remember(tokenID string, revoked bool, now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if !revoked {
 		if existing, ok := c.entries.Peek(tokenID); ok && existing.revoked {
 			return
@@ -62,5 +69,7 @@ func (c *RevocationCache) Remember(tokenID string, revoked bool, now time.Time) 
 // Revoke records a revocation this process just performed, so the token is
 // refused immediately instead of after the next table read.
 func (c *RevocationCache) Revoke(tokenID string, now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.entries.Add(tokenID, revocationDecision{revoked: true, checkedAt: now})
 }
