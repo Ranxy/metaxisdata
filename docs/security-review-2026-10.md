@@ -606,7 +606,7 @@
 
 **验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`(含改动包 `-race`)、`make test-integration`(真实 PostgreSQL + MySQL + migrator 全绿)、release 构建(`-tags release`)。本轮未改前端,未跑前端门禁。
 
-### 2026-10-06 —— M1、M2、M3、M4、M5 已修复(commit `e9bc802`,随后的加固 commit `ab3009f`)
+### 2026-10-06 —— M1、M2、M3、M4、M5 已修复(commit `e9bc802`,随后的加固 commit `ab3009f`、`2193f91`)
 
 本轮把"客户端的真实地址"和"被吊销的令牌"两件事都从进程内、可被调用方影响的实现,移到了可验证的实现上;限流键与审计 IP 从此出自同一个解析函数,不会再各说各话。
 
@@ -614,13 +614,13 @@
 
 - 删除 `FirstForwardedFor`(取最左段),新增 `audit.ClientAddress`:把每一行 `X-Forwarded-For` 拆开归一化后,从右往左走,跳过 `--trusted-proxies` 命中的地址,返回第一个未信任地址——每一跳追加的是它看到的地址,所以最右段是最近的可信代理观察到的对端,攻击者前置的段永远走不到。整条链全是代理时退回最左段(最上游)作为最佳归属。非 IP 条目(含把多字节文本塞进头部的尝试)直接跳过而不是记成客户端自选文本;`ip:port`、`[v6]:port`、裸 v6 都归一化后再比较。
 - 删掉 `grpcgateway-x-forwarded-for` 死分支(D15):grpc-gateway 以无前缀的 `x-forwarded-for` 转发,该分支从未生效,顺带证明这条链路此前没有端到端验证。
-- 网关自连接(M2):`/v1/*` 中间件先 `Del` 再 `Set` `Grpc-Metadata-Metaxisdata-Client-Peer`(外层 `RemoteAddr`),grpc-gateway 把它作为 metadata 转给 Connect 处理器。`ClientAddress` 只在"该戳记 == XFF 最后一段"时才把 loopback 对端替换成外层对端:最后一段是 grpc-gateway 自己追加的外层 `RemoteAddr`,戳记是中间件覆写的,调用方无法让这两个值按其意愿相等,所以远端调用方伪造不出。loopback 因此不必列入 `--trusted-proxies`;同机反代仍按普通代理列出自己的地址(含 127.0.0.1),此时网关那一跳解析成反代地址后继续沿 XFF 往左走。两个值各自解析,`ab3009f` 起在归一化形式(IPv6 规范化)上比较,非规范写法的外层地址同样能命中。
+- 网关自连接(M2):`/v1/*` 中间件先 `Del` 再 `Set` `Grpc-Metadata-Metaxisdata-Client-Peer`(外层 `RemoteAddr`),grpc-gateway 把它作为 metadata 转给 Connect 处理器。该戳记单独不可信——直接打到 Connect 处理器的调用方(例如经同机反代、反代原样转发未知头)也能自己写一个,M1 修复后仍会按它取地址。因此中间件同时写 `Grpc-Metadata-Metaxisdata-Gateway-Proof`:对地址做 HMAC,密钥是进程内 `crypto/rand` 生成的随机串,从不外发;`ClientAddress` 只接受能通过校验的戳记,并且只对 loopback 对端做替换。调用方既无法在网关路径上保留自己的值(两个头都被覆写),也无法在直连路径上伪造出 MAC(`2193f91`)。loopback 因此不必列入 `--trusted-proxies`;同机反代仍按普通代理列出自己的地址(含 127.0.0.1),此时网关那一跳解析成反代地址后继续沿 XFF 往左走。戳记与 XFF 条目各自归一化(`ab3009f`),非规范写法的 IPv6 外层地址同样能命中。
 - 消费方全部自动受益:审计 IP、设备登录创建限流、OAuth 匿名端点限流、OpenLineage 摄取限流与 `/mcp` 审计。
 
 **M3/M5:登录限流拆成账号/源双计数,Connect 入口为匿名 bcrypt 方法加双桶限额**(`backend/component/state/{login_limiter,window_limiter,state}.go`、`backend/api/v1/throttle_interceptor.go`、`backend/api/v1/auth_service.go`、`backend/server/grpc_routes.go`)
 
 - `LoginLimiter` 由 (email, 裸对端) 单键改为两个独立计数:账号 10 次失败/5 分钟(任意来源累计)、源 20 次失败/5 分钟(任意账号累计)。源取 `audit.ClientAddress` 解析后的地址,与审计行同一个值。**成功登录只清账号计数、不清源计数**:否则一个已知口令就能在共享出口上把自己喷洒失败的额度重置。两个计数共同把"单一来源能锁死多少账号"限制为每窗口至多 2 个(20/10)。
-- 新增 `ThrottleInterceptor`,在拦截器链上位于 auth 之后、audit 之前:`AuthService/Login` 120 次/分/源 + 300 次/分全局,`UserService/CreateUser` 20 次/分/源 + 100 次/分全局。源额度刻意放宽(一个 NAT 出口后的整个办公室登录是正常用法),真正限制部署级 bcrypt 开销的是全局额度;集成套件共用 127.0.0.1 作为来源,首轮 30/分/源的取值会让正常登录被拒,这也是把它放宽的直接证据。放在 auth 之后是为了识别已登录调用方并对其豁免(按登录用户限流是 M24 的范围);放在 audit 之前是为了让被预算拒绝的请求不落永久账本行——与 H6 的请求体上限同一种处理。
+- 新增 `ThrottleInterceptor`,在拦截器链上位于 auth 之后、audit 之前:`AuthService/Login` 120 次/分/源 + 300 次/分全局,`UserService/CreateUser` 20 次/分/源 + 100 次/分全局。源额度刻意放宽(一个 NAT 出口后的整个办公室登录是正常用法),真正限制部署级 bcrypt 开销的是全局额度;集成套件共用 127.0.0.1 作为来源,首轮 30/分/源的取值会让正常登录被拒,这也是把它放宽的直接证据。放在 auth 之后是为了识别已登录调用方;**只有 `CreateUser` 对其豁免**(管理员可能要批量建号),`Login` 即使带着凭证也照常计额——它本就不是正常登录路径,每次请求仍要为请求里的地址花一次 bcrypt,豁免会让"登录 + 登出"循环无限增长 `revoked_token`(`2193f91`)。放在 audit 之前是为了让被预算拒绝的请求不落永久账本行——与 H6 的请求体上限同一种处理。
 - `CreateUser` 的邮箱存在性检查天然排在限额之后(拦截器先于 handler),枚举速率被限额封顶;按用户选择保留 `AlreadyExists` 文案,未做模糊响应。
 - `WindowLimiter` 构造函数去掉了各调用点都传 `time.Minute`/`4096` 的三对参数(Lint 的 `unparam` 也提示了这一点),统一为包级常量。
 
@@ -634,11 +634,11 @@
 
 **回归测试**
 
-- 单元 `backend/component/audit/audit_test.go`:右起解析(伪造首段被忽略、多跳信任链、全信任链回退、IPv6 归一化、非地址条目跳过、多行头)、网关戳记(匹配才采信、不匹配忽略、无戳记保持 loopback)、`StampGatewayPeer` 覆写调用方自带值。
+- 单元 `backend/component/audit/audit_test.go`:右起解析(伪造首段被忽略、多跳信任链、全信任链回退、IPv6 归一化、非地址条目跳过、多行头)、网关戳记(带正确 MAC 才采信、伪造/篡改 MAC 或地址被忽略、无戳记保持 loopback)、`StampGatewayPeer` 覆写调用方自带的两个头。
 - 单元 `backend/component/state/{login_limiter,window_limiter,revocation_cache}_test.go`:账号/源独立计数、源计数不被成功登录清除、窗口与容量;限额窗口滚动;吊销决策缓存的新鲜度、TTL 与覆写。
 - 单元 `backend/api/auth/authenticator_test.go`:持久化吊销被拒;决策缓存只读表一次(计数假实现);本进程吊销立即生效且不再读表。
-- 单元 `backend/api/v1/throttle_interceptor_test.go`:Login/CreateUser 各自限额、已登录跳过、非目标方法放行、可信代理后的真实地址为键、未信任对端的伪造头不能换桶。
-- 集成(`backend/test/integration/runner/auth_reverse_service_test.go`,真实服务器 + PostgreSQL):`Logout` 后 `revoked_token` 确有该 jti 且 token 被拒;未过期不清理、过期后清理;账号 10 次失败后连正确口令也返回 `ResourceExhausted`,同源另一个账号不受影响。
+- 单元 `backend/api/v1/throttle_interceptor_test.go`:Login/CreateUser 各自限额、`CreateUser` 豁免已登录而 `Login` 不豁免、非目标方法放行、可信代理后的真实地址为键、未信任对端的伪造头不能换桶;另有一个 `httptest` + 真实 Connect 处理器用例钉住拦截器确实被 Connect 应用(`WrapUnary`/`Spec().Procedure`/`Peer().Addr`),而不只是 `check` 单独可用。
+- 集成(`backend/test/integration/runner/auth_reverse_service_test.go`,真实服务器 + PostgreSQL):`Logout` 后 `revoked_token` 确有该 jti 且 token 被拒;未过期不清理、过期后清理;账号 10 次失败后连正确口令也返回 `ResourceExhausted`,同源另一个账号不受影响;客户端绑定 127.0.0.2 经 REST `/v1/*` 建/读设备登录,`requestIp` 必须是外层对端而不是网关的 loopback(`TestRestGatewayKeepsTheOuterPeerRealServerIntegration`)。
 - migrator 集成:`TestMigrateSchemaFreshInstall`、`TestMigrateSchemaUpgrade`、`TestMigrateSchemaLATESTMatchesTheIncrementChain` 全绿。
 
 **残余(本轮未处理)**
@@ -648,5 +648,18 @@
 3. **`AlreadyExists` 枚举预言机保留**:按选择不改文案,只把速率封顶;严格消除需要一个不暴露存在性的注册响应。
 4. **M7 的账号水位线未做**:本次吊销按 jti,不做"停用/恢复水位线";路线图第 8 项仍待办。
 5. **限流计数仍是进程内**:`LoginLimiter`、`ThrottleInterceptor` 的预算都是进程本地(D2 家族),多副本下每个副本各有一份额度。
+6. **`revoked_token` 的增长由限流约束,而不只由 prune 约束**:每条记录的寿命是它所拒绝的 token 的寿命(默认 7 天);`Login` 计入限额后(`2193f91` 起已登录调用方不再豁免),单个来源最多每分钟多写 120 行、全局 300 行,稳态仍由维护任务清理。
 
-**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`(改动包 `-race`)、`go vet`、release 构建(`-tags release`)、`go test -tags=integration ./backend/migrator/...`(LATEST 新装/增量升级/一致性全绿)、集成用例(真实 PostgreSQL 上的吊销持久化与账号限流)。本轮未改前端,未跑前端门禁。
+**独立复核后的加固(commit `2193f91`)**
+
+主修复与首轮加固完成后,由独立子代理对 `1eefc8f..HEAD` 做了对抗式只读复核(读 connect-go v1.18.1 与 grpc-gateway v2.28.0 源码,以 `go test -overlay` 探针实测,未改动仓库文件),确认 M1 的右起解析、M3 的双计数、M4 的表持久化与 fail-closed、M5 的拦截器次序与"被拒不落账本"等核心目标无法绕过,同时指出以下问题,均已修复:
+
+1. **网关戳记在直连 Connect 路径上可伪造(中危,已实测)**:原实现把"戳记 == XFF 最后一段"当证明,但该证明只在 `/v1/*` 中间件存在的路径上成立;经同机反代直打 `/metaxisdata.v1.*` 的调用方可以让两者都等于自选值,从而自选审计 IP 与按源限流键。现改为 HMAC 证明(见上),密钥进程内生成、不外发,直连路径无法伪造。
+2. **吊销决策缓存可被并发陈旧读覆盖(低危,已实测)**:`Resolve` 先读表拿到"未吊销",期间 `Logout` 写入记录并 `Revoke` 缓存,随后 `Resolve` 的 `Remember(false)` 会覆盖它,使该 token 在下次读表前(≤30 秒)仍被接受。`Remember` 现在不会把已缓存的 `revoked=true` 降级;新增用例钉住。
+3. **空 jti 的 `Logout` 会谎报成功(低危,潜在)**:`RevokeToken` 对空 jti 直接返回 nil,而 `Resolve` 把空 jti 当作永不吊销。所有签发路径都会写 jti,所以只是约定而非强制;`Logout` 现在对空 jti 显式返回 `Internal`,不再出现"报成功但没有可生效的记录"。
+4. **已登录调用方可无限"登录 + 登出"增长吊销表(低危)**:拦截器原先豁免所有已登录调用方,持账号者可以绕过 `Login` 预算,以 bcrypt 速度持续写入寿命 7 天的记录。改为只有 `CreateUser` 豁免已登录调用方,`Login` 始终计额。
+5. **全信任链回退取最左段(低危,设计如此)**:复核确认 `forwardedClient` 在"每一跳都在 `--trusted-proxies` 内"时返回最左(最上游)地址;这与 M1 取法一致,只有在客户端地址本身落在信任 CIDR 内时才可能有影响,已在 `security-posture.md` 写明。
+6. **文档表述过强(提示)**:`security-posture.md` 原写"调用方无法让两个值按其意愿相等",在直连路径上不成立;随 HMAC 改造改为"只有本进程的中间件能产生该证明"。
+7. **在飞的 M2 端到端用例本身是坏的(复核发现)**:`GET /v1/deviceLogins/{code}` 不是匿名方法,原用例在 GET 上拿到 401,断言根本走不到 `requestIp`。已改为带管理员 token 读取;该用例现在把客户端绑定到 127.0.0.2,使外层对端与网关自身的 loopback 连接不同,能真正区分"取到外层对端"与"取到 127.0.0.1"。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`(改动包 `-race`)、`go vet`、release 构建(`-tags release`)、`make test-integration`(真实 PostgreSQL + MySQL,含 migrator 的 LATEST 新装/增量升级/一致性与 53 个顶层 `RealServerIntegration` 用例全绿)。本轮未改前端,未跑前端门禁。
