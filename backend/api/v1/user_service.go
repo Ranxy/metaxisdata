@@ -500,7 +500,7 @@ func (s *UserService) DeleteUser(ctx context.Context, request *connect.Request[v
 		return nil, err
 	}
 	if !hasExtraWorkspaceAdmin {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("workspace must have at least one admin"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("workspace must keep at least one active admin whose binding has no condition"))
 	}
 
 	if _, err := s.store.UpdateUser(ctx, user, &store.UpdateUserMessage{Delete: &deletePatch}); err != nil {

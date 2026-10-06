@@ -30,7 +30,10 @@ export declare type Binding = Message<"metaxisdata.v1.Binding"> & {
   /**
    * The principals requesting access.
    * For users: users/{userUID}; for groups: groups/{email}; the pseudo-member
-   * allUsers matches every authenticated principal.
+   * allUsers matches every authenticated principal, including the ones who
+   * register later, so it is accepted only on the roles/workspaceMember
+   * baseline binding. That binding is server-managed: it cannot be edited or
+   * dropped, and a Set whose policy omits it is rejected.
    *
    * @generated from field: repeated string members = 2;
    */

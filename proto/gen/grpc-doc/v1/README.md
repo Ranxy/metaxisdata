@@ -3533,7 +3533,7 @@ IamService.SetWorkspaceIamPolicy.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | role | [string](#string) |  | The role that is assigned to the members. Format: roles/{role} |
-| members | [string](#string) | repeated | The principals requesting access. For users: users/{userUID}; for groups: groups/{email}; the pseudo-member allUsers matches every authenticated principal. |
+| members | [string](#string) | repeated | The principals requesting access. For users: users/{userUID}; for groups: groups/{email}; the pseudo-member allUsers matches every authenticated principal, including the ones who register later, so it is accepted only on the roles/workspaceMember baseline binding. That binding is server-managed: it cannot be edited or dropped, and a Set whose policy omits it is rejected. |
 | condition | [google.type.Expr](#google-type-Expr) |  | The condition that is associated with this binding. When present the binding applies only while the condition evaluates to true. |
 
 

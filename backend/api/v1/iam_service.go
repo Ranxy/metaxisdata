@@ -44,13 +44,14 @@ func (s *IamService) SetWorkspaceIamPolicy(ctx context.Context, request *connect
 		return nil, err
 	}
 	// The workspace must keep at least one active end-user admin after the
-	// write; otherwise a single Set could permanently lock everyone out.
+	// write, bound by a condition that holds at check time and is not merely
+	// time-boxed; otherwise a single Set could permanently lock everyone out.
 	ok, err := hasActiveWorkspaceAdmin(ctx, s.store, policy, 0)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check workspace admin"))
 	}
 	if !ok {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("workspace must have at least one active admin"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("workspace must keep at least one active admin whose binding has no condition"))
 	}
 
 	updated, err := s.store.SetWorkspaceIamPolicy(ctx, policy, request.Msg.GetEtag())
@@ -106,7 +107,14 @@ func convertToStoreIamPolicy(p *v1pb.IamPolicy) *storepb.IamPolicy {
 // deployment binds, and members must name a real, active principal. A binding
 // to a missing role or principal would silently never match, so it is rejected
 // rather than stored.
+//
+// It also pins the allUsers invariant, which a single full replace could
+// otherwise widen for every principal who ever signs up. The decision lives in
+// the store so that every writer, not just this RPC, enforces it.
 func validateIamPolicy(ctx context.Context, stores *store.Store, policy *storepb.IamPolicy) error {
+	if err := store.CheckAllUsersBinding(policy); err != nil {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	for _, binding := range policy.GetBindings() {
 		resourceID, err := common.GetRoleID(binding.GetRole())
 		if err != nil {
@@ -136,7 +144,8 @@ func validateIamPolicy(ctx context.Context, stores *store.Store, policy *storepb
 }
 
 // validateIamMember reports whether a binding member names a real, active
-// principal: allUsers, a non-deleted user, or an existing group.
+// principal: allUsers, a non-deleted user, or an existing group. Which role
+// allUsers may be bound to is checked by store.CheckAllUsersBinding.
 func validateIamMember(ctx context.Context, stores *store.Store, member string) error {
 	switch {
 	case member == common.AllUsers:

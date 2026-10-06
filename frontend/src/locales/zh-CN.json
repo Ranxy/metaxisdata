@@ -360,6 +360,8 @@
       "selectGroup": "请选择用户组",
       "selectRole": "请选择角色",
       "selectUser": "请选择用户",
+      "systemBinding": "系统",
+      "systemBindingHint": "由服务端管理：每个已登录用户都持有工作区成员基线，此绑定不可修改。",
       "user": "用户"
     },
     "roles": {

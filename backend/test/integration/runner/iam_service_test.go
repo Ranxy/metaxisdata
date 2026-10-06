@@ -11,17 +11,27 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
+	exprpb "google.golang.org/genproto/googleapis/type/expr"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 )
 
+// Binding conditions that can never, and always, hold at check time.
+const (
+	neverHolds  = `request.time > timestamp("2100-01-01T00:00:00Z")`
+	alwaysHolds = `request.time > timestamp("2000-01-01T00:00:00Z")`
+)
+
 // TestWorkspaceIamPolicyRealServerIntegration exercises the IAM subsystem end to
 // end against a real server: a member starts on the read baseline, gains a
 // custom role through the workspace policy (directly and through a group), sees
-// the change in GetCurrentUser, and the policy write path rejects both a stale
-// etag and a policy that would leave the workspace without an admin.
+// the change in GetCurrentUser, and the policy write path rejects a stale etag,
+// a policy that would leave the workspace without a usable admin (no admin at
+// all, one that is false at check time, or one that is merely time-boxed), and
+// any attempt to move or drop the server-managed allUsers binding.
 func TestWorkspaceIamPolicyRealServerIntegration(t *testing.T) {
 	env := sharedPostgresServiceEnvNoReset(t)
 	httpClient := &http.Client{Timeout: 5 * time.Second}
@@ -44,6 +54,39 @@ func TestWorkspaceIamPolicyRealServerIntegration(t *testing.T) {
 		}))
 		require.NoError(t, restoreErr)
 	})
+	require.NotNil(t, allUsersBaselineBinding(original.Msg.GetPolicy()),
+		"first onboarding binds allUsers to the member baseline, and every full replace must carry it forward")
+
+	// The caller is the seeded administrator, whose binding is what keeps the
+	// workspace administrable below.
+	admin, err := userClient.GetCurrentUser(ctx, withToken(adminToken, &emptypb.Empty{}))
+	require.NoError(t, err)
+	meName := admin.Msg.GetName()
+	require.NotEmpty(t, meName)
+
+	// One extra admin binding that is false at check time grants nothing, but
+	// the policy still carries a real admin binding: the write is accepted
+	// rather than refused for the wrong reason.
+	withFalseExtra := append([]*v1pb.Binding{}, original.Msg.GetPolicy().GetBindings()...)
+	withFalseExtra = append(withFalseExtra, &v1pb.Binding{
+		Role:      "roles/workspaceAdmin",
+		Members:   []string{meName},
+		Condition: &exprpb.Expr{Expression: neverHolds},
+	})
+	_, err = iamClient.SetWorkspaceIamPolicy(ctx, withToken(adminToken, &v1pb.SetWorkspaceIamPolicyRequest{
+		Policy: &v1pb.IamPolicy{Bindings: withFalseExtra},
+		Etag:   original.Msg.GetEtag(),
+	}))
+	require.NoError(t, err, "a false extra binding does not invalidate the real admin binding")
+	_, err = iamClient.SetWorkspaceIamPolicy(ctx, withToken(adminToken, &v1pb.SetWorkspaceIamPolicyRequest{
+		Policy: original.Msg.GetPolicy(),
+		Etag:   "",
+	}))
+	require.NoError(t, err)
+	// The control above moved the etag; the run below starts from a fresh read.
+	current, err := iamClient.GetWorkspaceIamPolicy(ctx, withToken(adminToken, &v1pb.GetWorkspaceIamPolicyRequest{}))
+	require.NoError(t, err)
+	require.True(t, proto.Equal(original.Msg.GetPolicy(), current.Msg.GetPolicy()), "the control writes restored the policy")
 
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	roleName := "roles/it" + suffix
@@ -87,7 +130,7 @@ func TestWorkspaceIamPolicyRealServerIntegration(t *testing.T) {
 	bindings = append(bindings, &v1pb.Binding{Role: roleName, Members: []string{memberName}})
 	setResp, err := iamClient.SetWorkspaceIamPolicy(ctx, withToken(adminToken, &v1pb.SetWorkspaceIamPolicyRequest{
 		Policy: &v1pb.IamPolicy{Bindings: bindings},
-		Etag:   original.Msg.GetEtag(),
+		Etag:   current.Msg.GetEtag(),
 	}))
 	require.NoError(t, err)
 
@@ -128,13 +171,73 @@ func TestWorkspaceIamPolicyRealServerIntegration(t *testing.T) {
 	}))
 	require.Equal(t, connect.CodeAborted, connect.CodeOf(err))
 
-	// A policy without an admin must be refused rather than locking the
-	// workspace out.
+	// M9: allUsers matches everyone who ever signs up, so it may not be moved
+	// onto another role — neither a predefined one nor a custom one that the
+	// operator just created.
+	for _, boundRole := range []string{"roles/workspaceAdmin", roleName} {
+		forEveryone := append([]*v1pb.Binding{}, bindings...)
+		forEveryone = append(forEveryone, &v1pb.Binding{Role: boundRole, Members: []string{"allUsers"}})
+		_, err = iamClient.SetWorkspaceIamPolicy(ctx, withToken(adminToken, &v1pb.SetWorkspaceIamPolicyRequest{
+			Policy: &v1pb.IamPolicy{Bindings: forEveryone},
+			Etag:   setResp.Msg.GetEtag(),
+		}))
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), "allUsers onto %s must be refused", boundRole)
+		require.Contains(t, err.Error(), "may only be bound to roles/workspaceMember")
+	}
+
+	// Dropping the server-managed binding is refused rather than stored.
+	withoutSystem := make([]*v1pb.Binding, 0, len(bindings))
+	for _, binding := range bindings {
+		if binding.GetRole() == "roles/workspaceMember" {
+			continue
+		}
+		withoutSystem = append(withoutSystem, &v1pb.Binding{Role: binding.GetRole(), Members: binding.GetMembers()})
+	}
 	_, err = iamClient.SetWorkspaceIamPolicy(ctx, withToken(adminToken, &v1pb.SetWorkspaceIamPolicyRequest{
-		Policy: &v1pb.IamPolicy{},
+		Policy: &v1pb.IamPolicy{Bindings: withoutSystem},
 		Etag:   setResp.Msg.GetEtag(),
 	}))
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	require.Contains(t, err.Error(), "must keep its roles/workspaceMember binding")
+
+	// The last-admin guard reads the conditions the permission check reads: a
+	// binding that grants nothing at check time cannot be what keeps the
+	// workspace administrable, and a merely time-boxed admin is not enough
+	// either. Without this, one legal Set leaves the workspace with no usable
+	// admin and no way back through the API.
+	baseline := allUsersBaselineBinding(&v1pb.IamPolicy{Bindings: bindings})
+	adminOnly := func(condition string) []*v1pb.Binding {
+		binding := &v1pb.Binding{Role: "roles/workspaceAdmin", Members: []string{meName}}
+		if condition != "" {
+			binding.Condition = &exprpb.Expr{Expression: condition}
+		}
+		return []*v1pb.Binding{
+			{Role: baseline.GetRole(), Members: baseline.GetMembers()},
+			binding,
+		}
+	}
+	for _, test := range []struct {
+		reason  string
+		binding []*v1pb.Binding
+	}{
+		{"no admin at all", []*v1pb.Binding{{Role: baseline.GetRole(), Members: baseline.GetMembers()}}},
+		{"an admin binding that is false at check time", adminOnly(neverHolds)},
+		{"an admin binding that is only time-boxed", adminOnly(alwaysHolds)},
+	} {
+		_, err = iamClient.SetWorkspaceIamPolicy(ctx, withToken(adminToken, &v1pb.SetWorkspaceIamPolicyRequest{
+			Policy: &v1pb.IamPolicy{Bindings: test.binding},
+			Etag:   setResp.Msg.GetEtag(),
+		}))
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), test.reason)
+		require.Contains(t, err.Error(), "whose binding has no condition", test.reason)
+	}
+
+	// Every refused write above left the stored policy exactly as it was. The
+	// etag alone would not prove it: it is millisecond-precision, so two writes
+	// in the same millisecond share it.
+	afterRefusals, err := iamClient.GetWorkspaceIamPolicy(ctx, withToken(adminToken, &v1pb.GetWorkspaceIamPolicyRequest{}))
+	require.NoError(t, err)
+	require.True(t, proto.Equal(setResp.Msg.GetPolicy(), afterRefusals.Msg.GetPolicy()), "the refused writes left the stored policy untouched")
 
 	// A role that is still bound cannot be deleted.
 	_, err = roleClient.DeleteRole(ctx, withToken(adminToken, &v1pb.DeleteRoleRequest{Name: roleName}))
@@ -164,4 +267,20 @@ func withToken[T any](token string, msg *T) *connect.Request[T] {
 	req := connect.NewRequest(msg)
 	req.Header().Set("Authorization", "Bearer "+token)
 	return req
+}
+
+// allUsersBaselineBinding returns the server-managed allUsers binding, or nil
+// when the policy does not carry it.
+func allUsersBaselineBinding(policy *v1pb.IamPolicy) *v1pb.Binding {
+	for _, binding := range policy.GetBindings() {
+		if binding.GetRole() != "roles/workspaceMember" {
+			continue
+		}
+		for _, member := range binding.GetMembers() {
+			if member == "allUsers" {
+				return binding
+			}
+		}
+	}
+	return nil
 }
