@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
@@ -88,8 +89,10 @@ func TestNormalizeServerReturnsTheValidatedForm(t *testing.T) {
 		require.Equal(t, tc.want, got.String(), "address %q", tc.given)
 	}
 
-	// A base URL cannot carry credentials, a query or a fragment.
-	for _, given := range []string{"https://user:pass@mx.example.com", "https://mx.example.com?a=1", "https://mx.example.com#f"} {
+	// A base URL cannot carry credentials, a query or a fragment. A bare "?"
+	// counts: the Connect paths are appended to this string, so leaving it in
+	// would turn the procedure name into a query.
+	for _, given := range []string{"https://user:pass@mx.example.com", "https://mx.example.com?a=1", "https://mx.example.com#f", "https://mx.example.com/x?"} {
 		_, err := normalizeServer(given)
 		require.Error(t, err, "address %q must be rejected", given)
 	}
@@ -171,12 +174,14 @@ func TestBearerTransportOnlyAttachesTheTokenToTheConfiguredServer(t *testing.T) 
 
 // A redirect to another host must fail the call rather than carry the token
 // anywhere else. The third-party server is where the token would have leaked,
-// so it must never see a request at all.
+// so it must never see a request at all. It is TLS like the entry point on
+// purpose: an http target would also be stopped by the downgrade rule, and this
+// test is about the host.
 func TestClientRefusesARedirectToAnotherHost(t *testing.T) {
 	t.Parallel()
 
 	leaked := make(chan string, 1)
-	thirdParty := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+	thirdParty := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		leaked <- r.Header.Get("Authorization")
 	}))
 	defer thirdParty.Close()
@@ -193,14 +198,42 @@ func TestClientRefusesARedirectToAnotherHost(t *testing.T) {
 		Email:    "dev@example.com",
 		Password: "secret",
 	}))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "another host")
 
+	// The leak is the security-critical assertion, so it is checked first: a
+	// failing error message would otherwise stop the test before it ran.
 	select {
 	case header := <-leaked:
 		t.Fatalf("the third-party host received a request with Authorization %q", header)
 	default:
 	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "another host")
+}
+
+// Setting CheckRedirect replaces the standard library's own redirect cap, so
+// the cap has to be kept here: a server that keeps pointing at itself is a
+// misconfiguration, not a reason to follow it until the timeout runs out.
+func TestClientStopsAfterTooManyRedirects(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/metaxisdata.v1.AuthService/Login", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, r.URL.Path, http.StatusTemporaryRedirect)
+	})
+	server := httptest.NewTLSServer(mux)
+	defer server.Close()
+
+	// The timeout only bounds the failure, should the cap ever go missing: the
+	// cap itself makes this return immediately.
+	connection, err := New(server.URL, Options{Token: "SECRET-TOKEN", Insecure: true, Timeout: 5 * time.Second})
+	require.NoError(t, err)
+
+	_, err = connection.Auth.Login(context.Background(), connect.NewRequest(&v1pb.LoginRequest{
+		Email:    "dev@example.com",
+		Password: "secret",
+	}))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "redirects")
 }
 
 // The policy refuses the host change, not the redirect: staying on the server

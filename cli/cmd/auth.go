@@ -237,13 +237,14 @@ func openBrowser(url string) error {
 }
 
 // validateBrowserURL accepts the addresses an opener may be handed: a web page
-// rather than something else (`javascript:`, `file:`), and one with a host.
+// rather than something else (`javascript:`, `file:`), and one that names a
+// host.
 func validateBrowserURL(rawURL string) error {
 	parsed, err := neturl.Parse(rawURL)
 	if err != nil {
 		return errors.Wrapf(err, "refusing to open %q in a browser", rawURL)
 	}
-	if (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+	if (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
 		return errors.Errorf("refusing to open %q in a browser: only http and https addresses are opened", rawURL)
 	}
 	return nil

@@ -66,6 +66,7 @@ func TestValidateBrowserURL(t *testing.T) {
 		"file:///etc/passwd",
 		"cmd:/c/calc.exe",
 		"https://",
+		"https://:8080/device",
 		"https://mx.example.com/%zz",
 		"mx.example.com/device",
 		"",

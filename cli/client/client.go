@@ -182,6 +182,11 @@ type Client struct {
 	Lineage  v1connect.LineageServiceClient
 }
 
+// maxRedirects is how many redirects the client follows before giving up. It
+// mirrors the cap the standard library applies, which a custom CheckRedirect
+// replaces.
+const maxRedirects = 10
+
 // New builds the clients for one server address. Every request to that address
 // carries the bearer token, which is also what exempts the CLI from the
 // cookie-based CSRF protection. The token stays bound to that address: a
@@ -203,9 +208,18 @@ func New(server string, options Options) (*Client, error) {
 		// the standard library drops Authorization when a redirect leaves the
 		// server's domain, but this client re-attaches it, and the library
 		// counts a subdomain of that domain as the same domain anyway.
-		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+		//
+		// Setting CheckRedirect replaces the standard library's own, so the
+		// cap it applies has to be kept here: without it a server that keeps
+		// redirecting to itself would be followed until the timeout (and
+		// forever with --timeout 0), turning a misconfigured entry point into
+		// unbounded work.
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= maxRedirects {
+				return fmt.Errorf("stopped after %d redirects", maxRedirects)
+			}
 			if req.URL.Host != baseURL.Host {
-				return fmt.Errorf("the server redirected the request to another host (%s); refusing to send the credentials anywhere but %s", req.URL.Host, baseURL.Host)
+				return fmt.Errorf("the server redirected the request to another host (%s); refusing to follow a redirect off %s", req.URL.Host, baseURL.Host)
 			}
 			if baseURL.Scheme == "https" && req.URL.Scheme != "https" {
 				return fmt.Errorf("the server redirected the request from https to %s; refusing to downgrade the connection", req.URL.Scheme)
@@ -248,7 +262,11 @@ func normalizeServer(server string) (*url.URL, error) {
 	if parsed.User != nil {
 		return nil, Usage("server address %q must not carry credentials", server)
 	}
-	if parsed.RawQuery != "" || parsed.Fragment != "" {
+	// ForceQuery is a bare "?" with nothing after it: RawQuery is empty but the
+	// address still spells a query, and it would otherwise survive into the
+	// base URL the Connect paths are appended to, putting the procedure name
+	// into the query string.
+	if parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
 		return nil, Usage("server address %q must not carry a query or fragment", server)
 	}
 	// A path is kept: the server may be mounted under a prefix. url.Parse
