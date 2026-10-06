@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -24,7 +25,8 @@ const (
 // fakeUsers is a UserStore with a single principal, so the token rules can be
 // exercised without a database.
 type fakeUsers struct {
-	user *store.UserMessage
+	user    *store.UserMessage
+	revoked map[string]bool
 }
 
 func (f fakeUsers) GetUserByID(_ context.Context, id int) (*store.UserMessage, error) {
@@ -32,6 +34,22 @@ func (f fakeUsers) GetUserByID(_ context.Context, id int) (*store.UserMessage, e
 		return nil, nil
 	}
 	return f.user, nil
+}
+
+func (f fakeUsers) IsTokenRevoked(_ context.Context, tokenID string) (bool, error) {
+	return f.revoked[tokenID], nil
+}
+
+// countingUsers records how often the persistent revocation table is read, so a
+// test can show the cache is in front of it.
+type countingUsers struct {
+	fakeUsers
+	lookups int
+}
+
+func (u *countingUsers) IsTokenRevoked(ctx context.Context, tokenID string) (bool, error) {
+	u.lookups++
+	return u.fakeUsers.IsTokenRevoked(ctx, tokenID)
 }
 
 func TestResolveKeepsAudiencesApart(t *testing.T) {
@@ -126,4 +144,55 @@ func TestResolveRejectsAMissingToken(t *testing.T) {
 
 	_, _, err := NewTokenAuthenticator(nil, audienceTestSecret, nil).Resolve(context.Background(), "", AccessTokenAudience(common.ReleaseModeDev))
 	require.ErrorIs(t, err, ErrTokenMissing)
+}
+
+// M4: revocation is keyed by the token's jti and read from the persistent table,
+// so a revoked token stays revoked however many other tokens are revoked (the old
+// bounded LRU let any account holder evict an entry by logging in and out).
+func TestResolveRefusesAPersistentlyRevokedToken(t *testing.T) {
+	t.Parallel()
+
+	token, err := GenerateAccessToken("user@example.com", 7, common.ReleaseModeDev, audienceTestSecret, time.Hour)
+	require.NoError(t, err)
+	identity, err := VerifyAccessTokenProvenance(token, audienceTestSecret)
+	require.NoError(t, err)
+	require.NotEmpty(t, identity.TokenID, "every token this server signs carries a jti")
+
+	users := fakeUsers{
+		user:    &store.UserMessage{ID: 7, Email: "user@example.com"},
+		revoked: map[string]bool{identity.TokenID: true},
+	}
+	_, _, err = NewTokenAuthenticator(users, audienceTestSecret, nil).Resolve(context.Background(), token, AccessTokenAudience(common.ReleaseModeDev))
+	require.ErrorIs(t, err, ErrTokenRevoked)
+}
+
+// M4: the process-local cache only saves a table read. A decision read once is
+// reused, and a revocation performed here is refused immediately without a read.
+func TestResolveCachesRevocationDecisions(t *testing.T) {
+	t.Parallel()
+
+	stateCfg, err := state.New()
+	require.NoError(t, err)
+
+	token, err := GenerateAccessToken("user@example.com", 7, common.ReleaseModeDev, audienceTestSecret, time.Hour)
+	require.NoError(t, err)
+	identity, err := VerifyAccessTokenProvenance(token, audienceTestSecret)
+	require.NoError(t, err)
+
+	users := &countingUsers{fakeUsers: fakeUsers{user: &store.UserMessage{ID: 7, Email: "user@example.com"}}}
+	authenticator := NewTokenAuthenticator(users, audienceTestSecret, stateCfg)
+	audience := AccessTokenAudience(common.ReleaseModeDev)
+
+	_, _, err = authenticator.Resolve(context.Background(), token, audience)
+	require.NoError(t, err)
+	_, _, err = authenticator.Resolve(context.Background(), token, audience)
+	require.NoError(t, err)
+	require.Equal(t, 1, users.lookups, "a fresh decision is not read twice")
+
+	// A revocation this process just performed is refused without waiting for the
+	// next table read, let alone a replica's cache to expire.
+	stateCfg.TokenRevocationCache.Revoke(identity.TokenID, time.Now())
+	_, _, err = authenticator.Resolve(context.Background(), token, audience)
+	require.ErrorIs(t, err, ErrTokenRevoked)
+	require.Equal(t, 1, users.lookups)
 }

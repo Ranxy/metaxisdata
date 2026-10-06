@@ -13,7 +13,7 @@ Rules for the Go server. Repo-wide rules live in the root [AGENTS.md](../AGENTS.
 | `backend/store/` | PostgreSQL store: table→message mapping, JSONB `protojson` columns, LRU caches, connection pool |
 | `backend/component/dbfactory/` | Builds a `db.Driver` from an instance's data source |
 | `backend/component/llm/` | LLM provider registry and the iterative agent loop (tools, events, messages) |
-| `backend/component/state/` | In-memory server state (token-expire cache, per-instance connection limiter, pending device logins) |
+| `backend/component/state/` | In-memory server state (token-revocation cache over the `revoked_token` table, per-instance connection limiter, pending device logins, request budgets) |
 | `backend/plugin/db/` | `db.Driver` interface and the MySQL-wire, PostgreSQL and MSSQL drivers (`mysql`, `pg`, `mssql`, `starrocks` — the last serving StarRocks and Doris) |
 | `backend/plugin/schema/` | Schema sync, diff, and migration-DDL generation (MySQL/PG/MSSQL; StarRocks/Doris are not registered) |
 | `backend/plugin/lineage/` | Table/column lineage analyzers, catalog, scope resolution — see [plugin/lineage/AGENTS.md](plugin/lineage/AGENTS.md) |

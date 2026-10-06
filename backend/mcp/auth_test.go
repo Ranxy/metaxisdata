@@ -33,6 +33,10 @@ func (verifierUsers) GetUserByID(_ context.Context, id int) (*store.UserMessage,
 	return &store.UserMessage{ID: id, Email: "user@example.com"}, nil
 }
 
+func (verifierUsers) IsTokenRevoked(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+
 func enabledEndpoints() mcp.EndpointsFunc {
 	return func(context.Context) (oauth.Endpoints, bool, error) {
 		return oauth.Endpoints{Issuer: verifierIssuer, Resource: verifierResource}, true, nil

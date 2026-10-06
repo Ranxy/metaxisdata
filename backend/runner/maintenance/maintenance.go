@@ -75,6 +75,14 @@ func (r *Runner) runOnce(ctx context.Context) {
 		slog.Info("Pruned expired LLM debug log entries", slog.Int64("count", deleted))
 	}
 
+	// A revoked token is only kept until the token's own expiry: past that its
+	// exp claim refuses it, so the record can refuse nothing.
+	if deleted, err := r.store.DeleteExpiredRevokedTokens(ctx, now); err != nil {
+		slog.Error("Failed to prune revoked access tokens", log.WithError(err))
+	} else if deleted > 0 {
+		slog.Info("Pruned expired revoked access token records", slog.Int64("count", deleted))
+	}
+
 	// Ingested lineage that named a relation the registry did not have is
 	// re-checked here: once the relation has been synced its columns can be
 	// validated, and what is still unknown is counted rather than kept silent.

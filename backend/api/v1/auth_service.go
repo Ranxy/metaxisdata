@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net"
 	"slices"
 	"strings"
 	"sync"
@@ -24,6 +23,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/api/auth"
+	"github.com/Ranxy/metaxisdata/backend/component/audit"
 
 	"github.com/Ranxy/metaxisdata/backend/config"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -43,17 +43,6 @@ var (
 		return bcrypt.GenerateFromPassword([]byte("metaxisdata-timing-equalizer"), bcrypt.DefaultCost)
 	})
 )
-
-// loginThrottleKey scopes failed-attempt counting to one account from one
-// source, so neither a single account nor a single client can be hammered. The
-// peer address comes from the connection, not from a forwarding header.
-func loginThrottleKey(email, peerAddr string) string {
-	host := peerAddr
-	if h, _, err := net.SplitHostPort(peerAddr); err == nil {
-		host = h
-	}
-	return strings.ToLower(strings.TrimSpace(email)) + "|" + host
-}
 
 // AuthService implements the auth service.
 type AuthService struct {
@@ -94,16 +83,20 @@ func (s *AuthService) Login(ctx context.Context, req *connect.Request[v1pb.Login
 		// them.
 		response.AccountAdopted = accountAdopted
 	} else {
-		throttleKey := loginThrottleKey(request.Email, req.Peer().Addr)
-		if s.stateCfg.LoginLimiter.Blocked(throttleKey, time.Now()) {
+		// The source is the resolved client address, not the TCP peer: behind a
+		// proxy the peer is the proxy for every caller, which would let one client
+		// lock every account and would collapse all sources onto one budget. The
+		// same resolver the audit ledger uses keeps the two from disagreeing.
+		source := audit.BuildRequestMetadata(req.Header(), req.Peer().Addr, s.profile.TrustedProxies).GetIp()
+		if s.stateCfg.LoginLimiter.Blocked(request.Email, source, time.Now()) {
 			return nil, connect.NewError(connect.CodeResourceExhausted, errors.Errorf("too many failed login attempts, try again later"))
 		}
 		loginUser, err = s.getAndVerifyUser(ctx, request)
 		if err != nil {
-			s.stateCfg.LoginLimiter.RecordFailure(throttleKey, time.Now())
+			s.stateCfg.LoginLimiter.RecordFailure(request.Email, source, time.Now())
 			return nil, err
 		}
-		s.stateCfg.LoginLimiter.Reset(throttleKey)
+		s.stateCfg.LoginLimiter.ResetAccount(request.Email)
 		// Reset password restriction only works for end user with email & password login.
 		response.RequireResetPassword = s.needResetPassword(ctx, loginUser)
 	}
@@ -294,15 +287,24 @@ func (s *AuthService) Logout(ctx context.Context, req *connect.Request[v1pb.Logo
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
 	// Only a token this server actually issued may be revoked. Without this check
-	// an unauthenticated caller could flood the revocation cache with forged
-	// strings and evict genuine entries. The audience is deliberately not checked:
-	// an MCP token carries the MCP endpoint's resource identifier as its audience,
-	// and revoking one has to work, or a leaked MCP token would have no
-	// self-service remedy at all.
-	if _, err := auth.VerifyAccessTokenProvenance(accessTokenStr, s.secret); err != nil {
+	// an unauthenticated caller could flood the revocation records with forged
+	// strings. The audience is deliberately not checked: an MCP token carries the
+	// MCP endpoint's resource identifier as its audience, and revoking one has to
+	// work, or a leaked MCP token would have no self-service remedy at all.
+	identity, err := auth.VerifyAccessTokenProvenance(accessTokenStr, s.secret)
+	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.Errorf("invalid access token"))
 	}
-	s.stateCfg.TokenExpireCache.Add(accessTokenStr, true)
+	// The record is persistent, keyed by the token's jti and kept only until the
+	// token's own expiry, so a caller cannot evict it by logging in and out and
+	// another replica refuses the token too. The cache makes this process refuse
+	// it immediately instead of on the next table read.
+	if err := s.store.RevokeToken(ctx, identity.TokenID, identity.ExpiresAt); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to revoke the access token"))
+	}
+	if identity.TokenID != "" {
+		s.stateCfg.TokenRevocationCache.Revoke(identity.TokenID, time.Now())
+	}
 
 	resp := connect.NewResponse(&emptypb.Empty{})
 
