@@ -121,8 +121,8 @@
 - **修复**:测试断言 `acw == true ⇒ permission == ""`(反向互斥);或 ACL 对 acw 方法仍执行 permission 检查,另设明确的匿名方法白名单。
 
 ### M9. `allUsers` 可绑定 `workspaceAdmin`:一次误操作把未来所有注册者变成管理员
-- **状态**:**已修复**(2026-10-06,commit `cb40791`;修复内容与验证见 §10)。实现比原建议更严:`allUsers` 不是"禁止绑定管理角色",而是彻底不可编辑——只允许留在服务端托管的 `roles/workspaceMember` 基线上,自定义角色只能授给明确的用户与用户组。
-- **证据**:`backend/api/v1/iam_service.go:142`(`case member == common.AllUsers: return nil`);`backend/api/v1/iam_helpers.go:33-42`;前端提供任意组合入口(`IamPage.vue:147`)。
+- **状态**:**已修复**(2026-10-06,commit `cb40791`;复核加固 commit `c93fd12`,内容与验证见 §10)。实现比原建议更严:`allUsers` 不是"禁止绑定管理角色",而是彻底不可编辑——只允许留在服务端托管的 `roles/workspaceMember` 基线上,自定义角色只能授给明确的用户与用户组。复核还顺带修掉了相邻的"守卫条件盲"与"不变式只在 API 层"两处(见 §10)。
+- **证据**(修复前行号,已被修复改动漂移;`iam_service.go` 的 `allUsers` 分支现位于 `validateIamMember`,`IamPage.vue` 的 allUsers 选项已随修复删除):`backend/api/v1/iam_service.go:142`(`case member == common.AllUsers: return nil`);`backend/api/v1/iam_helpers.go:33-42`;前端提供任意组合入口(`IamPage.vue:147`)。
 - **攻击场景**:与 H2 叠加——管理员为"方便"给 allUsers 绑 workspaceAdmin("至少一个活跃管理员"校验通过),此后任何匿名注册者即管理员。单向门,难以察觉。
 - **修复**:拒绝 `allUsers` 绑定任何含管理权限的角色;写校验 fail-closed。
 
@@ -668,28 +668,42 @@
 
 ### 2026-10-06 —— M9 已修复(commit `cb40791`)
 
-**allUsers 不再是可编辑的成员**(`backend/api/v1/iam_service.go`、前端 `IamPage.vue`)
+**allUsers 不再是可编辑的成员**(`backend/store/policy.go`、`backend/api/v1/iam_service.go`、前端 `IamPage.vue`)
 
-- `validateIamPolicy` 新增前置检查 `validateAllUsersBinding`,对整份策略断言两件事:
+- 新增 `store.CheckAllUsersBinding`,对整份策略断言两件事:
   1. `allUsers` 只允许出现在 `roles/workspaceMember` 这条绑定上。它匹配每一个已认证主体——包括此后注册的所有人,而自助注册默认开启(H2),所以把它绑到别的角色(预定义的 `workspaceAdmin`,或管理员刚建的自定义角色)等于一次看似普通的授权就把该角色发给未来所有注册者;"至少一个活跃管理员"守卫还会把 allUsers 当成管理员,让这次写入同时通过最后管理员校验。
   2. 策略必须保留 `roles/workspaceMember` → `allUsers` 这条绑定(首次初始化时由服务端写入的隐式基线)。丢掉它直接拒绝,而不是静默存下一份缺少它的策略。
+- 判定放在 **store 包**,v1 写路径(`validateIamPolicy`)与 store 的两个写入器(`SetWorkspaceIamPolicy`、事务内的 `patchWorkspaceIamPolicyImpl`)都调用它:前者的报错走 `InvalidArgument`,后者是"任何调用方都绕不过"的兜底。增量 patch 只强制第 1 条——它可能跑在"基线绑定早于改造就丢了"的库上,拿第 2 条去卡会把首个管理员引导弄失败(见复核加固第 2 条)。
 - 为什么不是维护一份"管理权限清单":任何清单都会在新增权限的那天过期;在这个模型里"超出 workspaceMember 基线"与"含管理权限"是同一件事,且不依赖人手同步。自定义角色照常可用,只是只能授给明确的用户与用户组。
-- `hasActiveWorkspaceAdmin` 的 `allUsers` 分支**保留**:改造前写入的策略可能仍带 `allUsers` → `workspaceAdmin`,权限引擎仍按它放权;删掉该分支会让这类部署在守卫判定上突然"没有管理员"从而锁死。新写路径会拒绝再次写入该绑定,所以它是一次性待清理的历史遗留(下一次保存策略必须先删掉它)。
+- `hasActiveWorkspaceAdmin` 的 `allUsers` 分支**保留**:改造前写入的策略可能仍带 `allUsers` → `workspaceAdmin`,权限引擎仍按它放权;该分支让守卫的判定与引擎一致,去掉它只会让 `DeleteUser` 对这类部署过度拒绝(工作区不会因此锁死——Set 路径上带该绑定的提交本来就先被第 1 条拒掉)。新写路径会拒绝再次写入该绑定,所以它是一次性待清理的历史遗留(下一次保存策略必须先删掉它)。
 - 前端:成员类型选择器去掉 allUsers;`allUsers` 基线行显示为只读(没有"移除成员""移除绑定",该成员自身也没有 ×),并在可编辑草稿里自动补上缺失的基线绑定(`frontend/src/utils/iamPolicy.ts`),使改造前丢过该绑定的库能被一次保存修好,而不是卡在"服务端拒绝、界面又补不回来"。
 - `proto/v1/v1/iam_service.proto` 的 `Binding.members` 注释写明该约定(生成物随 `buf generate` 一并提交),`docs/security-posture.md` 增补一条"allUsers 由服务端托管、只承载成员基线"。
 
 **回归测试**
 
-- 单元 `backend/api/v1/iam_service_test.go`(`TestValidateAllUsersBinding`,9 例):基线与其它绑定共存、基线行带额外成员、重复基线行均通过;allUsers 绑 `roles/workspaceAdmin`、绑自定义角色、策略缺少基线绑定、空策略均返回 `InvalidArgument` 且错误文案指明原因。检查函数是纯函数,不需要数据库。
-- 集成 `TestWorkspaceIamPolicyRealServerIntegration`(真实服务器 + PostgreSQL):首次初始化确实写入了 allUsers 基线绑定;`allUsers` 绑 `workspaceAdmin` 与绑新建自定义角色都在写路径上被拒;缺少基线绑定的策略被拒;这些被拒写入之后读回策略的 etag 与绑定数不变(没有部分写入);原来的"没有管理员"用例改为携带基线绑定,因此确实落在最后管理员守卫上(断言错误文案)。
-- 前端 `frontend/src/utils/iamPolicy.test.ts`:基线行识别与草稿补全(追加整行 / 给已有的 workspaceMember 行补成员 / 已存在时原样返回)。
-- **反向验证**:临时删掉 `validateIamPolicy` 里的 `validateAllUsersBinding` 调用后重跑集成用例,`allUsers onto roles/workspaceAdmin must be refused` 变红(`expected: 0x3`,即 `InvalidArgument`;实得 `0`);恢复后全绿。
+- 单元 `backend/store/policy_all_users_test.go`(`TestCheckAllUsersBinding`,9 例):基线与其它绑定共存、基线行带额外成员、重复基线行均通过;allUsers 绑 `roles/workspaceAdmin`、绑自定义角色、策略缺少基线绑定、空策略均被拒且错误文案指明原因。另一例钉住增量 patch 用的 `checkAllUsersRole` 允许缺基线、但仍拒绝 allUsers 越界。检查函数是纯函数,不需要数据库。
+- 集成 `TestWorkspaceIamPolicyRealServerIntegration`(真实服务器 + PostgreSQL):首次初始化确实写入了 allUsers 基线绑定;`allUsers` 绑 `workspaceAdmin` 与绑新建自定义角色都在写路径上被拒;缺少基线绑定的策略被拒;带恒假 condition 的额外管理员绑定不改变"仍有真实管理员"的判定(写入被接受),但没有无 condition 的管理员时写入被拒;"没有管理员"用例改为携带基线绑定,因此确实落在最后管理员守卫上(断言错误文案)。被拒写入之后用整份策略的 `proto.Equal` 比对,证明没有部分写入。
+- 前端 `frontend/src/utils/iamPolicy.test.ts`:基线行识别与草稿补全(追加整行 / 给已有的 workspaceMember 行补成员 / 已存在时原样返回 / 已有 allUsers 时不补第二条只读行)。
+- **反向验证**:临时删掉 `validateIamPolicy` 里的校验调用后重跑集成用例,`allUsers onto roles/workspaceAdmin must be refused` 变红(`expected: 0x3`,即 `InvalidArgument`;实得 `0`);恢复后全绿。
 
 **残余**
 
 1. **改造前已存的 `allUsers` → `workspaceAdmin`/自定义角色绑定不会被自动清理**:它仍在放权,直到管理员保存一次策略(保存前必须先删掉它)。要做一次性启动修复/迁移是另一个决定,本轮没做。
-2. **"全员多一项权限"现在只能改代码**:基线在 `backend/store/predefined_roles.go`,这是刻意的——它等价于"所有未来注册者的默认权限"。
-3. 本规则只覆盖 `SetWorkspaceIamPolicy`;首次初始化的 `PatchWorkspaceIamPolicy` 只写基线绑定,不经该校验。
+2. **"全员多一项权限"不能再走 allUsers**:要么改基线代码(`backend/store/predefined_roles.go`,等价于"所有未来注册者的默认权限"),要么把角色绑给一个由 IdP 持续补员的组——后者是显式的管理员决定,不是本条的漏洞。
+3. 除 `SetWorkspaceIamPolicy` 外,store 的增量写入器 `patchWorkspaceIamPolicyImpl`(首次初始化,以及 `backend/store/principal.go` 的首个用户授管理员)也只强制第 1 条,不强制"策略必须保留基线绑定";两者都不会用 allUsers 作成员,所以今天不存在绕过第 1 条的路径。
 4. D16 仍在:自定义角色携带与 `workspaceAdmin` 同等权限时不参与"最后管理员"保护。
 
-**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./...`、release 构建(`-tags release`)、`go vet -tags=integration`、`make test-integration` 的两条命令(真实 PostgreSQL + MySQL 容器 + migrator):53 个 `RealServerIntegration` 用例(0 skip、0 fail,含本节新增用例)与 `backend/migrator/...` 全绿;前端 `biome:check`、`lint`、`i18n`、`type-check`、`test run`(47 文件 / 309 用例)。
+**独立复核后的加固(commit `c93fd12`)**
+
+M9 落地后由独立子代理对 `cb40791` 做了对抗式只读复核(读 connect-go/grpc-gateway 调用链,`go test -overlay` 探针全部挂在 `/tmp`,未改动仓库文件)。结论:两条 allUsers 规则没有被任何路径绕过——角色串大小写/尾随空格/空 role、成员拼写 `allusers`、组里塞 allUsers、自定义角色 id 撞 `workspaceMember`、重复绑定、并发/etag、以及"常量比较 vs 解析快照"都被逐一实测拒绝或证明不可利用。但复核实测出以下问题,本轮已一并修掉:
+
+1. **"最后管理员"守卫是条件盲的(中危偏高,已实测复现)**:`hasActiveWorkspaceAdmin` 只按 `role + member` 判定,从不求值绑定的 `condition`;而 `validateIamPolicy` 只要求 condition **可求值**、不要求为真。给唯一的 `workspaceAdmin` 绑定加 `request.time > timestamp("2100-01-01")` 后,写入被接受(守卫仍把它算作管理员),读路径(`utils.GetUserIAMPolicyBindings` 求值 condition)却把它过滤掉,调用者随即失去 `iam.setPolicy`,连 `GetWorkspaceIamPolicy` 都返回 `permission_denied`——**一次合法 Set 就把工作区永久锁死**,只能改库恢复。修复后守卫与权限检查同一语义:condition 求值为假或求值失败的绑定不计入管理员,且必须有一条**无 condition** 的管理员绑定,否则拒绝,错误为 `workspace must keep at least one active admin whose binding has no condition`(第二条同时挡掉"只留定时管理员、到期后再锁死"的延迟路径)。`DeleteUser` 复用同一守卫,因此"恒假的绑定被当成幸存管理员、放行删除最后一个真实管理员"这条同根因路径也一并关闭。
+2. **不变式只在 v1 API 层(低-中,潜伏)**:store 的共享写入器 `patchIamPolicyBindings`/`patchWorkspaceIamPolicyImpl` 完全不校验,而它被首次初始化(`server/init.go`)与"首个 END_USER 即管理员"(`store/principal.go`)调用;以 `allUsers` 调用它会原样落库(探针输出 `roles/workspaceAdmin:[users/1 allUsers] roles/workspaceMember:[]`)。今日没有 RPC/CLI 这样调用,故不可利用,但"服务端托管"在 store 层并不成立。现 `CheckAllUsersBinding` 移到 store 包,由 v1 写路径与两个写入器共同调用;增量 patch 只强制角色那一条,以免"历史库缺基线绑定"时卡死首个管理员引导。
+3. **前端重复 role 时的只读死锁(低,`cb40791` 自身引入)**:服务端接受重复 role 绑定,而草稿补全取**第一条** `roles/workspaceMember`;若存量策略是"第一条无 allUsers、第二条有",补全会把两条都变成只读基线行,且表格 `:key="binding.role"` 重复。现在补全前先判断"已有 allUsers 绑定",行 key 改为 `role#index`。
+4. **文档更正**:`security-posture.md` 那句 "(it cannot be produced from the UI at all)" 与同句描述的草稿补全自相矛盾(已改);"删掉 `allUsers` 分支会让部署锁死"不成立——Set 路径上带该绑定的提交本就先被第 1 条拒掉,去掉分支只会让 `DeleteUser` 过度拒绝(已改);残余第 3 条漏掉了 `store/principal.go` 这个绕过校验的写入者(已补全)。
+5. **测试更正(复核指出,已改)**:被拒写入的"未落库"断言原先比较 etag,而 etag 是毫秒精度(`store/policy_test.go` 明确钉住该性质),同一毫秒内可漏判;现改为整份策略 `proto.Equal`。复核同时确认新增断言的 `wantErr` 子串足够具体,回退实现会红。
+6. **顺带记录(未改,与本条无关)**:`GetPolicy` 的缓存命中要求 `Resource != nil`,而 `GetWorkspaceIamPolicy` 传的 `Resource` 为 nil,于是工作区策略缓存只写不读,`SetWorkspaceIamPolicy` 里 "a cached etag could be stale" 的注释名不副实(它本来就是强读);改前既有。
+
+**复核后仍未做**:store 的 patch 路径没有独立的 DB 级用例证明它会拒绝 `allUsers`(该路径没有 RPC 入口);判定函数有单测,接线由全量集成套件覆盖(初始化与首用户授权若被误拒,环境起不来)。另外本轮观察到一次全量并发运行里 `TestAnalyzeSQLFromListedGUIDRealServerIntegration` 在 `ListDatabases` 里拿不到自己刚同步的库(下一次全量 53/53 绿),与本分支改动无关,但说明共享 env 的并行隔离仍有脆弱点。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./...`(改动包 `-race`)、`go vet -tags=integration`、release 与 dev 构建、`make test-integration` 的两条命令(真实 PostgreSQL + MySQL 容器 + migrator;`RealServerIntegration` 53 用例全绿)与本节新增/改写的 IAM 用例;前端 `biome:check`、`lint`、`i18n`、`type-check`、`test run`(47 文件 / 310 用例)、`test:coverage`(新增 `iamPolicy.ts` 全 100%)。
