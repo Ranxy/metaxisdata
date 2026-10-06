@@ -215,14 +215,18 @@ func New(server string, options Options) (*Client, error) {
 		// forever with --timeout 0), turning a misconfigured entry point into
 		// unbounded work.
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= maxRedirects {
-				return fmt.Errorf("stopped after %d redirects", maxRedirects)
-			}
+			// The policy comes first so a redirect that breaks it is reported
+			// as such, even on the one hop where the cap would also apply. The
+			// host is quoted because it is caller-chosen text: the message ends
+			// up on someone's terminal.
 			if req.URL.Host != baseURL.Host {
-				return fmt.Errorf("the server redirected the request to another host (%s); refusing to follow a redirect off %s", req.URL.Host, baseURL.Host)
+				return fmt.Errorf("the server redirected the request to another host (%q); refusing to follow a redirect off %q", req.URL.Host, baseURL.Host)
 			}
 			if baseURL.Scheme == "https" && req.URL.Scheme != "https" {
 				return fmt.Errorf("the server redirected the request from https to %s; refusing to downgrade the connection", req.URL.Scheme)
+			}
+			if len(via) >= maxRedirects {
+				return fmt.Errorf("stopped after %d redirects", maxRedirects)
 			}
 			return nil
 		},
