@@ -65,6 +65,7 @@
 - **修复**:审计载荷统一字节上限(与 MCP 一致或整行封顶);各 service 补 `WithReadMaxBytes`;匿名方法请求字段做长度校验(另见 M17/M18 同族放大)。
 
 ### H7. SSH 隧道无主机密钥校验且无超时:中间人窃取库凭据 + 单实例持久 DoS
+- **状态**:**已修复**(2026-10-06,commit `b06249d`;修复内容与验证见 §10)。
 - **证据**:`backend/plugin/db/util/ssh.go:21`(`HostKeyCallback: ssh.InsecureIgnoreHostKey()`);`util/ssh.go:49`(`ssh.Dial` 无 `ClientConfig.Timeout`,TCP 可接受但永不完成握机的恶意 ssh_host 将无限挂住);`backend/plugin/db/mysql/mysql.go:123-125`、`starrocks.go:89-91`(DialContext 显式丢弃 ctx);`util/ssh.go:64-68` + `pg.go:75-81`(`NoDeadlineConn` 把 SetDeadline 全部 no-op,pgx 的 ctx 取消与 15 分钟同步 deadline 全部失效)。
 - **攻击场景**:(a) 同网段中间人接受 SSH 隧道即可截获后续 MySQL/PG 明文通道里的库凭据与元数据;(b) 任意成员(需实例写权限)把 `ssh_host` 指向恶意主机,握手永挂 + ctx 不可取消 ⇒ goroutine/fd 泄漏,且该实例每实例连接额度(默认 10)被永久占满,同步持续 DoS;连接测试路径(`instance_service.go:598-631`)不受每实例限额约束,可无限叠加。
 - **修复**:支持 known_hosts/指纹配置,默认拒绝未知主机密钥;`ClientConfig.Timeout` + 全链路传递 ctx(去掉 NoDeadlineConn 或正确实现 deadline 透传);连接测试纳入限额。
@@ -474,3 +475,42 @@
 3. 删除 SSO 账号后其绑定仍留在表里,同一 subject 再登录会被判为"已停用"(需管理员 undelete);要彻底改绑,把旧账号删除后由 SSO 以新 subject 新建账号(角色需重新授予)。
 4. **把一个 provider 从名单里移除会锁死经它接管过的账号**:这些账号的密码是接管时写入的随机值,而移除后该 provider 的映射若没有可用 subject,登录在解析绑定之前就以"缺少 subject"失败,邮箱路径也关闭(账号有绑定)。补救是管理员给这些账号重设密码,或临时把它加回名单。错误文案已同时点出这两条出路,但"移除即撤销"这一语义要在开启前想清楚。
 5. 本次改动的独立复核还指出:`UpdateWorkspaceProfileSetting` 是整份设置的读-改-写(无行锁),若两人同时保存或客户端提交了陈旧的表单,可能把刚被移除的 provider 悄悄加回名单——这是该设置对象既有性质(所有字段共用一次整体保存),不是本次新增;真要收紧需要给设置加 etag/乐观并发。
+
+### 2026-10-06 —— H7 已修复(commit `b06249d`)
+
+**SSH 主机密钥校验**(`backend/plugin/db/util/ssh.go`)
+
+- 删除 `ssh.InsecureIgnoreHostKey()`。数据源新增 `ssh_host_key`(`proto/store/store/instance.proto` 与 `proto/v1/v1/instance_service.proto` 字段 48;随 `instance.metadata` 持久化,非 INPUT_ONLY,便于管理员回读编辑)。每条一行,接受:
+  - `SHA256:...`/`MD5:...` 指纹(容忍 `ssh-keygen -lf` 的尾随注释、大小写与 base64 填充差异;库的 `FingerprintLegacyMD5` 只返回裸摘要,比较侧补 `MD5:` 前缀,该细节写进注释);
+  - `known_hosts` 或 `authorized_keys` 公钥行(`ssh-keyscan` 输出);公钥按类型 + 常量时间比较。
+- 列表为空即拒绝连接(fail-closed),没有"接受未知主机"的开关;`ssh_host` 未设时仍走直连。
+- 信任锚放在数据源而不是服务器文件(known_hosts 文件/`--ssh-known-hosts`):能改 `ssh_host` 的实例写权限持有者同时决定它必须出示的密钥——按既有权限模型,写实例本来就要求 `workspaceAdmin`(可下放给自定义角色),把信任锚留在实例配置上避免让运维登录主机 `ssh-keyscan`;代价是能改实例的人也能改信任锚,这一点已在 `docs/security-posture.md` 中写明。
+- 已知主机行的 host 段不参与校验:密钥随数据源存储,已绑定该数据源的 `ssh_host`;`@revoked`/`@cert-authority` 标记显式拒绝而不是静默忽略。
+
+**建链、超时与取消全链路**
+
+- 不再用 `ssh.Dial`:它把 `config.Timeout` 只交给 `net.DialTimeout`,banner 与密钥交换没有 deadline。改为 `net.Dialer.DialContext(ctx)` + `ssh.NewClientConn`,握手 deadline 取 `min(now+SSHTimeout, ctx deadline)`,握手成功后清除;`context.AfterFunc(ctx, conn.Close)` 让调用方放弃时立刻中断进行中的握手。
+- 新增 `DialThroughTunnel`:`ssh.Client.DialContext` 打开隧道内连接,超时取 `min(ctx deadline, SSHTimeout)`,因此即使调用方带着 15 分钟同步 deadline,恶意对端也不能把 channel open 拖满整次同步。
+- MySQL/StarRocks 的 `RegisterDialContext` 闭包不再显式丢弃 ctx;PostgreSQL 的 `DialFunc` 同样。`NoDeadlineConn`(SetDeadline 全 no-op)换成 `DeadlineConn`:deadline 到期关闭隧道 channel 以打断阻塞读写,零值 deadline 取消定时器。这正是 pgx 取消语义依赖的行为——`DeadlineContextWatcherHandler` 正是靠设置 deadline 打断阻塞读。
+- 三处驱动的 `Open` 由 `_ context.Context` 改为真实 ctx(`dbfactory` 一直在透传调用方 ctx)。
+
+**连接测试纳入每实例限额**
+
+- `component/state` 新增导出的 `State.AcquireInstanceConnection`/`ErrInstanceConnectionLimit`,`runner/schemasync` 与 `InstanceService.pingDataSource` 共用同一额度;连接测试在额度耗尽时返回 `ResourceExhausted`,不再有"测试连接不受限额"的旁路。
+
+**回归测试**
+
+- 单元 `backend/plugin/db/util/ssh_test.go`(进程内 SSH 服务器,支持 direct-tcpip 转发与"只握手不回应 channel"两种形态):空 `ssh_host_key` 拒绝;正确 SHA256/MD5 指纹(带空行、注释、大小写)与 `known_hosts`/`authorized_keys` 行接受;错误指纹、畸形条目拒绝;只 accept、不说 SSH 的静默主机在注入的 200ms 超时内失败;ctx deadline 与 ctx 取消都能在 5s 内结束握手;`DialThroughTunnel` 端到端透传数据、对不回应的对端在超时内失败;`DeadlineConn` 到期打断阻塞读、清除 deadline 后隧道仍可用。
+- 单元 `backend/component/state/resource_limiter_test.go`:同步与连接测试共享同一实例额度。
+- 单元 `backend/api/v1/instance_data_source_test.go`:`ssh_host_key` 的 store↔API 双向转换与 update_mask 补丁。
+- 集成(真实服务器进程 + 测试进程内 SSH 堡垒机 + 真实 MySQL)`TestSSHTunnelHostKeyRealServerIntegration`:配置了指纹时经隧道连上 MySQL,且指纹随 API 回读;错误指纹在握手阶段被拒(库凭据不过隧道)、返回 `InvalidArgument`;未配置指纹被拒。
+- **反向验证**:把回调换回"接受一切" ⇒ `TestGetSSHClientRejectsAnUntrustedHostKey` 变红;去掉握手 deadline ⇒ 静默主机用例挂死并被 20s 超时判失败;把 `DeadlineConn` 还原为 no-op ⇒ deadline 用例挂死。恢复后全绿。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -race`(受影响包)、release 构建、`make test-integration` 的真实服务器(含新用例)与 migrator 用例全绿;前端 `biome:ci`/`lint:ci`/`i18n`/`type-check`/`test run`(46 files / 304 tests)通过。
+
+**升级注意**:已在用的 SSH 数据源升级后若不补 `ssh_host_key`,同步与连接测试会以明确错误失败(fail-closed 是本修复的目的);`ssh_host_key` 目前只走 API(`ssh_host`/`ssh_user`/`ssh_private_key` 等本来就只走 API,前端没有 SSH 表单)。
+
+**仍未处理**:
+1. 没有 SSH 隧道的端到端 **schema 同步** 集成用例:新增集成用例走的是连接测试路径(`ValidateOnly`)。隧道内的实际查询由单元测试与驱动改动覆盖,未做真实 MySQL/PG 全同步用例。
+2. 写入数据源时不做 `ssh_host_key` 语法校验,畸形条目在首次连接(或连接测试)时报错。
+3. `D7` 的 ssh 项随本修复关闭;`util/ssl.go` 的默认 `InsecureSkipVerify`(M22)与 `SSH_AUTH_SOCK` 回退(M22)仍待处理。
