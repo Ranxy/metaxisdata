@@ -61,6 +61,10 @@ type Driver struct {
 	db           *sql.DB
 	databaseName string
 	sshClient    *ssh.Client
+	// dialProtocol is the go-sql-driver protocol name registered for the SSH
+	// tunnel, so Close can deregister it instead of leaving the dialer and its
+	// SSH session in the driver's global map forever.
+	dialProtocol string
 
 	// Called upon driver.Open() finishes.
 	openCleanUp []func()
@@ -81,11 +85,15 @@ func (d *Driver) Open(ctx context.Context, dbType storepb.Engine, connCfg db.Con
 	dsn, err := d.getMySQLConnection(ctx, connCfg)
 
 	if err != nil {
+		d.closeTunnel()
 		return nil, err
 	}
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
+		// Open has to release the tunnel itself: the driver's Close is only
+		// reachable through a driver that was returned.
+		d.closeTunnel()
 		return nil, err
 	}
 	d.dbType = dbType
@@ -121,6 +129,7 @@ func (d *Driver) getMySQLConnection(ctx context.Context, connCfg db.ConnectionCo
 		}
 		d.sshClient = sshClient
 		protocol = "mysql-tcp-" + uuid.NewString()[:8]
+		d.dialProtocol = protocol
 		// Now we register the dialer with the ssh connection as a parameter.
 		// The dial context is the driver's own, so a cancelled statement also
 		// cancels the channel open through the tunnel.
@@ -149,10 +158,22 @@ func (d *Driver) getMySQLConnection(ctx context.Context, connCfg db.ConnectionCo
 func (d *Driver) Close(context.Context) error {
 	var err error
 	err = multierr.Append(err, d.db.Close())
-	if d.sshClient != nil {
-		err = multierr.Append(err, d.sshClient.Close())
-	}
+	d.closeTunnel()
 	return err
+}
+
+// closeTunnel releases the SSH session and its registered dialer. It is also
+// called when Open fails after the tunnel was opened, because a driver that was
+// never returned has no Close to call.
+func (d *Driver) closeTunnel() {
+	if d.dialProtocol != "" {
+		mysql.DeregisterDialContext(d.dialProtocol)
+		d.dialProtocol = ""
+	}
+	if d.sshClient != nil {
+		_ = d.sshClient.Close()
+		d.sshClient = nil
+	}
 }
 
 // Ping pings the database.

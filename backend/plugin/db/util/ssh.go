@@ -42,11 +42,19 @@ func getSSHClient(ctx context.Context, ds *storepb.DataSource, timeout time.Dura
 	if err != nil {
 		return nil, err
 	}
+	// The handshake deadline is set on the connection below; ClientConfig.Timeout
+	// is deliberately left unset because only ssh.Dial reads it, and it would not
+	// cover the version exchange and key agreement anyway.
 	sshConfig := &ssh.ClientConfig{
 		User:            ds.GetSshUser(),
 		Auth:            []ssh.AuthMethod{},
 		HostKeyCallback: hostKeyCallback,
-		Timeout:         timeout,
+	}
+	// The deadline that bounds the whole handshake: the client's own timeout, or
+	// the caller's deadline when that is earlier.
+	deadline := time.Now().Add(timeout)
+	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
+		deadline = ctxDeadline
 	}
 	if ds.GetSshPrivateKey() != "" {
 		signer, err := ssh.ParsePrivateKey([]byte(ds.GetSshPrivateKey()))
@@ -57,8 +65,12 @@ func getSSHClient(ctx context.Context, ds *storepb.DataSource, timeout time.Dura
 	} else {
 		// Users may use ssh-agent to store the private key with passphrase,
 		// we will try to connect to the ssh-agent to get the private key.
-		if conn, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK")); err == nil {
+		if conn, err := net.DialTimeout("unix", os.Getenv("SSH_AUTH_SOCK"), timeout); err == nil {
 			defer conn.Close()
+			// The agent socket is read during authentication, which the SSH
+			// connection's deadline does not cover, so a wedged agent gets its
+			// own: otherwise it would hang the handshake past every bound above.
+			_ = conn.SetDeadline(deadline)
 			// Create a new instance of the ssh agent
 			agentClient := agent.NewClient(conn)
 			sshConfig.Auth = append(sshConfig.Auth, ssh.PublicKeysCallback(agentClient.Signers))
@@ -75,13 +87,6 @@ func getSSHClient(ctx context.Context, ds *storepb.DataSource, timeout time.Dura
 	conn, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
-	}
-	// Bound the handshake too: ssh.Dial hands config.Timeout to net.DialTimeout,
-	// which covers the TCP connection but not the version exchange and key
-	// agreement that follow it.
-	deadline := time.Now().Add(timeout)
-	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
-		deadline = ctxDeadline
 	}
 	if err := conn.SetDeadline(deadline); err != nil {
 		_ = conn.Close()
@@ -104,9 +109,11 @@ func getSSHClient(ctx context.Context, ds *storepb.DataSource, timeout time.Dura
 // sshHostKeyCallback verifies the SSH server's host key against the data
 // source's ssh_host_key. Each configured line is a fingerprint (SHA256:... or
 // MD5:...) or a public key line in known_hosts or authorized_keys form, which is
-// what ssh-keyscan prints. The host column of a known_hosts line is not used:
-// the keys are stored per data source, so they are already bound to its
-// ssh_host.
+// what ssh-keyscan prints. The host column of a known_hosts line is deliberately
+// ignored: the list is the administrator's assertion about this data source's
+// ssh_host, so a line copied from a known_hosts file trusts that key here
+// whatever host it was recorded for. Paste only the line for the bastion named
+// in ssh_host.
 func sshHostKeyCallback(ds *storepb.DataSource) (ssh.HostKeyCallback, error) {
 	var fingerprints []string
 	var keys []ssh.PublicKey
@@ -149,9 +156,11 @@ func sshHostKeyCallback(ds *storepb.DataSource) (ssh.HostKeyCallback, error) {
 }
 
 // sshFingerprint normalizes a fingerprint entry and returns "" when the entry is
-// not one. ssh-keygen prints the fingerprint followed by the key's comment, and
-// MD5 fingerprints are not case normalized, so only the fingerprint token is
-// kept and its case and padding are normalized.
+// not a usable one. ssh-keygen prints the fingerprint followed by the key's
+// comment, and MD5 fingerprints are not case normalized, so only the fingerprint
+// token is kept and its case and padding are normalized. An entry with an empty
+// digest is rejected as malformed rather than kept as a fingerprint that can
+// never match.
 func sshFingerprint(entry string) string {
 	token := entry
 	if index := strings.IndexAny(token, " \t"); index >= 0 {
@@ -159,9 +168,17 @@ func sshFingerprint(entry string) string {
 	}
 	switch {
 	case strings.HasPrefix(strings.ToUpper(token), "SHA256:"):
-		return "SHA256:" + strings.TrimRight(token[len("SHA256:"):], "=")
+		digest := strings.TrimRight(token[len("SHA256:"):], "=")
+		if digest == "" {
+			return ""
+		}
+		return "SHA256:" + digest
 	case strings.HasPrefix(strings.ToUpper(token), "MD5:"):
-		return "MD5:" + strings.ToLower(token[len("MD5:"):])
+		digest := strings.ToLower(token[len("MD5:"):])
+		if digest == "" {
+			return ""
+		}
+		return "MD5:" + digest
 	default:
 		return ""
 	}

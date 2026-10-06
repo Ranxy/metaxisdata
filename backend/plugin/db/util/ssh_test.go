@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"io"
 	"net"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,17 +34,24 @@ type testSSHServer struct {
 
 func startTestSSHServer(t *testing.T) *testSSHServer {
 	t.Helper()
-	return startSSHServer(t, false)
+	return startSSHServer(t, nil, false)
 }
 
 // startStallingSSHServer completes the SSH handshake but never answers a channel
 // request, which is what a host that stalls the database connection looks like.
 func startStallingSSHServer(t *testing.T) *testSSHServer {
 	t.Helper()
-	return startSSHServer(t, true)
+	return startSSHServer(t, nil, true)
 }
 
-func startSSHServer(t *testing.T, stallChannels bool) *testSSHServer {
+// startTestSSHServerWithAuth starts a server with the given authentication
+// config, so a test can force the client through a particular auth method.
+func startTestSSHServerWithAuth(t *testing.T, config *ssh.ServerConfig) *testSSHServer {
+	t.Helper()
+	return startSSHServer(t, config, false)
+}
+
+func startSSHServer(t *testing.T, config *ssh.ServerConfig, stallChannels bool) *testSSHServer {
 	t.Helper()
 
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
@@ -51,7 +59,9 @@ func startSSHServer(t *testing.T, stallChannels bool) *testSSHServer {
 	signer, err := ssh.NewSignerFromKey(privateKey)
 	require.NoError(t, err)
 
-	config := &ssh.ServerConfig{NoClientAuth: true}
+	if config == nil {
+		config = &ssh.ServerConfig{NoClientAuth: true}
+	}
 	config.AddHostKey(signer)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -290,9 +300,11 @@ func TestGetSSHClientRejectsAMalformedHostKey(t *testing.T) {
 	t.Parallel()
 
 	server := startTestSSHServer(t)
-	client, err := GetSSHClient(context.Background(), sshDataSource(server.addr, "not-a-key"))
-	require.ErrorContains(t, err, "invalid ssh_host_key")
-	require.Nil(t, client)
+	for _, entry := range []string{"not-a-key", "SHA256:", "MD5:"} {
+		client, err := GetSSHClient(context.Background(), sshDataSource(server.addr, entry))
+		require.ErrorContains(t, err, "invalid ssh_host_key", "entry %q", entry)
+		require.Nil(t, client)
+	}
 }
 
 func TestSSHHandshakeTimesOutAgainstASilentHost(t *testing.T) {
@@ -332,8 +344,43 @@ func TestSSHHandshakeStopsWhenTheContextIsCancelled(t *testing.T) {
 	client, err := getSSHClient(ctx, ds, time.Minute)
 	require.Error(t, err)
 	require.Nil(t, client)
-	require.ErrorIs(t, ctx.Err(), context.Canceled)
+	// The configured timeout is a minute, so returning quickly is only
+	// explained by the cancellation closing the connection.
 	require.Less(t, time.Since(start), 5*time.Second, "cancelling the context must interrupt the handshake")
+}
+
+// The agent socket is read during authentication, which the SSH connection's
+// deadline does not cover; a wedged agent must not hang the handshake either.
+func TestSSHHandshakeIsBoundedWhenTheAgentStalls(t *testing.T) {
+	// t.Setenv forbids t.Parallel.
+	agentSocket, err := net.Listen("unix", filepath.Join(t.TempDir(), "agent.sock"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = agentSocket.Close() })
+	go func() {
+		for {
+			conn, err := agentSocket.Accept()
+			if err != nil {
+				return
+			}
+			// Hold the connection without ever answering the agent protocol.
+			defer conn.Close()
+		}
+	}()
+	t.Setenv("SSH_AUTH_SOCK", agentSocket.Addr().String())
+
+	server := startTestSSHServerWithAuth(t, &ssh.ServerConfig{
+		// Reject the "none" method so the client has to ask the agent for keys.
+		PublicKeyCallback: func(ssh.ConnMetadata, ssh.PublicKey) (*ssh.Permissions, error) {
+			return nil, nil
+		},
+	})
+	ds := sshDataSource(server.addr, ssh.FingerprintSHA256(server.hostKey))
+
+	start := time.Now()
+	client, err := getSSHClient(context.Background(), ds, 200*time.Millisecond)
+	require.Error(t, err)
+	require.Nil(t, client)
+	require.Less(t, time.Since(start), 5*time.Second, "a stalled ssh-agent must not hang the handshake")
 }
 
 func TestDialThroughTunnelCarriesData(t *testing.T) {

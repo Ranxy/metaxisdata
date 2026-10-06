@@ -96,6 +96,11 @@ func (d *Driver) Open(ctx context.Context, _ storepb.Engine, config db.Connectio
 	d.connectionString = stdlib.RegisterConnConfig(pgxConnConfig)
 	db, err := sql.Open(driverName, d.connectionString)
 	if err != nil {
+		// The driver is not returned, so its Close is unreachable: release the
+		// tunnel opened for it here.
+		if d.sshClient != nil {
+			_ = d.sshClient.Close()
+		}
 		return nil, err
 	}
 	d.db = db

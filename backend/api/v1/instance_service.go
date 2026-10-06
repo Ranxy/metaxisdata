@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
@@ -26,6 +27,12 @@ import (
 // maxBatchInstances bounds the two instance batch RPCs, matching the limit the
 // proto documents.
 const maxBatchInstances = 1000
+
+// dataSourcePingTimeout bounds one test connection. The RPC carries no deadline
+// of its own, and the connection holds one of the instance's connection slots
+// while it runs, so a target that accepts the connection and then stalls must
+// not be able to keep that slot until the client gives up.
+const dataSourcePingTimeout = 60 * time.Second
 
 // InstanceService implements the instance service.
 type InstanceService struct {
@@ -596,8 +603,13 @@ func (s *InstanceService) DeleteDataSource(ctx context.Context, req *connect.Req
 //
 // The connection is counted by the same per-instance limiter as a sync: it is a
 // connection the instance has to carry, and leaving it unmetered let a caller
-// stack unbounded attempts at a target that accepts TCP and then stalls.
+// stack unbounded attempts at a target that accepts TCP and then stalls. It is
+// bounded by dataSourcePingTimeout for the same reason — a stalled test
+// connection must not be able to hold the slots the syncs need.
 func (s *InstanceService) pingDataSource(ctx context.Context, instance *store.InstanceMessage, dataSource *storepb.DataSource) error {
+	ctx, cancel := context.WithTimeout(ctx, dataSourcePingTimeout)
+	defer cancel()
+
 	maximumConnections := int(instance.Metadata.GetMaximumConnections())
 	if maximumConnections <= 0 {
 		maximumConnections = common.DefaultInstanceMaximumConnections
