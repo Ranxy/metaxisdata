@@ -51,6 +51,16 @@ func TestValidateRegistrationRequest(t *testing.T) {
 			want:    validatedRegistration{RedirectURIs: []string{callback}},
 		},
 		{
+			// Both grants this server runs may be named together, in any order,
+			// which is what an MCP client that wants to refresh sends.
+			name: "both supported grant types",
+			request: registrationRequest{
+				RedirectURIs: []string{callback},
+				GrantTypes:   []string{registrationRefreshTokenGrant, registrationGrantType},
+			},
+			want: validatedRegistration{RedirectURIs: []string{callback}},
+		},
+		{
 			// One destination listed twice is still one destination; storing it twice
 			// would make the consent page's redirect list read like two.
 			name:    "duplicate redirect uris collapse",
@@ -145,10 +155,10 @@ func TestValidateRegistrationRequest(t *testing.T) {
 			wantCode: registrationCodeInvalidClientMetadata,
 		},
 		{
-			name: "authorization_code plus another grant type",
+			name: "a repeated grant type",
 			request: registrationRequest{
 				RedirectURIs: []string{callback},
-				GrantTypes:   []string{registrationGrantType, "refresh_token"},
+				GrantTypes:   []string{registrationGrantType, registrationGrantType},
 			},
 			wantCode: registrationCodeInvalidClientMetadata,
 		},

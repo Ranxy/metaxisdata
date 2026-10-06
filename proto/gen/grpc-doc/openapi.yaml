@@ -143,6 +143,37 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/auth/refresh:
+        post:
+            tags:
+                - AuthService
+            description: |-
+                Refresh rotates the web session: it consumes the refresh-token cookie and
+                 sets a new access token and a new refresh token cookie. It needs no
+                 credential because it is called exactly when the access token has expired,
+                 and it rotates the pair so a stolen refresh token is worthless once the real
+                 holder refreshes.
+                 Permissions required: None
+            operationId: AuthService_Refresh
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RefreshRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RefreshResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/auth/ssoState:
         post:
             tags:
@@ -5211,7 +5242,9 @@ components:
                     type: string
                 web:
                     type: boolean
-                    description: If web is set, we will set access token, refresh token, and user to the cookie.
+                    description: |-
+                        If web is set, the access token and the refresh token are set as HttpOnly
+                         cookies instead of being returned in the response body.
                 idpName:
                     type: string
                     description: |-
@@ -5958,6 +5991,15 @@ components:
                 skipDump:
                     type: boolean
             description: ProcedureMetadata is the metadata for procedures.
+        RefreshRequest:
+            type: object
+            properties: {}
+        RefreshResponse:
+            type: object
+            properties: {}
+            description: |-
+                RefreshResponse is empty: both credentials the refresh produces travel in
+                 HttpOnly cookies, so no token ever reaches page JavaScript.
         Role:
             required:
                 - name

@@ -76,5 +76,5 @@ These look like defects but were chosen knowingly. Read [docs/security-posture.m
 - **`audit_log` and `meta_registry_resource_history` are kept forever.**
 - **The MCP surface is off by default and its tokens are bound to `/mcp`** — enabling it needs `external_url`, and changing that address invalidates outstanding MCP tokens.
 - **Every MCP tool call is audited, reads included** — a remote entry point a model drives, recorded in the permanent ledger.
-- **OAuth pending state is process-local and no refresh token is issued** — the same replica must see an approval and its completion, and an expired token means running the flow again.
+- **OAuth pending state is process-local, and access and refresh tokens are separate credentials** — the same replica must see an approval and its completion; refresh tokens, by contrast, live in the database and rotate single-use, so expiry no longer forces the browser flow again (see [docs/mcp.md](docs/mcp.md) and [docs/security-posture.md](docs/security-posture.md)).
 - **Reverse-proxy contract** — cookie writes trust `Origin`/`Sec-Fetch-Site`; audit trusts `X-Forwarded-For` only from `--trusted-proxies`.

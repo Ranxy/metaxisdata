@@ -80,6 +80,11 @@ func (in *ThrottleInterceptor) limiterFor(procedure string) (*state.WindowLimite
 	switch procedure {
 	case v1connect.AuthServiceLoginProcedure:
 		return in.stateCfg.LoginRequestLimiter, false
+	case v1connect.AuthServiceRefreshProcedure:
+		// Refresh shares the login budget: it is the other anonymous entry point
+		// that spends a database round trip on caller-supplied input, and the
+		// budget is loose enough that a user with several tabs open is unaffected.
+		return in.stateCfg.LoginRequestLimiter, false
 	case v1connect.UserServiceCreateUserProcedure:
 		return in.stateCfg.CreateUserRequestLimiter, true
 	default:

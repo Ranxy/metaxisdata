@@ -33,6 +33,20 @@ service AuthService {
     option (metaxisdata.v1.audit) = true;
   }
 
+  // Refresh rotates the web session: it consumes the refresh-token cookie and
+  // sets a new access token and a new refresh token cookie. It needs no
+  // credential because it is called exactly when the access token has expired,
+  // and it rotates the pair so a stolen refresh token is worthless once the real
+  // holder refreshes.
+  // Permissions required: None
+  rpc Refresh(RefreshRequest) returns (RefreshResponse) {
+    option (google.api.http) = {
+      post: "/v1/auth/refresh"
+      body: "*"
+    };
+    option (metaxisdata.v1.allow_without_credential) = true;
+  }
+
   // CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
   // before redirecting to the identity provider, pass it back to the provider
   // and then send it with the login request; the server consumes it there.
@@ -100,7 +114,8 @@ message LoginRequest {
 
   string password = 2;
 
-  // If web is set, we will set access token, refresh token, and user to the cookie.
+  // If web is set, the access token and the refresh token are set as HttpOnly
+  // cookies instead of being returned in the response body.
   bool web = 3;
 
   // The name of the identity provider.
@@ -152,6 +167,12 @@ message LoginResponse {
 }
 
 message LogoutRequest {}
+
+message RefreshRequest {}
+
+// RefreshResponse is empty: both credentials the refresh produces travel in
+// HttpOnly cookies, so no token ever reaches page JavaScript.
+message RefreshResponse {}
 
 message CreateDeviceLoginRequest {
   // A human-readable client name for the confirmation page, e.g. "mxd". It is

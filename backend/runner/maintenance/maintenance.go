@@ -83,6 +83,21 @@ func (r *Runner) runOnce(ctx context.Context) {
 		slog.Info("Pruned expired revoked access token records", slog.Int64("count", deleted))
 	}
 
+	// An expired refresh token can issue nothing, and the rotate-on-use path
+	// already drops the one it consumes, so what is left is a session or an MCP
+	// connection nobody came back to. Two independent tables, reported
+	// separately because a large count means different things for each.
+	if deleted, err := r.store.DeleteExpiredOAuthRefreshTokens(ctx, now); err != nil {
+		slog.Error("Failed to prune OAuth refresh tokens", log.WithError(err))
+	} else if deleted > 0 {
+		slog.Info("Pruned expired OAuth refresh tokens", slog.Int64("count", deleted))
+	}
+	if deleted, err := r.store.DeleteExpiredWebRefreshTokens(ctx, now); err != nil {
+		slog.Error("Failed to prune web refresh tokens", log.WithError(err))
+	} else if deleted > 0 {
+		slog.Info("Pruned expired web refresh tokens", slog.Int64("count", deleted))
+	}
+
 	// Ingested lineage that named a relation the registry did not have is
 	// re-checked here: once the relation has been synced its columns can be
 	// validated, and what is still unknown is counted rather than kept silent.

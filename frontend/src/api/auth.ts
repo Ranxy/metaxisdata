@@ -14,3 +14,12 @@ export async function login(email: string, password: string) {
 export async function logout() {
   return await authClient.logout({});
 }
+
+/**
+ * Renews the session from the refresh cookie. The transport calls it when a
+ * request is refused with `Unauthenticated`; it needs no arguments because both
+ * credentials travel in HttpOnly cookies.
+ */
+export async function refresh(): Promise<void> {
+  await authClient.refresh({});
+}

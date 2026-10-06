@@ -172,11 +172,11 @@ func TestTokenEndpointRejectsBadRequestsBeforeTheStore(t *testing.T) {
 		require.Equal(t, http.MethodPost, recorder.Header().Get("Allow"))
 	})
 
-	t.Run("another grant type is refused", func(t *testing.T) {
+	t.Run("a grant type this server does not run is refused", func(t *testing.T) {
 		t.Parallel()
 
 		recorder := httptest.NewRecorder()
-		body := strings.NewReader("grant_type=refresh_token")
+		body := strings.NewReader("grant_type=client_credentials&resource=" + url.QueryEscape(testResource))
 		request := httptest.NewRequest(http.MethodPost, "/oauth/token", body)
 		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		server.TokenHandler().ServeHTTP(recorder, request)
@@ -184,6 +184,19 @@ func TestTokenEndpointRejectsBadRequestsBeforeTheStore(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, recorder.Code)
 		require.Contains(t, recorder.Body.String(), "unsupported_grant_type")
 		require.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
+	})
+
+	t.Run("a refresh without a token is refused before the store", func(t *testing.T) {
+		t.Parallel()
+
+		recorder := httptest.NewRecorder()
+		body := strings.NewReader("grant_type=refresh_token&client_id=c&resource=" + url.QueryEscape(testResource))
+		request := httptest.NewRequest(http.MethodPost, "/oauth/token", body)
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		server.TokenHandler().ServeHTTP(recorder, request)
+
+		require.Equal(t, http.StatusBadRequest, recorder.Code)
+		require.Contains(t, recorder.Body.String(), "invalid_request")
 	})
 
 	t.Run("a request without this resource is refused", func(t *testing.T) {

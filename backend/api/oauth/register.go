@@ -31,8 +31,12 @@ const (
 	// server accepts: the token endpoint requires PKCE, so a client secret would
 	// only add a credential that can leak.
 	registrationAuthMethodNone = "none"
-	// registrationGrantType is the only grant the authorization server runs.
+	// registrationGrantType is the interactive grant the authorization server
+	// runs: the browser flow that produces the first token pair.
 	registrationGrantType = "authorization_code"
+	// registrationRefreshTokenGrant rotates a grant without another browser
+	// round trip.
+	registrationRefreshTokenGrant = "refresh_token"
 	// registrationResponseType is the only response type it issues.
 	registrationResponseType = "code"
 )
@@ -80,9 +84,10 @@ func (e *registrationError) Error() string {
 // registration).
 //
 // The caller wires the route and the per-IP rate limiter. Registration is
-// anonymous and creates public clients only: grant_types and response_types are
-// fixed and token_endpoint_auth_method is "none", because the authorization-code
-// flow requires PKCE regardless.
+// anonymous and creates public clients only: token_endpoint_auth_method is fixed
+// to "none" and response_types to "code", and grant_types may name only the two
+// grants this server implements, because the authorization-code flow requires
+// PKCE regardless.
 func RegisterHandler(stores *store.Store) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// The workspace switch is checked before the method so that a disabled
@@ -170,7 +175,7 @@ func validateRegistrationRequest(request registrationRequest) (validatedRegistra
 	}
 	if !registrationGrantTypesAccepted(request.GrantTypes) {
 		return validatedRegistration{}, newRegistrationError(registrationCodeInvalidClientMetadata,
-			`grant_types must be ["authorization_code"]`)
+			`grant_types must be drawn from ["authorization_code", "refresh_token"]`)
 	}
 	if !registrationResponseTypesAccepted(request.ResponseTypes) {
 		return validatedRegistration{}, newRegistrationError(registrationCodeInvalidClientMetadata,
@@ -185,12 +190,28 @@ func validateRegistrationRequest(request registrationRequest) (validatedRegistra
 }
 
 // registrationGrantTypesAccepted reports whether the request omits grant_types
-// or asks for the one grant this server implements.
+// or asks only for grants this server implements, without repeating one. The
+// server has exactly one client shape, so the requested set is validated and
+// then reported back; it is not persisted, and every issued grant carries a
+// refresh token.
 func registrationGrantTypesAccepted(grantTypes []string) bool {
 	if len(grantTypes) == 0 {
 		return true
 	}
-	return len(grantTypes) == 1 && grantTypes[0] == registrationGrantType
+	seen := map[string]bool{}
+	for _, grantType := range grantTypes {
+		if grantType != registrationGrantType && grantType != registrationRefreshTokenGrant {
+			return false
+		}
+		// A duplicate is not a request for the same grant twice; it is a
+		// malformed metadata document, and echoing it back would misreport the
+		// registration.
+		if seen[grantType] {
+			return false
+		}
+		seen[grantType] = true
+	}
+	return true
 }
 
 // registrationResponseTypesAccepted reports whether the request omits
@@ -233,7 +254,7 @@ func persistRegistration(ctx context.Context, stores *store.Store, registration 
 			ClientName:              stored.ClientName,
 			RedirectURIs:            stored.RedirectURIs,
 			TokenEndpointAuthMethod: registrationAuthMethodNone,
-			GrantTypes:              []string{registrationGrantType},
+			GrantTypes:              []string{registrationGrantType, registrationRefreshTokenGrant},
 			ResponseTypes:           []string{registrationResponseType},
 		}, nil
 	}

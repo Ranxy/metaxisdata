@@ -34,9 +34,18 @@ const (
 	apiTokenDuration       = 1 * time.Hour
 	// DefaultTokenDuration is the default token expiration duration.
 	DefaultTokenDuration = 7 * 24 * time.Hour
+	// DefaultRefreshTokenDuration is how long a refresh token stays usable. It is
+	// deliberately longer than an access token: it is the credential that
+	// outlives a session, and single-use rotation means a stolen copy is
+	// worthless once the real holder refreshes.
+	DefaultRefreshTokenDuration = 30 * 24 * time.Hour
 
 	// AccessTokenCookieName is the cookie name of access token.
 	AccessTokenCookieName = "access-token"
+	// RefreshTokenCookieName is the cookie name of the web session's refresh
+	// token. Like the access token it is HttpOnly, so page JavaScript can never
+	// read either.
+	RefreshTokenCookieName = "refresh-token"
 )
 
 // APIAuthInterceptor is the auth interceptor for gRPC server.
@@ -185,6 +194,10 @@ type AccessTokenIdentity struct {
 	IssuedAt  time.Time
 	// Scopes are the scopes the token was minted with.
 	Scopes []string
+	// ClientID is the OAuth client an MCP token was issued to, empty for a web,
+	// CLI or API token. Logout uses it to retire the grants that client holds,
+	// which is what makes revoking one MCP token end the whole connection.
+	ClientID string
 	// Restriction is empty for a full-access token.
 	Restriction TokenRestriction
 }
@@ -198,11 +211,13 @@ func (in *APIAuthInterceptor) authenticateConnect(ctx context.Context, accessTok
 	return user, identity, nil
 }
 
-// tokenPredatesPasswordChange reports whether a token issued at issuedAt must be
-// rejected because the password changed at changedAt afterwards. A zero time is
-// treated as "not applicable" so tokens without an iat claim and users who never
-// changed their password are unaffected.
-func tokenPredatesPasswordChange(issuedAt, changedAt time.Time) bool {
+// TokenPredatesPasswordChange reports whether a credential issued at issuedAt
+// must be rejected because the password changed at changedAt afterwards. A zero
+// time is treated as "not applicable" so credentials without an issue time and
+// users who never changed their password are unaffected. It is exported because
+// the MCP refresh grant applies the same rule to the refresh token that
+// Resolve applies to the access token it minted.
+func TokenPredatesPasswordChange(issuedAt, changedAt time.Time) bool {
 	if issuedAt.IsZero() || changedAt.IsZero() {
 		return false
 	}
@@ -265,6 +280,9 @@ type claimsMessage struct {
 	// User-API tokens carry none; an MCP token carries the one scope the MCP
 	// endpoint requires.
 	Scope string `json:"scope,omitempty"`
+	// ClientID is the OAuth client the token was issued to. Absent from a web,
+	// CLI or API token.
+	ClientID string `json:"cid,omitempty"`
 	jwt.RegisteredClaims
 	// IssuedAtNanos mirrors iat with the precision jwt's NumericDate drops
 	// (TimePrecision defaults to one second), so a password change can be
@@ -278,23 +296,24 @@ type claimsMessage struct {
 // accepts only for the RPCs allowed by restriction.
 func GenerateRestrictedAccessToken(userName string, userID int, mode common.ReleaseMode, secret string, tokenDuration time.Duration, restriction TokenRestriction) (string, error) {
 	expirationTime := time.Now().Add(tokenDuration)
-	return generateToken(userName, userID, AccessTokenAudience(mode), "", expirationTime, []byte(secret), restriction)
+	return generateToken(userName, userID, AccessTokenAudience(mode), "", expirationTime, []byte(secret), restriction, "")
 }
 
 // GenerateAPIToken generates an API token.
 func GenerateAPIToken(userName string, userID int, mode common.ReleaseMode, secret string) (string, error) {
 	expirationTime := time.Now().Add(apiTokenDuration)
-	return generateToken(userName, userID, AccessTokenAudience(mode), "", expirationTime, []byte(secret), "")
+	return generateToken(userName, userID, AccessTokenAudience(mode), "", expirationTime, []byte(secret), "", "")
 }
 
 // GenerateAccessToken generates an access token for web.
 func GenerateAccessToken(userName string, userID int, mode common.ReleaseMode, secret string, tokenDuration time.Duration) (string, error) {
 	expirationTime := time.Now().Add(tokenDuration)
-	return generateToken(userName, userID, AccessTokenAudience(mode), "", expirationTime, []byte(secret), "")
+	return generateToken(userName, userID, AccessTokenAudience(mode), "", expirationTime, []byte(secret), "", "")
 }
 
 // Pay attention to this function. It holds the main JWT token generation logic.
-func generateToken(userName string, userID int, aud, scope string, expirationTime time.Time, secret []byte, restriction TokenRestriction) (string, error) {
+// clientID is empty for every token but an MCP one.
+func generateToken(userName string, userID int, aud, scope string, expirationTime time.Time, secret []byte, restriction TokenRestriction, clientID string) (string, error) {
 	// The iat claim only has second granularity, so two logins in the same
 	// second would otherwise produce byte-identical tokens. Logout revokes a
 	// token by its string, so identical tokens would let one session's logout
@@ -306,8 +325,9 @@ func generateToken(userName string, userID int, aud, scope string, expirationTim
 	now := time.Now()
 	// Create the JWT claims, which includes the username and expiry time.
 	claims := &claimsMessage{
-		Name:  userName,
-		Scope: scope,
+		Name:     userName,
+		Scope:    scope,
+		ClientID: clientID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Audience: jwt.ClaimStrings{aud},
 			// In JWT, the expiry time is expressed as unix milliseconds.

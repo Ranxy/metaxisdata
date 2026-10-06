@@ -23,6 +23,8 @@ const (
 	verifierResource = "https://mx.example.com/mcp"
 	verifierIssuer   = "https://mx.example.com"
 	verifierScope    = "metaxisdata.mcp.read"
+	// verifierClient is the OAuth registration a minted MCP token names.
+	verifierClient = "client-test"
 )
 
 // verifierUsers is the UserStore the verifier resolves against, so these tests
@@ -46,7 +48,7 @@ func enabledEndpoints() mcp.EndpointsFunc {
 func TestTokenVerifierResolvesAnMCPToken(t *testing.T) {
 	t.Parallel()
 
-	token, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierResource, verifierScope, verifierSecret, time.Hour)
+	token, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierClient, verifierResource, verifierScope, verifierSecret, time.Hour)
 	require.NoError(t, err)
 
 	verify := mcp.NewTokenVerifier(enabledEndpoints(), authpkg.NewTokenAuthenticator(verifierUsers{}, verifierSecret, nil))
@@ -70,9 +72,9 @@ func TestTokenVerifierRefusesEverythingElse(t *testing.T) {
 
 	userToken, err := authpkg.GenerateAccessToken("user@example.com", 7, common.ReleaseModeDev, verifierSecret, time.Hour)
 	require.NoError(t, err)
-	otherResourceToken, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, "https://other.example.com/mcp", verifierScope, verifierSecret, time.Hour)
+	otherResourceToken, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierClient, "https://other.example.com/mcp", verifierScope, verifierSecret, time.Hour)
 	require.NoError(t, err)
-	noScopeToken, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierResource, "", verifierSecret, time.Hour)
+	noScopeToken, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierClient, verifierResource, "", verifierSecret, time.Hour)
 	require.NoError(t, err)
 
 	cases := []struct {
@@ -97,7 +99,7 @@ func TestTokenVerifierRefusesEverythingElse(t *testing.T) {
 	t.Run("a disabled surface refuses even a valid token", func(t *testing.T) {
 		t.Parallel()
 
-		token, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierResource, verifierScope, verifierSecret, time.Hour)
+		token, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierClient, verifierResource, verifierScope, verifierSecret, time.Hour)
 		require.NoError(t, err)
 
 		disabled := func(context.Context) (oauth.Endpoints, bool, error) {

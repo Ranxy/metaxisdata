@@ -98,7 +98,7 @@ func TestMetadataDocuments(t *testing.T) {
 		require.Equal(t, testExternalURL+"/oauth/token", document["token_endpoint"])
 		require.Equal(t, testExternalURL+"/oauth/register", document["registration_endpoint"])
 		require.Equal(t, []any{"code"}, document["response_types_supported"])
-		require.Equal(t, []any{"authorization_code"}, document["grant_types_supported"])
+		require.Equal(t, []any{"authorization_code", "refresh_token"}, document["grant_types_supported"])
 		require.Equal(t, []any{"S256"}, document["code_challenge_methods_supported"])
 		require.Equal(t, []any{"none"}, document["token_endpoint_auth_methods_supported"])
 		require.Equal(t, []any{MCPReadScope}, document["scopes_supported"])

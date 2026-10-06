@@ -22,6 +22,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	AuthService_Login_FullMethodName               = "/metaxisdata.v1.AuthService/Login"
 	AuthService_Logout_FullMethodName              = "/metaxisdata.v1.AuthService/Logout"
+	AuthService_Refresh_FullMethodName             = "/metaxisdata.v1.AuthService/Refresh"
 	AuthService_CreateSSOState_FullMethodName      = "/metaxisdata.v1.AuthService/CreateSSOState"
 	AuthService_CreateDeviceLogin_FullMethodName   = "/metaxisdata.v1.AuthService/CreateDeviceLogin"
 	AuthService_GetDeviceLogin_FullMethodName      = "/metaxisdata.v1.AuthService/GetDeviceLogin"
@@ -37,6 +38,13 @@ type AuthServiceClient interface {
 	Login(ctx context.Context, in *LoginRequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	// Permissions required: None
 	Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Refresh rotates the web session: it consumes the refresh-token cookie and
+	// sets a new access token and a new refresh token cookie. It needs no
+	// credential because it is called exactly when the access token has expired,
+	// and it rotates the pair so a stolen refresh token is worthless once the real
+	// holder refreshes.
+	// Permissions required: None
+	Refresh(ctx context.Context, in *RefreshRequest, opts ...grpc.CallOption) (*RefreshResponse, error)
 	// CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
 	// before redirecting to the identity provider, pass it back to the provider
 	// and then send it with the login request; the server consumes it there.
@@ -86,6 +94,16 @@ func (c *authServiceClient) Logout(ctx context.Context, in *LogoutRequest, opts 
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, AuthService_Logout_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) Refresh(ctx context.Context, in *RefreshRequest, opts ...grpc.CallOption) (*RefreshResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RefreshResponse)
+	err := c.cc.Invoke(ctx, AuthService_Refresh_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -150,6 +168,13 @@ type AuthServiceServer interface {
 	Login(context.Context, *LoginRequest) (*LoginResponse, error)
 	// Permissions required: None
 	Logout(context.Context, *LogoutRequest) (*emptypb.Empty, error)
+	// Refresh rotates the web session: it consumes the refresh-token cookie and
+	// sets a new access token and a new refresh token cookie. It needs no
+	// credential because it is called exactly when the access token has expired,
+	// and it rotates the pair so a stolen refresh token is worthless once the real
+	// holder refreshes.
+	// Permissions required: None
+	Refresh(context.Context, *RefreshRequest) (*RefreshResponse, error)
 	// CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
 	// before redirecting to the identity provider, pass it back to the provider
 	// and then send it with the login request; the server consumes it there.
@@ -190,6 +215,9 @@ func (UnimplementedAuthServiceServer) Login(context.Context, *LoginRequest) (*Lo
 }
 func (UnimplementedAuthServiceServer) Logout(context.Context, *LogoutRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method Logout not implemented")
+}
+func (UnimplementedAuthServiceServer) Refresh(context.Context, *RefreshRequest) (*RefreshResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Refresh not implemented")
 }
 func (UnimplementedAuthServiceServer) CreateSSOState(context.Context, *emptypb.Empty) (*CreateSSOStateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateSSOState not implemented")
@@ -259,6 +287,24 @@ func _AuthService_Logout_Handler(srv interface{}, ctx context.Context, dec func(
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AuthServiceServer).Logout(ctx, req.(*LogoutRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_Refresh_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RefreshRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).Refresh(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_Refresh_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).Refresh(ctx, req.(*RefreshRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -367,6 +413,10 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Logout",
 			Handler:    _AuthService_Logout_Handler,
+		},
+		{
+			MethodName: "Refresh",
+			Handler:    _AuthService_Refresh_Handler,
 		},
 		{
 			MethodName: "CreateSSOState",
