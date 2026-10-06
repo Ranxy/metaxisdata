@@ -137,13 +137,13 @@
 - **修复**:统一安全响应头:`default-src 'self'; script-src 'self'; frame-ancestors 'none'` + `X-Frame-Options: DENY` + `X-Content-Type-Options: nosniff`。
 
 ### M12. CLI 跨主机重定向时重新附加 Bearer token:7 天凭证外泄(已复现)
-- **状态**:**已修复**(2026-10-06,主修复 commit `f3674ec`,独立复核后的加固 commit `2f289cd`;`CheckRedirect` 拒绝一切离开登记 host 的重定向并保留标准库的 10 跳上限,token 层独立地只对登记 host 附加凭证;修复内容与验证见 §10)。
+- **状态**:**已修复**(2026-10-06,主修复 commit `f3674ec`,两轮独立复核后的加固 commit `2f289cd`、`9f87299`;`CheckRedirect` 拒绝一切离开登记 host 的重定向并保留标准库的 10 跳上限,token 层独立地只对登记 host 附加凭证;修复内容与验证见 §10)。
 - **证据**:`cli/client/client.go:282-289`(bearerTransport 见 Authorization 为空即补上——恰是标准库跨主机重定向剥头之后);`client.go:198`(http.Client 无 CheckRedirect)。子代理以独立探针复现:307 跨主机后收集端收到 `Bearer SECRET-TOKEN`,基线(无该 transport)证明标准库本身会剥除。
 - **攻击场景**:入口/代理误配跳转、`http://` 部署被改写 Location 或 `--server` 指向不可信服务器时,CLI 自动带 7 天会话 token 跟随到第三方主机。
 - **修复**:`CheckRedirect` 非同 host 一律 `http.ErrUseLastResponse`;或 transport 仅在目标 host 与登记 host 一致时附加。(落地为两者都做,并额外拒绝同 host 的 https→http 降级;见 §10)
 
 ### M13. Windows 下 `cmd /c start <服务器返回的 URL>` 参数注入:本地命令执行
-- **状态**:**已修复**(2026-10-06,主修复 commit `f3674ec`,独立复核后的加固 commit `2f289cd`;打开前强制 http/https 且必须有主机名,Windows 改用 `rundll32 url.dll,FileProtocolHandler`;修复内容与验证见 §10)。
+- **状态**:**已修复**(2026-10-06,主修复 commit `f3674ec`,两轮独立复核后的加固 commit `2f289cd`、`9f87299`;打开前强制 http/https 且必须有主机名,Windows 改用 `rundll32 url.dll,FileProtocolHandler`;修复内容与验证见 §10)。
 - **证据**:`cli/cmd/auth.go:227-236`(`case "windows": command, args = "cmd", []string{"/c", "start"}`);URL 完全由服务器响应决定且不询问用户自动打开(`cli/authflow/device.go:104-105,153-159`)。
 - **攻击场景**:对攻击者/被入侵服务器执行一次 `mxd auth login`,响应的 `verification_uri_complete` 含 `&` 即逃逸为命令分隔符(`cmd /c start https://evil/x?a&calc.exe`)。登录前无 token,纯受害者场景。
 - **修复**:打开前强制 http/https(与 --server 同源更佳);Windows 改 `rundll32 url.dll,FileProtocolHandler`;要求人工确认。(落地了 scheme 白名单与打开器替换;同源限制与人工确认未做,理由见 §10)
@@ -339,7 +339,7 @@
 7. M3/M4/M5:限流键改真实 IP + 账号/源双计数;吊销改持久化水位线;源级 CPU 上限——**已完成**(commit `e9bc802`;吊销实现为按 jti 的持久化表而非账号水位线,M7 的"停用/恢复水位线"仍待办,见 §10);
 8. M7:SSO 不自动 undelete + `revoked_at` 水位线;
 9. M10/M11:airflow 链接 scheme 白名单 + 统一安全响应头(CSP/frame-ancestors);
-10. M12/M13:CLI `CheckRedirect` + Windows 打开器替换 + scheme 校验——**已完成**(commit `f3674ec`,加固 `2f289cd`,见 §10);
+10. M12/M13:CLI `CheckRedirect` + Windows 打开器替换 + scheme 校验——**已完成**(commit `f3674ec`,加固 `2f289cd`、`9f87299`,见 §10);
 11. M8/M9:acw↔permission 互斥测试 + allUsers 禁绑管理角色——M9 已完成(实现为 allUsers 完全不可编辑,见 §10);M8 待办。
 
 **P2(中期,加固与一致性)**
@@ -714,7 +714,7 @@ M9 落地后由独立子代理对 `cb40791` 做了对抗式只读复核(读 conn
 
 **M12:CLI 只把 Bearer token 发给登记的服务器**(`cli/client/client.go`)
 
-- `normalizeServer` 改为返回 `*url.URL`(校验逻辑不变:scheme 白名单、host 非空、无 userinfo/query/fragment、去尾随斜杠),client 由此拿到登记的 host/scheme,并加装两处判定:
+- `normalizeServer` 改为返回 `*url.URL`(校验逻辑原样搬过来:scheme 白名单、host 非空、无 userinfo/query/fragment、去尾随斜杠;裸 `?` 的判定是后来加固时补的,见下),client 由此拿到登记的 host/scheme,并加装两处判定:
   - `http.Client.CheckRedirect`:目标 host 与登记 host 不一致即返回错误、**不跟随**;登记为 https 时同 host 的 https→http 降级同样拒绝。错误文案给出重定向前后的两个 host,直接可诊断。
   - `bearerTransport.carriesCredentials`:只有目标与登记服务器同 host、且 scheme 相同(或登记为 http、目标升级为 https)时才补 `Authorization`。
 - 两道闸都以**精确 host** 为准,而不是标准库的"同域"判定:`net/http` 只在重定向离开服务器**域**时剥 `Authorization`,并且把子域当作同域(`isDomainOrSubdomain`);而本项目的 transport 每一跳都把 token 补回去(它同时是 CLI 免除 cookie CSRF 的手段),所以标准库那套判断在这里既不充分,也不能作为"跟随"的依据。
@@ -739,11 +739,21 @@ M9 落地后由独立子代理对 `cb40791` 做了对抗式只读复核(读 conn
 
 主修复落地后由独立子代理对 `f3674ec` 做对抗式只读复核(overlay 探针挂在 `/tmp`,未改动仓库文件)。复核确认 M12 的两道闸与 M13 的打开器都无可复现的绕过:`CheckRedirect`、`carriesCredentials` 与 `http.Transport` 读的是同一个 `req.URL`(connect 初始即设 `Host: url.Host` 且从不写 Host 头,不存在解析差分);host 变体(大小写、尾点、IPv6 展开、IDN、显式默认端口、空 host、相对地址)全部 fail-closed;`cli/` 内除 `client.New` 外没有第二处 HTTP 或 `Authorization`,也没有第二处 `exec.Command`(`--token` 与 `--service-account` 共用同一个 `*http.Client`);Windows 下 `os/exec` 走 `CreateProcess` + `makeCmdLine`,不经 shell,URL 是单个 argv 元素。但也实测出下列问题,均已修:
 
-1. **自定义 `CheckRedirect` 顶掉了标准库的 10 跳上限(中高,已复现)**:`net/http` 的 `defaultCheckRedirect` 在 `len(via) >= 10` 时报错,而一旦自行设置 `CheckRedirect`,该保护随之消失。同 host 自环重定向因此被无限跟随——实测 3179 跳/秒、3 秒堆 +32MB;默认 `--timeout 30s` 把它压在约 9 万跳/数百 MB,`--timeout 0` 时无界。这是 `f3674ec` 引入的回归。现在策略保留同一上限(`maxRedirects = 10`),并新增"自环服务器必须立刻报 `stopped after 10 redirects`"的用例。
+1. **自定义 `CheckRedirect` 顶掉了标准库的 10 跳上限(中高,已复现)**:`net/http` 的 `defaultCheckRedirect` 在 `len(via) >= 10` 时报错,而一旦自行设置 `CheckRedirect`,该保护随之消失。同 host 自环重定向因此被无限跟随——实测 3179 跳/秒、3 秒堆 +32MB;默认 `--timeout 30s` 把它压在约 9 万跳/数百 MB,`--timeout 0` 时无界。这是 `f3674ec` 引入的回归。现在策略保留同一上限(`maxRedirects = 10`),并新增"自环服务器必须报 `stopped after 10 redirects` 且服务器实收恰好 10 个请求"的用例(用例本身在第二轮复核后收紧,见下)。
 2. **裸 `?` 通过 query 校验(低,已复现)**:`url.Parse("https://h/x?")` 的 `RawQuery` 为空、`ForceQuery` 为真,校验只看 `RawQuery`;改用 `.String()` 后会把这个 `?` 还原进 base URL,Connect 的过程名随之落进 query 串(实测线上 path=`/x`、query=`/metaxisdata.v1.AuthService/Login`),而旧的字符串拼接恰好丢掉了它——同一改动引入的小回归。现在 `ForceQuery` 一并拒绝,并加入拒绝用例。
 3. **`validateBrowserURL` 的 host 判据比文档措辞宽松(提示,已收紧)**:`https://:8080/x` 的 `Host` 是 `:8080`(没有主机名)却被接受,现改判 `Hostname() != ""`。不构成注入(无 shell、地址始终是单个 argv),属与文档"with a host"的一致性。
 4. **"第三方零请求"断言在单守卫回退时不可达(测试质量,已改)**:原用例先断言错误文案、后检查泄露,而 `require` 失败即 `FailNow`,回退 host 守卫时失败点落在文案上;且第三方是 http 服务器,https→http 降级规则会先一步拦住请求,泄露断言根本走不到。现在先做泄露检查,并把第三方改成与入口同样的 TLS,使 host 规则成为唯一起作用的判定。逐条回退验证:去掉 host 守卫 ⇒ 报"第三方收到请求(Authorization 为空)";同时去掉 token 层 host 绑定 ⇒ 报"第三方收到 `Bearer SECRET-TOKEN`"——两道闸各自独立可见。
 5. **复核确认但未改(记录备查)**:`https://mx.example.com@evil.example.com/` 打开的是 `evil.example.com`,属已记录的"服务器可命名任意 http(s) 页面"残余;`HTTP_PROXY` 下 http 目标的代理能看到 token(与 URL host 绑定无关,https 走 CONNECT);LLM 出站路径(`backend/component/llm/agent.go` 无 `CheckRedirect`)是 M23 的同一根因,不在本轮范围;`xdg-open` 里 `$(printf …)` 的求值经实测**不构成**命令注入(控制操作符不在展开结果中重解析),不作漏洞处理。
+
+**第二轮对抗式复核后的加固(commit `9f87299`)**
+
+由另一个独立子代理对**累计 diff**(`4027027..e0192c3`)再做一轮对抗式只读复核(同样只有 overlay 探针挂在 `/tmp`)。它推不翻核心结论:跳数上限与标准库 `defaultCheckRedirect` 完全等价(`via` 含初始请求、`>=`、服务器实收 10 个请求、文案一字不差);上限放在 host 判定之前不漏包(边界实测 `offHostHits=0`);`%3F`/`%3f` 既不会绕过 query 校验也不会被还原成 query(线上 `RequestURI` 里仍是 `%3F`,过程名仍在 path);HTTP/2、`--timeout 0`、`--token`、`--service-account`、`CACert` 与重定向策略无交互;connect-go 对 401/503/429/300/305 一律不跟随 `Location`;Windows 下 URL 是单个 argv,不经 shell。但它指出以下**测试保证**与收尾问题,均已修:
+
+1. **上限用例只证明了"存在某个上限"(中,已复现)**:去掉上限后它确实变红,但红在 `Timeout: 5s` 的超时(耗时 5.01s、失败信息与重定向无关),且把 `maxRedirects` 改成 3 或 1000 仍然通过——文档声称的"10 跳"没有被钉住。现在用例统计服务器收到的请求数并要求 `stopped after 10 redirects`:10 个请求到达、第 11 个不发(实测改成 3、1000、或去掉上限都会立刻变红)。
+2. **降级用例断言的是文案而不是安全属性(低,已复现)**:回退降级判定后,失败原因是入口 TLS 监听对明文请求回了 `400 Bad Request`,用例从未断言"没有第二次连接发出"。现在用计数 listener 断言入口只接受过 1 条 TCP 连接(若跟随降级,同 host:port 会多出一条明文连接),且该断言排在文案断言之前——回退后失败点落在连接计数上。
+3. **新错误文案未转义调用方可控文本(低,已修)**:`net/url` 拒绝 C0 控制字符,但接受 C1(如 U+009B)与双向控制字符,而错误消息用 `%s` 打印 `req.URL.Host`。改为 `%q`,新增用例钉住(回退成 `%s` 即红)。记录:`authflow` 本来就把服务器给的 URL 用 `%s` 打进进度流(`cli/authflow/device.go` 本次未改),那是既有出口,属 L11(CLI 输出未过滤控制字符)家族,不在本轮范围。
+4. **边界处文案指向错误原因(低,已修)**:上限判定原在 host 判定之前,"先同 host 跳 9 次、第 10 跳指向外站"会报 `stopped after 10 redirects` 而不是 host 违规。现改为策略判定在前、上限在后,语义不变而文案正确。
+5. **复核确认但未改**:`Client.Server` 仍是死字段(改前既有,全仓无读者);残余第 3 条的 `:8443` 一例钉的是 token 层表驱动用例,不是 `CheckRedirect`;`maxRedirects` 与标准库常量重复会漂移——现在由"恰好 10 个请求 + 精确文案"钉住;`normalizeServer` 的 `.String()` 与 connect 的 `url.ParseRequestURI` 往返在 15 种 host 写法上无损。
 
 **残余(本轮未处理)**
 
