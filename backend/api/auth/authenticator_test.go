@@ -20,6 +20,8 @@ const (
 	// resource identifier, not a fixed string.
 	mcpTestResource = "https://mx.example.com/mcp"
 	mcpTestScope    = "metaxisdata.mcp.read"
+	// mcpTestClient is the OAuth registration an MCP token is issued to.
+	mcpTestClient = "client-test"
 )
 
 // fakeUsers is a UserStore with a single principal, so the token rules can be
@@ -65,7 +67,7 @@ func TestResolveKeepsAudiencesApart(t *testing.T) {
 func TestMCPTokensAreNotInterchangeableWithUserTokens(t *testing.T) {
 	t.Parallel()
 
-	mcpToken, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
+	mcpToken, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestClient, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
 	require.NoError(t, err)
 	_, err = VerifyAccessToken(mcpToken, audienceTestSecret, common.ReleaseModeDev)
 	require.Error(t, err, "an MCP token must not verify for the user API")
@@ -74,6 +76,7 @@ func TestMCPTokensAreNotInterchangeableWithUserTokens(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 7, identity.UserID)
 	require.Equal(t, []string{mcpTestScope}, identity.Scopes, "the token's own scope is what the resource server enforces")
+	require.Equal(t, mcpTestClient, identity.ClientID, "Logout revokes a client's grants by this claim")
 	require.False(t, identity.ExpiresAt.IsZero(), "a resource server hands this expiry to its transport")
 
 	userToken, err := GenerateAccessToken("user@example.com", 7, common.ReleaseModeDev, audienceTestSecret, time.Hour)
@@ -92,7 +95,7 @@ func TestMCPTokensAreNotInterchangeableWithUserTokens(t *testing.T) {
 func TestResolveAppliesTheUserRulesForTheMCPAudience(t *testing.T) {
 	t.Parallel()
 
-	token, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
+	token, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestClient, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
 	require.NoError(t, err)
 
 	active := NewTokenAuthenticator(fakeUsers{user: &store.UserMessage{ID: 7, Email: "user@example.com"}}, audienceTestSecret, nil)
@@ -114,7 +117,7 @@ func TestResolveAppliesTheUserRulesForTheMCPAudience(t *testing.T) {
 func TestMCPTokensKeepARevocationPath(t *testing.T) {
 	t.Parallel()
 
-	mcpToken, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
+	mcpToken, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestClient, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
 	require.NoError(t, err)
 	identity, err := VerifyAccessTokenProvenance(mcpToken, audienceTestSecret)
 	require.NoError(t, err)

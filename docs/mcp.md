@@ -50,13 +50,24 @@ does the rest itself:
    the authorization code server-side and redirects it to the client — the code
    never passes through the page.
 5. The client exchanges the code at `POST /oauth/token` and presents the resulting
-   access token on every later `/mcp` request.
+   access token on every later `/mcp` request. The same response carries a refresh
+   token, which the client exchanges at the same endpoint when the access token
+   expires.
 
-The token is bound to `<external URL>/mcp` as its audience: a web or CLI session
-token is refused at `/mcp`, and an MCP token is refused on the ConnectRPC API.
-Changing the external URL therefore invalidates outstanding MCP tokens, and the
-client authorizes again. There is no refresh token — an expired token means
-running the flow again — so the number of long-lived credentials stays at zero.
+The access token is bound to `<external URL>/mcp` as its audience: a web or CLI
+session token is refused at `/mcp`, and an MCP token is refused on the ConnectRPC
+API. Changing the external URL therefore invalidates outstanding MCP tokens and
+grants, and the client authorizes again.
+
+Refreshing is a rotation, not a renewal of the same credential: presenting the
+refresh token with `grant_type=refresh_token`, `client_id`, `resource` and (when
+the client tracks one) the consented `scope` consumes it and returns a new access
+token plus a new refresh token. The token is single-use — the row is deleted as it
+is claimed — so two clients racing with the same token leave exactly one working,
+and a copy stolen from a client's storage is worthless once the real client
+refreshes. A grant lives 30 days and is re-checked against the user's account at
+every rotation, so a deactivated user or one who changed their password since
+consent has to authorize again.
 
 ## The tools
 
@@ -101,15 +112,20 @@ when you need them.
   too. The ledger is permanent, so expect the row count to follow model usage.
 - **A token can be revoked.** Presenting it to the user API's `Logout` (what
   `mxd logout` sends) revokes it immediately, for `/mcp` as well as the API: the
-  server checks that it signed the token, not which audience it carries.
+  server checks that it signed the token, not which audience it carries. It also
+  deletes the refresh tokens of the client that access token names, so revoking
+  one token ends the connection instead of leaving it one refresh away from a new
+  pair.
 - **The anonymous endpoints are rate-limited per address** — registration, the
   token exchange, and the two browser steps — and a disabled deployment answers
   `404` without writing a ledger row, so probes cost nothing to keep.
 - **Pending authorizations are process-local**, like device logins. An approval
   and its completion must reach the same replica: run one replica, or put sticky
-  routing in front.
+  routing in front. Refresh tokens are not: they live in the database, so a
+  refresh may reach any replica.
 - **The endpoint is stateless.** No session survives a request, which is what
   makes it safe behind a load balancer, and it is wrapped in the standard
   library's cross-origin protection.
 - Turning `mcp_enabled` off closes the surface immediately; it does not revoke
-  tokens, which expire on their own.
+  tokens or grants, which expire on their own. The `Logout` route above is the
+  way to retire a live connection.

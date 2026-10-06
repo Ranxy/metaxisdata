@@ -119,7 +119,7 @@ func TestMCPAuthorizationAndToolsRealServerIntegration(t *testing.T) {
 		metadata := getJSON(t, protocol, env.BaseURL+asMetadataPath, "")
 		require.Equal(t, env.BaseURL, metadata["issuer"])
 		require.Equal(t, []any{"S256"}, metadata["code_challenge_methods_supported"])
-		require.Equal(t, []any{"authorization_code"}, metadata["grant_types_supported"])
+		require.Equal(t, []any{"authorization_code", "refresh_token"}, metadata["grant_types_supported"])
 		require.NotContains(t, metadata, "jwks_uri")
 	})
 
@@ -206,6 +206,41 @@ func TestMCPAuthorizationAndToolsRealServerIntegration(t *testing.T) {
 		instances, err := session.CallTool(ctx, &mcpsdk.CallToolParams{Name: "list_instances", Arguments: map[string]any{}})
 		require.NoError(t, err)
 		require.False(t, instances.IsError, "list_instances failed: %s", toolText(t, instances))
+	})
+
+	t.Run("a refresh token rotates the grant and is single use", func(t *testing.T) {
+		grantID := authorize(t, protocol, env.BaseURL, resource, clientID, adminToken, challenge)
+		approveRequest(ctx, t, admin, grantID)
+		grantCode := complete(t, protocol, env.BaseURL, grantID, adminToken)
+		first := exchange(t, protocol, env.BaseURL, resource, clientID, mcpClientRedirect, grantCode, verifier)
+		original, ok := first["refresh_token"].(string)
+		require.True(t, ok, "the exchange returns a refresh token beside the access token")
+
+		status, body := refreshGrant(t, protocol, env.BaseURL, resource, clientID, original, mcpScope)
+		require.Equal(t, http.StatusOK, status, body)
+		var rotated map[string]any
+		require.NoError(t, json.Unmarshal([]byte(body), &rotated))
+		rotatedToken, ok := rotated["refresh_token"].(string)
+		require.True(t, ok, "the refresh response carries the rotated token")
+		require.NotEqual(t, original, rotatedToken, "rotation must not hand the same credential back")
+
+		// The consumed token is dead; a replay is exactly what rotation is for.
+		replayStatus, _ := refreshGrant(t, protocol, env.BaseURL, resource, clientID, original, mcpScope)
+		require.Equal(t, http.StatusBadRequest, replayStatus)
+
+		// The rotated access token is a real token, not an echo.
+		rotatedAccess, ok := rotated["access_token"].(string)
+		require.True(t, ok)
+		session := connectMCP(t, env.BaseURL+mcpResourcePath, rotatedAccess)
+		_, err := session.ListTools(ctx, nil)
+		require.NoError(t, err)
+
+		// A scope the grant was not consented for is refused, and the refusal
+		// leaves the token usable: a correction must not cost the client its grant.
+		wrongScopeStatus, _ := refreshGrant(t, protocol, env.BaseURL, resource, clientID, rotatedToken, "some.other.scope")
+		require.Equal(t, http.StatusBadRequest, wrongScopeStatus)
+		retryStatus, retryBody := refreshGrant(t, protocol, env.BaseURL, resource, clientID, rotatedToken, mcpScope)
+		require.Equal(t, http.StatusOK, retryStatus, retryBody)
 	})
 
 	t.Run("a denied request tells the client", func(t *testing.T) {
@@ -386,6 +421,23 @@ func exchangeRequest(t *testing.T, client *http.Client, baseURL, resource, clien
 		"resource":      {resource},
 	}
 	return rawRequest(t, client, http.MethodPost, baseURL+"/oauth/token", "", "", "application/x-www-form-urlencoded", form.Encode())
+}
+
+// refreshGrant posts the refresh_token grant and reports the status and body.
+func refreshGrant(t *testing.T, client *http.Client, baseURL, resource, clientID, refreshToken, scope string) (int, string) {
+	t.Helper()
+
+	form := url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {refreshToken},
+		"client_id":     {clientID},
+		"resource":      {resource},
+	}
+	if scope != "" {
+		form.Set("scope", scope)
+	}
+	status, _, body := rawRequest(t, client, http.MethodPost, baseURL+"/oauth/token", "", "", "application/x-www-form-urlencoded", form.Encode())
+	return status, body
 }
 
 // authorizeAndExchange runs one complete grant and returns the access token.

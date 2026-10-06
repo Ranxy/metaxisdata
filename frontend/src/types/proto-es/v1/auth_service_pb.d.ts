@@ -43,7 +43,8 @@ export declare type LoginRequest = Message<"metaxisdata.v1.LoginRequest"> & {
   password: string;
 
   /**
-   * If web is set, we will set access token, refresh token, and user to the cookie.
+   * If web is set, the access token and the refresh token are set as HttpOnly
+   * cookies instead of being returned in the response body.
    *
    * @generated from field: bool web = 3;
    */
@@ -183,6 +184,33 @@ export declare type LogoutRequest = Message<"metaxisdata.v1.LogoutRequest"> & {
  * Use `create(LogoutRequestSchema)` to create a new message.
  */
 export declare const LogoutRequestSchema: GenMessage<LogoutRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.RefreshRequest
+ */
+export declare type RefreshRequest = Message<"metaxisdata.v1.RefreshRequest"> & {
+};
+
+/**
+ * Describes the message metaxisdata.v1.RefreshRequest.
+ * Use `create(RefreshRequestSchema)` to create a new message.
+ */
+export declare const RefreshRequestSchema: GenMessage<RefreshRequest>;
+
+/**
+ * RefreshResponse is empty: both credentials the refresh produces travel in
+ * HttpOnly cookies, so no token ever reaches page JavaScript.
+ *
+ * @generated from message metaxisdata.v1.RefreshResponse
+ */
+export declare type RefreshResponse = Message<"metaxisdata.v1.RefreshResponse"> & {
+};
+
+/**
+ * Describes the message metaxisdata.v1.RefreshResponse.
+ * Use `create(RefreshResponseSchema)` to create a new message.
+ */
+export declare const RefreshResponseSchema: GenMessage<RefreshResponse>;
 
 /**
  * @generated from message metaxisdata.v1.CreateDeviceLoginRequest
@@ -491,6 +519,21 @@ export declare const AuthService: GenService<{
     methodKind: "unary";
     input: typeof LogoutRequestSchema;
     output: typeof EmptySchema;
+  },
+  /**
+   * Refresh rotates the web session: it consumes the refresh-token cookie and
+   * sets a new access token and a new refresh token cookie. It needs no
+   * credential because it is called exactly when the access token has expired,
+   * and it rotates the pair so a stolen refresh token is worthless once the real
+   * holder refreshes.
+   * Permissions required: None
+   *
+   * @generated from rpc metaxisdata.v1.AuthService.Refresh
+   */
+  refresh: {
+    methodKind: "unary";
+    input: typeof RefreshRequestSchema;
+    output: typeof RefreshResponseSchema;
   },
   /**
    * CreateSSOState issues a one-time OAuth2 state value. A client must fetch it

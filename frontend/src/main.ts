@@ -1,6 +1,7 @@
 import { createApp } from "vue";
 import App from "./App.vue";
-import { setUnauthenticatedHandler } from "./api/session";
+import { refresh } from "./api/auth";
+import { setSessionRefresher, setUnauthenticatedHandler } from "./api/session";
 import { i18n } from "./locales";
 import router from "./router";
 import { pinia } from "./store";
@@ -43,6 +44,9 @@ async function bootstrap() {
   app.use(i18n);
 
   setUnauthenticatedHandler(handleSessionExpired);
+  // A refused request is answered with a renewal first; the handler above runs
+  // only when the refresh cookie is gone too.
+  setSessionRefresher(refresh);
 
   // Wait for the initial navigation (and any redirects in guards) to finish
   // before mounting, to avoid flashing protected layouts/pages.

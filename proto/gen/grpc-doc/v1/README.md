@@ -54,6 +54,8 @@
     - [LoginResponse](#metaxisdata-v1-LoginResponse)
     - [LogoutRequest](#metaxisdata-v1-LogoutRequest)
     - [OAuth2IdentityProviderContext](#metaxisdata-v1-OAuth2IdentityProviderContext)
+    - [RefreshRequest](#metaxisdata-v1-RefreshRequest)
+    - [RefreshResponse](#metaxisdata-v1-RefreshResponse)
   
     - [DeviceLoginState](#metaxisdata-v1-DeviceLoginState)
   
@@ -947,7 +949,7 @@ page needs nothing else.
 | ----- | ---- | ----- | ----------- |
 | email | [string](#string) |  |  |
 | password | [string](#string) |  |  |
-| web | [bool](#bool) |  | If web is set, we will set access token, refresh token, and user to the cookie. |
+| web | [bool](#bool) |  | If web is set, the access token and the refresh token are set as HttpOnly cookies instead of being returned in the response body. |
 | idp_name | [string](#string) |  | The name of the identity provider. Format: idps/{idp} |
 | idp_context | [IdentityProviderContext](#metaxisdata-v1-IdentityProviderContext) |  | The idp_context is using to get the user information from identity provider. |
 
@@ -1000,6 +1002,27 @@ page needs nothing else.
 
 
 
+
+<a name="metaxisdata-v1-RefreshRequest"></a>
+
+### RefreshRequest
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-RefreshResponse"></a>
+
+### RefreshResponse
+RefreshResponse is empty: both credentials the refresh produces travel in
+HttpOnly cookies, so no token ever reaches page JavaScript.
+
+
+
+
+
  
 
 
@@ -1031,6 +1054,7 @@ page needs nothing else.
 | ----------- | ------------ | ------------- | ------------|
 | Login | [LoginRequest](#metaxisdata-v1-LoginRequest) | [LoginResponse](#metaxisdata-v1-LoginResponse) | Permissions required: None |
 | Logout | [LogoutRequest](#metaxisdata-v1-LogoutRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Permissions required: None |
+| Refresh | [RefreshRequest](#metaxisdata-v1-RefreshRequest) | [RefreshResponse](#metaxisdata-v1-RefreshResponse) | Refresh rotates the web session: it consumes the refresh-token cookie and sets a new access token and a new refresh token cookie. It needs no credential because it is called exactly when the access token has expired, and it rotates the pair so a stolen refresh token is worthless once the real holder refreshes. Permissions required: None |
 | CreateSSOState | [.google.protobuf.Empty](#google-protobuf-Empty) | [CreateSSOStateResponse](#metaxisdata-v1-CreateSSOStateResponse) | CreateSSOState issues a one-time OAuth2 state value. A client must fetch it before redirecting to the identity provider, pass it back to the provider and then send it with the login request; the server consumes it there. Without it an attacker can complete an authorization-code flow in a victim&#39;s browser and bind the victim&#39;s session to the attacker&#39;s identity. Permissions required: None |
 | CreateDeviceLogin | [CreateDeviceLoginRequest](#metaxisdata-v1-CreateDeviceLoginRequest) | [CreateDeviceLoginResponse](#metaxisdata-v1-CreateDeviceLoginResponse) | CreateDeviceLogin starts a device login (RFC 8628 style). The caller gets a polling secret plus a short human-readable code; a signed-in user approves the request from the web confirmation page and the CLI then exchanges the secret for an access token bound to that user. Permissions required: None |
 | GetDeviceLogin | [GetDeviceLoginRequest](#metaxisdata-v1-GetDeviceLoginRequest) | [DeviceLogin](#metaxisdata-v1-DeviceLogin) | GetDeviceLogin returns one pending device login so the confirmation page can show what is being approved. Permissions required: None |

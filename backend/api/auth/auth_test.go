@@ -202,15 +202,15 @@ func TestTokenPredatesPasswordChange(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
-	require.False(t, tokenPredatesPasswordChange(time.Time{}, now), "tokens without an iat claim are not judged")
-	require.False(t, tokenPredatesPasswordChange(now, time.Time{}), "users who never changed their password are not judged")
-	require.True(t, tokenPredatesPasswordChange(now.Add(-time.Hour), now))
-	require.False(t, tokenPredatesPasswordChange(now.Add(time.Hour), now))
+	require.False(t, TokenPredatesPasswordChange(time.Time{}, now), "credentials without an issue time are not judged")
+	require.False(t, TokenPredatesPasswordChange(now, time.Time{}), "users who never changed their password are not judged")
+	require.True(t, TokenPredatesPasswordChange(now.Add(-time.Hour), now))
+	require.False(t, TokenPredatesPasswordChange(now.Add(time.Hour), now))
 	// The iat claim carries sub-second precision, so the ordering around the
 	// change instant is exact.
-	require.True(t, tokenPredatesPasswordChange(now.Add(-time.Millisecond), now))
-	require.False(t, tokenPredatesPasswordChange(now.Add(time.Millisecond), now))
-	require.False(t, tokenPredatesPasswordChange(now, now))
+	require.True(t, TokenPredatesPasswordChange(now.Add(-time.Millisecond), now))
+	require.False(t, TokenPredatesPasswordChange(now.Add(time.Millisecond), now))
+	require.False(t, TokenPredatesPasswordChange(now, now))
 }
 
 func TestIsAuthenticationAllowed(t *testing.T) {

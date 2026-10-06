@@ -38,6 +38,8 @@ const (
 	AuthServiceLoginProcedure = "/metaxisdata.v1.AuthService/Login"
 	// AuthServiceLogoutProcedure is the fully-qualified name of the AuthService's Logout RPC.
 	AuthServiceLogoutProcedure = "/metaxisdata.v1.AuthService/Logout"
+	// AuthServiceRefreshProcedure is the fully-qualified name of the AuthService's Refresh RPC.
+	AuthServiceRefreshProcedure = "/metaxisdata.v1.AuthService/Refresh"
 	// AuthServiceCreateSSOStateProcedure is the fully-qualified name of the AuthService's
 	// CreateSSOState RPC.
 	AuthServiceCreateSSOStateProcedure = "/metaxisdata.v1.AuthService/CreateSSOState"
@@ -61,6 +63,13 @@ type AuthServiceClient interface {
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
 	// Permissions required: None
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[emptypb.Empty], error)
+	// Refresh rotates the web session: it consumes the refresh-token cookie and
+	// sets a new access token and a new refresh token cookie. It needs no
+	// credential because it is called exactly when the access token has expired,
+	// and it rotates the pair so a stolen refresh token is worthless once the real
+	// holder refreshes.
+	// Permissions required: None
+	Refresh(context.Context, *connect.Request[v1.RefreshRequest]) (*connect.Response[v1.RefreshResponse], error)
 	// CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
 	// before redirecting to the identity provider, pass it back to the provider
 	// and then send it with the login request; the server consumes it there.
@@ -111,6 +120,12 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(authServiceMethods.ByName("Logout")),
 			connect.WithClientOptions(opts...),
 		),
+		refresh: connect.NewClient[v1.RefreshRequest, v1.RefreshResponse](
+			httpClient,
+			baseURL+AuthServiceRefreshProcedure,
+			connect.WithSchema(authServiceMethods.ByName("Refresh")),
+			connect.WithClientOptions(opts...),
+		),
 		createSSOState: connect.NewClient[emptypb.Empty, v1.CreateSSOStateResponse](
 			httpClient,
 			baseURL+AuthServiceCreateSSOStateProcedure,
@@ -148,6 +163,7 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 type authServiceClient struct {
 	login               *connect.Client[v1.LoginRequest, v1.LoginResponse]
 	logout              *connect.Client[v1.LogoutRequest, emptypb.Empty]
+	refresh             *connect.Client[v1.RefreshRequest, v1.RefreshResponse]
 	createSSOState      *connect.Client[emptypb.Empty, v1.CreateSSOStateResponse]
 	createDeviceLogin   *connect.Client[v1.CreateDeviceLoginRequest, v1.CreateDeviceLoginResponse]
 	getDeviceLogin      *connect.Client[v1.GetDeviceLoginRequest, v1.DeviceLogin]
@@ -163,6 +179,11 @@ func (c *authServiceClient) Login(ctx context.Context, req *connect.Request[v1.L
 // Logout calls metaxisdata.v1.AuthService.Logout.
 func (c *authServiceClient) Logout(ctx context.Context, req *connect.Request[v1.LogoutRequest]) (*connect.Response[emptypb.Empty], error) {
 	return c.logout.CallUnary(ctx, req)
+}
+
+// Refresh calls metaxisdata.v1.AuthService.Refresh.
+func (c *authServiceClient) Refresh(ctx context.Context, req *connect.Request[v1.RefreshRequest]) (*connect.Response[v1.RefreshResponse], error) {
+	return c.refresh.CallUnary(ctx, req)
 }
 
 // CreateSSOState calls metaxisdata.v1.AuthService.CreateSSOState.
@@ -196,6 +217,13 @@ type AuthServiceHandler interface {
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
 	// Permissions required: None
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[emptypb.Empty], error)
+	// Refresh rotates the web session: it consumes the refresh-token cookie and
+	// sets a new access token and a new refresh token cookie. It needs no
+	// credential because it is called exactly when the access token has expired,
+	// and it rotates the pair so a stolen refresh token is worthless once the real
+	// holder refreshes.
+	// Permissions required: None
+	Refresh(context.Context, *connect.Request[v1.RefreshRequest]) (*connect.Response[v1.RefreshResponse], error)
 	// CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
 	// before redirecting to the identity provider, pass it back to the provider
 	// and then send it with the login request; the server consumes it there.
@@ -242,6 +270,12 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(authServiceMethods.ByName("Logout")),
 		connect.WithHandlerOptions(opts...),
 	)
+	authServiceRefreshHandler := connect.NewUnaryHandler(
+		AuthServiceRefreshProcedure,
+		svc.Refresh,
+		connect.WithSchema(authServiceMethods.ByName("Refresh")),
+		connect.WithHandlerOptions(opts...),
+	)
 	authServiceCreateSSOStateHandler := connect.NewUnaryHandler(
 		AuthServiceCreateSSOStateProcedure,
 		svc.CreateSSOState,
@@ -278,6 +312,8 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 			authServiceLoginHandler.ServeHTTP(w, r)
 		case AuthServiceLogoutProcedure:
 			authServiceLogoutHandler.ServeHTTP(w, r)
+		case AuthServiceRefreshProcedure:
+			authServiceRefreshHandler.ServeHTTP(w, r)
 		case AuthServiceCreateSSOStateProcedure:
 			authServiceCreateSSOStateHandler.ServeHTTP(w, r)
 		case AuthServiceCreateDeviceLoginProcedure:
@@ -303,6 +339,10 @@ func (UnimplementedAuthServiceHandler) Login(context.Context, *connect.Request[v
 
 func (UnimplementedAuthServiceHandler) Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[emptypb.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.AuthService.Logout is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) Refresh(context.Context, *connect.Request[v1.RefreshRequest]) (*connect.Response[v1.RefreshResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.AuthService.Refresh is not implemented"))
 }
 
 func (UnimplementedAuthServiceHandler) CreateSSOState(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.CreateSSOStateResponse], error) {

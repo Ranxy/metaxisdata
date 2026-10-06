@@ -95,6 +95,7 @@ func identityFromClaims(claims *claimsMessage) (*AccessTokenIdentity, error) {
 		UserID:      principalID,
 		TokenID:     claims.ID,
 		Scopes:      strings.Fields(claims.Scope),
+		ClientID:    claims.ClientID,
 		Restriction: TokenRestriction(claims.Restriction),
 	}
 	if claims.ExpiresAt != nil {
@@ -187,7 +188,7 @@ func (a *TokenAuthenticator) Resolve(ctx context.Context, accessTokenStr, audien
 	// timestamps come from this process's clock and the iat claim carries
 	// sub-second precision, so the ordering is exact.
 	if lastChange := user.Profile.GetLastChangePasswordTime(); lastChange != nil {
-		if tokenPredatesPasswordChange(identity.IssuedAt, lastChange.AsTime()) {
+		if TokenPredatesPasswordChange(identity.IssuedAt, lastChange.AsTime()) {
 			return nil, nil, errs.Errorf("access token of user ID %d was issued before the last password change", user.ID)
 		}
 	}

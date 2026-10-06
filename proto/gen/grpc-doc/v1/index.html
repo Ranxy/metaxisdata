@@ -374,6 +374,14 @@
                   <a href="#metaxisdata.v1.OAuth2IdentityProviderContext"><span class="badge">M</span>OAuth2IdentityProviderContext</a>
                 </li>
               
+                <li>
+                  <a href="#metaxisdata.v1.RefreshRequest"><span class="badge">M</span>RefreshRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.RefreshResponse"><span class="badge">M</span>RefreshResponse</a>
+                </li>
+              
               
                 <li>
                   <a href="#metaxisdata.v1.DeviceLoginState"><span class="badge">E</span>DeviceLoginState</a>
@@ -2956,7 +2964,8 @@ Format: deviceLogins/{user_code} </p></td>
                   <td>web</td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
-                  <td><p>If web is set, we will set access token, refresh token, and user to the cookie. </p></td>
+                  <td><p>If web is set, the access token and the refresh token are set as HttpOnly
+cookies instead of being returned in the response body. </p></td>
                 </tr>
               
                 <tr>
@@ -3081,6 +3090,20 @@ identity provider. Optional; providers that do not use PKCE ignore it. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.RefreshRequest">RefreshRequest</h3>
+        <p></p>
+
+        
+
+        
+      
+        <h3 id="metaxisdata.v1.RefreshResponse">RefreshResponse</h3>
+        <p>RefreshResponse is empty: both credentials the refresh produces travel in</p><p>HttpOnly cookies, so no token ever reaches page JavaScript.</p>
+
+        
+
+        
+      
 
       
         <h3 id="metaxisdata.v1.DeviceLoginState">DeviceLoginState</h3>
@@ -3148,6 +3171,18 @@ identity provider. Optional; providers that do not use PKCE ignore it. </p></td>
                 <td><a href="#metaxisdata.v1.LogoutRequest">LogoutRequest</a></td>
                 <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
                 <td><p>Permissions required: None</p></td>
+              </tr>
+            
+              <tr>
+                <td>Refresh</td>
+                <td><a href="#metaxisdata.v1.RefreshRequest">RefreshRequest</a></td>
+                <td><a href="#metaxisdata.v1.RefreshResponse">RefreshResponse</a></td>
+                <td><p>Refresh rotates the web session: it consumes the refresh-token cookie and
+sets a new access token and a new refresh token cookie. It needs no
+credential because it is called exactly when the access token has expired,
+and it rotates the pair so a stolen refresh token is worthless once the real
+holder refreshes.
+Permissions required: None</p></td>
               </tr>
             
               <tr>
@@ -3234,6 +3269,16 @@ Permissions required: None</p></td>
                 <td>Logout</td>
                 <td>POST</td>
                 <td>/v1/auth/logout</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>Refresh</td>
+                <td>POST</td>
+                <td>/v1/auth/refresh</td>
                 <td>*</td>
               </tr>
               

@@ -167,8 +167,15 @@ func (s *AuthService) Login(ctx context.Context, req *connect.Request[v1pb.Login
 			return nil, connect.NewError(connect.CodePermissionDenied, errors.Errorf("only users can use web login"))
 		}
 
-		cookie := auth.GetTokenCookie(ctx, s.store, loginToken)
-		resp.Header().Add("Set-Cookie", cookie.String())
+		// A forced password reset gets no refresh token: its access token is
+		// restricted to the rotation itself, and a refreshable session would be a
+		// way to outlive the policy that forced it.
+		if !response.RequireResetPassword {
+			if err := s.setWebRefreshCookie(ctx, resp.Header(), loginUser); err != nil {
+				return nil, err
+			}
+		}
+		resp.Header().Add("Set-Cookie", auth.GetTokenCookie(ctx, s.store, loginToken).String())
 	}
 
 	// Stamp the login time with a targeted JSONB write instead of rewriting the
@@ -310,10 +317,30 @@ func (s *AuthService) Logout(ctx context.Context, req *connect.Request[v1pb.Logo
 	}
 	s.stateCfg.TokenRevocationCache.Revoke(identity.TokenID, time.Now())
 
+	// An MCP access token names the registration it was issued to, so revoking
+	// it retires that client's refresh tokens as well. Without that, the client
+	// would rotate a moment later and the logout would amount to nothing.
+	if identity.ClientID != "" {
+		if err := s.store.DeleteOAuthRefreshTokensByUserAndClient(ctx, identity.UserID, identity.ClientID); err != nil {
+			// The access token is already revoked, which is the primary action,
+			// so a failure here is logged rather than reported as a failed logout.
+			slog.Error("failed to revoke the OAuth refresh tokens of a logged-out client", log.WithError(err))
+		}
+	}
+	// The web session's refresh cookie is a credential of its own: logging out
+	// must delete the row it stands for, not merely stop sending the cookie.
+	if refreshToken := auth.GetRefreshTokenFromCookie(req.Header()); refreshToken != "" {
+		if err := s.store.DeleteWebRefreshToken(ctx, auth.HashToken(refreshToken)); err != nil {
+			slog.Error("failed to delete the web refresh token on logout", log.WithError(err))
+		}
+	}
+
 	resp := connect.NewResponse(&emptypb.Empty{})
 
-	cookie := auth.GetTokenCookie(ctx, s.store, "")
-	resp.Header().Add("Set-Cookie", cookie.String())
+	// Both cookies are cleared: a browser that only dropped the access cookie
+	// would keep presenting the refresh cookie on the next visit.
+	resp.Header().Add("Set-Cookie", auth.GetTokenCookie(ctx, s.store, "").String())
+	resp.Header().Add("Set-Cookie", auth.GetRefreshTokenCookie(ctx, s.store, "", time.Time{}).String())
 	return resp, nil
 }
 

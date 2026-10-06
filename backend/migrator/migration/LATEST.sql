@@ -542,6 +542,54 @@ CREATE TABLE IF NOT EXISTS oauth_client (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_client_client_id ON oauth_client(client_id);
 
 
+-- The two refresh-token tables. Both store only the SHA-256 hex digest of the
+-- opaque token, never the plaintext, and both are single-use: a refresh
+-- atomically deletes the row it consumes (DELETE ... RETURNING) and inserts a
+-- replacement, so concurrent refreshes race and a replayed token resolves to no
+-- row. user_id references principal(id) because an account is identified by its
+-- principal id, not by its mutable address; deactivation is a soft delete, so
+-- the refresh handlers re-read the principal and refuse a deactivated one or a
+-- grant older than the last password change.
+--
+-- oauth_refresh_token carries the MCP grant across a refresh: resource pins it
+-- to the `<external_url>/mcp` the user consented to, and scope is carried
+-- forward verbatim so a refresh re-issues the grant as consented.
+CREATE TABLE IF NOT EXISTS oauth_refresh_token (
+    id BIGSERIAL PRIMARY KEY,
+    token_hash TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES principal(id) ON DELETE CASCADE,
+    resource TEXT NOT NULL,
+    scope TEXT NOT NULL DEFAULT '',
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_refresh_token_hash ON oauth_refresh_token(token_hash);
+
+-- Logout revokes every grant a user holds for one client.
+CREATE INDEX IF NOT EXISTS idx_oauth_refresh_token_user_client ON oauth_refresh_token(user_id, client_id);
+
+-- The maintenance runner's TTL prune.
+CREATE INDEX IF NOT EXISTS idx_oauth_refresh_token_expires_at ON oauth_refresh_token(expires_at);
+
+-- web_refresh_token is the SPA session's rotation state. It carries only the
+-- principal and the absolute expiry: the workspace is single tenant, and a
+-- refreshed access token is minted from the reloaded principal.
+CREATE TABLE IF NOT EXISTS web_refresh_token (
+    id BIGSERIAL PRIMARY KEY,
+    token_hash TEXT NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES principal(id) ON DELETE CASCADE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_web_refresh_token_hash ON web_refresh_token(token_hash);
+
+-- The maintenance runner's TTL prune.
+CREATE INDEX IF NOT EXISTS idx_web_refresh_token_expires_at ON web_refresh_token(expires_at);
+
+
 -- schema_migration_history records every applied schema version, one row per
 -- migration (and one baseline row for a fresh install). It is the version
 -- ledger the migrator (backend/migrator) reads to decide which incremental

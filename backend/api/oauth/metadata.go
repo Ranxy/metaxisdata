@@ -146,10 +146,12 @@ func (e Endpoints) AuthServerMetadata() AuthServerMetadata {
 		ResponseTypesSupported: []string{
 			"code",
 		},
-		// No refresh_token: the access token lasts as long as a web session, and
-		// a client that finds it expired simply runs the flow again.
+		// Both grants: an access token is short-lived relative to a session, and
+		// the refresh token issued beside it rotates into a new pair without
+		// another browser round trip.
 		GrantTypesSupported: []string{
-			"authorization_code",
+			grantTypeAuthorizationCode,
+			grantTypeRefreshToken,
 		},
 		CodeChallengeMethodsSupported: []string{
 			"S256",
