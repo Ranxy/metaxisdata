@@ -25,6 +25,12 @@ const (
 // endpoint is a credential exchange, so both need a ceiling.
 func oauthEndpointMiddleware(trustedProxies []string) echo.MiddlewareFunc {
 	store := newBoundedRateLimiterStore(oauthEndpointRate, oauthEndpointBurst)
+	return oauthEndpointMiddlewareWithStore(store, trustedProxies)
+}
+
+// oauthEndpointMiddlewareWithStore is the middleware itself; the store is a
+// parameter so a test can freeze its clock.
+func oauthEndpointMiddlewareWithStore(store *boundedRateLimiterStore, trustedProxies []string) echo.MiddlewareFunc {
 	limiter := middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
 		Store: store,
 		// The trusted-proxy rules decide whether a forwarded address may be

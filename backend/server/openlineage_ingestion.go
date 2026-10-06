@@ -27,6 +27,13 @@ const (
 // interceptors, which is where the rest of the API gets its protections.
 func openLineageIngestionMiddleware(trustedProxies []string) echo.MiddlewareFunc {
 	store := newBoundedRateLimiterStore(openLineageIngestionRate, openLineageIngestionBurst)
+	return openLineageIngestionMiddlewareWithStore(store, trustedProxies)
+}
+
+// openLineageIngestionMiddlewareWithStore is the middleware itself. The store is
+// a parameter so a test can drive it with a frozen clock and assert exact
+// budget boundaries instead of racing the token-bucket refill.
+func openLineageIngestionMiddlewareWithStore(store *boundedRateLimiterStore, trustedProxies []string) echo.MiddlewareFunc {
 	limiter := middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
 		Store: store,
 		// Key by the ingestion key so one noisy producer cannot exhaust another's

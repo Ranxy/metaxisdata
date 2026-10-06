@@ -301,11 +301,15 @@ func configureGrpcRouters(
 	e.GET("/.well-known/oauth-authorization-server", echo.WrapHandler(oauth.AuthServerMetadataHandler(stores)))
 	// The browser flow is anonymous by design (the user may not be signed in yet)
 	// and each request reads or writes the pending-request store, so it carries the
-	// same ceiling as the endpoints that mint credentials.
-	e.GET("/oauth/authorize", echo.WrapHandler(oauthServer.Audited(oauthServer.AuthorizeHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
-	e.GET("/oauth/authorize/complete", echo.WrapHandler(oauthServer.Audited(oauthServer.CompletionHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
-	e.POST("/oauth/token", echo.WrapHandler(oauthServer.Audited(oauthServer.TokenHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
-	e.POST("/oauth/register", echo.WrapHandler(oauthServer.Audited(oauth.RegisterHandler(stores))), oauthEndpointMiddleware(profile.TrustedProxies))
+	// same ceiling as the endpoints that mint credentials. The ceiling is one
+	// budget per address shared by all four routes, as the posture document states,
+	// so the middleware is built once and reused; four calls would silently give
+	// one address four times the documented rate.
+	oauthLimit := oauthEndpointMiddleware(profile.TrustedProxies)
+	e.GET("/oauth/authorize", echo.WrapHandler(oauthServer.Audited(oauthServer.AuthorizeHandler())), oauthLimit)
+	e.GET("/oauth/authorize/complete", echo.WrapHandler(oauthServer.Audited(oauthServer.CompletionHandler())), oauthLimit)
+	e.POST("/oauth/token", echo.WrapHandler(oauthServer.Audited(oauthServer.TokenHandler())), oauthLimit)
+	e.POST("/oauth/register", echo.WrapHandler(oauthServer.Audited(oauth.RegisterHandler(stores))), oauthLimit)
 
 	// The MCP endpoint itself. Stateless, so it keeps no session and works behind
 	// a load balancer, and wrapped in the standard library's cross-origin

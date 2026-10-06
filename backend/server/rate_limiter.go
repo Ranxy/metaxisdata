@@ -40,12 +40,13 @@ func rateLimitSourceKey(c echo.Context, trustedProxies []string) string {
 // an ingestion key lets the caller choose that identifier, so the memory a
 // limiter may take must come from the server, not from the caller.
 //
-// Reaching the ceiling drops the least recently seen bucket, as
-// component/state.WindowLimiter makes room at its own capacity. That can only
-// hand its owner a fresh budget, never deny it, so the ceiling bounds the memory
-// a caller's identifiers may cost and cannot become a denial of service of its
-// own. It does not bound the rate of a caller that rotates identifiers freely —
-// that needs a per-source dimension, which is the general rate-limit work.
+// Reaching the ceiling drops one bucket to make room. That can only hand its
+// owner a fresh budget, never deny it, so the ceiling bounds the memory a
+// caller's identifiers may cost and cannot become a denial of service of its
+// own — as long as making room stays constant-time, which is why the victim is
+// arbitrary rather than the oldest. It does not bound the rate of a caller that
+// rotates identifiers freely; that needs a per-source dimension, which is the
+// general rate-limit work.
 type boundedRateLimiterStore struct {
 	mu       sync.Mutex
 	visitors map[string]*boundedVisitor
@@ -114,14 +115,16 @@ func (s *boundedRateLimiterStore) pruneLocked(now time.Time) {
 	}
 }
 
-// evictLocked drops the least recently seen bucket to make room for a new one.
+// evictLocked drops one bucket to make room for a new one, in constant time.
+//
+// Which bucket goes does not matter: eviction only ever recreates a bucket with
+// a full burst, so every choice is permissive. It must not be a search for the
+// oldest one, though — a caller that invents a new identifier per request would
+// then force a walk of the whole map, under the mutex every other request needs,
+// on exactly the path this ceiling exists to bound.
 func (s *boundedRateLimiterStore) evictLocked() {
-	var oldestIdentifier string
-	var oldestSeen time.Time
-	for identifier, visitor := range s.visitors {
-		if oldestIdentifier == "" || visitor.lastSeen.Before(oldestSeen) {
-			oldestIdentifier, oldestSeen = identifier, visitor.lastSeen
-		}
+	for identifier := range s.visitors {
+		delete(s.visitors, identifier)
+		return
 	}
-	delete(s.visitors, oldestIdentifier)
 }
