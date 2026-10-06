@@ -316,6 +316,14 @@ func TestCreateSSOStateIsBudgetedRealServerIntegration(t *testing.T) {
 	require.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(err),
 		"an anonymous caller cannot mint SSO states without bound: %v", err)
 
+	// The buckets are per source, so the REST check is only meaningful while the
+	// address a lost stamp would fall back to — the shared 127.0.0.1 client's — still
+	// has room. Asserting that first keeps an already-spent loopback bucket from
+	// hiding a stamping failure.
+	loopbackClient := v1connect.NewAuthServiceClient(&http.Client{Timeout: 5 * time.Second}, env.BaseURL)
+	_, err = loopbackClient.CreateSSOState(ctx, connect.NewRequest(&emptypb.Empty{}))
+	require.NoError(t, err, "the loopback client's own bucket must still have room")
+
 	// The REST gateway answers /v1/* from the server's own loopback connection, so
 	// the bucket has to be the outer peer's or a caller could bypass the budget by
 	// switching to the REST form of the same method. This is also a regression check
@@ -328,4 +336,101 @@ func TestCreateSSOStateIsBudgetedRealServerIntegration(t *testing.T) {
 	defer restResp.Body.Close()
 	require.Equal(t, http.StatusTooManyRequests, restResp.StatusCode,
 		"the REST gateway must spend the same per-source bucket as the Connect entry")
+}
+
+// newHangingIdentityProvider is a stand-in provider that completes the token exchange
+// and then never answers the userinfo call, so nothing but the caller giving up can end
+// that request. It reports when the call arrived and when it ended.
+func newHangingIdentityProvider(t *testing.T) (provider *fakeIdentityProvider, started, finished <-chan struct{}) {
+	t.Helper()
+
+	startedCh := make(chan struct{})
+	finishedCh := make(chan struct{})
+	var startedOnce, finishedOnce sync.Once
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/token", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "fake-access-token",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	})
+	mux.HandleFunc("/userinfo", func(_ http.ResponseWriter, r *http.Request) {
+		startedOnce.Do(func() { close(startedCh) })
+		<-r.Context().Done()
+		finishedOnce.Do(func() { close(finishedCh) })
+	})
+
+	provider = &fakeIdentityProvider{srv: httptest.NewServer(mux)}
+	t.Cleanup(func() {
+		// The handler waits on its request context, so closing the connections ends it
+		// even if the test failed before the caller gave up.
+		provider.srv.CloseClientConnections()
+		provider.srv.Close()
+	})
+	return provider, startedCh, finishedCh
+}
+
+// M15: the login handler hands its own context to the identity provider call, so a
+// caller that gives up ends the outbound request instead of leaving it to run until the
+// client's 30-second timeout. The Connect client returns as soon as it stops waiting
+// either way, so the provider is the only observer: the stub reports the userinfo call
+// finishing.
+func TestSSOLoginStopsWhenTheCallerGivesUpRealServerIntegration(t *testing.T) {
+	// Not parallel: it registers an identity provider and may edit workspace-wide
+	// settings on the shared server.
+	ctx := context.Background()
+	env := sharedPostgresServiceEnvNoReset(t)
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	settingClient := v1connect.NewSettingServiceClient(httpClient, env.BaseURL)
+	ensureIntegrationExternalURL(ctx, t, env, settingClient, env.AdminToken())
+
+	provider, userInfoStarted, userInfoFinished := newHangingIdentityProvider(t)
+	idpResourceID := fmt.Sprintf("sso-hang-%d", time.Now().UnixNano())
+	registerIntegrationIdentityProvider(ctx, t, env, provider, idpResourceID, &storepb.FieldMapping{
+		Identifier:  "email",
+		Subject:     "sub",
+		DisplayName: "name",
+	})
+
+	authClient := v1connect.NewAuthServiceClient(httpClient, env.BaseURL)
+	state, err := authClient.CreateSSOState(ctx, connect.NewRequest(&emptypb.Empty{}))
+	require.NoError(t, err)
+
+	loginCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	loginDone := make(chan struct{})
+	go func() {
+		defer close(loginDone)
+		// The error is expected — the caller gave up — and what it says is not the
+		// point; the provider reports whether the call really stopped.
+		_, _ = authClient.Login(loginCtx, connect.NewRequest(&v1pb.LoginRequest{
+			IdpName: "idps/" + idpResourceID,
+			IdpContext: &v1pb.IdentityProviderContext{
+				Context: &v1pb.IdentityProviderContext_Oauth2Context{
+					Oauth2Context: &v1pb.OAuth2IdentityProviderContext{
+						Code:         "fake-authorization-code",
+						State:        state.Msg.GetState(),
+						CodeVerifier: "fake-code-verifier",
+					},
+				},
+			},
+		}))
+	}()
+
+	select {
+	case <-userInfoStarted:
+	case <-time.After(15 * time.Second):
+		t.Fatal("the identity provider never received the userinfo call")
+	}
+
+	cancel()
+	select {
+	case <-userInfoFinished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the outbound userinfo call outlived the caller: the login context did not reach the provider")
+	}
+	<-loginDone
 }

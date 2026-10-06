@@ -13,12 +13,14 @@ const SSOStateTTL = 5 * time.Minute
 
 // ssoStateCapacity bounds the in-flight OAuth2 state nonces. It has to stay above
 // everything the anonymous budget can admit while a nonce is still usable. The
-// budget's window is fixed rather than sliding, so one TTL can cover a full quota at
-// the end of a window and another at the start of the next: the bound is
-// (SSOStateTTL/throttleWindow + 1) × ssoStateRequestGlobalLimit = 1800, not the
-// 1500 the TTL alone suggests. Below it a caller that only mints nonces could fill
-// the cache and evict the state of everyone who is mid-sign-in — the DoS the budget
-// exists to close. window_limiter_test.go pins the relation.
+// budget's window is fixed rather than sliding, so the adversary's first quota may
+// start up to one window before the nonce is minted and still land inside its
+// lifetime, and every window boundary after that hands out another: the ceiling is
+// (ceil(SSOStateTTL/throttleWindow) + 1) × ssoStateRequestGlobalLimit — 6 × 300 = 1800
+// for the shipped values. Below it a caller that only mints nonces could fill the
+// cache and evict the state of everyone who is mid-sign-in — the DoS the budget exists
+// to close. window_limiter_test.go pins the relation and measures the property itself
+// against the real limiter and cache.
 const ssoStateCapacity = 4096
 
 // ErrInstanceConnectionLimit reports that an instance is already using all of

@@ -94,6 +94,15 @@ func TestThrottleInterceptorSSOStateBudget(t *testing.T) {
 	require.NoError(t, allow(t, interceptor, testSSOStateSourceBudget, procedure, http.Header{}, "203.0.113.5:4040", now))
 	requireResourceExhausted(t, interceptor.check(context.Background(), procedure, http.Header{}, "203.0.113.5:4040", now))
 	require.NoError(t, interceptor.check(context.Background(), procedure, http.Header{}, "198.51.100.9:4040", now))
+
+	// It has a budget of its own rather than the Login one. The two carry the same
+	// numbers — one sign-in flow is one state plus one login — so only the identity of
+	// the limiter distinguishes them, and the behavioural assertions above cannot.
+	ssoLimiter, ssoExempt := interceptor.limiterFor(procedure)
+	require.False(t, ssoExempt, "minting a state is never a normal signed-in call")
+	require.Same(t, interceptor.stateCfg.SSOStateRequestLimiter, ssoLimiter)
+	loginLimiter, _ := interceptor.limiterFor(v1connect.AuthServiceLoginProcedure)
+	require.NotSame(t, loginLimiter, ssoLimiter, "an SSO login must not spend the budget of the state it was minted with")
 }
 
 // TestThrottleInterceptorExemptsAuthenticatedCreateUserButNotLogin pins the one

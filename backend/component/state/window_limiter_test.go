@@ -125,18 +125,52 @@ func TestSSOStateLimiterBoundsOneSource(t *testing.T) {
 }
 
 // The cache has to hold every nonce the global budget can admit while a nonce is
-// still usable. The window is fixed rather than sliding, so one TTL can cover a full
-// quota at the end of a window and another at the start of the next: the bound is one
-// quota per window *plus one*, not the TTL divided by the window. Below it a caller
-// that only mints nonces fills the cache and evicts the state of users who are
-// mid-sign-in — the DoS the budget exists to close, because the capacity, not the
-// request rate, is then the binding constraint. Changing either number alone breaks
-// this relation rather than the test.
+// still usable. The window is fixed rather than sliding, so the adversary's first
+// quota may start up to one window before the nonce is minted and still land inside
+// its lifetime, and every window boundary after that hands out another: the ceiling
+// is ceil(TTL/window) + 1 quotas. The ceiling matters — truncating division loses a
+// whole quota whenever the TTL is not a multiple of the window (779s would be
+// admitted 14 times, not 13). Below this relation a caller that only mints nonces
+// fills the cache and evicts the state of users who are mid-sign-in — the DoS the
+// budget exists to close, because the capacity, not the request rate, is then the
+// binding constraint.
 func TestSSOStateCacheOutgrowsTheStateBudget(t *testing.T) {
 	t.Parallel()
 
-	quotaPerWindow := int(SSOStateTTL/throttleWindow) + 1
-	admittedPerTTL := ssoStateGlobalLimit * quotaPerWindow
-	require.Greater(t, ssoStateCapacity, admittedPerTTL,
+	quotaPerTTL := int((SSOStateTTL+throttleWindow-1)/throttleWindow) + 1
+	require.Greater(t, ssoStateCapacity, ssoStateGlobalLimit*quotaPerTTL,
 		"the state cache must hold every nonce the global budget admits within one TTL")
+}
+
+// The relation above is arithmetic over constants; this is the property itself,
+// measured against the real limiter and the real cache. The flood spends the worst
+// case the counter allows: a full quota one window before the victim mints its nonce
+// (so the next quota lands immediately inside the victim's lifetime), then a fresh
+// quota at every window boundary until the nonce expires.
+func TestSSOStateFloodCannotEvictAValidNonce(t *testing.T) {
+	t.Parallel()
+
+	stateCfg, err := New()
+	require.NoError(t, err)
+
+	minted := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	const victim = "victim-nonce"
+	stateCfg.SSOStateCache.Add(victim, minted)
+
+	limiter := stateCfg.SSOStateRequestLimiter
+	admitted := 0
+	for quotaTime := minted.Add(-throttleWindow); quotaTime.Before(minted.Add(SSOStateTTL)); quotaTime = quotaTime.Add(throttleWindow) {
+		// Distinct sources: the flood is not one client's, and the global budget is
+		// what has to hold.
+		for i := range ssoStateGlobalLimit {
+			if !limiter.Allow("198.51.100."+strconv.Itoa(i), quotaTime) {
+				break
+			}
+			admitted++
+			stateCfg.SSOStateCache.Add("flood-"+strconv.Itoa(admitted), quotaTime)
+		}
+	}
+	require.GreaterOrEqual(t, admitted, ssoStateGlobalLimit, "the flood has to be able to spend at least one quota")
+	require.True(t, stateCfg.SSOStateCache.Contains(victim),
+		"a nonce a user just minted must survive the anonymous flood for its whole TTL")
 }
