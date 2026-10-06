@@ -177,6 +177,7 @@ func TestClientAddressReadsTheForwardedChainFromTheRight(t *testing.T) {
 		trustedProxies []string
 		forwarded      string
 		gatewayPeer    string
+		forgedPeer     string
 		want           string
 	}{
 		{
@@ -229,12 +230,10 @@ func TestClientAddressReadsTheForwardedChainFromTheRight(t *testing.T) {
 			want:        "203.0.113.7",
 		},
 		{
-			// Both sides come from the same outer RemoteAddr, but each is parsed
-			// separately, so the comparison is on the normalized form.
-			name:        "a non-canonical gateway stamp still matches",
+			name:        "a non-canonical gateway stamp is normalized",
 			peer:        "127.0.0.1:5555",
 			forwarded:   "2001:0db8:0000::1",
-			gatewayPeer: "2001:db8::1",
+			gatewayPeer: "2001:0db8:0000::1",
 			want:        "2001:db8::1",
 		},
 		{
@@ -248,13 +247,13 @@ func TestClientAddressReadsTheForwardedChainFromTheRight(t *testing.T) {
 			want: "198.51.100.7",
 		},
 		{
-			// A caller that sends the marker itself cannot make it match the
-			// entry the gateway appends, so it is ignored.
-			name:        "a stamped peer that does not match the forwarded tail is ignored",
-			peer:        "127.0.0.1:5555",
-			forwarded:   "9.9.9.9, 203.0.113.7",
-			gatewayPeer: "1.2.3.4",
-			want:        "127.0.0.1",
+			// A caller that reaches the Connect handler itself can send the marker
+			// header, but not the proof this process would have written for it.
+			name:       "a forged stamp without the proof is ignored",
+			peer:       "127.0.0.1:5555",
+			forwarded:  "8.8.8.8",
+			forgedPeer: "8.8.8.8",
+			want:       "127.0.0.1",
 		},
 		{
 			name:      "a loopback peer without the marker stays loopback",
@@ -273,11 +272,26 @@ func TestClientAddressReadsTheForwardedChainFromTheRight(t *testing.T) {
 				header.Set("X-Forwarded-For", tc.forwarded)
 			}
 			if tc.gatewayPeer != "" {
-				header.Set(GatewayPeerHeader, tc.gatewayPeer)
+				StampGatewayPeer(header, tc.gatewayPeer)
+				throughGateway(header)
+			}
+			if tc.forgedPeer != "" {
+				header.Set(GatewayPeerHeader, tc.forgedPeer)
+				header.Set(GatewayProofHeader, "not-the-mac-this-process-would-write")
 			}
 			require.Equal(t, tc.want, ClientAddress(header, tc.peer, tc.trustedProxies))
 		})
 	}
+}
+
+// throughGateway emulates what grpc-gateway does with the stamped headers: it
+// strips the "Grpc-Metadata-" prefix, so the Connect handler sees the metadata
+// keys the resolver reads.
+func throughGateway(header http.Header) {
+	header.Set(GatewayPeerHeader, header.Get(gatewayPeerForwardHeader))
+	header.Set(GatewayProofHeader, header.Get(gatewayProofForwardHeader))
+	header.Del(gatewayPeerForwardHeader)
+	header.Del(gatewayProofForwardHeader)
 }
 
 // The gateway middleware overwrites rather than appends, so a caller cannot
@@ -287,14 +301,31 @@ func TestStampGatewayPeerOverwritesACallerSuppliedValue(t *testing.T) {
 
 	header := http.Header{}
 	header.Set(gatewayPeerForwardHeader, "1.2.3.4")
+	header.Set(gatewayProofForwardHeader, "bogus")
 	StampGatewayPeer(header, "203.0.113.7:4040")
 	require.Equal(t, "203.0.113.7", header.Get(gatewayPeerForwardHeader))
+	require.NotEqual(t, "bogus", header.Get(gatewayProofForwardHeader))
 
-	// A missing peer leaves no marker behind, so nothing is believed.
+	// The stamp and its proof together are what the resolver believes.
+	stamped := http.Header{}
+	StampGatewayPeer(stamped, "203.0.113.7:4040")
+	throughGateway(stamped)
+	require.Equal(t, "203.0.113.7", verifiedGatewayPeer(stamped))
+
+	// Replacing the address while keeping the proof stops it from being believed,
+	// even when the address it names is the caller's choice.
+	forged := http.Header{}
+	forged.Set(GatewayPeerHeader, "8.8.8.8")
+	forged.Set(GatewayProofHeader, stamped.Get(GatewayProofHeader))
+	require.Empty(t, verifiedGatewayPeer(forged))
+
+	// A missing peer leaves neither header behind, so nothing is believed.
 	empty := http.Header{}
 	empty.Set(gatewayPeerForwardHeader, "1.2.3.4")
+	empty.Set(gatewayProofForwardHeader, "bogus")
 	StampGatewayPeer(empty, "")
 	require.Empty(t, empty.Get(gatewayPeerForwardHeader))
+	require.Empty(t, empty.Get(gatewayProofForwardHeader))
 }
 
 // grpc-gateway turns each header line into metadata and joins the entries it

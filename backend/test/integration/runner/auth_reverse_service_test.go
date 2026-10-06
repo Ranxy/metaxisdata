@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -170,6 +172,64 @@ func jwtClaimValue(t *testing.T, token, claim string) any {
 	var claims map[string]any
 	require.NoError(t, json.Unmarshal(payload, &claims))
 	return claims[claim]
+}
+
+// M2 end to end: a REST /v1/* request reaches the Connect handler over the
+// gateway's own loopback connection, so the address the server attributes it to
+// has to come from the stamped outer peer instead. The client binds a second
+// loopback address to make the two differ — if the gateway stamp were lost or
+// never forwarded, request_ip would read 127.0.0.1.
+func TestRestGatewayKeepsTheOuterPeerRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	// 127.0.0.2 is bindable on Linux but not everywhere, so skip where it is not.
+	probe, err := net.Listen("tcp", "127.0.0.2:0")
+	if err != nil {
+		t.Skipf("127.0.0.2 is not bindable here: %v", err)
+	}
+	require.NoError(t, probe.Close())
+
+	env := sharedPostgresServiceEnvNoReset(t)
+	dialer := &net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.2")}}
+	client := &http.Client{
+		Timeout:   5 * time.Second,
+		Transport: &http.Transport{DialContext: dialer.DialContext},
+	}
+	t.Cleanup(client.CloseIdleConnections)
+
+	// CreateDeviceLogin is anonymous and REST-addressable, and the GET reads back
+	// the address the server attributed the create to.
+	resp, err := client.Post(env.BaseURL+"/v1/auth/deviceLogins", "application/json",
+		strings.NewReader(`{"clientName":"gateway-peer-test"}`))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	createdBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(createdBody))
+	var created struct {
+		UserCode string `json:"userCode"`
+	}
+	require.NoError(t, json.Unmarshal(createdBody, &created))
+	require.NotEmpty(t, created.UserCode)
+
+	// GetDeviceLogin is not anonymous-allowed (the confirmation page requires a
+	// signed-in caller), so the read carries the admin token.
+	getReq, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+		env.BaseURL+"/v1/deviceLogins/"+created.UserCode, nil)
+	require.NoError(t, err)
+	getReq.Header.Set("Authorization", "Bearer "+env.AdminToken())
+	getResp, err := client.Do(getReq)
+	require.NoError(t, err)
+	defer getResp.Body.Close()
+	loginBody, err := io.ReadAll(getResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, getResp.StatusCode, string(loginBody))
+	var login struct {
+		RequestIP string `json:"requestIp"`
+	}
+	require.NoError(t, json.Unmarshal(loginBody, &login))
+	require.Equal(t, "127.0.0.2", login.RequestIP,
+		"the REST gateway must attribute the request to its outer peer, not to its own loopback connection")
 }
 
 // M4: a logout writes a persistent record keyed by the token's jti, and the

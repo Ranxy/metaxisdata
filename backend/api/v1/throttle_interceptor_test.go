@@ -79,19 +79,24 @@ func TestThrottleInterceptorCreateUserBudget(t *testing.T) {
 	requireResourceExhausted(t, interceptor.check(context.Background(), v1connect.UserServiceCreateUserProcedure, http.Header{}, "203.0.113.5:4040", now))
 }
 
-// TestThrottleInterceptorSkipsAuthenticatedCallers pins that the budget bounds
-// anonymous requests only: a signed-in caller's CPU is bounded per principal by
-// the general rate limiting, not here.
-func TestThrottleInterceptorSkipsAuthenticatedCallers(t *testing.T) {
+// TestThrottleInterceptorExemptsAuthenticatedCreateUserButNotLogin pins the one
+// difference between the two budgets: an administrator may create users in bulk,
+// but Login is never a normal signed-in call and every request still spends
+// bcrypt, so presenting a credential does not buy an unbounded mint/logout loop.
+func TestThrottleInterceptorExemptsAuthenticatedCreateUserButNotLogin(t *testing.T) {
 	t.Parallel()
 
 	interceptor := newTestThrottleInterceptor(t, nil)
 	ctx := context.WithValue(context.Background(), common.UserContextKey, &store.UserMessage{ID: 7, Email: "admin@example.com"})
 	now := time.Now()
 
-	for range testLoginSourceBudget * 3 {
-		require.NoError(t, interceptor.check(ctx, v1connect.AuthServiceLoginProcedure, http.Header{}, "203.0.113.5:4040", now))
+	// CreateUser: a signed-in caller is exempt, so far more than the budget is fine.
+	for range testCreateUserSourceBudget * 3 {
+		require.NoError(t, interceptor.check(ctx, v1connect.UserServiceCreateUserProcedure, http.Header{}, "203.0.113.5:4040", now))
 	}
+	// Login: the budget applies even with a credential.
+	require.NoError(t, allow(t, interceptor, testLoginSourceBudget, v1connect.AuthServiceLoginProcedure, http.Header{}, "203.0.113.5:4040", now))
+	requireResourceExhausted(t, interceptor.check(ctx, v1connect.AuthServiceLoginProcedure, http.Header{}, "203.0.113.5:4040", now))
 }
 
 // TestThrottleInterceptorIgnoresUnrelatedProcedures pins that the interceptor is

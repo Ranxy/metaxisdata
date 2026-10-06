@@ -49,3 +49,27 @@ func TestRevocationCacheOverwritesACachedLiveDecision(t *testing.T) {
 	require.True(t, fresh)
 	require.True(t, revoked)
 }
+
+// A table read that started before a concurrent logout can finish after it; its
+// "not revoked" answer must not overwrite the revocation the logout just cached,
+// or the token would be served until the next read.
+func TestRevocationCacheDoesNotDowngradeARevocation(t *testing.T) {
+	t.Parallel()
+
+	cache, err := newRevocationCache()
+	require.NoError(t, err)
+	now := time.Now()
+
+	cache.Revoke("token", now)
+	cache.Remember("token", false, now)
+
+	revoked, fresh := cache.Lookup("token", now)
+	require.True(t, fresh)
+	require.True(t, revoked, "a stale read must not clear a revocation")
+
+	// A later read of the table is free to record a revocation, of course.
+	cache.Remember("other", true, now)
+	revoked, fresh = cache.Lookup("other", now)
+	require.True(t, fresh)
+	require.True(t, revoked)
+}

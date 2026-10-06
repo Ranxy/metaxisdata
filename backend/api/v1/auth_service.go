@@ -295,6 +295,12 @@ func (s *AuthService) Logout(ctx context.Context, req *connect.Request[v1pb.Logo
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.Errorf("invalid access token"))
 	}
+	// Every token this server signs carries a jti, and it is what the revocation
+	// record is keyed by. Refusing here keeps a logout from reporting success
+	// without a record that Resolve can act on.
+	if identity.TokenID == "" {
+		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("access token carries no revocable token id"))
+	}
 	// The record is persistent, keyed by the token's jti and kept only until the
 	// token's own expiry, so a caller cannot evict it by logging in and out and
 	// another replica refuses the token too. The cache makes this process refuse
@@ -302,9 +308,7 @@ func (s *AuthService) Logout(ctx context.Context, req *connect.Request[v1pb.Logo
 	if err := s.store.RevokeToken(ctx, identity.TokenID, identity.ExpiresAt); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to revoke the access token"))
 	}
-	if identity.TokenID != "" {
-		s.stateCfg.TokenRevocationCache.Revoke(identity.TokenID, time.Now())
-	}
+	s.stateCfg.TokenRevocationCache.Revoke(identity.TokenID, time.Now())
 
 	resp := connect.NewResponse(&emptypb.Empty{})
 

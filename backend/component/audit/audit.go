@@ -4,12 +4,16 @@ package audit
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -340,25 +344,76 @@ func BuildAuditStatus(err error) *storepb.AuditLogStatus {
 // GatewayPeerHeader is the metadata key the REST gateway carries the outer
 // request's peer address on. The gateway reaches the Connect handler over a
 // loopback self-connection, so without it every REST request would be recorded
-// as 127.0.0.1. The /v1/* middleware stamps it (see StampGatewayPeer); the
-// value is only believed when it also matches the last X-Forwarded-For entry,
-// which is what grpc-gateway itself appends.
+// as 127.0.0.1. Only a request that also carries GatewayProofHeader, a MAC over
+// this value with a per-process secret, is believed (see StampGatewayPeer).
 const GatewayPeerHeader = "Metaxisdata-Client-Peer"
 
-// gatewayPeerForwardHeader is how the header travels from the /v1/* middleware
-// to the Connect handler: grpc-gateway forwards "Grpc-Metadata-*" headers as
-// gRPC metadata, stripping the prefix.
-const gatewayPeerForwardHeader = "Grpc-Metadata-" + GatewayPeerHeader
+// GatewayProofHeader is the metadata key carrying that MAC.
+const GatewayProofHeader = "Metaxisdata-Gateway-Proof"
+
+// gatewayPeerForwardHeader and gatewayProofForwardHeader are how the two travel
+// from the /v1/* middleware to the Connect handler: grpc-gateway forwards
+// "Grpc-Metadata-*" headers as gRPC metadata, stripping the prefix.
+const (
+	gatewayPeerForwardHeader  = "Grpc-Metadata-" + GatewayPeerHeader
+	gatewayProofForwardHeader = "Grpc-Metadata-" + GatewayProofHeader
+)
+
+// gatewayProof is the per-process secret behind GatewayProofHeader. It never
+// leaves the process, so a caller cannot produce a valid proof; it is generated
+// on first use like the login path's dummy hash.
+var gatewayProof = sync.OnceValues(func() (string, error) {
+	return common.RandomString(32)
+})
 
 // StampGatewayPeer records the outer peer address for a request the REST gateway
-// is about to forward over its loopback self-connection. It overwrites any
-// caller-supplied copy, so the only value that reaches the Connect handler is
-// the one this process put there.
+// is about to forward over its loopback self-connection, together with the proof
+// that this process wrote it. Both headers are deleted first, so a caller cannot
+// keep a value of its own.
 func StampGatewayPeer(header http.Header, peerAddr string) {
 	header.Del(gatewayPeerForwardHeader)
-	if peer := HostFromAddr(peerAddr); peer != "" {
-		header.Set(gatewayPeerForwardHeader, peer)
+	header.Del(gatewayProofForwardHeader)
+	peer, ok := normalizeIP(HostFromAddr(peerAddr))
+	if !ok {
+		return
 	}
+	proof, err := gatewayPeerProof(peer)
+	if err != nil {
+		return
+	}
+	header.Set(gatewayPeerForwardHeader, peer)
+	header.Set(gatewayProofForwardHeader, proof)
+}
+
+// gatewayPeerProof binds a stamped peer address to this process.
+func gatewayPeerProof(peer string) (string, error) {
+	secret, err := gatewayProof()
+	if err != nil {
+		return "", err
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	if _, err := mac.Write([]byte(peer)); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(mac.Sum(nil)), nil
+}
+
+// verifiedGatewayPeer returns the stamped peer address when the request carries a
+// proof this process produced for it. A stamp without a valid proof is client
+// text and is ignored.
+func verifiedGatewayPeer(header http.Header) string {
+	peer, ok := normalizeIP(header.Get(GatewayPeerHeader))
+	if !ok {
+		return ""
+	}
+	expected, err := gatewayPeerProof(peer)
+	if err != nil {
+		return ""
+	}
+	if !hmac.Equal([]byte(expected), []byte(header.Get(GatewayProofHeader))) {
+		return ""
+	}
+	return peer
 }
 
 // ClientAddress resolves the address a request should be attributed to. The
@@ -377,13 +432,11 @@ func ClientAddress(header http.Header, peerAddr string, trustedProxies []string)
 		return ""
 	}
 	// The REST gateway proxies through a loopback self-connection, so the peer
-	// alone says nothing about the caller. grpc-gateway appends the outer
-	// request's RemoteAddr to X-Forwarded-For, and the gateway middleware records
-	// that same address in GatewayPeerHeader; the two only agree when the
-	// request really came through the gateway, because the gateway appends the
-	// last entry itself and the middleware overwrites the header.
+	// alone says nothing about the caller. The middleware records the outer peer
+	// with a proof only this process can produce; a caller that reaches the
+	// Connect handler directly (through a same-host proxy, say) cannot forge it.
 	if ip := net.ParseIP(peerHost); ip != nil && ip.IsLoopback() {
-		if outer, ok := normalizeIP(header.Get(GatewayPeerHeader)); ok && outer == lastForwarded(header) {
+		if outer := verifiedGatewayPeer(header); outer != "" {
 			peerHost = outer
 		}
 	}
@@ -412,16 +465,6 @@ func forwardedClient(header http.Header, trustedProxies []string) string {
 		return hosts[0]
 	}
 	return ""
-}
-
-// lastForwarded returns the last address in the chain: the entry the nearest hop
-// appended.
-func lastForwarded(header http.Header) string {
-	hosts := forwardedHosts(header)
-	if len(hosts) == 0 {
-		return ""
-	}
-	return hosts[len(hosts)-1]
 }
 
 // forwardedHosts is every valid address in every X-Forwarded-For header line, in

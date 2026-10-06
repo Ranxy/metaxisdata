@@ -46,8 +46,16 @@ func (c *RevocationCache) Lookup(tokenID string, now time.Time) (revoked, fresh 
 	return decision.revoked, true
 }
 
-// Remember records a decision read from the persistent table.
+// Remember records a decision read from the persistent table. It never
+// downgrades a revoked decision already in the cache: a table read that started
+// before a concurrent logout can finish after it, and overwriting the entry
+// would serve the revoked token until the next read.
 func (c *RevocationCache) Remember(tokenID string, revoked bool, now time.Time) {
+	if !revoked {
+		if existing, ok := c.entries.Peek(tokenID); ok && existing.revoked {
+			return
+		}
+	}
 	c.entries.Add(tokenID, revocationDecision{revoked: revoked, checkedAt: now})
 }
 

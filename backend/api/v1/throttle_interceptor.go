@@ -22,9 +22,10 @@ import (
 // global backstop, so one client cannot spend the deployment's CPU and a proxy
 // that is not listed as trusted cannot let every client share one budget.
 //
-// The budget covers anonymous requests. A signed-in caller passed a credential
-// check already, and bounding an authenticated principal per user is the general
-// rate-limit work (M24), not this one.
+// CreateUser exempts a signed-in caller, because an administrator may create
+// users in bulk and bounding an authenticated principal per user is the general
+// rate-limit work (M24). Login does not: it is not a normal signed-in call, and
+// every request still spends bcrypt on whoever the address names.
 type ThrottleInterceptor struct {
 	stateCfg       *state.State
 	trustedProxies []string
@@ -44,15 +45,17 @@ func (in *ThrottleInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFu
 	}
 }
 
-// check applies the anonymous budget of procedure. It returns a ConnectRPC error
-// when the budget is exhausted.
+// check applies the budget of procedure. It returns a ConnectRPC error when the
+// budget is exhausted.
 func (in *ThrottleInterceptor) check(ctx context.Context, procedure string, header http.Header, peerAddr string, now time.Time) error {
-	limiter := in.limiterFor(procedure)
+	limiter, skipAuthenticated := in.limiterFor(procedure)
 	if limiter == nil {
 		return nil
 	}
-	if user, ok := GetUserFromContext(ctx); ok && user != nil {
-		return nil
+	if skipAuthenticated {
+		if user, ok := GetUserFromContext(ctx); ok && user != nil {
+			return nil
+		}
 	}
 	// The source is the resolved client address, the same one the audit row
 	// records, so a caller cannot reset its bucket with a forwarding header.
@@ -71,15 +74,15 @@ func (*ThrottleInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFu
 	return next
 }
 
-// limiterFor returns the budget for a procedure, or nil for every method that is
-// not CPU-bound and anonymous.
-func (in *ThrottleInterceptor) limiterFor(procedure string) *state.WindowLimiter {
+// limiterFor returns the budget for a procedure and whether a signed-in caller is
+// exempt from it. A nil limiter means the method is not CPU-bound and anonymous.
+func (in *ThrottleInterceptor) limiterFor(procedure string) (*state.WindowLimiter, bool) {
 	switch procedure {
 	case v1connect.AuthServiceLoginProcedure:
-		return in.stateCfg.LoginRequestLimiter
+		return in.stateCfg.LoginRequestLimiter, false
 	case v1connect.UserServiceCreateUserProcedure:
-		return in.stateCfg.CreateUserRequestLimiter
+		return in.stateCfg.CreateUserRequestLimiter, true
 	default:
-		return nil
+		return nil, false
 	}
 }
