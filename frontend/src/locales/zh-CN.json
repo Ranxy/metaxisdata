@@ -212,9 +212,6 @@
     "viewInBrowser": "在元数据浏览器中查看"
   },
   "generalSettings": {
-    "allowSsoEmailIdentity": "允许以邮箱作为 SSO 身份",
-    "allowSsoEmailIdentityHint": "不再要求身份提供方给出稳定的 subject，而是按邮箱声明识别 SSO 登录，因此没有 subject 声明的提供方也能接入。该邮箱已存在的账号会被这次登录接管：绑定到该提供方，原密码失效，用它签发的会话一并失效。",
-    "allowSsoEmailIdentityWarning": "仅在身份提供方会验证邮箱地址时开启：能改该提供方邮箱的人即可登录成它命名的账号。",
     "debugMode": "开启运行时调试模式",
     "debugModeHint": "将服务端日志级别切换为 debug，开启详细请求日志与 /debug/pprof，并允许 panic 处理把堆栈返回给调用方。排查完成后请及时关闭。",
     "debugSection": "调试模式",
@@ -247,6 +244,10 @@
     "saveSuccess": "设置已保存",
     "signupSection": "注册与登录",
     "signupSectionDescription": "控制用户如何加入和登录该工作区。",
+    "ssoEmailIdentityIdps": "以邮箱声明识别身份的 SSO 提供方",
+    "ssoEmailIdentityIdpsHint": "列出的提供方（idps/{idp}）可用邮箱声明代替稳定的 subject 识别 SSO 登录，因此没有 subject 声明的提供方也能接入。该邮箱已存在的账号会因此可经该提供方登录：原本没有任何绑定关系的账号会被接管，原密码及其签发的会话一并失效。未列出的提供方保持默认：邮箱不作为身份。留空即全部关闭。",
+    "ssoEmailIdentityIdpsPlaceholder": "idps/提供方ID, idps/另一个",
+    "ssoEmailIdentityIdpsWarning": "仅在提供方会验证邮箱地址、且同一地址只归属一个人时才列入：能改该提供方邮箱的人即可登录成它命名的账号，工作区管理员账号也不例外。",
     "title": "通用设置",
     "unsavedHint": "有未保存的更改。",
     "workspaceSection": "工作区",

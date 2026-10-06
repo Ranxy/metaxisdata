@@ -26,11 +26,6 @@ CREATE TABLE principal (
     email text NOT NULL,
     password_hash text NOT NULL,
     phone text NOT NULL DEFAULT '',
-    -- The identity provider subject this account signs in with, empty for
-    -- accounts that authenticate with a password. A repeat SSO login resolves
-    -- against this binding, never against the email column, which is mutable.
-    idp_resource_id text NOT NULL DEFAULT '',
-    idp_subject text NOT NULL DEFAULT '',
     -- Stored as UserProfile (proto/store/store/user.proto)
     profile jsonb NOT NULL DEFAULT '{}'
 );
@@ -40,9 +35,20 @@ CREATE TABLE principal (
 -- deleted account does not block reusing its address.
 CREATE UNIQUE INDEX idx_principal_unique_email ON principal (LOWER(email)) WHERE deleted = FALSE;
 
--- One account per identity provider subject. Partial on the empty binding so
--- the password accounts, which have no subject, do not collide with each other.
-CREATE UNIQUE INDEX idx_principal_unique_idp_subject ON principal (idp_resource_id, idp_subject) WHERE idp_resource_id <> '';
+-- The identity provider subjects an account may sign in with. A repeat SSO login
+-- resolves against this binding, never against the email column, which is
+-- mutable. An account can carry several: one workspace can configure more than
+-- one provider, and a person (or a migration) may be enrolled in several.
+CREATE TABLE principal_idp_binding (
+    principal_id integer NOT NULL REFERENCES principal(id) ON DELETE CASCADE,
+    idp_resource_id text NOT NULL,
+    subject text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    -- One account per provider subject: a subject is one person at that provider.
+    PRIMARY KEY (idp_resource_id, subject)
+);
+
+CREATE INDEX idx_principal_idp_binding_principal ON principal_idp_binding (principal_id);
 
 -- Setting
 CREATE TABLE setting (

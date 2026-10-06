@@ -79,19 +79,20 @@ export declare type WorkspaceProfileSetting = Message<"metaxisdata.v1.WorkspaceP
   mcpEnabled: boolean;
 
   /**
-   * Whether an SSO login may be identified by the identity provider's email
-   * claim instead of a stable subject, and may adopt an existing account with
-   * that address — binding it to the login and invalidating its password.
+   * The identity providers, as idps/{idp} resource names, whose email claim may
+   * stand in for a stable subject. For a listed provider, field_mapping.subject
+   * becomes optional and a login whose address claim matches an existing account
+   * makes that account reachable through the provider — adopting it (its password
+   * is replaced with a random one) when it had no provider binding at all.
    *
-   * Off by default, and only sound when the provider verifies addresses and the
-   * (administrator-written) identity provider configuration is trusted. While it
-   * is on, field_mapping.subject is optional and falls back to the email claim,
-   * and an account created before SSO was set up can sign in again instead of
-   * being refused.
+   * Empty (the default) turns the feature off for every provider. The address
+   * claim is mutable, so listing a provider asserts that it verifies addresses and
+   * that its configuration, which only an administrator can write, is trusted:
+   * whoever can set an address there can sign in as the account it names.
    *
-   * @generated from field: bool allow_sso_email_identity = 9;
+   * @generated from field: repeated string sso_email_identity_idps = 10;
    */
-  allowSsoEmailIdentity: boolean;
+  ssoEmailIdentityIdps: string[];
 };
 
 /**

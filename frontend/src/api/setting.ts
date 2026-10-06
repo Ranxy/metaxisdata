@@ -23,7 +23,7 @@ export async function updateWorkspaceProfileSetting(
     enforceIdentityDomain?: boolean;
     allowedLlmProviderProfiles?: string[];
     mcpEnabled?: boolean;
-    allowSsoEmailIdentity?: boolean;
+    ssoEmailIdentityIdps?: string[];
   },
   updateMask: string[]
 ) {
@@ -37,7 +37,7 @@ export async function updateWorkspaceProfileSetting(
       enforceIdentityDomain: setting.enforceIdentityDomain ?? false,
       allowedLlmProviderProfiles: setting.allowedLlmProviderProfiles ?? [],
       mcpEnabled: setting.mcpEnabled ?? false,
-      allowSsoEmailIdentity: setting.allowSsoEmailIdentity ?? false,
+      ssoEmailIdentityIdps: setting.ssoEmailIdentityIdps ?? [],
     }),
     updateMask: { paths: updateMask },
   });

@@ -181,8 +181,10 @@ func TestSSOLoginBindsToTheIdentityProviderSubjectRealServerIntegration(t *testi
 		require.NotEmpty(t, accountName)
 
 		var boundSubject string
-		require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
-			`SELECT idp_subject FROM principal WHERE email = $1`, employeeEmail).Scan(&boundSubject))
+		require.NoError(t, env.Store.GetDB().QueryRowContext(ctx, `
+			SELECT binding.subject FROM principal_idp_binding AS binding
+			JOIN principal ON principal.id = binding.principal_id
+			WHERE principal.email = $1`, employeeEmail).Scan(&boundSubject))
 		require.Equal(t, subject, boundSubject, "the account is bound to the subject, not to the address")
 	})
 
@@ -205,10 +207,12 @@ func TestSSOLoginBindsToTheIdentityProviderSubjectRealServerIntegration(t *testi
 		_, err = loginViaIntegrationIdentityProvider(ctx, t, authClient, idpResourceID)
 		require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err), "unexpected error: %v", err)
 
-		var boundSubject string
-		require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
-			`SELECT idp_subject FROM principal WHERE email = $1`, claimedEmail).Scan(&boundSubject))
-		require.Empty(t, boundSubject, "the pre-existing account must not be adopted by a login")
+		var bindings int
+		require.NoError(t, env.Store.GetDB().QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM principal_idp_binding AS binding
+			JOIN principal ON principal.id = binding.principal_id
+			WHERE principal.email = $1`, claimedEmail).Scan(&bindings))
+		require.Zero(t, bindings, "the pre-existing account must not be adopted by a login")
 	})
 
 	t.Run("deleting the squatting account frees the address", func(t *testing.T) {
@@ -240,8 +244,10 @@ func TestSSOLoginBindsToTheIdentityProviderSubjectRealServerIntegration(t *testi
 		require.NotEqual(t, squatter.Msg.GetName(), resp.GetUser().GetName())
 
 		var boundSubject string
-		require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
-			`SELECT idp_subject FROM principal WHERE email = $1 AND deleted = FALSE`, squattedEmail).Scan(&boundSubject))
+		require.NoError(t, env.Store.GetDB().QueryRowContext(ctx, `
+			SELECT binding.subject FROM principal_idp_binding AS binding
+			JOIN principal ON principal.id = binding.principal_id
+			WHERE principal.email = $1 AND principal.deleted = FALSE`, squattedEmail).Scan(&boundSubject))
 		require.Equal(t, freedSubject, boundSubject)
 	})
 

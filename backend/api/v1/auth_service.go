@@ -351,9 +351,10 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 	if err != nil {
 		return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get workspace setting"))
 	}
-	// With the email-identity switch on, the address claim may stand in for the
-	// subject and a login may adopt the account that already carries it.
-	allowEmailIdentity := setting.GetAllowSsoEmailIdentity()
+	// For a provider an administrator has listed as trusting its own address
+	// claim, the address may stand in for the subject and a login may make an
+	// existing account with that address reachable through it.
+	allowEmailIdentity := slices.Contains(setting.GetSsoEmailIdentityIdps(), idpID)
 
 	var userInfo *storepb.IdentityProviderUserInfo
 	switch idp.Type {
@@ -364,7 +365,7 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 		}
 		oauth2Config := idp.Config.GetOauth2Config()
 		if err := validateIDPSubjectMapping(oauth2Config.GetFieldMapping(), allowEmailIdentity); err != nil {
-			return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.Wrapf(err, "identity provider %q is misconfigured", idp.Title))
+			return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.Wrapf(err, "identity provider %q cannot resolve logins", idp.Title))
 		}
 		// The state binds the callback to the client that started the flow,
 		// which is what stops an attacker from completing a code exchange in
@@ -456,41 +457,35 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 		if !allowEmailIdentity {
 			return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf("email %s already belongs to an active account that is not linked to identity provider %q; an administrator has to move that account's address, or delete it, before this login can create the account", email, idp.Title))
 		}
-		// The workspace accepts the address as this person's identity, and the
-		// identity provider configuration that says so is administrator-written,
-		// so the login takes the account over instead of refusing it: the account
-		// is bound to the subject and its password is voided, which also retires
-		// whatever sessions the previous holder had.
+		// The workspace lists this provider as one whose address claim is its
+		// identity, and its configuration is administrator-written, so the login
+		// makes the account reachable through it instead of refusing. An account
+		// that had no provider binding is adopted: its password is voided, which
+		// also retires whatever sessions the previous holder had.
 		if existedUser.Type != storepb.PrincipalType_END_USER {
 			return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf("email %s belongs to a %s, which cannot sign in through an identity provider", email, existedUser.Type.String()))
-		}
-		if existedUser.IDPResourceID != "" {
-			return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf("email %s is already linked to identity provider %q under another subject; an administrator has to delete that account before it can be linked again", email, idp.Title))
 		}
 		passwordHash, err := randomPasswordHash()
 		if err != nil {
 			return nil, false, connect.NewError(connect.CodeInternal, err)
 		}
-		adopted, err := s.store.AdoptUserForSSO(ctx, existedUser, &store.IDPBinding{ResourceID: idpID, Subject: subject}, passwordHash)
+		adopted, err := s.store.BindAccountForSSO(ctx, existedUser, &store.IDPBinding{ResourceID: idpID, Subject: subject}, passwordHash)
 		if err != nil {
 			if common.ErrorCode(err) == common.Conflict {
-				return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.Wrapf(err, "account %s changed while signing in; sign in again", email))
+				return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.Wrapf(err, "account %s; sign in again", email))
 			}
-			return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to adopt user %d for identity provider %q", existedUser.ID, idp.Title))
+			return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to bind user %d to identity provider %q", existedUser.ID, idp.Title))
 		}
-		if !adopted {
-			// The account was deleted or linked to another subject while this
-			// login was being resolved; a second attempt resolves the new state.
-			return nil, false, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf("account %s changed while signing in; sign in again", email))
+		if adopted {
+			slog.Warn("an SSO login adopted an existing account and invalidated its password",
+				slog.String("idp", idp.Title),
+				slog.Int("user_id", existedUser.ID),
+				slog.String("email", email))
 		}
-		slog.Warn("an SSO login adopted an existing account and invalidated its password",
-			slog.String("idp", idp.Title),
-			slog.Int("user_id", existedUser.ID),
-			slog.String("email", email))
 		// Re-read: the caller keeps the returned user, and the adoption just
 		// rewrote its profile, which is where the password change time lives.
 		if user, err := s.store.GetUserByID(ctx, existedUser.ID); err != nil {
-			return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to reload user %d after adopting it", existedUser.ID))
+			return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to reload user %d after binding it", existedUser.ID))
 		} else if user != nil {
 			existedUser = user
 		}
@@ -499,7 +494,7 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 				return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to sync user groups"))
 			}
 		}
-		return existedUser, true, nil
+		return existedUser, adopted, nil
 	}
 
 	// Create new user from identity provider. The password exists so the column
@@ -511,14 +506,12 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 		return nil, false, connect.NewError(connect.CodeInternal, err)
 	}
 	newUser, err := s.store.CreateUser(ctx, &store.UserMessage{
-		Name:          userInfo.DisplayName,
-		Email:         email,
-		Phone:         userInfo.Phone,
-		Type:          storepb.PrincipalType_END_USER,
-		IDPResourceID: idpID,
-		IDPSubject:    subject,
-		PasswordHash:  passwordHash,
-	})
+		Name:         userInfo.DisplayName,
+		Email:        email,
+		Phone:        userInfo.Phone,
+		Type:         storepb.PrincipalType_END_USER,
+		PasswordHash: passwordHash,
+	}, &store.IDPBinding{ResourceID: idpID, Subject: subject})
 	if err != nil {
 		return nil, false, errors.Wrap(err, "failed to create user")
 	}

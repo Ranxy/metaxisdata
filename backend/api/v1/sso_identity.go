@@ -14,14 +14,19 @@ import (
 //
 // An account is bound to a subject the provider assigns and the user cannot set
 // to someone else's value, so the mapping has to name one — unless the workspace
-// has turned on the email-identity switch, which accepts the mutable address
-// claim instead.
+// lists this provider as one whose address claim may stand in for a subject.
+//
+// The error names both ways out, because the same failure has two causes: a
+// provider whose configuration is missing the claim, and one that an operator
+// removed from that list after accounts were already bound through it. The second
+// is a lockout, not a misconfiguration: those accounts carry a binding that only
+// this claim can resolve, and their password is the random one adoption wrote.
 func validateIDPSubjectMapping(mapping *storepb.FieldMapping, allowEmailIdentity bool) error {
 	if allowEmailIdentity {
 		return nil
 	}
 	if mapping.GetSubject() == "" {
-		return errors.New(`the field "fieldMapping.subject" is empty but required: map a stable claim such as the OIDC "sub", or turn on "Allow SSO by email identity"`)
+		return errors.New(`the field "fieldMapping.subject" is empty: map a stable claim such as the OIDC "sub", or list this identity provider under "Email identity providers" if it exposes only an address claim (accounts bound through it can then sign in again)`)
 	}
 	if mapping.GetSubject() == mapping.GetIdentifier() {
 		return errors.Errorf(`the field "fieldMapping.subject" has to name a stable claim distinct from "fieldMapping.identifier" (%q)`, mapping.GetIdentifier())
@@ -44,7 +49,7 @@ func idpLoginSubject(mapping *storepb.FieldMapping, info *storepb.IdentityProvid
 		if subject := info.GetSubject(); subject != "" {
 			return subject, nil
 		}
-		return "", errors.New(`missing subject in the user info: map a stable claim such as the OIDC "sub"`)
+		return "", errors.New(`missing subject in the user info: map a stable claim such as the OIDC "sub", or list this identity provider under "Email identity providers"`)
 	}
 
 	// Addresses are case-insensitive and are stored lower-cased everywhere else,

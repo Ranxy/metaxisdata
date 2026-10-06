@@ -215,7 +215,8 @@ func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v
 		PasswordHash: string(passwordHash),
 	}
 
-	user, err := s.store.CreateUser(ctx, userMessage)
+	// A password account carries no identity provider binding.
+	user, err := s.store.CreateUser(ctx, userMessage, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create user")
 	}

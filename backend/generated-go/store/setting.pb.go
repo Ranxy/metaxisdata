@@ -108,20 +108,25 @@ type WorkspaceProfileSetting struct {
 	// Off by default: the surface is new, and enabling it requires a configured
 	// external_url, which is where its issuer and resource identifiers come from.
 	McpEnabled bool `protobuf:"varint,16,opt,name=mcp_enabled,json=mcpEnabled,proto3" json:"mcp_enabled,omitempty"`
-	// Whether an SSO login may be identified by the identity provider's email
-	// claim instead of a stable subject, and may adopt an existing account with
-	// that address by binding it to the login and invalidating the account's
-	// password.
+	// The identity providers whose email claim may stand in for a subject, by the
+	// resource id that idps/{idp} names (the idp table has no API that lists them).
 	//
-	// Off by default. The email claim is mutable, so this is only sound when the
-	// provider verifies addresses (an unverified claim lets whoever can set it
-	// sign in as the account it names) and when the identity provider
-	// configuration itself is trusted, which it is because only an administrator
-	// can write it. With it on, field_mapping.subject becomes optional and falls
-	// back to the identifier claim.
-	AllowSsoEmailIdentity bool `protobuf:"varint,17,opt,name=allow_sso_email_identity,json=allowSsoEmailIdentity,proto3" json:"allow_sso_email_identity,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// For those providers — and only those, because one workspace can configure
+	// several, trusted to different degrees — an SSO login may be identified by the
+	// address claim instead of a stable subject, and may make an existing account
+	// with that address reachable through the provider. An account that had no
+	// provider binding is adopted by doing so: its password is replaced with a
+	// random one.
+	//
+	// Empty (the default) turns the feature off everywhere. The address claim is
+	// mutable, so listing a provider asserts that it verifies addresses — an
+	// unverified claim lets whoever can set it sign in as the account it names —
+	// and that its configuration, which only an administrator can write, is
+	// trusted. For a listed provider, field_mapping.subject becomes optional and
+	// falls back to the identifier claim.
+	SsoEmailIdentityIdps []string `protobuf:"bytes,18,rep,name=sso_email_identity_idps,json=ssoEmailIdentityIdps,proto3" json:"sso_email_identity_idps,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *WorkspaceProfileSetting) Reset() {
@@ -210,11 +215,11 @@ func (x *WorkspaceProfileSetting) GetMcpEnabled() bool {
 	return false
 }
 
-func (x *WorkspaceProfileSetting) GetAllowSsoEmailIdentity() bool {
+func (x *WorkspaceProfileSetting) GetSsoEmailIdentityIdps() []string {
 	if x != nil {
-		return x.AllowSsoEmailIdentity
+		return x.SsoEmailIdentityIdps
 	}
-	return false
+	return nil
 }
 
 type PasswordRestrictionSetting struct {
@@ -436,7 +441,7 @@ var File_store_setting_proto protoreflect.FileDescriptor
 
 const file_store_setting_proto_rawDesc = "" +
 	"\n" +
-	"\x13store/setting.proto\x12\x11metaxisdata.store\x1a\x1egoogle/protobuf/duration.proto\"\xe4\x04\n" +
+	"\x13store/setting.proto\x12\x11metaxisdata.store\x1a\x1egoogle/protobuf/duration.proto\"\x82\x05\n" +
 	"\x17WorkspaceProfileSetting\x12!\n" +
 	"\fexternal_url\x18\x01 \x01(\tR\vexternalUrl\x12'\n" +
 	"\x0fdisallow_signup\x18\x02 \x01(\bR\x0edisallowSignup\x12\x18\n" +
@@ -447,8 +452,8 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x1aopenlineage_retention_days\x18\x0e \x01(\x05R\x18openlineageRetentionDays\x12A\n" +
 	"\x1dallowed_llm_provider_profiles\x18\x0f \x03(\tR\x1aallowedLlmProviderProfiles\x12\x1f\n" +
 	"\vmcp_enabled\x18\x10 \x01(\bR\n" +
-	"mcpEnabled\x127\n" +
-	"\x18allow_sso_email_identity\x18\x11 \x01(\bR\x15allowSsoEmailIdentityJ\x04\b\x03\x10\x04J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\v\x10\fJ\x04\b\r\x10\x0eR\vrequire_2faR\x0etoken_durationR\fannouncementR\x17maximum_role_expirationR\x14database_change_modeR\x18enable_metric_collection\"\x9a\x03\n" +
+	"mcpEnabled\x125\n" +
+	"\x17sso_email_identity_idps\x18\x12 \x03(\tR\x14ssoEmailIdentityIdpsJ\x04\b\x03\x10\x04J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\v\x10\fJ\x04\b\r\x10\x0eJ\x04\b\x11\x10\x12R\vrequire_2faR\x0etoken_durationR\fannouncementR\x17maximum_role_expirationR\x14database_change_modeR\x18enable_metric_collectionR\x18allow_sso_email_identity\"\x9a\x03\n" +
 	"\x1aPasswordRestrictionSetting\x12\x1d\n" +
 	"\n" +
 	"min_length\x18\x01 \x01(\x05R\tminLength\x12%\n" +

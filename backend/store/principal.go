@@ -34,7 +34,6 @@ var systemBotUser = &UserMessage{
 type FindUserMessage struct {
 	ID          *int
 	Email       *string
-	IDPBinding  *IDPBinding
 	ShowDeleted bool
 	Type        *storepb.PrincipalType
 	Limit       *int
@@ -42,8 +41,8 @@ type FindUserMessage struct {
 	Filter      *ListResourceFilter
 }
 
-// IDPBinding identifies the identity provider subject an account is bound to.
-// It is the identity an SSO login resolves against; the email is not.
+// IDPBinding identifies the identity provider subject an account may sign in
+// with. It is the identity an SSO login resolves against; the email is not.
 type IDPBinding struct {
 	ResourceID string
 	Subject    string
@@ -71,10 +70,6 @@ type UserMessage struct {
 	Profile       *storepb.UserProfile
 	// Phone conforms E.164 format.
 	Phone string
-	// IDPResourceID and IDPSubject are the identity provider binding an SSO
-	// login resolves against; both are empty for password accounts.
-	IDPResourceID string
-	IDPSubject    string
 	// output only
 	CreatedAt time.Time
 	// The group email list
@@ -139,12 +134,17 @@ func (s *Store) GetActiveUserByEmail(ctx context.Context, email string) (*UserMe
 	return s.getUser(ctx, &FindUserMessage{Email: &email})
 }
 
-// GetUserByIDPBinding gets the user bound to an identity provider subject. The
-// binding is what an SSO login resolves against: a user who changed their email
-// at the provider keeps the same account, and nobody can claim it by taking the
-// address first.
+// GetUserByIDPBinding gets the user an identity provider subject is bound to. The
+// binding is what an SSO login resolves against: a user who changed their email at
+// the provider keeps the same account, and nobody can claim it by taking the
+// address first. Soft-deleted rows are returned too, so that signing in cannot
+// resurrect a deactivated account.
 func (s *Store) GetUserByIDPBinding(ctx context.Context, binding *IDPBinding) (*UserMessage, error) {
-	return s.getUser(ctx, &FindUserMessage{IDPBinding: binding, ShowDeleted: true})
+	userID, found, err := s.idpBindingOwner(ctx, s.GetDB(), binding)
+	if err != nil || !found {
+		return nil, err
+	}
+	return s.GetUserByID(ctx, userID)
 }
 
 // userEmailCacheKey normalizes an email the same way listUserImpl does, so a
@@ -265,10 +265,6 @@ func listUserImpl(ctx context.Context, txn *sql.Tx, find *FindUserMessage) ([]*U
 			where, args = append(where, fmt.Sprintf("principal.email = $%d", len(args)+1)), append(args, strings.ToLower(*v))
 		}
 	}
-	if v := find.IDPBinding; v != nil {
-		where, args = append(where, fmt.Sprintf("principal.idp_resource_id = $%d", len(args)+1)), append(args, v.ResourceID)
-		where, args = append(where, fmt.Sprintf("principal.idp_subject = $%d", len(args)+1)), append(args, v.Subject)
-	}
 	if v := find.Type; v != nil {
 		where, args = append(where, fmt.Sprintf("principal.type = $%d", len(args)+1)), append(args, v.String())
 	}
@@ -297,8 +293,6 @@ func listUserImpl(ctx context.Context, txn *sql.Tx, find *FindUserMessage) ([]*U
 		principal.type,
 		principal.password_hash,
 		principal.phone,
-		principal.idp_resource_id,
-		principal.idp_subject,
 		principal.profile,
 		principal.created_at,
 		user_groups.groups
@@ -334,8 +328,6 @@ func listUserImpl(ctx context.Context, txn *sql.Tx, find *FindUserMessage) ([]*U
 			&typeString,
 			&userMessage.PasswordHash,
 			&userMessage.Phone,
-			&userMessage.IDPResourceID,
-			&userMessage.IDPSubject,
 			&profileBytes,
 			&userMessage.CreatedAt,
 			&groups,
@@ -374,7 +366,11 @@ const createEndUserAdvisoryLockKey int64 = 0x6d65746178697301
 // user is granted the workspace admin role in the same transaction. This is
 // what bootstraps a fresh workspace, and doing it atomically prevents a
 // concurrent registration from also being elected admin.
-func (s *Store) CreateUser(ctx context.Context, create *UserMessage) (*UserMessage, error) {
+//
+// A binding makes the account reachable through an identity provider subject; it
+// is written in the same transaction, because an SSO account without one could
+// not sign in again. Password accounts pass nil.
+func (s *Store) CreateUser(ctx context.Context, create *UserMessage, binding *IDPBinding) (*UserMessage, error) {
 	// Double check the passing-in emails.
 	// We use lower-case for emails.
 	if create.Email != strings.ToLower(create.Email) {
@@ -411,8 +407,8 @@ func (s *Store) CreateUser(ctx context.Context, create *UserMessage) (*UserMessa
 		return nil, err
 	}
 
-	set := []string{"email", "name", "type", "password_hash", "phone", "idp_resource_id", "idp_subject", "profile"}
-	args := []any{create.Email, create.Name, create.Type.String(), create.PasswordHash, create.Phone, create.IDPResourceID, create.IDPSubject, profileBytes}
+	set := []string{"email", "name", "type", "password_hash", "phone", "profile"}
+	args := []any{create.Email, create.Name, create.Type.String(), create.PasswordHash, create.Phone, profileBytes}
 	placeholder := []string{}
 	for index := range set {
 		placeholder = append(placeholder, fmt.Sprintf("$%d", index+1))
@@ -429,11 +425,17 @@ func (s *Store) CreateUser(ctx context.Context, create *UserMessage) (*UserMessa
 		args...,
 	).Scan(&userID, &create.CreatedAt); err != nil {
 		if isUniqueViolation(err) {
-			// The address or the identity provider binding is taken; the caller
-			// pre-checks both, so reaching this is a race.
+			// The address is taken; the caller pre-checks it, so reaching this is
+			// a race.
 			return nil, common.Errorf(common.Conflict, "user already exists")
 		}
 		return nil, err
+	}
+
+	if binding != nil {
+		if err := insertIDPBinding(ctx, tx, userID, binding); err != nil {
+			return nil, err
+		}
 	}
 
 	if create.Type == storepb.PrincipalType_END_USER && activeEndUserCount == 0 {
@@ -452,16 +454,14 @@ func (s *Store) CreateUser(ctx context.Context, create *UserMessage) (*UserMessa
 	s.policyCache.Remove(getPolicyCacheKey(storepb.Policy_WORKSPACE, "", storepb.Policy_IAM))
 
 	user := &UserMessage{
-		ID:            userID,
-		Email:         create.Email,
-		Name:          create.Name,
-		Type:          create.Type,
-		PasswordHash:  create.PasswordHash,
-		Phone:         create.Phone,
-		IDPResourceID: create.IDPResourceID,
-		IDPSubject:    create.IDPSubject,
-		CreatedAt:     create.CreatedAt,
-		Profile:       create.Profile,
+		ID:           userID,
+		Email:        create.Email,
+		Name:         create.Name,
+		Type:         create.Type,
+		PasswordHash: create.PasswordHash,
+		Phone:        create.Phone,
+		CreatedAt:    create.CreatedAt,
+		Profile:      create.Profile,
 	}
 	s.userIDCache.Add(user.ID, user)
 	s.userEmailCache.Add(user.Email, user)
@@ -548,58 +548,6 @@ func (s *Store) UpdateUser(ctx context.Context, currentUser *UserMessage, patch 
 	s.userIDCache.Add(currentUser.ID, user)
 	s.userEmailCache.Add(user.Email, user)
 	return user, nil
-}
-
-// AdoptUserForSSO binds an existing account to an identity provider subject and
-// invalidates the password it had, in one conditional statement. Stamping the
-// password change time is what retires the sessions the previous holder of the
-// account minted, so they lose the account along with its password.
-//
-// The row has to still be the end-user account at that address, active and
-// unbound, so a login cannot take over an account that was deleted, renamed or
-// claimed to a different subject while the login was being resolved. It reports
-// whether the adoption applied.
-func (s *Store) AdoptUserForSSO(ctx context.Context, currentUser *UserMessage, binding *IDPBinding, passwordHash string) (bool, error) {
-	if currentUser.ID == common.SystemBotID {
-		return false, errors.Errorf("cannot update system bot")
-	}
-	if binding.ResourceID == "" || binding.Subject == "" {
-		return false, errors.Errorf("an identity provider binding needs a resource id and a subject")
-	}
-
-	profile := proto.CloneOf(currentUser.Profile)
-	if profile == nil {
-		profile = &storepb.UserProfile{}
-	}
-	profile.LastChangePasswordTime = timestamppb.New(time.Now())
-	profileBytes, err := protojson.Marshal(profile)
-	if err != nil {
-		return false, err
-	}
-
-	result, err := s.GetDB().ExecContext(ctx, `
-		UPDATE principal
-		SET idp_resource_id = $1, idp_subject = $2, password_hash = $3, profile = $4
-		WHERE id = $5 AND deleted = FALSE AND idp_resource_id = '' AND type = $6 AND LOWER(email) = LOWER($7)`,
-		binding.ResourceID, binding.Subject, passwordHash, profileBytes, currentUser.ID,
-		storepb.PrincipalType_END_USER.String(), currentUser.Email)
-	if err != nil {
-		if isUniqueViolation(err) {
-			return false, common.Errorf(common.Conflict, "the identity provider subject is already bound to another user")
-		}
-		return false, err
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return false, err
-	}
-	if affected == 0 {
-		return false, nil
-	}
-
-	s.userIDCache.Remove(currentUser.ID)
-	s.userEmailCache.Remove(currentUser.Email)
-	return true, nil
 }
 
 // userProfileLastLoginKey is the JSONB key protojson produces for

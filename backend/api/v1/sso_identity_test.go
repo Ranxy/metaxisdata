@@ -27,7 +27,7 @@ func TestValidateIDPSubjectMapping(t *testing.T) {
 		{
 			name:        "no subject claim is refused by default",
 			mapping:     &storepb.FieldMapping{Identifier: "email"},
-			containsErr: `the field "fieldMapping.subject" is empty but required`,
+			containsErr: `the field "fieldMapping.subject" is empty: map a stable claim such as the OIDC "sub"`,
 		},
 		{
 			name:        "the identifier claim as the subject is refused by default",

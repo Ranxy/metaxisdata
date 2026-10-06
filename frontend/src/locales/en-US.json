@@ -212,9 +212,6 @@
     "viewInBrowser": "View in Metadata Browser"
   },
   "generalSettings": {
-    "allowSsoEmailIdentity": "Allow SSO by email identity",
-    "allowSsoEmailIdentityHint": "Identifies an SSO login by the identity provider's email claim instead of a stable subject, so a provider that exposes no subject claim can be used. An existing account with that address is taken over by the login: it is bound to the provider and its password is invalidated, and so is every session opened with it.",
-    "allowSsoEmailIdentityWarning": "Only enable this when the identity provider verifies its email addresses: whoever can set an address there can sign in as the account it names.",
     "debugMode": "Enable runtime debug mode",
     "debugModeHint": "Switches server logging to debug level, turns on verbose request logs and /debug/pprof, and lets panic handlers return stack traces to clients. Turn it off again once you are done.",
     "debugSection": "Debug mode",
@@ -247,6 +244,10 @@
     "saveSuccess": "Settings saved",
     "signupSection": "Signup & Signin",
     "signupSectionDescription": "Control how users join and sign in to this workspace.",
+    "ssoEmailIdentityIdps": "Identity providers identified by their email claim",
+    "ssoEmailIdentityIdpsHint": "Listed providers (idps/{idp}) may identify an SSO login by their email claim instead of a stable subject, so a provider that exposes no subject claim can be used. An existing account with that address becomes reachable through the login: an account with no provider binding is adopted, and the password it had is invalidated along with every session opened with it. A provider that is not listed keeps the default: an address is never an identity. Leave empty to turn the whole thing off.",
+    "ssoEmailIdentityIdpsPlaceholder": "idps/provider-id, idps/another",
+    "ssoEmailIdentityIdpsWarning": "List a provider only if it verifies its email addresses and hands each one to a single person: whoever can set an address there can sign in as the account it names, workspace admins included.",
     "title": "General",
     "unsavedHint": "You have unsaved changes.",
     "workspaceSection": "Workspace",

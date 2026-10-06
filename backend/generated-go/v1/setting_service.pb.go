@@ -48,18 +48,19 @@ type WorkspaceProfileSetting struct {
 	// Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
 	// Off by default, and only usable once external_url is configured.
 	McpEnabled bool `protobuf:"varint,8,opt,name=mcp_enabled,json=mcpEnabled,proto3" json:"mcp_enabled,omitempty"`
-	// Whether an SSO login may be identified by the identity provider's email
-	// claim instead of a stable subject, and may adopt an existing account with
-	// that address — binding it to the login and invalidating its password.
+	// The identity providers, as idps/{idp} resource names, whose email claim may
+	// stand in for a stable subject. For a listed provider, field_mapping.subject
+	// becomes optional and a login whose address claim matches an existing account
+	// makes that account reachable through the provider — adopting it (its password
+	// is replaced with a random one) when it had no provider binding at all.
 	//
-	// Off by default, and only sound when the provider verifies addresses and the
-	// (administrator-written) identity provider configuration is trusted. While it
-	// is on, field_mapping.subject is optional and falls back to the email claim,
-	// and an account created before SSO was set up can sign in again instead of
-	// being refused.
-	AllowSsoEmailIdentity bool `protobuf:"varint,9,opt,name=allow_sso_email_identity,json=allowSsoEmailIdentity,proto3" json:"allow_sso_email_identity,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// Empty (the default) turns the feature off for every provider. The address
+	// claim is mutable, so listing a provider asserts that it verifies addresses and
+	// that its configuration, which only an administrator can write, is trusted:
+	// whoever can set an address there can sign in as the account it names.
+	SsoEmailIdentityIdps []string `protobuf:"bytes,10,rep,name=sso_email_identity_idps,json=ssoEmailIdentityIdps,proto3" json:"sso_email_identity_idps,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *WorkspaceProfileSetting) Reset() {
@@ -148,11 +149,11 @@ func (x *WorkspaceProfileSetting) GetMcpEnabled() bool {
 	return false
 }
 
-func (x *WorkspaceProfileSetting) GetAllowSsoEmailIdentity() bool {
+func (x *WorkspaceProfileSetting) GetSsoEmailIdentityIdps() []string {
 	if x != nil {
-		return x.AllowSsoEmailIdentity
+		return x.SsoEmailIdentityIdps
 	}
-	return false
+	return nil
 }
 
 type GetWorkspaceProfileSettingRequest struct {
@@ -420,7 +421,7 @@ var File_v1_setting_service_proto protoreflect.FileDescriptor
 
 const file_v1_setting_service_proto_rawDesc = "" +
 	"\n" +
-	"\x18v1/setting_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a google/protobuf/field_mask.proto\x1a\x13v1/annotation.proto\"\xcc\x03\n" +
+	"\x18v1/setting_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a google/protobuf/field_mask.proto\x1a\x13v1/annotation.proto\"\xea\x03\n" +
 	"\x17WorkspaceProfileSetting\x12!\n" +
 	"\fexternal_url\x18\x01 \x01(\tR\vexternalUrl\x12'\n" +
 	"\x0fdisallow_signup\x18\x02 \x01(\bR\x0edisallowSignup\x128\n" +
@@ -430,8 +431,10 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\x17enforce_identity_domain\x18\x06 \x01(\bR\x15enforceIdentityDomain\x12A\n" +
 	"\x1dallowed_llm_provider_profiles\x18\a \x03(\tR\x1aallowedLlmProviderProfiles\x12\x1f\n" +
 	"\vmcp_enabled\x18\b \x01(\bR\n" +
-	"mcpEnabled\x127\n" +
-	"\x18allow_sso_email_identity\x18\t \x01(\bR\x15allowSsoEmailIdentity\"#\n" +
+	"mcpEnabled\x125\n" +
+	"\x17sso_email_identity_idps\x18\n" +
+	" \x03(\tR\x14ssoEmailIdentityIdpsJ\x04\b\t\x10\n" +
+	"R\x18allow_sso_email_identity\"#\n" +
 	"!GetWorkspaceProfileSettingRequest\"\xab\x01\n" +
 	"$UpdateWorkspaceProfileSettingRequest\x12F\n" +
 	"\asetting\x18\x01 \x01(\v2'.metaxisdata.v1.WorkspaceProfileSettingB\x03\xe0A\x02R\asetting\x12;\n" +

@@ -3,12 +3,14 @@ package v1
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -80,8 +82,12 @@ func (s *SettingService) UpdateWorkspaceProfileSetting(ctx context.Context, requ
 			setting.AllowedLlmProviderProfiles = profiles
 		case "mcp_enabled":
 			setting.McpEnabled = request.Msg.Setting.McpEnabled
-		case "allow_sso_email_identity":
-			setting.AllowSsoEmailIdentity = request.Msg.Setting.AllowSsoEmailIdentity
+		case "sso_email_identity_idps":
+			idps, err := normalizeSSOEmailIdentityIdps(request.Msg.Setting.SsoEmailIdentityIdps)
+			if err != nil {
+				return nil, err
+			}
+			setting.SsoEmailIdentityIdps = idps
 		default:
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported update_mask %q", path))
 		}
@@ -117,8 +123,43 @@ func convertToWorkspaceProfileSetting(setting *storepb.WorkspaceProfileSetting) 
 		EnforceIdentityDomain:      setting.GetEnforceIdentityDomain(),
 		AllowedLlmProviderProfiles: setting.GetAllowedLlmProviderProfiles(),
 		McpEnabled:                 setting.GetMcpEnabled(),
-		AllowSsoEmailIdentity:      setting.GetAllowSsoEmailIdentity(),
+		SsoEmailIdentityIdps:       formatIdentityProviderNames(setting.GetSsoEmailIdentityIdps()),
 	}
+}
+
+// formatIdentityProviderNames turns the stored resource ids into the idps/{idp}
+// names the API works in.
+func formatIdentityProviderNames(idps []string) []string {
+	names := make([]string, 0, len(idps))
+	for _, idp := range idps {
+		names = append(names, common.FormatIdentityProviderUID(idp))
+	}
+	return names
+}
+
+// normalizeSSOEmailIdentityIdps normalizes the identity providers allowed to
+// stand in for a stable subject with their address claim. Entries are resource ids
+// as idps/{idp} names them; a bare id is accepted too, because there is no API
+// that hands them out and an operator reads them from the database.
+func normalizeSSOEmailIdentityIdps(idps []string) ([]string, error) {
+	result := make([]string, 0, len(idps))
+	for _, idp := range idps {
+		trimmed := strings.TrimSpace(idp)
+		if trimmed == "" {
+			continue
+		}
+		if id, err := common.GetIdentityProviderID(trimmed); err == nil {
+			trimmed = id
+		}
+		if strings.ContainsAny(trimmed, "/:@ ") {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid identity provider %q", idp))
+		}
+		if !slices.Contains(result, trimmed) {
+			result = append(result, trimmed)
+		}
+	}
+	slices.Sort(result)
+	return result, nil
 }
 
 // normalizeIdentityDomains trims and lowercases the entries, drops empties and

@@ -77,28 +77,19 @@
               :disabled="!canUpdate"
             />
 
-            <div class="flex items-start gap-3">
-              <Checkbox
-                id="allow-sso-email-identity"
-                :checked="allowSsoEmailIdentity"
-                :disabled="!canUpdate"
-                @update:checked="allowSsoEmailIdentity = $event === true"
-              />
-              <div class="grid gap-1">
-                <Label for="allow-sso-email-identity">{{
-                  t("generalSettings.allowSsoEmailIdentity")
-                }}</Label>
-                <p class="text-sm text-muted-foreground">
-                  {{ t("generalSettings.allowSsoEmailIdentityHint") }}
-                </p>
-                <p
-                  v-if="allowSsoEmailIdentity"
-                  class="text-sm text-destructive"
-                >
-                  {{ t("generalSettings.allowSsoEmailIdentityWarning") }}
-                </p>
-              </div>
-            </div>
+            <FormField
+              v-model="ssoEmailIdentityIdpsInput"
+              :label="t('generalSettings.ssoEmailIdentityIdps')"
+              :placeholder="t('generalSettings.ssoEmailIdentityIdpsPlaceholder')"
+              :hint="t('generalSettings.ssoEmailIdentityIdpsHint')"
+              :disabled="!canUpdate"
+            />
+            <p
+              v-if="parseIdpNames(ssoEmailIdentityIdpsInput).length > 0"
+              class="text-sm text-destructive"
+            >
+              {{ t("generalSettings.ssoEmailIdentityIdpsWarning") }}
+            </p>
           </CardContent>
         </Card>
 
@@ -287,9 +278,10 @@ const disallowSignup = ref(false);
 const disallowPasswordSignin = ref(false);
 const enforceIdentityDomain = ref(false);
 const domainsInput = ref("");
-// The opt-in that lets an SSO login be identified by the provider's email
-// claim and adopt the account carrying it. Off by default.
-const allowSsoEmailIdentity = ref(false);
+// The identity providers whose email claim may stand in for a stable subject.
+// Empty by default: an address is not an identity unless an administrator says so
+// for a named provider.
+const ssoEmailIdentityIdpsInput = ref("");
 
 // ExplainSQL may only use the provider profiles selected here. An empty list
 // means "every enabled profile is allowed".
@@ -334,7 +326,7 @@ function snapshot(): string {
     disallowPasswordSignin: disallowPasswordSignin.value,
     enforceIdentityDomain: enforceIdentityDomain.value,
     domains: parseDomains(domainsInput.value),
-    allowSsoEmailIdentity: allowSsoEmailIdentity.value,
+    ssoEmailIdentityIdps: parseIdpNames(ssoEmailIdentityIdpsInput.value),
     externalUrl: externalUrl.value.trim(),
     retentionDays: Number(retentionDaysInput.value),
     mcpEnabled: mcpEnabled.value,
@@ -350,7 +342,7 @@ async function fetchSetting() {
   disallowPasswordSignin.value = setting.disallowPasswordSignin;
   enforceIdentityDomain.value = setting.enforceIdentityDomain;
   domainsInput.value = setting.domains.join(", ");
-  allowSsoEmailIdentity.value = setting.allowSsoEmailIdentity;
+  ssoEmailIdentityIdpsInput.value = setting.ssoEmailIdentityIdps.join(", ");
   allowedProfiles.value = [...setting.allowedLlmProviderProfiles];
   externalUrl.value = setting.externalUrl;
   retentionDaysInput.value = String(setting.openlineageRetentionDays);
@@ -372,6 +364,16 @@ async function fetchProfiles() {
 async function fetchDebugConfig() {
   const config = await getDebugConfig();
   debugEnabled.value = config.enabled;
+}
+
+// Identity providers are named idps/{idp}, the form the server reports. A bare id
+// is accepted and normalized, because the operator reads it out of the database.
+function parseIdpNames(input: string): string[] {
+  return input
+    .split(/[,\n]/)
+    .map((idp) => idp.trim().replace(/^idps\//, ""))
+    .filter((idp) => idp !== "")
+    .map((idp) => `idps/${idp}`);
 }
 
 function parseDomains(input: string): string[] {
@@ -438,7 +440,7 @@ async function handleSave() {
         disallowPasswordSignin: disallowPasswordSignin.value,
         enforceIdentityDomain: enforceIdentityDomain.value,
         domains: parseDomains(domainsInput.value),
-        allowSsoEmailIdentity: allowSsoEmailIdentity.value,
+        ssoEmailIdentityIdps: parseIdpNames(ssoEmailIdentityIdpsInput.value),
         externalUrl: externalUrl.value.trim(),
         openlineageRetentionDays: Number(retentionDaysInput.value),
         allowedLlmProviderProfiles: allowedProfiles.value,
@@ -449,7 +451,7 @@ async function handleSave() {
         "disallow_password_signin",
         "enforce_identity_domain",
         "domains",
-        "allow_sso_email_identity",
+        "sso_email_identity_idps",
         "external_url",
         "openlineage_retention_days",
         "allowed_llm_provider_profiles",

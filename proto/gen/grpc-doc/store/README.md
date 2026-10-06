@@ -1817,9 +1817,11 @@ roles have a row here.
 | openlineage_retention_days | [int32](#int32) |  | openlineage_retention_days bounds how long persisted OpenLineage runs are kept. Zero (the default) keeps them forever: they are audit data. |
 | allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles ExplainSQL may use, as profile resource names. Empty means every enabled profile is allowed. |
 | mcp_enabled | [bool](#bool) |  | Whether the MCP endpoint and its OAuth 2.1 authorization server are served. Off by default: the surface is new, and enabling it requires a configured external_url, which is where its issuer and resource identifiers come from. |
-| allow_sso_email_identity | [bool](#bool) |  | Whether an SSO login may be identified by the identity provider&#39;s email claim instead of a stable subject, and may adopt an existing account with that address by binding it to the login and invalidating the account&#39;s password.
+| sso_email_identity_idps | [string](#string) | repeated | The identity providers whose email claim may stand in for a subject, by the resource id that idps/{idp} names (the idp table has no API that lists them).
 
-Off by default. The email claim is mutable, so this is only sound when the provider verifies addresses (an unverified claim lets whoever can set it sign in as the account it names) and when the identity provider configuration itself is trusted, which it is because only an administrator can write it. With it on, field_mapping.subject becomes optional and falls back to the identifier claim. |
+For those providers — and only those, because one workspace can configure several, trusted to different degrees — an SSO login may be identified by the address claim instead of a stable subject, and may make an existing account with that address reachable through the provider. An account that had no provider binding is adopted by doing so: its password is replaced with a random one.
+
+Empty (the default) turns the feature off everywhere. The address claim is mutable, so listing a provider asserts that it verifies addresses — an unverified claim lets whoever can set it sign in as the account it names — and that its configuration, which only an administrator can write, is trusted. For a listed provider, field_mapping.subject becomes optional and falls back to the identifier claim. |
 
 
 

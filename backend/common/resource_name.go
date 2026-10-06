@@ -237,6 +237,12 @@ func FormatRole(role string) string {
 	return fmt.Sprintf("%s%s", RolePrefix, role)
 }
 
+// FormatIdentityProviderUID returns the idps/{idp} resource name of an identity
+// provider, the form the settings API and the login request name one in.
+func FormatIdentityProviderUID(idpID string) string {
+	return fmt.Sprintf("%s%s", IdentityProviderNamePrefix, idpID)
+}
+
 // roleIDMatcher accepts the role IDs used in `roles/{role}`: a letter followed
 // by letters, digits or hyphens. It deliberately allows uppercase because the
 // predefined role IDs are camelCased (workspaceAdmin, workspaceMember), unlike
