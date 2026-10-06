@@ -121,6 +121,7 @@
 - **修复**:测试断言 `acw == true ⇒ permission == ""`(反向互斥);或 ACL 对 acw 方法仍执行 permission 检查,另设明确的匿名方法白名单。
 
 ### M9. `allUsers` 可绑定 `workspaceAdmin`:一次误操作把未来所有注册者变成管理员
+- **状态**:**已修复**(2026-10-06,commit `cb40791`;修复内容与验证见 §10)。实现比原建议更严:`allUsers` 不是"禁止绑定管理角色",而是彻底不可编辑——只允许留在服务端托管的 `roles/workspaceMember` 基线上,自定义角色只能授给明确的用户与用户组。
 - **证据**:`backend/api/v1/iam_service.go:142`(`case member == common.AllUsers: return nil`);`backend/api/v1/iam_helpers.go:33-42`;前端提供任意组合入口(`IamPage.vue:147`)。
 - **攻击场景**:与 H2 叠加——管理员为"方便"给 allUsers 绑 workspaceAdmin("至少一个活跃管理员"校验通过),此后任何匿名注册者即管理员。单向门,难以察觉。
 - **修复**:拒绝 `allUsers` 绑定任何含管理权限的角色;写校验 fail-closed。
@@ -337,7 +338,7 @@
 8. M7:SSO 不自动 undelete + `revoked_at` 水位线;
 9. M10/M11:airflow 链接 scheme 白名单 + 统一安全响应头(CSP/frame-ancestors);
 10. M12/M13:CLI `CheckRedirect` + Windows 打开器替换 + scheme 校验;
-11. M8/M9:acw↔permission 互斥测试 + allUsers 禁绑管理角色。
+11. M8/M9:acw↔permission 互斥测试 + allUsers 禁绑管理角色——M9 已完成(实现为 allUsers 完全不可编辑,见 §10);M8 待办。
 
 **P2(中期,加固与一致性)**
 12. M6/M14/M15/M18/M19/M20/M21/M22/M23/M24/M25 与 L 系列;
@@ -664,3 +665,31 @@
 7. **在飞的 M2 端到端用例本身是坏的(复核发现)**:`GET /v1/deviceLogins/{code}` 不是匿名方法,原用例在 GET 上拿到 401,断言根本走不到 `requestIp`。已改为带管理员 token 读取;该用例现在把客户端绑定到 127.0.0.2,使外层对端与网关自身的 loopback 连接不同,能真正区分"取到外层对端"与"取到 127.0.0.1"。
 
 **验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`(改动包 `-race`)、`go vet`、release 构建(`-tags release`)、`make test-integration`(真实 PostgreSQL + MySQL,含 migrator 的 LATEST 新装/增量升级/一致性与 53 个顶层 `RealServerIntegration` 用例全绿)。本轮未改前端,未跑前端门禁。
+
+### 2026-10-06 —— M9 已修复(commit `cb40791`)
+
+**allUsers 不再是可编辑的成员**(`backend/api/v1/iam_service.go`、前端 `IamPage.vue`)
+
+- `validateIamPolicy` 新增前置检查 `validateAllUsersBinding`,对整份策略断言两件事:
+  1. `allUsers` 只允许出现在 `roles/workspaceMember` 这条绑定上。它匹配每一个已认证主体——包括此后注册的所有人,而自助注册默认开启(H2),所以把它绑到别的角色(预定义的 `workspaceAdmin`,或管理员刚建的自定义角色)等于一次看似普通的授权就把该角色发给未来所有注册者;"至少一个活跃管理员"守卫还会把 allUsers 当成管理员,让这次写入同时通过最后管理员校验。
+  2. 策略必须保留 `roles/workspaceMember` → `allUsers` 这条绑定(首次初始化时由服务端写入的隐式基线)。丢掉它直接拒绝,而不是静默存下一份缺少它的策略。
+- 为什么不是维护一份"管理权限清单":任何清单都会在新增权限的那天过期;在这个模型里"超出 workspaceMember 基线"与"含管理权限"是同一件事,且不依赖人手同步。自定义角色照常可用,只是只能授给明确的用户与用户组。
+- `hasActiveWorkspaceAdmin` 的 `allUsers` 分支**保留**:改造前写入的策略可能仍带 `allUsers` → `workspaceAdmin`,权限引擎仍按它放权;删掉该分支会让这类部署在守卫判定上突然"没有管理员"从而锁死。新写路径会拒绝再次写入该绑定,所以它是一次性待清理的历史遗留(下一次保存策略必须先删掉它)。
+- 前端:成员类型选择器去掉 allUsers;`allUsers` 基线行显示为只读(没有"移除成员""移除绑定",该成员自身也没有 ×),并在可编辑草稿里自动补上缺失的基线绑定(`frontend/src/utils/iamPolicy.ts`),使改造前丢过该绑定的库能被一次保存修好,而不是卡在"服务端拒绝、界面又补不回来"。
+- `proto/v1/v1/iam_service.proto` 的 `Binding.members` 注释写明该约定(生成物随 `buf generate` 一并提交),`docs/security-posture.md` 增补一条"allUsers 由服务端托管、只承载成员基线"。
+
+**回归测试**
+
+- 单元 `backend/api/v1/iam_service_test.go`(`TestValidateAllUsersBinding`,9 例):基线与其它绑定共存、基线行带额外成员、重复基线行均通过;allUsers 绑 `roles/workspaceAdmin`、绑自定义角色、策略缺少基线绑定、空策略均返回 `InvalidArgument` 且错误文案指明原因。检查函数是纯函数,不需要数据库。
+- 集成 `TestWorkspaceIamPolicyRealServerIntegration`(真实服务器 + PostgreSQL):首次初始化确实写入了 allUsers 基线绑定;`allUsers` 绑 `workspaceAdmin` 与绑新建自定义角色都在写路径上被拒;缺少基线绑定的策略被拒;这些被拒写入之后读回策略的 etag 与绑定数不变(没有部分写入);原来的"没有管理员"用例改为携带基线绑定,因此确实落在最后管理员守卫上(断言错误文案)。
+- 前端 `frontend/src/utils/iamPolicy.test.ts`:基线行识别与草稿补全(追加整行 / 给已有的 workspaceMember 行补成员 / 已存在时原样返回)。
+- **反向验证**:临时删掉 `validateIamPolicy` 里的 `validateAllUsersBinding` 调用后重跑集成用例,`allUsers onto roles/workspaceAdmin must be refused` 变红(`expected: 0x3`,即 `InvalidArgument`;实得 `0`);恢复后全绿。
+
+**残余**
+
+1. **改造前已存的 `allUsers` → `workspaceAdmin`/自定义角色绑定不会被自动清理**:它仍在放权,直到管理员保存一次策略(保存前必须先删掉它)。要做一次性启动修复/迁移是另一个决定,本轮没做。
+2. **"全员多一项权限"现在只能改代码**:基线在 `backend/store/predefined_roles.go`,这是刻意的——它等价于"所有未来注册者的默认权限"。
+3. 本规则只覆盖 `SetWorkspaceIamPolicy`;首次初始化的 `PatchWorkspaceIamPolicy` 只写基线绑定,不经该校验。
+4. D16 仍在:自定义角色携带与 `workspaceAdmin` 同等权限时不参与"最后管理员"保护。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./...`、release 构建(`-tags release`)、`go vet -tags=integration`、`make test-integration` 的两条命令(真实 PostgreSQL + MySQL 容器 + migrator):53 个 `RealServerIntegration` 用例(0 skip、0 fail,含本节新增用例)与 `backend/migrator/...` 全绿;前端 `biome:check`、`lint`、`i18n`、`type-check`、`test run`(47 文件 / 309 用例)。
