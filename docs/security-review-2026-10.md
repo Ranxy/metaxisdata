@@ -156,7 +156,7 @@
 - **修复**:回退改用 `c.Request().RemoteAddr` 或设 `e.IPExtractor`;限流 store 加容量上限。
 
 ### M15. `CreateSSOState` 匿名无限且 SSO/IdP 出站无防护:SSO 登录 DoS + 免费企业 IdP 探测器
-- **状态**:**已修复**(2026-10-06,commit `f55f62a`;CreateSSOState 的按源/全局预算与 state 缓存容量、IdP 客户端的超时与 ctx 透传见 §10。证据中"Login 的 IdP 分支无限流"一条在本轮之前已不成立:`e9bc802`(M5)的入口预算按 procedure 计额,与走哪个分支无关,故未另加一套专门的 IdP 预算)。
+- **状态**:**已修复**(2026-10-06,主修复 commit `f55f62a`,独立复核后的加固 commit `10e803f`;CreateSSOState 的按源/全局预算与 state 缓存容量、IdP 客户端的超时与 ctx 透传见 §10。证据中"Login 的 IdP 分支无限流"一条在本轮之前已不成立:`e9bc802`(M5)的入口预算按 procedure 计额,与走哪个分支无关,故未另加一套专门的 IdP 预算)。
 - **证据**:`backend/api/v1/auth_service.go:244-251`(匿名写入 1024 项 LRU 的 state,`state.go:16-20`);Login 的限流只在口令分支(`auth_service.go:92-101`),IdP 分支无限流;`backend/plugin/idp/oauth2/oauth2.go:49-55`(`http.Client` 无 Timeout,UserInfo 不带 ctx)。
 - **攻击场景**:匿名刷空 LRU 即可让真实用户的 SSO 回调全部失效("invalid or expired state" 登录 DoS);未认证者可让服务器带着 client_secret 持续出站打企业 IdP。
 - **修复**:CreateSSOState 按 IP 限流;IdP client 加 Timeout 并透传 ctx。
@@ -813,12 +813,12 @@ M10/M11 落地后由独立子代理对 `25f2f0b` 做了对抗式只读复核(95 
 - 文档更正三处:query 里的 `%zz` 会原样通过(`url.Parse` 不校验 `RawQuery`),原文"非法转义一律被拒"说得过宽;前端那层"协议检查就是全部判据"的前提是输入已经过服务端校验,WHATWG 会把 `http:/x` 一类写法重解析成 `http://x/`,只是它们到不了前端;"前端 `:href` 统一经白名单"不成立——第三处 `:href` 是本地常量。
 - 复核未能在 M10/M11 范围内构造出可利用问题,但记录了两条相邻观察:`LoginPage.vue` 的 `window.location.assign(redirect)` 分支因 router 的 `/:pathMatch(.*)*` catch-all 永远不可达(可能让 MCP OAuth 的登录回跳落到 NotFound 页),以及 monaco 的 blob worker 与跨源 `VITE_API_BASE_URL` 两个 CSP 前提——前者是独立问题、本轮不改,后者写进残余 7/8。
 
-### 2026-10-06 —— M15 已修复(commit `f55f62a`)
+### 2026-10-06 —— M15 已修复(主修复 commit `f55f62a`,独立复核后的加固 commit `10e803f`)
 
 **CreateSSOState 的预算,以及它保护的缓存**(`backend/component/state/{state,window_limiter}.go`、`backend/api/v1/throttle_interceptor.go`)
 
 - `CreateSSOState` 是匿名方法,每次调用往容量有界的 `SSOStateCache` 写一个 nonce;调用方无限刷即把真实用户正在进行的 SSO 流程挤出去("invalid or expired state")。现由 `ThrottleInterceptor` 按解析后的客户端地址 + 全局双桶计额(120/min 与 300/min,与 Login 同值:两者是同一次登录流程的两半,state 预算更紧就会把流程压在它所供养的登录预算之下)。它与 Login 一样不对已登录调用方豁免。
-- **只加限流不足以关闭攻击**,这是本轮唯一超出审查建议原文的改动:全局预算 300/min、TTL 5 分钟,而限流窗口是固定窗口而非滑动窗口 —— 一个 TTL 可以跨到两份满额,所以上界是 (5+1)×300 = 1800 个在飞 nonce,而容量是 1024。多来源(或轮换来源)的调用方因此仍能把缓存填满,此时约束是容量而不是速率。容量提到 4096(`ssoStateCapacity`),并把"容量 > 每个窗口的满额 ×(TTL/窗口 + 1)"写成被测试钉住的不变式:单独改任何一个数字(包括把全局预算调高)都会让它变红,而不是悄悄退化。
+- **只加限流不足以关闭攻击**,这是本轮唯一超出审查建议原文的改动:全局预算 300/min、TTL 5 分钟,而限流窗口是固定窗口而非滑动窗口 —— 攻击者的第一份满额可以起于用户取号之前的一个窗口并仍落在该 nonce 的有效期内,此后每个窗口边界再给一份,所以上界是 (ceil(5) + 1)×300 = 1800("TTL ÷ 窗口"的 1500 少算了一份),而容量是 1024。多来源(或轮换来源)的调用方因此仍能把缓存填满,此时约束是容量而不是速率。容量提到 4096(`ssoStateCapacity`),并把"容量 > 满额 ×(ceil(TTL/窗口) + 1)"写成被测试钉住的不变式。截断除法会在 TTL 不是窗口整数倍时少算一整份(复核实测:TTL=779s 时真值 4200 次,截断只有 3900),该写法已在复核后改为向上取整;任何让关系不再成立的常量改动(容量调低,或全局预算/TTL 调高)都会让它变红。
 - 该预算同时是 IdP 出站的闸门:`Login` 的 IdP 分支在 `consumeSSOState` 之后才出站,没有本服务器签发的 state 根本走不到那里。state 与 Login 两个预算因此从两端夹住"未认证者借服务器打企业 IdP"的速率;证据里"IdP 分支无限流"一条在 `e9bc802`(M5)之后已不成立(入口预算按 procedure 计额),本轮不再另加一套语义重叠的 IdP 预算。
 - 顺带更正措辞:`backend/component/state/{window_limiter,login_limiter}.go` 的类型注释与预算说明、以及 `security-posture.md`,原来把这套计数写成 "sliding window";实现其实是固定窗口 —— 窗口以每个键的首个允许请求(或首次失败)为起点,只在该窗口结束后重置,被拒的请求不延长窗口。上一条的上界推导依赖的正是这个语义,这四处措辞一并改为固定窗口并写明锚点。
 - state 仍是进程内状态(与设备登录、OAuth pending 同一约定),多副本下每个副本各有一份额度与一份缓存。
@@ -830,17 +830,32 @@ M10/M11 落地后由独立子代理对 `25f2f0b` 做了对抗式只读复核(95 
 
 **回归测试**
 
-- 单元 `backend/component/state/window_limiter_test.go`:`TestSSOStateLimiterBoundsOneSource`(按源额度用尽后拒绝、另一来源有自己的桶)与 `TestSSOStateCacheOutgrowsTheStateBudget`(容量 > 每个窗口的满额 ×(TTL/窗口 + 1),即 4096 > 1800)。
-- 单元 `backend/api/v1/throttle_interceptor_test.go`:`TestThrottleInterceptorSSOStateBudget`(第 121 个请求被拒、另一来源不受影响);`testSSOStateSourceBudget` 像另两个预算一样重复 state 包的常量,使静默改动变红。
+- 单元 `backend/component/state/window_limiter_test.go`:`TestSSOStateLimiterBoundsOneSource`(按源额度用尽后拒绝、另一来源有自己的桶)与 `TestSSOStateCacheOutgrowsTheStateBudget`(容量 > 满额 ×(ceil(TTL/窗口) + 1),即 4096 > 1800)。
+- 单元 `backend/component/state/window_limiter_test.go`:`TestSSOStateFloodCannotEvictAValidNonce` 把同一条性质在真实限流器 + 真实 LRU 上量一遍。攻击者按最坏相位灌水(用户取号前一个窗口先花掉一份满额,此后每个窗口边界再花一份,来源各不相同,直到 nonce 过期),要求受害者的 nonce 仍留在缓存里;容量还原为 1024 时它与上一条一起变红,同时证明洪水确实强到足以逐出(不是空跑)。
+- 单元 `backend/api/v1/throttle_interceptor_test.go`:`TestThrottleInterceptorSSOStateBudget`(第 121 个请求被拒、另一来源不受影响);`testSSOStateSourceBudget` 像另两个预算一样重复 state 包的常量,使静默改动变红;同一用例另外断言 `limiterFor` 给这个方法的是 `SSOStateRequestLimiter` 且与 Login 的不是同一个 —— 两个预算数字相同,只有指针身份能把"换用 Login 预算"这种退化测出来。
 - 单元 `backend/plugin/idp/oauth2/oauth2_test.go`:`TestProviderRequestsAreTimeBounded`。桩 provider 接受连接后只等 `r.Context().Done()`,因此只有服务端自己施加的 deadline 能结束请求:ctx 200ms 到期必须让调用返回(证明 `NewRequestWithContext` 生效),客户端 `Timeout` 必须等于包内常量、且缩短为 200ms 后确实结束一次没有 deadline 的调用。
-- 集成(`backend/test/integration/runner/sso_login_service_test.go`,真实服务器 + PostgreSQL):`TestCreateSSOStateIsBudgetedRealServerIntegration` 把客户端绑到 127.0.0.2,连发 120 次都拿到 state,第 121 次 `ResourceExhausted`。绑第二个 loopback 地址是为了让洪水花自己的桶,而不是其它用例共用的 127.0.0.1 桶(与 M2 用例同一手法;127.0.0.2 不可绑时跳过)。同一用例随后再用 REST 形式(`POST /v1/auth/ssoState`)打一次并要求同样 429:网关自连接必须花外层对端那个桶,否则换个入口就能绕过预算 —— 这一步同时是 M2 戳记在这个端点上的回归用例。
-- **反向验证**(逐条单独回退,验证后均已恢复):把 `limiterFor` 的 `CreateSSOState` 分支换成不匹配的 procedure ⇒ `TestThrottleInterceptorSSOStateBudget` 与上面那条集成用例都变红;`ssoStateCapacity` 还原为 1024 ⇒ 容量不变式用例变红(`"1024" is not greater than "1800"`);把全局预算调高到 800 而容量不动 ⇒ 同一条变红(`"4096" is not greater than "4800"`);去掉 `Timeout: idpRequestTimeout` ⇒ 该字段断言变红;`UserInfo` 还原为 `http.NewRequest` ⇒ ctx 子用例直到 30.04 秒的客户端超时才返回,`elapsed < 5s` 失败;让网关中间件的 `audit.StampGatewayPeer` 戳一个丢弃的 header ⇒ REST 那一步从 429 变成 200。
+- 集成(`backend/test/integration/runner/sso_login_service_test.go`,真实服务器 + PostgreSQL):`TestCreateSSOStateIsBudgetedRealServerIntegration` 把客户端绑到 127.0.0.2,连发 120 次都拿到 state,第 121 次 `ResourceExhausted`。绑第二个 loopback 地址是为了让洪水花自己的桶,而不是其它用例共用的 127.0.0.1 桶(与 M2 用例同一手法;127.0.0.2 不可绑时跳过)。同一用例随后再用 REST 形式(`POST /v1/auth/ssoState`)打一次并要求同样 429:网关自连接必须花外层对端那个桶,否则换个入口就能绕过预算 —— 这一步同时是 M2 戳记在这个端点上的回归用例。该断言之前先用默认地址(127.0.0.1)的客户端取一个 state 并要求成功,把"loopback 桶此刻仍有余量"变成显式前置条件,否则戳记失效会被"loopback 桶早已被别的用例耗尽"掩盖。
+- 集成(`sso_login_service_test.go`):`TestSSOLoginStopsWhenTheCallerGivesUpRealServerIntegration` 用一个只回 `/token`、`/userinfo` 永久挂起的桩 provider 起一次 SSO 登录,等桩确认收到 userinfo 调用后取消调用方 ctx,要求桩的 userinfo 处理函数在 5 秒内结束。Connect 客户端在"出站被取消"和"出站挂到超时"两种情况下都会立刻返回,所以只有 provider 能观察到出站请求是否真的停了;把 handler 里的调用点改回 `UserInfo(context.Background(), token)` 时这条会红(5.04 秒后报 outlived)。
+- **反向验证**(逐条单独回退,验证后均已恢复):把 `limiterFor` 的 `CreateSSOState` 分支换成不匹配的 procedure ⇒ `TestThrottleInterceptorSSOStateBudget` 与那条集成用例都变红;把该分支改指向 `LoginRequestLimiter` ⇒ 新增的指针身份断言变红;`ssoStateCapacity` 还原为 1024 ⇒ 不变式用例与洪水用例都变红(`"1024" is not greater than "1800"`,以及"a nonce a user just minted must survive the anonymous flood for its whole TTL");把全局预算调高到 800 而容量不动 ⇒ 不变式用例变红(`"4096" is not greater than "4800"`);`SSOStateTTL` 改为 779s ⇒ 改向上取整后的公式如期变红(`"4096" is not greater than "4200"`);去掉 `Timeout: idpRequestTimeout` ⇒ 该字段断言变红;`UserInfo` 还原为 `http.NewRequest` ⇒ ctx 子用例直到 30.03 秒的客户端超时才返回,`elapsed < 5s` 失败;handler 的调用点改为 `context.Background()` ⇒ 上面那条新的集成用例变红(5.04 秒后报 outlived);让网关中间件的 `audit.StampGatewayPeer` 戳一个丢弃的 header ⇒ REST 那一步从 429 变成 200。
 
 **残余(本轮未处理)**
 
 1. **超时是包级常量,没有按 provider 覆盖的入口**:慢速企业 IdP 需要改这里重新编译。当前没有可配置 IdP 的 API/UI(`idp.config` 只能改库),加一个配置字段要动 proto 与生成物,不属本条范围。
 2. **`UserInfo` 的响应体仍是无上限的 `io.ReadAll`**:恶意或被接管的 IdP 可以返回任意大的 body。这是管理员配置的出站目标,与 M23(LLM 出站无策略层)、M20/M21(数据源出站)同属 §5.4 的"出站策略层"缺位;本轮的 30 秒超时限制的是时间,不是内存。
 3. **`skip_tls_verify` 未动**(M22/D7):provider 侧跳过 TLS 校验与"无条件信任 userinfo 返回的主体"叠加,能中间人的对手仍可伪造任意 subject。
-4. **多副本语义**:state 预算与 state 缓存都是进程内的(与 D2 的多副本清单一致)。预算同时意味着一个部署的 SSO state 上限;它不阻止"多个来源各刷一部分",只是让缓存大到刷不满。
+4. **多副本语义**:state 预算与 state 缓存都是进程内的(与 D2 的多副本清单一致)。预算同时意味着一个部署的 SSO state 上限;它不阻止"多个来源各刷一部分",只是让缓存大到刷不满。复核对这一点的说法做了收紧:逐出型 DoS 在复制下**仍然关闭** —— 每个副本自己的全局桶把该副本缓存的准入压在同一上界之下(4096 次逐出需要 300/min 跑 13.6 分钟 > 5 分钟 TTL),复制只会带来既有的"nonce 与登录必须落在同一副本"约定,不会重新打开逐出路径。
+5. **全局兜底预算可被少数来源饿死**(复核实测,已记录):3 个来源按 120+120+60 花掉 300/min 后,第四、第五个来源都拿到 `ResourceExhausted` —— 攻击面从"无限取号"变成了"限速型拒绝"。这是全局兜底的固有代价,Login 的 300/min 全局桶同样可被少数来源占满(既有设计),不是本条的回归;它只挡住新开的 SSO 流程,已有会话不受影响。收敛方向是 §5.2 的统一限流(按源配额与全局配额分层,而不是让少数来源吃满全局),不在本条范围。
 
-**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go build ./...` 与 release 构建、`go test ./backend/...`、`make test-integration`(真实 PostgreSQL + MySQL + migrator)。本轮未改前端与 CLI,未跑这两侧门禁。
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go build ./...` 与 release 构建、`go test ./backend/...`、`make test-integration`(真实 PostgreSQL + MySQL + migrator)。本轮未改前端与 CLI,未跑这两侧门禁。加固提交 `10e803f` 后重跑同一组门禁。
+
+**独立复核后的加固(commit `10e803f`)**
+
+M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增量)做了对抗式只读复核:探针全部挂在 `/tmp` 并以 `go test -overlay` 注入,未改动仓库文件,也未跑集成套件。复核确认两条核心结论成立,并用真实限流器 + 真实 LRU 实测了要害性质(受害 nonce 存活:容量 1024 时 `false`、4096 时 `true`,因此容量必须提高;最坏相位下攻击者实际准入 1799 次,与公式 1800 一致;只有 handler 一处写缓存、`state.New()` 是唯一构造点,没有 nil limiter;x/oauth2 确实消费 `oauth2.HTTPClient` 的值,300ms 的 client 超时对 `UserInfo`/`ExchangeToken` 的建连、交换与 body 读取都生效)。它同时指出下列问题,均已修掉:
+
+1. **不变式测试用了截断除法**(中,已实测):`int(SSOStateTTL/throttleWindow)+1` 在 TTL 不是窗口整数倍时少算一整份 —— TTL=779s 时公式给 3900 < 4096(绿),而真实上界 4200 > 4096(关系已破)。现改为向上取整,并补上 TTL=779s 的反向验证(如期变红)。复核还指出该用例只是常量算术、测不到行为,故新增真实限流器 + 真实 LRU 的洪水用例。
+2. **"改用 Login 预算"没有任何测试能发现**(中):两个预算数字相同,行为断言区分不了。现在断言 `limiterFor` 返回的正是 `SSOStateRequestLimiter`,且与 Login 的不是同一个;互换后变红。
+3. **handler → `UserInfo` 的 ctx 接线无人守护**(中):把调用点改成 `context.Background()` 时全部单测与既有集成用例依旧全绿 —— 唯一的 IdP 集成用例用的是即时应答的假 provider,观察不到取消。新增以"只挂 `/userinfo`"的桩观察出站请求是否真的随调用方结束的集成用例;回退调用点即变红。
+4. **REST 那半条断言可能因为别的原因通过**(低-中):若共用的 127.0.0.1 桶在断言之前就被别的用例耗尽,戳记失效也会返回 429。现在断言前先用 127.0.0.1 取一个 state 并要求成功,把"loopback 桶此刻仍有余量"变成显式前置条件 —— 不满足就报错,而不是静默通过。
+5. **两处文档表述与代码不符**(已改):`security-posture.md` 原写 "holds 4096 nonces over a five-minute TTL",而 `SSOStateCache` 并不按时间淘汰(用 `lru.New` 而不是 `NewWithExpire`),nonce 只在被消费或逐出时离开,TTL 只在 `consumeSSOState` 里检查 —— 稳态下缓存里可以有任意年龄的 nonce,保护有效 nonce 的是容量余量而不是 TTL;同段"单独改任何一个数字都会让它变红"对 `SSOStateTTL` 不成立(见第 1 条),已改为"任何让这条关系不再成立的常量改动"。
+
+复核**未能推翻**的核心结论:单副本下,只控制自己请求的攻击者无法逐出他人仍有效的 nonce;网关戳记(M2/M3)在此端点上照常生效。未测到的部分:集成套件本身(复核被要求不跑),以及与本条无关的子系统。
