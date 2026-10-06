@@ -35,14 +35,18 @@ type State struct {
 	// DeviceLoginStore holds the in-flight device authorization requests.
 	DeviceLoginStore *DeviceLoginStore
 	// DeviceLoginLimiter throttles CreateDeviceLogin per source address.
-	DeviceLoginLimiter *DeviceLoginLimiter
+	DeviceLoginLimiter *WindowLimiter
 	// DeviceLoginLookupLimiter throttles GetDeviceLogin and ApproveDeviceLogin
 	// per caller, so holding an account does not buy unlimited guesses at
 	// someone else's user code.
-	DeviceLoginLookupLimiter *DeviceLoginLimiter
+	DeviceLoginLookupLimiter *WindowLimiter
 	// OAuthAuthorizationRequestStore holds the pending OAuth 2.1 authorization
 	// requests and the single-use authorization codes minted from them.
 	OAuthAuthorizationRequestStore *OAuthAuthorizationRequestStore
+	// MCPCallLimiter throttles MCP tool calls per principal. The endpoint is a
+	// remote entry point a model drives, and every call reads the registry and
+	// writes a ledger row.
+	MCPCallLimiter *WindowLimiter
 }
 
 func New() (*State, error) {
@@ -63,6 +67,7 @@ func New() (*State, error) {
 		DeviceLoginLimiter:             newDeviceLoginCreateLimiter(),
 		DeviceLoginLookupLimiter:       newDeviceLoginLookupLimiter(),
 		OAuthAuthorizationRequestStore: NewOAuthAuthorizationRequestStore(),
+		MCPCallLimiter:                 newMCPCallLimiter(),
 	}, nil
 }
 

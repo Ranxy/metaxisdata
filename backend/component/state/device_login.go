@@ -45,7 +45,9 @@ const (
 	// clients to poll at. It is longer than the enforced minimum on purpose.
 	DeviceLoginRecommendedPollInterval = 3 * time.Second
 	// deviceLoginCapacity bounds the in-flight requests held in memory. It is
-	// the ceiling on what an unauthenticated caller can make the server hold.
+	// the ceiling on what an unauthenticated caller can make the server hold:
+	// the display-only client fields are capped, and the address and User-Agent
+	// are bounded before they reach here, so this count is what decides the total.
 	deviceLoginCapacity = 10000
 )
 

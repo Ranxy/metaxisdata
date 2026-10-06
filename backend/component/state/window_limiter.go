@@ -5,7 +5,8 @@ import (
 	"time"
 )
 
-// Device login throttling. Two endpoints need different budgets:
+// Throttling budgets, all counted over a sliding window. The device login
+// endpoints need two different ones:
 //
 //   - creating a request is anonymous, allocates memory and drives a human
 //     approval, so it is counted per source address with a loose global backstop
@@ -14,6 +15,11 @@ import (
 //   - reading or deciding a request needs a signed-in caller, and is counted per
 //     caller so holding an account does not buy unlimited guesses at someone
 //     else's user code.
+//
+// The MCP budget is per principal rather than per address: agents behind one
+// address share it, and every call reads the registry and writes a ledger row.
+// It bounds abuse rather than normal use — a client would have to sustain ten
+// calls a second to reach it.
 const (
 	deviceLoginSourceLimit     = 10
 	deviceLoginSourceWindow    = time.Minute
@@ -25,12 +31,17 @@ const (
 	deviceLoginLookupWindow   = time.Minute
 	deviceLoginLookupGlobal   = 600
 	deviceLoginLookupCapacity = 4096
+
+	mcpCallLimit    = 600
+	mcpCallGlobal   = 6000
+	mcpCallWindow   = time.Minute
+	mcpCallCapacity = 4096
 )
 
-// DeviceLoginLimiter is an in-memory sliding-window counter. A request is
+// WindowLimiter is an in-memory sliding-window counter. A request is
 // counted only when it is allowed, so hammering a refused key cannot keep
 // pushing its window forward.
-type DeviceLoginLimiter struct {
+type WindowLimiter struct {
 	mu      sync.Mutex
 	sources map[string]loginAttempt
 	global  loginAttempt
@@ -42,8 +53,8 @@ type DeviceLoginLimiter struct {
 	capacity     int
 }
 
-func newDeviceLoginLimiter(sourceLimit, globalLimit int, sourceWindow, globalWindow time.Duration, capacity int) *DeviceLoginLimiter {
-	return &DeviceLoginLimiter{
+func newWindowLimiter(sourceLimit, globalLimit int, sourceWindow, globalWindow time.Duration, capacity int) *WindowLimiter {
+	return &WindowLimiter{
 		sources:      map[string]loginAttempt{},
 		sourceLimit:  sourceLimit,
 		globalLimit:  globalLimit,
@@ -53,16 +64,20 @@ func newDeviceLoginLimiter(sourceLimit, globalLimit int, sourceWindow, globalWin
 	}
 }
 
-func newDeviceLoginCreateLimiter() *DeviceLoginLimiter {
-	return newDeviceLoginLimiter(deviceLoginSourceLimit, deviceLoginGlobalLimit, deviceLoginSourceWindow, deviceLoginGlobalWindow, deviceLoginLimiterCapacity)
+func newDeviceLoginCreateLimiter() *WindowLimiter {
+	return newWindowLimiter(deviceLoginSourceLimit, deviceLoginGlobalLimit, deviceLoginSourceWindow, deviceLoginGlobalWindow, deviceLoginLimiterCapacity)
 }
 
-func newDeviceLoginLookupLimiter() *DeviceLoginLimiter {
-	return newDeviceLoginLimiter(deviceLoginLookupLimit, deviceLoginLookupGlobal, deviceLoginLookupWindow, deviceLoginLookupWindow, deviceLoginLookupCapacity)
+func newDeviceLoginLookupLimiter() *WindowLimiter {
+	return newWindowLimiter(deviceLoginLookupLimit, deviceLoginLookupGlobal, deviceLoginLookupWindow, deviceLoginLookupWindow, deviceLoginLookupCapacity)
+}
+
+func newMCPCallLimiter() *WindowLimiter {
+	return newWindowLimiter(mcpCallLimit, mcpCallGlobal, mcpCallWindow, mcpCallWindow, mcpCallCapacity)
 }
 
 // Allow counts one request from source and reports whether it may proceed.
-func (l *DeviceLoginLimiter) Allow(source string, now time.Time) bool {
+func (l *WindowLimiter) Allow(source string, now time.Time) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -98,7 +113,7 @@ func windowBump(attempt loginAttempt, window time.Duration, now time.Time) login
 }
 
 // pruneLocked drops elapsed windows and, at capacity, the oldest one.
-func (l *DeviceLoginLimiter) pruneLocked(now time.Time) {
+func (l *WindowLimiter) pruneLocked(now time.Time) {
 	if len(l.sources) < l.capacity {
 		return
 	}

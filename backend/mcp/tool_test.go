@@ -679,6 +679,39 @@ func TestDispatchReturnsOnlyStructuredContentAndRendersErrorsInBand(t *testing.T
 	require.NotNil(t, result.StructuredContent)
 }
 
+// The MCP endpoint is a remote entry point a model drives: every call reads the
+// registry and writes a permanent row. A principal's calls are budgeted, and a
+// call refused by the budget is a tool failure like any other, so it is recorded
+// too — as is an unauthenticated one, which has no principal to count.
+func TestDispatchBudgetsToolCallsPerPrincipal(t *testing.T) {
+	t.Parallel()
+
+	server := newTestServer(t, &fakeReaders{listInstances: oneInstance()}, &fakeChecker{allow: true})
+	limiter := &fakeCallLimiter{limit: 1}
+	server.config.CallLimiter = limiter
+	definition := toolByName(t, server, "list_instances")
+
+	rows := 0
+	server.audit = func(context.Context, *mcpsdk.CallToolRequest, toolDefinition, *store.UserMessage, error, time.Time) {
+		rows++
+	}
+
+	result, err := server.dispatch(context.Background(), requestFor(t, testUser(), definition.Name, `{"page_size": 1}`), definition)
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+
+	_, err = server.dispatch(context.Background(), requestFor(t, testUser(), definition.Name, `{}`), definition)
+	require.Equal(t, codeResourceExhausted, failureOf(t, err).Code)
+	require.Equal(t, []string{"user:7", "user:7"}, limiter.keys)
+	require.Equal(t, 2, rows, "a call the budget refused is still recorded")
+
+	_, err = server.dispatch(context.Background(),
+		&mcpsdk.CallToolRequest{Params: &mcpsdk.CallToolParamsRaw{Name: definition.Name, Arguments: json.RawMessage(`{}`)}},
+		definition)
+	require.Equal(t, codeUnauthenticated, failureOf(t, err).Code)
+	require.Len(t, limiter.keys, 2, "an unauthenticated call has no principal to count against")
+}
+
 // TestDispatchAuditsARefusedCall is the invariant the refusal paths used to skip:
 // a call the caller is not allowed to make is the one most worth recording, so the
 // row is written before the refusal is returned.
@@ -726,6 +759,17 @@ func TestErrorResultCarriesTheEnvelope(t *testing.T) {
 	text := result.Content[0].(*mcpsdk.TextContent).Text
 	require.Contains(t, text, codeNotFound)
 	require.Contains(t, text, "search first")
+}
+
+// fakeCallLimiter spends a fixed budget and remembers who was counted.
+type fakeCallLimiter struct {
+	limit int
+	keys  []string
+}
+
+func (l *fakeCallLimiter) Allow(key string, _ time.Time) bool {
+	l.keys = append(l.keys, key)
+	return len(l.keys) <= l.limit
 }
 
 func requestFor(t *testing.T, user *store.UserMessage, name, args string) *mcpsdk.CallToolRequest {

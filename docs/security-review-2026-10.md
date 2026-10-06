@@ -60,6 +60,7 @@
 - **修复**:改 `$1/$2` 参数化。
 
 ### H6. 匿名 `CreateUser` 被全量审计且无请求体上限:未认证者可向永久账本写入最大 100MB/请求
+- **状态**:**已修复**(2026-10-06,commit `4d334d4`;修复内容与验证见 §10)。
 - **证据**:`backend/api/v1/audit.go:48-51`(成功/失败都落审计);`backend/component/audit/audit.go:38-57`(请求整体序列化进 `audit_log`);`proto/v1/v1/user_service.proto:53-54`(匿名 + audit);`backend/server/grpc_routes.go:124-125`(仅 AuthService 收窄 64KiB,UserService 无 `WithReadMaxBytes`);`backend/server/echo_routes.go:27`(全局 BodyLimit 100M)。
 - **攻击场景**:匿名 POST `/v1/users` 带 100MB 的 `user.title`(email 校验失败也照样留审计行),每请求 ≈100MB 永久磁盘 + WAL + 索引;`audit_log` 按既定决策永不清理,无凭证、无限速,可持续打满磁盘使整个平台不可用。MCP 侧有 8KiB/串截断(`backend/mcp/server.go:386`),Connect 侧缺同一道闸——是遗漏而非策略。
 - **修复**:审计载荷统一字节上限(与 MCP 一致或整行封顶);各 service 补 `WithReadMaxBytes`;匿名方法请求字段做长度校验(另见 M17/M18 同族放大)。
@@ -150,11 +151,13 @@
 - **修复**:CreateSSOState 按 IP 限流;IdP client 加 Timeout 并透传 ctx。
 
 ### M16. OAuth 注册/授权/MCP 面的写入与内存放大:注册审计无截断、pending 10GB、`/mcp` 无限流
+- **状态**:**大部分已修复**(2026-10-06,commit `4e48ea6`;注册/授权/MCP 的写入与内存放大、以及 `/mcp` 的限流与超时见 §10;"审计只记 schema 声明过的字段"未做)。
 - **证据**:`backend/api/oauth/register.go:18`、`:125-129`(注册体上限 64KiB,但 `redirect_uris` 无单条限长且审计明细原样落库);`backend/component/state/oauth_authorization_request.go:22`(pending 容量 10000,`state` 参数无长度上限、`RedirectURI` 可达 64KiB,TTL 10 分钟);`backend/server/grpc_routes.go:299-300`(`/mcp` 只有跨源保护,无限流);`backend/mcp/server.go:386-425`(审计只按单字符串 8KiB 截断,2MiB 请求体几乎原样入账本)。
 - **攻击场景**:匿名注册以限流速率持续写 ≈0.6MiB/s 的永久审计行 + 客户端行(叠加 XFF 伪造为 4 倍);已登录用户循环 authorize 填满 10000 条(约 10 分钟)占 ≈10GB RSS 并逐出他人 pending;持 MCP token 的成员每次调用写 ≈2MiB 永久审计行。
 - **修复**:redirect_uri 限长(2-4KiB)、OAuth 审计明细与 MCP 同标准截断(整行封顶);authorize 的 `state` 设硬上限(如 512B);`/mcp` 加按用户限流与超时;审计只记 schema 声明过的字段。
 
 ### M17. User-Agent 未截断进入永久审计与设备登录内存
+- **状态**:**已修复**(2026-10-06;UA 上限随 H6 的 commit `4d334d4` 落地,本轮的设备登录端到端验证与地址收紧见 commit `4e48ea6`,细节见 §10)。
 - **证据**:`backend/component/audit/audit.go:227-232`(原样取 UA);`backend/api/v1/auth_service_device_login.go:49-67`(pending 记录持有完整 UA 10 分钟,store 容量 10000)。
 - **攻击场景**:匿名 Login/CreateUser(audit=true、无限流)以约 1MB 的 UA 无上限写 `audit_log`;设备登录峰值可达数百 MB-1GB 常驻内存。同文件已给 client_name/version 设 100 字节上限,唯独漏了 UA。
 - **修复**:`BuildRequestMetadata` 对 UA 截断(如 256B),审计写入侧限制 metadata 字段长度。
@@ -308,7 +311,7 @@
 但以下四条的**副作用或表述**建议更新:
 
 1. **"存储凭据是混淆非加密;拥有数据库读权限可恢复一切"**——实测强度更弱:已知明文前缀(如 PEM 头)即可在**只有 `instance.metadata`**、拿不到 `setting` 表的情形下恢复密钥流全量还原凭据。文档不应再暗示"攻击者必须先拿到 setting 表"。(见 5.1)
-2. **"`audit_log` 永不清理"**——该决策的前提是审计行有界;H6/M16/M17 表明匿名/半匿名请求可把它当磁盘炸弹。永久保留与写入背压并不冲突,建议同时声明后者。
+2. **"`audit_log` 永不清理"**——该决策的前提是审计行有界;H6/M16/M17 表明匿名/半匿名请求可把它当磁盘炸弹。永久保留与写入背压并不冲突,建议同时声明后者。(写入上限已随 H6 修复并在 `security-posture.md` 声明,见 §10;限流与背压仍待办。)
 3. **"反向代理契约(须归一化/剥离 XFF)"**——`FirstForwardedFor` 取最左值意味着按常规追加语义配置的代理**无法**通过"归一化"修复(M1),且 REST 网关自连接使正确配置也会产生 127.0.0.1(M2)。契约需要在实现层兑现,建议随 M1/M2 修复后更新该节。
 4. **"审批重用 approver 会话"**——设备登录正确(签发前后各校验);OAuth 换发端缺同一复核(I1),与设备登录路径不一致。
 
@@ -322,7 +325,7 @@
 3. H7:SSH `InsecureIgnoreHostKey` → known_hosts/指纹 + 握手超时 + ctx 透传;
 4. H3:SSO 按 IdP subject 绑定;改邮箱要求当前密码;
 5. M1/M2:XFF 改取最右未信任段;网关审计 metadata 修正;
-6. H6/M16/M17:审计载荷统一上限 + 匿名端点限流(CreateUser/Login/OAuth/OL/`/mcp`)。
+6. H6/M16/M17:审计载荷统一上限 + 匿名端点限流(CreateUser/Login/OAuth/OL/`/mcp`)——H6 与 M17 已完成,M16 的注册/授权/MCP 写入与内存放大、`/mcp` 按 principal 限流与超时也已完成(见 §10);其余匿名端点(Login/CreateUser/OL)的按源限流仍待办;
 
 **P1(近期,利用条件明确)**
 7. M3/M4/M5:限流键改真实 IP + 账号/源双计数;吊销改持久化水位线;源级 CPU 上限;
@@ -526,3 +529,74 @@
 6. **`DeadlineConn` 的语义不是 `net.Conn` 等价**(低危,复核确认):到期关隧道而非返回 `net.Error` 超时,pgx 的 `peekMessage` 因此走 `asyncClose`,被取消的查询会丢弃池中连接并为 `CancelRequest` 再开一条隧道。安全但更重;若要贴近原生语义需要给 `chanConn` 套一层可取消的读。
 7. **`chanConn.Close()` 可能阻塞**(低危,复核仅静态确认):channel close 要经 transport 写包,若对端停止读取导致发送缓冲写满,`DeadlineConn` 的关隧道与读取都可能卡住;未能构造出该场景。属 x/crypto `chanConn` 的既有性质。
 8. 其余复核未修项:`PortFIFO`/`sshPortSize` 仍是无用死代码;隧道内 MySQL/StarRocks 用裸 `chanConn`,若 DSN 带 `readTimeout`/`writeTimeout` 会因 `SetReadDeadline` 不支持而立即失败(既有行为,M20/L20 家族)。
+### 2026-10-06 —— H6 已修复(commit `4d334d4`)
+
+**审计行的字节上限**(`backend/component/audit/audit.go`)
+
+- 新增 `MaxAuditFieldBytes`(8KiB,与原 MCP `maxAuditArgumentBytes` 同值)、`MaxAuditPayloadBytes`(256KiB)、`MaxUserAgentBytes`(256)。`MarshalAuditMessage` 在脱敏之后先把整个 `raw` map 逐字符串截断,再构造 `structpb.Struct`,最后 `capAuditPayload` 对单条 request/response 封顶:超过 256KiB 时换成 `{"truncated": "payload exceeded 262144 bytes and was dropped"}` 标记。
+- **截断必须落在 rune 边界上**(独立复核发现的 Critical,同轮修掉):按字节切片会把多字节字符切成两半,产生非法 UTF-8,而 `structpb.NewStruct` 与 `CreateAuditLog` 的 `protojson.Marshal` 都会直接拒绝它——整行落不了库。于是匿名请求只要在 `user.title` 里放 9000 字节 CJK(或在 `User-Agent` 里放 300 字节 CJK),就能让自己的审计行消失,恰好把 H6 的"必留痕"反过来用。现在 `truncateAuditString` 先用 `strings.ToValidUTF8` 修掉本来就不是 UTF-8 的字节,再用新增的 `common.TruncateUTF8Bytes` 回退到 rune 边界;`MarshalAuditMessage`/`BoundAuditStruct`/`capAuditPayload` 的所有失败分支一律"写标记行",不再返回未截断的原始载荷、也不再让调用方丢掉整行(`MarshalAuditMessage` 因此不再返回 error,`Request`/`Response` 永远是有界且可编码的)。
+- 截断刻意放在派生列之前:`resource`/`user`/`parent` 都从同一个 map 取值,因此这三列同样被限在 8KiB。这一点是必需的——此前匿名请求可以用 `user.name` 把 100MB 塞进 `resource` 列,payload 封顶对它无效。`status.message`(handler 用请求字段拼出的错误文本)、`User-Agent`、以及**转发地址**同样有界;转发地址只是让行有界,不改 M1 的"取最左"语义。OAuth 审计行的 `user`(actor)也补上同一处理。
+- `BoundAuditStruct` 是跨包入口:MCP 的 tool arguments(`backend/mcp/server.go`)与 OAuth 的审计明细(`backend/api/oauth/audit.go`,此前只做脱敏、不做截断)都改走它,各自重复的实现(`truncateAuditValues`/`maxAuditArgumentBytes`)删除。五处 `CreateAuditLog` 调用中,两处(审计拦截器的流式分支、OpenLineage 摄取)本就不记 request 载荷;记载荷的三处现在都经过同一道闸。
+- 超限只丢明细:method/actor/resource/status/latency/requestMetadata 都还在,账本仍能回答"谁在何时调了什么"。代价是响应体超过上限的行(如 `ListAuditLogs` 的整页结果,以及千级 `BatchSyncInstances`)不再逐条留存——那类响应本身就是"把账本再抄一份进账本"。
+
+**ConnectRPC 请求体上限**(`backend/server/grpc_routes.go`)
+
+- `handlerOpts` 增加默认 `WithReadMaxBytes(4MiB)`(echo 的 `BodyLimit("100M")` 降为传输层兜底);UserService 收窄到 64KiB,AuthService 维持 64KiB,gRPC reflection 两个 handler 也显式带上同一上限(此前它们继承 connect 的"无上限")。后给的 option 覆盖先给的(`handlerOptionsOption.applyToHandler` 按序 apply),既有的 AuthService 收窄不受影响。
+- 关键在于读取时机:`connect` 在**拦截器链之前**读取请求(`NewUnaryHandler` 先 `receiveUnaryRequest` 再跑拦截器),超限直接回 `ResourceExhausted`,请求既不到 handler、也不产生审计行——这同时覆盖 Connect 与 `/v1/*` REST 网关(网关把大 body 转发过来时同样被拒)。
+- UserService 的 64KiB 是被 `BatchGetUsers` 抬上去的:审计页的 CSV 导出会遍历整个账本、用一条 `batchGetUsers` 解析去重后的全部 `users/{id}`,16KiB 会在约 1400 个不同用户时把它打回原形(前端吞掉错误、CSV 静默退化为 UUID)。64KiB 约合 5000+ 个名字,同时仍把匿名 CreateUser 的请求体压到旧上限的 1/1600。`BatchGetUsers` 自身逐名字查询、无条数上限(N+1)仍是遗留问题。
+- `/v1/*` 另外套了 `http.MaxBytesHandler(mux, 4MiB)`:REST 形式下网关会先把整个 body 读进来解析再转发,逐 handler 的上限拦不住这段缓冲——H6 的攻击场景正是 REST 的 `POST /v1/users`。
+
+**匿名方法字段长度校验**(`backend/api/v1/user_service.go`)
+
+- `validateEmail` 增加 254 字节上限(RFC 5321 的 forward-path 上限;`mail.ParseAddress` 本身接受任意长地址);新增 `validateUserTitle`(256 字节),`CreateUser` 与 `UpdateUser` 的 title 路径共用。CreateUser 无需凭证,否则一个请求就能把请求体大小的值写进 `principal.name`。
+- SSO 按 provider 建号那条路径(`auth_service.go`)是 `principal.name` 的第三个写入方,那里的显示名不能拒绝(否则等于因为名字太长锁号),改用 `clampUserTitle` 在 rune 边界上截断——否则 provider 送来的长名字会让"前端编辑用户时总把 `title` 放进 update_mask"直接 400,账号在 UI 里改不动。
+
+**回归测试**
+
+- 单元(`backend/component/audit/audit_test.go`):字段截断(嵌套对象与数组)、整行封顶标记(64 个满长字段)、`BoundAuditStruct`(MCP 入口)、User-Agent 两个 header 名各截断一次、转发地址截断、`status.message` 截断;**多字节用例**——9000 字节 CJK 的字段/参数/UA/status 都必须保持合法 UTF-8 且行本身能被 `protojson.Marshal` 写出;CJK 字段触发 `MarshalAuditMessage` 的失败分支时返回标记而不是丢行。`common.TruncateUTF8Bytes` 单独钉住(8192 落在 rune 中间时回退,小于一个 rune 时返回空);`backend/api/v1/user_update_mask_test.go` 钉住 email/title 上限与 `clampUserTitle`。
+- 集成(`backend/test/integration/runner/audit_payload_service_test.go`,真实服务器 + PostgreSQL 元数据库):匿名 `CreateUser` 带 512KiB title → `ResourceExhausted`,且 `audit_log` 里该请求**一行都没有**;带 12KiB title 的非法请求 → 审计行照写,但 `request.user.title` 恰为 8KiB+`...(truncated)`、整行不超过上限;带 9000 字节 CJK title → 审计行**必须存在**且 title 合法 UTF-8、被截到上限内。
+- **反向验证**:单独撤掉 UserService 的 `WithReadMaxBytes` 后第 1 条子用例失败(错误码不是 `ResourceExhausted`、且出现审计行);单独撤掉 `MarshalAuditMessage` 的字段/整行截断后第 2 条子用例失败(title 原样 12KiB);把 `truncateAuditString` 还原成 `value[:maxBytes]` 后第 3 条子用例失败(多字节请求查不到审计行),单元的多字节用例同时报 `utf8.ValidString` 为假。三道闸各自独立生效,验证后均已恢复。
+
+**残余(本轮未处理)**
+
+1. **限流**:审计写入速率、匿名端点按源限流仍属 M5/M16/M24(§8 P0 第 6 项的其余部分)。本轮只让每行有界,匿名请求仍可高频写 16KiB 级的小行;MCP 侧 2MiB 的请求体上限(M16)未收窄。
+2. **echo 全局 `BodyLimit("100M")` 未改**:收 body 的每条路由现在都另有上限(`/v1/*` 4MiB、`/mcp` 2MiB、OL 摄取 8MiB、`/oauth/register` 64KiB),但全局值与 L8 提到的 h2c/`http.Server` 超时仍是原样。
+3. **`oauth/register` 的 `redirect_uris` 单条限长**(M16)未做,只是整条审计明细现在有界。
+4. **254 字节的邮箱上限同时作用于登录**(`auth_service.go` 的 `validateEmailWithDomains`):改造前创建的、超过 254 字节的地址将无法再登录。这类地址本身违反 RFC 5321,只能由当时的客户端造出;若某部署确有此种账号,需要人工改地址。
+5. **`BatchGetUsers` 无条数上限**(逐名字一次查询,N+1):本轮只按字节封顶(64KiB),没有收紧条数。
+6. H1/H2/H7 与 M/L/I/D 系列按 §8 待办。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`(含改动包的 `-race`)、`make test-integration`(真实 PostgreSQL + MySQL + migrator 全绿)、release 构建(`-tags release`)。本轮未改前端,未跑前端门禁。
+
+### 2026-10-06 —— M16、M17 已修复(commit `4e48ea6`)
+
+**M17:User-Agent 有界,以及 metadata 的其余字段**(`backend/component/audit/audit.go`)
+
+- 这条随 H6 一并解决:`BuildRequestMetadata` 把 UA 截到 256 字节之后,设备登录的 pending 记录(`RequestUserAgent` 直接取自它)与每条审计行的 `requestMetadata.userAgent` 都不可能再是 1MB——匿名 Login/CreateUser 的 UA 炸弹与设备登录侧的常驻内存是同一个值。
+- 本轮补两点:转发地址由 8KiB 收到 64 字节(新常量 `MaxIPBytes`——真实地址最长 45 字节,而它是 M1 未修期间由客户端选定的文本,同时进入审计行、按源限流键与 OAuth pending);并加端到端用例:匿名 `CreateDeviceLogin` 带 512KiB UA → `GetDeviceLogin` 读回的值恰为 256 字节 + 截断标记。
+- **反向验证**:撤掉 UA 截断后该集成用例失败,读回 524288 字节(`"524288" is not less than or equal to "270"`)。
+
+**M16:OAuth 注册/授权与 MCP 的写入、内存放大**
+
+- **注册**(`backend/api/oauth/authorize.go`):`ValidateRedirectURI` 增加单条 2KiB 上限。此前 64KiB 的注册体可以塞进 10 条近乎任意的 URI,存进客户端行,并被此后每个 pending 请求复制。`MatchesRedirectURI` 在请求侧执行同一上限,否则改造前注册的超长 URI 仍会以请求里那个 1MB 串进入 pending。
+- **授权请求**(`parseAuthorizationRequest`):`state` ≤512B,超长直接 `invalid_request` 而不是截断——半个不透明值不是那个值;`code_challenge` 必须恰好 43 字符(S256 的 challenge 就是 verifier 的 SHA-256 base64url,原来的判空检查换成精确长度);**`scope` 先按 256 字节封顶、再折叠成一条**——`RequestedScopesValid` 只要求每项都等于唯一支持的 scope,所以"重复同一个 scope 若干次"原本能构造任意长度的字符串切片(≈1.8MB/条),这正是 M16 的 10GB 场景。
+- **pending 内存**:每条 pending 的字段现在各自有界(state 512B、challenge 43B、scope 1 条、redirect URI ≤2KiB、client name ≤200B、地址 ≤64B),容量 10000 这个上限才有意义——此前单个请求可带约 1MB,≈10GB RSS 由此而来。两处容量注释补上了这个前提。
+- **`/mcp`**(`backend/server/grpc_routes.go`、`backend/mcp/server.go`):按 principal 限流(600 次/分,全局 6000 次/分,进程内滑动窗口)+ 60 秒超时。限流判定放在身份解析之后、权限检查之前,被拒的调用照旧写审计行(与其它拒绝路径一致);未认证请求没有 principal,不计入预算(它在身份解析处就被拒了,到不了这一步)。
+- **MCP 审计明细**:先按 64KiB 封顶参数树(`maxAuditedArgumentBytes`),再走 H6 的 `BoundAuditStruct` 同款整条封顶——端点接受 2MiB,而被预算拒掉的调用同样会带参数,所以超限时只记"带了参数",不记内容。OAuth 注册明细仍走 `BoundAuditStruct`,整条 payload 封顶 256KiB。
+- 限流器把原 `DeviceLoginLimiter` 泛化为 `WindowLimiter`(`state/window_limiter.go`;设备登录的创建、查询两个预算与 MCP 预算共用同一实现,没有第二份滑动窗口),`state.MCPCallLimiter` 由 server 注入 MCP 的 `Config.CallLimiter`。计划文档里对旧类型名的引用一并更新。
+
+**回归测试**
+
+- 单元:`backend/api/oauth/handlers_test.go`(state 超限与上限本身、challenge 长度、超长 scope、重复 scope 折叠成一条、超长 state 不回显)、`register_test.go`(redirect URI 超限与恰好等于上限)、`backend/component/state/window_limiter_test.go`(`newMCPCallLimiter` 按 principal 计额、窗口可滚动)、`backend/mcp/tool_test.go`(预算耗尽返回 `resource_exhausted`、被拒调用仍写审计行、未认证调用不消耗额度)、`backend/mcp/audit_test.go`(超出 64KiB 的参数树只记标记)。
+- 集成(`backend/test/integration/runner/device_login_bounds_service_test.go`,真实服务器 + PostgreSQL):匿名 `CreateDeviceLogin` 带 512KiB UA,读回有界值。
+- **反向验证**:分别单独撤掉 UA 截断、redirect URI 上限、scope 上限/折叠、MCP 预算检查,对应用例各自失败(scope 两项子用例都报 `invalid_scope`/条数为多),随后恢复。
+- **未覆盖(已知)**:`echoedClientState` 的调用点只有辅助函数级单测,`AuthorizeHandler` 端到端(Location 头里没有 state)没测(它需要已注册 client + 会话,属 MCP 集成用例的范畴);`/mcp` 的 60 秒超时没有用例(等待 60 秒不现实);生产装配处 `CallLimiter: stateCfg.MCPCallLimiter` 这一行本身没有用例守护(Config 里为 nil 表示不限流,单测用 fake 或 nil)。
+
+**残余(本轮未处理)**
+
+1. **"审计只记 schema 声明过的字段"**未做:审计载荷仍是"字段名脱敏 + 整体封顶",不是按 proto 注解生成的白名单。`/oauth/register` 仍会把全部 `redirect_uris`(最多 10 条 × 2KiB)记进永久账本,单行有界但单源持续注册仍能稳定写行——这是限流问题(见下)。
+2. **`/mcp` 只按 principal 限流**:未认证的探测没有 principal,仍可高频打到 token 验证;按源限流属 §5.2 的统一限流重构,并依赖 M1 先把源地址取对。预算只封顶调用速率,不封顶"被拒也写一行"这件事(被拒行现在 ≤1KiB,因为参数不再随超限内容增长)。
+3. **两个刻意的 RFC 偏差**(已写进 `security-posture.md`):超长 `state` 被拒后不回显(RFC 6749 §4.1.2.1 要求原样回显,但回显 1MB 会写进 Location 头);超过 64KiB 的参数树在账本里只留标记。
+4. 其余同 H6 一节(全局限流、`BatchGetUsers` 条数上限等)。另外:改造前注册的、超过 2KiB 的 redirect URI 现在会被 `MatchesRedirectURI` 拒绝,该 client 需要重新注册。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`(含改动包 `-race`)、`make test-integration`(真实 PostgreSQL + MySQL + migrator 全绿)、release 构建(`-tags release`)。本轮未改前端,未跑前端门禁。

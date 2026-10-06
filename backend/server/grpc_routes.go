@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -34,10 +35,28 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
+// maxConnectRequestBytes caps what one ConnectRPC request may carry. Echo's
+// transport-level body limit (100M) stays as a backstop, but every audited
+// call is serialized into a ledger that is never pruned, so each handler needs a
+// bound of its own — the general limit was far too generous to be one.
+const maxConnectRequestBytes = 4 << 20
+
 // maxAuthServiceRequestBytes caps what an AuthService request may carry. The
 // service holds credentials and the short device login fields, and two of its
-// endpoints are anonymous, so the general body limit is far too generous here.
+// endpoints are anonymous, so the general request limit is still far too
+// generous here.
 const maxAuthServiceRequestBytes = 64 << 10
+
+// maxUserServiceRequestBytes caps what a UserService request may carry. It is
+// generous for the single-user RPCs (an address, a display name, a password) and
+// still bounds the anonymous, audited CreateUser together with BatchGetUsers,
+// the one call the audit-log CSV export feeds a whole ledger's worth of names.
+const maxUserServiceRequestBytes = 64 << 10
+
+// mcpEndpointTimeout bounds one MCP request. A tool call queries the registry, so
+// it gets more room than an OAuth protocol endpoint, but not an unbounded wait:
+// the route sits outside the Connect interceptor chain.
+const mcpEndpointTimeout = 60 * time.Second
 
 func configureGrpcRouters(
 	ctx context.Context,
@@ -110,12 +129,16 @@ func configureGrpcRouters(
 			// actually received.
 			apiv1.NewErrorMappingInterceptor(),
 		),
+		// A handler may narrow this further; a later option wins. The request is
+		// read before the interceptor chain runs, so an oversized body answers
+		// ResourceExhausted without reaching the handler or the audit ledger.
+		connect.WithReadMaxBytes(maxConnectRequestBytes),
 		connect.WithRecover(onPanic),
 	)
 
 	connectHandlers := make(map[string]http.Handler)
 
-	userPath, userHandler := v1connect.NewUserServiceHandler(userService, handlerOpts)
+	userPath, userHandler := v1connect.NewUserServiceHandler(userService, handlerOpts, connect.WithReadMaxBytes(maxUserServiceRequestBytes))
 	connectHandlers[userPath] = userHandler
 	// AuthService carries only credentials and the short device login fields,
 	// and two of its endpoints are anonymous. The general body limit is far too
@@ -167,10 +190,10 @@ func configureGrpcRouters(
 		v1connect.IamServiceName,
 		v1connect.OAuthServiceName,
 	)
-	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
+	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector, connect.WithReadMaxBytes(maxConnectRequestBytes))
 	connectHandlers[reflectPath] = reflectHandler
 
-	reflectAlphaPath, reflectAlphaHandler := grpcreflect.NewHandlerV1Alpha(reflector)
+	reflectAlphaPath, reflectAlphaHandler := grpcreflect.NewHandlerV1Alpha(reflector, connect.WithReadMaxBytes(maxConnectRequestBytes))
 	connectHandlers[reflectAlphaPath] = reflectAlphaHandler
 
 	// REST gateway proxy.
@@ -291,15 +314,23 @@ func configureGrpcRouters(
 		Lineage:        lineageService,
 		Principals:     userService,
 		Checker:        iamManager,
+		CallLimiter:    stateCfg.MCPCallLimiter,
 		Stores:         stores,
 		TrustedProxies: profile.TrustedProxies,
 		Endpoints:      oauth.WorkspaceEndpoints(stores),
 	})
 	mcpHandler := http.NewCrossOriginProtection().Handler(mcpServer.Handler(tokenAuthenticator))
-	e.Any("/mcp", echo.WrapHandler(mcpHandler))
-	e.Any("/mcp/*", echo.WrapHandler(mcpHandler))
+	// This endpoint sits outside the Connect interceptor chain, so it carries its
+	// own time bound: a hung store call must not hold a request open forever.
+	mcpRoute := echo.WrapHandler(http.TimeoutHandler(mcpHandler, mcpEndpointTimeout, `{"error":"temporarily_unavailable","error_description":"the request timed out"}`))
+	e.Any("/mcp", mcpRoute)
+	e.Any("/mcp/*", mcpRoute)
 
-	e.Any("/v1/*", echo.WrapHandler(mux))
+	// The gateway reads and parses the whole body before it forwards anything, so
+	// the per-handler ConnectRPC cap only rejects the message once it is already
+	// buffered. Bound the body here too, so the REST form of an anonymous call
+	// cannot be buffered at request size either.
+	e.Any("/v1/*", echo.WrapHandler(http.MaxBytesHandler(mux, maxConnectRequestBytes)))
 
 	// Register Connect RPC handlers
 	for path, handler := range connectHandlers {

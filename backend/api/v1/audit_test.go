@@ -24,8 +24,7 @@ func TestMarshalAuditMessageRedactsSensitiveFields(t *testing.T) {
 		},
 	}
 
-	structured, raw, err := audit.MarshalAuditMessage(message)
-	require.NoError(t, err)
+	structured, raw := audit.MarshalAuditMessage(message)
 	require.NotNil(t, structured)
 	require.Equal(t, audit.RedactedValue, structured.GetFields()["password"].GetStringValue())
 	require.Equal(t, audit.RedactedValue, audit.GetNestedString(raw, "idpContext"))
@@ -70,8 +69,7 @@ func TestMarshalAuditMessageRedactsSecrets(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			structured, raw, err := audit.MarshalAuditMessage(tc.message)
-			require.NoError(t, err)
+			structured, raw := audit.MarshalAuditMessage(tc.message)
 			require.NotNil(t, structured)
 			tc.assert(t, raw)
 		})
@@ -84,13 +82,12 @@ func TestMarshalAuditMessageRedactsSecrets(t *testing.T) {
 func TestMarshalAuditMessageRedactsTheDeviceLoginSecret(t *testing.T) {
 	t.Parallel()
 
-	structured, raw, err := audit.MarshalAuditMessage(&v1pb.CreateDeviceLoginResponse{
+	structured, raw := audit.MarshalAuditMessage(&v1pb.CreateDeviceLoginResponse{
 		DeviceCode:              "polling-secret",
 		UserCode:                "7Q2X-9M4K",
 		VerificationUri:         "https://mx.example.com/device",
 		VerificationUriComplete: "https://mx.example.com/device?user_code=7Q2X-9M4K",
 	})
-	require.NoError(t, err)
 	require.NotNil(t, structured)
 
 	require.Equal(t, audit.RedactedValue, raw["deviceCode"])
