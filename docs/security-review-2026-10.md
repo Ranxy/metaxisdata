@@ -606,7 +606,7 @@
 
 **验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`(含改动包 `-race`)、`make test-integration`(真实 PostgreSQL + MySQL + migrator 全绿)、release 构建(`-tags release`)。本轮未改前端,未跑前端门禁。
 
-### 2026-10-06 —— M1、M2、M3、M4、M5 已修复(commit `e9bc802`)
+### 2026-10-06 —— M1、M2、M3、M4、M5 已修复(commit `e9bc802`,随后的加固 commit `ab3009f`)
 
 本轮把"客户端的真实地址"和"被吊销的令牌"两件事都从进程内、可被调用方影响的实现,移到了可验证的实现上;限流键与审计 IP 从此出自同一个解析函数,不会再各说各话。
 
@@ -614,7 +614,7 @@
 
 - 删除 `FirstForwardedFor`(取最左段),新增 `audit.ClientAddress`:把每一行 `X-Forwarded-For` 拆开归一化后,从右往左走,跳过 `--trusted-proxies` 命中的地址,返回第一个未信任地址——每一跳追加的是它看到的地址,所以最右段是最近的可信代理观察到的对端,攻击者前置的段永远走不到。整条链全是代理时退回最左段(最上游)作为最佳归属。非 IP 条目(含把多字节文本塞进头部的尝试)直接跳过而不是记成客户端自选文本;`ip:port`、`[v6]:port`、裸 v6 都归一化后再比较。
 - 删掉 `grpcgateway-x-forwarded-for` 死分支(D15):grpc-gateway 以无前缀的 `x-forwarded-for` 转发,该分支从未生效,顺带证明这条链路此前没有端到端验证。
-- 网关自连接(M2):`/v1/*` 中间件先 `Del` 再 `Set` `Grpc-Metadata-Metaxisdata-Client-Peer`(外层 `RemoteAddr`),grpc-gateway 把它作为 metadata 转给 Connect 处理器。`ClientAddress` 只在"该戳记 == XFF 最后一段"时才把 loopback 对端替换成外层对端:最后一段是 grpc-gateway 自己追加的外层 `RemoteAddr`,戳记是中间件覆写的,调用方无法让这两个值按其意愿相等,所以远端调用方伪造不出。loopback 因此不必列入 `--trusted-proxies`;同机反代仍按普通代理列出自己的地址(含 127.0.0.1),此时网关那一跳解析成反代地址后继续沿 XFF 往左走。
+- 网关自连接(M2):`/v1/*` 中间件先 `Del` 再 `Set` `Grpc-Metadata-Metaxisdata-Client-Peer`(外层 `RemoteAddr`),grpc-gateway 把它作为 metadata 转给 Connect 处理器。`ClientAddress` 只在"该戳记 == XFF 最后一段"时才把 loopback 对端替换成外层对端:最后一段是 grpc-gateway 自己追加的外层 `RemoteAddr`,戳记是中间件覆写的,调用方无法让这两个值按其意愿相等,所以远端调用方伪造不出。loopback 因此不必列入 `--trusted-proxies`;同机反代仍按普通代理列出自己的地址(含 127.0.0.1),此时网关那一跳解析成反代地址后继续沿 XFF 往左走。两个值各自解析,`ab3009f` 起在归一化形式(IPv6 规范化)上比较,非规范写法的外层地址同样能命中。
 - 消费方全部自动受益:审计 IP、设备登录创建限流、OAuth 匿名端点限流、OpenLineage 摄取限流与 `/mcp` 审计。
 
 **M3/M5:登录限流拆成账号/源双计数,Connect 入口为匿名 bcrypt 方法加双桶限额**(`backend/component/state/{login_limiter,window_limiter,state}.go`、`backend/api/v1/throttle_interceptor.go`、`backend/api/v1/auth_service.go`、`backend/server/grpc_routes.go`)
