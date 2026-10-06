@@ -14,7 +14,7 @@ import (
 
 const (
 	// openLineageIngestionRate is the sustained requests-per-second budget of one
-	// ingestion key (or of the client IP for authenticated-less requests).
+	// ingestion key (or of the resolved client address for key-less requests).
 	openLineageIngestionRate = 50
 	// openLineageIngestionBurst allows short bursts above the sustained rate.
 	openLineageIngestionBurst = 100
@@ -25,22 +25,20 @@ const (
 // openLineageIngestionMiddleware rate-limits and time-bounds the OpenLineage
 // ingestion routes. They are plain Echo routes and therefore skip the Connect
 // interceptors, which is where the rest of the API gets its protections.
-func openLineageIngestionMiddleware() echo.MiddlewareFunc {
-	store := middleware.NewRateLimiterMemoryStoreWithConfig(middleware.RateLimiterMemoryStoreConfig{
-		Rate:      openLineageIngestionRate,
-		Burst:     openLineageIngestionBurst,
-		ExpiresIn: 3 * time.Minute,
-	})
+func openLineageIngestionMiddleware(trustedProxies []string) echo.MiddlewareFunc {
+	store := newBoundedRateLimiterStore(openLineageIngestionRate, openLineageIngestionBurst)
 	limiter := middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
 		Store: store,
 		// Key by the ingestion key so one noisy producer cannot exhaust another's
-		// budget; the raw key is never stored, only its digest.
+		// budget; the raw key is never stored, only its digest. A request without
+		// a key falls back to the resolved client address, not to Echo's RealIP,
+		// which believes X-Forwarded-For from anyone.
 		IdentifierExtractor: func(c echo.Context) (string, error) {
 			if key := apiv1.ExtractIngestionKey(c.Request()); key != "" {
 				sum := sha256.Sum256([]byte(key))
 				return hex.EncodeToString(sum[:]), nil
 			}
-			return c.RealIP(), nil
+			return rateLimitSourceKey(c, trustedProxies), nil
 		},
 		DenyHandler: func(c echo.Context, _ string, _ error) error {
 			return c.JSON(http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})

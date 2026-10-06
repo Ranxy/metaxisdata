@@ -270,8 +270,9 @@ func configureGrpcRouters(
 	olGroup := e.Group("/api/v1/lineage")
 	// Ingestion skips the Connect interceptor chain, so it carries its own rate
 	// limit and deadline: a valid key could otherwise drive unbounded concurrent
-	// ingestion with no time bound.
-	olGroup.Use(openLineageIngestionMiddleware())
+	// ingestion with no time bound. Key-less requests are budgeted per resolved
+	// client address, so the same trusted-proxy rules as the audit record apply.
+	olGroup.Use(openLineageIngestionMiddleware(profile.TrustedProxies))
 	olHandler.RegisterRoutes(olGroup)
 
 	// The OAuth 2.1 authorization server behind the MCP endpoint. Its routes are

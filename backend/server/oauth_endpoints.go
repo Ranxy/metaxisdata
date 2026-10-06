@@ -6,8 +6,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-
-	"github.com/Ranxy/metaxisdata/backend/component/audit"
 )
 
 const (
@@ -26,25 +24,14 @@ const (
 // API gets its protections: registration is anonymous by design, and the token
 // endpoint is a credential exchange, so both need a ceiling.
 func oauthEndpointMiddleware(trustedProxies []string) echo.MiddlewareFunc {
-	store := middleware.NewRateLimiterMemoryStoreWithConfig(middleware.RateLimiterMemoryStoreConfig{
-		Rate:      oauthEndpointRate,
-		Burst:     oauthEndpointBurst,
-		ExpiresIn: 3 * time.Minute,
-	})
+	store := newBoundedRateLimiterStore(oauthEndpointRate, oauthEndpointBurst)
 	limiter := middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
 		Store: store,
 		// The trusted-proxy rules decide whether a forwarded address may be
 		// believed. Echo's RealIP trusts the header unconditionally, which would
 		// let a caller lift its own limit by spoofing it.
 		IdentifierExtractor: func(c echo.Context) (string, error) {
-			if ip := audit.BuildRequestMetadata(c.Request().Header, c.Request().RemoteAddr, trustedProxies).GetIp(); ip != "" {
-				return ip, nil
-			}
-			// net/http always fills RemoteAddr, so this is unreachable in practice;
-			// if it ever is reached, one shared bucket is the safe answer. Echo's
-			// RealIP would read X-Forwarded-For unconditionally, which is a header
-			// a caller can write.
-			return "unknown", nil
+			return rateLimitSourceKey(c, trustedProxies), nil
 		},
 		DenyHandler: func(c echo.Context, _ string, _ error) error {
 			return c.JSON(http.StatusTooManyRequests, map[string]string{
