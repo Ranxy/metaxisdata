@@ -24,6 +24,7 @@ import (
 const (
 	testLoginSourceBudget      = 120
 	testCreateUserSourceBudget = 20
+	testSSOStateSourceBudget   = 120
 )
 
 func newTestThrottleInterceptor(t *testing.T, trustedProxies []string) *ThrottleInterceptor {
@@ -77,6 +78,22 @@ func TestThrottleInterceptorCreateUserBudget(t *testing.T) {
 
 	require.NoError(t, allow(t, interceptor, testCreateUserSourceBudget, v1connect.UserServiceCreateUserProcedure, http.Header{}, "203.0.113.5:4040", now))
 	requireResourceExhausted(t, interceptor.check(context.Background(), v1connect.UserServiceCreateUserProcedure, http.Header{}, "203.0.113.5:4040", now))
+}
+
+// TestThrottleInterceptorSSOStateBudget pins that the anonymous method which mints
+// SSO state nonces is bounded too: each call writes one nonce into a bounded cache,
+// so without a budget a caller evicts the state of users who are mid-sign-in, and it
+// is the only way to reach the identity provider's token endpoint.
+func TestThrottleInterceptorSSOStateBudget(t *testing.T) {
+	t.Parallel()
+
+	interceptor := newTestThrottleInterceptor(t, nil)
+	now := time.Now()
+	procedure := v1connect.AuthServiceCreateSSOStateProcedure
+
+	require.NoError(t, allow(t, interceptor, testSSOStateSourceBudget, procedure, http.Header{}, "203.0.113.5:4040", now))
+	requireResourceExhausted(t, interceptor.check(context.Background(), procedure, http.Header{}, "203.0.113.5:4040", now))
+	require.NoError(t, interceptor.check(context.Background(), procedure, http.Header{}, "198.51.100.9:4040", now))
 }
 
 // TestThrottleInterceptorExemptsAuthenticatedCreateUserButNotLogin pins the one

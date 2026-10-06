@@ -5,8 +5,9 @@ import (
 	"time"
 )
 
-// Throttling budgets, all counted over a sliding window. The device login
-// endpoints need two different ones:
+// Throttling budgets, all counted over a fixed window: a key's window opens with its
+// first allowed request and lasts throttleWindow. The device login endpoints need two
+// different ones:
 //
 //   - creating a request is anonymous, allocates memory and drives a human
 //     approval, so it is counted per source address with a loose global backstop
@@ -22,6 +23,13 @@ import (
 // one is what bounds the deployment's when every caller appears to share one
 // address. Login is the more generous of the two because a person mistyping a
 // password is normal use.
+//
+// CreateSSOState spends no CPU: it writes one nonce into the bounded SSO state
+// cache. Its budget is what keeps one caller from evicting the nonces of users who
+// are mid-sign-in; it mirrors the Login budget because the two are two halves of
+// one sign-in flow. The cache is sized above what that global budget can admit
+// while a nonce is still usable, which is what makes the budget a bound on the cache
+// and not only on the request rate.
 //
 // The MCP budget is per principal rather than per address: agents behind one
 // address share it, and every call reads the registry and writes a ledger row.
@@ -48,13 +56,20 @@ const (
 	createUserRequestSourceLimit = 20
 	createUserRequestGlobalLimit = 100
 
+	// CreateSSOState also gates the outbound call to the identity provider, which
+	// only a state this server issued can reach. The budget mirrors Login's: a
+	// tighter one would cap the flow below the login budget it feeds.
+	ssoStateSourceLimit = 120
+	ssoStateGlobalLimit = 300
+
 	mcpCallLimit  = 600
 	mcpCallGlobal = 6000
 )
 
-// WindowLimiter is an in-memory sliding-window counter. A request is
-// counted only when it is allowed, so hammering a refused key cannot keep
-// pushing its window forward.
+// WindowLimiter is an in-memory fixed-window counter: a key's window opens with its
+// first allowed request and lasts throttleWindow, so a full quota can land at the end
+// of one window and another at the start of the next. A request is counted only when
+// it is allowed, so hammering a refused key cannot keep pushing its window forward.
 type WindowLimiter struct {
 	mu      sync.Mutex
 	sources map[string]loginAttempt
@@ -101,6 +116,15 @@ func newLoginRequestLimiter() *WindowLimiter {
 // spends a bcrypt hash and (before it) an email-existence lookup.
 func newCreateUserRequestLimiter() *WindowLimiter {
 	return newWindowLimiter(createUserRequestSourceLimit, createUserRequestGlobalLimit)
+}
+
+// newSSOStateRequestLimiter bounds anonymous CreateSSOState requests, each of
+// which inserts one nonce into the bounded state cache. Sizing that cache above
+// what this budget can admit while a nonce is still usable (see ssoStateCapacity)
+// is what keeps a caller that only mints nonces from evicting the state of someone
+// who is halfway through a login.
+func newSSOStateRequestLimiter() *WindowLimiter {
+	return newWindowLimiter(ssoStateSourceLimit, ssoStateGlobalLimit)
 }
 
 // Allow counts one request from source and reports whether it may proceed.

@@ -263,7 +263,9 @@ func (s *AuthService) needResetPassword(ctx context.Context, user *store.UserMes
 }
 
 // CreateSSOState issues a one-time OAuth2 state nonce. The client passes it to
-// the identity provider and then back with the login request.
+// the identity provider and then back with the login request. The Connect entry
+// budgets it per source and globally, because the cache holding these nonces is
+// bounded: an unlimited caller would evict the state of everyone mid-sign-in.
 func (s *AuthService) CreateSSOState(_ context.Context, _ *connect.Request[emptypb.Empty]) (*connect.Response[v1pb.CreateSSOStateResponse], error) {
 	state, err := common.RandomString(32)
 	if err != nil {
@@ -418,7 +420,7 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 		if err != nil {
 			return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to exchange token"))
 		}
-		userInfo, _, err = oauth2IdentityProvider.UserInfo(token)
+		userInfo, _, err = oauth2IdentityProvider.UserInfo(ctx, token)
 		if err != nil {
 			return nil, false, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to get user info"))
 		}

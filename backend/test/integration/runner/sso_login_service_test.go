@@ -6,8 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -275,4 +277,55 @@ func TestSSOLoginBindsToTheIdentityProviderSubjectRealServerIntegration(t *testi
 		_, err = loginViaIntegrationIdentityProvider(ctx, t, authClient, idpResourceID)
 		require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err), "signing in must not undo a deactivation")
 	})
+}
+
+// M15: CreateSSOState is anonymous and writes one nonce into a bounded cache per
+// call, so the Connect entry budgets it per source. Without the budget a caller
+// fills that cache and every user who is mid-sign-in loses their state. The client
+// binds a second loopback address so the flood spends its own bucket instead of the
+// one every other test's 127.0.0.1 client shares.
+func TestCreateSSOStateIsBudgetedRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	// 127.0.0.2 is bindable on Linux but not everywhere, so skip where it is not.
+	probe, err := net.Listen("tcp", "127.0.0.2:0")
+	if err != nil {
+		t.Skipf("127.0.0.2 is not bindable here: %v", err)
+	}
+	require.NoError(t, probe.Close())
+
+	env := sharedPostgresServiceEnvNoReset(t)
+	dialer := &net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.2")}}
+	httpClient := &http.Client{
+		Timeout:   5 * time.Second,
+		Transport: &http.Transport{DialContext: dialer.DialContext},
+	}
+	t.Cleanup(httpClient.CloseIdleConnections)
+	authClient := v1connect.NewAuthServiceClient(httpClient, env.BaseURL)
+
+	ctx := context.Background()
+	// The budget is the state package's constant, repeated here so a silent change
+	// to it shows up as a failing test rather than passing either way.
+	const ssoStateSourceBudget = 120
+	for i := range ssoStateSourceBudget {
+		resp, err := authClient.CreateSSOState(ctx, connect.NewRequest(&emptypb.Empty{}))
+		require.NoError(t, err, "request %d is inside the budget", i+1)
+		require.NotEmpty(t, resp.Msg.GetState())
+	}
+	_, err = authClient.CreateSSOState(ctx, connect.NewRequest(&emptypb.Empty{}))
+	require.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(err),
+		"an anonymous caller cannot mint SSO states without bound: %v", err)
+
+	// The REST gateway answers /v1/* from the server's own loopback connection, so
+	// the bucket has to be the outer peer's or a caller could bypass the budget by
+	// switching to the REST form of the same method. This is also a regression check
+	// for the M2 stamping on this endpoint.
+	restReq, err := http.NewRequestWithContext(ctx, http.MethodPost, env.BaseURL+"/v1/auth/ssoState", strings.NewReader(`{}`))
+	require.NoError(t, err)
+	restReq.Header.Set("Content-Type", "application/json")
+	restResp, err := httpClient.Do(restReq)
+	require.NoError(t, err)
+	defer restResp.Body.Close()
+	require.Equal(t, http.StatusTooManyRequests, restResp.StatusCode,
+		"the REST gateway must spend the same per-source bucket as the Connect entry")
 }

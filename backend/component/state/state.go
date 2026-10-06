@@ -11,8 +11,15 @@ import (
 // SSOStateTTL is how long a one-time OAuth2 state nonce stays valid.
 const SSOStateTTL = 5 * time.Minute
 
-// ssoStateCapacity bounds the in-flight OAuth2 state nonces.
-const ssoStateCapacity = 1024
+// ssoStateCapacity bounds the in-flight OAuth2 state nonces. It has to stay above
+// everything the anonymous budget can admit while a nonce is still usable. The
+// budget's window is fixed rather than sliding, so one TTL can cover a full quota at
+// the end of a window and another at the start of the next: the bound is
+// (SSOStateTTL/throttleWindow + 1) × ssoStateRequestGlobalLimit = 1800, not the
+// 1500 the TTL alone suggests. Below it a caller that only mints nonces could fill
+// the cache and evict the state of everyone who is mid-sign-in — the DoS the budget
+// exists to close. window_limiter_test.go pins the relation.
+const ssoStateCapacity = 4096
 
 // ErrInstanceConnectionLimit reports that an instance is already using all of
 // its outstanding connection slots; the caller should retry later.
@@ -35,6 +42,9 @@ type State struct {
 	// SSOStateCache holds one-time OAuth2 state nonces issued by
 	// CreateSSOState, mapped to their issue time.
 	SSOStateCache *lru.Cache[string, time.Time]
+	// SSOStateRequestLimiter bounds anonymous CreateSSOState requests per source
+	// and globally, before the handler adds a nonce to SSOStateCache.
+	SSOStateRequestLimiter *WindowLimiter
 	// DeviceLoginStore holds the in-flight device authorization requests.
 	DeviceLoginStore *DeviceLoginStore
 	// DeviceLoginLimiter throttles CreateDeviceLogin per source address.
@@ -68,6 +78,7 @@ func New() (*State, error) {
 		LoginRequestLimiter:            newLoginRequestLimiter(),
 		CreateUserRequestLimiter:       newCreateUserRequestLimiter(),
 		SSOStateCache:                  ssoStateCache,
+		SSOStateRequestLimiter:         newSSOStateRequestLimiter(),
 		DeviceLoginStore:               newDeviceLoginStore(),
 		DeviceLoginLimiter:             newDeviceLoginCreateLimiter(),
 		DeviceLoginLookupLimiter:       newDeviceLoginLookupLimiter(),

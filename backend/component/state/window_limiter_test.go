@@ -108,3 +108,35 @@ func TestMCPCallLimiterIsPerPrincipal(t *testing.T) {
 	require.True(t, limiter.Allow("user:7", now), "another principal has its own budget")
 	require.True(t, limiter.Allow("user:42", now.Add(throttleWindow)), "the window rolls over")
 }
+
+// CreateSSOState is anonymous and writes one nonce into the bounded state cache
+// per call, so the budget is what keeps one source from spending the cache.
+func TestSSOStateLimiterBoundsOneSource(t *testing.T) {
+	t.Parallel()
+
+	limiter := newSSOStateRequestLimiter()
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	for i := range ssoStateSourceLimit {
+		require.True(t, limiter.Allow("203.0.113.7", now), "request %d is under the limit", i+1)
+	}
+	require.False(t, limiter.Allow("203.0.113.7", now), "the limit is reached")
+	require.True(t, limiter.Allow("203.0.113.8", now), "another source has its own bucket")
+}
+
+// The cache has to hold every nonce the global budget can admit while a nonce is
+// still usable. The window is fixed rather than sliding, so one TTL can cover a full
+// quota at the end of a window and another at the start of the next: the bound is one
+// quota per window *plus one*, not the TTL divided by the window. Below it a caller
+// that only mints nonces fills the cache and evicts the state of users who are
+// mid-sign-in — the DoS the budget exists to close, because the capacity, not the
+// request rate, is then the binding constraint. Changing either number alone breaks
+// this relation rather than the test.
+func TestSSOStateCacheOutgrowsTheStateBudget(t *testing.T) {
+	t.Parallel()
+
+	quotaPerWindow := int(SSOStateTTL/throttleWindow) + 1
+	admittedPerTTL := ssoStateGlobalLimit * quotaPerWindow
+	require.Greater(t, ssoStateCapacity, admittedPerTTL,
+		"the state cache must hold every nonce the global budget admits within one TTL")
+}

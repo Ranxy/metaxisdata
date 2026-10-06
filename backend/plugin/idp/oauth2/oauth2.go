@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
@@ -18,6 +19,14 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/idp"
 )
+
+// idpRequestTimeout bounds one HTTP exchange with the identity provider, from
+// dialing through reading the response. Nothing else bounds it: the login handler
+// runs the provider call on the request's context, which carries no deadline, so
+// without it a provider that accepts the connection and then goes quiet holds the
+// request, its goroutine and its socket open indefinitely — once per anonymous
+// call, each of which carries the configured client secret.
+const idpRequestTimeout = 30 * time.Second
 
 // IdentityProvider represents an OAuth2 Identity Provider.
 type IdentityProvider struct {
@@ -50,6 +59,7 @@ func NewIdentityProvider(config *storepb.OAuth2IdentityProviderConfig) (*Identit
 
 	return &IdentityProvider{
 		client: &http.Client{
+			Timeout: idpRequestTimeout,
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					InsecureSkipVerify: config.SkipTlsVerify,
@@ -100,9 +110,11 @@ func (p *IdentityProvider) ExchangeToken(ctx context.Context, redirectURL, code,
 	return accessToken, nil
 }
 
-// UserInfo returns the parsed user information using the given OAuth2 token.
-func (p *IdentityProvider) UserInfo(token string) (*storepb.IdentityProviderUserInfo, map[string]any, error) {
-	req, err := http.NewRequest(http.MethodGet, p.config.UserInfoUrl, nil)
+// UserInfo returns the parsed user information using the given OAuth2 token. The
+// caller's context ends the request as well, so a cancelled login does not leave
+// the provider call running.
+func (p *IdentityProvider) UserInfo(ctx context.Context, token string) (*storepb.IdentityProviderUserInfo, map[string]any, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.config.UserInfoUrl, nil)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to new http request")
 	}
