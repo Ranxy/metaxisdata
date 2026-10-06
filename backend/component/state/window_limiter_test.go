@@ -92,3 +92,19 @@ func TestDeviceLoginLookupLimiterIsPerCaller(t *testing.T) {
 	require.False(t, limiter.Allow("user:42", now), "the caller's budget is spent")
 	require.True(t, limiter.Allow("user:7", now), "another caller has its own budget")
 }
+
+// The MCP budget is per principal, not per token or per address: one agent
+// cannot spend another's, and a model that runs a call loop eventually hits it.
+func TestMCPCallLimiterIsPerPrincipal(t *testing.T) {
+	t.Parallel()
+
+	limiter := newMCPCallLimiter()
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	for i := range mcpCallLimit {
+		require.True(t, limiter.Allow("user:42", now), "call %d is under the limit", i+1)
+	}
+	require.False(t, limiter.Allow("user:42", now), "the principal's budget is spent")
+	require.True(t, limiter.Allow("user:7", now), "another principal has its own budget")
+	require.True(t, limiter.Allow("user:42", now.Add(mcpCallWindow)), "the window rolls over")
+}

@@ -39,4 +39,14 @@ func TestAuditArgumentsAreBounded(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t,
 		auditArguments(oversized).GetFields()["truncated"].GetStringValue(), "exceeded")
+
+	// The endpoint accepts 2 MiB and a call the budget refused keeps its arguments,
+	// so the tree is bounded before it is rendered rather than copied into a row.
+	large, err := json.Marshal(map[string]any{"arguments": map[string]any{
+		"sql": strings.Repeat("s", 256<<10),
+	}})
+	require.NoError(t, err)
+	notRecorded := auditArguments(large)
+	require.Contains(t, notRecorded.GetFields()["truncated"].GetStringValue(), "exceeded")
+	require.NotContains(t, notRecorded.GetFields(), "arguments")
 }

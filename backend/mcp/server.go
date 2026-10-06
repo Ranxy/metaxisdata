@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"connectrpc.com/connect"
@@ -61,6 +62,13 @@ type PermissionChecker interface {
 	CheckPermission(ctx context.Context, perm permission.Permission, user *store.UserMessage) (bool, error)
 }
 
+// CallLimiter decides whether one principal may make another tool call. It is an
+// interface so the MCP server does not depend on the process-local state package;
+// *state.WindowLimiter is what a deployment wires.
+type CallLimiter interface {
+	Allow(key string, now time.Time) bool
+}
+
 const (
 	serverName = "metaxisdata"
 	// maxRequestBytes bounds one tool call. The largest legitimate payload is a
@@ -94,7 +102,11 @@ type Config struct {
 	Lineage    LineageReader
 	Principals PrincipalReader
 	Checker    PermissionChecker
-	Stores     *store.Store
+	// CallLimiter bounds how often one principal may call a tool. Wiring it is what
+	// keeps a token holder from turning the endpoint into a ledger and query pump;
+	// a test that does not exercise the budget leaves it nil.
+	CallLimiter CallLimiter
+	Stores      *store.Store
 	// TrustedProxies decides whether a forwarded address may be believed in the
 	// audit row.
 	TrustedProxies []string
@@ -269,10 +281,22 @@ func (s *Server) dispatch(ctx context.Context, request *mcpsdk.CallToolRequest, 
 	return result, err
 }
 
+// callLimiterKey names the principal a tool call is counted against. It matches
+// the key the device login limiter uses for a caller.
+func callLimiterKey(userID int) string {
+	return "user:" + strconv.Itoa(userID)
+}
+
 // invoke is the part of a dispatch that can refuse before anything has run.
 func (s *Server) invoke(ctx context.Context, request *mcpsdk.CallToolRequest, definition toolDefinition, user *store.UserMessage) (*mcpsdk.CallToolResult, error) {
 	if user == nil {
 		return nil, newToolError(codeUnauthenticated, "the call carried no verified identity", "authorize the MCP client again")
+	}
+	// Counted per principal, not per address: agents behind one address share it.
+	// An unauthenticated call never gets this far, and the refusal itself is
+	// audited like every other one.
+	if s.config.CallLimiter != nil && !s.config.CallLimiter.Allow(callLimiterKey(user.ID), s.config.Now()) {
+		return nil, newToolError(codeResourceExhausted, "too many tool calls", "back off before retrying")
 	}
 	if definition.Permission != "" {
 		if s.config.Checker == nil {
@@ -382,9 +406,24 @@ func auditStatus(err error) (*storepb.AuditLogStatus, storepb.AuditLogSeverity) 
 // per-field and whole-payload cap the ConnectRPC interceptor applies. A tool
 // call may carry a megabyte of SQL and the ledger is kept forever, so the row
 // records what was asked without becoming a second copy of the request.
+//
+// maxAuditedArgumentBytes bounds the tree before it is rendered: the endpoint
+// accepts up to 2 MiB, and a call the budget refused carries its arguments too,
+// so past this size the row says arguments came and not what they were.
+const maxAuditedArgumentBytes = 64 << 10
+
 func auditArguments(raw json.RawMessage) *structpb.Struct {
 	if len(raw) == 0 {
 		return nil
+	}
+	if len(raw) > maxAuditedArgumentBytes {
+		marker, err := structpb.NewStruct(map[string]any{
+			"truncated": fmt.Sprintf("arguments exceeded %d bytes and were not recorded", maxAuditedArgumentBytes),
+		})
+		if err != nil {
+			return nil
+		}
+		return marker
 	}
 	var arguments any
 	if err := json.Unmarshal(raw, &arguments); err != nil {

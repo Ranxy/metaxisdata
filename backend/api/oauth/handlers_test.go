@@ -51,6 +51,37 @@ func TestParseAuthorizationRequest(t *testing.T) {
 		require.Equal(t, []string{MCPReadScope}, request.Scopes)
 	})
 
+	t.Run("the state cap itself is allowed", func(t *testing.T) {
+		t.Parallel()
+
+		values := validAuthorizationValues()
+		values.Set("state", strings.Repeat("s", authorizationMaxStateLength))
+		request, err := parseAuthorizationRequest(values, "client-1", "https://app.example.com/callback", endpoints)
+		require.NoError(t, err)
+		require.Len(t, request.ClientState, authorizationMaxStateLength)
+	})
+
+	t.Run("a repeated scope is granted once", func(t *testing.T) {
+		t.Parallel()
+
+		values := validAuthorizationValues()
+		values.Set("scope", strings.Repeat(MCPReadScope+" ", 3))
+		request, err := parseAuthorizationRequest(values, "client-1", "https://app.example.com/callback", endpoints)
+		require.NoError(t, err)
+		require.Equal(t, []string{MCPReadScope}, request.Scopes,
+			"one scope exists, so repeating it must not size the pending record")
+	})
+
+	t.Run("an over-long state is not echoed back", func(t *testing.T) {
+		t.Parallel()
+
+		require.Equal(t, "client-state", echoedClientState("client-state"))
+		require.Equal(t, strings.Repeat("s", authorizationMaxStateLength),
+			echoedClientState(strings.Repeat("s", authorizationMaxStateLength)))
+		require.Empty(t, echoedClientState(strings.Repeat("s", authorizationMaxStateLength+1)),
+			"the request is refused anyway, and echoing it would put a request-sized value in a Location header")
+	})
+
 	invalid := []struct {
 		name     string
 		mutate   func(url.Values)
@@ -63,6 +94,16 @@ func TestParseAuthorizationRequest(t *testing.T) {
 		{name: "another resource", mutate: func(v url.Values) { v.Set("resource", "https://other.example.com/mcp") }, wantCode: "invalid_request"},
 		{name: "no resource", mutate: func(v url.Values) { v.Del("resource") }, wantCode: "invalid_request"},
 		{name: "an unknown scope", mutate: func(v url.Values) { v.Set("scope", "admin") }, wantCode: "invalid_scope"},
+		// Both of these are held with the pending request for ten minutes and
+		// echoed back on every answer, so a caller-chosen size is memory and an
+		// unbounded Location header.
+		{name: "a state over the cap", mutate: func(v url.Values) { v.Set("state", strings.Repeat("s", authorizationMaxStateLength+1)) }, wantCode: "invalid_request"},
+		// An S256 challenge is exactly 43 characters; anything else can never verify.
+		{name: "a PKCE challenge over the length", mutate: func(v url.Values) { v.Set("code_challenge", strings.Repeat("c", pkceChallengeLength+1)) }, wantCode: "invalid_request"},
+		{name: "a PKCE challenge under the length", mutate: func(v url.Values) { v.Set("code_challenge", strings.Repeat("c", pkceChallengeLength-1)) }, wantCode: "invalid_request"},
+		// The one supported scope may be repeated any number of times, so the list
+		// a pending request keeps would otherwise be as large as the caller wants.
+		{name: "a scope list over the cap", mutate: func(v url.Values) { v.Set("scope", strings.Repeat(MCPReadScope+" ", authorizationMaxScopeBytes)) }, wantCode: "invalid_scope"},
 	}
 	for _, tc := range invalid {
 		t.Run(tc.name, func(t *testing.T) {

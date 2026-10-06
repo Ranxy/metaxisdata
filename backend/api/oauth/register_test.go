@@ -23,6 +23,9 @@ func TestValidateRegistrationRequest(t *testing.T) {
 	tooManyRedirectURIs := append([]string{}, tenRedirectURIs...)
 	tooManyRedirectURIs = append(tooManyRedirectURIs, callback)
 
+	const callbackPrefix = "https://client.example.com/"
+	atCap := callbackPrefix + strings.Repeat("a", redirectURIMaxBytes-len(callbackPrefix))
+
 	tests := []struct {
 		name     string
 		request  registrationRequest
@@ -58,6 +61,18 @@ func TestValidateRegistrationRequest(t *testing.T) {
 			name:    "ten redirect uris is the limit",
 			request: registrationRequest{RedirectURIs: tenRedirectURIs},
 			want:    validatedRegistration{RedirectURIs: tenRedirectURIs},
+		},
+		{
+			// Registration is anonymous and the body may be 64 KiB, so one URI could
+			// otherwise be a document that every pending request then copies.
+			name:     "a redirect uri over the length cap",
+			request:  registrationRequest{RedirectURIs: []string{"https://client.example.com/" + strings.Repeat("a", redirectURIMaxBytes)}},
+			wantCode: registrationCodeInvalidRedirectURI,
+		},
+		{
+			name:    "a redirect uri exactly at the length cap",
+			request: registrationRequest{RedirectURIs: []string{atCap}},
+			want:    validatedRegistration{RedirectURIs: []string{atCap}},
 		},
 		{
 			name: "an empty token endpoint auth method means none",

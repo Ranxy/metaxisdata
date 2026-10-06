@@ -28,6 +28,12 @@ func MatchesRedirectURI(registered []string, requested string) bool {
 	if requested == "" {
 		return false
 	}
+	// A client registered before the registration cap existed could still carry a
+	// longer URI. A pending request copies whatever is matched here, so the cap
+	// holds on this side too.
+	if len(requested) > redirectURIMaxBytes {
+		return false
+	}
 	parsed, err := url.Parse(requested)
 	if err != nil || parsed.Fragment != "" {
 		return false
@@ -59,11 +65,35 @@ func isLoopbackRedirect(parsed *url.URL) bool {
 	return parsed.Scheme == "http" && isLoopbackHost(strings.ToLower(parsed.Hostname()))
 }
 
+// Bounds on what one anonymous authorization request may make the server keep.
+// A pending request holds these values for ten minutes, the store holds up to
+// 10000 of them, and the client's `state` is echoed back on every answer, so an
+// unbounded value would let one caller decide how much memory — and how large a
+// Location header — a request costs.
+const (
+	// redirectURIMaxBytes caps one redirect URI, registered or requested. It has
+	// to hold a realistic URL, not a document.
+	redirectURIMaxBytes = 2 << 10
+	// authorizationMaxStateLength is the cap on the client's opaque `state`.
+	authorizationMaxStateLength = 512
+	// pkceChallengeLength is the length of an S256 code_challenge: RFC 7636 §4.2
+	// defines it as the base64url-encoded SHA-256 of the verifier, so it is always
+	// 43 characters and never the 43..128 range that belongs to the verifier.
+	pkceChallengeLength = 43
+	// authorizationMaxScopeBytes caps the scope parameter before it is parsed. One
+	// scope is supported and may be repeated any number of times, so without this
+	// the list a pending request stores is as large as the caller wants.
+	authorizationMaxScopeBytes = 256
+)
+
 // ValidateRedirectURI reports whether a client may register this redirect URI.
 // It is the registration-time half of the rule MatchesRedirectURI enforces at
 // request time: https, or http on a loopback address, never a fragment and never
 // a wildcard.
 func ValidateRedirectURI(raw string) error {
+	if len(raw) > redirectURIMaxBytes {
+		return fmt.Errorf("redirect URI must be at most %d bytes", redirectURIMaxBytes)
+	}
 	if strings.Contains(raw, "*") {
 		return fmt.Errorf("redirect URI %q must not contain a wildcard", raw)
 	}
@@ -182,6 +212,16 @@ func deniedRequest(requests *state.OAuthAuthorizationRequestStore, requestID str
 	return &record
 }
 
+// echoedClientState returns the client's `state` for a redirect, or an empty
+// string when it is over the cap. The request is refused either way, and echoing
+// an over-long value would only put a request-sized value into a Location header.
+func echoedClientState(raw string) string {
+	if len(raw) > authorizationMaxStateLength {
+		return ""
+	}
+	return raw
+}
+
 // authorizationRequest is a validated /oauth/authorize request.
 type authorizationRequest struct {
 	ClientID            string
@@ -215,6 +255,12 @@ func parseAuthorizationRequest(query url.Values, clientID, redirectURI string, e
 		CodeChallenge:       query.Get("code_challenge"),
 		CodeChallengeMethod: query.Get("code_challenge_method"),
 	}
+	// Both values are stored with the pending request and echoed back to the
+	// client, so an unbounded one is memory the caller picked. A too-long state is
+	// refused rather than shortened: half of an opaque value is not the value.
+	if len(request.ClientState) > authorizationMaxStateLength {
+		return authorizationRequest{}, &authorizationError{Code: "invalid_request", Description: fmt.Sprintf("state must be at most %d bytes", authorizationMaxStateLength)}
+	}
 	if query.Get("response_type") != "code" {
 		return authorizationRequest{}, &authorizationError{Code: "unsupported_response_type", Description: "only response_type=code is supported"}
 	}
@@ -223,8 +269,8 @@ func parseAuthorizationRequest(query url.Values, clientID, redirectURI string, e
 	if request.CodeChallengeMethod != "S256" {
 		return authorizationRequest{}, &authorizationError{Code: "invalid_request", Description: "code_challenge_method must be S256"}
 	}
-	if request.CodeChallenge == "" {
-		return authorizationRequest{}, &authorizationError{Code: "invalid_request", Description: "code_challenge is required"}
+	if len(request.CodeChallenge) != pkceChallengeLength {
+		return authorizationRequest{}, &authorizationError{Code: "invalid_request", Description: "code_challenge must be 43 characters, the S256 digest of the verifier"}
 	}
 	// RFC 8707: the client names the resource it wants a token for, and it must
 	// be this deployment's. The comparison is exact because both sides come from
@@ -232,16 +278,27 @@ func parseAuthorizationRequest(query url.Values, clientID, redirectURI string, e
 	if request.Resource != endpoints.Resource {
 		return authorizationRequest{}, &authorizationError{Code: "invalid_request", Description: "resource must be " + endpoints.Resource}
 	}
-	scopes := ParseScopeList(query.Get("scope"))
-	if !RequestedScopesValid(scopes) {
-		return authorizationRequest{}, &authorizationError{Code: "invalid_scope", Description: "the only supported scope is " + MCPReadScope}
-	}
-	if len(scopes) == 0 {
-		// Asking for nothing means asking for what the metadata advertises.
-		scopes = []string{MCPReadScope}
+	scopes, scopeErr := requestedScopes(query.Get("scope"))
+	if scopeErr != nil {
+		return authorizationRequest{}, scopeErr
 	}
 	request.Scopes = scopes
 	return request, nil
+}
+
+// requestedScopes validates the scope parameter and returns the scopes to grant.
+// Exactly one scope exists, so a request that passes grants it once however many
+// times it repeated it: the list a pending request stores is never caller-sized.
+func requestedScopes(raw string) ([]string, *authorizationError) {
+	if len(raw) > authorizationMaxScopeBytes {
+		return nil, &authorizationError{Code: "invalid_scope", Description: "scope must be at most 256 bytes"}
+	}
+	if !RequestedScopesValid(ParseScopeList(raw)) {
+		return nil, &authorizationError{Code: "invalid_scope", Description: "the only supported scope is " + MCPReadScope}
+	}
+	// Asking for nothing means asking for what the metadata advertises; asking for
+	// the one scope any number of times means asking for it once.
+	return []string{MCPReadScope}, nil
 }
 
 // AuthorizeHandler serves GET /oauth/authorize: it validates the request, makes
@@ -281,7 +338,7 @@ func (s *Server) AuthorizeHandler() http.Handler {
 			if errors.As(err, &authorizationErr) {
 				code, description = authorizationErr.Code, authorizationErr.Description
 			}
-			RedirectWithError(w, r, redirectURI, query.Get("state"), code, description, endpoints.Issuer)
+			RedirectWithError(w, r, redirectURI, echoedClientState(query.Get("state")), code, description, endpoints.Issuer)
 			return
 		}
 

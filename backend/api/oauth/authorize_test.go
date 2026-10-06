@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -40,6 +41,9 @@ func TestMatchesRedirectURI(t *testing.T) {
 		{name: "an added query the registration does not carry", requested: registered + "?a=b"},
 		{name: "a fragment", requested: registered + "#frag"},
 		{name: "an empty value", requested: ""},
+		// Registered before the registration cap existed, or simply asked for: a
+		// pending request must not copy a request-sized URI.
+		{name: "a URI over the length cap", requested: "https://app.example.com/" + strings.Repeat("a", redirectURIMaxBytes)},
 	}
 	for _, tc := range rejected {
 		t.Run(tc.name, func(t *testing.T) {
@@ -47,6 +51,13 @@ func TestMatchesRedirectURI(t *testing.T) {
 			require.False(t, MatchesRedirectURI([]string{registered}, tc.requested))
 		})
 	}
+
+	t.Run("a URI exactly at the length cap still matches", func(t *testing.T) {
+		t.Parallel()
+
+		atCap := "https://app.example.com/" + strings.Repeat("a", redirectURIMaxBytes-len("https://app.example.com/"))
+		require.True(t, MatchesRedirectURI([]string{atCap}, atCap))
+	})
 
 	t.Run("an empty registration accepts nothing", func(t *testing.T) {
 		t.Parallel()

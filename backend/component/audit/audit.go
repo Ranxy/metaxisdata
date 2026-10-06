@@ -43,6 +43,12 @@ const MaxAuditPayloadBytes = 256 << 10
 // request could otherwise append a megabyte to a permanent row.
 const MaxUserAgentBytes = 256
 
+// MaxIPBytes bounds the recorded address. A real one is at most 45 bytes; the
+// forwarded value is client text until M1 is fixed, and it is echoed into the
+// ledger, used as a rate-limit key and kept for ten minutes by an OAuth pending
+// request.
+const MaxIPBytes = 64
+
 // auditTruncationSuffix marks a value the field bound cut short.
 const auditTruncationSuffix = "...(truncated)"
 
@@ -354,7 +360,7 @@ func BuildRequestMetadata(header http.Header, peerAddr string, trustedProxies []
 		// The forwarded value is client-chosen text until a future fix resolves
 		// which end of it to trust; it is bounded here so a row stays bounded
 		// either way.
-		Ip:        truncateAuditString(ip, MaxAuditFieldBytes),
+		Ip:        truncateAuditString(ip, MaxIPBytes),
 		UserAgent: truncateAuditString(userAgent, MaxUserAgentBytes),
 	}
 }

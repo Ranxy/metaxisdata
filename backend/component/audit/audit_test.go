@@ -154,9 +154,9 @@ func TestBuildRequestMetadataTruncatesUserAgent(t *testing.T) {
 	// The forwarded address is client text until M1 is fixed, so a row stays
 	// bounded even when a trusted proxy is what lets it through.
 	forwarded := http.Header{}
-	forwarded.Set("X-Forwarded-For", strings.Repeat("1", MaxAuditFieldBytes*2))
+	forwarded.Set("X-Forwarded-For", strings.Repeat("1", MaxIPBytes*2))
 	metadata = BuildRequestMetadata(forwarded, "10.0.0.1:1234", []string{"10.0.0.1"})
-	require.Equal(t, strings.Repeat("1", MaxAuditFieldBytes)+auditTruncationSuffix, metadata.GetIp())
+	require.Equal(t, strings.Repeat("1", MaxIPBytes)+auditTruncationSuffix, metadata.GetIp())
 }
 
 // A status message is built by a handler out of the request (an address, a

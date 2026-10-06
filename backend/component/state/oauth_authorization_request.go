@@ -18,7 +18,9 @@ const (
 	OAuthAuthorizationCodeTTL = 60 * time.Second
 	// oauthAuthorizationRequestCapacity bounds the in-flight requests held in
 	// memory. It is the ceiling on what an unauthenticated caller can make the
-	// server hold.
+	// server hold: every field a pending request carries is bounded on its own
+	// (state, PKCE challenge, redirect URI, address), so this count is what
+	// decides the total.
 	oauthAuthorizationRequestCapacity = 10000
 	// oauthAuthorizationCodeLength is the length of the opaque request id and of
 	// the authorization code. The device-login alphabet carries 62 symbols, so

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -51,6 +52,11 @@ const maxAuthServiceRequestBytes = 64 << 10
 // still bounds the anonymous, audited CreateUser together with BatchGetUsers,
 // the one call the audit-log CSV export feeds a whole ledger's worth of names.
 const maxUserServiceRequestBytes = 64 << 10
+
+// mcpEndpointTimeout bounds one MCP request. A tool call queries the registry, so
+// it gets more room than an OAuth protocol endpoint, but not an unbounded wait:
+// the route sits outside the Connect interceptor chain.
+const mcpEndpointTimeout = 60 * time.Second
 
 func configureGrpcRouters(
 	ctx context.Context,
@@ -308,13 +314,17 @@ func configureGrpcRouters(
 		Lineage:        lineageService,
 		Principals:     userService,
 		Checker:        iamManager,
+		CallLimiter:    stateCfg.MCPCallLimiter,
 		Stores:         stores,
 		TrustedProxies: profile.TrustedProxies,
 		Endpoints:      oauth.WorkspaceEndpoints(stores),
 	})
 	mcpHandler := http.NewCrossOriginProtection().Handler(mcpServer.Handler(tokenAuthenticator))
-	e.Any("/mcp", echo.WrapHandler(mcpHandler))
-	e.Any("/mcp/*", echo.WrapHandler(mcpHandler))
+	// This endpoint sits outside the Connect interceptor chain, so it carries its
+	// own time bound: a hung store call must not hold a request open forever.
+	mcpRoute := echo.WrapHandler(http.TimeoutHandler(mcpHandler, mcpEndpointTimeout, `{"error":"temporarily_unavailable","error_description":"the request timed out"}`))
+	e.Any("/mcp", mcpRoute)
+	e.Any("/mcp/*", mcpRoute)
 
 	// The gateway reads and parses the whole body before it forwards anything, so
 	// the per-handler ConnectRPC cap only rejects the message once it is already
