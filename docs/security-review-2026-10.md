@@ -127,13 +127,13 @@
 - **修复**:拒绝 `allUsers` 绑定任何含管理权限的角色;写校验 fail-closed。
 
 ### M10. OpenLineage 派生链接无 scheme 校验:`javascript:` 存储型 XSS
-- **状态**:**已修复**(2026-10-06,commit `6b99c01`;服务端派生链接与前端 `:href` 各自做 scheme/host 白名单,修复内容与验证见 §10)。
+- **状态**:**已修复**(2026-10-06,commit `25f2f0b`;服务端派生链接与前端 `:href` 各自做 scheme/host 白名单,修复内容与验证见 §10)。
 - **证据**:`backend/plugin/openlineage/airflow_links.go:48-56`(`runLogURL := strings.TrimSpace(facet.TaskInstance.LogURL)`,仅 TrimSpace);`frontend/src/pages/openlineage/OpenLineageRunDetailPage.vue:9` 与 `OpenLineageTaskDetailPage.vue:9` 直接 `:href` 绑定;数据源是持 ingestion key 即可写的原始事件 facet。
 - **攻击场景**:被入侵/恶意的 Airflow 提交 `log_url = "javascript:…"`,受害成员在运行详情页点"打开运行日志"即在 SPA 源执行脚本——同源调用 ConnectRPC 全部通过 CSRF 检查,HttpOnly cookie 无济于事,以受害者身份读全部元数据/执行管理员操作。下限也是服务端数据决定的任意链接注入(钓鱼)。
 - **修复**:后端派生链接只保留 http/https 且 host 非空;前端 `:href` 统一经 URL 白名单再绑定(与 M14 是同一债务的两个面)。
 
 ### M11. 全仓缺失 CSP 与点击劫持防护:`/device` 审批页可被 iframe 劫持
-- **状态**:**已修复**(2026-10-06,commit `6b99c01`;全站中间件统一下发安全响应头,`script-src 'self'` 未放松,修复内容与验证见 §10)。
+- **状态**:**已修复**(2026-10-06,commit `25f2f0b`;全站中间件统一下发安全响应头,`script-src 'self'` 未放松,修复内容与验证见 §10)。
 - **证据**:全仓(排除 node_modules)对 `Content-Security-Policy`/`X-Frame-Options` 0 命中;SPA 由裸 `http.FileServer` 提供(`server_frontend_embed.go:35-45`),echo 中间件无 `middleware.Secure()`。
 - **攻击场景**:攻击者自建 device login 拿 user_code,把 `/device?user_code=…` 框进诱导页;external_url 为 https 时 cookie 为 `SameSite=None; Secure`(header.go:84-89),frame 内 cookie 照发、ConnectRPC 同源请求 CSRF 检查通过,诱点"批准"即取得受害者身份的 7 天 CLI token。CSP 同时是 M10 的第二道防线。
 - **修复**:统一安全响应头:`default-src 'self'; script-src 'self'; frame-ancestors 'none'` + `X-Frame-Options: DENY` + `X-Content-Type-Options: nosniff`。
@@ -340,7 +340,7 @@
 **P1(近期,利用条件明确)**
 7. M3/M4/M5:限流键改真实 IP + 账号/源双计数;吊销改持久化水位线;源级 CPU 上限——**已完成**(commit `e9bc802`;吊销实现为按 jti 的持久化表而非账号水位线,M7 的"停用/恢复水位线"仍待办,见 §10);
 8. M7:SSO 不自动 undelete + `revoked_at` 水位线;
-9. M10/M11:airflow 链接 scheme 白名单 + 统一安全响应头(CSP/frame-ancestors)——**已完成**(commit `6b99c01`,见 §10);
+9. M10/M11:airflow 链接 scheme 白名单 + 统一安全响应头(CSP/frame-ancestors)——**已完成**(commit `25f2f0b`,见 §10);
 10. M12/M13:CLI `CheckRedirect` + Windows 打开器替换 + scheme 校验——**已完成**(commit `f3674ec`,加固 `2f289cd`、`9f87299`,见 §10);
 11. M8/M9:acw↔permission 互斥测试 + allUsers 禁绑管理角色——M9 已完成(实现为 allUsers 完全不可编辑,见 §10);M8 待办。
 
@@ -764,16 +764,16 @@ M9 落地后由独立子代理对 `cb40791` 做了对抗式只读复核(读 conn
 3. **跨主机重定向由"静默带 token 跟随"变为"直接失败"**:若某部署确实依赖入口把 API 域名 302 到另一个域名,需要把 `--server` 改指最终地址;错误信息里给出两个 host,便于定位。host 比较是精确字符串:异端口(用例钉住 `:8443` 一例)以及大写、尾点、显式默认端口、IPv6 展开这类等价写法都按异 host 拒绝,方向是 fail-closed,但会给"代理给出带显式默认端口的绝对 Location"的部署带来一次失败。
 4. **只改了 CLI 自己的 HTTP 客户端**:`cli/` 内除 `client.New` 外没有第二处 `http.Client`(`grep` 确认),新增出站请求必须复用该构造函数才能继承本策略。
 
-### 2026-10-06 —— M10、M11 已修复(commit `6b99c01`)
+### 2026-10-06 —— M10、M11 已修复(commit `25f2f0b`,复核加固 commit `8eb58d0`)
 
 **M10:派生链接只保留 web 地址**(`backend/plugin/openlineage/airflow_links.go`、`frontend/src/utils/safeUrl.ts`)
 
-- 服务端 `DeriveAirflowLinks` 不再只做 `TrimSpace`:新增 `safeExternalURL`,只接受 scheme ∈ {http, https}(`url.Parse` 已把 scheme 小写化,故大小写不敏感)且 host 非空(`Hostname() != ""`,`http://:8080` 一类只写了端口的写法不通过)的 URL,其余一律返回空,并返回 `url.Parse().String()` 的规范化结果。链接是读取时从 `raw_payload` 现算的,没有落库副本,所以既不需要迁移,也不存在"旧数据绕过修复"的问题;`AirflowRunLogUrl` 为空时 `AirflowDagUrl` 也不再从它派生,前端连按钮都不渲染。
-- 前端新增 `utils/safeUrl.ts` 的 `safeExternalUrl`:用 WHATWG `URL` 解析后只放行 `http:`/`https:`。特殊 scheme 在缺 host 时解析直接抛错(`http://:8080/x`、`https:`、相对路径、`//host/path` 都如此),所以协议检查就是全部白名单;返回 `parsed.href` 规范化结果。两个 OL 详情页改为 `v-if` + `:href` 绑定 `computed(() => safeExternalUrl(...))`,不再直接绑定 proto 字段——这是服务端哪天漏一处时的第二道闸,也是 `§5.4` 提到的那类统一白名单在 SPA 侧的落点。
+- 服务端 `DeriveAirflowLinks` 不再只做 `TrimSpace`:新增 `safeExternalURL`,只接受 scheme ∈ {http, https}(`url.Parse` 已把 scheme 小写化,故大小写不敏感)且 host 非空(`Hostname() != ""`,`http://:8080` 一类只写了端口的写法不通过)的 URL,其余一律返回空,并返回 `url.Parse().String()` 的规范化结果(内部空格与非 ASCII 路径会被 percent-encode,合法 `%XX` 原样保留)。被拒的包括 path/authority 里的非法转义(`…/runs/%zz`),但 **query 不校验**——`url.Parse` 不看 `RawQuery`,所以 `?q=%zz` 会原样返回(它只是查询串,进不了 scheme/host,无安全影响)。链接是读取时从 `raw_payload` 现算的,没有落库副本,所以既不需要迁移,也不存在"旧数据绕过修复"的问题;`AirflowRunLogUrl` 为空时 `AirflowDagUrl` 也不再从它派生,前端连按钮都不渲染。
+- 前端新增 `utils/safeUrl.ts` 的 `safeExternalUrl`:用 WHATWG `URL` 解析后只放行 `http:`/`https:`(返回 `parsed.href`)。两个 OL **字段**的 `:href` 改为 `v-if` + `computed(() => safeExternalUrl(...))`,不再直接绑定 proto 字段——这是服务端哪天漏一处时的第二道闸,也是 `§5.4` 提到的那类统一白名单在 SPA 侧的落点(第三处 `:href` 是 LLM provider 的本地常量链接,`location.assign` 属登录重定向路径,都不在 M10 范围)。这一层的判据只有协议:WHATWG 会把 `http:/x`、`http:evil.com`、`http:///x` 重解析成 `http://x/`,但这些写法在服务端就被拒了、到不了这里;而特殊 scheme 只要解析成功就必然有 host。**前提是输入已经过服务端校验**——前端从不单独信任未经校验的值,两层不是同一套判据的重复。
 
 **M11:统一安全响应头**(`backend/server/echo_routes.go`、`frontend/vite.config.ts`、`frontend/vitest.config.ts`)
 
-- `configureEchoRouters` 在 `recoverMiddleware` 之后接入 `middleware.SecureWithConfig`,因此**每个**响应(SPA 文档、客户端路由回落、REST/Connect、错误响应)都带同一份策略:`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self'; object-src 'none'; frame-ancestors 'none'`,外加 `X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`。M11 的 iframe 劫持路径(`/device?user_code=…` 是客户端路由,回落成同一份 index.html)由 `frame-ancestors 'none'` + `DENY` 关闭。
+- `configureEchoRouters` 在 `recoverMiddleware` 之后接入 `middleware.SecureWithConfig`,因此**每个**响应(SPA 文档、客户端路由回落、REST/Connect、错误响应)都带同一份策略:`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`,外加 `X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`。M11 的 iframe 劫持路径(`/device?user_code=…` 是客户端路由,回落成同一份 index.html)由 `frame-ancestors 'none'` + `DENY` 关闭。`base-uri 'none'` 与 `form-action 'self'` 是独立复核后补的(commit `8eb58d0`,见下):应用没有 `<base>`、所有表单都由脚本提交到同源,所以零成本,却能挡住注入的 `<base>` 改写相对 URL 或注入的 `<form>` 把会话 POST 到别处。
 - 两处刻意选择写进了注释并有测试钉住:`X-XSS-Protection` 显式留空(该头已废弃,只在仍识别它的旧浏览器里有反作用);不设 HSTS——它需要一个可信的 https 信号,而这个中间件会把调用方自带的 `X-Forwarded-Proto` 当作一个(属 M1 家族的可伪造输入),https 部署应由外层反代自己下发。
 - 三处放宽是 SPA 的最低需要:Vue 的 `:style` 绑定与 monaco-editor 运行期注入样式表需要 `style-src 'unsafe-inline'`;monaco 的图标是 `data:` 图片(`img-src`);monaco 的 editor worker 是同源 module worker(`worker-src`,也避免日后收紧 `default-src` 时把它悄悄打断)。`script-src` 里既没有 `'unsafe-inline'` 也没有 `'unsafe-eval'`。
 - **CSP 的前置修复(否则整站文案会被打掉)**:vue-i18n 的 esm-bundler 构建在未开 JIT 时由 `new Function` 编译消息,`script-src 'self'` 会以 `EvalError` 拒绝,`t()` 全线抛错、界面只剩空壳。按官方 CSP 方案在 `vite.config.ts` 与 `vitest.config.ts` 加 `define: { __INTLIFY_JIT_COMPILATION__: true }`:消息编译成 AST 后解释执行,不用 eval;两个配置都设是为了让测试与产物走同一条代码路径(否则单测走 eval 路径、产物走 JIT 路径,差异测不出来)。
@@ -782,10 +782,12 @@ M9 落地后由独立子代理对 `cb40791` 做了对抗式只读复核(读 conn
 **回归测试**
 
 - 单元 `backend/plugin/openlineage/airflow_links_test.go`:表驱动覆盖 12 种非 web 形态(`javascript:` 两种大小写、`data:`、`file:`、协议相对、相对路径、空 host、仅端口、无 host 的 scheme、纯空白与仅换行、URL 内控制字符)与 3 种合法 web 形态(大写 scheme、首尾空白、带 userinfo),后者同时断言派生出的 DagURL。
-- 单元 `backend/server/security_headers_test.go`:对 dev/prod 两个真实 router 的 SPA 文档与 API 响应分别断言 `nosniff`、`DENY`、无 `X-XSS-Protection`,并把 CSP 解析成指令表逐条比较;另一个用例整份钉住策略字符串,防止日后被悄悄放宽。
+- 单元 `backend/server/security_headers_test.go`:对 dev/prod 两个 router 的 SPA 文档、客户端路由、`/healthz`、ConnectRPC 路径与 REST 网关路径,把**实际下发的** CSP 解析成指令表与期望 map 整体比较,并断言 `nosniff`、`DENY`、无 `X-XSS-Protection`、无 HSTS。断言取自响应而非源码常量,所以"策略不再下发"也会红——独立复核实测原先那条只比较常量的用例在 `SecureWithConfig` 被删后依然绿,现已合并为一条。
+- 集成(真实服务器 + PostgreSQL)`TestSecurityHeadersRealServerIntegration`:对运行中的二进制逐个请求 `/`、`/device?user_code=…`、ConnectRPC、`/v1/*` 网关、`/oauth/authorize`、`/mcp`,断言同一组头。单元测试只装配 `configureEchoRouters`,而 Connect/网关/OAuth/MCP 由另外几个函数注册,这条补上"策略是否覆盖了全部路由家族"(状态码刻意不断言:MCP 关闭时 404、匿名调用 400/401)。
 - 单元 `frontend/src/utils/safeUrl.test.ts`:14 条,合法 http/https(大写 scheme、首尾空白、userinfo)与 12 种拒绝形态;`pnpm test:coverage` 下该文件 100% 行/分支。
+- 单元 `frontend/src/pages/openlineage/{OpenLineageRunDetailPage,OpenLineageTaskDetailPage}.test.ts`:挂载页面,断言 `javascript:` 字段**不渲染任何锚点**、真实 http 字段渲染出正确 `href`。此前只有 helper 级用例,把页面绑定回退成直接绑 proto 字段后套件依然全绿(独立复核实测),现在这两条会红。
 - 集成(真实服务器 + PostgreSQL)`TestOpenLineageAirflowLinksRejectNonWebSchemesRealServerIntegration`:用 ingestion key 真投递 `log_url = "javascript:…"` 的事件,再以管理员读 `ListOpenLineageRuns`,要求 `airflowRunLogUrl`/`airflowDagUrl` 均为空;同一用例投递真实 Airflow 地址,要求链接原样返回、DagURL 派生正确——覆盖"摄取 → 存储 → API 转换"整链,而不只是插件函数。
-- **反向验证**:把 `safeExternalURL` 还原成 `TrimSpace` ⇒ 上述集成用例失败(`Should be empty, but was javascript:alert(document.cookie)`);撤掉 `SecureWithConfig` 那段 ⇒ 头用例四条全红(`expected: "nosniff", actual: ""`);用改动前的产物(仍含 `new Function`)套同一份 CSP 用无头 Chrome 加载 ⇒ 控制台 `EvalError: Evaluating a string as JavaScript violates the following Content Sec…`,DOM 只剩 2.8KB、无任何文案,而修复后的产物在同样 CSP 下渲染出完整登录页且控制台零违规、零 `EvalError`。
+- **反向验证**:把 `safeExternalURL` 还原成 `TrimSpace` ⇒ 上述集成用例失败(`Should be empty, but was javascript:alert(document.cookie)`);撤掉 `SecureWithConfig` 那段 ⇒ 头用例全红(`expected: "nosniff", actual: ""`,且不再是"部分绿");把两个页面的 `:href` 回退成直接绑定 ⇒ 两条页面用例失败(`expected true to be false`,而原有的 4 条页面用例照旧全绿,正是复核指出的缺口);用改动前的产物(仍含 `new Function`)套同一份 CSP 用无头 Chrome 加载 ⇒ 控制台 `EvalError: Evaluating a string as JavaScript violates the following Content Sec…`,DOM 只剩 2.8KB、无任何文案,而修复后的产物在同样 CSP 下渲染出完整登录页且控制台零违规、零 `EvalError`。
 - 端到端(真实 `-tags "release embed_frontend"` 二进制 + 本地 PostgreSQL):`curl` 确认 `/`、`/device?user_code=…`(客户端路由回落)与 400 错误响应都带完整头;无头 Chrome 在 CSP 下渲染出完整登录页(标题、按钮、图标、字体均正常)。
 
 **残余(本轮未处理)**
@@ -794,5 +796,18 @@ M9 落地后由独立子代理对 `cb40791` 做了对抗式只读复核(读 conn
 2. 头部对所有响应统一下发(含 JSON),没有按路由区分;HSTS 未设置,https 终结部署仍需外层反代自行下发(M11 未涉及)。
 3. 白名单只在"服务端派生的链接"这一处落地(`airflow_links.go`);`§5.4` 设想的统一出站/URL 校验层里,CLI 打开浏览器与 LLM `base_url` 两处仍按路线图分属 M12/M13/M23。
 4. dev profile 的页面由 Vite 提供、不带 CSP;要覆盖开发态需在 vite dev server 或开发环境反代上加头,尚未做。
+5. **只修掉了"执行",没修掉"任意 web 链接"**:任何 http(s) 地址(钓鱼页)照旧能出现在受害者的 Airflow 按钮上——这正是 M10 原文列出的下限。要消除需要 host 白名单/内网黑名单(与 M21/M23 同一族),属部署策略而不是这个函数的职责。
+6. **Go `net/url` 与浏览器 WHATWG 的接受/拒绝差异**(独立复核的 95 例里 15 例不同):越界端口(`:99999`)、IPv6 zone ID(`[fe80::1%25eth0]`)服务端放行而浏览器 `new URL` 抛错 ⇒ API 返回了链接、按钮却不出现(方向仍是 fail-closed);反向是 `http:/x`、authority 内反斜杠等被服务端拒、浏览器会归一化。**没有任何一例能产生非 http(s) scheme。** 未做 WHATWG 对齐:那需要换解析器或补端口/zone 校验,收益仅是消除"按钮消失"这种可见性差异。
+7. **跨源 API 基址**:生产构建若把 `VITE_API_BASE_URL`(`frontend/src/api/client.ts`)配成跨源,`default-src 'self'` 会拦掉全部 API 调用。单二进制同源部署不受影响;把 SPA 托管在别处的部署需要在提供文档的一侧自行放宽 `connect-src`。
+8. monaco 当前只用同源 module worker(`worker-src 'self'` 够用);它内部还有一条 `URL.createObjectURL` 的 blob worker 工厂,本应用没有走到——若日后切换,`worker-src` 需要补 `blob:`。
 
-**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`、`make test-integration-smoke`(真实 PostgreSQL + MySQL + migrator 全绿,含新增的 Airflow 链接集成用例)、`release` 与 `-tags "release embed_frontend"` 构建;前端 `biome:check`、`lint`、`i18n`、`type-check`、`test run`、`test:coverage`、`build` 全绿。
+**验证门禁**(含加固 commit):`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`、`make test-integration-smoke`(真实 PostgreSQL + MySQL + migrator 全绿,含新增的 Airflow 链接与安全响应头两条集成用例)、`release` 与 `-tags "release embed_frontend"` 构建;前端 `biome:check`、`lint`、`i18n`、`type-check`、`test run`(49 文件 / 332 用例)、`test:coverage`、`build` 全绿。
+
+**独立复核后的加固(commit `8eb58d0`)**
+
+M10/M11 落地后由独立子代理对 `25f2f0b` 做了对抗式只读复核(95 例 Go↔WHATWG 解析对比、`go test -overlay` 反向探针、真实 `-tags "release embed_frontend"` 二进制逐路由核头、无头 Chrome 在同一份策略下加载修复前后产物、iframe 劫持与内联脚本/`javascript:` 导航的浏览器实测;探针全部在 `/tmp`,未改动仓库文件)。结论:
+
+- **执行面与劫持面关闭**:95 例里没有一例能通过服务端闸门、再被浏览器解析成非 http(s) scheme;`frame-ancestors 'none'` + `DENY` 出现在 `/`、客户端路由、Connect、REST 网关、OAuth、`/mcp`、pprof/metrics、400 错误、h2c/HEAD/OPTIONS 上,Chrome 拒绝 iframe;同一策略下内联脚本、内联事件处理器与 `javascript:` 导航均被拦、同源外部脚本可加载;仓内无 `v-html`/`innerHTML` 汇聚点,也没有把调用方输入反射成 HTML/JS 的端点;产物中已无 `new Function`/`eval(`。
+- 复核指出四处缺口,均已修掉:头用例里"只比较源码常量"的那条在中间件被删后依然绿(改为断言**实际下发**的指令表);头用例只覆盖 echo 自带路由,而 Connect/网关/OAuth/MCP 由别的函数注册(新增真实服务器集成用例);页面级 `:href` 绑定没有任何测试、回退成直接绑 proto 字段后套件全绿(两个详情页各加"危险字段不渲染锚点 / 真实地址渲染正确 `href`"两条用例);CSP 缺 `base-uri`/`form-action`(已补,见上)。
+- 文档更正三处:query 里的 `%zz` 会原样通过(`url.Parse` 不校验 `RawQuery`),原文"非法转义一律被拒"说得过宽;前端那层"协议检查就是全部判据"的前提是输入已经过服务端校验,WHATWG 会把 `http:/x` 一类写法重解析成 `http://x/`,只是它们到不了前端;"前端 `:href` 统一经白名单"不成立——第三处 `:href` 是本地常量。
+- 复核未能在 M10/M11 范围内构造出可利用问题,但记录了两条相邻观察:`LoginPage.vue` 的 `window.location.assign(redirect)` 分支因 router 的 `/:pathMatch(.*)*` catch-all 永远不可达(可能让 MCP OAuth 的登录回跳落到 NotFound 页),以及 monaco 的 blob worker 与跨源 `VITE_API_BASE_URL` 两个 CSP 前提——前者是独立问题、本轮不改,后者写进残余 7/8。
