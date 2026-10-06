@@ -91,7 +91,7 @@
 | ACL 守卫测试骨架 | `backend/api/v1/acl_interceptor_test.go:133` `TestEveryMethodIsPermissionGated` + `methodPermission` :208 + `unannotatedMethods` :115 | 新增 consent RPC 必须登记;照此新增"工具↔RPC 权限一致 + 只读子集"守卫 |
 | 审计写入与脱敏 | `backend/store/audit_log.go:25` `CreateAuditLog`;`backend/api/v1/audit.go`(`auditContext` :46、`marshalAuditMessage` :172、`sanitizeAuditValue` :194、`isSensitiveAuditField` :228、`mapSeverity` :317、`buildAuditStatus` :333、`buildRequestMetadata` :348) | 工具调用审计;脱敏原语要抽到共享包 |
 | 匿名端点限流的现成形状 | `backend/server/openlineage_ingestion.go:28` `openLineageIngestionMiddleware`(`RateLimiterMemoryStore` + 429 DenyHandler;挂载 `grpc_routes.go:238`) | `/oauth/token`、`/oauth/register` 照抄 |
-| 进程内短期状态 + 限流 | `backend/component/state`(device login store 的 TTL / 容量 / 一次性消费;`DeviceLoginLimiter.Allow`)、`state.go:22-59` | pending 授权请求与授权码;构造函数未导出,需在 `state.New()` 里注册 |
+| 进程内短期状态 + 限流 | `backend/component/state`(device login store 的 TTL / 容量 / 一次性消费;`WindowLimiter.Allow`)、`state.go:22-59` | pending 授权请求与授权码;构造函数未导出,需在 `state.New()` 里注册 |
 | 浏览器确认页模式 | `frontend/src/pages/DeviceLoginPage.vue`、路由 `/device`(`router/index.ts:261`)、`frontend/src/api/device-login.ts` | consent 页照抄结构 |
 | 工作区设置读写 | `backend/store/setting.go:51` `GetWorkspaceGeneralSetting`;`backend/api/v1/setting_service.go` 的 `UpdateWorkspaceProfileSetting` mask 与 `convertToWorkspaceProfileSetting`;`proto/store/store/setting.proto:26` | 新增 `mcp_enabled` 开关;**JSONB protojson,只需加字段,无需 migration** |
 | `external_url` → 页面地址 | `auth_service_device_login.go:173` `deviceLoginVerificationURI`(常量 `devicePagePath` :29) | consent / complete 地址拼法 |
@@ -442,7 +442,7 @@ review 修复的其余项:`authorization_code` 脱敏补齐(含 snake_case);工�
 >
 > **未自动覆盖,及原因**:多副本行为(需要第二个实例);`GET /mcp` 返回 405(无状态传输的既有行为,Phase 0 的契约测试已实测);匿名端点限流阈值被触发(按 IP 的令牌桶,套件不会打到阈值);`lineage_sql` 的 `depth` 多层级展开在真实数据上的形状(hermetic 套件用假 reader 覆盖了逻辑,真实数据形状依赖 fixture)。
 
-> 可照抄的模板:令牌 `backend/api/auth/auth_test.go`;store/限流 `backend/component/state/device_login_test.go` + `device_login_limiter_test.go`;RPC `backend/api/v1/auth_service_device_login_test.go`;端到端 `backend/test/integration/runner/agent_cli_service_test.go`(`TestDeviceLoginRealServerIntegration` :63 就是 authorize→approve→exchange 的骨架)。
+> 可照抄的模板:令牌 `backend/api/auth/auth_test.go`;store/限流 `backend/component/state/device_login_test.go` + `window_limiter_test.go`;RPC `backend/api/v1/auth_service_device_login_test.go`;端到端 `backend/test/integration/runner/agent_cli_service_test.go`(`TestDeviceLoginRealServerIntegration` :63 就是 authorize→approve→exchange 的骨架)。
 
 1. **发现链路**:无令牌 `/mcp` → 401 + `WWW-Authenticate`;PRM 与 AS metadata 字段完整,`resource`/`issuer` 等于 `external_url` 派生值。
 2. **授权链路**:DCR → authorize(登录态)→ consent 批准 → `/oauth/authorize/complete` 302 回 code → token(PKCE)→ 带令牌 `tools/call` 成功;拒绝 → `access_denied`;code 复用被拒;他人会话不能 `complete`。

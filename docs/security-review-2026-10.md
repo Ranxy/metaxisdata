@@ -151,11 +151,13 @@
 - **修复**:CreateSSOState 按 IP 限流;IdP client 加 Timeout 并透传 ctx。
 
 ### M16. OAuth 注册/授权/MCP 面的写入与内存放大:注册审计无截断、pending 10GB、`/mcp` 无限流
+- **状态**:**大部分已修复**(2026-10-06,commit `4e48ea6`;注册/授权/MCP 的写入与内存放大、以及 `/mcp` 的限流与超时见 §10;"审计只记 schema 声明过的字段"未做)。
 - **证据**:`backend/api/oauth/register.go:18`、`:125-129`(注册体上限 64KiB,但 `redirect_uris` 无单条限长且审计明细原样落库);`backend/component/state/oauth_authorization_request.go:22`(pending 容量 10000,`state` 参数无长度上限、`RedirectURI` 可达 64KiB,TTL 10 分钟);`backend/server/grpc_routes.go:299-300`(`/mcp` 只有跨源保护,无限流);`backend/mcp/server.go:386-425`(审计只按单字符串 8KiB 截断,2MiB 请求体几乎原样入账本)。
 - **攻击场景**:匿名注册以限流速率持续写 ≈0.6MiB/s 的永久审计行 + 客户端行(叠加 XFF 伪造为 4 倍);已登录用户循环 authorize 填满 10000 条(约 10 分钟)占 ≈10GB RSS 并逐出他人 pending;持 MCP token 的成员每次调用写 ≈2MiB 永久审计行。
 - **修复**:redirect_uri 限长(2-4KiB)、OAuth 审计明细与 MCP 同标准截断(整行封顶);authorize 的 `state` 设硬上限(如 512B);`/mcp` 加按用户限流与超时;审计只记 schema 声明过的字段。
 
 ### M17. User-Agent 未截断进入永久审计与设备登录内存
+- **状态**:**已修复**(2026-10-06;UA 上限随 H6 的 commit `4d334d4` 落地,本轮的设备登录端到端验证与地址收紧见 commit `4e48ea6`,细节见 §10)。
 - **证据**:`backend/component/audit/audit.go:227-232`(原样取 UA);`backend/api/v1/auth_service_device_login.go:49-67`(pending 记录持有完整 UA 10 分钟,store 容量 10000)。
 - **攻击场景**:匿名 Login/CreateUser(audit=true、无限流)以约 1MB 的 UA 无上限写 `audit_log`;设备登录峰值可达数百 MB-1GB 常驻内存。同文件已给 client_name/version 设 100 字节上限,唯独漏了 UA。
 - **修复**:`BuildRequestMetadata` 对 UA 截断(如 256B),审计写入侧限制 metadata 字段长度。
@@ -323,7 +325,7 @@
 3. H7:SSH `InsecureIgnoreHostKey` → known_hosts/指纹 + 握手超时 + ctx 透传;
 4. H3:SSO 按 IdP subject 绑定;改邮箱要求当前密码;
 5. M1/M2:XFF 改取最右未信任段;网关审计 metadata 修正;
-6. H6/M16/M17:审计载荷统一上限 + 匿名端点限流(CreateUser/Login/OAuth/OL/`/mcp`)——H6 的载荷与请求体上限已完成(见 §10),限流部分与 M16/M17 的请求体收窄仍待办;
+6. H6/M16/M17:审计载荷统一上限 + 匿名端点限流(CreateUser/Login/OAuth/OL/`/mcp`)——H6 与 M17 已完成,M16 的注册/授权/MCP 写入与内存放大、`/mcp` 按 principal 限流与超时也已完成(见 §10);其余匿名端点(Login/CreateUser/OL)的按源限流仍待办;
 
 **P1(近期,利用条件明确)**
 7. M3/M4/M5:限流键改真实 IP + 账号/源双计数;吊销改持久化水位线;源级 CPU 上限;
@@ -565,3 +567,36 @@
 6. H1/H2/H7 与 M/L/I/D 系列按 §8 待办。
 
 **验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`(含改动包的 `-race`)、`make test-integration`(真实 PostgreSQL + MySQL + migrator 全绿)、release 构建(`-tags release`)。本轮未改前端,未跑前端门禁。
+
+### 2026-10-06 —— M16、M17 已修复(commit `4e48ea6`)
+
+**M17:User-Agent 有界,以及 metadata 的其余字段**(`backend/component/audit/audit.go`)
+
+- 这条随 H6 一并解决:`BuildRequestMetadata` 把 UA 截到 256 字节之后,设备登录的 pending 记录(`RequestUserAgent` 直接取自它)与每条审计行的 `requestMetadata.userAgent` 都不可能再是 1MB——匿名 Login/CreateUser 的 UA 炸弹与设备登录侧的常驻内存是同一个值。
+- 本轮补两点:转发地址由 8KiB 收到 64 字节(新常量 `MaxIPBytes`——真实地址最长 45 字节,而它是 M1 未修期间由客户端选定的文本,同时进入审计行、按源限流键与 OAuth pending);并加端到端用例:匿名 `CreateDeviceLogin` 带 512KiB UA → `GetDeviceLogin` 读回的值恰为 256 字节 + 截断标记。
+- **反向验证**:撤掉 UA 截断后该集成用例失败,读回 524288 字节(`"524288" is not less than or equal to "270"`)。
+
+**M16:OAuth 注册/授权与 MCP 的写入、内存放大**
+
+- **注册**(`backend/api/oauth/authorize.go`):`ValidateRedirectURI` 增加单条 2KiB 上限。此前 64KiB 的注册体可以塞进 10 条近乎任意的 URI,存进客户端行,并被此后每个 pending 请求复制。`MatchesRedirectURI` 在请求侧执行同一上限,否则改造前注册的超长 URI 仍会以请求里那个 1MB 串进入 pending。
+- **授权请求**(`parseAuthorizationRequest`):`state` ≤512B,超长直接 `invalid_request` 而不是截断——半个不透明值不是那个值;`code_challenge` 必须恰好 43 字符(S256 的 challenge 就是 verifier 的 SHA-256 base64url,原来的判空检查换成精确长度);**`scope` 先按 256 字节封顶、再折叠成一条**——`RequestedScopesValid` 只要求每项都等于唯一支持的 scope,所以"重复同一个 scope 若干次"原本能构造任意长度的字符串切片(≈1.8MB/条),这正是 M16 的 10GB 场景。
+- **pending 内存**:每条 pending 的字段现在各自有界(state 512B、challenge 43B、scope 1 条、redirect URI ≤2KiB、client name ≤200B、地址 ≤64B),容量 10000 这个上限才有意义——此前单个请求可带约 1MB,≈10GB RSS 由此而来。两处容量注释补上了这个前提。
+- **`/mcp`**(`backend/server/grpc_routes.go`、`backend/mcp/server.go`):按 principal 限流(600 次/分,全局 6000 次/分,进程内滑动窗口)+ 60 秒超时。限流判定放在身份解析之后、权限检查之前,被拒的调用照旧写审计行(与其它拒绝路径一致);未认证请求没有 principal,不计入预算(它在身份解析处就被拒了,到不了这一步)。
+- **MCP 审计明细**:先按 64KiB 封顶参数树(`maxAuditedArgumentBytes`),再走 H6 的 `BoundAuditStruct` 同款整条封顶——端点接受 2MiB,而被预算拒掉的调用同样会带参数,所以超限时只记"带了参数",不记内容。OAuth 注册明细仍走 `BoundAuditStruct`,整条 payload 封顶 256KiB。
+- 限流器把原 `DeviceLoginLimiter` 泛化为 `WindowLimiter`(`state/window_limiter.go`;设备登录的创建、查询两个预算与 MCP 预算共用同一实现,没有第二份滑动窗口),`state.MCPCallLimiter` 由 server 注入 MCP 的 `Config.CallLimiter`。计划文档里对旧类型名的引用一并更新。
+
+**回归测试**
+
+- 单元:`backend/api/oauth/handlers_test.go`(state 超限与上限本身、challenge 长度、超长 scope、重复 scope 折叠成一条、超长 state 不回显)、`register_test.go`(redirect URI 超限与恰好等于上限)、`backend/component/state/window_limiter_test.go`(`newMCPCallLimiter` 按 principal 计额、窗口可滚动)、`backend/mcp/tool_test.go`(预算耗尽返回 `resource_exhausted`、被拒调用仍写审计行、未认证调用不消耗额度)、`backend/mcp/audit_test.go`(超出 64KiB 的参数树只记标记)。
+- 集成(`backend/test/integration/runner/device_login_bounds_service_test.go`,真实服务器 + PostgreSQL):匿名 `CreateDeviceLogin` 带 512KiB UA,读回有界值。
+- **反向验证**:分别单独撤掉 UA 截断、redirect URI 上限、scope 上限/折叠、MCP 预算检查,对应用例各自失败(scope 两项子用例都报 `invalid_scope`/条数为多),随后恢复。
+- **未覆盖(已知)**:`echoedClientState` 的调用点只有辅助函数级单测,`AuthorizeHandler` 端到端(Location 头里没有 state)没测(它需要已注册 client + 会话,属 MCP 集成用例的范畴);`/mcp` 的 60 秒超时没有用例(等待 60 秒不现实);生产装配处 `CallLimiter: stateCfg.MCPCallLimiter` 这一行本身没有用例守护(Config 里为 nil 表示不限流,单测用 fake 或 nil)。
+
+**残余(本轮未处理)**
+
+1. **"审计只记 schema 声明过的字段"**未做:审计载荷仍是"字段名脱敏 + 整体封顶",不是按 proto 注解生成的白名单。`/oauth/register` 仍会把全部 `redirect_uris`(最多 10 条 × 2KiB)记进永久账本,单行有界但单源持续注册仍能稳定写行——这是限流问题(见下)。
+2. **`/mcp` 只按 principal 限流**:未认证的探测没有 principal,仍可高频打到 token 验证;按源限流属 §5.2 的统一限流重构,并依赖 M1 先把源地址取对。预算只封顶调用速率,不封顶"被拒也写一行"这件事(被拒行现在 ≤1KiB,因为参数不再随超限内容增长)。
+3. **两个刻意的 RFC 偏差**(已写进 `security-posture.md`):超长 `state` 被拒后不回显(RFC 6749 §4.1.2.1 要求原样回显,但回显 1MB 会写进 Location 头);超过 64KiB 的参数树在账本里只留标记。
+4. 其余同 H6 一节(全局限流、`BatchGetUsers` 条数上限等)。另外:改造前注册的、超过 2KiB 的 redirect URI 现在会被 `MatchesRedirectURI` 拒绝,该 client 需要重新注册。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`(含改动包 `-race`)、`make test-integration`(真实 PostgreSQL + MySQL + migrator 全绿)、release 构建(`-tags release`)。本轮未改前端,未跑前端门禁。
