@@ -301,15 +301,14 @@ func configureGrpcRouters(
 	e.GET("/.well-known/oauth-authorization-server", echo.WrapHandler(oauth.AuthServerMetadataHandler(stores)))
 	// The browser flow is anonymous by design (the user may not be signed in yet)
 	// and each request reads or writes the pending-request store, so it carries the
-	// same ceiling as the endpoints that mint credentials. The ceiling is one
-	// budget per address shared by all four routes, as the posture document states,
-	// so the middleware is built once and reused; four calls would silently give
-	// one address four times the documented rate.
-	oauthLimit := oauthEndpointMiddleware(profile.TrustedProxies)
-	e.GET("/oauth/authorize", echo.WrapHandler(oauthServer.Audited(oauthServer.AuthorizeHandler())), oauthLimit)
-	e.GET("/oauth/authorize/complete", echo.WrapHandler(oauthServer.Audited(oauthServer.CompletionHandler())), oauthLimit)
-	e.POST("/oauth/token", echo.WrapHandler(oauthServer.Audited(oauthServer.TokenHandler())), oauthLimit)
-	e.POST("/oauth/register", echo.WrapHandler(oauthServer.Audited(oauth.RegisterHandler(stores))), oauthLimit)
+	// same ceiling as the endpoints that mint credentials. Each route carries its
+	// own per-address budget: pointing all four at one limiter would tighten the
+	// anonymous OAuth surface four-fold, which is the open I2 question in
+	// docs/security-review-2026-10.md rather than a decision to make here.
+	e.GET("/oauth/authorize", echo.WrapHandler(oauthServer.Audited(oauthServer.AuthorizeHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
+	e.GET("/oauth/authorize/complete", echo.WrapHandler(oauthServer.Audited(oauthServer.CompletionHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
+	e.POST("/oauth/token", echo.WrapHandler(oauthServer.Audited(oauthServer.TokenHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
+	e.POST("/oauth/register", echo.WrapHandler(oauthServer.Audited(oauth.RegisterHandler(stores))), oauthEndpointMiddleware(profile.TrustedProxies))
 
 	// The MCP endpoint itself. Stateless, so it keeps no session and works behind
 	// a load balancer, and wrapped in the standard library's cross-origin

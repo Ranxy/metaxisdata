@@ -58,27 +58,24 @@ func TestOAuthEndpointMiddlewareIgnoresAnUntrustedForwardedHeader(t *testing.T) 
 	require.Len(t, store.visitors, 1, "every request lands in the resolved address's bucket")
 }
 
-// The four anonymous OAuth routes are meant to share one per-address ceiling
-// (docs/security-posture.md), so configureGrpcRouters builds the middleware once
-// and reuses it; four calls would give one address four times the documented
-// rate. One shared store means a request to one route spends the other's budget.
-func TestOAuthEndpointsShareOneBudgetPerAddress(t *testing.T) {
+// Each anonymous OAuth route carries its own per-address budget: sharing one
+// across the four would tighten the surface four-fold, which is the open I2
+// question in docs/security-review-2026-10.md. One route's traffic therefore
+// does not spend another's budget.
+func TestOAuthEndpointsCarrySeparateBudgets(t *testing.T) {
 	t.Parallel()
 
-	store := newFrozenRateLimiterStore(oauthEndpointRate, oauthEndpointBurst)
-	limit := oauthEndpointMiddlewareWithStore(store, nil)
 	e := echo.New()
-	e.GET(oauthTestRoute, oauthTestHandler, limit)
-	// The real route is a POST; the method is irrelevant to a route-level limiter.
-	e.GET("/oauth/token", oauthTestHandler, limit)
+	e.GET(oauthTestRoute, oauthTestHandler, oauthEndpointMiddleware(nil))
+	e.GET("/oauth/token", oauthTestHandler, oauthEndpointMiddleware(nil))
 
-	for i := 0; i < oauthEndpointBurst; i++ {
-		route := oauthTestRoute
-		if i%2 == 1 {
-			route = "/oauth/token"
+	limited := false
+	for i := 0; i < oauthEndpointBurst+2000; i++ {
+		if getOAuthTestRoute(e, oauthTestRoute, "") == http.StatusTooManyRequests {
+			limited = true
+			break
 		}
-		require.Equal(t, http.StatusOK, getOAuthTestRoute(e, route, ""))
 	}
-	require.Equal(t, http.StatusTooManyRequests, getOAuthTestRoute(e, "/oauth/token", ""))
-	require.Len(t, store.visitors, 1)
+	require.True(t, limited, "the exhausted route must be limited")
+	require.Equal(t, http.StatusOK, getOAuthTestRoute(e, "/oauth/token", ""), "another route keeps its own budget")
 }
