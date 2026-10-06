@@ -1,9 +1,8 @@
-package v1
+package store
 
 import (
 	"testing"
 
-	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -11,9 +10,9 @@ import (
 )
 
 // M9: allUsers matches every authenticated principal, so it must not be a
-// vehicle for widening what everyone who ever signs up is granted, and the
-// implicit baseline binding must not be dropped by a full replace.
-func TestValidateAllUsersBinding(t *testing.T) {
+// vehicle for widening what everyone who ever signs up is granted, and a full
+// replace must not drop the implicit baseline binding.
+func TestCheckAllUsersBinding(t *testing.T) {
 	t.Parallel()
 
 	baselineBinding := &storepb.Binding{Role: allUsersBaselineRole, Members: []string{common.AllUsers}}
@@ -76,13 +75,30 @@ func TestValidateAllUsersBinding(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := validateAllUsersBinding(&storepb.IamPolicy{Bindings: test.bindings})
+			err := CheckAllUsersBinding(&storepb.IamPolicy{Bindings: test.bindings})
 			if test.wantErr == "" {
 				require.NoError(t, err)
 				return
 			}
-			require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+			require.Equal(t, common.Invalid, common.ErrorCode(err))
 			require.Contains(t, err.Error(), test.wantErr)
 		})
 	}
+}
+
+// The incremental patch path runs against whatever policy is already stored, so
+// it enforces the role half of the invariant only: a policy that predates the
+// baseline binding is not a reason to fail a first-admin grant, but moving
+// allUsers off the baseline is refused wherever it happens.
+func TestCheckAllUsersRoleAllowsAMissingBaseline(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, checkAllUsersRole(&storepb.IamPolicy{
+		Bindings: []*storepb.Binding{{Role: common.FormatRole(common.WorkspaceAdmin), Members: []string{common.FormatUserUID(7)}}},
+	}))
+
+	err := checkAllUsersRole(&storepb.IamPolicy{
+		Bindings: []*storepb.Binding{{Role: common.FormatRole(common.WorkspaceAdmin), Members: []string{common.AllUsers}}},
+	})
+	require.Equal(t, common.Invalid, common.ErrorCode(err))
 }

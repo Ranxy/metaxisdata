@@ -2,7 +2,6 @@ package v1
 
 import (
 	"context"
-	"slices"
 	"strings"
 	"time"
 
@@ -45,13 +44,14 @@ func (s *IamService) SetWorkspaceIamPolicy(ctx context.Context, request *connect
 		return nil, err
 	}
 	// The workspace must keep at least one active end-user admin after the
-	// write; otherwise a single Set could permanently lock everyone out.
+	// write, bound by a condition that holds at check time and is not merely
+	// time-boxed; otherwise a single Set could permanently lock everyone out.
 	ok, err := hasActiveWorkspaceAdmin(ctx, s.store, policy, 0)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check workspace admin"))
 	}
 	if !ok {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("workspace must have at least one active admin"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("workspace must keep at least one active admin whose binding has no condition"))
 	}
 
 	updated, err := s.store.SetWorkspaceIamPolicy(ctx, policy, request.Msg.GetEtag())
@@ -109,10 +109,11 @@ func convertToStoreIamPolicy(p *v1pb.IamPolicy) *storepb.IamPolicy {
 // rather than stored.
 //
 // It also pins the allUsers invariant, which a single full replace could
-// otherwise widen for every principal who ever signs up.
+// otherwise widen for every principal who ever signs up. The decision lives in
+// the store so that every writer, not just this RPC, enforces it.
 func validateIamPolicy(ctx context.Context, stores *store.Store, policy *storepb.IamPolicy) error {
-	if err := validateAllUsersBinding(policy); err != nil {
-		return err
+	if err := store.CheckAllUsersBinding(policy); err != nil {
+		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	for _, binding := range policy.GetBindings() {
 		resourceID, err := common.GetRoleID(binding.GetRole())
@@ -142,45 +143,9 @@ func validateIamPolicy(ctx context.Context, stores *store.Store, policy *storepb
 	return nil
 }
 
-// allUsersBaselineRole is the only role the allUsers pseudo-member may be
-// bound to: the workspaceMember baseline every authenticated principal already
-// holds implicitly.
-const allUsersBaselineRole = common.RolePrefix + common.WorkspaceMember
-
-// validateAllUsersBinding pins the allUsers invariant of the workspace policy.
-//
-// allUsers matches every authenticated principal, including everyone who
-// registers after the write, and self-signup is open by default. Binding it to
-// any other role would therefore hand that role to every future sign-up — and
-// the "at least one active admin" guard happily accepts allUsers as the
-// workspace admin. One ordinary-looking grant would be a one-way door, so the
-// member is not editable: it may only carry the implicit baseline, and that
-// one binding must survive every full replace instead of being quietly
-// dropped. Custom roles stay available; they are granted to explicit users and
-// groups.
-func validateAllUsersBinding(policy *storepb.IamPolicy) error {
-	bound := false
-	for _, binding := range policy.GetBindings() {
-		if !slices.Contains(binding.GetMembers(), common.AllUsers) {
-			continue
-		}
-		if binding.GetRole() != allUsersBaselineRole {
-			return connect.NewError(connect.CodeInvalidArgument, errors.Errorf(
-				"%s may only be bound to %s, not to %s: it matches every authenticated principal, including future sign-ups",
-				common.AllUsers, allUsersBaselineRole, binding.GetRole()))
-		}
-		bound = true
-	}
-	if !bound {
-		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf(
-			"policy must keep its %s binding to %s", allUsersBaselineRole, common.AllUsers))
-	}
-	return nil
-}
-
 // validateIamMember reports whether a binding member names a real, active
 // principal: allUsers, a non-deleted user, or an existing group. Which role
-// allUsers may be bound to is checked by validateAllUsersBinding.
+// allUsers may be bound to is checked by store.CheckAllUsersBinding.
 func validateIamMember(ctx context.Context, stores *store.Store, member string) error {
 	switch {
 	case member == common.AllUsers:

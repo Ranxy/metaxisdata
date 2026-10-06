@@ -48,7 +48,7 @@
           <TableBody>
             <TableRow
               v-for="(binding, index) in bindings"
-              :key="binding.role"
+              :key="`${binding.role}#${index}`"
             >
               <TableCell>
                 <div class="font-medium">

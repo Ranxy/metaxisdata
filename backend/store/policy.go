@@ -24,6 +24,53 @@ type IamPolicyMessage struct {
 // policy. Callers map it to connect.CodeAborted so the client re-fetches.
 var ErrPolicyEtagMismatch = errors.New("iam policy etag mismatch")
 
+// allUsersBaselineRole is the only role the allUsers pseudo-member may be bound
+// to: the workspaceMember baseline every authenticated principal already holds
+// implicitly.
+const allUsersBaselineRole = common.RolePrefix + common.WorkspaceMember
+
+// CheckAllUsersBinding enforces the allUsers invariant on a complete workspace
+// policy. The v1 write path (validateIamPolicy) calls it, and so do the store
+// writers below, so the invariant holds for every writer instead of only for
+// the RPC that happens to validate first.
+//
+// allUsers matches every authenticated principal, including everyone who
+// registers after the write, and self-signup is open by default. Binding it to
+// any other role would hand that role to every future sign-up, so it may only
+// carry the implicit baseline; and that one binding must survive a full
+// replace instead of being quietly dropped. Custom roles stay available; they
+// are granted to explicit users and groups.
+func CheckAllUsersBinding(policy *storepb.IamPolicy) error {
+	if err := checkAllUsersRole(policy); err != nil {
+		return err
+	}
+	for _, binding := range policy.GetBindings() {
+		if binding.GetRole() == allUsersBaselineRole && slices.Contains(binding.GetMembers(), common.AllUsers) {
+			return nil
+		}
+	}
+	return common.Errorf(common.Invalid, "policy must keep its %s binding to %s", allUsersBaselineRole, common.AllUsers)
+}
+
+// checkAllUsersRole enforces the half of the invariant that every writer can
+// afford: allUsers may only be bound to the baseline. The other half — the
+// baseline binding must still be there — is a property of a whole policy, so it
+// is checked by CheckAllUsersBinding on the full-replace path; the incremental
+// patch below may legitimately run against a policy that predates the binding.
+func checkAllUsersRole(policy *storepb.IamPolicy) error {
+	for _, binding := range policy.GetBindings() {
+		if !slices.Contains(binding.GetMembers(), common.AllUsers) {
+			continue
+		}
+		if binding.GetRole() != allUsersBaselineRole {
+			return common.Errorf(common.Invalid,
+				"%s may only be bound to %s, not to %s: it matches every authenticated principal, including future sign-ups",
+				common.AllUsers, allUsersBaselineRole, binding.GetRole())
+		}
+	}
+	return nil
+}
+
 // generateEtag generates etag for the given body.
 func generateEtag(t time.Time) string {
 	return fmt.Sprintf("%d", t.UnixMilli())
@@ -45,8 +92,13 @@ func (s *Store) GetWorkspaceIamPolicy(ctx context.Context) (*IamPolicyMessage, e
 
 // SetWorkspaceIamPolicy replaces the workspace IAM policy whole. etag guards
 // optimistic concurrency: an empty etag skips the check (a first write), any
-// other value must equal the etag returned by GetWorkspaceIamPolicy.
+// other value must equal the etag returned by GetWorkspaceIamPolicy. The
+// allUsers invariant is enforced here as well as at the API boundary, so a
+// caller that skips validateIamPolicy cannot store a policy that violates it.
 func (s *Store) SetWorkspaceIamPolicy(ctx context.Context, policy *storepb.IamPolicy, etag string) (*IamPolicyMessage, error) {
+	if err := CheckAllUsersBinding(policy); err != nil {
+		return nil, err
+	}
 	// Read the current policy with a strong read: a cached etag could be stale
 	// after a write through another connection, which would let this Set
 	// overwrite that change even though the caller read an older policy.
@@ -141,6 +193,13 @@ func (s *Store) patchWorkspaceIamPolicyImpl(ctx context.Context, txn *sql.Tx, pa
 	}
 
 	patchIamPolicyBindings(workspaceIamPolicy, patch.Member, patch.Roles)
+
+	// The patch can drop members and append bindings, so the result is checked
+	// as a whole: a caller passing allUsers would otherwise move it off the
+	// baseline (see checkAllUsersRole).
+	if err := checkAllUsersRole(workspaceIamPolicy); err != nil {
+		return err
+	}
 
 	policyPayload, err := protojson.Marshal(workspaceIamPolicy)
 	if err != nil {

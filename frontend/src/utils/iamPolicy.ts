@@ -29,11 +29,17 @@ export function isAllUsersBaselineBinding(binding: IamBindingDraft): boolean {
 
 /**
  * Returns the draft with the server-managed baseline binding present, adding
- * the row or the member when the stored policy does not carry it.
+ * the row or the member when the stored policy does not carry it. A draft that
+ * already binds `allUsers` to the baseline is returned untouched: the server
+ * accepts duplicate role bindings, and completing a second row would leave two
+ * indistinguishable read-only rows behind.
  */
 export function withAllUsersBaselineBinding(
   bindings: IamBindingDraft[]
 ): IamBindingDraft[] {
+  if (bindings.some(isAllUsersBaselineBinding)) {
+    return bindings;
+  }
   const index = bindings.findIndex(
     (binding) => binding.role === WORKSPACE_MEMBER_ROLE
   );
@@ -41,9 +47,6 @@ export function withAllUsersBaselineBinding(
     return [...bindings, { role: WORKSPACE_MEMBER_ROLE, members: [ALL_USERS] }];
   }
   const binding = bindings[index];
-  if (binding.members.includes(ALL_USERS)) {
-    return bindings;
-  }
   const next = [...bindings];
   next[index] = {
     role: binding.role,

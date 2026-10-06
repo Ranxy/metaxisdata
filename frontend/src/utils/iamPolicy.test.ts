@@ -48,6 +48,16 @@ describe("withAllUsersBaselineBinding", () => {
     expect(withAllUsersBaselineBinding(bindings)).toBe(bindings);
   });
 
+  it("does not complete a second row when another already binds allUsers", () => {
+    // The server accepts duplicate role bindings. Completing the first row here
+    // would leave two rows that both render read-only, with no way back.
+    const bindings = [
+      { role: WORKSPACE_MEMBER_ROLE, members: ["users/7"] },
+      baseline,
+    ];
+    expect(withAllUsersBaselineBinding(bindings)).toBe(bindings);
+  });
+
   it("adds the member to a baseline row that lost it", () => {
     const next = withAllUsersBaselineBinding([
       { role: WORKSPACE_MEMBER_ROLE, members: ["users/7"] },
