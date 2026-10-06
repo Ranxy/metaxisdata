@@ -10320,7 +10320,10 @@ Format: roles/{role} </p></td>
                   <td>repeated</td>
                   <td><p>The principals requesting access.
 For users: users/{userUID}; for groups: groups/{email}; the pseudo-member
-allUsers matches every authenticated principal. </p></td>
+allUsers matches every authenticated principal, including the ones who
+register later, so it is accepted only on the roles/workspaceMember
+baseline binding. That binding is server-managed: it cannot be edited or
+dropped, and a Set whose policy omits it is rejected. </p></td>
                 </tr>
               
                 <tr>

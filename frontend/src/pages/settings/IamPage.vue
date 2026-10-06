@@ -68,7 +68,13 @@
                   >
                     <span>{{ memberLabel(member) }}</span>
                     <button
-                      v-if="canSet"
+                      v-if="
+                        canSet &&
+                        !(
+                          member === ALL_USERS &&
+                          isAllUsersBaselineBinding(binding)
+                        )
+                      "
                       type="button"
                       class="text-muted-foreground hover:text-destructive"
                       :title="t('iam.policy.removeMember')"
@@ -89,22 +95,33 @@
                 v-if="canSet"
                 class="text-right space-x-2"
               >
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  :aria-label="t('iam.policy.addMember')"
-                  @click="openAddMember(index)"
+                <!-- The allUsers binding is server-managed: it must survive
+                     every save, so it is shown read-only. -->
+                <span
+                  v-if="isAllUsersBaselineBinding(binding)"
+                  class="align-middle text-xs text-muted-foreground"
+                  :title="t('iam.policy.systemBindingHint')"
                 >
-                  <Plus class="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  :aria-label="t('iam.policy.removeMember')"
-                  @click="removeBinding(index)"
-                >
-                  <Trash2 class="h-4 w-4 text-destructive" />
-                </Button>
+                  {{ t("iam.policy.systemBinding") }}
+                </span>
+                <template v-else>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    :aria-label="t('iam.policy.addMember')"
+                    @click="openAddMember(index)"
+                  >
+                    <Plus class="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    :aria-label="t('iam.policy.removeMember')"
+                    @click="removeBinding(index)"
+                  >
+                    <Trash2 class="h-4 w-4 text-destructive" />
+                  </Button>
+                </template>
               </TableCell>
             </TableRow>
           </TableBody>
@@ -143,9 +160,6 @@
                 </SelectItem>
                 <SelectItem value="group">
                   {{ t("iam.policy.memberTypeGroup") }}
-                </SelectItem>
-                <SelectItem value="allUsers">
-                  {{ t("iam.policy.memberTypeAllUsers") }}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -295,13 +309,19 @@ import { useAuthStore } from "@/store/modules/auth";
 import type { Group } from "@/types/proto-es/v1/group_service_pb";
 import {
   BindingSchema,
+  type IamPolicy,
   IamPolicySchema,
 } from "@/types/proto-es/v1/iam_service_pb";
 import type { Role } from "@/types/proto-es/v1/role_service_pb";
 import type { User } from "@/types/proto-es/v1/user_service_pb";
+import {
+  ALL_USERS,
+  isAllUsersBaselineBinding,
+  withAllUsersBaselineBinding,
+} from "@/utils/iamPolicy";
 
 type BindingForm = { role: string; members: string[] };
-type MemberType = "user" | "group" | "allUsers";
+type MemberType = "user" | "group";
 
 const { t } = useI18n();
 const authStore = useAuthStore();
@@ -354,7 +374,8 @@ const roleTitles = computed(() => {
 });
 
 // workspaceMember is granted to everyone implicitly, so binding it explicitly
-// adds nothing; keep it off the picker.
+// adds nothing; keep it off the picker. allUsers is not offered either: the
+// server only accepts it on that baseline binding, which is server-managed.
 const grantableRoles = computed(() =>
   roles.value.filter((role) => role.name !== "roles/workspaceMember")
 );
@@ -365,8 +386,6 @@ const selectedMember = computed(() => {
       return selectedUser.value;
     case "group":
       return selectedGroup.value;
-    case "allUsers":
-      return "allUsers";
     default:
       return "";
   }
@@ -377,7 +396,7 @@ function roleTitle(role: string): string {
 }
 
 function memberLabel(member: string): string {
-  if (member === "allUsers") {
+  if (member === ALL_USERS) {
     return t("iam.policy.memberTypeAllUsers");
   }
   return (
@@ -397,11 +416,7 @@ async function loadPolicy() {
         listGroups(),
       ]);
     etag.value = policyResponse.etag;
-    bindings.value =
-      policyResponse.policy?.bindings.map((binding) => ({
-        role: binding.role,
-        members: [...binding.members],
-      })) ?? [];
+    bindings.value = toBindings(policyResponse.policy);
     roles.value = roleResponse.roles;
     users.value = allUsers;
     groups.value = groupResponse.groups;
@@ -411,6 +426,19 @@ async function loadPolicy() {
   } finally {
     isLoading.value = false;
   }
+}
+
+// toBindings copies a policy into the local draft. A full replace must carry
+// the server-managed allUsers binding, so an editable draft gets it back when
+// the stored policy lost it: the save then repairs the policy instead of being
+// rejected.
+function toBindings(policy: IamPolicy | undefined): BindingForm[] {
+  const stored =
+    policy?.bindings.map((binding) => ({
+      role: binding.role,
+      members: [...binding.members],
+    })) ?? [];
+  return canSet.value ? withAllUsersBaselineBinding(stored) : stored;
 }
 
 function openAddMember(index: number) {
@@ -480,11 +508,7 @@ async function handleSave() {
     });
     const response = await setWorkspaceIamPolicy(policy, etag.value);
     etag.value = response.etag;
-    bindings.value =
-      response.policy?.bindings.map((binding) => ({
-        role: binding.role,
-        members: [...binding.members],
-      })) ?? [];
+    bindings.value = toBindings(response.policy);
     dirty.value = false;
     showSuccess(t("iam.policy.saved"));
   } catch (err) {

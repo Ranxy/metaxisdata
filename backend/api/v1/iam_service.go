@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -106,7 +107,13 @@ func convertToStoreIamPolicy(p *v1pb.IamPolicy) *storepb.IamPolicy {
 // deployment binds, and members must name a real, active principal. A binding
 // to a missing role or principal would silently never match, so it is rejected
 // rather than stored.
+//
+// It also pins the allUsers invariant, which a single full replace could
+// otherwise widen for every principal who ever signs up.
 func validateIamPolicy(ctx context.Context, stores *store.Store, policy *storepb.IamPolicy) error {
+	if err := validateAllUsersBinding(policy); err != nil {
+		return err
+	}
 	for _, binding := range policy.GetBindings() {
 		resourceID, err := common.GetRoleID(binding.GetRole())
 		if err != nil {
@@ -135,8 +142,45 @@ func validateIamPolicy(ctx context.Context, stores *store.Store, policy *storepb
 	return nil
 }
 
+// allUsersBaselineRole is the only role the allUsers pseudo-member may be
+// bound to: the workspaceMember baseline every authenticated principal already
+// holds implicitly.
+const allUsersBaselineRole = common.RolePrefix + common.WorkspaceMember
+
+// validateAllUsersBinding pins the allUsers invariant of the workspace policy.
+//
+// allUsers matches every authenticated principal, including everyone who
+// registers after the write, and self-signup is open by default. Binding it to
+// any other role would therefore hand that role to every future sign-up — and
+// the "at least one active admin" guard happily accepts allUsers as the
+// workspace admin. One ordinary-looking grant would be a one-way door, so the
+// member is not editable: it may only carry the implicit baseline, and that
+// one binding must survive every full replace instead of being quietly
+// dropped. Custom roles stay available; they are granted to explicit users and
+// groups.
+func validateAllUsersBinding(policy *storepb.IamPolicy) error {
+	bound := false
+	for _, binding := range policy.GetBindings() {
+		if !slices.Contains(binding.GetMembers(), common.AllUsers) {
+			continue
+		}
+		if binding.GetRole() != allUsersBaselineRole {
+			return connect.NewError(connect.CodeInvalidArgument, errors.Errorf(
+				"%s may only be bound to %s, not to %s: it matches every authenticated principal, including future sign-ups",
+				common.AllUsers, allUsersBaselineRole, binding.GetRole()))
+		}
+		bound = true
+	}
+	if !bound {
+		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf(
+			"policy must keep its %s binding to %s", allUsersBaselineRole, common.AllUsers))
+	}
+	return nil
+}
+
 // validateIamMember reports whether a binding member names a real, active
-// principal: allUsers, a non-deleted user, or an existing group.
+// principal: allUsers, a non-deleted user, or an existing group. Which role
+// allUsers may be bound to is checked by validateAllUsersBinding.
 func validateIamMember(ctx context.Context, stores *store.Store, member string) error {
 	switch {
 	case member == common.AllUsers:

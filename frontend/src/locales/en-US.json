@@ -360,6 +360,8 @@
       "selectGroup": "Select a group",
       "selectRole": "Select a role",
       "selectUser": "Select a user",
+      "systemBinding": "System",
+      "systemBindingHint": "Managed by the server: every authenticated user holds the workspace member baseline, so this binding cannot be edited.",
       "user": "User"
     },
     "roles": {
