@@ -620,7 +620,7 @@
 **M3/M5:登录限流拆成账号/源双计数,Connect 入口为匿名 bcrypt 方法加双桶限额**(`backend/component/state/{login_limiter,window_limiter,state}.go`、`backend/api/v1/throttle_interceptor.go`、`backend/api/v1/auth_service.go`、`backend/server/grpc_routes.go`)
 
 - `LoginLimiter` 由 (email, 裸对端) 单键改为两个独立计数:账号 10 次失败/5 分钟(任意来源累计)、源 20 次失败/5 分钟(任意账号累计)。源取 `audit.ClientAddress` 解析后的地址,与审计行同一个值。**成功登录只清账号计数、不清源计数**:否则一个已知口令就能在共享出口上把自己喷洒失败的额度重置。两个计数共同把"单一来源能锁死多少账号"限制为每窗口至多 2 个(20/10)。
-- 新增 `ThrottleInterceptor`,在拦截器链上位于 auth 之后、audit 之前:`AuthService/Login` 30 次/分/源 + 300 次/分全局,`UserService/CreateUser` 10 次/分/源 + 100 次/分全局。放在 auth 之后是为了识别已登录调用方并对其豁免(按登录用户限流是 M24 的范围);放在 audit 之前是为了让被预算拒绝的请求不落永久账本行——与 H6 的请求体上限同一种处理。
+- 新增 `ThrottleInterceptor`,在拦截器链上位于 auth 之后、audit 之前:`AuthService/Login` 120 次/分/源 + 300 次/分全局,`UserService/CreateUser` 20 次/分/源 + 100 次/分全局。源额度刻意放宽(一个 NAT 出口后的整个办公室登录是正常用法),真正限制部署级 bcrypt 开销的是全局额度;集成套件共用 127.0.0.1 作为来源,首轮 30/分/源的取值会让正常登录被拒,这也是把它放宽的直接证据。放在 auth 之后是为了识别已登录调用方并对其豁免(按登录用户限流是 M24 的范围);放在 audit 之前是为了让被预算拒绝的请求不落永久账本行——与 H6 的请求体上限同一种处理。
 - `CreateUser` 的邮箱存在性检查天然排在限额之后(拦截器先于 handler),枚举速率被限额封顶;按用户选择保留 `AlreadyExists` 文案,未做模糊响应。
 - `WindowLimiter` 构造函数去掉了各调用点都传 `time.Minute`/`4096` 的三对参数(Lint 的 `unparam` 也提示了这一点),统一为包级常量。
 

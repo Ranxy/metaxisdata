@@ -222,15 +222,20 @@ func TestClientAddressReadsTheForwardedChainFromTheRight(t *testing.T) {
 			want:           "198.51.100.7",
 		},
 		{
-			// The gateway dials the server's own port, so the peer is loopback.
-			// grpc-gateway appended the outer peer as the last entry, and the
-			// middleware recorded the same value; together they prove the request
-			// came through the gateway.
 			name:        "the REST gateway hop resolves to the outer peer",
 			peer:        "127.0.0.1:5555",
 			forwarded:   "9.9.9.9, 203.0.113.7",
 			gatewayPeer: "203.0.113.7",
 			want:        "203.0.113.7",
+		},
+		{
+			// Both sides come from the same outer RemoteAddr, but each is parsed
+			// separately, so the comparison is on the normalized form.
+			name:        "a non-canonical gateway stamp still matches",
+			peer:        "127.0.0.1:5555",
+			forwarded:   "2001:0db8:0000::1",
+			gatewayPeer: "2001:db8::1",
+			want:        "2001:db8::1",
 		},
 		{
 			name:        "the REST gateway hop then follows the trusted chain",

@@ -383,7 +383,7 @@ func ClientAddress(header http.Header, peerAddr string, trustedProxies []string)
 	// request really came through the gateway, because the gateway appends the
 	// last entry itself and the middleware overwrites the header.
 	if ip := net.ParseIP(peerHost); ip != nil && ip.IsLoopback() {
-		if outer := HostFromAddr(header.Get(GatewayPeerHeader)); outer != "" && outer == lastForwarded(header) {
+		if outer, ok := normalizeIP(header.Get(GatewayPeerHeader)); ok && outer == lastForwarded(header) {
 			peerHost = outer
 		}
 	}

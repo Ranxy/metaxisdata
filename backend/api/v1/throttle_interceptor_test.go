@@ -20,8 +20,8 @@ import (
 // silent change to them shows up as a failing test rather than passing either
 // way.
 const (
-	testLoginSourceBudget      = 30
-	testCreateUserSourceBudget = 10
+	testLoginSourceBudget      = 120
+	testCreateUserSourceBudget = 20
 )
 
 func newTestThrottleInterceptor(t *testing.T, trustedProxies []string) *ThrottleInterceptor {

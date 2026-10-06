@@ -39,10 +39,13 @@ const (
 	deviceLoginLookupLimit  = 60
 	deviceLoginLookupGlobal = 600
 
-	loginRequestSourceLimit = 30
+	// The per-source Login budget is deliberately loose: an office behind one NAT
+	// address is normal use, and a tight per-source cap would lock real users out.
+	// The global budget is what bounds the deployment's bcrypt work.
+	loginRequestSourceLimit = 120
 	loginRequestGlobalLimit = 300
 
-	createUserRequestSourceLimit = 10
+	createUserRequestSourceLimit = 20
 	createUserRequestGlobalLimit = 100
 
 	mcpCallLimit  = 600
