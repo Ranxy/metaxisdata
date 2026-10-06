@@ -1,6 +1,7 @@
 package openlineage
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -30,4 +31,80 @@ func TestDeriveAirflowLinksWithoutLogURL(t *testing.T) {
 
 	assert.Empty(t, links.DagURL)
 	assert.Empty(t, links.RunLogURL)
+}
+
+// The facet is caller-supplied, so only a real web address may reach a link.
+// A `javascript:` URL would otherwise run in the origin of the member who
+// clicked "open run log".
+func TestDeriveAirflowLinksRejectsNonWebURLs(t *testing.T) {
+	cases := map[string]string{
+		"javascript scheme":        "javascript:alert(document.cookie)",
+		"javascript mixed case":    "JaVaScRiPt:alert(1)",
+		"data scheme":              "data:text/html,<script>alert(1)</script>",
+		"file scheme":              "file:///etc/passwd",
+		"protocol relative":        "//evil.example.com/dags/x/runs/1",
+		"relative path":            "/dags/x/runs/1",
+		"no host":                  "http:///dags/x/runs/1",
+		"port only":                "http://:8080/dags/x/runs/1",
+		"scheme without host":      "https:",
+		"empty after trimming":     "   ",
+		"leading whitespace only":  "\n\t",
+		"control character in URL": "http://localhost:8080/dags/x/runs/\x01",
+	}
+
+	for name, logURL := range cases {
+		t.Run(name, func(t *testing.T) {
+			rawPayload := []byte(`{"run":{"facets":{"airflow":{"taskInstance":{"log_url":` + mustJSONString(t, logURL) + `}}}}}`)
+
+			links := DeriveAirflowLinks(rawPayload)
+
+			assert.Empty(t, links.RunLogURL)
+			assert.Empty(t, links.DagURL)
+		})
+	}
+}
+
+// A URL that already is a web address is kept, normalized, and its Dag URL is
+// still derived; the scheme is not case-sensitive.
+func TestDeriveAirflowLinksKeepsWebURLs(t *testing.T) {
+	cases := map[string]struct {
+		logURL  string
+		wantURL string
+		wantDag string
+	}{
+		"uppercase scheme": {
+			logURL:  "HTTPS://airflow.example.com/dags/x/runs/1",
+			wantURL: "https://airflow.example.com/dags/x/runs/1",
+			wantDag: "https://airflow.example.com/dags/x",
+		},
+		"padded": {
+			logURL:  "  http://airflow.example.com/dags/x/runs/1  ",
+			wantURL: "http://airflow.example.com/dags/x/runs/1",
+			wantDag: "http://airflow.example.com/dags/x",
+		},
+		"credentials": {
+			logURL:  "http://user:pass@airflow.example.com/dags/x/runs/1",
+			wantURL: "http://user:pass@airflow.example.com/dags/x/runs/1",
+			wantDag: "http://user:pass@airflow.example.com/dags/x",
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			rawPayload := []byte(`{"run":{"facets":{"airflow":{"taskInstance":{"log_url":` + mustJSONString(t, tc.logURL) + `}}}}}`)
+
+			links := DeriveAirflowLinks(rawPayload)
+
+			assert.Equal(t, tc.wantURL, links.RunLogURL)
+			assert.Equal(t, tc.wantDag, links.DagURL)
+		})
+	}
+}
+
+func mustJSONString(t *testing.T, value string) string {
+	t.Helper()
+
+	encoded, err := json.Marshal(value)
+	assert.NoError(t, err)
+	return string(encoded)
 }

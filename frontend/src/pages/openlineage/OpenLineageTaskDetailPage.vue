@@ -5,8 +5,8 @@
       :description="t('openlineage.jobsDescription')"
     >
       <template #actions>
-        <Button v-if="task?.airflowDagUrl" variant="secondary" asChild>
-          <a :href="task.airflowDagUrl" target="_blank" rel="noreferrer noopener">
+        <Button v-if="dagUrl" variant="secondary" asChild>
+          <a :href="dagUrl" target="_blank" rel="noreferrer noopener">
             {{ t("openlineageSettings.openInAirflow") }}
           </a>
         </Button>
@@ -291,6 +291,7 @@ import type {
 } from "@/types/proto-es/v1/openlineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
+import { safeExternalUrl } from "@/utils/safeUrl";
 
 const route = useRoute();
 const router = useRouter();
@@ -307,6 +308,10 @@ const currentGuid = computed(() => {
   const guidParam = route.params.guid;
   return Array.isArray(guidParam) ? guidParam[0] : (guidParam ?? "");
 });
+
+// Derived server-side from a caller-supplied facet, so it is validated again
+// before it is bound to an href.
+const dagUrl = computed(() => safeExternalUrl(task.value?.airflowDagUrl));
 
 const displayRuns = computed(() => {
   if (!lineageOnlyRuns.value) {

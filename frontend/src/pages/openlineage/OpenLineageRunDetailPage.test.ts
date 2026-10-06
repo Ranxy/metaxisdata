@@ -16,13 +16,14 @@ vi.mock("@/api/openlineage", () => ({
 
 const Dummy = { template: "<div />" };
 
-async function mountRun(rawPayload: string) {
+async function mountRun(rawPayload: string, airflowRunLogUrl = "") {
   mocks.getOpenLineageRun.mockResolvedValue(
     create(OpenLineageRunSchema, {
       guid: "run-1",
       jobName: "e2e_02_pg_transform.dwd_ddl",
       eventType: "COMPLETE",
       rawPayload,
+      airflowRunLogUrl,
     })
   );
 
@@ -159,5 +160,29 @@ describe("OpenLineageRunDetailPage", () => {
     expect(wrapper.text()).not.toContain(
       "Some SQL statements could not be parsed"
     );
+  });
+
+  // The server derives this URL from a facet anyone with an ingestion key can
+  // write, so the page must not bind it as it arrives: a `javascript:` value
+  // would run in this origin, where every ConnectRPC call passes the CSRF check.
+  it("renders no link for a URL that is not a web address", async () => {
+    const wrapper = await mountRun("", "javascript:alert(document.cookie)");
+
+    expect(wrapper.find("a[target='_blank']").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("Open Run Log in Airflow");
+  });
+
+  it("renders the derived link when it is a web address", async () => {
+    const wrapper = await mountRun(
+      "",
+      "http://airflow.example.com:8080/dags/x/runs/1"
+    );
+
+    const link = wrapper.find("a[target='_blank']");
+    expect(link.exists()).toBe(true);
+    expect(link.attributes("href")).toBe(
+      "http://airflow.example.com:8080/dags/x/runs/1"
+    );
+    expect(wrapper.text()).toContain("Open Run Log in Airflow");
   });
 });

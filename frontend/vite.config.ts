@@ -8,6 +8,14 @@ const __dirname = dirname(__filename);
 
 export default defineConfig({
   plugins: [vue()],
+  define: {
+    // Without this flag vue-i18n's esm-bundler build compiles every catalog
+    // entry with `new Function`, which the server's `script-src 'self'` CSP
+    // refuses — and then no string on any page renders. JIT compilation builds
+    // an AST and interprets it instead. vitest.config.ts sets the same flag so
+    // the tests exercise this path.
+    __INTLIFY_JIT_COMPILATION__: true,
+  },
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
