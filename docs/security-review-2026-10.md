@@ -151,6 +151,7 @@
 - **修复**:打开前强制 http/https(与 --server 同源更佳);Windows 改 `rundll32 url.dll,FileProtocolHandler`;要求人工确认。(落地了 scheme 白名单与打开器替换;同源限制与人工确认未做,理由见 §10)
 
 ### M14. OpenLineage 摄取限流在无 key 时回退 `c.RealIP()`:绕过限流 + 内存堆积
+- **状态**:**已修复**(2026-10-06,commit `f9f67fb`;无 key 回退改为 trusted-proxy 解析后的真实地址,OL 与 OAuth 的匿名限流器都改用容量受限的 store——OL 一份、OAuth 每路由一份;对抗复核后的加固 commit `414aa60` 把淘汰改为 O(1),而"四路由合并为一份预算"的改动经集成套件证明会打断既有用例后回退(commit `f440dc8`,I2 未采纳)。修复内容与验证见 §10)。
 - **证据**:`backend/server/openlineage_ingestion.go:38-44`(回退 `c.RealIP()`;echo 未设 IPExtractor,RealIP 无条件信任 XFF 最左段);echo RateLimiterMemoryStore 无容量上限(3 分钟清理一次)。同项目 `oauth_endpoints.go:36-48` 已有正确写法并注释说明 RealIP 的问题——属遗漏。
 - **攻击场景**:不带 key 的请求每次换 XFF 即新桶,50rps 上限失效,且每次 401 触发一次 `ValidateOpenLineageAPIKey` DB 查询;唯一 key 可在窗口内堆出百万级桶。
 - **修复**:回退改用 `c.Request().RemoteAddr` 或设 `e.IPExtractor`;限流 store 加容量上限。
@@ -248,7 +249,7 @@
 | # | 发现 | 证据 | 说明 |
 | --- | --- | --- | --- |
 | I1 | OAuth token 端点换发时不复核审批人状态 | `api/oauth/token.go:87-91` | 只查存在性;设备登录同位置有 `validateApprover`。窗口小(码 TTL 60s)+ `/mcp` 每请求复核 `MemberDeleted`,影响=签出一条立即不可用的凭证 + 假成功审计行。对齐 validateApprover |
-| I2 | 四条匿名 OAuth 路由是四个独立限流器,与文档"共享上限"矛盾 | `grpc_routes.go:277-280`、`oauth_endpoints.go:28-33` | `security-posture.md:19` 与 `docs/mcp.md` 写 share one ceiling,实现是 4 份配额(可 4 倍速率)。middleware 只创建一次并复用 |
+| I2 | 四条匿名 OAuth 路由是四个独立限流器,与文档"共享上限"矛盾 | `grpc_routes.go:277-280`、`oauth_endpoints.go:28-33` | `security-posture.md:19` 与 `docs/mcp.md` 写 share one ceiling,实现是 4 份配额(可 4 倍速率)。建议是 middleware 只创建一次并复用;**本次未采纳**:合并会把匿名 OAuth 面收紧 4 倍,集成套件(同一进程、同一来源地址打满四条路由)随即以 429 覆盖 404/400/201 断言,故配额维持现状、文档改为按实现描述(commit `f440dc8`,理由与证据见 §10 的 M14 加固第 3 条)。是否共享一份上限属配额决策,留待单独处理 |
 | I3 | `/oauth/authorize` 与 `/complete` 审计行无 actor | `authorize.go:250-314,320-351` | 发起者/完成者无法归因(批准 RPC 有审计,首尾缺失)。sessionUser 成功后 recordAuditActor |
 | I4 | RFC 9728 通配路由 + 503 文案披露待修复设置项 | `grpc_routes.go:272`、`metadata.go:180-182` | 信息价值低(该设置本就匿名可读),记录备查 |
 | I5 | 供应链:testcontainers 为直接依赖;CI actions 按 tag 未按 SHA 固定 | `go.mod:29`;`.github/workflows/*` | release 二进制实测不含 docker 包(0 依赖),但 `go build ./...` 门禁会编译 Docker 客户端链路;一次误 import 即进服务端。harness 移独立 module/补 build tag;actions 按 SHA 固定 |
@@ -346,7 +347,7 @@
 11. M8/M9:acw↔permission 互斥测试 + allUsers 禁绑管理角色——M9 已完成(实现为 allUsers 完全不可编辑,见 §10);M8 待办。
 
 **P2(中期,加固与一致性)**
-12. M6/M14/M18/M19/M20/M21/M22/M23/M24/M25 与 L 系列(M15 已完成,见 §10);
+12. M6/M18/M19/M20/M21/M22/M23/M24/M25 与 L 系列——M14 已完成(commit `f9f67fb`,加固 `414aa60`,见 §10)、M15 已完成(commit `f55f62a`,加固 `10e803f`,见 §10);
 13. 5.3 审计体系(注解驱动脱敏 + 黄金测试)、5.5 权限机制收敛。
 
 **P3(结构性投资)**
@@ -859,3 +860,45 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 5. **两处文档表述与代码不符**(已改):`security-posture.md` 原写 "holds 4096 nonces over a five-minute TTL",而 `SSOStateCache` 并不按时间淘汰(用 `lru.New` 而不是 `NewWithExpire`),nonce 只在被消费或逐出时离开,TTL 只在 `consumeSSOState` 里检查 —— 稳态下缓存里可以有任意年龄的 nonce,保护有效 nonce 的是容量余量而不是 TTL;同段"单独改任何一个数字都会让它变红"对 `SSOStateTTL` 不成立(见第 1 条),已改为"任何让这条关系不再成立的常量改动"。
 
 复核**未能推翻**的核心结论:单副本下,只控制自己请求的攻击者无法逐出他人仍有效的 nonce;网关戳记(M2/M3)在此端点上照常生效。未测到的部分:集成套件本身(复核被要求不跑),以及与本条无关的子系统。
+
+### 2026-10-06 —— M14 已修复(commit `f9f67fb`,对抗复核后的加固 `414aa60`)
+
+**M14:限流键取解析后的地址,限流器容量有上限**(`backend/server/rate_limiter.go`、`openlineage_ingestion.go`、`oauth_endpoints.go`)
+
+- 新增 `rateLimitSourceKey`:非认证调用方的预算键取 `audit.ClientAddress`(按 `--trusted-proxies` 从右往左解析出的真实地址),与审计行、登录/设备登录/OAuth 匿名端点限流同源。Echo 的 `RealIP` 无条件相信 `X-Forwarded-For`,按它取键等于让调用方每请求换一个桶。
+- `openLineageIngestionMiddleware` 的无 key 回退由 `c.RealIP()` 改为 `rateLimitSourceKey(c, trustedProxies)`,由 `configureGrpcRouters` 传入 `profile.TrustedProxies`;带 key 的请求照旧按 key 的 SHA-256 摘要分桶,原始 key 不进任何结构。OAuth 匿名端点改用同一个 `rateLimitSourceKey`,少一次 proto 分配;对真实 TCP 对端(`RemoteAddr` 恒为 `ip:port`)它与原来的 `audit.BuildRequestMetadata(...).GetIp()` 取值相同——原先"取值等价,因为 `ClientAddress` 只返回归一化地址或空、不会超过 `MaxIPBytes`"的表述不成立(`ClientAddress` 并不归一化,`HostFromAddr` 对无端口输入原样返回;复核以 `::ffff:203.0.113.5` 与 68 字节对端实测),已更正。这不是安全问题:对端地址由 net/http 填写,调用方不可控。
+- 新增 `boundedRateLimiterStore`:每个标识一个令牌桶(语义与 echo 的 `RateLimiterMemoryStore` 相同),标识数量封顶 `rateLimiterCapacity`(4096),空闲超过 `rateLimiterExpiresIn`(3 分钟,与 echo 默认一致)的桶在 Allow 里被清扫,达到上限时淘汰一个桶(加固后为 O(1),见下)。淘汰只会给回一份新额度、不会拒绝,所以上限约束的是"调用方能让我方占多少内存",不会自己变成拒绝服务。OL 摄取(50/100)一份 store;OAuth 四个匿名路由共享一份 store(10/20,见加固节);都是进程内状态(D2 家族)。
+- `golang.org/x/time` 因新实现成为直接依赖(仅 `go.mod` 的 require 分类变化,`go.sum` 未动)。
+
+**回归测试**(`backend/server/`)
+
+- `openlineage_ingestion_test.go`:无 key 且每请求换一个 `X-Forwarded-For` 仍必须在 burst 内被拒(加固后断言"整轮只有一个桶",由冻结时钟保证确定性);对端列入 `--trusted-proxies` 时 XFF 才决定桶,一个地址的额度不占另一个地址的;按 key 分桶的既有断言保留;新增 `TestOpenLineageIngestionMiddlewareTrustAllProxiesLetsTheCallerChooseTheBucket` 钉住"全信任链回退取最左段"这一已披露的边界。
+- `oauth_endpoints_test.go`:同一性质在 OAuth 路由上钉住;`TestOAuthEndpointsCarrySeparateBudgets` 用两次构造挂两个路由,断言一条路由耗尽后另一条仍可用(配额维持每路由一份,见加固第 3 条)。
+- `rate_limiter_test.go`:到容量后桶数不超上限(任意淘汰一个)、旋转标识不越过上限、空闲桶被清扫、单标识的 rate/burst 语义不变;`TestBoundedRateLimiterStoreEvictionStaysConstantTime` 用"同一插入工作量、有/无淘汰"的比值钉住 O(1)(见反向验证);`BenchmarkBoundedRateLimiterStoreNewIdentifierAtCapacity` 供人工观察。时间经注入的 `timeNow` 前进,不依赖真实时钟。
+
+**反向验证**(逐条单独回退后对应用例变红,随后恢复)
+
+- 把 OL 的 `IdentifierExtractor` 还原为 `c.RealIP()`:`TestOpenLineageIngestionMiddlewareIgnoresAnUntrustedForwardedHeader` 失败(`rotating X-Forwarded-For must not open a new budget`)。
+- 让容量判断恒假(`if len(s.visitors) >= s.capacity` → `if false`):`TestBoundedRateLimiterStoreEvictsAtCapacity` 失败(`map[a b c] should have 2 item(s), but has 3`)。
+- 把淘汰还原成"扫描最久未见"的 O(capacity) 实现:常数时间用例失败(实测 `withoutEviction=12.4ms withEviction=1.45s`,比值 117 倍,阈值 50 倍),其余用例仍绿——容量与语义断言看不出代价,这正是该用例存在的理由。
+
+**对抗式复核后的加固(commit `414aa60`)**
+
+由独立子代理对 `f9f67fb` 做对抗式只读复核(scratch worktree + `go test -overlay` 探针,未改动本仓库)。它确认了核心结论——9 种调用方可控的 key-less 头变体(XFF、`X-Real-IP`、`Forwarded`、多行 XFF、空 `Bearer `、`Basic`、无凭证等)都恰好停在 burst=100,摘要与地址键不碰撞,并发下不越容量,淘汰只放宽不拒绝,两条反向验证真实有效——同时实测出下列问题:第 1、2 条已修,第 3 条按集成套件的证据改为回退并更正文档,第 4、5 条已披露/更正:
+
+1. **容量分支是 O(capacity) 扫描,构成匿名方可强制的 CPU 成本(中高,已实测)**:每到容量就为每个新标识在**全局互斥锁内**扫描整张 map 找最久未见者;而"每请求换一个垃圾 key"是免费的(带 key 路径按设计不限速),所以这是一条调用方可以随意要求的开销(复核实测 `known id 191ns/req` vs `new id 196µs/req`,`-race` 下 874ns vs 468µs)。淘汰一个**任意**桶即可——淘汰只会给回满额,选谁都不改变安全语义——现在为 O(1);文档原先"不会自己变成拒绝服务"的说法由此不再成立,已随之改写。
+2. **边界用例与令牌回填赛跑(低,已复现)**:`BelievesAListedProxy` 断言第 101 个请求恰好 429,要求前 100 个在 20ms 内跑完(`-race` 下实测 12.3ms,余量 1.6 倍);复核在 64 个 CPU 占用 + `GOMAXPROCS=1` + `-race` 下复现 23/50 次失败。现在中间件经不可导出的 `...WithStore` 变体接收 store,测试用冻结时钟断言精确边界;生产构造器仍有用例覆盖,且只要求"上限出现"。
+3. **四条匿名 OAuth 路由各有一份配额(与文档矛盾,即 I2)——合并后回退(commit `f440dc8`)**:复核指出 `oauthEndpointMiddleware` 每路由调用一次,一个地址因此拿到文档所述上限的 4 倍,而 `security-posture.md` 与 `docs/mcp.md` 写的是 share one ceiling。按建议把四条路由指向同一份 middleware 后,`make test-integration` 在本机与 CI 都失败:集成套件在同一进程、同一来源地址(127.0.0.1)上依次注册、授权、完成、换发,合并后的 20 次 burst 被迅速耗尽,`TestMCPAuthorizationAndToolsRealServerIntegration` 与 `TestMCPRegistrationValidatesRealServerIntegration` 开始拿到 429 而不是断言中的 404/400/201(main 上同一 job 为绿)。因此配额维持"每路由一份"(与合并前一致),文档改为按实现描述并在 I2 记录该备选方案的代价;是否共享一份上限属配额决策,需要单独的改动与集成侧配合。回归用例改为 `TestOAuthEndpointsCarrySeparateBudgets`(一条路由耗尽后另一条仍可用)。
+4. **键在"信任范围覆盖客户端"的配置下仍可由调用方选(中,配置相关,非本轮引入)**:`audit.ClientAddress` 在每一跳都是受信代理时回退到**最左段**(调用方写的那一段),所以 `--trusted-proxies` 里出现 `0.0.0.0/0` 或覆盖客户端的 CIDR 时,key-less 请求又能每请求换桶(复核实测 `0.0.0.0/0` 下 500/500 全过)。这与审计 IP、以及改造前的 OAuth 限流是同一性质,属 M1 既有设计(§10 的 M1 加固第 5 条已记为"设计如此");本轮据此**披露并钉住**,而不是改掉:M14 的保证以"代理清单只列代理、不列客户端网段"为前提。
+5. **文档与提交信息修正**:M14 原文攻击场景把"每次 401 触发一次 `ValidateOpenLineageAPIKey` DB 查询"当作 key-less 路径的一部分;实际上 key-less 请求在 handler 里于查 key 之前就 401(`openlineage_handler.go:61-63`),该查询属于非法 key 路径(修复提交信息沿用了这句,在此更正)。"与 `component/state.WindowLimiter` 的容量语义一致"也不准确:`WindowLimiter` 淘汰的是窗口起点最早的一条、且只在插入时清理;本 store 加固后淘汰任意一条。
+
+**残余(本轮未处理)**
+
+1. **标识仍部分由调用方提供**:带 key 的请求按 key 摘要分桶,所以"每请求换一个非法 key"仍会得到新桶——容量与常数时间淘汰只约束这样做的内存与 CPU 代价,不约束其请求速率;要真正封顶需要给带 key 的请求再加"按源"维度(§5.2 的统一限流,与 M24 同族)。M14 原文的"无 key 回退 `RealIP`"这条路径已关闭,复核确认 9 种 key-less 头变体都被同一个地址桶接住。
+2. **键在受信范围覆盖客户端时不可信**(见加固第 4 条):`--trusted-proxies` 列出 `0.0.0.0/0` 或客户端网段即重新打开"调用方自选桶",这也是审计 IP 的既有语义。可选的加固是启动时拒绝 `/0` 条目,或给键再加"直接对端"维度;都不在 M14 范围。
+3. **淘汰不区分敌我**:被淘汰者(可能是安静的生产者,也可能是某个来源地址)只是拿回一份新额度,方向是放宽而非拒绝;容量 4096 对正常部署远大于同时活跃的生产者数。
+4. **限流计数仍是进程内、每副本一份额度**(D2 家族);两个匿名限流器都没有"全局回退桶"(§5.2)。
+5. **OAuth 四路由的配额语义未定**:当前每路由一份(与合并前一致),I2 的"合并为一份上限"因集成套件被 429 打断而回退(加固第 3 条)。真正决定共享与否需要同时想清楚匿名 OAuth 面的目标速率与集成套件如何避开单一来源地址,属单独的配额决策。
+6. **`make test-integration` 已在本轮后段跑过**:回退合并预算后本机全绿(`backend/test/integration/runner` 40.7s、`backend/migrator` 18.3s);但本轮没有新增针对该中间件的集成用例——既有的 OL 摄取集成用例走的是 handler,`configureGrpcRouters` 传入 `profile.TrustedProxies` 这一行由编译与既有套件路径覆盖。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./backend/...`、`go test -race ./backend/server/`、`go vet ./backend/server/...`、release 构建(`-tags release`)与默认构建;回退合并预算后补跑 `make test-integration`(真实 PostgreSQL + MySQL + migrator,全绿)。本轮未改前端与 proto,未跑前端门禁;CI 侧 `Unit Tests`/`Lint`/`Frontend`/`Release build` 与 `MySQL Real Server Integration` 见 PR。

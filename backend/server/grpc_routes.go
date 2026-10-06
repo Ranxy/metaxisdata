@@ -270,8 +270,9 @@ func configureGrpcRouters(
 	olGroup := e.Group("/api/v1/lineage")
 	// Ingestion skips the Connect interceptor chain, so it carries its own rate
 	// limit and deadline: a valid key could otherwise drive unbounded concurrent
-	// ingestion with no time bound.
-	olGroup.Use(openLineageIngestionMiddleware())
+	// ingestion with no time bound. Key-less requests are budgeted per resolved
+	// client address, so the same trusted-proxy rules as the audit record apply.
+	olGroup.Use(openLineageIngestionMiddleware(profile.TrustedProxies))
 	olHandler.RegisterRoutes(olGroup)
 
 	// The OAuth 2.1 authorization server behind the MCP endpoint. Its routes are
@@ -300,7 +301,10 @@ func configureGrpcRouters(
 	e.GET("/.well-known/oauth-authorization-server", echo.WrapHandler(oauth.AuthServerMetadataHandler(stores)))
 	// The browser flow is anonymous by design (the user may not be signed in yet)
 	// and each request reads or writes the pending-request store, so it carries the
-	// same ceiling as the endpoints that mint credentials.
+	// same ceiling as the endpoints that mint credentials. Each route carries its
+	// own per-address budget: pointing all four at one limiter would tighten the
+	// anonymous OAuth surface four-fold, which is the open I2 question in
+	// docs/security-review-2026-10.md rather than a decision to make here.
 	e.GET("/oauth/authorize", echo.WrapHandler(oauthServer.Audited(oauthServer.AuthorizeHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
 	e.GET("/oauth/authorize/complete", echo.WrapHandler(oauthServer.Audited(oauthServer.CompletionHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
 	e.POST("/oauth/token", echo.WrapHandler(oauthServer.Audited(oauthServer.TokenHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
