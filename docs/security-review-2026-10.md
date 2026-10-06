@@ -137,13 +137,13 @@
 - **修复**:统一安全响应头:`default-src 'self'; script-src 'self'; frame-ancestors 'none'` + `X-Frame-Options: DENY` + `X-Content-Type-Options: nosniff`。
 
 ### M12. CLI 跨主机重定向时重新附加 Bearer token:7 天凭证外泄(已复现)
-- **状态**:**已修复**(2026-10-06,commit `f3674ec`;`CheckRedirect` 拒绝一切离开登记 host 的重定向,token 层独立地只对登记 host 附加凭证;修复内容与验证见 §10)。
+- **状态**:**已修复**(2026-10-06,主修复 commit `f3674ec`,独立复核后的加固 commit `2f289cd`;`CheckRedirect` 拒绝一切离开登记 host 的重定向并保留标准库的 10 跳上限,token 层独立地只对登记 host 附加凭证;修复内容与验证见 §10)。
 - **证据**:`cli/client/client.go:282-289`(bearerTransport 见 Authorization 为空即补上——恰是标准库跨主机重定向剥头之后);`client.go:198`(http.Client 无 CheckRedirect)。子代理以独立探针复现:307 跨主机后收集端收到 `Bearer SECRET-TOKEN`,基线(无该 transport)证明标准库本身会剥除。
 - **攻击场景**:入口/代理误配跳转、`http://` 部署被改写 Location 或 `--server` 指向不可信服务器时,CLI 自动带 7 天会话 token 跟随到第三方主机。
 - **修复**:`CheckRedirect` 非同 host 一律 `http.ErrUseLastResponse`;或 transport 仅在目标 host 与登记 host 一致时附加。(落地为两者都做,并额外拒绝同 host 的 https→http 降级;见 §10)
 
 ### M13. Windows 下 `cmd /c start <服务器返回的 URL>` 参数注入:本地命令执行
-- **状态**:**已修复**(2026-10-06,commit `f3674ec`;打开前强制 http/https 且 host 非空,Windows 改用 `rundll32 url.dll,FileProtocolHandler`;修复内容与验证见 §10)。
+- **状态**:**已修复**(2026-10-06,主修复 commit `f3674ec`,独立复核后的加固 commit `2f289cd`;打开前强制 http/https 且必须有主机名,Windows 改用 `rundll32 url.dll,FileProtocolHandler`;修复内容与验证见 §10)。
 - **证据**:`cli/cmd/auth.go:227-236`(`case "windows": command, args = "cmd", []string{"/c", "start"}`);URL 完全由服务器响应决定且不询问用户自动打开(`cli/authflow/device.go:104-105,153-159`)。
 - **攻击场景**:对攻击者/被入侵服务器执行一次 `mxd auth login`,响应的 `verification_uri_complete` 含 `&` 即逃逸为命令分隔符(`cmd /c start https://evil/x?a&calc.exe`)。登录前无 token,纯受害者场景。
 - **修复**:打开前强制 http/https(与 --server 同源更佳);Windows 改 `rundll32 url.dll,FileProtocolHandler`;要求人工确认。(落地了 scheme 白名单与打开器替换;同源限制与人工确认未做,理由见 §10)
@@ -339,7 +339,7 @@
 7. M3/M4/M5:限流键改真实 IP + 账号/源双计数;吊销改持久化水位线;源级 CPU 上限——**已完成**(commit `e9bc802`;吊销实现为按 jti 的持久化表而非账号水位线,M7 的"停用/恢复水位线"仍待办,见 §10);
 8. M7:SSO 不自动 undelete + `revoked_at` 水位线;
 9. M10/M11:airflow 链接 scheme 白名单 + 统一安全响应头(CSP/frame-ancestors);
-10. M12/M13:CLI `CheckRedirect` + Windows 打开器替换 + scheme 校验——**已完成**(commit `f3674ec`,见 §10);
+10. M12/M13:CLI `CheckRedirect` + Windows 打开器替换 + scheme 校验——**已完成**(commit `f3674ec`,加固 `2f289cd`,见 §10);
 11. M8/M9:acw↔permission 互斥测试 + allUsers 禁绑管理角色——M9 已完成(实现为 allUsers 完全不可编辑,见 §10);M8 待办。
 
 **P2(中期,加固与一致性)**
@@ -733,11 +733,21 @@ M9 落地后由独立子代理对 `cb40791` 做了对抗式只读复核(读 conn
 - M13:`browserCommand` 三分支(darwin/windows/linux)的命令与参数;`https://evil.example.com/x?a&calc.exe` 的 argv 断言(rundll32 + `url.dll,FileProtocolHandler` + 地址单元素、不含 `/c`);`validateBrowserURL` 的接受/拒绝表;`openBrowser` 对 `javascript:`/`file:` 在启动任何进程前返回错误。
 - **反向验证**(逐条单独回退后对应用例变红,随后恢复):去掉 `CheckRedirect` 的跨 host 判定 ⇒ 第三方收到请求、用例失败;去掉 `carriesCredentials` 的 host 判定 ⇒ 表驱动用例失败;Windows 分支还原为 `cmd /c start` ⇒ 打开器用例失败;关闭 scheme 校验 ⇒ 校验表用例失败。
 
-**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues,两轮)、`go vet ./cli/...`、`go test ./...`(47 个包 ok)、`go build -ldflags "-w -s" -p=16 -o ./build/mxd ./cli`(与 `make build-cli` 同参数)。本轮未改 backend 与前端,未跑这两侧门禁。
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues,两轮)、`go vet ./cli/...`、`go test ./...`(47 个包 ok)、`go build -ldflags "-w -s" -p=16 -o ./build/mxd ./cli`(与 `make build-cli` 同参数)。本轮未改 backend 与前端,未跑这两侧门禁。加固提交 `2f289cd` 后重跑同一组:`gofmt`、`go vet ./cli/...`、`golangci-lint`(0 issues)、`go test ./...`(47 包 ok)、`go test -race -count=3 ./cli/...`、`make build-cli` 全绿。
+
+**独立复核后的加固(commit `2f289cd`)**
+
+主修复落地后由独立子代理对 `f3674ec` 做对抗式只读复核(overlay 探针挂在 `/tmp`,未改动仓库文件)。复核确认 M12 的两道闸与 M13 的打开器都无可复现的绕过:`CheckRedirect`、`carriesCredentials` 与 `http.Transport` 读的是同一个 `req.URL`(connect 初始即设 `Host: url.Host` 且从不写 Host 头,不存在解析差分);host 变体(大小写、尾点、IPv6 展开、IDN、显式默认端口、空 host、相对地址)全部 fail-closed;`cli/` 内除 `client.New` 外没有第二处 HTTP 或 `Authorization`,也没有第二处 `exec.Command`(`--token` 与 `--service-account` 共用同一个 `*http.Client`);Windows 下 `os/exec` 走 `CreateProcess` + `makeCmdLine`,不经 shell,URL 是单个 argv 元素。但也实测出下列问题,均已修:
+
+1. **自定义 `CheckRedirect` 顶掉了标准库的 10 跳上限(中高,已复现)**:`net/http` 的 `defaultCheckRedirect` 在 `len(via) >= 10` 时报错,而一旦自行设置 `CheckRedirect`,该保护随之消失。同 host 自环重定向因此被无限跟随——实测 3179 跳/秒、3 秒堆 +32MB;默认 `--timeout 30s` 把它压在约 9 万跳/数百 MB,`--timeout 0` 时无界。这是 `f3674ec` 引入的回归。现在策略保留同一上限(`maxRedirects = 10`),并新增"自环服务器必须立刻报 `stopped after 10 redirects`"的用例。
+2. **裸 `?` 通过 query 校验(低,已复现)**:`url.Parse("https://h/x?")` 的 `RawQuery` 为空、`ForceQuery` 为真,校验只看 `RawQuery`;改用 `.String()` 后会把这个 `?` 还原进 base URL,Connect 的过程名随之落进 query 串(实测线上 path=`/x`、query=`/metaxisdata.v1.AuthService/Login`),而旧的字符串拼接恰好丢掉了它——同一改动引入的小回归。现在 `ForceQuery` 一并拒绝,并加入拒绝用例。
+3. **`validateBrowserURL` 的 host 判据比文档措辞宽松(提示,已收紧)**:`https://:8080/x` 的 `Host` 是 `:8080`(没有主机名)却被接受,现改判 `Hostname() != ""`。不构成注入(无 shell、地址始终是单个 argv),属与文档"with a host"的一致性。
+4. **"第三方零请求"断言在单守卫回退时不可达(测试质量,已改)**:原用例先断言错误文案、后检查泄露,而 `require` 失败即 `FailNow`,回退 host 守卫时失败点落在文案上;且第三方是 http 服务器,https→http 降级规则会先一步拦住请求,泄露断言根本走不到。现在先做泄露检查,并把第三方改成与入口同样的 TLS,使 host 规则成为唯一起作用的判定。逐条回退验证:去掉 host 守卫 ⇒ 报"第三方收到请求(Authorization 为空)";同时去掉 token 层 host 绑定 ⇒ 报"第三方收到 `Bearer SECRET-TOKEN`"——两道闸各自独立可见。
+5. **复核确认但未改(记录备查)**:`https://mx.example.com@evil.example.com/` 打开的是 `evil.example.com`,属已记录的"服务器可命名任意 http(s) 页面"残余;`HTTP_PROXY` 下 http 目标的代理能看到 token(与 URL host 绑定无关,https 走 CONNECT);LLM 出站路径(`backend/component/llm/agent.go` 无 `CheckRedirect`)是 M23 的同一根因,不在本轮范围;`xdg-open` 里 `$(printf …)` 的求值经实测**不构成**命令注入(控制操作符不在展开结果中重解析),不作漏洞处理。
 
 **残余(本轮未处理)**
 
 1. **未采纳"与 `--server` 同源"这一更严选项**:`external_url` 与 API 地址本来就可以不同主机(SPA 单独部署是常见姿势),同源限制会把正常部署的自动打开变成失败。实际风险(本地命令执行)由 scheme 白名单 + 不解析命令行的打开器消除;剩下的是"服务器让用户打开任意 http(s) 页面"这一钓鱼面,它与设备登录流程本身必须让用户访问服务器给出的确认页是同一件事,同源校验也消除不了。
 2. **未加"打开前人工确认"**:会让无人值守/脚本化的 `mxd auth login` 多一步交互;URL 与 user code 本来就打印给用户并提示"不是你发起的请求就不要批准",确认的语义已经由页面上的显式批准承担。
-3. **跨主机重定向由"静默带 token 跟随"变为"直接失败"**:若某部署确实依赖入口把 API 域名 302 到另一个域名,需要把 `--server` 改指最终地址;错误信息里给出两个 host,便于定位。异端口按异 host 处理(用例钉住 `:8443` 一例)。
+3. **跨主机重定向由"静默带 token 跟随"变为"直接失败"**:若某部署确实依赖入口把 API 域名 302 到另一个域名,需要把 `--server` 改指最终地址;错误信息里给出两个 host,便于定位。host 比较是精确字符串:异端口(用例钉住 `:8443` 一例)以及大写、尾点、显式默认端口、IPv6 展开这类等价写法都按异 host 拒绝,方向是 fail-closed,但会给"代理给出带显式默认端口的绝对 Location"的部署带来一次失败。
 4. **只改了 CLI 自己的 HTTP 客户端**:`cli/` 内除 `client.New` 外没有第二处 `http.Client`(`grep` 确认),新增出站请求必须复用该构造函数才能继承本策略。
