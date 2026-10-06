@@ -151,6 +151,7 @@
 - **修复**:打开前强制 http/https(与 --server 同源更佳);Windows 改 `rundll32 url.dll,FileProtocolHandler`;要求人工确认。(落地了 scheme 白名单与打开器替换;同源限制与人工确认未做,理由见 §10)
 
 ### M14. OpenLineage 摄取限流在无 key 时回退 `c.RealIP()`:绕过限流 + 内存堆积
+- **状态**:**已修复**(2026-10-06,commit `8515cca`;无 key 回退改为 trusted-proxy 解析后的真实地址,OL 与 OAuth 的匿名限流器共用容量受限的 store;修复内容与验证见 §10)。
 - **证据**:`backend/server/openlineage_ingestion.go:38-44`(回退 `c.RealIP()`;echo 未设 IPExtractor,RealIP 无条件信任 XFF 最左段);echo RateLimiterMemoryStore 无容量上限(3 分钟清理一次)。同项目 `oauth_endpoints.go:36-48` 已有正确写法并注释说明 RealIP 的问题——属遗漏。
 - **攻击场景**:不带 key 的请求每次换 XFF 即新桶,50rps 上限失效,且每次 401 触发一次 `ValidateOpenLineageAPIKey` DB 查询;唯一 key 可在窗口内堆出百万级桶。
 - **修复**:回退改用 `c.Request().RemoteAddr` 或设 `e.IPExtractor`;限流 store 加容量上限。
@@ -346,7 +347,7 @@
 11. M8/M9:acw↔permission 互斥测试 + allUsers 禁绑管理角色——M9 已完成(实现为 allUsers 完全不可编辑,见 §10);M8 待办。
 
 **P2(中期,加固与一致性)**
-12. M6/M14/M18/M19/M20/M21/M22/M23/M24/M25 与 L 系列(M15 已完成,见 §10);
+12. M6/M18/M19/M20/M21/M22/M23/M24/M25 与 L 系列——M14 已完成(commit `8515cca`,加固 `8969c29`,见 §10)、M15 已完成(commit `f55f62a`,加固 `10e803f`,见 §10);
 13. 5.3 审计体系(注解驱动脱敏 + 黄金测试)、5.5 权限机制收敛。
 
 **P3(结构性投资)**
@@ -859,3 +860,31 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 5. **两处文档表述与代码不符**(已改):`security-posture.md` 原写 "holds 4096 nonces over a five-minute TTL",而 `SSOStateCache` 并不按时间淘汰(用 `lru.New` 而不是 `NewWithExpire`),nonce 只在被消费或逐出时离开,TTL 只在 `consumeSSOState` 里检查 —— 稳态下缓存里可以有任意年龄的 nonce,保护有效 nonce 的是容量余量而不是 TTL;同段"单独改任何一个数字都会让它变红"对 `SSOStateTTL` 不成立(见第 1 条),已改为"任何让这条关系不再成立的常量改动"。
 
 复核**未能推翻**的核心结论:单副本下,只控制自己请求的攻击者无法逐出他人仍有效的 nonce;网关戳记(M2/M3)在此端点上照常生效。未测到的部分:集成套件本身(复核被要求不跑),以及与本条无关的子系统。
+### 2026-10-06 —— M14 已修复(commit `8515cca`)
+
+**M14:限流键取解析后的地址,限流器容量有上限**(`backend/server/rate_limiter.go`、`openlineage_ingestion.go`、`oauth_endpoints.go`)
+
+- 新增 `rateLimitSourceKey`:非认证调用方的预算键取 `audit.ClientAddress`(按 `--trusted-proxies` 从右往左解析出的真实地址),与审计行、登录/设备登录/OAuth 匿名端点限流同源。Echo 的 `RealIP` 无条件相信 `X-Forwarded-For`,按它取键等于让调用方每请求换一个桶。
+- `openLineageIngestionMiddleware` 的无 key 回退由 `c.RealIP()` 改为 `rateLimitSourceKey(c, trustedProxies)`,由 `configureGrpcRouters` 传入 `profile.TrustedProxies`;带 key 的请求照旧按 key 的 SHA-256 摘要分桶,原始 key 不进任何结构。OAuth 匿名端点改用同一个 `rateLimitSourceKey`:它与原来的 `audit.BuildRequestMetadata(...).GetIp()` 取值等价(`ClientAddress` 只返回归一化地址或空,不会超过 `MaxIPBytes`),但少一次 proto 分配。
+- 新增 `boundedRateLimiterStore`:每个标识一个令牌桶(语义与 echo 的 `RateLimiterMemoryStore` 相同),标识数量封顶 `rateLimiterCapacity`(4096),空闲超过 `rateLimiterExpiresIn`(3 分钟,与 echo 默认一致)的桶在 Allow 里被清扫,达到上限时淘汰最久未见的一个——与 `component/state.WindowLimiter` 的容量语义一致。淘汰只会给回一份新额度、不会拒绝,所以上限约束的是"调用方能让我方占多少内存",不会自己变成拒绝服务。OL 摄取(50/100)与 OAuth 匿名端点(10/20)各持一份 store,都是进程内状态(D2 家族)。
+- `golang.org/x/time` 因新实现成为直接依赖(仅 `go.mod` 的 require 分类变化,`go.sum` 未动)。
+
+**回归测试**(`backend/server/`)
+
+- `openlineage_ingestion_test.go`:无 key 且每请求换一个 `X-Forwarded-For` 仍必须在 burst 内被拒;对端列入 `--trusted-proxies` 时 XFF 才决定桶,一个地址的额度不占另一个地址的;按 key 分桶的既有断言保留。装配与请求构造提为 `openLineageIngestionTestServer`/`ingestOpenLineageEvent`(`httptest` 的对端固定为 `192.0.2.1:1234`,即测试里"被列出的代理")。
+- `oauth_endpoints_test.go`:同一性质在 OAuth 路由上钉住——轮换 XFF 不能换桶。
+- `rate_limiter_test.go`:到容量后淘汰最久未用的桶(且桶数不超上限)、空闲桶被清扫、单标识的 rate/burst 语义不变。时间经注入的 `timeNow` 前进,不依赖真实时钟。
+
+**反向验证**(逐条单独回退后对应用例变红,随后恢复)
+
+- 把 OL 的 `IdentifierExtractor` 还原为 `c.RealIP()`:`TestOpenLineageIngestionMiddlewareIgnoresAnUntrustedForwardedHeader` 失败(`rotating X-Forwarded-For must not open a new budget`)。
+- 让容量判断恒假(`if len(s.visitors) >= s.capacity` → `if false`):`TestBoundedRateLimiterStoreEvictsAtCapacity` 失败(`map[a b c] should have 2 item(s), but has 3`)。
+
+**残余(本轮未处理)**
+
+1. **标识仍部分由调用方提供**:带 key 的请求按 key 摘要分桶,所以"每请求换一个非法 key"仍会得到新桶——容量上限只约束这样做的内存代价,不约束其请求速率;要真正封顶需要给带 key 的请求再加"按源"维度(§5.2 的统一限流,与 M24 同族)。M14 原文的"无 key 回退 `RealIP`"这条路径已关闭。
+2. **淘汰不区分敌我**:最久未见的桶可能是安静的生产者,也可能是某个来源地址的桶,被淘汰者只是拿回一份新额度,方向是放宽而非拒绝;容量 4096 对正常部署远大于同时活跃的生产者数。
+3. **限流计数仍是进程内、每副本一份额度**(D2 家族);两个匿名限流器都没有"全局回退桶"(§5.2)。
+4. **本轮按选定的门禁只跑了单元与构建**,未跑 `make test-integration`:`configureGrpcRouters` 传入 `profile.TrustedProxies` 这一行由编译与既有集成套件路径覆盖,但没有新增集成用例(既有的 OL 摄取集成用例走的是 handler 而不是这个中间件)。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./backend/...`、`go vet ./backend/server/...`、release 构建(`-tags release`)与默认构建。本轮未改前端与 proto,未跑前端门禁。
