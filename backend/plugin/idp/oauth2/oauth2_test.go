@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -174,7 +175,7 @@ func TestIdentityProvider(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, testAccessToken, oauthToken)
 
-	userInfoResult, _, err := oauth2.UserInfo(oauthToken)
+	userInfoResult, _, err := oauth2.UserInfo(ctx, oauthToken)
 	require.NoError(t, err)
 
 	wantUserInfo := &storepb.IdentityProviderUserInfo{
@@ -250,7 +251,7 @@ func TestIdentityProvider_SelfSigned(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, testAccessToken, oauthToken)
 
-		userInfoResult, _, err := oauth2.UserInfo(oauthToken)
+		userInfoResult, _, err := oauth2.UserInfo(ctx, oauthToken)
 		require.NoError(t, err)
 
 		wantUserInfo := &storepb.IdentityProviderUserInfo{
@@ -297,4 +298,66 @@ func TestExchangeTokenSendsThePKCEVerifier(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "token", token)
 	require.Equal(t, "verifier-123", gotVerifier)
+}
+
+// newSilentProvider points a provider at a server that accepts the connection and
+// never answers. Nothing but a deadline the server side applies can end such a
+// request, which is what makes it the probe for both of them.
+func newSilentProvider(t *testing.T) *IdentityProvider {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	t.Cleanup(srv.Close)
+
+	provider, err := NewIdentityProvider(&storepb.OAuth2IdentityProviderConfig{
+		ClientId:     "id",
+		ClientSecret: "secret",
+		TokenUrl:     srv.URL,
+		UserInfoUrl:  srv.URL,
+		FieldMapping: &storepb.FieldMapping{Identifier: "email", Subject: "sub"},
+	})
+	require.NoError(t, err)
+	return provider
+}
+
+// M15: an outbound call to the identity provider is bounded twice over. The
+// caller's context ends a login the user has given up on, and the client's own
+// timeout bounds one whose caller is still waiting — without either, a provider
+// that goes quiet holds the request, its goroutine and its socket indefinitely,
+// once per anonymous call, and each call carries the configured client secret.
+func TestProviderRequestsAreTimeBounded(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the caller's context ends the request", func(t *testing.T) {
+		t.Parallel()
+
+		provider := newSilentProvider(t)
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
+
+		start := time.Now()
+		_, _, err := provider.UserInfo(ctx, "token")
+		require.Error(t, err)
+		require.Less(t, time.Since(start), 5*time.Second,
+			"a cancelled login must not wait for the client's own timeout")
+	})
+
+	t.Run("the client's timeout ends the request", func(t *testing.T) {
+		t.Parallel()
+
+		provider := newSilentProvider(t)
+		require.Equal(t, idpRequestTimeout, provider.client.Timeout,
+			"the client the provider calls with must carry the package's timeout")
+
+		// Shortened here so the test does not sit out the production value; the
+		// assertion above is what pins that value.
+		provider.client.Timeout = 200 * time.Millisecond
+
+		start := time.Now()
+		_, _, err := provider.UserInfo(context.Background(), "token")
+		require.Error(t, err)
+		require.Less(t, time.Since(start), 5*time.Second)
+	})
 }

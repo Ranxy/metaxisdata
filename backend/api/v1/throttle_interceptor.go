@@ -22,6 +22,12 @@ import (
 // global backstop, so one client cannot spend the deployment's CPU and a proxy
 // that is not listed as trusted cannot let every client share one budget.
 //
+// CreateSSOState is bounded for a different resource: it is anonymous and writes
+// one nonce into a bounded cache, so an unlimited caller fills that cache and every
+// user who is mid-sign-in loses their state. It is also the gate in front of the
+// identity provider's token endpoint, which a login cannot reach without a state
+// this server issued.
+//
 // CreateUser exempts a signed-in caller, because an administrator may create
 // users in bulk and bounding an authenticated principal per user is the general
 // rate-limit work (M24). Login does not: it is not a normal signed-in call, and
@@ -87,6 +93,12 @@ func (in *ThrottleInterceptor) limiterFor(procedure string) (*state.WindowLimite
 		return in.stateCfg.LoginRequestLimiter, false
 	case v1connect.UserServiceCreateUserProcedure:
 		return in.stateCfg.CreateUserRequestLimiter, true
+	case v1connect.AuthServiceCreateSSOStateProcedure:
+		// Cheap for the server, but each call writes one nonce into the bounded
+		// state cache that in-flight SSO flows occupy, and it is the only way to
+		// reach the identity provider's token endpoint. It is never a normal
+		// signed-in call, so the budget applies to a caller that presents one too.
+		return in.stateCfg.SSOStateRequestLimiter, false
 	default:
 		return nil, false
 	}

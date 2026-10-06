@@ -35,8 +35,9 @@ const (
 	loginAttemptCapacity = 4096
 )
 
-// LoginLimiter is an in-memory sliding-window counter for failed logins. It is
-// deliberately process-local: a deployment with several replicas should put a
+// LoginLimiter is an in-memory fixed-window counter for failed logins: an account's
+// or a source's window opens with its first failure and lasts loginAttemptWindow. It
+// is deliberately process-local: a deployment with several replicas should put a
 // shared limiter in front of the API.
 type LoginLimiter struct {
 	mu       sync.Mutex
