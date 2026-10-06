@@ -98,14 +98,19 @@ func configureEchoRouters(
 // monaco-editor injects a stylesheet at runtime (`style-src`), monaco ships its
 // glyphs as data: images (`img-src`) and loads a same-origin module worker
 // (`worker-src`). eval is not among them: vue-i18n compiles its catalogs with
-// JIT (see frontend/vite.config.ts). The Vite dev server serves the SPA itself
-// and sends none of these headers.
+// JIT (see frontend/vite.config.ts). `base-uri 'none'` and `form-action 'self'`
+// cost nothing today — the app has no <base> and every form is submitted by
+// script to its own origin — and keep an injected <base> or <form> from
+// re-pointing relative URLs or posting the session elsewhere. The Vite dev
+// server serves the SPA itself and sends none of these headers.
 const contentSecurityPolicy = "default-src 'self'; " +
 	"script-src 'self'; " +
 	"style-src 'self' 'unsafe-inline'; " +
 	"img-src 'self' data:; " +
 	"worker-src 'self'; " +
 	"object-src 'none'; " +
+	"base-uri 'none'; " +
+	"form-action 'self'; " +
 	"frame-ancestors 'none'"
 
 // metricsGateMiddleware hides the Prometheus endpoint unless runtime debug is
