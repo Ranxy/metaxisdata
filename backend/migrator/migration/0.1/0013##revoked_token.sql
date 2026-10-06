@@ -6,8 +6,8 @@
 -- another user's revoked token, and a leaked seven-day token that had been
 -- revoked came back to life. The set is now a table keyed by the token's jti: an
 -- entry can only be displaced by its own expiry, which bounds it by design, and
--- a second replica sees the revocation too. A partial index is not needed: the
--- primary key answers the lookup and the TTL prune scans expires_at.
+-- a second replica sees the revocation too. The primary key answers the lookup;
+-- the index below exists for the TTL prune.
 CREATE TABLE IF NOT EXISTS revoked_token (
     jti text PRIMARY KEY,
     -- The token's own expiry: past it the row can never refuse anything.

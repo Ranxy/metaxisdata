@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
+	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -143,4 +145,43 @@ func TestThrottleInterceptorKeysOnTheResolvedClientAddress(t *testing.T) {
 		header.Set("X-Forwarded-For", "9.9.9.250")
 		requireResourceExhausted(t, interceptor.check(context.Background(), v1connect.AuthServiceLoginProcedure, header, "203.0.113.5:4040", now))
 	})
+}
+
+// stubAuthService answers Login without touching the store, so the test can
+// exercise the interceptor as Connect runs it rather than calling check directly.
+type stubAuthService struct {
+	v1connect.UnimplementedAuthServiceHandler
+}
+
+func (stubAuthService) Login(context.Context, *connect.Request[v1pb.LoginRequest]) (*connect.Response[v1pb.LoginResponse], error) {
+	return connect.NewResponse(&v1pb.LoginResponse{}), nil
+}
+
+// TestThrottleInterceptorRunsInTheConnectChain pins the wiring: the interceptor is
+// what Connect applies to the procedure, with the peer address the transport
+// reports, and the budget answer arrives as a ConnectRPC error — not merely that
+// check() would refuse if it were called.
+func TestThrottleInterceptorRunsInTheConnectChain(t *testing.T) {
+	t.Parallel()
+
+	stateCfg, err := state.New()
+	require.NoError(t, err)
+
+	path, handler := v1connect.NewAuthServiceHandler(
+		stubAuthService{},
+		connect.WithInterceptors(NewThrottleInterceptor(stateCfg, nil)),
+	)
+	mux := http.NewServeMux()
+	mux.Handle(path, handler)
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	client := v1connect.NewAuthServiceClient(server.Client(), server.URL)
+	ctx := context.Background()
+	for i := range testLoginSourceBudget {
+		_, err := client.Login(ctx, connect.NewRequest(&v1pb.LoginRequest{Email: "nobody@example.com", Password: "x"}))
+		require.NoError(t, err, "request %d is inside the budget", i+1)
+	}
+	_, err = client.Login(ctx, connect.NewRequest(&v1pb.LoginRequest{Email: "nobody@example.com", Password: "x"}))
+	requireResourceExhausted(t, err)
 }
