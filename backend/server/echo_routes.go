@@ -22,6 +22,19 @@ func configureEchoRouters(
 ) {
 	e.Use(recoverMiddleware)
 
+	// The SPA is the only document this server serves and it rides on an
+	// HttpOnly session cookie, so it must not be framed (the /device approval
+	// page is the one a clickjacker wants) and may load nothing but its own
+	// code. HSTS is deliberately not set: it needs a trustworthy https signal,
+	// and the middleware would take a caller-supplied X-Forwarded-Proto as one.
+	e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
+		// Deprecated, and only harmful in browsers that still honor it.
+		XSSProtection:         "",
+		ContentTypeNosniff:    "nosniff",
+		XFrameOptions:         "DENY",
+		ContentSecurityPolicy: contentSecurityPolicy,
+	}))
+
 	// Cap the request body. The REST gateway allowed up to 100MB to be received
 	// but never bounded what a client could send.
 	e.Use(middleware.BodyLimit("100M"))
@@ -76,6 +89,24 @@ func configureEchoRouters(
 		return c.String(http.StatusOK, "OK")
 	})
 }
+
+// contentSecurityPolicy is served with every response. Scripts are restricted
+// to what the bundle ships — no inline script and no eval — which is also the
+// second line of defense behind the link whitelist in
+// backend/plugin/openlineage/airflow_links.go. Three relaxations are needed by
+// the SPA and are the least that keeps it working: Vue binds dynamic styles and
+// monaco-editor injects a stylesheet at runtime (`style-src`), monaco ships its
+// glyphs as data: images (`img-src`) and loads a same-origin module worker
+// (`worker-src`). eval is not among them: vue-i18n compiles its catalogs with
+// JIT (see frontend/vite.config.ts). The Vite dev server serves the SPA itself
+// and sends none of these headers.
+const contentSecurityPolicy = "default-src 'self'; " +
+	"script-src 'self'; " +
+	"style-src 'self' 'unsafe-inline'; " +
+	"img-src 'self' data:; " +
+	"worker-src 'self'; " +
+	"object-src 'none'; " +
+	"frame-ancestors 'none'"
 
 // metricsGateMiddleware hides the Prometheus endpoint unless runtime debug is
 // enabled. It is checked per request, so the admin setting takes effect without
