@@ -5,10 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
+
+	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 )
 
 func TestExitCode(t *testing.T) {
@@ -50,7 +54,7 @@ func TestNormalizeServer(t *testing.T) {
 
 	normalized, err := normalizeServer("https://mx.example.com/")
 	require.NoError(t, err)
-	require.Equal(t, "https://mx.example.com", normalized)
+	require.Equal(t, "https://mx.example.com", normalized.String())
 
 	for _, server := range []string{"", "mx.example.com", "ftp://mx.example.com", "https://"} {
 		_, err := normalizeServer(server)
@@ -81,7 +85,7 @@ func TestNormalizeServerReturnsTheValidatedForm(t *testing.T) {
 	} {
 		got, err := normalizeServer(tc.given)
 		require.NoError(t, err, "address %q", tc.given)
-		require.Equal(t, tc.want, got, "address %q", tc.given)
+		require.Equal(t, tc.want, got.String(), "address %q", tc.given)
 	}
 
 	// A base URL cannot carry credentials, a query or a fragment.
@@ -103,7 +107,7 @@ func TestBearerTransportAttachesTheToken(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
 	})
 
-	transport, err := newTransport(Options{Token: "secret"})
+	transport, err := newTransport(mustParseURL(t, "https://mx.example.com"), Options{Token: "secret"})
 	require.NoError(t, err)
 
 	// Swap the base transport for the recorder while keeping the token layer.
@@ -121,13 +125,152 @@ func TestBearerTransportAttachesTheToken(t *testing.T) {
 	require.Empty(t, request.Header.Get("Authorization"), "the caller's request must not be mutated")
 }
 
+// The credential belongs to the server it was issued by. A request for another
+// host — a redirect that was followed, a subdomain the standard library would
+// treat as the same domain, or a downgrade to plain HTTP — leaves without it.
+func TestBearerTransportOnlyAttachesTheTokenToTheConfiguredServer(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		server     string
+		target     string
+		wantHeader string
+	}{
+		{name: "the configured server", server: "https://mx.example.com", target: "https://mx.example.com/v1/x", wantHeader: "Bearer secret"},
+		{name: "a subdomain of the configured host", server: "https://mx.example.com", target: "https://evil.mx.example.com/v1/x", wantHeader: ""},
+		{name: "another host", server: "https://mx.example.com", target: "https://evil.example.com/v1/x", wantHeader: ""},
+		{name: "a downgrade on the same host", server: "https://mx.example.com", target: "http://mx.example.com/v1/x", wantHeader: ""},
+		{name: "another port on the same host", server: "https://mx.example.com:8443", target: "https://mx.example.com/v1/x", wantHeader: ""},
+		{name: "an upgrade on the same host", server: "http://mx.example.com", target: "https://mx.example.com/v1/x", wantHeader: "Bearer secret"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var seen string
+			recorder := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				seen = req.Header.Get("Authorization")
+				return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+			})
+			transport, err := newTransport(mustParseURL(t, tc.server), Options{Token: "secret"})
+			require.NoError(t, err)
+			bearer, ok := transport.(*bearerTransport)
+			require.True(t, ok)
+			bearer.base = recorder
+
+			request, err := http.NewRequestWithContext(context.Background(), http.MethodPost, tc.target, nil)
+			require.NoError(t, err)
+			response, err := transport.RoundTrip(request)
+			require.NoError(t, err)
+			defer func() { _ = response.Body.Close() }()
+
+			require.Equal(t, tc.wantHeader, seen)
+		})
+	}
+}
+
+// A redirect to another host must fail the call rather than carry the token
+// anywhere else. The third-party server is where the token would have leaked,
+// so it must never see a request at all.
+func TestClientRefusesARedirectToAnotherHost(t *testing.T) {
+	t.Parallel()
+
+	leaked := make(chan string, 1)
+	thirdParty := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		leaked <- r.Header.Get("Authorization")
+	}))
+	defer thirdParty.Close()
+
+	entry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, thirdParty.URL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	defer entry.Close()
+
+	connection, err := New(entry.URL, Options{Token: "SECRET-TOKEN", Insecure: true})
+	require.NoError(t, err)
+
+	_, err = connection.Auth.Login(context.Background(), connect.NewRequest(&v1pb.LoginRequest{
+		Email:    "dev@example.com",
+		Password: "secret",
+	}))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "another host")
+
+	select {
+	case header := <-leaked:
+		t.Fatalf("the third-party host received a request with Authorization %q", header)
+	default:
+	}
+}
+
+// The policy refuses the host change, not the redirect: staying on the server
+// still works, and the token goes along.
+func TestClientFollowsARedirectWithinTheServer(t *testing.T) {
+	t.Parallel()
+
+	tokens := make(chan string, 1)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/metaxisdata.v1.AuthService/Login", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/redirected", http.StatusTemporaryRedirect)
+	})
+	mux.HandleFunc("/redirected", func(w http.ResponseWriter, r *http.Request) {
+		tokens <- r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/proto")
+	})
+	server := httptest.NewTLSServer(mux)
+	defer server.Close()
+
+	connection, err := New(server.URL, Options{Token: "SECRET-TOKEN", Insecure: true})
+	require.NoError(t, err)
+	_, _ = connection.Auth.Login(context.Background(), connect.NewRequest(&v1pb.LoginRequest{
+		Email:    "dev@example.com",
+		Password: "secret",
+	}))
+
+	select {
+	case token := <-tokens:
+		require.Equal(t, "Bearer SECRET-TOKEN", token)
+	default:
+		t.Fatal("a redirect that stays on the server must still be followed")
+	}
+}
+
+// A redirect that would put the token on a plaintext connection is refused even
+// though the host is unchanged.
+func TestClientRefusesADowngradeToHTTP(t *testing.T) {
+	t.Parallel()
+
+	entry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://"+r.Host+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	defer entry.Close()
+
+	connection, err := New(entry.URL, Options{Token: "SECRET-TOKEN", Insecure: true})
+	require.NoError(t, err)
+
+	_, err = connection.Auth.Login(context.Background(), connect.NewRequest(&v1pb.LoginRequest{
+		Email:    "dev@example.com",
+		Password: "secret",
+	}))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "downgrade")
+}
+
 func TestTransportWithoutATokenIsUnchanged(t *testing.T) {
 	t.Parallel()
 
-	transport, err := newTransport(Options{})
+	transport, err := newTransport(mustParseURL(t, "https://mx.example.com"), Options{})
 	require.NoError(t, err)
 	_, ok := transport.(*bearerTransport)
 	require.False(t, ok, "an anonymous invocation needs no token layer")
+}
+
+func mustParseURL(t *testing.T, raw string) *url.URL {
+	t.Helper()
+
+	parsed, err := url.Parse(raw)
+	require.NoError(t, err)
+	return parsed
 }
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)

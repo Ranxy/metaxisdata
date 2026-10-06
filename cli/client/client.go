@@ -182,64 +182,85 @@ type Client struct {
 	Lineage  v1connect.LineageServiceClient
 }
 
-// New builds the clients for one server address. Every request carries the
-// bearer token, which is also what exempts the CLI from the cookie-based CSRF
-// protection.
+// New builds the clients for one server address. Every request to that address
+// carries the bearer token, which is also what exempts the CLI from the
+// cookie-based CSRF protection. The token stays bound to that address: a
+// redirect that leaves it is refused rather than followed.
 func New(server string, options Options) (*Client, error) {
 	baseURL, err := normalizeServer(server)
 	if err != nil {
 		return nil, err
 	}
 
-	transport, err := newTransport(options)
+	transport, err := newTransport(baseURL, options)
 	if err != nil {
 		return nil, err
 	}
-	httpClient := &http.Client{Transport: transport}
+	httpClient := &http.Client{
+		Transport: transport,
+		// The token belongs to the configured server and this client puts it
+		// back on every hop, so a redirect is not a way to reach another host:
+		// the standard library drops Authorization when a redirect leaves the
+		// server's domain, but this client re-attaches it, and the library
+		// counts a subdomain of that domain as the same domain anyway.
+		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+			if req.URL.Host != baseURL.Host {
+				return fmt.Errorf("the server redirected the request to another host (%s); refusing to send the credentials anywhere but %s", req.URL.Host, baseURL.Host)
+			}
+			if baseURL.Scheme == "https" && req.URL.Scheme != "https" {
+				return fmt.Errorf("the server redirected the request from https to %s; refusing to downgrade the connection", req.URL.Scheme)
+			}
+			return nil
+		},
+	}
 	if options.Timeout > 0 {
 		httpClient.Timeout = options.Timeout
 	}
 
+	base := baseURL.String()
 	return &Client{
-		Server:   baseURL,
-		Auth:     v1connect.NewAuthServiceClient(httpClient, baseURL),
-		User:     v1connect.NewUserServiceClient(httpClient, baseURL),
-		Instance: v1connect.NewInstanceServiceClient(httpClient, baseURL),
-		Database: v1connect.NewDatabaseServiceClient(httpClient, baseURL),
-		Lineage:  v1connect.NewLineageServiceClient(httpClient, baseURL),
+		Server:   base,
+		Auth:     v1connect.NewAuthServiceClient(httpClient, base),
+		User:     v1connect.NewUserServiceClient(httpClient, base),
+		Instance: v1connect.NewInstanceServiceClient(httpClient, base),
+		Database: v1connect.NewDatabaseServiceClient(httpClient, base),
+		Lineage:  v1connect.NewLineageServiceClient(httpClient, base),
 	}, nil
 }
 
 // normalizeServer validates the address and returns the form the clients are
 // built from, so what is checked is what is used. A trailing slash is dropped
 // because the Connect paths already start with one.
-func normalizeServer(server string) (string, error) {
+func normalizeServer(server string) (*url.URL, error) {
 	if server == "" {
-		return "", ServerRequired()
+		return nil, ServerRequired()
 	}
 	parsed, err := url.Parse(server)
 	if err != nil {
-		return "", Usage("server address %q is not a valid URL", server)
+		return nil, Usage("server address %q is not a valid URL", server)
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return "", Usage("server address %q must use http or https", server)
+		return nil, Usage("server address %q must use http or https", server)
 	}
 	if parsed.Host == "" {
-		return "", Usage("server address %q has no host", server)
+		return nil, Usage("server address %q has no host", server)
 	}
 	if parsed.User != nil {
-		return "", Usage("server address %q must not carry credentials", server)
+		return nil, Usage("server address %q must not carry credentials", server)
 	}
 	if parsed.RawQuery != "" || parsed.Fragment != "" {
-		return "", Usage("server address %q must not carry a query or fragment", server)
+		return nil, Usage("server address %q must not carry a query or fragment", server)
 	}
-	// A path is kept: the server may be mounted under a prefix. The scheme is
-	// lower-cased, so HTTP:// is accepted like any other spelling.
-	return parsed.Scheme + "://" + parsed.Host + strings.TrimSuffix(parsed.Path, "/"), nil
+	// A path is kept: the server may be mounted under a prefix. url.Parse
+	// lower-cases the scheme, so HTTP:// is accepted like any other spelling.
+	parsed.Path = strings.TrimSuffix(parsed.Path, "/")
+	return parsed, nil
 }
 
 // newTransport wraps the default transport so every request carries the token.
-func newTransport(options Options) (http.RoundTripper, error) {
+// The server is passed along so the token layer can tell which requests are
+// actually going to it.
+func newTransport(server *url.URL, options Options) (http.RoundTripper, error) {
 	base, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		return nil, errors.New("the default HTTP transport has an unexpected type")
@@ -270,17 +291,19 @@ func newTransport(options Options) (http.RoundTripper, error) {
 	if options.Token == "" {
 		return transport, nil
 	}
-	return &bearerTransport{base: transport, token: options.Token}, nil
+	return &bearerTransport{base: transport, token: options.Token, server: server}, nil
 }
 
-// bearerTransport attaches the access token to every request.
+// bearerTransport attaches the access token to requests for the server it was
+// built for, and to those only.
 type bearerTransport struct {
-	base  http.RoundTripper
-	token string
+	base   http.RoundTripper
+	token  string
+	server *url.URL
 }
 
 func (t *bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.Header.Get("Authorization") == "" {
+	if req.Header.Get("Authorization") == "" && t.carriesCredentials(req.URL) {
 		// The request is cloned because a RoundTripper must not modify the one
 		// it was handed.
 		cloned := req.Clone(req.Context())
@@ -288,4 +311,16 @@ func (t *bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		req = cloned
 	}
 	return t.base.RoundTrip(req)
+}
+
+// carriesCredentials reports whether a request goes to the configured server.
+// It is the second half of the redirect policy in New: even a redirect that was
+// followed would leave the server without the token. A plain-http deployment
+// may be redirected up to https on the same host, which keeps the token; the
+// reverse may not, so a redirect cannot strip TLS from under it.
+func (t *bearerTransport) carriesCredentials(target *url.URL) bool {
+	if target.Host != t.server.Host {
+		return false
+	}
+	return target.Scheme == t.server.Scheme || t.server.Scheme == "http"
 }

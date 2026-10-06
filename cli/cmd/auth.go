@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -221,16 +222,45 @@ The server address is kept, so signing in again does not need --server.`,
 
 // openBrowser makes a best-effort attempt to open a URL. Failing is normal on a
 // server, and the URL has already been printed.
+//
+// The address comes from the server's response, so it is checked before it is
+// handed to the operating system: only a web address is opened. On Windows it
+// goes through rundll32, which parses the address itself, rather than through
+// `cmd /c start`, whose command line would start a second program when the URL
+// contains a `&`.
 func openBrowser(url string) error {
-	var command string
-	var args []string
-	switch runtime.GOOS {
-	case "darwin":
-		command = "open"
-	case "windows":
-		command, args = "cmd", []string{"/c", "start"}
-	default:
-		command = "xdg-open"
+	if err := validateBrowserURL(url); err != nil {
+		return err
 	}
+	command, args := browserCommand(runtime.GOOS)
 	return exec.Command(command, append(args, url)...).Start()
+}
+
+// validateBrowserURL accepts the addresses an opener may be handed: a web page
+// rather than something else (`javascript:`, `file:`), and one with a host.
+func validateBrowserURL(rawURL string) error {
+	parsed, err := neturl.Parse(rawURL)
+	if err != nil {
+		return errors.Wrapf(err, "refusing to open %q in a browser", rawURL)
+	}
+	if (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return errors.Errorf("refusing to open %q in a browser: only http and https addresses are opened", rawURL)
+	}
+	return nil
+}
+
+// browserCommand is the program that opens a URL on goos and its fixed
+// arguments. The OS is a parameter so the Windows opener can be tested wherever
+// the suite runs.
+func browserCommand(goos string) (command string, args []string) {
+	switch goos {
+	case "darwin":
+		return "open", nil
+	case "windows":
+		// FileProtocolHandler resolves the address through the URL protocol
+		// registry and never sees a command line.
+		return "rundll32", []string{"url.dll,FileProtocolHandler"}
+	default:
+		return "xdg-open", nil
+	}
 }
