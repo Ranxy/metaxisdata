@@ -151,12 +151,192 @@ func TestBuildRequestMetadataTruncatesUserAgent(t *testing.T) {
 	shortHeader.Set("User-Agent", "curl/8.5.0")
 	require.Equal(t, "curl/8.5.0", BuildRequestMetadata(shortHeader, "203.0.113.7:1234", nil).GetUserAgent())
 
-	// The forwarded address is client text until M1 is fixed, so a row stays
-	// bounded even when a trusted proxy is what lets it through.
+	// A forwarded entry that is not an address is ignored rather than recorded,
+	// so the trusted proxy's own address is what the row carries.
 	forwarded := http.Header{}
 	forwarded.Set("X-Forwarded-For", strings.Repeat("1", MaxIPBytes*2))
 	metadata = BuildRequestMetadata(forwarded, "10.0.0.1:1234", []string{"10.0.0.1"})
-	require.Equal(t, strings.Repeat("1", MaxIPBytes)+auditTruncationSuffix, metadata.GetIp())
+	require.Equal(t, "10.0.0.1", metadata.GetIp())
+
+	// A peer address that is not an address either is still bounded, so a row
+	// stays bounded whatever the transport hands over.
+	metadata = BuildRequestMetadata(http.Header{}, strings.Repeat("x", MaxIPBytes*2), nil)
+	require.Equal(t, strings.Repeat("x", MaxIPBytes)+auditTruncationSuffix, metadata.GetIp())
+}
+
+// M1: X-Forwarded-For is appended to by every hop, so the left end is whatever
+// the caller sent and the right end is what the nearest trusted proxy observed.
+// Reading it from the right is what keeps a caller from choosing its own audit IP
+// and resetting its rate-limit bucket.
+func TestClientAddressReadsTheForwardedChainFromTheRight(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		peer           string
+		trustedProxies []string
+		forwarded      string
+		gatewayPeer    string
+		forgedPeer     string
+		want           string
+	}{
+		{
+			name: "an untrusted peer is never taken from the header",
+			peer: "203.0.113.5:4040",
+			// The caller is not a proxy, so the header is not evidence at all.
+			forwarded: "1.2.3.4",
+			want:      "203.0.113.5",
+		},
+		{
+			name:           "a forged leftmost entry is ignored",
+			peer:           "10.0.0.1:5000",
+			trustedProxies: []string{"10.0.0.1"},
+			forwarded:      "1.2.3.4, 198.51.100.7",
+			want:           "198.51.100.7",
+		},
+		{
+			name:           "the chain is walked until the first untrusted hop",
+			peer:           "10.0.0.1:5000",
+			trustedProxies: []string{"10.0.0.0/8"},
+			forwarded:      "1.2.3.4, 10.0.0.2, 10.0.0.1",
+			want:           "1.2.3.4",
+		},
+		{
+			name:           "a fully trusted chain falls back to its leftmost entry",
+			peer:           "10.0.0.1:5000",
+			trustedProxies: []string{"10.0.0.0/8"},
+			forwarded:      "10.0.0.9, 10.0.0.2",
+			want:           "10.0.0.9",
+		},
+		{
+			name:           "an IPv6 chain entry is normalized",
+			peer:           "10.0.0.1:5000",
+			trustedProxies: []string{"10.0.0.1"},
+			forwarded:      "[2001:db8::1]:4321, 10.0.0.1",
+			want:           "2001:db8::1",
+		},
+		{
+			name:           "non-address entries are skipped, not recorded",
+			peer:           "10.0.0.1:5000",
+			trustedProxies: []string{"10.0.0.1"},
+			forwarded:      "garbage, 198.51.100.7",
+			want:           "198.51.100.7",
+		},
+		{
+			name:        "the REST gateway hop resolves to the outer peer",
+			peer:        "127.0.0.1:5555",
+			forwarded:   "9.9.9.9, 203.0.113.7",
+			gatewayPeer: "203.0.113.7",
+			want:        "203.0.113.7",
+		},
+		{
+			name:        "a non-canonical gateway stamp is normalized",
+			peer:        "127.0.0.1:5555",
+			forwarded:   "2001:0db8:0000::1",
+			gatewayPeer: "2001:0db8:0000::1",
+			want:        "2001:db8::1",
+		},
+		{
+			name:        "the REST gateway hop then follows the trusted chain",
+			peer:        "127.0.0.1:5555",
+			forwarded:   "9.9.9.9, 198.51.100.7, 10.0.0.1",
+			gatewayPeer: "10.0.0.1",
+			trustedProxies: []string{
+				"10.0.0.1",
+			},
+			want: "198.51.100.7",
+		},
+		{
+			// A caller that reaches the Connect handler itself can send the marker
+			// header, but not the proof this process would have written for it.
+			name:       "a forged stamp without the proof is ignored",
+			peer:       "127.0.0.1:5555",
+			forwarded:  "8.8.8.8",
+			forgedPeer: "8.8.8.8",
+			want:       "127.0.0.1",
+		},
+		{
+			name:      "a loopback peer without the marker stays loopback",
+			peer:      "127.0.0.1:5555",
+			forwarded: "1.2.3.4",
+			want:      "127.0.0.1",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			header := http.Header{}
+			if tc.forwarded != "" {
+				header.Set("X-Forwarded-For", tc.forwarded)
+			}
+			if tc.gatewayPeer != "" {
+				StampGatewayPeer(header, tc.gatewayPeer)
+				throughGateway(header)
+			}
+			if tc.forgedPeer != "" {
+				header.Set(GatewayPeerHeader, tc.forgedPeer)
+				header.Set(GatewayProofHeader, "not-the-mac-this-process-would-write")
+			}
+			require.Equal(t, tc.want, ClientAddress(header, tc.peer, tc.trustedProxies))
+		})
+	}
+}
+
+// throughGateway emulates what grpc-gateway does with the stamped headers: it
+// strips the "Grpc-Metadata-" prefix, so the Connect handler sees the metadata
+// keys the resolver reads.
+func throughGateway(header http.Header) {
+	header.Set(GatewayPeerHeader, header.Get(gatewayPeerForwardHeader))
+	header.Set(GatewayProofHeader, header.Get(gatewayProofForwardHeader))
+	header.Del(gatewayPeerForwardHeader)
+	header.Del(gatewayProofForwardHeader)
+}
+
+// The gateway middleware overwrites rather than appends, so a caller cannot
+// smuggle its own value into the marker the resolver reads.
+func TestStampGatewayPeerOverwritesACallerSuppliedValue(t *testing.T) {
+	t.Parallel()
+
+	header := http.Header{}
+	header.Set(gatewayPeerForwardHeader, "1.2.3.4")
+	header.Set(gatewayProofForwardHeader, "bogus")
+	StampGatewayPeer(header, "203.0.113.7:4040")
+	require.Equal(t, "203.0.113.7", header.Get(gatewayPeerForwardHeader))
+	require.NotEqual(t, "bogus", header.Get(gatewayProofForwardHeader))
+
+	// The stamp and its proof together are what the resolver believes.
+	stamped := http.Header{}
+	StampGatewayPeer(stamped, "203.0.113.7:4040")
+	throughGateway(stamped)
+	require.Equal(t, "203.0.113.7", verifiedGatewayPeer(stamped))
+
+	// Replacing the address while keeping the proof stops it from being believed,
+	// even when the address it names is the caller's choice.
+	forged := http.Header{}
+	forged.Set(GatewayPeerHeader, "8.8.8.8")
+	forged.Set(GatewayProofHeader, stamped.Get(GatewayProofHeader))
+	require.Empty(t, verifiedGatewayPeer(forged))
+
+	// A missing peer leaves neither header behind, so nothing is believed.
+	empty := http.Header{}
+	empty.Set(gatewayPeerForwardHeader, "1.2.3.4")
+	empty.Set(gatewayProofForwardHeader, "bogus")
+	StampGatewayPeer(empty, "")
+	require.Empty(t, empty.Get(gatewayPeerForwardHeader))
+	require.Empty(t, empty.Get(gatewayProofForwardHeader))
+}
+
+// grpc-gateway turns each header line into metadata and joins the entries it
+// received with the peer it appended; several lines keep their order.
+func TestClientAddressJoinsSeveralForwardedHeaderLines(t *testing.T) {
+	t.Parallel()
+
+	header := http.Header{}
+	header.Add("X-Forwarded-For", "1.2.3.4, 198.51.100.7")
+	header.Add("X-Forwarded-For", "10.0.0.1")
+	require.Equal(t, "198.51.100.7", ClientAddress(header, "10.0.0.1:5000", []string{"10.0.0.1"}))
 }
 
 // A status message is built by a handler out of the request (an address, a

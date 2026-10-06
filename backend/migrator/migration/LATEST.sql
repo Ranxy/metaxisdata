@@ -50,6 +50,19 @@ CREATE TABLE principal_idp_binding (
 
 CREATE INDEX idx_principal_idp_binding_principal ON principal_idp_binding (principal_id);
 
+-- Access tokens revoked before their expiry, so a logout survives a process-local
+-- cache a caller can churn and is visible to every replica. The row is keyed by
+-- the token's jti and lives until the token itself expires; the maintenance
+-- runner prunes expired rows through idx_revoked_token_expires_at.
+CREATE TABLE revoked_token (
+    jti text PRIMARY KEY,
+    -- The token's own expiry: past it the row can never refuse anything.
+    expires_at timestamptz NOT NULL,
+    revoked_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_revoked_token_expires_at ON revoked_token (expires_at);
+
 -- Setting
 CREATE TABLE setting (
     id serial PRIMARY KEY,

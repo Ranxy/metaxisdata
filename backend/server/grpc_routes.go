@@ -22,6 +22,7 @@ import (
 	apiv1 "github.com/Ranxy/metaxisdata/backend/api/v1"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/stacktrace"
+	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/iam"
 	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
@@ -123,6 +124,9 @@ func configureGrpcRouters(
 		connect.WithInterceptors(
 			apiv1.NewDebugInterceptor(),
 			auth.New(stores, secret, stateCfg, profile),
+			// After auth so it can tell a signed-in caller from an anonymous one,
+			// before audit so a request refused by the budget leaves no ledger row.
+			apiv1.NewThrottleInterceptor(stateCfg, profile.TrustedProxies),
 			apiv1.NewAuditInterceptor(stores, profile.TrustedProxies),
 			apiv1.NewACLInterceptor(iamManager),
 			// Innermost, so the audit interceptor records the status the client
@@ -330,7 +334,7 @@ func configureGrpcRouters(
 	// the per-handler ConnectRPC cap only rejects the message once it is already
 	// buffered. Bound the body here too, so the REST form of an anonymous call
 	// cannot be buffered at request size either.
-	e.Any("/v1/*", echo.WrapHandler(http.MaxBytesHandler(mux, maxConnectRequestBytes)))
+	e.Any("/v1/*", echo.WrapHandler(gatewayPeerMiddleware(http.MaxBytesHandler(mux, maxConnectRequestBytes))))
 
 	// Register Connect RPC handlers
 	for path, handler := range connectHandlers {
@@ -338,4 +342,18 @@ func configureGrpcRouters(
 	}
 
 	return nil
+}
+
+// gatewayPeerMiddleware stamps the outer request's peer address for the REST
+// gateway. The gateway answers /v1/* by dialing the server's own port, so the
+// Connect handler sees a loopback peer and would otherwise record every REST
+// request as 127.0.0.1. The stamp carries a proof only this process can produce
+// (audit.StampGatewayPeer), because a caller that reaches the Connect handler
+// directly can send a stamp of its own; both headers are overwritten rather than
+// appended, so even the gateway path keeps only the value written here.
+func gatewayPeerMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		audit.StampGatewayPeer(r.Header, r.RemoteAddr)
+		next.ServeHTTP(w, r)
+	})
 }

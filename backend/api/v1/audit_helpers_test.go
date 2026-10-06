@@ -155,11 +155,13 @@ func TestBuildRequestMetadata(t *testing.T) {
 			peerAddr: "10.1.2.3:54321", wantIP: "10.1.2.3",
 		},
 		{
-			name: "forwarded for is believed from a trusted peer", headers: map[string]string{"X-Forwarded-For": " 203.0.113.7 , 10.0.0.1"},
-			peerAddr: "10.1.2.3:54321", trustedProxies: []string{"10.1.2.3"}, wantIP: "203.0.113.7",
+			// M1: the chain is read from the right, so the entry a trusted proxy
+			// appended wins over the one the caller prepended.
+			name: "forwarded for is read from the right from a trusted peer", headers: map[string]string{"X-Forwarded-For": " 203.0.113.7 , 10.0.0.1"},
+			peerAddr: "10.1.2.3:54321", trustedProxies: []string{"10.1.2.3"}, wantIP: "10.0.0.1",
 		},
 		{
-			name: "gateway forwarded for from a trusted peer", headers: map[string]string{"grpcgateway-x-forwarded-for": "203.0.113.9"},
+			name: "forwarded for from a trusted CIDR peer", headers: map[string]string{"X-Forwarded-For": "203.0.113.9"},
 			peerAddr: "10.1.2.3:54321", trustedProxies: []string{"10.1.2.0/24"}, wantIP: "203.0.113.9",
 		},
 		{

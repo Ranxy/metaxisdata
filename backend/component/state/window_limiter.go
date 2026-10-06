@@ -16,26 +16,40 @@ import (
 //     caller so holding an account does not buy unlimited guesses at someone
 //     else's user code.
 //
+// The anonymous ConnectRPC methods that spend a bcrypt comparison or hash on an
+// unauthenticated caller — Login and CreateUser — carry a source budget and a
+// global backstop. The source budget is what bounds one client's CPU; the global
+// one is what bounds the deployment's when every caller appears to share one
+// address. Login is the more generous of the two because a person mistyping a
+// password is normal use.
+//
 // The MCP budget is per principal rather than per address: agents behind one
 // address share it, and every call reads the registry and writes a ledger row.
 // It bounds abuse rather than normal use — a client would have to sustain ten
 // calls a second to reach it.
 const (
-	deviceLoginSourceLimit     = 10
-	deviceLoginSourceWindow    = time.Minute
-	deviceLoginGlobalLimit     = 100
-	deviceLoginGlobalWindow    = time.Minute
-	deviceLoginLimiterCapacity = 4096
+	// throttleWindow is the window every budget counts over.
+	throttleWindow = time.Minute
 
-	deviceLoginLookupLimit    = 60
-	deviceLoginLookupWindow   = time.Minute
-	deviceLoginLookupGlobal   = 600
-	deviceLoginLookupCapacity = 4096
+	// limiterCapacity bounds the tracked sources in each limiter.
+	limiterCapacity = 4096
 
-	mcpCallLimit    = 600
-	mcpCallGlobal   = 6000
-	mcpCallWindow   = time.Minute
-	mcpCallCapacity = 4096
+	deviceLoginSourceLimit  = 10
+	deviceLoginGlobalLimit  = 100
+	deviceLoginLookupLimit  = 60
+	deviceLoginLookupGlobal = 600
+
+	// The per-source Login budget is deliberately loose: an office behind one NAT
+	// address is normal use, and a tight per-source cap would lock real users out.
+	// The global budget is what bounds the deployment's bcrypt work.
+	loginRequestSourceLimit = 120
+	loginRequestGlobalLimit = 300
+
+	createUserRequestSourceLimit = 20
+	createUserRequestGlobalLimit = 100
+
+	mcpCallLimit  = 600
+	mcpCallGlobal = 6000
 )
 
 // WindowLimiter is an in-memory sliding-window counter. A request is
@@ -46,34 +60,47 @@ type WindowLimiter struct {
 	sources map[string]loginAttempt
 	global  loginAttempt
 
-	sourceLimit  int
-	globalLimit  int
-	sourceWindow time.Duration
-	globalWindow time.Duration
-	capacity     int
+	sourceLimit int
+	globalLimit int
+	window      time.Duration
+	capacity    int
 }
 
-func newWindowLimiter(sourceLimit, globalLimit int, sourceWindow, globalWindow time.Duration, capacity int) *WindowLimiter {
+// Every budget counts over the same window; the source and global dimensions
+// share it so both expire together.
+func newWindowLimiter(sourceLimit, globalLimit int) *WindowLimiter {
 	return &WindowLimiter{
-		sources:      map[string]loginAttempt{},
-		sourceLimit:  sourceLimit,
-		globalLimit:  globalLimit,
-		sourceWindow: sourceWindow,
-		globalWindow: globalWindow,
-		capacity:     capacity,
+		sources:     map[string]loginAttempt{},
+		sourceLimit: sourceLimit,
+		globalLimit: globalLimit,
+		window:      throttleWindow,
+		capacity:    limiterCapacity,
 	}
 }
 
 func newDeviceLoginCreateLimiter() *WindowLimiter {
-	return newWindowLimiter(deviceLoginSourceLimit, deviceLoginGlobalLimit, deviceLoginSourceWindow, deviceLoginGlobalWindow, deviceLoginLimiterCapacity)
+	return newWindowLimiter(deviceLoginSourceLimit, deviceLoginGlobalLimit)
 }
 
 func newDeviceLoginLookupLimiter() *WindowLimiter {
-	return newWindowLimiter(deviceLoginLookupLimit, deviceLoginLookupGlobal, deviceLoginLookupWindow, deviceLoginLookupWindow, deviceLoginLookupCapacity)
+	return newWindowLimiter(deviceLoginLookupLimit, deviceLoginLookupGlobal)
 }
 
 func newMCPCallLimiter() *WindowLimiter {
-	return newWindowLimiter(mcpCallLimit, mcpCallGlobal, mcpCallWindow, mcpCallWindow, mcpCallCapacity)
+	return newWindowLimiter(mcpCallLimit, mcpCallGlobal)
+}
+
+// newLoginRequestLimiter bounds anonymous Login requests, each of which spends a
+// bcrypt comparison. It runs before the per-account limiter, so an unknown email
+// still costs a budget.
+func newLoginRequestLimiter() *WindowLimiter {
+	return newWindowLimiter(loginRequestSourceLimit, loginRequestGlobalLimit)
+}
+
+// newCreateUserRequestLimiter bounds anonymous CreateUser requests, each of which
+// spends a bcrypt hash and (before it) an email-existence lookup.
+func newCreateUserRequestLimiter() *WindowLimiter {
+	return newWindowLimiter(createUserRequestSourceLimit, createUserRequestGlobalLimit)
 }
 
 // Allow counts one request from source and reports whether it may proceed.
@@ -81,17 +108,17 @@ func (l *WindowLimiter) Allow(source string, now time.Time) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if windowExceeded(l.global, l.globalLimit, l.globalWindow, now) {
+	if windowExceeded(l.global, l.globalLimit, l.window, now) {
 		return false
 	}
 	attempt := l.sources[source]
-	if windowExceeded(attempt, l.sourceLimit, l.sourceWindow, now) {
+	if windowExceeded(attempt, l.sourceLimit, l.window, now) {
 		return false
 	}
 
-	l.global = windowBump(l.global, l.globalWindow, now)
+	l.global = windowBump(l.global, l.window, now)
 	l.pruneLocked(now)
-	l.sources[source] = windowBump(attempt, l.sourceWindow, now)
+	l.sources[source] = windowBump(attempt, l.window, now)
 	return true
 }
 
@@ -118,7 +145,7 @@ func (l *WindowLimiter) pruneLocked(now time.Time) {
 		return
 	}
 	for source, attempt := range l.sources {
-		if now.Sub(attempt.first) >= l.sourceWindow {
+		if now.Sub(attempt.first) >= l.window {
 			delete(l.sources, source)
 		}
 	}

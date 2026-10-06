@@ -24,7 +24,7 @@
 1. 参数化 `SHOW CREATE`/`getViewDependencies` 并从 DSN 移除 `multiStatements=true`(H4/H5);
 2. 未初始化实例不接受匿名注册,默认 `disallow_signup=true`(H1/H2);
 3. SSH 隧道启用主机密钥校验并补齐握手超时(H7);
-4. `FirstForwardedFor` 改取最右未信任段(M1);
+4. `FirstForwardedFor` 改取最右未信任段(M1)——已完成(commit `e9bc802`,含 M2);
 5. 为审计载荷(MCP 8KiB 截断)统一加上限,补齐匿名端点限流(H6/M17/M18)。
 
 ---
@@ -76,26 +76,31 @@
 ## 2. 中危发现(M)
 
 ### M1. `FirstForwardedFor` 取 XFF 最左段:审计 IP 伪造 + 全部按源限流绕过
+- **状态**:**已修复**(2026-10-06,commit `e9bc802`;`FirstForwardedFor` 由 `audit.ClientAddress` 取代,从右往左取第一个未信任地址;修复内容与验证见 §10)。
 - **证据**:`backend/component/audit/audit.go:247-256`(`strings.Split(value, ",")[0]`)。
 - **影响**:主流反代默认按追加语义写 XFF(`<客户端自带值>, <真实对端>`),只要把反代列入 `--trusted-proxies`(文档要求的姿势),取到的仍是客户端自选值。消费方覆盖:审计 IP(`api/v1/audit.go:132`、`openlineage_handler.go:350`、`mcp/server.go:336`、`oauth/audit.go:114`)、设备登录创建限流(`auth_service_device_login.go:49-53`)、OAuth 匿名端点限流(`oauth_endpoints.go:39-48`)。攻击者每请求换一个 XFF 首段即重置限流桶,并把伪造来源写进永不清理的 `audit_log`。
 - **修复**:取最右一段,或从右往左跳过信任 CIDR 直到第一个未信任地址。已接受决策"代理须归一化/剥离 XFF"未覆盖"最左/最右"这一实现选择,常规追加配置下无法靠代理修复。
 
 ### M2. REST 网关自连接:`/v1/*` 审计 IP 恒为 127.0.0.1,诱导信任 loopback 后客户端可自选审计 IP
+- **状态**:**已修复**(2026-10-06,commit `e9bc802`;`/v1/*` 中间件把外层 `RemoteAddr` 记进受证明的 metadata,loopback 不再需要列入 trusted-proxies;修复内容与验证见 §10)。
 - **证据**:`backend/server/grpc_routes.go:177-187`(网关以 `fmt.Sprintf(":%d", profile.Port)` 自连接,内层 Peer 恒为 127.0.0.1;grpc-gateway 把外层 XFF 原样前置再追加对端)。
 - **攻击场景**:全部 REST 形式请求审计行 IP 失真;运维"修复"自然做法是把 127.0.0.1 加入 `--trusted-proxies`,此后 `FirstForwardedFor` 取的正是客户端自带段(M1),审计 IP 完全可控。
 - **修复**:网关路径用外层 RemoteAddr 构造 metadata 或取最右未信任段;文档明确禁止把 127.0.0.1 列入 trusted-proxies。
 
 ### M3. 登录失败限流键 = (email, 裸 TCP 对端地址):定向锁死任意邮箱 + 换邮箱绕过
+- **状态**:**已修复**(2026-10-06,commit `e9bc802`;账号与源拆成两个独立计数,源取 trusted-proxy 感知的真实地址,并新增 Connect 入口源级粗上限;修复内容与验证见 §10)。
 - **证据**:`backend/api/v1/auth_service.go:50-56`、`:92-95`(`loginThrottleKey(request.Email, req.Peer().Addr)`;connect 的 `Peer().Addr` 即 `RemoteAddr`)。
 - **攻击场景**:(a) 反代部署下所有客户端对端塌缩为代理 IP,对 `victim@example.com` 连发 10 次错密即锁 5 分钟,循环补发即可无限期阻止其登录(被拒时连密码都不校验);(b) 键按邮箱分桶,每次换不存在邮箱即新桶,对 CPU 消耗(见 M5)无约束;(c) 无源级总上限,密码喷洒不受限。同根因:未配可信代理时设备登录创建限流(10/min/source)退化为全站 10/min。
 - **修复**:源维度改用 trusted-proxy 感知的真实 IP(与 audit 同一逻辑),账号维度与源维度拆为两个独立计数;Login 增加源级粗上限。
 
 ### M4. 登出吊销缓存是用户可自助刷爆的有界 LRU:已吊销 token 可复活
+- **状态**:**已修复**(2026-10-06,commit `e9bc802`;改为按 jti 的持久化 `revoked_token` 表,带过期清理,进程内仅作决策缓存;修复内容与验证见 §10)。
 - **证据**:`backend/component/state/state.go:12-14`(`tokenRevocationCapacity = 4096` LRU);`backend/api/v1/auth_service.go:267-283`(`Logout` 仅验签后 `TokenExpireCache.Add`);登录限流只计失败(`login_limiter.go:53-64`),成功登录无限流;每次登录因随机 jti 产生不同 token(`api/auth/auth.go:294-302`)。
 - **攻击场景**:攻击者用普通账号登录 4096+ 次并逐个 Logout,把受害者已吊销的 token 淘汰出 LRU——泄露后主动登出/共享机器登出的 7 天 token 重新可用。
 - **修复**:吊销判定改为按用户 + `revoked_at`/改密水位线的持久化状态;至少把吊销集合改为带 TTL 且不可被无关主体挤占的结构。
 
 ### M5. 匿名 bcrypt 端点无有效限流:CPU 耗尽 + 邮箱枚举
+- **状态**:**已修复**(2026-10-06,commit `e9bc802`;Connect 入口给 Login/CreateUser 各加按源 + 全局双桶限额,存在性检查天然排在其后;按选择保留 `AlreadyExists` 文案,枚举速率由限额封顶;修复内容与验证见 §10)。
 - **证据**:`backend/api/v1/auth_service.go:296-302`(未知邮箱执行 dummy bcrypt 防时序侧信道,但键随邮箱变化即新桶);`user_service.go:206`(CreateUser 每请求一次 `bcrypt.Generate`);`user_service.go:182-184`(`AlreadyExists` 构成已注册邮箱枚举预言机);Connect 入口无任何通用限流。
 - **攻击场景**:约 100 req/s 即可打满 CPU(约 50–100ms/请求),登录与注册均不可用;同时枚举成员邮箱名单供钓鱼/撞库。
 - **修复**:Connect 入口加"按源 + 全局"双桶限流(设备登录 create 已有正确模板);CreateUser 存在性检查移到限流之后并模糊响应。
@@ -312,7 +317,7 @@
 
 1. **"存储凭据是混淆非加密;拥有数据库读权限可恢复一切"**——实测强度更弱:已知明文前缀(如 PEM 头)即可在**只有 `instance.metadata`**、拿不到 `setting` 表的情形下恢复密钥流全量还原凭据。文档不应再暗示"攻击者必须先拿到 setting 表"。(见 5.1)
 2. **"`audit_log` 永不清理"**——该决策的前提是审计行有界;H6/M16/M17 表明匿名/半匿名请求可把它当磁盘炸弹。永久保留与写入背压并不冲突,建议同时声明后者。(写入上限已随 H6 修复并在 `security-posture.md` 声明,见 §10;限流与背压仍待办。)
-3. **"反向代理契约(须归一化/剥离 XFF)"**——`FirstForwardedFor` 取最左值意味着按常规追加语义配置的代理**无法**通过"归一化"修复(M1),且 REST 网关自连接使正确配置也会产生 127.0.0.1(M2)。契约需要在实现层兑现,建议随 M1/M2 修复后更新该节。
+3. **"反向代理契约(须归一化/剥离 XFF)"**——`FirstForwardedFor` 取最左值意味着按常规追加语义配置的代理**无法**通过"归一化"修复(M1),且 REST 网关自连接使正确配置也会产生 127.0.0.1(M2)。**已修复**:改为从右往左取第一个未信任地址(常规追加配置可直接工作),网关自连接用外层 `RemoteAddr` 且只在能与 grpc-gateway 自己追加的末段对上时才采信;`security-posture.md` 该节已随之更新为"追加即可,同机代理仍按普通代理列出(含 127.0.0.1),网关自身那一跳无需列入"(见 §10,commit `e9bc802`)。
 4. **"审批重用 approver 会话"**——设备登录正确(签发前后各校验);OAuth 换发端缺同一复核(I1),与设备登录路径不一致。
 
 ---
@@ -324,11 +329,11 @@
 2. H1/H2:未初始化不接受匿名注册;`disallow_signup` 默认 true;setup token 引导;
 3. H7:SSH `InsecureIgnoreHostKey` → known_hosts/指纹 + 握手超时 + ctx 透传;
 4. H3:SSO 按 IdP subject 绑定;改邮箱要求当前密码;
-5. M1/M2:XFF 改取最右未信任段;网关审计 metadata 修正;
+5. M1/M2:XFF 改取最右未信任段;网关审计 metadata 修正——**已完成**(commit `e9bc802`,见 §10);
 6. H6/M16/M17:审计载荷统一上限 + 匿名端点限流(CreateUser/Login/OAuth/OL/`/mcp`)——H6 与 M17 已完成,M16 的注册/授权/MCP 写入与内存放大、`/mcp` 按 principal 限流与超时也已完成(见 §10);其余匿名端点(Login/CreateUser/OL)的按源限流仍待办;
 
 **P1(近期,利用条件明确)**
-7. M3/M4/M5:限流键改真实 IP + 账号/源双计数;吊销改持久化水位线;源级 CPU 上限;
+7. M3/M4/M5:限流键改真实 IP + 账号/源双计数;吊销改持久化水位线;源级 CPU 上限——**已完成**(commit `e9bc802`;吊销实现为按 jti 的持久化表而非账号水位线,M7 的"停用/恢复水位线"仍待办,见 §10);
 8. M7:SSO 不自动 undelete + `revoked_at` 水位线;
 9. M10/M11:airflow 链接 scheme 白名单 + 统一安全响应头(CSP/frame-ancestors);
 10. M12/M13:CLI `CheckRedirect` + Windows 打开器替换 + scheme 校验;
@@ -600,3 +605,62 @@
 4. 其余同 H6 一节(全局限流、`BatchGetUsers` 条数上限等)。另外:改造前注册的、超过 2KiB 的 redirect URI 现在会被 `MatchesRedirectURI` 拒绝,该 client 需要重新注册。
 
 **验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`(含改动包 `-race`)、`make test-integration`(真实 PostgreSQL + MySQL + migrator 全绿)、release 构建(`-tags release`)。本轮未改前端,未跑前端门禁。
+
+### 2026-10-06 —— M1、M2、M3、M4、M5 已修复(commit `e9bc802`,随后的加固 commit `ab3009f`、`2193f91`)
+
+本轮把"客户端的真实地址"和"被吊销的令牌"两件事都从进程内、可被调用方影响的实现,移到了可验证的实现上;限流键与审计 IP 从此出自同一个解析函数,不会再各说各话。
+
+**M1/M2:转发地址从右往左解析,网关自连接不再丢失外层对端**(`backend/component/audit/audit.go`、`backend/server/grpc_routes.go`)
+
+- 删除 `FirstForwardedFor`(取最左段),新增 `audit.ClientAddress`:把每一行 `X-Forwarded-For` 拆开归一化后,从右往左走,跳过 `--trusted-proxies` 命中的地址,返回第一个未信任地址——每一跳追加的是它看到的地址,所以最右段是最近的可信代理观察到的对端,攻击者前置的段永远走不到。整条链全是代理时退回最左段(最上游)作为最佳归属。非 IP 条目(含把多字节文本塞进头部的尝试)直接跳过而不是记成客户端自选文本;`ip:port`、`[v6]:port`、裸 v6 都归一化后再比较。
+- 删掉 `grpcgateway-x-forwarded-for` 死分支(D15):grpc-gateway 以无前缀的 `x-forwarded-for` 转发,该分支从未生效,顺带证明这条链路此前没有端到端验证。
+- 网关自连接(M2):`/v1/*` 中间件先 `Del` 再 `Set` `Grpc-Metadata-Metaxisdata-Client-Peer`(外层 `RemoteAddr`),grpc-gateway 把它作为 metadata 转给 Connect 处理器。该戳记单独不可信——直接打到 Connect 处理器的调用方(例如经同机反代、反代原样转发未知头)也能自己写一个,M1 修复后仍会按它取地址。因此中间件同时写 `Grpc-Metadata-Metaxisdata-Gateway-Proof`:对地址做 HMAC,密钥是进程内 `crypto/rand` 生成的随机串,从不外发;`ClientAddress` 只接受能通过校验的戳记,并且只对 loopback 对端做替换。调用方既无法在网关路径上保留自己的值(两个头都被覆写),也无法在直连路径上伪造出 MAC(`2193f91`)。loopback 因此不必列入 `--trusted-proxies`;同机反代仍按普通代理列出自己的地址(含 127.0.0.1),此时网关那一跳解析成反代地址后继续沿 XFF 往左走。戳记与 XFF 条目各自归一化(`ab3009f`),非规范写法的 IPv6 外层地址同样能命中。
+- 消费方全部自动受益:审计 IP、设备登录创建限流、OAuth 匿名端点限流、OpenLineage 摄取限流与 `/mcp` 审计。
+
+**M3/M5:登录限流拆成账号/源双计数,Connect 入口为匿名 bcrypt 方法加双桶限额**(`backend/component/state/{login_limiter,window_limiter,state}.go`、`backend/api/v1/throttle_interceptor.go`、`backend/api/v1/auth_service.go`、`backend/server/grpc_routes.go`)
+
+- `LoginLimiter` 由 (email, 裸对端) 单键改为两个独立计数:账号 10 次失败/5 分钟(任意来源累计)、源 20 次失败/5 分钟(任意账号累计)。源取 `audit.ClientAddress` 解析后的地址,与审计行同一个值。**成功登录只清账号计数、不清源计数**:否则一个已知口令就能在共享出口上把自己喷洒失败的额度重置。两个计数共同把"单一来源能锁死多少账号"限制为每窗口至多 2 个(20/10)。
+- 新增 `ThrottleInterceptor`,在拦截器链上位于 auth 之后、audit 之前:`AuthService/Login` 120 次/分/源 + 300 次/分全局,`UserService/CreateUser` 20 次/分/源 + 100 次/分全局。源额度刻意放宽(一个 NAT 出口后的整个办公室登录是正常用法),真正限制部署级 bcrypt 开销的是全局额度;集成套件共用 127.0.0.1 作为来源,首轮 30/分/源的取值会让正常登录被拒,这也是把它放宽的直接证据。放在 auth 之后是为了识别已登录调用方;**只有 `CreateUser` 对其豁免**(管理员可能要批量建号),`Login` 即使带着凭证也照常计额——它本就不是正常登录路径,每次请求仍要为请求里的地址花一次 bcrypt,豁免会让"登录 + 登出"循环无限增长 `revoked_token`(`2193f91`)。放在 audit 之前是为了让被预算拒绝的请求不落永久账本行——与 H6 的请求体上限同一种处理。
+- `CreateUser` 的邮箱存在性检查天然排在限额之后(拦截器先于 handler),枚举速率被限额封顶;按用户选择保留 `AlreadyExists` 文案,未做模糊响应。
+- `WindowLimiter` 构造函数去掉了各调用点都传 `time.Minute`/`4096` 的三对参数(Lint 的 `unparam` 也提示了这一点),统一为包级常量。
+
+**M4:吊销改为按 jti 的持久化表,进程内只作决策缓存**(`backend/migrator/...`、`backend/store/revoked_token.go`、`backend/component/state/revocation_cache.go`、`backend/api/auth/{auth,authenticator}.go`、`backend/api/v1/auth_service.go`、`backend/runner/maintenance/maintenance.go`)
+
+- 新增 `revoked_token(jti PRIMARY KEY, expires_at, revoked_at)` 与 `idx_revoked_token_expires_at`;`migration/0.1/0013##revoked_token.sql` 与 `LATEST.sql` 同步(两者由 migrator 一致性用例钉住)。
+- `AccessTokenIdentity` 增加 `TokenID`(jti),`UserStore` 增加 `IsTokenRevoked`;`Logout` 验签通过后按 jti 与 token 自身 `exp` 写表,并在本进程缓存里立即标记为已吊销。写表失败返回 `Internal` 而不是谎报成功。
+- `TokenAuthenticator.Resolve` 在验签之后查吊销:`TokenRevocationCache` 命中即用,未命中读表并记入缓存。缓存 TTL 30 秒、容量 8192,淘汰或过期只多一次表读,绝不放行已吊销 token——表是权威。读表失败 fail-closed。`RevokedToken` 的查询是常量并保持 `$1` 参数化,由 `store` 包守卫测试钉住。
+- 维护任务按 `expires_at` 清理过期记录:一条记录最多活到它要拒绝的那个 token 过期为止,因此记录量天然有界、也不受任何主体挤占。
+- 语义:登出只吊销当前这一个 token(保留单会话登出语义,不是按账号水位线);跨副本通过表可见,进程内缓存使另一副本最多多接受 30 秒,与设备登录/OAuth pending 的多副本约定一致。
+
+**回归测试**
+
+- 单元 `backend/component/audit/audit_test.go`:右起解析(伪造首段被忽略、多跳信任链、全信任链回退、IPv6 归一化、非地址条目跳过、多行头)、网关戳记(带正确 MAC 才采信、伪造/篡改 MAC 或地址被忽略、无戳记保持 loopback)、`StampGatewayPeer` 覆写调用方自带的两个头。
+- 单元 `backend/component/state/{login_limiter,window_limiter,revocation_cache}_test.go`:账号/源独立计数、源计数不被成功登录清除、窗口与容量;限额窗口滚动;吊销决策缓存的新鲜度、TTL 与覆写。
+- 单元 `backend/api/auth/authenticator_test.go`:持久化吊销被拒;决策缓存只读表一次(计数假实现);本进程吊销立即生效且不再读表。
+- 单元 `backend/api/v1/throttle_interceptor_test.go`:Login/CreateUser 各自限额、`CreateUser` 豁免已登录而 `Login` 不豁免、非目标方法放行、可信代理后的真实地址为键、未信任对端的伪造头不能换桶;另有一个 `httptest` + 真实 Connect 处理器用例钉住拦截器确实被 Connect 应用(`WrapUnary`/`Spec().Procedure`/`Peer().Addr`),而不只是 `check` 单独可用。
+- 集成(`backend/test/integration/runner/auth_reverse_service_test.go`,真实服务器 + PostgreSQL):`Logout` 后 `revoked_token` 确有该 jti 且 token 被拒;未过期不清理、过期后清理;账号 10 次失败后连正确口令也返回 `ResourceExhausted`,同源另一个账号不受影响;客户端绑定 127.0.0.2 经 REST `/v1/*` 建/读设备登录,`requestIp` 必须是外层对端而不是网关的 loopback(`TestRestGatewayKeepsTheOuterPeerRealServerIntegration`)。
+- migrator 集成:`TestMigrateSchemaFreshInstall`、`TestMigrateSchemaUpgrade`、`TestMigrateSchemaLATESTMatchesTheIncrementChain` 全绿。
+
+**残余(本轮未处理)**
+
+1. **账号锁定仍可被单一来源利用**:一个窗口内 10 次失败即锁该账号(被拒时连密码都不校验,与原先一致)。源计数把"每个来源每窗口最多锁几个账号"限为 2,但定向锁死窗口本身是账号计数的固有代价;要消除需要退避/验证码之类的机制,而不是计数。修复前该攻击因对端塌缩成代理地址而被放大(任何来源都能锁),这一放大已消失。
+2. **跨副本吊销生效窗口 ≤30 秒**:进程内决策缓存 TTL 决定;单副本部署即时(本进程 `Logout` 直接写入缓存)。与 D2 的多副本清单一致。
+3. **`AlreadyExists` 枚举预言机保留**:按选择不改文案,只把速率封顶;严格消除需要一个不暴露存在性的注册响应。
+4. **M7 的账号水位线未做**:本次吊销按 jti,不做"停用/恢复水位线";路线图第 8 项仍待办。
+5. **限流计数仍是进程内**:`LoginLimiter`、`ThrottleInterceptor` 的预算都是进程本地(D2 家族),多副本下每个副本各有一份额度。
+6. **`revoked_token` 的增长由限流约束,而不只由 prune 约束**:每条记录的寿命是它所拒绝的 token 的寿命(默认 7 天);`Login` 计入限额后(`2193f91` 起已登录调用方不再豁免),单个来源最多每分钟多写 120 行、全局 300 行,稳态仍由维护任务清理。
+7. **没有 jti 的旧 token 无法登出**:jti 是 `976ebc5` 引入的(审计基线 `1eefc8f` 的祖先)。与当前构建共享 `AUTH_SECRET`、由更早构建签发的仍有效 token 没有 jti:`Resolve` 把它当作永不吊销,而 `Logout` 现在显式返回 `Internal`——即"可用但撤不掉",补救是轮换 `AUTH_SECRET` 或等其过期。当前代码没有不写 jti 的签发路径(`generateToken` 是唯一签发点且必写 `ID`)。
+
+**独立复核后的加固(commit `2193f91`)**
+
+主修复与首轮加固完成后,由独立子代理对 `1eefc8f..HEAD` 做了对抗式只读复核(读 connect-go v1.18.1 与 grpc-gateway v2.28.0 源码,以 `go test -overlay` 探针实测,未改动仓库文件),确认 M1 的右起解析、M3 的双计数、M4 的表持久化与 fail-closed、M5 的拦截器次序与"被拒不落账本"等核心目标无法绕过,同时指出以下问题,均已修复:
+
+1. **网关戳记在直连 Connect 路径上可伪造(中危,已实测)**:原实现把"戳记 == XFF 最后一段"当证明,但该证明只在 `/v1/*` 中间件存在的路径上成立;经同机反代直打 `/metaxisdata.v1.*` 的调用方可以让两者都等于自选值,从而自选审计 IP 与按源限流键。现改为 HMAC 证明(见上),密钥进程内生成、不外发,直连路径无法伪造。
+2. **吊销决策缓存可被并发陈旧读覆盖(低危,已实测)**:`Resolve` 先读表拿到"未吊销",期间 `Logout` 写入记录并 `Revoke` 缓存,随后 `Resolve` 的 `Remember(false)` 会覆盖它,使该 token 在下次读表前(≤30 秒)仍被接受。首轮修复给 `Remember` 加了"不降级已缓存 `revoked=true`"的判断,但第二轮的只读复核用并发探针证明该判断本身不是原子的(`hashicorp/golang-lru` 的 `Peek` 与 `Add` 各持一次内部锁,`Revoke` 可以落在两次调用之间),仍会丢吊销。现在 `RevocationCache` 用自己的互斥锁把"读取现有决定 + 写入新决定"做成一步,并加并发用例(2 万次 `Remember(false)` 与 `Revoke` 竞争后必须仍是已吊销)钉住。
+3. **空 jti 的 `Logout` 会谎报成功(低危,潜在)**:`RevokeToken` 对空 jti 直接返回 nil,而 `Resolve` 把空 jti 当作永不吊销。所有签发路径都会写 jti,所以只是约定而非强制;`Logout` 现在对空 jti 显式返回 `Internal`,不再出现"报成功但没有可生效的记录"。
+4. **已登录调用方可无限"登录 + 登出"增长吊销表(低危)**:拦截器原先豁免所有已登录调用方,持账号者可以绕过 `Login` 预算,以 bcrypt 速度持续写入寿命 7 天的记录。改为只有 `CreateUser` 豁免已登录调用方,`Login` 始终计额。
+5. **全信任链回退取最左段(低危,设计如此)**:复核确认 `forwardedClient` 在"每一跳都在 `--trusted-proxies` 内"时返回最左(最上游)地址;这与 M1 取法一致,只有在客户端地址本身落在信任 CIDR 内时才可能有影响,已在 `security-posture.md` 写明。
+6. **文档表述过强(提示)**:`security-posture.md` 原写"调用方无法让两个值按其意愿相等",在直连路径上不成立;随 HMAC 改造改为"只有本进程的中间件能产生该证明"。
+7. **在飞的 M2 端到端用例本身是坏的(复核发现)**:`GET /v1/deviceLogins/{code}` 不是匿名方法,原用例在 GET 上拿到 401,断言根本走不到 `requestIp`。已改为带管理员 token 读取;该用例现在把客户端绑定到 127.0.0.2,使外层对端与网关自身的 loopback 连接不同,能真正区分"取到外层对端"与"取到 127.0.0.1"。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`(改动包 `-race`)、`go vet`、release 构建(`-tags release`)、`make test-integration`(真实 PostgreSQL + MySQL,含 migrator 的 LATEST 新装/增量升级/一致性与 53 个顶层 `RealServerIntegration` 用例全绿)。本轮未改前端,未跑前端门禁。

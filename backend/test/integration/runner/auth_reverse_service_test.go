@@ -4,8 +4,13 @@ package runner
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -154,6 +159,176 @@ func TestLogoutAndPasswordChangeRevokeTokensRealServerIntegration(t *testing.T) 
 // authRevokeUserSeq keeps the per-subtest emails unique even if the wall clock
 // has coarse resolution.
 var authRevokeUserSeq atomic.Int64
+
+// jwtClaimValue reads one claim out of a signed token without verifying it. The
+// tests already know the token came from the server; they need the jti and exp it
+// carries to check what the server recorded about it.
+func jwtClaimValue(t *testing.T, token, claim string) any {
+	t.Helper()
+	parts := strings.Split(token, ".")
+	require.Len(t, parts, 3, "not a compact JWS")
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	require.NoError(t, err)
+	var claims map[string]any
+	require.NoError(t, json.Unmarshal(payload, &claims))
+	return claims[claim]
+}
+
+// M2 end to end: a REST /v1/* request reaches the Connect handler over the
+// gateway's own loopback connection, so the address the server attributes it to
+// has to come from the stamped outer peer instead. The client binds a second
+// loopback address to make the two differ — if the gateway stamp were lost or
+// never forwarded, request_ip would read 127.0.0.1.
+func TestRestGatewayKeepsTheOuterPeerRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	// 127.0.0.2 is bindable on Linux but not everywhere, so skip where it is not.
+	probe, err := net.Listen("tcp", "127.0.0.2:0")
+	if err != nil {
+		t.Skipf("127.0.0.2 is not bindable here: %v", err)
+	}
+	require.NoError(t, probe.Close())
+
+	env := sharedPostgresServiceEnvNoReset(t)
+	dialer := &net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.2")}}
+	client := &http.Client{
+		Timeout:   5 * time.Second,
+		Transport: &http.Transport{DialContext: dialer.DialContext},
+	}
+	t.Cleanup(client.CloseIdleConnections)
+
+	// CreateDeviceLogin is anonymous and REST-addressable, and the GET reads back
+	// the address the server attributed the create to.
+	resp, err := client.Post(env.BaseURL+"/v1/auth/deviceLogins", "application/json",
+		strings.NewReader(`{"clientName":"gateway-peer-test"}`))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	createdBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(createdBody))
+	var created struct {
+		UserCode string `json:"userCode"`
+	}
+	require.NoError(t, json.Unmarshal(createdBody, &created))
+	require.NotEmpty(t, created.UserCode)
+
+	// GetDeviceLogin is not anonymous-allowed (the confirmation page requires a
+	// signed-in caller), so the read carries the admin token.
+	getReq, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+		env.BaseURL+"/v1/deviceLogins/"+created.UserCode, nil)
+	require.NoError(t, err)
+	getReq.Header.Set("Authorization", "Bearer "+env.AdminToken())
+	getResp, err := client.Do(getReq)
+	require.NoError(t, err)
+	defer getResp.Body.Close()
+	loginBody, err := io.ReadAll(getResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, getResp.StatusCode, string(loginBody))
+	var login struct {
+		RequestIP string `json:"requestIp"`
+	}
+	require.NoError(t, json.Unmarshal(loginBody, &login))
+	require.Equal(t, "127.0.0.2", login.RequestIP,
+		"the REST gateway must attribute the request to its outer peer, not to its own loopback connection")
+}
+
+// M4: a logout writes a persistent record keyed by the token's jti, and the
+// maintenance prune drops it only after the token itself expires. The old
+// bounded in-memory LRU could be churned by any account holder, which brought a
+// revoked token back to life.
+func TestRevokedTokensArePersistentRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env := sharedPostgresServiceEnvNoReset(t)
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	userClient := v1connect.NewUserServiceClient(httpClient, env.BaseURL)
+	authClient := v1connect.NewAuthServiceClient(httpClient, env.BaseURL)
+
+	ctx := context.Background()
+	const password = "Integration-pass-1!"
+	email := fmt.Sprintf("auth-persist-%d-%d@example.com", time.Now().UnixNano(), authRevokeUserSeq.Add(1))
+	_, err := userClient.CreateUser(ctx, withToken(env.AdminToken(), &v1pb.CreateUserRequest{
+		User: &v1pb.User{Email: email, Title: "Auth Persist Test", Password: password, UserType: v1pb.UserType_END_USER},
+	}))
+	require.NoError(t, err)
+
+	loginResp, err := authClient.Login(ctx, connect.NewRequest(&v1pb.LoginRequest{Email: email, Password: password}))
+	require.NoError(t, err)
+	token := loginResp.Msg.GetToken()
+
+	tokenID, ok := jwtClaimValue(t, token, "jti").(string)
+	require.True(t, ok)
+	require.NotEmpty(t, tokenID, "every token the server signs carries a jti")
+	expiresAt, ok := jwtClaimValue(t, token, "exp").(float64)
+	require.True(t, ok)
+	require.Positive(t, expiresAt)
+
+	_, err = authClient.Logout(ctx, withToken(token, &v1pb.LogoutRequest{}))
+	require.NoError(t, err)
+
+	// The record is in the table, not only in this process's cache.
+	revoked, err := env.Store.IsTokenRevoked(ctx, tokenID)
+	require.NoError(t, err)
+	require.True(t, revoked)
+	_, err = userClient.GetCurrentUser(ctx, withToken(token, &emptypb.Empty{}))
+	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+
+	// The prune only drops a record once its token has expired; before that the
+	// record is what refuses the token.
+	pruned, err := env.Store.DeleteExpiredRevokedTokens(ctx, time.Unix(int64(expiresAt), 0).Add(-time.Minute))
+	require.NoError(t, err)
+	require.Zero(t, pruned, "an unexpired revocation must not be pruned")
+	revoked, err = env.Store.IsTokenRevoked(ctx, tokenID)
+	require.NoError(t, err)
+	require.True(t, revoked)
+
+	pruned, err = env.Store.DeleteExpiredRevokedTokens(ctx, time.Unix(int64(expiresAt), 0).Add(time.Minute))
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, pruned, int64(1))
+	revoked, err = env.Store.IsTokenRevoked(ctx, tokenID)
+	require.NoError(t, err)
+	require.False(t, revoked, "an expired record is pruned")
+}
+
+// M3/M5: the connect entry bounds anonymous Login, and failed attempts are
+// counted per account independently of the source. Once the account's window is
+// full the request is refused before the password is even compared, so the
+// correct password is refused too. The source budget is wider than the account
+// budget, so a refusal here proves the account counter rather than the entry
+// budget.
+func TestLoginThrottleLocksTheAccountRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env := sharedPostgresServiceEnvNoReset(t)
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	userClient := v1connect.NewUserServiceClient(httpClient, env.BaseURL)
+	authClient := v1connect.NewAuthServiceClient(httpClient, env.BaseURL)
+
+	ctx := context.Background()
+	const password = "Integration-pass-1!"
+	lockedEmail := fmt.Sprintf("auth-lock-%d-%d@example.com", time.Now().UnixNano(), authRevokeUserSeq.Add(1))
+	openEmail := fmt.Sprintf("auth-open-%d-%d@example.com", time.Now().UnixNano(), authRevokeUserSeq.Add(1))
+	for _, email := range []string{lockedEmail, openEmail} {
+		_, err := userClient.CreateUser(ctx, withToken(env.AdminToken(), &v1pb.CreateUserRequest{
+			User: &v1pb.User{Email: email, Title: "Auth Lock Test", Password: password, UserType: v1pb.UserType_END_USER},
+		}))
+		require.NoError(t, err)
+	}
+
+	// Ten failures fill the account's window. The same source is still refused
+	// for that account on the eleventh request, before bcrypt runs.
+	for i := range 10 {
+		_, err := authClient.Login(ctx, connect.NewRequest(&v1pb.LoginRequest{Email: lockedEmail, Password: "wrong-password"}))
+		require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err), "attempt %d", i+1)
+	}
+	_, err := authClient.Login(ctx, connect.NewRequest(&v1pb.LoginRequest{Email: lockedEmail, Password: password}))
+	require.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(err), "a filled window refuses even the right password")
+
+	// Another account from the same source is unaffected, so the lock follows the
+	// account and not the whole source.
+	_, err = authClient.Login(ctx, connect.NewRequest(&v1pb.LoginRequest{Email: openEmail, Password: "wrong-password"}))
+	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+}
 
 // A malformed Authorization header must not break an endpoint that allows
 // anonymous access; it used to fail before the allowlist was consulted.

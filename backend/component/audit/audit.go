@@ -4,12 +4,16 @@ package audit
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -44,9 +48,8 @@ const MaxAuditPayloadBytes = 256 << 10
 const MaxUserAgentBytes = 256
 
 // MaxIPBytes bounds the recorded address. A real one is at most 45 bytes; the
-// forwarded value is client text until M1 is fixed, and it is echoed into the
-// ledger, used as a rate-limit key and kept for ten minutes by an OAuth pending
-// request.
+// value still comes from request text on a misconfigured deployment, and it is
+// echoed into the ledger and used as a rate-limit key.
 const MaxIPBytes = 64
 
 // auditTruncationSuffix marks a value the field bound cut short.
@@ -338,29 +341,185 @@ func BuildAuditStatus(err error) *storepb.AuditLogStatus {
 	return &storepb.AuditLogStatus{Code: int32(connectErr.Code()), Message: BoundAuditString(connectErr.Message())}
 }
 
+// GatewayPeerHeader is the metadata key the REST gateway carries the outer
+// request's peer address on. The gateway reaches the Connect handler over a
+// loopback self-connection, so without it every REST request would be recorded
+// as 127.0.0.1. Only a request that also carries GatewayProofHeader, a MAC over
+// this value with a per-process secret, is believed (see StampGatewayPeer).
+const GatewayPeerHeader = "Metaxisdata-Client-Peer"
+
+// GatewayProofHeader is the metadata key carrying that MAC.
+const GatewayProofHeader = "Metaxisdata-Gateway-Proof"
+
+// gatewayPeerForwardHeader and gatewayProofForwardHeader are how the two travel
+// from the /v1/* middleware to the Connect handler: grpc-gateway forwards
+// "Grpc-Metadata-*" headers as gRPC metadata, stripping the prefix.
+const (
+	gatewayPeerForwardHeader  = "Grpc-Metadata-" + GatewayPeerHeader
+	gatewayProofForwardHeader = "Grpc-Metadata-" + GatewayProofHeader
+)
+
+// gatewayProof is the per-process secret behind GatewayProofHeader. It never
+// leaves the process, so a caller cannot produce a valid proof; it is generated
+// on first use like the login path's dummy hash.
+var gatewayProof = sync.OnceValues(func() (string, error) {
+	return common.RandomString(32)
+})
+
+// StampGatewayPeer records the outer peer address for a request the REST gateway
+// is about to forward over its loopback self-connection, together with the proof
+// that this process wrote it. Both headers are deleted first, so a caller cannot
+// keep a value of its own.
+func StampGatewayPeer(header http.Header, peerAddr string) {
+	header.Del(gatewayPeerForwardHeader)
+	header.Del(gatewayProofForwardHeader)
+	peer, ok := normalizeIP(HostFromAddr(peerAddr))
+	if !ok {
+		return
+	}
+	proof, err := gatewayPeerProof(peer)
+	if err != nil {
+		return
+	}
+	header.Set(gatewayPeerForwardHeader, peer)
+	header.Set(gatewayProofForwardHeader, proof)
+}
+
+// gatewayPeerProof binds a stamped peer address to this process.
+func gatewayPeerProof(peer string) (string, error) {
+	secret, err := gatewayProof()
+	if err != nil {
+		return "", err
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	if _, err := mac.Write([]byte(peer)); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(mac.Sum(nil)), nil
+}
+
+// verifiedGatewayPeer returns the stamped peer address when the request carries a
+// proof this process produced for it. A stamp without a valid proof is client
+// text and is ignored.
+func verifiedGatewayPeer(header http.Header) string {
+	peer, ok := normalizeIP(header.Get(GatewayPeerHeader))
+	if !ok {
+		return ""
+	}
+	expected, err := gatewayPeerProof(peer)
+	if err != nil {
+		return ""
+	}
+	if !hmac.Equal([]byte(expected), []byte(header.Get(GatewayProofHeader))) {
+		return ""
+	}
+	return peer
+}
+
+// ClientAddress resolves the address a request should be attributed to. The
+// forwarding chain is believed only when the connection itself comes from a
+// configured trusted proxy; otherwise any client could pick its own audit IP or
+// reset its rate-limit bucket with X-Forwarded-For.
+//
+// The chain is read from the right: each hop appends the address it saw, so the
+// rightmost entry is what the nearest trusted proxy observed and the leftmost is
+// the least trustworthy. Walking right to left and stopping at the first address
+// that is not a configured proxy therefore yields the client, and a value an
+// attacker prepended to the header is never reached.
+func ClientAddress(header http.Header, peerAddr string, trustedProxies []string) string {
+	peerHost := HostFromAddr(peerAddr)
+	if peerHost == "" {
+		return ""
+	}
+	// The REST gateway proxies through a loopback self-connection, so the peer
+	// alone says nothing about the caller. The middleware records the outer peer
+	// with a proof only this process can produce; a caller that reaches the
+	// Connect handler directly (through a same-host proxy, say) cannot forge it.
+	if ip := net.ParseIP(peerHost); ip != nil && ip.IsLoopback() {
+		if outer := verifiedGatewayPeer(header); outer != "" {
+			peerHost = outer
+		}
+	}
+
+	ip := peerHost
+	if IsTrustedProxy(peerHost, trustedProxies) {
+		if forwarded := forwardedClient(header, trustedProxies); forwarded != "" {
+			ip = forwarded
+		}
+	}
+	return ip
+}
+
+// forwardedClient walks the forwarding chain from the closest hop outward and
+// returns the first address that is not a configured proxy. When every hop is a
+// proxy the chain is fully trusted and the furthest upstream address, the first
+// one seen, is the best attribution available.
+func forwardedClient(header http.Header, trustedProxies []string) string {
+	hosts := forwardedHosts(header)
+	for i := len(hosts) - 1; i >= 0; i-- {
+		if !IsTrustedProxy(hosts[i], trustedProxies) {
+			return hosts[i]
+		}
+	}
+	if len(hosts) > 0 {
+		return hosts[0]
+	}
+	return ""
+}
+
+// forwardedHosts is every valid address in every X-Forwarded-For header line, in
+// order. grpc-gateway joins the entries it received and its own appended peer
+// into one line; a client that sends several lines keeps their order.
+func forwardedHosts(header http.Header) []string {
+	var hosts []string
+	for _, value := range header.Values("X-Forwarded-For") {
+		for entry := range strings.SplitSeq(value, ",") {
+			if host, ok := normalizeIP(entry); ok {
+				hosts = append(hosts, host)
+			}
+		}
+	}
+	return hosts
+}
+
+// normalizeIP parses an address as it appears in a forwarding chain: a bare IP,
+// an IP:port pair, or a bracketed IPv6 address. Anything else is not an address
+// the server can attribute a request to, and is skipped rather than recorded as
+// caller-chosen text.
+func normalizeIP(entry string) (string, bool) {
+	entry = strings.TrimSpace(entry)
+	if entry == "" {
+		return "", false
+	}
+	if ip := net.ParseIP(entry); ip != nil {
+		return ip.String(), true
+	}
+	if host, _, err := net.SplitHostPort(entry); err == nil {
+		if ip := net.ParseIP(host); ip != nil {
+			return ip.String(), true
+		}
+		return "", false
+	}
+	if strings.HasPrefix(entry, "[") && strings.HasSuffix(entry, "]") {
+		if ip := net.ParseIP(entry[1 : len(entry)-1]); ip != nil {
+			return ip.String(), true
+		}
+	}
+	return "", false
+}
+
 // BuildRequestMetadata records where a request came from. Forwarding headers are
 // only believed when the connection itself comes from a configured trusted
 // proxy: otherwise any client could pick its own audit IP by sending
 // X-Forwarded-For.
 func BuildRequestMetadata(header http.Header, peerAddr string, trustedProxies []string) *storepb.AuditRequestMetadata {
-	peerHost := HostFromAddr(peerAddr)
-	ip := peerHost
-	if peerHost != "" && IsTrustedProxy(peerHost, trustedProxies) {
-		if forwarded := FirstForwardedFor(header); forwarded != "" {
-			ip = forwarded
-		}
-	}
-
 	userAgent := header.Get("User-Agent")
 	if userAgent == "" {
 		userAgent = header.Get("grpcgateway-user-agent")
 	}
 
 	return &storepb.AuditRequestMetadata{
-		// The forwarded value is client-chosen text until a future fix resolves
-		// which end of it to trust; it is bounded here so a row stays bounded
-		// either way.
-		Ip:        truncateAuditString(ip, MaxIPBytes),
+		Ip:        truncateAuditString(ClientAddress(header, peerAddr, trustedProxies), MaxIPBytes),
 		UserAgent: truncateAuditString(userAgent, MaxUserAgentBytes),
 	}
 }
@@ -375,17 +534,6 @@ func HostFromAddr(addr string) string {
 		return addr
 	}
 	return host
-}
-
-func FirstForwardedFor(header http.Header) string {
-	for _, key := range []string{"X-Forwarded-For", "grpcgateway-x-forwarded-for"} {
-		if value := header.Get(key); value != "" {
-			if first := strings.TrimSpace(strings.Split(value, ",")[0]); first != "" {
-				return first
-			}
-		}
-	}
-	return ""
 }
 
 // IsTrustedProxy matches the peer against an exact IP or a CIDR entry.

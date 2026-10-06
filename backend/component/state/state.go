@@ -8,11 +8,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-// tokenRevocationCapacity bounds the process-local set of revoked access
-// tokens. Logout only revokes a token it has already verified, so the set can
-// only grow through legitimate logins; the LRU eviction is therefore safe.
-const tokenRevocationCapacity = 4096
-
 // SSOStateTTL is how long a one-time OAuth2 state nonce stays valid.
 const SSOStateTTL = 5 * time.Minute
 
@@ -24,11 +19,19 @@ const ssoStateCapacity = 1024
 var ErrInstanceConnectionLimit = errors.New("instance connection limit reached")
 
 type State struct {
-	TokenExpireCache *lru.Cache[string, bool]
+	// TokenRevocationCache caches lookups in the persistent revoked_token table,
+	// which is the authority; see RevocationCache.
+	TokenRevocationCache *RevocationCache
 	// InstanceOutstandingConnections counts the open connections per instance.
 	InstanceOutstandingConnections *resourceLimiter
-	// LoginLimiter throttles failed password logins per (email, source).
+	// LoginLimiter throttles failed password logins per account and per source.
 	LoginLimiter *LoginLimiter
+	// LoginRequestLimiter bounds anonymous Login requests per source and
+	// globally, before either the account limiter or bcrypt runs.
+	LoginRequestLimiter *WindowLimiter
+	// CreateUserRequestLimiter bounds anonymous CreateUser requests per source
+	// and globally; each one checks email existence and hashes a password.
+	CreateUserRequestLimiter *WindowLimiter
 	// SSOStateCache holds one-time OAuth2 state nonces issued by
 	// CreateSSOState, mapped to their issue time.
 	SSOStateCache *lru.Cache[string, time.Time]
@@ -50,9 +53,9 @@ type State struct {
 }
 
 func New() (*State, error) {
-	expireCache, err := lru.New[string, bool](tokenRevocationCapacity)
+	revocationCache, err := newRevocationCache()
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create auth expire cache")
+		return nil, errors.Wrapf(err, "failed to create token revocation cache")
 	}
 	ssoStateCache, err := lru.New[string, time.Time](ssoStateCapacity)
 	if err != nil {
@@ -60,8 +63,10 @@ func New() (*State, error) {
 	}
 	return &State{
 		InstanceOutstandingConnections: &resourceLimiter{connections: map[string]int{}},
-		TokenExpireCache:               expireCache,
+		TokenRevocationCache:           revocationCache,
 		LoginLimiter:                   newLoginLimiter(),
+		LoginRequestLimiter:            newLoginRequestLimiter(),
+		CreateUserRequestLimiter:       newCreateUserRequestLimiter(),
 		SSOStateCache:                  ssoStateCache,
 		DeviceLoginStore:               newDeviceLoginStore(),
 		DeviceLoginLimiter:             newDeviceLoginCreateLimiter(),

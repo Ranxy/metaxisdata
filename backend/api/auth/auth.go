@@ -176,6 +176,9 @@ func (r TokenRestriction) allows(procedure string) bool {
 // AccessTokenIdentity is the verified identity carried by an access token.
 type AccessTokenIdentity struct {
 	UserID int
+	// TokenID is the jti claim, the handle Logout revokes the token by and the
+	// key of the persistent revocation record.
+	TokenID string
 	// ExpiresAt is the token's own expiry, so a resource server can hand it to
 	// its transport without parsing the token a second time.
 	ExpiresAt time.Time

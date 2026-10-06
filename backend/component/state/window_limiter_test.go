@@ -35,7 +35,7 @@ func TestDeviceLoginLimiterRefusedRequestsDoNotExtendTheWindow(t *testing.T) {
 	require.False(t, limiter.Allow("203.0.113.7", now.Add(30*time.Second)))
 	require.False(t, limiter.Allow("203.0.113.7", now.Add(59*time.Second)))
 
-	require.True(t, limiter.Allow("203.0.113.7", now.Add(deviceLoginSourceWindow)),
+	require.True(t, limiter.Allow("203.0.113.7", now.Add(throttleWindow)),
 		"the window starts at the first allowed request, not the last refused one")
 }
 
@@ -52,7 +52,7 @@ func TestDeviceLoginLimiterCapsTheEndpointOverall(t *testing.T) {
 	}
 	require.False(t, limiter.Allow("192.0.2.1", now), "the global limit is reached")
 
-	require.True(t, limiter.Allow("192.0.2.1", now.Add(deviceLoginGlobalWindow)),
+	require.True(t, limiter.Allow("192.0.2.1", now.Add(throttleWindow)),
 		"the global window rolls over")
 }
 
@@ -64,17 +64,17 @@ func TestDeviceLoginLimiterPrunesAtCapacity(t *testing.T) {
 
 	limiter := newDeviceLoginCreateLimiter()
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	for i := range deviceLoginLimiterCapacity {
+	for i := range limiterCapacity {
 		// Distinct times make the oldest entry deterministic.
 		limiter.sources["198.51.100."+strconv.Itoa(i)] = loginAttempt{
 			count: 1,
 			first: now.Add(time.Duration(i) * time.Microsecond),
 		}
 	}
-	require.Len(t, limiter.sources, deviceLoginLimiterCapacity)
+	require.Len(t, limiter.sources, limiterCapacity)
 
 	require.True(t, limiter.Allow("192.0.2.1", now.Add(time.Second)))
-	require.Len(t, limiter.sources, deviceLoginLimiterCapacity, "the ceiling holds")
+	require.Len(t, limiter.sources, limiterCapacity, "the ceiling holds")
 	require.NotContains(t, limiter.sources, "198.51.100.0", "the oldest entry is evicted")
 	require.Contains(t, limiter.sources, "192.0.2.1")
 }
@@ -106,5 +106,5 @@ func TestMCPCallLimiterIsPerPrincipal(t *testing.T) {
 	}
 	require.False(t, limiter.Allow("user:42", now), "the principal's budget is spent")
 	require.True(t, limiter.Allow("user:7", now), "another principal has its own budget")
-	require.True(t, limiter.Allow("user:42", now.Add(mcpCallWindow)), "the window rolls over")
+	require.True(t, limiter.Allow("user:42", now.Add(throttleWindow)), "the window rolls over")
 }

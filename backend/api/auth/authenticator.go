@@ -93,6 +93,7 @@ func identityFromClaims(claims *claimsMessage) (*AccessTokenIdentity, error) {
 	}
 	identity := &AccessTokenIdentity{
 		UserID:      principalID,
+		TokenID:     claims.ID,
 		Scopes:      strings.Fields(claims.Scope),
 		Restriction: TokenRestriction(claims.Restriction),
 	}
@@ -124,15 +125,18 @@ var (
 // a database.
 type UserStore interface {
 	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
+	// IsTokenRevoked consults the persistent revocation records a Logout writes.
+	IsTokenRevoked(ctx context.Context, tokenID string) (bool, error)
 }
 
 // TokenAuthenticator turns a bearer token into the user it was issued to.
 //
 // It exists so every entry point applies the same rules in the same order:
-// signature, algorithm, issuer, audience and expiry, then the revocation cache,
-// the principal lookup, deactivation, and the password-change cutoff. A second
-// entry point that only verified the signature would keep accepting tokens for
-// a user who has since been deactivated or had their password changed.
+// signature, algorithm, issuer, audience and expiry, then the persistent
+// revocation record (cached in front of the table), the principal lookup,
+// deactivation, and the password-change cutoff. A second entry point that only
+// verified the signature would keep accepting tokens for a user who has since
+// been deactivated, had their password changed, or logged out.
 type TokenAuthenticator struct {
 	users    UserStore
 	secret   string
@@ -140,7 +144,8 @@ type TokenAuthenticator struct {
 }
 
 // NewTokenAuthenticator returns an authenticator backed by the given user store.
-// stateCfg may be nil, in which case no revocation cache is consulted.
+// stateCfg may be nil, in which case every revocation check reads the store; a
+// nil users skips the check entirely (only tests do that).
 func NewTokenAuthenticator(users UserStore, secret string, stateCfg *state.State) *TokenAuthenticator {
 	return &TokenAuthenticator{users: users, secret: secret, stateCfg: stateCfg}
 }
@@ -152,17 +157,19 @@ func (a *TokenAuthenticator) Resolve(ctx context.Context, accessTokenStr, audien
 	if accessTokenStr == "" {
 		return nil, nil, ErrTokenMissing
 	}
-	if a.stateCfg != nil {
-		if _, ok := a.stateCfg.TokenExpireCache.Get(accessTokenStr); ok {
-			return nil, nil, ErrTokenRevoked
-		}
-	}
 	identity, err := VerifyAccessTokenFor(accessTokenStr, a.secret, audience)
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return nil, nil, ErrTokenRevoked
 		}
 		return nil, nil, ErrTokenInvalid
+	}
+	revoked, err := a.tokenRevoked(ctx, identity.TokenID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if revoked {
+		return nil, nil, ErrTokenRevoked
 	}
 
 	user, err := a.users.GetUserByID(ctx, identity.UserID)
@@ -185,4 +192,31 @@ func (a *TokenAuthenticator) Resolve(ctx context.Context, accessTokenStr, audien
 		}
 	}
 	return user, identity, nil
+}
+
+// tokenRevoked reports whether the token id is in the persistent revocation
+// record a Logout writes. The table is the authority: the process-local cache in
+// front of it only saves a read, and an eviction or expiry costs one lookup
+// rather than an accepted revoked token. A read failure fails closed — a
+// revocation table that cannot be consulted must not clear a token.
+func (a *TokenAuthenticator) tokenRevoked(ctx context.Context, tokenID string) (bool, error) {
+	if tokenID == "" || a.users == nil {
+		// A token without a jti cannot be revoked; every token this server signs
+		// carries one.
+		return false, nil
+	}
+	now := time.Now()
+	if a.stateCfg != nil {
+		if revoked, fresh := a.stateCfg.TokenRevocationCache.Lookup(tokenID, now); fresh {
+			return revoked, nil
+		}
+	}
+	revoked, err := a.users.IsTokenRevoked(ctx, tokenID)
+	if err != nil {
+		return false, errs.Wrapf(err, "failed to read the revocation record for token %q", tokenID)
+	}
+	if a.stateCfg != nil {
+		a.stateCfg.TokenRevocationCache.Remember(tokenID, revoked, now)
+	}
+	return revoked, nil
 }
