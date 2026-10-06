@@ -102,10 +102,7 @@ func (in *AuditInterceptor) createAuditLog(ctx context.Context, req connect.AnyR
 	if !ok {
 		return pkgerrors.New("failed to cast request to proto.Message")
 	}
-	requestStruct, requestMap, marshalErr := audit.MarshalAuditMessage(requestMessage)
-	if marshalErr != nil {
-		return marshalErr
-	}
+	requestStruct, requestMap := audit.MarshalAuditMessage(requestMessage)
 
 	var responseMessage proto.Message
 	if !isNilConnectValue(resp) {
@@ -114,10 +111,7 @@ func (in *AuditInterceptor) createAuditLog(ctx context.Context, req connect.AnyR
 			responseMessage = nil
 		}
 	}
-	responseStruct, responseMap, marshalErr := audit.MarshalAuditMessage(responseMessage)
-	if marshalErr != nil {
-		return marshalErr
-	}
+	responseStruct, responseMap := audit.MarshalAuditMessage(responseMessage)
 
 	auditLog := &storepb.AuditLog{
 		Parent:          audit.ResolveParent(common.FormatWorkspace(workspaceID), requestMap, responseMap),

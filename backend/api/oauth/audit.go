@@ -107,7 +107,7 @@ func (s *Server) writeAudit(r *http.Request, status int, recorder *auditRecorder
 	entry := &storepb.AuditLog{
 		Parent:          common.FormatWorkspace(workspaceID),
 		Method:          r.URL.Path,
-		User:            recorder.actor,
+		User:            audit.BoundAuditString(recorder.actor),
 		Severity:        audit.MapSeverity(failure),
 		Status:          audit.BuildAuditStatus(failure),
 		LatencyMs:       time.Since(started).Milliseconds(),
@@ -115,7 +115,7 @@ func (s *Server) writeAudit(r *http.Request, status int, recorder *auditRecorder
 	}
 	if len(recorder.detail) > 0 {
 		if payload, err := structpb.NewStruct(recorder.detail); err == nil {
-			entry.Request = audit.SanitizeAuditStruct(payload)
+			entry.Request = audit.BoundAuditStruct(audit.SanitizeAuditStruct(payload))
 		}
 	}
 	if _, err := s.config.Stores.CreateAuditLog(auditCtx, entry); err != nil {

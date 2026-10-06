@@ -2,10 +2,34 @@
 package common
 
 import (
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 )
+
+// A byte bound that splits a rune produces invalid UTF-8, which protobuf and
+// JSON encoders reject outright; every caller that bounds client text depends on
+// this landing on a rune boundary.
+func TestTruncateUTF8Bytes(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "abc", TruncateUTF8Bytes("abc", 8))
+	require.Equal(t, "abc", TruncateUTF8Bytes("abc", 3))
+
+	// 8192 is mid-rune for a string of three-byte runes, so the cut backs off.
+	multiByte := strings.Repeat("名", 3000)
+	truncated := TruncateUTF8Bytes(multiByte, 8192)
+	require.True(t, utf8.ValidString(truncated))
+	require.LessOrEqual(t, len(truncated), 8192)
+	require.Greater(t, len(truncated), 8192-3)
+	require.Equal(t, strings.Repeat("名", len(truncated)/3), truncated)
+
+	// A bound smaller than one rune cannot keep any of it.
+	require.Empty(t, TruncateUTF8Bytes(multiByte, 2))
+	require.Empty(t, TruncateUTF8Bytes(multiByte, 0))
+}
 
 func TestOpenLineageResourceNames(t *testing.T) {
 	t.Parallel()

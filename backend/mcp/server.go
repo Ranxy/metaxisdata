@@ -352,7 +352,7 @@ func auditStatus(err error) (*storepb.AuditLogStatus, storepb.AuditLogSeverity) 
 	}
 	var failure *toolError
 	if !errors.As(err, &failure) {
-		return &storepb.AuditLogStatus{Code: int32(connect.CodeUnknown), Message: err.Error()}, storepb.AuditLogSeverity_ERROR
+		return &storepb.AuditLogStatus{Code: int32(connect.CodeUnknown), Message: audit.BoundAuditString(err.Error())}, storepb.AuditLogSeverity_ERROR
 	}
 	code, severity := connect.CodeInternal, storepb.AuditLogSeverity_ERROR
 	switch failure.Code {
@@ -374,17 +374,14 @@ func auditStatus(err error) (*storepb.AuditLogStatus, storepb.AuditLogSeverity) 
 		// Any other tool code is a fault on our own side, which is what the
 		// initial values already say.
 	}
-	return &storepb.AuditLogStatus{Code: int32(code), Message: failure.Code + ": " + failure.Message}, severity
+	return &storepb.AuditLogStatus{Code: int32(code), Message: audit.BoundAuditString(failure.Code + ": " + failure.Message)}, severity
 }
 
-// auditArguments renders a tool's arguments for the ledger. Sensitive field names
-// are redacted by the audit package; the arguments themselves are recorded because
-// "which question was asked" is the part of a tool call worth keeping.
-// maxAuditArgumentBytes bounds one string inside an audit row. A tool call may
-// carry a megabyte of SQL and the ledger is kept forever, so the row records what
-// was asked without becoming a second copy of the request.
-const maxAuditArgumentBytes = 8 << 10
-
+// auditArguments renders a tool's arguments for the ledger. Sensitive field
+// names are redacted and the result is bounded by the audit package — the same
+// per-field and whole-payload cap the ConnectRPC interceptor applies. A tool
+// call may carry a megabyte of SQL and the ledger is kept forever, so the row
+// records what was asked without becoming a second copy of the request.
 func auditArguments(raw json.RawMessage) *structpb.Struct {
 	if len(raw) == 0 {
 		return nil
@@ -393,35 +390,11 @@ func auditArguments(raw json.RawMessage) *structpb.Struct {
 	if err := json.Unmarshal(raw, &arguments); err != nil {
 		return nil
 	}
-	payload, err := structpb.NewStruct(map[string]any{"arguments": truncateAuditValues(arguments)})
+	payload, err := structpb.NewStruct(map[string]any{"arguments": arguments})
 	if err != nil {
 		return nil
 	}
-	return audit.SanitizeAuditStruct(payload)
-}
-
-// truncateAuditValues shortens every over-long string in place, wherever it sits
-// in the argument tree.
-func truncateAuditValues(value any) any {
-	switch typed := value.(type) {
-	case string:
-		if len(typed) > maxAuditArgumentBytes {
-			return typed[:maxAuditArgumentBytes] + "...(truncated)"
-		}
-		return typed
-	case []any:
-		for index := range typed {
-			typed[index] = truncateAuditValues(typed[index])
-		}
-		return typed
-	case map[string]any:
-		for key, child := range typed {
-			typed[key] = truncateAuditValues(child)
-		}
-		return typed
-	default:
-		return value
-	}
+	return audit.BoundAuditStruct(audit.SanitizeAuditStruct(payload))
 }
 
 func requestHeaders(request *mcpsdk.CallToolRequest) http.Header {

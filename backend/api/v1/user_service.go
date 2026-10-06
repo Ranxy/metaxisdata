@@ -154,6 +154,9 @@ func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v
 	if request.Msg.User.Title == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("user title must be set"))
 	}
+	if err := validateUserTitle(request.Msg.User.Title); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 
 	principalType, err := convertToPrincipalType(request.Msg.User.UserType)
 	if err != nil {
@@ -371,6 +374,9 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 			}
 			patch.Email = &request.Msg.User.Email
 		case "title":
+			if err := validateUserTitle(request.Msg.User.Title); err != nil {
+				return nil, connect.NewError(connect.CodeInvalidArgument, err)
+			}
 			patch.Name = &request.Msg.User.Title
 		case "password":
 			if user.Type != storepb.PrincipalType_END_USER {
@@ -618,6 +624,12 @@ func validateEmailWithDomains(ctx context.Context, stores *store.Store, email st
 }
 
 func validateEmail(email string) error {
+	// 254 bytes is the RFC 5321 maximum for a forward-path address. The parser
+	// itself accepts an arbitrarily long one, and CreateUser is reachable
+	// without a credential.
+	if len(email) > 254 {
+		return errors.New("email is longer than 254 bytes")
+	}
 	if email != strings.ToLower(email) {
 		return errors.New("email should be lowercase")
 	}
@@ -625,6 +637,29 @@ func validateEmail(email string) error {
 		return err
 	}
 	return nil
+}
+
+// maxUserTitleBytes bounds a display name. An unbounded title lets an anonymous
+// CreateUser park a request-sized value in the users table and in the ledger row
+// that records the request.
+const maxUserTitleBytes = 256
+
+func validateUserTitle(title string) error {
+	if len(title) > maxUserTitleBytes {
+		return errors.Errorf("title must be at most %d bytes", maxUserTitleBytes)
+	}
+	return nil
+}
+
+// clampUserTitle cuts a display name that came from an identity provider down to
+// the bound validateUserTitle enforces. That value is not a request this server
+// may refuse — refusing the login over a long name would lock the account out —
+// so it is shortened on a rune boundary instead.
+func clampUserTitle(title string) string {
+	if len(title) <= maxUserTitleBytes {
+		return title
+	}
+	return common.TruncateUTF8Bytes(title, maxUserTitleBytes)
 }
 
 func extractDomain(input string) string {

@@ -506,7 +506,7 @@ func (s *AuthService) getOrCreateUserWithIDP(ctx context.Context, request *v1pb.
 		return nil, false, connect.NewError(connect.CodeInternal, err)
 	}
 	newUser, err := s.store.CreateUser(ctx, &store.UserMessage{
-		Name:         userInfo.DisplayName,
+		Name:         clampUserTitle(userInfo.DisplayName),
 		Email:        email,
 		Phone:        userInfo.Phone,
 		Type:         storepb.PrincipalType_END_USER,

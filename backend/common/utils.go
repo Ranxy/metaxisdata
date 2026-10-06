@@ -7,6 +7,7 @@ import (
 	"errors"
 	"math/big"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/nyaruka/phonenumbers"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -26,6 +27,21 @@ func TruncateString(str string, limit int) (string, bool) {
 		chars++
 	}
 	return str, false
+}
+
+// TruncateUTF8Bytes cuts a string to at most limit bytes without splitting a
+// multi-byte rune. Cutting mid-rune yields invalid UTF-8, which protobuf and
+// JSON encoders reject outright, so a bound that slices bytes naively can drop
+// the very record it was added to protect.
+func TruncateUTF8Bytes(str string, limit int) string {
+	if len(str) <= limit {
+		return str
+	}
+	end := limit
+	for end > 0 && !utf8.RuneStart(str[end]) {
+		end--
+	}
+	return str[:end]
 }
 
 var letters = []rune("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
