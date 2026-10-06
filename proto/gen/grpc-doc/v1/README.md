@@ -1205,6 +1205,7 @@ This value should be 4-63 characters, and valid characters are /[a-z0-9-]/. |
 | ssh_user | [string](#string) |  | The user to login the server. Required. |
 | ssh_password | [string](#string) |  | The password to login the server. If it&#39;s empty string, no password is required. |
 | ssh_private_key | [string](#string) |  | The private key to login the server. If it&#39;s empty string, we will use the system default private key from os.Getenv(&#34;SSH_AUTH_SOCK&#34;). |
+| ssh_host_key | [string](#string) |  | The trusted SSH host key(s) for ssh_host, one entry per line. An entry is either a fingerprint (SHA256:... or MD5:...) or a known_hosts / authorized_keys public key line, as printed by ssh-keyscan. Required when ssh_host is set: an empty value refuses the connection rather than accepting whatever host key answers, because the tunnel carries the database credentials in clear text. |
 | extra_connection_parameters | [DataSource.ExtraConnectionParametersEntry](#metaxisdata-v1-DataSource-ExtraConnectionParametersEntry) | repeated | Extra connection parameters for the database connection. For PostgreSQL HA, this can be used to set target_session_attrs=read-write |
 
 

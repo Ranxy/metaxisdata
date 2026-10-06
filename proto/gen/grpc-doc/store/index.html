@@ -4457,6 +4457,17 @@ The hostname of the SSH server agent. </p></td>
                 </tr>
               
                 <tr>
+                  <td>ssh_host_key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The trusted SSH host key(s) for ssh_host, one entry per line. An entry is
+either a fingerprint (SHA256:... or MD5:...) or a known_hosts /
+authorized_keys public key line, as printed by ssh-keyscan. Empty means the
+SSH host is not trusted: the connection is refused instead of accepting
+whatever host key answers. </p></td>
+                </tr>
+              
+                <tr>
                   <td>extra_connection_parameters</td>
                   <td><a href="#metaxisdata.store.DataSource.ExtraConnectionParametersEntry">DataSource.ExtraConnectionParametersEntry</a></td>
                   <td>repeated</td>

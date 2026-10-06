@@ -3856,6 +3856,14 @@ components:
                     description: The private key to login the server. If it's empty string, we will use the system default private key from os.Getenv("SSH_AUTH_SOCK").
                 obfuscatedSshPrivateKey:
                     type: string
+                sshHostKey:
+                    type: string
+                    description: |-
+                        The trusted SSH host key(s) for ssh_host, one entry per line. An entry is
+                         either a fingerprint (SHA256:... or MD5:...) or a known_hosts /
+                         authorized_keys public key line, as printed by ssh-keyscan. Empty means the
+                         SSH host is not trusted: the connection is refused instead of accepting
+                         whatever host key answers.
                 extraConnectionParameters:
                     type: object
                     additionalProperties:

@@ -19,9 +19,13 @@ const SSOStateTTL = 5 * time.Minute
 // ssoStateCapacity bounds the in-flight OAuth2 state nonces.
 const ssoStateCapacity = 1024
 
+// ErrInstanceConnectionLimit reports that an instance is already using all of
+// its outstanding connection slots; the caller should retry later.
+var ErrInstanceConnectionLimit = errors.New("instance connection limit reached")
+
 type State struct {
 	TokenExpireCache *lru.Cache[string, bool]
-	// InstanceOutstandingConnections is the maximum number of connections per instance.
+	// InstanceOutstandingConnections counts the open connections per instance.
 	InstanceOutstandingConnections *resourceLimiter
 	// LoginLimiter throttles failed password logins per (email, source).
 	LoginLimiter *LoginLimiter
@@ -65,6 +69,18 @@ func New() (*State, error) {
 type resourceLimiter struct {
 	sync.Mutex
 	connections map[string]int
+}
+
+// AcquireInstanceConnection reserves one of the instance's outstanding
+// connection slots and returns the release function. A maximumConnections <= 0
+// means no limit. Every path that opens a driver for an instance — the periodic
+// sync, an API-triggered sync and the connection test — goes through it, so a
+// slow or hostile target cannot stack connections past the instance's ceiling.
+func (s *State) AcquireInstanceConnection(instanceID string, maximumConnections int) (func(), error) {
+	if s.InstanceOutstandingConnections.Increment(instanceID, maximumConnections) {
+		return nil, errors.Wrapf(ErrInstanceConnectionLimit, "instance %q already has %d outstanding connections", instanceID, maximumConnections)
+	}
+	return func() { s.InstanceOutstandingConnections.Decrement(instanceID) }, nil
 }
 
 // limit <= 0 means no limit.

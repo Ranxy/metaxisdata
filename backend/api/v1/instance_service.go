@@ -14,6 +14,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
+	"github.com/Ranxy/metaxisdata/backend/component/state"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
@@ -32,14 +33,16 @@ type InstanceService struct {
 	store        *store.Store
 	dbFactory    *dbfactory.DBFactory
 	schemaSyncer *schemasync.Syncer
+	stateCfg     *state.State
 }
 
 // NewInstanceService creates a new InstanceService.
-func NewInstanceService(store *store.Store, dbFactory *dbfactory.DBFactory, schemaSyncer *schemasync.Syncer) *InstanceService {
+func NewInstanceService(store *store.Store, dbFactory *dbfactory.DBFactory, schemaSyncer *schemasync.Syncer, stateCfg *state.State) *InstanceService {
 	return &InstanceService{
 		store:        store,
 		dbFactory:    dbFactory,
 		schemaSyncer: schemaSyncer,
+		stateCfg:     stateCfg,
 	}
 }
 
@@ -591,11 +594,20 @@ func (s *InstanceService) DeleteDataSource(ctx context.Context, req *connect.Req
 // instance admin who supplied the connection info, and the full error is logged
 // as well.
 //
-// The connection deliberately does not go through the schema sync per-instance
-// limiter: it is one short-lived connection the user asked for, not a periodic
-// sync that can pile up, and refusing it because a sync holds the slots would
-// fail the test with a reason unrelated to what it tests.
+// The connection is counted by the same per-instance limiter as a sync: it is a
+// connection the instance has to carry, and leaving it unmetered let a caller
+// stack unbounded attempts at a target that accepts TCP and then stalls.
 func (s *InstanceService) pingDataSource(ctx context.Context, instance *store.InstanceMessage, dataSource *storepb.DataSource) error {
+	maximumConnections := int(instance.Metadata.GetMaximumConnections())
+	if maximumConnections <= 0 {
+		maximumConnections = common.DefaultInstanceMaximumConnections
+	}
+	release, err := s.stateCfg.AcquireInstanceConnection(instance.ResourceID, maximumConnections)
+	if err != nil {
+		return connect.NewError(connect.CodeResourceExhausted, err)
+	}
+	defer release()
+
 	driver, err := s.dbFactory.GetDataSourceDriver(
 		ctx, instance, dataSource,
 		db.ConnectionContext{ReadOnly: dataSource.GetType() == storepb.DataSourceType_READ_ONLY},

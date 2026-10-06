@@ -399,7 +399,7 @@ func (s *Syncer) QueueLineageAnalysis(metaGUID string, metaType storepb.MetaType
 
 // errInstanceConnectionsExhausted signals that the per-instance connection
 // limiter is saturated; the caller should retry the sync later.
-var errInstanceConnectionsExhausted = errors.New("instance connection limit reached")
+var errInstanceConnectionsExhausted = state.ErrInstanceConnectionLimit
 
 // acquireInstanceConnection reserves one of the instance's outstanding
 // connection slots and returns the release func. Every path that opens a driver
@@ -410,10 +410,7 @@ func (s *Syncer) acquireInstanceConnection(instance *store.InstanceMessage) (fun
 	if maximumConnections <= 0 {
 		maximumConnections = common.DefaultInstanceMaximumConnections
 	}
-	if s.stateCfg.InstanceOutstandingConnections.Increment(instance.ResourceID, maximumConnections) {
-		return nil, errors.Wrapf(errInstanceConnectionsExhausted, "instance %q already has %d outstanding connections", instance.ResourceID, maximumConnections)
-	}
-	return func() { s.stateCfg.InstanceOutstandingConnections.Decrement(instance.ResourceID) }, nil
+	return s.stateCfg.AcquireInstanceConnection(instance.ResourceID, maximumConnections)
 }
 
 // GetInstanceMeta gets the instance metadata.

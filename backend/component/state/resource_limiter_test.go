@@ -6,6 +6,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// The connection test opens a driver like every other path, so it has to be
+// counted by the same per-instance limiter instead of stacking attempts.
+func TestAcquireInstanceConnectionSharesThePerInstanceLimit(t *testing.T) {
+	t.Parallel()
+
+	stateCfg, err := New()
+	require.NoError(t, err)
+
+	releaseSync, err := stateCfg.AcquireInstanceConnection("i1", 2)
+	require.NoError(t, err)
+	releaseTest, err := stateCfg.AcquireInstanceConnection("i1", 2)
+	require.NoError(t, err)
+
+	_, err = stateCfg.AcquireInstanceConnection("i1", 2)
+	require.ErrorIs(t, err, ErrInstanceConnectionLimit)
+
+	releaseSync()
+	releaseThird, err := stateCfg.AcquireInstanceConnection("i1", 2)
+	require.NoError(t, err)
+
+	releaseTest()
+	releaseThird()
+	_, err = stateCfg.AcquireInstanceConnection("i1", 0)
+	require.NoError(t, err, "a limit of zero means unlimited")
+}
+
 func TestResourceLimiterEnforcesTheLimit(t *testing.T) {
 	t.Parallel()
 

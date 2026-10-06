@@ -432,6 +432,13 @@ message DataSource {
   string ssh_password = 18 [(google.api.field_behavior) = INPUT_ONLY];
   // The private key to login the server. If it's empty string, we will use the system default private key from os.Getenv("SSH_AUTH_SOCK").
   string ssh_private_key = 19 [(google.api.field_behavior) = INPUT_ONLY];
+  // The trusted SSH host key(s) for ssh_host, one entry per line. An entry is
+  // either a fingerprint (SHA256:... or MD5:...) or a known_hosts /
+  // authorized_keys public key line, as printed by ssh-keyscan.
+  // Required when ssh_host is set: an empty value refuses the connection rather
+  // than accepting whatever host key answers, because the tunnel carries the
+  // database credentials in clear text.
+  string ssh_host_key = 48;
 
   // Extra connection parameters for the database connection.
   // For PostgreSQL HA, this can be used to set target_session_attrs=read-write

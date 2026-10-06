@@ -3703,6 +3703,18 @@ Required. </p></td>
                 </tr>
               
                 <tr>
+                  <td>ssh_host_key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The trusted SSH host key(s) for ssh_host, one entry per line. An entry is
+either a fingerprint (SHA256:... or MD5:...) or a known_hosts /
+authorized_keys public key line, as printed by ssh-keyscan.
+Required when ssh_host is set: an empty value refuses the connection rather
+than accepting whatever host key answers, because the tunnel carries the
+database credentials in clear text. </p></td>
+                </tr>
+              
+                <tr>
                   <td>extra_connection_parameters</td>
                   <td><a href="#metaxisdata.v1.DataSource.ExtraConnectionParametersEntry">DataSource.ExtraConnectionParametersEntry</a></td>
                   <td>repeated</td>

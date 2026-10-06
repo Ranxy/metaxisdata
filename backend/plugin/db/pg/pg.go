@@ -51,7 +51,7 @@ func newDriver() db.Driver {
 }
 
 // Open opens a Postgres driver.
-func (d *Driver) Open(_ context.Context, _ storepb.Engine, config db.ConnectionConfig) (db.Driver, error) {
+func (d *Driver) Open(ctx context.Context, _ storepb.Engine, config db.ConnectionConfig) (db.Driver, error) {
 	var pgxConnConfig *pgx.ConnConfig
 	var err error
 
@@ -66,18 +66,20 @@ func (d *Driver) Open(_ context.Context, _ storepb.Engine, config db.ConnectionC
 	}
 
 	if config.DataSource.GetSshHost() != "" {
-		sshClient, err := util.GetSSHClient(config.DataSource)
+		sshClient, err := util.GetSSHClient(ctx, config.DataSource)
 		if err != nil {
 			return nil, err
 		}
 		d.sshClient = sshClient
 
-		pgxConnConfig.DialFunc = func(_ context.Context, network, addr string) (net.Conn, error) {
-			conn, err := sshClient.Dial(network, addr)
+		pgxConnConfig.DialFunc = func(dialCtx context.Context, network, addr string) (net.Conn, error) {
+			conn, err := util.DialThroughTunnel(dialCtx, sshClient, network, addr)
 			if err != nil {
 				return nil, err
 			}
-			return &util.NoDeadlineConn{Conn: conn}, nil
+			// A tunnel connection rejects deadlines; pgx cancels a blocked
+			// query by setting one, so the deadline has to be enforced here.
+			return &util.DeadlineConn{Conn: conn}, nil
 		}
 	}
 

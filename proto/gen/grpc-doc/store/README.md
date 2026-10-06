@@ -1420,6 +1420,7 @@ admin API that could create an OIDC/LDAP row.
 | obfuscated_ssh_password | [string](#string) |  |  |
 | ssh_private_key | [string](#string) |  | The private key to login the server. If it&#39;s empty string, we will use the system default private key from os.Getenv(&#34;SSH_AUTH_SOCK&#34;). |
 | obfuscated_ssh_private_key | [string](#string) |  |  |
+| ssh_host_key | [string](#string) |  | The trusted SSH host key(s) for ssh_host, one entry per line. An entry is either a fingerprint (SHA256:... or MD5:...) or a known_hosts / authorized_keys public key line, as printed by ssh-keyscan. Empty means the SSH host is not trusted: the connection is refused instead of accepting whatever host key answers. |
 | extra_connection_parameters | [DataSource.ExtraConnectionParametersEntry](#metaxisdata-store-DataSource-ExtraConnectionParametersEntry) | repeated | Extra connection parameters for the database connection. For PostgreSQL HA, this can be used to set target_session_attrs=read-write |
 
 

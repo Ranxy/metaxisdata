@@ -719,6 +719,18 @@ export declare type DataSource = Message<"metaxisdata.v1.DataSource"> & {
   sshPrivateKey: string;
 
   /**
+   * The trusted SSH host key(s) for ssh_host, one entry per line. An entry is
+   * either a fingerprint (SHA256:... or MD5:...) or a known_hosts /
+   * authorized_keys public key line, as printed by ssh-keyscan.
+   * Required when ssh_host is set: an empty value refuses the connection rather
+   * than accepting whatever host key answers, because the tunnel carries the
+   * database credentials in clear text.
+   *
+   * @generated from field: string ssh_host_key = 48;
+   */
+  sshHostKey: string;
+
+  /**
    * Extra connection parameters for the database connection.
    * For PostgreSQL HA, this can be used to set target_session_attrs=read-write
    *

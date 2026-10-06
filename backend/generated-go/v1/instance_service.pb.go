@@ -1283,6 +1283,13 @@ type DataSource struct {
 	SshPassword string `protobuf:"bytes,18,opt,name=ssh_password,json=sshPassword,proto3" json:"ssh_password,omitempty"`
 	// The private key to login the server. If it's empty string, we will use the system default private key from os.Getenv("SSH_AUTH_SOCK").
 	SshPrivateKey string `protobuf:"bytes,19,opt,name=ssh_private_key,json=sshPrivateKey,proto3" json:"ssh_private_key,omitempty"`
+	// The trusted SSH host key(s) for ssh_host, one entry per line. An entry is
+	// either a fingerprint (SHA256:... or MD5:...) or a known_hosts /
+	// authorized_keys public key line, as printed by ssh-keyscan.
+	// Required when ssh_host is set: an empty value refuses the connection rather
+	// than accepting whatever host key answers, because the tunnel carries the
+	// database credentials in clear text.
+	SshHostKey string `protobuf:"bytes,48,opt,name=ssh_host_key,json=sshHostKey,proto3" json:"ssh_host_key,omitempty"`
 	// Extra connection parameters for the database connection.
 	// For PostgreSQL HA, this can be used to set target_session_attrs=read-write
 	ExtraConnectionParameters map[string]string `protobuf:"bytes,36,rep,name=extra_connection_parameters,json=extraConnectionParameters,proto3" json:"extra_connection_parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -1428,6 +1435,13 @@ func (x *DataSource) GetSshPassword() string {
 func (x *DataSource) GetSshPrivateKey() string {
 	if x != nil {
 		return x.SshPrivateKey
+	}
+	return ""
+}
+
+func (x *DataSource) GetSshHostKey() string {
+	if x != nil {
+		return x.SshHostKey
 	}
 	return ""
 }
@@ -1621,7 +1635,7 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	"\rsync_interval\x18\r \x01(\v2\x19.google.protobuf.DurationR\fsyncInterval\x12/\n" +
 	"\x13maximum_connections\x18\x0e \x01(\x05R\x12maximumConnections\x12E\n" +
 	"\x0elast_sync_time\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\flastSyncTime:/\xeaA,\n" +
-	"\x14metaxisdata/Instance\x12\x14instances/{instance}\"\xc4\t\n" +
+	"\x14metaxisdata/Instance\x12\x14instances/{instance}\"\xe6\t\n" +
 	"\n" +
 	"DataSource\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x122\n" +
@@ -1640,7 +1654,9 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	"\bssh_port\x18\x10 \x01(\tR\asshPort\x12\x19\n" +
 	"\bssh_user\x18\x11 \x01(\tR\asshUser\x12&\n" +
 	"\fssh_password\x18\x12 \x01(\tB\x03\xe0A\x04R\vsshPassword\x12+\n" +
-	"\x0fssh_private_key\x18\x13 \x01(\tB\x03\xe0A\x04R\rsshPrivateKey\x12y\n" +
+	"\x0fssh_private_key\x18\x13 \x01(\tB\x03\xe0A\x04R\rsshPrivateKey\x12 \n" +
+	"\fssh_host_key\x180 \x01(\tR\n" +
+	"sshHostKey\x12y\n" +
 	"\x1bextra_connection_parameters\x18$ \x03(\v29.metaxisdata.v1.DataSource.ExtraConnectionParametersEntryR\x19extraConnectionParameters\x1aL\n" +
 	"\x1eExtraConnectionParametersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +

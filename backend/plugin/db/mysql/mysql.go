@@ -71,14 +71,14 @@ func newDriver() db.Driver {
 }
 
 // Open opens a MySQL driver.
-func (d *Driver) Open(_ context.Context, dbType storepb.Engine, connCfg db.ConnectionConfig) (db.Driver, error) {
+func (d *Driver) Open(ctx context.Context, dbType storepb.Engine, connCfg db.ConnectionConfig) (db.Driver, error) {
 	defer func() {
 		for _, f := range d.openCleanUp {
 			f()
 		}
 	}()
 
-	dsn, err := d.getMySQLConnection(connCfg)
+	dsn, err := d.getMySQLConnection(ctx, connCfg)
 
 	if err != nil {
 		return nil, err
@@ -99,7 +99,7 @@ func (d *Driver) Open(_ context.Context, dbType storepb.Engine, connCfg db.Conne
 	return d, nil
 }
 
-func (d *Driver) getMySQLConnection(connCfg db.ConnectionConfig) (string, error) {
+func (d *Driver) getMySQLConnection(ctx context.Context, connCfg db.ConnectionConfig) (string, error) {
 	protocol := "tcp"
 	if strings.HasPrefix(connCfg.DataSource.Host, "/") {
 		protocol = "unix"
@@ -115,15 +115,17 @@ func (d *Driver) getMySQLConnection(connCfg db.ConnectionConfig) (string, error)
 		params = append(params, fmt.Sprintf("%s=%s", key, value))
 	}
 	if connCfg.DataSource.GetSshHost() != "" {
-		sshClient, err := util.GetSSHClient(connCfg.DataSource)
+		sshClient, err := util.GetSSHClient(ctx, connCfg.DataSource)
 		if err != nil {
 			return "", err
 		}
 		d.sshClient = sshClient
 		protocol = "mysql-tcp-" + uuid.NewString()[:8]
 		// Now we register the dialer with the ssh connection as a parameter.
-		mysql.RegisterDialContext(protocol, func(_ context.Context, addr string) (net.Conn, error) {
-			return sshClient.Dial("tcp", addr)
+		// The dial context is the driver's own, so a cancelled statement also
+		// cancels the channel open through the tunnel.
+		mysql.RegisterDialContext(protocol, func(dialCtx context.Context, addr string) (net.Conn, error) {
+			return util.DialThroughTunnel(dialCtx, sshClient, "tcp", addr)
 		})
 	}
 

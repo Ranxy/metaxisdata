@@ -35,6 +35,7 @@ func TestPatchDataSourcePreservesUnmaskedFields(t *testing.T) {
 		SshPort:              "22",
 		SshUser:              "tunnel",
 		SshPrivateKey:        "stored-private-key",
+		SshHostKey:           "SHA256:stored-host-key",
 		ExtraConnectionParameters: map[string]string{
 			"timeout": "5s",
 		},
@@ -58,6 +59,7 @@ func TestPatchDataSourcePreservesUnmaskedFields(t *testing.T) {
 	require.Equal(t, "22", stored.GetSshPort())
 	require.Equal(t, "tunnel", stored.GetSshUser())
 	require.Equal(t, "stored-private-key", stored.GetSshPrivateKey())
+	require.Equal(t, "SHA256:stored-host-key", stored.GetSshHostKey())
 	require.Equal(t, map[string]string{"timeout": "5s"}, stored.GetExtraConnectionParameters())
 }
 
@@ -79,13 +81,14 @@ func TestPatchDataSourceWritesEverySupportedField(t *testing.T) {
 		SshUser:                   "new-tunnel",
 		SshPassword:               "new-ssh-password",
 		SshPrivateKey:             "new-private-key",
+		SshHostKey:                "SHA256:new-host-key",
 		UseSsl:                    true,
 		ExtraConnectionParameters: map[string]string{"timeout": "9s"},
 	}
 
 	require.NoError(t, patchDataSource(stored, requested, []string{
 		"username", "password", "ssl_ca", "ssl_cert", "ssl_key", "host", "port", "database",
-		"ssh_host", "ssh_port", "ssh_user", "ssh_password", "ssh_private_key", "use_ssl",
+		"ssh_host", "ssh_port", "ssh_user", "ssh_password", "ssh_private_key", "ssh_host_key", "use_ssl",
 		"extra_connection_parameters",
 	}))
 
@@ -102,8 +105,30 @@ func TestPatchDataSourceWritesEverySupportedField(t *testing.T) {
 	require.Equal(t, "new-tunnel", stored.GetSshUser())
 	require.Equal(t, "new-ssh-password", stored.GetSshPassword())
 	require.Equal(t, "new-private-key", stored.GetSshPrivateKey())
+	require.Equal(t, "SHA256:new-host-key", stored.GetSshHostKey())
 	require.True(t, stored.GetUseSsl())
 	require.Equal(t, map[string]string{"timeout": "9s"}, stored.GetExtraConnectionParameters())
+}
+
+// The trusted host key must survive the store ↔ API round trip, or a data
+// source created by an admin comes back without the key its connection needs.
+func TestSSHHostKeySurvivesTheDataSourceConversion(t *testing.T) {
+	t.Parallel()
+
+	const hostKey = "SHA256:6jT77i5SySzYqkSNTNZ2fgeur57oj13dgZtHaqezfz4"
+	stored, err := convertV1DataSource("inst1", &v1pb.DataSource{
+		Name:       "instances/inst1/dataSources/admin",
+		Type:       v1pb.DataSourceType_ADMIN,
+		Host:       "db",
+		Port:       "3306",
+		Username:   "root",
+		SshHost:    "bastion",
+		SshPort:    "22",
+		SshHostKey: hostKey,
+	})
+	require.NoError(t, err)
+	require.Equal(t, hostKey, stored.GetSshHostKey())
+	require.Equal(t, hostKey, convertDataSource("inst1", stored).GetSshHostKey())
 }
 
 // A failed test connection must name the data source and carry the driver's own

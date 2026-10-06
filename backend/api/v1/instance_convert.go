@@ -127,6 +127,7 @@ func convertDataSource(instanceID string, dataSource *storepb.DataSource) *v1pb.
 		SshHost:                   dataSource.GetSshHost(),
 		SshPort:                   dataSource.GetSshPort(),
 		SshUser:                   dataSource.GetSshUser(),
+		SshHostKey:                dataSource.GetSshHostKey(),
 		UseSsl:                    dataSource.GetUseSsl(),
 		ExtraConnectionParameters: dataSource.GetExtraConnectionParameters(),
 	}
@@ -181,6 +182,7 @@ func convertV1DataSource(instanceID string, dataSource *v1pb.DataSource) (*store
 		SshUser:                   dataSource.SshUser,
 		SshPassword:               dataSource.SshPassword,
 		SshPrivateKey:             dataSource.SshPrivateKey,
+		SshHostKey:                dataSource.SshHostKey,
 		UseSsl:                    dataSource.UseSsl,
 		ExtraConnectionParameters: dataSource.ExtraConnectionParameters,
 	}, nil
@@ -219,6 +221,8 @@ func patchDataSource(stored *storepb.DataSource, requested *v1pb.DataSource, pat
 			stored.SshPassword = requested.GetSshPassword()
 		case "ssh_private_key":
 			stored.SshPrivateKey = requested.GetSshPrivateKey()
+		case "ssh_host_key":
+			stored.SshHostKey = requested.GetSshHostKey()
 		case "use_ssl":
 			stored.UseSsl = requested.GetUseSsl()
 		case "extra_connection_parameters":

@@ -231,6 +231,12 @@ type DataSource struct {
 	// The private key to login the server. If it's empty string, we will use the system default private key from os.Getenv("SSH_AUTH_SOCK").
 	SshPrivateKey           string `protobuf:"bytes,42,opt,name=ssh_private_key,json=sshPrivateKey,proto3" json:"ssh_private_key,omitempty"`
 	ObfuscatedSshPrivateKey string `protobuf:"bytes,19,opt,name=obfuscated_ssh_private_key,json=obfuscatedSshPrivateKey,proto3" json:"obfuscated_ssh_private_key,omitempty"`
+	// The trusted SSH host key(s) for ssh_host, one entry per line. An entry is
+	// either a fingerprint (SHA256:... or MD5:...) or a known_hosts /
+	// authorized_keys public key line, as printed by ssh-keyscan. Empty means the
+	// SSH host is not trusted: the connection is refused instead of accepting
+	// whatever host key answers.
+	SshHostKey string `protobuf:"bytes,48,opt,name=ssh_host_key,json=sshHostKey,proto3" json:"ssh_host_key,omitempty"`
 	// Extra connection parameters for the database connection.
 	// For PostgreSQL HA, this can be used to set target_session_attrs=read-write
 	ExtraConnectionParameters map[string]string `protobuf:"bytes,36,rep,name=extra_connection_parameters,json=extraConnectionParameters,proto3" json:"extra_connection_parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -429,6 +435,13 @@ func (x *DataSource) GetObfuscatedSshPrivateKey() string {
 	return ""
 }
 
+func (x *DataSource) GetSshHostKey() string {
+	if x != nil {
+		return x.SshHostKey
+	}
+	return ""
+}
+
 func (x *DataSource) GetExtraConnectionParameters() map[string]string {
 	if x != nil {
 		return x.ExtraConnectionParameters
@@ -454,7 +467,7 @@ const file_store_instance_proto_rawDesc = "" +
 	"\x13maximum_connections\x18\b \x01(\x05R\x12maximumConnections\x12>\n" +
 	"\x1cmysql_lower_case_table_names\x18\n" +
 	" \x01(\x05R\x18mysqlLowerCaseTableNames\x12@\n" +
-	"\x0elast_sync_time\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\flastSyncTimeJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eR\x05rolesR\x06labels\"\x90\f\n" +
+	"\x0elast_sync_time\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\flastSyncTimeJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eR\x05rolesR\x06labels\"\xb2\f\n" +
 	"\n" +
 	"DataSource\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x125\n" +
@@ -480,7 +493,9 @@ const file_store_instance_proto_rawDesc = "" +
 	"\fssh_password\x18) \x01(\tR\vsshPassword\x126\n" +
 	"\x17obfuscated_ssh_password\x18\x12 \x01(\tR\x15obfuscatedSshPassword\x12&\n" +
 	"\x0fssh_private_key\x18* \x01(\tR\rsshPrivateKey\x12;\n" +
-	"\x1aobfuscated_ssh_private_key\x18\x13 \x01(\tR\x17obfuscatedSshPrivateKey\x12|\n" +
+	"\x1aobfuscated_ssh_private_key\x18\x13 \x01(\tR\x17obfuscatedSshPrivateKey\x12 \n" +
+	"\fssh_host_key\x180 \x01(\tR\n" +
+	"sshHostKey\x12|\n" +
 	"\x1bextra_connection_parameters\x18$ \x03(\v2<.metaxisdata.store.DataSource.ExtraConnectionParametersEntryR\x19extraConnectionParameters\x1aL\n" +
 	"\x1eExtraConnectionParametersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
