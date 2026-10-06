@@ -65,7 +65,7 @@
 - **修复**:审计载荷统一字节上限(与 MCP 一致或整行封顶);各 service 补 `WithReadMaxBytes`;匿名方法请求字段做长度校验(另见 M17/M18 同族放大)。
 
 ### H7. SSH 隧道无主机密钥校验且无超时:中间人窃取库凭据 + 单实例持久 DoS
-- **状态**:**已修复**(2026-10-06,commit `b06249d`;修复内容与验证见 §10)。
+- **状态**:**已修复**(2026-10-06,主修复 commit `b06249d`,独立复核后的加固 commit `73c7015`;修复内容与验证见 §10)。
 - **证据**:`backend/plugin/db/util/ssh.go:21`(`HostKeyCallback: ssh.InsecureIgnoreHostKey()`);`util/ssh.go:49`(`ssh.Dial` 无 `ClientConfig.Timeout`,TCP 可接受但永不完成握机的恶意 ssh_host 将无限挂住);`backend/plugin/db/mysql/mysql.go:123-125`、`starrocks.go:89-91`(DialContext 显式丢弃 ctx);`util/ssh.go:64-68` + `pg.go:75-81`(`NoDeadlineConn` 把 SetDeadline 全部 no-op,pgx 的 ctx 取消与 15 分钟同步 deadline 全部失效)。
 - **攻击场景**:(a) 同网段中间人接受 SSH 隧道即可截获后续 MySQL/PG 明文通道里的库凭据与元数据;(b) 任意成员(需实例写权限)把 `ssh_host` 指向恶意主机,握手永挂 + ctx 不可取消 ⇒ goroutine/fd 泄漏,且该实例每实例连接额度(默认 10)被永久占满,同步持续 DoS;连接测试路径(`instance_service.go:598-631`)不受每实例限额约束,可无限叠加。
 - **修复**:支持 known_hosts/指纹配置,默认拒绝未知主机密钥;`ClientConfig.Timeout` + 全链路传递 ctx(去掉 NoDeadlineConn 或正确实现 deadline 透传);连接测试纳入限额。
@@ -476,7 +476,7 @@
 4. **把一个 provider 从名单里移除会锁死经它接管过的账号**:这些账号的密码是接管时写入的随机值,而移除后该 provider 的映射若没有可用 subject,登录在解析绑定之前就以"缺少 subject"失败,邮箱路径也关闭(账号有绑定)。补救是管理员给这些账号重设密码,或临时把它加回名单。错误文案已同时点出这两条出路,但"移除即撤销"这一语义要在开启前想清楚。
 5. 本次改动的独立复核还指出:`UpdateWorkspaceProfileSetting` 是整份设置的读-改-写(无行锁),若两人同时保存或客户端提交了陈旧的表单,可能把刚被移除的 provider 悄悄加回名单——这是该设置对象既有性质(所有字段共用一次整体保存),不是本次新增;真要收紧需要给设置加 etag/乐观并发。
 
-### 2026-10-06 —— H7 已修复(commit `b06249d`)
+### 2026-10-06 —— H7 已修复(主修复 commit `b06249d`,独立复核后的加固 commit `73c7015`)
 
 **SSH 主机密钥校验**(`backend/plugin/db/util/ssh.go`)
 
@@ -485,12 +485,12 @@
   - `known_hosts` 或 `authorized_keys` 公钥行(`ssh-keyscan` 输出);公钥按类型 + 常量时间比较。
 - 列表为空即拒绝连接(fail-closed),没有"接受未知主机"的开关;`ssh_host` 未设时仍走直连。
 - 信任锚放在数据源而不是服务器文件(known_hosts 文件/`--ssh-known-hosts`):能改 `ssh_host` 的实例写权限持有者同时决定它必须出示的密钥——按既有权限模型,写实例本来就要求 `workspaceAdmin`(可下放给自定义角色),把信任锚留在实例配置上避免让运维登录主机 `ssh-keyscan`;代价是能改实例的人也能改信任锚,这一点已在 `docs/security-posture.md` 中写明。
-- 已知主机行的 host 段不参与校验:密钥随数据源存储,已绑定该数据源的 `ssh_host`;`@revoked`/`@cert-authority` 标记显式拒绝而不是静默忽略。
+- 已知主机行的 host 段不参与校验:列表是配置该数据源的管理员对 `ssh_host` 的断言(权限模型下写实例本就是管理员行为);从 known_hosts 文件整段粘贴会连同无关主机的行一起信任,只应粘贴目标堡垒机那一行。`@revoked`/`@cert-authority` 标记显式拒绝而不是静默忽略。
 
 **建链、超时与取消全链路**
 
 - 不再用 `ssh.Dial`:它把 `config.Timeout` 只交给 `net.DialTimeout`,banner 与密钥交换没有 deadline。改为 `net.Dialer.DialContext(ctx)` + `ssh.NewClientConn`,握手 deadline 取 `min(now+SSHTimeout, ctx deadline)`,握手成功后清除;`context.AfterFunc(ctx, conn.Close)` 让调用方放弃时立刻中断进行中的握手。
-- 新增 `DialThroughTunnel`:`ssh.Client.DialContext` 打开隧道内连接,超时取 `min(ctx deadline, SSHTimeout)`,因此即使调用方带着 15 分钟同步 deadline,恶意对端也不能把 channel open 拖满整次同步。
+- 新增 `DialThroughTunnel`:`ssh.Client.DialContext` 打开隧道内连接,调用方的等待取 `min(ctx deadline, SSHTimeout)`,因此即使调用方带着 15 分钟同步 deadline,恶意对端也不能把它拖满整次同步。限的是"等待":被放弃的 channel open 会挂在 `ssh.Client` 上直到隧道关闭(x/crypto 的 `DialContext` 只用 ctx 结束等待,不取消 open),见残余 4。
 - MySQL/StarRocks 的 `RegisterDialContext` 闭包不再显式丢弃 ctx;PostgreSQL 的 `DialFunc` 同样。`NoDeadlineConn`(SetDeadline 全 no-op)换成 `DeadlineConn`:deadline 到期关闭隧道 channel 以打断阻塞读写,零值 deadline 取消定时器。这正是 pgx 取消语义依赖的行为——`DeadlineContextWatcherHandler` 正是靠设置 deadline 打断阻塞读。
 - 三处驱动的 `Open` 由 `_ context.Context` 改为真实 ctx(`dbfactory` 一直在透传调用方 ctx)。
 
@@ -506,11 +506,23 @@
 - 集成(真实服务器进程 + 测试进程内 SSH 堡垒机 + 真实 MySQL)`TestSSHTunnelHostKeyRealServerIntegration`:配置了指纹时经隧道连上 MySQL,且指纹随 API 回读;错误指纹在握手阶段被拒(库凭据不过隧道)、返回 `InvalidArgument`;未配置指纹被拒。
 - **反向验证**:把回调换回"接受一切" ⇒ `TestGetSSHClientRejectsAnUntrustedHostKey` 变红;去掉握手 deadline ⇒ 静默主机用例挂死并被 20s 超时判失败;把 `DeadlineConn` 还原为 no-op ⇒ deadline 用例挂死。恢复后全绿。
 
-**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -race`(受影响包)、release 构建、`make test-integration` 的真实服务器(含新用例)与 migrator 用例全绿;前端 `biome:ci`/`lint:ci`/`i18n`/`type-check`/`test run`(46 files / 304 tests)通过。
+**独立复核后的加固(commit `73c7015`)**
 
-**升级注意**:已在用的 SSH 数据源升级后若不补 `ssh_host_key`,同步与连接测试会以明确错误失败(fail-closed 是本修复的目的);`ssh_host_key` 目前只走 API(`ssh_host`/`ssh_user`/`ssh_private_key` 等本来就只走 API,前端没有 SSH 表单)。
+主修复完成后由独立子代理对 `b06249d` 做了对抗式复核(读 x/crypto v0.48.0 与 pgx v5.9.1 源码,并以 `go test -overlay` 探针实测,未改动仓库文件),确认 H7 的核心目标达成(无绕过路径、握手/取消/限额语义正确),同时指出四处缺口,均已修复:
+
+1. **失败的 `Open` 泄漏隧道(中危,实测复现)**:`mysql`/`starrocks` 在隧道已建立后因 DSN 被拒(如 `extra_connection_parameters=timeout=zzz`,现有校验只挡 `allowAllFiles`)而返回,`d.sshClient` 与 `RegisterDialContext` 注册的 dialer 都留在进程里——驱动没被返回就没有 `Close` 可调。现由 `Open` 自己在错误路径 `closeTunnel()`,`Close` 同时 `DeregisterDialContext`。新增跨驱动回归用例 `TestDriverOpenReleasesTheSSHTunnel`(进程内堡垒机统计会话数,覆盖 MySQL 与 StarRocks);反向验证:删掉错误路径的 `closeTunnel()` ⇒ 两个子用例都变红。
+2. **SSH agent 回退不受握手上限约束(中危,可挂死)**:`SSH_AUTH_SOCK` 的 unix socket 没有 dial 超时,且 `Signers()` 在认证阶段读取,不受 SSH 连接 deadline 约束——agent 卡住会让握手越过 `SSHTimeout`,同步路径(不取消的 runner ctx)会一直占着实例额度。现 agent socket 用 `DialTimeout` 并以同一 deadline 设限。新增 `TestSSHHandshakeIsBoundedWhenTheAgentStalls`(服务端要求 publickey,client 必须问 agent);反向验证:还原为无超时的 `net.Dial` ⇒ 用例挂死并被 20s 超时判失败。
+3. **空摘要指纹被当成合法配置(低危)**:`SHA256:`/`MD5:` 会让配置检查通过、先建立 TCP/SSH 连接再报"host key mismatch"。现空摘要按畸形条目在 dial 前拒绝,并加入畸形条目用例。
+4. **连接测试占用额度但无 deadline(低-中危)**:目标接受连接后卡住数据库握手时,实例写权限者可用 10 个并发测试请求占满共享额度、饿死同步。现 `pingDataSource` 以 `dataSourcePingTimeout`(60s)设限——上限的是单次占用时长,不再是无限期。
+   - 复核同时指出:`CreateInstance(validate_only)` 的额度键取自请求里的 instance ID 与 `maximum_connections`,未创建的实例没有已存限额可用,因此"新 ID 即新桶"仍成立;这比修复前的"完全不限额"已收紧,但 §10 上一节"不再有旁路"的说法只对已存在实例成立,这里更正。
+   - 上一节关于 channel open 的描述也已更正为"限的是调用方的等待"。
 
 **仍未处理**:
 1. 没有 SSH 隧道的端到端 **schema 同步** 集成用例:新增集成用例走的是连接测试路径(`ValidateOnly`)。隧道内的实际查询由单元测试与驱动改动覆盖,未做真实 MySQL/PG 全同步用例。
 2. 写入数据源时不做 `ssh_host_key` 语法校验,畸形条目在首次连接(或连接测试)时报错。
 3. `D7` 的 ssh 项随本修复关闭;`util/ssl.go` 的默认 `InsecureSkipVerify`(M22)与 `SSH_AUTH_SOCK` 回退(M22)仍待处理。
+4. **被放弃的 channel open 仍会留在 `ssh.Client` 上**(低危,复核确认):`ssh.Client.DialContext` 只用 ctx 结束等待,不取消 open;每个被放弃的 open 留一个 goroutine 与 mux 条目,直到该驱动的隧道关闭为止。x/crypto 未提供带 ctx 的 open,要么接受(等待已有界、隧道关闭即释放),要么在超时时关闭整个 `ssh.Client`(会连带杀掉该实例其它连接,不做)。
+5. **已知主机行的 host 段不参与校验**(低危,复核确认):整段粘贴 known_hosts 会信任无关主机的密钥。这是"管理员可信、信任锚随实例"这一设计选择的直接后果,已在 `security-posture.md` 写明;若日后要收紧,需按 `ssh_host`+端口匹配 host 模式(含 `[host]:port`、通配与哈希行)。
+6. **`DeadlineConn` 的语义不是 `net.Conn` 等价**(低危,复核确认):到期关隧道而非返回 `net.Error` 超时,pgx 的 `peekMessage` 因此走 `asyncClose`,被取消的查询会丢弃池中连接并为 `CancelRequest` 再开一条隧道。安全但更重;若要贴近原生语义需要给 `chanConn` 套一层可取消的读。
+7. **`chanConn.Close()` 可能阻塞**(低危,复核仅静态确认):channel close 要经 transport 写包,若对端停止读取导致发送缓冲写满,`DeadlineConn` 的关隧道与读取都可能卡住;未能构造出该场景。属 x/crypto `chanConn` 的既有性质。
+8. 其余复核未修项:`PortFIFO`/`sshPortSize` 仍是无用死代码;隧道内 MySQL/StarRocks 用裸 `chanConn`,若 DSN 带 `readTimeout`/`writeTimeout` 会因 `SetReadDeadline` 不支持而立即失败(既有行为,M20/L20 家族)。
