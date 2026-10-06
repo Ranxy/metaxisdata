@@ -127,11 +127,13 @@
 - **修复**:拒绝 `allUsers` 绑定任何含管理权限的角色;写校验 fail-closed。
 
 ### M10. OpenLineage 派生链接无 scheme 校验:`javascript:` 存储型 XSS
+- **状态**:**已修复**(2026-10-06,commit `6b99c01`;服务端派生链接与前端 `:href` 各自做 scheme/host 白名单,修复内容与验证见 §10)。
 - **证据**:`backend/plugin/openlineage/airflow_links.go:48-56`(`runLogURL := strings.TrimSpace(facet.TaskInstance.LogURL)`,仅 TrimSpace);`frontend/src/pages/openlineage/OpenLineageRunDetailPage.vue:9` 与 `OpenLineageTaskDetailPage.vue:9` 直接 `:href` 绑定;数据源是持 ingestion key 即可写的原始事件 facet。
 - **攻击场景**:被入侵/恶意的 Airflow 提交 `log_url = "javascript:…"`,受害成员在运行详情页点"打开运行日志"即在 SPA 源执行脚本——同源调用 ConnectRPC 全部通过 CSRF 检查,HttpOnly cookie 无济于事,以受害者身份读全部元数据/执行管理员操作。下限也是服务端数据决定的任意链接注入(钓鱼)。
 - **修复**:后端派生链接只保留 http/https 且 host 非空;前端 `:href` 统一经 URL 白名单再绑定(与 M14 是同一债务的两个面)。
 
 ### M11. 全仓缺失 CSP 与点击劫持防护:`/device` 审批页可被 iframe 劫持
+- **状态**:**已修复**(2026-10-06,commit `6b99c01`;全站中间件统一下发安全响应头,`script-src 'self'` 未放松,修复内容与验证见 §10)。
 - **证据**:全仓(排除 node_modules)对 `Content-Security-Policy`/`X-Frame-Options` 0 命中;SPA 由裸 `http.FileServer` 提供(`server_frontend_embed.go:35-45`),echo 中间件无 `middleware.Secure()`。
 - **攻击场景**:攻击者自建 device login 拿 user_code,把 `/device?user_code=…` 框进诱导页;external_url 为 https 时 cookie 为 `SameSite=None; Secure`(header.go:84-89),frame 内 cookie 照发、ConnectRPC 同源请求 CSRF 检查通过,诱点"批准"即取得受害者身份的 7 天 CLI token。CSP 同时是 M10 的第二道防线。
 - **修复**:统一安全响应头:`default-src 'self'; script-src 'self'; frame-ancestors 'none'` + `X-Frame-Options: DENY` + `X-Content-Type-Options: nosniff`。
@@ -338,7 +340,7 @@
 **P1(近期,利用条件明确)**
 7. M3/M4/M5:限流键改真实 IP + 账号/源双计数;吊销改持久化水位线;源级 CPU 上限——**已完成**(commit `e9bc802`;吊销实现为按 jti 的持久化表而非账号水位线,M7 的"停用/恢复水位线"仍待办,见 §10);
 8. M7:SSO 不自动 undelete + `revoked_at` 水位线;
-9. M10/M11:airflow 链接 scheme 白名单 + 统一安全响应头(CSP/frame-ancestors);
+9. M10/M11:airflow 链接 scheme 白名单 + 统一安全响应头(CSP/frame-ancestors)——**已完成**(commit `6b99c01`,见 §10);
 10. M12/M13:CLI `CheckRedirect` + Windows 打开器替换 + scheme 校验——**已完成**(commit `f3674ec`,加固 `2f289cd`、`9f87299`,见 §10);
 11. M8/M9:acw↔permission 互斥测试 + allUsers 禁绑管理角色——M9 已完成(实现为 allUsers 完全不可编辑,见 §10);M8 待办。
 
@@ -761,3 +763,36 @@ M9 落地后由独立子代理对 `cb40791` 做了对抗式只读复核(读 conn
 2. **未加"打开前人工确认"**:会让无人值守/脚本化的 `mxd auth login` 多一步交互;URL 与 user code 本来就打印给用户并提示"不是你发起的请求就不要批准",确认的语义已经由页面上的显式批准承担。
 3. **跨主机重定向由"静默带 token 跟随"变为"直接失败"**:若某部署确实依赖入口把 API 域名 302 到另一个域名,需要把 `--server` 改指最终地址;错误信息里给出两个 host,便于定位。host 比较是精确字符串:异端口(用例钉住 `:8443` 一例)以及大写、尾点、显式默认端口、IPv6 展开这类等价写法都按异 host 拒绝,方向是 fail-closed,但会给"代理给出带显式默认端口的绝对 Location"的部署带来一次失败。
 4. **只改了 CLI 自己的 HTTP 客户端**:`cli/` 内除 `client.New` 外没有第二处 `http.Client`(`grep` 确认),新增出站请求必须复用该构造函数才能继承本策略。
+
+### 2026-10-06 —— M10、M11 已修复(commit `6b99c01`)
+
+**M10:派生链接只保留 web 地址**(`backend/plugin/openlineage/airflow_links.go`、`frontend/src/utils/safeUrl.ts`)
+
+- 服务端 `DeriveAirflowLinks` 不再只做 `TrimSpace`:新增 `safeExternalURL`,只接受 scheme ∈ {http, https}(`url.Parse` 已把 scheme 小写化,故大小写不敏感)且 host 非空(`Hostname() != ""`,`http://:8080` 一类只写了端口的写法不通过)的 URL,其余一律返回空,并返回 `url.Parse().String()` 的规范化结果。链接是读取时从 `raw_payload` 现算的,没有落库副本,所以既不需要迁移,也不存在"旧数据绕过修复"的问题;`AirflowRunLogUrl` 为空时 `AirflowDagUrl` 也不再从它派生,前端连按钮都不渲染。
+- 前端新增 `utils/safeUrl.ts` 的 `safeExternalUrl`:用 WHATWG `URL` 解析后只放行 `http:`/`https:`。特殊 scheme 在缺 host 时解析直接抛错(`http://:8080/x`、`https:`、相对路径、`//host/path` 都如此),所以协议检查就是全部白名单;返回 `parsed.href` 规范化结果。两个 OL 详情页改为 `v-if` + `:href` 绑定 `computed(() => safeExternalUrl(...))`,不再直接绑定 proto 字段——这是服务端哪天漏一处时的第二道闸,也是 `§5.4` 提到的那类统一白名单在 SPA 侧的落点。
+
+**M11:统一安全响应头**(`backend/server/echo_routes.go`、`frontend/vite.config.ts`、`frontend/vitest.config.ts`)
+
+- `configureEchoRouters` 在 `recoverMiddleware` 之后接入 `middleware.SecureWithConfig`,因此**每个**响应(SPA 文档、客户端路由回落、REST/Connect、错误响应)都带同一份策略:`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self'; object-src 'none'; frame-ancestors 'none'`,外加 `X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`。M11 的 iframe 劫持路径(`/device?user_code=…` 是客户端路由,回落成同一份 index.html)由 `frame-ancestors 'none'` + `DENY` 关闭。
+- 两处刻意选择写进了注释并有测试钉住:`X-XSS-Protection` 显式留空(该头已废弃,只在仍识别它的旧浏览器里有反作用);不设 HSTS——它需要一个可信的 https 信号,而这个中间件会把调用方自带的 `X-Forwarded-Proto` 当作一个(属 M1 家族的可伪造输入),https 部署应由外层反代自己下发。
+- 三处放宽是 SPA 的最低需要:Vue 的 `:style` 绑定与 monaco-editor 运行期注入样式表需要 `style-src 'unsafe-inline'`;monaco 的图标是 `data:` 图片(`img-src`);monaco 的 editor worker 是同源 module worker(`worker-src`,也避免日后收紧 `default-src` 时把它悄悄打断)。`script-src` 里既没有 `'unsafe-inline'` 也没有 `'unsafe-eval'`。
+- **CSP 的前置修复(否则整站文案会被打掉)**:vue-i18n 的 esm-bundler 构建在未开 JIT 时由 `new Function` 编译消息,`script-src 'self'` 会以 `EvalError` 拒绝,`t()` 全线抛错、界面只剩空壳。按官方 CSP 方案在 `vite.config.ts` 与 `vitest.config.ts` 加 `define: { __INTLIFY_JIT_COMPILATION__: true }`:消息编译成 AST 后解释执行,不用 eval;两个配置都设是为了让测试与产物走同一条代码路径(否则单测走 eval 路径、产物走 JIT 路径,差异测不出来)。
+- Vite dev server 自己提供 SPA 页面,不发这些头;开发态不受影响,这一取舍写进了 `security-posture.md`。
+
+**回归测试**
+
+- 单元 `backend/plugin/openlineage/airflow_links_test.go`:表驱动覆盖 12 种非 web 形态(`javascript:` 两种大小写、`data:`、`file:`、协议相对、相对路径、空 host、仅端口、无 host 的 scheme、纯空白与仅换行、URL 内控制字符)与 3 种合法 web 形态(大写 scheme、首尾空白、带 userinfo),后者同时断言派生出的 DagURL。
+- 单元 `backend/server/security_headers_test.go`:对 dev/prod 两个真实 router 的 SPA 文档与 API 响应分别断言 `nosniff`、`DENY`、无 `X-XSS-Protection`,并把 CSP 解析成指令表逐条比较;另一个用例整份钉住策略字符串,防止日后被悄悄放宽。
+- 单元 `frontend/src/utils/safeUrl.test.ts`:14 条,合法 http/https(大写 scheme、首尾空白、userinfo)与 12 种拒绝形态;`pnpm test:coverage` 下该文件 100% 行/分支。
+- 集成(真实服务器 + PostgreSQL)`TestOpenLineageAirflowLinksRejectNonWebSchemesRealServerIntegration`:用 ingestion key 真投递 `log_url = "javascript:…"` 的事件,再以管理员读 `ListOpenLineageRuns`,要求 `airflowRunLogUrl`/`airflowDagUrl` 均为空;同一用例投递真实 Airflow 地址,要求链接原样返回、DagURL 派生正确——覆盖"摄取 → 存储 → API 转换"整链,而不只是插件函数。
+- **反向验证**:把 `safeExternalURL` 还原成 `TrimSpace` ⇒ 上述集成用例失败(`Should be empty, but was javascript:alert(document.cookie)`);撤掉 `SecureWithConfig` 那段 ⇒ 头用例四条全红(`expected: "nosniff", actual: ""`);用改动前的产物(仍含 `new Function`)套同一份 CSP 用无头 Chrome 加载 ⇒ 控制台 `EvalError: Evaluating a string as JavaScript violates the following Content Sec…`,DOM 只剩 2.8KB、无任何文案,而修复后的产物在同样 CSP 下渲染出完整登录页且控制台零违规、零 `EvalError`。
+- 端到端(真实 `-tags "release embed_frontend"` 二进制 + 本地 PostgreSQL):`curl` 确认 `/`、`/device?user_code=…`(客户端路由回落)与 400 错误响应都带完整头;无头 Chrome 在 CSP 下渲染出完整登录页(标题、按钮、图标、字体均正常)。
+
+**残余(本轮未处理)**
+
+1. `style-src 'unsafe-inline'` 仍是放宽项:Vue 的 `:style` 与 monaco 都需要它,要收紧得先把动态样式改成 class 或拆 `style-src-attr`,属前端构建层改动,不在本轮安全修复范围。
+2. 头部对所有响应统一下发(含 JSON),没有按路由区分;HSTS 未设置,https 终结部署仍需外层反代自行下发(M11 未涉及)。
+3. 白名单只在"服务端派生的链接"这一处落地(`airflow_links.go`);`§5.4` 设想的统一出站/URL 校验层里,CLI 打开浏览器与 LLM `base_url` 两处仍按路线图分属 M12/M13/M23。
+4. dev profile 的页面由 Vite 提供、不带 CSP;要覆盖开发态需在 vite dev server 或开发环境反代上加头,尚未做。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`、`make test-integration-smoke`(真实 PostgreSQL + MySQL + migrator 全绿,含新增的 Airflow 链接集成用例)、`release` 与 `-tags "release embed_frontend"` 构建;前端 `biome:check`、`lint`、`i18n`、`type-check`、`test run`、`test:coverage`、`build` 全绿。
