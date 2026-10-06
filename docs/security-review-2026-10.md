@@ -42,7 +42,7 @@
 - **修复**:注册默认 invite-only;开启时加审批/限流/告警;`disallow_signup` 作为显式安装选择而非空默认值。
 
 ### H3. SSO 身份仅按邮箱匹配 + 自助改邮箱无需当前密码:预占邮箱劫持账号
-- **状态**:**已修复**(2026-10-03,commit `bb4cb7e`;修复内容与验证见 §10,末条为随后的可选"以邮箱作为 SSO 身份"开关)。修复方式与原建议有一处差异:改邮箱由"要求当前密码"改为"仅 `users.update` 持有者(管理员)可改",本人亦同——邮箱是账号在工作区外被识别的身份,属管理字段。
+- **状态**:**已修复**(2026-10-03,commit `bb4cb7e`;修复内容与验证见 §10,末条为随后按 provider 可选的"以邮箱作为 SSO 身份"及一人多绑定,commit `5766be2`)。修复方式与原建议有一处差异:改邮箱由"要求当前密码"改为"仅 `users.update` 持有者(管理员)可改",本人亦同——邮箱是账号在工作区外被识别的身份,属管理字段。
 - **证据**:`backend/api/v1/auth_service.go:386-405`(`GetUserByEmail(email)` 命中即登录,用户行不保存任何 IdP subject 绑定,且未校验 IdP 的 `email_verified`);`backend/api/v1/user_service.go:352-364`(自更新邮箱路径不要求 `current_password`,与 `password` 路径 373-380 的对照);`backend/api/v1/auth_service.go:449`(IdP 组按 `Email == group || Title == group` 匹配,可变标题参与)。
 - **攻击场景**:A(自助注册,依赖 H2 默认开启)把邮箱改为 `ceo@corp.com`(`enforce_identity_domain` 白名单内亦可);B 首次 SSO 登录被匹配进 A 的账号行,A 始终握有该行密码。管理员按邮箱给"该员工"授权后角色一并被 A 继承。组名/标题碰撞可造成角色误授。
 - **修复**:登录校验 IdP 主体(存储 `idp_id+subject` 并比对),邮箱仅作展示;自助改邮箱要求当前密码;IdP 组匹配只用稳定标识,标题不参与。
@@ -416,7 +416,7 @@
 
 **回归测试**
 
-- 单元:`backend/plugin/idp/oauth2/oauth2_test.go` 断言 subject 从独立 claim 映射(`identifier=email`、`subject=sub`),缺 `fieldMapping.subject` 时构造失败,`subject == identifier` 的退化配置也被拒绝。
+- 单元:`backend/plugin/idp/oauth2/oauth2_test.go` 断言 subject 从独立 claim 映射(`identifier=email`、`subject=sub`),缺 `fieldMapping.subject` 时构造失败,`subject == identifier` 的退化配置也被拒绝。(这两条校验后来从插件移到登录服务,只有那里知道工作区名单,见 §10 末条。)
 - 集成(真实服务器 + 假 OAuth2 IdP):`TestSSOLoginBindsToTheIdentityProviderSubjectRealServerIntegration` 在测试进程内起 token/userinfo 桩服务、直接向元数据库写入 `idp` 行,覆盖五条:首次登录建立绑定并被 `principal.idp_subject` 记录;他人预占的邮箱不被接管(`FailedPrecondition`,且该行绑定仍为空);管理员删除占位账号后地址释放、SSO 可建立新绑定;重复登录按绑定解析而非邮箱 claim(管理员改邮箱后仍是同一账号与同一 `users/{id}`);被停用账号不被 SSO 复活。
 - 集成:`TestUpdateUserEmailRequiresAdminRealServerIntegration` 覆盖成员改自己邮箱 403 且原邮箱仍可登录、成员仍可改自己 title、管理员可改他人邮箱(旧邮箱随即登录失败)、被授予 workspaceAdmin 后可改自己邮箱。
 - **反向验证**:临时删除 `UpdateUser` 的 email 权限检查、并让 SSO 重新按邮箱采纳既有账号后,上述两条用例确实失败(`an address taken by someone else is not handed over`、`a member cannot move their own address`);恢复修复后全部通过。
@@ -425,27 +425,52 @@
 
 **残余(本轮未处理)**:
 
-1. IdP 的 `email_verified` 仍未校验(H3 证据中列出):主体绑定后邮箱不再决定账号归属,因此它不再构成接管路径;但当 provider 允许未验证的自选邮箱时,"管理员按邮箱给新账号授权"仍可能授给攻击者的新账号。补齐需要一个 claim 映射字段,而当前没有可配置 IdP 的 API/UI,故未在本轮加映射,记录备查。注意:下文(commit `2ccaac0`)新增的可选开关会让这条残余在开启后成为**运维显式接受**的风险。
+1. IdP 的 `email_verified` 仍未校验(H3 证据中列出):主体绑定后邮箱不再决定账号归属,因此它不再构成接管路径;但当 provider 允许未验证的自选邮箱时,"管理员按邮箱给新账号授权"仍可能授给攻击者的新账号。补齐需要一个 claim 映射字段,而当前没有可配置 IdP 的 API/UI,故未在本轮加映射,记录备查。注意:下文(commit `5766be2`)新增的按 provider 可选开关会让这条残余在列入某 provider 后成为**运维显式接受**的风险。
 2. provider 侧的 `skip_tls_verify` 与"无条件信任 userinfo 返回的主体"叠加,能中间人的网络对手即可伪造任意 subject 接管已绑定账号(M22/D7 家族)。
-3. 没有"重新绑定"API:未绑定账号只能改地址或删除后由 SSO 新建,角色与历史不随之迁移(下文的可选开关为老账号提供了另一条路);地址绑定与稳定 subject 共用同一列,改映射后同样只能删除重建。
-4. 地址被回收再分配、或 provider 允许用户自选/复用地址时,地址身份会把人送进旧账号;开启开关的 UI 警告与本节记录了这一前提。
+3. 没有管理绑定的 API:未绑定账号只能改地址或删除后由 SSO 新建(角色与历史不随之迁移,下文的按 provider 开关为老账号提供了另一条路),`principal_idp_binding` 的解绑/改绑同样只能删号重建或直接改库。
+4. 地址被回收再分配、或 provider 允许用户自选/复用地址时,地址身份会把人送进旧账号;列入 provider 时的 UI 警告与本节记录了这一前提。
 
 **仍未处理**:H1/H2/H6/H7 与 M/L/I/D 系列按 §8 路线图待办。
 
-### 2026-10-03 —— H3 补充:可选的"以邮箱作为 SSO 身份"(commit `2ccaac0`)
+### 2026-10-06 —— H3 补充:按 provider 开启"以邮箱作为 SSO 身份",一人可绑多个 provider
 
-上面的修复要求 provider 给出稳定 subject、且未绑定账号一律不采纳。对"provider 只暴露邮箱声明"或"SSO 账号早于绑定列存在"的部署,这两条都会挡住正常登录。按运维选择补一个开关(`allow_sso_email_identity`,Settings → General,默认关闭):
+最初的修复要求 provider 给出稳定 subject、未绑定账号一律不采纳,且一个账号只能绑一个 `(provider, subject)`。两处运维现实与之冲突:(a) provider 只暴露邮箱声明,或 SSO 账号早于绑定列存在;(b) 一个工作区可以配置多个 provider,同一个人可能在不止一个里(或整批用户从一个 provider 迁到另一个)——此时第二个 provider 的登录会被 `already linked ... under another subject` 拒绝,换 provider 只能删号重建(丢角色与历史)。本条目按运维选择处理这两点。
 
-- **开启后**:`fieldMapping.subject` 变为可选,登录改绑定到小写化的邮箱声明;已存在同邮箱账号时**接管**该账号——写入绑定,并把原密码替换为随机值。由于同时刷新了密码变更时间,占位者此前签发的会话一并失效(`TokenAuthenticator.Resolve` 按 password change time 判废)。
-- **仍然拒绝**的三种情况:该账号已绑定到另一个身份(另一个 provider 或另一个 subject);该账号不是 END_USER(避免把服务账号的 API key 交给 provider 送来的任意人);账号已被软删除、被改地址或在解析期间被并发改动。后三种由同一条 UPDATE 的谓词保证(`deleted = FALSE AND idp_resource_id = '' AND type = 'END_USER' AND LOWER(email) = LOWER($7)`),不满足即拒绝并要求重试,而不是按先前读到的行去接管。
-- **提示用户**:登录响应新增 `account_adopted`([auth_service.proto](proto/v1/v1/auth_service.proto)),前端登录页据此弹出"原密码已失效,请以后使用 SSO 登录";同时写 `slog.Warn` 与审计行(Login 带 audit 注解,响应入账)。字段名刻意不含 `password`/`session` 等审计脱敏关键字,否则这次接管会在账本里被脱敏掉([audit_test.go](backend/api/v1/audit_test.go) 钉住这一点)。
-- **该提示今天到不了终端用户**:SPA 的 SSO 按钮仍是禁用状态、`/oauth/callback` 没有前端路由、CLI 走设备登录(D6),即没有任何随包客户端会发起 SSO 登录,`account_adopted` 目前只对手写 REST 客户端可见。真正可靠的信道是运维侧:`slog.Warn` 与审计行记下"哪个账号被哪次 SSO 登录接管"。密码登录失败仍返回统一的"邮箱或密码不正确",避免新增"该邮箱是 SSO 账号"的枚举预言机(与 M5 的 dummy bcrypt 同一考虑);代价是从未走过 SSO 的被接管用户只能从通用报错中看出密码失效。
-- **安全论证**(运维开启即接受):开关是管理员设置项,provider 配置本身也是管理员手写,二者都需 `settings.update`/DB 写入权限;开启后残留的只有"provider 允许未验证的自选邮箱"(上文残余 1),UI 在开启时给出红色警示文案,`security-posture.md` 记录同一取舍。
-- **策略位置**:subject 校验从 OAuth2 插件移到登录服务(只有那里知道工作区开关),纯函数 `validateIDPSubjectMapping`/`idpLoginSubject` 单测覆盖([sso_identity.go](backend/api/v1/sso_identity.go)、[sso_identity_test.go](backend/api/v1/sso_identity_test.go));插件只校验与本插件通信相关的字段。
-- **独立复核后的三处加固**(模型 `deepseek-v4.1-flash`,两轮只读复核):
-  1. **"失效"不能被后续登录悄悄还原**:原先每次登录都把整列 `profile` 从本请求持有的行写回,而 store 的用户缓存没有 TTL,多副本/并发下会把手里的旧 profile(含旧的密码变更时间)写回去,等于复活前任的会话。现改为 `Store.RecordLastLogin` 用 `jsonb_set` 只写 `lastLoginTime`(键名由 [principal_test.go](backend/store/principal_test.go) 对 protojson 钉住),设备登录路径同样改用该方法。这一改动同时消除了"接管后再次登录把密码变更时间抹掉"的隐患。
-  2. **被拒绝的登录不再烧 bcrypt**:随机密码哈希改为真正需要时才生成(接管或建号),避免未认证者用"必然被拒"的 SSO 请求白耗 CPU(M5 家族)。
-  3. **错误码与提示**:接管的唯一约束冲突映射为 `FailedPrecondition`("登录期间账号已变更,请重试")而不是 `Internal`;绑定被另一 subject 占用时的提示改为"管理员需删除该账号后重新绑定",与"改映射后老账号需删除重建"这一补救路径一致。
-- **测试**:`TestSSOEmailIdentityAdoptsAnAccountRealServerIntegration` 覆盖五条——开关关闭时**用映射了 subject 的 provider**验证拒绝(否则会因"配置缺 subject"而拒,测不到真正的采纳规则);开启后接管同一账号(`account_adopted` 为真、地址大小写归一到小写、原密码与旧 token 均失效、`idp_subject` 落库);账号已被另一身份绑定时不接管;全新账号登录时 `account_adopted` 为假;服务账号不接管。默认值在 `restoreSSOEmailIdentity` 里断言为关。
-- **运维注意**:(1) 设置与 `idp` 配置都走进程内 LRU(无 TTL、无跨副本失效),关闭开关或改正 provider 映射后需让其它副本重启才能生效(D2 家族的多副本约定);(2) 地址身份一旦启用,邮箱被回收再分配给新人时会直接登录进旧账号——这正是 UI 红字警告要求 provider 验证并独占地址的原因;(3) 之后若改用稳定 subject 映射,按地址绑定的老账号会因"已绑定另一 subject"被拒,补救是删除该账号让 SSO 以新 subject 重建(角色需重新授予)。
-- **门禁**:`gofmt`、`golangci-lint`(0 issues)、`go test -race ./...`、`make test-integration` 全绿;前端 `biome:check`/`lint`/`i18n`/`type-check`/`test run`(304 passed)、release 构建通过。
+**一人多绑定**
+
+- 新增 `principal_idp_binding(principal_id, idp_resource_id, subject)`,主键 `(idp_resource_id, subject)`(一个 subject 即该 provider 的一个人),另加 `principal_id` 索引。表在 [LATEST.sql](backend/migrator/migration/LATEST.sql),读取与写入集中在 [idp_binding.go](backend/store/idp_binding.go)。**迁移文件已合并为一个 `0012##principal_idp_binding.sql`**:它原本是「给 principal 加两列」,后来又加了一个 0013 把绑定搬进表并删列;既然两个版本都未上线,0012 直接重写为最终形态(建表),0013 删除——任何库里都不存在写进那两列的绑定,也不再有这两列。本地已跑过旧 0012 的库属于未上线环境,重建即可。
+- 登录先按 `(idp, subject)` 查绑定表,命中即登录;查不到再按邮箱找**活跃**账号(软删除的行不参与,与部分唯一邮箱索引同一约定)。
+- **已有绑定的账号再加一个 provider**:只加一条绑定,`account_adopted` 为假、密码不动、先签发的会话不受影响——账号本来就不是靠密码进出的,没有需要作废的东西。**原本没有任何绑定的账号**被接管时才是 adoption:密码置为随机、刷新密码变更时间,前任会话一并失效(`TokenAuthenticator.Resolve` 按 password change time 判废)。
+- `BindAccountForSSO` 在**一个事务**里完成:先看该 subject 是否已属于别的账号,再以 `SELECT ... WHERE deleted = FALSE AND type = 'END_USER' AND LOWER(email) = LOWER($3) FOR UPDATE` 复核账号,然后插入绑定并按需作废密码。账号被删除、被改地址、被并发改动,或 subject 已绑到别的账号,一律 `FailedPrecondition` 要求重试,不会按先前读到的行去接管。
+
+**开关按 provider 收敛**
+
+- 设置由工作区级 bool 改为 `sso_email_identity_idps`(重复字段;API 用 `idps/{idp}` 资源名,store 存裸 resource id,`FormatIdentityProviderUID` 负责转换,**已预留旧字段号 9/17**)。只对列出的 provider 生效:同一工作区里另有"信任程度较低"的 provider 时,不会连它一起放行。
+- 列出后:`fieldMapping.subject` 变为可选,登录改绑定到小写化的邮箱声明;同邮箱的活跃账号因此可经该 provider 登录(无绑定的账号被接管)。未列出的 provider 保持默认:邮箱不是身份,subject 必需且不得等同于 identifier。
+- 仍然拒绝:非 END_USER(避免把服务账号的 API key 交给 provider 送来的任意人);软删除的账号;地址已变或并发改动(见上)。未列出的 provider 仍走"拒绝 + 管理员移地址或删号"的旧路径。
+
+**提示用户**
+
+- 登录响应 `account_adopted`([auth_service.proto](proto/v1/v1/auth_service.proto))为真时,前端登录页弹出"原密码已失效,请以后使用 SSO 登录";同时写 `slog.Warn` 与审计行(Login 带 audit 注解,响应入账)。字段名刻意不含 `password`/`session` 等审计脱敏关键字,否则这次接管会在永久账本里被脱敏掉([audit_test.go](backend/api/v1/audit_test.go) 钉住)。
+- **该提示今天到不了终端用户**:SPA 的 SSO 按钮仍禁用、`/oauth/callback` 没有前端路由、CLI 走设备登录(D6),没有任何随包客户端会发起 SSO 登录,`account_adopted` 目前只对手写 REST 客户端可见。真正可靠的信道是运维侧:`slog.Warn` 与审计行记下"哪个账号被哪个 provider 的哪次登录接管"。密码登录失败仍返回统一的"邮箱或密码不正确",避免新增"该邮箱是 SSO 账号"的枚举预言机(与 M5 的 dummy bcrypt 同一考虑);代价是从未走过 SSO 的被接管用户只能从通用报错中看出密码失效。
+
+**独立复核(两轮只读,模型 `deepseek-v4.1-flash`)已修掉的问题**
+
+1. **"失效"不能被后续登录悄悄还原**:原先每次登录把整列 `profile` 从本请求持有的行写回,而 store 用户缓存无 TTL,多副本/并发下会写回旧 profile(含旧密码变更时间),等于复活前任会话。改为 `Store.RecordLastLogin` 用 `jsonb_set` 只写 `lastLoginTime`(键名由 [principal_test.go](backend/store/principal_test.go) 对 protojson 钉住),设备登录同改。
+2. **被拒登录不再烧 bcrypt**:随机密码哈希改为真正需要时才生成(接管或建号),避免未认证者用必然被拒的 SSO 请求白耗 CPU(M5 家族)。
+3. **错误码**:绑定事务的冲突映射为 `FailedPrecondition`("账号已变更/已被绑定,请重试")而非 `Internal`。
+4. **测试不能因错误原因通过**:原"开关关闭时拒绝"的子测试实际死在"配置缺 subject"上;现在每条子测试显式声明自己依赖的 provider 列表,并按列表语义断言。
+
+**测试**
+
+- `TestSSOEmailIdentityAdoptsAnAccountRealServerIntegration`:未列出的 provider 不得接管(且原密码可用);列出的 provider 接管账号(`account_adopted` 为真、地址大小写归一到小写、原密码与旧 token 均失效、绑定表落库);**第二个 provider 为同一账号加一条绑定**(同一 `users/{id}`、`account_adopted` 为假、第一个 provider 签发的 token 仍可用、绑定表两条);新建账号时 `account_adopted` 为假;服务账号不接管。默认值在 `restoreSSOEmailIdentityIDPs` 中断言为空。
+- `TestSSOLoginBindsToTheIdentityProviderSubjectRealServerIntegration` 的绑定断言改为读 `principal_idp_binding`。
+- 门禁:`gofmt`、`golangci-lint`(0 issues)、`go test -race ./...`、`make test-integration`(真实 PG+MySQL+migrator;migrator 侧覆盖 LATEST.sql 新装、增量链升级、以及「LATEST.sql 与增量链描述同一份 schema」的一致性用例)全绿;前端 `biome:check`/`lint`/`i18n`/`type-check`/`test run`(304 passed)、release 构建通过。
+
+**运维注意**
+
+1. 设置与 `idp` 配置都走进程内 LRU(无 TTL、无跨副本失效),改动后需让其它副本重启才生效(D2 家族的多副本约定)。
+2. 地址身份一旦列入某 provider,该 provider 的邮箱被回收再分配给新人时会直接进入旧账号;这正是 UI 红字要求"provider 验证邮箱且同一地址只归属一个人"的原因。
+3. 删除 SSO 账号后其绑定仍留在表里,同一 subject 再登录会被判为"已停用"(需管理员 undelete);要彻底改绑,把旧账号删除后由 SSO 以新 subject 新建账号(角色需重新授予)。
+4. **把一个 provider 从名单里移除会锁死经它接管过的账号**:这些账号的密码是接管时写入的随机值,而移除后该 provider 的映射若没有可用 subject,登录在解析绑定之前就以"缺少 subject"失败,邮箱路径也关闭(账号有绑定)。补救是管理员给这些账号重设密码,或临时把它加回名单。错误文案已同时点出这两条出路,但"移除即撤销"这一语义要在开启前想清楚。
+5. 本次改动的独立复核还指出:`UpdateWorkspaceProfileSetting` 是整份设置的读-改-写(无行锁),若两人同时保存或客户端提交了陈旧的表单,可能把刚被移除的 provider 悄悄加回名单——这是该设置对象既有性质(所有字段共用一次整体保存),不是本次新增;真要收紧需要给设置加 etag/乐观并发。
