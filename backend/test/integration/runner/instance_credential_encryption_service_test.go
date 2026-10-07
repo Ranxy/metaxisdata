@@ -75,6 +75,19 @@ func TestStoredInstanceCredentialsAreEncryptedRealServerIntegration(t *testing.T
 		_, _ = env.DeleteInstance(ctx, other.GetName())
 	}()
 	require.NotEqual(t, adminCiphertext, storedCredentialCiphertext(t, env, otherID))
+
+	// A store resolving the deployment key against this database, which by now
+	// holds credentials, has to open one of them before it installs the cipher:
+	// that is what refuses a key that parses but reads nothing.
+	observer, err := store.New(ctx, env.MetadataPGURL)
+	require.NoError(t, err)
+	defer func() {
+		_ = observer.Close()
+	}()
+	hasCredentials, err := observer.HasStoredCredentials(ctx)
+	require.NoError(t, err)
+	require.True(t, hasCredentials, "the database holds an instance, so a key must not be minted for it")
+	require.NoError(t, observer.ResolveCipher(ctx, nil, nil))
 }
 
 func storedCredentialCiphertext(t *testing.T, env *integrationenv.ServiceEnv, instanceID string) string {

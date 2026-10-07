@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common/crypto"
@@ -168,6 +169,23 @@ func (f *fakeSettings) set(t *testing.T, value string) {
 	f.values[storepb.SettingName_ENCRYPTION_KEY] = value
 }
 
+// stubVerifier stands in for the startup check against stored credentials, so the
+// key lifecycle can be driven without a database.
+type stubVerifier struct {
+	err error
+	// verified records the ciphers it was asked about.
+	verified []*crypto.Cipher
+}
+
+func (s *stubVerifier) verifyCipher(_ context.Context, cipher *crypto.Cipher) error {
+	s.verified = append(s.verified, cipher)
+	return s.err
+}
+
+func okVerifier() *stubVerifier {
+	return &stubVerifier{}
+}
+
 // Without a key-encryption key the deployment is zero-config: the data key is
 // generated into the setting table and stays there in the clear.
 func TestLoadCredentialCipherKeepsTheKeyBareWithoutAKeyEncryptionKey(t *testing.T) {
@@ -177,7 +195,7 @@ func TestLoadCredentialCipherKeepsTheKeyBareWithoutAKeyEncryptionKey(t *testing.
 	settings := newFakeSettings()
 	settings.set(t, base64.StdEncoding.EncodeToString(key))
 
-	cipher, err := loadCredentialCipher(t.Context(), settings, nil, nil)
+	cipher, err := loadCredentialCipher(t.Context(), settings, okVerifier(), nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, base64.StdEncoding.EncodeToString(key), settings.stored(), "the key must not be rewritten")
 
@@ -199,7 +217,7 @@ func TestLoadCredentialCipherWrapsABareKey(t *testing.T) {
 	settings := newFakeSettings()
 	settings.set(t, base64.StdEncoding.EncodeToString(key))
 
-	cipher, err := loadCredentialCipher(t.Context(), settings, kek, nil)
+	cipher, err := loadCredentialCipher(t.Context(), settings, okVerifier(), kek, nil)
 	require.NoError(t, err)
 	require.True(t, crypto.IsCiphertext(settings.stored()), "the stored key must be wrapped")
 	require.NotContains(t, settings.stored(), base64.StdEncoding.EncodeToString(key))
@@ -207,7 +225,7 @@ func TestLoadCredentialCipherWrapsABareKey(t *testing.T) {
 	// A later startup with the same key-encryption key still resolves the same
 	// data key, and it is not rewritten a second time.
 	stored := settings.stored()
-	again, err := loadCredentialCipher(t.Context(), settings, kek, nil)
+	again, err := loadCredentialCipher(t.Context(), settings, okVerifier(), kek, nil)
 	require.NoError(t, err)
 	require.Equal(t, stored, settings.stored(), "a key already wrapped under the current key must be left alone")
 
@@ -232,13 +250,13 @@ func TestLoadCredentialCipherRewrapsUnderTheCurrentKey(t *testing.T) {
 	settings := newFakeSettings()
 	settings.set(t, wrapKey(t, retired, key))
 
-	cipher, err := loadCredentialCipher(t.Context(), settings, current, [][]byte{retired})
+	cipher, err := loadCredentialCipher(t.Context(), settings, okVerifier(), current, [][]byte{retired})
 	require.NoError(t, err)
 	require.True(t, crypto.IsCiphertext(settings.stored()))
 	require.NotEqual(t, wrapKey(t, retired, key), settings.stored(), "the stored key must be re-wrapped under the current key")
 
 	// The retired key is no longer needed, and the data key is unchanged.
-	_, err = loadCredentialCipher(t.Context(), settings, current, nil)
+	_, err = loadCredentialCipher(t.Context(), settings, okVerifier(), current, nil)
 	require.NoError(t, err)
 	encrypted, err := cipher.Encrypt("hunter2")
 	require.NoError(t, err)
@@ -258,7 +276,7 @@ func TestLoadCredentialCipherNeverWrapsUnderARetiredKey(t *testing.T) {
 	settings := newFakeSettings()
 	settings.set(t, base64.StdEncoding.EncodeToString(key))
 
-	_, err := loadCredentialCipher(t.Context(), settings, nil, [][]byte{retired})
+	_, err := loadCredentialCipher(t.Context(), settings, okVerifier(), nil, [][]byte{retired})
 	require.NoError(t, err)
 	require.Equal(t, base64.StdEncoding.EncodeToString(key), settings.stored(),
 		"the data key must stay bare when no current key-encryption key is configured")
@@ -274,6 +292,7 @@ func TestLoadCredentialCipherFailsClosed(t *testing.T) {
 
 	for name, tc := range map[string]struct {
 		settings *fakeSettings
+		verifier credentialVerifier
 		current  []byte
 		previous [][]byte
 		want     string
@@ -300,9 +319,54 @@ func TestLoadCredentialCipherFailsClosed(t *testing.T) {
 			want:     "neither a wrapped key nor base64",
 		},
 	} {
-		cipher, err := loadCredentialCipher(t.Context(), tc.settings, tc.current, tc.previous)
+		verifier := tc.verifier
+		if verifier == nil {
+			verifier = okVerifier()
+		}
+		cipher, err := loadCredentialCipher(t.Context(), tc.settings, verifier, tc.current, tc.previous)
 		require.Error(t, err, name)
 		require.Contains(t, err.Error(), tc.want, name)
 		require.Nil(t, cipher, name)
 	}
+}
+
+// The startup check decides whether a resolved key belongs to this deployment.
+// No stored credential means nothing to prove; one that opens means the key is the
+// right one, even beside a damaged row — a single unreadable row is the running
+// server's per-row problem, not a reason to refuse to start.
+func TestCheckCipherAgainstCandidates(t *testing.T) {
+	t.Parallel()
+
+	key := newTestKey(t)
+	cipher := mustCipher(t, key)
+
+	require.NoError(t, checkCipherAgainstCandidates(cipher, nil))
+
+	good := wrapKey(t, key, []byte("a credential"))
+	require.NoError(t, checkCipherAgainstCandidates(cipher, []string{good}))
+	require.NoError(t, checkCipherAgainstCandidates(cipher, []string{"v1:not-really", good}),
+		"a damaged row beside a readable one must not block startup")
+
+	err := checkCipherAgainstCandidates(cipher, []string{wrapKey(t, newTestKey(t), []byte("another deployment"))})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "does not belong to this deployment")
+}
+
+// A key that opens nothing must not be re-wrapped either: wrapping it under the
+// real key-encryption key would erase the evidence that it was substituted.
+func TestLoadCredentialCipherVerifiesBeforeItWraps(t *testing.T) {
+	t.Parallel()
+
+	key := newTestKey(t)
+	kek := newTestKey(t)
+	settings := newFakeSettings()
+	bare := base64.StdEncoding.EncodeToString(key)
+	settings.set(t, bare)
+
+	verifier := &stubVerifier{err: errors.New("the key opens nothing")}
+	cipher, err := loadCredentialCipher(t.Context(), settings, verifier, kek, nil)
+	require.Error(t, err)
+	require.Nil(t, cipher)
+	require.Len(t, verifier.verified, 1, "the key must be checked before it is stored")
+	require.Equal(t, bare, settings.stored(), "a key that opened nothing must not be re-wrapped")
 }

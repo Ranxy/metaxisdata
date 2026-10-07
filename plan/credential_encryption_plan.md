@@ -54,12 +54,21 @@ of the 32-byte `AUTH_SECRET`, stored as base64. Four properties came with that:
   re-wrapped under the current one in place, so rotating the KEK touches no
   credential.
 - **Fail closed.** An empty, unusable or unopenable `ENCRYPTION_KEY`, a wrapped
-  key with no KEK configured, or a KEK that opens nothing stops startup. Only a
-  fresh install generates the key, so a database that kept this workspace but
-  lost the row fails too, instead of being handed a new key that can read none of
-  its credentials. The server never serves a store whose cipher was not
-  installed: `credentialCipher()` errors, and every credential read and write
-  propagates that.
+  key with no KEK configured, or a KEK that opens nothing stops startup. A data
+  key is minted only while the database holds no instance and no LLM profile, so
+  a database that kept either but lost the row fails too, instead of being handed
+  a new key that can read none of its credentials. The server never serves a
+  store whose cipher was not installed: `credentialCipher()` errors, and every
+  credential read and write propagates that.
+- **A resolved key has to open a stored credential before it is used.** A key
+  edited by hand, or restored from another deployment, parses perfectly well; it
+  is refused because the startup check opens one credential the database already
+  holds — and refused *before* a configured KEK would re-wrap it, since otherwise
+  a substituted key would be blessed by being wrapped under the real one. No
+  stored credential means nothing to prove: a fresh install, or a database whose
+  credentials all predate this change. The check samples a bounded number of rows
+  and stops at the first that opens, so one damaged row remains the running
+  server's per-row error instead of a startup outage.
 - **The field table is typed and tested.** `credentialFields` pairs each
   plaintext field with its `*_ciphertext` counterpart and a name used in errors,
   and a guard test walks the stored messages: every `*_ciphertext` field must be
@@ -88,7 +97,10 @@ of the 32-byte `AUTH_SECRET`, stored as base64. Four properties came with that:
 - Unit (`backend/common/crypto`): round trip, fresh nonce per value, wrong key,
   edited nonce and tag, foreign formats, short values, key parsing.
 - Unit (`backend/store`): the per-row decrypt covers every field and names the
-  field and data source it failed on; a write carries no plaintext; a store with
+  field and data source it failed on; `checkCipherAgainstCandidates` accepts an
+  empty sample and a sample whose only readable row sits beside a damaged one,
+  rejects a sample no candidate opens, and a failed check leaves the stored key
+  untouched rather than re-wrapping it; a write carries no plaintext; a store with
   no cipher refuses to write; the `*_ciphertext` guard test; `unwrapDataKey`'s
   five branches; and `loadCredentialCipher` against an in-memory setting table —
   bare key with and without a key-encryption key, a key already wrapped under the
@@ -124,6 +136,9 @@ of the 32-byte `AUTH_SECRET`, stored as base64. Four properties came with that:
   signing key out is a separate decision.
 - **No data-key rotation.** Replacing the data key would require re-encrypting
   every credential, which nothing needs before the deployment ships.
+- **Nothing re-verifies the data key while the process runs.** The check is a
+  startup one and a running server keeps the cipher it resolved, so a write to the
+  `ENCRYPTION_KEY` row takes effect only at the next start — where it is refused.
 - **Three pre-existing paths still put a credential in the clear, unchanged.**
   An LLM profile's `base_url` is read from the row and used with the decrypted
   key, so database *write* access plus an admin session still has the server send

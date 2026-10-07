@@ -111,10 +111,27 @@ func TestEncryptInstanceWithoutACipherFails(t *testing.T) {
 // credentialWords are the name fragments that mean "this field carries a
 // credential". A test has no other handle on a new field — nothing but its name
 // says what it holds — so the list is deliberately broad, and any field matching
-// one of them has to be a registered half of a plaintext/ciphertext pair.
-var credentialWords = []string{"password", "passphrase", "secret", "token", "apikey", "api_key", "private_key"}
+// one of them has to be a registered half of a plaintext/ciphertext pair. It
+// starts from the words the audit redactor already treats as sensitive, because
+// the two lists disagreeing is how a field slips through both.
+var credentialWords = []string{
+	"password", "passwd", "pwd", "passphrase", "secret", "token", "credential",
+	"apikey", "api_key", "privatekey", "private_key", "keytab", "bearer",
+	"jwt", "session", "auth", "dsn", "connection_string", "key",
+}
+
+// unencryptedCredentialLikeFields are the fields whose names match a credential
+// word but hold material that is public by design, with the reason.
+var unencryptedCredentialLikeFields = map[string]string{
+	// A bastion's public host key is pinned, not hidden: it is what the SSH client
+	// compares the presented key against, and the operator pastes it in.
+	"ssh_host_key": "a public host key, not a credential",
+}
 
 func looksLikeACredential(name string) bool {
+	if _, ok := unencryptedCredentialLikeFields[name]; ok {
+		return false
+	}
 	name = strings.ToLower(name)
 	for _, word := range credentialWords {
 		if strings.Contains(name, word) {

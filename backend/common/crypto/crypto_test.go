@@ -131,9 +131,10 @@ func TestParseKey(t *testing.T) {
 
 	raw := strings.Repeat("k", KeySize)
 	for name, encoded := range map[string]string{
-		"raw":    raw,
-		"base64": base64.StdEncoding.EncodeToString([]byte(raw)),
-		"hex":    hex.EncodeToString([]byte(raw)),
+		"raw":             raw,
+		"base64":          base64.StdEncoding.EncodeToString([]byte(raw)),
+		"base64 unpadded": base64.RawStdEncoding.EncodeToString([]byte(raw)),
+		"hex":             hex.EncodeToString([]byte(raw)),
 	} {
 		key, err := ParseKey(encoded)
 		require.NoError(t, err, name)

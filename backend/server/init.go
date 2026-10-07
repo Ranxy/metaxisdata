@@ -42,12 +42,16 @@ func (s *Server) initializeSetting(ctx context.Context) error {
 		return err
 	}
 
-	// Initial credential encryption key, on a fresh install only. A database that
-	// already holds this workspace but not the key must not be handed a new one:
-	// every credential it kept was encrypted with the old key, so
-	// resolveCredentialCipher has to fail rather than let the server start on a key
-	// that can read none of them.
-	if firstTimeOnboarding {
+	// Initial credential encryption key, only when the database holds nothing a
+	// data key could already have encrypted. A database that kept an instance or an
+	// LLM profile but lost the key must not be handed a new one: every credential it
+	// kept was encrypted with the old key, so resolveCredentialCipher has to fail
+	// rather than let the server start on a key that can read none of them.
+	hasCredentials, err := s.store.HasStoredCredentials(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to check for stored credentials")
+	}
+	if !hasCredentials {
 		encryptionKey, err := crypto.GenerateKey()
 		if err != nil {
 			return errors.Wrap(err, "failed to generate the credential encryption key")

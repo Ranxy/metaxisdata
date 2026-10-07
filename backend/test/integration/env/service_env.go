@@ -851,6 +851,9 @@ func resolveObserverCipher(ctx context.Context, st *store.Store) error {
 	if err != nil {
 		return err
 	}
+	if current == nil && len(previous) > 0 {
+		return fmt.Errorf("%s is set without %s: a retired key can only open a wrapped credential key", crypto.PreviousKeyEnvironment, crypto.KeyEnvironment)
+	}
 	return st.ResolveCipher(ctx, current, previous)
 }
 
