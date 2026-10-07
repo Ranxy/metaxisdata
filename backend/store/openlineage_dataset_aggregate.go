@@ -135,7 +135,11 @@ func openLineageDatasetDeltas(replacements []openLineageRunDatasetReplacement) [
 				}
 			}
 		}
-		if delta.refDelta == 0 && delta.columnLineageRefDelta == 0 && len(delta.members) == 0 {
+		// A delta that would write nothing is dropped, but "no reference, no job and
+		// no value moved" is not the same as "nothing to write": a replacement that
+		// only moved a reference's event time cancels out and still has to take the
+		// newest event time of the dataset with it.
+		if delta.refDelta == 0 && delta.columnLineageRefDelta == 0 && len(delta.members) == 0 && !delta.removed && delta.lastSeen == nil {
 			continue
 		}
 		deltas = append(deltas, delta)

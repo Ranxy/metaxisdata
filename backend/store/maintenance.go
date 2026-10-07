@@ -62,9 +62,24 @@ func (s *Store) DeleteOpenLineageRunsBefore(ctx context.Context, cutoff time.Tim
 	if len(runGUIDs) == 0 {
 		return 0, nil
 	}
-	// The pruned tasks are reconciled first and in task-GUID order, which is the
-	// order the ingest path takes its task locks in: a prune and an ingest that
-	// share two tasks cannot deadlock on them.
+	// The pruned tasks are locked before their runs are deleted, in task-GUID order,
+	// and reconciled in that order later. Task locks come first in the ingest path
+	// too, which is what keeps the two from deadlocking: a producer re-delivering a
+	// run this prune is deleting takes its task lock and then waits for the run's
+	// row, so a prune that took the run's row first and only then wanted the task —
+	// as it used to, when the task lock was taken by the reconcile — was a cycle.
+	// The order is by ordinal because SELECT DISTINCT only allows sorting by a
+	// select-list entry, and the entry's collation is the column's own, "C".
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO openlineage_task (guid, job_namespace, job_name, job_type)
+		SELECT DISTINCT task_guid, job_namespace, job_name, job_type
+		FROM openlineage_run
+		WHERE event_time IS NOT NULL AND event_time < $1
+		ORDER BY 1
+		ON CONFLICT (job_namespace, job_name, job_type) DO UPDATE SET updated_at = openlineage_task.updated_at
+	`, cutoff); err != nil {
+		return 0, errors.Wrap(err, "failed to lock the pruned openlineage tasks")
+	}
 	slices.Sort(taskGUIDs)
 	// The dataset aggregates to reconcile are the ones the deleted references
 	// belonged to. They are staged in the database rather than read into the
@@ -124,18 +139,30 @@ func (s *Store) DeleteOpenLineageRunsBefore(ctx context.Context, cutoff time.Tim
 // are all gone. Ingestion maintains the aggregate and the retention prune rebuilds
 // the datasets it prunes, but a run deleted outside those paths keeps its
 // references' aggregate rows behind: the pages would then offer datasets the API
-// serves nothing for. Rows an ingest touched recently are left alone, because an
-// ingest that has not committed yet is invisible here and its row must not be
-// swept; a row last touched before olderThan has no writer in flight, so its
-// missing references mean the references are really gone.
+// serves nothing for.
+//
+// Two things keep a live dataset out of its way. A row an ingest touched recently is
+// left alone, and the rows it is about to delete are locked first, skipping any row a
+// writer still holds: a writer whose references are in flight but not committed is
+// invisible to the emptiness check, so its row must not be swept out from under it.
+// The age alone would not settle it, because updated_at records the writing
+// transaction's start: a transaction that began before the grace leaves a version that
+// still looks sweepable.
 func (s *Store) DeleteEmptyOpenLineageDatasets(ctx context.Context, olderThan time.Time) (int64, error) {
 	result, err := s.GetDB().ExecContext(ctx, `
 		DELETE FROM openlineage_dataset ds
-		WHERE ds.updated_at < $1
-			AND NOT EXISTS (
-				SELECT 1 FROM openlineage_run_dataset d
-				WHERE d.namespace = ds.namespace AND d.name = ds.name
-			)
+		USING (
+			SELECT candidate.namespace, candidate.name
+			FROM openlineage_dataset candidate
+			WHERE candidate.updated_at < $1
+				AND NOT EXISTS (
+					SELECT 1 FROM openlineage_run_dataset d
+					WHERE d.namespace = candidate.namespace AND d.name = candidate.name
+				)
+			ORDER BY candidate.namespace COLLATE "C", candidate.name COLLATE "C"
+			FOR UPDATE OF candidate SKIP LOCKED
+		) empty
+		WHERE ds.namespace = empty.namespace AND ds.name = empty.name
 	`, olderThan)
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to delete the empty openlineage datasets")

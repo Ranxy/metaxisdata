@@ -1207,8 +1207,19 @@ func TestOpenLineageDatasetAggregateMatchesAFullRecomputeRealServerIntegration(t
 	post(t, withoutIntegration(event("run-4", "job-4", nil, []string{"public.d"}, nil)))
 	// A redelivery that moves a dataset from written to read.
 	post(t, event("run-3", "job-3", &third, nil, []string{"public.c", "public.a"}))
+	// A redelivery that keeps every dataset and only moves the event time: no count
+	// moves, and the dataset's newest event time still has to follow the reference.
+	fourth := base.Add(3 * time.Minute)
+	post(t, event("run-2", "job-2", &fourth, []string{"public.b"}, nil))
 
-	// The stored aggregate, row for row.
+	var lastSeen time.Time
+	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
+		`SELECT last_seen FROM openlineage_dataset WHERE namespace = $1 AND name = 'public.b'`, namespace,
+	).Scan(&lastSeen))
+	require.Equal(t, fourth.Unix(), lastSeen.UTC().Unix(), "last-seen follows the reference the redelivery moved")
+
+	// The stored aggregate, row for row, and the same aggregate recomputed from the
+	// references — which is what the retention prune computes before it writes it back.
 	type aggregate struct {
 		LastSeen              sql.NullTime
 		RefCount              int64
@@ -1216,58 +1227,66 @@ func TestOpenLineageDatasetAggregateMatchesAFullRecomputeRealServerIntegration(t
 		TargetJobs            int64
 		ColumnLineageRefCount int64
 	}
+	scan := func(query string, scanRow func(rows *sql.Rows) error) {
+		t.Helper()
+		rows, err := env.Store.GetDB().QueryContext(ctx, query, namespace)
+		require.NoError(t, err)
+		defer rows.Close()
+		for rows.Next() {
+			require.NoError(t, scanRow(rows))
+		}
+		require.NoError(t, rows.Err())
+	}
+
 	stored := map[string]aggregate{}
-	rows, err := env.Store.GetDB().QueryContext(ctx, `
+	scan(`
 		SELECT name, last_seen, ref_count, source_job_count, target_job_count, column_lineage_ref_count
-		FROM openlineage_dataset WHERE namespace = $1`, namespace)
-	require.NoError(t, err)
-	for rows.Next() {
+		FROM openlineage_dataset WHERE namespace = $1`, func(rows *sql.Rows) error {
 		var name string
 		var row aggregate
-		require.NoError(t, rows.Scan(&name, &row.LastSeen, &row.RefCount, &row.SourceJobs, &row.TargetJobs, &row.ColumnLineageRefCount))
+		if err := rows.Scan(&name, &row.LastSeen, &row.RefCount, &row.SourceJobs, &row.TargetJobs, &row.ColumnLineageRefCount); err != nil {
+			return err
+		}
 		stored[name] = row
-	}
-	require.NoError(t, rows.Err())
-	require.NoError(t, rows.Close())
+		return nil
+	})
 
-	// The same aggregate recomputed from the references, which is what the retention
-	// prune computes before it writes it back.
 	expected := map[string]aggregate{}
-	rows, err = env.Store.GetDB().QueryContext(ctx, `
+	scan(`
 		SELECT name, MAX(event_time), COUNT(*),
 			COUNT(DISTINCT task_guid) FILTER (WHERE direction = 'input'),
 			COUNT(DISTINCT task_guid) FILTER (WHERE direction = 'output'),
 			COUNT(*) FILTER (WHERE has_column_lineage)
-		FROM openlineage_run_dataset WHERE namespace = $1 GROUP BY name`, namespace)
-	require.NoError(t, err)
-	for rows.Next() {
+		FROM openlineage_run_dataset WHERE namespace = $1 GROUP BY name`, func(rows *sql.Rows) error {
 		var name string
 		var row aggregate
-		require.NoError(t, rows.Scan(&name, &row.LastSeen, &row.RefCount, &row.SourceJobs, &row.TargetJobs, &row.ColumnLineageRefCount))
+		if err := rows.Scan(&name, &row.LastSeen, &row.RefCount, &row.SourceJobs, &row.TargetJobs, &row.ColumnLineageRefCount); err != nil {
+			return err
+		}
 		expected[name] = row
-	}
-	require.NoError(t, rows.Err())
-	require.NoError(t, rows.Close())
+		return nil
+	})
 
 	require.NotEmpty(t, expected)
 	require.Equal(t, expected, stored)
 
 	// And the member rows, which are the same recompute grouped per kind and value.
+	memberKey := func(name, kind, value string) string {
+		return name + "\x00" + kind + "\x00" + value
+	}
 	storedMembers := map[string]int64{}
-	rows, err = env.Store.GetDB().QueryContext(ctx, `
-		SELECT name, kind, value, ref_count FROM openlineage_dataset_member WHERE namespace = $1`, namespace)
-	require.NoError(t, err)
-	for rows.Next() {
+	scan(`SELECT name, kind, value, ref_count FROM openlineage_dataset_member WHERE namespace = $1`, func(rows *sql.Rows) error {
 		var name, kind, value string
 		var refCount int64
-		require.NoError(t, rows.Scan(&name, &kind, &value, &refCount))
-		storedMembers[name+"\x00"+kind+"\x00"+value] = refCount
-	}
-	require.NoError(t, rows.Err())
-	require.NoError(t, rows.Close())
+		if err := rows.Scan(&name, &kind, &value, &refCount); err != nil {
+			return err
+		}
+		storedMembers[memberKey(name, kind, value)] = refCount
+		return nil
+	})
 
 	expectedMembers := map[string]int64{}
-	rows, err = env.Store.GetDB().QueryContext(ctx, `
+	scan(`
 		SELECT name, kind, value, COUNT(*) FROM (
 			SELECT name, 'task:input' AS kind, task_guid AS value FROM openlineage_run_dataset
 				WHERE namespace = $1 AND direction = 'input'
@@ -1280,17 +1299,218 @@ func TestOpenLineageDatasetAggregateMatchesAFullRecomputeRealServerIntegration(t
 			UNION ALL
 			SELECT name, 'source', source FROM openlineage_run_dataset
 				WHERE namespace = $1 AND source <> ''
-		) members GROUP BY name, kind, value`, namespace)
-	require.NoError(t, err)
-	for rows.Next() {
+		) members GROUP BY name, kind, value`, func(rows *sql.Rows) error {
 		var name, kind, value string
 		var refCount int64
-		require.NoError(t, rows.Scan(&name, &kind, &value, &refCount))
-		expectedMembers[name+"\x00"+kind+"\x00"+value] = refCount
-	}
-	require.NoError(t, rows.Err())
-	require.NoError(t, rows.Close())
+		if err := rows.Scan(&name, &kind, &value, &refCount); err != nil {
+			return err
+		}
+		expectedMembers[memberKey(name, kind, value)] = refCount
+		return nil
+	})
 
 	require.NotEmpty(t, expectedMembers)
 	require.Equal(t, expectedMembers, storedMembers)
+}
+
+// A prune and an ingest that share a task must not deadlock. The ingest takes its task
+// lock first and only then touches the run's row; the prune used to delete the run's
+// row first and take the task lock when it reconciled the task, so a producer
+// re-delivering a run the prune was deleting could be deadlocked by it. This parks the
+// prune behind the registry row its cleanup deletes — that is past its bulk delete, so
+// it holds the deleted run's row — starts the redelivery while it is parked, and
+// requires both to finish.
+func TestOpenLineagePruneAndIngestShareATaskRealServerIntegration(t *testing.T) {
+	// Deliberately not parallel: it inspects the running statements of the shared
+	// server, and another test's prune runs the same statements.
+	env := sharedPostgresServiceEnvNoReset(t)
+	ctx := context.Background()
+	httpClient := &http.Client{Timeout: 60 * time.Second}
+
+	key, _, err := env.Store.CreateOpenLineageAPIKey(ctx, "integration-prune-ingest-deadlock", "integration-test", "")
+	require.NoError(t, err)
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	namespace := "integration-prune-ingest-ns-" + suffix
+	dataset := "public.orders-" + suffix
+	// Far enough back that the cutoff below cannot touch another test's runs.
+	expired := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	t.Cleanup(func() {
+		_, err := env.Store.GetDB().ExecContext(ctx, `DELETE FROM openlineage_run WHERE job_namespace = $1`, namespace)
+		require.NoError(t, err)
+		_, err = env.Store.GetDB().ExecContext(ctx, `DELETE FROM openlineage_dataset WHERE namespace = $1`, namespace)
+		require.NoError(t, err)
+	})
+
+	// The delivery that the prune will be deleting while the producer re-delivers it.
+	deliver := func() (int, error) {
+		payload, err := json.Marshal(map[string]any{
+			"eventType": "COMPLETE",
+			"eventTime": expired.Format(time.RFC3339Nano),
+			"run":       map[string]any{"runId": "run-1"},
+			"job":       map[string]any{"namespace": namespace, "name": "job-a"},
+			"producer":  "integration-test",
+			"outputs":   []map[string]any{{"namespace": namespace, "name": dataset}},
+		})
+		if err != nil {
+			return 0, err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, env.BaseURL+"/api/v1/lineage", bytes.NewReader(payload))
+		if err != nil {
+			return 0, err
+		}
+		req.Header.Set("Authorization", "Bearer "+key)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return 0, err
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode, nil
+	}
+
+	status, err := deliver()
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, status)
+
+	var runGUID string
+	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
+		`SELECT guid FROM openlineage_run WHERE job_namespace = $1 AND run_id = 'run-1'`, namespace).Scan(&runGUID))
+
+	// Park the prune past its bulk delete: its registry cleanup has to wait for this
+	// row, and by then the deleted run's row is locked by the prune.
+	parked, err := env.Store.GetDB().BeginTx(ctx, nil)
+	require.NoError(t, err)
+	defer parked.Rollback()
+	var registryID int64
+	require.NoError(t, parked.QueryRowContext(ctx,
+		`SELECT id FROM meta_registry_resource WHERE guid = $1 FOR UPDATE`, runGUID).Scan(&registryID))
+
+	pruned := make(chan error, 1)
+	go func() {
+		_, err := env.Store.DeleteOpenLineageRunsBefore(ctx, expired.Add(24*time.Hour))
+		pruned <- err
+	}()
+
+	waitForBlocked := func(match string) {
+		t.Helper()
+		deadline := time.Now().Add(30 * time.Second)
+		for time.Now().Before(deadline) {
+			var query string
+			if err := env.Store.GetDB().QueryRowContext(ctx, `
+				SELECT query FROM pg_stat_activity
+				WHERE datname = current_database() AND state = 'active' AND wait_event_type = 'Lock'
+					AND pid <> pg_backend_pid() AND query LIKE $1
+				LIMIT 1`, match).Scan(&query); err != nil {
+				time.Sleep(20 * time.Millisecond)
+				continue
+			}
+			return
+		}
+		t.Fatalf("timed out waiting for a blocked statement matching %q", match)
+	}
+	waitForBlocked("%meta_registry_resource%")
+
+	// The re-delivery arrives while the prune is parked, so it takes its task lock and
+	// then waits for the run row the prune is holding.
+	type delivery struct {
+		status int
+		err    error
+	}
+	delivered := make(chan delivery, 1)
+	go func() {
+		status, err := deliver()
+		delivered <- delivery{status: status, err: err}
+	}()
+	waitForBlocked("%INSERT INTO openlineage%")
+
+	require.NoError(t, parked.Commit())
+
+	require.NoError(t, <-pruned, "the prune must not deadlock with an ingest that shares its task")
+	result := <-delivered
+	require.NoError(t, result.err)
+	require.Equal(t, http.StatusOK, result.status, "the delivery must not be the deadlock's victim")
+}
+
+// The sweep's emptiness check cannot see a writer that has not committed, and
+// updated_at carries the writing transaction's start, so a transaction that began
+// before the grace can leave a row that still looks sweepable. The sweep therefore
+// locks the rows it is about to delete and skips the ones a writer holds; this holds a
+// row the way an ingest in flight does — a reference written, the row locked, nothing
+// committed — and requires the sweep to leave it alone rather than wait and delete it
+// once the writer commits.
+func TestOpenLineageEmptyDatasetSweepSkipsARowAWriterHoldsRealServerIntegration(t *testing.T) {
+	// Deliberately not parallel: it sweeps every dataset aggregate in the shared
+	// database, and another test deletes a run behind the store's back too.
+	env := sharedPostgresServiceEnvNoReset(t)
+	ctx := context.Background()
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	namespace := "integration-sweep-held-ns-" + suffix
+	held := "public.held"
+	t.Cleanup(func() {
+		_, err := env.Store.GetDB().ExecContext(ctx, `DELETE FROM openlineage_run WHERE job_namespace = $1`, namespace)
+		require.NoError(t, err)
+		_, err = env.Store.GetDB().ExecContext(ctx, `DELETE FROM openlineage_dataset WHERE namespace = $1`, namespace)
+		require.NoError(t, err)
+	})
+
+	// The row an ingest left behind long ago: no references, and an updated_at well
+	// past any grace.
+	_, err := env.Store.GetDB().ExecContext(ctx, `
+		INSERT INTO openlineage_dataset (namespace, name, updated_at)
+		VALUES ($1, $2, NOW() - INTERVAL '2 hours')`, namespace, held)
+	require.NoError(t, err)
+
+	// The writer in flight, holding the row the way the ingest path does.
+	inFlight, err := env.Store.GetDB().BeginTx(ctx, nil)
+	require.NoError(t, err)
+	defer inFlight.Rollback()
+
+	taskGUID := "openlineage:task:TASK:" + namespace + ":job-held"
+	var runPK int64
+	require.NoError(t, inFlight.QueryRowContext(ctx, `
+		INSERT INTO openlineage_run (guid, task_guid, run_id, job_namespace, job_name, job_type, event_type, event_time, raw_payload)
+		VALUES ($1, $2, 'run-held', $3, 'job-held', 'TASK', 'COMPLETE', NOW(), '{}'::jsonb)
+		RETURNING id
+	`, "openlineage:run:TASK:"+namespace+":job-held:run-held", taskGUID, namespace).Scan(&runPK))
+	_, err = inFlight.ExecContext(ctx, `
+		INSERT INTO openlineage_run_dataset (run_pk, task_guid, namespace, name, direction, event_time)
+		VALUES ($1, $2, $3, $4, 'output', NOW())
+	`, runPK, taskGUID, namespace, held)
+	require.NoError(t, err)
+	_, err = inFlight.ExecContext(ctx, `
+		INSERT INTO openlineage_dataset (namespace, name)
+		VALUES ($1, $2)
+		ON CONFLICT (namespace, name) DO UPDATE SET updated_at = openlineage_dataset.updated_at
+	`, namespace, held)
+	require.NoError(t, err)
+
+	swept := make(chan int64, 1)
+	go func() {
+		deleted, err := env.Store.DeleteEmptyOpenLineageDatasets(ctx, time.Now().UTC().Add(-time.Hour))
+		require.NoError(t, err)
+		swept <- deleted
+	}()
+
+	select {
+	case deleted := <-swept:
+		require.Zero(t, deleted, "a row a writer holds is not empty")
+	case <-time.After(5 * time.Second):
+		require.Fail(t, "the sweep waited for a writer's row lock instead of skipping it")
+	}
+
+	require.NoError(t, inFlight.Commit())
+
+	var remaining int
+	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM openlineage_dataset WHERE namespace = $1 AND name = $2`, namespace, held,
+	).Scan(&remaining))
+	require.Equal(t, 1, remaining, "the row the writer was filling is still there")
+
+	// With the reference committed the row is not a candidate at all, however old it
+	// looks.
+	deleted, err := env.Store.DeleteEmptyOpenLineageDatasets(ctx, time.Now().UTC().Add(time.Hour))
+	require.NoError(t, err)
+	require.Zero(t, deleted)
 }

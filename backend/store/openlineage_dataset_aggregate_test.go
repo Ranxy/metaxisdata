@@ -152,6 +152,27 @@ func TestOpenLineageDatasetDeltas(t *testing.T) {
 			{Old: []*OpenLineageRunDatasetMessage{ref("ns-a", "orders", OpenLineageDatasetDirectionInput, "task-a", at(0))}},
 		}), 0)
 	})
+
+	t.Run("a replacement that only moves a reference's event time still writes", func(t *testing.T) {
+		t.Parallel()
+
+		// Every count cancels out here — the same reference with a new event time —
+		// but the dataset's newest event time does not: the delta has to be applied for
+		// last-seen to follow the references it belongs to, so it cannot be dropped as
+		// one that writes nothing.
+		deltas := openLineageDatasetDeltas([]openLineageRunDatasetReplacement{{
+			Old: []*OpenLineageRunDatasetMessage{ref("ns", "orders", OpenLineageDatasetDirectionInput, "task-a", at(0))},
+			New: []*OpenLineageRunDatasetMessage{ref("ns", "orders", OpenLineageDatasetDirectionInput, "task-a", at(time.Minute))},
+		}})
+		require.Len(t, deltas, 1)
+
+		delta := deltas[0]
+		require.Equal(t, 0, delta.refDelta)
+		require.Empty(t, delta.members)
+		require.True(t, delta.removed, "the reference it replaces is gone, so the newest one has to be read back")
+		require.NotNil(t, delta.lastSeen)
+		require.True(t, delta.lastSeen.Equal(*at(time.Minute)))
+	})
 }
 
 // The batched maintenance binds several value lists per statement, so the
