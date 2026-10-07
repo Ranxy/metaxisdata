@@ -900,6 +900,33 @@ func TestOpenLineageDatasetAggregateChunksALargeBatchRealServerIntegration(t *te
 	require.Equal(t, 2, count(t, `SELECT COUNT(*) FROM openlineage_dataset_member WHERE namespace = $1 AND kind = 'integration'`))
 }
 
+// waitForBlockedStatement waits for a backend of the shared server to be waiting on a
+// lock for a statement whose text matches pattern (a SQL LIKE pattern) and returns that
+// statement's text. The lock wait is what makes it the statement the server is stuck on
+// rather than one it happens to be executing: a prune runs several statements naming the
+// same tables before the one that waits for an aggregate row, and an assertion about
+// lock ordering is only about the statement that waits. The pattern is bound, so it
+// cannot match this query's own text.
+func waitForBlockedStatement(ctx context.Context, t *testing.T, db *sql.DB, pattern string) string {
+	t.Helper()
+
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		var query string
+		if err := db.QueryRowContext(ctx, `
+			SELECT query FROM pg_stat_activity
+			WHERE datname = current_database() AND state = 'active' AND wait_event_type = 'Lock'
+				AND pid <> pg_backend_pid() AND query LIKE $1
+			LIMIT 1`, pattern).Scan(&query); err != nil {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		return query
+	}
+	t.Fatalf("timed out waiting for a statement blocked on a lock matching %q", pattern)
+	return ""
+}
+
 // A prune deletes references in bulk and then rebuilds the aggregates they belonged
 // to. It reads the references behind that rebuild only after taking the aggregate
 // rows' locks, in the order the ingest path takes them, so a writer that is still in
@@ -981,29 +1008,11 @@ func TestOpenLineageDatasetPruneLocksBeforeItRecomputesRealServerIntegration(t *
 		pruned <- err
 	}()
 
-	// While that writer holds the row, the prune has to be waiting for the lock. A
-	// recomputation it had already started — the rebuild groups the references, the
-	// empty-row delete probes them — would be made from a snapshot the writer is not
-	// in, which is the overwrite this pins.
 	// While that writer holds the row, the prune has to be waiting for the aggregate
 	// rows rather than reading the references it would recompute them from: a
 	// recomputation made from a snapshot the writer is not in is the overwrite this
 	// pins. The blocked statement is asked for by name so the failure says which.
-	var waiting string
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		if err := env.Store.GetDB().QueryRowContext(ctx, `
-			SELECT query FROM pg_stat_activity
-			WHERE datname = current_database() AND state = 'active' AND pid <> pg_backend_pid()
-				AND query LIKE '%expired_openl' || 'ineage_dataset%'
-			LIMIT 1`).Scan(&waiting); err != nil {
-			// No matching statement is running yet.
-			time.Sleep(20 * time.Millisecond)
-			continue
-		}
-		break
-	}
-	require.NotEmpty(t, waiting, "the prune should be waiting on the aggregate rows")
+	waiting := waitForBlockedStatement(ctx, t, env.Store.GetDB(), "%expired_openlineage_dataset%")
 	require.Contains(t, waiting, "openlineage_dataset", "the prune waits on the aggregates")
 	require.NotContains(t, waiting, "openlineage_run_dataset",
 		"the prune must not read the references while a writer holds the aggregate row")
@@ -1392,24 +1401,7 @@ func TestOpenLineagePruneAndIngestShareATaskRealServerIntegration(t *testing.T) 
 		pruned <- err
 	}()
 
-	waitForBlocked := func(match string) {
-		t.Helper()
-		deadline := time.Now().Add(30 * time.Second)
-		for time.Now().Before(deadline) {
-			var query string
-			if err := env.Store.GetDB().QueryRowContext(ctx, `
-				SELECT query FROM pg_stat_activity
-				WHERE datname = current_database() AND state = 'active' AND wait_event_type = 'Lock'
-					AND pid <> pg_backend_pid() AND query LIKE $1
-				LIMIT 1`, match).Scan(&query); err != nil {
-				time.Sleep(20 * time.Millisecond)
-				continue
-			}
-			return
-		}
-		t.Fatalf("timed out waiting for a blocked statement matching %q", match)
-	}
-	waitForBlocked("%meta_registry_resource%")
+	waitForBlockedStatement(ctx, t, env.Store.GetDB(), "%meta_registry_resource%")
 
 	// The re-delivery arrives while the prune is parked, so it takes its task lock and
 	// then waits for the run row the prune is holding.
@@ -1422,7 +1414,7 @@ func TestOpenLineagePruneAndIngestShareATaskRealServerIntegration(t *testing.T) 
 		status, err := deliver()
 		delivered <- delivery{status: status, err: err}
 	}()
-	waitForBlocked("%INSERT INTO openlineage%")
+	waitForBlockedStatement(ctx, t, env.Store.GetDB(), "%INSERT INTO openlineage%")
 
 	require.NoError(t, parked.Commit())
 
