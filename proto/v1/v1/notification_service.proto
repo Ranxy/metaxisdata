@@ -157,7 +157,7 @@ message SchemaSyncDetail {
 
 // SyncDatabaseResult is one database's outcome in a schema sync operation.
 message SyncDatabaseResult {
-  // Format: databases/{instance}/{database}
+  // Format: instances/{instance}/databases/{database}
   string database = 1;
   SyncDatabaseState state = 2;
   // The sync error. Empty for UNFINISHED.

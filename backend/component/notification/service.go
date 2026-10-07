@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
@@ -47,6 +48,14 @@ const (
 	// the longest window can never match a new key, because the key carries the
 	// window bucket.
 	gateRetention = 24 * time.Hour
+
+	// MaxFailureEntries bounds how many failing databases one sync message lists.
+	// The message's counts carry the rest, so it stays a pointer into the estate
+	// rather than a copy of it.
+	MaxFailureEntries = 100
+	// MaxErrorBytes bounds one recorded error. A driver error can quote a whole
+	// statement, and the row is kept forever, so it is trimmed at the door.
+	MaxErrorBytes = 2 << 10
 )
 
 // AdminStore is the subset of *store.Store this package reads. Narrowing it
@@ -88,7 +97,7 @@ func SchemaSyncMessage(recipientID int, severity storepb.NotificationSeverity, d
 		RecipientId: int32(recipientID),
 		Type:        storepb.NotificationType_NOTIFICATION_TYPE_SCHEMA_SYNC,
 		Severity:    severity,
-		Detail:      &storepb.Notification_SchemaSync{SchemaSync: detail},
+		Detail:      &storepb.Notification_SchemaSync{SchemaSync: boundSyncDetail(detail)},
 	}
 }
 
@@ -99,8 +108,77 @@ func OpenLineageMessage(severity storepb.NotificationSeverity, detail *storepb.O
 	return &storepb.Notification{
 		Type:     storepb.NotificationType_NOTIFICATION_TYPE_OPENLINEAGE,
 		Severity: severity,
-		Detail:   &storepb.Notification_Openlineage{Openlineage: detail},
+		Detail:   &storepb.Notification_Openlineage{Openlineage: boundOpenLineageDetail(detail)},
 	}
+}
+
+// ReportUnmatchedNamespace tells the workspace administrators that an ingested
+// dataset matched no registered instance and was stored as an external dataset. It
+// is the OpenLineage resolver's reporter: the resolver decides when a namespace is
+// worth reporting, this decides how.
+func (s *Service) ReportUnmatchedNamespace(ctx context.Context, namespace, dataset string) {
+	detail := &storepb.OpenLineageDetail{
+		Kind:      storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED,
+		Namespace: namespace,
+		Dataset:   dataset,
+	}
+	message := OpenLineageMessage(storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING, detail)
+	// A namespace nobody mapped keeps producing this for every event it carries, so
+	// the window is a day rather than an hour: it is a configuration gap to fix, not
+	// an outage to be paged about.
+	message.DedupeKey = DedupeKey("openlineage.namespace-unmapped", namespace, time.Now(), UnmappedNamespaceWindow)
+	if err := s.SendToWorkspaceAdmins(ctx, message); err != nil {
+		LogFailure(err, slog.String("namespace", namespace))
+	}
+}
+
+// boundSyncDetail copies the detail with its payload bounded: at most
+// MaxFailureEntries failures, each error trimmed to MaxErrorBytes. The counts are
+// left alone, so a message still reports how many databases failed even when it
+// lists only the first hundred.
+func boundSyncDetail(detail *storepb.SchemaSyncDetail) *storepb.SchemaSyncDetail {
+	if detail == nil {
+		return nil
+	}
+	bounded, ok := proto.Clone(detail).(*storepb.SchemaSyncDetail)
+	if !ok {
+		return detail
+	}
+	failures := bounded.GetFailures()
+	if len(failures) > MaxFailureEntries {
+		failures = failures[:MaxFailureEntries]
+	}
+	bounded.Failures = nil
+	for _, failure := range failures {
+		failure.Error = truncateBytes(failure.GetError(), MaxErrorBytes)
+		bounded.Failures = append(bounded.Failures, failure)
+	}
+	return bounded
+}
+
+// boundOpenLineageDetail copies the detail with its error trimmed.
+func boundOpenLineageDetail(detail *storepb.OpenLineageDetail) *storepb.OpenLineageDetail {
+	if detail == nil {
+		return nil
+	}
+	bounded, ok := proto.Clone(detail).(*storepb.OpenLineageDetail)
+	if !ok {
+		return detail
+	}
+	bounded.Error = truncateBytes(bounded.GetError(), MaxErrorBytes)
+	return bounded
+}
+
+// truncateBytes cuts value to at most limit bytes without splitting a rune.
+func truncateBytes(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	cut := value[:limit]
+	for len(cut) > 0 && !utf8.ValidString(cut) {
+		cut = cut[:len(cut)-1]
+	}
+	return cut
 }
 
 // DedupeKey builds the suppression key of a background notification:

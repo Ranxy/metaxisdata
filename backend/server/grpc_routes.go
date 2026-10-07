@@ -26,6 +26,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/iam"
 	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
+	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -70,6 +71,7 @@ func configureGrpcRouters(
 	schemaSync *schemasync.Syncer,
 	llmRegistry *llmcomp.Registry,
 	lineageAnalyzer *lineage.Analyzer,
+	notifier *notification.Service,
 ) error {
 	// Note: the gateway response modifier takes the token duration on server startup. If the value is changed,
 	// the user has to restart the server to take the latest value.
@@ -270,7 +272,7 @@ func configureGrpcRouters(
 	}
 
 	// Register OpenLineage event ingestion HTTP handler (plain REST, not ConnectRPC).
-	olHandler := apiv1.NewOpenLineageHandler(stores, profile.TrustedProxies, lineageAnalyzer)
+	olHandler := apiv1.NewOpenLineageHandler(stores, profile.TrustedProxies, lineageAnalyzer, notifier)
 	olGroup := e.Group("/api/v1/lineage")
 	// Ingestion skips the Connect interceptor chain, so it carries its own rate
 	// limit and deadline: a valid key could otherwise drive unbounded concurrent

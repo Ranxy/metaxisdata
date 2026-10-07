@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -20,6 +21,16 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
+// ingestionKey is the key a batch arrives with. Its id and masked form are what a
+// refusal notification names, since a rejected request has no user behind it.
+func ingestionKey(scope string) *store.OpenLineageAPIKeyMessage {
+	return &store.OpenLineageAPIKeyMessage{
+		ID:             3,
+		MaskedKey:      "mxd_ol_...ab12",
+		ScopeNamespace: scope,
+	}
+}
+
 func newBatchContext(t *testing.T, body string) (echo.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/openlineage/batch", strings.NewReader(body))
@@ -37,7 +48,7 @@ func TestProcessBatchEventsEnforcesEventLimit(t *testing.T) {
 	overLimit := "[" + strings.TrimSuffix(strings.Repeat("{},", maxOpenLineageBatchEvents+1), ",") + "]"
 	ctx, rec := newBatchContext(t, overLimit)
 	h := &OpenLineageHandler{}
-	require.NoError(t, h.processBatchEvents(ctx, []byte(overLimit), ""))
+	require.NoError(t, h.processBatchEvents(ctx, []byte(overLimit), ingestionKey("")))
 	require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
 
 	var body map[string]any
@@ -48,7 +59,7 @@ func TestProcessBatchEventsEnforcesEventLimit(t *testing.T) {
 	// are all unparseable, which is a 400 rather than a size rejection.
 	atLimit := "[" + strings.TrimSuffix(strings.Repeat("{},", maxOpenLineageBatchEvents), ",") + "]"
 	ctx, rec = newBatchContext(t, atLimit)
-	require.NoError(t, h.processBatchEvents(ctx, []byte(atLimit), ""))
+	require.NoError(t, h.processBatchEvents(ctx, []byte(atLimit), ingestionKey("")))
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
@@ -163,7 +174,7 @@ func TestProcessBatchEventsRejectsAnOversizedEvent(t *testing.T) {
 		strings.Repeat("x", openlineage.MaxEventSize) + `"}]`
 	ctx, rec := newBatchContext(t, oversized)
 	h := &OpenLineageHandler{}
-	require.NoError(t, h.processBatchEvents(ctx, []byte(oversized), ""))
+	require.NoError(t, h.processBatchEvents(ctx, []byte(oversized), ingestionKey("")))
 	require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
 
 	var body map[string]any
@@ -182,7 +193,7 @@ func TestProcessBatchEventsSkipsEventsOverTheFieldLimits(t *testing.T) {
 		`{"eventType":"START","run":{"runId":"run-2"},"job":{"namespace":"ns","name":"` + overlong + `"}}]`
 	ctx, rec := newBatchContext(t, body)
 	h := &OpenLineageHandler{}
-	require.NoError(t, h.processBatchEvents(ctx, []byte(body), ""))
+	require.NoError(t, h.processBatchEvents(ctx, []byte(body), ingestionKey("")))
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 
 	var response map[string]any
@@ -337,4 +348,135 @@ func TestOpenLineageDatasetRefsCapsTheStoredFacets(t *testing.T) {
 	require.NotEmpty(t, storedNames)
 	require.Less(t, len(storedNames), fieldCount)
 	require.True(t, slices.IsSorted(storedNames), "the stored names are sorted so a redelivery stores the same JSON")
+}
+
+// fakeIngestionNotifier records what the handler reports, so every branch that
+// ends a request without lineage can be checked for its kind and its response.
+type fakeIngestionNotifier struct {
+	admin      []*storepb.Notification
+	namespaces []string
+}
+
+func (f *fakeIngestionNotifier) SendToWorkspaceAdmins(_ context.Context, message *storepb.Notification) error {
+	f.admin = append(f.admin, message)
+	return nil
+}
+
+func (f *fakeIngestionNotifier) ReportUnmatchedNamespace(_ context.Context, namespace, _ string) {
+	f.namespaces = append(f.namespaces, namespace)
+}
+
+// A refused request used to be answered and forgotten: the producer saw its 4xx,
+// nobody else did. Every refusal now names its cause to the administrators, and
+// the kind is what tells them whether to fix a producer, a key or the server.
+func TestIngestionRefusalsReachTheAdministrators(t *testing.T) {
+	t.Parallel()
+
+	overLimit := "[" + strings.TrimSuffix(strings.Repeat("{},", maxOpenLineageBatchEvents+1), ",") + "]"
+	unparseable := `[{"eventType":"START","run":{"runId":"run-1"},"job":{"namespace":"ns","name":"` +
+		strings.Repeat("x", openlineage.MaxJobNameLength+1) + `"}}]`
+	oversizedEvent := `[{"eventType":"START","run":{"runId":"run-1"},"job":{"namespace":"ns","name":"job"},"padding":"` +
+		strings.Repeat("x", openlineage.MaxEventSize) + `"}]`
+	outOfScope := `[{"eventType":"START","run":{"runId":"run-1"},"job":{"namespace":"other","name":"job"}}]`
+
+	tests := []struct {
+		name       string
+		body       string
+		scope      string
+		wantStatus int
+		wantKind   storepb.OpenLineageFailureKind
+	}{
+		{
+			name:       "an event the limits reject",
+			body:       unparseable,
+			wantStatus: http.StatusBadRequest,
+			wantKind:   storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_INVALID_EVENT,
+		},
+		{
+			name:       "a batch over the event count",
+			body:       overLimit,
+			wantStatus: http.StatusRequestEntityTooLarge,
+			wantKind:   storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED,
+		},
+		{
+			name:       "a batch with an oversized event",
+			body:       oversizedEvent,
+			wantStatus: http.StatusRequestEntityTooLarge,
+			wantKind:   storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED,
+		},
+		{
+			name:       "a key used outside its namespace",
+			body:       outOfScope,
+			scope:      "ns",
+			wantStatus: http.StatusForbidden,
+			wantKind:   storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			notifier := &fakeIngestionNotifier{}
+			ctx, rec := newBatchContext(t, tc.body)
+			h := &OpenLineageHandler{notifier: notifier}
+			require.NoError(t, h.processBatchEvents(ctx, []byte(tc.body), ingestionKey(tc.scope)))
+			require.Equal(t, tc.wantStatus, rec.Code)
+
+			require.Len(t, notifier.admin, 1)
+			message := notifier.admin[0]
+			require.Equal(t, storepb.NotificationType_NOTIFICATION_TYPE_OPENLINEAGE, message.GetType())
+			require.Equal(t, tc.wantKind, message.GetOpenlineage().GetKind())
+			require.Equal(t, "mxd_ol_...ab12", message.GetOpenlineage().GetApiKey())
+			require.NotEmpty(t, message.GetDedupeKey(), "a repeated failure must be suppressed by the window")
+			// The suppression subject is the event's namespace when the request named
+			// one, and the ingestion key when it did not parse that far.
+			subject := "key/3"
+			if namespace := message.GetOpenlineage().GetNamespace(); namespace != "" {
+				subject = namespace
+			}
+			require.Contains(t, message.GetDedupeKey(), ":"+subject+":")
+
+			wantSeverity := storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING
+			if tc.wantStatus >= http.StatusInternalServerError {
+				wantSeverity = storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR
+			}
+			require.Equal(t, wantSeverity, message.GetSeverity())
+		})
+	}
+}
+
+// The namespace a refused event named is the better suppression subject: one
+// misconfigured producer is one message per window, not one per key it holds.
+func TestIngestionRefusalNamesTheEventNamespace(t *testing.T) {
+	t.Parallel()
+
+	outOfScope := `[{"eventType":"START","run":{"runId":"run-1"},"job":{"namespace":"other","name":"job"}}]`
+	notifier := &fakeIngestionNotifier{}
+	ctx, _ := newBatchContext(t, outOfScope)
+	h := &OpenLineageHandler{notifier: notifier}
+	require.NoError(t, h.processBatchEvents(ctx, []byte(outOfScope), ingestionKey("ns")))
+
+	require.Len(t, notifier.admin, 1)
+	detail := notifier.admin[0].GetOpenlineage()
+	require.Equal(t, "other", detail.GetNamespace())
+	require.Equal(t, "job", detail.GetJob())
+	require.Equal(t, "run-1", detail.GetRunId())
+	require.Equal(t, int32(1), detail.GetReceivedCount())
+	require.Equal(t, int32(1), detail.GetFailedCount())
+	require.Contains(t, notifier.admin[0].GetDedupeKey(), "openlineage:other:")
+}
+
+// A handler built without a notifier — the unit tests, or a deployment that never
+// wired one — must still answer the producer.
+func TestIngestionRefusalWithoutANotifierStillAnswers(t *testing.T) {
+	t.Parallel()
+
+	notifier := &fakeIngestionNotifier{}
+	body := `[{"eventType":"START","run":{"runId":"run-1"},"job":{"namespace":"other","name":"job"}}]`
+	ctx, rec := newBatchContext(t, body)
+	h := &OpenLineageHandler{}
+	require.NoError(t, h.processBatchEvents(ctx, []byte(body), ingestionKey("ns")))
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Empty(t, notifier.admin)
 }

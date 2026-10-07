@@ -2,8 +2,11 @@ package notification
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -218,4 +221,81 @@ func TestSendToWorkspaceAdminsWithoutAnAdministrator(t *testing.T) {
 
 	require.NoError(t, service.SendToWorkspaceAdmins(context.Background(), newOpenLineageMessage()))
 	require.Empty(t, fake.created)
+}
+
+// One runaway error must not decide how large a forever-kept row is, and one
+// failing database must not turn a message into a copy of the estate.
+func TestMessagesBoundWhatTheyStore(t *testing.T) {
+	t.Parallel()
+
+	details := &storepb.SchemaSyncDetail{
+		Instance: "instances/inst1",
+		Failures: []*storepb.SyncDatabaseResult{{
+			Database: "instances/inst1/databases/app",
+			Error:    strings.Repeat("x", MaxErrorBytes+64),
+		}},
+	}
+	failures := make([]*storepb.SyncDatabaseResult, 0, MaxFailureEntries+5)
+	for i := range MaxFailureEntries + 5 {
+		failures = append(failures, &storepb.SyncDatabaseResult{
+			Database: fmt.Sprintf("instances/inst1/databases/db_%03d", i),
+			Error:    "boom",
+		})
+	}
+	details.Failures = append(details.Failures, failures...)
+	details.FailedCount = int32(len(details.Failures))
+
+	message := SchemaSyncMessage(7, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, details)
+	require.Len(t, message.GetSchemaSync().GetFailures(), MaxFailureEntries)
+	require.Equal(t, int32(len(details.Failures)), message.GetSchemaSync().GetFailedCount(), "the counts still describe the whole operation")
+	require.Len(t, message.GetSchemaSync().GetFailures()[0].GetError(), MaxErrorBytes)
+	// The caller's detail is left alone: the bound is the message's, not a
+	// mutation of what the sender built.
+	require.Len(t, details.Failures, MaxFailureEntries+6)
+	require.Len(t, details.Failures[0].GetError(), MaxErrorBytes+64)
+
+	// A truncation that splits a multi-byte rune would store an invalid string.
+	runes := SchemaSyncMessage(7, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, &storepb.SchemaSyncDetail{
+		Failures: []*storepb.SyncDatabaseResult{{
+			Database: "instances/inst1/databases/app",
+			Error:    strings.Repeat("数", MaxErrorBytes),
+		}},
+	})
+	require.LessOrEqual(t, len(runes.GetSchemaSync().GetFailures()[0].GetError()), MaxErrorBytes)
+	require.True(t, utf8.ValidString(runes.GetSchemaSync().GetFailures()[0].GetError()))
+
+	ingestion := OpenLineageMessage(storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, &storepb.OpenLineageDetail{
+		Error: strings.Repeat("e", MaxErrorBytes*2),
+	})
+	require.Len(t, ingestion.GetOpenlineage().GetError(), MaxErrorBytes)
+	require.Nil(t, OpenLineageMessage(storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, nil).GetOpenlineage())
+	require.Nil(t, SchemaSyncMessage(7, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, nil).GetSchemaSync())
+}
+
+// A namespace that matched no instance is a configuration gap an administrator
+// has to close, and it repeats for every event the producer sends, so it is
+// deduplicated by the day rather than by the hour.
+func TestReportUnmatchedNamespaceNotifiesTheAdministrators(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeStore{
+		workspaceID: "ws-1",
+		policy: &storepb.IamPolicy{Bindings: []*storepb.Binding{{
+			Role:    common.FormatRole(common.WorkspaceAdmin),
+			Members: []string{"users/2"},
+		}}},
+		users: map[int]*store.UserMessage{2: {ID: 2, Name: "alice"}},
+	}
+	service := newServiceWithStore(fake)
+
+	service.ReportUnmatchedNamespace(context.Background(), "mysql://db:3306", "shop.orders")
+
+	require.Len(t, fake.created, 1)
+	message := fake.created[0]
+	require.Equal(t, int32(2), message.GetRecipientId())
+	require.Equal(t, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING, message.GetSeverity())
+	require.Equal(t, storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED, message.GetOpenlineage().GetKind())
+	require.Equal(t, "mysql://db:3306", message.GetOpenlineage().GetNamespace())
+	require.Equal(t, "shop.orders", message.GetOpenlineage().GetDataset())
+	require.Contains(t, message.GetDedupeKey(), "openlineage.namespace-unmapped:mysql://db:3306:")
 }

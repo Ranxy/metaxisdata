@@ -585,7 +585,7 @@ func (x *SchemaSyncDetail) GetUnfinishedCount() int32 {
 // SyncDatabaseResult is one database's outcome in a schema sync operation.
 type SyncDatabaseResult struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Format: databases/{instance}/{database}
+	// Format: instances/{instance}/databases/{database}
 	Database string            `protobuf:"bytes,1,opt,name=database,proto3" json:"database,omitempty"`
 	State    SyncDatabaseState `protobuf:"varint,2,opt,name=state,proto3,enum=metaxisdata.store.SyncDatabaseState" json:"state,omitempty"`
 	// Truncated before it is stored, so one runaway error cannot bloat the row.

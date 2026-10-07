@@ -146,7 +146,7 @@ export declare const SchemaSyncDetailSchema: GenMessage<SchemaSyncDetail>;
  */
 export declare type SyncDatabaseResult = Message<"metaxisdata.v1.SyncDatabaseResult"> & {
   /**
-   * Format: databases/{instance}/{database}
+   * Format: instances/{instance}/databases/{database}
    *
    * @generated from field: string database = 1;
    */

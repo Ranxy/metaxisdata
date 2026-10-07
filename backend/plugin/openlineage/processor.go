@@ -35,11 +35,12 @@ type Processor struct {
 	revalidateMu sync.Mutex
 }
 
-// NewProcessor creates a new event processor.
-func NewProcessor(s *store.Store, lineageAnalyzer *lineage.Analyzer) *Processor {
+// NewProcessor creates a new event processor. reporter is told about datasets that
+// match no registered instance; it may be nil.
+func NewProcessor(s *store.Store, lineageAnalyzer *lineage.Analyzer, reporter UnmatchedNamespaceReporter) *Processor {
 	return &Processor{
 		store:    s,
-		resolver: NewResolver(s),
+		resolver: NewResolver(s, reporter),
 		lineage:  lineageAnalyzer,
 	}
 }

@@ -1708,7 +1708,7 @@ SyncDatabaseResult is one database&#39;s outcome in a schema sync operation.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| database | [string](#string) |  | Format: databases/{instance}/{database} |
+| database | [string](#string) |  | Format: instances/{instance}/databases/{database} |
 | state | [SyncDatabaseState](#metaxisdata-store-SyncDatabaseState) |  |  |
 | error | [string](#string) |  | Truncated before it is stored, so one runaway error cannot bloat the row. |
 

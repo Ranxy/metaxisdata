@@ -159,15 +159,21 @@ func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Reque
 	// driver, counted by the per-instance limiter. Opening one here only to test
 	// reachability would hold a second, unmetered connection for the whole sync,
 	// which is exactly what the limit exists to bound.
-	if updatedInstance, _, _, err := s.schemaSyncer.SyncInstance(ctx, instance); err != nil {
+	// The initial discovery and the databases it queues are one operation: the
+	// creator is the one waiting for the instance to be usable.
+	operation := s.schemaSyncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, currentUserID(ctx), instance)
+	updatedInstance, _, _, syncErr := s.schemaSyncer.SyncInstance(ctx, instance)
+	s.schemaSyncer.RecordInstanceResult(ctx, operation, syncErr)
+	if syncErr != nil {
 		slog.Warn("Failed to sync instance",
 			slog.String("instance", instance.ResourceID),
-			log.WithError(err))
+			log.WithError(syncErr))
+		s.schemaSyncer.FinishOperation(ctx, operation)
 	} else {
 		instance = updatedInstance
+		// Sync all databases in the instance asynchronously.
+		s.schemaSyncer.SyncAllDatabases(ctx, operation, instance)
 	}
-	// Sync all databases in the instance asynchronously.
-	s.schemaSyncer.SyncAllDatabases(ctx, instance)
 
 	result := convertInstanceMessage(instance)
 	return connect.NewResponse(result), nil
@@ -339,15 +345,19 @@ func (s *InstanceService) SyncInstance(ctx context.Context, req *connect.Request
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q has been deleted", req.Msg.Name))
 	}
 
+	operation := s.schemaSyncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, currentUserID(ctx), instance)
 	updatedInstance, allDatabases, newDatabases, err := s.schemaSyncer.SyncInstance(ctx, instance)
+	s.schemaSyncer.RecordInstanceResult(ctx, operation, err)
 	if err != nil {
+		s.schemaSyncer.FinishOperation(ctx, operation)
 		return nil, err
 	}
 	if req.Msg.EnableFullSync {
-		// Sync all databases in the instance asynchronously.
-		s.schemaSyncer.SyncAllDatabases(ctx, updatedInstance)
+		// Sync all databases in the instance asynchronously. The operation waits
+		// for every one of them and reports the batch as one message.
+		s.schemaSyncer.SyncAllDatabases(ctx, operation, updatedInstance)
 	} else {
-		s.schemaSyncer.SyncDatabasesAsync(newDatabases)
+		s.schemaSyncer.EnqueueDatabases(ctx, operation, newDatabases)
 	}
 
 	response := &v1pb.SyncInstanceResponse{}
@@ -387,8 +397,13 @@ func (s *InstanceService) BatchSyncInstances(ctx context.Context, req *connect.R
 			continue
 		}
 
+		// Each instance in the batch is its own operation, so the message the user
+		// gets names the instance that finished instead of a batch of them.
+		operation := s.schemaSyncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, currentUserID(ctx), instance)
 		updatedInstance, _, newDatabases, err := s.schemaSyncer.SyncInstance(ctx, instance)
+		s.schemaSyncer.RecordInstanceResult(ctx, operation, err)
 		if err != nil {
+			s.schemaSyncer.FinishOperation(ctx, operation)
 			result.Error = err.Error()
 			response.Results = append(response.Results, result)
 			continue
@@ -398,9 +413,9 @@ func (s *InstanceService) BatchSyncInstances(ctx context.Context, req *connect.R
 		}
 		if r.GetEnableFullSync() {
 			// Sync all databases in the instance asynchronously.
-			s.schemaSyncer.SyncAllDatabases(ctx, updatedInstance)
+			s.schemaSyncer.SyncAllDatabases(ctx, operation, updatedInstance)
 		} else {
-			s.schemaSyncer.SyncDatabasesAsync(newDatabases)
+			s.schemaSyncer.EnqueueDatabases(ctx, operation, newDatabases)
 		}
 		response.Results = append(response.Results, result)
 	}

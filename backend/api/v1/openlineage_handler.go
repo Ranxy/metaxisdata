@@ -18,6 +18,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common"
 	clog "github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/audit"
+	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
@@ -39,20 +40,108 @@ const (
 	maxOpenLineageColumnLineageFieldsBytes = 32 << 10
 )
 
+// OpenLineageNotifier is what an ingestion failure is reported through: the
+// requests this handler refuses, and the datasets the resolver could not match to
+// an instance. *notification.Service is the production implementation; the
+// interface keeps the handler testable without a database.
+type OpenLineageNotifier interface {
+	SendToWorkspaceAdmins(ctx context.Context, message *storepb.Notification) error
+	ReportUnmatchedNamespace(ctx context.Context, namespace, dataset string)
+}
+
 // OpenLineageHandler handles OpenLineage event ingestion via HTTP.
 type OpenLineageHandler struct {
 	store          *store.Store
 	processor      *openlineage.Processor
 	trustedProxies []string
+	// notifier reports refused and failed requests to the workspace
+	// administrators. Ingestion is a machine credential's traffic, so there is no
+	// user to tell; a nil notifier leaves the log as the only record.
+	notifier OpenLineageNotifier
 }
 
 // NewOpenLineageHandler creates a new OpenLineageHandler. trustedProxies is the
 // list of peers whose forwarding headers the audit record may believe.
-func NewOpenLineageHandler(s *store.Store, trustedProxies []string, lineageAnalyzer *lineage.Analyzer) *OpenLineageHandler {
+func NewOpenLineageHandler(s *store.Store, trustedProxies []string, lineageAnalyzer *lineage.Analyzer, notifier OpenLineageNotifier) *OpenLineageHandler {
 	return &OpenLineageHandler{
 		store:          s,
-		processor:      openlineage.NewProcessor(s, lineageAnalyzer),
+		processor:      openlineage.NewProcessor(s, lineageAnalyzer, notifier),
 		trustedProxies: trustedProxies,
+		notifier:       notifier,
+	}
+}
+
+// ingestionFailure is one request that ended without producing lineage: a refused
+// event, an over-limit body, or a server-side failure. Every such branch of this
+// handler goes through reportIngestionFailure, so a producer whose events are
+// being dropped is visible to whoever operates the deployment instead of only in
+// the log.
+type ingestionFailure struct {
+	key    *store.OpenLineageAPIKeyMessage
+	kind   storepb.OpenLineageFailureKind
+	status int
+	body   any
+	cause  error
+	// The identifiers the request carried, when it parsed far enough to have them.
+	namespace string
+	job       string
+	runID     string
+	received  int
+	failed    int
+}
+
+// reportIngestionFailure notifies the workspace administrators, then writes the
+// HTTP response. One call site per branch keeps "every refused request reaches an
+// inbox" a property of the code rather than of a reviewer's checklist.
+func (h *OpenLineageHandler) reportIngestionFailure(c echo.Context, failure ingestionFailure) error {
+	h.notifyIngestionFailure(c.Request().Context(), failure)
+	return c.JSON(failure.status, failure.body)
+}
+
+// notifyIngestionFailure reports one failure. The message is deduplicated by the
+// hour, and its subject is the event's namespace when the request named one and the
+// ingestion key otherwise, so one misbehaving producer cannot fill the inbox.
+func (h *OpenLineageHandler) notifyIngestionFailure(ctx context.Context, failure ingestionFailure) {
+	if h.notifier == nil {
+		return
+	}
+
+	detail := &storepb.OpenLineageDetail{
+		Kind:          failure.kind,
+		Namespace:     failure.namespace,
+		Job:           failure.job,
+		RunId:         failure.runID,
+		ReceivedCount: int32(failure.received),
+		FailedCount:   int32(failure.failed),
+	}
+	if failure.cause != nil {
+		detail.Error = failure.cause.Error()
+	}
+	if failure.key != nil {
+		detail.ApiKey = failure.key.MaskedKey
+	}
+
+	// A request this server could not handle is an outage; a request it refused is
+	// a producer or key problem the administrator still has to fix.
+	severity := storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING
+	if failure.status >= http.StatusInternalServerError {
+		severity = storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR
+	}
+	message := notification.OpenLineageMessage(severity, detail)
+
+	subject := failure.namespace
+	if subject == "" {
+		subject = fmt.Sprintf("key/%d", failure.key.ID)
+	}
+	message.DedupeKey = notification.DedupeKey(
+		"openlineage",
+		subject+":"+failure.kind.String(),
+		time.Now(),
+		notification.BackgroundFailureWindow,
+	)
+
+	if err := h.notifier.SendToWorkspaceAdmins(ctx, message); err != nil {
+		notification.LogFailure(err, slog.String("kind", failure.kind.String()))
 	}
 }
 
@@ -88,66 +177,146 @@ func (h *OpenLineageHandler) handleIngestion(c echo.Context, keyMessage *store.O
 	// Read body with size limit.
 	body, tooLarge, err := readBodyLimited(c.Request().Body)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
+		return h.reportIngestionFailure(c, ingestionFailure{
+			key:    keyMessage,
+			kind:   storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_INVALID_EVENT,
+			status: http.StatusBadRequest,
+			body:   map[string]string{"error": "failed to read request body"},
+			cause:  err,
+		})
 	}
 	if tooLarge {
-		return c.JSON(http.StatusRequestEntityTooLarge, map[string]any{
-			"error": fmt.Sprintf("request body exceeds %d bytes", maxOpenLineageBodySize),
-			"limit": maxOpenLineageBodySize,
+		limitErr := fmt.Errorf("request body exceeds %d bytes", maxOpenLineageBodySize)
+		return h.reportIngestionFailure(c, ingestionFailure{
+			key:    keyMessage,
+			kind:   storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED,
+			status: http.StatusRequestEntityTooLarge,
+			body: map[string]any{
+				"error": limitErr.Error(),
+				"limit": maxOpenLineageBodySize,
+			},
+			cause: limitErr,
 		})
 	}
 
 	// Detect whether the payload is a single event or a batch (JSON array).
 	trimmed := bytes.TrimLeft(body, " \t\n\r")
 	if len(trimmed) > 0 && trimmed[0] == '[' {
-		return h.processBatchEvents(c, body, keyMessage.ScopeNamespace)
+		return h.processBatchEvents(c, body, keyMessage)
 	}
 
 	event, err := openlineage.ParseRunEvent(body)
 	if err != nil {
 		slog.Warn("invalid OpenLineage event", "error", err)
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return h.reportIngestionFailure(c, ingestionFailure{
+			key:    keyMessage,
+			kind:   storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_INVALID_EVENT,
+			status: http.StatusBadRequest,
+			body:   map[string]string{"error": err.Error()},
+			cause:  err,
+		})
 	}
 	if err := openlineage.ValidateEventLimits(event); err != nil {
 		slog.Warn("OpenLineage event exceeds the ingestion limits", "error", err)
+		failure := ingestionFailure{
+			key:       keyMessage,
+			kind:      storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_INVALID_EVENT,
+			status:    http.StatusBadRequest,
+			body:      map[string]string{"error": err.Error()},
+			cause:     err,
+			namespace: event.Job.Namespace,
+			job:       event.Job.Name,
+			runID:     event.Run.RunID,
+			received:  1,
+			failed:    1,
+		}
 		if errors.Is(err, openlineage.ErrEventTooLarge) {
-			return c.JSON(http.StatusRequestEntityTooLarge, map[string]any{
+			failure.kind = storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED
+			failure.status = http.StatusRequestEntityTooLarge
+			failure.body = map[string]any{
 				"error": err.Error(),
 				"limit": openlineage.MaxEventSize,
-			})
+			}
 		}
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return h.reportIngestionFailure(c, failure)
 	}
 	if !eventWithinScope(event, keyMessage.ScopeNamespace) {
-		return c.JSON(http.StatusForbidden, map[string]string{"error": "API key is not scoped to this OpenLineage namespace"})
+		scopeErr := errors.New("API key is not scoped to this OpenLineage namespace")
+		return h.reportIngestionFailure(c, ingestionFailure{
+			key:       keyMessage,
+			kind:      storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH,
+			status:    http.StatusForbidden,
+			body:      map[string]string{"error": scopeErr.Error()},
+			cause:     scopeErr,
+			namespace: event.Job.Namespace,
+			job:       event.Job.Name,
+			runID:     event.Run.RunID,
+			received:  1,
+			failed:    1,
+		})
+	}
+
+	failed := ingestionFailure{
+		key:       keyMessage,
+		status:    http.StatusInternalServerError,
+		namespace: event.Job.Namespace,
+		job:       event.Job.Name,
+		runID:     event.Run.RunID,
+		received:  1,
+		failed:    1,
 	}
 
 	persistedRun, err := h.store.UpsertOpenLineageRun(c.Request().Context(), h.runMessageForEvent(event))
 	if err != nil {
 		slog.Error("failed to persist OpenLineage event", "runId", event.Run.RunID, "error", err)
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to persist event"})
+		failed.kind = storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED
+		failed.body = map[string]string{"error": "failed to persist event"}
+		failed.cause = err
+		return h.reportIngestionFailure(c, failed)
 	}
 
 	if err := h.processor.ProcessRunEvent(c.Request().Context(), event, persistedRun); err != nil {
 		slog.Error("failed to process OpenLineage event", "runId", event.Run.RunID, "error", err)
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to process event"})
+		failed.kind = storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED
+		failed.body = map[string]string{"error": "failed to process event"}
+		failed.cause = err
+		return h.reportIngestionFailure(c, failed)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, scope string) error {
+func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, keyMessage *store.OpenLineageAPIKeyMessage) error {
 	var rawEvents []json.RawMessage
 	if err := json.Unmarshal(body, &rawEvents); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "failed to parse event array"})
+		return h.reportIngestionFailure(c, ingestionFailure{
+			key:    keyMessage,
+			kind:   storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_INVALID_EVENT,
+			status: http.StatusBadRequest,
+			body:   map[string]string{"error": "failed to parse event array"},
+			cause:  err,
+		})
 	}
 	if len(rawEvents) == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "empty event array"})
+		emptyErr := errors.New("empty event array")
+		return h.reportIngestionFailure(c, ingestionFailure{
+			key:    keyMessage,
+			kind:   storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_INVALID_EVENT,
+			status: http.StatusBadRequest,
+			body:   map[string]string{"error": emptyErr.Error()},
+			cause:  emptyErr,
+		})
 	}
 	if len(rawEvents) > maxOpenLineageBatchEvents {
-		return c.JSON(http.StatusRequestEntityTooLarge, map[string]any{
-			"error": fmt.Sprintf("batch exceeds %d events", maxOpenLineageBatchEvents),
-			"limit": maxOpenLineageBatchEvents,
+		limitErr := fmt.Errorf("batch exceeds %d events", maxOpenLineageBatchEvents)
+		return h.reportIngestionFailure(c, ingestionFailure{
+			key:      keyMessage,
+			kind:     storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED,
+			status:   http.StatusRequestEntityTooLarge,
+			body:     map[string]any{"error": limitErr.Error(), "limit": maxOpenLineageBatchEvents},
+			cause:    limitErr,
+			received: len(rawEvents),
+			failed:   len(rawEvents),
 		})
 	}
 	// An event over the per-event size limit refuses the whole batch, the same
@@ -155,10 +324,15 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, sco
 	// of the event's validity.
 	for i, raw := range rawEvents {
 		if len(raw) > openlineage.MaxEventSize {
-			return c.JSON(http.StatusRequestEntityTooLarge, map[string]any{
-				"error": fmt.Sprintf("event %d exceeds %d bytes", i, openlineage.MaxEventSize),
-				"index": i,
-				"limit": openlineage.MaxEventSize,
+			sizeErr := fmt.Errorf("event %d exceeds %d bytes", i, openlineage.MaxEventSize)
+			return h.reportIngestionFailure(c, ingestionFailure{
+				key:      keyMessage,
+				kind:     storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED,
+				status:   http.StatusRequestEntityTooLarge,
+				body:     map[string]any{"error": sizeErr.Error(), "index": i, "limit": openlineage.MaxEventSize},
+				cause:    sizeErr,
+				received: len(rawEvents),
+				failed:   len(rawEvents),
 			})
 		}
 	}
@@ -186,10 +360,19 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, sco
 			}
 			continue
 		}
-		if !eventWithinScope(event, scope) {
-			return c.JSON(http.StatusForbidden, map[string]any{
-				"error": "API key is not scoped to this OpenLineage namespace",
-				"index": i,
+		if !eventWithinScope(event, keyMessage.ScopeNamespace) {
+			scopeErr := errors.New("API key is not scoped to this OpenLineage namespace")
+			return h.reportIngestionFailure(c, ingestionFailure{
+				key:       keyMessage,
+				kind:      storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH,
+				status:    http.StatusForbidden,
+				body:      map[string]any{"error": scopeErr.Error(), "index": i},
+				cause:     scopeErr,
+				namespace: event.Job.Namespace,
+				job:       event.Job.Name,
+				runID:     event.Run.RunID,
+				received:  len(rawEvents),
+				failed:    len(rawEvents),
 			})
 		}
 		events = append(events, event)
@@ -206,11 +389,14 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, sco
 	persisted, err := h.store.UpsertOpenLineageRuns(ctx, runs)
 	if err != nil {
 		slog.Error("failed to persist batch events", "events", len(runs), "error", err)
-		return c.JSON(http.StatusInternalServerError, map[string]any{
-			"status":    "error",
-			"error":     err.Error(),
-			"processed": 0,
-			"failed":    invalid + len(events),
+		return h.reportIngestionFailure(c, ingestionFailure{
+			key:      keyMessage,
+			kind:     storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED,
+			status:   http.StatusInternalServerError,
+			body:     map[string]any{"status": "error", "error": err.Error(), "processed": 0, "failed": invalid + len(events)},
+			cause:    err,
+			received: len(rawEvents),
+			failed:   invalid + len(events),
 		})
 	}
 	runs = persisted
@@ -235,17 +421,26 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, sco
 	}
 	if processed == 0 && failed == 0 {
 		// Every event was unparseable: resending the same body cannot help.
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error":     "no event in the batch could be parsed",
-			"processed": 0,
-			"failed":    invalid,
+		return h.reportIngestionFailure(c, ingestionFailure{
+			key:      keyMessage,
+			kind:     storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_INVALID_EVENT,
+			status:   http.StatusBadRequest,
+			body:     map[string]any{"error": "no event in the batch could be parsed", "processed": 0, "failed": invalid},
+			cause:    firstErr,
+			received: len(rawEvents),
+			failed:   invalid,
 		})
 	}
-	return c.JSON(http.StatusInternalServerError, map[string]any{
-		"status":    "error",
-		"error":     firstErr.Error(),
-		"processed": processed,
-		"failed":    invalid + failed,
+	// Some events made it and some did not: the ones that did are the reason this
+	// is a server-side failure rather than a refusal.
+	return h.reportIngestionFailure(c, ingestionFailure{
+		key:      keyMessage,
+		kind:     storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED,
+		status:   http.StatusInternalServerError,
+		body:     map[string]any{"status": "error", "error": firstErr.Error(), "processed": processed, "failed": invalid + failed},
+		cause:    firstErr,
+		received: len(rawEvents),
+		failed:   invalid + failed,
 	})
 }
 

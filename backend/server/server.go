@@ -14,6 +14,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
+	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -60,6 +61,8 @@ type Server struct {
 
 	// stateCfg is the shared in-momory state within the server.
 	stateCfg *state.State
+	// notifier is the one writer of the notification table.
+	notifier *notification.Service
 }
 
 // NewServer creates a server.
@@ -113,11 +116,17 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 
 	// The maintenance pass and the post-sync runner revalidate the same ingested
 	// edges, so they share one processor and its lock.
-	ingestedLineage := openlineage.NewProcessor(stores, lineageEngines)
+	// The revalidation paths resolve datasets to check ingested edges, not to report
+	// them: only ingestion names an administrator's inbox as the sink.
+	ingestedLineage := openlineage.NewProcessor(stores, lineageEngines, nil)
 	s.lineageValidate = lineagevalidation.NewRunner(ingestedLineage)
 	s.maintenance = maintenance.NewRunner(stores, ingestedLineage)
 
-	s.schemaSync = schemasync.NewSyncer(stores, dbFactory, stateCfg, s.lineageAnalyzer, s.lineageValidate)
+	// The notification service is what a background runner reports through: a
+	// finished sync operation to the user who asked for it, and an ingestion or
+	// sync failure to the workspace administrators.
+	s.notifier = notification.New(stores)
+	s.schemaSync = schemasync.NewSyncer(stores, dbFactory, stateCfg, s.lineageAnalyzer, s.lineageValidate, s.notifier)
 
 	s.llmRegistry = llmcomp.NewRegistry(stores, profile)
 	if err := s.initializeSetting(ctx); err != nil {
@@ -135,7 +144,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// Configure echo server.
 	s.echoServer = echo.New()
 
-	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.llmRegistry, lineageEngines); err != nil {
+	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.llmRegistry, lineageEngines, s.notifier); err != nil {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")
 	}
 
