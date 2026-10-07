@@ -1690,7 +1690,7 @@ every database that was queued by it.
 | instance_title | [string](#string) |  | The instance&#39;s display name, so a client can render the message without a second read. |
 | trigger | [SyncTrigger](#metaxisdata-store-SyncTrigger) |  |  |
 | instance_error | [string](#string) |  | Why the instance metadata step failed. Empty when it succeeded. |
-| failures | [SyncDatabaseResult](#metaxisdata-store-SyncDatabaseResult) | repeated | The databases that failed or never reported. Listed up to a cap; the counts below carry the whole picture. |
+| databases | [SyncDatabaseResult](#metaxisdata-store-SyncDatabaseResult) | repeated | The databases this message names, each with its outcome: the ones that failed or never reported for an instance-wide sync, and the database itself for a sync of one database. Successful databases are counted rather than listed, and the list is capped; the counts below carry the whole picture. |
 | succeeded_count | [int32](#int32) |  |  |
 | failed_count | [int32](#int32) |  |  |
 | unfinished_count | [int32](#int32) |  |  |

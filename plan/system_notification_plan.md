@@ -1,6 +1,6 @@
 # Plan: 站内信 / 系统通知
 
-> **Status: design / 未实现。** 收件人、粒度、事件范围、渠道、保留策略已按评审定稿（见"已确认的决定"）。
+> **Status: 已实现**（Phase 1–4；Phase 5 的可选增强未做）。收件人、粒度、事件范围、渠道、保留策略已按评审定稿（见"已确认的决定"），实现与设计的偏差记在"实现状态"。
 
 ## TL;DR
 
@@ -13,6 +13,25 @@
 - OpenLineage 摄取异常 → 给管理员一条，按 `主体（namespace 或 ingestion key）+ 错误类` 分桶去重：服务端失败（5xx）与**被拒收的请求**（400 解析/校验、413 超限、403 超 scope）都通知；未匹配到实例、落到 external dataset 的 namespace 也通知。
 
 消息正文**不存文本**，存"类型枚举 + 结构化 detail"，由前端 i18n 渲染（`en-US` / `zh-CN` 双语文案是硬要求，服务端存死文本无法双语）。
+
+## 实现状态
+
+| 阶段 | 提交 | 关键文件 |
+| --- | --- | --- |
+| Phase 1 数据与协议 | `feat(notification): add the notification store, schema and API surface` | 两个新 proto、`backend/migrator/migration/0.1/0017##notification.sql`、`backend/store/notification.go` |
+| Phase 2 组件与 API | `feat(notification): serve the caller's inbox over NotificationService`、`feat(notification): show the inbox in the sidebar bell and on a page` | `backend/component/notification/`、`backend/api/v1/notification_service.go`、`backend/server/{server,grpc_routes}.go`、`frontend/src/{api,store/modules,lib,components/layout,pages}/notification*` |
+| Phase 3 同步聚合 | `feat(notification): report sync operations and ingestion failures` | `backend/runner/schemasync/operation.go`、`syncer.go`、`api/v1/{instance,database}_service.go` |
+| Phase 4 OpenLineage | 同上 | `backend/api/v1/openlineage_handler.go`、`backend/plugin/openlineage/{resolver,processor}.go` |
+
+实现时与设计不同的地方：
+
+1. **`SchemaSyncDetail.failures` 最终叫 `databases`**，语义是"这条消息点名的库"，每条都带状态。单库同步如果只回一句"成功 1 个"，用户分不清是哪一次——而"单独触发一次库同步"正是需求里点名要的场景。实例级操作仍然只列失败/未完成的库，成功的只计数，前端按状态分别渲染（成功 / 失败原因 / 无结果）。
+2. **数据库资源名是 `instances/{instance}/databases/{database}`**（本设计文档原先写成 `databases/{instance}/{database}`，不对）。
+3. **两侧协作方都用窄接口**：runner 侧是 `schemasync.Notifier`，HTTP 摄取侧是 `v1.OpenLineageNotifier`（同时覆盖 `ReportUnmatchedNamespace`）；`*notification.Service` 是唯一的生产实现。好处是两侧都能在没有数据库的情况下测试，传 nil 时静默。
+4. **单库同步不走操作聚合器**：`Syncer.SyncDatabaseForUser` 在请求内同步执行、直接投递；只有实例同步、批量同步、建实例这三条有异步尾巴的路径登记 `SyncOperation`。
+5. **载荷边界放在 `component/notification` 的构造函数里**（`MaxFailureEntries = 100`、`MaxErrorBytes = 2KiB`，按 rune 截断），调用方传什么都不会撑大那条永久保留的行。
+6. **eslint 的 `no-unused-keys` 需要显式 ignores**：`src/lib/notificationText.ts` 返回的 key 那条规则追不到（`scripts/check-vue-i18n.mjs` 的 `KEY_PROP_RE` 追得到），所以按 `relationType` 的先例把这一族加进了 `eslint.config.mjs`。
+7. **铃铛承担轮询的生命周期**：它只在登录后的侧边栏里存在，挂载即开始、卸载即停止，正是会话本身的生命周期。
 
 ---
 
@@ -174,8 +193,9 @@ message SchemaSyncDetail {
   SyncTrigger trigger = 3;
   // 实例元数据这一步失败时的错误；成功为空。
   string instance_error = 4;
-  // 失败/未完成的库（成功的不逐条列出）。上限 100 条，超出时靠计数表达。
-  repeated SyncDatabaseResult failures = 5;
+  // 这条消息点名的库，每条带结果：实例级操作列出失败/未完成的，单库同步列出那个库。
+  // 成功的只计数；列表上限 100 条，超出时靠计数表达。
+  repeated SyncDatabaseResult databases = 5;
   int32 succeeded_count = 6;
   int32 failed_count = 7;
   int32 unfinished_count = 8;
@@ -216,7 +236,7 @@ enum OpenLineageFailureKind {
 
 **面向管理员的提示文本不落库**：`kind` 已经决定"该怎么办"（例如 `SCOPE_MISMATCH` → 检查这个 key 的 namespace scope；`NAMESPACE_UNMAPPED` → 核对实例地址或加一条 namespace mapping），所以提示语是前端 i18n 的一部分，不是服务端文本。
 
-**体积边界**：`failures` 上限 100 条、每条错误 2KB，所以一条消息的 payload 有硬上界；成功库只计数不列举。`SchemaSyncDetail` 是"指针 + 摘要"，不是数据载体。
+**体积边界**：`databases` 上限 100 条、每条错误 2KB，所以一条消息的 payload 有硬上界；成功库只计数不列举。`SchemaSyncDetail` 是"指针 + 摘要"，不是数据载体。
 
 ---
 
@@ -388,10 +408,10 @@ func (h *OpenLineageHandler) reportIngestionFailure(c echo.Context, key *store.O
 
 | 阶段 | 内容 | 验收 |
 | --- | --- | --- |
-| **Phase 1 数据与协议** | 两个新 proto（store + v1）；`LATEST.sql` + `0.1/0017##notification.sql`；`buf format/lint/generate` 提交生成物；`backend/store/notification.go` + 单测 | 空库与旧库都能升级；`go test ./backend/store/...` 绿；`buf lint` 干净 |
-| **Phase 2 组件与 API** | `backend/component/notification/`；`backend/api/v1/notification_service.go` + `grpc_routes.go` 注册；前端 `api/` + `store` + `NotificationBell` + `NotificationsPage` + i18n | 手工造一条消息 → 铃铛计数、单条已读、全部已读、删除都正确；`type-check` / `test run` / `i18n` 通过 |
-| **Phase 3 同步聚合** | `schemasync/operation.go` + `syncer.go` 改造（enqueue 带 op、结果回报、超时收尾、放弃重试时通知管理员）+ 三处 API 调用点 | 一个实例全量同步 → **恰好一条**消息，含成功/失败计数；单库同步 → 一条；后台失败 → 管理员一条且每小时最多一条 |
-| **Phase 4 OpenLineage** | handler 的拒收分支收成 `reportIngestionFailure`（400/403/413 全覆盖）+ 两个 5xx 分支投递；`openlineage.Resolver` 注入 `UnmatchedNamespaceReporter` 并在闸门触发时通知；`grpc_routes.go` 接线 | 400 / 403 / 413 / 500 各制造一次 → 管理员各收到一条且 kind 正确；同一 key 连续发垃圾 10 次只落一条；未映射 namespace 只通知一次（24 小时内） |
+| **Phase 1 数据与协议 ✅** | 两个新 proto（store + v1）；`LATEST.sql` + `0.1/0017##notification.sql`；`buf format/lint/generate` 提交生成物；`backend/store/notification.go` + 单测 | 空库与旧库都能升级；`go test ./backend/store/...` 绿；`buf lint` 干净 |
+| **Phase 2 组件与 API ✅** | `backend/component/notification/`；`backend/api/v1/notification_service.go` + `grpc_routes.go` 注册；前端 `api/` + `store` + `NotificationBell` + `NotificationsPage` + i18n | 手工造一条消息 → 铃铛计数、单条已读、全部已读、删除都正确；`type-check` / `test run` / `i18n` 通过 |
+| **Phase 3 同步聚合 ✅** | `schemasync/operation.go` + `syncer.go` 改造（enqueue 带 op、结果回报、超时收尾、放弃重试时通知管理员）+ 三处 API 调用点 | 一个实例全量同步 → **恰好一条**消息，含成功/失败计数；单库同步 → 一条；后台失败 → 管理员一条且每小时最多一条 |
+| **Phase 4 OpenLineage ✅** | handler 的拒收分支收成 `reportIngestionFailure`（400/403/413 全覆盖）+ 两个 5xx 分支投递；`openlineage.Resolver` 注入 `UnmatchedNamespaceReporter` 并在闸门触发时通知；`grpc_routes.go` 接线 | 400 / 403 / 413 / 500 各制造一次 → 管理员各收到一条且 kind 正确；同一 key 连续发垃圾 10 次只落一条；未映射 namespace 只通知一次（24 小时内） |
 | **Phase 5 可选** | 轮询发现新消息 → `notify` toast；浏览器原生 Notification；邮件 / webhook | — |
 
 ---
@@ -402,7 +422,7 @@ func (h *OpenLineageHandler) reportIngestionFailure(c echo.Context, key *store.O
 - **schemasync**（hermetic）：operation 聚合——多库出一个结果、两库共享的扇出、超时 → `UNFINISHED`、`FinishOperation` 的幂等、`DedupeKey` 的时间桶。
 - **api/v1**：`NotificationService` 的 self-scoping（用户 A 看不到 B 的消息）、分页、未知类型降级、`workspaces/-` 解析；handler 每个拒收分支的 `kind` / 主体选择（事件可解析时用 namespace，否则用 key id）；注入 reporter 后 `Resolver` 只在闸门首次触发时通知一次（reporter 为 nil 时行为不变）。
 - **前端**：`notificationText.ts`（lib 层覆盖率门槛，覆盖全部 `OpenLineageFailureKind`）、notification store 的轮询/未读状态。
-- **集成**：`backend/test/integration/runner/notification_service_test.go`（真 server + MySQL，模式参考同目录的 `schemasync_lineage_mysql_service_test.go`）：触发一次同步 → 等到消息出现 → 断言 recipient 是发起人、`schema_sync` detail 内容正确、未读计数为 1；再发一次非法 OpenLineage 事件 → 管理员收到 `INVALID_EVENT`，重复发送不叠加。
+- **集成**（`backend/test/integration/runner/notification_service_test.go`，真 server + PostgreSQL + MySQL，已通过）：`TestSyncWritesTheCallerAMessageRealServerIntegration` 触发一次库同步 → 等到消息出现 → 断言类型/trigger/计数/点名的库/未读态，并走通未读数、标已读、删除、重复删除 NotFound；`TestNotificationInboxIsPersonalRealServerIntegration` 新建一个成员账号登录 → 其收件箱为空且未读数为 0，而管理员自己的收件箱里有那条消息。
 
 ---
 

@@ -153,7 +153,7 @@ describe("describeNotification", () => {
       // The server always sets a kind; a numeric value this build does not know
       // still has to render.
       [
-        99,
+        99 as OpenLineageFailureKind,
         "notifications.openlineageUnknownTitle",
         "notifications.openlineageUnknownMessage",
       ],

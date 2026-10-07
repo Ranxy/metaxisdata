@@ -6444,13 +6444,15 @@ components:
                 instanceError:
                     type: string
                     description: Why the instance metadata step failed. Empty when it succeeded.
-                failures:
+                databases:
                     type: array
                     items:
                         $ref: '#/components/schemas/SyncDatabaseResult'
                     description: |-
-                        The databases that failed or never reported. Listed up to a cap; the counts
-                         below carry the whole picture.
+                        The databases this message names, each with its outcome: the ones that failed
+                         or never reported for an instance-wide sync, and the database itself for a sync
+                         of one database. Successful databases are counted rather than listed, and the
+                         list is capped; the counts below carry the whole picture.
                 succeededCount:
                     type: integer
                     format: int32

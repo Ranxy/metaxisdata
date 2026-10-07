@@ -81,7 +81,7 @@ func TestOperationReportsOneMessageWhenEveryDatabaseSucceeds(t *testing.T) {
 	require.Equal(t, storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, message.GetSchemaSync().GetTrigger())
 	require.Equal(t, int32(2), message.GetSchemaSync().GetSucceededCount())
 	require.Zero(t, message.GetSchemaSync().GetFailedCount())
-	require.Empty(t, operation.failures)
+	require.Empty(t, operation.databases)
 
 	// The finished operation is gone: a later result for the same database cannot
 	// resurrect it.
@@ -108,10 +108,10 @@ func TestOperationReportsEachFailingDatabase(t *testing.T) {
 	require.Equal(t, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, notifier.sent[0].GetSeverity())
 	require.Equal(t, int32(1), detail.GetSucceededCount())
 	require.Equal(t, int32(1), detail.GetFailedCount())
-	require.Len(t, detail.GetFailures(), 1)
-	require.Equal(t, "instances/inst-1/databases/audit", detail.GetFailures()[0].GetDatabase())
-	require.Equal(t, storepb.SyncDatabaseState_SYNC_DATABASE_STATE_FAILED, detail.GetFailures()[0].GetState())
-	require.Equal(t, "permission denied", detail.GetFailures()[0].GetError())
+	require.Len(t, detail.GetDatabases(), 1)
+	require.Equal(t, "instances/inst-1/databases/audit", detail.GetDatabases()[0].GetDatabase())
+	require.Equal(t, storepb.SyncDatabaseState_SYNC_DATABASE_STATE_FAILED, detail.GetDatabases()[0].GetState())
+	require.Equal(t, "permission denied", detail.GetDatabases()[0].GetError())
 	require.Equal(t, 1, operation.failed)
 }
 
@@ -178,9 +178,9 @@ func TestOperationReportsUnfinishedDatabasesAtTheDeadline(t *testing.T) {
 	detail := notifier.sent[0].GetSchemaSync()
 	require.Equal(t, int32(1), detail.GetSucceededCount())
 	require.Equal(t, int32(1), detail.GetUnfinishedCount())
-	require.Len(t, detail.GetFailures(), 1)
-	require.Equal(t, storepb.SyncDatabaseState_SYNC_DATABASE_STATE_UNFINISHED, detail.GetFailures()[0].GetState())
-	require.Empty(t, detail.GetFailures()[0].GetError())
+	require.Len(t, detail.GetDatabases(), 1)
+	require.Equal(t, storepb.SyncDatabaseState_SYNC_DATABASE_STATE_UNFINISHED, detail.GetDatabases()[0].GetState())
+	require.Empty(t, detail.GetDatabases()[0].GetError())
 
 	// The deadline does not fire twice for the same operation.
 	syncer.expireOperations(context.Background(), time.Now())

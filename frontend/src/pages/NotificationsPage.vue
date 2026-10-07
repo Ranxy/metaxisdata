@@ -106,32 +106,27 @@
                     }}
                   </p>
                   <ul
-                    v-if="visibleFailures(notification).length > 0"
+                    v-if="listedDatabases(notification).length > 0"
                     class="space-y-0.5 pt-1"
                   >
                     <li
-                      v-for="failure in visibleFailures(notification)"
-                      :key="failure.database"
+                      v-for="database in listedDatabases(notification)"
+                      :key="database.database"
                       class="text-xs"
                     >
-                      <span class="font-mono">{{ databaseLabel(failure.database) }}</span>
+                      <span class="font-mono">{{ databaseLabel(database.database) }}</span>
                       <span class="text-muted-foreground">
-                        —
-                        {{
-                          failure.state === SyncDatabaseState.UNFINISHED
-                            ? t("notifications.schemaSyncUnfinished")
-                            : failure.error
-                        }}
+                        — {{ databaseOutcome(database) }}
                       </span>
                     </li>
                   </ul>
                   <p
-                    v-if="hiddenFailureCount(notification) > 0"
+                    v-if="hiddenDatabaseCount(notification) > 0"
                     class="text-xs text-muted-foreground"
                   >
                     {{
-                      t("notifications.schemaSyncMoreFailures", {
-                        count: hiddenFailureCount(notification),
+                      t("notifications.schemaSyncMoreDatabases", {
+                        count: hiddenDatabaseCount(notification),
                       })
                     }}
                   </p>
@@ -257,12 +252,13 @@ import {
   NotificationSeverity,
   type OpenLineageDetail,
   type SchemaSyncDetail,
+  type SyncDatabaseResult,
   SyncDatabaseState,
 } from "@/types/proto-es/v1/notification_service_pb";
 import { formatRelativeTime } from "@/utils/datetime";
 
-/** How many failing databases one row lists before it summarizes the rest. */
-const MAX_LISTED_FAILURES = 5;
+/** How many databases one row lists before it summarizes the rest. */
+const MAX_LISTED_DATABASES = 5;
 
 const { t, locale } = useI18n();
 const { handleError, showSuccess } = useErrorHandler();
@@ -319,13 +315,33 @@ function openLineageOf(
     : undefined;
 }
 
-function visibleFailures(notification: Notification) {
-  return schemaOf(notification)?.failures.slice(0, MAX_LISTED_FAILURES) ?? [];
+function listedDatabases(notification: Notification): SyncDatabaseResult[] {
+  return schemaOf(notification)?.databases.slice(0, MAX_LISTED_DATABASES) ?? [];
 }
 
-function hiddenFailureCount(notification: Notification) {
-  const failures = schemaOf(notification)?.failures.length ?? 0;
-  return Math.max(0, failures - MAX_LISTED_FAILURES);
+function hiddenDatabaseCount(notification: Notification): number {
+  const listed = schemaOf(notification)?.databases.length ?? 0;
+  return Math.max(0, listed - MAX_LISTED_DATABASES);
+}
+
+/**
+ * What happened to one database. A failed entry carries the driver's own error,
+ * which is the only diagnostic the user has; the other two states read as words
+ * because there is nothing else to say about them.
+ */
+function databaseOutcome(database: SyncDatabaseResult): string {
+  switch (database.state) {
+    case SyncDatabaseState.SUCCEEDED:
+      return t("notifications.schemaSyncDatabaseSucceeded");
+    case SyncDatabaseState.UNFINISHED:
+      return t("notifications.schemaSyncUnfinished");
+    case SyncDatabaseState.FAILED:
+      return database.error;
+    case SyncDatabaseState.UNSPECIFIED:
+      return database.error;
+    default:
+      return database.error;
+  }
 }
 
 /** The raw error behind an ingestion failure, when the report carries one. */

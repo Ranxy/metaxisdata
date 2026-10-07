@@ -49,7 +49,7 @@ const (
 	// window bucket.
 	gateRetention = 24 * time.Hour
 
-	// MaxFailureEntries bounds how many failing databases one sync message lists.
+	// MaxFailureEntries bounds how many databases one sync message lists.
 	// The message's counts carry the rest, so it stays a pointer into the estate
 	// rather than a copy of it.
 	MaxFailureEntries = 100
@@ -144,14 +144,14 @@ func boundSyncDetail(detail *storepb.SchemaSyncDetail) *storepb.SchemaSyncDetail
 	if !ok {
 		return detail
 	}
-	failures := bounded.GetFailures()
-	if len(failures) > MaxFailureEntries {
-		failures = failures[:MaxFailureEntries]
+	databases := bounded.GetDatabases()
+	if len(databases) > MaxFailureEntries {
+		databases = databases[:MaxFailureEntries]
 	}
-	bounded.Failures = nil
-	for _, failure := range failures {
-		failure.Error = truncateBytes(failure.GetError(), MaxErrorBytes)
-		bounded.Failures = append(bounded.Failures, failure)
+	bounded.Databases = nil
+	for _, database := range databases {
+		database.Error = truncateBytes(database.GetError(), MaxErrorBytes)
+		bounded.Databases = append(bounded.Databases, database)
 	}
 	return bounded
 }

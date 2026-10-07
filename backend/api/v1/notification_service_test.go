@@ -39,7 +39,7 @@ func TestConvertToV1NotificationNamesAndMapsTheEnvelope(t *testing.T) {
 			InstanceError:  "boom",
 			SucceededCount: 3,
 			FailedCount:    1,
-			Failures: []*storepb.SyncDatabaseResult{
+			Databases: []*storepb.SyncDatabaseResult{
 				{
 					Database: "databases/inst1/app",
 					State:    storepb.SyncDatabaseState_SYNC_DATABASE_STATE_FAILED,
@@ -63,10 +63,10 @@ func TestConvertToV1NotificationNamesAndMapsTheEnvelope(t *testing.T) {
 	require.Equal(t, v1pb.SyncTrigger_SYNC_TRIGGER_MANUAL, converted.GetSchemaSync().GetTrigger())
 	require.Equal(t, "boom", converted.GetSchemaSync().GetInstanceError())
 	require.Equal(t, int32(3), converted.GetSchemaSync().GetSucceededCount())
-	require.Len(t, converted.GetSchemaSync().GetFailures(), 2)
-	require.Equal(t, v1pb.SyncDatabaseState_SYNC_DATABASE_STATE_FAILED, converted.GetSchemaSync().GetFailures()[0].GetState())
-	require.Equal(t, "permission denied", converted.GetSchemaSync().GetFailures()[0].GetError())
-	require.Equal(t, v1pb.SyncDatabaseState_SYNC_DATABASE_STATE_UNFINISHED, converted.GetSchemaSync().GetFailures()[1].GetState())
+	require.Len(t, converted.GetSchemaSync().GetDatabases(), 2)
+	require.Equal(t, v1pb.SyncDatabaseState_SYNC_DATABASE_STATE_FAILED, converted.GetSchemaSync().GetDatabases()[0].GetState())
+	require.Equal(t, "permission denied", converted.GetSchemaSync().GetDatabases()[0].GetError())
+	require.Equal(t, v1pb.SyncDatabaseState_SYNC_DATABASE_STATE_UNFINISHED, converted.GetSchemaSync().GetDatabases()[1].GetState())
 }
 
 func TestConvertToV1NotificationMapsAnOpenLineageDetail(t *testing.T) {

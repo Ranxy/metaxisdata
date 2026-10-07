@@ -110,12 +110,13 @@ export declare type SchemaSyncDetail = Message<"metaxisdata.v1.SchemaSyncDetail"
   instanceError: string;
 
   /**
-   * The databases that failed or never reported. Successful ones are counted,
-   * not listed.
+   * The databases this message names, each with its outcome: the ones that failed
+   * or never reported for an instance-wide sync, and the database itself for a sync
+   * of one database. Successful databases are counted rather than listed.
    *
-   * @generated from field: repeated metaxisdata.v1.SyncDatabaseResult failures = 5;
+   * @generated from field: repeated metaxisdata.v1.SyncDatabaseResult databases = 5;
    */
-  failures: SyncDatabaseResult[];
+  databases: SyncDatabaseResult[];
 
   /**
    * @generated from field: int32 succeeded_count = 6;

@@ -452,9 +452,10 @@ type SchemaSyncDetail struct {
 	Trigger       SyncTrigger `protobuf:"varint,3,opt,name=trigger,proto3,enum=metaxisdata.v1.SyncTrigger" json:"trigger,omitempty"`
 	// Why the instance metadata step failed. Empty when it succeeded.
 	InstanceError string `protobuf:"bytes,4,opt,name=instance_error,json=instanceError,proto3" json:"instance_error,omitempty"`
-	// The databases that failed or never reported. Successful ones are counted,
-	// not listed.
-	Failures        []*SyncDatabaseResult `protobuf:"bytes,5,rep,name=failures,proto3" json:"failures,omitempty"`
+	// The databases this message names, each with its outcome: the ones that failed
+	// or never reported for an instance-wide sync, and the database itself for a sync
+	// of one database. Successful databases are counted rather than listed.
+	Databases       []*SyncDatabaseResult `protobuf:"bytes,5,rep,name=databases,proto3" json:"databases,omitempty"`
 	SucceededCount  int32                 `protobuf:"varint,6,opt,name=succeeded_count,json=succeededCount,proto3" json:"succeeded_count,omitempty"`
 	FailedCount     int32                 `protobuf:"varint,7,opt,name=failed_count,json=failedCount,proto3" json:"failed_count,omitempty"`
 	UnfinishedCount int32                 `protobuf:"varint,8,opt,name=unfinished_count,json=unfinishedCount,proto3" json:"unfinished_count,omitempty"`
@@ -520,9 +521,9 @@ func (x *SchemaSyncDetail) GetInstanceError() string {
 	return ""
 }
 
-func (x *SchemaSyncDetail) GetFailures() []*SyncDatabaseResult {
+func (x *SchemaSyncDetail) GetDatabases() []*SyncDatabaseResult {
 	if x != nil {
-		return x.Failures
+		return x.Databases
 	}
 	return nil
 }
@@ -1101,13 +1102,13 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\vschema_sync\x18\x06 \x01(\v2 .metaxisdata.v1.SchemaSyncDetailH\x00R\n" +
 	"schemaSync\x12E\n" +
 	"\vopenlineage\x18\a \x01(\v2!.metaxisdata.v1.OpenLineageDetailH\x00R\vopenlineageB\b\n" +
-	"\x06detail\"\xea\x02\n" +
+	"\x06detail\"\xec\x02\n" +
 	"\x10SchemaSyncDetail\x12\x1a\n" +
 	"\binstance\x18\x01 \x01(\tR\binstance\x12%\n" +
 	"\x0einstance_title\x18\x02 \x01(\tR\rinstanceTitle\x125\n" +
 	"\atrigger\x18\x03 \x01(\x0e2\x1b.metaxisdata.v1.SyncTriggerR\atrigger\x12%\n" +
-	"\x0einstance_error\x18\x04 \x01(\tR\rinstanceError\x12>\n" +
-	"\bfailures\x18\x05 \x03(\v2\".metaxisdata.v1.SyncDatabaseResultR\bfailures\x12'\n" +
+	"\x0einstance_error\x18\x04 \x01(\tR\rinstanceError\x12@\n" +
+	"\tdatabases\x18\x05 \x03(\v2\".metaxisdata.v1.SyncDatabaseResultR\tdatabases\x12'\n" +
 	"\x0fsucceeded_count\x18\x06 \x01(\x05R\x0esucceededCount\x12!\n" +
 	"\ffailed_count\x18\a \x01(\x05R\vfailedCount\x12)\n" +
 	"\x10unfinished_count\x18\b \x01(\x05R\x0funfinishedCount\"\x7f\n" +
@@ -1222,7 +1223,7 @@ var file_v1_notification_service_proto_depIdxs = []int32{
 	6,  // 4: metaxisdata.v1.Notification.schema_sync:type_name -> metaxisdata.v1.SchemaSyncDetail
 	8,  // 5: metaxisdata.v1.Notification.openlineage:type_name -> metaxisdata.v1.OpenLineageDetail
 	2,  // 6: metaxisdata.v1.SchemaSyncDetail.trigger:type_name -> metaxisdata.v1.SyncTrigger
-	7,  // 7: metaxisdata.v1.SchemaSyncDetail.failures:type_name -> metaxisdata.v1.SyncDatabaseResult
+	7,  // 7: metaxisdata.v1.SchemaSyncDetail.databases:type_name -> metaxisdata.v1.SyncDatabaseResult
 	3,  // 8: metaxisdata.v1.SyncDatabaseResult.state:type_name -> metaxisdata.v1.SyncDatabaseState
 	4,  // 9: metaxisdata.v1.OpenLineageDetail.kind:type_name -> metaxisdata.v1.OpenLineageFailureKind
 	5,  // 10: metaxisdata.v1.ListNotificationsResponse.notifications:type_name -> metaxisdata.v1.Notification

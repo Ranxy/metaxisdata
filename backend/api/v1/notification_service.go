@@ -266,11 +266,11 @@ func convertSchemaSyncDetail(detail *storepb.SchemaSyncDetail) *v1pb.SchemaSyncD
 		FailedCount:     detail.GetFailedCount(),
 		UnfinishedCount: detail.GetUnfinishedCount(),
 	}
-	for _, failure := range detail.GetFailures() {
-		converted.Failures = append(converted.Failures, &v1pb.SyncDatabaseResult{
-			Database: failure.GetDatabase(),
-			State:    convertSyncDatabaseState(failure.GetState()),
-			Error:    failure.GetError(),
+	for _, database := range detail.GetDatabases() {
+		converted.Databases = append(converted.Databases, &v1pb.SyncDatabaseResult{
+			Database: database.GetDatabase(),
+			State:    convertSyncDatabaseState(database.GetState()),
+			Error:    database.GetError(),
 		})
 	}
 	return converted

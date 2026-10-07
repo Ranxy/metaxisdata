@@ -230,7 +230,7 @@ func TestMessagesBoundWhatTheyStore(t *testing.T) {
 
 	details := &storepb.SchemaSyncDetail{
 		Instance: "instances/inst1",
-		Failures: []*storepb.SyncDatabaseResult{{
+		Databases: []*storepb.SyncDatabaseResult{{
 			Database: "instances/inst1/databases/app",
 			Error:    strings.Repeat("x", MaxErrorBytes+64),
 		}},
@@ -242,27 +242,27 @@ func TestMessagesBoundWhatTheyStore(t *testing.T) {
 			Error:    "boom",
 		})
 	}
-	details.Failures = append(details.Failures, failures...)
-	details.FailedCount = int32(len(details.Failures))
+	details.Databases = append(details.Databases, failures...)
+	details.FailedCount = int32(len(details.Databases))
 
 	message := SchemaSyncMessage(7, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, details)
-	require.Len(t, message.GetSchemaSync().GetFailures(), MaxFailureEntries)
-	require.Equal(t, int32(len(details.Failures)), message.GetSchemaSync().GetFailedCount(), "the counts still describe the whole operation")
-	require.Len(t, message.GetSchemaSync().GetFailures()[0].GetError(), MaxErrorBytes)
+	require.Len(t, message.GetSchemaSync().GetDatabases(), MaxFailureEntries)
+	require.Equal(t, int32(len(details.Databases)), message.GetSchemaSync().GetFailedCount(), "the counts still describe the whole operation")
+	require.Len(t, message.GetSchemaSync().GetDatabases()[0].GetError(), MaxErrorBytes)
 	// The caller's detail is left alone: the bound is the message's, not a
 	// mutation of what the sender built.
-	require.Len(t, details.Failures, MaxFailureEntries+6)
-	require.Len(t, details.Failures[0].GetError(), MaxErrorBytes+64)
+	require.Len(t, details.Databases, MaxFailureEntries+6)
+	require.Len(t, details.Databases[0].GetError(), MaxErrorBytes+64)
 
 	// A truncation that splits a multi-byte rune would store an invalid string.
 	runes := SchemaSyncMessage(7, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, &storepb.SchemaSyncDetail{
-		Failures: []*storepb.SyncDatabaseResult{{
+		Databases: []*storepb.SyncDatabaseResult{{
 			Database: "instances/inst1/databases/app",
 			Error:    strings.Repeat("数", MaxErrorBytes),
 		}},
 	})
-	require.LessOrEqual(t, len(runes.GetSchemaSync().GetFailures()[0].GetError()), MaxErrorBytes)
-	require.True(t, utf8.ValidString(runes.GetSchemaSync().GetFailures()[0].GetError()))
+	require.LessOrEqual(t, len(runes.GetSchemaSync().GetDatabases()[0].GetError()), MaxErrorBytes)
+	require.True(t, utf8.ValidString(runes.GetSchemaSync().GetDatabases()[0].GetError()))
 
 	ingestion := OpenLineageMessage(storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, &storepb.OpenLineageDetail{
 		Error: strings.Repeat("e", MaxErrorBytes*2),

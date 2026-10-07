@@ -60,7 +60,9 @@ type SyncOperation struct {
 	succeeded  int
 	failed     int
 	unfinished int
-	failures   []*storepb.SyncDatabaseResult
+	// databases are the entries the message names, which for an instance-wide
+	// operation are the databases that failed or never reported.
+	databases []*storepb.SyncDatabaseResult
 }
 
 // StartOperation registers one sync operation for the caller.
@@ -147,7 +149,7 @@ func (s *Syncer) completeDatabase(ctx context.Context, database *store.DatabaseM
 			delete(operation.pending, key)
 			if err != nil {
 				operation.failed++
-				operation.failures = append(operation.failures, &storepb.SyncDatabaseResult{
+				operation.databases = append(operation.databases, &storepb.SyncDatabaseResult{
 					Database: common.FormatDatabase(database.InstanceID, database.DatabaseName),
 					State:    storepb.SyncDatabaseState_SYNC_DATABASE_STATE_FAILED,
 					Error:    err.Error(),
@@ -181,7 +183,7 @@ func (s *Syncer) expireOperations(ctx context.Context, now time.Time) {
 		}
 		for _, database := range operation.pending {
 			operation.unfinished++
-			operation.failures = append(operation.failures, &storepb.SyncDatabaseResult{
+			operation.databases = append(operation.databases, &storepb.SyncDatabaseResult{
 				Database: common.FormatDatabase(database.InstanceID, database.DatabaseName),
 				State:    storepb.SyncDatabaseState_SYNC_DATABASE_STATE_UNFINISHED,
 			})
@@ -225,7 +227,7 @@ func (s *Syncer) deliverOperation(ctx context.Context, operation *SyncOperation)
 		InstanceTitle:   operation.instanceTitle,
 		Trigger:         operation.trigger,
 		InstanceError:   operation.instanceErr,
-		Failures:        operation.failures,
+		Databases:       operation.databases,
 		SucceededCount:  int32(operation.succeeded),
 		FailedCount:     int32(operation.failed),
 		UnfinishedCount: int32(operation.unfinished),
@@ -272,17 +274,21 @@ func (s *Syncer) SyncDatabaseForUser(ctx context.Context, database *store.Databa
 		Trigger:       storepb.SyncTrigger_SYNC_TRIGGER_MANUAL,
 	}
 	severity := storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO
+	// The message names the database either way: a user who synced one database has
+	// nothing else to tell the one that finished from the next one.
+	result := &storepb.SyncDatabaseResult{
+		Database: common.FormatDatabase(database.InstanceID, database.DatabaseName),
+		State:    storepb.SyncDatabaseState_SYNC_DATABASE_STATE_SUCCEEDED,
+	}
 	if err != nil {
 		severity = storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR
 		detail.FailedCount = 1
-		detail.Failures = []*storepb.SyncDatabaseResult{{
-			Database: common.FormatDatabase(database.InstanceID, database.DatabaseName),
-			State:    storepb.SyncDatabaseState_SYNC_DATABASE_STATE_FAILED,
-			Error:    err.Error(),
-		}}
+		result.State = storepb.SyncDatabaseState_SYNC_DATABASE_STATE_FAILED
+		result.Error = err.Error()
 	} else {
 		detail.SucceededCount = 1
 	}
+	detail.Databases = []*storepb.SyncDatabaseResult{result}
 
 	if sendErr := s.notifier.Send(ctx, notification.SchemaSyncMessage(initiatorID, severity, detail)); sendErr != nil {
 		notification.LogFailure(sendErr,
@@ -306,7 +312,7 @@ func (s *Syncer) notifyBackgroundDatabaseFailure(ctx context.Context, instance *
 		InstanceTitle: instance.Metadata.GetTitle(),
 		Trigger:       storepb.SyncTrigger_SYNC_TRIGGER_BACKGROUND,
 		FailedCount:   1,
-		Failures: []*storepb.SyncDatabaseResult{{
+		Databases: []*storepb.SyncDatabaseResult{{
 			Database: common.FormatDatabase(database.InstanceID, database.DatabaseName),
 			State:    storepb.SyncDatabaseState_SYNC_DATABASE_STATE_FAILED,
 			Error:    cause.Error(),

@@ -12826,11 +12826,12 @@ second read. </p></td>
                 </tr>
               
                 <tr>
-                  <td>failures</td>
+                  <td>databases</td>
                   <td><a href="#metaxisdata.v1.SyncDatabaseResult">SyncDatabaseResult</a></td>
                   <td>repeated</td>
-                  <td><p>The databases that failed or never reported. Successful ones are counted,
-not listed. </p></td>
+                  <td><p>The databases this message names, each with its outcome: the ones that failed
+or never reported for an instance-wide sync, and the database itself for a sync
+of one database. Successful databases are counted rather than listed. </p></td>
                 </tr>
               
                 <tr>
