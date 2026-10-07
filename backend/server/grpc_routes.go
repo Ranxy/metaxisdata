@@ -94,6 +94,7 @@ func configureGrpcRouters(
 	userService := apiv1.NewUserService(stores, iamManager, profile)
 	authService := apiv1.NewAuthService(stores, secret, profile, stateCfg)
 	auditLogService := apiv1.NewAuditLogService(stores)
+	notificationService := apiv1.NewNotificationService(stores)
 	instanceService := apiv1.NewInstanceService(stores, dbFactory, schemaSync, stateCfg)
 	databaseService := apiv1.NewDatabaseService(stores, schemaSync)
 	lineageService := apiv1.NewLineageService(stores, lineageAnalyzer)
@@ -152,6 +153,8 @@ func configureGrpcRouters(
 	connectHandlers[authPath] = authHandler
 	auditLogPath, auditLogHandler := v1connect.NewAuditLogServiceHandler(auditLogService, handlerOpts)
 	connectHandlers[auditLogPath] = auditLogHandler
+	notificationPath, notificationHandler := v1connect.NewNotificationServiceHandler(notificationService, handlerOpts)
+	connectHandlers[notificationPath] = notificationHandler
 	instancePath, instanceHandler := v1connect.NewInstanceServiceHandler(instanceService, handlerOpts)
 	connectHandlers[instancePath] = instanceHandler
 	databasePath, databaseHandler := v1connect.NewDatabaseServiceHandler(databaseService, handlerOpts)
@@ -180,6 +183,7 @@ func configureGrpcRouters(
 	reflector := grpcreflect.NewStaticReflector(
 		v1connect.AuthServiceName,
 		v1connect.AuditLogServiceName,
+		v1connect.NotificationServiceName,
 		v1connect.UserServiceName,
 		v1connect.InstanceServiceName,
 		v1connect.DatabaseServiceName,
