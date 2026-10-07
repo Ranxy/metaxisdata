@@ -1048,12 +1048,6 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 
 **验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./backend/...`(全绿)、默认与 release 构建、`make test-integration-smoke`(真实 PostgreSQL + MySQL + migrator;runner 40.7s、migrator 20.1s)。本轮未改前端与 proto,未跑前端门禁。
 
-**残余**
-
-1. **解析仍未物化进 SQL**:窗口内的作用域过滤与自由文本检索仍需 app 侧解析(检索命中面包含"解析后的目标"),现在只是把每次解析的成本降到纯 CPU。要彻底去掉"详情受窗口限制",需要把解析结果(guid/resolved_target/internal)落库,并配一套失效机制(mapping/实例变更时按 namespace 重解析,或给聚合行加 epoch 让读路径只对已读到的 ≤5000 行重解析)。
-2. **空壳清扫是每 6 小时一次 O(数据集数) 次索引探测**,并把"越界删除"的可见后果限制在 grace + 一个 pass 之内(见下一条加固:它只删"没有任何引用且没有被写者持有"的行);要让它彻底不可能静默,可选 `BEFORE DELETE ON openlineage_run` 守卫触发器(要求 store 的删除路径 `SET LOCAL` 放行),但那会与既有"刻意越界删除以验证读路径优雅降级"的用例冲突,属策略变更而非修复。
-3. **摄取成本仍是每条引用最多 3 行成员**:批量化只把往返次数与数据集数解耦,不减少行数;若要把行数也降下来,可把 integration/source 两个维度收进数据集行的一份 JSONB 计数映射(代价是热数据集每次摄取都要重写该行)。
-
 **独立对抗式复核后的加固(commit `92a8bd8`、`940cfbb`、`4d0fd7f`)**
 
 上一条目的四项改动随后交独立子代理做对抗式只读复核(HEAD `ac28ff7`;探针全部挂在 `/tmp/probe`,以 `go test -overlay` 与真实 PG 16 集成套件注入,未改动仓库文件)。它用"增量结果 vs 从引用表重算"的差分探针覆盖了批量、方向迁移、空 integration、1800 数据集跨分块、分块删除等形态,确认了计数与每一项成员行都与重算一致,并实测了 13 种 namespace 形态下记忆化解析与逐次解析结果完全相同。它同时指出下列问题,均已修掉:
@@ -1068,5 +1062,12 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 
 复核**未能推翻**的部分(它列出的探针与理由):计数与全部成员行对"从引用表重算"的差分在所有形态下一致;`refCount == delta` 的"新建"判定与 `refCount <= 0` 的"耗尽"判定构造不出反例,行不会出现负计数或残留;分块不破坏"先锁全部数据集、再动成员"的次序,最坏参数数 8000/语句远低于上限,`GREATEST(timestamptz, …)` 与 NULL 语义、`int`/`bigint`、以及 `FROM` 里的 `VALUES` 列类型都与预期一致;prune 的 `SELECT ... FOR UPDATE` 经 `EXPLAIN` 确认是 `LockRows → Sort`,按 `COLLATE "C"` 排序与 Go 的字节序一致;请求级 namespace 记忆化在 13 种 namespace 形态 × 4 个数据集名下与未记忆化解析给出相同 GUID 与 Internal 标志。
 
+**加固后的验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./backend/...`(全绿)、`make test-integration-smoke`(真实 PostgreSQL + MySQL + migrator;runner 41.5s、migrator 19.4s)。四项修复各自附了反向验证,另加"增量 = 全量重算"的不变量用例 `TestOpenLineageDatasetAggregateMatchesAFullRecomputeRealServerIntegration`(数据集行与成员行都逐行对比,反向验证:把成员增量从累加改成覆盖即变红)。
+
 **复核未能验证的部分**(记录):并发大批次的压力测试、100 万数据集的最坏规模、多副本下两个 prune/清扫同时运行、以及前端渲染陈旧 `last_seen` 的效果——都只有结构论证或 SQL 级证据。
 
+**残余**
+
+1. **解析仍未物化进 SQL**:窗口内的作用域过滤与自由文本检索仍需 app 侧解析(检索命中面包含"解析后的目标"),现在只是把每次解析的成本降到纯 CPU。要彻底去掉"详情受窗口限制",需要把解析结果(guid/resolved_target/internal)落库,并配一套失效机制(mapping/实例变更时按 namespace 重解析,或给聚合行加 epoch 让读路径只对已读到的 ≤5000 行重解析)。
+2. **空壳清扫是每 6 小时一次 O(数据集数) 次索引探测**,并把"越界删除"的可见后果限制在 grace + 一个 pass 之内(见上面的加固:它只删"没有任何引用且没有被写者持有"的行);要让它彻底不可能静默,可选 `BEFORE DELETE ON openlineage_run` 守卫触发器(要求 store 的删除路径 `SET LOCAL` 放行),但那会与既有"刻意越界删除以验证读路径优雅降级"的用例冲突,属策略变更而非修复。
+3. **摄取成本仍是每条引用最多 3 行成员**:批量化只把往返次数与数据集数解耦,不减少行数;若要把行数也降下来,可把 integration/source 两个维度收进数据集行的一份 JSONB 计数映射(代价是热数据集每次摄取都要重写该行)。
