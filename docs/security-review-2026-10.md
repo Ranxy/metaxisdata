@@ -1051,5 +1051,22 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 **残余**
 
 1. **解析仍未物化进 SQL**:窗口内的作用域过滤与自由文本检索仍需 app 侧解析(检索命中面包含"解析后的目标"),现在只是把每次解析的成本降到纯 CPU。要彻底去掉"详情受窗口限制",需要把解析结果(guid/resolved_target/internal)落库,并配一套失效机制(mapping/实例变更时按 namespace 重解析,或给聚合行加 epoch 让读路径只对已读到的 ≤5000 行重解析)。
-2. **空壳清扫是每 6 小时一次 O(数据集数) 次索引探测**,并把"越界删除"的可见后果限制在 grace + 一个 pass 之内;要让它彻底不可能静默,可选 `BEFORE DELETE ON openlineage_run` 守卫触发器(要求 store 的删除路径 `SET LOCAL` 放行),但那会与既有"刻意越界删除以验证读路径优雅降级"的用例冲突,属策略变更而非修复。
+2. **空壳清扫是每 6 小时一次 O(数据集数) 次索引探测**,并把"越界删除"的可见后果限制在 grace + 一个 pass 之内(见下一条加固:它只删"没有任何引用且没有被写者持有"的行);要让它彻底不可能静默,可选 `BEFORE DELETE ON openlineage_run` 守卫触发器(要求 store 的删除路径 `SET LOCAL` 放行),但那会与既有"刻意越界删除以验证读路径优雅降级"的用例冲突,属策略变更而非修复。
 3. **摄取成本仍是每条引用最多 3 行成员**:批量化只把往返次数与数据集数解耦,不减少行数;若要把行数也降下来,可把 integration/source 两个维度收进数据集行的一份 JSONB 计数映射(代价是热数据集每次摄取都要重写该行)。
+
+**独立对抗式复核后的加固(commit `92a8bd8`、`940cfbb`、`4d0fd7f`)**
+
+上一条目的四项改动随后交独立子代理做对抗式只读复核(HEAD `ac28ff7`;探针全部挂在 `/tmp/probe`,以 `go test -overlay` 与真实 PG 16 集成套件注入,未改动仓库文件)。它用"增量结果 vs 从引用表重算"的差分探针覆盖了批量、方向迁移、空 integration、1800 数据集跨分块、分块删除等形态,确认了计数与每一项成员行都与重算一致,并实测了 13 种 namespace 形态下记忆化解析与逐次解析结果完全相同。它同时指出下列问题,均已修掉:
+
+1. **`last_seen` 不再是引用的 `MAX(event_time)`(高,已复现,基座 `1253a9d` 起就有)**:`openLineageDatasetDeltas` 会把"引用数、列血缘、成员都抵消"的增量当作"什么都不用写"丢掉,但这类增量仍然带着 `removed` 与新的 `lastSeen`——一次只改了引用事件时间的重投递(任何被读取的数据集,其输入引用从不带列血缘标志,所以普通的 START→COMPLETE 就会命中)因此不写任何行,而此后没有任何东西会重算它。端到端复现:同一 run 两次 COMPLETE、输入相同、`eventTime` 从 t0 改到 t0+1h,`last_seen` 仍停在 t0,而 `MAX(ref.event_time)` 是 t0+1h;列表窗口按 `last_seen` 排序,于是正在被写入的数据集可能因陈旧时间被挤出 5000 窗口,详情随即 404——正是基线修复要消除的那类现象。现在只有"确实无可写"的增量才会被丢弃。反向验证:去掉新增的 `!delta.removed && delta.lastSeen == nil` 条件,单元用例 `TestOpenLineageDatasetDeltas/a replacement that only moves a reference's event time still writes` 变红(`"[]" should have 1 item(s), but has 0`),把该形态加进不变量用例后集成侧同时变红。
+
+2. **保留策略与摄入互相死锁(中高,已复现,属既有形状但 `226e8d7` 的注释称锁序已对齐)**:摄入的顺序是 task 行 → run 行 → 引用 → dataset 行,而 prune 是"先删 run 行 → 注册表 → task 重算(此时才取 task 行)"。生产者在 prune 正在删除某 run 时重投递该 run:摄入先拿到 task 行,再去写已被删除但未提交的 run 行;prune 持有该 run 行,稍后又要 task 行——成环。复现(probe `zz_probe_deadlock_test.go`):把 prune 停在批量 DELETE 之后(靠 `meta_registry_resource` 行锁),启动重投递,再放行;在 `ac28ff7` 上 prune 成功、投递得到 HTTP 500,服务端日志 `ERROR: deadlock detected (SQLSTATE 40P01)` 于 `upsertOpenLineageRunImpl`——该投递的 lineage 完全没写进去(prune 的后半段(注册表清理、task 重算、数据集重建)可以持续很久,窗口很宽)。现在 prune 在删除 run 之前先按 task GUID 顺序把将要重算的 task 行锁住(upsert + 空更新),两条路径于是都是"先 task、再 run、后 dataset"。回归用例 `TestOpenLineagePruneAndIngestShareATaskRealServerIntegration` 复刻同一交错并断言两侧都成功;反向验证:去掉这段前置加锁,该用例变红(投递 500、日志 40P01)。这一改动同时让复核提到的"prune 重建后又把在途摄入的旧引用减一遍"窗口不可达——摄入不可能不持有 task 锁就停在重建与自身状态之间。
+
+3. **空壳清扫可能删掉仍有引用的聚合行(中,已复现,`18abe4b` 引入)**:`updated_at` 写的是 `NOW()`,即**事务开始**时间;一个早于 grace 开始、晚于 grace 提交的事务,提交后行版本仍低于截止时间。清扫语句在写者持锁时阻塞,提交后 EvalPlanQual 用旧快照重算 `NOT EXISTS`,看不到刚提交的引用,于是把行删掉(其成员行随外键级联消失),留下"引用在、聚合无"的状态:页面不再列出该数据集。psql 复现:0 行聚合、1 行引用。现在清扫先把候选行按 `(namespace, name)` 字节序锁定并 `SKIP LOCKED` 跳过任何仍被写者持有的行,"没有提交的引用"因此不会被误判,age 条件只作为"不打扰热行"的保守约束保留(它本身不足以判定,注释里已写明)。回归用例 `TestOpenLineageEmptyDatasetSweepSkipsARowAWriterHoldsRealServerIntegration` 按摄入的方式持锁+写引用,断言清扫既不等待也不删除;反向验证:去掉 `SKIP LOCKED` 后该用例变红(`the sweep waited for a writer's row lock instead of skipping it`,随后提交即删除)。
+
+4. **复核在过程中拦下的一处回归(只存在于未提交工作区,已修,记录备查)**:前置加锁语句的第一版写成 `SELECT DISTINCT ... ORDER BY task_guid COLLATE "C"`,PostgreSQL 以 `for SELECT DISTINCT, ORDER BY expressions must appear in select list (42P10)` 拒绝——它是 prune 的第一条语句,会让保留策略静默停摆(只打一条日志),而当时新增的死锁用例因为 prune 立刻报错而表现为"等待超时"。改为 `ORDER BY 1`(选择列表里的 `task_guid` 自带 `COLLATE "C"`,按序数排序仍是字节序)后通过;复核用仓库自己的保留策略集成用例与真实列定义逐字复现了该报错。
+
+复核**未能推翻**的部分(它列出的探针与理由):计数与全部成员行对"从引用表重算"的差分在所有形态下一致;`refCount == delta` 的"新建"判定与 `refCount <= 0` 的"耗尽"判定构造不出反例,行不会出现负计数或残留;分块不破坏"先锁全部数据集、再动成员"的次序,最坏参数数 8000/语句远低于上限,`GREATEST(timestamptz, …)` 与 NULL 语义、`int`/`bigint`、以及 `FROM` 里的 `VALUES` 列类型都与预期一致;prune 的 `SELECT ... FOR UPDATE` 经 `EXPLAIN` 确认是 `LockRows → Sort`,按 `COLLATE "C"` 排序与 Go 的字节序一致;请求级 namespace 记忆化在 13 种 namespace 形态 × 4 个数据集名下与未记忆化解析给出相同 GUID 与 Internal 标志。
+
+**复核未能验证的部分**(记录):并发大批次的压力测试、100 万数据集的最坏规模、多副本下两个 prune/清扫同时运行、以及前端渲染陈旧 `last_seen` 的效果——都只有结构论证或 SQL 级证据。
+
