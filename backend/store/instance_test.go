@@ -66,7 +66,7 @@ func TestDecryptInstanceFailsOnAnUnauthenticatedCredential(t *testing.T) {
 
 // A credential written back to the database is only ever its ciphertext: the
 // stored instance must not carry the plaintext.
-func TestObfuscateInstanceStoresOnlyTheCiphertext(t *testing.T) {
+func TestEncryptInstanceStoresOnlyTheCiphertext(t *testing.T) {
 	t.Parallel()
 
 	cipher := newTestCipher(t)
@@ -99,7 +99,7 @@ func TestObfuscateInstanceStoresOnlyTheCiphertext(t *testing.T) {
 
 // A store that never had a cipher installed must refuse to write a credential
 // rather than storing it in the clear.
-func TestObfuscateInstanceWithoutACipherFails(t *testing.T) {
+func TestEncryptInstanceWithoutACipherFails(t *testing.T) {
 	t.Parallel()
 
 	s := &Store{}

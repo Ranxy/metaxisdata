@@ -1144,7 +1144,7 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 - 单元 `backend/common/crypto`:往返、每条密文 nonce 不同、错钥、分别篡改 nonce 与 tag、旧格式/非 base64/过短、空值语义、`ParseKey` 与 `ParseKeys` 的三种编码与非法输入。
 - 单元 `backend/store`:逐个字段解密并断言错误里出现字段名与数据源;写回的行内没有明文且密文能往返;未安装 cipher 时拒绝写入;黄金测试用 protoreflect 遍历 `DataSource`——任何 `*_ciphertext` 字段未登记、或登记项缺明文/密文配对即变红;`LlmProviderProfile` 只允许 `api_key_ciphertext` 一个凭据字段;`unwrapDataKey` 覆盖裸密钥、当前 KEK、退役 KEK、无 KEK、无 KEK 能解开五条分支。
 - 集成(真实服务器 + 真实 PostgreSQL):`TestStoredInstanceCredentialsAreEncryptedRealServerIntegration`——管理员口令在库里是 `v1:` 密文、行的 JSON 中没有 `"password"` 字段、服务器仍能用它完成一次库同步(证明解出的凭据可用)、观察者 store 读回明文、同一口令在第二个实例里得到不同密文。
-- **反向验证**(两次,均已恢复并逐字节确认):(a) 把 `Encrypt`/`Decrypt` 换成"确定性且不认证"(正是旧混淆的本质)——crypto 4 例、store 3 例变红,集成用例以 `Should not be: "v1:cG9zdGdyZXM="` 变红(两个实例同口令得到同一密文);(b) 让 `encryptInstance` 把明文写进密文字段——`TestObfuscateInstanceStoresOnlyTheCiphertext` 与 `TestObfuscateInstanceWithoutACipherFails` 变红。
+- **反向验证**(两次,均已恢复并逐字节确认):(a) 把 `Encrypt`/`Decrypt` 换成"确定性且不认证"(正是旧混淆的本质)——crypto 4 例、store 3 例变红,集成用例以 `Should not be: "v1:cG9zdGdyZXM="` 变红(两个实例同口令得到同一密文);(b) 让 `encryptInstance` 把明文写进密文字段——`TestEncryptInstanceStoresOnlyTheCiphertext` 与 `TestEncryptInstanceWithoutACipherFails` 变红。
 
 **本轮新发现(未修复)**:**`idp.config.client_secret` 明文入库**。`backend/store/idp.go` 把 `idp.config` 直接交给 protojson 解析,`proto/store/store/idp.proto:37` 的 `client_secret` 既未加密也未混淆,`docs/security-posture.md` 未收录;任何数据库读权限者都能拿到它并以本应用身份访问企业 IdP。不修的理由是可用性而非安全性:该配置没有 API/UI,唯一写入路径是运维手改 SQL,改成密文后运维必须先自己算出密文;要做应先提供配置入口或一个生成密文的工具。
 
