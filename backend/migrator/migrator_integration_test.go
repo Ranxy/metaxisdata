@@ -271,7 +271,13 @@ func startPostgres(t *testing.T) (host, port string) {
 			"POSTGRES_DB":       "metaxisdata",
 		},
 		ExposedPorts: []string{"5432/tcp"},
-		WaitingFor:   wait.ForListeningPort("5432/tcp").WithStartupTimeout(90 * time.Second),
+		// A listening port is not readiness: the postmaster accepts connections
+		// while it is still starting up and answers them with SQLSTATE 57P03,
+		// which the first statement after the wait — the CREATE DATABASE these
+		// tests open with — fails on. pg_isready exits non-zero until the server
+		// serves queries, so it gates on readiness rather than on the socket.
+		WaitingFor: wait.ForExec([]string{"pg_isready", "-h", "127.0.0.1", "-p", "5432", "-q"}).
+			WithStartupTimeout(90 * time.Second),
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
