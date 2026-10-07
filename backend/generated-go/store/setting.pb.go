@@ -35,6 +35,11 @@ const (
 	SettingName_WORKSPACE_PROFILE        SettingName = 4
 	SettingName_PASSWORD_RESTRICTION     SettingName = 14
 	SettingName_ENVIRONMENT              SettingName = 15
+	// ENCRYPTION_KEY is the deployment's credential data key, in the bare base64
+	// of 32 random bytes when no key-encryption key is configured, or a v1
+	// ciphertext under METAXISDATA_ENCRYPTION_KEY when one is. It is generated on
+	// first startup and never leaves the process otherwise.
+	SettingName_ENCRYPTION_KEY SettingName = 16
 )
 
 // Enum value maps for SettingName.
@@ -47,6 +52,7 @@ var (
 		4:  "WORKSPACE_PROFILE",
 		14: "PASSWORD_RESTRICTION",
 		15: "ENVIRONMENT",
+		16: "ENCRYPTION_KEY",
 	}
 	SettingName_value = map[string]int32{
 		"SETTING_NAME_UNSPECIFIED": 0,
@@ -56,6 +62,7 @@ var (
 		"WORKSPACE_PROFILE":        4,
 		"PASSWORD_RESTRICTION":     14,
 		"ENVIRONMENT":              15,
+		"ENCRYPTION_KEY":           16,
 	}
 )
 
@@ -472,7 +479,7 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x05color\x18\x04 \x01(\tR\x05color\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\xad\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\xc1\x02\n" +
 	"\vSettingName\x12\x1c\n" +
 	"\x18SETTING_NAME_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vAUTH_SECRET\x10\x01\x12\x11\n" +
@@ -480,7 +487,8 @@ const file_store_setting_proto_rawDesc = "" +
 	"\fWORKSPACE_ID\x10\x03\x12\x15\n" +
 	"\x11WORKSPACE_PROFILE\x10\x04\x12\x18\n" +
 	"\x14PASSWORD_RESTRICTION\x10\x0e\x12\x0f\n" +
-	"\vENVIRONMENT\x10\x0f\"\x04\b\x05\x10\r*\x12WORKSPACE_APPROVAL*\x1bWORKSPACE_EXTERNAL_APPROVAL*\x06APP_IM*\tWATERMARK*\x02AI*\x0fSCHEMA_TEMPLATE*\x13DATA_CLASSIFICATION*\x0eSEMANTIC_TYPES*\x04SCIMB\x14Z\x12generated-go/storeb\x06proto3"
+	"\vENVIRONMENT\x10\x0f\x12\x12\n" +
+	"\x0eENCRYPTION_KEY\x10\x10\"\x04\b\x05\x10\r*\x12WORKSPACE_APPROVAL*\x1bWORKSPACE_EXTERNAL_APPROVAL*\x06APP_IM*\tWATERMARK*\x02AI*\x0fSCHEMA_TEMPLATE*\x13DATA_CLASSIFICATION*\x0eSEMANTIC_TYPES*\x04SCIMB\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
 	file_store_setting_proto_rawDescOnce sync.Once

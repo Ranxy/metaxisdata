@@ -146,28 +146,6 @@ func (s *Store) ListSetting(ctx context.Context, find *FindSettingMessage) ([]*S
 	return settings, nil
 }
 
-// GetSecret returns the per-deployment AUTH_SECRET setting, the seed used to
-// obfuscate stored credentials. The server generates it once and keeps it in
-// the database, so it survives restarts. An absent or empty value is an error
-// rather than an empty seed.
-func (s *Store) GetSecret(ctx context.Context) (string, error) {
-	s.secretMu.Lock()
-	defer s.secretMu.Unlock()
-
-	if s.secret != "" {
-		return s.secret, nil
-	}
-	setting, err := s.GetSetting(ctx, storepb.SettingName_AUTH_SECRET)
-	if err != nil {
-		return "", err
-	}
-	if setting == nil || setting.Value == "" {
-		return "", errors.New("auth secret not found")
-	}
-	s.secret = setting.Value
-	return s.secret, nil
-}
-
 // UpsertSetting upserts the setting by name.
 func (s *Store) UpsertSetting(ctx context.Context, update *SetSettingMessage) (*SettingMessage, error) {
 	fields := []string{"name", "value"}

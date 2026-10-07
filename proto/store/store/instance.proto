@@ -40,15 +40,19 @@ message DataSource {
   DataSourceType type = 2;
   string username = 3;
   string password = 37;
-  string obfuscated_password = 4;
+  // A credential is persisted only as its ciphertext: the *_ciphertext field of
+  // a pair holds a v1 AES-256-GCM value (backend/common/crypto) and the
+  // plaintext field beside it exists for the duration of a read or write, never
+  // in the stored row.
+  string password_ciphertext = 4;
   // Use SSL to connect to the data source. By default, we use the system's SSL configuration.
   bool use_ssl = 30;
   string ssl_ca = 38;
-  string obfuscated_ssl_ca = 5;
+  string ssl_ca_ciphertext = 5;
   string ssl_cert = 39;
-  string obfuscated_ssl_cert = 6;
+  string ssl_cert_ciphertext = 6;
   string ssl_key = 40;
-  string obfuscated_ssl_key = 7;
+  string ssl_key_ciphertext = 7;
   // verify_tls_certificate enables TLS certificate verification for SSL connections.
   // Default is false (no verification) for backward compatibility.
   // Set to true for secure connections (recommended for production).
@@ -68,10 +72,10 @@ message DataSource {
   string ssh_user = 17;
   // The password to login the server. If it's empty string, no password is required.
   string ssh_password = 41;
-  string obfuscated_ssh_password = 18;
+  string ssh_password_ciphertext = 18;
   // The private key to login the server. If it's empty string, we will use the system default private key from os.Getenv("SSH_AUTH_SOCK").
   string ssh_private_key = 42;
-  string obfuscated_ssh_private_key = 19;
+  string ssh_private_key_ciphertext = 19;
   // The trusted SSH host key(s) for ssh_host, one entry per line. An entry is
   // either a fingerprint (SHA256:... or MD5:...) or a known_hosts /
   // authorized_keys public key line, as printed by ssh-keyscan. Empty means the

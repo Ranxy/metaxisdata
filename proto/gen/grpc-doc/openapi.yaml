@@ -3838,22 +3838,27 @@ components:
                     type: string
                 password:
                     type: string
-                obfuscatedPassword:
+                passwordCiphertext:
                     type: string
+                    description: |-
+                        A credential is persisted only as its ciphertext: the *_ciphertext field of
+                         a pair holds a v1 AES-256-GCM value (backend/common/crypto) and the
+                         plaintext field beside it exists for the duration of a read or write, never
+                         in the stored row.
                 useSsl:
                     type: boolean
                     description: Use SSL to connect to the data source. By default, we use the system's SSL configuration.
                 sslCa:
                     type: string
-                obfuscatedSslCa:
+                sslCaCiphertext:
                     type: string
                 sslCert:
                     type: string
-                obfuscatedSslCert:
+                sslCertCiphertext:
                     type: string
                 sslKey:
                     type: string
-                obfuscatedSslKey:
+                sslKeyCiphertext:
                     type: string
                 verifyTlsCertificate:
                     type: boolean
@@ -3883,12 +3888,12 @@ components:
                 sshPassword:
                     type: string
                     description: The password to login the server. If it's empty string, no password is required.
-                obfuscatedSshPassword:
+                sshPasswordCiphertext:
                     type: string
                 sshPrivateKey:
                     type: string
                     description: The private key to login the server. If it's empty string, we will use the system default private key from os.Getenv("SSH_AUTH_SOCK").
-                obfuscatedSshPrivateKey:
+                sshPrivateKeyCiphertext:
                     type: string
                 sshHostKey:
                     type: string
@@ -5224,8 +5229,12 @@ components:
                     format: enum
                 baseUrl:
                     type: string
-                apiKeyEncrypted:
+                apiKeyCiphertext:
                     type: string
+                    description: |-
+                        api_key_ciphertext holds the provider key as a v1 AES-256-GCM value
+                         (backend/common/crypto); the store decrypts it for its callers and never
+                         exposes the ciphertext through the API.
                 models:
                     type: array
                     items:

@@ -195,20 +195,24 @@ func (x *Instance) GetLastSyncTime() *timestamppb.Timestamp {
 }
 
 type DataSource struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Type               DataSourceType         `protobuf:"varint,2,opt,name=type,proto3,enum=metaxisdata.store.DataSourceType" json:"type,omitempty"`
-	Username           string                 `protobuf:"bytes,3,opt,name=username,proto3" json:"username,omitempty"`
-	Password           string                 `protobuf:"bytes,37,opt,name=password,proto3" json:"password,omitempty"`
-	ObfuscatedPassword string                 `protobuf:"bytes,4,opt,name=obfuscated_password,json=obfuscatedPassword,proto3" json:"obfuscated_password,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Id       string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Type     DataSourceType         `protobuf:"varint,2,opt,name=type,proto3,enum=metaxisdata.store.DataSourceType" json:"type,omitempty"`
+	Username string                 `protobuf:"bytes,3,opt,name=username,proto3" json:"username,omitempty"`
+	Password string                 `protobuf:"bytes,37,opt,name=password,proto3" json:"password,omitempty"`
+	// A credential is persisted only as its ciphertext: the *_ciphertext field of
+	// a pair holds a v1 AES-256-GCM value (backend/common/crypto) and the
+	// plaintext field beside it exists for the duration of a read or write, never
+	// in the stored row.
+	PasswordCiphertext string `protobuf:"bytes,4,opt,name=password_ciphertext,json=passwordCiphertext,proto3" json:"password_ciphertext,omitempty"`
 	// Use SSL to connect to the data source. By default, we use the system's SSL configuration.
 	UseSsl            bool   `protobuf:"varint,30,opt,name=use_ssl,json=useSsl,proto3" json:"use_ssl,omitempty"`
 	SslCa             string `protobuf:"bytes,38,opt,name=ssl_ca,json=sslCa,proto3" json:"ssl_ca,omitempty"`
-	ObfuscatedSslCa   string `protobuf:"bytes,5,opt,name=obfuscated_ssl_ca,json=obfuscatedSslCa,proto3" json:"obfuscated_ssl_ca,omitempty"`
+	SslCaCiphertext   string `protobuf:"bytes,5,opt,name=ssl_ca_ciphertext,json=sslCaCiphertext,proto3" json:"ssl_ca_ciphertext,omitempty"`
 	SslCert           string `protobuf:"bytes,39,opt,name=ssl_cert,json=sslCert,proto3" json:"ssl_cert,omitempty"`
-	ObfuscatedSslCert string `protobuf:"bytes,6,opt,name=obfuscated_ssl_cert,json=obfuscatedSslCert,proto3" json:"obfuscated_ssl_cert,omitempty"`
+	SslCertCiphertext string `protobuf:"bytes,6,opt,name=ssl_cert_ciphertext,json=sslCertCiphertext,proto3" json:"ssl_cert_ciphertext,omitempty"`
 	SslKey            string `protobuf:"bytes,40,opt,name=ssl_key,json=sslKey,proto3" json:"ssl_key,omitempty"`
-	ObfuscatedSslKey  string `protobuf:"bytes,7,opt,name=obfuscated_ssl_key,json=obfuscatedSslKey,proto3" json:"obfuscated_ssl_key,omitempty"`
+	SslKeyCiphertext  string `protobuf:"bytes,7,opt,name=ssl_key_ciphertext,json=sslKeyCiphertext,proto3" json:"ssl_key_ciphertext,omitempty"`
 	// verify_tls_certificate enables TLS certificate verification for SSL connections.
 	// Default is false (no verification) for backward compatibility.
 	// Set to true for secure connections (recommended for production).
@@ -227,10 +231,10 @@ type DataSource struct {
 	SshUser string `protobuf:"bytes,17,opt,name=ssh_user,json=sshUser,proto3" json:"ssh_user,omitempty"`
 	// The password to login the server. If it's empty string, no password is required.
 	SshPassword           string `protobuf:"bytes,41,opt,name=ssh_password,json=sshPassword,proto3" json:"ssh_password,omitempty"`
-	ObfuscatedSshPassword string `protobuf:"bytes,18,opt,name=obfuscated_ssh_password,json=obfuscatedSshPassword,proto3" json:"obfuscated_ssh_password,omitempty"`
+	SshPasswordCiphertext string `protobuf:"bytes,18,opt,name=ssh_password_ciphertext,json=sshPasswordCiphertext,proto3" json:"ssh_password_ciphertext,omitempty"`
 	// The private key to login the server. If it's empty string, we will use the system default private key from os.Getenv("SSH_AUTH_SOCK").
 	SshPrivateKey           string `protobuf:"bytes,42,opt,name=ssh_private_key,json=sshPrivateKey,proto3" json:"ssh_private_key,omitempty"`
-	ObfuscatedSshPrivateKey string `protobuf:"bytes,19,opt,name=obfuscated_ssh_private_key,json=obfuscatedSshPrivateKey,proto3" json:"obfuscated_ssh_private_key,omitempty"`
+	SshPrivateKeyCiphertext string `protobuf:"bytes,19,opt,name=ssh_private_key_ciphertext,json=sshPrivateKeyCiphertext,proto3" json:"ssh_private_key_ciphertext,omitempty"`
 	// The trusted SSH host key(s) for ssh_host, one entry per line. An entry is
 	// either a fingerprint (SHA256:... or MD5:...) or a known_hosts /
 	// authorized_keys public key line, as printed by ssh-keyscan. Empty means the
@@ -302,9 +306,9 @@ func (x *DataSource) GetPassword() string {
 	return ""
 }
 
-func (x *DataSource) GetObfuscatedPassword() string {
+func (x *DataSource) GetPasswordCiphertext() string {
 	if x != nil {
-		return x.ObfuscatedPassword
+		return x.PasswordCiphertext
 	}
 	return ""
 }
@@ -323,9 +327,9 @@ func (x *DataSource) GetSslCa() string {
 	return ""
 }
 
-func (x *DataSource) GetObfuscatedSslCa() string {
+func (x *DataSource) GetSslCaCiphertext() string {
 	if x != nil {
-		return x.ObfuscatedSslCa
+		return x.SslCaCiphertext
 	}
 	return ""
 }
@@ -337,9 +341,9 @@ func (x *DataSource) GetSslCert() string {
 	return ""
 }
 
-func (x *DataSource) GetObfuscatedSslCert() string {
+func (x *DataSource) GetSslCertCiphertext() string {
 	if x != nil {
-		return x.ObfuscatedSslCert
+		return x.SslCertCiphertext
 	}
 	return ""
 }
@@ -351,9 +355,9 @@ func (x *DataSource) GetSslKey() string {
 	return ""
 }
 
-func (x *DataSource) GetObfuscatedSslKey() string {
+func (x *DataSource) GetSslKeyCiphertext() string {
 	if x != nil {
-		return x.ObfuscatedSslKey
+		return x.SslKeyCiphertext
 	}
 	return ""
 }
@@ -414,9 +418,9 @@ func (x *DataSource) GetSshPassword() string {
 	return ""
 }
 
-func (x *DataSource) GetObfuscatedSshPassword() string {
+func (x *DataSource) GetSshPasswordCiphertext() string {
 	if x != nil {
-		return x.ObfuscatedSshPassword
+		return x.SshPasswordCiphertext
 	}
 	return ""
 }
@@ -428,9 +432,9 @@ func (x *DataSource) GetSshPrivateKey() string {
 	return ""
 }
 
-func (x *DataSource) GetObfuscatedSshPrivateKey() string {
+func (x *DataSource) GetSshPrivateKeyCiphertext() string {
 	if x != nil {
-		return x.ObfuscatedSshPrivateKey
+		return x.SshPrivateKeyCiphertext
 	}
 	return ""
 }
@@ -474,14 +478,14 @@ const file_store_instance_proto_rawDesc = "" +
 	"\x04type\x18\x02 \x01(\x0e2!.metaxisdata.store.DataSourceTypeR\x04type\x12\x1a\n" +
 	"\busername\x18\x03 \x01(\tR\busername\x12\x1a\n" +
 	"\bpassword\x18% \x01(\tR\bpassword\x12/\n" +
-	"\x13obfuscated_password\x18\x04 \x01(\tR\x12obfuscatedPassword\x12\x17\n" +
+	"\x13password_ciphertext\x18\x04 \x01(\tR\x12passwordCiphertext\x12\x17\n" +
 	"\ause_ssl\x18\x1e \x01(\bR\x06useSsl\x12\x15\n" +
 	"\x06ssl_ca\x18& \x01(\tR\x05sslCa\x12*\n" +
-	"\x11obfuscated_ssl_ca\x18\x05 \x01(\tR\x0fobfuscatedSslCa\x12\x19\n" +
+	"\x11ssl_ca_ciphertext\x18\x05 \x01(\tR\x0fsslCaCiphertext\x12\x19\n" +
 	"\bssl_cert\x18' \x01(\tR\asslCert\x12.\n" +
-	"\x13obfuscated_ssl_cert\x18\x06 \x01(\tR\x11obfuscatedSslCert\x12\x17\n" +
+	"\x13ssl_cert_ciphertext\x18\x06 \x01(\tR\x11sslCertCiphertext\x12\x17\n" +
 	"\assl_key\x18( \x01(\tR\x06sslKey\x12,\n" +
-	"\x12obfuscated_ssl_key\x18\a \x01(\tR\x10obfuscatedSslKey\x124\n" +
+	"\x12ssl_key_ciphertext\x18\a \x01(\tR\x10sslKeyCiphertext\x124\n" +
 	"\x16verify_tls_certificate\x18/ \x01(\bR\x14verifyTlsCertificate\x12\x12\n" +
 	"\x04host\x18\b \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\t \x01(\tR\x04port\x12\x1a\n" +
@@ -491,9 +495,9 @@ const file_store_instance_proto_rawDesc = "" +
 	"\bssh_port\x18\x10 \x01(\tR\asshPort\x12\x19\n" +
 	"\bssh_user\x18\x11 \x01(\tR\asshUser\x12!\n" +
 	"\fssh_password\x18) \x01(\tR\vsshPassword\x126\n" +
-	"\x17obfuscated_ssh_password\x18\x12 \x01(\tR\x15obfuscatedSshPassword\x12&\n" +
+	"\x17ssh_password_ciphertext\x18\x12 \x01(\tR\x15sshPasswordCiphertext\x12&\n" +
 	"\x0fssh_private_key\x18* \x01(\tR\rsshPrivateKey\x12;\n" +
-	"\x1aobfuscated_ssh_private_key\x18\x13 \x01(\tR\x17obfuscatedSshPrivateKey\x12 \n" +
+	"\x1assh_private_key_ciphertext\x18\x13 \x01(\tR\x17sshPrivateKeyCiphertext\x12 \n" +
 	"\fssh_host_key\x180 \x01(\tR\n" +
 	"sshHostKey\x12|\n" +
 	"\x1bextra_connection_parameters\x18$ \x03(\v2<.metaxisdata.store.DataSource.ExtraConnectionParametersEntryR\x19extraConnectionParameters\x1aL\n" +

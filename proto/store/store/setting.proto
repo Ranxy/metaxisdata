@@ -21,6 +21,11 @@ enum SettingName {
   WORKSPACE_PROFILE = 4;
   PASSWORD_RESTRICTION = 14;
   ENVIRONMENT = 15;
+  // ENCRYPTION_KEY is the deployment's credential data key, in the bare base64
+  // of 32 random bytes when no key-encryption key is configured, or a v1
+  // ciphertext under METAXISDATA_ENCRYPTION_KEY when one is. It is generated on
+  // first startup and never leaves the process otherwise.
+  ENCRYPTION_KEY = 16;
 }
 
 message WorkspaceProfileSetting {

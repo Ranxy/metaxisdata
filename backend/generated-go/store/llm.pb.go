@@ -130,17 +130,20 @@ func (x *LlmProviderModel) GetEnabled() bool {
 }
 
 type LlmProviderProfile struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Name            string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Title           string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
-	Type            LLMProviderType        `protobuf:"varint,3,opt,name=type,proto3,enum=metaxisdata.store.LLMProviderType" json:"type,omitempty"`
-	BaseUrl         string                 `protobuf:"bytes,4,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
-	ApiKeyEncrypted string                 `protobuf:"bytes,5,opt,name=api_key_encrypted,json=apiKeyEncrypted,proto3" json:"api_key_encrypted,omitempty"`
-	Models          []*LlmProviderModel    `protobuf:"bytes,6,rep,name=models,proto3" json:"models,omitempty"`
-	CreateTime      *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
-	UpdateTime      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Name    string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Title   string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Type    LLMProviderType        `protobuf:"varint,3,opt,name=type,proto3,enum=metaxisdata.store.LLMProviderType" json:"type,omitempty"`
+	BaseUrl string                 `protobuf:"bytes,4,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
+	// api_key_ciphertext holds the provider key as a v1 AES-256-GCM value
+	// (backend/common/crypto); the store decrypts it for its callers and never
+	// exposes the ciphertext through the API.
+	ApiKeyCiphertext string                 `protobuf:"bytes,5,opt,name=api_key_ciphertext,json=apiKeyCiphertext,proto3" json:"api_key_ciphertext,omitempty"`
+	Models           []*LlmProviderModel    `protobuf:"bytes,6,rep,name=models,proto3" json:"models,omitempty"`
+	CreateTime       *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	UpdateTime       *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *LlmProviderProfile) Reset() {
@@ -201,9 +204,9 @@ func (x *LlmProviderProfile) GetBaseUrl() string {
 	return ""
 }
 
-func (x *LlmProviderProfile) GetApiKeyEncrypted() string {
+func (x *LlmProviderProfile) GetApiKeyCiphertext() string {
 	if x != nil {
-		return x.ApiKeyEncrypted
+		return x.ApiKeyCiphertext
 	}
 	return ""
 }
@@ -236,13 +239,13 @@ const file_store_llm_proto_rawDesc = "" +
 	"\x0fstore/llm.proto\x12\x11metaxisdata.store\x1a\x1fgoogle/protobuf/timestamp.proto\"@\n" +
 	"\x10LlmProviderModel\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
-	"\aenabled\x18\x02 \x01(\bR\aenabled\"\xf4\x02\n" +
+	"\aenabled\x18\x02 \x01(\bR\aenabled\"\xf6\x02\n" +
 	"\x12LlmProviderProfile\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x126\n" +
 	"\x04type\x18\x03 \x01(\x0e2\".metaxisdata.store.LLMProviderTypeR\x04type\x12\x19\n" +
-	"\bbase_url\x18\x04 \x01(\tR\abaseUrl\x12*\n" +
-	"\x11api_key_encrypted\x18\x05 \x01(\tR\x0fapiKeyEncrypted\x12;\n" +
+	"\bbase_url\x18\x04 \x01(\tR\abaseUrl\x12,\n" +
+	"\x12api_key_ciphertext\x18\x05 \x01(\tR\x10apiKeyCiphertext\x12;\n" +
 	"\x06models\x18\x06 \x03(\v2#.metaxisdata.store.LlmProviderModelR\x06models\x12;\n" +
 	"\vcreate_time\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"createTime\x12;\n" +

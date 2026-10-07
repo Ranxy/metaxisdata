@@ -4319,10 +4319,13 @@ This is an optional style described in the OAuth2 RFC 6749 section 2.3.1.</p></t
                 </tr>
               
                 <tr>
-                  <td>obfuscated_password</td>
+                  <td>password_ciphertext</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>A credential is persisted only as its ciphertext: the *_ciphertext field of
+a pair holds a v1 AES-256-GCM value (backend/common/crypto) and the
+plaintext field beside it exists for the duration of a read or write, never
+in the stored row. </p></td>
                 </tr>
               
                 <tr>
@@ -4340,7 +4343,7 @@ This is an optional style described in the OAuth2 RFC 6749 section 2.3.1.</p></t
                 </tr>
               
                 <tr>
-                  <td>obfuscated_ssl_ca</td>
+                  <td>ssl_ca_ciphertext</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
@@ -4354,7 +4357,7 @@ This is an optional style described in the OAuth2 RFC 6749 section 2.3.1.</p></t
                 </tr>
               
                 <tr>
-                  <td>obfuscated_ssl_cert</td>
+                  <td>ssl_cert_ciphertext</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
@@ -4368,7 +4371,7 @@ This is an optional style described in the OAuth2 RFC 6749 section 2.3.1.</p></t
                 </tr>
               
                 <tr>
-                  <td>obfuscated_ssl_key</td>
+                  <td>ssl_key_ciphertext</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
@@ -4436,7 +4439,7 @@ The hostname of the SSH server agent. </p></td>
                 </tr>
               
                 <tr>
-                  <td>obfuscated_ssh_password</td>
+                  <td>ssh_password_ciphertext</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
@@ -4450,7 +4453,7 @@ The hostname of the SSH server agent. </p></td>
                 </tr>
               
                 <tr>
-                  <td>obfuscated_ssh_private_key</td>
+                  <td>ssh_private_key_ciphertext</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
@@ -4715,10 +4718,12 @@ It is used to determine whether the table names and database names are case sens
                 </tr>
               
                 <tr>
-                  <td>api_key_encrypted</td>
+                  <td>api_key_ciphertext</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>api_key_ciphertext holds the provider key as a v1 AES-256-GCM value
+(backend/common/crypto); the store decrypts it for its callers and never
+exposes the ciphertext through the API. </p></td>
                 </tr>
               
                 <tr>
@@ -5439,6 +5444,15 @@ falls back to the identifier claim. </p></td>
                 <td>ENVIRONMENT</td>
                 <td>15</td>
                 <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>ENCRYPTION_KEY</td>
+                <td>16</td>
+                <td><p>ENCRYPTION_KEY is the deployment&#39;s credential data key, in the bare base64
+of 32 random bytes when no key-encryption key is configured, or a v1
+ciphertext under METAXISDATA_ENCRYPTION_KEY when one is. It is generated on
+first startup and never leaves the process otherwise.</p></td>
               </tr>
             
           </tbody>

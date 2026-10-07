@@ -24,7 +24,10 @@ message LlmProviderProfile {
   string title = 2;
   LLMProviderType type = 3;
   string base_url = 4;
-  string api_key_encrypted = 5;
+  // api_key_ciphertext holds the provider key as a v1 AES-256-GCM value
+  // (backend/common/crypto); the store decrypts it for its callers and never
+  // exposes the ciphertext through the API.
+  string api_key_ciphertext = 5;
   repeated LlmProviderModel models = 6;
   google.protobuf.Timestamp create_time = 7;
   google.protobuf.Timestamp update_time = 8;

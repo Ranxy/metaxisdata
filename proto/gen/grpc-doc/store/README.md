@@ -1401,14 +1401,14 @@ admin API that could create an OIDC/LDAP row.
 | type | [DataSourceType](#metaxisdata-store-DataSourceType) |  |  |
 | username | [string](#string) |  |  |
 | password | [string](#string) |  |  |
-| obfuscated_password | [string](#string) |  |  |
+| password_ciphertext | [string](#string) |  | A credential is persisted only as its ciphertext: the *_ciphertext field of a pair holds a v1 AES-256-GCM value (backend/common/crypto) and the plaintext field beside it exists for the duration of a read or write, never in the stored row. |
 | use_ssl | [bool](#bool) |  | Use SSL to connect to the data source. By default, we use the system&#39;s SSL configuration. |
 | ssl_ca | [string](#string) |  |  |
-| obfuscated_ssl_ca | [string](#string) |  |  |
+| ssl_ca_ciphertext | [string](#string) |  |  |
 | ssl_cert | [string](#string) |  |  |
-| obfuscated_ssl_cert | [string](#string) |  |  |
+| ssl_cert_ciphertext | [string](#string) |  |  |
 | ssl_key | [string](#string) |  |  |
-| obfuscated_ssl_key | [string](#string) |  |  |
+| ssl_key_ciphertext | [string](#string) |  |  |
 | verify_tls_certificate | [bool](#bool) |  | verify_tls_certificate enables TLS certificate verification for SSL connections. Default is false (no verification) for backward compatibility. Set to true for secure connections (recommended for production). Only set to false for development or when certificates cannot be properly validated (e.g., self-signed certs, VPN environments). |
 | host | [string](#string) |  |  |
 | port | [string](#string) |  |  |
@@ -1417,9 +1417,9 @@ admin API that could create an OIDC/LDAP row.
 | ssh_port | [string](#string) |  | The port of the SSH server agent. It&#39;s 22 typically. |
 | ssh_user | [string](#string) |  | The user to login the server. |
 | ssh_password | [string](#string) |  | The password to login the server. If it&#39;s empty string, no password is required. |
-| obfuscated_ssh_password | [string](#string) |  |  |
+| ssh_password_ciphertext | [string](#string) |  |  |
 | ssh_private_key | [string](#string) |  | The private key to login the server. If it&#39;s empty string, we will use the system default private key from os.Getenv(&#34;SSH_AUTH_SOCK&#34;). |
-| obfuscated_ssh_private_key | [string](#string) |  |  |
+| ssh_private_key_ciphertext | [string](#string) |  |  |
 | ssh_host_key | [string](#string) |  | The trusted SSH host key(s) for ssh_host, one entry per line. An entry is either a fingerprint (SHA256:... or MD5:...) or a known_hosts / authorized_keys public key line, as printed by ssh-keyscan. Empty means the SSH host is not trusted: the connection is refused instead of accepting whatever host key answers. |
 | extra_connection_parameters | [DataSource.ExtraConnectionParametersEntry](#metaxisdata-store-DataSource-ExtraConnectionParametersEntry) | repeated | Extra connection parameters for the database connection. For PostgreSQL HA, this can be used to set target_session_attrs=read-write |
 
@@ -1525,7 +1525,7 @@ Instance is the proto for instances.
 | title | [string](#string) |  |  |
 | type | [LLMProviderType](#metaxisdata-store-LLMProviderType) |  |  |
 | base_url | [string](#string) |  |  |
-| api_key_encrypted | [string](#string) |  |  |
+| api_key_ciphertext | [string](#string) |  | api_key_ciphertext holds the provider key as a v1 AES-256-GCM value (backend/common/crypto); the store decrypts it for its callers and never exposes the ciphertext through the API. |
 | models | [LlmProviderModel](#metaxisdata-store-LlmProviderModel) | repeated |  |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
@@ -1847,6 +1847,7 @@ leftovers keep their numbers reserved.
 | WORKSPACE_PROFILE | 4 |  |
 | PASSWORD_RESTRICTION | 14 |  |
 | ENVIRONMENT | 15 |  |
+| ENCRYPTION_KEY | 16 | ENCRYPTION_KEY is the deployment&#39;s credential data key, in the bare base64 of 32 random bytes when no key-encryption key is configured, or a v1 ciphertext under METAXISDATA_ENCRYPTION_KEY when one is. It is generated on first startup and never leaves the process otherwise. |
 
 
  

@@ -26,7 +26,7 @@ func TestPatchDataSourcePreservesUnmaskedFields(t *testing.T) {
 		Port:                 "3306",
 		Username:             "root",
 		Password:             "stored-password",
-		ObfuscatedPassword:   "obfuscated",
+		PasswordCiphertext:   "ciphertext",
 		UseSsl:               true,
 		SslCa:                "stored-ca",
 		SslKey:               "stored-key",
@@ -51,7 +51,7 @@ func TestPatchDataSourcePreservesUnmaskedFields(t *testing.T) {
 	require.Equal(t, "new-host", stored.GetHost(), "a masked field is written")
 	require.Equal(t, "3307", stored.GetPort())
 	require.Equal(t, "stored-password", stored.GetPassword(), "an unmasked credential keeps its stored value")
-	require.Equal(t, "obfuscated", stored.GetObfuscatedPassword())
+	require.Equal(t, "ciphertext", stored.GetPasswordCiphertext())
 	require.Equal(t, "stored-ca", stored.GetSslCa())
 	require.Equal(t, "stored-key", stored.GetSslKey())
 	require.True(t, stored.GetVerifyTlsCertificate(), "TLS verification must not be downgraded")
