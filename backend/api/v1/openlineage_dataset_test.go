@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -14,87 +15,163 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-func TestAggregateOpenLineageDatasets(t *testing.T) {
+// The store aggregates the references in SQL; this attaches each aggregate to
+// its resolution, and a dataset the resolver cannot answer keeps its external
+// identity instead of emptying the page.
+func TestResolveOpenLineageDatasetAggregates(t *testing.T) {
 	t.Parallel()
 
-	firstSeen := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
-	secondSeen := firstSeen.Add(2 * time.Hour)
-	runs := []*store.OpenLineageRunMessage{
+	seen := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
+	aggregates := []*store.OpenLineageDatasetAggregateMessage{
 		{
-			TaskGUID:     "openlineage:task:TASK:prod:jobA",
-			JobNamespace: "prod",
-			JobName:      "jobA",
-			JobType:      "TASK",
-			Integration:  "airflow",
-			Source:       "scheduler",
-			EventTime:    &firstSeen,
-			RawPayload: []byte(`{
-				"eventType":"COMPLETE",
-				"run":{"runId":"run-1"},
-				"job":{"namespace":"prod","name":"jobA"},
-				"inputs":[
-					{"namespace":"postgres://warehouse:5432/analytics","name":"public.orders"}
-				],
-				"outputs":[
-					{
-						"namespace":"postgres://warehouse:5432/analytics",
-						"name":"public.daily_orders",
-						"facets":{"columnLineage":{"fields":{"order_id":{"inputFields":[{"namespace":"postgres://warehouse:5432/analytics","name":"public.orders","field":"order_id"}]}}}}
-					}
-				]
-			}`),
+			Namespace:             "postgres://warehouse:5432/analytics",
+			Name:                  "public.orders",
+			LastSeen:              &seen,
+			SourceJobCount:        2,
+			TargetJobCount:        1,
+			Integrations:          []string{"airflow"},
+			Sources:               []string{"openlineage"},
+			SupportsColumnLineage: true,
 		},
-		{
-			TaskGUID:     "openlineage:task:TASK:prod:jobB",
-			JobNamespace: "prod",
-			JobName:      "jobB",
-			JobType:      "TASK",
-			Integration:  "dbt",
-			Source:       "transform",
-			EventTime:    &secondSeen,
-			RawPayload: []byte(`{
-				"eventType":"COMPLETE",
-				"run":{"runId":"run-2"},
-				"job":{"namespace":"prod","name":"jobB"},
-				"inputs":[
-					{"namespace":"postgres://warehouse:5432/analytics","name":"public.daily_orders"},
-					{"namespace":"s3://analytics-bucket","name":"exports/orders_snapshot"}
-				],
-				"outputs":[
-					{"namespace":"s3://analytics-bucket","name":"exports/orders_snapshot"}
-				]
-			}`),
-		},
+		{Namespace: "s3://analytics-bucket", Name: "exports/orders_snapshot", LastSeen: &seen, TargetJobCount: 3},
+		{Namespace: "broken://namespace", Name: "public.orders"},
 	}
 
-	aggregates := aggregateOpenLineageDatasets(context.Background(), runs, func(_ context.Context, namespace, name string) (*openlineageplugin.ResolvedDataset, error) {
-		switch {
-		case namespace == "postgres://warehouse:5432/analytics" && name == "public.orders":
+	datasets := resolveOpenLineageDatasetAggregates(context.Background(), aggregates, func(_ context.Context, namespace, name string) (*openlineageplugin.ResolvedDataset, error) {
+		switch namespace {
+		case "postgres://warehouse:5432/analytics":
 			return &openlineageplugin.ResolvedDataset{GUID: "inst;analytics;public;orders", MetaType: storepb.MetaType_TABLE, Internal: true}, nil
-		case namespace == "postgres://warehouse:5432/analytics" && name == "public.daily_orders":
-			return &openlineageplugin.ResolvedDataset{GUID: "inst;analytics;public;daily_orders", MetaType: storepb.MetaType_TABLE, Internal: true}, nil
-		default:
+		case "s3://analytics-bucket":
 			return &openlineageplugin.ResolvedDataset{GUID: openlineageplugin.FormatExternalGUID(namespace, name), MetaType: storepb.MetaType_EXTERNAL_DATASET, Internal: false}, nil
+		default:
+			return nil, errors.New("resolver failed")
 		}
 	})
 
-	require.Len(t, aggregates, 3)
-	assert.Equal(t, "exports/orders_snapshot", aggregates[0].Name)
-	assert.Equal(t, int32(1), aggregates[0].SourceJobCount)
-	assert.Equal(t, int32(1), aggregates[0].TargetJobCount)
-	assert.False(t, aggregates[0].Internal)
+	require.Len(t, datasets, 3)
 
-	dailyOrders := findDatasetAggregateByName(t, aggregates, "public.daily_orders")
-	assert.True(t, dailyOrders.Internal)
-	assert.True(t, dailyOrders.SupportsColumnLineage)
-	assert.Equal(t, "analytics.public.daily_orders", dailyOrders.ResolvedTarget)
-	assert.Equal(t, []string{"airflow", "dbt"}, dailyOrders.Integrations)
-	assert.Equal(t, []string{"scheduler", "transform"}, dailyOrders.Sources)
-	assert.Equal(t, int32(1), dailyOrders.SourceJobCount)
-	assert.Equal(t, int32(1), dailyOrders.TargetJobCount)
-	assert.NotNil(t, dailyOrders.LastSeen)
-	assert.True(t, dailyOrders.LastSeen.Equal(secondSeen))
-	assert.Equal(t, v1pb.MetaType_TABLE, dailyOrders.ResolvedMetaType)
+	internal := datasets[0]
+	require.True(t, internal.Internal)
+	require.Equal(t, "inst;analytics;public;orders", internal.GUID)
+	require.Equal(t, "analytics.public.orders", internal.ResolvedTarget)
+	require.Equal(t, v1pb.MetaType_TABLE, internal.ResolvedMetaType)
+	require.Equal(t, "database", internal.DatasetType)
+	require.Equal(t, int32(2), internal.SourceJobCount)
+	require.Equal(t, int32(1), internal.TargetJobCount)
+	require.Equal(t, []string{"airflow"}, internal.Integrations)
+	require.Equal(t, []string{"openlineage"}, internal.Sources)
+	require.True(t, internal.SupportsColumnLineage)
+	require.NotNil(t, internal.LastSeen)
+	require.True(t, internal.LastSeen.AsTime().Equal(seen))
+
+	external := datasets[1]
+	require.False(t, external.Internal)
+	require.Equal(t, openlineageplugin.FormatExternalGUID("s3://analytics-bucket", "exports/orders_snapshot"), external.GUID)
+	require.Empty(t, external.ResolvedTarget)
+	require.Equal(t, "s3", external.DatasetType)
+	require.NotNil(t, external.LastSeen)
+	require.True(t, external.LastSeen.AsTime().Equal(seen))
+
+	fallback := datasets[2]
+	require.False(t, fallback.Internal)
+	require.Equal(t, openlineageplugin.FormatExternalGUID("broken://namespace", "public.orders"), fallback.GUID)
+	require.Equal(t, v1pb.MetaType_EXTERNAL_DATASET, fallback.ResolvedMetaType)
+	require.Nil(t, fallback.LastSeen, "a dataset without an event time keeps a null last-seen")
+}
+
+// The request's SQL-answerable filters reach the store; the free-text search and
+// the scope are applied in Go because they need the dataset's resolution.
+func TestOpenLineageDatasetFind(t *testing.T) {
+	t.Parallel()
+
+	find := openLineageDatasetFind(&v1pb.ListOpenLineageDatasetsRequest{
+		Namespace:         "ns",
+		Integration:       "airflow",
+		Source:            "openlineage",
+		ColumnLineageOnly: true,
+	})
+	require.Equal(t, "ns", *find.Namespace)
+	require.Equal(t, "airflow", *find.Integration)
+	require.Equal(t, "openlineage", *find.Source)
+	require.True(t, *find.ColumnLineageOnly)
+
+	empty := openLineageDatasetFind(&v1pb.ListOpenLineageDatasetsRequest{})
+	require.Nil(t, empty.Namespace)
+	require.Nil(t, empty.Integration)
+	require.Nil(t, empty.Source)
+	require.Nil(t, empty.ColumnLineageOnly)
+}
+
+func TestConvertOpenLineageDatasetSchemaFields(t *testing.T) {
+	t.Parallel()
+
+	fields := convertOpenLineageDatasetSchemaFields(&store.OpenLineageDatasetDetailMessage{
+		SchemaFields:        []byte(`[{"name":"order_id","type":"INT"},{"name":"total","type":"NUMERIC","description":"sum"}]`),
+		ColumnLineageFields: []string{"order_id"},
+	})
+	require.Len(t, fields, 2)
+	assert.Equal(t, "order_id", fields[0].Name)
+	assert.Equal(t, "INT", fields[0].Type)
+	assert.True(t, fields[0].ColumnLineageReady)
+	assert.Equal(t, "total", fields[1].Name)
+	assert.Equal(t, "sum", fields[1].Description)
+	assert.False(t, fields[1].ColumnLineageReady)
+
+	require.Nil(t, convertOpenLineageDatasetSchemaFields(&store.OpenLineageDatasetDetailMessage{}))
+	require.Nil(t, convertOpenLineageDatasetSchemaFields(&store.OpenLineageDatasetDetailMessage{
+		SchemaFields: []byte(`{`),
+	}))
+}
+
+func TestConvertOpenLineageDatasetJobsAndRuns(t *testing.T) {
+	t.Parallel()
+
+	seen := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
+	jobs := convertOpenLineageDatasetJobs([]*store.OpenLineageDatasetJobMessage{
+		{
+			TaskGUID:      "openlineage:task:TASK:prod:jobA",
+			JobNamespace:  "prod",
+			JobName:       "jobA",
+			JobType:       "TASK",
+			Integration:   "airflow",
+			LastSeen:      &seen,
+			RunCount:      4,
+			WritesDataset: true,
+		},
+		{TaskGUID: "openlineage:task:TASK:prod:jobB", JobName: "jobB"},
+	})
+	require.Len(t, jobs, 2)
+	assert.Equal(t, "jobA", jobs[0].JobName)
+	assert.Equal(t, int32(4), jobs[0].RunCount)
+	assert.True(t, jobs[0].WritesDataset)
+	assert.False(t, jobs[0].ReadsDataset)
+	require.NotNil(t, jobs[0].LastSeen)
+	assert.True(t, jobs[0].LastSeen.AsTime().Equal(seen))
+	assert.Nil(t, jobs[1].LastSeen)
+
+	runs := convertOpenLineageDatasetRuns([]*store.OpenLineageDatasetRunMessage{
+		{
+			RunGUID:       "openlineage:run:TASK:prod:jobA:run-1",
+			TaskGUID:      "openlineage:task:TASK:prod:jobA",
+			RunID:         "run-1",
+			JobNamespace:  "prod",
+			JobName:       "jobA",
+			JobType:       "TASK",
+			EventType:     "COMPLETE",
+			EventTime:     &seen,
+			HasLineage:    true,
+			ReadsDataset:  true,
+			WritesDataset: true,
+		},
+		{RunGUID: "openlineage:run:TASK:prod:jobB:run-2", RunID: "run-2"},
+	})
+	require.Len(t, runs, 2)
+	assert.Equal(t, "run-1", runs[0].RunId)
+	assert.True(t, runs[0].HasLineage)
+	assert.True(t, runs[0].ReadsDataset)
+	require.NotNil(t, runs[0].EventTime)
+	assert.True(t, runs[0].EventTime.AsTime().Equal(seen))
+	assert.Nil(t, runs[1].EventTime)
 }
 
 func TestFilterOpenLineageDatasets(t *testing.T) {
@@ -152,114 +229,14 @@ func TestFilterOpenLineageDatasets(t *testing.T) {
 	})
 	require.Len(t, filtered, 1)
 	assert.Equal(t, "public.orders", filtered[0].Name)
-}
 
-func TestBuildOpenLineageDatasetDetail(t *testing.T) {
-	t.Parallel()
-
-	firstSeen := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
-	secondSeen := firstSeen.Add(2 * time.Hour)
-	runs := []*store.OpenLineageRunMessage{
-		{
-			GUID:         "openlineage:run:TASK:prod:jobA:run-1",
-			TaskGUID:     "openlineage:task:TASK:prod:jobA",
-			JobNamespace: "prod",
-			JobName:      "jobA",
-			JobType:      "TASK",
-			Integration:  "airflow",
-			EventType:    "COMPLETE",
-			Source:       "scheduler",
-			HasLineage:   true,
-			EventTime:    &firstSeen,
-			RawPayload: []byte(`{
-				"eventType":"COMPLETE",
-				"run":{"runId":"run-1"},
-				"job":{"namespace":"prod","name":"jobA"},
-				"inputs":[
-					{"namespace":"postgres://warehouse:5432/analytics","name":"public.orders","facets":{"schema":{"fields":[{"name":"order_id","type":"INT"},{"name":"amount","type":"NUMERIC"}]}}}
-				],
-				"outputs":[
-					{
-						"namespace":"postgres://warehouse:5432/analytics",
-						"name":"public.daily_orders",
-						"facets":{
-							"schema":{"fields":[{"name":"order_id","type":"INT"},{"name":"total_amount","type":"NUMERIC"}]},
-							"columnLineage":{"fields":{"order_id":{"inputFields":[{"namespace":"postgres://warehouse:5432/analytics","name":"public.orders","field":"order_id"}]}}}
-						}
-					}
-				]
-			}`),
-		},
-		{
-			GUID:         "openlineage:run:TASK:prod:jobB:run-2",
-			TaskGUID:     "openlineage:task:TASK:prod:jobB",
-			JobNamespace: "prod",
-			JobName:      "jobB",
-			JobType:      "TASK",
-			Integration:  "dbt",
-			EventType:    "COMPLETE",
-			Source:       "transform",
-			HasLineage:   true,
-			EventTime:    &secondSeen,
-			RawPayload: []byte(`{
-				"eventType":"COMPLETE",
-				"run":{"runId":"run-2"},
-				"job":{"namespace":"prod","name":"jobB"},
-				"inputs":[
-					{"namespace":"postgres://warehouse:5432/analytics","name":"public.daily_orders"}
-				],
-				"outputs":[
-					{"namespace":"s3://analytics-bucket","name":"exports/orders_snapshot"}
-				]
-			}`),
-		},
-	}
-
-	detail, found := buildOpenLineageDatasetDetail(
-		context.Background(),
-		runs,
-		"inst;analytics;public;daily_orders",
-		func(_ context.Context, namespace, name string) (*openlineageplugin.ResolvedDataset, error) {
-			switch {
-			case namespace == "postgres://warehouse:5432/analytics" && name == "public.orders":
-				return &openlineageplugin.ResolvedDataset{GUID: "inst;analytics;public;orders", MetaType: storepb.MetaType_TABLE, Internal: true}, nil
-			case namespace == "postgres://warehouse:5432/analytics" && name == "public.daily_orders":
-				return &openlineageplugin.ResolvedDataset{GUID: "inst;analytics;public;daily_orders", MetaType: storepb.MetaType_TABLE, Internal: true}, nil
-			default:
-				return &openlineageplugin.ResolvedDataset{GUID: openlineageplugin.FormatExternalGUID(namespace, name), MetaType: storepb.MetaType_EXTERNAL_DATASET, Internal: false}, nil
-			}
-		},
-	)
-
-	require.True(t, found)
-	require.NotNil(t, detail)
-	assert.Equal(t, "public.daily_orders", detail.Dataset.Name)
-	require.Len(t, detail.SchemaFields, 2)
-	assert.Equal(t, "order_id", detail.SchemaFields[0].Name)
-	assert.True(t, detail.SchemaFields[0].ColumnLineageReady)
-	require.Len(t, detail.RelatedJobs, 2)
-	assert.Equal(t, "jobB", detail.RelatedJobs[0].JobName)
-	assert.True(t, detail.RelatedJobs[0].ReadsDataset)
-	assert.False(t, detail.RelatedJobs[0].WritesDataset)
-	assert.Equal(t, "jobA", detail.RelatedJobs[1].JobName)
-	assert.False(t, detail.RelatedJobs[1].ReadsDataset)
-	assert.True(t, detail.RelatedJobs[1].WritesDataset)
-	require.Len(t, detail.RecentRuns, 2)
-	assert.Equal(t, "run-2", detail.RecentRuns[0].RunId)
-	assert.True(t, detail.RecentRuns[0].ReadsDataset)
-	assert.Equal(t, "run-1", detail.RecentRuns[1].RunId)
-	assert.True(t, detail.RecentRuns[1].WritesDataset)
-}
-
-func findDatasetAggregateByName(t *testing.T, datasets []*openLineageDatasetAggregate, name string) *openLineageDatasetAggregate {
-	t.Helper()
-	for _, dataset := range datasets {
-		if dataset.Name == name {
-			return dataset
-		}
-	}
-	t.Fatalf("dataset %q not found", name)
-	return nil
+	// The resolved target is advertised by the search box as well, and it only
+	// exists after resolution.
+	filtered = filterOpenLineageDatasets(datasets, &v1pb.ListOpenLineageDatasetsRequest{
+		Search: "analytics.public.orders",
+	})
+	require.Len(t, filtered, 1)
+	assert.Equal(t, "public.orders", filtered[0].Name)
 }
 
 // A MySQL guid has an empty schema segment. It must be trimmed positionally, so

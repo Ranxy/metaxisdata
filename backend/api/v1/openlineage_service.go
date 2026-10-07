@@ -162,7 +162,7 @@ func (s *OpenLineageService) GetOpenLineageRun(ctx context.Context, req *connect
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	run, err := s.store.GetOpenLineageRun(ctx, &store.FindOpenLineageRunMessage{GUID: &guid})
+	run, err := s.store.GetOpenLineageRun(ctx, &store.FindOpenLineageRunMessage{GUID: &guid, IncludePayload: true})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get openlineage run"))
 	}
@@ -324,7 +324,7 @@ func convertAPIKey(k *store.OpenLineageAPIKeyMessage) *v1pb.APIKey {
 }
 
 func convertOpenLineageRun(run *store.OpenLineageRunMessage, includePayload bool) *v1pb.OpenLineageRun {
-	airflowLinks := openlineageplugin.DeriveAirflowLinks(run.RawPayload)
+	airflowLinks := openlineageplugin.AirflowLinksFromRunLogURL(run.AirflowRunLogURL)
 	res := &v1pb.OpenLineageRun{
 		Name:               common.FormatOpenLineageRun(run.GUID),
 		Guid:               run.GUID,
@@ -362,7 +362,7 @@ func convertOpenLineageRun(run *store.OpenLineageRunMessage, includePayload bool
 }
 
 func convertOpenLineageTask(task *store.OpenLineageTaskMessage) *v1pb.OpenLineageTask {
-	airflowLinks := openlineageplugin.DeriveAirflowLinks(task.LatestRawPayload)
+	airflowLinks := openlineageplugin.AirflowLinksFromRunLogURL(task.LatestAirflowRunLogURL)
 	res := &v1pb.OpenLineageTask{
 		Name:               common.FormatOpenLineageTask(task.GUID),
 		Guid:               task.GUID,

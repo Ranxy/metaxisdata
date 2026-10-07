@@ -21,6 +21,12 @@ const (
 	// response bodies, so it is not kept indefinitely; only enabled debug mode
 	// writes to it at all.
 	llmDebugLogRetention = 7 * 24 * time.Hour
+
+	// openLineageDatasetSweepGrace is how long a dataset aggregate is left alone
+	// before the sweep may decide it has no references. An ingest holds its rows
+	// for the life of one transaction, so a row touched inside the grace period may
+	// still have a writer that this pass cannot see.
+	openLineageDatasetSweepGrace = time.Hour
 )
 
 // Runner prunes data with a retention window.
@@ -119,6 +125,18 @@ func (r *Runner) runOnce(ctx context.Context) {
 		} else if revalidated > 0 {
 			slog.Info("Revalidated lineage with a contradicted column claim", slog.Int("edges", revalidated))
 		}
+	}
+
+	// A run deleted outside the store's own paths — a hand-written DELETE, or a
+	// cleanup someone ran against the ledger — takes its references with it but not
+	// the dataset aggregates the ingest built from them, and the pages would keep
+	// offering datasets nothing references. The retention prune reconciles the
+	// datasets it prunes; this sweeps what every other deletion left behind. It is
+	// not a retention policy, so it runs whether or not a window is set.
+	if deleted, err := r.store.DeleteEmptyOpenLineageDatasets(ctx, now.Add(-openLineageDatasetSweepGrace)); err != nil {
+		slog.Error("Failed to sweep the empty OpenLineage datasets", log.WithError(err))
+	} else if deleted > 0 {
+		slog.Info("Swept OpenLineage datasets nothing references", slog.Int64("count", deleted))
 	}
 
 	// OpenLineage runs are audit data and are kept forever unless an admin sets

@@ -29,15 +29,18 @@ type OpenLineageTaskMessage struct {
 	RootJobName        string
 	LatestRunGUID      string
 	LatestRunID        string
-	LatestRawPayload   []byte
-	LatestEventTime    *time.Time
-	LatestEventType    string
-	LatestProducer     string
-	LatestSource       string
-	RunCount           int32
-	LineageRunCount    int32
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	// LatestAirflowRunLogURL is the latest run's whitelisted airflow link,
+	// joined from the run. It is a column so the task list reads the link
+	// without the run's raw payload.
+	LatestAirflowRunLogURL string
+	LatestEventTime        *time.Time
+	LatestEventType        string
+	LatestProducer         string
+	LatestSource           string
+	RunCount               int32
+	LineageRunCount        int32
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 }
 
 // FindOpenLineageTaskMessage is the query filter for aggregated OpenLineage tasks/jobs.
@@ -466,7 +469,7 @@ func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTa
 			task.root_job_name,
 			task.latest_run_guid,
 			task.latest_run_id,
-			latest_run.raw_payload,
+			latest_run.airflow_run_log_url,
 			task.latest_event_time,
 			task.latest_producer,
 			task.latest_source,
@@ -497,7 +500,7 @@ func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTa
 		// pruned (or removed out of band) leaves the join empty, so its columns
 		// have to be scanned as nullable ones.
 		var latestEventType sql.NullString
-		var latestRawPayload []byte
+		var latestAirflowRunLogURL sql.NullString
 		if err := rows.Scan(
 			&msg.ID,
 			&msg.GUID,
@@ -512,7 +515,7 @@ func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTa
 			&msg.RootJobName,
 			&msg.LatestRunGUID,
 			&msg.LatestRunID,
-			&latestRawPayload,
+			&latestAirflowRunLogURL,
 			&latestEventTime,
 			&msg.LatestProducer,
 			&msg.LatestSource,
@@ -543,7 +546,7 @@ func (s *Store) ListOpenLineageTask(ctx context.Context, find *FindOpenLineageTa
 			msg.LatestRunID = ""
 		} else {
 			msg.LatestEventType = latestEventType.String
-			msg.LatestRawPayload = latestRawPayload
+			msg.LatestAirflowRunLogURL = latestAirflowRunLogURL.String
 		}
 		result = append(result, &msg)
 	}

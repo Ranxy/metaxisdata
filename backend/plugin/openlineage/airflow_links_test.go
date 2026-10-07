@@ -33,6 +33,29 @@ func TestDeriveAirflowLinksWithoutLogURL(t *testing.T) {
 	assert.Empty(t, links.RunLogURL)
 }
 
+// Ingestion stores the whitelisted run log URL on the run row and a reader
+// rebuilds the links from it, so the two paths must agree: the list pages no
+// longer hold the payload the link was derived from.
+func TestAirflowLinksFromRunLogURLMatchesThePayloadDerivation(t *testing.T) {
+	rawPayload := []byte(`{"run":{"facets":{"airflow":{"taskInstance":{"log_url":"  https://airflow.example.com/dags/x/runs/1  "}}}}}`)
+
+	fromPayload := DeriveAirflowLinks(rawPayload)
+	fromColumn := AirflowLinksFromRunLogURL(fromPayload.RunLogURL)
+	assert.Equal(t, fromPayload, fromColumn)
+	assert.Equal(t, "https://airflow.example.com/dags/x", fromColumn.DagURL)
+	assert.Equal(t, "https://airflow.example.com/dags/x/runs/1", fromColumn.RunLogURL)
+
+	// A URL without the `/runs/` marker has no DAG link, but it is still the run
+	// log link the Airflow facet advertised.
+	withoutMarker := AirflowLinksFromRunLogURL("https://airflow.example.com/tree?dag_id=x")
+	assert.Empty(t, withoutMarker.DagURL)
+	assert.Equal(t, "https://airflow.example.com/tree?dag_id=x", withoutMarker.RunLogURL)
+
+	// The whitelist applies on read as well, so a stored value that is not a web
+	// URL cannot become a link even if it reaches the column.
+	assert.Empty(t, AirflowLinksFromRunLogURL("javascript:alert(1)").RunLogURL)
+}
+
 // The facet is caller-supplied, so only a real web address may reach a link.
 // A `javascript:` URL would otherwise run in the origin of the member who
 // clicked "open run log".

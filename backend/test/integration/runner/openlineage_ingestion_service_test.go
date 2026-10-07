@@ -263,6 +263,9 @@ func TestOpenLineageIngestionKeepsRunLifecycleRealServerIntegration(t *testing.T
 			JobName:      &name,
 			JobType:      &jobType,
 			RunID:        &runID,
+			// This accessor asserts the stored payload, which the list
+			// projection deliberately leaves out.
+			IncludePayload: true,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, got, "run %q left no row", runID)

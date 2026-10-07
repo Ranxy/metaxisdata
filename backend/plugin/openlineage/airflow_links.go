@@ -45,14 +45,22 @@ func DeriveAirflowLinks(rawPayload []byte) AirflowLinks {
 		return AirflowLinks{}
 	}
 
-	runLogURL := safeExternalURL(facet.TaskInstance.LogURL)
-	if runLogURL == "" {
+	return AirflowLinksFromRunLogURL(facet.TaskInstance.LogURL)
+}
+
+// AirflowLinksFromRunLogURL applies the http(s) whitelist and the DAG-URL
+// derivation to a run log URL. Ingestion stores the whitelisted link on the run
+// row, so a reader rebuilds the same links from the column without holding the
+// payload the facet came from.
+func AirflowLinksFromRunLogURL(runLogURL string) AirflowLinks {
+	safeURL := safeExternalURL(runLogURL)
+	if safeURL == "" {
 		return AirflowLinks{}
 	}
 
 	return AirflowLinks{
-		DagURL:    deriveAirflowDagURL(runLogURL),
-		RunLogURL: runLogURL,
+		DagURL:    deriveAirflowDagURL(safeURL),
+		RunLogURL: safeURL,
 	}
 }
 

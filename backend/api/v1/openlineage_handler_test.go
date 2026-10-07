@@ -2,8 +2,10 @@ package v1
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 func newBatchContext(t *testing.T, body string) (echo.Context, *httptest.ResponseRecorder) {
@@ -147,4 +150,191 @@ func TestAuditErrorForHTTPStatus(t *testing.T) {
 	serverErr := audit.ErrorForHTTPStatus(http.StatusInternalServerError)
 	require.Equal(t, connect.CodeInternal, connect.CodeOf(serverErr))
 	require.Equal(t, storepb.AuditLogSeverity_ERROR, audit.MapSeverity(serverErr))
+}
+
+// A batch carrying one event over the per-event size limit is refused as a
+// whole, like an over-limit body: the size is a property of the transport, and
+// the batch is written atomically anyway. The handler returns before touching
+// the store, which the nil store here proves.
+func TestProcessBatchEventsRejectsAnOversizedEvent(t *testing.T) {
+	t.Parallel()
+
+	oversized := `[{"eventType":"START","run":{"runId":"run-1"},"job":{"namespace":"ns","name":"job"},"padding":"` +
+		strings.Repeat("x", openlineage.MaxEventSize) + `"}]`
+	ctx, rec := newBatchContext(t, oversized)
+	h := &OpenLineageHandler{}
+	require.NoError(t, h.processBatchEvents(ctx, []byte(oversized), ""))
+	require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, float64(0), body["index"])
+	require.Equal(t, float64(openlineage.MaxEventSize), body["limit"])
+}
+
+// An event whose identity exceeds a field limit is an invalid event, not an
+// over-limit request: a batch skips it the same way it skips an unparseable one.
+func TestProcessBatchEventsSkipsEventsOverTheFieldLimits(t *testing.T) {
+	t.Parallel()
+
+	overlong := strings.Repeat("x", openlineage.MaxJobNameLength+1)
+	body := `[{"eventType":"START","run":{"runId":"run-1"},"job":{"namespace":"ns","name":"` + overlong + `"}},` +
+		`{"eventType":"START","run":{"runId":"run-2"},"job":{"namespace":"ns","name":"` + overlong + `"}}]`
+	ctx, rec := newBatchContext(t, body)
+	h := &OpenLineageHandler{}
+	require.NoError(t, h.processBatchEvents(ctx, []byte(body), ""))
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Equal(t, float64(2), response["failed"])
+}
+
+// The datasets an event names are extracted once, at ingestion, so the dataset
+// pages aggregate stored references instead of the payload.
+func TestOpenLineageDatasetRefs(t *testing.T) {
+	t.Parallel()
+
+	event := &openlineage.RunEvent{
+		Inputs: []openlineage.Dataset{{
+			Namespace: "ns",
+			Name:      "public.orders",
+			Facets: openlineage.DatasetFacets{
+				Schema: &openlineage.SchemaFacet{Fields: []openlineage.SchemaField{{Name: "id", Type: "INT"}}},
+				// An input's column-lineage facet says nothing about what the run
+				// wrote, so it does not raise the flag.
+				ColumnLineage: &openlineage.ColumnLineageFacet{Fields: map[string]openlineage.ColumnLineageField{"id": {}}},
+			},
+		}},
+		Outputs: []openlineage.Dataset{
+			{
+				Namespace: "ns",
+				Name:      "public.daily_orders",
+				Facets: openlineage.DatasetFacets{
+					Schema:        &openlineage.SchemaFacet{Fields: []openlineage.SchemaField{{Name: "total", Type: "NUMERIC"}}},
+					ColumnLineage: &openlineage.ColumnLineageFacet{Fields: map[string]openlineage.ColumnLineageField{"total": {}, "id": {}}},
+				},
+			},
+			// The same output again, without facets: one reference per direction,
+			// and the facets the first occurrence stated survive.
+			{Namespace: "ns", Name: "public.daily_orders"},
+		},
+	}
+	eventTime := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
+
+	refs := openLineageDatasetRefs(event, "openlineage:task:TASK:ns:job", "openlineage", "airflow", &eventTime)
+	require.Len(t, refs, 2)
+
+	input := refs[0]
+	require.Equal(t, store.OpenLineageDatasetDirectionInput, input.Direction)
+	require.Equal(t, "public.orders", input.Name)
+	require.False(t, input.HasColumnLineage)
+	require.Empty(t, input.ColumnLineageFields)
+	require.JSONEq(t, `[{"name":"id","type":"INT"}]`, string(input.SchemaFields))
+	require.Equal(t, "openlineage:task:TASK:ns:job", input.TaskGUID)
+	require.Equal(t, "airflow", input.Integration)
+	require.Equal(t, "openlineage", input.Source)
+	require.NotNil(t, input.EventTime)
+
+	output := refs[1]
+	require.Equal(t, store.OpenLineageDatasetDirectionOutput, output.Direction)
+	require.Equal(t, "public.daily_orders", output.Name)
+	require.True(t, output.HasColumnLineage)
+	require.JSONEq(t, `["id","total"]`, string(output.ColumnLineageFields))
+	require.JSONEq(t, `[{"name":"total","type":"NUMERIC"}]`, string(output.SchemaFields))
+}
+
+// The Airflow link is materialized on the run row, so the run list and the task
+// list can render it without the payload it came from.
+func TestRunMessageForEventMaterializesTheAirflowLink(t *testing.T) {
+	t.Parallel()
+
+	event, err := openlineage.ParseRunEvent([]byte(`{
+		"eventType":"COMPLETE",
+		"run":{"runId":"run-1","facets":{"airflow":{"taskInstance":{"log_url":"https://airflow.example.com/dags/x/runs/1"}}}},
+		"job":{"namespace":"ns","name":"job"},
+		"outputs":[{"namespace":"ns","name":"out"}]
+	}`))
+	require.NoError(t, err)
+
+	h := &OpenLineageHandler{}
+	run := h.runMessageForEvent(event)
+	require.Equal(t, "https://airflow.example.com/dags/x/runs/1", run.AirflowRunLogURL)
+	require.Len(t, run.Datasets, 1)
+	require.Equal(t, "out", run.Datasets[0].Name)
+}
+
+// The Airflow link is stored so the run and task lists can render it without the
+// payload; an over-long one is dropped rather than stored and read back for
+// every row of a page. url.String() percent-encodes, so the stored link can be
+// longer than the facet it came from.
+func TestRunMessageForEventDropsAnOverlongAirflowLink(t *testing.T) {
+	t.Parallel()
+
+	overlong, err := openlineage.ParseRunEvent([]byte(`{
+		"eventType":"COMPLETE",
+		"run":{"runId":"run-1","facets":{"airflow":{"taskInstance":{"log_url":"https://airflow.example.com/dags/x/` +
+		strings.Repeat("y", openlineage.MaxAirflowRunLogURLLength) + `"}}}},
+		"job":{"namespace":"ns","name":"job"}
+	}`))
+	require.NoError(t, err)
+
+	h := &OpenLineageHandler{}
+	require.Empty(t, h.runMessageForEvent(overlong).AirflowRunLogURL)
+
+	withinCap, err := openlineage.ParseRunEvent([]byte(`{
+		"eventType":"COMPLETE",
+		"run":{"runId":"run-2","facets":{"airflow":{"taskInstance":{"log_url":"https://airflow.example.com/dags/x/runs/1"}}}},
+		"job":{"namespace":"ns","name":"job"}
+	}`))
+	require.NoError(t, err)
+	require.Equal(t, "https://airflow.example.com/dags/x/runs/1", h.runMessageForEvent(withinCap).AirflowRunLogURL)
+}
+
+// The schema and column-lineage facets are stored so the dataset detail does not
+// read the payload; the stored copies are capped so one dataset's facets cannot
+// make that read expand an unbounded JSONB. The entries that fit are kept.
+func TestOpenLineageDatasetRefsCapsTheStoredFacets(t *testing.T) {
+	t.Parallel()
+
+	const fieldCount = 4000
+	fields := make([]openlineage.SchemaField, 0, fieldCount)
+	lineageFields := make(map[string]openlineage.ColumnLineageField, fieldCount)
+	for i := range fieldCount {
+		fields = append(fields, openlineage.SchemaField{
+			Name:        fmt.Sprintf("field_%04d", i),
+			Type:        "VARCHAR(255)",
+			Description: strings.Repeat("d", 40),
+		})
+		lineageFields[fmt.Sprintf("column_%04d", i)] = openlineage.ColumnLineageField{}
+	}
+
+	event := &openlineage.RunEvent{
+		Outputs: []openlineage.Dataset{{
+			Namespace: "ns",
+			Name:      "out",
+			Facets: openlineage.DatasetFacets{
+				Schema:        &openlineage.SchemaFacet{Fields: fields},
+				ColumnLineage: &openlineage.ColumnLineageFacet{Fields: lineageFields},
+			},
+		}},
+	}
+
+	refs := openLineageDatasetRefs(event, "openlineage:task:TASK:ns:job", "openlineage", "airflow", nil)
+	require.Len(t, refs, 1)
+	ref := refs[0]
+
+	require.LessOrEqual(t, len(ref.SchemaFields), maxOpenLineageSchemaFacetBytes)
+	var storedFields []openlineage.SchemaField
+	require.NoError(t, json.Unmarshal(ref.SchemaFields, &storedFields))
+	require.NotEmpty(t, storedFields)
+	require.Less(t, len(storedFields), fieldCount, "the fields that do not fit are dropped")
+	require.Equal(t, "field_0000", storedFields[0].Name, "the fields that fit are the leading ones")
+
+	require.LessOrEqual(t, len(ref.ColumnLineageFields), maxOpenLineageColumnLineageFieldsBytes)
+	var storedNames []string
+	require.NoError(t, json.Unmarshal(ref.ColumnLineageFields, &storedNames))
+	require.NotEmpty(t, storedNames)
+	require.Less(t, len(storedNames), fieldCount)
+	require.True(t, slices.IsSorted(storedNames), "the stored names are sorted so a redelivery stores the same JSON")
 }

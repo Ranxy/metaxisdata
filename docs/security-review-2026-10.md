@@ -175,6 +175,7 @@
 - **修复**:`BuildRequestMetadata` 对 UA 截断(如 256B),审计写入侧限制 metadata 字段长度。
 
 ### M18. openlineage `raw_payload` 无单事件上限 + 列表无条件全量读取:单请求数十 GB 内存放大
+- **状态**:**已修复**(2026-10-07,主修复 commit `a691632`,独立对抗式复核后的加固 commit `db09dac`;修复内容与验证见 §10)。单事件限长与身份字段限长按原建议落地(并一并覆盖 L15 的字段限长),Airflow 链接与数据集引用改为摄取时物化,dataset 列表/详情/筛选项聚合下推 SQL;复核指出的"列表仍读未封顶派生字符串"与"详情展开全部 facet"两处随后一并封顶。加固后列出的三项残余(列表每次请求仍扫全部引用行、过滤列表与详情窗口不一致、详情 summary 仍在全部引用上聚合)已随摄入时维护的逐数据集聚合表修复,见 §10 的 2026-10-07 条目。
 - **证据**:`backend/api/v1/openlineage_handler.go:26`(`maxOpenLineageBodySize = 8MiB`);`backend/store/openlineage_run.go:436-461`(列表 SQL 无条件 SELECT raw_payload);`openlineage_service.go:100-111`/`openlineage_dataset.go:22,46-47`(一次读 5000 行)。
 - **攻击场景**:持一把摄取 key(50rps)几分钟灌入约 5000 个 8MiB 事件,任意一次 `ListOpenLineageDatasets`(5000×8MiB≈40GB)或 `ListOpenLineageRuns`(一页 1001 行)即 OOM。
 - **修复**:单事件限长(如 1MiB)并对 namespace/job_name/run_id 限长;列表不取 raw_payload(Airflow 链接在摄取时物化);dataset 聚合下推 SQL。
@@ -349,7 +350,7 @@
 11. M8/M9:acw↔permission 互斥测试 + allUsers 禁绑管理角色——M9 已完成(实现为 allUsers 完全不可编辑,见 §10);M8 待办。
 
 **P2(中期,加固与一致性)**
-12. M6/M18/M19/M20/M21/M22/M23/M24/M25 与 L 系列——M14 已完成(commit `f9f67fb`,加固 `414aa60`,见 §10)、M15 已完成(commit `f55f62a`,加固 `10e803f`,见 §10)、M19 已完成(commit `8d574c3`,见 §10)、M20 经确认按决策保留(见 §10);
+12. M6/M18/M19/M20/M21/M22/M23/M24/M25 与 L 系列——M14 已完成(commit `f9f67fb`,加固 `414aa60`,见 §10)、M15 已完成(commit `f55f62a`,加固 `10e803f`,见 §10)、M18 已完成(commit `a691632`,加固 `db09dac`;三项残余随 ingest 聚合表一并修复,commit `1253a9d`,见 §10)、M19 已完成(commit `8d574c3`,见 §10)、M20 经确认按决策保留(见 §10);
 13. 5.3 审计体系(注解驱动脱敏 + 黄金测试)、5.5 权限机制收敛。
 
 **P3(结构性投资)**
@@ -904,6 +905,174 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 6. **`make test-integration` 已在本轮后段跑过**:回退合并预算后本机全绿(`backend/test/integration/runner` 40.7s、`backend/migrator` 18.3s);但本轮没有新增针对该中间件的集成用例——既有的 OL 摄取集成用例走的是 handler,`configureGrpcRouters` 传入 `profile.TrustedProxies` 这一行由编译与既有套件路径覆盖。
 
 **验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./backend/...`、`go test -race ./backend/server/`、`go vet ./backend/server/...`、release 构建(`-tags release`)与默认构建;回退合并预算后补跑 `make test-integration`(真实 PostgreSQL + MySQL + migrator,全绿)。本轮未改前端与 proto,未跑前端门禁;CI 侧 `Unit Tests`/`Lint`/`Frontend`/`Release build` 与 `MySQL Real Server Integration` 见 PR。
+
+### 2026-10-07 —— M18 已修复(commit `a691632`)
+
+**单事件上限与身份字段限长**(`backend/plugin/openlineage/limits.go`)
+
+- 8MiB 的请求体上限只管一个请求,不管其中一个事件:一个 8MiB 的单个事件此前会整段入库,此后每次读到它都要付出这份体积。新增 `ValidateEventLimits`(单事件路径与批处理共用):单事件 1MiB,超限返回哨兵 `ErrEventTooLarge`(单事件答 413,批处理中任一事件超限则整批 413,与请求体上限一致);身份字段按唯一 btree 索引能容纳的长度封顶——`job.namespace`/`job.name`/`run.runId` 255 字节、job type 64 字节、dataset namespace 255 字节、dataset name 512 字节、单事件 dataset 总数 1000,并对转义后的 run GUID 另加 2000 字节上限(逐字段封顶后,若每个字符都需百分号转义仍可能逼近 2704 字节的索引项上限)。
+- 超长身份此前"能入库、再插索引永远失败",对生产者而言不可重试;现在按无效事件答 400(批处理中与不可解析事件同样跳过并计入 `failed`),即 L15 建议的"摄取时限长返回 400"。
+
+**摄取时物化,列表不再读 `raw_payload`**
+
+- `openlineage_run` 新增 `airflow_run_log_url`(摄取时经同一 `safeExternalURL` 白名单算好并落库;`airflow_links.go` 新增 `AirflowLinksFromRunLogURL`,DAG URL 仍在读取时派生,与 `DeriveAirflowLinks` 结果一致并有单测钉住)。`openlineage_task` 的列表查询改为 join 该列,不再取 `latest_run.raw_payload`;`OpenLineageTaskMessage.LatestRawPayload` 随之改为 `LatestAirflowRunLogURL`。
+- 新增 `openlineage_run_dataset`(迁移 `0015` 与 `LATEST.sql` 同步):每行一个"某 run 读/写了某数据集",含 namespace、name、direction、`has_column_lineage`、schema facet JSON、column-lineage 字段名、event_time、integration/source,外键 `run_pk → openlineage_run(id) ON DELETE CASCADE`(保留策略删 run 时引用随之消失,不需要在 maintenance 里多写一步)。摄取在同一事务里按 run 先删后插替换整组引用;终态 run 拒绝的重复投递不碰引用。
+- `store.ListOpenLineageRun` 的默认投影不再选 `raw_payload`(改选 `NULL::jsonb`),只有 `FindOpenLineageRunMessage.IncludePayload` 为真才取;`GetOpenLineageRun` 显式置真(单个 run 详情仍回原文 payload),upsert 的"拒绝后回读"不需要。**这才是列表读取 payload 的真正入口**:即便旧列表接口的 `includePayload=false`,`convertOpenLineageRun` 此前仍对每一行调用 `DeriveAirflowLinks(run.RawPayload)`。
+- 数据来源侧:`OpenLineageRunMessage` 携带 `Datasets`,`runMessageForEvent` 从已解析的事件里提取(同一 (direction, namespace, name) 去重;输入的 columnLineage facet 不置"该 run 写出的列血缘"标志;字段名排序以便重投递落库一致)。
+
+**dataset 列表/详情/筛选项下推 SQL**(`backend/store/openlineage_dataset.go`)
+
+- 列表:`GROUP BY namespace, name` 在 SQL 完成,`COUNT(DISTINCT task_guid) FILTER (direction = …)` 出源/目标 job 数、`ARRAY_AGG(DISTINCT integration/source)`、`BOOL_OR(has_column_lineage)`、`MAX(event_time)`;namespace 进 WHERE,integration/source/column-lineage-only 进 HAVING(放进 WHERE 会把该组其余 integration 滤掉,而列表要显示它们);`ORDER BY last_seen DESC, name, namespace` 后 `LIMIT 5000` 封顶。自由文本检索(含解析目标)与 internal/external 作用域需要解析,仍在 Go 侧完成,但作用于**已聚合的小行**:一次请求最多解析 5000 个数据集分组,而不是 5000 条 payload。
+- 详情:`GetOpenLineageDatasetDetail` 用同一组 (namespace, name) 拼写做索引查询;summary 在拼写并集上去重计数(同一 job 用两种拼写报告同一数据集仍只算一个),相关 job 限 8、最近 run 限 10、最佳 schema 以 `jsonb_array_length DESC, event_time DESC` 取最宽(与旧 Go 逻辑等价)、column-lineage 就绪字段取输出引用的并集。GUID→拼写仍由 Go 解析(新增的 `resolveOpenLineageDatasetAggregates` 只对聚合行调用解析器,解析失败回退外部身份,与旧路径一致),因此"新增 namespace mapping 后数据集立刻变内部"的既有行为不变。
+- 筛选项:dataset 的 namespace/integration/source 三个维度改为读 `openlineage_run_dataset`(integration/source 按 `COUNT(DISTINCT run_pk)`),与 run 侧维度复用同一套排序/上限助手;旧的"从 5000 条 payload 现算"路径删除。
+
+**回归测试**
+
+- 单元:`plugin/openlineage/limits_test.go`(合理事件通过;超限事件 `errors.Is(ErrEventTooLarge)`;六类超长字段各自报错且不是尺寸错误;逐字段到顶且全字符转义时 GUID 超限被拒;dataset 数超限被拒)、`api/v1/openlineage_handler_test.go`(超限事件使批处理整批 413 且未触碰 store;超长身份在批处理中计为 `failed`;`openLineageDatasetRefs` 的去重/输入不置列血缘标志/schema 与字段名落库/重投递不擦除;`runMessageForEvent` 物化 Airflow 链接)、`api/v1/openlineage_dataset_test.go`(聚合行→解析结果映射、解析失败回退、请求过滤映射、schema 字段与列血缘就绪、job/run 转换)、`store/openlineage_dataset_test.go`(聚合 SQL 形状:GROUP BY、过滤在 HAVING、封顶、不含 `raw_payload`;拼写谓词按对绑定、不跨对组合;默认投影不取 payload)。
+- 集成(真实服务器 + PostgreSQL):新增 `TestOpenLineageDatasetPagesReadMaterializedReferencesRealServerIntegration`——摄取两个 run 后断言 `ListOpenLineageDatasets` 的源/目标 job 数与列血缘徽章、`GetOpenLineageDataset` 的 schema 字段与就绪标记、related jobs/recent runs、dataset 筛选项、run 列表带 Airflow 链接而 `raw_payload` 为空、`GetOpenLineageRun` 仍返回原文、task 列表带链接、单事件超限 413、超长身份 400、删除 run 后引用随外键级联消失且数据集页不再列出。
+- **反向验证**(以 `go test -overlay` 探针单独回退,不改工作区;随后恢复):
+  1. 把 `openLineageRunPayloadColumn(false)` 还原为 `"raw_payload"` ⇒ `TestOpenLineageRunPayloadColumn` 变红(`Should not be: "raw_payload"`);
+  2. 删掉 dataset 数上限检查 ⇒ `TestValidateEventLimitsRejectsTooManyDatasets` 变红(`An error is expected but got nil`);
+  3. 从 upsert 事务里删掉 `replaceOpenLineageRunDatasets` 调用 ⇒ 上述集成用例在第一条列表断言处失败(`"[]" should have 2 item(s), but has 0`)。
+  
+  第 3 条需注意:集成套件由测试进程再 `go build` 出服务器二进制,只给 `go test` 传 `-overlay` 不会作用于该子进程(实测此时用例仍绿);探针必须以 `GOFLAGS=-overlay=…` 传入,子构建才会一起生效。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`(41 包全绿)、`make test-integration-smoke`(真实 PostgreSQL + MySQL + migrator,含 LATEST.sql 与增量链一致性用例,runner 40.2s、migrator 19.3s)、release 构建(`-tags release`)。本轮未改前端与 proto,未跑前端门禁。
+
+**独立对抗式复核后的加固(commit `db09dac`)**
+
+主修复 `a691632` 之后,由独立子代理做对抗式只读复核(scratch worktree + `go test -overlay` 探针,未改动本仓库)。它确认了主修复的核心结论(默认投影不取 `raw_payload`;task 列表 join 物化列;单事件与批处理两条摄取路径都过 `ValidateEventLimits`;身份字段封顶覆盖全部唯一 btree 索引;终态 run 拒绝的重复投递不碰引用;`0015` 与 `LATEST.sql` 一致;外键级联有效;三条反向验证均可复现),但指出"一次请求仍能读到长度不受限的、由 payload 派生的字节",即内存放大只是被缩小而非消除。逐条复核后处理如下:
+
+1. **列表仍在读未封顶的派生字符串(高,已修)**:`openlineage_run` 的 `producer`/`integration`/`processing_type`/`event_type`/`parent_*`/`root_*` 只受 1MiB 事件上限约束,而 `airflow_run_log_url` 经 `url.String()` 百分号转义后可达事件的约 3 倍(子代理实测 240144 字节的事件产出 720009 字节的链接);一页 1001 行因此仍可能读到 GB 级。现全部按字段封顶并答 400(eventType 64、producer 512、integration/processing_type 64、parent/root 名字与 run id 各 255),Airflow 链接超过 2048 字节时**丢弃链接而不是拒绝事件**(链接是可选展示字段,不该让合法事件失败;丢弃记 debug 日志)。单元测试钉住每一条,集成用例断言超长链接的那一行存储为空、payload 仍可取回,且正常链接原样入库。
+2. **数据集详情展开全部引用行的 facet JSON(中,已修)**:最佳 schema 的 `ORDER BY jsonb_array_length` 与 column-lineage 字段名的 `jsonb_array_elements_text` 会 detoast 该数据集历史所有引用(子代理实测 400 条 × 320KB facet ⇒ 10.8s、140MB 外部归并、35330 个临时块)。现在 facet/job/run 三类查询改为读一个"最近 100 条引用"的有界子查询(`openLineageDatasetRecentRefsCTE`),并把 `(namespace, name)` 索引改为 `(namespace, name, event_time DESC NULLS LAST)` 让子查询能提前停止(索引改动落在同一份 `0015` 里——该迁移尚未上线);摄取侧同时把单个 schema facet 封顶 64KiB、column-lineage 字段名数组封顶 32KiB,超出的尾部丢弃而事件仍被接受。**本轮实测**:400 条引用、其中每条约 90KB(故意超过摄取侧上限的直接 SQL 探针)的库上,`GetOpenLineageDatasetDetail` 从旧实现的 10.8s 降到 67ms。语义收紧一处:最佳 schema 由"全部历史里最宽"变为"最近 100 条引用里最宽"(最近 10 个 run、最近 8 个 job 不受影响,它们必在这 100 条之内)。
+3. **集成/来源数组无界且顺序不确定(低,已修)**:`ARRAY_AGG(DISTINCT …)` 原先没有 `ORDER BY`(旧 Go 实现用 `sortedKeys` 排序),且一个 producer 每事件换一个 integration 就能把单个分组的数组撑大;现按值排序并切到最多 16 项。相关 job 的 integration 改为取**最新 run** 的(与旧 Go 行为一致),不再是词序 `MAX`。
+4. **columnLineage 字符串仍能把索引写爆(中,已修;属 L15 家族)**:facet 的字段名、`inputFields[].field`、`dataset[].field` 以及 facet 内引用数据集的 namespace/name 此前完全不受检查,超长值会在 `column_lineage` 的 `source_column`/`target_column` 索引上以 500 失败(子代理以 40000 字节随机十六进制名复现 `index row requires 40016 bytes, maximum size is 8191`)——而 run 行此时已提交,生产者只能永久重试。现按 512/512/255 封顶并答 400。
+5. **facet 内新列 `schema_fields`/`column_lineage_fields` 的 JSONB 约定(F9,记录)**:它们没有 `COMMENT ON COLUMN` 绑定 store 消息,与 `raw_payload` 同样存原始 facet JSON;`backend/AGENTS.md` 的 "JSONB 绑定 proto/store 消息" 因此又多了一处显式例外,两列的 SQL 注释已写明。
+
+**加固新增/扩展的测试**:单元——`plugin/openlineage` 的 `TestValidateEventLimitsRejectsOverlongColumnLineageStrings` 与扩展后的超长字段表(producer、parent/root、eventType、integration、列名/facet 内 dataset 名);`api/v1` 的 `TestRunMessageForEventDropsAnOverlongAirflowLink`、`TestOpenLineageDatasetRefsCapsTheStoredFacets`(截断且保留前导项、字段名排序);`store` 的 `TestOpenLineageDatasetReadsAreBounded` 钉住数组排序/切片与详情窗口 SQL 的形状。集成——`TestOpenLineageIngestionBoundsTheStoredValuesRealServerIntegration`:超长 Airflow 链接被丢弃而事件与其 payload 仍入库、producer/eventType/列名超长答 400、3000 字段的 schema 被截断而详情仍可用、单事件 150 个数据集全部建引用(跨 INSERT 分块)、`integrations` 按值排序且 job 报最新 run 的 integration、上限内的链接原样入库。
+
+**加固后的验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test ./backend/...`(41 包全绿)、`make test-integration-smoke`(真实 PostgreSQL + MySQL + migrator,含 `0015` 索引改动后的 LATEST/增量一致性,runner 39.7s、migrator 18.7s)、release 构建。另有一次一次性性能探针(未入库):400 条引用、每条约 90KB facet 的库上 `GetOpenLineageDatasetDetail` 耗时 67ms。
+
+**复核结论中不成立的一条(F4)**:复核称 SPA 任务详情页的"关联数据集"面板因本次改动永久为空,属新引入的前端回归。实测**不成立**:基线 `591c664` 上 `ListOpenLineageRuns` 走的是 `convertOpenLineageRun(run, false)`,`RawPayload` 只在 `includePayload=true` 时赋值(自功能提交 `6c565d7` 起即如此,探针 `TestProbeBaseRunListNeverCarriedThePayload` 在基线 worktree 上通过),即 run 列表从未返回过 payload——该面板自功能引入以来就是空的,与本次改动无关,是"前端按 payload 聚合、列表接口却不给 payload"的既有契约缺陷。修它需要把每个 run 的数据集引用放进列表响应(proto + 前端)或把该聚合搬到服务端,属独立改动,本轮未做。
+
+**加固后的残余/代价(记录而非修复)**
+
+以下三条随后均已修复(commit `1253a9d`,见 §10 的 2026-10-07 条目),原文保留以便追溯:
+
+- 数据集列表的 `GROUP BY namespace, name` 仍要扫描全部引用行才能确定最近 5000 个分组(`LIMIT` 无法先于 `GROUP BY`);复核在 100 万引用行上实测约 4.5s。应用侧内存仍有界(≤5000 个小行),但每次列表请求都要付这份库内代价。彻底解法是像 `openlineage_task` 那样在摄取时维护一张逐数据集聚合表(或定期物化),属后续改动。
+- 列表与详情的封顶窗口不一致:带 namespace/integration/source 过滤的列表可以把过滤下推到 SQL,从而显示超出"未过滤最近 5000 个数据集"的项,而详情按未过滤聚合解析 GUID,超过该窗口时可能 404;详情另有 64 个拼写上限。
+- 详情 summary 的 `COUNT(DISTINCT task_guid)` 仍在数据集自己的全部引用上聚合(只有 facet/job/run 三类查询被窗口化),对单个被灌爆的数据集仍是 O(行数) 的库内代价。
+
+**残余/注意**
+
+1. **数据集列表与详情受 `maxOpenLineageDatasetGroups = 5000` 限制**:只覆盖最近见过的 5000 个数据集(按最近事件时间),更老的数据集列不出来、也打不开(详情按同一封顶聚合把 GUID 解析回拼写)。这是旧实现"最近 5000 个 run"窗口的同族上限,但每行更小且不解析 payload;超过该量级的部署需要把解析也搬进 SQL(见第 3 条)。
+2. **不回填**:升级前已入库的 run 没有物化引用与 Airflow 链接列,这些旧事件的数据集不会出现在数据集页,旧 run 的 Airflow 链接也会消失,直到事件被重新摄取。项目尚未上线,故未做迁移回填;若要在已上线环境升级,需要一次性回填作业(可用 SQL 从 `raw_payload` 抽取,`0015` 里刻意没有写入数据)。
+3. **dataset 的作用域过滤与自由文本检索仍在应用侧**(需要解析 namespace → 实例),SQL 只负责聚合与可下推的过滤,所以仍是"一次请求解析 ≤5000 个数据集分组",而不是"一次请求零工作"。要消除这最后一段,需要把解析结果物化(或在解析变更时失效),代价是 namespace mapping / 实例改动后需要重解析。
+4. **物化 schema facet 会增加存储**:每个 (run, dataset) 引用各存一份 schema facet 与 column-lineage 字段名,数据集详情因此不必回读 payload;这使 `openlineage_run_dataset` 的行比纯计数表大,换取读路径完全不碰 `raw_payload`。
+5. **`GetOpenLineageRun` 仍按需返回整段 payload**(契约不变),因此单 run 详情不是"不读 payload"。注意 1MiB 上限约束的是**事件字节**:JSONB 重新编码后实际存储可达约 2.0 倍,接口返回的字符串另约 1.18 倍(子代理实测),即"最多一份 1MiB"并不成立,加固一节已更正。
+
+### 2026-10-07 —— M18 的三项残余已修复(commit `1253a9d`)
+
+上一节列出的三条残余本轮全部关闭:数据集列表每次请求仍扫全部引用行的库内代价、过滤列表与详情窗口不一致导致的 404、以及详情 summary 在单个数据集全部引用上聚合的代价。三条同源——数据集页从引用表作答——所以一次改动一起解决。
+
+**摄取时维护逐数据集聚合表**(迁移 `0016##openlineage_dataset_aggregate.sql`、`backend/store/openlineage_dataset_aggregate.go`)
+
+- 新增 `openlineage_dataset`:每个数据集一行,保存 `ref_count`、`column_lineage_ref_count`、按方向的 job 数(`source_job_count`/`target_job_count`)与 `last_seen`(最新引用的事件时间)。行存在即"该数据集仍有引用",最后一个引用消失时删除该行。
+- 新增 `openlineage_dataset_member`:每个 (数据集, kind, value) 一行,`ref_count` 为携带它的引用数;kind 为 `task:input`/`task:output`(value 是 task GUID)或 `integration`/`source`。job 数就是对应方向上的 task 行数,列表显示的数组从 value 行读出。这正是让聚合在重投递下**精确**而不是单调的机制:引用被替换掉时成员计数减一,减到 0 就删除该行并回退对应计数;`last_seen` 只在"被移走的那条可能正是最新"时才回读 `MAX(event_time)`(走既有 `(namespace, name, event_time)` 索引)。成员行主键里最长的是 task GUID,摄取侧已封顶,仍在 btree 索引项上限之内。
+- 摄取侧(`openlineage_run.go`):写入引用前先读回该 run 原有引用,把「旧集合 → 新集合」折算成每数据集一份增量。完全相同的引用相互抵消,所以"重投递但内容没变"不写任何行;整个批次的增量在**所有 task 锁取完之后**统一施加,加锁顺序因此是全局的(先按 task 升序、再按 (namespace, name) 升序),两个批次不会因为"先持数据集锁、再等 task 锁"而成环。数据集行锁由 `INSERT ... ON CONFLICT DO UPDATE`(空更新)取得,计数在同一持锁事务内读改写,并发摄取同一数据集不丢更新。
+- 保留策略(`maintenance.go`):批量 `DELETE` 无法逐条告知聚合,`DeleteOpenLineageRunsBefore` 改为先把"这次会删到的引用所属数据集"(`DISTINCT namespace, name`)暂存进事务级临时表(不占应用内存),删完 run(级联删引用)后:只剩空壳的数据集行连同成员行删除,仍被引用的数据集按剩余引用重建聚合与成员行。
+
+**列表、筛选项与详情读写同一个窗口**(`backend/store/openlineage_dataset.go`、`backend/api/v1/openlineage_dataset.go`)
+
+- 列表不再 `GROUP BY` 引用表:窗口 CTE `dataset_window AS MATERIALIZED` 先取 `last_seen DESC` 的最近 `maxOpenLineageDatasetGroups`(5000)个数据集,过滤器在其**之后**施加;integration/source 过滤变成成员表主键上的 `EXISTS` 等值探测,显示的数组通过主键前缀的有序 `LIMIT 16` 读取(不扫描数据集的值)。`MATERIALIZED` 是刻意写下的栅栏:过滤条件不可能被下推到窗口的 `LIMIT` 之下——实测当前规划器本来也不会下推,写出来是为了让"过滤不能越过窗口"成为查询本身的性质,而不是规划器的巧合。
+- namespace / integration / source 三个菜单维度同样只读这个窗口(每个数据集最多 16 个值),所以菜单里出现的值一定能筛出结果,列表里出现的数据集一定在窗口内;数据集页最后一次全引用表聚合随之消失。这三项计数的语义由"引用数"变为"窗口内数据集的个数"。
+- 详情按 GUID 解析拼写改用同一个窗口(`ListOpenLineageDatasetWindow`),所以"过滤后的列表能显示、详情却 404"不再可能:过滤只能在窗口内缩小,不能在窗口外扩张。summary 改为读聚合行(单一拼写 O(1));只有同一数据集被多种拼写上报时才退回成员行去重(同一 job 两种拼写仍只算一个 job),facet/job/run 三类查询仍走"最近 100 条引用"的有界子查询。
+- 一处语义收紧:菜单能提供的值也受这个窗口限制——超出窗口的值不再出现在菜单里(与列表可达范围一致)。
+
+**回归测试**
+
+- 单元(`backend/store`):`openLineageDatasetDeltas` 的增量折算(无变化不写、引用被移除为负、方向迁移、空 integration/source、同一批多个 run 合并为一份、数据集顺序稳定);列表查询形状(窗口先于过滤器、`MATERIALIZED`、不再出现 `openlineage_run_dataset`/`GROUP BY`/`raw_payload`);窗口 CTE 为列表与详情共用;成员数组读取有界;拼写谓词带表别名。
+- 集成(真实服务器 + PostgreSQL):`TestOpenLineageDatasetAggregateFollowsARedeliveryRealServerIntegration` —— 重投递撤回引用后 `ref_count`/`target_job_count`/`column_lineage_ref_count` 与 `last_seen` 一起回落(被撤的正是最新的那条,`last_seen` 必须退回到剩下的那条)、最后一个引用消失后数据集行与成员行一并消失、列表与详情同步;`TestOpenLineageDatasetAggregateFollowsTheRetentionPruneRealServerIntegration` —— 驱动真实保留策略 prune,断言只剩空壳的数据集被删除、仍被别的 run 引用的数据集按剩余引用重建(含成员行);`TestOpenLineageDatasetWindowKeepsTheListAndDetailAlignedRealServerIntegration` —— 该用例刻意不并行,直接插入 5000 行"填满窗口"的聚合行与 2 行被挤出窗口的聚合行,断言按 namespace 过滤的列表为空(过滤不能越过窗口)、被挤出窗口的数据集详情 404、窗口内的数据集详情可读。既有 `TestOpenLineageDatasetPagesReadMaterializedReferencesRealServerIntegration` 里"删掉 run 后数据集页不再列出"一段改为驱动保留策略 prune(原先的裸 `DELETE` 只是 prune 的替身,而聚合的维护路径正是 prune),外键级联断言保留。
+
+**反向验证**(逐条单独回退,对应用例变红,随后恢复;探针直接改工作区后用 `git checkout` 还原)
+
+1. 成员计数减到 0 时不回退 job 数(`return false, true, nil` → `false, false, nil`):重投递用例失败(`target_job_count` 期望 1、实际 2)。
+2. 去掉 `last_seen` 回读:重投递用例失败(期望退回到 `base`、实际留在 `base+1min`)。
+3. 去掉保留策略里的 `reconcileOpenLineageDatasets`:prune 用例失败(`the dataset whose only reference was pruned is gone`,计数 1≠0)。
+4. 把列表改回"先过滤再封顶"(即修复前的形状):窗口对齐用例失败(`a filter must not reach past the window`,该 namespace 本应为空却返回 1 行)——正是修复前"列表给得出、详情 404"的那一类项。
+5. 只去掉 `AS MATERIALIZED` 而其余不动:**不会**变红——当前规划器不会把外层过滤下推到子查询的 `LIMIT` 之下。窗口对齐用例因此钉住的是"列表结果不会超出窗口"这一行为,而不是某种查询写法。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./backend/...`(全绿)、默认与 release 构建、`make test-integration-smoke`(真实 PostgreSQL + MySQL + migrator,含 `LATEST.sql` 与增量链一致性;runner 49.3s、migrator 19.8s)。本轮未改前端与 proto,未跑前端门禁。
+
+**残余/代价(记录而非修复)**
+
+> 以下四条中的前三条随后已处理、第四条部分处理(记忆化),见 §10 的下一条条目。
+
+- **摄取成本增加**:每条引用除自身外还要维护最多 3 行成员(task/integration/source)与一个数据集行,换来的是列表/详情不再对全部引用行做聚合;`openlineage_dataset_member` 因此约为引用行数的 1–3 倍,存储相应增加。
+- **保留策略重建与并发摄取之间是既有形状的竞态**:重建按语句快照重算,期间提交的摄取增量可能被覆盖,直到该数据集再次被摄取或再次 prune。`openlineage_task` 的重建(加固前的 M18 修复)同形,属既有设计,不是本轮引入。
+- **在 store 之外直接删 run(手写 SQL)会让聚合行停在旧值**,直到保留策略对该数据集重算——与 `openlineage_task` 的"读不修行,等下一次摄取或 prune"同族;`DeleteOpenLineageRunsBefore` 是受支持的删除路径。
+- **解析仍在应用侧**:一次请求仍要解析 ≤5000 个数据集分组(作用域过滤与自由文本检索需要 namespace → 实例解析),没有变成"零工作";要消除它需要物化解析结果并在 namespace mapping / 实例变更时失效。
+
+### 2026-10-07 —— M18 残余的四项优化(commit `c05ff2c`、`794812f`、`226e8d7`、`18abe4b`)
+
+上一条目列出的四条残余本轮逐一处理:解析仍按数据集各查一次、摄取维护逐数据集发语句、保留策略重建与并发摄取的竞态、以及 store 之外删 run 留下的空壳聚合行。
+
+**解析按 namespace 记忆一次(commit `c05ff2c`)**
+
+- 现状(实测):读路径解析窗口里每一行拼写时,`Resolver` 对 dataset 预览与实例列表有请求级记忆,但每次预览开头的 `GetNamespaceMapping` 没有——窗口 5000 行就是 5000 次查询,窗口对齐用例里一次详情请求约 2s,几乎全在这里,比聚合本身贵得多。
+- 做法:把「一个 namespace 解析成什么」(mapping 命名的实例、该实例本身、以及 host:port 命中的实例)按 namespace 记忆在请求级;mapping 命中的 namespace 不再去列实例(与记忆化之前的路径一致,那时它在这步之前就返回了)。摄取用的 `NewResolver` 不记忆,`requestScoped=false` 时既不读也不写缓存,所以两次事件之间新登记的 mapping/实例对下一个事件仍然可见。
+- 可测性:`Resolver` 改为接收 `ResolutionStore` 接口,这是让"一条请求对一个 namespace 只查一次"能被测试钉住的原因——单元用例用计数假 store 断言 200 个数据集一次查询、两个 namespace 两次、以及非请求态下不记忆(每次调用都重新查)。
+- 反向验证:去掉缓存写入后 `TestResolveDatasetPreviewLooksUpOneNamespaceOnce` 变红(期望 1、实际 200)。
+
+**摄取维护批量化(commit `794812f`)**
+
+- 现状:每个被触及的数据集约 5 条语句(加锁取状态 1 + 成员增删最多 3 + 计数写 1),而一次事件最多可点名 1000 个数据集(`MaxEventDatasets`),于是单个事件在引用写入之外还要约 5000 次往返——`MaxEventDatasets` 留下的放大面。
+- 做法:按语句类批量化——① 一条 `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` 批量加锁并读回每个数据集的状态;② 批量 upsert 正增量成员(`RETURNING` 的计数等于该行增量即为新建,据此加 job 数);③ 批量 `UPDATE ... FROM (VALUES ...)` 负增量成员;④ 批量删除归零成员(据此减 job 数);⑤ 批量写回计数并在同一条语句里用 `CASE` + 相关子查询回读被撤走最新引用者的 `event_time`。锁序不变:所有数据集行在任何成员行之前、按 (namespace, name) 顺序加锁,批次仍是"先 task 升序、再 dataset 升序"。语句按行数分块(每块 1000 行),因为参数个数有上限而一个批次可以点名任意多个数据集。
+- 新助手:`valuesList` 渲染带列级 cast 的 `VALUES` 列表——`FROM` 里的 `VALUES` 拿不到目标列类型(列定义列表只对返回 record 的函数合法),占位符要跨整表编号,单测钉住这两点。
+- 测试:单元 `TestValuesListNumbersPlaceholdersAcrossRows`;集成扩了"一个事件 150 个数据集"用例(重投递只留 100 个,被丢掉的 50 个必须一并消失),并新增 `TestOpenLineageDatasetAggregateChunksALargeBatchRealServerIntegration`——一个事务里两个各 1000 个数据集的事件(共 2000 数据集、6000 成员行)全部落库、再重投递各留 1 个,1.4s。
+- 不变量用例:`TestOpenLineageDatasetAggregateMatchesAFullRecomputeRealServerIntegration` 把重投递、数据集在两个方向间迁移、同一 run 双向引用同一数据集、无 integration facet、无 `event_time` 等形态走一遍后,把存储的聚合(**数据集行与成员行**)逐行与"从引用表重算"的结果对比——后者正是保留策略重建用的那段 SQL,于是"增量维护 = 全量重算"成为一条被钉住的不变量。反向验证:把成员增量从累加改成覆盖即变红。
+- 反向验证:去掉"成员归零时回退 job 数"后重投递用例变红(期望 1、实际 2)。
+
+**保留策略先锁后算(commit `226e8d7`)**
+
+- 现状:重建是"按语句快照算出的绝对赋值"。当一个在途写入者已写好引用、持有聚合行锁、尚未提交时,重建语句会在该行锁上等待,而它算出的 `EXCLUDED` 值来自等待前的快照——写入者提交后这次重建把它的贡献覆盖掉。`DELETE ... WHERE NOT EXISTS (引用)` 那一步是同一窗口的镜像。
+- 做法:先把受影响的数据集行建出来(`INSERT ... ON CONFLICT DO NOTHING`),再按 `(namespace, name) COLLATE "C"` 顺序 `FOR UPDATE OF ds` 加锁(与摄取路径的 Go 字节序一致),然后才做删除空壳/重算/重建成员。持锁之后的语句快照一定包含所有先到的写入者;后到的写入者在同一把锁上排队,拿到锁后基于重建值施加自己的相对增量。同时把 task 重算移到数据集重算之前并按 task GUID 排序——两边统一为"先 task 升序、再 dataset 升序",顺带修掉保留策略原先按 map 随机序取 task 锁这一既有隐患。
+- 测试:`TestOpenLineageDatasetPruneLocksBeforeItRecomputesRealServerIntegration` 用一个第二连接扮演"在途写入者"(run 与引用已写、按摄取路径的方式锁住聚合行、未提交),在 prune 进行中查询 `pg_stat_activity`:断言它阻塞在聚合行准备语句上,并且**尚未触碰 `openlineage_run_dataset`**;提交后断言重建把该写入者的引用算了进去(`ref_count`/`target_job_count` 与 `last_seen` 都来自它)。
+- 反向验证:回退这段后同一用例变红——prune 阻塞在 `DELETE ... NOT EXISTS (SELECT 1 FROM openlineage_run_dataset ...)` 里,即在写者持锁期间就已经在读它不该看到的引用。
+
+**空壳聚合行清扫(commit `18abe4b`)**
+
+- 现状:在 store 的路径之外删 run(手写 `DELETE`、运维清理)会级联删掉引用,但留下的聚合行不会有人再碰——页面继续列出没有任何引用的数据集,详情也给不出 job/run。
+- 做法:`DeleteEmptyOpenLineageDatasets(olderThan)` 删除"没有任何引用且 `updated_at` 早于 `olderThan`"的聚合行;维护 pass 每次都跑(与是否设置保留窗口无关,它不是保留策略),grace 为 1 小时。grace 是必要的:尚未提交的写入者对本 pass 不可见,而它即将填的那一行不能被清掉。
+- 测试:`TestOpenLineageEmptyDatasetSweepRealServerIntegration` 手工删掉一个 run,断言壳仍在、grace 内不清、超过 grace 只清掉无引用那一个、被另一个 run 引用的留下。
+- 反向验证:去掉 `updated_at` 守卫后该用例变红(grace 内那条也被清掉,`deleted` 由 0 变 1)。
+- 已知边界:`DeleteEmptyOpenLineageDatasets` 只清空壳,不修计数——引用的**部分**被越界删除造成的计数漂移,要到该数据集下次被摄取或再次 prune 才回到一致。
+
+**验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./backend/...`(全绿)、默认与 release 构建、`make test-integration-smoke`(真实 PostgreSQL + MySQL + migrator;runner 40.7s、migrator 20.1s)。本轮未改前端与 proto,未跑前端门禁。
+
+**独立对抗式复核后的加固(commit `92a8bd8`、`940cfbb`、`4d0fd7f`)**
+
+上一条目的四项改动随后交独立子代理做对抗式只读复核(HEAD `ac28ff7`;探针全部挂在 `/tmp/probe`,以 `go test -overlay` 与真实 PG 16 集成套件注入,未改动仓库文件)。它用"增量结果 vs 从引用表重算"的差分探针覆盖了批量、方向迁移、空 integration、1800 数据集跨分块、分块删除等形态,确认了计数与每一项成员行都与重算一致,并实测了 13 种 namespace 形态下记忆化解析与逐次解析结果完全相同。它同时指出下列问题,均已修掉:
+
+1. **`last_seen` 不再是引用的 `MAX(event_time)`(高,已复现,基座 `1253a9d` 起就有)**:`openLineageDatasetDeltas` 会把"引用数、列血缘、成员都抵消"的增量当作"什么都不用写"丢掉,但这类增量仍然带着 `removed` 与新的 `lastSeen`——一次只改了引用事件时间的重投递(任何被读取的数据集,其输入引用从不带列血缘标志,所以普通的 START→COMPLETE 就会命中)因此不写任何行,而此后没有任何东西会重算它。端到端复现:同一 run 两次 COMPLETE、输入相同、`eventTime` 从 t0 改到 t0+1h,`last_seen` 仍停在 t0,而 `MAX(ref.event_time)` 是 t0+1h;列表窗口按 `last_seen` 排序,于是正在被写入的数据集可能因陈旧时间被挤出 5000 窗口,详情随即 404——正是基线修复要消除的那类现象。现在只有"确实无可写"的增量才会被丢弃。反向验证:去掉新增的 `!delta.removed && delta.lastSeen == nil` 条件,单元用例 `TestOpenLineageDatasetDeltas/a replacement that only moves a reference's event time still writes` 变红(`"[]" should have 1 item(s), but has 0`),把该形态加进不变量用例后集成侧同时变红。
+
+2. **保留策略与摄入互相死锁(中高,已复现,属既有形状但 `226e8d7` 的注释称锁序已对齐)**:摄入的顺序是 task 行 → run 行 → 引用 → dataset 行,而 prune 是"先删 run 行 → 注册表 → task 重算(此时才取 task 行)"。生产者在 prune 正在删除某 run 时重投递该 run:摄入先拿到 task 行,再去写已被删除但未提交的 run 行;prune 持有该 run 行,稍后又要 task 行——成环。复现(probe `zz_probe_deadlock_test.go`):把 prune 停在批量 DELETE 之后(靠 `meta_registry_resource` 行锁),启动重投递,再放行;在 `ac28ff7` 上 prune 成功、投递得到 HTTP 500,服务端日志 `ERROR: deadlock detected (SQLSTATE 40P01)` 于 `upsertOpenLineageRunImpl`——该投递的 lineage 完全没写进去(prune 的后半段(注册表清理、task 重算、数据集重建)可以持续很久,窗口很宽)。现在 prune 在删除 run 之前先按 task GUID 顺序把将要重算的 task 行锁住(upsert + 空更新),两条路径于是都是"先 task、再 run、后 dataset"。回归用例 `TestOpenLineagePruneAndIngestShareATaskRealServerIntegration` 复刻同一交错并断言两侧都成功;反向验证:去掉这段前置加锁,该用例变红(投递 500、日志 40P01)。这一改动同时让复核提到的"prune 重建后又把在途摄入的旧引用减一遍"窗口不可达——摄入不可能不持有 task 锁就停在重建与自身状态之间。
+
+3. **空壳清扫可能删掉仍有引用的聚合行(中,已复现,`18abe4b` 引入)**:`updated_at` 写的是 `NOW()`,即**事务开始**时间;一个早于 grace 开始、晚于 grace 提交的事务,提交后行版本仍低于截止时间。清扫语句在写者持锁时阻塞,提交后 EvalPlanQual 用旧快照重算 `NOT EXISTS`,看不到刚提交的引用,于是把行删掉(其成员行随外键级联消失),留下"引用在、聚合无"的状态:页面不再列出该数据集。psql 复现:0 行聚合、1 行引用。现在清扫先把候选行按 `(namespace, name)` 字节序锁定并 `SKIP LOCKED` 跳过任何仍被写者持有的行,"没有提交的引用"因此不会被误判,age 条件只作为"不打扰热行"的保守约束保留(它本身不足以判定,注释里已写明)。回归用例 `TestOpenLineageEmptyDatasetSweepSkipsARowAWriterHoldsRealServerIntegration` 按摄入的方式持锁+写引用,断言清扫既不等待也不删除;反向验证:去掉 `SKIP LOCKED` 后该用例变红(`the sweep waited for a writer's row lock instead of skipping it`,随后提交即删除)。
+
+4. **复核在过程中拦下的一处回归(只存在于未提交工作区,已修,记录备查)**:前置加锁语句的第一版写成 `SELECT DISTINCT ... ORDER BY task_guid COLLATE "C"`,PostgreSQL 以 `for SELECT DISTINCT, ORDER BY expressions must appear in select list (42P10)` 拒绝——它是 prune 的第一条语句,会让保留策略静默停摆(只打一条日志),而当时新增的死锁用例因为 prune 立刻报错而表现为"等待超时"。改为 `ORDER BY 1`(选择列表里的 `task_guid` 自带 `COLLATE "C"`,按序数排序仍是字节序)后通过;复核用仓库自己的保留策略集成用例与真实列定义逐字复现了该报错。
+
+复核**未能推翻**的部分(它列出的探针与理由):计数与全部成员行对"从引用表重算"的差分在所有形态下一致;`refCount == delta` 的"新建"判定与 `refCount <= 0` 的"耗尽"判定构造不出反例,行不会出现负计数或残留;分块不破坏"先锁全部数据集、再动成员"的次序,最坏参数数 8000/语句远低于上限,`GREATEST(timestamptz, …)` 与 NULL 语义、`int`/`bigint`、以及 `FROM` 里的 `VALUES` 列类型都与预期一致;prune 的 `SELECT ... FOR UPDATE` 经 `EXPLAIN` 确认是 `LockRows → Sort`,按 `COLLATE "C"` 排序与 Go 的字节序一致;请求级 namespace 记忆化在 13 种 namespace 形态 × 4 个数据集名下与未记忆化解析给出相同 GUID 与 Internal 标志。
+
+**加固后的验证门禁**:`gofmt`、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./backend/...`(全绿)、`make test-integration-smoke`(真实 PostgreSQL + MySQL + migrator;runner 41.5s、migrator 19.4s)。四项修复各自附了反向验证,另加"增量 = 全量重算"的不变量用例 `TestOpenLineageDatasetAggregateMatchesAFullRecomputeRealServerIntegration`(数据集行与成员行都逐行对比,反向验证:把成员增量从累加改成覆盖即变红)。
+
+**复核未能验证的部分**(记录):并发大批次的压力测试、100 万数据集的最坏规模、多副本下两个 prune/清扫同时运行、以及前端渲染陈旧 `last_seen` 的效果——都只有结构论证或 SQL 级证据。
+
+**残余**
+
+1. **解析仍未物化进 SQL**:窗口内的作用域过滤与自由文本检索仍需 app 侧解析(检索命中面包含"解析后的目标"),现在只是把每次解析的成本降到纯 CPU。要彻底去掉"详情受窗口限制",需要把解析结果(guid/resolved_target/internal)落库,并配一套失效机制(mapping/实例变更时按 namespace 重解析,或给聚合行加 epoch 让读路径只对已读到的 ≤5000 行重解析)。
+2. **空壳清扫是每 6 小时一次 O(数据集数) 次索引探测**,并把"越界删除"的可见后果限制在 grace + 一个 pass 之内(见上面的加固:它只删"没有任何引用且没有被写者持有"的行);要让它彻底不可能静默,可选 `BEFORE DELETE ON openlineage_run` 守卫触发器(要求 store 的删除路径 `SET LOCAL` 放行),但那会与既有"刻意越界删除以验证读路径优雅降级"的用例冲突,属策略变更而非修复。
+3. **摄取成本仍是每条引用最多 3 行成员**:批量化只把往返次数与数据集数解耦,不减少行数;若要把行数也降下来,可把 integration/source 两个维度收进数据集行的一份 JSONB 计数映射(代价是热数据集每次摄取都要重写该行)。
 
 ### 2026-10-07 —— M19 已修复(commit `8d574c3`);M20 经确认按决策保留
 
