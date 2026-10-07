@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -188,109 +189,56 @@ func compareOpenLineageDatasetDeltas(a, b *openLineageDatasetDelta) int {
 	return strings.Compare(a.name, b.name)
 }
 
-// applyOpenLineageDatasetDeltas folds one ingest transaction's run replacements
-// into the per-dataset aggregate. It runs after the references are written and
-// after every task lock of the transaction has been taken: the dataset rows and
-// the member rows under them are then locked in (namespace, name) order, which
-// keeps a batch's lock order global — tasks ascending, then datasets ascending —
-// so two batches cannot deadlock on each other's datasets.
-func applyOpenLineageDatasetDeltas(ctx context.Context, tx *sql.Tx, replacements []openLineageRunDatasetReplacement) error {
-	for _, delta := range openLineageDatasetDeltas(replacements) {
-		if err := applyOpenLineageDatasetDelta(ctx, tx, delta); err != nil {
-			return err
-		}
-	}
-	return nil
+// valuesList renders a SQL VALUES list whose rows all have the same shape: one
+// cast per column, empty where the target column already types the parameter. A
+// VALUES list in a FROM clause gets no types from a target column, so its casts are
+// what tell PostgreSQL what it is comparing and assigning. The placeholders are
+// numbered across the whole list, which is what a statement that binds more than
+// one list has to get right.
+type valuesList struct {
+	casts    []string
+	args     []any
+	rowCount int
 }
 
-// applyOpenLineageDatasetDelta folds one dataset's delta into its aggregate row.
-func applyOpenLineageDatasetDelta(ctx context.Context, tx *sql.Tx, delta *openLineageDatasetDelta) error {
-	state, err := lockOpenLineageDataset(ctx, tx, delta.namespace, delta.name)
-	if err != nil {
-		return err
-	}
-
-	var sourceJobDelta, targetJobDelta int32
-	for _, member := range sortedOpenLineageDatasetMemberKeys(delta.members) {
-		created, exhausted, err := applyOpenLineageDatasetMemberDelta(ctx, tx, delta.namespace, delta.name, member, delta.members[member])
-		if err != nil {
-			return err
-		}
-		switch member.kind {
-		case openLineageDatasetMemberInputTask:
-			if created {
-				sourceJobDelta++
-			}
-			if exhausted {
-				sourceJobDelta--
-			}
-		case openLineageDatasetMemberOutputTask:
-			if created {
-				targetJobDelta++
-			}
-			if exhausted {
-				targetJobDelta--
-			}
-		case openLineageDatasetMemberIntegration, openLineageDatasetMemberSource:
-			// Display values carry no count of their own: the arrays are read
-			// from the member rows themselves.
-		default:
-		}
-	}
-
-	refCount := state.RefCount + int64(delta.refDelta)
-	if refCount <= 0 {
-		// The dataset's last reference went away. Its member rows are empty by
-		// construction and cascade with the row.
-		if _, err := tx.ExecContext(ctx,
-			`DELETE FROM openlineage_dataset WHERE namespace = $1 AND name = $2`,
-			delta.namespace, delta.name,
-		); err != nil {
-			return errors.Wrap(err, "failed to delete the empty openlineage dataset")
-		}
-		return nil
-	}
-
-	lastSeen := state.LastSeen
-	if delta.removed {
-		// A reference that was part of the dataset is gone, and it may have held
-		// the newest event time. The (namespace, name, event_time) index answers
-		// the read without touching the references' other columns.
-		recomputed, err := latestOpenLineageDatasetRefEventTime(ctx, tx, delta.namespace, delta.name)
-		if err != nil {
-			return err
-		}
-		lastSeen = recomputed
-	} else if delta.lastSeen != nil && (lastSeen == nil || delta.lastSeen.After(*lastSeen)) {
-		lastSeen = delta.lastSeen
-	}
-
-	var lastSeenValue any
-	if lastSeen != nil {
-		lastSeenValue = *lastSeen
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE openlineage_dataset SET
-			ref_count = $1,
-			source_job_count = $2,
-			target_job_count = $3,
-			column_lineage_ref_count = $4,
-			last_seen = $5,
-			updated_at = NOW()
-		WHERE namespace = $6 AND name = $7
-	`,
-		refCount,
-		state.SourceJobCount+sourceJobDelta,
-		state.TargetJobCount+targetJobDelta,
-		state.ColumnLineageRefCount+int64(delta.columnLineageRefDelta),
-		lastSeenValue,
-		delta.namespace,
-		delta.name,
-	); err != nil {
-		return errors.Wrap(err, "failed to update the openlineage dataset aggregate")
-	}
-	return nil
+func newValuesList(casts ...string) *valuesList {
+	return &valuesList{casts: casts}
 }
+
+// add appends one row. A row of the wrong width is a programming error rather than
+// a runtime condition, so it fails loudly instead of rendering broken SQL.
+func (l *valuesList) add(values ...any) {
+	if len(values) != len(l.casts) {
+		panic(fmt.Sprintf("values list row of %d values for a list %d wide", len(values), len(l.casts)))
+	}
+	l.args = append(l.args, values...)
+	l.rowCount++
+}
+
+func (l *valuesList) count() int {
+	return l.rowCount
+}
+
+func (l *valuesList) String() string {
+	rows := make([]string, 0, l.rowCount)
+	placeholders := make([]string, len(l.casts))
+	for row := 0; row < l.rowCount; row++ {
+		for column, cast := range l.casts {
+			placeholders[column] = fmt.Sprintf("$%d", row*len(l.casts)+column+1)
+			if cast != "" {
+				placeholders[column] += "::" + cast
+			}
+		}
+		rows = append(rows, "("+strings.Join(placeholders, ", ")+")")
+	}
+	return strings.Join(rows, ", ")
+}
+
+// maxOpenLineageDatasetAggregateRows bounds the rows one batched aggregate
+// statement carries. A statement's parameter count is limited and one ingest batch
+// can name an unbounded number of datasets, so the maintenance is chunked rather
+// than sent as one statement per dataset or as a single statement for the batch.
+const maxOpenLineageDatasetAggregateRows = 1000
 
 // openLineageDatasetState is a dataset's stored aggregate, read while its row is
 // locked for one ingest transaction.
@@ -302,77 +250,350 @@ type openLineageDatasetState struct {
 	LastSeen              *time.Time
 }
 
-// lockOpenLineageDataset takes the dataset's row lock and returns its stored
-// aggregate. The insert makes the row exist for the member rows that follow, and
-// the no-op update is what locks a row that is already there; the lock is what
-// makes the counters exact, since two writers of one dataset then serialize.
-func lockOpenLineageDataset(ctx context.Context, tx *sql.Tx, namespace, name string) (*openLineageDatasetState, error) {
-	var state openLineageDatasetState
-	var lastSeen sql.NullTime
-	if err := tx.QueryRowContext(ctx, `
-		INSERT INTO openlineage_dataset (namespace, name)
-		VALUES ($1, $2)
-		ON CONFLICT (namespace, name) DO UPDATE SET updated_at = openlineage_dataset.updated_at
-		RETURNING ref_count, source_job_count, target_job_count, column_lineage_ref_count, last_seen
-	`, namespace, name).Scan(
-		&state.RefCount,
-		&state.SourceJobCount,
-		&state.TargetJobCount,
-		&state.ColumnLineageRefCount,
-		&lastSeen,
-	); err != nil {
-		return nil, errors.Wrap(err, "failed to lock openlineage dataset")
-	}
-	if lastSeen.Valid {
-		t := lastSeen.Time
-		state.LastSeen = &t
-	}
-	return &state, nil
+// openLineageDatasetJobDelta is how many jobs one dataset gained or lost per
+// direction, which is what a task member row appearing or disappearing means.
+type openLineageDatasetJobDelta struct {
+	source int32
+	target int32
 }
 
-// applyOpenLineageDatasetMemberDelta moves one member's reference count and
-// reports whether the member row was created (the dataset gained a job or a
-// value) or exhausted (it lost its last one). Rows never hold a zero count, so a
-// positive result equal to the delta is an insert, and a zero result is the last
-// reference.
-func applyOpenLineageDatasetMemberDelta(ctx context.Context, tx *sql.Tx, namespace, name string, key openLineageDatasetMemberKey, delta int) (created, exhausted bool, err error) {
-	if delta > 0 {
-		var refCount int64
-		if err := tx.QueryRowContext(ctx, `
-			INSERT INTO openlineage_dataset_member (namespace, name, kind, value, ref_count)
-			VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (namespace, name, kind, value)
-			DO UPDATE SET ref_count = openlineage_dataset_member.ref_count + EXCLUDED.ref_count
-			RETURNING ref_count
-		`, namespace, name, key.kind, key.value, delta).Scan(&refCount); err != nil {
-			return false, false, errors.Wrap(err, "failed to count an openlineage dataset member")
-		}
-		return refCount == int64(delta), false, nil
+// openLineageDatasetMemberRef identifies one member row of one dataset.
+type openLineageDatasetMemberRef struct {
+	dataset datasetKey
+	kind    string
+	value   string
+}
+
+// openLineageDatasetMemberDelta is one member's net change in a transaction.
+type openLineageDatasetMemberDelta struct {
+	dataset datasetKey
+	member  openLineageDatasetMemberKey
+	delta   int
+}
+
+// applyOpenLineageDatasetDeltas folds one ingest transaction's run replacements
+// into the per-dataset aggregate. It runs after the references are written and
+// after every task lock of the transaction has been taken. Every dataset row is
+// locked in (namespace, name) order before anything under it is touched, which
+// keeps a batch's lock order global — tasks ascending, then datasets ascending — so
+// two batches cannot deadlock on each other's datasets. The work is then batched
+// per statement class, so an event that names a thousand datasets costs a handful
+// of round trips rather than thousands.
+func applyOpenLineageDatasetDeltas(ctx context.Context, tx *sql.Tx, replacements []openLineageRunDatasetReplacement) error {
+	deltas := openLineageDatasetDeltas(replacements)
+	if len(deltas) == 0 {
+		return nil
 	}
 
-	var refCount int64
-	if err := tx.QueryRowContext(ctx, `
-		UPDATE openlineage_dataset_member SET ref_count = ref_count + $5
-		WHERE namespace = $1 AND name = $2 AND kind = $3 AND value = $4
-		RETURNING ref_count
-	`, namespace, name, key.kind, key.value, delta).Scan(&refCount); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			// The member is not there to take anything out of; the dataset row
-			// decides what stands.
-			return false, false, nil
+	states, err := lockOpenLineageDatasets(ctx, tx, deltas)
+	if err != nil {
+		return err
+	}
+	jobDeltas, err := applyOpenLineageDatasetMemberDeltas(ctx, tx, deltas)
+	if err != nil {
+		return err
+	}
+	return updateOpenLineageDatasetAggregates(ctx, tx, deltas, states, jobDeltas)
+}
+
+// lockOpenLineageDatasets takes every dataset's row lock and returns its stored
+// aggregate. The insert makes the rows exist for the member rows that follow, and
+// the no-op update is what locks a row that is already there; the lock is what
+// makes the counters exact, since two writers of one dataset then serialize.
+func lockOpenLineageDatasets(ctx context.Context, tx *sql.Tx, deltas []*openLineageDatasetDelta) (map[datasetKey]*openLineageDatasetState, error) {
+	states := make(map[datasetKey]*openLineageDatasetState, len(deltas))
+	for start := 0; start < len(deltas); start += maxOpenLineageDatasetAggregateRows {
+		end := min(start+maxOpenLineageDatasetAggregateRows, len(deltas))
+		values := newValuesList("", "")
+		for _, delta := range deltas[start:end] {
+			values.add(delta.namespace, delta.name)
 		}
-		return false, false, errors.Wrap(err, "failed to count an openlineage dataset member")
+
+		rows, err := tx.QueryContext(ctx, `
+			INSERT INTO openlineage_dataset (namespace, name)
+			VALUES `+values.String()+`
+			ON CONFLICT (namespace, name) DO UPDATE SET updated_at = openlineage_dataset.updated_at
+			RETURNING namespace, name, ref_count, source_job_count, target_job_count, column_lineage_ref_count, last_seen
+		`, values.args...)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to lock openlineage datasets")
+		}
+		if err := scanOpenLineageDatasetStates(rows, states); err != nil {
+			return nil, err
+		}
 	}
-	if refCount > 0 {
-		return false, false, nil
+	return states, nil
+}
+
+func scanOpenLineageDatasetStates(rows *sql.Rows, states map[datasetKey]*openLineageDatasetState) error {
+	defer rows.Close()
+
+	for rows.Next() {
+		var key datasetKey
+		var state openLineageDatasetState
+		var lastSeen sql.NullTime
+		if err := rows.Scan(
+			&key.namespace,
+			&key.name,
+			&state.RefCount,
+			&state.SourceJobCount,
+			&state.TargetJobCount,
+			&state.ColumnLineageRefCount,
+			&lastSeen,
+		); err != nil {
+			return errors.Wrap(err, "failed to scan an openlineage dataset state")
+		}
+		if lastSeen.Valid {
+			t := lastSeen.Time
+			state.LastSeen = &t
+		}
+		states[key] = &state
 	}
+	if err := rows.Err(); err != nil {
+		return errors.Wrap(err, "failed to read openlineage dataset states")
+	}
+	return nil
+}
+
+// applyOpenLineageDatasetMemberDeltas moves every member's reference count and
+// reports how each dataset's job counts moved. A member that reaches zero has lost
+// its last reference and is deleted, which is what takes a job, an integration or a
+// source back out of the aggregate.
+func applyOpenLineageDatasetMemberDeltas(ctx context.Context, tx *sql.Tx, deltas []*openLineageDatasetDelta) (map[datasetKey]*openLineageDatasetJobDelta, error) {
+	members := openLineageDatasetMemberDeltaList(deltas)
+	jobDeltas := make(map[datasetKey]*openLineageDatasetJobDelta)
+
+	for start := 0; start < len(members); start += maxOpenLineageDatasetAggregateRows {
+		end := min(start+maxOpenLineageDatasetAggregateRows, len(members))
+		chunk := members[start:end]
+
+		// An INSERT takes the parameter types from its target columns; the two
+		// statements below read a VALUES list and have to be told.
+		added, removed := newValuesList("", "", "", "", ""), newValuesList("text", "text", "text", "text", "bigint")
+		expected := make(map[openLineageDatasetMemberRef]int, len(chunk))
+		for _, delta := range chunk {
+			if delta.delta > 0 {
+				added.add(delta.dataset.namespace, delta.dataset.name, delta.member.kind, delta.member.value, delta.delta)
+				expected[openLineageDatasetMemberRef{dataset: delta.dataset, kind: delta.member.kind, value: delta.member.value}] = delta.delta
+				continue
+			}
+			removed.add(delta.dataset.namespace, delta.dataset.name, delta.member.kind, delta.member.value, delta.delta)
+		}
+
+		if added.count() > 0 {
+			if err := addOpenLineageDatasetMembers(ctx, tx, added, expected, jobDeltas); err != nil {
+				return nil, err
+			}
+		}
+		if removed.count() > 0 {
+			if err := removeOpenLineageDatasetMembers(ctx, tx, removed, jobDeltas); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return jobDeltas, nil
+}
+
+func openLineageDatasetMemberDeltaList(deltas []*openLineageDatasetDelta) []openLineageDatasetMemberDelta {
+	var members []openLineageDatasetMemberDelta
+	for _, delta := range deltas {
+		dataset := datasetKey{namespace: delta.namespace, name: delta.name}
+		for _, member := range sortedOpenLineageDatasetMemberKeys(delta.members) {
+			members = append(members, openLineageDatasetMemberDelta{dataset: dataset, member: member, delta: delta.members[member]})
+		}
+	}
+	return members
+}
+
+// addOpenLineageDatasetMembers raises the reference counts of the members that
+// gained references, and counts the datasets that gained a job. A member row never
+// holds a zero count, so a result equal to the delta is the row this insert created.
+func addOpenLineageDatasetMembers(ctx context.Context, tx *sql.Tx, added *valuesList, expected map[openLineageDatasetMemberRef]int, jobDeltas map[datasetKey]*openLineageDatasetJobDelta) error {
+	rows, err := tx.QueryContext(ctx, `
+		INSERT INTO openlineage_dataset_member (namespace, name, kind, value, ref_count)
+		VALUES `+added.String()+`
+		ON CONFLICT (namespace, name, kind, value)
+		DO UPDATE SET ref_count = openlineage_dataset_member.ref_count + EXCLUDED.ref_count
+		RETURNING namespace, name, kind, value, ref_count
+	`, added.args...)
+	if err != nil {
+		return errors.Wrap(err, "failed to add openlineage dataset members")
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var ref openLineageDatasetMemberRef
+		var refCount int64
+		if err := rows.Scan(&ref.dataset.namespace, &ref.dataset.name, &ref.kind, &ref.value, &refCount); err != nil {
+			return errors.Wrap(err, "failed to scan an openlineage dataset member")
+		}
+		if refCount == int64(expected[ref]) {
+			countOpenLineageDatasetJob(jobDeltas, ref.dataset, ref.kind, 1)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return errors.Wrap(err, "failed to add openlineage dataset members")
+	}
+	return nil
+}
+
+// removeOpenLineageDatasetMembers lowers the reference counts of the members that
+// lost references: a member that reaches zero lost its last reference, so its row
+// goes and its dataset loses that job or value.
+func removeOpenLineageDatasetMembers(ctx context.Context, tx *sql.Tx, removed *valuesList, jobDeltas map[datasetKey]*openLineageDatasetJobDelta) error {
+	rows, err := tx.QueryContext(ctx, `
+		UPDATE openlineage_dataset_member member SET ref_count = member.ref_count + delta.ref_count
+		FROM (VALUES `+removed.String()+`) AS delta(namespace, name, kind, value, ref_count)
+		WHERE member.namespace = delta.namespace AND member.name = delta.name
+			AND member.kind = delta.kind AND member.value = delta.value
+		RETURNING member.namespace, member.name, member.kind, member.value, member.ref_count
+	`, removed.args...)
+	if err != nil {
+		return errors.Wrap(err, "failed to remove openlineage dataset members")
+	}
+
+	// The rows have to be drained and closed before the next statement runs on this
+	// transaction, so the delete below waits for the scan to finish.
+	exhausted := newValuesList("text", "text", "text", "text")
+	if err := func() error {
+		defer rows.Close()
+		for rows.Next() {
+			var ref openLineageDatasetMemberRef
+			var refCount int64
+			if err := rows.Scan(&ref.dataset.namespace, &ref.dataset.name, &ref.kind, &ref.value, &refCount); err != nil {
+				return errors.Wrap(err, "failed to scan an openlineage dataset member")
+			}
+			if refCount > 0 {
+				continue
+			}
+			countOpenLineageDatasetJob(jobDeltas, ref.dataset, ref.kind, -1)
+			exhausted.add(ref.dataset.namespace, ref.dataset.name, ref.kind, ref.value)
+		}
+		if err := rows.Err(); err != nil {
+			return errors.Wrap(err, "failed to read openlineage dataset members")
+		}
+		return nil
+	}(); err != nil {
+		return err
+	}
+	if exhausted.count() == 0 {
+		return nil
+	}
+
 	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM openlineage_dataset_member
-		WHERE namespace = $1 AND name = $2 AND kind = $3 AND value = $4
-	`, namespace, name, key.kind, key.value); err != nil {
-		return false, false, errors.Wrap(err, "failed to delete an exhausted openlineage dataset member")
+		DELETE FROM openlineage_dataset_member member
+		USING (VALUES `+exhausted.String()+`) AS expired(namespace, name, kind, value)
+		WHERE member.namespace = expired.namespace AND member.name = expired.name
+			AND member.kind = expired.kind AND member.value = expired.value
+	`, exhausted.args...); err != nil {
+		return errors.Wrap(err, "failed to delete the exhausted openlineage dataset members")
 	}
-	return false, true, nil
+	return nil
+}
+
+// countOpenLineageDatasetJob moves a dataset's job count for the direction a task
+// member belongs to. An integration or a source is a display value: the arrays are
+// read from the member rows themselves, so they carry no count of their own.
+func countOpenLineageDatasetJob(jobDeltas map[datasetKey]*openLineageDatasetJobDelta, dataset datasetKey, kind string, delta int32) {
+	if kind != openLineageDatasetMemberInputTask && kind != openLineageDatasetMemberOutputTask {
+		return
+	}
+	jobs := jobDeltas[dataset]
+	if jobs == nil {
+		jobs = &openLineageDatasetJobDelta{}
+		jobDeltas[dataset] = jobs
+	}
+	if kind == openLineageDatasetMemberInputTask {
+		jobs.source += delta
+		return
+	}
+	jobs.target += delta
+}
+
+// updateOpenLineageDatasetAggregates writes each dataset's new counters and drops
+// the ones whose last reference went away. A dataset whose newest reference was
+// taken out has its newest event time read back, which only that row pays for.
+func updateOpenLineageDatasetAggregates(ctx context.Context, tx *sql.Tx, deltas []*openLineageDatasetDelta, states map[datasetKey]*openLineageDatasetState, jobDeltas map[datasetKey]*openLineageDatasetJobDelta) error {
+	emptied := newValuesList("text", "text")
+	updated := newValuesList("text", "text", "bigint", "int", "int", "bigint", "boolean", "timestamptz")
+	flush := func() error {
+		if emptied.count() > 0 {
+			if _, err := tx.ExecContext(ctx, `
+				DELETE FROM openlineage_dataset ds
+				USING (VALUES `+emptied.String()+`) AS gone(namespace, name)
+				WHERE ds.namespace = gone.namespace AND ds.name = gone.name
+			`, emptied.args...); err != nil {
+				return errors.Wrap(err, "failed to delete the empty openlineage datasets")
+			}
+			emptied = newValuesList("text", "text")
+		}
+		if updated.count() > 0 {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE openlineage_dataset ds SET
+					ref_count = delta.ref_count,
+					source_job_count = delta.source_job_count,
+					target_job_count = delta.target_job_count,
+					column_lineage_ref_count = delta.column_lineage_ref_count,
+					last_seen = CASE
+						WHEN delta.recompute THEN (
+							SELECT MAX(remaining.event_time) FROM openlineage_run_dataset remaining
+							WHERE remaining.namespace = ds.namespace AND remaining.name = ds.name
+						)
+						ELSE GREATEST(ds.last_seen, delta.added_last_seen)
+					END,
+					updated_at = NOW()
+				FROM (VALUES `+updated.String()+`) AS delta(
+					namespace, name, ref_count, source_job_count, target_job_count,
+					column_lineage_ref_count, recompute, added_last_seen
+				)
+				WHERE ds.namespace = delta.namespace AND ds.name = delta.name
+			`, updated.args...); err != nil {
+				return errors.Wrap(err, "failed to update the openlineage dataset aggregates")
+			}
+			updated = newValuesList("text", "text", "bigint", "int", "int", "bigint", "boolean", "timestamptz")
+		}
+		return nil
+	}
+
+	for start := 0; start < len(deltas); start += maxOpenLineageDatasetAggregateRows {
+		end := min(start+maxOpenLineageDatasetAggregateRows, len(deltas))
+		for _, delta := range deltas[start:end] {
+			key := datasetKey{namespace: delta.namespace, name: delta.name}
+			state := states[key]
+			if state == nil {
+				return errors.Errorf("openlineage dataset %q has no aggregate row to update", delta.name)
+			}
+			if state.RefCount+int64(delta.refDelta) <= 0 {
+				// The dataset's last reference went away. Its member rows are empty
+				// by construction and cascade with the row.
+				emptied.add(delta.namespace, delta.name)
+				continue
+			}
+			sourceJobCount, targetJobCount := state.SourceJobCount, state.TargetJobCount
+			if jobs := jobDeltas[key]; jobs != nil {
+				sourceJobCount += jobs.source
+				targetJobCount += jobs.target
+			}
+			var addedLastSeen any
+			if delta.lastSeen != nil {
+				addedLastSeen = *delta.lastSeen
+			}
+			updated.add(
+				delta.namespace,
+				delta.name,
+				state.RefCount+int64(delta.refDelta),
+				sourceJobCount,
+				targetJobCount,
+				state.ColumnLineageRefCount+int64(delta.columnLineageRefDelta),
+				delta.removed,
+				addedLastSeen,
+			)
+		}
+		if err := flush(); err != nil {
+			return err
+		}
+	}
+	return flush()
 }
 
 func sortedOpenLineageDatasetMemberKeys(members map[openLineageDatasetMemberKey]int) []openLineageDatasetMemberKey {
@@ -387,20 +608,4 @@ func sortedOpenLineageDatasetMemberKeys(members map[openLineageDatasetMemberKey]
 		return strings.Compare(a.value, b.value)
 	})
 	return keys
-}
-
-// latestOpenLineageDatasetRefEventTime reads the newest event time of the
-// dataset's remaining references.
-func latestOpenLineageDatasetRefEventTime(ctx context.Context, tx *sql.Tx, namespace, name string) (*time.Time, error) {
-	var latest sql.NullTime
-	if err := tx.QueryRowContext(ctx, `
-		SELECT MAX(event_time) FROM openlineage_run_dataset WHERE namespace = $1 AND name = $2
-	`, namespace, name).Scan(&latest); err != nil {
-		return nil, errors.Wrap(err, "failed to read the newest openlineage dataset reference")
-	}
-	if !latest.Valid {
-		return nil, nil
-	}
-	t := latest.Time
-	return &t, nil
 }

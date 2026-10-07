@@ -153,3 +153,25 @@ func TestOpenLineageDatasetDeltas(t *testing.T) {
 		}), 0)
 	})
 }
+
+// The batched maintenance binds several value lists per statement, so the
+// placeholders have to be numbered across the whole list rather than restarted per
+// row. A row of the wrong width is a programming error and fails loudly.
+func TestValuesListNumbersPlaceholdersAcrossRows(t *testing.T) {
+	t.Parallel()
+
+	list := newValuesList("text", "text")
+	list.add("ns", "orders")
+	list.add("ns", "daily")
+	require.Equal(t, "($1::text, $2::text), ($3::text, $4::text)", list.String())
+	require.Equal(t, []any{"ns", "orders", "ns", "daily"}, list.args)
+	require.Equal(t, 2, list.count())
+
+	// A column with no cast is bound as the target column types it.
+	single := newValuesList("", "", "text", "", "bigint")
+	single.add("ns", "orders", "integration", "airflow", 2)
+	require.Equal(t, "($1, $2, $3::text, $4, $5::bigint)", single.String())
+
+	require.Empty(t, newValuesList("text").String())
+	require.Panics(t, func() { newValuesList("text", "text").add("one-value") })
+}

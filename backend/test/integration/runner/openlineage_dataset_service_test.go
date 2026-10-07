@@ -382,6 +382,25 @@ func TestOpenLineageIngestionBoundsTheStoredValuesRealServerIntegration(t *testi
 		}))
 		require.NoError(t, err)
 		require.Len(t, list.Msg.GetDatasets(), 150)
+
+		// The aggregate maintenance is batched, so a redelivery that drops most of
+		// them has to take their rows back out at scale: only the datasets the run
+		// still writes may remain, and the ones it dropped may not be left behind.
+		many["outputs"] = outputs[:100]
+		require.Equal(t, http.StatusOK, post(t, many))
+
+		list, err = client.ListOpenLineageDatasets(ctx, withToken(env.AdminToken(), &v1pb.ListOpenLineageDatasetsRequest{
+			Namespace: namespaceMany,
+			PageSize:  200,
+		}))
+		require.NoError(t, err)
+		require.Len(t, list.Msg.GetDatasets(), 100)
+
+		var dropped int
+		require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM openlineage_dataset WHERE namespace = $1 AND name = $2`, namespaceMany, "out-149",
+		).Scan(&dropped))
+		require.Zero(t, dropped, "a dataset the redelivery dropped is removed")
 	})
 
 	// A group's value arrays are ordered, so a redelivery cannot reorder what the
@@ -781,4 +800,101 @@ func TestOpenLineageDatasetWindowKeepsTheListAndDetailAlignedRealServerIntegrati
 	}))
 	require.Error(t, err)
 	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+}
+
+// A batch is one transaction, so it can name far more datasets than one batched
+// aggregate statement carries. The maintenance is chunked rather than sent whole,
+// and this drives the real server with two events of a thousand datasets each:
+// every dataset and its members have to be there afterwards, and the redelivery
+// that drops them has to take them back out.
+func TestOpenLineageDatasetAggregateChunksALargeBatchRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env := sharedPostgresServiceEnvNoReset(t)
+	ctx := context.Background()
+	httpClient := &http.Client{Timeout: 60 * time.Second}
+
+	key, _, err := env.Store.CreateOpenLineageAPIKey(ctx, "integration-dataset-chunks", "integration-test", "")
+	require.NoError(t, err)
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	namespace := "integration-dataset-chunks-ns-" + suffix
+	base := time.Now().UTC().Add(-time.Hour)
+	t.Cleanup(func() {
+		_, err := env.Store.GetDB().ExecContext(ctx, `DELETE FROM openlineage_run WHERE job_namespace = $1`, namespace)
+		require.NoError(t, err)
+		_, err = env.Store.GetDB().ExecContext(ctx, `DELETE FROM openlineage_dataset WHERE namespace = $1`, namespace)
+		require.NoError(t, err)
+	})
+
+	event := func(runID, jobName string, datasets []string) map[string]any {
+		outputs := make([]map[string]any, 0, len(datasets))
+		for _, name := range datasets {
+			outputs = append(outputs, map[string]any{"namespace": namespace, "name": name})
+		}
+		return map[string]any{
+			"eventType": "COMPLETE",
+			"eventTime": base.Format(time.RFC3339Nano),
+			"run":       map[string]any{"runId": runID},
+			"job": map[string]any{
+				"namespace": namespace,
+				"name":      jobName,
+				"facets":    map[string]any{"jobType": map[string]any{"jobType": "TASK", "integration": "airflow"}},
+			},
+			"producer": "integration-test",
+			"outputs":  outputs,
+		}
+	}
+	post := func(t *testing.T, body any) int {
+		t.Helper()
+		payload, err := json.Marshal(body)
+		require.NoError(t, err)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, env.BaseURL+"/api/v1/lineage", bytes.NewReader(payload))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+key)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+	names := func(prefix string, count int) []string {
+		result := make([]string, 0, count)
+		for index := range count {
+			result = append(result, fmt.Sprintf("%s-%04d", prefix, index))
+		}
+		return result
+	}
+	count := func(t *testing.T, query string) int {
+		t.Helper()
+		var total int
+		require.NoError(t, env.Store.GetDB().QueryRowContext(ctx, query, namespace).Scan(&total))
+		return total
+	}
+
+	first := names("public.first", openlineage.MaxEventDatasets)
+	second := names("public.second", openlineage.MaxEventDatasets)
+
+	require.Equal(t, http.StatusOK, post(t, []map[string]any{
+		event("run-batch-1", "job-batch-1", first),
+		event("run-batch-2", "job-batch-2", second),
+	}))
+
+	require.Equal(t, 2*openlineage.MaxEventDatasets, count(t,
+		`SELECT COUNT(*) FROM openlineage_dataset WHERE namespace = $1`))
+	require.Equal(t, 2*openlineage.MaxEventDatasets, count(t,
+		`SELECT COUNT(*) FROM openlineage_dataset_member WHERE namespace = $1 AND kind = 'task:output'`))
+	require.Equal(t, 2*openlineage.MaxEventDatasets, count(t,
+		`SELECT COUNT(*) FROM openlineage_dataset_member WHERE namespace = $1 AND kind = 'integration'`))
+
+	// The same two runs, each writing one dataset: the references they dropped have
+	// to leave the aggregate with them.
+	require.Equal(t, http.StatusOK, post(t, []map[string]any{
+		event("run-batch-1", "job-batch-1", first[:1]),
+		event("run-batch-2", "job-batch-2", second[:1]),
+	}))
+
+	require.Equal(t, 2, count(t, `SELECT COUNT(*) FROM openlineage_dataset WHERE namespace = $1`))
+	require.Equal(t, 2, count(t, `SELECT COUNT(*) FROM openlineage_dataset_member WHERE namespace = $1 AND kind = 'task:output'`))
+	require.Equal(t, 2, count(t, `SELECT COUNT(*) FROM openlineage_dataset_member WHERE namespace = $1 AND kind = 'integration'`))
 }
