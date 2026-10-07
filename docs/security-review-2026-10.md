@@ -921,8 +921,20 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 
 **M20 PG/MSSQL `extra_connection_parameters` 零校验 —— 保留(经确认的决策)**
 
-- 该字段只能经实例/数据源写权限写入(`workspaceAdmin`,可下放给自定义角色),而持有者本就能改同一资源的 `host`/`port`/`username`/`password`/`ssh_host`;参数级白名单只约束一个已被信任的主体改变连接目标的形式,不构成授权边界,因此本轮不改(MySQL/StarRocks 既有的 `allowAllFiles` 键黑名单保留)。
-- 报告"来自被同步实例的快照更新链路时同样未过滤"的说法经复核不成立:`SyncInstance` 只是把 store 中已存的 `Instance.Metadata` 克隆后回写版本与 `lastSyncTime`(`backend/runner/schemasync/syncer.go`),`extra_connection_parameters` 不会由目标库内容产生或改写;写它的唯一路径是 API 请求(`backend/api/v1/instance_convert.go`)。
+- 该字段只能经实例/数据源写权限写入(`workspaceAdmin`,可下放给自定义角色),而持有者本就能改同一资源的 `host`/`port`/`username`/`password`/`ssh_host`;参数级白名单只约束一个已被信任的主体改变连接目标的形式,不构成授权边界,因此本轮不改(MySQL/StarRocks 既有的 `allowAllFiles` 键黑名单保持不变,但它不是执行点——见残余第 1 条)。
+- 报告"来自被同步实例的快照更新链路时同样未过滤"的说法经复核不成立:`SyncInstance` 只是把 store 中已存的 `Instance.Metadata` 克隆后回写版本与 `lastSyncTime`(`backend/runner/schemasync/syncer.go`),`extra_connection_parameters` 不会由目标库内容产生或改写;写它的唯一路径是 API 请求(`backend/api/v1/instance_convert.go`)。该回写是无版本守卫的读-改-写(见残余第 2 条),但丢的是并发管理员的编辑,不是引入了目标库内容。
 - 该决策已写入 `docs/security-posture.md`(连接参数的写权限即信任边界),M20 条目的状态指针同步更新。
+
+**独立对抗式复核(只读子代理)**
+
+- 复核目标是把 M19 的结论证伪,未改动本仓库(全部实验在 /tmp 副本)。穷举全部 ≤3 字节库名(16,777,472 个)、300 万随机长名与定向语料(`?` `/` `&` `=` `@` `%` `#` `\x00` 非法 UTF-8 反引号 换行 64 字符)后,无一名能改变 `ParseDSN` 的 `DBName`、打开 `TLSConfig`/`MultiStatements`/`AllowAllFiles`、注入 `Params`、改变 `Addr`/`User`/`Passwd`,也无合法名解析失败;两个驱动调用点均覆盖;反向验证独立复现(单元 `DBName="x"`;集成里真实 MySQL 把被截断的库标记 deleted)。全仓搜索确认,由目标 catalog 派生并进入连接串的值只有库名一处(PG 走 `pgx.ConnConfig` 字段、MSSQL 走 `url.Values`)。**M19 结论维持:未授权路径已关闭。**
+- 复核同时确认上述 M20 判断,并指出下列残余;本轮不改行为,只在此记录。
+
+**残余(本轮未处理)**
+
+1. **`allowAllFiles` 键黑名单只查键,值仍是注入面(低,需实例写权限)**:`ValidateExtraConnectionParameters` 只看键名,`{"sql_mode":"x&allowAllFiles=true"}` 能通过校验并经 `BuildDSN` 拼进查询串,`ParseDSN` 得到 `AllowAllFiles=true`;`{"sql_mode":"x/y"}` 会让该实例的 DSN 直接解析失败(连接 DoS)。这与 M20 同属"需要实例写权限"的决策范围(该权限本就能改 `host`/`use_ssl`),不构成未授权路径,故本轮不收紧;若日后要收,应做键值校验或改用 `mysql.Config` 结构化构造。
+2. **同步回写 `Instance.Metadata` 无 CAS(低,既有)**:`SyncInstance` 读-改-写整个 `metadata` 列(`backend/runner/schemasync/syncer.go` → `backend/store/instance.go`),期间提交的一次数据源编辑会被静默覆盖;不会引入目标库数据,属独立的并发加固项。
+3. **StarRocks/Doris 没有服务端真实回归用例**:该驱动的同类缺陷由共享 `BuildDSN` 与单元用例覆盖,复核另用差分探针(还原裸拼接后 `Open` 在 `x?loc=NotALocation&` 等名称上失败)验证,但没有 StarRocks 集成用例;PG/MSSQL 的库名路径同样是"结构上免疫、无测试钉住"。
+4. **复核覆盖范围**:只跑了两个驱动包、本轮新增用例与定向集成用例,未重跑完整单元与集成门禁(该门禁由本条目"验证门禁"一段记录)。
 
 **验证门禁**:`gofmt`(无输出)、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./...`(全绿)、release 构建(`-tags release`)、`make test-integration`(真实 PostgreSQL + MySQL + migrator:runner 39.4s、migrator 18.5s,全绿,含本轮新增用例)。本轮未改前端与 proto,未跑前端门禁。
