@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 	integrationenv "github.com/Ranxy/metaxisdata/backend/test/integration/env"
 )
@@ -48,6 +49,19 @@ func TestStoredInstanceCredentialsAreEncryptedRealServerIntegration(t *testing.T
 	// The observer store runs the same read path the server does, and gets the
 	// credential back.
 	stored, err := env.Store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
+	require.NoError(t, err)
+	require.Equal(t, "postgres", stored.Metadata.GetDataSources()[0].GetPassword())
+
+	// An update that does not name the credential keeps it: the store re-encrypts
+	// the metadata it read back, so a masked patch that dropped the password would
+	// leave an instance nothing could connect with.
+	_, err = env.UpdateDataSource(ctx, instance.GetDataSources()[0].GetName(),
+		&v1pb.DataSource{Database: "postgres"}, []string{"database"}, false)
+	require.NoError(t, err)
+	require.NotEqual(t, adminCiphertext, storedCredentialCiphertext(t, env, instanceID),
+		"a re-encryption must use a fresh nonce")
+	env.SyncDatabase(ctx, t, database.GetName())
+	stored, err = env.Store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
 	require.NoError(t, err)
 	require.Equal(t, "postgres", stored.Metadata.GetDataSources()[0].GetPassword())
 

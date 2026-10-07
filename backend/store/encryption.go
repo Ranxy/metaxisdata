@@ -38,6 +38,14 @@ type dataKey struct {
 	wrappedBy int
 }
 
+// settingStore is the slice of the store the credential key lifecycle needs. It
+// exists so the decisions can be tested without a database: they are what
+// decides whether the operator's key-encryption key actually protects anything.
+type settingStore interface {
+	GetSetting(ctx context.Context, name storepb.SettingName) (*SettingMessage, error)
+	UpsertSetting(ctx context.Context, update *SetSettingMessage) (*SettingMessage, error)
+}
+
 // ResolveCipher reads the deployment credential key from the setting table,
 // unwraps it with the configured key-encryption keys, and installs the
 // resulting cipher on the store.
@@ -49,17 +57,28 @@ type dataKey struct {
 // holding a key that is usable without the second secret, without re-encrypting
 // a single credential.
 func (s *Store) ResolveCipher(ctx context.Context, keks [][]byte) error {
-	setting, err := s.GetSetting(ctx, storepb.SettingName_ENCRYPTION_KEY)
+	cipher, err := loadCredentialCipher(ctx, s, keks)
 	if err != nil {
-		return errors.Wrap(err, "failed to read the credential encryption key")
+		return err
+	}
+	s.SetCipher(cipher)
+	return nil
+}
+
+// loadCredentialCipher resolves the credential key and returns the cipher that
+// encrypts and decrypts credentials with it.
+func loadCredentialCipher(ctx context.Context, settings settingStore, keks [][]byte) (*crypto.Cipher, error) {
+	setting, err := settings.GetSetting(ctx, storepb.SettingName_ENCRYPTION_KEY)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the credential encryption key")
 	}
 	if setting == nil || setting.Value == "" {
-		return errors.New("the credential encryption key is not configured")
+		return nil, errors.New("the credential encryption key is not configured")
 	}
 
 	key, err := unwrapDataKey(setting.Value, keks)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(keks) == 0 {
 		slog.Info("the credential encryption key is stored unwrapped: a database read or backup recovers every stored credential",
@@ -69,17 +88,17 @@ func (s *Store) ResolveCipher(ctx context.Context, keks [][]byte) error {
 	if len(keks) > 0 && key.wrappedBy != 0 {
 		kekCipher, err := crypto.NewCipher(keks[0])
 		if err != nil {
-			return errors.Wrap(err, "failed to build the key-encryption cipher")
+			return nil, errors.Wrap(err, "failed to build the key-encryption cipher")
 		}
 		wrapped, err := kekCipher.Encrypt(string(key.key))
 		if err != nil {
-			return errors.Wrap(err, "failed to wrap the credential encryption key")
+			return nil, errors.Wrap(err, "failed to wrap the credential encryption key")
 		}
-		if _, err := s.UpsertSetting(ctx, &SetSettingMessage{
+		if _, err := settings.UpsertSetting(ctx, &SetSettingMessage{
 			Name:  storepb.SettingName_ENCRYPTION_KEY,
 			Value: wrapped,
 		}); err != nil {
-			return errors.Wrap(err, "failed to store the wrapped credential encryption key")
+			return nil, errors.Wrap(err, "failed to store the wrapped credential encryption key")
 		}
 		slog.Info("credential encryption key wrapped under the configured key-encryption key",
 			slog.Bool("rekeyed", key.wrappedBy > 0))
@@ -87,10 +106,9 @@ func (s *Store) ResolveCipher(ctx context.Context, keks [][]byte) error {
 
 	cipher, err := crypto.NewCipher(key.key)
 	if err != nil {
-		return errors.Wrap(err, "failed to build the credential cipher")
+		return nil, errors.Wrap(err, "failed to build the credential cipher")
 	}
-	s.SetCipher(cipher)
-	return nil
+	return cipher, nil
 }
 
 // unwrapDataKey returns the credential key from its stored form: the bare base64
