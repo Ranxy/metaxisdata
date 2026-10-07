@@ -31,6 +31,30 @@ const (
 	// PostgreSQL's btree item limit is about 2704 bytes, and the per-field caps
 	// above can approach it once every character needs percent-encoding.
 	MaxGUIDLength = 2000
+	// The remaining strings an event writes into the run row. The run and task
+	// lists read them for every row of a page, so an uncapped one would let one
+	// page read an unbounded number of bytes even though raw_payload is not
+	// selected, and these columns are what a producer can put in a single event.
+	MaxEventTypeLength          = 64
+	MaxProducerLength           = 512
+	MaxIntegrationLength        = 64
+	MaxProcessingTypeLength     = 64
+	MaxParentJobNamespaceLength = 255
+	MaxParentJobNameLength      = 255
+	MaxParentRunIDLength        = 255
+	MaxRootJobNamespaceLength   = 255
+	MaxRootJobNameLength        = 255
+	MaxRootRunIDLength          = 255
+	// MaxColumnNameLength bounds the columnLineage strings. They reach the
+	// indexed source_column/target_column of column_lineage, and a dataset a
+	// facet names without listing it as an input or output builds a GUID from
+	// its name, so both are capped like the identity fields.
+	MaxColumnNameLength = 512
+	// MaxAirflowRunLogURLLength bounds the link stored on the run. It is derived
+	// from the event with url.String(), which percent-encodes, so the stored link
+	// can be longer than the facet it came from; past this the link is dropped
+	// rather than stored and read back for every row of a page.
+	MaxAirflowRunLogURLLength = 2048
 )
 
 // ErrEventTooLarge reports an event beyond MaxEventSize. The ingestion handler
@@ -52,6 +76,7 @@ func ValidateEventLimits(event *RunEvent) error {
 		{"job.namespace", event.Job.Namespace, MaxJobNamespaceLength},
 		{"job.name", event.Job.Name, MaxJobNameLength},
 		{"run.runId", event.Run.RunID, MaxRunIDLength},
+		{"eventType", event.EventType, MaxEventTypeLength},
 	} {
 		if len(field.value) > field.limit {
 			return errors.Errorf("openlineage %s is %d bytes, limit is %d bytes", field.name, len(field.value), field.limit)
@@ -66,6 +91,28 @@ func ValidateEventLimits(event *RunEvent) error {
 		return errors.Errorf("openlineage run GUID is %d bytes, limit is %d bytes", len(guid), MaxGUIDLength)
 	}
 
+	// Everything else the run row stores from the event, so a page of the run or
+	// task list cannot read an unbounded value out of one row.
+	for _, field := range []struct {
+		name  string
+		value string
+		limit int
+	}{
+		{"producer", event.Producer, MaxProducerLength},
+		{"integration", derived.Integration, MaxIntegrationLength},
+		{"processing type", derived.ProcessingType, MaxProcessingTypeLength},
+		{"parent job namespace", derived.ParentJobNamespace, MaxParentJobNamespaceLength},
+		{"parent job name", derived.ParentJobName, MaxParentJobNameLength},
+		{"parent run id", derived.ParentRunID, MaxParentRunIDLength},
+		{"root job namespace", derived.RootJobNamespace, MaxRootJobNamespaceLength},
+		{"root job name", derived.RootJobName, MaxRootJobNameLength},
+		{"root run id", derived.RootRunID, MaxRootRunIDLength},
+	} {
+		if len(field.value) > field.limit {
+			return errors.Errorf("openlineage %s is %d bytes, limit is %d bytes", field.name, len(field.value), field.limit)
+		}
+	}
+
 	if len(event.Inputs)+len(event.Outputs) > MaxEventDatasets {
 		return errors.Errorf("openlineage event names %d datasets, limit is %d", len(event.Inputs)+len(event.Outputs), MaxEventDatasets)
 	}
@@ -77,8 +124,57 @@ func ValidateEventLimits(event *RunEvent) error {
 			if len(dataset.Name) > MaxDatasetNameLength {
 				return errors.Errorf("openlineage dataset name is %d bytes, limit is %d bytes", len(dataset.Name), MaxDatasetNameLength)
 			}
+			if err := validateColumnLineageFacet(dataset.Facets.ColumnLineage); err != nil {
+				return err
+			}
 		}
 	}
 
+	return nil
+}
+
+// validateColumnLineageFacet caps the strings a columnLineage facet contributes.
+// Its field names become indexed column_lineage columns, and the datasets it
+// references resolve into GUIDs, so an over-long one would otherwise fail an
+// insert after the run row was already committed — a delivery the producer can
+// only retry forever.
+func validateColumnLineageFacet(facet *ColumnLineageFacet) error {
+	if facet == nil {
+		return nil
+	}
+	for field, lineage := range facet.Fields {
+		if err := validateFieldLength("columnLineage field", field, MaxColumnNameLength); err != nil {
+			return err
+		}
+		for _, input := range lineage.InputFields {
+			if err := validateFieldLength("columnLineage input field", input.Field, MaxColumnNameLength); err != nil {
+				return err
+			}
+			if err := validateFieldLength("columnLineage input namespace", input.Namespace, MaxDatasetNamespaceLength); err != nil {
+				return err
+			}
+			if err := validateFieldLength("columnLineage input name", input.Name, MaxDatasetNameLength); err != nil {
+				return err
+			}
+		}
+	}
+	for _, reference := range facet.Dataset {
+		if err := validateFieldLength("columnLineage dataset field", reference.Field, MaxColumnNameLength); err != nil {
+			return err
+		}
+		if err := validateFieldLength("columnLineage dataset namespace", reference.Namespace, MaxDatasetNamespaceLength); err != nil {
+			return err
+		}
+		if err := validateFieldLength("columnLineage dataset name", reference.Name, MaxDatasetNameLength); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateFieldLength(name, value string, limit int) error {
+	if len(value) > limit {
+		return errors.Errorf("openlineage %s is %d bytes, limit is %d bytes", name, len(value), limit)
+	}
 	return nil
 }

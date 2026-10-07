@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -74,4 +75,22 @@ func TestOpenLineageRunPayloadColumn(t *testing.T) {
 	require.Equal(t, "raw_payload", openLineageRunPayloadColumn(true))
 	require.NotEqual(t, "raw_payload", openLineageRunPayloadColumn(false))
 	require.Contains(t, openLineageRunPayloadColumn(false), "NULL")
+}
+
+// A single dataset detail used to expand (and detoast) the JSONB facets of every
+// reference the dataset ever had, and a group could grow its integration/source
+// arrays without bound. Both reads are bounded now, and the projection orders
+// the values so a redelivery cannot reorder what the page shows.
+func TestOpenLineageDatasetReadsAreBounded(t *testing.T) {
+	t.Parallel()
+
+	projection := openLineageDatasetAggregateColumns()
+	require.Contains(t, projection, "ARRAY_AGG(DISTINCT d.integration ORDER BY d.integration)")
+	require.Contains(t, projection, "ARRAY_AGG(DISTINCT d.source ORDER BY d.source)")
+	require.Contains(t, projection, fmt.Sprintf("'{}'))[1:%d]", maxOpenLineageDatasetDistinctValues))
+
+	cte := openLineageDatasetRecentRefsCTE("(d.namespace = $1 AND d.name = $2)")
+	require.Contains(t, cte, "WITH recent AS")
+	require.Contains(t, cte, "ORDER BY d.event_time DESC NULLS LAST, d.id DESC")
+	require.Contains(t, cte, fmt.Sprintf("LIMIT %d", maxOpenLineageDatasetRecentRefs))
 }

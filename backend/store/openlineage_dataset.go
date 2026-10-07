@@ -36,22 +36,51 @@ const maxOpenLineageDatasetRefRows = 100
 // unbounded set of equivalent spellings.
 const maxOpenLineageDatasetDetailPairs = 64
 
+// maxOpenLineageDatasetRecentRefs bounds how many references the facet, job and
+// run queries of a dataset detail read, newest first. The whole-history summary
+// cannot be bounded this way, but these three can: the widest schema, the
+// related jobs and the recent runs they report are all within the newest
+// references, and without the bound the detail would expand (and detoast) the
+// facets of every run that ever touched the dataset.
+const maxOpenLineageDatasetRecentRefs = 100
+
+// maxOpenLineageDatasetDistinctValues bounds the integrations and sources one
+// dataset group carries. They are display values, and a producer that varies
+// them per event could otherwise grow one group's array without bound.
+const maxOpenLineageDatasetDistinctValues = 16
+
 // maxOpenLineageDatasetColumnFields bounds the distinct column-lineage field
 // names a detail request returns.
 const maxOpenLineageDatasetColumnFields = 10000
 
 // openLineageDatasetAggregateColumns is the aggregate projection shared by the
 // dataset list and the detail summary. Every count is over distinct task GUIDs,
-// which is the "job" the dataset pages talk about.
-const openLineageDatasetAggregateColumns = `
+// which is the "job" the dataset pages talk about. The value arrays are ordered
+// so a redelivery cannot reorder what the page shows, and sliced so one group
+// cannot grow them without bound.
+func openLineageDatasetAggregateColumns() string {
+	return `
 		d.namespace,
 		d.name,
 		MAX(d.event_time) AS last_seen,
 		COUNT(DISTINCT d.task_guid) FILTER (WHERE d.direction = '` + OpenLineageDatasetDirectionInput + `'),
 		COUNT(DISTINCT d.task_guid) FILTER (WHERE d.direction = '` + OpenLineageDatasetDirectionOutput + `'),
-		COALESCE(ARRAY_AGG(DISTINCT d.integration) FILTER (WHERE d.integration <> ''), '{}'),
-		COALESCE(ARRAY_AGG(DISTINCT d.source) FILTER (WHERE d.source <> ''), '{}'),
+		(COALESCE(ARRAY_AGG(DISTINCT d.integration ORDER BY d.integration) FILTER (WHERE d.integration <> ''), '{}'))[1:` + strconv.Itoa(maxOpenLineageDatasetDistinctValues) + `],
+		(COALESCE(ARRAY_AGG(DISTINCT d.source ORDER BY d.source) FILTER (WHERE d.source <> ''), '{}'))[1:` + strconv.Itoa(maxOpenLineageDatasetDistinctValues) + `],
 		BOOL_OR(d.has_column_lineage)`
+}
+
+// openLineageDatasetRecentRefsCTE renders the bounded, newest-first subquery a
+// detail's facet, job and run queries read.
+func openLineageDatasetRecentRefsCTE(clause string) string {
+	return `WITH recent AS (
+		SELECT d.id, d.run_pk, d.task_guid, d.direction, d.event_time, d.schema_fields, d.column_lineage_fields
+		FROM openlineage_run_dataset d
+		WHERE ` + clause + `
+		ORDER BY d.event_time DESC NULLS LAST, d.id DESC
+		LIMIT ` + strconv.Itoa(maxOpenLineageDatasetRecentRefs) + `
+	)`
+}
 
 // OpenLineageRunDatasetMessage is one dataset a persisted run read or wrote.
 type OpenLineageRunDatasetMessage struct {
@@ -237,7 +266,7 @@ func buildOpenLineageDatasetAggregateQuery(find *FindOpenLineageDatasetMessage) 
 	}
 	args = append(args, maxOpenLineageDatasetGroups)
 
-	query := `SELECT ` + openLineageDatasetAggregateColumns + `
+	query := `SELECT ` + openLineageDatasetAggregateColumns() + `
 		FROM openlineage_run_dataset d
 		WHERE ` + strings.Join(where, " AND ") + `
 		GROUP BY d.namespace, d.name
@@ -328,8 +357,8 @@ func (s *Store) getOpenLineageDatasetSummary(ctx context.Context, clause string,
 			MAX(d.event_time),
 			COUNT(DISTINCT d.task_guid) FILTER (WHERE d.direction = '`+OpenLineageDatasetDirectionInput+`'),
 			COUNT(DISTINCT d.task_guid) FILTER (WHERE d.direction = '`+OpenLineageDatasetDirectionOutput+`'),
-			COALESCE(ARRAY_AGG(DISTINCT d.integration) FILTER (WHERE d.integration <> ''), '{}'),
-			COALESCE(ARRAY_AGG(DISTINCT d.source) FILTER (WHERE d.source <> ''), '{}'),
+			(COALESCE(ARRAY_AGG(DISTINCT d.integration ORDER BY d.integration) FILTER (WHERE d.integration <> ''), '{}'))[1:`+strconv.Itoa(maxOpenLineageDatasetDistinctValues)+`],
+			(COALESCE(ARRAY_AGG(DISTINCT d.source ORDER BY d.source) FILTER (WHERE d.source <> ''), '{}'))[1:`+strconv.Itoa(maxOpenLineageDatasetDistinctValues)+`],
 			BOOL_OR(d.has_column_lineage)
 		FROM openlineage_run_dataset d
 		WHERE `+clause,
@@ -358,16 +387,19 @@ func (s *Store) getOpenLineageDatasetSummary(ctx context.Context, clause string,
 	return detail, true, nil
 }
 
-// getOpenLineageDatasetBestSchema returns the widest schema facet of the
-// dataset, breaking a tie by recency: a dataset's schema is best described by
-// the run that saw the most of it, and among equals by the latest one.
+// getOpenLineageDatasetBestSchema returns the widest schema facet among the
+// dataset's most recent references, breaking a tie by recency: a dataset's
+// schema is best described by the run that saw the most of it, and among equals
+// by the latest one. Only the newest references are considered, because the
+// alternative — sorting every facet the dataset ever had — is what made one
+// detail request read an unbounded amount of JSONB.
 func (s *Store) getOpenLineageDatasetBestSchema(ctx context.Context, clause string, args []any) ([]byte, error) {
 	var schemaFields []byte
-	err := s.GetDB().QueryRowContext(ctx, `
-		SELECT d.schema_fields
-		FROM openlineage_run_dataset d
-		WHERE (`+clause+`) AND d.schema_fields IS NOT NULL
-		ORDER BY jsonb_array_length(d.schema_fields) DESC, d.event_time DESC NULLS LAST
+	err := s.GetDB().QueryRowContext(ctx, openLineageDatasetRecentRefsCTE(clause)+`
+		SELECT recent.schema_fields
+		FROM recent
+		WHERE recent.schema_fields IS NOT NULL
+		ORDER BY jsonb_array_length(recent.schema_fields) DESC, recent.event_time DESC NULLS LAST
 		LIMIT 1`,
 		args...,
 	).Scan(&schemaFields)
@@ -382,10 +414,10 @@ func (s *Store) getOpenLineageDatasetBestSchema(ctx context.Context, clause stri
 
 func (s *Store) listOpenLineageDatasetColumnLineageFields(ctx context.Context, clause string, args []any) ([]string, error) {
 	queryArgs := append(append([]any{}, args...), maxOpenLineageDatasetColumnFields)
-	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT DISTINCT jsonb_array_elements_text(d.column_lineage_fields) AS field
-		FROM openlineage_run_dataset d
-		WHERE (`+clause+`) AND d.direction = '`+OpenLineageDatasetDirectionOutput+`' AND d.column_lineage_fields IS NOT NULL
+	rows, err := s.GetDB().QueryContext(ctx, openLineageDatasetRecentRefsCTE(clause)+`
+		SELECT DISTINCT jsonb_array_elements_text(recent.column_lineage_fields) AS field
+		FROM recent
+		WHERE recent.direction = '`+OpenLineageDatasetDirectionOutput+`' AND recent.column_lineage_fields IS NOT NULL
 		ORDER BY field
 		LIMIT $`+strconv.Itoa(len(queryArgs)),
 		queryArgs...,
@@ -409,23 +441,27 @@ func (s *Store) listOpenLineageDatasetColumnLineageFields(ctx context.Context, c
 	return fields, nil
 }
 
+// listOpenLineageDatasetJobs returns the jobs that touched the dataset, most
+// recently seen first. The integration is the newest run's, which is what the
+// per-run aggregation used to report. The newest references carry every job in
+// the answer — a job in the top eight by last-seen has one of them — so the
+// bounded subquery cannot drop one.
 func (s *Store) listOpenLineageDatasetJobs(ctx context.Context, clause string, args []any) ([]*OpenLineageDatasetJobMessage, error) {
-	rows, err := s.GetDB().QueryContext(ctx, `
+	rows, err := s.GetDB().QueryContext(ctx, openLineageDatasetRecentRefsCTE(clause)+`
 		SELECT
-			d.task_guid,
+			recent.task_guid,
 			r.job_namespace,
 			r.job_name,
 			r.job_type,
-			COALESCE(MAX(r.integration), ''),
+			(ARRAY_AGG(r.integration ORDER BY r.event_time DESC NULLS LAST, r.id DESC))[1],
 			MAX(r.event_time),
 			COUNT(DISTINCT r.id),
-			BOOL_OR(d.direction = '`+OpenLineageDatasetDirectionInput+`'),
-			BOOL_OR(d.direction = '`+OpenLineageDatasetDirectionOutput+`')
-		FROM openlineage_run_dataset d
-		JOIN openlineage_run r ON r.id = d.run_pk
-		WHERE `+clause+`
-		GROUP BY d.task_guid, r.job_namespace, r.job_name, r.job_type
-		ORDER BY MAX(r.event_time) DESC NULLS LAST, r.job_name, d.task_guid
+			BOOL_OR(recent.direction = '`+OpenLineageDatasetDirectionInput+`'),
+			BOOL_OR(recent.direction = '`+OpenLineageDatasetDirectionOutput+`')
+		FROM recent
+		JOIN openlineage_run r ON r.id = recent.run_pk
+		GROUP BY recent.task_guid, r.job_namespace, r.job_name, r.job_type
+		ORDER BY MAX(r.event_time) DESC NULLS LAST, r.job_name, recent.task_guid
 		LIMIT 8`,
 		args...,
 	)
@@ -463,8 +499,11 @@ func (s *Store) listOpenLineageDatasetJobs(ctx context.Context, clause string, a
 	return result, nil
 }
 
+// listOpenLineageDatasetRuns returns the runs that touched the dataset, newest
+// first. Every run in the answer has one of the newest references, so the
+// bounded subquery cannot drop one.
 func (s *Store) listOpenLineageDatasetRuns(ctx context.Context, clause string, args []any) ([]*OpenLineageDatasetRunMessage, error) {
-	rows, err := s.GetDB().QueryContext(ctx, `
+	rows, err := s.GetDB().QueryContext(ctx, openLineageDatasetRecentRefsCTE(clause)+`
 		SELECT
 			r.guid,
 			r.task_guid,
@@ -475,11 +514,10 @@ func (s *Store) listOpenLineageDatasetRuns(ctx context.Context, clause string, a
 			r.event_type,
 			r.event_time,
 			r.has_lineage,
-			BOOL_OR(d.direction = '`+OpenLineageDatasetDirectionInput+`'),
-			BOOL_OR(d.direction = '`+OpenLineageDatasetDirectionOutput+`')
-		FROM openlineage_run_dataset d
-		JOIN openlineage_run r ON r.id = d.run_pk
-		WHERE `+clause+`
+			BOOL_OR(recent.direction = '`+OpenLineageDatasetDirectionInput+`'),
+			BOOL_OR(recent.direction = '`+OpenLineageDatasetDirectionOutput+`')
+		FROM recent
+		JOIN openlineage_run r ON r.id = recent.run_pk
 		GROUP BY r.id, r.guid, r.task_guid, r.run_id, r.job_namespace, r.job_name, r.job_type, r.event_type, r.event_time, r.has_lineage
 		ORDER BY r.event_time DESC NULLS LAST, r.run_id, r.id DESC
 		LIMIT 10`,

@@ -36,8 +36,10 @@ CREATE TABLE IF NOT EXISTS openlineage_run_dataset (
 -- idempotent under a redelivery.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_openlineage_run_dataset_unique ON openlineage_run_dataset(run_pk, namespace, name, direction);
 
--- The dataset pages aggregate and probe by (namespace, name).
-CREATE INDEX IF NOT EXISTS idx_openlineage_run_dataset_group ON openlineage_run_dataset(namespace, name);
+-- The dataset pages aggregate and probe by (namespace, name); the trailing
+-- event time lets a detail's newest-first, LIMITed subquery stop early instead
+-- of sorting every reference the dataset ever had.
+CREATE INDEX IF NOT EXISTS idx_openlineage_run_dataset_group ON openlineage_run_dataset(namespace, name, event_time DESC NULLS LAST);
 
 -- The dataset detail's related-jobs query groups by task.
 CREATE INDEX IF NOT EXISTS idx_openlineage_run_dataset_task ON openlineage_run_dataset(task_guid);

@@ -30,6 +30,13 @@ const (
 	// body limit alone is not enough: a minimal event is well under 100 bytes,
 	// so a single 8MiB body can still carry tens of thousands of them.
 	maxOpenLineageBatchEvents = 1000
+	// maxOpenLineageSchemaFacetBytes bounds the schema facet stored with one
+	// dataset reference, and maxOpenLineageColumnLineageFieldsBytes bounds the
+	// column names stored with it. The dataset detail reads (and detoasts) the
+	// facets of the references it considers, so one facet must not be able to
+	// make that read unbounded. A facet past its cap keeps the entries that fit.
+	maxOpenLineageSchemaFacetBytes         = 64 << 10
+	maxOpenLineageColumnLineageFieldsBytes = 32 << 10
 )
 
 // OpenLineageHandler handles OpenLineage event ingestion via HTTP.
@@ -316,6 +323,17 @@ func (*OpenLineageHandler) runMessageForEvent(event *openlineage.RunEvent) *stor
 	// source is a constant; the payload's producer is a separate field.
 	const source = "openlineage"
 
+	// The link is derived from the event with url.String(), which
+	// percent-encodes, so it can be longer than the facet it came from. An
+	// over-long one is dropped rather than stored: the run and task lists read
+	// this column for every row of a page.
+	airflowRunLogURL := openlineage.DeriveAirflowLinks(event.RawJSON).RunLogURL
+	if len(airflowRunLogURL) > openlineage.MaxAirflowRunLogURLLength {
+		slog.Debug("dropping an over-long Airflow run log URL",
+			"runId", event.Run.RunID, "length", len(airflowRunLogURL), "limit", openlineage.MaxAirflowRunLogURLLength)
+		airflowRunLogURL = ""
+	}
+
 	return &store.OpenLineageRunMessage{
 		GUID:               openlineage.BuildOpenLineageRunGUID(event.Job.Namespace, event.Job.Name, derived.JobType, event.Run.RunID),
 		TaskGUID:           derived.TaskGUID,
@@ -339,7 +357,7 @@ func (*OpenLineageHandler) runMessageForEvent(event *openlineage.RunEvent) *stor
 		OutputCount:        int32(len(event.Outputs)),
 		HasLineage:         derived.HasLineage,
 		RawPayload:         event.RawJSON,
-		AirflowRunLogURL:   openlineage.DeriveAirflowLinks(event.RawJSON).RunLogURL,
+		AirflowRunLogURL:   airflowRunLogURL,
 		Datasets:           openLineageDatasetRefs(event, derived.TaskGUID, source, derived.Integration, eventTime),
 	}
 }
@@ -371,9 +389,7 @@ func openLineageDatasetRefs(event *openlineage.RunEvent, taskGUID, source, integ
 		}
 
 		if schema := dataset.Facets.Schema; schema != nil && len(schema.Fields) > 0 {
-			if fields, err := json.Marshal(schema.Fields); err == nil {
-				ref.SchemaFields = fields
-			}
+			ref.SchemaFields = encodeJSONArrayLimited(schema.Fields, maxOpenLineageSchemaFacetBytes)
 		}
 
 		if direction != store.OpenLineageDatasetDirectionOutput {
@@ -399,13 +415,6 @@ func openLineageDatasetRefs(event *openlineage.RunEvent, taskGUID, source, integ
 	return result
 }
 
-// hasColumnLineageFacet reports whether a columnLineage facet says anything. A
-// facet with neither fields nor dataset references is present but empty, and
-// the badge it would raise is not true.
-func hasColumnLineageFacet(facet *openlineage.ColumnLineageFacet) bool {
-	return facet != nil && (len(facet.Fields) > 0 || len(facet.Dataset) > 0)
-}
-
 // columnLineageFieldNames returns the output columns a columnLineage facet
 // describes, sorted so the stored JSON is the same across redeliveries.
 func columnLineageFieldNames(facet *openlineage.ColumnLineageFacet) []byte {
@@ -417,11 +426,43 @@ func columnLineageFieldNames(facet *openlineage.ColumnLineageFacet) []byte {
 		names = append(names, name)
 	}
 	slices.Sort(names)
-	encoded, err := json.Marshal(names)
-	if err != nil {
+	return encodeJSONArrayLimited(names, maxOpenLineageColumnLineageFieldsBytes)
+}
+
+// hasColumnLineageFacet reports whether a columnLineage facet says anything. A
+// facet with neither fields nor dataset references is present but empty, and
+// the badge it would raise is not true.
+func hasColumnLineageFacet(facet *openlineage.ColumnLineageFacet) bool {
+	return facet != nil && (len(facet.Fields) > 0 || len(facet.Dataset) > 0)
+}
+
+// encodeJSONArrayLimited marshals values into a JSON array, stopping before the
+// array would exceed limit bytes. Dropping the tail keeps a stored facet bounded
+// without refusing the event that carried it; the detail reads these facets, so
+// an unbounded one would make that read unbounded too.
+func encodeJSONArrayLimited[T any](values []T, limit int) []byte {
+	encoded := make([]byte, 0, min(len(values)*16, limit))
+	encoded = append(encoded, '[')
+	kept := 0
+	for _, value := range values {
+		element, err := json.Marshal(value)
+		if err != nil {
+			break
+		}
+		// The comma that would precede this element and the closing bracket.
+		if len(encoded)+len(element)+2 > limit {
+			break
+		}
+		if kept > 0 {
+			encoded = append(encoded, ',')
+		}
+		encoded = append(encoded, element...)
+		kept++
+	}
+	if kept == 0 {
 		return nil
 	}
-	return encoded
+	return append(encoded, ']')
 }
 
 // ExtractIngestionKey returns the Bearer token of an ingestion request. The

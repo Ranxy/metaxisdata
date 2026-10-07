@@ -2,8 +2,10 @@ package v1
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -260,4 +262,79 @@ func TestRunMessageForEventMaterializesTheAirflowLink(t *testing.T) {
 	require.Equal(t, "https://airflow.example.com/dags/x/runs/1", run.AirflowRunLogURL)
 	require.Len(t, run.Datasets, 1)
 	require.Equal(t, "out", run.Datasets[0].Name)
+}
+
+// The Airflow link is stored so the run and task lists can render it without the
+// payload; an over-long one is dropped rather than stored and read back for
+// every row of a page. url.String() percent-encodes, so the stored link can be
+// longer than the facet it came from.
+func TestRunMessageForEventDropsAnOverlongAirflowLink(t *testing.T) {
+	t.Parallel()
+
+	overlong, err := openlineage.ParseRunEvent([]byte(`{
+		"eventType":"COMPLETE",
+		"run":{"runId":"run-1","facets":{"airflow":{"taskInstance":{"log_url":"https://airflow.example.com/dags/x/` +
+		strings.Repeat("y", openlineage.MaxAirflowRunLogURLLength) + `"}}}},
+		"job":{"namespace":"ns","name":"job"}
+	}`))
+	require.NoError(t, err)
+
+	h := &OpenLineageHandler{}
+	require.Empty(t, h.runMessageForEvent(overlong).AirflowRunLogURL)
+
+	withinCap, err := openlineage.ParseRunEvent([]byte(`{
+		"eventType":"COMPLETE",
+		"run":{"runId":"run-2","facets":{"airflow":{"taskInstance":{"log_url":"https://airflow.example.com/dags/x/runs/1"}}}},
+		"job":{"namespace":"ns","name":"job"}
+	}`))
+	require.NoError(t, err)
+	require.Equal(t, "https://airflow.example.com/dags/x/runs/1", h.runMessageForEvent(withinCap).AirflowRunLogURL)
+}
+
+// The schema and column-lineage facets are stored so the dataset detail does not
+// read the payload; the stored copies are capped so one dataset's facets cannot
+// make that read expand an unbounded JSONB. The entries that fit are kept.
+func TestOpenLineageDatasetRefsCapsTheStoredFacets(t *testing.T) {
+	t.Parallel()
+
+	const fieldCount = 4000
+	fields := make([]openlineage.SchemaField, 0, fieldCount)
+	lineageFields := make(map[string]openlineage.ColumnLineageField, fieldCount)
+	for i := range fieldCount {
+		fields = append(fields, openlineage.SchemaField{
+			Name:        fmt.Sprintf("field_%04d", i),
+			Type:        "VARCHAR(255)",
+			Description: strings.Repeat("d", 40),
+		})
+		lineageFields[fmt.Sprintf("column_%04d", i)] = openlineage.ColumnLineageField{}
+	}
+
+	event := &openlineage.RunEvent{
+		Outputs: []openlineage.Dataset{{
+			Namespace: "ns",
+			Name:      "out",
+			Facets: openlineage.DatasetFacets{
+				Schema:        &openlineage.SchemaFacet{Fields: fields},
+				ColumnLineage: &openlineage.ColumnLineageFacet{Fields: lineageFields},
+			},
+		}},
+	}
+
+	refs := openLineageDatasetRefs(event, "openlineage:task:TASK:ns:job", "openlineage", "airflow", nil)
+	require.Len(t, refs, 1)
+	ref := refs[0]
+
+	require.LessOrEqual(t, len(ref.SchemaFields), maxOpenLineageSchemaFacetBytes)
+	var storedFields []openlineage.SchemaField
+	require.NoError(t, json.Unmarshal(ref.SchemaFields, &storedFields))
+	require.NotEmpty(t, storedFields)
+	require.Less(t, len(storedFields), fieldCount, "the fields that do not fit are dropped")
+	require.Equal(t, "field_0000", storedFields[0].Name, "the fields that fit are the leading ones")
+
+	require.LessOrEqual(t, len(ref.ColumnLineageFields), maxOpenLineageColumnLineageFieldsBytes)
+	var storedNames []string
+	require.NoError(t, json.Unmarshal(ref.ColumnLineageFields, &storedNames))
+	require.NotEmpty(t, storedNames)
+	require.Less(t, len(storedNames), fieldCount)
+	require.True(t, slices.IsSorted(storedNames), "the stored names are sorted so a redelivery stores the same JSON")
 }

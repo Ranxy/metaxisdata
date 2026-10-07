@@ -408,7 +408,7 @@ CREATE TABLE openlineage_run_dataset (
 );
 
 CREATE UNIQUE INDEX idx_openlineage_run_dataset_unique ON openlineage_run_dataset(run_pk, namespace, name, direction);
-CREATE INDEX idx_openlineage_run_dataset_group ON openlineage_run_dataset(namespace, name);
+CREATE INDEX idx_openlineage_run_dataset_group ON openlineage_run_dataset(namespace, name, event_time DESC NULLS LAST);
 CREATE INDEX idx_openlineage_run_dataset_task ON openlineage_run_dataset(task_guid);
 CREATE INDEX idx_openlineage_run_dataset_event_time ON openlineage_run_dataset(event_time DESC NULLS LAST);
 
