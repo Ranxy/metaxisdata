@@ -16,6 +16,31 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
+// maxManualSQLTags and maxManualSQLAttributes bound the side tables one manual SQL
+// entry owns. Every tag and every attribute is its own row, the write replaces
+// them per entry, and manual-SQL create/update is in the member baseline — so
+// without a count the request body size is the only limit and one call by any
+// member can write hundreds of thousands of rows. The numbers are deliberately
+// generous (a tag list is a taxonomy, not a security boundary) but they are
+// finite, like the redirect-URI cap on OAuth registration.
+const (
+	maxManualSQLTags       = 100
+	maxManualSQLAttributes = 100
+)
+
+// validateManualSQLCollections rejects a tag or attribute list longer than the
+// side tables may hold. It is called for the lists a request will actually write,
+// so a list that the update mask does not name is not a reason to refuse it.
+func validateManualSQLCollections(tags []string, attributes map[string]string) error {
+	if len(tags) > maxManualSQLTags {
+		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("at most %d tags are allowed", maxManualSQLTags))
+	}
+	if len(attributes) > maxManualSQLAttributes {
+		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("at most %d attributes are allowed", maxManualSQLAttributes))
+	}
+	return nil
+}
+
 func (s *DatabaseService) CreateManualSQL(ctx context.Context, req *connect.Request[v1pb.CreateManualSQLRequest]) (*connect.Response[v1pb.ManualSQL], error) {
 	instanceID, databaseName, err := common.GetInstanceDatabaseID(req.Msg.GetParent())
 	if err != nil {
@@ -31,6 +56,9 @@ func (s *DatabaseService) CreateManualSQL(ctx context.Context, req *connect.Requ
 	}
 	if req.Msg.GetManualSql() == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("manual_sql is required"))
+	}
+	if err := validateManualSQLCollections(req.Msg.GetManualSql().GetTags(), req.Msg.GetManualSql().GetAttributes()); err != nil {
+		return nil, err
 	}
 
 	msg, err := buildManualSQLMessageFromV1(instanceID, databaseName, req.Msg.GetManualSqlId(), req.Msg.GetManualSql())
@@ -188,7 +216,8 @@ func (s *DatabaseService) UpdateManualSQL(ctx context.Context, req *connect.Requ
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("manual SQL %q not found", manualSQL.GetName()))
 	}
 	patch := &store.UpdateManualSQLMessage{}
-	for _, path := range req.Msg.GetUpdateMask().GetPaths() {
+	paths := req.Msg.GetUpdateMask().GetPaths()
+	for _, path := range paths {
 		switch path {
 		case "title":
 			patch.Title = &manualSQL.Title
@@ -208,7 +237,9 @@ func (s *DatabaseService) UpdateManualSQL(ctx context.Context, req *connect.Requ
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported update path %q", path))
 		}
 	}
-	if len(req.Msg.GetUpdateMask().GetPaths()) == 0 {
+	// Only the lists this request writes have to fit: an over-long list the mask
+	// does not name is never stored.
+	if len(paths) == 0 {
 		patch.Title = &manualSQL.Title
 		patch.Comment = &manualSQL.Comment
 		patch.SQLText = &manualSQL.SqlText
@@ -217,6 +248,19 @@ func (s *DatabaseService) UpdateManualSQL(ctx context.Context, req *connect.Requ
 		patch.Tags = &tags
 		attributes := manualSQL.Attributes
 		patch.Attributes = &attributes
+	}
+	if patch.Tags != nil || patch.Attributes != nil {
+		var tags []string
+		if patch.Tags != nil {
+			tags = *patch.Tags
+		}
+		var attributes map[string]string
+		if patch.Attributes != nil {
+			attributes = *patch.Attributes
+		}
+		if err := validateManualSQLCollections(tags, attributes); err != nil {
+			return nil, err
+		}
 	}
 	updated, err := s.store.UpdateManualSQL(ctx, existing.GUID, patch)
 	if err != nil {

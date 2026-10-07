@@ -321,13 +321,15 @@ func methodAllowWithoutCredential(method protoreflect.MethodDescriptor) bool {
 	return ok && allowed
 }
 
-// fakeStreamingConn is the minimum a streaming interceptor reads: the procedure.
+// fakeStreamingConn is the minimum a streaming interceptor reads: the procedure
+// and the peer address the transport reports.
 type fakeStreamingConn struct {
 	procedure string
+	peerAddr  string
 }
 
 func (c *fakeStreamingConn) Spec() connect.Spec        { return connect.Spec{Procedure: c.procedure} }
-func (*fakeStreamingConn) Peer() connect.Peer          { return connect.Peer{} }
+func (c *fakeStreamingConn) Peer() connect.Peer        { return connect.Peer{Addr: c.peerAddr} }
 func (*fakeStreamingConn) Receive(any) error           { return nil }
 func (*fakeStreamingConn) RequestHeader() http.Header  { return http.Header{} }
 func (*fakeStreamingConn) Send(any) error              { return nil }

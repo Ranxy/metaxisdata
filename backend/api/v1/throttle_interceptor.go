@@ -82,8 +82,20 @@ func (*ThrottleInterceptor) WrapStreamingClient(next connect.StreamingClientFunc
 	return next
 }
 
-func (*ThrottleInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
-	return next
+// WrapStreamingHandler applies the same budget as the unary path. It used to be a
+// pass-through, which left a hole no test could see: an anonymous, audited method
+// implemented as a stream would pass the guard (its limiter is in limiterFor) and
+// then never be counted at all, writing permanent ledger rows without any bound.
+// There is no such method today — the one streaming RPC, ExplainSQL, requires a
+// credential and is bounded per principal — so this is the shape being kept
+// symmetric rather than a behaviour that changed in production.
+func (in *ThrottleInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		if err := in.check(ctx, conn.Spec().Procedure, conn.RequestHeader(), conn.Peer().Addr, time.Now()); err != nil {
+			return err
+		}
+		return next(ctx, conn)
+	}
 }
 
 // limiterFor returns the budget for a procedure and whether a signed-in caller is

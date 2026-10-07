@@ -1289,3 +1289,22 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 **接受的取舍**:与上一节相同(部署级 30000/min 与 Logout 300/min 可被单方耗尽;`WindowLimiter` 满表遍历),另加"同一地址的 fan-in 超过约 40 个生产者会被 source 桶 pace"。
 
 **门禁**:`gofmt`(无输出)、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./backend/...` 与 `go test -race ./backend/...` 全绿、集成 runner 全绿(含新增的匿名设备登录回归)、`make test-integration-smoke` 与 release 构建通过。集成套件在本机存在与本次改动无关的 flake(实例连接额度、软删除库并发竞争),已在未改动的 `main` 上复现同一失败。本轮未改前端,未跑前端门禁。
+
+### 2026-10-07 —— 第三轮对抗式复核(换角度:永久表的「行数 vs 调用数」)与修正
+
+前两轮把 `audit_log` 的行数封到 1 行/调用之后,第三轮换了一个角度:限流计数的是**调用次数**,而永久增长的是**行数**,两者的放大倍数从未被审过。报告(模型 `deepseek-v4.1-flash`,探针在 `/tmp/rlrev4/`,仓库零改动;明确排除多副本语义)给出的结论是:**同一批被限流的调用,在别的永久表里可以写 10^5 量级的行,而限流对此完全不可见**。
+
+**主代理逐条复跑确认,并纠正了报告的一处越界**:`meta_registry_resource_history`「永不回收」**不是漏洞**,而是本项目明确接受的决策(`AGENTS.md` 与 `security-posture.md` 都写着这两张表 kept forever)。报告把它列为"总量永不回收"并作为 P1 的支柱,属把既定决策当缺陷,因此 P1 的严重度从"高"降为"中"。真正新的是下面三条。
+
+**已修**:
+
+1. **保留期可被摄入方绕过(中)**:`parseEventTime` 只兜"缺时区偏移";`eventTime` 字段**整个缺失或不可解析**时 `eventTime` 保持 nil,于是 `event_time` 存 NULL,而剪枝谓词是 `event_time IS NOT NULL AND event_time < $1`(4 处)→ 该 run 永久不被回收。任何持 ingestion key 者(或单纯写错时间的生产者)都能让数据逃过运维设定的保留期,而代码注释还声称已避免这一点(真机探针确认缺 eventTime 的事件被接受)。**改法**:新增 `eventTimeForEvent`,缺字段/不可解析时兜底为**接收时间**,run 行永不为 NULL;事件仍然接受(因缺时间戳丢血缘比按接收时间老化更糟)。测试:`TestEventTimeForEventIsNeverZero`、`TestRunMessageForEventAlwaysCarriesAnEventTime`;反向验证(overlay 让兜底返回零值)两条均变红。
+2. **被剪枝 run 的派生边永不回收(中)**:run 的 `column_lineage` 边以 **run GUID** 为键(`buildLineageMeta`),而 `deleteOpenLineageRegistryRows` → `BatchDeleteMetaRegistry` 只删 `meta_registry_resource`+schema、关闭 history;`ListColumnLineage` 又只按 source/target 过滤、不 join registry → 被剪枝(即被 retention 删掉)的 run 仍长期向血缘图贡献边,"已删除"是假的。**改法**:剪枝时对每个 GUID 调用现成的 `deleteColumnLineageByMetaTx`(它已同时清 `column_lineage` 与 `column_lineage_version`),且对**所有**被剪枝 GUID 生效而不只是仍有 registry 镜像的行。真机回归 `TestRetentionPrunesTheLineageOfADeletedRunRealServerIntegration`(剪枝后边与版本行均为 0);反向验证(overlay 去掉该调用)变红。
+3. **`manual_sql` 的 tag/attribute 无条数上限(中,唯一低权限可达的放大)**:每个 tag/attribute 各写一行(`replaceManualSQLTags` 逐条 INSERT),`normalizeManualSQLTags` 只去重;**member 基线就含 `manualSqls.create/update`**,4 MiB 请求体可携带约 419430 个 tag → 一次调用 10^5 量级行。**改法**:`maxManualSQLTags`/`maxManualSQLAttributes` 各 100(与 `registrationMaxRedirectURIs` 同一风格),只对本次请求实际写入的列表校验(update_mask 未点名的列表不因此被拒);真机回归 `TestManualSQLCollectionsAreCountBoundedRealServerIntegration`(101 个 tag / 101 个 attribute 均 `InvalidArgument`),反向验证(临时移除校验调用)会以 23503 外键错误失败,证明这些行本会真的落库。
+4. **匿名流式方法不计额 + 审计流式行 IP 恒空(低,潜在)**:`ThrottleInterceptor.WrapStreamingHandler` 原是直通,而守护测试只静态断言 `limiterFor` 有值——一个"匿名 + 审计 + 流式"的方法会通过守护测试却完全不计额、无限写永久账本。当前唯一流式方法 `ExplainSQL` 需鉴权且被按用户预算覆盖,故不可达。**改法**:匿名流式分支补 `check`(与 Principal 版对称);`audit.go` 流式分支把 `peerAddr=""` 改为 `conn.Peer().Addr`(经 `streamingRequestMetadata` 便于测试)。测试:`TestThrottleInterceptorStreamingHandlerAppliesTheBudget`、`TestStreamingAuditMetadataCarriesThePeerAddress`;反向验证均变红。
+
+**文档订正**:新增 `plan/rate_limiting_plan.md` 的「Rows, not calls」表(逐表行数/上限/是否回收);修正三处可核查的错话——`/mcp` 并非"本部署最高配置上限"(OL 摄取按地址 2000/s=12 万/min 更高)、`security-posture.md` 说 maintenance"只清理 ExplainSQL 缓存/LLM debug/OL runs"(实际还无条件清 `revoked_token`、refresh token 与空数据集)、以及 OL handler 注释声称已避免 NULL 豁免。
+
+**记录为残余/永久表(未改代码)**:`external_dataset` 无删除路径(声明为永久表);`oauth_client` 无总量上限且 `DeleteOAuthClient` 至今零调用方(D11 的量化:匿名 600/min/地址 × ~20 KiB × 2 张表);匿名 Login 的 actor/resource 是调用方选定的 ≤8KiB 文本且同一值在 payload 里出现三次(D9 + 字节放大,300/min 约 10 GB/天);`meta_registry_resource_history` 与 `principal` 属"只受调用速率约束"的永久增长。
+
+**未能证伪(报告与主代理一致)**:`audit_log` 五个写入点均 1 行/调用、无循环调用;`revoked_token` 确被 300/min+7 天寿命+维护清理压住(稳态约 3.02M 行);前三轮修法仍成立(匿名设备登录预算在链上且有真机回归、OL 源维度换 RealIP 仍会变红);仓库零改动、门禁可复现。

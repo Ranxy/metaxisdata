@@ -79,7 +79,7 @@ func (in *AuditInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFu
 				Severity:        audit.MapSeverity(err),
 				Status:          audit.BuildAuditStatus(err),
 				LatencyMs:       time.Since(startTime).Milliseconds(),
-				RequestMetadata: audit.BuildRequestMetadata(conn.RequestHeader(), "", in.trustedProxies),
+				RequestMetadata: streamingRequestMetadata(conn, in.trustedProxies),
 			}
 			if _, createErr := in.store.CreateAuditLog(auditCtx, auditLog); createErr != nil {
 				slog.Error("failed to persist stream audit log", "method", conn.Spec().Procedure, clog.WithError(createErr))
@@ -87,6 +87,14 @@ func (in *AuditInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFu
 		}
 		return err
 	}
+}
+
+// streamingRequestMetadata is the request metadata of a streaming call. It is a
+// function of its own so a test can pin the peer address: this branch used to
+// pass "" and the column address then stayed empty on every audited stream, which
+// would have given a future streaming method rows with no origin at all.
+func streamingRequestMetadata(conn connect.StreamingHandlerConn, trustedProxies []string) *storepb.AuditRequestMetadata {
+	return audit.BuildRequestMetadata(conn.RequestHeader(), conn.Peer().Addr, trustedProxies)
 }
 
 func (in *AuditInterceptor) createAuditLog(ctx context.Context, req connect.AnyRequest, resp connect.AnyResponse, err error, startTime time.Time) error {

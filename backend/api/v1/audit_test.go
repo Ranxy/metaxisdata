@@ -122,3 +122,14 @@ func TestIsNilConnectValue(t *testing.T) {
 	require.True(t, isNilConnectValue(anyResponse))
 	require.False(t, isNilConnectValue(connect.NewResponse(&v1pb.LoginResponse{})))
 }
+
+// A streaming audit row must carry the origin of the call. This branch used to
+// pass an empty peer address, so every audited stream recorded a row with no IP
+// at all — invisible today because the only streaming RPC is not audited, and a
+// silent loss the moment one is.
+func TestStreamingAuditMetadataCarriesThePeerAddress(t *testing.T) {
+	t.Parallel()
+
+	metadata := streamingRequestMetadata(&fakeStreamingConn{procedure: "/p", peerAddr: "203.0.113.5:4040"}, nil)
+	require.Equal(t, "203.0.113.5", metadata.GetIp())
+}

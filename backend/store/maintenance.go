@@ -342,11 +342,29 @@ func reconcileOpenLineageTask(ctx context.Context, s *Store, tx *sql.Tx, taskGUI
 }
 
 // deleteOpenLineageRegistryRows removes the meta registry rows mirroring the
-// given OpenLineage GUIDs (runs and tasks both use MetaType_OPENLINEAGE).
+// given OpenLineage GUIDs (runs and tasks both use MetaType_OPENLINEAGE),
+// together with the column-lineage edges those GUIDs own.
+//
+// The edges are keyed by the run's own GUID, and nothing else would delete them:
+// BatchDeleteMetaRegistry closes the history of the registry row and removes it,
+// but the lineage graph is read straight from column_lineage without joining the
+// registry, so a pruned run would keep contributing edges to it forever. The
+// retention setting promises the run is gone; leaving its edges behind makes that
+// promise false and keeps showing lineage derived from data the operator asked to
+// drop.
 func deleteOpenLineageRegistryRows(ctx context.Context, s *Store, tx *sql.Tx, guids []string) error {
 	if len(guids) == 0 {
 		return nil
 	}
+	// Delete the edges for every pruned GUID, not only the ones that still have a
+	// registry mirror row: an ingested run always gets one, but a partially
+	// written run must not keep its edges either.
+	for _, guid := range guids {
+		if err := deleteColumnLineageByMetaTx(ctx, tx, guid); err != nil {
+			return errors.Wrapf(err, "failed to delete the lineage of %q", guid)
+		}
+	}
+
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, guid, object_type
 		FROM meta_registry_resource

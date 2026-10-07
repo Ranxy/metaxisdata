@@ -44,6 +44,29 @@ lasts one minute, and a refused request does not extend or spend anything.
 administrator may create members in bulk; those calls are counted by the
 principal budget instead.
 
+## Rows, not calls
+
+Every budget above counts **calls**. What grows permanently is **rows**, and the
+two are different numbers: one accepted call can write many rows into a table no
+budget looks at. The bound that matters for each table, as measured:
+
+| Table | Rows per call | What bounds it | Reclaimed? |
+| --- | --- | --- | --- |
+| `audit_log` | 1 | the call budgets above | never (decision) |
+| `meta_registry_resource_history` | 1 per changed object (a schema sync's whole diff; up to 1000 instances per `BatchSyncInstances` call) | the call budgets only | never (decision) |
+| `openlineage_run` / `_run_dataset` / `_dataset_member` | 1 per event, plus up to 1000 dataset refs per event | the ingestion buckets, then `openlineage_retention_days` | yes, with retention |
+| `column_lineage` (OpenLineage edges) | the edges one event derives | the ingestion buckets | yes — the prune now deletes them with their run |
+| `external_dataset` | 1 per distinct referenced dataset | the ingestion buckets | never (no delete path; recorded as permanent) |
+| `manual_sql_tag` / `_attribute` | 1 per tag / attribute, now capped at 100 each | the cap plus the 4 MiB body | with the entry |
+| `oauth_client` | 1 row + 1 audit row (each up to ~20 KiB) | one per-address bucket, 600/min | never (no caller of `DeleteOAuthClient`; recorded as such) |
+| `revoked_token` | 1 per logout | 300/min plus the token's 7-day life | yes, by the maintenance prune |
+| `oauth_refresh_token` / `web_refresh_token` | 1 per exchange / login | the route buckets | yes, after 30 days |
+| `principal` | 1 per signup | the signup budget, 100/min | never |
+
+Two consequences worth keeping in mind when adding a table or a bulk write: a
+budget on a method is not a budget on its rows, and "kept forever" tables need
+their per-call amplification reviewed rather than their call rate.
+
 ## Design decisions
 
 - **A refused request leaves no ledger row — if its budget is on the chain.** Both
@@ -184,11 +207,14 @@ principal budget instead.
    nobody can log out. Both are the price of bounding aggregate ledger growth and
    are documented in `security-posture.md`. Separately, budgets are decided before
    the ACL, so a call the caller may not make still counts (and still leaves a row).
-4. **The MCP endpoint has the highest configured ledger-write ceiling.** A call
-   refused by the per-principal budget is still audited and spends no principal
-   budget, so what caps its rows per minute is the address budget: 6000/min per
-   address, 60000/min deployment — twice the Connect principal ceiling, and far
-   above the anonymous budgets, which sum to a few hundred a minute.
+4. **`/mcp` is not the largest ledger-writing channel.** A call refused by the
+   per-principal budget is still audited and spends no principal budget, so what
+   caps its rows per minute is the address budget (6000/min per address, 60000/min
+   for the deployment) — but the OpenLineage ingestion routes allow 2000 requests
+   a second from one address, each writing an audit row (120000/min), and the
+   per-method principal ceiling is 3000/min for one method. Comparing configured
+   ceilings across routes is fragile; the per-route numbers in the table above are
+   the reference.
 5. **`ExchangeDeviceLogin` and `GetWorkspaceProfileSetting` carry no budget.**
    The first needs a 256-bit device code that only a budgeted call can mint and
    is held to the protocol's minimum poll interval; the second reads one setting,
