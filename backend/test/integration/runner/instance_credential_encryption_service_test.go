@@ -84,9 +84,6 @@ func TestStoredInstanceCredentialsAreEncryptedRealServerIntegration(t *testing.T
 	defer func() {
 		_ = observer.Close()
 	}()
-	hasCredentials, err := observer.HasStoredCredentials(ctx)
-	require.NoError(t, err)
-	require.True(t, hasCredentials, "the database holds an instance, so a key must not be minted for it")
 	require.NoError(t, observer.ResolveCipher(ctx, nil, nil))
 }
 

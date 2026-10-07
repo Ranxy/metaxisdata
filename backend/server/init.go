@@ -42,16 +42,15 @@ func (s *Server) initializeSetting(ctx context.Context) error {
 		return err
 	}
 
-	// Initial credential encryption key, only when the database holds nothing a
-	// data key could already have encrypted. A database that kept an instance or an
-	// LLM profile but lost the key must not be handed a new one: every credential it
-	// kept was encrypted with the old key, so resolveCredentialCipher has to fail
-	// rather than let the server start on a key that can read none of them.
-	hasCredentials, err := s.store.HasStoredCredentials(ctx)
+	// The deployment's credential encryption key, generated on the first startup
+	// and never touched again. Whether the one that is there can read the stored
+	// credentials is not this function's question: resolveCredentialCipher answers
+	// it, and refuses to serve a key that opens nothing.
+	setting, err := s.store.GetSetting(ctx, storepb.SettingName_ENCRYPTION_KEY)
 	if err != nil {
-		return errors.Wrap(err, "failed to check for stored credentials")
+		return errors.Wrap(err, "failed to read the credential encryption key")
 	}
-	if !hasCredentials {
+	if setting == nil || setting.Value == "" {
 		encryptionKey, err := crypto.GenerateKey()
 		if err != nil {
 			return errors.Wrap(err, "failed to generate the credential encryption key")

@@ -55,11 +55,11 @@ of the 32-byte `AUTH_SECRET`, stored as base64. Four properties came with that:
   credential.
 - **Fail closed.** An empty, unusable or unopenable `ENCRYPTION_KEY`, a wrapped
   key with no KEK configured, or a KEK that opens nothing stops startup. A data
-  key is minted only while the database holds no instance and no LLM profile, so
-  a database that kept either but lost the row fails too, instead of being handed
-  a new key that can read none of its credentials. The server never serves a
-  store whose cipher was not installed: `credentialCipher()` errors, and every
-  credential read and write propagates that.
+  key is minted only when the setting is absent, so a database that kept
+  credentials but lost the row fails too: the key it mints opens none of them,
+  and the check below refuses it. The server never serves a store whose cipher was
+  not installed: `credentialCipher()` errors, and every credential read and write
+  propagates that.
 - **A resolved key has to open a stored credential before it is used.** A key
   edited by hand, or restored from another deployment, parses perfectly well; it
   is refused because the startup check opens one credential the database already
