@@ -69,6 +69,36 @@ CREATE VIEW %s AS SELECT id FROM %s;
 	}
 }
 
+// The connection string embeds the database name read from the target's
+// catalog, so a name carrying DSN syntax must stay a database name. Left raw,
+// `it_dsn_…?tls=false&` would end the path segment, disable TLS and connect to
+// the truncated database `it_dsn_…`, where the sync could not find this table.
+func TestMySQLSyncConnectsToCatalogDatabaseNameWithDSNSyntaxRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env := sharedMySQLServiceEnvNoReset(t)
+	ctx := context.Background()
+	instanceID := mysqlServiceInstanceID(t)
+	instance, err := env.CreateMySQLInstance(ctx, instanceID)
+	require.NoError(t, err)
+
+	hasher := fnv.New32a()
+	_, _ = hasher.Write([]byte(t.Name()))
+	sourceDatabase := fmt.Sprintf("it_dsn_%08x?tls=false&", hasher.Sum32())
+	require.NoError(t, env.ExecMySQL(ctx, fmt.Sprintf("CREATE DATABASE %s;", quoteMySQLIdentifier(sourceDatabase))))
+	t.Cleanup(func() {
+		_ = env.ExecMySQL(context.Background(), fmt.Sprintf("DROP DATABASE IF EXISTS %s;", quoteMySQLIdentifier(sourceDatabase)))
+	})
+	require.NoError(t, env.ExecMySQL(ctx, fmt.Sprintf(
+		"USE %s;\nCREATE TABLE dsn_probe (id INT PRIMARY KEY);", quoteMySQLIdentifier(sourceDatabase))))
+
+	databaseName := common.FormatDatabase(instanceID, sourceDatabase)
+	_ = env.EnsureDatabaseVisible(ctx, t, instance.GetName(), sourceDatabase)
+	env.SyncDatabase(ctx, t, databaseName)
+
+	waitForMetaGUIDByName(ctx, t, env, fmt.Sprintf("%s;%s", instanceID, sourceDatabase), storepb.MetaType_TABLE, "dsn_probe")
+}
+
 func TestMySQLLineageUpdatesAfterViewChangeRealServerIntegration(t *testing.T) {
 	t.Parallel()
 

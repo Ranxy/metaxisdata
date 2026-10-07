@@ -181,11 +181,13 @@
 - **修复**:单事件限长(如 1MiB)并对 namespace/job_name/run_id 限长;列表不取 raw_payload(Airflow 链接在摄取时物化);dataset 聚合下推 SQL。
 
 ### M19. MySQL DSN 由目标库库名拼接:驱动参数覆盖、TLS 降级
+- **状态**:**已修复**(2026-10-07,commit `8d574c3`;修复内容与验证见 §10)。
 - **证据**:`backend/plugin/db/mysql/mysql.go:141`(`fmt.Sprintf("…/%s?%s", …, ConnectionContext.DatabaseName, …)`);子代理在仓库锁定的 go-sql-driver v1.9.3 上实测:库名 `x?tls=false&` → `dbname=x, tls=false`;`x?allowAllFiles=true&` 同理绕过 `ValidateExtraConnectionParameters` 的键黑名单。
 - **攻击场景**:在目标实例建一个带 `?`/`&` 的库名即可改写平台的出站连接参数(TLS 降级 → 中间人可污染同步流量与血缘;`allowAllFiles` 打开本地文件读取面;同步静默指向另一库)。前提:能在目标实例建库。
 - **修复**:用 `mysql.Config` 结构化构造(库名进 `DBName` 字段),或对库名做严格白名单(禁 `? & = /`);`ExtraConnectionParameters` 键值白名单。
 
 ### M20. PG/MSSQL `extra_connection_parameters` 零校验:连接目标可被改写
+- **状态**:**保留**(经确认的决策:该字段的写权限等同于连接配置本身,不构成授权边界;复核结论见 §10)。
 - **证据**:`backend/plugin/db/pg/pg.go:123-131`(字符串拼接,无任何校验);实测 pgx.ParseConfig:重复键 `host=evil.example` 覆盖成功、值中空格可注入新键、`sslmode=disable` 生效;`mssql.go:59-63` 无校验。MySQL/StarRocks 至少有键黑名单。
 - **攻击场景**:登记 host 与实际连接 host 可不一致(审计台账失真 + PG 协议 SSRF 通道);`host` 覆盖为内网任意 PG 端口探测。注意:该字段本身需管理员权限登记,但来自被同步实例的快照更新链路时同样未过滤。
 - **修复**:白名单化连接参数键值;`host`/`port` 不可被参数覆盖。
@@ -348,7 +350,7 @@
 11. M8/M9:acw↔permission 互斥测试 + allUsers 禁绑管理角色——M9 已完成(实现为 allUsers 完全不可编辑,见 §10);M8 待办。
 
 **P2(中期,加固与一致性)**
-12. M6/M18/M19/M20/M21/M22/M23/M24/M25 与 L 系列——M14 已完成(commit `f9f67fb`,加固 `414aa60`,见 §10)、M15 已完成(commit `f55f62a`,加固 `10e803f`,见 §10)、M18 已完成(commit `a691632`,加固 `db09dac`;三项残余随 ingest 聚合表一并修复,commit `1253a9d`,见 §10);
+12. M6/M18/M19/M20/M21/M22/M23/M24/M25 与 L 系列——M14 已完成(commit `f9f67fb`,加固 `414aa60`,见 §10)、M15 已完成(commit `f55f62a`,加固 `10e803f`,见 §10)、M18 已完成(commit `a691632`,加固 `db09dac`;三项残余随 ingest 聚合表一并修复,commit `1253a9d`,见 §10)、M19 已完成(commit `8d574c3`,见 §10)、M20 经确认按决策保留(见 §10);
 13. 5.3 审计体系(注解驱动脱敏 + 黄金测试)、5.5 权限机制收敛。
 
 **P3(结构性投资)**
@@ -1071,3 +1073,37 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 1. **解析仍未物化进 SQL**:窗口内的作用域过滤与自由文本检索仍需 app 侧解析(检索命中面包含"解析后的目标"),现在只是把每次解析的成本降到纯 CPU。要彻底去掉"详情受窗口限制",需要把解析结果(guid/resolved_target/internal)落库,并配一套失效机制(mapping/实例变更时按 namespace 重解析,或给聚合行加 epoch 让读路径只对已读到的 ≤5000 行重解析)。
 2. **空壳清扫是每 6 小时一次 O(数据集数) 次索引探测**,并把"越界删除"的可见后果限制在 grace + 一个 pass 之内(见上面的加固:它只删"没有任何引用且没有被写者持有"的行);要让它彻底不可能静默,可选 `BEFORE DELETE ON openlineage_run` 守卫触发器(要求 store 的删除路径 `SET LOCAL` 放行),但那会与既有"刻意越界删除以验证读路径优雅降级"的用例冲突,属策略变更而非修复。
 3. **摄取成本仍是每条引用最多 3 行成员**:批量化只把往返次数与数据集数解耦,不减少行数;若要把行数也降下来,可把 integration/source 两个维度收进数据集行的一份 JSONB 计数映射(代价是热数据集每次摄取都要重写该行)。
+
+### 2026-10-07 —— M19 已修复(commit `8d574c3`);M20 经确认按决策保留
+
+**M19 MySQL-wire DSN 由目标库库名拼接**(`backend/plugin/db/mysql/`、`backend/plugin/db/starrocks/`)
+
+- 新增 `dsn.go` 的 `BuildDSN`:`DBName` 经 `url.PathEscape` 转义——这正是驱动自身 `Config.FormatDSN` 对 `DBName` 的处理方式,所以转义后的库名经 `ParseDSN` 原样还原。MySQL 与 StarRocks/Doris 两个 MySQL-wire 驱动都改走该构造函数,不再各自 `fmt.Sprintf` 拼接模板(StarRocks 的模板与 MySQL 同型,同样受影响;报告只引用了 `mysql.go:141`)。
+- 攻击面复核:库名由同步链路从目标实例 `information_schema` 读出(`backend/runner/schemasync/syncer.go` 的 `DatabaseName: databaseMetadata.Name` / `database.DatabaseName`),不需要任何平台侧权限。修复前,目标库里一个名为 `` x?tls=false& `` 的数据库会把 DSN 路径段在此结束、把其余部分当作驱动参数解析:平台以登记的高权限同步账号连到 `x` 且 TLS 关闭;把 `tls` 换成 `multiStatements`(`?multiStatements=true&`)、`allowAllFiles` 或另一个库名同理。修复后库名只是库名,不存在可注入的参数段。
+- 未采用 `mysql.Config` + `mysql.NewConnector` 的完全结构化改造:那会连带改变 `extra_connection_parameters` 的现有语义(驱动选项与会话变量透传),而该字段的写入需要实例/数据源写权限(见下),不属于未授权路径,按决策本轮保持其行为不变;结构化构造带来的其余收益(如 `uuid[:8]` dial 协议,L21/D13)不在本轮范围。
+
+**回归测试**
+
+- 单元 `backend/plugin/db/mysql/dsn_test.go`:`BuildDSN` 对 `app`、`x?tls=false&`、`x?allowAllFiles=true&`、`a&b=c`、`a#b`、`a/b`、`100%`、`?` 逐一断言 `ParseDSN` 后 `DBName` 原样还原、`TLSConfig` 为空、`MultiStatements`/`AllowAllFiles` 为假、没有新增 `Params`;`TestRawDSNInterpolationRewritesTheConnection` 把修复前的裸拼接 DSN 作为可执行描述钉住威胁模型(它能解析成功,静默把 `DBName` 变成 `x` 并令 `TLSConfig=false`——正因不报错才危险);`TestGetMySQLConnectionEscapesCatalogDatabaseName` 钉住驱动自身的调用点,而不只是构造函数。
+- 集成(真实 MySQL):`TestMySQLSyncConnectsToCatalogDatabaseNameWithDSNSyntaxRealServerIntegration` 在真实服务器上创建 `` it_dsn_<hash>?tls=false& `` 数据库与 `dsn_probe` 表,登记实例、使其可见并触发单库同步,要求 `dsn_probe` 的元数据注册项出现在该库下。
+- **反向验证**:把 `getMySQLConnection` 还原为裸拼接后,单元用例变红(实际 `DBName` 为 `x`);集成用例也变红——同步连到被截断的 `it_dsn_<hash>`,目标报告该库不存在,`markDatabaseDeleted` 把它标记为 deleted(`database ... has been deleted`),元数据永远不出现;恢复修复后两者全绿。
+
+**M20 PG/MSSQL `extra_connection_parameters` 零校验 —— 保留(经确认的决策)**
+
+- 该字段只能经实例/数据源写权限写入(`workspaceAdmin`,可下放给自定义角色),而持有者本就能改同一资源的 `host`/`port`/`username`/`password`/`ssh_host`;参数级白名单只约束一个已被信任的主体改变连接目标的形式,不构成授权边界,因此本轮不改(MySQL/StarRocks 既有的 `allowAllFiles` 键黑名单保持不变,但它不是执行点——见残余第 1 条)。
+- 报告"来自被同步实例的快照更新链路时同样未过滤"的说法经复核不成立:`SyncInstance` 只是把 store 中已存的 `Instance.Metadata` 克隆后回写版本与 `lastSyncTime`(`backend/runner/schemasync/syncer.go`),`extra_connection_parameters` 不会由目标库内容产生或改写;写它的唯一路径是 API 请求(`backend/api/v1/instance_convert.go`)。该回写是无版本守卫的读-改-写(见残余第 2 条),但丢的是并发管理员的编辑,不是引入了目标库内容。
+- 该决策已写入 `docs/security-posture.md`(连接参数的写权限即信任边界),M20 条目的状态指针同步更新。
+
+**独立对抗式复核(只读子代理)**
+
+- 复核目标是把 M19 的结论证伪,未改动本仓库(全部实验在 /tmp 副本)。穷举全部 ≤3 字节库名(16,777,472 个)、300 万随机长名与定向语料(`?` `/` `&` `=` `@` `%` `#` `\x00` 非法 UTF-8 反引号 换行 64 字符)后,无一名能改变 `ParseDSN` 的 `DBName`、打开 `TLSConfig`/`MultiStatements`/`AllowAllFiles`、注入 `Params`、改变 `Addr`/`User`/`Passwd`,也无合法名解析失败;两个驱动调用点均覆盖;反向验证独立复现(单元 `DBName="x"`;集成里真实 MySQL 把被截断的库标记 deleted)。全仓搜索确认,由目标 catalog 派生并进入连接串的值只有库名一处(PG 走 `pgx.ConnConfig` 字段、MSSQL 走 `url.Values`)。**M19 结论维持:未授权路径已关闭。**
+- 复核同时确认上述 M20 判断,并指出下列残余;本轮不改行为,只在此记录。
+
+**残余(本轮未处理)**
+
+1. **`allowAllFiles` 键黑名单只查键,值仍是注入面(低,需实例写权限)**:`ValidateExtraConnectionParameters` 只看键名,`{"sql_mode":"x&allowAllFiles=true"}` 能通过校验并经 `BuildDSN` 拼进查询串,`ParseDSN` 得到 `AllowAllFiles=true`;`{"sql_mode":"x/y"}` 会让该实例的 DSN 直接解析失败(连接 DoS)。这与 M20 同属"需要实例写权限"的决策范围(该权限本就能改 `host`/`use_ssl`),不构成未授权路径,故本轮不收紧;若日后要收,应做键值校验或改用 `mysql.Config` 结构化构造。
+2. **同步回写 `Instance.Metadata` 无 CAS(低,既有)**:`SyncInstance` 读-改-写整个 `metadata` 列(`backend/runner/schemasync/syncer.go` → `backend/store/instance.go`),期间提交的一次数据源编辑会被静默覆盖;不会引入目标库数据,属独立的并发加固项。
+3. **StarRocks/Doris 没有服务端真实回归用例**:该驱动的同类缺陷由共享 `BuildDSN` 与单元用例覆盖,复核另用差分探针(还原裸拼接后 `Open` 在 `x?loc=NotALocation&` 等名称上失败)验证,但没有 StarRocks 集成用例;PG/MSSQL 的库名路径同样是"结构上免疫、无测试钉住"。
+4. **复核覆盖范围**:只跑了两个驱动包、本轮新增用例与定向集成用例,未重跑完整单元与集成门禁(该门禁由本条目"验证门禁"一段记录)。
+
+**验证门禁**:`gofmt`(无输出)、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./...`(全绿)、release 构建(`-tags release`)、`make test-integration`(真实 PostgreSQL + MySQL + migrator:runner 39.4s、migrator 18.5s,全绿,含本轮新增用例)。本轮未改前端与 proto,未跑前端门禁。

@@ -114,7 +114,17 @@ func (d *Driver) Open(ctx context.Context, dbType storepb.Engine, connCfg db.Con
 		params = append(params, fmt.Sprintf("tls=%s", tlsKey))
 	}
 
-	dsn := fmt.Sprintf("%s:%s@%s(%s:%s)/%s?%s", connCfg.DataSource.Username, connCfg.Password, protocol, connCfg.DataSource.Host, connCfg.DataSource.Port, connCfg.ConnectionContext.DatabaseName, strings.Join(params, "&"))
+	// The database name comes from the target's catalog, so it goes through the
+	// shared builder that escapes it (see dbmysql.BuildDSN).
+	dsn := dbmysql.BuildDSN(
+		connCfg.DataSource.Username,
+		connCfg.Password,
+		protocol,
+		connCfg.DataSource.Host,
+		connCfg.DataSource.Port,
+		connCfg.ConnectionContext.DatabaseName,
+		params,
+	)
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		// Open has to release the tunnel itself: the driver's Close is only
