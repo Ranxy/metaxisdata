@@ -110,6 +110,33 @@ export default [
             "metadataBrowser.relationIntersect",
             "metadataBrowser.relationExcept",
             "metadataBrowser.relationUnknown",
+            // Dynamically used: the notification catalog in
+            // src/lib/notificationText.ts maps a message type to these keys, and
+            // the page reaches its own through handleError / showSuccess. The rule
+            // cannot follow a key a helper returns, while
+            // scripts/check-vue-i18n.mjs does trace the ones the helper spells out.
+            "notifications.actionError",
+            "notifications.deleteSuccess",
+            "notifications.fetchError",
+            "notifications.markAllReadSuccess",
+            "notifications.openlineageFailedMessage",
+            "notifications.openlineageFailedTitle",
+            "notifications.openlineageInvalidEventMessage",
+            "notifications.openlineageInvalidEventTitle",
+            "notifications.openlineageLimitExceededMessage",
+            "notifications.openlineageLimitExceededTitle",
+            "notifications.openlineageNamespaceUnmappedMessage",
+            "notifications.openlineageNamespaceUnmappedTitle",
+            "notifications.openlineageScopeMismatchMessage",
+            "notifications.openlineageScopeMismatchTitle",
+            "notifications.openlineageUnknownMessage",
+            "notifications.openlineageUnknownTitle",
+            "notifications.schemaSyncBackgroundFailedTitle",
+            "notifications.schemaSyncFailedTitle",
+            "notifications.schemaSyncSucceededTitle",
+            "notifications.schemaSyncSummary",
+            "notifications.unknownMessage",
+            "notifications.unknownTitle",
           ],
           enableFix: false,
         },

@@ -265,6 +265,14 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, layout: "default" },
   },
   {
+    // Reached from the sidebar's notification bell, not from a nav entry: the
+    // bell is the permanent affordance, and this page is where it expands to.
+    path: "/notifications",
+    name: "Notifications",
+    component: () => import("@/pages/NotificationsPage.vue"),
+    meta: { requiresAuth: true, layout: "default" },
+  },
+  {
     // The OAuth authorization server redirects here, so the request id arrives
     // in the query string and survives the sign-in round trip.
     path: "/oauth/consent",

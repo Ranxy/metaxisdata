@@ -167,8 +167,11 @@
     </nav>
 
     <!-- Set-once controls (account, language, theme) live at the bottom of the
-         rail instead of occupying a permanent top bar. -->
-    <div class="shrink-0 border-t p-2">
+         rail instead of occupying a permanent top bar. The bell sits with them
+         because it is the same kind of control: always reachable, never a
+         destination of its own. -->
+    <div class="shrink-0 space-y-1 border-t p-2">
+      <NotificationBell />
       <UserMenu />
     </div>
   </aside>
@@ -203,6 +206,7 @@ import {
 } from "@/components/ui/collapsible";
 import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
+import NotificationBell from "./NotificationBell.vue";
 import UserMenu from "./UserMenu.vue";
 
 const { t } = useI18n();
