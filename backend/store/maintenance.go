@@ -120,6 +120,33 @@ func (s *Store) DeleteOpenLineageRunsBefore(ctx context.Context, cutoff time.Tim
 	return deleted, nil
 }
 
+// DeleteEmptyOpenLineageDatasets removes the dataset aggregates whose references
+// are all gone. Ingestion maintains the aggregate and the retention prune rebuilds
+// the datasets it prunes, but a run deleted outside those paths keeps its
+// references' aggregate rows behind: the pages would then offer datasets the API
+// serves nothing for. Rows an ingest touched recently are left alone, because an
+// ingest that has not committed yet is invisible here and its row must not be
+// swept; a row last touched before olderThan has no writer in flight, so its
+// missing references mean the references are really gone.
+func (s *Store) DeleteEmptyOpenLineageDatasets(ctx context.Context, olderThan time.Time) (int64, error) {
+	result, err := s.GetDB().ExecContext(ctx, `
+		DELETE FROM openlineage_dataset ds
+		WHERE ds.updated_at < $1
+			AND NOT EXISTS (
+				SELECT 1 FROM openlineage_run_dataset d
+				WHERE d.namespace = ds.namespace AND d.name = ds.name
+			)
+	`, olderThan)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to delete the empty openlineage datasets")
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to count the deleted empty openlineage datasets")
+	}
+	return deleted, nil
+}
+
 // reconcileOpenLineageDatasets regenerates the aggregates of the datasets the
 // prune touched: the ones whose last reference went away are removed, and the
 // ones that remain have their counters, newest event time and member rows

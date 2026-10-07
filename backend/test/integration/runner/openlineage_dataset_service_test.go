@@ -1025,3 +1025,87 @@ func TestOpenLineageDatasetPruneLocksBeforeItRecomputesRealServerIntegration(t *
 	).Scan(&lastSeen))
 	require.Equal(t, inFlight.Unix(), lastSeen.UTC().Unix())
 }
+
+// The dataset aggregate follows the references a run leaves behind, and a run deleted
+// outside the store's own paths takes its references and not the aggregate the ingest
+// built from them. The sweep is what stops the pages offering datasets nothing
+// references, and it has to leave a dataset another run still references alone.
+func TestOpenLineageEmptyDatasetSweepRealServerIntegration(t *testing.T) {
+	// Deliberately not parallel: it sweeps every dataset aggregate in the shared
+	// database, and another test deletes a run behind the store's back too.
+	env := sharedPostgresServiceEnvNoReset(t)
+	ctx := context.Background()
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+
+	key, _, err := env.Store.CreateOpenLineageAPIKey(ctx, "integration-dataset-sweep", "integration-test", "")
+	require.NoError(t, err)
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	namespace := "integration-dataset-sweep-ns-" + suffix
+	removed := "public.removed-" + suffix
+	kept := "public.kept-" + suffix
+	base := time.Now().UTC().Add(-time.Hour)
+	t.Cleanup(func() {
+		_, err := env.Store.GetDB().ExecContext(ctx, `DELETE FROM openlineage_run WHERE job_namespace = $1`, namespace)
+		require.NoError(t, err)
+		_, err = env.Store.GetDB().ExecContext(ctx, `DELETE FROM openlineage_dataset WHERE namespace = $1`, namespace)
+		require.NoError(t, err)
+	})
+
+	post := func(t *testing.T, runID, jobName, dataset string) {
+		t.Helper()
+		body, err := json.Marshal(map[string]any{
+			"eventType": "COMPLETE",
+			"eventTime": base.Format(time.RFC3339Nano),
+			"run":       map[string]any{"runId": runID},
+			"job":       map[string]any{"namespace": namespace, "name": jobName},
+			"producer":  "integration-test",
+			"outputs":   []map[string]any{{"namespace": namespace, "name": dataset}},
+		})
+		require.NoError(t, err)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, env.BaseURL+"/api/v1/lineage", bytes.NewReader(body))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+key)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpClient.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	}
+	count := func(t *testing.T) int {
+		t.Helper()
+		var total int
+		require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM openlineage_dataset WHERE namespace = $1`, namespace).Scan(&total))
+		return total
+	}
+
+	post(t, "run-1", "job-1", removed)
+	post(t, "run-2", "job-2", kept)
+	require.Equal(t, 2, count(t))
+
+	// The run behind `removed` is deleted by hand, the way an operator's cleanup
+	// does: its references cascade, its aggregate stays.
+	_, err = env.Store.GetDB().ExecContext(ctx, `DELETE FROM openlineage_run WHERE job_namespace = $1 AND run_id = 'run-1'`, namespace)
+	require.NoError(t, err)
+	require.Equal(t, 2, count(t), "the aggregate outlives the references")
+
+	// A row an ingest touched recently is left alone: a writer that has not committed
+	// is invisible to this pass.
+	deleted, err := env.Store.DeleteEmptyOpenLineageDatasets(ctx, time.Now().UTC().Add(-time.Minute))
+	require.NoError(t, err)
+	require.Zero(t, deleted)
+	require.Equal(t, 2, count(t))
+
+	// Once the row is old enough, the dataset nothing references goes and the one the
+	// surviving run still writes stays.
+	deleted, err = env.Store.DeleteEmptyOpenLineageDatasets(ctx, time.Now().UTC().Add(time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, int64(1), deleted, "only the dataset nothing references is swept")
+	require.Equal(t, 1, count(t))
+
+	var remaining string
+	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
+		`SELECT name FROM openlineage_dataset WHERE namespace = $1`, namespace).Scan(&remaining))
+	require.Equal(t, kept, remaining)
+}
