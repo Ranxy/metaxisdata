@@ -151,7 +151,15 @@ func (d *Driver) getMySQLConnection(ctx context.Context, connCfg db.ConnectionCo
 		d.openCleanUp = append(d.openCleanUp, func() { mysql.DeregisterTLSConfig(tlsKey) })
 		params = append(params, fmt.Sprintf("tls=%s", tlsKey))
 	}
-	return fmt.Sprintf("%s:%s@%s(%s:%s)/%s?%s", connCfg.DataSource.Username, connCfg.Password, protocol, connCfg.DataSource.Host, connCfg.DataSource.Port, connCfg.ConnectionContext.DatabaseName, strings.Join(params, "&")), nil
+	return BuildDSN(
+		connCfg.DataSource.Username,
+		connCfg.Password,
+		protocol,
+		connCfg.DataSource.Host,
+		connCfg.DataSource.Port,
+		connCfg.ConnectionContext.DatabaseName,
+		params,
+	), nil
 }
 
 // Close closes the driver.
