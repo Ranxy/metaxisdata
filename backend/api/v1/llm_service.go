@@ -120,14 +120,13 @@ func (s *LLMService) CreateLLMProviderProfile(ctx context.Context, req *connect.
 	}
 
 	meta := &storepb.LlmProviderProfile{
-		Title:           title,
-		Type:            convertV1LLMProviderType(pbProfile.Type),
-		BaseUrl:         baseURL,
-		ApiKeyEncrypted: pbProfile.ApiKey,
-		Models:          convertV1ModelsToStore(pbProfile.Models),
+		Title:   title,
+		Type:    convertV1LLMProviderType(pbProfile.Type),
+		BaseUrl: baseURL,
+		Models:  convertV1ModelsToStore(pbProfile.Models),
 	}
 
-	msg, err := s.store.CreateLLMProfile(ctx, resourceID, meta)
+	msg, err := s.store.CreateLLMProfile(ctx, resourceID, meta, pbProfile.ApiKey)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to create LLM profile"))
 	}
@@ -262,7 +261,7 @@ func (s *LLMService) FetchLLMModels(ctx context.Context, req *connect.Request[v1
 		baseURL = prof.Metadata.BaseUrl
 		apiKey = req.Msg.ApiKey
 		if apiKey == "" {
-			apiKey = prof.Metadata.ApiKeyEncrypted
+			apiKey = prof.APIKey
 		}
 	} else if req.Msg.ProviderType != v1pb.LLMProviderType_LLM_PROVIDER_TYPE_UNSPECIFIED {
 		baseURL = getDefaultBaseURL(providerTypeToString(req.Msg.ProviderType))
@@ -303,7 +302,7 @@ func convertProfileToV1(msg *store.LLMProfileMessage) *v1pb.LlmProviderProfile {
 		Models:       convertStoreModelsToV1(meta.Models),
 		CreateTime:   meta.CreateTime,
 		UpdateTime:   meta.UpdateTime,
-		MaskedApiKey: maskAPIKey(meta.ApiKeyEncrypted),
+		MaskedApiKey: maskAPIKey(msg.APIKey),
 	}
 }
 

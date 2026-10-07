@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/crypto"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -104,7 +105,7 @@ func (s *Store) CreateInstance(ctx context.Context, instanceCreate *InstanceMess
 	}
 	defer tx.Rollback()
 
-	redacted, err := s.obfuscateInstance(ctx, instanceCreate.Metadata)
+	redacted, err := s.encryptInstance(instanceCreate.Metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +154,7 @@ func (s *Store) UpdateInstance(ctx context.Context, patch *UpdateInstanceMessage
 		set, args = append(set, fmt.Sprintf(`deleted = $%d`, len(args)+1)), append(args, *v)
 	}
 	if v := patch.Metadata; v != nil {
-		redacted, err := s.obfuscateInstance(ctx, v)
+		redacted, err := s.encryptInstance(v)
 		if err != nil {
 			return nil, err
 		}
@@ -226,9 +227,9 @@ func (s *Store) listInstanceImpl(ctx context.Context, txn *sql.Tx, find *FindIns
 		query += fmt.Sprintf(" OFFSET %d", *v)
 	}
 
-	// Resolve the secret once for the whole page: the per-row lookup took the
-	// secret lock for every instance.
-	secret, err := s.GetSecret(ctx)
+	// Resolve the cipher once for the whole page: the per-row lookup took the
+	// cipher lock for every instance.
+	cipher, err := s.credentialCipher()
 	if err != nil {
 		return nil, err
 	}
@@ -259,8 +260,8 @@ func (s *Store) listInstanceImpl(ctx context.Context, txn *sql.Tx, find *FindIns
 		if err := common.ProtojsonUnmarshaler.Unmarshal(metadata, instanceMetadata); err != nil {
 			return nil, err
 		}
-		if err := unObfuscateInstanceWithSecret(instanceMetadata, secret); err != nil {
-			return nil, err
+		if err := decryptInstance(instanceMetadata, cipher); err != nil {
+			return nil, errors.Wrapf(err, "failed to decrypt the credentials of instance %s", instanceMessage.ResourceID)
 		}
 		instanceMessage.Metadata = instanceMetadata
 		instanceMessages = append(instanceMessages, &instanceMessage)
@@ -317,10 +318,10 @@ func IsObjectCaseSensitive(instance *InstanceMessage) bool {
 	}
 }
 
-// obfuscateInstance returns a clone with every credential field replaced by its
-// obfuscated form and the plaintext cleared.
-func (s *Store) obfuscateInstance(ctx context.Context, instance *storepb.Instance) (*storepb.Instance, error) {
-	secret, err := s.GetSecret(ctx)
+// encryptInstance returns a clone with every credential field replaced by its
+// ciphertext and the plaintext cleared.
+func (s *Store) encryptInstance(instance *storepb.Instance) (*storepb.Instance, error) {
+	cipher, err := s.credentialCipher()
 	if err != nil {
 		return nil, err
 	}
@@ -330,27 +331,26 @@ func (s *Store) obfuscateInstance(ctx context.Context, instance *storepb.Instanc
 		return nil, errors.Errorf("failed to clone instance")
 	}
 	for _, ds := range redacted.GetDataSources() {
-		for _, field := range secretFields(ds) {
-			obfuscated, err := common.Obfuscate(*field.plaintext, secret)
+		for _, field := range credentialFields(ds) {
+			encrypted, err := cipher.Encrypt(*field.plaintext)
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrapf(err, "failed to encrypt the %s of data source %s", field.name, ds.GetId())
 			}
-			*field.obfuscated = obfuscated
+			*field.ciphertext = encrypted
 			*field.plaintext = ""
 		}
 	}
 	return redacted, nil
 }
 
-// unObfuscateInstanceWithSecret decrypts every credential field with a secret
-// the caller already resolved, so reading a list of instances resolves it once
-// instead of once per row.
-func unObfuscateInstanceWithSecret(instance *storepb.Instance, secret string) error {
+// decryptInstance decrypts every credential field of an instance in place with
+// the cipher the caller resolved once for the whole page.
+func decryptInstance(instance *storepb.Instance, cipher *crypto.Cipher) error {
 	for _, ds := range instance.GetDataSources() {
-		for _, field := range secretFields(ds) {
-			plaintext, err := common.Unobfuscate(*field.obfuscated, secret)
+		for _, field := range credentialFields(ds) {
+			plaintext, err := cipher.Decrypt(*field.ciphertext)
 			if err != nil {
-				return err
+				return errors.Wrapf(err, "failed to decrypt the %s of data source %s", field.name, ds.GetId())
 			}
 			*field.plaintext = plaintext
 		}
@@ -358,20 +358,22 @@ func unObfuscateInstanceWithSecret(instance *storepb.Instance, secret string) er
 	return nil
 }
 
-// secretField pairs a plaintext data source field with its obfuscated
-// counterpart.
-type secretField struct {
+// credentialField pairs a plaintext data source field with the ciphertext field
+// that stores it. The name labels the pair in errors, so a credential that fails
+// to decrypt says which one it was.
+type credentialField struct {
+	name       string
 	plaintext  *string
-	obfuscated *string
+	ciphertext *string
 }
 
-func secretFields(ds *storepb.DataSource) []secretField {
-	return []secretField{
-		{plaintext: &ds.Password, obfuscated: &ds.ObfuscatedPassword},
-		{plaintext: &ds.SslCa, obfuscated: &ds.ObfuscatedSslCa},
-		{plaintext: &ds.SslCert, obfuscated: &ds.ObfuscatedSslCert},
-		{plaintext: &ds.SslKey, obfuscated: &ds.ObfuscatedSslKey},
-		{plaintext: &ds.SshPassword, obfuscated: &ds.ObfuscatedSshPassword},
-		{plaintext: &ds.SshPrivateKey, obfuscated: &ds.ObfuscatedSshPrivateKey},
+func credentialFields(ds *storepb.DataSource) []credentialField {
+	return []credentialField{
+		{name: "password", plaintext: &ds.Password, ciphertext: &ds.PasswordCiphertext},
+		{name: "ssl_ca", plaintext: &ds.SslCa, ciphertext: &ds.SslCaCiphertext},
+		{name: "ssl_cert", plaintext: &ds.SslCert, ciphertext: &ds.SslCertCiphertext},
+		{name: "ssl_key", plaintext: &ds.SslKey, ciphertext: &ds.SslKeyCiphertext},
+		{name: "ssh_password", plaintext: &ds.SshPassword, ciphertext: &ds.SshPasswordCiphertext},
+		{name: "ssh_private_key", plaintext: &ds.SshPrivateKey, ciphertext: &ds.SshPrivateKeyCiphertext},
 	}
 }

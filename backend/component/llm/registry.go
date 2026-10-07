@@ -56,7 +56,7 @@ func NewRegistry(st *store.Store, profile *config.Profile) *Registry {
 //
 // The result is cached briefly: every ExplainSQL request needs the provider and
 // model for its cache key, and a miss costs a database round trip plus an
-// AES-GCM decryption of every profile's API key.
+// AES-256-GCM decryption of every profile's API key.
 func (r *Registry) ListEnabled(ctx context.Context) ([]ResolvedConfig, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -111,7 +111,7 @@ func (r *Registry) loadEnabled(ctx context.Context) ([]ResolvedConfig, error) {
 					ProfileTitle: title,
 					Type:         p.Metadata.Type,
 					BaseURL:      p.Metadata.BaseUrl,
-					APIKey:       p.Metadata.ApiKeyEncrypted,
+					APIKey:       p.APIKey,
 					ModelName:    m.Name,
 				})
 			}

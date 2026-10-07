@@ -128,6 +128,10 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		return nil, err
 	}
 
+	if err := s.resolveCredentialCipher(ctx); err != nil {
+		return nil, err
+	}
+
 	// Configure echo server.
 	s.echoServer = echo.New()
 

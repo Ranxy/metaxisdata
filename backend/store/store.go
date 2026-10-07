@@ -8,17 +8,18 @@ import (
 
 	lru "github.com/hashicorp/golang-lru/v2"
 
+	"github.com/Ranxy/metaxisdata/backend/common/crypto"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
 type Store struct {
 	dbConnManager *DBConnectionManager
 
-	// secret caches the AUTH_SECRET setting, the seed for stored credentials. It
-	// is read on every obfuscated instance/LLM row, so it must not be written
-	// lazily without a lock.
-	secretMu sync.Mutex
-	secret   string
+	// cipher encrypts and decrypts every stored credential. The server resolves
+	// the deployment data key once at startup (ResolveCipher) and installs it
+	// here; it is read on every credential row, so the accessor takes a lock.
+	cipherMu sync.RWMutex
+	cipher   *crypto.Cipher
 
 	// cacheDisabled makes every cache read go to the database. It is meant for
 	// short-lived observer stores (the integration harness) that read rows

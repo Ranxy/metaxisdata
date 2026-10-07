@@ -2,19 +2,23 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/crypto"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 func (s *Server) initializeSetting(ctx context.Context) error {
-	// secretLength is the length of the per-deployment AUTH_SECRET. It is the
-	// seed for stored credentials and the JWT signing key.
+	// secretLength is the length of the per-deployment AUTH_SECRET, the JWT
+	// signing key. Stored credentials are encrypted with a key of their own
+	// (ENCRYPTION_KEY), so a signing key that leaks with a token cannot be
+	// turned into a decryption key.
 	const secretLength = 32
 
 	// initial branding
@@ -36,6 +40,28 @@ func (s *Server) initializeSetting(ctx context.Context) error {
 		Value: secret,
 	}); err != nil {
 		return err
+	}
+
+	// Initial credential encryption key, only when the database holds nothing a
+	// data key could already have encrypted. A database that kept an instance or an
+	// LLM profile but lost the key must not be handed a new one: every credential it
+	// kept was encrypted with the old key, so resolveCredentialCipher has to fail
+	// rather than let the server start on a key that can read none of them.
+	hasCredentials, err := s.store.HasStoredCredentials(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to check for stored credentials")
+	}
+	if !hasCredentials {
+		encryptionKey, err := crypto.GenerateKey()
+		if err != nil {
+			return errors.Wrap(err, "failed to generate the credential encryption key")
+		}
+		if _, _, err := s.store.CreateSettingIfNotExist(ctx, &store.SettingMessage{
+			Name:  storepb.SettingName_ENCRYPTION_KEY,
+			Value: base64.StdEncoding.EncodeToString(encryptionKey),
+		}); err != nil {
+			return errors.Wrap(err, "failed to initialize the credential encryption key")
+		}
 	}
 
 	// initial workspace

@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/crypto"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -19,7 +20,13 @@ import (
 type LLMProfileMessage struct {
 	ID         int64
 	ResourceID string
-	Metadata   *storepb.LlmProviderProfile
+	// Metadata is the stored profile. Its ApiKeyCiphertext field holds the
+	// ciphertext exactly as persisted, so a caller that writes the metadata back
+	// cannot store the key in the clear.
+	Metadata *storepb.LlmProviderProfile
+	// APIKey is the provider key in the clear, in memory only. It is empty when
+	// the profile has no key.
+	APIKey string
 }
 
 // FindLLMProfileMessage is the message for finding LLM provider profiles.
@@ -38,42 +45,29 @@ type UpdateLLMProfileMessage struct {
 	Models     []*storepb.LlmProviderModel
 }
 
-func (s *Store) obfuscateLLMProfile(ctx context.Context, meta *storepb.LlmProviderProfile) error {
-	secret, err := s.GetSecret(ctx)
+// encryptLLMProfileKey replaces the profile's stored API key with the ciphertext
+// of plaintext, so nothing but the ciphertext is marshalled into the row.
+func encryptLLMProfileKey(meta *storepb.LlmProviderProfile, plaintext string, cipher *crypto.Cipher) error {
+	ciphertext, err := cipher.Encrypt(plaintext)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to encrypt the LLM provider API key")
 	}
-	obfuscated, err := common.Obfuscate(meta.ApiKeyEncrypted, secret)
-	if err != nil {
-		return err
-	}
-	meta.ApiKeyEncrypted = obfuscated
+	meta.ApiKeyCiphertext = ciphertext
 	return nil
 }
 
-func (s *Store) deobfuscateLLMProfile(ctx context.Context, meta *storepb.LlmProviderProfile) error {
-	if meta.ApiKeyEncrypted == "" {
-		return nil
-	}
-	secret, err := s.GetSecret(ctx)
+// CreateLLMProfile creates a new LLM provider profile. apiKey is the provider key
+// in the clear: the store encrypts it and the row never holds it unencrypted.
+func (s *Store) CreateLLMProfile(ctx context.Context, resourceID string, meta *storepb.LlmProviderProfile, apiKey string) (*LLMProfileMessage, error) {
+	cipher, err := s.credentialCipher()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	key, err := common.Unobfuscate(meta.ApiKeyEncrypted, secret)
-	if err != nil {
-		return err
-	}
-	meta.ApiKeyEncrypted = key
-	return nil
-}
-
-// CreateLLMProfile creates a new LLM provider profile.
-func (s *Store) CreateLLMProfile(ctx context.Context, resourceID string, meta *storepb.LlmProviderProfile) (*LLMProfileMessage, error) {
 	cloned, ok := proto.Clone(meta).(*storepb.LlmProviderProfile)
 	if !ok {
 		return nil, errors.New("failed to clone LLM profile")
 	}
-	if err := s.obfuscateLLMProfile(ctx, cloned); err != nil {
+	if err := encryptLLMProfileKey(cloned, apiKey, cipher); err != nil {
 		return nil, err
 	}
 
@@ -97,11 +91,13 @@ func (s *Store) CreateLLMProfile(ctx context.Context, resourceID string, meta *s
 	meta.CreateTime = timestamppb.New(now)
 	meta.UpdateTime = timestamppb.New(now)
 	meta.Name = "llm-provider-profiles/" + resourceID
+	meta.ApiKeyCiphertext = cloned.ApiKeyCiphertext
 
 	return &LLMProfileMessage{
 		ID:         id,
 		ResourceID: resourceID,
 		Metadata:   meta,
+		APIKey:     apiKey,
 	}, nil
 }
 
@@ -115,7 +111,13 @@ func (s *Store) UpdateLLMProfile(ctx context.Context, update *UpdateLLMProfileMe
 		return nil, common.Errorf(common.NotFound, "LLM profile %q not found", update.ResourceID)
 	}
 
+	cipher, err := s.credentialCipher()
+	if err != nil {
+		return nil, err
+	}
+
 	meta := existing.Metadata
+	apiKey := existing.APIKey
 	if update.Title != nil {
 		meta.Title = *update.Title
 	}
@@ -123,7 +125,7 @@ func (s *Store) UpdateLLMProfile(ctx context.Context, update *UpdateLLMProfileMe
 		meta.BaseUrl = *update.BaseURL
 	}
 	if update.APIKey != nil {
-		meta.ApiKeyEncrypted = *update.APIKey
+		apiKey = *update.APIKey
 	}
 	if update.Models != nil {
 		meta.Models = update.Models
@@ -133,7 +135,7 @@ func (s *Store) UpdateLLMProfile(ctx context.Context, update *UpdateLLMProfileMe
 	if !ok {
 		return nil, errors.New("failed to clone LLM profile")
 	}
-	if err := s.obfuscateLLMProfile(ctx, cloned); err != nil {
+	if err := encryptLLMProfileKey(cloned, apiKey, cipher); err != nil {
 		return nil, err
 	}
 
@@ -151,10 +153,12 @@ func (s *Store) UpdateLLMProfile(ctx context.Context, update *UpdateLLMProfileMe
 	}
 
 	meta.UpdateTime = timestamppb.New(now)
+	meta.ApiKeyCiphertext = cloned.ApiKeyCiphertext
 	return &LLMProfileMessage{
 		ID:         existing.ID,
 		ResourceID: update.ResourceID,
 		Metadata:   meta,
+		APIKey:     apiKey,
 	}, nil
 }
 
@@ -207,6 +211,12 @@ func (s *Store) ListLLMProfiles(ctx context.Context, find *FindLLMProfileMessage
 	}
 	defer rows.Close()
 
+	// Resolve the cipher once for the whole page.
+	cipher, err := s.credentialCipher()
+	if err != nil {
+		return nil, err
+	}
+
 	var profiles []*LLMProfileMessage
 	for rows.Next() {
 		var (
@@ -224,8 +234,9 @@ func (s *Store) ListLLMProfiles(ctx context.Context, find *FindLLMProfileMessage
 		if err := common.ProtojsonUnmarshaler.Unmarshal(metadata, meta); err != nil {
 			return nil, errors.Wrap(err, "failed to unmarshal LLM profile")
 		}
-		if err := s.deobfuscateLLMProfile(ctx, meta); err != nil {
-			return nil, err
+		apiKey, err := cipher.Decrypt(meta.ApiKeyCiphertext)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to decrypt the API key of LLM profile %s", resourceID)
 		}
 
 		meta.Name = "llm-provider-profiles/" + resourceID
@@ -236,6 +247,7 @@ func (s *Store) ListLLMProfiles(ctx context.Context, find *FindLLMProfileMessage
 			ID:         id,
 			ResourceID: resourceID,
 			Metadata:   meta,
+			APIKey:     apiKey,
 		})
 	}
 	if err := rows.Err(); err != nil {

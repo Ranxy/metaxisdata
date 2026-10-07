@@ -18,9 +18,8 @@ import (
 )
 
 // Credentials is the on-disk shape. The token is written in clear text: the CLI
-// treats a credential file as equivalent to a seven day session, which matches
-// how the server already stores instance and provider secrets (obfuscated, not
-// encrypted) in this self-hosted deployment.
+// treats a credential file as equivalent to a seven day session, and hiding it
+// from a local file was not worth a keychain dependency.
 type Credentials struct {
 	Server         string    `json:"server"`
 	Token          string    `json:"token"`

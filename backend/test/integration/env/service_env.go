@@ -31,6 +31,7 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/crypto"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
@@ -254,6 +255,12 @@ func StartMySQLServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 		cleanupServiceResources(nil, bootstrap.containers, server)
 		return nil, nil, err
 	}
+	// The observer store reads the same rows as the server, credentials included,
+	// so it needs the deployment data key the server generated on this database.
+	if err := resolveObserverCipher(ctx, inspectStore); err != nil {
+		cleanupServiceResources(nil, bootstrap.containers, server)
+		return nil, nil, err
+	}
 
 	httpClient := &http.Client{Timeout: 5 * time.Second}
 	env := &ServiceEnv{
@@ -327,6 +334,12 @@ func StartPostgresServiceEnv(ctx context.Context) (*ServiceEnv, func(), error) {
 
 	inspectStore, err := store.New(ctx, pgURL, store.WithCacheDisabled())
 	if err != nil {
+		cleanupServiceResources(nil, bootstrap.containers, server)
+		return nil, nil, err
+	}
+	// The observer store reads the same rows as the server, credentials included,
+	// so it needs the deployment data key the server generated on this database.
+	if err := resolveObserverCipher(ctx, inspectStore); err != nil {
 		cleanupServiceResources(nil, bootstrap.containers, server)
 		return nil, nil, err
 	}
@@ -822,6 +835,28 @@ func (e *ServiceEnv) getDatabaseByFullName(ctx context.Context, t *testing.T, fu
 // freshly reserved port. The port reservation is closed before the child binds
 // it, so another process can steal the port in between; a failed attempt is
 // retried with a new port instead of failing the whole suite.
+// resolveObserverCipher installs the deployment data key on a store that reads
+// rows another process wrote. It is the key that process resolved, read back the
+// same way, including any key-encryption key this environment configures.
+func resolveObserverCipher(ctx context.Context, st *store.Store) error {
+	var current []byte
+	if value := strings.TrimSpace(os.Getenv(crypto.KeyEnvironment)); value != "" {
+		parsed, err := crypto.ParseKey(value)
+		if err != nil {
+			return err
+		}
+		current = parsed
+	}
+	previous, err := crypto.ParseKeys(os.Getenv(crypto.PreviousKeyEnvironment))
+	if err != nil {
+		return err
+	}
+	if current == nil && len(previous) > 0 {
+		return fmt.Errorf("%s is set without %s: a retired key can only open a wrapped credential key", crypto.PreviousKeyEnvironment, crypto.KeyEnvironment)
+	}
+	return st.ResolveCipher(ctx, current, previous)
+}
+
 func startServerProcess(ctx context.Context, pgURL string) (*serverProcess, error) {
 	binaryPath, err := sharedServerBinaryCache.getOrBuild(ctx)
 	if err != nil {

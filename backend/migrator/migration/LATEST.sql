@@ -67,14 +67,16 @@ CREATE INDEX idx_revoked_token_expires_at ON revoked_token (expires_at);
 CREATE TABLE setting (
     id serial PRIMARY KEY,
     -- name: AUTH_SECRET, BRANDING_LOGO, WORKSPACE_ID, WORKSPACE_PROFILE,
-    -- PASSWORD_RESTRICTION, ENVIRONMENT
+    -- PASSWORD_RESTRICTION, ENVIRONMENT, ENCRYPTION_KEY
     -- Enum: SettingName (proto/store/store/setting.proto)
     name text NOT NULL,
     -- value is deliberately text, not JSONB: it is polymorphic per name.
     -- WORKSPACE_PROFILE, PASSWORD_RESTRICTION and ENVIRONMENT hold the
     -- protojson encoding of their store message, while AUTH_SECRET,
     -- BRANDING_LOGO and WORKSPACE_ID hold a bare string that is not valid
-    -- JSON on its own.
+    -- JSON on its own. ENCRYPTION_KEY holds a bare base64 data key, or a
+    -- "v1:"-prefixed AES-256-GCM ciphertext of it when the deployment
+    -- configured METAXISDATA_ENCRYPTION_KEY.
     value text NOT NULL
 );
 
