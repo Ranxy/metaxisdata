@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"slices"
 	"time"
 
 	"github.com/lib/pq"
@@ -61,6 +62,10 @@ func (s *Store) DeleteOpenLineageRunsBefore(ctx context.Context, cutoff time.Tim
 	if len(runGUIDs) == 0 {
 		return 0, nil
 	}
+	// The pruned tasks are reconciled first and in task-GUID order, which is the
+	// order the ingest path takes its task locks in: a prune and an ingest that
+	// share two tasks cannot deadlock on them.
+	slices.Sort(taskGUIDs)
 	// The dataset aggregates to reconcile are the ones the deleted references
 	// belonged to. They are staged in the database rather than read into the
 	// server: the prune can remove millions of references, and only the distinct
@@ -98,13 +103,15 @@ func (s *Store) DeleteOpenLineageRunsBefore(ctx context.Context, cutoff time.Tim
 	if err := deleteOpenLineageRegistryRows(ctx, s, tx, runGUIDs); err != nil {
 		return 0, err
 	}
-	if err := reconcileOpenLineageDatasets(ctx, tx); err != nil {
-		return 0, err
-	}
 	for _, taskGUID := range taskGUIDs {
 		if err := reconcileOpenLineageTask(ctx, s, tx, taskGUID); err != nil {
 			return 0, err
 		}
+	}
+	// Datasets after tasks, the other half of the same order the ingest path
+	// follows.
+	if err := reconcileOpenLineageDatasets(ctx, tx); err != nil {
+		return 0, err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -119,7 +126,31 @@ func (s *Store) DeleteOpenLineageRunsBefore(ctx context.Context, cutoff time.Tim
 // recomputed from the references still stored. Ingestion maintains the aggregate
 // incrementally; a bulk delete, which cannot report which references it took,
 // rebuilds it instead.
+//
+// The affected rows are locked before anything about them is read, in the same
+// (namespace, name) order the ingest path locks them in and under the same
+// hierarchy (tasks before datasets). Recomputing from a snapshot taken after those
+// locks is what keeps the rebuild from overwriting an ingest that committed while
+// it was waiting: a writer that arrives later waits on the same lock and applies its
+// own deltas on top of the rebuilt value.
 func reconcileOpenLineageDatasets(ctx context.Context, tx *sql.Tx) error {
+	// A dataset the rebuild covers may have no aggregate row yet; it needs one
+	// before the lock below can cover it.
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO openlineage_dataset (namespace, name)
+		SELECT namespace, name FROM expired_openlineage_dataset
+		ON CONFLICT (namespace, name) DO NOTHING`); err != nil {
+		return errors.Wrap(err, "failed to prepare the openlineage dataset aggregates")
+	}
+	if _, err := tx.ExecContext(ctx, `
+		SELECT ds.namespace, ds.name
+		FROM openlineage_dataset ds
+		JOIN expired_openlineage_dataset expired ON expired.namespace = ds.namespace AND expired.name = ds.name
+		ORDER BY ds.namespace COLLATE "C", ds.name COLLATE "C"
+		FOR UPDATE OF ds`); err != nil {
+		return errors.Wrap(err, "failed to lock the openlineage dataset aggregates")
+	}
+
 	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM openlineage_dataset ds
 		USING expired_openlineage_dataset expired

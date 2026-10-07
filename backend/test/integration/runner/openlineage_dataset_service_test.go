@@ -898,3 +898,130 @@ func TestOpenLineageDatasetAggregateChunksALargeBatchRealServerIntegration(t *te
 	require.Equal(t, 2, count(t, `SELECT COUNT(*) FROM openlineage_dataset_member WHERE namespace = $1 AND kind = 'task:output'`))
 	require.Equal(t, 2, count(t, `SELECT COUNT(*) FROM openlineage_dataset_member WHERE namespace = $1 AND kind = 'integration'`))
 }
+
+// A prune deletes references in bulk and then rebuilds the aggregates they belonged
+// to. It reads the references behind that rebuild only after taking the aggregate
+// rows' locks, in the order the ingest path takes them, so a writer that is still in
+// flight when the prune reaches its dataset is folded into the rebuild instead of
+// being overwritten by a recomputation made from a snapshot it is not in. This holds
+// an aggregate row the way an ingest in flight does — its references written, its row
+// locked, its transaction uncommitted — and asserts the prune waits for that lock
+// rather than recomputing under it.
+func TestOpenLineageDatasetPruneLocksBeforeItRecomputesRealServerIntegration(t *testing.T) {
+	// Deliberately not parallel: it inspects the running statements of the shared
+	// server, and another test's prune runs the same statements.
+	env := sharedPostgresServiceEnvNoReset(t)
+	ctx := context.Background()
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+
+	key, _, err := env.Store.CreateOpenLineageAPIKey(ctx, "integration-dataset-prune-lock", "integration-test", "")
+	require.NoError(t, err)
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	namespace := "integration-dataset-prune-lock-ns-" + suffix
+	locked := "public.locked-" + suffix
+	// Far enough back that the cutoff below cannot touch another test's runs; the
+	// writer in flight is far enough forward that it is not in the prune's scope.
+	expired := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	inFlight := time.Now().UTC().Add(-time.Minute)
+	t.Cleanup(func() {
+		_, err := env.Store.GetDB().ExecContext(ctx, `DELETE FROM openlineage_run WHERE job_namespace = $1`, namespace)
+		require.NoError(t, err)
+		_, err = env.Store.GetDB().ExecContext(ctx, `DELETE FROM openlineage_dataset WHERE namespace = $1`, namespace)
+		require.NoError(t, err)
+	})
+
+	body, err := json.Marshal(map[string]any{
+		"eventType": "COMPLETE",
+		"eventTime": expired.Format(time.RFC3339Nano),
+		"run":       map[string]any{"runId": "run-expired"},
+		"job":       map[string]any{"namespace": namespace, "name": "job-expired"},
+		"producer":  "integration-test",
+		"outputs":   []map[string]any{{"namespace": namespace, "name": locked}},
+	})
+	require.NoError(t, err)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, env.BaseURL+"/api/v1/lineage", bytes.NewReader(body))
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := httpClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// The writer in flight: its run and its reference are written, its aggregate row
+	// is locked the way the ingest path locks it, and nothing is committed yet.
+	inFlightTx, err := env.Store.GetDB().BeginTx(ctx, nil)
+	require.NoError(t, err)
+	defer inFlightTx.Rollback()
+
+	taskGUID := "openlineage:task:TASK:" + namespace + ":job-in-flight"
+	var runPK int64
+	require.NoError(t, inFlightTx.QueryRowContext(ctx, `
+		INSERT INTO openlineage_run (guid, task_guid, run_id, job_namespace, job_name, job_type, event_type, event_time, raw_payload)
+		VALUES ($1, $2, 'run-in-flight', $3, 'job-in-flight', 'TASK', 'COMPLETE', $4, '{}'::jsonb)
+		RETURNING id
+	`, "openlineage:run:TASK:"+namespace+":job-in-flight:run-in-flight", taskGUID, namespace, inFlight).Scan(&runPK))
+	_, err = inFlightTx.ExecContext(ctx, `
+		INSERT INTO openlineage_run_dataset (run_pk, task_guid, namespace, name, direction, event_time)
+		VALUES ($1, $2, $3, $4, 'output', $5)
+	`, runPK, taskGUID, namespace, locked, inFlight)
+	require.NoError(t, err)
+	_, err = inFlightTx.ExecContext(ctx, `
+		UPDATE openlineage_dataset SET ref_count = ref_count + 1, target_job_count = target_job_count + 1,
+			last_seen = GREATEST(last_seen, $3), updated_at = NOW()
+		WHERE namespace = $1 AND name = $2
+	`, namespace, locked, inFlight)
+	require.NoError(t, err)
+
+	pruned := make(chan error, 1)
+	go func() {
+		_, err := env.Store.DeleteOpenLineageRunsBefore(ctx, expired.Add(24*time.Hour))
+		pruned <- err
+	}()
+
+	// While that writer holds the row, the prune has to be waiting for the lock. A
+	// recomputation it had already started — the rebuild groups the references, the
+	// empty-row delete probes them — would be made from a snapshot the writer is not
+	// in, which is the overwrite this pins.
+	// While that writer holds the row, the prune has to be waiting for the aggregate
+	// rows rather than reading the references it would recompute them from: a
+	// recomputation made from a snapshot the writer is not in is the overwrite this
+	// pins. The blocked statement is asked for by name so the failure says which.
+	var waiting string
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := env.Store.GetDB().QueryRowContext(ctx, `
+			SELECT query FROM pg_stat_activity
+			WHERE datname = current_database() AND state = 'active' AND pid <> pg_backend_pid()
+				AND query LIKE '%expired_openl' || 'ineage_dataset%'
+			LIMIT 1`).Scan(&waiting); err != nil {
+			// No matching statement is running yet.
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		break
+	}
+	require.NotEmpty(t, waiting, "the prune should be waiting on the aggregate rows")
+	require.Contains(t, waiting, "openlineage_dataset", "the prune waits on the aggregates")
+	require.NotContains(t, waiting, "openlineage_run_dataset",
+		"the prune must not read the references while a writer holds the aggregate row")
+
+	require.NoError(t, inFlightTx.Commit())
+	require.NoError(t, <-pruned)
+
+	// The rebuild ran after that commit, so the reference it left behind is part of
+	// the dataset and the counters describe it.
+	var refCount, targetJobs int64
+	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx, `
+		SELECT ref_count, target_job_count FROM openlineage_dataset WHERE namespace = $1 AND name = $2
+	`, namespace, locked).Scan(&refCount, &targetJobs))
+	require.Equal(t, int64(1), refCount)
+	require.Equal(t, int64(1), targetJobs)
+
+	var lastSeen time.Time
+	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
+		`SELECT last_seen FROM openlineage_dataset WHERE namespace = $1 AND name = $2`, namespace, locked,
+	).Scan(&lastSeen))
+	require.Equal(t, inFlight.Unix(), lastSeen.UTC().Unix())
+}
