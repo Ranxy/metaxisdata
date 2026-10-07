@@ -63,27 +63,9 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get the allowed LLM providers"))
 	}
-	var resolvedConfig *llm.ResolvedConfig
-	if req.Msg.ProviderName != "" {
-		if !isLLMProfileAllowed(req.Msg.ProviderName, allowedProfiles) {
-			return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("LLM profile %q is not allowed by the workspace settings", req.Msg.ProviderName))
-		}
-		wantedID := llmProfileID(req.Msg.ProviderName)
-		for _, c := range configs {
-			if c.ProfileName == wantedID {
-				resolvedConfig = &c
-				break
-			}
-		}
-		if resolvedConfig == nil {
-			return connect.NewError(connect.CodeNotFound, errors.Errorf("LLM profile %q not found", req.Msg.ProviderName))
-		}
-	} else {
-		configs = filterAllowedLLMConfigs(configs, allowedProfiles)
-		if len(configs) == 0 {
-			return connect.NewError(connect.CodeFailedPrecondition, errors.New("no enabled LLM provider profiles are allowed"))
-		}
-		resolvedConfig = &configs[0]
+	resolvedConfig, err := resolveLLMConfig(configs, allowedProfiles, req.Msg.ProviderName)
+	if err != nil {
+		return err
 	}
 
 	scopePrefix := req.Msg.ScopePrefix
@@ -590,14 +572,30 @@ func (s *ExplainSQLService) allowedLLMProfiles(ctx context.Context) ([]string, e
 	return setting.GetAllowedLlmProviderProfiles(), nil
 }
 
-// llmProfileID normalizes a profile reference — either the bare id used by the
-// registry or the v1 resource name "llm-provider-profiles/{id}" — to the bare id.
+// llmProfileID normalizes a profile reference to the bare id. The store names a
+// profile "llm-provider-profiles/{id}" and the registry carries that name
+// through unchanged, while a request or a setting may hold either form, so
+// every comparison normalizes both sides with this.
 func llmProfileID(profile string) string {
 	trimmed := strings.TrimSpace(profile)
 	if id, ok := strings.CutPrefix(trimmed, "llm-provider-profiles/"); ok {
 		return id
 	}
 	return trimmed
+}
+
+// findLLMConfig returns the enabled config the request's profile reference
+// names, or nil. The reference is a v1 resource name while the config may hold
+// either form, so both sides are normalized before comparing — comparing them
+// raw left every selection unresolved.
+func findLLMConfig(configs []llm.ResolvedConfig, profile string) *llm.ResolvedConfig {
+	wantedID := llmProfileID(profile)
+	for i := range configs {
+		if llmProfileID(configs[i].ProfileName) == wantedID {
+			return &configs[i]
+		}
+	}
+	return nil
 }
 
 // filterAllowedLLMConfigs keeps the configs whose profile is in the allowlist.
@@ -612,11 +610,34 @@ func filterAllowedLLMConfigs(configs []llm.ResolvedConfig, allowed []string) []l
 	}
 	filtered := make([]llm.ResolvedConfig, 0, len(configs))
 	for _, config := range configs {
-		if _, ok := allowedIDs[config.ProfileName]; ok {
+		if _, ok := allowedIDs[llmProfileID(config.ProfileName)]; ok {
 			filtered = append(filtered, config)
 		}
 	}
 	return filtered
+}
+
+// resolveLLMConfig picks the provider and model the explanation runs on. An
+// explicitly requested profile must be allowed by the workspace setting;
+// otherwise the first allowed one is the default. The errors are the RPC's, so
+// the handler returns them unchanged.
+func resolveLLMConfig(configs []llm.ResolvedConfig, allowed []string, providerName string) (*llm.ResolvedConfig, error) {
+	if providerName != "" {
+		if !isLLMProfileAllowed(providerName, allowed) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("LLM profile %q is not allowed by the workspace settings", providerName))
+		}
+		config := findLLMConfig(configs, providerName)
+		if config == nil {
+			return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("LLM profile %q not found", providerName))
+		}
+		return config, nil
+	}
+
+	allowedConfigs := filterAllowedLLMConfigs(configs, allowed)
+	if len(allowedConfigs) == 0 {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("no enabled LLM provider profiles are allowed"))
+	}
+	return &allowedConfigs[0], nil
 }
 
 // isLLMProfileAllowed reports whether a requested profile is inside the
