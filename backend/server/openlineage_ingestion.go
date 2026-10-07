@@ -22,12 +22,16 @@ const (
 	// whatever credentials it presents. The key dimension cannot bound a caller
 	// that invents a key per request — an unknown key is rejected without a
 	// password check, so forged keys are cheap and each one opens a fresh
-	// bucket — and the address is the one thing it cannot choose. It is set well
-	// above one producer's budget so a real fan-in behind one address (a NAT, a
-	// shared Spark gateway) is not paced by it.
-	openLineageIngestionSourceRate = 500
+	// bucket — and the address is the one thing it cannot choose. It is sized for
+	// a real fan-in behind one address (a NAT, a shared Spark gateway): forty
+	// producers may each spend their own burst before this one refuses, which is
+	// above any plausible fan-in for one address in a self-hosted deployment.
+	// Forty is a choice, not a measurement; a deployment with more producers
+	// behind one address raises it, and the cost of raising it is that a rotating
+	// caller gets more room before its own address refuses.
+	openLineageIngestionSourceRate = 2000
 	// openLineageIngestionSourceBurst allows short bursts above that rate.
-	openLineageIngestionSourceBurst = 1000
+	openLineageIngestionSourceBurst = 4000
 	// openLineageIngestionTimeout bounds one ingestion request.
 	openLineageIngestionTimeout = 60 * time.Second
 )

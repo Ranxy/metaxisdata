@@ -148,6 +148,28 @@ func TestOpenLineageIngestionMiddlewareOneCallerCannotDenyAnotherProducer(t *tes
 		"one caller spending its own address budget must not refuse another producer")
 }
 
+// The address dimension is the only thing that bounds a caller inventing keys, so
+// its key has to be the resolved address and never a header the caller writes.
+// Pinned on the source store with a rotating X-Forwarded-For: Echo's RealIP would
+// open a fresh bucket per request, which is exactly the M14 hole this dimension
+// exists to close, and nothing else in this file would notice the change.
+func TestOpenLineageIngestionMiddlewareSourceBudgetIgnoresForwardedFor(t *testing.T) {
+	t.Parallel()
+
+	sourceStore := newFrozenRateLimiterStore(openLineageIngestionSourceRate, openLineageIngestionSourceBurst)
+	e := openLineageIngestionTestServer(unfrozenRateLimiterStore(), sourceStore, nil)
+
+	for i := 0; i < openLineageIngestionSourceBurst; i++ {
+		require.Equal(t, http.StatusOK,
+			ingestOpenLineageEvent(e, fmt.Sprintf("forged-%d", i), rotatedForwardedFor(i)),
+			"request %d is inside the address burst", i+1)
+	}
+	require.Equal(t, http.StatusTooManyRequests,
+		ingestOpenLineageEvent(e, "forged-final", rotatedForwardedFor(openLineageIngestionSourceBurst)))
+	require.Len(t, sourceStore.visitors, 1,
+		"every rotated header must land in the resolved address's bucket")
+}
+
 // A key-less request is budgeted by the address the trusted-proxy rules resolve,
 // never by X-Forwarded-For itself: Echo's RealIP believes that header from
 // anyone, so a caller rotating it would open a new bucket per request and never

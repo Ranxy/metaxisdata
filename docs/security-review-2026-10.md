@@ -1200,7 +1200,7 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 
 - M16 的按 principal 桶看不到"没带 token 或 token 无效"的请求:身份解析先一步拒绝,请求到不了 tool 路径。新增 `Config.SourceCallLimiter`,在 `Handler` 里**身份解析之前**按 `audit.ClientAddress` 计额(6000/min per source + 60000/min 全局,即 per-principal 数值的 10 倍),超限返回 429 + `Retry-After`。刻意做宽是不去管正常使用:多个 agent 共用一个 NAT 地址是常态,该桶限制的是探测速率。surface 关闭时先返 404、不计额。
 
-**明文 HTTP 路由的部署级全局桶**(`backend/server/rate_limiter.go`)——**已撤掉,见本节末**
+**明文 HTTP 路由的部署级全局桶**(`backend/server/rate_limiter.go`)——**已撤掉;随后又发现它的替代品也漏了一条通道,见本节末两节**
 
 - `boundedRateLimiterStore` 原先只有 per-identifier 桶 + 4096 容量上限,容量只约束内存;一个轮换 ingestion key 的调用方每个请求都拿到新桶。现在每个 store 另有一个跨全部 identifier 的共享桶(10 倍于单键预算),并把判序做成"空桶先拒、再动全局",使**被拒请求不消耗任何预算**(与 `WindowLimiter` 同语义)。OAuth 仍是四条路由各一份配额(I2 维持不变,未合并)。
 
@@ -1248,7 +1248,7 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 
 **已补的测试缺口**:
 
-- `CreateDeviceLogin` 的 handler 侧预算是"匿名 + 审计 + 不在 `limiterFor` 上"的唯一一个,复核用 overlay 把该预算块换成空操作后 `go test ./backend/api/v1/` **仍全绿**——守护测试只证明了清单存在。现补 `TestCreateDeviceLoginIsBudgetedBeforeItReadsAnything`:预支地址配额后调用必须 `ResourceExhausted`;把预算删掉时该用例以 nil-pointer panic 变红(已复跑确认)。这正是审查 §5.5 早已点出的"守护测试证明不了 handler 真的检查了"。
+- `CreateDeviceLogin` 的 handler 侧预算是"匿名 + 审计 + 不在 `limiterFor` 上"的唯一一个,复核用 overlay 把该预算块换成空操作后 `go test ./backend/api/v1/` **仍全绿**——守护测试只证明了清单存在。现补 `TestCreateDeviceLoginIsBudgetedBeforeItReadsAnything`(预支地址配额后调用必须 `ResourceExhausted`;删预算即 panic 变红,已复跑确认)——**该用例的形态随后被下一节取代**:把预算从 handler 移到拦截器链之后,它换成了不依赖 nil store 的 `TestCreateDeviceLoginIsBudgetedOnTheInterceptorChain`。这正是审查 §5.5 早已点出的"守护测试证明不了 handler 真的检查了"。
 - 原先那条"被拒请求不消耗全局桶"的 store 用例无法区分所声明的判序(朴素 `perKey && global` 变体同样通过)——该用例随全局桶一起删除,改为钉住"identifier 上限只约束内存、不约束轮换调用方"这一**有意保留**的性质。
 
 **接受的取舍(已写进 `security-posture.md` 与 plan,不再算缺陷)**:
@@ -1260,3 +1260,32 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 **反向验证**(每条单独回退后对应用例变红,随后恢复):把共享桶加回 `rate_limiter.go` ⇒ 新的 OL 跨生产者用例变红;删掉 `CreateDeviceLogin` 的预算 ⇒ 新用例 panic;删掉 `limiterFor` 的 Logout 分支 / 往豁免清单偷加审计方法 / `isPrincipalBudgeted` 恒假 / 删掉 `/mcp` 源桶判段 / 从 `grpc_routes.go` 删掉 principal 拦截器并重建服务器二进制 ⇒ 各自对应用例变红(最后一条必须真改文件,因为集成 harness 用 `go build` 单独出二进制,`-overlay` 不生效)。
 
 **门禁**:`gofmt`(无输出)、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./backend/...` 与 `go test -race -count=1 ./backend/...` 全绿、`make test-integration-smoke` 全绿、release 与 dev 构建通过。本轮未改前端,未跑前端门禁。
+
+### 2026-10-07 —— 第二轮对抗式复核与修正(`03b4758` 之后)
+
+第二轮只读对抗式复核(模型 `deepseek-v4.1-flash`,对象是上一节的修正本身;探针挂在 `/tmp/rlrev3/`,`go test -overlay` 运行,仓库零改动)确认上一节 6 条修法**确实成立**(其中 `CreateDeviceLogin` 的旧用例被它用三种回退——删预算、删预算+nil 守卫、预算保留但挪到 store 读取之后——逐一构造,全部变红),并指出 **7 条新问题**,其中最重的一条是上一轮完全没触及、而上一节还把它写成"已封住"的:
+
+**NEW-1(高,已修)**:**匿名 `CreateDeviceLogin` 可以无上限写永久账本。**
+
+- 它是 `allow_without_credential + audit`,而唯一的预算在 **handler 内部**;审计拦截器**包着** handler,所以 handler 产生的拒绝照样落行,且没有任何东西约束请求速率。
+- 主代理复跑该探针(真机 + 真 PostgreSQL):40 次调用 → 40 行、其中 30 次是被预算拒绝的;速率探针:**1000 请求 / 624ms → 96,106 行/分钟**,不需要任何凭据。这正是 H6/M24 想关掉的那一类(H6 关掉了单行字节,速率这一半漏在了这条路径上)。
+- **改法**:把该预算移到拦截器链(`ThrottleInterceptor.limiterFor` 增加 `CreateDeviceLogin → DeviceLoginLimiter`),handler 内的检查删除以免双重计额。拒绝从此发生在审计之前,不再落行。
+- 回归:单元 `TestCreateDeviceLoginIsBudgetedOnTheInterceptorChain`(链上确实挂的是 `DeviceLoginLimiter`、超预算拒绝、另一源有自己配额),以及真实服务器用例 `TestRefusedAnonymousDeviceLoginLeavesNoLedgerRowRealServerIntegration`——40 次匿名调用后账本里**恰好只有 10 行**(被接受的 10 次)。把链上的预算删掉,两条守护测试(它与 protobuf 遍历)立刻变红;把 handler 内的检查加回去,集成用例的计数会变成 40。
+
+**NEW-2(中,已改文档)**:**"被拒请求不落行"只对链上预算成立。** handler 内预算(`LoginLimiter` 的账号/来源锁、设备登录的查询/批准预算)的拒绝**仍然落行**:`ApproveDeviceLogin` 探针显示 70 次调用 70 行(含 10 次预算拒绝)。二者都只能拒绝"已经通过链上预算"的请求,所以行数有界;plan 与 `security-posture.md` 已按此限定措辞。
+
+**NEW-3(中,已补测试)**:**新的"按源维度"没有回归保护。** 把 `sourceLimiter` 的 `IdentifierExtractor` 换成 `c.RealIP()` 后整套 `backend/server` 仍全绿;探针显示当前 1020/3000 被放行(源桶生效),换成 RealIP 后 3000/3000 全放行——即 M14 的洞复活。已补 `TestOpenLineageIngestionMiddlewareSourceBudgetIgnoresForwardedFor`(轮换 XFF 必须落在同一个桶、并在 burst 处被拒),回退成 `RealIP` 即变红。
+
+**NEW-4(低,已改文档)**:**"well above one producer's budget / 不会被 pace" 写反了。** 原 1000 burst 恰好等于 10 个生产者各自的满 burst,同一地址第 11 个合法生产者就被 429(实测 1100 请求中 87 次被拒)。按确认的选择把源预算放宽到 **2000/s、burst 4000**(约 40 个生产者满 burst),并把措辞改成事实:"四十"是选择而非测量,超过就调高,代价是轮换调用方在被自己的地址拒绝前能多用一些额度。
+
+**NEW-5(低,已改文档)**:共享桶回归用例只对"10× 的共享桶"灵敏——把它改成 100×(burst 10000)后我的 OL 用例仍全绿。措辞已收紧为"它抓的是被否决的那个 10× 设计,不是'任何共享状态都不存在'"。
+
+**NEW-6(提示,已修)**:`principal_throttle_interceptor.go` 的 `auditedReadExemptProcedures` 注释仍写"read path's own amplification"这一上一轮已订正的定性,现已与文档一致。
+
+**NEW-7(低,已改文档)**:OAuth"identifier 已是解析后地址所以无需第二维"缺前提——地址段持有者(IPv6 `/64`)或 trusted-proxies 覆盖客户端的部署同样能每请求换桶,且这些路由每请求都写审计行。已补进 plan 与 `security-posture.md`,以免下一轮据此把 OL 的第二维也删掉。
+
+**复核未能证伪的**:两维判序无绕过(`sourceLimiter(keyLimiter(timeout(next)))`,两维都必须放行);源维度确实用 `audit.ClientAddress` 且 `0.0.0.0/0` 退化前提已如实写在文档里并有测试钉住;OAuth 撤桶没有重开 `main` 上不存在的洞;Logout 取舍陈述属实;`validate_only` 计额不落行;MCP 行数由地址桶封顶;F8 的计时数量级;无死代码残留(`deploymentBudgetFactor`/`global` 已无引用)。
+
+**接受的取舍**:与上一节相同(部署级 30000/min 与 Logout 300/min 可被单方耗尽;`WindowLimiter` 满表遍历),另加"同一地址的 fan-in 超过约 40 个生产者会被 source 桶 pace"。
+
+**门禁**:`gofmt`(无输出)、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./backend/...` 与 `go test -race ./backend/...` 全绿、集成 runner 全绿(含新增的匿名设备登录回归)、`make test-integration-smoke` 与 release 构建通过。集成套件在本机存在与本次改动无关的 flake(实例连接额度、软删除库并发竞争),已在未改动的 `main` 上复现同一失败。本轮未改前端,未跑前端门禁。

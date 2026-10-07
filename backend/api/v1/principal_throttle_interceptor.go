@@ -29,9 +29,12 @@ var principalLimitedProcedures = map[string]struct{}{
 
 // auditedReadExemptProcedures are audited methods that only read. They are exempt
 // because the budget covers ledger *writes*, and ListAuditLogs is the only audited
-// method that changes nothing. It does still write one ledger row per call, so a
-// caller that loops it grows the ledger; that is the read path's own amplification
-// and is recorded in docs/security-posture.md rather than silently bounded here.
+// method that changes nothing. It is not a narrow exemption: the audit interceptor
+// runs before the ACL interceptor, so a call the caller is not allowed to make still
+// writes a row, and an ordinary member holds no audit-log permission — every call
+// from any signed-in account is refused and recorded, with no rate bound on the
+// recording. That is the one unbounded ledger write left; docs/security-posture.md
+// states it rather than quietly bounding reads here.
 var auditedReadExemptProcedures = map[string]struct{}{
 	v1connect.AuditLogServiceListAuditLogsProcedure: {},
 }

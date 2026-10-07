@@ -104,3 +104,67 @@ func TestPrincipalThrottleBoundsExpensiveMethodsRealServerIntegration(t *testing
 	require.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(err),
 		"an authenticated caller cannot loop an expensive method without bound: %v", err)
 }
+
+// TestRefusedAnonymousDeviceLoginLeavesNoLedgerRowRealServerIntegration is the
+// regression for the budget that used to live inside the CreateDeviceLogin
+// handler. The audit interceptor wraps the handler, so every refused call still
+// wrote a permanent ledger row while nothing bounded how fast an unauthenticated
+// caller could produce them — tens of thousands of rows a minute from one client.
+// On the interceptor chain the refusal lands before the audit interceptor, so only
+// the accepted calls are recorded.
+func TestRefusedAnonymousDeviceLoginLeavesNoLedgerRowRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	// 127.0.0.3 is bindable on Linux but not everywhere, so skip where it is not.
+	// It is deliberately not 127.0.0.2: that address already carries another test's
+	// device login, and its bucket would decide how many calls this one may make.
+	// A bucket of its own is what makes the counts below exact.
+	probe, err := net.Listen("tcp", "127.0.0.3:0")
+	if err != nil {
+		t.Skipf("127.0.0.3 is not bindable here: %v", err)
+	}
+	require.NoError(t, probe.Close())
+
+	env := sharedPostgresServiceEnvNoReset(t)
+	dialer := &net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.3")}}
+	httpClient := &http.Client{
+		Timeout:   5 * time.Second,
+		Transport: &http.Transport{DialContext: dialer.DialContext},
+	}
+	t.Cleanup(httpClient.CloseIdleConnections)
+
+	ctx := context.Background()
+	client := v1connect.NewAuthServiceClient(httpClient, env.BaseURL)
+
+	// A name of its own, so a concurrent test's rows cannot move the count.
+	clientName := fmt.Sprintf("rate-limit-probe-%d", time.Now().UnixNano())
+	countRows := func() int {
+		var rows int
+		require.NoError(t, env.Store.GetDB().QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM audit_log
+			WHERE payload->>'method' = $1 AND payload->'request'->>'clientName' = $2`,
+			v1connect.AuthServiceCreateDeviceLoginProcedure, clientName).Scan(&rows))
+		return rows
+	}
+
+	// The budget is the state package's constant, repeated here so a silent change
+	// to it shows up as a failing test rather than passing either way.
+	const deviceLoginSourceBudget = 10
+	const calls = 40
+	refused := 0
+	for i := range calls {
+		_, err := client.CreateDeviceLogin(ctx, connect.NewRequest(&v1pb.CreateDeviceLoginRequest{
+			ClientName:    clientName,
+			ClientVersion: "1",
+		}))
+		if connect.CodeOf(err) == connect.CodeResourceExhausted {
+			refused++
+			continue
+		}
+		require.NoError(t, err, "call %d is inside the budget", i+1)
+	}
+
+	require.Equal(t, calls-deviceLoginSourceBudget, refused, "the budget refuses the rest")
+	require.Equal(t, deviceLoginSourceBudget, countRows(),
+		"a refused anonymous request must leave no ledger row")
+}

@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
-	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -196,31 +196,32 @@ func TestExchangeDeviceLoginReportsPendingAndThrottles(t *testing.T) {
 	require.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(err))
 }
 
-// CreateDeviceLogin is the one anonymous, audited method whose budget lives in
-// the handler rather than on the interceptor chain, so nothing else pins that it
-// is consulted at all — deleting it leaves every other test green. Spend the
-// address budget the way requests from one caller would, then require the refused
-// call to stop at the budget: were the check gone, the handler would go on to the
-// verification address and dereference the store this service deliberately does
-// not have.
-func TestCreateDeviceLoginIsBudgetedBeforeItReadsAnything(t *testing.T) {
+// CreateDeviceLogin's budget has to be on the interceptor chain, not in the
+// handler: the audit interceptor wraps the handler, so a refusal produced there
+// still writes a permanent ledger row, with nothing bounding the rate at which an
+// unauthenticated caller can produce them. This pins both halves — that the chain
+// applies the device-login budget, and that the handler no longer holds a second
+// check that would spend the same quota twice.
+func TestCreateDeviceLoginIsBudgetedOnTheInterceptorChain(t *testing.T) {
 	t.Parallel()
 
 	stateCfg := mustState(t)
-	svc := &AuthService{stateCfg: stateCfg, profile: &config.Profile{}}
+	interceptor := NewThrottleInterceptor(stateCfg, nil)
+	procedure := v1connect.AuthServiceCreateDeviceLoginProcedure
 
-	// The same resolver the handler uses, so the key cannot drift.
-	key := audit.BuildRequestMetadata(http.Header{}, "", nil).GetIp()
+	limiter, skipAuthenticated := interceptor.limiterFor(procedure)
+	require.Same(t, stateCfg.DeviceLoginLimiter, limiter,
+		"the device-login budget must be what the chain applies")
+	require.False(t, skipAuthenticated, "an anonymous method has no signed-in caller to exempt")
+
+	now := time.Now()
 	for i := range deviceLoginCreateSourceBudget {
-		require.True(t, stateCfg.DeviceLoginLimiter.Allow(key, time.Now()), "request %d is inside the budget", i+1)
+		require.NoError(t, interceptor.check(context.Background(), procedure, nil, "203.0.113.5:4040", now),
+			"request %d is inside the budget", i+1)
 	}
-
-	_, err := svc.CreateDeviceLogin(context.Background(), connect.NewRequest(&v1pb.CreateDeviceLoginRequest{
-		ClientName:    "probe",
-		ClientVersion: "1",
-	}))
-	require.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(err),
-		"the budget must refuse the request before the handler allocates or reads")
+	requireResourceExhausted(t, interceptor.check(context.Background(), procedure, nil, "203.0.113.5:4040", now))
+	require.NoError(t, interceptor.check(context.Background(), procedure, nil, "203.0.113.6:4040", now),
+		"another source keeps its own budget")
 }
 
 // Approving requires a signed-in caller; the token restriction and the ACL

@@ -106,6 +106,13 @@ func (in *ThrottleInterceptor) limiterFor(procedure string) (*state.WindowLimite
 		// no new revocation record, so it gets its own budget rather than
 		// consuming Login's.
 		return in.stateCfg.LogoutRequestLimiter, false
+	case v1connect.AuthServiceCreateDeviceLoginProcedure:
+		// The budget for this one used to live inside the handler, which let an
+		// unauthenticated caller write a permanent ledger row per refused request:
+		// the audit interceptor wraps the handler, so a refusal it produced was
+		// still recorded, and nothing bounded the request rate. On the chain the
+		// refusal happens before the audit interceptor and leaves no row.
+		return in.stateCfg.DeviceLoginLimiter, false
 	case v1connect.AuthServiceCreateSSOStateProcedure:
 		// Cheap for the server, but each call writes one nonce into the bounded
 		// state cache that in-flight SSO flows occupy, and it is the only way to

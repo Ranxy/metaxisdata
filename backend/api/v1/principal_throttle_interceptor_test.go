@@ -42,8 +42,6 @@ var anonymousAuditedMethods = map[string]func(*ThrottleInterceptor) *state.Windo
 		return in.stateCfg.LogoutRequestLimiter
 	},
 	v1connect.AuthServiceCreateDeviceLoginProcedure: func(in *ThrottleInterceptor) *state.WindowLimiter {
-		// Counted in the handler, not on the interceptor chain: the request is
-		// bounded before anything is allocated.
 		return in.stateCfg.DeviceLoginLimiter
 	},
 	v1connect.UserServiceCreateUserProcedure: func(in *ThrottleInterceptor) *state.WindowLimiter {
@@ -51,12 +49,11 @@ var anonymousAuditedMethods = map[string]func(*ThrottleInterceptor) *state.Windo
 	},
 }
 
-// handlerBudgetedAnonymousMethods are the audited anonymous methods whose budget
-// is applied inside the handler rather than by ThrottleInterceptor, so the guard
-// does not require limiterFor to return their limiter.
-var handlerBudgetedAnonymousMethods = map[string]bool{
-	v1connect.AuthServiceCreateDeviceLoginProcedure: true,
-}
+// No anonymous audited method may be budgeted inside its handler: the audit
+// interceptor wraps handlers, so a refusal produced there still writes a permanent
+// ledger row and nothing bounds the rate at which such refusals arrive. Every one
+// of them must therefore be on the chain, which is what the guard below checks by
+// requiring limiterFor to return the recorded limiter.
 
 // auditedReadMethods are the audited methods that only read, which is the only
 // reason one may be exempt from the per-principal budget. This map and the
@@ -119,11 +116,9 @@ func TestEveryAuditedMethodIsBudgeted(t *testing.T) {
 						"audited anonymous method %s has no per-source budget; add it to anonymousAuditedMethods", procedure)
 					recorded := limiter(anonymous)
 					require.NotNilf(t, recorded, "method %s names a nil limiter", procedure)
-					if !handlerBudgetedAnonymousMethods[procedure] {
-						got, _ := anonymous.limiterFor(procedure)
-						require.Samef(t, recorded, got,
-							"method %s records a limiter the interceptor does not apply", procedure)
-					}
+					got, _ := anonymous.limiterFor(procedure)
+					require.Samef(t, recorded, got,
+						"method %s records a limiter the interceptor does not apply", procedure)
 					continue
 				}
 				_, exempt := auditedReadExemptProcedures[procedure]

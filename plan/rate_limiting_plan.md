@@ -32,12 +32,12 @@ lasts one minute, and a refused request does not extend or spend anything.
 | `ThrottleInterceptor` | `CreateSSOState` | resolved address | 120/min | 300/min |
 | `PrincipalThrottleInterceptor` | every authenticated audited method, except `ListAuditLogs`, plus `ExplainSQL` and `FetchLLMModels` | `user:{id}\|{procedure}` | 3000/min | 30000/min |
 | `LoginLimiter` (handler) | `Login` failures | account, source | 10/5min, 20/5min | — |
-| Device login (handler) | `CreateDeviceLogin` | resolved address | 10/min | 100/min |
+| `ThrottleInterceptor` | `CreateDeviceLogin` | resolved address | 10/min | 100/min |
 | Device login (handler) | `GetDeviceLogin`, `ApproveDeviceLogin` | caller (`user:` or `ip:`) | 60/min | 600/min |
 | MCP (`Server.invoke`) | tool calls | principal | 600/min | 6000/min |
 | MCP (`Server.Handler`) | every request, before the bearer check | resolved address | 6000/min | 60000/min |
 | `boundedRateLimiterStore` | OpenLineage ingestion | ingestion-key digest, else resolved address | 50/s, burst 100 | — |
-| `boundedRateLimiterStore` | OpenLineage ingestion | resolved address, whatever key presented | 500/s, burst 1000 | — |
+| `boundedRateLimiterStore` | OpenLineage ingestion | resolved address, whatever key presented | 2000/s, burst 4000 | — |
 | `boundedRateLimiterStore` | each `/oauth/*` route | resolved address | 10/s, burst 20 | — |
 
 `CreateUser` exempts a signed-in caller on the anonymous interceptor because an
@@ -46,12 +46,20 @@ principal budget instead.
 
 ## Design decisions
 
-- **A refused request leaves no ledger row.** Both Connect interceptors run
-  before `AuditInterceptor`, so a request stopped by a budget never runs and never
-  records. This is what makes the per-principal budget *backpressure on the
-  caller* rather than a silent drop from a ledger that is kept forever: every
-  action that happened is still recorded, and a caller that loops a ledger-writing
-  method is told to slow down.
+- **A refused request leaves no ledger row — if its budget is on the chain.** Both
+  Connect interceptors run before `AuditInterceptor`, so a request they stop never
+  runs and never records. That is what makes the budget *backpressure on the
+  caller* rather than a silent drop from a ledger that is kept forever: every action
+  that happened is still recorded, and a caller that loops a ledger-writing method
+  is told to slow down. A budget *inside* a handler is wrapped by the audit
+  interceptor and does not get this property: its refusals are recorded too. The
+  Login failure lockout and the device-login lookup budget are the two that remain,
+  and both only ever refuse a request that already passed a chain budget, so their
+  rows are bounded by it. `CreateDeviceLogin` was in that group and is now on the
+  chain: as an anonymous, audited method it was an unauthenticated caller's way to
+  write permanent rows at whatever rate the server could serve — tens of thousands a
+  minute — because the handler's refusal was audited and nothing else bounded the
+  requests.
 - **The budget covers ledger writes, not reads, and the LLM calls.** The audit
   annotation decides the set, so a method that gains `audit = true` later is
   budgeted without touching the interceptor. `ListAuditLogs` is exempt: it is the
@@ -91,8 +99,11 @@ principal budget instead.
   unknown ingestion key is rejected without a password check, so forged keys are
   cheap and each one opens a fresh bucket; the key dimension therefore cannot bound
   that caller, and the address is the one identifier it cannot choose. The address
-  budget is set well above one producer's so a real fan-in behind one address (a
-  NAT, a shared Spark gateway) is not paced by it.
+  budget is sized for a fan-in (a NAT, a shared Spark gateway): forty producers may
+  each spend their own burst before it refuses. Forty is a choice, not a measurement
+  — a deployment with more producers behind one address raises the number, and the
+  cost of raising it is that a rotating caller gets more room before its own address
+  refuses.
 - **A deployment-wide bucket shared by every identifier was tried and removed.**
   It bounded the rotating caller's total rate, but a caller with forged keys (or,
   on the OAuth routes, a handful of addresses) exhausted it and every other
@@ -100,7 +111,11 @@ principal budget instead.
   deny everyone else. The per-address dimension bounds the same caller without
   making anyone else pay. The OAuth routes carry no second dimension at all: their
   identifier is already the resolved address, and their request side is anonymous
-  by design, so there was no rotating-identifier gap to close.
+  by design, so there was no rotating-identifier gap to close. That reasoning is
+  bounded by the same premise as every other budget here: it holds for a caller that
+  cannot present many addresses, so an address-range holder (an IPv6 `/64`) or a
+  deployment whose trusted-proxy entry covers the client is not bounded by those
+  buckets either, and each of these routes writes a ledger row per request.
 - **Two limiter implementations, one per route family.** Connect methods use
   `state.WindowLimiter` (fixed window, key + global). The plain-HTTP routes use
   `server.boundedRateLimiterStore` (token bucket, per identifier) because they go
@@ -124,27 +139,37 @@ principal budget instead.
   and global dimensions, that an anonymous caller and an unbudgeted method are
   untouched, and that a refused stream never reaches its handler.
 - `backend/server/openlineage_ingestion_test.go` pins the key dimension, the
-  address dimension, that an invented key cannot outrun the address one, and — the
-  regression test for the removed shared bucket — that one caller spending its own
-  address budget does not refuse a producer on another address.
+  address dimension and its resolver (a rotating `X-Forwarded-For` must not open a
+  bucket per request — Echo's `RealIP` would), that an invented key cannot outrun the
+  address one, and — the regression test for the removed shared bucket — that one
+  caller spending its own address budget does not refuse a producer on another
+  address. That last test catches the shared bucket as it was shipped (ten
+  identifiers' worth): a hundred-identifiers' worth one would not be exhausted by the
+  requests it makes, so it pins the design that was rejected rather than the absence
+  of any shared state.
 - `backend/server/rate_limiter_test.go` pins the identifier ceiling and the
   property it deliberately does *not* provide: a rotating caller always gets a
   fresh bucket.
 - `backend/api/v1/auth_service_device_login_test.go` pins that
-  `CreateDeviceLogin` consults its budget, which lives in the handler rather than
-  on the interceptor chain: spending the address budget must refuse the call
-  before it reads the workspace setting.
+  `CreateDeviceLogin` is bounded on the interceptor chain, not in its handler, and
+  that the chain applies the device-login budget; the protobuf walk in
+  `principal_throttle_interceptor_test.go` requires the same for every anonymous
+  audited method, so a budget that moves back into a handler turns both red.
 - `backend/mcp/source_limiter_test.go` pins the address budget, its key
   resolution and that a switched-off surface is not counted.
 - `backend/test/integration/runner/rate_limit_service_test.go` runs the real
-  server: the `Logout` replay is refused past its budget, and an authenticated
+  server: the `Logout` replay is refused past its budget, an authenticated
   `FetchLLMModels` loop is refused past the principal budget (the method fails
   before any provider call, so it is thousands of cheap requests rather than
-  thousands of rows).
+  thousands of rows), and 40 anonymous `CreateDeviceLogin` calls from one address
+  leave exactly the ten accepted calls' rows in the ledger — the regression for the
+  budget that used to sit inside the handler.
 
 ## Residuals
 
-1. **`ListAuditLogs` is the one unbounded ledger write.** It is exempt as a read,
+1. **`ListAuditLogs` is the one unbounded ledger write.** Every other anonymous or
+   authenticated audited method is now bounded by a budget on the interceptor chain,
+   which refuses before the audit row is written. It is exempt as a read,
    but the audit interceptor runs before the ACL interceptor, so every call from
    any signed-in account — permission or not — writes a permanent row while being
    refused, and nothing caps the rate (3200 calls, 3200 rows, measured).
@@ -159,10 +184,11 @@ principal budget instead.
    nobody can log out. Both are the price of bounding aggregate ledger growth and
    are documented in `security-posture.md`. Separately, budgets are decided before
    the ACL, so a call the caller may not make still counts (and still leaves a row).
-4. **The MCP endpoint is the largest ledger-writing channel.** A call refused by
-   the per-principal budget is still audited and spends no principal budget, so
-   what caps its rows per minute is the address budget: 6000/min per address,
-   60000/min deployment — twice the Connect principal ceiling.
+4. **The MCP endpoint has the highest configured ledger-write ceiling.** A call
+   refused by the per-principal budget is still audited and spends no principal
+   budget, so what caps its rows per minute is the address budget: 6000/min per
+   address, 60000/min deployment — twice the Connect principal ceiling, and far
+   above the anonymous budgets, which sum to a few hundred a minute.
 5. **`ExchangeDeviceLogin` and `GetWorkspaceProfileSetting` carry no budget.**
    The first needs a 256-bit device code that only a budgeted call can mint and
    is held to the protocol's minimum poll interval; the second reads one setting,
