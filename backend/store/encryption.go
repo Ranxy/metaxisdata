@@ -88,7 +88,7 @@ func loadCredentialCipher(ctx context.Context, settings settingStore, verifier c
 		return nil, errors.Wrap(err, "failed to read the credential encryption key")
 	}
 	if setting == nil || setting.Value == "" {
-		return nil, errors.New("the credential encryption key is not configured")
+		return nil, errors.New("the credential encryption key is not configured: restore the ENCRYPTION_KEY setting, or clear the stored credentials and enter them again")
 	}
 
 	key, err := unwrapDataKey(setting.Value, current, previous)
@@ -132,20 +132,6 @@ func loadCredentialCipher(ctx context.Context, settings settingStore, verifier c
 // credentialSampleSize bounds how many stored credentials the startup check looks
 // at. One opening credential proves the key; the sample only has to contain one.
 const credentialSampleSize = 10
-
-// HasStoredCredentials reports whether the database already holds something a data
-// key would have encrypted. It gates minting a data key: a database that kept an
-// instance or an LLM profile but lost its key must fail rather than be handed a
-// new one that reads none of them.
-func (s *Store) HasStoredCredentials(ctx context.Context) (bool, error) {
-	var exists bool
-	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT EXISTS (SELECT 1 FROM instance) OR EXISTS (SELECT 1 FROM llm_provider_profile)
-	`).Scan(&exists); err != nil {
-		return false, errors.Wrap(err, "failed to check for stored credentials")
-	}
-	return exists, nil
-}
 
 // verifyCipher is the startup check the store runs against its own credentials.
 func (s *Store) verifyCipher(ctx context.Context, cipher *crypto.Cipher) error {
@@ -229,7 +215,7 @@ func checkCipherAgainstCandidates(cipher *crypto.Cipher, candidates []string) er
 			return nil
 		}
 	}
-	return errors.Errorf("the credential encryption key opens none of the %d stored credentials: the ENCRYPTION_KEY setting does not belong to this deployment", len(candidates))
+	return errors.Errorf("the credential encryption key opens none of the %d stored credentials: the ENCRYPTION_KEY setting does not belong to this deployment, so restore it, or clear the stored credentials and enter them again", len(candidates))
 }
 
 // unwrapDataKey returns the credential key from its stored form: the bare base64

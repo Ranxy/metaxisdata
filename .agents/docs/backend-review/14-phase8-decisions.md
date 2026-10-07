@@ -68,7 +68,7 @@
 
 **推荐**：A（近期）+ 把 B 记成"有 KMS/secret 注入时的专项"。若坚持 B/C，需同时设计回滚与密钥丢失预案。
 
-> **后续更新（2026-10-07，commit `73ebe31`）**：F3 的结论已被反转。按用户明确要求实施 `docs/security-review-2026-10.md` §5.1，
+> **后续更新（2026-10-07，`3455399` / PR #21，分支提交 `73ebe31`）**：F3 的结论已被反转。按用户明确要求实施 `docs/security-review-2026-10.md` §5.1，
 > 取本节的 **C** 变体并补齐 B 的要点：数据密钥（DEK）在首次启动时生成并写入 `setting.ENCRYPTION_KEY`，可选
 > `METAXISDATA_ENCRYPTION_KEY` 作为 KEK 把它包裹后存库（未配置即零配置默认，威胁模型与本节 A 相同）；密文改为
 > `v1:` 前缀的 AES-256-GCM（`backend/common/crypto`），`AUTH_SECRET` 不再兼作凭据种子，`obfuscated_*`/`api_key_encrypted`
