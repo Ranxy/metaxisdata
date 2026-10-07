@@ -63,21 +63,9 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get the allowed LLM providers"))
 	}
-	var resolvedConfig *llm.ResolvedConfig
-	if req.Msg.ProviderName != "" {
-		if !isLLMProfileAllowed(req.Msg.ProviderName, allowedProfiles) {
-			return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("LLM profile %q is not allowed by the workspace settings", req.Msg.ProviderName))
-		}
-		resolvedConfig = findLLMConfig(configs, req.Msg.ProviderName)
-		if resolvedConfig == nil {
-			return connect.NewError(connect.CodeNotFound, errors.Errorf("LLM profile %q not found", req.Msg.ProviderName))
-		}
-	} else {
-		configs = filterAllowedLLMConfigs(configs, allowedProfiles)
-		if len(configs) == 0 {
-			return connect.NewError(connect.CodeFailedPrecondition, errors.New("no enabled LLM provider profiles are allowed"))
-		}
-		resolvedConfig = &configs[0]
+	resolvedConfig, err := resolveLLMConfig(configs, allowedProfiles, req.Msg.ProviderName)
+	if err != nil {
+		return err
 	}
 
 	scopePrefix := req.Msg.ScopePrefix
@@ -627,6 +615,29 @@ func filterAllowedLLMConfigs(configs []llm.ResolvedConfig, allowed []string) []l
 		}
 	}
 	return filtered
+}
+
+// resolveLLMConfig picks the provider and model the explanation runs on. An
+// explicitly requested profile must be allowed by the workspace setting;
+// otherwise the first allowed one is the default. The errors are the RPC's, so
+// the handler returns them unchanged.
+func resolveLLMConfig(configs []llm.ResolvedConfig, allowed []string, providerName string) (*llm.ResolvedConfig, error) {
+	if providerName != "" {
+		if !isLLMProfileAllowed(providerName, allowed) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("LLM profile %q is not allowed by the workspace settings", providerName))
+		}
+		config := findLLMConfig(configs, providerName)
+		if config == nil {
+			return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("LLM profile %q not found", providerName))
+		}
+		return config, nil
+	}
+
+	allowedConfigs := filterAllowedLLMConfigs(configs, allowed)
+	if len(allowedConfigs) == 0 {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("no enabled LLM provider profiles are allowed"))
+	}
+	return &allowedConfigs[0], nil
 }
 
 // isLLMProfileAllowed reports whether a requested profile is inside the
