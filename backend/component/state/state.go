@@ -41,6 +41,15 @@ type State struct {
 	// CreateUserRequestLimiter bounds anonymous CreateUser requests per source
 	// and globally; each one checks email existence and hashes a password.
 	CreateUserRequestLimiter *WindowLimiter
+	// LogoutRequestLimiter bounds anonymous Logout requests per source and
+	// globally; each one writes a ledger row even when the revocation it asks
+	// for is a repeated no-op.
+	LogoutRequestLimiter *WindowLimiter
+	// PrincipalRequestLimiter bounds the ledger-writing calls of a signed-in
+	// caller, keyed by principal and procedure; the ledger never shrinks, so its
+	// growth is bounded for an authenticated caller too. See
+	// PrincipalThrottleInterceptor.
+	PrincipalRequestLimiter *WindowLimiter
 	// SSOStateCache holds one-time OAuth2 state nonces issued by
 	// CreateSSOState, mapped to their issue time.
 	SSOStateCache *lru.Cache[string, time.Time]
@@ -62,6 +71,10 @@ type State struct {
 	// remote entry point a model drives, and every call reads the registry and
 	// writes a ledger row.
 	MCPCallLimiter *WindowLimiter
+	// MCPSourceCallLimiter bounds requests to the MCP endpoint per source
+	// address, counted before the bearer check, so an unauthenticated probe is
+	// bounded even though it never becomes a tool call.
+	MCPSourceCallLimiter *WindowLimiter
 }
 
 func New() (*State, error) {
@@ -79,6 +92,8 @@ func New() (*State, error) {
 		LoginLimiter:                   newLoginLimiter(),
 		LoginRequestLimiter:            newLoginRequestLimiter(),
 		CreateUserRequestLimiter:       newCreateUserRequestLimiter(),
+		LogoutRequestLimiter:           newLogoutRequestLimiter(),
+		PrincipalRequestLimiter:        newPrincipalRequestLimiter(),
 		SSOStateCache:                  ssoStateCache,
 		SSOStateRequestLimiter:         newSSOStateRequestLimiter(),
 		DeviceLoginStore:               newDeviceLoginStore(),
@@ -86,6 +101,7 @@ func New() (*State, error) {
 		DeviceLoginLookupLimiter:       newDeviceLoginLookupLimiter(),
 		OAuthAuthorizationRequestStore: NewOAuthAuthorizationRequestStore(),
 		MCPCallLimiter:                 newMCPCallLimiter(),
+		MCPSourceCallLimiter:           newMCPSourceCallLimiter(),
 	}, nil
 }
 

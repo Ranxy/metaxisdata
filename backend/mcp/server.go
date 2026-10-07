@@ -106,7 +106,16 @@ type Config struct {
 	// keeps a token holder from turning the endpoint into a ledger and query pump;
 	// a test that does not exercise the budget leaves it nil.
 	CallLimiter CallLimiter
-	Stores      *store.Store
+	// SourceCallLimiter bounds how often one source address may reach the endpoint
+	// at all, counted before the bearer check. CallLimiter cannot see a request
+	// that carries no or an invalid token — it is refused during identity
+	// resolution, before the tool path — so without this an unauthenticated
+	// caller can drive token verification, and a revocation lookup for every
+	// token it invents, without limit. It is deliberately far looser than
+	// CallLimiter so it bounds probing without pacing use: agents behind one
+	// address share it, and a fleet of them is normal.
+	SourceCallLimiter CallLimiter
+	Stores            *store.Store
 	// TrustedProxies decides whether a forwarded address may be believed in the
 	// audit row.
 	TrustedProxies []string
@@ -186,11 +195,31 @@ func (s *Server) Handler(tokens *auth.TokenAuthenticator) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
+		// Counted before the bearer check, so an unauthenticated or invalid-token
+		// probe is bounded here rather than at the tool path it never reaches.
+		if s.config.SourceCallLimiter != nil {
+			if !s.config.SourceCallLimiter.Allow(sourceLimiterKey(s.config, r), s.config.Now()) {
+				w.Header().Set("Retry-After", "60")
+				http.Error(w, "too many requests", http.StatusTooManyRequests)
+				return
+			}
+		}
 		bearer.ServeHTTP(&challengeWriter{
 			ResponseWriter:      w,
 			resourceMetadataURL: endpoints.Issuer + oauth.ProtectedResourcePath,
 		}, r)
 	})
+}
+
+// sourceLimiterKey names the address bucket of one MCP request, using the same
+// trusted-proxy resolution the audit row does.
+func sourceLimiterKey(config Config, r *http.Request) string {
+	if ip := audit.ClientAddress(r.Header, r.RemoteAddr, config.TrustedProxies); ip != "" {
+		return "ip:" + ip
+	}
+	// net/http always fills RemoteAddr, so this is a safe fallback: one shared
+	// bucket rather than an unlimited one.
+	return "ip:unknown"
 }
 
 // challengeWriter completes the challenge RFC 9728 and the MCP specification ask

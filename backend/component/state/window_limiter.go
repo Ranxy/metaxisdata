@@ -35,6 +35,13 @@ import (
 // address share it, and every call reads the registry and writes a ledger row.
 // It bounds abuse rather than normal use — a client would have to sustain ten
 // calls a second to reach it.
+//
+// The principal budget generalizes that to every authenticated method that writes
+// a ledger row (plus the calls that reach an upstream LLM): the ledger is kept
+// forever, so its growth has to be bounded for a signed-in caller too, not only
+// for the anonymous endpoints. A request refused by it never runs and therefore
+// leaves no row, which is what makes it backpressure on the caller rather than a
+// silent drop from the ledger.
 const (
 	// throttleWindow is the window every budget counts over.
 	throttleWindow = time.Minute
@@ -56,6 +63,14 @@ const (
 	createUserRequestSourceLimit = 20
 	createUserRequestGlobalLimit = 100
 
+	// Logout is anonymous, audited and idempotent: a caller holding one valid
+	// token can replay it, and every replay still writes a permanent ledger row
+	// even though the revocation itself is a no-op. It neither spends bcrypt nor
+	// writes a new revocation record, so its own budget is enough and it does not
+	// share Login's.
+	logoutRequestSourceLimit = 120
+	logoutRequestGlobalLimit = 300
+
 	// CreateSSOState also gates the outbound call to the identity provider, which
 	// only a state this server issued can reach. The budget mirrors Login's: a
 	// tighter one would cap the flow below the login budget it feeds.
@@ -64,6 +79,26 @@ const (
 
 	mcpCallLimit  = 600
 	mcpCallGlobal = 6000
+
+	// The MCP endpoint also carries an address budget, counted before the bearer
+	// check because CallLimiter cannot see a probe that carries no valid token.
+	// Ten times the per-principal numbers, so it bounds probing without pacing a
+	// fleet of agents that share one NAT address.
+	mcpSourceCallLimit  = 6000
+	mcpSourceCallGlobal = 60000
+
+	// A signed-in caller may make this many ledger-writing calls a minute to one
+	// method, and the whole deployment this many across every covered method.
+	// Deliberately far above normal use (a bulk import is thousands of rows, not
+	// thousands of calls a minute) because the budget exists to bound a loop, not
+	// to pace work; a tool that drives the API can otherwise grow a ledger that
+	// is never pruned.
+	principalMethodLimit = 3000
+	principalGlobalLimit = 30000
+	// Principal keys are (principal, procedure) pairs — a set the server chooses,
+	// not the caller — so this ceiling only has to cover the deployment's user
+	// count times the covered method count.
+	principalLimiterCapacity = 16384
 )
 
 // WindowLimiter is an in-memory fixed-window counter: a key's window opens with its
@@ -103,6 +138,30 @@ func newDeviceLoginLookupLimiter() *WindowLimiter {
 
 func newMCPCallLimiter() *WindowLimiter {
 	return newWindowLimiter(mcpCallLimit, mcpCallGlobal)
+}
+
+// newMCPSourceCallLimiter bounds how often one address may reach the MCP
+// endpoint, including requests that never get a principal because they carry no
+// or an invalid token.
+func newMCPSourceCallLimiter() *WindowLimiter {
+	return newWindowLimiter(mcpSourceCallLimit, mcpSourceCallGlobal)
+}
+
+// newLogoutRequestLimiter bounds anonymous Logout requests, each of which writes a
+// permanent ledger row for a revocation that is a no-op after the first call.
+func newLogoutRequestLimiter() *WindowLimiter {
+	return newWindowLimiter(logoutRequestSourceLimit, logoutRequestGlobalLimit)
+}
+
+// newPrincipalRequestLimiter bounds the ledger-writing calls of a signed-in
+// caller. Its key carries both the principal and the procedure, and it is one
+// limiter rather than one per method, so the single global counter spans every
+// covered method: the two dimensions are "this principal on this method" and
+// "this deployment on all of them".
+func newPrincipalRequestLimiter() *WindowLimiter {
+	limiter := newWindowLimiter(principalMethodLimit, principalGlobalLimit)
+	limiter.capacity = principalLimiterCapacity
+	return limiter
 }
 
 // newLoginRequestLimiter bounds anonymous Login requests, each of which spends a

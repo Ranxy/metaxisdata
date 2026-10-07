@@ -37,7 +37,10 @@ const (
 )
 
 // CreateDeviceLogin starts a device login. It is anonymous by design, so it is
-// throttled per source address rather than per user.
+// throttled per source address rather than per user. That budget is applied on the
+// interceptor chain, not here: a budget inside this handler is wrapped by the audit
+// interceptor, so a refusal it produced would still write a permanent ledger row
+// and an unauthenticated caller could write them without limit.
 func (s *AuthService) CreateDeviceLogin(ctx context.Context, req *connect.Request[v1pb.CreateDeviceLoginRequest]) (*connect.Response[v1pb.CreateDeviceLoginResponse], error) {
 	if err := validateDeviceLoginClientField("client_name", req.Msg.GetClientName()); err != nil {
 		return nil, err
@@ -48,9 +51,6 @@ func (s *AuthService) CreateDeviceLogin(ctx context.Context, req *connect.Reques
 
 	metadata := audit.BuildRequestMetadata(req.Header(), req.Peer().Addr, s.profile.TrustedProxies)
 	now := time.Now()
-	if !s.stateCfg.DeviceLoginLimiter.Allow(metadata.GetIp(), now) {
-		return nil, connect.NewError(connect.CodeResourceExhausted, errors.New("too many device login requests, try again later"))
-	}
 
 	// Read the setting before allocating anything, so a failing workspace
 	// lookup does not leave an orphaned request behind.

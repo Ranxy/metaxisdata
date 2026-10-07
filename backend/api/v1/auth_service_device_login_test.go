@@ -14,8 +14,13 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
+
+// deviceLoginCreateSourceBudget is the state package's constant, repeated here so
+// a silent change to it shows up as a failing test rather than passing either way.
+const deviceLoginCreateSourceBudget = 10
 
 func mustState(t *testing.T) *state.State {
 	t.Helper()
@@ -189,6 +194,34 @@ func TestExchangeDeviceLoginReportsPendingAndThrottles(t *testing.T) {
 		DeviceCode: created.DeviceCode,
 	}))
 	require.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(err))
+}
+
+// CreateDeviceLogin's budget has to be on the interceptor chain, not in the
+// handler: the audit interceptor wraps the handler, so a refusal produced there
+// still writes a permanent ledger row, with nothing bounding the rate at which an
+// unauthenticated caller can produce them. This pins both halves — that the chain
+// applies the device-login budget, and that the handler no longer holds a second
+// check that would spend the same quota twice.
+func TestCreateDeviceLoginIsBudgetedOnTheInterceptorChain(t *testing.T) {
+	t.Parallel()
+
+	stateCfg := mustState(t)
+	interceptor := NewThrottleInterceptor(stateCfg, nil)
+	procedure := v1connect.AuthServiceCreateDeviceLoginProcedure
+
+	limiter, skipAuthenticated := interceptor.limiterFor(procedure)
+	require.Same(t, stateCfg.DeviceLoginLimiter, limiter,
+		"the device-login budget must be what the chain applies")
+	require.False(t, skipAuthenticated, "an anonymous method has no signed-in caller to exempt")
+
+	now := time.Now()
+	for i := range deviceLoginCreateSourceBudget {
+		require.NoError(t, interceptor.check(context.Background(), procedure, nil, "203.0.113.5:4040", now),
+			"request %d is inside the budget", i+1)
+	}
+	requireResourceExhausted(t, interceptor.check(context.Background(), procedure, nil, "203.0.113.5:4040", now))
+	require.NoError(t, interceptor.check(context.Background(), procedure, nil, "203.0.113.6:4040", now),
+		"another source keeps its own budget")
 }
 
 // Approving requires a signed-in caller; the token restriction and the ACL

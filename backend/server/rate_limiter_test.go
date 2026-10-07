@@ -76,6 +76,30 @@ func TestBoundedRateLimiterStoreHoldsTheCeilingUnderRotation(t *testing.T) {
 	require.Len(t, store.visitors, 8)
 }
 
+// The identifier ceiling bounds memory, not the rate of a caller that rotates
+// identifiers. Every store therefore hands a rotating caller a fresh bucket,
+// which is exactly why the routes that cannot afford that key on something the
+// caller cannot choose: see openLineageIngestionMiddleware and its address
+// dimension. This test pins the property the ceiling does *not* provide, so the
+// gap is deliberate and visible rather than assumed away.
+func TestBoundedRateLimiterStoreDoesNotBoundARotatingCaller(t *testing.T) {
+	t.Parallel()
+
+	store := newFrozenRateLimiterStore(1, 1)
+	store.capacity = 1024
+
+	allowed := 0
+	for i := 0; i < 100; i++ {
+		ok, err := store.Allow("rotated-" + strconv.Itoa(i))
+		require.NoError(t, err)
+		if ok {
+			allowed++
+		}
+	}
+	require.Equal(t, 100, allowed, "every invented identifier gets its own burst")
+	require.Len(t, store.visitors, 100)
+}
+
 // An idle bucket is swept instead of being kept until eviction, so a caller that
 // presents one identifier and leaves cannot pin memory indefinitely.
 func TestBoundedRateLimiterStorePrunesIdleBuckets(t *testing.T) {

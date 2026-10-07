@@ -288,8 +288,7 @@ func eventWithinScope(event *openlineage.RunEvent, scope string) bool {
 
 // parseEventTime parses an OpenLineage eventTime. The spec requires an RFC3339
 // offset, but producers sometimes omit it; assuming UTC keeps the event's
-// ordering and retention behavior instead of storing a NULL that sorts last and
-// is exempt from pruning.
+// ordering instead of failing on a value that is otherwise complete.
 func parseEventTime(raw string) (time.Time, error) {
 	parsed, err := time.Parse(time.RFC3339Nano, raw)
 	if err != nil {
@@ -301,6 +300,25 @@ func parseEventTime(raw string) (time.Time, error) {
 	return parsed.UTC(), nil
 }
 
+// eventTimeForEvent is the time an event's run row carries. It is never zero: a
+// producer may omit eventTime entirely, or send one that does not parse, and a
+// NULL in that column is skipped by the retention prune (`event_time IS NOT NULL
+// AND event_time < $1`), so leaving it empty would let any producer make its
+// events immortal and quietly break the deployment's retention setting. The
+// receipt time keeps the ordering sane and the promise true; the event itself is
+// still accepted, because losing lineage over a missing timestamp is worse than
+// ageing it from when it arrived.
+func eventTimeForEvent(raw string) time.Time {
+	if trimmed := strings.TrimSpace(raw); trimmed != "" {
+		parsed, err := parseEventTime(trimmed)
+		if err == nil {
+			return parsed
+		}
+		slog.Warn("failed to parse OpenLineage event time, using the receipt time", "eventTime", raw, "error", err)
+	}
+	return time.Now().UTC()
+}
+
 // runMessageForEvent derives the row an event writes. Every run state is stored,
 // because a row is the run's latest known state: a job that is still running or
 // that failed stays visible instead of leaving no trace at all, and the
@@ -309,15 +327,7 @@ func parseEventTime(raw string) (time.Time, error) {
 func (*OpenLineageHandler) runMessageForEvent(event *openlineage.RunEvent) *store.OpenLineageRunMessage {
 	derived := openlineage.DeriveRunMetadata(event)
 
-	var eventTime *time.Time
-	if raw := strings.TrimSpace(event.EventTime); raw != "" {
-		parsedTime, err := parseEventTime(raw)
-		if err != nil {
-			slog.Warn("failed to parse OpenLineage event time", "eventTime", event.EventTime, "runId", event.Run.RunID, "error", err)
-		} else {
-			eventTime = &parsedTime
-		}
-	}
+	eventTime := eventTimeForEvent(event.EventTime)
 
 	// Every event this endpoint accepts came from OpenLineage, so the run's
 	// source is a constant; the payload's producer is a separate field.
@@ -342,7 +352,7 @@ func (*OpenLineageHandler) runMessageForEvent(event *openlineage.RunEvent) *stor
 		JobName:            event.Job.Name,
 		JobType:            derived.JobType,
 		EventType:          event.EventType,
-		EventTime:          eventTime,
+		EventTime:          &eventTime,
 		Producer:           event.Producer,
 		Integration:        derived.Integration,
 		ProcessingType:     derived.ProcessingType,
@@ -358,7 +368,7 @@ func (*OpenLineageHandler) runMessageForEvent(event *openlineage.RunEvent) *stor
 		HasLineage:         derived.HasLineage,
 		RawPayload:         event.RawJSON,
 		AirflowRunLogURL:   airflowRunLogURL,
-		Datasets:           openLineageDatasetRefs(event, derived.TaskGUID, source, derived.Integration, eventTime),
+		Datasets:           openLineageDatasetRefs(event, derived.TaskGUID, source, derived.Integration, &eventTime),
 	}
 }
 
