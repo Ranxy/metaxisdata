@@ -274,7 +274,8 @@
 6. 修掉 `component/llm/registry.go:59` 仍在说 "AES-GCM decryption" 的过期注释,并把 `api_key_encrypted` 改名为 `api_key_ciphertext`。
 
 ### 5.2 限流体系重构
-当前限流是"各端点 ad-hoc"模式:Login 按 (email, 裸对端)、设备登录按可信 IP、OAuth 四路由各一份、OpenLineage 无 key 回退 RealIP、Connect 入口与 `/mcp` 完全没有。建议:统一为"全局拦截器 + 按源/按用户双桶"模式,键一律取 trusted-proxy 解析后的真实 IP(修复 M1 后),匿名方法额外加全局桶;账本类写入(审计、OAuth client)统一加背压。
+- **状态**:**已实施**(2026-10-07,commit `7dbcbd7`;完整清单与残余见 `plan/rate_limiting_plan.md`,修复记录见 §10)。落地时对原文做了两处订正:本节清单是审查当时的快照,其中 Login 的 `(email, 裸对端)`、OpenLineage 无 key 回退 `RealIP`、"Connect 入口与 `/mcp` 完全没有" 三条已分别由 M3/M5、M14、M16 修掉;而"统一"并没有被做成单一实现——Connect 方法用 `state.WindowLimiter`(固定窗口、键+全局),明文 HTTP 路由用 `server.boundedRateLimiterStore`(令牌桶、键+全局),因为后者走 echo 中间件。新增的是原文真正缺的两件:**鉴权方法的按用户维**(`(principal, method)` + 跨方法部署级桶)与**审计写入的背压**(被拒请求不执行、不落行),外加 `/mcp` 的按源桶、`Logout` 的入口预算,以及明文路由的部署级全局桶。OAuth 四路由各自一份配额维持不变(I2)。
+- 当前限流是"各端点 ad-hoc"模式:Login 按 (email, 裸对端)、设备登录按可信 IP、OAuth 四路由各一份、OpenLineage 无 key 回退 RealIP、Connect 入口与 `/mcp` 完全没有。建议:统一为"全局拦截器 + 按源/按用户双桶"模式,键一律取 trusted-proxy 解析后的真实 IP(修复 M1 后),匿名方法额外加全局桶;账本类写入(审计、OAuth client)统一加背压。
 
 ### 5.3 审计体系:从"字段名黑名单"到"数据分类"
 - 脱敏只作用于 request/response map 的键名匹配:漏 `sslCa`(L5),`resource`/`status.message`/`parent` 自由文本从不扫描(L6 的成因),`key`/整个 `apiKey` 对象被整段替换又损害可用性;
@@ -327,7 +328,7 @@
 但以下四条的**副作用或表述**建议更新:
 
 1. **"存储凭据是混淆非加密;拥有数据库读权限可恢复一切"**——实测强度更弱:已知明文前缀(如 PEM 头)即可在**只有 `instance.metadata`**、拿不到 `setting` 表的情形下恢复密钥流全量还原凭据。文档不应再暗示"攻击者必须先拿到 setting 表"。(见 5.1)
-2. **"`audit_log` 永不清理"**——该决策的前提是审计行有界;H6/M16/M17 表明匿名/半匿名请求可把它当磁盘炸弹。永久保留与写入背压并不冲突,建议同时声明后者。(写入上限已随 H6 修复并在 `security-posture.md` 声明,见 §10;限流与背压仍待办。)
+2. **"`audit_log` 永不清理"**——该决策的前提是审计行有界;H6/M16/M17 表明匿名/半匿名请求可把它当磁盘炸弹。永久保留与写入背压并不冲突,建议同时声明后者。(写入上限已随 H6 修复并在 `security-posture.md` 声明,见 §10;限流与背压已随 §5.2 完成,commit `7dbcbd7`——被拒请求不执行、不落行,`security-posture.md` 已声明。)
 3. **"反向代理契约(须归一化/剥离 XFF)"**——`FirstForwardedFor` 取最左值意味着按常规追加语义配置的代理**无法**通过"归一化"修复(M1),且 REST 网关自连接使正确配置也会产生 127.0.0.1(M2)。**已修复**:改为从右往左取第一个未信任地址(常规追加配置可直接工作),网关自连接用外层 `RemoteAddr` 且只在能与 grpc-gateway 自己追加的末段对上时才采信;`security-posture.md` 该节已随之更新为"追加即可,同机代理仍按普通代理列出(含 127.0.0.1),网关自身那一跳无需列入"(见 §10,commit `e9bc802`)。
 4. **"审批重用 approver 会话"**——设备登录正确(签发前后各校验);OAuth 换发端缺同一复核(I1),与设备登录路径不一致。
 
@@ -341,7 +342,7 @@
 3. H7:SSH `InsecureIgnoreHostKey` → known_hosts/指纹 + 握手超时 + ctx 透传;
 4. H3:SSO 按 IdP subject 绑定;改邮箱要求当前密码;
 5. M1/M2:XFF 改取最右未信任段;网关审计 metadata 修正——**已完成**(commit `e9bc802`,见 §10);
-6. H6/M16/M17:审计载荷统一上限 + 匿名端点限流(CreateUser/Login/OAuth/OL/`/mcp`)——H6 与 M17 已完成,M16 的注册/授权/MCP 写入与内存放大、`/mcp` 按 principal 限流与超时也已完成(见 §10);其余匿名端点(Login/CreateUser/OL)的按源限流仍待办;
+6. H6/M16/M17:审计载荷统一上限 + 匿名端点限流(CreateUser/Login/OAuth/OL/`/mcp`)——H6 与 M17 已完成,M16 的注册/授权/MCP 写入与内存放大、`/mcp` 按 principal 限流与超时也已完成(见 §10);其余匿名端点(Login/CreateUser/OL)的按源限流随 §5.2 一并完成(commit `7dbcbd7`,见 §10);
 
 **P1(近期,利用条件明确)**
 7. M3/M4/M5:限流键改真实 IP + 账号/源双计数;吊销改持久化水位线;源级 CPU 上限——**已完成**(commit `e9bc802`;吊销实现为按 jti 的持久化表而非账号水位线,M7 的"停用/恢复水位线"仍待办,见 §10);
@@ -351,12 +352,12 @@
 11. M8/M9:acw↔permission 互斥测试 + allUsers 禁绑管理角色——M9 已完成(实现为 allUsers 完全不可编辑,见 §10);M8 待办。
 
 **P2(中期,加固与一致性)**
-12. M6/M18/M19/M20/M21/M22/M23/M24/M25 与 L 系列——M14 已完成(commit `f9f67fb`,加固 `414aa60`,见 §10)、M15 已完成(commit `f55f62a`,加固 `10e803f`,见 §10)、M18 已完成(commit `a691632`,加固 `db09dac`;三项残余随 ingest 聚合表一并修复,commit `1253a9d`,见 §10)、M19 已完成(commit `8d574c3`,见 §10)、M20 经确认按决策保留(见 §10);
+12. M6/M18/M19/M20/M21/M22/M23/M24/M25 与 L 系列——M14 已完成(commit `f9f67fb`,加固 `414aa60`,见 §10)、M15 已完成(commit `f55f62a`,加固 `10e803f`,见 §10)、M18 已完成(commit `a691632`,加固 `db09dac`;三项残余随 ingest 聚合表一并修复,commit `1253a9d`,见 §10)、M19 已完成(commit `8d574c3`,见 §10)、M20 经确认按决策保留(见 §10);**M24 的限流部分随 §5.2 完成**(commit `7dbcbd7`:按用户预算 + 审计写入背压 + `/mcp` 按源桶,见 §10),LLM 的费用/配额告警仍待办;
 13. 5.3 审计体系(注解驱动脱敏 + 黄金测试)、5.5 权限机制收敛。
 
 **P3(结构性投资)**
 14. 5.1 凭据加密升级(含迁移作业与轮换工具);
-15. 5.2 限流体系重构、5.4 出站策略层、5.6 账号生命周期水位线;
+15. 5.2 限流体系重构——**已完成**(commit `7dbcbd7`,见 §10;清单与残余见 `plan/rate_limiting_plan.md`)、5.4 出站策略层、5.6 账号生命周期水位线;
 16. D 系列债务按触碰到的子系统顺带清偿(改到哪清到哪)。
 
 ---
@@ -1175,3 +1176,52 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 - 关于"凭据词表"这条残余:命名是测试唯一能抓住的线索,新加一个不含任何凭据词、也不带 `_ciphertext` 后缀的字段仍不会被发现;这条限制已写入 `plan/credential_encryption_plan.md`。
 
 **验证门禁**:`buf format`/`buf lint` 干净;`gofmt`(无输出)、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./...`(全绿)、`go test -race`(store/crypto/api/v1/server 全绿);release(`-tags release`)与默认两种构建通过;`make test-integration`(真实 PostgreSQL + MySQL + migrator)全绿——runner 71 个用例 41.5s(含本轮新增的凭据加密用例,并覆盖"启动时用库中已有凭据验证密钥"),migrator 19.1s。一次全量运行中出现过 `TestPostgresPerDatabaseSyncHidesDroppedDatabaseRealServerIntegration` 失败(该行已被并发的实例枚举先行隐藏,断言收到平台侧 `not_found`),单独重跑两次与随后整轮全量均通过,与本轮改动无关(共享实例并行用例的既有竞争),记录备查。本轮未改前端,未跑前端门禁。
+
+### 2026-10-07 —— §5.2 限流体系重构已实施(commit `7dbcbd7`)
+
+**背景:本节清单的一半已被后续修复覆盖**
+
+落地前逐条复核了 §5.2 的原文,结论是它描述的是审查当时的快照:Login 的 `(email, 裸对端)` 已由 M3 改成账号/源双计数 + 入口双桶(commit `e9bc802`),OpenLineage 无 key 回退 `RealIP` 已由 M14 改成 `audit.ClientAddress`(commit `f9f67fb`),Connect 入口已由 M5 有 `ThrottleInterceptor`(仅 Login/Refresh/CreateUser/CreateSSOState),`/mcp` 已由 M16 有按 principal 桶与 60s 超时,键解析也已全仓统一到 `audit.ClientAddress`(`grep RealIP` 只剩注释)。因此本轮做的是原文真正缺的两件,而不是把已有实现推翻重写。
+
+**按用户预算:鉴权方法的账本写入背压**(`backend/component/state/window_limiter.go`、`state.go`、`backend/api/v1/principal_throttle_interceptor.go`、`backend/server/grpc_routes.go`)
+
+- 新增 `PrincipalThrottleInterceptor`,位置在 auth 之后、audit 之前(Chain:`Debug → Auth → Throttle → PrincipalThrottle → Audit → ACL → ErrorMapping`)。覆盖**所有需鉴权的 `audit=true` 方法**——集合由 `AuthContext.Audit` 在运行时读出,所以日后新增一个带审计注解的方法自动被纳入,不必改这个文件——外加两个不审计但要花钱的方法(`ExplainSQL` 走 LLM agent loop、`FetchLLMModels` 带 key 出站)。
+- 预算 3000/min per `(principal, method)` + 30000/min 部署级(跨全部被覆盖方法共享一个计数器,实现上是把 `user:{id}|{procedure}` 当键塞进同一个 `WindowLimiter`,其 `global` 因此天然跨方法)。容量提到 16384:键是服务端选的 `(用户, 方法)` 对,而不是调用方可选的来源,所以这里的上限只需要覆盖真实部署的用户数 × 方法数。
+- **背压语义选的是"拒绝请求"而不是"丢账本行"**(用户确认):被拒请求在 audit 之前就返回,既不执行也不落行;被接受的请求无论成败仍必留痕。这样账本"永不清理"的前提(每行有界 + 写入有速率上限)成立,而不会让审计在高压下静默丢失——丢的只会是调用方的一次请求。H6 已让单行有界,本轮补的是行数。
+- 唯一的显式豁免是 `ListAuditLogs`:它是审计方法里唯一只读的一个。它每次调用仍写一行,所以循环读账本仍能增长账本——这是"读路径自身的放大",已作为残余写入 `plan/rate_limiting_plan.md` 与 `security-posture.md`,而不是在这里悄悄限额。
+
+**`Logout` 纳入入口预算**(`backend/api/v1/throttle_interceptor.go`)
+
+- 复核确认它不是"已由 token 签发速率约束"就没事:`Logout` 只验签不查吊销,`RevokeToken` 是 `ON CONFLICT DO NOTHING`,所以**一个有效 token 可以被无限次重放**,每次仍写一行永久审计。它自己一把 120/min per source + 300/min 全局的桶(不与 Login 共用,避免 token 重放吃掉登录预算)。
+
+**`/mcp` 的按源桶**(`backend/mcp/server.go`、`backend/server/grpc_routes.go`)
+
+- M16 的按 principal 桶看不到"没带 token 或 token 无效"的请求:身份解析先一步拒绝,请求到不了 tool 路径。新增 `Config.SourceCallLimiter`,在 `Handler` 里**身份解析之前**按 `audit.ClientAddress` 计额(6000/min per source + 60000/min 全局,即 per-principal 数值的 10 倍),超限返回 429 + `Retry-After`。刻意做宽是不去管正常使用:多个 agent 共用一个 NAT 地址是常态,该桶限制的是探测速率。surface 关闭时先返 404、不计额。
+
+**明文 HTTP 路由的部署级全局桶**(`backend/server/rate_limiter.go`)
+
+- `boundedRateLimiterStore` 原先只有 per-identifier 桶 + 4096 容量上限,容量只约束内存;一个轮换 ingestion key 的调用方每个请求都拿到新桶。现在每个 store 另有一个跨全部 identifier 的共享桶(10 倍于单键预算),并把判序做成"空桶先拒、再动全局",使**被拒请求不消耗任何预算**(与 `WindowLimiter` 同语义)。OAuth 仍是四条路由各一份配额(I2 维持不变,未合并)。
+
+**守护测试**(`backend/api/v1/principal_throttle_interceptor_test.go`)
+
+- 用 `protoregistry` 遍历 `metaxisdata.v1` 的全部方法,要求每个 `audit=true` 方法要么落在匿名入口预算(且其记录的 limiter 必须是 `limiterFor` 真正返回的那一把)、要么被按用户预算覆盖、要么在"审计读方法豁免"清单里;`principalLimitedProcedures`、`auditedReadExemptProcedures` 与测试侧的清单必须**双向完全一致**,所以新增一个豁免是两处文件的显式改动。
+
+**回归测试**
+
+- 单元(`principal_throttle_interceptor_test.go`):`(principal, method)` 边界(第 3001 次拒绝、另一个 principal 与同一个人的另一个方法不受影响)、部署级全局边界(10 个 principal 各花满 3000 后第 11 个被全局拒绝,其自身桶是新的)、匿名调用方与未预算方法不计额、流式路径(`WrapStreamingHandler` 被拒时 handler 不执行,且 `ExplainSQL` 因显式清单被计入)、`Logout` 预算与"不消耗 Login 桶"。
+- 单元(`state/window_limiter_test.go`):principal limiter 的三个常量与容量关系、Logout 与 Login 不是同一把桶。
+- 单元(`server/rate_limiter_test.go`):轮换 identifier 被部署级桶封顶(恰好 `deploymentBudgetFactor` 次)、被拒请求不消耗全局预算;原先"新 identifier 总能拿到满额"的断言改为在该测试内显式抬掉全局桶(它测的是内存上限),全局上限另有用例。
+- 单元(`backend/mcp/source_limiter_test.go`):探测在 bearer 之前被拒(401 → 429)、可信代理解析出的地址是键而不可信对端伪造的 XFF 不是、surface 关闭时不计额。
+- 集成(真实服务器 + PostgreSQL,`runner/rate_limit_service_test.go`):`TestLogoutIsBudgetedRealServerIntegration` 用一个专属 token 连打 120 次成功、第 121 次 `ResourceExhausted`(绑 127.0.0.2 以避开共享桶、且不影响 admin token);`TestPrincipalThrottleBoundsExpensiveMethodsRealServerIntegration` 让 admin 连打 3001 次空参数的 `FetchLLMModels`(在出站前就 `InvalidArgument`,且不审计,所以是几千次廉价请求而不是几千行账本),第 3001 次必须是 `ResourceExhausted`——这条同时钉住 `backend/server` 真的把拦截器挂上了链。
+- **反向验证**(逐条单独回退,对应用例变红后恢复):从 `limiterFor` 去掉 Logout ⇒ 守护测试报 "records a limiter the interceptor does not apply";把 `InstanceService/UpdateInstance` 加进豁免清单 ⇒ 守护测试报 "auditedReadExemptProcedures gained … without the test allowlist";`isPrincipalBudgeted` 恒假 ⇒ 守护测试变红;删掉 `backend/mcp/server.go` 的源桶判段 ⇒ 两条 MCP 用例变红;把 store 的全局桶设为 `rate.Inf` ⇒ 轮换封顶用例变红;**从 `grpc_routes.go` 删掉 `NewPrincipalThrottleInterceptor` 后重建服务器二进制** ⇒ 集成用例变红(期望 `ResourceExhausted` 实得 `InvalidArgument`,即第 3001 次没有被拒)。守护测试/MCP/store 用 `go test -overlay`(探针在 `/tmp`,不改仓库);服务器接线必须真改文件,因为集成 harness 用 `go build` 单独构建二进制,`-overlay` 不生效。
+- 守护测试在反向验证中还暴露过一版自身缺陷:初版只断言"豁免清单里的方法确实被豁免",于是把任意审计方法加进豁免清单也能通过;现已改为两份清单双向比对,并让匿名项的 limiter 必须与 `limiterFor` 返回的是同一指针。
+
+**残余(已写入 `plan/rate_limiting_plan.md` 与 `security-posture.md`)**
+
+1. `ListAuditLogs` 只读但每调用写一行,不限额;要收它属于"一页最多能写多少账本行"的策略,不是这个桶的职责。
+2. 批量操作(`BatchSyncInstances`、CSV 导出等)与交互式调用共用同一个 per-method 桶;出货值(3000/min)刻意宽松,所以它约束的是循环而不是突发。
+3. 审计行数由调用速率封顶,而不是由账本总量封顶;被拒的 MCP 调用照旧留行(刻意)。
+4. `ExchangeDeviceLogin` 与 `GetWorkspaceProfileSetting` 不限额并写明理由:前者需要 256bit device code(只能由已限额的调用铸出)且受协议最小轮询间隔约束,后者只读一个设置、不写状态也不审计。
+5. 计数仍是进程内(D2 家族的多副本约定),数值仍是常量、无配置项;LLM 的费用/配额告警仍未做(M24 的费用部分)。
+
+**验证门禁**:`gofmt`(无输出)、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./backend/...` 全绿(改动包 `state`/`api/v1`/`server`/`mcp` 另跑 `-race` 全绿)、`make test-integration-smoke`(真实 PostgreSQL + MySQL + migrator 全绿:runner 45.7s、migrator 23.9s)、release(`-tags release`)与 dev 构建通过。本轮未改前端,未跑前端门禁。
