@@ -68,13 +68,7 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 		if !isLLMProfileAllowed(req.Msg.ProviderName, allowedProfiles) {
 			return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("LLM profile %q is not allowed by the workspace settings", req.Msg.ProviderName))
 		}
-		wantedID := llmProfileID(req.Msg.ProviderName)
-		for _, c := range configs {
-			if c.ProfileName == wantedID {
-				resolvedConfig = &c
-				break
-			}
-		}
+		resolvedConfig = findLLMConfig(configs, req.Msg.ProviderName)
 		if resolvedConfig == nil {
 			return connect.NewError(connect.CodeNotFound, errors.Errorf("LLM profile %q not found", req.Msg.ProviderName))
 		}
@@ -590,14 +584,30 @@ func (s *ExplainSQLService) allowedLLMProfiles(ctx context.Context) ([]string, e
 	return setting.GetAllowedLlmProviderProfiles(), nil
 }
 
-// llmProfileID normalizes a profile reference — either the bare id used by the
-// registry or the v1 resource name "llm-provider-profiles/{id}" — to the bare id.
+// llmProfileID normalizes a profile reference to the bare id. The store names a
+// profile "llm-provider-profiles/{id}" and the registry carries that name
+// through unchanged, while a request or a setting may hold either form, so
+// every comparison normalizes both sides with this.
 func llmProfileID(profile string) string {
 	trimmed := strings.TrimSpace(profile)
 	if id, ok := strings.CutPrefix(trimmed, "llm-provider-profiles/"); ok {
 		return id
 	}
 	return trimmed
+}
+
+// findLLMConfig returns the enabled config the request's profile reference
+// names, or nil. The reference is a v1 resource name while the config may hold
+// either form, so both sides are normalized before comparing — comparing them
+// raw left every selection unresolved.
+func findLLMConfig(configs []llm.ResolvedConfig, profile string) *llm.ResolvedConfig {
+	wantedID := llmProfileID(profile)
+	for i := range configs {
+		if llmProfileID(configs[i].ProfileName) == wantedID {
+			return &configs[i]
+		}
+	}
+	return nil
 }
 
 // filterAllowedLLMConfigs keeps the configs whose profile is in the allowlist.
@@ -612,7 +622,7 @@ func filterAllowedLLMConfigs(configs []llm.ResolvedConfig, allowed []string) []l
 	}
 	filtered := make([]llm.ResolvedConfig, 0, len(configs))
 	for _, config := range configs {
-		if _, ok := allowedIDs[config.ProfileName]; ok {
+		if _, ok := allowedIDs[llmProfileID(config.ProfileName)]; ok {
 			filtered = append(filtered, config)
 		}
 	}
