@@ -670,6 +670,36 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_web_refresh_token_hash ON web_refresh_toke
 CREATE INDEX IF NOT EXISTS idx_web_refresh_token_expires_at ON web_refresh_token(expires_at);
 
 
+-- notification is one in-app message for one user: the outcome of a sync
+-- operation they asked for, or an ingestion failure the workspace
+-- administrators need to see. It is personal data, so unlike every other table
+-- its reads are scoped by recipient_id rather than by the workspace.
+CREATE TABLE IF NOT EXISTS notification (
+    id BIGSERIAL PRIMARY KEY,
+    recipient_id INTEGER NOT NULL REFERENCES principal(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- NULL means unread.
+    read_at TIMESTAMPTZ,
+    -- Deduplication key of a background notification, empty when the message is
+    -- not deduplicated. Format: <event>:<target>:<bucket>.
+    dedupe_key TEXT NOT NULL DEFAULT '',
+    payload JSONB NOT NULL DEFAULT '{}'
+);
+
+-- The inbox lists one user's messages newest first.
+CREATE INDEX IF NOT EXISTS idx_notification_recipient_created_at
+    ON notification(recipient_id, created_at DESC, id DESC);
+
+-- The unread badge counts without scanning read rows.
+CREATE INDEX IF NOT EXISTS idx_notification_recipient_unread
+    ON notification(recipient_id) WHERE read_at IS NULL;
+
+-- Suppresses a repeated background notification within its window. Enforced
+-- here rather than in process memory so that replicas and restarts share it.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_dedupe
+    ON notification(recipient_id, dedupe_key) WHERE dedupe_key <> '';
+
+
 -- schema_migration_history records every applied schema version, one row per
 -- migration (and one baseline row for a fresh install). It is the version
 -- ledger the migrator (backend/migrator) reads to decide which incremental
@@ -694,6 +724,7 @@ COMMENT ON COLUMN db.metadata IS 'Stored as DatabaseMetadata (proto/store/store/
 COMMENT ON COLUMN meta_registry_resource.metadata IS 'Stored as StoredMetadata (proto/store/store/database.proto)';
 COMMENT ON COLUMN meta_registry_resource_history.metadata IS 'Stored as StoredMetadata (proto/store/store/database.proto)';
 COMMENT ON COLUMN audit_log.payload IS 'Stored as AuditLog (proto/store/store/audit_log.proto)';
+COMMENT ON COLUMN notification.payload IS 'Stored as Notification (proto/store/store/notification.proto)';
 COMMENT ON COLUMN llm_provider_profile.metadata IS 'Stored as LlmProviderProfile (proto/store/store/llm.proto)';
 COMMENT ON COLUMN explain_sql_cache.explanation_json IS 'Server-built JSON ({summary, sections}); not a proto message.';
 COMMENT ON COLUMN oauth_client.redirect_uris IS 'Server-built JSON (array of strings); not a proto message.';

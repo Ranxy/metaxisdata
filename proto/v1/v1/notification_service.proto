@@ -1,0 +1,236 @@
+syntax = "proto3";
+
+package metaxisdata.v1;
+
+import "google/api/annotations.proto";
+import "google/api/client.proto";
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
+
+// NotificationService serves the caller's own in-app messages: the outcome of a
+// sync operation they asked for, and the ingestion failures a workspace
+// administrator needs to see.
+//
+// No method here carries a (metaxisdata.v1.permission) annotation, and none is
+// reachable without credentials. An inbox belongs to one principal, which the
+// workspace-scoped IAM catalog cannot express: every handler therefore scopes
+// its query by the authenticated caller's id, the same way UserService's
+// self-service paths do. Gating these methods on a permission instead would
+// lock a custom role out of its own messages.
+service NotificationService {
+  // List the caller's notifications, newest first.
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/notifications"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Count the caller's unread notifications.
+  rpc GetUnreadNotificationCount(GetUnreadNotificationCountRequest) returns (GetUnreadNotificationCountResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/notifications:unreadCount"};
+  }
+
+  // Mark the named notifications read. Already-read notifications are left
+  // alone, so the call is idempotent.
+  rpc BatchMarkNotificationsRead(BatchMarkNotificationsReadRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/notifications:batchMarkRead"
+      body: "*"
+    };
+  }
+
+  // Mark every unread notification of the caller read.
+  rpc MarkAllNotificationsRead(MarkAllNotificationsReadRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/notifications:markAllRead"
+      body: "*"
+    };
+  }
+
+  // Delete one of the caller's notifications.
+  rpc DeleteNotification(DeleteNotificationRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=workspaces/*/notifications/*}"};
+    option (google.api.method_signature) = "name";
+  }
+}
+
+// NotificationType is what a notification is about. It selects which detail
+// message the notification carries.
+enum NotificationType {
+  NOTIFICATION_TYPE_UNSPECIFIED = 0;
+  // The outcome of one schema sync operation.
+  NOTIFICATION_TYPE_SCHEMA_SYNC = 1;
+  // An OpenLineage ingestion failure, or a dataset that could not be matched
+  // to a registered instance.
+  NOTIFICATION_TYPE_OPENLINEAGE = 2;
+}
+
+// NotificationSeverity ranks a notification for its recipient.
+enum NotificationSeverity {
+  NOTIFICATION_SEVERITY_UNSPECIFIED = 0;
+  NOTIFICATION_SEVERITY_INFO = 1;
+  NOTIFICATION_SEVERITY_WARNING = 2;
+  NOTIFICATION_SEVERITY_ERROR = 3;
+}
+
+// SyncTrigger is what started the sync operation a notification reports.
+enum SyncTrigger {
+  SYNC_TRIGGER_UNSPECIFIED = 0;
+  // A user asked for it. The initiator is the recipient.
+  SYNC_TRIGGER_MANUAL = 1;
+  // The periodic scan asked for it, so there is no initiator and the workspace
+  // administrators are the recipients.
+  SYNC_TRIGGER_BACKGROUND = 2;
+}
+
+// SyncDatabaseState is one database's outcome within a sync operation.
+enum SyncDatabaseState {
+  SYNC_DATABASE_STATE_UNSPECIFIED = 0;
+  SYNC_DATABASE_STATE_SUCCEEDED = 1;
+  SYNC_DATABASE_STATE_FAILED = 2;
+  // The operation ended before this database produced a result, because its
+  // deadline passed or its instance disappeared.
+  SYNC_DATABASE_STATE_UNFINISHED = 3;
+}
+
+// OpenLineageFailureKind is why an OpenLineage request produced no lineage.
+enum OpenLineageFailureKind {
+  OPENLINEAGE_FAILURE_KIND_UNSPECIFIED = 0;
+  // The event could not be parsed, or crossed a per-event limit.
+  OPENLINEAGE_FAILURE_KIND_INVALID_EVENT = 1;
+  // The request body or the batch crossed a transport limit.
+  OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED = 2;
+  // The event's namespace is not the one the ingestion key is scoped to.
+  OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH = 3;
+  // The event could not be persisted.
+  OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED = 4;
+  // The event was persisted but its lineage could not be derived.
+  OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED = 5;
+  // The dataset matched no registered instance and was stored as an external
+  // dataset, so any lineage naming it points at something the registry does not
+  // describe. Check the instance's data source host and port, or add a
+  // namespace mapping.
+  OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED = 6;
+}
+
+// Notification is one in-app message for one recipient.
+message Notification {
+  // Format: workspaces/{workspace}/notifications/{id}
+  string name = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Timestamp create_time = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  NotificationType type = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  NotificationSeverity severity = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // When the recipient read it. Unset means unread.
+  google.protobuf.Timestamp read_time = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The body, interpreted by type. The server stores no prose: the client
+  // renders the localized text from the detail and its own catalogs, so a
+  // message reads in the user's language and an unknown type degrades to a
+  // generic sentence instead of an empty row.
+  oneof detail {
+    SchemaSyncDetail schema_sync = 6;
+    OpenLineageDetail openlineage = 7;
+  }
+}
+
+// SchemaSyncDetail reports one sync operation: the instance metadata step plus
+// every database that operation queued.
+message SchemaSyncDetail {
+  // Format: instances/{instance}
+  string instance = 1;
+  // The instance's display name, so the client can render the message without a
+  // second read.
+  string instance_title = 2;
+  SyncTrigger trigger = 3;
+  // Why the instance metadata step failed. Empty when it succeeded.
+  string instance_error = 4;
+  // The databases that failed or never reported. Successful ones are counted,
+  // not listed.
+  repeated SyncDatabaseResult failures = 5;
+  int32 succeeded_count = 6;
+  int32 failed_count = 7;
+  int32 unfinished_count = 8;
+}
+
+// SyncDatabaseResult is one database's outcome in a schema sync operation.
+message SyncDatabaseResult {
+  // Format: databases/{instance}/{database}
+  string database = 1;
+  SyncDatabaseState state = 2;
+  // The sync error. Empty for UNFINISHED.
+  string error = 3;
+}
+
+// OpenLineageDetail reports an OpenLineage ingestion failure, or a dataset that
+// fell through to an external dataset.
+message OpenLineageDetail {
+  OpenLineageFailureKind kind = 1;
+  // The namespace named by the event. Empty when the event did not parse.
+  string namespace = 2;
+  string job = 3;
+  string run_id = 4;
+  // The dataset that did not resolve. Only set for NAMESPACE_UNMAPPED.
+  string dataset = 5;
+  // The masked identifier of the ingestion key that submitted the request,
+  // never the key itself.
+  string api_key = 6;
+  // How many events the request carried and how many of them failed.
+  int32 received_count = 7;
+  int32 failed_count = 8;
+  string error = 9;
+}
+
+message ListNotificationsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The maximum number of notifications to return. If unspecified, at most 50
+  // are returned. The maximum value is 1000; values above 1000 are coerced to
+  // 1000.
+  int32 page_size = 2;
+
+  // A page token, received from a previous ListNotifications call. Provide this
+  // to retrieve the subsequent page.
+  string page_token = 3;
+
+  // Return only unread notifications.
+  bool unread_only = 4;
+}
+
+message ListNotificationsResponse {
+  repeated Notification notifications = 1;
+  string next_page_token = 2;
+}
+
+message GetUnreadNotificationCountRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetUnreadNotificationCountResponse {
+  int32 unread_count = 1;
+}
+
+message BatchMarkNotificationsReadRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // Format: workspaces/{workspace}/notifications/{id}
+  repeated string names = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message MarkAllNotificationsReadRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DeleteNotificationRequest {
+  // Format: workspaces/{workspace}/notifications/{id}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/Notification"}
+  ];
+}

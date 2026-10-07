@@ -257,6 +257,27 @@
   
     - [LLMService](#metaxisdata-v1-LLMService)
   
+- [v1/notification_service.proto](#v1_notification_service-proto)
+    - [BatchMarkNotificationsReadRequest](#metaxisdata-v1-BatchMarkNotificationsReadRequest)
+    - [DeleteNotificationRequest](#metaxisdata-v1-DeleteNotificationRequest)
+    - [GetUnreadNotificationCountRequest](#metaxisdata-v1-GetUnreadNotificationCountRequest)
+    - [GetUnreadNotificationCountResponse](#metaxisdata-v1-GetUnreadNotificationCountResponse)
+    - [ListNotificationsRequest](#metaxisdata-v1-ListNotificationsRequest)
+    - [ListNotificationsResponse](#metaxisdata-v1-ListNotificationsResponse)
+    - [MarkAllNotificationsReadRequest](#metaxisdata-v1-MarkAllNotificationsReadRequest)
+    - [Notification](#metaxisdata-v1-Notification)
+    - [OpenLineageDetail](#metaxisdata-v1-OpenLineageDetail)
+    - [SchemaSyncDetail](#metaxisdata-v1-SchemaSyncDetail)
+    - [SyncDatabaseResult](#metaxisdata-v1-SyncDatabaseResult)
+  
+    - [NotificationSeverity](#metaxisdata-v1-NotificationSeverity)
+    - [NotificationType](#metaxisdata-v1-NotificationType)
+    - [OpenLineageFailureKind](#metaxisdata-v1-OpenLineageFailureKind)
+    - [SyncDatabaseState](#metaxisdata-v1-SyncDatabaseState)
+    - [SyncTrigger](#metaxisdata-v1-SyncTrigger)
+  
+    - [NotificationService](#metaxisdata-v1-NotificationService)
+  
 - [v1/oauth_service.proto](#v1_oauth_service-proto)
     - [ApproveOAuthAuthorizationRequestRequest](#metaxisdata-v1-ApproveOAuthAuthorizationRequestRequest)
     - [GetOAuthAuthorizationRequestRequest](#metaxisdata-v1-GetOAuthAuthorizationRequestRequest)
@@ -4280,6 +4301,312 @@ usually the SQL naming something the analyzer cannot see.
 | UpdateLLMProviderProfile | [UpdateLLMProviderProfileRequest](#metaxisdata-v1-UpdateLLMProviderProfileRequest) | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) |  |
 | DeleteLLMProviderProfile | [DeleteLLMProviderProfileRequest](#metaxisdata-v1-DeleteLLMProviderProfileRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
 | FetchLLMModels | [FetchLLMModelsRequest](#metaxisdata-v1-FetchLLMModelsRequest) | [FetchLLMModelsResponse](#metaxisdata-v1-FetchLLMModelsResponse) |  |
+
+ 
+
+
+
+<a name="v1_notification_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/notification_service.proto
+
+
+
+<a name="metaxisdata-v1-BatchMarkNotificationsReadRequest"></a>
+
+### BatchMarkNotificationsReadRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| names | [string](#string) | repeated | Format: workspaces/{workspace}/notifications/{id} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteNotificationRequest"></a>
+
+### DeleteNotificationRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/notifications/{id} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetUnreadNotificationCountRequest"></a>
+
+### GetUnreadNotificationCountRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetUnreadNotificationCountResponse"></a>
+
+### GetUnreadNotificationCountResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| unread_count | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListNotificationsRequest"></a>
+
+### ListNotificationsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  | The maximum number of notifications to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous ListNotifications call. Provide this to retrieve the subsequent page. |
+| unread_only | [bool](#bool) |  | Return only unread notifications. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListNotificationsResponse"></a>
+
+### ListNotificationsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| notifications | [Notification](#metaxisdata-v1-Notification) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-MarkAllNotificationsReadRequest"></a>
+
+### MarkAllNotificationsReadRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-Notification"></a>
+
+### Notification
+Notification is one in-app message for one recipient.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/notifications/{id} |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| type | [NotificationType](#metaxisdata-v1-NotificationType) |  |  |
+| severity | [NotificationSeverity](#metaxisdata-v1-NotificationSeverity) |  |  |
+| read_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the recipient read it. Unset means unread. |
+| schema_sync | [SchemaSyncDetail](#metaxisdata-v1-SchemaSyncDetail) |  |  |
+| openlineage | [OpenLineageDetail](#metaxisdata-v1-OpenLineageDetail) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-OpenLineageDetail"></a>
+
+### OpenLineageDetail
+OpenLineageDetail reports an OpenLineage ingestion failure, or a dataset that
+fell through to an external dataset.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | [OpenLineageFailureKind](#metaxisdata-v1-OpenLineageFailureKind) |  |  |
+| namespace | [string](#string) |  | The namespace named by the event. Empty when the event did not parse. |
+| job | [string](#string) |  |  |
+| run_id | [string](#string) |  |  |
+| dataset | [string](#string) |  | The dataset that did not resolve. Only set for NAMESPACE_UNMAPPED. |
+| api_key | [string](#string) |  | The masked identifier of the ingestion key that submitted the request, never the key itself. |
+| received_count | [int32](#int32) |  | How many events the request carried and how many of them failed. |
+| failed_count | [int32](#int32) |  |  |
+| error | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SchemaSyncDetail"></a>
+
+### SchemaSyncDetail
+SchemaSyncDetail reports one sync operation: the instance metadata step plus
+every database that operation queued.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| instance | [string](#string) |  | Format: instances/{instance} |
+| instance_title | [string](#string) |  | The instance&#39;s display name, so the client can render the message without a second read. |
+| trigger | [SyncTrigger](#metaxisdata-v1-SyncTrigger) |  |  |
+| instance_error | [string](#string) |  | Why the instance metadata step failed. Empty when it succeeded. |
+| failures | [SyncDatabaseResult](#metaxisdata-v1-SyncDatabaseResult) | repeated | The databases that failed or never reported. Successful ones are counted, not listed. |
+| succeeded_count | [int32](#int32) |  |  |
+| failed_count | [int32](#int32) |  |  |
+| unfinished_count | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SyncDatabaseResult"></a>
+
+### SyncDatabaseResult
+SyncDatabaseResult is one database&#39;s outcome in a schema sync operation.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| database | [string](#string) |  | Format: databases/{instance}/{database} |
+| state | [SyncDatabaseState](#metaxisdata-v1-SyncDatabaseState) |  |  |
+| error | [string](#string) |  | The sync error. Empty for UNFINISHED. |
+
+
+
+
+
+ 
+
+
+<a name="metaxisdata-v1-NotificationSeverity"></a>
+
+### NotificationSeverity
+NotificationSeverity ranks a notification for its recipient.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| NOTIFICATION_SEVERITY_UNSPECIFIED | 0 |  |
+| NOTIFICATION_SEVERITY_INFO | 1 |  |
+| NOTIFICATION_SEVERITY_WARNING | 2 |  |
+| NOTIFICATION_SEVERITY_ERROR | 3 |  |
+
+
+
+<a name="metaxisdata-v1-NotificationType"></a>
+
+### NotificationType
+NotificationType is what a notification is about. It selects which detail
+message the notification carries.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| NOTIFICATION_TYPE_UNSPECIFIED | 0 |  |
+| NOTIFICATION_TYPE_SCHEMA_SYNC | 1 | The outcome of one schema sync operation. |
+| NOTIFICATION_TYPE_OPENLINEAGE | 2 | An OpenLineage ingestion failure, or a dataset that could not be matched to a registered instance. |
+
+
+
+<a name="metaxisdata-v1-OpenLineageFailureKind"></a>
+
+### OpenLineageFailureKind
+OpenLineageFailureKind is why an OpenLineage request produced no lineage.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| OPENLINEAGE_FAILURE_KIND_UNSPECIFIED | 0 |  |
+| OPENLINEAGE_FAILURE_KIND_INVALID_EVENT | 1 | The event could not be parsed, or crossed a per-event limit. |
+| OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED | 2 | The request body or the batch crossed a transport limit. |
+| OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH | 3 | The event&#39;s namespace is not the one the ingestion key is scoped to. |
+| OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED | 4 | The event could not be persisted. |
+| OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED | 5 | The event was persisted but its lineage could not be derived. |
+| OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED | 6 | The dataset matched no registered instance and was stored as an external dataset, so any lineage naming it points at something the registry does not describe. Check the instance&#39;s data source host and port, or add a namespace mapping. |
+
+
+
+<a name="metaxisdata-v1-SyncDatabaseState"></a>
+
+### SyncDatabaseState
+SyncDatabaseState is one database&#39;s outcome within a sync operation.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| SYNC_DATABASE_STATE_UNSPECIFIED | 0 |  |
+| SYNC_DATABASE_STATE_SUCCEEDED | 1 |  |
+| SYNC_DATABASE_STATE_FAILED | 2 |  |
+| SYNC_DATABASE_STATE_UNFINISHED | 3 | The operation ended before this database produced a result, because its deadline passed or its instance disappeared. |
+
+
+
+<a name="metaxisdata-v1-SyncTrigger"></a>
+
+### SyncTrigger
+SyncTrigger is what started the sync operation a notification reports.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| SYNC_TRIGGER_UNSPECIFIED | 0 |  |
+| SYNC_TRIGGER_MANUAL | 1 | A user asked for it. The initiator is the recipient. |
+| SYNC_TRIGGER_BACKGROUND | 2 | The periodic scan asked for it, so there is no initiator and the workspace administrators are the recipients. |
+
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-NotificationService"></a>
+
+### NotificationService
+NotificationService serves the caller&#39;s own in-app messages: the outcome of a
+sync operation they asked for, and the ingestion failures a workspace
+administrator needs to see.
+
+No method here carries a (metaxisdata.v1.permission) annotation, and none is
+reachable without credentials. An inbox belongs to one principal, which the
+workspace-scoped IAM catalog cannot express: every handler therefore scopes
+its query by the authenticated caller&#39;s id, the same way UserService&#39;s
+self-service paths do. Gating these methods on a permission instead would
+lock a custom role out of its own messages.
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| ListNotifications | [ListNotificationsRequest](#metaxisdata-v1-ListNotificationsRequest) | [ListNotificationsResponse](#metaxisdata-v1-ListNotificationsResponse) | List the caller&#39;s notifications, newest first. |
+| GetUnreadNotificationCount | [GetUnreadNotificationCountRequest](#metaxisdata-v1-GetUnreadNotificationCountRequest) | [GetUnreadNotificationCountResponse](#metaxisdata-v1-GetUnreadNotificationCountResponse) | Count the caller&#39;s unread notifications. |
+| BatchMarkNotificationsRead | [BatchMarkNotificationsReadRequest](#metaxisdata-v1-BatchMarkNotificationsReadRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Mark the named notifications read. Already-read notifications are left alone, so the call is idempotent. |
+| MarkAllNotificationsRead | [MarkAllNotificationsReadRequest](#metaxisdata-v1-MarkAllNotificationsReadRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Mark every unread notification of the caller read. |
+| DeleteNotification | [DeleteNotificationRequest](#metaxisdata-v1-DeleteNotificationRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete one of the caller&#39;s notifications. |
 
  
 

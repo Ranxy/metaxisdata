@@ -530,6 +530,53 @@
         
           
           <li>
+            <a href="#store%2fnotification.proto">store/notification.proto</a>
+            <ul>
+              
+                <li>
+                  <a href="#metaxisdata.store.Notification"><span class="badge">M</span>Notification</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.OpenLineageDetail"><span class="badge">M</span>OpenLineageDetail</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.SchemaSyncDetail"><span class="badge">M</span>SchemaSyncDetail</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.SyncDatabaseResult"><span class="badge">M</span>SyncDatabaseResult</a>
+                </li>
+              
+              
+                <li>
+                  <a href="#metaxisdata.store.NotificationSeverity"><span class="badge">E</span>NotificationSeverity</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.NotificationType"><span class="badge">E</span>NotificationType</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.OpenLineageFailureKind"><span class="badge">E</span>OpenLineageFailureKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.SyncDatabaseState"><span class="badge">E</span>SyncDatabaseState</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.SyncTrigger"><span class="badge">E</span>SyncTrigger</a>
+                </li>
+              
+              
+              
+            </ul>
+          </li>
+        
+          
+          <li>
             <a href="#store%2fpolicy.proto">store/policy.proto</a>
             <ul>
               
@@ -4919,6 +4966,490 @@ exposes the ciphertext through the API. </p></td>
                 <td>OPENLINEAGE</td>
                 <td>100</td>
                 <td><p>for Non-database internal structure</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+
+      
+
+      
+    
+      
+      <div class="file-heading">
+        <h2 id="store/notification.proto">store/notification.proto</h2><a href="#title">Top</a>
+      </div>
+      <p></p>
+
+      
+        <h3 id="metaxisdata.store.Notification">Notification</h3>
+        <p>Notification is one in-app message for one recipient: the outcome of a sync</p><p>operation the recipient asked for, or an ingestion failure the workspace</p><p>administrators need to see. It is personal data, so every read is scoped by</p><p>recipient_id rather than by the workspace.</p><p>id, create_time, recipient_id, read_time and dedupe_key are columns of the</p><p>notification table and are not written into the payload; the store stamps</p><p>them on insert and fills them from the row on read, so the payload and the</p><p>columns cannot disagree. The payload holds only the message proper.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>The notification row&#39;s primary key. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>recipient_id</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The principal id this message is for. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>type</td>
+                  <td><a href="#metaxisdata.store.NotificationType">NotificationType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>severity</td>
+                  <td><a href="#metaxisdata.store.NotificationSeverity">NotificationSeverity</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>read_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When the recipient read it. Unset means unread. Backed by notification.read_at,
+not by the payload, so the unread count can be answered from a partial index. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>dedupe_key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Notification deduplication key, empty when the message is not deduplicated.
+Format: &lt;event&gt;:&lt;target&gt;:&lt;bucket&gt;, where the bucket is a timestamp aligned
+to the event&#39;s suppression window. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema_sync</td>
+                  <td><a href="#metaxisdata.store.SchemaSyncDetail">SchemaSyncDetail</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>openlineage</td>
+                  <td><a href="#metaxisdata.store.OpenLineageDetail">OpenLineageDetail</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.OpenLineageDetail">OpenLineageDetail</h3>
+        <p>OpenLineageDetail reports an OpenLineage ingestion failure, or a dataset that</p><p>fell through to an external dataset.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.store.OpenLineageFailureKind">OpenLineageFailureKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>namespace</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The namespace named by the event. Empty when the event did not parse. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>job</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>run_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>dataset</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The dataset that did not resolve. Only set for NAMESPACE_UNMAPPED. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>api_key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The masked identifier of the ingestion key that submitted the request. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>received_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many events this request carried and how many of them failed. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failed_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Truncated before it is stored. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.SchemaSyncDetail">SchemaSyncDetail</h3>
+        <p>SchemaSyncDetail reports one sync operation: the instance metadata step plus</p><p>every database that was queued by it.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>instance</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: instances/{instance} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance_title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The instance&#39;s display name, so a client can render the message without a
+second read. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trigger</td>
+                  <td><a href="#metaxisdata.store.SyncTrigger">SyncTrigger</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance_error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Why the instance metadata step failed. Empty when it succeeded. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failures</td>
+                  <td><a href="#metaxisdata.store.SyncDatabaseResult">SyncDatabaseResult</a></td>
+                  <td>repeated</td>
+                  <td><p>The databases that failed or never reported. Listed up to a cap; the counts
+below carry the whole picture. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>succeeded_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failed_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>unfinished_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.SyncDatabaseResult">SyncDatabaseResult</h3>
+        <p>SyncDatabaseResult is one database's outcome in a schema sync operation.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>database</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: databases/{instance}/{database} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#metaxisdata.store.SyncDatabaseState">SyncDatabaseState</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Truncated before it is stored, so one runaway error cannot bloat the row. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+
+      
+        <h3 id="metaxisdata.store.NotificationSeverity">NotificationSeverity</h3>
+        <p>NotificationSeverity ranks a notification for the recipient.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>NOTIFICATION_SEVERITY_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_SEVERITY_INFO</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_SEVERITY_WARNING</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_SEVERITY_ERROR</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.NotificationType">NotificationType</h3>
+        <p>NotificationType is what a notification is about. It selects which detail</p><p>message the notification carries.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>NOTIFICATION_TYPE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_TYPE_SCHEMA_SYNC</td>
+                <td>1</td>
+                <td><p>The outcome of one schema sync operation.</p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_TYPE_OPENLINEAGE</td>
+                <td>2</td>
+                <td><p>An OpenLineage ingestion failure, or a dataset that could not be matched
+to a registered instance.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.OpenLineageFailureKind">OpenLineageFailureKind</h3>
+        <p>OpenLineageFailureKind is why an OpenLineage request produced no lineage.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>OPENLINEAGE_FAILURE_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE_FAILURE_KIND_INVALID_EVENT</td>
+                <td>1</td>
+                <td><p>The event could not be parsed, or crossed a per-event limit.</p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED</td>
+                <td>2</td>
+                <td><p>The request body or the batch crossed a transport limit.</p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH</td>
+                <td>3</td>
+                <td><p>The event&#39;s namespace is not the one the ingestion key is scoped to.</p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED</td>
+                <td>4</td>
+                <td><p>The event could not be persisted.</p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED</td>
+                <td>5</td>
+                <td><p>The event was persisted but its lineage could not be derived.</p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED</td>
+                <td>6</td>
+                <td><p>The dataset matched no registered instance and was stored as an external
+dataset, so any lineage naming it points at something the registry does not
+describe.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.SyncDatabaseState">SyncDatabaseState</h3>
+        <p>SyncDatabaseState is one database's outcome within a sync operation.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>SYNC_DATABASE_STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SYNC_DATABASE_STATE_SUCCEEDED</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SYNC_DATABASE_STATE_FAILED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SYNC_DATABASE_STATE_UNFINISHED</td>
+                <td>3</td>
+                <td><p>The operation ended before this database produced a result, because its
+deadline passed or its instance disappeared.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.SyncTrigger">SyncTrigger</h3>
+        <p>SyncTrigger is what started the sync operation a notification reports.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>SYNC_TRIGGER_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SYNC_TRIGGER_MANUAL</td>
+                <td>1</td>
+                <td><p>A user asked for it, through an API call or in the UI. The initiator is the
+recipient.</p></td>
+              </tr>
+            
+              <tr>
+                <td>SYNC_TRIGGER_BACKGROUND</td>
+                <td>2</td>
+                <td><p>The periodic scan asked for it, so there is no initiator; the workspace
+administrators are the recipients.</p></td>
               </tr>
             
           </tbody>

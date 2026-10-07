@@ -3224,6 +3224,168 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/notifications:
+        get:
+            tags:
+                - NotificationService
+            description: List the caller's notifications, newest first.
+            operationId: NotificationService_ListNotifications
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of notifications to return. If unspecified, at most 50
+                     are returned. The maximum value is 1000; values above 1000 are coerced to
+                     1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous ListNotifications call. Provide this
+                     to retrieve the subsequent page.
+                  schema:
+                    type: string
+                - name: unreadOnly
+                  in: query
+                  description: Return only unread notifications.
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListNotificationsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/notifications/{notification}:
+        delete:
+            tags:
+                - NotificationService
+            description: Delete one of the caller's notifications.
+            operationId: NotificationService_DeleteNotification
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: notification
+                  in: path
+                  description: The notification id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/notifications:batchMarkRead:
+        post:
+            tags:
+                - NotificationService
+            description: |-
+                Mark the named notifications read. Already-read notifications are left
+                 alone, so the call is idempotent.
+            operationId: NotificationService_BatchMarkNotificationsRead
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BatchMarkNotificationsReadRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/notifications:markAllRead:
+        post:
+            tags:
+                - NotificationService
+            description: Mark every unread notification of the caller read.
+            operationId: NotificationService_MarkAllNotificationsRead
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/MarkAllNotificationsReadRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/notifications:unreadCount:
+        get:
+            tags:
+                - NotificationService
+            description: Count the caller's unread notifications.
+            operationId: NotificationService_GetUnreadNotificationCount
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetUnreadNotificationCountResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
 components:
     schemas:
         APIKey:
@@ -3535,6 +3697,20 @@ components:
                     items:
                         $ref: '#/components/schemas/User'
                     description: The users from the specified request.
+        BatchMarkNotificationsReadRequest:
+            required:
+                - parent
+                - names
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                names:
+                    type: array
+                    items:
+                        type: string
+                    description: 'Format: workspaces/{workspace}/notifications/{id}'
         BatchSyncInstanceResult:
             type: object
             properties:
@@ -4605,6 +4781,12 @@ components:
             properties:
                 metadata:
                     $ref: '#/components/schemas/StoredMetadata'
+        GetUnreadNotificationCountResponse:
+            type: object
+            properties:
+                unreadCount:
+                    type: integer
+                    format: int32
         GoogleProtobufAny:
             type: object
             properties:
@@ -5101,6 +5283,15 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/NamespaceMapping'
+        ListNotificationsResponse:
+            type: object
+            properties:
+                notifications:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Notification'
+                nextPageToken:
+                    type: string
         ListOpenLineageDatasetsResponse:
             type: object
             properties:
@@ -5370,6 +5561,14 @@ components:
                     type: string
                     description: The database name in the instance.
             description: ManualSQLMetadata is the metadata for a user-maintained SQL definition.
+        MarkAllNotificationsReadRequest:
+            required:
+                - parent
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
         MaterializedViewMetadata:
             type: object
             properties:
@@ -5650,6 +5849,63 @@ components:
                 updatedAt:
                     type: string
                     format: date-time
+        Notification:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: The notification row's primary key.
+                createTime:
+                    type: string
+                    format: date-time
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}'
+                recipientId:
+                    type: integer
+                    description: The principal id this message is for.
+                    format: int32
+                type:
+                    enum:
+                        - NOTIFICATION_TYPE_UNSPECIFIED
+                        - NOTIFICATION_TYPE_SCHEMA_SYNC
+                        - NOTIFICATION_TYPE_OPENLINEAGE
+                    type: string
+                    format: enum
+                severity:
+                    enum:
+                        - NOTIFICATION_SEVERITY_UNSPECIFIED
+                        - NOTIFICATION_SEVERITY_INFO
+                        - NOTIFICATION_SEVERITY_WARNING
+                        - NOTIFICATION_SEVERITY_ERROR
+                    type: string
+                    format: enum
+                readTime:
+                    type: string
+                    description: |-
+                        When the recipient read it. Unset means unread. Backed by notification.read_at,
+                         not by the payload, so the unread count can be answered from a partial index.
+                    format: date-time
+                dedupeKey:
+                    type: string
+                    description: |-
+                        Notification deduplication key, empty when the message is not deduplicated.
+                         Format: <event>:<target>:<bucket>, where the bucket is a timestamp aligned
+                         to the event's suppression window.
+                schemaSync:
+                    $ref: '#/components/schemas/SchemaSyncDetail'
+                openlineage:
+                    $ref: '#/components/schemas/OpenLineageDetail'
+            description: |-
+                Notification is one in-app message for one recipient: the outcome of a sync
+                 operation the recipient asked for, or an ingestion failure the workspace
+                 administrators need to see. It is personal data, so every read is scoped by
+                 recipient_id rather than by the workspace.
+
+                 id, create_time, recipient_id, read_time and dedupe_key are columns of the
+                 notification table and are not written into the payload; the store stamps
+                 them on insert and fills them from the row on read, so the payload and the
+                 columns cannot disagree. The payload holds only the message proper.
         OAuth2IdentityProviderContext:
             type: object
             properties:
@@ -5839,6 +6095,46 @@ components:
                     type: boolean
                 writesDataset:
                     type: boolean
+        OpenLineageDetail:
+            type: object
+            properties:
+                kind:
+                    enum:
+                        - OPENLINEAGE_FAILURE_KIND_UNSPECIFIED
+                        - OPENLINEAGE_FAILURE_KIND_INVALID_EVENT
+                        - OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED
+                        - OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH
+                        - OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED
+                        - OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED
+                        - OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED
+                    type: string
+                    format: enum
+                namespace:
+                    type: string
+                    description: The namespace named by the event. Empty when the event did not parse.
+                job:
+                    type: string
+                runId:
+                    type: string
+                dataset:
+                    type: string
+                    description: The dataset that did not resolve. Only set for NAMESPACE_UNMAPPED.
+                apiKey:
+                    type: string
+                    description: The masked identifier of the ingestion key that submitted the request.
+                receivedCount:
+                    type: integer
+                    description: How many events this request carried and how many of them failed.
+                    format: int32
+                failedCount:
+                    type: integer
+                    format: int32
+                error:
+                    type: string
+                    description: Truncated before it is stored.
+            description: |-
+                OpenLineageDetail reports an OpenLineage ingestion failure, or a dataset that
+                 fell through to an external dataset.
         OpenLineageFilterOption:
             type: object
             properties:
@@ -6127,6 +6423,46 @@ components:
             description: |-
                 SchemaMetadata is the metadata for schemas.
                  This is the concept of schema in Postgres, but it's a no-op for MySQL.
+        SchemaSyncDetail:
+            type: object
+            properties:
+                instance:
+                    type: string
+                    description: 'Format: instances/{instance}'
+                instanceTitle:
+                    type: string
+                    description: |-
+                        The instance's display name, so a client can render the message without a
+                         second read.
+                trigger:
+                    enum:
+                        - SYNC_TRIGGER_UNSPECIFIED
+                        - SYNC_TRIGGER_MANUAL
+                        - SYNC_TRIGGER_BACKGROUND
+                    type: string
+                    format: enum
+                instanceError:
+                    type: string
+                    description: Why the instance metadata step failed. Empty when it succeeded.
+                failures:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SyncDatabaseResult'
+                    description: |-
+                        The databases that failed or never reported. Listed up to a cap; the counts
+                         below carry the whole picture.
+                succeededCount:
+                    type: integer
+                    format: int32
+                failedCount:
+                    type: integer
+                    format: int32
+                unfinishedCount:
+                    type: integer
+                    format: int32
+            description: |-
+                SchemaSyncDetail reports one sync operation: the instance metadata step plus
+                 every database that was queued by it.
         SearchManualSQLResponse:
             type: object
             properties:
@@ -6363,6 +6699,24 @@ components:
         SyncDatabaseResponse:
             type: object
             properties: {}
+        SyncDatabaseResult:
+            type: object
+            properties:
+                database:
+                    type: string
+                    description: 'Format: databases/{instance}/{database}'
+                state:
+                    enum:
+                        - SYNC_DATABASE_STATE_UNSPECIFIED
+                        - SYNC_DATABASE_STATE_SUCCEEDED
+                        - SYNC_DATABASE_STATE_FAILED
+                        - SYNC_DATABASE_STATE_UNFINISHED
+                    type: string
+                    format: enum
+                error:
+                    type: string
+                    description: Truncated before it is stored, so one runaway error cannot bloat the row.
+            description: SyncDatabaseResult is one database's outcome in a schema sync operation.
         SyncInstanceRequest:
             required:
                 - name
@@ -6890,6 +7244,18 @@ tags:
     - name: InstanceService
     - name: LLMService
     - name: LineageService
+    - name: NotificationService
+      description: |-
+        NotificationService serves the caller's own in-app messages: the outcome of a
+         sync operation they asked for, and the ingestion failures a workspace
+         administrator needs to see.
+
+         No method here carries a (metaxisdata.v1.permission) annotation, and none is
+         reachable without credentials. An inbox belongs to one principal, which the
+         workspace-scoped IAM catalog cannot express: every handler therefore scopes
+         its query by the authenticated caller's id, the same way UserService's
+         self-service paths do. Gating these methods on a permission instead would
+         lock a custom role out of its own messages.
     - name: OAuthService
       description: |-
         OAuthService serves the browser-facing half of the OAuth 2.1 authorization
