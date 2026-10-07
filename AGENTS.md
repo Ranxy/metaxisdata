@@ -67,7 +67,7 @@ Go integration suites run the real server against PostgreSQL + MySQL behind the 
 These look like defects but were chosen knowingly. Read [docs/security-posture.md](docs/security-posture.md) before "fixing" any of them.
 
 - **Authorization is workspace-scoped (single tenant)** — every member reads everything; writes need `workspaceAdmin`.
-- **Stored credentials are obfuscated, not encrypted** — database read access recovers them all.
+- **Stored credentials are encrypted with a per-deployment data key** (`v1:` AES-256-GCM, `backend/common/crypto`) — database read access recovers them all unless `METAXISDATA_ENCRYPTION_KEY` wraps that key with one kept outside the database.
 - **The CLI stores its token in clear text** (mode 0600).
 - **Analysis scopes live only in the process environment** (`METAXISDATA_SCOPES`), never persisted.
 - **Device login state is process-local** — run one replica or add sticky routing.
