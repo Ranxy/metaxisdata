@@ -66,9 +66,7 @@ type previewKey struct {
 // namespaceResolution is what resolving a dataset needs from its namespace alone,
 // which every dataset of that namespace shares.
 type namespaceResolution struct {
-	// host, port and database are the parsed namespace.
-	host     string
-	port     string
+	// database is the database the namespace's path names, if any.
 	database string
 	// manual is the instance a namespace mapping names, when the namespace has one.
 	manual *resolvedInstance
@@ -239,7 +237,7 @@ func (r *Resolver) namespaceResolution(ctx context.Context, namespace string) (*
 // port the namespace parses to.
 func (r *Resolver) lookupNamespace(ctx context.Context, namespace string) (*namespaceResolution, error) {
 	host, port, database := parseNamespace(namespace)
-	resolution := &namespaceResolution{host: host, port: port, database: database}
+	resolution := &namespaceResolution{database: database}
 
 	mapping, err := r.store.GetNamespaceMapping(ctx, &store.FindNamespaceMappingMessage{Namespace: &namespace})
 	if err != nil {
