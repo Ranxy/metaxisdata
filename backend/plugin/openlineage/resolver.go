@@ -24,15 +24,29 @@ type ResolvedDataset struct {
 	Internal bool
 }
 
+// ResolutionStore is the store surface the resolver reads: the namespace mapping,
+// the instances behind it, and the external dataset it creates for a namespace
+// that names no instance. It is the seam that lets the resolution rules and their
+// per-request memoization be tested without a database.
+type ResolutionStore interface {
+	GetNamespaceMapping(ctx context.Context, find *store.FindNamespaceMappingMessage) (*store.NamespaceMappingMessage, error)
+	GetInstance(ctx context.Context, find *store.FindInstanceMessage) (*store.InstanceMessage, error)
+	ListInstances(ctx context.Context, find *store.FindInstanceMessage) ([]*store.InstanceMessage, error)
+	GetOrCreateExternalDataset(ctx context.Context, namespace, name, datasetType string) (*store.ExternalDatasetMessage, error)
+}
+
 // Resolver maps OpenLineage dataset namespaces and names to internal GUIDs or external datasets.
 type Resolver struct {
-	store *store.Store
+	store ResolutionStore
 
-	// requestScoped enables per-request memoization of dataset previews and the
-	// instance list. Without it a read endpoint re-resolves every dataset once
-	// per run and lists every instance once per distinct dataset namespace.
+	// requestScoped enables per-request memoization of dataset previews, of what
+	// one namespace resolves to, and of the instance list. Without it a read
+	// endpoint re-resolves every dataset once per run, lists every instance once per
+	// distinct dataset namespace, and looks up the namespace mapping once per
+	// dataset.
 	requestScoped bool
 	previews      map[previewKey]*ResolvedDataset
+	namespaces    map[string]*namespaceResolution
 
 	instances     []*store.InstanceMessage
 	instancesDone bool
@@ -49,19 +63,45 @@ type previewKey struct {
 	name      string
 }
 
+// namespaceResolution is what resolving a dataset needs from its namespace alone,
+// which every dataset of that namespace shares.
+type namespaceResolution struct {
+	// host, port and database are the parsed namespace.
+	host     string
+	port     string
+	database string
+	// manual is the instance a namespace mapping names, when the namespace has one.
+	manual *resolvedInstance
+	// auto is the instance whose data source answers the namespace's host and port.
+	auto *resolvedInstance
+}
+
+// resolvedInstance is the instance a namespace resolves to, with what building one
+// dataset's GUID needs.
+type resolvedInstance struct {
+	resourceID string
+	engine     storepb.Engine
+	// databaseOverride is the database a namespace mapping names; a mapping that
+	// names one has stated the answer and it wins over everything else.
+	databaseOverride string
+	// database is the instance's own data source database, the last resort.
+	database string
+}
+
 // NewResolver creates a new Resolver.
-func NewResolver(s *store.Store) *Resolver {
+func NewResolver(s ResolutionStore) *Resolver {
 	return &Resolver{store: s, warnedNamespaces: make(map[string]struct{})}
 }
 
 // NewRequestScopedResolver creates a Resolver that memoizes lookups for the
 // lifetime of one request. Use NewResolver for ingestion, where a resolver may
 // serve many resolutions and cached answers could go stale.
-func NewRequestScopedResolver(s *store.Store) *Resolver {
+func NewRequestScopedResolver(s ResolutionStore) *Resolver {
 	return &Resolver{
 		store:            s,
 		requestScoped:    true,
 		previews:         make(map[previewKey]*ResolvedDataset),
+		namespaces:       make(map[string]*namespaceResolution),
 		warnedNamespaces: make(map[string]struct{}),
 	}
 }
@@ -156,29 +196,94 @@ func (r *Resolver) resolveDatasetPreviewUncached(ctx context.Context, namespace,
 }
 
 func (r *Resolver) resolveByManualMapping(ctx context.Context, namespace, datasetName string) (*ResolvedDataset, error) {
-	mapping, err := r.store.GetNamespaceMapping(ctx, &store.FindNamespaceMappingMessage{Namespace: &namespace})
+	resolution, err := r.namespaceResolution(ctx, namespace)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to lookup namespace mapping")
+		return nil, err
 	}
-	if mapping == nil {
+	if resolution.manual == nil {
 		return nil, nil
 	}
 
-	instance, err := r.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &mapping.InstanceResourceID})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get instance")
-	}
-	if instance == nil {
-		return nil, nil
-	}
-
-	database := mappingDatabase(instance.Metadata.GetEngine(), datasetName, namespace, mapping.DatabaseName)
-	guid := buildGUID(instance.ResourceID, instance.Metadata.GetEngine(), database, datasetName)
+	instance := resolution.manual
+	database := mappingDatabase(instance.engine, datasetName, namespace, instance.databaseOverride)
+	guid := buildGUID(instance.resourceID, instance.engine, database, datasetName)
 	return &ResolvedDataset{
 		GUID:     guid,
 		MetaType: storepb.MetaType_TABLE,
 		Internal: true,
 	}, nil
+}
+
+// namespaceResolution returns what the namespace resolves to, looking it up once
+// per request: a page resolves thousands of datasets, usually many of them in one
+// namespace, and the lookups behind them are queries.
+func (r *Resolver) namespaceResolution(ctx context.Context, namespace string) (*namespaceResolution, error) {
+	if r.requestScoped {
+		if resolution, ok := r.namespaces[namespace]; ok {
+			return resolution, nil
+		}
+	}
+
+	resolution, err := r.lookupNamespace(ctx, namespace)
+	if err != nil {
+		return nil, err
+	}
+	if r.requestScoped {
+		r.namespaces[namespace] = resolution
+	}
+	return resolution, nil
+}
+
+// lookupNamespace answers the two ways a namespace names an instance: the manual
+// mapping, which wins, and the instance whose data source carries the host and
+// port the namespace parses to.
+func (r *Resolver) lookupNamespace(ctx context.Context, namespace string) (*namespaceResolution, error) {
+	host, port, database := parseNamespace(namespace)
+	resolution := &namespaceResolution{host: host, port: port, database: database}
+
+	mapping, err := r.store.GetNamespaceMapping(ctx, &store.FindNamespaceMappingMessage{Namespace: &namespace})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to lookup namespace mapping")
+	}
+	if mapping != nil {
+		instance, err := r.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &mapping.InstanceResourceID})
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get instance")
+		}
+		if instance != nil {
+			resolution.manual = &resolvedInstance{
+				resourceID:       instance.ResourceID,
+				engine:           instance.Metadata.GetEngine(),
+				databaseOverride: mapping.DatabaseName,
+			}
+		}
+	}
+
+	if host == "" || resolution.manual != nil {
+		// A mapping answers the namespace, and an unparsable namespace names no
+		// instance; neither needs the instance list.
+		return resolution, nil
+	}
+	instances, err := r.listInstances(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, instance := range instances {
+		if instance.Deleted || instance.Metadata == nil {
+			continue
+		}
+		for _, dataSource := range instance.Metadata.GetDataSources() {
+			if matchHostPort(dataSource.GetHost(), dataSource.GetPort(), host, port) {
+				resolution.auto = &resolvedInstance{
+					resourceID: instance.ResourceID,
+					engine:     instance.Metadata.GetEngine(),
+					database:   dataSource.GetDatabase(),
+				}
+				return resolution, nil
+			}
+		}
+	}
+	return resolution, nil
 }
 
 // mappingDatabase returns the database a namespace mapping resolves a dataset to.
@@ -194,34 +299,22 @@ func mappingDatabase(engine storepb.Engine, datasetName, namespace, databaseFrom
 }
 
 func (r *Resolver) resolveByAutoMatch(ctx context.Context, namespace, datasetName string) (*ResolvedDataset, error) {
-	host, port, dbFromNS := parseNamespace(namespace)
-	if host == "" {
-		return nil, nil
-	}
-
-	instances, err := r.listInstances(ctx)
+	resolution, err := r.namespaceResolution(ctx, namespace)
 	if err != nil {
 		return nil, err
 	}
-
-	for _, inst := range instances {
-		if inst.Deleted || inst.Metadata == nil {
-			continue
-		}
-		for _, ds := range inst.Metadata.GetDataSources() {
-			if matchHostPort(ds.GetHost(), ds.GetPort(), host, port) {
-				database := datasetDatabase(inst.Metadata.GetEngine(), datasetName, dbFromNS, ds.GetDatabase())
-				guid := buildGUID(inst.ResourceID, inst.Metadata.GetEngine(), database, datasetName)
-				return &ResolvedDataset{
-					GUID:     guid,
-					MetaType: storepb.MetaType_TABLE,
-					Internal: true,
-				}, nil
-			}
-		}
+	if resolution.auto == nil {
+		return nil, nil
 	}
 
-	return nil, nil
+	instance := resolution.auto
+	database := datasetDatabase(instance.engine, datasetName, resolution.database, instance.database)
+	guid := buildGUID(instance.resourceID, instance.engine, database, datasetName)
+	return &ResolvedDataset{
+		GUID:     guid,
+		MetaType: storepb.MetaType_TABLE,
+		Internal: true,
+	}, nil
 }
 
 // datasetDatabase decides which database a dataset belongs to, from the three
