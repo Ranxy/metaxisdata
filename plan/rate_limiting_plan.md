@@ -36,8 +36,9 @@ lasts one minute, and a refused request does not extend or spend anything.
 | Device login (handler) | `GetDeviceLogin`, `ApproveDeviceLogin` | caller (`user:` or `ip:`) | 60/min | 600/min |
 | MCP (`Server.invoke`) | tool calls | principal | 600/min | 6000/min |
 | MCP (`Server.Handler`) | every request, before the bearer check | resolved address | 6000/min | 60000/min |
-| `boundedRateLimiterStore` | OpenLineage ingestion | ingestion-key digest, else resolved address | 50/s, burst 100 | 10× |
-| `boundedRateLimiterStore` | each `/oauth/*` route | resolved address | 10/s, burst 20 | 10× |
+| `boundedRateLimiterStore` | OpenLineage ingestion | ingestion-key digest, else resolved address | 50/s, burst 100 | — |
+| `boundedRateLimiterStore` | OpenLineage ingestion | resolved address, whatever key presented | 500/s, burst 1000 | — |
+| `boundedRateLimiterStore` | each `/oauth/*` route | resolved address | 10/s, burst 20 | — |
 
 `CreateUser` exempts a signed-in caller on the anonymous interceptor because an
 administrator may create members in bulk; those calls are counted by the
@@ -54,9 +55,27 @@ principal budget instead.
 - **The budget covers ledger writes, not reads, and the LLM calls.** The audit
   annotation decides the set, so a method that gains `audit = true` later is
   budgeted without touching the interceptor. `ListAuditLogs` is exempt: it is the
-  one audited method that only reads. It still writes a row per call, so a caller
-  that loops *it* grows the ledger; that is the read path's amplification and is
-  listed under residuals rather than silently bounded here.
+  one audited method that only reads.
+- **That exemption is not "a reader of the ledger is unbounded" — it is worse.**
+  The audit interceptor runs before the ACL interceptor, so a call the caller is
+  not allowed to make still writes a row, and an ordinary member holds no
+  `metaxisdata.auditLogs.search`. Every `ListAuditLogs` call from any signed-in
+  account is therefore *refused and recorded*, with no rate bound on the
+  recording: 3200 calls write 3200 permanent rows (measured against a real server).
+  The budget also counts before the ACL, so a denied call spends quota as well.
+  Closing this means treating "a read that writes a row" as a ledger write, which
+  is a policy about how much of the ledger one caller may write; it is left as the
+  one explicit hole rather than quietly bounded, and `security-posture.md` states
+  it.
+- **The deployment-wide counter is shared, so it can be spent by one account.**
+  A permission-less account can exhaust the 30000/min ceiling in about half a
+  minute, after which every other principal is refused until the window rolls.
+  The counter is what bounds the ledger's total growth across principals, which is
+  why it exists; the availability cost is accepted and documented rather than
+  papered over. `validate_only` calls are the cheapest way to spend it. The
+  `Logout` ceiling has the same property from the anonymous side: three addresses
+  spend its 300/min and nobody can log out for the window — still better than the
+  unauthenticated replay writing rows without any bound.
 - **`Logout` is budgeted even though it is idempotent.** Revoking the same token
   twice changes nothing, but every call still writes an audit row, and a token
   this server signed can be replayed for as long as the caller likes. It gets its
@@ -68,13 +87,23 @@ principal budget instead.
   caller can drive token verification and a revocation lookup per invented token
   without limit. Its numbers are ten times the per-principal ones so it bounds
   probing without pacing a fleet of agents behind one NAT.
-- **The plain-HTTP stores carry a deployment-wide bucket too.** Their
-  per-identifier buckets are keyed by caller-chosen values (an ingestion key), the
-  identifier ceiling bounds memory only, and a rotating caller reaches a fresh
-  bucket per request; the shared counter is what bounds the total work.
+- **OpenLineage ingestion counts the resolved address as well as the key.** An
+  unknown ingestion key is rejected without a password check, so forged keys are
+  cheap and each one opens a fresh bucket; the key dimension therefore cannot bound
+  that caller, and the address is the one identifier it cannot choose. The address
+  budget is set well above one producer's so a real fan-in behind one address (a
+  NAT, a shared Spark gateway) is not paced by it.
+- **A deployment-wide bucket shared by every identifier was tried and removed.**
+  It bounded the rotating caller's total rate, but a caller with forged keys (or,
+  on the OAuth routes, a handful of addresses) exhausted it and every other
+  producer on the route was refused `429` — an unbounded rate traded for a way to
+  deny everyone else. The per-address dimension bounds the same caller without
+  making anyone else pay. The OAuth routes carry no second dimension at all: their
+  identifier is already the resolved address, and their request side is anonymous
+  by design, so there was no rotating-identifier gap to close.
 - **Two limiter implementations, one per route family.** Connect methods use
   `state.WindowLimiter` (fixed window, key + global). The plain-HTTP routes use
-  `server.boundedRateLimiterStore` (token bucket, key + global) because they go
+  `server.boundedRateLimiterStore` (token bucket, per identifier) because they go
   through echo's rate-limit middleware. They differ in smoothing, not in what they
   protect, and both cap their tracked identifiers.
 - **OpenLineage ingestion and each OAuth route stay separate budgets.** Sharing
@@ -94,8 +123,17 @@ principal budget instead.
   an exemption is a deliberate two-file change. The same file pins the per-key
   and global dimensions, that an anonymous caller and an unbudgeted method are
   untouched, and that a refused stream never reaches its handler.
-- `backend/server/rate_limiter_test.go` pins the deployment-wide bucket, that a
-  rotating caller is bounded by it, and that a refused request spends nothing.
+- `backend/server/openlineage_ingestion_test.go` pins the key dimension, the
+  address dimension, that an invented key cannot outrun the address one, and — the
+  regression test for the removed shared bucket — that one caller spending its own
+  address budget does not refuse a producer on another address.
+- `backend/server/rate_limiter_test.go` pins the identifier ceiling and the
+  property it deliberately does *not* provide: a rotating caller always gets a
+  fresh bucket.
+- `backend/api/v1/auth_service_device_login_test.go` pins that
+  `CreateDeviceLogin` consults its budget, which lives in the handler rather than
+  on the interceptor chain: spending the address budget must refuse the call
+  before it reads the workspace setting.
 - `backend/mcp/source_limiter_test.go` pins the address budget, its key
   resolution and that a switched-off surface is not counted.
 - `backend/test/integration/runner/rate_limit_service_test.go` runs the real
@@ -106,18 +144,36 @@ principal budget instead.
 
 ## Residuals
 
-1. **`ListAuditLogs` writes a ledger row per read and is not budgeted.** It is
-   exempt as a read; bounding it would restrict ordinary reads and belongs with a
-   policy about how much of the ledger a page may write, not with this budget.
+1. **`ListAuditLogs` is the one unbounded ledger write.** It is exempt as a read,
+   but the audit interceptor runs before the ACL interceptor, so every call from
+   any signed-in account — permission or not — writes a permanent row while being
+   refused, and nothing caps the rate (3200 calls, 3200 rows, measured).
+   `security-posture.md` states this; closing it means treating "a read that writes
+   a row" as a ledger write.
 2. **`BatchSyncInstances`, CSV export and similar bulk work share the per-method
    budget with interactive calls.** The shipped limit is generous (3000/min) so
    it does not pace work, which means it bounds a loop rather than a burst.
-3. **The MCP row count is bounded by the call budget, not by the ledger's size.**
-   A refused call is still audited (deliberate), so the per-principal budget caps
-   rows per minute rather than rows in total.
-4. **`ExchangeDeviceLogin` and `GetWorkspaceProfileSetting` carry no budget.**
+3. **The deployment-wide ceilings are shared and therefore spendable by one
+   caller.** One account can exhaust the principal 30000/min and refuse every other
+   principal for the window; three addresses can exhaust the Logout 300/min so
+   nobody can log out. Both are the price of bounding aggregate ledger growth and
+   are documented in `security-posture.md`. Separately, budgets are decided before
+   the ACL, so a call the caller may not make still counts (and still leaves a row).
+4. **The MCP endpoint is the largest ledger-writing channel.** A call refused by
+   the per-principal budget is still audited and spends no principal budget, so
+   what caps its rows per minute is the address budget: 6000/min per address,
+   60000/min deployment — twice the Connect principal ceiling.
+5. **`ExchangeDeviceLogin` and `GetWorkspaceProfileSetting` carry no budget.**
    The first needs a 256-bit device code that only a budgeted call can mint and
    is held to the protocol's minimum poll interval; the second reads one setting,
    writes nothing and is not audited.
-5. **Counters are per replica** (see above) and **not configurable**: the numbers
+6. **A limiter's table is pruned only at its ceiling**, so a long-running process
+   accumulates every key it has ever seen and then evicts on every request — a full
+   walk of the map under the limiter's mutex (~0.7 ms once the 16384-key principal
+   table is full, against ~0.3 µs below it). The keys are server-chosen so a caller
+   cannot force it, and the shipped global budgets sit below what the walk can
+   sustain; it is a tail-latency boundary. The fix, if it is ever worth making, is
+   to drop elapsed keys on an amortized schedule instead of only at the ceiling,
+   which keeps the table near the set active in one window.
+7. **Counters are per replica** (see above) and **not configurable**: the numbers
    are constants, so changing one is a code change with its test.

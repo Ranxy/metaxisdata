@@ -11,11 +11,16 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
+
+// deviceLoginCreateSourceBudget is the state package's constant, repeated here so
+// a silent change to it shows up as a failing test rather than passing either way.
+const deviceLoginCreateSourceBudget = 10
 
 func mustState(t *testing.T) *state.State {
 	t.Helper()
@@ -189,6 +194,33 @@ func TestExchangeDeviceLoginReportsPendingAndThrottles(t *testing.T) {
 		DeviceCode: created.DeviceCode,
 	}))
 	require.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(err))
+}
+
+// CreateDeviceLogin is the one anonymous, audited method whose budget lives in
+// the handler rather than on the interceptor chain, so nothing else pins that it
+// is consulted at all — deleting it leaves every other test green. Spend the
+// address budget the way requests from one caller would, then require the refused
+// call to stop at the budget: were the check gone, the handler would go on to the
+// verification address and dereference the store this service deliberately does
+// not have.
+func TestCreateDeviceLoginIsBudgetedBeforeItReadsAnything(t *testing.T) {
+	t.Parallel()
+
+	stateCfg := mustState(t)
+	svc := &AuthService{stateCfg: stateCfg, profile: &config.Profile{}}
+
+	// The same resolver the handler uses, so the key cannot drift.
+	key := audit.BuildRequestMetadata(http.Header{}, "", nil).GetIp()
+	for i := range deviceLoginCreateSourceBudget {
+		require.True(t, stateCfg.DeviceLoginLimiter.Allow(key, time.Now()), "request %d is inside the budget", i+1)
+	}
+
+	_, err := svc.CreateDeviceLogin(context.Background(), connect.NewRequest(&v1pb.CreateDeviceLoginRequest{
+		ClientName:    "probe",
+		ClientVersion: "1",
+	}))
+	require.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(err),
+		"the budget must refuse the request before the handler allocates or reads")
 }
 
 // Approving requires a signed-in caller; the token restriction and the ACL
