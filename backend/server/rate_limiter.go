@@ -20,6 +20,11 @@ const (
 	// rateLimiterExpiresIn is how long an idle bucket is kept before a sweep
 	// drops it, matching echo's RateLimiterMemoryStore default.
 	rateLimiterExpiresIn = 3 * time.Minute
+	// deploymentBudgetFactor is how many identifiers' worth of budget the whole
+	// deployment gets on one route. The per-identifier budget paces one client;
+	// this is the backstop that a caller rotating identifiers still cannot
+	// exceed.
+	deploymentBudgetFactor = 10
 )
 
 // rateLimitSourceKey is the budget key of a request from an unauthenticated
@@ -44,9 +49,11 @@ func rateLimitSourceKey(c echo.Context, trustedProxies []string) string {
 // owner a fresh budget, never deny it, so the ceiling bounds the memory a
 // caller's identifiers may cost and cannot become a denial of service of its
 // own — as long as making room stays constant-time, which is why the victim is
-// arbitrary rather than the oldest. It does not bound the rate of a caller that
-// rotates identifiers freely; that needs a per-source dimension, which is the
-// general rate-limit work.
+// arbitrary rather than the oldest. The identifier ceiling does not bound the
+// rate of a caller that rotates identifiers freely, so every store also carries
+// one deployment-wide bucket shared by all identifiers, sized deploymentBudgetFactor
+// times one identifier's budget: a rotating caller reaches a fresh per-key
+// bucket but not more total work than the deployment can absorb.
 type boundedRateLimiterStore struct {
 	mu       sync.Mutex
 	visitors map[string]*boundedVisitor
@@ -55,6 +62,8 @@ type boundedRateLimiterStore struct {
 	burst     int
 	capacity  int
 	expiresIn time.Duration
+	// global is the deployment-wide budget, shared by every identifier.
+	global *rate.Limiter
 
 	lastCleanup time.Time
 	// timeNow is a test seam; production keeps time.Now.
@@ -77,6 +86,7 @@ func newBoundedRateLimiterStore(limit rate.Limit, burst int) *boundedRateLimiter
 		burst:     burst,
 		capacity:  rateLimiterCapacity,
 		expiresIn: rateLimiterExpiresIn,
+		global:    rate.NewLimiter(limit*deploymentBudgetFactor, burst*deploymentBudgetFactor),
 		timeNow:   time.Now,
 	}
 	store.lastCleanup = store.timeNow()
@@ -103,6 +113,16 @@ func (s *boundedRateLimiterStore) Allow(identifier string) (bool, error) {
 		s.visitors[identifier] = visitor
 	}
 	visitor.lastSeen = now
+
+	// An empty per-identifier bucket is refused before the global budget is
+	// touched, so a caller hammering its own exhausted bucket cannot drain the
+	// deployment's: a refused request spends nothing, matching WindowLimiter.
+	if visitor.limiter.TokensAt(now) < 1 {
+		return false, nil
+	}
+	if !s.global.AllowN(now, 1) {
+		return false, nil
+	}
 	return visitor.limiter.AllowN(now, 1), nil
 }
 

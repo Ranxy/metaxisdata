@@ -32,6 +32,12 @@ import (
 // users in bulk and bounding an authenticated principal per user is the general
 // rate-limit work (M24). Login does not: it is not a normal signed-in call, and
 // every request still spends bcrypt on whoever the address names.
+//
+// Logout is here because it is the one other anonymous and audited method: it
+// writes a ledger row per call, and a token this server signed can be replayed
+// against it without limit even though revoking it twice changes nothing. The
+// authenticated methods are bounded per principal by PrincipalThrottleInterceptor
+// instead.
 type ThrottleInterceptor struct {
 	stateCfg       *state.State
 	trustedProxies []string
@@ -93,6 +99,13 @@ func (in *ThrottleInterceptor) limiterFor(procedure string) (*state.WindowLimite
 		return in.stateCfg.LoginRequestLimiter, false
 	case v1connect.UserServiceCreateUserProcedure:
 		return in.stateCfg.CreateUserRequestLimiter, true
+	case v1connect.AuthServiceLogoutProcedure:
+		// Logout is anonymous, audited and idempotent: a caller holding one valid
+		// token can replay it, and each replay writes a permanent ledger row even
+		// though the revocation itself is a no-op. It spends no bcrypt and writes
+		// no new revocation record, so it gets its own budget rather than
+		// consuming Login's.
+		return in.stateCfg.LogoutRequestLimiter, false
 	case v1connect.AuthServiceCreateSSOStateProcedure:
 		// Cheap for the server, but each call writes one nonce into the bounded
 		// state cache that in-flight SSO flows occupy, and it is the only way to

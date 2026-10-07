@@ -67,13 +67,55 @@ func TestBoundedRateLimiterStoreHoldsTheCeilingUnderRotation(t *testing.T) {
 
 	store := newBoundedRateLimiterStore(rate.Limit(1), 1)
 	store.capacity = 8
+	// This test is about the map, and the deployment-wide budget is what bounds
+	// the work, so lift it: its own ceiling has its own test.
+	store.global = rate.NewLimiter(rate.Inf, 0)
 
 	for i := 0; i < 100; i++ {
 		allowed, err := store.Allow("rotated-" + strconv.Itoa(i))
 		require.NoError(t, err)
-		require.True(t, allowed, "a new identifier always gets its own full burst")
+		require.True(t, allowed, "a new identifier gets its own burst while the deployment budget allows")
 	}
 	require.Len(t, store.visitors, 8)
+}
+
+// The identifier ceiling only bounds memory. A caller that invents an identifier
+// per request still gets a fresh per-identifier burst, so the deployment-wide
+// budget is what bounds the total it can demand.
+func TestBoundedRateLimiterStoreBoundsRotationWithTheGlobalBudget(t *testing.T) {
+	t.Parallel()
+
+	store := newFrozenRateLimiterStore(1, 1)
+	store.capacity = 1024
+
+	allowed := 0
+	for i := 0; i < 100; i++ {
+		ok, err := store.Allow("rotated-" + strconv.Itoa(i))
+		require.NoError(t, err)
+		if ok {
+			allowed++
+		}
+	}
+	require.Equal(t, deploymentBudgetFactor, allowed,
+		"the deployment budget, not the map ceiling, is the bound on a rotating caller")
+	require.Len(t, store.visitors, 100, "refused identifiers are still tracked")
+}
+
+// A caller hammering its own empty bucket must not drain the deployment's: a
+// refused request spends no global token, so an unrelated identifier still works.
+func TestBoundedRateLimiterStoreRefusalDoesNotSpendTheGlobalBudget(t *testing.T) {
+	t.Parallel()
+
+	store := newFrozenRateLimiterStore(1, 1)
+
+	for i := 0; i < 50; i++ {
+		_, err := store.Allow("noisy")
+		require.NoError(t, err)
+	}
+
+	allowed, err := store.Allow("fresh")
+	require.NoError(t, err)
+	require.True(t, allowed, "the noisy identifier's refusals did not consume the deployment budget")
 }
 
 // An idle bucket is swept instead of being kept until eviction, so a caller that
