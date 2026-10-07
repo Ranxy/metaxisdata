@@ -839,15 +839,19 @@ func (e *ServiceEnv) getDatabaseByFullName(ctx context.Context, t *testing.T, fu
 // rows another process wrote. It is the key that process resolved, read back the
 // same way, including any key-encryption key this environment configures.
 func resolveObserverCipher(ctx context.Context, st *store.Store) error {
-	current, err := crypto.ParseKeys(os.Getenv(crypto.KeyEnvironment))
-	if err != nil {
-		return err
+	var current []byte
+	if value := strings.TrimSpace(os.Getenv(crypto.KeyEnvironment)); value != "" {
+		parsed, err := crypto.ParseKey(value)
+		if err != nil {
+			return err
+		}
+		current = parsed
 	}
 	previous, err := crypto.ParseKeys(os.Getenv(crypto.PreviousKeyEnvironment))
 	if err != nil {
 		return err
 	}
-	return st.ResolveCipher(ctx, append(current, previous...))
+	return st.ResolveCipher(ctx, current, previous)
 }
 
 func startServerProcess(ctx context.Context, pgURL string) (*serverProcess, error) {

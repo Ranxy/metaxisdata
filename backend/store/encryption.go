@@ -30,14 +30,6 @@ func (s *Store) credentialCipher() (*crypto.Cipher, error) {
 	return s.cipher, nil
 }
 
-// dataKey is the deployment credential key with the key that wrapped it.
-type dataKey struct {
-	key []byte
-	// wrappedBy indexes the key-encryption key that opened the stored value, or
-	// is -1 when the key is stored bare.
-	wrappedBy int
-}
-
 // settingStore is the slice of the store the credential key lifecycle needs. It
 // exists so the decisions can be tested without a database: they are what
 // decides whether the operator's key-encryption key actually protects anything.
@@ -46,18 +38,28 @@ type settingStore interface {
 	UpsertSetting(ctx context.Context, update *SetSettingMessage) (*SettingMessage, error)
 }
 
+// dataKey is the deployment credential key and how it was stored.
+type dataKey struct {
+	key []byte
+	// wrappedByCurrent reports whether the stored value was opened with the
+	// current key-encryption key. A bare key, or one opened by a retired key, has
+	// to be re-wrapped before the current key is the only one that opens it.
+	wrappedByCurrent bool
+}
+
 // ResolveCipher reads the deployment credential key from the setting table,
 // unwraps it with the configured key-encryption keys, and installs the
 // resulting cipher on the store.
 //
-// keks holds the configured key-encryption keys, most recent first; an empty
-// list means the deployment keeps its data key in the database alone. A key
-// stored under a retired key-encryption key, or stored bare while one is now
-// configured, is rewritten under the current one: that keeps the database from
-// holding a key that is usable without the second secret, without re-encrypting
-// a single credential.
-func (s *Store) ResolveCipher(ctx context.Context, keks [][]byte) error {
-	cipher, err := loadCredentialCipher(ctx, s, keks)
+// current is the operator's key-encryption key, or nil when none is configured:
+// the deployment then keeps its data key in the database alone. previous holds
+// retired keys, most recent first, and is only ever used to open a wrapped key —
+// it never wraps one, so retiring a key cannot quietly promote it back. A data
+// key found bare while a key-encryption key is configured, or opened by a retired
+// one, is rewritten under the current key without re-encrypting a single
+// credential.
+func (s *Store) ResolveCipher(ctx context.Context, current []byte, previous [][]byte) error {
+	cipher, err := loadCredentialCipher(ctx, s, current, previous)
 	if err != nil {
 		return err
 	}
@@ -67,7 +69,7 @@ func (s *Store) ResolveCipher(ctx context.Context, keks [][]byte) error {
 
 // loadCredentialCipher resolves the credential key and returns the cipher that
 // encrypts and decrypts credentials with it.
-func loadCredentialCipher(ctx context.Context, settings settingStore, keks [][]byte) (*crypto.Cipher, error) {
+func loadCredentialCipher(ctx context.Context, settings settingStore, current []byte, previous [][]byte) (*crypto.Cipher, error) {
 	setting, err := settings.GetSetting(ctx, storepb.SettingName_ENCRYPTION_KEY)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read the credential encryption key")
@@ -76,21 +78,21 @@ func loadCredentialCipher(ctx context.Context, settings settingStore, keks [][]b
 		return nil, errors.New("the credential encryption key is not configured")
 	}
 
-	key, err := unwrapDataKey(setting.Value, keks)
+	key, err := unwrapDataKey(setting.Value, current, previous)
 	if err != nil {
 		return nil, err
 	}
-	if len(keks) == 0 {
+	if current == nil {
 		slog.Info("the credential encryption key is stored unwrapped: a database read or backup recovers every stored credential",
 			slog.String("environment", crypto.KeyEnvironment))
 	}
 
-	if len(keks) > 0 && key.wrappedBy != 0 {
-		kekCipher, err := crypto.NewCipher(keks[0])
+	if current != nil && !key.wrappedByCurrent {
+		currentCipher, err := crypto.NewCipher(current)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to build the key-encryption cipher")
 		}
-		wrapped, err := kekCipher.Encrypt(string(key.key))
+		wrapped, err := currentCipher.Encrypt(string(key.key))
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to wrap the credential encryption key")
 		}
@@ -101,7 +103,7 @@ func loadCredentialCipher(ctx context.Context, settings settingStore, keks [][]b
 			return nil, errors.Wrap(err, "failed to store the wrapped credential encryption key")
 		}
 		slog.Info("credential encryption key wrapped under the configured key-encryption key",
-			slog.Bool("rekeyed", key.wrappedBy > 0))
+			slog.Bool("retired_key", len(previous) > 0))
 	}
 
 	cipher, err := crypto.NewCipher(key.key)
@@ -112,8 +114,8 @@ func loadCredentialCipher(ctx context.Context, settings settingStore, keks [][]b
 }
 
 // unwrapDataKey returns the credential key from its stored form: the bare base64
-// of 32 random bytes, or a v1 ciphertext under one of keks.
-func unwrapDataKey(stored string, keks [][]byte) (*dataKey, error) {
+// of 32 random bytes, or a v1 ciphertext under current or one of previous.
+func unwrapDataKey(stored string, current []byte, previous [][]byte) (*dataKey, error) {
 	if !crypto.IsCiphertext(stored) {
 		key, err := base64.StdEncoding.DecodeString(stored)
 		if err != nil {
@@ -122,26 +124,38 @@ func unwrapDataKey(stored string, keks [][]byte) (*dataKey, error) {
 		if len(key) != crypto.KeySize {
 			return nil, errors.Errorf("the credential encryption key must be %d bytes, got %d", crypto.KeySize, len(key))
 		}
-		return &dataKey{key: key, wrappedBy: -1}, nil
+		return &dataKey{key: key}, nil
 	}
 
-	if len(keks) == 0 {
+	if current == nil && len(previous) == 0 {
 		return nil, errors.New("the credential encryption key is wrapped with a key-encryption key, but none is configured")
 	}
-	for index, kek := range keks {
-		kekCipher, err := crypto.NewCipher(kek)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to build the key-encryption cipher")
+	if current != nil {
+		if key, err := openDataKey(stored, current); err == nil {
+			return &dataKey{key: key, wrappedByCurrent: true}, nil
 		}
-		plaintext, err := kekCipher.Decrypt(stored)
-		if err != nil {
-			continue
+	}
+	for _, kek := range previous {
+		if key, err := openDataKey(stored, kek); err == nil {
+			return &dataKey{key: key}, nil
 		}
-		key := []byte(plaintext)
-		if len(key) != crypto.KeySize {
-			return nil, errors.Errorf("the unwrapped credential encryption key must be %d bytes, got %d", crypto.KeySize, len(key))
-		}
-		return &dataKey{key: key, wrappedBy: index}, nil
 	}
 	return nil, errors.New("no configured key-encryption key decrypts the credential encryption key")
+}
+
+// openDataKey opens a wrapped credential key and checks its length.
+func openDataKey(stored string, kek []byte) ([]byte, error) {
+	kekCipher, err := crypto.NewCipher(kek)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to build the key-encryption cipher")
+	}
+	plaintext, err := kekCipher.Decrypt(stored)
+	if err != nil {
+		return nil, err
+	}
+	key := []byte(plaintext)
+	if len(key) != crypto.KeySize {
+		return nil, errors.Errorf("the unwrapped credential encryption key must be %d bytes, got %d", crypto.KeySize, len(key))
+	}
+	return key, nil
 }

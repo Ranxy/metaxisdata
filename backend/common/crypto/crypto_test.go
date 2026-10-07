@@ -145,6 +145,9 @@ func TestParseKey(t *testing.T) {
 		"blank":      "   ",
 		"too short":  "abc",
 		"wrong size": base64.StdEncoding.EncodeToString([]byte("short")),
+		// Sixteen random bytes printed as hex are 32 characters: taking those
+		// characters as a raw key would silently halve the key's entropy.
+		"16 bytes as hex": "b3c4d5e6f708192a3b4c5d6e7f8091a2",
 	} {
 		_, err := ParseKey(value)
 		require.Error(t, err, name)
@@ -158,8 +161,9 @@ func TestParseKeys(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, keys)
 
-	first := strings.Repeat("a", KeySize)
-	second := strings.Repeat("b", KeySize)
+	// Not hex digits, so these are the raw spelling of a 32-byte key.
+	first := strings.Repeat("k", KeySize)
+	second := strings.Repeat("q", KeySize)
 	keys, err = ParseKeys(" " + first + " , " + second + " ,")
 	require.NoError(t, err)
 	require.Len(t, keys, 2)

@@ -59,19 +59,27 @@ func GenerateKey() ([]byte, error) {
 // ParseKey parses one key from its configured form: standard base64, hex, or
 // the raw 32 bytes. The key comes from an environment variable an operator
 // pastes by hand, so all three spellings are accepted.
+//
+// The encodings are tried before the raw reading, and a hex string of the wrong
+// length is an error rather than a raw key: sixteen random bytes printed as hex
+// are 32 characters, and silently taking those characters as a 256-bit key would
+// leave the deployment with half the entropy it believes it has.
 func ParseKey(value string) ([]byte, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return nil, errors.New("the key is empty")
 	}
-	if len(value) == KeySize {
-		return []byte(value), nil
-	}
 	if decoded, err := base64.StdEncoding.DecodeString(value); err == nil && len(decoded) == KeySize {
 		return decoded, nil
 	}
-	if decoded, err := hex.DecodeString(value); err == nil && len(decoded) == KeySize {
+	if decoded, err := hex.DecodeString(value); err == nil {
+		if len(decoded) != KeySize {
+			return nil, fmt.Errorf("the key is %d bytes as hex, but must be %d", len(decoded), KeySize)
+		}
 		return decoded, nil
+	}
+	if len(value) == KeySize {
+		return []byte(value), nil
 	}
 	return nil, fmt.Errorf("the key must be %d bytes, or its base64 or hex encoding", KeySize)
 }

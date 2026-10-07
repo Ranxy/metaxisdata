@@ -1128,22 +1128,22 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 
 - 首次启动由 `initializeSetting` 生成 32 字节数据密钥(DEK)写入 `setting.ENCRYPTION_KEY`;`AUTH_SECRET` 从此只签 JWT,两者再无共用。
 - 启动时 `resolveCredentialCipher` 读 `METAXISDATA_ENCRYPTION_KEY`(可选 KEK):设了就把 DEK 用该 KEK 的 GCM 包裹后回写;未设则是零配置默认——数据密钥与数据同库,整体数据库读权限仍能还原全部凭据,这正是已接受决策,只是部分泄漏、确定性、已知明文还原与"一把密钥两用"全部消失。两种状态各记一行启动日志。
-- 轮换:新值放 `METAXISDATA_ENCRYPTION_KEY`、旧值放逗号分隔的 `METAXISDATA_ENCRYPTION_KEY_PREVIOUS`;旧 KEK 只用于解包,一旦解开就在同一次启动里用当前 KEK 重包裹,**不重加密任何凭据**。
-- fail-closed:`ENCRYPTION_KEY` 缺失/为空、被包裹但没配 KEK、没有任何 KEK 能解开、值不是合法密钥——一律拒绝启动;`credentialCipher()` 未安装时读写凭据直接报错,不存在"退化成不加密"的路径。
+- 轮换:新值放 `METAXISDATA_ENCRYPTION_KEY`、旧值放逗号分隔的 `METAXISDATA_ENCRYPTION_KEY_PREVIOUS`;旧 KEK 只用于解包(配了旧值却没配当前值直接拒绝启动,不存在"旧密钥被悄悄提拔为当前密钥"的路径),一旦解开就在同一次启动里用当前 KEK 重包裹,**不重加密任何凭据**。
+- fail-closed:`ENCRYPTION_KEY` 为空、被包裹但没配 KEK、没有任何 KEK 能解开、值不是合法密钥——一律拒绝启动;`credentialCipher()` 未安装时读写凭据直接报错,不存在"退化成不加密"的路径。**缺失也属于这一类**:只有首次安装(`firstTimeOnboarding`)才生成密钥,已存在工作区却没有 `ENCRYPTION_KEY` 行的库会在启动时失败,而不是被塞一把读不了任何旧凭据的新密钥(独立复核发现并修正,见下)。
 
 **choke point 替换与字段表**(`backend/store/{instance,llm}.go`、`proto/store`)
 
 - `secretFields()` 的裸双指针结构换成带字段名的 `credentialField` 表;`encryptInstance`/`decryptInstance` 逐字段加解密,错误信息带字段名与数据源 ID,读路径再包一层实例 ID。
 - `obfuscated_password`/`obfuscated_ssl_ca`/`obfuscated_ssl_cert`/`obfuscated_ssl_key`/`obfuscated_ssh_password`/`obfuscated_ssh_private_key` 统一改为 `*_ciphertext`,`api_key_encrypted` → `api_key_ciphertext`(只动 `proto/store`,对外 API 的 `api_key`(INPUT_ONLY)与 `masked_api_key` 不变);`SettingName` 新增 `ENCRYPTION_KEY`;`buf format`/`buf lint`/`buf generate` 后一并提交生成物与 `LATEST.sql` 注释。
 - LLM 侧在 `LLMProfileMessage` 上拆出 `APIKey`(明文,仅存在于内存):`Metadata.ApiKeyCiphertext` 永远等于行里存的内容,调用方把 Metadata 原样写回也不可能让明文落库;`CreateLLMProfile` 增加 `apiKey` 入参,读路径把解密结果放进 `APIKey`。
-- `common.Obfuscate`/`Unobfuscate` 及其用例删除;旧格式值由读取路径报错拦下,不做迁移(项目未上线,由使用者自行清理)。
+- `common.Obfuscate`/`Unobfuscate` 及其用例删除;不做迁移(项目未上线,由使用者自行清理)。**实际行为是"静默为空"而不是报文**:旧行的凭据挂在旧 JSONB 键(`obfuscatedPassword`/`apiKeyEncrypted`)上,新 schema 不认识它,宽容的 unmarshaler 直接丢弃 → 读出来是空串且不报错,此后任意一次写回就把旧键彻底删掉。这一点已按实情写入 `docs/security-posture.md` 与 `plan/credential_encryption_plan.md`(见"独立对抗式复核"第 1 条)。
 - `component/llm/registry.go:59` 的注释改为 "AES-256-GCM decryption"——原文写的就是 AES-GCM,但当时实现是 XOR。
 
 **回归测试**
 
 - 单元 `backend/common/crypto`:往返、每条密文 nonce 不同、错钥、分别篡改 nonce 与 tag、旧格式/非 base64/过短、空值语义、`ParseKey` 与 `ParseKeys` 的三种编码与非法输入。
-- 单元 `backend/store`:逐个字段解密并断言错误里出现字段名与数据源;写回的行内没有明文且密文能往返;未安装 cipher 时拒绝写入;黄金测试用 protoreflect 遍历 `DataSource`——任何 `*_ciphertext` 字段未登记、或登记项缺明文/密文配对即变红;`LlmProviderProfile` 只允许 `api_key_ciphertext` 一个凭据字段;`unwrapDataKey` 覆盖裸密钥、当前 KEK、退役 KEK、无 KEK、无 KEK 能解开五条分支。
-- 单元 `backend/store`(密钥生命周期,内存 setting 表,不依赖数据库):未配 KEK 时数据密钥保持裸存且不重写;配上 KEK 时就地包裹、二次启动不再重写;退役 KEK 下解出后自动改包裹,之后只用当前 KEK 即可启动;以及"无 ENCRYPTION_KEY / 值为空 / 被包裹但没配 KEK / 没有 KEK 能解开 / 值不是合法密钥"五种情况一律拒绝启动且不返回 cipher——这条决定的是"运维配了 KEK 是否真的生效",不测就只是注释承诺。
+- 单元 `backend/store`:逐个字段解密并断言错误里出现字段名与数据源;写回的行内没有明文且密文能往返;未安装 cipher 时拒绝写入;黄金测试用 protoreflect 遍历存储消息——任何 `*_ciphertext` 字段未登记、登记项缺明文/密文配对,或字段名带凭据词(`password`/`token`/`secret`/`apikey`/`private_key` …)却不在登记表里即变红,`LlmProviderProfile` 里这类字段只允许 `api_key_ciphertext`(命名是测试唯一能抓住的线索,名字不含这些词的字段仍在视野之外);`unwrapDataKey` 覆盖裸密钥、当前 KEK、退役 KEK、无 KEK、无 KEK 能解开五条分支。
+- 单元 `backend/store`(密钥生命周期,内存 setting 表,不依赖数据库):未配 KEK 时数据密钥保持裸存且不重写;配上 KEK 时就地包裹、二次启动不再重写;退役 KEK 下解出后自动改包裹,之后只用当前 KEK 即可启动;以及"无 ENCRYPTION_KEY / 值为空 / 被包裹但没配 KEK / 没有 KEK 能解开 / 值不是合法密钥"五种情况一律拒绝启动且不返回 cipher;**只配旧 KEK 不配当前 KEK 时数据密钥必须保持裸存、绝不被旧 KEK 包裹**;另有 server 侧两例(旧 KEK 单独出现、当前 KEK 不是合法密钥)在触达 store 之前就报错。这条决定的是"运维配了 KEK 是否真的生效",不测就只是注释承诺。
 - 集成补充:掩码更新数据源(`update_mask=database`)后,口令仍在、密文换成新 nonce,且随后的一次库同步仍能连上(证明读-改-写没有把凭据丢掉)。
 - 集成(真实服务器 + 真实 PostgreSQL):`TestStoredInstanceCredentialsAreEncryptedRealServerIntegration`——管理员口令在库里是 `v1:` 密文、行的 JSON 中没有 `"password"` 字段、服务器仍能用它完成一次库同步(证明解出的凭据可用)、观察者 store 读回明文、同一口令在第二个实例里得到不同密文。
 - **反向验证**(两次,均已恢复并逐字节确认):(a) 把 `Encrypt`/`Decrypt` 换成"确定性且不认证"(正是旧混淆的本质)——crypto 4 例、store 3 例变红,集成用例以 `Should not be: "v1:cG9zdGdyZXM="` 变红(两个实例同口令得到同一密文);(b) 让 `encryptInstance` 把明文写进密文字段——`TestEncryptInstanceStoresOnlyTheCiphertext` 与 `TestEncryptInstanceWithoutACipherFails` 变红。
@@ -1154,6 +1154,16 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 
 1. **JWT 签名密钥仍在数据库里**(`setting.AUTH_SECRET`):本轮解除的是"一把密钥两用",数据库读权限仍可伪造 token(与 5.6 的账号生命周期水位线同族)。
 2. **数据密钥不可轮换**:更换 DEK 需要对全部凭据重加密,上线前无此需求;KEK 轮换已经不需要重加密。
-3. **旧混淆数据无迁移**:按确认决策不做;开发库里残留的旧值会在读取时报错(错误信息含实例与字段),由使用者自行清理。
+3. **旧混淆数据无迁移**:按确认决策不做;残留的旧行读出来是空凭据(不报错),写回即彻底丢弃,由使用者自行清理——见上文第 1 条。
+4. **密文没有绑定字段/行(未加 AAD)**:把 A 实例的密文整段挪到 B 实例的行里仍能解密成功,读方会把 A 的凭据交给 B 的连接。需要数据库写权限(而写权限本就能把该行指向别处、让服务器把同一把凭据发出去),故本轮只记录、不加密绑定;要收就加 AAD。
+5. **三处既有的明文路径未变**(不属本轮引入):LLM profile 的 `base_url` 从行里读、用解密后的 key 去请求,数据库写权限 + 管理员会话仍可让服务器把 key 发出去(M23);`extra_connection_parameters` 是自由键值,可以塞 `sslpassword` 与已加密的 `ssl_key` 并列(M20,已接受);审计脱敏黑名单仍漏 `ssl_ca`(L5)。
 
-**验证门禁**:`buf format`/`buf lint` 干净;`gofmt`(无输出)、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./...`(全绿)、`go test -race`(store/crypto/api/v1 全绿);release(`-tags release`)与默认两种构建通过;`make test-integration`(真实 PostgreSQL + MySQL + migrator)全绿——runner 71 个用例 40.4s(含本轮新增的凭据加密用例)、migrator 18.3s。本轮未改前端,未跑前端门禁。
+**独立对抗式复核(只读子代理,目标是把上述结论证伪)**
+
+- 复核范围:逐条读实现与全部消费方(`crypto`、`store/{instance,llm,encryption}`、`server/{init,encryption,server}`、proto、集成 harness),`go build ./...`、`go vet`、hermetic `go test`,并用 `/tmp` 的 `go test -overlay` 探针(不改仓库)构造反例。
+- **确认成立**(已修):(1) 缺失 `ENCRYPTION_KEY` 行时 `initializeSetting` 会无条件补一把新密钥,服务器照常启动、此后每条凭据都读不出——即"缺失即 fail-closed"的说法不成立;现改为只在首次安装生成,缺行则启动失败。(2) `METAXISDATA_ENCRYPTION_KEY_PREVIOUS` 单独配置时会被 `append(current, previous...)` 当成 `keks[0]`,于是退役密钥成了包裹密钥,与"旧 KEK 只用于解包"矛盾;现把当前密钥与旧密钥拆成两个参数,只配旧密钥直接拒绝启动。(3) `crypto.ParseKey` 先按 32 字符原文解析,导致"16 字节密钥的 hex 写法"被当成 256 位密钥静默接受;现 hex 优先并对错误长度报错。(4) 黄金测试只按 `_ciphertext` 后缀反向检查,新增一个不带该后缀的凭据字段(如 `api_token`)不会被发现;现增加"字段名含凭据词就必须登记"的正向扫描,LLM 侧同样扫描。(5) 文档三处(本节 1132/1139、`security-posture.md`、`plan`)宣称"旧值会被读取路径报错拦下",与实情(旧 JSONB 键被宽容 unmarshaler 丢弃 → 静默空值 → 下次写回彻底删除)不符,已按实情改写并升为显式残余。
+- **报告为既有问题、本轮不改**(已写入残余与 `plan`):LLM `base_url` 走数据库读 + 解密 key 的出口路径(M23),`extra_connection_parameters` 可明文夹带 `sslpassword`(M20),审计脱敏漏 `ssl_ca`(L5),密文未绑定 AAD 可整段搬运;以及 `idp.config.client_secret` 明文(本轮新发现)。
+- **复核判定不成立/无需处理**:无第三条写入路径落库明文(只有 `instance`/`llm_provider_profile` 四处写,全部经 cipher);没有消费方把 `*Ciphertext` 当明文用(`APIKey` 拆分后仅 `registry`/`llm_service` 读明文);GCM 用法正确(nonce 每条独立、长度检查先于切片、`Open` 失败不返回明文);裸密钥与包裹密钥不会互相误判(`:` 不在 base64 字母表内);`SetCipher` 之前任何错误都会让 `NewServer` 中止,不存在"无 cipher 仍对外服务"的路径。
+- 第一轮复核子代理未在合理时间内返回结果,故本轮以第二轮聚焦复核(同一目标、限定范围)的结论为准并据此修改。
+
+**验证门禁**:`buf format`/`buf lint` 干净;`gofmt`(无输出)、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./...`(全绿)、`go test -race`(store/crypto/api/v1/server 全绿);release(`-tags release`)与默认两种构建通过;`make test-integration`(真实 PostgreSQL + MySQL + migrator)全绿——runner 71 个用例 40.1s(含本轮新增的凭据加密用例)、migrator 21.2s。一次全量运行中出现过 `TestPostgresPerDatabaseSyncHidesDroppedDatabaseRealServerIntegration` 失败(该行已被并发的实例枚举先行隐藏,断言收到平台侧 `not_found`),单独重跑两次与随后整轮全量均通过,与本轮改动无关(共享实例并行用例的既有竞争),记录备查。本轮未改前端,未跑前端门禁。

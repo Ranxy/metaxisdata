@@ -108,6 +108,22 @@ func TestEncryptInstanceWithoutACipherFails(t *testing.T) {
 	require.Contains(t, err.Error(), "not configured")
 }
 
+// credentialWords are the name fragments that mean "this field carries a
+// credential". A test has no other handle on a new field — nothing but its name
+// says what it holds — so the list is deliberately broad, and any field matching
+// one of them has to be a registered half of a plaintext/ciphertext pair.
+var credentialWords = []string{"password", "passphrase", "secret", "token", "apikey", "api_key", "private_key"}
+
+func looksLikeACredential(name string) bool {
+	name = strings.ToLower(name)
+	for _, word := range credentialWords {
+		if strings.Contains(name, word) {
+			return true
+		}
+	}
+	return false
+}
+
 // Every credential field of the stored shapes must be registered with the cipher.
 // A field added to proto/store without an entry here would be written to the
 // database in the clear, which is exactly what this test exists to prevent.
@@ -129,12 +145,16 @@ func TestEveryStoredCredentialFieldIsEncrypted(t *testing.T) {
 	ciphertextFields := 0
 	for i := range fields.Len() {
 		name := string(fields.Get(i).Name())
-		if !strings.HasSuffix(name, "_ciphertext") {
+		if strings.HasSuffix(name, "_ciphertext") {
+			ciphertextFields++
+			require.True(t, registered[strings.TrimSuffix(name, "_ciphertext")],
+				"the stored field %s is not registered with the credential cipher", name)
 			continue
 		}
-		ciphertextFields++
-		require.True(t, registered[strings.TrimSuffix(name, "_ciphertext")],
-			"the stored field %s is not registered with the credential cipher", name)
+		if looksLikeACredential(name) {
+			require.True(t, registered[name],
+				"the stored field %s looks like a credential but is not registered with the credential cipher", name)
+		}
 	}
 	require.Equal(t, ciphertextFields, len(registered), "a registered credential field has no stored counterpart")
 }
@@ -147,4 +167,12 @@ func TestLLMProfileStoresOnlyTheCiphertext(t *testing.T) {
 	fields := (&storepb.LlmProviderProfile{}).ProtoReflect().Descriptor().Fields()
 	require.NotNil(t, fields.ByName("api_key_ciphertext"))
 	require.Nil(t, fields.ByName("api_key"))
+
+	for i := range fields.Len() {
+		name := string(fields.Get(i).Name())
+		if looksLikeACredential(name) {
+			require.Equal(t, "api_key_ciphertext", name,
+				"the stored field %s looks like a credential: it must be the ciphertext one", name)
+		}
+	}
 }

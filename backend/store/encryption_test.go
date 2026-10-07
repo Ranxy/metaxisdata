@@ -14,8 +14,7 @@ import (
 
 func newTestCipher(t *testing.T) *crypto.Cipher {
 	t.Helper()
-	key, err := crypto.GenerateKey()
-	require.NoError(t, err)
+	key := newTestKey(t)
 	cipher, err := crypto.NewCipher(key)
 	require.NoError(t, err)
 	return cipher
@@ -26,6 +25,20 @@ func newTestKey(t *testing.T) []byte {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 	return key
+}
+
+func mustCipher(t *testing.T, key []byte) *crypto.Cipher {
+	t.Helper()
+	cipher, err := crypto.NewCipher(key)
+	require.NoError(t, err)
+	return cipher
+}
+
+func wrapKey(t *testing.T, kek, key []byte) string {
+	t.Helper()
+	wrapped, err := mustCipher(t, kek).Encrypt(string(key))
+	require.NoError(t, err)
+	return wrapped
 }
 
 // A store without an installed cipher must refuse to read a credential instead
@@ -55,16 +68,16 @@ func TestUnwrapDataKeyBareKey(t *testing.T) {
 	t.Parallel()
 
 	key := newTestKey(t)
-	got, err := unwrapDataKey(base64.StdEncoding.EncodeToString(key), nil)
+	got, err := unwrapDataKey(base64.StdEncoding.EncodeToString(key), nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, key, got.key)
-	require.Equal(t, -1, got.wrappedBy)
+	require.False(t, got.wrappedByCurrent)
 
 	for name, stored := range map[string]string{
 		"not base64": "!!!",
 		"short":      base64.StdEncoding.EncodeToString([]byte("short")),
 	} {
-		_, err := unwrapDataKey(stored, nil)
+		_, err := unwrapDataKey(stored, nil, nil)
 		require.Error(t, err, name)
 	}
 }
@@ -74,29 +87,34 @@ func TestUnwrapDataKeyWrappedKey(t *testing.T) {
 
 	key := newTestKey(t)
 	current := newTestKey(t)
-	previous := newTestKey(t)
+	retired := newTestKey(t)
 
 	// The current key opens it, and the caller learns it needs no re-wrap.
-	got, err := unwrapDataKey(wrapKey(t, current, key), [][]byte{current, previous})
+	got, err := unwrapDataKey(wrapKey(t, current, key), current, [][]byte{retired})
 	require.NoError(t, err)
 	require.Equal(t, key, got.key)
-	require.Equal(t, 0, got.wrappedBy)
+	require.True(t, got.wrappedByCurrent)
 
 	// A retired key opens it, and the caller learns it must be re-wrapped.
-	got, err = unwrapDataKey(wrapKey(t, previous, key), [][]byte{current, previous})
+	got, err = unwrapDataKey(wrapKey(t, retired, key), current, [][]byte{retired})
 	require.NoError(t, err)
 	require.Equal(t, key, got.key)
-	require.Equal(t, 1, got.wrappedBy)
+	require.False(t, got.wrappedByCurrent)
 
-	// A wrapped key with no key-encryption key configured says so, rather than
-	// trying to decode it as a bare key.
-	_, err = unwrapDataKey(wrapKey(t, current, key), nil)
+	// A wrapped key with nothing configured says so, rather than trying to
+	// decode it as a bare key.
+	_, err = unwrapDataKey(wrapKey(t, current, key), nil, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "none is configured")
 
-	_, err = unwrapDataKey(wrapKey(t, newTestKey(t), key), [][]byte{current, previous})
+	_, err = unwrapDataKey(wrapKey(t, newTestKey(t), key), current, [][]byte{retired})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no configured key-encryption key")
+
+	// A retired key can open the value, but that never makes it the current one.
+	got, err = unwrapDataKey(wrapKey(t, retired, key), nil, [][]byte{retired})
+	require.NoError(t, err)
+	require.False(t, got.wrappedByCurrent)
 }
 
 // The wrapping round-trip the server performs when it re-wraps a bare data key
@@ -106,17 +124,15 @@ func TestWrappedDataKeyRoundTrips(t *testing.T) {
 
 	key := newTestKey(t)
 	kek := newTestKey(t)
-	kekCipher, err := crypto.NewCipher(kek)
-	require.NoError(t, err)
 
-	wrapped, err := kekCipher.Encrypt(string(key))
-	require.NoError(t, err)
+	wrapped := wrapKey(t, kek, key)
 	require.True(t, crypto.IsCiphertext(wrapped))
 	require.False(t, strings.Contains(wrapped, base64.StdEncoding.EncodeToString(key)))
 
-	got, err := unwrapDataKey(wrapped, [][]byte{kek})
+	got, err := unwrapDataKey(wrapped, kek, nil)
 	require.NoError(t, err)
 	require.Equal(t, key, got.key)
+	require.True(t, got.wrappedByCurrent)
 }
 
 // fakeSettings is an in-memory setting table, so the key lifecycle can be tested
@@ -161,7 +177,7 @@ func TestLoadCredentialCipherKeepsTheKeyBareWithoutAKeyEncryptionKey(t *testing.
 	settings := newFakeSettings()
 	settings.set(t, base64.StdEncoding.EncodeToString(key))
 
-	cipher, err := loadCredentialCipher(t.Context(), settings, nil)
+	cipher, err := loadCredentialCipher(t.Context(), settings, nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, base64.StdEncoding.EncodeToString(key), settings.stored(), "the key must not be rewritten")
 
@@ -183,7 +199,7 @@ func TestLoadCredentialCipherWrapsABareKey(t *testing.T) {
 	settings := newFakeSettings()
 	settings.set(t, base64.StdEncoding.EncodeToString(key))
 
-	cipher, err := loadCredentialCipher(t.Context(), settings, [][]byte{kek})
+	cipher, err := loadCredentialCipher(t.Context(), settings, kek, nil)
 	require.NoError(t, err)
 	require.True(t, crypto.IsCiphertext(settings.stored()), "the stored key must be wrapped")
 	require.NotContains(t, settings.stored(), base64.StdEncoding.EncodeToString(key))
@@ -191,7 +207,7 @@ func TestLoadCredentialCipherWrapsABareKey(t *testing.T) {
 	// A later startup with the same key-encryption key still resolves the same
 	// data key, and it is not rewritten a second time.
 	stored := settings.stored()
-	again, err := loadCredentialCipher(t.Context(), settings, [][]byte{kek})
+	again, err := loadCredentialCipher(t.Context(), settings, kek, nil)
 	require.NoError(t, err)
 	require.Equal(t, stored, settings.stored(), "a key already wrapped under the current key must be left alone")
 
@@ -216,19 +232,36 @@ func TestLoadCredentialCipherRewrapsUnderTheCurrentKey(t *testing.T) {
 	settings := newFakeSettings()
 	settings.set(t, wrapKey(t, retired, key))
 
-	cipher, err := loadCredentialCipher(t.Context(), settings, [][]byte{current, retired})
+	cipher, err := loadCredentialCipher(t.Context(), settings, current, [][]byte{retired})
 	require.NoError(t, err)
 	require.True(t, crypto.IsCiphertext(settings.stored()))
 	require.NotEqual(t, wrapKey(t, retired, key), settings.stored(), "the stored key must be re-wrapped under the current key")
 
 	// The retired key is no longer needed, and the data key is unchanged.
-	_, err = loadCredentialCipher(t.Context(), settings, [][]byte{current})
+	_, err = loadCredentialCipher(t.Context(), settings, current, nil)
 	require.NoError(t, err)
 	encrypted, err := cipher.Encrypt("hunter2")
 	require.NoError(t, err)
 	decrypted, err := mustCipher(t, key).Decrypt(encrypted)
 	require.NoError(t, err)
 	require.Equal(t, "hunter2", decrypted)
+}
+
+// A retired key may open a wrapped data key, but it must never be the key one is
+// wrapped under: otherwise clearing the current variable would silently promote
+// the retired key back to being the one that protects the deployment.
+func TestLoadCredentialCipherNeverWrapsUnderARetiredKey(t *testing.T) {
+	t.Parallel()
+
+	key := newTestKey(t)
+	retired := newTestKey(t)
+	settings := newFakeSettings()
+	settings.set(t, base64.StdEncoding.EncodeToString(key))
+
+	_, err := loadCredentialCipher(t.Context(), settings, nil, [][]byte{retired})
+	require.NoError(t, err)
+	require.Equal(t, base64.StdEncoding.EncodeToString(key), settings.stored(),
+		"the data key must stay bare when no current key-encryption key is configured")
 }
 
 // Every way the key material can be wrong stops startup rather than leaving the
@@ -239,9 +272,10 @@ func TestLoadCredentialCipherFailsClosed(t *testing.T) {
 	key := newTestKey(t)
 	kek := newTestKey(t)
 
-	cases := map[string]struct {
+	for name, tc := range map[string]struct {
 		settings *fakeSettings
-		keks     [][]byte
+		current  []byte
+		previous [][]byte
 		want     string
 	}{
 		"no setting row": {
@@ -249,7 +283,7 @@ func TestLoadCredentialCipherFailsClosed(t *testing.T) {
 			want:     "not configured",
 		},
 		"empty setting value": {
-			settings: newFakeSettings(),
+			settings: &fakeSettings{values: map[storepb.SettingName]string{storepb.SettingName_ENCRYPTION_KEY: ""}},
 			want:     "not configured",
 		},
 		"wrapped key with no key-encryption key": {
@@ -258,35 +292,17 @@ func TestLoadCredentialCipherFailsClosed(t *testing.T) {
 		},
 		"no key-encryption key opens it": {
 			settings: &fakeSettings{values: map[storepb.SettingName]string{storepb.SettingName_ENCRYPTION_KEY: wrapKey(t, kek, key)}},
-			keks:     [][]byte{newTestKey(t)},
+			current:  newTestKey(t),
 			want:     "no configured key-encryption key",
 		},
 		"stored value is not a key": {
 			settings: &fakeSettings{values: map[storepb.SettingName]string{storepb.SettingName_ENCRYPTION_KEY: "not-a-key"}},
 			want:     "neither a wrapped key nor base64",
 		},
-	}
-	for name, tc := range cases {
-		if name == "empty setting value" {
-			tc.settings.set(t, "")
-		}
-		cipher, err := loadCredentialCipher(t.Context(), tc.settings, tc.keks)
+	} {
+		cipher, err := loadCredentialCipher(t.Context(), tc.settings, tc.current, tc.previous)
 		require.Error(t, err, name)
 		require.Contains(t, err.Error(), tc.want, name)
 		require.Nil(t, cipher, name)
 	}
-}
-
-func mustCipher(t *testing.T, key []byte) *crypto.Cipher {
-	t.Helper()
-	cipher, err := crypto.NewCipher(key)
-	require.NoError(t, err)
-	return cipher
-}
-
-func wrapKey(t *testing.T, kek, key []byte) string {
-	t.Helper()
-	wrapped, err := mustCipher(t, kek).Encrypt(string(key))
-	require.NoError(t, err)
-	return wrapped
 }

@@ -42,18 +42,22 @@ func (s *Server) initializeSetting(ctx context.Context) error {
 		return err
 	}
 
-	// initial credential encryption key. It is generated here, on the first
-	// startup, and lives in the database from then on; resolveCredentialCipher
-	// wraps it with the operator's key-encryption key when one is configured.
-	encryptionKey, err := crypto.GenerateKey()
-	if err != nil {
-		return errors.Wrap(err, "failed to generate the credential encryption key")
-	}
-	if _, _, err := s.store.CreateSettingIfNotExist(ctx, &store.SettingMessage{
-		Name:  storepb.SettingName_ENCRYPTION_KEY,
-		Value: base64.StdEncoding.EncodeToString(encryptionKey),
-	}); err != nil {
-		return errors.Wrap(err, "failed to initialize the credential encryption key")
+	// Initial credential encryption key, on a fresh install only. A database that
+	// already holds this workspace but not the key must not be handed a new one:
+	// every credential it kept was encrypted with the old key, so
+	// resolveCredentialCipher has to fail rather than let the server start on a key
+	// that can read none of them.
+	if firstTimeOnboarding {
+		encryptionKey, err := crypto.GenerateKey()
+		if err != nil {
+			return errors.Wrap(err, "failed to generate the credential encryption key")
+		}
+		if _, _, err := s.store.CreateSettingIfNotExist(ctx, &store.SettingMessage{
+			Name:  storepb.SettingName_ENCRYPTION_KEY,
+			Value: base64.StdEncoding.EncodeToString(encryptionKey),
+		}); err != nil {
+			return errors.Wrap(err, "failed to initialize the credential encryption key")
+		}
 	}
 
 	// initial workspace

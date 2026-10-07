@@ -6,7 +6,12 @@ at rest instead of obfuscated, and the key that encrypts them is no longer the
 key that signs JWTs.
 
 The project has not shipped, so no compatibility with the retired scheme is
-kept: nothing is migrated, and a value it wrote fails the read that finds it.
+kept: nothing is migrated. One consequence is documented rather than papered
+over — the rename moves each credential to a new JSONB key, so a row written by
+the retired scheme reads back with an **empty** credential (its old key is an
+unknown field the tolerant unmarshaler drops), and the next write of that row
+drops the old value for good. A database that may hold such rows needs its
+credentials re-entered; there is no error to rely on.
 
 ## The problem the change removes
 
@@ -43,19 +48,26 @@ of the 32-byte `AUTH_SECRET`, stored as base64. Four properties came with that:
   — that is the accepted trade-off, and startup logs one line saying so.
 - **Rotation without re-encryption.** Setting the KEK later wraps the existing
   data key on the next startup. `METAXISDATA_ENCRYPTION_KEY_PREVIOUS` (a
-  comma-separated list) only ever opens a wrapped key; a data key found under a
-  retired KEK is re-wrapped under the current one in place, so rotating the KEK
-  touches no credential.
-- **Fail closed.** A missing, empty or unusable `ENCRYPTION_KEY`, a wrapped key
-  with no KEK configured, or a KEK that opens nothing stops startup. The server
-  never serves a store whose cipher was not installed: `credentialCipher()`
-  errors, and every credential read and write propagates that.
+  comma-separated list) only ever opens a wrapped key — a retired key configured
+  without the current one is a startup error, not a mode, so it can never become
+  the key the data key is wrapped under. A data key found under a retired KEK is
+  re-wrapped under the current one in place, so rotating the KEK touches no
+  credential.
+- **Fail closed.** An empty, unusable or unopenable `ENCRYPTION_KEY`, a wrapped
+  key with no KEK configured, or a KEK that opens nothing stops startup. Only a
+  fresh install generates the key, so a database that kept this workspace but
+  lost the row fails too, instead of being handed a new key that can read none of
+  its credentials. The server never serves a store whose cipher was not
+  installed: `credentialCipher()` errors, and every credential read and write
+  propagates that.
 - **The field table is typed and tested.** `credentialFields` pairs each
   plaintext field with its `*_ciphertext` counterpart and a name used in errors,
-  and a guard test walks the `DataSource` descriptor: every stored
-  `*_ciphertext` field must be registered, and a registered field's plaintext and
-  ciphertext fields must both exist. A new credential field that nobody
-  registered turns the test red instead of being stored in the clear.
+  and a guard test walks the stored messages: every `*_ciphertext` field must be
+  registered, and any field whose *name* says it carries a credential
+  (`password`, `token`, `secret`, …) must be a registered half of a pair — on the
+  LLM profile the only one allowed is `api_key_ciphertext`. Naming is the only
+  handle a test has on a new field, so a credential added under a name none of
+  those words match is still outside what it can see.
 - **The LLM profile keeps plaintext out of the store message.** `LLMProfileMessage`
   carries `Metadata` (whose `api_key_ciphertext` is exactly what the row holds)
   and `APIKey` (the decrypted key, in memory only), so a caller that marshals the
@@ -89,6 +101,17 @@ of the 32-byte `AUTH_SECRET`, stored as base64. Four properties came with that:
   observer store reads it back, and the same password in a second instance
   produces a different ciphertext.
 
+## Considered and deliberately left out
+
+- **The ciphertext is not bound to its field or row** (no AEAD associated data).
+  A whole value therefore still authenticates after being moved: someone who can
+  *write* to the database could put one instance's ciphertext into another's row
+  and the read would hand that credential to the wrong connection. It takes
+  database write access, which already permits pointing the row somewhere else
+  entirely and getting the same credential sent out, so it is recorded here
+  rather than paid for now; binding an AAD is the way to close it if it ever
+  matters.
+
 ## Not done here
 
 - **`idp.config.client_secret` is still plaintext** in the `idp` table. Its only
@@ -101,3 +124,9 @@ of the 32-byte `AUTH_SECRET`, stored as base64. Four properties came with that:
   signing key out is a separate decision.
 - **No data-key rotation.** Replacing the data key would require re-encrypting
   every credential, which nothing needs before the deployment ships.
+- **Three pre-existing paths still put a credential in the clear, unchanged.**
+  An LLM profile's `base_url` is read from the row and used with the decrypted
+  key, so database *write* access plus an admin session still has the server send
+  that key out (review §2 M23); `extra_connection_parameters` is free-form and can
+  carry, say, `sslpassword` beside the encrypted `ssl_key` (M20, accepted); and
+  the audit ledger's redaction blacklist still misses `ssl_ca` (L5).
