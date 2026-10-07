@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -18,12 +19,12 @@ const (
 	OpenLineageDatasetDirectionOutput = "output"
 )
 
-// maxOpenLineageDatasetGroups bounds the dataset aggregate one request reads.
-// The dataset list and detail resolve, filter and page that aggregate in
-// memory, and a workspace can accumulate an unbounded number of distinct
-// datasets, so the read has to be capped. The cap keeps the most recently seen
-// datasets — the same window the payload scan this replaces kept — and is
-// larger than any page (1000) a caller can ask for.
+// maxOpenLineageDatasetGroups bounds the dataset window one request reads. The
+// dataset list, its filter menus and the detail's GUID resolution all read the
+// same window — the most recently seen datasets — so a dataset the list can show
+// is always one the detail can resolve, and a workspace that accumulates more
+// datasets than this does not make a page load read them all. It is larger than
+// any page (1000) a caller can ask for.
 const maxOpenLineageDatasetGroups = 5000
 
 // maxOpenLineageDatasetRefRows bounds how many references one INSERT statement
@@ -37,37 +38,62 @@ const maxOpenLineageDatasetRefRows = 100
 const maxOpenLineageDatasetDetailPairs = 64
 
 // maxOpenLineageDatasetRecentRefs bounds how many references the facet, job and
-// run queries of a dataset detail read, newest first. The whole-history summary
-// cannot be bounded this way, but these three can: the widest schema, the
-// related jobs and the recent runs they report are all within the newest
-// references, and without the bound the detail would expand (and detoast) the
-// facets of every run that ever touched the dataset.
+// run queries of a dataset detail read, newest first. The summary reads the
+// maintained aggregate instead, but these three still expand the references
+// themselves — the widest schema, the related jobs and the recent runs they
+// report are all within the newest references, and without the bound the detail
+// would expand (and detoast) the facets of every run that ever touched the
+// dataset.
 const maxOpenLineageDatasetRecentRefs = 100
 
 // maxOpenLineageDatasetDistinctValues bounds the integrations and sources one
-// dataset group carries. They are display values, and a producer that varies
-// them per event could otherwise grow one group's array without bound.
+// dataset shows. They are display values, and a producer that varies them per
+// event could otherwise grow one dataset's array without bound. The member table
+// keeps every value, so a filter by one that is not shown still matches.
 const maxOpenLineageDatasetDistinctValues = 16
 
 // maxOpenLineageDatasetColumnFields bounds the distinct column-lineage field
 // names a detail request returns.
 const maxOpenLineageDatasetColumnFields = 10000
 
-// openLineageDatasetAggregateColumns is the aggregate projection shared by the
-// dataset list and the detail summary. Every count is over distinct task GUIDs,
-// which is the "job" the dataset pages talk about. The value arrays are ordered
-// so a redelivery cannot reorder what the page shows, and sliced so one group
-// cannot grow them without bound.
-func openLineageDatasetAggregateColumns() string {
-	return `
-		d.namespace,
-		d.name,
-		MAX(d.event_time) AS last_seen,
-		COUNT(DISTINCT d.task_guid) FILTER (WHERE d.direction = '` + OpenLineageDatasetDirectionInput + `'),
-		COUNT(DISTINCT d.task_guid) FILTER (WHERE d.direction = '` + OpenLineageDatasetDirectionOutput + `'),
-		(COALESCE(ARRAY_AGG(DISTINCT d.integration ORDER BY d.integration) FILTER (WHERE d.integration <> ''), '{}'))[1:` + strconv.Itoa(maxOpenLineageDatasetDistinctValues) + `],
-		(COALESCE(ARRAY_AGG(DISTINCT d.source ORDER BY d.source) FILTER (WHERE d.source <> ''), '{}'))[1:` + strconv.Itoa(maxOpenLineageDatasetDistinctValues) + `],
-		BOOL_OR(d.has_column_lineage)`
+// openLineageDatasetWindowCTE renders the window every dataset read works from:
+// the most recently seen datasets, newest first. The list filters within it, and
+// the detail resolves the requested GUID against exactly it, so the two cannot
+// disagree about which datasets exist. The CTE is materialized on purpose: a
+// filtered list must not be able to reach past the cap, so the LIMIT has to be
+// applied before the filters rather than be merged into the outer query.
+func openLineageDatasetWindowCTE() string {
+	return `WITH dataset_window AS MATERIALIZED (
+		SELECT namespace, name, last_seen, source_job_count, target_job_count, column_lineage_ref_count
+		FROM openlineage_dataset
+		ORDER BY last_seen DESC NULLS LAST, name, namespace
+		LIMIT ` + strconv.Itoa(maxOpenLineageDatasetGroups) + `
+	)`
+}
+
+// openLineageDatasetMemberArrayColumn renders the integrations or sources of one
+// dataset of the window. The member rows are ordered by value, so a redelivery
+// cannot reorder what a page shows, and read through the primary key of the
+// member table, so the ordered, capped read stops early instead of scanning the
+// dataset's values.
+func openLineageDatasetMemberArrayColumn(alias, kind string) string {
+	return `COALESCE((SELECT array_agg(value ORDER BY value) FROM (
+			SELECT value FROM openlineage_dataset_member
+			WHERE namespace = ` + alias + `.namespace AND name = ` + alias + `.name AND kind = '` + kind + `'
+			ORDER BY value LIMIT ` + strconv.Itoa(maxOpenLineageDatasetDistinctValues) + `
+		) ordered_values), '{}')`
+}
+
+// openLineageDatasetMemberExistsClause renders the predicate a filter by an
+// integration or source pushes into SQL. It is an equality probe on the member
+// table's primary key, so filtering the window never reads a dataset's
+// references.
+func openLineageDatasetMemberExistsClause(alias, kind string, argIndex int) string {
+	return fmt.Sprintf(`EXISTS (
+			SELECT 1 FROM openlineage_dataset_member filter_member
+			WHERE filter_member.namespace = %s.namespace AND filter_member.name = %s.name
+				AND filter_member.kind = '%s' AND filter_member.value = $%d
+		)`, alias, alias, kind, argIndex)
 }
 
 // openLineageDatasetRecentRefsCTE renders the bounded, newest-first subquery a
@@ -98,9 +124,9 @@ type OpenLineageRunDatasetMessage struct {
 	Source              string
 }
 
-// FindOpenLineageDatasetMessage filters the dataset aggregate. The filters it
-// carries are the ones the aggregate itself can answer: the free-text search
-// and the internal/external scope need resolution and stay with the caller.
+// FindOpenLineageDatasetMessage filters the dataset window. The filters it
+// carries are the ones the aggregate itself can answer: the free-text search and
+// the internal/external scope need resolution and stay with the caller.
 type FindOpenLineageDatasetMessage struct {
 	Namespace         *string
 	Integration       *string
@@ -108,8 +134,8 @@ type FindOpenLineageDatasetMessage struct {
 	ColumnLineageOnly *bool
 }
 
-// OpenLineageDatasetAggregateMessage is one dataset aggregated over the runs
-// that referenced it.
+// OpenLineageDatasetAggregateMessage is one dataset of the window, with the
+// aggregate the list shows.
 type OpenLineageDatasetAggregateMessage struct {
 	Namespace             string
 	Name                  string
@@ -155,9 +181,10 @@ type OpenLineageDatasetRunMessage struct {
 	WritesDataset bool
 }
 
-// OpenLineageDatasetDetailMessage is a dataset's detail, read from the
-// references of every run that touched it. The dataset's own identity and
-// resolution stay with the caller, which is what resolved the GUID.
+// OpenLineageDatasetDetailMessage is a dataset's detail. The summary comes from
+// the maintained aggregate — a single spelling reads one row — while the schema,
+// jobs and runs are read from a bounded, newest-first window of references. The
+// dataset's own identity and resolution stay with the caller.
 type OpenLineageDatasetDetailMessage struct {
 	LastSeen              *time.Time
 	SourceJobCount        int32
@@ -174,6 +201,8 @@ type OpenLineageDatasetDetailMessage struct {
 // replaceOpenLineageRunDatasets rewrites one run's dataset references. The run
 // row is the run's latest known state, so its references are replaced as a set
 // rather than merged: a redelivery that drops a dataset has to drop it here too.
+// The per-dataset aggregate is folded in once the transaction's references are
+// written — see applyOpenLineageDatasetDeltas.
 func replaceOpenLineageRunDatasets(ctx context.Context, tx *sql.Tx, runPK int64, refs []*OpenLineageRunDatasetMessage) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM openlineage_run_dataset WHERE run_pk = $1`, runPK); err != nil {
 		return errors.Wrap(err, "failed to clear the openlineage run's datasets")
@@ -221,6 +250,47 @@ func replaceOpenLineageRunDatasets(ctx context.Context, tx *sql.Tx, runPK int64,
 	return nil
 }
 
+// listOpenLineageRunDatasets reads the references a stored run holds, so a
+// replacement can hand the aggregate the set it is about to take out.
+func listOpenLineageRunDatasets(ctx context.Context, tx *sql.Tx, runPK int64) ([]*OpenLineageRunDatasetMessage, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT task_guid, namespace, name, direction, has_column_lineage, event_time, integration, source
+		FROM openlineage_run_dataset
+		WHERE run_pk = $1
+	`, runPK)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the openlineage run's datasets")
+	}
+	defer rows.Close()
+
+	var refs []*OpenLineageRunDatasetMessage
+	for rows.Next() {
+		var ref OpenLineageRunDatasetMessage
+		var eventTime sql.NullTime
+		if err := rows.Scan(
+			&ref.TaskGUID,
+			&ref.Namespace,
+			&ref.Name,
+			&ref.Direction,
+			&ref.HasColumnLineage,
+			&eventTime,
+			&ref.Integration,
+			&ref.Source,
+		); err != nil {
+			return nil, errors.Wrap(err, "failed to scan an openlineage run dataset")
+		}
+		if eventTime.Valid {
+			t := eventTime.Time
+			ref.EventTime = &t
+		}
+		refs = append(refs, &ref)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the openlineage run's datasets")
+	}
+	return refs, nil
+}
+
 // emptyJSONBToNil turns an absent facet into SQL NULL. A zero-length []byte
 // would otherwise reach the JSONB column as an empty value and fail to parse.
 func emptyJSONBToNil(raw []byte) []byte {
@@ -230,8 +300,11 @@ func emptyJSONBToNil(raw []byte) []byte {
 	return raw
 }
 
-// ListOpenLineageDatasetAggregate aggregates the datasets the persisted runs
-// referenced, most recently seen first, capped at maxOpenLineageDatasetGroups.
+// ListOpenLineageDatasetAggregate reads the dataset window with the aggregate
+// the list shows. The filters it answers in SQL are applied inside the window,
+// never to widen it: the detail resolves the requested GUID against the
+// unfiltered window, so a filtered list must not offer a dataset the detail
+// cannot open.
 func (s *Store) ListOpenLineageDatasetAggregate(ctx context.Context, find *FindOpenLineageDatasetMessage) ([]*OpenLineageDatasetAggregateMessage, error) {
 	query, args := buildOpenLineageDatasetAggregateQuery(find)
 	rows, err := s.GetDB().QueryContext(ctx, query, args...)
@@ -241,39 +314,68 @@ func (s *Store) ListOpenLineageDatasetAggregate(ctx context.Context, find *FindO
 	return scanOpenLineageDatasetAggregateRows(rows)
 }
 
-// buildOpenLineageDatasetAggregateQuery renders the dataset aggregate. The
-// projection is grouped and capped so one request reads a bounded number of
-// small rows instead of every run's payload. Integration, source and column
-// lineage are properties of the group, so they belong in HAVING: filtering rows
-// in WHERE would drop the other integrations of a group the filter kept, and
-// the list shows them.
+// buildOpenLineageDatasetAggregateQuery renders the dataset list. The window is
+// bounded first and the filters are applied to it afterwards, so the list shows
+// at most the datasets the detail can resolve.
 func buildOpenLineageDatasetAggregateQuery(find *FindOpenLineageDatasetMessage) (string, []any) {
-	where, having, args := []string{"TRUE"}, []string{"TRUE"}, []any{}
+	where, args := []string{"TRUE"}, []any{}
 	if v := find.Namespace; v != nil {
 		args = append(args, *v)
-		where = append(where, fmt.Sprintf("d.namespace = $%d", len(args)))
+		where = append(where, fmt.Sprintf("w.namespace = $%d", len(args)))
 	}
 	if v := find.Integration; v != nil {
 		args = append(args, *v)
-		having = append(having, fmt.Sprintf("BOOL_OR(d.integration = $%d)", len(args)))
+		where = append(where, openLineageDatasetMemberExistsClause("w", openLineageDatasetMemberIntegration, len(args)))
 	}
 	if v := find.Source; v != nil {
 		args = append(args, *v)
-		having = append(having, fmt.Sprintf("BOOL_OR(d.source = $%d)", len(args)))
+		where = append(where, openLineageDatasetMemberExistsClause("w", openLineageDatasetMemberSource, len(args)))
 	}
 	if find.ColumnLineageOnly != nil && *find.ColumnLineageOnly {
-		having = append(having, "BOOL_OR(d.has_column_lineage)")
+		where = append(where, "w.column_lineage_ref_count > 0")
 	}
-	args = append(args, maxOpenLineageDatasetGroups)
 
-	query := `SELECT ` + openLineageDatasetAggregateColumns() + `
-		FROM openlineage_run_dataset d
+	query := openLineageDatasetWindowCTE() + `
+		SELECT
+			w.namespace,
+			w.name,
+			w.last_seen,
+			w.source_job_count,
+			w.target_job_count,
+			` + openLineageDatasetMemberArrayColumn("w", openLineageDatasetMemberIntegration) + `,
+			` + openLineageDatasetMemberArrayColumn("w", openLineageDatasetMemberSource) + `,
+			w.column_lineage_ref_count > 0
+		FROM dataset_window w
 		WHERE ` + strings.Join(where, " AND ") + `
-		GROUP BY d.namespace, d.name
-		HAVING ` + strings.Join(having, " AND ") + `
-		ORDER BY last_seen DESC NULLS LAST, d.name, d.namespace
-		LIMIT $` + strconv.Itoa(len(args))
+		ORDER BY w.last_seen DESC NULLS LAST, w.name, w.namespace`
 	return query, args
+}
+
+// ListOpenLineageDatasetWindow returns the spellings of the dataset window. The
+// detail resolves the requested GUID against it, so the dataset a list row shows
+// is always one the detail can open.
+func (s *Store) ListOpenLineageDatasetWindow(ctx context.Context) ([]OpenLineageDatasetPair, error) {
+	rows, err := s.GetDB().QueryContext(ctx, openLineageDatasetWindowCTE()+`
+		SELECT w.namespace, w.name
+		FROM dataset_window w
+		ORDER BY w.last_seen DESC NULLS LAST, w.name, w.namespace`)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to query the openlineage dataset window")
+	}
+	defer rows.Close()
+
+	var pairs []OpenLineageDatasetPair
+	for rows.Next() {
+		var pair OpenLineageDatasetPair
+		if err := rows.Scan(&pair.Namespace, &pair.Name); err != nil {
+			return nil, errors.Wrap(err, "failed to scan the openlineage dataset window")
+		}
+		pairs = append(pairs, pair)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to read the openlineage dataset window")
+	}
+	return pairs, nil
 }
 
 func scanOpenLineageDatasetAggregateRows(rows *sql.Rows) ([]*OpenLineageDatasetAggregateMessage, error) {
@@ -310,9 +412,11 @@ func scanOpenLineageDatasetAggregateRows(rows *sql.Rows) ([]*OpenLineageDatasetA
 	return result, nil
 }
 
-// GetOpenLineageDatasetDetail reads the detail of a dataset from the runs that
-// referenced any of its spellings. The summary counts jobs over the union of
-// the spellings, so a job that reported the dataset twice is still one job.
+// GetOpenLineageDatasetDetail reads the detail of a dataset from the aggregate
+// the runs maintain and from the references they left. The summary counts jobs
+// over the union of the spellings, so a job that reported the dataset twice is
+// still one job; with a single spelling it is one row of the aggregate, not an
+// aggregation over the dataset's whole history.
 func (s *Store) GetOpenLineageDatasetDetail(ctx context.Context, pairs []OpenLineageDatasetPair) (*OpenLineageDatasetDetailMessage, error) {
 	if len(pairs) == 0 {
 		return nil, nil
@@ -320,17 +424,17 @@ func (s *Store) GetOpenLineageDatasetDetail(ctx context.Context, pairs []OpenLin
 	if len(pairs) > maxOpenLineageDatasetDetailPairs {
 		pairs = pairs[:maxOpenLineageDatasetDetailPairs]
 	}
-	clause, args := openLineageDatasetPairClause(pairs, 0)
 
-	detail, matched, err := s.getOpenLineageDatasetSummary(ctx, clause, args)
+	detail, matched, err := s.getOpenLineageDatasetSummary(ctx, pairs)
 	if err != nil {
 		return nil, err
 	}
 	if !matched {
-		// No reference matches; the caller decides what a missing dataset means.
+		// No aggregate matches; the caller decides what a missing dataset means.
 		return nil, nil
 	}
 
+	clause, args := openLineageDatasetPairClause(pairs, 0, "d")
 	if detail.SchemaFields, err = s.getOpenLineageDatasetBestSchema(ctx, clause, args); err != nil {
 		return nil, err
 	}
@@ -346,45 +450,115 @@ func (s *Store) GetOpenLineageDatasetDetail(ctx context.Context, pairs []OpenLin
 	return detail, nil
 }
 
-func (s *Store) getOpenLineageDatasetSummary(ctx context.Context, clause string, args []any) (*OpenLineageDatasetDetailMessage, bool, error) {
-	detail := &OpenLineageDatasetDetailMessage{}
-	var matched int64
-	var lastSeen sql.NullTime
-	var integrations, sources pq.StringArray
-	err := s.GetDB().QueryRowContext(ctx, `
+// getOpenLineageDatasetSummary reads the summary of the dataset the pairs name.
+// One spelling answers from its own aggregate row; several are deduplicated
+// through the member rows, because the same job reporting the dataset under two
+// spellings is still one job.
+func (s *Store) getOpenLineageDatasetSummary(ctx context.Context, pairs []OpenLineageDatasetPair) (*OpenLineageDatasetDetailMessage, bool, error) {
+	clause, args := openLineageDatasetPairClause(pairs, 0, "ds")
+	rows, err := s.GetDB().QueryContext(ctx, `
 		SELECT
-			COUNT(*),
-			MAX(d.event_time),
-			COUNT(DISTINCT d.task_guid) FILTER (WHERE d.direction = '`+OpenLineageDatasetDirectionInput+`'),
-			COUNT(DISTINCT d.task_guid) FILTER (WHERE d.direction = '`+OpenLineageDatasetDirectionOutput+`'),
-			(COALESCE(ARRAY_AGG(DISTINCT d.integration ORDER BY d.integration) FILTER (WHERE d.integration <> ''), '{}'))[1:`+strconv.Itoa(maxOpenLineageDatasetDistinctValues)+`],
-			(COALESCE(ARRAY_AGG(DISTINCT d.source ORDER BY d.source) FILTER (WHERE d.source <> ''), '{}'))[1:`+strconv.Itoa(maxOpenLineageDatasetDistinctValues)+`],
-			BOOL_OR(d.has_column_lineage)
-		FROM openlineage_run_dataset d
+			ds.last_seen,
+			ds.source_job_count,
+			ds.target_job_count,
+			ds.column_lineage_ref_count > 0,
+			`+openLineageDatasetMemberArrayColumn("ds", openLineageDatasetMemberIntegration)+`,
+			`+openLineageDatasetMemberArrayColumn("ds", openLineageDatasetMemberSource)+`
+		FROM openlineage_dataset ds
 		WHERE `+clause,
 		args...,
-	).Scan(
-		&matched,
-		&lastSeen,
-		&detail.SourceJobCount,
-		&detail.TargetJobCount,
-		&integrations,
-		&sources,
-		&detail.SupportsColumnLineage,
 	)
 	if err != nil {
 		return nil, false, errors.Wrap(err, "failed to summarize an openlineage dataset")
 	}
-	if matched == 0 {
+	defer rows.Close()
+
+	detail := &OpenLineageDatasetDetailMessage{}
+	integrations := map[string]struct{}{}
+	sources := map[string]struct{}{}
+	spellings := 0
+	for rows.Next() {
+		var lastSeen sql.NullTime
+		var sourceJobCount, targetJobCount int32
+		var supportsColumnLineage bool
+		var rowIntegrations, rowSources pq.StringArray
+		if err := rows.Scan(
+			&lastSeen,
+			&sourceJobCount,
+			&targetJobCount,
+			&supportsColumnLineage,
+			&rowIntegrations,
+			&rowSources,
+		); err != nil {
+			return nil, false, errors.Wrap(err, "failed to scan an openlineage dataset summary")
+		}
+		spellings++
+		if lastSeen.Valid && (detail.LastSeen == nil || lastSeen.Time.After(*detail.LastSeen)) {
+			t := lastSeen.Time
+			detail.LastSeen = &t
+		}
+		detail.SourceJobCount += sourceJobCount
+		detail.TargetJobCount += targetJobCount
+		detail.SupportsColumnLineage = detail.SupportsColumnLineage || supportsColumnLineage
+		for _, value := range rowIntegrations {
+			integrations[value] = struct{}{}
+		}
+		for _, value := range rowSources {
+			sources[value] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, errors.Wrap(err, "failed to read an openlineage dataset summary")
+	}
+	if spellings == 0 {
 		return nil, false, nil
 	}
-	if lastSeen.Valid {
-		t := lastSeen.Time
-		detail.LastSeen = &t
+
+	detail.Integrations = sortedCappedKeys(integrations)
+	detail.Sources = sortedCappedKeys(sources)
+	if spellings > 1 {
+		// Summing the spellings would count a job that reported the dataset
+		// twice twice, so the union is deduplicated over the task members of the
+		// pairs. It reads one row per distinct (job, direction) of those
+		// spellings, not one per run.
+		source, target, err := s.countOpenLineageDatasetSpellingJobs(ctx, pairs)
+		if err != nil {
+			return nil, false, err
+		}
+		detail.SourceJobCount = source
+		detail.TargetJobCount = target
 	}
-	detail.Integrations = []string(integrations)
-	detail.Sources = []string(sources)
 	return detail, true, nil
+}
+
+// countOpenLineageDatasetSpellingJobs counts the distinct jobs that reference
+// any of the given spellings, per direction.
+func (s *Store) countOpenLineageDatasetSpellingJobs(ctx context.Context, pairs []OpenLineageDatasetPair) (source, target int32, err error) {
+	clause, args := openLineageDatasetPairClause(pairs, 0, "m")
+	if err := s.GetDB().QueryRowContext(ctx, `
+		SELECT
+			COUNT(DISTINCT value) FILTER (WHERE kind = '`+openLineageDatasetMemberInputTask+`'),
+			COUNT(DISTINCT value) FILTER (WHERE kind = '`+openLineageDatasetMemberOutputTask+`')
+		FROM openlineage_dataset_member m
+		WHERE `+clause,
+		args...,
+	).Scan(&source, &target); err != nil {
+		return 0, 0, errors.Wrap(err, "failed to count the openlineage dataset's jobs")
+	}
+	return source, target, nil
+}
+
+// sortedCappedKeys orders a value set for a page and drops its tail.
+func sortedCappedKeys(values map[string]struct{}) []string {
+	keys := make([]string, 0, len(values))
+	for value := range values {
+		keys = append(keys, value)
+	}
+	slices.Sort(keys)
+	if len(keys) > maxOpenLineageDatasetDistinctValues {
+		keys = keys[:maxOpenLineageDatasetDistinctValues]
+	}
+	return keys
 }
 
 // getOpenLineageDatasetBestSchema returns the widest schema facet among the
@@ -559,17 +733,22 @@ func (s *Store) listOpenLineageDatasetRuns(ctx context.Context, clause string, a
 	return result, nil
 }
 
-// ListOpenLineageDatasetFilterValues returns the dataset dimensions the
-// OpenLineage filter menus offer, most common first. An integration or a source
-// counts once per run that carried the dataset, which is what the dataset list
-// itself displays.
+// ListOpenLineageDatasetFilterValues returns the dataset dimensions the dataset
+// page's filter menus offer, most common first, read from the same window the
+// list reads: a menu value that no dataset of its window carries would filter
+// the list down to nothing. Each count is the number of datasets carrying the
+// value.
 func (s *Store) ListOpenLineageDatasetFilterValues(ctx context.Context) ([]*OpenLineageFilterValue, error) {
-	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT '`+openLineageFilterDatasetNamespace+`', namespace, count(*) FROM openlineage_run_dataset WHERE namespace <> '' GROUP BY 2
+	rows, err := s.GetDB().QueryContext(ctx, openLineageDatasetWindowCTE()+`
+		SELECT '`+openLineageFilterDatasetNamespace+`', w.namespace, COUNT(*) FROM dataset_window w WHERE w.namespace <> '' GROUP BY 2
 		UNION ALL
-		SELECT '`+openLineageFilterDatasetIntegration+`', integration, count(DISTINCT run_pk) FROM openlineage_run_dataset WHERE integration <> '' GROUP BY 2
+		SELECT '`+openLineageFilterDatasetIntegration+`', m.value, COUNT(*) FROM dataset_window w
+			JOIN openlineage_dataset_member m ON m.namespace = w.namespace AND m.name = w.name
+			WHERE m.kind = '`+openLineageDatasetMemberIntegration+`' AND m.value <> '' GROUP BY 2
 		UNION ALL
-		SELECT '`+openLineageFilterDatasetSource+`', source, count(DISTINCT run_pk) FROM openlineage_run_dataset WHERE source <> '' GROUP BY 2
+		SELECT '`+openLineageFilterDatasetSource+`', m.value, COUNT(*) FROM dataset_window w
+			JOIN openlineage_dataset_member m ON m.namespace = w.namespace AND m.name = w.name
+			WHERE m.kind = '`+openLineageDatasetMemberSource+`' AND m.value <> '' GROUP BY 2
 		ORDER BY 1, 3 DESC, 2`)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list openlineage dataset filter values")
@@ -578,15 +757,16 @@ func (s *Store) ListOpenLineageDatasetFilterValues(ctx context.Context) ([]*Open
 }
 
 // openLineageDatasetPairClause renders the predicate selecting exactly the
-// given (namespace, name) spellings. The pairs are bound positionally so a
-// namespace of one pair cannot combine with the name of another.
-func openLineageDatasetPairClause(pairs []OpenLineageDatasetPair, startIndex int) (string, []any) {
+// given (namespace, name) spellings under one table alias. The pairs are bound
+// positionally so a namespace of one pair cannot combine with the name of
+// another.
+func openLineageDatasetPairClause(pairs []OpenLineageDatasetPair, startIndex int, alias string) (string, []any) {
 	clauses := make([]string, 0, len(pairs))
 	args := make([]any, 0, len(pairs)*2)
 	for _, pair := range pairs {
 		clauses = append(clauses, fmt.Sprintf(
-			"(d.namespace = $%d AND d.name = $%d)",
-			startIndex+len(args)+1, startIndex+len(args)+2,
+			"(%s.namespace = $%d AND %s.name = $%d)",
+			alias, startIndex+len(args)+1, alias, startIndex+len(args)+2,
 		))
 		args = append(args, pair.Namespace, pair.Name)
 	}

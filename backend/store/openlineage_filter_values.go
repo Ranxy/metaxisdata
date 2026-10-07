@@ -63,8 +63,8 @@ func (s *Store) CountOpenLineageTotals(ctx context.Context) (*OpenLineageTotals,
 //
 // Both tables are read in one statement so a menu costs one round trip. The
 // dataset dimensions are answered separately by
-// ListOpenLineageDatasetFilterValues: a dataset's namespace and the integrations
-// and sources that touched it are properties of the dataset references.
+// ListOpenLineageDatasetFilterValues: they describe the datasets of the window
+// the dataset list itself reads.
 func (s *Store) ListOpenLineageFilterValues(ctx context.Context) ([]*OpenLineageFilterValue, error) {
 	rows, err := s.GetDB().QueryContext(ctx, `
 		SELECT '`+openLineageFilterJobNamespace+`', job_namespace, count(*) FROM openlineage_run WHERE job_namespace <> '' GROUP BY 2

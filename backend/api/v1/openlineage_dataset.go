@@ -80,29 +80,18 @@ func (s *OpenLineageService) ListOpenLineageDatasets(ctx context.Context, req *c
 // GetOpenLineageDataset resolves the requested GUID back to the spellings the
 // runs reported and reads their references. Resolution is per distinct dataset
 // rather than per run, which is why the GUID is the only lookup key the request
-// needs.
+// needs, and it runs over the same window the list reads: a dataset the list
+// shows is always one this can open.
 func (s *OpenLineageService) GetOpenLineageDataset(ctx context.Context, req *connect.Request[v1pb.GetOpenLineageDatasetRequest]) (*connect.Response[v1pb.OpenLineageDatasetDetailResource], error) {
 	if req.Msg.GetGuid() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("guid is required"))
 	}
 
-	aggregates, err := s.store.ListOpenLineageDatasetAggregate(ctx, &store.FindOpenLineageDatasetMessage{})
+	window, err := s.store.ListOpenLineageDatasetWindow(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to resolve openlineage dataset"))
 	}
-	datasets := s.resolveOpenLineageDatasetAggregates(ctx, aggregates)
-
-	var identity *openLineageDatasetAggregate
-	var pairs []store.OpenLineageDatasetPair
-	for _, dataset := range datasets {
-		if dataset.GUID != req.Msg.GetGuid() {
-			continue
-		}
-		if identity == nil {
-			identity = dataset
-		}
-		pairs = append(pairs, store.OpenLineageDatasetPair{Namespace: dataset.Namespace, Name: dataset.Name})
-	}
+	identity, pairs := s.resolveOpenLineageDatasetWindow(ctx, window, req.Msg.GetGuid())
 	if identity == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("openlineage dataset %q not found", req.Msg.GetGuid()))
 	}
@@ -131,6 +120,29 @@ func (s *OpenLineageService) GetOpenLineageDataset(ctx context.Context, req *con
 		RelatedJobs:  convertOpenLineageDatasetJobs(detail.Jobs),
 		RecentRuns:   convertOpenLineageDatasetRuns(detail.Runs),
 	}), nil
+}
+
+// resolveOpenLineageDatasetWindow resolves the window's spellings and keeps the
+// ones that resolve to guid. The first match stands for the dataset's identity;
+// every match is one of the spellings whose references describe it.
+func (s *OpenLineageService) resolveOpenLineageDatasetWindow(ctx context.Context, window []store.OpenLineageDatasetPair, guid string) (*openLineageDatasetAggregate, []store.OpenLineageDatasetPair) {
+	resolver := openlineageplugin.NewRequestScopedResolver(s.store)
+	var identity *openLineageDatasetAggregate
+	var pairs []store.OpenLineageDatasetPair
+	for _, pair := range window {
+		resolved, err := resolver.ResolveDatasetPreview(ctx, pair.Namespace, pair.Name)
+		if err != nil || resolved == nil {
+			resolved = externalDatasetFallback(pair.Namespace, pair.Name)
+		}
+		if resolved.GUID != guid {
+			continue
+		}
+		if identity == nil {
+			identity = openLineageDatasetIdentity(pair.Namespace, pair.Name, resolved)
+		}
+		pairs = append(pairs, pair)
+	}
+	return identity, pairs
 }
 
 // openLineageDatasetFind maps the request's filters onto the ones the SQL
@@ -173,33 +185,46 @@ func resolveOpenLineageDatasetAggregates(ctx context.Context, aggregates []*stor
 	for _, aggregate := range aggregates {
 		resolved, err := resolve(ctx, aggregate.Namespace, aggregate.Name)
 		if err != nil || resolved == nil {
-			resolved = &openlineageplugin.ResolvedDataset{
-				GUID:     openlineageplugin.FormatExternalGUID(aggregate.Namespace, aggregate.Name),
-				MetaType: storepb.MetaType_EXTERNAL_DATASET,
-				Internal: false,
-			}
+			resolved = externalDatasetFallback(aggregate.Namespace, aggregate.Name)
 		}
 
-		dataset := &openLineageDatasetAggregate{
-			GUID:                  resolved.GUID,
-			Namespace:             aggregate.Namespace,
-			Name:                  aggregate.Name,
-			DatasetType:           openlineageplugin.InferDatasetType(aggregate.Namespace),
-			ResolvedTarget:        formatResolvedTarget(resolved.GUID, resolved.Internal),
-			ResolvedMetaType:      v1pb.MetaType(resolved.MetaType),
-			Internal:              resolved.Internal,
-			SupportsColumnLineage: aggregate.SupportsColumnLineage,
-			SourceJobCount:        aggregate.SourceJobCount,
-			TargetJobCount:        aggregate.TargetJobCount,
-			Integrations:          aggregate.Integrations,
-			Sources:               aggregate.Sources,
-		}
+		dataset := openLineageDatasetIdentity(aggregate.Namespace, aggregate.Name, resolved)
 		if aggregate.LastSeen != nil {
 			dataset.LastSeen = timestamppb.New(*aggregate.LastSeen)
 		}
+		dataset.SupportsColumnLineage = aggregate.SupportsColumnLineage
+		dataset.SourceJobCount = aggregate.SourceJobCount
+		dataset.TargetJobCount = aggregate.TargetJobCount
+		dataset.Integrations = aggregate.Integrations
+		dataset.Sources = aggregate.Sources
 		result = append(result, dataset)
 	}
 	return result
+}
+
+// openLineageDatasetIdentity is the part of a dataset's description that comes
+// from resolving its namespace and name, which is all a detail request has before
+// it reads the aggregate.
+func openLineageDatasetIdentity(namespace, name string, resolved *openlineageplugin.ResolvedDataset) *openLineageDatasetAggregate {
+	return &openLineageDatasetAggregate{
+		GUID:             resolved.GUID,
+		Namespace:        namespace,
+		Name:             name,
+		DatasetType:      openlineageplugin.InferDatasetType(namespace),
+		ResolvedTarget:   formatResolvedTarget(resolved.GUID, resolved.Internal),
+		ResolvedMetaType: v1pb.MetaType(resolved.MetaType),
+		Internal:         resolved.Internal,
+	}
+}
+
+// externalDatasetFallback keeps a dataset the resolver cannot answer under its
+// external identity instead of dropping it from the page.
+func externalDatasetFallback(namespace, name string) *openlineageplugin.ResolvedDataset {
+	return &openlineageplugin.ResolvedDataset{
+		GUID:     openlineageplugin.FormatExternalGUID(namespace, name),
+		MetaType: storepb.MetaType_EXTERNAL_DATASET,
+		Internal: false,
+	}
 }
 
 func convertOpenLineageDatasetResource(dataset *openLineageDatasetAggregate) *v1pb.OpenLineageDatasetResource {

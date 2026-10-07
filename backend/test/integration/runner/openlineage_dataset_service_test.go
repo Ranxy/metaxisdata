@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -189,11 +190,12 @@ func TestOpenLineageDatasetPagesReadMaterializedReferencesRealServerIntegration(
 		require.Equal(t, "https://airflow.example.com/dags/d", task.GetAirflowDagUrl())
 	}
 
-	// An event over the per-event size limit is refused before it is stored: the
-	// body is still well under the request limit, so the per-event cap is what
-	// catches it.
 	t.Run("a single event over the per-event limit is refused", func(t *testing.T) {
 		t.Parallel()
+
+		// An event over the per-event size limit is refused before it is stored:
+		// the body is still well under the request limit, so the per-event cap is
+		// what catches it.
 		oversized := event("run-huge", "job-huge", base)
 		oversized["padding"] = strings.Repeat("x", openlineage.MaxEventSize)
 		require.Equal(t, http.StatusRequestEntityTooLarge, post(t, oversized))
@@ -206,21 +208,6 @@ func TestOpenLineageDatasetPagesReadMaterializedReferencesRealServerIntegration(
 		overlong := event("run-long", strings.Repeat("x", openlineage.MaxJobNameLength+1), base)
 		require.Equal(t, http.StatusBadRequest, post(t, overlong))
 	})
-
-	// Deleting a run takes its references with it (this is what the retention
-	// prune does), so the dataset page stops offering what no run references.
-	_, err = env.Store.GetDB().ExecContext(ctx, `DELETE FROM openlineage_run WHERE job_namespace = $1`, namespace)
-	require.NoError(t, err)
-
-	var remaining int
-	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM openlineage_run_dataset WHERE namespace = $1`, namespace,
-	).Scan(&remaining))
-	require.Zero(t, remaining, "the run's references must cascade with the run")
-
-	list, err = client.ListOpenLineageDatasets(ctx, withToken(env.AdminToken(), &v1pb.ListOpenLineageDatasetsRequest{Namespace: namespace}))
-	require.NoError(t, err)
-	require.Empty(t, list.Msg.GetDatasets())
 }
 
 // The run and task lists read the values an event wrote into the run row, so
@@ -446,4 +433,352 @@ func TestOpenLineageIngestionBoundsTheStoredValuesRealServerIntegration(t *testi
 		require.LessOrEqual(t, len(stored.AirflowRunLogURL), openlineage.MaxAirflowRunLogURLLength)
 		require.LessOrEqual(t, len(stored.Producer), openlineage.MaxProducerLength)
 	})
+}
+
+// The dataset list, its filter menus and the detail's summary read an aggregate
+// the ingest transaction maintains, so the aggregate has to move in both
+// directions: a redelivery that keeps a reference must not count it twice, and
+// one that drops a reference must take its contribution back out. This drives the
+// real server and inspects both the aggregate rows and what the page shows.
+func TestOpenLineageDatasetAggregateFollowsARedeliveryRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env := sharedPostgresServiceEnvNoReset(t)
+	ctx := context.Background()
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+
+	key, _, err := env.Store.CreateOpenLineageAPIKey(ctx, "integration-dataset-redelivery", "integration-test", "")
+	require.NoError(t, err)
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	namespace := "integration-dataset-redelivery-ns-" + suffix
+	orders := "public.orders-" + suffix
+	daily := "public.daily_orders-" + suffix
+	base := time.Now().UTC().Add(-time.Hour)
+
+	post := func(t *testing.T, event map[string]any) int {
+		t.Helper()
+		body, err := json.Marshal(event)
+		require.NoError(t, err)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, env.BaseURL+"/api/v1/lineage", bytes.NewReader(body))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+key)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	// An event that reads the datasets in inputs and writes daily, with the
+	// column-lineage facet on the output. A redelivery that drops the output passes
+	// no outputs.
+	event := func(runID, jobName string, at time.Time, inputs []map[string]any, outputs []string) map[string]any {
+		written := make([]map[string]any, 0, len(outputs))
+		for _, name := range outputs {
+			written = append(written, map[string]any{
+				"namespace": namespace,
+				"name":      name,
+				"facets": map[string]any{
+					"columnLineage": map[string]any{"fields": map[string]any{
+						"order_id": map[string]any{"inputFields": []map[string]any{
+							{"namespace": namespace, "name": orders, "field": "order_id"},
+						}},
+					}},
+				},
+			})
+		}
+		return map[string]any{
+			"eventType": "COMPLETE",
+			"eventTime": at.Format(time.RFC3339Nano),
+			"run":       map[string]any{"runId": runID},
+			"job": map[string]any{
+				"namespace": namespace,
+				"name":      jobName,
+				"facets":    map[string]any{"jobType": map[string]any{"jobType": "TASK", "integration": "airflow"}},
+			},
+			"producer": "integration-test",
+			"inputs":   inputs,
+			"outputs":  written,
+		}
+	}
+	readOrders := []map[string]any{{"namespace": namespace, "name": orders}}
+
+	aggregate := func(t *testing.T, name string) (refCount, sourceJobs, targetJobs, columnLineageRefs int64) {
+		t.Helper()
+		require.NoError(t, env.Store.GetDB().QueryRowContext(ctx, `
+			SELECT ref_count, source_job_count, target_job_count, column_lineage_ref_count
+			FROM openlineage_dataset WHERE namespace = $1 AND name = $2
+		`, namespace, name).Scan(&refCount, &sourceJobs, &targetJobs, &columnLineageRefs))
+		return refCount, sourceJobs, targetJobs, columnLineageRefs
+	}
+
+	client := v1connect.NewOpenLineageServiceClient(httpClient, env.BaseURL)
+
+	require.Equal(t, http.StatusOK, post(t, event("run-1", "job-a", base, readOrders, []string{daily})))
+	require.Equal(t, http.StatusOK, post(t, event("run-2", "job-b", base.Add(time.Minute), readOrders, []string{daily})))
+
+	refCount, sourceJobs, targetJobs, columnLineageRefs := aggregate(t, orders)
+	require.Equal(t, int64(2), refCount)
+	require.Equal(t, int64(2), sourceJobs)
+	require.Equal(t, int64(0), targetJobs)
+	require.Equal(t, int64(0), columnLineageRefs)
+
+	refCount, _, targetJobs, columnLineageRefs = aggregate(t, daily)
+	require.Equal(t, int64(2), refCount)
+	require.Equal(t, int64(2), targetJobs)
+	require.Equal(t, int64(2), columnLineageRefs, "both runs state the facet")
+
+	var members int
+	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM openlineage_dataset_member
+		WHERE namespace = $1 AND name = $2 AND kind = 'task:output'
+	`, namespace, daily).Scan(&members))
+	require.Equal(t, 2, members, "one member row per job, not per run")
+
+	// Redelivering run-2 — the newest one — without the output takes its reference
+	// back out of the aggregate: the job count and the reference count move back,
+	// and last-seen has to fall back to the reference that remains rather than stay
+	// on the one that went away.
+	require.Equal(t, http.StatusOK, post(t, event("run-2", "job-b", base.Add(time.Minute), readOrders, nil)))
+
+	refCount, _, targetJobs, columnLineageRefs = aggregate(t, daily)
+	require.Equal(t, int64(1), refCount, "the dropped reference must not be counted")
+	require.Equal(t, int64(1), targetJobs)
+	require.Equal(t, int64(1), columnLineageRefs, "run-1 still states the facet")
+
+	var lastSeen time.Time
+	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
+		`SELECT last_seen FROM openlineage_dataset WHERE namespace = $1 AND name = $2`, namespace, daily,
+	).Scan(&lastSeen))
+	require.Equal(t, base.Unix(), lastSeen.UTC().Unix(), "the newest remaining reference sets last-seen")
+
+	list, err := client.ListOpenLineageDatasets(ctx, withToken(env.AdminToken(), &v1pb.ListOpenLineageDatasetsRequest{
+		Namespace: namespace,
+		Search:    daily,
+	}))
+	require.NoError(t, err)
+	require.Len(t, list.Msg.GetDatasets(), 1)
+	require.Equal(t, int32(1), list.Msg.GetDatasets()[0].GetTargetJobCount())
+	require.True(t, list.Msg.GetDatasets()[0].GetSupportsColumnLineage())
+
+	detail, err := client.GetOpenLineageDataset(ctx, withToken(env.AdminToken(), &v1pb.GetOpenLineageDatasetRequest{
+		Guid: list.Msg.GetDatasets()[0].GetGuid(),
+	}))
+	require.NoError(t, err)
+	require.Equal(t, int32(1), detail.Msg.GetDataset().GetTargetJobCount(), "the summary reads the aggregate, not the history")
+	require.Len(t, detail.Msg.GetRelatedJobs(), 1)
+
+	// Redelivering the other run without the output leaves the dataset without a
+	// reference at all, which removes it from the page and from the aggregate.
+	require.Equal(t, http.StatusOK, post(t, event("run-1", "job-a", base, readOrders, nil)))
+
+	var remaining int
+	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM openlineage_dataset WHERE namespace = $1 AND name = $2`, namespace, daily,
+	).Scan(&remaining))
+	require.Zero(t, remaining, "a dataset with no reference left is removed")
+
+	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM openlineage_dataset_member WHERE namespace = $1 AND name = $2`, namespace, daily,
+	).Scan(&remaining))
+	require.Zero(t, remaining, "its member rows go with it")
+
+	list, err = client.ListOpenLineageDatasets(ctx, withToken(env.AdminToken(), &v1pb.ListOpenLineageDatasetsRequest{Namespace: namespace}))
+	require.NoError(t, err)
+	require.Len(t, list.Msg.GetDatasets(), 1, "only the dataset both runs still read is left")
+	require.Equal(t, orders, list.Msg.GetDatasets()[0].GetName())
+	require.Equal(t, int32(2), list.Msg.GetDatasets()[0].GetSourceJobCount())
+}
+
+// Runs are kept until the retention window prunes them, and the prune deletes
+// references in bulk without telling the aggregate which ones went. This drives
+// the real prune and inspects what it left behind: the datasets whose last
+// reference it removed have to be gone from the aggregate, its member rows and
+// the page.
+func TestOpenLineageDatasetAggregateFollowsTheRetentionPruneRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env := sharedPostgresServiceEnvNoReset(t)
+	ctx := context.Background()
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+
+	key, _, err := env.Store.CreateOpenLineageAPIKey(ctx, "integration-dataset-prune", "integration-test", "")
+	require.NoError(t, err)
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	namespace := "integration-dataset-prune-ns-" + suffix
+	kept := "public.kept-" + suffix
+	pruned := "public.pruned-" + suffix
+	// Far enough back that the cutoff below cannot touch another test's runs,
+	// which are all ingested around now.
+	base := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	post := func(t *testing.T, runID, jobName string, at time.Time, outputs []string) {
+		t.Helper()
+		datasets := make([]map[string]any, 0, len(outputs))
+		for _, name := range outputs {
+			datasets = append(datasets, map[string]any{"namespace": namespace, "name": name})
+		}
+		body, err := json.Marshal(map[string]any{
+			"eventType": "COMPLETE",
+			"eventTime": at.Format(time.RFC3339Nano),
+			"run":       map[string]any{"runId": runID},
+			"job":       map[string]any{"namespace": namespace, "name": jobName},
+			"producer":  "integration-test",
+			"outputs":   datasets,
+		})
+		require.NoError(t, err)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, env.BaseURL+"/api/v1/lineage", bytes.NewReader(body))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+key)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+	}
+
+	// run-1 writes both datasets, so the prune removes one reference of each but
+	// only takes the second out entirely.
+	post(t, "run-1", "job-a", base, []string{kept, pruned})
+	post(t, "run-2", "job-b", base.Add(time.Hour), []string{kept})
+
+	countAggregates := func(t *testing.T) int {
+		t.Helper()
+		var count int
+		require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM openlineage_dataset WHERE namespace = $1`, namespace,
+		).Scan(&count))
+		return count
+	}
+	require.Equal(t, 2, countAggregates(t))
+
+	deleted, err := env.Store.DeleteOpenLineageRunsBefore(ctx, base.Add(30*time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, int64(1), deleted, "only run-1 is inside the window")
+
+	var remaining int
+	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM openlineage_dataset WHERE namespace = $1 AND name = $2`, namespace, pruned,
+	).Scan(&remaining))
+	require.Zero(t, remaining, "the dataset whose only reference was pruned is gone")
+
+	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM openlineage_dataset_member WHERE namespace = $1 AND name = $2`, namespace, pruned,
+	).Scan(&remaining))
+	require.Zero(t, remaining, "its member rows go with it")
+
+	// The dataset another run still writes keeps its aggregate, rebuilt from the
+	// references that remain.
+	var refCount, targetJobs int64
+	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx, `
+		SELECT ds.ref_count, ds.target_job_count
+		FROM openlineage_dataset ds
+		WHERE ds.namespace = $1 AND ds.name = $2
+	`, namespace, kept).Scan(&refCount, &targetJobs))
+	require.Equal(t, int64(1), refCount)
+	require.Equal(t, int64(1), targetJobs)
+
+	var memberRows, memberRefs int64
+	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx, `
+		SELECT COUNT(*), COALESCE(SUM(ref_count), 0) FROM openlineage_dataset_member
+		WHERE namespace = $1 AND name = $2 AND kind = 'task:output'
+	`, namespace, kept).Scan(&memberRows, &memberRefs))
+	require.Equal(t, int64(1), memberRows, "the member rows are rebuilt from the remaining references")
+	require.Equal(t, int64(1), memberRefs)
+
+	list, err := v1connect.NewOpenLineageServiceClient(httpClient, env.BaseURL).ListOpenLineageDatasets(ctx, withToken(env.AdminToken(), &v1pb.ListOpenLineageDatasetsRequest{Namespace: namespace}))
+	require.NoError(t, err)
+	require.Len(t, list.Msg.GetDatasets(), 1)
+	require.Equal(t, kept, list.Msg.GetDatasets()[0].GetName())
+	require.Equal(t, int32(1), list.Msg.GetDatasets()[0].GetTargetJobCount())
+}
+
+// The list filters within the dataset window, and the detail resolves the
+// requested GUID against that same window. A filtered list therefore cannot offer a
+// dataset the detail answers 404 for: a dataset the cap pushed out of the window is
+// neither listed nor openable, however well it matches a filter. This pins the cap
+// as a bound the filters cannot reach past, which is what makes the two read paths
+// agree.
+func TestOpenLineageDatasetWindowKeepsTheListAndDetailAlignedRealServerIntegration(t *testing.T) {
+	// Deliberately not parallel: this test fills the whole window, so it must not
+	// run beside a test that expects its own datasets to still be inside it.
+	env := sharedPostgresServiceEnvNoReset(t)
+	ctx := context.Background()
+	httpClient := &http.Client{Timeout: 60 * time.Second}
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	filler := "integration-dataset-filler-ns-" + suffix
+	older := "integration-dataset-older-ns-" + suffix
+	t.Cleanup(func() {
+		_, err := env.Store.GetDB().ExecContext(ctx,
+			`DELETE FROM openlineage_dataset WHERE namespace = $1 OR namespace = $2`, filler, older)
+		require.NoError(t, err)
+	})
+
+	// One row past the cap, dated far enough in the future that the window is made
+	// of exactly these; the oldest one therefore overflows it. The second namespace
+	// is older than every one of them, so only a filter that reached past the window
+	// could offer it.
+	_, err := env.Store.GetDB().ExecContext(ctx, `
+		INSERT INTO openlineage_dataset (
+			namespace, name, last_seen, ref_count, source_job_count, target_job_count, column_lineage_ref_count
+		)
+		SELECT $1, 'public.table_' || lpad(i::text, 5, '0'), TIMESTAMPTZ '2100-01-01 00:00:00+00' - make_interval(secs => i), 1, 1, 0, 0
+		FROM generate_series(1, 5001) AS i
+	`, filler)
+	require.NoError(t, err)
+	_, err = env.Store.GetDB().ExecContext(ctx, `
+		INSERT INTO openlineage_dataset (
+			namespace, name, last_seen, ref_count, source_job_count, target_job_count, column_lineage_ref_count
+		)
+		SELECT $1, 'public.old_table', TIMESTAMPTZ '2000-01-01 00:00:00+00', 1, 1, 0, 0
+	`, older)
+	require.NoError(t, err)
+
+	newest := store.OpenLineageDatasetPair{Namespace: filler, Name: "public.table_00001"}
+	overflowed := store.OpenLineageDatasetPair{Namespace: filler, Name: "public.table_05001"}
+	pushedOut := store.OpenLineageDatasetPair{Namespace: older, Name: "public.old_table"}
+
+	aggregates, err := env.Store.ListOpenLineageDatasetAggregate(ctx, &store.FindOpenLineageDatasetMessage{Namespace: &filler})
+	require.NoError(t, err)
+	require.Len(t, aggregates, 5000, "the cap bounds what one request reads")
+	require.Equal(t, newest.Name, aggregates[0].Name)
+	for _, aggregate := range aggregates {
+		require.NotEqual(t, overflowed.Name, aggregate.Name, "a filter must not reach past the window")
+	}
+
+	aggregates, err = env.Store.ListOpenLineageDatasetAggregate(ctx, &store.FindOpenLineageDatasetMessage{Namespace: &older})
+	require.NoError(t, err)
+	require.Empty(t, aggregates, "a filter must not reach past the window")
+
+	window, err := env.Store.ListOpenLineageDatasetWindow(ctx)
+	require.NoError(t, err)
+	require.Len(t, window, 5000)
+	require.Contains(t, window, newest)
+	require.NotContains(t, window, overflowed)
+	require.NotContains(t, window, pushedOut)
+
+	// A dataset the list shows is one the detail reads, even though none of these
+	// rows has a reference: the summary is the maintained aggregate.
+	detail, err := env.Store.GetOpenLineageDatasetDetail(ctx, []store.OpenLineageDatasetPair{newest})
+	require.NoError(t, err)
+	require.NotNil(t, detail)
+	require.Equal(t, int32(1), detail.SourceJobCount)
+
+	// And the API keeps the two in step in both directions: the dataset inside the
+	// window opens, and the one the cap pushed out answers not-found.
+	client := v1connect.NewOpenLineageServiceClient(httpClient, env.BaseURL)
+	opened, err := client.GetOpenLineageDataset(ctx, withToken(env.AdminToken(), &v1pb.GetOpenLineageDatasetRequest{
+		Guid: openlineage.FormatExternalGUID(newest.Namespace, newest.Name),
+	}))
+	require.NoError(t, err)
+	require.Equal(t, newest.Name, opened.Msg.GetDataset().GetName())
+
+	_, err = client.GetOpenLineageDataset(ctx, withToken(env.AdminToken(), &v1pb.GetOpenLineageDatasetRequest{
+		Guid: openlineage.FormatExternalGUID(pushedOut.Namespace, pushedOut.Name),
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 }

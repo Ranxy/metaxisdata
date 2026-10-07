@@ -146,6 +146,10 @@ func (s *Store) UpsertOpenLineageRuns(ctx context.Context, runs []*OpenLineageRu
 	// Runs a finished row refused. Their stored row is left untouched, so it is
 	// read back once the transaction is committed.
 	var refused []int
+	// The references each run held before this batch replaced them. The dataset
+	// aggregate is folded in after the loop, so every task lock is held before
+	// the first dataset lock and the batch's lock order stays global.
+	replacements := make([]openLineageRunDatasetReplacement, 0, len(runs))
 	for _, index := range taskLockOrder(runs) {
 		run := runs[index]
 		// The task lock has to be taken before the previous run is read, so the
@@ -163,6 +167,14 @@ func (s *Store) UpsertOpenLineageRuns(ctx context.Context, runs []*OpenLineageRu
 			continue
 		}
 
+		var previousRefs []*OpenLineageRunDatasetMessage
+		if previous.Existed {
+			previousRefs, err = listOpenLineageRunDatasets(ctx, tx, previous.ID)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		runPersisted, err := upsertOpenLineageRunImpl(ctx, tx, run)
 		if err != nil {
 			return nil, err
@@ -170,6 +182,7 @@ func (s *Store) UpsertOpenLineageRuns(ctx context.Context, runs []*OpenLineageRu
 		if err := replaceOpenLineageRunDatasets(ctx, tx, runPersisted.ID, run.Datasets); err != nil {
 			return nil, err
 		}
+		replacements = append(replacements, openLineageRunDatasetReplacement{Old: previousRefs, New: run.Datasets})
 
 		updatedTask, err := s.applyOpenLineageRun(ctx, tx, task, runPersisted, previous.Existed, previous.HasLineage)
 		if err != nil {
@@ -183,6 +196,10 @@ func (s *Store) UpsertOpenLineageRuns(ctx context.Context, runs []*OpenLineageRu
 			return nil, err
 		}
 		persisted[index] = runPersisted
+	}
+
+	if err := applyOpenLineageDatasetDeltas(ctx, tx, replacements); err != nil {
+		return nil, err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -227,6 +244,7 @@ func taskLockOrder(runs []*OpenLineageRunMessage) []int {
 
 // previousRun is the stored state of the run a delivery replaces.
 type previousRun struct {
+	ID         int64
 	Existed    bool
 	HasLineage bool
 	EventType  string
@@ -245,10 +263,10 @@ func (p previousRun) finished() bool {
 func previousRunState(ctx context.Context, tx *sql.Tx, run *OpenLineageRunMessage) (previousRun, error) {
 	var previous previousRun
 	if err := tx.QueryRowContext(ctx, `
-		SELECT has_lineage, event_type
+		SELECT id, has_lineage, event_type
 		FROM openlineage_run
 		WHERE job_namespace = $1 AND job_name = $2 AND job_type = $3 AND run_id = $4
-	`, run.JobNamespace, run.JobName, run.JobType, run.RunID).Scan(&previous.HasLineage, &previous.EventType); err != nil {
+	`, run.JobNamespace, run.JobName, run.JobType, run.RunID).Scan(&previous.ID, &previous.HasLineage, &previous.EventType); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return previousRun{}, nil
 		}
