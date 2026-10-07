@@ -1143,6 +1143,8 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 
 - 单元 `backend/common/crypto`:往返、每条密文 nonce 不同、错钥、分别篡改 nonce 与 tag、旧格式/非 base64/过短、空值语义、`ParseKey` 与 `ParseKeys` 的三种编码与非法输入。
 - 单元 `backend/store`:逐个字段解密并断言错误里出现字段名与数据源;写回的行内没有明文且密文能往返;未安装 cipher 时拒绝写入;黄金测试用 protoreflect 遍历 `DataSource`——任何 `*_ciphertext` 字段未登记、或登记项缺明文/密文配对即变红;`LlmProviderProfile` 只允许 `api_key_ciphertext` 一个凭据字段;`unwrapDataKey` 覆盖裸密钥、当前 KEK、退役 KEK、无 KEK、无 KEK 能解开五条分支。
+- 单元 `backend/store`(密钥生命周期,内存 setting 表,不依赖数据库):未配 KEK 时数据密钥保持裸存且不重写;配上 KEK 时就地包裹、二次启动不再重写;退役 KEK 下解出后自动改包裹,之后只用当前 KEK 即可启动;以及"无 ENCRYPTION_KEY / 值为空 / 被包裹但没配 KEK / 没有 KEK 能解开 / 值不是合法密钥"五种情况一律拒绝启动且不返回 cipher——这条决定的是"运维配了 KEK 是否真的生效",不测就只是注释承诺。
+- 集成补充:掩码更新数据源(`update_mask=database`)后,口令仍在、密文换成新 nonce,且随后的一次库同步仍能连上(证明读-改-写没有把凭据丢掉)。
 - 集成(真实服务器 + 真实 PostgreSQL):`TestStoredInstanceCredentialsAreEncryptedRealServerIntegration`——管理员口令在库里是 `v1:` 密文、行的 JSON 中没有 `"password"` 字段、服务器仍能用它完成一次库同步(证明解出的凭据可用)、观察者 store 读回明文、同一口令在第二个实例里得到不同密文。
 - **反向验证**(两次,均已恢复并逐字节确认):(a) 把 `Encrypt`/`Decrypt` 换成"确定性且不认证"(正是旧混淆的本质)——crypto 4 例、store 3 例变红,集成用例以 `Should not be: "v1:cG9zdGdyZXM="` 变红(两个实例同口令得到同一密文);(b) 让 `encryptInstance` 把明文写进密文字段——`TestEncryptInstanceStoresOnlyTheCiphertext` 与 `TestEncryptInstanceWithoutACipherFails` 变红。
 
@@ -1154,4 +1156,4 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 2. **数据密钥不可轮换**:更换 DEK 需要对全部凭据重加密,上线前无此需求;KEK 轮换已经不需要重加密。
 3. **旧混淆数据无迁移**:按确认决策不做;开发库里残留的旧值会在读取时报错(错误信息含实例与字段),由使用者自行清理。
 
-**验证门禁**:`buf format`/`buf lint` 干净;`gofmt`(无输出)、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./...`(全绿);release(`-tags release`)与默认两种构建通过;`make test-integration`(真实 PostgreSQL + MySQL + migrator)全绿——runner 71 个用例 42.1s(含本轮新增的凭据加密用例)、migrator 19.5s。本轮未改前端,未跑前端门禁。
+**验证门禁**:`buf format`/`buf lint` 干净;`gofmt`(无输出)、`golangci-lint run --allow-parallel-runners`(0 issues)、`go test -count=1 ./...`(全绿)、`go test -race`(store/crypto/api/v1 全绿);release(`-tags release`)与默认两种构建通过;`make test-integration`(真实 PostgreSQL + MySQL + migrator)全绿——runner 71 个用例 40.4s(含本轮新增的凭据加密用例)、migrator 18.3s。本轮未改前端,未跑前端门禁。

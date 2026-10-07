@@ -77,13 +77,17 @@ of the 32-byte `AUTH_SECRET`, stored as base64. Four properties came with that:
   edited nonce and tag, foreign formats, short values, key parsing.
 - Unit (`backend/store`): the per-row decrypt covers every field and names the
   field and data source it failed on; a write carries no plaintext; a store with
-  no cipher refuses to write; the `*_ciphertext` guard test; the wrapping and
-  re-wrapping decisions in `unwrapDataKey`.
+  no cipher refuses to write; the `*_ciphertext` guard test; `unwrapDataKey`'s
+  five branches; and `loadCredentialCipher` against an in-memory setting table —
+  bare key with and without a key-encryption key, a key already wrapped under the
+  current one (left alone), a key under a retired one (re-wrapped, then openable
+  without it), and every unusable-material case stopping startup.
 - Integration (`TestStoredInstanceCredentialsAreEncryptedRealServerIntegration`):
   the real server stores the admin password as a `v1:` ciphertext, the row
   contains no plaintext field, the server still connects with it (a database
-  sync), the observer store reads it back, and the same password in a second
-  instance produces a different ciphertext.
+  sync), a masked data-source update keeps it usable under a fresh nonce, the
+  observer store reads it back, and the same password in a second instance
+  produces a different ciphertext.
 
 ## Not done here
 
