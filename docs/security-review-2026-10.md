@@ -1028,6 +1028,7 @@ M15 落地后由独立子代理对 `f55f62a`(及当时工作区的未提交增�
 - 做法:按语句类批量化——① 一条 `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` 批量加锁并读回每个数据集的状态;② 批量 upsert 正增量成员(`RETURNING` 的计数等于该行增量即为新建,据此加 job 数);③ 批量 `UPDATE ... FROM (VALUES ...)` 负增量成员;④ 批量删除归零成员(据此减 job 数);⑤ 批量写回计数并在同一条语句里用 `CASE` + 相关子查询回读被撤走最新引用者的 `event_time`。锁序不变:所有数据集行在任何成员行之前、按 (namespace, name) 顺序加锁,批次仍是"先 task 升序、再 dataset 升序"。语句按行数分块(每块 1000 行),因为参数个数有上限而一个批次可以点名任意多个数据集。
 - 新助手:`valuesList` 渲染带列级 cast 的 `VALUES` 列表——`FROM` 里的 `VALUES` 拿不到目标列类型(列定义列表只对返回 record 的函数合法),占位符要跨整表编号,单测钉住这两点。
 - 测试:单元 `TestValuesListNumbersPlaceholdersAcrossRows`;集成扩了"一个事件 150 个数据集"用例(重投递只留 100 个,被丢掉的 50 个必须一并消失),并新增 `TestOpenLineageDatasetAggregateChunksALargeBatchRealServerIntegration`——一个事务里两个各 1000 个数据集的事件(共 2000 数据集、6000 成员行)全部落库、再重投递各留 1 个,1.4s。
+- 不变量用例:`TestOpenLineageDatasetAggregateMatchesAFullRecomputeRealServerIntegration` 把重投递、数据集在两个方向间迁移、同一 run 双向引用同一数据集、无 integration facet、无 `event_time` 等形态走一遍后,把存储的聚合(**数据集行与成员行**)逐行与"从引用表重算"的结果对比——后者正是保留策略重建用的那段 SQL,于是"增量维护 = 全量重算"成为一条被钉住的不变量。反向验证:把成员增量从累加改成覆盖即变红。
 - 反向验证:去掉"成员归零时回退 job 数"后重投递用例变红(期望 1、实际 2)。
 
 **保留策略先锁后算(commit `226e8d7`)**

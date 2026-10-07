@@ -5,6 +5,7 @@ package runner
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -1108,4 +1109,188 @@ func TestOpenLineageEmptyDatasetSweepRealServerIntegration(t *testing.T) {
 	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
 		`SELECT name FROM openlineage_dataset WHERE namespace = $1`, namespace).Scan(&remaining))
 	require.Equal(t, kept, remaining)
+}
+
+// The aggregate the ingest transaction maintains has to equal the aggregate a full
+// recompute from the references produces — that recompute is what the retention prune
+// runs, so the two are one definition. Drift would show as a page counting something
+// its references do not say, and it would only be repaired by the next prune. This
+// drives a mix of shapes through the real server (a run redelivered with fewer
+// datasets, a dataset both read and written, an event with no integration facet and
+// one with no event time) and compares every stored row with the recompute.
+func TestOpenLineageDatasetAggregateMatchesAFullRecomputeRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env := sharedPostgresServiceEnvNoReset(t)
+	ctx := context.Background()
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+
+	key, _, err := env.Store.CreateOpenLineageAPIKey(ctx, "integration-dataset-recompute", "integration-test", "")
+	require.NoError(t, err)
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	namespace := "integration-dataset-recompute-ns-" + suffix
+	base := time.Now().UTC().Add(-time.Hour)
+	t.Cleanup(func() {
+		_, err := env.Store.GetDB().ExecContext(ctx, `DELETE FROM openlineage_run WHERE job_namespace = $1`, namespace)
+		require.NoError(t, err)
+		_, err = env.Store.GetDB().ExecContext(ctx, `DELETE FROM openlineage_dataset WHERE namespace = $1`, namespace)
+		require.NoError(t, err)
+	})
+
+	post := func(t *testing.T, event map[string]any) {
+		t.Helper()
+		body, err := json.Marshal(event)
+		require.NoError(t, err)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, env.BaseURL+"/api/v1/lineage", bytes.NewReader(body))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+key)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpClient.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	}
+	dataset := func(name string) map[string]any {
+		return map[string]any{"namespace": namespace, "name": name}
+	}
+	event := func(runID, jobName string, at *time.Time, outputs, inputs []string) map[string]any {
+		built := map[string]any{
+			"eventType": "COMPLETE",
+			"run":       map[string]any{"runId": runID},
+			"job": map[string]any{
+				"namespace": namespace,
+				"name":      jobName,
+				"facets":    map[string]any{"jobType": map[string]any{"jobType": "TASK", "integration": "airflow"}},
+			},
+			"producer": "integration-test",
+		}
+		if at != nil {
+			built["eventTime"] = at.Format(time.RFC3339Nano)
+		}
+		written := make([]map[string]any, 0, len(outputs))
+		for _, name := range outputs {
+			written = append(written, dataset(name))
+		}
+		read := make([]map[string]any, 0, len(inputs))
+		for _, name := range inputs {
+			read = append(read, dataset(name))
+		}
+		built["outputs"], built["inputs"] = written, read
+		return built
+	}
+	columnLineage := func(built map[string]any, name string) map[string]any {
+		built["outputs"] = []map[string]any{{
+			"namespace": namespace,
+			"name":      name,
+			"facets": map[string]any{"columnLineage": map[string]any{"fields": map[string]any{
+				"order_id": map[string]any{"inputFields": []map[string]any{{"namespace": namespace, "name": "public.source", "field": "order_id"}}},
+			}}},
+		}}
+		return built
+	}
+	withoutIntegration := func(built map[string]any) map[string]any {
+		delete(built["job"].(map[string]any), "facets")
+		return built
+	}
+
+	first := base
+	second := base.Add(time.Minute)
+	third := base.Add(2 * time.Minute)
+
+	post(t, columnLineage(event("run-1", "job-1", &first, []string{"public.a", "public.b"}, nil), "public.b"))
+	post(t, event("run-2", "job-2", &second, []string{"public.b"}, nil))
+	// The redelivery drops public.b, keeps public.a.
+	post(t, event("run-1", "job-1", &first, []string{"public.a"}, nil))
+	// One dataset read and written by the same run, and a run with no event time.
+	post(t, event("run-3", "job-3", &third, []string{"public.c"}, []string{"public.c", "public.a"}))
+	post(t, withoutIntegration(event("run-4", "job-4", nil, []string{"public.d"}, nil)))
+	// A redelivery that moves a dataset from written to read.
+	post(t, event("run-3", "job-3", &third, nil, []string{"public.c", "public.a"}))
+
+	// The stored aggregate, row for row.
+	type aggregate struct {
+		LastSeen              sql.NullTime
+		RefCount              int64
+		SourceJobs            int64
+		TargetJobs            int64
+		ColumnLineageRefCount int64
+	}
+	stored := map[string]aggregate{}
+	rows, err := env.Store.GetDB().QueryContext(ctx, `
+		SELECT name, last_seen, ref_count, source_job_count, target_job_count, column_lineage_ref_count
+		FROM openlineage_dataset WHERE namespace = $1`, namespace)
+	require.NoError(t, err)
+	for rows.Next() {
+		var name string
+		var row aggregate
+		require.NoError(t, rows.Scan(&name, &row.LastSeen, &row.RefCount, &row.SourceJobs, &row.TargetJobs, &row.ColumnLineageRefCount))
+		stored[name] = row
+	}
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+
+	// The same aggregate recomputed from the references, which is what the retention
+	// prune computes before it writes it back.
+	expected := map[string]aggregate{}
+	rows, err = env.Store.GetDB().QueryContext(ctx, `
+		SELECT name, MAX(event_time), COUNT(*),
+			COUNT(DISTINCT task_guid) FILTER (WHERE direction = 'input'),
+			COUNT(DISTINCT task_guid) FILTER (WHERE direction = 'output'),
+			COUNT(*) FILTER (WHERE has_column_lineage)
+		FROM openlineage_run_dataset WHERE namespace = $1 GROUP BY name`, namespace)
+	require.NoError(t, err)
+	for rows.Next() {
+		var name string
+		var row aggregate
+		require.NoError(t, rows.Scan(&name, &row.LastSeen, &row.RefCount, &row.SourceJobs, &row.TargetJobs, &row.ColumnLineageRefCount))
+		expected[name] = row
+	}
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+
+	require.NotEmpty(t, expected)
+	require.Equal(t, expected, stored)
+
+	// And the member rows, which are the same recompute grouped per kind and value.
+	storedMembers := map[string]int64{}
+	rows, err = env.Store.GetDB().QueryContext(ctx, `
+		SELECT name, kind, value, ref_count FROM openlineage_dataset_member WHERE namespace = $1`, namespace)
+	require.NoError(t, err)
+	for rows.Next() {
+		var name, kind, value string
+		var refCount int64
+		require.NoError(t, rows.Scan(&name, &kind, &value, &refCount))
+		storedMembers[name+"\x00"+kind+"\x00"+value] = refCount
+	}
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+
+	expectedMembers := map[string]int64{}
+	rows, err = env.Store.GetDB().QueryContext(ctx, `
+		SELECT name, kind, value, COUNT(*) FROM (
+			SELECT name, 'task:input' AS kind, task_guid AS value FROM openlineage_run_dataset
+				WHERE namespace = $1 AND direction = 'input'
+			UNION ALL
+			SELECT name, 'task:output', task_guid FROM openlineage_run_dataset
+				WHERE namespace = $1 AND direction = 'output'
+			UNION ALL
+			SELECT name, 'integration', integration FROM openlineage_run_dataset
+				WHERE namespace = $1 AND integration <> ''
+			UNION ALL
+			SELECT name, 'source', source FROM openlineage_run_dataset
+				WHERE namespace = $1 AND source <> ''
+		) members GROUP BY name, kind, value`, namespace)
+	require.NoError(t, err)
+	for rows.Next() {
+		var name, kind, value string
+		var refCount int64
+		require.NoError(t, rows.Scan(&name, &kind, &value, &refCount))
+		expectedMembers[name+"\x00"+kind+"\x00"+value] = refCount
+	}
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+
+	require.NotEmpty(t, expectedMembers)
+	require.Equal(t, expectedMembers, storedMembers)
 }
