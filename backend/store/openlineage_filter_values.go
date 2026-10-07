@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/pkg/errors"
 )
@@ -14,6 +15,12 @@ const (
 	openLineageFilterJobType      = "job_type"
 	openLineageFilterEventType    = "event_type"
 	openLineageFilterSource       = "source"
+
+	// The dimensions only the dataset page offers, read from the dataset
+	// references rather than from the runs' raw payloads.
+	openLineageFilterDatasetNamespace   = "dataset_namespace"
+	openLineageFilterDatasetIntegration = "dataset_integration"
+	openLineageFilterDatasetSource      = "dataset_source"
 )
 
 // maxOpenLineageFilterValues bounds each dimension: a workspace with a long tail
@@ -55,9 +62,9 @@ func (s *Store) CountOpenLineageTotals(ctx context.Context) (*OpenLineageTotals,
 // OpenLineage index pages filter by, most common first.
 //
 // Both tables are read in one statement so a menu costs one round trip. The
-// dataset dimensions are deliberately absent: a dataset's namespace and the
-// integrations and sources that touched it come out of the run payloads, so the
-// caller aggregates those from the same runs the dataset list reads.
+// dataset dimensions are answered separately by
+// ListOpenLineageDatasetFilterValues: a dataset's namespace and the integrations
+// and sources that touched it are properties of the dataset references.
 func (s *Store) ListOpenLineageFilterValues(ctx context.Context) ([]*OpenLineageFilterValue, error) {
 	rows, err := s.GetDB().QueryContext(ctx, `
 		SELECT '`+openLineageFilterJobNamespace+`', job_namespace, count(*) FROM openlineage_run WHERE job_namespace <> '' GROUP BY 2
@@ -71,6 +78,13 @@ func (s *Store) ListOpenLineageFilterValues(ctx context.Context) ([]*OpenLineage
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list openlineage filter values")
 	}
+	return collectOpenLineageFilterValues(rows)
+}
+
+// collectOpenLineageFilterValues caps each dimension. The rows arrive most
+// common first within each dimension, so the cap keeps the values that matter
+// and drops only the tail.
+func collectOpenLineageFilterValues(rows *sql.Rows) ([]*OpenLineageFilterValue, error) {
 	defer rows.Close()
 
 	kept := make(map[string]int, 4)
@@ -80,8 +94,6 @@ func (s *Store) ListOpenLineageFilterValues(ctx context.Context) ([]*OpenLineage
 		if err := rows.Scan(&value.Dimension, &value.Value, &value.Count); err != nil {
 			return nil, errors.Wrap(err, "failed to scan an openlineage filter value")
 		}
-		// The rows arrive most common first within each dimension, so the cap
-		// keeps the values that matter and drops only the tail.
 		if kept[value.Dimension] >= maxOpenLineageFilterValues {
 			continue
 		}

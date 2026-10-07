@@ -83,7 +83,7 @@ func TestOpenLineageTaskListSurvivesAPrunedLatestRunRealServerIntegration(t *tes
 	require.Empty(t, dangling.LatestRunGUID, "a task must not point at a run the API cannot serve")
 	require.Empty(t, dangling.LatestRunID)
 	require.Empty(t, dangling.LatestEventType)
-	require.Empty(t, dangling.LatestRawPayload)
+	require.Empty(t, dangling.LatestAirflowRunLogURL)
 	// The aggregate the task stored itself is still there.
 	require.Equal(t, int32(1), dangling.RunCount)
 }

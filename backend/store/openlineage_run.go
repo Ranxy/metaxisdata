@@ -37,6 +37,18 @@ func openLineagePageClause(limit, offset *int, startIndex int) (string, []any) {
 	return clause, pageArgs
 }
 
+// openLineageRunPayloadColumn is what a run query selects for raw_payload. The
+// list projection substitutes a NULL so a page of runs never reads (or holds)
+// the payloads it returns; only a caller that asked for the payload gets the
+// column. Reading it is what made one list request allocate the whole page's
+// payload bytes.
+func openLineageRunPayloadColumn(includePayload bool) string {
+	if includePayload {
+		return "raw_payload"
+	}
+	return "NULL::jsonb AS raw_payload"
+}
+
 // openLineageEventComplete is the OpenLineage run state whose row is terminal. A
 // finished run carries the payload its lineage was derived from, so a later - or
 // redelivered - START or FAIL must not rewrite that row: the finish is the last
@@ -71,8 +83,14 @@ type OpenLineageRunMessage struct {
 	OutputCount        int32
 	HasLineage         bool
 	RawPayload         []byte
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	// AirflowRunLogURL is the payload's airflow facet link, whitelisted at
+	// ingestion. It is a column so a list reads the link without the payload.
+	AirflowRunLogURL string
+	// Datasets are the references this run's payload carried. They are written
+	// with the run, in the same transaction, and replaced as a set.
+	Datasets  []*OpenLineageRunDatasetMessage
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // FindOpenLineageRunMessage is the query filter for persisted OpenLineage runs.
@@ -89,8 +107,12 @@ type FindOpenLineageRunMessage struct {
 	// list shows, mirroring the free-text box the page used to filter with in
 	// the browser.
 	Search *string
-	Limit  *int
-	Offset *int
+	// IncludePayload asks for raw_payload as well. The list projection leaves it
+	// out by default: a page of runs would otherwise read every payload it
+	// holds, which is the amplification this table's list path must not have.
+	IncludePayload bool
+	Limit          *int
+	Offset         *int
 }
 
 // UpsertOpenLineageRun persists one OpenLineage run and mirrors it into
@@ -143,6 +165,9 @@ func (s *Store) UpsertOpenLineageRuns(ctx context.Context, runs []*OpenLineageRu
 
 		runPersisted, err := upsertOpenLineageRunImpl(ctx, tx, run)
 		if err != nil {
+			return nil, err
+		}
+		if err := replaceOpenLineageRunDatasets(ctx, tx, runPersisted.ID, run.Datasets); err != nil {
 			return nil, err
 		}
 
@@ -265,9 +290,10 @@ func upsertOpenLineageRunImpl(ctx context.Context, tx *sql.Tx, run *OpenLineageR
 			input_count,
 			output_count,
 			has_lineage,
-			raw_payload
+			raw_payload,
+			airflow_run_log_url
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
 		ON CONFLICT (job_namespace, job_name, job_type, run_id) DO UPDATE SET
 			guid = EXCLUDED.guid,
 			task_guid = EXCLUDED.task_guid,
@@ -287,6 +313,7 @@ func upsertOpenLineageRunImpl(ctx context.Context, tx *sql.Tx, run *OpenLineageR
 			output_count = EXCLUDED.output_count,
 			has_lineage = EXCLUDED.has_lineage,
 			raw_payload = EXCLUDED.raw_payload,
+			airflow_run_log_url = EXCLUDED.airflow_run_log_url,
 			updated_at = NOW()
 		RETURNING
 			id,
@@ -312,9 +339,10 @@ func upsertOpenLineageRunImpl(ctx context.Context, tx *sql.Tx, run *OpenLineageR
 			output_count,
 			has_lineage,
 			raw_payload,
+			airflow_run_log_url,
 			created_at,
 			updated_at
-	`, run.GUID, run.TaskGUID, run.RunID, run.JobNamespace, run.JobName, run.JobType, run.EventType, eventTime, run.Producer, run.Integration, run.ProcessingType, run.ParentJobNamespace, run.ParentJobName, run.ParentRunID, run.RootJobNamespace, run.RootJobName, run.RootRunID, run.Source, run.InputCount, run.OutputCount, run.HasLineage, run.RawPayload).Scan(
+	`, run.GUID, run.TaskGUID, run.RunID, run.JobNamespace, run.JobName, run.JobType, run.EventType, eventTime, run.Producer, run.Integration, run.ProcessingType, run.ParentJobNamespace, run.ParentJobName, run.ParentRunID, run.RootJobNamespace, run.RootJobName, run.RootRunID, run.Source, run.InputCount, run.OutputCount, run.HasLineage, run.RawPayload, run.AirflowRunLogURL).Scan(
 		&persisted.ID,
 		&persisted.GUID,
 		&persisted.TaskGUID,
@@ -338,6 +366,7 @@ func upsertOpenLineageRunImpl(ctx context.Context, tx *sql.Tx, run *OpenLineageR
 		&persisted.OutputCount,
 		&persisted.HasLineage,
 		&rawPayload,
+		&persisted.AirflowRunLogURL,
 		&persisted.CreatedAt,
 		&persisted.UpdatedAt,
 	); err != nil {
@@ -432,6 +461,9 @@ func (s *Store) ListOpenLineageRun(ctx context.Context, find *FindOpenLineageRun
 		args = append(args, *v)
 	}
 
+	// The list projection omits raw_payload unless the caller asked for it.
+	payloadColumn := openLineageRunPayloadColumn(find.IncludePayload)
+
 	query := `
 		SELECT
 			id,
@@ -456,7 +488,8 @@ func (s *Store) ListOpenLineageRun(ctx context.Context, find *FindOpenLineageRun
 			input_count,
 			output_count,
 			has_lineage,
-			raw_payload,
+			` + payloadColumn + `,
+			airflow_run_log_url,
 			created_at,
 			updated_at
 		FROM openlineage_run
@@ -501,6 +534,7 @@ func (s *Store) ListOpenLineageRun(ctx context.Context, find *FindOpenLineageRun
 			&msg.OutputCount,
 			&msg.HasLineage,
 			&rawPayload,
+			&msg.AirflowRunLogURL,
 			&msg.CreatedAt,
 			&msg.UpdatedAt,
 		); err != nil {

@@ -366,6 +366,10 @@ CREATE TABLE openlineage_run (
     output_count INT4 NOT NULL DEFAULT 0,
     has_lineage BOOLEAN NOT NULL DEFAULT FALSE,
     raw_payload JSONB NOT NULL,
+    -- The Airflow run log URL the payload's airflow facet advertised, already
+    -- run through the http(s) whitelist at ingestion. Links are read from here
+    -- so a list request never has to parse a raw payload.
+    airflow_run_log_url TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -377,6 +381,38 @@ CREATE INDEX idx_openlineage_run_job ON openlineage_run(job_namespace, job_name)
 CREATE INDEX idx_openlineage_run_task_guid ON openlineage_run(task_guid);
 
 ALTER SEQUENCE openlineage_run_id_seq RESTART WITH 101;
+
+
+-- openlineage_run_dataset materializes the datasets each persisted run read or
+-- wrote, so the dataset pages aggregate in SQL instead of JSON-parsing the raw
+-- payload of every recent run. Rows belong to their run: deleting a run (the
+-- retention prune, or a redelivery that replaces its row) takes its references
+-- with it. schema_fields and column_lineage_fields hold the facet JSON itself,
+-- like raw_payload on openlineage_run, not a proto/store message.
+CREATE TABLE openlineage_run_dataset (
+    id BIGSERIAL PRIMARY KEY,
+    run_pk BIGINT NOT NULL REFERENCES openlineage_run(id) ON DELETE CASCADE,
+    task_guid TEXT COLLATE "C" NOT NULL,
+    namespace TEXT NOT NULL,
+    name TEXT NOT NULL,
+    -- 'input' for a dataset the run read, 'output' for one it wrote.
+    direction TEXT NOT NULL,
+    has_column_lineage BOOLEAN NOT NULL DEFAULT FALSE,
+    schema_fields JSONB,
+    column_lineage_fields JSONB,
+    event_time TIMESTAMPTZ,
+    integration TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_openlineage_run_dataset_unique ON openlineage_run_dataset(run_pk, namespace, name, direction);
+CREATE INDEX idx_openlineage_run_dataset_group ON openlineage_run_dataset(namespace, name);
+CREATE INDEX idx_openlineage_run_dataset_task ON openlineage_run_dataset(task_guid);
+CREATE INDEX idx_openlineage_run_dataset_event_time ON openlineage_run_dataset(event_time DESC NULLS LAST);
+
+ALTER SEQUENCE openlineage_run_dataset_id_seq RESTART WITH 101;
 
 
 -- openlineage_task stores aggregated task/job-level views derived from persisted runs.
