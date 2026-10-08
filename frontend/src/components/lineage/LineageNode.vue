@@ -5,7 +5,7 @@
        card cuts them — and their drag targets — in half. -->
   <div
     class="w-[232px] rounded-lg border border-l-4 bg-card text-card-foreground shadow-sm"
-    :class="data.isRoot ? 'ring-2 ring-ring' : 'hover:border-foreground/30'"
+    :class="cardClass"
     :style="{ borderLeftColor: data.scopeColor }"
     @click="$emit('select-node', data.guid)"
   >
@@ -40,11 +40,23 @@
       <div class="truncate text-sm font-medium">
         {{ data.label }}
       </div>
+      <!-- The fields of this node that the selected column's trail runs through,
+           named here rather than in an expanded field list: a node that has to be
+           opened first would hide the very flow the trail is drawn to show. -->
       <div
-        v-if="data.qualifier"
+        v-if="data.qualifier || trailColumns.length > 0"
         class="truncate font-mono text-[11px] text-muted-foreground"
+        :title="pathTitle"
       >
-        {{ data.qualifier }}
+        <span v-if="data.qualifier">{{ data.qualifier }}</span>
+        <template v-for="(column, index) in trailColumns" :key="column">
+          <span v-if="data.qualifier || index > 0" class="text-muted-foreground/50">
+            ·
+          </span>
+          <span class="font-medium text-amber-600 dark:text-amber-400">
+            {{ column }}
+          </span>
+        </template>
       </div>
       <div class="flex flex-wrap items-center gap-1.5 pt-1">
         <Badge v-if="data.upstreamCount > 0" variant="warning" class="text-[10px]">
@@ -130,6 +142,10 @@ export type LineageNodeKind = "table" | "view" | "external";
 
 export interface LineageNodeData {
   guid: string;
+  /** Whether the selected column's trail runs through this node. */
+  onTrail: boolean;
+  /** Whether a trail is being shown and this node is not on it. */
+  dimmed: boolean;
   /** The object's own name, which is all the title states. */
   label: string;
   /** The scope the object lives in: an instance title, or a dataset namespace. */
@@ -151,6 +167,7 @@ export interface LineageNodeData {
   downstreamCount: number;
   columns: string[];
   selectedColumn: string | null;
+  /** The columns of this node that the selected column's trail runs through. */
   highlightedColumns: Set<string>;
 }
 
@@ -175,6 +192,29 @@ function handleToggleFields() {
 }
 
 const isExternal = computed(() => props.data.kind === "external");
+
+/**
+ * A node on the trail is ringed and everything else steps back, so the eye
+ * follows the field rather than the graph. While a trail is shown the ring means
+ * "on the trail" for every node, the root included — the root's own ring would
+ * otherwise claim the same mark, and its "Root node" chip still names it.
+ */
+const cardClass = computed(() => {
+  if (props.data.dimmed) {
+    return "opacity-40";
+  }
+  if (props.data.onTrail) {
+    return "ring-2 ring-amber-500/70";
+  }
+  return props.data.isRoot ? "ring-2 ring-ring" : "hover:border-foreground/30";
+});
+
+const trailColumns = computed(() => [...props.data.highlightedColumns].sort());
+
+/** The path line truncates, so its tooltip carries every part of it. */
+const pathTitle = computed(() =>
+  [props.data.qualifier, ...trailColumns.value].filter(Boolean).join(" · ")
+);
 
 const nodeIcon = computed(() => {
   if (props.data.kind === "external") {

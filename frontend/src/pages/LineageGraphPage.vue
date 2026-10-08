@@ -164,6 +164,53 @@
                 </div>
               </div>
 
+              <!-- How far the field runs across the canvas. The trail is walked
+                   over the drawn graph, so these counts are about what is here,
+                   not about the whole stored graph. -->
+              <div v-if="fieldTrailSummary" class="space-y-2">
+                <div class="text-xs uppercase tracking-wide text-muted-foreground">
+                  {{ t("lineageGraph.fieldTrail") }}
+                </div>
+                <p class="text-xs text-muted-foreground">
+                  {{ t("lineageGraph.fieldTrailHint") }}
+                </p>
+                <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                  <div
+                    v-for="side in [
+                      { key: 'up', label: t('metadataBrowser.upstream'), data: fieldTrailSummary.upstream },
+                      { key: 'down', label: t('metadataBrowser.downstream'), data: fieldTrailSummary.downstream },
+                    ]"
+                    :key="side.key"
+                    class="rounded-md border p-3"
+                  >
+                    <div class="text-xs text-muted-foreground">{{ side.label }}</div>
+                    <div class="mt-1 text-sm font-medium">
+                      {{ t("lineageGraph.legendObjectCount", { count: side.data.nodeIds.size }) }}
+                      ·
+                      {{
+                        t("lineageGraph.fieldTrailRelationCount", {
+                          count: side.data.relationCount,
+                        })
+                      }}
+                    </div>
+                  </div>
+                </div>
+                <p
+                  v-if="fieldTrailSummary.truncated"
+                  class="text-xs text-muted-foreground"
+                >
+                  {{ t("lineageGraph.fieldTrailTruncated") }}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="!dimsOffTrail"
+                  @click="handleFitTrail"
+                >
+                  {{ t("lineageGraph.fieldTrailFit") }}
+                </Button>
+              </div>
+
               <!-- Which writers reached this object, before the graph's own
                    origin filter: the number is about the stored graph, not
                    about what happens to be drawn. -->
@@ -320,6 +367,7 @@ import {
   originLabelKey,
   type RelationOrigin,
 } from "@/lib/lineageOrigin";
+import { collectFieldTrail, type FieldTrail } from "@/lib/lineageTrail";
 import { openlineageRunLabel } from "@/lib/openlineageRun";
 import { useInstanceStore } from "@/store/modules/instance";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -428,8 +476,11 @@ let initialNodeDataMap = new Map<string, NodeLineageData>();
 // Field-level column selection state
 const selectedColumnGuid = ref<string | null>(null);
 const selectedColumnName = ref<string | null>(null);
-// guid -> Set<column> for columns that should be highlighted on neighbour nodes
-const highlightedColumnsMap = ref<Map<string, Set<string>>>(new Map());
+/**
+ * The trail the selected column runs through the drawn graph, refreshed whenever
+ * the graph is. Null when no column is selected.
+ */
+const fieldTrail = ref<FieldTrail | null>(null);
 
 // Track which nodes have their fields panel visible (for layout height calculation)
 const fieldsVisibleGuids = ref<Set<string>>(new Set());
@@ -556,6 +607,23 @@ const legendOrigins = computed<LegendOrigin[]>(() => {
     rows.push({ origin: "mixed", count: drawn.get("mixed") ?? 0 });
   }
   return rows;
+});
+
+/**
+ * The selected field's trail, summarised for the detail panel: how far it reaches
+ * on each side of the pivot. An empty side is not an error — it says this field is
+ * a source or a sink in what is drawn.
+ */
+const fieldTrailSummary = computed(() => {
+  const trail = fieldTrail.value;
+  if (!trail) {
+    return null;
+  }
+  return {
+    upstream: trail.upstream,
+    downstream: trail.downstream,
+    truncated: trail.truncated,
+  };
 });
 
 const selectedColumnContext = computed(() => {
@@ -980,8 +1048,26 @@ function nodeDataFor(guid: string): LineageNodeData {
     columns: collectColumnsForGuid(guid),
     selectedColumn:
       selectedColumnGuid.value === guid ? selectedColumnName.value : null,
-    highlightedColumns: highlightedColumnsMap.value.get(guid) ?? new Set(),
+    highlightedColumns: fieldTrail.value?.columns.get(guid) ?? new Set(),
+    onTrail: fieldTrail.value?.nodeIds.has(guid) ?? false,
+    dimmed:
+      dimsOffTrail.value && !(fieldTrail.value?.nodeIds.has(guid) ?? false),
   };
+}
+
+/**
+ * Every object the drawn graph will hold: the view's own keys plus both ends of
+ * every relation in it, which is what `assignLayers` lays out.
+ */
+function allGuidsIn(view: Map<string, NodeLineageData>): Set<string> {
+  const guids = new Set<string>(view.keys());
+  for (const data of view.values()) {
+    for (const relation of [...data.upstream, ...data.downstream]) {
+      guids.add(relation.sourceGuid);
+      guids.add(relation.targetGuid);
+    }
+  }
+  return guids;
 }
 
 /**
@@ -1005,29 +1091,63 @@ function graphView(): Map<string, NodeLineageData> {
   return view;
 }
 
-/** The canvas' edges: the loaded relations, the selected column's emphasis, and
- * the origins the legend's filter currently keeps. */
+/**
+ * Whether the canvas should step back around the trail. A selected column whose
+ * relations are simply not drawn has an empty trail, and fading the whole graph
+ * for it would read as "this field has no lineage" rather than "nothing here
+ * carries it yet".
+ */
+const dimsOffTrail = computed(() => (fieldTrail.value?.edgeIds.size ?? 0) > 0);
+
+/** Recomputes the selected column's trail over the graph about to be drawn. */
+function refreshFieldTrail(
+  view: Map<string, NodeLineageData>,
+  validNodeIds: ReadonlySet<string>
+) {
+  const pivot = columnFilter.value;
+  fieldTrail.value = pivot
+    ? collectFieldTrail(view, { pivot, validNodeIds })
+    : null;
+}
+
+/** The canvas' edges: the loaded relations, the selected column's trail, and the
+ * origins the legend's filter currently keeps. */
 function buildEdges(
   view: Map<string, NodeLineageData>,
   validNodeIds: ReadonlySet<string>
 ) {
+  const trail = fieldTrail.value;
   return buildLineageEdges(view, {
     validNodeIds,
-    columnFilter: columnFilter.value,
+    highlightedEdgeIds: trail && trail.edgeIds.size > 0 ? trail.edgeIds : null,
     originFilter: new Set(originFilter.value),
   });
 }
 
-/** Rebuilds every node from scratch, which also re-runs the layer layout. */
-function rebuildGraph() {
-  const view = graphView();
-  const layers = assignLayers(currentGuid.value, view);
-  const positions = layoutNodes(layers, (guid) =>
+/**
+ * The height each node actually rendered at. `nodeHeight` can only guess: how many
+ * lines a node's action row wraps to depends on the locale and on which actions
+ * the node offers, so a node with all three of them came out 15px taller than its
+ * slot and the node below crowded its footer. The browser is the only thing that
+ * knows, so its answer is kept and used for the next stack.
+ */
+let renderedHeights = new Map<string, number>();
+
+/** The height to place a node at: what it rendered at last, or a first guess. */
+function heightFor(guid: string): number {
+  return (
+    renderedHeights.get(guid) ??
     nodeHeight(
       collectColumnsForGuid(guid).length,
       fieldsVisibleGuids.value.has(guid)
     )
   );
+}
+
+/** Stacks every node in its layer, and rebuilds the edges between them. */
+function stack(view: Map<string, NodeLineageData>) {
+  const layers = assignLayers(currentGuid.value, view);
+  const positions = layoutNodes(layers, heightFor);
 
   const nodeMap = new Map<string, Node>();
   for (const [guid, position] of positions) {
@@ -1041,10 +1161,79 @@ function rebuildGraph() {
 
   nodes.value = Array.from(nodeMap.values());
   edges.value = buildEdges(view, new Set(nodeMap.keys()));
+}
+
+/**
+ * Re-stacks the layers with the heights the browser gave the cards, once the
+ * renderer has measured them. Only ever one pass: positions do not feed back into
+ * heights, so the second measurement agrees with the first.
+ */
+async function settleNodeHeights() {
+  // Positions do not feed back into heights, so this converges in one or two
+  // passes; the loop is here because the first measurement can be taken before the
+  // browser has finished laying the cards out.
+  for (let pass = 0; pass < 4; pass++) {
+    const heights = await measureDrawnNodes();
+    if (!heights) {
+      return;
+    }
+
+    let changed = false;
+    for (const [guid, height] of heights) {
+      changed ||= renderedHeights.get(guid) !== height;
+    }
+    if (!changed) {
+      return;
+    }
+
+    renderedHeights = heights;
+    stack(graphView());
+  }
+}
+
+/**
+ * The height the browser gave each node, read off the rendered card. Vue Flow also
+ * measures its nodes, but that number does not follow a card that grows in place —
+ * opening a field list left it at the closed height — and a stack that is wrong
+ * about a height overlaps the node below it. `offsetHeight` is a layout measurement,
+ * so the canvas' zoom cannot distort it.
+ */
+async function measureDrawnNodes(): Promise<Map<string, number> | null> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await nextTick();
+    const heights = new Map<string, number>();
+    for (const element of document.querySelectorAll<HTMLElement>(
+      ".vue-flow__node[data-id]"
+    )) {
+      if (element.dataset.id) {
+        heights.set(element.dataset.id, element.offsetHeight);
+      }
+    }
+    if (heights.size > 0 && heights.size === nodes.value.length) {
+      return heights;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return null;
+}
+
+/**
+ * Rebuilds every node from scratch, which also re-runs the layer layout. Awaiting
+ * it means awaiting the stack the browser actually rendered, so a caller that fits
+ * the view afterwards frames the graph it will really see.
+ */
+async function rebuildGraph() {
+  const view = graphView();
+  // The trail is computed over the graph about to be drawn, so it can only ever
+  // highlight a path the canvas shows.
+  refreshFieldTrail(view, allGuidsIn(view));
+  stack(view);
 
   // The canvas changed, so the newly drawn nodes have no degree yet. Expanding
   // the graph is the only way nodes appear, so this is where they are asked for.
   ensureLineageCounts();
+
+  await settleNodeHeights();
 }
 
 /**
@@ -1086,21 +1275,25 @@ function updateGraphState() {
     currentPositions.set(node.id, { ...node.position });
   }
 
+  const view = graphView();
+  refreshFieldTrail(view, new Set(nodes.value.map((node) => node.id)));
+
   nodes.value = nodes.value.map((node) => ({
     ...node,
     position: currentPositions.get(node.id) ?? node.position,
     data: nodeDataFor(node.id),
   }));
-  edges.value = buildEdges(
-    graphView(),
-    new Set(nodes.value.map((node) => node.id))
-  );
+  edges.value = buildEdges(view, new Set(nodes.value.map((node) => node.id)));
+
+  // A node's box can change without its position being recomputed — the trail
+  // names a column on a node whose path line was empty until now. Restacking is a
+  // no-op unless a box really did change.
+  void settleNodeHeights();
 }
 
 function clearColumnSelection() {
   selectedColumnGuid.value = null;
   selectedColumnName.value = null;
-  highlightedColumnsMap.value.clear();
   updateGraphState();
 }
 
@@ -1141,15 +1334,13 @@ function handleToggleFields(guid: string, visible: boolean) {
     clearColumnSelection();
   }
   // The field list changes the node's height, so the column has to be stacked
-  // again: without this the grown node overlaps the one below it.
-  rebuildGraph();
+  // again: without this the grown node overlaps the one below it. The height this
+  // node last rendered at no longer describes it, so it goes back to the guess.
+  renderedHeights.delete(guid);
+  void rebuildGraph();
 }
 
-function handleSelectColumn(guid: string, column: string) {
-  if (selectedNodeGuid.value !== guid) {
-    setSelectedNode(guid);
-  }
-
+async function handleSelectColumn(guid: string, column: string) {
   // Toggle off if same column clicked again
   if (
     selectedColumnGuid.value === guid &&
@@ -1159,38 +1350,24 @@ function handleSelectColumn(guid: string, column: string) {
     return;
   }
 
+  const selectingNode = selectedNodeGuid.value !== guid;
   selectedColumnGuid.value = guid;
   selectedColumnName.value = column;
 
-  // Find related columns on neighbouring nodes
-  const highlighted = new Map<string, Set<string>>();
-
-  for (const [nodeGuid, data] of nodeDataMap.value) {
-    for (const rel of data.upstream) {
-      if (rel.targetGuid === guid && rel.targetColumn === column) {
-        if (!highlighted.has(rel.sourceGuid))
-          highlighted.set(rel.sourceGuid, new Set());
-        highlighted.get(rel.sourceGuid)!.add(rel.sourceColumn);
-      }
-      if (rel.sourceGuid === guid && rel.sourceColumn === column) {
-        if (!highlighted.has(nodeGuid)) highlighted.set(nodeGuid, new Set());
-        highlighted.get(nodeGuid)!.add(rel.targetColumn);
-      }
-    }
-    for (const rel of data.downstream) {
-      if (rel.sourceGuid === guid && rel.sourceColumn === column) {
-        if (!highlighted.has(rel.targetGuid))
-          highlighted.set(rel.targetGuid, new Set());
-        highlighted.get(rel.targetGuid)!.add(rel.targetColumn);
-      }
-      if (rel.targetGuid === guid && rel.targetColumn === column) {
-        if (!highlighted.has(nodeGuid)) highlighted.set(nodeGuid, new Set());
-        highlighted.get(nodeGuid)!.add(rel.sourceColumn);
-      }
+  // A field click has to do what a node click does — select the node and make sure
+  // its relations are loaded. Otherwise the detail panel stays empty (and with it
+  // the field's trail summary) for every node whose relations were never fetched,
+  // which is every node the user has not expanded or clicked before.
+  if (selectingNode) {
+    setSelectedNode(guid);
+    if (guid !== currentGuid.value) {
+      await fetchLineageForGuid(guid);
     }
   }
 
-  highlightedColumnsMap.value = highlighted;
+  // The trail is walked by `updateGraphState`, over the same drawn graph the edges
+  // come from — one implementation for both, so a column can never be highlighted
+  // without the edge that carries it.
   updateGraphState();
 }
 
@@ -1248,7 +1425,7 @@ async function handleExpandNode(guid: string, direction: LineageDirection) {
     frontier = Array.from(next);
   }
 
-  rebuildGraph();
+  await rebuildGraph();
 
   if (revealed.size > 0) {
     fitViewWhenMeasured();
@@ -1287,10 +1464,10 @@ function handleReset() {
   );
   selectedColumnGuid.value = null;
   selectedColumnName.value = null;
-  highlightedColumnsMap.value.clear();
   fieldsVisibleGuids.value.clear();
   originFilter.value = [...LINEAGE_ORIGINS];
-  rebuildGraph();
+  renderedHeights = new Map();
+  void rebuildGraph();
   if (selectedNodeGuid.value && selectedNodeGuid.value !== currentGuid.value) {
     closeSelectedNode();
   }
@@ -1299,6 +1476,17 @@ function handleReset() {
 
 function handleFitView() {
   fitView({ duration: 300 });
+}
+
+/** Frames the canvas on the selected field's trail, so a long flow can be read
+ * without hunting for it. Falls back to the whole graph when there is no trail. */
+function handleFitTrail() {
+  const trail = fieldTrail.value;
+  if (!trail || trail.edgeIds.size === 0) {
+    handleFitView();
+    return;
+  }
+  fitView({ nodes: [...trail.nodeIds], duration: 300, maxZoom: 1 });
 }
 
 function handleBackToMetadata() {
@@ -1345,7 +1533,6 @@ async function initializeGraph() {
   guidMetaTypeMap.value.clear();
   selectedColumnGuid.value = null;
   selectedColumnName.value = null;
-  highlightedColumnsMap.value.clear();
   // A new object starts from the whole picture. A filter left over from the
   // previous one would draw an empty canvas — and the legend's zeroes would read
   // as "this object has no lineage" rather than "you hid its only source".
@@ -1365,7 +1552,7 @@ async function initializeGraph() {
     fetchLineageForGuid(currentGuid.value),
     instanceStore.ensureLoaded().catch(() => undefined),
   ]);
-  rebuildGraph();
+  await rebuildGraph();
   syncSelectedNodeVisibility();
   saveInitialSnapshot();
 
