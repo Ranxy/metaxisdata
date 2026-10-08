@@ -45,6 +45,14 @@
 | 4 | nit | `BatchMarkNotificationsRead` 的 names 没有上界，请求体限制允许几万个 | 加 1000 上限，并把入参校验挪到 workspace 解析之前（畸形请求不再多打一次查询，也能单测） |
 | 5 | nit | 抑制键有"认领后写入失败"的窄窗口：A 认领、B 被抑制直接返回、A 写库失败后释放——这一窗口内那次真实失败没留下消息 | 保留行为（释放是对的，否则一次抖动会静默整个窗口），下一窗口自愈；记在此处 |
 
+CI 上的两处红灯来自 `main`（#24 合并时把 CI 跑红了），与本次特性无关，但挡着这个 PR，所以一并修掉（都是测试问题，代码没动）：
+
+- `TestOpenLineageIngestionMiddlewareOneCallerCannotDenyAnotherProducer`（`main` 上也是同一个测试失败）：它靠循环的**吞吐**去耗尽地址桶（2000/s 补充、4000 突发），CI 机器一慢，循环花的时间足够让桶补回来，于是永远不触发限流。改成用冻结时钟的 store（`newFrozenRateLimiterStore`），突发用完必然拒绝，确定性。
+- `TestRetentionPrunesTheLineageOfADeletedRun`：`DeleteOpenLineageRunsBefore` 是**全局**删除（按 cutoff 删整张表），而它是唯一用挂钟 cutoff 的测试，和并行测试用 2000 年数据钉自己窗口的做法撞车——CI 上 `deleted` 实际是 6 而不是 1。改成不并行（顺序阶段先跑，那时并行测试还没铺数据），断言改成"至少删到 1 条 + 自己那条 run 确实没了"。
+- `Test{MySQL,Postgres}PerDatabaseSyncHidesDroppedDatabase`：fixture 的 `EnsureDatabaseVisible` 走 `SyncInstance`，会把库塞进 runner 的 10 秒队列，这条排队项在 fixture 自己直连同步之后仍然存在；测试 DROP 之后那条排队同步可能先一步把行隐藏，于是 RPC 返回 `not_found` 而不是成功。抽了一个 helper：拒绝时只接受 `NotFound`（同一观察先到而已），最终断言仍然是"行必须被隐藏"。
+
+改完后实测（本机、与 `main` 交替跑同一套件）：`main` 3/6 失败，本分支 4/6 → 改完 2/10，剩下的失败是 `main` 上同样会挂的负载型计时测试。
+
 已用真东西核实成立的（不是读代码得出的结论）：
 
 - **收件人作用域**：`ListNotifications` / `MarkNotificationsRead` / `DeleteNotification` / `CountUnreadNotifications` 全部按 `recipient_id` 作用域——B 看不到、标不动、删不掉 A 的行，A 自己可以。证据：reviewer 留了一个直接调 store 的探针程序，对着真 PostgreSQL + 真 DDL 跑出 `ALL PROBES PASSED`（我复跑过；容器与临时文件已清理）。

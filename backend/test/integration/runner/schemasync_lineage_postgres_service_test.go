@@ -4,6 +4,8 @@ package runner
 
 import (
 	"context"
+
+	"connectrpc.com/connect"
 	"fmt"
 	"hash/fnv"
 	"strings"
@@ -352,7 +354,26 @@ WHERE datname = '%s' AND pid <> pg_backend_pid();
 `, quotePostgresStringLiteral(sourceDatabase))))
 	require.NoError(t, env.ExecPostgres(ctx, "postgres", fmt.Sprintf("DROP DATABASE IF EXISTS %s;", quotePostgresIdentifier(sourceDatabase))))
 
-	require.NoError(t, env.SyncDatabaseRaw(ctx, databaseName))
+	requireDroppedDatabaseHidden(t, ctx, env, instanceID, sourceDatabase, databaseName)
+}
+
+// requireDroppedDatabaseHidden drives the per-database sync of a database the target has
+// dropped, and asserts the row ends up hidden without waiting for an instance
+// enumeration.
+//
+// A queued instance-wide sync can make that observation first: the fixture's
+// EnsureDatabaseVisible goes through SyncInstance, which enqueues the discovered
+// database into the checker's ten-second queue, and that entry outlives the fixture's
+// own direct sync. The server refuses to sync an already-hidden database rather than
+// hiding it again, so NotFound from this call is the same observation arriving first —
+// what the test pins is the end state.
+func requireDroppedDatabaseHidden(t *testing.T, ctx context.Context, env *integrationenv.ServiceEnv, instanceID, sourceDatabase, databaseName string) {
+	t.Helper()
+
+	if err := env.SyncDatabaseRaw(ctx, databaseName); err != nil {
+		require.Equal(t, connect.CodeNotFound, connect.CodeOf(err),
+			"only a database that is already hidden explains a refused sync: %v", err)
+	}
 
 	row, err := env.Store.GetDatabase(ctx, &store.FindDatabaseMessage{InstanceID: &instanceID, DatabaseName: &sourceDatabase, ShowDeleted: true})
 	require.NoError(t, err)

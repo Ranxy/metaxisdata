@@ -131,18 +131,25 @@ func TestOpenLineageIngestionMiddlewareBoundsOneAddressWhateverKeyItPresents(t *
 func TestOpenLineageIngestionMiddlewareOneCallerCannotDenyAnotherProducer(t *testing.T) {
 	t.Parallel()
 
-	e := echo.New()
-	g := e.Group("/api/v1/lineage", openLineageIngestionMiddleware(nil))
-	g.POST("", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+	// The address budget is driven by a frozen clock. Its bucket refills at two
+	// thousand tokens a second, and this loop spends four thousand: on an idle
+	// machine the refill is nothing and the budget is exhausted, but on a loaded CI
+	// runner the loop takes long enough that the bucket refills as fast as the loop
+	// spends it and never refuses — which is how this test failed there. With the
+	// clock frozen the refill cannot happen, so the burst is exactly what the loop
+	// has to spend.
+	keyStore := unfrozenRateLimiterStore()
+	sourceStore := newFrozenRateLimiterStore(openLineageIngestionSourceRate, openLineageIngestionSourceBurst)
+	e := openLineageIngestionTestServer(keyStore, sourceStore, nil)
 
-	limited := false
-	for i := 0; i < openLineageIngestionSourceBurst+2000; i++ {
+	refused := 0
+	for i := 0; i <= openLineageIngestionSourceBurst; i++ {
 		if ingestOpenLineageEventFrom(e, fmt.Sprintf("forged-%d", i), "203.0.113.9:5555", "") == http.StatusTooManyRequests {
-			limited = true
-			break
+			refused++
 		}
 	}
-	require.True(t, limited, "one address must be bounded however many keys it invents")
+	require.Equal(t, 1, refused,
+		"the address budget must refuse the request after its burst, however many keys the caller invents")
 
 	require.Equal(t, http.StatusOK, ingestOpenLineageEventFrom(e, "real-key", "198.51.100.9:5555", ""),
 		"one caller spending its own address budget must not refuse another producer")
