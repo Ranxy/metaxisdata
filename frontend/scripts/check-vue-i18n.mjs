@@ -44,6 +44,10 @@ export const DYNAMIC_PREFIXES = [
   // relationTypeKey() in src/lib/relationType.ts maps a stored lineage relation
   // type to its label key, which the checker cannot follow.
   "metadataBrowser.relation",
+  // originLabelKey()/originHintKey() in src/lib/lineageOrigin.ts, and the row
+  // field that carries them in src/components/metadata/TableLineageSection.vue,
+  // name a lineage origin's label; the checker cannot follow either.
+  "lineageGraph.origin",
   // CODE_MESSAGE_KEYS in src/utils/error.ts maps every Connect status code to an
   // "error.*" sentence. The table is exhaustive by type (Record<Code, …>) and its
   // values are checked against the locale schema at compile time, so a stray key

@@ -13,7 +13,7 @@
             :placeholder="t('metadataBrowser.searchLineagePlaceholder')"
           />
           <Badge variant="outline">
-            {{ filteredRelations.length }} / {{ scopedRelations.length }}
+            {{ relationsCountLabel }}
             {{ t("metadataBrowser.lineageRelationsCount") }}
           </Badge>
           <RouterLink
@@ -34,9 +34,12 @@
     >
       <template v-if="displayRelations.length > 0">
         <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <!-- Every figure describes the same relation set the table lists: when
+               the section is scoped to one field, the unscoped total would
+               contradict the two direction counts beside it. -->
           <div class="rounded-md border px-3 py-2">
             <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.totalRelations") }}</div>
-            <div class="text-sm font-medium">{{ displayRelations.length }}</div>
+            <div class="text-sm font-medium">{{ scopedRelations.length }}</div>
           </div>
           <div class="rounded-md border px-3 py-2">
             <div class="text-xs text-muted-foreground">{{ t("metadataBrowser.upstreamRelations") }}</div>
@@ -60,6 +63,7 @@
             <TableHead>{{ t("metadataBrowser.relatedObject") }}</TableHead>
             <TableHead>{{ t("metadataBrowser.relatedColumn") }}</TableHead>
             <TableHead>{{ t("metadataBrowser.relationType") }}</TableHead>
+            <TableHead>{{ t("lineageGraph.originLabel") }}</TableHead>
             <TableHead>{{ t("metadataBrowser.expression") }}</TableHead>
           </TableRow>
         </TableHeader>
@@ -77,24 +81,55 @@
               </Badge>
             </TableCell>
             <TableCell class="font-medium">{{ relation.currentColumn }}</TableCell>
-            <TableCell
-              class="max-w-md text-muted-foreground truncate"
-              :title="relation.relatedGuid"
-            >
+            <TableCell class="max-w-md text-muted-foreground">
               <RouterLink
                 v-if="relation.relatedRoute"
                 :to="relation.relatedRoute"
                 class="text-primary hover:underline"
+                :title="relation.relatedGuid"
               >
-                {{ relation.relatedObject }}
+                <span class="block truncate">{{ relation.relatedObject }}</span>
               </RouterLink>
-              <span v-else>{{ relation.relatedObject }}</span>
+              <span v-else class="block truncate" :title="relation.relatedGuid">
+                {{ relation.relatedObject }}
+              </span>
+              <!-- The scope and path, spelled out: two objects in different
+                   instances can share a database, schema and table name, and the
+                   name alone would render them identically. -->
+              <span
+                v-if="relation.relatedPath"
+                class="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground"
+                :title="relation.relatedPath"
+              >
+                <span
+                  class="size-2 shrink-0 rounded-full"
+                  :style="{ backgroundColor: relation.relatedScopeColor }"
+                />
+                <span class="truncate">{{ relation.relatedPath }}</span>
+              </span>
             </TableCell>
             <TableCell class="text-muted-foreground">{{ relation.relatedColumn }}</TableCell>
             <TableCell>
               <Badge :variant="relation.relationTypeVariant">
                 {{ relation.relationTypeLabel }}
               </Badge>
+            </TableCell>
+            <TableCell>
+              <Badge
+                variant="outline"
+                class="whitespace-nowrap font-normal"
+                :style="{ borderColor: relation.originColor, color: relation.originColor }"
+                :title="t(relation.originHintKey)"
+              >
+                {{ t(relation.originLabelKey) }}
+              </Badge>
+              <div
+                v-if="relation.originSource"
+                class="mt-0.5 max-w-64 truncate text-xs text-muted-foreground"
+                :title="relation.originDetail"
+              >
+                {{ relation.originSource }}
+              </div>
             </TableCell>
             <TableCell class="max-w-xl text-muted-foreground">
               <LineageTransformationCell
@@ -135,13 +170,10 @@
 
 <script setup lang="ts">
 import { ArrowRight, Share2 } from "lucide-vue-next";
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import {
-  type LocationQueryRaw,
-  type RouteLocationRaw,
-  RouterLink,
-} from "vue-router";
+import type { LocationQueryRaw, RouteLocationRaw } from "vue-router";
+import { RouterLink } from "vue-router";
 import { getLineage } from "@/api/lineage";
 import PageState from "@/components/common/PageState.vue";
 import LineageTransformationCell from "@/components/metadata/LineageTransformationCell.vue";
@@ -156,7 +188,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import {
+  originColor,
+  originLabelKey,
+  type RelationOrigin,
+  relationOrigin,
+} from "@/lib/lineageOrigin";
+import { openlineageJobName, openlineageRunLabel } from "@/lib/openlineageRun";
 import { relationTypeKey } from "@/lib/relationType";
+import { useInstanceStore } from "@/store/modules/instance";
 import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   type ExternalDatasetInfo,
@@ -165,6 +205,12 @@ import {
   type Transformation,
 } from "@/types/proto-es/v1/lineage_service_pb";
 import { guidToRouteParams } from "@/utils/guid";
+import {
+  buildScopeColorMap,
+  compareScopeKeys,
+  lineageAssetView,
+  scopeColor,
+} from "@/utils/lineageAsset";
 
 type DisplayRelation = {
   currentColumn: string;
@@ -175,8 +221,20 @@ type DisplayRelation = {
   relatedGuid: string;
   relatedRoute: RouteLocationRaw | null;
   relatedObject: string;
+  /** `scope · qualifier`, the second line that places the object; may be empty. */
+  relatedPath: string;
+  relatedScopeColor: string;
   relationTypeLabel: string;
   relationTypeVariant: "secondary" | "success";
+  /** Which writer stored the relation: the SQL analyzer, or OpenLineage. */
+  originLabelKey: string;
+  originHintKey: string;
+  originColor: string;
+  /** The object whose SQL definition was analyzed, or the job that reported it. */
+  originSource: string;
+  /** The same writer named in full, for the tooltip: the analyzed object's path,
+   * or the job with its run id. */
+  originDetail: string;
   searchText: string;
   transformations: Transformation[];
 };
@@ -198,6 +256,30 @@ const props = withDefaults(
 
 const { t } = useI18n();
 const { formatError } = useErrorMessage();
+const instanceStore = useInstanceStore();
+
+/** The workspace instances, keyed by the resource id a GUID starts with. */
+const scopeTitles = computed<Map<string, string>>(() => {
+  const titles = new Map<string, string>();
+  for (const instance of instanceStore.instances) {
+    const id = instance.name.split("/").pop() ?? instance.name;
+    titles.set(id, instance.title || id);
+  }
+  return titles;
+});
+
+/**
+ * The accent of every scope this table can name — the instances, and the external
+ * namespaces its datasets belong to. Instances are listed first so their colours
+ * never move when a relation reaches outside the workspace.
+ */
+const scopeColorMap = computed(() => {
+  const instanceKeys = [...scopeTitles.value.keys()].sort(compareScopeKeys);
+  const externalKeys = [...externalDatasetMap.value.keys()].sort(
+    compareScopeKeys
+  );
+  return buildScopeColorMap([...instanceKeys, ...externalKeys]);
+});
 
 const lineageGraphRoute = computed(() => {
   const query: LocationQueryRaw = {
@@ -286,6 +368,18 @@ const filteredRelations = computed(() => {
   );
 });
 
+/**
+ * How many relations the table lists. The `shown / total` form only appears while
+ * a search hides some of them: with nothing filtered out it read as a fraction of
+ * itself, which said nothing.
+ */
+const relationsCountLabel = computed(() => {
+  if (filteredRelations.value.length === scopedRelations.value.length) {
+    return String(scopedRelations.value.length);
+  }
+  return `${filteredRelations.value.length} / ${scopedRelations.value.length}`;
+});
+
 const upstreamRelationCount = computed(() => {
   const focusColumn = props.focusColumn.trim();
   if (!focusColumn) {
@@ -362,10 +456,8 @@ function buildDisplayRelation(options: {
     : String(options.relation.relationType);
 
   const externalDataset = externalDatasetMap.value.get(options.relatedGuid);
-  const relatedObject = formatGuidForDisplay(
-    options.relatedGuid,
-    externalDataset
-  );
+  const relatedView = assetViewFor(options.relatedGuid, externalDataset);
+  const origin: RelationOrigin = relationOrigin(options.relation);
 
   return {
     currentColumn: options.currentColumn || "-",
@@ -381,17 +473,29 @@ function buildDisplayRelation(options: {
       options.relatedMetaType,
       externalDataset
     ),
-    relatedObject,
+    relatedObject: relatedView.name,
+    relatedPath: [relatedView.scopeLabel, relatedView.qualifier]
+      .filter(Boolean)
+      .join(" · "),
+    relatedScopeColor: scopeColor(scopeColorMap.value, relatedView.scopeKey),
     relationTypeLabel,
     relationTypeVariant:
       options.relation.relationType === RelationType.DIRECT
         ? "success"
         : "secondary",
+    originLabelKey: originLabelKey(origin),
+    originHintKey: originHintKey(origin),
+    originColor: originColor(origin),
+    originSource: relationOriginSource(options.relation, origin),
+    originDetail: relationOriginDetail(options.relation, origin),
     searchText: [
       options.currentColumn,
       options.relatedColumn,
       options.relatedGuid,
-      relatedObject,
+      relatedView.fullLabel,
+      relationOriginSource(options.relation, origin),
+      // The full run label, so a search for a run id still finds its row.
+      relationOriginDetail(options.relation, origin),
       transformationText(options.relation.transformations),
       options.directionLabel,
     ]
@@ -399,6 +503,51 @@ function buildDisplayRelation(options: {
       .toLowerCase(),
     transformations: options.relation.transformations,
   };
+}
+
+/**
+ * Which writer produced a relation: the object whose SQL definition the analyzer
+ * read, or the OpenLineage run that reported it. The relation's own meta GUID is
+ * that writer in both cases.
+ *
+ * An OpenLineage row names the job only, because a cell cannot hold both the job
+ * and the run id; the run is the row's tooltip.
+ */
+function relationOriginSource(
+  relation: LineageRelation,
+  origin: RelationOrigin
+): string {
+  if (!relation.metaGuid) {
+    return "";
+  }
+  if (origin === "openlineage") {
+    return openlineageJobName(relation.metaGuid);
+  }
+  return assetViewFor(relation.metaGuid).name;
+}
+
+/** The writer in full: the job with its run id, or the analyzed object's path. */
+function relationOriginDetail(
+  relation: LineageRelation,
+  origin: RelationOrigin
+): string {
+  if (!relation.metaGuid) {
+    return "";
+  }
+  if (origin === "openlineage") {
+    return openlineageRunLabel(relation.metaGuid);
+  }
+  return assetViewFor(relation.metaGuid).fullLabel;
+}
+
+function originHintKey(origin: RelationOrigin): string {
+  return origin === "openlineage"
+    ? "lineageGraph.originOpenlineageHint"
+    : "lineageGraph.originSqlHint";
+}
+
+function assetViewFor(guid: string, external?: ExternalDatasetInfo) {
+  return lineageAssetView(guid, scopeTitles.value, external);
 }
 
 // transformationText flattens the structured transformation steps into one
@@ -465,21 +614,10 @@ function buildMetadataRoute(
   };
 }
 
-function formatGuidForDisplay(
-  guid: string,
-  externalDataset?: ExternalDatasetInfo
-): string {
-  if (!guid) return "-";
-
-  if (externalDataset) {
-    if (externalDataset.namespace && externalDataset.name) {
-      return `${externalDataset.namespace} / ${externalDataset.name}`;
-    }
-    return externalDataset.name || externalDataset.namespace || guid;
-  }
-
-  const segments = guid.split(";").filter(Boolean);
-  if (segments.length === 0) return guid;
-  return segments.slice(-3).join(".");
-}
+// The scope labels and accents come from the shared instance list. A cold cache
+// still renders the rows; it relabels them once the titles arrive.
+onMounted(() => {
+  // A failed list leaves the labels as instance ids rather than breaking the page.
+  instanceStore.ensureLoaded().catch(() => undefined);
+});
 </script>

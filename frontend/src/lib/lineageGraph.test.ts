@@ -103,7 +103,7 @@ describe("column filtering", () => {
       validNodeIds: new Set(["a", "b", "c"]),
       columnFilter: null,
     });
-    expect(all.every((edge) => edge.animated)).toBe(true);
+    expect(all.every((edge) => edge.animated === false)).toBe(true);
 
     const filtered = buildLineageEdges(map, {
       validNodeIds: new Set(["a", "b", "c"]),
@@ -189,5 +189,163 @@ describe("distinctRelationCounts", () => {
       node([rel({ sourceGuid: "x", targetGuid: "y" })], [])
     );
     expect(counts).toEqual({ upstream: 1, downstream: 0 });
+  });
+});
+
+describe("edge origins", () => {
+  const openlineage = { metaType: 100 } as Partial<LineageRelation>;
+  const analyzer = { metaType: 5 } as Partial<LineageRelation>;
+
+  const edgesOf = (map: Map<string, NodeLineageData>) => {
+    const valid = new Set(map.keys());
+    for (const data of map.values()) {
+      for (const relation of [...data.upstream, ...data.downstream]) {
+        valid.add(relation.sourceGuid);
+        valid.add(relation.targetGuid);
+      }
+    }
+    return buildLineageEdges(map, { validNodeIds: valid, columnFilter: null });
+  };
+
+  it("colours an analyzer relation and dashes an OpenLineage one", () => {
+    const edges = edgesOf(
+      new Map([
+        ["b", node([rel({ sourceGuid: "a", targetGuid: "b", ...analyzer })])],
+        [
+          "c",
+          node([rel({ sourceGuid: "b", targetGuid: "c", ...openlineage })]),
+        ],
+      ])
+    );
+
+    expect(edges.map((edge) => edge.data?.origin)).toEqual([
+      "sql",
+      "openlineage",
+    ]);
+    const [sql, ol] = edges;
+    expect((sql.style as { stroke?: string }).stroke).toBe(
+      "hsl(var(--lineage-sql) / 0.65)"
+    );
+    expect((sql.style as { strokeDasharray?: string }).strokeDasharray).toBe(
+      undefined
+    );
+    expect((ol.style as { stroke?: string }).stroke).toBe(
+      "hsl(var(--lineage-openlineage) / 0.65)"
+    );
+    expect((ol.style as { strokeDasharray?: string }).strokeDasharray).toBe(
+      "7 5"
+    );
+    expect(ol.animated).toBe(true);
+    expect(sql.animated).toBe(false);
+  });
+
+  it("marks an edge both writers stored as mixed", () => {
+    const edges = edgesOf(
+      new Map([
+        [
+          "b",
+          node([
+            rel({ sourceGuid: "a", targetGuid: "b", ...analyzer }),
+            rel({ sourceGuid: "a", targetGuid: "b", ...openlineage }),
+          ]),
+        ],
+      ])
+    );
+
+    expect(edges).toHaveLength(1);
+    expect(edges[0].data?.origin).toBe("mixed");
+    expect(
+      (edges[0].style as { strokeDasharray?: string }).strokeDasharray
+    ).toBe("2 3");
+  });
+
+  it("keeps only the origins the filter names", () => {
+    const map = new Map([
+      ["b", node([rel({ sourceGuid: "a", targetGuid: "b", ...analyzer })])],
+      ["c", node([rel({ sourceGuid: "b", targetGuid: "c", ...openlineage })])],
+    ]);
+
+    const kept = (origin: "sql" | "openlineage") =>
+      buildLineageEdges(map, {
+        validNodeIds: new Set(["a", "b", "c"]),
+        columnFilter: null,
+        originFilter: new Set([origin]),
+      }).map((edge) => edge.id);
+
+    expect(kept("sql")).toEqual(["a->b"]);
+    expect(kept("openlineage")).toEqual(["b->c"]);
+
+    expect(
+      buildLineageEdges(map, {
+        validNodeIds: new Set(["a", "b", "c"]),
+        columnFilter: null,
+        originFilter: new Set(),
+      })
+    ).toEqual([]);
+  });
+
+  it("keeps a bundled edge under either origin's filter", () => {
+    const mixed = new Map([
+      [
+        "b",
+        node([
+          rel({ sourceGuid: "a", targetGuid: "b", ...analyzer }),
+          rel({ sourceGuid: "a", targetGuid: "b", ...openlineage }),
+        ]),
+      ],
+    ]);
+
+    for (const origin of ["sql", "openlineage"] as const) {
+      const edges = buildLineageEdges(mixed, {
+        validNodeIds: new Set(["a", "b"]),
+        columnFilter: null,
+        originFilter: new Set([origin]),
+      });
+      expect(edges.map((edge) => edge.id)).toEqual(["a->b"]);
+    }
+  });
+
+  it("draws a highlighted edge at full strength with its origin's arrowhead", () => {
+    const map = new Map([
+      [
+        "b",
+        node([
+          rel({
+            sourceGuid: "a",
+            targetGuid: "b",
+            targetColumn: "x",
+            ...openlineage,
+          }),
+        ]),
+      ],
+    ]);
+    const [edge] = buildLineageEdges(map, {
+      validNodeIds: new Set(["a", "b"]),
+      columnFilter: { guid: "b", column: "x" },
+    });
+
+    expect((edge.style as { stroke?: string }).stroke).toBe(
+      "hsl(var(--lineage-openlineage))"
+    );
+    expect(edge.markerEnd).toMatchObject({
+      color: "hsl(var(--lineage-openlineage))",
+    });
+  });
+
+  it("fades the arrowhead of a dimmed edge", () => {
+    const map = new Map([
+      ["b", node([rel({ sourceGuid: "a", targetGuid: "b", ...analyzer })])],
+    ]);
+    const [edge] = buildLineageEdges(map, {
+      validNodeIds: new Set(["a", "b"]),
+      columnFilter: { guid: "b", column: "missing" },
+    });
+
+    expect(edge.markerEnd).toMatchObject({
+      color: "hsl(var(--muted-foreground) / 0.4)",
+    });
+    expect((edge.style as { stroke?: string }).stroke).toBe(
+      "hsl(var(--muted-foreground) / 0.2)"
+    );
   });
 });

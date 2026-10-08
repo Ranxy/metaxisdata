@@ -28,6 +28,22 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
+
+    /* Lineage canvas. Objects in different instances can share a database,
+       schema and table name, so the graph colours each instance with one of
+       these accents; the two lineages that reach an object — the analyzer that
+       read its SQL definition, and the OpenLineage events ingested from a
+       producer — get their own colours instead, so a node's scope and an edge's
+       origin never read as the same thing. */
+    --lineage-scope-1: 28 92% 48%;
+    --lineage-scope-2: 160 84% 32%;
+    --lineage-scope-3: 262 83% 58%;
+    --lineage-scope-4: 347 77% 50%;
+    --lineage-scope-5: 189 90% 38%;
+    --lineage-scope-6: 243 75% 59%;
+    --lineage-sql: 217 91% 55%;
+    --lineage-openlineage: 292 84% 56%;
+    --lineage-mixed: 174 84% 32%;
   }
   .dark {
     --background: 0 0% 3.9%;
@@ -54,6 +70,16 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+
+    --lineage-scope-1: 28 92% 58%;
+    --lineage-scope-2: 158 64% 47%;
+    --lineage-scope-3: 262 85% 70%;
+    --lineage-scope-4: 347 85% 65%;
+    --lineage-scope-5: 187 80% 50%;
+    --lineage-scope-6: 243 85% 72%;
+    --lineage-sql: 213 94% 68%;
+    --lineage-openlineage: 291 86% 72%;
+    --lineage-mixed: 172 70% 50%;
   }
 }
 
