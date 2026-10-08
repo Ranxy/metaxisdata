@@ -4,7 +4,7 @@ import {
   RelationType,
 } from "@/types/proto-es/v1/lineage_service_pb";
 import type { NodeLineageData } from "./lineageGraph";
-import { collectFieldTrail } from "./lineageTrail";
+import { collectFieldTrail, columnNeighbourPairs } from "./lineageTrail";
 
 /** A column-level relation, the shape the analyzers store. */
 function rel(
@@ -269,5 +269,59 @@ describe("collectFieldTrail", () => {
     expect(trail.edgeIds.size).toBe(0);
     expect(trail.upstream.relationCount).toBe(0);
     expect(trail.downstream.relationCount).toBe(0);
+  });
+});
+
+describe("columnNeighbourPairs", () => {
+  it("lands on the field the far object names, one hop in one direction", () => {
+    const up = rel("orders", "buyer_id", "v", "customer_id");
+    const down = rel("v", "customer_id", "report", "buyer_id");
+    const sibling = rel("regions", "country", "v", "country");
+    const data = graph({ v: [up, sibling, down] }).get("v");
+
+    expect(
+      columnNeighbourPairs(
+        data!,
+        { guid: "v", column: "customer_id" },
+        "upstream"
+      )
+    ).toEqual([{ guid: "orders", column: "buyer_id" }]);
+    expect(
+      columnNeighbourPairs(
+        data!,
+        { guid: "v", column: "customer_id" },
+        "downstream"
+      )
+    ).toEqual([{ guid: "report", column: "buyer_id" }]);
+  });
+
+  it("ignores the relations that name another field, or another pair", () => {
+    const other = rel("orders", "country", "v", "country");
+    const data = graph({ v: [other] }).get("v");
+
+    expect(
+      columnNeighbourPairs(
+        data!,
+        { guid: "v", column: "customer_id" },
+        "upstream"
+      )
+    ).toEqual([]);
+  });
+
+  it("names no next pair when the relation reaches the object without a field", () => {
+    // A table-level edge carries `customer_id` to `v` without saying which field
+    // of `regions` it came from, so the walk stops at `regions`.
+    const tableLevel = rel("regions", "", "v", "customer_id", {
+      relationType: RelationType.JOIN,
+    });
+    const data = graph({ v: [tableLevel] }).get("v");
+
+    expect(
+      columnNeighbourPairs(
+        data!,
+        { guid: "v", column: "customer_id" },
+        "upstream"
+      )
+    ).toEqual([]);
   });
 });

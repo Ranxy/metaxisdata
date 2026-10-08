@@ -1,5 +1,9 @@
 import type { LineageRelation } from "@/types/proto-es/v1/lineage_service_pb";
-import type { ColumnFilter, NodeLineageData } from "./lineageGraph";
+import type {
+  ColumnFilter,
+  LineageDirection,
+  NodeLineageData,
+} from "./lineageGraph";
 
 /**
  * The trail a selected column runs through the drawn graph: its ancestors, its
@@ -21,6 +25,17 @@ import type { ColumnFilter, NodeLineageData } from "./lineageGraph";
 
 /** The pair separator: a GUID may contain `;`, a column may contain anything. */
 const PAIR_SEPARATOR = "\u0000";
+
+/** One field of one object: what both the trail walk and a field expansion move in. */
+export interface ColumnPair {
+  guid: string;
+  column: string;
+}
+
+/** The identity of one pair, for the sets and maps a walk keeps it in. */
+export function columnPairKey(guid: string, column: string): string {
+  return `${guid}${PAIR_SEPARATOR}${column}`;
+}
 
 /** One side of the trail; the pivot itself is on neither. */
 export interface FieldTrailSide {
@@ -58,10 +73,6 @@ function relationKey(relation: LineageRelation): string {
   ].join(PAIR_SEPARATOR);
 }
 
-function pairKey(guid: string, column: string): string {
-  return `${guid}${PAIR_SEPARATOR}${column}`;
-}
-
 function pairGuid(key: string): string {
   return key.slice(0, key.lastIndexOf(PAIR_SEPARATOR));
 }
@@ -90,7 +101,7 @@ function walk(
   onward: (relation: LineageRelation) => { guid: string; column: string },
   budget: { left: number; hit: boolean }
 ): WalkResult {
-  const pairs = new Set<string>([pairKey(start.guid, start.column)]);
+  const pairs = new Set<string>([columnPairKey(start.guid, start.column)]);
   const relations = new Map<string, LineageRelation>();
   const objects = new Set<string>();
   const queue: Array<{ guid: string; column: string }> = [start];
@@ -102,8 +113,9 @@ function walk(
       break;
     }
     const current = queue[head++];
-    for (const relation of index.get(pairKey(current.guid, current.column)) ??
-      []) {
+    for (const relation of index.get(
+      columnPairKey(current.guid, current.column)
+    ) ?? []) {
       const key = relationKey(relation);
       if (!relations.has(key)) {
         relations.set(key, relation);
@@ -117,7 +129,7 @@ function walk(
         objects.add(next.guid);
         continue;
       }
-      const nextKey = pairKey(next.guid, next.column);
+      const nextKey = columnPairKey(next.guid, next.column);
       if (pairs.has(nextKey)) {
         continue;
       }
@@ -178,12 +190,12 @@ export function collectFieldTrail(
       }
       index(
         outgoing,
-        pairKey(relation.sourceGuid, relation.sourceColumn),
+        columnPairKey(relation.sourceGuid, relation.sourceColumn),
         relation
       );
       index(
         incoming,
-        pairKey(relation.targetGuid, relation.targetColumn),
+        columnPairKey(relation.targetGuid, relation.targetColumn),
         relation
       );
     }
@@ -241,11 +253,48 @@ export function collectFieldTrail(
   return trail;
 }
 
+/**
+ * One hop of a field expansion: the fields this pair reaches in `direction`
+ * through relations that name its own field. `data` is the loaded lineage of
+ * `pair.guid`, so the walk only sees relations the server has answered with.
+ *
+ * It is the same step `collectFieldTrail` takes, and it stops the same way: a
+ * relation that reaches the far object without naming a field of it is the
+ * field's lineage, but the walk cannot go on through a field it does not know,
+ * so that object is left without a next pair.
+ */
+export function columnNeighbourPairs(
+  data: NodeLineageData,
+  pair: ColumnPair,
+  direction: LineageDirection
+): ColumnPair[] {
+  const relations = direction === "upstream" ? data.upstream : data.downstream;
+  const pairs: ColumnPair[] = [];
+  for (const relation of relations) {
+    const named =
+      direction === "upstream" ? relation.targetColumn : relation.sourceColumn;
+    if (named !== pair.column) {
+      continue;
+    }
+    const neighbour =
+      direction === "upstream"
+        ? { guid: relation.sourceGuid, column: relation.sourceColumn }
+        : { guid: relation.targetGuid, column: relation.targetColumn };
+    if (neighbour.column) {
+      pairs.push(neighbour);
+    }
+  }
+  return pairs;
+}
+
 function side(result: WalkResult, pivot: ColumnFilter): FieldTrailSide {
   const nodeIds = new Set<string>();
   for (const key of result.pairs) {
     const guid = pairGuid(key);
-    if (guid !== pivot.guid || key !== pairKey(pivot.guid, pivot.column)) {
+    if (
+      guid !== pivot.guid ||
+      key !== columnPairKey(pivot.guid, pivot.column)
+    ) {
       nodeIds.add(guid);
     }
   }

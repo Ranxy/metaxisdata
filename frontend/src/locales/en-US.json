@@ -500,6 +500,8 @@
     "depth3": "3 levels",
     "downstreamObjects": "Downstream objects",
     "downstreamRelations": "Downstream fields",
+    "expandColumnDownstream": "Expand column downstream",
+    "expandColumnUpstream": "Expand column upstream",
     "expandDepth": "Depth",
     "expandDownstream": "Expand downstream",
     "expandUpstream": "Expand upstream",

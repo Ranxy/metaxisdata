@@ -500,6 +500,8 @@
     "depth3": "3 层",
     "downstreamObjects": "下游对象数",
     "downstreamRelations": "下游字段",
+    "expandColumnDownstream": "展开字段下游",
+    "expandColumnUpstream": "展开字段上游",
     "expandDepth": "深度",
     "expandDownstream": "展开下游",
     "expandUpstream": "展开上游",

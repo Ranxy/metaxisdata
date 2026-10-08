@@ -67,6 +67,7 @@
             <LineageNode
               :data="nodeProps.data"
               @expand="handleExpandNode"
+              @expand-column="handleExpandColumn"
               @select-node="handleSelectNode"
               @select-column="handleSelectColumn"
               @toggle-fields="handleToggleFields"
@@ -386,6 +387,8 @@ import {
   buildLineageEdges,
   type ColumnFilter,
   distinctRelationCounts,
+  fieldScopedRelations,
+  type LineageDirection,
   layoutNodes,
   nodeHeight,
 } from "@/lib/lineageGraph";
@@ -396,7 +399,13 @@ import {
   originLabelKey,
   type RelationOrigin,
 } from "@/lib/lineageOrigin";
-import { collectFieldTrail, type FieldTrail } from "@/lib/lineageTrail";
+import {
+  type ColumnPair,
+  collectFieldTrail,
+  columnNeighbourPairs,
+  columnPairKey,
+  type FieldTrail,
+} from "@/lib/lineageTrail";
 
 // Loaded on demand: the dialog renders its definition in Monaco, and the lineage
 // canvas has no use for a 3MB editor until a reader asks for a schema.
@@ -432,8 +441,6 @@ const instanceStore = useInstanceStore();
 
 const OPENLINEAGE_META_TYPE = 100;
 
-type LineageDirection = "upstream" | "downstream";
-
 interface NodeLineageData {
   upstream: LineageRelation[];
   downstream: LineageRelation[];
@@ -457,6 +464,11 @@ const initialLoading = ref(true);
 // the data was fetched: selecting a node fetches both directions for the detail
 // panel without expanding anything, so a loaded node is not an expanded one.
 const expandedDirections = ref<Set<string>>(new Set());
+// The field-scoped expansions, keyed like `expandedDirections` and holding the
+// fields whose relations that direction draws. A direction is either expanded
+// whole — `expandedDirections` — or field by field, never both: a whole-node
+// expansion supersedes the fields recorded before it.
+const expandedColumns = ref<Map<string, Set<string>>>(new Map());
 const nodeDataMap = ref<Map<string, NodeLineageData>>(new Map());
 // Every visible node's degree, from the batched counts RPC: a node cannot be
 // labelled from its neighbours' relations, and fetching each node's relations
@@ -534,7 +546,12 @@ const fieldTrail = ref<FieldTrail | null>(null);
 const fieldsVisibleGuids = ref<Set<string>>(new Set());
 
 const hasExpandedBeyondRoot = computed(() => {
-  return expandedDirections.value.size > initialExpandedDirections.size;
+  // A field-scoped expansion counts as expanding, so it earns the Reset that
+  // takes it back — the root's own two directions are always expanded.
+  return (
+    expandedDirections.value.size > initialExpandedDirections.size ||
+    expandedColumns.value.size > 0
+  );
 });
 
 const selectedNodeGuid = computed(() => {
@@ -958,6 +975,36 @@ function isDirectionExpanded(
   return expandedDirections.value.has(expansionKey(guid, direction));
 }
 
+/** The fields this node's direction draws, for the field menu's own affordances. */
+function expandedColumnsFor(
+  guid: string,
+  direction: LineageDirection
+): Set<string> {
+  return expandedColumns.value.get(expansionKey(guid, direction)) ?? new Set();
+}
+
+/**
+ * Records that one field's lineage is drawn on this node's direction. A direction
+ * the node itself has expanded draws all of its relations already, so nothing is
+ * recorded there — a field scope only exists while it is what narrows the canvas.
+ */
+function addColumnExpansion(
+  guid: string,
+  direction: LineageDirection,
+  column: string
+) {
+  if (isDirectionExpanded(guid, direction)) {
+    return;
+  }
+  const key = expansionKey(guid, direction);
+  let fields = expandedColumns.value.get(key);
+  if (!fields) {
+    fields = new Set<string>();
+    expandedColumns.value.set(key, fields);
+  }
+  fields.add(column);
+}
+
 /** A GUID may contain `:`, so the direction is the prefix, not part of the key. */
 function expansionKey(guid: string, direction: LineageDirection): string {
   return `${direction}:${guid}`;
@@ -1111,6 +1158,8 @@ function nodeDataFor(guid: string): LineageNodeData {
     selectedColumn:
       selectedColumnGuid.value === guid ? selectedColumnName.value : null,
     highlightedColumns: fieldTrail.value?.columns.get(guid) ?? new Set(),
+    columnExpandedUpstream: expandedColumnsFor(guid, "upstream"),
+    columnExpandedDownstream: expandedColumnsFor(guid, "downstream"),
     onTrail: fieldTrail.value?.nodeIds.has(guid) ?? false,
     dimmed:
       dimsOffTrail.value && !(fieldTrail.value?.nodeIds.has(guid) ?? false),
@@ -1142,15 +1191,31 @@ function graphView(): Map<string, NodeLineageData> {
   const view = new Map<string, NodeLineageData>();
   for (const [guid, data] of nodeDataMap.value) {
     view.set(guid, {
-      upstream: isDirectionExpanded(guid, "upstream") ? data.upstream : [],
-      downstream: isDirectionExpanded(guid, "downstream")
-        ? data.downstream
-        : [],
+      upstream: directionView(guid, "upstream", data.upstream),
+      downstream: directionView(guid, "downstream", data.downstream),
       upstreamLoaded: data.upstreamLoaded,
       downstreamLoaded: data.downstreamLoaded,
     });
   }
   return view;
+}
+
+/**
+ * What one node's direction contributes to the canvas: every relation once the
+ * node itself is expanded, only the ones a field-scoped expansion names while the
+ * expansion is those fields', and nothing until something is expanded there.
+ */
+function directionView(
+  guid: string,
+  direction: LineageDirection,
+  relations: LineageRelation[]
+): LineageRelation[] {
+  const key = expansionKey(guid, direction);
+  if (expandedDirections.value.has(key)) {
+    return relations;
+  }
+  const fields = expandedColumns.value.get(key);
+  return fields ? fieldScopedRelations(relations, direction, fields) : [];
 }
 
 /**
@@ -1412,25 +1477,31 @@ async function handleSelectColumn(guid: string, column: string) {
     return;
   }
 
-  const selectingNode = selectedNodeGuid.value !== guid;
-  selectedColumnGuid.value = guid;
-  selectedColumnName.value = column;
-
-  // A field click has to do what a node click does — select the node and make sure
-  // its relations are loaded. Otherwise the detail panel stays empty (and with it
-  // the field's trail summary) for every node whose relations were never fetched,
-  // which is every node the user has not expanded or clicked before.
-  if (selectingNode) {
-    setSelectedNode(guid);
-    if (guid !== currentGuid.value) {
-      await fetchLineageForGuid(guid);
-    }
-  }
-
+  await markSelectedColumn(guid, column);
   // The trail is walked by `updateGraphState`, over the same drawn graph the edges
   // come from — one implementation for both, so a column can never be highlighted
   // without the edge that carries it.
   updateGraphState();
+}
+
+/**
+ * Points the detail panel and the trail at one field, without redrawing: the
+ * caller decides which redraw follows, so an action that expands a field only
+ * pays for one. A field click has to do what a node click does — select the node
+ * and make sure its relations are loaded. Otherwise the detail panel stays empty
+ * (and with it the field's trail summary) for every node whose relations were
+ * never fetched, which is every node the user has not expanded or clicked before.
+ */
+async function markSelectedColumn(guid: string, column: string) {
+  if (selectedNodeGuid.value !== guid) {
+    setSelectedNode(guid);
+  }
+  selectedColumnGuid.value = guid;
+  selectedColumnName.value = column;
+
+  if (guid !== currentGuid.value) {
+    await fetchLineageForGuid(guid);
+  }
 }
 
 /** The depth control's value, clamped to the one-to-three levels it offers. */
@@ -1495,6 +1566,70 @@ async function handleExpandNode(guid: string, direction: LineageDirection) {
 }
 
 /**
+ * Expands one field instead of the whole node: the walk only follows relations
+ * that name the field, so every object it reveals carries that field's lineage
+ * and no other. Each pair it visits records a field-scoped expansion on its node,
+ * which is what `graphView` draws that direction from — the field is what
+ * narrows the canvas, and the node's own Expand still widens it afterwards.
+ *
+ * The depth control bounds the walk exactly as it does a node expansion, and the
+ * field is selected at the end so the trail it just drew is the one on screen.
+ */
+async function handleExpandColumn(
+  guid: string,
+  column: string,
+  direction: LineageDirection
+) {
+  if (isDirectionExpanded(guid, direction)) return;
+
+  const lineageType = directionToLineageType(direction);
+  const depth = parseExpandDepth(expandDepth.value);
+  // Deduplicated across the whole walk: a diamond is walked once, and a pair
+  // reached at a shallower level is not walked again from a deeper one.
+  const walked = new Set<string>();
+  let frontier: ColumnPair[] = [{ guid, column }];
+
+  for (let level = 0; level < depth && frontier.length > 0; level++) {
+    const pending = frontier.filter(
+      (pair) => !walked.has(columnPairKey(pair.guid, pair.column))
+    );
+    if (pending.length === 0) {
+      break;
+    }
+    for (const pair of pending) {
+      walked.add(columnPairKey(pair.guid, pair.column));
+      addColumnExpansion(pair.guid, direction, pair.column);
+    }
+
+    const loaded = await Promise.all(
+      pending.map((pair) => fetchLineageForGuid(pair.guid, lineageType))
+    );
+
+    const next = new Map<string, ColumnPair>();
+    for (let index = 0; index < pending.length; index++) {
+      for (const neighbour of columnNeighbourPairs(
+        loaded[index],
+        pending[index],
+        direction
+      )) {
+        const key = columnPairKey(neighbour.guid, neighbour.column);
+        if (!walked.has(key)) {
+          next.set(key, neighbour);
+        }
+      }
+    }
+    frontier = Array.from(next.values());
+  }
+
+  await markSelectedColumn(guid, column);
+  await rebuildGraph();
+
+  if (walked.size > 0) {
+    fitViewWhenMeasured();
+  }
+}
+
+/**
  * Fits the graph once Vue Flow holds the expanded node set with every node
  * measured. Both steps are asynchronous — the `nodes` prop is applied on a
  * later tick, and the sizes come from a resize observer — so fitting any
@@ -1521,6 +1656,7 @@ function handleReset() {
   // Restore the initial snapshot, the origin filter included: it is part of the
   // view the user is resetting away from.
   expandedDirections.value = new Set(initialExpandedDirections);
+  expandedColumns.value = new Map();
   nodeDataMap.value = new Map(
     Array.from(initialNodeDataMap.entries()).map(([k, v]) => [k, { ...v }])
   );
@@ -1590,6 +1726,7 @@ async function initializeGraph() {
 
   initialLoading.value = true;
   expandedDirections.value.clear();
+  expandedColumns.value.clear();
   nodeDataMap.value.clear();
   lineageCounts.value.clear();
   guidMetaTypeMap.value.clear();

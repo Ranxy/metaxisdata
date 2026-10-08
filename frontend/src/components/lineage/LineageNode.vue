@@ -114,19 +114,54 @@
           v-if="showFields && data.columns.length > 0"
           class="max-h-[200px] overflow-y-auto border-t"
         >
-          <button
-            v-for="col in data.columns"
-            :key="col"
-            class="flex w-full cursor-pointer items-center gap-1.5 py-1 pl-2.5 pr-2 text-left text-xs transition-colors hover:bg-muted/50"
-            :class="{
-              'bg-primary/10 font-medium text-primary': data.selectedColumn === col,
-              'bg-accent/50 font-medium': data.selectedColumn !== col && data.highlightedColumns.has(col),
-            }"
-            @click.stop="$emit('select-column', data.guid, col)"
-          >
-            <Columns3 class="size-3 shrink-0 text-muted-foreground" />
-            <span class="truncate">{{ col }}</span>
-          </button>
+          <!-- Each field carries its own menu: a right-click on a field asks for
+               that field, and the node's own Expand items would answer with all of
+               it. The two are nested, and the inner trigger's `preventDefault`
+               keeps the outer menu shut. -->
+          <ContextMenu v-for="col in data.columns" :key="col">
+            <ContextMenuTrigger as-child>
+              <button
+                class="flex w-full cursor-pointer items-center gap-1.5 py-1 pl-2.5 pr-2 text-left text-xs transition-colors hover:bg-muted/50"
+                :class="{
+                  'bg-primary/10 font-medium text-primary': data.selectedColumn === col,
+                  'bg-accent/50 font-medium': data.selectedColumn !== col && data.highlightedColumns.has(col),
+                }"
+                @click.stop="$emit('select-column', data.guid, col)"
+              >
+                <Columns3 class="size-3 shrink-0 text-muted-foreground" />
+                <span class="truncate">{{ col }}</span>
+              </button>
+            </ContextMenuTrigger>
+
+            <ContextMenuContent class="w-52">
+              <ContextMenuLabel class="truncate" :title="`${data.fullLabel} · ${col}`">
+                {{ col }}
+              </ContextMenuLabel>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                :disabled="data.kind === 'external'"
+                @select="$emit('view-schema', data.guid)"
+              >
+                <Code class="size-3.5 text-muted-foreground" />
+                {{ t("metadataBrowser.viewSchema") }}
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                v-if="canExpandColumn(col, 'upstream')"
+                @select="$emit('expand-column', data.guid, col, 'upstream')"
+              >
+                <ArrowUp class="size-3.5 text-muted-foreground" />
+                {{ t("lineageGraph.expandColumnUpstream") }}
+              </ContextMenuItem>
+              <ContextMenuItem
+                v-if="canExpandColumn(col, 'downstream')"
+                @select="$emit('expand-column', data.guid, col, 'downstream')"
+              >
+                <ArrowDown class="size-3.5 text-muted-foreground" />
+                {{ t("lineageGraph.expandColumnDownstream") }}
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
         </div>
 
         <Handle
@@ -237,6 +272,10 @@ export interface LineageNodeData {
   selectedColumn: string | null;
   /** The columns of this node that the selected column's trail runs through. */
   highlightedColumns: Set<string>;
+  /** The fields whose own lineage has been expanded that way, so the node's
+   * direction draws only what those fields reach. */
+  columnExpandedUpstream: Set<string>;
+  columnExpandedDownstream: Set<string>;
 }
 
 const props = defineProps<{
@@ -245,6 +284,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   expand: [guid: string, direction: "upstream" | "downstream"];
+  "expand-column": [
+    guid: string,
+    column: string,
+    direction: "upstream" | "downstream",
+  ];
   "select-node": [guid: string];
   "select-column": [guid: string, column: string];
   "toggle-fields": [guid: string, visible: boolean];
@@ -258,6 +302,26 @@ const showFields = ref(false);
 function handleToggleFields() {
   showFields.value = !showFields.value;
   emit("toggle-fields", props.data.guid, showFields.value);
+}
+
+/**
+ * Whether one field can still be expanded that way. A direction the node itself
+ * has already expanded draws all of its relations — there is nothing left for a
+ * field to add — and a field that was expanded this way is drawn already.
+ */
+function canExpandColumn(
+  column: string,
+  direction: "upstream" | "downstream"
+): boolean {
+  const expanded =
+    direction === "upstream"
+      ? props.data.columnExpandedUpstream
+      : props.data.columnExpandedDownstream;
+  const wholeNode =
+    direction === "upstream"
+      ? props.data.upstreamExpanded
+      : props.data.downstreamExpanded;
+  return !wholeNode && !expanded.has(column);
 }
 
 const isExternal = computed(() => props.data.kind === "external");
